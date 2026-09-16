@@ -1,0 +1,165 @@
+# The language platform: language, Base, and the standard ecosystem
+
+Kind: design policy. Status: proposed 2.0 specification framework; the
+complete Base inventory and conformance mapping remain to be written.
+This page records the intended boundary, not a claim that every current
+execution profile already implements it.
+
+## A versioned pair of contracts
+
+A usable portable platform is specified by the pair `P_n = (L_n, S_n)`:
+
+- `L_n` is the language specification for major version n: syntax,
+  evaluation, types, binding, ownership, effects, modules, and genuine
+  builtins.
+- `S_n` is the corresponding Base standard-library specification: the
+  canonical types, operations, laws, and minimal environmental interfaces
+  that complete the language into an immediately usable system.
+
+The language says how programs mean something. Base gives names and
+contracts to the fundamental constructions programmers should not have
+to redefine. A compiler distribution's contents do not, by themselves,
+define either contract.
+
+[SEMANTICS.md](../SEMANTICS.md) is the current language and QOS contract
+workbook. Its language clauses contribute to L; its OS clauses describe
+profile and capability contracts. [STD-PLAN.md](STD-PLAN.md) plans library
+implementation and placement. Neither is yet a complete S inventory.
+
+## What belongs in the language
+
+An operation belongs in L when implementing it as an ordinary library
+abstraction cannot preserve its intended meaning or guarantees. Syntax,
+evaluation rules, ownership checks, and primitive effect mechanisms are
+examples. Small canonical notation, such as function composition, may be
+specified there too, with its meaning explicitly defined.
+
+Being implemented in the compiler or HAL today does not automatically
+make an operation part of L. Implementation placement and specification
+membership are separate decisions; a builtin may implement a Base API.
+
+## Base: a small semantic basis and its derived operations
+
+Base membership follows the structures exposed by the language. For each
+fundamental datatype, ask how it is constructed, observed or eliminated,
+transformed, and combined. Then specify a small basis and the useful
+combinators derived from it.
+
+For finite lists and pure, total functions, illustrative laws include:
+
+```text
+append([], xs) = xs
+append(xs, []) = xs
+append(append(xs, ys), zs) = append(xs, append(ys, zs))
+map(id, xs) = xs
+map(compose(f, g), xs) = map(f, map(g, xs))
+```
+
+These are specification notation, not declarations of current API names.
+The laws describe values; they do not promise identical allocation or
+execution costs. Effectful, partial, or ownership-sensitive operations
+need their own applicable laws and evaluation-order requirements.
+
+A candidate for Base should answer all of these questions:
+
+1. Which fundamental language structure does it complete, or which minimal
+   interaction with the environment does it provide?
+2. What are its canonical meaning, laws, types, errors, and ownership rules?
+3. Can it be derived from a smaller basis? If so, does standardizing the
+   derived operation justify its cost in surface area through predictable
+   semantics, efficiency, or usability?
+4. Can every conforming implementation provide the contract without an
+   unrelated domain stack?
+5. What conformance evidence checks its behaviour?
+
+Typical candidates are basic function combinators, list folds and maps,
+sum/product operations, basic numeric and byte operations, and minimal
+console and file/stream effect interfaces. These are candidate categories,
+not an approved module list. There is no claim of a unique mathematical
+basis or of closure under every expressible operation.
+
+The test is stronger than “many applications use this.” JSON, HTTP, a GUI,
+or a database driver can be valuable without belonging in Base.
+
+## Effects and portability
+
+Base includes the minimal specified boundary to the environment, including
+reading and writing where the contract requires them. Specify acquisition,
+permission, absence, failure, ordering, and resource lifetime as carefully
+as successful reads and writes. Do not require Unix paths, descriptors, or
+processes merely because the reference host uses them.
+
+Providing an interface does not imply that every device or file is present
+or that every program has permission to use it. An implementation must
+provide each required interface and obey its specified capability/error
+semantics. An unsupported result is conforming only where S explicitly
+allows it; it cannot excuse an arbitrary missing mandatory facility.
+
+An implementation of L alone is a language implementation. A claim of
+platform conformance to `(L_n, S_n)` additionally requires the whole
+mandatory Base contract. A program restricted to that pair is portable
+subject to its declared environmental capabilities and resource needs.
+Different machines may have different permitted external inputs, timing,
+and failures; portability does not promise identical physical behaviour.
+
+For the four execution profiles, publish a clause-by-clause support matrix,
+any specified profile restrictions, and test evidence. A partial or
+restricted implementation must be labelled as such. Existing smoke tests
+are evidence for their covered cases, not a complete conformance claim.
+
+## The extended standard ecosystem
+
+Beyond Base, the project may specify and maintain libraries such as Text,
+Vector, Map, Set, Network, Process, Time, Random, parsers, UI, and persistence.
+These are illustrative categories, not new module names or a reclassification
+of existing language primitives.
+
+An extended standard library can have official names, laws, documentation,
+reference implementations, and compatibility guarantees without becoming
+mandatory for every implementation of `(L_n, S_n)`. Programs declare these
+additional dependencies and their required capabilities explicitly. Being
+bundled with one release does not make a dependency part of Base.
+
+## Base is not the bounded-cost std tier
+
+Two independent questions must stay separate:
+
+| Axis | Question |
+| --- | --- |
+| Platform membership | Is this language semantics, mandatory Base, an extended library, or application code? |
+| Verification tier | What termination, cost, ownership, and effect guarantees are discharged? |
+
+The repository's `std/` rule is bounded worst-case behaviour, discharged
+through its proof/checking discipline. **S_n means the Base specification;
+it does not mean every file in `fp-risc/std/`.** Likewise, the proposed
+`lib/` directory does not automatically mean optional ecosystem membership.
+A Base operation can use a library implementation; an optional library can
+contain verified bounded operations.
+
+The `core / std / lib / examples` organization in STD-PLAN remains a source
+and assurance organization. Add Base/extension membership alongside it in
+the eventual library reference. This policy does not move files, rename
+imports, add builtins, or declare current modules conforming.
+
+## Versioning and release evidence
+
+S_n is specified against L_n. A destructive semantic change creates a new
+major foundation and requires reconsidering the corresponding Base
+contract, even when much of its implementation can be reused. A breaking
+Base change likewise cannot retain an unchanged platform-contract claim.
+
+Language and Base minor revisions need not move in lockstep. Record the
+exact supported pair and compatibility requirements: a later S revision
+may require a particular L minor revision. Extensions version independently
+and declare which platform contracts they require.
+
+These contract versions are distinct from package/release versions,
+`QOS_ABI_VERSION`, `codegenRev`, and content-addressed module pins. The
+existing [versioning machinery](VERSIONING.md) records shipped artifacts;
+a release's conformance statement must connect those artifacts to the
+contract pair, profile support, extension versions, and test results.
+
+Next steps for 2.0 are to enumerate Base, settle its signatures and laws,
+map them to implementations on each profile, and identify missing tests.
+The notation `(L_2, S_2)` expresses the intended contract family; this page
+does not certify a completed 2.0 implementation.

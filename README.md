@@ -30,6 +30,19 @@ re-checked against the tree -- status, evidence, disposition) and
 `docs/STD-PLAN.md` (the library workstream in full: the tier model,
 the missing surface, the promotion table, the gate).
 
+## Platform and documentation contracts
+
+[PLATFORM.md](docs/PLATFORM.md) defines the proposed versioned pair
+`(L_n, S_n)`: language semantics plus a minimal, guaranteed Base library.
+The extended standard ecosystem remains explicit, independently versioned
+dependencies. Base membership is separate from the bounded-cost `std/`
+verification tier; the complete Base inventory and conformance mapping are
+still 2.0 work.
+
+[DOCUMENTATION.md](docs/DOCUMENTATION.md) distinguishes specifications,
+references, plans, guides, examples, reviews, records, and notes, with a
+navigation map and rules for identifying current versus proposed claims.
+
 ## Install
 
 One toolchain, one command, macOS and Linux (docs/INSTALL.md):

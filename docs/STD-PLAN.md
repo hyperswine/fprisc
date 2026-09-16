@@ -47,6 +47,13 @@ exists only for sol), dates/time formatting beyond `mods/timefmt.fpr`
 
 ## 2. The tiers 2.0 commits to
 
+The platform membership policy is in [PLATFORM.md](PLATFORM.md): mandatory
+Base versus the extended standard ecosystem. It is an independent axis
+from the implementation/verification tiers below. The eventual reference
+must record both classifications. In particular, `S_n` names the Base
+specification, not the contents of `std/`; promoting a module into a
+library directory does not by itself make it mandatory Base.
+
 Four named tiers, each with a rule that decides membership.  A module
 belongs to exactly one.
 
