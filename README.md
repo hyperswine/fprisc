@@ -24,7 +24,11 @@ compile and an up-to-date one costs nothing.
 `SEMANTICS.md` is the contract 2.0 commits to -- the language and the
 OS, one clause per rule, a test slot on each; `docs/V2.md` is the plan
 around it: the bounds register, the std inventory, hardware, the order.
-Dot points for now, systematic later.
+Dot points for now, systematic later.  Two companion files carry what
+outgrew dot points: `docs/V2-AUDIT.md` (every reported issue
+re-checked against the tree -- status, evidence, disposition) and
+`docs/STD-PLAN.md` (the library workstream in full: the tier model,
+the missing surface, the promotion table, the gate).
 
 ## Install
 
