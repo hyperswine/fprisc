@@ -26,6 +26,7 @@ executable fpr
   ghc-options:        -O0
   other-modules:
       A64
+      Arc
       Codegen
       Commit
       Compile

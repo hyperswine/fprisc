@@ -1,0 +1,45 @@
+# No explicit Rc operations. ARC_CHECK also requires zero live blocks at exit.
+Node = Type (Node a b).
+check b = case b of True -> Unit | False -> error "ARC check failed".
+rest xs = case xs of Cons h t -> t | Nil -> Nil.
+choose b x y = case b of True -> x | False -> y.
+make n = [n, n + 1, n + 2].
+escape n =
+  xs = make n;
+  pair = Node xs xs;
+  case pair of Node left right -> rest right.
+exercise n =
+  xs = make n;
+  pair = Node xs xs;
+  _ = check (case pair of Node left right -> left == right);
+  _ = check (escape n == [n + 1, n + 2]);
+  _ = check (choose True xs (make 0) == xs);
+  _ = check (choose False (make 0) xs == xs);
+  Unit.
+loop n = case n == 0 of
+  True -> Unit
+| False ->
+  _ = exercise n;
+  loop (n - 1).
+strings n =
+  s = str n;
+  alias = str s;
+  both = strcat s alias;
+  check (String.len both == String.len s * 2).
+words n =
+  bits = Word.not (Word.fromInt n);
+  p = Mem.alloc 16;
+  _ = Mem.writeWord p bits;
+  _ = check (Mem.readWord p == bits);
+  q = Mem.realloc p 32;
+  _ = check (Mem.readWord q == bits);
+  _ = Mem.free q;
+  Unit.
+main =
+  _ = loop 10000;
+  _ = check (Mem.liveAllocations Unit == 0);
+  _ = strings 12345;
+  _ = check (Mem.liveAllocations Unit == 0);
+  _ = words 37;
+  _ = check (Mem.liveAllocations Unit == 0);
+  print "AUTOMATIC ARC HOLDS".

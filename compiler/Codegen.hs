@@ -59,12 +59,14 @@ data Target = Target
     tgtLd :: String,    -- word load  (ld / lw)
     tgtSt :: String,    -- word store (sd / sw)
     tgtDir :: String,   -- word data directive (.quad / .word)
-    tgtName :: String   -- for the banner comment
+    tgtName :: String,  -- for the banner comment
+    tgtFuel :: Bool,    -- cooperative scheduler instrumentation
+    tgtArc :: Bool      -- explicit field layouts for managed constructors
   }
 
 rv64, rv32 :: Target
-rv64 = Target 8 "ld" "sd" ".quad" "rv64"
-rv32 = Target 4 "lw" "sw" ".word" "rv32"
+rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False
+rv32 = Target 4 "lw" "sw" ".word" "rv32" True False
 
 -- tagged-int range check: (n << 1) | 1 must fit a signed word
 intFits :: Target -> Integer -> Bool
@@ -536,7 +538,7 @@ compileFn prog name (params, body) = do
   -- clobbers a0..a7, but ra/args are already safe in the frame. Cost:
   -- 6 instructions on the fast path, t0/t1 only.
   fuelOk <- freshL "fuel"
-  let fuelCheck =
+  let fuelCheck = if not (tgtFuel tgt) then [] else
         [ "    mv t0, tp", -- per-hart fuel: 0(tp) is fpr_hart_t.fuel
           "    " ++ tgtLd tgt ++ " t1, 0(t0)",
           "    addi t1, t1, -1",
@@ -694,11 +696,14 @@ genT tgt spec prog ext = go
     -- variable named like a global is NOT a known target)
     known env h n
       | M.member h env = Nothing
-      | Just (ps, _) <- M.lookup h prog, length ps == n, n > 0 = Just ("fpr_fn_" ++ mangle h)
-      | Just a <- M.lookup h ext, a == n, n > 0 = Just ("fpr_fn_" ++ mangle h) -- cross-unit direct call
+      | Just (ps, _) <- M.lookup h prog, length ps == n = Just ("fpr_fn_" ++ mangle h)
+      | Just a <- M.lookup h ext, a == n = Just ("fpr_fn_" ++ mangle h) -- cross-unit direct call
       | Just a <- lookup h primArities, a == n = Just ("fpr_prim_fn_" ++ mangle h)
       | otherwise = Nothing
 
+    go env nxt pos (CVar h)
+      | tgtArc tgt, Just target <- known env h 0 =
+          knownCall env nxt pos target []
     go env nxt pos e
       | (CVar h, args@(_ : _)) <- spineOf e,
         Just target <- known env h (length args) =
@@ -860,9 +865,10 @@ genT tgt spec prog ext = go
                 ]
         pure $
           concat ls
-            ++ [ "    li a0, " ++ show (8 + w * n),
-                 "    call fpr_alloc",
-                 "    li t0, " ++ show tid,
+            ++ [ "    li a0, " ++ show (8 + w * n) ]
+            ++ (if tgtArc tgt then ["    li a1, " ++ show n, "    call fpr_builtin_alloc_adt"]
+                else ["    call fpr_alloc"])
+            ++ [ "    li t0, " ++ show tid,
                  "    sw t0, 0(a0)",
                  "    li t0, " ++ show var,
                  "    sw t0, 4(a0)"
@@ -1576,14 +1582,14 @@ compileUFn tgt prog uset label (params, body) = do
       label ++ ":" ]
       ++ framePro tgt frame
       ++ concat [stSlot tgt ("a" ++ show i) i | (i, _) <- zip [0 :: Int ..] params]
-      ++ [ "    mv t0, tp", -- per-hart fuel: 0(tp) is fpr_hart_t.fuel
+      ++ (if not (tgtFuel tgt) then [] else [ "    mv t0, tp", -- per-hart fuel: 0(tp) is fpr_hart_t.fuel
            "    " ++ tgtLd tgt ++ " t1, 0(t0)",
            "    addi t1, t1, -1",
            "    " ++ tgtSt tgt ++ " t1, 0(t0)",
            "    bgtz t1, " ++ fuelOk,
            "    call fpr_fuel_exhausted",
            fuelOk ++ ":"
-         ]
+         ])
       ++ bodyLines
       ++ [ "    " ++ tgtLd tgt ++ " ra, " ++ show (-w) ++ "(s0)",
            "    mv t0, s0",
@@ -1739,6 +1745,7 @@ specFrame tgt regs slots = (frame, pro, epi)
     epi = ["    " ++ tgtLd tgt ++ " " ++ r ++ ", " ++ at i | (i, r) <- zip [0 ..] regs] ++ ["    addi sp, sp, " ++ show frame]
 
 specFuel :: Target -> G [String]
+specFuel tgt | not (tgtFuel tgt) = pure []
 specFuel tgt = do
   ok <- freshL "vfuel"
   pure

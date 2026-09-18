@@ -3,7 +3,8 @@ module Compile (compileMain) where
 import Data.List (sortBy)
 import System.Environment (lookupEnv)
 import System.IO (hPutStrLn, stderr)
-import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName)
+import Arc (lowerArc, arcExterns, arcRev)
+import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc)
 import A64 (deTlsQosAppA64, lowerA64, a64Rev)
 import X64 (lowerX64, deTlsQosApp, x64Rev)
 import Control.Monad (forM, forM_, unless, when)
@@ -30,6 +31,8 @@ import Text.Megaparsec (errorBundlePretty, parse)
 
 data Opts = Opts
   { oTarget :: Target,
+    oBuiltin :: Bool,
+    oArc :: Bool,
     oA64 :: Bool, -- lower the rv64 emission (the shared RISC IR) to AArch64
     oA64Mac :: Bool, -- AArch64 with Mach-O syntax (macOS): _sym, @PAGE, TLV
     oX64 :: Bool, -- lower it to x86-64 (SysV) instead
@@ -45,7 +48,7 @@ data Opts = Opts
   }
 
 parseArgs :: [String] -> Opts
-parseArgs = foldl step (Opts rv64 False False False False False False False False False Nothing False [])
+parseArgs = foldl step (Opts rv64 False False False False False False False False False False False Nothing False [])
   where
     -- profile aliases (Target.hs): the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
@@ -53,9 +56,11 @@ parseArgs = foldl step (Opts rv64 False False False False False False False Fals
     -- codegen the same way; qos-portable -> qx64 (x86-64 build host).
     -- hosted-bytecode is NOT an fprc target: that profile is the sol
     -- executable (fp-risc/sol).
-    step o "--profile=bare-metal" = o {oTarget = rv64}
-    step o "--profile=qos-native" = o {oTarget = rv64}
-    step o "--profile=qos-portable" = o {oTarget = rv64, oX64 = True, oQosApp = True}
+    step o "--profile=bare-metal-builtin" = o {oBuiltin = True}
+    step o "--profile=bare-metal" = o {oTarget = rv64, oBuiltin = False}
+    step o "--profile=qos-native" = o {oTarget = rv64, oBuiltin = False}
+    step o "--profile=qos-portable" = o {oTarget = rv64, oBuiltin = False, oX64 = True, oQosApp = True}
+    step o "--arc" = o {oArc = True}
     step o "--stdcheck" = o {oStdCheck = True}
     step o "--sol" = o {oSol = True}
     step o "--target=rv32" = o {oTarget = rv32}
@@ -103,6 +108,15 @@ compileMain :: IO ()
 compileMain = do
   setLocaleEncoding utf8
   opts <- parseArgs <$> getArgs
+  when (oBuiltin opts && (oA64 opts || oX64 opts || oQosApp opts || oRvv opts || tgtName (oTarget opts) /= "rv64")) $ do
+    hPutStrLn stderr "bare-metal-builtin currently supports scalar RV64 only"
+    exitFailure
+  when (oArc opts && not (oBuiltin opts)) $ do
+    hPutStrLn stderr "--arc currently requires --profile=bare-metal-builtin"
+    exitFailure
+  when (oArc opts && oPlugin opts) $ do
+    hPutStrLn stderr "--arc does not yet support plugin/foreign ownership boundaries"
+    exitFailure
   -- --stdcheck: parse the single file and run the std proof pass
   -- (StdBridge lowers the checkable fragment into StdCheck's interval /
   -- measure / WCET engine); no code is generated.
@@ -115,14 +129,15 @@ compileMain = do
     exitSuccess
   (inp, out) <- case oFiles opts of
     [i, o] -> pure (i, o)
-    _ -> putStrLn "usage: fprc [--profile=bare-metal|qos-native|qos-portable] [--target=rv32|rv64|a64|a64mac|x64|qx64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
+    _ -> putStrLn "usage: fprc [--profile=bare-metal-builtin|bare-metal|qos-native|qos-portable] [--arc] [--target=rv32|rv64|a64|a64mac|x64|qx64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
   -- --prelude=FILE as given; no flag = the prelude beside the binary
   -- (core/prelude.fpr under Home.fprHome), so `fpr compile x.fpr x.s`
   -- means the same thing from any directory; --prelude= (empty) = none
   prelude <- case oPrelude opts of
     Just "" -> pure Nothing
     Just f -> pure (Just f)
-    Nothing -> underHome ("core" </> "prelude.fpr")
+    Nothing | oBuiltin opts -> pure Nothing
+            | otherwise -> underHome ("core" </> "prelude.fpr")
   let opts' = opts {oPrelude = prelude}
   (preludeSrc, preludeTops) <- maybe (pure ("", [])) parseFileSrc prelude
   (rootSrc, rootTops0) <- parseFileSrc inp
@@ -257,7 +272,7 @@ compileMain = do
         mapM_ (\(_, t) -> putStrLn ("note: ?? hole (runtime trap) : " ++ t)) [h | h@(n, _) <- holes, null n]
       -- the safe/unsafe line (Safety.hs): recursion and unsafe-taint
       -- must be DECLARED.  --no-safety exists for transition only.
-      unless (oNoSafety opts) $ do
+      unless (oNoSafety opts || oBuiltin opts) $ do
         let preludeNames = S.fromList [n | TBind n _ _ _ <- preludeTops]
             (serrs, ssug) = safetyCheck preludeNames tops' notes
         unless (null serrs) $ do
@@ -344,8 +359,9 @@ compileMain = do
           compileUnit uts = fst (runState (compileTop uts >>= liftFix) (DEnv 0 consAll shapes []))
           preludeExt = arities preludeE'
           unitExt = M.unions [arities uts | (_, uts) <- units']
-          extFor = M.union preludeExt unitExt -- own names win via prog-first lookup
-          tgt = oTarget opts
+          sourceExt = M.union preludeExt unitExt
+          extFor = M.union (if oArc opts then arcExterns else M.empty) sourceExt -- own names win via prog-first lookup
+          tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts}
           a64 = oA64 opts
           a64mac = oA64Mac opts
           x64 = oX64 opts
@@ -365,19 +381,22 @@ compileMain = do
                   else if x64 && qapp then "qx64r" ++ show x64Rev
                   else if x64 then "x64r" ++ show x64Rev
                   else tgtName tgt
-          tag = "g" ++ show codegenRev ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "")
+          tag = "g" ++ show codegenRev ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
+          own prog = if oArc opts then
+                       either (\e -> hPutStrLn stderr e >> exitFailure) pure (lowerArc sourceExt prog)
+                     else pure prog
           emitUnit path exps ext uts = do
             cached <- doesFileExist path
             if cached
               then pure (path, "cached")
               else do
-                let prog = compileUnit uts
+                prog <- own (compileUnit uts)
                 -- FORCE before the write: an `error` raised while the
                 -- assembly is lazily produced must propagate, never
                 -- leave an empty file the cache then serves as a valid
                 -- compiled unit (the bbspi arity>8 incident)
-                let (asm0, vnotes) = emitProgram tgt rvv spec [] ext exps prog
+                let (asm0, vnotes) = emitProgram tgt rvv spec [] (M.union (if oArc opts then arcExterns else M.empty) ext) exps prog
                     asm = lower asm0
                 mapM_ putStrLn vnotes
                 length asm `seq` writeFile path asm
@@ -417,13 +436,14 @@ compileMain = do
                   S.member n rootNames
                     || (not (S.member n unitNames) && not (S.member n preludeNames))
             ]
-          rootProg = compileUnit rootProgTops
+          rootProgRaw = compileUnit rootProgTops
           rootExports =
             [ ModExport rootHash n n (length ps)
               | oPlugin opts,
                 TBind n ps _ _ <- root'
             ]
           imageExports = exports ++ rootExports
+      rootProg <- own rootProgRaw
       let (rootAsm0, rootVNotes) = emitProgram tgt rvv spec imageExports extFor (bindNames root') rootProg
           rootAsm = lower rootAsm0
       mapM_ putStrLn rootVNotes

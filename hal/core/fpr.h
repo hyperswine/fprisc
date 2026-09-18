@@ -35,9 +35,9 @@ typedef struct { uint32_t tid, var; uw fn, arity, nargs; } __attribute__((aligne
 typedef struct { uint32_t tid, var; uw len; uint8_t bytes[]; } __attribute__((aligned(8))) str_t;
 typedef struct { uint32_t tid, var; uw base; } __attribute__((aligned(8))) fpr_dev_t;
 typedef struct { uint32_t tid, var /* = width in bytes */; uw addr; } __attribute__((aligned(8))) reg_t;
-typedef struct { uint32_t tid, var /* = endian: 0 LE, 1 BE */; uw len, val; } __attribute__((aligned(8))) bits_t;
+typedef struct { uint32_t tid, var /* 0 LE, 1 BE; Builtin: 2 Word, 3 Addr */; uw len, val; } __attribute__((aligned(8))) bits_t;
 
-#define TAG(n) ((V)((((sw)(n)) << 1) | 1))
+#define TAG(n) ((V)((((uw)(n)) << 1) | 1))
 #define UNTAG(v) (((sw)(v)) >> 1)
 #define ISINT(v) ((v) & 1)
 #define TID(v) (((hdr_t *)(v))->tid)
@@ -476,10 +476,10 @@ void fpr_hart_secondary(int id); /* actors.c: secondary hart's loop */
 void fpr_ctx_fabricate(uw *ctx, void (*entry)(void), uw stack_top16,
                        fpr_hart_t *owner); /* ctx layer (virt/posix) */ /* process.c: buddy_init over _proc_arena_start.._end */
 
-V fpr_alloc(V raw_bytes); /* bump + free list; arg is a RAW byte count, not tagged */
+V fpr_alloc(V raw_bytes); /* runtime allocator; RAW byte count, not tagged */
 V fpr_realloc(V obj, V raw_bytes); /* grow to a new payload size (copy-based;
                                     * the freed block recycles exactly) */
-void fpr_free(V obj);     /* returns to the free list (sizes <= 8 KiB) */
+void fpr_free(V obj);     /* runtime-specific deallocation; not a recursive ADT drop */
 int fpr_in_heap(V v);     /* heap pointer (promotable) vs int/immortal static */
 V fpr_msg_copy(V v);      /* deep copy into the sender's message slab (packed) */
 V fpr_msg_copy_fresh(V v); /* ... into a slab of its own (Sys.arena's transfer) */
@@ -516,8 +516,8 @@ void hal_poweroff(int code); /* hal.c: terminate the machine if the
 #define FPR_FN(sym, cfn, ar) \
   const pap0_t sym = {T_PAP, 0, (uw)(uintptr_t)(cfn), (ar), 0}
 
-#endif
-
 /* SString: fixed 128-byte inline string (sstr.c). len is the live count. */
 #define SSTR_CAP 128
 typedef struct { uint32_t tid, var; uw len; uint8_t bytes[SSTR_CAP]; } __attribute__((aligned(8))) sstr_t;
+
+#endif /* FPR_H */

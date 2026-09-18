@@ -118,6 +118,7 @@ void fpr_rt_init(void) {
 
 char *fpr_static_lo, *fpr_static_hi; /* image-statics window (fpr.h) */
 
+#ifndef FPR_BUILTIN
 int fpr_in_heap(V v) { /* the buddy span: heap + process regions */
   /* a loaded process's IMAGE lives inside the span (the fixed slot)
    * but its cells are statics without alloc preheaders -- exclude the
@@ -136,6 +137,8 @@ int fpr_in_heap(V v) { /* the buddy span: heap + process regions */
     return !ISINT(v) && (char *)v >= fpr_sched->heap_lo && (char *)v < fpr_sched->heap_hi;
   return !ISINT(v) && (char *)v >= _heap_start && (char *)v < _proc_arena_end;
 }
+
+#endif
 
 /* ---- the slab allocator (see the fpr.h essay) ----------------------- */
 #ifndef FPR_SLAB_SZ
@@ -352,6 +355,7 @@ void fpr_bkt_put(void **b) {
   fpr_fl_put(&bkt_fl, b, sizeof(bktblk_t));
 }
 
+#ifndef FPR_BUILTIN
 V fpr_alloc(V raw_bytes) {
   fpr_hart_t *h = fpr_hart();
   fpr_pool_t *pool = cur_pool(h);
@@ -531,6 +535,8 @@ void fpr_free(V v) {
   } while (!__atomic_compare_exchange_n(&pool->buckets[idx], &old, p, 0,
                                         __ATOMIC_RELEASE, __ATOMIC_RELAXED));
 }
+
+#endif
 
 /* ==== DEEP-COPY MESSAGE TRANSFER (the "it just works" send) ==========
  *
@@ -1372,6 +1378,7 @@ void fpr_logput(int sev, const char *b, uw n);
  * NULL everywhere else -- a machine boot cannot run the storage
  * actor's RPC from panic context, and honesty beats a fake hook. */
 void (*fpr_panic_persist)(const char *msg, uw n);
+#ifndef FPR_BUILTIN
 void fpr_cpanic(const char *m) {
   static int in_panic;
   if (!in_panic) {
@@ -1389,6 +1396,8 @@ void fpr_cpanic(const char *m) {
   hal_poweroff(1); /* QEMU: exit 1; real HW: no-op, park below */
   for (;;) FPR_PARK();
 }
+
+#endif
 
 /* the `error` builtin's V-taking twin: funnel through fpr_cpanic so a
  * user-level panic reaches the error ring and the persist hook exactly
@@ -1500,7 +1509,7 @@ V fpr_apply(V f, V a) {
     args[n] = a;
     return callf(p->fn, p->arity, args);
   }
-  pap_t *q = (pap_t *)fpr_alloc(sizeof(pap_t) + p->arity * 8);
+  pap_t *q = (pap_t *)fpr_alloc(sizeof(pap_t) + p->arity * sizeof(V));
   q->tid = T_PAP;
   q->var = 0;
   q->fn = p->fn;
@@ -1525,7 +1534,7 @@ V fpr_applyN(V f, uw n, V *rargs) {
     if (p->tid != T_PAP) fpr_cpanic("apply: not a function value");
     uw have = p->nargs, need = p->arity - have;
     if (n < need) { /* still partial: ONE pap with everything so far */
-      pap_t *q = (pap_t *)fpr_alloc(sizeof(pap_t) + p->arity * 8);
+      pap_t *q = (pap_t *)fpr_alloc(sizeof(pap_t) + p->arity * sizeof(V));
       q->tid = T_PAP;
       q->var = 0;
       q->fn = p->fn;
@@ -1630,6 +1639,8 @@ static int veq_go(V a, V b, int depth) {
       if (s->bytes[i] != t->bytes[i]) return 0;
     return 1;
   }
+  if (x->tid == T_BITS && (x->var == 2 || x->var == 3))
+    return ((bits_t *)a)->val == ((bits_t *)b)->val;
   switch (x->tid) {
     case T_VEC: case T_ACTOR: case T_PAP:
     case T_DEVICE: case T_REGISTER: case T_BITS: case T_SSTR:

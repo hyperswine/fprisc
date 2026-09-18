@@ -1,0 +1,53 @@
+# RV64 machine-mode primitives. Run with ARC=1 ARC_CHECK=1.
+check b = case b of True -> Unit | False -> error "machine primitive check failed".
+bits =
+  top = Word.bitSet (Word.fromInt 0) 63;
+  _ = check (Word.bitTest top 63);
+  _ = check (Word.bitClear top 63 == Word.fromInt 0);
+  _ = check (Word.shr top 63 == Word.fromInt 1);
+  _ = check (Word.shl (Word.fromInt 1) 63 == top);
+  _ = check (Word.and top (Word.not top) == Word.fromInt 0);
+  check (Word.or top (Word.not top) == Word.mask 64 0).
+atomics =
+  p = Mem.alloc 8;
+  full = Word.not (Word.fromInt 0);
+  _ = Mem.writeWord p full;
+  _ = check (Mem.atomicExchange p (Word.fromInt 7) == full);
+  _ = check (Mem.compareExchange p (Word.fromInt 9) full == Word.fromInt 7);
+  _ = check (Mem.readWord p == Word.fromInt 7);
+  _ = check (Mem.compareExchange p (Word.fromInt 7) full == Word.fromInt 7);
+  _ = check (Mem.readWord p == full);
+  _ = Mem.fence Unit;
+  Mem.free p.
+csrs =
+  before = CPU.csrRead 832;
+  full = Word.not (Word.fromInt 0);
+  _ = CPU.csrWrite 832 full;
+  _ = check (CPU.csrRead 832 == full);
+  _ = CPU.csrWrite 832 before;
+  _ = check (CPU.csrRead 832 == before);
+  check (CPU.csrRead 3860 == Word.fromInt 0).
+interrupts =
+  original = CPU.irqSave Unit;
+  sources = CPU.csrRead 772;
+  _ = CPU.csrWrite 772 (Word.fromInt 0);
+  _ = CPU.irqEnable Unit;
+  enabled = CPU.irqSave Unit;
+  _ = check (enabled == 8);
+  nested = CPU.irqSave Unit;
+  _ = check (nested == 0);
+  _ = CPU.irqRestore nested;
+  _ = check (Word.and (CPU.csrRead 768) (Word.fromInt 8) == Word.fromInt 0);
+  _ = CPU.irqRestore enabled;
+  again = CPU.irqSave Unit;
+  _ = check (again == 8);
+  _ = CPU.csrWrite 772 sources;
+  CPU.irqRestore original.
+main =
+  _ = bits;
+  _ = atomics;
+  _ = csrs;
+  _ = interrupts;
+  _ = CPU.instructionFence Unit;
+  _ = check (Mem.liveAllocations Unit == 0);
+  print "MACHINE PRIMITIVES HOLD".

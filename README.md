@@ -51,3 +51,15 @@ Both repositories retain the original monorepo history and tags; the split is a 
 working-tree change on `main`. Old tags describe the old combined layout. No Git
 remote is configured for this new repository. `SPLIT-SOURCE.json` records the source
 commit. See `../qos/docs/REPOSITORY-SPLIT.md` for ownership and release migration.
+
+For the unsafe, scheduler-free RV64 build and memory/bit API, see
+[BareMetal–Builtin](docs/BAREMETAL-BUILTIN.md). Start with
+`make bare-metal-builtin-run PROG=tests/builtin.fpr`.
+
+Experimental automatic ARC for first-order Builtin programs is available with
+`make bare-metal-builtin-run ARC=1 ARC_CHECK=1 PROG=tests/builtin_arc.fpr`.
+See the [ownership and feature limits](docs/BAREMETAL-BUILTIN.md#automatic-arc-first-order-milestone).
+
+The [machine primitive API](docs/MACHINE-PRIMITIVES.md) adds assembly-backed bit/memory
+operations, CSR access, interrupt masking, atomics and fences. Try
+`make bare-metal-builtin-run ARC=1 ARC_CHECK=1 PROG=tests/builtin_machine.fpr`.

@@ -137,3 +137,27 @@ clean:
 
 FORCE:
 .PHONY: all stdcheck bare-metal bare-metal-run sol clean FORCE
+
+# Unsafe standalone Builtin profile: no actors, devices, QOS or prelude.
+BUILTIN_RT = $(HAL)/builtin/crt0.S $(HAL)/builtin/virt.c $(HAL)/builtin/heap.c \
+             $(HAL)/builtin/unsafe.c $(HAL)/builtin/arc.c $(HAL)/builtin/machine.S $(HAL)/core/runtime.c $(HAL)/virt/memshim.c
+ifeq ($(ARC),1)
+BUILTIN_COMPILER_FLAGS = --arc
+BUILTIN_CFLAGS = -DFPR_BUILTIN_ARC
+endif
+ifneq ($(BUILTIN_HEAP_BYTES),)
+BUILTIN_CFLAGS += -DFPR_BUILTIN_HEAP_BYTES=$(BUILTIN_HEAP_BYTES)
+endif
+ifeq ($(ARC_CHECK),1)
+BUILTIN_CFLAGS += -DFPR_ARC_CHECK
+endif
+bare-metal-builtin: fprc $(BUILTIN_RT) $(HAL)/builtin/link.ld FORCE
+	@mkdir -p $(BUILD)
+	./fprc --profile=bare-metal-builtin $(BUILTIN_COMPILER_FLAGS) $(FPRC_FLAGS) $(PROG) $(BUILD)/builtin.s
+	$(CROSS)gcc $(CFLAGS) -UFPR_NHARTS -DFPR_NHARTS=1 -DFPR_BUILTIN $(BUILTIN_CFLAGS) -ffunction-sections -fdata-sections \
+	  -Wl,--gc-sections -T $(HAL)/builtin/link.ld -I$(HAL)/core -I$(HAL)/builtin \
+	  $(BUILTIN_RT) $(BUILD)/builtin.s $$(cat $(BUILD)/builtin.s.units) -o $(IMAGE)
+
+bare-metal-builtin-run: bare-metal-builtin
+	$(QEMU) -machine virt -smp 1 -m 128M -nographic -bios none -kernel $(IMAGE)
+.PHONY: bare-metal-builtin bare-metal-builtin-run

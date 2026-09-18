@@ -33,9 +33,10 @@ import GHC.IO.Encoding (setLocaleEncoding, utf8)
 usage :: String
 usage =
   unlines
-    [ "fpr — the merged FP-RISC tool (one frontend, four profiles)",
+    [ "fpr — the merged FP-RISC tool (one frontend, multiple execution profiles)",
       "",
       "  fpr compile [flags] <in.fpr> <out.s>   AOT (BareMetal/QOS profiles; old fprc)",
+      "    --profile=bare-metal-builtin --arc  experimental first-order automatic ARC",
       "  fpr compile --target=bytecode <f>      the VM as a target: bytecode listing",
       "  fpr sol <script.sol> [args]            HostedBytecode profile (the sol VM)",
       "  fpr stdcheck <file.fpr>                the std proof pass",

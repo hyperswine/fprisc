@@ -1,0 +1,51 @@
+# Standalone unsafe Builtin smoke test; no prelude or scheduler.
+Node = Type (Node a b).
+check ok = case ok of True -> Unit | False -> error "Builtin check failed".
+sum n acc = case n == 0 of True -> acc | False -> sum (n - 1) (acc + n).
+stress n = case n == 0 of
+  True -> Unit
+| False ->
+  a = [n];
+  b = Rc.retain a;
+  node = Node a b;
+  alias = Rc.retain node;
+  _ = Rc.release node;
+  _ = check (case alias of Node l r -> l == r);
+  _ = Rc.release alias;
+  stress (n - 1).
+main =
+  _ = check (sum 100000 0 == 5000050000);
+  _ = stress 10000;
+  all = Word.not (Word.fromInt 0);
+  _ = check (Word.eq all (Word.mask 64 0));
+  _ = check (all == Word.mask 64 0);
+  _ = check (Word.bits Unit == 64);
+  _ = check (Word.toInt all == -1);
+  high = Word.shl (Word.fromInt 1) 63;
+  _ = check (Word.eq (Word.shr high 63) (Word.fromInt 1));
+  _ = check (Word.eq (Word.and all high) high);
+  _ = check (Word.eq (Word.xor all all) (Word.mask 0 64));
+  _ = check (Word.eq (Word.add all (Word.fromInt 1)) (Word.fromInt 0));
+  _ = check (Word.eq (Addr.toWord (Addr.fromWord all)) all);
+  p = Mem.alloc 16;
+  _ = Mem.write8 p 171;
+  p2 = Addr.add p 2;
+  _ = Mem.write16 p2 48879;
+  p8 = Addr.add p 8;
+  _ = Mem.writeWord p8 all;
+  q = Mem.realloc p 4096;
+  _ = check (Mem.read8 q == 171);
+  _ = check (Mem.read16 (Addr.add q 2) == 48879);
+  _ = check (Word.eq (Mem.readWord (Addr.add q 8)) all);
+  _ = Mem.write32 q all;
+  _ = check (Word.eq (Mem.read32 q) (Word.mask 32 0));
+  _ = Mem.fence Unit;
+  z = Mem.realloc q 0;
+  _ = check (Addr.eq z (Addr.null Unit));
+  _ = Mem.free z;
+  xs = [1, 2, 3];
+  ys = Rc.retain xs;
+  _ = Rc.release xs;
+  _ = check (ys == [1, 2, 3]);
+  _ = Rc.release ys;
+  print "BUILTIN HOLDS".
