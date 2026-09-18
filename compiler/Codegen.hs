@@ -38,7 +38,7 @@ import Control.Monad (when)
 import Control.Monad.State.Strict
 import Data.Bits (shiftR, (.&.))
 import Data.Char (isAlphaNum, ord)
-import Data.List (foldl', intercalate, nub, sort)
+import Data.List (foldl', intercalate, isPrefixOf, nub, sort)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Numeric (showHex)
@@ -61,12 +61,21 @@ data Target = Target
     tgtDir :: String,   -- word data directive (.quad / .word)
     tgtName :: String,  -- for the banner comment
     tgtFuel :: Bool,    -- cooperative scheduler instrumentation
-    tgtArc :: Bool      -- explicit field layouts for managed constructors
+    tgtArc :: Bool,     -- explicit field layouts for managed constructors
+    tgtWeak :: Bool     -- a LIBRARY unit: its unqualified globals (the
+                        -- constructor stubs, $arc.mainManaged) are emitted
+                        -- .weak so a program unit's copies win at link
   }
 
 rv64, rv32 :: Target
-rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False
-rv32 = Target 4 "lw" "sw" ".word" "rv32" True False
+rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False
+rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False
+
+-- the visibility directive for a unit-visible global: a library unit
+-- shares every name it did not qualify with '@hash' with the program it
+-- links into, so those are weak -- one definition survives, the program's
+visibility :: Target -> String -> String
+visibility tgt name = if tgtWeak tgt && '@' `notElem` name then ".weak" else ".globl"
 
 -- tagged-int range check: (n << 1) | 1 must fit a signed word
 intFits :: Target -> Integer -> Bool
@@ -244,6 +253,7 @@ externals ext prog = sort . nub $ concat [go ps b | (_, (ps, b)) <- M.toList pro
     go env = \case
       CVar n
         | n `elem` env || M.member n prog || M.member n ext || n `elem` corePrims -> []
+        | "$sym." `isPrefixOf` n -> [] -- a linker symbol, not a runtime contract
         | otherwise -> [n]
       CApp a b -> go env a ++ go env b
       CLet x a b -> go env a ++ go (x : env) b
@@ -410,7 +420,7 @@ emitProgram tgt rvv spec exports ext exps prog0 =
       | otherwise =
           let m = mangle n
            in [ "    .balign 8" ]
-              ++ [ "    .globl fpr_obj_" ++ m | S.member n exps ]
+              ++ [ "    " ++ visibility tgt (n) ++ " fpr_obj_" ++ m | S.member n exps ]
               ++ [
                 "fpr_obj_" ++ m ++ ":",
                 "    .long 9001",
@@ -549,7 +559,7 @@ compileFn prog name (params, body) = do
         ]
   pure $ wcetAnnotate name $
     [ "# " ++ name ++ " (arity " ++ show (length params) ++ ")" ]
-      ++ [ "    .globl fpr_fn_" ++ m | S.member name exps ]
+      ++ [ "    " ++ visibility tgt name ++ " fpr_fn_" ++ m | S.member name exps ]
       ++ [ "fpr_fn_" ++ m ++ ":" ]
       ++ framePro tgt frame
       ++ concat [stSlot tgt ("a" ++ show i) i | (i, _) <- zip [0 :: Int ..] params, i < 8]
@@ -701,6 +711,10 @@ genT tgt spec prog ext = go
       | Just a <- lookup h primArities, a == n = Just ("fpr_prim_fn_" ++ mangle h)
       | otherwise = Nothing
 
+    -- a link-time symbol address: `Addr.symbol "name"` became CVar
+    -- "$sym.name" in Compile; the value is the address itself (kind 'a')
+    go _ _ _ (CVar h)
+      | "$sym." `isPrefixOf` h = pure ["    la a0, " ++ drop 5 h]
     go env nxt pos (CVar h)
       | tgtArc tgt, Just target <- known env h 0 =
           knownCall env nxt pos target []

@@ -139,12 +139,46 @@ FORCE:
 .PHONY: all stdcheck bare-metal bare-metal-run sol clean FORCE
 
 # Unsafe standalone Builtin profile: no actors, devices, QOS or prelude.
-BUILTIN_RT = $(HAL)/builtin/crt0.S $(HAL)/builtin/virt.c $(HAL)/builtin/heap.c \
+#
+# HEAP=fpr swaps the C allocator for hal/builtin/heap.fpr, compiled as a
+# LIBRARY unit (--lib) whose exports are the same C symbols heap.c
+# defined (fpr_alloc, fpr_free, fpr_builtin_release, ...).  It needs the
+# raw ABI (ARC=1): the allocator is written over Word/Addr and must not
+# allocate to allocate.
+HEAP ?= c
+ifeq ($(HEAP),fpr)
+ifneq ($(ARC),1)
+$(error HEAP=fpr needs ARC=1: the FP-RISC allocator uses the raw Word/Addr ABI)
+endif
+BUILTIN_HEAP = $(BUILD)/heap.s
+else
+BUILTIN_HEAP = $(HAL)/builtin/heap.c
+endif
+# one line: a backslash continuation inside a variable becomes a space,
+# and a space splits the --export= argument
+HEAP_EXPORTS = heapInit:fpr_builtin_heap_init,inHeap:fpr_in_heap,alloc:fpr_alloc,free:fpr_free,realloc:fpr_realloc,retain:fpr_builtin_retain,release:fpr_builtin_release,allocAdt:fpr_builtin_alloc_adt,liveAllocations:fpr_builtin_live_allocations,setLayout:fpr_builtin_set_layout,fieldCount:fpr_builtin_field_count,fieldKind:fpr_builtin_field_kind
+$(BUILD)/heap.s: fprc $(HAL)/builtin/heap.fpr FORCE
+	@mkdir -p $(BUILD)
+	./fprc --profile=bare-metal-builtin --arc --raw --lib --export=$(HEAP_EXPORTS) $(HAL)/builtin/heap.fpr $@
+BUILTIN_RT = $(HAL)/builtin/crt0.S $(HAL)/builtin/virt.c $(BUILTIN_HEAP) \
              $(HAL)/builtin/unsafe.c $(HAL)/builtin/arc.c $(HAL)/builtin/machine.S $(HAL)/builtin/interrupt.S $(HAL)/core/runtime.c $(HAL)/virt/memshim.c
 ifeq ($(ARC),1)
 BUILTIN_COMPILER_FLAGS = --arc
 BUILTIN_CFLAGS = -DFPR_BUILTIN_ARC -DFPR_BUILTIN_RAW
 endif
+
+# ---- a library unit: FP-RISC compiled to a linkable object with C exports
+#   make builtin-lib LIB=path/to/x.fpr LIB_EXPORT=f:c_f,g   -> $(BUILD)/lib-x.s
+# Link the .s into any builtin image (BUILTIN_EXTRA=...) or assemble it
+# with $(CROSS)gcc -c for an archive; the exported symbols use the plain
+# RV64 C ABI (docs/BAREMETAL-BUILTIN.md, "Library units and C exports").
+LIB ?= hal/builtin/heap.fpr
+LIB_EXPORT ?=
+LIB_FLAGS ?=
+builtin-lib: fprc FORCE
+	@mkdir -p $(BUILD)
+	./fprc --profile=bare-metal-builtin --arc $(LIB_FLAGS) --lib --export=$(LIB_EXPORT) $(LIB) $(BUILD)/lib-$(basename $(notdir $(LIB))).s
+.PHONY: builtin-lib
 ifneq ($(BUILTIN_HEAP_BYTES),)
 BUILTIN_CFLAGS += -DFPR_BUILTIN_HEAP_BYTES=$(BUILTIN_HEAP_BYTES)
 endif

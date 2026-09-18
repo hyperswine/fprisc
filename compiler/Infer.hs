@@ -387,6 +387,10 @@ builtinEnv =
       ("Addr.add", mono (TFn (TC "Addr") (TFn tInt (TC "Addr")))),
       ("Addr.null", mono (TFn tUnit (TC "Addr"))),
       ("Addr.eq", mono (TFn (TC "Addr") (TFn (TC "Addr") tBool))),
+      -- a link-time address: the argument must be a string LITERAL naming a
+      -- linker symbol (the builtin profile's `extern char sym[]`); Compile
+      -- rewrites it before ownership lowering, so it never runs as a call
+      ("Addr.symbol", mono (TFn tStr (TC "Addr"))),
       ("Mem.read8", mono (TFn (TC "Addr") tInt)),
       ("Mem.write8", mono (TFn (TC "Addr") (TFn tInt tUnit))),
       ("Mem.read16", mono (TFn (TC "Addr") tInt)),

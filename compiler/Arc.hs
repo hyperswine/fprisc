@@ -3,11 +3,12 @@
 -- Managed local bindings own a reference; evaluating one produces a retained
 -- reference. Calls/constructors consume their arguments and return owned values.
 -- Cleanup is sequenced before tail transfers, never after them.
-module Arc (lowerArc, arcExterns, arcRev, primitiveContracts) where
+module Arc (lowerArc, lowerRaw, arcExterns, arcRev, primitiveContracts) where
 
 import Control.Monad.State.Strict
+import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as M
-import Interrupt (checkInterrupt)
+import Interrupt (checkInterrupt, checkRawUnit)
 import Representation (Kind, represent)
 import FPRISC (Core(..), Prog)
 
@@ -111,14 +112,26 @@ lowerArc :: M.Map String Int -> Prog -> Either String Prog
 lowerArc _external input = do
   (prog,ann,paramKinds) <- represent input
   checkInterrupt prog
-  result <- lowerRepresented prog ann paramKinds
+  result <- lowerRepresented True prog ann paramKinds
   let managed = maybe True ((== 't') . (ann M.!)) (snd <$> M.lookup "main" prog)
   pure (M.insert "$arc.mainManaged" ([],CInt (if managed then 1 else 0)) result)
 
-lowerRepresented :: Prog -> M.Map Core Kind -> M.Map String [Kind] -> Either String Prog
-lowerRepresented prog ann paramKinds = evalStateT (M.traverseWithKey lower prog) 0
+-- a raw unit: representation kinds as under --arc (Word/Addr/floats
+-- unboxed, prims through the raw adapters), the allocation-free contract
+-- on every function (Interrupt.checkRawUnit), and NO ownership
+-- instrumentation -- nothing here owns anything
+lowerRaw :: M.Map String Int -> Prog -> Either String Prog
+lowerRaw _external input = do
+  (prog,ann,paramKinds) <- represent input
+  checkRawUnit prog
+  result <- lowerRepresented False prog ann paramKinds
+  pure (M.insert "$arc.mainManaged" ([],CInt 0) result)
+
+lowerRepresented :: Bool -> Prog -> M.Map Core Kind -> M.Map String [Kind] -> Either String Prog
+lowerRepresented instrument prog ann paramKinds = evalStateT (M.traverseWithKey lower prog) 0
   where
-    managed e = ann M.! e == 't'
+    managed e = instrument && ann M.! e == 't'
+    rel ns body = if instrument then release ns body else pure body
     ownersFor n ps = [p | (p,k) <- zip ps (paramKinds M.! n), k == 't']
     arities = M.map (length . fst) prog
     prims = M.fromList [(n,(a,"$arc."++adapter)) | (n,a,adapter) <- primitiveContracts]
@@ -153,6 +166,7 @@ lowerRepresented prog ann paramKinds = evalStateT (M.traverseWithKey lower prog)
     eval env expr k = case expr of
       CVar n -> case M.lookup n env of
         Just owner -> if managed expr then bind (call "$arc.retain" [CVar owner]) k else k (CVar owner)
+        Nothing | "$sym." `isPrefixOf` n -> k expr -- a link-time address: raw, never owned
         Nothing -> case M.lookup n arities of
           Just 0 -> bind (CVar n) k
           _ -> failArc ("function values or unsupported global: " ++ n)
@@ -162,14 +176,14 @@ lowerRepresented prog ann paramKinds = evalStateT (M.traverseWithKey lower prog)
         owner <- fresh
         body <- eval (M.insert x owner env) b $ \result -> do
           rest <- k result
-          release [owner | managed a] rest
+          rel [owner | managed a] rest
         pure (CLet owner v body)
       CIf c t f -> eval env c $ \cv -> do
         yes <- eval env t pure >>= releaseValue cv
         no <- eval env f pure >>= releaseValue cv
         bind (CIf cv yes no) k
       CMk tid variant fields -> argsE env fields $ \vs -> bind (CMk tid variant vs) $ \v ->
-        if null fields then k v else bind (call "$arc.setLayout" [v,CStr [ann M.! f | f <- fields]]) (const (k v))
+        if null fields || not instrument then k v else bind (call "$arc.setLayout" [v,CStr [ann M.! f | f <- fields]]) (const (k v))
       CProj i obj -> eval env obj $ \v ->
         bind (if managed expr then call "$arc.retain" [CProj i v] else CProj i v) $ \r -> k r >>= releaseValue v
       CTagEq tid variant obj -> eval env obj $ \v ->
@@ -179,11 +193,11 @@ lowerRepresented prog ann paramKinds = evalStateT (M.traverseWithKey lower prog)
         argsE env as $ \vs -> bind (call n vs) k
       CErr _ -> pure expr -- panic terminates the whole standalone execution
       CLam {} -> failArc "lambda survived lifting"
-    releaseValue (CVar n) body = release [n] body
+    releaseValue (CVar n) body = rel [n] body
     releaseValue _ body = pure body -- immediate or immortal literal
     -- Keep direct saturated calls in tail position after all owners are dropped.
     tailE env owners expr = case expr of
-      CVar n | M.notMember n env, Just 0 <- M.lookup n arities -> release owners (CVar n)
+      CVar n | M.notMember n env, Just 0 <- M.lookup n arities -> rel owners (CVar n)
       CLet x a b -> eval env a $ \v -> do
         owner <- fresh
         body <- tailE (M.insert x owner env) (if managed a then owner:owners else owners) b
@@ -194,6 +208,6 @@ lowerRepresented prog ann paramKinds = evalStateT (M.traverseWithKey lower prog)
         pure (CIf cv yes no)
       CApp {} -> let (f,as) = spine expr in do
         n <- target env f as
-        argsE env as $ \vs -> release owners (call n vs)
+        argsE env as $ \vs -> rel owners (call n vs)
       CErr _ -> pure expr
-      _ -> eval env expr $ \v -> release owners v
+      _ -> eval env expr $ \v -> rel owners v

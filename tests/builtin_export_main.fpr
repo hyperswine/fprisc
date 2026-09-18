@@ -1,0 +1,3 @@
+# the program unit beside tests/builtin_export.fpr: the probe wrapping
+# main calls the library's C entries first, then this runs
+main = print "EXPORT PROGRAM RAN".
