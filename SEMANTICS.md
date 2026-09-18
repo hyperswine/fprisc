@@ -141,6 +141,13 @@ file suffixes; a clause applies to both unless it says which.
 
 ### 9. Effects, IO, transactions
 
+- The Base environment, on every profile whose HAL grants it (today: the
+  Base profile, `hal/posix`): `Sys.args`, `Sys.env`, `Sys.exit`,
+  `Sys.readLine`, `Sys.stderr`, `Sys.timeUs`, `fileRead`, `fileWrite`,
+  `fileAppend`, `fileExists`, with the types and results in docs/BASE.md.
+  A profile that does not grant one fails at link time on its `fpr_g_`
+  name, never silently.  (today)  `[test: tests/check_base.py]`
+
 - `.fpr`: effects are calls into the HAL through `Sys.*` and services
   (Part II).  `print` is immediate.  (today)
 - `.sol`: a script is ONE atomic transaction over the filesystem;
@@ -248,6 +255,12 @@ file suffixes; a clause applies to both unless it says which.
   compat note + a migration.  (plan)
 
 ### 20. Hosts and targets
+
+- The Base profile (`--profile=base`, `fpr build`): an ordinary executable
+  for the machine the compiler runs on, the core runtime linked with a
+  libc HAL; harts are pthreads (`FPR_HARTS`).  Exit status = main's Int
+  result, else 0; a panic is 1.  Nothing is echoed at exit.  (today)
+  `[test: tests/check_base.py]`
 
 - qosp (Linux x86-64, macOS arm64, Linux a64 cross) hosts one `.qa`;
   virt (QEMU) boots the native kernel; a board target is the 2.0

@@ -1,0 +1,10 @@
+main =
+  p = "/tmp/fpr-base-files.txt";
+  w = fileWrite p "one\n";
+  a = fileAppend p "two\n";
+  had = fileExists p;
+  body = fileRead p;
+  none = fileExists "/tmp/fpr-base-never-there";
+  case (w, a) of
+    (Ok _, Ok _) -> print "files: {had} {none} {String.len body} [{body}]"
+  | _ -> print "files: FAILED".

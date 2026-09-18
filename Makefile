@@ -125,6 +125,34 @@ bare-metal-run: bare-metal
 	$(TIMEOUT) 20 $(QEMU) $(ACCEL) -machine virt -smp $(HARTS) -m 256M \
 	  -nographic -bios none -kernel $(IMAGE)
 
+# ---- Base profile: an executable for this machine (hal/posix) -----------
+# `make posix PROG=x.fpr` is what `./fpr build x.fpr` does, spelled out:
+# the program lowered for the host ISA, linked with the shared core and
+# the hosted HAL by the host's C compiler.  Harts are pthreads.
+POSIXHARTS ?= 2
+ifneq ($(filter aarch64 arm64,$(shell uname -m)),)
+POSIXCTX = $(HAL)/unix/ctx_a64.S
+else
+POSIXCTX = $(HAL)/unix/ctx_x64.S
+endif
+ifeq ($(shell uname -s),Linux)
+POSIXLDFLAGS ?= -no-pie
+endif
+RT_POSIX = $(HAL)/posix/main.c $(HAL)/posix/hal.c $(HAL)/posix/devices.c $(HAL)/posix/base.c \
+           $(HAL)/posix/heap.S $(POSIXCTX)
+BIN ?= $(BUILD)/$(basename $(notdir $(PROG)))
+$(BUILD)/base.s: fprc $(PROG) core/prelude.fpr FORCE
+	@mkdir -p $(BUILD)
+	LC_ALL=C.UTF-8 ./fprc --profile=base --prelude=core/prelude.fpr $(PROG) $@
+
+posix: $(BUILD)/base.s $(RT_POSIX) $(RT_CORE)
+	$(CC) -O2 -Wall -Wextra -DFPR_POSIX -DFPR_NHARTS=$(POSIXHARTS) $(POSIXLDFLAGS) -I$(HAL)/core -I$(HAL)/posix \
+	  $(BUILD)/base.s $$(cat $(BUILD)/base.s.units) $(RT_POSIX) $(RT_CORE) -lpthread -lm -o $(BIN)
+
+posix-run: posix
+	$(BIN) $(ARGS)
+.PHONY: posix posix-run
+
 # ---- HostedBytecode profile: the sol package ---------------------------
 sol: fpr
 	@echo "the HostedBytecode profile is: ./fpr sol <script.sol>"

@@ -26,6 +26,7 @@ import Precond (PreNote (..), PreStatus (..), applyPreconds, preTable, renderNot
 import Home (underHome)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Environment (getArgs)
+import qualified System.Info
 import StdBridge (runStdCheck)
 import System.Exit (exitFailure, exitSuccess)
 import System.FilePath (takeDirectory, takeExtension, takeFileName, (</>))
@@ -35,6 +36,7 @@ import Text.Megaparsec (errorBundlePretty, parse)
 data Opts = Opts
   { oTarget :: Target,
     oBuiltin :: Bool,
+    oBase :: Bool, -- the Base profile: a hosted executable on this machine (hal/posix); the ISA is the build host's
     oArc :: Bool,
     oRaw :: Bool, -- a RAW unit: allocation-free, no ownership instrumentation (Arc.lowerRaw)
     oLib :: Bool, -- a LIBRARY unit: the file is compiled as an imported module (names qualified), no main, weak shared stubs
@@ -55,7 +57,7 @@ data Opts = Opts
   }
 
 parseArgs :: [String] -> Opts
-parseArgs = foldl step (Opts rv64 False False False False [] False False False False False False False False False False Nothing False [])
+parseArgs = foldl step (Opts rv64 False False False False False [] False False False False False False False False False False Nothing False [])
   where
     -- profile aliases (Target.hs): the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
@@ -64,6 +66,13 @@ parseArgs = foldl step (Opts rv64 False False False False [] False False False F
     -- hosted-bytecode is NOT an fprc target: that profile is the sol
     -- executable (fp-risc/sol).
     step o "--profile=bare-metal-builtin" = o {oBuiltin = True}
+    -- Base: the host this compiler was built on is the target.  The
+    -- rv64 emission is the IR; the lowering is the host's ISA.
+    step o "--profile=base" = case (System.Info.os, System.Info.arch) of
+      ("darwin", "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True, oA64Mac = True}
+      (_, "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True}
+      (_, "x86_64") -> o {oTarget = rv64, oBase = True, oX64 = True}
+      (os', arch') -> error ("--profile=base: no hosted lowering for " ++ os' ++ "/" ++ arch' ++ " (x86_64 and aarch64 are supported)")
     step o "--profile=bare-metal" = o {oTarget = rv64, oBuiltin = False}
     step o "--profile=qos-native" = o {oTarget = rv64, oBuiltin = False}
     step o "--profile=qos-portable" = o {oTarget = rv64, oBuiltin = False, oX64 = True, oQosApp = True}
@@ -234,6 +243,9 @@ compileMain = do
   when (oBuiltin opts && (oA64 opts || oX64 opts || oQosApp opts || oRvv opts || tgtName (oTarget opts) /= "rv64")) $ do
     hPutStrLn stderr "bare-metal-builtin currently supports scalar RV64 only"
     exitFailure
+  when (oBase opts && (oBuiltin opts || oQosApp opts || oPlugin opts || oRvv opts)) $ do
+    hPutStrLn stderr "--profile=base is a plain hosted executable: no builtin/arc, no QOS app image, no plugin, no RVV"
+    exitFailure
   when (oArc opts && not (oBuiltin opts)) $ do
     hPutStrLn stderr "--arc currently requires --profile=bare-metal-builtin"
     exitFailure
@@ -258,7 +270,7 @@ compileMain = do
     exitSuccess
   (inp, out) <- case oFiles opts of
     [i, o] -> pure (i, o)
-    _ -> putStrLn "usage: fprc [--profile=bare-metal-builtin|bare-metal|qos-native|qos-portable] [--arc] [--target=rv32|rv64|a64|a64mac|x64|qx64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
+    _ -> putStrLn "usage: fprc [--profile=base|bare-metal-builtin|bare-metal|qos-native|qos-portable] [--arc] [--target=rv32|rv64|a64|a64mac|x64|qx64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
   -- --prelude=FILE as given; no flag = the prelude beside the binary
   -- (core/prelude.fpr under Home.fprHome), so `fpr compile x.fpr x.s`
   -- means the same thing from any directory; --prelude= (empty) = none

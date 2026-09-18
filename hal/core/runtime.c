@@ -1420,10 +1420,17 @@ volatile uint32_t fpr_shutdown; /* hart loops park when set */
 void fpr_exit(V result) {
   extern void fpr_render_to_uart(V v); /* below */
   __atomic_store_n(&fpr_shutdown, 1, __ATOMIC_RELEASE);
+#if defined(FPR_POSIX) && !defined(FPR_QOSAPP)
+  /* the Base profile (hal/posix): an ordinary process.  Nothing is
+   * echoed; main's Int result is the exit status (0..255), any other
+   * result exits 0.  Sys.exit is the early way out. */
+  hal_poweroff(ISINT(result) ? (int)(UNTAG(result) & 255) : 0);
+#else
   praw("\n[fpr] main => ");
   fpr_render_to_uart(result);
   praw("\n");
   hal_poweroff(0); /* QEMU: clean exit 0; real HW: no-op, park below */
+#endif
   for (;;) FPR_PARK();
 }
 

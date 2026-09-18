@@ -27,6 +27,7 @@ executable fpr
   other-modules:
       A64
       Arc
+      Build
       Representation
       Interrupt
       Codegen
@@ -80,5 +81,6 @@ executable fpr
     , mtl
     , network
     , process
+    , unix
     , time
     , utf8-string

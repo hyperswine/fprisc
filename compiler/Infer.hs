@@ -437,6 +437,16 @@ builtinEnv =
       ("chr", mono (TFn tInt tStr)),
       ("parseInt", mono (TFn tStr tInt)),
       ("fileRead", mono (TFn tStr tStr)),
+      -- the Base environment (hal/posix/base.c; docs/BASE.md)
+      ("fileWrite", mono (TFn tStr (TFn tStr (tcon "Result" [tUnit, tStr])))),
+      ("fileAppend", mono (TFn tStr (TFn tStr (tcon "Result" [tUnit, tStr])))),
+      ("fileExists", mono (TFn tStr tBool)),
+      ("Sys.args", mono (TFn tUnit (tList tStr))),
+      ("Sys.exit", scheme [0] (TFn tInt (sv 0))),
+      ("Sys.env", mono (TFn tStr (tcon "Result" [tStr, tStr]))),
+      ("Sys.readLine", mono (TFn tUnit (tcon "Result" [tStr, tStr]))),
+      ("Sys.stderr", mono (TFn tStr tUnit)),
+      ("Sys.timeUs", mono (TFn tUnit tInt)),
       ("print", scheme [0] (TFn (sv 0) tUnit)),
       ("error", scheme [0] (TFn tStr (sv 0))),
       -- raw MMIO (registers are Ints): read/write a device word

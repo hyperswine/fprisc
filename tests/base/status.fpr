@@ -1,0 +1,2 @@
+# main's Int result is the exit status
+main = 7.
