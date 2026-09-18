@@ -20,7 +20,7 @@ module Home (fprHome, underHome) where
 import Control.Exception (SomeException, try)
 import System.Directory (canonicalizePath, doesFileExist)
 import System.Environment (getExecutablePath, lookupEnv)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath (takeDirectory, splitSearchPath, (</>))
 
 fprHome :: IO FilePath
 fprHome = do
@@ -32,10 +32,15 @@ fprHome = do
       real <- try (canonicalizePath exe) :: IO (Either SomeException FilePath)
       pure (takeDirectory (either (const exe) id real))
 
--- the path under home when the file is there, else Nothing
+-- Importer-relative lookup happens first. FPR_HOME is followed by the
+-- explicitly supplied FPR_PATH roots (platform path-list separator).
 underHome :: FilePath -> IO (Maybe FilePath)
 underHome rel = do
   h <- fprHome
-  let p = h </> rel
-  ok <- doesFileExist p
-  pure (if ok then Just p else Nothing)
+  extra <- lookupEnv "FPR_PATH"
+  firstExisting [root </> rel | root <- h : maybe [] splitSearchPath extra, not (null root)]
+  where
+    firstExisting [] = pure Nothing
+    firstExisting (p:ps) = do
+      ok <- doesFileExist p
+      if ok then pure (Just p) else firstExisting ps

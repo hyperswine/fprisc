@@ -13,8 +13,9 @@ plot*.svg
 *.elf
 *.s
 *.s.abirev
-.DS_Store
 **/__pycache__/
 cabal.project.local
 qos-store/
 
+# macOS Finder metadata
+.DS_Store

@@ -32,10 +32,20 @@ work; the current runtime is not being presented as a completed minimal Builtin.
 
 ## Working with QOS
 
-Place checkouts side by side as `fprisc/` and `qos/`, then run `./configure.py` in QOS.
-QOS links the language-owned files into its build view without copying their source.
-Edit them here; edit QOS-owned files in QOS. After adding, moving or deleting a
-language-owned file used by QOS, update QOS's `dependency-links.json` accordingly.
+Set `FPRISC_ROOT` to this checkout when working in QOS, for example:
+
+```sh
+export FPRISC_ROOT=/Users/jasonqin/Documents/GitHub/fprisc
+cd /Users/jasonqin/Documents/GitHub/qos
+./qos.py build
+```
+
+QOS invokes the compiler and compiles runtime sources directly from that path.
+There are no cross-repository source links or setup-generated overlays.
+`FPR_HOME` selects the primary module home; `FPR_PATH` adds module roots separated
+by the platform path separator (`:` on Unix). Importer-relative resolution takes
+priority, then the home, then the extra roots in order. QOS sets these automatically.
+Standalone FP-RISC still needs neither variable.
 
 Both repositories retain the original monorepo history and tags; the split is a new
 working-tree change on `main`. Old tags describe the old combined layout. No Git
