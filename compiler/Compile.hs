@@ -407,7 +407,7 @@ compileMain = do
       -- The prelude is self-contained, so resolve its own operators.
       let preludeResolved = let (_, _, _, _, rw) = inferTops sigs structs preludeE' in rw
       preludeOut <-
-        if null preludeTops
+        if oArc opts || null preludeTops
           then pure []
           else do
             r <- emitUnit (unitDir </> ("prelude-" ++ take 12 preludeHash ++ "-" ++ tag ++ ".s"))
@@ -421,7 +421,7 @@ compileMain = do
       -- another with a different shape set (the uartroute/timerroute
       -- incident: a cached svc unit from a program without the field)
       let shapesHash = hashAST [TShape (concat fs) [] | fs <- M.keys shapes]
-      unitOuts <- forM units' $ \(h, uts) ->
+      unitOuts <- forM (if oArc opts then [] else units') $ \(h, uts) ->
         emitUnit (unitDir </> ("u-" ++ take 12 h ++ "-p" ++ take 8 preludeHash ++ "-s" ++ take 8 shapesHash ++ "-" ++ tag ++ ".s"))
                  (bindNames uts) extFor (resolveUnit uts)
       -- the root: exports its own binds; modtab (all dep exports) lives
@@ -436,15 +436,20 @@ compileMain = do
                   S.member n rootNames
                     || (not (S.member n unitNames) && not (S.member n preludeNames))
             ]
-          rootProgRaw = compileUnit rootProgTops
+          -- The raw ARC ABI needs one representation solution across imports.
+          -- Until signatures/layouts are serialized, do not reuse ARC unit code.
+          rootProgRaw = compileUnit (if oArc opts then finalTops else rootProgTops)
           rootExports =
             [ ModExport rootHash n n (length ps)
               | oPlugin opts,
                 TBind n ps _ _ <- root'
             ]
           imageExports = exports ++ rootExports
+      when (oBuiltin opts && not (oArc opts) && M.member "machineInterrupt" rootProgRaw) $ do
+        hPutStrLn stderr "machineInterrupt requires --arc (raw, allocation-free handler ABI)"
+        exitFailure
       rootProg <- own rootProgRaw
-      let (rootAsm0, rootVNotes) = emitProgram tgt rvv spec imageExports extFor (bindNames root') rootProg
+      let (rootAsm0, rootVNotes) = emitProgram tgt rvv spec imageExports extFor (if oArc opts then M.keysSet rootProg else bindNames root') rootProg
           rootAsm = lower rootAsm0
       mapM_ putStrLn rootVNotes
       writeFile out rootAsm

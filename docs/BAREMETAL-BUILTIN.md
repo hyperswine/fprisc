@@ -14,7 +14,8 @@ make bare-metal-builtin-run PROG=tests/builtin.fpr
 The reference board is QEMU `virt`, RV64, 128 MiB RAM, machine mode. Hart 0
 runs `main`; other harts park. Returning from `main` exits QEMU successfully;
 use `print` for output. The default trap vector reports processor faults and
-terminates; it does not resume interrupt handlers. This has not been validated
+terminates. ARC builds may provide a checked `machineInterrupt` handler that
+resumes execution (see below). This has not been validated
 on physical hardware.
 The existing `make bare-metal` remains the actor-enabled build.
 
@@ -27,8 +28,8 @@ selected, but must only use facilities supplied by the standalone link.
 
 `Int` remains a signed tagged integer with 63 payload bits on RV64. `Word`
 and `Addr` are distinct opaque types that preserve all 64 bits. They are
-currently heap-boxed: this is a correctness foundation, not zero-allocation
-machine arithmetic. `==`/`!=` compare their values; explicit `Word.eq` and
+unboxed in automatic ARC builds: arithmetic, conversions and raw memory accesses
+do not allocate. The default manual-ownership ABI still uses heap boxes. `==`/`!=` compare their values; explicit `Word.eq` and
 `Addr.eq` are also available. Their current generic printed form is signed
 numeric, not a hexadecimal address formatter.
 
@@ -78,11 +79,11 @@ a no-op. Use the returned address after reallocating and discard old aliases.
 Only allocation-start addresses from this allocator may be freed/reallocated.
 These operations are for raw buffers, not arbitrary live language objects.
 
-An `Addr` box does not own the memory it points to. `Mem.free p` frees that
+An `Addr` never owns the memory it points to. In the manual ABI, `Mem.free p` frees that
 buffer; `Rc.release p` releases only the address box. Likewise `Addr.add`
 creates another box, not another ownership claim on the buffer. Word operations
-and reads returning `Word` also create boxes. The opt-in automatic ARC mode
-reclaims these boxes; the default manual mode requires explicit lifetime management.
+and reads returning `Word` also create boxes. Automatic ARC uses raw `Word`/`Addr` bits instead of these boxes; the manual mode
+requires explicit lifetime management.
 
 ## Allocator and manual reference counting
 
@@ -92,7 +93,8 @@ a RAM interval with `fpr_builtin_heap_init(start,end)`. Blocks split and coalesc
 there are no fixed allocation-slot or reference-table capacities. The available
 RAM is the limit. Allocation is first-fit, validation searches the block list,
 and operations are single-threaded. Interrupt/concurrent access requires external
-serialization. The board reserves a 64 KiB stack. Manual RC reclamation recurses
+serialization. The board reserves a 64 KiB main stack, a 64 KiB interrupt stack, and a 4 KiB
+fatal-trap stack. Manual RC reclamation recurses
 through the graph; automatic ARC uses an iterative worklist within dead blocks.
 
 Every allocation starts with one owning reference. The language exposes:
@@ -145,11 +147,12 @@ buffers; it is useful for lifetime regression tests, not a language-level cost l
 
 The supported subset includes first-order functions, recursion, lists, tuples,
 records/ADTs, structural sharing, pattern matching, branches, returned subtrees,
-strings, and boxed words/addresses. Programs in this subset need no `Rc` calls.
-Each local owns a reference. Reading it produces a retained reference. Constructors
+strings, raw words/addresses, and raw F32/F64 values (including ADT fields). Programs in this subset need no `Rc` calls.
+Each managed local owns a reference. Reading it produces a retained reference.
+Raw values are copied as bits and never retained or released. Constructors
 consume references into fields; functions consume arguments and return an owned
-result. Locals/parameters are released at scope exit. Projections retain the selected
-field before releasing the temporary parent reference. Branch cleanup occurs on the
+result. Locals/parameters are released at scope exit. Projections retain a selected managed
+field, or copy a raw field, before releasing the temporary parent reference. Branch cleanup occurs on the
 selected branch. Tail-call arguments are acquired before cleanup, and cleanup runs
 before the jump, preserving constant-stack tail recursion.
 
@@ -157,15 +160,23 @@ before the jump, preserving constant-stack tail recursion.
 calls, renaming locals to avoid shadowing errors. This is conservative insertion:
 there is no last-use move optimization or removal of redundant retain/release pairs
 yet. Ownership annotations are encoded as internal operations in Core rather than a
-complete new typed intermediate representation. Root functions and module units use
-the same pass; ARC units have their own versioned cache identity. Do not manually
+complete new typed intermediate representation. ARC builds currently compile the root and imported definitions together so
+`compiler/Representation.hs` can unify calling and field representations across
+the entire program. Separate ARC unit caching is disabled until representation
+signatures can be serialized and checked. The current inference is conservative:
+functions and constructor fields need consistent types/layouts across uses.
+Representation-polymorphic functions/data require specialization; incompatible
+uses are rejected rather than silently sharing an incorrect ABI. Do not manually
 mix ARC and manual-ownership object files: their function ownership contracts differ.
 
 Compiler-created objects use `fpr_builtin_alloc_adt(bytes, fields)`. The allocation
-records the exact number of tagged fields beginning after the object header; leaf
-primitive results record zero. Destruction uses that layout, not rounded allocation
-size or guessed pointer-looking words. The current layout supports contiguous
-uniform tagged fields only. It is not yet a descriptor for mixed raw/tagged data.
+records the exact field count, followed by a compiler-installed immutable
+descriptor distinguishing managed/tagged, Word, Addr, F32 and F64 fields. Leaf
+primitive results record zero fields. Destruction follows only managed fields,
+never guessed pointer-looking bits or rounded allocation capacity. Raw fields may
+contain any bits, including bits equal to a live heap address. Raw-aware structural
+equality and rendering use the same metadata; source-level restrictions on generic
+float-containing rendering still apply. Use `F32.str`/`F64.str` for float formatting.
 Dropping a graph uses an intrusive worklist in dead allocation headers: no recursive
 C call stack, new allocations, or fixed queue length are required.
 
@@ -175,23 +186,58 @@ retains an aliased result when needed (`str` of a string is one example). Arbitr
 external functions are not admitted without an ownership contract. Retain/release
 counts are non-atomic; this runtime remains single-threaded.
 
-The compiler rejects raw floats (including float-containing constructors), function
-values/closures, partial or indirect calls, explicit `Rc` calls, and primitives
+The compiler still rejects escaping function values, partial or indirect calls,
+explicit `Rc` calls, and primitives
 outside the audited list. Plugin exports are also rejected. These are implementation
 limits of this experimental ARC mode, not proposed language restrictions. Fully
 saturated direct calls produced by lifting are supported when no function value
 escapes. All compiled code must satisfy the subset, including unused definitions.
 
-Raw buffers still require `Mem.free`: automatic destruction of an `Addr` box does
-not imply ownership of its pointee. Unsafe writes must not manufacture managed
+Raw buffers still require `Mem.free`: an `Addr` is a non-owning raw address. Unsafe writes must not manufacture managed
 ownership edges or overwrite live managed fields. Cycles are unsupported; there is
 no cycle collector. Panic terminates execution without unwinding all live objects.
 
-Next steps are typed layouts/representation information for raw floats and polymorphic
-fields, ownership-aware PAPs for lambda-lifted functions and partial application, then last-use moves,
+Next steps are representation specialization for polymorphic uses, ownership-aware
+PAPs for lambda-lifted functions and partial application, then last-use moves,
 borrowed-call optimization and uniqueness-based reuse. Escape/stack-allocation
 analysis is a separate optimization. This milestone does not claim automatic
 fallback ARC for the entire language or a complete C interoperability layer.
+
+## Resumable machine interrupts
+
+With `ARC=1`, define `machineInterrupt cause pc value = ...` with three `Word`
+arguments and a `Unit` result. Startup installs the runtime entry stub when this
+named function exists. No callback registration or separate closure representation
+is involved. The arguments are `mcause`, `mepc`, and `mtval`. The handler must
+acknowledge its hardware source; returning resumes the interrupted instruction
+stream with `mret`. Synchronous exceptions remain fatal.
+
+```
+make bare-metal-builtin-run ARC=1 ARC_CHECK=1 BUILTIN_HEAP_BYTES=16384 PROG=tests/builtin_interrupt.fpr
+python3 tests/check_raw.py
+```
+
+The RV64IMAFD stub switches to a dedicated stack and preserves all integer and
+floating-point registers, `fcsr`, the return PC and trap-entry status. Interrupts
+stay disabled throughout the handler. Faults inside it use the fatal emergency
+stack. `mscratch` is reserved for this stack switch; normal code must preserve it
+and `mtvec` while using this facility. Vector state, nesting, NMIs, privilege-mode
+switching and multi-hart scheduling are outside this ABI.
+
+`compiler/Interrupt.hs` checks the reachable lifted call graph. Heap construction,
+allocation/free/reallocation, managed field projections, printing/string work,
+indirect calls, CSR writes, interrupt re-enabling and functions with more than
+eight parameters are rejected. The register-only limit avoids the shared `tp`
+argument spill area. Raw arithmetic, memory accesses, atomics, CSR reads and
+allocation-free float operations are available. Generated fatal match failures
+are permitted because they do not allocate or return.
+
+This is an allocation/reentrancy contract, not a proof of all unsafe behavior.
+Handlers must not overwrite managed heap objects, allocator state, reserved
+stacks or runtime context through raw addresses. Their stack use must fit the
+reserved stack. The ordinary allocator and reference counts remain non-reentrant;
+user callbacks cannot access them. A manual-ownership build with this reserved
+handler name is rejected rather than silently ignoring it.
 
 ## Remaining coupling and porting
 
@@ -217,5 +263,9 @@ invalid shifts/alignment, and runs the heap/refcount tests under host address an
 undefined-behavior sanitizers. QEMU success is not physical-board validation.
 
 `tests/check_arc.py` additionally verifies a 16 KiB heap stress run, returned deep
-graph destruction, cross-unit ownership/cache behavior, unsupported-feature errors,
+graph destruction, cross-unit ownership behavior, unsupported-feature errors,
 and exact layout/shared-edge destruction under sanitizers.
+
+`tests/check_raw.py` checks raw scalar allocation behavior, mixed field layouts,
+float equality, imported calling conventions, handler rejection cases, full
+register restoration, repeated resumption and fatal faults inside a handler.

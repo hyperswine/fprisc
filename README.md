@@ -63,3 +63,6 @@ See the [ownership and feature limits](docs/BAREMETAL-BUILTIN.md#automatic-arc-f
 The [machine primitive API](docs/MACHINE-PRIMITIVES.md) adds assembly-backed bit/memory
 operations, CSR access, interrupt masking, atomics and fences. Try
 `make bare-metal-builtin-run ARC=1 ARC_CHECK=1 PROG=tests/builtin_machine.fpr`.
+
+For a chronological account of the QOS review, repository split, profile design
+and BareMetal implementation, see the [project progress summary](docs/PROJECT-PROGRESS-SUMMARY.md).

@@ -1,4 +1,5 @@
-/* Machine-sized values are boxed leaves, NOT tagged Ints. T_BITS variants
+/* Machine-sized values are raw bits in the checked ARC ABI and boxed leaves
+ * in the legacy manual ABI, never tagged Ints. T_BITS variants
  * 2 and 3 distinguish Word/Addr from legacy bit arrays (variants 0 and 1).
  * Calls are unsafe: addresses, lifetimes and device permissions are caller
  * obligations. Volatile accesses do not imply hardware memory barriers.
@@ -7,13 +8,21 @@
 #include "machine.h"
 #define WIDTH (sizeof(uw) * 8)
 static V box(uw n, unsigned kind) {
+#ifdef FPR_BUILTIN_RAW
+  (void)kind; return n;
+#else
   bits_t *p = (bits_t *)fpr_alloc(sizeof(bits_t));
   *p = (bits_t){T_BITS, kind, WIDTH, n}; return (V)p;
+#endif
 }
 static uw unbox(V v, unsigned kind) {
+#ifdef FPR_BUILTIN_RAW
+  (void)kind; return v;
+#else
   if (!v || ISINT(v) || TID(v) != T_BITS || ((bits_t *)v)->var != kind)
     fpr_cpanic("Builtin: expected Word/Addr");
   return ((bits_t *)v)->val;
+#endif
 }
 #define W(v) unbox(v,2)
 #define A(v) unbox(v,3)

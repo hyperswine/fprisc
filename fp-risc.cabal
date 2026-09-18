@@ -27,6 +27,8 @@ executable fpr
   other-modules:
       A64
       Arc
+      Representation
+      Interrupt
       Codegen
       Commit
       Compile

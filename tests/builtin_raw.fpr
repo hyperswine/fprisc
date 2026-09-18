@@ -1,0 +1,21 @@
+# ARC values with explicit raw-field layouts. No allocation for machine scalars.
+Packet = Type (Packet word address number data).
+check b = case b of True -> Unit | False -> error "raw representation check failed".
+spin n w = case n == 0 of
+  True -> w
+| False ->
+  _ = check (Mem.liveAllocations Unit == 0);
+  spin (n - 1) (Word.xor w (Word.fromInt n)).
+project p = case p of Packet w a f xs ->
+  _ = check (Word.eq w (Word.not (Word.fromInt 0)));
+  _ = check (Addr.eq a (Addr.null Unit));
+  _ = check (f == 1.5);
+  xs.
+main =
+  _ = spin 10000 (Word.fromInt 0);
+  xs = project (Packet (Word.not (Word.fromInt 0)) (Addr.null Unit) 1.5 [7, 8]);
+  _ = check (xs == [7, 8]);
+  _ = check (1.5 + 2.5 == 4.0);
+  _ = check (F32.toInt (F32.ofInt 9) == 9);
+  _ = print (F64.str (F64.sqrt 9.0));
+  print "RAW REPRESENTATIONS HOLD".

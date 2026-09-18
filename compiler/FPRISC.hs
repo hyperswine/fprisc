@@ -123,7 +123,7 @@ data Core
   | CTagEq Int Int Core
   | CProj Int Core
   | CErr String
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 type Prog = M.Map Name ([Name], Core)
 

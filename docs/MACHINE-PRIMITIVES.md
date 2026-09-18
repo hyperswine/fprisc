@@ -81,11 +81,13 @@ scratchTest =
 
 Startup installs a **fatal fallback trap vector**, with a separate 4 KiB emergency
 stack. It prints `mcause`, `mepc` and `mtval` without allocating and exits QEMU with
-failure. It does not resume interrupted execution and does not invoke an FP-RISC
-handler. A resumable interrupt-handler ABI (register preservation, stack/context
-rules and `mret`) is still needed. Writing `mtvec` yourself replaces the fallback;
-only point it at a valid target-specific entry stub. Do not call the allocator or
-ARC from an interrupt handler while interrupted code may be using them.
+failure. ARC builds with a named `machineInterrupt` function instead install the
+[checked resumable handler ABI](BAREMETAL-BUILTIN.md#resumable-machine-interrupts).
+The stub saves integer/floating-point state, uses a dedicated stack and returns
+with `mret`. Synchronous faults remain fatal. Do not overwrite `mscratch` or
+`mtvec` while using this ABI. Writing `mtvec` yourself replaces the runtime entry;
+only point it at a valid target-specific entry stub. The ordinary allocator and
+ARC cannot be called from an interrupt handler.
 
 Instruction fencing is local to the current hart; it does not synchronize remote
 instruction caches. Board setup, exception policies and multicore coordination remain
@@ -105,8 +107,9 @@ ranges, alignment, a real illegal CSR write, and actual CLINT software-interrupt
 delivery to the fatal handler. Instruction disassembly is checked for the atomic
 and instruction-fence operations. Existing memory and ARC suites remain applicable.
 
-WFI wakeup behavior, multicore contention, resumable interrupt handlers and physical
-hardware have not been validated by this suite.
+`tests/check_raw.py` additionally validates resumable interrupts and full register
+preservation. WFI wakeup behavior, multicore contention and physical hardware
+have not been validated by these suites.
 
 Instruction contracts follow the official RISC-V specifications:
 [CSR instructions](https://docs.riscv.org/reference/isa/unpriv/zicsr.html),

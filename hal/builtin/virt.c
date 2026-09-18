@@ -25,9 +25,19 @@ void fpr_builtin_main(void) {
 #else
   fpr_builtin_heap_init(_heap_start,_heap_end);
 #endif
+#ifdef FPR_BUILTIN_RAW
+  extern V fpr_fn_machineInterrupt(V,V,V) __attribute__((weak));
+  extern char _irq_stack_top[];
+  extern void fpr_machine_interrupt_entry(void);
+  if (fpr_fn_machineInterrupt) {
+    __asm__ volatile("csrw mscratch,%0; csrw mtvec,%1" ::
+      "r"(_irq_stack_top),"r"(fpr_machine_interrupt_entry) : "memory");
+  }
+#endif
   V result = fpr_fn_main();
 #ifdef FPR_BUILTIN_ARC
-  fpr_builtin_release(result);
+  extern V fpr_fn__x24arc_x2emainManaged(void);
+  if (UNTAG(fpr_fn__x24arc_x2emainManaged())) fpr_builtin_release(result);
 #ifdef FPR_ARC_CHECK
   if (fpr_builtin_live_allocations()) fpr_cpanic("ARC: live allocations after main");
 #endif

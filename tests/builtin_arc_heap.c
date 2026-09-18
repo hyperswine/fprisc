@@ -37,5 +37,15 @@ int main(void) {
   ((V *)(root+8))[1]=fpr_builtin_retain(child);
   fpr_builtin_release(root);
   assert(fpr_builtin_live_allocations()==0);
+  /* Raw bits equal to an actual heap pointer MUST NOT become owning edges. */
+  static const struct { uint32_t tid,var; uw len; unsigned char bytes[5]; }
+    layout={T_STR,0,5,{'t','w','a','d','f'}};
+  child=fpr_builtin_alloc_adt(16,1);
+  ((V *)(child+8))[0]=TAG(7);
+  root=fpr_builtin_alloc_adt(48,5);
+  for(int i=0;i<5;i++) ((V *)(root+8))[i]=child;
+  fpr_builtin_set_layout(root,(V)&layout);
+  fpr_builtin_release(root);
+  assert(fpr_builtin_live_allocations()==0);
   puts("ARC LAYOUT AND DEEP RELEASE HOLD");
 }

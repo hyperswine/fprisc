@@ -1626,9 +1626,20 @@ V fpr_prim_fn__x3e_x3d(V a, V b) { return BOOL(UNTAG(a) >= UNTAG(b)); }
  * The depth cap is a cycle guard: nothing in the language builds a
  * cyclic value today, and a runaway compare should not take the hart. */
 #define VEQ_MAX_DEPTH 64
+#ifdef FPR_BUILTIN_RAW
+extern uw fpr_builtin_field_count(V);
+extern char fpr_builtin_field_kind(V,uw);
+#endif
 static int veq_go(V a, V b, int depth) {
   if (ISINT(a) || ISINT(b)) return a == b;
-  if (a == b) return 1;
+  if (a == b) {
+#ifdef FPR_BUILTIN_RAW
+    /* A shared ADT may contain NaN, so identity cannot skip numeric equality. */
+    if (!fpr_in_heap(a) || !fpr_builtin_field_count(a)) return 1;
+#else
+    return 1;
+#endif
+  }
   if (!a || !b) return 0;
   hdr_t *x = (hdr_t *)a, *y = (hdr_t *)b;
   if (x->tid != y->tid || x->var != y->var) return 0;
@@ -1649,13 +1660,26 @@ static int veq_go(V a, V b, int depth) {
   }
   if (depth >= VEQ_MAX_DEPTH) return 1;
   if (!fpr_in_heap(a) || !fpr_in_heap(b)) return 1; /* statics: no counts */
+#ifdef FPR_BUILTIN_RAW
+  uw nf=fpr_builtin_field_count(a);
+  if(nf!=fpr_builtin_field_count(b)) return 0;
+#else
   uw ta = *(uw *)((char *)a - 16), tb = *(uw *)((char *)b - 16);
   if (ta != tb) return 0;
-  if (ta < 24) return 1; /* header only: a nullary tag */
+  if (ta < 24) return 1;
   uw nf = (ta - 16 - 8) / sizeof(uw);
+#endif
   V *fa = (V *)((char *)a + 8), *fb = (V *)((char *)b + 8);
-  for (uw i = 0; i < nf; i++)
+  for (uw i = 0; i < nf; i++) {
+#ifdef FPR_BUILTIN_RAW
+    char k=fpr_builtin_field_kind(a,i);
+    if(k!=fpr_builtin_field_kind(b,i)) return 0;
+    if(k=='d') { union { V u; double d; } x={fa[i]},y={fb[i]}; if(x.d!=y.d)return 0; continue; }
+    if(k=='f') { union { uint32_t u; float f; } x={(uint32_t)fa[i]},y={(uint32_t)fb[i]}; if(x.f!=y.f)return 0; continue; }
+    if(k!='t') { if(fa[i]!=fb[i])return 0; continue; }
+#endif
     if (!veq_go(fa[i], fb[i], depth + 1)) return 0;
+  }
   return 1;
 }
 static int veq(V a, V b) { return veq_go(a, b, 0); }
@@ -1689,20 +1713,36 @@ static void rdec(sw n) {
   char b[24];
   int i = 23;
   int neg = n < 0;
-  uw u = neg ? (uw)(-n) : (uw)n;
+  uw u = neg ? (uw)0 - (uw)n : (uw)n;
   if (u == 0) b[i--] = '0';
   while (u) { b[i--] = '0' + (u % 10); u /= 10; }
   if (neg) b[i--] = '-';
   for (int j = i + 1; j <= 23; j++) remit(b[j]);
 }
 static void render(V v);
-static void rfields(V *f, int n) { /* "<t.v f1 f2>" tail */
-  for (int i = 0; i < n; i++) { remit(' '); render(f[i]); }
+#ifdef FPR_BUILTIN_RAW
+static uw dtoa(char *,double,int);
+#endif
+static void renderField(V obj,uw i) {
+  V v=((V *)(obj+8))[i];
+#ifdef FPR_BUILTIN_RAW
+  char k=fpr_in_heap(obj)?fpr_builtin_field_kind(obj,i):'t';
+  if(k=='w'||k=='a') { rdec((sw)v); return; }
+  if(k=='d'||k=='f') {
+    union { V u; double d; } d={v}; union { uint32_t u; float f; } f={(uint32_t)v};
+    char b[40]; uw n=dtoa(b,k=='d'?d.d:(double)f.f,k=='d'?15:7);
+    for(uw j=0;j<n;j++)remit(b[j]);
+    return;
+  }
+#endif
+  render(v);
+}
+static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
+  for (int i = 0; i < n; i++) { remit(' '); renderField(obj,i); }
 }
 static void render(V v) {
   if (ISINT(v)) { rdec(UNTAG(v)); return; }
   hdr_t *h = (hdr_t *)v;
-  V *f = (V *)((char *)v + 8);
   switch (h->tid) {
     case T_STR: {
       str_t *s = (str_t *)v;
@@ -1711,31 +1751,31 @@ static void render(V v) {
     }
     case T_BOOL: remits(h->var ? "True" : "False"); break;
     case T_UNIT: remits("()"); break;
-    case T_ATOM: remit(':'); render(f[0]); break;
+    case T_ATOM: remit(':'); renderField(v,0); break;
     case T_LIST:
       if (h->var == 0) { remits("[]"); break; }
       remit('[');
       for (V c = v;;) {
         V *cf = (V *)((char *)c + 8);
-        render(cf[0]);
+        renderField(c,0);
         c = cf[1];
         if (ISINT(c) || ((hdr_t *)c)->tid != T_LIST || ((hdr_t *)c)->var != 1) break;
         remits(", ");
       }
       remit(']');
       break;
-    case T_RESULT: remits("<3."); rdec(h->var); rfields(f, 1); remit('>'); break;
+    case T_RESULT: remits("<3."); rdec(h->var); rfields(v, 1); remit('>'); break;
     case T_TUP2:
-      remit('('); render(f[0]); remits(", "); render(f[1]); remit(')');
+      remit('('); renderField(v,0); remits(", "); renderField(v,1); remit(')');
       break;
     case T_TUP3:
-      remit('('); render(f[0]); remits(", "); render(f[1]); remits(", ");
-      render(f[2]); remit(')');
+      remit('('); renderField(v,0); remits(", "); renderField(v,1); remits(", ");
+      renderField(v,2); remit(')');
       break;
     case T_TUP4: case T_TUP5: case T_TUP6: case T_TUP7: case T_TUP8: {
       uw ta = 4 + (h->tid - T_TUP4);
       remit('(');
-      for (uw i = 0; i < ta; i++) { if (i) remits(", "); render(f[i]); }
+      for (uw i = 0; i < ta; i++) { if (i) remits(", "); renderField(v,i); }
       remit(')');
       break;
     }

@@ -72,11 +72,9 @@ with tempfile.TemporaryDirectory(prefix='fpr-arc-') as temp:
     assert normal_units != (tmp/'builtin.s.units').read_text()
     build(source, image, tmp, extra=[f'FPRC_FLAGS=--prelude={prelude}'])
     assert '[2, 3]' in boot(image), 'cached ARC module failed'
-    print('Cross-unit ownership and separate ARC cache, including cached rebuild: PASS')
+    print('Cross-unit ownership and separate ARC compilation, including rebuild: PASS')
 
     cases = {
-        'float': 'main = 1.5.\n',
-        'float-field': 'main = [1.5].\n',
         'closure': 'main = fn x -> x.\n',
         'indirect': 'apply f x = f x.\nmain = apply (fn x -> x) 1.\n',
         'partial': 'add a b = a + b.\nmain = add 1.\n',
@@ -88,7 +86,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-arc-') as temp:
         output = run(['./fprc', '--profile=bare-metal-builtin', '--arc', source, tmp/f'{name}.s'], 1)
         assert 'automatic ARC:' in output, output
         assert not (tmp/f'{name}.s').exists()
-    print('Floats, closures, indirect/partial calls and explicit RC rejected: PASS')
+    print('Function values, indirect/partial calls and explicit RC rejected: PASS')
 
     host = tmp / 'heap-test'
     run(['clang', '-std=c11', '-O1', '-DFPR_POSIX', '-DFPR_BUILTIN_ARC', '-Ihal/core', '-Ihal/builtin',

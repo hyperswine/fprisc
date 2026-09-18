@@ -7,4 +7,7 @@ V fpr_builtin_alloc_adt(V bytes, uw fields);
 uw fpr_builtin_live_allocations(void);
 V fpr_builtin_retain(V value);
 void fpr_builtin_release(V value);
+void fpr_builtin_set_layout(V value,V descriptor);
+uw fpr_builtin_field_count(V value);
+char fpr_builtin_field_kind(V value,uw index);
 #endif

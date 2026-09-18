@@ -1,0 +1,27 @@
+# QEMU virt CLINT software interrupt. Scratch RAM is outside the test heap.
+machineInterrupt cause pc value =
+  msip = Addr.fromWord (Word.fromInt 33554432);
+  flag = Addr.fromWord (Word.fromInt 2164260864);
+  _ = Mem.write32 msip (Word.fromInt 0);
+  _ = Mem.writeWord flag (Word.add (Mem.readWord flag) (Word.fromInt 1));
+  Unit.
+check b = case b of True -> Unit | False -> error "interrupt did not resume".
+waitFor flag = case Word.toInt (Mem.readWord flag) == 0 of
+  True -> waitFor flag
+| False -> Unit.
+fire n = case n == 0 of
+  True -> Unit
+| False ->
+  flag = Addr.fromWord (Word.fromInt 2164260864);
+  _ = Mem.writeWord flag (Word.fromInt 0);
+  _ = Mem.write32 (Addr.fromWord (Word.fromInt 33554432)) (Word.fromInt 1);
+  _ = waitFor flag;
+  xs = [n, n + 1];
+  _ = check (xs == [n, n + 1]);
+  fire (n - 1).
+main =
+  _ = CPU.csrWrite 772 (Word.fromInt 8);
+  _ = CPU.irqEnable Unit;
+  _ = fire 1000;
+  _ = CPU.irqSave Unit;
+  print "INTERRUPTS RESUME".

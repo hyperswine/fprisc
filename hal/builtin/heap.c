@@ -4,7 +4,8 @@
  */
 #include "builtin.h"
 #include <stdint.h>
-typedef struct block { uw size; struct block *prev, *next; uw used; uw fields; struct block *pending; } block;
+typedef struct block { uw size; struct block *prev, *next; uw used; uw fields; struct block *pending; const str_t *layout; uw alignment_padding; } block;
+_Static_assert((sizeof(block)+16)%16 == 0, "Builtin payload alignment");
 _Static_assert(sizeof(uw) == 8, "Builtin heap currently requires 64-bit words");
 static block *head;
 static uw low, high;
@@ -16,7 +17,7 @@ void fpr_builtin_heap_init(void *start, void *end) {
   high = (uw)end & ~(uw)15;
   if (high <= low || high - low < PREFIX + 16) fpr_cpanic("Builtin: heap too small");
   head = (block *)low;
-  *head = (block){high - low, 0, 0, 0, 0, 0};
+  *head = (block){.size=high-low};
 }
 int fpr_in_heap(V v) { return !ISINT(v) && v >= low + PREFIX && v < high; }
 static block *find(V v) {
@@ -28,7 +29,7 @@ static block *find(V v) {
 static void split(block *b, uw size) {
   if (b->size - size < PREFIX + 16) return;
   block *n = (block *)((char *)b + size);
-  *n = (block){b->size - size, b, b->next, 0, 0, 0};
+  *n = (block){.size=b->size-size,.prev=b,.next=b->next};
   if (n->next) n->next->prev = n;
   b->next = n; b->size = size;
 }
@@ -37,7 +38,7 @@ V fpr_alloc(V bytes) {
   uw size = PREFIX + ((bytes + 15) & ~(uw)15);
   if (size == PREFIX) size += 16;
   for (block *b = head; b; b = b->next) if (!b->used && b->size >= size) {
-    split(b, size); b->used = 1; b->fields = 0; b->pending = 0;
+    split(b, size); b->used = 1; b->fields = 0; b->pending = 0; b->layout = 0;
     meta(b)[0] = b->size - sizeof(block); meta(b)[1] = 1;
     unsigned char *p = (unsigned char *)payload(b);
     for (uw i = 0; i < b->size - PREFIX; i++) p[i] = 0;
@@ -97,8 +98,8 @@ static void release_legacy(V v) {
 
 #endif
 
-/* ARC constructors carry an exact contiguous tagged-field layout. Raw scalars
- * are excluded by the first-order compiler gate; leaf primitives have fields=0.
+/* ARC constructors carry an exact field count and optional static per-field
+ * representation descriptor; leaf primitives have fields=0.
  * This is an explicit layout, not inference from rounded allocation capacity.
  */
 V fpr_builtin_alloc_adt(V bytes, uw fields) {
@@ -131,11 +132,24 @@ void fpr_builtin_release(V v) {
   while (work) {
     block *b = work; work = b->pending;
     V *fields = (V *)(payload(b) + 8);
-    for (uw i = 0; i < b->fields; i++) enqueue(fields[i], &work);
+    for (uw i = 0; i < b->fields; i++)
+      if (!b->layout || b->layout->bytes[i]=='t') enqueue(fields[i], &work);
     meta(b)[1] = 1; /* low-level free requires exclusive ownership */
     fpr_free(payload(b));
   }
 #else
   release_legacy(v);
 #endif
+}
+
+void fpr_builtin_set_layout(V v,V descriptor) {
+  block *b=find(v); const str_t *s=(const str_t *)descriptor;
+  if(s->tid!=T_STR || s->len!=b->fields) fpr_cpanic("Builtin: invalid field descriptor");
+  b->layout=s;
+}
+uw fpr_builtin_field_count(V v) { return find(v)->fields; }
+char fpr_builtin_field_kind(V v,uw i) {
+  block *b=find(v);
+  if(i>=b->fields) fpr_cpanic("Builtin: field index out of range");
+  return b->layout ? b->layout->bytes[i] : 't';
 }
