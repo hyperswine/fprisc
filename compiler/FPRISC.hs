@@ -1548,18 +1548,50 @@ updateRecord scrut assigns = do
               updateRecord (CProj idx scrut) subAssigns
 
 compileArms :: Core -> [(SPat, Maybe SExpr, SExpr)] -> Core -> D Core
-compileArms scrut arms fallback = go arms
+compileArms scrut arms fallback = go True arms
   where
-    go [] = pure fallback
-    go ((p, g, body) : rest) = do
-      nxt <- go rest
+    go _ [] = pure fallback
+    go first ((p, g, body) : rest) = do
+      nxt <- go False rest
       body' <- dExpr body
       inner <- case g of
         Nothing -> pure body'
         Just ge -> do
           ge' <- dExpr ge
           pure (CIf ge' body' nxt)
-      matchPat scrut p inner nxt
+      -- the last arm of a case whose earlier arms certainly catch every
+      -- other constructor of the type needs no head test of its own:
+      -- once they have failed, the head IS this constructor (the
+      -- inferencer has already refused every non-exhaustive case).  A
+      -- single-constructor type keeps its test: an actor's `receive`
+      -- is typed unsafely, and the test is what turns a stray message
+      -- into a panic instead of a misread.
+      certain <- if null rest && not first && null [() | (_, Just _, _) <- arms] then coveredHead p else pure False
+      if certain
+        then case p of
+          PCon _ ps -> matchFields scrut ps inner nxt
+          PTup ps -> matchFields scrut ps inner nxt
+          _ -> matchPat scrut p inner nxt
+        else matchPat scrut p inner nxt
+    -- every other constructor of p's type heads an earlier arm whose
+    -- sub-patterns cannot fail
+    coveredHead :: SPat -> D Bool
+    coveredHead p = do
+      cons <- gets dCons
+      let irrefutable = \case
+            PVar _ -> True
+            PWild -> True
+            PSig _ _ -> True
+            PRec _ -> True
+            _ -> False
+          headName = \case
+            PCon c ps | all irrefutable ps -> Just c
+            _ -> Nothing
+          earlier = [c | (q, _, _) <- init arms, Just c <- [headName q]]
+      case p of
+        PCon c _ | Just (tid, _, _) <- M.lookup c cons ->
+          pure (and [c' `elem` earlier | (c', (t, _, _)) <- M.toList cons, t == tid, c' /= c])
+        _ -> pure False
 
 matchPat :: Core -> SPat -> Core -> Core -> D Core
 matchPat scrut p ok fail' = case p of

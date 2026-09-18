@@ -33,9 +33,17 @@ file suffixes; a clause applies to both unless it says which.
 
 - A `case` inside a NON-FINAL arm of another `case` must be
   parenthesised: unparenthesised, the arms after it attach to the inner
-  case and the outer one is left with one arm, which fails at RUNTIME
-  ("no matching pattern").  (today -- decide: make the parser refuse or
-  disambiguate)  `[test: ]`
+  case.  The grammar stays as it is; the shape is REFUSED at compile
+  time by case coverage, whatever the types involved: the outer case is
+  left non-exhaustive, or the inner one gains an arm it can never
+  reach.  (decided)  `[test: tests/check_cases.py]`
+- Case coverage: every `case` must be exhaustive (constructor sets from
+  the type; `Int`/`String` literals need a catch-all arm), and an arm
+  with a refutable head (constructor, literal, tuple) that the arms
+  before it already cover is an error.  A trailing `_` is never an
+  error: an actor's `receive` is typed unsafely, and the catch-all is
+  how a loop queues the messages the type does not name.  (decided)
+  `[test: tests/check_cases.py]`
 
 ### 2. Names, reserved words, operators
 

@@ -56,10 +56,9 @@ with tempfile.TemporaryDirectory(prefix='fpr-export-') as temp:
                              ('tests/builtin_machine.fpr', 'MACHINE PRIMITIVES HOLD', 16384)]:
         run(['make', 'bare-metal-builtin', 'ARC=1', 'ARC_CHECK=1', 'HEAP=fpr', f'BUILTIN_HEAP_BYTES={heap}',
              f'PROG={prog}', f'IMAGE={image}', f'BUILD={tmp}'])
-        # the FP-RISC allocator is correct first and fast later: every raw
-        # primitive is still an adapter call, so the 10,000-cycle ARC program
-        # takes ~40 s here against ~0.4 s on heap.c (docs/BAREMETAL-BUILTIN.md)
-        assert want in boot(image, timeout=240), prog
+        # the 10,000-cycle ARC program takes ~1.2 s on the FP-RISC allocator
+        # against ~0.4 s on heap.c (docs/BAREMETAL-BUILTIN.md, "Speed, honestly")
+        assert want in boot(image, timeout=60), prog
     symbols = run(['riscv64-unknown-elf-nm', image])
     assert 'fpr_alloc' in symbols and 'fpr_fn_alloc' in symbols, 'fpr_alloc must be the trampoline onto the fpr allocator'
     deep = tmp / 'deep.fpr'
@@ -67,10 +66,10 @@ with tempfile.TemporaryDirectory(prefix='fpr-export-') as temp:
                     'main = build 6000 Nil.\n')
     run(['make', 'bare-metal-builtin', 'ARC=1', 'ARC_CHECK=1', 'HEAP=fpr', 'BUILTIN_HEAP_BYTES=1048576',
          f'PROG={deep}', f'IMAGE={image}', f'BUILD={tmp}'])
-    boot(image, timeout=240)
+    boot(image, timeout=60)
     oom = tmp / 'oom.fpr'
     oom.write_text('grow n xs = grow (n + 1) (Cons n xs).\nmain = grow 0 Nil.\n')
     run(['make', 'bare-metal-builtin', 'ARC=1', 'HEAP=fpr', 'BUILTIN_HEAP_BYTES=16384',
          f'PROG={oom}', f'IMAGE={image}', f'BUILD={tmp}'])
-    assert 'Builtin: out of memory' in boot(image, 1, timeout=240)
+    assert 'Builtin: out of memory' in boot(image, 1, timeout=60)
     print('The allocator in FP-RISC: 10,000 ARC cycles, raw fields, machine primitives, a 6,000-node release, exhaustion refused by name: PASS')

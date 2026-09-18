@@ -1,0 +1,4 @@
+C = Type (Cell Int | Other Int).
+M = Type (Some C | None).
+f m = case m of Some (Cell x) -> x | None -> 0.
+main = print (str (f None)).

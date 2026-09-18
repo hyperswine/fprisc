@@ -34,8 +34,11 @@ executable fpr
       Compile
       FPRISC
       Home
+      Exhaust
       Infer
+      Inline
       Modules
+      Peephole
       Precond
       Safety
       StdBridge

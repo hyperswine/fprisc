@@ -1,0 +1,6 @@
+# an actor loop's trailing `_` after the only constructor of its message
+# type: `receive` is typed unsafely, so the arm is reachable at runtime
+# and must stay accepted
+Q = Type (Drain Int).
+loop m q = case m of Drain from -> from | _ -> q.
+main = print (str (loop (Drain 1) 0)).

@@ -21,10 +21,11 @@
 #
 # One grammar rule this file lives by: a `case` is never written inside
 # a NON-FINAL arm of another case without parentheses.  The arms that
-# follow it attach to the inner case, and the outer one is left with
-# one arm -- a runtime "no matching pattern", not a parse error (the
-# first cut's realloc died exactly so).  Every nested decision here is a
-# helper function, which also reads better.
+# follow it attach to the inner case (the first cut's realloc died
+# exactly so, at runtime).  The compiler now refuses that shape -- case
+# coverage leaves the outer case non-exhaustive or the inner one with an
+# unreachable arm -- and every nested decision here is a helper
+# function anyway, which also reads better.
 
 # ---- words, addresses, the state cell -------------------------------------------------
 w n = Word.fromInt n.

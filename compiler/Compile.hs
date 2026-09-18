@@ -4,7 +4,8 @@ import Data.List (sortBy)
 import System.Environment (lookupEnv)
 import System.IO (hPutStrLn, stderr)
 import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
-import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak)
+import Inline (inlineSmall)
+import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, normArc)
 import Data.Char (isAlphaNum, ord)
 import Numeric (showHex)
 import A64 (deTlsQosAppA64, lowerA64, a64Rev)
@@ -516,8 +517,15 @@ compileMain = do
                   else tgtName tgt
           tag = "g" ++ show codegenRev ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
-          own prog = if oArc opts then
-                       either (\e -> hPutStrLn stderr e >> exitFailure) pure ((if oRaw opts then lowerRaw else lowerArc) sourceExt prog)
+          -- --arc: lower ownership, then inline the small helpers at
+          -- their sites (Inline.hs) before the generator sees the unit
+          own prog = if oArc opts then do
+                       lowered <- either (\e -> hPutStrLn stderr e >> exitFailure) (pure . inlineSmall 3 24) ((if oRaw opts then lowerRaw else lowerArc) sourceExt prog)
+                       -- FPR_DUMP_CORE=name prints that function's Core as the generator sees it
+                       dump <- lookupEnv "FPR_DUMP_CORE"
+                       forM_ [(n, d) | Just want <- [dump], (n, d) <- M.toList lowered, takeWhile (/= '@') n == want] $ \(n, d) ->
+                         hPutStrLn stderr ("core " ++ n ++ ": " ++ show d ++ "\nnormalized: " ++ show (fmap normArc d))
+                       pure lowered
                      else pure prog
           emitUnit path exps ext uts = do
             cached <- doesFileExist path

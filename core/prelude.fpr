@@ -264,4 +264,5 @@ par2 h f a g b =
   _ = send w (me, f, a);
   rb = g b;
   case receiveRes me of
-    Ok ra -> (ra, rb).
+    Ok ra -> (ra, rb)
+  | Err _ -> error "par2: the worker failed".

@@ -1,0 +1,2 @@
+f n = case n of _ -> "any" | 1 -> "one".
+main = print (f 1).
