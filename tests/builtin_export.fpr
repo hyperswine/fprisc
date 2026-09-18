@@ -1,0 +1,21 @@
+# A library unit: no main, C-callable exports over every boundary type.
+# Linked beside a program unit (tests/builtin_export_main.fpr) and called
+# from C (tests/builtin_export_probe.c wraps main and calls each entry).
+Cell = Type (Cell a b).
+mix : Word -> Int -> Bool -> Word .
+mix x n b = Word.xor (Word.add x (Word.fromInt n)) (case b of True -> Word.fromInt 1 | False -> Word.fromInt 0).
+half : Int -> Int .
+half n = n / 2.
+isEven : Int -> Bool .
+isEven n = n - (n / 2) * 2 == 0.
+scale : F64 -> Int -> F64 .
+scale x k = x * F64.ofInt k.
+poke : Addr -> Word -> Unit .
+poke a v = Mem.writeWord a v.
+peek : Addr -> Word .
+peek a = Mem.readWord a.
+where : Unit -> Addr .
+where u = Addr.symbol "_heap_state".
+# managed data inside the library is fine; it just cannot cross the boundary
+sumCell : Int -> Int -> Int .
+sumCell a b = case Cell a b of Cell x y -> x + y.

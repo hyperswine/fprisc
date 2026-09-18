@@ -31,6 +31,12 @@ file suffixes; a clause applies to both unless it says which.
 - Lambdas `fn x y -> e` take variables, not tuple patterns.  (today --
   decide)  `[test: ]`
 
+- A `case` inside a NON-FINAL arm of another `case` must be
+  parenthesised: unparenthesised, the arms after it attach to the inner
+  case and the outer one is left with one arm, which fails at RUNTIME
+  ("no matching pattern").  (today -- decide: make the parser refuse or
+  disambiguate)  `[test: ]`
+
 ### 2. Names, reserved words, operators
 
 - Reserved: `fn case of Type Sig Struct use unsafe measure`.  Defining
@@ -111,6 +117,12 @@ file suffixes; a clause applies to both unless it says which.
 - `fpr commit` mints an immutable version; `fpr.lock` is the tree's
   pin set.  (today)  `[test: check-all "versions"]`
 - Module cycles are refused.  (today)  `[test: ]`
+
+- Builtin profile only: `Addr.symbol "name"` is the address of a linker
+  symbol, the argument a literal; `--raw` units are allocation-free by
+  check and uninstrumented; `--lib`/`--export` make C entries with a
+  declared signature over Int/Word/Addr/Bool/Unit/F64/F32.  (today)
+  `[test: tests/check_export.py]`
 
 ### 8. Records, paths, schemas
 

@@ -239,6 +239,98 @@ reserved stack. The ordinary allocator and reference counts remain non-reentrant
 user callbacks cannot access them. A manual-ownership build with this reserved
 handler name is rejected rather than silently ignoring it.
 
+## Library units and C exports
+
+An FP-RISC file can be compiled as a **library unit**: a linkable object
+whose chosen functions are callable from C with the plain RV64 ABI.
+This is how the profile starts replacing C rather than only calling it.
+
+```
+./fprc --profile=bare-metal-builtin --arc --lib --export=mix,half:c_half x.fpr x.s
+make builtin-lib LIB=x.fpr LIB_EXPORT=mix,half:c_half         # -> build/lib-x.s
+```
+
+`--lib` compiles the file as the one import of an empty root: every
+name it defines is qualified by its module hash (no clash with the
+program it links beside), no `main` is required, and the constructor
+stubs every unit carries (`Cons`, `Tup2`, ...) are emitted `.weak` so
+the program's copies win at link.  A library unit and a program unit are
+linked into one image with `BUILTIN_EXTRA=`.
+
+`--export=name[:c_symbol],...` emits a C entry per name.  An export is a
+contract, so the function **must carry a declared signature**, and every
+type in it must cross the boundary: `Int`, `Word`, `Addr`, `Bool`,
+`Unit`, `F64`, `F32`.  A managed type, a missing signature, or more than
+eight parameters is refused by name.  The entry is a trampoline and
+nothing else: raw words pass through, an `Int` is tagged on the way in
+and untagged on the way out, a `Bool` becomes the immortal `True`/`False`
+object and comes back as 0/1, a `Unit` parameter is supplied.  Under this
+link's `-mabi=lp64` (soft float) a `double` is its bits in an integer
+register, which is FP-RISC's own convention, so floats pass untouched;
+`--float-abi=hard` emits the `fa0..` moves for an lp64d link.
+
+`Addr.symbol "name"` is the address of a linker symbol -- the profile's
+`extern char name[]`.  The argument must be a string literal; it compiles
+to one `la` and never allocates.  It is what gives a unit state at a
+link-time address (below).
+
+## Raw units and the allocator in FP-RISC
+
+`--raw` (with `--arc`) compiles a unit with the raw representation --
+`Word`, `Addr`, floats unboxed -- but **without ownership
+instrumentation**, and holds every function to the allocation-free
+contract the interrupt handler already had (`Interrupt.checkRawUnit`):
+no strings, no heap construction, no managed projection, no indirect
+calls, no allocator or rendering primitives; `error "literal"` is
+admitted as a static, non-returning panic.  Nothing in such a unit owns
+anything, so the retain/release the ARC pass would insert are no-ops
+by construction and are simply not emitted.  A raw unit may touch CSRs
+and interrupt control: this is where drivers live.
+
+The first raw unit is the allocator itself.  `hal/builtin/heap.fpr` is
+`heap.c` written over `Word`/`Addr` and raw memory: the same block
+header, the same 16-byte meta pair before every payload, first fit,
+coalescing, the ARC release worklist threaded through the dead blocks.
+Its state (head, low, high) lives at `_heap_state`, a 64-byte cell the
+linker script provides, reached through `Addr.symbol`.  Compiled with
+`--raw --lib`, its exports are the C symbols `heap.c` defined --
+`fpr_alloc`, `fpr_free`, `fpr_realloc`, `fpr_in_heap`,
+`fpr_builtin_retain`, `fpr_builtin_release`, `fpr_builtin_alloc_adt`,
+`fpr_builtin_set_layout`, `fpr_builtin_field_count`,
+`fpr_builtin_field_kind`, `fpr_builtin_live_allocations`,
+`fpr_builtin_heap_init` -- so the C runtime, the ARC adapters and the
+program link against it unchanged:
+
+```
+make bare-metal-builtin-run ARC=1 HEAP=fpr PROG=tests/builtin_arc.fpr
+```
+
+`HEAP=fpr` needs `ARC=1`: the allocator uses the raw ABI.  Why it must be
+a *raw* unit and not merely a library: an ARC-instrumented allocator
+retains its own `Int` temporaries, and `fpr_builtin_retain` is now the
+allocator -- the first image recursed until it overwrote itself.
+
+Two rules of the grammar the allocator had to learn, both worth knowing
+elsewhere: a `case` written inside a NON-FINAL arm of another `case`
+without parentheses takes the arms after it (the outer case is left with
+one arm and fails at runtime, not at parse time); and a panic's text
+must be a literal at the call for the allocation-free check to see it.
+
+Validation: `python3 tests/check_export.py` -- a library beside a
+program with a C probe calling every boundary type; the refusals; then
+the ARC, raw and machine programs and a 6,000-node release on the
+FP-RISC heap with `heap.c` out of the link, and exhaustion refused by
+name.
+
+Speed, honestly: the 10,000-cycle ARC program takes about 40 s on the
+FP-RISC heap against 0.35 s on `heap.c` (QEMU, this host).  Every raw
+primitive in the allocator -- `Mem.readWord`, `Word.add`, `Addr.eq` --
+is still a call through an adapter into `machine.S`, and `find` walks
+the block list through those calls.  Correctness came first; the
+optimizer the raw ABI was designed to admit (a raw `Word.add` is one
+`add`, a `Mem.readWord` one `ld`) is the next step, and it is a codegen
+change, not a change to this file.
+
 ## Remaining coupling and porting
 
 Common value construction, function application, rendering and arithmetic still

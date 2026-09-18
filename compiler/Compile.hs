@@ -3,8 +3,10 @@ module Compile (compileMain) where
 import Data.List (sortBy)
 import System.Environment (lookupEnv)
 import System.IO (hPutStrLn, stderr)
-import Arc (lowerArc, arcExterns, arcRev)
-import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc)
+import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
+import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak)
+import Data.Char (isAlphaNum, ord)
+import Numeric (showHex)
 import A64 (deTlsQosAppA64, lowerA64, a64Rev)
 import X64 (lowerX64, deTlsQosApp, x64Rev)
 import Control.Monad (forM, forM_, unless, when)
@@ -33,6 +35,10 @@ data Opts = Opts
   { oTarget :: Target,
     oBuiltin :: Bool,
     oArc :: Bool,
+    oRaw :: Bool, -- a RAW unit: allocation-free, no ownership instrumentation (Arc.lowerRaw)
+    oLib :: Bool, -- a LIBRARY unit: the file is compiled as an imported module (names qualified), no main, weak shared stubs
+    oExports :: [(String, String)], -- C-callable trampolines: (fpr function, C symbol)
+    oHardFloat :: Bool, -- exports follow the lp64d ABI (floats in fa0..); default lp64, soft
     oA64 :: Bool, -- lower the rv64 emission (the shared RISC IR) to AArch64
     oA64Mac :: Bool, -- AArch64 with Mach-O syntax (macOS): _sym, @PAGE, TLV
     oX64 :: Bool, -- lower it to x86-64 (SysV) instead
@@ -48,7 +54,7 @@ data Opts = Opts
   }
 
 parseArgs :: [String] -> Opts
-parseArgs = foldl step (Opts rv64 False False False False False False False False False False False Nothing False [])
+parseArgs = foldl step (Opts rv64 False False False False [] False False False False False False False False False False Nothing False [])
   where
     -- profile aliases (Target.hs): the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
@@ -61,6 +67,10 @@ parseArgs = foldl step (Opts rv64 False False False False False False False Fals
     step o "--profile=qos-native" = o {oTarget = rv64, oBuiltin = False}
     step o "--profile=qos-portable" = o {oTarget = rv64, oBuiltin = False, oX64 = True, oQosApp = True}
     step o "--arc" = o {oArc = True}
+    step o "--lib" = o {oLib = True}
+    step o "--raw" = o {oRaw = True}
+    step o "--float-abi=hard" = o {oHardFloat = True}
+    step o "--float-abi=soft" = o {oHardFloat = False}
     step o "--stdcheck" = o {oStdCheck = True}
     step o "--sol" = o {oSol = True}
     step o "--target=rv32" = o {oTarget = rv32}
@@ -76,8 +86,120 @@ parseArgs = foldl step (Opts rv64 False False False False False False False Fals
     step o "--rvv" = o {oRvv = True}
     step o a
       | "--prelude=" `isPrefixOf` a = o {oPrelude = Just (drop (length "--prelude=") a)}
+      | "--export=" `isPrefixOf` a = o {oExports = oExports o ++ exportSpecs (drop (length "--export=") a)}
       | a == "--no-safety" = o {oNoSafety = True}
       | otherwise = o {oFiles = oFiles o ++ [a]}
+
+-- `--export=name,name:c_symbol,...`: an fpr function and the C symbol it
+-- is callable as (default: the same name)
+exportSpecs :: String -> [(String, String)]
+exportSpecs = map one . filter (not . null) . splitOn ','
+  where
+    one spec = case break (== ':') spec of
+      (n, ':' : c) -> (n, c)
+      (n, _) -> (n, n)
+    splitOn c str = case break (== c) str of
+      (a, _ : rest) -> a : splitOn c rest
+      (a, []) -> [a]
+
+-- `Addr.symbol "name"` -> CVar "$sym.name": the address of a linker symbol,
+-- the builtin profile's `extern char name[]`.  Rewritten on lifted Core
+-- before ownership lowering; Representation types it 'a', Arc passes it
+-- through unowned, Codegen emits one `la`.  A non-literal argument is a
+-- compile error: the name IS the link, there is nothing to compute.
+symbolize :: Prog -> Either String Prog
+symbolize = traverse (\(ps, b) -> (,) ps <$> go b)
+  where
+    go e = case e of
+      CApp (CVar "Addr.symbol") (CStr s) -> Right (CVar ("$sym." ++ s))
+      CApp (CVar "Addr.symbol") _ -> Left "Addr.symbol takes a string literal naming a linker symbol"
+      CVar "Addr.symbol" -> Left "Addr.symbol is not a function value: apply it to a string literal"
+      CApp f a -> CApp <$> go f <*> go a
+      CLam ps b -> CLam ps <$> go b
+      CLet n a b -> CLet n <$> go a <*> go b
+      CIf c t f -> CIf <$> go c <*> go t <*> go f
+      CMk t v fs -> CMk t v <$> traverse go fs
+      CTagEq t v x -> CTagEq t v <$> go x
+      CProj i x -> CProj i <$> go x
+      _ -> Right e
+
+-- C-callable entry points for exported functions (RV64, the builtin
+-- profile).  The fpr function keeps its own convention: every parameter
+-- in a0..a7 by position, raw Word/Addr/float bits as 64-bit words,
+-- Int TAGGED, Bool/Unit as the immortal objects.  The trampoline is the
+-- difference between that and the C ABI, and nothing else -- no
+-- allocation, no runtime.  Types come from the function's DECLARED
+-- signature: an export is a contract, so it must be written down.
+data CKind = KInt | KWord | KAddr | KBool | KUnit | KF64 | KF32 deriving (Eq, Show)
+
+ckindOf :: Ty -> Either String CKind
+ckindOf (TCon "Int" []) = Right KInt
+ckindOf (TCon "Word" []) = Right KWord
+ckindOf (TCon "Addr" []) = Right KAddr
+ckindOf (TCon "Bool" []) = Right KBool
+ckindOf (TCon "Unit" []) = Right KUnit
+ckindOf (TCon "F64" []) = Right KF64
+ckindOf (TCon "F32" []) = Right KF32
+ckindOf t = Left ("not a C-representable type: " ++ show t ++ " (Int, Word, Addr, Bool, Unit, F64, F32 cross the boundary)")
+
+trampoline :: Bool -> String -> String -> [CKind] -> CKind -> [String]
+trampoline hard csym target params result =
+  [ "",
+    "# export " ++ csym ++ " -> " ++ target ++ " (" ++ unwords (map show params) ++ " -> " ++ show result ++ ")",
+    "    .section .text." ++ csym ++ ",\"ax\",@progbits",
+    "    .balign 4",
+    "    .globl " ++ csym,
+    csym ++ ":",
+    "    addi sp, sp, -16",
+    "    sd ra, 8(sp)"
+  ]
+    -- C puts integer arguments in a0.. and float arguments in fa0.. by
+    -- their own counts; fpr wants position i in a_i.  Walk the positions
+    -- from the highest down so an a_j (j <= i) is read before anything
+    -- overwrites it.
+    ++ concat [ arg i k | (i, k) <- reverse (zip [0 :: Int ..] params) ]
+    ++ [ "    call " ++ target ]
+    ++ res result
+    ++ [ "    ld ra, 8(sp)",
+         "    addi sp, sp, 16",
+         "    ret" ]
+  where
+    isF k = k == KF64 || k == KF32
+    -- under the soft-float ABI every parameter is an integer-register
+    -- parameter, so the C slot IS the position
+    intSlot i = if hard then length [() | k <- take i params, not (isF k)] else i
+    fltSlot i = length [() | k <- take i params, isF k]
+    a i = "a" ++ show i
+    -- the float ABI: this link is -mabi=lp64 (SOFT float), under which C
+    -- passes a double as its bits in an integer register -- which is
+    -- FP-RISC's own convention, so nothing moves.  --float-abi=hard
+    -- (lp64d) would put them in fa0.. and need the fmv moves.
+    arg i k
+      | isF k && not hard = if intSlot i /= i then [ "    mv " ++ a i ++ ", " ++ a (intSlot i) ] else []
+      | isF k = [ "    " ++ (if k == KF64 then "fmv.x.d " else "fmv.x.w ") ++ a i ++ ", fa" ++ show (fltSlot i) ]
+      | otherwise =
+          [ "    mv " ++ a i ++ ", " ++ a (intSlot i) | intSlot i /= i ]
+            ++ case k of
+              KInt -> [ "    slli " ++ a i ++ ", " ++ a i ++ ", 1", "    ori " ++ a i ++ ", " ++ a i ++ ", 1" ]
+              KBool -> [ "    beqz " ++ a i ++ ", 1f", "    la " ++ a i ++ ", fpr_true", "    j 2f",
+                         "1:  la " ++ a i ++ ", fpr_false", "2:" ]
+              KUnit -> [ "    la " ++ a i ++ ", fpr_unit" ]
+              _ -> []
+    res k = case k of
+      KInt -> [ "    srai a0, a0, 1" ]
+      KBool -> [ "    lw a0, 4(a0)" ]
+      KF64 | hard -> [ "    fmv.d.x fa0, a0" ]
+      KF32 | hard -> [ "    fmv.w.x fa0, a0" ]
+      _ -> []
+
+-- the symbol encoding Codegen uses for fpr_fn_ names (kept in step)
+mangleName :: String -> String
+mangleName = concatMap enc
+  where
+    enc c
+      | isAlphaNum c = [c]
+      | otherwise = "_x" ++ pad (showHex (ord c) "")
+    pad str = if length str < 2 then '0' : str else str
 
 parseFile :: FilePath -> IO [STop]
 parseFile p = snd <$> parseFileSrc p
@@ -114,6 +236,12 @@ compileMain = do
   when (oArc opts && not (oBuiltin opts)) $ do
     hPutStrLn stderr "--arc currently requires --profile=bare-metal-builtin"
     exitFailure
+  when (oRaw opts && not (oArc opts)) $ do
+    hPutStrLn stderr "--raw needs --arc (it is the raw ABI without the ownership instrumentation)"
+    exitFailure
+  when ((oLib opts || not (null (oExports opts))) && not (oArc opts && oBuiltin opts)) $ do
+    hPutStrLn stderr "--lib / --export need --profile=bare-metal-builtin --arc (the raw ABI is the C ABI)"
+    exitFailure
   when (oArc opts && oPlugin opts) $ do
     hPutStrLn stderr "--arc does not yet support plugin/foreign ownership boundaries"
     exitFailure
@@ -140,7 +268,12 @@ compileMain = do
             | otherwise -> underHome ("core" </> "prelude.fpr")
   let opts' = opts {oPrelude = prelude}
   (preludeSrc, preludeTops) <- maybe (pure ("", [])) parseFileSrc prelude
-  (rootSrc, rootTops0) <- parseFileSrc inp
+  (rootSrc0, rootTopsParsed) <- parseFileSrc inp
+  -- a LIBRARY: the file is compiled as the one import of an empty root,
+  -- so every name it defines is qualified by its module hash (no clash
+  -- with the program it links into) and nothing requires a `main`
+  let (rootSrc, rootTops0) =
+        if oLib opts then ("", [TUse "Lib" (takeFileName inp)]) else (rootSrc0, rootTopsParsed)
   -- ONE grammar, profile-gated views: `>` top-level statements are the
   -- sol/HostedBytecode surface.  Outside that view they are a profile
   -- error, not a parse error -- the sentence is grammatical everywhere,
@@ -361,7 +494,7 @@ compileMain = do
           unitExt = M.unions [arities uts | (_, uts) <- units']
           sourceExt = M.union preludeExt unitExt
           extFor = M.union (if oArc opts then arcExterns else M.empty) sourceExt -- own names win via prog-first lookup
-          tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts}
+          tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts}
           a64 = oA64 opts
           a64mac = oA64Mac opts
           x64 = oX64 opts
@@ -384,7 +517,7 @@ compileMain = do
           tag = "g" ++ show codegenRev ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
           own prog = if oArc opts then
-                       either (\e -> hPutStrLn stderr e >> exitFailure) pure (lowerArc sourceExt prog)
+                       either (\e -> hPutStrLn stderr e >> exitFailure) pure ((if oRaw opts then lowerRaw else lowerArc) sourceExt prog)
                      else pure prog
           emitUnit path exps ext uts = do
             cached <- doesFileExist path
@@ -448,9 +581,31 @@ compileMain = do
       when (oBuiltin opts && not (oArc opts) && M.member "machineInterrupt" rootProgRaw) $ do
         hPutStrLn stderr "machineInterrupt requires --arc (raw, allocation-free handler ABI)"
         exitFailure
-      rootProg <- own rootProgRaw
+      rootProgSym <- case symbolize rootProgRaw of
+        Left e -> hPutStrLn stderr ("error: " ++ e) >> exitFailure
+        Right p -> pure p
+      rootProg <- own rootProgSym
       let (rootAsm0, rootVNotes) = emitProgram tgt rvv spec imageExports extFor (if oArc opts then M.keysSet rootProg else bindNames root') rootProg
-          rootAsm = lower rootAsm0
+      -- the C-callable entries: each export needs a declared signature
+      -- over C-representable types, a function of that arity, <= 8 params
+      let baseName = takeWhile (/= '@')
+          sigsByBase = M.fromListWith (++) [ (baseName q, [(q, as, r)]) | TSig q (as, r) _ <- tops0RL ]
+      tramps <- forM (oExports opts) $ \(n, csym) -> do
+        let bad m = hPutStrLn stderr ("export " ++ n ++ ": " ++ m) >> exitFailure
+        (q, as, r) <- case M.lookup n sigsByBase of
+          Just [one] -> pure one
+          Just _ -> bad "ambiguous: more than one signature by that name"
+          Nothing -> bad "no declared signature (an export is a contract: write `name : A -> B .`)"
+        ps <- case M.lookup q rootProg of
+          Just (ps, _) -> pure ps
+          Nothing -> bad "no such function in this unit"
+        when (length ps /= length as) $ bad ("signature has " ++ show (length as) ++ " parameters, the function " ++ show (length ps))
+        when (length ps > 8) $ bad "more than 8 parameters: the C entry is register-only"
+        ks <- either bad pure (traverse ckindOf as)
+        rk <- either bad pure (ckindOf r)
+        putStrLn ("export " ++ csym ++ " : " ++ unwords (map show ks) ++ " -> " ++ show rk ++ "  (" ++ q ++ ")")
+        pure (trampoline (oHardFloat opts) csym ("fpr_fn_" ++ mangleName q) ks rk)
+      let rootAsm = lower rootAsm0 ++ unlines (concat tramps)
       mapM_ putStrLn rootVNotes
       writeFile out rootAsm
       wcetSummary "root" rootAsm

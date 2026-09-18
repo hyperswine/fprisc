@@ -5,6 +5,7 @@
 module Representation (represent, Kind, primitiveShape) where
 import FPRISC (Core(..), Prog)
 import Control.Monad (forM_, replicateM_, unless, zipWithM_)
+import Data.List (isPrefixOf)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 
@@ -142,6 +143,7 @@ represent input = evalStateT work (St 0 M.empty M.empty M.empty [])
     apply sig n actual = do
       (expected,result) <- case M.lookup n sig of
         Just s -> pure s
+        Nothing | "$sym." `isPrefixOf` n -> pure ([], Scalar 'a') -- a link-time address
         Nothing -> case primitiveShape n of
           Nothing -> err ("unsupported primitive or function value: " ++ n)
           Just shape -> do
