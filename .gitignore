@@ -17,3 +17,4 @@ plot*.svg
 **/__pycache__/
 cabal.project.local
 qos-store/
+
