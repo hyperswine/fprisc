@@ -1,5 +1,0 @@
-# mathv2 -- SIGNATURE-COMPATIBLE successor: same exports, same
-# arities (fpr commit would stamp it patch-compatible); tripling is
-# the visible behavior change the live reload must deliver.
-mathOp v = v * 3.
-mathName u = "triple.v2".

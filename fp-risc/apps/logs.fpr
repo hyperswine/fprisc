@@ -1,4 +1,0 @@
-# logs root: module-table carrier only
-A = use "../programs/mods/logsapp".
-main : unsafe Unit .
-main = A.appMeta 0.

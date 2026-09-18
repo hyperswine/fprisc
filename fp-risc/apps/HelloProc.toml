@@ -1,8 +1,0 @@
-name = "Hello Process"
-id = "HelloProc"
-entry = "n/a"
-loadMode = "process"
-version = "1"
-
-[permissions.optional]
-"/services/display" = "write"

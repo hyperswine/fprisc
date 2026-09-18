@@ -1,5 +1,0 @@
-main =
-  n = Sys.logSeq 3;
-  case n > 0 of
-    True -> "hostlog: HOST RING POPULATED ({n} lines)"
-    | False -> "hostlog: EMPTY".

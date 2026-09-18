@@ -1,4 +1,0 @@
-# mathbad -- the INCOMPATIBLE impostor: mathOp arity changed.
-# The load gate must refuse it and leave v2 bound.
-mathOp a b = a + b.
-mathName u = "bad.v3".

@@ -1,3 +1,0 @@
-# pnotes root: module-table carrier only
-A = use "../programs/mods/pnotes".
-main = A.appMeta 0.

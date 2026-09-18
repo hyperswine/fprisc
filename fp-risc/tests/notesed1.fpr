@@ -1,5 +1,0 @@
-# notesed1 -- the notes EDIT module, v1: a committed line is stored
-# with a trailing newline appended, otherwise verbatim (the persistence
-# framing).  The swap surface is one monomorphic function.
-editLine s = "{s}\n".
-editName u = "plain.v1".

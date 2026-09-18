@@ -1,9 +1,0 @@
-// truck_canvas.coscad -- the canvas hoop over the cargo bed, drawn khaki:
-// a 10-sided prism along Y, its lower half buried in the bed (bed top at
-// z = 0.82).  Same frame as truck.coscad.
-
-canvas = ψ 0.06 (ζ 0.7 (θ 90 (⎏ 10 0.46 1.24)))
-// the tailboard flap at the back
-flap = χ -0.46 (ψ -1.2 (ζ 0.82 (▬ 0.92 0.04 0.34)))
-
-main = canvas ⊕ flap

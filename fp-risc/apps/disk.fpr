@@ -1,4 +1,0 @@
-# disk root: module-table carrier only
-A = use "../programs/mods/diskapp".
-main : unsafe Unit .
-main = A.appMeta 0.

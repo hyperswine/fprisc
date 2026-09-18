@@ -1,3 +1,0 @@
-# sysbad -- the impostor: editLine arity drifted; the loader must refuse.
-editLine a b = a.
-editName u = "sys.bad".

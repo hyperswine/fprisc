@@ -1,4 +1,0 @@
-# monitor root: module-table carrier only
-A = use "../programs/mods/monitorapp".
-main : unsafe Unit .
-main = A.appMeta 0.

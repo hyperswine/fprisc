@@ -1,7 +1,0 @@
-# timefmt.fpr -- a formatting module resolved at RUNTIME by URL through
-# /services/modules.  An app holds only the (hash, name) pair -- the
-# FPRLive wire identity -- and System.qa resolves it; this module never
-# appears in the app's own code, only in the URL it asks for.
-showI : unsafe Int -> String .
-showI n = case n < 10 of True -> chr (48 + n) | False -> strcat (showI (n / 10)) (chr (48 + n - (n / 10) * 10)).
-pad2 n = case n < 10 of True -> strcat "0" (showI n) | False -> showI n.

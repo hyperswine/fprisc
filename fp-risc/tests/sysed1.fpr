@@ -1,3 +1,0 @@
-# sysed1 -- the sysdisk demo's edit module, v1: verbatim.
-editLine s = s.
-editName u = "sys.v1".

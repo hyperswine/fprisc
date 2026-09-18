@@ -1,4 +1,0 @@
-# notesedbad -- the INCOMPATIBLE impostor: editLine arity changed.
-# The load gate must refuse it and leave v2 bound.
-editLine s mode = s.
-editName u = "bad.v3".

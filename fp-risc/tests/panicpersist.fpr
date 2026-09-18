@@ -1,7 +1,0 @@
-# panicpersist.fpr -- a panic's last words must survive the
-# process.  Under qosp the fpr_panic_persist hook appends
-# "sys/panic\n<msg>" to the kv log via syscall tag 2 before dying, so a
-# crash-restart loop stops destroying its own evidence (the check-all greps the record while Disk.qa shows it on the next boot).
-main =
-  u = error "deliberate last words";
-  "unreached".

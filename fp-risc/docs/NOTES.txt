@@ -1,4 +1,0 @@
-make qos-app-macos-run PROG=tests/hello.fpr
-make qos-app-macos-run PROG=tests/frames.fpr
-
-The primary difference between argv and stdin is timing and delivery method: argv delivers fixed parameters to a program before it begins running, while stdin provides an open data stream to the program during its execution.
