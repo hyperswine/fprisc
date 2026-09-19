@@ -56,11 +56,12 @@ data Opts = Opts
     oSol :: Bool, -- the HostedBytecode/sol VIEW of the one grammar: `>` top-level eval accepted (auto-on for .sol input)
     oPrelude :: Maybe FilePath,
     oNoSafety :: Bool,
-    oFiles :: [FilePath]
+    oFiles :: [FilePath],
+    oForeign :: [FilePath] -- --foreign=FILE: the SYSTEM's primitive declarations (signatures only)
   }
 
 parseArgs :: [String] -> Opts
-parseArgs = foldl step (Opts rv64 False False Nothing Nothing False False False [] False False False False False False False False False False Nothing False [])
+parseArgs = foldl step (Opts rv64 False False Nothing Nothing False False False [] False False False False False False False False False False Nothing False [] [])
   where
     -- profile aliases (Target.hs): the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
@@ -112,6 +113,7 @@ parseArgs = foldl step (Opts rv64 False False Nothing Nothing False False False 
     step o "--rvv" = o {oRvv = True}
     step o a
       | "--prelude=" `isPrefixOf` a = o {oPrelude = Just (drop (length "--prelude=") a)}
+      | "--foreign=" `isPrefixOf` a = o {oForeign = oForeign o ++ [drop (length "--foreign=") a]}
       | "--export=" `isPrefixOf` a = o {oExports = oExports o ++ exportSpecs (drop (length "--export=") a)}
       | a == "--no-safety" = o {oNoSafety = True}
       | otherwise = o {oFiles = oFiles o ++ [a]}
@@ -318,7 +320,25 @@ compileMain = do
     Nothing | oBuiltin opts -> pure Nothing
             | otherwise -> underHome ("core" </> "prelude.fpr")
   let opts' = opts {oPrelude = prelude}
-  (preludeSrc, preludeTops) <- maybe (pure ("", [])) parseFileSrc prelude
+  (preludeSrc, preludeTops0) <- maybe (pure ("", [])) parseFileSrc prelude
+  -- --foreign=FILE: the primitives the SYSTEM supplies, declared by whoever
+  -- implements them.  The compiler used to type every QOS device and system
+  -- primitive itself (glRender, blkRead, Pin.*, Sys.caps, Apps.*): a language
+  -- that named one operating system's HAL.  Such a file holds signatures and
+  -- nothing else -- a signature with no definition is a foreign declaration,
+  -- resolved at link time to an fpr_g_ symbol -- and joins the prelude, so
+  -- every unit sees the names exactly as it saw the builtins.  docs/HAL.md.
+  -- FPR_FOREIGN (a path list, like FPR_PATH) names such files for every
+  -- invocation in a tree that exports it; the flag adds to it
+  envForeign <- maybe [] (filter (not . null) . splitOn ':') <$> lookupEnv "FPR_FOREIGN"
+  foreignTops <- fmap concat . forM (envForeign ++ oForeign opts) $ \f -> do
+    ts <- parseFile f
+    let strays = [n | TBind n _ _ _ <- ts]
+    unless (null strays) $ do
+      hPutStrLn stderr ("--foreign=" ++ f ++ ": declarations only; it defines " ++ unwords (take 5 strays))
+      exitFailure
+    pure [t | t@(TSig {}) <- ts]
+  let preludeTops = preludeTops0 ++ foreignTops
   -- a LIBRARY: the file is compiled as the one import of an empty root,
   -- so every name it defines is qualified by its module hash (no clash
   -- with the program it links into) and nothing requires a `main`
@@ -725,3 +745,9 @@ eraseCast = go
       CTagEq t k e -> CTagEq t k (go e)
       CProj i e -> CProj i (go e)
       _ -> c
+
+splitOn :: Char -> String -> [String]
+splitOn c str = case break (== c) str of
+  (a, []) -> [a]
+  (a, _ : rest) -> a : splitOn c rest
+

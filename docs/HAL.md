@@ -59,15 +59,36 @@ C that implements them. A program that references a primitive nobody supplied
 fails at LINK time on the `fpr_g_` name: the image's imports are its capability
 manifest.
 
+## The compiler declares what THIS tree implements, and nothing else
+
+`Infer.hs` typed QOS's devices and system calls itself until 2026-09-19 --
+`glRender`, `sndPlay`, `inputPoll`, `blkRead`, `netRead`, `Pin.*`, `Sys.caps`,
+`Sys.storeReq`, `Sys.compile`, `Sys.bindApp`, `Apps.*`, `timeNow`: a language
+implementation that could not be read without one operating system in it. The
+rule now is WHO IMPLEMENTS IT:
+
+| Implemented in | Declared in | Examples |
+|---|---|---|
+| this tree's runtime | the compiler | actors, `Mod.*`, the log rings, `Sys.arena`, `Sys.irqBind`, `Sys.timerArm` |
+| this tree's machine layer | the compiler | `device`, `reg8`, `reg32`, `read`, `write` |
+| the compiler itself | the compiler | `$cast`, `Addr.symbol`, the vector intrinsics |
+| QOS | **QOS** (`../qos/core/foreign.fpr`) | the 33 above |
+
+The mechanism is `--foreign=FILE`, or the path list `FPR_FOREIGN` (exported by
+QOS's `dependency.mk` and `qos.py`, beside `FPR_HOME` and `FPR_PATH`): a file
+of signatures and nothing else, joined to the prelude, so every unit sees the
+names exactly as it saw the builtins. That last property is why it is a file
+and not a declaration in each module: removing `Mmio` from the prelude broke
+every committed module version that used it, and these names are used
+everywhere -- this way none had to be re-committed. A sweep of the whole table
+against both trees' C (not a name pattern: the pattern missed two) confirms
+nothing implemented only in QOS is left in the compiler.
+
+Many of the moved types are `a -> b`. They were never really typed; giving them
+honest types is now a change to a file in QOS rather than to the compiler.
+
 ## What still does not follow the model
 
-- **The compiler's type environment** (`Infer.hs`) still types about 60 QOS and
-  device primitives -- `glRender`, `sndPlay`, `inputPoll`, `blkRead`,
-  `netRead`, `Pin.*`, `Sys.irqBind`, `Sys.timerArm`, `Sys.caps`, `Sys.store*`,
-  `Mod.*`, `Apps.*`. Each belongs in the QOS module that uses it, as a
-  body-less signature (`Sys.attachImage`, `Sys.placeImageAt` and `Host.*`
-  already are). Module by module, because committed module versions that use
-  a name break when it leaves (see QOS `fpr.lock`).
 - **The irq and timer ROUTING** (`Sys.irqBind`, the drains) is in `actors.c`:
   HAL policy inside the runtime. It runs on every host, where the raw ABI has
   no lowering yet, so it cannot become an FP-RISC unit today.
