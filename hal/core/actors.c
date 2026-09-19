@@ -179,6 +179,9 @@ typedef struct fpr_acb {
              * re-link it: bl_next zeroed mid-list (entries after it
              * lost) or the tail pointed at itself (a cycle the selector
              * walked forever, the hart "idle" with work in its rings). */
+  uw stack_sz; /* the stack's real size, read BEFORE its guard went up (the
+                * block header that says so lies inside the guard).  Last
+                * field: nothing above it moves. */
 } acb_t;
 #define TR(a, code) do { (a)->tr[(a)->tr_i++ % 16] = (uint8_t)((code) * 8 + (fpr_hart() ? fpr_hart()->id : 7)); } while (0)
 
@@ -261,7 +264,7 @@ static char *acb_hp, *acb_end;
 /* pool telemetry, always on, PULL-based (Sys.memStats reads them):
  * a print at an allocation site is a syscall inside the allocator */
 uw fpr_stk_pushes, fpr_stk_misses, fpr_spawns, fpr_chb_carves;
-static void stack_recycle(void *p);
+static void stack_recycle(void *p, uw size);
 static V spawn_on_pid(uw hart, V f, uw pin, uw pid);
 
 /* ---- the stack guard ---------------------------------------------------
@@ -276,14 +279,24 @@ static V spawn_on_pid(uw hart, V f, uw pin, uw pid);
 __attribute__((weak)) void hal_stack_guard(void *lo, uw size) { (void)lo; (void)size; }
 __attribute__((weak)) void hal_stack_unguard(void *lo, uw size) { (void)lo; (void)size; }
 
-static void *stack_guarded(void *p) {
-  if (p) hal_stack_guard(p, STACK_SZ);
+/* A stack is as big as the block it was GIVEN.  STACK_SZ is what is asked
+ * for; the buddy rounds (size + its header) up to a power of two, so a
+ * 256 KiB request is a 512 KiB block -- and the top half used to sit
+ * unused while the stack overflowed out of the bottom.  (tests/dtree.fpr
+ * needs ~400 KiB: it ran past a 256 KiB stack on every run, into the
+ * previous block's unused half, and passed by that accident until the
+ * guard said so.)  Same memory, the whole block, the guard at its true
+ * low end.  A process's grant is only known to be what was wanted. */
+static void *stack_guarded(void *p, uw *size) {
+  if (!p) return 0;
+  *size = big_block_size(p, STACK_SZ); /* reads the header the guard is about to cover */
+  hal_stack_guard(p, *size);
   return p;
 }
-static void *stack_block(void) {
-  if (fpr_mem_own) return stack_guarded(fpr_mem_take(STACK_SZ));
+static void *stack_block(uw *size) {
+  if (fpr_mem_own) return stack_guarded(fpr_mem_take(STACK_SZ), size);
   void *p = fpr_fl_take(&stack_fl, STACK_SZ);
-  if (p) return stack_guarded(p);
+  if (p) return stack_guarded(p, size);
   __atomic_add_fetch(&fpr_stk_misses, 1, __ATOMIC_RELAXED);
   /* SELF-TOPPING on a miss: take two, keep one warm.  A miss means
    * live+in-flight actors exceeded pool depth, so depth converges to
@@ -292,13 +305,13 @@ static void *stack_block(void) {
    * the spawn-vs-death-epilogue race keeps finding an empty pool
    * (measured: 13 misses/8k spawns, ~12KB/s of permanent stacks). */
   void *spare = big_block(STACK_SZ);
-  if (spare) stack_recycle(spare);
-  return stack_guarded(big_block(STACK_SZ));
+  if (spare) stack_recycle(spare, 0); /* never guarded */
+  return stack_guarded(big_block(STACK_SZ), size);
 }
 
 /* a dead actor's stack: home to the memory actor, or the recycler */
-static void stack_recycle(void *p) {
-  hal_stack_unguard(p, STACK_SZ);
+static void stack_recycle(void *p, uw size) {
+  if (size) hal_stack_unguard(p, size);
   if (fpr_mem_own) { fpr_mem_give(p); return; }
   fpr_fl_put(&stack_fl, p, STACK_SZ);
   __atomic_add_fetch(&fpr_stk_pushes, 1, __ATOMIC_RELAXED);
@@ -311,7 +324,7 @@ void *fpr_current_stack(uw *id, uw *size) {
   acb_t *a = h ? h->current : 0;
   if (!a || !a->stack) return 0;
   if (id) *id = a->id;
-  if (size) *size = STACK_SZ;
+  if (size) *size = a->stack_sz;
   return a->stack;
 }
 
@@ -477,7 +490,7 @@ static void reap(acb_t *a) {
   drop_drain(a); /* the holds of windows the dead actor never closed */
   if (a->msg_slab) { fpr_slab_unhold(a->msg_slab, 0); a->msg_slab = 0; } /* its packing slab */
   fpr_pool_reclaim(a);
-  stack_recycle(a->stack); /* home to the memory actor (or the recycler) */
+  stack_recycle(a->stack, a->stack_sz); /* home to the memory actor (or the recycler) */
   a->stack = 0;
   if (a->ch) {
     chb_limbo_put(a->ch); /* deferred: see the epoch essay above */
@@ -1394,16 +1407,18 @@ void fpr_actors_init(void) { /* hart 0, before fpr_smp_go */
   main_acb.parent = 0;
   main_acb.pid = 0;
   ledger_push(&main_acb);
-  char *stk = (char *)stack_block();
+  uw stk_sz = 0;
+  char *stk = (char *)stack_block(&stk_sz);
   if (!stk) fpr_cpanic("boot: no block for actor 0's stack");
   static void *main_bkts[FPR_NBUCKETS]; /* actor 0 lives forever */
   fpr_pool_init(&main_acb.pool, main_bkts);
   main_acb.dp_n = 0;
   main_acb.msg_slab = 0;
   main_acb.stack = stk;
+  main_acb.stack_sz = stk_sz;
   for (int i = 0; i < 16; i++) main_acb.ctx[i] = 0;
   fpr_ctx_fabricate(main_acb.ctx, (void (*)(void))trampoline,
-                    ((uw)stk + STACK_SZ) & ~(uw)15, &fpr_harts[0]);
+                    ((uw)stk + stk_sz) & ~(uw)15, &fpr_harts[0]);
   enq(&fpr_harts[0], &main_acb);
   fpr_mem_spawn(); /* the memory actor, second in hart 0's queue */
 }
@@ -1434,7 +1449,8 @@ static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t d
   if (hart >= fpr_live_harts) fpr_cpanic("spawnOn: no such hart (Sys.harts is the live count)");
   if (ISINT(f) || TID(f) != T_PAP) fpr_cpanic("spawn: argument must be a function");
   acb_t *a = (acb_t *)acb_block();
-  char *stk = (char *)stack_block();
+  uw stk_sz = 0;
+  char *stk = (char *)stack_block(&stk_sz);
   if (!a || !stk) fpr_cpanic("spawn: buddy has no free block");
   fpr_pool_init(&a->pool, fpr_bkt_take()); /* zeroed; teardown returns it */
   a->dp_n = 0;
@@ -1468,6 +1484,7 @@ static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t d
   a->entry = f;
   a->next = 0;
   a->stack = stk;
+  a->stack_sz = stk_sz;
   a->id = __atomic_add_fetch(&next_id, 1, __ATOMIC_RELAXED);
   a->hart = hart;
   a->pin = pin;
@@ -1481,7 +1498,7 @@ static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t d
   /* first-activation state is machine-specific (x86 needs a stack-
    * alignment bias; rv needs tp) -- the ctx layer owns fabrication */
   fpr_ctx_fabricate(a->ctx, (void (*)(void))trampoline,
-                    ((uw)stk + STACK_SZ) & ~(uw)15, &fpr_harts[hart]);
+                    ((uw)stk + stk_sz) & ~(uw)15, &fpr_harts[hart]);
   /* everything above happens-before the ship (ring release / same-hart
    * program order), so the owner hart sees a fully built acb */
   ship(a);

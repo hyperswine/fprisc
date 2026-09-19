@@ -100,35 +100,41 @@ void hal_stack_unguard(void *lo, uw size) {
   mprotect((void *)guard_page(lo, pg), pg, PROT_READ | PROT_WRITE);
 }
 
+/* is `addr` in (or a big frame's step below) the guard of the stack at `lo`? */
+int hal_stack_guard_hit(void *lo, uw size, void *addr) {
+  uintptr_t pg = (uintptr_t)getpagesize(), at = (uintptr_t)addr;
+  if (!lo || size < 4 * pg) return 0;
+  uintptr_t g = guard_page(lo, pg);
+  return at + 8 * pg >= g && at < g + pg;
+}
+/* the last words, and the end.  Signal context: write(2), _exit. */
+void hal_stack_overflow_die(uw id, uw size) {
+  char msg[200];
+  int n = snprintf(msg, sizeof msg,
+                   "\n*** FPRISC PANIC [actor %lu]: stack overflow -- the actor ran off its %lu KiB stack "
+                   "(recursion that is not a tail call goes as deep as its input; use an accumulator)\n",
+                   (unsigned long)id, (unsigned long)(size >> 10));
+  fflush(stdout);
+  if (n > 0) (void)!write(2, msg, (size_t)n);
+  _exit(1);
+}
 static void fault_handler(int sig, siginfo_t *info, void *ctx) {
   (void)ctx;
   uw id = 0, size = 0;
   void *lo = fpr_current_stack(&id, &size);
-  uintptr_t pg = (uintptr_t)getpagesize(), at = (uintptr_t)info->si_addr;
-  if (lo && size >= 4 * pg) {
-    uintptr_t g = guard_page(lo, pg);
-    /* in the guard, or just below it: a frame larger than a page steps over */
-    if (at + 8 * pg >= g && at < g + pg) {
-      char msg[200];
-      int n = snprintf(msg, sizeof msg,
-                       "\n*** FPRISC PANIC [actor %lu]: stack overflow -- the actor ran off its %lu KiB stack "
-                       "(recursion that is not a tail call goes as deep as its input; use an accumulator)\n",
-                       (unsigned long)id, (unsigned long)(size >> 10));
-      fflush(stdout);
-      if (n > 0) (void)!write(2, msg, (size_t)n);
-      _exit(1);
-    }
-  }
+  if (hal_stack_guard_hit(lo, size, info->si_addr)) hal_stack_overflow_die(id, size);
   signal(sig, SIG_DFL); /* not ours: let it be the crash it is */
 }
 
 /* once per hart THREAD: an alternate stack is a per-thread thing */
-void hal_fault_init(void) {
+void hal_fault_altstack(void) {
   stack_t ss = {0};
   ss.ss_size = 64 * 1024;
   ss.ss_sp = malloc(ss.ss_size);
-  if (!ss.ss_sp) return;
-  sigaltstack(&ss, 0);
+  if (ss.ss_sp) sigaltstack(&ss, 0);
+}
+void hal_fault_init(void) {
+  hal_fault_altstack();
   struct sigaction sa;
   memset(&sa, 0, sizeof sa);
   sa.sa_sigaction = fault_handler;

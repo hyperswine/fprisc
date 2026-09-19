@@ -68,9 +68,10 @@ driver written as an actor, its interrupts arriving as mailbox messages.
    assembly: `rd b 24`, `wr a 56 v`. Porting the scheduler in that style would
    be less readable and less safe than the C. A `layout` declaration -- named,
    typed fields at fixed offsets, zero cost -- is the prerequisite for tier 1.
-2. **Stack safety.** Building a 20,000-element list by ordinary recursion dies
-   with SIGBUS (BOUNDS.md). FP-RISC recurses where C loops, so this matters more
-   with every line that moves. Guaranteed tail calls, or an overflow check.
+2. **Stack safety.** LANDED for the hosted systems (BOUNDS.md): an overflow is a
+   named panic from a guard page on posix and QOS Portable, and a stack spans
+   the whole block it was given. FP-RISC recurses where C loops, so this
+   mattered more with every line that moved. Bare metal still has no guard.
 3. **`builtin` beyond first-order and one hart**, and raw exports past 8
    register parameters.
 4. **Compiler-generated equality, show and copy.**
