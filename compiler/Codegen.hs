@@ -354,7 +354,11 @@ emitProgram tgt rvv spec exports ext exps prog0 =
       modify (\st -> st {cgVNotes = concat [declines spec prog fn b | (fn, (_, b)) <- M.toList prog] ++ cgVNotes st})
       fns <- concat <$> mapM (uncurry (compileFn prog)) (M.toList prog)
       specs <- emitSpecs prog
-      modtab <- if null exports then pure [] else modTable
+      -- the builtin target links no module registry (hal/core/mod.c is not
+      -- in its runtime), so the table has no reader there -- and as a strong
+      -- global it made two library units in one image a link error (a
+      -- program's library beside the FP-RISC allocator)
+      modtab <- if null exports || tgtArc tgt then pure [] else modTable
       strs <- gets cgStrs
       pure $
         ( ["# target: " ++ tgtName tgt]

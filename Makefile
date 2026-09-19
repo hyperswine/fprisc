@@ -168,12 +168,18 @@ FORCE:
 
 # Unsafe standalone Builtin profile: no actors, devices, QOS or prelude.
 #
-# HEAP=fpr swaps the C allocator for hal/builtin/heap.fpr, compiled as a
-# LIBRARY unit (--lib) whose exports are the same C symbols heap.c
-# defined (fpr_alloc, fpr_free, fpr_builtin_release, ...).  It needs the
-# raw ABI (ARC=1): the allocator is written over Word/Addr and must not
-# allocate to allocate.
+# The allocator is hal/builtin/heap.fpr: FP-RISC over typed layouts
+# (docs/LAYOUTS.md), compiled as a LIBRARY unit (--lib) whose exports are
+# the C symbols the runtime calls (fpr_alloc, fpr_free,
+# fpr_builtin_release, ...).  It is written over Word/Addr and must not
+# allocate to allocate, so it needs the raw ABI: ARC=1 selects it, and the
+# legacy manual ABI (no ARC) keeps heap.c.  HEAP=c forces the C one, which
+# is also what check_builtin.py builds natively under ASan/UBSan.
+ifeq ($(ARC),1)
+HEAP ?= fpr
+else
 HEAP ?= c
+endif
 ifeq ($(HEAP),fpr)
 ifneq ($(ARC),1)
 $(error HEAP=fpr needs ARC=1: the FP-RISC allocator uses the raw Word/Addr ABI)

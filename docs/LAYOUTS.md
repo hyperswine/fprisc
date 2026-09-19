@@ -106,6 +106,19 @@ The section-per-function change is worth more than layouts did: the same image
 was **31,818 bytes** before it. A third of every builtin image was code the
 linker could not reach.
 
+## The allocator is FP-RISC by default
+
+With ARC (`ARC=1`) the builtin image links `heap.fpr`; `HEAP=c` forces
+`heap.c`, which remains for the legacy manual ABI and for `check_builtin.py`'s
+native ASan/UBSan run. Every builtin suite runs on the FP-RISC allocator.
+It is slower under QEMU (`check_arc.py` 20 s against 7 s): first-fit with a
+linear `find`, the same algorithm as the C, in naive generated code.
+
+The builtin target also emits no module table any more. It links no module
+registry, so the table had no reader -- and as a strong global it made two
+library units in one image a link error, which the FP-RISC allocator beside a
+program's own library immediately was.
+
 ## Limits
 
 - rv64 only: a word is 8 bytes. The builtin profile refuses other targets.

@@ -202,3 +202,15 @@ return in `hal_putc`. posix and the qosp host add nothing: the OS line
 discipline already does it on a terminal, and a pipe wants none. Checked: posix
 and qosp stdout carry no CR, both rv64 UARTs still put CRLF on the wire.
 A small instance of this whole document: console policy living in the core.
+
+### Step 2a: typed layouts, and the allocator is FP-RISC (2026-09-19)
+
+`docs/LAYOUTS.md`. `Block = Layout { ... }` is a nominal pointer type that
+expands at parse time and costs nothing; `hal/builtin/heap.fpr` is ported to it
+and is the default allocator under ARC, exercised by every builtin suite.
+`heap.c` stays for the legacy manual ABI. `arc.c` and `unsafe.c` are
+calling-convention glue between generated code and C primitives -- mechanism,
+and they stay. Making the linker able to collect dead code (a section per
+function, object and string) took the builtin image from 31,818 bytes to
+about 20,000.
+
