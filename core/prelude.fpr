@@ -227,7 +227,6 @@ mapSndV f ps = case ps of Nil -> Nil | (a, b) :: rest -> (a, f b) :: mapSndV f r
 # ---- process/system seam + actor fork-join ---------------------------------
 
 Sys.init    : Unit -> Unit.
-Sys.loadElfAt : String -> Int -> Int -> caps -> (Int, String).
 Sys.arenaFree : Unit -> Int.
 heapUsed : Unit -> Int.
 
