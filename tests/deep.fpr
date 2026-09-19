@@ -1,0 +1,5 @@
+# deep.fpr -- plain (non-tail) recursion 200,000 frames deep (a 256 KiB stack held about 5,000): the stack grows
+unsafe program.
+build n = case n == 0 of True -> Nil | False -> n :: build (n - 1).
+sum xs = case xs of Nil -> 0 | h :: t -> h + sum t.
+main = print "deep: {sum (build 200000)}".

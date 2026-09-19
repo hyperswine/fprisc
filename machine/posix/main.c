@@ -41,6 +41,9 @@ int main(int argc, char **argv) {
   /* FPR_HARTS=n lowers (or raises up to the compile cap) the live hart
    * count -- FPR_HARTS=1 is the determinism switch for byte-compared
    * runs.  The default is the compile-time value. */
+  /* policy, not capacity: the ceiling on ONE actor's stack (actors.c) */
+  const char *sm = getenv("FPR_STACK_MAX_MB");
+  if (sm && atol(sm) > 0) fpr_stack_max = (uw)atol(sm) << 20;
   const char *e = getenv("FPR_HARTS");
   if (e && *e) {
     long n = strtol(e, 0, 10);

@@ -18,7 +18,8 @@ import qualified Compile
 import FPRISC (declaredProfile)
 import Home (fprHome)
 import qualified Sol.Main
-import System.Directory (XdgDirectory (..), createDirectoryIfMissing, doesFileExist, getModificationTime, getTemporaryDirectory, getXdgDirectory, removeFile)
+import Data.Time.Clock (UTCTime)
+import System.Directory (XdgDirectory (..), createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory, getModificationTime, getTemporaryDirectory, getXdgDirectory, removeFile)
 import System.Environment (getExecutablePath, lookupEnv, withArgs)
 import System.Exit (ExitCode (..), exitFailure, exitWith)
 import System.FilePath (dropExtension, takeBaseName, takeExtension, takeFileName, (</>))
@@ -108,7 +109,12 @@ build p = do
       -- and links, nothing more
       rtdir = cache </> "rt" </> (System.Info.arch ++ "-h" ++ show (pHarts p))
   createDirectoryIfMissing True rtdir
-  objs <- mapM (objectFor cc cflags rtdir) (posix ++ core)
+  -- an object is stale when ANY header is newer, not just its own source: a
+  -- changed struct in fpr.h (the hart block) otherwise links new objects
+  -- against old ones, which is a crash with no message
+  hdrs <- fmap concat (mapM headersIn [runtime, machine </> "posix"])
+  hdrTime <- if null hdrs then pure Nothing else Just . maximum <$> mapM getModificationTime hdrs
+  objs <- mapM (objectFor cc cflags rtdir hdrTime) (posix ++ core)
   -- --with: a program that IS a host brings the device primitives it calls
   -- (the fpr_g_ names it leaves undefined) as C beside the runtime.  They
   -- are compiled with the runtime's flags plus --cflag, never cached.
@@ -125,15 +131,22 @@ isDiagnostic :: String -> Bool
 isDiagnostic l = take 4 l == "=== " || take 4 l == "  * " || "rror" `isInfixOf` l
 
 -- compile one runtime source into the cache unless its object is fresh
-objectFor :: String -> [String] -> FilePath -> FilePath -> IO FilePath
-objectFor cc cflags rtdir src = do
+headersIn :: FilePath -> IO [FilePath]
+headersIn d = do
+  e <- doesDirectoryExist d
+  if not e then pure [] else do
+    fs <- listDirectory d
+    pure [d </> f | f <- fs, takeExtension f == ".h"]
+
+objectFor :: String -> [String] -> FilePath -> Maybe UTCTime -> FilePath -> IO FilePath
+objectFor cc cflags rtdir hdrTime src = do
   let obj = rtdir </> (takeFileName src ++ ".o")
   fresh <- do
     e <- doesFileExist obj
     if not e then pure False else do
       ts <- getModificationTime src
       to <- getModificationTime obj
-      pure (to >= ts)
+      pure (to >= ts && maybe True (to >=) hdrTime)
   unless fresh $ do
     code <- rawSystem cc (cflags ++ ["-c", src, "-o", obj])
     when (code /= ExitSuccess) $ hPutStrLn stderr ("fpr build: " ++ cc ++ " failed on " ++ src) >> exitWith code

@@ -48,12 +48,13 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([build('tests/stduse.fpr', 'stduse')])
     assert 'std: clamp=10 backoff=800 fold=15' in p.stdout, p.stdout
     print('Panics exit 1 by name; actors on two pthread harts and std modules run unchanged: PASS')
-    # 4b. running off an actor's stack is a named panic, exit 1 -- never a bare signal
-    p = run([build('tests/base/overflow.fpr', 'overflow')], 1)
-    assert 'accumulator: 200000' in p.stdout, p.stdout
-    assert 'stack overflow' in p.stderr and 'PANIC [actor 0]' in p.stderr, p.stderr
-    assert 'recursion:' not in p.stdout
-    print('Stack overflow: a named panic from the guard page, exit 1; the accumulator form needs no stack: PASS')
+    # 4b. a stack grows: deep plain recursion is just a program; recursion that
+    # never ends is a named panic at the policy ceiling, exit 1 -- never a bare signal
+    p = run([build('tests/base/overflow.fpr', 'overflow')], 1, env={'FPR_STACK_MAX_MB': '64'})
+    assert 'accumulator: 200000' in p.stdout and 'recursion: 200000' in p.stdout, p.stdout
+    assert 'stack overflow' in p.stdout + p.stderr and 'PANIC [actor 0]' in p.stdout + p.stderr, p.stderr
+    assert 'forever:' not in p.stdout
+    print('Stacks grow (200,000 plain frames); run-away recursion is a named panic at the ceiling, exit 1: PASS')
     # 4c. the heap is a reservation of address space, not a size: a live heap past
     # the 256 MiB it used to be fixed at, and FPR_HEAP_MB caps a run by name
     big = build('tests/base/bigheap.fpr', 'bigheap')

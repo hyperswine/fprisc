@@ -161,6 +161,7 @@ typedef struct fpr_sched {
   void (*fuel)(void);                 /* fpr_fuel_exhausted, kernel copy */
   uw (*arc_live)(void);
   char *heap_lo, *heap_hi;            /* fpr_in_heap bounds, shared span */
+  uw (*stack_grow)(uw sp);            /* the plane owns the actors, so their stacks */
 } fpr_sched_t;
 extern fpr_sched_t *fpr_sched;        /* NULL = this image is the plane */
 void fpr_sched_export(fpr_sched_t *out); /* fill with THIS image's impls */
@@ -223,6 +224,12 @@ typedef struct {
    * spillRef).  This is the x64 a6/a7 TLS-cell mechanism promoted to
    * the portable convention. */
   sw argspill[FPR_ARGSPILL];
+  /* the running actor's stack segment, as the function-entry check wants it
+   * (Codegen.hs stackCheck): there is room iff  sp - stk_lo < stk_span
+   * (unsigned).  stk_lo is the segment's low end plus the headroom C calls
+   * need; 0 / ~0 means "not an actor's stack: never grow".  MUST stay at
+   * offsets W*57 and W*58: generated code reads them tp-relative. */
+  uw stk_lo, stk_span;
   uw id;
   fpr_pool_t pool;                /* boot/hart-loop allocs (pre-actor, never freed) */
   struct fpr_acb *current;        /* running actor, 0 = in the hart loop */
@@ -254,6 +261,9 @@ typedef struct {
  * spillRef or move argspill back. */
 _Static_assert(__builtin_offsetof(fpr_hart_t, argspill) == sizeof(sw),
                "argspill must sit at offset W (tp-relative, Codegen.hs)");
+_Static_assert(__builtin_offsetof(fpr_hart_t, stk_lo) == sizeof(sw) * (1 + FPR_ARGSPILL) &&
+               __builtin_offsetof(fpr_hart_t, stk_span) == sizeof(sw) * (2 + FPR_ARGSPILL),
+               "stk_lo/stk_span must follow the spill cells (Codegen.hs stackCheck)");
 
 extern fpr_hart_t fpr_harts[FPR_NHARTS];
 /* how many hart blocks are LIVE this run (threads actually started):
@@ -527,6 +537,13 @@ void hal_putc(char c); /* hal.c: raw console for panics + runtime */
 uint64_t hal_mtime(void); /* hal.c: the machine timer (actors.c has the weak zero) */
 /* the stack guard (actors.c): a HAL that can make memory inaccessible does
  * so at a stack's low end, and reports the overflow by name when it faults */
+/* Growable stacks (actors.c): generated code calls this when the entry check
+ * fails; it answers the sp to continue on (a fresh, larger segment) or 0
+ * (there was room after all -- the segment sp is in was not the newest).
+ * fpr_stack_max is the POLICY ceiling on one actor's stack, all segments
+ * together: run-away recursion is a named panic, not the machine's memory. */
+uw fpr_stack_grow(void);
+extern uw fpr_stack_max;
 void hal_stack_guard(void *lo, uw size);
 void hal_stack_unguard(void *lo, uw size);
 void *fpr_current_stack(uw *id, uw *size);

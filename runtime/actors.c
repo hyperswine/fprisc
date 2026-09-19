@@ -180,8 +180,11 @@ typedef struct fpr_acb {
              * lost) or the tail pointed at itself (a cycle the selector
              * walked forever, the hart "idle" with work in its rings). */
   uw stack_sz; /* the stack's real size, read BEFORE its guard went up (the
-                * block header that says so lies inside the guard).  Last
-                * field: nothing above it moves. */
+                * block header that says so lies inside the guard). */
+  /* growable stacks: the segments linked in after `stack` (newest first), one
+   * kept warm, and the check values of the segment last known to hold sp */
+  struct stkseg *segs, *spare;
+  uw stk_lo, stk_span, stk_total;
 } acb_t;
 #define TR(a, code) do { (a)->tr[(a)->tr_i++ % 16] = (uint8_t)((code) * 8 + (fpr_hart() ? fpr_hart()->id : 7)); } while (0)
 
@@ -317,6 +320,129 @@ static void stack_recycle(void *p, uw size) {
   __atomic_add_fetch(&fpr_stk_pushes, 1, __ATOMIC_RELAXED);
 }
 
+/* ---- growable stacks ----------------------------------------------------
+ * An actor's stack is not a size.  Every function entry the compiler cannot
+ * prove shallow checks that sp still has FPR_STACK_HEADROOM below it in the
+ * segment it is in (two loads, a subtract, a branch: Codegen.hs stackCheck);
+ * when it has not, fpr_stack_grow links in a NEW segment twice the size of
+ * the last -- the mailbox ring's `Dynamic n` doubling -- and the function
+ * continues with sp there.  Nothing moves: a frame is addressed through its
+ * frame pointer and the epilogue restores sp FROM the frame pointer, so the
+ * function that grew returns into the old segment by itself, with no
+ * trampoline and no per-architecture assembly.  (Moving a live stack is not
+ * possible here: C frames and saved frame pointers hold addresses into it.)
+ *
+ * Release is lazy.  Once sp has returned to an older segment the newer ones
+ * are dead, but nothing runs at that moment; the next failed check notices
+ * sp is not in the newest segment, pops the dead ones (keeping one warm, so a
+ * call that straddles a boundary in a loop never allocates twice) and
+ * re-answers.  reap() frees the rest.
+ *
+ * The headroom is what C gets: the runtime's own calls run on the actor's
+ * stack and are not checked.  The guard page stays below every segment as
+ * the backstop for them, and for a single frame larger than the headroom.
+ * fpr_stack_max is policy, not capacity: the ceiling on one actor's stack,
+ * so that run-away recursion is a named panic instead of the machine's
+ * memory.  Bare metal has no guard page, and needs none for FP-RISC frames
+ * any more: the check is the guard. */
+#ifndef FPR_STACK_HEADROOM
+#define FPR_STACK_HEADROOM ((uw)64 * 1024)
+#endif
+uw fpr_stack_max = (uw)1 << 30;
+
+static void fpr_panic_stack(const char *what, uw kib) __attribute__((noreturn));
+static void fpr_panic_stack(const char *what, uw kib) { /* "<what><kib> KiB" */
+  static char msg[128];
+  char *p = msg;
+  for (; *what && p < msg + 96; what++) *p++ = *what;
+  char d[24];
+  int n = 0;
+  do { d[n++] = (char)('0' + kib % 10); kib /= 10; } while (kib);
+  while (n) *p++ = d[--n];
+  for (const char *t = " KiB"; *t; t++) *p++ = *t;
+  *p = 0;
+  fpr_cpanic(msg);
+}
+
+typedef struct stkseg { struct stkseg *prev; char *lo; uw size; } stkseg_t; /* at the segment's TOP */
+
+static void stk_window(acb_t *a, fpr_hart_t *h, char *lo, uw size) {
+  a->stk_lo = (uw)lo + FPR_STACK_HEADROOM;
+  a->stk_span = size - FPR_STACK_HEADROOM;
+  if (h) { h->stk_lo = a->stk_lo; h->stk_span = a->stk_span; }
+}
+static void stkseg_free(stkseg_t *g) {
+  char *lo = g->lo;
+  uw size = g->size;
+  hal_stack_unguard(lo, size);
+  if (fpr_mem_own) fpr_mem_give(lo);
+  else fpr_fl_put(&stack_fl, lo, size); /* a loader's grant is never returned */
+}
+static void stk_release_all(acb_t *a) {
+  while (a->segs) { stkseg_t *g = a->segs; a->segs = g->prev; stkseg_free(g); }
+  if (a->spare) { stkseg_free(a->spare); a->spare = 0; }
+  a->stk_total = 0;
+}
+
+static uw stack_grow_at(uw sp);
+uw fpr_stack_grow(void) {
+  uw sp = (uw)__builtin_frame_address(0);
+  /* a loaded process's actors are the PLANE's: its scheduler grows them */
+  if (fpr_sched) return fpr_sched->stack_grow(sp);
+  return stack_grow_at(sp);
+}
+static uw stack_grow_at(uw sp) {
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h ? h->current : 0;
+  if (!a || !a->stack) { /* the hart loop, a boot stack: not ours to grow */
+    if (h) { h->stk_lo = 0; h->stk_span = ~(uw)0; }
+    return 0;
+  }
+  /* segments sp has left are dead: pop them, the largest stays warm */
+  while (a->segs && !(sp >= (uw)a->segs->lo && sp < (uw)a->segs->lo + a->segs->size)) {
+    stkseg_t *g = a->segs;
+    a->segs = g->prev;
+    a->stk_total -= g->size;
+    if (!a->spare) a->spare = g;
+    else if (g->size > a->spare->size) { stkseg_free(a->spare); a->spare = g; }
+    else stkseg_free(g);
+  }
+  char *lo = a->segs ? a->segs->lo : (char *)a->stack;
+  uw size = a->segs ? a->segs->size : a->stack_sz;
+  if (sp < (uw)lo || sp >= (uw)lo + size) { /* a stack we do not know (a foreign caller's) */
+    h->stk_lo = 0; h->stk_span = ~(uw)0;
+    return 0;
+  }
+  stk_window(a, h, lo, size);
+  if (sp - a->stk_lo < a->stk_span) return 0; /* room after all */
+  /* a new segment, double the last */
+  uw want = 2 * size - sizeof(uw); /* the buddy adds its header back: exactly the next order */
+  if (a->stack_sz + a->stk_total + 2 * size > fpr_stack_max) {
+    h->stk_lo = 0; h->stk_span = ~(uw)0; /* the panic path runs on what is left */
+    fpr_panic_stack("stack overflow -- the actor's stack reached its ceiling, fpr_stack_max, at ", (a->stack_sz + a->stk_total) >> 10);
+  }
+  stkseg_t *g = 0;
+  char *nlo;
+  uw nsz;
+  if (a->spare && a->spare->size >= 2 * size) {
+    nlo = a->spare->lo; nsz = a->spare->size; a->spare = 0;
+  } else {
+    nlo = (char *)big_block_d(want, 1);
+    if (!nlo) {
+      h->stk_lo = 0; h->stk_span = ~(uw)0;
+      fpr_panic_stack("stack overflow -- no memory to grow the actor's stack by ", want >> 10);
+    }
+    nsz = big_block_size(nlo, want);
+    hal_stack_guard(nlo, nsz);
+  }
+  g = (stkseg_t *)((uw)(nlo + nsz - sizeof(stkseg_t)) & ~(uw)15);
+  g->prev = a->segs; g->lo = nlo; g->size = nsz;
+  a->segs = g;
+  a->stk_total += nsz;
+  stk_window(a, h, nlo, nsz);
+  return (uw)g & ~(uw)15;
+}
+
 /* for a HAL's fault handler: the stack of the actor running on THIS hart
  * (NULL between actors), its size and the actor's id.  Reads only. */
 void *fpr_current_stack(uw *id, uw *size) {
@@ -324,6 +450,10 @@ void *fpr_current_stack(uw *id, uw *size) {
   acb_t *a = h ? h->current : 0;
   if (!a || !a->stack) return 0;
   if (id) *id = a->id;
+  if (a->segs) { /* the newest segment: where a C frame would run off */
+    if (size) *size = a->segs->size;
+    return a->segs->lo;
+  }
   if (size) *size = a->stack_sz;
   return a->stack;
 }
@@ -490,6 +620,7 @@ static void reap(acb_t *a) {
   drop_drain(a); /* the holds of windows the dead actor never closed */
   if (a->msg_slab) { fpr_slab_unhold(a->msg_slab, 0); a->msg_slab = 0; } /* its packing slab */
   fpr_pool_reclaim(a);
+  stk_release_all(a);
   stack_recycle(a->stack, a->stack_sz); /* home to the memory actor (or the recycler) */
   a->stack = 0;
   if (a->ch) {
@@ -1069,6 +1200,8 @@ static void hart_loop(fpr_hart_t *h) {
       h->idle = 0;
       stable = 0;
       h->current = n;
+      h->stk_lo = n->stk_lo; /* the entry check reads the RUNNING actor's segment */
+      h->stk_span = n->stk_span;
       fpr_ctx_switch(h->sched_ctx, n->ctx);
       h->current = 0;
       /* body-return / kill marked it DEAD before switching back; we are
@@ -1418,6 +1551,9 @@ void fpr_actors_init(void) { /* hart 0, before fpr_smp_go */
   main_acb.msg_slab = 0;
   main_acb.stack = stk;
   main_acb.stack_sz = stk_sz;
+  main_acb.segs = main_acb.spare = 0;
+  main_acb.stk_total = 0;
+  stk_window(&main_acb, 0, stk, stk_sz);
   for (int i = 0; i < 16; i++) main_acb.ctx[i] = 0;
   fpr_ctx_fabricate(main_acb.ctx, (void (*)(void))trampoline,
                     ((uw)stk + stk_sz) & ~(uw)15, &fpr_harts[0]);
@@ -1487,6 +1623,9 @@ static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t d
   a->next = 0;
   a->stack = stk;
   a->stack_sz = stk_sz;
+  a->segs = a->spare = 0;
+  a->stk_total = 0;
+  stk_window(a, 0, stk, stk_sz);
   a->id = __atomic_add_fetch(&next_id, 1, __ATOMIC_RELAXED);
   a->hart = hart;
   a->pin = pin;
@@ -2140,6 +2279,7 @@ void fpr_sched_export(fpr_sched_t *out) {
   out->pool_reset = fpr_pool_reset_c;
   out->fuel = fpr_fuel_exhausted;
   out->arc_live = sched_arc_live;
+  out->stack_grow = stack_grow_at;
   out->heap_lo = fpr_heap_lo;
   out->heap_hi = fpr_heap_hi;
 }
