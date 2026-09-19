@@ -27,7 +27,7 @@ check('map', label='Map and Set: a persistent AVL tree, 100,000 keys in and half
 check('json', label='Json: parse with line and column, escapes and surrogate pairs, deterministic render, a 640 KB round trip')
 # the SAME module files from a Sol script (docs/WHAT_IS_SOL.md: one vocabulary)
 p = subprocess.run([fpr, 'sol', str(ROOT / 'tests' / 'std' / 'solstd.sol')], capture_output=True, text=True, timeout=300)
-got = [l for l in p.stdout.splitlines() if not l.startswith('[')]
+got = [l for l in p.stdout.splitlines() if not l.startswith(('[sol]', '[table]', '[jit]'))]
 assert got == ['[1, 2, 3]', 'Some 3', 'A-B--C', '[(and, 2), (bird, 1), (cat, 1), (dog, 1), (the, 3)]', '[1,{"a":null}]',
                'Err line 1, column 4: expected a value, found the end of the text'], p.stdout + p.stderr
 print('Sol runs the same std modules (list, string, map, option, order, json), and prints values as written: PASS')
