@@ -23,6 +23,7 @@
 
 module Inline (inlineSmall) where
 
+import Control.Monad (foldM)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S

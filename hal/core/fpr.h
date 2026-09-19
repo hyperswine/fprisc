@@ -507,6 +507,7 @@ extern void (*fpr_panic_persist)(const char *msg, uw n);
 str_t *fpr_mkstr(const uint8_t *src, uw n);
 
 void hal_putc(char c); /* hal.c: raw console for panics + runtime */
+uint64_t hal_mtime(void); /* hal.c: the machine timer (actors.c has the weak zero) */
 void hal_poweroff(int code); /* hal.c: terminate the machine if the
                               * platform can (QEMU virt: sifive test
                               * finisher).  May return (real silicon:

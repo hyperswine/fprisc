@@ -27,15 +27,15 @@ query argv = P.output (Proc.query (P.spec argv)).
 > expect "stdin"
     (P.output (Proc.query (P.withStdin "piped" (P.spec ["/bin/cat"])))) (Ok "piped").
 > expect "cwd"
-    (P.output (Proc.query (P.inDir "/tmp" (P.spec ["/bin/pwd"])))) (Ok "/tmp\n").
+    (P.output (Proc.query (P.inDir "/usr" (P.spec ["/bin/pwd"])))) (Ok "/usr\n").
 
 # ---- failure is a VALUE ----
 > expect "missing binary is Err" (isOk (query ["/no/such/binary"])) False.
 > expect "nonzero is Err"        (isOk (query ["/bin/sh", "-c", "exit 2"])) False.
 > expect "timeout is Err"
     (isOk (P.output (Proc.query (P.withTimeout 10 (P.spec ["/bin/sleep", "2"]))))) False.
-> expect "succeeded" (P.succeeded (Proc.query (P.spec ["/bin/true"])),
-                      P.succeeded (Proc.query (P.spec ["/bin/false"]))) (True, False).
+> expect "succeeded" (P.succeeded (Proc.query (P.spec ["/bin/sh", "-c", "true"])),
+                      P.succeeded (Proc.query (P.spec ["/bin/sh", "-c", "false"]))) (True, False).
 
 # ---- two tools compose on the rails ----
 > expect "pipeline"
@@ -51,9 +51,9 @@ query argv = P.output (Proc.query (P.spec argv)).
   u = Proc.afterCommit (P.spec ["/bin/sh", "-c", "printf queued > /tmp/sol-procs-order.txt"]);
   expect "query sees pre-commit state"
     (readPathOr "absent" @/tmp/sol-procs-order.txt) "absent".
-> u = Proc.afterCommit (P.spec ["/bin/true"]);
+> u = Proc.afterCommit (P.spec ["/bin/sh", "-c", "true"]);
   expect "runNow refused while queued"
-    (mapErr (fn e -> Str.contains "queued" e) (Proc.runNow (P.spec ["/bin/true"]))) (Err True).
+    (mapErr (fn e -> Str.contains "queued" e) (Proc.runNow (P.spec ["/bin/sh", "-c", "true"]))) (Err True).
 
 # ---- the string doors ----
 > expect "sh" (sh "printf hi; exit 0") (0, "hi").

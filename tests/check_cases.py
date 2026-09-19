@@ -6,13 +6,16 @@ arm takes the arms after it -- whatever the types involved, while every
 legitimate shape (nested patterns, a nested case in the final arm, a
 parenthesized nested case, an actor loop's trailing `_`) still compiles."""
 from pathlib import Path
-import os, subprocess
+import os, subprocess, tempfile
 ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
 subprocess.run(['make', 'fpr'], check=True, capture_output=True, timeout=300)
 CASES = ROOT / 'tests' / 'cases'
+# the compiler writes <out dir>/units beside its output, so /dev/null is not an output path
+TMP = tempfile.TemporaryDirectory(prefix='fpr-cases-')
+OUT = str(Path(TMP.name) / 'out.s')
 def compile_(name):
-    p = subprocess.run(['./fprc', '--profile=bare-metal-builtin', '--arc', str(CASES / name), '/dev/null'],
+    p = subprocess.run(['./fprc', '--profile=bare-metal-builtin', '--arc', str(CASES / name), OUT],
                        capture_output=True, text=True, timeout=120)
     return p.returncode, p.stdout + p.stderr
 def refused(name, *needles):
