@@ -144,3 +144,51 @@ void hal_fault_init(void) {
   sigaction(SIGBUS, &sa, 0);
 }
 
+/* ---- the heap: a reservation, not a size --------------------------------
+ * The heap used to be FPR_HEAP_MB (256) of .bss, chosen at build time.  It is
+ * address space now: the largest span the system will reserve, from 1 TiB
+ * (the buddy's largest block) down, mapped MAP_NORESERVE so nothing is
+ * committed until it is touched.  What bounds a program is memory, and the
+ * address space.  FPR_HEAP_MB in the ENVIRONMENT caps the span for a run (a
+ * test of exhaustion, a machine with strict overcommit); fpr_heap_reserve is
+ * shared with QOS Portable's host, which reserves at the apps' address. */
+#ifndef MAP_NORESERVE
+#define MAP_NORESERVE 0
+#endif
+void *fpr_heap_reserve(void *at, uw max, uw min, uw *bytes) {
+  for (uw want = max; want >= min && want; want >>= 1) {
+    void *p = mmap(at, want, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
+    if (p == MAP_FAILED) continue;
+    if (at && p != at) { munmap(p, want); continue; } /* a hint, never MAP_FIXED over something live */
+    *bytes = want;
+    return p;
+  }
+  return 0;
+}
+
+/* A program with a reservation that must sit at a FIXED address (QOS
+ * Portable's host: app images are linked at one) makes it here, before this
+ * heap can land on top of it. */
+__attribute__((weak)) void hal_heap_before_reserve(void) {}
+
+void hal_heap_span(char **lo, char **hi, char **span_hi) {
+  hal_heap_before_reserve();
+  uw bytes = 0, max = (uw)1 << 40;
+  const char *cap = getenv("FPR_HEAP_MB");
+  if (cap && atol(cap) > 0) max = (uw)atol(cap) << 20;
+  char *p = fpr_heap_reserve(0, max, cap ? max : (uw)16 << 20, &bytes);
+  if (!p) { fprintf(stderr, "fpr: cannot reserve address space for the heap\n"); exit(1); }
+  *lo = p;
+  *hi = *span_hi = p + bytes;
+}
+
+void hal_heap_release(void *p, uw bytes) {
+  uintptr_t pg = (uintptr_t)getpagesize();
+  uintptr_t a = ((uintptr_t)p + pg - 1) & ~(pg - 1), e = ((uintptr_t)p + bytes) & ~(pg - 1);
+  if (e <= a) return;
+#ifdef __APPLE__
+  madvise((void *)a, e - a, MADV_FREE);
+#else
+  madvise((void *)a, e - a, MADV_DONTNEED);
+#endif
+}

@@ -24,7 +24,10 @@ const hdr_t fpr_unit = {T_UNIT, 0};
  * exact-fit bigfree LIFO (the "larger blocks leak by design" PoC rule
  * is retired -- Vec.free of a big column block comes back).  Actor
  * stacks were never the leak: they ride the stack pool. */
-extern char _heap_start[], _heap_end[];
+/* The heap's span is a run-time fact, not a link-time one: the machine layer
+ * says where it is (hal_heap_span) and how big -- RAM on a board, a
+ * reservation of address space on a hosted system (docs/BOUNDS.md). */
+char *fpr_heap_lo, *fpr_heap_hi;
 
 /* per-hart control blocks; tp points at ours (see fpr.h essay) */
 fpr_hart_t fpr_harts[FPR_NHARTS];
@@ -105,8 +108,12 @@ void fpr_rt_init(void) {
 #else
     uw minb = 64u * 1024;
 #endif
-    uw base = ((uw)_heap_start + (minb - 1)) & ~(uw)(minb - 1);
-    buddy_init((void *)base, (uw)_heap_end - base);
+    char *lo, *hi, *span_hi; /* the buddy's [lo, hi); fpr_in_heap's [lo, span_hi) */
+    hal_heap_span(&lo, &hi, &span_hi);
+    uw base = ((uw)lo + (minb - 1)) & ~(uw)(minb - 1);
+    buddy_init((void *)base, (uw)hi - base);
+    fpr_heap_lo = lo;
+    fpr_heap_hi = span_hi;
     fpr_mem_own = 1; /* this image runs the buddy: the memory actor follows */
   }
   fpr_set_tp(&fpr_harts[0]);
@@ -135,7 +142,7 @@ int fpr_in_heap(V v) { /* the buddy span: heap + process regions */
 #endif
   if (fpr_sched) /* shared plane: the KERNEL's span is the heap */
     return !ISINT(v) && (char *)v >= fpr_sched->heap_lo && (char *)v < fpr_sched->heap_hi;
-  return !ISINT(v) && (char *)v >= _heap_start && (char *)v < _proc_arena_end;
+  return !ISINT(v) && (char *)v >= fpr_heap_lo && (char *)v < fpr_heap_hi;
 }
 
 #endif

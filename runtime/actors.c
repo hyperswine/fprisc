@@ -2126,7 +2126,6 @@ static V sched_receive_res(V me) { return a_receive_res(me); }
 V fpr_receive_res_c(V me) { return a_receive_res(me); } /* process.c's syscall wait */
 static uw sched_arc_live(void) { return fpr_arc_live_count(); }
 void fpr_sched_export(fpr_sched_t *out) {
-  extern char _heap_start[], _proc_arena_end[];
   out->send_as = fpr_send_as;
   out->receive = sched_receive;
   out->receive_from = sched_receive_from;
@@ -2141,6 +2140,6 @@ void fpr_sched_export(fpr_sched_t *out) {
   out->pool_reset = fpr_pool_reset_c;
   out->fuel = fpr_fuel_exhausted;
   out->arc_live = sched_arc_live;
-  out->heap_lo = _heap_start;
-  out->heap_hi = _proc_arena_end;
+  out->heap_lo = fpr_heap_lo;
+  out->heap_hi = fpr_heap_hi;
 }

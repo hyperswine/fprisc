@@ -175,10 +175,20 @@ void buddy_free(void *p) {
   buddy_free_locked(p);
   fpr_unlock(&buddy_lock);
 }
+/* A freed block this big gives its pages back to whoever backs the heap
+ * (hal_heap_release; a no-op on a board).  Only the block being freed, not
+ * what it coalesces into: the cost stays proportional to the free, and the
+ * small blocks that churn never pay a system call.  The first words stay --
+ * the free-list node lives there -- so the HAL trims to whole pages inside. */
+#define BUDDY_RELEASE_ORDER 4 /* 1 MiB at the 64 KiB minimum */
+__attribute__((weak)) void hal_heap_release(void *p, uw bytes) { (void)p; (void)bytes; }
+
 static void buddy_free_locked(void *p) { /* under buddy_lock */
   char *hdr = (char *)p - sizeof(uw);
   int order = (int)*(uw *)hdr;
   uw off = offset_of(hdr);
+  if (order >= BUDDY_RELEASE_ORDER)
+    hal_heap_release(hdr + sizeof(free_node_t), block_size(order) - sizeof(free_node_t));
   while (order < max_order) {
     uw buddy_off = off ^ block_size(order);
     free_node_t *buddy = (free_node_t *)(arena_base + buddy_off);

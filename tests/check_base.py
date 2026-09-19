@@ -54,6 +54,13 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     assert 'stack overflow' in p.stderr and 'PANIC [actor 0]' in p.stderr, p.stderr
     assert 'recursion:' not in p.stdout
     print('Stack overflow: a named panic from the guard page, exit 1; the accumulator form needs no stack: PASS')
+    # 4c. the heap is a reservation of address space, not a size: a live heap past
+    # the 256 MiB it used to be fixed at, and FPR_HEAP_MB caps a run by name
+    big = build('tests/base/bigheap.fpr', 'bigheap')
+    assert 'bigheap: 72000006000000' in run([big]).stdout
+    p = run([big], 1, env={'FPR_HEAP_MB': '64'})
+    assert 'heap exhausted' in p.stdout + p.stderr, p.stderr
+    print('The heap grows with the program (577 MiB live); capped by FPR_HEAP_MB it is a named panic: PASS')
     # 6. fpr run: build to a temp file, pass the arguments through, return its status
     p = run(['./fpr', 'run', 'tests/base/args.fpr', 'x', 'y'], 3, env={'FPR_BASE_VAR': 'v'})
     assert 'args: x,y (2)' in p.stdout, p.stdout

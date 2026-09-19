@@ -32,14 +32,22 @@ __attribute__((weak)) const uw fpr_modtab[1] = {0};
  * attach order.  Mod.find resolves BY NAME ONLY across attachments --
  * the caller of a runtime-loaded library has no hash to pin (the whole
  * point is not knowing the code in advance), so absence is data. */
-#define MOD_MAXATTACH 8
-static const uw *xtabs[MOD_MAXATTACH];
-static int nxtabs;
+static const uw **xtabs; /* doubles: a program attaches as many libraries as it has memory for */
+static int nxtabs, capxtabs;
 
 int fpr_mod_attach(const uw *tab) {
-  if (!tab || nxtabs >= MOD_MAXATTACH) return -1;
+  if (!tab) return -1;
   for (int i = 0; i < nxtabs; i++)
     if (xtabs[i] == tab) return 0; /* re-attach: idempotent */
+  if (nxtabs == capxtabs) {
+    int cap = capxtabs ? capxtabs * 2 : 8;
+    /* the old table is NOT freed: a Mod.find on another hart may be walking
+     * it, and doubling wastes at most the final table's size again */
+    const uw **t = (const uw **)fpr_alloc((uw)cap * sizeof *t);
+    for (int i = 0; i < nxtabs; i++) t[i] = xtabs[i];
+    xtabs = t;
+    capxtabs = cap;
+  }
   xtabs[nxtabs++] = tab;
   return 0;
 }

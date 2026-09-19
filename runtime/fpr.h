@@ -383,7 +383,22 @@ void *buddy_reserve_range(void *addr, uw bytes);
 void buddy_release_range(void *addr, uw bytes);
 uw buddy_block_usable_size(void *p);
 
-extern char _proc_arena_start[], _proc_arena_end[];
+extern char _proc_arena_start[], _proc_arena_end[]; /* boards with a linked process slot only */
+
+/* The heap's span, decided at run time by the machine layer:
+ *   [*lo, *hi)       what the buddy runs over
+ *   [*lo, *span_hi)  what fpr_in_heap calls heap (a board's process slot
+ *                    follows its heap; elsewhere span_hi == hi)
+ * A board answers with its RAM.  A hosted system answers with a RESERVATION
+ * of address space, committed by the OS page by page as it is touched, so
+ * the heap has no size of its own.  hal_heap_release gives the pages of a
+ * large free block back (weak no-op where there is nobody to give them to). */
+void hal_heap_span(char **lo, char **hi, char **span_hi);
+void hal_heap_release(void *p, uw bytes);
+/* machine/posix: the largest span in [min, max] (halving) the system will
+ * reserve, at `at` if given -- committed only as it is touched */
+void *fpr_heap_reserve(void *at, uw max, uw min, uw *bytes);
+extern char *fpr_heap_lo, *fpr_heap_hi;
 
 /* the memory-growth grant a process's fpr_alloc asks for on bump
  * exhaustion (runtime.c) -- ptr NULL means denied. fpr_grow_memory is
