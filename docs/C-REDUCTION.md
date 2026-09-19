@@ -64,10 +64,10 @@ driver written as an actor, its interrupts arriving as mailbox messages.
 
 ## What the language needs first
 
-1. **Typed memory layouts.** `hal/builtin/heap.fpr` works, and reads like
-   assembly: `rd b 24`, `wr a 56 v`. Porting the scheduler in that style would
-   be less readable and less safe than the C. A `layout` declaration -- named,
-   typed fields at fixed offsets, zero cost -- is the prerequisite for tier 1.
+1. **Typed memory layouts.** LANDED (docs/LAYOUTS.md): `Block = Layout { ... }`
+   is a nominal pointer type that expands at parse time into ordinary
+   definitions and costs nothing; `hal/builtin/heap.fpr` is ported to it, and
+   is smaller than it was by hand. Tier 1 can now be written to be read.
 2. **Stack safety.** LANDED for the hosted systems (BOUNDS.md): an overflow is a
    named panic from a guard page on posix and QOS Portable, and a stack spans
    the whole block it was given. FP-RISC recurses where C loops, so this

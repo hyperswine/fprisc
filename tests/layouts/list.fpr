@@ -1,0 +1,23 @@
+# a linked list in raw memory, through a Layout: offsets, natural alignment,
+# narrow fields, a pinned field, the null / eq / index helpers
+profile builtin.
+
+Node = Layout { value : Int, next : Node, tag : U8, flags : U32, wide : U16 @ 30 }.
+Pair = Layout { a : Word, b : Word }.
+
+mk v nx = n = Node.at (Mem.alloc (Node.sizeOf Unit)); _ = Node.setValue n v; _ = Node.setNext n nx; _ = Node.setTag n 7; _ = Node.setWide n 513; n.
+sum n acc = case Node.isNull n of True -> acc | False -> sum (Node.next n) (acc + Node.value n).
+drop n = case Node.isNull n of True -> Unit | False -> nx = Node.next n; _ = Mem.free (Node.addr n); drop nx.
+offset a b = Word.toInt (Word.sub (Addr.toWord b) (Addr.toWord a)).
+
+main =
+  l = mk 1 (mk 2 (mk 39 (Node.null Unit)));
+  _ = print "sum={sum l 0} sizeOf={Node.sizeOf Unit} tag={Node.tag l} wide={Node.wide l} second={Node.value (Node.next l)}";
+  _ = print "offsets: next={offset (Node.addr l) (Node.nextAt l)} tag={offset (Node.addr l) (Node.tagAt l)} flags={offset (Node.addr l) (Node.flagsAt l)} wide={offset (Node.addr l) (Node.wideAt l)}";
+  _ = print "eq: self={Node.eq l l} other={Node.eq l (Node.next l)} null={Node.isNull (Node.null Unit)}";
+  ps = Pair.at (Mem.alloc (3 * Pair.sizeOf Unit));
+  _ = Pair.setB (Pair.index ps 2) (Word.fromInt 99);
+  _ = print "index: third.b={Word.toInt (Pair.b (Pair.index ps 2))} stride={offset (Pair.addr ps) (Pair.addr (Pair.index ps 1))}";
+  _ = Mem.free (Pair.addr ps);
+  _ = drop l;
+  print "LAYOUTS HOLD live={Mem.liveAllocations Unit}".

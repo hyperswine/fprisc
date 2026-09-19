@@ -37,7 +37,7 @@ inlineSmall rounds limit prog0 = evalState (foldM (const . step) prog0 [1 .. rou
     candidate prog n = case M.lookup n prog of
       Just (ps, body)
         | not (null ps),
-          size body <= limit,
+          size body <= limit || (straight body && size body <= 4 * limit),
           noLam body,
           n `S.notMember` globals ps body ->
             Just (ps, body)
@@ -68,6 +68,26 @@ inlineSmall rounds limit prog0 = evalState (foldM (const . step) prog0 [1 .. rou
           CTagEq t v x -> CTagEq t v <$> go env x
           CProj i x -> CProj i <$> go env x
           e -> pure e
+
+-- A STRAIGHT body: no branch, and nothing applied but lowered primitives
+-- (`$arc.*`).  Such a body is a fixed run of machine operations, so copying
+-- it into a site can only remove a call -- there is no callee in it to
+-- duplicate.  It gets a larger allowance than `limit` because ARC's
+-- let-normal form inflates it: a Layout's one-line setter
+-- (FPRISC.expandLayout) lowers to ~29 nodes, just past 24, and stayed a call
+-- in every ARC-managed program until this rule.
+straight :: Core -> Bool
+straight = \case
+  CIf {} -> False
+  CLam {} -> False
+  e@(CApp _ _) -> case spineOf e of
+    (CVar f, args) -> take 5 f == "$arc." && all straight args
+    _ -> False
+  CLet _ a b -> straight a && straight b
+  CMk _ _ fs -> all straight fs
+  CTagEq _ _ x -> straight x
+  CProj _ x -> straight x
+  _ -> True
 
 spineOf :: Core -> (Core, [Core])
 spineOf = go []

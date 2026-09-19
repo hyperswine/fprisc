@@ -16,7 +16,7 @@ import Control.Monad.State.Strict
 import Data.Bits (shiftR, xor)
 import qualified Data.Bits
 import GHC.Float (castDoubleToWord64, castFloatToWord32)
-import Data.Char (isAlphaNum, isLetter, isLower, isUpper, ord)
+import Data.Char (isAlphaNum, isLetter, isLower, isUpper, ord, toUpper)
 import Data.List (foldl', intercalate, isPrefixOf, nub, sort, sortOn)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -570,7 +570,7 @@ patAtom =
 --------------------------------------------------------------------------------
 
 program :: P [STop]
-program = sc *> many topDecl <* eof
+program = sc *> (concat <$> many (layoutDecl <|> ((: []) <$> topDecl))) <* eof
 
 topDecl :: P STop
 topDecl =
@@ -942,6 +942,120 @@ desugarEvals tops =
 
 keyword :: String -> P ()
 keyword w = lexeme . try $ void (string w <* notFollowedBy (satisfy identChar))
+
+-- ---- typed memory layouts ----------------------------------------------------
+-- `Block = Layout { size : Word, prev : Block, next : Block, used : Int }.`
+--
+-- A NOMINAL pointer type over raw memory, for the builtin profile's systems
+-- code.  hal/builtin/heap.fpr was written before this existed and reads like
+-- assembly (`rd b 24`, `wr a 56 v`): the offsets live in a comment, and an
+-- Addr is an Addr, so handing `next` a payload pointer type-checks.  A Layout
+-- names the fields, computes their offsets, and makes `Block` a type of its
+-- own -- a `Block` is not an `Addr` and not some other layout.
+--
+-- It is sugar: the declaration EXPANDS HERE, at parse time, into an empty
+-- `Type`, signatures and ordinary definitions over Mem/Addr/Word.  Nothing
+-- downstream knows layouts exist -- modules qualify the names, inference
+-- checks them, representation inference sees the raw primitives, and
+-- Inline.hs folds the accessors into their call sites.  The one thing a
+-- definition cannot express is the cast between `Addr` and the nominal type,
+-- so those two bodies are the internal primitive `$cast` (Infer: a -> b),
+-- which Compile erases to the identity before Core reaches a backend: under
+-- the raw ABI a Layout costs exactly what the hand-written offsets did.
+--
+-- Field types: Word, Addr, Int (word-sized); U8, U16, U32; or another
+-- layout's name -- a typed pointer to it, stored as a word.  Offsets run in
+-- order at natural alignment; `f : T @ n` pins one (and may overlap, for a
+-- union).  `_` is padding.  For layout L and field f (capitalised F):
+--   L.f : L -> T          L.setF : L -> T -> Unit      L.fAt : L -> Addr
+--   L.at : Addr -> L      L.addr : L -> Addr           L.sizeOf : Unit -> Int
+--   L.index : L -> Int -> L (the i-th L after this one)
+--   L.null : Unit -> L    L.isNull : L -> Bool         L.eq : L -> L -> Bool
+layoutDecl :: P [STop]
+layoutDecl = do
+  -- committed once `Name = Layout` is read, so a bad field says why
+  n <- try (upperName <* eqSign <* keyword "Layout")
+  fs <- braces (field `sepBy1` symbol ",")
+  dotTerm
+  either fail pure (expandLayout n fs)
+  where
+    field = do
+      f <- pName <|> (lexeme (char '_' <* notFollowedBy (satisfy identChar)) >> pure "_")
+      _ <- lexeme (char ':')
+      t <- upperName
+      off <- optional (symbol "@" *> integer)
+      pure (f, t, off)
+
+expandLayout :: Name -> [(Name, Name, Maybe Integer)] -> Either String [STop]
+expandLayout l fs0 = do
+  placed <- place 0 fs0
+  let named = [x | x@(f, _, _) <- placed, f /= "_"]
+      dups = [f | (f, _, _) <- named, length [() | (g, _, _) <- named, g == f] > 1]
+      clash = [f | (f, _, _) <- named, f `elem` ["at", "addr", "sizeOf", "index", "null", "isNull", "eq"]]
+  case (dups, clash) of
+    (f : _, _) -> Left ("Layout " ++ l ++ ": field `" ++ f ++ "` is declared twice")
+    (_, f : _) -> Left ("Layout " ++ l ++ ": field `" ++ f ++ "` collides with the generated " ++ l ++ "." ++ f)
+    _ -> pure ()
+  let total = roundUp 8 (maximum (0 : [o + widthOf t | (_, t, o) <- placed]))
+  pure $
+    [TType l False [] []]
+      ++ def "at" [ty "Addr"] (ty l) ["a"] (cast (v "a"))
+      ++ def "addr" [ty l] (ty "Addr") ["p"] (cast (v "p"))
+      ++ def "sizeOf" [ty "Unit"] (ty "Int") ["u"] (SInt total)
+      ++ def "index" [ty l, ty "Int"] (ty l) ["p", "i"]
+           (cast (call "Addr.add" [addrOf, SBin "*" (v "i") (SInt total)]))
+      ++ def "null" [ty "Unit"] (ty l) ["u"] (cast (call "Addr.null" [v "u"]))
+      ++ def "isNull" [ty l] (ty "Bool") ["p"] (call "Addr.eq" [addrOf, call "Addr.null" [SVar "Unit"]])
+      ++ def "eq" [ty l, ty l] (ty "Bool") ["p", "q"] (call "Addr.eq" [addrOf, cast (v "q")])
+      ++ concat [fieldDefs f t o | (f, t, o) <- named]
+  where
+    v = SVar
+    ty t = TCon t []
+    call f = foldl SApp (SVar f)
+    cast e = SApp (SVar "$cast") e
+    -- a pointer field casts with `$cast` itself, not the other layout's
+    -- at/addr: the accessor's SIGNATURE pins both ends, and a body with no
+    -- call in it cannot grow under inlining.  (With a call inside, ARC's
+    -- let-normal form pushed the body past Inline's size limit after one
+    -- round, so sites exposed in round two -- a setter reached through a
+    -- helper -- stayed calls, and kept the accessor in the image.)
+    castTo _ e = cast e
+    castFrom _ e = cast e
+    -- flat on purpose: `$cast p`, not a call to L.addr -- an accessor is then one
+    -- primitive expression and folds into its site in a single inlining round
+    addrOf = cast (v "p")
+    def f args res ps body =
+      [ TSig (l ++ "." ++ f) (args, res) (map (const Nothing) args),
+        TBind (l ++ "." ++ f) (map PVar ps) [] body
+      ]
+    widthOf t = case t of "U8" -> 1; "U16" -> 2; "U32" -> 4; _ -> 8
+    roundUp a x = ((x + a - 1) `div` a) * a
+    place _ [] = Right []
+    place cur ((f, t, moff) : rest) = do
+      let w = widthOf t
+          o = maybe (roundUp w cur) id moff
+      if o < 0 || o `mod` w /= 0
+        then Left ("Layout " ++ l ++ ": field `" ++ f ++ "` at offset " ++ show o ++ " is not aligned to its " ++ show w ++ "-byte type " ++ t)
+        else ((f, t, o) :) <$> place (o + w) rest
+    fieldDefs f t o =
+      let cap = toUpper (head f) : tail f
+          at = if o == 0 then addrOf else call "Addr.add" [addrOf, SInt o]
+          here = at
+          (fty, get, set) = case t of
+            "Word" -> (ty "Word", call "Mem.readWord" [here], call "Mem.writeWord" [here, v "x"])
+            "Addr" -> (ty "Addr", call "Addr.fromWord" [call "Mem.readWord" [here]], call "Mem.writeWord" [here, call "Addr.toWord" [v "x"]])
+            "Int" -> (ty "Int", call "Word.toInt" [call "Mem.readWord" [here]], call "Mem.writeWord" [here, call "Word.fromInt" [v "x"]])
+            "U8" -> (ty "Int", call "Mem.read8" [here], call "Mem.write8" [here, v "x"])
+            "U16" -> (ty "Int", call "Mem.read16" [here], call "Mem.write16" [here, v "x"])
+            "U32" -> (ty "Word", call "Mem.read32" [here], call "Mem.write32" [here, v "x"])
+            other ->
+              ( ty other,
+                castTo other (call "Addr.fromWord" [call "Mem.readWord" [here]]),
+                call "Mem.writeWord" [here, call "Addr.toWord" [castFrom other (v "x")]]
+              )
+       in def (f ++ "At") [ty l] (ty "Addr") ["p"] at
+            ++ def f [ty l] fty ["p"] get
+            ++ def ("set" ++ cap) [ty l, fty] (ty "Unit") ["p", "x"] set
 
 -- `Functor = Sig { map : (a -> b) -> t a -> t b }.`  (a named row)
 sigDecl :: P STop

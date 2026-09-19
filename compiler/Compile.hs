@@ -539,7 +539,7 @@ compileMain = do
                 bn = S.fromList ([fst3 b | b@(TBind {}) <- uts])
              in [t | t@(TBind n _ _ _) <- rw, S.member n bn]
                   ++ [t | t <- rw, not (isTBind t)]
-          compileUnit uts = fst (runState (compileTop uts >>= liftFix) (DEnv 0 consAll shapes []))
+          compileUnit uts = M.map (fmap eraseCast) (fst (runState (compileTop uts >>= liftFix) (DEnv 0 consAll shapes [])))
           preludeExt = arities preludeE'
           unitExt = M.unions [arities uts | (_, uts) <- units']
           sourceExt = M.union preludeExt unitExt
@@ -706,3 +706,22 @@ wcetSummary what asm = do
       hPutStrLn stderr ("[wcet] " ++ what ++ ": " ++ show (length parsed) ++ " function(s), max segment " ++ (case parsed of [] -> "0"; _ -> show (maximum (map segOf parsed))) ++ " IR insns between safepoints")
       mapM_ (\(fn, kvs) -> hPutStrLn stderr ("[wcet]   " ++ fn ++ "  segmax=" ++ maybe "?" id (lookup "segmax" kvs) ++ "  ccalls=" ++ maybe "?" id (lookup "ccalls" kvs))) top
     _ -> pure ()
+
+
+-- A Layout's two casts (FPRISC.expandLayout) are `$cast x`: typed a -> b so
+-- a nominal pointer type can stand for an Addr, and the identity in fact.
+-- Erased here, so no backend, no representation pass and no ARC lowering
+-- ever meets it: `Block.at a` IS `a`.
+eraseCast :: Core -> Core
+eraseCast = go
+  where
+    go c = case c of
+      CApp (CVar "$cast") x -> go x
+      CApp f x -> CApp (go f) (go x)
+      CLam ps b -> CLam ps (go b)
+      CLet n e b -> CLet n (go e) (go b)
+      CIf a b d -> CIf (go a) (go b) (go d)
+      CMk t k es -> CMk t k (map go es)
+      CTagEq t k e -> CTagEq t k (go e)
+      CProj i e -> CProj i (go e)
+      _ -> c

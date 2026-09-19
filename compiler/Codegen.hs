@@ -366,8 +366,11 @@ emitProgram tgt rvv spec exports ext exps prog0 =
           ++ specs
           ++ ["    .section .rodata", ""]
           ++ concatMap objFor (M.toList prog)
+          ++ ["    .section .rodata" | tgtArc tgt]
           ++ modtab
+          ++ ["    .section .rodata" | tgtArc tgt, not (null modtab)]
           ++ concatMap strFor (M.toList strs)
+          ++ ["    .section .rodata" | tgtArc tgt]
           ++ concatMap nulFor (S.toList (nullaries prog))
     -- the module table: (hash str, export-name str, static PAP) triples,
     -- zero-terminated.  mod.c's `Mod.fn hash name` scans it — the local
@@ -376,10 +379,15 @@ emitProgram tgt rvv spec exports ext exps prog0 =
     modTable = do
       rows <- concat <$> mapM row [me | me <- exports, meArity me >= 1]
       pure $
-        [ "    .balign 8",
-          "    .globl fpr_modtab",
-          "fpr_modtab:"
-        ]
+        -- a section of its own on the builtin target: that profile links no
+        -- module registry, so nothing refers to the table -- but in the
+        -- shared .rodata it survived beside live strings and kept EVERY
+        -- function of a library unit alive through its rows
+        ["    .section .rodata.fpr_modtab,\"a\",@progbits" | tgtArc tgt]
+          ++ [ "    .balign 8",
+               "    .globl fpr_modtab",
+               "fpr_modtab:"
+             ]
           ++ rows
           ++ ["    " ++ tgtDir tgt ++ " 0", ""]
       where
@@ -420,7 +428,8 @@ emitProgram tgt rvv spec exports ext exps prog0 =
       | null ps = []
       | otherwise =
           let m = mangle n
-           in [ "    .balign 8" ]
+           in (if tgtArc tgt then ["    .section .rodata.fpr_obj_" ++ m ++ ",\"a\",@progbits"] else [])
+              ++ [ "    .balign 8" ]
               ++ [ "    " ++ visibility tgt (n) ++ " fpr_obj_" ++ m | S.member n exps ]
               ++ [
                 "fpr_obj_" ++ m ++ ":",
@@ -457,7 +466,10 @@ emitProgram tgt rvv spec exports ext exps prog0 =
       -- is what `.byte 8212` silently does -- em-dashes became 0x14).
       -- The length field is the BYTE length for the same reason.
       let bs = concatMap utf8 content
-       in [ "    .balign 8",
+       in -- its own section on the builtin target, so an unreferenced literal
+          -- (a collected module table's export names) goes with --gc-sections
+          [ "    .section .rodata.fpr_str" ++ filter (/= '.') label ++ ",\"a\",@progbits" | tgtArc tgt ]
+            ++ [ "    .balign 8",
             label ++ ":",
             "    .long 9000",
             "    .long 0",
@@ -568,6 +580,12 @@ compileFn prog name (params, body0) = do
   let tidy = if tgtArc tgt && w == 8 then peephole else id
   pure $ wcetAnnotate name $
     [ "# " ++ name ++ " (arity " ++ show (length params) ++ ")" ]
+      -- The builtin link passes --gc-sections, which can only drop what has a
+      -- section of its own.  A Layout's accessors are inlined at every site
+      -- and would otherwise all be carried in the image as dead bodies
+      -- (heap.fpr: 6.5 KiB of them); the linker, which sees every unit, is
+      -- the one place that knows a function is unreferenced.
+      ++ (if tgtArc tgt then ["    .section .text.fpr_fn_" ++ m ++ ",\"ax\",@progbits", "    .balign 4"] else [])
       ++ [ "    " ++ visibility tgt name ++ " fpr_fn_" ++ m | S.member name exps ]
       ++ [ "fpr_fn_" ++ m ++ ":" ]
       ++ framePro tgt frame

@@ -417,6 +417,10 @@ builtinEnv =
       ("Mem.atomicExchange", mono (TFn (TC "Addr") (TFn (TC "Word") (TC "Word")))),
       ("Mem.compareExchange", mono (TFn (TC "Addr") (TFn (TC "Word") (TFn (TC "Word") (TC "Word"))))),
       ("Mem.fence", mono (TFn tUnit tUnit)),
+      -- the cast between Addr and a Layout's nominal type (FPRISC.expandLayout).
+      -- `$` is not an identifier character, so no program can write it; Compile
+      -- erases it to the identity before Core reaches a backend.
+      ("$cast", scheme [0, 1] (TFn (sv 0) (sv 1))),
       ("Rc.retain", scheme [0] (TFn (sv 0) (sv 0))),
       ("Rc.release", scheme [0] (TFn (sv 0) tUnit)),
       -- string / conversion prims (compiler-emitted or fpr_g_)
