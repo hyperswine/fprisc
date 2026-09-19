@@ -13,8 +13,17 @@ Os.mkdir     : String -> Result Unit String .
 Os.remove    : String -> Result Unit String .
 Os.rename    : String -> String -> Result Unit String .
 Os.cwd       : Unit -> String .
-Os.run       : List String -> String -> String -> Result (Int, String, String) String .
+Os.run       : List String -> String -> String -> List String -> Int -> Result (Int, String, String) String .
 Os.wallClock : Unit -> Int .
+Os.open      : String -> String -> Result Int String .
+Os.read      : Int -> Int -> Result String String .
+Os.write     : Int -> String -> Result Int String .
+Os.seek      : Int -> Int -> Result Int String .
+Os.close     : Int -> Result Unit String .
+Os.connect   : String -> Int -> Result Int String .
+Os.listen    : String -> Int -> Result Int String .
+Os.accept    : Int -> Result (Int, String) String .
+Os.localPort : Int -> Result Int String .
 
 readFile p = Os.readFile p.
 listDir p = Os.listDir p.
@@ -23,5 +32,14 @@ mkdir p = Os.mkdir p.
 remove p = Os.remove p.
 rename a b = Os.rename a b.
 cwd u = Os.cwd u.
-run argv dir input = Os.run argv dir input.
+run argv dir input env limitMs = Os.run argv dir input env limitMs.
+open path mode = Os.open path mode.
+read fd n = Os.read fd n.
+write fd bytes = Os.write fd bytes.
+seek fd at = Os.seek fd at.
+close fd = Os.close fd.
+connect host port = Os.connect host port.
+listen addr port = Os.listen addr port.
+accept fd = Os.accept fd.
+localPort fd = Os.localPort fd.
 wallClock u = Os.wallClock u.

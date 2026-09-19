@@ -14,26 +14,40 @@
 #   * killed by a signal: status is 128 + the signal, as a shell reports it.
 #   * Base has no transactions: this runs NOW, once.  (Sol's Proc.query /
 #     afterCommit / runNow are the transactional forms: docs/TRANSACTION.md.)
-# Not yet: a timeout, an environment for the child, streaming.
+# Not yet: streaming a child's output while it runs.
 
 OS = use "os".
 
 resultOf : (Int, String, String) -> { status : Int, out : String, err : String } .
 resultOf t = case t of (status, out, err) -> { status = status, out = out, err = err }.
 
-# a full description: argv, the directory to run in ("" = this one), stdin
-spawn : { argv : List String, dir : String, input : String } -> Result { status : Int, out : String, err : String } String .
-spawn d = case OS.run d.argv d.dir d.input of Ok t -> Ok (resultOf t) | Err e -> Err e.
+# a full description: argv, the directory to run in ("" = this one), stdin,
+# environment entries ADDED to this process's ("NAME=value"), and a time limit
+# in ms (0 = none).  Past the limit the child is killed and the answer is
+# Err "timed out after N ms".  Start from `Proc.describe argv` and change fields.
+describe : List String -> { argv : List String, dir : String, input : String, env : List String, limitMs : Int } .
+describe argv = { argv = argv, dir = "", input = "", env = Nil, limitMs = 0 }.
+
+spawn : { argv : List String, dir : String, input : String, env : List String, limitMs : Int } -> Result { status : Int, out : String, err : String } String .
+spawn d = case OS.run d.argv d.dir d.input d.env d.limitMs of Ok t -> Ok (resultOf t) | Err e -> Err e.
 
 run : List String -> Result { status : Int, out : String, err : String } String .
-run argv = spawn { argv = argv, dir = "", input = "" }.
+run argv = spawn (describe argv).
 
 runIn : String -> List String -> Result { status : Int, out : String, err : String } String .
-runIn dir argv = spawn { argv = argv, dir = dir, input = "" }.
+runIn dir argv = spawn { argv = argv, dir = dir, input = "", env = Nil, limitMs = 0 }.
 
 # feed it text on stdin
 pipeTo : List String -> String -> Result { status : Int, out : String, err : String } String .
-pipeTo argv input = spawn { argv = argv, dir = "", input = input }.
+pipeTo argv input = spawn { argv = argv, dir = "", input = input, env = Nil, limitMs = 0 }.
+
+# give up after `ms`
+runWithin : Int -> List String -> Result { status : Int, out : String, err : String } String .
+runWithin ms argv = spawn { argv = argv, dir = "", input = "", env = Nil, limitMs = ms }.
+
+# with extra environment: Proc.runWith ("LANG=C" :: Nil) argv
+runWith : List String -> List String -> Result { status : Int, out : String, err : String } String .
+runWith env argv = spawn { argv = argv, dir = "", input = "", env = env, limitMs = 0 }.
 
 # stdout when it exits 0; otherwise an Err that says what went wrong
 output : List String -> Result String String .

@@ -14,15 +14,40 @@
  *   Os.remove    : String -> Result Unit String                 a file, or an EMPTY directory
  *   Os.rename    : String -> String -> Result Unit String
  *   Os.cwd       : Unit -> String
- *   Os.run       : List String -> String -> String -> Result (Int, String, String) String
- *                  argv, working directory ("" = this one), stdin's bytes
+ *   Os.run       : List String -> String -> String -> List String -> Int
+ *                  -> Result (Int, String, String) String
+ *                  argv, working directory ("" = this one), stdin's bytes,
+ *                  extra environment ("NAME=value", added to this process's),
+ *                  a time limit in ms (0 = none; past it the child is killed
+ *                  and the answer is Err "timed out after N ms")
  *                  -> exit status (128 + signal when killed), stdout, stderr
  *   Os.wallClock : Unit -> Int                                  seconds since 1970-01-01 UTC
+ *
+ * Streams (files and sockets alike are a descriptor, an Int):
+ *   Os.open      : String -> String -> Result Int String        path, mode "r" | "w" | "a" | "rw"
+ *   Os.read      : Int -> Int -> Result String String           up to n bytes; "" = end of stream;
+ *                                                               Err "again" = nothing YET (sockets)
+ *   Os.write     : Int -> String -> Result Int String           bytes taken (may be fewer); Err "again"
+ *   Os.seek      : Int -> Int -> Result Int String              absolute offset -> the new offset
+ *   Os.close     : Int -> Result Unit String
+ *   Os.connect   : String -> Int -> Result Int String           host, port -> a connected socket
+ *   Os.listen    : String -> Int -> Result Int String           address ("" = every), port -> a listener
+ *   Os.accept    : Int -> Result (Int, String) String           a connection and its peer; Err "again"
+ *   Os.localPort : Int -> Result Int String                     the port a listener got (listen on 0)
+ *
+ * Sockets are NON-BLOCKING: a hart is a thread shared by many actors, so a
+ * primitive must never sit in the kernel waiting.  "again" is the answer when
+ * there is nothing yet, and std/stream.fpr sleeps the ACTOR and retries.
  *
  * Nothing here has a capacity: paths and outputs are as long as they are.
  * Every failure is an Err with the system's own words, never a panic. */
 #include "fpr.h"
+#include <arpa/inet.h>
 #include <dirent.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/socket.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -179,7 +204,8 @@ FPR_FN(fpr_g_Os_x2ewallClock, h_wall_clock, 1);
  * fork/exec rather than posix_spawn for the chdir.  stdin is fed and both
  * outputs drained in ONE poll loop, so a child that fills a pipe while we
  * are still writing its input cannot deadlock us. */
-static V h_run(V argvv, V cwdv, V inv) {
+static sw now_ms(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return (sw)ts.tv_sec * 1000 + ts.tv_nsec / 1000000; }
+static V h_run(V argvv, V cwdv, V inv, V envv, V limitv) {
   if (ISINT(inv) || TID(inv) != T_STR) fpr_cpanic("Os.run: stdin is not a String");
   const str_t *in = (const str_t *)inv;
   size_t argc = 0;
@@ -190,6 +216,13 @@ static V h_run(V argvv, V cwdv, V inv) {
   size_t i = 0;
   for (V c = argvv; i < argc; c = ((V *)((char *)c + 8))[1]) argv[i++] = os_cstr(((V *)((char *)c + 8))[0], "Os.run: an argument is not a String");
   char *cwd = os_cstr(cwdv, "Os.run: the directory is not a String");
+  size_t envc = 0;
+  for (V c = envv; !ISINT(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) envc++;
+  char **envs = calloc(envc + 1, sizeof *envs);
+  if (!envs) fpr_cpanic("out of memory");
+  { size_t k = 0; for (V c = envv; k < envc; c = ((V *)((char *)c + 8))[1]) envs[k++] = os_cstr(((V *)((char *)c + 8))[0], "Os.run: an environment entry is not a String"); }
+  sw limit = ISINT(limitv) ? UNTAG(limitv) : 0, started = now_ms();
+  int timed_out = 0;
   int pin[2], pout[2], perr[2], pexec[2];
   V result;
   if (pipe(pin) || pipe(pout) || pipe(perr) || pipe(pexec)) { result = os_errno(); goto done; }
@@ -200,6 +233,7 @@ static V h_run(V argvv, V cwdv, V inv) {
   if (pid == 0) {
     dup2(pin[0], 0); dup2(pout[1], 1); dup2(perr[1], 2);
     close(pin[0]); close(pin[1]); close(pout[0]); close(pout[1]); close(perr[0]); close(perr[1]); close(pexec[0]);
+    for (size_t k = 0; k < envc; k++) putenv(envs[k]); /* the child's copy; "NAME=value" */
     if (!*cwd || !chdir(cwd)) execvp(argv[0], argv);
     int e = errno;
     if (write(pexec[1], &e, sizeof e) < 0) {}
@@ -221,7 +255,15 @@ static V h_run(V argvv, V cwdv, V inv) {
     if (open_in) { p[n].fd = pin[1]; p[n].events = POLLOUT; ii = n++; }
     if (open_out) { p[n].fd = pout[0]; p[n].events = POLLIN; io = n++; }
     if (open_err) { p[n].fd = perr[0]; p[n].events = POLLIN; ie = n++; }
-    if (poll(p, (nfds_t)n, -1) < 0) { if (errno == EINTR) continue; break; }
+    int wait_ms = -1;
+    if (limit > 0) {
+      sw left = limit - (now_ms() - started);
+      if (left <= 0) { timed_out = 1; kill(pid, SIGKILL); break; }
+      wait_ms = (int)left;
+    }
+    int pr = poll(p, (nfds_t)n, wait_ms);
+    if (pr < 0) { if (errno == EINTR) continue; break; }
+    if (pr == 0) continue; /* the limit is checked at the top */
     if (ii >= 0 && p[ii].revents) {
       ssize_t w = write(pin[1], in->bytes + fed, in->len - fed);
       if (w > 0) fed += (size_t)w;
@@ -237,9 +279,16 @@ static V h_run(V argvv, V cwdv, V inv) {
       else if (r == 0 || (errno != EINTR && errno != EAGAIN)) { close(fds[k]); *opens[k] = 0; }
     }
   }
+  if (open_in) close(pin[1]);
+  if (open_out) close(pout[0]);
+  if (open_err) close(perr[0]);
   int status = 0;
   while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
-  if (child_errno) {
+  if (timed_out) {
+    char msg[64];
+    snprintf(msg, sizeof msg, "timed out after %ld ms", (long)limit);
+    result = os_err(msg);
+  } else if (child_errno) {
     errno = child_errno;
     result = os_errno(); /* it never ran: "No such file or directory" */
   } else {
@@ -250,7 +299,143 @@ static V h_run(V argvv, V cwdv, V inv) {
   free(out.p); free(err.p);
 done:
   for (i = 0; i < argc; i++) free(argv[i]);
-  free(argv); free(cwd);
+  for (i = 0; i < envc; i++) free(envs[i]);
+  free(argv); free(envs); free(cwd);
   return result;
 }
-FPR_FN(fpr_g_Os_x2erun, h_run, 3);
+FPR_FN(fpr_g_Os_x2erun, h_run, 5);
+
+/* ---- streams: a file or a socket is a descriptor ------------------------- */
+static V os_again_or_errno(void) { return (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINPROGRESS) ? os_err("again") : os_errno(); }
+static int want_fd(V v, const char *who) { if (!ISINT(v)) fpr_cpanic(who); return (int)UNTAG(v); }
+
+static V h_open(V pathv, V modev) {
+  char *path = os_cstr(pathv, "Os.open: the path is not a String");
+  char *mode = os_cstr(modev, "Os.open: the mode is not a String");
+  int flags = !strcmp(mode, "r") ? O_RDONLY
+            : !strcmp(mode, "w") ? O_WRONLY | O_CREAT | O_TRUNC
+            : !strcmp(mode, "a") ? O_WRONLY | O_CREAT | O_APPEND
+            : !strcmp(mode, "rw") ? O_RDWR | O_CREAT : -1;
+  V r;
+  if (flags < 0) r = os_err("mode must be \"r\", \"w\", \"a\" or \"rw\"");
+  else { int fd = open(path, flags | O_CLOEXEC, 0666); r = fd < 0 ? os_errno() : os_ok(TAG(fd)); }
+  free(path); free(mode);
+  return r;
+}
+FPR_FN(fpr_g_Os_x2eopen, h_open, 2);
+
+static V h_read(V fdv, V nv) {
+  int fd = want_fd(fdv, "Os.read: the stream is not an Int");
+  sw n = ISINT(nv) ? UNTAG(nv) : 0;
+  if (n <= 0) return os_ok(os_str("", 0));
+  str_t *s = (str_t *)fpr_alloc((V)(sizeof(str_t) + (uw)n)); /* read straight into the String */
+  s->tid = T_STR; s->var = 0; s->len = 0;
+  ssize_t r;
+  do r = read(fd, s->bytes, (size_t)n); while (r < 0 && errno == EINTR);
+  if (r < 0) return os_again_or_errno();
+  s->len = (uw)r;
+  return os_ok((V)s);
+}
+FPR_FN(fpr_g_Os_x2eread, h_read, 2);
+
+static V h_write(V fdv, V datav) {
+  int fd = want_fd(fdv, "Os.write: the stream is not an Int");
+  if (ISINT(datav) || TID(datav) != T_STR) fpr_cpanic("Os.write: the data is not a String");
+  const str_t *d = (const str_t *)datav;
+  signal(SIGPIPE, SIG_IGN); /* a peer that has gone is an Err, not our death */
+  ssize_t r;
+  do r = write(fd, d->bytes, d->len); while (r < 0 && errno == EINTR);
+  return r < 0 ? os_again_or_errno() : os_ok(TAG((sw)r));
+}
+FPR_FN(fpr_g_Os_x2ewrite, h_write, 2);
+
+static V h_seek(V fdv, V offv) {
+  off_t at = lseek(want_fd(fdv, "Os.seek: the stream is not an Int"), (off_t)UNTAG(offv), SEEK_SET);
+  return at < 0 ? os_errno() : os_ok(TAG((sw)at));
+}
+FPR_FN(fpr_g_Os_x2eseek, h_seek, 2);
+
+static V h_close(V fdv) { return os_unit_or_errno(close(want_fd(fdv, "Os.close: the stream is not an Int"))); }
+FPR_FN(fpr_g_Os_x2eclose, h_close, 1);
+
+static void sock_tune(int fd) {
+  int one = 1;
+  fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+  fcntl(fd, F_SETFD, FD_CLOEXEC);
+  setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+#ifdef SO_NOSIGPIPE
+  setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
+#endif
+}
+
+/* name resolution and the connect itself DO wait (bounded by the system's own
+ * timeouts): there is no portable non-blocking resolver.  Everything after is
+ * non-blocking. */
+static V h_connect(V hostv, V portv) {
+  char *host = os_cstr(hostv, "Os.connect: the host is not a String");
+  char port[16];
+  snprintf(port, sizeof port, "%ld", (long)UNTAG(portv));
+  struct addrinfo hints = {0}, *res = 0;
+  hints.ai_socktype = SOCK_STREAM;
+  int g = getaddrinfo(host, port, &hints, &res);
+  free(host);
+  if (g) return os_err(gai_strerror(g));
+  V r = os_err("no address to connect to");
+  for (struct addrinfo *a = res; a; a = a->ai_next) {
+    int fd = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+    if (fd < 0) { r = os_errno(); continue; }
+    if (connect(fd, a->ai_addr, a->ai_addrlen)) { r = os_errno(); close(fd); continue; }
+    sock_tune(fd);
+    r = os_ok(TAG(fd));
+    break;
+  }
+  freeaddrinfo(res);
+  return r;
+}
+FPR_FN(fpr_g_Os_x2econnect, h_connect, 2);
+
+static V h_listen(V addrv, V portv) {
+  char *addr = os_cstr(addrv, "Os.listen: the address is not a String");
+  char port[16];
+  snprintf(port, sizeof port, "%ld", (long)UNTAG(portv));
+  struct addrinfo hints = {0}, *res = 0;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_family = AF_INET;
+  hints.ai_flags = AI_PASSIVE;
+  int g = getaddrinfo(*addr ? addr : 0, port, &hints, &res);
+  free(addr);
+  if (g) return os_err(gai_strerror(g));
+  int fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol), one = 1;
+  V r;
+  if (fd < 0) r = os_errno();
+  else {
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+    if (bind(fd, res->ai_addr, res->ai_addrlen) || listen(fd, SOMAXCONN)) { r = os_errno(); close(fd); }
+    else { sock_tune(fd); r = os_ok(TAG(fd)); }
+  }
+  freeaddrinfo(res);
+  return r;
+}
+FPR_FN(fpr_g_Os_x2elisten, h_listen, 2);
+
+static V h_accept(V fdv) {
+  struct sockaddr_in peer;
+  socklen_t len = sizeof peer;
+  int fd;
+  do fd = accept(want_fd(fdv, "Os.accept: the listener is not an Int"), (struct sockaddr *)&peer, &len); while (fd < 0 && errno == EINTR);
+  if (fd < 0) return os_again_or_errno();
+  sock_tune(fd);
+  char name[64] = "?";
+  inet_ntop(AF_INET, &peer.sin_addr, name, sizeof name);
+  V f[2] = {TAG(fd), os_str(name, (uw)strlen(name))};
+  return os_ok(os_cell(T_TUP2, 0, 2, f));
+}
+FPR_FN(fpr_g_Os_x2eaccept, h_accept, 1);
+
+static V h_local_port(V fdv) {
+  struct sockaddr_in me;
+  socklen_t len = sizeof me;
+  if (getsockname(want_fd(fdv, "Os.localPort: the listener is not an Int"), (struct sockaddr *)&me, &len)) return os_errno();
+  return os_ok(TAG((sw)ntohs(me.sin_port)));
+}
+FPR_FN(fpr_g_Os_x2elocalPort, h_local_port, 1);
