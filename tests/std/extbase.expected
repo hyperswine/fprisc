@@ -1,0 +1,9 @@
+math: 255 11 -1 12 1594323 -3 3 3 -3 1.41421356237309 False 1024
+hex: 68690a True Err hex: not a digit at position 1 Err hex: an odd number of digits 000000ff
+b64:  Zg== Zm8= Zm9v Zm9vYmFy back Ok fooba Err base64: not valid at position 5 Err base64: the length is not a multiple of four
+url: a%20b%26c%3Dd%2F%C3%A9~ back Ok a b&c d Err url: a bad % escape at position 1 query [(name, fp risc), (x, 1), (flag, ), (, )]
+binary: 005078563412ff u16be Some 80 u32le Some 305419896 i8 Some (-1) past None
+sha256 abc   ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+sha256 empty e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+sha256 448b  248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1
+incremental equals whole: True; 100k 'a': 6d1cf22d7cc09b085dfc25ee1a1f3ae0265804c607bc2074ad253bcc82fd81ee

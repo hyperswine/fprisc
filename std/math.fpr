@@ -1,0 +1,121 @@
+# std/math.fpr -- Math: the everyday numeric functions.
+#
+#   Math = use "std/math".
+#   Math.clamp 0 255 x          Math.sqrt 2.0          Math.round 2.5
+#
+# Int functions are exact.  The rest are F64 (write literals with a point:
+# `2.0`), over the runtime's primitives; `Math.toFloat` / `Math.truncate`
+# cross between the two.  Nothing here panics: `sqrt` of a negative or `log`
+# of zero answer what IEEE 754 says (NaN, -inf), and `isFinite` asks.
+
+# ---- Int ---------------------------------------------------------------------------
+abs : Int -> Int .
+abs n = case n < 0 of True -> 0 - n | False -> n.
+
+min : Int -> Int -> Int .
+min a b = case a < b of True -> a | False -> b.
+
+max : Int -> Int -> Int .
+max a b = case a > b of True -> a | False -> b.
+
+# Math.clamp lo hi x
+clamp : Int -> Int -> Int -> Int .
+clamp lo hi x = case x < lo of True -> lo | False -> (case x > hi of True -> hi | False -> x).
+
+sign : Int -> Int .
+sign n = case n < 0 of True -> 0 - 1 | False -> (case n == 0 of True -> 0 | False -> 1).
+
+# the remainder with the sign of the DIVISOR (so `mod (0 - 1) 12` is 11)
+mod : Int -> Int -> Int .
+mod a b =
+  r = a - (a / b) * b;
+  case r != 0 and ((r < 0) != (b < 0)) of True -> r + b | False -> r.
+
+# the remainder with the sign of the dividend, as `/` truncates
+rem : Int -> Int -> Int .
+rem a b = a - (a / b) * b.
+
+isEven : Int -> Bool .
+isEven n = rem n 2 == 0.
+
+gcd : Int -> Int -> Int .
+gcd a b = gcdGo (abs a) (abs b).
+gcdGo : unsafe Int -> Int -> Int .
+gcdGo a b = case b == 0 of True -> a | False -> gcdGo b (rem a b).
+
+# exact, by squaring; a negative exponent has no exact answer and gives 0
+powInt : Int -> Int -> Int .
+powInt a n = case n < 0 of True -> 0 | False -> powGo a n 1.
+powGo : unsafe Int -> Int -> Int -> Int .
+powGo a n acc = case n == 0 of
+    True -> acc
+  | False -> powGo (a * a) (n / 2) (case rem n 2 == 1 of True -> acc * a | False -> acc).
+
+# ---- F64 ---------------------------------------------------------------------------
+pi = 3.141592653589793.
+e = 2.718281828459045.
+
+toFloat : Int -> F64 .
+toFloat n = F64.ofInt n.
+
+# toward zero
+truncate : F64 -> Int .
+truncate x = F64.toInt x.
+
+floor : F64 -> Int .
+floor x =
+  t = F64.toInt x;
+  case F64.ofInt t > x of True -> t - 1 | False -> t.
+
+ceiling : F64 -> Int .
+ceiling x =
+  t = F64.toInt x;
+  case F64.ofInt t < x of True -> t + 1 | False -> t.
+
+# halves away from zero
+round : F64 -> Int .
+round x = case x < 0.0 of True -> 0 - floor (0.5 - x) | False -> floor (x + 0.5).
+
+sqrt : F64 -> F64 .
+sqrt x = F64.sqrt x.
+
+pow : F64 -> F64 -> F64 .
+pow x y = F64.pow x y.
+
+exp : F64 -> F64 .
+exp x = F64.exp x.
+
+# natural
+log : F64 -> F64 .
+log x = F64.log x.
+
+log2 : F64 -> F64 .
+log2 x = F64.log2 x.
+
+sin : F64 -> F64 .
+sin x = F64.sin x.
+
+cos : F64 -> F64 .
+cos x = F64.cos x.
+
+tan : F64 -> F64 .
+tan x = F64.sin x / F64.cos x.
+
+absF : F64 -> F64 .
+absF x = case x < 0.0 of True -> 0.0 - x | False -> x.
+
+minF : F64 -> F64 -> F64 .
+minF a b = case a < b of True -> a | False -> b.
+
+maxF : F64 -> F64 -> F64 .
+maxF a b = case a > b of True -> a | False -> b.
+
+clampF : F64 -> F64 -> F64 -> F64 .
+clampF lo hi x = case x < lo of True -> lo | False -> (case x > hi of True -> hi | False -> x).
+
+# not NaN and not an infinity
+isFinite : F64 -> Bool .
+isFinite x = x - x == 0.0.
+
+format : F64 -> String .
+format x = F64.str x.

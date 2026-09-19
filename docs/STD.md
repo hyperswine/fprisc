@@ -56,47 +56,71 @@ use `Map.equal` / `Map.equalBy` (and `Json.equal`).
 
 ## Base: the environment (the posix system)
 
-These stand on nine primitives declared in `std/os.fpr` and implemented by
+These stand on the primitives declared in `std/os.fpr` and implemented by
 `machine/posix/os.c`. On a system without them a program that imports these
 modules fails at LINK time on the `fpr_g_Os_` name: imports are the manifest.
 
 | module | what is in it |
 |---|---|
 | `std/program` | `args env envOr exit fail readLine readLines writeLine writeError` |
-| `std/file` | whole files: `readText readBytes lines writeText appendText writeLines exists info isFile isDir size remove rename copy`; `info` answers `{kind, size, modified}` |
+| `std/file` | whole files: `readText readBytes lines writeText appendText writeLines exists info isFile isDir size remove rename copy`; streaming: `open seek withOpen` (closes on every path) |
 | `std/dir` | `list entries walk glob matches create` (with parents) `remove removeAll current` |
-| `std/proc` | `run runIn pipeTo spawn output shell` -- an ARGUMENT LIST, never parsed; stdout, stderr and status distinct; `Err` only when it could not start; `shell` is the explicit `/bin/sh -c` |
+| `std/proc` | `run runIn pipeTo runWithin runWith describe spawn output shell` -- an ARGUMENT LIST, never parsed; stdout, stderr and status distinct; `Err` only when it could not start; a time limit kills the child and says so; extra environment; `shell` is the explicit `/bin/sh -c` |
 | `std/clock` | `monotonic elapsedMs now sleepMs date iso civil` -- the calendar is computed here, not by libc |
+| `std/stream` | bytes in order from a file or a socket: `read readWithin readAll write close`, and a `Reader` that keeps what was read past what you asked for: `reader readUntil readLine readExactly readRest` |
+| `std/tcp` | `connect listen port accept stop serve` -- `serve` gives each connection its own actor and closes it when the handler returns |
+| `std/math` | Int: `abs min max clamp sign mod rem isEven gcd powInt`; F64: `pi e toFloat truncate floor ceiling round sqrt pow exp log log2 sin cos tan absF minF maxF clampF isFinite format` |
+| `std/binary` | fixed-width integers in a byte string: `u8 u16le u16be u32le u32be i8 i16le i32le i32be` (past the end is `None`), `putU8 putU16le putU16be putU32le putU32be` |
+
+**Waiting never blocks a hart.** A hart is a thread many actors share, so the
+socket primitives are non-blocking and answer `"again"`; `std/stream` puts the
+ACTOR to sleep (0.1 ms backing off to 4 ms) and retries. A server and its
+clients run in one process, which is how the tests run them.
 
 ## ExtBase
 
 | module | what is in it |
 |---|---|
-| `std/json` | `Value = Null \| Boolean \| Integer \| Real \| Text \| Sequence \| Object`; `parse` (errors as `line 3, column 14: expected ':'`), `render`, `equal`, `field at asString asInt asBool asReal asList asObject isNull object strings`. A `Real` keeps its TEXT: no float parsing to get wrong |
+| `std/json` | `Value = Null \| Boolean \| Integer \| Real \| Text \| Sequence \| Object`; `parse` (errors as `line 3, column 14: expected ':'`), `render`, `equal`, `field at asString asInt asBool asReal asList asObject isNull object strings quote`. A `Real` keeps its TEXT: no float parsing to get wrong |
+| `std/decode` | flexible data into YOUR types: `string int bool number value succeed fail nullable field optional at list dict map andThen check oneOf map2..map5 andMap run fromString infer fields`. Errors name the path: `servers.1.tags.1: expected a string, found an integer` |
+| `std/config` | `load` combines defaults < a JSON file < `PREFIX_NAME` in the environment < `--name=value`, into a Value you decode; `positional` |
+| `std/http` | client: `get post request parseUrl parseResponse`; server: `serve text html json response header`. HTTP/1.1, lower-case header names, chunked decoding, one request per connection. **`https://` is fetched by running `curl`** (std has no TLS); where curl is missing the Err says so |
+| `std/encoding` | `hex fromHex hexInt base64 fromBase64 url fromUrl query` |
+| `std/digest` | SHA-256 in FP-RISC: `sha256 sha256File` (streamed) and incremental `init update finish finishBytes`. About 1 MB/s: for files and configuration, not bulk data |
+| `std/log` | a logger is a VALUE: `toStderr toFile json levelOf debug info warn error`. `2026-09-20T03:14:15Z INFO  listening port=8080`, or one JSON object per line |
+| `std/task` | `map mapBounded`: the same work on many inputs, an actor each, at most `n` at once, results in input order |
 
 ## The acceptance programs
 
-The design names three. One exists: `examples/report.fpr`, the automation script
-(walk, filter, group, sort, ask `git`, write a JSON report; failures in words,
-exit codes). It compiled and ran on the first attempt against these modules,
-which is the point of them.
+The design names three. Two exist, and both are driven by `tests/check_std.py`:
+
+- `examples/report.fpr`, the **automation script**: walk, filter, group, sort,
+  ask `git`, write a JSON report; failures in words, exit codes. It compiled and
+  ran on the first attempt against these modules, which is the point of them.
+- `examples/service.fpr`, the **concurrent service**: settings decoded from
+  defaults, a file, the environment and the command line; an HTTP key-value
+  store where ONE actor owns the Map and every connection is an actor that asks
+  it; a digest per line with bounded parallelism; every request logged, failures
+  at WARN; `POST /shutdown` stops the listener and the program exits 0. The test
+  hits it with 40 parallel writes.
+- `examples/wc.fpr` is an executable script (`#!/usr/bin/env -S fpr run`).
 
 ## Not here yet (from the design's inventory)
 
-- **Base:** `Math`; `Vector` (the prelude's linear `Vec.*` is the substrate);
-  streaming `File` handles (`open read write seek close`), `Buffer`/`Binary`;
-  typed `Actor`/`Mailbox` wrappers and `receiveWithin`; `Atomic`.
-  `Proc`: a timeout, an environment for the child, streaming.
-- **ExtBase:** `Decode`/`Encode` into records, `HTTP`/`TCP` (the posix system has
-  no socket primitive yet), `Digest`, `Encoding` (hex, Base64, URL), `Log`,
-  `Config`, `Task`.
-- **Sol:** these modules are FP-RISC source and Sol shares the language, but
-  Sol's `Str`/`List` structures (compiler/Sol/Preamble.hs) still have their own
-  names and argument orders. The four new runtime string primitives deliberately
-  took Sol's names and contracts (`strJoin strCmp strIndexOf strIndexFrom`); the
-  modules above are the vocabulary to converge on.
-- The other two acceptance programs: the concurrent service and the numerical
-  analysis (`Array`, `Stats`, `CSV`).
+- **Base:** `Vector` (the prelude's linear `Vec.*` is the substrate); an owned,
+  resizable `Buffer`; a LINEAR stream handle (today a Stream is a plain value you
+  close, and `withOpen` / `Tcp.serve` close for you); `receiveWithin` and typed
+  `Actor msg` wrappers (a timed receive needs the runtime); `Atomic`.
+- **ExtBase:** TLS in std (HTTPS rides on curl); HTTP keep-alive and streaming
+  bodies; password hashing and other digests; `Encode` from records (there is no
+  reflection: you build a `Json.Value`).
+- **Sol:** Sol loads these same files with `use`, but its type checker
+  (compiler/Sol/Infer.hs) does not yet unify a type named through a NESTED module
+  (`List.O.Option` vs `Option`), so `std/list` is refused there; and the aliases
+  `List` / `Str` collide with Sol's builtin structures. The four runtime string
+  primitives took Sol's names and contracts (`strJoin strCmp strIndexOf`; Sol
+  lacks `strIndexFrom`). These modules are the vocabulary to converge on.
+- The third acceptance program: numerical analysis (`Array`, `Stats`, `CSV`, `Plot`).
 
 ## Friction found while writing it (evidence for the next additions)
 
@@ -109,5 +133,13 @@ which is the point of them.
 - Every recursive function needs its own `name : unsafe ...` signature; a module
   of small loops is half signatures.
 - `fileWrite` answers `Ok ""` typed as `Result Unit String`.
+- The prelude's `serve` DROPS each request after answering it, so state that keeps
+  part of a request dangles unless it is `keep`-copied first. The service example
+  crashed on its second request until `Put k v` stored `keep k`, `keep v`.
+  Nothing warns about this.
+- A panic in ANY actor ends the whole program on this system, so a library
+  cannot turn one failed task into an `Err`.
+- `receiveRes` waits for a message that is a `Result`; a bare tuple sent to it is
+  never received, and the program ends in the deadlock detector.
 - `machine/posix/base.c` still copies paths into `char[1024]` and panics "path
   too long"; `os.c` does not.

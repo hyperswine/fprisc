@@ -1,0 +1,131 @@
+# std/digest.fpr -- Digest: SHA-256 (ExtBase).
+#
+#   Digest = use "std/digest".
+#   Digest.sha256 "abc"                     # 64 hex digits
+#   Digest.sha256File "big.iso"             # streamed: 64 KiB at a time
+#
+#   st = Digest.init |> Digest.update part1 |> Digest.update part2
+#   Digest.finish st
+#
+# This is a CRYPTOGRAPHIC digest: for identifying content and checking
+# integrity.  It is not a collection hash, not a checksum for speed, and not a
+# password hash -- those are different jobs and would be different functions.
+# Written in FP-RISC (32-bit words in 63-bit Ints): about a megabyte a second,
+# which is fine for files and configuration and wrong for bulk data.
+
+ST = use "stream".
+OS = use "os".
+E = use "encoding".
+
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+m32 : Int -> Int .
+m32 x = band x 4294967295.
+
+# rotate right within 32 bits (the low n bits are masked BEFORE they go up, so
+# nothing ever exceeds 32 bits)
+rotr : Int -> Int -> Int .
+rotr x n = bor (BITSHIFTR x n) (BITSHIFTL (band x (BITSHIFTL 1 n - 1)) (32 - n)).
+
+# the chaining words, bytes not yet a whole block, bytes taken so far
+State = Type (State (List Int) String Int).
+
+init = State (1779033703 :: 3144134277 :: 1013904242 :: 2773480762 :: 1359893119 :: 2600822924 :: 528734635 :: 1541459225 :: Nil) "" 0.
+
+k = 1116352408 :: 1899447441 :: 3049323471 :: 3921009573 :: 961987163 :: 1508970993 :: 2453635748 :: 2870763221
+ :: 3624381080 :: 310598401 :: 607225278 :: 1426881987 :: 1925078388 :: 2162078206 :: 2614888103 :: 3248222580
+ :: 3835390401 :: 4022224774 :: 264347078 :: 604807628 :: 770255983 :: 1249150122 :: 1555081692 :: 1996064986
+ :: 2554220882 :: 2821834349 :: 2952996808 :: 3210313671 :: 3336571891 :: 3584528711 :: 113926993 :: 338241895
+ :: 666307205 :: 773529912 :: 1294757372 :: 1396182291 :: 1695183700 :: 1986661051 :: 2177026350 :: 2456956037
+ :: 2730485921 :: 2820302411 :: 3259730800 :: 3345764771 :: 3516065817 :: 3600352804 :: 4094571909 :: 275423344
+ :: 430227734 :: 506948616 :: 659060556 :: 883997877 :: 958139571 :: 1322822218 :: 1537002063 :: 1747873779
+ :: 1955562222 :: 2024104815 :: 2227730452 :: 2361852424 :: 2428436474 :: 2756734187 :: 3204031479 :: 3329325298 :: Nil.
+
+update : String -> State -> State .
+update bytes st = case st of State h pending total ->
+  blocks (strcat pending bytes) 1 h (total + strlen bytes).
+# whole 64-byte blocks from `at`; what is left becomes the pending bytes
+blocks : unsafe String -> Int -> List Int -> Int -> State .
+blocks buf at h total = case at + 63 > strlen buf of
+    True -> State h (substr buf at (strlen buf - at + 1)) total
+  | False -> blocks buf (at + 64) (compress h (schedule buf at)) total.
+
+# the 64 message words of the block at `at`, oldest first
+schedule : String -> Int -> List Int .
+schedule buf at = rev (extend 16 (first16 buf at 0 Nil)) Nil.
+# newest first
+first16 : unsafe String -> Int -> Int -> List Int -> List Int .
+first16 buf at t acc = case t == 16 of
+    True -> acc
+  | False -> first16 buf at (t + 1)
+      ((charAt buf (at + 4 * t) * 16777216 + charAt buf (at + 4 * t + 1) * 65536 + charAt buf (at + 4 * t + 2) * 256 + charAt buf (at + 4 * t + 3)) :: acc).
+# w is newest first, so w[t-2] is its 2nd element, w[t-7] its 7th, ...
+extend : unsafe Int -> List Int -> List Int .
+extend t w = case t == 64 of
+    True -> w
+  | False -> extend (t + 1) (m32 (s1 (nth 2 w) + nth 7 w + s0 (nth 15 w) + nth 16 w) :: w).
+nth : unsafe Int -> List Int -> Int .
+nth i xs = case xs of Nil -> 0 | x :: r -> (case i == 1 of True -> x | False -> nth (i - 1) r).
+s0 : Int -> Int .
+s0 x = bxor (bxor (rotr x 7) (rotr x 18)) (BITSHIFTR x 3).
+s1 : Int -> Int .
+s1 x = bxor (bxor (rotr x 17) (rotr x 19)) (BITSHIFTR x 10).
+
+compress : List Int -> List Int -> List Int .
+compress h w = case h of
+    a :: b :: c :: d :: e :: f :: g :: hh :: Nil -> rounds k w a b c d e f g hh h
+  | _ -> h.
+rounds : unsafe List Int -> List Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> List Int -> List Int .
+rounds ks ws a b c d e f g hh h0 = case ks of
+    Nil -> addAll h0 (a :: b :: c :: d :: e :: f :: g :: hh :: Nil) Nil
+  | kt :: kr -> (case ws of
+        Nil -> h0
+      | wt :: wr ->
+          t1 = m32 (hh + bxor (bxor (rotr e 6) (rotr e 11)) (rotr e 25) + bxor (band e f) (band (bxor e 4294967295) g) + kt + wt);
+          t2 = m32 (bxor (bxor (rotr a 2) (rotr a 13)) (rotr a 22) + bxor (bxor (band a b) (band a c)) (band b c));
+          rounds kr wr (m32 (t1 + t2)) a b c (m32 (d + t1)) e f g h0).
+addAll : unsafe List Int -> List Int -> List Int -> List Int .
+addAll xs ys acc = case xs of
+    Nil -> rev acc Nil
+  | x :: xr -> (case ys of Nil -> rev acc Nil | y :: yr -> addAll xr yr (m32 (x + y) :: acc)).
+
+# the digest as 64 lower-case hex digits
+finish : State -> String .
+finish st = E.hex (finishBytes st).
+
+# the digest as its 32 bytes
+finishBytes : State -> String .
+finishBytes st = case st of State h pending total ->
+  (case blocks (strJoin "" (pending :: chr 128 :: zeros (padLen (strlen pending)) :: lengthBytes (total * 8) :: Nil)) 1 h total of
+      State h2 _ _ -> strJoin "" (wordsToBytes h2 Nil)).
+# zero bytes so that pending + 1 + zeros + 8 is a multiple of 64
+padLen : Int -> Int .
+padLen n = (case n < 56 of True -> 55 - n | False -> 119 - n).
+zeros : Int -> String .
+zeros n = strJoin "" (zerosGo n Nil).
+zerosGo : unsafe Int -> List String -> List String .
+zerosGo n acc = case n <= 0 of True -> acc | False -> zerosGo (n - 1) (chr 0 :: acc).
+# 64 bits, big-endian
+lengthBytes : Int -> String .
+lengthBytes bits = strJoin "" (be32 (BITSHIFTR bits 32) :: be32 (m32 bits) :: Nil).
+be32 : Int -> String .
+be32 v = strJoin "" (chr (band (BITSHIFTR v 24) 255) :: chr (band (BITSHIFTR v 16) 255) :: chr (band (BITSHIFTR v 8) 255) :: chr (band v 255) :: Nil).
+wordsToBytes : unsafe List Int -> List String -> List String .
+wordsToBytes ws acc = case ws of Nil -> rev acc Nil | w :: r -> wordsToBytes r (be32 w :: acc).
+
+sha256 : String -> String .
+sha256 bytes = finish (update bytes init).
+
+# streamed, so a file of any size costs one 64 KiB read at a time
+sha256File : String -> Result String String .
+sha256File path = case OS.open path "r" of
+    Err why -> Err why
+  | Ok f ->
+      r = fileGo (ST.Stream f) init;
+      _ = OS.close f;
+      r.
+fileGo : unsafe ST.Stream -> State -> Result String String .
+fileGo s st = case ST.read 65536 s of
+    Err why -> Err why
+  | Ok bytes -> (case strlen bytes == 0 of True -> Ok (finish st) | False -> fileGo s (update bytes st)).

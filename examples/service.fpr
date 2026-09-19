@@ -1,0 +1,109 @@
+# service.fpr -- the design's "concurrent service" acceptance example
+# (docs/PRELIM_BASE_LIBRARY_DESIGN.md, section 9): typed configuration,
+# requests, state, bounded concurrent work, logged failures, a clean shutdown.
+#
+#   fpr run examples/service.fpr [--port=8080] [--workers=4] [--log=debug]
+#   SERVICE_PORT=9000 fpr run examples/service.fpr          (or service.json)
+#
+#   curl -X PUT  localhost:8080/kv/greeting -d 'hello'
+#   curl         localhost:8080/kv/greeting
+#   curl         localhost:8080/keys
+#   curl -X POST localhost:8080/digests --data-binary @words.txt   # one line each, in parallel
+#   curl -X POST localhost:8080/shutdown
+#
+# The shape: ONE actor owns the store (a Map) and is the only thing that ever
+# touches it; every connection is its own actor and ASKS the store.  No locks,
+# no shared memory: that is what the language is for.
+unsafe base.
+
+Http = use "std/http".
+Tcp = use "std/tcp".
+Config = use "std/config".
+Decode = use "std/decode".
+Json = use "std/json".
+Log = use "std/log".
+Task = use "std/task".
+Digest = use "std/digest".
+Program = use "std/program".
+Map = use "std/map".
+List = use "std/list".
+String = use "std/string".
+Option = use "std/option".
+Result = use "std/result".
+
+# ---- typed configuration -------------------------------------------------------------
+Settings = Type (Settings port workers level).
+
+settings = Decode.map3 Settings
+  (Decode.field "port" (Decode.check (fn p -> case p >= 0 and p < 65536 of True -> Ok p | False -> Err "must be 0..65535") Decode.int))
+  (Decode.field "workers" (Decode.check (fn n -> case n >= 1 of True -> Ok n | False -> Err "must be at least 1") Decode.int))
+  (Decode.field "log" Decode.string).
+
+loadSettings args = Config.load {
+    defaults = Json.object (("port", Json.Integer 8080) :: ("workers", Json.Integer 4) :: ("log", Json.Text "info") :: Nil),
+    file = Option.Some "service.json", envPrefix = "SERVICE_", args = args }
+  |> Result.andThen (Decode.run settings).
+
+# ---- the store: one actor, the only owner of the Map -------------------------------------
+Query = Type (Get key | Put key value | Keys | Count).
+Reply = Type (Found value | Missing | Stored | Listing keys | Size n).
+
+# `serve` (the prelude's request loop) DROPS each request once it is answered,
+# so whatever the state holds on to must be the store's own copy: `keep`.
+store state q = case q of
+    Get k -> (state, (case Map.get k state of Option.Some v -> Found v | Option.None -> Missing))
+  | Put k v -> (Map.insert (keep k) (keep v) state, Stored)
+  | Keys -> (state, Listing (Map.keys state))
+  | Count -> (state, Size (Map.size state)).
+
+# ---- one request -----------------------------------------------------------------------
+route storeActor workers listener req =
+  me = myself 0;
+  key = String.dropLeft 4 req.path;
+  case req.method of
+    "GET" -> (case String.startsWith "/kv/" req.path of
+        True -> (case ask me storeActor (Get key) of
+            Found v -> Http.text 200 v
+          | _ -> Http.text 404 "no such key: {key}\n")
+      | False -> (case req.path == "/keys" of
+            True -> (case ask me storeActor Keys of
+                Listing ks -> Http.json 200 (Json.render (Json.strings ks))
+              | _ -> Http.text 500 "store\n")
+          | False -> Http.text 404 "no such page: {req.path}\n"))
+  | "PUT" -> (case String.startsWith "/kv/" req.path and strlen key > 0 of
+        True -> _ = ask me storeActor (Put key req.body); Http.text 201 "stored {key}\n"
+      | False -> Http.text 404 "PUT /kv/<key>\n")
+  | "POST" -> (case req.path of
+        "/digests" -> digests workers req.body
+      | "/shutdown" -> _ = Tcp.stop listener; Http.text 200 "shutting down\n"
+      | _ -> Http.text 404 "no such page: {req.path}\n")
+  | _ -> Http.text 405 "method not allowed\n".
+
+# bounded concurrent work: a digest per line, at most `workers` at once
+digests workers body = case Task.mapBounded workers Digest.sha256 (String.lines body) of
+    Ok ds -> Http.text 200 (strcat (String.join "\n" ds) "\n")
+  | Err why -> Http.text 500 "{why}\n".
+
+# every request is logged; a failure (4xx/5xx) at WARN with what was asked
+logged log handler req =
+  resp = handler req;
+  fields = ("method", req.method) :: ("path", req.path) :: ("status", str resp.status) :: ("bytes", str (strlen resp.body)) :: Nil;
+  _ = (case resp.status >= 400 of True -> Log.warn log "request failed" fields | False -> Log.info log "request" fields);
+  resp.
+
+run s = case s of Settings port workers level ->
+  log = Log.toStderr (Log.levelOf level);
+  (case Tcp.listen "127.0.0.1" port of
+      Err why -> _ = Log.error log "cannot listen" (("port", str port) :: ("why", why) :: Nil); 1
+    | Ok listener ->
+        storeActor = spawn (fn self -> serve self store Map.strings);
+        _ = Log.info log "listening" (("port", str (Tcp.port listener)) :: ("workers", str workers) :: Nil);
+        _ = print "ready {Tcp.port listener}";
+        why = Http.serve listener (logged log (route storeActor workers listener));
+        n = (case ask (myself 0) storeActor Count of Size k -> k | _ -> 0);
+        _ = Log.info log "stopped" (("keys", str n) :: ("accept", why) :: Nil);
+        0).
+
+main = case loadSettings (Program.args Unit) of
+    Ok s -> run s
+  | Err why -> Program.fail 2 "service: configuration: {why}".

@@ -1,0 +1,81 @@
+# std/config.fpr -- Config: defaults, a file, the environment and the command
+# line, combined in that order (ExtBase).
+#
+#   Config = use "std/config".
+#   settings = Config.load { defaults = Json.object (("port", Json.Integer 8080) :: Nil),
+#                            file = Option.Some "service.json", envPrefix = "SVC_",
+#                            args = Program.args Unit }
+#              |> Result.andThen (Decode.run settingsDecoder)
+#
+# Each later source overrides the earlier, key by key (top-level keys):
+#   defaults  <  the JSON file  <  PREFIX_NAME in the environment  <  --name=value
+# A missing file is fine (that is what defaults are for); a file that is there
+# and is not a JSON object is an Err.  Environment and argument values are
+# strings, typed as they LOOK (Decode.infer): 8080 is an integer, true a boolean.
+# `--flag` alone is true.  Arguments that do not start with "--" are left for
+# you (Config.positional).
+
+J = use "json".
+M = use "map".
+O = use "option".
+S = use "string".
+D = use "decode".
+F = use "file".
+
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+load : { defaults : J.Value, file : O.Option String, envPrefix : String, args : List String } -> Result J.Value String .
+load c = case fileLayer c.file of
+    Err why -> Err why
+  | Ok fromFile ->
+      base = (case c.defaults of J.Object m -> m | _ -> M.empty S.compare);
+      keys = M.keys (M.union fromFile base);
+      Ok (J.Object (argLayer c.args (envLayer c.envPrefix keys (M.union fromFile base)))).
+
+fileLayer : O.Option String -> Result (M.Map String J.Value) String .
+fileLayer file = case file of
+    O.None -> Ok (M.empty S.compare)
+  | O.Some path -> (case F.exists path of
+        False -> Ok (M.empty S.compare)
+      | True -> (case F.readText path of
+            Err why -> Err "{path}: {why}"
+          | Ok text -> (case J.parse text of
+                Err why -> Err "{path}: {why}"
+              | Ok v -> (case v of J.Object m -> Ok m | _ -> Err "{path}: expected a JSON object")))).
+
+# only KNOWN keys are looked up in the environment (PREFIX + the key in capitals,
+# "-" and "." as "_"): there is no portable way to list it, and no surprise
+# settings can arrive by it
+envLayer : String -> List String -> M.Map String J.Value -> M.Map String J.Value .
+envLayer prefix keys m = envGo prefix keys m.
+envGo : unsafe String -> List String -> M.Map String J.Value -> M.Map String J.Value .
+envGo prefix keys m = case keys of
+    Nil -> m
+  | k :: r -> (case Sys.env (strcat prefix (envName k)) of
+        Ok v -> envGo prefix r (M.insert k (D.infer v) m)
+      | Err _ -> envGo prefix r m).
+envName : String -> String .
+envName k = S.toUpper (S.replace "." "_" (S.replace "-" "_" k)).
+
+argLayer : List String -> M.Map String J.Value -> M.Map String J.Value .
+argLayer args m = argGo args m.
+argGo : unsafe List String -> M.Map String J.Value -> M.Map String J.Value .
+argGo args m = case args of
+    Nil -> m
+  | a :: r -> (case S.startsWith "--" a and strlen a > 2 of
+        False -> argGo r m
+      | True ->
+          body = S.dropLeft 2 a;
+          at = strIndexOf "=" body;
+          (case at == 0 of
+              True -> argGo r (M.insert body (J.Boolean True) m)
+            | False -> argGo r (M.insert (S.left (at - 1) body) (D.infer (S.dropLeft at body)) m))).
+
+# the arguments that are not "--" settings, in order
+positional : List String -> List String .
+positional args = posGo args Nil.
+posGo : unsafe List String -> List String -> List String .
+posGo args acc = case args of
+    Nil -> rev acc Nil
+  | a :: r -> (case S.startsWith "--" a of True -> posGo r acc | False -> posGo r (a :: acc)).

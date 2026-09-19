@@ -1,0 +1,41 @@
+unsafe base.
+Decode = use "std/decode".
+Config = use "std/config".
+Log = use "std/log".
+Task = use "std/task".
+File = use "std/file".
+Stream = use "std/stream".
+Json = use "std/json".
+Option = use "std/option".
+Result = use "std/result".
+Digest = use "std/digest".
+List = use "std/list".
+String = use "std/string".
+
+Server = Type (Server host port tags).
+server = Decode.map3 Server
+  (Decode.field "host" Decode.string)
+  (Decode.optional "port" 8080 (Decode.check (fn p -> case p > 0 and p < 65536 of True -> Ok p | False -> Err "must be 1..65535") Decode.int))
+  (Decode.optional "tags" Nil (Decode.list Decode.string)).
+fleet = Decode.field "servers" (Decode.list server).
+
+main =
+  _ = print "decode: {Decode.fromString server "\{\"host\": \"example.org\", \"tags\": [\"a\", \"b\"]\}"}";
+  _ = print "errors: {Decode.fromString server "\{\"port\": 80\}"} | {Decode.fromString server "\{\"host\": \"h\", \"port\": \"80\"\}"} | {Decode.fromString server "\{\"host\": \"h\", \"port\": 99999\}"} | {Decode.fromString fleet "\{\"servers\": [\{\"host\":\"a\"\}, \{\"host\":\"b\", \"tags\":[\"x\", 7]\}]\}"} | {Decode.fromString server "[1,"}";
+  path = "cfg.json";
+  _ = File.writeText path "\{\"host\": \"from-file\", \"port\": 9000\}";
+  cfg = Config.load { defaults = Json.object (("host", Json.Text "localhost") :: ("port", Json.Integer 8080) :: ("verbose", Json.Boolean False) :: Nil),
+                      file = Option.Some path, envPrefix = "T16_", args = "--verbose" :: "input.txt" :: "--port=7000" :: Nil };
+  _ = print "config: {Result.map Json.render cfg} -> {Result.andThen (Decode.run server) cfg} positional {Config.positional ("--verbose" :: "input.txt" :: "--port=7000" :: Nil)}";
+  logf = "events.log";
+  log = Log.toFile Log.Info logf;
+  _ = Log.debug log "not written" Nil;
+  _ = Log.info log "listening" (("port", "7000") :: ("note", "two words") :: Nil);
+  _ = Log.error (Log.json log) "request failed" (("path", "/x") :: Nil);
+  _ = print "log: {Result.map (fn ls -> List.map (fn l -> case String.startsWith "\{" l of True -> "json error line: {String.contains "\"level\":\"error\"" l and String.contains "\"msg\":\"request failed\"" l and String.contains "\"path\":\"/x\"" l}" | False -> String.dropLeft 21 l) ls) (File.lines logf)}";
+  _ = print "stream: {File.withOpen "s.bin" "w" (fn s -> Stream.write "0123456789" s)} {File.withOpen "s.bin" "rw" (fn s -> case File.seek 4 s of Ok _ -> Stream.read 3 s | Err e -> Err e)} missing {Result.isOk (File.open "/no/such" "r")}";
+  squares = Task.mapBounded 3 (fn n -> n * n) (List.range 1 20);
+  _ = print "tasks: {squares}";
+  words = List.map (fn i -> String.repeat 2000 "w{i}") (List.range 1 8);
+  par = Task.map Digest.sha256 words;
+  print "parallel digests equal sequential: {par == Ok (List.map Digest.sha256 words)}".

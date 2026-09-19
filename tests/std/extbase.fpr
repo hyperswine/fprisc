@@ -1,0 +1,18 @@
+unsafe base.
+Math = use "std/math".
+Encoding = use "std/encoding".
+Binary = use "std/binary".
+Digest = use "std/digest".
+String = use "std/string".
+main =
+  _ = print "math: {Math.clamp 0 255 300} {Math.mod (0 - 1) 12} {Math.rem (0 - 1) 12} {Math.gcd 84 36} {Math.powInt 3 13} {Math.floor (0.0 - 2.5)} {Math.ceiling 2.1} {Math.round 2.5} {Math.round (0.0 - 2.5)} {Math.format (Math.sqrt 2.0)} {Math.isFinite (Math.log 0.0)} {Math.format (Math.pow 2.0 10.0)}";
+  _ = print "hex: {Encoding.hex "hi\n"} {Encoding.fromHex "68690a" == Ok "hi\n"} {Encoding.fromHex "6g"} {Encoding.fromHex "abc"} {Encoding.hexInt 8 255}";
+  _ = print "b64: {Encoding.base64 ""} {Encoding.base64 "f"} {Encoding.base64 "fo"} {Encoding.base64 "foo"} {Encoding.base64 "foobar"} back {Encoding.fromBase64 "Zm9vYmE="} {Encoding.fromBase64 "Zm9v!mE="} {Encoding.fromBase64 "abc"}";
+  _ = print "url: {Encoding.url "a b&c=d/é~"} back {Encoding.fromUrl "a%20b%26c+d"} {Encoding.fromUrl "%zz"} query {Encoding.query "name=fp%20risc&x=1&flag&="}";
+  bin = strJoin "" (Binary.putU16be 80 :: Binary.putU32le 305419896 :: Binary.putU8 255 :: Nil);
+  _ = print "binary: {Encoding.hex bin} u16be {Binary.u16be 1 bin} u32le {Binary.u32le 3 bin} i8 {Binary.i8 7 bin} past {Binary.u32le 5 bin}";
+  _ = print "sha256 abc   {Digest.sha256 "abc"}";
+  _ = print "sha256 empty {Digest.sha256 ""}";
+  _ = print "sha256 448b  {Digest.sha256 "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"}";
+  parts = Digest.init |> Digest.update "ab" |> Digest.update "" |> Digest.update "c";
+  print "incremental equals whole: {Digest.finish parts == Digest.sha256 "abc"}; 100k 'a': {Digest.sha256 (String.repeat 100000 "a")}".

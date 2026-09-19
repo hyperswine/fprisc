@@ -1,0 +1,146 @@
+# std/encoding.fpr -- Encoding: bytes as text, and back (ExtBase).
+#
+#   Encoding = use "std/encoding".
+#   Encoding.hex bytes            Encoding.base64 bytes        Encoding.url "a b&c"
+#
+# Encoders cannot fail.  Decoders answer a Result that says where the input
+# stopped being what it claimed.  A String is bytes, so these work on any data.
+
+S = use "string".
+
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+# ---- hexadecimal (lower-case) --------------------------------------------------------
+hexDigit : Int -> String .
+hexDigit d = chr (case d < 10 of True -> 48 + d | False -> 87 + d).
+
+hex : String -> String .
+hex s = strJoin "" (hexGo s (strlen s) Nil).
+hexGo : unsafe String -> Int -> List String -> List String .
+hexGo s i acc = case i < 1 of
+    True -> acc
+  | False -> hexGo s (i - 1) (hexDigit (charAt s i / 16) :: hexDigit (band (charAt s i) 15) :: acc).
+
+# 0..15, or -1
+hexVal : Int -> Int .
+hexVal c = case c >= 48 and c <= 57 of
+    True -> c - 48
+  | False -> (case c >= 97 and c <= 102 of
+        True -> c - 87
+      | False -> (case c >= 65 and c <= 70 of True -> c - 55 | False -> 0 - 1)).
+
+fromHex : String -> Result String String .
+fromHex t = case band (strlen t) 1 == 1 of
+    True -> Err "hex: an odd number of digits"
+  | False -> fromHexGo t 1 Nil.
+fromHexGo : unsafe String -> Int -> List String -> Result String String .
+fromHexGo t i acc = case i > strlen t of
+    True -> Ok (strJoin "" (rev acc Nil))
+  | False -> (case hexVal (charAt t i) < 0 or hexVal (charAt t (i + 1)) < 0 of
+        True -> Err "hex: not a digit at position {i}"
+      | False -> fromHexGo t (i + 2) (chr (hexVal (charAt t i) * 16 + hexVal (charAt t (i + 1))) :: acc)).
+
+# an Int as at least `width` hex digits
+hexInt : Int -> Int -> String .
+hexInt width n = S.padLeft width "0" (strJoin "" (hexIntGo n Nil)).
+hexIntGo : unsafe Int -> List String -> List String .
+hexIntGo n acc = case n < 16 of True -> hexDigit n :: acc | False -> hexIntGo (n / 16) (hexDigit (band n 15) :: acc).
+
+# ---- Base64 (RFC 4648, padded) --------------------------------------------------------
+b64Char : Int -> String .
+b64Char v = chr (case v < 26 of
+    True -> 65 + v
+  | False -> (case v < 52 of
+        True -> 71 + v
+      | False -> (case v < 62 of True -> v - 4 | False -> (case v == 62 of True -> 43 | False -> 47)))).
+
+base64 : String -> String .
+base64 s = strJoin "" (rev (b64Go s 1 (strlen s) Nil) Nil).
+# pieces, newest first
+b64Go : unsafe String -> Int -> Int -> List String -> List String .
+b64Go s i n acc = case i > n of
+    True -> acc
+  | False ->
+      a = charAt s i;
+      b = (case i + 1 <= n of True -> charAt s (i + 1) | False -> 0);
+      c = (case i + 2 <= n of True -> charAt s (i + 2) | False -> 0);
+      q3 = (case i + 1 <= n of True -> b64Char (band (bor (BITSHIFTL b 2) (BITSHIFTR c 6)) 63) | False -> "=");
+      q4 = (case i + 2 <= n of True -> b64Char (band c 63) | False -> "=");
+      b64Go s (i + 3) n (q4 :: q3 :: b64Char (band (bor (BITSHIFTL a 4) (BITSHIFTR b 4)) 63) :: b64Char (BITSHIFTR a 2) :: acc).
+
+# 0..63; -1 for "=" ; -2 for anything else
+b64Val : Int -> Int .
+b64Val c = case c >= 65 and c <= 90 of
+    True -> c - 65
+  | False -> (case c >= 97 and c <= 122 of
+        True -> c - 71
+      | False -> (case c >= 48 and c <= 57 of
+            True -> c + 4
+          | False -> (case c == 43 or c == 45 of
+                True -> 62
+              | False -> (case c == 47 or c == 95 of True -> 63 | False -> (case c == 61 of True -> 0 - 1 | False -> 0 - 2))))).
+
+# accepts the URL-safe alphabet too ("-" and "_"); whitespace is not skipped
+fromBase64 : String -> Result String String .
+fromBase64 t = case band (strlen t) 3 != 0 of
+    True -> Err "base64: the length is not a multiple of four"
+  | False -> unB64Go t 1 Nil.
+unB64Go : unsafe String -> Int -> List String -> Result String String .
+unB64Go t i acc = case i > strlen t of
+    True -> Ok (strJoin "" (rev acc Nil))
+  | False ->
+      a = b64Val (charAt t i);
+      b = b64Val (charAt t (i + 1));
+      c = b64Val (charAt t (i + 2));
+      d = b64Val (charAt t (i + 3));
+      last = i + 3 == strlen t;
+      (case a < 0 or b < 0 or c < (0 - 1) or d < (0 - 1) or ((c < 0 or d < 0) and not last) or (c < 0 and d >= 0) of
+          True -> Err "base64: not valid at position {i}"
+        | False ->
+            b1 = chr (band (bor (BITSHIFTL a 2) (BITSHIFTR b 4)) 255);
+            b2 = (case c < 0 of True -> "" | False -> chr (band (bor (BITSHIFTL b 4) (BITSHIFTR c 2)) 255));
+            b3 = (case d < 0 of True -> "" | False -> chr (band (bor (BITSHIFTL c 6) d) 255));
+            unB64Go t (i + 4) (b3 :: b2 :: b1 :: acc)).
+
+# ---- URL (percent) encoding, RFC 3986 ---------------------------------------------------
+# letters, digits and - . _ ~ pass; every other BYTE is %XX, so UTF-8 encodes correctly
+unreserved : Int -> Bool .
+unreserved c = S.isAlpha c or S.isDigit c or c == 45 or c == 46 or c == 95 or c == 126.
+
+url : String -> String .
+url s = strJoin "" (urlGo s (strlen s) Nil).
+urlGo : unsafe String -> Int -> List String -> List String .
+urlGo s i acc = case i < 1 of
+    True -> acc
+  | False -> (case unreserved (charAt s i) of
+        True -> urlGo s (i - 1) (chr (charAt s i) :: acc)
+      | False -> urlGo s (i - 1) ("%" :: S.toUpper (hexDigit (charAt s i / 16)) :: S.toUpper (hexDigit (band (charAt s i) 15)) :: acc)).
+
+# "+" is a space here too, as forms send it
+fromUrl : String -> Result String String .
+fromUrl t = fromUrlGo t 1 Nil.
+fromUrlGo : unsafe String -> Int -> List String -> Result String String .
+fromUrlGo t i acc = case i > strlen t of
+    True -> Ok (strJoin "" (rev acc Nil))
+  | False -> (case charAt t i == 37 of
+        False -> fromUrlGo t (i + 1) ((case charAt t i == 43 of True -> " " | False -> chr (charAt t i)) :: acc)
+      | True -> (case i + 2 > strlen t or hexVal (charAt t (i + 1)) < 0 or hexVal (charAt t (i + 2)) < 0 of
+            True -> Err "url: a bad % escape at position {i}"
+          | False -> fromUrlGo t (i + 3) (chr (hexVal (charAt t (i + 1)) * 16 + hexVal (charAt t (i + 2))) :: acc))).
+
+# "a=1&b=two%20words" -> pairs, decoded; a part that will not decode is kept as written
+query : String -> List (String, String) .
+query q = queryGo (S.split "&" q) Nil.
+queryGo : unsafe List String -> List (String, String) -> List (String, String) .
+queryGo parts acc = case parts of
+    Nil -> rev acc Nil
+  | p :: r -> (case strlen p == 0 of
+        True -> queryGo r acc
+      | False ->
+          at = strIndexOf "=" p;
+          k = (case at == 0 of True -> p | False -> S.left (at - 1) p);
+          v = (case at == 0 of True -> "" | False -> S.dropLeft at p);
+          queryGo r ((orRaw k, orRaw v) :: acc)).
+orRaw : String -> String .
+orRaw t = case fromUrl t of Ok d -> d | Err _ -> t.

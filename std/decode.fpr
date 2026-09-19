@@ -1,0 +1,177 @@
+# std/decode.fpr -- Decode: from flexible data to YOUR types, with errors that
+# say where (ExtBase).
+#
+#   Decode = use "std/decode".
+#   Server = Type (Server host port tags).
+#   server = Decode.map3 Server
+#     (Decode.field "host" Decode.string)
+#     (Decode.optional "port" 8080 Decode.int)
+#     (Decode.optional "tags" Nil (Decode.list Decode.string)).
+#   Decode.fromString server text
+#       -- Ok (Server "example.org" 8080 [])
+#       -- Err "port: expected an integer, found a string"
+#       -- Err "line 2, column 9: expected ':'"          (it was not JSON at all)
+#
+# The design's path:  external data -> Value -> decode/validate -> typed record.
+# A Decoder is a value; small ones combine into big ones; every failure names
+# the field path it happened at ("servers.2.port").
+
+J = use "json".
+M = use "map".
+O = use "option".
+S = use "string".
+
+# a failure: the path to it (innermost LAST) and what was wrong
+Decoder a = Type (Decoder (J.Value -> Result a (List String, String))).
+
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+apply : Decoder a -> J.Value -> Result a (List String, String) .
+apply d v = case d of Decoder f -> f v.
+
+# ---- running ---------------------------------------------------------------------
+run : Decoder a -> J.Value -> Result a String .
+run d v = case apply d v of
+    Ok x -> Ok x
+  | Err (path, why) -> Err (case path of Nil -> why | _ -> "{strJoin "." path}: {why}").
+
+# parse JSON text, then decode it
+fromString : Decoder a -> String -> Result a String .
+fromString d text = case J.parse text of Err why -> Err why | Ok v -> run d v.
+
+kind : J.Value -> String .
+kind v = case v of
+    J.Null -> "null" | J.Boolean _ -> "a boolean" | J.Integer _ -> "an integer" | J.Real _ -> "a number"
+  | J.Text _ -> "a string" | J.Sequence _ -> "a list" | J.Object _ -> "an object".
+
+wrong : String -> J.Value -> Result a (List String, String) .
+wrong wanted v = Err (Nil, "expected {wanted}, found {kind v}").
+
+# ---- the leaves ------------------------------------------------------------------
+string = Decoder (fn v -> case v of J.Text s -> Ok s | _ -> wrong "a string" v).
+int = Decoder (fn v -> case v of J.Integer n -> Ok n | _ -> wrong "an integer" v).
+bool = Decoder (fn v -> case v of J.Boolean b -> Ok b | _ -> wrong "a boolean" v).
+# a number's text ("1.5e3"), for you to convert
+number = Decoder (fn v -> case v of J.Real t -> Ok t | J.Integer n -> Ok (str n) | _ -> wrong "a number" v).
+# the Value itself, undecoded
+value = Decoder (fn v -> Ok v).
+
+succeed : a -> Decoder a .
+succeed x = Decoder (fn v -> Ok x).
+
+fail : String -> Decoder a .
+fail why = Decoder (fn v -> Err (Nil, why)).
+
+# null becomes None; anything else must decode
+nullable : Decoder a -> Decoder (O.Option a) .
+nullable d = Decoder (fn v -> case v of
+    J.Null -> Ok O.None
+  | _ -> (case apply d v of Ok x -> Ok (O.Some x) | Err e -> Err e)).
+
+# ---- structure -------------------------------------------------------------------
+under : String -> Result a (List String, String) -> Result a (List String, String) .
+under seg r = case r of Ok x -> Ok x | Err (path, why) -> Err (seg :: path, why).
+
+# a REQUIRED key of an object
+field : String -> Decoder a -> Decoder a .
+field k d = Decoder (fn v -> case v of
+    J.Object m -> (case M.get k m of
+        O.None -> Err (k :: Nil, "missing")
+      | O.Some inner -> under k (apply d inner))
+  | _ -> wrong "an object" v).
+
+# a key that may be absent (or null): then the default
+optional : String -> a -> Decoder a -> Decoder a .
+optional k dflt d = Decoder (fn v -> case v of
+    J.Object m -> (case M.get k m of
+        O.None -> Ok dflt
+      | O.Some inner -> (case inner of J.Null -> Ok dflt | _ -> under k (apply d inner)))
+  | _ -> wrong "an object" v).
+
+# a path of keys
+at : List String -> Decoder a -> Decoder a .
+at path d = atGo (rev path Nil) d.
+atGo : unsafe List String -> Decoder a -> Decoder a .
+atGo revPath d = case revPath of Nil -> d | k :: r -> atGo r (field k d).
+
+list : Decoder a -> Decoder (List a) .
+list d = Decoder (fn v -> case v of
+    J.Sequence xs -> listGo d xs 0 Nil
+  | _ -> wrong "a list" v).
+listGo : unsafe Decoder a -> List J.Value -> Int -> List a -> Result (List a) (List String, String) .
+listGo d xs i acc = case xs of
+    Nil -> Ok (rev acc Nil)
+  | x :: r -> (case apply d x of
+        Ok y -> listGo d r (i + 1) (y :: acc)
+      | Err e -> under (str i) (Err e)).
+
+# an object's entries, every value decoded the same way, keys ascending
+dict : Decoder a -> Decoder (List (String, a)) .
+dict d = Decoder (fn v -> case v of
+    J.Object m -> dictGo d (M.entries m) Nil
+  | _ -> wrong "an object" v).
+dictGo : unsafe Decoder a -> List (String, J.Value) -> List (String, a) -> Result (List (String, a)) (List String, String) .
+dictGo d kvs acc = case kvs of
+    Nil -> Ok (rev acc Nil)
+  | (k, x) :: r -> (case apply d x of
+        Ok y -> dictGo d r ((k, y) :: acc)
+      | Err e -> under k (Err e)).
+
+# ---- combining -------------------------------------------------------------------
+map : (a -> b) -> Decoder a -> Decoder b .
+map f d = Decoder (fn v -> case apply d v of Ok x -> Ok (f x) | Err e -> Err e).
+
+# decode, then decide how to go on from what was found
+andThen : (a -> Decoder b) -> Decoder a -> Decoder b .
+andThen f d = Decoder (fn v -> case apply d v of Ok x -> apply (f x) v | Err e -> Err e).
+
+# decode, then VALIDATE: the check answers Ok, or Err with what is wrong
+check : (a -> Result a String) -> Decoder a -> Decoder a .
+check ok d = Decoder (fn v -> case apply d v of
+    Err e -> Err e
+  | Ok x -> (case ok x of Ok y -> Ok y | Err why -> Err (Nil, why))).
+
+# the first that succeeds; all failing, the LAST one's reason
+oneOf : List (Decoder a) -> Decoder a .
+oneOf ds = Decoder (fn v -> oneOfGo ds v (Err (Nil, "no decoder given"))).
+oneOfGo : unsafe List (Decoder a) -> J.Value -> Result a (List String, String) -> Result a (List String, String) .
+oneOfGo ds v lastErr = case ds of
+    Nil -> lastErr
+  | d :: r -> (case apply d v of Ok x -> Ok x | Err e -> oneOfGo r v (Err e)).
+
+map2 : (a -> b -> c) -> Decoder a -> Decoder b -> Decoder c .
+map2 f da db = Decoder (fn v -> case apply da v of
+    Err e -> Err e
+  | Ok a -> (case apply db v of Err e -> Err e | Ok b -> Ok (f a b))).
+
+map3 : (a -> b -> c -> d) -> Decoder a -> Decoder b -> Decoder c -> Decoder d .
+map3 f da db dc = andMap dc (map2 f da db).
+
+map4 : (a -> b -> c -> d -> e) -> Decoder a -> Decoder b -> Decoder c -> Decoder d -> Decoder e .
+map4 f da db dc dd = andMap dd (map3 f da db dc).
+
+map5 : (a -> b -> c -> d -> e -> g) -> Decoder a -> Decoder b -> Decoder c -> Decoder d -> Decoder e -> Decoder g .
+map5 f da db dc dd de = andMap de (map4 f da db dc dd).
+
+# one more argument for a decoder of functions: how records of any width are built
+#   Decode.succeed Person |> Decode.andMap (field "name" string) |> Decode.andMap (field "age" int)
+andMap : Decoder a -> Decoder (a -> b) -> Decoder b .
+andMap da df = Decoder (fn v -> case apply df v of
+    Err e -> Err e
+  | Ok f -> (case apply da v of Err e -> Err e | Ok a -> Ok (f a))).
+
+# ---- untyped sources -------------------------------------------------------------
+# Environment variables and command lines are all strings.  This gives a
+# string the type it LOOKS like -- an integer, true/false, else text -- so the
+# same decoder reads a JSON file and an environment.
+infer : String -> J.Value .
+infer t = case S.toInt t of
+    Ok n -> J.Integer n
+  | Err _ -> (case t == "true" of
+        True -> J.Boolean True
+      | False -> (case t == "false" of True -> J.Boolean False | False -> J.Text t)).
+
+# the design's Decode.fields: a string map, decoded like an object
+fields : Decoder a -> M.Map String String -> Result a String .
+fields d m = run d (J.Object (M.map infer m)).

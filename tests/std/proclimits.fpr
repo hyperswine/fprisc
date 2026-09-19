@@ -1,0 +1,6 @@
+profile base.
+Proc = use "std/proc".
+main =
+  _ = print "within: {Proc.runWithin 300 ("sleep" :: "5" :: Nil)}";
+  _ = print "env: {Proc.runWith ("GREETING=hello from fpr" :: Nil) ("/bin/sh" :: "-c" :: "echo $GREETING" :: Nil)}";
+  print "fast enough: {Proc.runWithin 5000 ("echo" :: "ok" :: Nil)}".

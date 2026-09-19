@@ -1,0 +1,27 @@
+unsafe base.
+Http = use "std/http".
+Tcp = use "std/tcp".
+String = use "std/string".
+Option = use "std/option".
+
+handle req = case req.path of
+    "/hello" -> Http.text 200 "hello, {req.method} {req.query}\n"
+  | "/echo" -> Http.json 201 "\{\"got\":{strlen req.body},\"type\":\"{Option.withDefault "?" (Http.header "Content-Type" req)}\"\}"
+  | _ -> Http.text 404 "no such page: {req.path}\n".
+
+show r = case r of
+    Ok resp -> "{resp.status} [{Option.withDefault "-" (Http.header "content-type" resp)}] {String.trim resp.body}"
+  | Err why -> "ERR {why}".
+
+main =
+  l = (case Tcp.listen "127.0.0.1" 0 of Ok x -> x | Err e -> error e);
+  base = "http://127.0.0.1:{Tcp.port l}";
+  _ = spawn (fn self -> Http.serve l handle);
+  _ = print (show (Http.get "{base}/hello?name=fpr"));
+  _ = print (show (Http.post "{base}/echo" "text/plain" (String.repeat 100000 "x")));
+  _ = print (show (Http.get "{base}/missing"));
+  _ = print (show (Http.get "ftp://nope"));
+  _ = print "url: {Http.parseUrl "https://Example.org:8443/a/b?c=d"} {Http.parseUrl "http://h"}";
+  _ = print "chunked: {Http.parseResponse "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n7;x=1\r\n, world\r\n0\r\n\r\n"}";
+  _ = Tcp.stop l;
+  print "after stop: {(case Http.get "{base}/hello" of Ok _ -> "answered?" | Err why -> (case String.contains "Connection refused" why of True -> "refused" | False -> why))}".

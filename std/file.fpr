@@ -4,11 +4,13 @@
 #   File.readText "notes.txt" |> Result.map String.lines
 #
 # Every operation answers a Result whose error is the system's own words
-# ("No such file or directory"); nothing panics.  These are the convenient
-# whole-file operations; a streaming handle API is a later module.
+# ("No such file or directory"); nothing panics.  The whole-file operations
+# are the convenient ones; `open` / `withOpen` give a Stream (std/stream.fpr)
+# for a file too big to hold, or one you read and write in place.
 
 OS = use "os".
 S = use "string".
+ST = use "stream".
 
 # what `info` answers.  kind is "file", "dir" or "other"; modified is seconds
 # since 1970-01-01 UTC (std/clock formats it).
@@ -60,3 +62,22 @@ rename from to = OS.rename from to.
 
 copy : String -> String -> Result Unit String .
 copy from to = case OS.readFile from of Ok bytes -> writeText to bytes | Err e -> Err e.
+
+# ---- streaming ---------------------------------------------------------------------
+# mode: "r" read, "w" replace, "a" append, "rw" read and write in place.
+# Then Stream.read / write / close; `seek` moves to an absolute byte offset.
+open : String -> String -> Result ST.Stream String .
+open path mode = case OS.open path mode of Ok f -> Ok (ST.Stream f) | Err e -> Err e.
+
+seek : Int -> ST.Stream -> Result Int String .
+seek at s = OS.seek (ST.fd s) at.
+
+# open, hand the Stream to `f`, and CLOSE it whatever `f` answers: no return
+# path forgets the descriptor.
+withOpen : String -> String -> (ST.Stream -> Result a String) -> Result a String .
+withOpen path mode f = case open path mode of
+    Err why -> Err why
+  | Ok s ->
+      r = f s;
+      _ = ST.close s;
+      r.

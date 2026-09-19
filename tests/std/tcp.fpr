@@ -1,0 +1,36 @@
+unsafe base.
+Tcp = use "std/tcp".
+Stream = use "std/stream".
+String = use "std/string".
+List = use "std/list".
+
+# the server side of one connection: answer each line in capitals, until "bye"
+echo conn peer = echoGo (Stream.reader conn) conn.
+echoGo r conn = case Stream.readLine r of (res, r2) ->
+  (case res of
+      Err _ -> Unit
+    | Ok line -> (case line == "bye" of
+          True -> _ = Stream.write "goodbye\n" conn; Unit
+        | False -> _ = Stream.write "{String.toUpper line}\n" conn; echoGo r2 conn)).
+
+client port n =
+  conn = (case Tcp.connect "127.0.0.1" port of Ok c -> c | Err e -> error e);
+  _ = Stream.write "hello {n}\nsecond line\nbye\n" conn;
+  all = Stream.readAll conn;
+  _ = Stream.close conn;
+  all.
+
+main =
+  l = (case Tcp.listen "127.0.0.1" 0 of Ok x -> x | Err e -> error e);
+  port = Tcp.port l;
+  me = myself 0;
+  _ = spawn (fn self -> send me (Tcp.serve l echo));
+  answers = List.map (client port) (List.range 1 3);
+  _ = print "answers {answers}";
+  big = String.repeat 200000 "0123456789";
+  conn = (case Tcp.connect "127.0.0.1" port of Ok c -> c | Err e -> error e);
+  _ = Stream.write "{big}\nbye\n" conn;
+  back = Stream.readAll conn;
+  _ = print "2 MB line echoed: {(case back of Ok b -> String.length b | Err _ -> 0 - 1)} bytes";
+  _ = Tcp.stop l;
+  print "refused after stop: {(case Tcp.connect "127.0.0.1" port of Ok _ -> "connected?" | Err e -> e)}".
