@@ -1,0 +1,2 @@
+profile base.
+> print "not allowed here".

@@ -1,1 +1,2 @@
+profile base.
 main = print "hello from base".

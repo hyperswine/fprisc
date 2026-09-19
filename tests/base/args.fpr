@@ -1,3 +1,4 @@
+profile base.
 # the command line and the exit status
 count : unsafe List String -> Int .
 count Nil = 0.

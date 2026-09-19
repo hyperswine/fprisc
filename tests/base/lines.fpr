@@ -1,3 +1,4 @@
+profile base.
 # stdin, line by line, until EOF
 loop : unsafe Int -> Int -> (Int, Int) .
 loop n total = case Sys.readLine Unit of

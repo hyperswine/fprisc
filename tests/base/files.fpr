@@ -1,3 +1,4 @@
+profile base.
 main =
   p = "/tmp/fpr-base-files.txt";
   w = fileWrite p "one\n";

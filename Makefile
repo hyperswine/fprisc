@@ -115,7 +115,7 @@ stdcheck: fprc
 # ---- BareMetal profile -------------------------------------------------
 $(BUILD)/prog.s: fprc $(PROG) core/prelude.fpr FORCE
 	@mkdir -p $(BUILD)
-	LC_ALL=C.UTF-8 ./fprc --profile=bare-metal $(FPRC_FLAGS) --prelude=core/prelude.fpr $(PROG) $@
+	LC_ALL=C.UTF-8 ./fprc --system=bare-metal $(FPRC_FLAGS) --prelude=core/prelude.fpr $(PROG) $@
 
 bare-metal: $(BUILD)/prog.s $(RT_VIRT) $(RT_CORE) $(HAL)/virt/link.ld
 	$(CROSS)gcc $(CFLAGS) -T $(HAL)/virt/link.ld -I$(HAL)/core -I$(HAL)/virt \
@@ -143,7 +143,7 @@ RT_POSIX = $(HAL)/posix/main.c $(HAL)/posix/hal.c $(HAL)/posix/devices.c $(HAL)/
 BIN ?= $(BUILD)/$(basename $(notdir $(PROG)))
 $(BUILD)/base.s: fprc $(PROG) core/prelude.fpr FORCE
 	@mkdir -p $(BUILD)
-	LC_ALL=C.UTF-8 ./fprc --profile=base --prelude=core/prelude.fpr $(PROG) $@
+	LC_ALL=C.UTF-8 ./fprc --system=posix --prelude=core/prelude.fpr $(PROG) $@
 
 posix: $(BUILD)/base.s $(RT_POSIX) $(RT_CORE)
 	$(CC) -O2 -Wall -Wextra -DFPR_POSIX -DFPR_NHARTS=$(POSIXHARTS) $(POSIXLDFLAGS) -I$(HAL)/core -I$(HAL)/posix \
@@ -187,7 +187,7 @@ endif
 HEAP_EXPORTS = heapInit:fpr_builtin_heap_init,inHeap:fpr_in_heap,alloc:fpr_alloc,free:fpr_free,realloc:fpr_realloc,retain:fpr_builtin_retain,release:fpr_builtin_release,allocAdt:fpr_builtin_alloc_adt,liveAllocations:fpr_builtin_live_allocations,setLayout:fpr_builtin_set_layout,fieldCount:fpr_builtin_field_count,fieldKind:fpr_builtin_field_kind
 $(BUILD)/heap.s: fprc $(HAL)/builtin/heap.fpr FORCE
 	@mkdir -p $(BUILD)
-	./fprc --profile=bare-metal-builtin --arc --raw --lib --export=$(HEAP_EXPORTS) $(HAL)/builtin/heap.fpr $@
+	./fprc --system=bare-metal --profile=builtin --arc --raw --lib --export=$(HEAP_EXPORTS) $(HAL)/builtin/heap.fpr $@
 BUILTIN_RT = $(HAL)/builtin/crt0.S $(HAL)/builtin/virt.c $(BUILTIN_HEAP) \
              $(HAL)/builtin/unsafe.c $(HAL)/builtin/arc.c $(HAL)/builtin/machine.S $(HAL)/builtin/interrupt.S $(HAL)/core/runtime.c $(HAL)/virt/memshim.c
 ifeq ($(ARC),1)
@@ -205,7 +205,7 @@ LIB_EXPORT ?=
 LIB_FLAGS ?=
 builtin-lib: fprc FORCE
 	@mkdir -p $(BUILD)
-	./fprc --profile=bare-metal-builtin --arc $(LIB_FLAGS) --lib --export=$(LIB_EXPORT) $(LIB) $(BUILD)/lib-$(basename $(notdir $(LIB))).s
+	./fprc --system=bare-metal --profile=builtin --arc $(LIB_FLAGS) --lib --export=$(LIB_EXPORT) $(LIB) $(BUILD)/lib-$(basename $(notdir $(LIB))).s
 .PHONY: builtin-lib
 ifneq ($(BUILTIN_HEAP_BYTES),)
 BUILTIN_CFLAGS += -DFPR_BUILTIN_HEAP_BYTES=$(BUILTIN_HEAP_BYTES)
@@ -215,7 +215,7 @@ BUILTIN_CFLAGS += -DFPR_ARC_CHECK
 endif
 bare-metal-builtin: fprc $(BUILTIN_RT) $(HAL)/builtin/link.ld FORCE
 	@mkdir -p $(BUILD)
-	./fprc --profile=bare-metal-builtin $(BUILTIN_COMPILER_FLAGS) $(FPRC_FLAGS) $(PROG) $(BUILD)/builtin.s
+	./fprc --system=bare-metal --profile=builtin $(BUILTIN_COMPILER_FLAGS) $(FPRC_FLAGS) $(PROG) $(BUILD)/builtin.s
 	$(CROSS)gcc $(CFLAGS) -UFPR_NHARTS -DFPR_NHARTS=1 -DFPR_BUILTIN $(BUILTIN_CFLAGS) -ffunction-sections -fdata-sections \
 	  -Wl,--gc-sections -T $(HAL)/builtin/link.ld -I$(HAL)/core -I$(HAL)/builtin \
 	  $(BUILTIN_RT) $(BUILD)/builtin.s $$(cat $(BUILD)/builtin.s.units) $(BUILTIN_EXTRA) $(BUILTIN_LDFLAGS) -o $(IMAGE)

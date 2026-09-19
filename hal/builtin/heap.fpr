@@ -27,6 +27,8 @@
 # unreachable arm -- and every nested decision here is a helper
 # function anyway, which also reads better.
 
+profile builtin.
+
 # ---- words, addresses, the state cell -------------------------------------------------
 w n = Word.fromInt n.
 i x = Word.toInt x.

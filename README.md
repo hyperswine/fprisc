@@ -30,6 +30,14 @@ This split changes source ownership, not language semantics or the profile model
 Actor/Vector placement and the future Builtin/Base/ExtBase contracts remain design
 work; the current runtime is not being presented as a completed minimal Builtin.
 
+## Profiles and systems
+
+A file declares what it is written against -- `profile builtin.`,
+`profile base.` (the default), `profile extbase.`, `profile sol.`, or
+`unsafe base.` to mark it blanket-unsafe at the same time -- and the compiler
+is told where it runs: `--system=bare-metal | qos-native | qos-portable |
+posix`.  See [docs/PROFILES.md](docs/PROFILES.md) for the matrix.
+
 ## The Base profile: programs for this machine
 
 ```sh

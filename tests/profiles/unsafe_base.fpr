@@ -1,0 +1,5 @@
+unsafe base.
+# blanket unsafe AND the profile: a recursive function needs no signature
+count Nil = 0.
+count (_ :: r) = 1 + count r.
+main = print "counted {count (1 :: 2 :: 3 :: Nil)}".

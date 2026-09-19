@@ -3,7 +3,8 @@
 Kind: reference for what ships today; the contract language is SEMANTICS.md.
 
 `fpr build prog.fpr` turns a program into an ordinary executable for the
-machine it runs on.  No QOS, no QEMU, no Makefile: the compiler lowers the
+machine it runs on: the `posix` system of docs/PROFILES.md, for a program
+of the `base` profile (the default; `profile base.` says so).  No QOS, no QEMU, no Makefile: the compiler lowers the
 program for the host ISA (x86-64 or AArch64, Linux or macOS), and the host's
 C compiler links it with the same core runtime every other profile uses
 (`hal/core`: allocator, actors, mailboxes, fuel preemption, the deadlock
@@ -80,7 +81,7 @@ type error).
 
 ## How it is put together
 
-- `--profile=base` (compiler/Compile.hs) picks the lowering for the host
+- `--system=posix` (compiler/Compile.hs) picks the lowering for the host
   the compiler was built on: `x64` on x86_64, `a64` on aarch64 Linux,
   `a64mac` on macOS.  The rv64 emission stays the IR.
 - `hal/posix/main.c` boots as crt0.S would: `fpr_rt_init`, one pthread per

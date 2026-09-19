@@ -576,6 +576,7 @@ topDecl :: P STop
 topDecl =
   choice
     [ try unsafeModuleDecl,
+      try profileDecl,
       evalDecl,
       sigDecl,
       structDecl,
@@ -598,9 +599,34 @@ topDecl =
 unsafeModuleDecl :: P STop
 unsafeModuleDecl = do
   _ <- lexeme (string "unsafe" <* notFollowedBy (satisfy identChar))
-  _ <- lexeme ((string "program" <|> string "module") <* notFollowedBy (satisfy identChar))
+  what <- lexeme (choice (map (\w -> try (string w <* notFollowedBy (satisfy identChar))) ("program" : "module" : profileNames)))
   dotTerm
-  pure (TSig "$module" ([], TCon "Unit" []) [Just ("$unsafe", SVar "$unsafe")])
+  -- `unsafe base.` is the blanket marker AND the profile declaration in
+  -- one line: the $module sig carries the profile as its type
+  let carried = if what `elem` profileNames then what else "Unit"
+  pure (TSig "$module" ([], TCon carried []) [Just ("$unsafe", SVar "$unsafe")])
+
+-- `profile base.` -- what the program is written against (docs/PROFILES.md):
+-- the surface it may use and the systems it may run on.  Represented as
+-- a TSig for the reserved name "$profile" whose type names the profile,
+-- so no pass needs a new constructor.  The SYSTEM (bare metal, QOS,
+-- posix) is the compiler's --system flag, not the file's business.
+profileNames :: [String]
+profileNames = ["builtin", "base", "extbase", "sol"]
+
+profileDecl :: P STop
+profileDecl = do
+  _ <- lexeme (string "profile" <* notFollowedBy (satisfy identChar))
+  name <- lexeme (choice (map (\w -> try (string w <* notFollowedBy (satisfy identChar))) profileNames))
+  dotTerm
+  pure (TSig "$profile" ([], TCon name []) [])
+
+-- the profile a file declares, from either form
+declaredProfile :: [STop] -> Maybe String
+declaredProfile tops =
+  case [n | TSig "$profile" (_, TCon n []) _ <- tops] ++ [n | TSig "$module" (_, TCon n []) _ <- tops, n /= "Unit"] of
+    (n : _) -> Just n
+    [] -> Nothing
 
 -- `> expr.` — a top-level effect statement.  Parsed unconditionally so
 -- the surface is ONE grammar; whether the profile ACCEPTS it is the

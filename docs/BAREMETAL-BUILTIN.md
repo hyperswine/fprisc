@@ -11,6 +11,11 @@ not required in this unsafe profile. This does **not** disable type checking.
 make bare-metal-builtin-run PROG=tests/builtin.fpr
 ```
 
+A builtin program says so in its first line, `profile builtin.`, and is
+built for the bare-metal system (`fpr compile --system=bare-metal`; the 1.x
+`--profile=bare-metal-builtin` still means the same).  See docs/PROFILES.md
+for the two axes.
+
 The reference board is QEMU `virt`, RV64, 128 MiB RAM, machine mode. Hart 0
 runs `main`; other harts park. Returning from `main` exits QEMU successfully;
 use `print` for output. The default trap vector reports processor faults and

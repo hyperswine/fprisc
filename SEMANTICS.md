@@ -16,6 +16,15 @@ file suffixes; a clause applies to both unless it says which.
 
 ### 1. Programs and evaluation
 
+- A file declares its PROFILE in its first lines: `profile builtin.`,
+  `profile base.`, `profile extbase.`, `profile sol.` -- or `unsafe
+  base.` (and the others) for the blanket-unsafe marker and the profile
+  in one line.  A `.sol` file is sol; a file that says nothing is base.
+  The command line's `--profile=` may serve a silent file, never
+  contradict a declaring one.  The SYSTEM a program is built for is the
+  compiler's `--system=` flag, not the file's.  (decided)
+  `[test: tests/check_profiles.py]`
+
 - A program is a list of top-level definitions ended by `.`; `main` is
   the entry.  A `.sol` file (or `--sol`) also accepts `>` top-level
   effects, run in file order.  (today)  `[test: tests/hello.fpr, sol/examples/stddemo.sol]`
@@ -256,7 +265,13 @@ file suffixes; a clause applies to both unless it says which.
 
 ### 20. Hosts and targets
 
-- The Base profile (`--profile=base`, `fpr build`): an ordinary executable
+- Systems: `--system=bare-metal | qos-native | qos-portable | posix`.
+  The matrix: profile builtin runs on bare-metal only; sol on posix only
+  (the VM); base and extbase on every system whose HAL grants what they
+  use.  The 1.x `--profile=bare-metal|qos-native|qos-portable|
+  bare-metal-builtin|base` spellings mean the same as before.  (decided)
+  `[test: tests/check_profiles.py]`
+- The posix system (`--system=posix`, `fpr build`): an ordinary executable
   for the machine the compiler runs on, the core runtime linked with a
   libc HAL; harts are pthreads (`FPR_HARTS`).  Exit status = main's Int
   result, else 0; a panic is 1.  Nothing is echoed at exit.  (today)

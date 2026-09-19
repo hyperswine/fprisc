@@ -13,11 +13,14 @@ module Build (buildMain, runMain) where
 
 import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
+import qualified Compile
+import FPRISC (declaredProfile)
 import Home (fprHome)
+import qualified Sol.Main
 import System.Directory (XdgDirectory (..), createDirectoryIfMissing, doesFileExist, getModificationTime, getTemporaryDirectory, getXdgDirectory, removeFile)
-import System.Environment (getExecutablePath, lookupEnv)
+import System.Environment (getExecutablePath, lookupEnv, withArgs)
 import System.Exit (ExitCode (..), exitFailure, exitWith)
-import System.FilePath (dropExtension, takeBaseName, takeFileName, (</>))
+import System.FilePath (dropExtension, takeBaseName, takeExtension, takeFileName, (</>))
 import System.IO (IOMode (..), hPutStrLn, openFile, stderr)
 import qualified System.Info
 import System.Posix.Process (getProcessID)
@@ -70,7 +73,7 @@ build p = do
   -- asked for, its diagnostics (stderr) and its exit status pass through
   self <- getExecutablePath
   devnull <- openFile "/dev/null" WriteMode
-  (_, _, _, ch) <- createProcess (proc self ["compile", "--profile=base", "--prelude=" ++ prelude, pSource p, asm])
+  (_, _, _, ch) <- createProcess (proc self ["compile", "--system=posix", "--prelude=" ++ prelude, pSource p, asm])
                      {std_out = if pVerbose p then Inherit else UseHandle devnull}
   cc0 <- waitForProcess ch
   when (cc0 /= ExitSuccess) $ exitWith cc0
@@ -112,16 +115,26 @@ objectFor cc cflags rtdir src = do
     when (code /= ExitSuccess) $ hPutStrLn stderr ("fpr build: " ++ cc ++ " failed on " ++ src) >> exitWith code
   pure obj
 
+-- the profile the file declares (`profile sol.` or a .sol name means the VM)
+profileOf :: FilePath -> IO String
+profileOf src = do
+  tops <- Compile.parseFile src
+  pure (fromMaybe (if takeExtension src == ".sol" then "sol" else "base") (declaredProfile tops))
+
 buildMain :: [String] -> IO ()
 buildMain args = do
   p <- plan args
   unless (null (pRest p)) $ hPutStrLn stderr usage >> exitFailure
+  prof <- profileOf (pSource p)
+  when (prof == "sol") $ hPutStrLn stderr "fpr build: a sol program runs on the VM (`fpr run`, `fpr sol`); it is not built into an executable" >> exitFailure
   out <- build p
   hPutStrLn stderr ("fpr build: " ++ out)
 
 runMain :: [String] -> IO ()
 runMain args = do
   p <- plan args
+  prof <- profileOf (pSource p)
+  when (prof == "sol") $ withArgs (pSource p : pRest p) Sol.Main.main >> exitWith ExitSuccess
   tmp <- getTemporaryDirectory
   pid <- getProcessID
   let exe = tmp </> ("fpr-run-" ++ takeBaseName (pSource p) ++ "-" ++ show pid)
