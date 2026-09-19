@@ -6,7 +6,7 @@
  * ones.  Linux/macOS play the part of the board.
  *
  * This is the Base profile's host: an FP-RISC program compiled with
- * `fpr build` is this file, hal.c/devices.c/base.c, the shared core,
+ * `fpr build` is this file, hal.c/base.c, the shared core,
  * and the program, linked into one ordinary executable. */
 #include "fpr.h"
 #include <pthread.h>

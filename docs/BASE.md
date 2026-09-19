@@ -54,16 +54,20 @@ ends the process at once.  Nothing is echoed at exit -- the `[fpr] main
 live hart count at run time (up to `--harts` at build time; 1 makes a run
 deterministic).
 
-## The device tier, honestly
+## No devices: a process is not a board
 
-The virt device model survives so that programs written against it run
-unchanged: `device "uart"` is a 16550 over stdio (THR writes, LSR polls
-stdin, RBR reads it, the other registers read back what was written),
-`device "clint"` serves mtime from CLOCK_MONOTONIC in 10 MHz units.  The
-pin bus has its symbols and panics by name when called.  A program that
-references `blk` or `net` fails at link time on the `fpr_g_` symbol: the
-image's imports are its capability manifest, and the hosted HAL does not
-export a bus it does not have.
+A Base program on the posix system is a Unix process. Its world is the table
+above -- the command line, the environment, the three streams, files, the
+clock, an exit status -- not a register map. It used to carry a pretend
+virt board (`device "uart"` as a 16550 modelled over stdio, a CLINT serving
+mtime) so that programs written against the board ran unchanged; that went
+with `hal/posix/devices.c`. A program that wants to be portable says `print`.
+
+Hardware is reached the way any host facility is: a module declares the
+primitives it needs as signatures with no definition, and `fpr build --with
+driver.c` links the C that implements them (docs/C-REDUCTION.md). A program
+that references a device primitive nobody supplied fails at LINK time on the
+`fpr_g_` name: the image's imports are its capability manifest.
 
 Not on the host: RVV, the specialized Vec loops (x86-64 lowers with
 vec-loop specialization off, so the two in-place-fusion checks in the
@@ -87,7 +91,7 @@ type error).
 - `hal/posix/main.c` boots as crt0.S would: `fpr_rt_init`, one pthread per
   hart, `fpr_hart_main(0)`.  `hal.c` answers the board obligations (console,
   poweroff, the sleep/wake doorbells as a 200 us poll, mtime, no external
-  interrupts).  `devices.c` is the device tier above; `base.c` the table
+  interrupts).  `base.c` is the table
   above; `heap.S` a 256 MiB `.bss` heap standing in for the linker script.
 - `compiler/Build.hs` is `fpr build`/`fpr run`: the compiler as a quiet
   subprocess, the runtime object cache, the link.

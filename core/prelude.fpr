@@ -197,11 +197,6 @@ Actor = Struct {
   yield = fn a -> yield a
 }.
 
-Mmio = Struct {
-  read = fn r -> read r,
-  write = fn r v -> write r v
-}.
-
 # ---- List helpers (bare functions; List is the built-in `::`/Nil type) ------
 
 fromTo : unsafe Int -> Int -> List Int .

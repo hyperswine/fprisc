@@ -5,28 +5,8 @@
 # tail-recursive functions (TCO makes them O(1) stack); state is just
 # the accumulator argument, exactly the Erlang shape.
 
-# device "uart" / UART0 becomes stdout on POSIX targets
-uart = device "uart" .
-
-# ---- console (same as demo.fpr) --------------------------------------
-lsrReady =
-  v = read (reg8 uart 5);
-  BITTEST v 5 .
-
-putc : unsafe Int -> Unit .
-putc c | lsrReady = write (reg8 uart 0) c.
-putc c = putc c .
-# console text over THIS file's putc (the prelude cannot host these:
-# putc is per-target device code, and the prelude is a cached unit)
-puts : unsafe String -> Unit .
-puts s = putsFrom s 1 .
-putsFrom : unsafe String -> Int -> Unit .
-putsFrom s i | i > strlen s = Unit.
-putsFrom s i = putc (charAt s i) >> putsFrom s (i + 1) .
-nl : unsafe Unit .
-nl = putc 13 >> putc 10 .
-
-
+# Output is `print`: this program runs unchanged on every system, and only
+# some of them are a board with a UART to drive.
 
 # ---- actors ------------------------------------------------------------
 
@@ -52,20 +32,22 @@ counterLoop me total =
 
 main =
   me = myself 0;
-  _ = nl >> puts "actor demo: cooperative scheduler, ring mailboxes, ARC on send" >> nl >> nl;
+  _ = print "";
+  _ = print "actor demo: cooperative scheduler, ring mailboxes, ARC on send";
+  _ = print "";
   e = spawn echo;
   c = spawn counter;
   _ = send e (me, 21);
   r = receive me;
-  _ = puts "echo (me, 21)      -> {r}" >> nl;
+  _ = print "echo (me, 21)      -> {r}";
   _ = send c (me, 5);
   a = receive me;
-  _ = puts "counter (me, 5)    -> {a}" >> nl;
+  _ = print "counter (me, 5)    -> {a}";
   _ = send c (me, 7);
   b = receive me;
-  _ = puts "counter (me, 7)    -> {b}   (state held in the TCO'd server loop)" >> nl;
-  _ = puts "ARC live objects: {arcLive 0}   (echo dropped its message, counter kept 2)" >> nl;
+  _ = print "counter (me, 7)    -> {b}   (state held in the TCO'd server loop)";
+  _ = print "ARC live objects: {arcLive 0}   (echo dropped its message, counter kept 2)";
   _ = kill c;
   _ = send c (me, 100);
-  _ = puts "killed counter; send to dead actor is a silent no-op" >> nl;
-  puts "actor demo done" >> nl .
+  _ = print "killed counter; send to dead actor is a silent no-op";
+  print "actor demo done" .

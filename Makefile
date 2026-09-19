@@ -141,7 +141,7 @@ endif
 ifeq ($(shell uname -s),Linux)
 POSIXLDFLAGS ?= -no-pie
 endif
-RT_POSIX = $(HAL)/posix/main.c $(HAL)/posix/hal.c $(HAL)/posix/devices.c $(HAL)/posix/base.c \
+RT_POSIX = $(HAL)/posix/main.c $(HAL)/posix/hal.c $(HAL)/posix/base.c \
            $(HAL)/posix/heap.S $(POSIXCTX)
 BIN ?= $(BUILD)/$(basename $(notdir $(PROG)))
 $(BUILD)/base.s: fprc $(PROG) core/prelude.fpr FORCE
