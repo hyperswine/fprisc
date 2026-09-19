@@ -1,0 +1,129 @@
+# std/kvlog.fpr -- KvLog: a durable key-value store that is an APPEND-ONLY log
+# (ExtBase).
+#
+#   KvLog = use "std/kvlog".
+#   case KvLog.open "app.kvlog" of
+#       Ok db -> _ = KvLog.put "cart/42" value db; KvLog.get "cart/42" db
+#     | Err why -> ...
+#
+# Every `put` appends one line -- {"t": seconds, "k": key, "v": value} -- and
+# nothing is ever rewritten.  So the file is the whole HISTORY: opening it
+# replays it (the last value of each key wins), `history key` is every value a
+# key ever had, and `at time` is the store as it stood then.  State you can
+# replay is state you can debug, audit and migrate.
+#
+# One actor owns the file and the working set (the MVU rule: a single writer;
+# everyone else asks).  Values are Json.Value, so anything decodes with
+# std/decode.  A torn last line -- the process died mid-append -- fails to
+# parse and is skipped, and `open` says how many lines it skipped.
+#
+# Not here: compaction (the log only grows), fsync (a put is durable when the
+# OS says the append returned, not when the platter has it), multi-process use.
+
+J = use "json".
+M = use "map".
+O = use "option".
+S = use "string".
+F = use "file".
+C = use "clock".
+
+KvLog = Type (KvLog Int String).
+
+Req = Type (Put key value | Get key | Keys | Size).
+Rep = Type (Done | Value v | Listing ks | Count n).
+
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+# ---- reading a log file (no actor: a file is just data) -------------------------------
+# every record in order: (time, key, value); unparsable lines are counted, not fatal
+records : String -> Result (List (Int, String, J.Value), Int) String .
+records path = case F.exists path of
+    False -> Ok (Nil, 0)
+  | True -> (case F.lines path of Err why -> Err why | Ok ls -> Ok (recordsGo ls Nil 0)).
+recordsGo : unsafe List String -> List (Int, String, J.Value) -> Int -> (List (Int, String, J.Value), Int) .
+recordsGo ls acc bad = case ls of
+    Nil -> (rev acc Nil, bad)
+  | l :: r -> (case record l of
+        O.Some rec -> recordsGo r (rec :: acc) bad
+      | O.None -> recordsGo r acc (if strlen (S.trim l) == 0 then bad else bad + 1)).
+record : String -> O.Option (Int, String, J.Value) .
+record line = case J.parse line of
+    Err _ -> O.None
+  | Ok v -> (case J.field "k" v of
+        O.Some (J.Text k) -> (case J.field "v" v of
+            O.Some x -> O.Some ((case J.field "t" v of O.Some (J.Integer t) -> t | _ -> 0), k, x)
+          | O.None -> O.None)
+      | _ -> O.None).
+
+# every value `key` ever had, oldest first, with when
+history : String -> String -> Result (List (Int, J.Value)) String .
+history path key = case records path of
+    Err why -> Err why
+  | Ok (recs, _) -> Ok (historyGo key recs Nil).
+historyGo : unsafe String -> List (Int, String, J.Value) -> List (Int, J.Value) -> List (Int, J.Value) .
+historyGo key recs acc = case recs of
+    Nil -> rev acc Nil
+  | (t, k, v) :: r -> (if k == key then historyGo key r ((t, v) :: acc) else historyGo key r acc).
+
+# the store as it stood at `time` (seconds): replay, stopping there
+at : Int -> String -> Result (M.Map String J.Value) String .
+at time path = case records path of
+    Err why -> Err why
+  | Ok (recs, _) -> Ok (replayGo time recs (M.empty S.compare)).
+replayGo : unsafe Int -> List (Int, String, J.Value) -> M.Map String J.Value -> M.Map String J.Value .
+replayGo time recs m = case recs of
+    Nil -> m
+  | (t, k, v) :: r -> (if time > 0 and t > time then m else replayGo time r (M.insert k v m)).
+
+# ---- the store -------------------------------------------------------------------------
+# replays the file, then serves it.  `skipped` lines could not be read (a torn tail).
+open : String -> Result KvLog String .
+open path = case records path of
+    Err why -> Err "{path}: {why}"
+  | Ok (recs, skipped) ->
+      m = replayGo 0 recs (M.empty S.compare);
+      _ = (if skipped > 0 then Sys.stderr "kvlog: {path}: skipped {skipped} unreadable line(s)\n" else Unit);
+      Ok (KvLog (spawn (fn self -> serve self (step path) m)) path).
+
+# the store's state never holds on to a request: `keep` makes it its own
+step : String -> M.Map String J.Value -> Req -> (M.Map String J.Value, Rep) .
+step path m q = case q of
+    Put k v ->
+      _ = fileAppend path (strcat (J.render (J.object (("t", J.Integer (C.now Unit)) :: ("k", J.Text k) :: ("v", v) :: Nil))) "\n");
+      (M.insert (keep k) (keep v) m, Done)
+  | Get k -> (m, (case M.get k m of O.Some v -> Value v | O.None -> Done))
+  | Keys -> (m, Listing (M.keys m))
+  | Size -> (m, Count (M.size m)).
+
+# A reply is a MESSAGE: it is dropped once read (or it pins the store's slab for
+# as long as the caller lives), and what is taken out of it to keep is `keep`-copied.
+put : String -> J.Value -> KvLog -> Unit .
+put key value db = case db of KvLog a _ ->
+  r = ask (myself 0) a (Put key value);
+  _ = drop r;
+  Unit.
+
+get : String -> KvLog -> O.Option J.Value .
+get key db = case db of KvLog a _ ->
+  r = ask (myself 0) a (Get key);
+  out = (case r of Value v -> O.Some (keep v) | _ -> O.None);
+  _ = drop r;
+  out.
+
+keys : KvLog -> List String .
+keys db = case db of KvLog a _ ->
+  r = ask (myself 0) a Keys;
+  out = (case r of Listing ks -> keep ks | _ -> Nil);
+  _ = drop r;
+  out.
+
+size : KvLog -> Int .
+size db = case db of KvLog a _ ->
+  r = ask (myself 0) a Size;
+  out = (case r of Count n -> n | _ -> 0);
+  _ = drop r;
+  out.
+
+path : KvLog -> String .
+path db = case db of KvLog _ p -> p.

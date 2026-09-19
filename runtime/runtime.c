@@ -152,6 +152,10 @@ int fpr_in_heap(V v) { /* the buddy span: heap + process regions */
 #define FPR_SLAB_SZ ((uw)256 * 1024)
 #endif
 #define SLAB_SZ FPR_SLAB_SZ
+/* one minimum buddy block, less the buddy's own header word */
+#ifndef FPR_SLAB_MIN
+#define FPR_SLAB_MIN ((uw)64 * 1024 - 2 * sizeof(uw))
+#endif
 
 static fpr_pool_t *cur_pool(fpr_hart_t *h) {
   if (h->pool_override) return (fpr_pool_t *)h->pool_override;
@@ -412,7 +416,19 @@ V fpr_alloc(V raw_bytes) {
   fpr_slab_t *sl = pool->cur;
   if (!sl || sl->hp + total > sl->end) {
     uw want = total + sizeof(fpr_slab_t);
-    if (want < SLAB_SZ) want = SLAB_SZ;
+    /* A pool's slabs START SMALL AND DOUBLE, to SLAB_SZ: the first is one
+     * buddy block (64 KiB), each next twice the last.  Every actor that
+     * allocated anything used to take a whole SLAB_SZ (256 KiB) at once, so a
+     * thousand small session actors cost half a gigabyte before doing any
+     * work (docs/BOUNDS.md); an actor that really does grow pays a few extra
+     * blocks on the way up.  A loaded process without a buddy keeps the one
+     * size: its grant recycler matches by size. */
+    uw floor = SLAB_SZ;
+    if (fpr_mem_own || fpr_sched) {
+      floor = sl ? 2 * (uw)(sl->end - (char *)sl) : FPR_SLAB_MIN;
+      if (floor > SLAB_SZ) floor = SLAB_SZ;
+    }
+    if (want < floor) want = floor;
     if (fpr_sched) {
       /* shared plane: pools grow from the KERNEL's buddy, so every
        * value this process builds lives in the one heap span and the

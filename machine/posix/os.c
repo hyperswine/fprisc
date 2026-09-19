@@ -22,6 +22,9 @@
  *                  and the answer is Err "timed out after N ms")
  *                  -> exit status (128 + signal when killed), stdout, stderr
  *   Os.wallClock : Unit -> Int                                  seconds since 1970-01-01 UTC
+ *   Os.exec      : List String -> Result Unit String            BECOME that program (execvp): on
+ *                                                               success this process is gone, so an
+ *                                                               answer is always the Err
  *
  * Streams (files and sockets alike are a descriptor, an Int):
  *   Os.open      : String -> String -> Result Int String        path, mode "r" | "w" | "a" | "rw"
@@ -51,6 +54,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -234,6 +238,7 @@ static V h_run(V argvv, V cwdv, V inv, V envv, V limitv) {
     dup2(pin[0], 0); dup2(pout[1], 1); dup2(perr[1], 2);
     close(pin[0]); close(pin[1]); close(pout[0]); close(pout[1]); close(perr[0]); close(perr[1]); close(pexec[0]);
     for (size_t k = 0; k < envc; k++) putenv(envs[k]); /* the child's copy; "NAME=value" */
+    { sigset_t none; sigemptyset(&none); sigprocmask(SIG_SETMASK, &none, 0); signal(SIGPIPE, SIG_DFL); }
     if (!*cwd || !chdir(cwd)) execvp(argv[0], argv);
     int e = errno;
     if (write(pexec[1], &e, sizeof e) < 0) {}
@@ -439,3 +444,35 @@ static V h_local_port(V fdv) {
   return os_ok(TAG((sw)ntohs(me.sin_port)));
 }
 FPR_FN(fpr_g_Os_x2elocalPort, h_local_port, 1);
+
+/* become another program: how a live server restarts into its rebuilt self
+ * (std/live.fpr).  Sockets and files opened here are close-on-exec. */
+/* what a new program must not inherit from the thread that started it: a hart
+ * thread's signal mask (exec keeps the CALLING thread's, and a restarted server
+ * with its wake-up signals blocked hangs one time in three), and the ignored
+ * SIGPIPE (dispositions of SIG_IGN survive exec) */
+static void clean_for_exec(void) {
+  sigset_t none;
+  sigemptyset(&none);
+  pthread_sigmask(SIG_SETMASK, &none, 0);
+  signal(SIGPIPE, SIG_DFL);
+}
+
+static V h_exec(V argvv) {
+  size_t argc = 0;
+  for (V c = argvv; !ISINT(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) argc++;
+  if (!argc) return os_err("no program named");
+  char **argv = calloc(argc + 1, sizeof *argv);
+  if (!argv) fpr_cpanic("out of memory");
+  size_t i = 0;
+  for (V c = argvv; i < argc; c = ((V *)((char *)c + 8))[1]) argv[i++] = os_cstr(((V *)((char *)c + 8))[0], "Os.exec: an argument is not a String");
+  fflush(stdout); fflush(stderr);
+  clean_for_exec();
+  execvp(argv[0], argv);
+  V e = os_errno();
+  signal(SIGPIPE, SIG_IGN);
+  for (i = 0; i < argc; i++) free(argv[i]);
+  free(argv);
+  return e;
+}
+FPR_FN(fpr_g_Os_x2eexec, h_exec, 1);

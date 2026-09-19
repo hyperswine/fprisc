@@ -48,5 +48,6 @@ collect : unsafe Int -> Int -> (a -> b) -> List a -> Int -> Int -> M.Map Int b -
 collect me limit f xs next running done = case receiveRes me of
     Ok m ->
       (i, y) = m;
-      go me limit f xs next (running - 1) (M.insert i y done)
+      d2 = M.insert i (keep y) done; # the result outlives the message it came in
+      go me limit f xs next (running - 1) d2
   | Err why -> Err "a task failed: {why}".

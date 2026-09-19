@@ -105,10 +105,18 @@ cache now treats an object as stale when any HEADER is newer (it compared each
 object with its own `.c` only, so a changed struct in `fpr.h` linked new objects
 against old ones: a crash with no message).
 
+**A pool's slabs start small and double** (added with `docs/LIVE.md`). Every actor
+that allocated anything took a whole `FPR_SLAB_SZ` (256 KiB) at once, so a thousand
+small session actors cost 508 MiB of arena before doing any work. The first slab
+is one buddy block now and each next twice the last, to `FPR_SLAB_SZ`: 196 MiB.
+
 ## Deferred: written down, to be addressed another time
 
 In rough order of worth. None of these is silent.
 
+0. **An actor's first stack is still `FPR_STACK_SZ`** (a 512 KiB block), though
+   stacks grow now: a per-spawn size of one block is about a megabyte off every
+   session of a live server (`docs/LIVE.md`).
 1. **The render buffer** (`FPR_RBUF_SZ 4096`): `str`/`print` of a non-String value
    past 4095 bytes panics. Render into a growable buffer.
 2. **`RING_MAX 1<<20`**: a `Dynamic` mailbox ring stops doubling at a million

@@ -129,3 +129,42 @@ fileGo : unsafe ST.Stream -> State -> Result String String .
 fileGo s st = case ST.read 65536 s of
     Err why -> Err why
   | Ok bytes -> (case strlen bytes == 0 of True -> Ok (finish st) | False -> fileGo s (update bytes st)).
+
+# ---- SHA-1 ---------------------------------------------------------------------------
+# NOT for security: SHA-1 is broken for that.  It is here because protocols
+# name it -- the WebSocket handshake (std/ws.fpr), git object ids.
+rotl : Int -> Int -> Int .
+rotl x n = rotr x (32 - n).
+
+sha1Bytes : String -> String .
+sha1Bytes bytes = sha1Blocks (strJoin "" (bytes :: chr 128 :: zeros (padLen (band (strlen bytes) 63)) :: lengthBytes (strlen bytes * 8) :: Nil)) 1
+  (1732584193 :: 4023233417 :: 2562383102 :: 271733878 :: 3285377520 :: Nil).
+
+sha1 : String -> String .
+sha1 bytes = E.hex (sha1Bytes bytes).
+
+sha1Blocks : unsafe String -> Int -> List Int -> String .
+sha1Blocks buf at h = case at + 63 > strlen buf of
+    True -> strJoin "" (wordsToBytes h Nil)
+  | False -> sha1Blocks buf (at + 64) (sha1Compress h (rev (extend1 16 (first16 buf at 0 Nil)) Nil)).
+
+# w newest first: w[t] = rotl1 (w[t-3] ^ w[t-8] ^ w[t-14] ^ w[t-16])
+extend1 : unsafe Int -> List Int -> List Int .
+extend1 t w = case t == 80 of
+    True -> w
+  | False -> extend1 (t + 1) (rotl (bxor (bxor (nth 3 w) (nth 8 w)) (bxor (nth 14 w) (nth 16 w))) 1 :: w).
+
+sha1Compress : List Int -> List Int -> List Int .
+sha1Compress h w = case h of
+    a :: b :: c :: d :: e :: Nil -> sha1Rounds 0 w a b c d e h
+  | _ -> h.
+sha1Rounds : unsafe Int -> List Int -> Int -> Int -> Int -> Int -> Int -> List Int -> List Int .
+sha1Rounds t ws a b c d e h0 = case ws of
+    Nil -> addAll h0 (a :: b :: c :: d :: e :: Nil) Nil
+  | wt :: wr ->
+      f = (if t < 20 then bor (band b c) (band (bxor b 4294967295) d)
+           else if t < 40 then bxor (bxor b c) d
+           else if t < 60 then bor (bor (band b c) (band b d)) (band c d)
+           else bxor (bxor b c) d);
+      kk = (if t < 20 then 1518500249 else if t < 40 then 1859775393 else if t < 60 then 2400959708 else 3395469782);
+      sha1Rounds (t + 1) wr (m32 (rotl a 5 + f + e + kk + wt)) a (rotl b 30) c d h0.

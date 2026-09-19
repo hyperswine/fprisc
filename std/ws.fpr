@@ -1,0 +1,145 @@
+# std/ws.fpr -- Ws: WebSocket, the server side (RFC 6455), over a Stream (ExtBase).
+#
+#   Ws = use "std/ws".
+#   case Ws.accept request of                      # an Http request record
+#       Err why -> ...                              # not an upgrade: answer 400
+#     | Ok head -> _ = Stream.write head conn;      # "101 Switching Protocols ..."
+#                  loop (Stream.reader conn) conn
+#
+#   case Ws.receive reader conn of (msg, reader2) ->
+#       Text s -> ... Ws.sendText reply conn ...
+#     | Closed code -> ...
+#
+# `receive` answers whole MESSAGES: fragments are reassembled, pings are
+# answered and skipped, a close is acknowledged.  A message is as long as it
+# is: the 16-bit and 64-bit length forms are read, nothing is capped here (cap
+# it yourself if the peer is not trusted: `maxBytes`).  Frames from a client
+# MUST be masked; one that is not ends the connection with 1002, as the RFC says.
+
+ST = use "stream".
+D = use "digest".
+E = use "encoding".
+O = use "option".
+S = use "string".
+
+Message = Type (Text String | Binary String | Ping String | Closed Int | Failed String).
+
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+headerOf : unsafe String -> List (String, String) -> O.Option String .
+headerOf name hs = case hs of
+    Nil -> O.None
+  | (k, v) :: r -> (if k == name then O.Some v else headerOf name r).
+
+# the 101 response head for an upgrade request (lower-case header names, as
+# std/http gives them), or why it is not one
+accept : { headers : List (String, String) | r } -> Result String String .
+accept req = case headerOf "sec-websocket-key" req.headers of
+    O.None -> Err "not a websocket upgrade (no Sec-WebSocket-Key)"
+  | O.Some key -> (if strlen (S.trim key) != 24 then Err "bad Sec-WebSocket-Key"
+      else Ok (strJoin "" ("HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\nsec-websocket-accept: "
+        :: E.base64 (D.sha1Bytes (strcat (S.trim key) "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")) :: "\r\n\r\n" :: Nil))).
+
+# ---- sending (a server never masks) ---------------------------------------------------
+frame : Int -> String -> String .
+frame opcode payload =
+  n = strlen payload;
+  head = (if n < 126 then strcat (chr (128 + opcode)) (chr n)
+          else if n < 65536 then strJoin "" (chr (128 + opcode) :: chr 126 :: chr (n / 256) :: chr (band n 255) :: Nil)
+          else strJoin "" (chr (128 + opcode) :: chr 127 :: be64 n));
+  strcat head payload.
+be64 : Int -> List String .
+be64 n = chr 0 :: chr 0 :: chr 0 :: chr (band (BITSHIFTR n 32) 255) :: chr (band (BITSHIFTR n 24) 255) :: chr (band (BITSHIFTR n 16) 255) :: chr (band (BITSHIFTR n 8) 255) :: chr (band n 255) :: Nil.
+
+sendText : String -> ST.Stream -> Result Unit String .
+sendText s conn = ST.write (frame 1 s) conn.
+
+sendBinary : String -> ST.Stream -> Result Unit String .
+sendBinary s conn = ST.write (frame 2 s) conn.
+
+# 1000 normal, 1001 going away, 1002 protocol error, 1009 too big, ...
+sendClose : Int -> ST.Stream -> Result Unit String .
+sendClose code conn = ST.write (frame 8 (strcat (chr (code / 256)) (chr (band code 255)))) conn.
+
+# ---- receiving ------------------------------------------------------------------------
+# the next whole message; pings answered, a close acknowledged
+receive : ST.Reader -> ST.Stream -> (Message, ST.Reader) .
+receive r conn = receiveGo True 0 r conn 0 Nil.
+
+# the same with a size limit: past it the peer is closed with 1009
+receiveMax : Int -> ST.Reader -> ST.Stream -> (Message, ST.Reader) .
+receiveMax maxBytes r conn = receiveGo True maxBytes r conn 0 Nil.
+
+# READ ONLY: nothing is written to the socket, so ANOTHER actor can own the
+# writing side (std/live.fpr: a reader and a writer per session).  A Ping comes
+# back to you to answer (`sendPong`), and a Closed is yours to acknowledge.
+receiveOnly : Int -> ST.Reader -> ST.Stream -> (Message, ST.Reader) .
+receiveOnly maxBytes r conn = receiveGo False maxBytes r conn 0 Nil.
+
+sendPong : String -> ST.Stream -> Result Unit String .
+sendPong payload conn = ST.write (frame 10 payload) conn.
+
+# kind: the opcode of the message being assembled (0 = none); parts newest first
+receiveGo : unsafe Bool -> Int -> ST.Reader -> ST.Stream -> Int -> List String -> (Message, ST.Reader) .
+receiveGo auto maxBytes r conn kind parts = case readFrame r of (res, r2) ->
+  (case res of
+      Err why -> ((if why == "closed" then Closed 1006 else Failed why), r2)
+    | Ok (fin, opcode, masked, payload) ->
+        (if not masked then refuse auto 1002 conn r2
+         else if opcode == 8 then _ = (if auto then sendClose 1000 conn else Ok Unit); (Closed (closeCode payload), r2)
+         else if opcode == 9 then (if auto then _ = sendPong payload conn; receiveGo auto maxBytes r2 conn kind parts else (Ping payload, r2))
+         else if opcode == 10 then receiveGo auto maxBytes r2 conn kind parts
+         else if opcode == 0 and kind == 0 then refuse auto 1002 conn r2
+         else if opcode != 0 and kind != 0 then refuse auto 1002 conn r2
+         else if opcode > 2 then refuse auto 1003 conn r2
+         else if maxBytes > 0 and total parts + strlen payload > maxBytes then refuse auto 1009 conn r2
+         else if fin then (done (if opcode == 0 then kind else opcode) (strJoin "" (rev (payload :: parts) Nil)), r2)
+         else receiveGo auto maxBytes r2 conn (if opcode == 0 then kind else opcode) (payload :: parts))).
+
+refuse : Bool -> Int -> ST.Stream -> ST.Reader -> (Message, ST.Reader) .
+refuse auto code conn r = _ = (if auto then sendClose code conn else Ok Unit); (Closed code, r).
+
+done : Int -> String -> Message .
+done kind bytes = if kind == 1 then Text bytes else Binary bytes.
+
+total : List String -> Int .
+total parts = totalGo parts 0.
+totalGo : unsafe List String -> Int -> Int .
+totalGo parts n = case parts of Nil -> n | p :: r -> totalGo r (n + strlen p).
+
+closeCode : String -> Int .
+closeCode payload = if strlen payload >= 2 then charAt payload 1 * 256 + charAt payload 2 else 1005.
+
+# one frame: (fin, opcode, masked, payload -- unmasked)
+readFrame : ST.Reader -> (Result (Bool, Int, Bool, String) String, ST.Reader) .
+readFrame r = case ST.readExactly 2 r of (res, r2) ->
+  (case res of
+      Err why -> (Err why, r2)
+    | Ok h ->
+        b0 = charAt h 1;
+        b1 = charAt h 2;
+        (if band b0 112 != 0 then (Err "reserved bits set", r2)
+         else lengthThen (band b0 128 != 0) (band b0 15) (band b1 128 != 0) (band b1 127) r2)).
+
+lengthThen fin opcode masked len7 r =
+  if len7 < 126 then bodyThen fin opcode masked len7 r
+  else (case ST.readExactly (if len7 == 126 then 2 else 8) r of (res, r2) ->
+      (case res of
+          Err why -> (Err why, r2)
+        | Ok lb -> bodyThen fin opcode masked (beInt lb 1 0) r2)).
+
+beInt : unsafe String -> Int -> Int -> Int .
+beInt s i acc = if i > strlen s then acc else beInt s (i + 1) (acc * 256 + charAt s i).
+
+bodyThen fin opcode masked n r =
+  case ST.readExactly ((if masked then 4 else 0) + n) r of (res, r2) ->
+    (case res of
+        Err why -> (Err why, r2)
+      | Ok bytes -> (Ok (fin, opcode, masked, (if masked then unmask (substr bytes 1 4) (substr bytes 5 n) else bytes)), r2)).
+
+# XOR with the 4-byte key, built in pieces and joined once
+unmask : String -> String -> String .
+unmask key data = strJoin "" (unmaskGo key data (strlen data) Nil).
+unmaskGo : unsafe String -> String -> Int -> List String -> List String .
+unmaskGo key data i acc = if i < 1 then acc else unmaskGo key data (i - 1) (chr (bxor (charAt data i) (charAt key (band (i - 1) 3 + 1))) :: acc).

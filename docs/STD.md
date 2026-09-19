@@ -86,8 +86,11 @@ clients run in one process, which is how the tests run them.
 | `std/config` | `load` combines defaults < a JSON file < `PREFIX_NAME` in the environment < `--name=value`, into a Value you decode; `positional` |
 | `std/http` | client: `get post request parseUrl parseResponse`; server: `serve text html json response header`. HTTP/1.1, lower-case header names, chunked decoding, one request per connection. **`https://` is fetched by running `curl`** (std has no TLS); where curl is missing the Err says so |
 | `std/encoding` | `hex fromHex hexInt base64 fromBase64 url fromUrl query` |
-| `std/digest` | SHA-256 in FP-RISC: `sha256 sha256File` (streamed) and incremental `init update finish finishBytes`. About 1 MB/s: for files and configuration, not bulk data |
+| `std/digest` | SHA-1 (for protocols that name it: `sha1 sha1Bytes`) and SHA-256 in FP-RISC: `sha256 sha256File` (streamed) and incremental `init update finish finishBytes`. About 1 MB/s: for files and configuration, not bulk data |
 | `std/log` | a logger is a VALUE: `toStderr toFile json levelOf debug info warn error`. `2026-09-20T03:14:15Z INFO  listening port=8080`, or one JSON object per line |
+| `std/ws` | WebSocket, the server side (RFC 6455): `accept receive receiveMax receiveOnly sendText sendBinary sendPong sendClose frame`. Whole messages: fragments reassembled, all three length forms, nothing capped unless you ask |
+| `std/kvlog` | a durable key-value store that is an APPEND-ONLY log: `open put get keys size`, and on the file itself `records history at`. Replays on open; a torn last line is skipped and counted |
+| `std/live` | a server-driven UI over a websocket, the LiveView way: `serve replay field intField stringField stringsField`, `Ev Cmd Sub Policy`. See [LIVE.md](LIVE.md) |
 | `std/task` | `map mapBounded`: the same work on many inputs, an actor each, at most `n` at once, results in input order |
 
 ## The acceptance programs

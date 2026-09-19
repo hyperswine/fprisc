@@ -52,3 +52,40 @@ sendRetry me who m n = case send who m of
   | Err e ->
     _ = yield me;
     sendRetry me who m (n - 1).
+
+# ---- the frame boundary: how a long-lived actor stays the same size ------------------
+# An actor's heap is a pool: values are not collected one by one, the WHOLE pool
+# is reclaimed when the actor dies -- or when it says so.  An actor that loops
+# forever (a server, a store, a session) therefore takes a boundary between
+# turns: its state goes to itself as a message (a deep copy, outside the pool),
+# the pool is reset, and the state comes back as the only thing alive.  Every
+# temporary of every turn since the last boundary is gone.
+#
+# AFTER a boundary use only what it returned: anything else you were holding
+# pointed into the pool that was just reset.
+boundary : unsafe Int -> a -> a .
+boundary me state =
+  _ = send me state;
+  _ = Sys.poolReset 0;
+  m = receiveFrom me me;
+  fresh = keep m;
+  _ = drop m;
+  fresh.
+
+# The same, but only when the heap has DOUBLED since the last one, so the copy
+# is paid for by the garbage it frees (amortized, as a copying collector is):
+# a store with a million keys does not copy them on every put.
+#
+#   loop me st t = case A.tidy me (st, t) of (st2, t2) -> ... loop me st3 t2
+# Tidy slack limit: `slack` is how much garbage an actor may hold beyond twice
+# its live state.  A store wants a megabyte (few boundaries); one of ten
+# thousand sessions wants a few kilobytes (small, and its state is tiny anyway).
+Tidy = Type (Tidy Int Int).
+tidy0 = Tidy 1048576 1048576.
+tidySmall = Tidy 32768 32768.
+tidy : unsafe Int -> (a, Tidy) -> (a, Tidy) .
+tidy me pair = case pair of (state, Tidy slack limit) ->
+  (if heapUsed Unit < limit then pair
+   else tidied me slack (boundary me state)).
+tidied : Int -> Int -> a -> (a, Tidy) .
+tidied me slack fresh = (fresh, Tidy slack (2 * heapUsed Unit + slack)).
