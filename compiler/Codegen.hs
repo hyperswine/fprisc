@@ -26,7 +26,7 @@
 -- combined with volatile MMIO in the HAL this guarantees device access
 -- order matches program order -- nothing is elided or reordered.
 
-module Codegen (emitProgram, externals, Target (..), rv64, rv32, tgtName, codegenRev) where
+module Codegen (emitProgram, externals, Target (..), rv64, rv32, codegenRev, normArc) where
 -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
 -- specialization: x64 lowering runs with it OFF (SysV has too few
 -- callee-saved registers for the s1..s9 spec loops; the generic C
@@ -42,8 +42,9 @@ import Data.List (foldl', intercalate, isPrefixOf, nub, sort)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Numeric (showHex)
+import Peephole (peephole)
 
-import FPRISC (Core (..), Prog)
+import FPRISC (Core (..), Prog, freeVars)
 
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
@@ -520,7 +521,7 @@ slotsNeeded ext prog = go0
     go0 _ _ = 0
 
 compileFn :: Prog -> String -> ([String], Core) -> G [String]
-compileFn prog name (params, body) = do
+compileFn prog name (params, body0) = do
   tgt <- gets cgTgt
   exps <- gets cgExports
   ext <- gets cgExt
@@ -533,6 +534,10 @@ compileFn prog name (params, body) = do
   when (length params > 8 + spillCells) $
     error (name ++ ": arity > " ++ show (8 + spillCells) ++ " unsupported (8 regs + " ++ show spillCells ++ " hart spill cells)")
   let m = mangle name
+      -- the builtin target sees the body through normArc (let shapes the
+      -- ownership lowering leaves behind, folded so the tag-test and
+      -- inline-condition fusions in genT apply)
+      body = if tgtArc tgt && w == 8 then normArc body0 else body0
       -- exact high-water mark (see slotsNeeded); +2 is pure paranoia
       nslots = length params + slotsNeeded ext prog (S.fromList params) body + 2
       frame = ((2 * w + w * nslots + 15) `div` 16) * 16
@@ -557,12 +562,16 @@ compileFn prog name (params, body) = do
           "    call fpr_fuel_exhausted",
           fuelOk ++ ":"
         ]
+  -- the builtin target's lines pass through the peephole (Peephole.hs):
+  -- slot forwarding and dead slot stores, per function, after the
+  -- frame is opened
+  let tidy = if tgtArc tgt && w == 8 then peephole else id
   pure $ wcetAnnotate name $
     [ "# " ++ name ++ " (arity " ++ show (length params) ++ ")" ]
       ++ [ "    " ++ visibility tgt name ++ " fpr_fn_" ++ m | S.member name exps ]
       ++ [ "fpr_fn_" ++ m ++ ":" ]
       ++ framePro tgt frame
-      ++ concat [stSlot tgt ("a" ++ show i) i | (i, _) <- zip [0 :: Int ..] params, i < 8]
+      ++ tidy (concat [stSlot tgt ("a" ++ show i) i | (i, _) <- zip [0 :: Int ..] params, i < 8]
       -- wide params ride the hart spill cells: copy them into frame
       -- slots BEFORE the fuel check (fpr_fuel_exhausted may deschedule;
       -- by then the cells must be dead)
@@ -579,7 +588,58 @@ compileFn prog name (params, body) = do
            "    mv sp, t0",
            "    ret",
            ""
-         ]
+         ])
+
+-- Shapes the ownership lowering leaves in a body, rewritten so the
+-- generator's fusions see through them (builtin target only):
+--   let x = a in x                      -> a
+--   let x = <int> in b                   -> b[x := <int>]
+--   let x = y in b                       -> b[x := y]   (y not rebound in b)
+--   if (let x = a in c) then t else e    -> let x = a in if c then t else e
+--   let x = a in if x is C then t else e -> if a is C then t else e
+--   let x = a in if x then t else e      -> if a then t else e
+--   let x = a in let y = b in r          -> let y = (let x = a in b) in r   (x not in r)
+-- Each is an equivalence: literals have no effects, and a let's
+-- binding is evaluated exactly once, in the same order, on both sides.
+normArc :: Core -> Core
+normArc = go
+  where
+    go e = rw (descend e)
+    descend = \case
+      CApp a b -> CApp (go a) (go b)
+      CLam ps b -> CLam ps (go b)
+      CLet x a b -> CLet x (go a) (go b)
+      CIf c t e -> CIf (go c) (go t) (go e)
+      CMk t v fs -> CMk t v (map go fs)
+      CTagEq t v x -> CTagEq t v (go x)
+      CProj i x -> CProj i (go x)
+      e -> e
+    binders = \case
+      CLet x a b -> x : binders a ++ binders b
+      CLam ps b -> ps ++ binders b
+      CApp a b -> binders a ++ binders b
+      CIf c t e -> binders c ++ binders t ++ binders e
+      CMk _ _ fs -> concatMap binders fs
+      CTagEq _ _ x -> binders x
+      CProj _ x -> binders x
+      _ -> []
+    rw = \case
+      CLet x a (CVar y) | x == y -> a
+      CLet x (CInt n) b -> go (substE x (CInt n) b)
+      CLet x a (CIf (CTagEq t v (CVar y)) th el)
+        | x == y, x `notElem` freeVars th, x `notElem` freeVars el -> rw (CIf (CTagEq t v a) th el)
+      CLet x a (CIf (CVar y) th el)
+        | x == y, x `notElem` freeVars th, x `notElem` freeVars el -> rw (CIf a th el)
+      -- a binding used only by the next binding sinks into it (same
+      -- evaluation order: a, then b, then the rest)
+      CLet x a (CLet y b rest)
+        | x `notElem` freeVars rest, x `elem` freeVars b -> rw (CLet y (rw (CLet x a b)) rest)
+      -- a variable alias substitutes when nothing in the body rebinds
+      -- the variable (so the substitution cannot be captured)
+      CLet x (CVar y) b | y `notElem` binders b -> go (substE x (CVar y) b)
+      CIf (CLet x a c) th el
+        | x `notElem` freeVars th, x `notElem` freeVars el -> rw (CLet x a (rw (CIf c th el)))
+      e -> e
 
 -- slot k lives below the saved ra/s0 pair: -(3W + W*k)(s0)
 slotRef :: Target -> Int -> String
@@ -696,6 +756,115 @@ gen prog env nxt pos e0 = do
   spec <- gets cgSpec
   genT tgt spec prog ext env nxt pos e0
 
+-- ---- inline expansions of the raw primitive adapters (--arc) -------------
+--
+-- Under the raw ABI every adapter in hal/builtin/arc.c is a pure
+-- wrapper: Word/Addr are bare bits, Int is tagged, Bool/Unit are the
+-- immortal fpr_true/fpr_false/fpr_unit, and nothing is retained or
+-- released.  Each expansion below computes exactly what the adapter
+-- computes; where the adapter can panic (a shift count out of 0..63,
+-- an unaligned access, division by zero, deep `==` on two heap values)
+-- the fast path branches to a slow path that simply calls the adapter,
+-- so the check and its message stay in one place (unsafe.c).  Inputs
+-- are a0/a1 and only t0/t1 are clobbered before a slow-path branch, so
+-- the adapter still sees the original arguments.
+data Inl
+  = Plain [String] -- straight-line, result in a0
+  | Guarded (String -> [String]) [String] -- checks (branch to the slow label) then the fast body
+  | Cond [String] -- leaves t0 = 0/1
+  | GuardedCond (String -> [String]) [String]
+
+inlineTable :: M.Map String Inl
+inlineTable =
+  M.fromList
+    [ -- Word: bare bits
+      ("$arc.wordadd", Plain ["    add a0, a0, a1"]),
+      ("$arc.wordsub", Plain ["    sub a0, a0, a1"]),
+      ("$arc.wordand", Plain ["    and a0, a0, a1"]),
+      ("$arc.wordor", Plain ["    or a0, a0, a1"]),
+      ("$arc.wordxor", Plain ["    xor a0, a0, a1"]),
+      ("$arc.wordnot", Plain ["    not a0, a0"]),
+      ("$arc.wordfromInt", Plain ["    srai a0, a0, 1"]),
+      ("$arc.wordtoInt", Plain (tag "a0")),
+      ("$arc.wordbits", Plain ["    li a0, 129"]), -- TAG(64)
+      ("$arc.wordshl", Guarded shiftOk ["    sll a0, a0, t1"]),
+      ("$arc.wordshr", Guarded shiftOk ["    srl a0, a0, t1"]),
+      ("$arc.wordbitSet", Guarded shiftOk ["    li t0, 1", "    sll t0, t0, t1", "    or a0, a0, t0"]),
+      ("$arc.wordbitClear", Guarded shiftOk ["    li t0, 1", "    sll t0, t0, t1", "    not t0, t0", "    and a0, a0, t0"]),
+      ("$arc.wordbitTest", GuardedCond shiftOk ["    srl t0, a0, t1", "    andi t0, t0, 1"]),
+      ("$arc.wordeq", Cond ["    xor t0, a0, a1", "    seqz t0, t0"]),
+      -- Addr: bare bits, offsets are Ints
+      ("$arc.addrfromWord", Plain []),
+      ("$arc.addrtoWord", Plain []),
+      ("$arc.addrnull", Plain ["    li a0, 0"]),
+      ("$arc.addradd", Plain ["    srai t0, a1, 1", "    add a0, a0, t0"]),
+      ("$arc.addreq", Cond ["    xor t0, a0, a1", "    seqz t0, t0"]),
+      ("$arc.rawEq", Cond ["    xor t0, a0, a1", "    seqz t0, t0"]),
+      ("$arc.rawNe", Cond ["    xor t0, a0, a1", "    snez t0, t0"]),
+      -- Mem: aligned accesses; 8/16-bit values are Ints, wider are Words
+      ("$arc.memreadWord", Guarded (alignedTo 7) ["    ld a0, 0(a0)"]),
+      ("$arc.memread32", Guarded (alignedTo 3) ["    lwu a0, 0(a0)"]),
+      ("$arc.memread16", Guarded (alignedTo 1) ("    lhu a0, 0(a0)" : tag "a0")),
+      ("$arc.memread8", Plain ("    lbu a0, 0(a0)" : tag "a0")),
+      ("$arc.memwriteWord", Guarded (alignedTo 7) ["    sd a1, 0(a0)", unit]),
+      ("$arc.memwrite32", Guarded (alignedTo 3) ["    sw a1, 0(a0)", unit]),
+      ("$arc.memwrite16", Guarded (alignedTo 1) ["    srai t0, a1, 1", "    sh t0, 0(a0)", unit]),
+      ("$arc.memwrite8", Plain ["    srai t0, a1, 1", "    sb t0, 0(a0)", unit]),
+      ("$arc.memfence", Plain ["    fence iorw, iorw", unit]),
+      -- Int: tagged (n << 1) | 1
+      ("$arc.add", Plain ["    add a0, a0, a1", "    addi a0, a0, -1"]),
+      ("$arc.sub", Plain ["    sub a0, a0, a1", "    addi a0, a0, 1"]),
+      ("$arc.mul", Plain ["    srai t0, a0, 1", "    srai t1, a1, 1", "    mul t0, t0, t1", "    slli t0, t0, 1", "    ori a0, t0, 1"]),
+      ("$arc.div", Guarded (\slow -> ["    srai t1, a1, 1", "    beqz t1, " ++ slow])
+                           ["    srai t0, a0, 1", "    div t0, t0, t1", "    slli t0, t0, 1", "    ori a0, t0, 1"]),
+      ("$arc.lt", Cond ["    slt t0, a0, a1"]),
+      ("$arc.gt", Cond ["    slt t0, a1, a0"]),
+      ("$arc.le", Cond ["    slt t0, a1, a0", "    xori t0, t0, 1"]),
+      ("$arc.ge", Cond ["    slt t0, a0, a1", "    xori t0, t0, 1"]),
+      -- deep equality stays in C; two Ints compare inline
+      ("$arc.eq", GuardedCond bothInts ["    xor t0, a0, a1", "    seqz t0, t0"]),
+      ("$arc.ne", GuardedCond bothInts ["    xor t0, a0, a1", "    snez t0, t0"])
+    ]
+  where
+    tag r = ["    slli " ++ r ++ ", " ++ r ++ ", 1", "    ori " ++ r ++ ", " ++ r ++ ", 1"]
+    unit = "    la a0, fpr_unit"
+    -- the untagged shift count lands in t1; anything outside 0..63
+    -- (negatives included, as unsigned) takes the slow path
+    shiftOk slow = ["    srai t1, a1, 1", "    li t0, 64", "    bgeu t1, t0, " ++ slow]
+    alignedTo m slow = ["    andi t0, a0, " ++ show (m :: Int), "    bnez t0, " ++ slow]
+    bothInts slow = ["    and t0, a0, a1", "    andi t0, t0, 1", "    beqz t0, " ++ slow]
+
+-- the expansion as a value in a0 (the adapter's result)
+inlineArc :: String -> Maybe (String -> G [String])
+inlineArc h = emit <$> M.lookup h inlineTable
+  where
+    emit = \case
+      Plain ls -> const (pure ls)
+      Guarded checks fast -> \t -> guarded t checks fast
+      Cond c -> const (bool c)
+      GuardedCond checks c -> \t -> guarded t checks =<< bool c
+    -- t0 nonzero -> fpr_true, else fpr_false
+    bool cond = do
+      lt <- freshL "true"
+      ld <- freshL "bool"
+      pure (cond ++ ["    bnez t0, " ++ lt, "    la a0, fpr_false", "    j " ++ ld, lt ++ ":", "    la a0, fpr_true", ld ++ ":"])
+    -- checks branch to the slow label, which calls the adapter
+    guarded target checks fast = do
+      ls <- freshL "slow"
+      ld <- freshL "fast"
+      pure (checks ls ++ fast ++ ["    j " ++ ld, ls ++ ":", "    call " ++ target, ld ++ ":"])
+
+-- the expansion as a condition: t0 = 0/1, for a branch that never
+-- materializes the Bool (the slow path reads the adapter's answer)
+inlineCond :: String -> Maybe (String -> G [String])
+inlineCond h = case M.lookup h inlineTable of
+  Just (Cond c) -> Just (const (pure c))
+  Just (GuardedCond checks c) -> Just $ \t -> do
+    ls <- freshL "slow"
+    lj <- freshL "join"
+    pure (checks ls ++ c ++ ["    j " ++ lj, ls ++ ":", "    call " ++ t, "    lw t0, 4(a0)", lj ++ ":"])
+  _ -> Nothing
+
 genT :: Target -> Bool -> Prog -> M.Map String Int -> M.Map String Int -> Int -> Pos -> Core -> G [String]
 genT tgt spec prog ext = go
   where
@@ -715,9 +884,26 @@ genT tgt spec prog ext = go
     -- "$sym.name" in Compile; the value is the address itself (kind 'a')
     go _ _ _ (CVar h)
       | "$sym." `isPrefixOf` h = pure ["    la a0, " ++ drop 5 h]
+    -- a nullary constructor is its immortal object; no call
+    go env _ _ (CVar h)
+      | tgtArc tgt, not (M.member h env), Just ([], b) <- M.lookup h prog, CMk t v [] <- normArc b =
+          pure ["    la a0, .Lnul_" ++ show t ++ "_" ++ show v]
     go env nxt pos (CVar h)
       | tgtArc tgt, Just target <- known env h 0 =
           knownCall env nxt pos target []
+    -- a raw primitive adapter ($arc.wordadd, $arc.memreadWord, tagged
+    -- Int arithmetic ...) with an inline expansion: stage the args
+    -- exactly as a call would, then emit the instructions in place of
+    -- the call.  Never a tail jump -- the value lands in a0 and the
+    -- enclosing epilogue returns it, as for any base expression.
+    go env nxt _pos e
+      | tgtArc tgt, w == 8,
+        (CVar h, args@(_ : _)) <- spineOf e,
+        Just target <- known env h (length args),
+        Just emit <- inlineArc h = do
+          argLines <- stageArgs env nxt args
+          body <- emit target
+          pure (argLines ++ argLoads env nxt args ++ body)
     go env nxt pos e
       | (CVar h, args@(_ : _)) <- spineOf e,
         Just target <- known env h (length args) =
@@ -735,6 +921,22 @@ genT tgt spec prog ext = go
     -- nested expression rather than themselves: propagate position so a
     -- known call in an if-branch or let-body (the shape every
     -- case-desugared recursive function has) is still a tail call.
+    -- a let of a local is an alias: slots are written once, so the
+    -- binder shares the variable's slot and no code is emitted (the
+    -- inliner's argument bindings are mostly of this shape)
+    go env nxt pos (CLet x (CVar y) b)
+      | tgtArc tgt, Just k <- M.lookup y env = go (M.insert x k env) nxt pos b
+    -- a branch: the condition is compiled as jumping code (jumpIf), so
+    -- a comparison, a nested if, a nullary Bool or a tag test each
+    -- branch directly and no Bool object is built
+    go env nxt pos (CIf c t e)
+      | tgtArc tgt, w == 8 = do
+          lc <- jumpIf False env nxt c
+          lt <- go env nxt pos t
+          le <- go env nxt pos e
+          lE <- freshL "else"
+          lD <- freshL "endif"
+          pure (lc lE ++ lt ++ ["    j " ++ lD, lE ++ ":"] ++ le ++ [lD ++ ":"])
     go env nxt pos (CIf c t e) = do
       lc <- go env nxt NonTail c
       lt <- go env nxt pos t
@@ -760,13 +962,24 @@ genT tgt spec prog ext = go
     -- Tail: restore ra/s0/sp exactly as the epilogue would and `j` --
     -- the target returns to OUR caller; O(1) stack for any chain of
     -- known saturated tail calls (self, mutual, whatever).
+    -- an argument that is a local needs no staging: its slot is
+    -- written once, so it is loaded straight from there at transfer
+    -- time; every other argument is evaluated into slot nxt+i
+    directArg env (CVar y) | tgtArc tgt, Just k <- M.lookup y env = Just (\r -> ldSlot tgt r k)
+    directArg _ (CInt i) | tgtArc tgt, intFits tgt i = Just (\r -> ["    li " ++ r ++ ", " ++ show (2 * i + 1)])
+    directArg _ _ = Nothing
+    argLoad env nxt r (i, a) = maybe (ldSlot tgt r (nxt + i)) ($ r) (directArg env a)
+    stageArgs env nxt args =
+      concat
+        <$> sequence
+          [ case directArg env a of
+              Just _ -> pure []
+              Nothing -> (++ stSlot tgt "a0" (nxt + i)) <$> go env (nxt + i + 1) NonTail a
+            | (i, a) <- zip [0 :: Int ..] args
+          ]
+    argLoads env nxt args = concat [argLoad env nxt ("a" ++ show i) (i, a) | (i, a) <- zip [0 .. 7] args]
     knownCall env nxt pos target args = do
-      argLines <-
-        concat
-          <$> sequence
-            [ (++ stSlot tgt "a0" (nxt + i)) <$> go env (nxt + i + 1) NonTail a
-              | (i, a) <- zip [0 :: Int ..] args
-            ]
+      argLines <- stageArgs env nxt args
       -- args 0..7 in registers; 8+ through the hart spill cells.  ALL
       -- args are fully evaluated into slots first (an arg's own
       -- evaluation may contain wide calls that clobber the cells), so
@@ -774,13 +987,13 @@ genT tgt spec prog ext = go
       -- the cells between here and the callee's prologue copies.  In
       -- Tail position the cell stores happen before teardown (slots
       -- are s0-relative and t0 is clobbered by the teardown itself).
-      let loads = concat [ldSlot tgt ("a" ++ show i) (nxt + i) | i <- [0 .. min 7 (length args - 1)]]
+      let loads = argLoads env nxt args
           spills =
             if length args > 8
               then "    mv t0, tp" : concat
-                     [ ldSlot tgt "t1" (nxt + i)
+                     [ argLoad env nxt "t1" (i, a)
                          ++ ["    " ++ st ++ " t1, " ++ spillRef tgt (i - 8) ++ "(t0)"]
-                     | i <- [8 .. length args - 1] ]
+                     | (i, a) <- drop 8 (zip [0 ..] args) ]
               else []
       pure $
         argLines
@@ -795,6 +1008,57 @@ genT tgt spec prog ext = go
                 "    mv sp, t0",
                 "    j " ++ target
               ]
+
+    -- jumping code for a Bool-valued Core: the lines jump to the label
+    -- when the value is `sense` and fall through otherwise.  A tag test
+    -- on Bool (tid 1) is the value's own truth; the inferencer has
+    -- typed the scrutinee, as the plain `if` below already relies on.
+    -- The result is a function of the label so callers can allocate it.
+    jumpIf :: Bool -> M.Map String Int -> Int -> Core -> G (String -> [String])
+    jumpIf sense env nxt = \case
+      CTagEq 1 1 c -> jumpIf sense env nxt c
+      CTagEq 1 0 c -> jumpIf (not sense) env nxt c
+      CTagEq tid var c -> do
+        lc <- go env nxt NonTail c
+        lNo <- freshL "tagno"
+        pure $ \l ->
+          let miss = if sense then lNo else l
+           in lc
+                ++ [ "    andi t0, a0, 1",
+                     "    bnez t0, " ++ miss,
+                     "    lw t0, 0(a0)",
+                     "    li t1, " ++ show tid,
+                     "    bne t0, t1, " ++ miss,
+                     "    lw t0, 4(a0)",
+                     "    li t1, " ++ show var
+                   ]
+                ++ (if sense then ["    beq t0, t1, " ++ l, lNo ++ ":"] else ["    bne t0, t1, " ++ l])
+      CIf c th el -> do
+        jc <- jumpIf False env nxt c
+        jt <- jumpIf sense env nxt th
+        je <- jumpIf sense env nxt el
+        lE <- freshL "celse"
+        lD <- freshL "cend"
+        pure $ \l -> jc lE ++ jt l ++ ["    j " ++ lD, lE ++ ":"] ++ je l ++ [lD ++ ":"]
+      CLet x a b -> do
+        la <- go env nxt NonTail a
+        jb <- jumpIf sense (M.insert x nxt env) (nxt + 1) b
+        pure $ \l -> la ++ stSlot tgt "a0" nxt ++ jb l
+      c
+        | Just v <- nullaryBool env c -> pure $ \l -> ["    j " ++ l | v == sense]
+        | (CVar h, args@(_ : _)) <- spineOf c,
+          Just target <- known env h (length args),
+          Just cond <- inlineCond h -> do
+            argLines <- stageArgs env nxt args
+            test <- cond target
+            pure $ \l -> argLines ++ argLoads env nxt args ++ test ++ [(if sense then "    bnez t0, " else "    beqz t0, ") ++ l]
+        | otherwise -> do
+          lc <- go env nxt NonTail c
+          pure $ \l -> lc ++ ["    lw t0, 4(a0)", (if sense then "    bnez t0, " else "    beqz t0, ") ++ l]
+    nullaryBool env = \case
+      CMk 1 v [] -> Just (v == 1)
+      CVar h | not (M.member h env), Just ([], b) <- M.lookup h prog, CMk 1 v [] <- normArc b -> Just (v == 1)
+      _ -> Nothing
 
     base env nxt = \case
       CVar n

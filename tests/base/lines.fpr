@@ -1,0 +1,10 @@
+profile base.
+# stdin, line by line, until EOF
+loop : unsafe Int -> Int -> (Int, Int) .
+loop n total = case Sys.readLine Unit of
+    Ok line -> loop (n + 1) (total + String.len line)
+  | Err _ -> (n, total).
+main =
+  (n, total) = loop 0 0;
+  _ = Sys.stderr "lines: to stderr\n";
+  print "lines: {n} chars: {total}".

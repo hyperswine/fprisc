@@ -1,0 +1,2 @@
+profile builtin.
+main = Word.toInt (Word.add (Word.fromInt 2) (Word.fromInt 3)).

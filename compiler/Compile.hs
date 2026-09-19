@@ -1,10 +1,12 @@
-module Compile (compileMain) where
+module Compile (compileMain, parseFile) where
 
 import Data.List (sortBy)
+import Data.Maybe (fromMaybe)
 import System.Environment (lookupEnv)
 import System.IO (hPutStrLn, stderr)
 import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
-import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak)
+import Inline (inlineSmall)
+import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, normArc)
 import Data.Char (isAlphaNum, ord)
 import Numeric (showHex)
 import A64 (deTlsQosAppA64, lowerA64, a64Rev)
@@ -25,6 +27,7 @@ import Precond (PreNote (..), PreStatus (..), applyPreconds, preTable, renderNot
 import Home (underHome)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Environment (getArgs)
+import qualified System.Info
 import StdBridge (runStdCheck)
 import System.Exit (exitFailure, exitSuccess)
 import System.FilePath (takeDirectory, takeExtension, takeFileName, (</>))
@@ -34,6 +37,9 @@ import Text.Megaparsec (errorBundlePretty, parse)
 data Opts = Opts
   { oTarget :: Target,
     oBuiltin :: Bool,
+    oBase :: Bool, -- the posix SYSTEM: a hosted executable on this machine (hal/posix); the ISA is the build host's
+    oSystem :: Maybe String, -- --system=bare-metal|qos-native|qos-portable|posix (docs/PROFILES.md)
+    oProfileFlag :: Maybe String, -- --profile=builtin|base|extbase|sol, when the file does not say
     oArc :: Bool,
     oRaw :: Bool, -- a RAW unit: allocation-free, no ownership instrumentation (Arc.lowerRaw)
     oLib :: Bool, -- a LIBRARY unit: the file is compiled as an imported module (names qualified), no main, weak shared stubs
@@ -54,7 +60,7 @@ data Opts = Opts
   }
 
 parseArgs :: [String] -> Opts
-parseArgs = foldl step (Opts rv64 False False False False [] False False False False False False False False False False Nothing False [])
+parseArgs = foldl step (Opts rv64 False False Nothing Nothing False False False [] False False False False False False False False False False Nothing False [])
   where
     -- profile aliases (Target.hs): the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
@@ -62,10 +68,30 @@ parseArgs = foldl step (Opts rv64 False False False False [] False False False F
     -- codegen the same way; qos-portable -> qx64 (x86-64 build host).
     -- hosted-bytecode is NOT an fprc target: that profile is the sol
     -- executable (fp-risc/sol).
-    step o "--profile=bare-metal-builtin" = o {oBuiltin = True}
-    step o "--profile=bare-metal" = o {oTarget = rv64, oBuiltin = False}
-    step o "--profile=qos-native" = o {oTarget = rv64, oBuiltin = False}
-    step o "--profile=qos-portable" = o {oTarget = rv64, oBuiltin = False, oX64 = True, oQosApp = True}
+    -- the SYSTEM: where the program runs (docs/PROFILES.md).  bare-metal
+    -- and qos-native are rv64 (QEMU virt, the board); qos-portable is
+    -- an x86-64 QOS app image; posix is an executable for the host this
+    -- compiler was built on -- the rv64 emission is the IR, the
+    -- lowering is the host's ISA.
+    step o "--system=bare-metal" = o {oTarget = rv64, oSystem = Just "bare-metal"}
+    step o "--system=qos-native" = o {oTarget = rv64, oSystem = Just "qos-native"}
+    step o "--system=qos-portable" = o {oTarget = rv64, oX64 = True, oQosApp = True, oSystem = Just "qos-portable"}
+    step o "--system=posix" = case (System.Info.os, System.Info.arch) of
+      ("darwin", "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True, oA64Mac = True, oSystem = Just "posix"}
+      (_, "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True, oSystem = Just "posix"}
+      (_, "x86_64") -> o {oTarget = rv64, oBase = True, oX64 = True, oSystem = Just "posix"}
+      (os', arch') -> error ("--system=posix: no hosted lowering for " ++ os' ++ "/" ++ arch' ++ " (x86_64 and aarch64 are supported)")
+    -- the PROFILE: what the program is written against.  The file says
+    -- it (`profile base.`); the flag is for files that do not.
+    step o "--profile=builtin" = o {oProfileFlag = Just "builtin"}
+    step o "--profile=base" = o {oProfileFlag = Just "base"}
+    step o "--profile=extbase" = o {oProfileFlag = Just "extbase"}
+    step o "--profile=sol" = o {oProfileFlag = Just "sol"}
+    -- the 1.x spellings, kept: a system and (for builtin) a profile at once
+    step o "--profile=bare-metal-builtin" = (step o "--system=bare-metal") {oProfileFlag = Just "builtin"}
+    step o "--profile=bare-metal" = step o "--system=bare-metal"
+    step o "--profile=qos-native" = step o "--system=qos-native"
+    step o "--profile=qos-portable" = step o "--system=qos-portable"
     step o "--arc" = o {oArc = True}
     step o "--lib" = o {oLib = True}
     step o "--raw" = o {oRaw = True}
@@ -229,35 +255,60 @@ bindNames = M.keysSet . arities
 compileMain :: IO ()
 compileMain = do
   setLocaleEncoding utf8
-  opts <- parseArgs <$> getArgs
-  when (oBuiltin opts && (oA64 opts || oX64 opts || oQosApp opts || oRvv opts || tgtName (oTarget opts) /= "rv64")) $ do
-    hPutStrLn stderr "bare-metal-builtin currently supports scalar RV64 only"
-    exitFailure
-  when (oArc opts && not (oBuiltin opts)) $ do
-    hPutStrLn stderr "--arc currently requires --profile=bare-metal-builtin"
-    exitFailure
-  when (oRaw opts && not (oArc opts)) $ do
-    hPutStrLn stderr "--raw needs --arc (it is the raw ABI without the ownership instrumentation)"
-    exitFailure
-  when ((oLib opts || not (null (oExports opts))) && not (oArc opts && oBuiltin opts)) $ do
-    hPutStrLn stderr "--lib / --export need --profile=bare-metal-builtin --arc (the raw ABI is the C ABI)"
-    exitFailure
-  when (oArc opts && oPlugin opts) $ do
-    hPutStrLn stderr "--arc does not yet support plugin/foreign ownership boundaries"
-    exitFailure
+  opts0 <- parseArgs <$> getArgs
   -- --stdcheck: parse the single file and run the std proof pass
   -- (StdBridge lowers the checkable fragment into StdCheck's interval /
   -- measure / WCET engine); no code is generated.
-  when (oStdCheck opts) $ do
-    inp <- case oFiles opts of
+  when (oStdCheck opts0) $ do
+    inp <- case oFiles opts0 of
       [i] -> pure i
       _ -> putStrLn "usage: fprc --stdcheck <in.fpr>" >> exitFailure >> pure ""
     tops <- parseFile inp
     runStdCheck tops
     exitSuccess
-  (inp, out) <- case oFiles opts of
+  (inp, out) <- case oFiles opts0 of
     [i, o] -> pure (i, o)
-    _ -> putStrLn "usage: fprc [--profile=bare-metal-builtin|bare-metal|qos-native|qos-portable] [--arc] [--target=rv32|rv64|a64|a64mac|x64|qx64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
+    _ -> putStrLn "usage: fprc [--system=posix|bare-metal|qos-native|qos-portable] [--profile=builtin|base|extbase|sol] [--arc] [--target=rv32|rv64|a64|a64mac|x64|qx64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
+  (rootSrc0, rootTopsParsed) <- parseFileSrc inp
+  -- the PROFILE is the file's: `profile base.` (or `unsafe base.`), a
+  -- .sol file is sol; the flag serves a file that says nothing, and
+  -- may not contradict one that does.  Base is the default.
+  let declared = case declaredProfile rootTopsParsed of
+        Just d -> Just d
+        Nothing | takeExtension inp == ".sol" -> Just "sol"
+                | otherwise -> Nothing
+      refuse m = hPutStrLn stderr ("error: " ++ m) >> exitFailure
+  profile <- case (declared, oProfileFlag opts0) of
+    (Just d, Just f) | d /= f -> refuse ("the file declares `profile " ++ d ++ ".` but the command line asks for " ++ f) >> pure d
+    (Just d, _) -> pure d
+    (Nothing, Just f) -> pure f
+    (Nothing, Nothing) -> pure "base"
+  let system = fromMaybe "bare-metal" (oSystem opts0)
+      opts = opts0 {oBuiltin = profile == "builtin", oSol = oSol opts0 || profile == "sol"}
+  -- the matrix (docs/PROFILES.md): builtin is bare metal only, sol is
+  -- the posix host only, base and extbase run anywhere with a HAL
+  when (profile == "builtin" && system /= "bare-metal") $
+    refuse ("profile builtin runs on the bare-metal system only, not " ++ system ++ " (--system=bare-metal)")
+  when (profile == "sol" && system /= "posix") $
+    refuse ("profile sol runs on the posix system (the VM: `fpr run`), not " ++ system)
+  when (oBuiltin opts && (oA64 opts || oX64 opts || oQosApp opts || oRvv opts || tgtName (oTarget opts) /= "rv64")) $ do
+    hPutStrLn stderr "profile builtin currently supports scalar RV64 only"
+    exitFailure
+  when (oBase opts && (oBuiltin opts || oQosApp opts || oPlugin opts || oRvv opts)) $ do
+    hPutStrLn stderr "--system=posix is a plain hosted executable: no builtin/arc, no QOS app image, no plugin, no RVV"
+    exitFailure
+  when (oArc opts && not (oBuiltin opts)) $ do
+    hPutStrLn stderr "--arc needs profile builtin (the raw ABI)"
+    exitFailure
+  when (oRaw opts && not (oArc opts)) $ do
+    hPutStrLn stderr "--raw needs --arc (it is the raw ABI without the ownership instrumentation)"
+    exitFailure
+  when ((oLib opts || not (null (oExports opts))) && not (oArc opts && oBuiltin opts)) $ do
+    hPutStrLn stderr "--lib / --export need profile builtin with --arc (the raw ABI is the C ABI)"
+    exitFailure
+  when (oArc opts && oPlugin opts) $ do
+    hPutStrLn stderr "--arc does not yet support plugin/foreign ownership boundaries"
+    exitFailure
   -- --prelude=FILE as given; no flag = the prelude beside the binary
   -- (core/prelude.fpr under Home.fprHome), so `fpr compile x.fpr x.s`
   -- means the same thing from any directory; --prelude= (empty) = none
@@ -268,7 +319,6 @@ compileMain = do
             | otherwise -> underHome ("core" </> "prelude.fpr")
   let opts' = opts {oPrelude = prelude}
   (preludeSrc, preludeTops) <- maybe (pure ("", [])) parseFileSrc prelude
-  (rootSrc0, rootTopsParsed) <- parseFileSrc inp
   -- a LIBRARY: the file is compiled as the one import of an empty root,
   -- so every name it defines is qualified by its module hash (no clash
   -- with the program it links into) and nothing requires a `main`
@@ -281,7 +331,7 @@ compileMain = do
   let solView = oSol opts || takeExtension inp == ".sol"
       (rootTops, nEvals) = desugarEvals rootTops0
   when (nEvals > 0 && not solView) $ do
-    hPutStrLn stderr ("error: " ++ show nEvals ++ " top-level `>` statement(s): the sol view of the grammar (enable with --sol, or name the file .sol)")
+    hPutStrLn stderr ("error: " ++ show nEvals ++ " top-level `>` statement(s): the sol profile's surface (declare `profile sol.`, or name the file .sol)")
     exitFailure
   when (nEvals > 0 && any isMain rootTops0) $ do
     hPutStrLn stderr "error: both `main` and top-level `>` statements -- the `>` list IS main in the sol view"
@@ -516,8 +566,15 @@ compileMain = do
                   else tgtName tgt
           tag = "g" ++ show codegenRev ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
-          own prog = if oArc opts then
-                       either (\e -> hPutStrLn stderr e >> exitFailure) pure ((if oRaw opts then lowerRaw else lowerArc) sourceExt prog)
+          -- --arc: lower ownership, then inline the small helpers at
+          -- their sites (Inline.hs) before the generator sees the unit
+          own prog = if oArc opts then do
+                       lowered <- either (\e -> hPutStrLn stderr e >> exitFailure) (pure . inlineSmall 3 24) ((if oRaw opts then lowerRaw else lowerArc) sourceExt prog)
+                       -- FPR_DUMP_CORE=name prints that function's Core as the generator sees it
+                       dump <- lookupEnv "FPR_DUMP_CORE"
+                       forM_ [(n, d) | Just want <- [dump], (n, d) <- M.toList lowered, takeWhile (/= '@') n == want] $ \(n, d) ->
+                         hPutStrLn stderr ("core " ++ n ++ ": " ++ show d ++ "\nnormalized: " ++ show (fmap normArc d))
+                       pure lowered
                      else pure prog
           emitUnit path exps ext uts = do
             cached <- doesFileExist path

@@ -51,7 +51,7 @@ main =
   u0 = expect "lit+mul" (case half 3.0 == 1.5 of True -> 1 | False -> 0) 1;
   u1 = expect "hyp345" (case hyp 3.0 4.0 == 5.0 of True -> 1 | False -> 0) 1;
   u2 = expect "ieee-gap" ieeeGap 1;
-  u3 = expect "cmp" (case 1.5 < 2.5 of True -> case 2.5 <= 2.5 of True -> 1 | False -> 0 | False -> 0) 1;
+  u3 = expect "cmp" (case 1.5 < 2.5 of True -> (case 2.5 <= 2.5 of True -> 1 | False -> 0) | False -> 0) 1;
 
   # division by zero is Inf, and NaN != NaN (no panics: IEEE poison)
   inf = 1.0 / 0.0;

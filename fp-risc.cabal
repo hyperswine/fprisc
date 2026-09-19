@@ -27,6 +27,7 @@ executable fpr
   other-modules:
       A64
       Arc
+      Build
       Representation
       Interrupt
       Codegen
@@ -34,8 +35,11 @@ executable fpr
       Compile
       FPRISC
       Home
+      Exhaust
       Infer
+      Inline
       Modules
+      Peephole
       Precond
       Safety
       StdBridge
@@ -77,5 +81,6 @@ executable fpr
     , mtl
     , network
     , process
+    , unix
     , time
     , utf8-string

@@ -1,0 +1,3 @@
+T = Type (A Int | B Int).
+f x y = case x of False -> 3 | True -> case y of A n -> n | B n -> n.
+main = print (str (f True (A 1))).

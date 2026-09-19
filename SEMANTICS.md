@@ -16,6 +16,15 @@ file suffixes; a clause applies to both unless it says which.
 
 ### 1. Programs and evaluation
 
+- A file declares its PROFILE in its first lines: `profile builtin.`,
+  `profile base.`, `profile extbase.`, `profile sol.` -- or `unsafe
+  base.` (and the others) for the blanket-unsafe marker and the profile
+  in one line.  A `.sol` file is sol; a file that says nothing is base.
+  The command line's `--profile=` may serve a silent file, never
+  contradict a declaring one.  The SYSTEM a program is built for is the
+  compiler's `--system=` flag, not the file's.  (decided)
+  `[test: tests/check_profiles.py]`
+
 - A program is a list of top-level definitions ended by `.`; `main` is
   the entry.  A `.sol` file (or `--sol`) also accepts `>` top-level
   effects, run in file order.  (today)  `[test: tests/hello.fpr, sol/examples/stddemo.sol]`
@@ -33,9 +42,17 @@ file suffixes; a clause applies to both unless it says which.
 
 - A `case` inside a NON-FINAL arm of another `case` must be
   parenthesised: unparenthesised, the arms after it attach to the inner
-  case and the outer one is left with one arm, which fails at RUNTIME
-  ("no matching pattern").  (today -- decide: make the parser refuse or
-  disambiguate)  `[test: ]`
+  case.  The grammar stays as it is; the shape is REFUSED at compile
+  time by case coverage, whatever the types involved: the outer case is
+  left non-exhaustive, or the inner one gains an arm it can never
+  reach.  (decided)  `[test: tests/check_cases.py]`
+- Case coverage: every `case` must be exhaustive (constructor sets from
+  the type; `Int`/`String` literals need a catch-all arm), and an arm
+  with a refutable head (constructor, literal, tuple) that the arms
+  before it already cover is an error.  A trailing `_` is never an
+  error: an actor's `receive` is typed unsafely, and the catch-all is
+  how a loop queues the messages the type does not name.  (decided)
+  `[test: tests/check_cases.py]`
 
 ### 2. Names, reserved words, operators
 
@@ -132,6 +149,13 @@ file suffixes; a clause applies to both unless it says which.
   `Err` on a bad leaf.  (today)  `[test: tests/paths.fpr]`
 
 ### 9. Effects, IO, transactions
+
+- The Base environment, on every profile whose HAL grants it (today: the
+  Base profile, `hal/posix`): `Sys.args`, `Sys.env`, `Sys.exit`,
+  `Sys.readLine`, `Sys.stderr`, `Sys.timeUs`, `fileRead`, `fileWrite`,
+  `fileAppend`, `fileExists`, with the types and results in docs/BASE.md.
+  A profile that does not grant one fails at link time on its `fpr_g_`
+  name, never silently.  (today)  `[test: tests/check_base.py]`
 
 - `.fpr`: effects are calls into the HAL through `Sys.*` and services
   (Part II).  `print` is immediate.  (today)
@@ -240,6 +264,18 @@ file suffixes; a clause applies to both unless it says which.
   compat note + a migration.  (plan)
 
 ### 20. Hosts and targets
+
+- Systems: `--system=bare-metal | qos-native | qos-portable | posix`.
+  The matrix: profile builtin runs on bare-metal only; sol on posix only
+  (the VM); base and extbase on every system whose HAL grants what they
+  use.  The 1.x `--profile=bare-metal|qos-native|qos-portable|
+  bare-metal-builtin|base` spellings mean the same as before.  (decided)
+  `[test: tests/check_profiles.py]`
+- The posix system (`--system=posix`, `fpr build`): an ordinary executable
+  for the machine the compiler runs on, the core runtime linked with a
+  libc HAL; harts are pthreads (`FPR_HARTS`).  Exit status = main's Int
+  result, else 0; a panic is 1.  Nothing is echoed at exit.  (today)
+  `[test: tests/check_base.py]`
 
 - qosp (Linux x86-64, macOS arm64, Linux a64 cross) hosts one `.qa`;
   virt (QEMU) boots the native kernel; a board target is the 2.0

@@ -1,0 +1,15 @@
+profile base.
+# the command line and the exit status
+count : unsafe List String -> Int .
+count Nil = 0.
+count (_ :: r) = 1 + count r.
+joined : unsafe List String -> String .
+joined Nil = "".
+joined (a :: Nil) = a.
+joined (a :: r) = strcat (strcat a ",") (joined r).
+main =
+  as = Sys.args Unit;
+  _ = print "args: {joined as} ({count as})";
+  case Sys.env "FPR_BASE_VAR" of
+    Ok v -> print "env: {v}" >> Sys.exit 3
+  | Err e -> print "env: {e}" >> Sys.exit 4.

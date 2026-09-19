@@ -21,6 +21,7 @@
 -- Makefiles don't care which name they call.
 module Main where
 
+import qualified Build
 import qualified Commit
 import qualified Compile
 import qualified Sol.Main
@@ -35,8 +36,11 @@ usage =
   unlines
     [ "fpr — the merged FP-RISC tool (one frontend, multiple execution profiles)",
       "",
-      "  fpr compile [flags] <in.fpr> <out.s>   AOT (BareMetal/QOS profiles; old fprc)",
-      "    --profile=bare-metal-builtin --arc  experimental first-order automatic ARC",
+      "  fpr build <prog.fpr> [-o out]          an executable for this machine (the posix system)",
+      "  fpr run <prog.fpr> [args...]           build and run it; a `profile sol.` program runs on the VM",
+      "  fpr compile [flags] <in.fpr> <out.s>   AOT for a --system (bare-metal | qos-native | qos-portable | posix)",
+      "    the file declares its profile: `profile builtin|base|extbase|sol.` (docs/PROFILES.md)",
+      "    --profile=builtin --arc             the raw ABI with first-order automatic ARC",
       "  fpr compile --target=bytecode <f>      the VM as a target: bytecode listing",
       "  fpr sol <script.sol> [args]            HostedBytecode profile (the sol VM)",
       "  fpr stdcheck <file.fpr>                the std proof pass",
@@ -61,6 +65,8 @@ main = do
     ("compile" : rest) | "--target=bytecode" `elem` rest ->
       withArgs ("--asm" : [a | a <- rest, a /= "--target=bytecode"]) Sol.Main.main
     ("compile" : rest) -> withArgs rest Compile.compileMain
+    ("build" : rest) -> Build.buildMain rest
+    ("run" : rest) -> Build.runMain rest
     ("stdcheck" : rest) -> withArgs ("--stdcheck" : rest) Compile.compileMain
     ("commit" : rest) -> Commit.commitMain rest
     ("versions" : rest) -> Commit.versionsMain rest

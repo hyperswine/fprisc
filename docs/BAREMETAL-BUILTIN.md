@@ -11,6 +11,11 @@ not required in this unsafe profile. This does **not** disable type checking.
 make bare-metal-builtin-run PROG=tests/builtin.fpr
 ```
 
+A builtin program says so in its first line, `profile builtin.`, and is
+built for the bare-metal system (`fpr compile --system=bare-metal`; the 1.x
+`--profile=bare-metal-builtin` still means the same).  See docs/PROFILES.md
+for the two axes.
+
 The reference board is QEMU `virt`, RV64, 128 MiB RAM, machine mode. Hart 0
 runs `main`; other harts park. Returning from `main` exits QEMU successfully;
 use `print` for output. The default trap vector reports processor faults and
@@ -322,14 +327,34 @@ the ARC, raw and machine programs and a 6,000-node release on the
 FP-RISC heap with `heap.c` out of the link, and exhaustion refused by
 name.
 
-Speed, honestly: the 10,000-cycle ARC program takes about 40 s on the
-FP-RISC heap against 0.35 s on `heap.c` (QEMU, this host).  Every raw
-primitive in the allocator -- `Mem.readWord`, `Word.add`, `Addr.eq` --
-is still a call through an adapter into `machine.S`, and `find` walks
-the block list through those calls.  Correctness came first; the
-optimizer the raw ABI was designed to admit (a raw `Word.add` is one
-`add`, a `Mem.readWord` one `ld`) is the next step, and it is a codegen
-change, not a change to this file.
+Speed, honestly: the 10,000-cycle ARC program (`tests/builtin_arc.fpr`)
+takes about 1.2 s on the FP-RISC heap against 0.36 s on `heap.c`
+(QEMU on this host; a trivial image boots in 0.04 s).  The first cut
+took 40 s, with every raw primitive a call through an adapter into
+`machine.S`.  What closed the gap, all of it under `--arc` and none of
+it a change to this file:
+
+- the raw primitive adapters are expanded in place (`Codegen.hs`,
+  `inlineTable`): `Word.add` is one `add`, `Mem.readWord` one `ld`
+  behind an alignment check, tagged `Int` arithmetic a few ALU ops.
+  Where the adapter can panic (a shift count outside 0..63, an
+  unaligned access, division by zero, deep `==` on two heap values) the
+  fast path branches to a slow path that simply calls the adapter, so
+  the check and its message stay in `unsafe.c`;
+- small non-recursive functions are inlined at saturated sites
+  (`Inline.hs`), so `rd a o = Mem.readWord (Addr.add a o)` costs two
+  instructions where it is used;
+- conditions compile as jumping code: a comparison, a nested `if`, a
+  tag test or a nullary `True`/`False` branches directly and no Bool
+  object is built (`jumpIf` in `Codegen.hs`, after `normArc` folds the
+  let shapes the ownership lowering leaves behind);
+- a peephole over each function's lines (`Peephole.hs`) forwards frame
+  slots to the registers that already hold them and drops the stores
+  nobody loads.
+
+The rest of the gap is the generator's shape -- every value still lives
+in a frame slot and every call opens a frame -- and a register
+allocator is the next step, not more of the above.
 
 ## Remaining coupling and porting
 

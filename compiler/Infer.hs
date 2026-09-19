@@ -40,6 +40,7 @@ import Data.List (foldl', intercalate, nub, stripPrefix)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
+import Exhaust (checkArms, siblingsOf)
 import FPRISC
 import Struct (Sigs, Structs)
 
@@ -436,6 +437,16 @@ builtinEnv =
       ("chr", mono (TFn tInt tStr)),
       ("parseInt", mono (TFn tStr tInt)),
       ("fileRead", mono (TFn tStr tStr)),
+      -- the Base environment (hal/posix/base.c; docs/BASE.md)
+      ("fileWrite", mono (TFn tStr (TFn tStr (tcon "Result" [tUnit, tStr])))),
+      ("fileAppend", mono (TFn tStr (TFn tStr (tcon "Result" [tUnit, tStr])))),
+      ("fileExists", mono (TFn tStr tBool)),
+      ("Sys.args", mono (TFn tUnit (tList tStr))),
+      ("Sys.exit", scheme [0] (TFn tInt (sv 0))),
+      ("Sys.env", mono (TFn tStr (tcon "Result" [tStr, tStr]))),
+      ("Sys.readLine", mono (TFn tUnit (tcon "Result" [tStr, tStr]))),
+      ("Sys.stderr", mono (TFn tStr tUnit)),
+      ("Sys.timeUs", mono (TFn tUnit tInt)),
       ("print", scheme [0] (TFn (sv 0) tUnit)),
       ("error", scheme [0] (TFn tStr (sv 0))),
       -- raw MMIO (registers are Ints): read/write a device word
@@ -738,6 +749,19 @@ inferPat cons = \case
         unify ("pattern " ++ c) ct (foldr TFn res ts)
         pure (res, M.unions envs)
 
+-- constructor -> (its type's name, arity), read off the constructor
+-- schemes: the result type after the argument arrows names the type
+conTable :: TEnv -> [(Name, (Name, Int))]
+conTable cons =
+  [ (c, (ty, arity))
+    | (c, Forall _ _ t) <- M.toList cons,
+      Just (ty, arity) <- [result 0 t]
+  ]
+  where
+    result n = \case
+      TFn _ r -> result (n + 1 :: Int) r
+      t -> (,n) <$> headCon t
+
 -- ---- expression inference ---------------------------------------------------
 
 -- ---- profile parameterization ----------------------------------------------
@@ -940,6 +964,10 @@ inferE ctx e0 = case e0 of
       (te, e') <- inferE (extend benv ctx) e
       unify "case arm" te res
       pure (p, e')
+    -- coverage (Exhaust): unreachable arms and non-exhaustive cases
+    -- are errors; the constructor sets come from the same environment
+    -- the patterns were typed against
+    mapM_ report (checkArms (siblingsOf (conTable (icCons ctx))) (map fst arms))
     pure (res, SCase scrut' arms')
   SBin op a b -> inferBin ctx op a b
   SProj e path -> do

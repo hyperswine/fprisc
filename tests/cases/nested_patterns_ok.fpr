@@ -1,0 +1,6 @@
+C = Type (Cell Int | Other Int).
+M = Type (Some C | None).
+f m = case m of Some (Cell x) -> x | Some (Other y) -> y | None -> 0.
+g p = case p of (a, b) -> case a of True -> b | False -> 0 - b.
+h t = case t of (True, x) -> x | (False, _) -> 0.
+main = print (str (f (Some (Cell 3)) + g (True, 4) + h (False, 9))).
