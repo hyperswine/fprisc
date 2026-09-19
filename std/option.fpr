@@ -1,0 +1,45 @@
+# std/option.fpr -- Option: ordinary absence (docs/PRELIM_BASE_LIBRARY_DESIGN.md).
+#
+#   Option = use "std/option".
+#   Option.withDefault 0 (Option.map inc (Option.Some 41))
+#
+# `Result` is for an operation that can FAIL and says why; `Option` is for a
+# value that may simply not be there (a key not in a map, an empty list's head).
+# Data comes last everywhere in std, so functions compose with `|>`.
+
+Option a = Type (None | Some a).
+
+map : (a -> b) -> Option a -> Option b .
+map f o = case o of None -> None | Some x -> Some (f x).
+
+andThen : (a -> Option b) -> Option a -> Option b .
+andThen f o = case o of None -> None | Some x -> f x.
+
+withDefault : a -> Option a -> a .
+withDefault d o = case o of None -> d | Some x -> x.
+
+# the first that is there
+orElse : Option a -> Option a -> Option a .
+orElse other o = case o of None -> other | Some x -> Some x.
+
+isSome : Option a -> Bool .
+isSome o = case o of None -> False | Some _ -> True.
+
+isNone : Option a -> Bool .
+isNone o = case o of None -> True | Some _ -> False.
+
+filter : (a -> Bool) -> Option a -> Option a .
+filter p o = case o of
+    None -> None
+  | Some x -> (case p x of True -> Some x | False -> None).
+
+# absence becomes the failure `e`
+toResult : e -> Option a -> Result a e .
+toResult e o = case o of None -> Err e | Some x -> Ok x.
+
+# a failure becomes absence (the reason is dropped)
+fromResult : Result a e -> Option a .
+fromResult r = case r of Ok x -> Some x | Err _ -> None.
+
+toList : Option a -> List a .
+toList o = case o of None -> Nil | Some x -> x :: Nil.

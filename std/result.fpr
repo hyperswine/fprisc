@@ -1,0 +1,37 @@
+# std/result.fpr -- helpers over the builtin `Result value error` (Ok | Err).
+#
+#   Result = use "std/result".
+#   readConfig path |> Result.andThen parse |> Result.withDefault defaults
+
+map : (a -> b) -> Result a e -> Result b e .
+map f r = case r of Ok x -> Ok (f x) | Err e -> Err e.
+
+mapError : (e -> f) -> Result a e -> Result a f .
+mapError f r = case r of Ok x -> Ok x | Err e -> Err (f e).
+
+andThen : (a -> Result b e) -> Result a e -> Result b e .
+andThen f r = case r of Ok x -> f x | Err e -> Err e.
+
+withDefault : a -> Result a e -> a .
+withDefault d r = case r of Ok x -> x | Err _ -> d.
+
+isOk : Result a e -> Bool .
+isOk r = case r of Ok _ -> True | Err _ -> False.
+
+# every value, or the FIRST failure
+collect : List (Result a e) -> Result (List a) e .
+collect rs = collectGo rs Nil.
+collectGo : unsafe List (Result a e) -> List a -> Result (List a) e .
+collectGo rs acc = case rs of
+    Nil -> Ok (rev acc Nil)
+  | r :: rest -> (case r of Ok x -> collectGo rest (x :: acc) | Err e -> Err e).
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+# keep the successes, drop the failures
+oks : List (Result a e) -> List a .
+oks rs = oksGo rs Nil.
+oksGo : unsafe List (Result a e) -> List a -> List a .
+oksGo rs acc = case rs of
+    Nil -> rev acc Nil
+  | r :: rest -> (case r of Ok x -> oksGo rest (x :: acc) | Err _ -> oksGo rest acc).

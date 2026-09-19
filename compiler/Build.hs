@@ -91,7 +91,13 @@ build p = do
                      {std_out = if pVerbose p then Inherit else UseHandle logh}
   cc0 <- waitForProcess ch
   when (cc0 /= ExitSuccess) $ do
-    unless (pVerbose p) $ readFile logf >>= hPutStrLn stderr . unlines . dropWhile (not . isDiagnostic) . lines
+    -- a complaint in a shape isDiagnostic does not know (a module's parse
+    -- error is megaparsec's own text) must still be heard: fall back to the
+    -- log's tail rather than exit 1 in silence
+    unless (pVerbose p) $ do
+      ls <- lines <$> readFile logf
+      let said = dropWhile (not . isDiagnostic) ls
+      hPutStrLn stderr (unlines (if null said then drop (length ls - 12) ls else said))
     removeFile logf
     exitWith cc0
   removeFile logf

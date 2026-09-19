@@ -13,7 +13,7 @@ import A64 (deTlsQosAppA64, lowerA64, a64Rev)
 import X64 (lowerX64, deTlsQosApp, x64Rev)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (runState)
-import Data.List (isPrefixOf)
+import Data.List (intercalate, isPrefixOf)
 import qualified Data.List as List
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -696,7 +696,27 @@ compileMain = do
         rk <- either bad pure (ckindOf r)
         putStrLn ("export " ++ csym ++ " : " ++ unwords (map show ks) ++ " -> " ++ show rk ++ "  (" ++ q ++ ")")
         pure (trampoline (oHardFloat opts) csym ("fpr_fn_" ++ mangleName q) ks rk)
-      let rootAsm = lower rootAsm0 ++ unlines (concat tramps)
+      -- the constructor-name table: what lets `print` say `Some 42` instead of
+      -- `<613153155.1 42>`.  The root unit sees every unit's constructors
+      -- (consAll), so it carries one table for the whole image; the runtime
+      -- holds a weak empty one (runtime.c fpr_contab) for images without.
+      let conRows = [ (tid, var, ar, reverse (takeWhile (/= '.') (reverse (takeWhile (/= '@') c))))
+                    | (c, (tid, var, ar)) <- M.toList consAll, tid >= 0x20000000 ]
+                    -- a record shape: its field names in storage order, comma-separated
+                    ++ [ (sid, 0, length fs, intercalate "," fs) | (fs, sid) <- M.toList shapes ]
+          dir = if tgtName tgt == "rv32" then ".word" else ".quad"
+          conTab
+            | oBuiltin opts || oLib opts || oPlugin opts = ""
+            | otherwise = unlines $
+                [ "", "# constructor names, for render", "    .section .rodata", "    .balign 8" ]
+                  ++ concat [ [ ".Lfprcon" ++ show i ++ ":", "    .byte " ++ intercalate ", " (map (show . ord) nm ++ ["0"]) ]
+                            | (i, (_, _, _, nm)) <- zip [0 :: Int ..] conRows ]
+                  ++ [ "    .balign 8", "    .globl fpr_contab", "fpr_contab:" ]
+                  ++ concat [ [ "    " ++ dir ++ " " ++ show tid, "    " ++ dir ++ " " ++ show var,
+                                "    " ++ dir ++ " " ++ show ar, "    " ++ dir ++ " .Lfprcon" ++ show i ]
+                            | (i, (tid, var, ar, _)) <- zip [0 :: Int ..] conRows ]
+                  ++ [ "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "" ]
+      let rootAsm = lower (rootAsm0 ++ conTab) ++ unlines (concat tramps)
       mapM_ putStrLn rootVNotes
       writeFile out rootAsm
       wcetSummary "root" rootAsm

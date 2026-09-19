@@ -602,6 +602,11 @@ builtinEnv =
       ("fuelQuantum", mono (TFn tInt tInt)),
       ("receiveFrom", scheme [0] (TFn tInt (TFn tInt (sv 0)))),
       ("substr", mono (TFn tStr (TFn tInt (TFn tInt tStr)))),
+      -- Sol's names and contracts (Sol/Infer.hs): byte strings, 1-based, 0 = not found
+      ("strJoin", mono (TFn tStr (TFn (TAp (TC "List") tStr) tStr))),
+      ("strCmp", mono (TFn tStr (TFn tStr tInt))),
+      ("strIndexOf", mono (TFn tStr (TFn tStr tInt))),
+      ("strIndexFrom", mono (TFn tStr (TFn tStr (TFn tInt tInt)))),
       -- block device + net (bytes/words; loosely typed payloads)
       -- GPU tier (runtime/posix/gfx.c: scene-driven render function)
       -- Mod runtime resolution (remote calling)

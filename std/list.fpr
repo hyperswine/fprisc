@@ -1,0 +1,246 @@
+# std/list.fpr -- List: the everyday sequence (docs/PRELIM_BASE_LIBRARY_DESIGN.md).
+#
+#   List = use "std/list".
+#   files |> List.filter isSource |> List.sortWith (Order.by size Order.int) |> List.take 10
+#
+# The list comes LAST, so calls chain with `|>`.  Every loop here is a tail
+# call with an accumulator: a list of any length costs no stack.  Absence is
+# an Option (head of an empty list), never a panic.  Sorting is STABLE.
+
+O = use "option".
+Ord = use "order".
+
+# ---- building ----------------------------------------------------------------
+singleton : a -> List a .
+singleton x = x :: Nil.
+
+# from `a` up to and including `b`; empty when a > b
+range : Int -> Int -> List Int .
+range a b = rangeGo a b Nil.
+rangeGo : unsafe Int -> Int -> List Int -> List Int .
+rangeGo a b acc = case b < a of True -> acc | False -> rangeGo a (b - 1) (b :: acc).
+
+repeat : Int -> a -> List a .
+repeat n x = repeatGo n x Nil.
+repeatGo : unsafe Int -> a -> List a -> List a .
+repeatGo n x acc = case n <= 0 of True -> acc | False -> repeatGo (n - 1) x (x :: acc).
+
+# ---- size and order ------------------------------------------------------------
+length : List a -> Int .
+length xs = lengthGo xs 0.
+lengthGo : unsafe List a -> Int -> Int .
+lengthGo xs n = case xs of Nil -> n | _ :: r -> lengthGo r (n + 1).
+
+isEmpty : List a -> Bool .
+isEmpty xs = case xs of Nil -> True | _ -> False.
+
+reverse : List a -> List a .
+reverse xs = revOnto xs Nil.
+# `xs` reversed, in front of `acc`
+revOnto : unsafe List a -> List a -> List a .
+revOnto xs acc = case xs of Nil -> acc | x :: r -> revOnto r (x :: acc).
+
+append : List a -> List a -> List a .
+append xs ys = revOnto (reverse xs) ys.
+
+concat : List (List a) -> List a .
+concat xss = concatGo (reverse xss) Nil.
+concatGo : unsafe List (List a) -> List a -> List a .
+concatGo xss acc = case xss of Nil -> acc | xs :: r -> concatGo r (append xs acc).
+
+# ---- transforming --------------------------------------------------------------
+map : (a -> b) -> List a -> List b .
+map f xs = mapGo f xs Nil.
+mapGo : unsafe (a -> b) -> List a -> List b -> List b .
+mapGo f xs acc = case xs of Nil -> reverse acc | x :: r -> mapGo f r (f x :: acc).
+
+# each element with its position, from 0
+indexedMap : (Int -> a -> b) -> List a -> List b .
+indexedMap f xs = imapGo f xs 0 Nil.
+imapGo : unsafe (Int -> a -> b) -> List a -> Int -> List b -> List b .
+imapGo f xs i acc = case xs of Nil -> reverse acc | x :: r -> imapGo f r (i + 1) (f i x :: acc).
+
+indexed : List a -> List (Int, a) .
+indexed xs = indexedMap (fn i x -> (i, x)) xs.
+
+filter : (a -> Bool) -> List a -> List a .
+filter p xs = filterGo p xs Nil.
+filterGo : unsafe (a -> Bool) -> List a -> List a -> List a .
+filterGo p xs acc = case xs of
+    Nil -> reverse acc
+  | x :: r -> (case p x of True -> filterGo p r (x :: acc) | False -> filterGo p r acc).
+
+# map and keep what is there: List.filterMap parseLine lines
+filterMap : (a -> O.Option b) -> List a -> List b .
+filterMap f xs = fmapGo f xs Nil.
+fmapGo : unsafe (a -> O.Option b) -> List a -> List b -> List b .
+fmapGo f xs acc = case xs of
+    Nil -> reverse acc
+  | x :: r -> (case f x of O.Some y -> fmapGo f r (y :: acc) | O.None -> fmapGo f r acc).
+
+concatMap : (a -> List b) -> List a -> List b .
+concatMap f xs = concat (map f xs).
+
+# ---- folding ---------------------------------------------------------------------
+# left to right; the accumulator comes first in `f`
+fold : (b -> a -> b) -> b -> List a -> b .
+fold f z xs = foldGo f z xs.
+foldGo : unsafe (b -> a -> b) -> b -> List a -> b .
+foldGo f z xs = case xs of Nil -> z | x :: r -> foldGo f (f z x) r.
+
+# right to left
+foldr : (a -> b -> b) -> b -> List a -> b .
+foldr f z xs = foldGo (fn acc x -> f x acc) z (reverse xs).
+
+sum : List Int -> Int .
+sum xs = fold (fn a x -> a + x) 0 xs.
+
+product : List Int -> Int .
+product xs = fold (fn a x -> a * x) 1 xs.
+
+any : (a -> Bool) -> List a -> Bool .
+any p xs = anyGo p xs.
+anyGo : unsafe (a -> Bool) -> List a -> Bool .
+anyGo p xs = case xs of Nil -> False | x :: r -> (case p x of True -> True | False -> anyGo p r).
+
+all : (a -> Bool) -> List a -> Bool .
+all p xs = not (any (fn x -> not (p x)) xs).
+
+count : (a -> Bool) -> List a -> Int .
+count p xs = fold (fn n x -> case p x of True -> n + 1 | False -> n) 0 xs.
+
+# the least / greatest under a comparator; None for an empty list
+minimum : (a -> a -> Ord.Ordering) -> List a -> O.Option a .
+minimum cmp xs = case xs of Nil -> O.None | x :: r -> O.Some (fold (fn m y -> Ord.min cmp m y) x r).
+
+maximum : (a -> a -> Ord.Ordering) -> List a -> O.Option a .
+maximum cmp xs = case xs of Nil -> O.None | x :: r -> O.Some (fold (fn m y -> Ord.max cmp m y) x r).
+
+# ---- searching ---------------------------------------------------------------------
+find : (a -> Bool) -> List a -> O.Option a .
+find p xs = findGo p xs.
+findGo : unsafe (a -> Bool) -> List a -> O.Option a .
+findGo p xs = case xs of Nil -> O.None | x :: r -> (case p x of True -> O.Some x | False -> findGo p r).
+
+# by deep equality
+member : a -> List a -> Bool .
+member y xs = any (fn x -> x == y) xs.
+
+head : List a -> O.Option a .
+head xs = case xs of Nil -> O.None | x :: _ -> O.Some x.
+
+tail : List a -> O.Option (List a) .
+tail xs = case xs of Nil -> O.None | _ :: r -> O.Some r.
+
+last : List a -> O.Option a .
+last xs = head (reverse xs).
+
+# position from 0
+get : Int -> List a -> O.Option a .
+get i xs = case i < 0 of True -> O.None | False -> head (drop i xs).
+
+# ---- slicing -------------------------------------------------------------------------
+take : Int -> List a -> List a .
+take n xs = takeGo n xs Nil.
+takeGo : unsafe Int -> List a -> List a -> List a .
+takeGo n xs acc = case n <= 0 of
+    True -> reverse acc
+  | False -> (case xs of Nil -> reverse acc | x :: r -> takeGo (n - 1) r (x :: acc)).
+
+drop : Int -> List a -> List a .
+drop n xs = dropGo n xs.
+dropGo : unsafe Int -> List a -> List a .
+dropGo n xs = case n <= 0 of True -> xs | False -> (case xs of Nil -> Nil | _ :: r -> dropGo (n - 1) r).
+
+takeWhile : (a -> Bool) -> List a -> List a .
+takeWhile p xs = twGo p xs Nil.
+twGo : unsafe (a -> Bool) -> List a -> List a -> List a .
+twGo p xs acc = case xs of
+    Nil -> reverse acc
+  | x :: r -> (case p x of True -> twGo p r (x :: acc) | False -> reverse acc).
+
+dropWhile : (a -> Bool) -> List a -> List a .
+dropWhile p xs = dwGo p xs.
+dwGo : unsafe (a -> Bool) -> List a -> List a .
+dwGo p xs = case xs of Nil -> Nil | x :: r -> (case p x of True -> dwGo p r | False -> xs).
+
+# (those that pass, those that do not), each in order
+partition : (a -> Bool) -> List a -> (List a, List a) .
+partition p xs = (filter p xs, filter (fn x -> not (p x)) xs).
+
+# ---- combining -----------------------------------------------------------------------
+# as long as the shorter
+zip : List a -> List b -> List (a, b) .
+zip xs ys = zipWith (fn x y -> (x, y)) xs ys.
+
+zipWith : (a -> b -> c) -> List a -> List b -> List c .
+zipWith f xs ys = zipGo f xs ys Nil.
+zipGo : unsafe (a -> b -> c) -> List a -> List b -> List c -> List c .
+zipGo f xs ys acc = case xs of
+    Nil -> reverse acc
+  | x :: xr -> (case ys of Nil -> reverse acc | y :: yr -> zipGo f xr yr (f x y :: acc)).
+
+unzip : List (a, b) -> (List a, List b) .
+unzip ps = (map (fn p -> case p of (a, _) -> a) ps, map (fn p -> case p of (_, b) -> b) ps).
+
+intersperse : a -> List a -> List a .
+intersperse sep xs = case xs of
+    Nil -> Nil
+  | x :: r -> x :: concatMap (fn y -> sep :: y :: Nil) r.
+
+# every element equal (deep ==) to an EARLIER one is dropped; order kept.
+# Quadratic: use a Set for big lists.
+unique : List a -> List a .
+unique xs = reverse (fold (fn seen x -> case member x seen of True -> seen | False -> x :: seen) Nil xs).
+
+# ---- sorting -------------------------------------------------------------------------
+# A stable merge sort: equal elements keep their order, so sorting by one key
+# and then by another composes.  O(n log n), no stack.
+sortWith : (a -> a -> Ord.Ordering) -> List a -> List a .
+sortWith cmp xs = mergeAll cmp (map singleton xs).
+
+# sort by a key: List.sortBy Order.int size files
+sortBy : (k -> k -> Ord.Ordering) -> (a -> k) -> List a -> List a .
+sortBy cmp key xs = sortWith (Ord.by key cmp) xs.
+
+mergeAll : unsafe (a -> a -> Ord.Ordering) -> List (List a) -> List a .
+mergeAll cmp runs = case runs of
+    Nil -> Nil
+  | one :: Nil -> one
+  | _ -> mergeAll cmp (mergePairs cmp runs Nil).
+
+mergePairs : unsafe (a -> a -> Ord.Ordering) -> List (List a) -> List (List a) -> List (List a) .
+mergePairs cmp runs acc = case runs of
+    a :: b :: rest -> mergePairs cmp rest (merge cmp a b Nil :: acc)
+  | one :: Nil -> reverse (one :: acc)
+  | Nil -> reverse acc.
+
+# `b`'s element goes first only when strictly Less: that is what keeps it stable
+merge : unsafe (a -> a -> Ord.Ordering) -> List a -> List a -> List a -> List a .
+merge cmp xs ys acc = case xs of
+    Nil -> revOnto acc ys
+  | x :: xr -> (case ys of
+        Nil -> revOnto acc xs
+      | y :: yr -> (case cmp y x of
+            Ord.Less -> merge cmp xs yr (y :: acc)
+          | _ -> merge cmp xr ys (x :: acc))).
+
+# ---- grouping ------------------------------------------------------------------------
+# consecutive elements with equal keys (deep ==), as (key, members) in order.
+# Sort by the key first to group a whole list.
+groupBy : (a -> k) -> List a -> List (k, List a) .
+groupBy key xs = case xs of
+    Nil -> Nil
+  | x :: r -> groupGo key r (key x) (x :: Nil) Nil.
+groupGo : unsafe (a -> k) -> List a -> k -> List a -> List (k, List a) -> List (k, List a) .
+groupGo key xs k cur acc = case xs of
+    Nil -> reverse ((k, reverse cur) :: acc)
+  | x :: r -> (case key x == k of
+        True -> groupGo key r k (x :: cur) acc
+      | False -> groupGo key r (key x) (x :: Nil) ((k, reverse cur) :: acc)).
+
+# do something for each element, for its effect
+each : (a -> b) -> List a -> Unit .
+each f xs = eachGo f xs.
+eachGo : unsafe (a -> b) -> List a -> Unit .
+eachGo f xs = case xs of Nil -> Unit | x :: r -> _ = f x; eachGo f r.

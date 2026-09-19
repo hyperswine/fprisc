@@ -1354,6 +1354,56 @@ static V g_substr(V sv, V off, V len) {
   if ((uw)l > s->len - (uw)(o - 1)) l = (sw)(s->len - (uw)(o - 1));
   return (V)fpr_mkstr(s->bytes + (o - 1), (uw)l);
 }
+/* ---- the string operations a library cannot build cheaply from substr ----
+ * Same names and contracts as Sol's natives (compiler/Sol/VM.hs), so the two
+ * profiles share one vocabulary: byte strings, 1-based, 0 = not found.
+ * strJoin is the one that matters: joining n pieces by repeated strcat copies
+ * the accumulator n times (docs/PRELIM_BASE_LIBRARY_DESIGN.md). */
+static str_t *want_str(V v, const char *who) {
+  if (ISINT(v) || TID(v) != T_STR) fpr_cpanic(who);
+  return (str_t *)v;
+}
+static int is_cons(V v) { return !ISINT(v) && TID(v) == T_LIST && ((hdr_t *)v)->var == 1; }
+static V g_strJoin(V sepv, V list) {
+  str_t *sep = want_str(sepv, "strJoin: the separator is not a String");
+  uw total = 0, n = 0;
+  for (V c = list; is_cons(c); c = ((V *)((char *)c + 8))[1]) {
+    total += want_str(((V *)((char *)c + 8))[0], "strJoin: not a List of String")->len;
+    n++;
+  }
+  if (n > 1) total += (n - 1) * sep->len;
+  str_t *out = (str_t *)fpr_alloc(sizeof(str_t) + total);
+  out->tid = T_STR; out->var = 0; out->len = total;
+  uw at = 0, i = 0;
+  for (V c = list; is_cons(c); c = ((V *)((char *)c + 8))[1], i++) {
+    str_t *x = (str_t *)((V *)((char *)c + 8))[0];
+    if (i) { __builtin_memcpy(out->bytes + at, sep->bytes, sep->len); at += sep->len; }
+    __builtin_memcpy(out->bytes + at, x->bytes, x->len);
+    at += x->len;
+  }
+  return (V)out;
+}
+static V g_strCmp(V av, V bv) { /* -1, 0, 1: bytewise, shorter first on a tie */
+  str_t *a = want_str(av, "strCmp: not a String"), *b = want_str(bv, "strCmp: not a String");
+  uw n = a->len < b->len ? a->len : b->len;
+  for (uw i = 0; i < n; i++)
+    if (a->bytes[i] != b->bytes[i]) return TAG(a->bytes[i] < b->bytes[i] ? -1 : 1);
+  return TAG(a->len == b->len ? 0 : a->len < b->len ? -1 : 1);
+}
+static V g_strIndexFrom(V pv, V sv, V fromv) { /* the first match at or after `from`; 0 = none */
+  str_t *p = want_str(pv, "strIndexFrom: not a String"), *s = want_str(sv, "strIndexFrom: not a String");
+  sw from = UNTAG(fromv);
+  if (from < 1) from = 1;
+  if (p->len == 0) return TAG((uw)from <= s->len + 1 ? from : 0);
+  for (uw i = (uw)from - 1; i + p->len <= s->len; i++) {
+    uw k = 0;
+    while (k < p->len && s->bytes[i + k] == p->bytes[k]) k++; /* (no memcmp: freestanding boards) */
+    if (k == p->len) return TAG((sw)i + 1);
+  }
+  return TAG(0);
+}
+static V g_strIndexOf(V pv, V sv) { return g_strIndexFrom(pv, sv, TAG(1)); }
+
 static V g_arcLive(V d) {
   (void)d;
   if (fpr_sched) return TAG((sw)fpr_sched->arc_live());
@@ -1806,6 +1856,36 @@ static void renderField(V obj,uw i) {
 #endif
   render(v);
 }
+/* ---- constructor names --------------------------------------------------
+ * The root unit of a program carries a table of every constructor in the
+ * image (Compile.hs conTab): typeid, variant, arity, name.  This weak empty
+ * one serves an image without (a library unit, a plugin).  With it a value
+ * prints the way it is written: `Some 42`, `Node 1 Leaf Leaf`, `Err bad`. */
+typedef struct { uw tid, var, arity; const char *name; } fpr_con_t;
+__attribute__((weak)) const fpr_con_t fpr_contab[1] = {{0, 0, 0, 0}};
+
+static const fpr_con_t *con_find(uw tid, uw var) {
+  const fpr_con_t *volatile t = fpr_contab; /* (volatile: the weak [1] bound is not the real one) */
+  int shape = tid >= 0x10000u && tid < 0x10000000u; /* a record: one row per shape */
+  for (const fpr_con_t *c = t; c->name; c++)
+    if (c->tid == tid && (shape || c->var == var)) return c;
+  return 0;
+}
+static void render(V v);
+/* an argument of a constructor: parenthesized when it is itself an application */
+static void renderArg(V obj, int i) {
+  V f = ((V *)((char *)obj + 8))[i];
+  int paren = 0;
+  if (ISINT(f)) paren = UNTAG(f) < 0;
+  else {
+    hdr_t *fh = (hdr_t *)f;
+    const fpr_con_t *c = fh->tid >= 0x20000000u ? con_find(fh->tid, fh->var) : 0;
+    paren = fh->tid == T_RESULT || (c && c->arity > 0);
+  }
+  if (paren) remit('(');
+  renderField(obj, i);
+  if (paren) remit(')');
+}
 static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
   for (int i = 0; i < n; i++) { remit(' '); renderField(obj,i); }
 }
@@ -1833,7 +1913,7 @@ static void render(V v) {
       }
       remit(']');
       break;
-    case T_RESULT: remits("<3."); rdec(h->var); rfields(v, 1); remit('>'); break;
+    case T_RESULT: remits(h->var ? "Err " : "Ok "); renderArg(v, 0); break;
     case T_TUP2:
       remit('('); renderField(v,0); remits(", "); renderField(v,1); remit(')');
       break;
@@ -1856,6 +1936,27 @@ static void render(V v) {
         for (uw i = 0; i < h->tid - T_TUPN; i++) { if (i) remits(", "); renderField(v,i); }
         remit(')');
         break;
+      }
+      {
+        const fpr_con_t *c = con_find(h->tid, h->var);
+        if (c && h->tid < 0x10000000u) { /* a record: {a = 1, b = x} */
+          const char *n = c->name;
+          remit('{');
+          for (uw i = 0; i < c->arity; i++) {
+            if (i) remits(", ");
+            while (*n && *n != ',') remit(*n++);
+            if (*n) n++;
+            remits(" = ");
+            renderField(v, i);
+          }
+          remit('}');
+          break;
+        }
+        if (c) {
+          remits(c->name);
+          for (uw i = 0; i < c->arity; i++) { remit(' '); renderArg(v, (int)i); }
+          break;
+        }
       }
       remit('<'); rdec(h->tid); remit('.'); rdec(h->var); remit('>'); break;
   }
@@ -2498,6 +2599,10 @@ FPR_FN(fpr_g_strlen, g_strlen, 1);
 FPR_FN(fpr_g_chr, g_chr, 1);
 FPR_FN(fpr_g_parseInt, g_parseInt, 1);
 FPR_FN(fpr_g_substr, g_substr, 3);
+FPR_FN(fpr_g_strJoin, g_strJoin, 2);
+FPR_FN(fpr_g_strCmp, g_strCmp, 2);
+FPR_FN(fpr_g_strIndexOf, g_strIndexOf, 2);
+FPR_FN(fpr_g_strIndexFrom, g_strIndexFrom, 3);
 FPR_FN(fpr_g_drop, g_drop, 1);
 FPR_FN(fpr_g_arcLive, g_arcLive, 1);
 FPR_FN(fpr_g_heapUsed, g_heapUsed, 1);

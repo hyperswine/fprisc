@@ -1,0 +1,216 @@
+# std/string.fpr -- String: text as bytes (docs/PRELIM_BASE_LIBRARY_DESIGN.md).
+#
+#   String = use "std/string".
+#   line |> String.trim |> String.split "," |> List.map String.toUpper |> String.join "; "
+#
+# The contract, the same one the primitives and Sol's `Str` keep:
+#   * a String is BYTES.  Positions and lengths count bytes; UTF-8 passes
+#     through untouched (split, join, replace and search are all UTF-8 safe
+#     because a valid sequence never contains another's prefix), and only the
+#     case functions are ASCII-only, by name.
+#   * positions are 1-BASED, as `charAt` and `substr` are.
+#   * absence is an Option (`indexOf`), failure a Result (`toInt`): nothing
+#     here panics, and out-of-range slices clamp.
+# The subject string comes LAST, so calls chain with `|>`.
+
+O = use "option".
+Ord = use "order".
+
+length : String -> Int .
+length s = strlen s.
+
+isEmpty : String -> Bool .
+isEmpty s = strlen s == 0.
+
+# ---- joining and splitting -------------------------------------------------------
+# one allocation, however many pieces (the strJoin primitive)
+join : String -> List String -> String .
+join sep xs = strJoin sep xs.
+
+concat : List String -> String .
+concat xs = strJoin "" xs.
+
+append : String -> String -> String .
+append a b = strcat a b.
+
+# String.split "," "a,b,,c" = ["a", "b", "", "c"]; an empty separator is refused
+# the only sensible way: the whole string, unsplit.
+split : String -> String -> List String .
+split sep s = case strlen sep == 0 of
+    True -> s :: Nil
+  | False -> splitGo sep s 1 Nil.
+splitGo : unsafe String -> String -> Int -> List String -> List String .
+splitGo sep s from acc = splitAt sep s from acc (strIndexFrom sep s from).
+splitAt : unsafe String -> String -> Int -> List String -> Int -> List String .
+splitAt sep s from acc at = case at == 0 of
+    True -> rev (substr s from (strlen s - from + 1) :: acc) Nil
+  | False -> splitGo sep s (at + strlen sep) (substr s from (at - from) :: acc).
+
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+# on "\n"; a trailing newline does not make an empty last line, and "\r\n" ends a line too
+lines : String -> List String .
+lines s = linesTidy (split "\n" s) Nil.
+linesTidy : unsafe List String -> List String -> List String .
+linesTidy ls acc = case ls of
+    Nil -> rev acc Nil
+  | l :: Nil -> (case strlen l == 0 of True -> rev acc Nil | False -> rev (dropCr l :: acc) Nil)
+  | l :: r -> linesTidy r (dropCr l :: acc).
+dropCr : String -> String .
+dropCr l = case endsWith "\r" l of True -> substr l 1 (strlen l - 1) | False -> l.
+
+# maximal runs of non-whitespace
+words : String -> List String .
+words s = wordsGo s 1 (strlen s) Nil.
+wordsGo : unsafe String -> Int -> Int -> List String -> List String .
+wordsGo s i n acc = case i > n of
+    True -> rev acc Nil
+  | False -> (case isSpace (charAt s i) of
+        True -> wordsGo s (i + 1) n acc
+      | False -> wordEnd s i (i + 1) n acc).
+wordEnd : unsafe String -> Int -> Int -> Int -> List String -> List String .
+wordEnd s i j n acc = case j > n of
+    True -> rev (substr s i (j - i) :: acc) Nil
+  | False -> (case isSpace (charAt s j) of
+        True -> wordsGo s (j + 1) n (substr s i (j - i) :: acc)
+      | False -> wordEnd s i (j + 1) n acc).
+
+# ---- searching ---------------------------------------------------------------------
+# where `p` first occurs, from 1
+indexOf : String -> String -> O.Option Int .
+indexOf p s = found (strIndexOf p s).
+indexFrom : Int -> String -> String -> O.Option Int .
+indexFrom i p s = found (strIndexFrom p s i).
+found : Int -> O.Option Int .
+found at = case at == 0 of True -> O.None | False -> O.Some at.
+
+contains : String -> String -> Bool .
+contains p s = strIndexOf p s > 0.
+
+startsWith : String -> String -> Bool .
+startsWith p s = case strlen p > strlen s of True -> False | False -> substr s 1 (strlen p) == p.
+
+endsWith : String -> String -> Bool .
+endsWith p s = case strlen p > strlen s of
+    True -> False
+  | False -> substr s (strlen s - strlen p + 1) (strlen p) == p.
+
+# how many times, not overlapping
+count : String -> String -> Int .
+count p s = case strlen p == 0 of True -> 0 | False -> countGo p s 1 0.
+countGo : unsafe String -> String -> Int -> Int -> Int .
+countGo p s from n = countAt p s n (strIndexFrom p s from).
+countAt : unsafe String -> String -> Int -> Int -> Int .
+countAt p s n at = case at == 0 of True -> n | False -> countGo p s (at + strlen p) (n + 1).
+
+# ---- slicing (positions from 1, clamped) ---------------------------------------------
+# bytes `from`..`to`, both included
+slice : Int -> Int -> String -> String .
+slice from to s = case to < from of True -> "" | False -> substr s from (to - from + 1).
+
+left : Int -> String -> String .
+left n s = substr s 1 n.
+
+right : Int -> String -> String .
+right n s = case n >= strlen s of True -> s | False -> substr s (strlen s - n + 1) n.
+
+dropLeft : Int -> String -> String .
+dropLeft n s = case n <= 0 of True -> s | False -> substr s (n + 1) (strlen s - n).
+
+dropRight : Int -> String -> String .
+dropRight n s = case n <= 0 of True -> s | False -> substr s 1 (strlen s - n).
+
+# ---- trimming ------------------------------------------------------------------------
+isSpace : Int -> Bool .
+isSpace c = case c == 32 of True -> True | False -> (case c >= 9 of True -> c <= 13 | False -> False).
+
+trim : String -> String .
+trim s = trimRight (trimLeft s).
+
+trimLeft : String -> String .
+trimLeft s = dropLeft (leadGo s 1 (strlen s) - 1) s.
+leadGo : unsafe String -> Int -> Int -> Int .
+leadGo s i n = case i > n of True -> i | False -> (case isSpace (charAt s i) of True -> leadGo s (i + 1) n | False -> i).
+
+trimRight : String -> String .
+trimRight s = left (trailGo s (strlen s)) s.
+trailGo : unsafe String -> Int -> Int .
+trailGo s i = case i < 1 of True -> 0 | False -> (case isSpace (charAt s i) of True -> trailGo s (i - 1) | False -> i).
+
+# ---- rewriting -----------------------------------------------------------------------
+# every occurrence, left to right, not overlapping
+replace : String -> String -> String -> String .
+replace old new s = case strlen old == 0 of True -> s | False -> strJoin new (split old s).
+
+repeat : Int -> String -> String .
+repeat n s = strJoin "" (repeatGo n s Nil).
+repeatGo : unsafe Int -> String -> List String -> List String .
+repeatGo n s acc = case n <= 0 of True -> acc | False -> repeatGo (n - 1) s (s :: acc).
+
+# to a width, with a pad byte given as a one-byte String: String.padLeft 5 "0" "42"
+padLeft : Int -> String -> String -> String .
+padLeft w pad s = strcat (repeat (w - strlen s) pad) s.
+
+padRight : Int -> String -> String -> String .
+padRight w pad s = strcat s (repeat (w - strlen s) pad).
+
+reverse : String -> String .
+reverse s = fromCodes (rev (codes s) Nil).
+
+# ASCII only: a byte outside A-Z / a-z is left alone, so UTF-8 survives
+toUpper : String -> String .
+toUpper s = mapCodes (fn c -> case c >= 97 of True -> (case c <= 122 of True -> c - 32 | False -> c) | False -> c) s.
+
+toLower : String -> String .
+toLower s = mapCodes (fn c -> case c >= 65 of True -> (case c <= 90 of True -> c + 32 | False -> c) | False -> c) s.
+
+# ---- bytes ---------------------------------------------------------------------------
+codes : String -> List Int .
+codes s = codesGo s (strlen s) Nil.
+codesGo : unsafe String -> Int -> List Int -> List Int .
+codesGo s i acc = case i < 1 of True -> acc | False -> codesGo s (i - 1) (charAt s i :: acc).
+
+fromCodes : List Int -> String .
+fromCodes cs = strJoin "" (chrs cs Nil).
+chrs : unsafe List Int -> List String -> List String .
+chrs cs acc = case cs of Nil -> rev acc Nil | c :: r -> chrs r (chr c :: acc).
+
+mapCodes : (Int -> Int) -> String -> String .
+mapCodes f s = strJoin "" (mapGo f s (strlen s) Nil).
+mapGo : unsafe (Int -> Int) -> String -> Int -> List String -> List String .
+mapGo f s i acc = case i < 1 of True -> acc | False -> mapGo f s (i - 1) (chr (f (charAt s i)) :: acc).
+
+isDigit : Int -> Bool .
+isDigit c = case c >= 48 of True -> c <= 57 | False -> False.
+
+isAlpha : Int -> Bool .
+isAlpha c = case c >= 97 of
+    True -> c <= 122
+  | False -> (case c >= 65 of True -> c <= 90 | False -> False).
+
+# ---- numbers -------------------------------------------------------------------------
+fromInt : Int -> String .
+fromInt n = str n.
+
+# the WHOLE string must be a decimal integer, with an optional leading "-"
+toInt : String -> Result Int String .
+toInt s =
+  n = strlen s;
+  neg = startsWith "-" s;
+  first = case neg of True -> 2 | False -> 1;
+  case first > n of
+    True -> Err "not a number: \"{s}\""
+  | False -> (case digitsGo s first n 0 of
+        O.None -> Err "not a number: \"{s}\""
+      | O.Some v -> Ok (case neg of True -> 0 - v | False -> v)).
+digitsGo : unsafe String -> Int -> Int -> Int -> O.Option Int .
+digitsGo s i n acc = case i > n of
+    True -> O.Some acc
+  | False -> (case isDigit (charAt s i) of
+        True -> digitsGo s (i + 1) n (acc * 10 + (charAt s i - 48))
+      | False -> O.None).
+
+# ---- ordering ------------------------------------------------------------------------
+compare : String -> String -> Ord.Ordering .
+compare a b = Ord.string a b.
