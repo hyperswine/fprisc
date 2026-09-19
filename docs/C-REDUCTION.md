@@ -110,21 +110,47 @@ same tests.
   manifests plus one past every old limit (300 permissions, a 1000-byte url,
   a 6.9 KB blob): all agree.
 
-What this does **not** do yet is delete `qa.c`. qosp parses the archive before
-any FP-RISC is in memory, so retiring the C needs FP-RISC to run host-side
-inside qosp. Two ways, to be decided:
+### Step 1c: qosp is an FP-RISC program (2026-09-19)
 
-- **qosp as a Base program**: `main` in FP-RISC (read, QAR, manifest, gate,
-  blob), the C reduced to primitives it calls -- map the arena, load the image,
-  start harts. Closest to the goal. Open question: two runtimes in one process
-  (the host's and the app image's own), and on AArch64 the hart pointer lives in
-  `x28`, which the app entry resets.
-- **a library unit for the posix system**: `--lib --export` exists only for
-  `builtin` on bare metal today. Extending it to `base` on posix would let qosp
-  call `manifest_parse` as a C function. Smaller step, and the same capability
-  tier 2 library code needs anyway (step 2).
+`qos/portable/qosp.fpr` is the portable host's `main`: a Base program for the
+posix system, about 90 lines, that reads the archive, interprets the manifest,
+gates the abi, verifies the image's sha, asks for the permissions and builds
+the capability blob -- with the kernel's own `qar.fpr` and `manifest.fpr`.
+`main()`, `abi_gate`, `perm_gate` and the C blob serializer are gone.
 
-Until then the parity script is what keeps the two from drifting.
+Two things made it possible, and both are general:
+
+- **A signature with no definition is a foreign declaration.** It already
+  type-checked, and codegen already treats an undefined global as an `fpr_g_`
+  external. `Host.init : Bool -> Result String String .` is the whole FFI.
+- **`fpr build --with hal.c --cflag F --link F`**: a program brings its own HAL,
+  compiled beside the runtime. qosp's is `portable/host.c` (five primitives: map
+  the arena, hash, place and protect the image, enter it, log) plus the device
+  tiers in `hal/unix`. This is the goal in miniature: FP-RISC policy over a C
+  HAL, the primitives named in the program that uses them.
+
+What had to be right: the app's freestanding entry keeps ITS hart in `x28` and
+does not restore the host's, so `enter_app` saves and restores it around the
+call (a thread would also work, but GLFW on macOS needs the main thread). The
+host runtime is built `--harts 1`; it blocks in `Host.run` while the app runs.
+
+Checked: `./qos.py test` 10/11 as before, plugins, LiveView multi-client, the
+301-permission archive, and every gate -- y/n/y grants exactly that subset, a
+denied required permission refuses, an abi mismatch and a name-dispatch archive
+refuse by name, an unstamped archive warns and runs, one flipped byte in IMAGE
+is caught. `qosp-gl` builds; it was not run (it opens a window).
+
+**What is left of `qa.c`** (261 lines) serves one caller: `Sys.attachQa`. A
+plugin arrives on an APP thread, where the host's FP-RISC cannot run, so the
+host still parses that archive in C. The fix is native's shape:
+`Sys.loadImageAt` already takes section extents that FP-RISC computed with QAR.
+When plugin attach takes the fields the app computed, `qa.c` goes entirely,
+and with it the last C manifest parser. Six callers: `mods/qsys.fpr`,
+`tests/qload.fpr`, `std/loader.fpr` (three), `std/livereload.fpr`.
+
+Also fixed on the way: `fpr build` / `fpr run` discarded the compiler's stdout,
+where type and safety errors are reported, so a refused program exited 1 having
+said nothing. The log is kept and replayed on failure.
 
 ### Found on the way, fixed
 

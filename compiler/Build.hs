@@ -11,6 +11,7 @@
 -- bare-metal image is made of, with libc as the board.
 module Build (buildMain, runMain) where
 
+import Data.List (isInfixOf)
 import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
 import qualified Compile
@@ -33,19 +34,25 @@ data Plan = Plan
     pKeep :: Bool,
     pVerbose :: Bool,
     pCC :: Maybe String,
+    pWith :: [FilePath], -- the program's own HAL: C / asm sources linked beside the runtime
+    pCFlags :: [String],
+    pLink :: [String],
     pRest :: [String]
   }
 
 usage :: String
-usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep]\n       fpr run <prog.fpr> [args...]"
+usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep]\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]"
 
 plan :: [String] -> IO Plan
-plan = go (Plan "" Nothing 2 False False Nothing [])
+plan = go (Plan "" Nothing 2 False False Nothing [] [] [] [])
   where
     go p ("-o" : o : rest) = go p {pOut = Just o} rest
     go p ("--harts" : n : rest) = go p {pHarts = read n} rest
     go p ("--cc" : c : rest) = go p {pCC = Just c} rest
     go p ("--keep" : rest) = go p {pKeep = True} rest
+    go p ("--with" : f : rest) = go p {pWith = pWith p ++ [f]} rest
+    go p ("--cflag" : f : rest) = go p {pCFlags = pCFlags p ++ [f]} rest
+    go p ("--link" : f : rest) = go p {pLink = pLink p ++ [f]} rest
     go p ("-v" : rest) = go p {pVerbose = True} rest
     go p (a : rest)
       | null (pSource p) = go p {pSource = a} rest
@@ -72,11 +79,20 @@ build p = do
   -- the compiler as a subprocess: its progress lines stay quiet unless
   -- asked for, its diagnostics (stderr) and its exit status pass through
   self <- getExecutablePath
-  devnull <- openFile "/dev/null" WriteMode
+  -- quiet on success, but a REFUSAL must be heard: the compiler reports
+  -- type and safety errors on stdout, so that is kept and replayed when
+  -- it fails.  (It went to /dev/null, and `fpr run` of a program the
+  -- checker refused exited 1 having said nothing at all.)
+  let logf = asm ++ ".log"
+  logh <- openFile logf WriteMode
   (_, _, _, ch) <- createProcess (proc self ["compile", "--system=posix", "--prelude=" ++ prelude, pSource p, asm])
-                     {std_out = if pVerbose p then Inherit else UseHandle devnull}
+                     {std_out = if pVerbose p then Inherit else UseHandle logh}
   cc0 <- waitForProcess ch
-  when (cc0 /= ExitSuccess) $ exitWith cc0
+  when (cc0 /= ExitSuccess) $ do
+    unless (pVerbose p) $ readFile logf >>= hPutStrLn stderr . unlines . dropWhile (not . isDiagnostic) . lines
+    removeFile logf
+    exitWith cc0
+  removeFile logf
   units <- words <$> readFile (asm ++ ".units")
   cc <- case pCC p of
     Just c -> pure c
@@ -92,13 +108,20 @@ build p = do
       rtdir = cache </> "rt" </> (System.Info.arch ++ "-h" ++ show (pHarts p))
   createDirectoryIfMissing True rtdir
   objs <- mapM (objectFor cc cflags rtdir) (posix ++ core)
-  let args = cflags ++ linux ++ [asm] ++ units ++ objs ++ ["-lpthread", "-lm", "-o", out]
+  -- --with: a program that IS a host brings the device primitives it calls
+  -- (the fpr_g_ names it leaves undefined) as C beside the runtime.  They
+  -- are compiled with the runtime's flags plus --cflag, never cached.
+  let args = cflags ++ pCFlags p ++ linux ++ [asm] ++ units ++ objs ++ pWith p ++ pLink p ++ ["-lpthread", "-lm", "-o", out]
   code <- rawSystem cc args
   when (code /= ExitSuccess) $ hPutStrLn stderr ("fpr build: " ++ cc ++ " failed") >> exitWith code
   if pKeep p
     then hPutStrLn stderr ("fpr build: kept " ++ asm)
     else mapM_ (\f -> doesFileExist f >>= \e -> when e (removeFile f)) [asm, asm ++ ".units", asm ++ ".abirev"]
   pure out
+
+-- where the compiler's progress lines end and its complaint begins
+isDiagnostic :: String -> Bool
+isDiagnostic l = take 4 l == "=== " || take 4 l == "  * " || "rror" `isInfixOf` l
 
 -- compile one runtime source into the cache unless its object is fresh
 objectFor :: String -> [String] -> FilePath -> FilePath -> IO FilePath

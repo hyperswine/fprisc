@@ -94,6 +94,5 @@ and the FP-RISC-level libraries in `std/`.
 
 - FIXED: `print` wrote CRLF on every system; the carriage return is `hal_putc`'s
   to add now, in the HALs that front a raw serial line. See `C-REDUCTION.md`.
-- `fpr run` prints nothing when compilation is refused: it exits 1 where
-  `fpr build` shows the diagnostic (seen with the safety checker's
-  "unsafe (recursive) but has no explicit signature").
+- FIXED: `fpr run` / `fpr build` printed nothing when compilation was refused (the
+  compiler's stdout, where type and safety errors go, was discarded).
