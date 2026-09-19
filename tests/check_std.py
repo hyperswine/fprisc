@@ -19,6 +19,7 @@ def check(name, args=(), cwd=None, label='', env=None):
     if bless: want.write_text(p.stdout)
     assert p.stdout == want.read_text(), f'{name}: output differs from {want.name}\n{p.stdout}'
     print(f'{label}: PASS')
+check('ifelse', label='if/then/else: sugar for the two-armed case -- else-if chains, block branches, names that merely start with if')
 check('foundation', label='Option, Order, Result; values print as they are written')
 check('list', label='List: map/filter/fold/find/zip/group, a stable merge sort of 300,000')
 check('string', label='String: split/join/trim/replace/search/slices/toInt, 1.3 MB through join and split')

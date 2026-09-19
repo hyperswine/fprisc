@@ -116,19 +116,14 @@ quoteGo s from i n acc = case i > n of
         O.None -> quoteGo s from (i + 1) n acc
       | O.Some e -> quoteGo s (i + 1) (i + 1) n (e :: substr s from (i - from) :: acc)).
 escapeOf : Int -> O.Option String .
-escapeOf c = case c == 34 of
-    True -> O.Some "\\\""
-  | False -> (case c == 92 of
-        True -> O.Some "\\\\"
-      | False -> (case c >= 32 of
-            True -> O.None
-          | False -> (case c == 10 of
-                True -> O.Some "\\n"
-              | False -> (case c == 9 of
-                    True -> O.Some "\\t"
-                  | False -> (case c == 13 of
-                        True -> O.Some "\\r"
-                      | False -> O.Some (strcat "\\u00" (hex2 c))))))).
+escapeOf c =
+  if c == 34 then O.Some "\\\""
+  else if c == 92 then O.Some "\\\\"
+  else if c >= 32 then O.None
+  else if c == 10 then O.Some "\\n"
+  else if c == 9 then O.Some "\\t"
+  else if c == 13 then O.Some "\\r"
+  else O.Some (strcat "\\u00" (hex2 c)).
 hex2 : Int -> String .
 hex2 c = strcat (hexDigit (c / 16)) (hexDigit (c - (c / 16) * 16)).
 hexDigit : Int -> String .
@@ -274,21 +269,16 @@ escape s i acc =
         O.None -> Err (i, "unknown escape")
       | O.Some t -> stringGo s (i + 2) (i + 2) (t :: acc)).
 simpleEscape : Int -> O.Option String .
-simpleEscape c = case c == 110 of
-    True -> O.Some "\n"
-  | False -> (case c == 116 of
-        True -> O.Some "\t"
-      | False -> (case c == 114 of
-            True -> O.Some "\r"
-          | False -> (case c == 98 of
-                True -> O.Some (chr 8)
-              | False -> (case c == 102 of
-                    True -> O.Some (chr 12)
-                  | False -> (case c == 34 of
-                        True -> O.Some "\""
-                      | False -> (case c == 92 of
-                            True -> O.Some "\\"
-                          | False -> (case c == 47 of True -> O.Some "/" | False -> O.None))))))).
+simpleEscape c =
+  if c == 110 then O.Some "\n"
+  else if c == 116 then O.Some "\t"
+  else if c == 114 then O.Some "\r"
+  else if c == 98 then O.Some (chr 8)
+  else if c == 102 then O.Some (chr 12)
+  else if c == 34 then O.Some "\""
+  else if c == 92 then O.Some "\\"
+  else if c == 47 then O.Some "/"
+  else O.None.
 
 # \uXXXX at i, possibly the first half of a surrogate pair
 unicode : unsafe String -> Int -> List String -> Result (String, Int) (Int, String) .

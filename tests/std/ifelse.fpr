@@ -1,0 +1,6 @@
+unsafe base.
+classify n = if n < 0 then "negative" else if n == 0 then "zero" else if n < 10 then "small" else "large".
+collatz n steps = if n == 1 then steps else collatz (if n - (n / 2) * 2 == 0 then n / 2 else 3 * n + 1) (steps + 1).
+withBlock x = if x > 5 then y = x * 2; z = y + 1; "big {z}" else "small {x}".
+ifoo = 7.
+main = print "{classify (0 - 4)} {classify 0} {classify 7} {classify 99} collatz27={collatz 27 0} {withBlock 9} {withBlock 1} ident={ifoo} {(if 1 < 2 and 2 < 3 then "and" else "no")}".

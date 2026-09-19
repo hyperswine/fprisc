@@ -146,7 +146,7 @@ identChar :: Char -> Bool
 identChar c = isAlphaNum c || c == '_' || c == '\''
 
 reserved :: [String]
-reserved = ["fn", "case", "of", "Type", "Sig", "Struct", "use"]
+reserved = ["fn", "case", "of", "if", "then", "else", "Type", "Sig", "Struct", "use"]
 
 dottedIdent :: P [String]
 dottedIdent = lexeme $ do
@@ -374,6 +374,7 @@ term =
       pathLit,
       stringLit,
       caseE,
+      ifE,
       listLit,
       recordish,
       parensOrTuple,
@@ -447,6 +448,23 @@ recordish = braces (try litRec <|> updRec)
       path <- dottedIdent
       eqSign
       (path,) <$> expr
+
+-- `if c then a else b` is exactly `case c of True -> a | False -> b`: sugar,
+-- no new semantics.  Both branches take the block form, as a case arm does,
+-- and `else if` chains because the else branch is an expression.  (Every
+-- two-way choice used to be the four-token-longer case; parsers written in
+-- FP-RISC were mostly that: docs/STD.md.)
+ifE :: P SExpr
+ifE = do
+  _ <- try (keyword "if")
+  c <- expr
+  _ <- keyword "then"
+  o1 <- getOffset
+  a <- block
+  _ <- keyword "else"
+  o2 <- getOffset
+  b <- block
+  pure (SCase c [(PCon "True" [], SMark o1 a), (PCon "False" [], SMark o2 b)])
 
 caseE :: P SExpr
 caseE = do
