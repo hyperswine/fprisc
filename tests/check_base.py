@@ -62,6 +62,10 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([big], 1, env={'FPR_HEAP_MB': '64'})
     assert 'heap exhausted' in p.stdout + p.stderr, p.stderr
     print('The heap grows with the program (577 MiB live); capped by FPR_HEAP_MB it is a named panic: PASS')
+    # 4d. arity and tuple width have no ceiling
+    out = run([build('tests/base/wide.fpr', 'wide')]).stdout
+    assert 'wide: 4950' in out and 'tuple: 19 True' in out and '17, 18, 19)' in out, out
+    print('A 100-parameter function and a 20-tuple (built, matched, compared, printed): PASS')
     # 6. fpr run: build to a temp file, pass the arguments through, return its status
     p = run(['./fpr', 'run', 'tests/base/args.fpr', 'x', 'y'], 3, env={'FPR_BASE_VAR': 'v'})
     assert 'args: x,y (2)' in p.stdout, p.stdout

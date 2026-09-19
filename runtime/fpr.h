@@ -24,6 +24,9 @@ enum {
   T_TUP2 = 4, T_TUP3 = 5, T_ATOM = 6,
   /* wide tuples (Codegen builtinCons): 10..14 = Tup4..Tup8 */
   T_TUP4 = 10, T_TUP5 = 11, T_TUP6 = 12, T_TUP7 = 13, T_TUP8 = 14,
+  /* a tuple wider than 8 is T_TUPN + its arity (FPRISC.hs tupWideBase): a range
+   * of its own between the record shapes and the unit types */
+  T_TUPN = 0x10000000, T_TUPN_END = 0x10000000 + (1 << 24),
   /* runtime-internal typeids, far above user types (10+) and shapes (100+) */
   T_STR = 9000, T_PAP = 9001, T_DEVICE = 9002, T_REGISTER = 9003, T_BITS = 9004,
   T_ACTOR = 9005, T_VEC = 9006, T_SSTR = 9007,

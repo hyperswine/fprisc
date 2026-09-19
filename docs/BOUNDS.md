@@ -53,28 +53,91 @@ whatever lay below overwritten on bare metal. Two faults fed each other.
   Cost: two `mprotect` calls per actor lifetime, about 0.9 us (2.6 vs 1.7 us per
   spawn-reply-die over 50,000 actors).
 
-Still open here: **bare metal and the native kernel have no guard** (the hooks
-are no-ops; PMP could provide one), so an overflow there is still silent --
-though it now has the whole block to fill first. And a stack is still a fixed
-size chosen at build time (`FPR_STACK_SZ`, `QOSSTACK`): per-spawn sizes, then
-growable stacks, are the real end of this.
+Both open ends of this closed on 2026-09-20, below: a stack grows, and the check
+that grows it is the guard bare metal never had.
 
 Found on the way: a received message that is never `drop`ped pins its whole
 slab; 2,000 sequential spawn-reply-die rounds without the `drop` exhaust a
 256 MiB heap ("send: no block for the message slab").
+
+## Fixed on 2026-09-20: the heap, the stack, arity
+
+**The heap is a reservation of address space, not a size.** The posix heap was
+`FPR_HEAP_MB` (256) of `.bss`, and the runtime read its span from linker
+symbols. The machine layer answers `hal_heap_span` at run time now: a board gives
+its RAM; posix reserves the largest span the system will allow, from 1 TiB (the
+buddy's largest block) down, `MAP_NORESERVE`, so the OS commits a page when it is
+first touched. A freed block of 1 MiB or more gives its pages back
+(`hal_heap_release`). What bounds a program is memory. `FPR_HEAP_MB` in the
+ENVIRONMENT caps a run (a test of exhaustion, strict overcommit).
+`tests/base/bigheap.fpr`: 577 MiB live where 256 was the ceiling; capped at 64,
+the named panic. Nothing moves: a heap full of raw pointers cannot be
+reallocated, and with address space to reserve it never needs to be. The honest
+cost: a leak no longer stops at 256 MiB, it stops at the machine.
+
+**An actor's stack grows.** Every function entry the compiler cannot prove
+shallow checks that sp still has the runtime's headroom in the segment it is in
+(`sp - stk_lo < stk_span`, two words in the hart block after the spill cells,
+sharing the fuel tick's `tp` load). When it has not, `fpr_stack_grow` links in a
+segment twice the size of the last -- the mailbox ring's `Dynamic n` doubling --
+and the function continues there. Frames are addressed through `s0` and the
+epilogue restores sp FROM `s0`, so the function returns into the old segment by
+itself: no trampoline, no per-architecture assembly, and nothing moves (a live
+stack cannot: C frames and saved frame pointers hold addresses into it). Dead
+segments are popped at the next failed check, one kept warm; `reap` frees the
+rest. A loaded process's actors belong to the plane, so its scheduler table
+grows them. A small frame that calls no FP-RISC function skips the check.
+Measured: `fib 40` (331 million calls) 1.19 s before and after; a million plain
+frames run on posix and under qosp, 200,000 on a 128 MiB board, where about
+5,000 used to overflow. The check IS the guard on bare metal, which never had
+one. `tests/base/overflow.fpr`, `tests/deep.fpr`.
+
+**Arity and tuple width have no ceiling.** Tuples stopped at 8 (`Tup2..Tup8`), so
+the wide-arity rewrite -- 63 parameters plus one spilled tuple -- stopped at 71.
+A tuple wider than 8 is typeid `T_TUPN + n` now, which `render` and the Vec
+columns read the arity back out of, and the spilled tuple is as wide as it needs
+to be. A C export takes up to 64 parameters (8 from C's registers, the rest from
+C's stack into the hart's spill cells); it was 8. `tests/base/wide.fpr` (100
+parameters, a 20-tuple), `tests/builtin_export.fpr` `wide12`.
+
+Also: `MOD_MAXATTACH 8` is a table that doubles, and `fpr build`'s runtime object
+cache now treats an object as stale when any HEADER is newer (it compared each
+object with its own `.c` only, so a changed struct in `fpr.h` linked new objects
+against old ones: a crash with no message).
+
+## Deferred: written down, to be addressed another time
+
+In rough order of worth. None of these is silent.
+
+1. **The render buffer** (`FPR_RBUF_SZ 4096`): `str`/`print` of a non-String value
+   past 4095 bytes panics. Render into a growable buffer.
+2. **`RING_MAX 1<<20`**: a `Dynamic` mailbox ring stops doubling at a million
+   messages. Memory should be the bound.
+3. **`FPR_NHARTS`**: compile-time, with static per-hart arrays. Discover at boot.
+4. **RAM size on a board**: from the device tree, not `link.ld` (one place now:
+   `hal_heap_span` in `machine/virt/hal.c`).
+5. **The stack's C headroom** (`FPR_STACK_HEADROOM`, 64 KiB): the runtime's own C
+   runs unchecked below the entry check. A single FP-RISC frame larger than the
+   headroom, or C recursion deeper than it (a generic release of a very long
+   chain), reaches the guard page instead: a named panic on posix and QOS
+   Portable, unchecked on bare metal. Iterative release, and a frame-size-aware
+   check for the rare giant frame, close it.
+6. **Wide functions**: a clause GUARD may not mention a parameter past the 63rd
+   (reported by name at compile time), and a function of more than 64 parameters
+   cannot be partially applied. A C export stops at 64 parameters (pass a Layout
+   pointer) and at 8 under `--float-abi=hard`.
+7. **Builtin-profile stacks** in `machine/builtin/link.ld` (64K main, 4K trap, 64K
+   irq): no runtime there, so no entry check; at least `--defsym` knobs.
+8. **`VMAXCOLS 8`**: a graceful fallback (boxed storage), below.
 
 ## Open: named panics and refusals that could grow
 
 | Limit | At the edge | Direction |
 |---|---|---|
 | `FPR_RBUF_SZ 4096`, per-hart render buffer | rendering a non-String value (a long list, a big record) past 4095 bytes panics "render buffer full"; Strings no longer pass through it | render into a growable buffer, or straight to the console for `print` |
-| `SSTR_CAP 128`, one global `SString` width | `SStr.push` panics | the indexed `SString n` that `sstr.c` already names |
 | `RING_MAX 1<<20` messages per `Dynamic` ring | stops doubling | memory should be the bound, as the `MAXSND` comment already says of hubs |
-| `NPINS 32`, `PIN_TRACE_CAP 4096` (`machine/virt/hal.c`) | a pin past 31 panics by name; the pin trace **stops recording** at 4096 entries without saying so | size from the board description; make the trace a ring or report the truncation |
-| `NETCONN 4`, `RXRING 16384`, virtqueue `QSZ 8` (`machine/virt/net.c`, `blk.c`) | small fixed TCP table | allocate connections from the heap |
 | `FPR_NHARTS` (compile time, static per-hart arrays) | fixed at build | discover at boot (device tree / `sysconf`) |
-| `MOD_MAXATTACH 8` (`runtime/mod.c`) | `fpr_mod_attach` returns -1 | a growing table; tied to the plugin slot count in QOS |
-| `FPR_HEAP_MB 256` (`machine/posix/heap.S`), `LENGTH = 128M` and the fixed `_heap_end` in `machine/virt/link.ld` and `machine/builtin/link.ld` | "heap exhausted" | see the memory-layout section of the QOS register: reserve address space and commit on demand when hosted; read RAM size from the device tree on bare metal |
+| `LENGTH = 128M` and the fixed `_heap_end` in `machine/virt/link.ld`, `machine/builtin/link.ld` | "heap exhausted" | RAM is the bound on a board, but its SIZE belongs to the device tree the firmware hands over (`hal_heap_span` is the one place to read it), not to the linker script |
 | Builtin stacks in `machine/builtin/link.ld` (64K main, 4K trap, 64K irq) | overflow unchecked | at least `--defsym` knobs; a board decision, but not one the linker script should hide |
 
 ## A graceful fallback
@@ -83,6 +146,13 @@ slab; 2,000 sequential spawn-reply-die rounds without the `drop` exhaust a
   columns. Correct, slower. The `kinds` bitmask could be a full word.
 
 ## Legitimate, left alone
+
+- `SSTR_CAP 128`: **by design.** An `SString` is the fixed-width, stack-friendly
+  string -- its width is the point, as a `Static n` ring's is. `SStr.push` past it
+  panics by name; text that grows is a `String`.
+- `fpr_stack_max` (1 GiB; `FPR_STACK_MAX_MB` for a run): **policy, not capacity.**
+  The ceiling on ONE actor's stack, so that recursion that never ends is a named
+  panic rather than the machine's memory. Adjustable at run time.
 
 - Page and sector sizes, the Ethernet frame size, virtio and UART register maps.
 - `FPR_ARGSPILL 56` (native arity 64): bounded by the rv64 12-bit tp-relative

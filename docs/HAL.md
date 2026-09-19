@@ -18,7 +18,8 @@ Small, and the same list on every system: put a byte on the console, end the
 machine, wake a hart, sleep until woken, read the clock, arm a deadline,
 fabricate and switch a context, guard a stack. About fifteen functions
 (`hal_putc`, `hal_poweroff`, `hal_ipi_send`, `hal_mtime`, `hal_timer_arm`,
-`hal_stack_guard`, ...). It is part of PORTING THE LANGUAGE, not of any
+`hal_stack_guard`, `hal_heap_span` -- where the heap is and how big: RAM on a
+board, a reservation of address space on a hosted system -- ...). It is part of PORTING THE LANGUAGE, not of any
 operating system.
 
 - **virt** (rv64 bare metal): boot, context switch, the 16550's transmit

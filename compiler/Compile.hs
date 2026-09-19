@@ -185,7 +185,15 @@ trampoline hard csym target params result =
     -- their own counts; fpr wants position i in a_i.  Walk the positions
     -- from the highest down so an a_j (j <= i) is read before anything
     -- overwrites it.
-    ++ concat [ arg i k | (i, k) <- reverse (zip [0 :: Int ..] params) ]
+    -- positions 8 and up: C passed them on ITS stack (16(sp) on, above this
+    -- frame); fpr wants them in the hart's spill cells, cell j at 8*(1+j)(tp)
+    -- (Codegen.hs spillRef).  Read, convert, store -- before the register
+    -- moves below, which need t1 no more.
+    ++ concat [ ("    ld t1, " ++ show (16 + 8 * (cSlot i - 8)) ++ "(sp)")
+                  : conv "t1" k
+                  ++ [ "    sd t1, " ++ show (8 * (1 + (i - 8))) ++ "(tp)" ]
+              | (i, k) <- zip [0 :: Int ..] params, i >= 8 ]
+    ++ concat [ arg i k | (i, k) <- reverse (zip [0 :: Int ..] params), i < 8 ]
     ++ [ "    call " ++ target ]
     ++ res result
     ++ [ "    ld ra, 8(sp)",
@@ -198,6 +206,13 @@ trampoline hard csym target params result =
     intSlot i = if hard then length [() | k <- take i params, not (isF k)] else i
     fltSlot i = length [() | k <- take i params, isF k]
     a i = "a" ++ show i
+    cSlot i = intSlot i -- (a stacked float under lp64d is refused where exports are checked)
+    conv r k = case k of
+      KInt -> [ "    slli " ++ r ++ ", " ++ r ++ ", 1", "    ori " ++ r ++ ", " ++ r ++ ", 1" ]
+      KBool -> [ "    beqz " ++ r ++ ", 1f", "    la " ++ r ++ ", fpr_true", "    j 2f",
+                 "1:  la " ++ r ++ ", fpr_false", "2:" ]
+      KUnit -> [ "    la " ++ r ++ ", fpr_unit" ]
+      _ -> []
     -- the float ABI: this link is -mabi=lp64 (SOFT float), under which C
     -- passes a double as its bits in an integer register -- which is
     -- FP-RISC's own convention, so nothing moves.  --float-abi=hard
@@ -207,12 +222,7 @@ trampoline hard csym target params result =
       | isF k = [ "    " ++ (if k == KF64 then "fmv.x.d " else "fmv.x.w ") ++ a i ++ ", fa" ++ show (fltSlot i) ]
       | otherwise =
           [ "    mv " ++ a i ++ ", " ++ a (intSlot i) | intSlot i /= i ]
-            ++ case k of
-              KInt -> [ "    slli " ++ a i ++ ", " ++ a i ++ ", 1", "    ori " ++ a i ++ ", " ++ a i ++ ", 1" ]
-              KBool -> [ "    beqz " ++ a i ++ ", 1f", "    la " ++ a i ++ ", fpr_true", "    j 2f",
-                         "1:  la " ++ a i ++ ", fpr_false", "2:" ]
-              KUnit -> [ "    la " ++ a i ++ ", fpr_unit" ]
-              _ -> []
+            ++ conv (a i) k
     res k = case k of
       KInt -> [ "    srai a0, a0, 1" ]
       KBool -> [ "    lw a0, 4(a0)" ]
@@ -677,7 +687,11 @@ compileMain = do
           Just (ps, _) -> pure ps
           Nothing -> bad "no such function in this unit"
         when (length ps /= length as) $ bad ("signature has " ++ show (length as) ++ " parameters, the function " ++ show (length ps))
-        when (length ps > 8) $ bad "more than 8 parameters: the C entry is register-only"
+        -- 8 in registers, the rest from C's stack into the hart's spill
+        -- cells: the native convention's 64.  Past that a function takes
+        -- a spilled tuple, which C cannot build: pass a Layout pointer.
+        when (length ps > 64) $ bad "more than 64 parameters: pass a pointer to a Layout instead (docs/LAYOUTS.md)"
+        when (oHardFloat opts && length ps > 8) $ bad "more than 8 parameters under --float-abi=hard: stacked float arguments are not lowered yet"
         ks <- either bad pure (traverse ckindOf as)
         rk <- either bad pure (ckindOf r)
         putStrLn ("export " ++ csym ++ " : " ++ unwords (map show ks) ++ " -> " ++ show rk ++ "  (" ++ q ++ ")")

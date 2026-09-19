@@ -1850,7 +1850,14 @@ static void render(V v) {
     }
     case T_BITS: rdec((sw)((bits_t *)v)->val); break;
     case T_PAP: remits("<fn>"); break;
-    default: remit('<'); rdec(h->tid); remit('.'); rdec(h->var); remit('>'); break;
+    default:
+      if (h->tid > T_TUPN && h->tid < T_TUPN_END) { /* a wide tuple: its arity is in its typeid */
+        remit('(');
+        for (uw i = 0; i < h->tid - T_TUPN; i++) { if (i) remits(", "); renderField(v,i); }
+        remit(')');
+        break;
+      }
+      remit('<'); rdec(h->tid); remit('.'); rdec(h->var); remit('>'); break;
   }
 }
 

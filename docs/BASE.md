@@ -92,6 +92,6 @@ type error).
   hart, `fpr_hart_main(0)`.  `hal.c` answers the board obligations (console,
   poweroff, the sleep/wake doorbells as a 200 us poll, mtime, no external
   interrupts).  `base.c` is the table
-  above; `heap.S` a 256 MiB `.bss` heap standing in for the linker script.
+  above; the heap is a reservation of address space made in `hal.c` (`hal_heap_span`), with no size of its own.
 - `compiler/Build.hs` is `fpr build`/`fpr run`: the compiler as a quiet
   subprocess, the runtime object cache, the link.

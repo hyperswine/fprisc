@@ -16,7 +16,7 @@ import Control.Monad.State.Strict
 import Data.Bits (shiftR, xor)
 import qualified Data.Bits
 import GHC.Float (castDoubleToWord64, castFloatToWord32)
-import Data.Char (isAlphaNum, isLetter, isLower, isUpper, ord, toUpper)
+import Data.Char (isAlphaNum, isDigit, isLetter, isLower, isUpper, ord, toUpper)
 import Data.List (foldl', intercalate, isPrefixOf, nub, sort, sortOn)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -653,19 +653,18 @@ evalDecl = do
 -- runs after guard selection; such a function is reported and left for
 -- a manual wide constructor), and only SATURATED call sites rewrite
 -- (partial application of a wide function was impossible before this
--- pass and remains so).  Max spilled arity: 7 + 8 = 15.
+-- pass and remains so).  No maximum arity: the spilled tuple is as wide
+-- as it needs to be.
 aritySpill :: [STop] -> ([STop], [String])
 aritySpill tops = (map top tops, notes)
   where
     -- the NATIVE convention (8 regs + 56 hart argspill cells,
     -- Codegen.hs/fpr.h) carries arity <= 64 with no restrictions --
     -- this pass is only the >64 extension: keep 63 params + ONE
-    -- spilled tuple (Tup2..Tup8), honest cap 63+8 = 71.
+    -- spilled tuple, as wide as the rest (tuples have no cap: tupCon).
     natCeil = 64
     keepN = natCeil - 1
-    wide = M.fromList [(n, length ps) | TBind n ps _ _ <- tops,
-                       length ps > natCeil, length ps <= keepN + 8]
-    tooWide = [n | TBind n ps _ _ <- tops, length ps > keepN + 8]
+    wide = M.fromList [(n, length ps) | TBind n ps _ _ <- tops, length ps > natCeil]
     guardy = [n | TBind n ps gs _ <- tops, length ps > natCeil,
                   any (refG (spilledNames ps)) gs]
     spillable = M.filterWithKey (\n _ -> n `notElem` guardy) wide
@@ -674,8 +673,6 @@ aritySpill tops = (map top tops, notes)
         | (n, a) <- M.toList spillable]
       ++ ["aritySpill: " ++ n ++ ": guards reference spilled params -- NOT spilled (use a constructor)"
            | n <- guardy]
-      ++ ["aritySpill: " ++ n ++ ": more than " ++ show (keepN + 8) ++ " params -- NOT spilled (use a constructor)"
-           | n <- tooWide]
     spilledNames ps = [v | PVar v <- drop keepN ps]
     refG vs (GBool e) = any (\v -> refE' v e) vs
     refG vs (GPat _ e) = any (\v -> refE' v e) vs
@@ -1609,9 +1606,7 @@ dExpr = \case
     body <- updateRecord (CVar v) assigns
     pure (CLet v m' body)
   STup es -> do
-    -- tuples are Tup2..Tup8 (a wider tuple used to be packed into a
-    -- Tup2 header and silently corrupt its own payload; now 4..8 are
-    -- real constructors and >8 is a hard error).
+    -- a tuple of any width is a real constructor cell (tupCon)
     con <- tupCon (length es)
     (tid, var, _) <- conInfo con
     CMk tid var <$> mapM dExpr es
@@ -1625,23 +1620,30 @@ dExpr = \case
       segCore (SegStr s) = pure (CStr s)
       segCore (SegExpr e) = CApp (CVar "str") <$> dExpr e
 
--- the ABI has Tup2..Tup8; past that, name your fields
+-- A tuple is as wide as it is written.  Tup2..Tup8 keep their small typeids
+-- (runtime/fpr.h); a wider one is typeid tupWideBase + n, a range of its own
+-- between the record shapes and the unit types, which the runtime reads the
+-- arity back out of (render, Vec columns).  It used to stop at 8.
 tupCon :: Int -> D String
 tupCon n
-  | n >= 2 && n <= 8 = pure ("Tup" ++ show n)
-  | otherwise =
-      error
-        ( "tuple of "
-            ++ show n
-            ++ " elements: this ABI has Tup2..Tup8 -- past 8, "
-            ++ "declare a constructor or use a record instead"
-        )
+  | n >= 2 = pure ("Tup" ++ show n)
+  | otherwise = error ("tuple of " ++ show n ++ " elements")
+
+tupWideBase :: Int
+tupWideBase = 0x10000000 -- fpr.h T_TUPN
+
+wideTup :: Name -> Maybe (Int, Int, Int)
+wideTup c = case c of
+  'T' : 'u' : 'p' : ds | not (null ds), all isDigit ds, n > 8 -> Just (tupWideBase + n, 0, n)
+    where n = read ds
+  _ -> Nothing
 
 conInfo :: Name -> D (Int, Int, Int)
 conInfo c = do
   cons <- gets dCons
   case M.lookup c cons of
     Just i -> pure i
+    Nothing | Just i <- wideTup c -> pure i
     Nothing -> error ("unknown constructor: " ++ c)
 
 shapeId :: [Name] -> D Int

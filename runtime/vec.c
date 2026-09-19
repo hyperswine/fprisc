@@ -150,6 +150,7 @@ static uw tuple_arity(uw tid) {
   if (tid == T_TUP2) return 2;
   if (tid == T_TUP3) return 3;
   if (tid >= T_TUP4 && tid <= T_TUP8) return 4 + (tid - T_TUP4);
+  if (tid > T_TUPN && tid < T_TUPN_END) return tid - T_TUPN;
   return 0;
 }
 
@@ -247,7 +248,7 @@ static V h_newAs(V specv) {
     x->var = (x->fkinds & 1) ? VR_FLT : ((x->kinds & 1) ? VR_INT : VR_BOX);
   } else {
     x->var = VR_SOA;
-    x->eltid = sp->len == 2 ? T_TUP2 : sp->len == 3 ? T_TUP3 : T_TUP4 + (sp->len - 4);
+    x->eltid = sp->len == 2 ? T_TUP2 : sp->len == 3 ? T_TUP3 : sp->len <= 8 ? T_TUP4 + (sp->len - 4) : T_TUPN + sp->len;
     x->elvar = 0;
   }
   for (uw k = 0; k < x->ncols; k++) x->cols[k] = col_new();
