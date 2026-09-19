@@ -63,3 +63,59 @@ Found on the way: a received message that is never `drop`ped pins its whole
 slab; 2,000 sequential spawn-reply-die rounds without the `drop` exhaust a
 256 MiB heap ("send: no block for the message slab").
 
+## Open: named panics and refusals that could grow
+
+| Limit | At the edge | Direction |
+|---|---|---|
+| `FPR_RBUF_SZ 4096`, per-hart render buffer | rendering a non-String value (a long list, a big record) past 4095 bytes panics "render buffer full"; Strings no longer pass through it | render into a growable buffer, or straight to the console for `print` |
+| `SSTR_CAP 128`, one global `SString` width | `SStr.push` panics | the indexed `SString n` that `sstr.c` already names |
+| `RING_MAX 1<<20` messages per `Dynamic` ring | stops doubling | memory should be the bound, as the `MAXSND` comment already says of hubs |
+| `IRQ_MAX 64` | `Sys.irqBind` panics | the PLIC's own source count, from the device tree |
+| `NPINS 32`, `PIN_TRACE_CAP 4096` (`hal/virt/hal.c`) | a pin past 31 panics by name; the pin trace **stops recording** at 4096 entries without saying so | size from the board description; make the trace a ring or report the truncation |
+| `NETCONN 4`, `RXRING 16384`, virtqueue `QSZ 8` (`hal/virt/net.c`, `blk.c`) | small fixed TCP table | allocate connections from the heap |
+| `FPR_NHARTS` (compile time, static per-hart arrays) | fixed at build | discover at boot (device tree / `sysconf`) |
+| `MOD_MAXATTACH 8` (`hal/core/mod.c`) | `fpr_mod_attach` returns -1 | a growing table; tied to the plugin slot count in QOS |
+| `FPR_HEAP_MB 256` (`hal/posix/heap.S`), `LENGTH = 128M` and the fixed `_heap_end` in `hal/virt/link.ld` and `hal/builtin/link.ld` | "heap exhausted" | see the memory-layout section of the QOS register: reserve address space and commit on demand when hosted; read RAM size from the device tree on bare metal |
+| Builtin stacks in `hal/builtin/link.ld` (64K main, 4K trap, 64K irq) | overflow unchecked | at least `--defsym` knobs; a board decision, but not one the linker script should hide |
+
+## A graceful fallback
+
+- `VMAXCOLS 8`: a record with more than 8 fields is stored boxed rather than as
+  columns. Correct, slower. The `kinds` bitmask could be a full word.
+
+## Legitimate, left alone
+
+- Page and sector sizes, the Ethernet frame size, virtio and UART register maps.
+- `FPR_ARGSPILL 56` (native arity 64): bounded by the rv64 12-bit tp-relative
+  immediate (~250 cells), and not a user-visible ceiling anyway -- see below.
+- `BUDDY_MAX_ORDER 24`: a 1 TiB block at the 64 KiB minimum.
+- `Static n` rings: a bound the programmer chose.
+- Scheduler tuning, not capacity: `FUEL_QUANTUM`, `FPR_TAU`, `RQ_CAP`, `DONATE_HI`.
+- `XCAP`, `SCAP`: wake and steal rings that wait or fall back when full.
+- Telemetry rings that overwrite their oldest entry by design: `LOG_N`, `GROWLOG_N`.
+- `DP_N 16`: outstanding deferred slab windows per actor; a 17th retires the
+  oldest early, which is correct and only costs the deferral.
+- `FPR_NBUCKETS 512`: the size-class ceiling; larger blocks take the bigfree path.
+
+## The patterns already in the tree
+
+These are what "done" looks like for the open items:
+
+- **Arity.** 64 is the native fast path; `aritySpill` rewrites anything wider.
+- **Mailbox rings.** `Dynamic n` doubles from the buddy when full.
+- **Channel slots.** `MAXSND 8` is seven dedicated rings plus one shared
+  overflow ring, so a hub is "bounded by memory, not by this constant".
+- **Starting sizes that grow.** `ARC_CAP0`, `MEM_CAP`, `VL_B0`, and now `VEQ_INLINE`.
+- **One counted gateway for growth** (`fpr_grow_counted`), so the ledger is whole.
+
+## Not audited
+
+The Sol VM (`compiler/Sol/`), the compiler's own internal limits beyond arity,
+and the FP-RISC-level libraries in `std/`.
+
+## Found along the way (not bounds)
+
+- FIXED: `print` wrote CRLF on every system; the carriage return is `hal_putc`'s
+  to add now, in the HALs that front a raw serial line. See `C-REDUCTION.md`.
+- FIXED: `fpr run` / `fpr build` printed nothing when compilation was refused (the
+  compiler's stdout, where type and safety errors go, was discarded).
