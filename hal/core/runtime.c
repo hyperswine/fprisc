@@ -1630,14 +1630,24 @@ V fpr_prim_fn__x3e_x3d(V a, V b) { return BOOL(UNTAG(a) >= UNTAG(b)); }
  *                   preheader.  A static literal has no preheader (its
  *                   size is not recorded), so two statics keep the old
  *                   header-only answer rather than a wild read.
- * The depth cap is a cycle guard: nothing in the language builds a
- * cyclic value today, and a runaway compare should not take the hart. */
-#define VEQ_MAX_DEPTH 64
+ * There is NO depth cap.  The first deep `==` recursed per field and
+ * answered "equal" at depth 64 as a cycle guard -- so two lists that
+ * differed only past their 64th element compared True, with no error
+ * anywhere.  The walk is a worklist now: fields are pushed last-first so
+ * they pop in order, which keeps a list of ANY length at two pending
+ * pairs, and a structure nested deeply through a non-final field moves
+ * the worklist from the C stack to a heap block that doubles.  The bound
+ * is memory, and running out of it is the allocator's named panic, never
+ * a wrong answer.  (Nothing in the language builds a cyclic value; if
+ * that changes, the guard belongs here as a panic, not as a `True`.) */
+#define VEQ_INLINE 32 /* pending pairs on the C stack before the heap block */
+typedef struct { V a, b; } veq_pair_t;
 #ifdef FPR_BUILTIN_RAW
 extern uw fpr_builtin_field_count(V);
 extern char fpr_builtin_field_kind(V,uw);
 #endif
-static int veq_go(V a, V b, int depth) {
+/* one pair, without descending: 0 differ, 1 equal, 2 compare the fields */
+static int veq_shallow(V a, V b) {
   if (ISINT(a) || ISINT(b)) return a == b;
   if (a == b) {
 #ifdef FPR_BUILTIN_RAW
@@ -1665,31 +1675,61 @@ static int veq_go(V a, V b, int depth) {
       return 0; /* identity only, and a == b was already taken above */
     default: break;
   }
-  if (depth >= VEQ_MAX_DEPTH) return 1;
   if (!fpr_in_heap(a) || !fpr_in_heap(b)) return 1; /* statics: no counts */
-#ifdef FPR_BUILTIN_RAW
-  uw nf=fpr_builtin_field_count(a);
-  if(nf!=fpr_builtin_field_count(b)) return 0;
-#else
-  uw ta = *(uw *)((char *)a - 16), tb = *(uw *)((char *)b - 16);
-  if (ta != tb) return 0;
-  if (ta < 24) return 1;
-  uw nf = (ta - 16 - 8) / sizeof(uw);
-#endif
-  V *fa = (V *)((char *)a + 8), *fb = (V *)((char *)b + 8);
-  for (uw i = 0; i < nf; i++) {
-#ifdef FPR_BUILTIN_RAW
-    char k=fpr_builtin_field_kind(a,i);
-    if(k!=fpr_builtin_field_kind(b,i)) return 0;
-    if(k=='d') { union { V u; double d; } x={fa[i]},y={fb[i]}; if(x.d!=y.d)return 0; continue; }
-    if(k=='f') { union { uint32_t u; float f; } x={(uint32_t)fa[i]},y={(uint32_t)fb[i]}; if(x.f!=y.f)return 0; continue; }
-    if(k!='t') { if(fa[i]!=fb[i])return 0; continue; }
-#endif
-    if (!veq_go(fa[i], fb[i], depth + 1)) return 0;
-  }
-  return 1;
+  return 2;
 }
-static int veq(V a, V b) { return veq_go(a, b, 0); }
+static int veq(V a0, V b0) {
+  veq_pair_t inl[VEQ_INLINE], *st = inl;
+  uw n = 0, cap = VEQ_INLINE;
+  V spill = 0; /* the worklist once it outgrows inl: an fpr_alloc block */
+  int eq = 1;
+  st[n++] = (veq_pair_t){a0, b0};
+  while (n) {
+    V a = st[n - 1].a, b = st[n - 1].b;
+    n--;
+    int r = veq_shallow(a, b);
+    if (r == 0) { eq = 0; break; }
+    if (r == 1) continue;
+#ifdef FPR_BUILTIN_RAW
+    uw nf = fpr_builtin_field_count(a);
+    if (nf != fpr_builtin_field_count(b)) { eq = 0; break; }
+#else
+    uw ta = *(uw *)((char *)a - 16), tb = *(uw *)((char *)b - 16);
+    if (ta != tb) { eq = 0; break; }
+    if (ta < 24) continue;
+    uw nf = (ta - 16 - 8) / sizeof(uw);
+#endif
+    if (n + nf > cap) {
+      uw ncap = cap;
+      while (n + nf > ncap) ncap *= 2;
+      if (spill) spill = fpr_realloc(spill, (V)(ncap * sizeof(veq_pair_t)));
+      else {
+        spill = fpr_alloc((V)(ncap * sizeof(veq_pair_t)));
+        for (uw i = 0; i < n; i++) ((veq_pair_t *)spill)[i] = inl[i];
+      }
+      st = (veq_pair_t *)spill;
+      cap = ncap;
+    }
+    V *fa = (V *)((char *)a + 8), *fb = (V *)((char *)b + 8);
+    for (uw i = nf; i-- > 0;) { /* last first, so field 0 pops first */
+#ifdef FPR_BUILTIN_RAW
+      char k = fpr_builtin_field_kind(a, i);
+      if (k != fpr_builtin_field_kind(b, i)) { eq = 0; goto done; }
+      if (k == 'd') { union { V u; double d; } x = {fa[i]}, y = {fb[i]}; if (x.d != y.d) { eq = 0; goto done; } continue; }
+      if (k == 'f') { union { uint32_t u; float f; } x = {(uint32_t)fa[i]}, y = {(uint32_t)fb[i]}; if (x.f != y.f) { eq = 0; goto done; } continue; }
+      if (k != 't') { if (fa[i] != fb[i]) { eq = 0; goto done; } continue; }
+#endif
+      if (ISINT(fa[i]) || ISINT(fb[i])) { /* the common leaf: no push */
+        if (fa[i] != fb[i]) { eq = 0; goto done; }
+        continue;
+      }
+      st[n++] = (veq_pair_t){fa[i], fb[i]};
+    }
+  }
+done:
+  if (spill) fpr_free(spill);
+  return eq;
+}
 V fpr_prim_fn__x3d_x3d(V a, V b) { return BOOL(veq(a, b)); }
 V fpr_prim_fn__x21_x3d(V a, V b) { return BOOL(!veq(a, b)); }
 
@@ -2016,12 +2056,24 @@ static V g_growlog(V u) {
 FPR_FN(fpr_g_Sys_x2egrowLog, g_growlog, 1);
 
 V fpr_prim_fn_print(V v) {
-  rpos = 0;
-  render(v);
+  /* a String prints as itself, straight to the console: like `str`, it
+   * never enters the fixed render buffer, so a string of ANY length
+   * prints.  (It used to panic "render buffer full" past 4095 bytes.) */
+  const char *out;
+  uw n;
+  if (!ISINT(v) && TID(v) == T_STR) {
+    out = (const char *)((str_t *)v)->bytes;
+    n = ((str_t *)v)->len;
+  } else {
+    rpos = 0;
+    render(v);
+    out = rbuf;
+    n = (uw)rpos;
+  }
   fpr_lock(&fpr_con_lock);
-  for (int i = 0; i < rpos; i++) {
-    if (rbuf[i] == '\n') hal_putc('\r');
-    hal_putc(rbuf[i]);
+  for (uw i = 0; i < n; i++) {
+    if (out[i] == '\n') hal_putc('\r');
+    hal_putc(out[i]);
   }
   hal_putc('\r');
   hal_putc('\n');
