@@ -54,10 +54,15 @@ static const devtable_entry_t devtable[] = {
 
 /* raw console for the runtime/panic path -- deliberately NOT routed
  * through the table: this must work before any FPRISC code has run. */
-void hal_putc(char c) {
+static void uart_tx(char c) {
   volatile uint8_t *u = (volatile uint8_t *)UART0_BASE;
   while (!(u[5] & 0x20)) {} /* LSR.THRE */
   u[0] = (uint8_t)c;
+}
+/* a raw serial line: the core writes '\n', the wire wants "\r\n" */
+void hal_putc(char c) {
+  if (c == '\n') uart_tx('\r');
+  uart_tx(c);
 }
 
 /* terminate QEMU with an exit code: the virt machine's sifive test

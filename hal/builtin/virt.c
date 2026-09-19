@@ -1,10 +1,12 @@
 #include "builtin.h"
 extern char _heap_start[], _heap_end[];
 extern V fpr_fn_main(void);
-void hal_putc(char c) {
+static void uart_tx(char c) {
   volatile uint8_t *uart=(volatile uint8_t *)0x10000000;
   while (!(uart[5]&0x20)) {} uart[0]=(uint8_t)c;
 }
+/* a raw serial line: the core writes '\n', the wire wants "\r\n" */
+void hal_putc(char c) { if (c=='\n') uart_tx('\r'); uart_tx(c); }
 void hal_poweroff(int code) {
   *(volatile uint32_t *)0x100000=code?((uint32_t)code<<16)|0x3333:0x5555;
 }

@@ -926,7 +926,7 @@ static V fpr_process_result;
  * what it already holds -- the runtime names the cycle instead of the
  * program guessing at it */
 extern void hal_putc(char c); /* the raw console: the log ring's echo is rate-limited */
-static void dl_out(const char *b, uw n) { for (uw i = 0; i < n; i++) hal_putc(b[i]); hal_putc('\r'); hal_putc('\n'); }
+static void dl_out(const char *b, uw n) { for (uw i = 0; i < n; i++) hal_putc(b[i]); hal_putc('\n'); }
 static void dl_put(char **p, const char *e, const char *str) { while (*str && *p < e) *(*p)++ = *str++; }
 static void dl_num(char **p, const char *e, uw u) {
   char d[24]; int i = 23; d[i] = 0;

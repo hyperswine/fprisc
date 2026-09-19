@@ -1356,11 +1356,13 @@ static V g_arcLive(V d) {
 
 
 /* ---- panic ---------------------------------------------------------- */
+/* The core writes '\n' and nothing else.  Whether a line also needs a
+ * carriage return is a fact about the DEVICE -- a raw 16550 does, a posix
+ * stream does not -- so it is hal_putc's to add (hal/virt, hal/builtin).
+ * It used to be inserted here, which made every hosted program's stdout
+ * CRLF and every check pipe its output through `tr -d '\r'`. */
 static void praw(const char *s) {
-  while (*s) {
-    if (*s == '\n') hal_putc('\r');
-    hal_putc(*s++);
-  }
+  while (*s) hal_putc(*s++);
 }
 
 extern uw fpr_current_id(void);
@@ -1897,15 +1899,11 @@ void fpr_logput(int sev, const char *b, uw n) {
     if (u == 0) db[di--] = '0';
     while (u) { db[di--] = '0' + (u % 10); u /= 10; }
     for (int j = di + 1; j <= 23; j++) hal_putc(db[j]);
-    s = " line(s); rings intact)\r\n";
+    s = " line(s); rings intact)\n";
     for (const char *c = s; *c; c++) hal_putc(*c);
   }
   for (const char *c = pre[sev]; *c; c++) hal_putc(*c);
-  for (uw i = 0; i < n; i++) {
-    if (b[i] == '\n') hal_putc('\r');
-    hal_putc(b[i]);
-  }
-  hal_putc('\r');
+  for (uw i = 0; i < n; i++) hal_putc(b[i]);
   hal_putc('\n');
   fpr_unlock(&fpr_con_lock);
 }
@@ -2071,11 +2069,7 @@ V fpr_prim_fn_print(V v) {
     n = (uw)rpos;
   }
   fpr_lock(&fpr_con_lock);
-  for (uw i = 0; i < n; i++) {
-    if (out[i] == '\n') hal_putc('\r');
-    hal_putc(out[i]);
-  }
-  hal_putc('\r');
+  for (uw i = 0; i < n; i++) hal_putc(out[i]);
   hal_putc('\n');
   fpr_unlock(&fpr_con_lock);
   return (V)&fpr_unit;
@@ -2120,10 +2114,7 @@ V fpr_prim_fn_error(V s) { fpr_panic(s); }
 void fpr_render_to_uart(V v) {
   rpos = 0;
   render(v);
-  for (int i = 0; i < rpos; i++) {
-    if (rbuf[i] == '\n') hal_putc('\r');
-    hal_putc(rbuf[i]);
-  }
+  for (int i = 0; i < rpos; i++) hal_putc(rbuf[i]);
 }
 
 /* string helpers exposed through the fpr_g_ contract (1-indexed, FPRISC) */
