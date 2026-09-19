@@ -17,7 +17,10 @@ IMAGE   ?= image.elf
 RT_CORE = $(HAL)/core/runtime.c $(HAL)/core/actors.c $(HAL)/core/bits.c \
           $(HAL)/core/vec.c $(HAL)/core/sstr.c $(HAL)/core/mod.c $(HAL)/core/buddy.c
 RT_VIRT = $(HAL)/virt/crt0.S $(HAL)/virt/ctx.S $(HAL)/virt/ctx_fab.c \
-          $(HAL)/virt/hal.c $(HAL)/virt/plic.c $(HAL)/virt/net.c $(HAL)/virt/blk.c $(HAL)/virt/memshim.c
+          $(HAL)/virt/hal.c $(HAL)/virt/memshim.c
+# EXTRA_RT: sources a HAL ABOVE the machine layer adds to a bare-metal image
+# (QOS Native's drivers: `make bare-metal` run from the qos tree passes them)
+EXTRA_RT ?=
 
 ARCHFLAGS = -march=rv64imafdc_zicsr -mabi=lp64 -mcmodel=medany
 # hosted (qosp) apps grant memory in QOSSLAB-byte slabs: the 256 KiB
@@ -120,9 +123,9 @@ $(BUILD)/prog.s: fprc $(PROG) core/prelude.fpr FORCE
 # the virt HAL's PLIC and CLINT drivers are FP-RISC (hal/virt/virt.mk)
 FPRC ?= ./fprc
 include $(HAL)/virt/virt.mk
-bare-metal: $(BUILD)/prog.s $(RT_VIRT) $(VIRT_FPR) $(RT_CORE) $(HAL)/virt/link.ld
+bare-metal: $(BUILD)/prog.s $(RT_VIRT) $(VIRT_FPR) $(EXTRA_RT) $(RT_CORE) $(HAL)/virt/link.ld
 	$(CROSS)gcc $(CFLAGS) -T $(HAL)/virt/link.ld -I$(HAL)/core -I$(HAL)/virt \
-	  $(RT_VIRT) $(VIRT_FPR) $(BUILD)/prog.s $$(cat $(BUILD)/prog.s.units) $(RT_CORE) -o $(IMAGE)
+	  $(RT_VIRT) $(VIRT_FPR) $(EXTRA_RT) $(BUILD)/prog.s $$(cat $(BUILD)/prog.s.units) $(RT_CORE) -o $(IMAGE)
 
 bare-metal-run: bare-metal
 	$(TIMEOUT) 20 $(QEMU) $(ACCEL) -machine virt -smp $(HARTS) -m 256M \

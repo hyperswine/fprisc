@@ -30,27 +30,20 @@
  */
 #include "fpr.h"
 
-typedef struct {
-  const char *name;
-  fpr_dev_t dev;
-  void (*setup)(void);       /* optional: one-time device init, or NULL */
-  V (*ioctl)(V op, V arg);   /* optional: device-specific escape hatch, or NULL */
-} devtable_entry_t;
+#include "devtable.h"
 
 #define UART0_BASE 0x10000000UL
 #define CLINT_BASE 0x02000000UL
-#define VIRTIO0_BASE 0x10001000UL
 
-extern void net_setup(void); /* net.c: probe virtio slots, bring up queues */
-extern void blk_setup(void); /* blk.c: probe virtio slots, bring up disk queue */
-
+/* what THIS layer knows: the two devices the runtime itself stands on.  The
+ * virtio devices, the PLIC and the pin bus are drivers, and drivers are a
+ * HAL's -- QOS Native adds them through hal_devtable_ext (devtable.h). */
 static const devtable_entry_t devtable[] = {
   {"uart",  {T_DEVICE, 0, UART0_BASE}, NULL, NULL},
   {"clint", {T_DEVICE, 0, CLINT_BASE}, NULL, NULL},
-  {"net",   {T_DEVICE, 0, VIRTIO0_BASE}, net_setup, NULL},
-  {"blk",   {T_DEVICE, 0, VIRTIO0_BASE}, blk_setup, NULL},
 };
 #define NDEVICES (sizeof(devtable) / sizeof(devtable[0]))
+__attribute__((weak)) const devtable_entry_t *hal_devtable_ext(uw *count) { *count = 0; return 0; }
 
 /* raw console for the runtime/panic path -- deliberately NOT routed
  * through the table: this must work before any FPRISC code has run. */
@@ -71,100 +64,6 @@ void hal_putc(char c) {
  * exit-code driven instead of timeout-killed.  A real-hardware HAL
  * backend makes this a no-op (or a board reset); every caller falls
  * through to a wfi park, so returning is always safe. */
-/* ---- GPIO pins (the C HAL tier; docs/PINS.md) -----------------------
- * A 32-pin bank with runtime-settable direction -- the portable
- * contract System.qa serves as /pins/<n> URLs.  THIS backend is the
- * QEMU-virt SIM: out-pin writes latch; an in-pin reads the latch of
- * whatever out-pin it is WIRED to (Pin.wire, the sim's test jumper --
- * how a matrix keypress is emulated with zero hardware).  A silicon
- * backend replaces these bodies with the target's GPIO MMIO; Pin.* is
- * the raw tier every pin service sits on. */
-#define NPINS 32
-static uint32_t pin_feed_pat[NPINS];
-static uint8_t pin_feed_n[NPINS], pin_feed_i[NPINS];
-#define PIN_TRACE_CAP 4096
-static uint16_t pin_trace[PIN_TRACE_CAP];
-static uw pin_trace_n;
-static uint8_t pin_mode[NPINS];  /* 0 = in, 1 = out */
-static uint32_t pin_out;         /* out latch */
-static int8_t pin_src[NPINS];    /* sim wiring: in-pin n fed by out-pin pin_src[n], -1 = float(0) */
-static int pins_inited;
-static void pins_init(void) {
-  if (pins_inited) return;
-  for (int i = 0; i < NPINS; i++) pin_src[i] = -1;
-  pins_inited = 1;
-}
-static V h_pin_mode(V nv, V mv) {
-  pins_init();
-  sw n = UNTAG(nv);
-  if (n < 0 || n >= NPINS) fpr_cpanic("Pin.mode: pin out of range");
-  pin_mode[n] = UNTAG(mv) ? 1 : 0;
-  return (V)&fpr_unit;
-}
-static V h_pin_write(V nv, V vv) {
-  pins_init();
-  sw n = UNTAG(nv);
-  if (n < 0 || n >= NPINS) fpr_cpanic("Pin.write: pin out of range");
-  if (!pin_mode[n]) fpr_cpanic("Pin.write: pin is not an output (Pin.mode first)");
-  if (UNTAG(vv)) pin_out |= (1u << n); else pin_out &= ~(1u << n);
-  if (pin_trace_n < PIN_TRACE_CAP)
-    pin_trace[pin_trace_n++] = (uint16_t)(n * 2 + (UNTAG(vv) ? 1 : 0));
-  return (V)&fpr_unit;
-}
-static V h_pin_read(V nv) {
-  pins_init();
-  sw n = UNTAG(nv);
-  if (n < 0 || n >= NPINS) fpr_cpanic("Pin.read: pin out of range");
-  if (pin_mode[n]) return TAG((pin_out >> n) & 1); /* out: read back the latch */
-  if (pin_feed_n[n]) { /* pattern stimulus: one bit per read, MSB first */
-    int i = pin_feed_i[n];
-    if (i < pin_feed_n[n]) pin_feed_i[n] = (uint8_t)(i + 1);
-    return TAG((sw)((pin_feed_pat[n] >> (pin_feed_n[n] - 1 - (i < pin_feed_n[n] ? i : pin_feed_n[n] - 1))) & 1));
-  }
-  int s = pin_src[n];
-  return TAG(s >= 0 ? (sw)((pin_out >> s) & 1) : 0);
-}
-/* SIM ONLY: feed an in-pin from a bit PATTERN, advancing one bit per
- * Pin.read -- the stimulus for serial slaves (a TTP229 answering its
- * 16 clocks, an SPI slave shifting a reply).  MSB first over nbits. */
-static V h_pin_feed(V bv, V patv, V nv) {
-  pins_init();
-  sw b = UNTAG(bv);
-  if (b < 0 || b >= NPINS) fpr_cpanic("Pin.feed: pin out of range");
-  pin_feed_pat[b] = (uint32_t)UNTAG(patv);
-  pin_feed_n[b] = (uint8_t)UNTAG(nv);
-  pin_feed_i[b] = 0;
-  return (V)&fpr_unit;
-}
-FPR_FN(fpr_g_Pin_x2efeed, h_pin_feed, 3);
-
-static V h_pin_wire(V av, V bv) { /* SIM ONLY: out-pin a -> in-pin b (a<0 unwires) */
-  pins_init();
-  sw a = UNTAG(av), b = UNTAG(bv);
-  if (b < 0 || b >= NPINS) fpr_cpanic("Pin.wire: dst out of range");
-  pin_src[b] = (a >= 0 && a < NPINS) ? (int8_t)a : -1;
-  return (V)&fpr_unit;
-}
-/* signal trace: every Pin.write records (pin, value) in order -- the
- * sim's logic analyzer.  Tests decode the captured WAVEFORM back into
- * protocol bytes (see tests/bbspi.fpr), which is how "are the signals
- * generally working" is answerable without silicon. */
-static V h_pin_tclear(V d) { (void)d; pin_trace_n = 0; return (V)&fpr_unit; }
-static V h_pin_tlen(V d) { (void)d; return TAG((sw)pin_trace_n); }
-static V h_pin_tget(V iv) { /* 1-based; -> pin*2 + value */
-  sw i = UNTAG(iv);
-  if (i < 1 || (uw)i > pin_trace_n) fpr_cpanic("Pin.tget: index out of range");
-  return TAG((sw)pin_trace[i - 1]);
-}
-FPR_FN(fpr_g_Pin_x2etclear, h_pin_tclear, 1);
-FPR_FN(fpr_g_Pin_x2etlen, h_pin_tlen, 1);
-FPR_FN(fpr_g_Pin_x2etget, h_pin_tget, 1);
-
-FPR_FN(fpr_g_Pin_x2emode, h_pin_mode, 2);
-FPR_FN(fpr_g_Pin_x2ewrite, h_pin_write, 2);
-FPR_FN(fpr_g_Pin_x2eread, h_pin_read, 1);
-FPR_FN(fpr_g_Pin_x2ewire, h_pin_wire, 2);
-
 #define VIRT_TEST_FINISHER 0x100000UL
 void hal_poweroff(int code) {
   volatile uint32_t *t = (volatile uint32_t *)VIRT_TEST_FINISHER;
@@ -175,19 +74,27 @@ void hal_poweroff(int code) {
  * `device "name"` : String -> Device. Linear scan of a handful of
  * entries; a real HAL with dozens of peripherals would want a sorted
  * table + binary search, or a perfect hash generated at build time. */
+static const devtable_entry_t *dev_find(const devtable_entry_t *t, uw n, const str_t *s) {
+  for (uw i = 0; i < n; i++) {
+    const char *nm = t[i].name;
+    size_t j = 0;
+    for (; j < s->len && nm[j] && nm[j] == (char)s->bytes[j]; j++) {}
+    if (j == s->len && nm[j] == '\0') return &t[i];
+  }
+  return 0;
+}
 static V h_device(V nameStr) {
   if (ISINT(nameStr) || TID(nameStr) != T_STR) fpr_cpanic("device: name must be a String");
   str_t *s = (str_t *)nameStr;
-  for (size_t i = 0; i < NDEVICES; i++) {
-    const char *n = devtable[i].name;
-    size_t j = 0;
-    for (; j < s->len && n[j] && n[j] == (char)s->bytes[j]; j++) {}
-    if (j == s->len && n[j] == '\0') {
-      if (devtable[i].setup) devtable[i].setup();
-      return (V)&devtable[i].dev;
-    }
+  const devtable_entry_t *e = dev_find(devtable, NDEVICES, s);
+  if (!e) { /* a HAL above this layer may know more devices than the board's basics */
+    uw n = 0;
+    const devtable_entry_t *ext = hal_devtable_ext(&n);
+    e = dev_find(ext, n, s);
   }
-  fpr_cpanic("device: unknown device name");
+  if (!e) fpr_cpanic("device: unknown device name");
+  if (e->setup) e->setup();
+  return (V)&e->dev;
 }
 
 /* ---- Registers ------------------------------------------------------- */

@@ -17,9 +17,11 @@ building bare-metal examples requires QOS.
 
 - `compiler/`: shared frontend, native backends, Sol bytecode interpreter and JIT.
 - `core/`, `std/`: language prelude and libraries that do not import QOS services.
-- `hal/core/`: runtime allocation, application, actors, vectors and value operations.
-- `hal/virt/`: standalone RISC-V machine support, also consumed by QOS Native.
-- `hal/unix/`: architecture context switching used by hosted runtime integrations.
+- `hal/core/`: the RUNTIME -- allocation, actors and the scheduler, vectors, values.
+- `hal/virt/`, `hal/posix/`, `hal/builtin/`, `hal/unix/`: the MACHINE LAYER, one
+  per system -- what the runtime needs from whatever it runs on (boot, context
+  switch, a console byte, the doorbell and timer). Device drivers are not
+  here: the HAL a program sees is QOS's. See [docs/HAL.md](docs/HAL.md).
 - `sol/`, `tests/`, `tools/`: examples, compiler/runtime checks and language tools.
 - `docs/`: language and platform design documentation.
 
