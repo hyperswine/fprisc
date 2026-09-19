@@ -101,8 +101,9 @@ which is the point of them.
 - A lambda cannot take `_` as a parameter (`fn k _ -> ...`).
 - A literal `{` in a string must be written `\{`, because `{` starts interpolation;
   JSON text in source is noisy.
-- There is no `if`/`else` or boolean `&&`: every two-way choice is a `case ... of
-  True -> | False ->`, which dominates the look of parsing code (std/json.fpr).
+- There is no `if`/`else`: every two-way choice is a `case ... of True -> |
+  False ->`, which dominates the look of parsing code (std/json.fpr). Infix
+  `and` / `or` exist and short-circuit; chains of character tests read well.
 - Every recursive function needs its own `name : unsafe ...` signature; a module
   of small loops is half signatures.
 - `fileWrite` answers `Ok ""` typed as `Result Unit String`.

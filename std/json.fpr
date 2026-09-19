@@ -239,13 +239,11 @@ digits : unsafe String -> Int -> Int .
 digits s i = case S.isDigit (charAtOr s i) of True -> digits s (i + 1) | False -> i.
 # past an exponent at i, or i itself
 expEnd : String -> Int -> Int .
-expEnd s i = case charAtOr s i == 101 of
-    True -> expDigits s i
-  | False -> (case charAtOr s i == 69 of True -> expDigits s i | False -> i).
+expEnd s i = case charAtOr s i == 101 or charAtOr s i == 69 of True -> expDigits s i | False -> i.
 expDigits : String -> Int -> Int .
 expDigits s i =
   c = charAtOr s (i + 1);
-  j = (case c == 43 of True -> i + 2 | False -> (case c == 45 of True -> i + 2 | False -> i + 1));
+  j = (case c == 43 or c == 45 of True -> i + 2 | False -> i + 1);
   k = digits s j;
   case k == j of True -> i | False -> k.
 
@@ -317,11 +315,9 @@ hexGo s i n acc = case n == 0 of
 hexVal : Int -> O.Option Int .
 hexVal c = case S.isDigit c of
     True -> O.Some (c - 48)
-  | False -> (case c >= 97 of
-        True -> (case c <= 102 of True -> O.Some (c - 87) | False -> O.None)
-      | False -> (case c >= 65 of
-            True -> (case c <= 70 of True -> O.Some (c - 55) | False -> O.None)
-          | False -> O.None)).
+  | False -> (case c >= 97 and c <= 102 of
+        True -> O.Some (c - 87)
+      | False -> (case c >= 65 and c <= 70 of True -> O.Some (c - 55) | False -> O.None)).
 
 # a code point as UTF-8 bytes
 utf8 : Int -> String .

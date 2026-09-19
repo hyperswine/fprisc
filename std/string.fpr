@@ -89,12 +89,10 @@ contains : String -> String -> Bool .
 contains p s = strIndexOf p s > 0.
 
 startsWith : String -> String -> Bool .
-startsWith p s = case strlen p > strlen s of True -> False | False -> substr s 1 (strlen p) == p.
+startsWith p s = strlen p <= strlen s and substr s 1 (strlen p) == p.
 
 endsWith : String -> String -> Bool .
-endsWith p s = case strlen p > strlen s of
-    True -> False
-  | False -> substr s (strlen s - strlen p + 1) (strlen p) == p.
+endsWith p s = strlen p <= strlen s and substr s (strlen s - strlen p + 1) (strlen p) == p.
 
 # how many times, not overlapping
 count : String -> String -> Int .
@@ -123,7 +121,7 @@ dropRight n s = case n <= 0 of True -> s | False -> substr s 1 (strlen s - n).
 
 # ---- trimming ------------------------------------------------------------------------
 isSpace : Int -> Bool .
-isSpace c = case c == 32 of True -> True | False -> (case c >= 9 of True -> c <= 13 | False -> False).
+isSpace c = c == 32 or (c >= 9 and c <= 13).
 
 trim : String -> String .
 trim s = trimRight (trimLeft s).
@@ -160,10 +158,10 @@ reverse s = fromCodes (rev (codes s) Nil).
 
 # ASCII only: a byte outside A-Z / a-z is left alone, so UTF-8 survives
 toUpper : String -> String .
-toUpper s = mapCodes (fn c -> case c >= 97 of True -> (case c <= 122 of True -> c - 32 | False -> c) | False -> c) s.
+toUpper s = mapCodes (fn c -> case c >= 97 and c <= 122 of True -> c - 32 | False -> c) s.
 
 toLower : String -> String .
-toLower s = mapCodes (fn c -> case c >= 65 of True -> (case c <= 90 of True -> c + 32 | False -> c) | False -> c) s.
+toLower s = mapCodes (fn c -> case c >= 65 and c <= 90 of True -> c + 32 | False -> c) s.
 
 # ---- bytes ---------------------------------------------------------------------------
 codes : String -> List Int .
@@ -182,12 +180,10 @@ mapGo : unsafe (Int -> Int) -> String -> Int -> List String -> List String .
 mapGo f s i acc = case i < 1 of True -> acc | False -> mapGo f s (i - 1) (chr (f (charAt s i)) :: acc).
 
 isDigit : Int -> Bool .
-isDigit c = case c >= 48 of True -> c <= 57 | False -> False.
+isDigit c = c >= 48 and c <= 57.
 
 isAlpha : Int -> Bool .
-isAlpha c = case c >= 97 of
-    True -> c <= 122
-  | False -> (case c >= 65 of True -> c <= 90 | False -> False).
+isAlpha c = (c >= 97 and c <= 122) or (c >= 65 and c <= 90).
 
 # ---- numbers -------------------------------------------------------------------------
 fromInt : Int -> String .
