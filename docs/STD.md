@@ -16,7 +16,9 @@ main = case File.lines "words.txt" of
   | Err why -> print "cannot read: {why}".
 ```
 
-`fpr run prog.fpr` builds and runs it. A module is a file; `use "std/x"` finds it
+`fpr run prog.fpr` builds and runs it, and keeps the executable: the second run
+starts in ~20 ms. With `#!/usr/bin/env -S fpr run` as its first line a program
+is an executable script ([BASE.md](BASE.md)). A module is a file; `use "std/x"` finds it
 under the toolchain's home from anywhere; the name on the left is yours to choose.
 
 ## The conventions, everywhere

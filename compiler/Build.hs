@@ -18,11 +18,14 @@ import qualified Compile
 import FPRISC (declaredProfile)
 import Home (fprHome)
 import qualified Sol.Main
+import Data.Bits (xor)
 import Data.Time.Clock (UTCTime)
-import System.Directory (XdgDirectory (..), createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory, getModificationTime, getTemporaryDirectory, getXdgDirectory, removeFile)
+import Data.Word (Word64)
+import Numeric (showHex)
+import System.Directory (XdgDirectory (..), createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory, renameFile, getModificationTime, getTemporaryDirectory, getXdgDirectory, removeFile)
 import System.Environment (getExecutablePath, lookupEnv, withArgs)
 import System.Exit (ExitCode (..), exitFailure, exitWith)
-import System.FilePath (dropExtension, takeBaseName, takeExtension, takeFileName, (</>))
+import System.FilePath (dropExtension, takeBaseName, takeDirectory, takeExtension, takeFileName, (</>))
 import System.IO (IOMode (..), hPutStrLn, openFile, stderr)
 import qualified System.Info
 import System.Posix.Process (getProcessID)
@@ -178,10 +181,82 @@ runMain args = do
   p <- plan args
   prof <- profileOf (pSource p)
   when (prof == "sol") $ withArgs (pSource p : pRest p) Sol.Main.main >> exitWith ExitSuccess
-  tmp <- getTemporaryDirectory
-  pid <- getProcessID
-  let exe = tmp </> ("fpr-run-" ++ takeBaseName (pSource p) ++ "-" ++ show pid)
-  out <- build p {pOut = Just exe}
-  (_, _, _, h) <- createProcess (proc out (pRest p))
+  -- A program that has not changed is not compiled again: the executable is
+  -- kept under a key of everything that made it (runKey), so a script starts
+  -- as fast as it runs.  FPR_NO_RUN_CACHE=1 builds afresh into a temp file.
+  off <- lookupEnv "FPR_NO_RUN_CACHE"
+  exe <- case off of
+    Just v | not (null v) -> do
+      tmp <- getTemporaryDirectory
+      pid <- getProcessID
+      build p {pOut = Just (tmp </> ("fpr-run-" ++ takeBaseName (pSource p) ++ "-" ++ show pid))}
+    _ -> do
+      key <- runKey p
+      cache <- getXdgDirectory XdgCache "fpr"
+      let dir = cache </> "run"
+          kept = dir </> (takeBaseName (pSource p) ++ "-" ++ key)
+      createDirectoryIfMissing True dir
+      have <- doesFileExist kept
+      if have then pure kept else do
+        pid <- getProcessID
+        let fresh = kept ++ ".tmp" ++ show pid -- built beside it, renamed whole: two runs at once never see half a file
+        _ <- build p {pOut = Just fresh}
+        renameFile fresh kept
+        pure kept
+  (_, _, _, h) <- createProcess (proc exe (pRest p))
   code <- waitForProcess h
   exitWith code
+
+-- Everything a run's executable is made from: the program and every module it
+-- `use`s (transitively, resolved as Modules.hs resolves them: beside the
+-- importer, then under the toolchain's home), the prelude, this compiler, the
+-- runtime's and the posix machine layer's sources, and the plan's flags.
+runKey :: Plan -> IO String
+runKey p = do
+  home <- fprHome
+  self <- getExecutablePath
+  srcs <- closure home [] [pSource p]
+  let rtDirs = [home </> "runtime", home </> "machine" </> "posix", home </> "machine" </> "unix"]
+  rtFiles <- fmap concat (mapM listed rtDirs)
+  stamps <- mapM stamp (self : (home </> "core" </> "prelude.fpr") : rtFiles ++ pWith p)
+  bodies <- mapM readFileStrict srcs
+  foreignDecls <- lookupEnv "FPR_FOREIGN"
+  let text = unlines (srcs ++ bodies ++ stamps ++ [show (pHarts p), show (pCC p), unwords (pCFlags p ++ pLink p), show foreignDecls])
+  pure (showHex (fnv64 text) "")
+  where
+    listed d = do
+      e <- doesDirectoryExist d
+      if e then map (d </>) <$> listDirectory d else pure []
+    stamp f = do
+      e <- doesFileExist f
+      if not e then pure (f ++ " missing") else do
+        t <- getModificationTime f
+        pure (f ++ " " ++ show t)
+    readFileStrict f = do
+      e <- doesFileExist f
+      if not e then pure "" else do
+        t <- readFile f
+        length t `seq` pure t
+    closure _ seen [] = pure (reverse seen)
+    closure home seen (f : rest)
+      | f `elem` seen = closure home seen rest
+      | otherwise = do
+          e <- doesFileExist f
+          if not e then closure home seen rest else do
+            t <- readFileStrict f
+            deps <- mapM (resolve home (takeDirectory f)) (usesIn t)
+            closure home (f : seen) (rest ++ deps)
+    resolve home dir nm0 = do
+      let nm = takeWhile (/= '#') nm0
+          file = if takeExtension nm == ".fpr" then nm else nm ++ ".fpr"
+          here = if take 1 file == "/" then file else dir </> file
+      e <- doesFileExist here
+      pure (if e then here else home </> file)
+    usesIn t = [takeWhile (/= '"') r | l <- lines t, Just r <- [after "use \"" l]]
+    after pat l
+      | null l = Nothing
+      | take (length pat) l == pat = Just (drop (length pat) l)
+      | otherwise = after pat (drop 1 l)
+
+fnv64 :: String -> Word64
+fnv64 = foldl (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) 14695981039346656037

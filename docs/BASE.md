@@ -18,6 +18,20 @@ fpr run hello.fpr a b c        # build to a temp file, run it, return its status
 fpr build x.fpr -o out --harts 4 -v   # -v shows the compiler's report; --keep keeps the .s
 ```
 
+`fpr run` keeps the executable it built under `~/.cache/fpr/run/`, keyed by
+everything that made it -- the program, every module it uses, the prelude, the
+compiler, the runtime's sources, the flags -- so a program that has not changed
+starts in about 20 ms instead of being compiled again (`FPR_NO_RUN_CACHE=1`
+builds afresh; the directory is only ever added to: delete it to reclaim the
+space). That makes a script a script: `#` begins a comment, so a first line of
+
+```sh
+#!/usr/bin/env -S fpr run
+```
+
+and `chmod +x` is all it takes. The library a program is written against is
+[STD.md](STD.md).
+
 The first build compiles the runtime into `~/.cache/fpr/rt/<arch>-h<harts>/`
 and the prelude into `~/.cache/fpr/build/units/`; after that a build is the
 program's own compile and a link (about a tenth of a second for hello).
