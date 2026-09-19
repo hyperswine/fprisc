@@ -114,12 +114,15 @@ The design names three. Two exist, and both are driven by `tests/check_std.py`:
 - **ExtBase:** TLS in std (HTTPS rides on curl); HTTP keep-alive and streaming
   bodies; password hashing and other digests; `Encode` from records (there is no
   reflection: you build a `Json.Value`).
-- **Sol:** Sol loads these same files with `use`, but its type checker
-  (compiler/Sol/Infer.hs) does not yet unify a type named through a NESTED module
-  (`List.O.Option` vs `Option`), so `std/list` is refused there; and the aliases
-  `List` / `Str` collide with Sol's builtin structures. The four runtime string
-  primitives took Sol's names and contracts (`strJoin strCmp strIndexOf`; Sol
-  lacks `strIndexFrom`). These modules are the vocabulary to converge on.
+- **Sol:** the PURE modules now run in Sol unchanged (`tests/std/solstd.sol`:
+  list, string, map, option, order, json), and Sol prints values as written too.
+  That took two fixes in Sol's module splicing (compiler/Sol/Lang.hs: the rename
+  pass skipped function types in signatures; a module reached twice was only
+  re-pointed in expressions, not patterns or types) and `strIndexFrom` in the VM.
+  Still open: the alias names `List` / `Str` collide with Sol's builtin
+  structures (use `L`, `S`); the posix modules need the `Os.*` primitives, which
+  the VM does not have -- and should get as TRANSACTIONAL operations, not as
+  these immediate ones (docs/TRANSACTION.md).
 - The third acceptance program: numerical analysis (`Array`, `Stats`, `CSV`, `Plot`).
 
 ## Friction found while writing it (evidence for the next additions)

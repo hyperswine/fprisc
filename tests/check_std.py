@@ -25,6 +25,12 @@ check('list', label='List: map/filter/fold/find/zip/group, a stable merge sort o
 check('string', label='String: split/join/trim/replace/search/slices/toInt, 1.3 MB through join and split')
 check('map', label='Map and Set: a persistent AVL tree, 100,000 keys in and half out, ascending iteration')
 check('json', label='Json: parse with line and column, escapes and surrogate pairs, deterministic render, a 640 KB round trip')
+# the SAME module files from a Sol script (docs/WHAT_IS_SOL.md: one vocabulary)
+p = subprocess.run([fpr, 'sol', str(ROOT / 'tests' / 'std' / 'solstd.sol')], capture_output=True, text=True, timeout=300)
+got = [l for l in p.stdout.splitlines() if not l.startswith('[')]
+assert got == ['[1, 2, 3]', 'Some 3', 'A-B--C', '[(and, 2), (bird, 1), (cat, 1), (dog, 1), (the, 3)]', '[1,{"a":null}]',
+               'Err line 1, column 4: expected a value, found the end of the text'], p.stdout + p.stderr
+print('Sol runs the same std modules (list, string, map, option, order, json), and prints values as written: PASS')
 check('extbase', label='Math, Encoding (hex, Base64, URL), Binary, Digest: SHA-256 against the published vectors, incremental equals whole')
 check('proclimits', label='Proc: a time limit kills the child and says so; extra environment reaches it')
 check('tcp', label='Stream and Tcp: a server and its clients in ONE process, an actor per connection, 2 MB echoed, stop')

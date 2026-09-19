@@ -96,6 +96,15 @@ veq (VData t v fs) (VData t' v' fs') =
   t == t' && v == v' && length fs == length fs' && and (zipWith veq fs fs')
 veq _ _ = False
 
+-- Constructor names, so a value prints the way it is written (`Some 3`, not
+-- `<20.1 3>`) -- the same rule the compiled runtime follows (runtime.c
+-- fpr_contab).  Main fills this once, from the program's type declarations;
+-- `render` is pure everywhere it is used, so the table is read through
+-- unsafePerformIO rather than threaded through every caller.
+{-# NOINLINE conNames #-}
+conNames :: IORef [((Int, Int, Int), String)]
+conNames = unsafePerformIO (newIORef [])
+
 render :: Value -> String
 render (VInt i) = show i
 render (VNum d) = renderNum d
@@ -116,6 +125,16 @@ render (VData 4 0 [a, b]) = "(" ++ render a ++ ", " ++ render b ++ ")"
 render (VData 5 0 [a, b, c]) = "(" ++ render a ++ ", " ++ render b ++ ", " ++ render c ++ ")"
 -- wide tuples: tids 10..14 = Tup4..Tup8 (FPRISC builtinCons / fpr.h)
 render (VData t 0 fs) | t >= 10 && t <= 14 && length fs == t - 6 = "(" ++ intercalate ", " (map render fs) ++ ")"
+render (VData t v fs)
+  | Just n <- lookup (t, v, length fs) (unsafePerformIO (readIORef conNames)) =
+      unwords (n : map arg fs)
+  where
+    -- an argument that is itself an application (or a negative number) is parenthesized
+    arg x = case x of
+      VInt i | i < 0 -> "(" ++ render x ++ ")"
+      VData 3 _ [_] -> "(" ++ render x ++ ")"
+      VData t' v' fs' | not (null fs'), Just _ <- lookup (t', v', length fs') (unsafePerformIO (readIORef conNames)) -> "(" ++ render x ++ ")"
+      _ -> render x
 render (VData t v fs) = "<" ++ show t ++ "." ++ show v ++ (if null fs then "" else " " ++ unwords (map render fs)) ++ ">"
 render (VPap g _ n) = "<fn " ++ g ++ "/" ++ show n ++ ">"
 render (VVec _) = "<vector>"

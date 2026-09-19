@@ -64,6 +64,7 @@ solBuiltins =
       -- Str.lines of a 100 KB file a minute's work
       ("strSplit", mono (TFn tInt (TFn tStr (tList tStr)))),
       ("strIndexOf", mono (TFn tStr (TFn tStr tInt))),
+      ("strIndexFrom", mono (TFn tStr (TFn tStr (TFn tInt tInt)))), -- the compiled runtime's fourth string primitive (runtime.c)
       ("strReplace", mono (TFn tStr (TFn tStr (TFn tStr tStr)))),
       ("strUpper", mono (TFn tStr tStr)),
       ("strLower", mono (TFn tStr tStr)),

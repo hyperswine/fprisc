@@ -282,7 +282,7 @@ halArities =
     [ ("str", 1), ("strcat", 2), ("String.len", 1), ("strlen", 1),
       ("error", 1), ("Try.parseInt", 1), ("Try.parseNum", 1), ("Try.readPath", 1),
       ("charAt", 2), ("chr", 1), ("substr", 3), ("!", 2),
-      ("strSplit", 2), ("strIndexOf", 2), ("strReplace", 3), ("strUpper", 1), ("strLower", 1), ("strTrim", 1), ("strJoin", 2),
+      ("strSplit", 2), ("strIndexOf", 2), ("strIndexFrom", 3), ("strReplace", 3), ("strUpper", 1), ("strLower", 1), ("strTrim", 1), ("strJoin", 2),
       ("strCmp", 2), ("strCodes", 1),
       ("open", 1), ("readAll", 1), ("writeAll", 2), ("close", 1), ("args", 1),
       ("BStr.new", 1), ("BStr.fromStr", 1), ("BStr.toStr", 1),
