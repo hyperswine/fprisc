@@ -70,7 +70,6 @@ slab; 2,000 sequential spawn-reply-die rounds without the `drop` exhaust a
 | `FPR_RBUF_SZ 4096`, per-hart render buffer | rendering a non-String value (a long list, a big record) past 4095 bytes panics "render buffer full"; Strings no longer pass through it | render into a growable buffer, or straight to the console for `print` |
 | `SSTR_CAP 128`, one global `SString` width | `SStr.push` panics | the indexed `SString n` that `sstr.c` already names |
 | `RING_MAX 1<<20` messages per `Dynamic` ring | stops doubling | memory should be the bound, as the `MAXSND` comment already says of hubs |
-| `IRQ_MAX 64` | `Sys.irqBind` panics | the PLIC's own source count, from the device tree |
 | `NPINS 32`, `PIN_TRACE_CAP 4096` (`hal/virt/hal.c`) | a pin past 31 panics by name; the pin trace **stops recording** at 4096 entries without saying so | size from the board description; make the trace a ring or report the truncation |
 | `NETCONN 4`, `RXRING 16384`, virtqueue `QSZ 8` (`hal/virt/net.c`, `blk.c`) | small fixed TCP table | allocate connections from the heap |
 | `FPR_NHARTS` (compile time, static per-hart arrays) | fixed at build | discover at boot (device tree / `sysconf`) |
@@ -89,6 +88,7 @@ slab; 2,000 sequential spawn-reply-die rounds without the `drop` exhaust a
 - `FPR_ARGSPILL 56` (native arity 64): bounded by the rv64 12-bit tp-relative
   immediate (~250 cells), and not a user-visible ceiling anyway -- see below.
 - `BUDDY_MAX_ORDER 24`: a 1 TiB block at the 64 KiB minimum.
+- `IRQ_MAX 1024`: the PLIC's own ceiling of 1,023 sources (it was 64, which was nobody's limit).
 - `Static n` rings: a bound the programmer chose.
 - Scheduler tuning, not capacity: `FUEL_QUANTUM`, `FPR_TAU`, `RQ_CAP`, `DONATE_HI`.
 - `XCAP`, `SCAP`: wake and steal rings that wait or fall back when full.

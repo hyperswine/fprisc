@@ -432,17 +432,19 @@ typedef struct { void *entry; void *image_end; int ok; const char *err;
                                   * mprotect code r-x and leave data rw (macOS
                                   * arm64 forbids w+x on one page) */
 } fpr_elf_load_t;
-fpr_elf_load_t fpr_elf_load(const unsigned char *bytes, uw len, void *slot_base, uw slot_size);
 
-/* qaimg.c -- the QAR2 flat-image loader (docs/QA-FORMAT.md): the six
- * LOAD numbers, then copy + zero.  Reuses fpr_elf_load_t as the result
- * so callers keep their shapes; retires fpr_elf_load from every .qa
- * load path (the ELF is consumed once, at build time, by mkqa.py). */
-typedef struct { uw base, entry, execsz, rwoff, imagesz, memsz; } fpr_qaimg_t;
-int fpr_qaimg_params(const unsigned char *load, uw load_len, fpr_qaimg_t *out);
-fpr_elf_load_t fpr_qaimg_load(const unsigned char *load, uw load_len,
-                              const unsigned char *img, uw img_len,
-                              void *window, uw window_size);
+/* qaimg.c -- placing a QAR2 flat image (docs/QA-FORMAT.md).  The LOAD
+ * section's TEXT is read in FP-RISC (QOS programs/mods/qaimg.fpr: the six
+ * numbers, the sha line, the consistency refusals) by whoever is loading --
+ * the portable host, an app attaching a plugin, the native kernel.  What is
+ * left for C is the part that guards and performs a copy: the image must lie
+ * inside the window it was given; then copy, and zero the tail. */
+typedef struct { uw base, entry, execsz, rwoff, memsz; } fpr_qaimg_t;
+fpr_elf_load_t fpr_qaimg_place(const fpr_qaimg_t *q, const unsigned char *img, uw img_len,
+                               void *window, uw window_size);
+/* the first n Ints of an FP-RISC List, for a C primitive handed numbers that
+ * FP-RISC computed (qaimg.fpr's `nums`); 0 if the list is short or not Ints */
+int fpr_list_ints(V list, uw *out, uw n);
 
 /* proc_entry.c: compiled into an APP image (not the top-level boot).
  * Plain callable function -- ENTRY(fpr_process_entry) in link-app.ld

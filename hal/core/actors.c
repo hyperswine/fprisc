@@ -802,7 +802,9 @@ __attribute__((weak)) void hal_irq_open(uw src) { (void)src; }
 __attribute__((weak)) sw hal_irq_claim(void) { return 0; }
 __attribute__((weak)) void hal_irq_ack(uw src) { (void)src; }
 
-#define IRQ_MAX 64
+/* the PLIC's own ceiling (sources 1..1023): a bound the DEVICE has, so the
+ * table is simply that big (8 KiB).  It was 64, which was nobody's limit. */
+#define IRQ_MAX 1024
 static acb_t *irq_act[IRQ_MAX];
 static volatile int irq_bound; /* gate: keep the hot loop MMIO-free */
 static uw irq_src_key;         /* the deliveries' stable channel key */

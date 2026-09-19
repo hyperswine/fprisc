@@ -548,7 +548,6 @@ builtinEnv =
       ("F32.str", mono (TFn tF32 tStr)),
       -- process / system seam (fpr_g_ HAL)
       ("Sys.init", mono (TFn tUnit tUnit)),
-      ("Sys.loadImageAt", scheme [0] (TFn tStr (TFn tInt (TFn tInt (TFn tInt (TFn tInt (TFn (sv 0) (TTupT [tInt, tStr])))))))),
       ("Sys.arenaFree", mono (TFn tUnit tInt)),
       ("Sys.sleepUs", mono (TFn tInt tUnit)),
       ("Sys.arena", scheme [0] (TFn (TFn tUnit (sv 0)) (sv 0))),

@@ -240,3 +240,46 @@ to contain the FP-RISC driver. Cost: `hal_mtime` is about 30 instructions
 against C's 3, and actor throughput is unchanged (pingpong 4.80 s vs 4.71 s,
 inside the noise).
 
+### Step 3b: the LOAD section is read in FP-RISC; the C loader only places (2026-09-19)
+
+`hal/core/qaimg.c` (QOS) was the whole load path: a hand-rolled `key <decimal>`
+scanner over the LOAD section's text, five consistency refusals, then the
+copy -- reached by the portable host loading an app, the portable host loading
+a plugin, and the native kernel loading a process, while `qosp.fpr` scanned
+the same section a second time for the `sha` line. Every one of those callers
+has FP-RISC on its side of the call now, so:
+
+- `../qos/programs/mods/qaimg.fpr` reads the text (the six numbers in any
+  order, the sha line, unknown lines skipped) and refuses an inconsistent LOAD
+  with the wording the C used.
+- `qaimg.c` is `fpr_qaimg_place`: the image must lie inside the window it was
+  given, then copy and zero the tail. 103 lines to 42. The window check stays
+  in C on purpose -- it is the copy's own precondition, not policy.
+- The numbers cross as an FP-RISC `List Int` (`fpr_list_ints` in the runtime):
+  `Host.loadImage path sha img nums`, `Sys.attachImage id abi shell sha img
+  nums` (the plugin struct carries numbers, not LOAD text), and the kernel's
+  `Sys.placeImageAt qa ioff ilen nums caps` -- declared in `system.fpr` itself
+  as a body-less signature, so `Sys.loadImageAt` left the compiler's type
+  environment. IMAGE still reaches the kernel's placer by (offset, length),
+  never as a copy.
+- The host's C no longer scans any archive text: `load_sha_hex` is gone.
+
+On rv64 the kernel launches a process app and `tpar` across two harts, and
+refuses a corrupted archive by name and keeps running: `process load failed:
+IMAGE length disagrees with LOAD imagesz`, `... LOAD spans inconsistent`.
+
+Found on the way: a function named `line` broke every hosted build. The code
+generator wrote `# line@... (arity 5)` and the host assembler's C preprocessor
+read a `#line` directive (`error`, `define`, `include` would do the same). The
+comment is `# fn <name> ...` now.
+
+### What can move next, and what cannot yet
+
+Code in `hal/virt` is rv64 by nature, so it can be a raw unit today: the TCP
+stack (`net.c`, 487 lines, with its 4-connection table), the block driver,
+the pin bus. Code in `hal/core` -- the irq and timer ROUTING in `actors.c`,
+the scheduler -- also runs on x86-64 and AArch64 hosts, where the raw ABI has
+no lowering; it has to wait for one, or be written in the base profile above
+the scheduler. `IRQ_MAX` went from 64 to 1024 meanwhile: the PLIC's own
+ceiling, so a bound the device has.
+

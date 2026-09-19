@@ -583,7 +583,11 @@ compileFn prog name (params, body0) = do
   -- frame is opened
   let tidy = if tgtArc tgt && w == 8 then peephole else id
   pure $ wcetAnnotate name $
-    [ "# " ++ name ++ " (arity " ++ show (length params) ++ ")" ]
+    -- `# fn <name>`, never `# <name>`: a hosted backend runs the unit through
+    -- the C preprocessor, which reads `# line ...`, `# error ...`, `# define
+    -- ...` as DIRECTIVES -- a function called `line` failed the build with
+    -- "#line directive requires a positive integer argument"
+    [ "# fn " ++ name ++ " (arity " ++ show (length params) ++ ")" ]
       -- The builtin link passes --gc-sections, which can only drop what has a
       -- section of its own.  A Layout's accessors are inlined at every site
       -- and would otherwise all be carried in the image as dead bodies

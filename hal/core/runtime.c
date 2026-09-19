@@ -1570,6 +1570,19 @@ V fpr_applyN(V f, uw n, V *rargs) {
 static V g_sys_harts(V d) { (void)d; return TAG((sw)fpr_live_harts); }
 FPR_FN(fpr_g_Sys_x2eharts, g_sys_harts, 1);
 
+int fpr_list_ints(V list, uw *out, uw n) {
+  for (uw i = 0; i < n; i++) {
+    if (ISINT(list) || !list) return 0;
+    hdr_t *c = (hdr_t *)list;
+    if (c->tid != T_LIST || c->var != 1) return 0; /* Nil before n, or not a list */
+    V *f = (V *)((char *)c + 8);
+    if (!ISINT(f[0])) return 0;
+    out[i] = (uw)UNTAG(f[0]);
+    list = f[1];
+  }
+  return 1;
+}
+
 /* builtin Result constructors for C-side service code */
 V fpr_mkresultn(uw variant, const char *s, uw n) {
   hdr_t *h = (hdr_t *)fpr_alloc(8 + sizeof(uw));
