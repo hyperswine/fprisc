@@ -107,7 +107,7 @@ build p = do
     Nothing -> fromMaybe "cc" <$> lookupEnv "FPR_CC"
   let ctx = if System.Info.arch == "aarch64" then "ctx_a64.S" else "ctx_x64.S"
       core = [runtime </> f | f <- ["runtime.c", "actors.c", "bits.c", "vec.c", "sstr.c", "mod.c", "buddy.c"]]
-      posix = [machine </> "posix" </> f | f <- ["main.c", "hal.c", "base.c"]] ++ [machine </> "unix" </> ctx]
+      posix = [machine </> "posix" </> f | f <- ["main.c", "hal.c", "base.c", "os.c"]] ++ [machine </> "unix" </> ctx]
       cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix"]
       linux = if System.Info.os == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []
       -- the runtime's objects are cached per hart count, rebuilt only

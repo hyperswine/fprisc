@@ -1,0 +1,19 @@
+unsafe base.
+Json = use "std/json".
+Option = use "std/option".
+List = use "std/list".
+String = use "std/string".
+main =
+  text = "\{ \"name\": \"fpr\", \"tags\": [\"a\", \"b\\n\\u00e9\\ud83d\\ude00\"], \"port\": 8080, \"ratio\": -1.5e3, \"on\": true, \"none\": null,\n  \"nested\": \{\"deep\": \{\"x\": -7\}\} \}";
+  _ = (case Json.parse text of
+      Err e -> print "ERR {e}"
+    | Ok v ->
+        _ = print "port {Json.field "port" v |> Option.andThen Json.asInt} deep {Json.at ("nested" :: "deep" :: "x" :: Nil) v} name {Json.field "name" v |> Option.andThen Json.asString} missing {Json.field "nope" v}";
+        _ = print "render {Json.render v}";
+        print "roundtrip {(case Json.parse (Json.render v) of Ok w -> Json.equal v w | Err _ -> False)}");
+  _ = print "errors: {Json.parse "\{\"a\": 1,\n \"b\" 2\}"} | {Json.parse "[1, 2,]"} | {Json.parse "\"abc"} | {Json.parse "\{\} x"} | {Json.parse ""} | {Json.parse "[1 2]"}";
+  made = Json.object (("files", Json.strings ("a.txt" :: "b \"q\".txt" :: Nil)) :: ("count", Json.Integer 2) :: Nil);
+  _ = print "made {Json.render made}";
+  big = Json.Sequence (List.map (fn i -> Json.object (("id", Json.Integer i) :: ("name", Json.Text "item {i}") :: Nil)) (List.range 1 20000));
+  t = Json.render big;
+  print "big {String.length t} bytes, parses back equal: {Json.parse t == Ok big}".

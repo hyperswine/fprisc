@@ -146,7 +146,7 @@ endif
 ifeq ($(shell uname -s),Linux)
 POSIXLDFLAGS ?= -no-pie
 endif
-RT_POSIX = $(MACHINE)/posix/main.c $(MACHINE)/posix/hal.c $(MACHINE)/posix/base.c $(POSIXCTX)
+RT_POSIX = $(MACHINE)/posix/main.c $(MACHINE)/posix/hal.c $(MACHINE)/posix/base.c $(MACHINE)/posix/os.c $(POSIXCTX)
 BIN ?= $(BUILD)/$(basename $(notdir $(PROG)))
 $(BUILD)/base.s: fprc $(PROG) core/prelude.fpr FORCE
 	@mkdir -p $(BUILD)

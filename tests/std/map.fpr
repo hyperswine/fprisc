@@ -1,0 +1,21 @@
+unsafe base.
+Map = use "std/map".
+Set = use "std/set".
+List = use "std/list".
+String = use "std/string".
+Option = use "std/option".
+Order = use "std/order".
+bump old = Option.Some (1 + Option.withDefault 0 old).
+main =
+  text = "the cat and the dog and the bird";
+  counts = String.words text |> List.fold (fn m w -> Map.update w bump m) Map.strings;
+  _ = print "counts {Map.entries counts} size {Map.size counts} the={Map.get "the" counts} cow={Map.get "cow" counts}";
+  m2 = Map.remove "the" counts |> Map.insert "zebra" 9;
+  _ = print "after {Map.keys m2} {Map.values m2} original still {Map.size counts}";
+  big = List.range 1 100000 |> List.fold (fn m i -> Map.insert ((i * 7919) - ((i * 7919) / 100003) * 100003) i m) Map.ints;
+  _ = print "big size {Map.size big} first {Map.first big} get {Map.get 7919 big}";
+  small = List.range 1 100000 |> List.fold (fn m i -> case i - (i / 2) * 2 == 0 of True -> Map.remove ((i * 7919) - ((i * 7919) / 100003) * 100003) m | False -> m) big;
+  _ = print "after removing half {Map.size small}";
+  a = Set.fromList Order.int (3 :: 1 :: 2 :: 3 :: Nil);
+  b = Set.fromList Order.int (2 :: 3 :: 4 :: Nil);
+  print "set {Set.toList a} union {Set.toList (Set.union a b)} intersect {Set.toList (Set.intersect a b)} diff {Set.toList (Set.diff a b)} member {Set.member 4 a}".

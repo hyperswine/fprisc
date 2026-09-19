@@ -1,0 +1,4 @@
+opt: 42 True
+ord: Less Equal Greater
+res: Ok [1, 2] Err bad [1, 3]
+done

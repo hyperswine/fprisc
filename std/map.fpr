@@ -13,6 +13,10 @@
 #   * a Map is a persistent value: insert and remove return a new map and
 #     share the rest.  O(log n) each (an AVL tree), no stack to speak of.
 #   * absence is an Option.  Nothing here panics.
+#   * EQUALITY: `==` on two maps compares the trees, and a tree's shape depends
+#     on the order its keys arrived in.  Two maps with the same entries can be
+#     `!=`.  Ask what you mean: `Map.equal a b` (same keys, `==` values) or
+#     `Map.equalBy valuesEqual a b`.
 
 O = use "option".
 Ord = use "order".
@@ -171,6 +175,23 @@ filter p m = case m of Map cmp _ _ ->
 # every key of either; where both have it, `a`'s value (the first argument's)
 union : Map k v -> Map k v -> Map k v .
 union a b = fold (fn acc k v -> insert k v acc) b a.
+
+# the same keys with equal values, whatever order they were inserted in
+equal : Map k v -> Map k v -> Bool .
+equal a b = entries a == entries b.
+
+equalBy : (v -> v -> Bool) -> Map k v -> Map k v -> Bool .
+equalBy veq a b = case size a == size b of
+    False -> False
+  | True -> pairsEq veq (entries a) (entries b).
+pairsEq : unsafe (v -> v -> Bool) -> List (k, v) -> List (k, v) -> Bool .
+pairsEq veq xs ys = case xs of
+    Nil -> True
+  | (k1, v1) :: xr -> (case ys of
+        Nil -> False
+      | (k2, v2) :: yr -> (case k1 == k2 of
+            False -> False
+          | True -> (case veq v1 v2 of True -> pairsEq veq xr yr | False -> False))).
 
 # the least / greatest key
 first : Map k v -> O.Option (k, v) .

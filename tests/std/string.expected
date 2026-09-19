@@ -1,0 +1,8 @@
+split [a, b, , c] join x-y-z words [the, quick, brown, fox]
+lines [one, two, three] trim [hi there] replace XcXX
+index Some 4 None contains True starts True ends True count 3
+slice bcd left ab right ef dropL cdef dropR abcd
+upper HéLLO WöRLD pad [00042] [ab...] rev cba rep ababab
+toInt Ok (-123) Err not a number: "12x" Err not a number: "" Err not a number: "-" cmp Less
+rows [[fig, 3], [pear, 12]]
+big 1288894 pieces 200000 replaced 1488893

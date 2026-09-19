@@ -1,0 +1,62 @@
+# std/file.fpr -- File: whole files, and facts about them.
+#
+#   File = use "std/file".
+#   File.readText "notes.txt" |> Result.map String.lines
+#
+# Every operation answers a Result whose error is the system's own words
+# ("No such file or directory"); nothing panics.  These are the convenient
+# whole-file operations; a streaming handle API is a later module.
+
+OS = use "os".
+S = use "string".
+
+# what `info` answers.  kind is "file", "dir" or "other"; modified is seconds
+# since 1970-01-01 UTC (std/clock formats it).
+infoOf : (Int, Int, Int) -> { kind : String, size : Int, modified : Int } .
+infoOf t = case t of (k, size, mtime) ->
+  { kind = (case k == 0 of True -> "file" | False -> (case k == 1 of True -> "dir" | False -> "other")),
+    size = size, modified = mtime }.
+
+readText : String -> Result String String .
+readText path = OS.readFile path.
+
+# a String is bytes, so these are the same operation; the name says what you mean
+readBytes : String -> Result String String .
+readBytes path = OS.readFile path.
+
+lines : String -> Result (List String) String .
+lines path = case OS.readFile path of Ok s -> Ok (S.lines s) | Err e -> Err e.
+
+# replaces the file
+writeText : String -> String -> Result Unit String .
+writeText path text = case fileWrite path text of Ok _ -> Ok Unit | Err e -> Err e.
+
+appendText : String -> String -> Result Unit String .
+appendText path text = case fileAppend path text of Ok _ -> Ok Unit | Err e -> Err e.
+
+writeLines : String -> List String -> Result Unit String .
+writeLines path ls = writeText path (strcat (strJoin "\n" ls) "\n").
+
+exists : String -> Bool .
+exists path = fileExists path.
+
+info : String -> Result { kind : String, size : Int, modified : Int } String .
+info path = case OS.stat path of Ok t -> Ok (infoOf t) | Err e -> Err e.
+
+isFile : String -> Bool .
+isFile path = case OS.stat path of Ok (k, _, _) -> k == 0 | Err _ -> False.
+
+isDir : String -> Bool .
+isDir path = case OS.stat path of Ok (k, _, _) -> k == 1 | Err _ -> False.
+
+size : String -> Result Int String .
+size path = case OS.stat path of Ok (_, n, _) -> Ok n | Err e -> Err e.
+
+remove : String -> Result Unit String .
+remove path = OS.remove path.
+
+rename : String -> String -> Result Unit String .
+rename from to = OS.rename from to.
+
+copy : String -> String -> Result Unit String .
+copy from to = case OS.readFile from of Ok bytes -> writeText to bytes | Err e -> Err e.

@@ -1,0 +1,27 @@
+# std/os.fpr -- the posix system's primitives, declared in ONE place.
+#
+# You do not normally use this module: std/file, std/dir, std/proc and
+# std/clock are the API.  This is the seam under them -- signatures with no
+# definition, implemented by machine/posix/os.c.  A system without them (a
+# board) fails a program that imports them at LINK time, by name: a program's
+# imports are its capability manifest (docs/BASE.md).
+
+Os.readFile  : String -> Result String String .
+Os.listDir   : String -> Result (List String) String .
+Os.stat      : String -> Result (Int, Int, Int) String .
+Os.mkdir     : String -> Result Unit String .
+Os.remove    : String -> Result Unit String .
+Os.rename    : String -> String -> Result Unit String .
+Os.cwd       : Unit -> String .
+Os.run       : List String -> String -> String -> Result (Int, String, String) String .
+Os.wallClock : Unit -> Int .
+
+readFile p = Os.readFile p.
+listDir p = Os.listDir p.
+stat p = Os.stat p.
+mkdir p = Os.mkdir p.
+remove p = Os.remove p.
+rename a b = Os.rename a b.
+cwd u = Os.cwd u.
+run argv dir input = Os.run argv dir input.
+wallClock u = Os.wallClock u.

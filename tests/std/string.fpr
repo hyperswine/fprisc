@@ -1,0 +1,15 @@
+unsafe base.
+String = use "std/string".
+List = use "std/list".
+main =
+  _ = print "split {String.split "," "a,b,,c"} join {String.join "-" ("x" :: "y" :: "z" :: Nil)} words {String.words "  the quick\tbrown  fox "}";
+  _ = print "lines {String.lines "one\r\ntwo\nthree\n"} trim [{String.trim "  hi there \n"}] replace {String.replace "ab" "X" "abcabab"}";
+  _ = print "index {String.indexOf "lo" "hello"} {String.indexOf "z" "hello"} contains {String.contains "ell" "hello"} starts {String.startsWith "he" "hello"} ends {String.endsWith "lo" "hello"} count {String.count "a" "banana"}";
+  _ = print "slice {String.slice 2 4 "abcdef"} left {String.left 2 "abcdef"} right {String.right 2 "abcdef"} dropL {String.dropLeft 2 "abcdef"} dropR {String.dropRight 2 "abcdef"}";
+  _ = print "upper {String.toUpper "héllo wörld"} pad [{String.padLeft 5 "0" "42"}] [{String.padRight 5 "." "ab"}] rev {String.reverse "abc"} rep {String.repeat 3 "ab"}";
+  _ = print "toInt {String.toInt "-123"} {String.toInt "12x"} {String.toInt ""} {String.toInt "-"} cmp {String.compare "a" "b"}";
+  csv = "name,qty\nfig,3\npear,12\n";
+  rows = String.lines csv |> List.drop 1 |> List.map (String.split ",");
+  _ = print "rows {rows}";
+  big = String.join "," (List.map String.fromInt (List.range 1 200000));
+  print "big {String.length big} pieces {List.length (String.split "," big)} replaced {String.length (String.replace "," ";;" big)}".

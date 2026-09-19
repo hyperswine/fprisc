@@ -1,0 +1,16 @@
+unsafe base.
+List = use "std/list".
+Order = use "std/order".
+main =
+  xs = 5 :: 3 :: 9 :: 1 :: 3 :: Nil;
+  _ = print "sorted {List.sortWith Order.int xs} rev {List.sortWith (Order.reverse Order.int) xs}";
+  _ = print "map/filter {xs |> List.map (fn x -> x * 2) |> List.filter (fn x -> x > 5)} sum {List.sum xs} len {List.length xs}";
+  _ = print "find {List.find (fn x -> x > 4) xs} {List.find (fn x -> x > 99) xs} head {List.head Nil} get {List.get 2 xs}";
+  _ = print "take {List.take 2 xs} drop {List.drop 3 xs} zip {List.zip xs ("a" :: "b" :: Nil)} idx {List.indexed ("x" :: "y" :: Nil)}";
+  _ = print "unique {List.unique xs} range {List.range 1 5} concat {List.concat ((1 :: Nil) :: (2 :: 3 :: Nil) :: Nil)} foldr {List.foldr (fn x acc -> x :: acc) Nil xs}";
+  ws = "pear" :: "fig" :: "apple" :: "kiwi" :: "plum" :: Nil;
+  _ = print "stable by length {List.sortBy Order.int (fn w -> strlen w) ws}";
+  _ = print "grouped {List.groupBy (fn w -> strlen w) (List.sortBy Order.int (fn w -> strlen w) ws)}";
+  big = List.range 1 300000;
+  _ = print "big {List.length (List.sortWith (Order.reverse Order.int) big)} max {List.maximum Order.int big} min {List.minimum Order.int Nil}";
+  print "partition {List.partition (fn x -> x > 3) xs} any {List.any (fn x -> x == 9) xs} all {List.all (fn x -> x > 1) xs}".
