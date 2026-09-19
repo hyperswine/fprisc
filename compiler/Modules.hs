@@ -324,15 +324,20 @@ refCon env bound nm = case refName env True bound nm of
 --------------------------------------------------------------------------------
 
 renameTops :: REnv -> String -> [STop] -> [STop]
-renameTops env qh = concatMap top
+renameTops env qh tops = concatMap top tops
   where
     qual n = case qh of "" -> n; h -> qualify h n
+    -- A signature with no definition is a FOREIGN declaration: the name
+    -- is the HAL's (an fpr_g_ symbol some C file defines), global by
+    -- nature, so it is never qualified with this module's hash.
+    defined = S.fromList [n | TBind n _ _ _ <- tops]
+    qualSig n = if S.member n defined then qual n else n
     top = \case
       TUse {} -> [] -- consumed by the loader
       TAlias {} -> [] -- folded into reAliasSubst
       TSkip -> []
       TShape n fs -> [TShape n [(f, ty t) | (f, t) <- fs]] -- structural: never qualified
-      TSig n (as, r) pres -> [TSig (qual n) (map ty as, ty r) pres]
+      TSig n (as, r) pres -> [TSig (qualSig n) (map ty as, ty r) pres]
       TType n lin ps cons ->
         [TType (qual n) lin ps [(qual c, map ty ts) | (c, ts) <- cons]]
       TSigDef n fs -> [TSigDef (qual n) [(f, fmap ty mt) | (f, mt) <- fs]]
@@ -489,7 +494,8 @@ loadProgram preludeTops rootPath rootTops = do
               concat
                 [ case t of
                     TBind n _ _ _ -> [n]
-                    TSig n _ _ -> [n]
+                    TSig n _ _ | n `elem` [b | TBind b _ _ _ <- muTops mu] -> [n] -- a bare signature is foreign: see renameTops
+                    TSig {} -> []
                     TSigDef n _ -> [n]
                     TStruct n _ _ -> [n]
                     TType n _ _ cons -> n : map fst cons

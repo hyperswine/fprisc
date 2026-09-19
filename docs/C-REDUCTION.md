@@ -140,13 +140,44 @@ denied required permission refuses, an abi mismatch and a name-dispatch archive
 refuse by name, an unstamped archive warns and runs, one flipped byte in IMAGE
 is caught. `qosp-gl` builds; it was not run (it opens a window).
 
-**What is left of `qa.c`** (261 lines) serves one caller: `Sys.attachQa`. A
-plugin arrives on an APP thread, where the host's FP-RISC cannot run, so the
-host still parses that archive in C. The fix is native's shape:
-`Sys.loadImageAt` already takes section extents that FP-RISC computed with QAR.
-When plugin attach takes the fields the app computed, `qa.c` goes entirely,
-and with it the last C manifest parser. Six callers: `mods/qsys.fpr`,
-`tests/qload.fpr`, `std/loader.fpr` (three), `std/livereload.fpr`.
+### Step 1d: the host's C archive parser is deleted (2026-09-19)
+
+`qa.c` had one caller left, `Sys.attachQa`: a plugin arrives on an APP thread,
+where the host's FP-RISC cannot run, so the host parsed that archive in C.
+Native never worked that way -- `Sys.loadImageAt` takes section extents that
+`system.fpr` computed with QAR -- and Portable follows it now:
+
+- `../qos/programs/mods/plug.fpr`: `Plug.attach qa` interprets the archive IN
+  THE APP with `qar.fpr` and `manifest.fpr` and hands the host five Strings
+  (id, abi, shell, LOAD, IMAGE) through the new `Sys.attachImage`.
+- Syscall tag 4 carries a `qos_plugin_t` of (pointer, length) spans into the
+  app's own Strings -- one address space, a pointer pass. **ABI v13.**
+- `qosp_load_plugin` parses nothing. It keeps the enforcer's checks (abi
+  stamp, matched-set shell stamp, the image's sha against its LOAD line),
+  comparing spans.
+- `qa.c` and `qa.h` are deleted. SHA-256 is `portable/sha256.c`.
+- The six callers (`mods/qsys.fpr`, `tests/qload.fpr`, `std/loader.fpr`,
+  `std/livereload.fpr`) call `Plug.attach`.
+
+It needed one compiler change: **a foreign declaration inside a MODULE** was
+qualified with the module's hash (`fpr_g_Host_x2etwice@aa1ec6...`) and could
+not link. A signature with no definition names the HAL's symbol, global by
+nature, so `Modules.hs` leaves it unqualified. A module can now own the
+primitive it wraps, which is how `plug.fpr` declares `Sys.attachImage`.
+(The unit cache is keyed by the module's SOURCE hash, so a compiler change that
+alters a unit's output serves the stale `.s` until the entry is removed.)
+
+Checked: `pathnotes`, `sysdisk`, `livereload` and `apps` all meet their own
+`#: expect` lines, including every "bad: refused" leg; smoke 10/11 as before;
+LiveView; the native kernel boots; all fprisc suites.
+
+There is now ONE container parser and ONE manifest interpreter in the tree,
+both FP-RISC, serving the native kernel, the portable host, plugin attach and
+the host tools. The portable host's C went from 822 lines (`main.c` + `qa.c`)
+to 530 (`host.c` + `sha256.c`), none of it policy about archives.
+
+Not rebuilt: `qos/qosp-a64`, a tracked Linux AArch64 prebuilt, which predates
+all of this and needs a cross compiler this machine does not have.
 
 Also fixed on the way: `fpr build` / `fpr run` discarded the compiler's stdout,
 where type and safety errors are reported, so a refused program exited 1 having
