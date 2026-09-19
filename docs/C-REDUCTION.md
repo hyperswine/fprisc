@@ -214,3 +214,29 @@ and they stay. Making the linker able to collect dead code (a section per
 function, object and string) took the builtin image from 31,818 bytes to
 about 20,000.
 
+### Step 3a: the virt PLIC and CLINT drivers are FP-RISC (2026-09-19)
+
+`hal/virt/plic.fpr` and `hal/virt/clint.fpr`: raw library units over typed
+layouts whose exports ARE the C symbols the runtime calls (`hal_irq_open`,
+`hal_irq_claim`, `hal_irq_ack`; `hal_ipi_send`, `hal_ipi_clear`, `hal_mtime`,
+`hal_timer_park`, `hal_timer_arm`). A register bank is a one-field layout and
+the i-th register is `L.index bank i` -- which needed `L.sizeOf` to round to the
+widest field's alignment, as a C struct does, so a bank of 32-bit registers
+strides by 4. On rv64 they are the only implementation; the C is kept solely
+behind `#if __riscv_xlen == 32`, because the raw ABI has no rv32 lowering.
+
+This was the first raw unit linked into the CORE image rather than the builtin
+runtime, which needed `hal/virt/rawunit.c`: the guarded primitives' slow paths
+(each an error -- a misaligned access, a shift of 64 -- so each a named panic)
+and `fpr_builtin_alloc_adt` for the constructor stubs every unit carries.
+`hal/virt/virt.mk` owns the rules and export lists for all three link sites
+(bare metal, the QOS native kernel, `build-process-app.sh`).
+
+Checked on rv64 against the C baseline, identical: `timer.fpr` (CLINT
+deadlines), `uartsvc.fpr` (PLIC source 10, transmit and receive interrupts),
+`timerroute`, `uartroute`, a process app on the native kernel. `actors.c` has
+weak no-op fallbacks for these symbols, so the image under test was confirmed
+to contain the FP-RISC driver. Cost: `hal_mtime` is about 30 instructions
+against C's 3, and actor throughput is unchanged (pingpong 4.80 s vs 4.71 s,
+inside the noise).
+

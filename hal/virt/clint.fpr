@@ -1,0 +1,37 @@
+# clint.fpr -- the virt CLINT: inter-hart doorbells and the machine timer.
+# (Was the CLINT half of hal.c.)
+#
+# mtimecmp resets to 0 in QEMU, i.e. MTIP PENDING from boot: every hart's
+# compare register is parked at ~0 during init or its wfi would never
+# sleep.  Hart 0 re-arms a short deadline each time it goes idle (the
+# deadlock detector's heartbeat); everyone else sleeps on msip alone.
+#
+# The CLINT is three banks of per-hart registers, which is what a Layout's
+# `index` is for: the i-th register of a bank is `L.index bank i`, its
+# stride the register's own width.  A raw library unit -- its exports ARE
+# the C symbols actors.c and hal.c call.  docs/LAYOUTS.md.
+profile builtin.
+
+Msip = Layout { pending : U32 }.     # base + 4 * hart: write 1 to ring, 0 to clear
+Cmp  = Layout { deadline : Word }.   # base + 0x4000 + 8 * hart
+Time = Layout { now : Word }.        # base + 0xBFF8, in 10 MHz ticks on virt
+
+w n = Word.fromInt n.
+base u = Addr.fromWord (w 33554432).                        # 0x02000000
+msip hart = Msip.index (Msip.at (base Unit)) (Word.toInt hart).
+cmp hart = Cmp.index (Cmp.at (Addr.add (base Unit) 16384)) (Word.toInt hart).
+clock u = Time.at (Addr.add (base Unit) 49144).
+
+ipiSend : Word -> Unit .
+ipiSend hart = Msip.setPending (msip hart) (w 1).
+ipiClear : Word -> Unit .
+ipiClear hart = Msip.setPending (msip hart) (w 0).
+
+mtime : Unit -> Word .
+mtime u = Time.now (clock Unit).
+
+# ~0: a deadline that never comes, so MTIP stays down and wfi can sleep
+timerPark : Word -> Unit .
+timerPark hart = Cmp.setDeadline (cmp hart) (Word.not (w 0)).
+timerArm : Word -> Word -> Unit .
+timerArm hart delta = Cmp.setDeadline (cmp hart) (Word.add (Time.now (clock Unit)) delta).

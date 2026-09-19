@@ -117,9 +117,12 @@ $(BUILD)/prog.s: fprc $(PROG) core/prelude.fpr FORCE
 	@mkdir -p $(BUILD)
 	LC_ALL=C.UTF-8 ./fprc --system=bare-metal $(FPRC_FLAGS) --prelude=core/prelude.fpr $(PROG) $@
 
-bare-metal: $(BUILD)/prog.s $(RT_VIRT) $(RT_CORE) $(HAL)/virt/link.ld
+# the virt HAL's PLIC and CLINT drivers are FP-RISC (hal/virt/virt.mk)
+FPRC ?= ./fprc
+include $(HAL)/virt/virt.mk
+bare-metal: $(BUILD)/prog.s $(RT_VIRT) $(VIRT_FPR) $(RT_CORE) $(HAL)/virt/link.ld
 	$(CROSS)gcc $(CFLAGS) -T $(HAL)/virt/link.ld -I$(HAL)/core -I$(HAL)/virt \
-	  $(RT_VIRT) $(BUILD)/prog.s $$(cat $(BUILD)/prog.s.units) $(RT_CORE) -o $(IMAGE)
+	  $(RT_VIRT) $(VIRT_FPR) $(BUILD)/prog.s $$(cat $(BUILD)/prog.s.units) $(RT_CORE) -o $(IMAGE)
 
 bare-metal-run: bare-metal
 	$(TIMEOUT) 20 $(QEMU) $(ACCEL) -machine virt -smp $(HARTS) -m 256M \

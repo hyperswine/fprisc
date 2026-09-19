@@ -257,6 +257,12 @@ FPR_FN(fpr_g_write, h_write, 2);
  * never sleep.  Hart 0 re-arms a short deadline each time it goes idle
  * (the deadlock detector's heartbeat); everyone else sleeps on msip
  * alone.  CLINT_BASE is the devtable's, defined above. */
+/* On rv64 the CLINT is clint.fpr: FP-RISC over typed layouts, a raw library
+ * unit whose exports are hal_ipi_send / hal_ipi_clear / hal_mtime /
+ * hal_timer_park / hal_timer_arm (virt.mk, docs/LAYOUTS.md).  The raw ABI has
+ * no rv32 lowering, so an rv32 image keeps this C -- which is also the only
+ * place the split 64-bit register dance is needed. */
+#if __riscv_xlen == 32
 #define CLINT_MSIP(h) ((volatile uint32_t *)(CLINT_BASE + 4 * (uw)(h)))
 #define CLINT_MTIMECMP(h) (CLINT_BASE + 0x4000 + 8 * (uw)(h))
 #define CLINT_MTIME (CLINT_BASE + 0xBFF8)
@@ -265,34 +271,27 @@ void hal_ipi_send(uw hart) { *CLINT_MSIP(hart) = 1; }
 void hal_ipi_clear(uw hart) { *CLINT_MSIP(hart) = 0; }
 
 uint64_t hal_mtime(void) {
-#if __riscv_xlen == 32
   for (;;) {
     uint32_t hi = *(volatile uint32_t *)(CLINT_MTIME + 4);
     uint32_t lo = *(volatile uint32_t *)CLINT_MTIME;
     if (hi == *(volatile uint32_t *)(CLINT_MTIME + 4))
       return ((uint64_t)hi << 32) | lo;
   }
-#else
-  return *(volatile uint64_t *)CLINT_MTIME;
-#endif
 }
 
 static void mtimecmp_write(uw hart, uint64_t v) {
-#if __riscv_xlen == 32
   volatile uint32_t *lo = (volatile uint32_t *)CLINT_MTIMECMP(hart);
   volatile uint32_t *hi = lo + 1;
   *lo = 0xFFFFFFFFu; /* no spurious match while the halves are split */
   *hi = (uint32_t)(v >> 32);
   *lo = (uint32_t)v;
-#else
-  *(volatile uint64_t *)CLINT_MTIMECMP(hart) = v;
-#endif
 }
 
 void hal_timer_park(uw hart) { mtimecmp_write(hart, ~(uint64_t)0); }
 void hal_timer_arm(uw hart, uint64_t delta) {
   mtimecmp_write(hart, hal_mtime() + delta);
 }
+#endif
 
 /* the CLINT is real here: Timer.qa gets the interrupt-driven bridge
  * (actors.c tmr_drain) instead of sleeper-child fallbacks */

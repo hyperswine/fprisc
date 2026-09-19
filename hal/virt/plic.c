@@ -1,29 +1,11 @@
-/* plic.c -- the QEMU virt PLIC, scoped to the wfi-wake design.
+/* plic.c -- the rv32 PLIC driver.
  *
- * This machine takes NO traps: mstatus.MIE stays off, so an enabled
- * interrupt PENDS, pops the hart out of wfi, and the hart loop
- * services it synchronously (the same discipline msip/mtip already
- * follow).  External device interrupts join that model here: a source
- * enabled for the irq hart's M context raises MEIP, that hart wakes,
- * and actors.c's irq drain claims the source and delivers it to the
- * actor that bound it (Sys.irqBind) as a plain Int message.
- *
- * CLAIM-THEN-MASK: a level-triggered source (the 16550 keeps its line
- * high until RBR is read / THR refilled) would re-pend the instant we
- * completed it, and the drain loop would spin delivering the same irq
- * forever while the actor never got scheduled to service the device.
- * So the drain masks the source at claim time and the ACTOR re-arms
- * it (Sys.irqAck) after servicing the device -- if the line is still
- * high at re-arm, the gateway pends again and a fresh delivery
- * follows.  Exactly-once per ack, no storms.
- *
- * Only the IRQ HART's M context is enabled (one drain point;
- * deliveries are ordinary sends, so the BOUND actor still runs
- * wherever the scheduler puts it -- donation and stealing included).
- * The irq hart is the LAST live hart (fpr_irq_hart, actors.c): ALL
- * interrupts are an auxiliary hart's business, never the prime
- * hart's. */
+ * On rv64 the driver is plic.fpr: FP-RISC over typed layouts, a raw library
+ * unit whose exports are hal_irq_open / hal_irq_claim / hal_irq_ack (virt.mk,
+ * docs/LAYOUTS.md) -- the design essay lives there now.  The raw ABI has no
+ * rv32 lowering, so an rv32 image keeps this C; on rv64 this file is empty. */
 #include "fpr.h"
+#if __riscv_xlen == 32
 
 #define PLIC_BASE 0x0c000000UL
 #define PLIC_PRIO(src) ((volatile uint32_t *)(PLIC_BASE + 4u * (src)))
@@ -59,3 +41,4 @@ sw hal_irq_claim(void) {
 
 /* the actor serviced the device: re-arm the source */
 void hal_irq_ack(uw src) { plic_set_enable(src, 1); }
+#endif

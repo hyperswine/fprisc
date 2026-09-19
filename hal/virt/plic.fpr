@@ -1,0 +1,64 @@
+# plic.fpr -- the QEMU virt PLIC, scoped to the wfi-wake design.  (Was plic.c.)
+#
+# This machine takes NO traps: mstatus.MIE stays off, so an enabled
+# interrupt PENDS, pops the hart out of wfi, and the hart loop services it
+# synchronously (the same discipline msip/mtip already follow).  External
+# device interrupts join that model here: a source enabled for the irq
+# hart's M context raises MEIP, that hart wakes, and actors.c's irq drain
+# claims the source and delivers it to the actor that bound it
+# (Sys.irqBind) as a plain Int message.
+#
+# CLAIM-THEN-MASK: a level-triggered source (the 16550 keeps its line high
+# until RBR is read / THR refilled) would re-pend the instant we completed
+# it, and the drain loop would spin delivering the same irq forever while
+# the actor never got scheduled to service the device.  So the drain masks
+# the source at claim time and the ACTOR re-arms it (Sys.irqAck) after
+# servicing the device -- if the line is still high at re-arm, the gateway
+# pends again and a fresh delivery follows.  Exactly-once per ack, no storms.
+#
+# Only the IRQ HART's M context is enabled (one drain point; deliveries are
+# ordinary sends, so the BOUND actor still runs wherever the scheduler puts
+# it).  The irq hart is the LAST live hart (fpr_irq_hart, actors.c): ALL
+# interrupts are an auxiliary hart's business, never the prime hart's.
+#
+# A raw library unit: its exports ARE the C symbols actors.c calls
+# (hal_irq_open / hal_irq_claim / hal_irq_ack), it allocates nothing, and
+# every access is one aligned 32-bit load or store.  docs/LAYOUTS.md.
+profile builtin.
+
+# one context's control block, at base + 0x200000 + 0x1000 * context
+Ctx = Layout { threshold : U32, claim : U32 }.
+# a source's priority word (base + 4 * source) and an enable word
+# (base + 0x2000 + 0x80 * context + 4 * (source / 32)): banks of 32-bit registers
+Reg = Layout { bits : U32 }.
+
+w n = Word.fromInt n.
+base u = Addr.fromWord (w 201326592).                       # 0x0c000000
+# hart h's M-mode context is 2h on virt; the irq hart is actors.c's to choose
+context u = 2 * Word.toInt (Mem.readWord (Addr.symbol "fpr_irq_hart")).
+ctx u = Ctx.at (Addr.add (base Unit) (2097152 + 4096 * context Unit)).
+priority src = Reg.index (Reg.at (base Unit)) (Word.toInt src).
+enables src = Reg.index (Reg.at (Addr.add (base Unit) (8192 + 128 * context Unit))) (Word.toInt (Word.shr src 5)).
+bitOf src = Word.shl (w 1) (Word.toInt (Word.and src (w 31))).
+
+enable src = r = enables src; Reg.setBits r (Word.or (Reg.bits r) (bitOf src)).
+disable src = r = enables src; Reg.setBits r (Word.and (Reg.bits r) (Word.not (bitOf src))).
+
+irqOpen : Word -> Unit .
+irqOpen src =
+  _ = Reg.setBits (priority src) (w 1);
+  _ = Ctx.setThreshold (ctx Unit) (w 0);
+  enable src.
+
+# claim AND mask (see the essay); 0 = nothing pending
+irqClaim : Unit -> Word .
+irqClaim u = claimed (ctx Unit) (Ctx.claim (ctx Unit)).
+claimed c src = case Word.eq src (w 0) of
+    True -> src
+  | False -> masked c src.
+# complete now; the mask holds the source off until the actor re-arms it
+masked c src = _ = disable src; _ = Ctx.setClaim c src; src.
+
+# the actor serviced the device: re-arm the source
+irqAck : Word -> Unit .
+irqAck src = enable src.

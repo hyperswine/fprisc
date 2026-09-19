@@ -996,7 +996,11 @@ expandLayout l fs0 = do
     (f : _, _) -> Left ("Layout " ++ l ++ ": field `" ++ f ++ "` is declared twice")
     (_, f : _) -> Left ("Layout " ++ l ++ ": field `" ++ f ++ "` collides with the generated " ++ l ++ "." ++ f)
     _ -> pure ()
-  let total = roundUp 8 (maximum (0 : [o + widthOf t | (_, t, o) <- placed]))
+  -- like a C struct: the size rounds up to the WIDEST field's alignment, so
+  -- `L.index` strides correctly over an array of them (a bank of 32-bit
+  -- registers is 4 bytes apart, not 8)
+  let widest = maximum (1 : [widthOf t | (_, t, _) <- placed])
+      total = roundUp widest (maximum (0 : [o + widthOf t | (_, t, o) <- placed]))
   pure $
     [TType l False [] []]
       ++ def "at" [ty "Addr"] (ty l) ["a"] (cast (v "a"))

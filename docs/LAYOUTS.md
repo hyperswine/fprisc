@@ -47,7 +47,7 @@ for a union). `_` is padding. For a layout `L` and field `f`:
 | `L.f`, `L.setF` | `L -> T`, `L -> T -> Unit` |
 | `L.fAt` | `L -> Addr` -- the field's address, for `Mem.compareExchange` and friends |
 | `L.at`, `L.addr` | `Addr -> L`, `L -> Addr` -- the only way in and out |
-| `L.sizeOf` | `Unit -> Int` -- the last field's end, rounded up to a word |
+| `L.sizeOf` | `Unit -> Int` -- the last field's end, rounded up to the widest field's alignment, as a C struct's is |
 | `L.index` | `L -> Int -> L` -- the i-th `L` after this one |
 | `L.null`, `L.isNull`, `L.eq` | the null pointer, the test, pointer equality |
 
