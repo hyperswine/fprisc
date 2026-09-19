@@ -133,11 +133,14 @@ Until then the parity script is what keeps the two from drifting.
   returned a String unchanged; `print` now writes one straight to the console
   the same way. Checked with 20,000 bytes on rv64 bare metal.
 
-### Found on the way, open
+### Step 1b: the console's line ending belongs to the device (2026-09-19)
 
-- **`print` writes CRLF on every system.** `runtime.c` inserts `\r` before each
-  `\n` and ends lines with `\r\n` -- a serial-console habit in the portable
-  core. On the posix system it means every Base program's stdout is CRLF, which
-  breaks ordinary pipelines (`sed -n 's/^abi = //p'` captured `12.8\r`). The
-  translation belongs in the HALs that front a raw serial line. It is a small
-  instance of this whole document: console policy living in the core.
+`runtime.c` inserted `\r` before every `\n` and ended lines with `\r\n` -- a
+serial-console habit in the portable core. Every Base program's stdout was
+CRLF, which breaks ordinary pipelines, and `check-all.sh` pipes nearly every
+leg through `tr -d '\r'` to cope. The core writes `\n` now; the two HALs that
+front a raw 16550 (`hal/virt/hal.c`, `hal/builtin/virt.c`) add the carriage
+return in `hal_putc`. posix and the qosp host add nothing: the OS line
+discipline already does it on a terminal, and a pipe wants none. Checked: posix
+and qosp stdout carry no CR, both rv64 UARTs still put CRLF on the wire.
+A small instance of this whole document: console policy living in the core.

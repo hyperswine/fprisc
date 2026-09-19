@@ -92,11 +92,8 @@ and the FP-RISC-level libraries in `std/`.
 
 ## Found along the way (not bounds)
 
-- `print` writes CRLF on every system: `runtime.c` inserts `\r` before each
-  `\n`, a serial-console habit in the portable core. On posix that makes every
-  Base program's stdout CRLF and breaks ordinary pipelines. The translation
-  belongs in the HALs that front a raw serial line. See `C-REDUCTION.md`.
-
+- FIXED: `print` wrote CRLF on every system; the carriage return is `hal_putc`'s
+  to add now, in the HALs that front a raw serial line. See `C-REDUCTION.md`.
 - `fpr run` prints nothing when compilation is refused: it exits 1 where
   `fpr build` shows the diagnostic (seen with the safety checker's
   "unsafe (recursive) but has no explicit signature").
