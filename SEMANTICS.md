@@ -151,7 +151,7 @@ file suffixes; a clause applies to both unless it says which.
 ### 9. Effects, IO, transactions
 
 - The Base environment, on every profile whose HAL grants it (today: the
-  Base profile, `hal/posix`): `Sys.args`, `Sys.env`, `Sys.exit`,
+  Base profile, `machine/posix`): `Sys.args`, `Sys.env`, `Sys.exit`,
   `Sys.readLine`, `Sys.stderr`, `Sys.timeUs`, `fileRead`, `fileWrite`,
   `fileAppend`, `fileExists`, with the types and results in docs/BASE.md.
   A profile that does not grant one fails at link time on its `fpr_g_`

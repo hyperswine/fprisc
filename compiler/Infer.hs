@@ -441,7 +441,7 @@ builtinEnv =
       ("chr", mono (TFn tInt tStr)),
       ("parseInt", mono (TFn tStr tInt)),
       ("fileRead", mono (TFn tStr tStr)),
-      -- the Base environment (hal/posix/base.c; docs/BASE.md)
+      -- the Base environment (machine/posix/base.c; docs/BASE.md)
       ("fileWrite", mono (TFn tStr (TFn tStr (tcon "Result" [tUnit, tStr])))),
       ("fileAppend", mono (TFn tStr (TFn tStr (tcon "Result" [tUnit, tStr])))),
       ("fileExists", mono (TFn tStr tBool)),

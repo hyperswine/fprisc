@@ -3,12 +3,13 @@
 Kind: the model the tree follows, and what still does not. Written 2026-09-19.
 
 "HAL" used to mean three different things here, in one directory. They are
-separate now, and only one of them is a HAL.
+separate now, and only one of them is a HAL. (This tree has no `hal/` directory
+any more: it was `hal/core` and `hal/{virt,posix,builtin,unix}` until 2026-09-19.)
 
 | | What | Whose | Where |
 |---|---|---|---|
-| 1 | **The runtime**: allocator, actors and scheduler, vectors, strings, the panic path | the language's | `hal/core/` (to be renamed `runtime/`) |
-| 2 | **The machine layer**: what the runtime needs from whatever it runs on | the language's, one per system | `hal/virt/`, `hal/posix/`, `hal/builtin/`, `hal/unix/` (to be renamed `machine/`) |
+| 1 | **The runtime**: allocator, actors and scheduler, vectors, strings, the panic path | the language's | `runtime/` (to be renamed `runtime/`) |
+| 2 | **The machine layer**: what the runtime needs from whatever it runs on | the language's, one per system | `machine/virt/`, `machine/posix/`, `machine/builtin/`, `machine/unix/` (to be renamed `machine/`) |
 | 3 | **The HAL**: the devices a PROGRAM sees | **QOS's** | `../qos/hal/`, `../qos/qos/appside/qos_abi.h` |
 
 ## 2. The machine layer
@@ -37,13 +38,13 @@ operating system.
 Devices are what an operating system gives a program, so they are QOS's, with
 two backings behind one interface (`qos_hal_t`, versioned in `qos_abi.h`):
 
-- **QOS Native** (`qos/hal/virt/`): the PLIC driver (`plic.fpr`), virtio net
+- **QOS Native** (`qos/machine/virt/`): the PLIC driver (`plic.fpr`), virtio net
   with its TCP stack, virtio block, the pin bus, and `devices.c`, which names
-  them. They moved out of this tree's `hal/virt` on 2026-09-19.
-- **QOS Portable** (`qos/hal/unix/`): graphics, sound, net, block, keyboard
+  them. They moved out of this tree's `machine/virt` on 2026-09-19.
+- **QOS Portable** (`qos/machine/unix/`): graphics, sound, net, block, keyboard
   and tty over the host OS.
 
-The one seam between layers 2 and 3 is `hal/virt/devtable.h`: the machine layer
+The one seam between layers 2 and 3 is `machine/virt/devtable.h`: the machine layer
 resolves `device "name"` against its own two entries, then against whatever a
 HAL above it supplies by DEFINING `hal_devtable_ext` (weak and empty by
 default). No registry, no capacity. `make bare-metal` takes a HAL's sources
@@ -60,10 +61,6 @@ manifest.
 
 ## What still does not follow the model
 
-- **The names.** `hal/core` is the runtime and `hal/{virt,posix,builtin,unix}`
-  are machine layers; the directories still say `hal`. A wide mechanical
-  rename (Makefiles, `Build.hs`, QOS's `FHAL`, the scripts), to be done on its
-  own so its diff is nothing else.
 - **The compiler's type environment** (`Infer.hs`) still types about 60 QOS and
   device primitives -- `glRender`, `sndPlay`, `inputPoll`, `blkRead`,
   `netRead`, `Pin.*`, `Sys.irqBind`, `Sys.timerArm`, `Sys.caps`, `Sys.store*`,

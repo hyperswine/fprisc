@@ -75,8 +75,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-builtin-') as temp:
     print('Profile-specific module caches and explicit prelude: PASS')
 
     host = tmp / 'heap-test'
-    run(['clang', '-std=c11', '-DFPR_POSIX', '-Ihal/core', '-Ihal/builtin',
-         '-fsanitize=address,undefined', '-g', 'tests/builtin_heap.c', 'hal/builtin/heap.c', '-o', host])
+    run(['clang', '-std=c11', '-DFPR_POSIX', '-Iruntime', '-Imachine/builtin',
+         '-fsanitize=address,undefined', '-g', 'tests/builtin_heap.c', 'machine/builtin/heap.c', '-o', host])
     assert 'BUILTIN HEAP HOLDS' in run([host])
     for case in ['overflow', 'double-free', 'shared-realloc']:
         run([host, case], 3)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Library units: an FP-RISC file compiled with --lib/--export links beside a
 program unit and its entries are callable from C with the plain RV64 ABI.
-Then the allocator itself, hal/builtin/heap.fpr, in place of heap.c."""
+Then the allocator itself, machine/builtin/heap.fpr, in place of heap.c."""
 from pathlib import Path
 import os, subprocess, tempfile
 ROOT = Path(__file__).resolve().parents[1]

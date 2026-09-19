@@ -1358,7 +1358,7 @@ static V g_arcLive(V d) {
 /* ---- panic ---------------------------------------------------------- */
 /* The core writes '\n' and nothing else.  Whether a line also needs a
  * carriage return is a fact about the DEVICE -- a raw 16550 does, a posix
- * stream does not -- so it is hal_putc's to add (hal/virt, hal/builtin).
+ * stream does not -- so it is hal_putc's to add (machine/virt, machine/builtin).
  * It used to be inserted here, which made every hosted program's stdout
  * CRLF and every check pipe its output through `tr -d '\r'`. */
 static void praw(const char *s) {
@@ -1423,7 +1423,7 @@ void fpr_exit(V result) {
   extern void fpr_render_to_uart(V v); /* below */
   __atomic_store_n(&fpr_shutdown, 1, __ATOMIC_RELEASE);
 #if defined(FPR_POSIX) && !defined(FPR_QOSAPP)
-  /* the Base profile (hal/posix): an ordinary process.  Nothing is
+  /* the Base profile (machine/posix): an ordinary process.  Nothing is
    * echoed; main's Int result is the exit status (0..255), any other
    * result exits 0.  Sys.exit is the early way out. */
   hal_poweroff(ISINT(result) ? (int)(UNTAG(result) & 255) : 0);

@@ -56,7 +56,7 @@ approximately:
 |---|---|---|---|
 | plain library, needs no privilege | ~850 | render, string prims, log rings, floats, `sin`/`cos`/`exp`/`log` | tier 2 |
 | generic walks over untyped heap objects | ~500 | deep copy for send, `==`, `render` | **compiler-generated** per type. The runtime has lost the types, so this code inspects headers and guesses field counts -- the source of the `==` depth bug and of the "two statics keep the header-only answer" hack. The compiler knows the types |
-| policy | ~1000 + QOS | timer and irq routing, sleep, the syscall mailbox, the process loader (`process.c`, `elfload.c`, `qaimg.c`), the TCP stack in `hal/virt/net.c`, qosp's manifest parse, permission gate and store | tier 2 actors |
+| policy | ~1000 + QOS | timer and irq routing, sleep, the syscall mailbox, the process loader (`process.c`, `elfload.c`, `qaimg.c`), the TCP stack in `machine/virt/net.c`, qosp's manifest parse, permission gate and store | tier 2 actors |
 | mechanism | ~2000 | scheduler core, rings, slab allocator, ARC table | tier 1; `MEMORY-V2-PLAN.md` phases 4 and 5 already move ARC and the locks behind owner actors |
 
 Drivers need not be C: `programs/mods/uart.fpr` is an interrupt-driven 16550
@@ -66,7 +66,7 @@ driver written as an actor, its interrupts arriving as mailbox messages.
 
 1. **Typed memory layouts.** LANDED (docs/LAYOUTS.md): `Block = Layout { ... }`
    is a nominal pointer type that expands at parse time into ordinary
-   definitions and costs nothing; `hal/builtin/heap.fpr` is ported to it, and
+   definitions and costs nothing; `machine/builtin/heap.fpr` is ported to it, and
    is smaller than it was by hand. Tier 1 can now be written to be read.
 2. **Stack safety.** LANDED for the hosted systems (BOUNDS.md): an overflow is a
    named panic from a guard page on posix and QOS Portable, and a stack spans
@@ -127,7 +127,7 @@ Two things made it possible, and both are general:
 - **`fpr build --with hal.c --cflag F --link F`**: a program brings its own HAL,
   compiled beside the runtime. qosp's is `portable/host.c` (five primitives: map
   the arena, hash, place and protect the image, enter it, log) plus the device
-  tiers in `hal/unix`. This is the goal in miniature: FP-RISC policy over a C
+  tiers in `machine/unix`. This is the goal in miniature: FP-RISC policy over a C
   HAL, the primitives named in the program that uses them.
 
 What had to be right: the app's freestanding entry keeps ITS hart in `x28` and
@@ -197,7 +197,7 @@ said nothing. The log is kept and replayed on failure.
 serial-console habit in the portable core. Every Base program's stdout was
 CRLF, which breaks ordinary pipelines, and `check-all.sh` pipes nearly every
 leg through `tr -d '\r'` to cope. The core writes `\n` now; the two HALs that
-front a raw 16550 (`hal/virt/hal.c`, `hal/builtin/virt.c`) add the carriage
+front a raw 16550 (`machine/virt/hal.c`, `machine/builtin/virt.c`) add the carriage
 return in `hal_putc`. posix and the qosp host add nothing: the OS line
 discipline already does it on a terminal, and a pipe wants none. Checked: posix
 and qosp stdout carry no CR, both rv64 UARTs still put CRLF on the wire.
@@ -206,7 +206,7 @@ A small instance of this whole document: console policy living in the core.
 ### Step 2a: typed layouts, and the allocator is FP-RISC (2026-09-19)
 
 `docs/LAYOUTS.md`. `Block = Layout { ... }` is a nominal pointer type that
-expands at parse time and costs nothing; `hal/builtin/heap.fpr` is ported to it
+expands at parse time and costs nothing; `machine/builtin/heap.fpr` is ported to it
 and is the default allocator under ARC, exercised by every builtin suite.
 `heap.c` stays for the legacy manual ABI. `arc.c` and `unsafe.c` are
 calling-convention glue between generated code and C primitives -- mechanism,
@@ -216,7 +216,7 @@ about 20,000.
 
 ### Step 3a: the virt PLIC and CLINT drivers are FP-RISC (2026-09-19)
 
-`hal/virt/plic.fpr` and `hal/virt/clint.fpr`: raw library units over typed
+`machine/virt/plic.fpr` and `machine/virt/clint.fpr`: raw library units over typed
 layouts whose exports ARE the C symbols the runtime calls (`hal_irq_open`,
 `hal_irq_claim`, `hal_irq_ack`; `hal_ipi_send`, `hal_ipi_clear`, `hal_mtime`,
 `hal_timer_park`, `hal_timer_arm`). A register bank is a one-field layout and
@@ -226,10 +226,10 @@ strides by 4. On rv64 they are the only implementation; the C is kept solely
 behind `#if __riscv_xlen == 32`, because the raw ABI has no rv32 lowering.
 
 This was the first raw unit linked into the CORE image rather than the builtin
-runtime, which needed `hal/virt/rawunit.c`: the guarded primitives' slow paths
+runtime, which needed `machine/virt/rawunit.c`: the guarded primitives' slow paths
 (each an error -- a misaligned access, a shift of 64 -- so each a named panic)
 and `fpr_builtin_alloc_adt` for the constructor stubs every unit carries.
-`hal/virt/virt.mk` owns the rules and export lists for all three link sites
+`machine/virt/virt.mk` owns the rules and export lists for all three link sites
 (bare metal, the QOS native kernel, `build-process-app.sh`).
 
 Checked on rv64 against the C baseline, identical: `timer.fpr` (CLINT
@@ -242,7 +242,7 @@ inside the noise).
 
 ### Step 3b: the LOAD section is read in FP-RISC; the C loader only places (2026-09-19)
 
-`hal/core/qaimg.c` (QOS) was the whole load path: a hand-rolled `key <decimal>`
+`runtime/qaimg.c` (QOS) was the whole load path: a hand-rolled `key <decimal>`
 scanner over the LOAD section's text, five consistency refusals, then the
 copy -- reached by the portable host loading an app, the portable host loading
 a plugin, and the native kernel loading a process, while `qosp.fpr` scanned
@@ -275,9 +275,9 @@ comment is `# fn <name> ...` now.
 
 ### What can move next, and what cannot yet
 
-Code in `hal/virt` is rv64 by nature, so it can be a raw unit today: the TCP
+Code in `machine/virt` is rv64 by nature, so it can be a raw unit today: the TCP
 stack (`net.c`, 487 lines, with its 4-connection table), the block driver,
-the pin bus. Code in `hal/core` -- the irq and timer ROUTING in `actors.c`,
+the pin bus. Code in `runtime` -- the irq and timer ROUTING in `actors.c`,
 the scheduler -- also runs on x86-64 and AArch64 hosts, where the raw ABI has
 no lowering; it has to wait for one, or be written in the base profile above
 the scheduler. `IRQ_MAX` went from 64 to 1024 meanwhile: the PLIC's own

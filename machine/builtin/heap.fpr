@@ -9,7 +9,7 @@
 # program link against it unchanged.
 #
 # Its one piece of state lives at a linker symbol (Addr.symbol
-# "_heap_state", hal/builtin/link.ld): head, low, high.  An FP-RISC unit
+# "_heap_state", machine/builtin/link.ld): head, low, high.  An FP-RISC unit
 # has no globals; a C static is exactly a cell at a link-time address,
 # and that is the primitive this file needed and the language now has.
 #

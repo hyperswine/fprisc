@@ -37,7 +37,7 @@ import Text.Megaparsec (errorBundlePretty, parse)
 data Opts = Opts
   { oTarget :: Target,
     oBuiltin :: Bool,
-    oBase :: Bool, -- the posix SYSTEM: a hosted executable on this machine (hal/posix); the ISA is the build host's
+    oBase :: Bool, -- the posix SYSTEM: a hosted executable on this machine (machine/posix); the ISA is the build host's
     oSystem :: Maybe String, -- --system=bare-metal|qos-native|qos-portable|posix (docs/PROFILES.md)
     oProfileFlag :: Maybe String, -- --profile=builtin|base|extbase|sol, when the file does not say
     oArc :: Bool,

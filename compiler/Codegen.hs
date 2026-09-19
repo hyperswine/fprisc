@@ -354,7 +354,7 @@ emitProgram tgt rvv spec exports ext exps prog0 =
       modify (\st -> st {cgVNotes = concat [declines spec prog fn b | (fn, (_, b)) <- M.toList prog] ++ cgVNotes st})
       fns <- concat <$> mapM (uncurry (compileFn prog)) (M.toList prog)
       specs <- emitSpecs prog
-      -- the builtin target links no module registry (hal/core/mod.c is not
+      -- the builtin target links no module registry (runtime/mod.c is not
       -- in its runtime), so the table has no reader there -- and as a strong
       -- global it made two library units in one image a link error (a
       -- program's library beside the FP-RISC allocator)
@@ -784,7 +784,7 @@ gen prog env nxt pos e0 = do
 
 -- ---- inline expansions of the raw primitive adapters (--arc) -------------
 --
--- Under the raw ABI every adapter in hal/builtin/arc.c is a pure
+-- Under the raw ABI every adapter in machine/builtin/arc.c is a pure
 -- wrapper: Word/Addr are bare bits, Int is tagged, Bool/Unit are the
 -- immortal fpr_true/fpr_false/fpr_unit, and nothing is retained or
 -- released.  Each expansion below computes exactly what the adapter

@@ -17,7 +17,7 @@ Sol = The HostedBytecode profile of FP-RISC: shared syntax and inference, follow
 
 profile = A choice of how guarantees are discharged, which backend executes, and which library tier is available; it is not an ISA. Example: QOSPortable on a64 and QOSPortable on x64 are one profile on two ISAs.
 
-BareMetal = The AOT profile linked with `hal/virt`, with no operating system underneath it. Example: `make bare-metal-run PROG=tests/fmath.fpr` boots the result under QEMU.
+BareMetal = The AOT profile linked with `machine/virt`, with no operating system underneath it. Example: `make bare-metal-run PROG=tests/fmath.fpr` boots the result under QEMU.
 
 QOSNative = The AOT RISC-V profile in which a `.qa` process runs on the QOS kernel. Example: `make native-run` boots `system.fpr` and loads apps from the QOS disk.
 

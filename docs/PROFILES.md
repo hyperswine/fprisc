@@ -52,10 +52,10 @@ the runtime that links, the HAL -- follows from the system.
 
 | system | ISA and lowering | what links | how it runs |
 |---|---|---|---|
-| `bare-metal` | rv64 (rv32 with `--target=rv32`), `--rvv` for the vector tier | `hal/virt` + `hal/core`, or `hal/builtin` for profile builtin | QEMU virt, a board |
+| `bare-metal` | rv64 (rv32 with `--target=rv32`), `--rvv` for the vector tier | `machine/virt` + `runtime`, or `machine/builtin` for profile builtin | QEMU virt, a board |
 | `qos-native` | rv64 | the QOS kernel's app link (qos/qos/Makefile) | the QOS kernel on virt |
 | `qos-portable` | x86-64 QOS app image (`qx64`; `qa64`/`qa64mac` by `--target=`) | qos/appside | `qosp`, the portable host |
-| `posix` | the host this compiler was built on: x86-64, AArch64 Linux, AArch64 macOS | `hal/posix` + `hal/core`, harts as pthreads | an ordinary executable; also the VM for sol |
+| `posix` | the host this compiler was built on: x86-64, AArch64 Linux, AArch64 macOS | `machine/posix` + `runtime`, harts as pthreads | an ordinary executable; also the VM for sol |
 
 The 1.x spellings still work and mean what they meant: `--profile=bare-metal`
 is `--system=bare-metal`, `--profile=qos-portable` is `--system=qos-portable`,

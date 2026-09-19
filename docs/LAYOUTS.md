@@ -1,13 +1,13 @@
 # Typed memory layouts
 
 Kind: reference for what ships. Builtin profile (`profile builtin.`), rv64.
-`tests/check_layout.py` is the conformance run; `hal/builtin/heap.fpr` is the
+`tests/check_layout.py` is the conformance run; `machine/builtin/heap.fpr` is the
 worked example.
 
 ## Why
 
 The builtin profile gives systems code raw memory: `Mem.readWord`,
-`Addr.add`, a `Word`. `hal/builtin/heap.fpr`, the allocator, was written that
+`Addr.add`, a `Word`. `machine/builtin/heap.fpr`, the allocator, was written that
 way, and it worked -- but it read like assembly:
 
 ```text

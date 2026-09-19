@@ -2,7 +2,7 @@
 
 FP-RISC calls a small hardware interface; hardware-specific instructions do not
 need to become new language constructs. The reference implementation is
-`hal/builtin/machine.S`, using the ordinary RV64 integer register ABI. Its public
+`machine/builtin/machine.S`, using the ordinary RV64 integer register ABI. Its public
 C declarations and preconditions are in `machine.h`.
 
 The raw assembly functions take/return full-width integers and addresses in

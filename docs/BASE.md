@@ -7,8 +7,8 @@ machine it runs on: the `posix` system of docs/PROFILES.md, for a program
 of the `base` profile (the default; `profile base.` says so).  No QOS, no QEMU, no Makefile: the compiler lowers the
 program for the host ISA (x86-64 or AArch64, Linux or macOS), and the host's
 C compiler links it with the same core runtime every other profile uses
-(`hal/core`: allocator, actors, mailboxes, fuel preemption, the deadlock
-detector) and a HAL whose board is libc (`hal/posix`).  Harts are pthreads.
+(`runtime`: allocator, actors, mailboxes, fuel preemption, the deadlock
+detector) and a HAL whose board is libc (`machine/posix`).  Harts are pthreads.
 The result depends on nothing but libc and libpthread.
 
 ```sh
@@ -31,7 +31,7 @@ Everything Part I of SEMANTICS.md promises -- the language, the prelude,
 `use "std/..."` modules, actors and messages, `unsafe`/`measure`, linearity,
 deep equality, panics -- exactly as on bare metal and QOS.  Then the
 environment a process needs, as builtins the profile's HAL grants
-(`hal/posix/base.c`; the types are in `compiler/Infer.hs`):
+(`machine/posix/base.c`; the types are in `compiler/Infer.hs`):
 
 | name | type | meaning |
 |---|---|---|
@@ -61,7 +61,7 @@ above -- the command line, the environment, the three streams, files, the
 clock, an exit status -- not a register map. It used to carry a pretend
 virt board (`device "uart"` as a 16550 modelled over stdio, a CLINT serving
 mtime) so that programs written against the board ran unchanged; that went
-with `hal/posix/devices.c`. A program that wants to be portable says `print`.
+with `machine/posix/devices.c`. A program that wants to be portable says `print`.
 
 Hardware is reached the way any host facility is: a module declares the
 primitives it needs as signatures with no definition, and `fpr build --with
@@ -88,7 +88,7 @@ type error).
 - `--system=posix` (compiler/Compile.hs) picks the lowering for the host
   the compiler was built on: `x64` on x86_64, `a64` on aarch64 Linux,
   `a64mac` on macOS.  The rv64 emission stays the IR.
-- `hal/posix/main.c` boots as crt0.S would: `fpr_rt_init`, one pthread per
+- `machine/posix/main.c` boots as crt0.S would: `fpr_rt_init`, one pthread per
   hart, `fpr_hart_main(0)`.  `hal.c` answers the board obligations (console,
   poweroff, the sleep/wake doorbells as a 200 us poll, mtime, no external
   interrupts).  `base.c` is the table

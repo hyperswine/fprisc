@@ -5,7 +5,7 @@
 # tuples of the same shape were equal whatever they held --
 # `(1, 2) == (3, 4)` was True, and so was `[1, 2] == [3, 4]`.  Every
 # program comparing structured values was quietly wrong, and nothing
-# said so.  Equality is deep now (hal/core/runtime.c veq), over the
+# said so.  Equality is deep now (runtime/runtime.c veq), over the
 # field counts the allocation header has always carried.
 #
 #   make qos-app PROG=tests/eq.fpr && (cd ../qos && ./qosp --yes ../fp-risc/app.qa)

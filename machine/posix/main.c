@@ -2,7 +2,7 @@
  * host instead.  fpr_rt_init is the SAME portable init virt runs (buddy
  * over the heap, hart blocks, actor 0 fabricated around fpr_fn_main);
  * harts are pthreads; the scheduler, mailboxes, fuel preemption and the
- * deadlock detector are hal/core/actors.c, byte-for-byte the bare-metal
+ * deadlock detector are runtime/actors.c, byte-for-byte the bare-metal
  * ones.  Linux/macOS play the part of the board.
  *
  * This is the Base profile's host: an FP-RISC program compiled with
@@ -49,7 +49,7 @@ int main(int argc, char **argv) {
     fpr_live_harts = (uw)n;
   }
   hal_fault_init();
-  fpr_rt_init(); /* hal/core: buddy, hart blocks, actor 0 */
+  fpr_rt_init(); /* runtime: buddy, hart blocks, actor 0 */
   for (uintptr_t i = 1; i < fpr_live_harts; i++) {
     pthread_t t;
     if (pthread_create(&t, 0, hart_thread, (void *)i))

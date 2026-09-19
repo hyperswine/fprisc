@@ -1,7 +1,7 @@
 /* vec_layout.h -- THE Vector storage layout, single source.
  *
  * Shared by vec.c (the ops), runtime.c (deep-copy of vectors into
- * message slabs / retention pools), and hal/unix/gfx.c (the host-side
+ * message slabs / retention pools), and machine/unix/gfx.c (the host-side
  * scene walker and GPU tier read app-side vectors raw).  Codegen.hs
  * mirrors the field offsets (vLen/vNcols/vKinds/vFkinds/vCols0 and
  * colBlk0 = base at word offset 1) -- change nothing here without

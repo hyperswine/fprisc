@@ -29,7 +29,7 @@ the full qosp-reachable golden set byte-identical.
 
 ## Phase 2 — contiguous Vec on realloc **[LANDED]**
 
-* hal/core/vec.c: `col_t` is {cap, base} — ONE contiguous span, base
+* runtime/vec.c: `col_t` is {cap, base} — ONE contiguous span, base
   at word offset 1 (the slot the old directory kept blk[0] in, so
   Codegen's colBlk0 pins unchanged). vl_slot/vl_grow/vl_cap/VL_DIR
   and every per-block walk deleted; the SIMD tier (VS_BLOCKS/VS_ZIP,
@@ -50,7 +50,7 @@ the full qosp-reachable golden set byte-identical.
   SoA fold dual load base-relative cursors. RVV strip-mining now
   runs whole-column. fvec2's asm greps (fadd.d, the VR_FLT guard)
   still hold.
-* hal/unix/gfx.c: both mirrors ({cap, base}) and the GPU
+* machine/unix/gfx.c: both mirrors ({cap, base}) and the GPU
   marshalling loops became straight copies; fpr_gpu_vec_axpb now
   takes the raw span. portable-gl builds; the DRM branch
   syntax-checks.
@@ -143,7 +143,7 @@ retire on every image with a buddy, and message slabs pack.
 
 | lock                      | site                    | owner in v2                         |
 |---------------------------|-------------------------|-------------------------------------|
-| buddy_lock                | hal/core/buddy.c        | the memory actor serialises the     |
+| buddy_lock                | runtime/buddy.c        | the memory actor serialises the     |
 |                           |                         | CONTENDED case (LIVE); the lock is  |
 |                           |                         | the uncontended inline path's guard |
 |                           |                         | and the direct callers' (boot, the  |
@@ -151,17 +151,17 @@ retire on every image with a buddy, and message slabs pack.
 | fpr_freelist_t mu ×2      | fpr.h (phase 1)         | bucket arrays and channel-block     |
 | (bkts/chb)                |                         | extras remain; stacks and grants    |
 |                           |                         | retired behind the memory actor     |
-| acb_lock                  | hal/core/actors.c       | the bump carve stays (acbs are      |
+| acb_lock                  | runtime/actors.c       | the bump carve stays (acbs are      |
 |                           |                         | permanent); its refill is a request |
 |                           |                         | taken outside the lock              |
-| chb_lock (epoch limbo)    | hal/core/actors.c       | owner-hart epochs + messages        |
-| arc_lock                  | hal/core/runtime.c      | retires with phase 4 (the rehash    |
+| chb_lock (epoch limbo)    | runtime/actors.c       | owner-hart epochs + messages        |
+| arc_lock                  | runtime/runtime.c      | retires with phase 4 (the rehash    |
 |                           |                         | block is taken outside it already)  |
-| ledger/reap               | hal/core/actors.c       | owner-hart only + messages          |
+| ledger/reap               | runtime/actors.c       | owner-hart only + messages          |
 | grow_mu                   | qos/portable/main.c     | DELETED (v12: the app owns the      |
 |                           |                         | arena)                              |
 | store_mu                  | qos/portable/main.c     | the storage trampoline actor        |
-| gfx statics cache         | hal/unix/gfx.c          | the render service actor (already   |
+| gfx statics cache         | machine/unix/gfx.c          | the render service actor (already   |
 |                           |                         | single-caller in practice)          |
 
 Rules that hold from today onward: an actor that must wait yields

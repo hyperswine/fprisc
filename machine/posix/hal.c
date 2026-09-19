@@ -55,7 +55,7 @@ void hal_irq_open(uw src) { (void)src; }
 sw hal_irq_claim(void) { return 0; } /* 0 = nothing pending */
 void hal_irq_ack(uw src) { (void)src; }
 
-/* ---- first-activation contexts for hal/unix/ctx_x64.S / ctx_a64.S --- */
+/* ---- first-activation contexts for machine/unix/ctx_x64.S / ctx_a64.S --- */
 void fpr_ctx_fabricate(uw *ctx, void (*entry)(void), uw stack_top16,
                        fpr_hart_t *owner) {
   (void)owner; /* posix: the hart pointer is per-thread TLS, not a ctx slot */
@@ -69,7 +69,7 @@ void fpr_ctx_fabricate(uw *ctx, void (*entry)(void), uw stack_top16,
 #endif
 }
 
-/* ---- the stack guard (hal/core/actors.c asks; this machine can) --------
+/* ---- the stack guard (runtime/actors.c asks; this machine can) --------
  * The lowest page of an actor's stack is made inaccessible, so running off
  * the end is a fault AT the end instead of a walk through whatever lay
  * below.  The fault is caught on an alternate signal stack -- the one that

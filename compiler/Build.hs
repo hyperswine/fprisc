@@ -6,7 +6,7 @@
 -- A program becomes an ordinary executable for THIS machine: the
 -- compiler lowers it for the host ISA (--profile=base), and the C
 -- compiler links the generated assembly with the shared core runtime
--- (hal/core) and the hosted HAL (hal/posix), both found beside the
+-- (runtime) and the hosted HAL (machine/posix), both found beside the
 -- fpr binary (Home.hs).  No Makefile, no QOS: the same three parts a
 -- bare-metal image is made of, with libc as the board.
 module Build (buildMain, runMain) where
@@ -64,7 +64,8 @@ build :: Plan -> IO FilePath
 build p = do
   home <- fprHome
   let prelude = home </> "core" </> "prelude.fpr"
-      hal = home </> "hal"
+      runtime = home </> "runtime" -- the language runtime
+      machine = home </> "machine" -- the machine layer under it, one per system (docs/HAL.md)
   ok <- doesFileExist prelude
   unless ok $ hPutStrLn stderr ("fpr build: no prelude at " ++ prelude ++ " (set FPR_HOME to the fprisc checkout)") >> exitFailure
   -- one cache directory per user: the compiled prelude and every
@@ -98,9 +99,9 @@ build p = do
     Just c -> pure c
     Nothing -> fromMaybe "cc" <$> lookupEnv "FPR_CC"
   let ctx = if System.Info.arch == "aarch64" then "ctx_a64.S" else "ctx_x64.S"
-      core = [hal </> "core" </> f | f <- ["runtime.c", "actors.c", "bits.c", "vec.c", "sstr.c", "mod.c", "buddy.c"]]
-      posix = [hal </> "posix" </> f | f <- ["main.c", "hal.c", "base.c", "heap.S"]] ++ [hal </> "unix" </> ctx]
-      cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ hal </> "core", "-I" ++ hal </> "posix"]
+      core = [runtime </> f | f <- ["runtime.c", "actors.c", "bits.c", "vec.c", "sstr.c", "mod.c", "buddy.c"]]
+      posix = [machine </> "posix" </> f | f <- ["main.c", "hal.c", "base.c", "heap.S"]] ++ [machine </> "unix" </> ctx]
+      cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix"]
       linux = if System.Info.os == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []
       -- the runtime's objects are cached per hart count, rebuilt only
       -- when their source is newer: a warm build compiles the program

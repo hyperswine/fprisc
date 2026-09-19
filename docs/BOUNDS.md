@@ -25,7 +25,7 @@ Whatever the limit, reaching it must never be **silent**. In order of harm:
 
 | Limit | Was | Now |
 |---|---|---|
-| `VEQ_MAX_DEPTH 64` (`hal/core/runtime.c`) | `==` recursed per field and answered **True** at depth 64 as a cycle guard. Two lists differing only past element 64 compared equal; measured: False at length 64, True at 65, 101, 1001. | No cap. `veq` is a worklist: fields are pushed last-first so they pop in order, which holds a list of any length at two pending pairs; a structure nested deeply through a non-final field moves the worklist from the C stack (`VEQ_INLINE 32` pairs) to an `fpr_alloc` block that doubles. Covered by `tests/eq.fpr` (65 and 100,000 elements, a 100,000-deep left nest) on posix, rv64 bare metal and QOS Portable; the new cases fail on the old runtime. |
+| `VEQ_MAX_DEPTH 64` (`runtime/runtime.c`) | `==` recursed per field and answered **True** at depth 64 as a cycle guard. Two lists differing only past element 64 compared equal; measured: False at length 64, True at 65, 101, 1001. | No cap. `veq` is a worklist: fields are pushed last-first so they pop in order, which holds a list of any length at two pending pairs; a structure nested deeply through a non-final field moves the worklist from the C stack (`VEQ_INLINE 32` pairs) to an `fpr_alloc` block that doubles. Covered by `tests/eq.fpr` (65 and 100,000 elements, a 100,000-deep left nest) on posix, rv64 bare metal and QOS Portable; the new cases fail on the old runtime. |
 | `FPR_RBUF_SZ 4096` for `print` of a String | `print s` panicked "render buffer full" for any String past 4095 bytes, though `str` already returned a String unchanged. Found when a 6.9 KB capability blob could not be printed. | A String is written straight to the console, never through the buffer: any length prints. Checked with 20,000 bytes on rv64 bare metal. The buffer still bounds the rendering of a NON-String value (below). |
 
 ## Fixed on 2026-09-19, continued: the actor stack
@@ -43,7 +43,7 @@ whatever lay below overwritten on bare metal. Two faults fed each other.
   memory, twice the stack, and dtree passes because it fits.
 - **No guard.** `actors.c` asks the HAL at the two places a stack changes hands
   (`hal_stack_guard` / `hal_stack_unguard`, weak no-ops by default) and offers
-  `fpr_current_stack()` to a fault handler. `hal/posix` makes the lowest page
+  `fpr_current_stack()` to a fault handler. `machine/posix` makes the lowest page
   inaccessible and catches the fault on an alternate signal stack, per hart
   thread: `*** FPRISC PANIC [actor 2]: stack overflow -- the actor ran off its
   511 KiB stack`, exit 1. QOS Portable apps reach the same code through three
@@ -70,12 +70,12 @@ slab; 2,000 sequential spawn-reply-die rounds without the `drop` exhaust a
 | `FPR_RBUF_SZ 4096`, per-hart render buffer | rendering a non-String value (a long list, a big record) past 4095 bytes panics "render buffer full"; Strings no longer pass through it | render into a growable buffer, or straight to the console for `print` |
 | `SSTR_CAP 128`, one global `SString` width | `SStr.push` panics | the indexed `SString n` that `sstr.c` already names |
 | `RING_MAX 1<<20` messages per `Dynamic` ring | stops doubling | memory should be the bound, as the `MAXSND` comment already says of hubs |
-| `NPINS 32`, `PIN_TRACE_CAP 4096` (`hal/virt/hal.c`) | a pin past 31 panics by name; the pin trace **stops recording** at 4096 entries without saying so | size from the board description; make the trace a ring or report the truncation |
-| `NETCONN 4`, `RXRING 16384`, virtqueue `QSZ 8` (`hal/virt/net.c`, `blk.c`) | small fixed TCP table | allocate connections from the heap |
+| `NPINS 32`, `PIN_TRACE_CAP 4096` (`machine/virt/hal.c`) | a pin past 31 panics by name; the pin trace **stops recording** at 4096 entries without saying so | size from the board description; make the trace a ring or report the truncation |
+| `NETCONN 4`, `RXRING 16384`, virtqueue `QSZ 8` (`machine/virt/net.c`, `blk.c`) | small fixed TCP table | allocate connections from the heap |
 | `FPR_NHARTS` (compile time, static per-hart arrays) | fixed at build | discover at boot (device tree / `sysconf`) |
-| `MOD_MAXATTACH 8` (`hal/core/mod.c`) | `fpr_mod_attach` returns -1 | a growing table; tied to the plugin slot count in QOS |
-| `FPR_HEAP_MB 256` (`hal/posix/heap.S`), `LENGTH = 128M` and the fixed `_heap_end` in `hal/virt/link.ld` and `hal/builtin/link.ld` | "heap exhausted" | see the memory-layout section of the QOS register: reserve address space and commit on demand when hosted; read RAM size from the device tree on bare metal |
-| Builtin stacks in `hal/builtin/link.ld` (64K main, 4K trap, 64K irq) | overflow unchecked | at least `--defsym` knobs; a board decision, but not one the linker script should hide |
+| `MOD_MAXATTACH 8` (`runtime/mod.c`) | `fpr_mod_attach` returns -1 | a growing table; tied to the plugin slot count in QOS |
+| `FPR_HEAP_MB 256` (`machine/posix/heap.S`), `LENGTH = 128M` and the fixed `_heap_end` in `machine/virt/link.ld` and `machine/builtin/link.ld` | "heap exhausted" | see the memory-layout section of the QOS register: reserve address space and commit on demand when hosted; read RAM size from the device tree on bare metal |
+| Builtin stacks in `machine/builtin/link.ld` (64K main, 4K trap, 64K irq) | overflow unchecked | at least `--defsym` knobs; a board decision, but not one the linker script should hide |
 
 ## A graceful fallback
 

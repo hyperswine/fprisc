@@ -575,7 +575,7 @@ actorCall env "send" [VInt to, m] = do
 -- sendLinear: MOVE semantics.  In this profile values are immutable
 -- Haskell terms, so the move IS a send -- the verb exists for grammar
 -- parity with the AOT tiers, where it transfers the message slab
--- (hal/core/actors.c a_send_linear) and the checker consumes the arg.
+-- (runtime/actors.c a_send_linear) and the checker consumes the arg.
 actorCall e "sendLinear" [to, m] = actorCall e "send" [to, m]
 -- sendArc: SHARE semantics; immutable values make sharing == sending
 actorCall e "sendArc" [to, m] = actorCall e "send" [to, m]

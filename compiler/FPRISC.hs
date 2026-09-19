@@ -947,7 +947,7 @@ keyword w = lexeme . try $ void (string w <* notFollowedBy (satisfy identChar))
 -- `Block = Layout { size : Word, prev : Block, next : Block, used : Int }.`
 --
 -- A NOMINAL pointer type over raw memory, for the builtin profile's systems
--- code.  hal/builtin/heap.fpr was written before this existed and reads like
+-- code.  machine/builtin/heap.fpr was written before this existed and reads like
 -- assembly (`rd b 24`, `wr a 56 v`): the offsets live in a comment, and an
 -- Addr is an Addr, so handing `next` a payload pointer type-checks.  A Layout
 -- names the fields, computes their offsets, and makes `Block` a type of its
