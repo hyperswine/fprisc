@@ -48,6 +48,12 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([build('tests/stduse.fpr', 'stduse')])
     assert 'std: clamp=10 backoff=800 fold=15' in p.stdout, p.stdout
     print('Panics exit 1 by name; actors on two pthread harts and std modules run unchanged: PASS')
+    # 4b. running off an actor's stack is a named panic, exit 1 -- never a bare signal
+    p = run([build('tests/base/overflow.fpr', 'overflow')], 1)
+    assert 'accumulator: 200000' in p.stdout, p.stdout
+    assert 'stack overflow' in p.stderr and 'PANIC [actor 0]' in p.stderr, p.stderr
+    assert 'recursion:' not in p.stdout
+    print('Stack overflow: a named panic from the guard page, exit 1; the accumulator form needs no stack: PASS')
     # 6. fpr run: build to a temp file, pass the arguments through, return its status
     p = run(['./fpr', 'run', 'tests/base/args.fpr', 'x', 'y'], 3, env={'FPR_BASE_VAR': 'v'})
     assert 'args: x,y (2)' in p.stdout, p.stdout

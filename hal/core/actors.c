@@ -263,10 +263,27 @@ static char *acb_hp, *acb_end;
 uw fpr_stk_pushes, fpr_stk_misses, fpr_spawns, fpr_chb_carves;
 static void stack_recycle(void *p);
 static V spawn_on_pid(uw hart, V f, uw pin, uw pid);
+
+/* ---- the stack guard ---------------------------------------------------
+ * A stack is a fixed STACK_SZ, and running off its low end used to be
+ * silent: SIGBUS with no word said on a hosted system, whatever lay below
+ * overwritten on bare metal (docs/BOUNDS.md: building a 20,000-element
+ * list by plain recursion).  The core cannot fix that -- a guard is a fact
+ * about the MACHINE (an inaccessible page, a PMP region) -- so it asks the
+ * HAL at the two places a stack changes hands.  The defaults do nothing.
+ * The buddy header and the recycler's list node both live at a stack's
+ * low end, inside the guard, so it comes off before a stack goes home. */
+__attribute__((weak)) void hal_stack_guard(void *lo, uw size) { (void)lo; (void)size; }
+__attribute__((weak)) void hal_stack_unguard(void *lo, uw size) { (void)lo; (void)size; }
+
+static void *stack_guarded(void *p) {
+  if (p) hal_stack_guard(p, STACK_SZ);
+  return p;
+}
 static void *stack_block(void) {
-  if (fpr_mem_own) return fpr_mem_take(STACK_SZ);
+  if (fpr_mem_own) return stack_guarded(fpr_mem_take(STACK_SZ));
   void *p = fpr_fl_take(&stack_fl, STACK_SZ);
-  if (p) return p;
+  if (p) return stack_guarded(p);
   __atomic_add_fetch(&fpr_stk_misses, 1, __ATOMIC_RELAXED);
   /* SELF-TOPPING on a miss: take two, keep one warm.  A miss means
    * live+in-flight actors exceeded pool depth, so depth converges to
@@ -276,14 +293,26 @@ static void *stack_block(void) {
    * (measured: 13 misses/8k spawns, ~12KB/s of permanent stacks). */
   void *spare = big_block(STACK_SZ);
   if (spare) stack_recycle(spare);
-  return big_block(STACK_SZ);
+  return stack_guarded(big_block(STACK_SZ));
 }
 
 /* a dead actor's stack: home to the memory actor, or the recycler */
 static void stack_recycle(void *p) {
+  hal_stack_unguard(p, STACK_SZ);
   if (fpr_mem_own) { fpr_mem_give(p); return; }
   fpr_fl_put(&stack_fl, p, STACK_SZ);
   __atomic_add_fetch(&fpr_stk_pushes, 1, __ATOMIC_RELAXED);
+}
+
+/* for a HAL's fault handler: the stack of the actor running on THIS hart
+ * (NULL between actors), its size and the actor's id.  Reads only. */
+void *fpr_current_stack(uw *id, uw *size) {
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h ? h->current : 0;
+  if (!a || !a->stack) return 0;
+  if (id) *id = a->id;
+  if (size) *size = STACK_SZ;
+  return a->stack;
 }
 
 static acb_t *acb_block(void) {

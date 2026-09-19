@@ -68,3 +68,73 @@ void fpr_ctx_fabricate(uw *ctx, void (*entry)(void), uw stack_top16,
   ctx[1] = stack_top16;
 #endif
 }
+
+/* ---- the stack guard (hal/core/actors.c asks; this machine can) --------
+ * The lowest page of an actor's stack is made inaccessible, so running off
+ * the end is a fault AT the end instead of a walk through whatever lay
+ * below.  The fault is caught on an alternate signal stack -- the one that
+ * faulted has, by definition, no room left -- and said by name. */
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
+/* the guard page for a stack whose block starts at `lo`.  A block sits a
+ * header past a page boundary, so that page is the guard; were it not
+ * page-placed, guarding it would take a neighbour's bytes too, so the
+ * first page wholly inside the stack is used instead. */
+static uintptr_t guard_page(void *lo, uintptr_t pg) {
+  uintptr_t page = (uintptr_t)lo & ~(pg - 1);
+  if ((uintptr_t)lo - page > 64) page += pg;
+  return page;
+}
+void hal_stack_guard(void *lo, uw size) {
+  uintptr_t pg = (uintptr_t)getpagesize();
+  if (size < 4 * pg) return; /* a stack this small cannot spare a page */
+  mprotect((void *)guard_page(lo, pg), pg, PROT_NONE);
+}
+void hal_stack_unguard(void *lo, uw size) {
+  uintptr_t pg = (uintptr_t)getpagesize();
+  if (size < 4 * pg) return;
+  mprotect((void *)guard_page(lo, pg), pg, PROT_READ | PROT_WRITE);
+}
+
+static void fault_handler(int sig, siginfo_t *info, void *ctx) {
+  (void)ctx;
+  uw id = 0, size = 0;
+  void *lo = fpr_current_stack(&id, &size);
+  uintptr_t pg = (uintptr_t)getpagesize(), at = (uintptr_t)info->si_addr;
+  if (lo && size >= 4 * pg) {
+    uintptr_t g = guard_page(lo, pg);
+    /* in the guard, or just below it: a frame larger than a page steps over */
+    if (at + 8 * pg >= g && at < g + pg) {
+      char msg[200];
+      int n = snprintf(msg, sizeof msg,
+                       "\n*** FPRISC PANIC [actor %lu]: stack overflow -- the actor ran off its %lu KiB stack "
+                       "(recursion that is not a tail call goes as deep as its input; use an accumulator)\n",
+                       (unsigned long)id, (unsigned long)(size >> 10));
+      fflush(stdout);
+      if (n > 0) (void)!write(2, msg, (size_t)n);
+      _exit(1);
+    }
+  }
+  signal(sig, SIG_DFL); /* not ours: let it be the crash it is */
+}
+
+/* once per hart THREAD: an alternate stack is a per-thread thing */
+void hal_fault_init(void) {
+  stack_t ss = {0};
+  ss.ss_size = 64 * 1024;
+  ss.ss_sp = malloc(ss.ss_size);
+  if (!ss.ss_sp) return;
+  sigaltstack(&ss, 0);
+  struct sigaction sa;
+  memset(&sa, 0, sizeof sa);
+  sa.sa_sigaction = fault_handler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+  sigaction(SIGSEGV, &sa, 0);
+  sigaction(SIGBUS, &sa, 0);
+}
+

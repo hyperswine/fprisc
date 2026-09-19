@@ -27,7 +27,10 @@ __thread uw fpr_x64_a6, fpr_x64_a7;
 int fpr_posix_argc;
 char **fpr_posix_argv;
 
+void hal_fault_init(void); /* hal.c: this thread's alternate signal stack */
+
 static void *hart_thread(void *arg) {
+  hal_fault_init();
   fpr_hart_secondary((int)(uintptr_t)arg); /* sets tp, joins the loop */
   return 0;
 }
@@ -45,6 +48,7 @@ int main(int argc, char **argv) {
     if (n > FPR_NHARTS) n = FPR_NHARTS;
     fpr_live_harts = (uw)n;
   }
+  hal_fault_init();
   fpr_rt_init(); /* hal/core: buddy, hart blocks, actor 0 */
   for (uintptr_t i = 1; i < fpr_live_harts; i++) {
     pthread_t t;

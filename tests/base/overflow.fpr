@@ -1,0 +1,9 @@
+# overflow.fpr -- recursion that is not a tail call goes as deep as its
+# input, and an actor's stack is a fixed size: this must be a NAMED panic,
+# not a SIGBUS (hosted) or a walk through whatever lay below (docs/BOUNDS.md).
+# The same list built with an accumulator needs no stack at all.
+unsafe base.
+build n = case n of 0 -> Nil | _ -> n :: build (n - 1).
+buildAcc n acc = case n of 0 -> acc | _ -> buildAcc (n - 1) (n :: acc).
+len xs acc = case xs of Nil -> acc | _ :: r -> len r (acc + 1).
+main = _ = print "accumulator: {len (buildAcc 200000 Nil) 0}"; print "recursion: {len (build 200000) 0}".
