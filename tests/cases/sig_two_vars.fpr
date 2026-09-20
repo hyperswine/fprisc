@@ -1,0 +1,5 @@
+# `a` and `b` are the caller's to choose independently; the body returns its
+# own argument, so they cannot be
+swapish : a -> b .
+swapish x = x.
+main = 0.

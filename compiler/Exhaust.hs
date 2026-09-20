@@ -22,11 +22,11 @@
 -- catch-all arm.  Record patterns bind fields and never fail, so they
 -- count as irrefutable.
 
-module Exhaust (Siblings, checkArms, siblingsOf) where
+module Exhaust (Siblings, checkArms, checkClauses, siblingsOf) where
 
 import Data.List (nub)
 import qualified Data.Map.Strict as M
-import Data.Maybe (isNothing, mapMaybe)
+import Data.Maybe (isNothing, listToMaybe, mapMaybe)
 import FPRISC (Name, SPat (..))
 
 -- the constructors of a constructor's type, with their arities
@@ -81,9 +81,81 @@ checkArms sibs pats = unreachable ++ missing
     unwordsOr [x] = x
     unwordsOr xs = concat (zipWith (++) ("" : replicate (length xs - 2) ", " ++ [" or "]) xs)
 
+-- ---- clause coverage -------------------------------------------------------
+--
+-- `case` has been checked since the arm grammar made it necessary; a
+-- function's CLAUSES were not, and a value matching none of them fell
+-- through to a runtime error ("no matching clause for f").  That is the
+-- same bug the case checker exists to prevent, one syntax over -- and the
+-- worse one, because it is the definition's own shape that is incomplete.
+--
+-- The relation is identical, just wider: one column per parameter instead
+-- of one.  `useful` already works on matrices, so only the question
+-- changes.
+--
+-- A GUARDED clause never counts as covering: its patterns can match and
+-- its guard still pass the value on to the next clause.  So the matrix is
+-- built from the unguarded clauses alone -- which is equally why a guarded
+-- clause cannot make a later one unreachable.
+checkClauses :: Siblings -> Name -> [([SPat], Bool)] -> [String]
+checkClauses sibs f cls
+  | null cls = []
+  | arity == 0 = [] -- a value, not a function: nothing to match on
+  | any ((/= arity) . length . fst) cls = [] -- arity disagreement is its own error
+  | otherwise = case witness sibs arity [ps | (ps, False) <- cls] of
+      Nothing -> []
+      -- no "in NAME:" prefix here: the caller adds it, which is what lets
+      -- the diagnostic sink resolve the message to a file and line
+      Just w ->
+        [ "the clauses are not exhaustive -- nothing matches `"
+            ++ unwords (f : map describeArg w)
+            ++ "` (add a clause for it, or a catch-all)"
+        ]
+  where
+    arity = length (fst (head cls))
+
+-- A vector of values no row matches, when one exists: Maranget's I, the
+-- counterexample that falls out of the same specialization the usefulness
+-- test uses.  It is what lets the message name the missing case instead of
+-- merely asserting that one exists.
+witness :: Siblings -> Int -> [[SPat]] -> Maybe [SPat]
+witness _ 0 rows = if null rows then Just [] else Nothing
+witness sibs n rows = case complete sibs heads of
+  Just all' ->
+    listToMaybe
+      [ rebuilt
+        | (h, a) <- all',
+          Just w <- [witness sibs (a + n - 1) (specialize h a rows)],
+          let (args, rest) = splitAt a w,
+          let rebuilt = patOf h args : rest
+      ]
+  Nothing -> do
+    rest <- witness sibs (n - 1) [ps | (p : ps) <- rows, isNothing (headOf p)]
+    pure (absent : rest)
+  where
+    heads = nub [h | (p : _) <- rows, Just (h, _) <- [headOf p]]
+    absent = case heads of
+      [] -> PWild
+      HCon c : _
+        | Just sib <- sibs c,
+          (n', a) : _ <- [(m, a') | (m, a') <- sib, HCon m `notElem` heads] ->
+            PCon n' (replicate a PWild)
+      HInt _ : _ -> PInt (head [i | i <- [0 ..], HInt i `notElem` heads])
+      HStr _ : _ -> PStr (head [s | s <- "" : ["x" ++ replicate k '\'' | k <- [0 ..]], HStr s `notElem` heads])
+      _ -> PWild
+
+patOf :: Head -> [SPat] -> SPat
+patOf h args = case h of
+  HCon c -> PCon c args
+  HInt i -> PInt i
+  HStr s -> PStr s
+  HTup _ -> PTup args
+
 describe :: SPat -> String
 describe = \case
   PCon c [] -> c
+  -- a list is written with its operator, not its constructor's name
+  PCon "Cons" [h, t] -> describeArg h ++ " :: " ++ describeArg t
   PCon c ps -> c ++ " " ++ unwords (map describeArg ps)
   PInt n -> show n
   PStr s -> show s
@@ -92,9 +164,11 @@ describe = \case
   PWild -> "_"
   PRec _ -> "a record"
   PSig v _ -> v
-  where
-    describeArg p@PCon {} = "(" ++ describe p ++ ")"
-    describeArg p = describe p
+
+-- as an ARGUMENT: only a constructor that carries fields needs parentheses
+describeArg :: SPat -> String
+describeArg p@(PCon _ (_ : _)) = "(" ++ describe p ++ ")"
+describeArg p = describe p
 
 -- the complete constructor set the column's heads belong to, when the
 -- heads present already cover all of it (Maranget's Σ complete test)

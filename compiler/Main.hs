@@ -31,6 +31,12 @@ import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 
+-- keep in step with `version:` in fp-risc.cabal.  It is a constant rather
+-- than Paths_fp_risc because the Makefile's fallback path builds with raw
+-- ghc, where that module does not exist.
+version :: String
+version = "0.12.0"
+
 usage :: String
 usage =
   unlines
@@ -74,7 +80,16 @@ main = do
     ("pull" : rest) -> Commit.pullMain rest
     ("help" : _) -> putStrLn usage
     ("--help" : _) -> putStrLn usage
+    (v : _) | v `elem` ["--version", "-V", "version"] -> putStrLn ("fpr " ++ version)
     [] -> hPutStrLn stderr usage >> exitFailure
+    -- A bare file or flag still falls through to `compile` below, which is
+    -- what fprc compatibility means.  But a plain WORD is plainly meant as a
+    -- subcommand, and a mistyped one used to be answered with fprc's usage --
+    -- which names no subcommand at all, so the one thing it could not tell
+    -- you was what you should have typed.
+    (a : _)
+      | not (null a), head a /= '-', '/' `notElem` a, '.' `notElem` a ->
+          hPutStrLn stderr ("fpr: unknown subcommand `" ++ a ++ "`\n") >> hPutStrLn stderr usage >> exitFailure
     _ | "--target=bytecode" `elem` args ->
           withArgs ("--asm" : [a | a <- args, a /= "--target=bytecode"]) Sol.Main.main
       | otherwise -> withArgs args Compile.compileMain -- fprc-compatible fallthrough

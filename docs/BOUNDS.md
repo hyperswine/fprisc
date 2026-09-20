@@ -136,6 +136,14 @@ In rough order of worth. None of these is silent.
 7. **Builtin-profile stacks** in `machine/builtin/link.ld` (64K main, 4K trap, 64K
    irq): no runtime there, so no entry check; at least `--defsym` knobs.
 8. **`VMAXCOLS 8`**: a graceful fallback (boxed storage), below.
+9. **`fpr build --cc` cross-compiles to another LIBC, not another ARCH.** Three
+   decisions in `Build.hs` read the BUILD machine rather than the target: the
+   context switch it links (`ctx_a64.S` vs `ctx_x64.S`), `-ffixed-x28`, and the
+   Linux-only `-no-pie`. So aarch64-Linux -> aarch64-Linux is sound, and that is
+   what `qos/tools/buildroot` does; x86_64 -> aarch64 would build the wrong
+   thing. The fix is a `--target` that names the arch, with `--cc` only naming
+   the compiler. (The runtime object cache IS now keyed by `--cc`, so a warm
+   host build no longer hands its own objects to another toolchain's linker.)
 
 ## Open: named panics and refusals that could grow
 

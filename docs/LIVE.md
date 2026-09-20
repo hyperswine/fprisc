@@ -127,8 +127,34 @@ sessions and one in twenty at 100, in two ways, neither yet explained:
 - an update never reaches a session (a 20 s timeout with the server alive), once
   with only two sessions connected. 3,000 events across two sessions in a
   dedicated stress ran clean, so it is not simply the notification logic.
+- (2026-09-21, a third in the same area and NOT in std/live) `tests/pingpong.fpr`
+  -- the cross-hart wake stress -- failed once inside a full `check-all.sh`
+  sweep. It would not reproduce: 12 runs idle and 15 more at a load average of
+  10 all passed, and the run takes 8.5 s against the leg's 60 s timeout, so
+  neither contention nor the timeout accounts for it. Recorded because it is
+  the same shape as the panic above: a cross-hart wake that did not arrive.
 
 They are recorded here rather than hidden by retries in the test.
+
+One thing that WAS hiding them has been fixed. The harness started the server
+on pipes nobody drained while the check ran; a pipe is 64 KiB, so a server that
+logged enough during a long run would block in `write()` and never answer
+again -- indistinguishable from the hang above, and far more likely at 1,000
+sessions than at 100. Server output now goes to a file. Whether that accounts
+for any of the observed failures is not yet known: they were rare enough that
+only a long run of clean 1,000-session checks would say.
+
+The harness also used to leak. Its cleanup was a `finally`, which does not
+survive the harness itself being killed -- by the sweep's `timeout`, or by
+anyone giving up on a long run -- so every abandoned run left a server holding
+a port. It now puts the server in its own process group, cleans up on
+SIGTERM/SIGINT/SIGHUP and at exit, and sweeps a pidfile on startup for the one
+case those cannot cover.
+
+And it now runs in the sweep (`check-all.sh`), which it never did before.
+Nothing else compiles `std/live`, `std/view`, `std/ma` or `std/livejs` at all,
+which is how four wrongly-general signatures sat in `std/live` and `std/view`
+until the generality check went in.
 
 ## What would make it the application language
 

@@ -1,0 +1,4 @@
+# the signature promises every type; the body only works for Int
+bad : a -> a .
+bad x = x + 1.
+main = bad 1.

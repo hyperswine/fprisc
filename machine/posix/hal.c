@@ -155,11 +155,26 @@ void hal_fault_init(void) {
 #ifndef MAP_NORESERVE
 #define MAP_NORESERVE 0
 #endif
+/* Asking for a SPECIFIC address portably is the awkward part.  Linux treats a
+ * plain address argument as a hint it will honour when the range is free, so
+ * `p == at` is the whole test.  FREEBSD does not: the address is advisory and
+ * it will quietly hand back somewhere else, so that test fails every time and
+ * a host whose app images are linked at a fixed base (QOS Portable) can never
+ * start.  MAP_FIXED alone would be wrong -- it REPLACES whatever is already
+ * mapped there -- but FreeBSD's MAP_EXCL turns MAP_FIXED into "this address
+ * or fail", which is exactly the guarantee the hint was standing in for.
+ * Where MAP_EXCL does not exist (Linux, macOS) the hint-and-check stands. */
+#if defined(MAP_FIXED) && defined(MAP_EXCL)
+#define FPR_MAP_AT (MAP_FIXED | MAP_EXCL)
+#else
+#define FPR_MAP_AT 0
+#endif
 void *fpr_heap_reserve(void *at, uw max, uw min, uw *bytes) {
   for (uw want = max; want >= min && want; want >>= 1) {
-    void *p = mmap(at, want, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
+    int flags = MAP_PRIVATE | MAP_ANON | MAP_NORESERVE | (at ? FPR_MAP_AT : 0);
+    void *p = mmap(at, want, PROT_READ | PROT_WRITE, flags, -1, 0);
     if (p == MAP_FAILED) continue;
-    if (at && p != at) { munmap(p, want); continue; } /* a hint, never MAP_FIXED over something live */
+    if (at && p != at) { munmap(p, want); continue; } /* never over something live */
     *bytes = want;
     return p;
   }

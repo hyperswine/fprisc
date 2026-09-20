@@ -372,6 +372,7 @@ builtinArities =
       [ ("myself", 1), ("spawn", 1), ("send", 2), ("sendLinear", 2), ("sendArc", 2), ("receive", 1), ("receiveFrom", 2),
         ("spawnCap", 3), ("spawnCapOn", 4), ("spawnOn", 2), ("Sys.spawnApp", 1), ("timeNow", 1),
         ("kill", 1), ("yield", 1), ("drop", 1), ("keep", 1), ("device", 1), ("reg32", 2),
+        ("heapUsed", 1),
         ("Sys.poolReset", 1), ("Sys.sleepUs", 1), ("Sys.logAt", 2), ("Sys.memStats", 1), ("Sys.memInfo", 1),
         ("use", 1), ("run", 2), ("View.serve", 5),
         ("Vec.new", 1), ("Vec.range", 2), ("Vec.mmul", 5), ("Vec.push", 2), ("Vec.len", 1), ("Vec.get", 2),
@@ -526,7 +527,7 @@ actorNames =
   S.fromList
     [ "myself", "spawn", "send", "sendLinear", "sendArc", "receive", "receiveFrom", "kill", "yield",
       "spawnCap", "spawnCapOn", "spawnOn", "Sys.spawnApp", "timeNow",
-      "drop", "keep", "device", "reg32",
+      "drop", "keep", "device", "reg32", "heapUsed",
       "Sys.poolReset", "Sys.sleepUs", "Sys.logAt", "Sys.memStats", "Sys.memInfo"
     ]
 
@@ -598,6 +599,7 @@ actorCall _ "drop" [_] = pure vUnit
 actorCall _ "keep" [v] = pure v
 actorCall _ "device" [_] = pure (VInt 0)
 actorCall _ "reg32" [_, _] = pure (VData mtimeT 0 [])
+actorCall _ "heapUsed" [_] = pure (VInt 0)
 actorCall _ "Sys.poolReset" [_] = pure (VInt 0)
 actorCall _ "Sys.sleepUs" [VInt us] = threadDelay (fromIntegral us) >> pure vUnit
 actorCall _ "Sys.logAt" [VInt h, s] = do

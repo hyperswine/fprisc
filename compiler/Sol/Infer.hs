@@ -101,6 +101,10 @@ solBuiltins =
       ("keep", scheme [0] (TFn (sv 0) (sv 0))),
       ("device", scheme [0] (TFn tStr (sv 0))),
       ("reg32", scheme [0, 1] (TFn (sv 0) (TFn tInt (sv 1)))),
+      -- an actor's pool is the AOT runtime's; Sol has a garbage collector
+      -- and no pool, so heapUsed is an honest zero -- std/actor's `tidy`
+      -- then simply never decides it is time to reset one
+      ("heapUsed", mono (TFn tUnit tInt)),
       ("Sys.poolReset", scheme [0] (TFn tInt (sv 0))),
       ("Sys.sleepUs", mono (TFn tInt tUnit)),
       ("Sys.logAt", scheme [0] (TFn tInt (TFn tStr tUnit))),

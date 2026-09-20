@@ -83,7 +83,7 @@ http req toMsg = Run (fn u -> toMsg (H.request req)).
 Sub msg = Type (Every Int msg).
 
 Policy = Type (Always | AtMostEvery Int).
-Field model = Type (Field String Policy (model -> J.Value) (J.Value -> model -> model)).
+Field model = Type (Field String Policy (model -> J.Value) (J.Value -> model -> Result model String)).
 
 # a durable field is a PATH and a policy: `Live.field Live.Always @Model.count`.
 # The literal carries the getter, the setter, the key and -- for any field whose
@@ -91,12 +91,12 @@ Field model = Type (Field String Policy (model -> J.Value) (J.Value -> model -> 
 # and sum types) -- its codec, minted by the compiler from the declaration.
 field : Policy -> { get : m -> a, set : a -> m -> m, segs : List String, enc : a -> Wire, dec : Wire -> Result a String | r } -> Field m .
 field policy path = Field (strcat "model." (strJoin "." path.segs)) policy (fn m -> J.fromWire (path.enc (path.get m)))
-  (fn v m -> case path.dec (J.toWire v) of Ok x -> path.set x m | Err _ -> m).
+  (fn v m -> case path.dec (J.toWire v) of Ok x -> Ok (path.set x m) | Err why -> Err why).
 
 # the same with a codec of your own, for a field whose type has none
 custom : Policy -> { get : m -> a, set : a -> m -> m, segs : List String | r } -> (a -> J.Value) -> D.Decoder a -> Field m .
 custom policy path enc dec = Field (strcat "model." (strJoin "." path.segs)) policy (fn m -> enc (path.get m))
-  (fn v m -> case D.run dec v of Ok x -> path.set x m | Err _ -> m).
+  (fn v m -> case D.run dec v of Ok x -> Ok (path.set x m) | Err why -> Err why).
 
 rev : unsafe List a -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
@@ -123,7 +123,7 @@ Rs = Type (Rs cfg app model sessions nextSid db saved tickers version told).
 # ---- serve -----------------------------------------------------------------------------
 serve cfg app =
   db = (case KV.open cfg.store of Ok d -> d | Err why -> error "live: {why}");
-  model = restore app.fields db app.init;
+  model = (case restore app.fields db app.init of Ok m -> m | Err why -> error "live: restore failed: {why}");
   listener = (case TCP.listen cfg.address cfg.port of Ok l -> l | Err why -> error "live: cannot listen on {cfg.address}:{cfg.port}: {why}");
   main = myself 0;
   # `send` never waits for room, so everything many actors send to has a mailbox
@@ -140,12 +140,16 @@ serve cfg app =
   (case receiveRes main of Ok why -> why | Err why -> why).
 
 # every durable field's last value, laid over `init`
-restore : List (Field m) -> KV.KvLog -> m -> m .
+restore : List (Field m) -> KV.KvLog -> m -> Result m String .
 restore fields db model = restoreGo fields db model.
-restoreGo : unsafe List (Field m) -> KV.KvLog -> m -> m .
+restoreGo : unsafe List (Field m) -> KV.KvLog -> m -> Result m String .
 restoreGo fields db model = case fields of
-    Nil -> model
-  | Field key _ _ put :: r -> restoreGo r db (case KV.get key db of O.Some v -> put v model | O.None -> model).
+  Nil -> Ok model
+| Field key _ _ put :: r -> (case KV.get key db of
+      O.None -> restoreGo r db model
+    | O.Some v -> (case put v model of
+          Ok next -> restoreGo r db next
+        | Err why -> Err "{key}: {why}")).
 
 # ---- the register: the model's single writer ---------------------------------------------
 register : unsafe Int -> TCP.Listener -> Rs -> A.Tidy -> String .
@@ -245,17 +249,23 @@ evJson codec ev = case ev of
   | Joined sid -> J.object (("e", J.Text "joined") :: ("sid", J.Integer sid) :: Nil)
   | Left sid -> J.object (("e", J.Text "left") :: ("sid", J.Integer sid) :: Nil)
   | Refused sid why -> J.object (("e", J.Text "refused") :: ("sid", J.Integer sid) :: ("why", J.Text why) :: Nil).
-evOf codec v =
-  text = (fn k -> O.withDefault "" (O.andThen J.asString (J.field k v)));
-  num = (fn k -> O.withDefault 0 (O.andThen J.asInt (J.field k v)));
-  case text "e" of
-    "msg" -> (case codec.dec (J.toWire (O.withDefault J.Null (J.field "m" v))) of
-        Ok m -> O.Some (Msg (num "sid") m)
-      | Err _ -> O.None)
-  | "joined" -> O.Some (Joined (num "sid"))
-  | "left" -> O.Some (Left (num "sid"))
-  | "refused" -> O.Some (Refused (num "sid") (text "why"))
-  | _ -> O.None.
+# Journal envelopes are checked as strictly as the application's message.
+evOf codec v = case D.run (D.field "e" D.string) v of
+    Err why -> Err why
+  | Ok kind -> (case D.run (D.field "sid" D.int) v of
+        Err why -> Err why
+      | Ok sid -> (case kind of
+            "msg" -> (case J.field "m" v of
+                O.None -> Err "missing message"
+              | O.Some value -> (case codec.dec (J.toWire value) of
+                    Ok m -> Ok (Msg sid m)
+                  | Err why -> Err why))
+          | "joined" -> Ok (Joined sid)
+          | "left" -> Ok (Left sid)
+          | "refused" -> (case D.run (D.field "why" D.string) v of
+                Ok why -> Ok (Refused sid why)
+              | Err why -> Err why)
+          | _ -> Err "unknown event kind: {kind}")).
 
 # what a session sent, as a message of this app.  "=" and the JSON of the
 # message is complete; "+" takes the event's argument as its final field
@@ -281,10 +291,12 @@ appendW xs ys = case xs of Nil -> ys | x :: r -> x :: appendW r ys.
 # live model, `update` is not a pure function of its events.
 replay app path = case KV.history path "$event" of
     Err why -> Err why
-  | Ok events -> Ok (replayGo app events app.init).
-replayGo app events model = case events of
-    Nil -> model
-  | (_, v) :: r -> replayGo app r (case evOf app.codec v of O.Some ev -> (case app.update ev model of (m2, _) -> m2) | O.None -> model).
+  | Ok events -> replayGo app events app.init 1.
+replayGo app events model index = case events of
+    Nil -> Ok model
+  | (_, v) :: r -> (case evOf app.codec v of
+        Err why -> Err "event {index}: {why}"
+      | Ok ev -> (case app.update ev model of (m2, _) -> replayGo app r m2 (index + 1))).
 
 # ---- commands ------------------------------------------------------------------------------
 # True when one of them was Quit
@@ -403,7 +415,9 @@ writerStart reg app conn self = case receive self of
   | _ -> Unit.
 
 Wr = Type (Wr s d seen asked latest).
-writing : unsafe Int -> a -> ST.Stream -> Int -> Int -> Wr -> A.Tidy -> Unit .
+# `app` is spelled out: this loop renders through it, so a bare `a` promised
+# the caller any type at all for something it projects `.view` from.
+writing : unsafe Int -> { view : Int -> model -> (List String, List String) | r } -> ST.Stream -> Int -> Int -> Wr -> A.Tidy -> Unit .
 writing reg app conn sid self w0 t0 = case A.tidy self (w0, t0) of (Wr s d seen asked latest, t) ->
   m = receive self;
   (case m of
@@ -443,7 +457,7 @@ stampsGo paths acc = case paths of
     Nil -> rev acc Nil
   | p :: r -> stampsGo r ((p, (case OS.stat p of Ok (_, size, mtime) -> mtime * 1000003 + size | Err _ -> 0)) :: acc).
 
-watcher : unsafe Int -> a -> List (String, Int) -> Int -> Unit .
+watcher : unsafe Int -> { watch : List String, rebuild : List String | r } -> List (String, Int) -> Int -> Unit .
 watcher reg cfg seen self =
   _ = Sys.sleepUs 300000;
   now = stamps cfg.watch;
