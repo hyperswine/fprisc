@@ -87,11 +87,11 @@ attrOf (Cls s) = " class=\"{s}\"".
 attrOf (Att k v) = " {k}=\"{esc v}\"".
 attrOf (ShowIf n) = " data-show=\"{n}\"".
 attrOf (OnSet n v) = " data-set=\"{n}\" data-val=\"{v}\"".
-attrOf (OnClick msg arg) = " data-click=\"{msg}\" data-arg=\"{arg}\"".
-attrOf (OnBoth msg arg n v) = " data-click=\"{msg}\" data-arg=\"{arg}\" data-set=\"{n}\" data-val=\"{v}\"".
-attrOf (OnSend msg lit) = " data-click=\"{msg}\" data-lit=\"{esc lit}\"".
+attrOf (OnClick msg arg) = " data-click=\"{esc msg}\" data-arg=\"{arg}\"".
+attrOf (OnBoth msg arg n v) = " data-click=\"{esc msg}\" data-arg=\"{arg}\" data-set=\"{n}\" data-val=\"{v}\"".
+attrOf (OnSend msg lit) = " data-click=\"{esc msg}\" data-lit=\"{esc lit}\"".
 attrOf (Input n) = " data-input=\"{n}\"".
-attrOf (OnEnter msg arg) = " data-enter=\"{msg}\" data-arg=\"{arg}\"".
+attrOf (OnEnter msg arg) = " data-enter=\"{esc msg}\" data-arg=\"{arg}\"".
 
 # ---- CSS: only the classes this tree actually uses -------------------------
 
@@ -290,3 +290,72 @@ rev l = rvGo l Nil.
 rvGo : unsafe List o84 -> List o84 -> List o84 .
 rvGo Nil acc = acc.
 rvGo (x :: r) acc = rvGo r (x :: acc).
+
+# ---- TYPED events and client state: no names in strings ----------------------------------------
+# The attributes above take a message NAME and a local's NAME, as text; a typo
+# in either is a silent no-op.  These take the app's own values instead:
+#
+#   a MESSAGE is a value of the app's Msg type, put on the wire by the codec the
+#   compiler mints from the type's declaration (`@Msg`: FPRISC.hs codecFor):
+#
+#       V.send codec (Bump 10)                  a complete message
+#       V.sendWith codec (Add "") @Client.draft  its LAST field comes from client
+#                                                state when the event fires
+#
+#   CLIENT STATE is a field of a declared record, named by a path literal
+#   (`@Client.tab`), so a field that does not exist is a COMPILE error:
+#
+#       V.locals @Client { tab = "1", draft = "" }     declare them, with initial values
+#       V.showIf @Client.tab "2"   V.setTo @Client.tab "2"   V.bind @Client.draft
+#
+# On the wire a typed message is "=" or "+" and a JSON array [name, field, ...]:
+# "=" is complete, "+" takes the event's argument as its final field.
+# (std/live.fpr decodes it with the same codec; anything else is refused.)
+
+wire : { name : m -> String, args : m -> List String | r } -> m -> String .
+wire codec msg = strcat "=" (jarr (codec.name msg :: codec.args msg)).
+
+wireOpen : { name : m -> String, args : m -> List String | r } -> m -> String .
+wireOpen codec msg = strcat "+" (jarr (codec.name msg :: dropLast (codec.args msg))).
+
+dropLast : unsafe List a -> List a .
+dropLast xs = case xs of Nil -> Nil | x :: Nil -> Nil | x :: r -> x :: dropLast r.
+
+# the local's name a path stands for: @Client.ui.tab -> "ui_tab"
+localName : { segs : List String | r } -> String .
+localName path = strJoin "_" path.segs.
+
+send : { name : m -> String, args : m -> List String | r } -> m -> Attr .
+send codec msg = OnSend (wire codec msg) "".
+
+sendWith : { name : m -> String, args : m -> List String | r } -> m -> { segs : List String | q } -> Attr .
+sendWith codec msg path = OnClick (wireOpen codec msg) (localName path).
+
+enterWith : { name : m -> String, args : m -> List String | r } -> m -> { segs : List String | q } -> Attr .
+enterWith codec msg path = OnEnter (wireOpen codec msg) (localName path).
+
+showIf : { segs : List String | r } -> String -> Attr .
+showIf path value = ShowIf "{localName path}:{value}".
+
+setTo : { segs : List String | r } -> String -> Attr .
+setTo path value = OnSet (localName path) value.
+
+bind : { segs : List String | r } -> Attr .
+bind path = Input (localName path).
+
+text : { segs : List String | r } -> Node .
+text path = LTxt (localName path).
+
+# every leaf of the client-state record, declared with its initial value: the
+# bare literal `@Client` is its schema (docs/PATHS.md)
+locals : List { path : String, get : c -> String | r } -> c -> List Attr .
+locals schema init = localsGo schema init.
+localsGo : unsafe List { path : String, get : c -> String | r } -> c -> List Attr .
+localsGo schema init = case schema of
+    Nil -> Nil
+  | e :: rest -> Local (dots e.path 1 Nil) (e.get init) :: localsGo rest init.
+# "ui.tab" -> "ui_tab", the spelling localName gives
+dots : unsafe String -> Int -> List String -> String .
+dots p i acc = case i > strlen p of
+    True -> strJoin "" (rev acc)
+  | False -> dots p (i + 1) ((case charAt p i == 46 of True -> "_" | False -> chr (charAt p i)) :: acc).

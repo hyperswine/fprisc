@@ -1,0 +1,3 @@
+out: Bump [10] | Add [two words] | Toggle [True] | Move [-3, 4, x] | Clear []
+in:  Ok (Bump 10) | Ok (Move (-3) 4 x) | Ok (Toggle False) | Ok Clear
+bad: Err Bump: field 1 is not a number | Err Bump: expected 1 field(s) | Err Msg: no such message: Nope | Err Toggle: field 1 is not True or False | Err Clear: expected 0 field(s)

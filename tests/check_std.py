@@ -20,6 +20,7 @@ def check(name, args=(), cwd=None, label='', env=None):
     assert p.stdout == want.read_text(), f'{name}: output differs from {want.name}\n{p.stdout}'
     print(f'{label}: PASS')
 check('ifelse', label='if/then/else: sugar for the two-armed case -- else-if chains, block branches, names that merely start with if')
+check('codec', label='@Msg: a wire codec minted from a sum type\'s declaration -- name, fields as text, and back; five kinds of bad input refused by name')
 check('foundation', label='Option, Order, Result; values print as they are written')
 check('list', label='List: map/filter/fold/find/zip/group, a stable merge sort of 300,000')
 check('string', label='String: split/join/trim/replace/search/slices/toInt, 1.3 MB through join and split')
@@ -30,6 +31,10 @@ p = subprocess.run([fpr, 'sol', str(ROOT / 'tests' / 'std' / 'solstd.sol')], cap
 got = [l for l in p.stdout.splitlines() if not l.startswith(('[sol]', '[table]', '[jit]'))]
 assert got == ['[1, 2, 3]', 'Some 3', 'A-B--C', '[(and, 2), (bird, 1), (cat, 1), (dog, 1), (the, 3)]', '[1,{"a":null}]',
                'Err line 1, column 4: expected a value, found the end of the text'], p.stdout + p.stderr
+bad = ROOT / 'tests' / 'std' / 'codec_bad.fpr'
+p2 = subprocess.run([fpr, 'build', str(bad), '-o', os.devnull], capture_output=True, text=True, timeout=300)
+assert p2.returncode != 0 and 'not Int, String or Bool' in p2.stdout + p2.stderr, p2.stdout + p2.stderr
+print('@Msg over a type with an unwireable field is a COMPILE error that says which constructor: PASS')
 print('Sol runs the same std modules (list, string, map, option, order, json), and prints values as written: PASS')
 check('extbase', label='Math, Encoding (hex, Base64, URL), Binary, Digest: SHA-256 against the published vectors, incremental equals whole')
 check('proclimits', label='Proc: a time limit kills the child and says so; extra environment reaches it')

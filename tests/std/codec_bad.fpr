@@ -1,0 +1,4 @@
+unsafe base.
+Msg = Type (Pick (List Int) | Other x).
+c = @Msg.
+main = print "x".

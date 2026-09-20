@@ -70,6 +70,21 @@ intPow a n = case n < 0 of
       | False -> a * intPow a (n - 1).
 intSq x = x * x.
 
+# the CHECKED decimal parse a generated message codec uses (FPRISC.hs codecFor):
+# the whole string, an optional leading "-", digits -- or an Err
+wireInt : String -> Result Int String .
+wireInt s = case strlen s == 0 of
+    True -> Err "not a number"
+  | False -> (case charAt s 1 == 45 of
+      True -> (case strlen s == 1 of True -> Err "not a number" | False -> wireDigits s 2 0 True)
+    | False -> wireDigits s 1 0 False).
+wireDigits : unsafe String -> Int -> Int -> Bool -> Result Int String .
+wireDigits s i acc neg = case i > strlen s of
+    True -> Ok (case neg of True -> 0 - acc | False -> acc)
+  | False -> (case charAt s i >= 48 and charAt s i <= 57 of
+      True -> wireDigits s (i + 1) (acc * 10 + (charAt s i - 48)) neg
+    | False -> Err "not a number").
+
 # ---- Str: (+) concatenates; (-) is DEconcatenation --------------------------
 # (a + b) - b == a: removes b when it is a suffix of a, else a unchanged.
 strTake s n = strTakeGo s n 1 "".

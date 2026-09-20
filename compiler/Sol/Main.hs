@@ -80,7 +80,7 @@ main = do
   -- program's declared shapes and desugar to {get,set,segs} records,
   -- bare @Shape to the flattened schema; sol file-path literals
   -- (lowercase / '/' roots) pass through untouched.
-  let (pathErrs, utopsX0) = expandPathLits (shapeTyTable utopsX1) utopsX1
+  let (pathErrs, utopsX0) = expandPathLits (shapeTyTable utopsX1) (typeTyTable utopsX1) utopsX1
   unless (null pathErrs) $ do
     putStrLn "=== PATH LITERALS: ERRORS ==="
     mapM_ (putStrLn . ("  * " ++)) pathErrs

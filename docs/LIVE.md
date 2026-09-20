@@ -10,7 +10,7 @@ replayable from an append-only store, reload at run time.
 internal tool: hundreds of sessions, not tens of thousands. The shape holds and
 every item on the list now runs on a plain posix process (`fpr run`) as well as on
 QOS. What is not there yet is idle sessions that cost no CPU (a session is about
-half a megabyte), and a typed surface where today there are strings. TUI and desktop apps exist only
+half a megabyte), and TLS. TUI and desktop apps exist only
 on QOS Portable, because the terminal and GL tiers live in its host.
 
 What was built to find out: `std/ws`, `std/kvlog`, `std/live`, `std/actor`'s
@@ -25,9 +25,10 @@ and `liveboard-reload.py` as real websocket clients.
 | **An actor per connection** | WORKS. A session is TWO actors on one socket: a reader (frames to events) and a writer (renders `view sid model` itself, holds what the tab last saw, is the only one that writes). One register owns the model | `std/live.fpr`; 1,000 sessions join in 3.3 s, one event reaches all 1,000 in 260 ms |
 | **Static / dynamic split** | WORKS, unchanged from QOS. `genview` renders a tree to (statics, dynamics); a counter change is an 18-byte delta on a 7-static page; a reshape is a full render | `qos/programs/mods/genview.fpr` is pure FP-RISC and runs on posix as is |
 | **Ma: stacks, spacers, everything from primitives** | WORKS, unchanged. `vstack hstack zstack spacer card` ... over `El / Txt / Dyn`; the stylesheet is a function of the tree | `qos/programs/mods/ma.fpr`; `maapp.fpr` runs under `fpr run` untouched |
-| **`Persistent a`, per field, with options** | WORKS, but as a LIST beside the model, not a type inside it: `Live.intField "board/count" Live.Always get set`. Policies: `Always`, `AtMostEvery ms`. Needs a getter and a setter per field | `Live.Field`; restart brings back `count` and `notes` and, on purpose, not the clock |
-| **Client-side state (`ClientState a`)** | PARTLY. It exists and never round-trips unless an event carries it (`G.Local`, `ShowIf`, `OnSet`, `Input`), and the demo declares it in one list like the durable fields. But it is NAMES IN STRINGS: a typo is a silent no-op | `genview` + the 150-line client script |
-| **Elm's Cmd and Sub** | WORKS. `update` answers `Live.After ms msg arg`, `Live.Run name work` (runs in its own actor; the result returns as `Done name result`), `Live.Quit`; `subs` answers `Live.Every ms name`, re-read after every update, so a clock exists only while the model asks for it | the check's clock and digest legs |
+| **`Persistent a`, per field, with options** | WORKS, named by a PATH: `Live.int Live.Always @Model.count`. The literal is checked against the model's declaration and gives the getter, the setter and the key, so a field that does not exist is a compile error. Policies: `Always`, `AtMostEvery ms`. It is a list beside the model, not a wrapper type inside it | `Live.int string bool strings json`; restart brings back `count` and `notes` and, on purpose, not the clock |
+| **Client-side state (`ClientState a`)** | WORKS, typed. `Client = {tab : String, draft : String}.` is a record; `View.locals @Client {tab = "1", draft = ""}` declares it, `View.showIf @Client.tab "2"`, `View.setTo`, `View.bind @Client.draft` use it, and a field that does not exist is a compile error. It never round-trips unless a message carries it (`View.sendWith codec (Add "") @Client.draft`) | `std/view.fpr` + the 150-line client script; checked in a real browser |
+| **Typed messages** | WORKS. `Msg = Type (Bump Int \| Add String \| ...)` and `codec = @Msg`: the compiler mints the codec from the declaration (as it mints a path from a record's). The view sends VALUES (`View.send codec (Bump 10)`), `update` matches on them, the journal stores them. An unknown message, a field that is not a number, a missing field: refused by name before `update` sees it, as `Live.Refused sid why` | `compiler/FPRISC.hs codecFor`; `tests/std/codec.fpr`; the check's forged-message leg |
+| **Elm's Cmd and Sub** | WORKS, typed. `update` answers `Live.After ms msg`, `Live.Run work` (runs in its own actor; the MESSAGE it returns comes back through `update`), `Live.Quit`; `subs` answers `Live.Every ms msg`, re-read after every update, so a clock exists only while the model asks for it | the check's clock and digest legs |
 | **Replayable from an append-only store** | WORKS. Every durable write is an appended line; with `journal` every EVENT is too, and `Live.replay` rebuilds the model from `init`, `update` and the log alone. The check rebuilds 1,950 events and gets the saved state | `std/kvlog.fpr`: `history`, `at time`, torn-tail tolerant |
 | **Reload** | WORKS, differently on each system. posix: the server sees a source change, rebuilds, and only if that succeeds saves its fields and BECOMES the new program; browsers reconnect; 4 s, nearly all of it the compile. A rebuild that fails is printed and the old program keeps serving. QOS: a module is replaced IN PLACE through the plugin loader (`tests/livereload.fpr`), and nothing restarts | `liveboard-reload.py`, 8 of 8 |
 
@@ -92,28 +93,35 @@ author would hit.
    constraint worth knowing before designing a protocol.
 5. **`exec` from a hart thread** inherits that thread's signal mask and the
    ignored SIGPIPE; `Os.exec` and `Os.run` reset both.
+6. **Waiting must not allocate.** The worst bug of all was mine: a wait loop that
+   allocated on every poll and never reached a tidy point (see the costs above).
+   Any loop that can spin for a day has to be allocation-free or take boundaries.
+7. **A constructor named like a module alias** (`Digest`, with
+   `Digest = use "std/digest"`) is resolved as the module, and the type error
+   that follows points somewhere else entirely.
 
 ## What would make it the application language
 
-In the order I would do them:
+Done since the first version of this page: durable fields and client state from
+PATH literals; a typed `Msg` with a compiler-minted codec; sessions at half a
+megabyte; the view layer (`std/view`, `std/ma`, `std/livejs`) in std.
 
-1. **Fields from paths.** The compiler already mints `@Model.count` as
-   `{get, set, segs}` (`docs/PATHS.md`). `Live.persist @Model.count Live.Always`
-   would replace the hand-written getter and setter, give the key for free, and
-   is the honest form of "`Persistent a` on a field". The same literal can name a
-   client-state field, which removes the strings from item 5 of the table.
-2. **Typed messages.** Events arrive as `Msg sid "bump" "10"`: a name and a
-   string. A `Msg` type per app with a generated decoder would let the compiler
-   check the view against `update`.
-3. **One poller for every socket** (above): idle sessions should cost no CPU.
-4. **The view layer in std.** `genview`, `ma` and the client script are pure and
-   live in `qos/programs/mods`; they are the application library and belong
-   beside `std/live` (STD-PLAN's point: the standard library is not in std).
-5. **Commands worth having**: `Http` as a command (today `Live.Run` around
+In the order I would do what is left:
+
+1. **One poller for every socket**: idle sessions should cost no CPU. It needs a
+   `poll` over many descriptors as a primitive, and the acceptor shape QOS's
+   FPRLive already has.
+2. **Richer messages and codecs.** `@Msg` takes Int, String and Bool fields. A
+   message carrying a record or a list, and a codec for a RECORD (so
+   `Live.json` needs no hand-written encoder), are the same compiler pass.
+3. **Commands worth having**: `Http` as a command (today `Live.Run` around
    `Http.get`), navigation, file upload (the websocket reader already takes
    fragmented and large messages), a port to the page's JavaScript.
-6. **TUI and desktop on posix**: raw-terminal and input primitives in
+4. **TUI and desktop on posix**: raw-terminal and input primitives in
    `machine/posix` (they exist in QOS's host, `hal/unix/tty_raw.c`), then
    `std/mvu`'s drivers run there too.
-7. **Store maintenance**: compaction, fsync as a policy, and per-session state that
+5. **Store maintenance**: compaction, fsync as a policy, and per-session state that
    does not live in the shared model.
+6. **One App value for both drivers.** QOS's `fprlive.fpr` and `std/live` have the
+   same shape and different surfaces (`EMsg sid name arg` there, `Msg sid msg`
+   here); the QOS driver should take the typed one.

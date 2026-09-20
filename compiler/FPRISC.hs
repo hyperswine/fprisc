@@ -1424,8 +1424,12 @@ collectShapes tops = M.fromList [(fs, shapeIdFor fs) | fs <- allShapes]
 shapeTyTable :: [STop] -> M.Map Name [(Name, Ty)]
 shapeTyTable tops = M.fromList [(n, fs) | TShape n fs <- tops]
 
-expandPathLits :: M.Map Name [(Name, Ty)] -> [STop] -> ([String], [STop])
-expandPathLits tbl tops = (nub (concatMap errsTop tops), map top tops)
+-- the declared SUM types, for codec literals (`@Msg`): name -> constructors
+typeTyTable :: [STop] -> M.Map Name [(Name, [Ty])]
+typeTyTable tops = M.fromList [(n, cs) | TType n _ _ cs <- tops]
+
+expandPathLits :: M.Map Name [(Name, Ty)] -> M.Map Name [(Name, [Ty])] -> [STop] -> ([String], [STop])
+expandPathLits tbl ttbl tops = (nub (concatMap errsTop tops), map top tops)
   where
     top (TBind n ps gs b) = TBind n ps (map (mapGuardE goE) gs) (goE b)
     top (TStruct n as fs) = TStruct n as [(f, goE e) | (f, e) <- fs]
@@ -1449,17 +1453,87 @@ expandPathLits tbl tops = (nub (concatMap errsTop tops), map top tops)
             Just (p, root, fields, fs)
       _ -> Nothing
 
+    -- `@Msg` where Msg is a declared SUM type: its wire codec (codecFor)
+    codecTarget e = case e of
+      SApp (SVar "Path") (SStrI [SegStr p])
+        | not (null p), isUpper (head p), '.' `notElem` p,
+          M.notMember p tbl, Just cs <- M.lookup p ttbl -> Just (p, cs)
+      _ -> Nothing
+
     goE e
       | Just (p, root, fields, fs) <- pathTarget e =
           case rewriteLit p root fields fs of
             Right e' -> e'
             Left _ -> e -- reported via errsE; keep the tree well-formed
+      | Just (p, cs) <- codecTarget e = either (const e) id (codecFor p cs)
     goE e = descend e
 
     errsE e
       | Just (p, root, fields, fs) <- pathTarget e =
           either (: []) (const []) (rewriteLit p root fields fs)
+      | Just (p, cs) <- codecTarget e = either (: []) (const []) (codecFor p cs)
     errsE e = concatMap errsE (children e)
+
+    -- THE MESSAGE CODEC.  A bare literal `@Msg` over a declared sum type whose
+    -- constructor fields are Int, String or Bool is the record
+    --
+    --   { name : Msg -> String,                          the constructor
+    --     args : Msg -> List String,                     its fields, as text
+    --     make : String -> List String -> Result Msg String }   and back
+    --
+    -- minted from the declaration, as a path is from a record's.  It is what
+    -- lets a message cross a wire (a page, a log) as TEXT and still be a
+    -- checked value of its type on the other side: an unknown constructor, a
+    -- wrong number of fields or a field that is not a number is an Err that says
+    -- so, never a value of the wrong shape.  Ordinary code downstream: no new
+    -- type-system machinery, exactly as for paths.
+    codecFor p cs = do
+      mapM_ checkCon cs
+      pure $
+        SRec
+          [ ("name", SLam ["m"] (SCase (SVar "m") [(PCon c (map (const PWild) tys), str c) | (c, tys) <- cs])),
+            ("args", SLam ["m"] (SCase (SVar "m") [(PCon c [PVar (v i) | (i, _) <- zip [1 :: Int ..] tys],
+                                                   SList [render t (SVar (v i)) | (i, t) <- zip [1 ..] tys]) | (c, tys) <- cs])),
+            ("make", SLam ["n", "as"] (SCase (SVar "n") ([(PStr (base c), build c tys) | (c, tys) <- cs]
+                                        ++ [(PWild, err (p ++ ": no such message: ") (Just (SVar "n")))])))
+          ]
+      where
+        v i = "f" ++ show i
+        a i = "a" ++ show i
+        -- the name a client sees: without any module qualification
+        base c = reverse (takeWhile (/= '.') (reverse (takeWhile (/= '@') c)))
+        str c = SStrI [SegStr (base c)]
+        err msg extra = SApp (SVar "Err") (case extra of
+          Nothing -> SStrI [SegStr msg]
+          Just e -> SStrI [SegStr msg, SegExpr e])
+        render t x = case t of
+          TCon "Int" [] -> SApp (SVar "str") x
+          TCon "Bool" [] -> SCase x [(PCon "True" [], SStrI [SegStr "True"]), (PCon "False" [], SStrI [SegStr "False"])]
+          _ -> x
+        listPat [] = PCon "Nil" []
+        listPat (x : xs) = PCon "Cons" [PVar x, listPat xs]
+        build c tys =
+          let n = length tys
+              done = SApp (SVar "Ok") (foldl SApp (SVar c) [SVar (v i) | i <- [1 .. n]])
+              field (i, t) rest = case t of
+                TCon "Int" [] -> SCase (SApp (SVar "wireInt") (SVar (a i)))
+                  [(PCon "Ok" [PVar (v i)], rest), (PCon "Err" [PWild], err (base c ++ ": field " ++ show i ++ " is not a number") Nothing)]
+                TCon "Bool" [] -> SCase (SVar (a i))
+                  [ (PStr "True", SBlock [SBind (v i) [] (SVar "True")] rest),
+                    (PStr "False", SBlock [SBind (v i) [] (SVar "False")] rest),
+                    (PWild, err (base c ++ ": field " ++ show i ++ " is not True or False") Nothing) ]
+                _ -> SBlock [SBind (v i) [] (SVar (a i))] rest
+           in SCase (SVar "as")
+                [ (listPat [a i | i <- [1 .. n]], foldr field done (zip [1 ..] tys)),
+                  (PWild, err (base c ++ ": expected " ++ show n ++ " field(s)") Nothing) ]
+        checkCon (c, tys) = mapM_ (checkTy c) tys
+        checkTy c t = case t of
+          TCon "Int" [] -> Right ()
+          TCon "String" [] -> Right ()
+          TCon "Bool" [] -> Right ()
+          _ -> Left ("codec literal @" ++ p ++ ": constructor " ++ base c
+                       ++ " has a field that is not Int, String or Bool -- declare its fields' types (" ++ base c
+                       ++ " Int String), and keep anything richer out of a message that crosses a wire")
 
     rewriteLit p root [] _ = schemaFor p root
     rewriteLit p root fields fs = do

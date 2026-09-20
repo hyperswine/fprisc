@@ -393,9 +393,10 @@ compileMain = do
       -- merged program, so root and unit rewrites agree; the generated
       -- records then flow through every later pass like user code).
       let ptbl = shapeTyTable tops0RL
-          (pathErrsM, tops0R) = expandPathLits ptbl tops0RL
-          (pathErrsR, root0) = expandPathLits ptbl root0L
-          unitsPR = [(h, expandPathLits ptbl uts) | (h, uts) <- units0L]
+          ttbl = typeTyTable tops0RL
+          (pathErrsM, tops0R) = expandPathLits ptbl ttbl tops0RL
+          (pathErrsR, root0) = expandPathLits ptbl ttbl root0L
+          unitsPR = [(h, expandPathLits ptbl ttbl uts) | (h, uts) <- units0L]
           units0 = [(h, ts) | (h, (_, ts)) <- unitsPR]
           pathErrs = List.nub (pathErrsM ++ pathErrsR ++ concat [es | (_, (es, _)) <- unitsPR])
       unless (null pathErrs) $ do
