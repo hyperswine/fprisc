@@ -95,9 +95,10 @@ open path = case records path of
 # the store's state never holds on to a request: `keep` makes it its own
 step : String -> M.Map String J.Value -> Req -> (M.Map String J.Value, Rep) .
 step path m q = case q of
-    Put k v ->
-      _ = fileAppend path (strcat (J.render (J.object (("t", J.Integer (C.now Unit)) :: ("k", J.Text k) :: ("v", v) :: Nil))) "\n");
-      (M.insert (keep k) (keep v) m, Done)
+  Put k v ->
+    (case fileAppend path (strcat (J.render (J.object (("t", J.Integer (C.now Unit)) :: ("k", J.Text k) :: ("v", v) :: Nil))) "\n") of
+      Ok _ -> (M.insert (keep k) (keep v) m, Done)
+    | Err why -> (m, Failed why))
   | Get k -> (m, (case M.get k m of O.Some v -> Value v | O.None -> Done))
   | Keys -> (m, Listing (M.keys m))
   | Size -> (m, Count (M.size m))
@@ -135,11 +136,21 @@ countOf xs n = case xs of Nil -> n | _ :: r -> countOf r (n + 1).
 
 # A reply is a MESSAGE: it is dropped once read (or it pins the store's slab for
 # as long as the caller lives), and what is taken out of it to keep is `keep`-copied.
+# Compatibility convenience: a failed append stops the caller instead of claiming
+# success. Use tryPut when the application can handle a storage error explicitly.
 put : String -> J.Value -> KvLog -> Unit .
-put key value db = case db of KvLog a _ ->
+put key value db = case tryPut key value db of
+    Ok _ -> Unit
+  | Err why -> error "kvlog: cannot save {key}: {why}".
+
+# On failure the in-memory value is unchanged. An I/O error may still have
+# partially appended bytes; this is not a transactional or fsync guarantee.
+tryPut : String -> J.Value -> KvLog -> Result Unit String .
+tryPut key value db = case db of KvLog a _ ->
   r = A.askSure (myself 0) a (Put key value);
+  out = (case r of Done -> Ok Unit | Failed why -> Err (keep why) | _ -> Err "put: unexpected reply");
   _ = drop r;
-  Unit.
+  out.
 
 get : String -> KvLog -> O.Option J.Value .
 get key db = case db of KvLog a _ ->

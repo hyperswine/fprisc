@@ -1,0 +1,62 @@
+unsafe base.
+
+KV = use "std/kvlog".
+Live = use "std/live".
+J = use "std/json".
+F = use "std/file".
+O = use "std/option".
+P = use "std/program".
+D = use "std/decode".
+S = use "std/string".
+
+Model = { count : Int }.
+Msg = Type (Add Int).
+
+codec = @Msg.
+isErr r = case r of Err _ -> True | Ok _ -> False.
+check yes = if yes then Unit else error "persistence regression".
+
+update ev model = case ev of
+  Live.Msg _ (Add n) -> (model + n, Nil)
+| _ -> (model, Nil).
+
+app = { init = 0, update = update, codec = codec }.
+
+open p = case KV.open p of Ok db -> db | Err why -> error why.
+
+main = case P.args Unit of
+  "put-panic" :: Nil ->
+    db = open "missing/log";
+    _ = KV.put "count" (J.Integer 2) db;
+    error "unreachable after failed put"
+| _ ->
+    db = open "store";
+    _ = KV.put "count" (J.Integer 7) db;
+    # Replace the store with a directory: append must fail even as root.
+    _ = check (not (isErr (F.remove "store")));
+    _ = check (not (isErr (F.rename "directory" "store")));
+    _ = check (isErr (KV.tryPut "count" (J.Integer 8) db));
+    _ = check (KV.get "count" db == O.Some (J.Integer 7));
+    _ = print "failed append preserves memory";
+    good = open "good";
+    fields = Live.field Live.Always @Model.count :: Nil;
+    _ = check (Live.restore fields good {count = 3} == Ok {count = 3});
+    _ = KV.put "model.count" (J.Integer 9) good;
+    _ = check (Live.restore fields good {count = 3} == Ok {count = 9});
+    _ = KV.put "model.count" (J.Text "changed schema") good;
+    _ = check (case Live.restore fields good {count = 3} of Err why -> S.contains "model.count" why | Ok _ -> False);
+    customFields = Live.custom Live.Always @Model.count J.Integer D.int :: Nil;
+    _ = check (isErr (Live.restore customFields good {count = 3}));
+    _ = print "restore rejects incompatible field";
+    journal = open "journal";
+    _ = KV.put "$event" (Live.evJson codec (Live.Msg 1 (Add 4))) journal;
+    _ = KV.put "$event" (Live.evJson codec (Live.Msg 1 (Add 6))) journal;
+    _ = check (Live.replay app "journal" == Ok 10);
+    _ = KV.put "$event" (J.object (("e", J.Text "unknown") :: ("sid", J.Integer 1) :: Nil)) journal;
+    _ = check (case Live.replay app "journal" of Err why -> S.contains "event 3" why | Ok _ -> False);
+    _ = check (isErr (Live.evOf codec (J.object (("e", J.Text "joined") :: Nil))));
+    _ = check (isErr (Live.evOf codec (J.object (("e", J.Text "joined") :: ("sid", J.Text "bad") :: Nil))));
+    _ = check (isErr (Live.evOf codec (J.object (("e", J.Text "msg") :: ("sid", J.Integer 1) :: ("m", J.Text "old schema") :: Nil))));
+    _ = check (isErr (Live.evOf codec (J.object (("e", J.Text "refused") :: ("sid", J.Integer 1) :: Nil))));
+    _ = print "replay rejects incompatible events and malformed envelopes";
+    0.
