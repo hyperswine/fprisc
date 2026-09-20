@@ -70,6 +70,7 @@ modules fails at LINK time on the `fpr_g_Os_` name: imports are the manifest.
 | `std/stream` | bytes in order from a file or a socket: `read readWithin readAll readOn write close`, and a `Reader` (`reader`, or `readerOn poller`) that keeps what was read past what you asked for: `reader readUntil readLine readExactly readRest` |
 | `std/poller` | ONE actor that waits on every descriptor: `start await`. Waiters sleep in their mailboxes; one `poll(2)` covers them all; one-shot, level-triggered; a quiet turn allocates nothing |
 | `std/tcp` | `connect listen port accept stop serve serveOn` -- `serve` gives each connection its own actor and closes it when the handler returns |
+| `std/term` | a terminal application, the same shape as a web one: `run { init, update, view, subs }`, `Ev msg = Key k \| Resized c r \| Msg m`, `Cmd msg = After \| Run \| Quit`, `Sub msg = Every`; keys decoded in FP-RISC (`decode`: a UTF-8 character at a time, arrows, Home/End, F-keys, Ctrl, Alt); `clear moveTo bold dim inverse color altScreen`; lines repainted only when they change; the terminal is put back however the program ends |
 | `std/math` | Int: `abs min max clamp sign mod rem isEven gcd powInt`; F64: `pi e toFloat truncate floor ceiling round sqrt pow exp log log2 sin cos tan absF minF maxF clampF isFinite format` |
 | `std/binary` | fixed-width integers in a byte string: `u8 u16le u16be u32le u32be i8 i16le i32le i32be` (past the end is `None`), `putU8 putU16le putU16be putU32le putU32be` |
 
@@ -110,6 +111,9 @@ The design names three. Two exist, and both are driven by `tests/check_std.py`:
   it; a digest per line with bounded parallelism; every request logged, failures
   at WARN; `POST /shutdown` stops the listener and the program exits 0. The test
   hits it with 40 parallel writes.
+- `examples/todo.fpr` is a TERMINAL app (`std/term`): the same init / update / view
+  / subs, keys where the clicks were, a durable list through a minted codec. The
+  suite drives it through a pseudo-terminal.
 - `examples/wc.fpr` is an executable script (`#!/usr/bin/env -S fpr run`).
 
 ## Not here yet (from the design's inventory)

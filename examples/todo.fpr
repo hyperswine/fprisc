@@ -1,0 +1,72 @@
+#!/usr/bin/env -S fpr run
+# todo.fpr -- a terminal application: the same shape as a web one (std/term.fpr).
+#
+#   fpr run examples/todo.fpr [todo.json]
+#
+#   type and press Enter to add    Up / Down to move    Tab to tick    Delete to remove
+#   Ctrl-q or Escape to quit
+#
+# `update` is a pure function of events; saving is a COMMAND; the list is durable
+# through a codec the compiler mints from `Todo`'s declaration (no encoder written).
+unsafe base.
+
+Term = use "std/term".
+File = use "std/file".
+Json = use "std/json".
+List = use "std/list".
+String = use "std/string".
+Program = use "std/program".
+Clock = use "std/clock".
+
+Todo = {text : String, done : Bool}.
+Model = {items : List Todo, at : Int, draft : String, path : String, note : String, seconds : Int}.
+Msg = Type (Saved String | Second).
+
+codec = @Model.items.
+
+save m = Term.Run (fn u -> Saved (case File.writeText m.path (Json.encode codec m.items) of Ok _ -> "saved" | Err why -> "NOT saved: {why}")).
+
+count m = List.length m.items.
+clampAt m = {m | at = (if m.at < 0 then 0 else if m.at >= count m then (if count m == 0 then 0 else count m - 1) else m.at)}.
+
+update ev m = case ev of
+    Term.Resized _ _ -> (m, Nil)
+  | Term.Msg (Saved what) -> ({m | note = what}, Nil)
+  | Term.Msg Second -> ({m | seconds = m.seconds + 1}, Nil)
+  | Term.Key k -> (case k of
+        Term.Char c -> ({m | draft = strcat m.draft c}, Nil)
+      | Term.Backspace -> ({m | draft = dropLastChar m.draft}, Nil)
+      | Term.Enter -> (if strlen (String.trim m.draft) == 0 then (m, Nil)
+                       else changed {m | items = List.append m.items ({text = String.trim m.draft, done = False} :: Nil), draft = "", at = count m})
+      | Term.Up -> (clampAt {m | at = m.at - 1}, Nil)
+      | Term.Down -> (clampAt {m | at = m.at + 1}, Nil)
+      | Term.Tab -> changed {m | items = List.indexedMap (fn i t -> if i == m.at then {t | done = not t.done} else t) m.items}
+      | Term.Delete -> changed (clampAt {m | items = List.map (fn p -> case p of (_, t) -> t) (List.filter (fn p -> case p of (i, _) -> i != m.at) (List.indexed m.items))})
+      | Term.Escape -> (m, Term.Quit :: Nil)
+      | Term.Ctrl "q" -> (m, Term.Quit :: Nil)
+      | _ -> (m, Nil)).
+
+changed m = (m, save m :: Nil).
+
+# one whole UTF-8 character off the end
+dropLastChar s = dropGo s (strlen s).
+dropGo : unsafe String -> Int -> String .
+dropGo s i = if i < 1 then "" else if charAt s i >= 128 and charAt s i < 192 then dropGo s (i - 1) else substr s 1 (i - 1).
+
+view size m = case size of (cols, rows) ->
+  Term.bold "To do" :: Term.dim "{List.length (List.filter (fn t -> t.done) m.items)} of {count m} done   up {m.seconds} s   {m.note}" :: ""
+  :: List.append (List.indexedMap (fn i t -> row (i == m.at) t) m.items)
+       ("" :: "> {m.draft}_" :: "" :: Term.dim "Enter add   Up/Down move   Tab tick   Delete remove   Esc quit" :: Nil).
+
+row here t =
+  line = "{(if t.done then "[x]" else "[ ]")} {t.text}";
+  if here then Term.inverse line else (if t.done then Term.dim line else line).
+
+subs m = Term.Every 1000 Second :: Nil.
+
+main =
+  path = (case Program.args Unit of p :: _ -> p | Nil -> "todo.json");
+  items = (case File.readText path of
+      Ok text -> (case Json.decode codec text of Ok xs -> xs | Err why -> Program.fail 1 "todo: {path}: {why}")
+    | Err _ -> Nil);
+  Term.run { init = {items = items, at = 0, draft = "", path = path, note = "", seconds = 0}, update = update, view = view, subs = subs }.

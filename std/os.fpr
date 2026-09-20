@@ -27,6 +27,8 @@ Os.listen    : String -> Int -> Result Int String .
 Os.accept    : Int -> Result (Int, String) String .
 Os.localPort : Int -> Result Int String .
 Os.exec      : List String -> Result Unit String .
+Os.ttyRaw    : Bool -> Result Unit String .
+Os.ttySize   : Unit -> (Int, Int) .
 
 readFile p = Os.readFile p.
 listDir p = Os.listDir p.
@@ -48,4 +50,6 @@ listen addr port = Os.listen addr port.
 accept fd = Os.accept fd.
 localPort fd = Os.localPort fd.
 exec argv = Os.exec argv.
+ttyRaw on = Os.ttyRaw on.
+ttySize u = Os.ttySize u.
 wallClock u = Os.wallClock u.

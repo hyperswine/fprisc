@@ -44,6 +44,7 @@ check('extbase', label='Math, Encoding (hex, Base64, URL), Binary, Digest: SHA-2
 check('proclimits', label='Proc: a time limit kills the child and says so; extra environment reaches it')
 check('tcp', label='Stream and Tcp: a server and its clients in ONE process, an actor per connection, 2 MB echoed, stop')
 check('poller', label='receiveNow (an empty mailbox allocates nothing), receiveWithin, and a server whose accepts and reads wait on ONE poller')
+check('term', label='Term.decode: text a UTF-8 character at a time, named and function keys, Ctrl and Alt, sequences split across reads')
 check('http', label='Http: client and server, headers, a 100 KB POST, 404, chunked decoding, URL parsing')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
     check('compact', cwd=t, label='KvLog.compact: the latest of every key, the journal kept whole, written beside the log and renamed over it; the store reopens the same')
@@ -96,3 +97,9 @@ with tempfile.TemporaryDirectory(prefix='fpr-svc-') as t:
     p = subprocess.run([fpr, 'run', str(ROOT / 'examples' / 'service.fpr'), '--port=99999'], capture_output=True, text=True, timeout=300, cwd=t)
     assert p.returncode == 2 and 'port: must be 0..65535' in p.stderr, p.stderr
     print('examples/service.fpr, the concurrent-service acceptance program: typed config, one actor owns the store, 40 parallel writes, parallel digests, logged failures, clean shutdown: PASS')
+# a terminal application, through a real pseudo-terminal
+with tempfile.TemporaryDirectory(prefix='fpr-tui-') as t:
+    p = subprocess.run([sys.executable, str(ROOT / 'tests' / 'std' / 'todo_pty.py'), fpr, str(ROOT / 'examples' / 'todo.fpr'), str(Path(t) / 'todo.json')],
+                       capture_output=True, text=True, timeout=300)
+    assert p.returncode == 0 and '"buy milk"' in p.stdout, p.stdout + p.stderr
+    print('examples/todo.fpr, a terminal app: raw-mode keys (UTF-8 text, arrows, Tab, Delete), a resize, a subscription, a durable list through a minted codec, the terminal put back: PASS')

@@ -113,9 +113,8 @@ In the order I would do what is left:
 1. **Recursive types on the wire.** Codecs are generated inline, so a recursive
    type (a tree, a comment thread) is refused; it needs generated top-level
    functions, one per type per unit.
-2. **TUI and desktop on posix**: raw-terminal and input primitives in
-   `machine/posix` (they exist in QOS's host, `hal/unix/tty_raw.c`), then
-   `std/mvu`'s drivers run there too.
+2. **Desktop on posix**: a window and GL are QOS Portable's today. (A terminal app
+   runs on posix: `std/term`.)
 3. **Store maintenance**: fsync as a policy, and per-session state that does not
    live in the shared model. (`KvLog.compact` exists.)
 4. **One App value for both drivers.** QOS's `fprlive.fpr` and `std/live` have the

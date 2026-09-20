@@ -1,0 +1,9 @@
+unsafe base.
+Term = use "std/term".
+show r = case r of (ks, rest) -> "{ks} rest={strlen rest}".
+main =
+  e = chr 27;
+  _ = print "plain: {show (Term.decode True "hi é😀\r\t")}";
+  _ = print "keys:  {show (Term.decode True "{e}[A{e}[D{e}[3~{e}[15~{e}OP{e}[Z{e}[1;5C")}";
+  _ = print "ctrl:  {show (Term.decode True "{chr 3}{chr 127}{e}x{e}")}";
+  print "split: {show (Term.decode False "{e}[1")} {show (Term.decode False (substr "é" 1 1))} {show (Term.decode False e)}".
