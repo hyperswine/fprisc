@@ -1,0 +1,9 @@
+sorted [1, 3, 3, 5, 9] rev [9, 5, 3, 3, 1]
+map/filter [10, 6, 18, 6] sum 21 len 5
+find Some 5 None head None get Some 9
+take [5, 3] drop [1, 3] zip [(5, a), (3, b)] idx [(0, x), (1, y)]
+unique [5, 3, 9, 1] range [1, 2, 3, 4, 5] concat [1, 2, 3] foldr [5, 3, 9, 1, 3]
+stable by length [fig, pear, kiwi, plum, apple]
+grouped [(3, [fig]), (4, [pear, kiwi, plum]), (5, [apple])]
+big 300000 max Some 300000 min None
+partition ([5, 9], [3, 1, 3]) any True all False

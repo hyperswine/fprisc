@@ -1,0 +1,12 @@
+answers [Ok HELLO 1
+SECOND LINE
+goodbye
+, Ok HELLO 2
+SECOND LINE
+goodbye
+, Ok HELLO 3
+SECOND LINE
+goodbye
+]
+2 MB line echoed: 2000009 bytes
+refused after stop: Connection refused

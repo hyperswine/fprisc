@@ -76,6 +76,25 @@ A bad path or unparsable leaf **refuses transactionally**: `Err`,
 model unchanged. There is no backdoor: the schema's set closures are
 the same `{s | path = v}` updates the app itself would write.
 
+## 2b. The codec (a sum type on the wire)
+
+The same bare literal over a declared SUM type is its wire codec, minted by the
+same pass (`FPRISC.hs codecFor`):
+
+    Msg = Type (Bump Int | Add String | Toggle Bool | Clear).
+    codec = @Msg.
+
+    { name : Msg -> String,                            -- "Bump"
+      args : Msg -> List String,                       -- ["10"]
+      make : String -> List String -> Result Msg String }
+
+Constructor fields may be `Int`, `String` or `Bool`; anything else is a compile
+error that names the constructor. `make` refuses by name: an unknown
+constructor, the wrong number of fields, a field that is not a number. It is how
+a message crosses a page and a log as TEXT and is still a checked value on the
+other side (`std/view`'s `send`, `std/live`'s journal and replay). The checked
+decimal parse it uses is the prelude's `wireInt`.
+
 ## 3. Value-space iteration in MVU (the message port)
 
 `std/mvu` grew the third subscription:

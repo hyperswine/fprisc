@@ -5,7 +5,7 @@
 # tuples of the same shape were equal whatever they held --
 # `(1, 2) == (3, 4)` was True, and so was `[1, 2] == [3, 4]`.  Every
 # program comparing structured values was quietly wrong, and nothing
-# said so.  Equality is deep now (hal/core/runtime.c veq), over the
+# said so.  Equality is deep now (runtime/runtime.c veq), over the
 # field counts the allocation header has always carried.
 #
 #   make qos-app PROG=tests/eq.fpr && (cd ../qos && ./qosp --yes ../fp-risc/app.qa)
@@ -24,6 +24,17 @@ no what b = case b of False -> print "ok  {what}" | True -> print "FAIL {what}: 
 mkPair n = Pair n (n + 1).
 mkList n = n :: n + 1 :: n + 2 :: Nil.
 mkNest n = (n, (n + 1, n :: Nil)).
+
+# depth: 1, 2, .., n, then `last` -- two of these differ ONLY at the end.
+# Built with an accumulator: plain recursion this deep would overflow the
+# actor's stack while BUILDING the value, before `==` ever ran.
+Chain = Type (End | Link rest item).
+longList n last = longListAcc n (last :: Nil).
+longListAcc n acc = case n of 0 -> acc | _ -> longListAcc (n - 1) (n :: acc).
+# nested through the FIRST field with a boxed payload, so the compare
+# cannot finish a level before descending: its worklist has to grow
+leftDeep n last = leftDeepAcc n (Link End (last, last)).
+leftDeepAcc n acc = case n of 0 -> acc | _ -> leftDeepAcc (n - 1) (Link acc (n, n)).
 
 main =
   # ---- ints, the case that always worked ----
@@ -67,6 +78,15 @@ main =
   _ = no "nested, one leaf differs" (mkNest 1 == mkNest 2);
   _ = no "a difference inside a list inside a tuple"
         ((1, (2, 3 :: Nil)) == (1, (2, 4 :: Nil)));
+
+  # ---- depth: there is no cap.  `==` once answered True at depth 64 as
+  # a cycle guard, so lists differing only past element 64 were "equal" ----
+  _ = yes "65-element lists, same" (longList 64 7 == longList 64 7);
+  _ = no "65-element lists differing only in the last element" (longList 64 7 == longList 64 8);
+  _ = no "100000-element lists differing only in the last element" (longList 99999 7 == longList 99999 8);
+  _ = yes "100000-element lists, same" (longList 99999 7 == longList 99999 7);
+  _ = no "nested 100000 deep through the first field, innermost leaf differs" (leftDeep 100000 7 == leftDeep 100000 8);
+  _ = yes "nested 100000 deep, same" (leftDeep 100000 7 == leftDeep 100000 7);
 
   # ---- records ----
   _ = yes "records by field" ({ a = 1, b = "x" } == { a = 1, b = "x" });

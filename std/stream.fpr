@@ -1,0 +1,127 @@
+# std/stream.fpr -- Stream: bytes in order, from a file or a socket.
+#
+#   Stream = use "std/stream".
+#   case Stream.read 4096 s of
+#       Ok "" -> ...                 # the end
+#     | Ok bytes -> ...
+#     | Err why -> ...
+#
+# A hart is a thread that MANY actors share, so nothing here waits inside the
+# kernel: the primitives answer "again" when there is nothing yet, and these
+# functions put the ACTOR to sleep and retry -- other actors keep running.
+# The wait backs off from 0.1 ms to 10 ms, and returns to 0.1 ms on progress.
+# WAITING ALLOCATES NOTHING (`Os.ready` answers a static Bool), so a session
+# that idles for a day is the size it was when it started.
+#
+# A Stream is a plain value (a descriptor).  You close it; `File.withOpen` and
+# `Tcp.serve` do it for you on every path.  A LINEAR handle, which the checker
+# would refuse to let you forget, is the intended end state (the design's
+# `File.read : Int -> File -> (File, ...)`); this is the usable first cut.
+
+OS = use "os".
+
+Stream = Type (Stream Int).
+
+fd : Stream -> Int .
+fd s = case s of Stream n -> n.
+
+# ---- reading ---------------------------------------------------------------------
+# up to `n` bytes, as soon as there are any; "" at the end of the stream
+read : Int -> Stream -> Result String String .
+read n s = readGo n (fd s) 100 0.
+
+# the same, but give up after `ms`: Err "timed out"
+readWithin : Int -> Int -> Stream -> Result String String .
+readWithin ms n s = readGo n (fd s) 100 (Sys.timeUs Unit + ms * 1000).
+
+# deadline 0 = none.  First wait until there is something (no allocation),
+# then read it.
+readGo : unsafe Int -> Int -> Int -> Int -> Result String String .
+readGo n f wait deadline = case OS.ready f of
+    True -> (case OS.read f n of
+        Ok bytes -> Ok bytes
+      | Err why -> (if why == "again" then readGo n f wait deadline else Err why))
+  | False -> (if deadline > 0 and Sys.timeUs Unit > deadline then Err "timed out"
+      else _ = Sys.sleepUs wait; readGo n f (backoff wait) deadline).
+
+backoff : Int -> Int .
+backoff wait = if wait >= 10000 then 10000 else wait * 2.
+
+# everything until the end
+readAll : Stream -> Result String String .
+readAll s = readAllGo s Nil.
+readAllGo : unsafe Stream -> List String -> Result String String .
+readAllGo s acc = case read 65536 s of
+    Err why -> Err why
+  | Ok bytes -> (case strlen bytes == 0 of
+        True -> Ok (strJoin "" (rev acc Nil))
+      | False -> readAllGo s (bytes :: acc)).
+
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+# ---- writing ---------------------------------------------------------------------
+# ALL of the bytes, however many writes that takes
+write : String -> Stream -> Result Unit String .
+write bytes s = writeGo bytes (fd s) 100.
+writeGo : unsafe String -> Int -> Int -> Result Unit String .
+writeGo bytes f wait = case strlen bytes == 0 of
+    True -> Ok Unit
+  | False -> (case OS.write f bytes of
+        Ok took -> writeGo (substr bytes (took + 1) (strlen bytes - took)) f 100
+      | Err why -> (case why == "again" of
+            False -> Err why
+          | True -> _ = Sys.sleepUs wait; writeGo bytes f (backoff wait))).
+
+close : Stream -> Result Unit String .
+close s = OS.close (fd s).
+
+# ---- a Reader: a stream plus the bytes read past what you asked for ----------------
+# Protocols are framed by text (a line, a blank line, a length), and a read
+# returns whatever arrived.  A Reader keeps the rest, and every operation
+# hands back the Reader to go on with.
+Reader = Type (Reader Stream String).
+
+reader : Stream -> Reader .
+reader s = Reader s "".
+
+# up to and excluding `sep`; the Reader continues after it.
+# Err "closed" when the stream ends first (what was buffered is lost with it).
+readUntil : String -> Reader -> (Result String String, Reader) .
+readUntil sep r = untilGo sep r 1.
+# `from`: where an occurrence could still start (no rescanning what was searched)
+untilGo : unsafe String -> Reader -> Int -> (Result String String, Reader) .
+untilGo sep r from = case r of Reader s buf ->
+  (case strIndexFrom sep buf from of
+      0 -> (case read 65536 s of
+          Err why -> (Err why, r)
+        | Ok more -> (case strlen more == 0 of
+              True -> (Err "closed", r)
+            | False -> untilGo sep (Reader s (strcat buf more)) (keep (strlen buf - strlen sep + 2))))
+    | at -> (Ok (substr buf 1 (at - 1)), Reader s (substr buf (at + strlen sep) (strlen buf)))).
+keep : Int -> Int .
+keep n = case n < 1 of True -> 1 | False -> n.
+
+# one line without its "\n" (or "\r\n")
+readLine : Reader -> (Result String String, Reader) .
+readLine r = case readUntil "\n" r of (res, r2) ->
+  (case res of
+      Ok l -> (Ok (case strlen l > 0 and charAt l (strlen l) == 13 of True -> substr l 1 (strlen l - 1) | False -> l), r2)
+    | Err e -> (Err e, r2)).
+
+# exactly `n` bytes
+readExactly : Int -> Reader -> (Result String String, Reader) .
+readExactly n r = exactGo n r.
+exactGo : unsafe Int -> Reader -> (Result String String, Reader) .
+exactGo n r = case r of Reader s buf ->
+  (case strlen buf >= n of
+      True -> (Ok (substr buf 1 n), Reader s (substr buf (n + 1) (strlen buf)))
+    | False -> (case read 65536 s of
+          Err why -> (Err why, r)
+        | Ok more -> (case strlen more == 0 of
+              True -> (Err "closed", r)
+            | False -> exactGo n (Reader s (strcat buf more))))).
+
+# what is buffered plus everything until the end
+readRest : Reader -> Result String String .
+readRest r = case r of Reader s buf -> (case readAll s of Ok more -> Ok (strcat buf more) | Err e -> Err e).

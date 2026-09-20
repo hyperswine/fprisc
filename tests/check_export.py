@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Library units: an FP-RISC file compiled with --lib/--export links beside a
 program unit and its entries are callable from C with the plain RV64 ABI.
-Then the allocator itself, hal/builtin/heap.fpr, in place of heap.c."""
+Then the allocator itself, machine/builtin/heap.fpr, in place of heap.c."""
 from pathlib import Path
 import os, subprocess, tempfile
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,11 +19,11 @@ with tempfile.TemporaryDirectory(prefix='fpr-export-') as temp:
     tmp = Path(temp)
     # 1. the library unit: exports need signatures, and every type must cross
     out = run(['make', 'builtin-lib', 'LIB=tests/builtin_export.fpr',
-               'LIB_EXPORT=mix,half,isEven,scale,poke,peek,where,sumCell', f'BUILD={tmp}'])
+               'LIB_EXPORT=mix,wide12,half,isEven,scale,poke,peek,where,sumCell', f'BUILD={tmp}'])
     lib = tmp / 'lib-builtin_export.s'
     asm = lib.read_text()
     assert 'export mix : KWord KInt KBool -> KWord' in out, out
-    for sym in ['mix', 'half', 'isEven', 'scale', 'poke', 'peek', 'where', 'sumCell']:
+    for sym in ['mix', 'wide12', 'half', 'isEven', 'scale', 'poke', 'peek', 'where', 'sumCell']:
         assert f'\n{sym}:\n' in asm, sym
     assert '.weak fpr_fn_Cons' in asm or '.weak fpr_fn_True' in asm, 'library stubs must be weak'
     assert 'la a0, _heap_state' in asm, 'Addr.symbol should be one la'

@@ -1,0 +1,46 @@
+# std/program.fpr -- Program: this process's arguments, environment, streams
+# and exit.
+#
+#   Program = use "std/program".
+#   main = case Program.args Unit of
+#       path :: Nil -> run path
+#     | _ -> Program.fail 2 "usage: tool <file>"
+
+O = use "option".
+
+# the command line after the program's own name
+args : Unit -> List String .
+args u = Sys.args u.
+
+env : String -> O.Option String .
+env name = case Sys.env name of Ok v -> O.Some v | Err _ -> O.None.
+
+envOr : String -> String -> String .
+envOr d name = case Sys.env name of Ok v -> v | Err _ -> d.
+
+# end now, with this status (0..255)
+exit : Int -> a .
+exit code = Sys.exit code.
+
+# say why on stderr, then end with a failing status
+fail : Int -> String -> a .
+fail code why = _ = Sys.stderr (strcat why "\n"); Sys.exit code.
+
+# ---- the three streams ------------------------------------------------------
+# one line of stdin without its newline; None at the end of input
+readLine : Unit -> O.Option String .
+readLine u = case Sys.readLine u of Ok l -> O.Some l | Err _ -> O.None.
+
+# all of stdin's remaining lines
+readLines : Unit -> List String .
+readLines u = readGo Nil.
+readGo : unsafe List String -> List String .
+readGo acc = case Sys.readLine Unit of Ok l -> readGo (l :: acc) | Err _ -> rev acc Nil.
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+writeLine : String -> Unit .
+writeLine s = print s.
+
+writeError : String -> Unit .
+writeError s = Sys.stderr (strcat s "\n").

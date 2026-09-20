@@ -417,6 +417,17 @@ builtinEnv =
       ("Mem.atomicExchange", mono (TFn (TC "Addr") (TFn (TC "Word") (TC "Word")))),
       ("Mem.compareExchange", mono (TFn (TC "Addr") (TFn (TC "Word") (TFn (TC "Word") (TC "Word"))))),
       ("Mem.fence", mono (TFn tUnit tUnit)),
+      -- NOT HERE: the primitives an operating system implements.  This table
+      -- typed QOS's devices and system calls (glRender, blkRead, Pin.*,
+      -- Sys.caps, Apps.*) until 2026-09-19; QOS declares them itself now, in
+      -- a --foreign= file of signatures (its core/foreign.fpr).  What stays
+      -- is what THIS tree implements: the language, the runtime (actors,
+      -- Mod.*, the logs, irq and timer routing) and the machine layer
+      -- (register access).  docs/HAL.md.
+      -- the cast between Addr and a Layout's nominal type (FPRISC.expandLayout).
+      -- `$` is not an identifier character, so no program can write it; Compile
+      -- erases it to the identity before Core reaches a backend.
+      ("$cast", scheme [0, 1] (TFn (sv 0) (sv 1))),
       ("Rc.retain", scheme [0] (TFn (sv 0) (sv 0))),
       ("Rc.release", scheme [0] (TFn (sv 0) tUnit)),
       -- string / conversion prims (compiler-emitted or fpr_g_)
@@ -437,7 +448,7 @@ builtinEnv =
       ("chr", mono (TFn tInt tStr)),
       ("parseInt", mono (TFn tStr tInt)),
       ("fileRead", mono (TFn tStr tStr)),
-      -- the Base environment (hal/posix/base.c; docs/BASE.md)
+      -- the Base environment (machine/posix/base.c; docs/BASE.md)
       ("fileWrite", mono (TFn tStr (TFn tStr (tcon "Result" [tUnit, tStr])))),
       ("fileAppend", mono (TFn tStr (TFn tStr (tcon "Result" [tUnit, tStr])))),
       ("fileExists", mono (TFn tStr tBool)),
@@ -543,9 +554,6 @@ builtinEnv =
       ("F32.ofF64", mono (TFn tF64 tF32)),
       ("F32.str", mono (TFn tF32 tStr)),
       -- process / system seam (fpr_g_ HAL)
-      ("Sys.init", mono (TFn tUnit tUnit)),
-      ("Sys.loadImageAt", scheme [0] (TFn tStr (TFn tInt (TFn tInt (TFn tInt (TFn tInt (TFn (sv 0) (TTupT [tInt, tStr])))))))),
-      ("Sys.arenaFree", mono (TFn tUnit tInt)),
       ("Sys.sleepUs", mono (TFn tInt tUnit)),
       ("Sys.arena", scheme [0] (TFn (TFn tUnit (sv 0)) (sv 0))),
       ("heapUsed", mono (TFn tUnit tInt)),
@@ -594,40 +602,19 @@ builtinEnv =
       ("fuelQuantum", mono (TFn tInt tInt)),
       ("receiveFrom", scheme [0] (TFn tInt (TFn tInt (sv 0)))),
       ("substr", mono (TFn tStr (TFn tInt (TFn tInt tStr)))),
+      -- Sol's names and contracts (Sol/Infer.hs): byte strings, 1-based, 0 = not found
+      ("strJoin", mono (TFn tStr (TFn (TAp (TC "List") tStr) tStr))),
+      ("strCmp", mono (TFn tStr (TFn tStr tInt))),
+      ("strIndexOf", mono (TFn tStr (TFn tStr tInt))),
+      ("strIndexFrom", mono (TFn tStr (TFn tStr (TFn tInt tInt)))),
       -- block device + net (bytes/words; loosely typed payloads)
-      ("blkPages", scheme [0] (TFn (sv 0) tInt)),
-      ("blkRead", scheme [0, 1] (TFn (sv 0) (TFn tInt (sv 1)))),
-      ("blkWrite", scheme [0, 1] (TFn (sv 0) (TFn tInt (TFn (sv 1) tUnit)))),
-      ("netPoll", scheme [0] (TFn tInt (sv 0))),
-      ("netRead", scheme [0] (TFn tInt (sv 0))),
-      ("netWrite", scheme [0] (TFn tInt (TFn (sv 0) tUnit))),
-      ("netClose", mono (TFn tInt tUnit)),
       -- GPU tier (runtime/posix/gfx.c: scene-driven render function)
-      ("glInit", mono (TFn tInt (TFn tInt tInt))),
-      ("glRender", scheme [0, 1] (TFn (sv 0) (sv 1))),
-      ("glRenderUi", scheme [0, 1, 2] (TFn (sv 0) (TFn (sv 1) (TFn tInt (sv 2))))),
-      ("timeNow", scheme [0] (TFn (sv 0) tInt)),
-      ("glSavePpm", mono (TFn tStr tInt)),
-      ("inputPoll", scheme [0, 1] (TFn (sv 0) (sv 1))),
-      ("sndPlay", scheme [0] (TFn (sv 0) tInt)),
-      ("glMesh", mono (TFn tStr (TFn tStr tInt))),
-      ("sndMusic", mono (TFn tStr (TFn tInt tInt))),
-      -- Pin / GPIO service (fpr_g_ Pin.*)
-      ("Pin.read", scheme [0] (TFn (sv 0) tInt)),
-      ("Pin.write", scheme [0] (TFn (sv 0) (TFn tInt tUnit))),
-      ("Pin.mode", scheme [0] (TFn (sv 0) (TFn tInt tUnit))),
-      ("Pin.wire", scheme [0, 1] (TFn (sv 0) (TFn (sv 1) tUnit))),
-      ("Pin.feed", scheme [0] (TFn (sv 0) (TFn tInt (TFn tInt tUnit)))),
-      ("Pin.tget", scheme [0] (TFn (sv 0) tInt)),
-      ("Pin.tlen", scheme [0] (TFn (sv 0) tInt)),
-      ("Pin.tclear", scheme [0] (TFn (sv 0) tUnit)),
       -- Mod runtime resolution (remote calling)
       ("Mod.resolve", scheme [0] (TFn tStr (TFn tStr (sv 0)))),
       ("Mod.fn", scheme [0] (TFn tStr (TFn tStr (sv 0)))),
       ("Mod.find", scheme [0] (TFn tStr (sv 0))),
       ("Mod.plugs", scheme [0] (TFn tInt tInt)),
       ("Mod.findAt", scheme [0] (TFn tInt (TFn tStr (sv 0)))),
-      ("Sys.attachQa", scheme [0] (TFn tStr (sv 0))),
       ("Sys.actLive", scheme [0] (TFn tInt tInt)),
       ("Sys.actInfo", scheme [0] (TFn tInt (sv 0))),
       ("Sys.logAt", scheme [0] (TFn tInt (TFn tStr tUnit))),
@@ -646,16 +633,7 @@ builtinEnv =
       -- live-reload gate: every old export present in new, same arity
       ("Mod.compatAt", scheme [0] (TFn tInt (TFn tInt (sv 0)))),
       ("Mod.detachLast", mono (TFn tUnit tUnit)),
-      -- Apps registry + Sys binding seam
-      ("Apps.list", scheme [0] (TFn tUnit (sv 0))),
-      ("Apps.read", scheme [0] (TFn tStr (sv 0))),
-      ("Sys.caps", scheme [0] (TFn tUnit (sv 0))),
-      ("Sys.harts", mono (TFn tUnit tInt)),
-      ("Sys.bindApp", scheme [0, 1] (TFn (sv 0) (sv 1))),
-      ("Sys.bindStore", scheme [0, 1] (TFn (sv 0) (sv 1))),
-      ("Sys.storeReq", scheme [0, 1] (TFn (sv 0) (sv 1))),
-      -- host compiler server (qosp tag-7 channel): profile -> source -> Result
-      ("Sys.compile", mono (TFn tStr (TFn tStr (tcon "Result" [tStr, tStr]))))
+      ("Sys.harts", mono (TFn tUnit tInt))
     ]
 
 builtinCons' :: TEnv

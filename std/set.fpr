@@ -1,0 +1,54 @@
+# std/set.fpr -- Set: distinct values, ordered.  A Map with no values.
+#
+#   Set = use "std/set".
+#   seen = Set.fromList Order.string names
+#   Set.member "fig" seen
+#
+# Same contracts as Map: a comparator given once, ascending iteration,
+# persistent, O(log n).
+
+M = use "map".
+Ord = use "order".
+
+Set a = Type (Set (M.Map a Unit)).
+
+empty : (a -> a -> Ord.Ordering) -> Set a .
+empty cmp = Set (M.empty cmp).
+
+strings = empty Ord.string.
+ints = empty Ord.int.
+
+fromList : (a -> a -> Ord.Ordering) -> List a -> Set a .
+fromList cmp xs = insertAll xs (empty cmp).
+
+insertAll : List a -> Set a -> Set a .
+insertAll xs s = insertAllGo xs s.
+insertAllGo : unsafe List a -> Set a -> Set a .
+insertAllGo xs s = case xs of Nil -> s | x :: r -> insertAllGo r (insert x s).
+
+insert : a -> Set a -> Set a .
+insert x s = case s of Set m -> Set (M.insert x Unit m).
+
+remove : a -> Set a -> Set a .
+remove x s = case s of Set m -> Set (M.remove x m).
+
+member : a -> Set a -> Bool .
+member x s = case s of Set m -> M.member x m.
+
+size : Set a -> Int .
+size s = case s of Set m -> M.size m.
+
+isEmpty : Set a -> Bool .
+isEmpty s = size s == 0.
+
+toList : Set a -> List a .
+toList s = case s of Set m -> M.keys m.
+
+union : Set a -> Set a -> Set a .
+union a b = case a of Set ma -> (case b of Set mb -> Set (M.union ma mb)).
+
+intersect : Set a -> Set a -> Set a .
+intersect a b = case a of Set ma -> Set (M.filter (fn k u -> member k b) ma).
+
+diff : Set a -> Set a -> Set a .
+diff a b = case a of Set ma -> Set (M.filter (fn k u -> not (member k b)) ma).

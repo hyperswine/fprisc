@@ -1,0 +1,5 @@
+counts [(and, 2), (bird, 1), (cat, 1), (dog, 1), (the, 3)] size 5 the=Some 3 cow=None
+after [and, bird, cat, dog, zebra] [2, 1, 1, 1, 9] original still 5
+big size 100000 first Some (1, 47318) get Some 1
+after removing half 50000
+set [1, 2, 3] union [1, 2, 3, 4] intersect [2, 3] diff [1] member False

@@ -1,7 +1,9 @@
 # FP-RISC compiler, interpreter and standalone bare-metal runtime.
 # QOS application linking is maintained in qos/fp-risc/qos-app.mk.
 
-HAL     ?= hal
+# the language RUNTIME, and the MACHINE LAYER under it, one per system (docs/HAL.md)
+RUNTIME ?= runtime
+MACHINE ?= machine
 FPR_TOOLCHAIN ?= .
 HARTS   ?= 2
 CROSS    = riscv64-unknown-elf-
@@ -14,10 +16,13 @@ QA_OUT  ?= app.qa
 BUILD   ?= build
 IMAGE   ?= image.elf
 
-RT_CORE = $(HAL)/core/runtime.c $(HAL)/core/actors.c $(HAL)/core/bits.c \
-          $(HAL)/core/vec.c $(HAL)/core/sstr.c $(HAL)/core/mod.c $(HAL)/core/buddy.c
-RT_VIRT = $(HAL)/virt/crt0.S $(HAL)/virt/ctx.S $(HAL)/virt/ctx_fab.c \
-          $(HAL)/virt/hal.c $(HAL)/virt/plic.c $(HAL)/virt/net.c $(HAL)/virt/blk.c $(HAL)/virt/memshim.c
+RT_CORE = $(RUNTIME)/runtime.c $(RUNTIME)/actors.c $(RUNTIME)/bits.c \
+          $(RUNTIME)/vec.c $(RUNTIME)/sstr.c $(RUNTIME)/mod.c $(RUNTIME)/buddy.c
+RT_VIRT = $(MACHINE)/virt/crt0.S $(MACHINE)/virt/ctx.S $(MACHINE)/virt/ctx_fab.c \
+          $(MACHINE)/virt/hal.c $(MACHINE)/virt/memshim.c
+# EXTRA_RT: sources a HAL ABOVE the machine layer adds to a bare-metal image
+# (QOS Native's drivers: `make bare-metal` run from the qos tree passes them)
+EXTRA_RT ?=
 
 ARCHFLAGS = -march=rv64imafdc_zicsr -mabi=lp64 -mcmodel=medany
 # hosted (qosp) apps grant memory in QOSSLAB-byte slabs: the 256 KiB
@@ -117,36 +122,38 @@ $(BUILD)/prog.s: fprc $(PROG) core/prelude.fpr FORCE
 	@mkdir -p $(BUILD)
 	LC_ALL=C.UTF-8 ./fprc --system=bare-metal $(FPRC_FLAGS) --prelude=core/prelude.fpr $(PROG) $@
 
-bare-metal: $(BUILD)/prog.s $(RT_VIRT) $(RT_CORE) $(HAL)/virt/link.ld
-	$(CROSS)gcc $(CFLAGS) -T $(HAL)/virt/link.ld -I$(HAL)/core -I$(HAL)/virt \
-	  $(RT_VIRT) $(BUILD)/prog.s $$(cat $(BUILD)/prog.s.units) $(RT_CORE) -o $(IMAGE)
+# the virt HAL's PLIC and CLINT drivers are FP-RISC (machine/virt/virt.mk)
+FPRC ?= ./fprc
+include $(MACHINE)/virt/virt.mk
+bare-metal: $(BUILD)/prog.s $(RT_VIRT) $(VIRT_FPR) $(EXTRA_RT) $(RT_CORE) $(MACHINE)/virt/link.ld
+	$(CROSS)gcc $(CFLAGS) -T $(MACHINE)/virt/link.ld -I$(RUNTIME) -I$(MACHINE)/virt \
+	  $(RT_VIRT) $(VIRT_FPR) $(EXTRA_RT) $(BUILD)/prog.s $$(cat $(BUILD)/prog.s.units) $(RT_CORE) -o $(IMAGE)
 
 bare-metal-run: bare-metal
 	$(TIMEOUT) 20 $(QEMU) $(ACCEL) -machine virt -smp $(HARTS) -m 256M \
 	  -nographic -bios none -kernel $(IMAGE)
 
-# ---- Base profile: an executable for this machine (hal/posix) -----------
+# ---- Base profile: an executable for this machine (machine/posix) -----------
 # `make posix PROG=x.fpr` is what `./fpr build x.fpr` does, spelled out:
 # the program lowered for the host ISA, linked with the shared core and
 # the hosted HAL by the host's C compiler.  Harts are pthreads.
 POSIXHARTS ?= 2
 ifneq ($(filter aarch64 arm64,$(shell uname -m)),)
-POSIXCTX = $(HAL)/unix/ctx_a64.S
+POSIXCTX = $(MACHINE)/unix/ctx_a64.S
 else
-POSIXCTX = $(HAL)/unix/ctx_x64.S
+POSIXCTX = $(MACHINE)/unix/ctx_x64.S
 endif
 ifeq ($(shell uname -s),Linux)
 POSIXLDFLAGS ?= -no-pie
 endif
-RT_POSIX = $(HAL)/posix/main.c $(HAL)/posix/hal.c $(HAL)/posix/devices.c $(HAL)/posix/base.c \
-           $(HAL)/posix/heap.S $(POSIXCTX)
+RT_POSIX = $(MACHINE)/posix/main.c $(MACHINE)/posix/hal.c $(MACHINE)/posix/base.c $(MACHINE)/posix/os.c $(POSIXCTX)
 BIN ?= $(BUILD)/$(basename $(notdir $(PROG)))
 $(BUILD)/base.s: fprc $(PROG) core/prelude.fpr FORCE
 	@mkdir -p $(BUILD)
 	LC_ALL=C.UTF-8 ./fprc --system=posix --prelude=core/prelude.fpr $(PROG) $@
 
 posix: $(BUILD)/base.s $(RT_POSIX) $(RT_CORE)
-	$(CC) -O2 -Wall -Wextra -DFPR_POSIX -DFPR_NHARTS=$(POSIXHARTS) $(POSIXLDFLAGS) -I$(HAL)/core -I$(HAL)/posix \
+	$(CC) -O2 -Wall -Wextra -DFPR_POSIX -DFPR_NHARTS=$(POSIXHARTS) $(POSIXLDFLAGS) -I$(RUNTIME) -I$(MACHINE)/posix \
 	  $(BUILD)/base.s $$(cat $(BUILD)/base.s.units) $(RT_POSIX) $(RT_CORE) -lpthread -lm -o $(BIN)
 
 posix-run: posix
@@ -168,28 +175,34 @@ FORCE:
 
 # Unsafe standalone Builtin profile: no actors, devices, QOS or prelude.
 #
-# HEAP=fpr swaps the C allocator for hal/builtin/heap.fpr, compiled as a
-# LIBRARY unit (--lib) whose exports are the same C symbols heap.c
-# defined (fpr_alloc, fpr_free, fpr_builtin_release, ...).  It needs the
-# raw ABI (ARC=1): the allocator is written over Word/Addr and must not
-# allocate to allocate.
+# The allocator is machine/builtin/heap.fpr: FP-RISC over typed layouts
+# (docs/LAYOUTS.md), compiled as a LIBRARY unit (--lib) whose exports are
+# the C symbols the runtime calls (fpr_alloc, fpr_free,
+# fpr_builtin_release, ...).  It is written over Word/Addr and must not
+# allocate to allocate, so it needs the raw ABI: ARC=1 selects it, and the
+# legacy manual ABI (no ARC) keeps heap.c.  HEAP=c forces the C one, which
+# is also what check_builtin.py builds natively under ASan/UBSan.
+ifeq ($(ARC),1)
+HEAP ?= fpr
+else
 HEAP ?= c
+endif
 ifeq ($(HEAP),fpr)
 ifneq ($(ARC),1)
 $(error HEAP=fpr needs ARC=1: the FP-RISC allocator uses the raw Word/Addr ABI)
 endif
 BUILTIN_HEAP = $(BUILD)/heap.s
 else
-BUILTIN_HEAP = $(HAL)/builtin/heap.c
+BUILTIN_HEAP = $(MACHINE)/builtin/heap.c
 endif
 # one line: a backslash continuation inside a variable becomes a space,
 # and a space splits the --export= argument
 HEAP_EXPORTS = heapInit:fpr_builtin_heap_init,inHeap:fpr_in_heap,alloc:fpr_alloc,free:fpr_free,realloc:fpr_realloc,retain:fpr_builtin_retain,release:fpr_builtin_release,allocAdt:fpr_builtin_alloc_adt,liveAllocations:fpr_builtin_live_allocations,setLayout:fpr_builtin_set_layout,fieldCount:fpr_builtin_field_count,fieldKind:fpr_builtin_field_kind
-$(BUILD)/heap.s: fprc $(HAL)/builtin/heap.fpr FORCE
+$(BUILD)/heap.s: fprc $(MACHINE)/builtin/heap.fpr FORCE
 	@mkdir -p $(BUILD)
-	./fprc --system=bare-metal --profile=builtin --arc --raw --lib --export=$(HEAP_EXPORTS) $(HAL)/builtin/heap.fpr $@
-BUILTIN_RT = $(HAL)/builtin/crt0.S $(HAL)/builtin/virt.c $(BUILTIN_HEAP) \
-             $(HAL)/builtin/unsafe.c $(HAL)/builtin/arc.c $(HAL)/builtin/machine.S $(HAL)/builtin/interrupt.S $(HAL)/core/runtime.c $(HAL)/virt/memshim.c
+	./fprc --system=bare-metal --profile=builtin --arc --raw --lib --export=$(HEAP_EXPORTS) $(MACHINE)/builtin/heap.fpr $@
+BUILTIN_RT = $(MACHINE)/builtin/crt0.S $(MACHINE)/builtin/virt.c $(BUILTIN_HEAP) \
+             $(MACHINE)/builtin/unsafe.c $(MACHINE)/builtin/arc.c $(MACHINE)/builtin/machine.S $(MACHINE)/builtin/interrupt.S $(RUNTIME)/runtime.c $(MACHINE)/virt/memshim.c
 ifeq ($(ARC),1)
 BUILTIN_COMPILER_FLAGS = --arc
 BUILTIN_CFLAGS = -DFPR_BUILTIN_ARC -DFPR_BUILTIN_RAW
@@ -200,7 +213,7 @@ endif
 # Link the .s into any builtin image (BUILTIN_EXTRA=...) or assemble it
 # with $(CROSS)gcc -c for an archive; the exported symbols use the plain
 # RV64 C ABI (docs/BAREMETAL-BUILTIN.md, "Library units and C exports").
-LIB ?= hal/builtin/heap.fpr
+LIB ?= machine/builtin/heap.fpr
 LIB_EXPORT ?=
 LIB_FLAGS ?=
 builtin-lib: fprc FORCE
@@ -213,11 +226,11 @@ endif
 ifeq ($(ARC_CHECK),1)
 BUILTIN_CFLAGS += -DFPR_ARC_CHECK
 endif
-bare-metal-builtin: fprc $(BUILTIN_RT) $(HAL)/builtin/link.ld FORCE
+bare-metal-builtin: fprc $(BUILTIN_RT) $(MACHINE)/builtin/link.ld FORCE
 	@mkdir -p $(BUILD)
 	./fprc --system=bare-metal --profile=builtin $(BUILTIN_COMPILER_FLAGS) $(FPRC_FLAGS) $(PROG) $(BUILD)/builtin.s
 	$(CROSS)gcc $(CFLAGS) -UFPR_NHARTS -DFPR_NHARTS=1 -DFPR_BUILTIN $(BUILTIN_CFLAGS) -ffunction-sections -fdata-sections \
-	  -Wl,--gc-sections -T $(HAL)/builtin/link.ld -I$(HAL)/core -I$(HAL)/builtin \
+	  -Wl,--gc-sections -T $(MACHINE)/builtin/link.ld -I$(RUNTIME) -I$(MACHINE)/builtin \
 	  $(BUILTIN_RT) $(BUILD)/builtin.s $$(cat $(BUILD)/builtin.s.units) $(BUILTIN_EXTRA) $(BUILTIN_LDFLAGS) -o $(IMAGE)
 
 bare-metal-builtin-run: bare-metal-builtin

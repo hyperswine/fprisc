@@ -89,7 +89,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-arc-') as temp:
     print('Function values, indirect/partial calls and explicit RC rejected: PASS')
 
     host = tmp / 'heap-test'
-    run(['clang', '-std=c11', '-O1', '-DFPR_POSIX', '-DFPR_BUILTIN_ARC', '-Ihal/core', '-Ihal/builtin',
-         '-fsanitize=address,undefined', '-g', 'tests/builtin_arc_heap.c', 'hal/builtin/heap.c', '-o', host])
+    run(['clang', '-std=c11', '-O1', '-DFPR_POSIX', '-DFPR_BUILTIN_ARC', '-Iruntime', '-Imachine/builtin',
+         '-fsanitize=address,undefined', '-g', 'tests/builtin_arc_heap.c', 'machine/builtin/heap.c', '-o', host])
     assert 'ARC LAYOUT AND DEEP RELEASE HOLD' in run([host])
     print('Exact layouts, shared edges and 12,000-node drops under ASan/UBSan: PASS')

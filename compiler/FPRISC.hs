@@ -16,7 +16,7 @@ import Control.Monad.State.Strict
 import Data.Bits (shiftR, xor)
 import qualified Data.Bits
 import GHC.Float (castDoubleToWord64, castFloatToWord32)
-import Data.Char (isAlphaNum, isLetter, isLower, isUpper, ord)
+import Data.Char (isAlphaNum, isDigit, isLetter, isLower, isUpper, ord, toUpper)
 import Data.List (foldl', intercalate, isPrefixOf, nub, sort, sortOn)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -146,7 +146,7 @@ identChar :: Char -> Bool
 identChar c = isAlphaNum c || c == '_' || c == '\''
 
 reserved :: [String]
-reserved = ["fn", "case", "of", "Type", "Sig", "Struct", "use"]
+reserved = ["fn", "case", "of", "if", "then", "else", "Type", "Sig", "Struct", "use"]
 
 dottedIdent :: P [String]
 dottedIdent = lexeme $ do
@@ -374,6 +374,7 @@ term =
       pathLit,
       stringLit,
       caseE,
+      ifE,
       listLit,
       recordish,
       parensOrTuple,
@@ -447,6 +448,23 @@ recordish = braces (try litRec <|> updRec)
       path <- dottedIdent
       eqSign
       (path,) <$> expr
+
+-- `if c then a else b` is exactly `case c of True -> a | False -> b`: sugar,
+-- no new semantics.  Both branches take the block form, as a case arm does,
+-- and `else if` chains because the else branch is an expression.  (Every
+-- two-way choice used to be the four-token-longer case; parsers written in
+-- FP-RISC were mostly that: docs/STD.md.)
+ifE :: P SExpr
+ifE = do
+  _ <- try (keyword "if")
+  c <- expr
+  _ <- keyword "then"
+  o1 <- getOffset
+  a <- block
+  _ <- keyword "else"
+  o2 <- getOffset
+  b <- block
+  pure (SCase c [(PCon "True" [], SMark o1 a), (PCon "False" [], SMark o2 b)])
 
 caseE :: P SExpr
 caseE = do
@@ -570,7 +588,7 @@ patAtom =
 --------------------------------------------------------------------------------
 
 program :: P [STop]
-program = sc *> many topDecl <* eof
+program = sc *> (concat <$> many (layoutDecl <|> ((: []) <$> topDecl))) <* eof
 
 topDecl :: P STop
 topDecl =
@@ -653,19 +671,18 @@ evalDecl = do
 -- runs after guard selection; such a function is reported and left for
 -- a manual wide constructor), and only SATURATED call sites rewrite
 -- (partial application of a wide function was impossible before this
--- pass and remains so).  Max spilled arity: 7 + 8 = 15.
+-- pass and remains so).  No maximum arity: the spilled tuple is as wide
+-- as it needs to be.
 aritySpill :: [STop] -> ([STop], [String])
 aritySpill tops = (map top tops, notes)
   where
     -- the NATIVE convention (8 regs + 56 hart argspill cells,
     -- Codegen.hs/fpr.h) carries arity <= 64 with no restrictions --
     -- this pass is only the >64 extension: keep 63 params + ONE
-    -- spilled tuple (Tup2..Tup8), honest cap 63+8 = 71.
+    -- spilled tuple, as wide as the rest (tuples have no cap: tupCon).
     natCeil = 64
     keepN = natCeil - 1
-    wide = M.fromList [(n, length ps) | TBind n ps _ _ <- tops,
-                       length ps > natCeil, length ps <= keepN + 8]
-    tooWide = [n | TBind n ps _ _ <- tops, length ps > keepN + 8]
+    wide = M.fromList [(n, length ps) | TBind n ps _ _ <- tops, length ps > natCeil]
     guardy = [n | TBind n ps gs _ <- tops, length ps > natCeil,
                   any (refG (spilledNames ps)) gs]
     spillable = M.filterWithKey (\n _ -> n `notElem` guardy) wide
@@ -674,8 +691,6 @@ aritySpill tops = (map top tops, notes)
         | (n, a) <- M.toList spillable]
       ++ ["aritySpill: " ++ n ++ ": guards reference spilled params -- NOT spilled (use a constructor)"
            | n <- guardy]
-      ++ ["aritySpill: " ++ n ++ ": more than " ++ show (keepN + 8) ++ " params -- NOT spilled (use a constructor)"
-           | n <- tooWide]
     spilledNames ps = [v | PVar v <- drop keepN ps]
     refG vs (GBool e) = any (\v -> refE' v e) vs
     refG vs (GPat _ e) = any (\v -> refE' v e) vs
@@ -942,6 +957,124 @@ desugarEvals tops =
 
 keyword :: String -> P ()
 keyword w = lexeme . try $ void (string w <* notFollowedBy (satisfy identChar))
+
+-- ---- typed memory layouts ----------------------------------------------------
+-- `Block = Layout { size : Word, prev : Block, next : Block, used : Int }.`
+--
+-- A NOMINAL pointer type over raw memory, for the builtin profile's systems
+-- code.  machine/builtin/heap.fpr was written before this existed and reads like
+-- assembly (`rd b 24`, `wr a 56 v`): the offsets live in a comment, and an
+-- Addr is an Addr, so handing `next` a payload pointer type-checks.  A Layout
+-- names the fields, computes their offsets, and makes `Block` a type of its
+-- own -- a `Block` is not an `Addr` and not some other layout.
+--
+-- It is sugar: the declaration EXPANDS HERE, at parse time, into an empty
+-- `Type`, signatures and ordinary definitions over Mem/Addr/Word.  Nothing
+-- downstream knows layouts exist -- modules qualify the names, inference
+-- checks them, representation inference sees the raw primitives, and
+-- Inline.hs folds the accessors into their call sites.  The one thing a
+-- definition cannot express is the cast between `Addr` and the nominal type,
+-- so those two bodies are the internal primitive `$cast` (Infer: a -> b),
+-- which Compile erases to the identity before Core reaches a backend: under
+-- the raw ABI a Layout costs exactly what the hand-written offsets did.
+--
+-- Field types: Word, Addr, Int (word-sized); U8, U16, U32; or another
+-- layout's name -- a typed pointer to it, stored as a word.  Offsets run in
+-- order at natural alignment; `f : T @ n` pins one (and may overlap, for a
+-- union).  `_` is padding.  For layout L and field f (capitalised F):
+--   L.f : L -> T          L.setF : L -> T -> Unit      L.fAt : L -> Addr
+--   L.at : Addr -> L      L.addr : L -> Addr           L.sizeOf : Unit -> Int
+--   L.index : L -> Int -> L (the i-th L after this one)
+--   L.null : Unit -> L    L.isNull : L -> Bool         L.eq : L -> L -> Bool
+layoutDecl :: P [STop]
+layoutDecl = do
+  -- committed once `Name = Layout` is read, so a bad field says why
+  n <- try (upperName <* eqSign <* keyword "Layout")
+  fs <- braces (field `sepBy1` symbol ",")
+  dotTerm
+  either fail pure (expandLayout n fs)
+  where
+    field = do
+      f <- pName <|> (lexeme (char '_' <* notFollowedBy (satisfy identChar)) >> pure "_")
+      _ <- lexeme (char ':')
+      t <- upperName
+      off <- optional (symbol "@" *> integer)
+      pure (f, t, off)
+
+expandLayout :: Name -> [(Name, Name, Maybe Integer)] -> Either String [STop]
+expandLayout l fs0 = do
+  placed <- place 0 fs0
+  let named = [x | x@(f, _, _) <- placed, f /= "_"]
+      dups = [f | (f, _, _) <- named, length [() | (g, _, _) <- named, g == f] > 1]
+      clash = [f | (f, _, _) <- named, f `elem` ["at", "addr", "sizeOf", "index", "null", "isNull", "eq"]]
+  case (dups, clash) of
+    (f : _, _) -> Left ("Layout " ++ l ++ ": field `" ++ f ++ "` is declared twice")
+    (_, f : _) -> Left ("Layout " ++ l ++ ": field `" ++ f ++ "` collides with the generated " ++ l ++ "." ++ f)
+    _ -> pure ()
+  -- like a C struct: the size rounds up to the WIDEST field's alignment, so
+  -- `L.index` strides correctly over an array of them (a bank of 32-bit
+  -- registers is 4 bytes apart, not 8)
+  let widest = maximum (1 : [widthOf t | (_, t, _) <- placed])
+      total = roundUp widest (maximum (0 : [o + widthOf t | (_, t, o) <- placed]))
+  pure $
+    [TType l False [] []]
+      ++ def "at" [ty "Addr"] (ty l) ["a"] (cast (v "a"))
+      ++ def "addr" [ty l] (ty "Addr") ["p"] (cast (v "p"))
+      ++ def "sizeOf" [ty "Unit"] (ty "Int") ["u"] (SInt total)
+      ++ def "index" [ty l, ty "Int"] (ty l) ["p", "i"]
+           (cast (call "Addr.add" [addrOf, SBin "*" (v "i") (SInt total)]))
+      ++ def "null" [ty "Unit"] (ty l) ["u"] (cast (call "Addr.null" [v "u"]))
+      ++ def "isNull" [ty l] (ty "Bool") ["p"] (call "Addr.eq" [addrOf, call "Addr.null" [SVar "Unit"]])
+      ++ def "eq" [ty l, ty l] (ty "Bool") ["p", "q"] (call "Addr.eq" [addrOf, cast (v "q")])
+      ++ concat [fieldDefs f t o | (f, t, o) <- named]
+  where
+    v = SVar
+    ty t = TCon t []
+    call f = foldl SApp (SVar f)
+    cast e = SApp (SVar "$cast") e
+    -- a pointer field casts with `$cast` itself, not the other layout's
+    -- at/addr: the accessor's SIGNATURE pins both ends, and a body with no
+    -- call in it cannot grow under inlining.  (With a call inside, ARC's
+    -- let-normal form pushed the body past Inline's size limit after one
+    -- round, so sites exposed in round two -- a setter reached through a
+    -- helper -- stayed calls, and kept the accessor in the image.)
+    castTo _ e = cast e
+    castFrom _ e = cast e
+    -- flat on purpose: `$cast p`, not a call to L.addr -- an accessor is then one
+    -- primitive expression and folds into its site in a single inlining round
+    addrOf = cast (v "p")
+    def f args res ps body =
+      [ TSig (l ++ "." ++ f) (args, res) (map (const Nothing) args),
+        TBind (l ++ "." ++ f) (map PVar ps) [] body
+      ]
+    widthOf t = case t of "U8" -> 1; "U16" -> 2; "U32" -> 4; _ -> 8
+    roundUp a x = ((x + a - 1) `div` a) * a
+    place _ [] = Right []
+    place cur ((f, t, moff) : rest) = do
+      let w = widthOf t
+          o = maybe (roundUp w cur) id moff
+      if o < 0 || o `mod` w /= 0
+        then Left ("Layout " ++ l ++ ": field `" ++ f ++ "` at offset " ++ show o ++ " is not aligned to its " ++ show w ++ "-byte type " ++ t)
+        else ((f, t, o) :) <$> place (o + w) rest
+    fieldDefs f t o =
+      let cap = toUpper (head f) : tail f
+          at = if o == 0 then addrOf else call "Addr.add" [addrOf, SInt o]
+          here = at
+          (fty, get, set) = case t of
+            "Word" -> (ty "Word", call "Mem.readWord" [here], call "Mem.writeWord" [here, v "x"])
+            "Addr" -> (ty "Addr", call "Addr.fromWord" [call "Mem.readWord" [here]], call "Mem.writeWord" [here, call "Addr.toWord" [v "x"]])
+            "Int" -> (ty "Int", call "Word.toInt" [call "Mem.readWord" [here]], call "Mem.writeWord" [here, call "Word.fromInt" [v "x"]])
+            "U8" -> (ty "Int", call "Mem.read8" [here], call "Mem.write8" [here, v "x"])
+            "U16" -> (ty "Int", call "Mem.read16" [here], call "Mem.write16" [here, v "x"])
+            "U32" -> (ty "Word", call "Mem.read32" [here], call "Mem.write32" [here, v "x"])
+            other ->
+              ( ty other,
+                castTo other (call "Addr.fromWord" [call "Mem.readWord" [here]]),
+                call "Mem.writeWord" [here, call "Addr.toWord" [castFrom other (v "x")]]
+              )
+       in def (f ++ "At") [ty l] (ty "Addr") ["p"] at
+            ++ def f [ty l] fty ["p"] get
+            ++ def ("set" ++ cap) [ty l, fty] (ty "Unit") ["p", "x"] set
 
 -- `Functor = Sig { map : (a -> b) -> t a -> t b }.`  (a named row)
 sigDecl :: P STop
@@ -1291,8 +1424,12 @@ collectShapes tops = M.fromList [(fs, shapeIdFor fs) | fs <- allShapes]
 shapeTyTable :: [STop] -> M.Map Name [(Name, Ty)]
 shapeTyTable tops = M.fromList [(n, fs) | TShape n fs <- tops]
 
-expandPathLits :: M.Map Name [(Name, Ty)] -> [STop] -> ([String], [STop])
-expandPathLits tbl tops = (nub (concatMap errsTop tops), map top tops)
+-- the declared SUM types, for codec literals (`@Msg`): name -> constructors
+typeTyTable :: [STop] -> M.Map Name [(Name, [Ty])]
+typeTyTable tops = M.fromList [(n, cs) | TType n _ _ cs <- tops]
+
+expandPathLits :: M.Map Name [(Name, Ty)] -> M.Map Name [(Name, [Ty])] -> [STop] -> ([String], [STop])
+expandPathLits tbl ttbl tops = (nub (concatMap errsTop tops), map top tops)
   where
     top (TBind n ps gs b) = TBind n ps (map (mapGuardE goE) gs) (goE b)
     top (TStruct n as fs) = TStruct n as [(f, goE e) | (f, e) <- fs]
@@ -1316,17 +1453,87 @@ expandPathLits tbl tops = (nub (concatMap errsTop tops), map top tops)
             Just (p, root, fields, fs)
       _ -> Nothing
 
+    -- `@Msg` where Msg is a declared SUM type: its wire codec (codecFor)
+    codecTarget e = case e of
+      SApp (SVar "Path") (SStrI [SegStr p])
+        | not (null p), isUpper (head p), '.' `notElem` p,
+          M.notMember p tbl, Just cs <- M.lookup p ttbl -> Just (p, cs)
+      _ -> Nothing
+
     goE e
       | Just (p, root, fields, fs) <- pathTarget e =
           case rewriteLit p root fields fs of
             Right e' -> e'
             Left _ -> e -- reported via errsE; keep the tree well-formed
+      | Just (p, cs) <- codecTarget e = either (const e) id (codecFor p cs)
     goE e = descend e
 
     errsE e
       | Just (p, root, fields, fs) <- pathTarget e =
           either (: []) (const []) (rewriteLit p root fields fs)
+      | Just (p, cs) <- codecTarget e = either (: []) (const []) (codecFor p cs)
     errsE e = concatMap errsE (children e)
+
+    -- THE MESSAGE CODEC.  A bare literal `@Msg` over a declared sum type whose
+    -- constructor fields are Int, String or Bool is the record
+    --
+    --   { name : Msg -> String,                          the constructor
+    --     args : Msg -> List String,                     its fields, as text
+    --     make : String -> List String -> Result Msg String }   and back
+    --
+    -- minted from the declaration, as a path is from a record's.  It is what
+    -- lets a message cross a wire (a page, a log) as TEXT and still be a
+    -- checked value of its type on the other side: an unknown constructor, a
+    -- wrong number of fields or a field that is not a number is an Err that says
+    -- so, never a value of the wrong shape.  Ordinary code downstream: no new
+    -- type-system machinery, exactly as for paths.
+    codecFor p cs = do
+      mapM_ checkCon cs
+      pure $
+        SRec
+          [ ("name", SLam ["m"] (SCase (SVar "m") [(PCon c (map (const PWild) tys), str c) | (c, tys) <- cs])),
+            ("args", SLam ["m"] (SCase (SVar "m") [(PCon c [PVar (v i) | (i, _) <- zip [1 :: Int ..] tys],
+                                                   SList [render t (SVar (v i)) | (i, t) <- zip [1 ..] tys]) | (c, tys) <- cs])),
+            ("make", SLam ["n", "as"] (SCase (SVar "n") ([(PStr (base c), build c tys) | (c, tys) <- cs]
+                                        ++ [(PWild, err (p ++ ": no such message: ") (Just (SVar "n")))])))
+          ]
+      where
+        v i = "f" ++ show i
+        a i = "a" ++ show i
+        -- the name a client sees: without any module qualification
+        base c = reverse (takeWhile (/= '.') (reverse (takeWhile (/= '@') c)))
+        str c = SStrI [SegStr (base c)]
+        err msg extra = SApp (SVar "Err") (case extra of
+          Nothing -> SStrI [SegStr msg]
+          Just e -> SStrI [SegStr msg, SegExpr e])
+        render t x = case t of
+          TCon "Int" [] -> SApp (SVar "str") x
+          TCon "Bool" [] -> SCase x [(PCon "True" [], SStrI [SegStr "True"]), (PCon "False" [], SStrI [SegStr "False"])]
+          _ -> x
+        listPat [] = PCon "Nil" []
+        listPat (x : xs) = PCon "Cons" [PVar x, listPat xs]
+        build c tys =
+          let n = length tys
+              done = SApp (SVar "Ok") (foldl SApp (SVar c) [SVar (v i) | i <- [1 .. n]])
+              field (i, t) rest = case t of
+                TCon "Int" [] -> SCase (SApp (SVar "wireInt") (SVar (a i)))
+                  [(PCon "Ok" [PVar (v i)], rest), (PCon "Err" [PWild], err (base c ++ ": field " ++ show i ++ " is not a number") Nothing)]
+                TCon "Bool" [] -> SCase (SVar (a i))
+                  [ (PStr "True", SBlock [SBind (v i) [] (SVar "True")] rest),
+                    (PStr "False", SBlock [SBind (v i) [] (SVar "False")] rest),
+                    (PWild, err (base c ++ ": field " ++ show i ++ " is not True or False") Nothing) ]
+                _ -> SBlock [SBind (v i) [] (SVar (a i))] rest
+           in SCase (SVar "as")
+                [ (listPat [a i | i <- [1 .. n]], foldr field done (zip [1 ..] tys)),
+                  (PWild, err (base c ++ ": expected " ++ show n ++ " field(s)") Nothing) ]
+        checkCon (c, tys) = mapM_ (checkTy c) tys
+        checkTy c t = case t of
+          TCon "Int" [] -> Right ()
+          TCon "String" [] -> Right ()
+          TCon "Bool" [] -> Right ()
+          _ -> Left ("codec literal @" ++ p ++ ": constructor " ++ base c
+                       ++ " has a field that is not Int, String or Bool -- declare its fields' types (" ++ base c
+                       ++ " Int String), and keep anything richer out of a message that crosses a wire")
 
     rewriteLit p root [] _ = schemaFor p root
     rewriteLit p root fields fs = do
@@ -1491,9 +1698,7 @@ dExpr = \case
     body <- updateRecord (CVar v) assigns
     pure (CLet v m' body)
   STup es -> do
-    -- tuples are Tup2..Tup8 (a wider tuple used to be packed into a
-    -- Tup2 header and silently corrupt its own payload; now 4..8 are
-    -- real constructors and >8 is a hard error).
+    -- a tuple of any width is a real constructor cell (tupCon)
     con <- tupCon (length es)
     (tid, var, _) <- conInfo con
     CMk tid var <$> mapM dExpr es
@@ -1507,23 +1712,30 @@ dExpr = \case
       segCore (SegStr s) = pure (CStr s)
       segCore (SegExpr e) = CApp (CVar "str") <$> dExpr e
 
--- the ABI has Tup2..Tup8; past that, name your fields
+-- A tuple is as wide as it is written.  Tup2..Tup8 keep their small typeids
+-- (runtime/fpr.h); a wider one is typeid tupWideBase + n, a range of its own
+-- between the record shapes and the unit types, which the runtime reads the
+-- arity back out of (render, Vec columns).  It used to stop at 8.
 tupCon :: Int -> D String
 tupCon n
-  | n >= 2 && n <= 8 = pure ("Tup" ++ show n)
-  | otherwise =
-      error
-        ( "tuple of "
-            ++ show n
-            ++ " elements: this ABI has Tup2..Tup8 -- past 8, "
-            ++ "declare a constructor or use a record instead"
-        )
+  | n >= 2 = pure ("Tup" ++ show n)
+  | otherwise = error ("tuple of " ++ show n ++ " elements")
+
+tupWideBase :: Int
+tupWideBase = 0x10000000 -- fpr.h T_TUPN
+
+wideTup :: Name -> Maybe (Int, Int, Int)
+wideTup c = case c of
+  'T' : 'u' : 'p' : ds | not (null ds), all isDigit ds, n > 8 -> Just (tupWideBase + n, 0, n)
+    where n = read ds
+  _ -> Nothing
 
 conInfo :: Name -> D (Int, Int, Int)
 conInfo c = do
   cons <- gets dCons
   case M.lookup c cons of
     Just i -> pure i
+    Nothing | Just i <- wideTup c -> pure i
     Nothing -> error ("unknown constructor: " ++ c)
 
 shapeId :: [Name] -> D Int

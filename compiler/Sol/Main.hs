@@ -80,7 +80,7 @@ main = do
   -- program's declared shapes and desugar to {get,set,segs} records,
   -- bare @Shape to the flattened schema; sol file-path literals
   -- (lowercase / '/' roots) pass through untouched.
-  let (pathErrs, utopsX0) = expandPathLits (shapeTyTable utopsX1) utopsX1
+  let (pathErrs, utopsX0) = expandPathLits (shapeTyTable utopsX1) (typeTyTable utopsX1) utopsX1
   unless (null pathErrs) $ do
     putStrLn "=== PATH LITERALS: ERRORS ==="
     mapM_ (putStrLn . ("  * " ++)) pathErrs
@@ -177,6 +177,12 @@ main = do
 
   let cons = collectCons tops
       shapes = collectShapes tops
+  -- user constructors only (the builtins have their own spellings in render),
+  -- by their BASE name: `L.O.Some` prints as `Some`
+  writeIORef VM.conNames
+    [ ((t, v, ar), reverse (takeWhile (/= '.') (reverse c)))
+    | (c, (t, v, ar)) <- M.toList cons, M.notMember c builtinCons ]
+  let
       -- the shared desugar keeps string literals as UTF-8 bytes (the
       -- AOT codegen contract); the VM speaks Chars -- decode once here
       (prog0, _) = runState (compileTop tops >>= liftFix) (DEnv 0 cons shapes [])

@@ -1,0 +1,57 @@
+# std/clock.fpr -- Clock: elapsed time, the calendar time, and waiting.
+#
+#   Clock = use "std/clock".
+#   t0 = Clock.monotonic Unit; ...; ms = Clock.elapsedMs t0
+#   Clock.iso (Clock.now Unit)            # "2026-09-20T03:14:15Z"
+#
+# Two different clocks, on purpose: `monotonic` only ever goes forward and is
+# what you measure with; `now` is the wall clock, which people read and
+# administrators change.
+
+OS = use "os".
+S = use "string".
+
+# microseconds since an arbitrary start
+monotonic : Unit -> Int .
+monotonic u = Sys.timeUs u.
+
+elapsedMs : Int -> Int .
+elapsedMs since = (Sys.timeUs Unit - since) / 1000.
+
+# seconds since 1970-01-01 UTC
+now : Unit -> Int .
+now u = OS.wallClock u.
+
+sleepMs : Int -> Unit .
+sleepMs ms = _ = Sys.sleepUs (ms * 1000); Unit.
+
+# ---- the calendar, from seconds (UTC, proleptic Gregorian) ----------------------
+# days since 1970-01-01 -> (year, month, day); Howard Hinnant's civil_from_days
+civil : Int -> (Int, Int, Int) .
+civil days =
+  z = days + 719468;
+  era = (case z >= 0 of True -> z | False -> z - 146096) / 146097;
+  doe = z - era * 146097;
+  yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+  mp = (5 * doy + 2) / 153;
+  d = doy - (153 * mp + 2) / 5 + 1;
+  m = case mp < 10 of True -> mp + 3 | False -> mp - 9;
+  y = yoe + era * 400 + (case m <= 2 of True -> 1 | False -> 0);
+  (y, m, d).
+
+two : Int -> String .
+two n = S.padLeft 2 "0" (str n).
+
+# "2026-09-20"
+date : Int -> String .
+date secs =
+  days = (case secs >= 0 of True -> secs | False -> secs - 86399) / 86400;
+  case civil days of (y, m, d) -> "{y}-{two m}-{two d}".
+
+# "2026-09-20T03:14:15Z"
+iso : Int -> String .
+iso secs =
+  days = (case secs >= 0 of True -> secs | False -> secs - 86399) / 86400;
+  rem = secs - days * 86400;
+  "{date secs}T{two (rem / 3600)}:{two ((rem - (rem / 3600) * 3600) / 60)}:{two (rem - (rem / 60) * 60)}Z".

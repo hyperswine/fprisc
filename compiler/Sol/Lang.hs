@@ -160,9 +160,14 @@ renameTops rn tops0 = map top tops0
       TSigDef n fs -> TSigDef (look n) fs
       TStruct n sigs fs -> TStruct (look n) (map look sigs) [(f, re S.empty e) | (f, e) <- fs]
       other -> other
+    -- EVERY position a type name can sit in: `(a -> Option b)` used to keep its
+    -- bare `Option` while the result became `O.Option`, and the module no
+    -- longer type-checked against itself (std/option.fpr under any alias)
     rt = \case
       TCon n as -> TCon (look n) (map rt as)
       TTup ts -> TTup (map rt ts)
+      TArrT a b -> TArrT (rt a) (rt b)
+      TVApp n as -> TVApp n (map rt as)
       o -> o
     rp = \case
       PCon c ps -> PCon (look c) (map rp ps)
@@ -188,14 +193,23 @@ topNames tops =
       [n | TStruct n _ _ <- tops]
     ]
 
+-- A module reached TWICE (a diamond: json uses map and option, map uses option)
+-- is spliced once, and the second alias is re-pointed at the canonical copy.
+-- That re-pointing has to reach everything that can name the module's things:
+-- expressions, PATTERNS (`O.Some x ->`) and the TYPES in signatures and
+-- constructor fields (`-> O.Option a`).  It only did expressions, so the second
+-- importer's patterns and signatures named a module that was never spliced.
 qualifyUses :: M.Map Name Name -> [STop] -> [STop]
 qualifyUses aliases = map top
   where
     top = \case
       TBind n ps g b ->
         let bs = S.fromList (concatMap patVars ps)
-            (bs', g') = renGuards re id bs g
-         in TBind n ps g' (re bs' b)
+            (bs', g') = renGuards re rp bs g
+         in TBind n (map rp ps) g' (re bs' b)
+      TSig n (ps, r) pcs -> TSig n (map rt ps, rt r) pcs
+      TType n l ps cs -> TType n l ps [(c, map rt tys) | (c, tys) <- cs]
+      TStruct n sigs fs -> TStruct n sigs [(f, re S.empty e) | (f, e) <- fs]
       TEval e -> TEval (re S.empty e)
       -- the shared parser produces TUse for `m = use "spec".`; splicing
       -- already happened in expandUses — re-emit the RUNTIME binding so
@@ -204,13 +218,25 @@ qualifyUses aliases = map top
       TAlias t tgt -> TAlias t (retgt tgt)
       other -> other
     retgt tgt = case break (== '.') tgt of
-      (m, '.' : rest) | Just canon <- M.lookup m aliases -> canon ++ "." ++ rest
+      (m, '.' : rest) | Just canon <- M.lookup m aliases, canon /= m -> canon ++ "." ++ rest
       _ -> tgt
-    re = transformE step
+    rt = \case
+      TCon n as -> TCon (retgt n) (map rt as)
+      TTup ts -> TTup (map rt ts)
+      TArrT a b -> TArrT (rt a) (rt b)
+      TVApp n as -> TVApp n (map rt as)
+      o -> o
+    rp = \case
+      PCon c ps -> PCon (retgt c) (map rp ps)
+      PTup ps -> PTup (map rp ps)
+      o -> o
+    re = transformEP step rp
     step bs e = case e of
       SProj (SVar m) (f : rest)
         | Just canon <- M.lookup m aliases,
           not (S.member m bs) ->
             let base = SVar (canon ++ "." ++ f)
              in if null rest then base else SProj base rest
+      -- the same reference when the parser gave it as ONE dotted name
+      SVar v | retgt v /= v, not (S.member (takeWhile (/= '.') v) bs) -> SVar (retgt v)
       _ -> e

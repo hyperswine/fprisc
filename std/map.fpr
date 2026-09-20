@@ -1,0 +1,198 @@
+# std/map.fpr -- Map: keys to values, ordered (docs/PRELIM_BASE_LIBRARY_DESIGN.md).
+#
+#   Map = use "std/map".
+#   counts = words |> List.fold (fn m w -> Map.update w bump m) Map.strings
+#   Map.entries counts                  # ascending by key, always
+#
+# The contracts the design asked to settle early:
+#   * keys are compared by a function you give once, when the map is made
+#     (`Map.empty Order.string`; `Map.strings` and `Map.ints` are those two).
+#     No type classes, no hashing, nothing to implement on your key type.
+#   * iteration is DETERMINISTIC: ascending key order, for entries, keys,
+#     values, fold and the printed form of a rebuilt list.
+#   * a Map is a persistent value: insert and remove return a new map and
+#     share the rest.  O(log n) each (an AVL tree), no stack to speak of.
+#   * absence is an Option.  Nothing here panics.
+#   * EQUALITY: `==` on two maps compares the trees, and a tree's shape depends
+#     on the order its keys arrived in.  Two maps with the same entries can be
+#     `!=`.  Ask what you mean: `Map.equal a b` (same keys, `==` values) or
+#     `Map.equalBy valuesEqual a b`.
+
+O = use "option".
+Ord = use "order".
+
+Tree k v = Type (Leaf | Node Int (Tree k v) k v (Tree k v)).
+Map k v = Type (Map (k -> k -> Ord.Ordering) Int (Tree k v)).
+
+# ---- making --------------------------------------------------------------------
+empty : (k -> k -> Ord.Ordering) -> Map k v .
+empty cmp = Map cmp 0 Leaf.
+
+strings = empty Ord.string.
+ints = empty Ord.int.
+
+fromList : (k -> k -> Ord.Ordering) -> List (k, v) -> Map k v .
+fromList cmp kvs = insertAll kvs (empty cmp).
+
+# later pairs win
+insertAll : List (k, v) -> Map k v -> Map k v .
+insertAll kvs m = insertAllGo kvs m.
+insertAllGo : unsafe List (k, v) -> Map k v -> Map k v .
+insertAllGo kvs m = case kvs of Nil -> m | (k, v) :: r -> insertAllGo r (insert k v m).
+
+# ---- reading -------------------------------------------------------------------
+size : Map k v -> Int .
+size m = case m of Map _ n _ -> n.
+
+isEmpty : Map k v -> Bool .
+isEmpty m = size m == 0.
+
+get : k -> Map k v -> O.Option v .
+get k m = case m of Map cmp _ t -> getGo cmp k t.
+getGo : unsafe (k -> k -> Ord.Ordering) -> k -> Tree k v -> O.Option v .
+getGo cmp k t = case t of
+    Leaf -> O.None
+  | Node _ l k2 v r -> (case cmp k k2 of
+        Ord.Less -> getGo cmp k l
+      | Ord.Greater -> getGo cmp k r
+      | Ord.Equal -> O.Some v).
+
+getOr : v -> k -> Map k v -> v .
+getOr d k m = O.withDefault d (get k m).
+
+member : k -> Map k v -> Bool .
+member k m = O.isSome (get k m).
+
+# ---- the tree --------------------------------------------------------------------
+height : Tree k v -> Int .
+height t = case t of Leaf -> 0 | Node h _ _ _ _ -> h.
+
+node : Tree k v -> k -> v -> Tree k v -> Tree k v .
+node l k v r =
+  hl = height l;
+  hr = height r;
+  Node (1 + (case hl > hr of True -> hl | False -> hr)) l k v r.
+
+# rebuild `l k v r` when one side has become two taller than the other
+balance : Tree k v -> k -> v -> Tree k v -> Tree k v .
+balance l k v r =
+  hl = height l;
+  hr = height r;
+  case hl > hr + 1 of
+    True -> rotRight l k v r
+  | False -> (case hr > hl + 1 of True -> rotLeft l k v r | False -> node l k v r).
+
+rotRight : Tree k v -> k -> v -> Tree k v -> Tree k v .
+rotRight l k v r = case l of
+    Leaf -> node l k v r
+  | Node _ ll lk lv lr -> (case height ll >= height lr of
+        True -> node ll lk lv (node lr k v r)
+      | False -> (case lr of
+            Leaf -> node ll lk lv (node lr k v r)
+          | Node _ lrl lrk lrv lrr -> node (node ll lk lv lrl) lrk lrv (node lrr k v r))).
+
+rotLeft : Tree k v -> k -> v -> Tree k v -> Tree k v .
+rotLeft l k v r = case r of
+    Leaf -> node l k v r
+  | Node _ rl rk rv rr -> (case height rr >= height rl of
+        True -> node (node l k v rl) rk rv rr
+      | False -> (case rl of
+            Leaf -> node (node l k v rl) rk rv rr
+          | Node _ rll rlk rlv rlr -> node (node l k v rll) rlk rlv (node rlr rk rv rr))).
+
+# ---- writing ---------------------------------------------------------------------
+insert : k -> v -> Map k v -> Map k v .
+insert k v m = case m of Map cmp n t ->
+  (case insGo cmp k v t of (t2, added) -> Map cmp (n + added) t2).
+# (the new tree, 1 if the key is new else 0).  Depth is O(log n): plain recursion.
+insGo : unsafe (k -> k -> Ord.Ordering) -> k -> v -> Tree k v -> (Tree k v, Int) .
+insGo cmp k v t = case t of
+    Leaf -> (Node 1 Leaf k v Leaf, 1)
+  | Node h l k2 v2 r -> (case cmp k k2 of
+        Ord.Less -> (case insGo cmp k v l of (l2, a) -> (balance l2 k2 v2 r, a))
+      | Ord.Greater -> (case insGo cmp k v r of (r2, a) -> (balance l k2 v2 r2, a))
+      | Ord.Equal -> (Node h l k v r, 0)).
+
+remove : k -> Map k v -> Map k v .
+remove k m = case m of Map cmp n t ->
+  (case remGo cmp k t of (t2, gone) -> Map cmp (n - gone) t2).
+remGo : unsafe (k -> k -> Ord.Ordering) -> k -> Tree k v -> (Tree k v, Int) .
+remGo cmp k t = case t of
+    Leaf -> (Leaf, 0)
+  | Node _ l k2 v2 r -> (case cmp k k2 of
+        Ord.Less -> (case remGo cmp k l of (l2, g) -> (balance l2 k2 v2 r, g))
+      | Ord.Greater -> (case remGo cmp k r of (r2, g) -> (balance l k2 v2 r2, g))
+      | Ord.Equal -> (glue l r, 1)).
+
+# two trees, every key of `l` below every key of `r`
+glue : unsafe Tree k v -> Tree k v -> Tree k v .
+glue l r = case r of
+    Leaf -> l
+  | _ -> (case popMin r of (k, v, r2) -> balance l k v r2).
+popMin : unsafe Tree k v -> (k, v, Tree k v) .
+popMin t = case t of
+    Node _ l k v r -> (case l of
+        Leaf -> (k, v, r)
+      | _ -> (case popMin l of (mk, mv, l2) -> (mk, mv, balance l2 k v r)))
+  | Leaf -> error "Map.popMin: empty".
+
+# change, add or drop one key in a single pass of your function:
+#   Map.update w (fn old -> Option.Some (1 + Option.withDefault 0 old)) counts
+update : k -> (O.Option v -> O.Option v) -> Map k v -> Map k v .
+update k f m = case f (get k m) of
+    O.Some v -> insert k v m
+  | O.None -> remove k m.
+
+# ---- traversing (ascending by key) -----------------------------------------------
+fold : (b -> k -> v -> b) -> b -> Map k v -> b .
+fold f z m = case m of Map _ _ t -> foldGo f z t.
+foldGo : unsafe (b -> k -> v -> b) -> b -> Tree k v -> b .
+foldGo f z t = case t of
+    Leaf -> z
+  | Node _ l k v r -> foldGo f (f (foldGo f z l) k v) r.
+
+entries : Map k v -> List (k, v) .
+entries m = rev (fold (fn acc k v -> (k, v) :: acc) Nil m) Nil.
+
+keys : Map k v -> List k .
+keys m = rev (fold (fn acc k v -> k :: acc) Nil m) Nil.
+
+values : Map k v -> List v .
+values m = rev (fold (fn acc k v -> v :: acc) Nil m) Nil.
+
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+map : (v -> w) -> Map k v -> Map k w .
+map f m = case m of Map cmp n t -> Map cmp n (mapGo f t).
+mapGo : unsafe (v -> w) -> Tree k v -> Tree k w .
+mapGo f t = case t of Leaf -> Leaf | Node h l k v r -> Node h (mapGo f l) k (f v) (mapGo f r).
+
+filter : (k -> v -> Bool) -> Map k v -> Map k v .
+filter p m = case m of Map cmp _ _ ->
+  fold (fn acc k v -> case p k v of True -> insert k v acc | False -> acc) (empty cmp) m.
+
+# every key of either; where both have it, `a`'s value (the first argument's)
+union : Map k v -> Map k v -> Map k v .
+union a b = fold (fn acc k v -> insert k v acc) b a.
+
+# the same keys with equal values, whatever order they were inserted in
+equal : Map k v -> Map k v -> Bool .
+equal a b = entries a == entries b.
+
+equalBy : (v -> v -> Bool) -> Map k v -> Map k v -> Bool .
+equalBy veq a b = case size a == size b of
+    False -> False
+  | True -> pairsEq veq (entries a) (entries b).
+pairsEq : unsafe (v -> v -> Bool) -> List (k, v) -> List (k, v) -> Bool .
+pairsEq veq xs ys = case xs of
+    Nil -> True
+  | (k1, v1) :: xr -> (case ys of
+        Nil -> False
+      | (k2, v2) :: yr -> (case k1 == k2 of
+            False -> False
+          | True -> (case veq v1 v2 of True -> pairsEq veq xr yr | False -> False))).
+
+# the least / greatest key
+first : Map k v -> O.Option (k, v) .
+first m = case entries m of Nil -> O.None | e :: _ -> O.Some e.

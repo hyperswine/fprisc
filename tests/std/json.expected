@@ -1,0 +1,6 @@
+port Some 8080 deep Some (Integer (-7)) name Some fpr missing None
+render {"name":"fpr","nested":{"deep":{"x":-7}},"none":null,"on":true,"port":8080,"ratio":-1.5e3,"tags":["a","b\né😀"]}
+roundtrip True
+errors: Err line 2, column 6: expected ':' | Err line 1, column 7: expected a value after ',' | Err line 1, column 5: unterminated string | Err line 1, column 4: unexpected text after the value | Err line 1, column 1: expected a value, found the end of the text | Err line 1, column 4: expected ',' or ']'
+made {"count":2,"files":["a.txt","b \"q\".txt"]}
+big 637789 bytes, parses back equal: True

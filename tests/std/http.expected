@@ -1,0 +1,7 @@
+200 [text/plain; charset=utf-8] hello, GET name=fpr
+201 [application/json] {"got":100000,"type":"text/plain"}
+404 [text/plain; charset=utf-8] no such page: /missing
+ERR unsupported scheme: ftp
+url: Ok {host = Example.org, port = 8443, scheme = https, target = /a/b?c=d} Ok {host = h, port = 80, scheme = http, target = /}
+chunked: Ok {body = hello, world, headers = [(transfer-encoding, chunked)], status = 200}
+after stop: refused

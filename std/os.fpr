@@ -1,0 +1,49 @@
+# std/os.fpr -- the posix system's primitives, declared in ONE place.
+#
+# You do not normally use this module: std/file, std/dir, std/proc and
+# std/clock are the API.  This is the seam under them -- signatures with no
+# definition, implemented by machine/posix/os.c.  A system without them (a
+# board) fails a program that imports them at LINK time, by name: a program's
+# imports are its capability manifest (docs/BASE.md).
+
+Os.readFile  : String -> Result String String .
+Os.listDir   : String -> Result (List String) String .
+Os.stat      : String -> Result (Int, Int, Int) String .
+Os.mkdir     : String -> Result Unit String .
+Os.remove    : String -> Result Unit String .
+Os.rename    : String -> String -> Result Unit String .
+Os.cwd       : Unit -> String .
+Os.run       : List String -> String -> String -> List String -> Int -> Result (Int, String, String) String .
+Os.wallClock : Unit -> Int .
+Os.open      : String -> String -> Result Int String .
+Os.ready     : Int -> Bool .
+Os.read      : Int -> Int -> Result String String .
+Os.write     : Int -> String -> Result Int String .
+Os.seek      : Int -> Int -> Result Int String .
+Os.close     : Int -> Result Unit String .
+Os.connect   : String -> Int -> Result Int String .
+Os.listen    : String -> Int -> Result Int String .
+Os.accept    : Int -> Result (Int, String) String .
+Os.localPort : Int -> Result Int String .
+Os.exec      : List String -> Result Unit String .
+
+readFile p = Os.readFile p.
+listDir p = Os.listDir p.
+stat p = Os.stat p.
+mkdir p = Os.mkdir p.
+remove p = Os.remove p.
+rename a b = Os.rename a b.
+cwd u = Os.cwd u.
+run argv dir input env limitMs = Os.run argv dir input env limitMs.
+open path mode = Os.open path mode.
+ready fd = Os.ready fd.
+read fd n = Os.read fd n.
+write fd bytes = Os.write fd bytes.
+seek fd at = Os.seek fd at.
+close fd = Os.close fd.
+connect host port = Os.connect host port.
+listen addr port = Os.listen addr port.
+accept fd = Os.accept fd.
+localPort fd = Os.localPort fd.
+exec argv = Os.exec argv.
+wallClock u = Os.wallClock u.

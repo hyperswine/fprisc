@@ -30,7 +30,7 @@ profileOf s = case s of
 profileNote :: Profile -> String
 profileNote p = case p of
   BareMetalBuiltin -> "bare-metal-builtin: unsafe standalone RV64, no scheduler or default prelude"
-  BareMetal -> "bare-metal: AOT + hal/virt, cooperative-scheduler actors, local addressing"
+  BareMetal -> "bare-metal: AOT + machine/virt, cooperative-scheduler actors, local addressing"
   QOSNative -> "qos-native: .qa process on the QOS kernel (RISC-V), URL addressing + capabilities"
   QOSPortable -> "qos-portable: .qa process hosted by qosp on Unix through the qos_hal_t table"
   HostedBytecode -> "hosted-bytecode: the sol package — bytecode VM + JIT, transactional semantics"

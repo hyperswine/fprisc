@@ -1,0 +1,361 @@
+# std/view.fpr -- View: an Elm/LiveView-style view tree (it was
+# qos/programs/mods/genview.fpr: the application library belongs in std).
+#
+# A view is a TREE, not a string. Rendering it splits the page the way
+# Phoenix LiveView does:
+#
+#   render tree -> (statics, dynamics)
+#   page = s0 ++ d0 ++ s1 ++ d1 ++ ... ++ sn        (statics = n+1)
+#
+# The statics are fixed by the SHAPE of the tree; only the dynamics
+# move. So an update that changes one value ships one string, and the
+# client patches one node. If the shape itself changes (a branch flips)
+# the statics differ and the server says so, and the client re-renders.
+#
+# THE TWO KINDS OF STATE, both declared in the same tree:
+#
+#   Dyn v            server state. Comes from the model, arrives as a
+#                    dynamic slot, updates by delta.
+#   Local n init     client state (Alpine-style). Declared on an
+#                    element; lives only in the browser; never
+#                    round-trips on its own.
+#   LTxt n           print a local.
+#   ShowIf n         show/hide by a local -- zero server involvement.
+#   OnSet n v        click mutates a local ("+1" / "-1" / "toggle" / lit).
+#   OnClick msg n    click sends msg TO THE SERVER carrying local n's
+#                    current value -- the bridge between the two halves,
+#                    i.e. onClick=Msg.pressed @press.
+#   OnSend msg lit   click sends msg carrying a LITERAL arg (a catalog
+#                    index, a tab name): no local needed.
+#   Inp attrs        a text input; Input n binds it to local n (typing
+#                    updates the local), OnEnter msg n sends on Enter.
+#
+# CSS is generated from the tree too: only the utility classes actually
+# used anywhere in it are emitted, so the stylesheet is a function of
+# the view, not a 3MB file you filter later.
+
+
+Attr = Type (Cls String | Att String String | Local String String
+           | OnClick String String | OnSet String String | ShowIf String
+           | OnBoth String String String String
+           | OnSend String String | Input String | OnEnter String String).
+Node = Type (El String (List Attr) (List Node) | Txt String | Dyn String | LTxt String
+           | Inp (List Attr)).
+
+Ctx = Type (Ctx cur statics dyns).
+
+# ---- rendering: tree -> (statics, dynamics) --------------------------------
+
+render n = fin (goN (Ctx "" Nil Nil) n).
+fin (Ctx cur ss ds) = (rev (cur :: ss), rev ds).
+
+goN : unsafe Ctx -> Node -> Ctx .
+goN c (Txt s) = emit c (esc s).
+goN c (Dyn v) = slot c v.
+goN c (LTxt n) = emit c "<span data-text=\"{n}\"></span>".
+goN c (Inp attrs) = emit c "<input{attrsOf attrs}>".
+goN c (El tag attrs kids) =
+  c1 = emit c "<{tag}{attrsOf attrs}>";
+  c2 = goKids c1 kids;
+  emit c2 "</{tag}>".
+
+goKids : unsafe Ctx -> List Node -> Ctx .
+goKids c Nil = c.
+goKids c (k :: r) = goKids (goN c k) r.
+
+emit (Ctx cur ss ds) s = Ctx (strcat cur s) ss ds.
+slot (Ctx cur ss ds) v = Ctx "" (cur :: ss) (v :: ds).
+
+# ---- attributes ------------------------------------------------------------
+
+# locals MERGE into one x-data: two x-local attributes on one element
+# would be a duplicate attribute name, and HTML keeps only the first --
+# a silent single-local ceiling. One attribute, Alpine-shaped.
+attrsOf as = strcat (xdata (localsOf as)) (others as).
+localsOf : unsafe List Attr -> String .
+localsOf Nil = "".
+localsOf (Local n init :: r) = join2 (localsOf r) "{n}={init}".
+localsOf (a :: r) = localsOf r.
+xdata "" = "".
+xdata s = " x-data=\"{s}\"".
+others : unsafe List Attr -> String .
+others Nil = "".
+others (Local n init :: r) = others r.
+others (a :: r) = strcat (attrOf a) (others r).
+
+attrOf (Cls s) = " class=\"{s}\"".
+attrOf (Att k v) = " {k}=\"{esc v}\"".
+attrOf (ShowIf n) = " data-show=\"{n}\"".
+attrOf (OnSet n v) = " data-set=\"{n}\" data-val=\"{v}\"".
+attrOf (OnClick msg arg) = " data-click=\"{esc msg}\" data-arg=\"{arg}\"".
+attrOf (OnBoth msg arg n v) = " data-click=\"{esc msg}\" data-arg=\"{arg}\" data-set=\"{n}\" data-val=\"{v}\"".
+attrOf (OnSend msg lit) = " data-click=\"{esc msg}\" data-lit=\"{esc lit}\"".
+attrOf (Input n) = " data-input=\"{n}\"".
+attrOf (OnEnter msg arg) = " data-enter=\"{esc msg}\" data-arg=\"{arg}\"".
+
+# ---- CSS: only the classes this tree actually uses -------------------------
+
+cssFor tree = strcat cssBase (rules (nub (allClasses tree Nil))).
+
+rules : unsafe List String -> String .
+rules Nil = "".
+rules (c :: r) = strcat (rule1 c (cssRule c)) (rules r).
+rule1 c "" = "".
+rule1 c d = ".{c}\{{d}}\n".
+
+allClasses : unsafe Node -> List String -> List String .
+allClasses (El tag attrs kids) acc = allKids kids (attrCls attrs acc).
+allClasses (Inp attrs) acc = attrCls attrs acc.
+allClasses n acc = acc.
+allKids : unsafe List Node -> List String -> List String .
+allKids Nil acc = acc.
+allKids (k :: r) acc = allKids r (allClasses k acc).
+attrCls : unsafe List Attr -> List String -> List String .
+attrCls Nil acc = acc.
+attrCls (Cls s :: r) acc = attrCls r (append (splitSp s) acc).
+attrCls (a :: r) acc = attrCls r acc.
+
+# the utility table. Adding a rule here makes a class available to the
+# whole app; using one anywhere in the tree is what emits it.
+cssRule "row" = "display:flex;flex-direction:row".
+cssRule "col" = "display:flex;flex-direction:column".
+cssRule "wrap" = "flex-wrap:wrap".
+cssRule "center" = "align-items:center".
+cssRule "between" = "justify-content:space-between".
+cssRule "grow" = "flex:1".
+cssRule "gap-1" = "gap:4px".
+cssRule "gap-2" = "gap:8px".
+cssRule "gap-3" = "gap:12px".
+cssRule "gap-4" = "gap:18px".
+cssRule "gap-6" = "gap:28px".
+cssRule "p-2" = "padding:8px".
+cssRule "p-3" = "padding:12px".
+cssRule "p-4" = "padding:18px".
+cssRule "p-6" = "padding:26px".
+cssRule "px-3" = "padding-left:12px;padding-right:12px".
+cssRule "py-2" = "padding-top:8px;padding-bottom:8px".
+cssRule "mt-2" = "margin-top:8px".
+cssRule "mt-4" = "margin-top:18px".
+cssRule "mb-2" = "margin-bottom:8px".
+cssRule "mb-4" = "margin-bottom:18px".
+cssRule "text-xs" = "font-size:11px".
+cssRule "text-sm" = "font-size:13px".
+cssRule "text-lg" = "font-size:18px".
+cssRule "text-2xl" = "font-size:30px".
+cssRule "text-4xl" = "font-size:46px".
+cssRule "bold" = "font-weight:700".
+cssRule "mono" = "font-family:ui-monospace,'SF Mono',Menlo,monospace".
+cssRule "upper" = "text-transform:uppercase;letter-spacing:.18em".
+cssRule "dim" = "color:var(--dim)".
+cssRule "ink" = "color:var(--ink)".
+cssRule "acc" = "color:#57e2d2".
+cssRule "warm" = "color:#ff8a5c".
+cssRule "panel" = "background:var(--panel);border:1px solid var(--line)".
+cssRule "card" = "background:var(--card);border:1px solid var(--line)".
+cssRule "round" = "border-radius:14px".
+cssRule "pill" = "border-radius:999px".
+cssRule "btn" = "cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--dim);transition:.15s".
+cssRule "glow" = "box-shadow:0 0 24px rgba(87,226,210,.22)".
+cssRule "rule" = "border-top:1px solid var(--line)".
+cssRule "big" = "font-size:64px;line-height:1".
+cssRule "tabular" = "font-variant-numeric:tabular-nums".
+cssRule "field" = "background:var(--card);border:1px solid var(--line);color:var(--ink);padding:8px 12px;border-radius:10px;font:inherit;outline:none".
+cssRule "w-full" = "width:100%".
+cssRule "pre" = "white-space:pre-wrap".
+# roles: a badge takes a role, never a colour (red / amber / green carry
+# meaning only); the theme is one class on the page root
+cssRule "badge" = "display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);color:var(--dim)".
+cssRule "bad" = "background:#3a1220;border-color:#7a2238;color:#ff7d95".
+cssRule "warn" = "background:#3a2a10;border-color:#7a5a18;color:#ffc65c".
+cssRule "ok" = "background:#0f3328;border-color:#1f6b50;color:#57e2a6".
+cssRule "celebrate" = "background:#2a1a3a;border-color:#6b3f9a;color:#d9a6ff".
+cssRule "toast" = "padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel)".
+cssRule "scroll" = "max-height:52vh;overflow:auto".
+cssRule "w-cart" = "width:400px;flex:none".
+cssRule "w-40" = "width:40px".
+cssRule "w-24" = "width:96px".
+cssRule "right" = "text-align:right".
+cssRule "tr" = "border-bottom:1px solid var(--line);padding:6px 0".
+cssRule "page" = "max-width:1120px;margin:0 auto;width:100%".
+cssRule "mx-auto" = "margin-left:auto;margin-right:auto".
+cssRule "gap-5" = "gap:22px".
+cssRule "p-5" = "padding:22px".
+cssRule "day" = "".
+cssRule c = "".
+
+cssBase = "*\{box-sizing:border-box;margin:0}
+:root\{--bg:#060a12;--ink:#e9eff7;--dim:#7c8aa3;--card:#0a1120;--panel:linear-gradient(180deg,#0c1424,#080e1a);--line:#1b2740}
+.day\{--bg:#f3f5f9;--ink:#0d1526;--dim:#5b6a86;--card:#ffffff;--panel:linear-gradient(180deg,#ffffff,#eef2f8);--line:#d3dbe8;color:var(--ink)}
+html\{min-height:100%}
+body\{min-height:100vh;background:var(--bg);color:var(--ink);font:15px/1.55 'Archivo',system-ui,sans-serif;
+  background-image:radial-gradient(900px 500px at 20% -10%,#0f2035 0,transparent 60%),
+                   radial-gradient(700px 400px at 95% 5%,#1a1526 0,transparent 55%);
+  background-repeat:no-repeat;background-attachment:fixed}
+body:has(.day)\{background:#f3f5f9;background-image:radial-gradient(900px 500px at 20% -10%,#dfe8f7 0,transparent 60%);color:#0d1526}
+a\{color:inherit}
+.btn:hover\{color:#e9eff7;border-color:#31456b}
+.btn.is-on\{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+[data-slot]\{transition:color .2s}
+.lv-flash\{animation:lvf .55s ease-out}
+.toast:has(>[data-slot]:empty),.pre:has(>[data-slot]:empty)\{display:none}
+button\{font:inherit}
+@keyframes lvf\{from\{color:#57e2d2;text-shadow:0 0 16px rgba(87,226,210,.9)}to\{color:inherit}}
+".
+
+# ---- delta: which dynamic slots changed ------------------------------------
+# The whole point of the split, in five clauses.
+
+deltaJson : unsafe List String -> List String -> String .
+deltaJson old new = strcat "\{" (strcat (dGo old new 0 "") "}").
+dGo : unsafe List String -> List String -> Int -> String -> String .
+dGo Nil Nil i acc = acc.
+dGo Nil ns i acc = acc.
+dGo os Nil i acc = acc.
+dGo (o :: os) (n :: ns) i acc | strEq o n = dGo os ns (i + 1) acc.
+dGo (o :: os) (n :: ns) i acc = dGo os ns (i + 1) (join acc "\"{i}\":\"{jesc n}\"").
+
+sameStatics : unsafe List String -> List String -> Bool .
+sameStatics Nil Nil = True.
+sameStatics Nil b = False.
+sameStatics a Nil = False.
+sameStatics (a :: as) (b :: bs) | strEq a b = sameStatics as bs.
+sameStatics a b = False.
+
+# statics + dynamics as JSON arrays (the first paint, and any reshape)
+jarr : unsafe List String -> String .
+jarr xs = strcat "[" (strcat (jaGo xs "") "]").
+jaGo : unsafe List String -> String -> String .
+jaGo Nil acc = acc.
+jaGo (s :: r) acc = jaGo r (join acc "\"{jesc s}\"").
+join "" x = x.
+join acc x = strcat acc (strcat "," x).
+join2 "" x = x.
+join2 acc x = strcat acc (strcat ";" x).
+
+# ---- string helpers --------------------------------------------------------
+
+esc : unsafe String -> String .
+esc s = escGo s 1 (strlen s) "".
+escGo : unsafe String -> Int -> Int -> String -> String .
+escGo s i n acc | i > n = acc.
+escGo s i n acc = escGo s (i + 1) n (strcat acc (escCh (charAt s i))).
+escCh 38 = "&amp;".
+escCh 60 = "&lt;".
+escCh 62 = "&gt;".
+escCh 34 = "&quot;".
+escCh c = chr c.
+
+# runs of plain bytes are copied whole (substr), so a long dynamic -- a
+# receipt log -- costs garbage proportional to its escapes, not its length
+jesc : unsafe String -> String .
+jesc s = strJoin "" (rev (jGo s 1 1 (strlen s) Nil)).
+jGo : unsafe String -> Int -> Int -> Int -> List String -> List String .
+jGo s st i n acc | i > n = jRunTo s st i acc.
+jGo s st i n acc | jPlain (charAt s i) = jGo s st (i + 1) n acc.
+jGo s st i n acc = jGo s (i + 1) (i + 1) n (jCh (charAt s i) :: jRunTo s st i acc).
+jRunTo s st i acc | i > st = substr s st (i - st) :: acc.
+jRunTo s st i acc = acc.
+jPlain c = and2 (c >= 32) (and2 (c != 34) (c != 92)).
+jCh 34 = "\\\"".
+jCh 92 = "\\\\".
+jCh 10 = "\\n".
+jCh 13 = "".
+jCh c = " ".
+
+strEq a b = a == b.
+and2 a b = a and b.
+
+splitSp : unsafe String -> List String .
+splitSp s = spGo s 1 (strlen s) "" Nil.
+spGo : unsafe String -> Int -> Int -> String -> List String -> List String .
+spGo s i n cur acc | i > n = revAdd cur acc.
+spGo s i n cur acc | charAt s i == 32 = spGo s (i + 1) n "" (revAdd cur acc).
+spGo s i n cur acc = spGo s (i + 1) n (strcat cur (chr (charAt s i))) acc.
+revAdd "" acc = acc.
+revAdd cur acc = cur :: acc.
+
+nub : unsafe List String -> List String .
+nub Nil = Nil.
+nub (x :: r) | memS x r = nub r.
+nub (x :: r) = x :: nub r.
+memS : unsafe String -> List String -> Bool .
+memS x Nil = False.
+memS x (y :: r) | strEq x y = True.
+memS x (y :: r) = memS x r.
+
+append : unsafe List a -> List a -> List a .
+append xs ys = case xs of Nil -> ys | x :: r -> x :: append r ys.
+rev : unsafe List t84 -> List t84 .
+rev l = rvGo l Nil.
+rvGo : unsafe List o84 -> List o84 -> List o84 .
+rvGo Nil acc = acc.
+rvGo (x :: r) acc = rvGo r (x :: acc).
+
+# ---- TYPED events and client state: no names in strings ----------------------------------------
+# The attributes above take a message NAME and a local's NAME, as text; a typo
+# in either is a silent no-op.  These take the app's own values instead:
+#
+#   a MESSAGE is a value of the app's Msg type, put on the wire by the codec the
+#   compiler mints from the type's declaration (`@Msg`: FPRISC.hs codecFor):
+#
+#       V.send codec (Bump 10)                  a complete message
+#       V.sendWith codec (Add "") @Client.draft  its LAST field comes from client
+#                                                state when the event fires
+#
+#   CLIENT STATE is a field of a declared record, named by a path literal
+#   (`@Client.tab`), so a field that does not exist is a COMPILE error:
+#
+#       V.locals @Client { tab = "1", draft = "" }     declare them, with initial values
+#       V.showIf @Client.tab "2"   V.setTo @Client.tab "2"   V.bind @Client.draft
+#
+# On the wire a typed message is "=" or "+" and a JSON array [name, field, ...]:
+# "=" is complete, "+" takes the event's argument as its final field.
+# (std/live.fpr decodes it with the same codec; anything else is refused.)
+
+wire : { name : m -> String, args : m -> List String | r } -> m -> String .
+wire codec msg = strcat "=" (jarr (codec.name msg :: codec.args msg)).
+
+wireOpen : { name : m -> String, args : m -> List String | r } -> m -> String .
+wireOpen codec msg = strcat "+" (jarr (codec.name msg :: dropLast (codec.args msg))).
+
+dropLast : unsafe List a -> List a .
+dropLast xs = case xs of Nil -> Nil | x :: Nil -> Nil | x :: r -> x :: dropLast r.
+
+# the local's name a path stands for: @Client.ui.tab -> "ui_tab"
+localName : { segs : List String | r } -> String .
+localName path = strJoin "_" path.segs.
+
+send : { name : m -> String, args : m -> List String | r } -> m -> Attr .
+send codec msg = OnSend (wire codec msg) "".
+
+sendWith : { name : m -> String, args : m -> List String | r } -> m -> { segs : List String | q } -> Attr .
+sendWith codec msg path = OnClick (wireOpen codec msg) (localName path).
+
+enterWith : { name : m -> String, args : m -> List String | r } -> m -> { segs : List String | q } -> Attr .
+enterWith codec msg path = OnEnter (wireOpen codec msg) (localName path).
+
+showIf : { segs : List String | r } -> String -> Attr .
+showIf path value = ShowIf "{localName path}:{value}".
+
+setTo : { segs : List String | r } -> String -> Attr .
+setTo path value = OnSet (localName path) value.
+
+bind : { segs : List String | r } -> Attr .
+bind path = Input (localName path).
+
+text : { segs : List String | r } -> Node .
+text path = LTxt (localName path).
+
+# every leaf of the client-state record, declared with its initial value: the
+# bare literal `@Client` is its schema (docs/PATHS.md)
+locals : List { path : String, get : c -> String | r } -> c -> List Attr .
+locals schema init = localsGo schema init.
+localsGo : unsafe List { path : String, get : c -> String | r } -> c -> List Attr .
+localsGo schema init = case schema of
+    Nil -> Nil
+  | e :: rest -> Local (dots e.path 1 Nil) (e.get init) :: localsGo rest init.
+# "ui.tab" -> "ui_tab", the spelling localName gives
+dots : unsafe String -> Int -> List String -> String .
+dots p i acc = case i > strlen p of
+    True -> strJoin "" (rev acc)
+  | False -> dots p (i + 1) ((case charAt p i == 46 of True -> "_" | False -> chr (charAt p i)) :: acc).

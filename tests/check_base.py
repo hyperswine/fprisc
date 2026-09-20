@@ -48,6 +48,24 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([build('tests/stduse.fpr', 'stduse')])
     assert 'std: clamp=10 backoff=800 fold=15' in p.stdout, p.stdout
     print('Panics exit 1 by name; actors on two pthread harts and std modules run unchanged: PASS')
+    # 4b. a stack grows: deep plain recursion is just a program; recursion that
+    # never ends is a named panic at the policy ceiling, exit 1 -- never a bare signal
+    p = run([build('tests/base/overflow.fpr', 'overflow')], 1, env={'FPR_STACK_MAX_MB': '64'})
+    assert 'accumulator: 200000' in p.stdout and 'recursion: 200000' in p.stdout, p.stdout
+    assert 'stack overflow' in p.stdout + p.stderr and 'PANIC [actor 0]' in p.stdout + p.stderr, p.stderr
+    assert 'forever:' not in p.stdout
+    print('Stacks grow (200,000 plain frames); run-away recursion is a named panic at the ceiling, exit 1: PASS')
+    # 4c. the heap is a reservation of address space, not a size: a live heap past
+    # the 256 MiB it used to be fixed at, and FPR_HEAP_MB caps a run by name
+    big = build('tests/base/bigheap.fpr', 'bigheap')
+    assert 'bigheap: 72000006000000' in run([big]).stdout
+    p = run([big], 1, env={'FPR_HEAP_MB': '64'})
+    assert 'heap exhausted' in p.stdout + p.stderr, p.stderr
+    print('The heap grows with the program (577 MiB live); capped by FPR_HEAP_MB it is a named panic: PASS')
+    # 4d. arity and tuple width have no ceiling
+    out = run([build('tests/base/wide.fpr', 'wide')]).stdout
+    assert 'wide: 4950' in out and 'tuple: 19 True' in out and '17, 18, 19)' in out, out
+    print('A 100-parameter function and a 20-tuple (built, matched, compared, printed): PASS')
     # 6. fpr run: build to a temp file, pass the arguments through, return its status
     p = run(['./fpr', 'run', 'tests/base/args.fpr', 'x', 'y'], 3, env={'FPR_BASE_VAR': 'v'})
     assert 'args: x,y (2)' in p.stdout, p.stdout

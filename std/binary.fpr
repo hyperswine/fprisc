@@ -1,0 +1,64 @@
+# std/binary.fpr -- Binary: fixed-width integers in a byte string.
+#
+#   Binary = use "std/binary".
+#   Binary.u32le 5 header          # the 4 bytes at position 5, little-endian
+#   strJoin "" (Binary.putU16be 80 :: Binary.putU32le size :: Nil)
+#
+# Positions are 1-based, as everywhere.  A read past the end is None, never a
+# panic and never a silent zero.  Writers make Strings you join; an owned,
+# resizable `Buffer` for building large binary data in place is not here yet.
+
+O = use "option".
+
+# ---- reading ---------------------------------------------------------------------
+u8 : Int -> String -> O.Option Int .
+u8 at s = case at >= 1 and at <= strlen s of True -> O.Some (charAt s at) | False -> O.None.
+
+u16le : Int -> String -> O.Option Int .
+u16le at s = case at >= 1 and at + 1 <= strlen s of
+    True -> O.Some (charAt s at + charAt s (at + 1) * 256)
+  | False -> O.None.
+
+u16be : Int -> String -> O.Option Int .
+u16be at s = case at >= 1 and at + 1 <= strlen s of
+    True -> O.Some (charAt s at * 256 + charAt s (at + 1))
+  | False -> O.None.
+
+u32le : Int -> String -> O.Option Int .
+u32le at s = case at >= 1 and at + 3 <= strlen s of
+    True -> O.Some (charAt s at + charAt s (at + 1) * 256 + charAt s (at + 2) * 65536 + charAt s (at + 3) * 16777216)
+  | False -> O.None.
+
+u32be : Int -> String -> O.Option Int .
+u32be at s = case at >= 1 and at + 3 <= strlen s of
+    True -> O.Some (charAt s at * 16777216 + charAt s (at + 1) * 65536 + charAt s (at + 2) * 256 + charAt s (at + 3))
+  | False -> O.None.
+
+# two's complement views of what was read
+i8 : Int -> String -> O.Option Int .
+i8 at s = O.map (fn v -> case v >= 128 of True -> v - 256 | False -> v) (u8 at s).
+
+i16le : Int -> String -> O.Option Int .
+i16le at s = O.map (fn v -> case v >= 32768 of True -> v - 65536 | False -> v) (u16le at s).
+
+i32le : Int -> String -> O.Option Int .
+i32le at s = O.map (fn v -> case v >= 2147483648 of True -> v - 4294967296 | False -> v) (u32le at s).
+
+i32be : Int -> String -> O.Option Int .
+i32be at s = O.map (fn v -> case v >= 2147483648 of True -> v - 4294967296 | False -> v) (u32be at s).
+
+# ---- writing (the low bits of the Int; negatives wrap as two's complement) ------------
+putU8 : Int -> String .
+putU8 v = chr (band v 255).
+
+putU16le : Int -> String .
+putU16le v = strcat (chr (band v 255)) (chr (band (BITSHIFTR v 8) 255)).
+
+putU16be : Int -> String .
+putU16be v = strcat (chr (band (BITSHIFTR v 8) 255)) (chr (band v 255)).
+
+putU32le : Int -> String .
+putU32le v = strcat (putU16le (band v 65535)) (putU16le (band (BITSHIFTR v 16) 65535)).
+
+putU32be : Int -> String .
+putU32be v = strcat (putU16be (band (BITSHIFTR v 16) 65535)) (putU16be (band v 65535)).

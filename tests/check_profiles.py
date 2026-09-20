@@ -11,8 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
 subprocess.run(['make', 'fpr'], check=True, capture_output=True, timeout=300)
 P = ROOT / 'tests' / 'profiles'
+# the compiler writes <out dir>/units beside its output, so /dev/null is not an output path
+TMP = tempfile.TemporaryDirectory(prefix='fpr-profiles-')
+OUT = str(Path(TMP.name) / 'out.s')
 def compile_(flags, src, expected):
-    p = subprocess.run(['./fprc', *flags, str(src), '/dev/null'], capture_output=True, text=True, timeout=120)
+    p = subprocess.run(['./fprc', *flags, str(src), OUT], capture_output=True, text=True, timeout=120)
     assert p.returncode == expected, f'{flags} {src.name}: exit {p.returncode}, expected {expected}\n{p.stdout}\n{p.stderr}'
     return p.stdout + p.stderr
 # the matrix

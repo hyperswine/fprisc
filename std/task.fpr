@@ -1,0 +1,53 @@
+# std/task.fpr -- Task: the same work on many inputs, in parallel (ExtBase).
+#
+#   Task = use "std/task".
+#   digests = Task.mapBounded 4 Digest.sha256File paths     # at most 4 at once
+#
+# Each piece of work runs in its own ACTOR, so it has its own heap and can run
+# on another hart; the input is copied to it and the result copied back (that
+# is what a message is), so `f` and its data must be plain values.  Results
+# come back in the order of the inputs, whatever order the work finished in.
+# A PANIC in a piece of work is a panic of the program, as everywhere on this
+# system: work that can fail should answer a Result, and you get a list of them.
+#
+# Call these from an actor that is not using its mailbox for anything else
+# while it waits: replies are told apart by their position, not by a tag.
+
+M = use "map".
+Ord = use "order".
+
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+worker : Int -> (a -> b) -> Int -> a -> Int -> Unit .
+# the reply is an Ok: `receiveRes` waits for a Result, and answers Err by itself
+# when a worker dies without sending one
+worker parent f i x self = _ = send parent (Ok (i, f x)); Unit.
+
+# one actor per input, all at once
+map : (a -> b) -> List a -> Result (List b) String .
+map f xs = mapBounded 0 f xs.
+
+# at most `limit` running at a time (0 = no limit)
+mapBounded : Int -> (a -> b) -> List a -> Result (List b) String .
+mapBounded limit f xs =
+  me = myself 0;
+  go me limit f xs 0 0 (M.empty Ord.int).
+
+# next: the position of the next input to start; running: how many are out
+go : unsafe Int -> Int -> (a -> b) -> List a -> Int -> Int -> M.Map Int b -> Result (List b) String .
+go me limit f xs next running done = case xs of
+    x :: r -> (case limit > 0 and running >= limit of
+        True -> collect me limit f xs next running done
+      | False -> _ = spawn (worker me f next x); go me limit f r (next + 1) (running + 1) done)
+  | Nil -> (case running == 0 of
+        True -> Ok (M.values done)
+      | False -> collect me limit f xs next running done).
+
+collect : unsafe Int -> Int -> (a -> b) -> List a -> Int -> Int -> M.Map Int b -> Result (List b) String .
+collect me limit f xs next running done = case receiveRes me of
+    Ok m ->
+      (i, y) = m;
+      d2 = M.insert i (keep y) done; # the result outlives the message it came in
+      go me limit f xs next (running - 1) d2
+  | Err why -> Err "a task failed: {why}".

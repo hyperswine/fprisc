@@ -1,0 +1,28 @@
+unsafe base.
+File = use "std/file".
+Dir = use "std/dir".
+Path = use "std/path".
+Proc = use "std/proc".
+Program = use "std/program".
+Clock = use "std/clock".
+List = use "std/list".
+String = use "std/string".
+Result = use "std/result".
+main =
+  root = "tree";
+  _ = print "path: {Path.join "a/b" "c.txt"} {Path.fileName "a/b/c.tar.gz"} {Path.parent "a/b/c"} {Path.extension "a/b/c.tar.gz"} {Path.extension "Makefile"} {Path.stem "a/c.txt"} {Path.withExtension "md" "n/a.txt"} {Path.normalize "a/./b/../c//d"} {Path.normalize "/../x"}";
+  _ = print "walk: {Dir.walk root}";
+  _ = print "glob: {Dir.glob "*.f?r" (Path.join root "sub")} list {Dir.list root} missing {Result.isOk (Dir.list "/nonexistent")}";
+  _ = print "read: {File.readText (Path.join root "a.txt")} missing {Result.isOk (File.readText "/nope")} size {File.size (Path.join root "a.txt")} kind {Result.map (fn i -> i.kind) (File.info root)}";
+  out = Path.join root "out/nested/dir";
+  _ = print "create {Dir.create out} write {File.writeLines (Path.join out "r.txt") ("one" :: "two" :: Nil)} lines {File.lines (Path.join out "r.txt")} isDir {File.isDir out}";
+  _ = print "removeAll {Dir.removeAll (Path.join root "out")} gone {File.exists out}";
+  _ = print "proc: {Proc.run ("echo" :: "hi there" :: Nil)}";
+  _ = print "proc status: {Proc.shell "echo oops >&2; exit 3"} notfound {Result.isOk (Proc.run ("/no/such/prog" :: Nil))}";
+  _ = print "pipe: {Proc.pipeTo ("tr" :: "a-z" :: "A-Z" :: Nil) "shout\n"} output {Proc.output ("printf" :: "%s" :: "plain" :: Nil)} failing {Proc.output ("false" :: Nil)} in-dir {Proc.runIn root ("ls" :: Nil)}";
+  big = String.repeat 300000 "line of text\n";
+  _ = (case Proc.pipeTo ("wc" :: "-l" :: Nil) big of Ok r -> print "big pipe: {String.trim r.out} lines through wc" | Err e -> print e);
+  t0 = Clock.monotonic Unit;
+  _ = Clock.sleepMs 20;
+  _ = print "clock: slept>=20ms {Clock.elapsedMs t0 >= 20} epoch0 {Clock.iso 0} y2k {Clock.iso 946684799} date {Clock.date 1789000000} now-shaped {strlen (Clock.iso (Clock.now Unit)) == 20}";
+  print "program: args {Program.args Unit} PATH set {Program.env "PATH" != Program.env "NOPE_NOT_SET"} {Program.envOr "dflt" "NOPE_NOT_SET"}".

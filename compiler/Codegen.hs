@@ -49,7 +49,7 @@ import FPRISC (Core (..), Prog, freeVars)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 8 -- r7 + native wide arity to 64 (argspill 56); aritySpill only past it
+codegenRev = 9 -- r8 + the function-entry stack check (growable actor stacks)
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -354,7 +354,11 @@ emitProgram tgt rvv spec exports ext exps prog0 =
       modify (\st -> st {cgVNotes = concat [declines spec prog fn b | (fn, (_, b)) <- M.toList prog] ++ cgVNotes st})
       fns <- concat <$> mapM (uncurry (compileFn prog)) (M.toList prog)
       specs <- emitSpecs prog
-      modtab <- if null exports then pure [] else modTable
+      -- the builtin target links no module registry (runtime/mod.c is not
+      -- in its runtime), so the table has no reader there -- and as a strong
+      -- global it made two library units in one image a link error (a
+      -- program's library beside the FP-RISC allocator)
+      modtab <- if null exports || tgtArc tgt then pure [] else modTable
       strs <- gets cgStrs
       pure $
         ( ["# target: " ++ tgtName tgt]
@@ -366,8 +370,11 @@ emitProgram tgt rvv spec exports ext exps prog0 =
           ++ specs
           ++ ["    .section .rodata", ""]
           ++ concatMap objFor (M.toList prog)
+          ++ ["    .section .rodata" | tgtArc tgt]
           ++ modtab
+          ++ ["    .section .rodata" | tgtArc tgt, not (null modtab)]
           ++ concatMap strFor (M.toList strs)
+          ++ ["    .section .rodata" | tgtArc tgt]
           ++ concatMap nulFor (S.toList (nullaries prog))
     -- the module table: (hash str, export-name str, static PAP) triples,
     -- zero-terminated.  mod.c's `Mod.fn hash name` scans it — the local
@@ -376,10 +383,15 @@ emitProgram tgt rvv spec exports ext exps prog0 =
     modTable = do
       rows <- concat <$> mapM row [me | me <- exports, meArity me >= 1]
       pure $
-        [ "    .balign 8",
-          "    .globl fpr_modtab",
-          "fpr_modtab:"
-        ]
+        -- a section of its own on the builtin target: that profile links no
+        -- module registry, so nothing refers to the table -- but in the
+        -- shared .rodata it survived beside live strings and kept EVERY
+        -- function of a library unit alive through its rows
+        ["    .section .rodata.fpr_modtab,\"a\",@progbits" | tgtArc tgt]
+          ++ [ "    .balign 8",
+               "    .globl fpr_modtab",
+               "fpr_modtab:"
+             ]
           ++ rows
           ++ ["    " ++ tgtDir tgt ++ " 0", ""]
       where
@@ -420,7 +432,8 @@ emitProgram tgt rvv spec exports ext exps prog0 =
       | null ps = []
       | otherwise =
           let m = mangle n
-           in [ "    .balign 8" ]
+           in (if tgtArc tgt then ["    .section .rodata.fpr_obj_" ++ m ++ ",\"a\",@progbits"] else [])
+              ++ [ "    .balign 8" ]
               ++ [ "    " ++ visibility tgt (n) ++ " fpr_obj_" ++ m | S.member n exps ]
               ++ [
                 "fpr_obj_" ++ m ++ ":",
@@ -457,7 +470,10 @@ emitProgram tgt rvv spec exports ext exps prog0 =
       -- is what `.byte 8212` silently does -- em-dashes became 0x14).
       -- The length field is the BYTE length for the same reason.
       let bs = concatMap utf8 content
-       in [ "    .balign 8",
+       in -- its own section on the builtin target, so an unreferenced literal
+          -- (a collected module table's export names) goes with --gc-sections
+          [ "    .section .rodata.fpr_str" ++ filter (/= '.') label ++ ",\"a\",@progbits" | tgtArc tgt ]
+            ++ [ "    .balign 8",
             label ++ ":",
             "    .long 9000",
             "    .long 0",
@@ -553,9 +569,45 @@ compileFn prog name (params, body0) = do
   -- clobbers a0..a7, but ra/args are already safe in the frame. Cost:
   -- 6 instructions on the fast path, t0/t1 only.
   fuelOk <- freshL "fuel"
+  stkOk <- freshL "stk"
+  stkSame <- freshL "stksame"
+  -- STACK: an actor's stack grows (runtime/actors.c fpr_stack_grow).  The
+  -- entry asks whether sp still has the runtime's headroom below it in the
+  -- segment it is in -- `sp - stk_lo < stk_span`, unsigned, both read from
+  -- the hart block right after the spill cells -- and otherwise calls the
+  -- runtime, which answers a new sp (a fresh segment, double the last) or 0.
+  -- Like the fuel tick it runs AFTER the args are in frame slots, so a real
+  -- C call is safe; and because every slot is addressed through s0 and the
+  -- epilogue restores sp FROM s0, the function returns into the old segment
+  -- by itself.  It shares the fuel tick's `mv t0, tp` (a TLV call on macOS).
+  --
+  -- PROVABLY SHALLOW functions skip it: a small frame that calls no FP-RISC
+  -- function (C runtime calls and tail jumps only) sits inside the headroom
+  -- its caller's check already guaranteed.
+  let callsFpr l = case words l of
+        ("call" : t : _) -> take 7 t == "fpr_fn_"
+        ("jalr" : _) -> True
+        _ -> False
+      shallow = frame <= 1024 && not (any callsFpr bodyLines)
+      stackCheck
+        | shallow = []
+        | otherwise =
+            [ "    mv t1, sp",
+              "    " ++ tgtLd tgt ++ " t2, " ++ show (w * (1 + spillCells)) ++ "(t0)",
+              "    sub t1, t1, t2",
+              "    " ++ tgtLd tgt ++ " t2, " ++ show (w * (2 + spillCells)) ++ "(t0)",
+              "    bltu t1, t2, " ++ stkOk,
+              "    call fpr_stack_grow",
+              "    beqz a0, " ++ stkSame,
+              "    mv sp, a0",
+              stkSame ++ ":",
+              "    mv t0, tp", -- the call clobbered t0
+              stkOk ++ ":"
+            ]
   let fuelCheck = if not (tgtFuel tgt) then [] else
-        [ "    mv t0, tp", -- per-hart fuel: 0(tp) is fpr_hart_t.fuel
-          "    " ++ tgtLd tgt ++ " t1, 0(t0)",
+        [ "    mv t0, tp" ] -- per-hart: 0(tp) is fpr_hart_t.fuel
+          ++ stackCheck ++
+        [ "    " ++ tgtLd tgt ++ " t1, 0(t0)",
           "    addi t1, t1, -1",
           "    " ++ tgtSt tgt ++ " t1, 0(t0)",
           "    bgtz t1, " ++ fuelOk,
@@ -567,7 +619,17 @@ compileFn prog name (params, body0) = do
   -- frame is opened
   let tidy = if tgtArc tgt && w == 8 then peephole else id
   pure $ wcetAnnotate name $
-    [ "# " ++ name ++ " (arity " ++ show (length params) ++ ")" ]
+    -- `# fn <name>`, never `# <name>`: a hosted backend runs the unit through
+    -- the C preprocessor, which reads `# line ...`, `# error ...`, `# define
+    -- ...` as DIRECTIVES -- a function called `line` failed the build with
+    -- "#line directive requires a positive integer argument"
+    [ "# fn " ++ name ++ " (arity " ++ show (length params) ++ ")" ]
+      -- The builtin link passes --gc-sections, which can only drop what has a
+      -- section of its own.  A Layout's accessors are inlined at every site
+      -- and would otherwise all be carried in the image as dead bodies
+      -- (heap.fpr: 6.5 KiB of them); the linker, which sees every unit, is
+      -- the one place that knows a function is unreferenced.
+      ++ (if tgtArc tgt then ["    .section .text.fpr_fn_" ++ m ++ ",\"ax\",@progbits", "    .balign 4"] else [])
       ++ [ "    " ++ visibility tgt name ++ " fpr_fn_" ++ m | S.member name exps ]
       ++ [ "fpr_fn_" ++ m ++ ":" ]
       ++ framePro tgt frame
@@ -758,7 +820,7 @@ gen prog env nxt pos e0 = do
 
 -- ---- inline expansions of the raw primitive adapters (--arc) -------------
 --
--- Under the raw ABI every adapter in hal/builtin/arc.c is a pure
+-- Under the raw ABI every adapter in machine/builtin/arc.c is a pure
 -- wrapper: Word/Addr are bare bits, Int is tagged, Bool/Unit are the
 -- immortal fpr_true/fpr_false/fpr_unit, and nothing is retained or
 -- released.  Each expansion below computes exactly what the adapter

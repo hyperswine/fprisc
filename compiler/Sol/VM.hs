@@ -575,7 +575,7 @@ actorCall env "send" [VInt to, m] = do
 -- sendLinear: MOVE semantics.  In this profile values are immutable
 -- Haskell terms, so the move IS a send -- the verb exists for grammar
 -- parity with the AOT tiers, where it transfers the message slab
--- (hal/core/actors.c a_send_linear) and the checker consumes the arg.
+-- (runtime/actors.c a_send_linear) and the checker consumes the arg.
 actorCall e "sendLinear" [to, m] = actorCall e "send" [to, m]
 -- sendArc: SHARE semantics; immutable values make sharing == sending
 actorCall e "sendArc" [to, m] = actorCall e "send" [to, m]
@@ -894,6 +894,14 @@ mkHal cons scriptArgs tx preempts rt =
       -- 1-based with 0 = miss and "" never found, replace is leftmost
       -- non-overlapping, case folding is ASCII, trim strips 32/9/10/13)
       ("strSplit", (2, \[VInt c, sv] -> vsStr sv >>= \s -> pure (strList (splitCodes (toEnum (fromIntegral c)) s)))),
+      -- the first match at or after a 1-based position; 0 = none (runtime.c g_strIndexFrom)
+      ("strIndexFrom", (3, \[pv, sv, iv] -> case iv of
+          VInt i0 -> liftA2 (\p s ->
+            let from = max 1 (fromIntegral i0) :: Int
+                rest = drop (from - 1) s
+                hit = indexOfStr p rest
+             in VInt (fromIntegral (if from > length s + 1 then 0 else if null p then from else if hit == 0 then 0 else hit + from - 1))) (vsStr pv) (vsStr sv)
+          _ -> pure (VInt 0))),
       ("strIndexOf", (2, \[pv, sv] -> liftA2 (\p s -> VInt (fromIntegral (indexOfStr p s))) (vsStr pv) (vsStr sv))),
       ("strReplace", (3, \[ov, nv, sv] -> do o <- vsStr ov; n <- vsStr nv; s <- vsStr sv; pure (VStr (replaceStr o n s)))),
       ("strUpper", (1, \[v] -> VStr . map (\ch -> if ch >= 'a' && ch <= 'z' then toEnum (fromEnum ch - 32) else ch) <$> vsStr v)),

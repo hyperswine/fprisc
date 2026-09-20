@@ -1,0 +1,81 @@
+# std/log.fpr -- Log: one line per event, with a level and fields (ExtBase).
+#
+#   Log = use "std/log".
+#   log = Log.toStderr Log.Info
+#   Log.info log "listening" (("port", "8080") :: Nil)
+#       2026-09-20T03:14:15Z INFO  listening port=8080
+#   Log.error log "request failed" (("path", p) :: ("why", e) :: Nil)
+#
+# A logger is a VALUE you pass, not a global: where lines go and how much is
+# said are decided once, by whoever makes it.  Events below the logger's level
+# cost a comparison.  `Log.json` writes each event as one JSON object instead
+# (keys ascending, so lines diff cleanly).  A line that cannot be written is
+# dropped: logging never fails the program it is describing.
+
+OS = use "os".
+J = use "json".
+C = use "clock".
+S = use "string".
+
+Level = Type (Debug | Info | Warn | Error).
+
+rank : Level -> Int .
+rank l = case l of Debug -> 0 | Info -> 1 | Warn -> 2 | Error -> 3.
+
+name : Level -> String .
+name l = case l of Debug -> "DEBUG" | Info -> "INFO " | Warn -> "WARN " | Error -> "ERROR".
+
+# to: "" = stderr, else a file to append to
+Logger = Type (Logger Level Bool String).
+
+toStderr : Level -> Logger .
+toStderr level = Logger level False "".
+
+toFile : Level -> String -> Logger .
+toFile level path = Logger level False path.
+
+# the same logger, writing JSON lines
+json : Logger -> Logger .
+json l = case l of Logger level _ to -> Logger level True to.
+
+# "debug" | "info" | "warn" | "error" (for a setting); anything else is Info
+levelOf : String -> Level .
+levelOf t = case S.toLower t of "debug" -> Debug | "warn" -> Warn | "error" -> Error | _ -> Info.
+
+event : Level -> Logger -> String -> List (String, String) -> Unit .
+event level l msg fields = case l of Logger least asJson to ->
+  (case rank level < rank least of
+      True -> Unit
+    | False -> emit to (case asJson of True -> jsonLine level msg fields | False -> textLine level msg fields)).
+
+debug : Logger -> String -> List (String, String) -> Unit .
+debug l msg fields = event Debug l msg fields.
+info : Logger -> String -> List (String, String) -> Unit .
+info l msg fields = event Info l msg fields.
+warn : Logger -> String -> List (String, String) -> Unit .
+warn l msg fields = event Warn l msg fields.
+error : Logger -> String -> List (String, String) -> Unit .
+error l msg fields = event Error l msg fields.
+
+emit : String -> String -> Unit .
+emit to line = case strlen to == 0 of
+    True -> Sys.stderr line
+  | False -> _ = fileAppend to line; Unit.
+
+textLine : Level -> String -> List (String, String) -> String .
+textLine level msg fields = strJoin "" (C.iso (C.now Unit) :: " " :: name level :: " " :: msg :: fieldsText fields ("\n" :: Nil)).
+fieldsText : unsafe List (String, String) -> List String -> List String .
+fieldsText fields tail = case fields of
+    Nil -> tail
+  | (k, v) :: r -> " " :: k :: "=" :: bare v :: fieldsText r tail.
+# quoted only when it has to be
+bare : String -> String .
+bare v = case strlen v == 0 or S.contains " " v or S.contains "\"" v or S.contains "=" v or S.contains "\n" v of
+    True -> J.quote v
+  | False -> v.
+
+jsonLine : Level -> String -> List (String, String) -> String .
+jsonLine level msg fields = strcat (J.render (J.object (
+    ("time", J.Text (C.iso (C.now Unit))) :: ("level", J.Text (S.toLower (S.trim (name level)))) :: ("msg", J.Text msg) :: textFields fields))) "\n".
+textFields : unsafe List (String, String) -> List (String, J.Value) .
+textFields fields = case fields of Nil -> Nil | (k, v) :: r -> (k, J.Text v) :: textFields r.

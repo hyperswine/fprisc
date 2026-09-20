@@ -1,0 +1,13 @@
+#!/usr/bin/env -S fpr run
+# wc.fpr -- count lines, words and bytes of each file named: a script, run directly
+profile base.
+File = use "std/file".
+List = use "std/list".
+String = use "std/string".
+Program = use "std/program".
+
+count path = case File.readText path of
+    Ok t -> print "{String.padLeft 8 " " (String.fromInt (List.length (String.lines t)))}{String.padLeft 8 " " (String.fromInt (List.length (String.words t)))}{String.padLeft 9 " " (String.fromInt (String.length t))} {path}"
+  | Err why -> Program.writeError "wc: {path}: {why}".
+
+main = List.each count (Program.args Unit).

@@ -1,0 +1,71 @@
+# report.fpr -- the design's "automation script" acceptance example
+# (docs/PRELIM_BASE_LIBRARY_DESIGN.md, section 9): traverse files, filter,
+# group and sort their metadata, ask an external tool a question, and write a
+# report -- with every failure said in words.
+#
+#   fpr run examples/report.fpr <directory> [report.json]
+profile base.
+
+Dir = use "std/dir".
+File = use "std/file".
+Path = use "std/path".
+Proc = use "std/proc".
+Program = use "std/program".
+Clock = use "std/clock".
+List = use "std/list".
+Map = use "std/map".
+String = use "std/string".
+Option = use "std/option".
+Order = use "std/order".
+Result = use "std/result".
+Json = use "std/json".
+
+# one file's facts
+entry path = case File.info path of
+    Ok i -> Option.Some { path = path, ext = Option.withDefault "(none)" (Path.extension path), size = i.size }
+  | Err _ -> Option.None.
+
+# ext -> (count, bytes)
+tally m e = Map.update e.ext (fn old -> case Option.withDefault (0, 0) old of (n, b) -> Option.Some (n + 1, b + e.size)) m.
+
+kib n = "{n / 1024}.{((n - (n / 1024) * 1024) * 10) / 1024} KiB".
+
+row r = case r of (ext, (n, bytes)) ->
+  "  {String.padRight 10 " " ext}{String.padLeft 6 " " (String.fromInt n)} files{String.padLeft 14 " " (kib bytes)}".
+
+# the commit this tree is at, when it is a git checkout and git is installed
+revision dir = case Proc.runIn dir ("git" :: "rev-parse" :: "--short" :: "HEAD" :: Nil) of
+    Ok r -> (case r.status == 0 of True -> Option.Some (String.trim r.out) | False -> Option.None)
+  | Err _ -> Option.None.
+
+report dir out =
+  t0 = Clock.monotonic Unit;
+  files = (case Dir.walk dir of Ok fs -> fs | Err why -> Program.fail 1 "report: {why}");
+  entries = files |> List.filter (fn p -> not (String.contains "/." p)) |> List.filterMap entry;
+  byExt = List.fold tally Map.strings entries
+    |> Map.entries
+    |> List.sortWith (Order.by (fn r -> case r of (_, (_, bytes)) -> bytes) (Order.reverse Order.int));
+  biggest = entries |> List.sortBy (Order.reverse Order.int) (fn e -> e.size) |> List.take 5;
+  total = List.sum (List.map (fn e -> e.size) entries);
+  _ = print "{dir}: {List.length entries} files, {kib total}";
+  _ = List.each (fn r -> print (row r)) (List.take 8 byExt);
+  _ = print "largest:";
+  _ = List.each (fn e -> print "  {String.padLeft 12 " " (kib e.size)}  {e.path}") biggest;
+  doc = Json.object (
+      ("directory", Json.Text dir)
+   :: ("generated", Json.Text (Clock.iso (Clock.now Unit)))
+   :: ("revision", (case revision dir of Option.Some r -> Json.Text r | Option.None -> Json.Null))
+   :: ("files", Json.Integer (List.length entries))
+   :: ("bytes", Json.Integer total)
+   :: ("byExtension", Json.object (List.map (fn r -> case r of (ext, (n, b)) -> (ext, Json.object (("files", Json.Integer n) :: ("bytes", Json.Integer b) :: Nil))) byExt))
+   :: ("largest", Json.strings (List.map (fn e -> e.path) biggest))
+   :: Nil);
+  _ = (case File.writeText out (Json.render doc) of
+      Ok _ -> print "wrote {out} in {Clock.elapsedMs t0} ms"
+    | Err why -> Program.fail 1 "report: {out}: {why}");
+  0.
+
+main = case Program.args Unit of
+    dir :: Nil -> report dir "report.json"
+  | dir :: out :: Nil -> report dir out
+  | _ -> Program.fail 2 "usage: report <directory> [report.json]".

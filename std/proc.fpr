@@ -1,0 +1,62 @@
+# std/proc.fpr -- Proc: run another program and hold all three of its streams.
+#
+#   Proc = use "std/proc".
+#   case Proc.run ("git" :: "rev-parse" :: "HEAD" :: Nil) of
+#       Ok r -> (case r.status == 0 of True -> String.trim r.out | False -> r.err)
+#     | Err why -> why                       # it could not be STARTED
+#
+# The contracts:
+#   * the program is an ARGUMENT LIST.  Nothing is parsed, split or expanded, so
+#     a file name with a space or a quote in it is just a file name.  `shell`
+#     is the explicit operation that hands a line to /bin/sh.
+#   * stdout, stderr and the exit status stay DISTINCT.  A non-zero status is
+#     an Ok result you inspect; Err means the program never ran.
+#   * killed by a signal: status is 128 + the signal, as a shell reports it.
+#   * Base has no transactions: this runs NOW, once.  (Sol's Proc.query /
+#     afterCommit / runNow are the transactional forms: docs/TRANSACTION.md.)
+# Not yet: streaming a child's output while it runs.
+
+OS = use "os".
+
+resultOf : (Int, String, String) -> { status : Int, out : String, err : String } .
+resultOf t = case t of (status, out, err) -> { status = status, out = out, err = err }.
+
+# a full description: argv, the directory to run in ("" = this one), stdin,
+# environment entries ADDED to this process's ("NAME=value"), and a time limit
+# in ms (0 = none).  Past the limit the child is killed and the answer is
+# Err "timed out after N ms".  Start from `Proc.describe argv` and change fields.
+describe : List String -> { argv : List String, dir : String, input : String, env : List String, limitMs : Int } .
+describe argv = { argv = argv, dir = "", input = "", env = Nil, limitMs = 0 }.
+
+spawn : { argv : List String, dir : String, input : String, env : List String, limitMs : Int } -> Result { status : Int, out : String, err : String } String .
+spawn d = case OS.run d.argv d.dir d.input d.env d.limitMs of Ok t -> Ok (resultOf t) | Err e -> Err e.
+
+run : List String -> Result { status : Int, out : String, err : String } String .
+run argv = spawn (describe argv).
+
+runIn : String -> List String -> Result { status : Int, out : String, err : String } String .
+runIn dir argv = spawn { argv = argv, dir = dir, input = "", env = Nil, limitMs = 0 }.
+
+# feed it text on stdin
+pipeTo : List String -> String -> Result { status : Int, out : String, err : String } String .
+pipeTo argv input = spawn { argv = argv, dir = "", input = input, env = Nil, limitMs = 0 }.
+
+# give up after `ms`
+runWithin : Int -> List String -> Result { status : Int, out : String, err : String } String .
+runWithin ms argv = spawn { argv = argv, dir = "", input = "", env = Nil, limitMs = ms }.
+
+# with extra environment: Proc.runWith ("LANG=C" :: Nil) argv
+runWith : List String -> List String -> Result { status : Int, out : String, err : String } String .
+runWith env argv = spawn { argv = argv, dir = "", input = "", env = env, limitMs = 0 }.
+
+# stdout when it exits 0; otherwise an Err that says what went wrong
+output : List String -> Result String String .
+output argv = case run argv of
+    Err e -> Err e
+  | Ok r -> (case r.status == 0 of
+        True -> Ok r.out
+      | False -> Err "exit {r.status}: {r.err}").
+
+# EXPLICIT shell interpretation of one line
+shell : String -> Result { status : Int, out : String, err : String } String .
+shell line = run ("/bin/sh" :: "-c" :: line :: Nil).

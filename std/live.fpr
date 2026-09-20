@@ -1,0 +1,429 @@
+# std/live.fpr -- Live: a server-driven UI over a websocket, the LiveView way
+# (ExtBase).  The posix driver of the FPRLive idea (qos/docs/FPRLIVE.md): the
+# same shape of app, the same wire, the same client script, over std/tcp
+# instead of the QOS socket tier.
+#
+#   Live.serve config { init, update, view, css, subs, fields, codec }
+#
+#     init    : model                                  the shared model
+#     codec   : @Msg                                   the app's message type, on the wire
+#     update  : Live.Ev msg -> model -> (model, List (Live.Cmd msg))
+#     view    : Int -> model -> (List String, List String)
+#                                 this SESSION's page as (statics, dynamics):
+#                                 the statics are fixed by the view's shape, only
+#                                 the dynamics move, so a change ships one string
+#     css     : model -> String
+#     subs    : model -> List Live.Sub                 re-read after every update
+#     fields  : List (Live.Field model)                what of the model is DURABLE
+#
+# THE ACTORS.  One REGISTER owns the model: every event is one `update`, in
+# order, by the single writer.  Each browser tab is a SESSION of two actors on
+# one socket -- a reader that turns frames into events, and a writer that holds
+# what this session last saw, renders `view sid model` itself when the register
+# broadcasts, and ships the smallest thing that brings the tab up to date.  A
+# slow or hostile peer stalls only its own actors.  Sessions are bounded by
+# memory, not by a table.
+#
+# MESSAGES ARE THE APP'S OWN TYPE.  `Msg = Type (Bump Int | Add String | ...)`
+# and `codec = @Msg`: the compiler mints the codec from the declaration, the view
+# puts VALUES in the page (View.send codec (Bump 10)), and what reaches `update`
+# is `Live.Msg sid (Bump 10)` -- checked, or refused by name before it gets there.
+#
+# EFFECTS are data, Elm's way.  `update` answers commands (Live.After ms msg,
+# Live.Run work, Live.Quit) and `subs` answers subscriptions (Live.Every ms msg);
+# the driver performs them and what they produce comes back as a MESSAGE.
+# `update` itself stays a pure function, which is what makes the next part possible.
+#
+# DURABLE STATE, per field, named by a PATH: `Live.int Live.Always @Model.count`.
+# The path literal is checked against the model's declaration and gives the
+# getter, the setter and the key; the policy says how eagerly to save.  Saves go to an
+# append-only log (std/kvlog.fpr), so the model's history is replayable; and
+# with `journal = True` every event is logged too, so `Live.replay` rebuilds the
+# model from nothing but the log and `update`.
+#
+# RELOAD.  With `watch` set, the server notices a changed source file, runs
+# `rebuild`, and -- only if that succeeds -- saves its fields and BECOMES the
+# new program (`restart`).  The model comes back from the log, the browsers
+# reconnect by themselves and get a full render.  A rebuild that fails is
+# logged and the old program keeps serving.  (QOS reloads a module in place,
+# through its plugin loader; a posix process has no loader, so it restarts --
+# which durable state makes invisible.)
+
+TCP = use "tcp".
+ST = use "stream".
+H = use "http".
+WS = use "ws".
+J = use "json".
+D = use "decode".
+M = use "map".
+O = use "option".
+S = use "string".
+KV = use "kvlog".
+A = use "actor".
+OS = use "os".
+P = use "proc".
+Ord = use "order".
+
+# ---- the app's vocabulary ------------------------------------------------------------
+# Msg sid m: from a session (sid 0: from a command or a subscription).
+# Refused sid why: a session sent something that is not a message of this app.
+Ev msg = Type (Msg Int msg | Joined Int | Left Int | Refused Int String).
+Cmd msg = Type (After Int msg | Run (Unit -> msg) | Quit).
+Sub msg = Type (Every Int msg).
+
+Policy = Type (Always | AtMostEvery Int).
+Field model = Type (Field String Policy (model -> J.Value) (J.Value -> model -> model)).
+
+# a durable field from a PATH (`@Model.count`: docs/PATHS.md), an encoder and a decoder
+json : Policy -> { get : m -> a, set : a -> m -> m, segs : List String | r } -> (a -> J.Value) -> D.Decoder a -> Field m .
+json policy path enc dec = Field (strcat "model." (strJoin "." path.segs)) policy (fn m -> enc (path.get m))
+  (fn v m -> case D.run dec v of Ok x -> path.set x m | Err _ -> m).
+
+int : Policy -> { get : m -> Int, set : Int -> m -> m, segs : List String | r } -> Field m .
+int policy path = json policy path (fn n -> J.Integer n) D.int.
+
+string : Policy -> { get : m -> String, set : String -> m -> m, segs : List String | r } -> Field m .
+string policy path = json policy path (fn t -> J.Text t) D.string.
+
+bool : Policy -> { get : m -> Bool, set : Bool -> m -> m, segs : List String | r } -> Field m .
+bool policy path = json policy path (fn t -> J.Boolean t) D.bool.
+
+strings : Policy -> { get : m -> List String, set : List String -> m -> m, segs : List String | r } -> Field m .
+strings policy path = json policy path J.strings (D.list D.string).
+
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+# ---- messages between the actors --------------------------------------------------------
+# to the register; `from` is who wants an answer (0 = nobody)
+Reg = Type (Event ev | Join writer | Leave sid | Snapshot | TickDue ms key | Reload).
+# from the register
+Ans = Type (Welcome sid model | Model version model | Wanted Bool | Changed version | Pong payload | Stop).
+# to a session's writer.  The register broadcasts only a VERSION: a writer pulls
+# the model when it is ready for it, so a busy session skips straight to the
+# newest and at most one copy of the model is in flight per session.  (Pushing
+# the model to every session on every event queued n * n copies in a join burst:
+# 3.6 MiB a session at 500 sessions.)
+# (one type: a writer's mailbox holds the register's answers AND its broadcasts)
+
+# the register's state
+Rs = Type (Rs cfg app model sessions nextSid db saved tickers version).
+
+# ---- serve -----------------------------------------------------------------------------
+serve cfg app =
+  db = (case KV.open cfg.store of Ok d -> d | Err why -> error "live: {why}");
+  model = restore app.fields db app.init;
+  listener = (case TCP.listen cfg.address cfg.port of Ok l -> l | Err why -> error "live: cannot listen on {cfg.address}:{cfg.port}: {why}");
+  main = myself 0;
+  # `send` never waits for room, so everything many actors send to has a mailbox
+  # that GROWS (std/actor.fpr): a burst costs memory, never a lost request
+  reg = A.spawnWith (A.Dynamic 256) (fn self ->
+    send main (Ok (register self listener (startTickers self (Rs cfg app model (M.empty Ord.int) 1 db (M.empty S.compare) Nil 1)) A.tidy0)));
+  _ = Sys.stderr "live: http://{(if strlen cfg.address == 0 then "127.0.0.1" else cfg.address)}:{TCP.port listener}/  (store {cfg.store})\n";
+  _ = print "ready {TCP.port listener}";
+  _ = spawn (fn self -> TCP.serve listener (connection reg cfg app));
+  _ = (case cfg.watch of Nil -> Unit | _ -> _ = spawn (watcher reg cfg (stamps cfg.watch)); Unit);
+  (case receiveRes main of Ok why -> why | Err why -> why).
+
+# every durable field's last value, laid over `init`
+restore : List (Field m) -> KV.KvLog -> m -> m .
+restore fields db model = restoreGo fields db model.
+restoreGo : unsafe List (Field m) -> KV.KvLog -> m -> m .
+restoreGo fields db model = case fields of
+    Nil -> model
+  | Field key _ _ put :: r -> restoreGo r db (case KV.get key db of O.Some v -> put v model | O.None -> model).
+
+# ---- the register: the model's single writer ---------------------------------------------
+register : unsafe Int -> TCP.Listener -> Rs -> A.Tidy -> String .
+register me listener st0 t0 = case A.tidy me (st0, t0) of (st, t) ->
+  m = receive me;
+  (from, q) = m;
+  next = handle me from q st;
+  _ = drop m;
+  (case next of
+      O.Some st2 -> register me listener st2 t
+    | O.None -> _ = TCP.stop listener; "stopped").
+
+# None = stop serving
+handle : Int -> Int -> Reg -> Rs -> O.Option Rs .
+handle me from q st = case st of Rs cfg app model sessions nextSid db saved tickers version ->
+  (case q of
+      Snapshot -> _ = send from (Model version model); O.Some st
+    | Join writer ->
+        # the WRITER hears its Welcome from here, not forwarded by the reader:
+        # messages from one sender arrive in order, so it is ahead of the
+        # broadcast below (forwarded, a Show could overtake it)
+        _ = send writer (Welcome nextSid model);
+        _ = send from (Welcome nextSid model);
+        advance me (Joined nextSid) (Rs cfg app model (M.insert nextSid writer sessions) (nextSid + 1) db saved tickers version)
+    | Leave sid -> advance me (Left sid) (Rs cfg app model (M.remove sid sessions) nextSid db saved tickers version)
+    | Event ev -> advance me (keep ev) st
+    | TickDue ms key ->
+        due = wanted app.codec ms key (app.subs model);
+        _ = send from (Wanted (O.isSome due));
+        (case due of
+            O.Some msg -> advance me (Msg 0 msg) st
+          | O.None -> O.Some (Rs cfg app model sessions nextSid db saved (without ms key tickers) version))
+    | Reload ->
+        _ = flush app.fields db model;
+        _ = Sys.stderr "live: restarting into the rebuilt program\n";
+        _ = (case OS.exec cfg.restart of Err why -> Sys.stderr "live: restart failed: {why}\n" | Ok _ -> Unit);
+        O.Some st).
+
+# one update: the event (journaled first), then its effects, then everyone sees the model
+advance : Int -> Ev m -> Rs -> O.Option Rs .
+advance me ev st = case st of Rs cfg app model sessions nextSid db saved tickers version ->
+  _ = (if cfg.journal then journal app.codec db ev else Unit);
+  (case app.update ev model of (model2, cmds) ->
+      saved2 = persist app.fields db model2 saved;
+      quit = perform me cmds;
+      _ = broadcast (M.values sessions) (version + 1);
+      (if quit then _ = flush app.fields db model2; _ = goodbye (M.values sessions); O.None
+       else O.Some (startTickers me (Rs cfg app model2 sessions nextSid db saved2 tickers (version + 1))))).
+
+broadcast : unsafe List Int -> Int -> Unit .
+broadcast writers version = case writers of Nil -> Unit | w :: r -> _ = send w (Changed version); broadcast r version.
+goodbye : unsafe List Int -> Unit .
+goodbye writers = case writers of Nil -> Unit | w :: r -> _ = send w Stop; goodbye r.
+
+# ---- durable fields ------------------------------------------------------------------------
+# saved: key -> (the JSON text last written, when in ms).  A field is written
+# when its JSON changed and its policy allows; a change inside an AtMostEvery
+# window is written by the first event after the window, or at Quit / Reload.
+persist : List (Field m) -> KV.KvLog -> m -> M.Map String (String, Int) -> M.Map String (String, Int) .
+persist fields db model saved = persistGo fields db model saved (Sys.timeUs Unit / 1000).
+persistGo : unsafe List (Field m) -> KV.KvLog -> m -> M.Map String (String, Int) -> Int -> M.Map String (String, Int) .
+persistGo fields db model saved now = case fields of
+    Nil -> saved
+  | Field key policy get _ :: r ->
+      v = get model;
+      text = J.render v;
+      (case M.get key saved of
+          O.Some (was, at) ->
+            (if was == text then persistGo r db model saved now
+             else if due policy at now then _ = KV.put key v db; persistGo r db model (M.insert key (text, now) saved) now
+             else persistGo r db model saved now)
+        | O.None -> _ = (if KV.get key db == O.Some v then Unit else KV.put key v db); persistGo r db model (M.insert key (text, now) saved) now).
+due : Policy -> Int -> Int -> Bool .
+due policy at now = case policy of Always -> True | AtMostEvery ms -> now - at >= ms.
+
+# everything, whatever the policy says
+flush : List (Field m) -> KV.KvLog -> m -> Unit .
+flush fields db model = flushGo fields db model.
+flushGo : unsafe List (Field m) -> KV.KvLog -> m -> Unit .
+flushGo fields db model = case fields of
+    Nil -> Unit
+  | Field key _ get _ :: r ->
+      v = get model;
+      _ = (if KV.get key db == O.Some v then Unit else KV.put key v db);
+      flushGo r db model.
+
+# ---- the journal: every event, so the model can be rebuilt from the log alone -----------------
+journal codec db ev = KV.put "$event" (evJson codec ev) db.
+evJson codec ev = case ev of
+    Msg sid m -> J.object (("e", J.Text "msg") :: ("sid", J.Integer sid) :: ("m", J.strings (codec.name m :: codec.args m)) :: Nil)
+  | Joined sid -> J.object (("e", J.Text "joined") :: ("sid", J.Integer sid) :: Nil)
+  | Left sid -> J.object (("e", J.Text "left") :: ("sid", J.Integer sid) :: Nil)
+  | Refused sid why -> J.object (("e", J.Text "refused") :: ("sid", J.Integer sid) :: ("why", J.Text why) :: Nil).
+evOf codec v =
+  text = (fn k -> O.withDefault "" (O.andThen J.asString (J.field k v)));
+  num = (fn k -> O.withDefault 0 (O.andThen J.asInt (J.field k v)));
+  case text "e" of
+    "msg" -> (case decodeList codec (O.withDefault Nil (O.andThen J.asList (J.field "m" v))) Nil of
+        Ok m -> O.Some (Msg (num "sid") m)
+      | Err _ -> O.None)
+  | "joined" -> O.Some (Joined (num "sid"))
+  | "left" -> O.Some (Left (num "sid"))
+  | "refused" -> O.Some (Refused (num "sid") (text "why"))
+  | _ -> O.None.
+
+# [name, field, ...] as JSON strings, plus any trailing fields -> the message
+decodeList codec vs extra = case texts vs Nil of
+    O.None -> Err "a message is a list of strings"
+  | O.Some parts -> (case parts of
+        Nil -> Err "an empty message"
+      | name :: args -> codec.make name (appendS args extra)).
+texts : unsafe List J.Value -> List String -> O.Option (List String) .
+texts vs acc = case vs of
+    Nil -> O.Some (rev acc Nil)
+  | v :: r -> (case v of J.Text t -> texts r (t :: acc) | _ -> O.None).
+appendS : unsafe List String -> List String -> List String .
+appendS xs ys = case xs of Nil -> ys | x :: r -> x :: appendS r ys.
+
+# what a session sent, as a message of this app.  "=" [name, fields...] is
+# complete; "+" takes the event's argument as its final field (View.sendWith).
+decodeWire codec wire arg =
+  kind = substr wire 1 1;
+  case kind == "=" or kind == "+" of
+    False -> Err "not a typed message: {wire}"
+  | True -> (case J.parse (substr wire 2 (strlen wire)) of
+        Err why -> Err why
+      | Ok v -> decodeList codec (O.withDefault Nil (J.asList v)) (if kind == "+" then arg :: Nil else Nil)).
+
+# the model rebuilt from NOTHING but `init`, `update` and the journal in a store
+# file: no commands are performed, nothing is written.  If this differs from the
+# live model, `update` is not a pure function of its events.
+replay app path = case KV.history path "$event" of
+    Err why -> Err why
+  | Ok events -> Ok (replayGo app events app.init).
+replayGo app events model = case events of
+    Nil -> model
+  | (_, v) :: r -> replayGo app r (case evOf app.codec v of O.Some ev -> (case app.update ev model of (m2, _) -> m2) | O.None -> model).
+
+# ---- commands ------------------------------------------------------------------------------
+# True when one of them was Quit
+perform reg cmds = performGo reg cmds False.
+performGo reg cmds quit = case cmds of
+    Nil -> quit
+  | c :: r -> (case c of
+        Quit -> performGo reg r True
+      | After ms msg ->
+          _ = spawn (fn self -> _ = Sys.sleepUs (ms * 1000); send reg (0, Event (Msg 0 msg)));
+          performGo reg r quit
+      | Run work ->
+          _ = spawn (fn self -> send reg (0, Event (Msg 0 (work Unit))));
+          performGo reg r quit).
+
+# ---- subscriptions ---------------------------------------------------------------------------
+# one ticker actor per (ms, message) the app still wants: it sleeps, asks the
+# register whether it is still wanted, and ends when it is not.  A message is
+# told apart by its wire form.
+keyOf codec msg = strJoin "\x1f" (codec.name msg :: codec.args msg).
+
+wanted codec ms key subs = case subs of
+    Nil -> O.None
+  | Every m msg :: r -> (if m == ms and keyOf codec msg == key then O.Some msg else wanted codec ms key r).
+
+startTickers : Int -> Rs -> Rs .
+startTickers me st = case st of Rs cfg app model sessions nextSid db saved tickers version ->
+  Rs cfg app model sessions nextSid db saved (startGo me app.codec (app.subs model) tickers) version.
+startGo reg codec subs running = case subs of
+    Nil -> running
+  | Every ms msg :: r -> (if has ms (keyOf codec msg) running then startGo reg codec r running
+      else _ = spawn (ticker reg ms (keyOf codec msg)); startGo reg codec r ((ms, keyOf codec msg) :: running)).
+has : unsafe Int -> String -> List (Int, String) -> Bool .
+has ms name xs = case xs of Nil -> False | (m, n) :: r -> (if m == ms and n == name then True else has ms name r).
+without : unsafe Int -> String -> List (Int, String) -> List (Int, String) .
+without ms name xs = case xs of Nil -> Nil | (m, n) :: r -> (if m == ms and n == name then r else (m, n) :: without ms name r).
+
+ticker : unsafe Int -> Int -> String -> Int -> Unit .
+ticker reg ms key self =
+  _ = Sys.sleepUs (ms * 1000);
+  r = ask self reg (TickDue ms key);
+  again = (case r of Wanted True -> True | _ -> False);
+  _ = drop r;
+  (if again then ticker reg ms key self else Unit).
+
+# ---- one connection ----------------------------------------------------------------------------
+connection reg cfg app conn peer = case H.readRequest conn of
+    Err _ -> Unit
+  | Ok req -> (if req.path == "/ws" then session reg app conn req
+      else if req.path == "/" then _ = ST.write (H.renderResponse (H.html 200 (page reg cfg app))) conn; Unit
+      else _ = ST.write (H.renderResponse (H.text 404 "no such page\n")) conn; Unit).
+
+page reg cfg app =
+  r = ask (myself 0) reg Snapshot;
+  html = pageOf cfg app r;
+  _ = drop r;
+  html.
+pageOf cfg app r = case r of
+    Model _ model -> (case app.view 0 model of (s, d) ->
+      strJoin "" ("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>"
+        :: cfg.title :: "</title><style>" :: app.css model :: "</style></head><body><div id=\"lv-root\"></div><script>window.__LV__=\{s:"
+        :: J.render (J.strings s) :: ",d:" :: J.render (J.strings d) :: "};</script><script>" :: cfg.script :: "</script></body></html>" :: Nil))
+  | _ -> "live: no model".
+
+# the upgrade, then THIS actor is the session's reader and a new one its writer
+session reg app conn req = case WS.accept req of
+    Err why -> _ = ST.write (H.renderResponse (H.text 400 "{why}\n")) conn; Unit
+  | Ok head ->
+      _ = ST.write head conn;
+      me = myself 0;
+      writer = A.spawnWith (A.Dynamic 64) (fn self -> writerStart reg app conn self);
+      r = ask me reg (Join writer);
+      sid = (case r of Welcome n _ -> n | _ -> 0);
+      _ = drop r; # a reply is a message: undropped, it pins the register's slab for this session's life
+      (if sid == 0 then Unit else reading reg app.codec writer sid (ST.reader conn) conn A.tidySmall).
+
+# frames in, events out.  A frame is {"msg": wire, "arg": text} (the client
+# script's shape); what it decodes to is a message of the app's type, or Refused.
+reading reg codec writer sid r0 conn t0 = case A.tidy (myself 0) (r0, t0) of (r, t) ->
+  (case WS.receiveOnly 1048576 r conn of (msg, r2) ->
+      (case msg of
+          WS.Text text ->
+            _ = send reg (0, Event (eventOf codec sid text));
+            reading reg codec writer sid r2 conn t
+        | WS.Ping payload -> _ = send writer (Pong payload); reading reg codec writer sid r2 conn t
+        | WS.Binary _ -> reading reg codec writer sid r2 conn t
+        | _ -> _ = send reg (0, Leave sid); _ = send writer Stop; Unit)).
+
+eventOf codec sid text = case J.parse text of
+    Err why -> Refused sid "not JSON: {why}"
+  | Ok v -> (case decodeWire codec (O.withDefault "" (O.andThen J.asString (J.field "msg" v))) (O.withDefault "" (O.andThen J.asString (J.field "arg" v))) of
+        Ok m -> Msg sid m
+      | Err why -> Refused sid why).
+
+# the writer: what this session last saw, and the only actor that writes its socket.
+# seen: the version on screen; asked: a model has been asked for and not yet
+# arrived; latest: the newest version heard of
+writerStart reg app conn self = case receive self of
+    Welcome sid model -> (case app.view sid model of (s, d) ->
+        _ = WS.sendText (full s d) conn;
+        writing reg app conn sid self (Wr (keep s) (keep d) 0 False 0) A.tidySmall)
+  | _ -> Unit.
+
+Wr = Type (Wr s d seen asked latest).
+writing : unsafe Int -> a -> ST.Stream -> Int -> Int -> Wr -> A.Tidy -> Unit .
+writing reg app conn sid self w0 t0 = case A.tidy self (w0, t0) of (Wr s d seen asked latest, t) ->
+  m = receive self;
+  (case m of
+      Changed v ->
+        _ = drop m;
+        (if v <= seen or asked then writing reg app conn sid self (Wr s d seen asked (if v > latest then v else latest)) t
+         else _ = send reg (self, Snapshot); writing reg app conn sid self (Wr s d seen True v) t)
+    | Model v model -> (case app.view sid model of (s2, d2) ->
+        sent = (if s2 == s then (case delta d d2 0 Nil of Nil -> Ok Unit | changes -> WS.sendText (strJoin "" ("\{\"d\":\{" :: strJoin "," (rev changes Nil) :: "}}" :: Nil)) conn)
+                else WS.sendText (full s2 d2) conn);
+        s3 = keep s2;
+        d3 = keep d2;
+        _ = drop m;
+        more = latest > v;
+        _ = (if more then send reg (self, Snapshot) else Ok Unit);
+        (case sent of Ok _ -> writing reg app conn sid self (Wr s3 d3 v more latest) t | Err _ -> Unit))
+    | Pong payload -> _ = WS.sendPong payload conn; _ = drop m; writing reg app conn sid self (Wr s d seen asked latest) t
+    | _ -> _ = WS.sendClose 1001 conn; Unit).
+
+full : List String -> List String -> String .
+full s d = strJoin "" ("\{\"s\":" :: J.render (J.strings s) :: ",\"d\":" :: J.render (J.strings d) :: "}" :: Nil).
+
+# "i":"new" for every dynamic that changed, newest first
+delta : unsafe List String -> List String -> Int -> List String -> List String .
+delta old new i acc = case new of
+    Nil -> acc
+  | n :: nr -> (case old of
+        Nil -> delta Nil nr (i + 1) (strJoin "" (J.quote (str i) :: ":" :: J.quote n :: Nil) :: acc)
+      | o :: more -> delta more nr (i + 1) (if o == n then acc else strJoin "" (J.quote (str i) :: ":" :: J.quote n :: Nil) :: acc)).
+
+# ---- reload: watch, rebuild, become ----------------------------------------------------------------
+stamps : List String -> List (String, Int) .
+stamps paths = stampsGo paths Nil.
+stampsGo : unsafe List String -> List (String, Int) -> List (String, Int) .
+stampsGo paths acc = case paths of
+    Nil -> rev acc Nil
+  | p :: r -> stampsGo r ((p, (case OS.stat p of Ok (_, size, mtime) -> mtime * 1000003 + size | Err _ -> 0)) :: acc).
+
+watcher : unsafe Int -> a -> List (String, Int) -> Int -> Unit .
+watcher reg cfg seen self =
+  _ = Sys.sleepUs 300000;
+  now = stamps cfg.watch;
+  (if now == seen then watcher reg cfg seen self
+   else
+     _ = Sys.stderr "live: a source changed; rebuilding\n";
+     (case P.run cfg.rebuild of
+         Ok r -> (if r.status == 0 then _ = send reg (0, Reload); Unit
+                  else _ = Sys.stderr "live: the rebuild FAILED; still serving the old program\n{r.out}{r.err}\n"; watcher reg cfg now self)
+       | Err why -> _ = Sys.stderr "live: cannot run the rebuild: {why}\n"; watcher reg cfg now self)).
+
+# a config to start from: Live.defaults |> change what you need
+defaults = { address = "127.0.0.1", port = 8080, title = "Live", store = "live.kvlog", journal = True,
+             script = "", watch = Nil, rebuild = Nil, restart = Nil }.

@@ -17,9 +17,11 @@ building bare-metal examples requires QOS.
 
 - `compiler/`: shared frontend, native backends, Sol bytecode interpreter and JIT.
 - `core/`, `std/`: language prelude and libraries that do not import QOS services.
-- `hal/core/`: runtime allocation, application, actors, vectors and value operations.
-- `hal/virt/`: standalone RISC-V machine support, also consumed by QOS Native.
-- `hal/unix/`: architecture context switching used by hosted runtime integrations.
+- `runtime/`: the RUNTIME -- allocation, actors and the scheduler, vectors, values.
+- `machine/virt/`, `machine/posix/`, `machine/builtin/`, `machine/unix/`: the MACHINE LAYER, one
+  per system -- what the runtime needs from whatever it runs on (boot, context
+  switch, a console byte, the doorbell and timer). Device drivers are not
+  here: the HAL a program sees is QOS's. See [docs/HAL.md](docs/HAL.md).
 - `sol/`, `tests/`, `tools/`: examples, compiler/runtime checks and language tools.
 - `docs/`: language and platform design documentation.
 
@@ -47,7 +49,7 @@ posix`.  See [docs/PROFILES.md](docs/PROFILES.md) for the matrix.
 
 `fpr build` makes an ordinary executable for the host (x86-64 or AArch64,
 Linux or macOS): the same core runtime as bare metal, with libc as the board
-(`hal/posix`).  A program gets the command line, the environment, stdin,
+(`machine/posix`).  A program gets the command line, the environment, stdin,
 stdout, stderr, files, the clock and the exit status -- see
 [docs/BASE.md](docs/BASE.md).  `tests/check_base.py` is the conformance run.
 

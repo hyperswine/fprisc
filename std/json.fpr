@@ -1,0 +1,320 @@
+# std/json.fpr -- JSON: text to a Value and back (ExtBase).
+#
+#   Json = use "std/json".
+#   case Json.parse text of
+#       Ok v -> Json.at ("server" :: "port" :: Nil) v |> Option.andThen Json.asInt
+#     | Err why -> ...                     # "line 3, column 14: expected ':'"
+#
+# `Value` is the design's flexible-data type: what external data is before you
+# decode it into your own records.  An Object is a Map, so its keys iterate in
+# order and `render` is deterministic: the same value is always the same text.
+#
+# Numbers: an integer literal is an `Integer`; anything with a fraction or an
+# exponent is kept as `Real` with its TEXT (no float parsing to get wrong --
+# `asReal` hands you the text to convert when you need arithmetic).
+# Strings: every escape is decoded, \uXXXX (and surrogate pairs) to UTF-8.
+
+M = use "map".
+O = use "option".
+S = use "string".
+
+Value = Type (Null | Boolean Bool | Integer Int | Real String | Text String | Sequence (List Value) | Object (M.Map String Value)).
+
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+# ---- reading a Value -------------------------------------------------------------
+asString : Value -> O.Option String .
+asString v = case v of Text s -> O.Some s | _ -> O.None.
+
+asInt : Value -> O.Option Int .
+asInt v = case v of Integer n -> O.Some n | _ -> O.None.
+
+asBool : Value -> O.Option Bool .
+asBool v = case v of Boolean b -> O.Some b | _ -> O.None.
+
+# a Real's digits, or an Integer's
+asReal : Value -> O.Option String .
+asReal v = case v of Real t -> O.Some t | Integer n -> O.Some (str n) | _ -> O.None.
+
+asList : Value -> O.Option (List Value) .
+asList v = case v of Sequence xs -> O.Some xs | _ -> O.None.
+
+asObject : Value -> O.Option (M.Map String Value) .
+asObject v = case v of Object m -> O.Some m | _ -> O.None.
+
+isNull : Value -> Bool .
+isNull v = case v of Null -> True | _ -> False.
+
+# one key of an Object
+field : String -> Value -> O.Option Value .
+field k v = case v of Object m -> M.get k m | _ -> O.None.
+
+# a path of keys: Json.at ("a" :: "b" :: Nil) v
+at : List String -> Value -> O.Option Value .
+at path v = atGo path v.
+atGo : unsafe List String -> Value -> O.Option Value .
+atGo path v = case path of
+    Nil -> O.Some v
+  | k :: r -> (case field k v of O.None -> O.None | O.Some inner -> atGo r inner).
+
+# the same JSON, whatever order an object's keys were written in (`==` would
+# compare the Maps' trees: std/map.fpr)
+equal : Value -> Value -> Bool .
+equal a b = equalGo a b.
+equalGo : unsafe Value -> Value -> Bool .
+equalGo a b = case a of
+    Object ma -> (case b of Object mb -> M.equalBy equalGo ma mb | _ -> False)
+  | Sequence xs -> (case b of Sequence ys -> allEq xs ys | _ -> False)
+  | _ -> a == b.
+allEq : unsafe List Value -> List Value -> Bool .
+allEq xs ys = case xs of
+    Nil -> (case ys of Nil -> True | _ -> False)
+  | x :: xr -> (case ys of Nil -> False | y :: yr -> (case equalGo x y of True -> allEq xr yr | False -> False)).
+
+# ---- making a Value --------------------------------------------------------------
+object : List (String, Value) -> Value .
+object kvs = Object (M.fromList S.compare kvs).
+
+strings : List String -> Value .
+strings xs = Sequence (textsGo xs Nil).
+textsGo : unsafe List String -> List Value -> List Value .
+textsGo xs acc = case xs of Nil -> rev acc Nil | x :: r -> textsGo r (Text x :: acc).
+
+# ---- rendering ---------------------------------------------------------------------
+# compact, keys ascending
+render : Value -> String .
+render v = strJoin "" (rev (emit v Nil) Nil).
+
+# pieces, newest first
+emit : unsafe Value -> List String -> List String .
+emit v acc = case v of
+    Null -> "null" :: acc
+  | Boolean b -> (case b of True -> "true" | False -> "false") :: acc
+  | Integer n -> str n :: acc
+  | Real t -> t :: acc
+  | Text s -> quote s :: acc
+  | Sequence xs -> "]" :: emitItems xs True ("[" :: acc)
+  | Object m -> "\}" :: emitFields (M.entries m) True ("\{" :: acc).
+emitItems : unsafe List Value -> Bool -> List String -> List String .
+emitItems xs first acc = case xs of
+    Nil -> acc
+  | x :: r -> emitItems r False (emit x (case first of True -> acc | False -> "," :: acc)).
+emitFields : unsafe List (String, Value) -> Bool -> List String -> List String .
+emitFields kvs first acc = case kvs of
+    Nil -> acc
+  | (k, x) :: r -> emitFields r False (emit x (":" :: quote k :: (case first of True -> acc | False -> "," :: acc))).
+
+# a JSON string literal: quotes, backslashes and control bytes escaped; UTF-8 passes
+quote : String -> String .
+quote s = strJoin "" ("\"" :: rev ("\"" :: quoteGo s 1 1 (strlen s) Nil) Nil).
+# [from, i) is a clean run not yet emitted
+quoteGo : unsafe String -> Int -> Int -> Int -> List String -> List String .
+quoteGo s from i n acc = case i > n of
+    True -> substr s from (i - from) :: acc
+  | False -> (case escapeOf (charAt s i) of
+        O.None -> quoteGo s from (i + 1) n acc
+      | O.Some e -> quoteGo s (i + 1) (i + 1) n (e :: substr s from (i - from) :: acc)).
+escapeOf : Int -> O.Option String .
+escapeOf c =
+  if c == 34 then O.Some "\\\""
+  else if c == 92 then O.Some "\\\\"
+  else if c >= 32 then O.None
+  else if c == 10 then O.Some "\\n"
+  else if c == 9 then O.Some "\\t"
+  else if c == 13 then O.Some "\\r"
+  else O.Some (strcat "\\u00" (hex2 c)).
+hex2 : Int -> String .
+hex2 c = strcat (hexDigit (c / 16)) (hexDigit (c - (c / 16) * 16)).
+hexDigit : Int -> String .
+hexDigit d = chr (case d < 10 of True -> 48 + d | False -> 87 + d).
+
+# ---- parsing -----------------------------------------------------------------------
+# A parser step answers Ok (value, next position) or Err (position, what was
+# expected); `parse` turns the position into a line and a column.
+parse : String -> Result Value String .
+parse s = case value s (skip s 1) of
+    Err (at, why) -> Err (located s at why)
+  | Ok (v, next) -> (case skip s next > strlen s of
+        True -> Ok v
+      | False -> Err (located s (skip s next) "unexpected text after the value")).
+
+located : String -> Int -> String -> String .
+located s at why = case lineCol s 1 at 1 1 of (l, c) -> "line {l}, column {c}: {why}".
+lineCol : unsafe String -> Int -> Int -> Int -> Int -> (Int, Int) .
+lineCol s i at l c = case i >= at of
+    True -> (l, c)
+  | False -> (case charAt s i == 10 of True -> lineCol s (i + 1) at (l + 1) 1 | False -> lineCol s (i + 1) at l (c + 1)).
+
+skip : unsafe String -> Int -> Int .
+skip s i = case i > strlen s of True -> i | False -> (case S.isSpace (charAt s i) of True -> skip s (i + 1) | False -> i).
+
+value : unsafe String -> Int -> Result (Value, Int) (Int, String) .
+value s i = case i > strlen s of
+    True -> Err (i, "expected a value, found the end of the text")
+  | False -> valueAt s i (charAt s i).
+valueAt : unsafe String -> Int -> Int -> Result (Value, Int) (Int, String) .
+valueAt s i c = case c == 123 of
+    True -> members s (skip s (i + 1)) (M.empty S.compare)
+  | False -> (case c == 91 of
+        True -> items s (skip s (i + 1)) Nil
+      | False -> (case c == 34 of
+            True -> (case stringLit s (i + 1) of Ok (t, next) -> Ok (Text t, next) | Err e -> Err e)
+          | False -> (case keyword s i of
+                O.Some r -> Ok r
+              | O.None -> number s i))).
+
+keyword : String -> Int -> O.Option (Value, Int) .
+keyword s i = case substr s i 4 == "true" of
+    True -> O.Some (Boolean True, i + 4)
+  | False -> (case substr s i 5 == "false" of
+        True -> O.Some (Boolean False, i + 5)
+      | False -> (case substr s i 4 == "null" of True -> O.Some (Null, i + 4) | False -> O.None)).
+
+# after "[" (and whitespace): items until "]"
+items : unsafe String -> Int -> List Value -> Result (Value, Int) (Int, String) .
+items s i acc = case charAtOr s i == 93 of
+    True -> (case acc of Nil -> Ok (Sequence Nil, i + 1) | _ -> Err (i, "expected a value after ','"))
+  | False -> (case value s i of
+        Err e -> Err e
+      | Ok (v, next) -> itemsSep s (skip s next) (v :: acc)).
+itemsSep : unsafe String -> Int -> List Value -> Result (Value, Int) (Int, String) .
+itemsSep s i acc = case charAtOr s i == 44 of
+    True -> items s (skip s (i + 1)) acc
+  | False -> (case charAtOr s i == 93 of
+        True -> Ok (Sequence (rev acc Nil), i + 1)
+      | False -> Err (i, "expected ',' or ']'")).
+
+# after "{": "key" : value pairs until "}".  A repeated key keeps the LAST.
+members : unsafe String -> Int -> M.Map String Value -> Result (Value, Int) (Int, String) .
+members s i m = case charAtOr s i == 125 of
+    True -> (case M.isEmpty m of True -> Ok (Object m, i + 1) | False -> Err (i, "expected a key after ','"))
+  | False -> (case charAtOr s i == 34 of
+        False -> Err (i, "expected a string key")
+      | True -> (case stringLit s (i + 1) of
+            Err e -> Err e
+          | Ok (k, next) -> memberValue s (skip s next) k m)).
+memberValue : unsafe String -> Int -> String -> M.Map String Value -> Result (Value, Int) (Int, String) .
+memberValue s i k m = case charAtOr s i == 58 of
+    False -> Err (i, "expected ':'")
+  | True -> (case value s (skip s (i + 1)) of
+        Err e -> Err e
+      | Ok (v, next) -> membersSep s (skip s next) (M.insert k v m)).
+membersSep : unsafe String -> Int -> M.Map String Value -> Result (Value, Int) (Int, String) .
+membersSep s i m = case charAtOr s i == 44 of
+    True -> (case charAtOr s (skip s (i + 1)) == 125 of
+        True -> Err (skip s (i + 1), "expected a key after ','")
+      | False -> members s (skip s (i + 1)) m)
+  | False -> (case charAtOr s i == 125 of
+        True -> Ok (Object m, i + 1)
+      | False -> Err (i, "expected ',' or '}'")).
+
+# 0 past the end, so comparisons just fail
+charAtOr : String -> Int -> Int .
+charAtOr s i = case i > strlen s of True -> 0 | False -> charAt s i.
+
+# ---- numbers ---------------------------------------------------------------------
+number : unsafe String -> Int -> Result (Value, Int) (Int, String) .
+number s i =
+  j = (case charAtOr s i == 45 of True -> i + 1 | False -> i);
+  k = digits s j;
+  case k == j of
+    True -> Err (i, "expected a value")
+  | False -> numberTail s i k.
+numberTail : unsafe String -> Int -> Int -> Result (Value, Int) (Int, String) .
+numberTail s i k =
+  f = (case charAtOr s k == 46 of True -> digits s (k + 1) | False -> k);
+  e = expEnd s f;
+  case e == k of
+    True -> (case S.toInt (substr s i (k - i)) of Ok n -> Ok (Integer n, k) | Err _ -> Err (i, "bad number"))
+  | False -> (case f == k + 1 of
+        True -> Err (k, "expected digits after '.'")
+      | False -> Ok (Real (substr s i (e - i)), e)).
+digits : unsafe String -> Int -> Int .
+digits s i = case S.isDigit (charAtOr s i) of True -> digits s (i + 1) | False -> i.
+# past an exponent at i, or i itself
+expEnd : String -> Int -> Int .
+expEnd s i = case charAtOr s i == 101 or charAtOr s i == 69 of True -> expDigits s i | False -> i.
+expDigits : String -> Int -> Int .
+expDigits s i =
+  c = charAtOr s (i + 1);
+  j = (case c == 43 or c == 45 of True -> i + 2 | False -> i + 1);
+  k = digits s j;
+  case k == j of True -> i | False -> k.
+
+# ---- strings ---------------------------------------------------------------------
+# `i` is just past the opening quote; answers the decoded text and the position
+# past the closing quote
+stringLit : unsafe String -> Int -> Result (String, Int) (Int, String) .
+stringLit s i = stringGo s i i Nil.
+# [from, i) is a clean run; acc the decoded pieces, newest first
+stringGo : unsafe String -> Int -> Int -> List String -> Result (String, Int) (Int, String) .
+stringGo s from i acc = case i > strlen s of
+    True -> Err (i, "unterminated string")
+  | False -> (case charAt s i == 34 of
+        True -> Ok (strJoin "" (rev (substr s from (i - from) :: acc) Nil), i + 1)
+      | False -> (case charAt s i == 92 of
+            False -> (case charAt s i < 32 of
+                True -> Err (i, "a control character inside a string")
+              | False -> stringGo s from (i + 1) acc)
+          | True -> escape s i (substr s from (i - from) :: acc))).
+
+# `i` is at the backslash
+escape : unsafe String -> Int -> List String -> Result (String, Int) (Int, String) .
+escape s i acc =
+  c = charAtOr s (i + 1);
+  case c == 117 of
+    True -> unicode s i acc
+  | False -> (case simpleEscape c of
+        O.None -> Err (i, "unknown escape")
+      | O.Some t -> stringGo s (i + 2) (i + 2) (t :: acc)).
+simpleEscape : Int -> O.Option String .
+simpleEscape c =
+  if c == 110 then O.Some "\n"
+  else if c == 116 then O.Some "\t"
+  else if c == 114 then O.Some "\r"
+  else if c == 98 then O.Some (chr 8)
+  else if c == 102 then O.Some (chr 12)
+  else if c == 34 then O.Some "\""
+  else if c == 92 then O.Some "\\"
+  else if c == 47 then O.Some "/"
+  else O.None.
+
+# \uXXXX at i, possibly the first half of a surrogate pair
+unicode : unsafe String -> Int -> List String -> Result (String, Int) (Int, String) .
+unicode s i acc = case hex4 s (i + 2) of
+    O.None -> Err (i, "expected four hex digits after \\u")
+  | O.Some hi -> (case hi >= 55296 of
+        False -> stringGo s (i + 6) (i + 6) (utf8 hi :: acc)
+      | True -> (case hi <= 56319 of
+            False -> stringGo s (i + 6) (i + 6) (utf8 hi :: acc)
+          | True -> (case substr s (i + 6) 2 == "\\u" of
+                False -> Err (i, "a lone surrogate")
+              | True -> (case hex4 s (i + 8) of
+                    O.None -> Err (i + 6, "expected four hex digits after \\u")
+                  | O.Some lo -> stringGo s (i + 12) (i + 12) (utf8 (65536 + (hi - 55296) * 1024 + (lo - 56320)) :: acc))))).
+
+hex4 : String -> Int -> O.Option Int .
+hex4 s i = hexGo s i 4 0.
+hexGo : unsafe String -> Int -> Int -> Int -> O.Option Int .
+hexGo s i n acc = case n == 0 of
+    True -> O.Some acc
+  | False -> (case hexVal (charAtOr s i) of
+        O.None -> O.None
+      | O.Some d -> hexGo s (i + 1) (n - 1) (acc * 16 + d)).
+hexVal : Int -> O.Option Int .
+hexVal c = case S.isDigit c of
+    True -> O.Some (c - 48)
+  | False -> (case c >= 97 and c <= 102 of
+        True -> O.Some (c - 87)
+      | False -> (case c >= 65 and c <= 70 of True -> O.Some (c - 55) | False -> O.None)).
+
+# a code point as UTF-8 bytes
+utf8 : Int -> String .
+utf8 cp = case cp < 128 of
+    True -> chr cp
+  | False -> (case cp < 2048 of
+        True -> strJoin "" (chr (192 + cp / 64) :: chr (128 + (cp - (cp / 64) * 64)) :: Nil)
+      | False -> (case cp < 65536 of
+            True -> strJoin "" (chr (224 + cp / 4096) :: chr (128 + (cp / 64 - (cp / 4096) * 64)) :: chr (128 + (cp - (cp / 64) * 64)) :: Nil)
+          | False -> strJoin "" (chr (240 + cp / 262144) :: chr (128 + (cp / 4096 - (cp / 262144) * 64)) :: chr (128 + (cp / 64 - (cp / 4096) * 64)) :: chr (128 + (cp - (cp / 64) * 64)) :: Nil))).

@@ -1,0 +1,18 @@
+path: a/b/c.txt c.tar.gz a/b Some gz None c n/a.md a/c/d /x
+walk: Ok [tree/a.txt, tree/sub/b.fpr, tree/sub/deep/c d.fpr]
+glob: Ok [tree/sub/b.fpr] list Ok [a.txt, sub] missing False
+read: Ok hello
+ missing False size Ok 6 kind Ok dir
+create Ok () write Ok () lines Ok [one, two] isDir True
+removeAll Ok () gone False
+proc: Ok {err = , out = hi there
+, status = 0}
+proc status: Ok {err = oops
+, out = , status = 3} notfound False
+pipe: Ok {err = , out = SHOUT
+, status = 0} output Ok plain failing Err exit 1:  in-dir Ok {err = , out = a.txt
+sub
+, status = 0}
+big pipe: 300000 lines through wc
+clock: slept>=20ms True epoch0 1970-01-01T00:00:00Z y2k 1999-12-31T23:59:59Z date 2026-09-10 now-shaped True
+program: args [one, two words] PATH set True dflt

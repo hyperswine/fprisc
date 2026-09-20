@@ -1,0 +1,8 @@
+unsafe base.
+Msg = Type (Bump Int | Add String | Toggle Bool | Move Int Int String | Clear).
+codec = @Msg.
+show m = "{codec.name m} {codec.args m}".
+main =
+  _ = print "out: {show (Bump 10)} | {show (Add "two words")} | {show (Toggle True)} | {show (Move (0 - 3) 4 "x")} | {show Clear}";
+  _ = print "in:  {codec.make "Bump" ("10" :: Nil)} | {codec.make "Move" ("-3" :: "4" :: "x" :: Nil)} | {codec.make "Toggle" ("False" :: Nil)} | {codec.make "Clear" Nil}";
+  print "bad: {codec.make "Bump" ("ten" :: Nil)} | {codec.make "Bump" Nil} | {codec.make "Nope" Nil} | {codec.make "Toggle" ("yes" :: Nil)} | {codec.make "Clear" ("x" :: Nil)}".

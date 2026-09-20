@@ -13,7 +13,7 @@ import A64 (deTlsQosAppA64, lowerA64, a64Rev)
 import X64 (lowerX64, deTlsQosApp, x64Rev)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (runState)
-import Data.List (isPrefixOf)
+import Data.List (intercalate, isPrefixOf)
 import qualified Data.List as List
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -37,7 +37,7 @@ import Text.Megaparsec (errorBundlePretty, parse)
 data Opts = Opts
   { oTarget :: Target,
     oBuiltin :: Bool,
-    oBase :: Bool, -- the posix SYSTEM: a hosted executable on this machine (hal/posix); the ISA is the build host's
+    oBase :: Bool, -- the posix SYSTEM: a hosted executable on this machine (machine/posix); the ISA is the build host's
     oSystem :: Maybe String, -- --system=bare-metal|qos-native|qos-portable|posix (docs/PROFILES.md)
     oProfileFlag :: Maybe String, -- --profile=builtin|base|extbase|sol, when the file does not say
     oArc :: Bool,
@@ -56,11 +56,12 @@ data Opts = Opts
     oSol :: Bool, -- the HostedBytecode/sol VIEW of the one grammar: `>` top-level eval accepted (auto-on for .sol input)
     oPrelude :: Maybe FilePath,
     oNoSafety :: Bool,
-    oFiles :: [FilePath]
+    oFiles :: [FilePath],
+    oForeign :: [FilePath] -- --foreign=FILE: the SYSTEM's primitive declarations (signatures only)
   }
 
 parseArgs :: [String] -> Opts
-parseArgs = foldl step (Opts rv64 False False Nothing Nothing False False False [] False False False False False False False False False False Nothing False [])
+parseArgs = foldl step (Opts rv64 False False Nothing Nothing False False False [] False False False False False False False False False False Nothing False [] [])
   where
     -- profile aliases (Target.hs): the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
@@ -112,6 +113,7 @@ parseArgs = foldl step (Opts rv64 False False Nothing Nothing False False False 
     step o "--rvv" = o {oRvv = True}
     step o a
       | "--prelude=" `isPrefixOf` a = o {oPrelude = Just (drop (length "--prelude=") a)}
+      | "--foreign=" `isPrefixOf` a = o {oForeign = oForeign o ++ [drop (length "--foreign=") a]}
       | "--export=" `isPrefixOf` a = o {oExports = oExports o ++ exportSpecs (drop (length "--export=") a)}
       | a == "--no-safety" = o {oNoSafety = True}
       | otherwise = o {oFiles = oFiles o ++ [a]}
@@ -183,7 +185,15 @@ trampoline hard csym target params result =
     -- their own counts; fpr wants position i in a_i.  Walk the positions
     -- from the highest down so an a_j (j <= i) is read before anything
     -- overwrites it.
-    ++ concat [ arg i k | (i, k) <- reverse (zip [0 :: Int ..] params) ]
+    -- positions 8 and up: C passed them on ITS stack (16(sp) on, above this
+    -- frame); fpr wants them in the hart's spill cells, cell j at 8*(1+j)(tp)
+    -- (Codegen.hs spillRef).  Read, convert, store -- before the register
+    -- moves below, which need t1 no more.
+    ++ concat [ ("    ld t1, " ++ show (16 + 8 * (cSlot i - 8)) ++ "(sp)")
+                  : conv "t1" k
+                  ++ [ "    sd t1, " ++ show (8 * (1 + (i - 8))) ++ "(tp)" ]
+              | (i, k) <- zip [0 :: Int ..] params, i >= 8 ]
+    ++ concat [ arg i k | (i, k) <- reverse (zip [0 :: Int ..] params), i < 8 ]
     ++ [ "    call " ++ target ]
     ++ res result
     ++ [ "    ld ra, 8(sp)",
@@ -196,6 +206,13 @@ trampoline hard csym target params result =
     intSlot i = if hard then length [() | k <- take i params, not (isF k)] else i
     fltSlot i = length [() | k <- take i params, isF k]
     a i = "a" ++ show i
+    cSlot i = intSlot i -- (a stacked float under lp64d is refused where exports are checked)
+    conv r k = case k of
+      KInt -> [ "    slli " ++ r ++ ", " ++ r ++ ", 1", "    ori " ++ r ++ ", " ++ r ++ ", 1" ]
+      KBool -> [ "    beqz " ++ r ++ ", 1f", "    la " ++ r ++ ", fpr_true", "    j 2f",
+                 "1:  la " ++ r ++ ", fpr_false", "2:" ]
+      KUnit -> [ "    la " ++ r ++ ", fpr_unit" ]
+      _ -> []
     -- the float ABI: this link is -mabi=lp64 (SOFT float), under which C
     -- passes a double as its bits in an integer register -- which is
     -- FP-RISC's own convention, so nothing moves.  --float-abi=hard
@@ -205,12 +222,7 @@ trampoline hard csym target params result =
       | isF k = [ "    " ++ (if k == KF64 then "fmv.x.d " else "fmv.x.w ") ++ a i ++ ", fa" ++ show (fltSlot i) ]
       | otherwise =
           [ "    mv " ++ a i ++ ", " ++ a (intSlot i) | intSlot i /= i ]
-            ++ case k of
-              KInt -> [ "    slli " ++ a i ++ ", " ++ a i ++ ", 1", "    ori " ++ a i ++ ", " ++ a i ++ ", 1" ]
-              KBool -> [ "    beqz " ++ a i ++ ", 1f", "    la " ++ a i ++ ", fpr_true", "    j 2f",
-                         "1:  la " ++ a i ++ ", fpr_false", "2:" ]
-              KUnit -> [ "    la " ++ a i ++ ", fpr_unit" ]
-              _ -> []
+            ++ conv (a i) k
     res k = case k of
       KInt -> [ "    srai a0, a0, 1" ]
       KBool -> [ "    lw a0, 4(a0)" ]
@@ -318,7 +330,25 @@ compileMain = do
     Nothing | oBuiltin opts -> pure Nothing
             | otherwise -> underHome ("core" </> "prelude.fpr")
   let opts' = opts {oPrelude = prelude}
-  (preludeSrc, preludeTops) <- maybe (pure ("", [])) parseFileSrc prelude
+  (preludeSrc, preludeTops0) <- maybe (pure ("", [])) parseFileSrc prelude
+  -- --foreign=FILE: the primitives the SYSTEM supplies, declared by whoever
+  -- implements them.  The compiler used to type every QOS device and system
+  -- primitive itself (glRender, blkRead, Pin.*, Sys.caps, Apps.*): a language
+  -- that named one operating system's HAL.  Such a file holds signatures and
+  -- nothing else -- a signature with no definition is a foreign declaration,
+  -- resolved at link time to an fpr_g_ symbol -- and joins the prelude, so
+  -- every unit sees the names exactly as it saw the builtins.  docs/HAL.md.
+  -- FPR_FOREIGN (a path list, like FPR_PATH) names such files for every
+  -- invocation in a tree that exports it; the flag adds to it
+  envForeign <- maybe [] (filter (not . null) . splitOn ':') <$> lookupEnv "FPR_FOREIGN"
+  foreignTops <- fmap concat . forM (envForeign ++ oForeign opts) $ \f -> do
+    ts <- parseFile f
+    let strays = [n | TBind n _ _ _ <- ts]
+    unless (null strays) $ do
+      hPutStrLn stderr ("--foreign=" ++ f ++ ": declarations only; it defines " ++ unwords (take 5 strays))
+      exitFailure
+    pure [t | t@(TSig {}) <- ts]
+  let preludeTops = preludeTops0 ++ foreignTops
   -- a LIBRARY: the file is compiled as the one import of an empty root,
   -- so every name it defines is qualified by its module hash (no clash
   -- with the program it links into) and nothing requires a `main`
@@ -363,9 +393,10 @@ compileMain = do
       -- merged program, so root and unit rewrites agree; the generated
       -- records then flow through every later pass like user code).
       let ptbl = shapeTyTable tops0RL
-          (pathErrsM, tops0R) = expandPathLits ptbl tops0RL
-          (pathErrsR, root0) = expandPathLits ptbl root0L
-          unitsPR = [(h, expandPathLits ptbl uts) | (h, uts) <- units0L]
+          ttbl = typeTyTable tops0RL
+          (pathErrsM, tops0R) = expandPathLits ptbl ttbl tops0RL
+          (pathErrsR, root0) = expandPathLits ptbl ttbl root0L
+          unitsPR = [(h, expandPathLits ptbl ttbl uts) | (h, uts) <- units0L]
           units0 = [(h, ts) | (h, (_, ts)) <- unitsPR]
           pathErrs = List.nub (pathErrsM ++ pathErrsR ++ concat [es | (_, (es, _)) <- unitsPR])
       unless (null pathErrs) $ do
@@ -539,7 +570,7 @@ compileMain = do
                 bn = S.fromList ([fst3 b | b@(TBind {}) <- uts])
              in [t | t@(TBind n _ _ _) <- rw, S.member n bn]
                   ++ [t | t <- rw, not (isTBind t)]
-          compileUnit uts = fst (runState (compileTop uts >>= liftFix) (DEnv 0 consAll shapes []))
+          compileUnit uts = M.map (fmap eraseCast) (fst (runState (compileTop uts >>= liftFix) (DEnv 0 consAll shapes [])))
           preludeExt = arities preludeE'
           unitExt = M.unions [arities uts | (_, uts) <- units']
           sourceExt = M.union preludeExt unitExt
@@ -657,12 +688,36 @@ compileMain = do
           Just (ps, _) -> pure ps
           Nothing -> bad "no such function in this unit"
         when (length ps /= length as) $ bad ("signature has " ++ show (length as) ++ " parameters, the function " ++ show (length ps))
-        when (length ps > 8) $ bad "more than 8 parameters: the C entry is register-only"
+        -- 8 in registers, the rest from C's stack into the hart's spill
+        -- cells: the native convention's 64.  Past that a function takes
+        -- a spilled tuple, which C cannot build: pass a Layout pointer.
+        when (length ps > 64) $ bad "more than 64 parameters: pass a pointer to a Layout instead (docs/LAYOUTS.md)"
+        when (oHardFloat opts && length ps > 8) $ bad "more than 8 parameters under --float-abi=hard: stacked float arguments are not lowered yet"
         ks <- either bad pure (traverse ckindOf as)
         rk <- either bad pure (ckindOf r)
         putStrLn ("export " ++ csym ++ " : " ++ unwords (map show ks) ++ " -> " ++ show rk ++ "  (" ++ q ++ ")")
         pure (trampoline (oHardFloat opts) csym ("fpr_fn_" ++ mangleName q) ks rk)
-      let rootAsm = lower rootAsm0 ++ unlines (concat tramps)
+      -- the constructor-name table: what lets `print` say `Some 42` instead of
+      -- `<613153155.1 42>`.  The root unit sees every unit's constructors
+      -- (consAll), so it carries one table for the whole image; the runtime
+      -- holds a weak empty one (runtime.c fpr_contab) for images without.
+      let conRows = [ (tid, var, ar, reverse (takeWhile (/= '.') (reverse (takeWhile (/= '@') c))))
+                    | (c, (tid, var, ar)) <- M.toList consAll, tid >= 0x20000000 ]
+                    -- a record shape: its field names in storage order, comma-separated
+                    ++ [ (sid, 0, length fs, intercalate "," fs) | (fs, sid) <- M.toList shapes ]
+          dir = if tgtName tgt == "rv32" then ".word" else ".quad"
+          conTab
+            | oBuiltin opts || oLib opts || oPlugin opts = ""
+            | otherwise = unlines $
+                [ "", "# constructor names, for render", "    .section .rodata", "    .balign 8" ]
+                  ++ concat [ [ ".Lfprcon" ++ show i ++ ":", "    .byte " ++ intercalate ", " (map (show . ord) nm ++ ["0"]) ]
+                            | (i, (_, _, _, nm)) <- zip [0 :: Int ..] conRows ]
+                  ++ [ "    .balign 8", "    .globl fpr_contab", "fpr_contab:" ]
+                  ++ concat [ [ "    " ++ dir ++ " " ++ show tid, "    " ++ dir ++ " " ++ show var,
+                                "    " ++ dir ++ " " ++ show ar, "    " ++ dir ++ " .Lfprcon" ++ show i ]
+                            | (i, (tid, var, ar, _)) <- zip [0 :: Int ..] conRows ]
+                  ++ [ "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "" ]
+      let rootAsm = lower (rootAsm0 ++ conTab) ++ unlines (concat tramps)
       mapM_ putStrLn rootVNotes
       writeFile out rootAsm
       wcetSummary "root" rootAsm
@@ -706,3 +761,28 @@ wcetSummary what asm = do
       hPutStrLn stderr ("[wcet] " ++ what ++ ": " ++ show (length parsed) ++ " function(s), max segment " ++ (case parsed of [] -> "0"; _ -> show (maximum (map segOf parsed))) ++ " IR insns between safepoints")
       mapM_ (\(fn, kvs) -> hPutStrLn stderr ("[wcet]   " ++ fn ++ "  segmax=" ++ maybe "?" id (lookup "segmax" kvs) ++ "  ccalls=" ++ maybe "?" id (lookup "ccalls" kvs))) top
     _ -> pure ()
+
+
+-- A Layout's two casts (FPRISC.expandLayout) are `$cast x`: typed a -> b so
+-- a nominal pointer type can stand for an Addr, and the identity in fact.
+-- Erased here, so no backend, no representation pass and no ARC lowering
+-- ever meets it: `Block.at a` IS `a`.
+eraseCast :: Core -> Core
+eraseCast = go
+  where
+    go c = case c of
+      CApp (CVar "$cast") x -> go x
+      CApp f x -> CApp (go f) (go x)
+      CLam ps b -> CLam ps (go b)
+      CLet n e b -> CLet n (go e) (go b)
+      CIf a b d -> CIf (go a) (go b) (go d)
+      CMk t k es -> CMk t k (map go es)
+      CTagEq t k e -> CTagEq t k (go e)
+      CProj i e -> CProj i (go e)
+      _ -> c
+
+splitOn :: Char -> String -> [String]
+splitOn c str = case break (== c) str of
+  (a, []) -> [a]
+  (a, _ : rest) -> a : splitOn c rest
+

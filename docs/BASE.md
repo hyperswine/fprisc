@@ -7,8 +7,8 @@ machine it runs on: the `posix` system of docs/PROFILES.md, for a program
 of the `base` profile (the default; `profile base.` says so).  No QOS, no QEMU, no Makefile: the compiler lowers the
 program for the host ISA (x86-64 or AArch64, Linux or macOS), and the host's
 C compiler links it with the same core runtime every other profile uses
-(`hal/core`: allocator, actors, mailboxes, fuel preemption, the deadlock
-detector) and a HAL whose board is libc (`hal/posix`).  Harts are pthreads.
+(`runtime`: allocator, actors, mailboxes, fuel preemption, the deadlock
+detector) and a HAL whose board is libc (`machine/posix`).  Harts are pthreads.
 The result depends on nothing but libc and libpthread.
 
 ```sh
@@ -17,6 +17,20 @@ fpr build hello.fpr            # -> ./hello
 fpr run hello.fpr a b c        # build to a temp file, run it, return its status
 fpr build x.fpr -o out --harts 4 -v   # -v shows the compiler's report; --keep keeps the .s
 ```
+
+`fpr run` keeps the executable it built under `~/.cache/fpr/run/`, keyed by
+everything that made it -- the program, every module it uses, the prelude, the
+compiler, the runtime's sources, the flags -- so a program that has not changed
+starts in about 20 ms instead of being compiled again (`FPR_NO_RUN_CACHE=1`
+builds afresh; the directory is only ever added to: delete it to reclaim the
+space). That makes a script a script: `#` begins a comment, so a first line of
+
+```sh
+#!/usr/bin/env -S fpr run
+```
+
+and `chmod +x` is all it takes. The library a program is written against is
+[STD.md](STD.md).
 
 The first build compiles the runtime into `~/.cache/fpr/rt/<arch>-h<harts>/`
 and the prelude into `~/.cache/fpr/build/units/`; after that a build is the
@@ -31,7 +45,7 @@ Everything Part I of SEMANTICS.md promises -- the language, the prelude,
 `use "std/..."` modules, actors and messages, `unsafe`/`measure`, linearity,
 deep equality, panics -- exactly as on bare metal and QOS.  Then the
 environment a process needs, as builtins the profile's HAL grants
-(`hal/posix/base.c`; the types are in `compiler/Infer.hs`):
+(`machine/posix/base.c`; the types are in `compiler/Infer.hs`):
 
 | name | type | meaning |
 |---|---|---|
@@ -54,16 +68,20 @@ ends the process at once.  Nothing is echoed at exit -- the `[fpr] main
 live hart count at run time (up to `--harts` at build time; 1 makes a run
 deterministic).
 
-## The device tier, honestly
+## No devices: a process is not a board
 
-The virt device model survives so that programs written against it run
-unchanged: `device "uart"` is a 16550 over stdio (THR writes, LSR polls
-stdin, RBR reads it, the other registers read back what was written),
-`device "clint"` serves mtime from CLOCK_MONOTONIC in 10 MHz units.  The
-pin bus has its symbols and panics by name when called.  A program that
-references `blk` or `net` fails at link time on the `fpr_g_` symbol: the
-image's imports are its capability manifest, and the hosted HAL does not
-export a bus it does not have.
+A Base program on the posix system is a Unix process. Its world is the table
+above -- the command line, the environment, the three streams, files, the
+clock, an exit status -- not a register map. It used to carry a pretend
+virt board (`device "uart"` as a 16550 modelled over stdio, a CLINT serving
+mtime) so that programs written against the board ran unchanged; that went
+with `machine/posix/devices.c`. A program that wants to be portable says `print`.
+
+Hardware is reached the way any host facility is: a module declares the
+primitives it needs as signatures with no definition, and `fpr build --with
+driver.c` links the C that implements them (docs/C-REDUCTION.md). A program
+that references a device primitive nobody supplied fails at LINK time on the
+`fpr_g_` name: the image's imports are its capability manifest.
 
 Not on the host: RVV, the specialized Vec loops (x86-64 lowers with
 vec-loop specialization off, so the two in-place-fusion checks in the
@@ -84,10 +102,10 @@ type error).
 - `--system=posix` (compiler/Compile.hs) picks the lowering for the host
   the compiler was built on: `x64` on x86_64, `a64` on aarch64 Linux,
   `a64mac` on macOS.  The rv64 emission stays the IR.
-- `hal/posix/main.c` boots as crt0.S would: `fpr_rt_init`, one pthread per
+- `machine/posix/main.c` boots as crt0.S would: `fpr_rt_init`, one pthread per
   hart, `fpr_hart_main(0)`.  `hal.c` answers the board obligations (console,
   poweroff, the sleep/wake doorbells as a 200 us poll, mtime, no external
-  interrupts).  `devices.c` is the device tier above; `base.c` the table
-  above; `heap.S` a 256 MiB `.bss` heap standing in for the linker script.
+  interrupts).  `base.c` is the table
+  above; the heap is a reservation of address space made in `hal.c` (`hal_heap_span`), with no size of its own.
 - `compiler/Build.hs` is `fpr build`/`fpr run`: the compiler as a quiet
   subprocess, the runtime object cache, the link.

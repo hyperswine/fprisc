@@ -92,7 +92,7 @@ requires explicit lifetime management.
 
 ## Allocator and manual reference counting
 
-`hal/builtin/heap.c` implements the runtime ABI `fpr_alloc`, `fpr_realloc`,
+`machine/builtin/heap.c` implements the runtime ABI `fpr_alloc`, `fpr_realloc`,
 `fpr_free`, plus `fpr_builtin_retain` / `fpr_builtin_release`. The caller supplies
 a RAM interval with `fpr_builtin_heap_init(start,end)`. Blocks split and coalesce;
 there are no fixed allocation-slot or reference-table capacities. The available
@@ -185,7 +185,7 @@ float-containing rendering still apply. Use `F32.str`/`F64.str` for float format
 Dropping a graph uses an intrusive worklist in dead allocation headers: no recursive
 C call stack, new allocations, or fixed queue length are required.
 
-`hal/builtin/arc.c` adapts the audited existing primitives to the owned-call ABI.
+`machine/builtin/arc.c` adapts the audited existing primitives to the owned-call ABI.
 They borrow inputs internally; the adapter releases inputs after the call and
 retains an aliased result when needed (`str` of a string is one example). Arbitrary
 external functions are not admitted without an ownership contract. Retain/release
@@ -292,7 +292,7 @@ anything, so the retain/release the ARC pass would insert are no-ops
 by construction and are simply not emitted.  A raw unit may touch CSRs
 and interrupt control: this is where drivers live.
 
-The first raw unit is the allocator itself.  `hal/builtin/heap.fpr` is
+The first raw unit is the allocator itself.  `machine/builtin/heap.fpr` is
 `heap.c` written over `Word`/`Addr` and raw memory: the same block
 header, the same 16-byte meta pair before every payload, first fit,
 coalescing, the ARC release worklist threaded through the dead blocks.
@@ -359,7 +359,7 @@ allocator is the next step, not more of the above.
 ## Remaining coupling and porting
 
 Common value construction, function application, rendering and arithmetic still
-come from `hal/core/runtime.c`, compiled with function/data sections. The standalone
+come from `runtime/runtime.c`, compiled with function/data sections. The standalone
 link garbage-collects unused actor code; it does not link `actors.c` or `buddy.c`.
 A small `fpr_hart_t` context remains for argument spills and rendering because the
 current generated-code ABI uses `tp` for these, even without scheduling. Moving

@@ -1,0 +1,51 @@
+# std/tcp.fpr -- Tcp: connections, and a server that gives each one an actor.
+#
+#   Tcp = use "std/tcp".
+#   case Tcp.listen "127.0.0.1" 8080 of
+#       Ok l -> Tcp.serve l (fn conn peer -> ... Stream.write reply conn ...)
+#     | Err why -> ...
+#
+# A connection is a Stream (std/stream.fpr): read, write, close.  Waiting for
+# a connection or for bytes sleeps the ACTOR, never the hart, so a server and
+# its clients can live in one process -- the tests do exactly that.
+# Plain TCP: there is no TLS here (std/http.fpr says what that means for HTTPS).
+
+OS = use "os".
+ST = use "stream".
+
+Listener = Type (Listener Int).
+
+connect : String -> Int -> Result ST.Stream String .
+connect host port = case OS.connect host port of Ok f -> Ok (ST.Stream f) | Err e -> Err e.
+
+# address "" = every interface; port 0 = any free port (ask `port` which)
+listen : String -> Int -> Result Listener String .
+listen addr port = case OS.listen addr port of Ok f -> Ok (Listener f) | Err e -> Err e.
+
+port : Listener -> Int .
+port l = case l of Listener f -> (case OS.localPort f of Ok p -> p | Err _ -> 0).
+
+# the next connection and who it is from
+accept : Listener -> Result (ST.Stream, String) String .
+accept l = case l of Listener f -> acceptGo f 100.
+acceptGo : unsafe Int -> Int -> Result (ST.Stream, String) String .
+acceptGo f wait = case OS.ready f of
+    False -> _ = Sys.sleepUs wait; acceptGo f (if wait >= 4000 then 4000 else wait * 2)
+  | True -> (case OS.accept f of
+        Ok (c, peer) -> Ok (ST.Stream c, peer)
+      | Err why -> (if why == "again" then acceptGo f 100 else Err why)).
+
+stop : Listener -> Result Unit String .
+stop l = case l of Listener f -> OS.close f.
+
+# accept forever; each connection gets its OWN actor running `handler conn peer`,
+# and is closed when the handler returns.  Answers only when accepting fails
+# (which `stop` from another actor causes: that is how a server is shut down).
+serve : Listener -> (ST.Stream -> String -> a) -> String .
+serve l handler = serveGo l handler.
+serveGo : unsafe Listener -> (ST.Stream -> String -> a) -> String .
+serveGo l handler = case accept l of
+    Err why -> why
+  | Ok (conn, peer) ->
+      _ = spawn (fn self -> _ = handler conn peer; ST.close conn);
+      serveGo l handler.

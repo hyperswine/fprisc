@@ -1,0 +1,103 @@
+# std/path.fpr -- Path: file names as text, taken apart and put together.
+#
+#   Path = use "std/path".
+#   Path.join dir (Path.withExtension "html" (Path.fileName src))
+#
+# Pure string work: nothing here touches the file system, so it behaves the
+# same everywhere.  "/" separates; a Path is just a String.
+
+S = use "string".
+O = use "option".
+
+rev : unsafe List a -> List a -> List a .
+rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+
+isAbsolute : String -> Bool .
+isAbsolute p = S.startsWith "/" p.
+
+# Path.join "a/b" "c" = "a/b/c"; an absolute second part wins, as `cd` would
+join : String -> String -> String .
+join a b = case isAbsolute b of
+    True -> b
+  | False -> (case strlen a == 0 of
+        True -> b
+      | False -> (case S.endsWith "/" a of True -> strcat a b | False -> strJoin "/" (a :: b :: Nil))).
+
+joinAll : List String -> String .
+joinAll parts = joinGo parts "".
+joinGo : unsafe List String -> String -> String .
+joinGo parts acc = case parts of Nil -> acc | p :: r -> joinGo r (join acc p).
+
+# where the last "/" is, or 0
+lastSlash : String -> Int .
+lastSlash p = lastSlashGo p (strlen p).
+lastSlashGo : unsafe String -> Int -> Int .
+lastSlashGo p i = case i < 1 of True -> 0 | False -> (case charAt p i == 47 of True -> i | False -> lastSlashGo p (i - 1)).
+
+# "a/b/c.txt" -> "c.txt"
+fileName : String -> String .
+fileName p = S.dropLeft (lastSlash p) p.
+
+# "a/b/c.txt" -> "a/b";  "c.txt" -> ".";  "/c" -> "/"
+parent : String -> String .
+parent p =
+  at = lastSlash p;
+  case at == 0 of
+    True -> "."
+  | False -> (case at == 1 of True -> "/" | False -> S.left (at - 1) p).
+
+# where the extension's "." is within the FILE NAME, or 0 (a leading dot is a
+# hidden file, not an extension: ".bashrc" has none)
+extDot : String -> Int .
+extDot name = extDotGo name (strlen name).
+extDotGo : unsafe String -> Int -> Int .
+extDotGo name i = case i <= 1 of True -> 0 | False -> (case charAt name i == 46 of True -> i | False -> extDotGo name (i - 1)).
+
+# "c.tar.gz" -> Some "gz"; "Makefile" -> None
+extension : String -> O.Option String .
+extension p =
+  name = fileName p;
+  at = extDot name;
+  case at == 0 of True -> O.None | False -> O.Some (S.dropLeft at name).
+
+# the file name without its extension: "a/b/c.txt" -> "c"
+stem : String -> String .
+stem p =
+  name = fileName p;
+  at = extDot name;
+  case at == 0 of True -> name | False -> S.left (at - 1) name.
+
+# Path.withExtension "md" "notes/a.txt" = "notes/a.md"
+withExtension : String -> String -> String .
+withExtension ext p =
+  dir = parent p;
+  name = strJoin "." (stem p :: ext :: Nil);
+  case lastSlash p == 0 of True -> name | False -> join dir name.
+
+# the parts between slashes, empty ones dropped
+parts : String -> List String .
+parts p = partsGo (S.split "/" p) Nil.
+partsGo : unsafe List String -> List String -> List String .
+partsGo ps acc = case ps of
+    Nil -> rev acc Nil
+  | x :: r -> (case strlen x == 0 of True -> partsGo r acc | False -> partsGo r (x :: acc)).
+
+# "." and empty parts dropped, "x/.." folded: "a/./b/../c" -> "a/c"
+normalize : String -> String .
+normalize p =
+  body = strJoin "/" (rev (normGo (isAbsolute p) (parts p) Nil) Nil);
+  case isAbsolute p of
+    True -> strcat "/" body
+  | False -> (case strlen body == 0 of True -> "." | False -> body).
+# the kept parts, newest first.  ".." above the root of an ABSOLUTE path is
+# the root; above a relative path it has to be kept.
+normGo : unsafe Bool -> List String -> List String -> List String .
+normGo abs ps acc = case ps of
+    Nil -> acc
+  | x :: r -> (case x == "." of
+        True -> normGo abs r acc
+      | False -> (case x == ".." of
+            True -> (case acc of
+                Nil -> (case abs of True -> normGo abs r acc | False -> normGo abs r (x :: acc))
+              | top :: under -> (case top == ".." of True -> normGo abs r (x :: acc) | False -> normGo abs r under))
+          | False -> normGo abs r (x :: acc))).
