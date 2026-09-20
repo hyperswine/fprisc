@@ -1,5 +1,5 @@
 unsafe base.
-A = use "std/actor".
+Clock = use "std/clock".
 Poller = use "std/poller".
 Tcp = use "std/tcp".
 Stream = use "std/stream".
@@ -30,8 +30,8 @@ main =
   _ = spin me 100000;
   _ = print "100,000 asks of an empty mailbox allocated {heapUsed Unit - h0} bytes";
   _ = spawn (fn self -> _ = Sys.sleepUs 30000; send me "late");
-  _ = print "within 5 ms: {A.receiveWithin 5 me}";
-  _ = print "within 500 ms: {A.receiveWithin 500 me}";
+  _ = print "within 5 ms: {Clock.receiveWithin 5 me}";
+  _ = print "within 500 ms: {Clock.receiveWithin 500 me}";
   p = Poller.start Unit;
   l = (case Tcp.listen "127.0.0.1" 0 of Ok x -> x | Err e -> error e);
   _ = spawn (fn self -> Tcp.serveOn p l (echo p));

@@ -66,7 +66,7 @@ modules fails at LINK time on the `fpr_g_Os_` name: imports are the manifest.
 | `std/file` | whole files: `readText readBytes lines writeText appendText writeLines exists info isFile isDir size remove rename copy`; streaming: `open seek withOpen` (closes on every path) |
 | `std/dir` | `list entries walk glob matches create` (with parents) `remove removeAll current` |
 | `std/proc` | `run runIn pipeTo runWithin runWith describe spawn output shell` -- an ARGUMENT LIST, never parsed; stdout, stderr and status distinct; `Err` only when it could not start; a time limit kills the child and says so; extra environment; `shell` is the explicit `/bin/sh -c` |
-| `std/clock` | `monotonic elapsedMs now sleepMs date iso civil` -- the calendar is computed here, not by libc |
+| `std/clock` | `monotonic elapsedMs now sleepMs date iso civil receiveWithin` -- the calendar is computed here, not by libc |
 | `std/stream` | bytes in order from a file or a socket: `read readWithin readAll readOn write close`, and a `Reader` (`reader`, or `readerOn poller`) that keeps what was read past what you asked for: `reader readUntil readLine readExactly readRest` |
 | `std/poller` | ONE actor that waits on every descriptor: `start await`. Waiters sleep in their mailboxes; one `poll(2)` covers them all; one-shot, level-triggered; a quiet turn allocates nothing |
 | `std/tcp` | `connect listen port accept stop serve serveOn` -- `serve` gives each connection its own actor and closes it when the handler returns |
@@ -116,8 +116,9 @@ The design names three. Two exist, and both are driven by `tests/check_std.py`:
 
 - **Base:** `Vector` (the prelude's linear `Vec.*` is the substrate); an owned,
   resizable `Buffer`; a LINEAR stream handle (today a Stream is a plain value you
-  close, and `withOpen` / `Tcp.serve` close for you); `receiveWithin` and typed
-  `Actor msg` wrappers (a timed receive needs the runtime); `Atomic`.
+  close, and `withOpen` / `Tcp.serve` close for you); typed `Actor msg` wrappers;
+  `Atomic`. (A timed receive exists now: `Clock.receiveWithin`, over the runtime's
+  `receiveNow`.)
 - **ExtBase:** TLS in std (HTTPS rides on curl); HTTP keep-alive and streaming
   bodies; password hashing and other digests; `Encode` from records (there is no
   reflection: you build a `Json.Value`).
