@@ -28,6 +28,7 @@
  *
  * Streams (files and sockets alike are a descriptor, an Int):
  *   Os.open      : String -> String -> Result Int String        path, mode "r" | "w" | "a" | "rw"
+ *   Os.ready     : Int -> Bool                                  something to read (or accept) NOW; allocates nothing
  *   Os.read      : Int -> Int -> Result String String           up to n bytes; "" = end of stream;
  *                                                               Err "again" = nothing YET (sockets)
  *   Os.write     : Int -> String -> Result Int String           bytes taken (may be fewer); Err "again"
@@ -329,17 +330,31 @@ static V h_open(V pathv, V modev) {
 }
 FPR_FN(fpr_g_Os_x2eopen, h_open, 2);
 
+/* Is there something to read (or an end of stream to learn of)?  Answers one
+ * of the two STATIC booleans: waiting for a quiet socket allocates nothing, so
+ * an idle session costs no memory however long it idles.  (Os.read used to be
+ * the poll: it allocated its 64 KiB String BEFORE finding there was nothing,
+ * and 600 idle sessions made gigabytes of garbage a second.) */
+static V h_ready(V fdv) {
+  struct pollfd p = {want_fd(fdv, "Os.ready: the stream is not an Int"), POLLIN, 0};
+  int r = poll(&p, 1, 0);
+  return (r > 0 || (r < 0 && errno != EINTR)) ? (V)&fpr_true : (V)&fpr_false;
+}
+FPR_FN(fpr_g_Os_x2eready, h_ready, 1);
+
+/* read into C memory first, then make a String of EXACTLY what arrived: a
+ * 20-byte frame is a 20-byte String, not a 64 KiB block with 20 bytes used */
 static V h_read(V fdv, V nv) {
   int fd = want_fd(fdv, "Os.read: the stream is not an Int");
   sw n = ISINT(nv) ? UNTAG(nv) : 0;
   if (n <= 0) return os_ok(os_str("", 0));
-  str_t *s = (str_t *)fpr_alloc((V)(sizeof(str_t) + (uw)n)); /* read straight into the String */
-  s->tid = T_STR; s->var = 0; s->len = 0;
+  char small[4096], *buf = small;
+  if ((size_t)n > sizeof small) { buf = malloc((size_t)n); if (!buf) return os_err("out of memory"); }
   ssize_t r;
-  do r = read(fd, s->bytes, (size_t)n); while (r < 0 && errno == EINTR);
-  if (r < 0) return os_again_or_errno();
-  s->len = (uw)r;
-  return os_ok((V)s);
+  do r = read(fd, buf, (size_t)n); while (r < 0 && errno == EINTR);
+  V out = r < 0 ? os_again_or_errno() : os_ok(os_str(buf, (uw)r));
+  if (buf != small) free(buf);
+  return out;
 }
 FPR_FN(fpr_g_Os_x2eread, h_read, 2);
 

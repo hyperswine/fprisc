@@ -16,6 +16,7 @@ Os.cwd       : Unit -> String .
 Os.run       : List String -> String -> String -> List String -> Int -> Result (Int, String, String) String .
 Os.wallClock : Unit -> Int .
 Os.open      : String -> String -> Result Int String .
+Os.ready     : Int -> Bool .
 Os.read      : Int -> Int -> Result String String .
 Os.write     : Int -> String -> Result Int String .
 Os.seek      : Int -> Int -> Result Int String .
@@ -35,6 +36,7 @@ rename a b = Os.rename a b.
 cwd u = Os.cwd u.
 run argv dir input env limitMs = Os.run argv dir input env limitMs.
 open path mode = Os.open path mode.
+ready fd = Os.ready fd.
 read fd n = Os.read fd n.
 write fd bytes = Os.write fd bytes.
 seek fd at = Os.seek fd at.

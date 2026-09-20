@@ -9,7 +9,9 @@
 # A hart is a thread that MANY actors share, so nothing here waits inside the
 # kernel: the primitives answer "again" when there is nothing yet, and these
 # functions put the ACTOR to sleep and retry -- other actors keep running.
-# The wait backs off from 0.1 ms to 4 ms, and returns to 0.1 ms on progress.
+# The wait backs off from 0.1 ms to 10 ms, and returns to 0.1 ms on progress.
+# WAITING ALLOCATES NOTHING (`Os.ready` answers a static Bool), so a session
+# that idles for a day is the size it was when it started.
 #
 # A Stream is a plain value (a descriptor).  You close it; `File.withOpen` and
 # `Tcp.serve` do it for you on every path.  A LINEAR handle, which the checker
@@ -32,18 +34,18 @@ read n s = readGo n (fd s) 100 0.
 readWithin : Int -> Int -> Stream -> Result String String .
 readWithin ms n s = readGo n (fd s) 100 (Sys.timeUs Unit + ms * 1000).
 
-# deadline 0 = none
+# deadline 0 = none.  First wait until there is something (no allocation),
+# then read it.
 readGo : unsafe Int -> Int -> Int -> Int -> Result String String .
-readGo n f wait deadline = case OS.read f n of
-    Ok bytes -> Ok bytes
-  | Err why -> (case why == "again" of
-        False -> Err why
-      | True -> (case deadline > 0 and Sys.timeUs Unit > deadline of
-            True -> Err "timed out"
-          | False -> _ = Sys.sleepUs wait; readGo n f (backoff wait) deadline)).
+readGo n f wait deadline = case OS.ready f of
+    True -> (case OS.read f n of
+        Ok bytes -> Ok bytes
+      | Err why -> (if why == "again" then readGo n f wait deadline else Err why))
+  | False -> (if deadline > 0 and Sys.timeUs Unit > deadline then Err "timed out"
+      else _ = Sys.sleepUs wait; readGo n f (backoff wait) deadline).
 
 backoff : Int -> Int .
-backoff wait = case wait >= 4000 of True -> 4000 | False -> wait * 2.
+backoff wait = if wait >= 10000 then 10000 else wait * 2.
 
 # everything until the end
 readAll : Stream -> Result String String .

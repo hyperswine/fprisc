@@ -58,8 +58,13 @@
  */
 #include "fpr.h"
 
+/* An actor's FIRST stack: exactly one 128 KiB buddy block.  It was 256 KiB,
+ * which the buddy rounded (with its header) to a 512 KiB block -- reasonable
+ * when a stack was all an actor would ever have, and half a megabyte of every
+ * session of a live server now that stacks GROW (fpr_stack_grow): an actor that
+ * needs depth gets it, in doubling segments, and one that does not never pays. */
 #ifndef FPR_STACK_SZ
-#define FPR_STACK_SZ (256 * 1024)
+#define FPR_STACK_SZ (128 * 1024 - 2 * sizeof(uw))
 #endif
 #define STACK_SZ FPR_STACK_SZ
 #define MAXSND 8    /* channel slots per actor: MAXSND-1 dedicated (one

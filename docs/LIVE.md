@@ -9,8 +9,8 @@ replayable from an append-only store, reload at run time.
 **Short answer.** For the WEB case, yes on both systems, at the scale of an
 internal tool: hundreds of sessions, not tens of thousands. The shape holds and
 every item on the list now runs on a plain posix process (`fpr run`) as well as on
-QOS. What is not there yet is cheap sessions (a session costs about a megabyte),
-and a typed surface where today there are strings. TUI and desktop apps exist only
+QOS. What is not there yet is idle sessions that cost no CPU (a session is about
+half a megabyte), and a typed surface where today there are strings. TUI and desktop apps exist only
 on QOS Portable, because the terminal and GL tiers live in its host.
 
 What was built to find out: `std/ws`, `std/kvlog`, `std/live`, `std/actor`'s
@@ -31,27 +31,41 @@ and `liveboard-reload.py` as real websocket clients.
 | **Replayable from an append-only store** | WORKS. Every durable write is an appended line; with `journal` every EVENT is too, and `Live.replay` rebuilds the model from `init`, `update` and the log alone. The check rebuilds 1,950 events and gets the saved state | `std/kvlog.fpr`: `history`, `at time`, torn-tail tolerant |
 | **Reload** | WORKS, differently on each system. posix: the server sees a source change, rebuilds, and only if that succeeds saves its fields and BECOMES the new program; browsers reconnect; 4 s, nearly all of it the compile. A rebuild that fails is printed and the old program keeps serving. QOS: a module is replaced IN PLACE through the plugin loader (`tests/livereload.fpr`), and nothing restarts | `liveboard-reload.py`, 8 of 8 |
 
-## What it costs: sessions are not cheap yet
+## What it costs
 
-| sessions | join all | one event to all | resident | per session |
-|---:|---:|---:|---:|---:|
-| 100 | 0.08 s | 11 ms | 120 MiB | 1.2 MiB |
-| 1,000 | 3.3 s | 260 ms | 3.5 GiB | 3.5 MiB |
+| sessions | join all | one event to all | resident | per session | heap in use |
+|---:|---:|---:|---:|---:|---:|
+| 100 | 0.08 s | 17 ms | 50 MiB | 0.5 MiB | 71 MiB |
+| 1,000 | 2.7 s | 180 ms | 560 MiB | 0.55 MiB | 707 MiB |
 
-QOS's FPRLive measured 263-600 KiB a session (one actor each, a 32 KiB slab).
-Here it is two actors, and an actor's floor is set by the allocator's 64 KiB
-unit: a 512 KiB stack block (allocated, mostly untouched), a pool slab, a message
-slab, a mailbox block. Two things were fixed on the way and one lever is obvious:
+Flat while idle, and it comes back when sessions leave (1,000 -> 500: 418 MiB in
+use). QOS's FPRLive measured 263-600 KiB a session with one actor each; this is
+two actors a session, and an actor's floor is the allocator's 64 KiB unit (a
+128 KiB stack block, a pool slab, a message slab, a mailbox block).
 
-- FIXED: the register pushed the whole model to every session on every event, so
-  a join burst queued n * n copies. It broadcasts a VERSION now and a writer pulls
-  the model when it is ready (a busy session skips to the newest): 3-4x faster.
-- FIXED in the runtime: every actor that allocated anything took a 256 KiB slab at
-  once. A pool's slabs now start at one block and double (`runtime.c`): 1,000
-  small actors went from 508 MiB of arena to 196.
-- NEXT: now that stacks GROW, an actor's first stack need not be 256 KiB. A
-  per-spawn size (one block) would take about a megabyte off every session. After
-  that, a smaller allocator unit for actors' fixed blocks.
+The first measurement said 1.2 MiB a session at 100 and 3.5 MiB at 1,000, and
+most of that was four separate mistakes, each fixed:
+
+- **A leak in my own stream layer, and the big one.** Waiting for a quiet socket
+  polled `Os.read`, which allocated its 64 KiB String BEFORE finding there was
+  nothing to read, in a loop that never reached a tidy point: 600 idle sessions
+  made gigabytes of garbage a second (heap in use went 4.5 -> 45 GiB in four idle
+  seconds, then the server stopped). `Os.ready` answers a static Bool, so waiting
+  allocates nothing, and `Os.read` makes a String of exactly what arrived.
+- The register pushed the whole model to every session on every event, so a join
+  burst queued n * n copies. It broadcasts a VERSION now and a writer pulls the
+  model when it is ready (a busy session skips to the newest): 3-4x faster.
+- In the runtime: every actor that allocated anything took a 256 KiB slab at
+  once. A pool's slabs start at one block and double: 1,000 small actors went
+  from 508 MiB of arena to 196.
+- In the runtime: an actor's first stack was a 512 KiB block. It is one 128 KiB
+  block now that stacks grow.
+
+What is left is CPU, not memory: each session's reader polls its own socket (every
+10 ms when idle), so 1,000 idle sessions keep about half a core busy. The fix is
+the shape QOS's FPRLive already has -- ONE actor polls every socket and hands
+bytes to the session that owns them -- which needs a `poll` over many descriptors
+as a primitive.
 
 ## What writing it exposed
 
@@ -91,8 +105,7 @@ In the order I would do them:
 2. **Typed messages.** Events arrive as `Msg sid "bump" "10"`: a name and a
    string. A `Msg` type per app with a generated decoder would let the compiler
    check the view against `update`.
-3. **Cheap sessions**: per-spawn stack size, then one actor per session where the
-   socket can be polled with the mailbox.
+3. **One poller for every socket** (above): idle sessions should cost no CPU.
 4. **The view layer in std.** `genview`, `ma` and the client script are pure and
    live in `qos/programs/mods`; they are the application library and belong
    beside `std/live` (STD-PLAN's point: the standard library is not in std).

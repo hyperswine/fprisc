@@ -29,11 +29,11 @@ port l = case l of Listener f -> (case OS.localPort f of Ok p -> p | Err _ -> 0)
 accept : Listener -> Result (ST.Stream, String) String .
 accept l = case l of Listener f -> acceptGo f 100.
 acceptGo : unsafe Int -> Int -> Result (ST.Stream, String) String .
-acceptGo f wait = case OS.accept f of
-    Ok (c, peer) -> Ok (ST.Stream c, peer)
-  | Err why -> (case why == "again" of
-        False -> Err why
-      | True -> _ = Sys.sleepUs wait; acceptGo f (case wait >= 4000 of True -> 4000 | False -> wait * 2)).
+acceptGo f wait = case OS.ready f of
+    False -> _ = Sys.sleepUs wait; acceptGo f (if wait >= 4000 then 4000 else wait * 2)
+  | True -> (case OS.accept f of
+        Ok (c, peer) -> Ok (ST.Stream c, peer)
+      | Err why -> (if why == "again" then acceptGo f 100 else Err why)).
 
 stop : Listener -> Result Unit String .
 stop l = case l of Listener f -> OS.close f.
