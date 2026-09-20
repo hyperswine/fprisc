@@ -403,7 +403,9 @@ writerStart reg app conn self = case receive self of
   | _ -> Unit.
 
 Wr = Type (Wr s d seen asked latest).
-writing : unsafe Int -> a -> ST.Stream -> Int -> Int -> Wr -> A.Tidy -> Unit .
+# `app` is spelled out: this loop renders through it, so a bare `a` promised
+# the caller any type at all for something it projects `.view` from.
+writing : unsafe Int -> { view : Int -> model -> (List String, List String) | r } -> ST.Stream -> Int -> Int -> Wr -> A.Tidy -> Unit .
 writing reg app conn sid self w0 t0 = case A.tidy self (w0, t0) of (Wr s d seen asked latest, t) ->
   m = receive self;
   (case m of
@@ -443,7 +445,7 @@ stampsGo paths acc = case paths of
     Nil -> rev acc Nil
   | p :: r -> stampsGo r ((p, (case OS.stat p of Ok (_, size, mtime) -> mtime * 1000003 + size | Err _ -> 0)) :: acc).
 
-watcher : unsafe Int -> a -> List (String, Int) -> Int -> Unit .
+watcher : unsafe Int -> { watch : List String, rebuild : List String | r } -> List (String, Int) -> Int -> Unit .
 watcher reg cfg seen self =
   _ = Sys.sleepUs 300000;
   now = stamps cfg.watch;

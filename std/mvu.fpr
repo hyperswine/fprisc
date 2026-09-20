@@ -289,7 +289,10 @@ rebuild app vp key model =
 # that may svcCall services from vals), one render call, reply
 # forwarded, everything released, pool reset -- the soft death.
 
-renderWorker : unsafe Int -> Int -> a -> b -> Int -> c .
+# `vl` is the app's vals function, and it is CALLED here, so it is spelled
+# as one: a bare `b` promised the caller any type at all for something this
+# body applies to four arguments (fprisc/docs/SAFETY.md).
+renderWorker : unsafe Int -> Int -> env -> (Int -> env -> (Int, Int) -> model -> vals) -> Int -> c .
 renderWorker parent render env vl self =
   m = receiveFrom self parent;
   Rq st model vw vh sc fr = m;

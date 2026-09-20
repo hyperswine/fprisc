@@ -1,0 +1,14 @@
+# every shape that IS covered: a catch-all, a guard with a plain fallback,
+# full constructor coverage, and a nested pattern completed by a wildcard
+T = Type (A | B | C Int).
+pick : unsafe T -> Int .
+pick A = 1.
+pick B = 2.
+pick (C n) = n.
+guarded : unsafe Int -> Int .
+guarded x | x > 0 = 1.
+guarded x = 0.
+pairs : unsafe List Int -> Int .
+pairs (a :: b :: r) = a + b.
+pairs _ = 0.
+main = pick A + guarded 1 + pairs Nil.

@@ -36,11 +36,11 @@ import Control.Monad.State.Strict
 import Data.Graph (SCC (..), stronglyConnComp)
 import qualified Data.IntMap.Strict as IM
 import qualified Data.List
-import Data.List (foldl', intercalate, nub, stripPrefix)
+import Data.List (foldl', intercalate, isInfixOf, nub, stripPrefix)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
-import Exhaust (checkArms, siblingsOf)
+import Exhaust (checkArms, checkClauses, siblingsOf)
 import FPRISC
 import Struct (Sigs, Structs)
 
@@ -247,7 +247,7 @@ unifyRow ctx r1z r2z = do
             unifyRow ctx rest (acc tl)
       RNil -> do
         p2 <- prettyRow (acc RNil)
-        report (ctx ++ ": record lacks field ." ++ l ++ " (has " ++ p2 ++ "))")
+        report (ctx ++ ": record lacks field ." ++ l ++ " (has " ++ p2 ++ ")")
     bindR v r
       | r == RV v = pure ()
       | occursR v r = report (ctx ++ ": occurs check (recursive row)")
@@ -275,6 +275,74 @@ instantiate (Forall tvs rvs t) = do
         RExt lb ty r -> RExt lb (goT ty) (goR r)
         RNil -> RNil
   pure (goT t)
+
+-- ---- declared signatures are a promise, and it is now checked -------------
+--
+-- `instantiate` gives a scheme's variables fresh METAvariables, which is
+-- right at a call site: the caller chooses.  It is wrong for checking a
+-- DEFINITION against its own signature, because a metavariable is happy to
+-- become whatever the body needs.  `f : a -> a.` with `f x = x + 1.` bound
+-- that fresh `a` to Int, reported nothing, and then kept the declared
+-- scheme -- so every caller was typed against a promise the body does not
+-- keep.
+--
+-- A rigid constant is the choice the definition is NOT allowed to make.
+-- Unifying it with Int simply fails, which is exactly the lie we want to
+-- catch.  Row variables stay ordinary fresh rows: there is no rigid ROW in
+-- this representation, so a row-polymorphic signature is still unchecked
+-- for generality (it can only miss a lie, never invent one).
+freshSk :: I Type
+freshSk = do s <- get; put s {iFresh = iFresh s + 1}; pure (TC ("#sk" ++ show (iFresh s)))
+
+skolemize :: Scheme -> I Type
+skolemize (Forall tvs rvs t) = do
+  tm <- IM.fromList <$> mapM (\v -> (,) v <$> freshSk) tvs
+  rm <- IM.fromList <$> mapM (\v -> (,) v <$> freshR) rvs
+  let goT = \case
+        TV v -> fromMaybe (TV v) (IM.lookup v tm)
+        TAp a b -> TAp (goT a) (goT b)
+        TFn a b -> TFn (goT a) (goT b)
+        TRec r -> TRec (goR r)
+        TTupT ts -> TTupT (map goT ts)
+        o -> o
+      goR = \case
+        RV v -> fromMaybe (RV v) (IM.lookup v rm)
+        RExt lb ty r -> RExt lb (goT ty) (goR r)
+        RNil -> RNil
+  pure (goT t)
+
+-- Does the definition keep the signature's promise?  Run the match again
+-- against rigid constants and say so when it does not.  The probe is
+-- ROLLED BACK -- substitutions and errors both -- so inference proceeds
+-- exactly as it did before this check existed and the check can only ever
+-- ADD a diagnostic, never change a type.  (iFresh deliberately keeps
+-- advancing: reusing variable numbers would alias live metavariables.)
+checkDeclared :: Name -> Scheme -> Type -> I ()
+checkDeclared n sc@(Forall tvs _ _) t
+  | null tvs = pure () -- a monomorphic signature promises nothing to break
+  | otherwise = do
+      sub0 <- gets iSub
+      rsub0 <- gets iRSub
+      errs0 <- gets iErrs
+      dt <- skolemize sc
+      unify "" dt t
+      broke <- gets ((> length errs0) . length . iErrs)
+      modify $ \s -> s {iSub = sub0, iRSub = rsub0, iErrs = errs0}
+      -- one report per FUNCTION, not per clause: every clause of a
+      -- wrongly-general signature breaks it, and saying so five times
+      -- buries the one fix
+      let headline = "the declared type of " ++ n ++ " is more general"
+      when (broke && not (any (headline `isInfixOf`) errs0)) $ do
+        promised <- prettyAsWritten =<< instantiate sc
+        actual <- prettyAsWritten t
+        report
+          ( headline
+              ++ " than its definition: the signature promises "
+              ++ promised
+              ++ ", but the definition only gives "
+              ++ actual
+              ++ " -- narrow the signature, or generalize the definition"
+          )
 
 ftv :: Type -> (S.Set Int, S.Set Int) -- (tvars, rowvars)
 ftv = \case
@@ -1348,7 +1416,7 @@ inferTopsWith prof sigs structs tops =
           sccs = stronglyConnComp nodes
       (env, rwBinds) <-
         foldM
-          (\(e, acc) ns -> do (e', rws) <- inferSCC cons e ns; pure (e', acc ++ rws))
+          (\(e, acc) ns -> do (e', rws) <- inferSCC cons (M.keysSet declared) e ns; pure (e', acc ++ rws))
           (env0, [])
           [ns | scc <- sccs, let ns = flat scc]
       -- `> expr.` errors get the same "in NAME:" treatment a clause gets,
@@ -1439,13 +1507,25 @@ inferTopsWith prof sigs structs tops =
     flat (AcyclicSCC n) = [n]
     flat (CyclicSCC ns) = ns
 
-    inferSCC :: TEnv -> TEnv -> [Name] -> I (TEnv, [(Name, [SPat], [SGuard], SExpr)])
-    inferSCC cons env ns = do
+    -- `written` is the set of names the programmer gave a signature to.  It
+    -- is NOT every name in env: a top-level bind whose name happens to match
+    -- a prelude builtin also finds a scheme there, and holding a definition
+    -- to a type nobody wrote would report a signature that does not exist.
+    inferSCC :: TEnv -> S.Set Name -> TEnv -> [Name] -> I (TEnv, [(Name, [SPat], [SGuard], SExpr)])
+    inferSCC cons written env ns = do
       -- monomorphic recursion within the SCC
       mvs <- mapM (const freshT) ns
       let recEnv = M.union (M.fromList (zip ns (map mono mvs))) env
-      rws <- forM (zip ns mvs) $ \(n, mv) ->
-        forM (clauses n) $ \(ps, g, b) -> do
+      rws <- forM (zip ns mvs) $ \(n, mv) -> do
+        -- clause coverage (Exhaust), reported after the clauses are typed
+        -- so the anchor lands inside this binding.  Guarded clauses do not
+        -- count as covering: the guard can still pass the value on.
+        let cov =
+              checkClauses
+                (siblingsOf (conTable cons))
+                n
+                [(ps, not (null g)) | (ps, g, _) <- clauses n]
+        res <- forM (clauses n) $ \(ps, g, b) -> do
           nerrs0 <- gets (length . iErrs)
           -- params: PSig gets its sig's record type; others infer
           (ptys, penvs) <- unzip <$> mapM (inferParam cons) ps
@@ -1474,6 +1554,15 @@ inferTopsWith prof sigs structs tops =
             let (old, new) = splitAt nerrs0 (iErrs st)
              in st {iErrs = old ++ ["in " ++ n ++ ": " ++ e | e <- new]}
           pure (n, ps, g', b')
+        -- anchor the coverage report at the first clause's body: iHere is
+        -- an inferE-scoped mark and has been restored by now, so without
+        -- this the message arrives with no file:line at all
+        unless (null cov) $ do
+          old <- gets iHere
+          modify (\s -> s {iHere = firstMark (clauses n)})
+          mapM_ (report . (("in " ++ n ++ ": ") ++)) cov
+          modify (\s -> s {iHere = old})
+        pure res
       -- numeric defaulting BEFORE generalization: an ARITH/ORDERED-CMP
       -- site still at an unbound non-carrier var here must pin to Int
       -- now — otherwise the scheme generalizes while the site compiles
@@ -1501,10 +1590,14 @@ inferTopsWith prof sigs structs tops =
       pure (M.union (M.fromList newEnv) env, concat rws)
       where
         clauses n = [(ps, g, b) | TBind n' ps g b <- tops, n' == n]
+        firstMark cls = case [o | (_, _, SMark o _) <- cls] of (o : _) -> Just o; [] -> Nothing
         declaredOrRec n mv t = case M.lookup n env of
           Just declared -> do
             dt <- instantiate declared
             unify ("declared type of " ++ n) dt t
+            -- ... and only now, with the clause fully constrained, ask
+            -- whether a WRITTEN signature was actually earned
+            when (n `S.member` written) (checkDeclared n declared t)
           Nothing -> unify ("definition of " ++ n) mv t
 
     inferParam :: TEnv -> SPat -> I (Type, TEnv)
@@ -1600,6 +1693,56 @@ prettyT t0 = do t <- zonk t0; pure (go 0 t)
     paren True s = "(" ++ s ++ ")"
     paren False s = s
     tvName v = let l = ['a' ..] !! (v `mod` 26) in l : (if v >= 26 then show (v `div` 26) else "")
+
+-- A type as a SIGNATURE is written: variables named a, b, c in order of
+-- appearance rather than by their internal numbers, so that a message
+-- about a declared type shows the reader what they wrote (`a -> a`) and
+-- not the solver's bookkeeping (`e35 -> e35`).
+prettyAsWritten :: Type -> I String
+prettyAsWritten t0 = do
+  t <- zonk t0
+  let names = IM.fromList (zip (nub (order t)) [TC [c] | c <- ['a' .. 'z']])
+      sub = \case
+        TV v -> fromMaybe (TV v) (IM.lookup v names)
+        TAp a b -> TAp (sub a) (sub b)
+        TFn a b -> TFn (sub a) (sub b)
+        TTupT ts -> TTupT (map sub ts)
+        TRec r -> TRec (subR r)
+        o -> o
+      subR = \case
+        RExt l ty r -> RExt l (sub ty) (subR r)
+        o -> o
+  pure (go (sub t))
+  where
+    order = \case
+      TV v -> [v]
+      TAp a b -> order a ++ order b
+      TFn a b -> order a ++ order b
+      TTupT ts -> concatMap order ts
+      TRec r -> orderR r
+      _ -> []
+    orderR = \case
+      RExt _ ty r -> order ty ++ orderR r
+      _ -> []
+    -- the same shape prettyT prints, on an already-zonked type
+    go = goP (0 :: Int)
+    goP p = \case
+      TV v -> "t" ++ show v
+      TC n -> n
+      TAp a b -> par (p > 9) (goP 9 a ++ " " ++ goP 10 b)
+      TFn a b -> par (p > 0) (goP 1 a ++ " -> " ++ goP 0 b)
+      TTupT ts -> "(" ++ intercalate ", " (map (goP 0) ts) ++ ")"
+      TRec r -> "{" ++ rowS r ++ "}"
+    rowS = \case
+      RNil -> ""
+      RV v -> "r" ++ show v
+      RExt l t r -> l ++ " : " ++ goP 0 t ++ nxt r
+    nxt = \case
+      RNil -> ""
+      RV v -> " | r" ++ show v
+      r@RExt {} -> ", " ++ rowS r
+    par True s = "(" ++ s ++ ")"
+    par False s = s
 
 prettyRow :: Row -> I String
 prettyRow r = do

@@ -1,0 +1,5 @@
+# Int literals never form a complete set, so these clauses need a catch-all
+step : unsafe Int -> Int .
+step 0 = 1.
+step 1 = 2.
+main = step 0.

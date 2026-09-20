@@ -1,0 +1,4 @@
+# a guard can decline, so a guarded clause never covers on its own
+only : unsafe Int -> Int .
+only x | x > 0 = 1.
+main = only 1.

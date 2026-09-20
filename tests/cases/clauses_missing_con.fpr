@@ -1,0 +1,6 @@
+# a constructor no clause names: the value falls through to nothing
+T = Type (A | B | C Int).
+pick : unsafe T -> Int .
+pick A = 1.
+pick B = 2.
+main = pick A.

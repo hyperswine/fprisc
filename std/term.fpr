@@ -146,7 +146,13 @@ run app = case OS.ttyRaw True of
 
 # one turn: keys, then messages, then a look at the window's size; sleep when
 # nothing happened (0.2 ms backing off to 20 ms; a quiet turn allocates nothing)
-loop : unsafe Int -> a -> O.Option St -> Int -> Int .
+#
+# `app` is spelled out rather than left as a bare variable: these two
+# recursive helpers reach into it (through `step`) for update, subs and
+# view, so a signature that said `a` would promise to accept anything and
+# then project three fields out of it.  The open tail `| r` is what lets a
+# caller's record carry `init` as well.
+loop : unsafe Int -> { update : Ev msg -> model -> (model, List (Cmd msg)), subs : model -> List (Sub msg), view : (Int, Int) -> model -> List String | r } -> O.Option St -> Int -> Int .
 loop me app st0 wait = case st0 of
     O.None -> 0
   | O.Some st -> (if OS.ready 0 then loop me app (keys me app st) 200
@@ -170,7 +176,7 @@ keys me app st = case st of St model screen cols rows pending ->
 flushPending me app st = case st of St model screen cols rows pending ->
   (case decode True pending of (ks, rest) -> feed me app ks (St model screen cols rows "")).
 
-feed : unsafe Int -> a -> List Key -> St -> O.Option St .
+feed : unsafe Int -> { update : Ev msg -> model -> (model, List (Cmd msg)), subs : model -> List (Sub msg), view : (Int, Int) -> model -> List String | r } -> List Key -> St -> O.Option St .
 feed me app ks st = case ks of
     Nil -> O.Some st
   | k :: r -> (case step me app (Key k) st of O.None -> O.None | O.Some st2 -> feed me app r st2).

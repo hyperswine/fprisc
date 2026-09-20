@@ -1,0 +1,6 @@
+# complete in the first parameter, a hole in the second
+T = Type (A | B).
+both : unsafe T -> Bool -> Int .
+both A True = 1.
+both B _ = 2.
+main = both A True.

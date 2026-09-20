@@ -8,4 +8,5 @@ f 0 = "zero".
 helper x = x + 1.
 f n = "n{helper n}".
 g 1 = "one".
+g n = "g{n}". # Int literals never complete a match: clauses need a catch-all
 main = "split: {f 0} {f 5} {g 1}".

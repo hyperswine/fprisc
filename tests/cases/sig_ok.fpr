@@ -1,0 +1,9 @@
+# signatures a definition does keep: genuinely generic, and a narrower
+# signature than the body would have been given on its own
+ident : a -> a .
+ident x = x.
+pair : a -> b -> (a, b) .
+pair x y = (x, y).
+narrow : Int -> Int .
+narrow x = x.
+main = narrow (ident 1).

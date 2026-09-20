@@ -93,6 +93,10 @@ attrOf (OnSend msg lit) = " data-click=\"{esc msg}\" data-lit=\"{esc lit}\"".
 attrOf (Input n) = " data-input=\"{n}\"".
 attrOf (OnEnter msg arg) = " data-enter=\"{esc msg}\" data-arg=\"{arg}\"".
 attrOf (OnFile msg) = " type=\"file\" data-file=\"{esc msg}\"".
+# client state is not an attribute: it is collected into the element's
+# x-data (`xdata`) instead.  `others` already skips it, so this clause is
+# how the function stays total rather than depending on that one caller.
+attrOf (Local n init) = "".
 
 # ---- CSS: only the classes this tree actually uses -------------------------
 

@@ -123,7 +123,11 @@ build p = do
       -- when their source is newer: a warm build compiles the program
       -- and links, nothing more
       -- ... and per FLAGS: an object built with other flags is not this object
-      rtdir = cache </> "rt" </> (System.Info.arch ++ "-h" ++ show (pHarts p) ++ "-" ++ showHex (fnv64 (unwords cflags)) "")
+      -- ... and per COMPILER: --cc is how a cross build (qos/tools/buildroot)
+      -- asks for a target binary, and an object another toolchain's gcc built
+      -- against another libc is not this object either -- without cc in the
+      -- key a warm host build silently hands its own .o files to the linker
+      rtdir = cache </> "rt" </> (System.Info.arch ++ "-h" ++ show (pHarts p) ++ "-" ++ showHex (fnv64 (cc ++ " " ++ unwords cflags)) "")
   createDirectoryIfMissing True rtdir
   -- an object is stale when ANY header is newer, not just its own source: a
   -- changed struct in fpr.h (the hart block) otherwise links new objects
