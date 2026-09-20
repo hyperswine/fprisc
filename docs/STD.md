@@ -67,8 +67,9 @@ modules fails at LINK time on the `fpr_g_Os_` name: imports are the manifest.
 | `std/dir` | `list entries walk glob matches create` (with parents) `remove removeAll current` |
 | `std/proc` | `run runIn pipeTo runWithin runWith describe spawn output shell` -- an ARGUMENT LIST, never parsed; stdout, stderr and status distinct; `Err` only when it could not start; a time limit kills the child and says so; extra environment; `shell` is the explicit `/bin/sh -c` |
 | `std/clock` | `monotonic elapsedMs now sleepMs date iso civil` -- the calendar is computed here, not by libc |
-| `std/stream` | bytes in order from a file or a socket: `read readWithin readAll write close`, and a `Reader` that keeps what was read past what you asked for: `reader readUntil readLine readExactly readRest` |
-| `std/tcp` | `connect listen port accept stop serve` -- `serve` gives each connection its own actor and closes it when the handler returns |
+| `std/stream` | bytes in order from a file or a socket: `read readWithin readAll readOn write close`, and a `Reader` (`reader`, or `readerOn poller`) that keeps what was read past what you asked for: `reader readUntil readLine readExactly readRest` |
+| `std/poller` | ONE actor that waits on every descriptor: `start await`. Waiters sleep in their mailboxes; one `poll(2)` covers them all; one-shot, level-triggered; a quiet turn allocates nothing |
+| `std/tcp` | `connect listen port accept stop serve serveOn` -- `serve` gives each connection its own actor and closes it when the handler returns |
 | `std/math` | Int: `abs min max clamp sign mod rem isEven gcd powInt`; F64: `pi e toFloat truncate floor ceiling round sqrt pow exp log log2 sin cos tan absF minF maxF clampF isFinite format` |
 | `std/binary` | fixed-width integers in a byte string: `u8 u16le u16be u32le u32be i8 i16le i32le i32be` (past the end is `None`), `putU8 putU16le putU16be putU32le putU32be` |
 

@@ -19,6 +19,8 @@
 # `File.read : Int -> File -> (File, ...)`); this is the usable first cut.
 
 OS = use "os".
+PL = use "poller".
+O = use "option".
 
 Stream = Type (Stream Int).
 
@@ -80,10 +82,16 @@ close s = OS.close (fd s).
 # Protocols are framed by text (a line, a blank line, a length), and a read
 # returns whatever arrived.  A Reader keeps the rest, and every operation
 # hands back the Reader to go on with.
-Reader = Type (Reader Stream String).
+# (the third part is HOW it waits: None = poll its own descriptor on a timer;
+# Some poller = sleep in the mailbox until the poller says so -- see readerOn)
+Reader = Type (Reader Stream String (O.Option PL.Poller)).
 
 reader : Stream -> Reader .
-reader s = Reader s "".
+reader s = Reader s "" O.None.
+
+# one read for a Reader, waiting its way
+fill : O.Option PL.Poller -> Stream -> Result String String .
+fill w s = case w of O.None -> read 65536 s | O.Some p -> readOn p 65536 s.
 
 # up to and excluding `sep`; the Reader continues after it.
 # Err "closed" when the stream ends first (what was buffered is lost with it).
@@ -91,14 +99,14 @@ readUntil : String -> Reader -> (Result String String, Reader) .
 readUntil sep r = untilGo sep r 1.
 # `from`: where an occurrence could still start (no rescanning what was searched)
 untilGo : unsafe String -> Reader -> Int -> (Result String String, Reader) .
-untilGo sep r from = case r of Reader s buf ->
+untilGo sep r from = case r of Reader s buf w ->
   (case strIndexFrom sep buf from of
-      0 -> (case read 65536 s of
+      0 -> (case fill w s of
           Err why -> (Err why, r)
         | Ok more -> (case strlen more == 0 of
               True -> (Err "closed", r)
-            | False -> untilGo sep (Reader s (strcat buf more)) (keep (strlen buf - strlen sep + 2))))
-    | at -> (Ok (substr buf 1 (at - 1)), Reader s (substr buf (at + strlen sep) (strlen buf)))).
+            | False -> untilGo sep (Reader s (strcat buf more) w) (keep (strlen buf - strlen sep + 2))))
+    | at -> (Ok (substr buf 1 (at - 1)), Reader s (substr buf (at + strlen sep) (strlen buf)) w)).
 keep : Int -> Int .
 keep n = case n < 1 of True -> 1 | False -> n.
 
@@ -113,15 +121,35 @@ readLine r = case readUntil "\n" r of (res, r2) ->
 readExactly : Int -> Reader -> (Result String String, Reader) .
 readExactly n r = exactGo n r.
 exactGo : unsafe Int -> Reader -> (Result String String, Reader) .
-exactGo n r = case r of Reader s buf ->
+exactGo n r = case r of Reader s buf w ->
   (case strlen buf >= n of
-      True -> (Ok (substr buf 1 n), Reader s (substr buf (n + 1) (strlen buf)))
-    | False -> (case read 65536 s of
+      True -> (Ok (substr buf 1 n), Reader s (substr buf (n + 1) (strlen buf)) w)
+    | False -> (case fill w s of
           Err why -> (Err why, r)
         | Ok more -> (case strlen more == 0 of
               True -> (Err "closed", r)
-            | False -> exactGo n (Reader s (strcat buf more))))).
+            | False -> exactGo n (Reader s (strcat buf more) w)))).
 
 # what is buffered plus everything until the end
 readRest : Reader -> Result String String .
-readRest r = case r of Reader s buf -> (case readAll s of Ok more -> Ok (strcat buf more) | Err e -> Err e).
+readRest r = case r of Reader s buf _ -> (case readAll s of Ok more -> Ok (strcat buf more) | Err e -> Err e).
+
+# ---- waiting on a Poller instead of polling -----------------------------------------------------
+# The functions above wait by polling their own descriptor on a timer, which is
+# fine for a program with a few streams.  A SERVER hands its streams a Poller
+# (std/poller.fpr): the waiting actor then sleeps in its mailbox, and one actor
+# polls for everybody.
+
+readOn : PL.Poller -> Int -> Stream -> Result String String .
+readOn p n s = readOnGo p n (fd s).
+readOnGo : unsafe PL.Poller -> Int -> Int -> Result String String .
+readOnGo p n f =
+  _ = PL.await f p;
+  (case OS.read f n of
+      Ok bytes -> Ok bytes
+    | Err why -> (if why == "again" then readOnGo p n f else Err why)).
+
+# a Reader whose waits go through a Poller: `readUntil`, `readLine`,
+# `readExactly` and `readRest` work on it unchanged
+readerOn : PL.Poller -> Stream -> Reader .
+readerOn p s = Reader s "" (O.Some p).

@@ -60,6 +60,7 @@ O = use "option".
 S = use "string".
 KV = use "kvlog".
 A = use "actor".
+PL = use "poller".
 OS = use "os".
 P = use "proc".
 Ord = use "order".
@@ -121,7 +122,10 @@ serve cfg app =
     send main (Ok (register self listener (startTickers self (Rs cfg app model (M.empty Ord.int) 1 db (M.empty S.compare) Nil 1)) A.tidy0)));
   _ = Sys.stderr "live: http://{(if strlen cfg.address == 0 then "127.0.0.1" else cfg.address)}:{TCP.port listener}/  (store {cfg.store})\n";
   _ = print "ready {TCP.port listener}";
-  _ = spawn (fn self -> TCP.serve listener (connection reg cfg app));
+  # ONE actor waits on every socket (std/poller.fpr): idle sessions sleep in their
+  # mailboxes and cost no CPU
+  poller = PL.start Unit;
+  _ = spawn (fn self -> TCP.serveOn poller listener (connection reg poller cfg app));
   _ = (case cfg.watch of Nil -> Unit | _ -> _ = spawn (watcher reg cfg (stamps cfg.watch)); Unit);
   (case receiveRes main of Ok why -> why | Err why -> why).
 
@@ -315,9 +319,9 @@ ticker reg ms key self =
   (if again then ticker reg ms key self else Unit).
 
 # ---- one connection ----------------------------------------------------------------------------
-connection reg cfg app conn peer = case H.readRequest conn of
+connection reg poller cfg app conn peer = case H.readRequest conn of
     Err _ -> Unit
-  | Ok req -> (if req.path == "/ws" then session reg app conn req
+  | Ok req -> (if req.path == "/ws" then session reg poller app conn req
       else if req.path == "/" then _ = ST.write (H.renderResponse (H.html 200 (page reg cfg app))) conn; Unit
       else _ = ST.write (H.renderResponse (H.text 404 "no such page\n")) conn; Unit).
 
@@ -334,7 +338,7 @@ pageOf cfg app r = case r of
   | _ -> "live: no model".
 
 # the upgrade, then THIS actor is the session's reader and a new one its writer
-session reg app conn req = case WS.accept req of
+session reg poller app conn req = case WS.accept req of
     Err why -> _ = ST.write (H.renderResponse (H.text 400 "{why}\n")) conn; Unit
   | Ok head ->
       _ = ST.write head conn;
@@ -343,7 +347,7 @@ session reg app conn req = case WS.accept req of
       r = ask me reg (Join writer);
       sid = (case r of Welcome n _ -> n | _ -> 0);
       _ = drop r; # a reply is a message: undropped, it pins the register's slab for this session's life
-      (if sid == 0 then Unit else reading reg app.codec writer sid (ST.reader conn) conn A.tidySmall).
+      (if sid == 0 then Unit else reading reg app.codec writer sid (ST.readerOn poller conn) conn A.tidySmall).
 
 # frames in, events out.  A frame is {"msg": wire, "arg": text} (the client
 # script's shape); what it decodes to is a message of the app's type, or Refused.

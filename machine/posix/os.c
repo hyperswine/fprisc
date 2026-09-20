@@ -29,6 +29,8 @@
  * Streams (files and sockets alike are a descriptor, an Int):
  *   Os.open      : String -> String -> Result Int String        path, mode "r" | "w" | "a" | "rw"
  *   Os.ready     : Int -> Bool                                  something to read (or accept) NOW; allocates nothing
+ *   Os.poll      : List Int -> List Int                         which of these are ready NOW (one poll(2) for
+ *                                                               all of them); none ready = the static Nil
  *   Os.read      : Int -> Int -> Result String String           up to n bytes; "" = end of stream;
  *                                                               Err "again" = nothing YET (sockets)
  *   Os.write     : Int -> String -> Result Int String           bytes taken (may be fewer); Err "again"
@@ -341,6 +343,32 @@ static V h_ready(V fdv) {
   return (r > 0 || (r < 0 && errno != EINTR)) ? (V)&fpr_true : (V)&fpr_false;
 }
 FPR_FN(fpr_g_Os_x2eready, h_ready, 1);
+
+/* ONE system call for every descriptor a server is waiting on (std/poller.fpr).
+ * Nothing ready answers the static Nil: an idle server's poller allocates
+ * nothing.  A descriptor that has gone bad counts as ready -- its reader will
+ * learn why from the read. */
+static V h_poll(V fdsv) {
+  size_t n = 0;
+  for (V c = fdsv; !ISINT(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) n++;
+  if (!n) return (V)&os_nil;
+  struct pollfd small[64], *p = n <= 64 ? small : malloc(n * sizeof *p);
+  if (!p) fpr_cpanic("out of memory");
+  size_t i = 0;
+  for (V c = fdsv; i < n; c = ((V *)((char *)c + 8))[1]) {
+    V f = ((V *)((char *)c + 8))[0];
+    p[i].fd = ISINT(f) ? (int)UNTAG(f) : -1;
+    p[i].events = POLLIN;
+    p[i++].revents = 0;
+  }
+  V out = (V)&os_nil;
+  if (poll(p, (nfds_t)n, 0) > 0)
+    for (i = n; i-- > 0;)
+      if (p[i].revents) out = os_cons(TAG(p[i].fd), out);
+  if (p != small) free(p);
+  return out;
+}
+FPR_FN(fpr_g_Os_x2epoll, h_poll, 1);
 
 /* read into C memory first, then make a String of EXACTLY what arrived: a
  * 20-byte frame is a 20-byte String, not a 64 KiB block with 20 bytes used */

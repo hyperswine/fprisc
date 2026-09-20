@@ -1,0 +1,40 @@
+unsafe base.
+A = use "std/actor".
+Poller = use "std/poller".
+Tcp = use "std/tcp".
+Stream = use "std/stream".
+String = use "std/string".
+List = use "std/list".
+
+spin me n = if n == 0 then Unit else _ = receiveNow me; spin me (n - 1).
+
+# the server side of one connection, waiting THROUGH the poller
+echo p conn peer = echoGo (Stream.readerOn p conn) conn.
+echoGo r conn = case Stream.readLine r of (res, r2) ->
+  (case res of
+      Err _ -> Unit
+    | Ok line -> (if line == "bye" then _ = Stream.write "goodbye\n" conn; Unit
+                  else _ = Stream.write "{String.toUpper line}\n" conn; echoGo r2 conn)).
+
+client port n =
+  conn = (case Tcp.connect "127.0.0.1" port of Ok c -> c | Err e -> error e);
+  _ = Stream.write "hello {n}\nbye\n" conn;
+  all = Stream.readAll conn;
+  _ = Stream.close conn;
+  all.
+
+main =
+  me = myself 0;
+  _ = print "empty: {receiveNow me}";
+  h0 = heapUsed Unit;
+  _ = spin me 100000;
+  _ = print "100,000 asks of an empty mailbox allocated {heapUsed Unit - h0} bytes";
+  _ = spawn (fn self -> _ = Sys.sleepUs 30000; send me "late");
+  _ = print "within 5 ms: {A.receiveWithin 5 me}";
+  _ = print "within 500 ms: {A.receiveWithin 500 me}";
+  p = Poller.start Unit;
+  l = (case Tcp.listen "127.0.0.1" 0 of Ok x -> x | Err e -> error e);
+  _ = spawn (fn self -> Tcp.serveOn p l (echo p));
+  _ = print "through the poller: {List.map (client (Tcp.port l)) (List.range 1 3)}";
+  _ = Tcp.stop l;
+  print "done".

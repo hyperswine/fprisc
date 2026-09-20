@@ -39,6 +39,7 @@ print('Sol runs the same std modules (list, string, map, option, order, json), a
 check('extbase', label='Math, Encoding (hex, Base64, URL), Binary, Digest: SHA-256 against the published vectors, incremental equals whole')
 check('proclimits', label='Proc: a time limit kills the child and says so; extra environment reaches it')
 check('tcp', label='Stream and Tcp: a server and its clients in ONE process, an actor per connection, 2 MB echoed, stop')
+check('poller', label='receiveNow (an empty mailbox allocates nothing), receiveWithin, and a server whose accepts and reads wait on ONE poller')
 check('http', label='Http: client and server, headers, a 100 KB POST, 404, chunked decoding, URL parsing')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
     check('apps', cwd=t, env={'T16_HOST': 'from-env'}, label='Decode (errors name the path), Config (defaults < file < env < args), Log, streaming File, Task (bounded, parallel)')

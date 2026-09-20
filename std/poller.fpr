@@ -1,0 +1,81 @@
+# std/poller.fpr -- Poller: ONE actor that waits on every descriptor, so nobody
+# else has to.
+#
+#   Poller = use "std/poller".
+#   p = Poller.start Unit
+#   Poller.await fd p          # this actor sleeps -- really sleeps, in its mailbox --
+#                              # until fd has something to read
+#
+# A hart is a thread many actors share, so no actor may wait inside the kernel.
+# Without a poller every waiting actor polls ITS descriptor on a timer: a
+# thousand idle sessions are a thousand timers and a thousand system calls a
+# tick (half a core, measured: docs/LIVE.md).  With one, the waiters block on
+# their mailboxes, which costs nothing, and ONE actor makes ONE poll(2) over
+# everything being waited for.
+#
+# `await` is one-shot, like EPOLLONESHOT: the poller tells you once and forgets
+# the descriptor; you read, and ask again when you next want to wait.  It is
+# level-triggered underneath, so data that arrived before you asked is not
+# missed.  A descriptor that has gone bad counts as ready: the read says why.
+#
+# With nothing to watch the poller blocks in `receive` and uses no CPU at all;
+# with watches it ticks, backing off from 0.1 ms to 5 ms while nothing happens.
+# An idle tick allocates nothing.
+
+OS = use "os".
+M = use "map".
+O = use "option".
+Ord = use "order".
+A = use "actor".
+
+Poller = Type (Poller Int).
+
+Req = Type (Watch fd who).
+Note = Type (Readable fd).
+
+start : Unit -> Poller .
+start u = Poller (A.spawnWith (A.Dynamic 256) (fn self -> idle self (M.empty Ord.int) A.tidy0)).
+
+# sleep until `fd` has something to read (or an end of stream to learn of)
+await : Int -> Poller -> Unit .
+await fd p = case p of Poller a ->
+  me = myself 0;
+  _ = send a (Watch fd me);
+  m = receiveFrom me a;
+  _ = drop m;
+  Unit.
+
+# nothing to watch: block until somebody asks
+idle : unsafe Int -> M.Map Int Int -> A.Tidy -> Unit .
+idle me owners t =
+  m = receive me;
+  o2 = (case m of Watch fd who -> M.insert fd who owners);
+  _ = drop m;
+  ticking me o2 (M.keys o2) 100 t.
+
+# watching.  One request, or one poll, per turn; the QUIET turn -- nothing asked,
+# nothing ready -- builds no value at all, so it really does allocate nothing.
+# Turns that did something take the (amortized) boundary.
+ticking : unsafe Int -> M.Map Int Int -> List Int -> Int -> A.Tidy -> Unit .
+ticking me owners fds wait t = case receiveNow me of
+    Ok m ->
+      o2 = (case m of Watch fd who -> M.insert fd who owners);
+      _ = drop m;
+      tidied me o2 t
+  | Err _ -> (case OS.poll fds of
+        Nil -> _ = Sys.sleepUs wait; ticking me owners fds (if wait >= 5000 then 5000 else wait * 2) t
+      | ready -> tidied me (notify me ready owners) t).
+
+tidied : unsafe Int -> M.Map Int Int -> A.Tidy -> Unit .
+tidied me owners0 t0 = case A.tidy me (owners0, t0) of (owners, t) ->
+  (case M.isEmpty owners of
+      True -> idle me owners t
+    | False -> ticking me owners (M.keys owners) 100 t).
+
+# tell each owner once, and forget the descriptor
+notify : unsafe Int -> List Int -> M.Map Int Int -> M.Map Int Int .
+notify me ready owners = case ready of
+    Nil -> owners
+  | fd :: r -> (case M.get fd owners of
+        O.Some who -> _ = send who (Readable fd); notify me r (M.remove fd owners)
+      | O.None -> notify me r owners).

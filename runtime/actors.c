@@ -1907,6 +1907,36 @@ static V a_receive(V me) {
   }
 }
 
+/* receive WITHOUT WAITING: `Ok message` when one is there, and otherwise the
+ * one static `Err "empty"` -- asking an empty mailbox allocates nothing, so an
+ * actor may ask as often as it likes.  This is what lets ONE actor watch two
+ * things: its mailbox and something it has to poll (std/poller.fpr: every
+ * socket of a server), and it is the whole of a timed receive
+ * (std/actor.fpr receiveWithin). */
+static const struct { uint32_t tid, var; uw len; uint8_t bytes[8]; } __attribute__((aligned(8))) recv_empty_s = {T_STR, 0, 5, "empty"};
+static const struct { uint32_t tid, var; V f; } __attribute__((aligned(8))) recv_empty = {T_RESULT, 1, (V)&recv_empty_s};
+static V a_receive_now(V me) {
+  if (fpr_sched) return fpr_sched->receive_now(me);
+  fpr_hart_t *h = fpr_hart();
+  if (ISINT(me) || (acb_t *)me != h->current)
+    fpr_cpanic("receiveNow: not the current actor's handle");
+  acb_t *a = h->current;
+  drop_drain(a); /* the previous activation's borrows are dead here */
+  for (int n = 0; n < MAXSND; n++) {
+    chan_t *c = &a->ch[(a->scan + n) % MAXSND];
+    if (c->sender && ch_count(c)) {
+      a->scan = (a->scan + n + 1) % MAXSND;
+      V m = take_at(a, c, c->rh);
+      V *ok = (V *)fpr_alloc(8 + sizeof(uw));
+      ((hdr_t *)ok)->tid = T_RESULT;
+      ((hdr_t *)ok)->var = 0;
+      ok[1] = m;
+      return (V)ok;
+    }
+  }
+  return (V)&recv_empty;
+}
+
 /* selective receive by SENDER: only that sender's channel, FIFO */
 static V a_receive_from(V me, V fromv) {
   if (fpr_sched) return fpr_sched->receive_from(me, fromv);
@@ -2048,6 +2078,7 @@ FPR_FN(fpr_g_sendArc, a_send_arc, 2);
 FPR_FN(fpr_g_receive, a_receive, 1);
 FPR_FN(fpr_g_receiveFrom, a_receive_from, 2);
 FPR_FN(fpr_g_receiveRes, a_receive_res, 1);
+FPR_FN(fpr_g_receiveNow, a_receive_now, 1);
 FPR_FN(fpr_g_yield, a_yield, 1);
 FPR_FN(fpr_g_kill, a_kill, 1);
 FPR_FN(fpr_g_myself, a_myself, 1);
@@ -2267,6 +2298,7 @@ static V sched_spawn_pid(V f, uw pid) {
 static V sched_receive(V me) { return a_receive(me); }
 static V sched_receive_from(V me, V from) { return a_receive_from(me, from); }
 static V sched_receive_res(V me) { return a_receive_res(me); }
+static V sched_receive_now(V me) { return a_receive_now(me); }
 V fpr_receive_res_c(V me) { return a_receive_res(me); } /* process.c's syscall wait */
 static uw sched_arc_live(void) { return fpr_arc_live_count(); }
 void fpr_sched_export(fpr_sched_t *out) {
@@ -2274,6 +2306,7 @@ void fpr_sched_export(fpr_sched_t *out) {
   out->receive = sched_receive;
   out->receive_from = sched_receive_from;
   out->receive_res = sched_receive_res;
+  out->receive_now = sched_receive_now;
   out->spawn = sched_spawn;
   out->spawn_at = sched_spawn_at;
   out->spawn_pid = sched_spawn_pid;

@@ -9,8 +9,8 @@ replayable from an append-only store, reload at run time.
 **Short answer.** For the WEB case, yes on both systems, at the scale of an
 internal tool: hundreds of sessions, not tens of thousands. The shape holds and
 every item on the list now runs on a plain posix process (`fpr run`) as well as on
-QOS. What is not there yet is idle sessions that cost no CPU (a session is about
-half a megabyte), and TLS. TUI and desktop apps exist only
+QOS (a session is about half a megabyte and costs no CPU while idle). What is not
+there yet is TLS. TUI and desktop apps exist only
 on QOS Portable, because the terminal and GL tiers live in its host.
 
 What was built to find out: `std/ws`, `std/kvlog`, `std/live`, `std/actor`'s
@@ -62,11 +62,12 @@ most of that was four separate mistakes, each fixed:
 - In the runtime: an actor's first stack was a 512 KiB block. It is one 128 KiB
   block now that stacks grow.
 
-What is left is CPU, not memory: each session's reader polls its own socket (every
-10 ms when idle), so 1,000 idle sessions keep about half a core busy. The fix is
-the shape QOS's FPRLive already has -- ONE actor polls every socket and hands
-bytes to the session that owns them -- which needs a `poll` over many descriptors
-as a primitive.
+Idle sessions cost almost no CPU either. Each session's reader used to poll its
+own socket (every 10 ms when idle), and 1,000 idle sessions kept about half a
+core busy. Now ONE actor polls every socket with one `poll(2)` (`std/poller.fpr`,
+over `Os.poll` and the runtime's new `receiveNow`), the readers and the acceptor
+sleep in their mailboxes, and 1,000 idle sessions use 4% of one core; an event
+after the idle period still reaches all of them in about a third of a second.
 
 ## What writing it exposed
 
@@ -104,24 +105,21 @@ author would hit.
 
 Done since the first version of this page: durable fields and client state from
 PATH literals; a typed `Msg` with a compiler-minted codec; sessions at half a
-megabyte; the view layer (`std/view`, `std/ma`, `std/livejs`) in std.
+megabyte; one poller for every socket; the view layer (`std/view`, `std/ma`, `std/livejs`) in std.
 
 In the order I would do what is left:
 
-1. **One poller for every socket**: idle sessions should cost no CPU. It needs a
-   `poll` over many descriptors as a primitive, and the acceptor shape QOS's
-   FPRLive already has.
-2. **Richer messages and codecs.** `@Msg` takes Int, String and Bool fields. A
+1. **Richer messages and codecs.** `@Msg` takes Int, String and Bool fields. A
    message carrying a record or a list, and a codec for a RECORD (so
    `Live.json` needs no hand-written encoder), are the same compiler pass.
-3. **Commands worth having**: `Http` as a command (today `Live.Run` around
+2. **Commands worth having**: `Http` as a command (today `Live.Run` around
    `Http.get`), navigation, file upload (the websocket reader already takes
    fragmented and large messages), a port to the page's JavaScript.
-4. **TUI and desktop on posix**: raw-terminal and input primitives in
+3. **TUI and desktop on posix**: raw-terminal and input primitives in
    `machine/posix` (they exist in QOS's host, `hal/unix/tty_raw.c`), then
    `std/mvu`'s drivers run there too.
-5. **Store maintenance**: compaction, fsync as a policy, and per-session state that
+4. **Store maintenance**: compaction, fsync as a policy, and per-session state that
    does not live in the shared model.
-6. **One App value for both drivers.** QOS's `fprlive.fpr` and `std/live` have the
+5. **One App value for both drivers.** QOS's `fprlive.fpr` and `std/live` have the
    same shape and different surfaces (`EMsg sid name arg` there, `Msg sid msg`
    here); the QOS driver should take the typed one.
