@@ -82,7 +82,7 @@ clients run in one process, which is how the tests run them.
 
 | module | what is in it |
 |---|---|
-| `std/json` | `Value = Null \| Boolean \| Integer \| Real \| Text \| Sequence \| Object`; `parse` (errors as `line 3, column 14: expected ':'`), `render`, `equal`, `field at asString asInt asBool asReal asList asObject isNull object strings quote`. A `Real` keeps its TEXT: no float parsing to get wrong |
+| `std/json` | `Value = Null \| Boolean \| Integer \| Real \| Text \| Sequence \| Object`; `parse` (errors as `line 3, column 14: expected ':'`), `render`, `equal`, `field at asString asInt asBool asReal asList asObject isNull object strings quote`, and `fromWire toWire encode decode` for any type with a compiler-minted codec (`@Msg`, `@Model.field`: docs/PATHS.md). A `Real` keeps its TEXT: no float parsing to get wrong |
 | `std/decode` | flexible data into YOUR types: `string int bool number value succeed fail nullable field optional at list dict map andThen check oneOf map2..map5 andMap run fromString infer fields`. Errors name the path: `servers.1.tags.1: expected a string, found an integer` |
 | `std/config` | `load` combines defaults < a JSON file < `PREFIX_NAME` in the environment < `--name=value`, into a Value you decode; `positional` |
 | `std/http` | client: `get post request parseUrl parseResponse`; server: `serve text html json response header`. HTTP/1.1, lower-case header names, chunked decoding, one request per connection. **`https://` is fetched by running `curl`** (std has no TLS); where curl is missing the Err says so |
@@ -91,7 +91,7 @@ clients run in one process, which is how the tests run them.
 | `std/log` | a logger is a VALUE: `toStderr toFile json levelOf debug info warn error`. `2026-09-20T03:14:15Z INFO  listening port=8080`, or one JSON object per line |
 | `std/ws` | WebSocket, the server side (RFC 6455): `accept receive receiveMax receiveOnly sendText sendBinary sendPong sendClose frame`. Whole messages: fragments reassembled, all three length forms, nothing capped unless you ask |
 | `std/kvlog` | a durable key-value store that is an APPEND-ONLY log: `open put get keys size`, and on the file itself `records history at`. Replays on open; a torn last line is skipped and counted |
-| `std/live` | a server-driven UI over a websocket, the LiveView way: `serve replay`, durable fields from paths (`int string bool strings json`), `Ev msg`, `Cmd msg`, `Sub msg`, `Policy`. Messages are the app's own type, carried by `@Msg`. See [LIVE.md](LIVE.md) |
+| `std/live` | a server-driven UI over a websocket, the LiveView way: `serve replay`, durable fields from paths (`field`, `custom`), `Ev msg`, `Cmd msg`, `Sub msg`, `Policy`. Messages are the app's own type, carried by `@Msg`. See [LIVE.md](LIVE.md) |
 | `std/view` | the view tree (`El Txt Dyn Inp`, attributes), `render` to (statics, dynamics), generated CSS; and the TYPED helpers: `send sendWith enterWith` (a message VALUE through a codec), `locals showIf setTo bind text` (client state named by paths) |
 | `std/ma` | the Ma design system over View: `vstack hstack zstack spacer card cardGrid button badge chip toast accordion navBar page`, text roles, `maCssFor` |
 | `std/livejs` | the client script (~150 lines), served inline |

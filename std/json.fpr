@@ -318,3 +318,47 @@ utf8 cp = case cp < 128 of
       | False -> (case cp < 65536 of
             True -> strJoin "" (chr (224 + cp / 4096) :: chr (128 + (cp / 64 - (cp / 4096) * 64)) :: chr (128 + (cp - (cp / 64) * 64)) :: Nil)
           | False -> strJoin "" (chr (240 + cp / 262144) :: chr (128 + (cp / 4096 - (cp / 262144) * 64)) :: chr (128 + (cp / 64 - (cp / 4096) * 64)) :: chr (128 + (cp - (cp / 64) * 64)) :: Nil))).
+
+# ---- Wire: what a compiler-minted codec speaks (the prelude's neutral tree) ---------------
+# `@Msg` and `@Model.field` literals carry `enc : a -> Wire` and `dec : Wire ->
+# Result a String`.  These two turn a Wire into a Value and back, so any such
+# type is JSON with no hand-written encoder: a record is an object, a list an
+# array, and a constructor the array [name, field, ...].
+fromWire : Wire -> Value .
+fromWire w = fromWireGo w.
+fromWireGo : unsafe Wire -> Value .
+fromWireGo w = case w of
+    WInt n -> Integer n
+  | WStr t -> Text t
+  | WBool b -> Boolean b
+  | WList xs -> Sequence (wiresGo xs Nil)
+  | WRec fs -> Object (fieldsGo fs (M.empty S.compare))
+  | WCon n as -> Sequence (Text n :: wiresGo as Nil).
+wiresGo : unsafe List Wire -> List Value -> List Value .
+wiresGo xs acc = case xs of Nil -> rev acc Nil | x :: r -> wiresGo r (fromWireGo x :: acc).
+fieldsGo : unsafe List (String, Wire) -> M.Map String Value -> M.Map String Value .
+fieldsGo fs m = case fs of Nil -> m | (k, v) :: r -> fieldsGo r (M.insert k (fromWireGo v) m).
+
+# (a Real has no Wire form: it arrives as its text)
+toWire : Value -> Wire .
+toWire v = toWireGo v.
+toWireGo : unsafe Value -> Wire .
+toWireGo v = case v of
+    Null -> WStr ""
+  | Boolean b -> WBool b
+  | Integer n -> WInt n
+  | Real t -> WStr t
+  | Text t -> WStr t
+  | Sequence xs -> WList (valuesGo xs Nil)
+  | Object m -> WRec (pairsGo (M.entries m) Nil).
+valuesGo : unsafe List Value -> List Wire -> List Wire .
+valuesGo xs acc = case xs of Nil -> rev acc Nil | x :: r -> valuesGo r (toWireGo x :: acc).
+pairsGo : unsafe List (String, Value) -> List (String, Wire) -> List (String, Wire) .
+pairsGo kvs acc = case kvs of Nil -> rev acc Nil | (k, x) :: r -> pairsGo r ((k, toWireGo x) :: acc).
+
+# text <-> any type with a codec: Json.encode codec value, Json.decode codec text
+encode : { enc : a -> Wire | r } -> a -> String .
+encode codec x = render (fromWire (codec.enc x)).
+
+decode : { dec : Wire -> Result a String | r } -> String -> Result a String .
+decode codec text = case parse text of Err why -> Err why | Ok v -> codec.dec (toWire v).

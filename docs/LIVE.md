@@ -25,7 +25,7 @@ and `liveboard-reload.py` as real websocket clients.
 | **An actor per connection** | WORKS. A session is TWO actors on one socket: a reader (frames to events) and a writer (renders `view sid model` itself, holds what the tab last saw, is the only one that writes). One register owns the model | `std/live.fpr`; 1,000 sessions join in 3.3 s, one event reaches all 1,000 in 260 ms |
 | **Static / dynamic split** | WORKS, unchanged from QOS. `genview` renders a tree to (statics, dynamics); a counter change is an 18-byte delta on a 7-static page; a reshape is a full render | `qos/programs/mods/genview.fpr` is pure FP-RISC and runs on posix as is |
 | **Ma: stacks, spacers, everything from primitives** | WORKS, unchanged. `vstack hstack zstack spacer card` ... over `El / Txt / Dyn`; the stylesheet is a function of the tree | `qos/programs/mods/ma.fpr`; `maapp.fpr` runs under `fpr run` untouched |
-| **`Persistent a`, per field, with options** | WORKS, named by a PATH: `Live.int Live.Always @Model.count`. The literal is checked against the model's declaration and gives the getter, the setter and the key, so a field that does not exist is a compile error. Policies: `Always`, `AtMostEvery ms`. It is a list beside the model, not a wrapper type inside it | `Live.int string bool strings json`; restart brings back `count` and `notes` and, on purpose, not the clock |
+| **`Persistent a`, per field, with options** | WORKS, named by a PATH: `Live.field Live.Always @Model.count`. The literal is checked against the model's declaration and gives the getter, the setter, the key AND the codec (any field built from Int, String, Bool, lists, tuples, declared records and sum types; the demo's notes are a durable list of records with no encoder written), so a field that does not exist is a compile error. Policies: `Always`, `AtMostEvery ms`. It is a list beside the model, not a wrapper type inside it | `Live.field`, `Live.custom`; restart brings back `count` and `notes` and, on purpose, not the clock |
 | **Client-side state (`ClientState a`)** | WORKS, typed. `Client = {tab : String, draft : String}.` is a record; `View.locals @Client {tab = "1", draft = ""}` declares it, `View.showIf @Client.tab "2"`, `View.setTo`, `View.bind @Client.draft` use it, and a field that does not exist is a compile error. It never round-trips unless a message carries it (`View.sendWith codec (Add "") @Client.draft`) | `std/view.fpr` + the 150-line client script; checked in a real browser |
 | **Typed messages** | WORKS. `Msg = Type (Bump Int \| Add String \| ...)` and `codec = @Msg`: the compiler mints the codec from the declaration (as it mints a path from a record's). The view sends VALUES (`View.send codec (Bump 10)`), `update` matches on them, the journal stores them. An unknown message, a field that is not a number, a missing field: refused by name before `update` sees it, as `Live.Refused sid why` | `compiler/FPRISC.hs codecFor`; `tests/std/codec.fpr`; the check's forged-message leg |
 | **Elm's Cmd and Sub** | WORKS, typed. `update` answers `Live.After ms msg`, `Live.Run work` (runs in its own actor; the MESSAGE it returns comes back through `update`), `Live.Quit`; `subs` answers `Live.Every ms msg`, re-read after every update, so a clock exists only while the model asks for it | the check's clock and digest legs |
@@ -104,14 +104,15 @@ author would hit.
 ## What would make it the application language
 
 Done since the first version of this page: durable fields and client state from
-PATH literals; a typed `Msg` with a compiler-minted codec; sessions at half a
+PATH literals; a typed `Msg` with a compiler-minted codec, for records, lists and
+nested types too, so a durable field needs only its path; sessions at half a
 megabyte; one poller for every socket; the view layer (`std/view`, `std/ma`, `std/livejs`) in std.
 
 In the order I would do what is left:
 
-1. **Richer messages and codecs.** `@Msg` takes Int, String and Bool fields. A
-   message carrying a record or a list, and a codec for a RECORD (so
-   `Live.json` needs no hand-written encoder), are the same compiler pass.
+1. **Recursive types on the wire.** Codecs are generated inline, so a recursive
+   type (a tree, a comment thread) is refused; it needs generated top-level
+   functions, one per type per unit.
 2. **Commands worth having**: `Http` as a command (today `Live.Run` around
    `Http.get`), navigation, file upload (the websocket reader already takes
    fragmented and large messages), a port to the page's JavaScript.

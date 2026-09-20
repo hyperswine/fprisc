@@ -76,24 +76,31 @@ A bad path or unparsable leaf **refuses transactionally**: `Err`,
 model unchanged. There is no backdoor: the schema's set closures are
 the same `{s | path = v}` updates the app itself would write.
 
-## 2b. The codec (a sum type on the wire)
+## 2b. The codec (a declared type on the wire)
 
-The same bare literal over a declared SUM type is its wire codec, minted by the
-same pass (`FPRISC.hs codecFor`):
+The same pass mints a CODEC from a type's declaration (`FPRISC.hs encE / decE`):
 
-    Msg = Type (Bump Int | Add String | Toggle Bool | Clear).
-    codec = @Msg.
+    Msg = Type (Bump Int | Add String | Move Point (List Int) | Clear).
+    codec = @Msg.              -- { enc : Msg -> Wire, dec : Wire -> Result Msg String }
 
-    { name : Msg -> String,                            -- "Bump"
-      args : Msg -> List String,                       -- ["10"]
-      make : String -> List String -> Result Msg String }
+    items = @Model.items.      -- a path literal carries its field's codec too:
+                               -- { get, set, segs, enc, dec }
 
-Constructor fields may be `Int`, `String` or `Bool`; anything else is a compile
-error that names the constructor. `make` refuses by name: an unknown
-constructor, the wrong number of fields, a field that is not a number. It is how
-a message crosses a page and a log as TEXT and is still a checked value on the
-other side (`std/view`'s `send`, `std/live`'s journal and replay). The checked
-decimal parse it uses is the prelude's `wireInt`.
+`Wire` is the prelude's neutral tree (`WInt WStr WBool WList WRec WCon`); `std/json`
+turns it into text and back (`Json.encode codec x`, `Json.decode codec text`), where
+a record is an object, a list an array, and a constructor `[name, field, ...]`.
+What can go on the wire: `Int`, `String`, `Bool`, `List t`, tuples, declared
+records and declared sum types, nested as deep as the declarations go. A
+RECURSIVE type is refused (the code is generated inline and would not end), and
+so is a function or an undeclared type variable: a compile error that names the
+type. `dec` refuses with the PATH of what was wrong -- `0: tags: 1: expected a
+string`, `Move field 1: y: missing`, `Msg: no such message: Nope` -- and is
+lenient where text stands for a number or a boolean (`"10"`, `"true"`), because
+what comes from a page's client state is always text.
+
+It is how a message crosses a page and a log as TEXT and is still a checked value
+on the other side (`std/view`'s `send`, `std/live`'s journal and replay), and how a
+durable field needs nothing but its path (`Live.field Live.Always @Model.items`).
 
 ## 3. Value-space iteration in MVU (the message port)
 

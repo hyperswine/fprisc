@@ -34,7 +34,7 @@
 # the driver performs them and what they produce comes back as a MESSAGE.
 # `update` itself stays a pure function, which is what makes the next part possible.
 #
-# DURABLE STATE, per field, named by a PATH: `Live.int Live.Always @Model.count`.
+# DURABLE STATE, per field, named by a PATH: `Live.field Live.Always @Model.count`.
 # The path literal is checked against the model's declaration and gives the
 # getter, the setter and the key; the policy says how eagerly to save.  Saves go to an
 # append-only log (std/kvlog.fpr), so the model's history is replayable; and
@@ -75,22 +75,18 @@ Sub msg = Type (Every Int msg).
 Policy = Type (Always | AtMostEvery Int).
 Field model = Type (Field String Policy (model -> J.Value) (J.Value -> model -> model)).
 
-# a durable field from a PATH (`@Model.count`: docs/PATHS.md), an encoder and a decoder
-json : Policy -> { get : m -> a, set : a -> m -> m, segs : List String | r } -> (a -> J.Value) -> D.Decoder a -> Field m .
-json policy path enc dec = Field (strcat "model." (strJoin "." path.segs)) policy (fn m -> enc (path.get m))
+# a durable field is a PATH and a policy: `Live.field Live.Always @Model.count`.
+# The literal carries the getter, the setter, the key and -- for any field whose
+# type can go on the wire (Int, String, Bool, lists, tuples, declared records
+# and sum types) -- its codec, minted by the compiler from the declaration.
+field : Policy -> { get : m -> a, set : a -> m -> m, segs : List String, enc : a -> Wire, dec : Wire -> Result a String | r } -> Field m .
+field policy path = Field (strcat "model." (strJoin "." path.segs)) policy (fn m -> J.fromWire (path.enc (path.get m)))
+  (fn v m -> case path.dec (J.toWire v) of Ok x -> path.set x m | Err _ -> m).
+
+# the same with a codec of your own, for a field whose type has none
+custom : Policy -> { get : m -> a, set : a -> m -> m, segs : List String | r } -> (a -> J.Value) -> D.Decoder a -> Field m .
+custom policy path enc dec = Field (strcat "model." (strJoin "." path.segs)) policy (fn m -> enc (path.get m))
   (fn v m -> case D.run dec v of Ok x -> path.set x m | Err _ -> m).
-
-int : Policy -> { get : m -> Int, set : Int -> m -> m, segs : List String | r } -> Field m .
-int policy path = json policy path (fn n -> J.Integer n) D.int.
-
-string : Policy -> { get : m -> String, set : String -> m -> m, segs : List String | r } -> Field m .
-string policy path = json policy path (fn t -> J.Text t) D.string.
-
-bool : Policy -> { get : m -> Bool, set : Bool -> m -> m, segs : List String | r } -> Field m .
-bool policy path = json policy path (fn t -> J.Boolean t) D.bool.
-
-strings : Policy -> { get : m -> List String, set : List String -> m -> m, segs : List String | r } -> Field m .
-strings policy path = json policy path J.strings (D.list D.string).
 
 rev : unsafe List a -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
@@ -225,7 +221,7 @@ flushGo fields db model = case fields of
 # ---- the journal: every event, so the model can be rebuilt from the log alone -----------------
 journal codec db ev = KV.put "$event" (evJson codec ev) db.
 evJson codec ev = case ev of
-    Msg sid m -> J.object (("e", J.Text "msg") :: ("sid", J.Integer sid) :: ("m", J.strings (codec.name m :: codec.args m)) :: Nil)
+    Msg sid m -> J.object (("e", J.Text "msg") :: ("sid", J.Integer sid) :: ("m", J.fromWire (codec.enc m)) :: Nil)
   | Joined sid -> J.object (("e", J.Text "joined") :: ("sid", J.Integer sid) :: Nil)
   | Left sid -> J.object (("e", J.Text "left") :: ("sid", J.Integer sid) :: Nil)
   | Refused sid why -> J.object (("e", J.Text "refused") :: ("sid", J.Integer sid) :: ("why", J.Text why) :: Nil).
@@ -233,7 +229,7 @@ evOf codec v =
   text = (fn k -> O.withDefault "" (O.andThen J.asString (J.field k v)));
   num = (fn k -> O.withDefault 0 (O.andThen J.asInt (J.field k v)));
   case text "e" of
-    "msg" -> (case decodeList codec (O.withDefault Nil (O.andThen J.asList (J.field "m" v))) Nil of
+    "msg" -> (case codec.dec (J.toWire (O.withDefault J.Null (J.field "m" v))) of
         Ok m -> O.Some (Msg (num "sid") m)
       | Err _ -> O.None)
   | "joined" -> O.Some (Joined (num "sid"))
@@ -241,28 +237,24 @@ evOf codec v =
   | "refused" -> O.Some (Refused (num "sid") (text "why"))
   | _ -> O.None.
 
-# [name, field, ...] as JSON strings, plus any trailing fields -> the message
-decodeList codec vs extra = case texts vs Nil of
-    O.None -> Err "a message is a list of strings"
-  | O.Some parts -> (case parts of
-        Nil -> Err "an empty message"
-      | name :: args -> codec.make name (appendS args extra)).
-texts : unsafe List J.Value -> List String -> O.Option (List String) .
-texts vs acc = case vs of
-    Nil -> O.Some (rev acc Nil)
-  | v :: r -> (case v of J.Text t -> texts r (t :: acc) | _ -> O.None).
-appendS : unsafe List String -> List String -> List String .
-appendS xs ys = case xs of Nil -> ys | x :: r -> x :: appendS r ys.
-
-# what a session sent, as a message of this app.  "=" [name, fields...] is
-# complete; "+" takes the event's argument as its final field (View.sendWith).
+# what a session sent, as a message of this app.  "=" and the JSON of the
+# message is complete; "+" takes the event's argument as its final field
+# (View.sendWith).  The codec decides: anything it refuses never reaches update.
 decodeWire codec wire arg =
   kind = substr wire 1 1;
   case kind == "=" or kind == "+" of
     False -> Err "not a typed message: {wire}"
   | True -> (case J.parse (substr wire 2 (strlen wire)) of
         Err why -> Err why
-      | Ok v -> decodeList codec (O.withDefault Nil (J.asList v)) (if kind == "+" then arg :: Nil else Nil)).
+      | Ok v -> codec.dec (if kind == "+" then withLast arg (J.toWire v) else J.toWire v)).
+
+withLast : String -> Wire -> Wire .
+withLast arg w = case w of
+    WList xs -> WList (appendW xs (WStr arg :: Nil))
+  | WCon n as -> WCon n (appendW as (WStr arg :: Nil))
+  | other -> other.
+appendW : unsafe List Wire -> List Wire -> List Wire .
+appendW xs ys = case xs of Nil -> ys | x :: r -> x :: appendW r ys.
 
 # the model rebuilt from NOTHING but `init`, `update` and the journal in a store
 # file: no commands are performed, nothing is written.  If this differs from the
@@ -292,7 +284,7 @@ performGo reg cmds quit = case cmds of
 # one ticker actor per (ms, message) the app still wants: it sleeps, asks the
 # register whether it is still wanted, and ends when it is not.  A message is
 # told apart by its wire form.
-keyOf codec msg = strJoin "\x1f" (codec.name msg :: codec.args msg).
+keyOf codec msg = J.render (J.fromWire (codec.enc msg)).
 
 wanted codec ms key subs = case subs of
     Nil -> O.None

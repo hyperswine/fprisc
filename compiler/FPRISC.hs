@@ -1474,76 +1474,125 @@ expandPathLits tbl ttbl tops = (nub (concatMap errsTop tops), map top tops)
       | Just (p, cs) <- codecTarget e = either (: []) (const []) (codecFor p cs)
     errsE e = concatMap errsE (children e)
 
-    -- THE MESSAGE CODEC.  A bare literal `@Msg` over a declared sum type whose
-    -- constructor fields are Int, String or Bool is the record
+    -- THE CODEC.  A bare literal `@Msg` over a declared sum type is
     --
-    --   { name : Msg -> String,                          the constructor
-    --     args : Msg -> List String,                     its fields, as text
-    --     make : String -> List String -> Result Msg String }   and back
+    --   { enc : Msg -> Wire, dec : Wire -> Result Msg String }
     --
     -- minted from the declaration, as a path is from a record's.  It is what
-    -- lets a message cross a wire (a page, a log) as TEXT and still be a
-    -- checked value of its type on the other side: an unknown constructor, a
-    -- wrong number of fields or a field that is not a number is an Err that says
-    -- so, never a value of the wrong shape.  Ordinary code downstream: no new
-    -- type-system machinery, exactly as for paths.
-    codecFor p cs = do
-      mapM_ checkCon cs
-      pure $
-        SRec
-          [ ("name", SLam ["m"] (SCase (SVar "m") [(PCon c (map (const PWild) tys), str c) | (c, tys) <- cs])),
-            ("args", SLam ["m"] (SCase (SVar "m") [(PCon c [PVar (v i) | (i, _) <- zip [1 :: Int ..] tys],
-                                                   SList [render t (SVar (v i)) | (i, t) <- zip [1 ..] tys]) | (c, tys) <- cs])),
-            ("make", SLam ["n", "as"] (SCase (SVar "n") ([(PStr (base c), build c tys) | (c, tys) <- cs]
-                                        ++ [(PWild, err (p ++ ": no such message: ") (Just (SVar "n")))])))
-          ]
-      where
-        v i = "f" ++ show i
-        a i = "a" ++ show i
-        -- the name a client sees: without any module qualification
-        base c = reverse (takeWhile (/= '.') (reverse (takeWhile (/= '@') c)))
-        str c = SStrI [SegStr (base c)]
-        err msg extra = SApp (SVar "Err") (case extra of
-          Nothing -> SStrI [SegStr msg]
-          Just e -> SStrI [SegStr msg, SegExpr e])
-        render t x = case t of
-          TCon "Int" [] -> SApp (SVar "str") x
-          TCon "Bool" [] -> SCase x [(PCon "True" [], SStrI [SegStr "True"]), (PCon "False" [], SStrI [SegStr "False"])]
-          _ -> x
-        listPat [] = PCon "Nil" []
-        listPat (x : xs) = PCon "Cons" [PVar x, listPat xs]
-        build c tys =
-          let n = length tys
-              done = SApp (SVar "Ok") (foldl SApp (SVar c) [SVar (v i) | i <- [1 .. n]])
-              field (i, t) rest = case t of
-                TCon "Int" [] -> SCase (SApp (SVar "wireInt") (SVar (a i)))
-                  [(PCon "Ok" [PVar (v i)], rest), (PCon "Err" [PWild], err (base c ++ ": field " ++ show i ++ " is not a number") Nothing)]
-                TCon "Bool" [] -> SCase (SVar (a i))
-                  [ (PStr "True", SBlock [SBind (v i) [] (SVar "True")] rest),
-                    (PStr "False", SBlock [SBind (v i) [] (SVar "False")] rest),
-                    (PWild, err (base c ++ ": field " ++ show i ++ " is not True or False") Nothing) ]
-                _ -> SBlock [SBind (v i) [] (SVar (a i))] rest
-           in SCase (SVar "as")
-                [ (listPat [a i | i <- [1 .. n]], foldr field done (zip [1 ..] tys)),
-                  (PWild, err (base c ++ ": expected " ++ show n ++ " field(s)") Nothing) ]
-        checkCon (c, tys) = mapM_ (checkTy c) tys
-        checkTy c t = case t of
-          TCon "Int" [] -> Right ()
-          TCon "String" [] -> Right ()
-          TCon "Bool" [] -> Right ()
-          _ -> Left ("codec literal @" ++ p ++ ": constructor " ++ base c
-                       ++ " has a field that is not Int, String or Bool -- declare its fields' types (" ++ base c
-                       ++ " Int String), and keep anything richer out of a message that crosses a wire")
+    -- lets a message cross a wire (a page, a log) as TEXT and still be a checked
+    -- value of its type on the other side: an unknown constructor, a wrong
+    -- number of fields or a field of the wrong kind is an Err that says so,
+    -- never a value of the wrong shape.  Fields may be anything `wireable`
+    -- accepts.  Ordinary code downstream: no new type-system machinery.
+    codecFor p _ = case wireable [] (TCon p []) of
+      Left why -> Left ("codec literal @" ++ bare p ++ ": " ++ why)
+      Right () -> Right (SRec [("enc", encE (TCon p [])), ("dec", decE (TCon p []))])
 
     rewriteLit p root [] _ = schemaFor p root
     rewriteLit p root fields fs = do
       validate p root fields fs
+      -- a field whose type can go on the wire also carries its codec, so a
+      -- durable field needs nothing but its path (std/live.fpr `field`)
+      let codec = case fieldTy root fields of
+            Just t | Right () <- wireable [] t -> [("enc", encE t), ("dec", decE t)]
+            _ -> []
       pure $
         SRec
-          [ ("get", SLam ["s"] (SProj (SVar "s") fields)),
-            ("set", SLam ["v", "s"] (SUpd (SVar "s") [(fields, SVar "v")])),
-            ("segs", SList [SStrI [SegStr f] | f <- fields])
-          ]
+          ( [ ("get", SLam ["s"] (SProj (SVar "s") fields)),
+              ("set", SLam ["v", "s"] (SUpd (SVar "s") [(fields, SVar "v")])),
+              ("segs", SList [SStrI [SegStr f] | f <- fields])
+            ]
+              ++ codec
+          )
+
+    fieldTy shape (f : rest) = case lookup f =<< M.lookup shape tbl of
+      Just t | null rest -> Just t
+      Just (TCon sub []) -> fieldTy sub rest
+      _ -> Nothing
+    fieldTy _ [] = Nothing
+
+    -- ---- the wire: encoders and decoders BY TYPE STRUCTURE ---------------------
+    -- Int, String, Bool, List t, tuples, declared records and declared sum types
+    -- (recursively) go through the prelude's neutral `Wire` tree.  The code is
+    -- generated inline at the literal, from prelude names only, so it is
+    -- ordinary code in whichever unit holds the literal.  A RECURSIVE type is
+    -- refused: inlining it would not end.
+    wireable seen t = case t of
+      TCon "Int" [] -> Right ()
+      TCon "String" [] -> Right ()
+      TCon "Bool" [] -> Right ()
+      TCon "List" [a] -> wireable seen a
+      TTup ts -> mapM_ (wireable seen) ts
+      TCon n []
+        | n `elem` seen -> Left ("type " ++ n ++ " is recursive: it cannot go on the wire yet")
+        | Just fs <- M.lookup n tbl -> mapM_ (wireable (n : seen) . snd) fs
+        | Just cs <- M.lookup n ttbl -> mapM_ (mapM_ (wireable (n : seen)) . snd) cs
+      _ -> Left "a field's type is not Int, String, Bool, a List or tuple of those, or a declared record or sum type"
+
+    bare c = reverse (takeWhile (/= '.') (reverse (takeWhile (/= '@') c)))
+    lit x = SStrI [SegStr x]
+    app f xs = foldl SApp (SVar f) xs
+
+    encE t = case t of
+      TCon "Int" [] -> SVar "WInt"
+      TCon "String" [] -> SVar "WStr"
+      TCon "Bool" [] -> SVar "WBool"
+      TCon "List" [a] -> SLam ["xs"] (SApp (SVar "WList") (app "wireMap" [encE a, SVar "xs"]))
+      TTup ts ->
+        let vs = ["t" ++ show i | i <- [1 .. length ts]]
+         in SLam ["p"] (SCase (SVar "p") [(PTup (map PVar vs), SApp (SVar "WList") (SList [SApp (encE ti) (SVar v) | (ti, v) <- zip ts vs]))])
+      TCon n []
+        | Just fs <- M.lookup n tbl ->
+            SLam ["r"] (SApp (SVar "WRec") (SList [STup [lit f, SApp (encE ft) (SProj (SVar "r") [f])] | (f, ft) <- fs]))
+        | Just cs <- M.lookup n ttbl ->
+            SLam ["m"] (SCase (SVar "m")
+              [ (PCon c [PVar ("f" ++ show i) | (i, _) <- zip [1 :: Int ..] tys],
+                 app "WCon" [lit (bare c), SList [SApp (encE ti) (SVar ("f" ++ show i)) | (i, ti) <- zip [1 :: Int ..] tys]])
+              | (c, tys) <- cs ])
+      _ -> SVar "WStr"
+
+    -- decoders answer Result a String; `wireAnd` is bind, `wireAt` names the place
+    decE t = case t of
+      TCon "Int" [] -> SVar "wireToInt"
+      TCon "String" [] -> SVar "wireToStr"
+      TCon "Bool" [] -> SVar "wireToBool"
+      TCon "List" [a] -> SApp (SVar "wireToList") (decE a)
+      TTup ts ->
+        let n = length ts
+            ws = ["w" ++ show i | i <- [1 .. n]]
+            vs = ["v" ++ show i | i <- [1 .. n]]
+            done = SApp (SVar "Ok") (STup (map SVar vs))
+            step (ti, w, v) rest = app "wireAnd" [SApp (decE ti) (SVar w), SLam [v] rest]
+         in SLam ["w"] (SCase (SVar "w")
+              [ (PCon "WList" [foldr (\x acc -> PCon "Cons" [PVar x, acc]) (PCon "Nil" []) ws], foldr step done (zip3 ts ws vs)),
+                (PWild, SApp (SVar "Err") (lit ("expected a " ++ show n ++ "-tuple"))) ])
+      TCon n []
+        | Just fs <- M.lookup n tbl ->
+            let vs = ["v" ++ show i | i <- [1 .. length fs]]
+                done = SApp (SVar "Ok") (SRec [(f, SVar v) | ((f, _), v) <- zip fs vs])
+                step ((f, ft), v) rest =
+                  app "wireAnd" [app "wireAt" [lit f, app "wireAnd" [app "wireField" [lit f, SVar "fs"], decE ft]], SLam [v] rest]
+             in SLam ["w"] (SCase (SVar "w")
+                  [ (PCon "WRec" [PVar "fs"], foldr step done (zip fs vs)),
+                    (PWild, SApp (SVar "Err") (lit ("expected a " ++ bare n ++ " record"))) ])
+        | Just cs <- M.lookup n ttbl ->
+            let con (c, tys) =
+                  let k = length tys
+                      ws = ["w" ++ show i | i <- [1 .. k]]
+                      vs = ["v" ++ show i | i <- [1 .. k]]
+                      done = SApp (SVar "Ok") (foldl SApp (SVar c) (map SVar vs))
+                      step (i, ti, w, v) rest = app "wireAnd" [app "wireAt" [lit (bare c ++ " field " ++ show i), SApp (decE ti) (SVar w)], SLam [v] rest]
+                   in ( PStr (bare c),
+                        SCase (SVar "as")
+                          [ (foldr (\x acc -> PCon "Cons" [PVar x, acc]) (PCon "Nil" []) ws, foldr step done (zip4' [1 :: Int ..] tys ws vs)),
+                            (PWild, SApp (SVar "Err") (lit (bare c ++ ": expected " ++ show k ++ " field(s)"))) ] )
+             in SLam ["w"] (app "wireAnd" [SApp (SVar "wireCon") (SVar "w"),
+                  SLam ["na"] (SCase (SVar "na")
+                    [ (PTup [PVar "n", PVar "as"],
+                       SCase (SVar "n") (map con cs ++ [(PWild, SApp (SVar "Err") (SStrI [SegStr (bare n ++ ": no such message: "), SegExpr (SVar "n")]))])) ])])
+      _ -> SVar "wireToStr"
+    zip4' (a : as) (b : bs) (c : cs) (d : ds) = (a, b, c, d) : zip4' as bs cs ds
+    zip4' _ _ _ _ = []
 
     validate _ _ [] _ = Right ()
     validate p shape (f : rest) fs = case lookup f fs of

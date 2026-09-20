@@ -308,15 +308,19 @@ rvGo (x :: r) acc = rvGo r (x :: acc).
 #       V.locals @Client { tab = "1", draft = "" }     declare them, with initial values
 #       V.showIf @Client.tab "2"   V.setTo @Client.tab "2"   V.bind @Client.draft
 #
-# On the wire a typed message is "=" or "+" and a JSON array [name, field, ...]:
+# On the wire a typed message is "=" or "+" and the JSON of its Wire form, the
+# array [name, field, ...] (fields may be records and lists):
 # "=" is complete, "+" takes the event's argument as its final field.
 # (std/live.fpr decodes it with the same codec; anything else is refused.)
 
-wire : { name : m -> String, args : m -> List String | r } -> m -> String .
-wire codec msg = strcat "=" (jarr (codec.name msg :: codec.args msg)).
+J = use "json".
 
-wireOpen : { name : m -> String, args : m -> List String | r } -> m -> String .
-wireOpen codec msg = strcat "+" (jarr (codec.name msg :: dropLast (codec.args msg))).
+wire : { enc : m -> Wire | r } -> m -> String .
+wire codec msg = strcat "=" (J.render (J.fromWire (codec.enc msg))).
+
+# the message without its LAST field, which the event will supply
+wireOpen : { enc : m -> Wire | r } -> m -> String .
+wireOpen codec msg = strcat "+" (J.render (J.fromWire (case codec.enc msg of WCon n as -> WCon n (dropLast as) | w -> w))).
 
 dropLast : unsafe List a -> List a .
 dropLast xs = case xs of Nil -> Nil | x :: Nil -> Nil | x :: r -> x :: dropLast r.
@@ -325,13 +329,13 @@ dropLast xs = case xs of Nil -> Nil | x :: Nil -> Nil | x :: r -> x :: dropLast 
 localName : { segs : List String | r } -> String .
 localName path = strJoin "_" path.segs.
 
-send : { name : m -> String, args : m -> List String | r } -> m -> Attr .
+send : { enc : m -> Wire | r } -> m -> Attr .
 send codec msg = OnSend (wire codec msg) "".
 
-sendWith : { name : m -> String, args : m -> List String | r } -> m -> { segs : List String | q } -> Attr .
+sendWith : { enc : m -> Wire | r } -> m -> { segs : List String | q } -> Attr .
 sendWith codec msg path = OnClick (wireOpen codec msg) (localName path).
 
-enterWith : { name : m -> String, args : m -> List String | r } -> m -> { segs : List String | q } -> Attr .
+enterWith : { enc : m -> Wire | r } -> m -> { segs : List String | q } -> Attr .
 enterWith codec msg path = OnEnter (wireOpen codec msg) (localName path).
 
 showIf : { segs : List String | r } -> String -> Attr .

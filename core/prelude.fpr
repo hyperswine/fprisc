@@ -85,6 +85,59 @@ wireDigits s i acc neg = case i > strlen s of
       True -> wireDigits s (i + 1) (acc * 10 + (charAt s i - 48)) neg
     | False -> Err "not a number").
 
+# ---- Wire: the neutral tree a generated codec speaks (FPRISC.hs encE / decE) --------
+# `@Msg` and `@Model.field` literals carry `enc : a -> Wire` and
+# `dec : Wire -> Result a String`, generated from the type's declaration out of
+# these names.  std/json turns a Wire into text and back.  A decoder is LENIENT
+# about text where a number or a boolean is wanted ("10", "true"): what comes
+# from a page's client state is always text.
+Wire = Type (WInt Int | WStr String | WBool Bool | WList (List Wire) | WRec (List (String, Wire)) | WCon String (List Wire)).
+
+wireMap : unsafe (a -> Wire) -> List a -> List Wire .
+wireMap f xs = case xs of Nil -> Nil | x :: r -> f x :: wireMap f r.
+
+wireAnd : Result a String -> (a -> Result b String) -> Result b String .
+wireAnd r f = case r of Ok x -> f x | Err e -> Err e.
+
+# name the place an error came from: "notes.2: expected a string"
+wireAt : String -> Result a String -> Result a String .
+wireAt place r = case r of Ok x -> Ok x | Err e -> Err (strcat place (strcat ": " e)).
+
+wireToInt : Wire -> Result Int String .
+wireToInt w = case w of WInt n -> Ok n | WStr t -> wireInt t | _ -> Err "expected a number".
+
+wireToStr : Wire -> Result String String .
+wireToStr w = case w of WStr t -> Ok t | WInt n -> Ok (str n) | _ -> Err "expected a string".
+
+wireToBool : Wire -> Result Bool String .
+wireToBool w = case w of
+    WBool b -> Ok b
+  | WStr t -> (case t == "True" or t == "true" of
+      True -> Ok True
+    | False -> (case t == "False" or t == "false" of True -> Ok False | False -> Err "expected True or False"))
+  | _ -> Err "expected True or False".
+
+wireToList : (Wire -> Result a String) -> Wire -> Result (List a) String .
+wireToList dec w = case w of WList xs -> wireListGo dec xs 0 Nil | _ -> Err "expected a list".
+wireListGo : unsafe (Wire -> Result a String) -> List Wire -> Int -> List a -> Result (List a) String .
+wireListGo dec xs i acc = case xs of
+    Nil -> Ok (wireRev acc Nil)
+  | x :: r -> (case dec x of Ok v -> wireListGo dec r (i + 1) (v :: acc) | Err e -> Err (strcat (str i) (strcat ": " e))).
+wireRev : unsafe List a -> List a -> List a .
+wireRev xs acc = case xs of Nil -> acc | x :: r -> wireRev r (x :: acc).
+
+wireField : unsafe String -> List (String, Wire) -> Result Wire String .
+wireField name fs = case fs of
+    Nil -> Err "missing"
+  | (k, v) :: r -> (case k == name of True -> Ok v | False -> wireField name r).
+
+# a constructor: WCon name fields, or the list [name, field, ...] text gives
+wireCon : Wire -> Result (String, List Wire) String .
+wireCon w = case w of
+    WCon n as -> Ok (n, as)
+  | WList (WStr n :: as) -> Ok (n, as)
+  | _ -> Err "expected a message: [name, field, ...]".
+
 # ---- Str: (+) concatenates; (-) is DEconcatenation --------------------------
 # (a + b) - b == a: removes b when it is a suffix of a, else a unchanged.
 strTake s n = strTakeGo s n 1 "".
