@@ -1,3 +1,5 @@
-out: Bump [10] | Add [two words] | Toggle [True] | Move [-3, 4, x] | Clear []
-in:  Ok (Bump 10) | Ok (Move (-3) 4 x) | Ok (Toggle False) | Ok Clear
-bad: Err Bump: field 1 is not a number | Err Bump: expected 1 field(s) | Err Msg: no such message: Nope | Err Toggle: field 1 is not True or False | Err Clear: expected 0 field(s)
+enc: WCon Move [WRec [(x, WInt 1), (y, WInt (-2))], WList [WInt 3, WInt 4]]
+dec: Ok Move {x = 1, y = -2} [3, 4] | Ok Pair (7, seven) | Ok Bump 10
+bad: Err Bump field 1: not a number | Err Msg: no such message: Nope | Err Move field 1: y: missing | Err expected a message: [name, field, ...]
+field: WList [WRec [(name, WStr a), (tags, WList [WStr p, WStr q]), (at, WRec [(x, WInt 1), (y, WInt 2)]), (done, WBool True)]]
+back: Ok [{at = {x = 1, y = 2}, done = True, name = a, tags = [p, q]}] | Err 0: tags: 1: expected a string

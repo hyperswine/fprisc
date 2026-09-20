@@ -66,9 +66,11 @@ modules fails at LINK time on the `fpr_g_Os_` name: imports are the manifest.
 | `std/file` | whole files: `readText readBytes lines writeText appendText writeLines exists info isFile isDir size remove rename copy`; streaming: `open seek withOpen` (closes on every path) |
 | `std/dir` | `list entries walk glob matches create` (with parents) `remove removeAll current` |
 | `std/proc` | `run runIn pipeTo runWithin runWith describe spawn output shell` -- an ARGUMENT LIST, never parsed; stdout, stderr and status distinct; `Err` only when it could not start; a time limit kills the child and says so; extra environment; `shell` is the explicit `/bin/sh -c` |
-| `std/clock` | `monotonic elapsedMs now sleepMs date iso civil` -- the calendar is computed here, not by libc |
-| `std/stream` | bytes in order from a file or a socket: `read readWithin readAll write close`, and a `Reader` that keeps what was read past what you asked for: `reader readUntil readLine readExactly readRest` |
-| `std/tcp` | `connect listen port accept stop serve` -- `serve` gives each connection its own actor and closes it when the handler returns |
+| `std/clock` | `monotonic elapsedMs now sleepMs date iso civil receiveWithin` -- the calendar is computed here, not by libc |
+| `std/stream` | bytes in order from a file or a socket: `read readWithin readAll readOn write close`, and a `Reader` (`reader`, or `readerOn poller`) that keeps what was read past what you asked for: `reader readUntil readLine readExactly readRest` |
+| `std/poller` | ONE actor that waits on every descriptor: `start await`. Waiters sleep in their mailboxes; one `poll(2)` covers them all; one-shot, level-triggered; a quiet turn allocates nothing |
+| `std/tcp` | `connect listen port accept stop serve serveOn` -- `serve` gives each connection its own actor and closes it when the handler returns |
+| `std/term` | a terminal application, the same shape as a web one: `run { init, update, view, subs }`, `Ev msg = Key k \| Resized c r \| Msg m`, `Cmd msg = After \| Run \| Quit`, `Sub msg = Every`; keys decoded in FP-RISC (`decode`: a UTF-8 character at a time, arrows, Home/End, F-keys, Ctrl, Alt); `clear moveTo bold dim inverse color altScreen`; lines repainted only when they change; the terminal is put back however the program ends |
 | `std/math` | Int: `abs min max clamp sign mod rem isEven gcd powInt`; F64: `pi e toFloat truncate floor ceiling round sqrt pow exp log log2 sin cos tan absF minF maxF clampF isFinite format` |
 | `std/binary` | fixed-width integers in a byte string: `u8 u16le u16be u32le u32be i8 i16le i32le i32be` (past the end is `None`), `putU8 putU16le putU16be putU32le putU32be` |
 
@@ -81,7 +83,7 @@ clients run in one process, which is how the tests run them.
 
 | module | what is in it |
 |---|---|
-| `std/json` | `Value = Null \| Boolean \| Integer \| Real \| Text \| Sequence \| Object`; `parse` (errors as `line 3, column 14: expected ':'`), `render`, `equal`, `field at asString asInt asBool asReal asList asObject isNull object strings quote`. A `Real` keeps its TEXT: no float parsing to get wrong |
+| `std/json` | `Value = Null \| Boolean \| Integer \| Real \| Text \| Sequence \| Object`; `parse` (errors as `line 3, column 14: expected ':'`), `render`, `equal`, `field at asString asInt asBool asReal asList asObject isNull object strings quote`, and `fromWire toWire encode decode` for any type with a compiler-minted codec (`@Msg`, `@Model.field`: docs/PATHS.md). A `Real` keeps its TEXT: no float parsing to get wrong |
 | `std/decode` | flexible data into YOUR types: `string int bool number value succeed fail nullable field optional at list dict map andThen check oneOf map2..map5 andMap run fromString infer fields`. Errors name the path: `servers.1.tags.1: expected a string, found an integer` |
 | `std/config` | `load` combines defaults < a JSON file < `PREFIX_NAME` in the environment < `--name=value`, into a Value you decode; `positional` |
 | `std/http` | client: `get post request parseUrl parseResponse`; server: `serve text html json response header`. HTTP/1.1, lower-case header names, chunked decoding, one request per connection. **`https://` is fetched by running `curl`** (std has no TLS); where curl is missing the Err says so |
@@ -89,11 +91,12 @@ clients run in one process, which is how the tests run them.
 | `std/digest` | SHA-1 (for protocols that name it: `sha1 sha1Bytes`) and SHA-256 in FP-RISC: `sha256 sha256File` (streamed) and incremental `init update finish finishBytes`. About 1 MB/s: for files and configuration, not bulk data |
 | `std/log` | a logger is a VALUE: `toStderr toFile json levelOf debug info warn error`. `2026-09-20T03:14:15Z INFO  listening port=8080`, or one JSON object per line |
 | `std/ws` | WebSocket, the server side (RFC 6455): `accept receive receiveMax receiveOnly sendText sendBinary sendPong sendClose frame`. Whole messages: fragments reassembled, all three length forms, nothing capped unless you ask |
-| `std/kvlog` | a durable key-value store that is an APPEND-ONLY log: `open put get keys size`, and on the file itself `records history at`. Replays on open; a torn last line is skipped and counted |
-| `std/live` | a server-driven UI over a websocket, the LiveView way: `serve replay`, durable fields from paths (`int string bool strings json`), `Ev msg`, `Cmd msg`, `Sub msg`, `Policy`. Messages are the app's own type, carried by `@Msg`. See [LIVE.md](LIVE.md) |
+| `std/kvlog` | a durable key-value store that is an APPEND-ONLY log: `open put get keys size compact`, and on the file itself `records history at`. Replays on open; a torn last line is skipped and counted |
+| `std/live` | a server-driven UI over a websocket, the LiveView way: `serve replay`, durable fields from paths (`field`, `custom`), `Ev msg`, `Cmd msg`, `Sub msg`, `Policy`. Messages are the app's own type, carried by `@Msg`. See [LIVE.md](LIVE.md) |
 | `std/view` | the view tree (`El Txt Dyn Inp`, attributes), `render` to (statics, dynamics), generated CSS; and the TYPED helpers: `send sendWith enterWith` (a message VALUE through a codec), `locals showIf setTo bind text` (client state named by paths) |
 | `std/ma` | the Ma design system over View: `vstack hstack zstack spacer card cardGrid button badge chip toast accordion navBar page`, text roles, `maCssFor` |
 | `std/livejs` | the client script (~150 lines), served inline |
+| `std/actor` (additions) | `sendSure` / `askSure`: a send that is not lost (`send` never waits, and a refused request is somebody waiting forever); `boundary` / `tidy`: how a long-lived actor stays the same size |
 | `std/task` | `map mapBounded`: the same work on many inputs, an actor each, at most `n` at once, results in input order |
 
 ## The acceptance programs
@@ -109,14 +112,18 @@ The design names three. Two exist, and both are driven by `tests/check_std.py`:
   it; a digest per line with bounded parallelism; every request logged, failures
   at WARN; `POST /shutdown` stops the listener and the program exits 0. The test
   hits it with 40 parallel writes.
+- `examples/todo.fpr` is a TERMINAL app (`std/term`): the same init / update / view
+  / subs, keys where the clicks were, a durable list through a minted codec. The
+  suite drives it through a pseudo-terminal.
 - `examples/wc.fpr` is an executable script (`#!/usr/bin/env -S fpr run`).
 
 ## Not here yet (from the design's inventory)
 
 - **Base:** `Vector` (the prelude's linear `Vec.*` is the substrate); an owned,
   resizable `Buffer`; a LINEAR stream handle (today a Stream is a plain value you
-  close, and `withOpen` / `Tcp.serve` close for you); `receiveWithin` and typed
-  `Actor msg` wrappers (a timed receive needs the runtime); `Atomic`.
+  close, and `withOpen` / `Tcp.serve` close for you); typed `Actor msg` wrappers;
+  `Atomic`. (A timed receive exists now: `Clock.receiveWithin`, over the runtime's
+  `receiveNow`.)
 - **ExtBase:** TLS in std (HTTPS rides on curl); HTTP keep-alive and streaming
   bodies; password hashing and other digests; `Encode` from records (there is no
   reflection: you build a `Json.Value`).

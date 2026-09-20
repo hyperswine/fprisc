@@ -10,6 +10,7 @@
 
 OS = use "os".
 S = use "string".
+O = use "option".
 
 # microseconds since an arbitrary start
 monotonic : Unit -> Int .
@@ -55,3 +56,16 @@ iso secs =
   days = (case secs >= 0 of True -> secs | False -> secs - 86399) / 86400;
   rem = secs - days * 86400;
   "{date secs}T{two (rem / 3600)}:{two ((rem - (rem / 3600) * 3600) / 60)}:{two (rem - (rem / 60) * 60)}Z".
+
+# ---- a receive that gives up (it needs a clock, so it lives here: std/actor is
+# for every system, and not every system has this one) ------------------------------
+# the next message, or None after `ms`.  Waiting allocates nothing (`receiveNow`
+# answers a static Err on an empty mailbox) and sleeps the ACTOR, backing off from
+# 0.1 ms to 5 ms.  Drop the message when you have read it, as after any receive.
+receiveWithin : Int -> Int -> O.Option a .
+receiveWithin ms me = withinGo me (Sys.timeUs Unit + ms * 1000) 100.
+withinGo : unsafe Int -> Int -> Int -> O.Option a .
+withinGo me deadline wait = case receiveNow me of
+    Ok m -> O.Some m
+  | Err _ -> (if Sys.timeUs Unit >= deadline then O.None
+      else _ = Sys.sleepUs wait; withinGo me deadline (if wait >= 5000 then 5000 else wait * 2)).

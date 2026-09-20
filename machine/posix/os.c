@@ -22,6 +22,10 @@
  *                  and the answer is Err "timed out after N ms")
  *                  -> exit status (128 + signal when killed), stdout, stderr
  *   Os.wallClock : Unit -> Int                                  seconds since 1970-01-01 UTC
+ *   Os.ttyRaw    : Bool -> Result Unit String                   stdin's terminal into raw mode (no line buffering,
+ *                                                               no echo, reads never wait) / back as it was; it is
+ *                                                               also put back at exit and on SIGINT / SIGTERM
+ *   Os.ttySize   : Unit -> (Int, Int)                           columns, rows of the terminal; (0, 0) when there is none
  *   Os.exec      : List String -> Result Unit String            BECOME that program (execvp): on
  *                                                               success this process is gone, so an
  *                                                               answer is always the Err
@@ -29,6 +33,8 @@
  * Streams (files and sockets alike are a descriptor, an Int):
  *   Os.open      : String -> String -> Result Int String        path, mode "r" | "w" | "a" | "rw"
  *   Os.ready     : Int -> Bool                                  something to read (or accept) NOW; allocates nothing
+ *   Os.poll      : List Int -> List Int                         which of these are ready NOW (one poll(2) for
+ *                                                               all of them); none ready = the static Nil
  *   Os.read      : Int -> Int -> Result String String           up to n bytes; "" = end of stream;
  *                                                               Err "again" = nothing YET (sockets)
  *   Os.write     : Int -> String -> Result Int String           bytes taken (may be fewer); Err "again"
@@ -51,7 +57,9 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <termios.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -342,6 +350,32 @@ static V h_ready(V fdv) {
 }
 FPR_FN(fpr_g_Os_x2eready, h_ready, 1);
 
+/* ONE system call for every descriptor a server is waiting on (std/poller.fpr).
+ * Nothing ready answers the static Nil: an idle server's poller allocates
+ * nothing.  A descriptor that has gone bad counts as ready -- its reader will
+ * learn why from the read. */
+static V h_poll(V fdsv) {
+  size_t n = 0;
+  for (V c = fdsv; !ISINT(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) n++;
+  if (!n) return (V)&os_nil;
+  struct pollfd small[64], *p = n <= 64 ? small : malloc(n * sizeof *p);
+  if (!p) fpr_cpanic("out of memory");
+  size_t i = 0;
+  for (V c = fdsv; i < n; c = ((V *)((char *)c + 8))[1]) {
+    V f = ((V *)((char *)c + 8))[0];
+    p[i].fd = ISINT(f) ? (int)UNTAG(f) : -1;
+    p[i].events = POLLIN;
+    p[i++].revents = 0;
+  }
+  V out = (V)&os_nil;
+  if (poll(p, (nfds_t)n, 0) > 0)
+    for (i = n; i-- > 0;)
+      if (p[i].revents) out = os_cons(TAG(p[i].fd), out);
+  if (p != small) free(p);
+  return out;
+}
+FPR_FN(fpr_g_Os_x2epoll, h_poll, 1);
+
 /* read into C memory first, then make a String of EXACTLY what arrived: a
  * 20-byte frame is a 20-byte String, not a 64 KiB block with 20 bytes used */
 static V h_read(V fdv, V nv) {
@@ -491,3 +525,48 @@ static V h_exec(V argvv) {
   return e;
 }
 FPR_FN(fpr_g_Os_x2eexec, h_exec, 1);
+
+/* ---- the terminal (std/term.fpr) -------------------------------------------
+ * Raw mode is the whole of what a TUI needs from the machine: keys as they are
+ * pressed, nothing echoed, reads that never wait (VMIN = VTIME = 0, so Os.ready
+ * and Os.read on descriptor 0 behave as they do on a socket).  ISIG stays off
+ * too: ^C is a KEY the program sees and decides about.  The terminal is put
+ * back however the program ends. */
+static struct termios tty_saved;
+static int tty_is_raw;
+static void tty_restore(void) {
+  if (tty_is_raw) { tcsetattr(0, TCSAFLUSH, &tty_saved); tty_is_raw = 0; }
+}
+static void tty_signal(int sig) {
+  tty_restore();
+  signal(sig, SIG_DFL);
+  raise(sig);
+}
+static V h_tty_raw(V onv) {
+  int on = !ISINT(onv) && ((hdr_t *)onv)->var != 0;
+  if (!on) { tty_restore(); return os_ok((V)&fpr_unit); }
+  if (tty_is_raw) return os_ok((V)&fpr_unit);
+  if (!isatty(0)) return os_err("stdin is not a terminal");
+  if (tcgetattr(0, &tty_saved)) return os_errno();
+  struct termios t = tty_saved;
+  t.c_lflag &= (tcflag_t) ~(ICANON | ECHO | ISIG | IEXTEN);
+  t.c_iflag &= (tcflag_t) ~(IXON | ICRNL);
+  t.c_cc[VMIN] = 0;
+  t.c_cc[VTIME] = 0;
+  if (tcsetattr(0, TCSAFLUSH, &t)) return os_errno();
+  static int hooked;
+  if (!hooked) { hooked = 1; atexit(tty_restore); signal(SIGINT, tty_signal); signal(SIGTERM, tty_signal); signal(SIGHUP, tty_signal); }
+  tty_is_raw = 1;
+  return os_ok((V)&fpr_unit);
+}
+FPR_FN(fpr_g_Os_x2ettyRaw, h_tty_raw, 1);
+
+static V h_tty_size(V u) {
+  (void)u;
+  struct winsize ws = {0};
+  int fd = isatty(1) ? 1 : (isatty(0) ? 0 : -1);
+  if (fd < 0 || ioctl(fd, TIOCGWINSZ, &ws)) { ws.ws_col = 0; ws.ws_row = 0; }
+  V f[2] = {TAG((sw)ws.ws_col), TAG((sw)ws.ws_row)};
+  return os_cell(T_TUP2, 0, 2, f);
+}
+FPR_FN(fpr_g_Os_x2ettySize, h_tty_size, 1);

@@ -1,0 +1,3 @@
+before: Ok 101 lines; compact keeping the journal whole: Ok 49
+after: Ok 52 lines; count=Some (Integer 50) history of count Ok 1 of $event Ok 50
+reopened after compaction and one more put: count=Some (Integer 99) name=Some (Text fig) size=3

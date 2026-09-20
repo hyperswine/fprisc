@@ -1,0 +1,4 @@
+plain: [Char h, Char i, Char  , Char é, Char 😀, Enter, Tab] rest=0
+keys:  [Up, Left, Delete, F 5, F 1, BackTab, Right] rest=0
+ctrl:  [Ctrl c, Backspace, Alt x, Escape] rest=0
+split: [] rest=3 [] rest=1 [] rest=1

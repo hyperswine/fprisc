@@ -17,8 +17,13 @@
 # std/decode.  A torn last line -- the process died mid-append -- fails to
 # parse and is skipped, and `open` says how many lines it skipped.
 #
-# Not here: compaction (the log only grows), fsync (a put is durable when the
-# OS says the append returned, not when the platter has it), multi-process use.
+# The log only grows until you say otherwise: `compact keepAll db` rewrites it
+# with the LATEST record of every key, and the whole history of the keys you
+# name (an event journal is only useful whole).  It is written beside the log
+# and renamed over it, so a crash leaves the old log or the new one, never half.
+#
+# Not here: fsync (a put is durable when the OS says the append returned, not
+# when the platter has it), multi-process use.
 
 J = use "json".
 M = use "map".
@@ -26,11 +31,12 @@ O = use "option".
 S = use "string".
 F = use "file".
 C = use "clock".
+A = use "actor".
 
 KvLog = Type (KvLog Int String).
 
-Req = Type (Put key value | Get key | Keys | Size).
-Rep = Type (Done | Value v | Listing ks | Count n).
+Req = Type (Put key value | Get key | Keys | Size | Compact keepAll).
+Rep = Type (Done | Value v | Listing ks | Count n | Failed why).
 
 rev : unsafe List a -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
@@ -94,34 +100,74 @@ step path m q = case q of
       (M.insert (keep k) (keep v) m, Done)
   | Get k -> (m, (case M.get k m of O.Some v -> Value v | O.None -> Done))
   | Keys -> (m, Listing (M.keys m))
-  | Size -> (m, Count (M.size m)).
+  | Size -> (m, Count (M.size m))
+  | Compact keepAll -> (m, (case rewrite path keepAll of Ok dropped -> Count dropped | Err why -> Failed why)).
+
+# the log again, with only what is still worth keeping; answers how many records went
+rewrite : String -> List String -> Result Int String .
+rewrite path keepAll = case records path of
+    Err why -> Err why
+  | Ok (recs, _) ->
+      latest = lastIndex recs 0 (M.empty S.compare);
+      kept = keepGo recs 0 keepAll latest Nil;
+      tmp = strcat path ".compact";
+      (case F.writeText tmp (strJoin "" kept) of
+          Err why -> Err why
+        | Ok _ -> (case F.rename tmp path of
+              Err why -> Err why
+            | Ok _ -> Ok (countOf recs 0 - countOf kept 0))).
+
+# key -> the position of its last record
+lastIndex : unsafe List (Int, String, J.Value) -> Int -> M.Map String Int -> M.Map String Int .
+lastIndex recs i m = case recs of Nil -> m | (_, k, _) :: r -> lastIndex r (i + 1) (M.insert k i m).
+
+# the lines to keep, in their original order
+keepGo : unsafe List (Int, String, J.Value) -> Int -> List String -> M.Map String Int -> List String -> List String .
+keepGo recs i keepAll latest acc = case recs of
+    Nil -> rev acc Nil
+  | (t, k, v) :: r -> (if isIn k keepAll or M.get k latest == O.Some i
+      then keepGo r (i + 1) keepAll latest (strcat (J.render (J.object (("t", J.Integer t) :: ("k", J.Text k) :: ("v", v) :: Nil))) "\n" :: acc)
+      else keepGo r (i + 1) keepAll latest acc).
+isIn : unsafe String -> List String -> Bool .
+isIn k ks = case ks of Nil -> False | x :: r -> (if x == k then True else isIn k r).
+countOf : unsafe List a -> Int -> Int .
+countOf xs n = case xs of Nil -> n | _ :: r -> countOf r (n + 1).
 
 # A reply is a MESSAGE: it is dropped once read (or it pins the store's slab for
 # as long as the caller lives), and what is taken out of it to keep is `keep`-copied.
 put : String -> J.Value -> KvLog -> Unit .
 put key value db = case db of KvLog a _ ->
-  r = ask (myself 0) a (Put key value);
+  r = A.askSure (myself 0) a (Put key value);
   _ = drop r;
   Unit.
 
 get : String -> KvLog -> O.Option J.Value .
 get key db = case db of KvLog a _ ->
-  r = ask (myself 0) a (Get key);
+  r = A.askSure (myself 0) a (Get key);
   out = (case r of Value v -> O.Some (keep v) | _ -> O.None);
   _ = drop r;
   out.
 
 keys : KvLog -> List String .
 keys db = case db of KvLog a _ ->
-  r = ask (myself 0) a Keys;
+  r = A.askSure (myself 0) a Keys;
   out = (case r of Listing ks -> keep ks | _ -> Nil);
   _ = drop r;
   out.
 
 size : KvLog -> Int .
 size db = case db of KvLog a _ ->
-  r = ask (myself 0) a Size;
+  r = A.askSure (myself 0) a Size;
   out = (case r of Count n -> n | _ -> 0);
+  _ = drop r;
+  out.
+
+# rewrite the log keeping the latest record of every key and ALL records of the
+# keys in `keepAll`; answers how many records were dropped
+compact : List String -> KvLog -> Result Int String .
+compact keepAll db = case db of KvLog a _ ->
+  r = A.askSure (myself 0) a (Compact keepAll);
+  out = (case r of Count n -> Ok n | Failed why -> Err (keep why) | _ -> Err "compact: no answer");
   _ = drop r;
   out.
 

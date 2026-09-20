@@ -1,8 +1,17 @@
 unsafe base.
-Msg = Type (Bump Int | Add String | Toggle Bool | Move Int Int String | Clear).
+Point = {x : Int, y : Int}.
+Item = {name : String, tags : List String, at : Point, done : Bool}.
+Msg = Type (Bump Int | Add String | Toggle Bool | Move Point (List Int) | Pair (Int, String) | Clear).
+Model = {count : Int, items : List Item, title : String}.
 codec = @Msg.
-show m = "{codec.name m} {codec.args m}".
+items = @Model.items.
+show w = case w of Ok v -> "Ok {v}" | Err e -> "Err {e}".
 main =
-  _ = print "out: {show (Bump 10)} | {show (Add "two words")} | {show (Toggle True)} | {show (Move (0 - 3) 4 "x")} | {show Clear}";
-  _ = print "in:  {codec.make "Bump" ("10" :: Nil)} | {codec.make "Move" ("-3" :: "4" :: "x" :: Nil)} | {codec.make "Toggle" ("False" :: Nil)} | {codec.make "Clear" Nil}";
-  print "bad: {codec.make "Bump" ("ten" :: Nil)} | {codec.make "Bump" Nil} | {codec.make "Nope" Nil} | {codec.make "Toggle" ("yes" :: Nil)} | {codec.make "Clear" ("x" :: Nil)}".
+  m = Move {x = 1, y = 0 - 2} (3 :: 4 :: Nil);
+  _ = print "enc: {codec.enc m}";
+  _ = print "dec: {show (codec.dec (codec.enc m))} | {show (codec.dec (codec.enc (Pair (7, "seven"))))} | {show (codec.dec (WList (WStr "Bump" :: WStr "10" :: Nil)))}";
+  _ = print "bad: {show (codec.dec (WList (WStr "Bump" :: WStr "ten" :: Nil)))} | {show (codec.dec (WCon "Nope" Nil))} | {show (codec.dec (WCon "Move" (WRec (("x", WInt 1) :: Nil) :: WList Nil :: Nil)))} | {show (codec.dec (WInt 3))}";
+  model = {count = 1, title = "t", items = {name = "a", tags = "p" :: "q" :: Nil, at = {x = 1, y = 2}, done = True} :: Nil};
+  w = items.enc (items.get model);
+  _ = print "field: {w}";
+  print "back: {show (items.dec w)} | {show (items.dec (WList (WRec (("name", WStr "a") :: ("tags", WList (WInt 3 :: WBool True :: Nil)) :: Nil) :: Nil)))}".

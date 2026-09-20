@@ -165,6 +165,7 @@ typedef struct fpr_sched {
   uw (*arc_live)(void);
   char *heap_lo, *heap_hi;            /* fpr_in_heap bounds, shared span */
   uw (*stack_grow)(uw sp);            /* the plane owns the actors, so their stacks */
+  V (*receive_now)(V me);             /* receive without waiting (actors.c) */
 } fpr_sched_t;
 extern fpr_sched_t *fpr_sched;        /* NULL = this image is the plane */
 void fpr_sched_export(fpr_sched_t *out); /* fill with THIS image's impls */

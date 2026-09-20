@@ -12,6 +12,7 @@
 
 OS = use "os".
 ST = use "stream".
+PL = use "poller".
 
 Listener = Type (Listener Int).
 
@@ -49,3 +50,24 @@ serveGo l handler = case accept l of
   | Ok (conn, peer) ->
       _ = spawn (fn self -> _ = handler conn peer; ST.close conn);
       serveGo l handler.
+
+# the same server, waiting for connections on a Poller (std/poller.fpr) instead
+# of polling the listener on a timer
+serveOn : PL.Poller -> Listener -> (ST.Stream -> String -> a) -> String .
+serveOn p l handler = serveOnGo p l handler.
+serveOnGo : unsafe PL.Poller -> Listener -> (ST.Stream -> String -> a) -> String .
+serveOnGo p l handler = case l of Listener f ->
+  _ = PL.await f p;
+  (case acceptAll f handler of
+      "" -> serveOnGo p l handler
+    | why -> why).
+
+# one wake, EVERY connection that is waiting: a burst must not sit in the
+# kernel's backlog (128 on macOS) while we take one per poller turn.  "" = the
+# backlog is empty; anything else is why accepting failed.
+acceptAll : unsafe Int -> (ST.Stream -> String -> a) -> String .
+acceptAll f handler = case OS.accept f of
+    Ok (c, peer) ->
+      _ = spawn (fn self -> _ = handler (ST.Stream c) peer; ST.close (ST.Stream c));
+      acceptAll f handler
+  | Err why -> (if why == "again" then "" else why).

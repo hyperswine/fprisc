@@ -146,6 +146,10 @@ endif
 ifeq ($(shell uname -s),Linux)
 POSIXLDFLAGS ?= -no-pie
 endif
+# x28 is reserved on aarch64: ctx_a64.S does not save it (compiler/Build.hs says why)
+ifneq ($(filter aarch64 arm64,$(shell uname -m)),)
+POSIXFIXED = -ffixed-x28
+endif
 RT_POSIX = $(MACHINE)/posix/main.c $(MACHINE)/posix/hal.c $(MACHINE)/posix/base.c $(MACHINE)/posix/os.c $(POSIXCTX)
 BIN ?= $(BUILD)/$(basename $(notdir $(PROG)))
 $(BUILD)/base.s: fprc $(PROG) core/prelude.fpr FORCE
@@ -153,7 +157,7 @@ $(BUILD)/base.s: fprc $(PROG) core/prelude.fpr FORCE
 	LC_ALL=C.UTF-8 ./fprc --system=posix --prelude=core/prelude.fpr $(PROG) $@
 
 posix: $(BUILD)/base.s $(RT_POSIX) $(RT_CORE)
-	$(CC) -O2 -Wall -Wextra -DFPR_POSIX -DFPR_NHARTS=$(POSIXHARTS) $(POSIXLDFLAGS) -I$(RUNTIME) -I$(MACHINE)/posix \
+	$(CC) -O2 -Wall -Wextra $(POSIXFIXED) -DFPR_POSIX -DFPR_NHARTS=$(POSIXHARTS) $(POSIXLDFLAGS) -I$(RUNTIME) -I$(MACHINE)/posix \
 	  $(BUILD)/base.s $$(cat $(BUILD)/base.s.units) $(RT_POSIX) $(RT_CORE) -lpthread -lm -o $(BIN)
 
 posix-run: posix

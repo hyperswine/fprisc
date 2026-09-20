@@ -470,6 +470,8 @@ builtinEnv =
       ("sendArc", scheme [0] (TFn tInt (TFn (sv 0) (tcon "Result" [tUnit, tStr])))),
       ("receive", scheme [0] (TFn tInt (sv 0))),
       ("receiveRes", scheme [0, 1] (TFn tInt (tcon "Result" [sv 0, sv 1]))),
+      -- without waiting: Ok message | Err "empty" (the Err is static: asking allocates nothing)
+      ("receiveNow", scheme [0] (TFn tInt (tcon "Result" [sv 0, tStr]))),
       ("spawn", scheme [0] (TFn (TFn tInt (sv 0)) tInt)),
       ("spawnCap", scheme [0] (TFn tInt (TFn tInt (TFn (TFn tInt (sv 0)) tInt)))),
       ("spawnCapOn", scheme [0] (TFn tInt (TFn tInt (TFn tInt (TFn (TFn tInt (sv 0)) tInt))))),
