@@ -29,6 +29,7 @@
 OS = use "os".
 S = use "string".
 O = use "option".
+A = use "actor".
 
 Key = Type (Char String | Enter | Escape | Backspace | Tab | BackTab | Up | Down | Left | Right
           | Home | End | PageUp | PageDown | Insert | Delete | F Int | Ctrl String | Alt String).
@@ -188,8 +189,8 @@ perform me cmds = case cmds of
     Nil -> False
   | c :: r -> (case c of
         Quit -> _ = perform me r; True
-      | After ms msg -> _ = spawn (fn self -> _ = Sys.sleepUs (ms * 1000); send me (Ok msg)); perform me r
-      | Run work -> _ = spawn (fn self -> send me (Ok (work Unit))); perform me r).
+      | After ms msg -> _ = spawn (fn self -> _ = Sys.sleepUs (ms * 1000); A.sendSure self me (Ok msg)); perform me r
+      | Run work -> _ = spawn (fn self -> A.sendSure self me (Ok (work Unit))); perform me r).
 
 # a ticker per NEW subscription: it sends its message every ms (the loop has no
 # way to stop one yet, so an app's `subs` should be steady, or ignore stale ticks)

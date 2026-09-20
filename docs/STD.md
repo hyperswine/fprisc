@@ -96,6 +96,7 @@ clients run in one process, which is how the tests run them.
 | `std/view` | the view tree (`El Txt Dyn Inp`, attributes), `render` to (statics, dynamics), generated CSS; and the TYPED helpers: `send sendWith enterWith` (a message VALUE through a codec), `locals showIf setTo bind text` (client state named by paths) |
 | `std/ma` | the Ma design system over View: `vstack hstack zstack spacer card cardGrid button badge chip toast accordion navBar page`, text roles, `maCssFor` |
 | `std/livejs` | the client script (~150 lines), served inline |
+| `std/actor` (additions) | `sendSure` / `askSure`: a send that is not lost (`send` never waits, and a refused request is somebody waiting forever); `boundary` / `tidy`: how a long-lived actor stays the same size |
 | `std/task` | `map mapBounded`: the same work on many inputs, an actor each, at most `n` at once, results in input order |
 
 ## The acceptance programs

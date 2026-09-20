@@ -55,6 +55,12 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     assert 'stack overflow' in p.stdout + p.stderr and 'PANIC [actor 0]' in p.stdout + p.stderr, p.stderr
     assert 'forever:' not in p.stdout
     print('Stacks grow (200,000 plain frames); run-away recursion is a named panic at the ceiling, exit 1: PASS')
+    # 4e. an actor that sleeps while messages keep arriving: a sleeper woken early was
+    # linked on the hart's list twice, and the hart then walked a one-node cycle forever
+    sw = build('tests/base/sleepwake.fpr', 'sleepwake')
+    for _ in range(4):
+        assert 'sleepwake: alive' in run([sw], timeout=60).stdout
+    print('Sleeping while messages arrive (the poller shape), four times: the hart never spins: PASS')
     # 4c. the heap is a reservation of address space, not a size: a live heap past
     # the 256 MiB it used to be fixed at, and FPR_HEAP_MB caps a run by name
     big = build('tests/base/bigheap.fpr', 'bigheap')

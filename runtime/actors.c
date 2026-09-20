@@ -190,6 +190,8 @@ typedef struct fpr_acb {
    * kept warm, and the check values of the segment last known to hold sp */
   struct stkseg *segs, *spare;
   uw stk_lo, stk_span, stk_total;
+  /* Sys.sleepUs: linked on hart `slp_hart`'s sleeper list right now (see a_sleep_us) */
+  uw slp_on, slp_hart;
 } acb_t;
 #define TR(a, code) do { (a)->tr[(a)->tr_i++ % 16] = (uint8_t)((code) * 8 + (fpr_hart() ? fpr_hart()->id : 7)); } while (0)
 
@@ -1414,11 +1416,38 @@ static V a_sleep_us(V usv) {
     fpr_hal_sleep_us((uw)us);
     return (V)&fpr_unit;
   }
+  /* A sleeper woken EARLY by a message returned still linked on the list, and
+   * its next sleep linked it a second time: when it was the head it then pointed
+   * at itself, and the hart walked that one-node cycle forever, running nothing
+   * (an actor that sleeps while messages keep arriving -- std/poller -- did it
+   * within a few hundred connections).  So: never link twice.  An actor still on
+   * a list another hart owns (it migrated mid-sleep) may not touch that list, and
+   * takes the host sleep this once; that hart unlinks it when it comes due. */
+  if (__atomic_load_n(&a->slp_on, __ATOMIC_ACQUIRE)) {
+    fpr_hal_sleep_us((uw)us);
+    return (V)&fpr_unit;
+  }
   a->wake_at = now + (uint64_t)us * 10; /* mtime runs at 10 MHz everywhere we run */
+  a->slp_hart = h->id;
+  __atomic_store_n(&a->slp_on, 1, __ATOMIC_RELEASE);
   a->slp_next = h->slp_head;
   h->slp_head = a;
   __atomic_fetch_add(&g_sleepers, 1, __ATOMIC_RELAXED);
   while (!p_sleep(a, 0)) block_unless(a, p_sleep, 0);
+  /* woken by the deadline: slp_drain already unlinked us.  Woken early and now
+   * past it: still linked.  Unlink here when the list is THIS hart's to touch. */
+  if (__atomic_load_n(&a->slp_on, __ATOMIC_ACQUIRE)) {
+    fpr_hart_t *hn = fpr_hart();
+    if (hn && hn->id == a->slp_hart) {
+      for (acb_t **pp = &hn->slp_head; *pp; pp = &(*pp)->slp_next)
+        if (*pp == a) {
+          *pp = a->slp_next;
+          __atomic_fetch_sub(&g_sleepers, 1, __ATOMIC_RELAXED);
+          __atomic_store_n(&a->slp_on, 0, __ATOMIC_RELEASE);
+          break;
+        }
+    }
+  }
   return (V)&fpr_unit;
 }
 FPR_FN(fpr_g_Sys_x2esleepUs, a_sleep_us, 1);
@@ -1433,6 +1462,7 @@ static void slp_drain(fpr_hart_t *h) {
     uint32_t st = __atomic_load_n(&a->var, __ATOMIC_ACQUIRE);
     if (now >= a->wake_at || st == ST_DEAD) {
       *pp = a->slp_next;
+      __atomic_store_n(&a->slp_on, 0, __ATOMIC_RELEASE); /* after the unlink: a_sleep_us reads it */
       __atomic_fetch_sub(&g_sleepers, 1, __ATOMIC_RELAXED);
       if (st != ST_DEAD) wake(a);
       fired = 1;
@@ -1556,6 +1586,7 @@ void fpr_actors_init(void) { /* hart 0, before fpr_smp_go */
   main_acb.msg_slab = 0;
   main_acb.stack = stk;
   main_acb.stack_sz = stk_sz;
+  main_acb.slp_on = 0;
   main_acb.segs = main_acb.spare = 0;
   main_acb.stk_total = 0;
   stk_window(&main_acb, 0, stk, stk_sz);
@@ -1628,6 +1659,7 @@ static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t d
   a->next = 0;
   a->stack = stk;
   a->stack_sz = stk_sz;
+  a->slp_on = 0;
   a->segs = a->spare = 0;
   a->stk_total = 0;
   stk_window(a, 0, stk, stk_sz);

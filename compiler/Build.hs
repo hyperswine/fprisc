@@ -111,12 +111,19 @@ build p = do
   let ctx = if System.Info.arch == "aarch64" then "ctx_a64.S" else "ctx_x64.S"
       core = [runtime </> f | f <- ["runtime.c", "actors.c", "bits.c", "vec.c", "sstr.c", "mod.c", "buddy.c"]]
       posix = [machine </> "posix" </> f | f <- ["main.c", "hal.c", "base.c", "os.c"]] ++ [machine </> "unix" </> ctx]
-      cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix"]
+      -- x28 is RESERVED on aarch64: the context switch (machine/unix/ctx_a64.S)
+      -- does not save it, because QOS apps keep the hart pointer there.  Without
+      -- this flag the C compiler may hold a value in x28 across a call that
+      -- switches actors (spawn waits on the memory actor) and get another actor's
+      -- back: a SIGSEGV one burst of 500 connections in twenty, and nowhere else.
+      fixed = if System.Info.arch == "aarch64" then ["-ffixed-x28"] else []
+      cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix"] ++ fixed
       linux = if System.Info.os == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []
       -- the runtime's objects are cached per hart count, rebuilt only
       -- when their source is newer: a warm build compiles the program
       -- and links, nothing more
-      rtdir = cache </> "rt" </> (System.Info.arch ++ "-h" ++ show (pHarts p))
+      -- ... and per FLAGS: an object built with other flags is not this object
+      rtdir = cache </> "rt" </> (System.Info.arch ++ "-h" ++ show (pHarts p) ++ "-" ++ showHex (fnv64 (unwords cflags)) "")
   createDirectoryIfMissing True rtdir
   -- an object is stale when ANY header is newer, not just its own source: a
   -- changed struct in fpr.h (the hart block) otherwise links new objects

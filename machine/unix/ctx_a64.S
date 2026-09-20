@@ -10,7 +10,11 @@
  * Not saving it is what makes it survive actor switches AND cross-
  * hart migration with the current hart's value, exactly the way tp
  * behaves on bare metal.  (Generated code never allocates x28 -- the
- * IR map is x19..x27 + x29 -- and app C compiles with -ffixed-x28.) */
+ * IR map is x19..x27 + x29 -- and ALL C that runs on an actor's stack must be
+ * compiled with -ffixed-x28: QOS apps, QOS Portable's host, and posix builds
+ * (compiler/Build.hs, the Makefile's posix target).  A posix build without it
+ * crashed under load: the compiler kept a global's address in x28 across a
+ * spawn that waited on the memory actor.) */
 #ifdef __APPLE__
 #define SYM(x) _##x
 #else

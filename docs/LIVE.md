@@ -34,15 +34,16 @@ and `liveboard-reload.py` as real websocket clients.
 
 ## What it costs
 
-| sessions | join all | one event to all | resident | per session | heap in use |
-|---:|---:|---:|---:|---:|---:|
-| 100 | 0.08 s | 17 ms | 50 MiB | 0.5 MiB | 71 MiB |
-| 1,000 | 2.7 s | 180 ms | 560 MiB | 0.55 MiB | 707 MiB |
+| sessions | join all | one event to all | resident | per session |
+|---:|---:|---:|---:|---:|
+| 100 | 0.08 s | 12 ms | 50 MiB | 0.5 MiB |
+| 1,000 | 1.0 s | 50-110 ms | 550 MiB | 0.55 MiB |
 
-Flat while idle, and it comes back when sessions leave (1,000 -> 500: 418 MiB in
-use). QOS's FPRLive measured 263-600 KiB a session with one actor each; this is
-two actors a session, and an actor's floor is the allocator's 64 KiB unit (a
-128 KiB stack block, a pool slab, a message slab, a mailbox block).
+Flat while idle (and 4% of one core: one poller, below), and it comes back when
+sessions leave. On Linux arm64: 500 sessions join in 0.6 s, an event reaches
+them in 54 ms. QOS's FPRLive measured 263-600 KiB a session with one actor each;
+this is two actors a session, and an actor's floor is the allocator's 64 KiB unit
+(a 128 KiB stack block, a pool slab, a message slab, a mailbox block).
 
 The first measurement said 1.2 MiB a session at 100 and 3.5 MiB at 1,000, and
 most of that was four separate mistakes, each fixed:
@@ -92,21 +93,50 @@ author would hit.
 4. **A mailbox has one type.** A writer hears the register's answers and its
    broadcasts, so they had to become one type. Fine, but it is a design
    constraint worth knowing before designing a protocol.
-5. **`exec` from a hart thread** inherits that thread's signal mask and the
+5. **TWO RUNTIME BUGS, both older than this work and both found by load.**
+   (a) A sleeping actor woken early by a message stayed on its hart's sleeper
+   list, and its next sleep linked it again; as the head it then pointed at
+   itself and the hart walked that one-node cycle forever, running nothing. The
+   poller (sleep while requests arrive) did it within a few hundred connections;
+   `tests/base/sleepwake.fpr` hangs the old runtime two runs in three.
+   (b) On aarch64 the context switch does not save `x28` (QOS apps keep the hart
+   pointer there and compile with `-ffixed-x28`), but POSIX builds did not
+   reserve it: the C compiler kept a global's address in `x28` across a spawn
+   that waited on the memory actor, and got another actor's value back -- a
+   SIGSEGV one burst of 500 connections in twenty, and nowhere else. `fpr build`
+   and the Makefile's posix target reserve it now, and the runtime object cache
+   is keyed by flags.
+6. **`exec` from a hart thread** inherits that thread's signal mask and the
    ignored SIGPIPE; `Os.exec` and `Os.run` reset both.
-6. **Waiting must not allocate.** The worst bug of all was mine: a wait loop that
+7. **Waiting must not allocate.** The worst bug of all was mine: a wait loop that
    allocated on every poll and never reached a tidy point (see the costs above).
    Any loop that can spin for a day has to be allocation-free or take boundaries.
-7. **A constructor named like a module alias** (`Digest`, with
+8. **A constructor named like a module alias** (`Digest`, with
    `Digest = use "std/digest"`) is resolved as the module, and the type error
    that follows points somewhere else entirely.
+
+## Still open: two rare failures under test
+
+The full check (`liveboard-check.py`) fails about one run in twelve at 1,000
+sessions and one in twenty at 100, in two ways, neither yet explained:
+
+- the server PANICS with `receive: not the current actor's handle` (seen once in
+  24 runs at 1,000 sessions): an actor's `receive` ran while its hart's
+  `current` was some other actor. Nothing in std passes a foreign handle, so
+  this looks like the scheduler, and the two bugs above say load finds those.
+- an update never reaches a session (a 20 s timeout with the server alive), once
+  with only two sessions connected. 3,000 events across two sessions in a
+  dedicated stress ran clean, so it is not simply the notification logic.
+
+They are recorded here rather than hidden by retries in the test.
 
 ## What would make it the application language
 
 Done since the first version of this page: durable fields and client state from
-PATH literals; a typed `Msg` with a compiler-minted codec, for records, lists and
+PATH literals (and nothing but the path); a typed `Msg` with a compiler-minted codec, for records, lists and
 nested types too, so a durable field needs only its path; sessions at half a
-megabyte; one poller for every socket; the view layer (`std/view`, `std/ma`, `std/livejs`) in std.
+megabyte; one poller for every socket; `http`, `Navigate`, `Emit`, upload and
+`KvLog.compact`; a terminal driver (`std/term`); the view layer (`std/view`, `std/ma`, `std/livejs`) in std.
 
 In the order I would do what is left:
 

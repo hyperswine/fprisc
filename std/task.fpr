@@ -14,6 +14,7 @@
 # while it waits: replies are told apart by their position, not by a tag.
 
 M = use "map".
+A = use "actor".
 Ord = use "order".
 
 rev : unsafe List a -> List a -> List a .
@@ -22,7 +23,7 @@ rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 worker : Int -> (a -> b) -> Int -> a -> Int -> Unit .
 # the reply is an Ok: `receiveRes` waits for a Result, and answers Err by itself
 # when a worker dies without sending one
-worker parent f i x self = _ = send parent (Ok (i, f x)); Unit.
+worker parent f i x self = _ = A.sendSure self parent (Ok (i, f x)); Unit.
 
 # one actor per input, all at once
 map : (a -> b) -> List a -> Result (List b) String .

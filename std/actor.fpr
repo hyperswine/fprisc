@@ -53,6 +53,26 @@ sendRetry me who m n = case send who m of
     _ = yield me;
     sendRetry me who m (n - 1).
 
+# ---- a send that is not lost -----------------------------------------------------------
+# `send` never waits: a full mailbox REFUSES, and the answer is easy to ignore.
+# Where a lost message means somebody waits forever -- a request that expects a
+# reply, a wake-up, a welcome -- use these.  They give the hart away between
+# tries so the receiver can drain, and end only when the message is queued or
+# the receiver is dead.  (A burst of 500 sessions joining lost one in a few
+# hundred runs before std/live, std/poller and std/kvlog used them.)
+sendSure : unsafe Int -> Int -> a -> Bool .
+sendSure me who m = case send who m of
+    Ok u -> True
+  | Err why -> (case why == "dead actor" of
+      True -> False
+    | False -> _ = yield me; sendSure me who m).
+
+# the prelude's `ask`, with a request that cannot be lost
+askSure : unsafe Int -> Int -> q -> r .
+askSure me a q =
+  _ = sendSure me a (me, q);
+  receiveFrom me a.
+
 # ---- the frame boundary: how a long-lived actor stays the same size ------------------
 # An actor's heap is a pool: values are not collected one by one, the WHOLE pool
 # is reclaimed when the actor dies -- or when it says so.  An actor that loops

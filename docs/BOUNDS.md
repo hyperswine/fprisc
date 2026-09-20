@@ -192,6 +192,11 @@ and the FP-RISC-level libraries in `std/`.
 
 ## Found along the way (not bounds)
 
+- FIXED (2026-09-20): a sleeper woken early was linked on its hart's sleeper list
+  twice and the hart spun forever on the cycle (`runtime/actors.c a_sleep_us`);
+  posix aarch64 builds did not reserve `x28`, which the context switch does not
+  save (`compiler/Build.hs`, `machine/unix/ctx_a64.S`). Both in `docs/LIVE.md`.
+
 - FIXED: `print` wrote CRLF on every system; the carriage return is `hal_putc`'s
   to add now, in the HALs that front a raw serial line. See `C-REDUCTION.md`.
 - FIXED: `fpr run` / `fpr build` printed nothing when compilation was refused (the

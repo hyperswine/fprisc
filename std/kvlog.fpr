@@ -31,6 +31,7 @@ O = use "option".
 S = use "string".
 F = use "file".
 C = use "clock".
+A = use "actor".
 
 KvLog = Type (KvLog Int String).
 
@@ -136,27 +137,27 @@ countOf xs n = case xs of Nil -> n | _ :: r -> countOf r (n + 1).
 # as long as the caller lives), and what is taken out of it to keep is `keep`-copied.
 put : String -> J.Value -> KvLog -> Unit .
 put key value db = case db of KvLog a _ ->
-  r = ask (myself 0) a (Put key value);
+  r = A.askSure (myself 0) a (Put key value);
   _ = drop r;
   Unit.
 
 get : String -> KvLog -> O.Option J.Value .
 get key db = case db of KvLog a _ ->
-  r = ask (myself 0) a (Get key);
+  r = A.askSure (myself 0) a (Get key);
   out = (case r of Value v -> O.Some (keep v) | _ -> O.None);
   _ = drop r;
   out.
 
 keys : KvLog -> List String .
 keys db = case db of KvLog a _ ->
-  r = ask (myself 0) a Keys;
+  r = A.askSure (myself 0) a Keys;
   out = (case r of Listing ks -> keep ks | _ -> Nil);
   _ = drop r;
   out.
 
 size : KvLog -> Int .
 size db = case db of KvLog a _ ->
-  r = ask (myself 0) a Size;
+  r = A.askSure (myself 0) a Size;
   out = (case r of Count n -> n | _ -> 0);
   _ = drop r;
   out.
@@ -165,7 +166,7 @@ size db = case db of KvLog a _ ->
 # keys in `keepAll`; answers how many records were dropped
 compact : List String -> KvLog -> Result Int String .
 compact keepAll db = case db of KvLog a _ ->
-  r = ask (myself 0) a (Compact keepAll);
+  r = A.askSure (myself 0) a (Compact keepAll);
   out = (case r of Count n -> Ok n | Failed why -> Err (keep why) | _ -> Err "compact: no answer");
   _ = drop r;
   out.

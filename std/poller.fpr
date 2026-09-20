@@ -40,7 +40,7 @@ start u = Poller (A.spawnWith (A.Dynamic 256) (fn self -> idle self (M.empty Ord
 await : Int -> Poller -> Unit .
 await fd p = case p of Poller a ->
   me = myself 0;
-  _ = send a (Watch fd me);
+  _ = A.sendSure me a (Watch fd me); # a lost Watch is a waiter that never wakes
   m = receiveFrom me a;
   _ = drop m;
   Unit.
@@ -77,5 +77,5 @@ notify : unsafe Int -> List Int -> M.Map Int Int -> M.Map Int Int .
 notify me ready owners = case ready of
     Nil -> owners
   | fd :: r -> (case M.get fd owners of
-        O.Some who -> _ = send who (Readable fd); notify me r (M.remove fd owners)
+        O.Some who -> _ = A.sendSure me who (Readable fd); notify me r (M.remove fd owners)
       | O.None -> notify me r owners).

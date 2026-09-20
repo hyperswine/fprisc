@@ -113,8 +113,12 @@ Ans = Type (Welcome sid model | Model version model | Wanted Bool | Changed vers
 # 3.6 MiB a session at 500 sessions.)
 # (one type: a writer's mailbox holds the register's answers AND its broadcasts)
 
-# the register's state
-Rs = Type (Rs cfg app model sessions nextSid db saved tickers version).
+# the register's state.  sessions: sid -> writer.  told: the WRITERS that have been
+# told the model changed and have not pulled it yet -- they are not told again
+# (a writer pulls the NEWEST model whenever it gets to it, so one notice is
+# enough).  Without this every event was a message to every session, and 1,000
+# sessions leaving at once queued a million sends in front of whatever came next.
+Rs = Type (Rs cfg app model sessions nextSid db saved tickers version told).
 
 # ---- serve -----------------------------------------------------------------------------
 serve cfg app =
@@ -125,7 +129,7 @@ serve cfg app =
   # `send` never waits for room, so everything many actors send to has a mailbox
   # that GROWS (std/actor.fpr): a burst costs memory, never a lost request
   reg = A.spawnWith (A.Dynamic 256) (fn self ->
-    send main (Ok (register self listener (startTickers self (Rs cfg app model (M.empty Ord.int) 1 db (M.empty S.compare) Nil 1)) A.tidy0)));
+    send main (Ok (register self listener (startTickers self (Rs cfg app model (M.empty Ord.int) 1 db (M.empty S.compare) Nil 1 (M.empty Ord.int))) A.tidy0)));
   _ = Sys.stderr "live: http://{(if strlen cfg.address == 0 then "127.0.0.1" else cfg.address)}:{TCP.port listener}/  (store {cfg.store})\n";
   _ = print "ready {TCP.port listener}";
   # ONE actor waits on every socket (std/poller.fpr): idle sessions sleep in their
@@ -156,24 +160,25 @@ register me listener st0 t0 = case A.tidy me (st0, t0) of (st, t) ->
 
 # None = stop serving
 handle : Int -> Int -> Reg -> Rs -> O.Option Rs .
-handle me from q st = case st of Rs cfg app model sessions nextSid db saved tickers version ->
+handle me from q st = case st of Rs cfg app model sessions nextSid db saved tickers version told ->
   (case q of
-      Snapshot -> _ = send from (Model version model); O.Some st
+      Snapshot -> _ = A.sendSure me from (Model version model);
+        O.Some (Rs cfg app model sessions nextSid db saved tickers version (M.remove from told))
     | Join writer ->
         # the WRITER hears its Welcome from here, not forwarded by the reader:
         # messages from one sender arrive in order, so it is ahead of the
         # broadcast below (forwarded, a Show could overtake it)
-        _ = send writer (Welcome nextSid model);
-        _ = send from (Welcome nextSid model);
-        advance me (Joined nextSid) (Rs cfg app model (M.insert nextSid writer sessions) (nextSid + 1) db saved tickers version)
-    | Leave sid -> advance me (Left sid) (Rs cfg app model (M.remove sid sessions) nextSid db saved tickers version)
+        _ = A.sendSure me writer (Welcome nextSid model);
+        _ = A.sendSure me from (Welcome nextSid model);
+        advance me (Joined nextSid) (Rs cfg app model (M.insert nextSid writer sessions) (nextSid + 1) db saved tickers version told)
+    | Leave sid -> advance me (Left sid) (Rs cfg app model (M.remove sid sessions) nextSid db saved tickers version (case M.get sid sessions of O.Some w -> M.remove w told | O.None -> told))
     | Event ev -> advance me (keep ev) st
     | TickDue ms key ->
         due = wanted app.codec ms key (app.subs model);
-        _ = send from (Wanted (O.isSome due));
+        _ = A.sendSure me from (Wanted (O.isSome due));
         (case due of
             O.Some msg -> advance me (Msg 0 msg) st
-          | O.None -> O.Some (Rs cfg app model sessions nextSid db saved (without ms key tickers) version))
+          | O.None -> O.Some (Rs cfg app model sessions nextSid db saved (without ms key tickers) version told))
     | Reload ->
         _ = flush app.fields db model;
         _ = Sys.stderr "live: restarting into the rebuilt program\n";
@@ -182,17 +187,22 @@ handle me from q st = case st of Rs cfg app model sessions nextSid db saved tick
 
 # one update: the event (journaled first), then its effects, then everyone sees the model
 advance : Int -> Ev m -> Rs -> O.Option Rs .
-advance me ev st = case st of Rs cfg app model sessions nextSid db saved tickers version ->
+advance me ev st = case st of Rs cfg app model sessions nextSid db saved tickers version told ->
   _ = (if cfg.journal then journal app.codec db ev else Unit);
   (case app.update ev model of (model2, cmds) ->
       saved2 = persist app.fields db model2 saved;
       quit = perform me sessions cmds;
-      _ = broadcast (M.values sessions) (version + 1);
+      told2 = broadcast me (M.values sessions) (version + 1) told;
       (if quit then _ = flush app.fields db model2; _ = goodbye (M.values sessions); O.None
-       else O.Some (startTickers me (Rs cfg app model2 sessions nextSid db saved2 tickers (version + 1))))).
+       else O.Some (startTickers me (Rs cfg app model2 sessions nextSid db saved2 tickers (version + 1) told2)))).
 
-broadcast : unsafe List Int -> Int -> Unit .
-broadcast writers version = case writers of Nil -> Unit | w :: r -> _ = send w (Changed version); broadcast r version.
+# tell every writer that has not already been told; answers who has now been told
+broadcast : unsafe Int -> List Int -> Int -> M.Map Int Bool -> M.Map Int Bool .
+broadcast me writers version told = case writers of
+    Nil -> told
+  | w :: r -> (case M.member w told of
+      True -> broadcast me r version told
+    | False -> _ = A.sendSure me w (Changed version); broadcast me r version (M.insert w True told)).
 goodbye : unsafe List Int -> Unit .
 goodbye writers = case writers of Nil -> Unit | w :: r -> _ = send w Stop; goodbye r.
 
@@ -284,10 +294,10 @@ performGo reg sessions cmds quit = case cmds of
   | c :: r -> (case c of
         Quit -> performGo reg sessions r True
       | After ms msg ->
-          _ = spawn (fn self -> _ = Sys.sleepUs (ms * 1000); send reg (0, Event (Msg 0 msg)));
+          _ = spawn (fn self -> _ = Sys.sleepUs (ms * 1000); A.sendSure self reg (0, Event (Msg 0 msg)));
           performGo reg sessions r quit
       | Run work ->
-          _ = spawn (fn self -> send reg (0, Event (Msg 0 (work Unit))));
+          _ = spawn (fn self -> A.sendSure self reg (0, Event (Msg 0 (work Unit))));
           performGo reg sessions r quit
       | Navigate sid url ->
           _ = push sessions sid (J.render (J.object (("nav", J.Text url) :: Nil)));
@@ -315,8 +325,8 @@ wanted codec ms key subs = case subs of
   | Every m msg :: r -> (if m == ms and keyOf codec msg == key then O.Some msg else wanted codec ms key r).
 
 startTickers : Int -> Rs -> Rs .
-startTickers me st = case st of Rs cfg app model sessions nextSid db saved tickers version ->
-  Rs cfg app model sessions nextSid db saved (startGo me app.codec (app.subs model) tickers) version.
+startTickers me st = case st of Rs cfg app model sessions nextSid db saved tickers version told ->
+  Rs cfg app model sessions nextSid db saved (startGo me app.codec (app.subs model) tickers) version told.
 startGo reg codec subs running = case subs of
     Nil -> running
   | Every ms msg :: r -> (if has ms (keyOf codec msg) running then startGo reg codec r running
@@ -329,7 +339,7 @@ without ms name xs = case xs of Nil -> Nil | (m, n) :: r -> (if m == ms and n ==
 ticker : unsafe Int -> Int -> String -> Int -> Unit .
 ticker reg ms key self =
   _ = Sys.sleepUs (ms * 1000);
-  r = ask self reg (TickDue ms key);
+  r = A.askSure self reg (TickDue ms key);
   again = (case r of Wanted True -> True | _ -> False);
   _ = drop r;
   (if again then ticker reg ms key self else Unit).
@@ -342,7 +352,7 @@ connection reg poller cfg app conn peer = case H.readRequest conn of
       else _ = ST.write (H.renderResponse (H.text 404 "no such page\n")) conn; Unit).
 
 page reg cfg app =
-  r = ask (myself 0) reg Snapshot;
+  r = A.askSure (myself 0) reg Snapshot;
   html = pageOf cfg app r;
   _ = drop r;
   html.
@@ -360,7 +370,7 @@ session reg poller app conn req = case WS.accept req of
       _ = ST.write head conn;
       me = myself 0;
       writer = A.spawnWith (A.Dynamic 64) (fn self -> writerStart reg app conn self);
-      r = ask me reg (Join writer);
+      r = A.askSure me reg (Join writer);
       sid = (case r of Welcome n _ -> n | _ -> 0);
       _ = drop r; # a reply is a message: undropped, it pins the register's slab for this session's life
       (if sid == 0 then Unit else reading reg app.codec writer sid (ST.readerOn poller conn) conn A.tidySmall).
@@ -371,11 +381,11 @@ reading reg codec writer sid r0 conn t0 = case A.tidy (myself 0) (r0, t0) of (r,
   (case WS.receiveOnly 16777216 r conn of (msg, r2) ->
       (case msg of
           WS.Text text ->
-            _ = send reg (0, Event (eventOf codec sid text));
+            _ = A.sendSure (myself 0) reg (0, Event (eventOf codec sid text));
             reading reg codec writer sid r2 conn t
         | WS.Ping payload -> _ = send writer (Pong payload); reading reg codec writer sid r2 conn t
         | WS.Binary _ -> reading reg codec writer sid r2 conn t
-        | _ -> _ = send reg (0, Leave sid); _ = send writer Stop; Unit)).
+        | _ -> _ = A.sendSure (myself 0) reg (0, Leave sid); _ = A.sendSure (myself 0) writer Stop; Unit)).
 
 eventOf codec sid text = case J.parse text of
     Err why -> Refused sid "not JSON: {why}"
@@ -400,7 +410,7 @@ writing reg app conn sid self w0 t0 = case A.tidy self (w0, t0) of (Wr s d seen 
       Changed v ->
         _ = drop m;
         (if v <= seen or asked then writing reg app conn sid self (Wr s d seen asked (if v > latest then v else latest)) t
-         else _ = send reg (self, Snapshot); writing reg app conn sid self (Wr s d seen True v) t)
+         else _ = A.sendSure self reg (self, Snapshot); writing reg app conn sid self (Wr s d seen True v) t)
     | Model v model -> (case app.view sid model of (s2, d2) ->
         sent = (if s2 == s then (case delta d d2 0 Nil of Nil -> Ok Unit | changes -> WS.sendText (strJoin "" ("\{\"d\":\{" :: strJoin "," (rev changes Nil) :: "}}" :: Nil)) conn)
                 else WS.sendText (full s2 d2) conn);
@@ -408,7 +418,7 @@ writing reg app conn sid self w0 t0 = case A.tidy self (w0, t0) of (Wr s d seen 
         d3 = keep d2;
         _ = drop m;
         more = latest > v;
-        _ = (if more then send reg (self, Snapshot) else Ok Unit);
+        _ = (if more then A.sendSure self reg (self, Snapshot) else True);
         (case sent of Ok _ -> writing reg app conn sid self (Wr s3 d3 v more latest) t | Err _ -> Unit))
     | Pong payload -> _ = WS.sendPong payload conn; _ = drop m; writing reg app conn sid self (Wr s d seen asked latest) t
     | Push text -> _ = WS.sendText text conn; _ = drop m; writing reg app conn sid self (Wr s d seen asked latest) t
@@ -441,7 +451,7 @@ watcher reg cfg seen self =
    else
      _ = Sys.stderr "live: a source changed; rebuilding\n";
      (case P.run cfg.rebuild of
-         Ok r -> (if r.status == 0 then _ = send reg (0, Reload); Unit
+         Ok r -> (if r.status == 0 then _ = A.sendSure self reg (0, Reload); Unit
                   else _ = Sys.stderr "live: the rebuild FAILED; still serving the old program\n{r.out}{r.err}\n"; watcher reg cfg now self)
        | Err why -> _ = Sys.stderr "live: cannot run the rebuild: {why}\n"; watcher reg cfg now self)).
 
