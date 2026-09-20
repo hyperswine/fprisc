@@ -1,0 +1,18 @@
+unsafe base.
+KvLog = use "std/kvlog".
+Json = use "std/json".
+File = use "std/file".
+List = use "std/list".
+Result = use "std/result".
+main =
+  p = "c.kvlog";
+  _ = File.remove p;
+  db = (case KvLog.open p of Ok d -> d | Err e -> error e);
+  _ = List.each (fn i -> _ = KvLog.put "count" (Json.Integer i) db; KvLog.put "$event" (Json.Integer (100 + i)) db) (List.range 1 50);
+  _ = KvLog.put "name" (Json.Text "fig") db;
+  before = Result.map List.length (File.lines p);
+  _ = print "before: {before} lines; compact keeping the journal whole: {KvLog.compact ("$event" :: Nil) db}";
+  _ = print "after: {Result.map List.length (File.lines p)} lines; count={KvLog.get "count" db} history of count {Result.map List.length (KvLog.history p "count")} of $event {Result.map List.length (KvLog.history p "$event")}";
+  _ = KvLog.put "count" (Json.Integer 99) db;
+  db2 = (case KvLog.open p of Ok d -> d | Err e -> error e);
+  print "reopened after compaction and one more put: count={KvLog.get "count" db2} name={KvLog.get "name" db2} size={KvLog.size db2}".

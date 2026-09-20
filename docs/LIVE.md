@@ -28,7 +28,7 @@ and `liveboard-reload.py` as real websocket clients.
 | **`Persistent a`, per field, with options** | WORKS, named by a PATH: `Live.field Live.Always @Model.count`. The literal is checked against the model's declaration and gives the getter, the setter, the key AND the codec (any field built from Int, String, Bool, lists, tuples, declared records and sum types; the demo's notes are a durable list of records with no encoder written), so a field that does not exist is a compile error. Policies: `Always`, `AtMostEvery ms`. It is a list beside the model, not a wrapper type inside it | `Live.field`, `Live.custom`; restart brings back `count` and `notes` and, on purpose, not the clock |
 | **Client-side state (`ClientState a`)** | WORKS, typed. `Client = {tab : String, draft : String}.` is a record; `View.locals @Client {tab = "1", draft = ""}` declares it, `View.showIf @Client.tab "2"`, `View.setTo`, `View.bind @Client.draft` use it, and a field that does not exist is a compile error. It never round-trips unless a message carries it (`View.sendWith codec (Add "") @Client.draft`) | `std/view.fpr` + the 150-line client script; checked in a real browser |
 | **Typed messages** | WORKS. `Msg = Type (Bump Int \| Add String \| ...)` and `codec = @Msg`: the compiler mints the codec from the declaration (as it mints a path from a record's). The view sends VALUES (`View.send codec (Bump 10)`), `update` matches on them, the journal stores them. An unknown message, a field that is not a number, a missing field: refused by name before `update` sees it, as `Live.Refused sid why` | `compiler/FPRISC.hs codecFor`; `tests/std/codec.fpr`; the check's forged-message leg |
-| **Elm's Cmd and Sub** | WORKS, typed. `update` answers `Live.After ms msg`, `Live.Run work` (runs in its own actor; the MESSAGE it returns comes back through `update`), `Live.Quit`; `subs` answers `Live.Every ms msg`, re-read after every update, so a clock exists only while the model asks for it | the check's clock and digest legs |
+| **Elm's Cmd and Sub** | WORKS, typed. `update` answers `Live.After ms msg`, `Live.Run work` (runs in its own actor; the MESSAGE it returns comes back through `update`), `Live.http request toMsg`, `Live.Navigate sid url`, `Live.Emit sid name detail` (a port to the page's own JavaScript: a `live:<name>` CustomEvent), `Live.Quit`; a file picker is `View.uploadWith codec (Uploaded "")`; `subs` answers `Live.Every ms msg`, re-read after every update, so a clock exists only while the model asks for it | the check's clock and digest legs |
 | **Replayable from an append-only store** | WORKS. Every durable write is an appended line; with `journal` every EVENT is too, and `Live.replay` rebuilds the model from `init`, `update` and the log alone. The check rebuilds 1,950 events and gets the saved state | `std/kvlog.fpr`: `history`, `at time`, torn-tail tolerant |
 | **Reload** | WORKS, differently on each system. posix: the server sees a source change, rebuilds, and only if that succeeds saves its fields and BECOMES the new program; browsers reconnect; 4 s, nearly all of it the compile. A rebuild that fails is printed and the old program keeps serving. QOS: a module is replaced IN PLACE through the plugin loader (`tests/livereload.fpr`), and nothing restarts | `liveboard-reload.py`, 8 of 8 |
 
@@ -113,14 +113,11 @@ In the order I would do what is left:
 1. **Recursive types on the wire.** Codecs are generated inline, so a recursive
    type (a tree, a comment thread) is refused; it needs generated top-level
    functions, one per type per unit.
-2. **Commands worth having**: `Http` as a command (today `Live.Run` around
-   `Http.get`), navigation, file upload (the websocket reader already takes
-   fragmented and large messages), a port to the page's JavaScript.
-3. **TUI and desktop on posix**: raw-terminal and input primitives in
+2. **TUI and desktop on posix**: raw-terminal and input primitives in
    `machine/posix` (they exist in QOS's host, `hal/unix/tty_raw.c`), then
    `std/mvu`'s drivers run there too.
-4. **Store maintenance**: compaction, fsync as a policy, and per-session state that
-   does not live in the shared model.
-5. **One App value for both drivers.** QOS's `fprlive.fpr` and `std/live` have the
+3. **Store maintenance**: fsync as a policy, and per-session state that does not
+   live in the shared model. (`KvLog.compact` exists.)
+4. **One App value for both drivers.** QOS's `fprlive.fpr` and `std/live` have the
    same shape and different surfaces (`EMsg sid name arg` there, `Msg sid msg`
    here); the QOS driver should take the typed one.

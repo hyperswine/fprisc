@@ -101,6 +101,17 @@ src u = "/* fprlive.js -- the FPRLive client.
         paintLocals();
       };
     });
+    // a file input: read the chosen file and send it as the message's final
+    // field, as name:base64 (View.uploadWith)
+    root.querySelectorAll('[data-file]').forEach(function (el) \{
+      el.onchange = function () \{
+        var f = el.files && el.files[0];
+        if (!f) return;
+        var rd = new FileReader();
+        rd.onload = function () \{ send(el.getAttribute('data-file'), f.name + ':' + String(rd.result).split(',')[1]); };
+        rd.readAsDataURL(f);
+      };
+    });
     root.querySelectorAll('[data-input]').forEach(function (el) \{
       var n = el.getAttribute('data-input');
       el.oninput = function () \{ locals[n] = el.value; paintLocals(); };
@@ -117,6 +128,10 @@ src u = "/* fprlive.js -- the FPRLive client.
   }
 
   function apply(res) \{
+    // server-to-client COMMANDS (std/live.fpr): go somewhere, or hand a named
+    // event to the page's own script (document.addEventListener('live:name', ...))
+    if (res.nav) \{ location.href = res.nav; return; }
+    if (res.emit) \{ document.dispatchEvent(new CustomEvent('live:' + res.emit, \{ detail: res.detail })); return; }
     if (res.s) \{ S = \{ s: res.s, d: res.d }; build(); return; }
     var n = 0;
     for (var k in res.d) \{ S.d[k] = res.d[k]; slot(k, res.d[k], true); n++; }

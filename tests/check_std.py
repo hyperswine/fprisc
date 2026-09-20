@@ -46,6 +46,8 @@ check('tcp', label='Stream and Tcp: a server and its clients in ONE process, an 
 check('poller', label='receiveNow (an empty mailbox allocates nothing), receiveWithin, and a server whose accepts and reads wait on ONE poller')
 check('http', label='Http: client and server, headers, a 100 KB POST, 404, chunked decoding, URL parsing')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
+    check('compact', cwd=t, label='KvLog.compact: the latest of every key, the journal kept whole, written beside the log and renamed over it; the store reopens the same')
+with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
     check('apps', cwd=t, env={'T16_HOST': 'from-env'}, label='Decode (errors name the path), Config (defaults < file < env < args), Log, streaming File, Task (bounded, parallel)')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
     tree = Path(t) / 'tree'

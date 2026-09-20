@@ -38,7 +38,7 @@
 Attr = Type (Cls String | Att String String | Local String String
            | OnClick String String | OnSet String String | ShowIf String
            | OnBoth String String String String
-           | OnSend String String | Input String | OnEnter String String).
+           | OnSend String String | Input String | OnEnter String String | OnFile String).
 Node = Type (El String (List Attr) (List Node) | Txt String | Dyn String | LTxt String
            | Inp (List Attr)).
 
@@ -92,6 +92,7 @@ attrOf (OnBoth msg arg n v) = " data-click=\"{esc msg}\" data-arg=\"{arg}\" data
 attrOf (OnSend msg lit) = " data-click=\"{esc msg}\" data-lit=\"{esc lit}\"".
 attrOf (Input n) = " data-input=\"{n}\"".
 attrOf (OnEnter msg arg) = " data-enter=\"{esc msg}\" data-arg=\"{arg}\"".
+attrOf (OnFile msg) = " type=\"file\" data-file=\"{esc msg}\"".
 
 # ---- CSS: only the classes this tree actually uses -------------------------
 
@@ -337,6 +338,12 @@ sendWith codec msg path = OnClick (wireOpen codec msg) (localName path).
 
 enterWith : { enc : m -> Wire | r } -> m -> { segs : List String | q } -> Attr .
 enterWith codec msg path = OnEnter (wireOpen codec msg) (localName path).
+
+# on an `Inp`: a file picker.  The chosen file arrives as the message's LAST
+# field, "name:base64" -- `View.uploadWith codec (Uploaded "")`, and
+# `Encoding.fromBase64` on the part after the first ":".
+uploadWith : { enc : m -> Wire | r } -> m -> Attr .
+uploadWith codec msg = OnFile (wireOpen codec msg).
 
 showIf : { segs : List String | r } -> String -> Attr .
 showIf path value = ShowIf "{localName path}:{value}".

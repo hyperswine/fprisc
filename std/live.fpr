@@ -69,7 +69,17 @@ Ord = use "order".
 # Msg sid m: from a session (sid 0: from a command or a subscription).
 # Refused sid why: a session sent something that is not a message of this app.
 Ev msg = Type (Msg Int msg | Joined Int | Left Int | Refused Int String).
-Cmd msg = Type (After Int msg | Run (Unit -> msg) | Quit).
+# After ms msg          deliver msg later
+# Run work              run `work` in its own actor; the message it answers comes back
+# Navigate sid url      send that session's browser somewhere (sid 0: every session)
+# Emit sid name detail  hand the page's own script an event: document's 'live:<name>'
+#                       CustomEvent, detail = the text (a PORT to JavaScript)
+# Quit                  save every field and stop serving
+Cmd msg = Type (After Int msg | Run (Unit -> msg) | Navigate Int String | Emit Int String String | Quit).
+
+# an HTTP request as a command: the reply (or why there was none) becomes a message
+http : { method : String, url : String, headers : List (String, String), body : String } -> (Result { status : Int, headers : List (String, String), body : String } String -> msg) -> Cmd msg .
+http req toMsg = Run (fn u -> toMsg (H.request req)).
 Sub msg = Type (Every Int msg).
 
 Policy = Type (Always | AtMostEvery Int).
@@ -95,7 +105,7 @@ rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 # to the register; `from` is who wants an answer (0 = nobody)
 Reg = Type (Event ev | Join writer | Leave sid | Snapshot | TickDue ms key | Reload).
 # from the register
-Ans = Type (Welcome sid model | Model version model | Wanted Bool | Changed version | Pong payload | Stop).
+Ans = Type (Welcome sid model | Model version model | Wanted Bool | Changed version | Pong payload | Push text | Stop).
 # to a session's writer.  The register broadcasts only a VERSION: a writer pulls
 # the model when it is ready for it, so a busy session skips straight to the
 # newest and at most one copy of the model is in flight per session.  (Pushing
@@ -176,7 +186,7 @@ advance me ev st = case st of Rs cfg app model sessions nextSid db saved tickers
   _ = (if cfg.journal then journal app.codec db ev else Unit);
   (case app.update ev model of (model2, cmds) ->
       saved2 = persist app.fields db model2 saved;
-      quit = perform me cmds;
+      quit = perform me sessions cmds;
       _ = broadcast (M.values sessions) (version + 1);
       (if quit then _ = flush app.fields db model2; _ = goodbye (M.values sessions); O.None
        else O.Some (startTickers me (Rs cfg app model2 sessions nextSid db saved2 tickers (version + 1))))).
@@ -268,17 +278,31 @@ replayGo app events model = case events of
 
 # ---- commands ------------------------------------------------------------------------------
 # True when one of them was Quit
-perform reg cmds = performGo reg cmds False.
-performGo reg cmds quit = case cmds of
+perform reg sessions cmds = performGo reg sessions cmds False.
+performGo reg sessions cmds quit = case cmds of
     Nil -> quit
   | c :: r -> (case c of
-        Quit -> performGo reg r True
+        Quit -> performGo reg sessions r True
       | After ms msg ->
           _ = spawn (fn self -> _ = Sys.sleepUs (ms * 1000); send reg (0, Event (Msg 0 msg)));
-          performGo reg r quit
+          performGo reg sessions r quit
       | Run work ->
           _ = spawn (fn self -> send reg (0, Event (Msg 0 (work Unit))));
-          performGo reg r quit).
+          performGo reg sessions r quit
+      | Navigate sid url ->
+          _ = push sessions sid (J.render (J.object (("nav", J.Text url) :: Nil)));
+          performGo reg sessions r quit
+      | Emit sid name detail ->
+          _ = push sessions sid (J.render (J.object (("emit", J.Text name) :: ("detail", J.Text detail) :: Nil)));
+          performGo reg sessions r quit).
+
+# a frame for one session's page (sid 0: every session's)
+push : M.Map Int Int -> Int -> String -> Unit .
+push sessions sid text = case sid == 0 of
+    True -> pushAll (M.values sessions) text
+  | False -> (case M.get sid sessions of O.Some w -> _ = send w (Push text); Unit | O.None -> Unit).
+pushAll : unsafe List Int -> String -> Unit .
+pushAll writers text = case writers of Nil -> Unit | w :: r -> _ = send w (Push text); pushAll r text.
 
 # ---- subscriptions ---------------------------------------------------------------------------
 # one ticker actor per (ms, message) the app still wants: it sleeps, asks the
@@ -344,7 +368,7 @@ session reg poller app conn req = case WS.accept req of
 # frames in, events out.  A frame is {"msg": wire, "arg": text} (the client
 # script's shape); what it decodes to is a message of the app's type, or Refused.
 reading reg codec writer sid r0 conn t0 = case A.tidy (myself 0) (r0, t0) of (r, t) ->
-  (case WS.receiveOnly 1048576 r conn of (msg, r2) ->
+  (case WS.receiveOnly 16777216 r conn of (msg, r2) ->
       (case msg of
           WS.Text text ->
             _ = send reg (0, Event (eventOf codec sid text));
@@ -387,6 +411,7 @@ writing reg app conn sid self w0 t0 = case A.tidy self (w0, t0) of (Wr s d seen 
         _ = (if more then send reg (self, Snapshot) else Ok Unit);
         (case sent of Ok _ -> writing reg app conn sid self (Wr s3 d3 v more latest) t | Err _ -> Unit))
     | Pong payload -> _ = WS.sendPong payload conn; _ = drop m; writing reg app conn sid self (Wr s d seen asked latest) t
+    | Push text -> _ = WS.sendText text conn; _ = drop m; writing reg app conn sid self (Wr s d seen asked latest) t
     | _ -> _ = WS.sendClose 1001 conn; Unit).
 
 full : List String -> List String -> String .
