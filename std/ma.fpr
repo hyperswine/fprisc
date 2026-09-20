@@ -1,0 +1,198 @@
+# std/ma.fpr -- Ma: the design system, as a View LIBRARY (it was
+# qos/programs/mods/ma.fpr).
+#
+# tokens.json becomes two things here:
+#   1. CSS custom properties per theme (day is :root, night is .night on
+#      the page root) -- every utility below references a var, so the
+#      whole palette flips with ONE class.
+#   2. a utility table in Ma's vocabulary (bg-surface, tx-2, r-md,
+#      sh-sm, gap-5 ...) -- genview's rule: using a class anywhere in
+#      the tree is what emits it; the stylesheet is a function of the
+#      view.
+#
+# And the COMPONENT layer: vstack/hstack/spacer + card/button/badge/
+# chip/toast/accordion/navbar/crumbs are plain functions over the Elem
+# primitives (El/Txt/Dyn), so an app composes named parts, not nested
+# divs.  Layout is stacks only -- tokens.json says gridAllowed:false,
+# and cardGrid is an HStack that wraps (SPEC 0/4).
+G = use "view".
+
+# ---- layout primitives ------------------------------------------------------
+vstack g kids = G.El "div" [G.Cls "col gap-{g}"] kids.
+hstack g kids = G.El "div" [G.Cls "row center gap-{g}"] kids.
+zstack kids   = G.El "div" [G.Cls "zstack"] kids.
+spacer        = G.El "div" [G.Cls "grow"] Nil.
+vsA g attrs kids = G.El "div" (G.Cls "col gap-{g}" :: attrs) kids.
+hsA g attrs kids = G.El "div" (G.Cls "row center gap-{g}" :: attrs) kids.
+
+# ---- text roles (type scale from tokens.json) -------------------------------
+display s = G.El "div" [G.Cls "t-display tx-1"] [G.Txt s].
+title s   = G.El "div" [G.Cls "t-title tx-1"] [G.Txt s].
+heading s = G.El "div" [G.Cls "t-heading tx-1"] [G.Txt s].
+body s    = G.El "div" [G.Cls "t-body tx-1"] [G.Txt s].
+caption s = G.El "div" [G.Cls "t-caption tx-2"] [G.Txt s].
+meta s    = G.El "div" [G.Cls "t-caption tx-3"] [G.Txt s].
+bodyD v   = G.El "div" [G.Cls "t-body tx-1"] [G.Dyn v].
+
+# ---- surfaces ---------------------------------------------------------------
+card kids       = vsA 3 [G.Cls "bg-surface bd-subtle r-md sh-sm p-5 lift"] kids.
+cardRaised kids = vsA 3 [G.Cls "bg-raised bd-subtle r-md sh-md p-5"] kids.
+divider         = G.El "div" [G.Cls "hr"] Nil.
+
+# cardGrid: NOT a grid (gridAllowed:false) -- a wrapping HStack whose
+# children carry a column-width token (SPEC 4).
+cardGrid kids = G.El "div" [G.Cls "row wrap gap-5"] kids.
+gridCell kids = vsA 3 [G.Cls "w-medium bg-surface bd-subtle r-md sh-sm p-5 lift"] kids.
+
+# ---- interactive ------------------------------------------------------------
+button label msg arg =
+  G.El "button" [G.Cls "btn t-label", G.OnClick msg arg] [G.Txt label].
+buttonPrimary label msg arg =
+  G.El "button" [G.Cls "btn btn-primary t-label", G.OnClick msg arg] [G.Txt label].
+buttonDanger label msg arg =
+  G.El "button" [G.Cls "btn btn-danger t-label", G.OnClick msg arg] [G.Txt label].
+btnSet label n v =
+  G.El "button" [G.Cls "btn t-label", G.OnSet n v] [G.Txt label].
+btnBoth label msg arg n v =
+  G.El "button" [G.Cls "btn btn-primary t-label", G.OnBoth msg arg n v] [G.Txt label].
+
+chip label = G.El "span" [G.Cls "chip t-label"] [G.Txt label].
+
+# reserved-role policy (tokens.json): success/warning/danger/
+# celebration are MEANINGS, not colors to grab; a badge takes the role.
+badge role label = G.El "span" [G.Cls "badge bd-{role} tx-{role} t-label"] [G.Txt label].
+
+# ---- composite: accordion (pure client -- one local per section) ------------
+accordion n hd kids =
+  vsA 0 [G.Cls "bg-surface bd-subtle r-md sh-sm", G.Local n "0"]
+    ( hsA 3 [G.Cls "p-4 pointer", G.OnSet n "toggle"]
+        (G.El "span" [G.Cls "t-heading tx-1 grow"] [G.Txt hd]
+         :: G.El "span" [G.Cls "t-caption tx-3"] [G.Txt "toggle"] :: Nil)
+      :: vsA 3 [G.Cls "p-4 pt-0", G.ShowIf n] kids :: Nil ).
+
+# ---- composite: toast (server decides text, client dismisses) ---------------
+toast v =
+  hsA 3 [G.Cls "toast bg-raised bd-subtle r-md sh-lg p-4", G.ShowIf "toast"]
+    (G.El "span" [G.Cls "t-body tx-1"] [G.Dyn v]
+     :: btnSet "dismiss" "toast" "0" :: Nil).
+
+# ---- composite: nav bar + breadcrumb ----------------------------------------
+navTab n idx label =
+  G.El "button" [G.Cls "btn navbtn t-label", G.Att "data-show" "{n}:{idx}", G.OnSet n idx]
+    [G.Txt label].
+navBar n tabs = hsA 2 [G.Cls "bg-surface bd-subtle r-full sh-sm px-3 py-2", G.Local n "1"] tabs.
+
+crumb s     = G.El "span" [G.Cls "t-caption tx-3"] [G.Txt s].
+crumbSep    = G.El "span" [G.Cls "t-caption tx-3"] [G.Txt " / "].
+crumbHere s = G.El "span" [G.Cls "t-caption tx-2"] [G.Txt s].
+breadcrumb a b here = hsA 1 Nil [crumb a, crumbSep, crumb b, crumbSep, crumbHere here].
+
+# ---- page root: theme class comes from the MODEL, so switching theme
+# is a genuine reshape (statics change -> full re-render), while text
+# slots ride deltas.  Both halves of the split, on purpose.
+page themeCls kids = G.El "div" [G.Cls "canvas {themeCls}"] kids.
+
+# ---- the stylesheet: vars + base + only the utilities the tree uses ---------
+maCssFor tree = strcat maVars (strcat maBase (maRules (G.nub (G.allClasses tree Nil)))).
+maRules : unsafe List String -> String .
+maRules Nil = "".
+maRules (c :: r) = strcat (ma1 c (maRule c)) (maRules r).
+ma1 c "" = "".
+ma1 c d = ".{c}\{{d}}\n".
+
+# tokens.color -> custom properties, day at :root, night as a class
+maVars = ":root\{--bg-canvas:#F7F8FA;--bg-surface:#FFFFFF;--bg-raised:#FFFFFF;
+--bd-subtle:#E4E7EC;--bd-strong:#C7CCD6;
+--tx-1:#1A1D23;--tx-2:#5B6472;--tx-3:#8A93A3;--tx-on:#FFFFFF;
+--ac:#3D6FE0;--ac-hover:#3560C7;--ac-press:#2C51AD;--ac-subtle:#EAF0FE;
+--success:#2E9E6B;--warning:#C98A2E;--danger:#D14E4E;--celebration:#2FAE6E;
+--sh-sm:0 1px 2px rgba(30,41,59,.06),0 1px 1px rgba(30,41,59,.04);
+--sh-md:0 4px 12px rgba(30,41,59,.08);--sh-lg:0 12px 32px rgba(30,41,59,.12)}
+.night\{--bg-canvas:#15171C;--bg-surface:#1D2027;--bg-raised:#242830;
+--bd-subtle:#2A2F38;--bd-strong:#3A404C;
+--tx-1:#EDEFF3;--tx-2:#9AA3B2;--tx-3:#6B7280;
+--ac:#5B8AF0;--ac-hover:#7099F5;--ac-press:#4A78D6;--ac-subtle:#1E2A45;
+--success:#4CBE87;--warning:#E0A94F;--danger:#E8706F;--celebration:#4ED28E;
+--sh-sm:0 1px 2px rgba(0,0,0,.3);--sh-md:0 4px 12px rgba(0,0,0,.35);
+--sh-lg:0 12px 32px rgba(0,0,0,.45)}
+".
+
+maBase = "*\{box-sizing:border-box;margin:0}
+body\{margin:0}
+.canvas\{min-height:100vh;background:var(--bg-canvas);color:var(--tx-1);
+  font:15px/1.47 -apple-system,'Segoe UI','Inter',sans-serif;
+  transition:background .32s cubic-bezier(.2,0,0,1),color .32s cubic-bezier(.2,0,0,1);
+  padding:32px}
+button\{font:inherit}
+.btn:hover\{border-color:var(--bd-strong);background:var(--ac-subtle)}
+.btn:active\{transform:scale(.99)}
+.btn-primary:hover\{background:var(--ac-hover)}
+.btn-primary:active\{background:var(--ac-press)}
+.lift\{transition:transform .12s cubic-bezier(.2,0,0,1),box-shadow .12s cubic-bezier(.2,0,0,1)}
+.lift:hover\{transform:scale(1.02);box-shadow:var(--sh-md)}
+.navbtn.is-on\{background:var(--ac);color:var(--tx-on);border-color:var(--ac)}
+.toast\{position:fixed;right:24px;bottom:24px}
+[data-slot]\{transition:color .2s}
+.lv-flash\{animation:lvf .55s ease-out}
+@keyframes lvf\{from\{color:var(--ac)}to\{color:inherit}}
+".
+
+# the utility table, in Ma's vocabulary (values from tokens.json)
+maRule "row" = "display:flex;flex-direction:row".
+maRule "col" = "display:flex;flex-direction:column".
+maRule "zstack" = "position:relative".
+maRule "wrap" = "flex-wrap:wrap".
+maRule "center" = "align-items:center".
+maRule "grow" = "flex:1".
+maRule "pointer" = "cursor:pointer".
+maRule "gap-1" = "gap:4px".
+maRule "gap-2" = "gap:8px".
+maRule "gap-3" = "gap:12px".
+maRule "gap-4" = "gap:16px".
+maRule "gap-5" = "gap:24px".
+maRule "gap-6" = "gap:32px".
+maRule "p-3" = "padding:12px".
+maRule "p-4" = "padding:16px".
+maRule "p-5" = "padding:24px".
+maRule "pt-0" = "padding-top:0".
+maRule "px-3" = "padding-left:12px;padding-right:12px".
+maRule "py-2" = "padding-top:8px;padding-bottom:8px".
+maRule "w-narrow" = "width:80px".
+maRule "w-medium" = "width:160px;flex:0 0 160px".
+maRule "w-wide" = "width:280px".
+maRule "t-display" = "font-size:32px;line-height:40px;font-weight:600".
+maRule "t-title" = "font-size:22px;line-height:28px;font-weight:600".
+maRule "t-heading" = "font-size:17px;line-height:24px;font-weight:600".
+maRule "t-body" = "font-size:15px;line-height:22px;font-weight:400".
+maRule "t-caption" = "font-size:13px;line-height:18px;font-weight:400".
+maRule "t-label" = "font-size:13px;line-height:18px;font-weight:500".
+maRule "t-mono" = "font-family:'SF Mono','Cascadia Code',ui-monospace,monospace;font-size:14px;line-height:20px".
+maRule "tx-1" = "color:var(--tx-1)".
+maRule "tx-2" = "color:var(--tx-2)".
+maRule "tx-3" = "color:var(--tx-3)".
+maRule "tx-success" = "color:var(--success)".
+maRule "tx-warning" = "color:var(--warning)".
+maRule "tx-danger" = "color:var(--danger)".
+maRule "tx-celebration" = "color:var(--celebration)".
+maRule "bg-surface" = "background:var(--bg-surface)".
+maRule "bg-raised" = "background:var(--bg-raised)".
+maRule "bd-subtle" = "border:1px solid var(--bd-subtle)".
+maRule "bd-strong" = "border:1px solid var(--bd-strong)".
+maRule "bd-success" = "border:1px solid var(--success)".
+maRule "bd-warning" = "border:1px solid var(--warning)".
+maRule "bd-danger" = "border:1px solid var(--danger)".
+maRule "bd-celebration" = "border:1px solid var(--celebration)".
+maRule "r-sm" = "border-radius:6px".
+maRule "r-md" = "border-radius:10px".
+maRule "r-lg" = "border-radius:16px".
+maRule "r-full" = "border-radius:9999px".
+maRule "sh-sm" = "box-shadow:var(--sh-sm)".
+maRule "sh-md" = "box-shadow:var(--sh-md)".
+maRule "sh-lg" = "box-shadow:var(--sh-lg)".
+maRule "hr" = "border-top:1px solid var(--bd-subtle)".
+maRule "btn" = "cursor:pointer;border:1px solid var(--bd-subtle);background:var(--bg-surface);color:var(--tx-1);border-radius:6px;padding:8px 12px;transition:.12s cubic-bezier(.2,0,0,1)".
+maRule "btn-primary" = "background:var(--ac);color:var(--tx-on);border-color:var(--ac)".
+maRule "btn-danger" = "background:var(--danger);color:var(--tx-on);border-color:var(--danger)".
+maRule "chip" = "background:var(--ac-subtle);color:var(--ac);border-radius:9999px;padding:4px 12px".
+maRule "badge" = "border-radius:9999px;padding:4px 12px;background:var(--bg-surface)".
+maRule c = "".
