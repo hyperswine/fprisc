@@ -255,7 +255,7 @@ evOf codec v = case D.run (D.field "e" D.string) v of
   | Ok kind -> (case D.run (D.field "sid" D.int) v of
         Err why -> Err why
       | Ok sid -> (case kind of
-            "msg" -> (case J.field "m" v of
+          "msg" -> (case J.field "m" v of
                 O.None -> Err "missing message"
               | O.Some value -> (case codec.dec (J.toWire value) of
                     Ok m -> Ok (Msg sid m)
