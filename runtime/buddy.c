@@ -116,21 +116,28 @@ void *buddy_alloc(uw bytes) {
  * Process images are statically linked at _proc_arena_start, but buddy
  * now spans heap+proc as ONE region and ordinary allocations land
  * wherever.  These reserve/release the EXACT range a linked image
- * needs, by splitting free blocks TOWARD each 64 KiB unit of the range
+ * needs, by splitting free blocks TOWARD the aligned blocks that tile the range
  * (split_down's low-half bias keeps this region free in practice).
  * Returns addr, or NULL if any unit is already taken -- a loud, clean
  * load failure, not a corruption. */
-static int take_unit(char *unit) {
-  for (int order = 0; order <= max_order; order++) {
+/* Take the whole naturally aligned block of order `want` at `blk`.  The
+ * range is taken as a few such blocks, never unit by unit: splitting
+ * toward a WHOLE block writes free-list nodes only into the halves it
+ * gives back, so nothing inside the reserved range is written.  Unit by
+ * unit, every 64 KiB of it got a node -- the 1 GiB plugin window was
+ * 16384 writes into memory nobody had used, which is 256 MiB resident
+ * on 16 KiB pages and, with transparent huge pages, the whole GiB. */
+static int take_block(char *blk, int want) {
+  for (int order = want; order <= max_order; order++) {
     free_node_t **pp = &free_lists[order];
     for (free_node_t *b = *pp; b; pp = &b->next, b = b->next) {
       char *lo = (char *)b, *hi = lo + block_size(order);
-      if (unit < lo || unit >= hi) continue;
+      if (blk < lo || blk >= hi) continue;
       *pp = b->next; /* unlink the containing block */
-      while (order > 0) { /* split toward the unit, freeing the far half */
+      while (order > want) { /* split toward blk, freeing the far half */
         order--;
         char *mid = lo + block_size(order);
-        if (unit < mid) {
+        if (blk < mid) {
           free_node_t *far = (free_node_t *)mid;
           far->next = free_lists[order];
           free_lists[order] = far;
@@ -147,14 +154,33 @@ static int take_unit(char *unit) {
   return 0;
 }
 
+/* No free block holds all of it: the free space there is in smaller
+ * pieces (or part of it is taken), so take the two halves separately.
+ * Only a range that is really occupied recurses all the way to a unit. */
+static int take_aligned(char *blk, int order) {
+  if (take_block(blk, order)) return 1;
+  if (order == 0) return 0;
+  return take_aligned(blk, order - 1) && take_aligned(blk + block_size(order - 1), order - 1);
+}
+
 void *buddy_reserve_range(void *addr, uw bytes) {
   uw units = (bytes + BUDDY_MIN_BLOCK - 1) / BUDDY_MIN_BLOCK;
+  uw off = offset_of(addr), end = off + units * BUDDY_MIN_BLOCK;
   fpr_lock(&buddy_lock);
-  for (uw i = 0; i < units; i++) {
-    if (!take_unit((char *)addr + i * BUDDY_MIN_BLOCK)) {
+  /* the range as its canonical decomposition: at each step the largest
+   * block that is aligned at `off` and still fits.  Alignment is by
+   * offset, like every other block, so these are blocks buddy_free can
+   * later coalesce back through. */
+  while (off < end) {
+    int order = 0;
+    while (order < max_order && (off & (block_size(order + 1) - 1)) == 0 &&
+           off + block_size(order + 1) <= end)
+      order++;
+    if (!take_aligned(arena_base + off, order)) {
       fpr_unlock(&buddy_lock);
-      return 0; /* range occupied (earlier units stay reserved: loud config error) */
+      return 0; /* range occupied (earlier blocks stay reserved: loud config error) */
     }
+    off += block_size(order);
   }
   fpr_unlock(&buddy_lock);
   return addr;

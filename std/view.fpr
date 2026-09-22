@@ -71,16 +71,30 @@ slot (Ctx cur ss ds) v = Ctx "" (cur :: ss) (v :: ds).
 # locals MERGE into one x-data: two x-local attributes on one element
 # would be a duplicate attribute name, and HTML keeps only the first --
 # a silent single-local ceiling. One attribute, Alpine-shaped.
-attrsOf as = strcat (xdata (localsOf as)) (others as).
+# Classes merge the same way, for the same reason: Ma's `card` is
+# `vsA 3 [Cls "bg-surface ..."]`, a Cls from the layout and a Cls from the
+# caller on one element -- and with two class attributes the browser kept the
+# first, so no card ever had its surface.  One attribute, every class.
+attrsOf as = strcat (xdata (localsOf as)) (strcat (classAttr (classesOf as)) (others as)).
 localsOf : unsafe List Attr -> String .
 localsOf Nil = "".
 localsOf (Local n init :: r) = join2 (localsOf r) "{n}={init}".
 localsOf (a :: r) = localsOf r.
 xdata "" = "".
 xdata s = " x-data=\"{s}\"".
+classesOf : unsafe List Attr -> String .
+classesOf Nil = "".
+classesOf (Cls s :: r) = joinSp s (classesOf r).
+classesOf (a :: r) = classesOf r.
+joinSp "" b = b.
+joinSp a "" = a.
+joinSp a b = strcat a (strcat " " b).
+classAttr "" = "".
+classAttr s = " class=\"{s}\"".
 others : unsafe List Attr -> String .
 others Nil = "".
 others (Local n init :: r) = others r.
+others (Cls s :: r) = others r.
 others (a :: r) = strcat (attrOf a) (others r).
 
 attrOf (Cls s) = " class=\"{s}\"".

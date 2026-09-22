@@ -115,6 +115,47 @@ author would hit.
    `Digest = use "std/digest"`) is resolved as the module, and the type error
    that follows points somewhere else entirely.
 
+## A second app: the logbook (2026-09-22)
+
+`examples/logbook.fpr` is the first Live app written *as an application* rather
+than as a demo of the driver: a digital log -- add an observation, edit it,
+delete it, tag it, search by text or tag, page through it newest first. It is
+what the patterns look like when a real app needs them, and it is in
+`tests/check_std.py` (`tests/std/logbook_ws.py` drives it over the websocket
+exactly as a browser does, then kills it, replays it, restarts it).
+
+Three things it needed that the driver did not give it directly:
+
+- **Per-session state.** The model is shared, but a search, a page number and
+  "the entry I am editing" belong to one tab. The pattern: a `sessions : List
+  Sess` field keyed by sid, added on `Joined`, removed on `Left`, read by `view
+  sid m`. It is state like any other -- journaled, replayed -- just never
+  durable.
+- **Filling an input from the server.** Client state only flows *up* (a
+  `data-arg`), so an edit form could not be pre-filled. The app adds one port:
+  `Live.Emit sid "set" json` and a dozen lines of page script that put values
+  into inputs by name. The event can arrive before the render that creates the
+  input, so the script keeps a value pending until its input exists.
+- **Local time.** `Os.tzOffset` (new, `machine/posix/os.c`) and
+  `Clock.local`/`Clock.stamp`: entries are stored as UTC seconds and shown on
+  the local clock.
+
+And two bugs in the view layer that every Ma app had, found because this one
+looked wrong on a phone:
+
+- `Ma.card` emitted **two `class` attributes** on one element (`vsA`'s layout
+  class and the caller's), and a browser keeps the first -- so no card had its
+  surface, border or shadow. `View.attrsOf` now merges every `Cls` into one
+  attribute, as it already did for locals.
+- Ma's CSS is emitted in the order the tree first uses each class, so
+  `.btn` could land after `.btn-primary` and win; primary buttons came out
+  plain. The modifiers are compound selectors now (`.btn.btn-primary`).
+
+One cost worth knowing: `entries` is one durable field, so every save writes
+the whole list (bounded to once a second by its policy). A log of thousands of
+entries is fine; a log of hundreds of thousands wants entries as individual
+kvlog records, which the field abstraction does not offer yet.
+
 ## Still open: two rare failures under test
 
 The full check (`liveboard-check.py`) fails about one run in twelve at 1,000

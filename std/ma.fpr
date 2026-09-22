@@ -98,6 +98,12 @@ maRules : unsafe List String -> String .
 maRules Nil = "".
 maRules (c :: r) = strcat (ma1 c (maRule c)) (maRules r).
 ma1 c "" = "".
+# a MODIFIER of a component (btn-primary, btn-danger) is a compound selector:
+# rules are emitted in the order the tree first uses the classes, so with a
+# plain `.btn-primary` a `.btn` used later in the page would win and every
+# primary button would come out plain
+ma1 "btn-primary" d = ".btn.btn-primary\{{d}}\n".
+ma1 "btn-danger" d = ".btn.btn-danger\{{d}}\n".
 ma1 c d = ".{c}\{{d}}\n".
 
 # tokens.color -> custom properties, day at :root, night as a class

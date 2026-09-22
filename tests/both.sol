@@ -15,6 +15,6 @@ sumTo n = go 1 n 0.
 go : unsafe Int -> Int -> Int -> Int .
 go i n acc = case i > n of
   True -> acc
-  | False -> go (i + 1) n (acc + i).
+| False -> go (i + 1) n (acc + i).
 
 > s = sumTo 10; print "both: sumTo(10)={s} double={double 21} k={classify (0 - 5)}".

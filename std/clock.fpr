@@ -57,6 +57,19 @@ iso secs =
   rem = secs - days * 86400;
   "{date secs}T{two (rem / 3600)}:{two ((rem - (rem / 3600) * 3600) / 60)}:{two (rem - (rem / 60) * 60)}Z".
 
+# the same instant read on the LOCAL clock (the zone's offset applied, DST
+# included): for display only -- store and compare UTC seconds
+local : Int -> Int .
+local secs = secs + OS.tzOffset secs.
+
+# "2026-09-20 14:14" on the local clock: what a person expects next to an entry
+stamp : Int -> String .
+stamp secs =
+  l = local secs;
+  days = (case l >= 0 of True -> l | False -> l - 86399) / 86400;
+  rem = l - days * 86400;
+  "{date l} {two (rem / 3600)}:{two ((rem - (rem / 3600) * 3600) / 60)}".
+
 # ---- a receive that gives up (it needs a clock, so it lives here: std/actor is
 # for every system, and not every system has this one) ------------------------------
 # the next message, or None after `ms`.  Waiting allocates nothing (`receiveNow`

@@ -22,6 +22,7 @@
  *                  and the answer is Err "timed out after N ms")
  *                  -> exit status (128 + signal when killed), stdout, stderr
  *   Os.wallClock : Unit -> Int                                  seconds since 1970-01-01 UTC
+ *   Os.tzOffset  : Int -> Int                                   the local zone at that instant, seconds east of UTC
  *   Os.ttyRaw    : Bool -> Result Unit String                   stdin's terminal into raw mode (no line buffering,
  *                                                               no echo, reads never wait) / back as it was; it is
  *                                                               also put back at exit and on SIGINT / SIGTERM
@@ -212,6 +213,15 @@ FPR_FN(fpr_g_Os_x2ecwd, h_cwd, 1);
 
 static V h_wall_clock(V u) { (void)u; return TAG((sw)time(0)); }
 FPR_FN(fpr_g_Os_x2ewallClock, h_wall_clock, 1);
+/* the local zone's offset from UTC at that instant, in seconds east (DST
+ * included): the one thing a clock needs that only the OS knows */
+static V h_tz_offset(V secs) {
+  time_t t = (time_t)UNTAG(secs);
+  struct tm tm;
+  if (!localtime_r(&t, &tm)) return TAG(0);
+  return TAG((sw)tm.tm_gmtoff);
+}
+FPR_FN(fpr_g_Os_x2etzOffset, h_tz_offset, 1);
 
 /* ---- Os.run: a child with all three streams held ------------------------
  * fork/exec rather than posix_spawn for the chdir.  stdin is fed and both

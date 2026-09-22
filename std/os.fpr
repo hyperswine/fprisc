@@ -15,6 +15,7 @@ Os.rename    : String -> String -> Result Unit String .
 Os.cwd       : Unit -> String .
 Os.run       : List String -> String -> String -> List String -> Int -> Result (Int, String, String) String .
 Os.wallClock : Unit -> Int .
+Os.tzOffset  : Int -> Int .
 Os.open      : String -> String -> Result Int String .
 Os.ready     : Int -> Bool .
 Os.poll      : List Int -> List Int .
@@ -53,3 +54,5 @@ exec argv = Os.exec argv.
 ttyRaw on = Os.ttyRaw on.
 ttySize u = Os.ttySize u.
 wallClock u = Os.wallClock u.
+# the local time zone's offset from UTC at that instant, seconds east
+tzOffset secs = Os.tzOffset secs.

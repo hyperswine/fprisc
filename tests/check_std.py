@@ -103,3 +103,9 @@ with tempfile.TemporaryDirectory(prefix='fpr-tui-') as t:
                        capture_output=True, text=True, timeout=300)
     assert p.returncode == 0 and '"buy milk"' in p.stdout, p.stdout + p.stderr
     print('examples/todo.fpr, a terminal app: raw-mode keys (UTF-8 text, arrows, Tab, Delete), a resize, a subscription, a durable list through a minted codec, the terminal put back: PASS')
+# a live web app, driven over its websocket the way a browser drives it
+with tempfile.TemporaryDirectory(prefix='fpr-live-') as t:
+    p = subprocess.run([sys.executable, str(ROOT / 'tests' / 'std' / 'logbook_ws.py'), fpr, str(ROOT / 'examples' / 'logbook.fpr'), str(Path(t) / 'log.kvlog')],
+                       capture_output=True, text=True, timeout=600)
+    assert p.returncode == 0 and p.stdout.strip() == 'ok', p.stdout + p.stderr
+    print('examples/logbook.fpr, a live web app: two tabs on one model, each with its own search and page; add/edit/delete stamped by the clock; the edit form filled through the JS port; killed, replayed from the journal, restarted from the fields: PASS')
