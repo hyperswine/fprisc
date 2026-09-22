@@ -64,6 +64,7 @@ PL = use "poller".
 OS = use "os".
 P = use "proc".
 Ord = use "order".
+L = use "list".
 
 # ---- the app's vocabulary ------------------------------------------------------------
 # Msg sid m: from a session (sid 0: from a command or a subscription).
@@ -381,7 +382,7 @@ session reg poller app conn req = case WS.accept req of
   | Ok head ->
       _ = ST.write head conn;
       me = myself 0;
-      writer = A.spawnWith (A.Dynamic 64) (fn self -> writerStart reg app conn self);
+      writer = A.spawnWith (A.Dynamic 64) (fn self -> writerStart (req.query == "lv=2") reg app conn self);
       r = A.askSure me reg (Join writer);
       sid = (case r of Welcome n _ -> n | _ -> 0);
       _ = drop r; # a reply is a message: undropped, it pins the register's slab for this session's life
@@ -408,38 +409,63 @@ eventOf codec sid text = case J.parse text of
 # the writer: what this session last saw, and the only actor that writes its socket.
 # seen: the version on screen; asked: a model has been asked for and not yet
 # arrived; latest: the newest version heard of
-writerStart reg app conn self = case receive self of
+writerStart patches reg app conn self = case receive self of
     Welcome sid model -> (case app.view sid model of (s, d) ->
         _ = WS.sendText (full s d) conn;
-        writing reg app conn sid self (Wr (keep s) (keep d) 0 False 0) A.tidySmall)
+        writing patches reg app conn sid self (Wr (keep s) (keep d) 0 False 0) A.tidySmall)
   | _ -> Unit.
 
 Wr = Type (Wr s d seen asked latest).
 # `app` is spelled out: this loop renders through it, so a bare `a` promised
 # the caller any type at all for something it projects `.view` from.
-writing : unsafe Int -> { view : Int -> model -> (List String, List String) | r } -> ST.Stream -> Int -> Int -> Wr -> A.Tidy -> Unit .
-writing reg app conn sid self w0 t0 = case A.tidy self (w0, t0) of (Wr s d seen asked latest, t) ->
+writing : unsafe Bool -> Int -> { view : Int -> model -> (List String, List String) | r } -> ST.Stream -> Int -> Int -> Wr -> A.Tidy -> Unit .
+writing patches reg app conn sid self w0 t0 = case A.tidy self (w0, t0) of (Wr s d seen asked latest, t) ->
   m = receive self;
   (case m of
       Changed v ->
         _ = drop m;
-        (if v <= seen or asked then writing reg app conn sid self (Wr s d seen asked (if v > latest then v else latest)) t
-         else _ = A.sendSure self reg (self, Snapshot); writing reg app conn sid self (Wr s d seen True v) t)
+        (if v <= seen or asked then writing patches reg app conn sid self (Wr s d seen asked (if v > latest then v else latest)) t
+         else _ = A.sendSure self reg (self, Snapshot); writing patches reg app conn sid self (Wr s d seen True v) t)
     | Model v model -> (case app.view sid model of (s2, d2) ->
         sent = (if s2 == s then (case delta d d2 0 Nil of Nil -> Ok Unit | changes -> WS.sendText (strJoin "" ("\{\"d\":\{" :: strJoin "," (rev changes Nil) :: "}}" :: Nil)) conn)
-                else WS.sendText (full s2 d2) conn);
+                else WS.sendText (structural patches s d s2 d2) conn);
         s3 = keep s2;
         d3 = keep d2;
         _ = drop m;
         more = latest > v;
         _ = (if more then A.sendSure self reg (self, Snapshot) else True);
-        (case sent of Ok _ -> writing reg app conn sid self (Wr s3 d3 v more latest) t | Err _ -> Unit))
-    | Pong payload -> _ = WS.sendPong payload conn; _ = drop m; writing reg app conn sid self (Wr s d seen asked latest) t
-    | Push text -> _ = WS.sendText text conn; _ = drop m; writing reg app conn sid self (Wr s d seen asked latest) t
+        (case sent of Ok _ -> writing patches reg app conn sid self (Wr s3 d3 v more latest) t | Err _ -> Unit))
+    | Pong payload -> _ = WS.sendPong payload conn; _ = drop m; writing patches reg app conn sid self (Wr s d seen asked latest) t
+    | Push text -> _ = WS.sendText text conn; _ = drop m; writing patches reg app conn sid self (Wr s d seen asked latest) t
     | _ -> _ = WS.sendClose 1001 conn; Unit).
 
 full : List String -> List String -> String .
 full s d = strJoin "" ("\{\"s\":" :: J.render (J.strings s) :: ",\"d\":" :: J.render (J.strings d) :: "}" :: Nil).
+
+# v2 structural patches splice the rendered arrays, retaining their common
+# prefix and suffix. Both arrays change atomically on the client. A full
+# snapshot wins when it is smaller, and legacy clients always get snapshots.
+structural : Bool -> List String -> List String -> List String -> List String -> String .
+structural patches s d s2 d2 =
+  snapshot = full s2 d2;
+  if patches then
+    patch = "\{\"p\":2,\"s\":{splice s s2},\"d\":{splice d d2}}";
+    if strlen patch < strlen snapshot then patch else snapshot
+  else snapshot.
+
+splice : List String -> List String -> String .
+splice old new =
+  prefix = common old new 0;
+  a = L.drop prefix old;
+  b = L.drop prefix new;
+  suffix = common (L.reverse a) (L.reverse b) 0;
+  remove = L.length a - suffix;
+  insert = L.take (L.length b - suffix) b;
+  "[{prefix},{remove},{J.render (J.strings insert)}]".
+common : unsafe List String -> List String -> Int -> Int .
+common a b n = case (a, b) of
+    (x :: xs, y :: ys) -> if x == y then common xs ys (n + 1) else n
+  | _ -> n.
 
 # "i":"new" for every dynamic that changed, newest first
 delta : unsafe List String -> List String -> Int -> List String -> List String .

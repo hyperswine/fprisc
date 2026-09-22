@@ -22,14 +22,81 @@ src u = "/* fprlive.js -- the FPRLive client.
   var locals = Object.create(null);
   var ws = null, wait = 500, sent = 0, t0 = 0;
 
+  // Keys identify siblings, never positions. Dynamic slot numbers may change
+  // after an insertion, so patch the detached tree before matching old nodes.
+  function keyOf(node) \{
+    return node.nodeType === 1 ? node.getAttribute('data-lv-key') : null;
+  }
+
+  function compatible(a, b) \{
+    return a.nodeType === b.nodeType && a.nodeName === b.nodeName;
+  }
+
+  function reconcile(parent, wanted) \{
+    var keyed = new Map();
+    Array.from(parent.childNodes).forEach(function (n) \{
+      var key = keyOf(n);
+      if (key !== null) \{
+        if (keyed.has(key)) throw new Error('duplicate view key: ' + key);
+        keyed.set(key, n);
+      }
+    });
+    var cursor = parent.firstChild, seen = new Set();
+    Array.from(wanted.childNodes).forEach(function (next) \{
+      var key = keyOf(next), old = null;
+      if (key !== null) \{
+        if (seen.has(key)) throw new Error('duplicate view key: ' + key);
+        seen.add(key);
+        old = keyed.get(key);
+      } else if (cursor && keyOf(cursor) === null && compatible(cursor, next)) \{
+        old = cursor;
+      }
+      if (old && compatible(old, next)) \{
+        if (old !== cursor) parent.insertBefore(old, cursor);
+        if (old.nodeType === 1) \{
+          Array.from(old.attributes).forEach(function (a) \{
+            if (!next.hasAttribute(a.name)) old.removeAttribute(a.name);
+          });
+          Array.from(next.attributes).forEach(function (a) \{
+            if (old.getAttribute(a.name) !== a.value) old.setAttribute(a.name, a.value);
+          });
+          // The browser owns live form values, selection and composition.
+          // Server-controlled values use the existing explicit client ports.
+          if (!old.matches('textarea[data-input],select[data-input]')) reconcile(old, next);
+        } else if (old.nodeValue !== next.nodeValue) old.nodeValue = next.nodeValue;
+        cursor = old.nextSibling;
+      } else \{
+        parent.insertBefore(next, cursor);
+      }
+    });
+    while (cursor) \{
+      var stale = cursor;
+      cursor = cursor.nextSibling;
+      parent.removeChild(stale);
+    }
+  }
+
   function build() \{
     var out = '';
     for (var i = 0; i < S.s.length; i++) \{
       out += S.s[i];
       if (i < S.d.length) out += '<span data-slot=\"' + i + '\"></span>';
     }
-    root.innerHTML = out;
-    for (var k = 0; k < S.d.length; k++) slot(k, S.d[k], false);
+    var wanted = document.createElement('div');
+    wanted.innerHTML = out;
+    wanted.querySelectorAll('[data-slot]').forEach(function (el) \{
+      el.textContent = S.d[Number(el.getAttribute('data-slot'))];
+    });
+    var active = document.activeElement;
+    var start = active && active.selectionStart, end = active && active.selectionEnd;
+    var direction = active && active.selectionDirection;
+    reconcile(root, wanted);
+    // Moving an ancestor can blur an input. Restore only an element that
+    // survived; removing an edit form must not focus its replacement.
+    if (active && root.contains(active) && document.activeElement !== active) \{
+      active.focus(\{preventScroll: true});
+      if (typeof start === 'number') active.setSelectionRange(start, end, direction);
+    }
     scanLocals();
     wire();
     paintLocals();
@@ -87,6 +154,10 @@ src u = "/* fprlive.js -- the FPRLive client.
   }
 
   function wire() \{
+    // Reused elements must not retain handlers for attributes removed by a patch.
+    root.querySelectorAll('*').forEach(function (el) \{
+      el.onclick = el.onchange = el.oninput = el.onkeydown = null;
+    });
     root.querySelectorAll('[data-set]').forEach(function (el) \{
       el.onclick = function () \{
         applySet(el.getAttribute('data-set'), el.getAttribute('data-val'));
@@ -127,11 +198,29 @@ src u = "/* fprlive.js -- the FPRLive client.
     ws.send(JSON.stringify(\{ msg: msg, arg: String(arg) }));
   }
 
+  function spliced(old, patch) \{
+    if (!Array.isArray(patch) || patch.length !== 3 ||
+        !Number.isInteger(patch[0]) || !Number.isInteger(patch[1]) ||
+        patch[0] < 0 || patch[1] < 0 || patch[0] + patch[1] > old.length ||
+        !Array.isArray(patch[2]) || !patch[2].every(x => typeof x === 'string')) \{
+      throw new Error('invalid structural patch');
+    }
+    return old.slice(0, patch[0]).concat(patch[2], old.slice(patch[0] + patch[1]));
+  }
+
   function apply(res) \{
     // server-to-client COMMANDS (std/live.fpr): go somewhere, or hand a named
     // event to the page's own script (document.addEventListener('live:name', ...))
     if (res.nav) \{ location.href = res.nav; return; }
     if (res.emit) \{ document.dispatchEvent(new CustomEvent('live:' + res.emit, \{ detail: res.detail })); return; }
+    if (res.p !== undefined) \{
+      if (res.p !== 2) throw new Error('unsupported live protocol');
+      var next = \{s: spliced(S.s, res.s), d: spliced(S.d, res.d)};
+      if (next.s.length !== next.d.length + 1) throw new Error('invalid view shape');
+      S = next;
+      build();
+      return;
+    }
     if (res.s) \{ S = \{ s: res.s, d: res.d }; build(); return; }
     var n = 0;
     for (var k in res.d) \{ S.d[k] = res.d[k]; slot(k, res.d[k], true); n++; }
@@ -145,12 +234,17 @@ src u = "/* fprlive.js -- the FPRLive client.
   }
 
   function connect() \{
-    var url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+    var url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws?lv=2';
     ws = new WebSocket(url);
     ws.onopen = function () \{ wait = 500; status('live'); };
     ws.onmessage = function (ev) \{
-      var res; try \{ res = JSON.parse(ev.data); } catch (e) \{ return; }
-      apply(res);
+      var res; try \{ res = JSON.parse(ev.data); } catch (e) \{ ws.close(4002, 'resync'); return; }
+      try \{ apply(res); } catch (e) \{
+        // Closing with an error reconnects to a fresh full snapshot. Ordered
+        // WebSocket frames need no per-patch ack on a surviving connection.
+        console.error('live patch rejected', e);
+        ws.close(4002, 'resync');
+      }
     };
     ws.onclose = function (ev) \{
       status('offline (' + ev.code + ')');

@@ -125,8 +125,9 @@ view sid m =
                  :: G.El "button" [G.Cls "btn t-label tall", G.sendWith codec (Search "") @Client.q] [G.Txt "search"]
                  :: (if strlen s.q == 0 then G.El "span" Nil Nil else btn "clear" (Search ""))
                  :: Nil )
-          :: (if n == 0 then Ma.caption (if strlen s.q == 0 then "nothing logged yet" else "nothing matches \"{s.q}\"")
-              else Ma.vstack 3 (List.map (entryCard s) shown))
+          :: G.key "entries" (Ma.vstack 3
+               (if n == 0 then [Ma.caption (if strlen s.q == 0 then "nothing logged yet" else "nothing matches \"{s.q}\"")]
+                else List.map (entryCard s) shown))
           :: (if pages <= 1 then G.El "span" Nil Nil
               else Ma.hstack 2 [ (if page > 0 then btn "newer" (Page (page - 1)) else G.El "span" Nil Nil), Ma.spacer,
                                  Ma.caption "page {page + 1} of {pages}", Ma.spacer,
@@ -136,7 +137,7 @@ view sid m =
 
 # an entry, or -- for the one this session is editing -- its edit form
 entryCard s e =
-  if s.editing == e.id then
+  G.key "entry-{e.id}" (if s.editing == e.id then
     Ma.card
       ( G.El "div" [G.Cls "t-caption tx-3"] [G.Txt "#{e.id} · {Clock.stamp e.at} · editing"]
         :: G.El "textarea" [G.Cls "inp t-body w-full", G.bind @Client.edit, G.Att "rows" "4"] Nil
@@ -152,7 +153,7 @@ entryCard s e =
         :: G.El "div" [G.Cls "t-body tx-1 pre"] [G.Dyn e.text]
         :: (if List.isEmpty e.tags then G.El "span" Nil Nil
             else G.El "div" [G.Cls "row wrap gap-1"] (List.map (fn t -> G.El "button" [G.Cls "chip t-label", G.send codec (Search t)] [G.Txt t]) e.tags))
-        :: Nil ).
+        :: Nil )).
 
 btn : String -> Msg -> G.Node .
 btn label msg = G.El "button" [G.Cls "btn t-label tall", G.send codec msg] [G.Txt label].

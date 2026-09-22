@@ -42,6 +42,15 @@ Attr = Type (Cls String | Att String String | Local String String
 Node = Type (El String (List Attr) (List Node) | Txt String | Dyn String | LTxt String
            | Inp (List Attr)).
 
+# A stable identity among siblings. Keys preserve DOM nodes across structural
+# snapshots; they do not change the existing (statics, dynamics) wire format.
+# Keys must be unique within a parent and stable for the lifetime of an item.
+key : String -> Node -> Node .
+key k n = case n of
+    El tag attrs kids -> El tag (Att "data-lv-key" k :: attrs) kids
+  | Inp attrs -> Inp (Att "data-lv-key" k :: attrs)
+  | _ -> error "View.key needs an element".
+
 Ctx = Type (Ctx cur statics dyns).
 
 # ---- rendering: tree -> (statics, dynamics) --------------------------------
