@@ -1,0 +1,226 @@
+#!/usr/bin/env -S fpr run
+# logbook.fpr -- a digital log: observations, each stamped when it was written,
+# tagged, searchable, editable.  A LIVE app on a plain posix process (docs/LIVE.md):
+# one model, an actor per browser tab, the page split into statics and dynamics.
+#
+#   fpr run examples/logbook.fpr [--port=6700] [--address=0.0.0.0] [--store=logbook.kvlog] [--dev]
+#
+# THE DATA.  An entry is a record; the log is a list of them, NEWEST FIRST, so
+# the first page is the head of the list and adding is a cons.  The list and
+# the id counter are the durable fields (each named by a path, each with its
+# own policy); everything a session is looking at -- its search, its page, the
+# entry it is editing -- is per session, kept in the model by sid and never
+# written down.  `update` is pure, every event is journaled, so `--replay`
+# rebuilds the log from the journal alone.
+#
+# THE VIEW.  Mobile first: one column, inputs the width of the screen, buttons
+# a thumb can hit.  A page renders ONE page of entries (`pageSize`), so a tab
+# costs its page, not the log.  Drafts live in the browser (client state); the
+# server fills them for an edit through the one JavaScript port the page has.
+unsafe base.
+
+Live = use "std/live".
+Config = use "std/config".
+Decode = use "std/decode".
+Json = use "std/json".
+KvLog = use "std/kvlog".
+Program = use "std/program".
+List = use "std/list".
+String = use "std/string".
+Option = use "std/option".
+Result = use "std/result".
+Clock = use "std/clock".
+G = use "std/view".
+Ma = use "std/ma".
+LJ = use "std/livejs".
+
+pageSize = 20.
+
+# ---- the model ----------------------------------------------------------------------------
+Entry = {id : Int, at : Int, text : String, tags : List String}.
+# what one session is looking at: `editing` is an id, 0 for none
+Sess = {sid : Int, q : String, page : Int, editing : Int}.
+Model = {entries : List Entry, nextId : Int, sessions : List Sess, toast : String}.
+
+init = {entries = Nil, nextId = 1, sessions = Nil, toast = ""}.
+
+# every message; `Add` and `Save` carry "tags|text" as ONE string because a click
+# sends one argument (the tags first: a tag never contains a bar, a text may)
+Msg = Type (Add String | Edit Int | Save Int String | Delete Int | Search String | Page Int | Stamped Int String | ClearToast).
+codec = @Msg.
+
+# the browser's own state: the drafts of a new entry, of an edit, and the search box
+Client = {draft : String, tags : String, edit : String, etags : String, q : String}.
+
+fields =
+     Live.field Live.Always @Model.nextId
+  :: Live.field (Live.AtMostEvery 1000) @Model.entries
+  :: Nil.
+
+# ---- update ---------------------------------------------------------------------------------
+update ev m = case ev of
+    Live.Joined sid -> ({m | sessions = {sid = sid, q = "", page = 0, editing = 0} :: m.sessions}, Nil)
+  | Live.Left sid -> ({m | sessions = List.filter (fn s -> s.sid != sid) m.sessions}, Nil)
+  | Live.Refused _ _ -> (m, Nil)
+  | Live.Msg sid msg -> (case msg of
+        # the clock is an effect: the entry is stamped by a command and lands as Stamped
+        Add raw -> (if strlen (textOf raw) == 0 then (m, Nil)
+                    else (m, Live.Run (fn u -> Stamped (Clock.now Unit) raw) :: Live.Emit sid "set" (setJson (("draft", "") :: ("tags", "") :: Nil)) :: Nil))
+      | Stamped at raw ->
+          e = {id = m.nextId, at = at, text = textOf raw, tags = tagsOf raw};
+          ({m | entries = e :: m.entries, nextId = m.nextId + 1, toast = "added #{e.id}"}, Live.After 1500 ClearToast :: Nil)
+      | Edit id -> (withSess sid (fn s -> {s | editing = id}) m,
+                    (case List.find (fn e -> e.id == id) m.entries of
+                        Option.Some e -> Live.Emit sid "set" (setJson (("edit", e.text) :: ("etags", String.join ", " e.tags) :: Nil)) :: Nil
+                      | Option.None -> Nil))
+      | Save id raw -> (if strlen (textOf raw) == 0 then (m, Nil)
+                        else ({(withSess sid (fn s -> {s | editing = 0}) m) | entries = List.map (fn e -> if e.id == id then {e | text = textOf raw, tags = tagsOf raw} else e) m.entries, toast = "saved #{id}"},
+                              Live.After 1500 ClearToast :: Nil))
+      | Delete id -> ({(withSess sid (fn s -> {s | editing = 0}) m) | entries = List.filter (fn e -> e.id != id) m.entries, toast = "deleted #{id}"}, Live.After 1500 ClearToast :: Nil)
+      | Search q -> (withSess sid (fn s -> {s | q = String.trim q, page = 0}) m, Live.Emit sid "set" (setJson (("q", String.trim q) :: Nil)) :: Nil)
+      | Page n -> (withSess sid (fn s -> {s | page = (if n < 0 then 0 else n)}) m, Nil)
+      | ClearToast -> ({m | toast = ""}, Nil)).
+
+withSess sid f m = {m | sessions = List.map (fn s -> if s.sid == sid then f s else s) m.sessions}.
+sessOf sid m = case List.find (fn s -> s.sid == sid) m.sessions of
+    Option.Some s -> s
+  | Option.None -> {sid = sid, q = "", page = 0, editing = 0}.
+
+# "tags|text": the part before the first bar is the tags, comma separated
+textOf raw = case String.indexOf "|" raw of Option.Some i -> String.trim (String.dropLeft i raw) | Option.None -> String.trim raw.
+tagsOf raw = case String.indexOf "|" raw of
+    Option.Some i -> List.filter (fn t -> strlen t > 0) (List.map String.trim (String.split "," (String.left (i - 1) raw)))
+  | Option.None -> Nil.
+
+# the port to the page's script: {"name": "value", ...} for the inputs to take
+setJson kvs = Json.render (Json.object (List.map (fn kv -> (case kv of (k, v) -> (k, Json.Text v))) kvs)).
+
+subs m = Nil.
+
+# ---- the query a session sees --------------------------------------------------------------
+# a search matches the text or a tag, case-insensitively; "" is everything
+matches q e = strlen q == 0 or String.contains q (String.toLower e.text) or List.any (fn t -> String.contains q (String.toLower t)) e.tags.
+visible s m = List.filter (matches (String.toLower s.q)) m.entries.
+
+# ---- view: Ma primitives only ---------------------------------------------------------------
+view sid m =
+  s = sessOf sid m;
+  all = visible s m;
+  n = List.length all;
+  pages = (if n == 0 then 1 else (n + pageSize - 1) / pageSize);
+  page = (if s.page >= pages then pages - 1 else s.page);
+  shown = List.take pageSize (List.drop (page * pageSize) all);
+  Ma.page "day"
+    ( G.El "div" (G.Cls "col gap-4 narrow" :: G.locals @Client {draft = "", tags = "", edit = "", etags = "", q = ""})
+        ( Ma.hstack 3 [Ma.vstack 1 [Ma.title "Logbook", G.El "div" [G.Cls "t-caption tx-3"] [G.Dyn "{List.length m.entries} entries, {List.length m.sessions} online"]], Ma.spacer,
+                       G.El "div" [G.Cls "t-caption tx-success"] [G.Dyn m.toast]]
+          :: Ma.card
+               ( Ma.heading "New observation"
+                 :: G.El "textarea" [G.Cls "inp t-body w-full", G.bind @Client.draft, G.Att "rows" "3", G.Att "placeholder" "what happened"] Nil
+                 :: G.Inp [G.Cls "inp t-body w-full", G.bind @Client.tags, G.OnEnter (G.wireOpen codec (Add "")) "tags,draft", G.Att "placeholder" "tags, comma separated"]
+                 :: G.El "button" [G.Cls "btn btn-primary t-label tall", G.OnClick (G.wireOpen codec (Add "")) "tags,draft"] [G.Txt "add entry"]
+                 :: Nil )
+          :: Ma.hstack 2
+               ( G.Inp [G.Cls "inp t-body grow", G.bind @Client.q, G.enterWith codec (Search "") @Client.q, G.Att "placeholder" "search text or tag"]
+                 :: G.El "button" [G.Cls "btn t-label tall", G.sendWith codec (Search "") @Client.q] [G.Txt "search"]
+                 :: (if strlen s.q == 0 then G.El "span" Nil Nil else btn "clear" (Search ""))
+                 :: Nil )
+          :: (if n == 0 then Ma.caption (if strlen s.q == 0 then "nothing logged yet" else "nothing matches \"{s.q}\"")
+              else Ma.vstack 3 (List.map (entryCard s) shown))
+          :: (if pages <= 1 then G.El "span" Nil Nil
+              else Ma.hstack 2 [ (if page > 0 then btn "newer" (Page (page - 1)) else G.El "span" Nil Nil), Ma.spacer,
+                                 Ma.caption "page {page + 1} of {pages}", Ma.spacer,
+                                 (if page + 1 < pages then btn "older" (Page (page + 1)) else G.El "span" Nil Nil) ])
+          :: Nil )
+      :: Nil ).
+
+# an entry, or -- for the one this session is editing -- its edit form
+entryCard s e =
+  if s.editing == e.id then
+    Ma.card
+      ( G.El "div" [G.Cls "t-caption tx-3"] [G.Txt "#{e.id} · {Clock.stamp e.at} · editing"]
+        :: G.El "textarea" [G.Cls "inp t-body w-full", G.bind @Client.edit, G.Att "rows" "4"] Nil
+        :: G.Inp [G.Cls "inp t-body w-full", G.bind @Client.etags, G.Att "placeholder" "tags, comma separated"]
+        :: Ma.hstack 2 [ G.El "button" [G.Cls "btn btn-primary t-label tall", G.OnClick (G.wireOpen codec (Save e.id "")) "etags,edit"] [G.Txt "save"],
+                         btn "cancel" (Edit 0), Ma.spacer,
+                         G.El "button" [G.Cls "btn btn-danger t-label tall", G.send codec (Delete e.id)] [G.Txt "delete"] ]
+        :: Nil )
+  else
+    Ma.card
+      ( Ma.hstack 2 [ G.El "div" [G.Cls "t-caption tx-3"] [G.Txt "#{e.id} · {Clock.stamp e.at}"], Ma.spacer,
+                      G.El "button" [G.Cls "btn t-label", G.send codec (Edit e.id)] [G.Txt "edit"] ]
+        :: G.El "div" [G.Cls "t-body tx-1 pre"] [G.Dyn e.text]
+        :: (if List.isEmpty e.tags then G.El "span" Nil Nil
+            else G.El "div" [G.Cls "row wrap gap-1"] (List.map (fn t -> G.El "button" [G.Cls "chip t-label", G.send codec (Search t)] [G.Txt t]) e.tags))
+        :: Nil ).
+
+btn : String -> Msg -> G.Node .
+btn label msg = G.El "button" [G.Cls "btn t-label tall", G.send codec msg] [G.Txt label].
+
+# the page's own script: the one port -- the server fills or clears inputs by
+# name (Live.Emit sid "set" json), which is how an edit form gets its text.  The
+# event can arrive BEFORE the render that creates the input (a command is pushed
+# as soon as update answers it), so a value waits until its input exists.
+script = strcat (LJ.src 0) "
+(function () \{
+  var pending = \{};
+  function fill() \{
+    Object.keys(pending).forEach(function (n) \{
+      var els = document.querySelectorAll('[data-input=\"' + n + '\"]');
+      if (!els.length) return;
+      els.forEach(function (el) \{ el.value = pending[n]; el.dispatchEvent(new Event('input')); });
+      delete pending[n];
+    });
+  }
+  document.addEventListener('live:set', function (e) \{
+    var vals = JSON.parse(e.detail);
+    Object.keys(vals).forEach(function (n) \{ pending[n] = vals[n]; });
+    fill();
+  });
+  new MutationObserver(fill).observe(document.getElementById('lv-root'), \{ childList: true, subtree: true });
+})();
+".
+
+# mobile first: the canvas padding is a phone's, the column is capped on a desktop
+css m = strcat (Ma.maCssFor (view 0 m)) "
+.canvas\{padding:12px}
+.narrow\{max-width:640px;margin:0 auto;width:100%}
+.inp\{background:var(--bg-surface);border:1px solid var(--bd-subtle);color:var(--tx-1);padding:10px 12px;border-radius:8px;font:inherit;outline:none;resize:vertical}
+.inp:focus\{border-color:var(--ac)}
+.tall\{min-height:44px}
+.pre\{white-space:pre-wrap;overflow-wrap:anywhere}
+@media (min-width:640px)\{.canvas\{padding:24px}}
+".
+
+app = { init = init, update = update, subs = subs, fields = fields, codec = codec,
+        view = (fn sid m -> G.render (view sid m)), css = css }.
+
+# ---- settings, replay, main --------------------------------------------------------------------
+Settings = Type (Settings port address store dev replay).
+settings = Decode.map5 Settings (Decode.field "port" Decode.int) (Decode.field "address" Decode.string) (Decode.field "store" Decode.string)
+  (Decode.field "dev" Decode.bool) (Decode.field "replay" Decode.bool).
+
+checkReplay store = case Live.replay app store of
+    Err why -> Program.fail 1 "replay: {why}"
+  | Ok m ->
+      db = (case KvLog.open store of Ok d -> d | Err why -> Program.fail 1 why);
+      saved = Option.andThen Json.asInt (KvLog.get "model.nextId" db);
+      _ = print "replayed from the journal: {List.length m.entries} entries, nextId={m.nextId}";
+      _ = print "saved durable field:       nextId={saved}";
+      (if Option.Some m.nextId == saved then 0 else 1).
+
+main = case Config.load { defaults = Json.object (("port", Json.Integer 6700) :: ("address", Json.Text "127.0.0.1") :: ("store", Json.Text "logbook.kvlog")
+                                                  :: ("dev", Json.Boolean False) :: ("replay", Json.Boolean False) :: Nil),
+                          file = Option.None, envPrefix = "LOGBOOK_", args = Program.args Unit } |> Result.andThen (Decode.run settings) of
+    Err why -> Program.fail 2 "logbook: {why}"
+  | Ok (Settings port address store dev replay) ->
+      (if replay then checkReplay store
+       else
+         exe = "/tmp/logbook-{port}.bin";
+         src = "examples/logbook.fpr";
+         cfg = { address = address, port = port, title = "Logbook", store = store, journal = True, script = script,
+                 watch = (if dev then src :: Nil else Nil),
+                 rebuild = Program.envOr "fpr" "FPR" :: "build" :: src :: "-o" :: exe :: Nil,
+                 restart = exe :: "--port={port}" :: "--address={address}" :: "--store={store}" :: "--dev" :: Nil };
+         _ = Live.serve cfg app;
+         0).
