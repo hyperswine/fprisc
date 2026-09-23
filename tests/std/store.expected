@@ -1,0 +1,11 @@
+count after 35 puts: 35
+page 0/5: 35,34,33,32,31 of 35
+page skip 3 take 10 (crosses shards 3 and 2): 32,31,30,29,28,27,26,25,24,23
+last page: 5,4,3,2,1
+get 17: Some item 17; get 99: False
+after an edit and a removal: count 34, get 17 Some item 17 edited, get 20 False
+search 'fifth': first 3 35,30,25 of 6
+shard 1 after 60 rewrites of one entry: 28 lines for 10 live entries
+after 3,000 churning puts: count 35, newest [churn 2974, churn 2973, churn 2972]
+reopened: count 35, page 0/5 35,34,33,32,31 of 35, get 12 Some churn 2986, get 20 True
+shard files stay compact: 26 + 28 + 51 + 9 lines for 35 entries

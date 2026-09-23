@@ -162,6 +162,8 @@ typedef struct fpr_acb {
   fpr_lock_t shlock; /* producers' lock on the shared ring */
   uw wait_kind, wait_arg; /* while BLOCKED: 1 any, 2 from(arg = sender acb), 3 res */
   uint8_t tr[16]; uw tr_i; /* scheduler transition trace (site codes; the deadlock dump reads it) */
+  uint32_t running; /* 0, or 1 + the hart whose loop has switched into this context and not yet back */
+  uint32_t irq_target; /* bound to an interrupt source: the world outside can wake it */
   struct fpr_acb *slp_next; /* the hart's sleeper list (Sys.sleepUs) */
   uint64_t wake_at;         /* its deadline, mtime ticks */
   uw prio; /* 1: admitted ahead of the backlog (the memory actor: every
@@ -670,6 +672,7 @@ static void ledger_push(acb_t *a) {
 }
 static volatile uw g_blocked;      /* actors currently parked */
 static volatile uw g_sleepers;     /* of which: parked with a deadline */
+static volatile uw g_irq_waiting;  /* of which: an interrupt's actor, waiting for it */
 static volatile uw g_activity;     /* bumped on every ship/spawn */
 
 /* ---- cross-hart wake rings: xr[src][dst], strictly SPSC -------------- */
@@ -953,6 +956,7 @@ static V a_irq_bind(V irqv, V av) {
   uw n = (uw)UNTAG(irqv);
   if (n == 0 || n >= IRQ_MAX) fpr_cpanic("Sys.irqBind: irq out of range");
   irq_act[n] = (acb_t *)av;
+  ((acb_t *)av)->irq_target = 1;
   __atomic_store_n(&irq_bound, 1, __ATOMIC_RELEASE);
   hal_irq_open(n);
   return (V)&fpr_unit;
@@ -1169,6 +1173,52 @@ static void deadlock_dump(void) {
     dl_out(buf, (uw)(p - buf));
   }
 }
+/* An actor's context may be live on ONE hart.  Two harts resuming the same
+ * context corrupt its stack, and the symptom used to be a segfault or a
+ * "not the current actor's handle" panic far from the cause.  The hart loop
+ * claims the context before switching in and releases it after switching
+ * back, when the context is saved; a second claimant stops HERE, naming both
+ * harts and the actor's last scheduler transitions. */
+static void double_run(acb_t *a, fpr_hart_t *h, uint32_t owner) {
+  char buf[512], *p = buf, *e = buf + sizeof buf - 1;
+  dl_put(&p, e, "actor "); dl_num(&p, e, a->id);
+  dl_put(&p, e, " resumed on hart "); dl_num(&p, e, h->id);
+  dl_put(&p, e, " while live on hart "); dl_num(&p, e, owner - 1);
+  dl_put(&p, e, " (var "); dl_num(&p, e, a->var);
+  dl_put(&p, e, " home "); dl_num(&p, e, a->hart);
+  dl_put(&p, e, " in_bl "); dl_num(&p, e, a->in_bl);
+  dl_put(&p, e, " in_rq "); dl_num(&p, e, a->in_rq);
+  dl_put(&p, e, ") trace oldest-first site@hart:");
+  for (uw k = 0; k < 16; k++) {
+    uint8_t t = a->tr[(a->tr_i + k) % 16];
+    if (!t) continue;
+    dl_put(&p, e, " "); dl_num(&p, e, t / 8); dl_put(&p, e, "@"); dl_num(&p, e, t % 8);
+  }
+  *p = 0;
+  dl_out(buf, (uw)(p - buf));
+  fpr_cpanic("actors: one context resumed on two harts");
+}
+
+/* the hart register must name the hart whose loop this is; if an actor
+ * that ran here left it pointing anywhere else, stop and say who */
+static void hart_reg_lost(fpr_hart_t *h, acb_t *last) {
+  char buf[256], *p = buf, *e = buf + sizeof buf - 1;
+  fpr_hart_t *seen = fpr_hart();
+  dl_put(&p, e, "hart "); dl_num(&p, e, h->id);
+  dl_put(&p, e, ": its hart register now holds ");
+  dl_num(&p, e, (uw)seen);
+  dl_put(&p, e, " (hart ");
+  uw which = (uw)-1;
+  for (uw i = 0; i < FPR_NHARTS; i++) if (seen == &fpr_harts[i]) which = i;
+  if (which == (uw)-1) dl_put(&p, e, "none"); else dl_num(&p, e, which);
+  dl_put(&p, e, ") after actor ");
+  dl_num(&p, e, last ? last->id : 0);
+  dl_put(&p, e, " ran");
+  *p = 0;
+  dl_out(buf, (uw)(p - buf));
+  fpr_cpanic("actors: the hart register was overwritten");
+}
+
 static void hart_loop(fpr_hart_t *h) {
   uw last_act = 0, stable = 0;
   uint64_t quiet_since = 0; /* CLINT time the current lull began (detector) */
@@ -1209,7 +1259,15 @@ static void hart_loop(fpr_hart_t *h) {
       h->current = n;
       h->stk_lo = n->stk_lo; /* the entry check reads the RUNNING actor's segment */
       h->stk_span = n->stk_span;
+      {
+        uint32_t free_ = 0;
+        if (!__atomic_compare_exchange_n(&n->running, &free_, (uint32_t)h->id + 1, 0,
+                                         __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+          double_run(n, h, free_);
+      }
       fpr_ctx_switch(h->sched_ctx, n->ctx);
+      __atomic_store_n(&n->running, 0, __ATOMIC_RELEASE); /* saved: it may run elsewhere now */
+      if (fpr_hart() != h) hart_reg_lost(h, n);
       h->current = 0;
       /* body-return / kill marked it DEAD before switching back; we are
        * on the hart-loop stack now, so ITS stack is safe to reclaim */
@@ -1241,7 +1299,12 @@ static void hart_loop(fpr_hart_t *h) {
       for (uw i = 0; i < fpr_live_harts; i++)
         if (!fpr_harts[i].idle) all_idle = 0;
       uw slp = __atomic_load_n(&g_sleepers, __ATOMIC_RELAXED);
-      if (all_idle && blk > slp && act == last_act) { /* a sleeper is not a deadlock */
+      /* a sleeper is not a deadlock, and neither is a world with an interrupt's
+       * actor waiting: a device -- or on a host, a thread blocked in the kernel
+       * on a socket (os.c's watcher) -- will wake it.  A server idle between
+       * requests used to look "moving" only because its poller ticked. */
+      uw irqw = __atomic_load_n(&g_irq_waiting, __ATOMIC_RELAXED);
+      if (all_idle && blk > slp && irqw == 0 && act == last_act) {
         uint64_t now = hal_mtime();
         if (stable == 0) {
           quiet_since = now;
@@ -1383,8 +1446,10 @@ static void block_unless(acb_t *a, pred_t pred, uw arg) {
   a->wait_arg = arg;
   TR(a, 10);
   __atomic_fetch_add(&g_blocked, 1, __ATOMIC_RELAXED);
+  if (a->irq_target) __atomic_fetch_add(&g_irq_waiting, 1, __ATOMIC_RELAXED);
   to_sched();
   TR(a, 12);
+  if (a->irq_target) __atomic_fetch_sub(&g_irq_waiting, 1, __ATOMIC_RELAXED);
   __atomic_fetch_sub(&g_blocked, 1, __ATOMIC_RELAXED);
   a->wait_kind = 0;
 }
@@ -1629,6 +1694,8 @@ static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t d
   fpr_pool_init(&a->pool, fpr_bkt_take()); /* zeroed; teardown returns it */
   a->dp_n = 0;
   a->msg_slab = 0;
+  a->running = 0; /* the block may be reused: no hart has this context yet */
+  a->irq_target = 0;
   if (!a->pool.buckets) fpr_cpanic("spawn: no memory for a bucket array");
   f = fpr_msg_copy(f); /* the entry closure crosses like any message:
                         * deep-copied, so captures never dangle into

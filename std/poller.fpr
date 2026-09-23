@@ -18,9 +18,17 @@
 # level-triggered underneath, so data that arrived before you asked is not
 # missed.  A descriptor that has gone bad counts as ready: the read says why.
 #
-# With nothing to watch the poller blocks in `receive` and uses no CPU at all;
-# with watches it ticks, backing off from 0.1 ms to 5 ms while nothing happens.
-# An idle tick allocates nothing.
+# THE WAIT IS THE KERNEL'S.  The poller hands its descriptors to a host thread
+# outside the hart pool (Os.watchArm, machine/posix/os.c), which blocks in
+# poll(2); when something is ready the thread raises an INTERRUPT, the IRQ hart
+# delivers it to a small waker actor bound with Sys.irqBind -- a device
+# interrupt, as on bare metal -- and the waker tells the poller.  So an idle
+# server's first byte is answered at once, and an idle poller costs nothing:
+# it is blocked in `receive`, and the thread is blocked in the kernel.
+#
+# (It used to poll without blocking and sleep between polls, backing off to
+# 5 ms: the first message after a quiet spell waited up to 5 ms for the next
+# tick.  That loop is still here, for a machine that cannot start a watcher.)
 
 OS = use "os".
 M = use "map".
@@ -30,11 +38,62 @@ A = use "actor".
 
 Poller = Type (Poller Int).
 
-Req = Type (Watch fd who).
+# Woke: the watcher found something ready (from the waker actor)
+Req = Type (Watch fd who | Woke).
 Note = Type (Readable fd).
 
 start : Unit -> Poller .
-start u = Poller (A.spawnWith (A.Dynamic 256) (fn self -> idle self (M.empty Ord.int) A.tidy0)).
+start u = Poller (A.spawnWith (A.Dynamic 256) (fn self -> begin self)).
+
+# a watcher and its waker, or -- when the host cannot give one -- the ticking loop
+begin : unsafe Int -> Unit .
+begin me = case OS.watchOpen Unit of
+    Err why ->
+      _ = Sys.stderr "poller: no watcher ({why}); polling on a timer instead\n";
+      idle me (M.empty Ord.int) A.tidy0
+  | Ok irq ->
+      w = spawn (fn self -> waker me irq self);
+      # the waker is bound before anything is armed: an interrupt raised for an
+      # unbound source would be claimed and dropped
+      m = receiveFrom me w;
+      _ = drop m;
+      parked me irq (M.empty Ord.int) A.tidy0.
+
+# the interrupt's actor: bound to the watcher's irq, it turns each delivery (a
+# plain Int) into a Woke for the poller -- a mailbox has one type
+waker : unsafe Int -> Int -> Int -> Unit .
+waker poller irq self =
+  _ = Sys.irqBind irq self;
+  _ = A.sendSure self poller Woke;
+  waking poller irq self.
+waking : unsafe Int -> Int -> Int -> Unit .
+waking poller irq self =
+  m = receive self;
+  _ = drop m;
+  _ = Sys.irqAck irq;
+  _ = A.sendSure self poller Woke;
+  waking poller irq self.
+
+# blocked in `receive` between events: no timer, no tick.  Each turn takes
+# everything already queued (one arm for a burst of Watches), then hands the
+# watcher the descriptors still wanted.
+parked : unsafe Int -> Int -> M.Map Int Int -> A.Tidy -> Unit .
+parked me irq owners0 t0 = case A.tidy me (owners0, t0) of (owners, t) ->
+  m = receive me;
+  o2 = handle me irq m owners;
+  _ = drop m;
+  o3 = queued me irq o2;
+  _ = OS.watchArm irq (M.keys o3);
+  parked me irq o3 t.
+
+handle me irq m owners = case m of
+    Watch fd who -> M.insert fd who owners
+  | Woke -> notify me (OS.watchTake irq) owners.
+
+queued : unsafe Int -> Int -> M.Map Int Int -> M.Map Int Int .
+queued me irq owners = case receiveNow me of
+    Ok m -> o2 = handle me irq m owners; _ = drop m; queued me irq o2
+  | Err _ -> owners.
 
 # sleep until `fd` has something to read (or an end of stream to learn of)
 await : Int -> Poller -> Unit .
@@ -49,7 +108,7 @@ await fd p = case p of Poller a ->
 idle : unsafe Int -> M.Map Int Int -> A.Tidy -> Unit .
 idle me owners t =
   m = receive me;
-  o2 = (case m of Watch fd who -> M.insert fd who owners);
+  o2 = (case m of Watch fd who -> M.insert fd who owners | Woke -> owners);
   _ = drop m;
   ticking me o2 (M.keys o2) 100 t.
 
@@ -59,7 +118,7 @@ idle me owners t =
 ticking : unsafe Int -> M.Map Int Int -> List Int -> Int -> A.Tidy -> Unit .
 ticking me owners fds wait t = case receiveNow me of
     Ok m ->
-      o2 = (case m of Watch fd who -> M.insert fd who owners);
+      o2 = (case m of Watch fd who -> M.insert fd who owners | Woke -> owners);
       _ = drop m;
       tidied me o2 t
   | Err _ -> (case OS.poll fds of

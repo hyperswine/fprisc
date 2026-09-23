@@ -40,7 +40,7 @@ Attr = Type (Cls String | Att String String | Local String String
            | OnBoth String String String String
            | OnSend String String | Input String | OnEnter String String | OnFile String).
 Node = Type (El String (List Attr) (List Node) | Txt String | Dyn String | LTxt String
-           | Inp (List Attr)).
+           | Inp (List Attr) | Fragment (List String) (List String) (List String)).
 
 # A stable identity among siblings. Keys preserve DOM nodes across structural
 # snapshots; they do not change the existing (statics, dynamics) wire format.
@@ -59,6 +59,7 @@ render n = fin (goN (Ctx "" Nil Nil) n).
 fin (Ctx cur ss ds) = (rev (cur :: ss), rev ds).
 
 goN : unsafe Ctx -> Node -> Ctx .
+goN c (Fragment ss ds _) = appendFragment c ss ds.
 goN c (Txt s) = emit c (esc s).
 goN c (Dyn v) = slot c v.
 goN c (LTxt n) = emit c "<span data-text=\"{n}\"></span>".
@@ -67,6 +68,14 @@ goN c (El tag attrs kids) =
   c1 = emit c "<{tag}{attrsOf attrs}>";
   c2 = goKids c1 kids;
   emit c2 "</{tag}>".
+
+# Cached fragments have LOCAL slots. Compose them into this render's context;
+# global slot indices are assigned only by the final interleaved arrays.
+appendFragment : unsafe Ctx -> List String -> List String -> Ctx .
+appendFragment c ss ds = case (ss, ds) of
+    (s :: Nil, Nil) -> emit c s
+  | (s :: rest, d :: more) -> appendFragment (slot (emit c s) d) rest more
+  | _ -> error "View: invalid cached fragment shape".
 
 goKids : unsafe Ctx -> List Node -> Ctx .
 goKids c Nil = c.
@@ -133,6 +142,7 @@ rule1 c d = ".{c}\{{d}}\n".
 
 allClasses : unsafe Node -> List String -> List String .
 allClasses (El tag attrs kids) acc = allKids kids (attrCls attrs acc).
+allClasses (Fragment _ _ classes) acc = append classes acc.
 allClasses (Inp attrs) acc = attrCls attrs acc.
 allClasses n acc = acc.
 allKids : unsafe List Node -> List String -> List String .

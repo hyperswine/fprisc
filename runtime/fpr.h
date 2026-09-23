@@ -312,9 +312,9 @@ static inline fpr_hart_t *fpr_hart(void) { return fpr_posix_hart; }
  * lvalue MACROS over the block so shared sources read unchanged. */
 #define FPR_TLS
 #if defined(__aarch64__)
-register fpr_hart_t *fpr_a64_hart __asm__("x28");
-#define fpr_posix_hart fpr_a64_hart
-static inline fpr_hart_t *fpr_hart(void) { return fpr_a64_hart; }
+/* read x28 with a volatile asm (see the hosted AArch64 case below: C must
+ * never save x28, so app C is compiled -ffixed-x27 as well, qos-app.mk) */
+static inline fpr_hart_t *fpr_hart(void) { fpr_hart_t *h; __asm__ volatile("mov %0, x28" : "=r"(h)); return h; }
 #else
 extern uw fpr_g_tlsoff; /* entry.c: boot->tls_off */
 static inline char *fpr_tls_blk(void) {
@@ -325,11 +325,39 @@ static inline char *fpr_tls_blk(void) {
 #define fpr_x64_a7 (*(uw *)(fpr_tls_blk() + 16))
 static inline fpr_hart_t *fpr_hart(void) { return fpr_posix_hart; }
 #endif
+#elif defined(FPR_POSIX) && defined(__aarch64__) && defined(FPR_HART_X28)
+/* hosted AArch64 (every fpr build; FPR_HART_X28 travels with
+ * -ffixed-x28, without which clang refuses a register variable): x28 is the hart register, as it is for QOS apps above.
+ * It used to be a __thread cell -- and an actor is a green thread that
+ * MIGRATES between hart pthreads mid-function.  The compiler may compute a
+ * thread-local's address once per function (on Darwin that is a call to
+ * _tlv_get_addr, which it is entitled to reuse), so a C function that
+ * switched away and resumed on another hart went on reading the OLD hart:
+ * it saved itself into that hart's `current` (NULL: a fault in
+ * fpr_ctx_switch; another actor: "not the current actor's handle") and ran
+ * on that hart's scheduler stack.  x28 names the hart of the thread the
+ * code is running on, always: fpr build compiles every C file
+ * -ffixed-x28, ctx_a64.S neither saves nor restores it, libc preserves it
+ * (callee-saved), and each hart thread sets it once (fpr_set_tp).
+ * Generated code reads it too (Compile.hs applies deTlsQosAppA64). */
+#define FPR_TLS
+/* Read with a volatile asm: every read happens where it is written, so none
+ * is carried across a switch.  And x28 must never be SAVED by C: AArch64
+ * saves callee-saved registers in pairs, and Apple clang saves the whole
+ * (x27, x28) pair in any function that uses x27, -ffixed-x28 or not.  A
+ * function that saved x28 on hart 0's thread and returned after its actor
+ * migrated restored hart 0's pointer onto hart 1's thread (fpr_apply, around
+ * an actor's whole body: found by checking x28 against a thread-local shadow
+ * when the body returned).  So every C file is compiled -ffixed-x27 as well
+ * (compiler/Build.hs), and no C function needs that pair. */
+static inline fpr_hart_t *fpr_hart(void) { fpr_hart_t *h; __asm__ volatile("mov %0, x28" : "=r"(h)); return h; }
 #elif defined(FPR_POSIX)
-/* hosted: no free per-thread register (tpidr_el0/fs belong to libc
- * TLS); the SAME thread-local that A64.hs/X64.hs make generated code
- * load.  __thread: each hart pthread carries its own, so actors see
- * their OWNER hart's block exactly as tp gives them on bare metal. */
+/* hosted x86-64: no free per-thread register (fs belongs to libc TLS);
+ * the SAME thread-local that X64.hs makes generated code load.  __thread:
+ * each hart pthread carries its own, so actors see their OWNER hart's
+ * block exactly as tp gives them on bare metal.  (A local-exec %fs load
+ * reads the running thread's cell each time; there is no address for the
+ * compiler to carry across a migration.) */
 #define FPR_TLS __thread
 extern __thread fpr_hart_t *fpr_posix_hart;
 static inline fpr_hart_t *fpr_hart(void) { return fpr_posix_hart; }

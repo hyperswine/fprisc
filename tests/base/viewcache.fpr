@@ -1,0 +1,56 @@
+unsafe base.
+C = use "std/viewcache".
+V = use "std/view".
+L = use "std/list".
+P = use "std/program".
+Input = {id : Int, text : String, editing : Bool}.
+render input = V.key "item-{input.id}" (V.El "div" [V.Cls "card"]
+  (if input.editing then [V.El "textarea" [V.Att "data-input" "edit"] Nil]
+   else [V.Dyn input.text])).
+check yes = if yes then Unit else error "viewcache regression".
+run version verify old inputs = C.many (fn input -> str input.id) render inputs (C.begin version verify old).
+compare nodes inputs =
+  cached = V.El "section" Nil nodes;
+  fresh = V.El "section" Nil (L.map render inputs);
+  _ = check (V.render cached == V.render fresh);
+  check (V.allClasses cached Nil == V.allClasses fresh Nil).
+a = {id = 1, text = "one", editing = False}.
+b = {id = 2, text = "two", editing = False}.
+c = {id = 3, text = "<tag>λ", editing = False}.
+main =
+  (case run "v1" True (C.empty Unit) [a,b] of (nodes, cold) ->
+    _ = compare nodes [a,b];
+    _ = check (C.stats cold == (0,2,2));
+    old = C.finish cold;
+    (case P.args Unit of
+        "stale" :: Nil -> (case C.item "1" a (fn input -> V.Txt "changed renderer") (C.begin "v1" True old) of _ -> error "undetected stale renderer")
+      | "duplicate" :: Nil -> (case run "v1" True old [a,a] of _ -> error "undetected duplicate")
+      | _ ->
+          (case C.item "1" a (fn input -> error "hit evaluated renderer") (C.begin "v1" False old) of (_, hit) ->
+            _ = check (C.stats hit == (1,0,1));
+            (case run "v1" True old [c,b,a] of (reordered, next) ->
+              _ = check (C.stats next == (2,1,3));
+              _ = compare reordered [c,b,a];
+              changed = {a | text = "updated"};
+              (case run "v1" True (C.finish next) [c,b,changed] of (updated, f) ->
+                _ = compare updated [c,b,changed];
+                _ = check (C.stats f == (2,1,3));
+                editing = {changed | editing = True};
+                (case run "v1" True (C.finish f) [c,b,editing] of (edited, e) ->
+                  _ = compare edited [c,b,editing];
+                  _ = check (C.stats e == (2,1,3));
+                  (case run "v1" True (C.finish e) [b] of (remaining, r) ->
+                    _ = compare remaining [b];
+                    _ = check (C.size (C.finish r) == 1);
+                    (case run "v1" True (C.finish r) [a,b] of (_, restored) ->
+                      _ = check (C.stats restored == (1,1,2));
+                      (case run "v2" True old [a,b] of (versioned, v) ->
+                        _ = compare versioned [a,b];
+                        _ = check (C.stats v == (0,2,2));
+                        (case run "v1" True (C.empty Unit) [editing,b] of (other, o) ->
+                          _ = compare other [editing,b];
+                          _ = check (C.stats o == (0,2,2));
+                          (case run "v1" True old Nil of (_, empty) ->
+                            _ = check (C.size (C.finish empty) == 0);
+                            _ = print "cache: hits skip rendering; edits, reordering, eviction, version, session isolation, slots and CSS agree";
+                            0))))))))))).

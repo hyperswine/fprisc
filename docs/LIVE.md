@@ -151,12 +151,75 @@ looked wrong on a phone:
   `.btn` could land after `.btn-primary` and win; primary buttons came out
   plain. The modifiers are compound selectors now (`.btn.btn-primary`).
 
-One cost worth knowing: `entries` is one durable field, so every save writes
-the whole list (bounded to once a second by its policy). A log of thousands of
-entries is fine; a log of hundreds of thousands wants entries as individual
-kvlog records, which the field abstraction does not offer yet.
+### What it cost, and what changed (2026-09-22, evening)
 
-## Still open: two rare failures under test
+Measured with the same app on plain `Live.serve` and on the per-session view
+cache, at 30 / 1,000 / 10,000 entries: the cache made no difference past 30,
+because rendering was never the expensive part. What grew with the log was
+`persist`: after EVERY event -- a page turn, a search, a tab joining -- it
+encoded each durable field to JSON and rendered it to text only to compare it
+with the last save. At 10,000 entries that was 41-52 ms per event, the floor
+under every action. Two changes in `std/live`:
+
+- **A field is looked at only when it changed.** Each field keeps a snapshot of
+  its own raw value (inside two closures, so the register holds one per field
+  whatever its type) and asks `==` first; the runtime answers "same object" at
+  once, so an event that left a field alone costs nothing. A change inside an
+  `AtMostEvery` window no longer waits for the next event, either: the register
+  sends itself a `SaveDue` for the end of the window. (Before, the last change
+  of a burst was written only by a later, unrelated event or a clean Quit, and
+  lost on a kill.)
+- **`Live.each`: a list kept one record per element.** `entries` is stored as
+  `model.entries/<id>` records with the marker `"each"` under `model.entries`;
+  a change writes only the elements that changed, found by walking old and new
+  with identity checks (a prepended entry is one record, an edit or a delete
+  one pass and one record). A store holding the field as one record is read as
+  it is and rewritten per element at start.
+
+At 10,000 entries, one tab: edit 42 -> 7.6 ms, page 43 -> 5.7, add 92 -> 17,
+search 58 -> 30 (now the filter's own cost), server CPU per action 63 -> 17.5
+ms; one add reaching 50 tabs 205 -> 90 ms; memory with 51 tabs 714 -> 496 MB.
+The price is startup: restoring 10,000 records is 195 ms (was 82), one store
+lookup per record -- a prefix read in `std/kvlog` would remove it.
+
+## Found (2026-09-23): the "not the current actor's handle" failures
+
+The failures recorded below as unexplained were the hart pointer going wrong
+after an actor MIGRATED between hart threads. Two causes, one after the other:
+
+1. **A thread-local cannot follow a green thread.** Hosted builds kept the hart
+   in a `__thread` cell. The compiler may compute a thread-local's address once
+   per function (on Darwin, a call to `_tlv_get_addr` it is entitled to reuse),
+   so a scheduler function that switched away and resumed on another thread
+   went on reading the OLD hart: it saved itself into that hart's `current`
+   (NULL: a fault inside `fpr_ctx_switch` at address 0x8) or ran on that hart's
+   scheduler stack. Hosted AArch64 now keeps the hart in x28 -- as QOS apps
+   always have -- read through a volatile asm (`runtime/fpr.h`), and generated
+   code reads x28 too (`Compile.hs` applies `deTlsQosAppA64` to posix).
+2. **The compiler saved x28 anyway.** AArch64 saves callee-saved registers in
+   pairs, and Apple clang saves the (x27, x28) pair in any function that uses
+   x27, `-ffixed-x28` notwithstanding. `fpr_apply` -- around an actor's whole
+   body -- saved x28 on hart 0's thread; the body migrated; the epilogue wrote
+   hart 0 onto hart 1's thread. Found by checking x28 against a thread-local
+   shadow at the scheduler's entry points: every switch-back was right, the
+   return from the body was not. Every C file is now compiled `-ffixed-x27` as
+   well (`compiler/Build.hs`, both Makefiles, `qos-app.mk`), and no function in
+   a built binary saves x28 (checked with `objdump`).
+
+Two guards stay in `runtime/actors.c`, one compare or CAS per switch: a context
+may be live on one hart only (a second claimant is a named panic with the
+actor's last scheduler transitions), and the hart register must still name the
+loop's hart after every switch back. Measured: a fan-out burst that crashed in
+3 of 3 runs within seconds ran 11,000 fan-outs clean; the 1,000-session check
+passes 13 of 14 (the committed baseline, on two harts: 2 of 4, its two failures
+connection resets from the test's own burst of 1,000 connects against a listen
+backlog of 128). The one failure: a byte that is not UTF-8 in the store, once,
+not reproduced in 8 further runs -- recorded, not explained.
+
+The QOS app build has used x28 the same way all along, so the pingpong flake
+below (a QOS app) is plausibly the second cause; qos-app.mk now reserves x27.
+
+## (history) two rare failures under test
 
 The full check (`liveboard-check.py`) fails about one run in twelve at 1,000
 sessions and one in twenty at 100, in two ways, neither yet explained:
@@ -217,3 +280,155 @@ In the order I would do what is left:
 4. **One App value for both drivers.** QOS's `fprlive.fpr` and `std/live` have the
    same shape and different surfaces (`EMsg sid name arg` there, `Msg sid msg`
    here); the QOS driver should take the typed one.
+
+### Against Phoenix LiveView (2026-09-22)
+
+The same logbook rewritten as a standard Phoenix LiveView app (Phoenix 1.8.14,
+LiveView 1.2.12, Bandit, Ecto + SQLite, a stream for the entry list, PubSub +
+Presence; 401 lines against the FP-RISC version's 193), driven by the same
+workload through a Phoenix channels client. Medians in ms, one Apple M4,
+FP-RISC / LiveView:
+
+| | 30 entries | 1,000 | 10,000 |
+| --- | --- | --- | --- |
+| add | 5.9 / 2.2 | 6.2 / 1.8 | 16.2 / 2.1 |
+| edit | 2.2 / 1.0 | 3.0 / 0.7 | 7.5 / 0.9 |
+| page | 2.4 / 1.1 | 3.0 / 1.2 | 4.2 / 2.0 |
+| search | 2.2 / 0.6 | 7.9 / 1.4 | 30.6 / 3.6 |
+| one add reaching 50 tabs | 35 / 3.2 | 38 / 4.0 | 84 / 4.2 |
+| first page load | 1.7 / 0.5 | 1.7 / 0.5 | 3.6 / 0.5 |
+| memory, 51 tabs (MB) | 53 / 122 | 103 / 122 | 526 / 124 |
+
+LiveView is flat in the log's size because the database pages and searches;
+the FP-RISC app filters an in-memory list. The fan-out gap (10x even at 30
+entries) is the driver, not the app: every FP-RISC tab renders its whole page
+per change and asks the ONE register for the model in turn, where each
+LiveView process renders only what its change tracking says moved, in
+parallel. And the FP-RISC server burns 5.1% of a core IDLE with one tab (the
+poller), against 0.1% -- it made FP-RISC's CPU per action look 7x LiveView's;
+without it they are close at 30 entries (~1.3 vs 1.6 ms). FP-RISC wins on start
+(8 ms, 195 ms at 10,000, against ~340 ms for `mix run`), memory at small
+sizes, and code size.
+
+### Closing the gap (2026-09-23)
+
+What the LiveView comparison pointed at, and what was done:
+
+- **Idle burn** (`machine/posix/hal.c`): an idle hart napped 200 us and looked
+  again -- 5,000 wake-ups a second per hart. It now parks on a condition
+  variable (doorbell = `hal_ipi_send`, deadline = `hal_timer_arm`, the protocol
+  `actors.c` already spoke), capped at 20 ms so no wake source can hang.
+  5.0% of a core idle -> 0.4%.
+- **Two threads** (`compiler/Build.hs`, `machine/posix/main.c`): `fpr build`
+  compiled in 2 harts, so every FP-RISC server ran on two threads. The cap is now
+  the build machine's cores, the live count the running machine's. (GHC's
+  `getNumProcessors` answers 1 in fpr's non-threaded runtime; it asks `getconf`.)
+- **Each tab got the whole model** (`std/live` `serveProjected`): the register
+  answers a session's pull with `project sid model` -- the logbook's header, the
+  session's toast and one page -- and a writer whose projection is unchanged
+  renders nothing. Search runs once, when asked, and the session keeps its hits
+  (kept current by adds, edits and deletes); toasts are per session, so one tab's
+  "added #5" no longer re-renders every tab twice.
+- **12 KB per tab per new entry** (`std/live` + `std/livejs`, protocol v3): one
+  splice (common prefix + suffix) cannot say "a card on top, the last one off",
+  so every card was re-sent. v3 sends a list of splices: 2.1 KB. The snapshot is
+  built only when the patch might lose, and a patch that would re-send most of
+  the page is not built at all.
+- **The register waited on the disk** (`std/kvlog` `post`/`sync`): journal and
+  field writes are posted; Quit and Reload `sync` first.
+
+Same workload, same Mac, FP-RISC / LiveView, ms:
+
+| | 30 entries | 1,000 | 10,000 |
+| --- | --- | --- | --- |
+| add | 6.7 / 2.0 | 5.9 / 2.2 | 10.7 / 2.2 |
+| edit | 1.6 / 0.8 | 1.7 / 0.9 | 3.4 / 1.0 |
+| page | 2.7 / 1.1 | 3.2 / 1.3 | 3.2 / 2.0 |
+| search | 2.5 / 0.7 | 10.1 / 1.4 | 40.5 / 3.8 |
+| one add reaching 50 tabs | 12.3 / 3.7 | 12.7 / 3.5 | 21.9 / 3.3 |
+| memory, 51 tabs (MB) | 56 / 57-125 | 78 / 121 | 212 / 124 |
+
+Fan-out went 35 / 38 / 84 -> 12 / 13 / 22 and memory at 10,000 entries 526 ->
+212 MB. What is left: search is a scan in FP-RISC code (a database does it in
+C, with an index for LIKE-free queries); every tab still renders its own page
+in full-ish FP-RISC string building where LiveView re-renders only the changed
+assigns of a compiled template; and the register -- one actor -- copies the
+whole model when it tidies. (An earlier benchmark client spoke the legacy
+protocol, so FP-RISC's fan-out figures before this section were measured with
+full snapshots; this table uses the browser's v3.)
+
+### The log in a store, and pages in sections (2026-09-23)
+
+The LiveView comparison left three gaps; the first was a bug (above), these are
+the other two.
+
+**The register held -- and copied -- the whole log.** `std/store` (new) keeps a
+keyed collection in SHARD actors: key k lives in shard k / span, which holds its
+part in memory and appends every change to its own file, rewriting only THAT
+file when superseded lines outnumber live ones -- compaction one small shard at
+a time. A front actor routes writes (so a read after a write sees it) and
+answers reads with a plan; readers ask the shards themselves, and a search asks
+every shard at once. The logbook now keeps its entries there: the model is the
+sessions, the next id and `rev` (bumped by every change); adds, edits and
+deletes are commands that write the store and answer Stored / Saved / Deleted;
+each tab's writer READS its page from the store when its View changes, so fifty
+tabs read at once. A store opened empty takes the entries from an older kvlog
+(Live.each records or one list), then blanks them there and compacts the kvlog.
+`tests/std/store.fpr` covers shards, pages across them, search, removal, a
+shard compacting itself, 3,000 writes that make every shard tidy many times, and
+reopening. (It caught one of mine: a shard kept its file's path outside the
+state it tidies, and the path dangled after the first reset -- anything built
+inside an actor that must survive a tidy has to be IN the tidied value.)
+
+**Every tab rebuilt its whole page.** The page is now five sections, each a
+function of only what it shows (header, form, search bar, list, pager), and
+`cachedView` remembers them in a second view cache beside the cards: the form
+never renders twice, the bar only when the query changes. Verified cached ==
+fresh under FPR_VIEW_VERIFY. It saves ~6% of server CPU per fan-out and no wall
+time: rendering is no longer where the time goes.
+
+Measured (ms, this build / the build before / LiveView):
+
+| | 30 entries | 1,000 | 10,000 |
+| --- | --- | --- | --- |
+| add | 8.5 / 6.7 / 2.0 | 7.6 / 5.9 / 2.2 | 7.5 / 10.7 / 2.2 |
+| edit | 1.9 / 1.6 / 0.8 | 1.7 / 1.7 / 0.9 | 2.5 / 3.4 / 1.0 |
+| search | 2.8 / 2.5 / 0.7 | 9.2 / 10.1 / 1.4 | 17.5 / 40.5 / 3.8 |
+| one add reaching 50 tabs | 15.0 / 12.3 / 3.7 | 13.8 / 12.7 / 3.5 | 15.6 / 21.9 / 3.3 |
+| memory, 51 tabs (MB) | 51 / 56 | 65 / 78 | 193 / 212 |
+
+Every operation is now nearly flat in the size of the log, and search is 2.3x
+faster at 10,000 (every shard scans at once). An add costs ~1.5 ms more at small
+sizes: it is two register turns (the command, then Stored) and a file append.
+
+**What is left, measured.** A page turn is 3.2 ms with the harts awake and 9.5
+ms after 1.6 s idle: the poller (`std/poller`) polls without blocking and backs
+off to 5 ms between polls, so the first message after a quiet spell waits for
+the next tick, then crosses parked harts. LiveView's runtime waits in the
+kernel. Fixing it properly means a poller that blocks in the kernel without
+blocking a hart -- a thread outside the hart pool that delivers readiness into
+the actor system (the runtime's irq path is the natural place) -- and it is the
+largest remaining cost of a fan-out (13-16 ms cold, ~4.4 ms warm).
+
+### The poller waits in the kernel (2026-09-23)
+
+`std/poller` polled without blocking and slept between polls, backing off to
+5 ms, so the first message after a quiet spell waited for the next tick. It now
+hands its descriptors to a HOST thread outside the hart pool
+(`Os.watchOpen/watchArm/watchTake`, `machine/posix/os.c`) that blocks in
+poll(2). When something is ready the thread raises an interrupt: posix's
+`hal_irq_claim` is no longer a stub (`machine/posix/hal.c`, one pending flag per
+source, `hal_irq_raise` from any thread rings the IRQ hart's doorbell), and the
+runtime's existing `irq_drain` delivers it to an actor bound with
+`Sys.irqBind` -- the path a PLIC interrupt takes on bare metal. That actor
+tells the poller, which notifies the owners and re-arms. A new arm interrupts a
+poll in progress through a self-pipe; the same set re-armed is not.
+
+The deadlock detector learned the same thing: an actor waiting for an interrupt
+is not a deadlock, any more than a sleeper is (`g_irq_waiting`). An idle server
+used to look "moving" only because its poller ticked; without the exemption the
+detector killed idle servers after two seconds.
+
+One tab, page turn: 1.2 ms warm (was 1.5), 3.2 ms after 1.6 s idle (was 7.9).
+Idle CPU with 20 tabs open: 0 within ps's resolution (was 1.4% of a core). One
+add reaching 50 tabs: first tab ~4.5 ms (was ~8), last ~18 ms (was ~21).

@@ -1,0 +1,56 @@
+# the store's contract, end to end: shards, pages across them, search, removal,
+# reopening from the files, and a shard compacting its own file
+unsafe base.
+Store = use "std/store".
+List = use "std/list".
+String = use "std/string".
+Option = use "std/option".
+Program = use "std/program".
+File = use "std/file".
+Os = use "std/os".
+
+Item = {id : Int, text : String}.
+Items = {items : List Item}.
+
+cfgFor dir = {dir = dir, span = 10, key = (fn i -> i.id), codec = @Items.items}.
+
+ids rows = String.join "," (List.map (fn i -> str i.id) rows).
+lines path = case File.lines path of Ok ls -> List.length ls | Err _ -> 0.
+
+fill : unsafe Int -> Int -> Store.Store Item -> Unit .
+fill i n s = case i > n of
+    True -> Unit
+  | False -> _ = Store.put {id = i, text = "item {i}{(if i % 5 == 0 then " fifth" else "")}"} s; fill (i + 1) n s.
+
+main =
+  dir = case Program.args Unit of d :: _ -> d | Nil -> "/tmp/store-test";
+  s = (case Store.open (cfgFor dir) of Ok x -> x | Err why -> Program.fail 1 why);
+  _ = fill 1 35 s;
+  _ = print "count after 35 puts: {Store.count s}";
+  (p1, n1) = Store.page 0 5 s;
+  _ = print "page 0/5: {ids p1} of {n1}";
+  (p2, _) = Store.page 3 10 s;
+  _ = print "page skip 3 take 10 (crosses shards 3 and 2): {ids p2}";
+  (p3, _) = Store.page 30 10 s;
+  _ = print "last page: {ids p3}";
+  _ = print "get 17: {Option.map (fn i -> i.text) (Store.get 17 s)}; get 99: {Option.isSome (Store.get 99 s)}";
+  _ = Store.put {id = 17, text = "item 17 edited"} s;
+  _ = Store.remove 20 s;
+  _ = print "after an edit and a removal: count {Store.count s}, get 17 {Option.map (fn i -> i.text) (Store.get 17 s)}, get 20 {Option.isSome (Store.get 20 s)}";
+  (hits, nh) = Store.search (fn i -> String.contains "fifth" i.text) 0 3 s;
+  _ = print "search 'fifth': first 3 {ids hits} of {nh}";
+  # compaction: overwrite one entry in shard 1 until its file is mostly superseded
+  _ = List.each (fn k -> Store.put {id = 12, text = "rewrite {k}"} s) (List.range 1 60);
+  _ = print "shard 1 after 60 rewrites of one entry: {lines "{dir}/shard-1.log"} lines for 10 live entries";
+  # enough writes that every shard tidies its heap many times over: state that
+  # outlives a tidy must be in the tidied value (a shard once kept its file's
+  # path outside it, and the path dangled after the first reset)
+  _ = List.each (fn k -> Store.put {id = 1 + k % 35, text = "churn {k}"} s) (List.range 1 3000);
+  (c1, _) = Store.page 0 3 s;
+  _ = print "after 3,000 churning puts: count {Store.count s}, newest {List.map (fn i -> i.text) c1}";
+  # reopen: every shard reloads from its own file
+  s2 = (case Store.open (cfgFor dir) of Ok x -> x | Err why -> Program.fail 1 why);
+  (q1, m1) = Store.page 0 5 s2;
+  _ = print "reopened: count {Store.count s2}, page 0/5 {ids q1} of {m1}, get 12 {Option.map (fn i -> i.text) (Store.get 12 s2)}, get 20 {Option.isSome (Store.get 20 s2)}";
+  _ = print "shard files stay compact: {lines "{dir}/shard-0.log"} + {lines "{dir}/shard-1.log"} + {lines "{dir}/shard-2.log"} + {lines "{dir}/shard-3.log"} lines for {Store.count s2} entries";
+  0.

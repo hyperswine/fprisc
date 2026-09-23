@@ -20,6 +20,18 @@ for(const bad of [null,{},[],[-1,0,[]],[0,-1,[]],[2,0,[]],[0,2,[]],[.5,0,[]],[0,
 }
 console.log('Client patch insert/replace/delete, empty arrays, escaping and invalid ranges/types: PASS');
 
+// v3: a list of splices, applied in order, each against the array the previous left
+const all = (old,ps) => JSON.parse(JSON.stringify(ctx.splicedAll(old,ps)));
+assert.deepEqual(all(['h','c3','c2','c1','f'],[[1,0,['c4']],[4,1,[]]]),['h','c4','c3','c2','f']);
+assert.deepEqual(all(['a','b'],[]),['a','b']);
+assert.deepEqual(all([],[[0,0,['x']],[1,0,['y']]]),['x','y']);
+for(const bad of [null,{},'x',[[0,2,[]]],[[0,0,[]],[5,0,[]]],[[0,0,[1]]]]) {
+  const old=['a'];
+  assert.throws(()=>ctx.splicedAll(old,bad));
+  assert.deepEqual(old,['a']);
+}
+console.log('Client v3 splice lists: in-order application, empty lists, invalid entries rejected without touching the page: PASS');
+
 // Browser close() permits 1000 or application codes 3000..4999. A protocol
 // error code such as 1002 cannot be sent directly by browser JavaScript.
 const handler = src.slice(src.indexOf('    ws.onmessage ='),src.indexOf('    ws.onclose =')).replace(/\\\{/g,'{');

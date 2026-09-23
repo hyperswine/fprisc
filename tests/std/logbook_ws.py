@@ -107,7 +107,7 @@ finally:
     srv.wait(timeout=20)
 # the log rebuilt from the journal alone agrees with the durable fields
 p = subprocess.run([fpr, 'run', src, f'--store={store}', '--replay'], capture_output=True, text=True, timeout=300)
-assert p.returncode == 0 and '24 entries, nextId=26' in p.stdout, p.stdout + p.stderr
+assert p.returncode == 0 and 'nextId=26; the store holds 24 entries' in p.stdout, p.stdout + p.stderr
 # and a restart restores it from the fields (no journal read), with the edit gone
 srv = subprocess.Popen([fpr, 'run', src, '--port=0', f'--store={store}'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 try:

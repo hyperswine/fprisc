@@ -1,0 +1,278 @@
+# std/store.fpr -- Store: a keyed collection kept by SHARD actors, each one
+# caching its part in memory and compacting its own log (ExtBase, posix).
+#
+#   Rows = {rows : List Entry}.                      -- a codec for the element type
+#   store = Store.open { dir = "log.store", span = 512, key = (fn e -> e.id), codec = @Rows.rows }
+#
+#   Store.put entry store        Store.remove id store        Store.get id store
+#   Store.page skip take store              -- greatest key first: (rows, total)
+#   Store.search pred skip take store       -- the same over the matches: (rows, matches)
+#   Store.count store
+#
+# SHARDS.  Key k lives in shard k / span: an actor of its own that holds its
+# part of the collection in memory (a Map) and appends every change to its own
+# file, dir/shard-<n>.log -- one JSON line per put or removal.  Its heap, its
+# tidy and its compaction are its own: when its file holds more than twice as
+# many lines as it has live entries, it rewrites THAT file (written beside
+# it, renamed over it).  Compaction is incremental by construction -- one
+# small shard at a time, never the rest -- and opening starts every shard at
+# once, so the files load in parallel.
+#
+# THE FRONT.  One actor routes.  Writes go through it: it asks the shard and
+# keeps every shard's count, so a read that follows a write sees it.  Reads do
+# NOT queue behind it: it answers a read with a PLAN (which shards, and what
+# slice of each) and the reader asks those shards itself; a search asks every
+# shard at once and they scan in parallel, on as many harts as there are.  So
+# fifty tabs loading their pages are fifty actors asking shards, not a queue.
+#
+# THE CODEC is any path literal whose field is a `List a` (the compiler mints
+# enc/dec for it from the declaration): an element is written as a list of one.
+# Keys are Ints: an id, a timestamp -- whatever orders the collection newest
+# last, because pages come greatest key first.
+
+A = use "actor".
+M = use "map".
+O = use "option".
+J = use "json".
+F = use "file".
+L = use "list".
+OS = use "os".
+S = use "string".
+Ord = use "order".
+
+# the front's handle, and the key function (which also fixes the element type)
+Store a = Type (Store Int (a -> Int)).
+
+Freq = Type (FPut x | FRemove k | FPlan skip take | FShards | FCount | FRoute k).
+Fans = Type (FDone n | FPlanIs n parts | FShardsAre shards | FRouteIs shard).
+Sreq = Type (SPut x | SRemove k | SPage skip take | SFilter pred | SGet k | SCount).
+Sans = Type (SCountIs n | SRows rows | SOne found).
+
+Fs = Type (Fs cfg shards counts).
+# a shard's state: its entries, its file's line count, and the file's path --
+# everything that must survive a tidy is IN the tidied value (the path is built
+# inside the actor, so outside the state it would dangle after the reset)
+Sh = Type (Sh entries lines path).
+
+# ---- opening ------------------------------------------------------------------------
+open cfg =
+  _ = OS.mkdir cfg.dir;
+  case OS.listDir cfg.dir of
+    Err why -> Err "store: cannot read {cfg.dir}: {why}"
+  | Ok names ->
+      idxs = L.filterMap (fn n -> if S.startsWith "shard-" n and S.endsWith ".log" n
+                                  then (case S.toInt (S.dropRight 4 (S.dropLeft 6 n)) of Ok i -> O.Some i | Err _ -> O.None) else O.None) names;
+      front = A.spawnWith (A.Dynamic 256) (fn self -> frontStart self cfg idxs);
+      Ok (Store front cfg.key).
+
+shardPath dir idx = "{dir}/shard-{idx}.log".
+
+# every existing shard starts at once (they load in parallel), then the front
+# learns their counts and starts serving
+frontStart : unsafe Int -> { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> List Int -> Unit .
+frontStart self cfg idxs =
+  shards = L.fold (fn m idx -> M.insert idx (spawnShard cfg idx) m) (M.empty Ord.int) idxs;
+  counts = L.fold (fn m idx -> (case M.get idx shards of
+      O.Some sh -> M.insert idx (countOf self sh) m
+    | O.None -> m)) (M.empty Ord.int) idxs;
+  front self (Fs cfg shards counts) A.tidy0.
+
+spawnShard cfg idx = A.spawnWith (A.Dynamic 64) (fn self -> shardStart self cfg idx).
+
+countOf me sh =
+  r = A.askSure me sh SCount;
+  n = (case r of SCountIs c -> c | _ -> 0);
+  _ = drop r;
+  n.
+
+# ---- the front ---------------------------------------------------------------------------
+front : unsafe Int -> Fs -> A.Tidy -> Unit .
+front self st0 t0 = case A.tidy self (st0, t0) of (st, t) ->
+  m = receive self;
+  (from, q) = m;
+  next = serveFront self from q st;
+  _ = drop m;
+  front self next t.
+
+serveFront self from q st = case st of Fs cfg shards counts -> (case q of
+    FPut x ->
+      idx = (cfg.key x) / cfg.span;
+      (sh, shards2) = (case M.get idx shards of
+          O.Some s -> (s, shards)
+        | O.None -> s = spawnShard cfg idx; (s, M.insert idx s shards));
+      r = A.askSure self sh (SPut x);
+      n = (case r of SCountIs c -> c | _ -> 0);
+      _ = drop r;
+      counts2 = M.insert idx n counts;
+      _ = A.sendSure self from (FDone (total counts2));
+      Fs cfg shards2 counts2
+  | FRemove k ->
+      idx = k / cfg.span;
+      (case M.get idx shards of
+          O.None -> _ = A.sendSure self from (FDone (total counts)); st
+        | O.Some sh ->
+            r = A.askSure self sh (SRemove k);
+            n = (case r of SCountIs c -> c | _ -> 0);
+            _ = drop r;
+            counts2 = M.insert idx n counts;
+            _ = A.sendSure self from (FDone (total counts2));
+            Fs cfg shards counts2)
+  | FPlan skip take ->
+      _ = A.sendSure self from (FPlanIs (total counts) (plan shards (L.reverse (M.entries counts)) skip take Nil));
+      st
+  | FShards ->
+      _ = A.sendSure self from (FShardsAre (L.reverse (M.values shards)));
+      st
+  | FCount -> _ = A.sendSure self from (FDone (total counts)); st
+  | FRoute k -> _ = A.sendSure self from (FRouteIs (O.withDefault 0 (M.get (k / cfg.span) shards))); st).
+
+total counts = M.fold (fn acc k n -> acc + n) 0 counts.
+
+# which shards hold [skip, skip + take) of the collection, greatest key first:
+# shards are walked from the highest index down, each counting its entries
+plan : unsafe M.Map Int Int -> List (Int, Int) -> Int -> Int -> List (Int, Int, Int) -> List (Int, Int, Int) .
+plan shards counts skip take acc = if take <= 0 then L.reverse acc
+  else (case counts of
+      Nil -> L.reverse acc
+    | (idx, n) :: rest ->
+        (if skip >= n then plan shards rest (skip - n) take acc
+         else
+           here = (if n - skip < take then n - skip else take);
+           (case M.get idx shards of
+               O.Some sh -> plan shards rest 0 (take - here) ((sh, skip, here) :: acc)
+             | O.None -> plan shards rest 0 take acc))).
+
+# ---- a shard -----------------------------------------------------------------------------
+shardStart : unsafe Int -> { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> Int -> Unit .
+shardStart self cfg idx =
+  path = shardPath cfg.dir idx;
+  (entries, lines) = load cfg path;
+  shard self cfg (Sh entries lines path) A.tidy0.
+
+shard : unsafe Int -> { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> Sh -> A.Tidy -> Unit .
+shard self cfg st0 t0 = case A.tidy self (st0, t0) of (st, t) ->
+  m = receive self;
+  (from, q) = m;
+  (next, ans) = serveShard cfg q st;
+  _ = A.sendSure self from ans;
+  _ = drop m;
+  shard self cfg next t.
+
+serveShard cfg q st = case st of Sh entries lines path -> (case q of
+    SPut x ->
+      k = cfg.key x;
+      _ = append path (J.render (J.object (("k", J.Integer k) :: ("v", one cfg x) :: Nil)));
+      entries2 = M.insert k (keep x) entries;
+      lines2 = compactIf cfg path entries2 (lines + 1);
+      (Sh entries2 lines2 path, SCountIs (M.size entries2))
+  | SRemove k ->
+      (if M.member k entries then
+         _ = append path (J.render (J.object (("k", J.Integer k) :: ("d", J.Boolean True) :: Nil)));
+         entries2 = M.remove k entries;
+         lines2 = compactIf cfg path entries2 (lines + 1);
+         (Sh entries2 lines2 path, SCountIs (M.size entries2))
+       else (st, SCountIs (M.size entries)))
+  | SPage skip take -> (st, SRows (L.take take (L.drop skip (newestFirst entries))))
+  | SFilter pred -> (st, SRows (M.fold (fn acc k v -> if pred v then v :: acc else acc) Nil entries))
+  | SGet k -> (st, SOne (M.get k entries))
+  | SCount -> (st, SCountIs (M.size entries))).
+
+# the entries greatest key first (an ascending fold, consing, reverses the order)
+newestFirst entries = M.fold (fn acc k v -> v :: acc) Nil entries.
+
+# an element on the wire and in the file: a list of one, through the list codec
+one cfg x = case cfg.codec.enc (x :: Nil) of WList (w :: Nil) -> J.fromWire w | w -> J.fromWire w.
+unone cfg v = case cfg.codec.dec (WList (J.toWire v :: Nil)) of
+    Ok (x :: Nil) -> O.Some x
+  | _ -> O.None.
+
+append path line = case F.appendText path (strcat line "\n") of
+    Ok _ -> Unit
+  | Err why -> error "store: cannot append to {path}: {why}".
+
+# THIS shard's file only: rewritten with its live entries when superseded
+# lines outnumber them, so no compaction ever waits on the rest of the store
+compactIf cfg path entries lines =
+  live = M.size entries;
+  if lines <= 2 * live + 32 then lines
+  else
+    text = strJoin "" (L.map (fn kv -> (case kv of (k, v) -> strcat (J.render (J.object (("k", J.Integer k) :: ("v", one cfg v) :: Nil))) "\n")) (M.entries entries));
+    tmp = strcat path ".compact";
+    (case F.writeText tmp text of
+        Err why -> lines
+      | Ok _ -> (case OS.rename tmp path of Ok _ -> live | Err why -> lines)).
+
+# a shard's file, replayed: the last line of each key wins; a torn last line
+# (the process died mid-append) does not parse and is skipped
+load cfg path = case F.lines path of
+    Err _ -> (M.empty Ord.int, 0)
+  | Ok ls -> (L.fold (fn m l -> loadLine cfg m l) (M.empty Ord.int) ls, L.length ls).
+loadLine cfg m l = case J.parse l of
+    Err _ -> m
+  | Ok v -> (case O.andThen J.asInt (J.field "k" v) of
+      O.None -> m
+    | O.Some k -> (if O.isSome (J.field "d" v) then M.remove k m
+                   else (case O.andThen (unone cfg) (J.field "v" v) of
+                       O.Some x -> M.insert k x m
+                     | O.None -> m))).
+
+# ---- the API: writes through the front, reads from the shards --------------------------------
+put : a -> Store a -> Int .
+put x store = case store of Store front _ ->
+  r = A.askSure (myself 0) front (FPut x);
+  n = (case r of FDone c -> c | _ -> 0);
+  _ = drop r;
+  n.
+
+remove : Int -> Store a -> Int .
+remove k store = case store of Store front _ ->
+  r = A.askSure (myself 0) front (FRemove k);
+  n = (case r of FDone c -> c | _ -> 0);
+  _ = drop r;
+  n.
+
+count : Store a -> Int .
+count store = case store of Store front _ ->
+  r = A.askSure (myself 0) front FCount;
+  n = (case r of FDone c -> c | _ -> 0);
+  _ = drop r;
+  n.
+
+get : Int -> Store a -> O.Option a .
+get k store = case store of Store front _ ->
+  me = myself 0;
+  r = A.askSure me front (FRoute k);
+  sh = (case r of FRouteIs s -> s | _ -> 0);
+  _ = drop r;
+  (if sh == 0 then O.None
+   else r2 = A.askSure me sh (SGet k);
+        found = (case r2 of SOne o -> keep o | _ -> O.None);
+        _ = drop r2;
+        found).
+
+# a page, greatest key first: the front says which shards, the reader asks them
+page : Int -> Int -> Store a -> (List a, Int) .
+page skip take store = case store of Store front _ ->
+  me = myself 0;
+  r = A.askSure me front (FPlan skip take);
+  (n, parts) = (case r of FPlanIs c ps -> (c, keep ps) | _ -> (0, Nil));
+  _ = drop r;
+  (L.concatMap (fn part -> (case part of (sh, s, t) -> rowsFrom me sh (SPage s t))) parts, n).
+
+rowsFrom me sh q =
+  r = A.askSure me sh q;
+  rows = (case r of SRows xs -> keep xs | _ -> Nil);
+  _ = drop r;
+  rows.
+
+# the matches, greatest key first, and how many there are: every shard scans
+# its own part at the same time, and the answers are taken in shard order
+search : (a -> Bool) -> Int -> Int -> Store a -> (List a, Int) .
+search pred skip take store = case store of Store front _ ->
+  me = myself 0;
+  r = A.askSure me front FShards;
+  shards = (case r of FShardsAre xs -> keep xs | _ -> Nil);
+  _ = drop r;
+  _ = L.each (fn sh -> A.sendSure me sh (me, SFilter pred)) shards;
+  found = L.concatMap (fn sh -> m = receiveFrom me sh; xs = (case m of SRows ys -> keep ys | _ -> Nil); _ = drop m; xs) shards;
+  (L.take take (L.drop skip found), L.length found).

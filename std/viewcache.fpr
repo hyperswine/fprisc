@@ -1,0 +1,54 @@
+# Explicit, per-session memoization of pure view components.
+# One namespace uses one renderer and one input type. Version changes clear it.
+# Every dependency belongs in input; identity alone is never an invalidation key.
+G = use "view".
+M = use "map".
+O = use "option".
+S = use "string".
+
+Output = { statics : List String, dynamics : List String, classes : List String }.
+Cache a = Type (Cache String (M.Map String (a, Output))).
+Frame a = Type (Frame String Bool (M.Map String (a, Output)) (M.Map String (a, Output)) Int Int).
+
+empty : Unit -> Cache a .
+empty u = Cache "" (M.empty S.compare).
+
+begin : String -> Bool -> Cache a -> Frame a .
+begin version verify old = case old of Cache was values ->
+  Frame version verify (if version == was then values else M.empty S.compare) (M.empty S.compare) 0 0.
+
+output : G.Node -> Output .
+output node = case G.render node of (s, d) -> {statics = s, dynamics = d, classes = G.allClasses node Nil}.
+fragment : Output -> G.Node .
+fragment out = G.Fragment out.statics out.dynamics out.classes.
+
+item : String -> a -> (a -> G.Node) -> Frame a -> (G.Node, Frame a) .
+item key input render frame = case frame of Frame version verify previous current hits misses ->
+  if M.member key current then error "ViewCache: duplicate key {key}"
+  else case M.get key previous of
+      O.Some (was, out) ->
+        if was == input then
+          _ = (if verify and output (render input) != out then error "ViewCache: stale output for {key}; check inputs or renderer version" else Unit);
+          (fragment out, Frame version verify previous (M.insert key (input, out) current) (hits + 1) misses)
+        else fresh key input render frame
+    | O.None -> fresh key input render frame.
+
+fresh : String -> a -> (a -> G.Node) -> Frame a -> (G.Node, Frame a) .
+fresh key input render frame = case frame of Frame version verify previous current hits misses ->
+  out = output (render input);
+  (fragment out, Frame version verify previous (M.insert key (input, out) current) hits (misses + 1)).
+
+many : (a -> String) -> (a -> G.Node) -> List a -> Frame a -> (List G.Node, Frame a) .
+many key render inputs frame = manyGo key render inputs frame Nil.
+manyGo : unsafe (a -> String) -> (a -> G.Node) -> List a -> Frame a -> List G.Node -> (List G.Node, Frame a) .
+manyGo key render inputs frame acc = case inputs of
+    Nil -> (G.rev acc, frame)
+  | input :: rest -> (case item (key input) input render frame of (node, next) -> manyGo key render rest next (node :: acc)).
+
+# Only this render's entries survive. Removed/off-page items are evicted.
+finish : Frame a -> Cache a .
+finish frame = case frame of Frame version _ _ current _ _ -> Cache version current.
+stats : Frame a -> (Int, Int, Int) .
+stats frame = case frame of Frame _ _ _ current hits misses -> (hits, misses, M.size current).
+size : Cache a -> Int .
+size cache = case cache of Cache _ entries -> M.size entries.

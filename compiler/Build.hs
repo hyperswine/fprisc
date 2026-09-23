@@ -28,8 +28,9 @@ import System.Exit (ExitCode (..), exitFailure, exitWith)
 import System.FilePath (dropExtension, takeBaseName, takeDirectory, takeExtension, takeFileName, (</>))
 import System.IO (IOMode (..), hPutStrLn, openFile, stderr)
 import qualified System.Info
-import System.Posix.Process (getProcessID)
-import System.Process (CreateProcess (..), StdStream (..), createProcess, proc, rawSystem, waitForProcess)
+import System.Posix.Process (executeFile, getProcessID)
+import System.Process (CreateProcess (..), StdStream (..), createProcess, proc, rawSystem, readProcess, waitForProcess)
+import Control.Exception (SomeException, try)
 
 data Plan = Plan
   { pSource :: FilePath,
@@ -47,8 +48,16 @@ data Plan = Plan
 usage :: String
 usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep]\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]"
 
+-- The hart CAP compiled in is this machine's processor count (it was a flat 2,
+-- so a server on a ten-core machine ran on two threads).  The running program
+-- uses the cores IT finds, up to the cap (machine/posix/main.c), so a binary
+-- built here and run on a smaller machine does not oversubscribe it; a
+-- cross-build for a bigger one says --harts.  (docs/BOUNDS.md: the arrays are
+-- still static per hart; discovering the count at boot is the full fix.)
 plan :: [String] -> IO Plan
-plan = go (Plan "" Nothing 2 False False Nothing [] [] [] [])
+plan args = do
+  cores <- onlineCores
+  go (Plan "" Nothing (max 2 cores) False False Nothing [] [] [] []) args
   where
     go p ("-o" : o : rest) = go p {pOut = Just o} rest
     go p ("--harts" : n : rest) = go p {pHarts = read n} rest
@@ -62,6 +71,13 @@ plan = go (Plan "" Nothing 2 False False Nothing [] [] [] [])
       | null (pSource p) = go p {pSource = a} rest
       | otherwise = pure p {pRest = a : rest}
     go p [] = if null (pSource p) then hPutStrLn stderr usage >> exitFailure else pure p
+
+-- GHC's getNumProcessors answers 1 in the non-threaded runtime fpr is built
+-- with, so ask the OS; getconf spells it the same on macOS, Linux and FreeBSD
+onlineCores :: IO Int
+onlineCores = do
+  r <- try (readProcess "getconf" ["_NPROCESSORS_ONLN"] "") :: IO (Either SomeException String)
+  pure (case r of Right out | [(n, _)] <- reads out, n > 0 -> n; _ -> 2)
 
 -- compile + link; the executable's path
 build :: Plan -> IO FilePath
@@ -116,7 +132,14 @@ build p = do
       -- this flag the C compiler may hold a value in x28 across a call that
       -- switches actors (spawn waits on the memory actor) and get another actor's
       -- back: a SIGSEGV one burst of 500 connections in twenty, and nowhere else.
-      fixed = if System.Info.arch == "aarch64" then ["-ffixed-x28"] else []
+      -- ... and x27 with it: AArch64 saves callee-saved registers in PAIRS, and
+      -- Apple clang saves the (x27, x28) pair whenever a function uses x27 --
+      -- -ffixed-x28 notwithstanding.  A function that saved x28 on one hart's
+      -- thread and restored it after its actor migrated handed the new thread
+      -- the old thread's hart (runtime/fpr.h).  With x27 reserved too, no C
+      -- function ever needs that pair.  Generated code still uses x27 (its s9):
+      -- it saves registers one at a time, never paired with x28.
+      fixed = if System.Info.arch == "aarch64" then ["-ffixed-x27", "-ffixed-x28", "-DFPR_HART_X28"] else [] -- x28 carries the hart (runtime/fpr.h)
       cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix"] ++ fixed
       linux = if System.Info.os == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []
       -- the runtime's objects are cached per hart count, rebuilt only
@@ -214,9 +237,11 @@ runMain args = do
         _ <- build p {pOut = Just fresh}
         renameFile fresh kept
         pure kept
-  (_, _, _, h) <- createProcess (proc exe (pRest p))
-  code <- waitForProcess h
-  exitWith code
+  -- BECOME the program rather than wait on it as a child: a signal sent to
+  -- `fpr run` (a supervisor's SIGTERM, a test harness stopping a server) then
+  -- reaches the program itself.  As a child it outlived its killed parent and
+  -- ran on as an orphan -- a server still holding its port.
+  executeFile exe False (pRest p) Nothing
 
 -- Everything a run's executable is made from: the program and every module it
 -- `use`s (transitively, resolved as Modules.hs resolves them: beside the

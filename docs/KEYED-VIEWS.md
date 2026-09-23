@@ -21,7 +21,8 @@ Removing the element does not transfer its focus to a replacement.
 The initial DOM change was the first step. The v2 extension below now reduces
 structural wire traffic; the server still renders and compares complete views.
 No cache, DOM scroll/composition guarantee, or general keyed-component lifecycle
-is claimed. Component-level wire patches and server render caching remain next.
+is claimed. Component-level wire patches remain next. Explicit per-session component
+memoization is described in [VIEW-CACHE.md](VIEW-CACHE.md).
 
 ## Validation
 
@@ -70,6 +71,27 @@ JSON close the connection using application close code 4002; the existing
 reconnect path obtains a new full snapshot. No replay of old connection patches
 is attempted. This requires no application API or nginx changes.
 
+## v3: several splices per array
+
+v2's one splice keeps only the common prefix and suffix. A new card on top of a
+page that drops its last one breaks both ends, so every card between them was
+re-sent -- to every tab: 11.8 KB for one new entry in the logbook, barely less
+than the 12 KB snapshot. The bundled client now connects to `/ws?lv=3` and
+accepts
+
+```json
+{"p":3,"s":[[3,1,["new card"]],[24,1,[]]],"d":[[0,3,["31 entries","added #31","text"]]]}
+```
+
+where each array's value is a LIST of `[start, deleteCount, inserted]`, applied in
+order, each start counted in the array as the previous splices left it. The
+server finds them greedily (`std/live.fpr` `splices`): past the common prefix,
+the nearest pair of equal elements within a window of 8 puts the arrays back in
+step; what precedes it on each side is one splice, the equal run after it is
+kept. After 16 splices the rest is one splice, so the patch is never wrong, only
+less small. The same frame is now 2.1 KB. `lv=2` clients still get v2 and older
+ones snapshots; the snapshot is built only when the patch could be the larger.
+
 Validation commands:
 
 ```sh
@@ -83,4 +105,5 @@ own disposable server and compares reconstructed v2 views with legacy snapshots
 through insertion, edit/save and deletion. It also checks reconnect snapshots.
 The recorded run produced six structural patches of 98–1776 bytes. In-app browser
 checks confirmed insert, edit, save, deletion and plain-text rendering, with no
-client errors. Full server rendering and component render caching remain open.
+client errors. The outer view still renders in full; component memoization is now described
+in [VIEW-CACHE.md](VIEW-CACHE.md).

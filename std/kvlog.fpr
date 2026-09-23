@@ -90,7 +90,19 @@ open path = case records path of
   | Ok (recs, skipped) ->
       m = replayGo 0 recs (M.empty S.compare);
       _ = (if skipped > 0 then Sys.stderr "kvlog: {path}: skipped {skipped} unreadable line(s)\n" else Unit);
-      Ok (KvLog (spawn (fn self -> serve self (step path) m)) path).
+      Ok (KvLog (spawn (fn self -> serveLog self path m)) path).
+
+# the store's loop: the prelude's `serve`, except that a request from nobody
+# (a `post`: sender 0) gets no reply -- only a failure worth telling about
+serveLog : unsafe Int -> String -> M.Map String J.Value -> a .
+serveLog self path m =
+  msg = receive self;
+  (rt, q) = msg;
+  (m2, r) = step path m q;
+  _ = (if rt == 0 then (case r of Failed why -> _ = Sys.stderr "kvlog: {path}: a posted write failed: {why}\n"; Unit | _ -> Unit)
+       else _ = send rt r; Unit);
+  _ = drop msg;
+  serveLog self path m2.
 
 # the store's state never holds on to a request: `keep` makes it its own
 step : String -> M.Map String J.Value -> Req -> (M.Map String J.Value, Rep) .
@@ -151,6 +163,16 @@ tryPut key value db = case db of KvLog a _ ->
   out = (case r of Done -> Ok Unit | Failed why -> Err (keep why) | _ -> Err "put: unexpected reply");
   _ = drop r;
   out.
+
+# A put WITHOUT waiting: the store appends it in order -- a later get, put or
+# sync from the same actor sees it -- and the caller carries on.  For a caller
+# that must not stall on the disk (std/live's register writes while every
+# session waits on it).  Nobody is waiting to hear of a failure, so it is said
+# on stderr.  `sync` returns once every post this actor made has been appended.
+post : String -> J.Value -> KvLog -> Unit .
+post key value db = case db of KvLog a _ -> _ = A.sendSure (myself 0) a (0, Put key value); Unit.
+sync : KvLog -> Unit .
+sync db = _ = size db; Unit.
 
 get : String -> KvLog -> O.Option J.Value .
 get key db = case db of KvLog a _ ->

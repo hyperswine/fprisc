@@ -208,14 +208,24 @@ src u = "/* fprlive.js -- the FPRLive client.
     return old.slice(0, patch[0]).concat(patch[2], old.slice(patch[0] + patch[1]));
   }
 
+  // v3: a list of splices, applied in order (each start counts in the array
+  // as the ones before it left it); the old array is never modified
+  function splicedAll(old, patches) \{
+    if (!Array.isArray(patches)) throw new Error('invalid structural patch list');
+    var cur = old;
+    for (var i = 0; i < patches.length; i++) cur = spliced(cur, patches[i]);
+    return cur;
+  }
+
   function apply(res) \{
     // server-to-client COMMANDS (std/live.fpr): go somewhere, or hand a named
     // event to the page's own script (document.addEventListener('live:name', ...))
     if (res.nav) \{ location.href = res.nav; return; }
     if (res.emit) \{ document.dispatchEvent(new CustomEvent('live:' + res.emit, \{ detail: res.detail })); return; }
     if (res.p !== undefined) \{
-      if (res.p !== 2) throw new Error('unsupported live protocol');
-      var next = \{s: spliced(S.s, res.s), d: spliced(S.d, res.d)};
+      if (res.p !== 2 && res.p !== 3) throw new Error('unsupported live protocol');
+      var next = res.p === 3 ? \{s: splicedAll(S.s, res.s), d: splicedAll(S.d, res.d)}
+                             : \{s: spliced(S.s, res.s), d: spliced(S.d, res.d)};
       if (next.s.length !== next.d.length + 1) throw new Error('invalid view shape');
       S = next;
       build();
@@ -234,7 +244,7 @@ src u = "/* fprlive.js -- the FPRLive client.
   }
 
   function connect() \{
-    var url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws?lv=2';
+    var url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws?lv=3';
     ws = new WebSocket(url);
     ws.onopen = function () \{ wait = 500; status('live'); };
     ws.onmessage = function (ev) \{

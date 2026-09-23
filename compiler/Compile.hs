@@ -581,17 +581,24 @@ compileMain = do
           x64 = oX64 opts
           qapp = oQosApp opts
           qsingle = oQosSingle opts
+          -- hosted posix AArch64 reads its hart from x28 too (runtime/fpr.h):
+          -- a thread-local cannot follow an actor that migrates between harts
           lower | a64 && qapp = deTlsQosAppA64 a64mac qsingle . lowerA64 a64mac
+                | a64 && oBase opts = deTlsQosAppA64 a64mac False . lowerA64 a64mac
                 | a64 = lowerA64 a64mac
                 | x64 && qapp = deTlsQosApp . lowerX64
                 | x64 = lowerX64
                 | otherwise = id
           rvv = oRvv opts && not a64 && not x64 -- no RVV lowering in the PoCs
           spec = not x64 -- SysV callee-saved registers can't host the s6+ spec loops
+          -- every distinct lowering its own cache tag: a QOS app on Apple Silicon
+          -- and a hosted posix program once shared "a64macr" while generating
+          -- different code, and hosted AArch64 now reads its hart from x28
           tname = if qsingle then "qa64singler" ++ show a64Rev
-                  else if a64mac then "a64macr" ++ show a64Rev
+                  else if a64mac && qapp then "qa64macr" ++ show a64Rev
+                  else if a64mac then "a64macx28r" ++ show a64Rev
                   else if a64 && qapp then "qa64r" ++ show a64Rev
-                  else if a64 then "a64r" ++ show a64Rev
+                  else if a64 then "a64x28r" ++ show a64Rev
                   else if x64 && qapp then "qx64r" ++ show x64Rev
                   else if x64 then "x64r" ++ show x64Rev
                   else tgtName tgt

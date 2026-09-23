@@ -133,7 +133,8 @@ The direction that emerged was:
 
 BareMetal–Builtin and bytecode/Sol were intended to remain independently usable.
 A standalone POSIX backend was requested as a future direction; the repository
-split did not implement one. Likewise, the proposed QOS/Base relationship is not
+split did not implement one. (Since done: the `posix` system, docs/PROFILES.md, which also says
+how it differs from `qos-portable`.) Likewise, the proposed QOS/Base relationship is not
 a completed Base conformance claim.
 
 See [PLATFORM.md](PLATFORM.md) and [DOCUMENTATION.md](DOCUMENTATION.md). Their

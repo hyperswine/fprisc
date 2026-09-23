@@ -121,6 +121,12 @@ In rough order of worth. None of these is silent.
 2. **`RING_MAX 1<<20`**: a `Dynamic` mailbox ring stops doubling at a million
    messages. Memory should be the bound.
 3. **`FPR_NHARTS`**: compile-time, with static per-hart arrays. Discover at boot.
+   Partly done (2026-09-22): the cap `fpr build` compiles in is now the build
+   machine's core count (`getconf _NPROCESSORS_ONLN`; it was a flat 2, so a
+   server on a ten-core machine ran on two threads), and a program starts as
+   many harts as the RUNNING machine has cores, up to that cap
+   (`machine/posix/main.c`). Still static: a binary built on a small machine
+   and run on a big one uses the small one's count unless built with `--harts`.
 4. **RAM size on a board**: from the device tree, not `link.ld` (one place now:
    `hal_heap_span` in `machine/virt/hal.c`).
 5. **The stack's C headroom** (`FPR_STACK_HEADROOM`, 64 KiB): the runtime's own C
@@ -151,7 +157,7 @@ In rough order of worth. None of these is silent.
 |---|---|---|
 | `FPR_RBUF_SZ 4096`, per-hart render buffer | rendering a non-String value (a long list, a big record) past 4095 bytes panics "render buffer full"; Strings no longer pass through it | render into a growable buffer, or straight to the console for `print` |
 | `RING_MAX 1<<20` messages per `Dynamic` ring | stops doubling | memory should be the bound, as the `MAXSND` comment already says of hubs |
-| `FPR_NHARTS` (compile time, static per-hart arrays) | fixed at build | discover at boot (device tree / `sysconf`) |
+| `FPR_NHARTS` (compile time, static per-hart arrays) | the build machine's cores (was 2); the run machine's cores up to that | discover at boot (device tree / `sysconf`) |
 | `LENGTH = 128M` and the fixed `_heap_end` in `machine/virt/link.ld`, `machine/builtin/link.ld` | "heap exhausted" | RAM is the bound on a board, but its SIZE belongs to the device tree the firmware hands over (`hal_heap_span` is the one place to read it), not to the linker script |
 | Builtin stacks in `machine/builtin/link.ld` (64K main, 4K trap, 64K irq) | overflow unchecked | at least `--defsym` knobs; a board decision, but not one the linker script should hide |
 

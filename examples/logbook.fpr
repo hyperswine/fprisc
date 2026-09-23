@@ -7,8 +7,8 @@
 #
 # THE DATA.  An entry is a record; the log is a list of them, NEWEST FIRST, so
 # the first page is the head of the list and adding is a cons.  The list and
-# the id counter are the durable fields (each named by a path, each with its
-# own policy); everything a session is looking at -- its search, its page, the
+# the id counter are the durable fields (each named by a path; the list is
+# stored one record per entry, so a change writes what changed); everything a session is looking at -- its search, its page, the
 # entry it is editing -- is per session, kept in the model by sid and never
 # written down.  `update` is pure, every event is journaled, so `--replay`
 # rebuilds the log from the journal alone.
@@ -30,7 +30,10 @@ String = use "std/string".
 Option = use "std/option".
 Result = use "std/result".
 Clock = use "std/clock".
+Order = use "std/order".
 G = use "std/view".
+VC = use "std/viewcache".
+Store = use "std/store".
 Ma = use "std/ma".
 LJ = use "std/livejs".
 
@@ -38,53 +41,88 @@ pageSize = 20.
 
 # ---- the model ----------------------------------------------------------------------------
 Entry = {id : Int, at : Int, text : String, tags : List String}.
-# what one session is looking at: `editing` is an id, 0 for none
-Sess = {sid : Int, q : String, page : Int, editing : Int}.
-Model = {entries : List Entry, nextId : Int, sessions : List Sess, toast : String}.
+# THE LOG LIVES IN A STORE (std/store): shard actors that each cache their part
+# in memory and compact their own file, so no actor holds -- or copies -- the
+# whole log.  The model is what the SESSIONS are doing, the next id, and `rev`,
+# bumped by every change to the log: a session whose page shows the log sees
+# `rev` move and reads its page again.
+# `editing` is an entry id, 0 for none; `toast` is the session's own ("added #5"
+# is not every tab's news).
+Sess = {sid : Int, q : String, page : Int, editing : Int, toast : String}.
+Model = {nextId : Int, rev : Int, sessions : List Sess}.
 
-init = {entries = Nil, nextId = 1, sessions = Nil, toast = ""}.
+init = {nextId = 1, rev = 0, sessions = Nil}.
+newSess sid = {sid = sid, q = "", page = 0, editing = 0, toast = ""}.
+
+# the codec the store writes an Entry with: any path literal whose field is a List Entry
+Rows = {rows : List Entry}.
+rowsCodec = @Rows.rows.
 
 # every message; `Add` and `Save` carry "tags|text" as ONE string because a click
 # sends one argument (the tags first: a tag never contains a bar, a text may)
-Msg = Type (Add String | Edit Int | Save Int String | Delete Int | Search String | Page Int | Stamped Int String | ClearToast).
+# The log is changed by COMMANDS (a store write is an effect); each answers with
+# the message that says it is done: Stored, Saved, Deleted -- and Filled, which
+# brings an entry's text for an edit form.  (`Stamped`, `StampedBy` and
+# `ClearToast` are what journals from before the store hold: kept, so an old log
+# still replays.)
+Msg = Type (Add String | Edit Int | Save Int String | Delete Int | Search String | Page Int | Stamped Int String | ClearToast
+           | StampedBy Int Int String | ClearToastFor Int
+           | Stored Int Int | Saved Int Int | Deleted Int Int | Filled Int String String).
 codec = @Msg.
 
 # the browser's own state: the drafts of a new entry, of an edit, and the search box
 Client = {draft : String, tags : String, edit : String, etags : String, q : String}.
 
+# durable in the kvlog: only the id counter -- the entries are the store's
 fields =
      Live.field Live.Always @Model.nextId
-  :: Live.field (Live.AtMostEvery 1000) @Model.entries
   :: Nil.
 
 # ---- update ---------------------------------------------------------------------------------
-update ev m = case ev of
-    Live.Joined sid -> ({m | sessions = {sid = sid, q = "", page = 0, editing = 0} :: m.sessions}, Nil)
+# `store` is the log's Store: a command closes over it, update itself stays pure
+updateWith store ev m = case ev of
+    Live.Joined sid -> ({m | sessions = newSess sid :: m.sessions}, Nil)
   | Live.Left sid -> ({m | sessions = List.filter (fn s -> s.sid != sid) m.sessions}, Nil)
   | Live.Refused _ _ -> (m, Nil)
   | Live.Msg sid msg -> (case msg of
-        # the clock is an effect: the entry is stamped by a command and lands as Stamped
+        # the id is taken NOW, in update; the clock and the write are the command's
         Add raw -> (if strlen (textOf raw) == 0 then (m, Nil)
-                    else (m, Live.Run (fn u -> Stamped (Clock.now Unit) raw) :: Live.Emit sid "set" (setJson (("draft", "") :: ("tags", "") :: Nil)) :: Nil))
-      | Stamped at raw ->
-          e = {id = m.nextId, at = at, text = textOf raw, tags = tagsOf raw};
-          ({m | entries = e :: m.entries, nextId = m.nextId + 1, toast = "added #{e.id}"}, Live.After 1500 ClearToast :: Nil)
+                    else
+                      id = m.nextId;
+                      ({m | nextId = id + 1},
+                       Live.Run (fn u -> _ = Store.put {id = id, at = Clock.now Unit, text = textOf raw, tags = tagsOf raw} store; Stored sid id)
+                       :: Live.Emit sid "set" (setJson (("draft", "") :: ("tags", "") :: Nil)) :: Nil))
+      | Stored by id -> (changed (told by "added #{id}" m), toastLater by)
       | Edit id -> (withSess sid (fn s -> {s | editing = id}) m,
-                    (case List.find (fn e -> e.id == id) m.entries of
-                        Option.Some e -> Live.Emit sid "set" (setJson (("edit", e.text) :: ("etags", String.join ", " e.tags) :: Nil)) :: Nil
-                      | Option.None -> Nil))
+                    (if id == 0 then Nil
+                     else Live.Run (fn u -> (case Store.get id store of
+                         Option.Some e -> Filled sid e.text (String.join ", " e.tags)
+                       | Option.None -> Filled sid "" "")) :: Nil))
+      | Filled who text tags -> (m, Live.Emit who "set" (setJson (("edit", text) :: ("etags", tags) :: Nil)) :: Nil)
       | Save id raw -> (if strlen (textOf raw) == 0 then (m, Nil)
-                        else ({(withSess sid (fn s -> {s | editing = 0}) m) | entries = List.map (fn e -> if e.id == id then {e | text = textOf raw, tags = tagsOf raw} else e) m.entries, toast = "saved #{id}"},
-                              Live.After 1500 ClearToast :: Nil))
-      | Delete id -> ({(withSess sid (fn s -> {s | editing = 0}) m) | entries = List.filter (fn e -> e.id != id) m.entries, toast = "deleted #{id}"}, Live.After 1500 ClearToast :: Nil)
-      | Search q -> (withSess sid (fn s -> {s | q = String.trim q, page = 0}) m, Live.Emit sid "set" (setJson (("q", String.trim q) :: Nil)) :: Nil)
+                        else (m, Live.Run (fn u -> (case Store.get id store of
+                                  Option.Some e -> _ = Store.put {e | text = textOf raw, tags = tagsOf raw} store; Saved sid id
+                                | Option.None -> Saved sid id)) :: Nil))
+      | Saved who id -> (changed (told who "saved #{id}" (withSess who (fn s -> {s | editing = 0}) m)), toastLater who)
+      | Delete id -> (m, Live.Run (fn u -> _ = Store.remove id store; Deleted sid id) :: Nil)
+      | Deleted who id -> (changed (told who "deleted #{id}" (withSess who (fn s -> {s | editing = 0}) m)), toastLater who)
+      | Search q -> (withSess sid (fn s -> {s | q = String.trim q, page = 0}) m,
+                     Live.Emit sid "set" (setJson (("q", String.trim q) :: Nil)) :: Nil)
       | Page n -> (withSess sid (fn s -> {s | page = (if n < 0 then 0 else n)}) m, Nil)
-      | ClearToast -> ({m | toast = ""}, Nil)).
+      | ClearToastFor who -> (withSess who (fn s -> {s | toast = ""}) m, Nil)
+      | ClearToast -> ({m | sessions = List.map (fn s -> {s | toast = ""}) m.sessions}, Nil)
+      # journals from before the store: the entry was written then, by that program
+      | Stamped _ _ -> (m, Nil)
+      | StampedBy _ _ _ -> (m, Nil)).
+
+changed m = {m | rev = m.rev + 1}.
+told sid text m = withSess sid (fn s -> {s | toast = text}) m.
+toastLater who = Live.After 1500 (ClearToastFor who) :: Nil.
 
 withSess sid f m = {m | sessions = List.map (fn s -> if s.sid == sid then f s else s) m.sessions}.
 sessOf sid m = case List.find (fn s -> s.sid == sid) m.sessions of
     Option.Some s -> s
-  | Option.None -> {sid = sid, q = "", page = 0, editing = 0}.
+  | Option.None -> newSess sid.
 
 # "tags|text": the part before the first bar is the tags, comma separated
 textOf raw = case String.indexOf "|" raw of Option.Some i -> String.trim (String.dropLeft i raw) | Option.None -> String.trim raw.
@@ -98,46 +136,81 @@ setJson kvs = Json.render (Json.object (List.map (fn kv -> (case kv of (k, v) ->
 subs m = Nil.
 
 # ---- the query a session sees --------------------------------------------------------------
-# a search matches the text or a tag, case-insensitively; "" is everything
-matches q e = strlen q == 0 or String.contains q (String.toLower e.text) or List.any (fn t -> String.contains q (String.toLower t)) e.tags.
-visible s m = List.filter (matches (String.toLower s.q)) m.entries.
+# a search matches the text or a tag, case-insensitively (`q` is lower-cased)
+matches q e = String.contains q (String.toLower e.text) or List.any (fn t -> String.contains q (String.toLower t)) e.tags.
+
+# WHAT A SESSION SEES (Live.serveProjected): its search, its page, its edit, its
+# toast, how many are online -- and `rev`, so a change to the log is a change to
+# every View.  Small and the same size however long the log is.
+View = {q : String, page : Int, editing : Int, toast : String, online : Int, rev : Int}.
+project : Int -> Model -> View .
+project sid m =
+  s = sessOf sid m;
+  {q = s.q, page = s.page, editing = s.editing, toast = s.toast, online = List.length m.sessions, rev = m.rev}.
+
+# ...and what it SHOWS, read from the store by the actor that renders it (the
+# tab's own writer, so fifty tabs read at once): a page of the log, or of its
+# search, and the counts around it.  A page past the end (the log shrank under
+# it) is the last one.
+Page = {rows : List Entry, count : Int, total : Int, pages : Int, page : Int}.
+load store v =
+  q = String.toLower v.q;
+  (rows, n) = (if strlen q == 0 then Store.page (v.page * pageSize) pageSize store
+               else Store.search (matches q) (v.page * pageSize) pageSize store);
+  pages = (if n == 0 then 1 else (n + pageSize - 1) / pageSize);
+  (if v.page >= pages and v.page > 0 then load store {v | page = pages - 1}
+   else {rows = rows, count = n, total = (if strlen q == 0 then n else Store.count store), pages = pages, page = v.page}).
 
 # ---- view: Ma primitives only ---------------------------------------------------------------
-view sid m =
-  s = sessOf sid m;
-  all = visible s m;
-  n = List.length all;
-  pages = (if n == 0 then 1 else (n + pageSize - 1) / pageSize);
-  page = (if s.page >= pages then pages - 1 else s.page);
-  shown = List.take pageSize (List.drop (page * pageSize) all);
-  Ma.page "day"
-    ( G.El "div" (G.Cls "col gap-4 narrow" :: G.locals @Client {draft = "", tags = "", edit = "", etags = "", q = ""})
-        ( Ma.hstack 3 [Ma.vstack 1 [Ma.title "Logbook", G.El "div" [G.Cls "t-caption tx-3"] [G.Dyn "{List.length m.entries} entries, {List.length m.sessions} online"]], Ma.spacer,
-                       G.El "div" [G.Cls "t-caption tx-success"] [G.Dyn m.toast]]
-          :: Ma.card
-               ( Ma.heading "New observation"
-                 :: G.El "textarea" [G.Cls "inp t-body w-full", G.bind @Client.draft, G.Att "rows" "3", G.Att "placeholder" "what happened"] Nil
-                 :: G.Inp [G.Cls "inp t-body w-full", G.bind @Client.tags, G.OnEnter (G.wireOpen codec (Add "")) "tags,draft", G.Att "placeholder" "tags, comma separated"]
-                 :: G.El "button" [G.Cls "btn btn-primary t-label tall", G.OnClick (G.wireOpen codec (Add "")) "tags,draft"] [G.Txt "add entry"]
-                 :: Nil )
-          :: Ma.hstack 2
-               ( G.Inp [G.Cls "inp t-body grow", G.bind @Client.q, G.enterWith codec (Search "") @Client.q, G.Att "placeholder" "search text or tag"]
-                 :: G.El "button" [G.Cls "btn t-label tall", G.sendWith codec (Search "") @Client.q] [G.Txt "search"]
-                 :: (if strlen s.q == 0 then G.El "span" Nil Nil else btn "clear" (Search ""))
-                 :: Nil )
-          :: G.key "entries" (Ma.vstack 3
-               (if n == 0 then [Ma.caption (if strlen s.q == 0 then "nothing logged yet" else "nothing matches \"{s.q}\"")]
-                else List.map (entryCard s) shown))
-          :: (if pages <= 1 then G.El "span" Nil Nil
-              else Ma.hstack 2 [ (if page > 0 then btn "newer" (Page (page - 1)) else G.El "span" Nil Nil), Ma.spacer,
-                                 Ma.caption "page {page + 1} of {pages}", Ma.spacer,
-                                 (if page + 1 < pages then btn "older" (Page (page + 1)) else G.El "span" Nil Nil) ])
+# The page is FIVE SECTIONS, each a function of only what it shows, so each can
+# be remembered on its own (cachedView): the form never renders twice, the search
+# bar only when the query changes, the pager only when the page does, the header
+# only when a count or the toast moves -- and the list is its cards, each cached.
+view sid v d = pageOf (map5 renderSection (sectionsOf v d)) (listNode v.q d.count (List.map (fn e -> entryCard (v.editing == e.id) e) d.rows)).
+
+Section = Type (Top Int Int String | Form | Bar String | Foot Int Int).
+sectionsOf v d = Top d.total v.online v.toast :: Form :: Bar v.q :: Foot d.page d.pages :: Nil.
+sectionKey sec = case sec of Top _ _ _ -> "top" | Form -> "form" | Bar _ -> "bar" | Foot _ _ -> "foot".
+renderSection sec = case sec of
+    Top total online toast ->
+      Ma.hstack 3 [Ma.vstack 1 [Ma.title "Logbook", G.El "div" [G.Cls "t-caption tx-3"] [G.Dyn "{total} entries, {online} online"]], Ma.spacer,
+                   G.El "div" [G.Cls "t-caption tx-success"] [G.Dyn toast]]
+  | Form ->
+      Ma.card
+        ( Ma.heading "New observation"
+          :: G.El "textarea" [G.Cls "inp t-body w-full", G.bind @Client.draft, G.Att "rows" "3", G.Att "placeholder" "what happened"] Nil
+          :: G.Inp [G.Cls "inp t-body w-full", G.bind @Client.tags, G.OnEnter (G.wireOpen codec (Add "")) "tags,draft", G.Att "placeholder" "tags, comma separated"]
+          :: G.El "button" [G.Cls "btn btn-primary t-label tall", G.OnClick (G.wireOpen codec (Add "")) "tags,draft"] [G.Txt "add entry"]
           :: Nil )
-      :: Nil ).
+  | Bar q ->
+      Ma.hstack 2
+        ( G.Inp [G.Cls "inp t-body grow", G.bind @Client.q, G.enterWith codec (Search "") @Client.q, G.Att "placeholder" "search text or tag"]
+          :: G.El "button" [G.Cls "btn t-label tall", G.sendWith codec (Search "") @Client.q] [G.Txt "search"]
+          :: (if strlen q == 0 then G.El "span" Nil Nil else btn "clear" (Search ""))
+          :: Nil )
+  | Foot page pages ->
+      (if pages <= 1 then G.El "span" Nil Nil
+       else Ma.hstack 2 [ (if page > 0 then btn "newer" (Page (page - 1)) else G.El "span" Nil Nil), Ma.spacer,
+                          Ma.caption "page {page + 1} of {pages}", Ma.spacer,
+                          (if page + 1 < pages then btn "older" (Page (page + 1)) else G.El "span" Nil Nil) ]).
+
+# the list: its cards (or why there are none), in a keyed container
+listNode q n cards = G.key "entries" (Ma.vstack 3
+  (if n == 0 then [Ma.caption (if strlen q == 0 then "nothing logged yet" else "nothing matches \"{q}\"")] else cards)).
+
+# the sections in page order, the list between the search bar and the pager
+pageOf secs list = case secs of
+    top :: form :: bar :: foot :: _ ->
+      Ma.page "day"
+        ( G.El "div" (G.Cls "col gap-4 narrow" :: G.locals @Client {draft = "", tags = "", edit = "", etags = "", q = ""})
+            (top :: form :: bar :: list :: foot :: Nil)
+          :: Nil )
+  | _ -> error "logbook: a page has four sections".
+map5 f xs = List.map f xs.
 
 # an entry, or -- for the one this session is editing -- its edit form
-entryCard s e =
-  G.key "entry-{e.id}" (if s.editing == e.id then
+entryCard editing e =
+  G.key "entry-{e.id}" (if editing then
     Ma.card
       ( G.El "div" [G.Cls "t-caption tx-3"] [G.Txt "#{e.id} · {Clock.stamp e.at} · editing"]
         :: G.El "textarea" [G.Cls "inp t-body w-full", G.bind @Client.edit, G.Att "rows" "4"] Nil
@@ -182,8 +255,13 @@ script = strcat (LJ.src 0) "
 })();
 ".
 
-# mobile first: the canvas padding is a phone's, the column is capped on a desktop
-css m = strcat (Ma.maCssFor (view 0 m)) "
+# mobile first: the canvas padding is a phone's, the column is capped on a desktop.
+# The stylesheet is made from a page that has every kind of card on it (an entry
+# with a tag, one being edited, a pager), not from whatever this page holds --
+# a tab whose first page was empty still has the styles its later cards need.
+cssSample = {rows = {id = 2, at = 0, text = "", tags = "t" :: Nil} :: {id = 1, at = 0, text = "", tags = Nil} :: Nil,
+             count = 41, total = 41, pages = 3, page = 1}.
+css v = strcat (Ma.maCssFor (view 0 {v | editing = 1, q = "x"} cssSample)) "
 .canvas\{padding:12px}
 .narrow\{max-width:640px;margin:0 auto;width:100%}
 .inp\{background:var(--bg-surface);border:1px solid var(--bd-subtle);color:var(--tx-1);padding:10px 12px;border-radius:8px;font:inherit;outline:none;resize:vertical}
@@ -193,20 +271,71 @@ css m = strcat (Ma.maCssFor (view 0 m)) "
 @media (min-width:640px)\{.canvas\{padding:24px}}
 ".
 
-app = { init = init, update = update, subs = subs, fields = fields, codec = codec,
-        view = (fn sid m -> G.render (view sid m)), css = css }.
+# the whole model to `Live.serve` (no projection, no cache): kept as the baseline
+appOf store = { init = init, update = updateWith store, subs = subs, fields = fields, codec = codec,
+                view = (fn sid m -> v = project sid m; G.render (view sid v (load store v))), css = (fn m -> css (project 0 m)) }.
+
+# Complete, immutable inputs: changing ANY entry field invalidates its card.
+# No session ID, query, clock, permissions or mutable global is read by renderCard.
+CardInput = {entry : Entry, editing : Bool}.
+renderCard : CardInput -> G.Node .
+renderCard input = entryCard input.editing input.entry.
+# the page is read ONCE, and both the cached and (when verifying) the fresh
+# render are made from those rows.  Two caches: the cards (one per entry on the
+# page) and the sections (one per kind); a section whose input did not change is
+# its old fragment, re-rendered never.
+cachedView store verify sid v old = case old of (cardsOld, sectionsOld) ->
+  d = load store v;
+  inputs = List.map (fn e -> {entry = e, editing = v.editing == e.id}) d.rows;
+  (case VC.many (fn input -> str input.entry.id) renderCard inputs (VC.begin "logbook-card-v1" verify cardsOld) of (cards, next) ->
+    (case VC.many sectionKey renderSection (sectionsOf v d) (VC.begin "logbook-section-v1" verify sectionsOld) of (secs, snext) ->
+      rendered = G.render (pageOf secs (listNode v.q d.count cards));
+      _ = (if verify and rendered != G.render (view sid v d) then error "logbook: cached view differs from fresh rendering" else Unit);
+      (rendered, (VC.finish next, VC.finish snext)))).
+cachedAppOf store verify =
+  { init = init, update = updateWith store, subs = subs, fields = fields, codec = codec,
+    project = project, same = (fn a b -> a == b),
+    view = cachedView store verify, cache = (VC.empty Unit, VC.empty Unit), css = css }.
+
+# A log written before the store -- entries as kvlog records (Live.each) or as
+# one list -- moves in once, the first time the store opens empty.
+migrate kvPath store = if Store.count store > 0 then 0
+  else (case KvLog.open kvPath of
+      Err _ -> 0
+    | Ok db ->
+        es = legacy db;
+        _ = List.each (fn e -> Store.put e store) es;
+        # and out of the kvlog: blank the old records and rewrite the file, so
+        # neither the file nor any kvlog opened on it carries the log twice
+        _ = (if List.isEmpty es then Unit
+             else _ = List.each (fn k -> KvLog.put k Json.Null db) (List.filter (fn k -> k == "model.entries" or String.startsWith "model.entries/" k) (KvLog.keys db));
+                  _ = KvLog.compact ("$event" :: Nil) db; Unit);
+        List.length es).
+legacy db = case KvLog.get "model.entries" db of
+    Option.Some (Json.Text "each") -> List.filterMap (fn k -> if String.startsWith "model.entries/" k then Option.andThen decodeOne (KvLog.get k db) else Option.None) (KvLog.keys db)
+  | Option.Some v -> (case rowsCodec.dec (Json.toWire v) of Ok es -> es | Err _ -> Nil)
+  | Option.None -> Nil.
+decodeOne v = case v of
+    Json.Null -> Option.None
+  | _ -> (case rowsCodec.dec (WList (Json.toWire v :: Nil)) of Ok (e :: Nil) -> Option.Some e | _ -> Option.None).
+
+openStore kvPath = case Store.open {dir = strcat kvPath ".store", span = 512, key = (fn e -> e.id), codec = rowsCodec} of
+    Ok s -> s
+  | Err why -> Program.fail 1 "logbook: {why}".
 
 # ---- settings, replay, main --------------------------------------------------------------------
 Settings = Type (Settings port address store dev replay).
 settings = Decode.map5 Settings (Decode.field "port" Decode.int) (Decode.field "address" Decode.string) (Decode.field "store" Decode.string)
   (Decode.field "dev" Decode.bool) (Decode.field "replay" Decode.bool).
 
-checkReplay store = case Live.replay app store of
+# the model rebuilt from the journal alone (no command is performed) against the
+# durable field; the entries themselves are the store's, and it says how many
+checkReplay kvPath = case Live.replay (appOf (openStore kvPath)) kvPath of
     Err why -> Program.fail 1 "replay: {why}"
   | Ok m ->
-      db = (case KvLog.open store of Ok d -> d | Err why -> Program.fail 1 why);
+      db = (case KvLog.open kvPath of Ok d -> d | Err why -> Program.fail 1 why);
       saved = Option.andThen Json.asInt (KvLog.get "model.nextId" db);
-      _ = print "replayed from the journal: {List.length m.entries} entries, nextId={m.nextId}";
+      _ = print "replayed from the journal: nextId={m.nextId}; the store holds {Store.count (openStore kvPath)} entries";
       _ = print "saved durable field:       nextId={saved}";
       (if Option.Some m.nextId == saved then 0 else 1).
 
@@ -223,5 +352,10 @@ main = case Config.load { defaults = Json.object (("port", Json.Integer 6700) ::
                  watch = (if dev then src :: Nil else Nil),
                  rebuild = Program.envOr "fpr" "FPR" :: "build" :: src :: "-o" :: exe :: Nil,
                  restart = exe :: "--port={port}" :: "--address={address}" :: "--store={store}" :: "--dev" :: Nil };
-         _ = Live.serve cfg app;
+         shards = openStore store;
+         moved = migrate store shards;
+         _ = (if moved > 0 then Sys.stderr "logbook: moved {moved} entries into {store}.store\n" else Unit);
+         cachedApp = cachedAppOf shards;
+         app = appOf shards;
+         _ = Live.serveProjected cfg (cachedApp (Program.envOr "0" "FPR_VIEW_VERIFY" == "1"));
          0).

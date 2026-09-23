@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check v2 structural patches against a legacy client using a disposable logbook.
+"""Check v2 and v3 structural patches against a legacy client using a disposable logbook.
 Usage: python3 tests/check_live_wire.py /path/to/logbook
 """
 import base64, json, os, select, socket, struct, subprocess, sys, tempfile, time
@@ -11,7 +11,8 @@ class Client:
         self.buf = b''
         self.state = None
         self.frames = []
-        target = '/ws?lv=2' if modern else '/ws'
+        # modern: True asks for v2 (one splice per array), 3 for v3 (a list of them)
+        target = '/ws?lv=3' if modern == 3 else '/ws?lv=2' if modern else '/ws'
         key = base64.b64encode(os.urandom(16)).decode()
         self.s.sendall(f'GET {target} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n'.encode())
         while b'\r\n\r\n' not in self.buf:
@@ -44,6 +45,15 @@ class Client:
                 assert 0 <= start <= len(old) and 0 <= remove <= len(old)-start
                 new[field] = old[:start] + insert + old[start+remove:]
             self.state = new
+        elif msg.get('p') == 3:
+            new = {}
+            for field in ('s','d'):
+                cur = self.state[field]
+                for start, remove, insert in msg[field]:
+                    assert 0 <= start <= len(cur) and 0 <= remove <= len(cur)-start
+                    cur = cur[:start] + insert + cur[start+remove:]
+                new[field] = cur
+            self.state = new
         elif 's' in msg:
             self.state = {'s':msg['s'], 'd':msg['d']}
         elif 'd' in msg:
@@ -64,6 +74,9 @@ class Client:
         self.s.sendall(bytes([0x88,0x80])+os.urandom(4));self.s.close()
 
 def has(state, text): return text in ''.join(state['s']+state['d'])
+# The logbook's toast ("added #3") is the acting tab's own, so the two tabs
+# agree only once it has cleared: compare them then.
+def settled(state): return not any(has(state, t) for t in ('added #', 'saved #', 'deleted #'))
 
 def main():
     with tempfile.TemporaryDirectory(prefix='live-wire-') as d:
@@ -78,25 +91,28 @@ def main():
                     if p.poll() is not None: raise RuntimeError('server exited')
                     time.sleep(.05)
                 else: raise TimeoutError('startup')
-                port=int(m[1]);a=Client(port,True);clients.append(a);b=Client(port,False);clients.append(b)
+                port=int(m[1]);a=Client(port,True);clients.append(a);b=Client(port,False);clients.append(b);v3=Client(port,3);clients.append(v3)
                 for i in range(1,4):
                     a.send('Add',f'tag|wire entry {i}')
-                    for c in (a,b): c.until(lambda st:has(st,f'wire entry {i}'))
-                    assert a.state==b.state, 'patch and full snapshot disagree'
+                    for c in (a,b,v3): c.until(lambda st:has(st,f'wire entry {i}') and settled(st))
+                    assert a.state==b.state==v3.state, 'patch and full snapshot disagree'
                 a.send('Edit',2)
                 a.until(lambda st:has(st,'editing'))
                 a.send('Save',2,'tag|changed entry')
-                for c in (a,b): c.until(lambda st:has(st,'changed entry') and not has(st,'editing'))
-                assert a.state==b.state
+                for c in (a,b,v3): c.until(lambda st:has(st,'changed entry') and not has(st,'editing') and settled(st))
+                assert a.state==b.state==v3.state
                 a.send('Delete',1)
-                for c in (a,b): c.until(lambda st:not has(st,'wire entry 1'))
-                assert a.state==b.state
+                for c in (a,b,v3): c.until(lambda st:not has(st,'wire entry 1') and settled(st))
+                assert a.state==b.state==v3.state
                 patches=[n for msg,n in a.frames if msg.get('p')==2]
                 assert patches, 'modern connection never got patches'
                 assert not any('p' in msg for msg,n in b.frames), 'legacy client received v2'
+                v3patches=[n for msg,n in v3.frames if msg.get('p')==3]
+                assert v3patches, 'v3 connection never got multi-splice patches'
+                assert not any(msg.get('p')==3 for msg,n in a.frames), 'v2 client received v3'
                 fresh=Client(port,True);clients.append(fresh)
                 assert has(fresh.state,'changed entry') and not has(fresh.state,'wire entry 1')
-                print(f'PASS: inserts, edit/save, removal, text deltas, legacy equivalence, reconnect snapshot; {len(patches)} patches ({min(patches)}..{max(patches)} bytes)')
+                print(f'PASS: inserts, edit/save, removal, text deltas, legacy equivalence, reconnect snapshot; {len(patches)} v2 patches ({min(patches)}..{max(patches)} bytes), {len(v3patches)} v3 ({min(v3patches)}..{max(v3patches)} bytes)')
             finally:
                 for c in clients:c.close()
                 p.terminate()

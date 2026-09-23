@@ -65,6 +65,7 @@ OS = use "os".
 P = use "proc".
 Ord = use "order".
 L = use "list".
+L = use "list".
 
 # ---- the app's vocabulary ------------------------------------------------------------
 # Msg sid m: from a session (sid 0: from a command or a subscription).
@@ -84,27 +85,125 @@ http req toMsg = Run (fn u -> toMsg (H.request req)).
 Sub msg = Type (Every Int msg).
 
 Policy = Type (Always | AtMostEvery Int).
-Field model = Type (Field String Policy (model -> J.Value) (J.Value -> model -> Result model String)).
+
+# What a field last wrote, held as the field's OWN value inside two closures, so
+# the register keeps one per field whatever the field's type:
+#   same m       has the field not changed since?  `==` on the raw value, and the
+#                same object answers at once -- an event that left a field alone
+#                costs nothing, however large the field is
+#   write db m   write what changed since, and answer the next snapshot
+Snap model = Type (Snap (model -> Bool) (KV.KvLog -> model -> Snap model)).
+# a durable field: its key, its policy, how to START (the store's contents are
+# the baseline: write only what differs, answer the first snapshot), how to RESTORE
+Field model = Type (Field String Policy (KV.KvLog -> model -> Snap model) (KV.KvLog -> model -> Result model String)).
 
 # a durable field is a PATH and a policy: `Live.field Live.Always @Model.count`.
 # The literal carries the getter, the setter, the key and -- for any field whose
 # type can go on the wire (Int, String, Bool, lists, tuples, declared records
 # and sum types) -- its codec, minted by the compiler from the declaration.
+# The value is ONE record: every change writes all of it.  For a list that grows,
+# see `each`.
 field : Policy -> { get : m -> a, set : a -> m -> m, segs : List String, enc : a -> Wire, dec : Wire -> Result a String | r } -> Field m .
-field policy path = Field (strcat "model." (strJoin "." path.segs)) policy (fn m -> J.fromWire (path.enc (path.get m)))
-  (fn v m -> case path.dec (J.toWire v) of Ok x -> Ok (path.set x m) | Err why -> Err why).
+field policy path = whole (strcat "model." (strJoin "." path.segs)) policy path.get path.set
+  (fn x -> J.fromWire (path.enc x)) (fn v -> path.dec (J.toWire v)).
 
 # the same with a codec of your own, for a field whose type has none
 custom : Policy -> { get : m -> a, set : a -> m -> m, segs : List String | r } -> (a -> J.Value) -> D.Decoder a -> Field m .
-custom policy path enc dec = Field (strcat "model." (strJoin "." path.segs)) policy (fn m -> enc (path.get m))
-  (fn v m -> case D.run dec v of Ok x -> Ok (path.set x m) | Err why -> Err why).
+custom policy path enc dec = whole (strcat "model." (strJoin "." path.segs)) policy path.get path.set enc (fn v -> D.run dec v).
+
+whole : String -> Policy -> (m -> a) -> (a -> m -> m) -> (a -> J.Value) -> (J.Value -> Result a String) -> Field m .
+whole key policy get set enc dec = Field key policy
+  (fn db m -> x = get m; v = enc x; _ = (if KV.get key db == O.Some v then Unit else KV.put key v db); wholeSnap key get enc x)
+  (fn db m -> case KV.get key db of
+      O.None -> Ok m
+    | O.Some v -> (case dec v of Ok x -> Ok (set x m) | Err why -> Err "{key}: {why}")).
+wholeSnap : unsafe String -> (m -> a) -> (a -> J.Value) -> a -> Snap m .
+wholeSnap key get enc x = Snap (fn m -> get m == x) (fn db m -> y = get m; _ = KV.post key (enc y) db; wholeSnap key get enc y).
+
+# A LIST field kept one record per element:
+#
+#   Live.each Live.Always @Model.entries (fn e -> str e.id) (fn a b -> Ord.int b.id a.id)
+#
+# `keyOf` names an element (unique within the list); `order` puts the list back
+# in order on restore.  Element k lives at "model.entries/k" (null once removed)
+# and "model.entries" holds the marker "each".  A change writes only the
+# elements that changed: prepending is one record, editing or removing one is a
+# pass of identity checks and one record.  A store that holds the field as ONE
+# record (it was a `field` before) is read as it is, and rewritten per element
+# at start.
+each : Policy -> { get : m -> List a, set : List a -> m -> m, segs : List String, enc : List a -> Wire, dec : Wire -> Result (List a) String | r } -> (a -> String) -> (a -> a -> Ord.Ordering) -> Field m .
+each policy path keyOf order =
+  base = strcat "model." (strJoin "." path.segs);
+  one = fn x -> (case path.enc (x :: Nil) of WList (w :: Nil) -> J.fromWire w | w -> J.fromWire w);
+  ek = fn k -> strcat base (strcat "/" k);
+  Field base policy
+    (fn db m ->
+        xs = path.get m;
+        # restored from records already: they ARE this list.  Otherwise (a new
+        # store, or one record from before) write every element, then the marker.
+        _ = (if KV.get base db == O.Some (J.Text "each") then Unit
+             else _ = putAll db keyOf one ek xs; KV.post base (J.Text "each") db);
+        eachSnap path.get keyOf one ek xs)
+    (fn db m -> case KV.get base db of
+        O.None -> Ok m
+      | O.Some (J.Text "each") -> (case elements db (strcat base "/") path.dec (KV.keys db) Nil of
+            Ok xs -> Ok (path.set (L.sortWith order xs) m)
+          | Err why -> Err "{base}: {why}")
+      | O.Some v -> (case path.dec (J.toWire v) of Ok xs -> Ok (path.set xs m) | Err why -> Err "{base}: {why}")).
+
+eachSnap : unsafe (m -> List a) -> (a -> String) -> (a -> J.Value) -> (String -> String) -> List a -> Snap m .
+eachSnap get keyOf one ek xs = Snap (fn m -> get m == xs)
+  (fn db m -> ys = get m; _ = diffKeyed db keyOf one ek xs ys; eachSnap get keyOf one ek ys).
+
+# the live elements under a prefix, decoded (tombstones skipped)
+elements : unsafe KV.KvLog -> String -> (Wire -> Result (List a) String) -> List String -> List a -> Result (List a) String .
+elements db prefix dec keys acc = case keys of
+    Nil -> Ok acc
+  | k :: r -> (if not (S.startsWith prefix k) then elements db prefix dec r acc
+               else (case KV.get k db of
+                  O.Some J.Null -> elements db prefix dec r acc
+                | O.None -> elements db prefix dec r acc
+                | O.Some v -> (case dec (WList (J.toWire v :: Nil)) of
+                      Ok (x :: Nil) -> elements db prefix dec r (x :: acc)
+                    | Ok _ -> Err "{k}: not one element"
+                    | Err why -> Err "{k}: {why}"))).
+
+putAll : unsafe KV.KvLog -> (a -> String) -> (a -> J.Value) -> (String -> String) -> List a -> Unit .
+putAll db keyOf one ek xs = case xs of Nil -> Unit | x :: r -> _ = KV.post (ek (keyOf x)) (one x) db; putAll db keyOf one ek r.
+dropAll : unsafe KV.KvLog -> (a -> String) -> (String -> String) -> List a -> Unit .
+dropAll db keyOf ek xs = case xs of Nil -> Unit | x :: r -> _ = KV.post (ek (keyOf x)) J.Null db; dropAll db keyOf ek r.
+
+# write what changed between two versions of a keyed list.  Shared structure is
+# the fast path: `==` on the same object answers at once, so the walk costs an
+# identity check per element until the first difference.  A difference that is
+# one insertion or one removal ends the walk there; anything else is settled by
+# key, both sides in maps.
+diffKeyed : unsafe KV.KvLog -> (a -> String) -> (a -> J.Value) -> (String -> String) -> List a -> List a -> Unit .
+diffKeyed db keyOf one ek os ns = case (os, ns) of
+    (Nil, _) -> putAll db keyOf one ek ns
+  | (_, Nil) -> dropAll db keyOf ek os
+  | (o :: orest, n :: nrest) ->
+      (if o == n then diffKeyed db keyOf one ek orest nrest
+       else if keyOf o == keyOf n then _ = KV.post (ek (keyOf n)) (one n) db; diffKeyed db keyOf one ek orest nrest
+       else if nrest == os then KV.post (ek (keyOf n)) (one n) db
+       else if orest == ns then KV.post (ek (keyOf o)) J.Null db
+       else byKey db keyOf one ek os ns).
+
+byKey : KV.KvLog -> (a -> String) -> (a -> J.Value) -> (String -> String) -> List a -> List a -> Unit .
+byKey db keyOf one ek os ns =
+  old = M.fromList S.compare (L.map (fn o -> (keyOf o, o)) os);
+  new = M.fromList S.compare (L.map (fn n -> (keyOf n, True)) ns);
+  _ = L.each (fn n -> (case M.get (keyOf n) old of
+        O.Some o -> (if o == n then Unit else KV.post (ek (keyOf n)) (one n) db)
+      | O.None -> KV.post (ek (keyOf n)) (one n) db)) ns;
+  L.each (fn o -> if M.member (keyOf o) new then Unit else KV.post (ek (keyOf o)) J.Null db) os.
 
 rev : unsafe List a -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 
 # ---- messages between the actors --------------------------------------------------------
 # to the register; `from` is who wants an answer (0 = nobody)
-Reg = Type (Event ev | Join writer | Leave sid | Snapshot | TickDue ms key | Reload).
+Reg = Type (Event ev | Join writer | Leave sid | Snapshot | Pull sid | TickDue ms key | Reload | SaveDue key).
 # from the register
 Ans = Type (Welcome sid model | Model version model | Wanted Bool | Changed version | Pong payload | Push text | Stop).
 # to a session's writer.  The register broadcasts only a VERSION: a writer pulls
@@ -122,15 +221,41 @@ Ans = Type (Welcome sid model | Model version model | Wanted Bool | Changed vers
 Rs = Type (Rs cfg app model sessions nextSid db saved tickers version told).
 
 # ---- serve -----------------------------------------------------------------------------
-serve cfg app =
+# The original API remains stateless; all session writers use the same
+# cache-threading path, with Unit as the stateless cache.
+serve cfg app = serveCached cfg
+  { init = app.init, update = app.update, fields = app.fields, codec = app.codec,
+    subs = app.subs, css = app.css, cache = Unit,
+    view = (fn sid model cache -> (app.view sid model, Unit)) }.
+
+# app.cache is an immutable empty seed; each writer owns its evolving copy.
+serveCached cfg app = serveProjected cfg
+  { init = app.init, update = app.update, fields = app.fields, codec = app.codec,
+    subs = app.subs, css = app.css, cache = app.cache, view = app.view,
+    project = (fn sid model -> model), same = (fn a b -> False) }.
+
+# WHAT A SESSION SEES, not the whole model: `project sid model` is the part of
+# the model this session's page is made from (its page of a list, its own
+# search, the counts in its header), and `view` renders THAT.  The register
+# answers each session's pull with its projection -- small, whatever the size
+# of the model -- and a writer whose projection is `same` as the one on screen
+# renders nothing and sends nothing.  (`serve` and `serveCached` project the
+# whole model and never skip, which is what they always did.)
+#
+#   project : Int -> model -> p      run by the register, once per session per change
+#   view    : Int -> p -> cache -> ((List String, List String), cache)
+#   css     : p -> String            (given the projection for sid 0)
+#   same    : p -> p -> Bool         usually (fn a b -> a == b)
+serveProjected cfg app =
   db = (case KV.open cfg.store of Ok d -> d | Err why -> error "live: {why}");
   model = (case restore app.fields db app.init of Ok m -> m | Err why -> error "live: restore failed: {why}");
+  saved = start app.fields db model (M.empty S.compare);
   listener = (case TCP.listen cfg.address cfg.port of Ok l -> l | Err why -> error "live: cannot listen on {cfg.address}:{cfg.port}: {why}");
   main = myself 0;
   # `send` never waits for room, so everything many actors send to has a mailbox
   # that GROWS (std/actor.fpr): a burst costs memory, never a lost request
   reg = A.spawnWith (A.Dynamic 256) (fn self ->
-    send main (Ok (register self listener (startTickers self (Rs cfg app model (M.empty Ord.int) 1 db (M.empty S.compare) Nil 1 (M.empty Ord.int))) A.tidy0)));
+    send main (Ok (register self listener (startTickers self (Rs cfg app model (M.empty Ord.int) 1 db saved Nil 1 (M.empty Ord.int))) A.tidy0)));
   _ = Sys.stderr "live: http://{(if strlen cfg.address == 0 then "127.0.0.1" else cfg.address)}:{TCP.port listener}/  (store {cfg.store})\n";
   _ = print "ready {TCP.port listener}";
   # ONE actor waits on every socket (std/poller.fpr): idle sessions sleep in their
@@ -146,11 +271,16 @@ restore fields db model = restoreGo fields db model.
 restoreGo : unsafe List (Field m) -> KV.KvLog -> m -> Result m String .
 restoreGo fields db model = case fields of
   Nil -> Ok model
-| Field key _ _ put :: r -> (case KV.get key db of
-      O.None -> restoreGo r db model
-    | O.Some v -> (case put v model of
-          Ok next -> restoreGo r db next
-        | Err why -> Err "{key}: {why}")).
+| Field _ _ _ back :: r -> (case back db model of
+      Ok next -> restoreGo r db next
+    | Err why -> Err why).
+
+# each field's first snapshot, taken against the store: written = 0, so a field's
+# first change is due at once whatever its policy
+start : unsafe List (Field m) -> KV.KvLog -> m -> M.Map String (Int, Snap m, Bool) -> M.Map String (Int, Snap m, Bool) .
+start fields db model saved = case fields of
+    Nil -> saved
+  | Field key _ first _ :: r -> start r db model (M.insert key (0, first db model, False) saved).
 
 # ---- the register: the model's single writer ---------------------------------------------
 register : unsafe Int -> TCP.Listener -> Rs -> A.Tidy -> String .
@@ -167,14 +297,16 @@ register me listener st0 t0 = case A.tidy me (st0, t0) of (st, t) ->
 handle : Int -> Int -> Reg -> Rs -> O.Option Rs .
 handle me from q st = case st of Rs cfg app model sessions nextSid db saved tickers version told ->
   (case q of
-      Snapshot -> _ = A.sendSure me from (Model version model);
+      Snapshot -> _ = A.sendSure me from (Model version (app.project 0 model));
+        O.Some (Rs cfg app model sessions nextSid db saved tickers version (M.remove from told))
+    | Pull sid -> _ = A.sendSure me from (Model version (app.project sid model));
         O.Some (Rs cfg app model sessions nextSid db saved tickers version (M.remove from told))
     | Join writer ->
         # the WRITER hears its Welcome from here, not forwarded by the reader:
         # messages from one sender arrive in order, so it is ahead of the
         # broadcast below (forwarded, a Show could overtake it)
-        _ = A.sendSure me writer (Welcome nextSid model);
-        _ = A.sendSure me from (Welcome nextSid model);
+        _ = A.sendSure me writer (Welcome nextSid (app.project nextSid model));
+        _ = A.sendSure me from (Welcome nextSid Unit);
         advance me (Joined nextSid) (Rs cfg app model (M.insert nextSid writer sessions) (nextSid + 1) db saved tickers version told)
     | Leave sid -> advance me (Left sid) (Rs cfg app model (M.remove sid sessions) nextSid db saved tickers version (case M.get sid sessions of O.Some w -> M.remove w told | O.None -> told))
     | Event ev -> advance me (keep ev) st
@@ -184,8 +316,10 @@ handle me from q st = case st of Rs cfg app model sessions nextSid db saved tick
         (case due of
             O.Some msg -> advance me (Msg 0 msg) st
           | O.None -> O.Some (Rs cfg app model sessions nextSid db saved (without ms key tickers) version told))
+    | SaveDue key ->
+        O.Some (Rs cfg app model sessions nextSid db (persist me app.fields db model (settled key saved)) tickers version told)
     | Reload ->
-        _ = flush app.fields db model;
+        _ = settle app.fields db model saved;
         _ = Sys.stderr "live: restarting into the rebuilt program\n";
         _ = (case OS.exec cfg.restart of Err why -> Sys.stderr "live: restart failed: {why}\n" | Ok _ -> Unit);
         O.Some st).
@@ -195,10 +329,10 @@ advance : Int -> Ev m -> Rs -> O.Option Rs .
 advance me ev st = case st of Rs cfg app model sessions nextSid db saved tickers version told ->
   _ = (if cfg.journal then journal app.codec db ev else Unit);
   (case app.update ev model of (model2, cmds) ->
-      saved2 = persist app.fields db model2 saved;
+      saved2 = persist me app.fields db model2 saved;
       quit = perform me sessions cmds;
       told2 = broadcast me (M.values sessions) (version + 1) told;
-      (if quit then _ = flush app.fields db model2; _ = goodbye (M.values sessions); O.None
+      (if quit then _ = settle app.fields db model2 saved2; _ = goodbye (M.values sessions); O.None
        else O.Some (startTickers me (Rs cfg app model2 sessions nextSid db saved2 tickers (version + 1) told2)))).
 
 # tell every writer that has not already been told; answers who has now been told
@@ -212,39 +346,50 @@ goodbye : unsafe List Int -> Unit .
 goodbye writers = case writers of Nil -> Unit | w :: r -> _ = send w Stop; goodbye r.
 
 # ---- durable fields ------------------------------------------------------------------------
-# saved: key -> (the JSON text last written, when in ms).  A field is written
-# when its JSON changed and its policy allows; a change inside an AtMostEvery
-# window is written by the first event after the window, or at Quit / Reload.
-persist : List (Field m) -> KV.KvLog -> m -> M.Map String (String, Int) -> M.Map String (String, Int) .
-persist fields db model saved = persistGo fields db model saved (Sys.timeUs Unit / 1000).
-persistGo : unsafe List (Field m) -> KV.KvLog -> m -> M.Map String (String, Int) -> Int -> M.Map String (String, Int) .
-persistGo fields db model saved now = case fields of
+# saved: key -> (when it was last written, in ms; what it wrote; whether a
+# SaveDue is on its way).  After every event each field is asked whether it
+# changed -- an identity check when it did not -- and a changed field is written
+# when its policy allows.  A change inside an AtMostEvery window is not left for
+# the next event: the register sends itself a SaveDue for when the window ends.
+persist : Int -> List (Field m) -> KV.KvLog -> m -> M.Map String (Int, Snap m, Bool) -> M.Map String (Int, Snap m, Bool) .
+persist me fields db model saved = persistGo me fields db model saved (Sys.timeUs Unit / 1000).
+persistGo : unsafe Int -> List (Field m) -> KV.KvLog -> m -> M.Map String (Int, Snap m, Bool) -> Int -> M.Map String (Int, Snap m, Bool) .
+persistGo me fields db model saved now = case fields of
     Nil -> saved
-  | Field key policy get _ :: r ->
-      v = get model;
-      text = J.render v;
-      (case M.get key saved of
-          O.Some (was, at) ->
-            (if was == text then persistGo r db model saved now
-             else if due policy at now then _ = KV.put key v db; persistGo r db model (M.insert key (text, now) saved) now
-             else persistGo r db model saved now)
-        | O.None -> _ = (if KV.get key db == O.Some v then Unit else KV.put key v db); persistGo r db model (M.insert key (text, now) saved) now).
-due : Policy -> Int -> Int -> Bool .
-due policy at now = case policy of Always -> True | AtMostEvery ms -> now - at >= ms.
+  | Field key policy _ _ :: r -> (case M.get key saved of
+        O.None -> persistGo me r db model saved now
+      | O.Some (at, snap, pending) -> (case snap of Snap same write ->
+          (if same model then persistGo me r db model saved now
+           else if due policy at now then persistGo me r db model (M.insert key (now, write db model, False) saved) now
+           else if pending then persistGo me r db model saved now
+           else _ = later me key (at + windowOf policy - now); persistGo me r db model (M.insert key (at, snap, True) saved) now))).
 
-# everything, whatever the policy says
-flush : List (Field m) -> KV.KvLog -> m -> Unit .
-flush fields db model = flushGo fields db model.
-flushGo : unsafe List (Field m) -> KV.KvLog -> m -> Unit .
-flushGo fields db model = case fields of
+due : Policy -> Int -> Int -> Bool .
+due policy at now = now - at >= windowOf policy.
+windowOf policy = case policy of Always -> 0 | AtMostEvery ms -> ms.
+
+later me key ms = _ = spawn (fn self -> _ = Sys.sleepUs (ms * 1000); A.sendSure self me (0, SaveDue key)); Unit.
+settled key saved = case M.get key saved of
+    O.Some (at, snap, _) -> M.insert key (at, snap, False) saved
+  | O.None -> saved.
+
+# everything that changed, whatever the policy says
+flush : List (Field m) -> KV.KvLog -> m -> M.Map String (Int, Snap m, Bool) -> Unit .
+flush fields db model saved = flushGo fields db model saved.
+flushGo : unsafe List (Field m) -> KV.KvLog -> m -> M.Map String (Int, Snap m, Bool) -> Unit .
+flushGo fields db model saved = case fields of
     Nil -> Unit
-  | Field key _ get _ :: r ->
-      v = get model;
-      _ = (if KV.get key db == O.Some v then Unit else KV.put key v db);
-      flushGo r db model.
+  | Field key _ _ _ :: r ->
+      _ = (case M.get key saved of
+          O.Some (_, Snap same write, _) -> (if same model then Unit else _ = write db model; Unit)
+        | O.None -> Unit);
+      flushGo r db model saved.
+
+# before the program stops or becomes another: the posted writes are all on disk
+settle fields db model saved = _ = flush fields db model saved; KV.sync db.
 
 # ---- the journal: every event, so the model can be rebuilt from the log alone -----------------
-journal codec db ev = KV.put "$event" (evJson codec ev) db.
+journal codec db ev = KV.post "$event" (evJson codec ev) db.
 evJson codec ev = case ev of
     Msg sid m -> J.object (("e", J.Text "msg") :: ("sid", J.Integer sid) :: ("m", J.fromWire (codec.enc m)) :: Nil)
   | Joined sid -> J.object (("e", J.Text "joined") :: ("sid", J.Integer sid) :: Nil)
@@ -370,9 +515,9 @@ page reg cfg app =
   _ = drop r;
   html.
 pageOf cfg app r = case r of
-    Model _ model -> (case app.view 0 model of (s, d) ->
+    Model _ view -> (case app.view 0 view app.cache of ((s, d), _) ->
       strJoin "" ("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>"
-        :: cfg.title :: "</title><style>" :: app.css model :: "</style></head><body><div id=\"lv-root\"></div><script>window.__LV__=\{s:"
+        :: cfg.title :: "</title><style>" :: app.css view :: "</style></head><body><div id=\"lv-root\"></div><script>window.__LV__=\{s:"
         :: J.render (J.strings s) :: ",d:" :: J.render (J.strings d) :: "};</script><script>" :: cfg.script :: "</script></body></html>" :: Nil))
   | _ -> "live: no model".
 
@@ -382,7 +527,7 @@ session reg poller app conn req = case WS.accept req of
   | Ok head ->
       _ = ST.write head conn;
       me = myself 0;
-      writer = A.spawnWith (A.Dynamic 64) (fn self -> writerStart (req.query == "lv=2") reg app conn self);
+      writer = A.spawnWith (A.Dynamic 64) (fn self -> writerStart (protocolOf req.query) reg app conn self);
       r = A.askSure me reg (Join writer);
       sid = (case r of Welcome n _ -> n | _ -> 0);
       _ = drop r; # a reply is a message: undropped, it pins the register's slab for this session's life
@@ -410,48 +555,126 @@ eventOf codec sid text = case J.parse text of
 # seen: the version on screen; asked: a model has been asked for and not yet
 # arrived; latest: the newest version heard of
 writerStart patches reg app conn self = case receive self of
-    Welcome sid model -> (case app.view sid model of (s, d) ->
+    Welcome sid view -> (case app.view sid view app.cache of ((s, d), cache) ->
         _ = WS.sendText (full s d) conn;
-        writing patches reg app conn sid self (Wr (keep s) (keep d) 0 False 0) A.tidySmall)
+        writing patches reg app conn sid self (Wr (keep s) (keep d) 0 False 0 (keep cache) (keep view)) A.tidySmall)
   | _ -> Unit.
 
-Wr = Type (Wr s d seen asked latest).
+# the writer's state: the page on screen (statics, dynamics), the version it
+# shows, whether a pull is in flight, the newest version heard of, the view
+# cache, and the projection the page was rendered from
+Wr cache view = Type (Wr (List String) (List String) Int Bool Int cache view).
 # `app` is spelled out: this loop renders through it, so a bare `a` promised
 # the caller any type at all for something it projects `.view` from.
-writing : unsafe Bool -> Int -> { view : Int -> model -> (List String, List String) | r } -> ST.Stream -> Int -> Int -> Wr -> A.Tidy -> Unit .
-writing patches reg app conn sid self w0 t0 = case A.tidy self (w0, t0) of (Wr s d seen asked latest, t) ->
+writing : unsafe Int -> Int -> { view : Int -> p -> cache -> ((List String, List String), cache), same : p -> p -> Bool | r } -> ST.Stream -> Int -> Int -> Wr cache p -> A.Tidy -> Unit .
+writing patches reg app conn sid self w0 t0 = case A.tidy self (w0, t0) of (Wr s d seen asked latest cache view, t) ->
   m = receive self;
   (case m of
       Changed v ->
         _ = drop m;
-        (if v <= seen or asked then writing patches reg app conn sid self (Wr s d seen asked (if v > latest then v else latest)) t
-         else _ = A.sendSure self reg (self, Snapshot); writing patches reg app conn sid self (Wr s d seen True v) t)
-    | Model v model -> (case app.view sid model of (s2, d2) ->
-        sent = (if s2 == s then (case delta d d2 0 Nil of Nil -> Ok Unit | changes -> WS.sendText (strJoin "" ("\{\"d\":\{" :: strJoin "," (rev changes Nil) :: "}}" :: Nil)) conn)
-                else WS.sendText (structural patches s d s2 d2) conn);
-        s3 = keep s2;
-        d3 = keep d2;
-        _ = drop m;
+        (if v <= seen or asked then writing patches reg app conn sid self (Wr s d seen asked (if v > latest then v else latest) cache view) t
+         else _ = A.sendSure self reg (self, Pull sid); writing patches reg app conn sid self (Wr s d seen True v cache view) t)
+    | Model v view2 ->
         more = latest > v;
-        _ = (if more then A.sendSure self reg (self, Snapshot) else True);
-        (case sent of Ok _ -> writing patches reg app conn sid self (Wr s3 d3 v more latest) t | Err _ -> Unit))
-    | Pong payload -> _ = WS.sendPong payload conn; _ = drop m; writing patches reg app conn sid self (Wr s d seen asked latest) t
-    | Push text -> _ = WS.sendText text conn; _ = drop m; writing patches reg app conn sid self (Wr s d seen asked latest) t
+        _ = (if more then A.sendSure self reg (self, Pull sid) else True);
+        (if app.same view2 view then
+           # nothing this session shows has changed: no render, nothing on the wire
+           _ = drop m;
+           writing patches reg app conn sid self (Wr s d v more latest cache view) t
+         else (case app.view sid view2 cache of ((s2, d2), cache2) ->
+           sent = (if s2 == s then (case delta d d2 0 Nil of Nil -> Ok Unit | changes -> WS.sendText (strJoin "" ("\{\"d\":\{" :: strJoin "," (rev changes Nil) :: "}}" :: Nil)) conn)
+                   else WS.sendText (structural patches s d s2 d2) conn);
+           s3 = keep s2;
+           d3 = keep d2;
+           cache3 = keep cache2;
+           view3 = keep view2;
+           _ = drop m;
+           (case sent of Ok _ -> writing patches reg app conn sid self (Wr s3 d3 v more latest cache3 view3) t | Err _ -> Unit)))
+    | Pong payload -> _ = WS.sendPong payload conn; _ = drop m; writing patches reg app conn sid self (Wr s d seen asked latest cache view) t
+    | Push text -> _ = WS.sendText text conn; _ = drop m; writing patches reg app conn sid self (Wr s d seen asked latest cache view) t
     | _ -> _ = WS.sendClose 1001 conn; Unit).
 
 full : List String -> List String -> String .
 full s d = strJoin "" ("\{\"s\":" :: J.render (J.strings s) :: ",\"d\":" :: J.render (J.strings d) :: "}" :: Nil).
 
+# the wire protocol a client asked for: 0 the original (snapshots and text
+# deltas), 2 one structural splice per array, 3 a LIST of them per array
+protocolOf query = if query == "lv=3" then 3 else if query == "lv=2" then 2 else 0.
+
 # v2 structural patches splice the rendered arrays, retaining their common
 # prefix and suffix. Both arrays change atomically on the client. A full
 # snapshot wins when it is smaller, and legacy clients always get snapshots.
-structural : Bool -> List String -> List String -> List String -> List String -> String .
-structural patches s d s2 d2 =
-  snapshot = full s2 d2;
-  if patches then
-    patch = "\{\"p\":2,\"s\":{splice s s2},\"d\":{splice d d2}}";
-    if strlen patch < strlen snapshot then patch else snapshot
-  else snapshot.
+#
+# v3 sends several splices per array (`splices`): a new card on top of a page
+# that drops its last one is two small splices, where one splice -- common
+# prefix and suffix only -- re-sent every card between them to every tab.
+#
+# The snapshot is the WHOLE page escaped, so it is built only when the patch
+# might lose: escaping never shortens a string, so a patch shorter than the
+# page's raw length is certainly the smaller -- the same choice, without
+# escaping every tab's whole page on every structural change.
+#
+# And a v3 patch that would re-send most of the page (a page turn, a search
+# cleared) is not built at all: when what it inserts is half the page's raw
+# length or more, the snapshot goes -- escaping both would double the work.
+structural : Int -> List String -> List String -> List String -> List String -> String .
+structural proto s d s2 d2 =
+  if proto == 0 then full s2 d2
+  else
+    raw = rawLength s2 0 + rawLength d2 0;
+    (if proto >= 3 then
+       ss = splices s s2;
+       ds = splices d d2;
+       (if 2 * (inserted ss 0 + inserted ds 0) >= raw then full s2 d2
+        else patch = "\{\"p\":3,\"s\":{multiOf ss},\"d\":{multiOf ds}}"; pick patch raw s2 d2)
+     else pick "\{\"p\":2,\"s\":{splice s s2},\"d\":{splice d d2}}" raw s2 d2).
+pick patch raw s2 d2 = if strlen patch < raw then patch
+  else snapshot = full s2 d2; (if strlen patch < strlen snapshot then patch else snapshot).
+inserted : unsafe List (Int, Int, List String) -> Int -> Int .
+inserted sps n = case sps of Nil -> n | (_, _, ins) :: r -> inserted r (rawLength ins n).
+rawLength : unsafe List String -> Int -> Int .
+rawLength xs n = case xs of Nil -> n | x :: r -> rawLength r (n + strlen x).
+
+# v3: [[start, deleteCount, [inserted...]], ...], applied in order
+multi : List String -> List String -> String .
+multi old new = multiOf (splices old new).
+multiOf : List (Int, Int, List String) -> String .
+multiOf sps = strJoin "" ("[" :: strJoin "," (L.map (fn sp -> (case sp of (at, n, ins) -> "[{at},{n},{J.render (J.strings ins)}]")) sps) :: "]" :: Nil).
+
+# Several splices, found greedily.  Past the common prefix, the NEAREST pair of
+# equal elements (within a window of `resyncWindow` on each side) puts the two
+# arrays back in step: what precedes it on each side is one splice, and the
+# equal run after it is kept.  Each start counts in the array as the splices
+# before it left it.  After `maxSplices` the rest is one splice -- never wrong,
+# only less small.
+resyncWindow = 8.
+maxSplices = 16.
+splices : List String -> List String -> List (Int, Int, List String) .
+splices old new = splicesGo old new 0 maxSplices Nil.
+splicesGo : unsafe List String -> List String -> Int -> Int -> List (Int, Int, List String) -> List (Int, Int, List String) .
+splicesGo old new pos budget acc =
+  k = common old new 0;
+  o = L.drop k old;
+  n = L.drop k new;
+  at = pos + k;
+  case (o, n) of
+    (Nil, Nil) -> rev acc Nil
+  | (Nil, _) -> rev ((at, 0, n) :: acc) Nil
+  | (_, Nil) -> rev ((at, L.length o, Nil) :: acc) Nil
+  | _ -> (if budget <= 1 then rev ((at, L.length o, n) :: acc) Nil
+          else (case resync (L.take (resyncWindow + 1) o) (L.take (resyncWindow + 1) n) 1 of
+              O.None -> rev ((at, L.length o, n) :: acc) Nil
+            | O.Some (i, j) -> splicesGo (L.drop i o) (L.drop j n) (at + j) (budget - 1) ((at, i, L.take j n) :: acc))).
+
+# the pair (i, j) with o[i] == n[j] and the least i + j (i + j >= 1)
+resync : unsafe List String -> List String -> Int -> O.Option (Int, Int) .
+resync o n sum = if sum > 2 * resyncWindow then O.None
+  else (case diagonal o n sum 0 of O.Some p -> O.Some p | O.None -> resync o n (sum + 1)).
+diagonal : unsafe List String -> List String -> Int -> Int -> O.Option (Int, Int) .
+diagonal o n sum i = if i > sum then O.None
+  else (case (L.head (L.drop i o), L.head (L.drop (sum - i) n)) of
+      (O.Some a, O.Some b) -> (if a == b then O.Some (i, sum - i) else diagonal o n sum (i + 1))
+    | _ -> diagonal o n sum (i + 1)).
 
 splice : List String -> List String -> String .
 splice old new =

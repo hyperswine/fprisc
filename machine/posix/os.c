@@ -386,6 +386,169 @@ static V h_poll(V fdsv) {
 }
 FPR_FN(fpr_g_Os_x2epoll, h_poll, 1);
 
+/* ---- Os.watch*: waiting on descriptors IN THE KERNEL ---------------------
+ * No actor may wait inside the kernel -- it would take its hart with it -- so
+ * a waiter used to poll without blocking and sleep between polls, backing off
+ * to 5 ms: an idle server's first byte waited for the next tick.  Now a HOST
+ * thread, outside the hart pool, blocks in poll(2) for the actors.  When
+ * something is ready it records what, and raises an interrupt (hal.c
+ * hal_irq_raise); the IRQ hart delivers it to the actor bound with
+ * Sys.irqBind, exactly as a device interrupt on bare metal.
+ *
+ *   Os.watchOpen : Unit -> Result Int String      a watcher; its irq number
+ *   Os.watchArm  : Int -> List Int -> Unit        wait on these (Nil: on none)
+ *   Os.watchTake : Int -> List Int                what was ready, and forget it
+ *
+ * One-shot: after a raise the watcher waits on nothing until it is armed
+ * again.  Level-triggered underneath, so data that arrived while it was
+ * disarmed is found by the next arm.  A descriptor that has gone bad
+ * (hangup, error, closed) counts as ready: the read says why.  A new arm
+ * interrupts a poll already under way through a self-pipe. */
+void hal_irq_raise(uw src);
+void fpr_set_tp(fpr_hart_t *h);
+typedef struct {
+  pthread_mutex_t mu;
+  pthread_cond_t cv;
+  int wake[2];                /* the self-pipe: [0] polled, [1] written by arm */
+  int *want; size_t nwant, capwant;
+  int armed, polling;
+  int *ready; size_t nready, capready;
+  uw irq;
+} watcher_t;
+#define WATCH_MAX 64 /* watchers, not descriptors: one per poller actor */
+static watcher_t *watchers[WATCH_MAX];
+static uw watch_next = 1000; /* irq numbers far from any device's */
+static pthread_mutex_t watch_mu = PTHREAD_MUTEX_INITIALIZER;
+
+static int grow_ints(int **a, size_t *cap, size_t need) {
+  if (need <= *cap) return 1;
+  size_t c = *cap ? *cap : 16;
+  while (c < need) c *= 2;
+  int *n = realloc(*a, c * sizeof **a);
+  if (!n) return 0;
+  *a = n; *cap = c;
+  return 1;
+}
+
+static void *watch_thread(void *arg) {
+  watcher_t *w = arg;
+  fpr_set_tp(0); /* not a hart: anything asking which one hears "none" */
+  struct pollfd *p = 0;
+  size_t cap = 0;
+  for (;;) {
+    pthread_mutex_lock(&w->mu);
+    while (!w->armed) pthread_cond_wait(&w->cv, &w->mu);
+    size_t n = w->nwant;
+    if (n + 1 > cap) {
+      size_t c = cap ? cap : 16;
+      while (c < n + 1) c *= 2;
+      struct pollfd *np = realloc(p, c * sizeof *p);
+      if (!np) { pthread_mutex_unlock(&w->mu); fpr_cpanic("Os.watch: out of memory"); }
+      p = np; cap = c;
+    }
+    p[0].fd = w->wake[0]; p[0].events = POLLIN; p[0].revents = 0;
+    for (size_t i = 0; i < n; i++) { p[i + 1].fd = w->want[i]; p[i + 1].events = POLLIN; p[i + 1].revents = 0; }
+    w->polling = 1;
+    pthread_mutex_unlock(&w->mu);
+    int r;
+    do r = poll(p, (nfds_t)(n + 1), -1); while (r < 0 && errno == EINTR);
+    pthread_mutex_lock(&w->mu);
+    w->polling = 0;
+    if (p[0].revents) { char b[64]; while (read(w->wake[0], b, sizeof b) > 0) {} }
+    size_t got = 0;
+    for (size_t i = 1; i <= n; i++)
+      if (p[i].revents) {
+        if (!grow_ints(&w->ready, &w->capready, w->nready + 1)) break;
+        w->ready[w->nready++] = p[i].fd;
+        got++;
+      }
+    if (got) w->armed = 0; /* one-shot: the actor re-arms after it takes */
+    pthread_mutex_unlock(&w->mu);
+    if (got) hal_irq_raise(w->irq);
+  }
+  return 0;
+}
+
+static watcher_t *watcher_of(V irqv) {
+  if (!ISINT(irqv)) fpr_cpanic("Os.watch: the watcher is not an Int");
+  sw irq = UNTAG(irqv);
+  watcher_t *w = (irq >= 1000 && irq < 1000 + WATCH_MAX) ? watchers[irq - 1000] : 0;
+  if (!w) fpr_cpanic("Os.watch: no such watcher");
+  return w;
+}
+
+static V h_watch_open(V u) {
+  (void)u;
+  pthread_mutex_lock(&watch_mu);
+  if (watch_next >= 1000 + WATCH_MAX) { pthread_mutex_unlock(&watch_mu); return os_err("too many watchers"); }
+  watcher_t *w = calloc(1, sizeof *w);
+  if (!w) { pthread_mutex_unlock(&watch_mu); return os_err("out of memory"); }
+  if (pipe(w->wake) != 0) { V e = os_errno(); free(w); pthread_mutex_unlock(&watch_mu); return e; }
+  for (int k = 0; k < 2; k++) {
+    fcntl(w->wake[k], F_SETFL, fcntl(w->wake[k], F_GETFL) | O_NONBLOCK);
+    fcntl(w->wake[k], F_SETFD, FD_CLOEXEC); /* a reload exec()s: do not leak it */
+  }
+  pthread_mutex_init(&w->mu, 0);
+  pthread_cond_init(&w->cv, 0);
+  w->irq = watch_next++;
+  watchers[w->irq - 1000] = w;
+  pthread_mutex_unlock(&watch_mu);
+  pthread_t t;
+  pthread_attr_t a;
+  pthread_attr_init(&a);
+  pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
+  pthread_attr_setstacksize(&a, 256 * 1024);
+  int bad = pthread_create(&t, &a, watch_thread, w);
+  pthread_attr_destroy(&a);
+  if (bad) return os_err("cannot start the watcher thread");
+  return os_ok(TAG((sw)w->irq));
+}
+FPR_FN(fpr_g_Os_x2ewatchOpen, h_watch_open, 1);
+
+static V h_watch_arm(V irqv, V fdsv) {
+  watcher_t *w = watcher_of(irqv);
+  size_t n = 0;
+  for (V c = fdsv; !ISINT(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) n++;
+  pthread_mutex_lock(&w->mu);
+  /* the same set, already armed: nothing to tell the thread */
+  int same = w->armed && n == w->nwant;
+  if (!grow_ints(&w->want, &w->capwant, n ? n : 1)) { pthread_mutex_unlock(&w->mu); fpr_cpanic("Os.watchArm: out of memory"); }
+  size_t i = 0;
+  for (V c = fdsv; i < n; c = ((V *)((char *)c + 8))[1], i++) {
+    V f = ((V *)((char *)c + 8))[0];
+    int fd = ISINT(f) ? (int)UNTAG(f) : -1;
+    if (same && w->want[i] != fd) same = 0;
+    w->want[i] = fd;
+  }
+  if (!same) {
+    w->nwant = n;
+    w->armed = n > 0;
+    if (w->armed) pthread_cond_signal(&w->cv);
+    if (w->polling) { char b = 1; (void)!write(w->wake[1], &b, 1); } /* interrupt the old set's poll */
+  }
+  pthread_mutex_unlock(&w->mu);
+  return (V)&fpr_unit;
+}
+FPR_FN(fpr_g_Os_x2ewatchArm, h_watch_arm, 2);
+
+static V h_watch_take(V irqv) {
+  watcher_t *w = watcher_of(irqv);
+  /* copy under the lock, build after it: an allocation may switch actors,
+   * and nothing may be switched away while holding the watcher's mutex */
+  int small[64], *got = small;
+  pthread_mutex_lock(&w->mu);
+  size_t n = w->nready;
+  if (n > 64 && !(got = malloc(n * sizeof *got))) { pthread_mutex_unlock(&w->mu); fpr_cpanic("Os.watchTake: out of memory"); }
+  memcpy(got, w->ready, n * sizeof *got);
+  w->nready = 0;
+  pthread_mutex_unlock(&w->mu);
+  V out = (V)&os_nil;
+  for (size_t i = n; i-- > 0;) out = os_cons(TAG(got[i]), out);
+  if (got != small) free(got);
+  return out;
+}
+FPR_FN(fpr_g_Os_x2ewatchTake, h_watch_take, 1);
+
 /* read into C memory first, then make a String of EXACTLY what arrived: a
  * 20-byte frame is a 20-byte String, not a 64 KiB block with 20 bytes used */
 static V h_read(V fdv, V nv) {

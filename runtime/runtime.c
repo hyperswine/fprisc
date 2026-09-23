@@ -75,8 +75,8 @@ static void hart_init(int id) {
 }
 
 #ifdef FPR_POSIX
-#if defined(FPR_QOSAPP) && !defined(FPR_QOSAPP_SINGLE) && defined(__aarch64__)
-/* v3: x28 is the hart register.  Clang wraps a global-
+#if defined(__aarch64__) && ((defined(FPR_QOSAPP) && !defined(FPR_QOSAPP_SINGLE)) || (!defined(FPR_QOSAPP) && defined(FPR_HART_X28)))
+/* v3 (QOS apps) and hosted posix on AArch64: x28 is the hart register.  Clang wraps a global-
  * register-variable WRITE in a callee-save spill/reload (verified:
  * str x28 / mov x28, x0 / ldr x28 -- the write annihilated on
  * return); gcc compiles it correctly, but the Mac toolchain is clang.

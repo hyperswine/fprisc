@@ -148,7 +148,7 @@ POSIXLDFLAGS ?= -no-pie
 endif
 # x28 is reserved on aarch64: ctx_a64.S does not save it (compiler/Build.hs says why)
 ifneq ($(filter aarch64 arm64,$(shell uname -m)),)
-POSIXFIXED = -ffixed-x28
+POSIXFIXED = -ffixed-x27 -ffixed-x28 -DFPR_HART_X28
 endif
 RT_POSIX = $(MACHINE)/posix/main.c $(MACHINE)/posix/hal.c $(MACHINE)/posix/base.c $(MACHINE)/posix/os.c $(POSIXCTX)
 BIN ?= $(BUILD)/$(basename $(notdir $(PROG)))
