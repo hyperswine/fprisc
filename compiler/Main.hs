@@ -44,7 +44,7 @@ usage =
       "",
       "  fpr build <prog.fpr> [-o out]          an executable for this machine (the posix system)",
       "  fpr run <prog.fpr> [args...]           build and run it; a `profile sol.` program runs on the VM",
-      "  fpr compile [flags] <in.fpr> <out.s>   AOT for a --system (bare-metal | qos-native | qos-portable | posix)",
+      "  fpr compile [flags] <in.fpr> <out.s>   AOT for a --system (bare-metal | qos-native | qos-portable | posix | esp-idf)",
       "    the file declares its profile: `profile builtin|base|extbase|sol.` (docs/PROFILES.md)",
       "    --profile=builtin --arc             the raw ABI with first-order automatic ARC",
       "  fpr compile --target=bytecode <f>      the VM as a target: bytecode listing",

@@ -55,6 +55,7 @@ that does not imply the current implementation already conforms.
 | [VERSIONING.md](VERSIONING.md) | Reference and procedures for module identities, locks, and releases |
 | [TOOLCHAIN.md](TOOLCHAIN.md) | Dated development-machine inventory, not a minimum-version specification |
 | [MEMORY.md](MEMORY.md) | Memory design/contract account with explicitly pending sections |
+| [ESP-IDF.md](ESP-IDF.md) | Decision record for `--system=esp-idf` at a stated revision: choices, alternatives, workarounds; the build manual is machine/esp-idf/README.md |
 | [MEMORY-V2-PLAN.md](MEMORY-V2-PLAN.md) | Migration plan and implementation records |
 | [NOTES.txt](NOTES.txt) | Working notes; not an implicit extension of the contract |
 | `fp-risc/programs/`, `fp-risc/tests/` | Programs and executable examples/checks; annotate the intended contract coverage |

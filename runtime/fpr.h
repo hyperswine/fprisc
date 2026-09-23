@@ -213,6 +213,12 @@ void *buddy_reserve_range(void *addr, uw bytes);
 void buddy_release_range(void *addr, uw bytes);
 void buddy_init(void *base, uw size);
 
+/* words in a saved actor context: ra sp gp tp s0..s11 (16), and on a machine
+ * whose C ABI keeps float registers callee-saved (machine/esp-idf: ilp32f) the
+ * twelve fs registers after them.  Past every offset generated code uses. */
+#ifndef FPR_CTX_WORDS
+#define FPR_CTX_WORDS 16
+#endif
 typedef struct {
   sw fuel; /* MUST stay at offset 0: generated code does ld/sd 0(tp) */
   /* ARGUMENT SPILL CELLS: the memory lane for call arguments past the
@@ -238,7 +244,7 @@ typedef struct {
   fpr_pool_t pool;                /* boot/hart-loop allocs (pre-actor, never freed) */
   struct fpr_acb *current;        /* running actor, 0 = in the hart loop */
   struct fpr_acb *rq_head, *rq_tail; /* local run queue (owner-only) */
-  uw sched_ctx[16];               /* the hart loop's context */
+  uw sched_ctx[FPR_CTX_WORDS];    /* the hart loop's context */
   volatile uw idle;               /* 1 while polling with nothing to run */
   volatile uw epoch;              /* hart-loop iteration count: the
                                    * quiescence clock for deferred
@@ -377,6 +383,11 @@ static inline fpr_hart_t *fpr_hart(void) {
  * moves each one behind an owning actor's mailbox (Memory.qa for
  * buddy/grants, ARC.qa for promotion) and deletes it -- see
  * docs/MEMORY-V2-PLAN.md.  Until then, backoff is the law here too. */
+/* field i of a heap object: after the 8-byte header, one WORD each -- the
+ * layout Codegen.hs emits.  Not `((V *)p)[1 + i]`: that is the same address
+ * only when a word is 8 bytes, and on rv32 it lands field 0 on the header's
+ * variant half. */
+#define FPR_FLD(p, i) (((V *)((char *)(p) + 8))[i])
 typedef struct { volatile uw v; } fpr_lock_t;
 #define FPR_BACKOFF_CAP 1024 /* max pause iterations between retries */
 static inline void fpr_backoff(uw *delay) {

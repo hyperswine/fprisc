@@ -119,7 +119,7 @@ uw fpr_ring_grows, fpr_send_full; /* growths; sends refused for a full ring */
 
 typedef struct fpr_acb {
   uint32_t tid, var; /* var = status word (atomic; doubles as header) */
-  uw ctx[16];        /* ra sp gp tp s0..s11 */
+  uw ctx[FPR_CTX_WORDS]; /* ra sp gp tp s0..s11, then fs0..fs11 where the machine saves them */
   chan_t *ch;        /* MAXSND channels, OUT-OF-LINE (see chblk below):
                       * the acb stays permanent (send-to-dead reads
                       * var), but its 8 KiB of rings is reclaimed at
@@ -999,6 +999,17 @@ __attribute__((weak)) int hal_timer_native(void) { return 0; }
 
 static acb_t *tmr_act;
 static volatile uint64_t tmr_deadline; /* absolute mtime; 0 = unarmed */
+/* A 64-bit deadline on a 32-bit machine: rv32 has no 64-bit atomics (a load
+ * or store is two words, and a reader could see half of each).  A lock there;
+ * the plain atomic where the word is 64 bits. */
+#if UINTPTR_MAX > 0xffffffffu
+static uint64_t tmr_dl_get(void) { return __atomic_load_n(&tmr_deadline, __ATOMIC_ACQUIRE); }
+static void tmr_dl_set(uint64_t v) { __atomic_store_n(&tmr_deadline, v, __ATOMIC_RELEASE); }
+#else
+static fpr_lock_t tmr_dl_lock;
+static uint64_t tmr_dl_get(void) { fpr_lock(&tmr_dl_lock); uint64_t v = tmr_deadline; fpr_unlock(&tmr_dl_lock); return v; }
+static void tmr_dl_set(uint64_t v) { fpr_lock(&tmr_dl_lock); tmr_deadline = v; fpr_unlock(&tmr_dl_lock); }
+#endif
 static volatile int tmr_bound;
 static uw tmr_src_key;
 
@@ -1012,7 +1023,7 @@ static V a_timer_arm(V dv) {
   if (!ISINT(dv)) fpr_cpanic("Sys.timerArm: delta must be an Int (CLINT ticks)");
   sw d = UNTAG(dv);
   if (d < 1) d = 1; /* already due: fire on the next drain pass */
-  __atomic_store_n(&tmr_deadline, hal_mtime() + (uint64_t)d, __ATOMIC_RELEASE);
+  tmr_dl_set(hal_mtime() + (uint64_t)d);
   if (fpr_hart()->id != fpr_irq_hart)
     hal_ipi_send(fpr_irq_hart); /* wake it to re-arm its mtimecmp */
   return (V)&fpr_unit;
@@ -1022,9 +1033,9 @@ FPR_FN(fpr_g_Sys_x2etimerArm, a_timer_arm, 1);
 
 static void tmr_drain(fpr_hart_t *h) {
   if (h->id != fpr_irq_hart || !__atomic_load_n(&tmr_bound, __ATOMIC_ACQUIRE)) return;
-  uint64_t dl = __atomic_load_n(&tmr_deadline, __ATOMIC_ACQUIRE);
+  uint64_t dl = tmr_dl_get();
   if (!dl || hal_mtime() < dl) return;
-  __atomic_store_n(&tmr_deadline, 0, __ATOMIC_RELEASE);
+  tmr_dl_set(0);
   if (h->id != 0) hal_timer_park(h->id); /* else MTIP pends forever (hart
                                           * 0's detector re-arms its own) */
   fpr_send_as((uw)&tmr_src_key, (V)tmr_act, TAG((sw)(dl & 0x3FFFFFFFFFFFFFFFull)));
@@ -1082,7 +1093,7 @@ static void ship(acb_t *a) {
  * it for a SOONER deadline, so detector pacing is never stretched. */
 static void tmr_wfi_arm(fpr_hart_t *h) {
   if (h->id != fpr_irq_hart || !__atomic_load_n(&tmr_bound, __ATOMIC_ACQUIRE)) return;
-  uint64_t dl = __atomic_load_n(&tmr_deadline, __ATOMIC_ACQUIRE);
+  uint64_t dl = tmr_dl_get();
   if (!dl) return;
   uint64_t now = hal_mtime();
   uint64_t delta = dl > now ? dl - now : 1;
@@ -1299,12 +1310,15 @@ static void hart_loop(fpr_hart_t *h) {
       for (uw i = 0; i < fpr_live_harts; i++)
         if (!fpr_harts[i].idle) all_idle = 0;
       uw slp = __atomic_load_n(&g_sleepers, __ATOMIC_RELAXED);
-      /* a sleeper is not a deadlock, and neither is a world with an interrupt's
-       * actor waiting: a device -- or on a host, a thread blocked in the kernel
-       * on a socket (os.c's watcher) -- will wake it.  A server idle between
-       * requests used to look "moving" only because its poller ticked. */
+      /* a world with a sleeper is not a deadlock: its deadline will wake it, and
+       * whoever waits on it may be waiting for what it sends then (the rule was
+       * blk > slp, which called a waiter on a sleeping actor a deadlock after
+       * DETECT_WINDOW).  Nor is a world with an interrupt's actor waiting: a
+       * device -- or on a host, a thread blocked in the kernel on a socket
+       * (os.c's watcher) -- will wake it.  A server idle between requests used
+       * to look "moving" only because its poller ticked. */
       uw irqw = __atomic_load_n(&g_irq_waiting, __ATOMIC_RELAXED);
-      if (all_idle && blk > slp && irqw == 0 && act == last_act) {
+      if (all_idle && blk > 0 && slp == 0 && irqw == 0 && act == last_act) {
         uint64_t now = hal_mtime();
         if (stable == 0) {
           quiet_since = now;
@@ -2221,8 +2235,8 @@ static V mklist4(uw a, uw b, uw c, uw d) {
     V *cell = (V *)fpr_alloc(24);
     ((hdr_t *)cell)->tid = T_LIST;
     ((hdr_t *)cell)->var = 1;
-    cell[1] = TAG((sw)vals[i]);
-    cell[2] = list;
+    FPR_FLD(cell, 0) = TAG((sw)vals[i]);
+    FPR_FLD(cell, 1) = list;
     list = (V)cell;
   }
   return list;

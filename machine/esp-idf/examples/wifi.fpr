@@ -1,0 +1,46 @@
+# wifi.fpr -- Wi-Fi from FP-RISC on the ESP32-P4, through the board's ESP32-C6.
+# Every call is a job in the broker task: the calling actor waits, the harts do
+# not.  Meanwhile a ticker actor on the other core keeps counting, to show it.
+#   1. the radio's identity   2. a scan of nearby networks
+#   3. an access point anyone nearby can join (the password is printed)
+#   4. who has joined, sampled for 60 s
+unsafe base.
+Esp = use "std/esp".
+List = use "std/list".
+String = use "std/string".
+
+T = Type (Tick Int).
+ticker boss n me = case n > 0 of
+    True -> _ = Sys.sleepUs 250000; ticker boss (n - 1) me
+  | False -> _ = send boss (Tick (Esp.core Unit)); 0.
+
+show rows = List.each (fn r -> print "  {String.join " | " r}") rows.
+
+clients : unsafe Int -> Int .
+clients n = case n == 0 of
+    True -> 0
+  | False ->
+      _ = Sys.sleepUs 10000000;
+      c = Esp.wifiApClients Unit;
+      _ = print "[{Esp.ms Unit / 1000} s] {List.length c} client(s) on the access point";
+      _ = show c;
+      clients (n - 1).
+
+main =
+  me = myself 0;
+  _ = spawnOn 1 (ticker me 8);
+  t0 = Esp.ms Unit;
+  _ = print "radio:";
+  _ = show (Esp.wifiInfo Unit);
+  _ = print "scan (took a while; the ticker on core 1 kept running):";
+  nets = Esp.wifiScan Unit;
+  _ = show nets;
+  _ = print "{List.length nets} network(s) in {Esp.ms Unit - t0} ms";
+  tick = receive me;
+  _ = (case tick of Tick c -> print "ticker on core {c} finished its 2 s while Wi-Fi jobs ran");
+  _ = print "access point:";
+  pass = "fpr-risc-{Esp.random Unit % 1000000}";
+  _ = show (Esp.wifiAp "fpr-p4-test" pass);
+  _ = print "  join it with the password {pass}";
+  _ = clients 6;
+  "wifi: done".

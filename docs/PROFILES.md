@@ -9,7 +9,7 @@ Two axes, kept apart because they answer different questions:
   gets.  A file declares it in its first lines, the way it declares blanket
   unsafety, and the compiler takes the file's word.
 - The **system** is the compiler's flag: the backend the program is built
-  for, `--system=bare-metal | qos-native | qos-portable | posix`.
+  for, `--system=bare-metal | qos-native | qos-portable | posix | esp-idf`.
 
 ```text
 profile base.              # what I am written against
@@ -56,6 +56,7 @@ the runtime that links, the HAL -- follows from the system.
 | `qos-native` | rv64 | the QOS kernel's app link (qos/qos/Makefile) | the QOS kernel on virt |
 | `qos-portable` | x86-64 QOS app image (`qx64`; `qa64`/`qa64mac` by `--target=`) | qos/appside | `qosp`, the portable host |
 | `posix` | the host this compiler was built on: x86-64, AArch64 Linux, AArch64 macOS, AArch64 FreeBSD | `machine/posix` + `runtime`, harts as pthreads | an ordinary executable; also the VM for sol |
+| `esp-idf` | rv32 (rv32imafc on the ESP32-P4) | `machine/esp-idf` + `runtime` as an ESP-IDF project, harts as FreeRTOS tasks pinned one per core | an ESP-IDF app image, flashed to the chip (machine/esp-idf/README.md) |
 
 The 1.x spellings still work and mean what they meant: `--profile=bare-metal`
 is `--system=bare-metal`, `--profile=qos-portable` is `--system=qos-portable`,
@@ -105,6 +106,29 @@ and x86-64, built on the machine it targets (`fpr build --cc` changes the
 libc, not the instruction set: docs/BOUNDS.md). Windows is not supported by
 either system.
 
+## `esp-idf`: its own system, not a flavour of `posix`
+
+ESP-IDF looks POSIX-ish -- newlib, pthreads over FreeRTOS, BSD sockets from
+lwIP, a VFS -- and `machine/posix` was the first candidate. It is a separate
+system because what matters to FP-RISC differs:
+
+- The ISA is rv32, so the code generator is the rv32 emission (4-byte words,
+  31-bit Int), not the host lowering `posix` uses.
+- There is no process: no command line, environment, exit status, `fork` or
+  files by default, so most of `std/os` has nothing under it.
+- The things worth having are not POSIX at all: the second core, GPIO, the
+  radio through ESP-Hosted, NimBLE, NVS. They come as the `Esp.*` primitives
+  in `std/esp`, and blocking IDF calls run as jobs off the harts.
+
+What it does share with `posix`: `runtime/` unchanged in design (the actors,
+the allocator, the deadlock detector), and the hart-as-thread shape (a
+FreeRTOS task pinned per core, parking on a task notification). Where the IDF
+APIs match -- lwIP sockets, the poller's readiness model -- `machine/posix`'s
+code is the model to lift, not a thing to link as a whole.
+The decisions and workarounds, one by one, are in ESP-IDF.md, along with a
+proposal for folding it into posix later: ESP-IDF as a second kind of posix
+host, with its hardware moved into platform libraries.
+
 ## The matrix, enforced
 
 - `builtin` on anything but `bare-metal`: refused ("profile builtin runs on
@@ -114,6 +138,8 @@ either system.
 - `>` at the top level outside `profile sol`: refused as a profile error,
   not a parse error -- the sentence is grammatical everywhere, it just is
   not part of that profile's contract.
+- `esp-idf` with another `--target`, a QOS app image, a plugin or RVV:
+  refused (it is rv32 code for an ESP-IDF application).
 - A Base builtin the system's HAL does not grant fails at link time on its
   `fpr_g_` name: the image's imports are its capability manifest.
 

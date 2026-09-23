@@ -1,0 +1,61 @@
+# cores.fpr -- FP-RISC's actors on the ESP32-P4's two cores.
+#
+#   1. a worker PINNED to each hart reports the core it ran on
+#   2. the same CPU-bound job, one worker then two at once: two cores
+#      should finish two jobs in about the time one core takes one
+#   3. a cross-core ping-pong: messages between actors on different harts
+unsafe base.
+
+Esp.core : Unit -> Int .
+Esp.ms : Unit -> Int .
+Esp.freeKb : Unit -> Int .
+
+fib n = if n < 2 then n else fib (n - 1) + fib (n - 2).
+
+R = Type (R Int Int Int Int).
+worker boss k n me =
+  c0 = Esp.core Unit;
+  v = fib n;
+  _ = send boss (R k c0 (Esp.core Unit) v);
+  0.
+
+collect : unsafe Int -> Int -> List String -> List String .
+collect me left acc = if left == 0 then acc else
+  (case receive me of R k c0 c1 v -> collect me (left - 1) ("worker {k}: core {c0} -> {c1}, fib = {v}" :: acc)).
+
+timed me label jobs n =
+  t0 = Esp.ms Unit;
+  _ = List.each (fn k -> spawnOn (k % Sys.harts Unit) (worker me k n)) (List.range 0 (jobs - 1));
+  lines = collect me jobs Nil;
+  ms = Esp.ms Unit - t0;
+  _ = print "{label}: {jobs} x fib {n} in {ms} ms";
+  ms.
+
+P = Type (Ping Int | Pong Int).
+ponger me = case receive me of
+    Ping k -> _ = (case receive me of _ -> 0); ponger me
+  | Pong _ -> 0.
+
+bounce : unsafe Int -> Int -> Int -> Int .
+bounce me other k = if k == 0 then 0 else
+  _ = send other (me, k);
+  r = receiveFrom me other;
+  _ = drop r;
+  bounce me other (k - 1).
+echo me = r = receive me; (who, k) = r; _ = send who k; _ = drop r; echo me.
+
+List = use "std/list".
+
+main =
+  me = myself 0;
+  _ = print "harts: {Sys.harts Unit}, main on core {Esp.core Unit}, free heap {Esp.freeKb Unit} KiB";
+  _ = List.each (fn k -> spawnOn k (worker me k 5)) (List.range 0 (Sys.harts Unit - 1));
+  _ = List.each print (collect me (Sys.harts Unit) Nil);
+  one = timed me "one worker" 1 27;
+  two = timed me "two workers" 2 27;
+  _ = print "parallel speedup: {one * 100 / (if two == 0 then 1 else two)}% of 2x ideal is 200%";
+  e = spawnOn 1 echo;
+  t0 = Esp.ms Unit;
+  _ = bounce me e 10000;
+  _ = print "10000 cross-core round trips in {Esp.ms Unit - t0} ms";
+  "cores: done".

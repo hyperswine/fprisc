@@ -2085,8 +2085,8 @@ static V g_logSnap(V sevv) {
     V *cell = (V *)fpr_alloc(24);
     ((hdr_t *)cell)->tid = T_LIST;
     ((hdr_t *)cell)->var = 1;
-    cell[1] = str;
-    cell[2] = list;
+    FPR_FLD(cell, 0) = str;
+    FPR_FLD(cell, 1) = list;
     list = (V)cell;
   }
   fpr_unlock(&log_lock);
@@ -2105,8 +2105,8 @@ static V g_memstats(V u) {
   V *t = (V *)fpr_alloc(24);
   ((hdr_t *)t)->tid = 4; /* Tup2 */
   ((hdr_t *)t)->var = 0;
-  t[1] = TAG((sw)fpr_grow_count);
-  t[2] = TAG((sw)(fpr_grow_bytes >> 20));
+  FPR_FLD(t, 0) = TAG((sw)fpr_grow_count);
+  FPR_FLD(t, 1) = TAG((sw)(fpr_grow_bytes >> 20));
   return (V)t;
 }
 FPR_FN(fpr_g_Sys_x2ememStats, g_memstats, 1);
@@ -2132,7 +2132,7 @@ static V g_meminfo(V u) {
     V *cell = (V *)fpr_alloc(24);
     ((hdr_t *)cell)->tid = T_LIST;
     ((hdr_t *)cell)->var = 1;
-    cell[2] = list;
+    FPR_FLD(cell, 1) = list;
     list = (V)cell;
     cells[i] = cell;
   }
@@ -2140,7 +2140,7 @@ static V g_meminfo(V u) {
                 fpr_mem_own ? buddy_free_bytes() >> 10 : 0,
                 fpr_mem_reqs, fpr_mem_waits, fpr_mem_direct, fpr_mem_frees,
                 fpr_mem_denied, fpr_mem_inline};
-  for (int i = 0; i < 8; i++) cells[i][1] = TAG((sw)vals[i]);
+  for (int i = 0; i < 8; i++) FPR_FLD(cells[i], 0) = TAG((sw)vals[i]);
   return list;
 }
 FPR_FN(fpr_g_Sys_x2ememInfo, g_meminfo, 1);
@@ -2189,8 +2189,8 @@ static V g_growlog(V u) {
     V *cell = (V *)fpr_alloc(24);
     ((hdr_t *)cell)->tid = T_LIST;
     ((hdr_t *)cell)->var = 1;
-    cell[1] = str;
-    cell[2] = list;
+    FPR_FLD(cell, 0) = str;
+    FPR_FLD(cell, 1) = list;
     list = (V)cell;
   }
   return list;

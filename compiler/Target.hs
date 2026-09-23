@@ -15,6 +15,7 @@ data Profile
   | BareMetal
   | QOSNative
   | QOSPortable
+  | EspIdf
   | HostedBytecode
   deriving (Eq, Show)
 
@@ -24,6 +25,7 @@ profileOf s = case s of
   "bare-metal" -> Just BareMetal
   "qos-native" -> Just QOSNative
   "qos-portable" -> Just QOSPortable
+  "esp-idf" -> Just EspIdf
   "hosted-bytecode" -> Just HostedBytecode
   _ -> Nothing
 
@@ -33,4 +35,5 @@ profileNote p = case p of
   BareMetal -> "bare-metal: AOT + machine/virt, cooperative-scheduler actors, local addressing"
   QOSNative -> "qos-native: .qa process on the QOS kernel (RISC-V), URL addressing + capabilities"
   QOSPortable -> "qos-portable: .qa process hosted by qosp on Unix through the qos_hal_t table"
+  EspIdf -> "esp-idf: rv32 AOT + machine/esp-idf as an ESP-IDF app (ESP32-P4), harts are FreeRTOS tasks"
   HostedBytecode -> "hosted-bytecode: the sol package — bytecode VM + JIT, transactional semantics"

@@ -161,6 +161,25 @@ In rough order of worth. None of these is silent.
 | `LENGTH = 128M` and the fixed `_heap_end` in `machine/virt/link.ld`, `machine/builtin/link.ld` | "heap exhausted" | RAM is the bound on a board, but its SIZE belongs to the device tree the firmware hands over (`hal_heap_span` is the one place to read it), not to the linker script |
 | Builtin stacks in `machine/builtin/link.ld` (64K main, 4K trap, 64K irq) | overflow unchecked | at least `--defsym` knobs; a board decision, but not one the linker script should hide |
 
+## machine/esp-idf (registered 2026-09-23)
+
+The ESP-IDF machine layer's own limits; why the layer looks as it does is
+docs/ESP-IDF.md. Silent ones first, by the harm order above.
+
+| Limit | At the edge | Direction |
+|---|---|---|
+| Wi-Fi AP password shorter than 8 bytes (`wifi.c do_ap`) | **silent, security**: the access point comes up OPEN instead of refusing | refuse a 1-7 byte password; an open AP only for an empty one, by name |
+| Wi-Fi scan capped at 40 records (`wifi.c do_scan`) | **silent**: networks past the 40th are dropped | take `esp_wifi_scan_get_ap_num`'s count as it is |
+| SSID past 32 bytes, AP password past 64, BLE name past 26 (`text_of`, `ble.c`) | **silent truncation** | the limits are the protocols' (802.11 SSID 32, WPA2 passphrase 63, a legacy advertisement's 31 bytes), so they stay; reaching them should be a refusal |
+| SSIDs are not sanitized for the tab-separated rows | **silent**: a tab or newline in a scanned SSID shifts the row's fields | escape, as `ble.c` does for names, or return typed rows (ESP-IDF.md, decision 8) |
+| `JOB_SLOTS 64` jobs in flight (`wifi.c`) | named panic "every job slot is in use" | grow the slot table; the interrupt range 900-963 grows with it |
+| job queue of 16 (`wifi.c jobs_start`) | a refusal: the result is the row "error, the job queue is full" | a queue that grows, or a broker per radio |
+| `SEEN_MAX 96` devices per BLE scan (`ble.c`) | reported: a final row "more, N not kept" | grow the table |
+| AP `max_connection 4`, channel 6 (`wifi.c`) | fixed, not exposed | parameters of `wifiAp`, checked against what the C6 accepts |
+| `FPR_ESP_KEEP_KB 192`, and 1/16 of PSRAM, left to IDF (`hal.c`) | fixed at boot; the runtime's heap never grows or shrinks | a heap that grows through `heap_caps_malloc` on demand |
+| `ESP_IRQ_MAX 1024` (`hal.c`) | never reached: `Sys.irqBind` refuses a source past the runtime's `IRQ_MAX` first | legitimate: mirrors `IRQ_MAX` |
+| Hart task stack 16 KiB, broker 8 KiB (`main.c`, `wifi.c`) | C stack overflow, caught only by FreeRTOS's own checks | legitimate while only the hart loop and the broker's IDF calls run on them |
+
 ## A graceful fallback
 
 - `VMAXCOLS 8`: a record with more than 8 fields is stored boxed rather than as

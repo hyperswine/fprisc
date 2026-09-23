@@ -1,0 +1,39 @@
+# ble.fpr -- Bluetooth LE on the ESP32-P4 through its ESP32-C6.
+#   1. advertise as "fpr-p4-ble" for 60 s (a phone's BLE scanner will list it)
+#   2. meanwhile, scan three times for 5 s and list what was heard
+#   3. an actor on core 1 keeps counting while the radio jobs run
+unsafe base.
+Esp = use "std/esp".
+List = use "std/list".
+String = use "std/string".
+O = use "std/option".
+
+T = Type (Count Int).
+counter boss n k me = case Esp.ms Unit > k of
+    True -> _ = send boss (Count n); 0
+  | False -> _ = Sys.sleepUs 100000; counter boss (n + 1) k me.
+
+show rows = List.each (fn r -> print "  {String.join " | " r}") rows.
+
+scans : unsafe Int -> Int .
+scans n = case n == 0 of
+    True -> 0
+  | False ->
+      t0 = Esp.ms Unit;
+      rs = Esp.bleScan 5000;
+      heard = List.filter (fn r -> case List.get 0 r of O.Some f -> f != "error" | _ -> False) rs;
+      named = List.filter (fn r -> case List.get 2 r of O.Some nm -> nm != "-" | _ -> False) heard;
+      _ = print "[{Esp.ms Unit / 1000} s] scan: {List.length heard} device(s) in {Esp.ms Unit - t0} ms, {List.length named} named";
+      _ = show (List.filter (fn r -> case List.get 0 r of O.Some f -> f == "error" | _ -> False) rs);
+      _ = show (List.take 12 heard);
+      scans (n - 1).
+
+main =
+  me = myself 0;
+  _ = spawnOn 1 (counter me 0 (Esp.ms Unit + 20000));
+  _ = print "advertise:";
+  _ = show (Esp.bleAdvertise "fpr-p4-ble" 60000);
+  _ = scans 3;
+  c = receive me;
+  _ = (case c of Count n -> print "the core-1 counter ticked {n} times while the radio jobs ran");
+  "ble: done".

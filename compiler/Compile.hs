@@ -38,7 +38,7 @@ data Opts = Opts
   { oTarget :: Target,
     oBuiltin :: Bool,
     oBase :: Bool, -- the posix SYSTEM: a hosted executable on this machine (machine/posix); the ISA is the build host's
-    oSystem :: Maybe String, -- --system=bare-metal|qos-native|qos-portable|posix (docs/PROFILES.md)
+    oSystem :: Maybe String, -- --system=bare-metal|qos-native|qos-portable|posix|esp-idf (docs/PROFILES.md)
     oProfileFlag :: Maybe String, -- --profile=builtin|base|extbase|sol, when the file does not say
     oArc :: Bool,
     oRaw :: Bool, -- a RAW unit: allocation-free, no ownership instrumentation (Arc.lowerRaw)
@@ -77,6 +77,10 @@ parseArgs = foldl step (Opts rv64 False False Nothing Nothing False False False 
     step o "--system=bare-metal" = o {oTarget = rv64, oSystem = Just "bare-metal"}
     step o "--system=qos-native" = o {oTarget = rv64, oSystem = Just "qos-native"}
     step o "--system=qos-portable" = o {oTarget = rv64, oX64 = True, oQosApp = True, oSystem = Just "qos-portable"}
+    -- esp-idf: an ESP-IDF application (ESP32-P4, rv32imafc) -- the runtime and
+    -- machine/esp-idf built as an IDF component around this rv32 emission;
+    -- machine/esp-idf/build.sh drives both halves
+    step o "--system=esp-idf" = o {oTarget = rv32, oSystem = Just "esp-idf"}
     step o "--system=posix" = case (System.Info.os, System.Info.arch) of
       ("darwin", "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True, oA64Mac = True, oSystem = Just "posix"}
       (_, "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True, oSystem = Just "posix"}
@@ -280,7 +284,7 @@ compileMain = do
     exitSuccess
   (inp, out) <- case oFiles opts0 of
     [i, o] -> pure (i, o)
-    _ -> putStrLn "usage: fprc [--system=posix|bare-metal|qos-native|qos-portable] [--profile=builtin|base|extbase|sol] [--arc] [--target=rv32|rv64|a64|a64mac|x64|qx64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
+    _ -> putStrLn "usage: fprc [--system=posix|bare-metal|qos-native|qos-portable|esp-idf] [--profile=builtin|base|extbase|sol] [--arc] [--target=rv32|rv64|a64|a64mac|x64|qx64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
   (rootSrc0, rootTopsParsed) <- parseFileSrc inp
   -- the PROFILE is the file's: `profile base.` (or `unsafe base.`), a
   -- .sol file is sol; the flag serves a file that says nothing, and
@@ -301,6 +305,8 @@ compileMain = do
   -- the posix host only, base and extbase run anywhere with a HAL
   when (profile == "builtin" && system /= "bare-metal") $
     refuse ("profile builtin runs on the bare-metal system only, not " ++ system ++ " (--system=bare-metal)")
+  when (system == "esp-idf" && (oA64 opts0 || oX64 opts0 || oQosApp opts0 || oPlugin opts0 || oRvv opts0 || tgtName (oTarget opts0) /= "rv32")) $
+    refuse "--system=esp-idf is rv32 code for an ESP-IDF application: no other --target, QOS app image, plugin or RVV"
   when (profile == "sol" && system /= "posix") $
     refuse ("profile sol runs on the posix system (the VM: `fpr run`), not " ++ system)
   when (oBuiltin opts && (oA64 opts || oX64 opts || oQosApp opts || oRvv opts || tgtName (oTarget opts) /= "rv64")) $ do

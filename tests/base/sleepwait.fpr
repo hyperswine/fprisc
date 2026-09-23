@@ -1,0 +1,14 @@
+# sleepwait.fpr -- an actor waits 3 s for what a SLEEPING actor sends when it
+# wakes.  The deadlock detector used to call that a deadlock after its 2 s
+# window (it counted blocked actors against sleepers: blocked > sleeping).
+# A world with a sleeper is not deadlocked: its deadline will move it.
+T = Type (Done Int).
+waiter boss me = m = receive me; _ = (case m of Done n -> print "waiter got {n}"); _ = send boss (Done 1); 0.
+main =
+  me = myself 0;
+  w = spawn (waiter me);
+  _ = Sys.sleepUs 3000000;
+  _ = send w (Done 7);
+  r = receive me;
+  _ = (case r of Done n -> print "main got {n}");
+  0.

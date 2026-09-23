@@ -1,0 +1,41 @@
+CONFIG_IDF_TARGET="esp32p4"
+CONFIG_FREERTOS_UNICORE=n
+CONFIG_FREERTOS_HZ=1000
+# the harts park when idle, but a long computation keeps IDLE off its core
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
+CONFIG_SPIRAM=y
+# PSRAM only when asked for by capability: the runtime claims nearly all of it
+# at boot (hal_heap_span), and plain malloc -- IDF's own, lwIP's, ESP-Hosted's
+# -- stays in internal RAM rather than competing for the rest.  (The boot
+# assert once blamed on task stacks in PSRAM was internal RAM running out:
+# see MEMPOOL_PREFER_SPIRAM below, and docs/ESP-IDF.md.)
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+# FP-RISC actors run on their own stacks (from the heap), not the FreeRTOS
+# task's: the hardware stack guard would call every actor switch an overflow
+# -- and its own fault handler then hangs on the actor's stack, silently
+CONFIG_ESP_SYSTEM_HW_STACK_GUARD=n
+# Wi-Fi and BLE: the P4 has no radio; the board's ESP32-C6 is reached over SDIO
+# by ESP-Hosted, and esp_wifi_* calls go to it through esp_wifi_remote
+CONFIG_ESP_WIFI_REMOTE_ENABLED=y
+CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y
+CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
+CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE=y
+# ESP-Hosted starts in a C constructor, before the scheduler frees the startup
+# stacks: only ~110 KiB of internal RAM exists then, and its transport buffers
+# would drain it (FreeRTOS then puts the idle stacks in RTC RAM and asserts).
+# The P4 GDMA reaches PSRAM, so the buffers go there.
+CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y
+
+# Bluetooth LE: the C6 is the controller, NimBLE on the P4 is the host, and
+# ESP-Hosted carries HCI over the SDIO link (VHCI) -- no local controller.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_CONTROLLER_DISABLED=y
+CONFIG_BT_BLUEDROID_ENABLED=n
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_TRANSPORT_UART=n
+CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE=y
+CONFIG_ESP_HOSTED_NIMBLE_HCI_VHCI=y

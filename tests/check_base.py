@@ -61,6 +61,10 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     for _ in range(4):
         assert 'sleepwake: alive' in run([sw], timeout=60).stdout
     print('Sleeping while messages arrive (the poller shape), four times: the hart never spins: PASS')
+    # 4f. a waiter on a sleeper outlives the detector's window: not a deadlock
+    p = run([build('tests/base/sleepwait.fpr', 'sleepwait')])
+    assert p.stdout == 'waiter got 7\nmain got 1\n', p.stdout + p.stderr
+    print('An actor waiting 3 s on a sleeping actor is not a deadlock: PASS')
     # 4c. the heap is a reservation of address space, not a size: a live heap past
     # the 256 MiB it used to be fixed at, and FPR_HEAP_MB caps a run by name
     big = build('tests/base/bigheap.fpr', 'bigheap')

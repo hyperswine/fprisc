@@ -1,0 +1,34 @@
+# gpio.fpr -- sample every GPIO of the ESP32-P4, READ-ONLY: no pin is configured
+# or driven.  Each pin's configuration and its level, then 20 samples 50 ms apart
+# on both cores at once (an actor per core), reporting the pins that changed.
+unsafe base.
+Esp = use "std/esp".
+List = use "std/list".
+String = use "std/string".
+
+pins u = List.range 0 (Esp.gpioPins Unit - 1).
+levels u = List.map Esp.gpioLevel (pins Unit).
+
+# samples n: the list of level snapshots, taken every `gap` ms
+samples : unsafe Int -> Int -> List (List Int) -> List (List Int) .
+samples n gap acc = case n == 0 of
+    True -> acc
+  | False -> _ = Sys.sleepUs (gap * 1000); samples (n - 1) gap (levels Unit :: acc).
+
+changed snaps = List.filter (fn p -> List.length (List.unique (List.map (fn s -> nth p s) snaps)) > 1) (pins Unit).
+nth : unsafe Int -> List Int -> Int .
+nth k xs = case xs of Nil -> 0 | x :: r -> if k == 0 then x else nth (k - 1) r.
+
+R = Type (R Int (List Int)).
+sampler boss me = snaps = samples 20 50 Nil; _ = send boss (R (Esp.core Unit) (changed snaps)); 0.
+
+main =
+  me = myself 0;
+  _ = print "{Esp.gpioPins Unit} GPIOs; configuration and level now (read from the registers):";
+  _ = List.each (fn p -> print "  GPIO{p}: {Esp.describe (Esp.gpioInfo p)}, level {Esp.gpioLevel p}") (pins Unit);
+  _ = spawnOn 0 (sampler me);
+  _ = spawnOn 1 (sampler me);
+  r1 = receive me;
+  r2 = receive me;
+  _ = List.each (fn r -> (case r of R c ch -> print "sampler on core {c}: pins that changed over 1 s: {ch}")) (r1 :: r2 :: Nil);
+  "gpio: done".

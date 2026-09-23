@@ -1,0 +1,10 @@
+# The P4 has no radio: Wi-Fi and BLE come from the board's ESP32-C6 over SDIO,
+# through ESP-Hosted, with esp_wifi_remote making esp_wifi_* calls reach it.
+# Pinned to the versions this board's earlier firmware was built with.
+dependencies:
+  idf: ">=5.3"
+  espressif/esp_hosted: "==2.12.11"
+  espressif/esp_wifi_remote: "==1.6.3"
+  espressif/eppp_link: "==1.1.5"
+  espressif/esp_serial_slave_link: "==1.1.2"
+  espressif/wifi_remote_over_eppp: "==0.3.3"
