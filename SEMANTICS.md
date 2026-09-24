@@ -66,6 +66,26 @@ file suffixes; a clause applies to both unless it says which.
 - `+` on a tuple is not defined and is refused by name.  User types
   get operators through a struct.  (today)  `[test: sol/examples/operators.sol]`
 - Precedence table: (write it down).  `[test: ]`
+- `if condition then yes else no` is an expression; both branches accept
+  bindings followed by a result. Parentheses are optional around an `if`
+  used as a case-arm body, a record field, a binding RHS, the final function
+  argument, or an operator's right operand. For example:
+  ```fpr
+  main = case result of
+      Err why -> fail why
+    | Ok replay ->
+        if replay then check store
+        else cfg = setup store; serve cfg.
+  ```
+  An `else` belongs to the nearest unmatched `if`. The else branch extends
+  through subsequent application and operators: `if c then x else y |> f`
+  pipes only `y`. Use `(if c then x else y) |> f` to pipe the selected result,
+  and `f (if c then x else y) z` when another argument follows. Indentation
+  does not terminate an expression. A comma, enclosing delimiter, case-arm
+  separator, or clause-ending dot ends it; a semicolon ends a binding RHS
+  but also separates bindings inside a branch block. (today)
+  `[test: tests/if-precedence-check.hs]`
+
 
 ### 3. Values and types
 

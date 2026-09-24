@@ -17,6 +17,9 @@
 # a thumb can hit.  A page renders ONE page of entries (`pageSize`), so a tab
 # costs its page, not the log.  Drafts live in the browser (client state); the
 # server fills them for an edit through the one JavaScript port the page has.
+
+# MA SHOULD BE CALLED Design. like the default design
+
 unsafe base.
 
 Live = use "std/live".
@@ -40,7 +43,9 @@ LJ = use "std/livejs".
 pageSize = 20.
 
 # ---- the model ----------------------------------------------------------------------------
+
 Entry = {id : Int, at : Int, text : String, tags : List String}.
+
 # THE LOG LIVES IN A STORE (std/store): shard actors that each cache their part
 # in memory and compact their own file, so no actor holds -- or copies -- the
 # whole log.  The model is what the SESSIONS are doing, the next id, and `rev`,
@@ -49,9 +54,11 @@ Entry = {id : Int, at : Int, text : String, tags : List String}.
 # `editing` is an entry id, 0 for none; `toast` is the session's own ("added #5"
 # is not every tab's news).
 Sess = {sid : Int, q : String, page : Int, editing : Int, toast : String}.
+
 Model = {nextId : Int, rev : Int, sessions : List Sess}.
 
 init = {nextId = 1, rev = 0, sessions = Nil}.
+
 newSess sid = {sid = sid, q = "", page = 0, editing = 0, toast = ""}.
 
 # the codec the store writes an Entry with: any path literal whose field is a List Entry
@@ -74,9 +81,7 @@ codec = @Msg.
 Client = {draft : String, tags : String, edit : String, etags : String, q : String}.
 
 # durable in the kvlog: only the id counter -- the entries are the store's
-fields =
-     Live.field Live.Always @Model.nextId
-  :: Nil.
+fields = Live.field Live.Always @Model.nextId :: Nil.
 
 # ---- update ---------------------------------------------------------------------------------
 # `store` is the log's Store: a command closes over it, update itself stays pure
@@ -344,18 +349,19 @@ main = case Config.load { defaults = Json.object (("port", Json.Integer 6700) ::
                           file = Option.None, envPrefix = "LOGBOOK_", args = Program.args Unit } |> Result.andThen (Decode.run settings) of
     Err why -> Program.fail 2 "logbook: {why}"
   | Ok (Settings port address store dev replay) ->
-      (if replay then checkReplay store
-       else
-         exe = "/tmp/logbook-{port}.bin";
-         src = "examples/logbook.fpr";
-         cfg = { address = address, port = port, title = "Logbook", store = store, journal = True, script = script,
-                 watch = (if dev then src :: Nil else Nil),
-                 rebuild = Program.envOr "fpr" "FPR" :: "build" :: src :: "-o" :: exe :: Nil,
-                 restart = exe :: "--port={port}" :: "--address={address}" :: "--store={store}" :: "--dev" :: Nil };
-         shards = openStore store;
-         moved = migrate store shards;
-         _ = (if moved > 0 then Sys.stderr "logbook: moved {moved} entries into {store}.store\n" else Unit);
-         cachedApp = cachedAppOf shards;
-         app = appOf shards;
-         _ = Live.serveProjected cfg (cachedApp (Program.envOr "0" "FPR_VIEW_VERIFY" == "1"));
-         0).
+      if replay then
+        checkReplay store
+      else
+        exe = "/tmp/logbook-{port}.bin";
+        src = "examples/logbook.fpr";
+        cfg = { address = address, port = port, title = "Logbook", store = store, journal = True, script = script,
+                watch = if dev then src :: Nil else Nil,
+                rebuild = Program.envOr "fpr" "FPR" :: "build" :: src :: "-o" :: exe :: Nil,
+                restart = exe :: "--port={port}" :: "--address={address}" :: "--store={store}" :: "--dev" :: Nil };
+        shards = openStore store;
+        moved = migrate store shards;
+        _ = if moved > 0 then Sys.stderr "logbook: moved {moved} entries into {store}.store\n" else Unit;
+        cachedApp = cachedAppOf shards;
+        app = appOf shards;
+        _ = Live.serveProjected cfg (cachedApp (Program.envOr "0" "FPR_VIEW_VERIFY" == "1"));
+        0.
