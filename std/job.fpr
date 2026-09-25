@@ -1,0 +1,72 @@
+# std/job.fpr -- blocking host work, run off the harts.
+#
+# The seam under std/wifi and std/ble: a platform library's call that can
+# block (an RPC to a radio chip, a multi-second scan) runs on the platform's
+# broker (platform/esp-idf/jobs.c), never on a hart, and finishes by raising
+# an interrupt bound to the waiting actor.  `run start` blocks only the
+# CALLING actor: a helper binds the job's interrupt, starts it, waits, and
+# hands back the result text.  You do not normally use this module.
+#
+# A result is rows of tab-separated fields, one row per item; a first row
+# "error<TAB>why" is a failure.  `result` turns that into a Result.
+
+JobHost.new : Unit -> Int .
+JobHost.result : Int -> String .
+
+L = use "list".
+S = use "string".
+O = use "option".
+
+wait : unsafe Int -> (Int -> Int) -> Int -> Unit .
+wait boss start self =
+  slot = JobHost.new Unit;
+  _ = Sys.irqBind slot self;
+  r = (case start slot of
+      0 -> m = receive self; _ = drop m; JobHost.result slot
+    | _ -> _ = JobHost.result slot; "error\tthe job queue is full");
+  _ = send boss (Ok r);
+  Unit.
+
+# start a job with `start slot` (a platform primitive) and wait for its text
+run : (Int -> Int) -> String .
+run start =
+  me = myself 0;
+  w = spawn (fn self -> wait me start self);
+  r = receiveFrom me w;
+  out = (case r of Ok text -> keep text | Err why -> keep why);
+  _ = drop r;
+  out.
+
+# a result as rows of fields: one line per item, tab-separated
+rows : String -> List (List String) .
+rows text = L.map (fn l -> S.split "\t" l) (L.filter (fn l -> strlen l > 0) (S.split "\n" text)).
+
+# field i of a row, "" past its end
+field : Int -> List String -> String .
+field i r = case L.get i r of O.Some f -> f | O.None -> "".
+
+# field i as an Int, or why not (a result row is written by C: a bad one is a bug, said by name)
+number : Int -> List String -> Result Int String .
+number i r = case S.toInt (field i r) of Ok n -> Ok n | Err _ -> Err "malformed result row: {S.join " | " r}".
+
+# the rows, or the job's error
+result : String -> Result (List (List String)) String .
+result text =
+  rs = rows text;
+  case L.get 0 rs of
+    O.Some r0 -> (if field 0 r0 == "error" then Err (field 1 r0) else Ok rs)
+  | O.None -> Ok rs.
+
+# every row through `f`, or the first error
+parseAll : (List String -> Result a String) -> List (List String) -> Result (List a) String .
+parseAll f rs = parseGo f rs Nil.
+parseGo : unsafe (List String -> Result a String) -> List (List String) -> List a -> Result (List a) String .
+parseGo f rs acc = case rs of
+    Nil -> Ok (L.reverse acc)
+  | r :: rest -> (case f r of Err e -> Err e | Ok x -> parseGo f rest (x :: acc)).
+
+# exactly one row through `f`
+one : (List String -> Result a String) -> List (List String) -> Result a String .
+one f rs = case rs of
+    r :: Nil -> f r
+  | _ -> Err "expected one result row, got {L.length rs}".

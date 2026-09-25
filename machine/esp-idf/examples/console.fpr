@@ -1,0 +1,38 @@
+# console.fpr -- the Base environment on the board: std/program over the
+# serial console, the same calls a posix program makes.
+#
+#   1. the command line (none on a board) and the environment (empty)
+#   2. a line to stderr
+#   3. lines read from the console and echoed, until "quit"; meanwhile an
+#      actor on core 1 prints a heartbeat, because reading blocks only the
+#      hart that reads
+#   4. Program.exit 3: the program ends there -- the line after it must not
+#      print, and the heartbeat stops
+# Nothing here is board-specific: `fpr run` runs the same file on posix.
+unsafe base.
+Program = use "std/program".
+List = use "std/list".
+S = use "std/string".
+O = use "std/option".
+
+heartbeat n me = _ = Sys.sleepUs 2000000;
+  _ = print "[beat {n}]";
+  heartbeat (n + 1) me.
+
+echo : unsafe Int -> Int .
+echo n = case Program.readLine Unit of
+    O.None -> n
+  | O.Some l -> if l == "quit" then n else
+      _ = Program.writeLine "you said \"{l}\" ({S.length l} characters; line {n + 1})";
+      echo (n + 1).
+
+main =
+  _ = Program.writeLine "args: {List.length (Program.args Unit)}; HOME is {Program.envOr "unset" "HOME"}";
+  _ = Program.writeError "this line went to stderr";
+  _ = spawnOn 1 (heartbeat 1);
+  _ = Program.writeLine "type lines; \"quit\" ends the program with status 3";
+  n = echo 0;
+  _ = Program.writeLine "read {n} line(s); exiting";
+  _ = Program.exit 3;
+  _ = print "THIS LINE MUST NOT PRINT";
+  "console: done".

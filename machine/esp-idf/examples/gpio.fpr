@@ -3,11 +3,12 @@
 # on both cores at once (an actor per core), reporting the pins that changed.
 unsafe base.
 Esp = use "std/esp".
+Gpio = use "std/gpio".
 List = use "std/list".
 String = use "std/string".
 
-pins u = List.range 0 (Esp.gpioPins Unit - 1).
-levels u = List.map Esp.gpioLevel (pins Unit).
+pins u = List.range 0 (Gpio.pins Unit - 1).
+levels u = List.map Gpio.level (pins Unit).
 
 # samples n: the list of level snapshots, taken every `gap` ms
 samples : unsafe Int -> Int -> List (List Int) -> List (List Int) .
@@ -24,8 +25,8 @@ sampler boss me = snaps = samples 20 50 Nil; _ = send boss (R (Esp.core Unit) (c
 
 main =
   me = myself 0;
-  _ = print "{Esp.gpioPins Unit} GPIOs; configuration and level now (read from the registers):";
-  _ = List.each (fn p -> print "  GPIO{p}: {Esp.describe (Esp.gpioInfo p)}, level {Esp.gpioLevel p}") (pins Unit);
+  _ = print "{Gpio.pins Unit} GPIOs; configuration and level now (read from the registers):";
+  _ = List.each (fn p -> print "  GPIO{p}: {Gpio.describe (Gpio.info p)}, level {Gpio.level p}") (pins Unit);
   _ = spawnOn 0 (sampler me);
   _ = spawnOn 1 (sampler me);
   r1 = receive me;

@@ -1,0 +1,32 @@
+# std/ble.fpr -- Bluetooth LE: scan for devices, advertise a name.
+#
+#   Ble = use "std/ble".
+#   case Ble.scan 5000 of
+#       Ok ds -> List.each (fn d -> print "{d.address} {d.rssi} {d.name}") ds
+#     | Err why -> print why
+#
+# Every call blocks only the calling actor (std/job.fpr).  On the ESP32-P4 the
+# host is NimBLE and the controller is the board's ESP32-C6
+# (platform/esp-idf/bluetooth.c); the first call brings them up, which can
+# take seconds.  A platform without a Bluetooth library fails a program
+# importing this at LINK time, by name -- and a program that does not import
+# it does not carry the Bluetooth stack.
+
+BleHost.scan : Int -> Int -> Int .
+BleHost.advertise : Int -> String -> Int -> Int .
+
+J = use "job".
+
+# the devices heard in `ms` milliseconds, strongest first; name "" if none was sent
+scan : Int -> Result (List { address : String, rssi : Int, name : String }) String .
+scan ms = case J.result (J.run (fn slot -> BleHost.scan slot ms)) of
+    Err why -> Err why
+  | Ok rs -> J.parseAll (fn r -> case J.number 1 r of Err e -> Err e | Ok rssi -> Ok { address = J.field 0 r, rssi = rssi, name = J.field 2 r }) rs.
+
+# advertise as `name` (1-26 bytes: a legacy advertisement's room) for `ms`
+# milliseconds, 0 for until the next call; non-connectable, discoverable.
+# Answers once it has begun, with the address it advertises from.
+advertise : String -> Int -> Result { name : String, address : String } String .
+advertise name ms = case J.result (J.run (fn slot -> BleHost.advertise slot name ms)) of
+    Err why -> Err why
+  | Ok rs -> J.one (fn r -> Ok { name = J.field 0 r, address = J.field 1 r }) rs.

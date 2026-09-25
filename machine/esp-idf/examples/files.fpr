@@ -1,0 +1,81 @@
+# files.fpr -- files on the ESP32-P4: FAT on flash at /data, through the
+# ordinary std/file and std/dir (machine/posix/os_fs.c and base_file.c).
+#
+#   1. a boot counter in /data/boots: run twice, it counts up across a reset
+#   2. a directory tree, write / append / lines / info / rename / exists
+#   3. a 64 KiB streamed write, then a patch in place ("rw" + seek)
+#   4. actors on BOTH cores appending to their own files at once: every file
+#      call leaves the actor's PSRAM stack for its hart's internal one
+#   5. the errors: a missing file, and a relative path (IDF has no working
+#      directory: paths are absolute)
+unsafe base.
+File = use "std/file".
+Dir = use "std/dir".
+ST = use "std/stream".
+S = use "std/string".
+List = use "std/list".
+Esp = use "std/esp".
+
+need r = case r of Ok x -> x | Err why -> error why.
+check yes why = if yes then Unit else error why.
+
+boots u = case File.readText "/data/boots" of
+    Ok t -> (case S.toInt (S.trim t) of Ok n -> n | Err _ -> 0)
+  | Err _ -> 0.
+
+chunks s k = if k == 0 then Ok Unit else
+  _ = need (ST.write (S.repeat 1024 "x") s);
+  chunks s (k - 1).
+
+writer i k boss me = if k == 0 then send boss i else
+  _ = need (File.appendText "/data/t/w{i}.txt" "line {k} from core {Esp.core Unit}\n");
+  writer i (k - 1) boss me.
+
+main =
+  me = myself 0;
+  n = boots Unit + 1;
+  _ = need (File.writeText "/data/boots" "{n}\n");
+  _ = print "boot #{n}: the count lives in /data/boots and survives a reset";
+
+  _ = Dir.removeAll "/data/t";
+  _ = need (Dir.create "/data/t/sub");
+  _ = need (File.writeText "/data/t/a.txt" "alpha\n");
+  _ = need (File.appendText "/data/t/a.txt" "beta\n");
+  _ = check (List.length (need (File.lines "/data/t/a.txt")) == 2) "append: expected two lines";
+  info = need (File.info "/data/t/a.txt");
+  _ = check (info.size == 11 and info.kind == "file") "info: expected an 11-byte file";
+  _ = need (File.rename "/data/t/a.txt" "/data/t/sub/b.txt");
+  _ = check (File.isFile "/data/t/sub/b.txt" and not (File.exists "/data/t/a.txt")) "rename";
+  _ = check (File.isDir "/data/t/sub") "isDir";
+  _ = print "tree: create, write, append, lines, info, rename, exists passed";
+
+  t0 = Esp.ms Unit;
+  _ = need (File.withOpen "/data/t/big.bin" "w" (fn s -> chunks s 64));
+  t1 = Esp.ms Unit;
+  _ = check (need (File.size "/data/t/big.bin") == 65536) "size: expected 65536 bytes";
+  _ = need (File.withOpen "/data/t/big.bin" "rw" (fn s -> _ = need (File.seek 1000 s); ST.write "XYZ" s));
+  big = need (File.readText "/data/t/big.bin");
+  t2 = Esp.ms Unit;
+  _ = check (strlen big == 65536 and substr big 1001 3 == "XYZ" and substr big 1000 1 == "x") "in-place patch";
+  _ = print "stream: 64 KiB written in {t1 - t0} ms; patched at byte 1000 and read back in {t2 - t1} ms";
+
+  _ = spawnOn 0 (writer 0 100 me);
+  _ = spawnOn 1 (writer 1 100 me);
+  _ = receive me;
+  _ = receive me;
+  w0 = need (File.lines "/data/t/w0.txt");
+  w1 = need (File.lines "/data/t/w1.txt");
+  _ = check (List.length w0 == 100 and List.length w1 == 100) "both-core appends: expected 100 lines each";
+  _ = check (List.all (fn l -> S.contains "core 0" l) w0 and List.all (fn l -> S.contains "core 1" l) w1) "each writer stayed on its core";
+  _ = print "both cores: 200 appends at once, 100 per file, each from its own core";
+
+  _ = print "tree now: {S.join ", " (need (Dir.walk "/data/t"))}";
+  _ = print "/data holds: {S.join ", " (need (Dir.list "/data"))}";
+  _ = need (Dir.removeAll "/data/t");
+  _ = check (not (File.exists "/data/t")) "removeAll";
+
+  missing = (case File.readText "/data/nope" of Ok _ -> "found?" | Err why -> why);
+  relative = (case File.readText "boots" of Ok _ -> "found?" | Err why -> why);
+  _ = print "errors: missing file -> {missing}; relative path -> {relative}";
+  _ = check (missing != "found?" and relative != "found?") "errors: expected both to fail";
+  "files: done".

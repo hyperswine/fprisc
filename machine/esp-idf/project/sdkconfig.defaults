@@ -12,6 +12,10 @@ CONFIG_SPIRAM=y
 # see MEMPOOL_PREFER_SPIRAM below, and docs/ESP-IDF.md.)
 CONFIG_SPIRAM_USE_CAPS_ALLOC=y
 CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
+# partitions.csv: a 4 MB app (Wi-Fi + BLE + the shared POSIX code passed the
+# default 1 MB) and an 8 MB FAT partition, all below the 16 MB IDF 5.3 reaches
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 # FP-RISC actors run on their own stacks (from the heap), not the FreeRTOS
@@ -24,10 +28,11 @@ CONFIG_ESP_WIFI_REMOTE_ENABLED=y
 CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y
 CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
 CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE=y
-# ESP-Hosted starts in a C constructor, before the scheduler frees the startup
-# stacks: only ~110 KiB of internal RAM exists then, and its transport buffers
-# would drain it (FreeRTOS then puts the idle stacks in RTC RAM and asserts).
-# The P4 GDMA reaches PSRAM, so the buffers go there.
+# ESP-Hosted's transport buffers in PSRAM (the P4's GDMA reaches it).  This was
+# needed when ESP-Hosted started in a C constructor, before the scheduler freed
+# the startup stacks: its buffers drained the ~110 KiB of internal RAM then,
+# and FreeRTOS asserted.  Its start now waits for a program's first radio call
+# (platform/esp-idf/radio.c); the setting stays to leave internal RAM free.
 CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y
 
 # Bluetooth LE: the C6 is the controller, NimBLE on the P4 is the host, and
@@ -39,3 +44,22 @@ CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_NIMBLE_TRANSPORT_UART=n
 CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE=y
 CONFIG_ESP_HOSTED_NIMBLE_HCI_VHCI=y
+
+# FAT with long file names: without them IDF's FatFs keeps 8.3 names, uppercase
+# ("big.bin" lists as BIG.BIN; a longer name fails to create).  Names up to 255
+# characters, case kept, the work buffer on the heap rather than a stack.
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+
+# Sockets: lwIP's default is 10 -- about four loopback connections at once
+# (two sockets each, plus the listener).  ESP-IDF has 64 file descriptors in
+# all (newlib's FD_SETSIZE), shared by sockets (the top CONFIG_LWIP_MAX_SOCKETS
+# of them), FAT files (fs.c: 16) and eventfds (the watcher: 24); half go to
+# sockets.  PCBs are allocated as used, so the counts cost little until then.
+CONFIG_LWIP_MAX_SOCKETS=32
+CONFIG_LWIP_MAX_ACTIVE_TCP=32
+# Connections established but not yet accepted wait in a per-listener
+# mailbox, 6 by default; past it lwIP resets the connection and says nothing
+# (a burst of 8 clients: 6 got in, 2 were "reset by peer").  As many as there
+# are sockets.
+CONFIG_LWIP_TCP_ACCEPTMBOX_SIZE=32

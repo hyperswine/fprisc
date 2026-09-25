@@ -1,0 +1,83 @@
+# ap-server.fpr -- an FP-RISC web server on the board's own Wi-Fi access point.
+#
+#   1. the access point's password rule: a short password, an over-long SSID
+#      and a 64-character key that is not hex are each refused by name
+#   2. an access point "fpr-p4-test" with a random WPA2 password (printed)
+#   3. std/httpcore serving HTTP on port 80 of every interface, on a Poller:
+#      each connection is its own actor, a counter actor numbers the
+#      requests, and the page says which core served it
+#   4. a self-test through the access point's own address, 192.168.4.1
+#   5. then it serves until reset, printing each request and, every 15 s,
+#      which stations have joined
+#
+# From a phone or laptop: join fpr-p4-test with the printed password, then
+# open http://192.168.4.1/ (or: curl http://192.168.4.1/).
+unsafe base.
+Esp = use "std/esp".
+Wifi = use "std/wifi".
+Http = use "std/httpcore".
+TCP = use "std/tcp".
+ST = use "std/stream".
+PL = use "std/poller".
+List = use "std/list".
+S = use "std/string".
+O = use "std/option".
+
+Msg = Type (Hit Int).
+
+need r = case r of Ok x -> x | Err why -> error why.
+check yes why = if yes then Unit else error why.
+refused r = case r of Err _ -> True | Ok _ -> False.
+escape s = S.replace "<" "&lt;" (S.replace "&" "&amp;" s).
+secs t0 = (Esp.ms Unit - t0) / 1000.
+
+# one actor owns the request count
+counter n me = m = receive me;
+  case m of Hit from -> _ = send from (n + 1); counter (n + 1) me.
+
+# each request: number it, answer a page (Http.serveOn gives each connection an actor)
+page c t0 req =
+  me = myself 0;
+  _ = send c (Hit me);
+  n = receiveFrom me c;
+  core = Esp.core Unit;
+  line = "{req.method} {req.path}";
+  _ = print "[{secs t0} s] request #{n}: {line} (core {core})";
+  Http.html 200 "<!doctype html><meta name=viewport content='width=device-width'><title>FP-RISC on ESP32-P4</title><h1>Hello from FP-RISC</h1><p>Served by an actor on core {core} of the ESP32-P4, over its own Wi-Fi access point, through std/httpcore.</p><ul><li>request #{n}: {escape line}</li><li>{escape (case Http.header "user-agent" req of O.Some ua -> ua | O.None -> "no user agent")}</li><li>up {secs t0} s, {Esp.freeKb Unit} KiB free</li></ul>".
+
+server poll l c t0 me = Http.serveOn poll l (page c t0).
+
+# a request through the access point's own address, answered by the server above
+selftest u =
+  conn = need (TCP.connect "192.168.4.1" 80);
+  _ = need (ST.write "GET /self-test HTTP/1.0\r\n\r\n" conn);
+  text = need (ST.readAll conn);
+  _ = ST.close conn;
+  check (S.contains "Hello from FP-RISC" text) "self-test: the page did not come back".
+
+watch t0 = _ = Sys.sleepUs 15000000;
+  ss = need (Wifi.stations Unit);
+  _ = print "[{secs t0} s] {List.length ss} station(s) joined";
+  _ = List.each (fn s -> print "  {s.mac} at {s.rssi} dBm") ss;
+  watch t0.
+
+main =
+  me = myself 0;
+  t0 = Esp.ms Unit;
+  _ = check (refused (Wifi.startAp "fpr-p4-test" "short")) "a 5-character password was not refused";
+  _ = check (refused (Wifi.startAp (S.repeat 33 "x") "fpr-risc-long-enough")) "a 33-byte SSID was not refused";
+  _ = check (refused (Wifi.startAp "fpr-p4-test" (S.repeat 64 "g"))) "a 64-character key that is not hex was not refused";
+  _ = (case Wifi.startAp "fpr-p4-test" "short" of Err why -> print "  refused: {why}" | Ok _ -> Unit);
+  _ = print "password rule: short password, 33-byte SSID and non-hex key refused";
+  pass = "fpr-risc-{Esp.random Unit % 1000000}";
+  ap = need (Wifi.startAp "fpr-p4-test" pass);
+  _ = print "  access point {ap.ssid} on channel {ap.channel}, {ap.auth}, at {ap.ip}";
+  l = need (TCP.listen "" 80);
+  poll = PL.start Unit;
+  c = spawn (counter 0);
+  _ = spawn (server poll l c t0);
+  _ = selftest Unit;
+  _ = print "self-test: the page answered on 192.168.4.1:80";
+  _ = print "READY: join fpr-p4-test with password {pass}, then open http://192.168.4.1/";
+  _ = watch t0;
+  "ap-server: done".

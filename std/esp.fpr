@@ -1,96 +1,26 @@
-# std/esp.fpr -- the ESP32 board, from FP-RISC (the esp-idf system: machine/esp-idf).
+# std/esp.fpr -- the ESP32 chip itself, from FP-RISC (--system=esp-idf).
 #
 #   Esp = use "std/esp".
 #   Esp.core Unit            which CPU core this actor is running on
 #   Esp.ms Unit              milliseconds since boot (wraps after ~12 days)
 #   Esp.freeKb Unit          free heap left to ESP-IDF, KiB
+#   Esp.random Unit          30 bits from the hardware RNG
 #
-# GPIO.  Reading changes nothing:
-#   Esp.gpioPins Unit        how many pins the chip has
-#   Esp.gpioLevel pin        the pad's input bit (0 when its input is not enabled)
-#   Esp.gpioInfo pin         how it is configured: see `describe`
-# Configuring and driving change the pin -- only on pins the board leaves free:
-#   Esp.gpioInput pin pull   pull: 0 none, 1 up, 2 down; answers ESP-IDF's error code (0 = ok)
-#   Esp.gpioOutput pin       input AND output, so gpioLevel reads back what is driven
-#   Esp.gpioWrite pin level
+# What the board has beyond the chip is in the platform libraries, whose
+# names say what they are rather than whose they are: std/wifi, std/ble,
+# std/gpio (platform/esp-idf), and files through std/file and std/dir.
 #
 # Ints are 31 bits on this chip (rv32): times are in units that fit.
 Esp.core : Unit -> Int .
 Esp.ms : Unit -> Int .
 Esp.freeKb : Unit -> Int .
 Esp.random : Unit -> Int .
-Esp.gpioPins : Unit -> Int .
-Esp.gpioLevel : Int -> Int .
-Esp.gpioInfo : Int -> Int .
-Esp.gpioInput : Int -> Int -> Int .
-Esp.gpioOutput : Int -> Int .
-Esp.gpioWrite : Int -> Int -> Int .
 
+core : Unit -> Int .
 core u = Esp.core u.
+ms : Unit -> Int .
 ms u = Esp.ms u.
+freeKb : Unit -> Int .
 freeKb u = Esp.freeKb u.
-# 30 bits from the hardware RNG
+random : Unit -> Int .
 random u = Esp.random u.
-gpioPins u = Esp.gpioPins u.
-gpioLevel p = Esp.gpioLevel p.
-gpioInfo p = Esp.gpioInfo p.
-gpioInput p pull = Esp.gpioInput p pull.
-gpioOutput p = Esp.gpioOutput p.
-gpioWrite p v = Esp.gpioWrite p v.
-
-# a pin's configuration, in words: "in out up down od fn1"
-describe info =
-  bit k = (info / k) % 2 == 1;
-  "{(if bit 1 then "in " else "")}{(if bit 2 then "out " else "")}{(if bit 4 then "up " else "")}{(if bit 8 then "down " else "")}{(if bit 16 then "od " else "")}fn{info / 256}".
-
-# ---- jobs: ESP-IDF calls that block (Wi-Fi through the C6) -------------------------
-# They run in a broker task, never on a hart, and finish with an interrupt.
-# `job start` blocks only the CALLING actor: a helper binds the job's interrupt,
-# starts it, waits, and hands back the result text.
-Esp.jobNew : Unit -> Int .
-Esp.jobResult : Int -> String .
-Esp.wifiScan : Int -> Int .
-Esp.wifiAp : Int -> String -> String -> Int .
-Esp.wifiApClients : Int -> Int .
-Esp.wifiInfo : Int -> Int .
-Esp.wifiStop : Int -> Int .
-Esp.bleScan : Int -> Int -> Int .
-Esp.bleAdvertise : Int -> String -> Int -> Int .
-
-L = use "list".
-S = use "string".
-
-jobWait : unsafe Int -> (Int -> Int) -> Int -> Unit .
-jobWait boss start self =
-  slot = Esp.jobNew Unit;
-  _ = Sys.irqBind slot self;
-  r = (case start slot of
-      0 -> m = receive self; _ = drop m; Esp.jobResult slot
-    | _ -> _ = Esp.jobResult slot; "error\tthe job queue is full");
-  _ = send boss (Ok r);
-  Unit.
-
-job : (Int -> Int) -> String .
-job start =
-  me = myself 0;
-  w = spawn (fn self -> jobWait me start self);
-  r = receiveFrom me w;
-  out = (case r of Ok text -> keep text | Err why -> keep why);
-  _ = drop r;
-  out.
-
-# a result as rows of fields: one line per item, tab-separated
-rows text = L.map (fn l -> S.split "\t" l) (L.filter (fn l -> strlen l > 0) (S.split "\n" text)).
-
-wifiScan u = rows (job (fn slot -> Esp.wifiScan slot)).
-wifiAp ssid pass = rows (job (fn slot -> Esp.wifiAp slot ssid pass)).
-wifiApClients u = rows (job (fn slot -> Esp.wifiApClients slot)).
-wifiInfo u = rows (job (fn slot -> Esp.wifiInfo slot)).
-wifiStop u = rows (job (fn slot -> Esp.wifiStop slot)).
-
-# Bluetooth LE through the same C6 (NimBLE here, the controller there).
-# bleScan ms: [address, rssi, name] per device heard, strongest first.
-# bleAdvertise name ms: advertise as `name` for ms milliseconds (0: until
-# restarted); answers [advertising, name, address, duration] once it has begun.
-bleScan ms = rows (job (fn slot -> Esp.bleScan slot ms)).
-bleAdvertise name ms = rows (job (fn slot -> Esp.bleAdvertise slot name ms)).
