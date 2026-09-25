@@ -13,7 +13,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FACILITIES = {
-    "os": "readFile listDir stat mkdir remove rename cwd wallClock tzOffset",
+    "os_fs": "readFile listDir stat mkdir remove rename cwd",
+    "os_clock": "wallClock tzOffset",
     "os_io": "open ready poll read write seek close",
     "os_proc": "run exec",
     "os_net": "connect listen accept localPort",
@@ -49,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix="fpr-posix-facilities-") as tmp:
         assert actual == expected, (name, actual ^ expected)
         assert not (exported & actual), (name, "duplicate primitive")
         exported |= actual
-        if name in ("os", "os_io", "os_net"):
+        if name in ("os_fs", "os_clock", "os_io", "os_net"):
             forbidden = {"fork", "execvp", "waitpid", "kill", "pipe", "pthread_create", "tcsetattr"}
             assert not (undefined & forbidden), (name, undefined & forbidden)
         print(name + ": primitive exports and dependency boundary PASS")

@@ -1,14 +1,13 @@
-/* Hosted files, directories, clocks and descriptor operations.
- * Processes, sockets, watcher and Unix terminal support are separate objects.
- * This is not yet an ESP-IDF adapter: VFS flags and SIGPIPE need review. */
+/* Hosted files and directories: whole-file reads, listings, facts, mkdir,
+ * remove, rename and the working directory.  Descriptors are os_io.c, the
+ * calendar clock os_clock.c: a board with a filesystem but no wall clock
+ * (ESP-IDF, FAT on flash) links this file alone.  Everything here is plain
+ * POSIX that newlib + ESP-IDF's VFS also provide. */
 #include "os_value.h"
 #include <dirent.h>
 #include <fcntl.h>
-#include <poll.h>
-#include <signal.h>
 #include <stdio.h>
 #include <sys/stat.h>
-#include <time.h>
 #include <unistd.h>
 
 static V h_read_file(V pathv) {
@@ -30,7 +29,7 @@ static V h_read_file(V pathv) {
   free(b.p);
   return os_ok(s);
 }
-FPR_FN(fpr_g_Os_x2ereadFile, h_read_file, 1);
+FPR_FN_CSTACK(fpr_g_Os_x2ereadFile, h_read_file, 1);
 
 static int name_cmp(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
 static V h_list_dir(V pathv) {
@@ -58,7 +57,7 @@ static V h_list_dir(V pathv) {
   free(names);
   return os_ok(l);
 }
-FPR_FN(fpr_g_Os_x2elistDir, h_list_dir, 1);
+FPR_FN_CSTACK(fpr_g_Os_x2elistDir, h_list_dir, 1);
 
 static V h_stat(V pathv) {
   char *path = os_cstr(pathv, "Os.stat: the path is not a String");
@@ -69,7 +68,7 @@ static V h_stat(V pathv) {
   V f[3] = {TAG(S_ISREG(st.st_mode) ? 0 : S_ISDIR(st.st_mode) ? 1 : 2), TAG((sw)st.st_size), TAG((sw)st.st_mtime)};
   return os_ok(os_cell(T_TUP3, 0, 3, f));
 }
-FPR_FN(fpr_g_Os_x2estat, h_stat, 1);
+FPR_FN_CSTACK(fpr_g_Os_x2estat, h_stat, 1);
 
 
 static V h_mkdir(V pathv) {
@@ -80,7 +79,7 @@ static V h_mkdir(V pathv) {
   free(path);
   return v;
 }
-FPR_FN(fpr_g_Os_x2emkdir, h_mkdir, 1);
+FPR_FN_CSTACK(fpr_g_Os_x2emkdir, h_mkdir, 1);
 
 static V h_remove(V pathv) {
   char *path = os_cstr(pathv, "Os.remove: the path is not a String");
@@ -88,7 +87,7 @@ static V h_remove(V pathv) {
   free(path);
   return v;
 }
-FPR_FN(fpr_g_Os_x2eremove, h_remove, 1);
+FPR_FN_CSTACK(fpr_g_Os_x2eremove, h_remove, 1);
 
 static V h_rename(V fromv, V tov) {
   char *from = os_cstr(fromv, "Os.rename: the path is not a String");
@@ -97,7 +96,7 @@ static V h_rename(V fromv, V tov) {
   free(from); free(to);
   return v;
 }
-FPR_FN(fpr_g_Os_x2erename, h_rename, 2);
+FPR_FN_CSTACK(fpr_g_Os_x2erename, h_rename, 2);
 
 static V h_cwd(V u) {
   (void)u;
@@ -107,16 +106,4 @@ static V h_cwd(V u) {
   free(c);
   return s;
 }
-FPR_FN(fpr_g_Os_x2ecwd, h_cwd, 1);
-
-static V h_wall_clock(V u) { (void)u; return TAG((sw)time(0)); }
-FPR_FN(fpr_g_Os_x2ewallClock, h_wall_clock, 1);
-/* the local zone's offset from UTC at that instant, in seconds east (DST
- * included): the one thing a clock needs that only the OS knows */
-static V h_tz_offset(V secs) {
-  time_t t = (time_t)UNTAG(secs);
-  struct tm tm;
-  if (!localtime_r(&t, &tm)) return TAG(0);
-  return TAG((sw)tm.tm_gmtoff);
-}
-FPR_FN(fpr_g_Os_x2etzOffset, h_tz_offset, 1);
+FPR_FN_CSTACK(fpr_g_Os_x2ecwd, h_cwd, 1);

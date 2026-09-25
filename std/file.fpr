@@ -8,7 +8,8 @@
 # are the convenient ones; `open` / `withOpen` give a Stream (std/stream.fpr)
 # for a file too big to hold, or one you read and write in place.
 
-OS = use "os".
+OS = use "osfs".
+IO = use "osio".
 S = use "string".
 ST = use "stream".
 
@@ -67,10 +68,10 @@ copy from to = case OS.readFile from of Ok bytes -> writeText to bytes | Err e -
 # mode: "r" read, "w" replace, "a" append, "rw" read and write in place.
 # Then Stream.read / write / close; `seek` moves to an absolute byte offset.
 open : String -> String -> Result ST.Stream String .
-open path mode = case OS.open path mode of Ok f -> Ok (ST.Stream f) | Err e -> Err e.
+open path mode = case IO.open path mode of Ok f -> Ok (ST.Stream f) | Err e -> Err e.
 
 seek : Int -> ST.Stream -> Result Int String .
-seek at s = OS.seek (ST.fd s) at.
+seek at s = IO.seek (ST.fd s) at.
 
 # open, hand the Stream to `f`, and CLOSE it whatever `f` answers: no return
 # path forgets the descriptor.

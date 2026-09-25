@@ -2,6 +2,8 @@
 --
 --   fpr build prog.fpr [-o out] [--harts N] [--cc CC] [-v] [--keep]
 --   fpr run   prog.fpr [args...]
+--   fpr build prog.fpr --system=esp-idf [-o dir]      an ESP32-P4 image
+--   fpr run   prog.fpr --system=esp-idf [--port P]    flash it and be its console
 --
 -- A program becomes an ordinary executable for THIS machine: the
 -- compiler lowers it for the host ISA (--profile=base), and the C
@@ -22,8 +24,9 @@ import Data.Bits (xor)
 import Data.Time.Clock (UTCTime)
 import Data.Word (Word64)
 import Numeric (showHex)
-import System.Directory (XdgDirectory (..), createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory, renameFile, getModificationTime, getTemporaryDirectory, getXdgDirectory, removeFile)
+import System.Directory (XdgDirectory (..), makeAbsolute, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory, renameFile, getModificationTime, getTemporaryDirectory, getXdgDirectory, removeFile)
 import System.Environment (getExecutablePath, lookupEnv, withArgs)
+import qualified System.Environment
 import System.Exit (ExitCode (..), exitFailure, exitWith)
 import System.FilePath (dropExtension, takeBaseName, takeDirectory, takeExtension, takeFileName, (</>))
 import System.IO (IOMode (..), hPutStrLn, openFile, stderr)
@@ -42,11 +45,13 @@ data Plan = Plan
     pWith :: [FilePath], -- the program's own HAL: C / asm sources linked beside the runtime
     pCFlags :: [String],
     pLink :: [String],
+    pSystem :: String, -- "posix" (this machine), or "esp-idf" (a board: machine/esp-idf)
+    pPort :: Maybe String, -- esp-idf: the board's serial port
     pRest :: [String]
   }
 
 usage :: String
-usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep]\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]"
+usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep]\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --system=esp-idf [-o dir] [--port P] [-v]"
 
 -- The hart CAP compiled in is this machine's processor count (it was a flat 2,
 -- so a server on a ten-core machine ran on two threads).  The running program
@@ -57,7 +62,7 @@ usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep
 plan :: [String] -> IO Plan
 plan args = do
   cores <- onlineCores
-  go (Plan "" Nothing (max 2 cores) False False Nothing [] [] [] []) args
+  go (Plan "" Nothing (max 2 cores) False False Nothing [] [] [] "posix" Nothing []) args
   where
     go p ("-o" : o : rest) = go p {pOut = Just o} rest
     go p ("--harts" : n : rest) = go p {pHarts = read n} rest
@@ -67,6 +72,9 @@ plan args = do
     go p ("--cflag" : f : rest) = go p {pCFlags = pCFlags p ++ [f]} rest
     go p ("--link" : f : rest) = go p {pLink = pLink p ++ [f]} rest
     go p ("-v" : rest) = go p {pVerbose = True} rest
+    go p ("--system=posix" : rest) = go p {pSystem = "posix"} rest
+    go p ("--system=esp-idf" : rest) = go p {pSystem = "esp-idf"} rest
+    go p ("--port" : d : rest) = go p {pPort = Just d} rest
     go p (a : rest)
       | null (pSource p) = go p {pSource = a} rest
       | otherwise = pure p {pRest = a : rest}
@@ -126,7 +134,7 @@ build p = do
     Nothing -> fromMaybe "cc" <$> lookupEnv "FPR_CC"
   let ctx = if System.Info.arch == "aarch64" then "ctx_a64.S" else "ctx_x64.S"
       core = [runtime </> f | f <- ["runtime.c", "actors.c", "bits.c", "vec.c", "sstr.c", "mod.c", "buddy.c"]]
-      posix = [machine </> "posix" </> f | f <- ["main.c", "hal.c", "park.c", "host.c", "base.c", "os.c", "os_io.c", "os_proc.c", "os_watch.c", "os_net.c", "os_term.c"]] ++ [machine </> "unix" </> ctx]
+      posix = [machine </> "posix" </> f | f <- ["main.c", "hal.c", "park.c", "host.c", "base.c", "base_file.c", "os_fs.c", "os_clock.c", "os_io.c", "os_proc.c", "os_watch.c", "os_net.c", "os_term.c"]] ++ [machine </> "unix" </> ctx]
       -- x28 is RESERVED on aarch64: the context switch (machine/unix/ctx_a64.S)
       -- does not save it, because QOS apps keep the hart pointer there.  Without
       -- this flag the C compiler may hold a value in x28 across a call that
@@ -205,6 +213,7 @@ buildMain :: [String] -> IO ()
 buildMain args = do
   p <- plan args
   unless (null (pRest p)) $ hPutStrLn stderr usage >> exitFailure
+  when (pSystem p == "esp-idf") $ espIdf "build.sh" p []
   prof <- profileOf (pSource p)
   when (prof == "sol") $ hPutStrLn stderr "fpr build: a sol program runs on the VM (`fpr run`, `fpr sol`); it is not built into an executable" >> exitFailure
   out <- build p
@@ -213,6 +222,9 @@ buildMain args = do
 runMain :: [String] -> IO ()
 runMain args = do
   p <- plan args
+  when (pSystem p == "esp-idf") $ do
+    unless (null (pRest p)) $ hPutStrLn stderr "fpr run: a board program is started with no arguments (Sys.args is [] there)" >> exitFailure
+    espIdf "run.sh" p (maybe [] (: []) (pPort p))
   prof <- profileOf (pSource p)
   when (prof == "sol") $ withArgs (pSource p : pRest p) Sol.Main.main >> exitWith ExitSuccess
   -- A program that has not changed is not compiled again: the executable is
@@ -296,3 +308,22 @@ runKey p = do
 
 fnv64 :: String -> Word64
 fnv64 = foldl (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) 14695981039346656037
+
+-- --system=esp-idf: the board's build and console live beside its machine
+-- layer (machine/esp-idf/build.sh, run.sh, console.py), in ESP-IDF's tools;
+-- fpr hands over and exits with their status -- for `run`, the program's own.
+espIdf :: String -> Plan -> [String] -> IO ()
+espIdf script p extra = do
+  home <- fprHome
+  let dir = home </> "machine" </> "esp-idf"
+  out <- makeAbsolute (fromMaybe (home </> "build" </> "esp-idf" </> takeBaseName (pSource p)) (pOut p))
+  env0 <- System.Environment.getEnvironment
+  let env = [("FPR_ESP_OUT", out)] ++ [("FPR_ESP_VERBOSE", "1") | pVerbose p]
+            ++ [kv | kv@(k, _) <- env0, k /= "FPR_ESP_OUT", not (pVerbose p && k == "FPR_ESP_VERBOSE")]
+      args = if script == "build.sh" then [pSource p, out] else pSource p : extra
+  (_, _, _, ph) <- createProcess (proc "sh" ((dir </> script) : args)) {env = Just env}
+  code <- waitForProcess ph
+  when (script == "build.sh" && code == ExitSuccess) $
+    hPutStrLn stderr ("fpr build: " ++ (out </> "idf" </> "fpr_esp.bin") ++ " (flash with: fpr run --system=esp-idf, or idf.py -B " ++ (out </> "idf") ++ " flash)")
+  exitWith code
+

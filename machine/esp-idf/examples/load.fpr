@@ -1,0 +1,68 @@
+# load.fpr -- how many TCP connections the board holds AT ONCE.
+#
+# An echo server on 127.0.0.1 (std/tcp on a Poller, an actor per connection),
+# and rounds of N client actors, half on each core.  Each client connects,
+# sends a line, reads the echo, then HOLDS the connection until every client
+# of the round has answered, so all N are open together.  A loopback
+# connection is two sockets (both ends), plus the listener.  A round that
+# cannot open them all says why (the host's words), and the rounds stop.
+# Nothing here is board-specific: `fpr run` runs it on posix too.
+unsafe base.
+TCP = use "std/tcp".
+ST = use "std/stream".
+PL = use "std/poller".
+List = use "std/list".
+
+Msg = Type (Up Int | Failed String | Go).
+
+need r = case r of Ok x -> x | Err why -> error why.
+
+# the server's side of one connection: echo one line, then wait for the end
+echo poll conn peer =
+  line = (case ST.readOn poll 64 conn of Ok t -> t | Err _ -> "");
+  _ = ST.write line conn;
+  _ = ST.readOn poll 1 conn;
+  Unit.
+
+client port poll i boss me = case TCP.connect "127.0.0.1" port of
+    Err why -> send boss (Failed why)
+  | Ok conn ->
+      sent = "ping {i}";
+      _ = (case ST.write sent conn of
+          Err why -> send boss (Failed "write: {why}")
+        | Ok _ -> (case ST.readOn poll 64 conn of
+              Err why -> send boss (Failed "read: {why}")
+            | Ok back -> if back == sent then send boss (Up i) else send boss (Failed "echo: got {back}")));
+      _ = receiveFrom me boss;
+      ST.close conn.
+
+# spawn n clients, alternating cores; then collect n answers
+spawnAll port poll me i n acc = if i == n then acc else
+  c = spawnOn (i % 2) (client port poll i me);
+  spawnAll port poll me (i + 1) n (c :: acc).
+
+collect me n ups why = if n == 0 then (ups, why) else case receive me of
+    Up _ -> collect me (n - 1) (ups + 1) why
+  | Failed w -> collect me (n - 1) ups w
+  | Go -> collect me n ups why.
+
+round port poll me n =
+  cs = spawnAll port poll me 0 n Nil;
+  (ups, why) = collect me n 0 "";
+  _ = List.each (fn c -> send c Go) cs;
+  _ = Sys.sleepUs 300000; # the clients close; their server ends see EOF
+  _ = print "{n} at once: {ups} connected{if strlen why > 0 then "; refused: {why}" else ""}";
+  ups == n.
+
+rounds port poll me ns = case ns of
+    Nil -> Unit
+  | n :: rest -> if round port poll me n then rounds port poll me rest else Unit.
+
+main =
+  me = myself 0;
+  l = need (TCP.listen "127.0.0.1" 0);
+  poll = PL.start Unit;
+  _ = spawn (fn self -> TCP.serveOn poll l (echo poll));
+  _ = rounds (TCP.port l) poll me (4 :: 8 :: 12 :: 16 :: 24 :: 32 :: Nil);
+  _ = TCP.stop l;
+  "load: done".

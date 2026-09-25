@@ -1,0 +1,18 @@
+# Internal primitive seam: osfs. Higher-level modules select only needed facilities.
+# Files and directories (machine/posix/os_fs.c): no clock, no processes, so a
+# board with a filesystem and nothing else (ESP-IDF, FAT on flash) links it.
+Os.readFile  : String -> Result String String .
+Os.listDir   : String -> Result (List String) String .
+Os.stat      : String -> Result (Int, Int, Int) String .
+Os.mkdir     : String -> Result Unit String .
+Os.remove    : String -> Result Unit String .
+Os.rename    : String -> String -> Result Unit String .
+Os.cwd       : Unit -> String .
+
+readFile path = Os.readFile path.
+listDir path = Os.listDir path.
+stat path = Os.stat path.
+mkdir path = Os.mkdir path.
+remove path = Os.remove path.
+rename from to = Os.rename from to.
+cwd u = Os.cwd u.

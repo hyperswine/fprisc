@@ -23,7 +23,7 @@ static V h_open(V pathv, V modev) {
   free(path); free(mode);
   return r;
 }
-FPR_FN(fpr_g_Os_x2eopen, h_open, 2);
+FPR_FN_CSTACK(fpr_g_Os_x2eopen, h_open, 2);
 
 /* Is there something to read (or an end of stream to learn of)?  Answers one
  * of the two STATIC booleans: waiting for a quiet socket allocates nothing, so
@@ -75,7 +75,7 @@ static V h_read(V fdv, V nv) {
   if (buf != small) free(buf);
   return out;
 }
-FPR_FN(fpr_g_Os_x2eread, h_read, 2);
+FPR_FN_CSTACK(fpr_g_Os_x2eread, h_read, 2);
 
 static V h_write(V fdv, V datav) {
   int fd = want_fd(fdv, "Os.write: the stream is not an Int");
@@ -88,13 +88,13 @@ static V h_write(V fdv, V datav) {
   do r = write(fd, d->bytes, d->len); while (r < 0 && errno == EINTR);
   return r < 0 ? os_again_or_errno() : os_ok(TAG((sw)r));
 }
-FPR_FN(fpr_g_Os_x2ewrite, h_write, 2);
+FPR_FN_CSTACK(fpr_g_Os_x2ewrite, h_write, 2);
 
 static V h_seek(V fdv, V offv) {
   off_t at = lseek(want_fd(fdv, "Os.seek: the stream is not an Int"), (off_t)UNTAG(offv), SEEK_SET);
   return at < 0 ? os_errno() : os_ok(TAG((sw)at));
 }
-FPR_FN(fpr_g_Os_x2eseek, h_seek, 2);
+FPR_FN_CSTACK(fpr_g_Os_x2eseek, h_seek, 2);
 
 static V h_close(V fdv) { return os_unit_or_errno(close(want_fd(fdv, "Os.close: the stream is not an Int"))); }
-FPR_FN(fpr_g_Os_x2eclose, h_close, 1);
+FPR_FN_CSTACK(fpr_g_Os_x2eclose, h_close, 1);

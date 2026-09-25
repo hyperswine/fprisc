@@ -612,6 +612,21 @@ void hal_poweroff(int code); /* hal.c: terminate the machine if the
 #define FPR_FN(sym, cfn, ar) \
   const pap0_t sym = {T_PAP, 0, (uw)(uintptr_t)(cfn), (ar), 0}
 
+/* A primitive whose C work must run on an internal-RAM stack.  On ESP-IDF,
+ * actor stacks are in PSRAM and flash operations (every FAT file call) assert
+ * an internal stack: the wrapper moves the call onto the hart task's own
+ * stack (machine/esp-idf/hal.c fpr_esp_cstack).  Everywhere else it is
+ * FPR_FN.  The wrapper takes three arguments and passes them on; a primitive
+ * of lower arity ignores the registers it does not read. */
+#if defined(FPR_ESP_IDF)
+V fpr_esp_cstack(void *fn, V a, V b, V c);
+#define FPR_FN_CSTACK(sym, cfn, ar) \
+  static V cfn##_on_cstack(V a, V b, V c) { return fpr_esp_cstack((void *)(cfn), a, b, c); } \
+  FPR_FN(sym, cfn##_on_cstack, ar)
+#else
+#define FPR_FN_CSTACK(sym, cfn, ar) FPR_FN(sym, cfn, ar)
+#endif
+
 /* SString: fixed 128-byte inline string (sstr.c). len is the live count. */
 #define SSTR_CAP 128
 typedef struct { uint32_t tid, var; uw len; uint8_t bytes[SSTR_CAP]; } __attribute__((aligned(8))) sstr_t;

@@ -18,9 +18,14 @@
 # because a request API that silently fell back to plain text would be worse
 # than none.  Where curl is missing the answer is an Err that says so.
 # One request per connection ("Connection: close"); chunked replies are decoded.
+#
+# Everything but HTTPS is std/httpcore, which this module wraps name for name:
+# a system without processes (a board) uses httpcore directly.
 
+C = use "httpcore".
 TCP = use "tcp".
 ST = use "stream".
+PL = use "poller".
 S = use "string".
 O = use "option".
 P = use "proc".
@@ -28,96 +33,37 @@ P = use "proc".
 rev : unsafe List a -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 
-# ---- headers ---------------------------------------------------------------------
-# the first header of that (lower-case) name
+# ---- the portable part: std/httpcore, the same names -------------------------------
 header : String -> { headers : List (String, String) | r } -> O.Option String .
-header name m = headerGo (S.toLower name) m.headers.
-headerGo : unsafe String -> List (String, String) -> O.Option String .
-headerGo name hs = case hs of
-    Nil -> O.None
-  | (k, v) :: r -> (case k == name of True -> O.Some v | False -> headerGo name r).
-
-# "Name: value" lines -> pairs, names lower-cased; a line without ":" is dropped
+header name m = C.header name m.
 parseHeaders : List String -> List (String, String) .
-parseHeaders ls = parseHeadersGo ls Nil.
-parseHeadersGo : unsafe List String -> List (String, String) -> List (String, String) .
-parseHeadersGo ls acc = case ls of
-    Nil -> rev acc Nil
-  | l :: r -> (case strIndexOf ":" l of
-        0 -> parseHeadersGo r acc
-      | at -> parseHeadersGo r ((S.toLower (S.trim (S.left (at - 1) l)), S.trim (S.dropLeft at l)) :: acc)).
-
+parseHeaders ls = C.parseHeaders ls.
 renderHeaders : List (String, String) -> String .
-renderHeaders hs = strJoin "" (renderHeadersGo hs Nil).
-renderHeadersGo : unsafe List (String, String) -> List String -> List String .
-renderHeadersGo hs acc = case hs of
-    Nil -> rev acc Nil
-  | (k, v) :: r -> renderHeadersGo r ("\r\n" :: v :: ": " :: k :: acc).
-
-# ---- responses, for a server -------------------------------------------------------
+renderHeaders hs = C.renderHeaders hs.
 response : Int -> String -> String -> { status : Int, headers : List (String, String), body : String } .
-response status contentType body = { status = status, headers = ("content-type", contentType) :: Nil, body = body }.
-
+response status contentType body = C.response status contentType body.
 text : Int -> String -> { status : Int, headers : List (String, String), body : String } .
-text status body = response status "text/plain; charset=utf-8" body.
-
+text status body = C.text status body.
 html : Int -> String -> { status : Int, headers : List (String, String), body : String } .
-html status body = response status "text/html; charset=utf-8" body.
-
-# the body is JSON TEXT (Json.render value)
+html status body = C.html status body.
 json : Int -> String -> { status : Int, headers : List (String, String), body : String } .
-json status body = response status "application/json" body.
-
+json status body = C.json status body.
 reason : Int -> String .
-reason status = case status of
-    200 -> "OK" | 201 -> "Created" | 204 -> "No Content" | 301 -> "Moved Permanently" | 302 -> "Found"
-  | 304 -> "Not Modified" | 400 -> "Bad Request" | 401 -> "Unauthorized" | 403 -> "Forbidden"
-  | 404 -> "Not Found" | 405 -> "Method Not Allowed" | 409 -> "Conflict" | 413 -> "Content Too Large"
-  | 500 -> "Internal Server Error" | 503 -> "Service Unavailable" | _ -> "Status".
-
-# ---- the server --------------------------------------------------------------------
-# every connection gets an actor (Tcp.serve); one request is read, `handler`
-# answers it, the connection closes.  Answers when the listener is stopped.
+reason status = C.reason status.
 serve : TCP.Listener -> ({ method : String, path : String, query : String, headers : List (String, String), body : String } -> { status : Int, headers : List (String, String), body : String }) -> String .
-serve listener handler = TCP.serve listener (fn conn peer -> answer handler conn).
-
-answer handler conn = case readRequest conn of
-    Err why -> ST.write (renderResponse (text 400 "bad request: {why}\n")) conn
-  | Ok req -> ST.write (renderResponse (handler req)) conn.
-
-# a request that does not arrive within 10 s is abandoned
+serve listener handler = C.serve listener handler.
+serveOn : PL.Poller -> TCP.Listener -> ({ method : String, path : String, query : String, headers : List (String, String), body : String } -> { status : Int, headers : List (String, String), body : String }) -> String .
+serveOn p listener handler = C.serveOn p listener handler.
 readRequest : ST.Stream -> Result { method : String, path : String, query : String, headers : List (String, String), body : String } String .
-readRequest conn = case ST.readUntil "\r\n\r\n" (ST.reader conn) of (res, r) ->
-  (case res of
-      Err why -> Err why
-    | Ok head -> requestFrom (S.split "\r\n" head) r).
-
-requestFrom ls r = case ls of
-    Nil -> Err "empty request"
-  | line :: hs -> (case S.split " " line of
-        method :: target :: _ -> withBody method target (parseHeaders hs) r
-      | _ -> Err "malformed request line").
-
-withBody method target hs r =
-  n = (case headerGo "content-length" hs of O.Some t -> (case S.toInt t of Ok v -> v | Err _ -> 0) | O.None -> 0);
-  at = strIndexOf "?" target;
-  path = (case at == 0 of True -> target | False -> S.left (at - 1) target);
-  query = (case at == 0 of True -> "" | False -> S.dropLeft at target);
-  case n <= 0 of
-    True -> Ok { method = method, path = path, query = query, headers = hs, body = "" }
-  | False -> (case ST.readExactly n r of (res, _) ->
-        (case res of
-            Ok body -> Ok { method = method, path = path, query = query, headers = hs, body = body }
-          | Err why -> Err "body: {why}")).
-
+readRequest conn = C.readRequest conn.
 renderResponse : { status : Int, headers : List (String, String), body : String } -> String .
-renderResponse resp = strJoin "" (
-     "HTTP/1.1 " :: str resp.status :: " " :: reason resp.status :: "\r\n"
-  :: renderHeaders resp.headers
-  :: "content-length: " :: str (strlen resp.body) :: "\r\nconnection: close\r\n\r\n"
-  :: resp.body :: Nil).
+renderResponse resp = C.renderResponse resp.
+parseUrl : String -> Result { scheme : String, host : String, port : Int, target : String } String .
+parseUrl url = C.parseUrl url.
+parseResponse : String -> Result { status : Int, headers : List (String, String), body : String } String .
+parseResponse raw = C.parseResponse raw.
 
-# ---- the client --------------------------------------------------------------------
+# ---- the client: plain HTTP is httpcore's, HTTPS goes through curl -----------------
 get : String -> Result { status : Int, headers : List (String, String), body : String } String .
 get url = request { method = "GET", url = url, headers = Nil, body = "" }.
 
@@ -125,82 +71,11 @@ post : String -> String -> String -> Result { status : Int, headers : List (Stri
 post url contentType body = request { method = "POST", url = url, headers = ("content-type", contentType) :: Nil, body = body }.
 
 request : { method : String, url : String, headers : List (String, String), body : String } -> Result { status : Int, headers : List (String, String), body : String } String .
-request q = case parseUrl q.url of
+request q = case C.parseUrl q.url of
     Err why -> Err why
   | Ok u -> (case u.scheme == "https" of
         True -> viaCurl q
-      | False -> overTcp q u).
-
-# "http://host[:port][/path?query]" -> its parts
-parseUrl : String -> Result { scheme : String, host : String, port : Int, target : String } String .
-parseUrl url = case strIndexOf "://" url of
-    0 -> Err "not a URL (no scheme): {url}"
-  | at -> urlRest (S.toLower (S.left (at - 1) url)) (S.dropLeft (at + 2) url).
-urlRest scheme rest =
-  slash = strIndexOf "/" rest;
-  authority = (case slash == 0 of True -> rest | False -> S.left (slash - 1) rest);
-  target = (case slash == 0 of True -> "/" | False -> S.dropLeft (slash - 1) rest);
-  colon = strIndexOf ":" authority;
-  host = (case colon == 0 of True -> authority | False -> S.left (colon - 1) authority);
-  dflt = (case scheme == "https" of True -> 443 | False -> 80);
-  port = (case colon == 0 of True -> Ok dflt | False -> S.toInt (S.dropLeft colon authority));
-  case scheme == "http" or scheme == "https" of
-    False -> Err "unsupported scheme: {scheme}"
-  | True -> (case strlen host == 0 of
-        True -> Err "no host in the URL"
-      | False -> (case port of
-            Err _ -> Err "bad port in the URL"
-          | Ok p -> Ok { scheme = scheme, host = host, port = p, target = target })).
-
-overTcp q u = case TCP.connect u.host u.port of
-    Err why -> Err "{u.host}:{u.port}: {why}"
-  | Ok conn ->
-      head = strJoin "" (q.method :: " " :: u.target :: " HTTP/1.1\r\nhost: " :: u.host :: "\r\n"
-        :: renderHeaders q.headers :: "content-length: " :: str (strlen q.body)
-        :: "\r\nconnection: close\r\naccept-encoding: identity\r\n\r\n" :: q.body :: Nil);
-      sent = ST.write head conn;
-      got = (case sent of Err why -> Err why | Ok _ -> ST.readAll conn);
-      _ = ST.close conn;
-      (case got of Err why -> Err why | Ok raw -> parseResponse raw).
-
-# a whole reply: status line, headers, blank line, body (chunked or not)
-parseResponse : String -> Result { status : Int, headers : List (String, String), body : String } String .
-parseResponse raw = case strIndexOf "\r\n\r\n" raw of
-    0 -> Err "malformed reply (no end of headers)"
-  | at -> responseFrom (S.split "\r\n" (S.left (at - 1) raw)) (S.dropLeft (at + 3) raw).
-responseFrom ls body = case ls of
-    Nil -> Err "empty reply"
-  | line :: hs -> (case S.split " " line of
-        _ :: code :: _ -> (case S.toInt code of
-            Err _ -> Err "malformed status line: {line}"
-          | Ok status -> finish status (parseHeaders hs) body)
-      | _ -> Err "malformed status line: {line}").
-finish status hs body = case headerGo "transfer-encoding" hs of
-    O.Some enc -> (case S.contains "chunked" (S.toLower enc) of
-        True -> (case dechunk body 1 Nil of Ok b -> Ok { status = status, headers = hs, body = b } | Err e -> Err e)
-      | False -> Ok { status = status, headers = hs, body = body })
-  | O.None -> Ok { status = status, headers = hs, body = body }.
-
-# "<hex size>\r\n<bytes>\r\n" ... "0\r\n"
-dechunk : unsafe String -> Int -> List String -> Result String String .
-dechunk s i acc = case strIndexFrom "\r\n" s i of
-    0 -> Err "malformed chunked body"
-  | eol -> (case hexSize s i eol 0 of
-        O.None -> Err "malformed chunk size"
-      | O.Some n -> (case n == 0 of
-            True -> Ok (strJoin "" (rev acc Nil))
-          | False -> dechunk s (eol + 2 + n + 2) (substr s (eol + 2) n :: acc))).
-# hex digits in [i, e), stopping at a ";" extension
-hexSize : unsafe String -> Int -> Int -> Int -> O.Option Int .
-hexSize s i e acc = case i >= e or charAt s i == 59 of
-    True -> O.Some acc
-  | False -> (case hexVal (charAt s i) of O.None -> O.None | O.Some d -> hexSize s (i + 1) e (acc * 16 + d)).
-hexVal : Int -> O.Option Int .
-hexVal c = case c >= 48 and c <= 57 of
-    True -> O.Some (c - 48)
-  | False -> (case c >= 97 and c <= 102 of
-        True -> O.Some (c - 87)
-      | False -> (case c >= 65 and c <= 70 of True -> O.Some (c - 55) | False -> O.None)).
+      | False -> C.request q).
 
 # https: curl does the TLS.  -i puts the reply's head in front of the body, so
 # the same parser reads it; the request body goes in on stdin, never on a
