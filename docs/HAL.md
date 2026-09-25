@@ -36,7 +36,8 @@ operating system.
 - **esp-idf** (rv32, ESP32-P4): the machine is an RTOS. A hart is a FreeRTOS
   task pinned to a core; park and wake are task notifications; the heap is one
   PSRAM block; blocking IDF calls run as jobs whose completion is an interrupt
-  (`Sys.irqBind`). Board features are `Esp.*` signatures in `std/esp`. The
+  (`Sys.irqBind`). Board features are platform libraries (`std/wifi`,
+  `std/ble`, `std/gpio` over `platform/esp-idf/`); the chip is `std/esp`. The
   trade-offs are in ESP-IDF.md.
 
 ## 3. The HAL is QOS's

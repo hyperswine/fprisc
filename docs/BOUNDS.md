@@ -166,19 +166,44 @@ In rough order of worth. None of these is silent.
 The ESP-IDF machine layer's own limits; why the layer looks as it does is
 docs/ESP-IDF.md. Silent ones first, by the harm order above.
 
+Fixed on 2026-09-25: a Wi-Fi password of 1-7 characters used to bring the
+access point up OPEN; the scan kept only 40 networks; SSIDs, passwords and
+BLE names past the protocols' sizes were truncated; a 32-byte SSID and a
+64-digit key were cut by one byte; scanned SSIDs could carry a tab into the
+rows. Now `""` is the only way to ask for an open network, every other length
+outside 8-63 characters (or 64 hex digits) is refused by name, as are SSIDs
+outside 1-32 bytes and BLE names outside 1-26; the scan answers every record
+the driver kept, and scanned SSIDs have tabs and newlines replaced.
+`machine/esp-idf/examples/ap-server.fpr` checks the refusals on the board.
+The BLE scan's table of devices heard (96, the rest reported as a count) now
+grows (`platform/esp-idf/bluetooth.c`); running out of memory is the scan's
+error.
+
 | Limit | At the edge | Direction |
 |---|---|---|
-| Wi-Fi AP password shorter than 8 bytes (`wifi.c do_ap`) | **silent, security**: the access point comes up OPEN instead of refusing | refuse a 1-7 byte password; an open AP only for an empty one, by name |
-| Wi-Fi scan capped at 40 records (`wifi.c do_scan`) | **silent**: networks past the 40th are dropped | take `esp_wifi_scan_get_ap_num`'s count as it is |
-| SSID past 32 bytes, AP password past 64, BLE name past 26 (`text_of`, `ble.c`) | **silent truncation** | the limits are the protocols' (802.11 SSID 32, WPA2 passphrase 63, a legacy advertisement's 31 bytes), so they stay; reaching them should be a refusal |
-| SSIDs are not sanitized for the tab-separated rows | **silent**: a tab or newline in a scanned SSID shifts the row's fields | escape, as `ble.c` does for names, or return typed rows (ESP-IDF.md, decision 8) |
-| `JOB_SLOTS 64` jobs in flight (`wifi.c`) | named panic "every job slot is in use" | grow the slot table; the interrupt range 900-963 grows with it |
-| job queue of 16 (`wifi.c jobs_start`) | a refusal: the result is the row "error, the job queue is full" | a queue that grows, or a broker per radio |
-| `SEEN_MAX 96` devices per BLE scan (`ble.c`) | reported: a final row "more, N not kept" | grow the table |
-| AP `max_connection 4`, channel 6 (`wifi.c`) | fixed, not exposed | parameters of `wifiAp`, checked against what the C6 accepts |
+| `JOB_SLOTS 64` jobs in flight (`platform/esp-idf/jobs.c`) | named panic "every job slot is in use" | grow the slot table; the interrupt range 900-963 grows with it |
+| job queue of 16 (`platform/esp-idf/jobs.c`) | a refusal: the result is the row "error, the job queue is full" | a queue that grows, or a broker per radio |
+| AP `max_connection 4`, channel 6 (`platform/esp-idf/wifi.c`) | fixed, not exposed | parameters of `wifiAp`, checked against what the C6 accepts |
 | `FPR_ESP_KEEP_KB 192`, and 1/16 of PSRAM, left to IDF (`hal.c`) | fixed at boot; the runtime's heap never grows or shrinks | a heap that grows through `heap_caps_malloc` on demand |
 | `ESP_IRQ_MAX 1024` (`hal.c`) | never reached: `Sys.irqBind` refuses a source past the runtime's `IRQ_MAX` first | legitimate: mirrors `IRQ_MAX` |
-| Hart task stack 16 KiB, broker 8 KiB (`main.c`, `wifi.c`) | C stack overflow, caught only by FreeRTOS's own checks | legitimate while only the hart loop and the broker's IDF calls run on them |
+| Hart task stack 32 KiB, broker 8 KiB (`main.c`, `wifi.c`) | C stack overflow, caught only by FreeRTOS's own checks | legitimate: the hart loop, and file calls borrowing the idle part of it (below) |
+| `FPR_ESP_CSTACK_NEED 8192` bytes of hart stack for a file call (`hal.c fpr_esp_cstack`) | named panic "no internal stack room for a file operation" | legitimate: sized for FAT + wear levelling + esp_flash; raise `FPR_ESP_HART_STACK` if it is ever reached |
+| actor stack overrun past the 64 KiB headroom, by C code (`hal.c hal_actor_stack`) | **silent** by default: the write lands in the neighbouring heap block. With `FPR_ESP_STACK_GUARD=1` it is a named fault (a watchpoint on the segment's lowest 32 bytes), at about 64% of compute speed (fib 27: 251 ms against 160) | a guard that costs nothing (the P4's PMP binds machine mode only when locked, so it cannot follow the running actor) |
+| `FPR_ESP_FS_MAX_FILES 16` open files (`fs.c`) | expected to be a refusal (`open` answers an Err from the VFS); not yet exercised on the board | the FAT VFS sizes this table at mount; a larger number costs internal RAM per slot |
+| 64 file descriptors in all (newlib's `FD_SETSIZE`), 32 of them sockets (`CONFIG_LWIP_MAX_SOCKETS`) | a socket past 32: `connect`/`listen` answer Err; a server's `accept` answers "busy: Too many open files in system", which `std/tcp` says on stderr and serves past; the client whose connection could not be taken sees it reset. Measured: 15 loopback connections at once (two sockets each), about 31 from other devices | legitimate: the platform's descriptor table, shared with FAT files and eventfds; raising sockets starves those |
+| lwIP accept mailbox, 32 (`CONFIG_LWIP_TCP_ACCEPTMBOX_SIZE`; default 6) | connections established but not yet accepted past it are reset by lwIP without a word | as many as there are sockets, so the socket count is reached first |
+| console input buffer 1 KiB (`main.c`, `uart_driver_install`) | input that arrives while no actor is reading, past 1 KiB, is dropped by the UART driver | a larger buffer, or a reader actor that drains the console into a mailbox; not yet exercised |
+| `storage` partition 8 MiB, app 4 MiB (`project/partitions.csv`) | FAT's "No space left on device"; an image past 4 MiB fails the build's size check | legitimate for now: IDF 5.3 cannot address this board's flash past 16 MiB |
+
+## Found along the way: an accept loop that died (2026-09-25)
+
+`std/tcp`'s `serve` and `serveOn` ended on ANY accept failure other than
+"again", so a server that ran out of file descriptors under load (EMFILE on
+posix, ENFILE on ESP-IDF) stopped serving for good. `Os.accept` now marks a
+shortage that passes -- out of descriptors or buffers, a client that gave up
+first -- as `busy: <why>`; the loops say it on stderr, back off 20 ms and keep
+serving. A closed listener still ends them. Seen on posix under `ulimit -n 40`
+and on the board past 32 sockets.
 
 ## A graceful fallback
 

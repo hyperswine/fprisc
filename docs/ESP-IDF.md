@@ -139,13 +139,19 @@ layout (`FPR_FLD` below). It also needs a type contract per result.
 Anywhere else it fails at link time on the missing `fpr_g_` names, which is
 the matrix's rule, not a clear message.
 
-### 10. The build runs outside `fpr build`
+### 10. The build runs outside `fpr build` (revised 2026-09-25)
 
 `machine/esp-idf/build.sh` compiles the program, copies the generated
 units, then hands over to `idf.py`. **Alternative:** `fpr build
 --system=esp-idf` driving `idf.py` itself. That would pull CMake, the IDF
 Python environment and the component manager into `fpr`. **Cost:** two
 entry points, and `fpr run` means nothing for this system.
+
+**Revised:** `fpr build` and `fpr run` now take `--system=esp-idf` and hand
+over to `build.sh` and `run.sh`. So the IDF tooling stays out of `fpr`, and
+there is one entry point. `fpr run` flashes the board and becomes its
+console (`console.py`): stdout, stdin and the exit status are the program's,
+as for a posix program. `tests/check_esp_board.py` is built on it.
 
 ## Workarounds that exist only because of ESP-IDF
 
@@ -156,8 +162,8 @@ delete when its cause goes away.
 |---|---|---|---|
 | Hardware stack guard off | `sdkconfig.defaults` | It checks `sp` against the FreeRTOS task's stack, and actors run on their own stacks, so every switch looked like an overflow | IDF's overflow check is gone for hart tasks |
 | Idle-task watchdog checks off | `sdkconfig.defaults` | A CPU-bound hart keeps IDLE off its core (decision 2) | A hung hart is not reported |
-| No stack guards | `hal.c`: `hal_stack_guard` is a no-op | No MMU; the P4's PMP or a debug watchpoint would be the tool, and neither is wired up | FP-RISC code checks its own stack window and grows it. C code that overruns an actor stack corrupts the block below, silently |
-| ESP-Hosted buffers in PSRAM | `sdkconfig.defaults`: `MEMPOOL_PREFER_SPIRAM` | ESP-Hosted initialises in a C constructor, before the scheduler frees the startup stacks. Only about 110 KB of internal RAM exists then, and its buffers used it all, so FreeRTOS put its idle stacks in RTC RAM and asserted | Transport buffers are in slower memory |
+| No stack guards by default | `hal.c`: `hal_stack_guard` is a no-op; `hal_actor_stack` arms a watchpoint only with `FPR_ESP_STACK_GUARD=1` | No MMU, so no guard pages; an armed store watchpoint made compute take 57% longer (measured: fib 27, 251 ms against 160) | FP-RISC code checks its own stack window and grows it, keeping 64 KiB of headroom below. C code that overruns an actor stack by more than that corrupts the block below, silently, unless the build turned the guard on |
+| ESP-Hosted buffers in PSRAM | `sdkconfig.defaults`: `MEMPOOL_PREFER_SPIRAM` | ESP-Hosted initialises in a C constructor, before the scheduler frees the startup stacks. Only about 110 KB of internal RAM exists then, and its buffers used it all, so FreeRTOS put its idle stacks in RTC RAM and asserted | Transport buffers are in slower memory (Since the start moved to first use, after the scheduler, this is headroom rather than a boot necessity.) |
 | `sdmmc_req` log tag silenced | `main.c` | IDF 5.3's SDMMC driver assumes no SDIO and logs the C6 link's between-transfer interrupts as errors, dozens a second | A real SDMMC error, for example from an SD card added later, is silenced too |
 | BT controller start treated as optional | `ble.c` | The board's C6 firmware (version 0.0.0) ignores that RPC but already runs its controller | 5 s lost on first BLE use. A failed bring-up is remembered, so BLE never retries until reset |
 | `ESP_IDF_VERSION` exported by the build | `build.sh` | ESP-Hosted's Kconfig compares it, and IDF defines it only from 5.4 | Tied to how IDF's git tags are spelled |
@@ -286,7 +292,8 @@ mechanism, with the Wi-Fi and BLE jobs as its users.
    condition variables measure as fast on the board.
 3. Merge the job broker into the watcher mechanism.
 4. Move `wifi.c` and `ble.c` out of `machine/esp-idf` into platform
-   libraries with neutral std modules. GPIO and NVS follow.
+   libraries with neutral std modules. GPIO and NVS follow. (Done for Wi-Fi,
+   BLE and GPIO on 2026-09-25, below; NVS not yet.)
 5. Sockets over lwIP. This needs station mode, which waits on how
    credentials are supplied.
 
@@ -512,6 +519,263 @@ fallback cancellation. The tests establish coordinated teardown and reuse;
 they do not establish arbitrary concurrent stop/register safety or automatic
 actor-exit cleanup.
 
+## Access point server, files and the internal C stack (2026-09-25)
+
+**The access point's password rule.** `wifiAp` now refuses by name any
+password that is not `""` (an open network, by request only), 8-63
+characters, or 64 hex digits, and any SSID outside 1-32 bytes. A 1-7
+character password used to bring the access point up open. Refusals are
+decided at submission and answered as an error row through the ordinary job
+path, so nothing reaches the radio. The scan's 40-network cap, the silent
+truncation of SSIDs, keys and BLE names, and tabs in scanned SSIDs are gone
+too (BOUNDS.md).
+
+**`wifiAp` answers when the access point exists.** `esp_wifi_start` returns
+before the C6's AP_START event brings the interface up. A connect to
+192.168.4.1 made straight after the old answer failed with "Host is
+unreachable". The job now waits, bounded at 10 s and named if exceeded,
+until `esp_netif_is_netif_up`.
+
+**An HTTP server on the board's own network.**
+`machine/esp-idf/examples/ap-server.fpr` starts the access point with a
+random password, serves HTTP on port 80 of every interface through
+`std/tcp`, `std/stream` and `std/poller` (one actor per connection, a counter
+actor numbering requests), and checks itself through 192.168.4.1. On the
+board the refusals and the self-test pass, and so does the real thing: two
+stations joined over the air (the board's DHCP server gave them 192.168.4.2
+and .3), and a browser on one loaded the page. Its `GET /` and
+`GET /favicon.ico` were requests #2 and #3, each served by its own actor.
+The development Mac could not be the client: its only internet link is
+Wi-Fi, and joining the board's network would have dropped it. `std/http` itself cannot be
+used here yet: it imports `std/proc` for its HTTPS client (curl), which
+pulls process primitives the board does not have.
+
+**Files: FAT on flash at `/data`.** A custom partition table
+(`project/partitions.csv`) gives a 4 MiB app (Wi-Fi, BLE and the shared
+POSIX code together passed the default 1 MiB) and an 8 MiB FAT partition,
+all below the 16 MiB IDF 5.3 can address on this flash. `fs.c` mounts it
+through wear levelling before the runtime starts, formatting a blank one.
+The file primitives are the posix ones:
+
+- `os.c` is split into `os_fs.c` (read, list, stat, mkdir, remove, rename,
+  cwd) and `os_clock.c` (wall clock, time zone). The clock stays off the
+  board: today's epoch seconds do not fit a 31-bit Int, and newlib has no
+  `tm_gmtoff`, so a program asking for it fails at link time by name.
+- `base.c`'s whole-file builtins moved to `base_file.c`, away from argv,
+  exit and the environment.
+- `std/osfs` is the narrow primitive module; `std/file` and `std/dir` import
+  it (and `osio`) instead of `std/os`, so they no longer pull in processes.
+- Long file names are on (`CONFIG_FATFS_LFN_HEAP`): without them FatFs keeps
+  uppercase 8.3 names, so `big.bin` listed as `BIG.BIN`.
+
+Paths are absolute: IDF's VFS routes by prefix and has no working
+directory, so `"boots"` is "No such file or directory" where `"/data/boots"`
+is found. `machine/esp-idf/examples/files.fpr` passed on the board twice. The
+second run read the boot counter the first wrote, through a reflash. It
+covers a directory tree, append, info, rename, a 64 KiB streamed write
+(about 1.2 s) with an in-place patch, and 200 simultaneous appends from
+actors on both cores.
+
+**File calls leave the actor's stack.** Every flash operation asserts that
+its caller's stack is in internal RAM (IDF 5.3's
+`esp_task_stack_is_sane_cache_disabled`): the write disables the cache
+PSRAM is read through, and actor stacks are in PSRAM. So file primitives are
+marked `FPR_FN_CSTACK` (fpr.h). On ESP-IDF the mark is a wrapper that moves
+`sp` onto the idle part of the current hart task's own stack, below the
+hart loop's saved frame, calls the primitive, and moves back
+(`fpr_cstack_call` in ctx.S, `fpr_esp_cstack` in hal.c). It checks the room
+against the task's real stack start and panics by name if short. Everywhere
+else the mark is plain `FPR_FN`. The descriptor calls in `os_io.c` carry it
+too, since a descriptor may be a FAT file; sockets pay one stack switch.
+Hart task stacks grew from 16 to 32 KiB for this. The switch is safe because
+the call is synchronous: the actor cannot yield or migrate during it. This is
+also the general answer to decision 5's warning about PSRAM stacks and flash.
+
+Host regressions after these changes: `check_posix_facilities` (now eight
+facilities), `check_esp_tls`, `check_posix_watcher`, `check_base`,
+`check_std` and `check_machine` all pass.
+
+## Platform libraries and std/httpcore (2026-09-25)
+
+Step 4 of the order of work, and the HTTP split it needed.
+
+**`std/httpcore`.** `std/http` imported `std/proc` for its HTTPS client
+(curl), so any program using HTTP pulled in process primitives the board
+does not have. Everything but that transport is now `std/httpcore`: the
+types, parsing, the plain-HTTP client, `serve`, and a new `serveOn` that
+waits for connections and request bytes on a Poller. An `https://` URL there
+answers Err naming the missing TLS transport. `std/http` wraps it name for
+name and adds curl, so its callers (`std/live`, the tests, the service
+example) are unchanged and the std suite passes. The board's HTTP server
+example now uses `Http.serveOn`.
+
+**Platform libraries.** The hardware left the machine layer:
+
+| before | now |
+|---|---|
+| `machine/esp-idf/wifi.c` (broker and Wi-Fi) | `platform/esp-idf/jobs.c` (the broker, generic) and `platform/esp-idf/wifi.c` |
+| `machine/esp-idf/ble.c` | `platform/esp-idf/bluetooth.c` |
+| GPIO in `machine/esp-idf/esp.c` | `platform/esp-idf/gpio.c` (`esp.c` keeps core, ms, free heap, RNG) |
+| `Esp.wifiScan`, `Esp.bleScan`, `Esp.gpioLevel`, ... | `std/wifi`, `std/ble`, `std/gpio`, over the seams `WifiHost.*`, `BleHost.*`, `GpioHost.*` |
+| text rows returned to the program | typed records; the rows stay the C-to-FP-RISC wire, parsed in `std/job` |
+
+The std names say what the facility is, not whose. The primitive seams have
+their own `*Host` names so they never collide with the natural alias
+`Wifi = use "std/wifi"`. Another platform supplies the same seam to give
+the same library a backend (BlueZ, nl80211, libgpiod on Linux).
+
+**The broker no longer names its clients.** A job carries its library's own
+`run` function instead of a kind the broker switches on. Nothing but a
+program's own imports references a platform library, so the linker leaves
+out what a program does not use. Measured on the board, same tree, one build
+directory:
+
+| example | image | Wi-Fi code | NimBLE |
+|---|---|---|---|
+| `cores.fpr` | 859 KB | no | no |
+| `gpio.fpr` | 891 KB | no | no |
+| `ble.fpr` | 945 KB | no | yes |
+| `wifi.fpr` | 982 KB | yes | no |
+| `posix-poller.fpr` | 1010 KB | no | no |
+| `files.fpr` | 1039 KB | no | no |
+| `ap-server.fpr` | 1161 KB | yes | no |
+
+Before, every image carried both (about 1.1 MB for `cores.fpr`). ESP-Hosted
+itself still starts at boot in every image. Its initialisation is a C
+constructor, so a radio-free program still brings up the SDIO link to the C6.
+
+The BLE scan's device table now grows instead of stopping at 96, and a
+device without a name has `name = ""` rather than `"-"`.
+
+All seven examples passed on the board after the change: `cores`, `gpio`,
+`files`, `wifi`, `ble`, `posix-poller` and `ap-server`. That covers typed
+Wi-Fi scan and access point, typed BLE scan and a refused over-long name,
+the `std/httpcore` self-test, and the watcher and TCP lifecycle checks.
+
+## The radio link on first use, and the Base environment (2026-09-25)
+
+**ESP-Hosted starts when a program first uses the radio.** Its CMakeLists
+links it `WHOLE_ARCHIVE` and it starts from a C constructor, so every image
+used to reset the C6 and open the SDIO link before `app_main`, while only
+about 110 KiB of internal RAM was usable. The link step now wraps
+`esp_hosted_init` (`-Wl,--wrap`). The constructor's call, made before the
+scheduler runs, does nothing. `platform/esp-idf/radio.c` starts the link
+from the broker on the first Wi-Fi or BLE call: `esp_hosted_init`, then
+`esp_hosted_connect_to_slave` (which resets the C6 and initialises the SDIO
+card; at boot the first `esp_wifi_*` call used to reach it on its own), then
+a bounded wait for `ESP_HOSTED_EVENT_TRANSPORT_UP`. On the board the link is
+up about 2 s after the first call. A program without `std/wifi` or `std/ble`
+never touches the C6: the console example's boot log has no ESP-Hosted
+start at all. Arguments refused at submission (the access point's password
+rule) are answered without starting the link.
+
+**The Base environment.** `machine/posix/base.c` now links on the board as
+it is, so `std/program` works unchanged:
+
+- `Sys.args` is `[]`: the ESP-IDF main supplies an empty command line.
+- `Sys.env` answers `Err "unset"`: newlib's environment is empty.
+- `Sys.stderr` writes to the console. The copy in `esp.c` is gone.
+- `Sys.timeUs` is shared too. It computed `sec * 1000000` in a machine
+  word, which overflows on rv32; it now counts in 64 bits and wraps modulo
+  2^30 where the word is 32 bits.
+- `Sys.readLine` reads the serial console. `main.c` installs the UART
+  driver: without it IDF's stdin does not wait, and every read is
+  end-of-input at once. A read blocks the hart that makes it, as reading
+  stdin blocks a hart thread on posix; the other core keeps running. A
+  terminal's Enter (CR) becomes `\n`. The input FIFO is flushed at start,
+  because the receive line glitches during reset and a `0xFF` led the
+  first line read.
+- `Sys.exit` ends the program. `hal_poweroff` used to print and return,
+  so an exit mid-program carried on. It now suspends the other harts and
+  sleeps for good; IDF's own tasks keep running until a reset.
+
+`machine/esp-idf/examples/console.fpr` uses only `std/program` and runs
+unchanged under `fpr run` on this Mac (status 3) and on the board, driven
+over the serial port. The board run echoed three lines including UTF-8,
+kept core 1's heartbeat printing while core 0 waited for input, and ended
+with status 3. After the exit it printed nothing more: not the line after
+`Program.exit`, and no further heartbeat.
+
+## One entry point, and a hardware suite (2026-09-25)
+
+`fpr build` and `fpr run` take `--system=esp-idf` (decision 10, revised).
+`fpr run` flashes the board and becomes the program's console
+(`machine/esp-idf/console.py`). Stdout is the program's output, stdin is
+typed into the board, and the exit status is the program's, read from the
+line the board prints when the program ends. A board program therefore runs
+under `fpr run` as a posix one does: `examples/console.fpr` exits 3 on both,
+with the same output. The difference is that the board has one console, so
+stderr lines arrive on stdout.
+
+`tests/check_esp_board.py` runs every example on an attached board this
+way. It checks each one's printed results and exit status, and skips
+cleanly when no board is attached. Its first full run passed all eight:
+
+- `cores`, `gpio`, `files` and `console`
+- `posix-poller`, with the loopback socket smoke build
+- `wifi` and `ble`
+- `ap-server`, stopped by timeout because it serves forever
+
+## Socket capacity, a server that kept dying, and a stack guard (2026-09-25)
+
+**lwIP started only with Wi-Fi.** `esp_netif_init` starts lwIP's own task,
+and only the Wi-Fi library called it. So a program using `std/tcp`
+without `std/wifi` (a loopback server, or a smoke build without the probe)
+hit lwIP's "Invalid mbox" assert on its first socket and reset the board.
+`machine/posix/os_net.c` now starts it once, on first use, on ESP-IDF
+(`fpr_esp_net_up`, which the Wi-Fi library shares so two first calls never
+both start it).
+
+**Capacity.** `machine/esp-idf/examples/load.fpr` opens N loopback
+connections at once in rounds, each held until the whole round is in:
+
+| setting | held at once | what failed |
+|---|---|---|
+| IDF defaults | 4 | 8 at once: 6 got in, 2 "reset by peer" |
+| 32 sockets, accept mailbox 6 | 4 | the same: the accept mailbox (6) was the limit |
+| 32 sockets, accept mailbox 32 | 12 | 16 at once: 15 got in; the 16th pair outran 32 sockets |
+
+Connections established but not yet accepted wait in a per-listener
+mailbox. Past it, lwIP resets them without a word; that was the "6 of 8".
+With 32 sockets (half of the platform's 64 descriptors) and a mailbox as
+large, the limit is the socket count itself. That is 15 loopback
+connections, two sockets each, or about 31 from other devices. BOUNDS.md
+has the numbers. Posix holds all 32 rounds.
+
+**A server stopped for good when descriptors ran out, on every system.**
+`std/tcp`'s accept loops ended on any accept error but "again". A server
+out of descriptors (EMFILE on posix, ENFILE on the board) therefore stopped
+serving, even once load fell. `Os.accept` now marks a shortage that passes
+(out of descriptors or buffers, or a client that gave up) as `busy: <why>`.
+The loops say it on stderr, back off 20 ms and keep serving. `check_base`
+covers it on posix under `ulimit -n 40`, and the board shows it past 32
+sockets.
+
+**A stack guard, opt-in.** The runtime tells the machine layer which stack
+segment the running actor is on (`hal_actor_stack`, a no-op by default):
+at switch-in, whenever the segment changes, and on return to the hart
+loop. On ESP-IDF, with `FPR_ESP_STACK_GUARD=1`, each core's watchpoint 0
+covers the lowest 32 bytes of that segment. C code that runs past the
+64 KiB headroom then stops the board with a named breakpoint exception
+instead of writing into the neighbouring heap block. `fpr run` reports it
+as the stack guard. It is opt-in because an armed store watchpoint slowed
+every store on the core:
+
+| build | fib 27 | 10,000 cross-core round trips |
+|---|---|---|
+| guard on | 251 ms | 340 ms |
+| guard off (default) | 160 ms | 293 ms |
+
+`examples/stack-guard.fpr`, with the probe build, nests 1 KiB C frames
+on an actor: 32 fit, and 200 are caught. The first version of that probe
+seemed to show 137 KiB of silent corruption, but GCC had turned its
+`x + deep(n - 1)` recursion into a loop and it never went deep. The probe
+now records its deepest frame, which keeps the recursion real.
+
+`tests/check_esp_board.py` now has ten checks, `load` and `stack-guard`
+added, and all pass. Host suites pass: base (10, the new accept test
+included), std, machine, facilities, ESP TLS.
+
 ## Left open
 
 - **Float on rv32.** A Float literal is split into 32-bit halves, and the
@@ -520,10 +784,11 @@ actor-exit cleanup.
   lacks. This needs a Float representation for 32-bit targets, a language
   decision.
 - **31-bit Int.** It is behind the masked clocks above.
-- **Station mode and remaining `std/os` facilities.** Shared sockets, streams
-  and the eventfd watcher pass loopback tests. External connectivity, mounted
-  filesystems, calendar-clock adaptation and public target consolidation remain.
-- **GPIO output.** `Esp.gpioOutput` and `Esp.gpioWrite` exist but have not
+- **Station mode and remaining `std/os` facilities.** Shared sockets, streams,
+  the eventfd watcher and files run on the board, and a browser on another
+  device has loaded a page from it over the board's access point. The calendar clock (blocked on 31-bit Int), processes
+  (none on this host) and public target consolidation remain.
+- **GPIO output.** `Gpio.output` and `Gpio.write` exist but have not
   been driven on the board. The board's safe pins are not yet identified.
 - **The fixed limits** of this machine layer are registered in BOUNDS.md.
   Several are silent, which the tree's rule does not allow.

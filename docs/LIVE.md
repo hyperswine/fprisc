@@ -136,7 +136,7 @@ Three things it needed that the driver did not give it directly:
   `Live.Emit sid "set" json` and a dozen lines of page script that put values
   into inputs by name. The event can arrive before the render that creates the
   input, so the script keeps a value pending until its input exists.
-- **Local time.** `Os.tzOffset` (new, `machine/posix/os.c`) and
+- **Local time.** `Os.tzOffset` (new, `machine/posix/os.c`, now `os_clock.c`) and
   `Clock.local`/`Clock.stamp`: entries are stored as UTC seconds and shown on
   the local clock.
 

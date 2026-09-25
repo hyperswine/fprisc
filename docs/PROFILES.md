@@ -117,8 +117,9 @@ system because what matters to FP-RISC differs:
 - There is no process: no command line, environment, exit status, `fork` or
   files by default, so most of `std/os` has nothing under it.
 - The things worth having are not POSIX at all: the second core, GPIO, the
-  radio through ESP-Hosted, NimBLE, NVS. They come as the `Esp.*` primitives
-  in `std/esp`, and blocking IDF calls run as jobs off the harts.
+  radio through ESP-Hosted, NimBLE, NVS. They come as platform libraries with
+  neutral names (`std/wifi`, `std/ble`, `std/gpio`, implemented in
+  `platform/esp-idf/`), and blocking IDF calls run as jobs off the harts.
 
 What it does share with `posix`: `runtime/` unchanged in design (the actors,
 the allocator, the deadlock detector), and the hart-as-thread shape (a

@@ -57,7 +57,8 @@ use `Map.equal` / `Map.equalBy` (and `Json.equal`).
 ## Base: the environment (the posix system)
 
 These stand on the primitives declared in `std/os.fpr` and implemented by
-`machine/posix/os.c`. On a system without them a program that imports these
+the facility files in `machine/posix` (`os_fs.c`, `os_clock.c`, `os_io.c`,
+`os_net.c`, `os_proc.c`, `os_watch.c`, `os_term.c`). On a system without them a program that imports these
 modules fails at LINK time on the `fpr_g_Os_` name: imports are the manifest.
 
 | module | what is in it |
@@ -86,7 +87,8 @@ clients run in one process, which is how the tests run them.
 | `std/json` | `Value = Null \| Boolean \| Integer \| Real \| Text \| Sequence \| Object`; `parse` (errors as `line 3, column 14: expected ':'`), `render`, `equal`, `field at asString asInt asBool asReal asList asObject isNull object strings quote`, and `fromWire toWire encode decode` for any type with a compiler-minted codec (`@Msg`, `@Model.field`: docs/PATHS.md). A `Real` keeps its TEXT: no float parsing to get wrong |
 | `std/decode` | flexible data into YOUR types: `string int bool number value succeed fail nullable field optional at list dict map andThen check oneOf map2..map5 andMap run fromString infer fields`. Errors name the path: `servers.1.tags.1: expected a string, found an integer` |
 | `std/config` | `load` combines defaults < a JSON file < `PREFIX_NAME` in the environment < `--name=value`, into a Value you decode; `positional` |
-| `std/http` | client: `get post request parseUrl parseResponse`; server: `serve text html json response header`. HTTP/1.1, lower-case header names, chunked decoding, one request per connection. **`https://` is fetched by running `curl`** (std has no TLS); where curl is missing the Err says so |
+| `std/http` | client: `get post request parseUrl parseResponse`; server: `serve serveOn text html json response header`. HTTP/1.1, lower-case header names, chunked decoding, one request per connection. **`https://` is fetched by running `curl`** (std has no TLS); where curl is missing the Err says so. Everything but the curl transport is `std/httpcore`, which this wraps name for name |
+| `std/httpcore` | the same API without HTTPS, so it needs sockets and no processes: a board (`--system=esp-idf`) serves HTTP with it. `serveOn poller` waits for connections and request bytes on a Poller; an `https://` URL answers Err saying there is no TLS transport |
 | `std/encoding` | `hex fromHex hexInt base64 fromBase64 url fromUrl query` |
 | `std/digest` | SHA-1 (for protocols that name it: `sha1 sha1Bytes`) and SHA-256 in FP-RISC: `sha256 sha256File` (streamed) and incremental `init update finish finishBytes`. About 1 MB/s: for files and configuration, not bulk data |
 | `std/log` | a logger is a VALUE: `toStderr toFile json levelOf debug info warn error`. `2026-09-20T03:14:15Z INFO  listening port=8080`, or one JSON object per line |
@@ -99,6 +101,22 @@ clients run in one process, which is how the tests run them.
 | `std/livejs` | the client script (~150 lines), served inline |
 | `std/actor` (additions) | `sendSure` / `askSure`: a send that is not lost (`send` never waits, and a refused request is somebody waiting forever); `boundary` / `tidy`: how a long-lived actor stays the same size |
 | `std/task` | `map mapBounded`: the same work on many inputs, an actor each, at most `n` at once, results in input order |
+
+## Platform libraries: what a board has beyond the language
+
+Neutral names for hardware, implemented per platform (today
+`platform/esp-idf/`, for `--system=esp-idf`). A program importing one links
+only where a platform provides it, and fails by name elsewhere; a program
+that does not import one does not carry its code (a board image without
+`std/ble` has no Bluetooth stack in it). docs/ESP-IDF.md has the design.
+
+| module | what is in it |
+|---|---|
+| `std/wifi` | `info scan startAp stations stop`, typed records (`{ ssid, rssi, channel, auth }` per network). The access point's password rule is the protocol's, refused by name: `""` is an open network, otherwise 8-63 characters or 64 hex digits |
+| `std/ble` | `scan ms` (address, rssi, name; strongest first), `advertise name ms` (1-26 bytes) |
+| `std/gpio` | `pins level info describe` (reading changes nothing), `input output write` (answer a Result) |
+| `std/esp` | the ESP32 chip itself: `core ms freeKb random` |
+| `std/job` | the seam under std/wifi and std/ble: blocking host work run off the harts, `run result rows field number parseAll one`. You do not normally use it |
 
 ## The acceptance programs
 
@@ -160,5 +178,5 @@ The design names three. Two exist, and both are driven by `tests/check_std.py`:
   cannot turn one failed task into an `Err`.
 - `receiveRes` waits for a message that is a `Result`; a bare tuple sent to it is
   never received, and the program ends in the deadlock detector.
-- `machine/posix/base.c` still copies paths into `char[1024]` and panics "path
-  too long"; `os.c` does not.
+- `machine/posix/base_file.c` still copies paths into `char[1024]` and panics
+  "path too long"; `os_fs.c` does not.
