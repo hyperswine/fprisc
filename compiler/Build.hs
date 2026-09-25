@@ -126,7 +126,7 @@ build p = do
     Nothing -> fromMaybe "cc" <$> lookupEnv "FPR_CC"
   let ctx = if System.Info.arch == "aarch64" then "ctx_a64.S" else "ctx_x64.S"
       core = [runtime </> f | f <- ["runtime.c", "actors.c", "bits.c", "vec.c", "sstr.c", "mod.c", "buddy.c"]]
-      posix = [machine </> "posix" </> f | f <- ["main.c", "hal.c", "base.c", "os.c"]] ++ [machine </> "unix" </> ctx]
+      posix = [machine </> "posix" </> f | f <- ["main.c", "hal.c", "park.c", "host.c", "base.c", "os.c", "os_io.c", "os_proc.c", "os_watch.c", "os_net.c", "os_term.c"]] ++ [machine </> "unix" </> ctx]
       -- x28 is RESERVED on aarch64: the context switch (machine/unix/ctx_a64.S)
       -- does not save it, because QOS apps keep the hart pointer there.  Without
       -- this flag the C compiler may hold a value in x28 across a call that

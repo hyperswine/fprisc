@@ -1,0 +1,69 @@
+# Hardware regression: shared POSIX sockets/descriptors plus IDF TLS on both harts.
+unsafe base.
+# std/os currently imports wrappers for every facility, including processes.
+# Declare only the shared primitives exercised by this hardware test.
+Os.listen : String -> Int -> Result Int String .
+Os.localPort : Int -> Result Int String .
+Os.accept : Int -> Result (Int, String) String .
+Os.connect : String -> Int -> Result Int String .
+Os.ready : Int -> Bool .
+Os.read : Int -> Int -> Result String String .
+Os.write : Int -> String -> Result Int String .
+Os.close : Int -> Result Unit String .
+Probe.tls : Unit -> Int .
+
+need result = case result of Ok x -> x | Err why -> error why.
+check yes why = if yes then Unit else error why.
+wait fd = if Os.ready fd then Unit else _ = Sys.sleepUs 1000; wait fd.
+readN fd n acc = if strlen acc >= n then acc else
+  _ = wait fd;
+  s = need (Os.read fd (n - strlen acc));
+  _ = check (strlen s > 0) "unexpected EOF";
+  readN fd n (acc + s).
+writeOne fd s = _ = check (need (Os.write fd s) == strlen s) "short write"; Unit.
+server listener boss me =
+  _ = check (Probe.tls Unit == 0) "server hart";
+  _ = wait listener;
+  (fd, peer) = need (Os.accept listener);
+  msg = readN fd 12 "";
+  _ = check (msg == "hello shared") "request mismatch";
+  _ = writeOne fd "shared reply";
+  _ = need (Os.close fd);
+  _ = need (Os.close listener);
+  _ = send boss 1;
+  0.
+client port boss me =
+  _ = check (Probe.tls Unit == 1) "client hart";
+  fd = need (Os.connect "127.0.0.1" port);
+  _ = writeOne fd "hello shared";
+  msg = readN fd 12 "";
+  _ = check (msg == "shared reply") "response mismatch";
+  _ = wait fd;
+  _ = check (need (Os.read fd 1) == "") "EOF mismatch";
+  _ = need (Os.close fd);
+  _ = check (Probe.tls Unit == 1) "TLS after IO";
+  _ = send boss 2;
+  0.
+probeWorker boss me =
+  a = Probe.tls Unit;
+  _ = Sys.sleepUs 1000;
+  b = Probe.tls Unit;
+  _ = send boss (a + b);
+  0.
+launch boss n = if n == 0 then Unit else _ = spawn (probeWorker boss); launch boss (n - 1).
+drain me n = if n == 0 then Unit else _ = receive me; drain me (n - 1).
+main =
+  me = myself 0;
+  _ = check (Sys.harts Unit == 2) "expected two harts";
+  _ = Probe.tls Unit;
+  listener = need (Os.listen "127.0.0.1" 0);
+  port = need (Os.localPort listener);
+  _ = spawnOn 0 (server listener me);
+  _ = spawnOn 1 (client port me);
+  _ = drain me 2;
+  _ = print "shared TCP: request/reply, readiness, EOF and close passed";
+  _ = (case Os.read -1 1 of Err _ -> Unit | Ok _ -> error "bad descriptor accepted");
+  _ = launch me 64;
+  _ = drain me 64;
+  _ = print "IDF TLS: both harts and 64 yielding actors passed";
+  "shared POSIX IO: done".

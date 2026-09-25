@@ -19,7 +19,7 @@
 # missed.  A descriptor that has gone bad counts as ready: the read says why.
 #
 # THE WAIT IS THE KERNEL'S.  The poller hands its descriptors to a host thread
-# outside the hart pool (Os.watchArm, machine/posix/os.c), which blocks in
+# outside the hart pool (Os.watchArm, machine/posix/os_watch.c), which blocks in
 # poll(2); when something is ready the thread raises an INTERRUPT, the IRQ hart
 # delivers it to a small waker actor bound with Sys.irqBind -- a device
 # interrupt, as on bare metal -- and the waker tells the poller.  So an idle
@@ -30,37 +30,32 @@
 # 5 ms: the first message after a quiet spell waited up to 5 ms for the next
 # tick.  That loop is still here, for a machine that cannot start a watcher.)
 
-OS = use "os".
+OS = use "oswatch".
 M = use "map".
-O = use "option".
 Ord = use "order".
 A = use "actor".
 
 Poller = Type (Poller Int).
 
-# Woke: the watcher found something ready (from the waker actor)
-Req = Type (Watch fd who | Woke).
-Note = Type (Readable fd).
+# Stop is owner-coordinated: all registration sends must finish before stop,
+# with no new waits or concurrent stops afterward. Existing waits are cancelled. Discard the Poller after stop; do not kill its actor.
+Req = Type (Watch fd who | Woke | Stop who | WakerStopped).
+Note = Type (Readable fd | Cancelled | Stopped).
 
 start : Unit -> Poller .
 start u = Poller (A.spawnWith (A.Dynamic 256) (fn self -> begin self)).
 
-# a watcher and its waker, or -- when the host cannot give one -- the ticking loop
 begin : unsafe Int -> Unit .
 begin me = case OS.watchOpen Unit of
     Err why ->
       _ = Sys.stderr "poller: no watcher ({why}); polling on a timer instead\n";
-      idle me (M.empty Ord.int) A.tidy0
+      loop me 0 0 (M.empty Ord.int) A.tidy0 100
   | Ok irq ->
       w = spawn (fn self -> waker me irq self);
-      # the waker is bound before anything is armed: an interrupt raised for an
-      # unbound source would be claimed and dropped
       m = receiveFrom me w;
       _ = drop m;
-      parked me irq (M.empty Ord.int) A.tidy0.
+      loop me irq w (M.empty Ord.int) A.tidy0 100.
 
-# the interrupt's actor: bound to the watcher's irq, it turns each delivery (a
-# plain Int) into a Woke for the poller -- a mailbox has one type
 waker : unsafe Int -> Int -> Int -> Unit .
 waker poller irq self =
   _ = Sys.irqBind irq self;
@@ -69,72 +64,110 @@ waker poller irq self =
 waking : unsafe Int -> Int -> Int -> Unit .
 waking poller irq self =
   m = receive self;
+  done = m == 0;
   _ = drop m;
-  _ = Sys.irqAck irq;
-  _ = A.sendSure self poller Woke;
-  waking poller irq self.
+  if done then
+    _ = unbind irq;
+    _ = A.sendSure self poller WakerStopped;
+    Unit
+  else
+    _ = Sys.irqAck irq;
+    _ = A.sendSure self poller Woke;
+    waking poller irq self.
+unbind irq = if Sys.irqUnbind irq then Unit else
+  _ = Sys.sleepUs 1000;
+  unbind irq.
 
-# blocked in `receive` between events: no timer, no tick.  Each turn takes
-# everything already queued (one arm for a burst of Watches), then hands the
-# watcher the descriptors still wanted.
-parked : unsafe Int -> Int -> M.Map Int Int -> A.Tidy -> Unit .
-parked me irq owners0 t0 = case A.tidy me (owners0, t0) of (owners, t) ->
-  m = receive me;
-  o2 = handle me irq m owners;
-  _ = drop m;
-  o3 = queued me irq o2;
-  _ = OS.watchArm irq (M.keys o3);
-  parked me irq o3 t.
-
-handle me irq m owners = case m of
-    Watch fd who -> M.insert fd who owners
-  | Woke -> notify me (OS.watchTake irq) owners.
-
-queued : unsafe Int -> Int -> M.Map Int Int -> M.Map Int Int .
-queued me irq owners = case receiveNow me of
-    Ok m -> o2 = handle me irq m owners; _ = drop m; queued me irq o2
-  | Err _ -> owners.
-
-# sleep until `fd` has something to read (or an end of stream to learn of)
-await : Int -> Poller -> Unit .
-await fd p = case p of Poller a ->
-  me = myself 0;
-  _ = A.sendSure me a (Watch fd me); # a lost Watch is a waiter that never wakes
-  m = receiveFrom me a;
-  _ = drop m;
-  Unit.
-
-# nothing to watch: block until somebody asks
-idle : unsafe Int -> M.Map Int Int -> A.Tidy -> Unit .
-idle me owners t =
-  m = receive me;
-  o2 = (case m of Watch fd who -> M.insert fd who owners | Woke -> owners);
-  _ = drop m;
-  ticking me o2 (M.keys o2) 100 t.
-
-# watching.  One request, or one poll, per turn; the QUIET turn -- nothing asked,
-# nothing ready -- builds no value at all, so it really does allocate nothing.
-# Turns that did something take the (amortized) boundary.
-ticking : unsafe Int -> M.Map Int Int -> List Int -> Int -> A.Tidy -> Unit .
-ticking me owners fds wait t = case receiveNow me of
-    Ok m ->
-      o2 = (case m of Watch fd who -> M.insert fd who owners | Woke -> owners);
-      _ = drop m;
-      tidied me o2 t
-  | Err _ -> (case OS.poll fds of
-        Nil -> _ = Sys.sleepUs wait; ticking me owners fds (if wait >= 5000 then 5000 else wait * 2) t
-      | ready -> tidied me (notify me ready owners) t).
-
-tidied : unsafe Int -> M.Map Int Int -> A.Tidy -> Unit .
-tidied me owners0 t0 = case A.tidy me (owners0, t0) of (owners, t) ->
-  (case M.isEmpty owners of
-      True -> idle me owners t
-    | False -> ticking me owners (M.keys owners) 100 t).
-
-# tell each owner once, and forget the descriptor
-notify : unsafe Int -> List Int -> M.Map Int Int -> M.Map Int Int .
+# All waiters for a descriptor are retained, including simultaneous readers.
+add fd who owners = M.insert fd (who :: M.getOr Nil fd owners) owners.
+tell me people note = case people of
+    Nil -> Unit
+  | who :: rest -> _ = A.sendSure me who note; tell me rest note.
 notify me ready owners = case ready of
     Nil -> owners
-  | fd :: r -> (case M.get fd owners of
-        O.Some who -> _ = A.sendSure me who (Readable fd); notify me r (M.remove fd owners)
-      | O.None -> notify me r owners).
+  | fd :: rest ->
+      _ = tell me (M.getOr Nil fd owners) (Readable fd);
+      notify me rest (M.remove fd owners).
+cancel me entries = case entries of
+    Nil -> Unit
+  | (_, people) :: rest -> _ = tell me people Cancelled; cancel me rest.
+
+# Host watcher blocks in receive; fallback polls only while descriptors exist.
+loop me irq w owners0 t0 wait = case A.tidy me (owners0, t0) of (owners, t) ->
+  if irq == 0 and not (M.isEmpty owners) then
+    case receiveNow me of
+      Ok m -> dispatch me irq w owners t m
+    | Err _ ->
+        fresh = notify me (OS.poll (M.keys owners)) owners;
+        _ = Sys.sleepUs wait;
+        loop me irq w fresh t (if wait >= 5000 then 5000 else wait * 2)
+  else dispatch me irq w owners t (receive me).
+
+dispatch me irq w owners t m = case m of
+    Stop who ->
+      _ = drop m;
+      _ = cancel me (M.entries owners);
+      shutdown me irq w who
+  | Watch fd who ->
+      fresh = add fd who owners;
+      _ = drop m;
+      drain me irq w fresh t
+  | Woke ->
+      fresh = if irq == 0 then owners else notify me (OS.watchTake irq) owners;
+      _ = drop m;
+      drain me irq w fresh t
+  | WakerStopped -> _ = drop m; drain me irq w owners t.
+drain me irq w owners t = case receiveNow me of
+    Ok m -> dispatch me irq w owners t m
+  | Err _ ->
+      _ = if irq == 0 then Unit else OS.watchArm irq (M.keys owners);
+      loop me irq w owners t 100.
+
+# Quiesce delivery and unbind before the IRQ slot can be reused. Drain queued
+# Watches and Wokes during this handshake so the waker cannot block sending.
+shutdown me irq w who = if irq == 0 then finish me who else
+  _ = OS.watchArm irq Nil;
+  _ = A.sendSure me w 0;
+  retiring me irq w who.
+retiring me irq w who =
+  m = receive me;
+  case m of
+    WakerStopped -> _ = drop m; _ = closeWatcher irq; finish me who
+  | Watch fd client -> _ = drop m; _ = A.sendSure me client Cancelled; retiring me irq w who
+  | Woke -> _ = drop m; retiring me irq w who
+  | Stop client -> error "Poller.stop: concurrent stops are not supported".
+closeWatcher irq = if OS.watchClose irq then Unit else
+  _ = Sys.sleepUs 1000;
+  closeWatcher irq.
+finish me who = case receiveNow me of
+    Ok m -> (case m of
+        Watch fd client -> _ = drop m; _ = A.sendSure me client Cancelled; finish me who
+      | Stop client -> error "Poller.stop: concurrent stops are not supported"
+      | _ -> _ = drop m; finish me who)
+  | Err _ -> _ = A.sendSure me who Stopped; Unit.
+
+awaitResult : Int -> Poller -> Result Unit String .
+awaitResult fd p = case p of Poller a ->
+  me = myself 0;
+  if A.sendSure me a (Watch fd me) then
+    m = receiveFrom me a;
+    result = case m of Readable _ -> Ok Unit | _ -> Err "poller stopped";
+    _ = drop m;
+    result
+  else Err "poller stopped".
+
+# Compatibility API: cancellation is explicit failure, never fake readiness.
+await : Int -> Poller -> Unit .
+await fd p = case awaitResult fd p of Ok u -> u | Err why -> error why.
+
+# The owner must ensure all registration sends have completed and prevent new
+# waits/concurrent stops before this call. Existing waits may finish normally
+# or receive cancellation. After return, discard the handle.
+stop : Poller -> Unit .
+stop p = case p of Poller a ->
+  me = myself 0;
+  if A.sendSure me a (Stop me) then
+    m = receiveFrom me a;
+    _ = drop m;
+    Unit
+  else Unit.

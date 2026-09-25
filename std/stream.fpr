@@ -18,7 +18,7 @@
 # would refuse to let you forget, is the intended end state (the design's
 # `File.read : Int -> File -> (File, ...)`); this is the usable first cut.
 
-OS = use "os".
+OS = use "osio".
 PL = use "poller".
 O = use "option".
 
@@ -144,8 +144,9 @@ readOn : PL.Poller -> Int -> Stream -> Result String String .
 readOn p n s = readOnGo p n (fd s).
 readOnGo : unsafe PL.Poller -> Int -> Int -> Result String String .
 readOnGo p n f =
-  _ = PL.await f p;
-  (case OS.read f n of
+  case PL.awaitResult f p of
+    Err why -> Err why
+  | Ok _ -> (case OS.read f n of
       Ok bytes -> Ok bytes
     | Err why -> (if why == "again" then readOnGo p n f else Err why)).
 

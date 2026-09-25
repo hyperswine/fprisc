@@ -1,0 +1,16 @@
+# Internal primitive seam: osio. Higher-level modules select only needed facilities.
+Os.open      : String -> String -> Result Int String .
+Os.ready     : Int -> Bool .
+Os.poll      : List Int -> List Int .
+Os.read      : Int -> Int -> Result String String .
+Os.write     : Int -> String -> Result Int String .
+Os.seek      : Int -> Int -> Result Int String .
+Os.close     : Int -> Result Unit String .
+
+open path mode = Os.open path mode.
+ready fd = Os.ready fd.
+poll fds = Os.poll fds.
+read fd n = Os.read fd n.
+write fd bytes = Os.write fd bytes.
+seek fd at = Os.seek fd at.
+close fd = Os.close fd.

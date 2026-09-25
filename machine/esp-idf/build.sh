@@ -21,4 +21,4 @@ export FPR_GEN_DIR="$OUT/gen"
 # from 5.4 on; on 5.3 it comes from here
 export ESP_IDF_VERSION="${ESP_IDF_VERSION:-$(cd "$IDF_PATH" && git describe --tags 2>/dev/null | sed -E 's/^v([0-9]+\.[0-9]+).*/\1/' || echo 5.3)}"
 [ -n "$ESP_IDF_VERSION" ] || ESP_IDF_VERSION=5.3
-idf.py -C "$HERE/project" -B "$OUT/idf" -DSDKCONFIG="$OUT/sdkconfig" -DFPR_ESP_DEBUG="${FPR_ESP_DEBUG:-0}" build
+idf.py -C "$HERE/project" -B "$OUT/idf" -DSDKCONFIG="$OUT/sdkconfig" -DFPR_ESP_DEBUG="${FPR_ESP_DEBUG:-0}" -DFPR_ESP_IO_SMOKE="${FPR_ESP_IO_SMOKE:-0}" build

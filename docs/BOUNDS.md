@@ -234,3 +234,25 @@ and the FP-RISC-level libraries in `std/`.
   to add now, in the HALs that front a raw serial line. See `C-REDUCTION.md`.
 - FIXED: `fpr run` / `fpr build` printed nothing when compilation was refused (the
   compiler's stdout, where type and safety errors go, was discarded).
+
+
+## Hosted readiness watchers (2026-09-25)
+
+`machine/posix/os_watch.c` now refuses opens above 24 simultaneous watchers,
+using IRQ IDs 1000–1023 within the current 1024-entry host/runtime IRQ tables.
+The former 64-slot allowance could create watchers whose interrupts were
+silently rejected. Failed starts now reclaim resources and consume no slot.
+Descriptor sets and ready lists grow dynamically; 64-entry local buffers are
+only stack optimizations, not truncation limits.
+
+The 24-watcher cap is still an implementation limit, not a desired API rule.
+`Os.watchClose` now starts asynchronous teardown: callers yield and retry
+while it returns False; True releases the slot. It frees descriptor buffers,
+wake descriptors and synchronization objects, and lets the detached worker
+exit. The caller must finish this handshake; abandoned handles are not collected.
+Dynamic IRQ allocation is still needed to remove the simultaneous cap.
+A released handle must not be reused, just like a closed Unix descriptor.
+This low-level operation does not cancel poller clients or unbind an IRQ actor;
+owner-coordinated `Poller.stop` now performs those steps, but concurrent
+stop/register safety and automatic actor-exit cleanup remain open. ESP-IDF registers up to 24 wake eventfds;
+actual socket capacity is separately controlled by the host's lwIP configuration.

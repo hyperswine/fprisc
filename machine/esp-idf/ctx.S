@@ -5,8 +5,9 @@
  * machine/virt/ctx.S, plus the float registers: under the ilp32f ABI that
  * ESP-IDF compiles with, fs0..fs11 are callee-saved, so C that called the
  * switch expects them back.  Word layout: 0 ra | 1 sp | 2 gp | 3 unused |
- * 4..15 s0..s11 | 16..27 fs0..fs11 (FPR_CTX_WORDS = 28).  tp is the running
- * hart's identity and is never saved (see machine/virt/ctx.S).  Nor is gp:
+ * 4..15 s0..s11 | 16..27 fs0..fs11 (FPR_CTX_WORDS = 28).  tp is IDF's task TLS
+ * pointer and is never saved into an actor context. An actor resuming on
+ * another hart must use that task's TLS, including its fpr_esp_hart slot.  Nor is gp:
  * it is IDF's global pointer -- code reaches globals relative to it -- and
  * the same in every context.  Restoring it is not harmless: a fabricated
  * first context has none (ctx_fab.c sets ra and sp), so a new actor started

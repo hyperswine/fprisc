@@ -32,7 +32,7 @@ void fpr_set_tp(fpr_hart_t *h);
 static void hart_task(void *arg) {
   int id = (int)(uintptr_t)arg;
   fpr_esp_hart_task[id] = xTaskGetCurrentTaskHandle();
-  fpr_hart_secondary(id); /* sets tp, waits for hart 0's boot, joins the loop */
+  fpr_hart_secondary(id); /* sets the TLS hart slot, waits for hart 0's boot, joins the loop */
   vTaskDelete(NULL);
 }
 
@@ -87,6 +87,10 @@ static void hart0_task(void *arg) {
 }
 
 void app_main(void) {
+#ifdef FPR_ESP_IO_SMOKE
+  extern void fpr_esp_io_probe_init(void);
+  fpr_esp_io_probe_init();
+#endif
   /* IDF 5.3's SDMMC host driver assumes no SDIO (its own comment says so): the
    * C6 link's late DMA receive-complete interrupts land between transfers and
    * are logged as errors, dozens a second, though every transfer completes.

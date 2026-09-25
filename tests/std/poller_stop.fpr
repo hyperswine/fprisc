@@ -1,0 +1,47 @@
+unsafe base.
+P = use "std/poller".
+TCP = use "std/tcp".
+OS = use "std/oswatch".
+check b why = if b then Unit else error why.
+need r = case r of Ok x -> x | Err why -> error why.
+# Publish a Watch before announcing registration. The owner waits for both
+# announcements before stop, so no new registration races the stop contract.
+waiter p fd boss me = case p of P.Poller a ->
+  _ = need (send a (P.Watch fd me));
+  _ = need (send boss me);
+  note = receiveFrom me a;
+  cancelled = case note of P.Cancelled -> True | _ -> False;
+  _ = drop note;
+  _ = need (send boss cancelled);
+  Unit.
+one p fd me =
+  a = spawn (waiter p fd me);
+  b = spawn (waiter p fd me);
+  _ = receiveFrom me a;
+  _ = receiveFrom me b;
+  _ = P.stop p;
+  _ = check (receiveFrom me a) "first waiter not cancelled";
+  check (receiveFrom me b) "second waiter not cancelled".
+cycles fd me n = if n == 0 then Unit else
+  p = P.start Unit;
+  _ = one p fd me;
+  q = P.start Unit;
+  _ = P.stop q;
+  cycles fd me (n - 1).
+reserve n = if n == 0 then Nil else
+  w = need (OS.watchOpen Unit);
+  w :: reserve (n - 1).
+release w = if OS.watchClose w then Unit else _ = Sys.sleepUs 1000; release w.
+releaseAll ws = case ws of Nil -> Unit | w :: rest -> _ = release w; releaseAll rest.
+main =
+  me = myself 0;
+  listener = need (TCP.listen "127.0.0.1" 0);
+  fd = case listener of TCP.Listener n -> n;
+  _ = cycles fd me 40;
+  # Exhaust the host watcher slots deliberately: exercise fallback shutdown too.
+  ws = reserve 24;
+  p = P.start Unit;
+  _ = one p fd me;
+  _ = releaseAll ws;
+  _ = need (TCP.stop listener);
+  print "poller stop: 80 start/stop cycles, duplicate waiters, fallback cancellation passed".

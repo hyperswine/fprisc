@@ -124,7 +124,8 @@ What it does share with `posix`: `runtime/` unchanged in design (the actors,
 the allocator, the deadlock detector), and the hart-as-thread shape (a
 FreeRTOS task pinned per core, parking on a task notification). Where the IDF
 APIs match -- lwIP sockets, the poller's readiness model -- `machine/posix`'s
-code is the model to lift, not a thing to link as a whole.
+descriptor and socket objects now link into ESP-IDF and pass a loopback
+hardware test. The full Unix machine layer is still not linked as a whole.
 The decisions and workarounds, one by one, are in ESP-IDF.md, along with a
 proposal for folding it into posix later: ESP-IDF as a second kind of posix
 host, with its hardware moved into platform libraries.

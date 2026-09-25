@@ -36,7 +36,7 @@ yet. After changing it, delete `BUILD_DIR/sdkconfig`.
 | runtime need | here |
 |---|---|
 | a hart | a FreeRTOS task pinned to its core, priority 1 (just above idle) |
-| the hart pointer | `tp`, which FreeRTOS saves per task (IDF 5.3 C uses no TLS on this path) |
+| the hart pointer | `fpr_esp_hart` in actual task TLS; IDF retains `tp` |
 | park / wake | task notification; the wait is capped at 20 ms or the hart's timer deadline |
 | the heap | the largest PSRAM block, less 1/16 left for IDF (about 30 MB) |
 | context switch | `ctx.S`: ra, sp, s0-s11, fs0-fs11. Not gp: a fabricated context has gp = 0 |
@@ -99,9 +99,75 @@ actor keeps running on both cores. Results are rows of text fields.
   Both need a Float representation for 32-bit targets.
 - **Int is 31 bits.** Literals must fit in ±2^30, so Unix time does not fit.
   Times here are milliseconds since boot.
-- **Radio coverage.** Wi-Fi station mode, sockets and `std/os` are not
-  wired up yet. lwIP's BSD sockets are the natural next step, and
-  machine/posix's socket and poller code is the model for them.
+- **Radio coverage.** Wi-Fi station mode is not wired up yet. Shared POSIX
+  sockets, streams and readiness are tested on loopback; external connectivity
+  and the remaining `std/os` facilities are still open.
 - **One radio job at a time.** A 5 s BLE scan delays Wi-Fi jobs behind it.
 - **PSRAM speed.** PSRAM runs at the default 20 MHz. 200 MHz is available in
   menuconfig but untested.
+
+## Shared POSIX I/O and host TLS milestone (2026-09-25)
+
+`--system=esp-idf` now uses a real TLS hart slot, preserving IDF's `tp`.
+Both generated code and C runtime reload it instead of caching its address
+across actor switches. Rebuild compiler, generated units and firmware
+together; the compiler uses a distinct `rv32-idftls1` unit cache tag.
+Bare-metal rv32 keeps its original hart-register convention.
+
+The IDF project links shared `machine/posix/os_io.c` and `os_net.c`.
+The following opt-in test initializes lwIP loopback and links a TLS probe:
+
+```sh
+make fpr
+. machine/esp-idf/env.sh
+FPR_ESP_IO_SMOKE=1 machine/esp-idf/build.sh machine/esp-idf/examples/posix-io.fpr /tmp/fpr-posix-io
+# Flash using the normal command above, with this build directory.
+```
+
+On ESP32-P4 rev 1.3 / IDF 5.3.2, a fresh flash/reset passed TCP request/reply
+between actors pinned to different cores, readiness polling, EOF, close,
+invalid-descriptor rejection, real C TLS checks on both harts and 64 yielding
+actors. The program reported `shared POSIX IO: done`, status 0, without a
+panic. This does not prove actor migration occurred in that run, sustained
+network load, Wi-Fi connectivity or filesystem support.
+
+The example declares only the primitives it uses: `std/os` currently pulls
+in wrappers for every facility, including unsupported processes. No fake
+process implementations are linked to make it pass. The next milestone uses
+normal library imports and a real readiness watcher, as described below.
+
+
+## Shared TCP / Stream / Poller milestone (2026-09-25)
+
+```sh
+. machine/esp-idf/env.sh
+FPR_ESP_IO_SMOKE=1 machine/esp-idf/build.sh machine/esp-idf/examples/posix-poller.fpr /tmp/fpr-posix-poller
+```
+
+Flash using the normal command with this build directory. This test uses the
+ordinary `std/tcp`, `std/stream` and `std/poller` modules. Their narrow primitive
+imports avoid unsupported process APIs; the shared watcher uses IDF eventfd
+and pthreads, with readiness delivered through the actor IRQ mechanism.
+
+A fresh flash/reset on the same P4 passed ten TCP exchanges, EOF, a direct RV32
+`receiveNow` regression and both-core TLS checks. It reported 40 readiness
+interrupts, `shared poller: done`, and status 0 without fallback polling.
+The board was left with this test firmware. No external network or filesystem
+was configured. Files/directories, calendar clock,
+terminal support and public target consolidation remain follow-up work.
+
+The smoke now first closes/reopens 80 low-level watchers, alternating idle
+and armed operation. A fresh flash/reset passed that exercise and the TCP
+checks above. `Os.watchClose` returns False while teardown is pending; yield
+and retry until True, then discard the handle. The 24 slots are reusable.
+This primitive releases host resources only. `Poller.stop` now supplies the
+coordinated library protocol: registered waiters are cancelled, the IRQ helper
+unbinds, and the watcher closes before shutdown is acknowledged. The owner must
+ensure registration sends have completed and prevent new waits/concurrent stops;
+discard the handle afterward. Automatic owner-exit cleanup remains open.
+
+A subsequent fresh flash/reset passed 80 library start/stop cycles with duplicate
+waiter cancellation, then ten TCP exchanges and explicit stop, with 40 readiness
+interrupts and status 0. `Stream.readOn` returns `Err "poller stopped"` on
+cancellation; direct callers can use `Poller.awaitResult`. See docs/ESP-IDF.md
+for the ownership contract and concurrent registration limitation.

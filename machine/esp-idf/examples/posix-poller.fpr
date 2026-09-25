@@ -1,0 +1,101 @@
+# Shared high-level TCP, Stream and Poller on ESP-IDF loopback.
+unsafe base.
+TCP = use "std/tcp".
+ST = use "std/stream".
+PL = use "std/poller".
+OS = use "std/oswatch".
+Probe.tls : Unit -> Int .
+Probe.wakes : Unit -> Int .
+need r = case r of Ok x -> x | Err why -> error why.
+check yes why = if yes then Unit else error why.
+readN poll conn n acc = if strlen acc >= n then acc else
+  chunk = need (ST.readOn poll (n - strlen acc) conn);
+  _ = check (strlen chunk > 0) "unexpected EOF";
+  readN poll conn n (acc + chunk).
+server listener poll boss me =
+  _ = check (Probe.tls Unit == 0) "server TLS";
+  fd = case listener of TCP.Listener n -> n;
+  _ = PL.await fd poll;
+  (conn, peer) = need (TCP.accept listener);
+  _ = check (readN poll conn 12 "" == "hello shared") "request mismatch";
+  _ = Sys.sleepUs 30000;
+  _ = need (ST.write "shared reply" conn);
+  _ = need (ST.close conn);
+  _ = need (TCP.stop listener);
+  _ = send boss 1;
+  0.
+client port poll boss me =
+  _ = check (Probe.tls Unit == 1) "client TLS";
+  _ = Sys.sleepUs 30000;
+  conn = need (TCP.connect "127.0.0.1" port);
+  _ = Sys.sleepUs 30000;
+  _ = need (ST.write "hello shared" conn);
+  _ = check (readN poll conn 12 "" == "shared reply") "reply mismatch";
+  _ = check (need (ST.readOn poll 1 conn) == "") "EOF mismatch";
+  _ = need (ST.close conn);
+  _ = send boss 2;
+  0.
+rounds me poll n = if n == 0 then Unit else
+  listener = need (TCP.listen "127.0.0.1" 0);
+  _ = spawnOn 0 (server listener poll me);
+  _ = spawnOn 1 (client (TCP.port listener) poll me);
+  _ = receive me;
+  _ = receive me;
+  rounds me poll (n - 1).
+release w = if OS.watchClose w then Unit else
+  _ = Sys.sleepUs 1000;
+  release w.
+# More than the concurrent watcher ceiling: prove slots/eventfds are reusable.
+# Nobody connects to this listener, so closing must interrupt a blocked poll.
+recycle fd n = if n == 0 then Unit else
+  idle = need (OS.watchOpen Unit);
+  _ = release idle;
+  armed = need (OS.watchOpen Unit);
+  _ = OS.watchArm armed (fd :: Nil);
+  _ = Sys.sleepUs 10000;
+  _ = release armed;
+  recycle fd (n - 1).
+waiter p fd boss me = case p of PL.Poller a ->
+  _ = need (send a (PL.Watch fd me));
+  _ = need (send boss me);
+  note = receiveFrom me a;
+  cancelled = case note of PL.Cancelled -> True | _ -> False;
+  _ = drop note;
+  _ = need (send boss cancelled);
+  Unit.
+one p fd me =
+  a = spawn (waiter p fd me);
+  b = spawn (waiter p fd me);
+  _ = receiveFrom me a;
+  _ = receiveFrom me b;
+  _ = PL.stop p;
+  _ = check (receiveFrom me a) "first waiter not cancelled";
+  check (receiveFrom me b) "second waiter not cancelled".
+cycles fd me n = if n == 0 then Unit else
+  p = PL.start Unit;
+  _ = one p fd me;
+  q = PL.start Unit;
+  _ = PL.stop q;
+  cycles fd me (n - 1).
+main =
+  me = myself 0;
+  # receiveNow must put the payload after the 8-byte header on RV32 too.
+  _ = need (send me 12345);
+  queued = need (receiveNow me);
+  _ = check (queued == 12345) "receiveNow payload layout";
+  _ = drop queued;
+  listener = need (TCP.listen "127.0.0.1" 0);
+  fd = case listener of TCP.Listener n -> n;
+  _ = recycle fd 40;
+  _ = cycles fd me 40;
+  _ = print "poller lifecycle: 80 stops, duplicate waiter cancellation passed";
+  _ = need (TCP.stop listener);
+  _ = print "watcher lifecycle: 80 idle/armed closes and reopens passed";
+  poll = PL.start Unit;
+  _ = rounds me poll 10;
+  _ = PL.stop poll;
+  wakes = Probe.wakes Unit;
+  _ = check (wakes > 0) "watcher did not raise any interrupts";
+  _ = print "shared libraries: 10 TCP exchanges through Stream.readOn and Poller.await passed";
+  _ = print "eventfd watcher: {wakes} readiness interrupts; TLS passed on both cores";
+  "shared poller: done".

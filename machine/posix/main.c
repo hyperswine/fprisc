@@ -6,9 +6,9 @@
  * ones.  Linux/macOS play the part of the board.
  *
  * This is the Base profile's host: an FP-RISC program compiled with
- * `fpr build` is this file, hal.c/base.c, the shared core,
+ * `fpr build` is this file, the hosted HAL and OS facility objects, the shared core,
  * and the program, linked into one ordinary executable. */
-#include "fpr.h"
+#include "host.h"
 #include <pthread.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -30,8 +30,6 @@ __thread uw fpr_x64_a6, fpr_x64_a7;
 /* the program's command line, served by Sys.args (base.c) */
 int fpr_posix_argc;
 char **fpr_posix_argv;
-
-void hal_fault_init(void); /* hal.c: this thread's alternate signal stack */
 
 void fpr_set_tp(fpr_hart_t *h); /* runtime.c: the hart register (x28 on AArch64) */
 

@@ -314,7 +314,7 @@ sizes, and code size.
 
 What the LiveView comparison pointed at, and what was done:
 
-- **Idle burn** (`machine/posix/hal.c`): an idle hart napped 200 us and looked
+- **Idle burn** (`machine/posix/park.c`): an idle hart napped 200 us and looked
   again -- 5,000 wake-ups a second per hart. It now parks on a condition
   variable (doorbell = `hal_ipi_send`, deadline = `hal_timer_arm`, the protocol
   `actors.c` already spoke), capped at 20 ms so no wake source can hang.
@@ -415,7 +415,7 @@ largest remaining cost of a fan-out (13-16 ms cold, ~4.4 ms warm).
 `std/poller` polled without blocking and slept between polls, backing off to
 5 ms, so the first message after a quiet spell waited for the next tick. It now
 hands its descriptors to a HOST thread outside the hart pool
-(`Os.watchOpen/watchArm/watchTake`, `machine/posix/os.c`) that blocks in
+(`Os.watchOpen/watchArm/watchTake`, `machine/posix/os_watch.c`) that blocks in
 poll(2). When something is ready the thread raises an interrupt: posix's
 `hal_irq_claim` is no longer a stub (`machine/posix/hal.c`, one pending flag per
 source, `hal_irq_raise` from any thread rings the IRQ hart's doorbell), and the

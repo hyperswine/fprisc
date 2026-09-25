@@ -62,3 +62,9 @@ ttySize u = Os.ttySize u.
 wallClock u = Os.wallClock u.
 # the local time zone's offset from UTC at that instant, seconds east
 tzOffset secs = Os.tzOffset secs.
+
+# Unsafe owned handle: stop arm/take first; retry after yielding while False.
+# True releases the handle, which must never be used again (IRQ slots reuse).
+# This does not unbind an IRQ actor or cancel Poller.await callers.
+Os.watchClose : Int -> Bool .
+watchClose w = Os.watchClose w.

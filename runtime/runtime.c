@@ -74,7 +74,11 @@ static void hart_init(int id) {
   h->rpos = 0;
 }
 
-#ifdef FPR_POSIX
+#if defined(FPR_ESP_IDF)
+/* Called only during hart startup, before this task can switch actors. */
+__thread fpr_hart_t *fpr_esp_hart;
+void fpr_set_tp(fpr_hart_t *h) { fpr_esp_hart = h; }
+#elif defined(FPR_POSIX)
 #if defined(__aarch64__) && ((defined(FPR_QOSAPP) && !defined(FPR_QOSAPP_SINGLE)) || (!defined(FPR_QOSAPP) && defined(FPR_HART_X28)))
 /* v3 (QOS apps) and hosted posix on AArch64: x28 is the hart register.  Clang wraps a global-
  * register-variable WRITE in a callee-save spill/reload (verified:

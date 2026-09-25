@@ -54,9 +54,9 @@ need both cores to be schedulable. **Cost:**
   watchdog checks are switched off (`sdkconfig.defaults`). A real hang on a
   hart is no longer caught by that watchdog.
 
-### 3. `tp` holds the hart pointer, overwriting IDF's thread pointer
+### 3. Original `tp` ownership (superseded on 2026-09-25)
 
-Generated code reaches the running hart through `tp` on every system, and
+The original port reached the running hart through `tp`, and
 FreeRTOS saves and restores the live `tp` per task, so a hart task simply
 sets its own (hal.c). **Alternative:** another register, or a call to
 `pvTaskGetThreadLocalStoragePointer` per access. `gp` is IDF's global
@@ -193,12 +193,14 @@ These landed in `runtime/` and the compiler. They are not ESP-specific: any
 
 ## Toward merging with posix
 
-Status: proposed, not implemented. Checked against the ESP-IDF 5.3.2
-source on 2026-09-23; nothing below has been built.
+Status: migration proposed; preparatory HAL and OS-facility splits are implemented
+(2026-09-25). The ESP-IDF build still uses its existing machine layer and
+`--system=esp-idf`. The review below checks the installed ESP-IDF 5.3.2 source;
+sharing the POSIX core on the board has not yet been validated.
 
 Decision 1 split ESP-IDF off because of what differed on the day: the ISA,
 the missing process, and the hardware. The first two describe the host, not
-the API the runtime talks to. ESP-IDF implements most of POSIX: pthreads
+the API the runtime talks to. ESP-IDF implements a useful subset of POSIX: pthreads
 over FreeRTOS, newlib's clocks, `poll`, lwIP's BSD sockets, and a VFS for
 files and the UART. So the long-run shape could be **one posix system with
 more than one kind of host**. The ISA would be a separate axis, and everything
@@ -208,9 +210,9 @@ hardware-specific would move out of the machine layer into platform libraries.
 
 | machine/posix uses | for | ESP-IDF 5.3 | in a merged tree |
 |---|---|---|---|
-| `pthread_create`, `pthread_cond_timedwait` | harts; park and wake | yes (the `pthread` component). Core pinning goes through `esp_pthread_set_cfg` | shared; pinning is a per-host line |
+| `pthread_create`, `pthread_cond_timedwait` | harts; park and wake | yes (the `pthread` component). Core pinning goes through `esp_pthread_set_cfg` | shared candidate; boot, task configuration and timed-wait semantics remain host-specific |
 | `clock_gettime`, sleeping | `hal_mtime`, host sleeps | yes (`newlib/time.c`); sleeping is `usleep` | shared |
-| `sysconf(_SC_NPROCESSORS_ONLN)` | how many harts | yes (`newlib/sysconf.c`) | shared; also retires the fixed `FPR_NHARTS=2` |
+| `sysconf(_SC_NPROCESSORS_ONLN)` | how many harts | yes (`newlib/sysconf.c`) | shared discovery; `FPR_NHARTS` remains the compiled capacity, not the online count |
 | `mmap` reservation, `madvise` | a heap that grows | none: no MMU | per-host: today's one `heap_caps` block |
 | `mprotect` guard pages, `sigaction` on SIGSEGV/SIGBUS, `sigaltstack` | stack guards; a named panic on overflow | none | per-host: nothing today; the PMP or a debug watchpoint later |
 | `fork`, `execvp`, `waitpid`, `kill`, `pipe` | `Os.run`, child processes | none (`kill` is a stub) | not provided: a program using `std/proc` fails at link time on its `fpr_g_Os_` name, the existing rule |
@@ -276,8 +278,9 @@ mechanism, with the Wi-Fi and BLE jobs as its users.
 ### Order of work
 
 1. Split `machine/posix` into the core and its per-host pieces with no change
-   in behaviour. The posix suites (`check_base`, `check_std`,
-   `check_machine`) are the guard.
+   in behaviour. The POSIX suites (`check_base`, `check_std`) are the guard.
+   `check_machine` additionally exercises bare-metal RV64 under QEMU; it is
+   a cross-system check, not a POSIX test.
 2. Build that core against ESP-IDF, replacing this layer's `hal.c` and
    `main.c` piece by piece. Keep the task-notification park unless
    condition variables measure as fast on the board.
@@ -287,12 +290,227 @@ mechanism, with the Wi-Fi and BLE jobs as its users.
 5. Sockets over lwIP. This needs station mode, which waits on how
    credentials are supplied.
 
-**What would not merge.** No MMU means no guard pages and no growing heap,
-so those stay per-host. `tp` still gets overwritten on hart tasks, and every
+**What would not merge.** No MMU means no virtual-memory guard pages or
+Unix-style address-space reservation. It does not prohibit growing a heap
+with additional allocations: that would require the runtime allocator to
+support additional spans (or a suitable contiguous extension). Heap supply
+and guards stay per-host. The original `tp` overwrite is now replaced by a TLS slot (milestone below); every
 workaround in the table above stays with the ESP-IDF host. The merge moves
 the boundary, it does not remove it. What it removes is a second copy of
 threads, park and wake, sockets and files, and hardware code sitting in a
 machine layer.
+
+## Migration review and first implementation (2026-09-25)
+
+The useful boundary is shared facilities plus explicit host capabilities.
+An ISA is not a host: `posix + rv32` alone cannot distinguish ESP-IDF from
+another RISC-V host. Preserve host identity in the build plan even if the
+public system spelling eventually becomes `posix`. Keep `esp-idf` working
+until the replacement builds and runs the same board programs.
+
+The initial change extracts existing Unix HAL code without changing its
+functions:
+
+- `machine/posix/hal.c`: console, clock and task-raised IRQ delivery.
+- `machine/posix/park.c`: the existing pthread doorbells and timed waits.
+- `machine/posix/host.c`: process termination, native context fabrication,
+  virtual-memory heap reservation and signal-based stack guards.
+- `main.c`: Unix boot, arguments and pthread creation, still host-specific.
+- Both `fpr build` and the Makefile link the new translation units.
+
+The subsequent OS extraction separates `os_proc.c` (run/exec), `os_net.c`
+(BSD sockets), `os_watch.c` (pthread/self-pipe readiness worker), and
+`os_term.c` (Unix terminal lifecycle). `os.c` keeps files, directories,
+clocks and generic descriptors. `os_value.h` shares only value construction,
+string conversion and buffer helpers. All 27 existing `Os.*` primitive
+symbols retain their implementation and owning facility. Both build paths
+link the separate objects; no runtime capability registry is introduced.
+
+This is preparatory work in step 1, not completion of the merge. `base.c`
+still contains host assumptions. ESP-IDF's source list and working firmware
+are unchanged.
+
+Validation of this first extraction on the macOS host: `make fpr`,
+`tests/check_base.py`, `tests/check_std.py` (including Logbook), and a
+`make posix` hello build/run passed. `tests/check_machine.py` passed under
+RV64 QEMU. No board was flashed or reset for this refactor, and these tests
+do not establish that the extracted code runs under ESP-IDF.
+
+Before step 2:
+
+1. **Timed waits are not interchangeable.** In IDF 5.3.2,
+   `components/pthread/pthread_cond_var.c` implements
+   `pthread_condattr_setclock` as a success-returning stub, ignores the
+   condition attributes, and uses `gettimeofday` for timed waits. Feeding
+   the Unix monotonic absolute deadline to it is wrong. Keep task
+   notifications until a correctly adapted wait is tested, including after
+   wall-clock adjustments. This is correctness work before benchmarking.
+2. **Preserve the host TLS ABI.** The original hart implementation overwrote `tp`.
+   Broader libc/pthread use requires a hart-pointer convention
+   that preserves IDF TLS, including across actor migration. Merely defining
+   `FPR_POSIX` changes the C hart accessor without changing generated rv32
+   code; it is not a complete port. The TLS implementation below now addresses
+   this boundary without defining `FPR_POSIX` for the whole ESP runtime.
+3. **Separate optional implementations at link time.** Leaving `fork` and
+   `exec` in the same object as sockets can cause unresolved references even
+   for a socket-only program. Process primitives are now extracted. Likewise,
+   today's CMake unconditionally lists Wi-Fi/BLE sources and dependencies;
+   import-driven component selection is proposed, not implemented. Unsupported
+   facilities need meaningful failures, not success-shaped stubs.
+4. **Keep capability contracts explicit.** An empty argument list can be
+   legitimate on a board, but it does not supply processes or a mounted
+   filesystem. Document which Base facilities are available and distinguish
+   unavailable APIs from temporarily unavailable services.
+5. **Share delivery before execution policy.** The readiness watcher and
+   blocking-job broker both signal actors, but have different lifetimes,
+   cancellation and result ownership. Reuse their notification mechanism
+   without assuming they are interchangeable services. An ISR cannot take
+   the POSIX IRQ registration mutex.
+
+Reference: [Espressif's POSIX/pthread support documentation](https://docs.espressif.com/projects/esp-idf/en/v5.3.2/esp32p4/api-reference/system/pthread.html).
+The timed-wait finding above is from the installed 5.3.2 implementation,
+not an inference from a list of available function names.
+
+## OS extraction validation (2026-09-25)
+
+- Base and std suites passed after the extraction, including child-process
+  timeout/environment/streams, sockets and readiness workers, terminal
+  restoration, clock behavior and the Logbook replay/restart test.
+- `tests/check_posix_facilities.py` compiles each facility separately and
+  checks primitive ownership. File/socket objects must not import process,
+  pipe, thread-creation or terminal-setup functions. Comparing native object
+  symbols before and after the split also preserved all 27 primitives.
+- An isolated ESP-IDF 5.3.2 CMake project for ESP32-P4 compiled `os_net.c`
+  with the installed cross-toolchain and SDK headers. This is object-build
+  evidence only: it does not link an FP-RISC firmware, initialize a network,
+  validate the hart/TLS ABI, or exercise sockets on the device.
+- `os.c` does not yet compile unchanged against that SDK. The first blocker
+  is `<poll.h>` (IDF provides `<sys/poll.h>`). A temporary probe with that
+  include corrected then fails on `tm.tm_gmtoff`, which newlib does not
+  expose. Clock representation/time-zone conversion needs a defined adapter
+  or further extraction, not a fabricated zero offset. Generic descriptors
+  also retain Unix SIGPIPE handling and require a behavior audit.
+
+Next: isolate/adapt clock and descriptor differences, settle the host-safe
+hart pointer, and then link a small shared-I/O firmware before exercising it
+on the board. Keep the existing target and task-notification parking during
+that work. No device was flashed or reset in this step.
+
+## Hardware milestone reached (2026-09-25)
+
+The board now runs an FP-RISC firmware using **shared POSIX descriptor and
+socket implementations**, with a host-safe hart accessor:
+
+- IDF keeps its `tp`. `fpr_esp_hart` is a real task-local pointer. C reads use
+  volatile inline TLS loads, preventing a cached slot address from following
+  an actor onto another hart. Generated ESP code uses matching TLS relocations;
+  bare-metal lowering is unchanged. Cache tags distinguish these ABIs.
+- `os_io.c` contains shared descriptor operations, with IDF's `sys/poll.h`
+  include and no Unix SIGPIPE handler on ESP. `os_net.c` preserves lookup
+  failure codes in an error string where `gai_strerror` is unavailable.
+- The opt-in `posix-io.fpr` firmware passed on the attached P4 after flash and
+  reset: TCP request/reply on loopback across two pinned actors, readiness,
+  EOF, close, bad-descriptor rejection, actual initialized C TLS on both harts,
+  and 64 yielding actors. It completed with status 0 and no observed panic.
+  The test does not instrument or prove a cross-hart actor migration.
+- The shared primitive boundary check, host Base suite and bare-metal QEMU
+  machine suite passed. `tests/check_esp_tls.py` checks generated TLS access,
+  unchanged bare-metal rv32 code and separation of cold/warm unit caches.
+
+There is no filesystem mount or radio connection in this test. `std/os`
+currently emits wrappers for all its primitives, so importing it still pulls
+unsupported symbols into the image: splitting C files alone is insufficient.
+The smoke declares only supported signatures. Calendar-clock representation,
+VFS behavior and public system/host selection remain unfinished. The watcher
+and facility-scoped libraries are covered by the next milestone below. The original task-notification park
+is retained. See the machine README for the reproducible build command.
+
+## Shared library and readiness milestone (2026-09-25)
+
+`std/tcp`, `std/stream` and `std/poller` now import narrow internal primitive
+modules (`osnet`, `osio`, `oswatch`). They build for IDF without pulling in
+unsupported process primitives. The existing `std/os` API remains available.
+
+The shared watcher uses an IDF eventfd to interrupt its blocking poll; Unix
+keeps its nonblocking pipe. Replacing the watched set advances a generation
+so results from an old in-flight poll cannot be delivered as current readiness.
+Failed watcher starts release their descriptors and synchronization objects
+without consuming a slot. Tests inject thread-creation failures and force a
+concurrent re-arm to check these paths on the desktop.
+
+Hardware testing also exposed a runtime RV32 bug: `receiveNow` wrote its
+payload at word index 1, overwriting the 8-byte result header on a 32-bit
+machine. It now uses the shared field accessor. The new smoke checks this
+result directly before exercising queued poller requests.
+
+A fresh flash/reset of `machine/esp-idf/examples/posix-poller.fpr` on P4 rev 1.3,
+IDF 5.3.2 passed ten loopback TCP request/reply exchanges through `Stream.readOn`
+and `Poller.await`, EOF/close and TLS checks on both pinned cores. It reported
+40 watcher readiness interrupts and status 0, with no fallback polling or
+panic. The desktop std suite, Base suite and facility/watcher checks passed.
+This establishes loopback integration, not external networking or load capacity.
+
+Watcher lifecycle remains incomplete at the library level: at most 24
+simultaneous watchers (IRQ IDs 1000–1023), and no automatic release when its
+owner exits. The low-level close operation is covered below. The previous 64-slot limit exceeded the IRQ controller's range; excess
+opens now fail explicitly instead of creating unusable watchers. See BOUNDS.md.
+
+## Explicit watcher teardown (2026-09-25)
+
+`Os.watchClose : Int -> Bool` now starts shutdown without joining a worker on
+an actor's hart. False means yield/sleep and retry; True means the worker has
+finished using its buffers and wake descriptor and the handle has been released.
+The slot can then be reused. Registry lookup and close use a shared lock order
+so an in-flight arm/take cannot race control-block reclamation.
+
+The caller must own the handle, stop issuing arm/take calls before closing,
+finish the handshake, and never use the handle after True. As with Unix fds,
+reusing a stale handle can address a new resource. Shutdown does not consume
+or cancel IRQ messages already delivered, unbind IRQ actors, or wake clients
+blocked in `Poller.await`. Use the coordinated library stop below instead of
+closing an active Poller's low-level handle directly.
+
+The attached P4 passed 80 idle/armed close/reopen cycles, then the ten shared
+TCP exchanges with 40 interrupts, both-core TLS checks and status 0. Desktop
+regressions cover descriptor counts, close with a poll result in flight,
+releasing all 24 simultaneous watchers, and existing poller behavior. The
+hardware test does not measure heap usage or prove long-term absence of leaks.
+
+## Coordinated Poller shutdown (2026-09-25)
+
+`Poller.stop : Poller -> Unit` now cancels registered waiters, disarms the
+watcher, asks its helper to unbind its IRQ, waits for the helper's acknowledgement,
+closes the host watcher, and acknowledges shutdown. The helper and poller return
+normally rather than being killed. The timer fallback supports the same stop.
+
+`Poller.awaitResult : Int -> Poller -> Result Unit String` distinguishes
+readiness from `Err "poller stopped"`. The existing `await` remains Unit-returning
+and raises that error on cancellation; `Stream.readOn` propagates Err and
+`Tcp.serveOn` returns the stop reason. Multiple waiters on one descriptor are
+retained instead of overwriting each other. Readiness can race cancellation:
+a waiter whose readiness was already processed may complete normally.
+
+This is an **owner-coordinated API**, not a concurrent mailbox-close primitive:
+all registration sends must have completed before stop, and no new waits or
+concurrent stops may begin. Discard the handle after stop returns. Killing the
+poller bypasses cleanup. A future atomic mailbox-close/monitor facility is
+needed to safely accept arbitrary registrations racing retirement; the current
+protocol deliberately does not claim that guarantee.
+
+`Sys.irqUnbind : Int -> Bool` is called by the bound actor itself. It clears
+the source atomically and returns False while the IRQ hart finishes delivery;
+the caller sleeps/yields and retries until True. It preserves the actor's IRQ
+wait flag if other sources still bind it. This is routing detachment, not
+hardware interrupt masking: disable/quiesce the producer separately. Rebinding
+a source must be coordinated with the previous recipient's completed unbind.
+
+The P4 passed 80 coordinated start/stop cycles, including duplicate waiter
+cancellation, followed by ten TCP exchanges and shutdown of that active poller
+(40 readiness interrupts, both-core TLS checks, status 0). The desktop standard
+library suite passed, including the new shutdown regression and forced timer
+fallback cancellation. The tests establish coordinated teardown and reuse;
+they do not establish arbitrary concurrent stop/register safety or automatic
+actor-exit cleanup.
 
 ## Left open
 
@@ -302,8 +520,9 @@ machine layer.
   lacks. This needs a Float representation for 32-bit targets, a language
   decision.
 - **31-bit Int.** It is behind the masked clocks above.
-- **Station mode, sockets, `std/os`.** lwIP's sockets are close to the
-  posix ones, so `machine/posix`'s socket and poller code is the model.
+- **Station mode and remaining `std/os` facilities.** Shared sockets, streams
+  and the eventfd watcher pass loopback tests. External connectivity, mounted
+  filesystems, calendar-clock adaptation and public target consolidation remain.
 - **GPIO output.** `Esp.gpioOutput` and `Esp.gpioWrite` exist but have not
   been driven on the board. The board's safe pins are not yet identified.
 - **The fixed limits** of this machine layer are registered in BOUNDS.md.

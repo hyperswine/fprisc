@@ -12,11 +12,8 @@
  *                              ISRs (hal_irq_raise), claimed by the IRQ hart
  *                              and delivered to an actor bound with Sys.irqBind
  *
- * tp is the running hart's pointer, as on bare metal.  IDF gives every task
- * a thread-local area in tp and saves and restores the LIVE tp with the task,
- * so a hart task that sets its own keeps it across preemption.  The price: C
- * code with `__thread` variables must not run on a hart task (IDF 5.3 has
- * none on this chip's path).
+ * IDF's tp remains its C TLS pointer. The runtime stores the current hart
+ * in fpr_esp_hart, a real TLS slot, and loads it afresh across actor switches.
  */
 #include "fpr.h"
 #include <stdio.h>

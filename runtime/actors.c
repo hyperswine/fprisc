@@ -947,6 +947,7 @@ __attribute__((weak)) void hal_irq_ack(uw src) { (void)src; }
  * table is simply that big (8 KiB).  It was 64, which was nobody's limit. */
 #define IRQ_MAX 1024
 static acb_t *irq_act[IRQ_MAX];
+static unsigned irq_inflight[IRQ_MAX];
 static volatile int irq_bound; /* gate: keep the hot loop MMIO-free */
 static uw irq_src_key;         /* the deliveries' stable channel key */
 
@@ -955,12 +956,33 @@ static V a_irq_bind(V irqv, V av) {
   if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("Sys.irqBind: target is not an actor");
   uw n = (uw)UNTAG(irqv);
   if (n == 0 || n >= IRQ_MAX) fpr_cpanic("Sys.irqBind: irq out of range");
-  irq_act[n] = (acb_t *)av;
+  __atomic_store_n(&irq_act[n], (acb_t *)av, __ATOMIC_SEQ_CST);
   ((acb_t *)av)->irq_target = 1;
   __atomic_store_n(&irq_bound, 1, __ATOMIC_RELEASE);
   hal_irq_open(n);
   return (V)&fpr_unit;
 }
+/* Self-unbind: only the running recipient may change its IRQ wait flag.
+ * False means an IRQ hart is finishing delivery; yield and retry. ACBs are
+ * immortal, but completion also lets a caller retire the recipient cleanly. */
+static V a_irq_unbind(V irqv) {
+  if (!ISINT(irqv)) fpr_cpanic("Sys.irqUnbind: irq must be an Int");
+  uw n = (uw)UNTAG(irqv);
+  if (!n || n >= IRQ_MAX) fpr_cpanic("Sys.irqUnbind: irq out of range");
+  acb_t *me = fpr_hart()->current;
+  acb_t *expected = me;
+  if (!__atomic_compare_exchange_n(&irq_act[n], &expected, 0, 0,
+                                  __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST) && expected)
+    fpr_cpanic("Sys.irqUnbind: not the bound actor");
+  if (__atomic_load_n(&irq_inflight[n], __ATOMIC_SEQ_CST)) return (V)&fpr_false;
+  int bound = 0;
+  for (uw i = 1; i < IRQ_MAX; i++)
+    if (__atomic_load_n(&irq_act[i], __ATOMIC_SEQ_CST) == me) { bound = 1; break; }
+  me->irq_target = bound;
+  return (V)&fpr_true;
+}
+FPR_FN(fpr_g_Sys_x2eirqUnbind, a_irq_unbind, 1);
+
 static V a_irq_ack(V irqv) {
   if (!ISINT(irqv)) fpr_cpanic("Sys.irqAck: irq must be an Int");
   hal_irq_ack((uw)UNTAG(irqv));
@@ -974,8 +996,12 @@ static void irq_drain(fpr_hart_t *h) {
   for (;;) {
     sw s = hal_irq_claim(); /* claims AND masks: no same-source spin */
     if (!s) return;
-    acb_t *a = ((uw)s < IRQ_MAX) ? irq_act[s] : 0;
-    if (a) fpr_send_as((uw)&irq_src_key, (V)a, TAG(s));
+    if ((uw)s < IRQ_MAX) {
+      __atomic_fetch_add(&irq_inflight[s], 1, __ATOMIC_SEQ_CST);
+      acb_t *a = __atomic_load_n(&irq_act[s], __ATOMIC_SEQ_CST);
+      if (a) fpr_send_as((uw)&irq_src_key, (V)a, TAG(s));
+      __atomic_fetch_sub(&irq_inflight[s], 1, __ATOMIC_SEQ_CST);
+    }
     /* unbound sources stay masked: nobody would ever ack them */
   }
 }
@@ -2043,7 +2069,7 @@ static V a_receive_now(V me) {
       V *ok = (V *)fpr_alloc(8 + sizeof(uw));
       ((hdr_t *)ok)->tid = T_RESULT;
       ((hdr_t *)ok)->var = 0;
-      ok[1] = m;
+      FPR_FLD(ok, 0) = m;
       return (V)ok;
     }
   }

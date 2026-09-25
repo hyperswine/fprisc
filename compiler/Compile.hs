@@ -589,7 +589,8 @@ compileMain = do
           qsingle = oQosSingle opts
           -- hosted posix AArch64 reads its hart from x28 too (runtime/fpr.h):
           -- a thread-local cannot follow an actor that migrates between harts
-          lower | a64 && qapp = deTlsQosAppA64 a64mac qsingle . lowerA64 a64mac
+          lower | system == "esp-idf" = espTls
+                | a64 && qapp = deTlsQosAppA64 a64mac qsingle . lowerA64 a64mac
                 | a64 && oBase opts = deTlsQosAppA64 a64mac False . lowerA64 a64mac
                 | a64 = lowerA64 a64mac
                 | x64 && qapp = deTlsQosApp . lowerX64
@@ -607,6 +608,7 @@ compileMain = do
                   else if a64 then "a64x28r" ++ show a64Rev
                   else if x64 && qapp then "qx64r" ++ show x64Rev
                   else if x64 then "x64r" ++ show x64Rev
+                  else if system == "esp-idf" then "rv32-idftls1"
                   else tgtName tgt
           tag = "g" ++ show codegenRev ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
@@ -799,3 +801,14 @@ splitOn c str = case break (== c) str of
   (a, []) -> [a]
   (a, _ : rest) -> a : splitOn c rest
 
+
+-- IDF owns RISC-V tp. Read its real TLS hart slot without a helper call,
+-- preserving every register except t0. Distinct cache tag above is mandatory.
+espTls :: String -> String
+espTls = unlines . concatMap lower . lines
+  where
+    lower line | words line == ["mv", "t0,", "tp"] =
+      [ "    lui t0, %tprel_hi(fpr_esp_hart)"
+      , "    add t0, t0, tp, %tprel_add(fpr_esp_hart)"
+      , "    lw t0, %tprel_lo(fpr_esp_hart)(t0)" ]
+    lower line = [line]

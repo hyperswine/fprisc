@@ -290,7 +290,20 @@ extern uw fpr_live_harts;
  * selection) and the hart loop (drain gating). */
 extern uw fpr_irq_hart;
 
-#if defined(FPR_QOSAPP_SINGLE)
+#if defined(FPR_ESP_IDF)
+/* IDF owns tp. Reload the hart from its TLS slot on EVERY read: an actor
+ * may resume on another task, so C must not cache a TLS address across yield.
+ * Only the result register is clobbered, just like the generated lowering. */
+extern __thread fpr_hart_t *fpr_esp_hart;
+static inline fpr_hart_t *fpr_hart(void) {
+  fpr_hart_t *h;
+  __asm__ volatile("lui %0, %%tprel_hi(fpr_esp_hart)\n"
+                   "add %0, %0, tp, %%tprel_add(fpr_esp_hart)\n"
+                   "lw %0, %%tprel_lo(fpr_esp_hart)(%0)"
+                   : "=&r"(h) :: "memory");
+  return h;
+}
+#elif defined(FPR_QOSAPP_SINGLE)
 /* Darwin's TLV model has no stable displacement from TPIDR_EL0.  A
  * single-hart loaded image instead owns one plain hart cell. */
 #define FPR_TLS

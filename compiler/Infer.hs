@@ -655,6 +655,7 @@ builtinEnv =
       -- device interrupts -> actor messages (actors.c irq bridge):
       -- bind a PLIC source to an actor (deliveries arrive as plain
       -- Int messages); ack re-arms the claimed-and-masked source
+      ("Sys.irqUnbind", mono (TFn tInt tBool)),
       ("Sys.irqBind", mono (TFn tInt (TFn tInt tUnit))),
       ("Sys.irqAck", mono (TFn tInt tUnit)),
       -- the CLINT timer bridge (actors.c tmr_drain): bind Timer.qa's

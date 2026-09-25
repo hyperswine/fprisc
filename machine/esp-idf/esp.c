@@ -83,3 +83,14 @@ static V g_write(V p, V level) {
   return TAG((sw)gpio_set_level((gpio_num_t)UNTAG(p), UNTAG(level) ? 1 : 0));
 }
 FPR_FN(fpr_g_Esp_x2egpioWrite, g_write, 2);
+
+/* Diagnostic stream used by shared libraries (including Poller fallback). */
+#include <stdio.h>
+static V s_stderr(V value) {
+  if (ISINT(value) || TID(value) != T_STR) fpr_cpanic("Sys.stderr: expected String");
+  const str_t *s = (const str_t *)value;
+  fwrite(s->bytes, 1, s->len, stderr);
+  fflush(stderr);
+  return (V)&fpr_unit;
+}
+FPR_FN(fpr_g_Sys_x2estderr, s_stderr, 1);

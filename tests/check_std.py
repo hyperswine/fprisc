@@ -111,3 +111,5 @@ with tempfile.TemporaryDirectory(prefix='fpr-live-') as t:
                        capture_output=True, text=True, timeout=600)
     assert p.returncode == 0 and p.stdout.strip() == 'ok', p.stdout + p.stderr
     print('examples/logbook.fpr, a live web app: two tabs on one model, each with its own search and page; add/edit/delete stamped by the clock; the edit form filled through the JS port; killed, replayed from the journal, restarted from the fields: PASS')
+
+check("poller_stop", label="Poller shutdown: repeated reuse, duplicate waiters and fallback cancellation")

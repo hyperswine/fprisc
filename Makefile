@@ -150,7 +150,7 @@ endif
 ifneq ($(filter aarch64 arm64,$(shell uname -m)),)
 POSIXFIXED = -ffixed-x27 -ffixed-x28 -DFPR_HART_X28
 endif
-RT_POSIX = $(MACHINE)/posix/main.c $(MACHINE)/posix/hal.c $(MACHINE)/posix/base.c $(MACHINE)/posix/os.c $(POSIXCTX)
+RT_POSIX = $(MACHINE)/posix/main.c $(MACHINE)/posix/hal.c $(MACHINE)/posix/park.c $(MACHINE)/posix/host.c $(MACHINE)/posix/base.c $(MACHINE)/posix/os.c $(MACHINE)/posix/os_io.c $(MACHINE)/posix/os_proc.c $(MACHINE)/posix/os_watch.c $(MACHINE)/posix/os_net.c $(MACHINE)/posix/os_term.c $(POSIXCTX)
 BIN ?= $(BUILD)/$(basename $(notdir $(PROG)))
 $(BUILD)/base.s: fprc $(PROG) core/prelude.fpr FORCE
 	@mkdir -p $(BUILD)

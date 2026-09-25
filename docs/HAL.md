@@ -100,3 +100,13 @@ honest types is now a change to a file in QOS rather than to the compiler.
   no lowering yet, so it cannot become an FP-RISC unit today.
 - **`qos/qos/appside/hal.c`** still mixes an app image's machine layer with
   its device bindings.
+
+
+### Detaching an IRQ recipient
+
+`Sys.irqUnbind : Int -> Bool` is called by the currently bound actor itself.
+It atomically removes routing to that actor; False means a delivery already in
+flight must finish, so yield/sleep and retry until True. Quiesce the producer
+separately and coordinate rebinding after this handshake. It does not mask a
+hardware source, cancel messages already delivered, or automatically detach
+actors that are killed. The hosted Poller uses it during coordinated shutdown.
