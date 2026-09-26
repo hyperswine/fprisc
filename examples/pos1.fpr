@@ -1,0 +1,679 @@
+# ============================================================================
+# pos1.fpr -- POS v1 (qos/docs/POS1-DESIGN.md): a point of sale for one small
+# shop, in FP-RISC Base on the posix system, served by std/live (the posix
+# driver of FPRLive; the QOS original is qos/programs/pos1.fpr).  Registers
+# are websocket sessions over ONE model actor; the disk holds ONE append-only
+# log, and that log is the shop.
+#
+#   fpr run examples/pos1.fpr [--port=6710] [--address=0.0.0.0] [--store=pos1.log]
+#
+# THE ONE RULE.  Every change to the shop is a LINE, and one function --
+# `apply` -- is the only thing that reads a line into the model.  A live
+# handler validates (guards that refuse and say why), then `commit`s the
+# line: apply it and queue it for the disk.  Boot is the same `apply`
+# folded over the log.  So the state a register shows is, by construction,
+# what a restart would rebuild -- there is no second interpretation of a
+# sale anywhere.  Stock, revenue and the "void" mark on a receipt are
+# caches of that fold; `rebuild` folds the disk again and compares.
+#
+#   product <sku> <price> <stock> <name...>       (a new product; cents)
+#   retire <sku> <cashier> <at>
+#   staff <name> <pin>
+#   tax <basis points>   lowat <n>   price <sku> <cents> <cashier> <at>
+#   restock <sku> <delta> <cashier> <at>
+#   sale <n> <cashier> <at> <pay> <tendered> <total> <tax> <sku>=<qty>=<price>...
+#   void <n> <cashier> <at>
+#
+# A checkout is ONE line, appended in one write, so a receipt, its stock
+# change and its revenue all come from that line or none of them do.  The
+# log is written from `update` itself, in event order: std/live performs
+# commands in their own actors, and the ORDER of this log is its meaning.  A void or
+# a restock is a NEW line that names what it corrects; a committed sale
+# is never rewritten.
+#
+#   login ana / 1234 (or ben / 2222)
+#
+# qos/tests-host/pos1-check.py drives it as websocket registers, the
+# well-behaved and the adversarial (the last-unit race, a void twice, a
+# crash across a checkout, a thousand receipts, delta-not-reshape edits).
+# ============================================================================
+
+unsafe base.
+
+Live = use "std/live".
+G = use "std/view".
+LJ = use "std/livejs".
+List = use "std/list".
+S = use "std/string".
+File = use "std/file".
+Clock = use "std/clock".
+Config = use "std/config".
+Decode = use "std/decode".
+Json = use "std/json".
+Program = use "std/program".
+Option = use "std/option".
+Result = use "std/result".
+
+El = G.El.
+Txt = G.Txt.
+Dyn = G.Dyn.
+Cls = G.Cls.
+Att = G.Att.
+Inp = G.Inp.
+strEq : String -> String -> Bool .
+strEq a b = a == b.
+
+# every message a register can send, and its wire: the arguments that come
+# from the page's own inputs arrive as the LAST field (G.wireOpen), "a|b" when
+# there are two
+Msg = Type (Login String | Logout | Quit | Add String | Qty String Int | Inc String | Dec String
+          | Cash String | Card | Void Int | Restock String | Admin String | Rebuild | Dismiss | Theme).
+codec = @Msg.
+
+# the QOS fold took the element first; the app is written that way
+foldE f z l = List.fold (fn acc x -> f x acc) z l.
+
+# ---- the model --------------------------------------------------------------------
+# products carry their stock (the cache of the fold); sessions are the
+# registers: cart, toast and console output live per session
+
+initModel = { cat = Nil, tax = 0, lowAt = 3, sales = Nil, nsale = 0, revenue = 0, staff = Nil,
+              sess = Nil, pend = Nil, events = 0, theme = 1, fsOn = 0, booted = 0 }.
+noSess = { sid = 0, cashier = "", cart = Nil, toast = "", role = "", con = Nil }.
+mkProduct sku price stock name = { sku = sku, name = name, price = price, stock = stock, retired = 0 }.
+
+# the seed: a shop that has never been opened gets this, on the disk
+seed =
+  "product FW 500 12 flat white" :: "product LB 400 12 long black" :: "product CT 900 12 cheese toastie" ::
+  "product BR 600 12 brownie" :: "product CC 700 12 carrot cake" :: "product SW 300 12 sparkling water" ::
+  "staff ana 1234" :: "staff ben 2222" :: "tax 1000" :: "lowat 3" :: Nil.
+
+# ---- little prelude -----------------------------------------------------------------
+
+rev l acc = l |> foldE (fn x xs -> x :: xs) acc.
+# the leading digits of s, 0 when there are none (a line's numbers are our own)
+num s = numGo s 1 (strlen s) 0.
+numGo s i n acc | i > n = acc.
+numGo s i n acc | isDig (charAt s i) = numGo s (i + 1) n (acc * 10 + charAt s i - 48).
+numGo s i n acc = acc.
+words s = S.words s.
+unwords ws = S.join " " ws.
+# "a|b" -> (a, b) at the first bar; no bar: (s, "")
+splitBar s = sbGo s 1 (strlen s).
+sbGo s i n | i > n = (s, "").
+sbGo s i n | charAt s i == 124 = (substr s 1 (i - 1), substr s (i + 1) (n - i)).
+sbGo s i n = sbGo s (i + 1) n.
+# "a=b=c" -> list of parts
+splitEq s = seGo s 1 1 (strlen s) Nil.
+seGo s st i n acc | i > n = rev (substr s st (i - st) :: acc) Nil.
+seGo s st i n acc | charAt s i == 61 = seGo s (i + 1) (i + 1) n (substr s st (i - st) :: acc).
+seGo s st i n acc = seGo s st (i + 1) n acc.
+takeN l 0 = Nil.
+takeN Nil n = Nil.
+takeN (x :: r) n = x :: takeN r (n - 1).
+imax a b | a > b = a.
+imax a b = b.
+imin a b | a < b = a.
+imin a b = b.
+# a name for the log: letters and digits only, 1..16 of them
+wordy s = strlen s >= 1 and strlen s <= 16 and wdGo s 1 (strlen s).
+wdGo s i n | i > n = True.
+wdGo s i n =
+  c = charAt s i;
+  ok = (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122);
+  case ok of True -> wdGo s (i + 1) n | False -> False.
+pad2 n | n < 10 = "0{n}".
+pad2 n = "{n}".
+money c | c < 0 = "-" + money (0 - c).
+money c = "{c / 100}.{pad2 (c % 100)}".
+# "12.50", "12.5" or "12" -> cents (other characters are skipped)
+cents s = cWhole s 1 (strlen s) 0.
+cWhole s i n acc | i > n = acc * 100.
+cWhole s i n acc | charAt s i == 46 = acc * 100 + cFrac s (i + 1) n 10 0.
+cWhole s i n acc | isDig (charAt s i) = cWhole s (i + 1) n (acc * 10 + charAt s i - 48).
+cWhole s i n acc = cWhole s (i + 1) n acc.
+cFrac s i n mul acc | i > n or mul == 0 = acc.
+cFrac s i n mul acc | isDig (charAt s i) = cFrac s (i + 1) n (mul / 10) (acc + (charAt s i - 48) * mul).
+cFrac s i n mul acc = acc.
+isDig c = c >= 48 and c <= 57.
+bi True = 1.
+bi False = 0.
+
+# ---- time ---------------------------------------------------------------------------
+# epoch seconds -> "YYYY-MM-DD HH:MM" (UTC; civil-from-days)
+
+fmtTime 0 = "--".
+fmtTime t =
+  days = t / 86400;
+  secs = t % 86400;
+  (y, mo, d) = civil days;
+  "{y}-{pad2 mo}-{pad2 d} {pad2 (secs / 3600)}:{pad2 (secs % 3600 / 60)}".
+civil z0 =
+  z = z0 + 719468;
+  era = z / 146097;
+  doe = z - era * 146097;
+  yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+  mp = (5 * doy + 2) / 153;
+  d = doy - (153 * mp + 2) / 5 + 1;
+  mo = case mp < 10 of True -> mp + 3 | False -> mp - 9;
+  y = yoe + era * 400 + bi (mo <= 2);
+  (y, mo, d).
+dayOf t = t / 86400.
+
+# ---- products -------------------------------------------------------------------------
+
+findP Nil sku = mkProduct "" 0 0 "".
+findP (p :: r) sku | strEq p.sku sku = p.
+findP (p :: r) sku = findP r sku.
+hasP cat sku =
+  p = findP cat sku;
+  strlen p.sku > 0.
+priceOf cat sku = p = findP cat sku; p.price.
+stockOf cat sku = p = findP cat sku; p.stock.
+nameOf cat sku = p = findP cat sku; p.name.
+# the product sku changed by f
+mapP Nil sku f = Nil.
+mapP (p :: r) sku f | strEq p.sku sku = f p :: r.
+mapP (p :: r) sku f = p :: mapP r sku f.
+setStock cat sku d = mapP cat sku (fn p -> { p | stock = p.stock + d }).
+live Nil = Nil.
+live (p :: r) | p.retired == 1 = live r.
+live (p :: r) = p :: live r.
+pCount cat = List.length (live cat).
+
+# ---- the interpreter: one line into the model --------------------------------------
+# the whole meaning of the log, live and at boot alike
+
+apply m line =
+  case words line of
+    Nil -> m
+  | w :: r -> applyW m w r.
+applyW m w r | strEq w "product" = (case r of
+    sku :: price :: stock :: nameWs -> addP m sku (num price) (num stock) (unwords nameWs)
+  | x -> m).
+applyW m w r | strEq w "retire" = (case r of
+    sku :: x -> { m | cat = mapP m.cat sku (fn p -> { p | retired = 1 }) }
+  | x -> m).
+applyW m w r | strEq w "staff" = (case r of
+    name :: pin :: x -> { m | staff = (name, pin) :: dropStaff m.staff name }
+  | x -> m).
+applyW m w r | strEq w "tax" = (case r of n :: x -> { m | tax = num n } | x -> m).
+applyW m w r | strEq w "lowat" = (case r of n :: x -> { m | lowAt = num n } | x -> m).
+applyW m w r | strEq w "price" = (case r of
+    sku :: c :: x -> { m | cat = mapP m.cat sku (fn p -> { p | price = num c }) }
+  | x -> m).
+applyW m w r | strEq w "restock" = (case r of
+    sku :: d :: x -> addStock m sku (num d)
+  | x -> m).
+applyW m w r | strEq w "sale" = applySale m r.
+applyW m w r | strEq w "void" = (case r of
+    n :: who :: at :: x -> applyVoid m (num n) who (num at)
+  | x -> m).
+applyW m w r = m.
+
+addP m sku price stock name | hasP m.cat sku = m.
+addP m sku price stock name = { m | cat = m.cat + (mkProduct sku price stock name :: Nil) }.
+addStock m sku d = { m | cat = setStock m.cat sku d }.
+dropStaff Nil name = Nil.
+dropStaff ((nm, pn) :: r) name | strEq nm name = dropStaff r name.
+dropStaff (e :: r) name = e :: dropStaff r name.
+
+# sale <n> <cashier> <at> <pay> <tendered> <total> <tax> <items...>
+applySale m r = case r of
+    n :: who :: at :: pay :: tend :: total :: tax :: items ->
+      ls = items |> List.map (fn it -> lineOf m it);
+      s = { n = num n, cashier = who, at = num at, pay = num pay, tendered = num tend, total = num total,
+            tax = num tax, lines = ls, voided = 0, voidBy = "", voidAt = 0 };
+      { m | sales = s :: m.sales, nsale = imax m.nsale (num n), revenue = m.revenue + num total,
+            cat = ls |> foldE (fn l c -> takeLine c l) m.cat }
+  | x -> m.
+takeLine cat (sku, q, pr, nm) = setStock cat sku (0 - q).
+giveLine cat (sku, q, pr, nm) = setStock cat sku q.
+lineOf m it = case splitEq it of
+    sku :: q :: pr :: x -> (sku, num q, num pr, nameOf m.cat sku)
+  | x -> ("?", 0, 0, "?").
+
+applyVoid m n who at =
+  s = findSale m.sales n;
+  case s.n == n and s.voided == 0 of
+    False -> m
+  | True ->
+    { m | sales = m.sales |> List.map (fn x -> markVoid x n who at),
+          revenue = m.revenue - s.total,
+          cat = s.lines |> foldE (fn l c -> giveLine c l) m.cat }.
+markVoid x n who at | x.n == n = { x | voided = 1, voidBy = who, voidAt = at }.
+markVoid x n who at = x.
+noSale = { n = 0, cashier = "", at = 0, pay = 0, tendered = 0, total = 0, tax = 0, lines = Nil, voided = 0, voidBy = "", voidAt = 0 }.
+findSale Nil n = noSale.
+findSale (s :: r) n | s.n == n = s.
+findSale (s :: r) n = findSale r n.
+
+# a validated change: applied now, queued for the disk
+commit m line = apply { m | pend = line :: m.pend, events = m.events + 1 } line.
+
+# ---- the disk ----------------------------------------------------------------------------
+
+# the log is a text file, one line per change; a shop that has no log yet
+# gets the seed, written as its first lines
+boot path =
+  m0 = { initModel | booted = Clock.now Unit };
+  m2 = replayed m0 (File.lines path);
+  m3 = case pCount m2.cat == 0 of
+    True -> seed |> foldE (fn l mm -> commit mm l) m2
+  | False -> m2;
+  _ = print "[pos1] log {path}: {m3.events} lines, {pCount m3.cat} products, {List.length m3.sales} sales, revenue {money m3.revenue}";
+  flush path { m3 | fsOn = 1 }.
+replayed m (Ok ls) = ls |> foldE (fn l mm -> apply { mm | events = mm.events + 1 } l) m.
+replayed m (Err e) = m.
+
+# the pending lines, oldest first, in ONE append
+flush path m = case m.pend of
+    Nil -> m
+  | ls ->
+    _ = writeAll path (rev ls Nil);
+    { m | pend = Nil }.
+writeAll path ls = case File.appendText path (S.concat (List.map (fn l -> "{l}\n") ls)) of
+    Ok _ -> 0
+  | Err why -> _ = Sys.stderr "[pos1] disk: {why}\n"; 1.
+
+# the log wins: fold the disk again and compare every product's stock
+rebuild path m = case File.lines path of
+    Err why -> (m, "cannot read the log: {why}")
+  | Ok ls -> rebuildWith m (replayed initModel (Ok ls)).
+rebuildWith m m2 =
+  diffs = m.cat |> foldE (fn p acc -> acc + bi (stockOf m2.cat p.sku != p.stock)) 0;
+  case diffs == 0 of
+    True -> (m, "stock matches the log ({List.length m2.sales} sales folded)")
+  | False -> ({ m | cat = m2.cat, revenue = m2.revenue, sales = m2.sales }, "rebuilt from the log: {diffs} products corrected").
+
+# ---- sessions ----------------------------------------------------------------------------
+
+sGet Nil sid = { noSess | sid = sid }.
+sGet (s :: r) sid | s.sid == sid = s.
+sGet (s :: r) sid = sGet r sid.
+sPut m s = { m | sess = s :: sDel m.sess s.sid }.
+sDel Nil sid = Nil.
+sDel (s :: r) sid | s.sid == sid = sDel r sid.
+sDel (s :: r) sid = s :: sDel r sid.
+forget m sid = { m | sess = sDel m.sess sid }.
+# a toast: text with a role (ok, warn, bad, celebrate)
+toast m sid role text =
+  s = sGet m.sess sid;
+  sPut m { s | toast = text, role = role }.
+say m sid text = toast m sid "ok" text.
+refuse m sid text = toast m sid "warn" text.
+withCart m sid cart =
+  s = sGet m.sess sid;
+  sPut m { s | cart = cart }.
+
+# ---- update ------------------------------------------------------------------------------
+
+update path ev m =
+  (m2, cs) = step path ev m;
+  (flush path m2, cs).
+step path ev m = case ev of
+    Live.Msg sid msg -> pMsg path sid msg m
+  | Live.Left sid -> (forget m sid, Nil)
+  | Live.Joined sid -> (m, Nil)
+  | Live.Refused sid why -> (refuse m sid "refused: {why}", Nil).
+
+pMsg path sid msg m = case msg of
+    Login arg -> (login m sid arg, Nil)
+  | Logout -> (forget m sid, Nil)
+  | Quit -> (m, Live.Quit :: Nil)
+  | other -> withUser path sid other m (sGet m.sess sid).
+
+login m sid arg =
+  (name, pin) = splitBar arg;
+  case wordy name and wordy pin and pinOk m.staff name pin of
+    True -> sPut m { noSess | sid = sid, cashier = name }
+  | False -> refuse m sid "unknown cashier or PIN".
+pinOk Nil name pin = False.
+pinOk ((nm, pn) :: r) name pin | strEq nm name = strEq pn pin.
+pinOk (e :: r) name pin = pinOk r name pin.
+
+withUser path sid msg m s | strEq s.cashier "" = (refuse m sid "sign in first", Nil).
+withUser path sid msg m s = case msg of
+    Add sku -> (addLine m sid s sku 1, Nil)
+  | Qty sku n -> (setQty m sid s (sku, "{n}"), Nil)
+  # the cart's own buttons: one more, one fewer (so their markup never
+  # carries the quantity, and a quantity edit is a delta, not a reshape)
+  | Inc sku -> (addLine m sid s sku 1, Nil)
+  | Dec sku -> (setQty m sid s (sku, "{imax 0 (qtyOf s.cart sku - 1)}"), Nil)
+  | Cash arg -> (checkout m sid s 0 (cents arg), Nil)
+  | Card -> (checkout m sid s 1 0, Nil)
+  | Void n -> (voidSale m sid s n, Nil)
+  | Restock arg -> (restock m sid s (splitBar arg), Nil)
+  | Admin cmd -> (console path m sid s cmd, Nil)
+  | Rebuild -> (console path m sid s "rebuild", Nil)
+  | Dismiss -> (toast m sid "" "", Nil)
+  | Theme -> ({ m | theme = 1 - m.theme }, Nil)
+  | other -> (refuse m sid "no such action", Nil).
+
+# ---- the cart ------------------------------------------------------------------------------
+
+qtyOf Nil sku = 0.
+qtyOf ((k, q) :: r) sku | strEq k sku = q.
+qtyOf (l :: r) sku = qtyOf r sku.
+putQty cart sku 0 = dropLine cart sku.
+putQty cart sku n | qtyOf cart sku == 0 = cart + ((sku, n) :: Nil).
+putQty cart sku n = cart |> List.map (fn l -> setLine l sku n).
+dropLine Nil sku = Nil.
+dropLine ((k, q) :: r) sku | strEq k sku = dropLine r sku.
+dropLine (l :: r) sku = l :: dropLine r sku.
+setLine (k, q) sku n | strEq k sku = (k, n).
+setLine l sku n = l.
+
+addLine m sid s sku d =
+  p = findP m.cat sku;
+  have = qtyOf s.cart sku;
+  case strlen p.sku == 0 or p.retired == 1 of
+    True -> refuse m sid "no such product"
+  | False -> (case have == 0 and List.length s.cart >= 40 of
+      True -> refuse m sid "the cart is full (40 lines)"
+    | False -> (case have + d > p.stock of
+        True -> refuse m sid (case p.stock == 0 of True -> "{p.name}: sold out" | False -> "{p.name}: only {p.stock} left")
+      | False -> say (withCart m sid (putQty s.cart sku (have + d))) sid "")).
+
+# an absolute quantity, clamped to [0, stock] -- and it says so
+setQty m sid s (sku, ns) =
+  p = findP m.cat sku;
+  n = num ns;
+  case strlen p.sku == 0 of
+    True -> refuse m sid "no such product"
+  | False ->
+    c = imin n (imin 999 p.stock);
+    m2 = withCart m sid (putQty s.cart sku c);
+    case c < n of
+      True -> refuse m2 sid "{p.name}: only {p.stock} left, set to {c}"
+    | False -> say m2 sid "".
+
+subtotal m cart = cart |> foldE (fn l acc -> acc + lineTotal m l) 0.
+lineTotal m (k, q) = q * priceOf m.cat k.
+taxOn m sub = (sub * m.tax + 5000) / 10000.
+totalOf m cart = sub = subtotal m cart; sub + taxOn m sub.
+
+# ---- checkout: one line ------------------------------------------------------------------------
+
+covered m Nil = "".
+covered m ((k, q) :: r) | q > stockOf m.cat k = "{nameOf m.cat k}: only {stockOf m.cat k} left".
+covered m (l :: r) = covered m r.
+
+checkout m sid s pay tendered | List.length s.cart == 0 = refuse m sid "the cart is empty".
+checkout m sid s pay tendered =
+  short = covered m s.cart;
+  sub = subtotal m s.cart;
+  tax = taxOn m sub;
+  total = sub + tax;
+  case strlen short > 0 of
+    True -> refuse m sid short
+  | False -> (case pay == 0 and tendered < total of
+      True -> refuse m sid "cash short by {money (total - tendered)}"
+    | False -> sell m sid s pay tendered total tax).
+sell m sid s pay tendered total tax =
+  n = m.nsale + 1;
+  at = Clock.now Unit;
+  first = case m.sales of Nil -> True | x :: r -> dayOf x.at != dayOf at;
+  items = s.cart |> List.map (fn l -> itemWord m l);
+  line = "sale {n} {s.cashier} {at} {pay} {case pay == 0 of True -> tendered | False -> total} {total} {tax} " + unwords items;
+  m2 = withCart (commit m line) sid Nil;
+  change = case pay == 0 of True -> "   change {money (tendered - total)}" | False -> "";
+  toast m2 sid (case first of True -> "celebrate" | False -> "ok")
+        (case first of True -> "first sale of the day: receipt #{n} for {money total}{change}" | False -> "receipt #{n} for {money total}{change}").
+
+itemWord m (k, q) = "{k}={q}={priceOf m.cat k}".
+
+voidSale m sid s n =
+  x = findSale m.sales n;
+  case x.n == n of
+    False -> refuse m sid "no receipt #{n}"
+  | True -> (case x.voided == 1 of
+      True -> refuse m sid "receipt #{n} is already void"
+    | False -> say (commit m "void {n} {s.cashier} {Clock.now Unit}") sid "receipt #{n} void: stock returned").
+
+restock m sid s (sku, ds) =
+  p = findP m.cat sku;
+  d = num ds;
+  case strlen p.sku == 0 of
+    True -> refuse m sid "no such product"
+  | False -> (case d < 1 or d > 999 of
+      True -> refuse m sid "restock by 1 to 999"
+    | False -> (case p.stock + d > 9999 of
+        True -> refuse m sid "{p.name}: the shelf holds 9999"
+      | False -> say (commit m "restock {sku} {d} {s.cashier} {Clock.now Unit}") sid "{p.name}: +{d}, now {p.stock + d}")).
+
+# ---- the admin console: the data model, live ---------------------------------------------------
+
+console path m sid s cmd =
+  (m2, out) = run path m s (words cmd);
+  s2 = sGet m2.sess sid;
+  sPut m2 { s2 | con = takeN (("> " + cmd) :: out :: s2.con) 12 }.
+run path m s ws = case ws of
+    w :: r -> runW path m s w r
+  | Nil -> (m, "help: get tax|lowat|revenue|price SKU|stock SKU; set tax N|lowat N|price SKU N; add SKU PRICE STOCK NAME; retire SKU; staff NAME PIN; rebuild").
+runW path m s w r | strEq w "help" = run path m s Nil.
+runW path m s w r | strEq w "get" = (m, getV m r).
+runW path m s w r | strEq w "set" = setV m s r.
+runW path m s w r | strEq w "add" = addCmd m r.
+runW path m s w r | strEq w "retire" = retireCmd m s r.
+runW path m s w r | strEq w "staff" = staffCmd m r.
+runW path m s w r | strEq w "rebuild" = rebuild path m.
+runW path m s w r = (m, "unknown: {w} (try help)").
+
+addCmd m (sku :: price :: stock :: nameWs) | wordy sku and not (hasP m.cat sku) and List.length nameWs > 0 =
+  (commit m "product {sku} {num price} {num stock} {unwords nameWs}", "added {sku}").
+addCmd m (sku :: price :: stock :: nameWs) = (m, "add: a new letters-and-digits SKU, a price in cents, a stock, a name").
+addCmd m r = (m, "add SKU PRICE STOCK NAME...").
+retireCmd m s (sku :: x) | hasP m.cat sku = (commit m "retire {sku} {s.cashier} {Clock.now Unit}", "retired {sku}").
+retireCmd m s (sku :: x) = (m, "no such SKU").
+retireCmd m s r = (m, "retire SKU").
+staffCmd m (name :: pin :: x) | wordy name and wordy pin = (commit m "staff {name} {pin}", "staff {name} set").
+staffCmd m (name :: pin :: x) = (m, "staff NAME PIN: letters and digits").
+staffCmd m r = (m, "staff NAME PIN").
+getV m (k :: x) | strEq k "tax" = "tax {m.tax} basis points ({m.tax / 100}.{pad2 (m.tax % 100)}%)".
+getV m (k :: x) | strEq k "lowat" = "lowat {m.lowAt}".
+getV m (k :: x) | strEq k "revenue" = "revenue {money m.revenue} over {List.length m.sales} sales".
+getV m (k :: sku :: x) | strEq k "price" = "price {sku} {money (priceOf m.cat sku)}".
+getV m (k :: sku :: x) | strEq k "stock" = "stock {sku} {stockOf m.cat sku}".
+getV m r = "get tax|lowat|revenue|price SKU|stock SKU".
+setV m s (k :: n :: x) | strEq k "tax" = (commit m "tax {num n}", "tax {num n}").
+setV m s (k :: n :: x) | strEq k "lowat" = (commit m "lowat {num n}", "lowat {num n}").
+setV m s (k :: sku :: c :: x) | strEq k "price" and hasP m.cat sku = (commit m "price {sku} {num c} {s.cashier} {Clock.now Unit}", "price {sku} {money (num c)}").
+setV m s (k :: sku :: c :: x) | strEq k "price" = (m, "no such SKU").
+setV m s r = (m, "set tax N|lowat N|price SKU CENTS").
+
+subs m = Nil.
+
+# ---- view: per session ------------------------------------------------------------------------
+
+view sid m =
+  s = sGet m.sess sid;
+  root = case m.theme == 1 of True -> "col gap-4 p-4 page" | False -> "col gap-4 p-4 page day";
+  case strEq s.cashier "" of
+    True -> El "div" [Cls root, G.Local "name" "", G.Local "pin" ""] [loginView s]
+  | False -> El "div" [Cls root, G.Local "tab" "1", G.Local "open" "0", G.Local "tender" "", G.Local "delta" "10", G.Local "rsku" "", G.Local "cmd" ""]
+               (nav m s :: toasts s :: body m s).
+
+# The stylesheet is a function of the tree -- and the page is served
+# from the signed-out view, so the rules the register needs would never
+# be emitted.  The sheet is therefore built over a SAMPLE tree that
+# shows everything: a signed-in session with a cart, receipts with a
+# void, the console -- every class the app can ever use appears once.
+cssAll m = G.cssFor (El "div" Nil (view 1 sampleModel :: Nil)).
+sampleModel =
+  m0 = seed |> foldE (fn l mm -> apply mm l) initModel;
+  m1 = apply (apply m0 "sale 1 ana 0 0 0 1650 150 FW=3=500") "sale 2 ben 0 1 550 550 50 LB=1=400";
+  m2 = apply m1 "void 1 ana 0";
+  sPut m2 { noSess | sid = 1, cashier = "ana", cart = ("FW", 2) :: ("BR", 1) :: Nil, toast = "sample", role = "ok", con = "> help" :: Nil }.
+
+loginView s =
+  El "div" [Cls "col gap-3 p-6 panel round mx-auto mt-4 w-full", Att "style" "max-width:420px"]
+    [ El "div" [Cls "text-xs upper dim"] [Txt "point of sale"]
+    , El "div" [Cls "text-2xl bold"] [Txt "Sign in"]
+    , Inp [Cls "field w-full", G.Input "name", Att "placeholder" "cashier", Att "maxlength" "16"]
+    , Inp [Cls "field w-full", G.Input "pin", G.OnEnter (G.wireOpen codec (Login "")) "name,pin", Att "placeholder" "PIN", Att "type" "password", Att "maxlength" "16"]
+    , El "button" [Cls "btn round px-3 py-2 glow", G.OnClick (G.wireOpen codec (Login "")) "name,pin"] [Txt "open register"]
+    , El "div" [Cls "warm text-sm"] [Dyn s.toast] ].
+
+nav m s =
+  El "div" [Cls "row between center gap-2 wrap"]
+    [ El "div" [Cls "row gap-2 center"]
+        [ El "div" [Cls "bold"] [Txt "POS"], El "div" [Cls "dim text-xs"] [Txt "v1"]
+        , tab "1" "Register", tab "2" "Receipts", tab "3" "Inventory", tab "4" "Admin" ]
+    , El "div" [Cls "row gap-2 center dim text-sm"]
+        [ El "span" [Cls (case m.fsOn == 1 of True -> "badge ok" | False -> "badge warn")] [Txt (case m.fsOn == 1 of True -> "disk" | False -> "no disk")]
+        , El "span" [Att "id" "lv-link", Cls "badge"] [Txt "live"]
+        , Txt "cashier ", El "b" [Cls "ink"] [Dyn s.cashier]
+        , El "button" [Cls "btn pill px-3 py-2", G.send codec Theme] [Txt (case m.theme == 1 of True -> "day" | False -> "night")]
+        , El "button" [Cls "btn pill px-3 py-2", G.send codec Logout] [Txt "sign out"] ] ].
+tab n label = El "button" [Cls "btn pill px-3 py-2", G.OnSet "tab" n, Att "data-on" "tab:{n}"] [Txt label].
+
+# four toast slots, one role each; only the live one has text (a role
+# change is then a delta, not a reshape); an empty toast is not shown
+toasts s =
+  El "div" [Cls "row gap-2"]
+    [ El "div" [Cls "toast ok"] [Dyn (roleText s "ok")]
+    , El "div" [Cls "toast celebrate"] [Dyn (roleText s "celebrate")]
+    , El "div" [Cls "toast warn"] [Dyn (roleText s "warn")]
+    , El "div" [Cls "toast bad"] [Dyn (roleText s "bad")] ].
+roleText s role | strEq s.role role = s.toast.
+roleText s role = "".
+
+body m s =
+  El "div" [G.ShowIf "tab:1"] [register m s] ::
+  El "div" [G.ShowIf "tab:2"] [receipts m] ::
+  El "div" [G.ShowIf "tab:3"] [inventory m] ::
+  El "div" [G.ShowIf "tab:4"] [admin m s] :: Nil.
+
+# ---- register ------------------------------------------------------------------------------------
+
+register m s =
+  El "div" [Cls "row gap-4"]
+    [ El "div" [Cls "row wrap gap-2 grow"] (live m.cat |> List.map (fn p -> productCard m p))
+    , cartPanel m s ].
+productCard m p =
+  El "div" [Cls "col gap-2 card round p-3", Att "style" "width:180px"]
+    [ El "div" [Cls "bold"] [Txt p.name]
+    , El "div" [Cls "row between center"]
+        [ El "div" [Cls "tabular"] [Txt "$", Dyn (money p.price)]
+        , stockBadge m p ]
+    , El "button" [Cls "btn pill px-3 py-2", G.send codec (Add p.sku)] [Txt "add"] ].
+# the badge takes a role: sold out is danger, at or under the threshold warning
+stockBadge m p =
+  El "span" [Cls "badge", Att "data-role" "stock"] [Dyn (stockText m p)].
+stockText m p | p.stock == 0 = "sold out".
+stockText m p | p.stock <= m.lowAt = "low: {p.stock}".
+stockText m p = "{p.stock} in stock".
+
+cartPanel m s =
+  sub = subtotal m s.cart;
+  tx = taxOn m sub;
+  El "div" [Cls "col gap-2 panel round p-4 w-cart"]
+    [ El "div" [Cls "text-xs upper dim"] [Txt "cart"]
+    , El "div" [Cls "col gap-1 scroll"] (cartLines m s.cart)
+    , El "div" [Cls "rule"] []
+    , totalRow "subtotal" (money sub)
+    , totalRow "tax {m.tax / 100}.{pad2 (m.tax % 100)}%" (money tx)
+    , El "div" [Cls "row between center"]
+        [ El "div" [Cls "text-xs upper dim"] [Txt "total"]
+        , El "div" [Cls "text-2xl bold tabular"] [Txt "$", Dyn (money (sub + tx))] ]
+    , El "div" [Cls "row gap-2 center"]
+        [ Inp [Cls "field grow", G.Input "tender", G.OnEnter (G.wireOpen codec (Cash "")) "tender", Att "placeholder" "cash tendered"]
+        , El "button" [Cls "btn round px-3 py-2 glow", G.OnClick (G.wireOpen codec (Cash "")) "tender"] [Txt "cash"]
+        , El "button" [Cls "btn round px-3 py-2", G.send codec Card] [Txt "card"] ] ].
+totalRow label v =
+  El "div" [Cls "row between center dim text-sm"] [ Txt label, El "div" [Cls "tabular"] [Txt "$", Dyn v] ].
+cartLines m Nil = El "div" [Cls "dim text-sm"] [Txt "nothing yet"] :: Nil.
+cartLines m cart = cart |> List.map (fn l -> cartLine m l).
+cartLine m (sku, q) =
+  p = findP m.cat sku;
+  El "div" [Cls "row between center gap-2 tr"]
+    [ El "div" [Cls "grow"] [Txt p.name]
+    , El "button" [Cls "btn pill px-3 py-2", G.send codec (Dec sku)] [Txt "-"]
+    , El "div" [Cls "tabular w-40 right"] [Dyn "{q}"]
+    , El "button" [Cls "btn pill px-3 py-2", G.send codec (Inc sku)] [Txt "+"]
+    , El "div" [Cls "tabular w-24 right"] [Txt "$", Dyn (money (q * p.price))]
+    , El "button" [Cls "btn pill px-3 py-2", G.send codec (Qty sku 0)] [Txt "x"] ].
+
+# ---- receipts ---------------------------------------------------------------------------------------
+
+receipts m =
+  El "div" [Cls "col gap-3"]
+    [ El "div" [Cls "row gap-4 center"]
+        [ El "div" [Cls "col"] [ El "div" [Cls "text-xs upper dim"] [Txt "receipts"], El "div" [Cls "text-2xl bold tabular"] [Dyn "{List.length m.sales}"] ]
+        , El "div" [Cls "col"] [ El "div" [Cls "text-xs upper dim"] [Txt "revenue"], El "div" [Cls "text-2xl bold tabular"] [Txt "$", Dyn (money m.revenue)] ]
+        , El "div" [Cls "dim text-sm"] [Txt "newest 50 shown"] ]
+    , El "div" [Cls "col"] (takeN m.sales 50 |> List.map (fn x -> receiptRow x)) ].
+receiptRow x =
+  El "div" [Cls "col tr"]
+    [ El "div" [Cls "row gap-3 center"]
+        [ El "div" [Cls "bold tabular w-24"] [Txt "#{x.n}"]
+        , El "div" [Cls "dim text-sm w-24"] [Txt x.cashier]
+        , El "div" [Cls "grow text-sm"] [Txt (summary x.lines)]
+        , El "div" [Cls "tabular w-24 right"] [Txt "$", Txt (money x.total)]
+        , El "div" [Cls "dim text-xs"] [Txt (fmtTime x.at)]
+        , El "span" [Cls "badge"] [Txt (case x.pay == 0 of True -> "cash" | False -> "card")]
+        , El "span" [Cls (case x.voided == 1 of True -> "badge bad" | False -> "badge ok")] [Txt (case x.voided == 1 of True -> "void" | False -> "paid")]
+        , El "button" [Cls "btn pill px-3 py-2", G.OnSet "open" "{x.n}", Att "data-on" "open:{x.n}"] [Txt "lines"]
+        , voidButton x ]
+    , El "div" [G.ShowIf "open:{x.n}", Cls "col text-sm dim p-2"] (x.lines |> List.map (fn l -> lineRow l) |> withVoid x) ].
+voidButton x | x.voided == 1 = El "div" [Cls "dim text-xs"] [Txt "by {x.voidBy}"].
+voidButton x = El "button" [Cls "btn pill px-3 py-2", G.send codec (Void x.n)] [Txt "void"].
+lineRow (sku, q, pr, nm) = El "div" [Cls "row between"] [ Txt "{q} x {nm}", El "div" [Cls "tabular"] [Txt (money (q * pr))] ].
+withVoid x rows | x.voided == 1 = rows + (El "div" [Cls "warm"] [Txt "void by {x.voidBy} at {fmtTime x.voidAt}"] :: Nil).
+withVoid x rows = rows + (El "div" [Cls "row between"] [ Txt "tax", El "div" [Cls "tabular"] [Txt (money x.tax)] ] :: Nil).
+summary ls = S.join ", " (ls |> List.map (fn l -> lineWord l)).
+lineWord (sku, q, pr, nm) = "{q}x {nm}".
+
+# ---- inventory --------------------------------------------------------------------------------------
+
+inventory m =
+  El "div" [Cls "col gap-3"]
+    [ El "div" [Cls "row gap-2 center"]
+        [ El "div" [Cls "text-xs upper dim"] [Txt "restock by"]
+        , Inp [Cls "field w-24", G.Input "delta", Att "placeholder" "10"] ]
+    , El "div" [Cls "col"] (live m.cat |> List.map (fn p -> invRow m p)) ].
+invRow m p =
+  El "div" [Cls "row gap-3 center tr"]
+    [ El "div" [Cls "grow"] [Txt p.name]
+    , El "div" [Cls "dim text-xs mono w-24"] [Txt p.sku]
+    , El "div" [Cls "tabular w-24 right"] [Txt "$", Dyn (money p.price)]
+    , El "div" [Cls "tabular w-24 right"] [Dyn "{p.stock}"]
+    , stockBadge m p
+    , El "button" [Cls "btn pill px-3 py-2", G.OnBoth (G.wireOpen codec (Restock "")) "rsku,delta" "rsku" p.sku] [Txt "restock"] ].
+
+# ---- admin: the data console ---------------------------------------------------------------------------
+
+admin m s =
+  El "div" [Cls "col gap-3"]
+    [ El "div" [Cls "row gap-2 wrap"]
+        [ watch "tax" "{m.tax / 100}.{pad2 (m.tax % 100)}%", watch "low at" "{m.lowAt}", watch "products" "{pCount m.cat}"
+        , watch "sales" "{List.length m.sales}", watch "revenue" (money m.revenue), watch "log lines" "{m.events}"
+        , watch "since" (fmtTime m.booted) ]
+    , El "div" [Cls "row gap-2 center"]
+        [ Inp [Cls "field grow mono", G.Input "cmd", G.OnEnter (G.wireOpen codec (Admin "")) "cmd", Att "placeholder" "get tax | set price FW 550 | add SKU 450 10 name | rebuild | help"]
+        , El "button" [Cls "btn round px-3 py-2", G.OnClick (G.wireOpen codec (Admin "")) "cmd"] [Txt "run"]
+        , El "button" [Cls "btn round px-3 py-2", G.send codec Rebuild] [Txt "rebuild stock"] ]
+    , El "div" [Cls "mono text-sm pre card round p-3"] [Dyn (S.join "\n" (rev s.con Nil))] ].
+watch label v =
+  El "div" [Cls "col card round p-2", Att "style" "min-width:120px"]
+    [ El "div" [Cls "text-xs upper dim"] [Txt label], El "div" [Cls "tabular bold"] [Dyn v] ].
+
+# ---- main ---------------------------------------------------------------------------------------------
+
+Settings = Type (Settings port address store).
+settings = Decode.map3 Settings (Decode.field "port" Decode.int) (Decode.field "address" Decode.string) (Decode.field "store" Decode.string).
+
+main = case Config.load { defaults = Json.object (("port", Json.Integer 6710) :: ("address", Json.Text "127.0.0.1") :: ("store", Json.Text "pos1.log") :: Nil),
+                          file = Option.None, envPrefix = "POS1_", args = Program.args Unit } |> Result.andThen (Decode.run settings) of
+    Err why -> Program.fail 2 "pos1: {why}"
+  | Ok (Settings port address store) ->
+      # the shop is the log, folded at boot; std/live's own store holds nothing
+      # of the model (fields = Nil, no journal), it is there because the driver
+      # wants one
+      cfg = { address = address, port = port, title = "POS v1", store = "{store}.kvlog", journal = False,
+              script = LJ.src 0, watch = Nil, rebuild = Nil, restart = Nil };
+      _ = Live.serve cfg { init = boot store, update = update store, subs = subs, fields = Nil, codec = codec,
+                           view = (fn sid m -> G.render (view sid m)), css = cssAll };
+      0.
