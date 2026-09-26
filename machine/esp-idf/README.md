@@ -1,9 +1,13 @@
-# machine/esp-idf: FP-RISC Base on the ESP32-P4
+# machine/esp-idf: the posix system on an ESP32-P4
 
-The posix system's esp-idf host: `--host=esp-idf` (docs/2026-09-19-PROFILES.md;
-`--system=esp-idf` is the 1.x spelling and still works). An FP-RISC program becomes an
-ESP-IDF application: the rv32 code generator's output, `runtime/`, and this
-machine layer, built as one IDF project and flashed to the chip.
+This directory is the esp-idf **host** of the posix system, `--host=esp-idf`
+(docs/2026-09-19-PROFILES.md; `--system=esp-idf` is the 1.x spelling and
+still works): boot, harts, park and wake, the heap, the context switch and the
+flash filesystem, plus the IDF project and the console tools. Everything else
+a program sees is the same `machine/posix` and `runtime/` a unix program is
+built from. `fpr build` turns a program into an ESP-IDF application, the rv32
+code generator's output linked with those, as one IDF project, and `fpr run`
+flashes it and becomes its console.
 
 Why it is built this way, and the workarounds ESP-IDF forced, are in
 docs/2026-09-23-ESP-IDF.md; its fixed limits are registered in docs/2026-09-19-BOUNDS.md.
@@ -29,7 +33,8 @@ posix program:
   ESP-IDF's error lines go to stderr; `-v` shows the build and everything
   else.
 - Lines on stdin are typed into the board's console.
-- `fpr` exits with the program's status: `Program.exit 3` exits 3, a panic
+- `fpr` exits with the program's status, as `fpr run` does on unix: `main`'s
+  Int result, `Program.exit 3` exits 3, a panic
   exits 1. A board reset under the program exits 2. `FPR_ESP_TIMEOUT=N`
   stops waiting after N seconds and exits 124.
 - The port is `--port P`, else `FPR_ESP_PORT`, else the one USB serial

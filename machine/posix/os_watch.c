@@ -1,7 +1,7 @@
 /* Shared descriptor watcher: pthread worker plus host wake transport. */
 #include "os_value.h"
 #include <fcntl.h>
-#ifdef ESP_PLATFORM
+#ifdef FPR_ESP_IDF
 #include <sys/poll.h>
 #else
 #include <poll.h>
@@ -171,7 +171,7 @@ static V h_watch_open(V u) {
   bad = pthread_attr_init(&a);
   if (bad) goto failed_cond;
   bad = pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
-#ifdef ESP_PLATFORM
+#ifdef FPR_ESP_IDF
   if (!bad) bad = pthread_attr_setstacksize(&a, 16384);
 #else
   if (!bad) bad = pthread_attr_setstacksize(&a, 256 * 1024);

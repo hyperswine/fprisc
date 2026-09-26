@@ -1,7 +1,7 @@
 /* Shared descriptor I/O for Unix and ESP-IDF VFS/lwIP. */
 #include "os_value.h"
 #include <fcntl.h>
-#ifdef ESP_PLATFORM
+#ifdef FPR_ESP_IDF
 #include <sys/poll.h>
 #else
 #include <poll.h>
@@ -81,7 +81,7 @@ static V h_write(V fdv, V datav) {
   int fd = want_fd(fdv, "Os.write: the stream is not an Int");
   if (ISINT(datav) || TID(datav) != T_STR) fpr_cpanic("Os.write: the data is not a String");
   const str_t *d = (const str_t *)datav;
-#ifndef ESP_PLATFORM
+#ifndef FPR_ESP_IDF
   signal(SIGPIPE, SIG_IGN); /* a peer that has gone is an Err, not our death */
 #endif
   ssize_t r;

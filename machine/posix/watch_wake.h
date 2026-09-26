@@ -1,7 +1,7 @@
 /* Private wake transport. Called with the watcher mutex held after opening. */
 #ifndef FPR_WATCH_WAKE_H
 #define FPR_WATCH_WAKE_H
-#ifdef ESP_PLATFORM
+#ifdef FPR_ESP_IDF
 #include "esp_vfs_eventfd.h"
 static pthread_once_t eventfd_once = PTHREAD_ONCE_INIT;
 static esp_err_t eventfd_status;

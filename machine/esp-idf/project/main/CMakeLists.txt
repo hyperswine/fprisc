@@ -17,12 +17,17 @@ endif()
 if(NOT FPR_GEN)
   message(FATAL_ERROR "FPR_GEN_DIR has no generated .s files: build with machine/esp-idf/build.sh")
 endif()
+# the posix system's shared files, all of them: what both hosts link
+if(CMAKE_SCRIPT_MODE_FILE)
+  file(GLOB FPR_POSIX_SRCS "${FPR_ROOT}/machine/posix/*.c")
+else()
+  file(GLOB FPR_POSIX_SRCS CONFIGURE_DEPENDS "${FPR_ROOT}/machine/posix/*.c")
+endif()
 idf_component_register(
-  SRCS ${FPR_M}/main.c ${FPR_M}/hal.c ${FPR_M}/esp.c ${FPR_M}/ctx.S ${FPR_ROOT}/machine/virt/ctx_fab.c
+  SRCS ${FPR_M}/main.c ${FPR_M}/hal.c ${FPR_M}/esp.c ${FPR_M}/fs.c ${FPR_M}/ctx.S ${FPR_ROOT}/machine/virt/ctx_fab.c
        ${FPR_RT}/runtime.c ${FPR_RT}/actors.c ${FPR_RT}/bits.c ${FPR_RT}/vec.c
        ${FPR_RT}/sstr.c ${FPR_RT}/mod.c ${FPR_RT}/buddy.c
-       ${FPR_ROOT}/machine/posix/hal.c ${FPR_ROOT}/machine/posix/os_job.c ${FPR_ROOT}/machine/posix/os_io.c ${FPR_ROOT}/machine/posix/os_net.c ${FPR_ROOT}/machine/posix/os_watch.c
-       ${FPR_ROOT}/machine/posix/os_fs.c ${FPR_ROOT}/machine/posix/base_file.c ${FPR_ROOT}/machine/posix/base.c ${FPR_M}/fs.c
+       ${FPR_POSIX_SRCS}
        ${FPR_P}/radio.c ${FPR_P}/wifi.c ${FPR_P}/bluetooth.c ${FPR_P}/gpio.c
        ${FPR_GEN}
   INCLUDE_DIRS ${FPR_RT} ${FPR_ROOT}/machine/posix ${FPR_P}
@@ -31,7 +36,7 @@ idf_component_register(
            esp_wifi esp_netif esp_event nvs_flash bt esp_hosted)
 # the runtime is freestanding C with its own conventions: its warnings are its own
 target_compile_options(${COMPONENT_LIB} PRIVATE -w
-  -DFPR_NHARTS=2 -DFPR_CTX_WORDS=28 -DFPR_ESP_IDF
+  -DFPR_NHARTS=2 -DFPR_CTX_WORDS=28 -DFPR_POSIX -DFPR_ESP_IDF # the system, and its host
   -DFPR_SLAB_SZ=32768 -DFPR_STACK_SZ=65528
   $<$<BOOL:${FPR_ESP_DEBUG}>:-DFPR_ESP_DEBUG>
   $<$<BOOL:${FPR_ESP_STACK_GUARD}>:-DFPR_ESP_STACK_GUARD>)

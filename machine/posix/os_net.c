@@ -14,7 +14,7 @@
  * ("Invalid mbox") and resets the board.  Only Wi-Fi used to start it, so a
  * loopback server without std/wifi crashed on its first socket.  Started here
  * once, on first use; a Unix kernel needs nothing. */
-#ifdef ESP_PLATFORM
+#ifdef FPR_ESP_IDF
 #include <pthread.h>
 #include "esp_netif.h"
 static pthread_once_t net_once = PTHREAD_ONCE_INIT;
@@ -31,7 +31,7 @@ int fpr_esp_net_up(void) { pthread_once(&net_once, net_start); return net_ok; }
 
 /* lwIP provides getaddrinfo but IDF 5.3.2 does not link gai_strerror. */
 static V os_gai_error(int code) {
-#ifdef ESP_PLATFORM
+#ifdef FPR_ESP_IDF
   char message[64];
   snprintf(message, sizeof message, "address lookup failed (%d)", code);
   return os_err(message);

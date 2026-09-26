@@ -28,7 +28,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <pthread.h>
-#ifdef ESP_PLATFORM
+#ifdef FPR_ESP_IDF
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_pthread.h"
@@ -102,7 +102,7 @@ static void broker_start(void) {
   pthread_attr_t a;
   int bad = pthread_attr_init(&a);
   if (!bad) bad = pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
-#ifdef ESP_PLATFORM
+#ifdef FPR_ESP_IDF
   /* IDF's pthread reads the stack size from the attribute, and the rest of a
    * task's shape from a configuration the creating thread carries: set it
    * for this one create, then put the defaults back for the caller's later
@@ -121,7 +121,7 @@ static void broker_start(void) {
 #endif
   if (!bad) bad = pthread_create(&t, &a, broker, 0);
   pthread_attr_destroy(&a);
-#ifdef ESP_PLATFORM
+#ifdef FPR_ESP_IDF
   esp_pthread_cfg_t d = esp_pthread_get_default_config();
   esp_pthread_set_cfg(&d);
 #endif

@@ -39,6 +39,7 @@ void hal_poweroff(int code) {
     if (fpr_esp_hart_task[i] && fpr_esp_hart_task[i] != self) vTaskSuspend(fpr_esp_hart_task[i]);
   for (;;) vTaskDelay(portMAX_DELAY);
 }
+void fpr_park(void) { for (;;) vTaskDelay(portMAX_DELAY); } /* FPR_PARK: unreachable after hal_poweroff */
 
 /* ---- sleep and wake ----------------------------------------------------- */
 static uint64_t deadline[FPR_NHARTS]; /* mtime; 0 = none.  Only its own hart touches it */

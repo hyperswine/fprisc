@@ -54,6 +54,13 @@ Linux or macOS): the same core runtime as bare metal, with libc as the board
 stdout, stderr, files, the clock and the exit status -- see
 [docs/2026-09-18-BASE.md](docs/2026-09-18-BASE.md).  `tests/check_base.py` is the conformance run.
 
+The same system runs on an ESP32-P4: `fpr run prog.fpr --host=esp-idf`
+builds the program as an ESP-IDF application, flashes it, and is its console,
+with the same files, sockets, poller and std modules, and `std/wifi`,
+`std/ble` and `std/gpio` for what the board has beyond POSIX
+([machine/esp-idf/README.md](machine/esp-idf/README.md)).
+`tests/check_esp_board.py` is the conformance run on an attached board.
+
 ## Working with QOS
 
 Set `FPRISC_ROOT` to this checkout when working in QOS, for example:
