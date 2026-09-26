@@ -1,0 +1,8 @@
+# FP-RISC on ESP-IDF: one app, and a FAT filesystem for std/file and std/dir.
+# Everything stays below 16 MB: IDF 5.3 cannot address flash past that on this
+# board's flash model (it says so at boot), though the chip has 32 MB.
+# Name,     Type, SubType,  Offset,   Size
+nvs,        data, nvs,      0x9000,   0x6000
+phy_init,   data, phy,      0xf000,   0x1000
+factory,    app,  factory,  0x10000,  4M
+storage,    data, fat,      ,         8M

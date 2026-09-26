@@ -1,0 +1,46 @@
+# std/gpio.fpr -- GPIO pins: read them, and (on pins the board leaves free) drive them.
+#
+#   Gpio = use "std/gpio".
+#   print "pin 2 reads {Gpio.level 2} ({Gpio.describe (Gpio.info 2)})"
+#
+# Reading changes nothing:
+#   pins Unit        how many pins the chip has
+#   level pin        the pad's input bit (0 when its input is not enabled)
+#   info pin         how it is configured: `describe` puts it in words
+# Configuring and driving change the pin -- only on pins the board leaves free:
+#   input pin pull   pull: 0 none, 1 up, 2 down
+#   output pin       input AND output, so `level` reads back what is driven
+#   write pin level
+# These are register reads and short driver calls on the calling actor: no job.
+# On the ESP32-P4 the library is platform/esp-idf/gpio.c.
+
+GpioHost.pins : Unit -> Int .
+GpioHost.level : Int -> Int .
+GpioHost.info : Int -> Int .
+GpioHost.input : Int -> Int -> Int .
+GpioHost.output : Int -> Int .
+GpioHost.write : Int -> Int -> Int .
+
+pins : Unit -> Int .
+pins u = GpioHost.pins u.
+level : Int -> Int .
+level pin = GpioHost.level pin.
+info : Int -> Int .
+info pin = GpioHost.info pin.
+
+# the driver's code, 0 for success
+done : String -> Int -> Result Unit String .
+done what code = if code == 0 then Ok Unit else Err "{what}: driver error {code}".
+
+input : Int -> Int -> Result Unit String .
+input pin pull = if pull < 0 or pull > 2 then Err "pull is 0 (none), 1 (up) or 2 (down)" else done "Gpio.input" (GpioHost.input pin pull).
+output : Int -> Result Unit String .
+output pin = done "Gpio.output" (GpioHost.output pin).
+write : Int -> Int -> Result Unit String .
+write pin v = done "Gpio.write" (GpioHost.write pin v).
+
+# a pin's configuration, in words: "in out up down od fn1"
+describe : Int -> String .
+describe info =
+  bit k = (info / k) % 2 == 1;
+  "{(if bit 1 then "in " else "")}{(if bit 2 then "out " else "")}{(if bit 4 then "up " else "")}{(if bit 8 then "down " else "")}{(if bit 16 then "od " else "")}fn{info / 256}".

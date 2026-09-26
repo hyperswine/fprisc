@@ -9,7 +9,7 @@
 # The CLINT is three banks of per-hart registers, which is what a Layout's
 # `index` is for: the i-th register of a bank is `L.index bank i`, its
 # stride the register's own width.  A raw library unit -- its exports ARE
-# the C symbols actors.c and hal.c call.  docs/LAYOUTS.md.
+# the C symbols actors.c and hal.c call.  docs/2026-09-19-LAYOUTS.md.
 profile builtin.
 
 Msip = Layout { pending : U32 }.     # base + 4 * hart: write 1 to ring, 0 to clear

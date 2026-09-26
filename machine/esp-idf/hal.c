@@ -1,16 +1,17 @@
-/* hal.c (esp-idf) -- the machine layer on ESP-IDF: FreeRTOS is the board.
+/* hal.c (esp-idf) -- the posix system's esp-idf HOST: FreeRTOS is the board.
  *
- * A hart is a FreeRTOS task pinned to a core (main.c), and everything the
- * runtime needs from a machine maps onto the RTOS:
+ * A hart is a FreeRTOS task pinned to a core (main.c), and what the runtime
+ * needs from a machine that the shared machine/posix/hal.c does not give
+ * (the console, the clock, the host sleep and the IRQ bridge are there,
+ * over the POSIX subset IDF has) maps onto the RTOS here:
  *
  *   hal_wfi / hal_ipi_send     wait on / give the hart task's notification
  *   hal_timer_arm / _park      the next deadline that wait honours
- *   hal_mtime                  esp_timer (microseconds) in virt's 10 MHz units
  *   hal_heap_span              one large block from the IDF heap: PSRAM when
  *                              the board has it, internal RAM otherwise
- *   hal_irq_*                  interrupts raised by IDF tasks, callbacks and
- *                              ISRs (hal_irq_raise), claimed by the IRQ hart
- *                              and delivered to an actor bound with Sys.irqBind
+ *   hal_poweroff               a board has nothing to exit to
+ *   fpr_esp_cstack             C calls that must leave the actor's PSRAM stack
+ *   hal_actor_stack            the opt-in watchpoint stack guard
  *
  * IDF's tp remains its C TLS pointer. The runtime stores the current hart
  * in fpr_esp_hart, a real TLS slot, and loads it afresh across actor switches.
@@ -20,32 +21,25 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_timer.h"
 #include "esp_heap_caps.h"
-#include "esp_rom_sys.h"
 #include "esp_cpu.h"
 
 TaskHandle_t fpr_esp_hart_task[FPR_NHARTS];
 
-void hal_putc(char c) {
-  fputc(c, stdout);
-  if (c == '\n') fflush(stdout);
-}
-
-/* a board does not power off: say so, and let the caller park */
+/* A board has nothing to exit to.  The program ends here for good: the other
+ * harts are suspended and this one sleeps forever (it used to return, so a
+ * Sys.exit in the middle of a program printed "ended" and carried on).
+ * IDF's own tasks -- the radio, lwIP -- keep running; a reset starts over. */
 void hal_poweroff(int code) {
   fflush(stdout);
   printf("[fpr] program ended (status %d)\n", code);
   fflush(stdout);
+  TaskHandle_t self = xTaskGetCurrentTaskHandle();
+  for (int i = 0; i < FPR_NHARTS; i++)
+    if (fpr_esp_hart_task[i] && fpr_esp_hart_task[i] != self) vTaskSuspend(fpr_esp_hart_task[i]);
+  for (;;) vTaskDelay(portMAX_DELAY);
 }
-
-uint64_t hal_mtime(void) { return (uint64_t)esp_timer_get_time() * 10u; }
-
-int fpr_hal_sleep_us(uw us) {
-  if (us >= 1000 * portTICK_PERIOD_MS) vTaskDelay(pdMS_TO_TICKS(us / 1000));
-  else esp_rom_delay_us(us);
-  return 1;
-}
+void fpr_park(void) { for (;;) vTaskDelay(portMAX_DELAY); } /* FPR_PARK: unreachable after hal_poweroff */
 
 /* ---- sleep and wake ----------------------------------------------------- */
 static uint64_t deadline[FPR_NHARTS]; /* mtime; 0 = none.  Only its own hart touches it */
@@ -113,31 +107,59 @@ void hal_heap_release(void *p, uw bytes) { (void)p; (void)bytes; }
 void hal_stack_guard(void *lo, uw size) { (void)lo; (void)size; }
 void hal_stack_unguard(void *lo, uw size) { (void)lo; (void)size; }
 
-/* ---- interrupts from IDF: tasks, callbacks and ISRs raise, the IRQ hart claims ---- */
-#define ESP_IRQ_MAX 1024
-static uint8_t irq_pending[ESP_IRQ_MAX];
-static uw irq_open_list[ESP_IRQ_MAX];
-static uw irq_open_n;
-static portMUX_TYPE irq_mux = portMUX_INITIALIZER_UNLOCKED;
-void hal_irq_open(uw src) {
-  if (src == 0 || src >= ESP_IRQ_MAX) return;
-  taskENTER_CRITICAL(&irq_mux);
-  int have = 0;
-  for (uw i = 0; i < irq_open_n; i++) if (irq_open_list[i] == src) have = 1;
-  if (!have) { irq_open_list[irq_open_n] = src; __atomic_store_n(&irq_open_n, irq_open_n + 1, __ATOMIC_RELEASE); }
-  taskEXIT_CRITICAL(&irq_mux);
+/* interrupts from IDF tasks, callbacks and ISRs: the shared bridge in
+ * machine/posix/hal.c (hal_irq_raise is atomics only, so an ISR may call it;
+ * hal_irq_open takes a mutex and is called from hart and broker tasks) */
+
+/* ---- C calls that must not run on an actor's stack ------------------------
+ * Actor stacks are in PSRAM (hal_heap_span).  IDF asserts that a flash
+ * operation runs on an internal stack -- the write disables the cache PSRAM
+ * is read through -- and every FAT file operation can reach flash.  So those
+ * primitives (FPR_FN_CSTACK in fpr.h) run on the HART TASK's own stack: while
+ * an actor runs, that FreeRTOS stack is idle below the hart loop's saved sp
+ * (sched_ctx[1]).  The call is synchronous and never yields, so nothing else
+ * uses that region meanwhile; preemption by IDF tasks saves onto it, which is
+ * what FreeRTOS's own stack checks expect anyway. */
+#include "esp_memory_utils.h"
+#include "freertos/idf_additions.h"
+V fpr_cstack_call(void *fn, V a, V b, V c, void *top);
+#ifndef FPR_ESP_CSTACK_NEED
+#define FPR_ESP_CSTACK_NEED 8192 /* FAT + wear levelling + esp_flash, with margin */
+#endif
+V fpr_esp_cstack(void *fn, V a, V b, V c) {
+  fpr_hart_t *h = fpr_hart();
+  void *sp = __builtin_frame_address(0);
+  if (!h || !h->current || esp_ptr_internal(sp)) /* already on an internal stack */
+    return ((V (*)(V, V, V))fn)(a, b, c);
+  uintptr_t top = ((uintptr_t)h->sched_ctx[1] - 256) & ~(uintptr_t)15; /* below the hart loop's frame */
+  uintptr_t low = (uintptr_t)pxTaskGetStackStart(fpr_esp_hart_task[h->id]);
+  if (!esp_ptr_internal((void *)top) || top < low + FPR_ESP_CSTACK_NEED)
+    fpr_cpanic("esp: no internal stack room for a file operation (raise FPR_ESP_HART_STACK)");
+  return fpr_cstack_call(fn, a, b, c, (void *)top);
 }
-sw hal_irq_claim(void) {
-  uw n = __atomic_load_n(&irq_open_n, __ATOMIC_ACQUIRE);
-  for (uw i = 0; i < n; i++) {
-    uw s = irq_open_list[i];
-    if (__atomic_exchange_n(&irq_pending[s], 0, __ATOMIC_ACQ_REL)) return (sw)s;
-  }
-  return 0;
-}
-void hal_irq_ack(uw src) { (void)src; }
-void hal_irq_raise(uw src) {
-  if (src == 0 || src >= ESP_IRQ_MAX) return;
-  __atomic_store_n(&irq_pending[src], 1, __ATOMIC_RELEASE);
-  hal_ipi_send(fpr_irq_hart);
+
+/* ---- the running actor's stack bottom, watched ----------------------------
+ * No MMU, so no guard pages: FP-RISC code keeps FPR_STACK_HEADROOM below
+ * itself and grows the stack before reaching it, but C code that uses more
+ * (deep recursion in a primitive, a large local array) used to run straight
+ * past the segment into the neighbouring heap block, silently.  Each core's
+ * watchpoint 0 covers the lowest 32 bytes of the segment its actor runs on
+ * (FreeRTOS keeps the last watchpoint for its own optional stack check), so
+ * such a write is a named fault and a reset -- "fpr run" reports the board
+ * reset -- instead of corruption.  Best effort, as guard pages are: a frame
+ * that skips the 32 bytes without writing them is not seen.
+ *
+ * OPT-IN (FPR_ESP_STACK_GUARD=1 at build): measured on the P4, an armed store
+ * watchpoint slows every store on its core -- fib 27 took 251 ms with it and
+ * 160 ms without, cross-core round trips 340 ms against 293.  A development
+ * build turns it on; the runtime's 64 KiB headroom stands in otherwise. */
+#define FPR_STACK_WATCHPOINT 0
+void hal_actor_stack(void *lo) {
+#ifndef FPR_ESP_STACK_GUARD
+  (void)lo; /* opt-in: an armed store watchpoint slows every store on the core */
+#else
+  if (!lo) { esp_cpu_clear_watchpoint(FPR_STACK_WATCHPOINT); return; }
+  uintptr_t a = ((uintptr_t)lo + 31) & ~(uintptr_t)31;
+  esp_cpu_set_watchpoint(FPR_STACK_WATCHPOINT, (void *)a, 32, ESP_CPU_WATCHPOINT_STORE);
+#endif
 }

@@ -1,0 +1,25 @@
+# stack-guard.fpr -- C code that overruns an actor's stack is a named fault.
+# (Hardware smoke: build with FPR_ESP_IO_SMOKE=1, which links the probe, and
+# FPR_ESP_STACK_GUARD=1, which arms the guard -- it is opt-in: it costs speed.)
+#
+# FP-RISC code grows its stack before it runs out; C code does not.  An actor
+# calls a probe primitive that nests 1 KiB C frames: 32 fit in the headroom
+# the runtime keeps; 200 run past the segment's bottom.  (The probe records
+# its deepest frame, which keeps GCC from turning the recursion into a loop.)  The watchpoint on
+# that bottom stops the board with a fault instead of letting the writes land
+# in the neighbouring heap block.  `fpr run` then exits 2: the board reset.
+unsafe base.
+Probe.deepC : Int -> Int .
+Probe.stackInfo : Unit -> Int .
+
+deep n boss me = _ = Probe.stackInfo Unit; _ = send boss (Probe.deepC n); 0.
+
+main =
+  me = myself 0;
+  _ = spawn (deep 32 me);
+  a = receive me;
+  _ = print "32 KiB of C frames on an actor stack: fine ({a})";
+  _ = spawn (deep 200 me);
+  b = receive me;
+  _ = print "200 KiB of C frames: NOT CAUGHT ({b})";
+  "stack-guard: the overrun was not caught".

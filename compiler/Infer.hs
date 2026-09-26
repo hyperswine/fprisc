@@ -491,7 +491,7 @@ builtinEnv =
       -- a --foreign= file of signatures (its core/foreign.fpr).  What stays
       -- is what THIS tree implements: the language, the runtime (actors,
       -- Mod.*, the logs, irq and timer routing) and the machine layer
-      -- (register access).  docs/HAL.md.
+      -- (register access).  docs/2026-09-19-HAL.md.
       -- the cast between Addr and a Layout's nominal type (FPRISC.expandLayout).
       -- `$` is not an identifier character, so no program can write it; Compile
       -- erases it to the identity before Core reaches a backend.
@@ -516,7 +516,7 @@ builtinEnv =
       ("chr", mono (TFn tInt tStr)),
       ("parseInt", mono (TFn tStr tInt)),
       ("fileRead", mono (TFn tStr tStr)),
-      -- the Base environment (machine/posix/base.c; docs/BASE.md)
+      -- the Base environment (machine/posix/base.c; docs/2026-09-18-BASE.md)
       ("fileWrite", mono (TFn tStr (TFn tStr (tcon "Result" [tUnit, tStr])))),
       ("fileAppend", mono (TFn tStr (TFn tStr (tcon "Result" [tUnit, tStr])))),
       ("fileExists", mono (TFn tStr tBool)),

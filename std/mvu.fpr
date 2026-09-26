@@ -132,7 +132,7 @@ subOne r acc s =
   | SPort pa -> subFold r (t, k, pa).
 
 # ---- the message port: EMsg from ANY actor, one writer, per-frame -----------
-# The debug/wire channel the paths design asks for (docs/PATHS.md): a
+# The debug/wire channel the paths design asks for (docs/2026-08-27-PATHS.md): a
 # shell, a supervisor, a script sends (tag, arg) STRING PAIRS to the
 # port actor; the loop drains it once per frame (SPort port in subs)
 # and hands each pair to update as EMsg tag arg -- the SAME arm the
@@ -291,7 +291,7 @@ rebuild app vp key model =
 
 # `vl` is the app's vals function, and it is CALLED here, so it is spelled
 # as one: a bare `b` promised the caller any type at all for something this
-# body applies to four arguments (fprisc/docs/SAFETY.md).
+# body applies to four arguments (fprisc/docs/2026-08-25-SAFETY.md).
 renderWorker : unsafe Int -> Int -> env -> (Int -> env -> (Int, Int) -> model -> vals) -> Int -> c .
 renderWorker parent render env vl self =
   m = receiveFrom self parent;

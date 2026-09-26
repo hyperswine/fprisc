@@ -13,12 +13,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FACILITIES = {
-    "os": "readFile listDir stat mkdir remove rename cwd wallClock tzOffset",
+    "os_fs": "readFile listDir stat mkdir remove rename cwd",
+    "os_clock": "wallClock tzOffset",
     "os_io": "open ready poll read write seek close",
     "os_proc": "run exec",
     "os_net": "connect listen accept localPort",
     "os_watch": "watchOpen watchArm watchTake watchClose",
     "os_term": "ttyRaw ttySize",
+    "os_job": "",
 }
 
 def symbols(path):
@@ -35,21 +37,21 @@ def symbols(path):
     return defined, undefined
 
 with tempfile.TemporaryDirectory(prefix="fpr-posix-facilities-") as tmp:
-    flags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_NHARTS=2", "-I" + str(ROOT / "runtime")]
+    flags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_NHARTS=2", "-I" + str(ROOT / "runtime"), "-I" + str(ROOT / "machine/posix")]
     if platform.machine().lower() in ("arm64", "aarch64"):
         flags += ["-ffixed-x27", "-ffixed-x28", "-DFPR_HART_X28"]
     exported = set()
     for name, primitives in FACILITIES.items():
         obj = Path(tmp) / (name + ".o")
         subprocess.run(shlex.split(os.environ.get("CC", "cc")) + flags +
-                       ["-c", str(ROOT / "machine/posix" / (name + ".c")), "-o", str(obj)], check=True)
+                       ["-c", str(next(d / (name + ".c") for d in (ROOT / "machine/posix", ROOT / "machine/unix") if (d / (name + ".c")).exists())), "-o", str(obj)], check=True)
         defined, undefined = symbols(obj)
         expected = {"fpr_g_Os_x2e" + p for p in primitives.split()}
         actual = {s for s in defined if s.startswith("fpr_g_Os_")}
         assert actual == expected, (name, actual ^ expected)
         assert not (exported & actual), (name, "duplicate primitive")
         exported |= actual
-        if name in ("os", "os_io", "os_net"):
+        if name in ("os_fs", "os_clock", "os_io", "os_net"):
             forbidden = {"fork", "execvp", "waitpid", "kill", "pipe", "pthread_create", "tcsetattr"}
             assert not (undefined & forbidden), (name, undefined & forbidden)
         print(name + ": primitive exports and dependency boundary PASS")

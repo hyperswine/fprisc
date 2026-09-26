@@ -2,7 +2,7 @@
 # ONE linear frame RELAYED between actors by sendLinear — zero copies,
 # NO Arc growth per frame.
 #
-# v2 (docs/MEMORY.md): `send` deep-copies with no exceptions, so the
+# v2 (docs/2026-08-25-MEMORY.md): `send` deep-copies with no exceptions, so the
 # old ping-pong spelling — destructure a frame out of a message, drop
 # the root, keep using the frame — is exactly the copy-on-retain
 # violation the laws name (it was only ever sound while vectors rode

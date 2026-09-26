@@ -16,7 +16,7 @@
 # Values are Numeric: integer CSVs stay exact bignums; inexactness enters
 # only through Numeric.div (M.colMeans) and then propagates, Julia-style.
 #
-# Style per STYLE.md: the work lives in top-level clause functions (case
+# Style per 2026-09-01-STYLE.md: the work lives in top-level clause functions (case
 # arms are expressions, so anything needing binds is a clause with
 # guards); the Struct is the thin public surface.
 

@@ -10,7 +10,7 @@
 # no per-row apply, in place.
 #
 # A RECORD-accumulator fold (raStep) still declines, with the note --
-# fold duals are scalar-acc; that bound is documented in VEC.md.
+# fold duals are scalar-acc; that bound is documented in 2026-08-25-VEC.md.
 #
 #   make bare-metal-run PROG=tests/recfold.fpr
 #

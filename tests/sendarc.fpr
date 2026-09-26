@@ -1,4 +1,4 @@
-# sendarc.fpr -- the send triad's SHARE verb (docs/MEMORY.md v2).
+# sendarc.fpr -- the send triad's SHARE verb (docs/2026-08-25-MEMORY.md v2).
 #
 # sendArc is the ONE path by which a value becomes cross-actor shared:
 # the pointer crosses (no copy), the object is frozen by contract, and

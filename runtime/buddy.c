@@ -239,7 +239,7 @@ static void buddy_free_locked(void *p) { /* under buddy_lock */
 
 /* grow or shrink a buddy block, IN PLACE whenever the structure
  * allows -- the missing third op of the alloc/realloc/dealloc contract
- * (docs/MEMORY.md).  A power-of-two buddy is the best possible
+ * (docs/2026-08-25-MEMORY.md).  A power-of-two buddy is the best possible
  * substrate for realloc-by-doubling (contiguous Vec columns lean on
  * exactly this):
  *

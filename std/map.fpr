@@ -1,4 +1,4 @@
-# std/map.fpr -- Map: keys to values, ordered (docs/PRELIM_BASE_LIBRARY_DESIGN.md).
+# std/map.fpr -- Map: keys to values, ordered (docs/2026-09-19-PRELIM_BASE_LIBRARY_DESIGN.md).
 #
 #   Map = use "std/map".
 #   counts = words |> List.fold (fn m w -> Map.update w bump m) Map.strings

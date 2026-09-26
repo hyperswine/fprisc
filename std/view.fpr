@@ -395,7 +395,7 @@ text : { segs : List String | r } -> Node .
 text path = LTxt (localName path).
 
 # every leaf of the client-state record, declared with its initial value: the
-# bare literal `@Client` is its schema (docs/PATHS.md)
+# bare literal `@Client` is its schema (docs/2026-08-27-PATHS.md)
 locals : List { path : String, get : c -> String | r } -> c -> List Attr .
 locals schema init = localsGo schema init.
 localsGo : unsafe List { path : String, get : c -> String | r } -> c -> List Attr .

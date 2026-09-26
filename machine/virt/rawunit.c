@@ -1,7 +1,7 @@
 /* rawunit.c -- what an FP-RISC RAW LIBRARY UNIT needs from the image it joins.
  *
  * machine/virt's PLIC and CLINT drivers are FP-RISC (plic.fpr, clint.fpr): raw
- * library units over typed layouts (docs/LAYOUTS.md), compiled
+ * library units over typed layouts (docs/2026-09-19-LAYOUTS.md), compiled
  * `--arc --raw --lib` so their exports are the C symbols the runtime calls.
  * Such a unit was only ever linked into the builtin runtime, which supplies
  * two things the core image does not:

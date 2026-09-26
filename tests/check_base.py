@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The Base profile: an FP-RISC program is an ordinary executable for this
-machine (`fpr build`), with the environment docs/BASE.md promises -- the
+machine (`fpr build`), with the environment docs/2026-09-18-BASE.md promises -- the
 command line, the exit status, stdin/stdout/stderr, files, the clock --
 and the same actors, std modules and panics as every other profile."""
 from pathlib import Path
@@ -83,3 +83,21 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run(['./fpr', 'build', 'tests/base/hello.fpr', '-o', tmp / 'hello2', '-v'])
     assert 'wrote' in p.stdout, p.stdout
     print('fpr run passes arguments and status through; -v shows the compiler; the runtime is cached: PASS')
+    # 8. a server that runs out of descriptors keeps serving: accept's EMFILE
+    # used to end std/tcp's accept loop for good.  40 descriptors: the rounds
+    # of load.fpr outgrow them, the shortage is said on stderr, and the
+    # rounds that fit were all answered.
+    exe = build('machine/esp-idf/examples/load.fpr', 'load')
+    p = subprocess.run(['sh', '-c', f'ulimit -n 40; exec "{exe}"'], capture_output=True, text=True, timeout=120)
+    assert p.returncode == 0, (p.returncode, p.stdout, p.stderr)
+    assert '8 at once: 8 connected' in p.stdout, p.stdout
+    assert 'tcp: accept: Too many open files (still serving)' in p.stderr, p.stderr
+    print('A server out of descriptors says so and keeps serving (std/tcp accept loop): PASS')
+    # 9. the job broker: blocking host work runs on a broker thread (machine/posix/os_job.c),
+    # the same one the board's radio libraries use, and only the calling actor waits.
+    # The job is C brought by the program (--with), as a host's would be.
+    exe = tmp / 'job'
+    run(['./fpr', 'build', 'tests/base/job.fpr', '--with', 'tests/base/job_probe.c', '-o', exe])
+    p = run([exe])
+    assert p.stdout == '5: pong 5\n1: pong 1\n3: pong 3\nconcurrent: 60\n', p.stdout
+    print('The job broker: host work off the harts, in order, three actors at once (std/job): PASS')

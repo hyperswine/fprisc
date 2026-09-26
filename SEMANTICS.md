@@ -4,7 +4,7 @@ The contract for 2.0.  Skeleton for now: dot points, plain words, a
 `[test: ...]` slot on every clause.  A clause with a test is a rule.  A
 clause without one is a proposal.  Where today's behaviour is known it
 is written as it IS, marked (today); where a decision is open it is
-marked (decide).  See docs/V2.md for the plan around this file.
+marked (decide).  See docs/2026-09-12-V2.md for the plan around this file.
 
 Conventions: `.fpr` is the AOT surface (bare-metal, qos-native,
 qos-portable), `.sol` the hosted-bytecode surface.  ONE grammar, two
@@ -173,7 +173,7 @@ file suffixes; a clause applies to both unless it says which.
 - The Base environment, on every profile whose HAL grants it (today: the
   Base profile, `machine/posix`): `Sys.args`, `Sys.env`, `Sys.exit`,
   `Sys.readLine`, `Sys.stderr`, `Sys.timeUs`, `fileRead`, `fileWrite`,
-  `fileAppend`, `fileExists`, with the types and results in docs/BASE.md.
+  `fileAppend`, `fileExists`, with the types and results in docs/2026-09-18-BASE.md.
   A profile that does not grant one fails at link time on its `fpr_g_`
   name, never silently.  (today)  `[test: tests/check_base.py]`
 
@@ -299,7 +299,7 @@ file suffixes; a clause applies to both unless it says which.
 
 - qosp (Linux x86-64, macOS arm64, Linux a64 cross) hosts one `.qa`;
   virt (QEMU) boots the native kernel; a board target is the 2.0
-  addition (docs/V2.md workstream 4).  What each host promises of the
+  addition (docs/2026-09-12-V2.md workstream 4).  What each host promises of the
   HAL table (`qos_abi.h`, 26 entries): (write it down per host).  `[test: ]`
 
 ---

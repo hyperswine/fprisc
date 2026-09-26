@@ -9,9 +9,29 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+/* A host's socket layer may need starting.  On ESP-IDF lwIP runs in its own
+ * task, started by esp_netif_init; a socket call before that asserts
+ * ("Invalid mbox") and resets the board.  Only Wi-Fi used to start it, so a
+ * loopback server without std/wifi crashed on its first socket.  Started here
+ * once, on first use; a Unix kernel needs nothing. */
+#ifdef FPR_ESP_IDF
+#include <pthread.h>
+#include "esp_netif.h"
+static pthread_once_t net_once = PTHREAD_ONCE_INIT;
+static int net_ok;
+static void net_start(void) { net_ok = esp_netif_init() == ESP_OK; }
+/* the same once, for platform libraries that need lwIP too (wifi.c): two
+ * first calls at once must not both start it */
+int fpr_esp_net_up(void) { pthread_once(&net_once, net_start); return net_ok; }
+#define NET_UP() do { pthread_once(&net_once, net_start); \
+    if (!net_ok) return os_err("the network stack (lwIP) could not be started"); } while (0)
+#else
+#define NET_UP() do { } while (0)
+#endif
+
 /* lwIP provides getaddrinfo but IDF 5.3.2 does not link gai_strerror. */
 static V os_gai_error(int code) {
-#ifdef ESP_PLATFORM
+#ifdef FPR_ESP_IDF
   char message[64];
   snprintf(message, sizeof message, "address lookup failed (%d)", code);
   return os_err(message);
@@ -34,6 +54,7 @@ static void sock_tune(int fd) {
  * timeouts): there is no portable non-blocking resolver.  Everything after is
  * non-blocking. */
 static V h_connect(V hostv, V portv) {
+  NET_UP();
   char *host = os_cstr(hostv, "Os.connect: the host is not a String");
   char port[16];
   snprintf(port, sizeof port, "%ld", (long)UNTAG(portv));
@@ -57,6 +78,7 @@ static V h_connect(V hostv, V portv) {
 FPR_FN(fpr_g_Os_x2econnect, h_connect, 2);
 
 static V h_listen(V addrv, V portv) {
+  NET_UP();
   char *addr = os_cstr(addrv, "Os.listen: the address is not a String");
   char port[16];
   snprintf(port, sizeof port, "%ld", (long)UNTAG(portv));
@@ -85,7 +107,18 @@ static V h_accept(V fdv) {
   socklen_t len = sizeof peer;
   int fd;
   do fd = accept(want_fd(fdv, "Os.accept: the listener is not an Int"), (struct sockaddr *)&peer, &len); while (fd < 0 && errno == EINTR);
-  if (fd < 0) return os_again_or_errno();
+  if (fd < 0) {
+    /* a shortage that passes -- out of descriptors or buffers, or a client
+     * that gave up before it was taken -- is "busy: <why>", not an end:
+     * std/tcp keeps serving past it.  Anything else (the listener closed)
+     * ends the accept loop, as before. */
+    if (errno == EMFILE || errno == ENFILE || errno == ENOBUFS || errno == ENOMEM || errno == ECONNABORTED) {
+      char msg[96];
+      snprintf(msg, sizeof msg, "busy: %s", strerror(errno));
+      return os_err(msg);
+    }
+    return os_again_or_errno();
+  }
   sock_tune(fd);
   char name[64] = "?";
   inet_ntop(AF_INET, &peer.sin_addr, name, sizeof name);

@@ -247,7 +247,7 @@ prelude =
       "xor a b = case a of True -> not b | False -> b.",
       -- ---- Wire: the neutral tree a compiler-minted codec speaks; the SAME
       -- definitions as core/prelude.fpr, so std/json (and @Msg literals) mean the
-      -- same thing in a script (docs/PATHS.md 2b)
+      -- same thing in a script (docs/2026-08-27-PATHS.md 2b)
       "wireInt : String -> Result Int String .",
       "wireInt s = case strlen s == 0 of",
       "    True -> Err \"not a number\"",

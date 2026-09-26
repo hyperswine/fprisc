@@ -1,26 +1,54 @@
-# machine/esp-idf: FP-RISC Base on the ESP32-P4
+# machine/esp-idf: the posix system on an ESP32-P4
 
-`--system=esp-idf` (docs/PROFILES.md). An FP-RISC program becomes an
-ESP-IDF application: the rv32 code generator's output, `runtime/`, and this
-machine layer, built as one IDF project and flashed to the chip.
+This directory is the esp-idf **host** of the posix system, `--host=esp-idf`
+(docs/2026-09-19-PROFILES.md; `--system=esp-idf` is the 1.x spelling and
+still works): boot, harts, park and wake, the heap, the context switch and the
+flash filesystem, plus the IDF project and the console tools. Everything else
+a program sees is the same `machine/posix` and `runtime/` a unix program is
+built from. `fpr build` turns a program into an ESP-IDF application, the rv32
+code generator's output linked with those, as one IDF project, and `fpr run`
+flashes it and becomes its console.
 
 Why it is built this way, and the workarounds ESP-IDF forced, are in
-docs/ESP-IDF.md; its fixed limits are registered in docs/BOUNDS.md.
+docs/2026-09-23-ESP-IDF.md; its fixed limits are registered in docs/2026-09-19-BOUNDS.md.
 
 Board it was brought up on: ESP32-P4 rev 1.3 (two rv32imafc cores at
 360 MHz, 32 MB PSRAM, 32 MB flash), with an ESP32-C6 on SDIO as its radio,
 console on UART0 through a CH343 bridge.
 
-## Build and flash
+## Build, flash, run
 
 ESP-IDF 5.3 (tested with 5.3.2 under `~/.espressif`). `env.sh` sets up
-its tools without `export.sh`, which refuses to run without openocd.
+its tools without `export.sh`, which refuses to run without openocd; `fpr`
+sources it when `IDF_PATH` is not set.
 
 ```sh
-. machine/esp-idf/env.sh
-machine/esp-idf/build.sh machine/esp-idf/examples/cores.fpr build/esp
-idf.py -C machine/esp-idf/project -B build/esp/idf -DSDKCONFIG=build/esp/sdkconfig -p /dev/cu.usbmodemXXXX flash monitor
+fpr run machine/esp-idf/examples/cores.fpr --host=esp-idf
 ```
+
+That builds, flashes and becomes the program's console, like `fpr run` of a
+posix program:
+
+- The program's output goes to stdout. The runtime's own `[fpr]` lines and
+  ESP-IDF's error lines go to stderr; `-v` shows the build and everything
+  else.
+- Lines on stdin are typed into the board's console.
+- `fpr` exits with the program's status, as `fpr run` does on unix: `main`'s
+  Int result, `Program.exit 3` exits 3, a panic
+  exits 1. A board reset under the program exits 2. `FPR_ESP_TIMEOUT=N`
+  stops waiting after N seconds and exits 124.
+- The port is `--port P`, else `FPR_ESP_PORT`, else the one USB serial
+  device attached.
+- The build goes to `build/esp-idf/<program>`, or `-o DIR`.
+- The board has one console, so a program's stderr lines arrive on stdout.
+
+`fpr build prog.fpr --host=esp-idf [-o DIR]` builds without flashing. The
+parts underneath are `build.sh` (compile, then `idf.py`), `run.sh` (build,
+`esptool` flash, console) and `console.py`, all in this directory.
+
+`tests/check_esp_board.py` runs every example on an attached board this way
+and checks their output and exit status. It skips, exit 0, when no board is
+attached; `--quick` leaves out the radio examples.
 
 The first build fetches the pinned components listed in
 `project/main/idf_component.yml` (ESP-Hosted, esp_wifi_remote and their
@@ -40,29 +68,33 @@ yet. After changing it, delete `BUILD_DIR/sdkconfig`.
 | park / wake | task notification; the wait is capped at 20 ms or the hart's timer deadline |
 | the heap | the largest PSRAM block, less 1/16 left for IDF (about 30 MB) |
 | context switch | `ctx.S`: ra, sp, s0-s11, fs0-fs11. Not gp: a fabricated context has gp = 0 |
-| blocking IDF calls | jobs on a broker task; completion raises an IRQ bound to the waiting actor |
+| blocking IDF calls | jobs on the posix system's broker thread (`machine/posix/os_job.c`, a pthread with an internal stack at priority 5); completion raises an IRQ bound to the waiting actor |
 | the console | `stdout` (UART0) |
 
 Two IDF settings matter: the hardware stack guard is off, since it treats
 actor stacks as overflows, and the idle-task watchdog checks are off, since
 a busy hart never yields to idle.
 
-## What a program can use: `std/esp`
+## What a program can use
 
-- **Cores and time.** `Esp.core` is the core the caller runs on, `Esp.ms`
-  is milliseconds since boot (30 bits, so it wraps after about 12 days),
-  `Esp.freeKb` is free heap, `Esp.random` is 30 bits from the hardware RNG.
-- **GPIO.** `gpioPins`, `gpioLevel` and `gpioInfo` read pin state and its
-  IO_MUX setup. `gpioInput` configures a pin as an input. `gpioOutput` and
-  `gpioWrite` exist but have not been exercised on hardware.
-- **Wi-Fi through the C6.** `wifiInfo`, `wifiScan`, `wifiAp ssid pass`
-  (WPA2 when the password has 8 or more characters), `wifiApClients`,
-  `wifiStop`.
-- **Bluetooth LE through the C6.** `bleScan ms` lists address, rssi and
-  name, strongest first. `bleAdvertise name ms` advertises non-connectable.
+- **The chip: `std/esp`.** `core` is the core the caller runs on, `ms` is
+  milliseconds since boot (30 bits, so it wraps after about 12 days),
+  `freeKb` is free heap, `random` is 30 bits from the hardware RNG.
+- **GPIO: `std/gpio`.** `pins`, `level` and `info` read pin state and its
+  IO_MUX setup (`describe` puts it in words). `input` configures a pin as an
+  input. `output` and `write` exist but have not been exercised on hardware.
+- **Wi-Fi through the C6: `std/wifi`.** `info`, `scan`, `startAp ssid pass`,
+  `stations`, `stop`, as typed records. `""` is an open network; any other
+  password must be 8-63 characters or 64 hex digits, or it is refused.
+- **Bluetooth LE through the C6: `std/ble`.** `scan ms` lists address, rssi
+  and name, strongest first. `advertise name ms` advertises non-connectable.
+- **Files: `std/file`, `std/dir`** on FAT at `/data`; **sockets and HTTP:
+  `std/tcp`, `std/stream`, `std/poller`, `std/httpcore`.**
 
-Radio calls are jobs. `job` blocks only the calling actor, while every other
-actor keeps running on both cores. Results are rows of text fields.
+The radio and GPIO libraries live in `platform/esp-idf/`, not in this
+machine layer. Radio calls are jobs (`std/job`): each blocks only the calling
+actor, while every other actor keeps running on both cores. A program that
+does not import `std/wifi` or `std/ble` links neither stack.
 
 ## Examples, as measured on the board
 
@@ -83,7 +115,7 @@ actor keeps running on both cores. Results are rows of text fields.
 - **The C6's firmware is old.** It reports version 0.0.0, and ESP-Hosted
   warns that it should be upgraded. It does not answer the RPC that starts
   the BT controller, which times out after 5 s, but its controller is
-  already running, so `ble.c` goes on to the NimBLE sync, which is the real
+  already running, so `platform/esp-idf/bluetooth.c` goes on to the NimBLE sync, which is the real
   test.
 - **SDMMC log noise.** IDF 5.3's SDMMC driver logs SDIO interrupts that
   arrive between transfers as errors, dozens a second, although every
@@ -108,13 +140,13 @@ actor keeps running on both cores. Results are rows of text fields.
 
 ## Shared POSIX I/O and host TLS milestone (2026-09-25)
 
-`--system=esp-idf` now uses a real TLS hart slot, preserving IDF's `tp`.
+The esp-idf host now uses a real TLS hart slot, preserving IDF's `tp`.
 Both generated code and C runtime reload it instead of caching its address
 across actor switches. Rebuild compiler, generated units and firmware
 together; the compiler uses a distinct `rv32-idftls1` unit cache tag.
 Bare-metal rv32 keeps its original hart-register convention.
 
-The IDF project links shared `machine/posix/os_io.c` and `os_net.c`.
+The IDF project links shared `machine/posix/os_io.c` and `os_net.c` (and, since 2026-09-25, all of `machine/posix`).
 The following opt-in test initializes lwIP loopback and links a TLS probe:
 
 ```sh
@@ -169,5 +201,59 @@ discard the handle afterward. Automatic owner-exit cleanup remains open.
 A subsequent fresh flash/reset passed 80 library start/stop cycles with duplicate
 waiter cancellation, then ten TCP exchanges and explicit stop, with 40 readiness
 interrupts and status 0. `Stream.readOn` returns `Err "poller stopped"` on
-cancellation; direct callers can use `Poller.awaitResult`. See docs/ESP-IDF.md
+cancellation; direct callers can use `Poller.awaitResult`. See docs/2026-09-23-ESP-IDF.md
 for the ownership contract and concurrent registration limitation.
+
+## Access point server and files (2026-09-25)
+
+The project now has its own partition table (`project/partitions.csv`): a
+4 MiB app and an 8 MiB FAT partition mounted at `/data`. A build directory
+made before this keeps its old sdkconfig and the 1 MiB app partition, which
+the current image no longer fits. Delete `BUILD_DIR/sdkconfig` once.
+
+```sh
+. machine/esp-idf/env.sh
+machine/esp-idf/build.sh machine/esp-idf/examples/ap-server.fpr build/esp-ap
+machine/esp-idf/build.sh machine/esp-idf/examples/files.fpr build/esp-files
+```
+
+- `examples/ap-server.fpr` checks the access point's password rule, starts
+  `fpr-p4-test` with a random WPA2 password, serves HTTP on port 80 and
+  checks itself through 192.168.4.1. It prints `READY` with the password,
+  then serves until reset. From a phone, join the network and open
+  `http://192.168.4.1/`; each request is printed on the console.
+- `examples/files.fpr` exercises `std/file` and `std/dir` on `/data`: a boot
+  counter that survives resets and reflashes, a tree, append, rename, a
+  64 KiB streamed write with an in-place patch, and simultaneous appends
+  from both cores. Paths must be absolute (`/data/...`).
+
+Opening the serial port on macOS resets the board, so the access point's
+password changes each time a monitor attaches. Read it from the `READY` line.
+
+## Console programs and the radio link (2026-09-25)
+
+`std/program` works on the board: no arguments, an empty environment,
+`readLine` from the serial console (it blocks only the reading hart), and
+`exit` ends the program for good. `examples/console.fpr` is a plain posix
+program that runs on both:
+
+```sh
+machine/esp-idf/build.sh machine/esp-idf/examples/console.fpr build/esp-console
+```
+
+Type into the serial console; Enter ends a line. A program that does not use
+`std/wifi` or `std/ble` no longer starts the link to the C6 at all. One that
+does starts it on its first radio call, which takes about 2 s longer.
+
+## Capacity and the stack guard (2026-09-25)
+
+- `examples/load.fpr` measures simultaneous TCP connections. The board
+  holds 12 loopback connections at once; the 16th pair outruns its 32
+  sockets. Clients from other devices get about 31. A server out of
+  sockets now says so on stderr and keeps serving.
+- `FPR_ESP_STACK_GUARD=1 fpr run ... --host=esp-idf` arms a watchpoint on
+  the running actor's stack bottom, so C code that overruns it stops the
+  board by name. It costs about a third of compute speed, so it is for
+  development builds; `examples/stack-guard.fpr` shows it, with the probe
+  build (`FPR_ESP_IO_SMOKE=1`).
+

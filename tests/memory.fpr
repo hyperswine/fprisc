@@ -1,4 +1,4 @@
-# memory.fpr -- the memory actor (docs/MEMORY.md): one actor owns the
+# memory.fpr -- the memory actor (docs/2026-08-25-MEMORY.md): one actor owns the
 # buddy; every slab, stack and ring the runtime needs from actor
 # context is a request to it, and a dead actor's blocks go home as
 # one-way frees from the reaper.  Two hundred workers come and go, each

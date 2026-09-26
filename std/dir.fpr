@@ -6,7 +6,7 @@
 # Listings are SORTED by name: the same directory gives the same list on every
 # run and every file system.  Errors are the system's own words.
 
-OS = use "os".
+OS = use "osfs".
 P = use "path".
 S = use "string".
 

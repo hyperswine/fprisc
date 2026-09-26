@@ -1,0 +1,61 @@
+# std/wifi.fpr -- Wi-Fi: the radio's state, a scan, an access point.
+#
+#   Wifi = use "std/wifi".
+#   case Wifi.scan Unit of
+#       Ok nets -> List.each (fn n -> print "{n.ssid} {n.rssi} dBm ch {n.channel}") nets
+#     | Err why -> print why
+#
+# Every call blocks only the calling actor: the radio work runs on the
+# platform's broker (std/job.fpr), and on the ESP32-P4 it is a round trip to
+# the board's ESP32-C6 (platform/esp-idf/wifi.c).  A platform without a
+# radio library fails a program importing this at LINK time, by name.
+#
+# startAp's password rule is the protocol's, refused by name, never bent:
+# "" is an open network, anything else is 8-63 characters or 64 hex digits;
+# an SSID is 1-32 bytes.  It answers once the access point's interface is up.
+
+WifiHost.info : Int -> Int .
+WifiHost.scan : Int -> Int .
+WifiHost.ap : Int -> String -> String -> Int .
+WifiHost.stations : Int -> Int .
+WifiHost.stop : Int -> Int .
+
+J = use "job".
+
+# the radio's own addresses, and its mode: "off", "station", "ap" or "station+ap"
+info : Unit -> Result { station : String, ap : String, mode : String } String .
+info u = case J.result (J.run (fn slot -> WifiHost.info slot)) of
+    Err why -> Err why
+  | Ok rs -> J.one (fn r -> Ok { station = J.field 0 r, ap = J.field 1 r, mode = J.field 2 r }) rs.
+
+# the networks in range; auth is "open", "wpa2", "wpa2/wpa3", ...
+scan : Unit -> Result (List { ssid : String, rssi : Int, channel : Int, auth : String }) String .
+scan u = case J.result (J.run (fn slot -> WifiHost.scan slot)) of
+    Err why -> Err why
+  | Ok rs -> J.parseAll network rs.
+network r = case J.number 1 r of
+    Err e -> Err e
+  | Ok rssi -> (case J.number 2 r of
+        Err e -> Err e
+      | Ok ch -> Ok { ssid = J.field 0 r, rssi = rssi, channel = ch, auth = J.field 3 r }).
+
+# an access point named ssid; the answer says where it is
+startAp : String -> String -> Result { ssid : String, channel : Int, auth : String, ip : String, bssid : String } String .
+startAp ssid pass = case J.result (J.run (fn slot -> WifiHost.ap slot ssid pass)) of
+    Err why -> Err why
+  | Ok rs -> J.one accessPoint rs.
+accessPoint r = case J.number 1 r of
+    Err e -> Err e
+  | Ok ch -> Ok { ssid = J.field 0 r, channel = ch, auth = J.field 2 r, ip = J.field 3 r, bssid = J.field 4 r }.
+
+# the stations joined to our access point
+stations : Unit -> Result (List { mac : String, rssi : Int }) String .
+stations u = case J.result (J.run (fn slot -> WifiHost.stations slot)) of
+    Err why -> Err why
+  | Ok rs -> J.parseAll (fn r -> case J.number 1 r of Err e -> Err e | Ok rssi -> Ok { mac = J.field 0 r, rssi = rssi }) rs.
+
+# the radio off (the access point with it)
+stop : Unit -> Result Unit String .
+stop u = case J.result (J.run (fn slot -> WifiHost.stop slot)) of
+    Err why -> Err why
+  | Ok _ -> Ok Unit.

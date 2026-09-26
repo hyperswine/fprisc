@@ -282,7 +282,7 @@ static V spawn_on_pid(uw hart, V f, uw pin, uw pid);
 /* ---- the stack guard ---------------------------------------------------
  * A stack is a fixed STACK_SZ, and running off its low end used to be
  * silent: SIGBUS with no word said on a hosted system, whatever lay below
- * overwritten on bare metal (docs/BOUNDS.md: building a 20,000-element
+ * overwritten on bare metal (docs/2026-09-19-BOUNDS.md: building a 20,000-element
  * list by plain recursion).  The core cannot fix that -- a guard is a fact
  * about the MACHINE (an inaccessible page, a PMP region) -- so it asks the
  * HAL at the two places a stack changes hands.  The defaults do nothing.
@@ -290,6 +290,13 @@ static V spawn_on_pid(uw hart, V f, uw pin, uw pid);
  * low end, inside the guard, so it comes off before a stack goes home. */
 __attribute__((weak)) void hal_stack_guard(void *lo, uw size) { (void)lo; (void)size; }
 __attribute__((weak)) void hal_stack_unguard(void *lo, uw size) { (void)lo; (void)size; }
+/* The RUNNING actor's current stack segment starts at `lo` (0: no actor runs
+ * on this hart now).  For a machine without guard pages whose CPU has a
+ * watchpoint (machine/esp-idf: no MMU), so a write into the segment's bottom
+ * -- C code past the headroom -- is a named fault, not a quiet write into
+ * the neighbouring heap block.  Told at switch-in, whenever the segment
+ * changes, and on the way back to the hart loop. */
+__attribute__((weak)) void hal_actor_stack(void *lo) { (void)lo; }
 
 /* A stack is as big as the block it was GIVEN.  STACK_SZ is what is asked
  * for; the buddy rounds (size + its header) up to a power of two, so a
@@ -378,7 +385,7 @@ typedef struct stkseg { struct stkseg *prev; char *lo; uw size; } stkseg_t; /* a
 static void stk_window(acb_t *a, fpr_hart_t *h, char *lo, uw size) {
   a->stk_lo = (uw)lo + FPR_STACK_HEADROOM;
   a->stk_span = size - FPR_STACK_HEADROOM;
-  if (h) { h->stk_lo = a->stk_lo; h->stk_span = a->stk_span; }
+  if (h) { h->stk_lo = a->stk_lo; h->stk_span = a->stk_span; hal_actor_stack(lo); }
 }
 static void stkseg_free(stkseg_t *g) {
   char *lo = g->lo;
@@ -407,7 +414,10 @@ static uw stack_grow_at(uw sp) {
     if (h) { h->stk_lo = 0; h->stk_span = ~(uw)0; }
     return 0;
   }
-  /* segments sp has left are dead: pop them, the largest stays warm */
+  /* segments sp has left are dead: pop them, the largest stays warm.  The
+   * watched segment is the one being popped, and freeing writes its bottom
+   * (the allocator's header): unwatch first; stk_window below re-arms. */
+  if (a->segs && !(sp >= (uw)a->segs->lo && sp < (uw)a->segs->lo + a->segs->size)) hal_actor_stack(0);
   while (a->segs && !(sp >= (uw)a->segs->lo && sp < (uw)a->segs->lo + a->segs->size)) {
     stkseg_t *g = a->segs;
     a->segs = g->prev;
@@ -1302,7 +1312,9 @@ static void hart_loop(fpr_hart_t *h) {
                                          __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
           double_run(n, h, free_);
       }
+      if (n->stack && n->stk_span != ~(uw)0) hal_actor_stack((void *)(n->stk_lo - FPR_STACK_HEADROOM));
       fpr_ctx_switch(h->sched_ctx, n->ctx);
+      hal_actor_stack(0); /* the hart loop may free that stack (reap): nothing watched here */
       __atomic_store_n(&n->running, 0, __ATOMIC_RELEASE); /* saved: it may run elsewhere now */
       if (fpr_hart() != h) hart_reg_lost(h, n);
       h->current = 0;
@@ -1939,7 +1951,7 @@ static V a_send(V av, V m) {
   return fpr_send_as((uw)fpr_hart()->current, av, m);
 }
 
-/* sendLinear: MOVE the message (docs/MEMORY.md v2, the send triad).
+/* sendLinear: MOVE the message (docs/2026-08-25-MEMORY.md v2, the send triad).
  * The compiler's linearity checker consumes the payload argument, so
  * the sender's binding is unusable afterward -- send_linear IS the
  * value's release.  Mechanism, two cases:
@@ -2183,7 +2195,7 @@ FPR_FN(fpr_g_spawn, a_spawn, 1);
 FPR_FN(fpr_g_spawnCap, a_spawn_cap, 3);
 FPR_FN(fpr_g_spawnCapOn, a_spawn_cap_on, 4);
 FPR_FN(fpr_g_spawnOn, a_spawn_at, 2);
-/* sendArc: SHARE by explicit promotion (docs/MEMORY.md v2) -- the
+/* sendArc: SHARE by explicit promotion (docs/2026-08-25-MEMORY.md v2) -- the
  * only path by which an object becomes cross-actor shared.  The
  * pointer itself crosses (no copy); the object is FROZEN BY CONTRACT
  * from this send onward (writes after sharing are races the runtime
@@ -2304,7 +2316,7 @@ static V g_actInfo(V iv) {
 FPR_FN(fpr_g_Sys_x2eactLive, g_actLive, 1);
 FPR_FN(fpr_g_Sys_x2eactInfo, g_actInfo, 1);
 
-/* ---- the MEMORY ACTOR (fpr.h; docs/MEMORY.md) -----------------------
+/* ---- the MEMORY ACTOR (fpr.h; docs/2026-08-25-MEMORY.md) -----------------------
  * One actor owns the buddy.  A request is an Int -- (bytes << 1) | 1
  * to take, ptr >> 1 to give (buddy pointers are 8-aligned, so the
  * low bit distinguishes) -- so the request path allocates nothing.

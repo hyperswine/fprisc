@@ -35,14 +35,26 @@ acceptGo f wait = case IO.ready f of
     False -> _ = Sys.sleepUs wait; acceptGo f (if wait >= 4000 then 4000 else wait * 2)
   | True -> (case OS.accept f of
         Ok (c, peer) -> Ok (ST.Stream c, peer)
-      | Err why -> (if why == "again" then acceptGo f 100 else Err why)).
+      | Err why -> (if why == "again" then acceptGo f 100 else
+          if busy why then _ = shortage why; acceptGo f 100 else Err why)).
+
+# accept failed for a reason that passes (out of descriptors or buffers, a
+# client that gave up first): the server keeps going.  It used to end the
+# accept loop, so a server that ran out of descriptors under load stopped
+# serving for good.  Said on stderr -- a limit is never silent -- and backed
+# off a little, so a full table is not spun on.
+busy : String -> Bool .
+busy why = strIndexOf "busy: " why == 1.
+shortage : String -> Unit .
+shortage why = _ = Sys.stderr "tcp: accept: {substr why 7 (strlen why - 6)} (still serving)\n"; Sys.sleepUs 20000.
 
 stop : Listener -> Result Unit String .
 stop l = case l of Listener f -> IO.close f.
 
 # accept forever; each connection gets its OWN actor running `handler conn peer`,
 # and is closed when the handler returns.  Answers only when accepting fails
-# (which `stop` from another actor causes: that is how a server is shut down).
+# for good (which `stop` from another actor causes: that is how a server is
+# shut down); a shortage that passes is said on stderr and served past.
 serve : Listener -> (ST.Stream -> String -> a) -> String .
 serve l handler = serveGo l handler.
 serveGo : unsafe Listener -> (ST.Stream -> String -> a) -> String .
@@ -72,4 +84,4 @@ acceptAll f handler = case OS.accept f of
     Ok (c, peer) ->
       _ = spawn (fn self -> _ = handler (ST.Stream c) peer; ST.close (ST.Stream c));
       acceptAll f handler
-  | Err why -> (if why == "again" then "" else why).
+  | Err why -> (if why == "again" then "" else if busy why then _ = shortage why; "" else why).

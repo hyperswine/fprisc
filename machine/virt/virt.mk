@@ -1,12 +1,12 @@
 # virt.mk -- the virt MACHINE LAYER's FP-RISC half, for every Makefile that links it.
 #
-# clint.fpr is a raw library unit (docs/LAYOUTS.md): compiled to assembly whose
+# clint.fpr is a raw library unit (docs/2026-09-19-LAYOUTS.md): compiled to assembly whose
 # exports ARE the C symbols the runtime calls (hal_ipi_send, hal_mtime,
 # hal_timer_arm, ...), linked beside the C like any other object.  It is here,
 # and not in a HAL, because the SCHEDULER needs it: the doorbell that wakes a
 # hart and the timer that bounds its sleep.  Device drivers -- the PLIC, the
 # virtio net and block devices, the pin bus -- are a HAL's, and live in QOS
-# (qos/machine/virt, qos-virt.mk).  docs/HAL.md.
+# (qos/machine/virt, qos-virt.mk).  docs/2026-09-19-HAL.md.
 #
 # Include this AFTER defining:
 #   FPRC      the compiler

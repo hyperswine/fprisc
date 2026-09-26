@@ -1,4 +1,4 @@
-# std/list.fpr -- List: the everyday sequence (docs/PRELIM_BASE_LIBRARY_DESIGN.md).
+# std/list.fpr -- List: the everyday sequence (docs/2026-09-19-PRELIM_BASE_LIBRARY_DESIGN.md).
 #
 #   List = use "std/list".
 #   files |> List.filter isSource |> List.sortWith (Order.by size Order.int) |> List.take 10

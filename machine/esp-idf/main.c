@@ -15,15 +15,24 @@
 #include "freertos/task.h"
 #include "esp_rom_sys.h"
 #include "esp_log.h"
+#include "driver/uart.h"
+#include "driver/uart_vfs.h"
 
 extern TaskHandle_t fpr_esp_hart_task[FPR_NHARTS];
+
+/* machine/posix/base.c's command line: a board is started with none, so
+ * Sys.args is the empty list (Sys.env answers Err "unset": newlib's
+ * environment is empty too) */
+int fpr_posix_argc = 0;
+char **fpr_posix_argv = 0;
 void fpr_rt_init(void);
 void fpr_hart_main(int id);
 void fpr_hart_secondary(int id);
 void fpr_set_tp(fpr_hart_t *h);
 
+/* bytes; also the internal stack file operations borrow (hal.c fpr_esp_cstack) */
 #ifndef FPR_ESP_HART_STACK
-#define FPR_ESP_HART_STACK 16384
+#define FPR_ESP_HART_STACK 32768
 #endif
 #ifndef FPR_ESP_HART_PRIO
 #define FPR_ESP_HART_PRIO 1
@@ -73,6 +82,8 @@ static void hart0_task(void *arg) {
   xTaskCreatePinnedToCore(watch_task, "fpr-watch", 4096, NULL, 20, NULL, 1);
   esp_rom_printf("[boot] rt_init\n");
 #endif
+  extern void fpr_esp_fs_mount(void);
+  fpr_esp_fs_mount(); /* before the runtime: a first-boot format needs this internal stack */
   fpr_rt_init();
 #ifdef FPR_ESP_DEBUG
   esp_rom_printf("[boot] rt_init done; starting harts\n");
@@ -96,5 +107,16 @@ void app_main(void) {
    * are logged as errors, dozens a second, though every transfer completes.
    * Newer IDF handles them; here that one tag is quieted. */
   esp_log_level_set("sdmmc_req", ESP_LOG_NONE);
+  /* console input for Sys.readLine: without the UART driver IDF's stdin does
+   * not wait -- every read is end-of-input at once.  With it, a read blocks
+   * the calling hart until a line arrives, as reading stdin blocks a hart
+   * thread on posix.  A terminal's Enter (CR) becomes "\n" (sdkconfig
+   * NEWLIB_STDIN_LINE_ENDING_CR). */
+  if (uart_driver_install(CONFIG_ESP_CONSOLE_UART_NUM, 1024, 0, 0, NULL, 0) == ESP_OK) {
+    uart_vfs_dev_use_driver(CONFIG_ESP_CONSOLE_UART_NUM);
+    /* the receive line glitches during reset: a 0xFF waits in the FIFO and
+     * would lead the first line the program reads */
+    uart_flush_input(CONFIG_ESP_CONSOLE_UART_NUM);
+  }
   xTaskCreatePinnedToCore(hart0_task, "fpr-hart", FPR_ESP_HART_STACK, NULL, FPR_ESP_HART_PRIO, NULL, 0);
 }

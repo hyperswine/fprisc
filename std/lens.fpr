@@ -1,6 +1,6 @@
 # ============================================================================
 # std/lens.fpr -- std.lens: the library half of first-class paths
-# (docs/PATHS.md; the compiler half is the @Shape.path literal rewrite).
+# (docs/2026-08-27-PATHS.md; the compiler half is the @Shape.path literal rewrite).
 #
 # A Path is an ORDINARY record value the compiler mints from a literal:
 #

@@ -1,5 +1,5 @@
 # overflow.fpr -- recursion that is not a tail call goes as deep as its input,
-# and an actor's stack GROWS to hold it (docs/BOUNDS.md): 200,000 frames is
+# and an actor's stack GROWS to hold it (docs/2026-09-19-BOUNDS.md): 200,000 frames is
 # just a program.  Recursion that never ends is a NAMED panic at the stack's
 # policy ceiling (fpr_stack_max; FPR_STACK_MAX_MB for a run) -- never a bare
 # signal, and never the machine's memory.

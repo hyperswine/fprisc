@@ -13,7 +13,7 @@
 #
 # NO unsafe marker appears in this file; every recursive function is
 # PROVEN terminating, with the bound measure(entry) iterations -- the
-# "explicit-measure kind" of recursion docs/SAFETY.md sanctions,
+# "explicit-measure kind" of recursion docs/2026-08-25-SAFETY.md sanctions,
 # promoted from the std proof pass into the main compile.  The
 # check-all leg also asserts both REFUSALS: a non-decreasing measure
 # and a floorless countdown are loud compile errors.

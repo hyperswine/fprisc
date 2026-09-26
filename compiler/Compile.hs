@@ -36,9 +36,11 @@ import Text.Megaparsec (errorBundlePretty, parse)
 
 data Opts = Opts
   { oTarget :: Target,
+    oTargetFlag :: Bool, -- a --target= was given (so a host may not quietly replace it)
     oBuiltin :: Bool,
     oBase :: Bool, -- the posix SYSTEM: a hosted executable on this machine (machine/posix); the ISA is the build host's
-    oSystem :: Maybe String, -- --system=bare-metal|qos-native|qos-portable|posix|esp-idf (docs/PROFILES.md)
+    oSystem :: Maybe String, -- --system=bare-metal|qos-native|qos-portable|posix (docs/2026-09-19-PROFILES.md)
+    oHost :: Maybe String, -- the posix system's HOST: Nothing is this machine (unix); Just "esp-idf" an ESP32 board (--host=)
     oProfileFlag :: Maybe String, -- --profile=builtin|base|extbase|sol, when the file does not say
     oArc :: Bool,
     oRaw :: Bool, -- a RAW unit: allocation-free, no ownership instrumentation (Arc.lowerRaw)
@@ -61,7 +63,7 @@ data Opts = Opts
   }
 
 parseArgs :: [String] -> Opts
-parseArgs = foldl step (Opts rv64 False False Nothing Nothing False False False [] False False False False False False False False False False Nothing False [] [])
+parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothing Nothing False False False [] False False False False False False False False False False Nothing False [] [])
   where
     -- profile aliases (Target.hs): the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
@@ -69,7 +71,7 @@ parseArgs = foldl step (Opts rv64 False False Nothing Nothing False False False 
     -- codegen the same way; qos-portable -> qx64 (x86-64 build host).
     -- hosted-bytecode is NOT an fprc target: that profile is the sol
     -- executable (fp-risc/sol).
-    -- the SYSTEM: where the program runs (docs/PROFILES.md).  bare-metal
+    -- the SYSTEM: where the program runs (docs/2026-09-19-PROFILES.md).  bare-metal
     -- and qos-native are rv64 (QEMU virt, the board); qos-portable is
     -- an x86-64 QOS app image; posix is an executable for the host this
     -- compiler was built on -- the rv64 emission is the IR, the
@@ -77,15 +79,15 @@ parseArgs = foldl step (Opts rv64 False False Nothing Nothing False False False 
     step o "--system=bare-metal" = o {oTarget = rv64, oSystem = Just "bare-metal"}
     step o "--system=qos-native" = o {oTarget = rv64, oSystem = Just "qos-native"}
     step o "--system=qos-portable" = o {oTarget = rv64, oX64 = True, oQosApp = True, oSystem = Just "qos-portable"}
-    -- esp-idf: an ESP-IDF application (ESP32-P4, rv32imafc) -- the runtime and
-    -- machine/esp-idf built as an IDF component around this rv32 emission;
-    -- machine/esp-idf/build.sh drives both halves
-    step o "--system=esp-idf" = o {oTarget = rv32, oSystem = Just "esp-idf"}
-    step o "--system=posix" = case (System.Info.os, System.Info.arch) of
-      ("darwin", "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True, oA64Mac = True, oSystem = Just "posix"}
-      (_, "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True, oSystem = Just "posix"}
-      (_, "x86_64") -> o {oTarget = rv64, oBase = True, oX64 = True, oSystem = Just "posix"}
-      (os', arch') -> error ("--system=posix: no hosted lowering for " ++ os' ++ "/" ++ arch' ++ " (x86_64 and aarch64 are supported)")
+    -- posix runs on more than one kind of HOST (docs/2026-09-19-PROFILES.md): this
+    -- machine (--host=unix, the default: the ISA is the build host's), or an
+    -- ESP-IDF board (--host=esp-idf: rv32imafc code around which
+    -- machine/esp-idf/build.sh builds an IDF project).  The host decides the
+    -- ISA and the lowering, so it is resolved once every flag is read
+    -- (resolveHost): --system= and --host= may come in either order.
+    step o "--system=posix" = o {oSystem = Just "posix"}
+    -- the 1.x spelling of --system=posix --host=esp-idf, kept
+    step o "--system=esp-idf" = o {oSystem = Just "posix", oHost = Just "esp-idf"}
     -- the PROFILE: what the program is written against.  The file says
     -- it (`profile base.`); the flag is for files that do not.
     step o "--profile=builtin" = o {oProfileFlag = Just "builtin"}
@@ -104,23 +106,41 @@ parseArgs = foldl step (Opts rv64 False False Nothing Nothing False False False 
     step o "--float-abi=soft" = o {oHardFloat = False}
     step o "--stdcheck" = o {oStdCheck = True}
     step o "--sol" = o {oSol = True}
-    step o "--target=rv32" = o {oTarget = rv32}
-    step o "--target=rv64" = o {oTarget = rv64}
-    step o "--target=a64" = o {oTarget = rv64, oA64 = True} -- rv64 emission is the IR
-    step o "--target=a64mac" = o {oTarget = rv64, oA64 = True, oA64Mac = True} -- same lowering, Mach-O syntax
-    step o "--target=x64" = o {oTarget = rv64, oX64 = True} -- likewise
-    step o "--target=qx64" = o {oTarget = rv64, oX64 = True, oQosApp = True} -- QOS-x86_64
-    step o "--target=qa64" = o {oTarget = rv64, oA64 = True, oQosApp = True} -- QOS-aarch64
-    step o "--target=qa64single" = o {oTarget = rv64, oA64 = True, oQosApp = True, oQosSingle = True} -- QOS-aarch64, global hart cell
-    step o "--target=qa64mac" = o {oTarget = rv64, oA64 = True, oA64Mac = True, oQosApp = True} -- QOS app, Apple Silicon
+    step o "--target=rv32" = o {oTarget = rv32, oTargetFlag = True}
+    step o "--target=rv64" = o {oTarget = rv64, oTargetFlag = True}
+    step o "--target=a64" = o {oTarget = rv64, oA64 = True, oTargetFlag = True} -- rv64 emission is the IR
+    step o "--target=a64mac" = o {oTarget = rv64, oA64 = True, oA64Mac = True, oTargetFlag = True} -- same lowering, Mach-O syntax
+    step o "--target=x64" = o {oTarget = rv64, oX64 = True, oTargetFlag = True} -- likewise
+    step o "--target=qx64" = o {oTarget = rv64, oX64 = True, oQosApp = True, oTargetFlag = True} -- QOS-x86_64
+    step o "--target=qa64" = o {oTarget = rv64, oA64 = True, oQosApp = True, oTargetFlag = True} -- QOS-aarch64
+    step o "--target=qa64single" = o {oTarget = rv64, oA64 = True, oQosApp = True, oQosSingle = True, oTargetFlag = True} -- QOS-aarch64, global hart cell
+    step o "--target=qa64mac" = o {oTarget = rv64, oA64 = True, oA64Mac = True, oQosApp = True, oTargetFlag = True} -- QOS app, Apple Silicon
     step o "--plugin" = o {oPlugin = True}
     step o "--rvv" = o {oRvv = True}
     step o a
       | "--prelude=" `isPrefixOf` a = o {oPrelude = Just (drop (length "--prelude=") a)}
       | "--foreign=" `isPrefixOf` a = o {oForeign = oForeign o ++ [drop (length "--foreign=") a]}
+      | "--host=" `isPrefixOf` a = let h = drop (length "--host=") a in o {oHost = if h == "unix" then Nothing else Just h}
       | "--export=" `isPrefixOf` a = o {oExports = oExports o ++ exportSpecs (drop (length "--export=") a)}
       | a == "--no-safety" = o {oNoSafety = True}
       | otherwise = o {oFiles = oFiles o ++ [a]}
+
+-- the posix system's host decides the ISA and the lowering: this machine's
+-- (the hosted x64/a64 lowering of the rv64 emission), or rv32 for an ESP-IDF
+-- board.  A --host= with no --system= means posix; a host the tree does not
+-- have, or one asked for with another system, is refused in compileMain,
+-- as is a --target= the esp-idf host cannot be (it is left as given here).
+resolveHost :: Opts -> Opts
+resolveHost o
+  | oSystem o == Nothing && oHost o /= Nothing = resolveHost o {oSystem = Just "posix"}
+  | oSystem o /= Just "posix" = o
+  | oHost o == Just "esp-idf" = if oTargetFlag o then o else o {oTarget = rv32}
+  | oHost o /= Nothing = o
+  | otherwise = case (System.Info.os, System.Info.arch) of
+      ("darwin", "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True, oA64Mac = True}
+      (_, "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True}
+      (_, "x86_64") -> o {oTarget = rv64, oBase = True, oX64 = True}
+      (os', arch') -> error ("--system=posix: no hosted lowering for " ++ os' ++ "/" ++ arch' ++ " (x86_64 and aarch64 are supported)")
 
 -- `--export=name,name:c_symbol,...`: an fpr function and the C symbol it
 -- is callable as (default: the same name)
@@ -284,7 +304,7 @@ compileMain = do
     exitSuccess
   (inp, out) <- case oFiles opts0 of
     [i, o] -> pure (i, o)
-    _ -> putStrLn "usage: fprc [--system=posix|bare-metal|qos-native|qos-portable|esp-idf] [--profile=builtin|base|extbase|sol] [--arc] [--target=rv32|rv64|a64|a64mac|x64|qx64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
+    _ -> putStrLn "usage: fprc [--system=posix|bare-metal|qos-native|qos-portable] [--host=unix|esp-idf] [--profile=builtin|base|extbase|sol] [--arc] [--target=rv32|rv64|a64|a64mac|x64|qx64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
   (rootSrc0, rootTopsParsed) <- parseFileSrc inp
   -- the PROFILE is the file's: `profile base.` (or `unsafe base.`), a
   -- .sol file is sol; the flag serves a file that says nothing, and
@@ -300,15 +320,23 @@ compileMain = do
     (Nothing, Just f) -> pure f
     (Nothing, Nothing) -> pure "base"
   let system = fromMaybe "bare-metal" (oSystem opts0)
+      espHost = oHost opts0 == Just "esp-idf" -- the posix system on an ESP-IDF board (docs/2026-09-23-ESP-IDF.md)
       opts = opts0 {oBuiltin = profile == "builtin", oSol = oSol opts0 || profile == "sol"}
-  -- the matrix (docs/PROFILES.md): builtin is bare metal only, sol is
+  -- the posix system's hosts: this machine (unix, the default) and esp-idf
+  case oHost opts0 of
+    Just h | h /= "esp-idf" -> refuse ("--host=" ++ h ++ ": the posix system's hosts are unix (this machine, the default) and esp-idf")
+    Just h | system /= "posix" -> refuse ("--host=" ++ h ++ " is a kind of posix host: it goes with --system=posix, not " ++ system)
+    _ -> pure ()
+  -- the matrix (docs/2026-09-19-PROFILES.md): builtin is bare metal only, sol is
   -- the posix host only, base and extbase run anywhere with a HAL
   when (profile == "builtin" && system /= "bare-metal") $
     refuse ("profile builtin runs on the bare-metal system only, not " ++ system ++ " (--system=bare-metal)")
-  when (system == "esp-idf" && (oA64 opts0 || oX64 opts0 || oQosApp opts0 || oPlugin opts0 || oRvv opts0 || tgtName (oTarget opts0) /= "rv32")) $
-    refuse "--system=esp-idf is rv32 code for an ESP-IDF application: no other --target, QOS app image, plugin or RVV"
+  when (espHost && (oA64 opts0 || oX64 opts0 || oQosApp opts0 || oPlugin opts0 || oRvv opts0 || tgtName (oTarget opts0) /= "rv32")) $
+    refuse "--host=esp-idf is rv32 code for an ESP-IDF application: no other --target, QOS app image, plugin or RVV"
   when (profile == "sol" && system /= "posix") $
     refuse ("profile sol runs on the posix system (the VM: `fpr run`), not " ++ system)
+  when (profile == "sol" && espHost) $
+    refuse "profile sol runs on the VM (`fpr run`) on this machine, not on the esp-idf host"
   when (oBuiltin opts && (oA64 opts || oX64 opts || oQosApp opts || oRvv opts || tgtName (oTarget opts) /= "rv64")) $ do
     hPutStrLn stderr "profile builtin currently supports scalar RV64 only"
     exitFailure
@@ -343,7 +371,7 @@ compileMain = do
   -- that named one operating system's HAL.  Such a file holds signatures and
   -- nothing else -- a signature with no definition is a foreign declaration,
   -- resolved at link time to an fpr_g_ symbol -- and joins the prelude, so
-  -- every unit sees the names exactly as it saw the builtins.  docs/HAL.md.
+  -- every unit sees the names exactly as it saw the builtins.  docs/2026-09-19-HAL.md.
   -- FPR_FOREIGN (a path list, like FPR_PATH) names such files for every
   -- invocation in a tree that exports it; the flag adds to it
   envForeign <- maybe [] (filter (not . null) . splitOn ':') <$> lookupEnv "FPR_FOREIGN"
@@ -589,7 +617,7 @@ compileMain = do
           qsingle = oQosSingle opts
           -- hosted posix AArch64 reads its hart from x28 too (runtime/fpr.h):
           -- a thread-local cannot follow an actor that migrates between harts
-          lower | system == "esp-idf" = espTls
+          lower | espHost = espTls
                 | a64 && qapp = deTlsQosAppA64 a64mac qsingle . lowerA64 a64mac
                 | a64 && oBase opts = deTlsQosAppA64 a64mac False . lowerA64 a64mac
                 | a64 = lowerA64 a64mac
@@ -608,7 +636,7 @@ compileMain = do
                   else if a64 then "a64x28r" ++ show a64Rev
                   else if x64 && qapp then "qx64r" ++ show x64Rev
                   else if x64 then "x64r" ++ show x64Rev
-                  else if system == "esp-idf" then "rv32-idftls1"
+                  else if espHost then "rv32-idftls1"
                   else tgtName tgt
           tag = "g" ++ show codegenRev ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
@@ -706,7 +734,7 @@ compileMain = do
         -- 8 in registers, the rest from C's stack into the hart's spill
         -- cells: the native convention's 64.  Past that a function takes
         -- a spilled tuple, which C cannot build: pass a Layout pointer.
-        when (length ps > 64) $ bad "more than 64 parameters: pass a pointer to a Layout instead (docs/LAYOUTS.md)"
+        when (length ps > 64) $ bad "more than 64 parameters: pass a pointer to a Layout instead (docs/2026-09-19-LAYOUTS.md)"
         when (oHardFloat opts && length ps > 8) $ bad "more than 8 parameters under --float-abi=hard: stacked float arguments are not lowered yet"
         ks <- either bad pure (traverse ckindOf as)
         rk <- either bad pure (ckindOf r)

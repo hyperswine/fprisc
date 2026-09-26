@@ -1,4 +1,4 @@
-# msgpack.fpr -- packed message slabs under fire (docs/MEMORY.md): four
+# msgpack.fpr -- packed message slabs under fire (docs/2026-08-25-MEMORY.md): four
 # producers stream tuples carrying lists into one hub while spawned
 # churners allocate and die (so freed blocks are reused at once); the
 # hub verifies every payload after the compiler's autodrop (the borrow

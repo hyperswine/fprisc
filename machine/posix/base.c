@@ -7,10 +7,8 @@
  *   Sys.readLine : Unit -> Result String String     one stdin line, no newline; Err "eof"
  *   Sys.stderr   : String -> Unit                   bytes to stderr, as given
  *   Sys.timeUs   : Unit -> Int                      monotonic microseconds
- *   fileRead     : String -> String                 whole file; panics when it cannot
- *   fileWrite    : String -> String -> Result Unit String   path, contents (replace)
- *   fileAppend   : String -> String -> Result Unit String
- *   fileExists   : String -> Bool
+ *   (the file builtins -- fileRead, fileWrite, fileAppend, fileExists -- are
+ *   base_file.c: a board with a filesystem and no process links that alone)
  *
  * Types are declared in compiler/Infer.hs (builtinEnv); the names are
  * the fpr_g_ contract every profile's HAL may or may not grant.  Every
@@ -21,7 +19,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <sys/stat.h>
 
 extern int fpr_posix_argc;
 extern char **fpr_posix_argv;
@@ -112,51 +109,18 @@ static V h_stderr(V s) {
 }
 FPR_FN(fpr_g_Sys_x2estderr, h_stderr, 1);
 
+/* monotonic microseconds.  A 64-bit word holds centuries of them; a 32-bit
+ * one (rv32: ESP-IDF) holds a 31-bit Int, so there the count is modulo 2^30
+ * (about 18 minutes): right for intervals, which is what it is for */
 static V h_time_us(V u) {
   (void)u;
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
-  return TAG((sw)ts.tv_sec * 1000000 + (sw)ts.tv_nsec / 1000);
+  uint64_t us = (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
+#if UINTPTR_MAX > 0xffffffffu
+  return TAG((sw)us);
+#else
+  return TAG((sw)(us & 0x3fffffffu));
+#endif
 }
 FPR_FN(fpr_g_Sys_x2etimeUs, h_time_us, 1);
-
-static V h_file_read(V pathv) {
-  char path[1024];
-  cpath(pathv, "fileRead", path, sizeof path);
-  FILE *file = fopen(path, "rb");
-  if (!file) fpr_cpanic("fileRead: open failed");
-  if (fseek(file, 0, SEEK_END) || ftell(file) < 0) { fclose(file); fpr_cpanic("fileRead: seek failed"); }
-  long size = ftell(file);
-  rewind(file);
-  str_t *result = (str_t *)fpr_alloc((V)(sizeof(str_t) + (uw)size));
-  result->tid = T_STR;
-  result->var = 0;
-  result->len = (uw)size;
-  if (size && fread(result->bytes, 1, (size_t)size, file) != (size_t)size) { fclose(file); fpr_cpanic("fileRead: read failed"); }
-  fclose(file);
-  return (V)result;
-}
-FPR_FN(fpr_g_fileRead, h_file_read, 1);
-
-static V file_put(V pathv, V datav, const char *mode, const char *who) {
-  char path[1024];
-  cpath(pathv, who, path, sizeof path);
-  const str_t *s = want_str(datav, who);
-  FILE *f = fopen(path, mode);
-  if (!f) return fpr_mkresult(1, strerror(errno));
-  if (s->len && fwrite(s->bytes, 1, s->len, f) != s->len) { fclose(f); return fpr_mkresult(1, "write failed"); }
-  if (fclose(f)) return fpr_mkresult(1, strerror(errno));
-  return fpr_mkresult(0, "");
-}
-static V h_file_write(V p, V d) { return file_put(p, d, "wb", "fileWrite"); }
-static V h_file_append(V p, V d) { return file_put(p, d, "ab", "fileAppend"); }
-FPR_FN(fpr_g_fileWrite, h_file_write, 2);
-FPR_FN(fpr_g_fileAppend, h_file_append, 2);
-
-static V h_file_exists(V pathv) {
-  char path[1024];
-  cpath(pathv, "fileExists", path, sizeof path);
-  struct stat st;
-  return stat(path, &st) == 0 ? (V)&fpr_true : (V)&fpr_false;
-}
-FPR_FN(fpr_g_fileExists, h_file_exists, 1);

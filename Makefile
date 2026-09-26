@@ -1,7 +1,7 @@
 # FP-RISC compiler, interpreter and standalone bare-metal runtime.
 # QOS application linking is maintained in qos/fp-risc/qos-app.mk.
 
-# the language RUNTIME, and the MACHINE LAYER under it, one per system (docs/HAL.md)
+# the language RUNTIME, and the MACHINE LAYER under it, one per system (docs/2026-09-19-HAL.md)
 RUNTIME ?= runtime
 MACHINE ?= machine
 FPR_TOOLCHAIN ?= .
@@ -150,14 +150,14 @@ endif
 ifneq ($(filter aarch64 arm64,$(shell uname -m)),)
 POSIXFIXED = -ffixed-x27 -ffixed-x28 -DFPR_HART_X28
 endif
-RT_POSIX = $(MACHINE)/posix/main.c $(MACHINE)/posix/hal.c $(MACHINE)/posix/park.c $(MACHINE)/posix/host.c $(MACHINE)/posix/base.c $(MACHINE)/posix/os.c $(MACHINE)/posix/os_io.c $(MACHINE)/posix/os_proc.c $(MACHINE)/posix/os_watch.c $(MACHINE)/posix/os_net.c $(MACHINE)/posix/os_term.c $(POSIXCTX)
+RT_POSIX = $(MACHINE)/posix/hal.c $(MACHINE)/posix/base.c $(MACHINE)/posix/base_file.c $(MACHINE)/posix/os_fs.c $(MACHINE)/posix/os_io.c $(MACHINE)/posix/os_watch.c $(MACHINE)/posix/os_net.c $(MACHINE)/posix/os_job.c $(MACHINE)/unix/main.c $(MACHINE)/unix/park.c $(MACHINE)/unix/host.c $(MACHINE)/unix/os_proc.c $(MACHINE)/unix/os_term.c $(MACHINE)/unix/os_clock.c $(POSIXCTX)
 BIN ?= $(BUILD)/$(basename $(notdir $(PROG)))
 $(BUILD)/base.s: fprc $(PROG) core/prelude.fpr FORCE
 	@mkdir -p $(BUILD)
 	LC_ALL=C.UTF-8 ./fprc --system=posix --prelude=core/prelude.fpr $(PROG) $@
 
 posix: $(BUILD)/base.s $(RT_POSIX) $(RT_CORE)
-	$(CC) -O2 -Wall -Wextra $(POSIXFIXED) -DFPR_POSIX -DFPR_NHARTS=$(POSIXHARTS) $(POSIXLDFLAGS) -I$(RUNTIME) -I$(MACHINE)/posix \
+	$(CC) -O2 -Wall -Wextra $(POSIXFIXED) -DFPR_POSIX -DFPR_NHARTS=$(POSIXHARTS) $(POSIXLDFLAGS) -I$(RUNTIME) -I$(MACHINE)/posix -I$(MACHINE)/unix \
 	  $(BUILD)/base.s $$(cat $(BUILD)/base.s.units) $(RT_POSIX) $(RT_CORE) -lpthread -lm -o $(BIN)
 
 posix-run: posix
@@ -180,7 +180,7 @@ FORCE:
 # Unsafe standalone Builtin profile: no actors, devices, QOS or prelude.
 #
 # The allocator is machine/builtin/heap.fpr: FP-RISC over typed layouts
-# (docs/LAYOUTS.md), compiled as a LIBRARY unit (--lib) whose exports are
+# (docs/2026-09-19-LAYOUTS.md), compiled as a LIBRARY unit (--lib) whose exports are
 # the C symbols the runtime calls (fpr_alloc, fpr_free,
 # fpr_builtin_release, ...).  It is written over Word/Addr and must not
 # allocate to allocate, so it needs the raw ABI: ARC=1 selects it, and the
@@ -216,7 +216,7 @@ endif
 #   make builtin-lib LIB=path/to/x.fpr LIB_EXPORT=f:c_f,g   -> $(BUILD)/lib-x.s
 # Link the .s into any builtin image (BUILTIN_EXTRA=...) or assemble it
 # with $(CROSS)gcc -c for an archive; the exported symbols use the plain
-# RV64 C ABI (docs/BAREMETAL-BUILTIN.md, "Library units and C exports").
+# RV64 C ABI (docs/2026-09-18-BAREMETAL-BUILTIN.md, "Library units and C exports").
 LIB ?= machine/builtin/heap.fpr
 LIB_EXPORT ?=
 LIB_FLAGS ?=

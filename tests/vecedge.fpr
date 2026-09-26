@@ -1,5 +1,5 @@
 # vecedge.fpr -- interaction probes for the Vec/SoA/lens/fusion cluster:
-# every claim in docs/VEC.md that involves TWO features at once, plus
+# every claim in docs/2026-08-25-VEC.md that involves TWO features at once, plus
 # the edges.  Verdict style: each leg prints ok/FAIL, final line seals.
 
 Pt = Type (Pt a b).   # an ADT CONSTRUCTOR (not a record): boxed rows

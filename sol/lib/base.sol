@@ -1,6 +1,6 @@
 # base.sol -- the base library: the few string/list helpers that have NO
 # prelude builtin.  Everything that duplicated Str.* / List.* / and-or-not
-# has been retired (DESIGN_PATTERNS.md: no two names in scope may mean the
+# has been retired (2026-09-02-DESIGN_PATTERNS.md: no two names in scope may mean the
 # same thing); reach for the builtin.
 
 # "" -> 0, otherwise the exact integer (Try.parseInt for the rails)

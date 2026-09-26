@@ -389,13 +389,13 @@ static inline fpr_hart_t *fpr_hart(void) {
 #endif
 
 /* test-and-test-and-set with EXPONENTIAL BACKOFF (AMO acquire/release;
- * A is in imac).  The concurrency rule (docs/MEMORY.md): no spin site
+ * A is in imac).  The concurrency rule (docs/2026-08-25-MEMORY.md): no spin site
  * may burn a hart at full rate -- a loser backs off exponentially
  * (capped) before retrying, so contention degrades bandwidth instead
  * of livelocking a core.  These locks are TRANSITIONAL: the end-state
  * moves each one behind an owning actor's mailbox (Memory.qa for
  * buddy/grants, ARC.qa for promotion) and deletes it -- see
- * docs/MEMORY-V2-PLAN.md.  Until then, backoff is the law here too. */
+ * docs/2026-08-29-MEMORY-V2-PLAN.md.  Until then, backoff is the law here too. */
 /* field i of a heap object: after the 8-byte header, one WORD each -- the
  * layout Codegen.hs emits.  Not `((V *)p)[1 + i]`: that is the same address
  * only when a word is 8 bytes, and on rv32 it lands field 0 on the header's
@@ -418,7 +418,7 @@ static inline void fpr_unlock(fpr_lock_t *l) {
   __atomic_store_n(&l->v, 0, __ATOMIC_RELEASE);
 }
 
-/* ---- the ONE freelist discipline (docs/MEMORY-V2-PLAN.md phase 1) --
+/* ---- the ONE freelist discipline (docs/2026-08-29-MEMORY-V2-PLAN.md phase 1) --
  * Every recycled-block pool in the runtime is the same structure: a
  * locked LIFO of free blocks, each node carrying its capacity, taken
  * first-fit.  Fixed-size users (stacks, bucket arrays, channel
@@ -478,7 +478,7 @@ fpr_grant_t fpr_grow_counted(uw want_bytes, uw site); /* the counted gateway;
   3 buckets, 4 big-block, 5 stack -- attributed in the growlog ring */
 const char *fpr_growsite_name(uw site);
 
-/* ---- the MEMORY ACTOR (docs/MEMORY.md: Memory.qa, stage 1) ----------
+/* ---- the MEMORY ACTOR (docs/2026-08-25-MEMORY.md: Memory.qa, stage 1) ----------
  * The image that runs buddy_init (a machine boot, the qosp app over
  * the arena the host hands it) sets fpr_mem_own and spawns ONE actor
  * that owns the buddy: every block the runtime needs from actor
@@ -590,6 +590,13 @@ extern void (*fpr_panic_persist)(const char *msg, uw n);
 str_t *fpr_mkstr(const uint8_t *src, uw n);
 
 void hal_putc(char c); /* hal.c: raw console for panics + runtime */
+/* posix hosts (machine/posix/hal.c): interrupt sources for host threads that
+ * raise on actors' behalf (the readiness watcher, the job broker), taken from
+ * one pool instead of ranges carved out by convention.  0: none left.  The
+ * space is the runtime's (actors.c IRQ_MAX). */
+#define FPR_HOST_IRQ_MAX 1024
+uw hal_irq_host_alloc(void);
+void hal_irq_host_free(uw src);
 uint64_t hal_mtime(void); /* hal.c: the machine timer (actors.c has the weak zero) */
 /* the stack guard (actors.c): a HAL that can make memory inaccessible does
  * so at a stack's low end, and reports the overflow by name when it faults */
@@ -611,6 +618,21 @@ void hal_poweroff(int code); /* hal.c: terminate the machine if the
 /* static PAP definition helper: NAME must already be mangled */
 #define FPR_FN(sym, cfn, ar) \
   const pap0_t sym = {T_PAP, 0, (uw)(uintptr_t)(cfn), (ar), 0}
+
+/* A primitive whose C work must run on an internal-RAM stack.  On ESP-IDF,
+ * actor stacks are in PSRAM and flash operations (every FAT file call) assert
+ * an internal stack: the wrapper moves the call onto the hart task's own
+ * stack (machine/esp-idf/hal.c fpr_esp_cstack).  Everywhere else it is
+ * FPR_FN.  The wrapper takes three arguments and passes them on; a primitive
+ * of lower arity ignores the registers it does not read. */
+#if defined(FPR_ESP_IDF)
+V fpr_esp_cstack(void *fn, V a, V b, V c);
+#define FPR_FN_CSTACK(sym, cfn, ar) \
+  static V cfn##_on_cstack(V a, V b, V c) { return fpr_esp_cstack((void *)(cfn), a, b, c); } \
+  FPR_FN(sym, cfn##_on_cstack, ar)
+#else
+#define FPR_FN_CSTACK(sym, cfn, ar) FPR_FN(sym, cfn, ar)
+#endif
 
 /* SString: fixed 128-byte inline string (sstr.c). len is the live count. */
 #define SSTR_CAP 128

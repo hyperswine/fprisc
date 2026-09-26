@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 -- Safety.hs — the safe/unsafe line, drawn and ENFORCED.
 --
--- The division (see docs/SAFETY.md):
+-- The division (see docs/2026-08-25-SAFETY.md):
 --
 --   UNSAFE code is code whose WCET the compiler cannot see through:
 --     * implicit recursion — a custom recursive function (self or
@@ -100,7 +100,7 @@ safetyCheck preludeNames tops notes = (errs, suggests)
     -- from the clause guards / case path.  A verified measure lifts
     -- the fn out of rule 1: it is PROVEN terminating, better than
     -- unsafe, and its bound is measure(entry) iterations -- exactly
-    -- the "explicit-measure kind" of recursion docs/SAFETY.md already
+    -- the "explicit-measure kind" of recursion docs/2026-08-25-SAFETY.md already
     -- sanctions for std.  Verification failure is a loud error (the
     -- user claimed a measure), and mutual recursion stays out of
     -- scope (self-recursion only, stated).

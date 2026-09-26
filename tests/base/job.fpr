@@ -1,0 +1,32 @@
+# job.fpr -- the job broker on this machine: blocking host work off the harts.
+# Probe.job (tests/base/job_probe.c, linked with --with) is a job that sleeps
+# on the broker thread and answers the row "pong<TAB>ms"; std/job runs it so
+# that only the calling actor waits.  Three calls in a row come back in order;
+# three actors asking at once each get their own answer.
+unsafe base.
+J = use "std/job".
+L = use "std/list".
+
+Probe.job : Int -> Int -> Int .
+
+pong : Int -> Result Int String .
+pong ms = case J.result (J.run (fn slot -> Probe.job slot ms)) of
+    Ok rows -> J.one (fn r -> J.number 1 r) rows
+  | Err why -> Err why.
+
+show : Int -> Unit .
+show ms = case pong ms of Ok n -> print "{ms}: pong {n}" | Err why -> print "{ms}: error {why}".
+
+askJob : Int -> Int -> Int -> Unit .
+askJob boss ms self = _ = send boss (case pong ms of Ok n -> n | Err _ -> 0 - 1000); Unit.
+
+collect : Int -> Int -> Int -> Int .
+collect me n acc = if n == 0 then acc else m = receive me; collect me (n - 1) (acc + m).
+
+main =
+  _ = show 5;
+  _ = show 1;
+  _ = show 3;
+  me = myself 0;
+  _ = L.map (fn ms -> spawn (fn self -> askJob me ms self)) [30, 10, 20];
+  print "concurrent: {collect me 3 0}".

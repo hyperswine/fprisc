@@ -1,4 +1,4 @@
-# sendlin.fpr -- the send triad's MOVE verb (docs/MEMORY.md v2).
+# sendlin.fpr -- the send triad's MOVE verb (docs/2026-08-25-MEMORY.md v2).
 #
 # The frame is the WHOLE message: receive returns the vector itself,
 # sendLinear hands it on.  Both directions of the relay are ZERO-COPY

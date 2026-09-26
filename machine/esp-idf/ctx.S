@@ -73,3 +73,29 @@ fpr_ctx_switch:
     lw s10,  14*4(a1)
     lw s11,  15*4(a1)
     ret
+
+/* V fpr_cstack_call(void *fn, V a, V b, V c, void *top);
+ *
+ * Call fn(a, b, c) with sp moved to `top`, a 16-byte-aligned address in
+ * INTERNAL RAM, and put it back.  Actor stacks are in PSRAM, and IDF asserts
+ * that any flash operation runs on an internal stack (spi_flash's
+ * esp_task_stack_is_sane_cache_disabled: the flash write disables the cache
+ * PSRAM is read through).  A FAT file operation reaches flash, so hal.c's
+ * fpr_esp_cstack routes those primitives through here.  fn may take fewer
+ * arguments: the rest ride in registers it never reads.  The frame keeps the
+ * caller's sp and ra; callee-saved registers are fn's to keep, as always. */
+    .globl fpr_cstack_call
+    .balign 4
+fpr_cstack_call:
+    addi a4, a4, -16
+    sw sp, 0(a4)
+    sw ra, 4(a4)
+    mv t1, a0
+    mv a0, a1
+    mv a1, a2
+    mv a2, a3
+    mv sp, a4
+    jalr t1
+    lw ra, 4(sp)
+    lw sp, 0(sp)
+    ret
