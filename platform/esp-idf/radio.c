@@ -4,7 +4,7 @@
  * ESP-Hosted links itself WHOLE (its CMakeLists sets WHOLE_ARCHIVE) and starts
  * from a C constructor, so every image -- a program with no radio code at all
  * -- used to reset the ESP32-C6 and bring up the SDIO link before app_main,
- * when only ~110 KiB of internal RAM is usable (docs/ESP-IDF.md).  The build
+ * when only ~110 KiB of internal RAM is usable (docs/2026-09-23-ESP-IDF.md).  The build
  * wraps its esp_hosted_init (-Wl,--wrap, project/main/CMakeLists.txt): the
  * constructor's call, made before the scheduler runs, does nothing, and
  * wifi.c and bluetooth.c start the link here, from the broker task, the first

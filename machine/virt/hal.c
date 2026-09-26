@@ -166,7 +166,7 @@ FPR_FN(fpr_g_write, h_write, 2);
  * alone.  CLINT_BASE is the devtable's, defined above. */
 /* On rv64 the CLINT is clint.fpr: FP-RISC over typed layouts, a raw library
  * unit whose exports are hal_ipi_send / hal_ipi_clear / hal_mtime /
- * hal_timer_park / hal_timer_arm (virt.mk, docs/LAYOUTS.md).  The raw ABI has
+ * hal_timer_park / hal_timer_arm (virt.mk, docs/2026-09-19-LAYOUTS.md).  The raw ABI has
  * no rv32 lowering, so an rv32 image keeps this C -- which is also the only
  * place the split 64-bit register dance is needed. */
 #if __riscv_xlen == 32
@@ -218,7 +218,7 @@ void hal_wfi(void) { __asm__ volatile("wfi"); }
 /* ---- the heap: this board's RAM ------------------------------------------
  * link.ld ends the heap where QEMU virt's default 128 MiB of RAM ends, and
  * the process slot follows it.  The RAM size belongs to the device tree the
- * firmware hands over, not to the linker script: docs/BOUNDS.md. */
+ * firmware hands over, not to the linker script: docs/2026-09-19-BOUNDS.md. */
 void hal_heap_span(char **lo, char **hi, char **span_hi) {
   extern char _heap_start[], _heap_end[];
   *lo = _heap_start;

@@ -21,9 +21,10 @@ building bare-metal examples requires QOS.
 - `machine/virt/`, `machine/posix/`, `machine/builtin/`, `machine/unix/`: the MACHINE LAYER, one
   per system -- what the runtime needs from whatever it runs on (boot, context
   switch, a console byte, the doorbell and timer). Device drivers are not
-  here: the HAL a program sees is QOS's. See [docs/HAL.md](docs/HAL.md).
+  here: the HAL a program sees is QOS's. See [docs/2026-09-19-HAL.md](docs/2026-09-19-HAL.md).
 - `sol/`, `tests/`, `tools/`: examples, compiler/runtime checks and language tools.
-- `docs/`: language and platform design documentation.
+- `docs/`: language and platform design documentation, one dated page per
+  topic in the order it was written; `docs/README.md` is the index.
 
 QOS-specific `std` modules, operating-system tests, programs, application manifests,
 loaders, packaging and Unix devices are maintained by QOS. The compiler still
@@ -38,7 +39,7 @@ A file declares what it is written against -- `profile builtin.`,
 `profile base.` (the default), `profile extbase.`, `profile sol.`, or
 `unsafe base.` to mark it blanket-unsafe at the same time -- and the compiler
 is told where it runs: `--system=bare-metal | qos-native | qos-portable |
-posix`.  See [docs/PROFILES.md](docs/PROFILES.md) for the matrix.
+posix`.  See [docs/2026-09-19-PROFILES.md](docs/2026-09-19-PROFILES.md) for the matrix.
 
 ## The Base profile: programs for this machine
 
@@ -51,7 +52,7 @@ posix`.  See [docs/PROFILES.md](docs/PROFILES.md) for the matrix.
 Linux or macOS): the same core runtime as bare metal, with libc as the board
 (`machine/posix`).  A program gets the command line, the environment, stdin,
 stdout, stderr, files, the clock and the exit status -- see
-[docs/BASE.md](docs/BASE.md).  `tests/check_base.py` is the conformance run.
+[docs/2026-09-18-BASE.md](docs/2026-09-18-BASE.md).  `tests/check_base.py` is the conformance run.
 
 ## Working with QOS
 
@@ -76,16 +77,16 @@ remote is configured for this new repository. `SPLIT-SOURCE.json` records the so
 commit. See `../qos/docs/REPOSITORY-SPLIT.md` for ownership and release migration.
 
 For the unsafe, scheduler-free RV64 build and memory/bit API, see
-[BareMetal–Builtin](docs/BAREMETAL-BUILTIN.md). Start with
+[BareMetal–Builtin](docs/2026-09-18-BAREMETAL-BUILTIN.md). Start with
 `make bare-metal-builtin-run PROG=tests/builtin.fpr`.
 
 Experimental automatic ARC for first-order Builtin programs is available with
 `make bare-metal-builtin-run ARC=1 ARC_CHECK=1 PROG=tests/builtin_arc.fpr`.
-See the [ownership and feature limits](docs/BAREMETAL-BUILTIN.md#automatic-arc-first-order-milestone).
+See the [ownership and feature limits](docs/2026-09-18-BAREMETAL-BUILTIN.md#automatic-arc-first-order-milestone).
 
-The [machine primitive API](docs/MACHINE-PRIMITIVES.md) adds assembly-backed bit/memory
+The [machine primitive API](docs/2026-09-18-MACHINE-PRIMITIVES.md) adds assembly-backed bit/memory
 operations, CSR access, interrupt masking, atomics and fences. Try
 `make bare-metal-builtin-run ARC=1 ARC_CHECK=1 PROG=tests/builtin_machine.fpr`.
 
 For a chronological account of the QOS review, repository split, profile design
-and BareMetal implementation, see the [project progress summary](docs/PROJECT-PROGRESS-SUMMARY.md).
+and BareMetal implementation, see the [project progress summary](docs/2026-09-18-PROJECT-PROGRESS-SUMMARY.md).

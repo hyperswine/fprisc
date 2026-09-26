@@ -1,6 +1,6 @@
 #!/bin/sh
 # run.sh PROG.fpr [PORT] -- build, flash, and be the program's console
-# (`fpr run --system=esp-idf` comes here; console.py says what that means).
+# (`fpr run --host=esp-idf` comes here; console.py says what that means).
 #   PORT: the board's serial port; else $FPR_ESP_PORT; else the one USB serial
 #   device attached (refused if there are none or several).
 #   FPR_ESP_OUT: the build directory (default build/esp-idf/<program>).

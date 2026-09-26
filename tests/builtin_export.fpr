@@ -5,7 +5,7 @@ Cell = Type (Cell a b).
 mix : Word -> Int -> Bool -> Word .
 mix x n b = Word.xor (Word.add x (Word.fromInt n)) (case b of True -> Word.fromInt 1 | False -> Word.fromInt 0).
 # twelve parameters: eight arrive in C's registers, four on C's stack, and the
-# entry moves those into the hart's spill cells (docs/BOUNDS.md).  A Bool among
+# entry moves those into the hart's spill cells (docs/2026-09-19-BOUNDS.md).  A Bool among
 # the stacked ones proves the conversion runs there too.
 wide12 : Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Bool -> Int -> Int .
 wide12 a b c d e f g h i j k l = a + 2 * b + 3 * c + 4 * d + 5 * e + 6 * f + 7 * g + 8 * h + 9 * i + 10 * j + (case k of True -> 1000 | False -> 0) + 12 * l.

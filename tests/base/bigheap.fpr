@@ -1,5 +1,5 @@
 # bigheap.fpr -- the heap has no size of its own: 12 million cells live at once
-# is well past the 256 MiB the posix heap used to be fixed at (docs/BOUNDS.md).
+# is well past the 256 MiB the posix heap used to be fixed at (docs/2026-09-19-BOUNDS.md).
 unsafe base.
 build n acc = case n == 0 of True -> acc | False -> build (n - 1) (n :: acc).
 sum xs acc = case xs of Nil -> acc | h :: t -> sum t (acc + h).

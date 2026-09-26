@@ -75,7 +75,7 @@ main = do
   -- or constructors keep the existing TAlias behavior untouched.)
   let utopsX1 = aliasStructRefs utopsX0'
 
-  -- first-class paths (docs/PATHS.md): the same surface rewrite the AOT
+  -- first-class paths (docs/2026-08-27-PATHS.md): the same surface rewrite the AOT
   -- pipeline runs -- @Shape.field literals validate against the merged
   -- program's declared shapes and desugar to {get,set,segs} records,
   -- bare @Shape to the flattened schema; sol file-path literals

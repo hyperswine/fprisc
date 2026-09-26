@@ -1,4 +1,4 @@
-# the SAME std modules, from a Sol script (docs/STD.md)
+# the SAME std modules, from a Sol script (docs/2026-09-20-STD.md)
 L = use "../../std/list".
 S = use "../../std/string".
 M = use "../../std/map".

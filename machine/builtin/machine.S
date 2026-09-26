@@ -1,4 +1,4 @@
-/* machine.S -- the opaque machine primitives (docs/MACHINE-PRIMITIVES.md).
+/* machine.S -- the opaque machine primitives (docs/2026-09-18-MACHINE-PRIMITIVES.md).
  *
  * Plain RV64 integer ABI: arguments in a0..a2, result in a0, nothing
  * tagged, boxed, allocated or reference-counted here -- the FP-RISC

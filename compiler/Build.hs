@@ -2,15 +2,17 @@
 --
 --   fpr build prog.fpr [-o out] [--harts N] [--cc CC] [-v] [--keep]
 --   fpr run   prog.fpr [args...]
---   fpr build prog.fpr --system=esp-idf [-o dir]      an ESP32-P4 image
---   fpr run   prog.fpr --system=esp-idf [--port P]    flash it and be its console
+--   fpr build prog.fpr --host=esp-idf [-o dir]        an ESP32-P4 image
+--   fpr run   prog.fpr --host=esp-idf [--port P]      flash it and be its console
 --
--- A program becomes an ordinary executable for THIS machine: the
--- compiler lowers it for the host ISA (--profile=base), and the C
--- compiler links the generated assembly with the shared core runtime
--- (runtime) and the hosted HAL (machine/posix), both found beside the
--- fpr binary (Home.hs).  No Makefile, no QOS: the same three parts a
--- bare-metal image is made of, with libc as the board.
+-- Both are the posix system.  On its unix host (the default) a program
+-- becomes an ordinary executable for THIS machine: the compiler lowers it
+-- for the host ISA, and the C compiler links the generated assembly with
+-- the shared core runtime (runtime) and the hosted HAL (machine/posix),
+-- both found beside the fpr binary (Home.hs).  No Makefile, no QOS: the
+-- same three parts a bare-metal image is made of, with libc as the board.
+-- On the esp-idf host the same parts are built as an ESP-IDF project by
+-- machine/esp-idf/build.sh (docs/2026-09-23-ESP-IDF.md).
 module Build (buildMain, runMain) where
 
 import Data.List (isInfixOf)
@@ -45,24 +47,24 @@ data Plan = Plan
     pWith :: [FilePath], -- the program's own HAL: C / asm sources linked beside the runtime
     pCFlags :: [String],
     pLink :: [String],
-    pSystem :: String, -- "posix" (this machine), or "esp-idf" (a board: machine/esp-idf)
+    pHost :: String, -- the posix system's host: "unix" (this machine), or "esp-idf" (a board: machine/esp-idf)
     pPort :: Maybe String, -- esp-idf: the board's serial port
     pRest :: [String]
   }
 
 usage :: String
-usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep]\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --system=esp-idf [-o dir] [--port P] [-v]"
+usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep]\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --host=esp-idf [-o dir] [--port P] [-v]"
 
 -- The hart CAP compiled in is this machine's processor count (it was a flat 2,
 -- so a server on a ten-core machine ran on two threads).  The running program
--- uses the cores IT finds, up to the cap (machine/posix/main.c), so a binary
+-- uses the cores IT finds, up to the cap (machine/unix/main.c), so a binary
 -- built here and run on a smaller machine does not oversubscribe it; a
--- cross-build for a bigger one says --harts.  (docs/BOUNDS.md: the arrays are
+-- cross-build for a bigger one says --harts.  (docs/2026-09-19-BOUNDS.md: the arrays are
 -- still static per hart; discovering the count at boot is the full fix.)
 plan :: [String] -> IO Plan
 plan args = do
   cores <- onlineCores
-  go (Plan "" Nothing (max 2 cores) False False Nothing [] [] [] "posix" Nothing []) args
+  go (Plan "" Nothing (max 2 cores) False False Nothing [] [] [] "unix" Nothing []) args
   where
     go p ("-o" : o : rest) = go p {pOut = Just o} rest
     go p ("--harts" : n : rest) = go p {pHarts = read n} rest
@@ -72,8 +74,10 @@ plan args = do
     go p ("--cflag" : f : rest) = go p {pCFlags = pCFlags p ++ [f]} rest
     go p ("--link" : f : rest) = go p {pLink = pLink p ++ [f]} rest
     go p ("-v" : rest) = go p {pVerbose = True} rest
-    go p ("--system=posix" : rest) = go p {pSystem = "posix"} rest
-    go p ("--system=esp-idf" : rest) = go p {pSystem = "esp-idf"} rest
+    go p ("--system=posix" : rest) = go p rest -- the only system these commands build
+    go p ("--host=unix" : rest) = go p {pHost = "unix"} rest
+    go p ("--host=esp-idf" : rest) = go p {pHost = "esp-idf"} rest
+    go p ("--system=esp-idf" : rest) = go p {pHost = "esp-idf"} rest -- the 1.x spelling of --host=esp-idf
     go p ("--port" : d : rest) = go p {pPort = Just d} rest
     go p (a : rest)
       | null (pSource p) = go p {pSource = a} rest
@@ -93,7 +97,7 @@ build p = do
   home <- fprHome
   let prelude = home </> "core" </> "prelude.fpr"
       runtime = home </> "runtime" -- the language runtime
-      machine = home </> "machine" -- the machine layer under it, one per system (docs/HAL.md)
+      machine = home </> "machine" -- the machine layer under it, one per system (docs/2026-09-19-HAL.md)
   ok <- doesFileExist prelude
   unless ok $ hPutStrLn stderr ("fpr build: no prelude at " ++ prelude ++ " (set FPR_HOME to the fprisc checkout)") >> exitFailure
   -- one cache directory per user: the compiled prelude and every
@@ -134,7 +138,9 @@ build p = do
     Nothing -> fromMaybe "cc" <$> lookupEnv "FPR_CC"
   let ctx = if System.Info.arch == "aarch64" then "ctx_a64.S" else "ctx_x64.S"
       core = [runtime </> f | f <- ["runtime.c", "actors.c", "bits.c", "vec.c", "sstr.c", "mod.c", "buddy.c"]]
-      posix = [machine </> "posix" </> f | f <- ["main.c", "hal.c", "park.c", "host.c", "base.c", "base_file.c", "os_fs.c", "os_clock.c", "os_io.c", "os_proc.c", "os_watch.c", "os_net.c", "os_term.c"]] ++ [machine </> "unix" </> ctx]
+      -- the posix system: what both hosts share (machine/posix), and the unix host (machine/unix)
+      posix = [machine </> "posix" </> f | f <- ["hal.c", "base.c", "base_file.c", "os_fs.c", "os_io.c", "os_watch.c", "os_net.c", "os_job.c"]]
+           ++ [machine </> "unix" </> f | f <- ["main.c", "park.c", "host.c", "os_proc.c", "os_term.c", "os_clock.c", ctx]]
       -- x28 is RESERVED on aarch64: the context switch (machine/unix/ctx_a64.S)
       -- does not save it, because QOS apps keep the hart pointer there.  Without
       -- this flag the C compiler may hold a value in x28 across a call that
@@ -148,7 +154,7 @@ build p = do
       -- function ever needs that pair.  Generated code still uses x27 (its s9):
       -- it saves registers one at a time, never paired with x28.
       fixed = if System.Info.arch == "aarch64" then ["-ffixed-x27", "-ffixed-x28", "-DFPR_HART_X28"] else [] -- x28 carries the hart (runtime/fpr.h)
-      cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix"] ++ fixed
+      cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed
       linux = if System.Info.os == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []
       -- the runtime's objects are cached per hart count, rebuilt only
       -- when their source is newer: a warm build compiles the program
@@ -163,7 +169,7 @@ build p = do
   -- an object is stale when ANY header is newer, not just its own source: a
   -- changed struct in fpr.h (the hart block) otherwise links new objects
   -- against old ones, which is a crash with no message
-  hdrs <- fmap concat (mapM headersIn [runtime, machine </> "posix"])
+  hdrs <- fmap concat (mapM headersIn [runtime, machine </> "posix", machine </> "unix"])
   hdrTime <- if null hdrs then pure Nothing else Just . maximum <$> mapM getModificationTime hdrs
   objs <- mapM (objectFor cc cflags rtdir hdrTime) (posix ++ core)
   -- --with: a program that IS a host brings the device primitives it calls
@@ -213,7 +219,7 @@ buildMain :: [String] -> IO ()
 buildMain args = do
   p <- plan args
   unless (null (pRest p)) $ hPutStrLn stderr usage >> exitFailure
-  when (pSystem p == "esp-idf") $ espIdf "build.sh" p []
+  when (pHost p == "esp-idf") $ espIdf "build.sh" p []
   prof <- profileOf (pSource p)
   when (prof == "sol") $ hPutStrLn stderr "fpr build: a sol program runs on the VM (`fpr run`, `fpr sol`); it is not built into an executable" >> exitFailure
   out <- build p
@@ -222,7 +228,7 @@ buildMain args = do
 runMain :: [String] -> IO ()
 runMain args = do
   p <- plan args
-  when (pSystem p == "esp-idf") $ do
+  when (pHost p == "esp-idf") $ do
     unless (null (pRest p)) $ hPutStrLn stderr "fpr run: a board program is started with no arguments (Sys.args is [] there)" >> exitFailure
     espIdf "run.sh" p (maybe [] (: []) (pPort p))
   prof <- profileOf (pSource p)
@@ -309,9 +315,9 @@ runKey p = do
 fnv64 :: String -> Word64
 fnv64 = foldl (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) 14695981039346656037
 
--- --system=esp-idf: the board's build and console live beside its machine
--- layer (machine/esp-idf/build.sh, run.sh, console.py), in ESP-IDF's tools;
--- fpr hands over and exits with their status -- for `run`, the program's own.
+-- --host=esp-idf: the board's build and console live beside its host layer
+-- (machine/esp-idf/build.sh, run.sh, console.py), in ESP-IDF's tools; fpr
+-- hands over and exits with their status -- for `run`, the program's own.
 espIdf :: String -> Plan -> [String] -> IO ()
 espIdf script p extra = do
   home <- fprHome
@@ -324,6 +330,6 @@ espIdf script p extra = do
   (_, _, _, ph) <- createProcess (proc "sh" ((dir </> script) : args)) {env = Just env}
   code <- waitForProcess ph
   when (script == "build.sh" && code == ExitSuccess) $
-    hPutStrLn stderr ("fpr build: " ++ (out </> "idf" </> "fpr_esp.bin") ++ " (flash with: fpr run --system=esp-idf, or idf.py -B " ++ (out </> "idf") ++ " flash)")
+    hPutStrLn stderr ("fpr build: " ++ (out </> "idf" </> "fpr_esp.bin") ++ " (flash with: fpr run --host=esp-idf, or idf.py -B " ++ (out </> "idf") ++ " flash)")
   exitWith code
 

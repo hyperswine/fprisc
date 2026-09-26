@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Typed memory layouts (docs/LAYOUTS.md): `Node = Layout { ... }` is a nominal
+"""Typed memory layouts (docs/2026-09-19-LAYOUTS.md): `Node = Layout { ... }` is a nominal
 pointer type over raw memory.  It computes offsets, it is a type of its own, a
 malformed one is refused by name, and it costs nothing: the code a Layout
 generates is no larger than the same function written with raw offsets, and no

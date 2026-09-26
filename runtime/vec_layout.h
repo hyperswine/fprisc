@@ -7,7 +7,7 @@
  * colBlk0 = base at word offset 1) -- change nothing here without
  * changing them there.
  *
- * A column is ONE contiguous span of machine words (docs/VEC.md #1).
+ * A column is ONE contiguous span of machine words (docs/2026-08-25-VEC.md #1).
  * kinds bit i: column i is RAW (untagged machine word, not a V).
  * fkinds bit i: that raw word is IEEE float bits (subset of kinds).
  */

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The ESP32-P4 examples, on an attached board, through `fpr run --system=esp-idf`.
+"""The ESP32-P4 examples, on an attached board, through `fpr run --host=esp-idf`.
 
     python3 tests/check_esp_board.py [--quick] [--port P]
 
@@ -37,7 +37,7 @@ def run(example, expect_status, must, stdin="", out="suite", timeout=None, env=N
     e = {**os.environ, **(env or {})}
     if timeout:
         e["FPR_ESP_TIMEOUT"] = str(timeout)
-    p = subprocess.run(["./fpr", "run", f"machine/esp-idf/examples/{example}.fpr", "--system=esp-idf",
+    p = subprocess.run(["./fpr", "run", f"machine/esp-idf/examples/{example}.fpr", "--host=esp-idf",
                         "--port", port, "-o", f"build/esp-idf/{out}"],
                        input=stdin, capture_output=True, text=True, env=e, timeout=1200)
     missing = [m for m in must if m not in p.stdout]
@@ -62,7 +62,7 @@ print("load: 12 loopback connections held at once (24 sockets), echo on each: PA
 run("posix-poller", 0, ["80 stops, duplicate waiter cancellation passed", "10 TCP exchanges through Stream.readOn and Poller.await passed"],
     out="suite-io-smoke", env={"FPR_ESP_IO_SMOKE": "1"})
 print("posix-poller: shared sockets, streams, poller and watcher lifecycle on loopback: PASS")
-p = subprocess.run(["./fpr", "run", "machine/esp-idf/examples/stack-guard.fpr", "--system=esp-idf", "--port", port,
+p = subprocess.run(["./fpr", "run", "machine/esp-idf/examples/stack-guard.fpr", "--host=esp-idf", "--port", port,
                     "-o", "build/esp-idf/suite-guard"], capture_output=True, text=True, timeout=1200,
                    env={**os.environ, "FPR_ESP_IO_SMOKE": "1", "FPR_ESP_STACK_GUARD": "1", "FPR_ESP_TIMEOUT": "60"})
 assert p.returncode == 2 and "32 KiB of C frames on an actor stack: fine" in p.stdout \

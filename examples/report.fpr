@@ -1,5 +1,5 @@
 # report.fpr -- the design's "automation script" acceptance example
-# (docs/PRELIM_BASE_LIBRARY_DESIGN.md, section 9): traverse files, filter,
+# (docs/2026-09-19-PRELIM_BASE_LIBRARY_DESIGN.md, section 9): traverse files, filter,
 # group and sort their metadata, ask an external tool a question, and write a
 # report -- with every failure said in words.
 #

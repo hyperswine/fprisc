@@ -1,4 +1,4 @@
-# wide.fpr -- arity and tuple width have no ceiling (docs/BOUNDS.md): a function
+# wide.fpr -- arity and tuple width have no ceiling (docs/2026-09-19-BOUNDS.md): a function
 # of 100 parameters (64 ride the registers and the hart's spill cells, the rest one
 # spilled tuple) and a 20-tuple, built, matched, compared and printed.
 unsafe base.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The standard library (std/*.fpr, docs/STD.md): every module, on this machine.
+"""The standard library (std/*.fpr, docs/2026-09-20-STD.md): every module, on this machine.
 
 Each tests/std/<name>.fpr prints what it computed; tests/std/<name>.expected is
 that output, reviewed by hand once.  --bless rewrites the expectations."""
@@ -28,7 +28,7 @@ check('map', label='Map and Set: a persistent AVL tree, 100,000 keys in and half
 check('json', label='Json: parse with line and column, escapes and surrogate pairs, deterministic render, a 640 KB round trip')
 with tempfile.TemporaryDirectory(prefix='fpr-store-') as t:
     check('store', args=(str(Path(t) / 'store'),), label='Store: shard actors, pages across shards newest first, search on every shard at once, removal, a shard compacting its own file, reopening from the files')
-# the SAME module files from a Sol script (docs/WHAT_IS_SOL.md: one vocabulary)
+# the SAME module files from a Sol script (docs/2026-09-19-WHAT_IS_SOL.md: one vocabulary)
 p = subprocess.run([fpr, 'sol', str(ROOT / 'tests' / 'std' / 'solstd.sol')], capture_output=True, text=True, timeout=300)
 got = [l for l in p.stdout.splitlines() if not l.startswith(('[sol]', '[table]', '[jit]'))]
 assert got == ['[1, 2, 3]', 'Some 3', 'A-B--C', '[(and, 2), (bird, 1), (cat, 1), (dog, 1), (the, 3)]', '[1,{"a":null}]',

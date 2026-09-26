@@ -405,7 +405,7 @@ viewServe env [VInt port, fi, fu, fv, subsV] =
       }
 viewServe _ _ = vmPanic "View.serve: expected port init update view subs"
 
--- ---- the actor shim (the sketch tier; docs/PATHS.md phase 1) ---------------
+-- ---- the actor shim (the sketch tier; docs/2026-08-27-PATHS.md phase 1) ---------------
 --
 -- QOS actor programs -- std/mvu apps included -- run INTERPRETED here on
 -- green threads: spawn forks a GHC thread, an actor id is a plain Int
@@ -561,7 +561,7 @@ actorCall env "spawn" [f] = do
   pure (VInt (fromIntegral i))
 -- the mailbox policy / placement / pid variants: this shim's queues are
 -- unbounded Haskell channels and its actors are threads, so every one
--- of them is a plain spawn (docs/MAILBOX.md, docs/MEMORY.md)
+-- of them is a plain spawn (docs/2026-09-07-MAILBOX.md, docs/2026-08-25-MEMORY.md)
 actorCall env "spawnCap" [_, _, f] = actorCall env "spawn" [f]
 actorCall env "spawnCapOn" [_, _, _, f] = actorCall env "spawn" [f]
 actorCall env "spawnOn" [_, f] = actorCall env "spawn" [f]

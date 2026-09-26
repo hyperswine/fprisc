@@ -3,7 +3,7 @@
  * The ESP32-P4 has no radio.  ESP-Hosted carries esp_wifi_* calls over SDIO
  * to the board's ESP32-C6 (esp_wifi_remote), so each is a round trip that can
  * take hundreds of milliseconds -- a scan, seconds.  They run as jobs on the
- * broker (jobs.c), never on a hart.  Each answers rows of tab-separated
+ * broker (machine/posix/os_job.c), never on a hart.  Each answers rows of tab-separated
  * fields, which std/wifi parses into records:
  *
  *   WifiHost.info slot          station MAC, AP MAC, mode (off|station|ap|station+ap)
@@ -15,7 +15,7 @@
  * Another platform provides the same five primitives to give std/wifi a
  * radio (nl80211 on Linux, say); where none does, a program importing it
  * fails at link time by name. */
-#include "jobs.h"
+#include "os_job.h"
 const char *fpr_radio_up(void);
 int fpr_esp_net_up(void);
 #include <stdio.h>

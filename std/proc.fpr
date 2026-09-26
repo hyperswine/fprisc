@@ -13,7 +13,7 @@
 #     an Ok result you inspect; Err means the program never ran.
 #   * killed by a signal: status is 128 + the signal, as a shell reports it.
 #   * Base has no transactions: this runs NOW, once.  (Sol's Proc.query /
-#     afterCommit / runNow are the transactional forms: docs/TRANSACTION.md.)
+#     afterCommit / runNow are the transactional forms: docs/2026-08-25-TRANSACTION.md.)
 # Not yet: streaming a child's output while it runs.
 
 OS = use "os".

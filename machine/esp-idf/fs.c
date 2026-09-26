@@ -16,7 +16,7 @@
 #include "wear_levelling.h"
 
 /* open FILES at once, a table the FAT VFS sizes when mounting; past it an open
- * answers Err "Too many open files" (docs/BOUNDS.md) */
+ * answers Err "Too many open files" (docs/2026-09-19-BOUNDS.md) */
 #ifndef FPR_ESP_FS_MAX_FILES
 #define FPR_ESP_FS_MAX_FILES 16
 #endif

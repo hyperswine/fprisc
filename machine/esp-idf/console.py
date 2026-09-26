@@ -1,6 +1,6 @@
 """console.py PORT -- be an FP-RISC program's terminal on the board.
 
-`fpr run --system=esp-idf` ends here (run.sh), so a board program behaves
+`fpr run --host=esp-idf` ends here (run.sh), so a board program behaves
 like a posix one under `fpr run`:
 
 - the board is reset, and its boot chatter is dropped; from the runtime's

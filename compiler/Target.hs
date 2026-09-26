@@ -5,6 +5,8 @@
 -- scheduler or implicit prelude. BareMetal preserves the older actor-enabled
 -- virt build. QOS is a host for the other native configurations, not a language
 -- requirement. HostedBytecode is the Sol VM/transactional configuration.
+-- An ESP-IDF board is not a configuration of its own: it is a HOST of the
+-- posix system (--system=posix --host=esp-idf; docs/2026-09-23-ESP-IDF.md).
 --
 -- --stdcheck checks cost/termination obligations; it is not a memory-safety
 -- boundary and cannot make arbitrary-address operations safe.
@@ -15,7 +17,6 @@ data Profile
   | BareMetal
   | QOSNative
   | QOSPortable
-  | EspIdf
   | HostedBytecode
   deriving (Eq, Show)
 
@@ -25,7 +26,6 @@ profileOf s = case s of
   "bare-metal" -> Just BareMetal
   "qos-native" -> Just QOSNative
   "qos-portable" -> Just QOSPortable
-  "esp-idf" -> Just EspIdf
   "hosted-bytecode" -> Just HostedBytecode
   _ -> Nothing
 
@@ -35,5 +35,4 @@ profileNote p = case p of
   BareMetal -> "bare-metal: AOT + machine/virt, cooperative-scheduler actors, local addressing"
   QOSNative -> "qos-native: .qa process on the QOS kernel (RISC-V), URL addressing + capabilities"
   QOSPortable -> "qos-portable: .qa process hosted by qosp on Unix through the qos_hal_t table"
-  EspIdf -> "esp-idf: rv32 AOT + machine/esp-idf as an ESP-IDF app (ESP32-P4), harts are FreeRTOS tasks"
   HostedBytecode -> "hosted-bytecode: the sol package — bytecode VM + JIT, transactional semantics"

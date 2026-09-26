@@ -57,7 +57,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-export-') as temp:
         run(['make', 'bare-metal-builtin', 'ARC=1', 'ARC_CHECK=1', 'HEAP=fpr', f'BUILTIN_HEAP_BYTES={heap}',
              f'PROG={prog}', f'IMAGE={image}', f'BUILD={tmp}'])
         # the 10,000-cycle ARC program takes ~1.2 s on the FP-RISC allocator
-        # against ~0.4 s on heap.c (docs/BAREMETAL-BUILTIN.md, "Speed, honestly")
+        # against ~0.4 s on heap.c (docs/2026-09-18-BAREMETAL-BUILTIN.md, "Speed, honestly")
         assert want in boot(image, timeout=60), prog
     symbols = run(['riscv64-unknown-elf-nm', image])
     assert 'fpr_alloc' in symbols and 'fpr_fn_alloc' in symbols, 'fpr_alloc must be the trampoline onto the fpr allocator'

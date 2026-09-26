@@ -453,7 +453,7 @@ recordish = braces (try litRec <|> updRec)
 -- no new semantics.  Both branches take the block form, as a case arm does,
 -- and `else if` chains because the else branch is an expression.  (Every
 -- two-way choice used to be the four-token-longer case; parsers written in
--- FP-RISC were mostly that: docs/STD.md.)
+-- FP-RISC were mostly that: docs/2026-09-20-STD.md.)
 ifE :: P SExpr
 ifE = do
   _ <- try (keyword "if")
@@ -624,7 +624,7 @@ unsafeModuleDecl = do
   let carried = if what `elem` profileNames then what else "Unit"
   pure (TSig "$module" ([], TCon carried []) [Just ("$unsafe", SVar "$unsafe")])
 
--- `profile base.` -- what the program is written against (docs/PROFILES.md):
+-- `profile base.` -- what the program is written against (docs/2026-09-19-PROFILES.md):
 -- the surface it may use and the systems it may run on.  Represented as
 -- a TSig for the reserved name "$profile" whose type names the profile,
 -- so no pass needs a new constructor.  The SYSTEM (bare metal, QOS,
@@ -753,7 +753,7 @@ aritySpill tops = (map top tops, notes)
         seg s = s
 
 -- ---- autodrop: compiler-inserted drops on receive paths ---------------
--- THE LAW (docs/MEMORY.md): every received message root is dropped once
+-- THE LAW (docs/2026-08-25-MEMORY.md): every received message root is dropped once
 -- read.  Every leak in the qosp campaign was a missed manual drop.  This
 -- pass discharges the common shapes mechanically:
 --
@@ -1385,7 +1385,7 @@ collectShapes tops = M.fromList [(fs, shapeIdFor fs) | fs <- allShapes]
     stmtShapes (SBind _ _ x) = exprShapes x
     stmtShapes (SBindPat p x) = patShapes p ++ exprShapes x
 
--- ---- first-class paths (docs/PATHS.md) --------------------------------
+-- ---- first-class paths (docs/2026-08-27-PATHS.md) --------------------------------
 --
 -- A TYPE-ROOTED path literal `@Model.field.sub` is validated here --
 -- unconditionally, against the record alias's declared field types --

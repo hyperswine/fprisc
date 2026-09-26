@@ -26,7 +26,7 @@ const hdr_t fpr_unit = {T_UNIT, 0};
  * stacks were never the leak: they ride the stack pool. */
 /* The heap's span is a run-time fact, not a link-time one: the machine layer
  * says where it is (hal_heap_span) and how big -- RAM on a board, a
- * reservation of address space on a hosted system (docs/BOUNDS.md). */
+ * reservation of address space on a hosted system (docs/2026-09-19-BOUNDS.md). */
 char *fpr_heap_lo, *fpr_heap_hi;
 
 /* per-hart control blocks; tp points at ours (see fpr.h essay) */
@@ -424,7 +424,7 @@ V fpr_alloc(V raw_bytes) {
      * buddy block (64 KiB), each next twice the last.  Every actor that
      * allocated anything used to take a whole SLAB_SZ (256 KiB) at once, so a
      * thousand small session actors cost half a gigabyte before doing any
-     * work (docs/BOUNDS.md); an actor that really does grow pays a few extra
+     * work (docs/2026-09-19-BOUNDS.md); an actor that really does grow pays a few extra
      * blocks on the way up.  A loaded process without a buddy keeps the one
      * size: its grant recycler matches by size. */
     uw floor = SLAB_SZ;
@@ -514,13 +514,13 @@ V fpr_alloc(V raw_bytes) {
  * makes reading slab->owner race-free against death teardown (also
  * under arc_lock).  An orphaned slab's blocks are not recycled: the
  * whole slab goes back to buddy when its last promoted object drops. */
-/* the third op of the allocator contract (docs/MEMORY.md): grow a
+/* the third op of the allocator contract (docs/2026-08-25-MEMORY.md): grow a
  * block to hold `want` payload bytes.  Copy-based through the pool
  * tiers today: the preheader's total names the old payload capacity,
  * and the freed predecessor recycles exactly (buckets below the
  * ceiling, the bigfree LIFO above it), so a doubling ladder reuses
  * its own history.  In-place growth arrives when bulk storage moves
- * behind Memory.qa's buddy (docs/MEMORY-V2-PLAN.md), where
+ * behind Memory.qa's buddy (docs/2026-08-29-MEMORY-V2-PLAN.md), where
  * buddy_realloc already provides it. */
 V fpr_realloc(V v, V want) {
   if (!v) return fpr_alloc(want);
@@ -1298,7 +1298,7 @@ uw fpr_arc_live_count(void) { return arc_live; }
  * First promotion of a pool value pins its slab (escaped++), so the
  * shared object outlives the sender's poolReset/death by the existing
  * orphan machinery.  This is the v1 mechanism; the mailbox-serialized
- * ARC.qa (docs/MEMORY-V2-PLAN.md phase 4) replaces the table+lock
+ * ARC.qa (docs/2026-08-29-MEMORY-V2-PLAN.md phase 4) replaces the table+lock
  * underneath without changing this contract. */
 void fpr_arc_promote_share(V v) {
   if (fpr_sched) { fpr_sched->arc_incref(v); return; }
@@ -1378,7 +1378,7 @@ static V g_substr(V sv, V off, V len) {
  * Same names and contracts as Sol's natives (compiler/Sol/VM.hs), so the two
  * profiles share one vocabulary: byte strings, 1-based, 0 = not found.
  * strJoin is the one that matters: joining n pieces by repeated strcat copies
- * the accumulator n times (docs/PRELIM_BASE_LIBRARY_DESIGN.md). */
+ * the accumulator n times (docs/2026-09-19-PRELIM_BASE_LIBRARY_DESIGN.md). */
 static str_t *want_str(V v, const char *who) {
   if (ISINT(v) || TID(v) != T_STR) fpr_cpanic(who);
   return (str_t *)v;

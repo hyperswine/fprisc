@@ -18,7 +18,7 @@
 --     mulMM/mulMV).
 --
 -- This file was a ~1,000-line fork of Infer.hs; the un-forking is
--- docs/MEMORY-V2-PLAN.md's "de-fork the frontend" item made real.
+-- docs/2026-08-29-MEMORY-V2-PLAN.md's "de-fork the frontend" item made real.
 module Sol.Infer (inferTops) where
 
 import Infer (IProf (..), TEnv, Type (..), inferTopsWith, mono, scheme, sv, tBool, tInt, tList, tStr, tUnit, tcon)
@@ -87,7 +87,7 @@ solBuiltins =
       ("spawn", scheme [0] (TFn (TFn tInt (sv 0)) tInt)),
       -- the mailbox policy (spawnCap) and placement are accepted and
       -- ignored here: the shim's actors are Haskell threads with
-      -- unbounded queues (docs/MAILBOX.md)
+      -- unbounded queues (docs/2026-09-07-MAILBOX.md)
       ("spawnCap", scheme [0] (TFn tInt (TFn tInt (TFn (TFn tInt (sv 0)) tInt)))),
       ("spawnCapOn", scheme [0] (TFn tInt (TFn tInt (TFn tInt (TFn (TFn tInt (sv 0)) tInt))))),
       ("spawnOn", scheme [0] (TFn tInt (TFn (TFn tInt (sv 0)) tInt))),

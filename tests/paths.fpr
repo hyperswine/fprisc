@@ -1,4 +1,4 @@
-# paths.fpr -- first-class paths, both tiers (docs/PATHS.md):
+# paths.fpr -- first-class paths, both tiers (docs/2026-08-27-PATHS.md):
 #
 #   TYPED literal   @Model.hp / @Model.ui.tag -> {get, set, segs},
 #                   validated at elaboration against the declared

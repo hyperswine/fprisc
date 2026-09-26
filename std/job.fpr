@@ -1,8 +1,8 @@
 # std/job.fpr -- blocking host work, run off the harts.
 #
 # The seam under std/wifi and std/ble: a platform library's call that can
-# block (an RPC to a radio chip, a multi-second scan) runs on the platform's
-# broker (platform/esp-idf/jobs.c), never on a hart, and finishes by raising
+# block (an RPC to a radio chip, a multi-second scan) runs on the posix
+# system's broker thread (machine/posix/os_job.c), never on a hart, and finishes by raising
 # an interrupt bound to the waiting actor.  `run start` blocks only the
 # CALLING actor: a helper binds the job's interrupt, starts it, waits, and
 # hands back the result text.  You do not normally use this module.
@@ -23,7 +23,7 @@ wait boss start self =
   _ = Sys.irqBind slot self;
   r = (case start slot of
       0 -> m = receive self; _ = drop m; JobHost.result slot
-    | _ -> _ = JobHost.result slot; "error\tthe job queue is full");
+    | _ -> _ = JobHost.result slot; "error\tthe job could not be queued (out of memory)");
   _ = send boss (Ok r);
   Unit.
 

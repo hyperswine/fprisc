@@ -34,6 +34,18 @@ str_t *fpr_mkstr(const uint8_t *src, uw n) { str_t *s = calloc(1, sizeof(*s) + n
 void fpr_cpanic(const char *s) { fprintf(stderr, "%s\n", s); abort(); }
 void fpr_set_tp(fpr_hart_t *h) { (void)h; }
 void hal_irq_raise(uw source) { (void)source; atomic_fetch_add(&raised, 1); }
+/* the host's source pool, as machine/posix/hal.c hands it out: from the top
+ * down, freed ones first; stub_limit stands in for a pool that is used up */
+static int stub_limit = FPR_HOST_IRQ_MAX;
+static uint8_t stub_used[FPR_HOST_IRQ_MAX];
+uw hal_irq_host_alloc(void) {
+  int n = 0;
+  for (int i = 1; i < FPR_HOST_IRQ_MAX; i++) n += stub_used[i];
+  if (n >= stub_limit) return 0;
+  for (uw s = FPR_HOST_IRQ_MAX - 1; s > 0; s--) if (!stub_used[s]) { stub_used[s] = 1; return s; }
+  return 0;
+}
+void hal_irq_host_free(uw s) { stub_used[s] = 0; }
 static int fd_count(void) { int n = 0; for (int i = 0; i < 512; i++) if (fcntl(i, F_GETFD) >= 0) n++; return n; }
 static void until(atomic_int *flag) { for (int i = 0; i < 3000; i++) { if (atomic_load(flag)) return; usleep(1000); } assert(!"timeout"); }
 static void finish_close(V id) {
@@ -48,7 +60,7 @@ int main(void) {
   for (int i = 0; i < 40; i++) {
     V result = h_watch_open(0);
     assert(((hdr_t *)result)->var == 1);
-    assert(watchers[0] == NULL);
+    assert(watcher_at(FPR_HOST_IRQ_MAX - 1) == NULL);
     assert(fd_count() == before);
   }
   fail_create = 0;
@@ -78,11 +90,11 @@ int main(void) {
   for (int i = 0; i < 80; i++) {
     result = h_watch_open(0); assert(((hdr_t *)result)->var == 0);
     id = FPR_FLD(result, 0);
-    assert(UNTAG(id) == 1000);
+    assert(UNTAG(id) == FPR_HOST_IRQ_MAX - 1); /* the top source, reused after each close */
     assert(pipe(a) == 0);
     if (i % 2) {
       h_watch_arm(id, os_cons(TAG(a[0]), (V)&os_nil));
-      w = watchers[0];
+      w = watcher_at(FPR_HOST_IRQ_MAX - 1);
       int polling = 0;
       for (int j = 0; j < 3000; j++) {
         pthread_mutex_lock(&w->mu); polling = w->polling; pthread_mutex_unlock(&w->mu);
@@ -92,7 +104,7 @@ int main(void) {
     }
     finish_close(id); /* alternate condition wait and blocked poll */
     close(a[0]); close(a[1]);
-    assert(fd_count() == before && watchers[0] == NULL);
+    assert(fd_count() == before && watcher_at(FPR_HOST_IRQ_MAX - 1) == NULL);
   }
   /* Stop after poll has observed readiness but before publication. */
   result = h_watch_open(0); id = FPR_FLD(result, 0);
@@ -106,14 +118,19 @@ int main(void) {
   finish_close(id);
   assert(atomic_load(&raised) == irqs);
   close(a[0]); close(a[1]);
-  V ids[WATCH_MAX];
-  for (int i = 0; i < WATCH_MAX; i++) {
+  /* 24 at once, then a pool that is used up: the 25th open answers Err by name */
+  stub_limit = 24;
+  V ids[24];
+  for (int i = 0; i < 24; i++) {
     result = h_watch_open(0); assert(((hdr_t *)result)->var == 0);
     ids[i] = FPR_FLD(result, 0);
+    assert(UNTAG(ids[i]) == FPR_HOST_IRQ_MAX - 1 - i);
   }
   result = h_watch_open(0); assert(((hdr_t *)result)->var == 1);
-  for (int i = 0; i < WATCH_MAX; i++) finish_close(ids[i]);
+  for (int i = 0; i < 24; i++) finish_close(ids[i]);
+  stub_limit = FPR_HOST_IRQ_MAX;
   assert(fd_count() == before);
+  for (int i = 1; i < FPR_HOST_IRQ_MAX; i++) assert(!stub_used[i]); /* every source given back */
   puts("Watcher: close during pending readiness; simultaneous capacity reclaimed: PASS");
   puts("Watcher: close/reopen 80 times, idle and polling, no descriptor leaks: PASS");
   puts("Watcher: failed starts release resources; re-arm rejects stale readiness: PASS");

@@ -2,7 +2,7 @@
  *
  * Declared by a program (or std module) as signatures with no body --
  *   Esp.core : Unit -> Int .
- * -- and linked here, the way any host facility is reached (docs/HAL.md).
+ * -- and linked here, the way any host facility is reached (docs/2026-09-19-HAL.md).
  *
  * Ints are 31 bits on rv32 (a tagged word): times are kept in units that
  * fit: milliseconds since boot wrap after ~12 days.  The Base builtins

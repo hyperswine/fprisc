@@ -282,7 +282,7 @@ static V spawn_on_pid(uw hart, V f, uw pin, uw pid);
 /* ---- the stack guard ---------------------------------------------------
  * A stack is a fixed STACK_SZ, and running off its low end used to be
  * silent: SIGBUS with no word said on a hosted system, whatever lay below
- * overwritten on bare metal (docs/BOUNDS.md: building a 20,000-element
+ * overwritten on bare metal (docs/2026-09-19-BOUNDS.md: building a 20,000-element
  * list by plain recursion).  The core cannot fix that -- a guard is a fact
  * about the MACHINE (an inaccessible page, a PMP region) -- so it asks the
  * HAL at the two places a stack changes hands.  The defaults do nothing.
@@ -1951,7 +1951,7 @@ static V a_send(V av, V m) {
   return fpr_send_as((uw)fpr_hart()->current, av, m);
 }
 
-/* sendLinear: MOVE the message (docs/MEMORY.md v2, the send triad).
+/* sendLinear: MOVE the message (docs/2026-08-25-MEMORY.md v2, the send triad).
  * The compiler's linearity checker consumes the payload argument, so
  * the sender's binding is unusable afterward -- send_linear IS the
  * value's release.  Mechanism, two cases:
@@ -2195,7 +2195,7 @@ FPR_FN(fpr_g_spawn, a_spawn, 1);
 FPR_FN(fpr_g_spawnCap, a_spawn_cap, 3);
 FPR_FN(fpr_g_spawnCapOn, a_spawn_cap_on, 4);
 FPR_FN(fpr_g_spawnOn, a_spawn_at, 2);
-/* sendArc: SHARE by explicit promotion (docs/MEMORY.md v2) -- the
+/* sendArc: SHARE by explicit promotion (docs/2026-08-25-MEMORY.md v2) -- the
  * only path by which an object becomes cross-actor shared.  The
  * pointer itself crosses (no copy); the object is FROZEN BY CONTRACT
  * from this send onward (writes after sharing are races the runtime
@@ -2316,7 +2316,7 @@ static V g_actInfo(V iv) {
 FPR_FN(fpr_g_Sys_x2eactLive, g_actLive, 1);
 FPR_FN(fpr_g_Sys_x2eactInfo, g_actInfo, 1);
 
-/* ---- the MEMORY ACTOR (fpr.h; docs/MEMORY.md) -----------------------
+/* ---- the MEMORY ACTOR (fpr.h; docs/2026-08-25-MEMORY.md) -----------------------
  * One actor owns the buddy.  A request is an Int -- (bytes << 1) | 1
  * to take, ptr >> 1 to give (buddy pointers are 8-aligned, so the
  * low bit distinguishes) -- so the request path allocates nothing.

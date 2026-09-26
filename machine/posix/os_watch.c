@@ -41,8 +41,28 @@ typedef struct {
   int *ready; size_t nready, capready;
   uw irq;
 } watcher_t;
-#define WATCH_MAX 24 /* IRQs 1000..1023: the current host IRQ controllers have 1024 slots */
-static watcher_t *watchers[WATCH_MAX];
+/* the open watchers by interrupt source (hal_irq_host_alloc): a table indexed
+ * from the top of the source space, which is where sources are handed out,
+ * grown to the deepest one in use.  There is no watcher count of its own: a
+ * host runs out of sources, or of wake descriptors (ESP-IDF registers 24
+ * eventfds), and says which. */
+static watcher_t **watchers;
+static size_t nwatchers;
+static size_t wslot(uw irq) { return FPR_HOST_IRQ_MAX - 1 - irq; }
+static watcher_t *watcher_at(uw irq) { /* watch_mu held */
+  return (irq && irq < FPR_HOST_IRQ_MAX && wslot(irq) < nwatchers) ? watchers[wslot(irq)] : 0;
+}
+static int watcher_room(uw irq) { /* watch_mu held: make the table reach this source */
+  size_t i = wslot(irq);
+  if (i < nwatchers) return 1;
+  size_t n = nwatchers ? nwatchers : 8;
+  while (n <= i) n *= 2;
+  watcher_t **t = realloc(watchers, n * sizeof *t);
+  if (!t) return 0;
+  memset(t + nwatchers, 0, (n - nwatchers) * sizeof *t);
+  watchers = t; nwatchers = n;
+  return 1;
+}
 #ifdef FPR_ESP_IO_SMOKE
 unsigned fpr_watch_raised;
 #endif
@@ -122,7 +142,7 @@ static watcher_t *watcher_of(V irqv) {
   if (!ISINT(irqv)) fpr_cpanic("Os.watch: the watcher is not an Int");
   sw irq = UNTAG(irqv);
   pthread_mutex_lock(&watch_mu);
-  watcher_t *w = (irq >= 1000 && irq < 1000 + WATCH_MAX) ? watchers[irq - 1000] : 0;
+  watcher_t *w = irq > 0 ? watcher_at((uw)irq) : 0;
   if (w) pthread_mutex_lock(&w->mu);
   pthread_mutex_unlock(&watch_mu);
   if (!w) fpr_cpanic("Os.watch: no such watcher");
@@ -133,20 +153,19 @@ static watcher_t *watcher_of(V irqv) {
 static V h_watch_open(V u) {
   (void)u;
   pthread_mutex_lock(&watch_mu);
-  unsigned slot = 0;
-  while (slot < WATCH_MAX && watchers[slot]) slot++;
-  if (slot == WATCH_MAX) { pthread_mutex_unlock(&watch_mu); return os_err("too many watchers"); }
-  watcher_t *w = calloc(1, sizeof *w);
-  if (!w) { pthread_mutex_unlock(&watch_mu); return os_err("out of memory"); }
+  uw irq = hal_irq_host_alloc();
+  if (!irq) { pthread_mutex_unlock(&watch_mu); return os_err("no interrupt source left for a watcher"); }
+  watcher_t *w = watcher_room(irq) ? calloc(1, sizeof *w) : 0;
+  if (!w) { hal_irq_host_free(irq); pthread_mutex_unlock(&watch_mu); return os_err("out of memory"); }
   if (watch_wake_open(w->wake) != 0) {
-    int saved = errno; free(w); pthread_mutex_unlock(&watch_mu);
+    int saved = errno; free(w); hal_irq_host_free(irq); pthread_mutex_unlock(&watch_mu);
     errno = saved; return os_errno();
   }
   int bad = pthread_mutex_init(&w->mu, 0);
   if (bad) goto failed_wake;
   bad = pthread_cond_init(&w->cv, 0);
   if (bad) goto failed_mutex;
-  w->irq = 1000 + slot;
+  w->irq = irq;
   pthread_t t;
   pthread_attr_t a;
   bad = pthread_attr_init(&a);
@@ -161,7 +180,7 @@ static V h_watch_open(V u) {
   pthread_attr_destroy(&a);
   if (bad) goto failed_cond;
   /* Publish only a fully initialized watcher with a running thread. */
-  watchers[w->irq - 1000] = w;
+  watchers[wslot(irq)] = w;
   pthread_mutex_unlock(&watch_mu);
   return os_ok(TAG((sw)w->irq));
 failed_cond:
@@ -171,6 +190,7 @@ failed_mutex:
 failed_wake:
   watch_wake_close(w->wake);
   free(w);
+  hal_irq_host_free(irq);
   pthread_mutex_unlock(&watch_mu);
   return os_err(strerror(bad));
 }
@@ -227,14 +247,15 @@ static V h_watch_close(V irqv) {
   if (!ISINT(irqv)) fpr_cpanic("Os.watchClose: watcher is not an Int");
   sw irq = UNTAG(irqv);
   pthread_mutex_lock(&watch_mu);
-  watcher_t *w = (irq >= 1000 && irq < 1000 + WATCH_MAX) ? watchers[irq - 1000] : 0;
+  watcher_t *w = irq > 0 ? watcher_at((uw)irq) : 0;
   if (!w) { pthread_mutex_unlock(&watch_mu); fpr_cpanic("Os.watchClose: no such watcher"); }
   pthread_mutex_lock(&w->mu);
   if (w->stopped) {
-    watchers[irq - 1000] = 0;
+    watchers[wslot((uw)irq)] = 0;
     pthread_mutex_unlock(&w->mu);
     pthread_mutex_destroy(&w->mu);
     free(w);
+    hal_irq_host_free((uw)irq); /* the source is free for the next watcher or job */
     pthread_mutex_unlock(&watch_mu);
     return (V)&fpr_true;
   }

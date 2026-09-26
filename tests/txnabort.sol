@@ -1,5 +1,5 @@
 # txnabort.sol — pins the script-as-transaction contract: phase one
-# writes, phase two panics, NOTHING may land.  See docs/TRANSACTION.md.
+# writes, phase two panics, NOTHING may land.  See docs/2026-08-25-TRANSACTION.md.
 boom x | x > 0 = x / 0 .
 boom x = x .
 > h = open @/tmp/sol-txnabort.txt;

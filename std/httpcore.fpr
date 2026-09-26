@@ -6,7 +6,7 @@
 #
 # The portable part of std/http, which is this module plus HTTPS through
 # curl.  It needs only std/tcp, std/stream and std/poller, so it builds where
-# there are sockets and no processes: a board (--system=esp-idf) serves HTTP
+# there are sockets and no processes: a board (--host=esp-idf) serves HTTP
 # with it.  An "https://" URL answers Err, saying so; nothing falls back to
 # plain text.
 #

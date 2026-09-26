@@ -1,4 +1,5 @@
-# std/esp.fpr -- the ESP32 chip itself, from FP-RISC (--system=esp-idf).
+# std/esp.fpr -- the ESP32 chip itself, from FP-RISC (the posix system's
+# esp-idf host: --host=esp-idf).
 #
 #   Esp = use "std/esp".
 #   Esp.core Unit            which CPU core this actor is running on

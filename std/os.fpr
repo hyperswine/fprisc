@@ -4,7 +4,7 @@
 # std/clock are the API.  This is the seam under them -- signatures with no
 # definition, implemented by machine/posix/os_*.c.  A system without them (a
 # board) fails a program that imports them at LINK time, by name: a program's
-# imports are its capability manifest (docs/BASE.md).
+# imports are its capability manifest (docs/2026-09-18-BASE.md).
 
 Os.readFile  : String -> Result String String .
 Os.listDir   : String -> Result (List String) String .

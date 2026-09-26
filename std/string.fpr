@@ -1,4 +1,4 @@
-# std/string.fpr -- String: text as bytes (docs/PRELIM_BASE_LIBRARY_DESIGN.md).
+# std/string.fpr -- String: text as bytes (docs/2026-09-19-PRELIM_BASE_LIBRARY_DESIGN.md).
 #
 #   String = use "std/string".
 #   line |> String.trim |> String.split "," |> List.map String.toUpper |> String.join "; "

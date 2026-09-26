@@ -1,16 +1,17 @@
-/* hal.c (esp-idf) -- the machine layer on ESP-IDF: FreeRTOS is the board.
+/* hal.c (esp-idf) -- the posix system's esp-idf HOST: FreeRTOS is the board.
  *
- * A hart is a FreeRTOS task pinned to a core (main.c), and everything the
- * runtime needs from a machine maps onto the RTOS:
+ * A hart is a FreeRTOS task pinned to a core (main.c), and what the runtime
+ * needs from a machine that the shared machine/posix/hal.c does not give
+ * (the console, the clock, the host sleep and the IRQ bridge are there,
+ * over the POSIX subset IDF has) maps onto the RTOS here:
  *
  *   hal_wfi / hal_ipi_send     wait on / give the hart task's notification
  *   hal_timer_arm / _park      the next deadline that wait honours
- *   hal_mtime                  esp_timer (microseconds) in virt's 10 MHz units
  *   hal_heap_span              one large block from the IDF heap: PSRAM when
  *                              the board has it, internal RAM otherwise
- *   hal_irq_*                  interrupts raised by IDF tasks, callbacks and
- *                              ISRs (hal_irq_raise), claimed by the IRQ hart
- *                              and delivered to an actor bound with Sys.irqBind
+ *   hal_poweroff               a board has nothing to exit to
+ *   fpr_esp_cstack             C calls that must leave the actor's PSRAM stack
+ *   hal_actor_stack            the opt-in watchpoint stack guard
  *
  * IDF's tp remains its C TLS pointer. The runtime stores the current hart
  * in fpr_esp_hart, a real TLS slot, and loads it afresh across actor switches.
@@ -20,17 +21,10 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_timer.h"
 #include "esp_heap_caps.h"
-#include "esp_rom_sys.h"
 #include "esp_cpu.h"
 
 TaskHandle_t fpr_esp_hart_task[FPR_NHARTS];
-
-void hal_putc(char c) {
-  fputc(c, stdout);
-  if (c == '\n') fflush(stdout);
-}
 
 /* A board has nothing to exit to.  The program ends here for good: the other
  * harts are suspended and this one sleeps forever (it used to return, so a
@@ -44,14 +38,6 @@ void hal_poweroff(int code) {
   for (int i = 0; i < FPR_NHARTS; i++)
     if (fpr_esp_hart_task[i] && fpr_esp_hart_task[i] != self) vTaskSuspend(fpr_esp_hart_task[i]);
   for (;;) vTaskDelay(portMAX_DELAY);
-}
-
-uint64_t hal_mtime(void) { return (uint64_t)esp_timer_get_time() * 10u; }
-
-int fpr_hal_sleep_us(uw us) {
-  if (us >= 1000 * portTICK_PERIOD_MS) vTaskDelay(pdMS_TO_TICKS(us / 1000));
-  else esp_rom_delay_us(us);
-  return 1;
 }
 
 /* ---- sleep and wake ----------------------------------------------------- */
@@ -120,34 +106,9 @@ void hal_heap_release(void *p, uw bytes) { (void)p; (void)bytes; }
 void hal_stack_guard(void *lo, uw size) { (void)lo; (void)size; }
 void hal_stack_unguard(void *lo, uw size) { (void)lo; (void)size; }
 
-/* ---- interrupts from IDF: tasks, callbacks and ISRs raise, the IRQ hart claims ---- */
-#define ESP_IRQ_MAX 1024
-static uint8_t irq_pending[ESP_IRQ_MAX];
-static uw irq_open_list[ESP_IRQ_MAX];
-static uw irq_open_n;
-static portMUX_TYPE irq_mux = portMUX_INITIALIZER_UNLOCKED;
-void hal_irq_open(uw src) {
-  if (src == 0 || src >= ESP_IRQ_MAX) return;
-  taskENTER_CRITICAL(&irq_mux);
-  int have = 0;
-  for (uw i = 0; i < irq_open_n; i++) if (irq_open_list[i] == src) have = 1;
-  if (!have) { irq_open_list[irq_open_n] = src; __atomic_store_n(&irq_open_n, irq_open_n + 1, __ATOMIC_RELEASE); }
-  taskEXIT_CRITICAL(&irq_mux);
-}
-sw hal_irq_claim(void) {
-  uw n = __atomic_load_n(&irq_open_n, __ATOMIC_ACQUIRE);
-  for (uw i = 0; i < n; i++) {
-    uw s = irq_open_list[i];
-    if (__atomic_exchange_n(&irq_pending[s], 0, __ATOMIC_ACQ_REL)) return (sw)s;
-  }
-  return 0;
-}
-void hal_irq_ack(uw src) { (void)src; }
-void hal_irq_raise(uw src) {
-  if (src == 0 || src >= ESP_IRQ_MAX) return;
-  __atomic_store_n(&irq_pending[src], 1, __ATOMIC_RELEASE);
-  hal_ipi_send(fpr_irq_hart);
-}
+/* interrupts from IDF tasks, callbacks and ISRs: the shared bridge in
+ * machine/posix/hal.c (hal_irq_raise is atomics only, so an ISR may call it;
+ * hal_irq_open takes a mutex and is called from hart and broker tasks) */
 
 /* ---- C calls that must not run on an actor's stack ------------------------
  * Actor stacks are in PSRAM (hal_heap_span).  IDF asserts that a flash

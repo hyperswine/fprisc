@@ -1,4 +1,4 @@
-# The FP-RISC runtime, the esp-idf machine layer, and the program's generated
+# The FP-RISC runtime, the posix system's shared files and its esp-idf host, and the program's generated
 # rv32 assembly (FPR_GEN_DIR, written by machine/esp-idf/build.sh).
 get_filename_component(FPR_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../.." ABSOLUTE)
 set(FPR_RT ${FPR_ROOT}/runtime)
@@ -21,11 +21,11 @@ idf_component_register(
   SRCS ${FPR_M}/main.c ${FPR_M}/hal.c ${FPR_M}/esp.c ${FPR_M}/ctx.S ${FPR_ROOT}/machine/virt/ctx_fab.c
        ${FPR_RT}/runtime.c ${FPR_RT}/actors.c ${FPR_RT}/bits.c ${FPR_RT}/vec.c
        ${FPR_RT}/sstr.c ${FPR_RT}/mod.c ${FPR_RT}/buddy.c
-       ${FPR_ROOT}/machine/posix/os_io.c ${FPR_ROOT}/machine/posix/os_net.c ${FPR_ROOT}/machine/posix/os_watch.c
+       ${FPR_ROOT}/machine/posix/hal.c ${FPR_ROOT}/machine/posix/os_job.c ${FPR_ROOT}/machine/posix/os_io.c ${FPR_ROOT}/machine/posix/os_net.c ${FPR_ROOT}/machine/posix/os_watch.c
        ${FPR_ROOT}/machine/posix/os_fs.c ${FPR_ROOT}/machine/posix/base_file.c ${FPR_ROOT}/machine/posix/base.c ${FPR_M}/fs.c
-       ${FPR_P}/jobs.c ${FPR_P}/radio.c ${FPR_P}/wifi.c ${FPR_P}/bluetooth.c ${FPR_P}/gpio.c
+       ${FPR_P}/radio.c ${FPR_P}/wifi.c ${FPR_P}/bluetooth.c ${FPR_P}/gpio.c
        ${FPR_GEN}
-  INCLUDE_DIRS ${FPR_RT} ${FPR_P}
+  INCLUDE_DIRS ${FPR_RT} ${FPR_ROOT}/machine/posix ${FPR_P}
   REQUIRES esp_timer esp_hw_support freertos heap hal soc driver esp_driver_uart
            lwip pthread vfs fatfs wear_levelling
            esp_wifi esp_netif esp_event nvs_flash bt esp_hosted)

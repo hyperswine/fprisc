@@ -1481,7 +1481,7 @@ vecSpec prog isLocal e = case spineOf e of
   -- WRITE-BACK FOLD: Vec.fold f z (Vec.map g v) fuses into ONE pass
   -- that stores g(el) back into the column AND folds f over it -- the
   -- map's writes stay program-visible through the returned vector, so
-  -- this is the fusion the map/map rewrite could never express (VEC.md
+  -- this is the fusion the map/map rewrite could never express (2026-08-25-VEC.md
   -- open item 1).  Scalar int tier only in v1; anything else falls
   -- through to the plain fold plan below, whose map argument then
   -- specializes on its own.

@@ -9,7 +9,7 @@
 # A hart is a thread many actors share, so no actor may wait inside the kernel.
 # Without a poller every waiting actor polls ITS descriptor on a timer: a
 # thousand idle sessions are a thousand timers and a thousand system calls a
-# tick (half a core, measured: docs/LIVE.md).  With one, the waiters block on
+# tick (half a core, measured: docs/2026-09-20-LIVE.md).  With one, the waiters block on
 # their mailboxes, which costs nothing, and ONE actor makes ONE poll(2) over
 # everything being waited for.
 #

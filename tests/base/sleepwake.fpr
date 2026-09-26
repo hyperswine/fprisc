@@ -1,7 +1,7 @@
 # sleepwake.fpr -- an actor that SLEEPS while messages keep arriving (the shape of
 # std/poller).  A sleeper woken early used to stay on the hart's sleeper list and
 # be linked again by its next sleep; as the head it pointed at itself, and the
-# hart walked that cycle forever (docs/LIVE.md).  This hung within a second.
+# hart walked that cycle forever (docs/2026-09-20-LIVE.md).  This hung within a second.
 unsafe base.
 napper self n = if n == 0 then Unit else _ = Sys.sleepUs 300; _ = drain self; napper self (n - 1).
 drain self = case receiveNow self of Ok m -> _ = drop m; drain self | Err _ -> Unit.

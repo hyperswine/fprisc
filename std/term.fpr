@@ -24,7 +24,7 @@
 #
 # The decoder is FP-RISC (`decode`, pure: bytes in, keys and the unfinished tail
 # out) and the screen is repainted a LINE at a time, only the lines that changed.
-# The machine gives two things: raw mode and the window's size (machine/posix/os_term.c).
+# The machine gives two things: raw mode and the window's size (machine/unix/os_term.c).
 
 OS = use "os".
 S = use "string".

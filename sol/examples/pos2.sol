@@ -1,7 +1,7 @@
 # pos2.sol — point of sale, second edition: modern login screen + a
 # three-tab dashboard (Register / Receipts / Inventory). Auth is reused
 # from lib/auth (pinned); the view rides the theme layer classes plus the
-# typed ui DSL. Written to STYLE.md throughout: head-clause tuple
+# typed ui DSL. Written to 2026-09-01-STYLE.md throughout: head-clause tuple
 # patterns for update, `|` guards over case-of-Bool, and |> pipelines.
 #
 # KV layout (store-wide, shared by every cashier, survives restarts):

@@ -1,6 +1,6 @@
 /* vec.c — the LINEAR SoA vector, CONTIGUOUS columns.
  *
- * Storage model (docs/MEMORY.md v2)
+ * Storage model (docs/2026-08-25-MEMORY.md v2)
  * ---------------------------------
  * A Vector is columns; a column is ONE contiguous span of machine
  * words, grown by realloc-by-doubling (fpr_realloc: the freed
@@ -72,7 +72,7 @@ static vec_t *vchk(V v, const char *who) {
   return (vec_t *)v;
 }
 
-/* ---- ownership: ONE owner, real copies (MEMORY.md v2 phase 3) ------
+/* ---- ownership: ONE owner, real copies (2026-08-25-MEMORY.md v2 phase 3) ------
  * The CoW rc that used to ride var's high bits is GONE.  `send` deep-
  * copies vectors into the message slab like every other value (no
  * exceptions), `Vec.dup` is an honest copy, and mutation needs no
@@ -392,7 +392,7 @@ V fpr_vec_map(V f, V vec) {
 
 /* filter is EAGER COMPACTION today: the kept rows slide down in place
  * with two cursors and len shrinks -- zero allocation, later scans
- * stay dense.  MEMORY.md v2 names the branch-light end-state (a mask
+ * stay dense.  2026-08-25-MEMORY.md v2 names the branch-light end-state (a mask
  * column that scans fuse, compaction deferred to Vec.compact or
  * Sys.poolReset); until that lands with the mask-fusing loops, eager
  * compaction is the correct simple thing.  Capacity beyond the new

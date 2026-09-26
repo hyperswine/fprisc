@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Two axes (docs/PROFILES.md): the PROFILE a file declares -- `profile
+"""Two axes (docs/2026-09-19-PROFILES.md): the PROFILE a file declares -- `profile
 builtin|base|extbase|sol.`, or `unsafe base.` for the blanket-unsafe form
 -- and the SYSTEM the compiler is asked for (--system=bare-metal |
-qos-native | qos-portable | posix).  The matrix is enforced, the flag may
-not contradict the file, the 1.x --profile= spellings still mean what
-they meant, and `fpr run` sends a sol program to the VM."""
+qos-native | qos-portable | posix), and posix's HOST (--host=unix |
+esp-idf).  The matrix is enforced, the flag may not contradict the file,
+the 1.x --profile= and --system=esp-idf spellings still mean what they
+meant, and `fpr run` sends a sol program to the VM."""
 from pathlib import Path
 import os, subprocess, tempfile
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,3 +51,17 @@ assert 'base declared' in run(P / 'base_decl.fpr')
 p = subprocess.run(['./fpr', 'build', str(P / 'sol_decl.fpr'), '-o', '/dev/null'], capture_output=True, text=True)
 assert p.returncode != 0 and 'runs on the VM' in p.stderr, p.stderr
 print('fpr run: a base program is built and run, a sol program goes to the VM, fpr build refuses sol; `unsafe base.` is blanket unsafe: PASS')
+# the posix system's hosts: unix (this machine, the default) and esp-idf (rv32)
+compile_(['--system=posix', '--host=unix'], P / 'base_decl.fpr', 0)
+compile_(['--system=posix', '--host=esp-idf'], P / 'base_decl.fpr', 0)
+compile_(['--host=esp-idf', '--system=posix'], P / 'base_decl.fpr', 0)
+compile_(['--host=esp-idf'], P / 'base_decl.fpr', 0)  # a host means posix
+compile_(['--system=esp-idf'], P / 'base_decl.fpr', 0)  # the 1.x spelling
+compile_(['--system=posix', '--host=esp-idf', '--target=rv32'], P / 'base_decl.fpr', 0)
+assert 'hosts are unix' in compile_(['--system=posix', '--host=amiga'], P / 'base_decl.fpr', 1)
+assert 'kind of posix host' in compile_(['--system=bare-metal', '--host=esp-idf'], P / 'base_decl.fpr', 1)
+assert 'rv32 code for an ESP-IDF' in compile_(['--host=esp-idf', '--target=rv64'], P / 'base_decl.fpr', 1)
+assert 'rv32 code for an ESP-IDF' in compile_(['--host=esp-idf', '--rvv'], P / 'base_decl.fpr', 1)
+assert 'not on the esp-idf host' in compile_(['--host=esp-idf'], P / 'sol_decl.fpr', 1)
+assert 'bare-metal system only' in compile_(['--host=esp-idf'], P / 'builtin_decl.fpr', 1)
+print('posix hosts: unix and esp-idf, a host means posix, the 1.x --system=esp-idf spelling, and the refusals: PASS')

@@ -1,5 +1,5 @@
 # service.fpr -- the design's "concurrent service" acceptance example
-# (docs/PRELIM_BASE_LIBRARY_DESIGN.md, section 9): typed configuration,
+# (docs/2026-09-19-PRELIM_BASE_LIBRARY_DESIGN.md, section 9): typed configuration,
 # requests, state, bounded concurrent work, logged failures, a clean shutdown.
 #
 #   fpr run examples/service.fpr [--port=8080] [--workers=4] [--log=debug]

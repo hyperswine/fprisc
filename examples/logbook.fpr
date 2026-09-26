@@ -1,6 +1,6 @@
 #!/usr/bin/env -S fpr run
 # logbook.fpr -- a digital log: observations, each stamped when it was written,
-# tagged, searchable, editable.  A LIVE app on a plain posix process (docs/LIVE.md):
+# tagged, searchable, editable.  A LIVE app on a plain posix process (docs/2026-09-20-LIVE.md):
 # one model, an actor per browser tab, the page split into statics and dynamics.
 #
 #   fpr run examples/logbook.fpr [--port=6700] [--address=0.0.0.0] [--store=logbook.kvlog] [--dev]

@@ -1,4 +1,4 @@
-# std/option.fpr -- Option: ordinary absence (docs/PRELIM_BASE_LIBRARY_DESIGN.md).
+# std/option.fpr -- Option: ordinary absence (docs/2026-09-19-PRELIM_BASE_LIBRARY_DESIGN.md).
 #
 #   Option = use "std/option".
 #   Option.withDefault 0 (Option.map inc (Option.Some 41))

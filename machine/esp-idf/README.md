@@ -1,11 +1,12 @@
 # machine/esp-idf: FP-RISC Base on the ESP32-P4
 
-`--system=esp-idf` (docs/PROFILES.md). An FP-RISC program becomes an
+The posix system's esp-idf host: `--host=esp-idf` (docs/2026-09-19-PROFILES.md;
+`--system=esp-idf` is the 1.x spelling and still works). An FP-RISC program becomes an
 ESP-IDF application: the rv32 code generator's output, `runtime/`, and this
 machine layer, built as one IDF project and flashed to the chip.
 
 Why it is built this way, and the workarounds ESP-IDF forced, are in
-docs/ESP-IDF.md; its fixed limits are registered in docs/BOUNDS.md.
+docs/2026-09-23-ESP-IDF.md; its fixed limits are registered in docs/2026-09-19-BOUNDS.md.
 
 Board it was brought up on: ESP32-P4 rev 1.3 (two rv32imafc cores at
 360 MHz, 32 MB PSRAM, 32 MB flash), with an ESP32-C6 on SDIO as its radio,
@@ -18,7 +19,7 @@ its tools without `export.sh`, which refuses to run without openocd; `fpr`
 sources it when `IDF_PATH` is not set.
 
 ```sh
-fpr run machine/esp-idf/examples/cores.fpr --system=esp-idf
+fpr run machine/esp-idf/examples/cores.fpr --host=esp-idf
 ```
 
 That builds, flashes and becomes the program's console, like `fpr run` of a
@@ -36,7 +37,7 @@ posix program:
 - The build goes to `build/esp-idf/<program>`, or `-o DIR`.
 - The board has one console, so a program's stderr lines arrive on stdout.
 
-`fpr build prog.fpr --system=esp-idf [-o DIR]` builds without flashing. The
+`fpr build prog.fpr --host=esp-idf [-o DIR]` builds without flashing. The
 parts underneath are `build.sh` (compile, then `idf.py`), `run.sh` (build,
 `esptool` flash, console) and `console.py`, all in this directory.
 
@@ -62,7 +63,7 @@ yet. After changing it, delete `BUILD_DIR/sdkconfig`.
 | park / wake | task notification; the wait is capped at 20 ms or the hart's timer deadline |
 | the heap | the largest PSRAM block, less 1/16 left for IDF (about 30 MB) |
 | context switch | `ctx.S`: ra, sp, s0-s11, fs0-fs11. Not gp: a fabricated context has gp = 0 |
-| blocking IDF calls | jobs on a broker task; completion raises an IRQ bound to the waiting actor |
+| blocking IDF calls | jobs on the posix system's broker thread (`machine/posix/os_job.c`, a pthread with an internal stack at priority 5); completion raises an IRQ bound to the waiting actor |
 | the console | `stdout` (UART0) |
 
 Two IDF settings matter: the hardware stack guard is off, since it treats
@@ -134,13 +135,13 @@ does not import `std/wifi` or `std/ble` links neither stack.
 
 ## Shared POSIX I/O and host TLS milestone (2026-09-25)
 
-`--system=esp-idf` now uses a real TLS hart slot, preserving IDF's `tp`.
+The esp-idf host now uses a real TLS hart slot, preserving IDF's `tp`.
 Both generated code and C runtime reload it instead of caching its address
 across actor switches. Rebuild compiler, generated units and firmware
 together; the compiler uses a distinct `rv32-idftls1` unit cache tag.
 Bare-metal rv32 keeps its original hart-register convention.
 
-The IDF project links shared `machine/posix/os_io.c` and `os_net.c`.
+The IDF project links shared `machine/posix/os_io.c` and `os_net.c` (and, since 2026-09-25, all of `machine/posix`).
 The following opt-in test initializes lwIP loopback and links a TLS probe:
 
 ```sh
@@ -195,7 +196,7 @@ discard the handle afterward. Automatic owner-exit cleanup remains open.
 A subsequent fresh flash/reset passed 80 library start/stop cycles with duplicate
 waiter cancellation, then ten TCP exchanges and explicit stop, with 40 readiness
 interrupts and status 0. `Stream.readOn` returns `Err "poller stopped"` on
-cancellation; direct callers can use `Poller.awaitResult`. See docs/ESP-IDF.md
+cancellation; direct callers can use `Poller.awaitResult`. See docs/2026-09-23-ESP-IDF.md
 for the ownership contract and concurrent registration limitation.
 
 ## Access point server and files (2026-09-25)
@@ -245,7 +246,7 @@ does starts it on its first radio call, which takes about 2 s longer.
   holds 12 loopback connections at once; the 16th pair outruns its 32
   sockets. Clients from other devices get about 31. A server out of
   sockets now says so on stderr and keeps serving.
-- `FPR_ESP_STACK_GUARD=1 fpr run ... --system=esp-idf` arms a watchpoint on
+- `FPR_ESP_STACK_GUARD=1 fpr run ... --host=esp-idf` arms a watchpoint on
   the running actor's stack bottom, so C code that overruns it stops the
   board by name. It costs about a third of compute speed, so it is for
   development builds; `examples/stack-guard.fpr` shows it, with the probe

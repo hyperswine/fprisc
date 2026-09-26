@@ -2,7 +2,7 @@
  *
  * The board's ESP32-C6 runs the BLE controller; the P4 runs the NimBLE host,
  * and ESP-Hosted carries HCI between them over the SDIO link Wi-Fi also uses
- * (its "VHCI" transport).  Calls are jobs on the broker (jobs.c); NimBLE's
+ * (its "VHCI" transport).  Calls are jobs on the broker (machine/posix/os_job.c); NimBLE's
  * callbacks arrive on its own host task, and the job waits for the one that
  * ends it.  Rows of tab-separated fields, parsed by std/ble:
  *
@@ -11,7 +11,7 @@
  *
  * Nothing else in the tree names this file: a program that does not import
  * std/ble does not link it, or NimBLE. */
-#include "jobs.h"
+#include "os_job.h"
 const char *fpr_radio_up(void);
 #include <stdio.h>
 #include <string.h>

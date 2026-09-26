@@ -19,7 +19,7 @@
 # `wr b 72 v`, every pointer an Addr -- which is what typed layouts were
 # added to the language to end: a Block is not an Addr, `next` cannot be
 # handed a payload, and the compiler owns the numbers.  The code it
-# generates is the code the offsets generated (docs/LAYOUTS.md).
+# generates is the code the offsets generated (docs/2026-09-19-LAYOUTS.md).
 # Sizes and counts are compared as Ints (Word.toInt keeps 63 bits, which
 # is every size and address this machine has).
 #
