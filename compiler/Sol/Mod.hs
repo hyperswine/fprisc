@@ -32,6 +32,7 @@ import Home (underHome)
 import Data.Word (Word64)
 import Sol.Lang (STop, program, stripPosTops)
 import Sol.Txn (childCommitMarker)
+import Sol.Cache (cachedModule)
 import Numeric (showHex)
 import System.Directory (doesFileExist)
 import System.Environment (getEnvironment, getExecutablePath)
@@ -52,15 +53,25 @@ hashAST tops = pad (showHex h "")
     pad s = replicate (16 - length s) '0' ++ s
 
 parseModuleFile :: FilePath -> IO (Either String (FilePath, String))
-parseModuleFile path = do
+parseModuleFile path = fmap (fmap (\(p, h, _) -> (p, h))) (parseModuleSource path)
+
+parseModuleSource :: FilePath -> IO (Either String (FilePath, String, [STop]))
+parseModuleSource path = do
   ok <- doesFileExist path
   if not ok
     then pure (Left ("use: no such module file: " ++ path))
     else do
       src <- readFile path
-      case parse program path src of
-        Left e -> pure (Left ("use: module " ++ path ++ " does not parse:\n" ++ errorBundlePretty e))
-        Right tops -> pure (Right (path, hashAST tops))
+      result <- parseCachedSource path src
+      pure $ case result of
+        Left err -> Left ("use: module " ++ path ++ " does not parse:\n" ++ err)
+        Right (h, tops) -> Right (path, h, tops)
+
+-- Roots and imported files share the same parse artifact and AST pin hash.
+parseCachedSource :: FilePath -> String -> IO (Either String (String, [STop]))
+parseCachedSource path src = cachedModule path src $ pure $ case parse program path src of
+  Left e -> Left (errorBundlePretty e)
+  Right tops -> Right (hashAST tops, tops)
 
 -- "name", "name#hash", "dir/name#hash", "name.sol#hash" — resolved
 -- relative to the importing script's directory.  An extensionless spec
@@ -69,7 +80,11 @@ parseModuleFile path = do
 -- std.fpr even though a std.sol sits beside it, and a .sol script's
 -- finds std.sol) -- one grammar, two file suffixes, no shadowing.
 resolveModule :: String -> FilePath -> String -> IO (Either String (FilePath, String, Bool))
-resolveModule prefExt baseDir spec = do
+resolveModule prefExt baseDir spec =
+  fmap (fmap (\(p, h, pin, _) -> (p, h, pin))) (resolveModuleParsed prefExt baseDir spec)
+
+resolveModuleParsed :: String -> FilePath -> String -> IO (Either String (FilePath, String, Bool, [STop]))
+resolveModuleParsed prefExt baseDir spec = do
   let (name, hashPart) = break (== '#') spec
       wantHash = drop 1 hashPart
       pinned = not (null wantHash)
@@ -85,10 +100,10 @@ resolveModule prefExt baseDir spec = do
         (f : _, _) -> mkPath f
         ([], h : _) -> h
         _ -> mkPath (head cands)
-  r <- parseModuleFile path
+  r <- parseModuleSource path
   pure $ case r of
     Left e -> Left e
-    Right (p, h)
+    Right (p, h, tops)
       | pinned && h /= wantHash ->
           Left
             ( "use: hash mismatch for " ++ name
@@ -96,7 +111,7 @@ resolveModule prefExt baseDir spec = do
                 ++ "\n  on disk #" ++ h
                 ++ "\n(the module's AST changed since it was pinned)"
             )
-      | otherwise -> Right (p, h, pinned)
+      | otherwise -> Right (p, h, pinned, tops)
 
 -- spawn `sol <path>` with `str x` on stdin; capture stdout. Hash
 -- re-verified so a pinned module can never run drifted code.

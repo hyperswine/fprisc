@@ -86,9 +86,9 @@ def main():
         run(bad, status='miss', extra={'SOL_NOTYPES': '1'})
         run(extra={'SOL_NOTYPES': '1'})
         run(expected=b'', status='miss', code=1, error=b'TYPE ERRORS')
-        run(hello, status='miss')
+        run(hello, status='hit')
         run(status='miss', extra={'SOL_NO_SAFETY': '1'})
-        run(status='miss')
+        run(status='hit')
         run(status='disabled', extra={'SOL_TYPES': '1'}, error=b'INFERRED TYPES')
         run(status='disabled', extra={'SOL_WIDTHS': '1'}, error=b'NUMERIC WIDTHS')
         # Persist compiler warnings, not runtime effects.
@@ -113,13 +113,15 @@ def main():
         jit = 'inc x = x + 1.\n> print "{List.sum (List.map inc (List.range 1 3000))}".\n'
         run(jit, expected=b'4504500\n', status='miss')
         run(expected=b'4504500\n', extra={'SOL_JIT': '1', 'SOL_VERBOSE': '1'}, error=b'[jit] compiled')
-        run(hello, status='miss')
+        run(hello, status='hit')
         def asm():
             p = subprocess.run([str(FPR), 'sol', '--asm', str(script)], env=env, capture_output=True, timeout=30)
             assert p.returncode == 0 and b'print' in p.stdout
             return p.stdout
         assert asm() == asm()
         # Corrupt/truncated entries are discarded and atomically replaced.
+        for old in cache.glob('*.cache'): old.unlink()
+        run(status='miss')
         entry, = cache.glob('*.cache')
         for content in (b'', b'FPRSOL1\n', entry.read_bytes()[:-1]):
             entry.write_bytes(content)

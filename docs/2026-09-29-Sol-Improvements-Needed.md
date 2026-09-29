@@ -612,3 +612,107 @@ the 1,600-element numeric JSON array improves about 2.9x in execution (2.1x end
 to end). Small programs remain startup-sensitive. Retained index memory is an
 explicit tradeoff; these measurements do not include allocation or peak RSS.
 The benchmark saves raw samples and both executable SHA-256 hashes.
+
+## 2026-09-29 19:49 AEST — End-to-end cache and transaction costs
+
+This increment builds on `2d2fb0a`. The preceding bytecode cache still parsed the
+prelude and all source files before lookup; imports were parsed once for their
+pin hash and again for expansion. Warm startup consequently retained substantial
+frontend work. Profiling also showed allocation from decoding reread transaction
+files purely to compare them at commit.
+
+### Global content cache
+
+The default cache is now `~/.sol/cache`; `SOL_CACHE_DIR` still overrides it.
+Compiled-program filenames use FNV-1a over the complete encoded input key instead
+of a single slot per executable/script. Restoring a prior source version can hit
+its earlier artifact. Keys still include source, expanded dependencies, prelude,
+paths, compiler identity, platform/schema and relevant compiler options. Relative
+imports and source positions mean identical text at different paths is not assumed
+to be interchangeable.
+
+`modules/` stores parsed root/module ASTs and their existing AST pin hashes,
+keyed by source contents, path and compiler identity. Source bytes are read on each
+invocation and import resolution/pins remain checked. Warm hits reuse parsed ASTs;
+the resolved AST is reused directly for expansion. A compiled hit skips prelude
+parsing entirely. This is parsed-module reuse plus a whole-program bytecode cache,
+not independently linked, typechecked module bytecode.
+
+The fast filename hash is only a lookup aid: saved exact input bytes must match.
+Existing entry checksums, 64 MiB per-entry limit, private temporary files, atomic
+rename, corruption-as-miss behavior and nonfatal unavailable storage remain.
+`SOL_CACHE=0` disables both tiers. Type/width diagnostics bypass compiled artifacts
+but may reuse parsed source. Cache checksum/serialization code is now compiled
+with `-O2`, including in the otherwise `-O0` development compiler.
+
+No runtime result, external effect, actor or machine-code address is persisted.
+Warnings still replay. Cache files are trusted local build products, not an
+untrusted interchange format. There is no automatic eviction; source/compiler
+versions can accumulate. Old XDG cache entries are not migrated or deleted.
+
+### Transaction validation
+
+Transactions now retain exact byte snapshots alongside the decoded text view.
+Commit rereads the bytes under the existing locks and compares them directly;
+it no longer decodes and traverses another linked-list String for comparison.
+Timestamp-only shortcuts are deliberately absent. Read-your-writes, snapshot
+reuse, lock ordering, retries, journal durability and external-effect boundaries
+are unchanged. Realtime writes forget both snapshot representations.
+
+This also fixes a conflict-detection bug: different invalid UTF-8 byte sequences
+could previously compare equal after lossy decoding. A regression replaces FF
+with FE while preserving size/mtime and requires a retry. Text APIs still reject
+invalid UTF-8 rather than exposing it as valid text.
+
+`SOL_TIMINGS=1` now includes `transaction-commit`. It is a subphase of execution,
+not an additional time to add to the total. Initial text decoding and its linked
+String allocation remain significant. Retaining raw bytes can increase residency;
+reducing allocations does not imply reducing maximum live heap.
+
+### Validation and measured results
+
+```sh
+make fpr
+python3 tools/sol-startup-check.py
+python3 tools/sol-cache-txn-check.py
+python3 tools/sol-e2e-benchmark.py --baseline /path/to/previous/fpr --output /tmp/sol-e2e.json
+```
+
+Passed 52 startup checks plus assembly/concurrent-writer/compiler-identity checks;
+root/module cache corruption and invalid-source tests; exact-byte transaction
+conflicts; 26 output checks; transaction, structured process/Git, filesystem/actor
+suites; and 34 text/live-process/PTY checks. Verification is local macOS arm64.
+
+The benchmark records both binary hashes, five shuffled fresh-process samples per
+case following one warmup, separate warm/miss/disabled modes, phase traces and one
+RTS allocation/residency sample per binary. Filesystem caches are warm. Misses
+remove both cache tiers. JIT/GPU/memoization are disabled. Wall measurements do not
+enable phase instrumentation. This is a development-build comparison; cache code
+alone changes to `-O2`, not the entire compiler/runtime.
+
+| Workload | Previous warm | New warm | Previous miss | New miss |
+| --- | ---: | ---: | ---: | ---: |
+| hello | 29.29 ms | 17.86 ms | 68.27 ms | 67.61 ms |
+| imports | 66.24 ms | 30.49 ms | 116.26 ms | 103.69 ms |
+| read_65536 | 43.14 ms | 28.62 ms | 68.32 ms | 68.34 ms |
+| read_262144 | 55.78 ms | 43.19 ms | 93.27 ms | 93.12 ms |
+| read_1048576 | 143.83 ms | 117.88 ms | 169.06 ms | 153.47 ms |
+
+Warm hello improves about 39%, three-library imports about 54%, and the 1 MiB
+transactional read about 18%. First-run hello is essentially unchanged. Separately
+instrumented samples put root parse/cache lookup around 0.26 ms rather than
+18.3 ms of root+prelude parsing, and import preparation around 3.3 ms rather than
+24.0 ms. Full startup includes other phases; these samples must not be added to
+the uninstrumented medians.
+
+The 1 MiB warm-read RTS sample allocated 784,178,360 bytes before and 412,332,976
+after (about 47% less). Sampled maximum heap residency was 52,266,424 vs 48,154,152
+bytes in that run, but intermediate runs showed higher new residency: the sampled
+peak is sensitive to GC timing, and this is not a general peak-memory reduction
+claim. Neither figure is OS peak RSS. The new commit phase took 0.811 ms while
+execution took 87.008 ms; initial decoding/allocation is now the larger remaining
+cost for that workload. Cache deserialization still dominates tiny warm startup.
+
+The actual default `~/.sol/cache` location was smoke-tested with a cold miss then
+a warm hit. A changed source/compiler creates another artifact; disk retention
+policy and a standalone compact bytecode format remain follow-up work.

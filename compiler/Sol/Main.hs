@@ -13,7 +13,7 @@
 module Sol.Main where
 
 import Sol.Cache (Prepared (..), cached)
-import Sol.Startup (phase)
+import Sol.Startup (phase, phaseIO)
 import Control.DeepSeq (force)
 import Sol.Diagnostic
 import Sol.Bytecode
@@ -25,7 +25,7 @@ import Data.List (intercalate, isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Sol.Lang
-import Sol.Mod (resolveModule)
+import Sol.Mod (resolveModuleParsed, parseCachedSource)
 import Sol.Preamble (halArities, prelude)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
 import Safety (safetyCheck)
@@ -66,13 +66,16 @@ runScript = do
     _ -> diagnostic "usage: sol [--asm] <script.sol> [args]" >> exitFailure >> pure (False, "", [])
   prepared <- phase "startup" $ do
     src <- phase "source" (readFile path >>= evaluate . force)
-    (ptops, utops) <- phase "parse" $ do
-      ps <- parseOrDie "<prelude>" prelude
-      us <- parseOrDie path src
-      pure (ps, us)
+    utops <- phase "parse" $ do
+      parsed <- parseCachedSource path src
+      case parsed of
+        Left err -> diagnostic err >> exitFailure >> pure []
+        Right (_, tops) -> pure tops
     seenRef <- newIORef M.empty
     expanded <- phase "imports" $ expandUses 8 "" seenRef (takeExtension path) (takeDirectory path) utops
-    cached path src prelude expanded (compileScript path src ptops utops expanded)
+    cached path src prelude expanded $ do
+      ptops <- phase "prelude-parse" $ parseOrDie "<prelude>" prelude
+      compileScript path src ptops utops expanded
   let Prepared cons shapes prog bprog runList _ = prepared
   -- user constructors only (the builtins have their own spellings in render),
   -- by their BASE name: `L.O.Some` prints as `Some`
@@ -278,7 +281,7 @@ runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc c
     let force = maybe 0 read forceN :: Int
     if attempt < force
       then pure (Conflict ["<forced>"]) -- discard this attempt's effects
-      else commit tx journalFile) `onException` cleanup
+      else phaseIO "transaction-commit" (commit tx journalFile)) `onException` cleanup
   case res of
     Committed n ncmd sfail -> do
       -- the receipt names every effect class that landed: files AND the
@@ -336,10 +339,10 @@ expandUses 0 _ _ _ _ _ = diagnostic "[sol] use: module nesting too deep" >> exit
 expandUses depth prefix seenRef impExt baseDir tops = do
   let aliases = [(mn, spec) | TUse mn spec <- tops]
   pairs <- forM aliases $ \(mn, spec) -> do
-    r <- resolveModule impExt baseDir spec
+    r <- resolveModuleParsed impExt baseDir spec
     case r of
       Left e -> diagnostic e >> exitFailure >> pure ([], (mn, mn))
-      Right (mpath, h, pinned) -> do
+      Right (mpath, h, pinned, mtops0) -> do
         unless pinned $
           verbose ("[sol] use (compile): " ++ spec ++ " resolves to " ++ spec ++ "#" ++ h ++ " (pin this)")
         seen <- readIORef seenRef
@@ -353,8 +356,6 @@ expandUses depth prefix seenRef impExt baseDir tops = do
             pure ([], (mn, localName))
           Nothing -> do
             modifyIORef' seenRef (M.insert h (prefix ++ mn))
-            msrc <- readFile mpath
-            mtops0 <- parseOrDie mpath msrc
             mtops1 <- expandUses (depth - 1) (prefix ++ mn ++ ".") seenRef (takeExtension mpath) (takeDirectory mpath) mtops0
             let defs = [t | t <- mtops1, notEval t]
                 rn = M.fromList [(n, mn ++ "." ++ n) | n <- topNames defs]

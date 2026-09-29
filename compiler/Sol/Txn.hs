@@ -91,7 +91,8 @@ data Effect
   deriving (Show, Read)
 
 data TxState = TxState
-  { txReads :: M.Map FilePath (Maybe String), -- content snapshot at first read
+  { txReads :: M.Map FilePath (Maybe String), -- decoded snapshot for repeat reads
+    txReadBytes :: M.Map FilePath (Maybe BS.ByteString), -- exact validation snapshot
     txDirReads :: M.Map FilePath [String], -- directory listings taken
     txEffects :: [Effect], -- REVERSED effect log
     txView :: M.Map FilePath (Maybe String), -- current in-txn file view
@@ -106,7 +107,7 @@ newTx :: IO (IORef TxState)
 newTx = newIORef emptyTx
 
 emptyTx :: TxState
-emptyTx = TxState M.empty M.empty [] M.empty M.empty IM.empty 1 S.empty False
+emptyTx = TxState M.empty M.empty M.empty [] M.empty M.empty IM.empty 1 S.empty False
 
 resetTx :: IORef TxState -> IO ()
 resetTx ref = writeIORef ref emptyTx
@@ -166,22 +167,22 @@ pendingOrderMsg what deferredSpelling pending =
     ++ deferredSpelling
     ++ "), or move it to a separate script run."
 
--- Files are read as BYTES and decoded here, so a non-UTF-8 file is a
--- fact we can report — it used to throw inside the locale decoder, get
--- caught as an IOException, and read as ABSENT, which made
--- read-modify-write silently clobber binaries. The Bool is UTF-8
--- validity; the String is the lossy decode (invalid bytes become
--- U+FFFD), which is what validation compares — consistent on both
--- sides of the comparison. (Two binary files differing only in invalid
--- bytes that decode alike could alias in validation; text never does.)
-diskReadT :: FilePath -> IO (Maybe (String, Bool))
-diskReadT p = do
+-- Keep exact bytes for validation; decode once for the text-facing API.
+-- Comparing bytes is faster and distinguishes invalid UTF-8 sequences which
+-- otherwise decode to the same replacement character.
+diskReadBytes :: FilePath -> IO (Maybe BS.ByteString)
+diskReadBytes p = do
   r <- try (BS.readFile p) :: IO (Either IOException BS.ByteString)
   case r of
-    Left e
-      | isDoesNotExistError e -> pure Nothing
-      | otherwise -> throwIO e
-    Right bs -> let t = BSU.toString bs in pure (Just (t, BSU.fromString t == bs))
+    Left e | isDoesNotExistError e -> pure Nothing
+           | otherwise -> throwIO e
+    Right bs -> pure (Just bs)
+
+decodeSnapshot :: BS.ByteString -> (String, Bool)
+decodeSnapshot bs = let t = BSU.toString bs in (t, BSU.fromString t == bs)
+
+diskReadT :: FilePath -> IO (Maybe (String, Bool))
+diskReadT p = fmap decodeSnapshot <$> diskReadBytes p
 
 diskRead :: FilePath -> IO (Maybe String)
 diskRead p = fmap fst <$> diskReadT p
@@ -206,21 +207,23 @@ txClose ref h = atomicModifyIORef' ref $ \s ->
   (s {txHandles = IM.delete h (txHandles s)}, ())
 
 -- snapshot a path into the read set (for validation) if not already there;
--- a non-UTF-8 file snapshots its lossy decode and is remembered as
--- non-text so the read surface can refuse it while exists/stat still work
+-- exact bytes accompany the decoded view. Non-UTF-8 files are remembered as
+-- non-text so the read surface can refuse them while exists/stat still work
 snapshot :: IORef TxState -> FilePath -> IO (Maybe String)
 snapshot ref p = do
   s <- readIORef ref
   case M.lookup p (txReads s) of
     Just snap -> pure snap
     Nothing -> do
-      d <- diskReadT p
-      let txt = fmap fst d
+      bytes <- diskReadBytes p
+      let d = fmap decodeSnapshot bytes
+          txt = fmap fst d
           nonText = maybe False (not . snd) d
       atomicModifyIORef' ref
         ( \st ->
             ( st
                 { txReads = M.insert p txt (txReads st),
+                  txReadBytes = M.insert p bytes (txReadBytes st),
                   txNonText = if nonText then S.insert p (txNonText st) else txNonText st
                 },
               ()
@@ -569,7 +572,7 @@ rtReport ref = do
 -- dropped, so the caller can say so.
 txForget :: IORef TxState -> FilePath -> IO Bool
 txForget ref p = atomicModifyIORef' ref $ \s ->
-  ( s { txReads = M.delete p (txReads s), txView = M.delete p (txView s) },
+  ( s { txReads = M.delete p (txReads s), txReadBytes = M.delete p (txReadBytes s), txView = M.delete p (txView s) },
     M.member p (txReads s) || M.member p (txView s)
   )
 
@@ -874,11 +877,11 @@ commit ref jpath = do
     staleC <-
       foldM
         ( \acc (p, snap) -> do
-            now <- diskRead p
+            now <- diskReadBytes p
             pure (if now == snap then acc else p : acc)
         )
         []
-        (M.toList (txReads s))
+        (M.toList (txReadBytes s))
     staleD <-
       foldM
         ( \acc (dir, names) -> do

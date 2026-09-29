@@ -1,3 +1,6 @@
+{-# OPTIONS_GHC -O2 #-}
+-- Cache checksums and serialization are hot on every invocation, even when
+-- the rest of the development compiler is built without optimization.
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
@@ -5,7 +8,7 @@
 -- A disposable compiler-result cache, never a cache of evaluated values or
 -- effects. Imports are resolved before lookup. Exact encoded inputs are checked
 -- after the filename hash, so hash collisions cannot select a different program.
-module Sol.Cache (Prepared (..), cached) where
+module Sol.Cache (Prepared (..), cached, cachedModule) where
 
 import Control.DeepSeq (NFData, force)
 import Control.Exception (IOException, bracketOnError, catch, evaluate)
@@ -18,7 +21,7 @@ import qualified Data.Map.Strict as M
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Numeric (showHex)
-import System.Directory (XdgDirectory (XdgCache), createDirectoryIfMissing, getXdgDirectory, makeAbsolute, removeFile, renameFile)
+import System.Directory (createDirectoryIfMissing, getHomeDirectory, makeAbsolute, removeFile, renameFile)
 import System.Environment (getExecutablePath, lookupEnv)
 import System.FilePath ((</>), takeDirectory)
 import System.Info (arch, os, compilerName, compilerVersion)
@@ -41,7 +44,7 @@ data Prepared = Prepared
 -- Changing the artifact format/meaning requires a new schema, even though a
 -- rebuilt executable normally also invalidates all entries through its identity.
 schema :: Int
-schema = 1
+schema = 2
 
 fingerprint :: BS.ByteString -> Word64
 fingerprint = BS.foldl' (\h b -> (h `xor` fromIntegral b) * 0x100000001b3) 0xcbf29ce484222325
@@ -87,8 +90,8 @@ cached path src prelude expanded compile = do
       options <- mapM lookupEnv ["SOL_NOTYPES", "SOL_NO_SAFETY", "FPR_HOME", "FPR_PATH"]
       let identity = show (exe, deviceID st, fileID st, fileSize st, modificationTimeHiRes st, statusChangeTimeHiRes st)
           key = BL.toStrict (encode (schema, identity, (arch, os, compilerName, show compilerVersion), absolute, path, src, prelude, expanded, options))
-          slot = showHex (fingerprint (BL.toStrict (encode (identity, absolute)))) "" ++ ".cache"
-      dir <- lookupEnv "SOL_CACHE_DIR" >>= maybe (getXdgDirectory XdgCache "fpr/sol") pure
+          slot = showHex (fingerprint key) "" ++ ".cache"
+      dir <- cacheDirectory
       pure (Just (dir </> slot, key))
 
 -- Entries are private local build products. This checksum detects accidental
@@ -99,7 +102,7 @@ magic = BS.pack [70,80,82,83,79,76,49,10]
 maxEntryBytes :: Int
 maxEntryBytes = 64 * 1024 * 1024
 
-readEntry :: FilePath -> BS.ByteString -> IO (Maybe Prepared)
+readEntry :: (Binary a, NFData a) => FilePath -> BS.ByteString -> IO (Maybe a)
 readEntry file key = readIt `catch` (\(_ :: IOException) -> pure Nothing)
   where
     readIt = do
@@ -118,7 +121,7 @@ readEntry file key = readIt `catch` (\(_ :: IOException) -> pure Nothing)
                 _ -> pure Nothing
             _ -> pure Nothing
 
-writeEntry :: FilePath -> BS.ByteString -> Prepared -> IO ()
+writeEntry :: Binary a => FilePath -> BS.ByteString -> a -> IO ()
 writeEntry file key prepared = writeIt `catch` (\(_ :: IOException) -> traceCache "write unavailable")
   where
     writeIt = do
@@ -130,3 +133,36 @@ writeEntry file key prepared = writeIt `catch` (\(_ :: IOException) -> traceCach
         bracketOnError (openBinaryTempFile dir ".sol-cache-")
           (\(tmp, h) -> ignoreIO (hClose h) >> ignoreIO (removeFile tmp))
           (\(tmp, h) -> BS.hPut h bytes >> hClose h >> renameFile tmp file)
+
+-- Parsed module artifacts also save the position-independent pin hash. Always
+-- read the source first: neither timestamps nor a filename hash establish trust.
+cacheDirectory :: IO FilePath
+cacheDirectory = lookupEnv "SOL_CACHE_DIR" >>= maybe ((</> ".sol/cache") <$> getHomeDirectory) pure
+
+cachedModule :: FilePath -> String -> IO (Either String (String, [STop])) -> IO (Either String (String, [STop]))
+cachedModule path src parseIt = do
+  disabled <- (== Just "0") <$> lookupEnv "SOL_CACHE"
+  if disabled then parseIt else do
+    context <- (Just <$> moduleContext) `catch` (\(_ :: IOException) -> pure Nothing)
+    case context of
+      Nothing -> parseIt
+      Just (file, key) -> do
+        hit <- readEntry file key
+        case hit of
+          Just value -> pure (Right value)
+          Nothing -> do
+            result <- parseIt
+            case result of
+              Right value -> writeEntry file key value
+              Left _ -> pure ()
+            pure result
+  where
+    moduleContext = do
+      exe <- getExecutablePath >>= makeAbsolute
+      st <- getFileStatus exe
+      absolute <- makeAbsolute path
+      dir <- cacheDirectory
+      let identity = show (exe, deviceID st, fileID st, fileSize st, modificationTimeHiRes st, statusChangeTimeHiRes st)
+          key = BL.toStrict (encode (schema, identity, arch, os, absolute, path, src))
+          file = dir </> "modules" </> (showHex (fingerprint key) "" ++ ".cache")
+      pure (file, key)
