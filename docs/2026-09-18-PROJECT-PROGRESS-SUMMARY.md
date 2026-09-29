@@ -26,7 +26,7 @@ of hardware-enforced process isolation. Allocator and ordinary persistence check
 were useful evidence, but did not establish power-loss durability or complete
 process-lifetime correctness.
 
-The older [QOS review](../../qos/docs/FPR-QOS-REVIEW.md) remains historical context.
+The older [QOS review](../../qos/docs/2026-08-29-FPR-QOS-REVIEW.md) remains historical context.
 Its percentages, source references and defect list describe an earlier tree and
 must not be treated as current findings without verification.
 
@@ -173,7 +173,7 @@ currently tracks `.DS_Store` files. The split and path changes are committed.
 QOS currently has `git@github.com:hyperswine/qos.git` as its origin; remote visibility
 and publication state were not rechecked while preparing this summary.
 
-The [split record](../../qos/docs/REPOSITORY-SPLIT.md) documents ownership and
+The [split record](../../qos/docs/2026-09-18-REPOSITORY-SPLIT.md) documents ownership and
 validation. Its original “uncommitted” and “no remotes” statements are historical.
 It also records a Mac Portable arena-mapping failure reproduced in the unchanged
 monorepo; the split did not claim to fix that issue.

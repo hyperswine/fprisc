@@ -80,3 +80,5 @@ they began.
 | 2026-09-23 | [VIEW-CACHE.md](2026-09-23-VIEW-CACHE.md) | explicit per-session view caching in `std/viewcache` |
 | 2026-09-23 | [ESP-IDF.md](2026-09-23-ESP-IDF.md) | the ESP32-P4 port: decisions, workarounds, and the dated record of its merge into the posix system as a host |
 | 2026-09-29 | [Sol-Improvements-Needed.md](2026-09-29-Sol-Improvements-Needed.md) | Consolidated timestamped assessment, implementation updates, measurements and remaining Sol work |
+| 2026-09-29 | [NATIVE-IDEAL-AUDIT.md](2026-09-29-NATIVE-IDEAL-AUDIT.md) | Source-grounded comparison of native ownership, actors, vectors, optimization and C interoperability with the original language ideal |
+| 2026-09-29 | [TOOLING-SEMANTICS-AUDIT.md](2026-09-29-TOOLING-SEMANTICS-AUDIT.md) | Modules, static typing, refinements, termination, resource proofs, hosted optimization and MVU: implemented guarantees, verified gaps and proposed acceptance criteria |
