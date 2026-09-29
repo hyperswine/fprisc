@@ -1,5 +1,5 @@
 # std/live.fpr -- Live: a server-driven UI over a websocket, the LiveView way
-# (ExtBase).  The posix driver of the FPRLive idea (qos/docs/FPRLIVE.md): the
+# (ExtBase).  The posix driver of the FPRLive idea (qos/docs/2026-09-02-FPRLIVE.md): the
 # same shape of app, the same wire, the same client script, over std/tcp
 # instead of the QOS socket tier.
 #

@@ -1,5 +1,5 @@
 # ============================================================================
-# pos1.fpr -- POS v1 (qos/docs/POS1-DESIGN.md): a point of sale for one small
+# pos1.fpr -- POS v1 (qos/docs/2026-09-07-POS1-DESIGN.md): a point of sale for one small
 # shop, in FP-RISC Base on the posix system, served by std/live (the posix
 # driver of FPRLive; the QOS original is qos/programs/pos1.fpr).  Registers
 # are websocket sessions over ONE model actor; the disk holds ONE append-only
