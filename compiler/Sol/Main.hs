@@ -12,9 +12,12 @@
 
 module Sol.Main where
 
+import Sol.Cache (Prepared (..), cached)
+import Sol.Startup (phase)
+import Control.DeepSeq (force)
 import Sol.Diagnostic
 import Sol.Bytecode
-import Control.Exception (AsyncException (UserInterrupt), IOException, catch, onException, throwIO, try)
+import Control.Exception (AsyncException (UserInterrupt), IOException, catch, onException, throwIO, try, evaluate)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (runState)
 import Data.IORef
@@ -61,23 +64,67 @@ runScript = do
     ("--asm" : p : rest) -> pure (True, p, rest)
     (p : rest) -> pure (False, p, rest)
     _ -> diagnostic "usage: sol [--asm] <script.sol> [args]" >> exitFailure >> pure (False, "", [])
-  src <- readFile path
-  ptops <- parseOrDie "<prelude>" prelude
-  utops <- parseOrDie path src
-  -- spans step 1: "in NAME:" diagnostics anchor to NAME's definition
-  -- line in the script (spliced-module binds keep their module-naming)
+  prepared <- phase "startup" $ do
+    src <- phase "source" (readFile path >>= evaluate . force)
+    (ptops, utops) <- phase "parse" $ do
+      ps <- parseOrDie "<prelude>" prelude
+      us <- parseOrDie path src
+      pure (ps, us)
+    seenRef <- newIORef M.empty
+    expanded <- phase "imports" $ expandUses 8 "" seenRef (takeExtension path) (takeDirectory path) utops
+    cached path src prelude expanded (compileScript path src ptops utops expanded)
+  let Prepared cons shapes prog bprog runList _ = prepared
+  -- user constructors only (the builtins have their own spellings in render),
+  -- by their BASE name: `L.O.Some` prints as `Some`
+  writeIORef VM.conNames
+    [ ((t, v, ar), reverse (takeWhile (/= '.') (reverse c)))
+    | (c, (t, v, ar)) <- M.toList cons, M.notMember c builtinCons ]
+  when dumpAsm $ do
+    forM_ (M.toList bprog) $ \(n, fn) -> putStrLn (disasm n fn)
+
+  when (null runList && not dumpAsm) $
+    verbose "[sol] note: no `> expr.` statements and no main; nothing to run"
+
+  -- JIT: one native tier per process (hand-rolled x86-64 / A64, no
+  -- LLVM); the compile cache survives STM retries.  SOL_JIT=0 disables
+  -- it (the interpreter handles everything); any other value, including
+  -- the historical "hand", selects it.
+  jitFlag <- lookupEnv "SOL_JIT"
+  jc <- case jitFlag of
+    Just "0" -> pure Nothing
+    _ -> initJIT
+
+  let shapeNames = M.fromList [(tid, fields) | (fields, tid) <- M.toList shapes]
+      consTV = M.map (\(t, v, _) -> (t, v)) cons
+      dataFile = dropExtension path ++ ".soldata"
+      journalFile = dropExtension path ++ ".soljournal"
+  rt <- newRtCounts
+  -- heal first: a previous run of this script may have crashed mid-commit
+  unless dumpAsm $ recoverJournal True journalFile
+  -- a panic ends the run with the clean SOL PANIC line and exit 1 — not
+  -- the raw `fpr: user error (...)` wrapper. Nothing was committed: the
+  -- exception propagates out of runTxLoop before its commit call.
+  unless dumpAsm $ do
+    r <- try (phase "execute" $ runTxLoop (takeDirectory path) scriptArgs dataFile journalFile consTV shapeNames bprog prog jc cons runList rt 0) :: IO (Either IOException ())
+    case r of
+      Right () -> pure ()
+      Left e -> do
+        let msg = if isUserError e then ioeGetErrorString e else show e
+        hPutStrLn stderr (if "*** SOL PANIC" `isPrefixOf` msg then msg else "*** SOL PANIC: " ++ msg ++ " ***")
+        exitFailure
+
+-- Successful compiler output is pure data; transactions, actors, JIT state and
+-- script arguments are deliberately created outside this cached boundary.
+compileScript :: FilePath -> String -> [STop] -> [STop] -> [STop] -> IO Prepared
+compileScript path src ptops utops utopsX0' = do
+  noteRef <- newIORef []
+  let note msg = modifyIORef' noteRef (msg :) >> diagnostic msg
   let anchored =
         map
           ( anchorMsg
               (M.singleton path src)
               (M.union (bindAnchors path src utops) (evalAnchors path src))
           )
-
-  -- compile-time FILE-module expansion: `m = use "spec".` splices the module's
-  -- definitions in, renamed under the alias; `m.f` references and
-  -- `T = m.T.` constructor aliases then resolve against the merged program
-  seenRef <- newIORef M.empty
-  utopsX0' <- expandUses 8 "" seenRef (takeExtension path) (takeDirectory path) utops
   -- `Rand = rnd.Rand.` where the target is an imported STRUCT: resolve the
   -- local alias by rewriting every `Rand` / `Rand.f` reference to the
   -- canonical spliced name, so field calls hit the flat globals and
@@ -115,14 +162,14 @@ runScript = do
   envNoTypes <- (== Just "1") <$> lookupEnv "SOL_NOTYPES"
   let pragmaNoTypes = any ("sol:notypes" `isPrefixOf`) (map (dropWhile (`elem` "# \t")) (take 20 (lines src)))
       noTypes = envNoTypes || pragmaNoTypes
-  when pragmaNoTypes $ diagnostic "[sol] types: skipped (# sol:notypes pragma)"
+  when pragmaNoTypes $ note "[sol] types: skipped (# sol:notypes pragma)"
   showTypes <- (== Just "1") <$> lookupEnv "SOL_TYPES"
   combined <-
     if noTypes
       then pure (ptopsExp ++ topsExp) -- ops stay Int prims; debugging only
       else do
-        let (terrs, notes, holes, rewritten) = inferTops sigs structs (ptopsExp ++ topsExp)
-            preludeNames = S.fromList [n | TBind n _ _ _ <- ptopsExp]
+        (terrs, notes, holes, rewritten) <- phase "typecheck" $ pure (inferTops sigs structs (ptopsExp ++ topsExp))
+        let preludeNames = S.fromList [n | TBind n _ _ _ <- ptopsExp]
             (serrs, ssug) = safetyCheck preludeNames (ptopsExp ++ topsExp) notes
             userNames = S.fromList [n | TBind n _ _ _ <- topsExp]
         unless (null terrs) $ do
@@ -134,7 +181,7 @@ runScript = do
           diagnostic "=== TYPED HOLES ==="
           mapM_ (\(n, t) -> diagnostic ("  * got into a typed hole, ?" ++ n ++ " : " ++ t)) namedHoles
           exitFailure
-        mapM_ (\(_, t) -> diagnostic ("[hole] ?? (runtime trap) : " ++ t)) [h | h@(n, _) <- holes, null n]
+        mapM_ (\(_, t) -> note ("[hole] ?? (runtime trap) : " ++ t)) [h | h@(n, _) <- holes, null n]
         -- the safe/unsafe line, HostedBytecode profile: same checker,
         -- same rules as the AOT path (SOL_NO_SAFETY=1 for transition)
         noSafety <- (== Just "1") <$> lookupEnv "SOL_NO_SAFETY"
@@ -150,8 +197,8 @@ runScript = do
             diagnostic ("  " ++ n ++ " : " ++ t)
         pure rewritten
 
-  let (structErrs2, topsSpec) = specialize sigs structs combined
-      allX = erasePSig topsSpec
+  (structErrs2, topsSpec) <- phase "specialize" $ pure (specialize sigs structs combined)
+  let allX = erasePSig topsSpec
   showWidths <- (== Just "1") <$> lookupEnv "SOL_WIDTHS"
   when showWidths $ do
     diagnostic "=== NUMERIC WIDTHS (advisory) ==="
@@ -167,10 +214,10 @@ runScript = do
   -- plumbing, not a use).
   let rtUses = scanRealtime allX
   unless (M.null rtUses) $ do
-    diagnostic ("=== REALTIME ESCAPES: " ++ show (sum (M.elems rtUses)) ++ " use(s) ===")
+    note ("=== REALTIME ESCAPES: " ++ show (sum (M.elems rtUses)) ++ " use(s) ===")
     forM_ (M.toList rtUses) $ \(n, c) ->
-      diagnostic ("  " ++ n ++ " x" ++ show c ++ "  — " ++ rtWhy n)
-    diagnostic "  this script is NOT atomic with respect to those paths/commands"
+      note ("  " ++ n ++ " x" ++ show c ++ "  — " ++ rtWhy n)
+    note "  this script is NOT atomic with respect to those paths/commands"
 
   -- `> expr.` becomes an anonymous zero-arg binding, run in file order
   -- (prelude has no evals, so numbering over the combined list is identical)
@@ -185,22 +232,10 @@ runScript = do
     mapM_ (diagnostic . ("  * " ++)) (anchored lerrs)
     exitFailure
 
-  let cons = collectCons tops
-      shapes = collectShapes tops
-  -- user constructors only (the builtins have their own spellings in render),
-  -- by their BASE name: `L.O.Some` prints as `Some`
-  writeIORef VM.conNames
-    [ ((t, v, ar), reverse (takeWhile (/= '.') (reverse c)))
-    | (c, (t, v, ar)) <- M.toList cons, M.notMember c builtinCons ]
-  let
-      -- the shared desugar keeps string literals as UTF-8 bytes (the
-      -- AOT codegen contract); the VM speaks Chars -- decode once here
-      (prog0, _) = runState (compileTop tops >>= liftFix) (DEnv 0 cons shapes [])
-      prog = decodeProgStrings prog0
-      bprog = compileProg halArities prog
-
-  when dumpAsm $ do
-    forM_ (M.toList bprog) $ \(n, fn) -> putStrLn (disasm n fn)
+  (cons, shapes) <- phase "layout" $ pure (collectCons tops, collectShapes tops)
+  -- The shared frontend stores UTF-8 bytes; the VM uses Chars.
+  prog <- phase "lower" $ pure (decodeProgStrings (fst (runState (compileTop tops >>= liftFix) (DEnv 0 cons shapes []))))
+  bprog <- phase "bytecode" $ pure (compileProg halArities prog)
 
   -- `>` statements run in file order; a zero-arity `main`, if defined,
   -- runs after them (so plain FPRISC-style files still do something)
@@ -208,36 +243,8 @@ runScript = do
         evalNames ++ case M.lookup "main" bprog of
           Just fn | fnArity fn == 0 -> ["main"]
           _ -> []
-  when (null runList && not dumpAsm) $
-    verbose "[sol] note: no `> expr.` statements and no main; nothing to run"
-
-  -- JIT: one native tier per process (hand-rolled x86-64 / A64, no
-  -- LLVM); the compile cache survives STM retries.  SOL_JIT=0 disables
-  -- it (the interpreter handles everything); any other value, including
-  -- the historical "hand", selects it.
-  jitFlag <- lookupEnv "SOL_JIT"
-  jc <- case jitFlag of
-    Just "0" -> pure Nothing
-    _ -> initJIT
-
-  let shapeNames = M.fromList [(tid, fields) | (fields, tid) <- M.toList shapes]
-      consTV = M.map (\(t, v, _) -> (t, v)) cons
-      dataFile = dropExtension path ++ ".soldata"
-      journalFile = dropExtension path ++ ".soljournal"
-  rt <- newRtCounts
-  -- heal first: a previous run of this script may have crashed mid-commit
-  unless dumpAsm $ recoverJournal True journalFile
-  -- a panic ends the run with the clean SOL PANIC line and exit 1 — not
-  -- the raw `fpr: user error (...)` wrapper. Nothing was committed: the
-  -- exception propagates out of runTxLoop before its commit call.
-  unless dumpAsm $ do
-    r <- try (runTxLoop (takeDirectory path) scriptArgs dataFile journalFile consTV shapeNames bprog prog jc cons runList rt 0) :: IO (Either IOException ())
-    case r of
-      Right () -> pure ()
-      Left e -> do
-        let msg = if isUserError e then ioeGetErrorString e else show e
-        hPutStrLn stderr (if "*** SOL PANIC" `isPrefixOf` msg then msg else "*** SOL PANIC: " ++ msg ++ " ***")
-        exitFailure
+  notes <- readIORef noteRef
+  pure (Prepared cons shapes prog bprog runList (reverse notes))
 
 -- run every `>` statement in order inside one transaction, then commit;
 -- on read-set conflict, reset and re-run the whole script

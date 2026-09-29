@@ -26,7 +26,7 @@ def main():
         parser.error('runs must be positive and warmups nonnegative')
     binary = args.binary.resolve()
     env = {k: v for k, v in os.environ.items() if not k.startswith('SOL_')}
-    env.update(SOL_JIT='0', SOL_GPU='0')
+    env.update(SOL_JIT='0', SOL_GPU='0', SOL_CACHE='0')
     def git(*command):
         return subprocess.check_output(['git', '-C', str(ROOT), *command], text=True).strip()
     with tempfile.TemporaryDirectory(prefix='sol-benchmark-') as tmp:
@@ -66,7 +66,7 @@ def main():
             'source_files_sha256': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((ROOT / 'compiler').rglob('*')) if p.suffix in ('.hs', '.c', '.h')},
             'cabal_file': (ROOT / 'fp-risc.cabal').read_text(),
             'platform': platform.platform(), 'machine': platform.machine(),
-            'settings': {'SOL_JIT': '0', 'SOL_GPU': '0', 'warmups': args.warmups, 'runs': args.runs, 'shuffle_seed': 0},
+            'settings': {'SOL_JIT': '0', 'SOL_GPU': '0', 'SOL_CACHE': '0', 'warmups': args.warmups, 'runs': args.runs, 'shuffle_seed': 0},
             'measurement': 'fresh processes, warm filesystem, captured output; interpreter only; wall time includes startup, compilation and execution',
             'limitations': 'No isolated VM timings, phase timings, cold-cache control, allocation or peak-memory measurements. Source metadata does not prove binary provenance; rebuild immediately before recording.',
             'cases': {name: {'source': cases[name][0], 'expected_stdout_hex': cases[name][1].hex(), 'samples_ms': values,

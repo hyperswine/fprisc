@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
 
@@ -21,9 +23,13 @@
 
 module Sol.Bytecode where
 
+import Control.DeepSeq (NFData)
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
 import Control.Monad (foldM)
 import Control.Monad.State.Strict
 import Data.List (foldl')
+import Data.Array (Array, listArray, assocs)
 import qualified Data.Map.Strict as M
 import Sol.Lang (Core (..), Name, Prog)
 
@@ -52,10 +58,10 @@ data Instr
   | ErrI String
   | -- HAL band: the one trap into Haskell (IO, STM file ops, prims)
     HCall Reg Name [Reg]
-  deriving (Show)
+  deriving (Show, Generic, NFData, Binary)
 
 data ArithOp = OAdd | OSub | OMul | ODiv | OLt | OLe | OGt | OGe | OEq | ONe
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic, NFData, Binary)
 
 arithOps :: M.Map Name ArithOp
 arithOps =
@@ -79,8 +85,8 @@ cmpNames = [n | (n, op) <- M.toList arithOps, op `notElem` [OAdd, OSub, OMul, OD
 data Fn = Fn
   { fnArity :: !Int,
     fnSlots :: !Int, -- frame size, computed at compile time
-    fnCode :: [Instr] -- assembled: labels resolved to indices
-  }
+    fnCode :: !(Array Int Instr) -- immutable, zero-based instruction addresses
+  } deriving (Generic, NFData, Binary)
 
 type BProg = M.Map Name Fn
 
@@ -141,7 +147,8 @@ compileProg halArity prog = M.mapWithKey one prog
           st0 = CEnv (length ps) (length ps) env0 0 []
           (r, st) = runState (cExpr ci body) st0
           code = reverse (Ret r : cOut st)
-       in Fn (length ps) (cHigh st) (assemble code)
+          assembled = assemble code
+       in Fn (length ps) (cHigh st) (listArray (0, length assembled - 1) assembled)
 
 cExpr :: CallInfo -> Core -> C Reg
 cExpr ci = go
@@ -254,6 +261,6 @@ disasm :: Name -> Fn -> String
 disasm n (Fn ar slots code) =
   unlines $
     (n ++ " (arity " ++ show ar ++ ", frame " ++ show slots ++ " slots):")
-      : [pad i ++ "  " ++ show ins | (i, ins) <- zip [0 :: Int ..] code]
+      : [pad i ++ "  " ++ show ins | (i, ins) <- assocs code]
   where
     pad i = let s = show i in replicate (4 - length s) ' ' ++ s

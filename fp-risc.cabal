@@ -23,7 +23,7 @@ executable fpr
   default-language:   Haskell2010
   -- -O0 matches the Makefile: this is a working compiler rebuilt many
   -- times a session; flip to -O2 for release measurements
-  ghc-options:        -O0
+  ghc-options:        -O0 -rtsopts
   other-modules:
       A64
       Arc
@@ -47,6 +47,8 @@ executable fpr
       Struct
       Target
       X64
+      Sol.Startup
+      Sol.Cache
       Sol.Diagnostic
       Sol.Bytecode
       Sol.Gpu
@@ -73,6 +75,8 @@ executable fpr
     extra-libraries:  EGL GL
   build-depends:
       base          >=4.16 && <5
+    , binary
+    , deepseq
     , array
     , bytestring
     , containers

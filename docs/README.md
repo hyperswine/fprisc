@@ -82,3 +82,4 @@ they began.
 | 2026-09-29 | [Sol-Improvements-Needed.md](2026-09-29-Sol-Improvements-Needed.md) | Sol startup benchmarks, REPL and shell gaps, transaction semantics, and proposed improvement milestones |
 | 2026-09-29 | [Sol-Script-Output.md](2026-09-29-Sol-Script-Output.md) | clean script output, error/exit behavior and initial performance baselines |
 | 2026-09-29 | [Sol-Case-Fallbacks.md](2026-09-29-Sol-Case-Fallbacks.md) | shared case fallbacks, linear compilation growth, lexical scope and native tail-call regressions |
+| 2026-09-29 | [Sol-VM-Startup.md](2026-09-29-Sol-VM-Startup.md) | indexed instruction fetch, validated compiler cache, phase timings and measured tradeoffs |

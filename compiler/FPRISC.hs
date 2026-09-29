@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
@@ -11,6 +13,9 @@
 
 module FPRISC where
 
+import Control.DeepSeq (NFData)
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
 import Control.Monad (foldM, unless, void, when)
 import Control.Monad.State.Strict
 import Data.Bits (shiftR, xor)
@@ -58,14 +63,14 @@ data SExpr
   | SUpd SExpr [([Name], SExpr)]
   | STup [SExpr]
   | SList [SExpr]
-  deriving (Show)
+  deriving (Show, Generic, NFData, Binary)
 
-data Seg = SegStr String | SegExpr SExpr deriving (Show)
+data Seg = SegStr String | SegExpr SExpr deriving (Show, Generic, NFData, Binary)
 
 data SStmt
   = SBind Name [Name] SExpr
   | SBindPat SPat SExpr
-  deriving (Show)
+  deriving (Show, Generic, NFData, Binary)
 
 data SPat
   = PVar Name
@@ -76,13 +81,13 @@ data SPat
   | PTup [SPat]
   | PRec [Name]
   | PSig Name Name -- (s : Functor) — a param constrained by a named sig
-  deriving (Show)
+  deriving (Show, Generic, NFData, Binary)
 
 -- one component of a clause guard: `| e1, p <- e2, e3 = body`
 data SGuard
   = GBool SExpr -- boolean condition
   | GPat SPat SExpr -- pattern-match binding `pat <- expr`
-  deriving (Show)
+  deriving (Show, Generic, NFData, Binary)
 
 guardBools :: [SGuard] -> [SExpr]
 guardBools gs = [e | GBool e <- gs]
@@ -102,10 +107,10 @@ data STop
   | TAlias Name Name -- T = MyMod.T.  (name alias: types, constructors, values)
   | TEval SExpr -- `> effect.`  top-level eval (the HostedBytecode/sol view; profile-gated in Main)
   | TSkip
-  deriving (Show)
+  deriving (Show, Generic, NFData, Binary)
 
 data Ty = TCon Name [Ty] | TVarT Name | TTup [Ty] | TArrT Ty Ty | TVApp Name [Ty] | TOther
-  deriving (Show)
+  deriving (Show, Generic, NFData, Binary)
 
 --------------------------------------------------------------------------------
 -- Core AST
@@ -123,7 +128,7 @@ data Core
   | CTagEq Int Int Core
   | CProj Int Core
   | CErr String
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic, NFData, Binary)
 
 type Prog = M.Map Name ([Name], Core)
 

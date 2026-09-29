@@ -18,6 +18,7 @@
 module Sol.VM (module Sol.VM, module Sol.Val) where
 
 import Sol.Diagnostic
+import Data.Array (Array, (!))
 import Sol.Bytecode
 import Sol.Mod
 import Sol.Val
@@ -218,18 +219,15 @@ execFnRaw env name args = do
         then vmPanic ("call " ++ name ++ ": arity mismatch")
         else do
           frame <- newIORef (M.fromList (zip [0 ..] args) :: M.Map Reg Value)
-          let codeArr = code
-          runLoop env frame codeArr 0
+          runLoop env frame code 0
 
 vmPanic :: String -> IO a
 vmPanic m = ioError (userError ("*** SOL PANIC: " ++ m ++ " ***"))
 
-runLoop :: VMEnv -> IORef (M.Map Reg Value) -> [Instr] -> Int -> IO Value
+runLoop :: VMEnv -> IORef (M.Map Reg Value) -> Array Int Instr -> Int -> IO Value
 runLoop env frame code = go
   where
-    fetch pc = case drop pc code of
-      (i : _) -> i
-      [] -> error "pc out of range"
+    fetch pc = code ! pc
     rd r = do
       m <- readIORef frame
       case M.lookup r m of

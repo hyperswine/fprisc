@@ -16,6 +16,7 @@ def main():
     count = 0
     with tempfile.TemporaryDirectory(prefix='sol-output-') as tmp:
         work = Path(tmp)
+        ENV['SOL_CACHE_DIR'] = str(work / 'cache')
 
         def check(name, source, stdout=b'', code=0, error=None, env=None, args=(), stderr=None):
             nonlocal count
