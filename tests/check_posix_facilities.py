@@ -16,7 +16,7 @@ FACILITIES = {
     "os_fs": "readFile listDir stat mkdir remove rename cwd",
     "os_clock": "wallClock tzOffset",
     "os_io": "open ready poll read write seek close",
-    "os_proc": "run exec",
+    "os_proc": "run exec exePath",
     "os_net": "connect listen accept localPort",
     "os_watch": "watchOpen watchArm watchTake watchClose",
     "os_term": "ttyRaw ttySize",
@@ -55,4 +55,4 @@ with tempfile.TemporaryDirectory(prefix="fpr-posix-facilities-") as tmp:
             forbidden = {"fork", "execvp", "waitpid", "kill", "pipe", "pthread_create", "tcsetattr"}
             assert not (undefined & forbidden), (name, undefined & forbidden)
         print(name + ": primitive exports and dependency boundary PASS")
-    assert len(exported) == 28
+    assert len(exported) == 29

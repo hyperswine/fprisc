@@ -1,6 +1,8 @@
 profile base.
 Proc = use "std/proc".
+File = use "std/file".
 main =
   _ = print "within: {Proc.runWithin 300 ("sleep" :: "5" :: Nil)}";
   _ = print "env: {Proc.runWith ("GREETING=hello from fpr" :: Nil) ("/bin/sh" :: "-c" :: "echo $GREETING" :: Nil)}";
-  print "fast enough: {Proc.runWithin 5000 ("echo" :: "ok" :: Nil)}".
+  _ = print "fast enough: {Proc.runWithin 5000 ("echo" :: "ok" :: Nil)}";
+  print "self: {(case Proc.self Unit of Ok path -> File.isFile path | Err _ -> False)}".

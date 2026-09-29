@@ -60,3 +60,8 @@ output argv = case run argv of
 # EXPLICIT shell interpretation of one line
 shell : String -> Result { status : Int, out : String, err : String } String .
 shell line = run ("/bin/sh" :: "-c" :: line :: Nil).
+
+# the file THIS program was started from, as the host names it: what a program
+# passes to `run` to start itself again (a worker per request, a restart)
+self : Unit -> Result String String .
+self u = OS.exePath u.

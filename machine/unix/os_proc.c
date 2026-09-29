@@ -8,6 +8,13 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
+#ifdef __FreeBSD__
+#include <sys/types.h>
+#include <sys/sysctl.h>
+#endif
 
 /* ---- Os.run: a child with all three streams held ------------------------
  * fork/exec rather than posix_spawn for the chdir.  stdin is fed and both
@@ -146,3 +153,44 @@ static V h_exec(V argvv) {
   return e;
 }
 FPR_FN(fpr_g_Os_x2eexec, h_exec, 1);
+
+/* Os.exePath : Unit -> Result String String -- the file this process was
+ * started from, as the host names it.  A program that runs ITSELF as a worker
+ * (a server that isolates each request in a fresh process) has no other way
+ * to say which file that is: argv[0] is what the caller typed, not a path.
+ * The buffer grows until the name fits; nothing is truncated. */
+static V h_exe_path(V u) {
+  (void)u;
+#if defined(__APPLE__)
+  uint32_t size = 0;
+  _NSGetExecutablePath(NULL, &size); /* answers the size it needs */
+  char *buf = malloc(size ? size : 1);
+  if (!buf) return os_err("out of memory");
+  if (_NSGetExecutablePath(buf, &size)) { free(buf); return os_err("the host did not name this executable"); }
+  V out = os_ok(os_str(buf, (uw)strlen(buf)));
+  free(buf);
+  return out;
+#elif defined(__FreeBSD__)
+  int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
+  size_t size = 0;
+  if (sysctl(mib, 4, NULL, &size, NULL, 0)) return os_errno();
+  char *buf = malloc(size ? size : 1);
+  if (!buf) return os_err("out of memory");
+  if (sysctl(mib, 4, buf, &size, NULL, 0)) { V e = os_errno(); free(buf); return e; }
+  V out = os_ok(os_str(buf, (uw)strlen(buf)));
+  free(buf);
+  return out;
+#else
+  size_t size = 256;
+  for (;;) {
+    char *buf = malloc(size);
+    if (!buf) return os_err("out of memory");
+    ssize_t n = readlink("/proc/self/exe", buf, size);
+    if (n < 0) { V e = os_errno(); free(buf); return e; }
+    if ((size_t)n < size) { V out = os_ok(os_str(buf, (uw)n)); free(buf); return out; }
+    free(buf);
+    size *= 2;
+  }
+#endif
+}
+FPR_FN(fpr_g_Os_x2eexePath, h_exe_path, 1);

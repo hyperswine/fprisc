@@ -11,7 +11,11 @@
 #
 # Numbers: an integer literal is an `Integer`; anything with a fraction or an
 # exponent is kept as `Real` with its TEXT (no float parsing to get wrong --
-# `asReal` hands you the text to convert when you need arithmetic).
+# `asReal` hands you the text to convert when you need arithmetic).  An
+# integer literal an Int cannot hold EXACTLY (past 62 bits, or "-0") is kept as
+# `Real` with its text too: it used to wrap silently, so parse then render
+# turned 12345678901234567890 into 3122306864379792082.  What is parsed is
+# rendered as it was written, or it is not parsed as an Integer.
 # Strings: every escape is decoded, \uXXXX (and surrogate pairs) to UTF-8.
 
 M = use "map".
@@ -226,7 +230,9 @@ numberTail s i k =
   f = (case charAtOr s k == 46 of True -> digits s (k + 1) | False -> k);
   e = expEnd s f;
   case e == k of
-    True -> (case S.toInt (substr s i (k - i)) of Ok n -> Ok (Integer n, k) | Err _ -> Err (i, "bad number"))
+    True -> (case S.toInt (substr s i (k - i)) of
+        Ok n -> Ok ((case str n == substr s i (k - i) of True -> Integer n | False -> Real (substr s i (k - i))), k)
+      | Err _ -> Ok (Real (substr s i (k - i)), k))
   | False -> (case f == k + 1 of
         True -> Err (k, "expected digits after '.'")
       | False -> Ok (Real (substr s i (e - i)), e)).

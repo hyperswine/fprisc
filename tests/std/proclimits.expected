@@ -3,3 +3,4 @@ env: Ok {err = , out = hello from fpr
 , status = 0}
 fast enough: Ok {err = , out = ok
 , status = 0}
+self: True

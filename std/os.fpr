@@ -31,6 +31,7 @@ Os.listen    : String -> Int -> Result Int String .
 Os.accept    : Int -> Result (Int, String) String .
 Os.localPort : Int -> Result Int String .
 Os.exec      : List String -> Result Unit String .
+Os.exePath   : Unit -> Result String String .
 Os.ttyRaw    : Bool -> Result Unit String .
 Os.ttySize   : Unit -> (Int, Int) .
 
@@ -57,6 +58,7 @@ listen addr port = Os.listen addr port.
 accept fd = Os.accept fd.
 localPort fd = Os.localPort fd.
 exec argv = Os.exec argv.
+exePath u = Os.exePath u.
 ttyRaw on = Os.ttyRaw on.
 ttySize u = Os.ttySize u.
 wallClock u = Os.wallClock u.

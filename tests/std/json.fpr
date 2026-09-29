@@ -1,4 +1,5 @@
 unsafe base.
+Result = use "std/result".
 Json = use "std/json".
 Option = use "std/option".
 List = use "std/list".
@@ -16,4 +17,7 @@ main =
   _ = print "made {Json.render made}";
   big = Json.Sequence (List.map (fn i -> Json.object (("id", Json.Integer i) :: ("name", Json.Text "item {i}") :: Nil)) (List.range 1 20000));
   t = Json.render big;
-  print "big {String.length t} bytes, parses back equal: {Json.parse t == Ok big}".
+  _ = print "big {String.length t} bytes, parses back equal: {Json.parse t == Ok big}";
+  # an integer an Int cannot hold exactly is kept as its text, never wrapped
+  exact = "[12345678901234567890,-0,4611686018427387903,4611686018427387904,42,-7,99999999999999999999999]";
+  print "exact {(case Json.parse exact of Ok v -> Json.render v == exact | Err _ -> False)} {Json.parse "12345678901234567890" |> Result.map Json.render}".
