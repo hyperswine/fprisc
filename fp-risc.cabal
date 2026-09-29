@@ -47,6 +47,7 @@ executable fpr
       Struct
       Target
       X64
+      Sol.Diagnostic
       Sol.Bytecode
       Sol.Gpu
       Sol.HandJIT

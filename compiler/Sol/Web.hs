@@ -36,6 +36,7 @@
 
 module Sol.Web where
 
+import Sol.Diagnostic (diagnostic, verbose)
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar
 import Control.Exception (IOException, SomeException, try)
@@ -102,7 +103,7 @@ serveWeb port dataFile shapes cons subs cbs = do
       let (model', _cmd) = splitUpd r -- cmds are NOT re-executed on replay
       modifyIORef' sessions (M.insert tok (model', M.empty))
     n <- M.size <$> readIORef sessions
-    putStrLn ("[view] replayed " ++ show (length msgs) ++ " msg(s) -> " ++ show n ++ " session(s) from " ++ dataFile)
+    verbose ("[view] replayed " ++ show (length msgs) ++ " msg(s) -> " ++ show n ++ " session(s) from " ++ dataFile)
   logH <- openFile dataFile AppendMode >>= newMVar
   -- the shared KV store: cross-session state (user accounts, app data),
   -- persisted to its own append log, last write per key wins on load
@@ -114,7 +115,7 @@ serveWeb port dataFile shapes cons subs cbs = do
         txt <- readFile' kvFile
         pure (M.fromList [(k, v) | ln <- lines txt, not (null ln), let p = parseFlat ln, Just k <- [lookup "k" p], Just v <- [lookup "v" p]])
       else pure M.empty
-  when haveKV (putStrLn ("[view] loaded " ++ show (M.size kv0) ++ " key(s) from " ++ kvFile))
+  when haveKV (verbose ("[view] loaded " ++ show (M.size kv0) ++ " key(s) from " ++ kvFile))
   kvRef <- newIORef kv0
   kvH <- openFile kvFile AppendMode >>= newMVar
   let rt = Rt shapes cons cbs sessions conns solLock logH rng persistT kvRef kvH
@@ -128,13 +129,13 @@ serveWeb port dataFile shapes cons subs cbs = do
   setSocketOption sock ReuseAddr 1
   bind sock (addrAddress addr)
   listen sock 16
-  putStrLn ("[view] serving MVU app on http://localhost:" ++ show port ++ " (log: " ++ dataFile ++ (if null subs then "" else ", " ++ show (length subs) ++ " sub(s)") ++ ")")
+  verbose ("[view] serving MVU app on http://localhost:" ++ show port ++ " (log: " ++ dataFile ++ (if null subs then "" else ", " ++ show (length subs) ++ " sub(s)") ++ ")")
   forever $ do
     (conn, _) <- accept sock
     _ <- forkIO $ do
       r <- try (handleConn rt conn) :: IO (Either SomeException ())
       case r of
-        Left e -> putStrLn ("[view] connection error: " ++ show e)
+        Left e -> diagnostic ("[view] connection error: " ++ show e)
         Right () -> pure ()
       close conn
     pure ()
@@ -165,7 +166,7 @@ collectP rt = go
     go _ = []
 
 processMsg :: Rt -> Int -> String -> (String, String) -> IO ()
-processMsg _ 0 _ _ = putStrLn "[view] cmd depth cap hit; dropping"
+processMsg _ 0 _ _ = diagnostic "[view] cmd depth cap hit; dropping"
 processMsg rt depth tok (ev, val) = do
   known <- readIORef (rtSessions rt)
   case M.lookup tok known of
@@ -218,7 +219,7 @@ runCmd rt cmdV = case cmdV of
       m <- readIORef (rtKV rt)
       pure [(ev, M.findWithDefault "" k m)]
     Just "Msg" | [VStr ev, VStr v'] <- args -> pure [(ev, v')] -- self-dispatch
-    _ -> putStrLn ("[view] unknown Cmd: " ++ render cmdV) >> pure []
+    _ -> diagnostic ("[view] unknown Cmd: " ++ render cmdV) >> pure []
   _ -> pure []
   where
     lookupCon t v = case [n | (n, (t', v')) <- M.toList (rtCons rt), t' == t, v' == v] of

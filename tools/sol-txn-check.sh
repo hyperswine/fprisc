@@ -55,9 +55,9 @@ grep -Fq 'railway: OK' /tmp/sol-txn-railway.out
 ./fpr sol sol/examples/strings.sol >/tmp/sol-txn-strings.out 2>&1
 grep -Fq 'strings: OK' /tmp/sol-txn-strings.out
 rm -rf /tmp/sol-procs-repo
-./fpr sol sol/examples/procs.sol >/tmp/sol-txn-procs.out 2>&1
+SOL_VERBOSE=1 ./fpr sol sol/examples/procs.sol >/tmp/sol-txn-procs.out 2>&1
 grep -Fq 'procs: OK' /tmp/sol-txn-procs.out
-grep -Fq 'committed 0 file(s) + 3 deferred command(s) atomically' /tmp/sol-txn-procs.out
+grep -Fq 'committed 0 file(s) + 3 deferred command(s) (file transaction committed; external commands are not atomic)' /tmp/sol-txn-procs.out
 rm -rf /tmp/sol-procs-repo /tmp/sol-procs-order.txt
 
 echo "sol transactional properties: panic rollback, retry-once, race serialization, fenced commands: OK"

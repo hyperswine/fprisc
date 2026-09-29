@@ -12,8 +12,9 @@
 
 module Sol.Main where
 
+import Sol.Diagnostic
 import Sol.Bytecode
-import Control.Exception (IOException, onException, try)
+import Control.Exception (AsyncException (UserInterrupt), IOException, catch, onException, throwIO, try)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (runState)
 import Data.IORef
@@ -30,7 +31,7 @@ import Sol.Width (widthReport)
 import Sol.HandJIT (JitCtx, initJIT)
 import System.Environment (getArgs, lookupEnv)
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
-import System.Exit (exitFailure)
+import System.Exit (ExitCode (ExitFailure), exitFailure, exitWith)
 import System.IO (hPutStrLn, stderr)
 import System.IO.Error (ioeGetErrorString, isUserError)
 import System.FilePath (dropExtension, takeDirectory, takeExtension)
@@ -44,13 +45,22 @@ maxRetries :: Int
 maxRetries = 12
 
 main :: IO ()
-main = do
+main = runScript `catch` ioFailure `catch` interrupted
+  where
+    ioFailure :: IOException -> IO ()
+    ioFailure e = diagnostic ("[sol] " ++ if isUserError e then ioeGetErrorString e else show e) >> exitFailure
+    interrupted :: AsyncException -> IO ()
+    interrupted UserInterrupt = diagnostic "[sol] interrupted" >> exitWith (ExitFailure 130)
+    interrupted e = throwIO e
+
+runScript :: IO ()
+runScript = do
   setLocaleEncoding utf8
   as <- getArgs
   (dumpAsm, path, scriptArgs) <- case as of
     ("--asm" : p : rest) -> pure (True, p, rest)
     (p : rest) -> pure (False, p, rest)
-    _ -> putStrLn "usage: sol [--asm] <script.sol> [args]" >> exitFailure >> pure (False, "", [])
+    _ -> diagnostic "usage: sol [--asm] <script.sol> [args]" >> exitFailure >> pure (False, "", [])
   src <- readFile path
   ptops <- parseOrDie "<prelude>" prelude
   utops <- parseOrDie path src
@@ -82,8 +92,8 @@ main = do
   -- (lowercase / '/' roots) pass through untouched.
   let (pathErrs, utopsX0) = expandPathLits (shapeTyTable utopsX1) (typeTyTable utopsX1) utopsX1
   unless (null pathErrs) $ do
-    putStrLn "=== PATH LITERALS: ERRORS ==="
-    mapM_ (putStrLn . ("  * " ++)) pathErrs
+    diagnostic "=== PATH LITERALS: ERRORS ==="
+    mapM_ (diagnostic . ("  * " ++)) pathErrs
     exitFailure
 
   -- sigs / structs / (s : Sig) params — now including the PRELUDE stdlib
@@ -95,8 +105,8 @@ main = do
       (perrs, ptopsExp) = expandStructs sigs ptops
       (structErrs1, topsExp) = expandStructs sigs utopsX0
   unless (null (perrs ++ structErrs1)) $ do
-    putStrLn "=== SIG/STRUCT: ERRORS ==="
-    mapM_ (putStrLn . ("  * " ++)) (perrs ++ structErrs1)
+    diagnostic "=== SIG/STRUCT: ERRORS ==="
+    mapM_ (diagnostic . ("  * " ++)) (perrs ++ structErrs1)
     exitFailure
 
   -- gradual boundary: `# sol:notypes` in a file header opts the run out
@@ -105,7 +115,7 @@ main = do
   envNoTypes <- (== Just "1") <$> lookupEnv "SOL_NOTYPES"
   let pragmaNoTypes = any ("sol:notypes" `isPrefixOf`) (map (dropWhile (`elem` "# \t")) (take 20 (lines src)))
       noTypes = envNoTypes || pragmaNoTypes
-  when pragmaNoTypes $ putStrLn "[sol] types: skipped (# sol:notypes pragma)"
+  when pragmaNoTypes $ diagnostic "[sol] types: skipped (# sol:notypes pragma)"
   showTypes <- (== Just "1") <$> lookupEnv "SOL_TYPES"
   combined <-
     if noTypes
@@ -116,39 +126,39 @@ main = do
             (serrs, ssug) = safetyCheck preludeNames (ptopsExp ++ topsExp) notes
             userNames = S.fromList [n | TBind n _ _ _ <- topsExp]
         unless (null terrs) $ do
-          putStrLn "=== TYPE ERRORS ==="
-          mapM_ (putStrLn . ("  * " ++)) (anchored terrs)
+          diagnostic "=== TYPE ERRORS ==="
+          mapM_ (diagnostic . ("  * " ++)) (anchored terrs)
           exitFailure
         let namedHoles = [(n, t) | (n, t) <- holes, not (null n)]
         unless (null namedHoles) $ do
-          putStrLn "=== TYPED HOLES ==="
-          mapM_ (\(n, t) -> putStrLn ("  * got into a typed hole, ?" ++ n ++ " : " ++ t)) namedHoles
+          diagnostic "=== TYPED HOLES ==="
+          mapM_ (\(n, t) -> diagnostic ("  * got into a typed hole, ?" ++ n ++ " : " ++ t)) namedHoles
           exitFailure
-        mapM_ (\(_, t) -> putStrLn ("[hole] ?? (runtime trap) : " ++ t)) [h | h@(n, _) <- holes, null n]
+        mapM_ (\(_, t) -> diagnostic ("[hole] ?? (runtime trap) : " ++ t)) [h | h@(n, _) <- holes, null n]
         -- the safe/unsafe line, HostedBytecode profile: same checker,
         -- same rules as the AOT path (SOL_NO_SAFETY=1 for transition)
         noSafety <- (== Just "1") <$> lookupEnv "SOL_NO_SAFETY"
         unless (noSafety || null serrs) $ do
-          putStrLn "=== SAFETY: the safe/unsafe line ==="
-          mapM_ (putStrLn . ("  * " ++)) (anchored serrs)
+          diagnostic "=== SAFETY: the safe/unsafe line ==="
+          mapM_ (diagnostic . ("  * " ++)) (anchored serrs)
           sug <- lookupEnv "FPR_UNSAFE_SUGGEST"
-          when (sug == Just "1") $ mapM_ (putStrLn . ("SUGGEST " ++)) ssug
+          when (sug == Just "1") $ mapM_ (diagnostic . ("SUGGEST " ++)) ssug
           exitFailure
         when showTypes $ do
-          putStrLn "=== INFERRED TYPES ==="
+          diagnostic "=== INFERRED TYPES ==="
           forM_ [nt | nt@(n, _) <- notes, S.member n userNames] $ \(n, t) ->
-            putStrLn ("  " ++ n ++ " : " ++ t)
+            diagnostic ("  " ++ n ++ " : " ++ t)
         pure rewritten
 
   let (structErrs2, topsSpec) = specialize sigs structs combined
       allX = erasePSig topsSpec
   showWidths <- (== Just "1") <$> lookupEnv "SOL_WIDTHS"
   when showWidths $ do
-    putStrLn "=== NUMERIC WIDTHS (advisory) ==="
-    mapM_ putStrLn (widthReport allX)
+    diagnostic "=== NUMERIC WIDTHS (advisory) ==="
+    mapM_ diagnostic (widthReport allX)
   unless (null structErrs2) $ do
-    putStrLn "=== SIG/STRUCT: ERRORS ==="
-    mapM_ (putStrLn . ("  * " ++)) structErrs2
+    diagnostic "=== SIG/STRUCT: ERRORS ==="
+    mapM_ (diagnostic . ("  * " ++)) structErrs2
     exitFailure
 
   -- realtime escapes are opt-in and loud: report every use site's NAME and
@@ -157,10 +167,10 @@ main = do
   -- plumbing, not a use).
   let rtUses = scanRealtime allX
   unless (M.null rtUses) $ do
-    putStrLn ("=== REALTIME ESCAPES: " ++ show (sum (M.elems rtUses)) ++ " use(s) ===")
+    diagnostic ("=== REALTIME ESCAPES: " ++ show (sum (M.elems rtUses)) ++ " use(s) ===")
     forM_ (M.toList rtUses) $ \(n, c) ->
-      putStrLn ("  " ++ n ++ " x" ++ show c ++ "  — " ++ rtWhy n)
-    putStrLn "  this script is NOT atomic with respect to those paths/commands"
+      diagnostic ("  " ++ n ++ " x" ++ show c ++ "  — " ++ rtWhy n)
+    diagnostic "  this script is NOT atomic with respect to those paths/commands"
 
   -- `> expr.` becomes an anonymous zero-arg binding, run in file order
   -- (prelude has no evals, so numbering over the combined list is identical)
@@ -171,8 +181,8 @@ main = do
   let li = buildLinInfo tops
       lerrs = lcheck li tops
   unless (null lerrs) $ do
-    putStrLn "=== LINEARITY: ERRORS ==="
-    mapM_ (putStrLn . ("  * " ++)) (anchored lerrs)
+    diagnostic "=== LINEARITY: ERRORS ==="
+    mapM_ (diagnostic . ("  * " ++)) (anchored lerrs)
     exitFailure
 
   let cons = collectCons tops
@@ -199,7 +209,7 @@ main = do
           Just fn | fnArity fn == 0 -> ["main"]
           _ -> []
   when (null runList && not dumpAsm) $
-    putStrLn "[sol] note: no `> expr.` statements and no main; nothing to run"
+    verbose "[sol] note: no `> expr.` statements and no main; nothing to run"
 
   -- JIT: one native tier per process (hand-rolled x86-64 / A64, no
   -- LLVM); the compile cache survives STM retries.  SOL_JIT=0 disables
@@ -244,8 +254,8 @@ runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc c
       cleanup = VM.shutdownActorRuntime actors
   res <- (do
     forM_ topNames $ \n -> do
-      v <- execFn env n []
-      unless (isUnit v) $ putStrLn ("=> " ++ VM.render v)
+      _ <- execFn env n []
+      pure ()
     statsFlag <- lookupEnv "SOL_TABLE_STATS"
     when (statsFlag == Just "1") $ VM.dumpTabStats env
     -- Every attempt owns its actor world. Actors still live at the boundary
@@ -253,7 +263,7 @@ runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc c
     -- a discarded TxState or leave messages for the next attempt.
     liveA <- VM.liveSpawnedActors actors
     unless (null liveA) $
-      putStrLn ("[sol] WARNING: " ++ show (length liveA) ++ " spawned actor(s) still running at the transaction boundary — "
+      diagnostic ("[sol] WARNING: " ++ show (length liveA) ++ " spawned actor(s) still running at the transaction boundary — "
                   ++ "cancelling them before the transaction boundary "
                   ++ "(join first: have each send a done message and receive it before the script ends)")
     cleanup
@@ -268,22 +278,22 @@ runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc c
       -- deferred commands that ran inside the commit (a script that only
       -- queued commands still did something at commit)
       let cmds = if ncmd > 0 then " + " ++ show ncmd ++ " deferred command(s)" else ""
-      when ((n > 0 || ncmd > 0) && not sfail) $ putStrLn ("[sol] committed " ++ show n ++ " file(s)" ++ cmds ++ " atomically (whole-script transaction)")
-      when sfail $ putStrLn ("[sol] committed " ++ show n ++ " file(s); NOT atomic: a deferred command failed (later queued commands skipped; file effects all applied)")
+      when ((n > 0 || ncmd > 0) && not sfail) $ verbose ("[sol] committed " ++ show n ++ " file(s)" ++ cmds ++ " (file transaction committed; external commands are not atomic)")
+      when sfail $ diagnostic ("[sol] committed " ++ show n ++ " file(s); NOT atomic: a deferred command failed (later queued commands skipped; file effects all applied)")
       -- if the run left the transaction at any point, say so plainly: the
-      -- word "atomically" above is only true of the file set it names
+      -- file commit does not make immediate external effects atomic
       total <- rtTotal rt
       when (total > 0) $ do
         kinds <- rtReport rt
-        putStrLn ("[sol] NOT atomic overall: " ++ show total
+        diagnostic ("[sol] NOT atomic overall: " ++ show total
                     ++ " realtime escape(s) — " ++ intercalate ", " kinds)
       when sfail exitFailure
     Conflict stale
       | attempt + 1 >= maxRetries -> do
-          putStrLn ("[sol] giving up after " ++ show maxRetries ++ " attempts (conflicts on " ++ show stale ++ ")")
+          diagnostic ("[sol] giving up after " ++ show maxRetries ++ " attempts (conflicts on " ++ show stale ++ ")")
           exitFailure
       | otherwise -> do
-          putStrLn ("[sol] conflict on " ++ show stale ++ " — retrying (attempt " ++ show (attempt + 2) ++ ")")
+          diagnostic ("[sol] conflict on " ++ show stale ++ " — retrying (attempt " ++ show (attempt + 2) ++ ")")
           runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc cons topNames rt (attempt + 1)
 
 numberEvals :: [STop] -> ([STop], [Name])
@@ -300,7 +310,7 @@ numberEvals tops = (map fst numbered, [n | (_, Just n) <- numbered])
 -- Sol.Lang).  There is no second parser to fall back to.
 parseOrDie :: String -> String -> IO [STop]
 parseOrDie name src = case parse program name src of
-  Left e -> putStrLn (errorBundlePretty e) >> exitFailure >> pure []
+  Left e -> diagnostic (errorBundlePretty e) >> exitFailure >> pure []
   Right t -> pure t
 
 -- ---- compile-time module import ---------------------------------------------
@@ -315,16 +325,16 @@ parseOrDie name src = case parse program name src of
 -- a PT built by a library's internal logic import unifies with the app's
 -- own logic import because they are literally the same declarations.
 expandUses :: Int -> String -> IORef (M.Map String String) -> String -> FilePath -> [STop] -> IO [STop]
-expandUses 0 _ _ _ _ _ = putStrLn "[sol] use: module nesting too deep" >> exitFailure >> pure []
+expandUses 0 _ _ _ _ _ = diagnostic "[sol] use: module nesting too deep" >> exitFailure >> pure []
 expandUses depth prefix seenRef impExt baseDir tops = do
   let aliases = [(mn, spec) | TUse mn spec <- tops]
   pairs <- forM aliases $ \(mn, spec) -> do
     r <- resolveModule impExt baseDir spec
     case r of
-      Left e -> putStrLn e >> exitFailure >> pure ([], (mn, mn))
+      Left e -> diagnostic e >> exitFailure >> pure ([], (mn, mn))
       Right (mpath, h, pinned) -> do
         unless pinned $
-          putStrLn ("[sol] use (compile): " ++ spec ++ " resolves to " ++ spec ++ "#" ++ h ++ " (pin this)")
+          verbose ("[sol] use (compile): " ++ spec ++ " resolves to " ++ spec ++ "#" ++ h ++ " (pin this)")
         seen <- readIORef seenRef
         case M.lookup h seen of
           Just finalName -> do

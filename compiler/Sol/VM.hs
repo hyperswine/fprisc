@@ -17,6 +17,7 @@
 
 module Sol.VM (module Sol.VM, module Sol.Val) where
 
+import Sol.Diagnostic
 import Sol.Bytecode
 import Sol.Mod
 import Sol.Val
@@ -181,7 +182,7 @@ execFn env name args = case vmTab env of
             -- is pure overhead — drop it and stop probing forever.
             when ((t1 - t0) * 1e6 < tabMinUs && ttHits t + ttMiss t < 8) $ do
               modifyIORef' ref (M.insert name TIneligible)
-              hPutStrLn stderr ("[table] " ++ name ++ ": dropped (first call " ++ show (round ((t1 - t0) * 1e6) :: Int) ++ "us, " ++ show (ttHits t + ttMiss t) ++ " probes — below SOL_TABLE_MIN)")
+              verbose ("[table] " ++ name ++ ": dropped (first call " ++ show (round ((t1 - t0) * 1e6) :: Int) ++ "us, " ++ show (ttHits t + ttMiss t) ++ " probes — below SOL_TABLE_MIN)")
             pure v
           else do
             modifyIORef' ref (M.insert name TIneligible)
@@ -549,7 +550,7 @@ actorCall env "spawn" [f] = do
               Left e
                 | Just ThreadKilled <- fromException e -> pure ()
                 | otherwise ->
-                    putStrLn ("*** SOL PANIC [actor " ++ show i ++ "]: " ++ show (e :: SomeException) ++ " ***")
+                    diagnostic ("*** SOL PANIC [actor " ++ show i ++ "]: " ++ show (e :: SomeException) ++ " ***")
               Right _ -> pure ())
         `finally` do
           atomicModifyIORef' (arReg actors) (\m -> (IM.delete i m, ()))
@@ -617,7 +618,7 @@ modCall env "use" [VStr spec] = do
     Left e -> vmPanic e
     Right (p, h, pinned) -> do
       unless pinned $
-        putStrLn ("[sol] use: " ++ spec ++ " resolves to " ++ spec ++ "#" ++ h ++ " (pin this)")
+        verbose ("[sol] use: " ++ spec ++ " resolves to " ++ spec ++ "#" ++ h ++ " (pin this)")
       pure (VMod p h)
 modCall _ "use" [v] = vmPanic ("use: expected a module spec string, got " ++ render v)
 modCall env "run" [VMod p h, x] = do
@@ -739,7 +740,7 @@ schemeCall env name args = case (name, args) of
           r <- Gpu.gpuMapF64 gc src [] (map b2d' bits)
           case r of
             Just out -> do
-              putStrLn ("[gpu] map<" ++ g ++ "> n=" ++ show (length bits) ++ " (f64 compute shader)")
+              verbose ("[gpu] map<" ++ g ++ "> n=" ++ show (length bits) ++ " (f64 compute shader)")
               pure (foldr (\d acc -> VData listT 1 [VNum d, acc]) (VData listT 0 []) out)
             Nothing -> viaJit' scheme f xs macc fallback -- backend declined: JIT tier
       | otherwise = viaJit' scheme f xs macc fallback
@@ -1400,7 +1401,7 @@ vecMatmul ra ka cb sra srb = do
              ++ ", b: " ++ show (vLen sb) ++ " cells vs " ++ show ka ++ "x" ++ show cb ++ ")")
   out <- case (vRep sa, vCols sa, vRep sb, vCols sb) of
     (RScalar KNum, [CD _ fpa], RScalar KNum, [CD _ fpb]) -> do
-      when getEnvDebug $ putStrLn ("[mmul] native f64 " ++ show ra ++ "x" ++ show ka ++ " * " ++ show ka ++ "x" ++ show cb)
+      when getEnvDebug $ diagnostic ("[mmul] native f64 " ++ show ra ++ "x" ++ show ka ++ " * " ++ show ka ++ "x" ++ show cb)
       fpo <- mallocForeignPtrArray (max 1 (ra * cb))
       withForeignPtr fpa $ \pa -> withForeignPtr fpb $ \pb -> withForeignPtr fpo $ \po ->
         forM_ [0 .. ra - 1] $ \i ->
@@ -1508,8 +1509,8 @@ vecScheme env scheme f macc r = do
   st <- readIORef r
   n <- lenVec r
   case (vmJit env, jitCallable env scheme f) of
-    (Just _, Just (g, ex)) | getEnvDebug -> putStrLn ("[jit-debug] " ++ scheme ++ " f=" ++ g ++ " extras=" ++ show (length ex) ++ " n=" ++ show n ++ " layout=" ++ maybe "?" (\(_, _, sg) -> sg) (layoutInfo st))
-    (Just _, Nothing) | getEnvDebug -> putStrLn ("[jit-debug] " ++ scheme ++ " fn not JIT-callable: " ++ render f)
+    (Just _, Just (g, ex)) | getEnvDebug -> diagnostic ("[jit-debug] " ++ scheme ++ " f=" ++ g ++ " extras=" ++ show (length ex) ++ " n=" ++ show n ++ " layout=" ++ maybe "?" (\(_, _, sg) -> sg) (layoutInfo st))
+    (Just _, Nothing) | getEnvDebug -> diagnostic ("[jit-debug] " ++ scheme ++ " fn not JIT-callable: " ++ render f)
     _ -> pure ()
   -- GPU tier: fires ONLY when every gate passes — availability, purity
   -- (the helper translates to GLSL exactly when it is in the safe
@@ -1533,7 +1534,7 @@ vecScheme env scheme f macc r = do
             case res of
               Nothing -> pure Nothing
               Just out -> do
-                putStrLn ("[gpu] vecmap<" ++ g ++ "> n=" ++ show n
+                verbose ("[gpu] vecmap<" ++ g ++ "> n=" ++ show n
                           ++ (if null ex then "" else " +" ++ show (length ex) ++ " uniform capture(s)")
                           ++ " (f64 compute; gates: pure+f64+n>=" ++ show Gpu.gpuMinLen ++ ")")
                 Just <$> vecFromNums out

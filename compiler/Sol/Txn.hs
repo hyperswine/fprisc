@@ -24,6 +24,7 @@
 
 module Sol.Txn where
 
+import Sol.Diagnostic (diagnostic)
 import Control.Concurrent (threadDelay)
 import Control.Exception (IOException, finally, mask, onException, throwIO, try)
 import Control.Monad (foldM, forM_, unless, when)
@@ -936,25 +937,27 @@ replayEffs j0 recovery0 done0 crashAt0 effs0 = go False effs0
             else rec' shellFailed 1 rest
         EShell cmd
           | shellFailed -> do
-              putStrLn ("[sol] skipping queued command (an earlier one failed): " ++ cmd)
+              diagnostic ("[sol] skipping queued command (an earlier one failed): " ++ cmd)
               rec' shellFailed 0 rest
           | recovery0 && i `elem` done0 -> do
               hPutStrLn stderr ("[sol] redo: skipping already-run command: " ++ cmd)
               rec' shellFailed 0 rest
           | otherwise -> do
               when recovery0 $ hPutStrLn stderr ("[sol] redo: re-running deferred command (at-least-once): " ++ cmd)
-              (code, out) <- txSh cmd
+              (status, out, err) <- readCreateProcessWithExitCode (shell cmd) ""
+              let code = case status of ExitSuccess -> 0; ExitFailure n -> n
               markDone j0 i
-              unless (null out) (putStr ("[sol] $ " ++ cmd ++ "\n" ++ out))
+              unless (null out) (putStr out)
+              unless (null err) (hPutStr stderr err)
               if code == 0
                 then rec' shellFailed 0 rest
                 else do
-                  putStrLn ("[sol] deferred command FAILED (exit " ++ show code ++ "): " ++ cmd)
-                  putStrLn ("[sol] later queued commands will be skipped; file effects still apply")
+                  diagnostic ("[sol] deferred command FAILED (exit " ++ show code ++ "): " ++ cmd)
+                  diagnostic ("[sol] later queued commands will be skipped; file effects still apply")
                   rec' True 0 rest
         EProcess spec
           | shellFailed -> do
-              putStrLn ("[sol] skipping queued process (an earlier one failed): " ++ displayProcess spec)
+              diagnostic ("[sol] skipping queued process (an earlier one failed): " ++ displayProcess spec)
               rec' shellFailed 0 rest
           | recovery0 && i `elem` done0 -> do
               hPutStrLn stderr ("[sol] redo: skipping already-run process: " ++ displayProcess spec)
@@ -965,8 +968,8 @@ replayEffs j0 recovery0 done0 crashAt0 effs0 = go False effs0
               markDone j0 i
               case result of
                 Left err -> do
-                  putStrLn ("[sol] deferred process FAILED: " ++ displayProcess spec ++ ": " ++ err)
-                  putStrLn "[sol] later queued commands will be skipped; file effects still apply"
+                  diagnostic ("[sol] deferred process FAILED: " ++ displayProcess spec ++ ": " ++ err)
+                  diagnostic "[sol] later queued commands will be skipped; file effects still apply"
                   rec' True 0 rest
                 Right (code, out, err) -> do
                   unless (null out) (putStr out)
@@ -974,10 +977,10 @@ replayEffs j0 recovery0 done0 crashAt0 effs0 = go False effs0
                   if code == 0
                     then rec' shellFailed 0 rest
                     else do
-                      putStrLn ("[sol] deferred process FAILED (exit " ++ show code ++ "): " ++ displayProcess spec)
-                      putStrLn "[sol] later queued commands will be skipped; file effects still apply"
+                      diagnostic ("[sol] deferred process FAILED (exit " ++ show code ++ "): " ++ displayProcess spec)
+                      diagnostic "[sol] later queued commands will be skipped; file effects still apply"
                       rec' True 0 rest
-    failedEff what = putStrLn ("[sol] effect FAILED (not counted): " ++ what)
+    failedEff what = diagnostic ("[sol] effect FAILED (not counted): " ++ what)
     rec' sf k rest = do
       (n, sf') <- go sf rest
       pure (k + n, sf')

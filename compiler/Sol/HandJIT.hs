@@ -34,6 +34,8 @@ module Sol.HandJIT
     module Sol.JitCore,
   ) where
 
+import Sol.Diagnostic (diagnostic, verbose)
+import System.IO (hPutStr, stderr)
 import Control.Monad (forM_, when)
 import Data.IORef
 import Data.Int (Int64)
@@ -73,7 +75,7 @@ data JitCtx = JitCtx
 jitDebug :: String -> IO ()
 jitDebug msg = do
   d <- lookupEnv "SOL_JIT_DEBUG"
-  when (d == Just "1") (putStrLn msg)
+  when (d == Just "1") (diagnostic msg)
 
 initJIT :: IO (Maybe JitCtx)
 initJIT = do
@@ -86,9 +88,9 @@ initJIT = do
       ok <- c_hjHasSse41
       if ok /= 0
         then mk X64
-        else putStrLn "[jit] x86-64 without SSE4.1 (roundsd): native tier disabled, interpreting" >> pure Nothing
+        else verbose "[jit] x86-64 without SSE4.1 (roundsd): native tier disabled, interpreting" >> pure Nothing
     "aarch64" -> mk A64
-    other -> putStrLn ("[jit] no native backend for " ++ other ++ ": interpreting") >> pure Nothing
+    other -> verbose ("[jit] no native backend for " ++ other ++ ": interpreting") >> pure Nothing
 
 -- ---- install: assemble, map executable, remember the symbol ----------------
 
@@ -108,7 +110,7 @@ archName A64 = "a64"
 install :: JitCtx -> String -> Int -> Unit -> IO (Maybe Int64)
 install jc sym nCols unit = do
   dump <- lookupEnv "SOL_HJIT_DUMP"
-  when (dump == Just "1") (putStr (showUnit unit))
+  when (dump == Just "1") (hPutStr stderr (showUnit unit))
   let bytes = assembleFor (jcArch jc) unit
   p <- withArray bytes $ \pb -> c_hjAlloc pb (length bytes)
   let a = fromIntegral (ptrToIntPtr p)
@@ -170,7 +172,7 @@ compileScheme jc prog scheme root elemTy accTy0 = do
                 install jc sym 0 unit >>= \case
                   Nothing -> pure Nothing
                   Just addr -> do
-                    putStrLn ("[jit] compiled " ++ scheme ++ "<" ++ root ++ "> elem=" ++ [tyChar elemTy] ++ (if isFold then " acc=" ++ [tyChar accTy] else "") ++ " (typed, fuel reified, hand-rolled " ++ archName (jcArch jc) ++ ")")
+                    verbose ("[jit] compiled " ++ scheme ++ "<" ++ root ++ "> elem=" ++ [tyChar elemTy] ++ (if isFold then " acc=" ++ [tyChar accTy] else "") ++ " (typed, fuel reified, hand-rolled " ++ archName (jcArch jc) ++ ")")
                     atomicModifyIORef' (jcCache jc) (\m -> (M.insert ckey (addr, accTy, retTy) m, ()))
                     pure (Just (addr, accTy, retTy))
 
@@ -228,7 +230,7 @@ compileVecScheme jc prog scheme root scalar colTys laySig exTys accTy0 = do
                   install jc sym (length colTys) unit >>= \case
                     Nothing -> pure Nothing
                     Just addr -> do
-                      putStrLn ("[jit] compiled " ++ scheme ++ "<" ++ root ++ "> over SoA layout " ++ laySig ++ (if nEx > 0 then " + " ++ show nEx ++ " captured scalar(s)" else "") ++ " (typed dual, fuel reified, hand-rolled " ++ archName (jcArch jc) ++ ")")
+                      verbose ("[jit] compiled " ++ scheme ++ "<" ++ root ++ "> over SoA layout " ++ laySig ++ (if nEx > 0 then " + " ++ show nEx ++ " captured scalar(s)" else "") ++ " (typed dual, fuel reified, hand-rolled " ++ archName (jcArch jc) ++ ")")
                       atomicModifyIORef' (jcCache jc) (\m -> (M.insert ckey (addr, accTy, retTy) m, ()))
                       pure (Just (addr, accTy, retTy))
 
@@ -274,7 +276,7 @@ compileVecMapR jc prog root scalar colTys laySig exTys = do
                         install jc sym (length colTys) unit >>= \case
                           Nothing -> pure Nothing
                           Just addr -> do
-                            putStrLn ("[jit] compiled vecmapr<" ++ root ++ "> " ++ show (length ftys) ++ " field dual(s) over " ++ laySig ++ (if nEx > 0 then " + " ++ show nEx ++ " captured scalar(s)" else "") ++ " (native SoA construction, hand-rolled " ++ archName (jcArch jc) ++ ")")
+                            verbose ("[jit] compiled vecmapr<" ++ root ++ "> " ++ show (length ftys) ++ " field dual(s) over " ++ laySig ++ (if nEx > 0 then " + " ++ show nEx ++ " captured scalar(s)" else "") ++ " (native SoA construction, hand-rolled " ++ archName (jcArch jc) ++ ")")
                             let hit = (addr, tid, ftys)
                             atomicModifyIORef' (jcMapR jc) (\m -> (M.insert ckey hit m, ()))
                             pure (Just hit)
