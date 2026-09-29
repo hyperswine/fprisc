@@ -41,9 +41,9 @@ showOrder left right order = case order of
 | After -> "{left} > {right}".
 
 execute argv = case argv of
-  left :: right :: [] -> case compareVersions left right of
+  left :: right :: [] -> (case compareVersions left right of
     Ok order -> print (showOrder left right order)
-  | Err message -> error "version-compare: {message}"
+  | Err message -> error "version-compare: {message}")
 | _ -> error "usage: version-compare.sol VERSION VERSION".
 
 > execute (args Unit).

@@ -1,3 +1,6 @@
+# Profile boundary: this implementation constructs UTF-8 byte strings.
+# Hosted Sol uses Unicode code-point Strings: use sol/lib/json.sol there.
+# Importing this module in Sol does not establish Unicode compatibility.
 # std/json.fpr -- JSON: text to a Value and back (ExtBase).
 #
 #   Json = use "std/json".

@@ -4,11 +4,11 @@
 #
 #   J.parse text |>? J.path ["user", "name"] |>? J.text
 #
-# Numbers ride the Numeric surface (Try.parseNum: ints exact, decimals
-# inexact); object keys keep document order, so parse |> render is the
-# identity up to whitespace.  Sol strings are code points, so a \uXXXX
-# escape is just `Str.fromCode` (no surrogate pairs) and render emits UTF-8;
-# control characters other than \n \t \r \b \f are not re-escaped.
+# Numbers use exact Int or inexact Numeric; decimal/exponent precision follows
+# Numeric, and nonfinite values are rejected. Duplicate object keys are retained
+# in input order; get returns the first occurrence. Parsing is whole-document,
+# without a configurable nesting/size limit yet. Unicode escapes combine pairs;
+# strings reject raw controls and isolated surrogates. Render escapes controls.
 
 Json = Type (JNull | JBool Bool | JNum Int | JStr String
            | JArr (List Json) | JObj (List (String, Json))).
@@ -38,29 +38,57 @@ literal s i = case Str.sub s i 4 == "true" of
         True -> Ok (JNull, i + 4)
       | False -> number s i)).
 
+# JSON number grammar, independent of the more permissive Numeric reader.
+isDigit c = and (c >= 48) (c <= 57).
+digits s i = case isDigit (peek s i) of True -> digits s (i + 1) | False -> i.
 number s i =
-  j = numEnd s i;
-  case j == i of
-    True -> Err "json: unexpected '{Str.fromCode (peek s i)}' at {i}"
-  | False -> Try.parseNum (Str.slice s i (j - 1)) |> mapOk (fn n -> (JNum n, j)).
-numEnd s i = case Str.contains (Str.fromCode (peek s i)) "-+0123456789.eE" of
-    True -> numEnd s (i + 1)
-  | False -> i.
+  start = case peek s i == 45 of True -> i + 1 | False -> i;
+  integerEnd s start |>? (fractionEnd s) |>? (exponentEnd s) |>? (fn j ->
+    Try.parseNum (Str.slice s i (j - 1)) |>? (fn n ->
+      case finite n of True -> Ok (JNum n, j) | False -> Err "json: number out of range at {i}")).
+integerEnd s i = case peek s i of
+    48 -> (case isDigit (peek s (i + 1)) of True -> Err "json: leading zero at {i}" | False -> Ok (i + 1))
+  | c -> (case and (c >= 49) (c <= 57) of True -> Ok (digits s (i + 1)) | False -> Err "json: expected digit at {i}").
+fractionEnd s i = case peek s i == 46 of
+    False -> Ok i
+  | True -> (case isDigit (peek s (i + 1)) of True -> Ok (digits s (i + 1)) | False -> Err "json: expected fraction at {i}").
+exponentEnd s i = case or (peek s i == 101) (peek s i == 69) of
+    False -> Ok i
+  | True -> j = case or (peek s (i + 1) == 43) (peek s (i + 1) == 45) of True -> i + 2 | False -> i + 1;
+            case isDigit (peek s j) of True -> Ok (digits s j) | False -> Err "json: expected exponent at {j}".
+finite n = s = Str.lower "{n}"; not (or (Str.contains "inf" s) (Str.contains "nan" s)).
 
-string s i acc = case peek s i of
-    0 -> Err "json: unterminated string"
-  | 34 -> Ok (acc, i + 1)
-  | 92 -> escape s (i + 1) acc
-  | c -> string s (i + 1) "{acc}{Str.fromCode c}".
-escape s i acc = case peek s i of
-    110 -> string s (i + 1) "{acc}\n"
-  | 116 -> string s (i + 1) "{acc}\t"
-  | 114 -> string s (i + 1) "{acc}\r"
-  | 98 -> string s (i + 1) "{acc}\x08"
-  | 102 -> string s (i + 1) "{acc}\x0c"
-  | 117 -> hex4 s (i + 1) 0 0 |>? (fn cp -> string s (i + 5) "{acc}{Str.fromCode cp}")
-  | 0 -> Err "json: unterminated escape"
-  | c -> string s (i + 1) "{acc}{Str.fromCode c}".                                   # \" \\ \/
+# Accumulate pieces in reverse; join once instead of copying a growing prefix.
+string s i acc = stringParts s i [acc].
+stringParts s i parts = case i > Str.len s of
+    True -> Err "json: unterminated string"
+  | False -> (case peek s i of
+      34 -> Ok (Str.join "" (List.rev parts), i + 1)
+    | 92 -> escapeParts s (i + 1) parts
+    | c -> (case or (c < 32) (and (c >= 55296) (c <= 57343)) of
+        True -> Err "json: invalid string character at {i}"
+      | False -> stringParts s (i + 1) (Str.fromCode c :: parts))).
+escapeParts s i parts = case peek s i of
+    110 -> stringParts s (i + 1) ("\n" :: parts)
+  | 116 -> stringParts s (i + 1) ("\t" :: parts)
+  | 114 -> stringParts s (i + 1) ("\r" :: parts)
+  | 98 -> stringParts s (i + 1) (Str.fromCode 8 :: parts)
+  | 102 -> stringParts s (i + 1) (Str.fromCode 12 :: parts)
+  | 34 -> stringParts s (i + 1) ("\"" :: parts)
+  | 92 -> stringParts s (i + 1) ("\\" :: parts)
+  | 47 -> stringParts s (i + 1) ("/" :: parts)
+  | 117 -> hex4 s (i + 1) 0 0 |>? (unicodeEscape s i parts)
+  | _ -> Err "json: unknown or incomplete escape at {i}".
+unicodeEscape s i parts cp = case and (cp >= 55296) (cp <= 56319) of
+    True -> (case and (peek s (i + 5) == 92) (peek s (i + 6) == 117) of
+      False -> Err "json: missing low surrogate at {i}"
+    | True -> hex4 s (i + 7) 0 0 |>? (fn low ->
+        case and (low >= 56320) (low <= 57343) of
+          False -> Err "json: invalid low surrogate at {i}"
+        | True -> stringParts s (i + 11) (Str.fromCode (65536 + (cp - 55296) * 1024 + low - 56320) :: parts)))
+  | False -> (case and (cp >= 56320) (cp <= 57343) of
+      True -> Err "json: unpaired low surrogate at {i}"
+    | False -> stringParts s (i + 5) (Str.fromCode cp :: parts)).
 hex4 s i n acc = case n == 4 of
     True -> Ok acc
   | False -> hexDigit (peek s i) |>? (fn d -> hex4 s (i + 1) (n + 1) (acc * 16 + d)).
@@ -94,12 +122,21 @@ render j = case j of
     JNull -> "null"
   | JBool True -> "true"
   | JBool False -> "false"
-  | JNum n -> "{n}"
+  | JNum n -> (case finite n of True -> "{n}" | False -> error "json: cannot render nonfinite number")
   | JStr t -> quote t
   | JArr xs -> "[{Str.join "," (List.map render xs)}]"
   | JObj kvs -> "\{{Str.join "," (List.map (fn p -> (k, v) = p; "{quote k}:{render v}") kvs)}\}".
 
-quote t = "\"{t |> Str.replace "\\" "\\\\" |> Str.replace "\"" "\\\"" |> Str.replace "\n" "\\n" |> Str.replace "\t" "\\t" |> Str.replace "\r" "\\r"}\"".
+quote t = "\"{Str.join "" (List.map quoteCode (Str.codes t))}\"".
+quoteCode c = case c of
+    34 -> "\\\""
+  | 92 -> "\\\\"
+  | _ -> (case c < 32 of
+      True -> "\\u00{hexCode (c / 16)}{hexCode (c % 16)}"
+    | False -> (case and (c >= 55296) (c <= 57343) of
+        True -> error "json: cannot render surrogate code point"
+      | False -> Str.fromCode c)).
+hexCode n = Str.sub "0123456789abcdef" (n + 1) 1.
 
 # two-space indentation; empty containers and scalars stay inline
 pretty j = prettyAt "" j.

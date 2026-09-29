@@ -49,8 +49,7 @@ intern nm syms = case lookupS nm syms of
 | Nope -> internNew nm syms.
 internNew nm syms = i = symsLen syms + 1; (i, (nm, i) :: syms).
 
-symName i syms | syms == [] = "?sym{i}".
-symName i syms = case syms of p :: r -> snStep i p r.
+symName i syms = case syms of [] -> "?sym{i}" | p :: r -> snStep i p r.
 snStep i p r = (nm, k) = p; case k == i of True -> nm | False -> symName i r.
 
 # ---------- clause-store terms (pure data; copied to heap per try) ----------
@@ -180,15 +179,13 @@ instC s args vbase m =
   m3 = pushRefs addrs m2;
   halloc 3 f m3.
 
-instArgs ts vbase m | ts == [] = (m, []).
-instArgs ts vbase m = case ts of t :: r -> iaStep t r vbase m.
+instArgs ts vbase m = case ts of [] -> (m, []) | t :: r -> iaStep t r vbase m.
 iaStep t r vbase m =
   (m1, a) = inst t vbase m;
   (m2, rest) = instArgs r vbase m1;
   (m2, a :: rest).
 
-pushRefs addrs m | addrs == [] = m.
-pushRefs addrs m = case addrs of a :: r -> prStep a r m.
+pushRefs addrs m = case addrs of [] -> m | a :: r -> prStep a r m.
 prStep a r m = (m1, u) = halloc 0 a m; pushRefs r m1.
 
 allocVars n m | n == 0 = m.
@@ -250,16 +247,15 @@ rendArgs k n f syms m =
 # returns (m, fuelLeft, [solutionString])  — solutions in reverse order
 solveG db syms m goals fuel qvars sols | fuel <= 0 = (m, 0, sols).
 solveG db syms m goals fuel qvars sols =
-  case goals == [] of
-    True -> emitSol syms m fuel qvars sols
-  | False -> (case goals of g :: gs -> solveGoal db syms m g gs fuel qvars sols).
+  case goals of
+    [] -> emitSol syms m fuel qvars sols
+  | g :: gs -> solveGoal db syms m g gs fuel qvars sols.
 
 emitSol syms m fuel qvars sols =
   (m2, s) = rendQVars qvars syms m;
   (m2, fuel, s :: sols).
 
-rendQVars qs syms m | qs == [] = (m, "true").
-rendQVars qs syms m = case qs of q :: r -> rqStep q r syms m.
+rendQVars qs syms m = case qs of [] -> (m, "true") | q :: r -> rqStep q r syms m.
 rqStep q r syms m =
   (nm, a) = q;
   (m1, s) = rend a syms m;
@@ -344,17 +340,15 @@ doNl db syms m gs fuel qvars sols =
   u = print "";
   solveG db syms m gs fuel qvars sols.
 
-clausesFor s db | db == [] = [].
-clausesFor s db = case db of c :: r -> cfStep s c r.
+clausesFor s db = case db of [] -> [] | c :: r -> cfStep s c r.
 cfStep s c r =
   (fs, hd, body, nv) = c;
   case fs == s of
     True -> (hd, body, nv) :: clausesFor s r
   | False -> clausesFor s r.
 
-tryClauses db syms m cs g gs fuel qvars sols | cs == [] = (m, fuel, sols).
 tryClauses db syms m cs g gs fuel qvars sols =
-  case cs of c :: rest -> tcStep db syms m c rest g gs fuel qvars sols.
+  case cs of [] -> (m, fuel, sols) | c :: rest -> tcStep db syms m c rest g gs fuel qvars sols.
 
 tcStep db syms m c rest g gs fuel qvars sols =
   (hd, body, nv) = c;
@@ -375,8 +369,7 @@ tcBody2 db syms m body vbase gs fuel qvars sols =
   (m1, baddrs) = instArgs body vbase m;
   solveG db syms m1 (base2append baddrs gs) fuel qvars sols.
 
-base2append xs ys | xs == [] = ys.
-base2append xs ys = case xs of x :: r -> x :: base2append r ys.
+base2append xs ys = case xs of [] -> ys | x :: r -> x :: base2append r ys.
 
 # ---------- top-level query ----------
 # qpairs = [(name, varIdx)] — with vbase 1 the heap addr IS the index
@@ -393,5 +386,4 @@ runQuery db syms goalsPT nqv qpairs fuel =
   u2 = Vec.free tr2;
   (rev [] sols, fuelLeft).
 
-rev acc xs | xs == [] = acc.
-rev acc xs = case xs of x :: r -> rev (x :: acc) r.
+rev acc xs = case xs of [] -> acc | x :: r -> rev (x :: acc) r.

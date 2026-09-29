@@ -1074,3 +1074,135 @@ binary copy plus digest; bounded log filtering; raw-argv process pipeline; and a
 session that survives failure/cancellation. Record exact bytes/status and memory
 scaling, not only successful compilation or attractive demos. Full native/hosted
 parity is a per-module decision, not a prerequisite for every Sol-specific feature.
+
+
+## 2026-09-29 20:43 AEST — Stage 1 library compatibility and format correctness
+
+### Delivered
+
+Stage 1 repairs the advertised hosted library surface and adds executable
+contracts without disabling type or safety checking. `tools/sol-library-check.py`
+contains 110 checks, including five explicit compatibility-gap checks.
+`tools/sol-library-capabilities.json` is the version-1 capability catalog: hosted,
+experimental, legacy and native-only are distinct states, with the required gate
+and limitations recorded per module. Adding a Sol library requires updating the
+catalog and representative-call fixtures.
+
+- `base`, `logic` and `plparse` now use explicit exhaustive list cases. Matrix and
+  Plot imports recover through Base. Empty parser input gets a named error.
+- Module renaming now recognizes the longest declared struct prefix, including
+  `ui.Style`, instead of inspecting only the first dotted segment. Prefixes are
+  computed once per module. Renaming remains restricted to actual declared
+  structs; ordinary canonical cross-module references retain their identity.
+  Nested and diamond imports are checked in both orders, warm/disabled caches,
+  and with the JIT enabled as well as the interpreter.
+- The version-compare example now parenthesizes its nested case, keeping the
+  outer argument fallback at the correct scope. The existing general scripting
+  suite passes again.
+- `sol/scripts/text/shell.sol` now lists through structured filesystem operations
+  and lexical Path joining rather than interpolating argv into `ls -l` and
+  parsing columns. A directory containing spaces and a semicolon is tested.
+  Current metadata operations still snapshot file contents; Stage 2 addresses
+  that separate limitation.
+
+### Library status after repair
+
+| Surface | Result |
+| --- | --- |
+| 13 standalone `sol/lib` modules | Each imports and executes a representative call with normal checking |
+| `auth` | Experimental app helper: works with a concrete caller record containing user/pendu/pendp/note; standalone import remains unsupported by record-update lowering |
+| `std/map`, `set`, `path`, `list`, `string` | Representative hosted calls pass; shared implementations retained |
+| `std/dir`, `proc`, `digest` | Explicit hosted-gap fixtures remain: unavailable OS or bit primitives |
+| `std/json` | Explicitly native-byte-string only until an encoding adapter exists; use `sol/lib/json` for hosted code |
+| Other audited OS/stream/HTTP/terminal/config modules | Catalogued native-only; no new hosted support claimed |
+
+The auth source now states its model requirement. This stage does not redesign
+its account flow or certify it as a production authentication library. Scientific
+and UI modules have representative construction/call coverage, not comprehensive
+numerical, browser or GPU certification. The five gap checks verify the documented
+unsupported boundaries; they are not successful feature tests.
+
+### JSON contract
+
+The hosted module preserves the existing Json constructors and public
+parse/render/accessor API. Parsing now enforces JSON integer/fraction/exponent
+syntax, rejects leading zeros and unknown/incomplete escapes, rejects raw control
+characters and isolated surrogates, and combines UTF-16 escape pairs into a
+Unicode scalar. Numeric overflow to a nonfinite value returns Err; rendering a
+nonfinite number or surrogate value fails explicitly instead of emitting invalid
+JSON. All control characters are escaped on output.
+
+String parsing accumulates fragments and joins once. Tests compare parsed/rendered
+output against Python's JSON reader, including controls 0–31, Unicode, large
+integers, fractions/exponents, paired/unpaired surrogates, duplicate keys and
+20,000-character fields. Numeric and string error positions are code-point
+positions; this is not a new line/column diagnostic framework.
+
+Limits are explicit: decimal/exponent values retain Numeric's inexact precision;
+negative zero is not textually preserved; duplicate object keys remain ordered
+and `get` selects the first occurrence. Parsing is whole-document, with no
+configurable size/depth limit yet. These are not claims of canonical JSON or
+lossless decimal-number text preservation.
+
+Consolidation decision: retain the hosted JSON implementation for now. Shared
+`std/json.fpr` constructs UTF-8 bytes using native String semantics and produces
+incorrect escaped Unicode in Sol. Its source and catalog now say so. A common
+implementation requires an explicit byte/code-point adapter and cross-profile
+conformance tests; silently substituting it would regress correctness.
+
+### CSV contract and compatibility changes
+
+The dialect accepts comma-separated fields, doubled quotes, and LF/CRLF record
+separators. Quoted CR/LF and Unicode are preserved. Empty input yields no rows;
+a blank line is one empty field; a final separator newline does not invent an
+extra row. Bare CR outside quotes, embedded quotes in unquoted fields, and text
+or whitespace after a closing quote return Err. Field accumulation joins once.
+
+`render` quotes empty fields and fields containing CR, LF, commas or quotes.
+A zero-field row has no faithful representation and now errors explicitly.
+`recordsChecked` returns a Result and rejects duplicate headers or ragged rows.
+The existing `records` shape is retained as its unwrapping convenience wrapper;
+malformed tables now fail rather than silently truncating through zip. `table`
+still fills missing named columns with empty fields. Independent Python CSV
+round-trip checks cover the supported dialect.
+
+These stricter choices intentionally change formerly permissive or lossy input
+behavior. Streaming readers, configurable delimiters, dialect options and bounded
+memory are later stages, not part of this release.
+
+### Validation and performance
+
+Fresh checks passed on macOS arm64:
+
+- New library suite: 110 checks, including five explicitly catalogued gaps.
+- Startup/cache suite: 52 checks plus assembly/concurrent writer/executable identity.
+- Parsed-cache corruption and exact-byte transaction conflicts.
+- Output contract: 26 checks.
+- General scripting, structured process/Git, transactional properties, and
+  filesystem/actor safety suites.
+- Text/process suite: 34 checks including cancellation, timeout and real PTY use.
+
+The final prefix-hoisting rebuild reran the library suite; the broader suites
+passed before that behavior-preserving refactor. No native platform or browser
+coverage is implied.
+
+A separate same-binary comparison loaded old JSON/CSV sources from `4d4b1ab`
+versus the new libraries, with warm caches, JIT/GPU/table disabled, one warmup and
+five shuffled fresh-process samples. Binary/library hashes and raw samples are
+in the saved benchmark report. This benchmark predates the final compiler-only
+prefix-hoisting refactor; the format-library hashes are unchanged.
+
+| Workload | Old library | New library | Effect |
+| --- | ---: | ---: | --- |
+| JSON array of 1,600 numbers | 173.19 ms | 210.46 ms | 22% slower from stricter validation |
+| JSON string, 16,000 characters | 1,250.05 ms | 327.48 ms | 3.8× faster |
+| CSV field, 16,000 characters | 1,269.21 ms | 215.94 ms | 5.9× faster |
+
+Correctness is the gate for Stage 1. Number parsing remains an optimization
+candidate; this is not an across-the-board speedup. Metadata-safe filesystem and
+script-host APIs are the next stage; Bytes/Streams remain the later shared
+foundation for pipelines, hashing and network clients.
+
+Reproduce acceptance with `make fpr`, `python3 tools/sol-library-check.py`, and
+`sh tools/sol-scripts-check.sh`; use the existing focused runtime suites when
+changing the VM or module pipeline.

@@ -1,0 +1,187 @@
+{
+  "schema": 1,
+  "profile": "HostedBytecode",
+  "scope": "Audited subset; status is per module, not a promise of cross-profile parity.",
+  "modules": [
+    {
+      "module": "sol/lib/auth.sol",
+      "status": "experimental",
+      "gate": "app-model",
+      "note": "App helper only; record updates require a concrete caller model. Not a standalone auth service."
+    },
+    {
+      "module": "sol/lib/base.sol",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Representative call coverage; not exhaustive feature certification."
+    },
+    {
+      "module": "sol/lib/csv.sol",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Representative call coverage; not exhaustive feature certification."
+    },
+    {
+      "module": "sol/lib/fix.sol",
+      "status": "experimental",
+      "gate": "import-and-call",
+      "note": "Representative call coverage; not exhaustive feature certification."
+    },
+    {
+      "module": "sol/lib/git.sol",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Representative call coverage; not exhaustive feature certification."
+    },
+    {
+      "module": "sol/lib/json.sol",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Representative call coverage; not exhaustive feature certification."
+    },
+    {
+      "module": "sol/lib/logic.sol",
+      "status": "experimental",
+      "gate": "import-and-call",
+      "note": "Representative call coverage; not exhaustive feature certification."
+    },
+    {
+      "module": "sol/lib/matrix.sol",
+      "status": "experimental",
+      "gate": "import-and-call",
+      "note": "Vec smoke coverage only; CSV helpers are a numeric subset, not the general CSV parser."
+    },
+    {
+      "module": "sol/lib/plot.sol",
+      "status": "experimental",
+      "gate": "import-and-call",
+      "note": "SVG generation smoke only; no browser/display coverage."
+    },
+    {
+      "module": "sol/lib/plparse.sol",
+      "status": "experimental",
+      "gate": "import-and-call",
+      "note": "Representative call coverage; not exhaustive feature certification."
+    },
+    {
+      "module": "sol/lib/proc.sol",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Representative call coverage; not exhaustive feature certification."
+    },
+    {
+      "module": "sol/lib/rand.sol",
+      "status": "experimental",
+      "gate": "import-and-call",
+      "note": "Deterministic LCG, not a cryptographic random source."
+    },
+    {
+      "module": "sol/lib/ui.sol",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Representative call coverage; not exhaustive feature certification."
+    },
+    {
+      "module": "sol/lib/web.sol",
+      "status": "legacy",
+      "gate": "import-and-call",
+      "note": "Legacy vocabulary; use ui for new applications."
+    },
+    {
+      "module": "std/path.fpr",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Shared pure implementation; hosted representative call tested."
+    },
+    {
+      "module": "std/map.fpr",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Shared pure implementation; hosted representative call tested."
+    },
+    {
+      "module": "std/set.fpr",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Shared pure implementation; hosted representative call tested."
+    },
+    {
+      "module": "std/string.fpr",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Shared pure implementation; hosted representative call tested."
+    },
+    {
+      "module": "std/list.fpr",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Shared pure implementation; hosted representative call tested."
+    },
+    {
+      "module": "std/encoding.fpr",
+      "status": "native-only",
+      "gate": "known-hosted-gap",
+      "note": "Missing hosted primitive/transitive dependency; no Sol support claim. Use Sol Proc and transactional filesystem APIs where applicable."
+    },
+    {
+      "module": "std/digest.fpr",
+      "status": "native-only",
+      "gate": "known-hosted-gap",
+      "note": "Missing hosted primitive/transitive dependency; no Sol support claim. Use Sol Proc and transactional filesystem APIs where applicable."
+    },
+    {
+      "module": "std/stream.fpr",
+      "status": "native-only",
+      "gate": "known-hosted-gap",
+      "note": "Missing hosted primitive/transitive dependency; no Sol support claim. Use Sol Proc and transactional filesystem APIs where applicable."
+    },
+    {
+      "module": "std/file.fpr",
+      "status": "native-only",
+      "gate": "known-hosted-gap",
+      "note": "Missing hosted primitive/transitive dependency; no Sol support claim. Use Sol Proc and transactional filesystem APIs where applicable."
+    },
+    {
+      "module": "std/dir.fpr",
+      "status": "native-only",
+      "gate": "known-hosted-gap",
+      "note": "Missing hosted primitive/transitive dependency; no Sol support claim. Use Sol Proc and transactional filesystem APIs where applicable."
+    },
+    {
+      "module": "std/http.fpr",
+      "status": "native-only",
+      "gate": "known-hosted-gap",
+      "note": "Missing hosted primitive/transitive dependency; no Sol support claim. Use Sol Proc and transactional filesystem APIs where applicable."
+    },
+    {
+      "module": "std/term.fpr",
+      "status": "native-only",
+      "gate": "known-hosted-gap",
+      "note": "Missing hosted primitive/transitive dependency; no Sol support claim. Use Sol Proc and transactional filesystem APIs where applicable."
+    },
+    {
+      "module": "std/clock.fpr",
+      "status": "native-only",
+      "gate": "known-hosted-gap",
+      "note": "Missing hosted primitive/transitive dependency; no Sol support claim. Use Sol Proc and transactional filesystem APIs where applicable."
+    },
+    {
+      "module": "std/proc.fpr",
+      "status": "native-only",
+      "gate": "known-hosted-gap",
+      "note": "Missing hosted primitive/transitive dependency; no Sol support claim. Use Sol Proc and transactional filesystem APIs where applicable."
+    },
+    {
+      "module": "std/config.fpr",
+      "status": "native-only",
+      "gate": "known-hosted-gap",
+      "note": "Missing hosted primitive/transitive dependency; no Sol support claim. Use Sol Proc and transactional filesystem APIs where applicable."
+    },
+    {
+      "module": "std/json.fpr",
+      "status": "native-only",
+      "gate": "known-string-contract-gap",
+      "note": "Native byte-string Unicode construction corrupts escapes in Sol. Use sol/lib/json.sol; consolidation requires an explicit Unicode adapter."
+    }
+  ]
+}

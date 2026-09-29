@@ -1,3 +1,6 @@
+# Experimental app helper: callers must declare a concrete model record with
+# user, pendu, pendp and note fields. A bare standalone import is not supported
+# by the current record-update lowering. See tools/sol-library-capabilities.json.
 # auth.sol — the shared sign-in/registration pattern: KV-backed accounts +
 # the replay-safe `Msg setuser` handoff. Apps route four events here and
 # keep pendu/pendp/note fields (runtime) and a Persistent user field.

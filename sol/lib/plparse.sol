@@ -88,7 +88,8 @@ tokAll (l :: r) = (tokLine l) + (tokAll r).
 # every parser returns (result, remainingTokens); errors panic
 
 expect toks s = case toks of
-  t :: r -> (case isP t s of True -> r | False -> error "expected {s} near {tkStr t}").
+  [] -> error "expected {s} at end of input"
+| t :: r -> (case isP t s of True -> r | False -> error "expected {s} near {tkStr t}").
 
 peekP toks s = case toks of
   t :: r -> isP t s
@@ -192,7 +193,8 @@ pGoalsMore g t1 =
 Stmt = Type (SClause x y | SQuery x).
 
 pStmt toks = case toks of
-  t :: r -> (case isP t ">" of True -> pQuery r | False -> pClause toks).
+  [] -> error "expected statement at end of input"
+| t :: r -> (case isP t ">" of True -> pQuery r | False -> pClause toks).
 pQuery r =
   (gs, t2) = pGoals r;
   (SQuery gs, expect t2 "?").

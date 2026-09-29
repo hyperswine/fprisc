@@ -1,12 +1,16 @@
-# shell.sol -- a tool's output as data: sizes and names out of ls -l (via sh)
+# Directory listing without shell interpolation or parsing ls display columns.
 #   fpr sol sol/scripts/text/shell.sol DIR
-sizeOf line = Str.parse (Str.words line ! 5).
-nameOf line = Str.words line ! 9.
-big line = List.len (Str.words line) >= 9.
+p = use "../../../std/path.fpr".
+showEntry dir name =
+  full = p.join dir name;
+  case isDir full of
+    True -> print "dir {name}"
+  | False -> (present, size, modified) = stat full; print "{size} {name}".
 execute argv = case argv of
-    dir :: [] -> (code, out) = sh "ls -l {dir}";
-                 ls = List.filter big (Str.lines out);
-                 u = map (fn l -> print "{sizeOf l} {nameOf l}") ls;
-                 print "{List.len ls} entries, exit {code}"
+    dir :: [] -> (case isDir dir of
+      False -> error "not a directory: {dir}"
+    | True -> names = ls dir;
+              u = map (showEntry dir) names;
+              print "{List.len names} entries")
   | _ -> error "usage: shell.sol DIR".
 > execute (args Unit).

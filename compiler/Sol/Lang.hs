@@ -24,7 +24,7 @@
 module Sol.Lang (module Sol.Lang, module FPRISC) where
 
 import FPRISC hiding (collectCons, collectShapes)
-import Data.List (foldl', nub, sort)
+import Data.List (foldl', nub, sort, sortOn, isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -138,16 +138,18 @@ renameTops rn tops0 = map top tops0
   where
     look n = M.findWithDefault n n rn
     -- dotted-head renaming exists ONLY for struct field self-references
-    -- (`ListS.add` before the struct expands to flat globals). It must
+    -- (`ListS.add`, including qualified `ui.Style.flex`, before expansion). It must
     -- NOT fire for other dotted names: diamond file-module imports leave
     -- canonical cross-module refs like `logic.base.findCh` whose head
     -- coincides with a use-binding name — renaming those dangles them.
     structNames = S.fromList [n | TStruct n _ _ <- tops0]
+    structPrefixes = reverse (sortOn length [n | n <- S.toList structNames, M.member n rn])
     lookDotted v = case M.lookup v rn of
       Just r -> r
-      Nothing -> case break (== '.') v of
-        (h, '.' : rest) | S.member h structNames, M.member h rn -> look h ++ "." ++ rest
-        _ -> v
+      Nothing -> case [look n ++ drop (length n) v
+                      | n <- structPrefixes, (n ++ ".") `isPrefixOf` v] of
+        renamed : _ -> renamed
+        [] -> v
     top = \case
       TBind n ps g b ->
         let bs = S.fromList (concatMap patVars ps)
