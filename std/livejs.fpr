@@ -13,7 +13,12 @@ src u = "/* fprlive.js -- the FPRLive client.
  *     over ONE websocket at /ws; the client sends \{msg,arg} text frames.
  *  3. LOCALS are client-only state declared in the tree (x-data,
  *     data-set/data-val, data-show, data-text, data-input); they cross
- *     the wire only as the arg of a data-click / data-enter.
+ *     the wire only as the arg of a data-click / data-enter -- or, when the
+ *     server asked for it (\{sync:\{every,msg}}: Live.SyncClientState), as a
+ *     MIRROR: the whole set, as JSON, every `every` ms when it changed and
+ *     just before any other message.  The server sets them with the 'locals'
+ *     command.  data-set honours data-min / data-max on its element.  After
+ *     every paint the page's own script hears 'live:locals' (detail: them).
  */
 'use strict';
 (function () \{
@@ -21,6 +26,8 @@ src u = "/* fprlive.js -- the FPRLive client.
   var root = document.getElementById('lv-root');
   var locals = Object.create(null);
   var ws = null, wait = 500, sent = 0, t0 = 0;
+  var sync = null, syncTimer = null, dirty = false;
+  var secrets = Object.create(null);   /* locals a password input has held: never mirrored */
 
   // Keys identify siblings, never positions. Dynamic slot numbers may change
   // after an insertion, so patch the detached tree before matching old nodes.
@@ -137,13 +144,41 @@ src u = "/* fprlive.js -- the FPRLive client.
       var n = el.getAttribute('data-input');
       if (el !== document.activeElement) el.value = locals[n] ?? '';
     });
+    document.dispatchEvent(new CustomEvent('live:locals', \{ detail: locals }));
   }
 
-  function applySet(name, val) \{
+  // +n / -n is arithmetic, kept inside the element's data-min / data-max
+  function applySet(name, val, el) \{
     var cur = locals[name];
     if (val === 'toggle') locals[name] = (cur === '1' ? '0' : '1');
-    else if (val[0] === '+' || val[0] === '-') locals[name] = String((+cur || 0) + (+val));
+    else if (val[0] === '+' || val[0] === '-') \{
+      var n = (+cur || 0) + (+val);
+      if (el && el.hasAttribute('data-min')) n = Math.max(n, +el.getAttribute('data-min'));
+      if (el && el.hasAttribute('data-max')) n = Math.min(n, +el.getAttribute('data-max'));
+      locals[name] = String(n);
+    }
     else locals[name] = val;
+    dirty = true;
+  }
+
+  // the mirror: every local but those a password input holds
+  function mirrored() \{
+    var out = \{};
+    for (var n in locals) \{
+      if (secrets[n]) continue;   /* even once its input has left the page */
+      out[n] = String(locals[n]);
+    }
+    return out;
+  }
+  function flush() \{
+    if (!sync || !dirty || !ws || ws.readyState !== 1) return;
+    dirty = false;
+    ws.send(JSON.stringify(\{ msg: sync.msg, arg: JSON.stringify(mirrored()) }));
+  }
+  function startSync(spec) \{
+    if (syncTimer) clearInterval(syncTimer);
+    sync = spec; dirty = true;
+    syncTimer = setInterval(flush, Math.max(50, +spec.every || 1000));
   }
 
   function argOf(el) \{
@@ -160,14 +195,14 @@ src u = "/* fprlive.js -- the FPRLive client.
     });
     root.querySelectorAll('[data-set]').forEach(function (el) \{
       el.onclick = function () \{
-        applySet(el.getAttribute('data-set'), el.getAttribute('data-val'));
+        applySet(el.getAttribute('data-set'), el.getAttribute('data-val'), el);
         paintLocals();
       };
     });
     root.querySelectorAll('[data-click]').forEach(function (el) \{
       el.onclick = function () \{
         var set = el.getAttribute('data-set');
-        if (set) applySet(set, el.getAttribute('data-val'));
+        if (set) applySet(set, el.getAttribute('data-val'), el);
         send(el.getAttribute('data-click'), argOf(el));
         paintLocals();
       };
@@ -185,7 +220,8 @@ src u = "/* fprlive.js -- the FPRLive client.
     });
     root.querySelectorAll('[data-input]').forEach(function (el) \{
       var n = el.getAttribute('data-input');
-      el.oninput = function () \{ locals[n] = el.value; paintLocals(); };
+      if (el.type === 'password') secrets[n] = true;
+      el.oninput = function () \{ locals[n] = el.value; dirty = true; paintLocals(); };
       el.onkeydown = function (e) \{
         if (e.key === 'Enter' && el.hasAttribute('data-enter')) send(el.getAttribute('data-enter'), argOf(el));
       };
@@ -194,6 +230,7 @@ src u = "/* fprlive.js -- the FPRLive client.
 
   function send(msg, arg) \{
     if (!ws || ws.readyState !== 1) return;
+    flush();   /* the server's mirror of this page is current BEFORE the event */
     t0 = performance.now(); sent++;
     ws.send(JSON.stringify(\{ msg: msg, arg: String(arg) }));
   }
@@ -221,6 +258,14 @@ src u = "/* fprlive.js -- the FPRLive client.
     // server-to-client COMMANDS (std/live.fpr): go somewhere, or hand a named
     // event to the page's own script (document.addEventListener('live:name', ...))
     if (res.nav) \{ location.href = res.nav; return; }
+    if (res.sync) \{ startSync(res.sync); return; }
+    if (res.emit === 'locals') \{
+      var vals = JSON.parse(res.detail);
+      for (var k in vals) locals[k] = String(vals[k]);
+      dirty = true;
+      paintLocals();
+      return;
+    }
     if (res.emit) \{ document.dispatchEvent(new CustomEvent('live:' + res.emit, \{ detail: res.detail })); return; }
     if (res.p !== undefined) \{
       if (res.p !== 2 && res.p !== 3) throw new Error('unsupported live protocol');

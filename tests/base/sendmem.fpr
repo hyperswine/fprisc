@@ -1,0 +1,18 @@
+# sendmem.fpr -- a list a PRIMITIVE built on the heap crosses an actor boundary.
+# Sys.memInfo ends its list with a nil cell it allocated (FP-RISC code uses a
+# static one).  The message copier's size walk treated that cell as a
+# constructor whose field count comes from its allocation size, read one
+# garbage field and followed it: a send of such a list never returned (found
+# by a POS admin page that projected Sys.memInfo to a session).
+unsafe base.
+List = use "std/list".
+teller boss self =
+  _ = send boss (Sys.memInfo 0);
+  _ = send boss (Sys.memStats 0);
+  Unit.
+main =
+  me = myself 0;
+  _ = spawn (fn self -> teller me self);
+  info = receive me;
+  (grows, mib) = receive me;
+  print "sendmem: {List.length info} counters received, grown {grows} times ({mib} MiB) -- the copier followed the heap nil".

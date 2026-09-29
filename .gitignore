@@ -19,3 +19,8 @@ qos-store/
 # macOS Finder metadata
 .DS_Store
 MAINTHING*
+
+# a POS run from the checkout: the built example and its shop
+/examples/pos1
+pos1.log
+pos1.log.kvlog

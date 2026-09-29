@@ -676,9 +676,16 @@ static uw dc_size(V v) {
         n += dc_size(*(V *)((char *)c + 8)); /* head */
         c = *(V *)((char *)c + 8 + sizeof(uw));
       }
-      return n + dc_size(c); /* nil (static: 0) or improper tail */
+      /* the tail: the static nil (not in the heap: 0); a nil a primitive built
+       * on the heap (Sys.memInfo, growLog, actInfo...: its cell and nothing
+       * more -- the default case below would derive a field count from the
+       * allocation's padding and follow garbage, which hung a send forever);
+       * or an improper tail */
+      if (!ISINT(c) && c && fpr_in_heap(c) && TID(c) == T_LIST) return n + *(uw *)((char *)c - 16);
+      return n + dc_size(c);
     }
     default: { /* uniform-V constructor: derive field count */
+      if (h->tid == T_LIST) return total; /* a heap nil reached directly (var 0): no fields */
       uw nf = (total - 16 - 8) / sizeof(uw);
       uw n = total;
       V *f = (V *)((char *)v + 8);

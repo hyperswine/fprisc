@@ -43,6 +43,7 @@ unsafe base.
 Live = use "std/live".
 G = use "std/view".
 LJ = use "std/livejs".
+VC = use "std/viewcache".
 List = use "std/list".
 S = use "std/string".
 File = use "std/file".
@@ -66,9 +67,16 @@ strEq a b = a == b.
 # every message a register can send, and its wire: the arguments that come
 # from the page's own inputs arrive as the LAST field (G.wireOpen), "a|b" when
 # there are two
-Msg = Type (Login String | Logout | Quit | Add String | Qty String Int | Inc String | Dec String
+# What happens IN the page stays in the page: the tab, the cart's quantities,
+# the inputs are client state (Client, and one quantity per product), and
+# changing them sends nothing.  `ClientState` is the mirror: the page's
+# locals as JSON, sent every half second when they changed and just before
+# any other message (Live.SyncClientState), so a checkout sees the cart the
+# cashier saw.  The server still decides: it clamps to stock, prices, sells.
+Msg = Type (Login String | Logout | Quit | ClientState String
           | Cash String | Card | Void Int | Restock String | Admin String | Rebuild | Dismiss | Theme).
 codec = @Msg.
+Client = { tab : String, open : String, tender : String, delta : String, rsku : String, cmd : String, name : String, pin : String }.
 
 # the QOS fold took the element first; the app is written that way
 foldE f z l = List.fold (fn acc x -> f x acc) z l.
@@ -78,8 +86,39 @@ foldE f z l = List.fold (fn acc x -> f x acc) z l.
 # registers: cart, toast and console output live per session
 
 initModel = { cat = Nil, tax = 0, lowAt = 3, sales = Nil, nsale = 0, revenue = 0, staff = Nil,
-              sess = Nil, pend = Nil, events = 0, theme = 1, fsOn = 0, booted = 0 }.
-noSess = { sid = 0, cashier = "", cart = Nil, toast = "", role = "", con = Nil }.
+              sess = Nil, pend = Nil, events = 0, theme = 0, fsOn = 0, booted = 0, prof = noProf }.
+
+# ---- profiling ---------------------------------------------------------------------------
+# What the app measures about itself, shown on the Admin tab (microseconds):
+#   update   per kind of event: how long `step` took, i.e. the app's own work
+#   flush    how long the disk append took, per event that wrote
+#   boot     folding the log at start
+#   render   per SESSION, in its writer: how long `view` took, and the view
+#            cache's hits and misses (kept in the writer's cache, so it lags
+#            the render that shows it by one)
+#   memory   the runtime's ledgers (Sys.memInfo, Sys.memStats) and harts
+#   rtt      in the browser: from a click's send to the next frame received
+# A Stat is a count, a sum and a maximum; the profile is only projected to a
+# session on the Admin tab, so measuring costs the other registers nothing.
+noStat = { n = 0, sum = 0, max = 0, last = 0 }.
+note st us = { n = st.n + 1, sum = st.sum + us, max = imax st.max us, last = us }.
+avg st = case st.n == 0 of True -> 0 | False -> st.sum / st.n.
+noProf = { bootUs = 0, bootLines = 0, upd = Nil, flush = noStat, nev = 0 }.
+noteUpd kind us prof = { prof | upd = noteKind prof.upd kind us, nev = prof.nev + 1 }.
+noteKind Nil kind us = (kind, note noStat us) :: Nil.
+noteKind ((k, st) :: r) kind us | strEq k kind = (k, note st us) :: r.
+noteKind (e :: r) kind us = e :: noteKind r kind us.
+kindOf ev = case ev of
+    Live.Msg sid msg -> msgKind msg
+  | Live.Joined sid -> "join"
+  | Live.Left sid -> "leave"
+  | Live.Refused sid why -> "refused".
+msgKind msg = case msg of
+    Login a -> "login" | Logout -> "logout" | Quit -> "quit" | ClientState a -> "sync"
+  | Cash a -> "cash" | Card -> "card" | Void a -> "void" | Restock a -> "restock" | Admin a -> "admin" | Rebuild -> "rebuild"
+  | Dismiss -> "dismiss" | Theme -> "theme".
+statLine label st = "{S.padRight 9 " " label} n {S.padLeft 6 " " "{st.n}"}  avg {S.padLeft 7 " " "{avg st}"} us  max {S.padLeft 7 " " "{st.max}"} us  last {st.last} us".
+noSess = { sid = 0, cashier = "", cart = Nil, toast = "", role = "", con = Nil, tab = 1 }.
 mkProduct sku price stock name = { sku = sku, name = name, price = price, stock = stock, retired = 0 }.
 
 # the seed: a shop that has never been opened gets this, on the disk
@@ -258,12 +297,14 @@ commit m line = apply { m | pend = line :: m.pend, events = m.events + 1 } line.
 # gets the seed, written as its first lines
 boot path =
   m0 = { initModel | booted = Clock.now Unit };
+  t0 = Sys.timeUs Unit;
   m2 = replayed m0 (File.lines path);
+  t1 = Sys.timeUs Unit;
   m3 = case pCount m2.cat == 0 of
     True -> seed |> foldE (fn l mm -> commit mm l) m2
   | False -> m2;
-  _ = print "[pos1] log {path}: {m3.events} lines, {pCount m3.cat} products, {List.length m3.sales} sales, revenue {money m3.revenue}";
-  flush path { m3 | fsOn = 1 }.
+  _ = print "[pos1] log {path}: {m3.events} lines folded in {t1 - t0} us, {pCount m3.cat} products, {List.length m3.sales} sales, revenue {money m3.revenue}";
+  flush path { m3 | fsOn = 1, prof = { noProf | bootUs = t1 - t0, bootLines = m2.events } }.
 replayed m (Ok ls) = ls |> foldE (fn l mm -> apply { mm | events = mm.events + 1 } l) m.
 replayed m (Err e) = m.
 
@@ -310,8 +351,14 @@ withCart m sid cart =
 # ---- update ------------------------------------------------------------------------------
 
 update path ev m =
+  t0 = Sys.timeUs Unit;
   (m2, cs) = step path ev m;
-  (flush path m2, cs).
+  t1 = Sys.timeUs Unit;
+  wrote = not (List.isEmpty m2.pend);
+  m3 = flush path m2;
+  t2 = Sys.timeUs Unit;
+  prof = noteUpd (kindOf ev) (t1 - t0) m3.prof;
+  ({ m3 | prof = (case wrote of True -> { prof | flush = note prof.flush (t2 - t1) } | False -> prof) }, cs).
 step path ev m = case ev of
     Live.Msg sid msg -> pMsg path sid msg m
   | Live.Left sid -> (forget m sid, Nil)
@@ -319,30 +366,58 @@ step path ev m = case ev of
   | Live.Refused sid why -> (refuse m sid "refused: {why}", Nil).
 
 pMsg path sid msg m = case msg of
-    Login arg -> (login m sid arg, Nil)
-  | Logout -> (forget m sid, Nil)
+    Login arg -> signIn m sid (login m sid arg)
+  # signing out empties the page's cart too, so the next cashier starts clean
+  | Logout -> signOut m sid (sGet m.sess sid)
   | Quit -> (m, Live.Quit :: Nil)
+  | ClientState json -> mirror m sid json
   | other -> withUser path sid other m (sGet m.sess sid).
 
+# a PIN has done its work once it is checked: the page forgets it
+signIn m sid m2 = s = sGet m2.sess sid; (m2, case strEq s.cashier "" of True -> Nil | False -> Live.Emit sid "locals" (localsJson (("pin", "") :: Nil)) :: Nil).
+signOut m sid s = (forget m sid, Live.Emit sid "locals" (localsJson (("tender", "") :: ("tab", "1") :: zeros m s.cart)) :: Nil).
+
+# signing in keeps what the page already mirrored (its tab, its cart)
 login m sid arg =
   (name, pin) = splitBar arg;
+  s0 = sGet m.sess sid;
   case wordy name and wordy pin and pinOk m.staff name pin of
-    True -> sPut m { noSess | sid = sid, cashier = name }
+    True -> sPut m { s0 | cashier = name, toast = "", role = "", con = Nil }
   | False -> refuse m sid "unknown cashier or PIN".
+
+# ---- the mirror: the page's client state, as the server knows it --------------------
+# {"tab":"2","q_FW":"3","tender":"20",...}: every local is text.  The cart is
+# the quantities of the products that exist, each inside [0, stock]; a
+# quantity the page holds past that is put right in the page.
+mirror m sid json = case Json.parse json of
+    Err why -> (m, Nil)
+  | Ok v ->
+    s = sGet m.sess sid;
+    asked = live m.cat |> List.map (fn p -> (p, num (localOf v "q_{p.sku}")));
+    cart = rev (asked |> foldE (fn pq acc -> keepLine pq acc) Nil) Nil;
+    fixes = asked |> foldE (fn pq acc -> fixLine pq acc) Nil;
+    (sPut m { s | tab = num (localOf v "tab"), cart = cart },
+     case fixes of Nil -> Nil | fs -> Live.Emit sid "locals" (localsJson fs) :: Nil).
+clampQ p q = imax 0 (imin q (imin 999 p.stock)).
+keepLine (p, q) acc = case clampQ p q > 0 of True -> (p.sku, clampQ p q) :: acc | False -> acc.
+fixLine (p, q) acc = case clampQ p q == q of True -> acc | False -> ("q_{p.sku}", "{clampQ p q}") :: acc.
+localOf v name = Option.withDefault "" (Option.andThen Json.asString (Json.field name v)).
+localsJson kvs = Json.render (Json.object (kvs |> List.map (fn kv -> (case kv of (k, x) -> (k, Json.Text x))))).
+zeros m cart = cart |> List.map (fn l -> (case l of (k, q) -> ("q_{k}", "0"))).
+# a sale empties the cart: the page's copy of it as well
+sold m sid s m2 =
+  s2 = sGet m2.sess sid;
+  case List.isEmpty s2.cart and not (List.isEmpty s.cart) of
+    True -> (m2, Live.Emit sid "locals" (localsJson (("tender", "") :: zeros m s.cart)) :: Nil)
+  | False -> (m2, Nil).
 pinOk Nil name pin = False.
 pinOk ((nm, pn) :: r) name pin | strEq nm name = strEq pn pin.
 pinOk (e :: r) name pin = pinOk r name pin.
 
 withUser path sid msg m s | strEq s.cashier "" = (refuse m sid "sign in first", Nil).
 withUser path sid msg m s = case msg of
-    Add sku -> (addLine m sid s sku 1, Nil)
-  | Qty sku n -> (setQty m sid s (sku, "{n}"), Nil)
-  # the cart's own buttons: one more, one fewer (so their markup never
-  # carries the quantity, and a quantity edit is a delta, not a reshape)
-  | Inc sku -> (addLine m sid s sku 1, Nil)
-  | Dec sku -> (setQty m sid s (sku, "{imax 0 (qtyOf s.cart sku - 1)}"), Nil)
-  | Cash arg -> (checkout m sid s 0 (cents arg), Nil)
-  | Card -> (checkout m sid s 1 0, Nil)
+    Cash arg -> sold m sid s (checkout m sid s 0 (cents arg))
+  | Card -> sold m sid s (checkout m sid s 1 0)
   | Void n -> (voidSale m sid s n, Nil)
   | Restock arg -> (restock m sid s (splitBar arg), Nil)
   | Admin cmd -> (console path m sid s cmd, Nil)
@@ -356,39 +431,6 @@ withUser path sid msg m s = case msg of
 qtyOf Nil sku = 0.
 qtyOf ((k, q) :: r) sku | strEq k sku = q.
 qtyOf (l :: r) sku = qtyOf r sku.
-putQty cart sku 0 = dropLine cart sku.
-putQty cart sku n | qtyOf cart sku == 0 = cart + ((sku, n) :: Nil).
-putQty cart sku n = cart |> List.map (fn l -> setLine l sku n).
-dropLine Nil sku = Nil.
-dropLine ((k, q) :: r) sku | strEq k sku = dropLine r sku.
-dropLine (l :: r) sku = l :: dropLine r sku.
-setLine (k, q) sku n | strEq k sku = (k, n).
-setLine l sku n = l.
-
-addLine m sid s sku d =
-  p = findP m.cat sku;
-  have = qtyOf s.cart sku;
-  case strlen p.sku == 0 or p.retired == 1 of
-    True -> refuse m sid "no such product"
-  | False -> (case have == 0 and List.length s.cart >= 40 of
-      True -> refuse m sid "the cart is full (40 lines)"
-    | False -> (case have + d > p.stock of
-        True -> refuse m sid (case p.stock == 0 of True -> "{p.name}: sold out" | False -> "{p.name}: only {p.stock} left")
-      | False -> say (withCart m sid (putQty s.cart sku (have + d))) sid "")).
-
-# an absolute quantity, clamped to [0, stock] -- and it says so
-setQty m sid s (sku, ns) =
-  p = findP m.cat sku;
-  n = num ns;
-  case strlen p.sku == 0 of
-    True -> refuse m sid "no such product"
-  | False ->
-    c = imin n (imin 999 p.stock);
-    m2 = withCart m sid (putQty s.cart sku c);
-    case c < n of
-      True -> refuse m2 sid "{p.name}: only {p.stock} left, set to {c}"
-    | False -> say m2 sid "".
-
 subtotal m cart = cart |> foldE (fn l acc -> acc + lineTotal m l) 0.
 lineTotal m (k, q) = q * priceOf m.cat k.
 taxOn m sub = (sub * m.tax + 5000) / 10000.
@@ -483,24 +525,107 @@ setV m s (k :: sku :: c :: x) | strEq k "price" and hasP m.cat sku = (commit m "
 setV m s (k :: sku :: c :: x) | strEq k "price" = (m, "no such SKU").
 setV m s r = (m, "set tax N|lowat N|price SKU CENTS").
 
-subs m = Nil.
+# every page mirrors its client state, twice a second when it changed
+subs m = Live.SyncClientState 500 (ClientState "") :: Nil.
+
+# ---- what a session sees (Live.serveProjected) --------------------------------------------------
+# The register hands each session's writer THIS, not the model: its own
+# session, the catalogue and the numbers on the page, and the newest 50
+# receipts.  A writer whose projection did not change renders nothing and
+# sends nothing, so an event at one register costs the others nothing.
+# The field names are the model's, so the view code reads `v.cat`, `v.tax`
+# ... exactly as it read the model.
+
+project sid m =
+  s0 = sGet m.sess sid;
+  onAdmin = s0.tab == 4;
+  # of the session, only what is DRAWN: its cart and its tab are the page's own,
+  # so a mirror arriving changes nothing here and the writer stays quiet
+  { s = { cashier = s0.cashier, toast = s0.toast, role = s0.role, con = s0.con }, cat = m.cat, tax = m.tax, lowAt = m.lowAt, revenue = m.revenue,
+    nsales = List.length m.sales, sales = takeN m.sales 50, theme = m.theme, fsOn = m.fsOn,
+    events = m.events, booted = m.booted, online = List.length m.sess,
+    # the profile changes on every event: a session not looking at it must not re-render for it
+    prof = (case onAdmin of True -> m.prof | False -> noProf),
+    mem = (case onAdmin of True -> Sys.memInfo 0 | False -> Nil),
+    grows = (case onAdmin of True -> Sys.memStats 0 | False -> (0, 0)),
+    harts = Sys.harts Unit }.
 
 # ---- view: per session ------------------------------------------------------------------------
+# All four tabs are in the page and the PAGE shows one (client state), so a
+# tab switch is instant and sends nothing.  Product cards and receipt rows are
+# remembered per writer (std/viewcache): a card is a function of its product
+# and the low-water mark, a row of its receipt, so they render once each and
+# again only when that changes.
 
-view sid m =
-  s = sGet m.sess sid;
-  root = case m.theme == 1 of True -> "col gap-4 p-4 page" | False -> "col gap-4 p-4 page day";
-  case strEq s.cashier "" of
-    True -> El "div" [Cls root, G.Local "name" "", G.Local "pin" ""] [loginView s]
-  | False -> El "div" [Cls root, G.Local "tab" "1", G.Local "open" "0", G.Local "tender" "", G.Local "delta" "10", G.Local "rsku" "", G.Local "cmd" ""]
-               (nav m s :: toasts s :: body m s).
+rootCls v = case v.theme == 1 of True -> "col gap-4 p-4 page app" | False -> "col gap-4 p-4 page app day".
+locals = G.locals @Client { tab = "1", open = "0", tender = "", delta = "10", rsku = "", cmd = "", name = "", pin = "" }.
+
+Product = { sku : String, name : String, price : Int, stock : Int, retired : Int }.
+CardIn = { p : Product, lowAt : Int }.
+renderCard : CardIn -> G.Node .
+renderCard i = productCard i.lowAt i.p.
+
+# the writer's own statistics: renders timed, cache hits and misses summed
+noRender = { st = noStat, hits = 0, misses = 0, cards = 0, rows = 0 }.
+view sid v old = case old of (cardsOld, rowsOld, rs) ->
+  s = v.s;
+  t0 = Sys.timeUs Unit;
+  (case strEq s.cashier "" of
+    True -> (G.render (El "div" (Cls (rootCls v) :: locals) [loginView s]), old)
+  | False ->
+    (case VC.many (fn i -> i.p.sku) renderCard (List.map (fn p -> { p = p, lowAt = v.lowAt }) (live v.cat)) (VC.begin "pos1-card-v1" verify cardsOld) of (cards, cc) ->
+    (case VC.many (fn x -> "{x.n}") receiptRow v.sales (VC.begin "pos1-receipt-v1" verify rowsOld) of (rows, rc) ->
+      out = G.render (El "div" (Cls (rootCls v) :: locals) (nav v s :: toasts s :: body v s cards rows rs));
+      (ch, cm, cn) = VC.stats cc;
+      (rh, rm, rn) = VC.stats rc;
+      rs2 = { st = note rs.st (Sys.timeUs Unit - t0), hits = rs.hits + ch + rh, misses = rs.misses + cm + rm, cards = cn, rows = rn };
+      (out, (VC.finish cc, VC.finish rc, rs2))))).
+verify = Program.envOr "0" "POS1_VIEW_VERIFY" == "1".
+
+# the same page with nothing remembered: the stylesheet's sample, and the check
+# that the cached page is the fresh one
+viewFresh v = El "div" (Cls (rootCls v) :: locals)
+  (nav v v.s :: toasts v.s :: body v v.s (List.map renderCard (List.map (fn p -> { p = p, lowAt = v.lowAt }) (live v.cat))) (List.map receiptRow v.sales) noRender).
 
 # The stylesheet is a function of the tree -- and the page is served
 # from the signed-out view, so the rules the register needs would never
 # be emitted.  The sheet is therefore built over a SAMPLE tree that
 # shows everything: a signed-in session with a cart, receipts with a
 # void, the console -- every class the app can ever use appears once.
-cssAll m = G.cssFor (El "div" Nil (view 1 sampleModel :: Nil)).
+cssAll v = strcat (G.cssFor (El "div" Nil (viewFresh (project 1 sampleModel) :: loginView noSess :: Nil))) cssApp.
+# The layout rule: the page is the viewport, every region has its size from
+# the viewport, and what does not fit SCROLLS inside its region.  Nothing is
+# sized by its contents, so adding to the cart, opening a receipt's lines
+# or a long product name moves nothing else.
+cssApp = "
+.app\{height:100vh;height:100dvh;width:100vw;max-width:100vw;overflow:hidden}
+body\{overflow:hidden}
+.nav\{flex:none}
+.tabbody\{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+.tabbody>*\{flex:1 1 auto;min-height:0}
+.fill\{flex:1 1 auto;min-height:0}
+.list\{flex:1 1 auto;min-height:0;overflow:auto}
+.register\{align-items:stretch}
+.products\{align-content:flex-start;overflow:auto;min-height:0}
+.pcard\{width:180px;height:140px;flex:none;justify-content:space-between}
+.w-cart\{display:flex;flex-direction:column;min-height:0}
+.w-cart .scroll\{flex:1 1 auto;min-height:0;max-height:none}
+.tr\{min-height:46px;flex:none}
+.clip\{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.w-badge\{width:56px;text-align:center;flex:none}
+.act\{width:72px;flex:none;display:flex;justify-content:flex-end}
+.lines\{max-height:180px;overflow:auto;flex:none}
+.console\{flex:1 1 auto;min-height:0;overflow:auto}
+.profile\{flex:none;max-height:38vh;overflow:auto}
+.pre:has(>[data-slot]:empty)\{display:block}
+.toast\{min-height:0}
+@media (max-width:760px)\{
+  .register\{flex-direction:column}
+  .products\{flex:1 1 auto}
+  .w-cart\{width:100%;flex:0 0 46vh}
+  .pcard\{width:calc(50% - 4px)}
+}
+".
 sampleModel =
   m0 = seed |> foldE (fn l mm -> apply mm l) initModel;
   m1 = apply (apply m0 "sale 1 ana 0 0 0 1650 150 FW=3=500") "sale 2 ben 0 1 550 550 50 LB=1=400";
@@ -511,23 +636,23 @@ loginView s =
   El "div" [Cls "col gap-3 p-6 panel round mx-auto mt-4 w-full", Att "style" "max-width:420px"]
     [ El "div" [Cls "text-xs upper dim"] [Txt "point of sale"]
     , El "div" [Cls "text-2xl bold"] [Txt "Sign in"]
-    , Inp [Cls "field w-full", G.Input "name", Att "placeholder" "cashier", Att "maxlength" "16"]
-    , Inp [Cls "field w-full", G.Input "pin", G.OnEnter (G.wireOpen codec (Login "")) "name,pin", Att "placeholder" "PIN", Att "type" "password", Att "maxlength" "16"]
+    , Inp [Cls "field w-full", G.bind @Client.name, Att "placeholder" "cashier", Att "maxlength" "16"]
+    , Inp [Cls "field w-full", G.bind @Client.pin, G.OnEnter (G.wireOpen codec (Login "")) "name,pin", Att "placeholder" "PIN", Att "type" "password", Att "maxlength" "16"]
     , El "button" [Cls "btn round px-3 py-2 glow", G.OnClick (G.wireOpen codec (Login "")) "name,pin"] [Txt "open register"]
     , El "div" [Cls "warm text-sm"] [Dyn s.toast] ].
 
 nav m s =
-  El "div" [Cls "row between center gap-2 wrap"]
-    [ El "div" [Cls "row gap-2 center"]
+  El "div" [Cls "row between center gap-2 wrap nav"]
+    [ El "div" [Cls "row gap-2 center wrap"]
         [ El "div" [Cls "bold"] [Txt "POS"], El "div" [Cls "dim text-xs"] [Txt "v1"]
         , tab "1" "Register", tab "2" "Receipts", tab "3" "Inventory", tab "4" "Admin" ]
-    , El "div" [Cls "row gap-2 center dim text-sm"]
+    , El "div" [Cls "row gap-2 center dim text-sm wrap"]
         [ El "span" [Cls (case m.fsOn == 1 of True -> "badge ok" | False -> "badge warn")] [Txt (case m.fsOn == 1 of True -> "disk" | False -> "no disk")]
         , El "span" [Att "id" "lv-link", Cls "badge"] [Txt "live"]
         , Txt "cashier ", El "b" [Cls "ink"] [Dyn s.cashier]
         , El "button" [Cls "btn pill px-3 py-2", G.send codec Theme] [Txt (case m.theme == 1 of True -> "day" | False -> "night")]
         , El "button" [Cls "btn pill px-3 py-2", G.send codec Logout] [Txt "sign out"] ] ].
-tab n label = El "button" [Cls "btn pill px-3 py-2", G.OnSet "tab" n, Att "data-on" "tab:{n}"] [Txt label].
+tab n label = El "button" [Cls "btn pill px-3 py-2", G.setTo @Client.tab n, Att "data-on" "tab:{n}"] [Txt label].
 
 # four toast slots, one role each; only the live one has text (a role
 # change is then a delta, not a reshape); an empty toast is not shown
@@ -540,85 +665,88 @@ toasts s =
 roleText s role | strEq s.role role = s.toast.
 roleText s role = "".
 
-body m s =
-  El "div" [G.ShowIf "tab:1"] [register m s] ::
-  El "div" [G.ShowIf "tab:2"] [receipts m] ::
-  El "div" [G.ShowIf "tab:3"] [inventory m] ::
-  El "div" [G.ShowIf "tab:4"] [admin m s] :: Nil.
+body v s cards rows rs =
+  El "div" [Cls "tabbody", G.showIf @Client.tab "1"] [register v cards] ::
+  El "div" [Cls "tabbody", G.showIf @Client.tab "2"] [receipts v rows] ::
+  El "div" [Cls "tabbody", G.showIf @Client.tab "3"] [inventory v] ::
+  El "div" [Cls "tabbody", G.showIf @Client.tab "4"] [admin v s rs] :: Nil.
 
 # ---- register ------------------------------------------------------------------------------------
 
-register m s =
-  El "div" [Cls "row gap-4"]
-    [ El "div" [Cls "row wrap gap-2 grow"] (live m.cat |> List.map (fn p -> productCard m p))
-    , cartPanel m s ].
-productCard m p =
-  El "div" [Cls "col gap-2 card round p-3", Att "style" "width:180px"]
+# The register is the PAGE's: adding a flat white changes a quantity the page
+# holds (one local per product, q_<sku>), inside [0, stock] as the button says.
+# The cart panel has a line per product, shown while its quantity is not 0; the
+# line totals, the subtotal, the tax and the total are computed in the page
+# from those quantities (cartScript below).  None of it depends on a session,
+# so nothing here is rendered again until the catalogue or the tax changes.
+register v cards =
+  El "div" [Cls "row gap-4 register"]
+    [ El "div" [Cls "row wrap gap-2 grow products"] cards
+    , cartPanel v ].
+qLocal p = "q_{p.sku}".
+productCard lowAt p =
+  El "div" [Cls "col gap-2 card round p-3 pcard"]
     [ El "div" [Cls "bold"] [Txt p.name]
     , El "div" [Cls "row between center"]
         [ El "div" [Cls "tabular"] [Txt "$", Dyn (money p.price)]
-        , stockBadge m p ]
-    , El "button" [Cls "btn pill px-3 py-2", G.send codec (Add p.sku)] [Txt "add"] ].
+        , stockBadge lowAt p ]
+    , El "button" [Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "+1", Att "data-min" "0", Att "data-max" "{imin 999 p.stock}"] [Txt "add"] ].
 # the badge takes a role: sold out is danger, at or under the threshold warning
-stockBadge m p =
-  El "span" [Cls "badge", Att "data-role" "stock"] [Dyn (stockText m p)].
-stockText m p | p.stock == 0 = "sold out".
-stockText m p | p.stock <= m.lowAt = "low: {p.stock}".
-stockText m p = "{p.stock} in stock".
+stockBadge lowAt p =
+  El "span" [Cls "badge", Att "data-role" "stock"] [Dyn (stockText lowAt p)].
+stockText lowAt p | p.stock == 0 = "sold out".
+stockText lowAt p | p.stock <= lowAt = "low: {p.stock}".
+stockText lowAt p = "{p.stock} in stock".
 
-cartPanel m s =
-  sub = subtotal m s.cart;
-  tx = taxOn m sub;
-  El "div" [Cls "col gap-2 panel round p-4 w-cart"]
+cartPanel m =
+  ps = live m.cat;
+  El "div" (Cls "col gap-2 panel round p-4 w-cart" :: Att "data-tax" "{m.tax}" :: (ps |> List.map (fn p -> G.Local (qLocal p) "0")))
     [ El "div" [Cls "text-xs upper dim"] [Txt "cart"]
-    , El "div" [Cls "col gap-1 scroll"] (cartLines m s.cart)
+    , El "div" [Cls "col gap-1 scroll"] (El "div" [Cls "dim text-sm", Att "id" "cart-empty"] [Txt "nothing yet"] :: (ps |> List.map (fn p -> cartLine p)))
     , El "div" [Cls "rule"] []
-    , totalRow "subtotal" (money sub)
-    , totalRow "tax {m.tax / 100}.{pad2 (m.tax % 100)}%" (money tx)
+    , totalRow "subtotal" "cart-sub"
+    , totalRow "tax {m.tax / 100}.{pad2 (m.tax % 100)}%" "cart-tax"
     , El "div" [Cls "row between center"]
         [ El "div" [Cls "text-xs upper dim"] [Txt "total"]
-        , El "div" [Cls "text-2xl bold tabular"] [Txt "$", Dyn (money (sub + tx))] ]
+        , El "div" [Cls "text-2xl bold tabular", Att "id" "cart-total"] [Txt "$0.00"] ]
     , El "div" [Cls "row gap-2 center"]
-        [ Inp [Cls "field grow", G.Input "tender", G.OnEnter (G.wireOpen codec (Cash "")) "tender", Att "placeholder" "cash tendered"]
-        , El "button" [Cls "btn round px-3 py-2 glow", G.OnClick (G.wireOpen codec (Cash "")) "tender"] [Txt "cash"]
+        [ Inp [Cls "field grow", G.bind @Client.tender, G.enterWith codec (Cash "") @Client.tender, Att "placeholder" "cash tendered"]
+        , El "button" [Cls "btn round px-3 py-2 glow", G.sendWith codec (Cash "") @Client.tender] [Txt "cash"]
         , El "button" [Cls "btn round px-3 py-2", G.send codec Card] [Txt "card"] ] ].
-totalRow label v =
-  El "div" [Cls "row between center dim text-sm"] [ Txt label, El "div" [Cls "tabular"] [Txt "$", Dyn v] ].
-cartLines m Nil = El "div" [Cls "dim text-sm"] [Txt "nothing yet"] :: Nil.
-cartLines m cart = cart |> List.map (fn l -> cartLine m l).
-cartLine m (sku, q) =
-  p = findP m.cat sku;
-  El "div" [Cls "row between center gap-2 tr"]
-    [ El "div" [Cls "grow"] [Txt p.name]
-    , El "button" [Cls "btn pill px-3 py-2", G.send codec (Dec sku)] [Txt "-"]
-    , El "div" [Cls "tabular w-40 right"] [Dyn "{q}"]
-    , El "button" [Cls "btn pill px-3 py-2", G.send codec (Inc sku)] [Txt "+"]
-    , El "div" [Cls "tabular w-24 right"] [Txt "$", Dyn (money (q * p.price))]
-    , El "button" [Cls "btn pill px-3 py-2", G.send codec (Qty sku 0)] [Txt "x"] ].
+totalRow label slot =
+  El "div" [Cls "row between center dim text-sm"] [ Txt label, El "div" [Cls "tabular", Att "id" slot] [Txt "$0.00"] ].
+cartLine p =
+  El "div" [Cls "row between center gap-2 tr", G.ShowIf (qLocal p), Att "data-line" p.sku, Att "data-price" "{p.price}"]
+    [ El "div" [Cls "grow clip"] [Txt p.name]
+    , El "button" [Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "-1", Att "data-min" "0"] [Txt "-"]
+    , El "div" [Cls "tabular w-40 right"] [G.LTxt (qLocal p)]
+    , El "button" [Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "+1", Att "data-min" "0", Att "data-max" "{imin 999 p.stock}"] [Txt "+"]
+    , El "div" [Cls "tabular w-24 right", Att "data-line-total" p.sku] [Txt "$0.00"]
+    , El "button" [Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "0"] [Txt "x"] ].
 
 # ---- receipts ---------------------------------------------------------------------------------------
 
-receipts m =
-  El "div" [Cls "col gap-3"]
+receipts v rows =
+  El "div" [Cls "col gap-3 fill"]
     [ El "div" [Cls "row gap-4 center"]
-        [ El "div" [Cls "col"] [ El "div" [Cls "text-xs upper dim"] [Txt "receipts"], El "div" [Cls "text-2xl bold tabular"] [Dyn "{List.length m.sales}"] ]
-        , El "div" [Cls "col"] [ El "div" [Cls "text-xs upper dim"] [Txt "revenue"], El "div" [Cls "text-2xl bold tabular"] [Txt "$", Dyn (money m.revenue)] ]
+        [ El "div" [Cls "col"] [ El "div" [Cls "text-xs upper dim"] [Txt "receipts"], El "div" [Cls "text-2xl bold tabular"] [Dyn "{v.nsales}"] ]
+        , El "div" [Cls "col"] [ El "div" [Cls "text-xs upper dim"] [Txt "revenue"], El "div" [Cls "text-2xl bold tabular"] [Txt "$", Dyn (money v.revenue)] ]
         , El "div" [Cls "dim text-sm"] [Txt "newest 50 shown"] ]
-    , El "div" [Cls "col"] (takeN m.sales 50 |> List.map (fn x -> receiptRow x)) ].
+    , El "div" [Cls "col list"] rows ].
 receiptRow x =
   El "div" [Cls "col tr"]
     [ El "div" [Cls "row gap-3 center"]
         [ El "div" [Cls "bold tabular w-24"] [Txt "#{x.n}"]
         , El "div" [Cls "dim text-sm w-24"] [Txt x.cashier]
-        , El "div" [Cls "grow text-sm"] [Txt (summary x.lines)]
+        , El "div" [Cls "grow text-sm clip"] [Txt (summary x.lines)]
         , El "div" [Cls "tabular w-24 right"] [Txt "$", Txt (money x.total)]
         , El "div" [Cls "dim text-xs"] [Txt (fmtTime x.at)]
-        , El "span" [Cls "badge"] [Txt (case x.pay == 0 of True -> "cash" | False -> "card")]
-        , El "span" [Cls (case x.voided == 1 of True -> "badge bad" | False -> "badge ok")] [Txt (case x.voided == 1 of True -> "void" | False -> "paid")]
-        , El "button" [Cls "btn pill px-3 py-2", G.OnSet "open" "{x.n}", Att "data-on" "open:{x.n}"] [Txt "lines"]
-        , voidButton x ]
-    , El "div" [G.ShowIf "open:{x.n}", Cls "col text-sm dim p-2"] (x.lines |> List.map (fn l -> lineRow l) |> withVoid x) ].
-voidButton x | x.voided == 1 = El "div" [Cls "dim text-xs"] [Txt "by {x.voidBy}"].
+        , El "span" [Cls "badge w-badge"] [Txt (case x.pay == 0 of True -> "cash" | False -> "card")]
+        , El "span" [Cls (case x.voided == 1 of True -> "badge bad w-badge" | False -> "badge ok w-badge")] [Txt (case x.voided == 1 of True -> "void" | False -> "paid")]
+        , El "button" [Cls "btn pill px-3 py-2", G.setTo @Client.open "{x.n}", Att "data-on" "open:{x.n}"] [Txt "lines"]
+        , El "div" [Cls "act"] [voidButton x] ]
+    , El "div" [G.showIf @Client.open "{x.n}", Cls "col text-sm dim p-2 lines"] (x.lines |> List.map (fn l -> lineRow l) |> withVoid x) ].
+voidButton x | x.voided == 1 = El "div" [Cls "dim text-xs clip"] [Txt "by {x.voidBy}"].
 voidButton x = El "button" [Cls "btn pill px-3 py-2", G.send codec (Void x.n)] [Txt "void"].
 lineRow (sku, q, pr, nm) = El "div" [Cls "row between"] [ Txt "{q} x {nm}", El "div" [Cls "tabular"] [Txt (money (q * pr))] ].
 withVoid x rows | x.voided == 1 = rows + (El "div" [Cls "warm"] [Txt "void by {x.voidBy} at {fmtTime x.voidAt}"] :: Nil).
@@ -629,36 +757,106 @@ lineWord (sku, q, pr, nm) = "{q}x {nm}".
 # ---- inventory --------------------------------------------------------------------------------------
 
 inventory m =
-  El "div" [Cls "col gap-3"]
+  El "div" [Cls "col gap-3 fill"]
     [ El "div" [Cls "row gap-2 center"]
         [ El "div" [Cls "text-xs upper dim"] [Txt "restock by"]
-        , Inp [Cls "field w-24", G.Input "delta", Att "placeholder" "10"] ]
-    , El "div" [Cls "col"] (live m.cat |> List.map (fn p -> invRow m p)) ].
+        , Inp [Cls "field w-24", G.bind @Client.delta, Att "placeholder" "10"] ]
+    , El "div" [Cls "col list"] (live m.cat |> List.map (fn p -> invRow m p)) ].
 invRow m p =
   El "div" [Cls "row gap-3 center tr"]
     [ El "div" [Cls "grow"] [Txt p.name]
     , El "div" [Cls "dim text-xs mono w-24"] [Txt p.sku]
     , El "div" [Cls "tabular w-24 right"] [Txt "$", Dyn (money p.price)]
     , El "div" [Cls "tabular w-24 right"] [Dyn "{p.stock}"]
-    , stockBadge m p
+    , stockBadge m.lowAt p
     , El "button" [Cls "btn pill px-3 py-2", G.OnBoth (G.wireOpen codec (Restock "")) "rsku,delta" "rsku" p.sku] [Txt "restock"] ].
 
 # ---- admin: the data console ---------------------------------------------------------------------------
 
-admin m s =
-  El "div" [Cls "col gap-3"]
+admin m s rs =
+  El "div" [Cls "col gap-3 fill"]
     [ El "div" [Cls "row gap-2 wrap"]
         [ watch "tax" "{m.tax / 100}.{pad2 (m.tax % 100)}%", watch "low at" "{m.lowAt}", watch "products" "{pCount m.cat}"
-        , watch "sales" "{List.length m.sales}", watch "revenue" (money m.revenue), watch "log lines" "{m.events}"
-        , watch "since" (fmtTime m.booted) ]
+        , watch "sales" "{m.nsales}", watch "revenue" (money m.revenue), watch "log lines" "{m.events}"
+        , watch "since" (fmtTime m.booted), watch "online" "{m.online}" ]
     , El "div" [Cls "row gap-2 center"]
-        [ Inp [Cls "field grow mono", G.Input "cmd", G.OnEnter (G.wireOpen codec (Admin "")) "cmd", Att "placeholder" "get tax | set price FW 550 | add SKU 450 10 name | rebuild | help"]
-        , El "button" [Cls "btn round px-3 py-2", G.OnClick (G.wireOpen codec (Admin "")) "cmd"] [Txt "run"]
+        [ Inp [Cls "field grow mono", G.bind @Client.cmd, G.enterWith codec (Admin "") @Client.cmd, Att "placeholder" "get tax | set price FW 550 | add SKU 450 10 name | rebuild | help"]
+        , El "button" [Cls "btn round px-3 py-2", G.sendWith codec (Admin "") @Client.cmd] [Txt "run"]
         , El "button" [Cls "btn round px-3 py-2", G.send codec Rebuild] [Txt "rebuild stock"] ]
-    , El "div" [Cls "mono text-sm pre card round p-3"] [Dyn (S.join "\n" (rev s.con Nil))] ].
+    , El "div" [Cls "mono text-sm pre card round p-3 console"] [Dyn (S.join "\n" (rev s.con Nil))]
+    , El "div" [Cls "text-xs upper dim"] [Txt "profile"]
+    , El "div" [Cls "mono text-xs pre card round p-3 profile"] [Dyn (profileText m rs)]
+    , El "div" [Cls "row gap-2 center dim text-xs"] [ Txt "browser round trip: ", El "span" [Att "id" "pos-rtt"] [Txt "measuring"] ] ].
+
+profileText v rs =
+  S.join "\n"
+    ( "update, per kind of event ({v.prof.nev} events since boot)"
+      :: List.map (fn e -> (case e of (k, st) -> "  {statLine k st}")) v.prof.upd
+      + ( "disk"
+       :: "  {statLine "append" v.prof.flush}"
+       :: "  boot: {v.prof.bootLines} lines folded in {v.prof.bootUs} us"
+       :: "this session's writer"
+       :: "  {statLine "render" rs.st}"
+       :: "  view cache: {rs.hits} hits, {rs.misses} misses; {rs.cards} cards and {rs.rows} receipt rows remembered"
+       :: "runtime"
+       :: memLines v.mem v.grows
+       + ("  harts {v.harts}, sessions online {v.online}" :: Nil))).
+memLines mem (grows, mib) = case mem of
+    arena :: free :: reqs :: waits :: direct :: frees :: denied :: inl :: x ->
+      "  arena {arena / 1024} MiB reserved, {(arena - free) / 1024} MiB in use, grown {grows} times ({mib} MiB)"
+      :: "  memory actor: {reqs} requests, {waits} waits, {direct} direct, {inl} inline, {frees} frees, {denied} denied" :: Nil
+  | x -> "  memory: not sampled" :: Nil.
 watch label v =
   El "div" [Cls "col card round p-2", Att "style" "min-width:120px"]
     [ El "div" [Cls "text-xs upper dim"] [Txt label], El "div" [Cls "tabular bold"] [Dyn v] ].
+
+# the page's script: the client, plus the round trip it sees -- from a send to
+# the next frame that arrives -- written into the Admin tab's slot when there is one
+script = strcat rttScript (strcat cartScript (LJ.src 0)).
+# the cart's arithmetic, in the page: after every paint of the locals, each
+# line's total and the cart's, from the quantities the page holds and the
+# prices and the tax the server drew (cents, the server's own rounding)
+cartScript = "
+(function () \{
+  function money(c) \{ return '$' + Math.floor(c / 100) + '.' + String(c % 100).padStart(2, '0'); }
+  function put(id, text) \{ var el = document.getElementById(id); if (el) el.textContent = text; }
+  document.addEventListener('live:locals', function (e) \{
+    var L = e.detail, panel = document.querySelector('[data-tax]'), sub = 0, any = false;
+    if (!panel) return;
+    document.querySelectorAll('[data-line]').forEach(function (row) \{
+      var q = +L['q_' + row.getAttribute('data-line')] || 0, line = q * (+row.getAttribute('data-price'));
+      var t = row.querySelector('[data-line-total]');
+      if (t) t.textContent = money(line);
+      sub += line; if (q > 0) any = true;
+    });
+    var tax = Math.floor((sub * (+panel.getAttribute('data-tax')) + 5000) / 10000);
+    put('cart-sub', money(sub)); put('cart-tax', money(tax)); put('cart-total', money(sub + tax));
+    var empty = document.getElementById('cart-empty');
+    if (empty) empty.style.display = any ? 'none' : '';
+  });
+})();
+".
+# installed BEFORE the client, which opens its socket as soon as it runs
+rttScript = "
+(function () \{
+  var sent = 0, last = 0, n = 0, sum = 0, max = 0, recent = [];
+  var S = WebSocket.prototype.send;
+  WebSocket.prototype.send = function (d) \{ sent = performance.now(); return S.call(this, d); };
+  var d = Object.getOwnPropertyDescriptor(WebSocket.prototype, 'onmessage');
+  Object.defineProperty(WebSocket.prototype, 'onmessage', \{ get: d.get, set: function (f) \{
+    d.set.call(this, function (e) \{
+      if (sent) \{ last = performance.now() - sent; sent = 0; n++; sum += last; if (last > max) max = last; recent.push(last); if (recent.length > 32) recent.shift(); }
+      return f.call(this, e);
+    });
+  } });
+  setInterval(function () \{
+    var el = document.getElementById('pos-rtt');
+    var sorted = recent.slice().sort(function (a, b) \{ return a - b; });
+    if (el) el.textContent = n ? ('last ' + last.toFixed(1) + ' ms, median of the last ' + sorted.length + ' ' + sorted[sorted.length >> 1].toFixed(1) + ' ms, avg ' + (sum / n).toFixed(1) + ' ms, max ' + max.toFixed(1) + ' ms, over ' + n
+                                  + ' (a tab the browser pauses or throttles inflates this; the server side is above)') : 'no round trips yet';
+  }, 500);
+})();
+".
 
 # ---- main ---------------------------------------------------------------------------------------------
 
@@ -673,7 +871,8 @@ main = case Config.load { defaults = Json.object (("port", Json.Integer 6710) ::
       # of the model (fields = Nil, no journal), it is there because the driver
       # wants one
       cfg = { address = address, port = port, title = "POS v1", store = "{store}.kvlog", journal = False,
-              script = LJ.src 0, watch = Nil, rebuild = Nil, restart = Nil };
-      _ = Live.serve cfg { init = boot store, update = update store, subs = subs, fields = Nil, codec = codec,
-                           view = (fn sid m -> G.render (view sid m)), css = cssAll };
+              script = script, watch = Nil, rebuild = Nil, restart = Nil };
+      _ = Live.serveProjected cfg { init = boot store, update = update store, subs = subs, fields = Nil, codec = codec,
+                                    project = project, same = (fn a b -> a == b),
+                                    view = view, cache = (VC.empty Unit, VC.empty Unit, noRender), css = cssAll };
       0.

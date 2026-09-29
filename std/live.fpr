@@ -82,7 +82,19 @@ Cmd msg = Type (After Int msg | Run (Unit -> msg) | Navigate Int String | Emit I
 # an HTTP request as a command: the reply (or why there was none) becomes a message
 http : { method : String, url : String, headers : List (String, String), body : String } -> (Result { status : Int, headers : List (String, String), body : String } String -> msg) -> Cmd msg .
 http req toMsg = Run (fn u -> toMsg (H.request req)).
-Sub msg = Type (Every Int msg).
+# Every ms msg             deliver msg every ms, while the model asks for it
+# SyncClientState ms msg   MIRROR each session's client state (its locals: View.locals,
+#                          View.Local) to the server.  The page sends `msg` with its
+#                          LAST field filled by the JSON object of its locals -- every
+#                          ms when they changed, and just before any other message it
+#                          sends, so by the time an event reaches `update` the mirror
+#                          the app keeps is what the page showed.  Nothing is drawn and
+#                          nothing waits on it: what happens in the page (a tab, a
+#                          quantity) stays in the page, and the server still knows.
+#                          A local bound to a password input is never mirrored.  Read
+#                          when a session joins.  The server sets locals with
+#                          `Emit sid "locals" json`.
+Sub msg = Type (Every Int msg | SyncClientState Int msg).
 
 Policy = Type (Always | AtMostEvery Int).
 
@@ -306,6 +318,8 @@ handle me from q st = case st of Rs cfg app model sessions nextSid db saved tick
         # messages from one sender arrive in order, so it is ahead of the
         # broadcast below (forwarded, a Show could overtake it)
         _ = A.sendSure me writer (Welcome nextSid (app.project nextSid model));
+        # ...and, in order behind it, how this page is to mirror its client state
+        _ = (case syncFrame app.codec (app.subs model) of O.Some text -> _ = A.sendSure me writer (Push text); Unit | O.None -> Unit);
         _ = A.sendSure me from (Welcome nextSid Unit);
         advance me (Joined nextSid) (Rs cfg app model (M.insert nextSid writer sessions) (nextSid + 1) db saved tickers version told)
     | Leave sid -> advance me (Left sid) (Rs cfg app model (M.remove sid sessions) nextSid db saved tickers version (case M.get sid sessions of O.Some w -> M.remove w told | O.None -> told))
@@ -480,7 +494,19 @@ keyOf codec msg = J.render (J.fromWire (codec.enc msg)).
 
 wanted codec ms key subs = case subs of
     Nil -> O.None
-  | Every m msg :: r -> (if m == ms and keyOf codec msg == key then O.Some msg else wanted codec ms key r).
+  | Every m msg :: r -> (if m == ms and keyOf codec msg == key then O.Some msg else wanted codec ms key r)
+  | SyncClientState _ _ :: r -> wanted codec ms key r.
+
+# the frame that tells a page to mirror its client state: how often, and the
+# message to send (without its last field, which the page fills)
+syncFrame codec subs = case subs of
+    Nil -> O.None
+  | SyncClientState ms msg :: _ ->
+      O.Some (J.render (J.object (("sync", J.object (("every", J.Integer ms) :: ("msg", J.Text (openWire codec msg)) :: Nil)) :: Nil)))
+  | _ :: r -> syncFrame codec r.
+openWire codec msg = strcat "+" (J.render (J.fromWire (case codec.enc msg of WCon n as -> WCon n (butLast as) | w -> w))).
+butLast : unsafe List a -> List a .
+butLast xs = case xs of Nil -> Nil | x :: Nil -> Nil | x :: r -> x :: butLast r.
 
 startTickers : Int -> Rs -> Rs .
 startTickers me st = case st of Rs cfg app model sessions nextSid db saved tickers version told ->
@@ -488,7 +514,8 @@ startTickers me st = case st of Rs cfg app model sessions nextSid db saved ticke
 startGo reg codec subs running = case subs of
     Nil -> running
   | Every ms msg :: r -> (if has ms (keyOf codec msg) running then startGo reg codec r running
-      else _ = spawn (ticker reg ms (keyOf codec msg)); startGo reg codec r ((ms, keyOf codec msg) :: running)).
+      else _ = spawn (ticker reg ms (keyOf codec msg)); startGo reg codec r ((ms, keyOf codec msg) :: running))
+  | SyncClientState _ _ :: r -> startGo reg codec r running.
 has : unsafe Int -> String -> List (Int, String) -> Bool .
 has ms name xs = case xs of Nil -> False | (m, n) :: r -> (if m == ms and n == name then True else has ms name r).
 without : unsafe Int -> String -> List (Int, String) -> List (Int, String) .

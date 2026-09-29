@@ -101,3 +101,9 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([exe])
     assert p.stdout == '5: pong 5\n1: pong 1\n3: pong 3\nconcurrent: 60\n', p.stdout
     print('The job broker: host work off the harts, in order, three actors at once (std/job): PASS')
+    # 10. a list a primitive built on the heap (Sys.memInfo's, with its own nil cell)
+    # crosses an actor boundary: the copier's size walk used to follow garbage past
+    # that nil and never return
+    p = run([build('tests/base/sendmem.fpr', 'sendmem')], timeout=30)
+    assert p.stdout.startswith('sendmem: 8 counters received'), p.stdout
+    print('A primitive-built list survives send (the heap nil is a leaf to the copier): PASS')
