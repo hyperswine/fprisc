@@ -1839,27 +1839,38 @@ compileArms scrut arms fallback = go True arms
   where
     go _ [] = pure fallback
     go first ((p, g, body) : rest) = do
-      nxt <- go False rest
-      body' <- dExpr body
-      inner <- case g of
-        Nothing -> pure body'
-        Just ge -> do
-          ge' <- dExpr ge
-          pure (CIf ge' body' nxt)
-      -- the last arm of a case whose earlier arms certainly catch every
-      -- other constructor of the type needs no head test of its own:
-      -- once they have failed, the head IS this constructor (the
-      -- inferencer has already refused every non-exhaustive case).  A
-      -- single-constructor type keeps its test: an actor's `receive`
-      -- is typed unsafely, and the test is what turns a stray message
-      -- into a panic instead of a misread.
-      certain <- if null rest && not first && null [() | (_, Just _, _) <- arms] then coveredHead p else pure False
-      if certain
-        then case p of
-          PCon _ ps -> matchFields scrut ps inner nxt
-          PTup ps -> matchFields scrut ps inner nxt
-          _ -> matchPat scrut p inner nxt
-        else matchPat scrut p inner nxt
+      nxt0 <- go False rest
+      -- A nested pattern has several failure edges. Copying the remaining
+      -- arms into each edge grows the Core tree exponentially. Bind one
+      -- delayed continuation OUTSIDE the pattern's binders; lambda lifting
+      -- captures the enclosing locals, including names shadowed by this arm.
+      -- The dummy argument keeps a capture-free fallback delayed too (a
+      -- zero-arity lifted binding would be evaluated eagerly). liftProg
+      -- recognizes these private binders and emits saturated direct calls.
+      let build nxt = do
+            body' <- dExpr body
+            inner <- case g of
+              Nothing -> pure body'
+              Just ge -> do
+                ge' <- dExpr ge
+                pure (CIf ge' body' nxt)
+            -- Omit the final head test only when earlier arms cover every
+            -- other constructor. Single-constructor types retain the test.
+            certain <- if null rest && not first && null [() | (_, Just _, _) <- arms] then coveredHead p else pure False
+            if certain
+              then case p of
+                PCon _ ps -> matchFields scrut ps inner nxt
+                PTup ps -> matchFields scrut ps inner nxt
+                _ -> matchPat scrut p inner nxt
+              else matchPat scrut p inner nxt
+      case nxt0 of
+        CErr _ -> build nxt0
+        _ | patternTests p + maybe 0 (const 1) g > 1 -> do
+          jn <- fresh "$case_fb"
+          unit <- fresh "$case_unit"
+          matched <- build (CApp (CVar jn) (CInt 0))
+          pure (CLet jn (CLam [unit] nxt0) matched)
+        _ -> build nxt0
     -- every other constructor of p's type heads an earlier arm whose
     -- sub-patterns cannot fail
     coveredHead :: SPat -> D Bool
@@ -1879,6 +1890,14 @@ compileArms scrut arms fallback = go True arms
         PCon c _ | Just (tid, _, _) <- M.lookup c cons ->
           pure (and [c' `elem` earlier | (c', (t, _, _)) <- M.toList cons, t == tid, c' /= c])
         _ -> pure False
+
+-- Number of refutable tests that can enter a pattern's failure continuation.
+patternTests :: SPat -> Int
+patternTests = \case
+  PWild -> 0; PVar _ -> 0; PRec _ -> 0; PSig _ _ -> 0
+  PInt _ -> 1; PStr _ -> 1
+  PCon _ ps -> 1 + sum (map patternTests ps)
+  PTup ps -> 1 + sum (map patternTests ps)
 
 matchPat :: Core -> SPat -> Core -> Core -> D Core
 matchPat scrut p ok fail' = case p of
@@ -1948,7 +1967,7 @@ compileGroup (n, clauses@((ps0, _, _) : _)) = do
       -- (zero stack), it passes the function-entry fuel safepoint
       -- (uniform accounting: one unit per clause fallen through), and
       -- code size goes linear in the number of clauses.
-      nxt <- case failSites ps + length g of
+      nxt <- case sum (map patternTests ps) + length g of
         t | t > 1, not (trivial nxt0) -> do
           jn <- fresh (n ++ "_fb")
           modify (\s -> s {dLifted = (jn, args, nxt0) : dLifted s})
@@ -1970,12 +1989,6 @@ compileGroup (n, clauses@((ps0, _, _) : _)) = do
           sv <- fresh "gp"
           m <- matchPat (CVar sv) p inner nxt
           pure (CLet sv ge' m)
-    failSites = sum . map tests
-    tests = \case
-      PWild -> 0; PVar _ -> 0; PRec _ -> 0; PSig _ _ -> 0
-      PInt _ -> 1; PStr _ -> 1
-      PCon _ ps -> 1 + sum (map tests ps)
-      PTup ps -> 1 + sum (map tests ps)
     trivial (CErr _) = True
     trivial _ = False
     matchMany [] ok _ = pure ok
@@ -2010,6 +2023,20 @@ liftProg prog = do
     liftC globals bound = go (foldr (:) [] bound)
       where
         go env = \case
+          -- Case failure continuations never escape as values. Lower them
+          -- directly, rather than allocating a PAP and applying it: native
+          -- tail calls must stay saturated calls, including through a case.
+          CLet jn (CLam ps fallback) body | "$case_fb_" `isPrefixOf` jn -> do
+            fallback' <- go (ps ++ env) fallback
+            let capture = nub [v | v <- freeVars fallback', v `notElem` ps, v `elem` env]
+            -- Snapshot captures outside the pattern binders. A failed arm
+            -- may have bound the same spelling before its last test failed.
+            saved <- mapM (const (fresh "$case_capture")) capture
+            nm <- fresh "case_join"
+            modify (\s -> s {dLifted = (nm, capture ++ ps, fallback') : dLifted s})
+            let target = foldl' CApp (CVar nm) (map CVar saved)
+            body' <- go (saved ++ env) (replaceJoin jn target body)
+            pure (foldr (\(v, snapshot) b -> CLet snapshot (CVar v) b) body' (zip capture saved))
           CLam ps body -> do
             body' <- go (ps ++ env) body
             -- A LEXICAL BINDER WINS over a global of the same name.
@@ -2033,6 +2060,22 @@ liftProg prog = do
           CProj i e -> CProj i <$> go env e
           other -> pure other
 
+-- Substitute only the private continuation binder. Fresh saved captures in
+-- the replacement cannot be shadowed by source-level names.
+replaceJoin :: Name -> Core -> Core -> Core
+replaceJoin name target = go
+  where
+    go = \case
+      CVar n | n == name -> target
+      CApp f x -> CApp (go f) (go x)
+      CLam ps b -> CLam ps (if name `elem` ps then b else go b)
+      CLet n a b -> CLet n (go a) (if n == name then b else go b)
+      CIf c t e -> CIf (go c) (go t) (go e)
+      CMk t v fs -> CMk t v (map go fs)
+      CTagEq t v e -> CTagEq t v (go e)
+      CProj i e -> CProj i (go e)
+      e -> e
+
 freeVars :: Core -> [Name]
 freeVars = \case
   CVar n -> [n]
@@ -2054,7 +2097,10 @@ liftFix p = do
   -- liftProg consumes-and-clears instead, which keeps the fixpoint
   -- rounds from re-adding old entries.
   p' <- liftProg p
-  if any (hasLam . snd . snd) (M.toList p') then liftFix p' else pure p'
+  -- Lifting an existing clause join can enqueue more functions even when
+  -- every lambda in p' has disappeared. Drain that work before finishing.
+  pending <- gets dLifted
+  if not (null pending) || any (hasLam . snd . snd) (M.toList p') then liftFix p' else pure p'
   where
     hasLam = \case
       CLam _ _ -> True

@@ -1,0 +1,60 @@
+Pair = Type (Pair Int Int | Empty).
+label = 1000.
+expect name got wanted = case got == wanted of
+  True -> print "ok {name}"
+| False -> error "{name}: got {got}, wanted {wanted}".
+choose offset p = case p of
+  Pair 1 1 -> offset + 1
+| Pair 2 2 -> offset + 2
+| Pair 3 3 -> offset + 3
+| _ -> offset + 99.
+shadow x p = case p of
+  (x, 0) -> x
+| _ -> x.
+closure label p =
+  delta = 7;
+  f = fn z -> (case p of
+      (1, 1) -> label + z
+    | (2, 2) -> delta + label + z
+    | _ -> label);
+  f 3.
+strings suffix p = case p of
+  ("a", "b") -> "first"
+| ("b", "a") -> "second"
+| _ -> suffix.
+lists offset xs = case xs of
+  1 :: 2 :: [] -> offset + 12
+| 2 :: 3 :: [] -> offset + 23
+| _ -> offset.
+effect p = case p of
+  (1, 1) -> print "effect: hit"
+| _ -> print "effect: fallback".
+source u = _ = print "effect: scrutinee"; (1, 2).
+loop : unsafe Int -> Int -> Int.
+loop n acc = case (n, n) of
+  (0, 0) -> acc
+| (0, 1) -> -1
+| _ -> loop (n - 1) (acc + 1).
+# The second clause is itself a lifted clause fallback. Its nested case must
+# register and retain every additional join produced during lambda lifting.
+inClause (0, 0) x = x.
+inClause p x = case p of (1, 1) -> x + 1 | (2, 2) -> x + 2 | _ -> x + 3.
+main =
+  _ = expect "case inside clause join" (inClause (2, 2) 10) 12;
+  _ = expect "first" (choose 10 (Pair 1 1)) 11;
+  _ = expect "middle" (choose 10 (Pair 2 2)) 12;
+  _ = expect "last" (choose 10 (Pair 3 3)) 13;
+  _ = expect "field failure" (choose 10 (Pair 2 9)) 109;
+  _ = expect "tag failure" (choose 10 Empty) 109;
+  _ = expect "shadow success" (shadow 42 (7, 0)) 7;
+  _ = expect "shadow failure" (shadow 42 (7, 1)) 42;
+  _ = expect "closure capture" (closure 40 (2, 2)) 50;
+  _ = expect "closure fallback" (closure 40 (8, 9)) 40;
+  _ = expect "string arm" (strings "end" ("b", "a")) "second";
+  _ = expect "string fallback" (strings "end" ("b", "b")) "end";
+  _ = expect "list arm" (lists 100 [2,3]) 123;
+  _ = expect "list fallback" (lists 100 [2,3,4]) 100;
+  _ = effect (1, 1);
+  _ = effect (source Unit);
+  _ = expect "repeated fallthrough" (loop 20000 0) 20000;
+  print "case fallback: OK".

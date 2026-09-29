@@ -1,0 +1,19 @@
+ok case inside clause join
+ok first
+ok middle
+ok last
+ok field failure
+ok tag failure
+ok shadow success
+ok shadow failure
+ok closure capture
+ok closure fallback
+ok string arm
+ok string fallback
+ok list arm
+ok list fallback
+effect: hit
+effect: scrutinee
+effect: fallback
+ok repeated fallthrough
+case fallback: OK
