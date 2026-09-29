@@ -22,8 +22,10 @@ executable fpr
   hs-source-dirs:     compiler
   default-language:   Haskell2010
   -- -O0 matches the Makefile: this is a working compiler rebuilt many
-  -- times a session; flip to -O2 for release measurements
-  ghc-options:        -O0 -rtsopts -threaded
+  -- times a session; FPRISC/Sol.Bytecode/Sol.Cache opt in to -O2.
+  -- Keep the threaded RTS for subprocess I/O; a 1 ms tick reduces macOS
+  -- timer-thread shutdown latency. Override with +RTS -V0.01 -RTS.
+  ghc-options:        -O0 -rtsopts -threaded -with-rtsopts=-V0.001
   other-modules:
       A64
       Arc

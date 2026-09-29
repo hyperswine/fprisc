@@ -84,14 +84,14 @@ else ifneq ($(FPR_TOOLCHAIN),.)
 fpr:
 	$(MAKE) -C "$(FPR_TOOLCHAIN)" fpr
 else
-fpr: $(FPR_HOST_STAMP) compiler/*.hs compiler/Sol/*.hs compiler/cbits/fsx.c compiler/cbits/vecgpu.c compiler/cbits/handjit.c
+fpr: $(FPR_HOST_STAMP) compiler/*.hs compiler/Sol/*.hs compiler/cbits/fsx.c compiler/cbits/vecgpu.c compiler/cbits/handjit.c fp-risc.cabal Makefile
 	@if command -v cabal >/dev/null 2>&1; then \
 	  cabal build exe:fpr && cp "$$(cabal list-bin fpr)" fpr; \
 	else \
 	  gcc -c compiler/cbits/fsx.c -o compiler/cbits/fsx.o && \
 	  gcc -c compiler/cbits/vecgpu.c -o compiler/cbits/vecgpu.o && \
 	  gcc -c compiler/cbits/handjit.c -o compiler/cbits/handjit.o && \
-	  cd compiler && ghc -O0 -threaded -rtsopts -i. -o ../fpr Main.hs cbits/fsx.o cbits/vecgpu.o cbits/handjit.o $(GLLIBS); \
+	  cd compiler && ghc -O0 -threaded -rtsopts -with-rtsopts=-V0.001 -i. -o ../fpr Main.hs cbits/fsx.o cbits/vecgpu.o cbits/handjit.o $(GLLIBS); \
 	fi
 	ln -sf fpr fprc
 endif

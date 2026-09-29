@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -O2 #-}
+-- Keep generic Binary/NFData instances optimized for warm Sol cache loads.
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE LambdaCase #-}

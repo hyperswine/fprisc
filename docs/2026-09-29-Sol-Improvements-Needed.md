@@ -716,3 +716,96 @@ cost for that workload. Cache deserialization still dominates tiny warm startup.
 The actual default `~/.sol/cache` location was smoke-tested with a cold miss then
 a warm hit. A changed source/compiler creates another artifact; disk retention
 policy and a standalone compact bytecode format remain follow-up work.
+
+
+## 2026-09-29 20:12 AEST — runtime timer and optimized cache serialization
+
+### Implementation
+
+The Cabal and direct-GHC builds now link the threaded runtime with
+`-with-rtsopts=-V0.001`. The runtime timer stays enabled, with a 1 ms interval;
+threaded subprocess I/O, scheduling, cancellation and timeouts remain enabled.
+The old 10 ms interval can be selected with `+RTS -V0.01 -RTS`. `-V0` was useful
+for diagnosis, but is not the shipped default. The setting applies to the shared
+`fpr` executable, including native compiler invocations, not only Sol.
+
+On macOS arm64/GHC 9.8.2, a minimal threaded Haskell program and `fpr --version`
+reported approximately 1 ms INIT and 14 ms EXIT in separate RTS samples. Thus
+much of the apparent startup floor was process shutdown waiting on the runtime
+timer. This does not mean first output takes that entire interval. The executable
+lists four direct dynamic dependencies (libSystem, libiconv, libffi, libcharset);
+these measurements do not attribute the latency to a large dynamic-library set.
+
+`FPRISC.hs` and `Sol/Bytecode.hs` now opt into `-O2`, alongside the already
+optimized `Sol/Cache.hs`. Their generic Binary/NFData instances otherwise remained
+unoptimized despite an optimized cache caller. Module-wide optimization also
+improves the shared parser/lowering and bytecode compiler: this is broader than
+serialization alone. Other development modules retain `-O0`. Cache schema,
+checksums, exact key validation, eager forcing and transaction semantics are
+unchanged. Executable identity automatically invalidates artifacts on rebuild.
+
+`make fpr` now depends on Makefile and fp-risc.cabal so build-option changes
+trigger its recipe. The end-to-end benchmark clears inherited GHCRTS and accepts
+`--rts-tick 0.001` to compare both binaries with the same timer setting.
+
+### Measurements
+
+Comparison against commit `8b88c79`: one warmup and nine shuffled fresh-process
+samples per workload/mode, warm filesystem, isolated caches, JIT/GPU/table off.
+Wall measurements are uninstrumented; phase samples are separate. Binary hashes
+and raw samples are recorded in the JSON report.
+
+| Workload | Previous warm | New warm | Previous miss | New miss |
+| --- | ---: | ---: | ---: | ---: |
+| hello | 20.37 ms | 11.33 ms | 65.52 ms | 35.53 ms |
+| imports | 20.31 ms | 18.92 ms | 109.60 ms | 56.76 ms |
+| read_65536 | 20.52 ms | 16.06 ms | 65.42 ms | 38.74 ms |
+| read_262144 | 35.62 ms | 33.97 ms | 90.58 ms | 55.35 ms |
+| read_1048576 | 110.93 ms | 107.35 ms | 149.80 ms | 129.55 ms |
+
+Warm hello improves about 44%; the three-library warm import case about 7%.
+Misses improve about 46% for hello and 48% for imports. The 1 MiB transactional
+read is essentially unchanged; this increment targets startup and compilation.
+Separate phase samples show cache-read falling from 5.576 to 4.492 ms (hello)
+and 11.668 to 9.386 ms (imports), roughly 20%. These are individual phase samples,
+not median wall-time attribution.
+
+A second comparison (five shuffled samples) fixes both binaries at 1 ms:
+warm hello 12.83 to 11.36 ms; warm imports 20.54 to 18.86 ms;
+miss hello 58.35 to 35.62 ms; miss imports 98.72 to 56.61 ms.
+This confirms compiler/cache gains independently of the timer change. The same
+comparison's warm 1 MiB read varied from 102.40 to 106.77 ms; no general execution
+throughput improvement is claimed.
+
+A same-binary timer experiment (nine shuffled samples) measured:
+
+| Workload | 10 ms timer | New 1 ms timer |
+| --- | ---: | ---: |
+| `fpr --version`, wall | 18.05 ms | 6.59 ms |
+| 5,000 iterations of a 64-add VM function, wall | 140.38 ms | 137.90 ms |
+| Same VM workload, child user + system CPU | 135.84 ms | 135.85 ms |
+
+The timer retains user override support. More frequent ticks may affect power
+or other workloads; this short CPU check is not a battery/power study. Results
+are local macOS arm64, not verified Linux/Windows performance. A persistent
+`sol >` would amortize process initialization/shutdown, while module resolution,
+source validation and cache decoding would still have their own costs.
+
+### Validation
+
+Built with `make fpr`. Passed 52 startup checks plus assembly/concurrent-writer
+and executable-identity coverage; parsed-cache corruption/invalidation and
+exact-byte transaction conflicts; 26 output checks; transaction, structured
+process/Git, filesystem/actor suites; and 34 text/process checks including
+backpressure, timeout, cancellation and real PTY foreground restoration.
+`cabal exec -- runghc -icompiler tests/CaseGrowth.hs` passed the 4–64 arm growth
+check (190–2,290 Core nodes). Direct runghc first failed to resolve Megaparsec;
+Cabal supplies the dependency environment. The growth harness is interpreted;
+the CLI suites exercise the rebuilt optimized frontend.
+
+Reproduce comparisons with:
+
+```sh
+python3 tools/sol-e2e-benchmark.py --baseline /path/to/saved/fpr --runs 9 --output /tmp/sol-runtime.json
+python3 tools/sol-e2e-benchmark.py --baseline /path/to/saved/fpr --runs 5 --rts-tick 0.001 --output /tmp/sol-same-timer.json
+```
