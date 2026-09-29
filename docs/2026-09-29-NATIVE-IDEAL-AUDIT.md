@@ -113,3 +113,11 @@ test messages are not authoritative where current source differs.
 
 See also the [tooling and meta-semantics audit](2026-09-29-TOOLING-SEMANTICS-AUDIT.md) for module identity,
 typing, termination, resource contracts and the hosted optimization tiers.
+
+
+## 2026-09-30 follow-up pointer
+
+The [operator-resolution follow-up](2026-09-29-TOOLING-SEMANTICS-AUDIT.md#2026-09-30-follow-up-operators-and-compile-time-profiles)
+examines row-based signatures, compile-time overload selection, mixed operand
+types, ambiguity and the remaining runtime dictionary fallback, with fresh native
+probes. It refines the static-dispatch boundary without changing this dated audit.

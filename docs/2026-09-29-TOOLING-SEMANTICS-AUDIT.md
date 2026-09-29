@@ -7,6 +7,9 @@ for this audit. Recommendations below are not implemented guarantees.
 
 Companion: [native architecture audit](2026-09-29-NATIVE-IDEAL-AUDIT.md).
 
+Follow-up: [2026-09-30 operator resolution audit](#2026-09-30-follow-up-operators-and-compile-time-profiles)
+uses revision `6f3e428631e72a83da3cb538915391d3f39ed42e`.
+
 ## Intended contract
 
 The intended language has immutable, hash-addressed modules, published locally
@@ -305,3 +308,122 @@ Only the precondition runtime probe and the stated Sol examples were executed.
 No remote registry, live app/browser, GPU device, alternate ISA or full test suite
 was exercised. The source findings and disposable probes above are audit evidence;
 they are not a committed regression suite or a proof of type-system soundness.
+
+
+## 2026-09-30 follow-up: operators and compile-time profiles
+
+The intended design deliberately avoids typeclasses and global instance
+coherence. Built-in operator syntax should support implementations for different
+combinations of operand types, selected statically in a predictable scope.
+Different modules may intentionally choose different implementations.
+
+### Current implementation
+
+The shared inference engine already contains row-polymorphic records and
+operator-site resolution. `Sig` describes a row of operations; `Struct` supplies
+implementations. Inference records arithmetic sites, solves types, and rewrites
+sites into primitives, global function calls or signature-carrier projections.
+
+| Context | Current resolution |
+|---|---|
+| Int, F32, F64 | Primitive or predefined function |
+| String and List | Hardcoded `Str.+`, `List.+`, and corresponding subtraction functions |
+| Concrete user type | Search globals named `<Structure>.<operator>` by operand type constructor |
+| Signature carrier | Project the operation through the signature parameter, e.g. `s.(+)` |
+| Unconstrained numeric site | Default to Int |
+| Matrix/vector records | Additional special cases recognize particular record field sets |
+
+A user-defined `V2` with a structure field `(+) : V2 -> V2 -> V2` supports bare
+`a + b` without an instance declaration. The field's inferred type can establish
+that association; a written signature is not required. Mixed operands such as
+`Int * V2 -> V2` also work when their type constructors are already known at the
+operator site. The mixed-type path unifies the selected implementation's full
+function type, including its result, after candidate selection.
+
+Evidence: [Infer.hs](../compiler/Infer.hs), `inferBin`, `namedOpTarget`,
+`namedOpTarget2`, `resolveSites`; [prelude](../core/prelude.fpr), `Add`, `Arith`;
+[compile pipeline](../compiler/Compile.hs), inference before specialization.
+
+### Resolution gaps
+
+1. **Ambiguity silently picks the alphabetically first global.** Both candidate
+   searches sort matching names and take the first. This is deterministic but
+   allows a structure rename to change arithmetic. Selection uses head type
+   constructors, not a general constraint-solving search over complete types.
+2. **Mixed-type requirements are not preserved through ordinary generic
+   inference.** The special path requires both operand constructors to be known
+   and at least one to be a user type. Otherwise arithmetic initially unifies
+   both operands and the result. A direct mixed-type call can therefore work
+   while an inferred wrapper around the same operation fails.
+3. **There is no explicit scoped overload profile.** Implementations are found
+   in the inference environment by naming convention. Whole-program and
+   per-unit inference both exist; this is not a specified lexical selection
+   contract that libraries can safely rely on.
+4. **Built-ins do not follow one extensible rule.** Numeric, String/List and
+   matrix/vector cases have special handling. Bare equality uses its primitive
+   path, with float-specific handling; defining an `Eq` structure does not make
+   bare `==` uniformly choose that implementation.
+5. **Compile-time specialization is not mandatory.** Known structure arguments
+   generate specialized clones with direct operation calls. An argument that
+   the specializer cannot recognize as a known structure is left as a runtime
+   record parameter. Its operation fields can therefore be called indirectly.
+   Static typing does not by itself prohibit dynamic dispatch.
+
+The explicit generic mechanism is already close to a compile-time profile:
+
+```fpr
+Add = Sig { (+) : t -> t -> t, zero : t }.
+
+total (s : Add) xs =
+  listFold (fn x acc -> x + acc) s.zero xs.
+```
+
+Calls such as `total Int ...` and `total Str ...` select known implementations.
+The prelude already defines `Add`; the declaration above illustrates its shape.
+See [Struct.hs](../compiler/Struct.hs), `rwSpine`, `structArg`, `mkClone`,
+`erasePSig`, and [Infer.hs](../compiler/Infer.hs), `inferParam`/`sigRecType`.
+Some introductory comments in Struct.hs predate typed inference; the current
+pipeline does run inference and typed structure conformance before specialization.
+
+### Fresh native probes
+
+Temporary programs under `/tmp/fpr-ops-audit` were built and run with `fpr run`
+and separate temporary caches, using the existing compiler executable at the
+revision above. These were focused observations, not a full backend regression.
+
+| Probe | Observed result |
+|---|---|
+| User `V2 + V2` structure implementation | `(1,2) + (10,20)` printed `11,22` |
+| Two matching structures named Alpha and Zulu | Compiled without ambiguity error; printed `11,22` |
+| Rename structures so the alternate implementation sorts first | Printed `99,88` |
+| Concrete `3 * V2 4 5` | Printed `12,15` |
+| `apply a b = a * b`, called with Int and V2 | Compile error: `cannot unify Int with V2` |
+| Explicit `Add` generic with Int and Str | Printed `6,ba`; string order follows the probe's fold function |
+
+These checks did not freshly exercise Sol, cross-module overload visibility,
+custom equality, or the runtime-record fallback. Those assessments above come
+from source inspection. No compiler changes were made.
+
+### Proposed contract and acceptance criteria
+
+Row polymorphism describes the operations a profile supplies; it does not itself
+choose an overload. Retain rows and structures, but define selection separately:
+
+- A scope/module names its compile-time implementation set explicitly.
+- Selection checks full operand types and a separately inferred result type.
+- Generic inference carries unresolved operator requirements until enough
+  information is available, rather than prematurely requiring equal types.
+- Zero matches and multiple matches are compile errors unless the programmer
+  explicitly chooses an implementation. Alphabetical order has no semantics.
+- Different scopes can select different implementations for the same types;
+  there is no requirement for one globally coherent instance.
+- Where zero runtime dispatch is promised, implementation profiles must be
+  statically known, specialized away, or rejected. No silent dictionary fallback.
+- Separate compilation must preserve the chosen profile and dependencies so an
+  unrelated import, rename or newly visible structure cannot change behavior.
+
+Acceptance should cover direct and generic mixed operands, generic result types,
+competing implementations in separate scopes, ambiguity diagnostics, imported
+modules, built-in override policy, and inspection of generated calls for the
+static-only profile. This evolves the machinery already present without adding
+traditional typeclasses.
