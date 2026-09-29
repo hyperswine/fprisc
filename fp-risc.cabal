@@ -23,7 +23,7 @@ executable fpr
   default-language:   Haskell2010
   -- -O0 matches the Makefile: this is a working compiler rebuilt many
   -- times a session; flip to -O2 for release measurements
-  ghc-options:        -O0 -rtsopts
+  ghc-options:        -O0 -rtsopts -threaded
   other-modules:
       A64
       Arc

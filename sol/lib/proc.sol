@@ -1,5 +1,9 @@
 # proc.sol -- pure builders and result helpers over the structured VM process
 # primitive. ProcessSpec keeps argv structured all the way to exec(3).
+# Proc.streamNow sends spec stdin and forwards live stdout/stderr directly.
+# Proc.inheritNow inherits all three descriptors; spec stdin must be empty.
+# Both return Result Int String, refuse pending transaction effects, and may
+# repeat on retry. They do not capture output or add a transaction boundary.
 
 spec argv = ProcessSpec argv "" [] "" 0.
 

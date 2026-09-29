@@ -882,10 +882,10 @@ mkHal :: M.Map Name (Int, Int, Int) -> [String] -> IORef TxState -> IORef Int ->
 mkHal cons scriptArgs tx preempts rt =
   M.fromList
     [ ("str", (1, \[v] -> pure (VStr (render v)))),
-      -- VStr ops: accept VStr; all O(n) due to linked-list backing
+      -- Strings retain lazy sequential text and share an on-demand character index.
       ("strcat", (2, \[a, b] -> fmap VStr (liftA2 (++) (vsStr a) (vsStr b)))),
-      ("String.len", (1, \[v] -> VInt . fromIntegral . length <$> vsStr v)),
-      ("strlen", (1, \[v] -> VInt . fromIntegral . length <$> vsStr v)),
+      ("String.len", (1, \[v] -> case stringLength v of Just n -> pure (VInt (fromIntegral n)); Nothing -> vmPanic "strlen: not a String")),
+      ("strlen", (1, \[v] -> case stringLength v of Just n -> pure (VInt (fromIntegral n)); Nothing -> vmPanic "strlen: not a String")),
       ("charAt", (2, charAtH)),
       ("substr", (3, substrH)),
       -- the O(n) string tier: one pass each, no re-slicing of the rest
@@ -955,6 +955,8 @@ mkHal cons scriptArgs tx preempts rt =
       ("Proc.query", (1, procQueryH)),
       ("Proc.afterCommit", (1, procAfterCommitH)),
       ("Proc.runNow", (1, procRunNowH)),
+      ("Proc.streamNow", (1, procDirectH "Proc.streamNow" StreamIO)),
+      ("Proc.inheritNow", (1, procDirectH "Proc.inheritNow" InheritIO)),
       ("args", (1, \[_] -> pure (strList scriptArgs))),
       -- Numeric prims: the doors into inexact arithmetic. Num.div is TRUE
       -- division (always inexact); ordinary +,-,*,/ then propagate
@@ -1213,6 +1215,24 @@ mkHal cons scriptArgs tx preempts rt =
           runProcessH spec
     procRunNowH _ = vmPanic "Proc.runNow: arity"
 
+    -- Direct stdout/stderr inherit the host descriptors: arbitrary bytes flow
+    -- immediately and kernel pipes provide backpressure without host capture.
+    procDirectH name mode [v] = do
+      spec <- decodeProcessSpec v
+      pending <- txPendingBrief tx
+      if not (null pending)
+        then pure (vErr (pendingOrderMsg (name ++ " " ++ displayProcess spec) "Proc.afterCommit" pending))
+        else do
+          -- Flush buffered parent output before handing descriptors to a child.
+          hFlush stdout
+          hFlush stderr
+          noteEscape rt name ("runs " ++ displayProcess spec ++ " with live I/O; survives rollback and repeats on retry")
+          result <- runProcessMode mode spec
+          pure $ case result of
+            Left err -> vErr ("process " ++ displayProcess spec ++ ": " ++ err)
+            Right (code, _, _) -> vOk (VInt (fromIntegral code))
+    procDirectH name _ _ = vmPanic (name ++ ": arity")
+
     runProcessH spec = do
       result <- runProcessSpec spec
       pure $ case result of
@@ -1229,7 +1249,7 @@ mkHal cons scriptArgs tx preempts rt =
               psCwd = if null cwdV then Nothing else Just cwdV,
               psEnv = envPairs,
               psStdin = stdinV,
-              psTimeoutMs = if timeoutV <= 0 then Nothing else Just (fromIntegral timeoutV)
+              psTimeoutMs = if timeoutV <= 0 then Nothing else Just (fromInteger (min timeoutV (toInteger (maxBound :: Int))))
             }
     decodeProcessSpec bad = vmPanic ("process: expected ProcessSpec, got " ++ render bad)
 
@@ -1247,25 +1267,18 @@ mkHal cons scriptArgs tx preempts rt =
         go bad = vmPanic ("process env: expected List (String, String), got " ++ render bad)
 
     charAtH [sv, VInt i]
-      | isStrVal sv = do
-          s <- vsStr sv
-          let n = fromIntegral i
-          if n >= 1 && n <= length s
-            then pure (VInt (fromIntegral (fromEnum (s !! (n - 1)))))
+      | Just a <- stringIndex sv, Just n <- stringLength sv =
+          if i >= 1 && i <= fromIntegral n
+            then pure (VInt (fromIntegral (fromEnum (a ! fromInteger i))))
             else vmPanic "charAt: index out of range"
     charAtH _ = vmPanic "charAt: bad args"
-    -- clamping semantics, mirrored from the AOT runtime's g_substr:
-    -- 1-based offset, out-of-range never panics, it narrows to ""
+    -- Clamp in Integer before narrowing: huge Sol integers must not wrap.
     substrH [sv, VInt o0, VInt l0]
-      | isStrVal sv = do
-          s <- vsStr sv
-          let o1 = max 1 (fromIntegral o0 :: Int)
-              l1 = max 0 (fromIntegral l0 :: Int)
-              (o, l) =
-                if o1 - 1 >= length s
-                  then (1, 0)
-                  else (o1, min l1 (length s - (o1 - 1)))
-          pure (VStr (take l (drop (o - 1) s)))
+      | Just a <- stringIndex sv, Just size <- stringLength sv = do
+          let n = fromIntegral size :: Integer
+              o = max 1 o0
+              count = max 0 (min l0 (n - o + 1))
+          pure (VStr [a ! fromInteger i | i <- [o .. o + count - 1]])
     substrH _ = vmPanic "substr: bad args"
     listItems :: Value -> [Value]
     listItems (VData t 1 [x, r]) | t == listT = x : listItems r

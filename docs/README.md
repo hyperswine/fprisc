@@ -79,7 +79,4 @@ they began.
 | 2026-09-22 | [KEYED-VIEWS.md](2026-09-22-KEYED-VIEWS.md) | keyed views: structural snapshots without replacing the page |
 | 2026-09-23 | [VIEW-CACHE.md](2026-09-23-VIEW-CACHE.md) | explicit per-session view caching in `std/viewcache` |
 | 2026-09-23 | [ESP-IDF.md](2026-09-23-ESP-IDF.md) | the ESP32-P4 port: decisions, workarounds, and the dated record of its merge into the posix system as a host |
-| 2026-09-29 | [Sol-Improvements-Needed.md](2026-09-29-Sol-Improvements-Needed.md) | Sol startup benchmarks, REPL and shell gaps, transaction semantics, and proposed improvement milestones |
-| 2026-09-29 | [Sol-Script-Output.md](2026-09-29-Sol-Script-Output.md) | clean script output, error/exit behavior and initial performance baselines |
-| 2026-09-29 | [Sol-Case-Fallbacks.md](2026-09-29-Sol-Case-Fallbacks.md) | shared case fallbacks, linear compilation growth, lexical scope and native tail-call regressions |
-| 2026-09-29 | [Sol-VM-Startup.md](2026-09-29-Sol-VM-Startup.md) | indexed instruction fetch, validated compiler cache, phase timings and measured tradeoffs |
+| 2026-09-29 | [Sol-Improvements-Needed.md](2026-09-29-Sol-Improvements-Needed.md) | Consolidated timestamped assessment, implementation updates, measurements and remaining Sol work |

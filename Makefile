@@ -91,7 +91,7 @@ fpr: $(FPR_HOST_STAMP) compiler/*.hs compiler/Sol/*.hs compiler/cbits/fsx.c comp
 	  gcc -c compiler/cbits/fsx.c -o compiler/cbits/fsx.o && \
 	  gcc -c compiler/cbits/vecgpu.c -o compiler/cbits/vecgpu.o && \
 	  gcc -c compiler/cbits/handjit.c -o compiler/cbits/handjit.o && \
-	  cd compiler && ghc -O0 -i. -o ../fpr Main.hs cbits/fsx.o cbits/vecgpu.o cbits/handjit.o $(GLLIBS); \
+	  cd compiler && ghc -O0 -threaded -rtsopts -i. -o ../fpr Main.hs cbits/fsx.o cbits/vecgpu.o cbits/handjit.o $(GLLIBS); \
 	fi
 	ln -sf fpr fprc
 endif

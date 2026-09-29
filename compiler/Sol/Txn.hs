@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
 
 -- Txn.hs — the script-session TRec.
@@ -25,8 +27,8 @@
 module Sol.Txn where
 
 import Sol.Diagnostic (diagnostic)
-import Control.Concurrent (threadDelay)
-import Control.Exception (IOException, finally, mask, onException, throwIO, try)
+import Control.Concurrent (threadDelay, forkIOWithUnmask, killThread, newEmptyMVar, putMVar, takeMVar, newChan, writeChan, readChan)
+import Control.Exception (SomeException, bracket, catch, IOException, finally, mask, onException, throwIO, try)
 import Control.Monad (foldM, forM_, unless, when)
 import Data.IORef
 import Data.Maybe (mapMaybe)
@@ -56,11 +58,16 @@ import System.Directory
   )
 import Data.Time.Clock.POSIX (getPOSIXTime, utcTimeToPOSIXSeconds)
 import System.Exit (ExitCode (..))
-import System.IO (readFile')
-import System.IO.Error (isAlreadyExistsError, isDoesNotExistError)
+import System.IO (readFile', hClose, hIsTerminalDevice)
+import System.IO.Error (isAlreadyExistsError, isDoesNotExistError, isResourceVanishedError)
 import System.IO (hFlush, hGetContents', hIsEOF, hGetLine, stderr, stdin, stdout, hPutStr, hPutStrLn)
-import System.Process (CreateProcess (..), createProcess, proc, readCreateProcessWithExitCode, shell, waitForProcess)
+import System.Process (CreateProcess (..), StdStream (..), getPid, terminateProcess, createProcess, proc, readCreateProcessWithExitCode, shell, waitForProcess)
 import System.Timeout (timeout)
+import System.Posix.Signals (signalProcessGroup, sigKILL, sigCONT, sigTTOU, blockSignals, getSignalMask, setSignalMask, addSignal, emptySignalSet)
+import System.Posix.Terminal (getTerminalProcessGroupID, setTerminalProcessGroupID)
+import System.Posix.Process (getProcessGroupID)
+import System.Posix.IO (stdInput)
+import System.Posix.Types (ProcessGroupID)
 
 data ProcessSpec = ProcessSpec
   { psArgv :: [String],
@@ -391,21 +398,69 @@ txShq ref cmd = pushEffect ref (EShell cmd)
 -- Structured process execution. Unlike sh/shq, argv never crosses a shell,
 -- stdout and stderr stay separate, and environment entries override rather
 -- than replace the inherited environment. A non-positive timeout means none.
+-- All structured children have a process group so timeout/cancellation can
+-- kill descendants which inherited pipes. A deliberately detached session is
+-- outside this ownership boundary. Successful children may leave background jobs.
+data ProcessIO = CaptureIO | StreamIO | InheritIO deriving (Eq)
+
 runProcessSpec :: ProcessSpec -> IO (Either String (Int, String, String))
-runProcessSpec spec = case psArgv spec of
+runProcessSpec = runProcessMode CaptureIO
+
+runProcessMode :: ProcessIO -> ProcessSpec -> IO (Either String (Int, String, String))
+runProcessMode mode spec = case psArgv spec of
   [] -> pure (Left "process argv is empty")
+  _ | mode == InheritIO && not (null (psStdin spec)) ->
+      pure (Left "inherited stdin cannot be combined with ProcessSpec stdin text")
   exe : args -> do
     inherited <- getEnvironment
-    let overrides = M.fromList (psEnv spec)
-        mergedEnv = M.toList (M.union overrides (M.fromList inherited))
-        cp =
-          (proc exe args)
-            { cwd = psCwd spec,
-              env = if null (psEnv spec) then Nothing else Just mergedEnv
-            }
-        run = readCreateProcessWithExitCode cp (psStdin spec)
+    let mergedEnv = M.toList (M.union (M.fromList (psEnv spec)) (M.fromList inherited))
+        cp = (proc exe args)
+          { cwd = psCwd spec,
+            env = if null (psEnv spec) then Nothing else Just mergedEnv,
+            std_in = if mode == InheritIO then Inherit else CreatePipe,
+            std_out = if mode == CaptureIO then CreatePipe else Inherit,
+            std_err = if mode == CaptureIO then CreatePipe else Inherit,
+            create_group = True }
+        run = mask $ \restore -> do
+          tty <- if mode == InheritIO then hIsTerminalDevice stdin else pure False
+          owner <- if tty then do
+            ours <- getProcessGroupID
+            foreground <- getTerminalProcessGroupID stdInput
+            unless (ours == foreground) $ ioError (userError "inherited terminal requires a foreground caller")
+            pure (Just ours)
+            else pure Nothing
+          (hin, hout, herr, child) <- createProcess cp
+          group <- getPid child
+          let closePipes = mapM_ (maybe (pure ()) (ignoreProcessIO . hClose)) [hin, hout, herr]
+              cancel = do
+                -- SIGKILL makes cancellation bounded even for TERM-ignoring
+                -- descendants. Save the group ID before the leader can exit.
+                maybe (ignoreProcessIO (terminateProcess child))
+                  (ignoreProcessIO . signalProcessGroup sigKILL) group
+                ignoreProcessIO (waitForProcess child >> pure ())
+              input = case hin of
+                Nothing -> pure ()
+                Just h -> (hPutStr h (psStdin spec) `catch` \e ->
+                  if isResourceVanishedError e then pure () else throwIO e)
+                  `finally` ignoreProcessIO (hClose h)
+              readOutput = maybe (pure "") hGetContents'
+              restoreTerminal = maybe (pure ()) (ignoreProcessIO . foregroundProcess) owner
+              body = do
+                case (owner, group) of
+                  (Just _, Just gid) -> do
+                    foregroundProcess gid
+                    -- The child might have read before the handoff and stopped.
+                    ignoreProcessIO (signalProcessGroup sigCONT gid)
+                  _ -> pure ()
+                ((out, err), (_, code)) <- processConcurrently
+                  (processConcurrently (readOutput hout) (readOutput herr))
+                  (processConcurrently input (waitForProcess child))
+                pure (code, out, err)
+          -- Cancel/reap before closing handles. Concurrent workers have already
+          -- been joined by processConcurrently, so no handle locks remain.
+          restore body `onException` cancel `finally` (restoreTerminal >> closePipes)
         timed = case psTimeoutMs spec of
-          Just ms | ms > 0 -> timeout (ms * 1000) run
+          Just ms | ms > 0 -> timeout (fromInteger (min (toInteger (maxBound :: Int)) (toInteger ms * 1000))) run
           _ -> Just <$> run
     result <- try timed :: IO (Either IOException (Maybe (ExitCode, String, String)))
     pure $ case result of
@@ -413,6 +468,48 @@ runProcessSpec spec = case psArgv spec of
       Right Nothing -> Left ("timed out after " ++ show (maybe 0 id (psTimeoutMs spec)) ++ "ms")
       Right (Just (code, out, err)) ->
         Right (case code of ExitSuccess -> 0; ExitFailure n -> n, out, err)
+
+-- Restoring the parent's foreground group runs while it is in the background.
+-- Block SIGTTOU around tcsetpgrp, then restore the previous signal mask.
+foregroundProcess :: ProcessGroupID -> IO ()
+foregroundProcess group = bracket getSignalMask setSignalMask $ \_ -> do
+  blockSignals (addSignal sigTTOU emptySignalSet)
+  setTerminalProcessGroupID stdInput group
+
+ignoreProcessIO :: IO () -> IO ()
+ignoreProcessIO action = action `catch` (\(_ :: IOException) -> pure ())
+
+-- Structured concurrency using base: either worker failure interrupts the
+-- other; cancellation joins both before returning to the process owner.
+processConcurrently :: IO a -> IO b -> IO (a, b)
+processConcurrently left right = mask $ \restore -> do
+  done <- newChan
+  exitedA <- newEmptyMVar
+  exitedB <- newEmptyMVar
+  a <- forkIOWithUnmask $ \unmask ->
+    (tryProcessAny (unmask left) >>= writeChan done . Left) `finally` putMVar exitedA ()
+  b <- forkIOWithUnmask $ \unmask ->
+    (tryProcessAny (unmask right) >>= writeChan done . Right) `finally` putMVar exitedB ()
+  let finish = do
+        first <- readChan done
+        case first of
+          Left (Left e) -> throwIO e
+          Right (Left e) -> throwIO e
+          Left (Right x) -> do
+            second <- readChan done
+            case second of
+              Right y -> (x,) <$> either throwIO pure y
+              _ -> error "process worker reported twice"
+          Right (Right y) -> do
+            second <- readChan done
+            case second of
+              Left x -> (,y) <$> either throwIO pure x
+              _ -> error "process worker reported twice"
+      stop = killThread a >> killThread b >> takeMVar exitedA >> takeMVar exitedB
+  restore finish `finally` stop
+
+tryProcessAny :: IO a -> IO (Either SomeException a)
+tryProcessAny = try
 
 txProcessAfterCommit :: IORef TxState -> ProcessSpec -> IO ()
 txProcessAfterCommit ref spec = pushEffect ref (EProcess spec)

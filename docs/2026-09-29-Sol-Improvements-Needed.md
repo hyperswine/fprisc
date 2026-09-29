@@ -1,8 +1,23 @@
-# Sol Improvements Needed
+# Sol improvements: assessment and implementation log
 
-Date: 2026-09-29  
-Kind: implementation assessment and proposed work plan.  
-Source baseline: `ddbb44ba6040078506baa9282ba677834515f3ca`.  
+This is the consolidated record of Sol improvements. Sections are historical
+snapshots: later entries supersede earlier statements about missing features.
+Earlier timestamps are the corresponding commit times; the latest entry is the
+verification time, rounded to the minute, in Australia/Sydney (AEST, UTC+10). The initial assessment preserves its local edits.
+
+Current delivered work: clean script output, bounded case lowering, indexed VM
+instructions, validated compiler caching, indexed Unicode text access, and
+streaming/inherited subprocess interaction. A persistent REPL, PTYs and shell
+job control remain separate work.
+
+## 2026-09-29 18:13 AEST — Initial assessment
+
+Recorded with `0cf6d72`.
+
+
+Date: 2026-09-29
+Kind: implementation assessment and proposed work plan.
+Source baseline: `ddbb44ba6040078506baa9282ba677834515f3ca`.
 Status: open improvements; this document does not implement or promise them.
 
 Sol is already useful for small scripts and structured automation launched from
@@ -15,7 +30,7 @@ and interactive work natural.
 This supplements [What is Sol?](2026-09-19-WHAT_IS_SOL.md). That page's standalone
 runner and deployable bytecode architecture remain proposals, not shipped tools.
 
-## 1. Performance: measured startup and execution
+### 1. Performance: measured startup and execution
 
 On 2026-09-29, the current local `fpr sol` executable was compared with macOS
 `/bin/bash` 3.2.57 on arm64. Each case had two warmups and ten measured fresh
@@ -49,7 +64,7 @@ Raw samples and script sources were saved in the local assessment workspace as
 `sol-bash-benchmark.json`; the table here is self-contained and does not depend on
 that machine-local file remaining available.
 
-### Startup and large-program compilation
+#### Startup and large-program compilation
 
 `compiler/Sol/Main.hs` expands imports, checks/transforms the program and prepares
 bytecode on each invocation. There is no persistent compiled-program cache in
@@ -79,7 +94,7 @@ explains all of the earlier Sol slowdown.
 - [ ] Measure cold runs, warm runs and cache misses separately; choose numerical
   performance targets after establishing reproducible baselines.
 
-### Data processing and library costs
+#### Data processing and library costs
 
 Ordinary string indexing in `compiler/Sol/VM.hs` uses Haskell list `length` and
 `!!`; substring operations use `length`, `take` and `drop`. Repeated indexed
@@ -99,7 +114,7 @@ application choices; they should not all be attributed to the VM.
 - [ ] Provide practical streaming/chunked file processing and efficient hashing
   without a subprocess per small object.
 
-## 2. A real REPL and interactive experience
+### 2. A real REPL and interactive experience
 
 The current command entry accepts a script; `sol/examples/interactive_script.sol`
 is a calculator with an input loop, not a persistent language evaluator. Reading
@@ -126,7 +141,7 @@ transaction per submitted command, with explicit larger transactions when useful
 Before implementing it, specify which bindings survive failed evaluation, how
 linear resources cross command boundaries, and how external effects are reported.
 
-## 3. Process, terminal and shell integration
+### 3. Process, terminal and shell integration
 
 Sol already has structured argv, cwd, environment overrides, stdin text, timeouts
 and exit/stdout/stderr results through `ProcessSpec` and `ProcessResult`.
@@ -147,7 +162,7 @@ provide a complete streaming, pipeline, PTY or shell job-control experience.
   direct shell-like command syntax is wanted; it is a product choice, not required
   to make the structured process API useful.
 
-## 4. Transactions and external effects need a clear contract
+### 4. Transactions and external effects need a clear contract
 
 Whole-script retries are useful for transactional file work, but arbitrary
 processes, printed output and interactive input cannot simply be rolled back.
@@ -169,7 +184,7 @@ not an assumption that actors already survive command transactions safely.
 - [ ] Add focused failure/recovery tests for externally visible effects; document
   idempotency requirements instead of implying universal exactly-once behavior.
 
-## 5. Clean scripting output and errors
+### 5. Clean scripting output and errors
 
 `compiler/Sol/Main.hs` currently prints several compiler/runtime diagnostics,
 transaction receipts and non-Unit expression results to stdout. Earlier smoke
@@ -184,7 +199,7 @@ otherwise successful scripts awkward to use in Unix pipelines.
 - [ ] Verify exact stdout bytes with JSON and binary-producing scripts, alongside
   stderr and exit status checks. Avoid tests that only search for an expected line.
 
-## 6. Packaging and everyday library coverage
+### 6. Packaging and everyday library coverage
 
 A standalone Sol runner, deployable/versioned bytecode and a smooth installation
 experience remain work to do. The existing library has useful process, JSON, CSV,
@@ -203,7 +218,7 @@ shell-replacement coverage or consistent performance across backends.
 - [ ] Keep examples and tooling aligned with the actual type/safety checker and
   profile. Older descriptions of Sol as having no type inference are outdated.
 
-## Suggested delivery order
+### Suggested delivery order
 
 1. Clean stdout/stderr and exit behavior, plus reproducible performance baselines.
 2. Fix pathological compilation and implement carefully invalidated caching.
@@ -217,3 +232,383 @@ shell-replacement coverage or consistent performance across backends.
 This order is a proposal. Every milestone should have a small executable
 acceptance example; a working calculator, successful build or collection of
 library filenames is not sufficient evidence that the shell experience is done.
+
+## 2026-09-29 18:25 AEST — Sol script output and initial performance baseline
+
+Recorded with `8a6b301`.
+
+
+Date: 2026-09-29
+
+This increment implements the first part of the scripting contract proposed in
+the initial assessment above. It does not add a REPL or a bytecode cache.
+
+### Script contract
+
+- `fpr sol script.sol [args]` reserves stdout for explicit program output and
+  forwarded deferred-process output. Bare `> expression.` statements and a
+  zero-argument `main` still execute, but their returned values are not displayed.
+  Use `print` when a script needs to emit a value. Old examples relying on `=>`
+  must add explicit printing.
+- Compiler errors, runtime errors, warnings, recovery messages and opt-in debug
+  reports go to stderr. Warnings about retries, realtime effects, and failed
+  deferred commands remain visible by default.
+- `SOL_VERBOSE=1` enables successful transaction receipts, module pin notices,
+  native compilation notices, memoization decisions and web-server startup
+  notices, all on stderr. `SOL_TYPES`, `SOL_WIDTHS`, `SOL_TABLE_STATS`,
+  `SOL_JIT_DEBUG` and `SOL_HJIT_DUMP` retain their individual opt-in controls.
+- `fpr sol --asm script.sol` emits the requested disassembly on stdout and does
+  not execute the script. It is a compiler-output mode.
+- `shq` forwards child stdout and stderr separately, without adding a command
+  banner. `Proc.afterCommit` retains its separate channels. Both still capture
+  complete text: this change is neither streaming I/O nor an arbitrary-binary
+  process API. The regression suite includes a NUL-containing output fixture.
+- Successful foreground execution returns 0. Usage, compilation, file access,
+  foreground runtime errors, exhausted retries and failed deferred commands
+  return 1. A delivered Ctrl-C/UserInterrupt returns 130. Errors are distinguished
+  in stderr rather than assigned a larger exit-code taxonomy.
+
+A failed deferred command can follow an already-applied file commit; exit 1 does
+not imply rollback. Immediate output can repeat when a transaction retries.
+Background actor exception/lifetime semantics are unchanged. The SIGINT check
+covers an in-process sleeping evaluation, not process-tree or terminal job control.
+
+### Reproduce
+
+From the repository root:
+
+```sh
+make fpr
+python3 tools/sol-output-check.py
+python3 tools/sol-benchmark.py --warmups 2 --runs 10 --output /tmp/sol-baseline.json
+```
+
+The baseline runner measures fresh processes with a warm filesystem, captures and
+validates output, shuffles case order using a fixed seed, and records every sample.
+It covers startup, one external process, a recursive sum, library imports, and
+increasing tuple-pattern dispatch sizes. JIT and GPU are disabled explicitly.
+The report includes platform, executable SHA-256, source revision/dirty state,
+source hashes and the Cabal package configuration. Rebuild immediately before
+recording; source revision alone is not a binary build identity.
+
+These are end-to-end latency baselines, not throughput or speedup claims. Phase
+timings, peak memory, allocation profiling, cold-cache runs and optimized release
+build comparisons remain follow-up work. No performance thresholds are enforced.
+
+### Validation on macOS arm64
+
+The exact-output suite passes 26 checks. The existing transaction, process/git and
+safety suites pass. The general script suite stops at `version-compare.sol:43`
+with `case: not exhaustive -- no arm matches Nil`. A separately built, untouched
+HEAD snapshot reproduces that failure; it is not introduced by the output change.
+
+## 2026-09-29 18:34 AEST — Sol case fallback compilation
+
+Recorded with `0fb6047`.
+
+
+Date: 2026-09-29
+Kind: implementation and measured regression fix.
+Baseline: `8a6b301` (clean script output and baseline tools).
+Applies to: the shared frontend change delivered with this page.
+
+This is the next increment after [script output](#2026-09-29-1825-aest--sol-script-output-and-initial-performance-baseline),
+addressing the pattern-lowering growth identified in
+[Sol improvements needed](2026-09-29-Sol-Improvements-Needed.md).
+
+### Change
+
+`compiler/FPRISC.hs` previously copied all remaining case arms into every failure
+edge of a nested pattern. For `(i, i)` patterns there are three tests per arm,
+so the generated tree could grow exponentially with the number of arms.
+Function clauses already shared many such fallbacks; case expressions did not.
+
+Case fallbacks with multiple incoming failure edges now get one delayed helper.
+Lambda lifting captures the surrounding lexical bindings and emits saturated
+direct calls. Captures are saved outside the current pattern's bindings so a
+partially matched arm cannot change what the next arm sees. The dummy argument
+keeps capture-free helpers delayed. Direct calls preserve native tail recursion
+and use the existing function-entry fuel checks; counts of fuel checks may change.
+Lambda lifting also drains helpers enqueued while processing other helpers.
+
+The lexical snapshot fixes a pre-existing wrong-result case:
+
+```sol
+shadow x p = case p of (x, 0) -> x | _ -> x.
+> print "{shadow 42 (7, 1)}".
+```
+
+Before: `7`. After: `42`. The binding made inside a failed pattern must not leak
+into the fallback arm. Successful matching still returns the pattern's `x`.
+
+This changes the shared frontend, so it applies beyond Sol. It adds no persistent
+bytecode cache, REPL, streaming process support or alternate transaction model.
+
+### Measurements
+
+macOS arm64, the same local development build recipe, JIT/GPU disabled. Two
+warmups and five fresh-process samples per case/version, fixed-seed shuffled
+order, stdout/stderr captured and expected script output checked. Timing includes
+startup, compilation and execution. Disassembly bytes were measured separately
+and include the prelude; they are not machine-code or bytecode serialization size.
+
+Each generated case is a sequence of `(i, i) -> i` arms followed by `_ -> -1`,
+called with the final matching tuple.
+
+| Arms | Before median | After median | Before disassembly bytes | After disassembly bytes |
+| --- | ---: | ---: | ---: | ---: |
+| 4 | 66.66 ms | 55.70 ms | 51,810 | 37,438 |
+| 8 | 103.04 ms | 55.47 ms | 1,680,120 | 39,614 |
+| 10 | 512.75 ms | 65.00 ms | 16,475,844 | 40,702 |
+
+These observations show the focused scaling improvement, not a general speedup
+for every Sol script. Host load affects small latency differences. No isolated
+phase timing, allocation/peak-memory profile, or hardware-board run is claimed.
+The synthetic structural check is the deterministic regression gate: lowered Core
+node counts for 4/8/16/32/64 arms are 190/330/610/1170/2290. The old frontend gives
+858/65658 for 4/8 arms and fails the same growth bound immediately.
+
+### Acceptance
+
+```sh
+make fpr
+python3 tests/check_case_growth.py
+python3 tests/check_cases.py
+python3 tools/sol-output-check.py
+sh tools/sol-txn-check.sh
+sh tools/sol-proc-git-check.sh
+sh tools/sol-safety-check.sh
+```
+
+All commands passed on the local macOS arm64 host. The new test runs the same
+semantic fixture under Sol and the native Base executable. It checks first/middle/
+last/default arms, tag/field failure, lexical shadowing, nested closure captures,
+string/list patterns, exact effect order, scrutinee evaluation once, helpers inside
+clause fallbacks, and a 20,000-step native tail-recursive loop. A Sol-specific
+fixture checks linear vector consumption. Structural and disassembly checks bound
+code growth through increasing pattern sizes. The existing 200,000-step
+`tests/patguard.fpr` program also passed through Sol with an explicit `main Unit`
+entry statement.
+
+The general script suite's previously confirmed `version-compare.sol`
+non-exhaustive-case error is outside this change. The source remains unchanged.
+
+## 2026-09-29 18:49 AEST — Sol indexed VM and validated startup cache
+
+Recorded with `9f25b10`.
+
+
+Date: 2026-09-29
+
+This increment follows the output and case-fallback work. Instruction fetch now
+indexes an immutable zero-based array instead of traversing a list from its head
+for every instruction. Register frames remain maps, and call/return behavior is
+unchanged. This is an instruction-fetch improvement, not a complete VM rewrite.
+
+### Startup contract
+
+The runner caches successfully checked and lowered Core, bytecode, layouts, run
+order, and compiler warnings. The default location is the platform XDG cache root
+under `fpr/sol`; override it with `SOL_CACHE_DIR`. `SOL_CACHE=0` disables the cache.
+`SOL_CACHE_TRACE=1` reports hit/miss/disabled and write failures on stderr. Normal
+runs remain quiet. `SOL_TYPES=1` and `SOL_WIDTHS=1` bypass the cache to recompute
+requested compiler diagnostics.
+
+Root source, prelude, and the expanded dependency AST are part of the exact key,
+as are compiler options, script path, platform, schema, and executable identity.
+Imports are resolved, read, parsed, and pin-checked on every invocation before
+lookup. Transitive source changes and module shadowing therefore cannot silently
+reuse a different program. Whitespace-only dependency edits may safely reuse the
+same AST. This does not yet cache parsing or the dependency graph.
+
+Executable identity includes path, device, inode, size, nanosecond-resolution
+mtime/ctime (as supplied by the filesystem), and compiler/platform metadata.
+This avoids scanning the whole executable on every invocation; rebuilding or
+replacing it invalidates entries. Cache slots use a small hash, but the complete
+input key must match before accepting an entry. Serialized entries have a checksum,
+a schema marker and a 64 MiB limit. Corrupt/missing entries are misses; unavailable
+cache storage is nonfatal. Writes use a private temporary file and atomic rename.
+This is trusted local build storage, not an authenticated portable bytecode format.
+Old executable/script slots are not automatically garbage-collected yet.
+
+Values, script arguments, transactions, actors, JIT machine code, file contents,
+and effects are never cached. Warnings are replayed on hits. Runtime initialization,
+journal recovery, reads, writes, retries and process execution still happen per run.
+
+### Measurement and reproduction
+
+```sh
+make fpr
+SOL_TIMINGS=1 SOL_CACHE_TRACE=1 ./fpr sol script.sol
+./fpr sol script.sol +RTS -s -RTS
+python3 tools/sol-startup-check.py
+python3 tools/sol-vm-startup-benchmark.py --baseline /path/to/previous/fpr --output /tmp/sol-vm-startup.json
+```
+
+`SOL_TIMINGS=1` prints source, parse, imports, compiler stages, cache I/O, startup
+and execution wall times to stderr. It forces results at the measured boundaries,
+so enabling it adds work and changes evaluation timing. Parent startup time
+includes its child phases; do not sum them together. Typecheck includes demand for
+preceding surface rewrites. The startup phase ends before runtime initialization;
+fresh-process wall time also includes loader, runtime initialization and teardown.
+RTS statistics report whole-process allocation/residency, not OS peak RSS.
+
+Local macOS arm64 development build (`-O0`), baseline `0fb6047`, one warmup and
+seven shuffled samples per case, fresh processes with a warm filesystem. JIT, GPU
+and memoization disabled. These are end-to-end medians, not isolated dispatch costs.
+
+| Workload | Previous | New, cache disabled | New cache miss | New cache hit |
+| --- | ---: | ---: | ---: | ---: |
+| Hello | 55.89 ms | 65.68 ms | 68.09 ms | 30.71 ms |
+| Proc + CSV imports | 68.39 ms | 79.67 ms | 80.73 ms | 43.03 ms |
+| 500 calls, 16 arithmetic steps | 68.05 ms | 68.42 ms | — | — |
+| 500 calls, 64 arithmetic steps | 80.73 ms | 80.83 ms | — | — |
+| 500 calls, 256 arithmetic steps | 205.67 ms | 143.92 ms | — | — |
+
+The wide workload improves about 30%. Warm hello/import invocations improve about
+45%/37% relative to the previous binary. Small uncached invocations regress in this
+measurement; cache creation also adds work. This does not promise bounded startup
+latency or improvement for every program. A separate instrumented warm hello sample
+spent 15.6 ms parsing and 5.4 ms reading the cache, pointing to parsing/allocation as
+the next startup target. One warm hello RTS sample allocated 192 MB while maximum
+sampled heap residency was 786 KB; allocation is not retained memory.
+
+`tools/sol-benchmark.py` now explicitly disables the cache so its historical
+compilation baselines remain comparable. The new benchmark records both binary
+SHA-256 hashes and raw samples. Performance has no machine-specific pass threshold.
+
+### Verification
+
+The new startup checks cover warm/disabled behavior, root and transitive edits
+(including equal-size/equal-mtime edits), missing dependencies, pins, resolution
+shadowing, compiler flags and identity, warning replay, runtime arguments/file
+reads, writes/retries/rollback, JIT Core restoration, corrupt/truncated cache files,
+unavailable storage and concurrent writers. Bytecode disassembly matched the
+previous binary for the three arithmetic workloads.
+
+Freshly passed: output contract (26 checks), startup checks (51 plus assembly,
+concurrent writers and compiler identity), case-growth and shared case/signature
+regressions, transactional properties, structured process/Git wrappers, and
+purity/filesystem/lock/actor-retry checks. The previously established unrelated
+`version-compare.sol:43` non-exhaustive-case failure in the full scripts suite is
+not addressed by this increment.
+
+## 2026-09-29 19:02 AEST — Efficient text and subprocess interaction
+
+This entry consolidates the earlier three implementation pages into this log and
+implements the next text/process increment against `9f25b10`. The original local
+metadata edits are retained in the initial assessment. Historical checklists
+above describe their own snapshot, not current implementation status.
+
+### Ordinary String indexing
+
+`VStr` is now a compatibility pattern over a value with its sequential text,
+lazily cached length, and a lazily built immutable character array. Existing Sol
+programs gain indexed access without converting to a new Text type. Printing and
+sequential transforms do not demand the index. The first length query traverses
+the string; the first indexed access builds the array; subsequent length and
+character accesses are O(1). A substring copies the selected characters without
+walking the preceding prefix. Indexed strings retain extra O(n) array storage.
+Length-only access does not allocate that array.
+
+The contract remains 1-based Unicode code points, not UTF-8 byte offsets or
+user-perceived grapheme clusters. Combining marks count separately. `charAt`
+rejects invalid indices; `substr` clamps starts below 1 and lengths below 0, and
+returns empty beyond the end. Very large Sol integers are checked before conversion
+to host Int, avoiding wraparound. Embedded NUL and supplementary-plane characters
+are covered. Comparisons, rendering, concatenation and library string operations
+retain the ordinary String API.
+
+This does not replace strings with packed UTF-8, add streaming transactional file
+reads, fix repeated append construction, or complete a Bytes/hash/Map/Set audit.
+JSON's indexed parser benefits, but its string builder and Unicode escape grammar
+remain separate work. Large source literals also remain a parsing cost; the I/O
+regressions use input files instead of embedding hundreds of kilobytes in source.
+
+### Live subprocess I/O
+
+Two new APIs preserve `ProcessSpec argv cwd env stdin timeoutMs`:
+
+| API | stdin | stdout/stderr | Result |
+| --- | --- | --- | --- |
+| `Proc.query` / `Proc.runNow` | Spec text | Separate captured text | `Result ProcessResult String` |
+| `Proc.streamNow` | Spec text, EOF when sent | Direct inherited descriptors | `Result Int String` |
+| `Proc.inheritNow` | Inherited descriptor | Direct inherited descriptors | `Result Int String` |
+
+```sol
+> r = Proc.streamNow
+    (ProcessSpec ["/bin/cat"] "" [] "hello λ\n" 1000);
+  case r of
+    Ok 0 -> Unit
+  | Ok code -> error "child exited {code}"
+  | Err message -> error message.
+```
+
+Streaming output bypasses Sol text decoding and output capture: arbitrary bytes
+flow immediately, and OS pipes provide backpressure. Spec stdin is still a complete
+Sol String. Inherited stdin accepts binary data and rejects a nonempty Spec stdin
+rather than silently discarding it. Neither live API returns captured output.
+A nonzero child exit is `Ok code`; creation/I/O/timeout errors return `Err`.
+Signal termination retains the process library's exit-code convention.
+
+Both new operations are realtime escapes: they refuse to run ahead of pending
+transactional effects, warn on stderr, survive rollback, and can repeat on retry.
+They do not create transaction boundaries. `Proc.afterCommit` retains deferred
+captured-text behavior. The older shell-string APIs are not rewritten here.
+
+Structured children now run in their own POSIX process group. On timeout, I/O
+failure or asynchronous cancellation, Sol kills that group with SIGKILL, reaps the
+leader, joins its I/O workers and closes the pipes. This handles TERM-ignoring
+children, ordinary grandchildren, and a leader that exits while descendants keep
+capture pipes open. Deliberately detached sessions are outside this group boundary;
+successful commands may still leave background descendants. Cleanup is forceful,
+so applications do not receive a graceful shutdown interval.
+
+Inherited terminal input temporarily hands the foreground terminal to the child
+group and restores it to Sol afterward. Tests use an actual controlling PTY and
+require both the child and the resumed parent to read successfully. Sol does not
+allocate a PTY for a redirected process, implement a job table, handle suspend/
+resume jobs, or define concurrent interactive child sessions in this increment.
+The Haskell executable now uses `-threaded` so a process wait cannot stall pipe
+writers or cancellation handling.
+
+### Verification and measurements
+
+```sh
+make fpr
+python3 tools/sol-text-process-check.py
+python3 tools/sol-text-benchmark.py --baseline /path/to/previous/fpr --output /tmp/sol-text-processing.json
+```
+
+All 34 focused checks passed. They cover Unicode and huge indices, string operations and JSON, exact
+argv, separate output channels, invalid-UTF-8 binary streaming, inherited stdin,
+working directory, simultaneous large stdin/stdout/stderr, early stdin closure,
+live output before exit, stalled-consumer backpressure, pending-effect fences, output-decoding failures, timeout
+and SIGINT process-group cleanup, and real terminal handoff/restoration.
+
+The broader output, startup/cache, transaction, process/Git, filesystem/actor and
+shared case-growth suites passed on macOS arm64. Linux and other POSIX hosts were
+not exercised. The existing full-script-suite failure described above remains
+outside this increment.
+
+Final measurements: macOS arm64, development `-O0` builds, one warmup and five
+shuffled fresh-process samples. Cache/JIT/GPU/memoization disabled. Execution
+phase timing includes transactional file read and output; phase instrumentation
+forces boundaries. Input files avoid measuring large literal parsing. The new
+binary also enables the threaded runtime. These are workload measurements, not
+universal speedup claims or latency thresholds.
+
+| Workload | Previous execution | New execution | Previous wall | New wall |
+| --- | ---: | ---: | ---: | ---: |
+| scan_1000 | 8.47 ms | 3.94 ms | 67.85 ms | 68.29 ms |
+| scan_4000 | 79.05 ms | 14.65 ms | 142.56 ms | 79.92 ms |
+| scan_16000 | 843.58 ms | 67.48 ms | 905.80 ms | 130.83 ms |
+| json_100 | 11.12 ms | 10.18 ms | 105.79 ms | 115.01 ms |
+| json_400 | 54.88 ms | 37.96 ms | 155.85 ms | 141.62 ms |
+| json_1600 | 438.11 ms | 151.87 ms | 536.69 ms | 255.15 ms |
+
+The 16,000-code-point scan improves about 12.5x in execution (6.9x end to end);
+the 1,600-element numeric JSON array improves about 2.9x in execution (2.1x end
+to end). Small programs remain startup-sensitive. Retained index memory is an
+explicit tradeoff; these measurements do not include allocation or peak RSS.
+The benchmark saves raw samples and both executable SHA-256 hashes.

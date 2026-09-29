@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
 
 -- Val.hs — VM values + the builtin Vector: a LINEAR, growable,
@@ -25,6 +26,7 @@
 
 module Sol.Val where
 
+import qualified Data.Array as A
 import Data.Array.IO (IOArray, getElems, newArray_, readArray, writeArray)
 import Data.IORef
 import Data.Int (Int64)
@@ -46,30 +48,27 @@ atomT = 6
 data Value
   = VInt !Integer
   | VNum !Double -- inexact Numeric: arises from Num.div/Num.sqrt etc.; VInt promotes into it on contact
-  | VStr String
-  -- ---- the fast string variant: a VStr backed by a mutable ByteString buffer
-  --
-  -- VStr is Haskell [Char]: O(i) at, O(|a|) strcat, O(n) length. That is fine
-  -- for the short strings Sol manipulates as values (filenames, status lines,
-  -- formatted numbers). It is NOT fine for:
-  --   * append-heavy builders — a log loop doing `acc = "{acc}{line}"` is
-  --     quadratic in the number of lines
-  --   * index-heavy scanning — substr/charAt over a multi-KB file is O(i) per
-  --     access; a grep loop over 1000 lines is O(n^2)
-  -- VBStr (ByteString Vector String) is the escape: a mutable byte buffer with
-  -- O(1) amortised append and O(1) byte access, declared LINEAR in the
-  -- prelude so in-place mutation is sound (same guarantee as Vector). UTF-8
-  -- decoding is exposed as codepoint (not byte) access — Sol's charAt contract
-  -- is preserved — using the BSU.decode loop only when the character boundary
-  -- doesn't land on a 7-bit ASCII byte.
-  --
-  -- The BStr VALUE lives in VM.hs's table (VData bstrT 0 [key]); the
-  -- store below is its backing.  (A VBStr value constructor once lived
-  -- here too -- two representations, one dead: deleted.)
+  -- Preserve the String-facing pattern while sharing an optional code-point
+  -- index. Printing/sequential operations do not force the array. The first
+  -- indexed access costs O(n); subsequent length/access cost O(1).
+  | VString String Int (A.Array Int Char)
   | VData !Int !Int [Value]
   | VPap String [Value] !Int -- global or HAL symbol, collected args, remaining
   | VVec (IORef VecStore) -- the linear SoA vector
   | VMod FilePath String -- content-addressed file module: path + AST hash
+
+pattern VStr :: String -> Value
+pattern VStr s <- VString s _ _ where
+  VStr s = let n = length s in VString s n (A.listArray (1, n) s)
+
+-- The array retains code points, not UTF-8 byte offsets or grapheme clusters.
+stringIndex :: Value -> Maybe (A.Array Int Char)
+stringIndex (VString _ _ a) = Just a
+stringIndex _ = Nothing
+
+stringLength :: Value -> Maybe Int
+stringLength (VString _ n _) = Just n
+stringLength _ = Nothing
 
 instance Show Value where
   show = render
