@@ -809,3 +809,268 @@ Reproduce comparisons with:
 python3 tools/sol-e2e-benchmark.py --baseline /path/to/saved/fpr --runs 9 --output /tmp/sol-runtime.json
 python3 tools/sol-e2e-benchmark.py --baseline /path/to/saved/fpr --runs 5 --rts-tick 0.001 --output /tmp/sol-same-timer.json
 ```
+
+
+## 2026-09-29 20:24 AEST — Item 6 library audit and shell roadmap
+
+### Scope and evidence
+
+Item 6 is “Packaging and everyday library coverage.” This audit covers the
+14 modules in `sol/lib`, selected shared `std/*.fpr` modules, the injected
+prelude, VM/HAL, transaction implementation, entrypoint, and representative
+scripts. The target is a dependable scripting library and a POSIX-first `sol >`
+shell. This is a proposed roadmap, not an instruction to implement every item
+now or a claim that existing examples constitute a supported standard library.
+
+Audited source: `e3b1c58`. Fresh macOS arm64 probes used the rebuilt binary with
+normal type/safety checking, interpreter execution, and a temporary cache.
+The report contains 44 probes: 30 import checks, 13 selected behavior probes,
+and one existing script check. Import success establishes compilation only.
+No network, interactive shell, scientific backend, or comprehensive library
+conformance suite was executed. Historical QRepo experience prompted checking
+shared digest/OS compatibility again; current findings below are from live source
+and fresh probes, not old performance claims.
+
+### What exists today
+
+| Area | Current implementation | Audit result and boundary |
+| --- | --- | --- |
+| Small helpers | `sol/lib/base.sol` | Import fails: `removeAt` case lacks an explicit Nil arm under the current checker. Guard reasoning does not establish exhaustiveness. |
+| Processes | `sol/lib/proc.sol`, prelude `Proc.*`, `Sol/Txn.hs` | Builders and captured/deferred/immediate/live/inherited execution exist. Prior process suites cover cancellation/backpressure/PTY foreground handoff. No Sol-visible pipeline graph, owned spawn/wait handle, or shell job table. |
+| Git | `sol/lib/git.sol` | Imports; structured process wrappers exist. Import probe did not execute Git operations. Keep as an optional integration, not the foundation of the shell. |
+| JSON | `sol/lib/json.sol` | Imports and useful accessors exist; acceptance/escaping and representation gaps confirmed below. |
+| CSV | `sol/lib/csv.sol` | Imports and quoted-field parsing exist; lossy round trips confirmed below. Whole input and rows are retained. |
+| Fixed point / random | `sol/lib/fix.sol`, `rand.sol` | Both import. Fixed-point helpers and deterministic LCG are useful specialized tools; no fresh numerical-accuracy or randomness tests here. |
+| Matrices / plots | `sol/lib/matrix.sol`, `plot.sol` | Both blocked at import by `base.removeAt`. Matrix uses Vec; plotting emits SVG/SMIL. Matrix CSV helpers split lines/commas independently of the actual CSV parser. |
+| Logic / parser | `sol/lib/logic.sol`, `plparse.sol` | Both fail checking, including nonexhaustive cases. Specialized libraries rather than shell essentials. |
+| UI / web | `sol/lib/ui.sol`, `web.sol`, `auth.sol` | UI and explicitly legacy web vocabulary import. Auth fails nested `ui.Style.*` resolution. Its source is a demonstration account flow, not a supported authentication contract. Keep separate from shell core. |
+| Collections | Prelude List plus `std/map.fpr`, `std/set.fpr`, `std/list.fpr` | Shared Map/Set import and basic insert/ordered entries/membership work. Reuse these implementations. Scaling and full behavioral coverage remain to establish. |
+| Paths | `std/path.fpr` | Imports; `/a/../b` normalizes to `/b`. Reuse pure lexical path functions, distinguishing normalization from filesystem canonicalization and symlink resolution. |
+| Directories | Sol `ls`/`exists`/`isDir`/`stat`; shared `std/dir.fpr` | Sol has transactional primitives. Shared Dir imports but `Dir.list` panics on missing `Os.listDir`. An adapter is required, not a duplicate traversal implementation by default. |
+| Shared process API | `std/proc.fpr` | Imports but `run ["/usr/bin/true"]` panics on missing `Os.run`. Different result/env/effect contracts from Sol Proc must be reconciled explicitly. |
+| Binary/encoding/digest | `std/encoding.fpr`, `std/digest.fpr`; Sol BStr | Encoding/digest imports fail on bit primitives and native dependencies. BStr is a linear UTF-8 text buffer, not a general arbitrary-byte file/process API. |
+| Streams / files / HTTP / terminal / clock / config | Shared `std/stream`, `file`, `http`, `term`, `clock`, `config` | All fail the selected import probes on missing hosted primitives or transitive dependencies. Existing native implementations are reuse candidates, not working Sol APIs. |
+| Runner / interactive session | `compiler/Sol/Main.hs`, Makefile `sol` target | File-based `fpr sol` dispatch; no persistent no-argument REPL. Make target reports the subcommand. No standalone Sol installation contract established by this audit. |
+
+Overall, **8 of 14 Sol libraries import successfully; 6 fail**. Of the 16 selected
+shared modules, 8 import successfully; two of those fail the basic runtime call
+probes. These fractions measure this probe set, not percentage completeness.
+
+### Concrete correctness and performance gaps
+
+1. **JSON accepts and produces invalid forms.** Fresh `sol/lib/json` probes accept
+   the unknown escape `"\q"` as `q`, and the number `01` as 1. Rendering a String
+   containing code point 1 emits the raw control character. Source also decodes
+   individual `\uXXXX` units without combining surrogate pairs. Define number
+   fidelity, duplicate-key behavior, limits, and exact error locations before
+   declaring the API stable.
+2. **Two JSON implementations cannot simply be substituted.** Shared `std/json`
+   rejects an unknown escape and has a richer number/value model, but in Sol its
+   escaped `\u03bb` becomes `Î»`, while literal `λ` stays `λ`. Its UTF-8 byte
+   construction assumes the native String contract. Reconcile the encoding layer
+   before choosing a shared implementation and a compatibility adapter for the
+   existing `JNum/JObj` interface.
+3. **CSV round trips lose data.** `parse(render([["a\rb"]]))` produces `[["ab"]]`;
+   a single empty field row becomes no rows. Define empty document vs empty field,
+   CR/LF preservation, quoting, post-quote syntax, duplicate headers, and ragged-row
+   policy. `records` currently zips headers/fields and can silently truncate.
+4. **Filesystem metadata operations can read entire files.** `txExists` and
+   `txStat` call `snapshot`; traversal must not inherit whole-content reads for
+   every stat. Separate metadata observations from content dependencies with
+   explicit validation guarantees. Current `mv` is text read/write/delete, not a
+   binary-safe filesystem rename. `ls` treats missing directories as empty.
+5. **Text and collection building still have expensive paths.** JSON/CSV append
+   growing Strings character by character; prelude `collect` appends singleton
+   results; `List.find` filters before selecting the first result. Existing BStr
+   should be benchmarked for the intended operation, not assumed to solve every
+   builder/indexing cost. Standardize linear-time accumulation and early stopping.
+6. **Shell I/O is incomplete.** `input` snapshots all stdin; realtime line input
+   returns the same empty String for EOF and an empty line. `print` adds a newline.
+   There is no cohesive hosted raw stdout/stderr, binary stream, environment,
+   current-directory, arbitrary exit-status, and terminal API. Do not implement
+   stderr by transactional writes to `/dev/stderr`.
+7. **Examples are not release gates yet.** `version-compare.sol 2.10 2.9` freshly
+   fails the exhaustiveness check. `sol/scripts/text/shell.sol` interpolates an
+   argument into `sh "ls -l {dir}"` and parses display columns; it mishandles shell
+   metacharacters and filenames with spaces. Replace it with structured directory
+   metadata, or clearly keep it as an explicit shell-interpretation example.
+   Regex/grep/awk/sort scripts are useful seeds, not maintained library contracts.
+
+Source anchors: `compiler/Sol/Preamble.hs`, `VM.hs`, `Val.hs`, `Txn.hs`, `Main.hs`,
+`Mod.hs`; `sol/lib/{base,json,csv,proc,matrix,auth}.sol`;
+`std/{path,map,set,json,encoding,digest,os,osfs,proc,dir,stream,term}.fpr`.
+
+Format acceptance references: [RFC 8259, JSON numbers and strings](https://www.rfc-editor.org/rfc/rfc8259.html#section-6) and [RFC 4180, common CSV quoting and record rules](https://www.rfc-editor.org/rfc/rfc4180.html#section-2). CSV dialect choices should be documented explicitly; these references do not substitute for round-trip tests.
+
+### Proposed public library design
+
+Keep **one documented public module per responsibility**, with shared pure code
+and profile-specific host adapters. The names below are proposed API areas, not
+new files that already exist. Avoid importing every subsystem into the prelude;
+keep heavy libraries explicit and startup-sensitive.
+
+| Layer | Proposed areas | Implementation policy |
+| --- | --- | --- |
+| Pure core | Result/Option, List, Map, Set, Path, Text, Bytes, Encoding | Reuse checked shared algorithms; make byte/code-point distinctions explicit. Map ordering and equality contracts stay documented. |
+| Script host | Env, Cli, IO, Fs, Temp, Clock, Log | Thin typed adapters over the hosted runtime. OS errors remain distinguishable from missing values and EOF. |
+| External work | Process, Stream, Terminal, Signal | Host-owned handles, bounded buffering, cancellation and deterministic cleanup. Explicit immediate effects. |
+| Formats/integrations | Json, Csv, Digest, Http, Config, Git, Archive | Build on Bytes/Streams/Process. Keep external-tool requirements visible. |
+| Interactive shell | Session, completion, history, jobs | Reuse Process/Fs/Terminal; keep parsing and session state separate from the VM evaluator. |
+| Optional scientific/UI | Vector/Matrix, Random, Plot, UI | Separate acceptance gates and backend parity; not a prerequisite for a useful shell. |
+
+Recommended foundational contracts:
+
+- Bytes is exact octets; Text is Unicode code points. UTF-8 encode/decode is
+  explicit, with strict and explicitly named replacement policies. BStr is not
+  silently redefined as Bytes. Decide the non-UTF-8 POSIX filename policy; the
+  first release should return an explicit unsupported-encoding error if it cannot
+  preserve a name, never silently replace bytes.
+- Fallible APIs use structured errors (operation/kind/path or status/context),
+  preserving existing String-error wrappers during migration. EOF is an Option
+  or explicit end marker. Nonzero child exit is a process result; spawn failure,
+  timeout and cancellation remain distinguishable. Provide an explicit checked
+  helper for scripts that require status 0.
+- File effects say whether they are transactional or immediate. Streams, terminal
+  input, network requests and process execution are not silently retryable.
+  Scoped handles close on success, failure and cancellation; unbounded captured
+  output is never the only process API.
+- A pure value pipeline and an OS byte pipeline are different APIs. Require
+  explicit encode/decode/line adapters. Preserve argv boundaries; shell parsing
+  is an explicit opt-in. Avoid claiming Bash/POSIX-shell syntax compatibility.
+
+### Delivery plan and acceptance gates
+
+#### A. Repair and certify the existing surface — first increment
+
+- [ ] Add a versioned library capability matrix and executable import **and call**
+  probes. Mark legacy, experimental, hosted-supported and native-only modules.
+- [ ] Repair base exhaustiveness and nested UI-name qualification; enumerate and
+  repair or explicitly quarantine remaining logic/parser failures. Do not turn
+  off the checker to obtain a green catalog.
+- [ ] Add JSON/CSV conformance and round-trip fixtures for the demonstrated failures,
+  Unicode, escapes, numeric boundaries, empty rows, multiline fields and headers.
+  Decide consolidation with shared JSON through a tested encoding adapter.
+- [ ] Make the advertised scripting examples run with default checking and correct
+  argv/output behavior; clarify the shell-interpolation example.
+
+Gate: every advertised hosted library compiles and performs a representative call;
+known expected failures have explicit ownership/status rather than being hidden.
+No malformed JSON emission or silent CSV round-trip loss in the agreed fixtures.
+This stage is mostly library/frontend work, not a shell implementation.
+
+#### B. Essential script host APIs and collections
+
+- [ ] Ship documented Map/Set/Path/List entrypoints using existing shared code,
+  with basic semantic and scaling tests. Improve accumulate/find/group paths where
+  evidence shows quadratic work. Extract reusable CLI option parsing from scripts.
+- [ ] Provide Env lookup/missing/unset semantics, script args, session cwd, exit
+  status, exact stdout/stderr writes, and EOF-aware line input. Keep a minimal
+  `sol` launcher contract in view so applications do not hardcode repo paths.
+- [ ] Add metadata-only Fs stat/lstat, symlink policy, sorted traversal, walk limits,
+  path errors, temp files/directories with scoped cleanup, rename/copy/remove
+  semantics, and glob rules (dotfiles, unmatched patterns, recursive traversal).
+  Prevent symlink cycles and accidental whole-file metadata scans.
+
+Gate: a directory inventory and CLI filter work outside the checkout, preserve
+spaces/newlines in names, distinguish missing/denied/empty, and do not reread every
+file's contents merely to enumerate metadata. CLI prints data to stdout, diagnostics
+to stderr, and returns a selected status. Cross-device rename behavior is explicit.
+
+#### C. Bytes, bounded streams and reliable formats
+
+- [ ] Add immutable Bytes and explicit UTF-8 conversions; reuse a validated builder
+  for text. Add bounded chunk reads/writes, stream folds and line framing with
+  incremental decoding across chunk boundaries. Use scoped resource ownership.
+- [ ] Define a transaction policy for streamed file reads: bounded immediate scans
+  first, with explicitly designed validation/spooling if replayable transactional
+  streams are later required. Do not retain every chunk as an accidental snapshot.
+- [ ] Implement binary-safe copy and hex/base64; repair/port digest support with
+  streamed SHA-256. Decide a host-backed digest implementation versus reuse using
+  measured throughput and correctness, not availability of an import alone.
+- [ ] Finish JSON/CSV streaming interfaces, parser limits, and deterministic output.
+  Treat record-at-a-time formats separately from whole-document parsers.
+
+Gate: all 256 byte values round-trip, split UTF-8 sequences decode correctly,
+blank lines differ from EOF, standard digest vectors pass, and a 100 MiB streaming
+copy/filter has memory bounded by configured buffers rather than total input.
+Disk snapshot semantics must not be silently weakened to meet the memory gate.
+
+#### D. Structured pipelines and process lifetime
+
+- [ ] Extend existing raw-argv ProcessSpec with explicit stdin/stdout/stderr sources
+  and sinks, capture limits, environment removal, and executable lookup rules.
+- [ ] Add pipeline construction, per-stage statuses and pipefail policy; concurrent
+  draining, kernel backpressure, early consumer exit, timeout and cancellation.
+- [ ] Add owned process/job handles with wait/poll/terminate and one cleanup path.
+  Separate file redirection performed by a child from Sol transactional writes.
+  Offer an explicit staging/publish mechanism if atomic final-output publication
+  is desired; arbitrary child effects cannot be rolled back.
+
+Gate: a multi-stage binary pipeline exceeding pipe buffers does not deadlock;
+early consumers and Ctrl-C leave no owned children, zombies or leaked descriptors.
+Empty/quoted/metacharacter argv values survive unchanged. Failure of any stage is
+inspectable. Prior capture/live/PTY tests remain green.
+
+#### E. Minimal persistent `sol >`, then shell polish
+
+- [ ] Refactor load/compile/evaluate into a reusable session interface. Separate
+  persistent definitions/module cache/cwd/env/last-status from per-command TxState.
+- [ ] Add multiline input, expression display only in interactive mode, type/help
+  inspection, error recovery, reload, and explicit process invocation.
+- [ ] One command owns its transaction and temporary resources. Publish persistent
+  bindings only after successful evaluation/commit. Classify immediate effects
+  before execution; refuse an unsafe automatic replay or require an explicit
+  effect boundary. A command is not magically atomic because it was typed once.
+- [ ] Then add editing/history/completion, resize handling and terminal restoration.
+  Job control is a later gate: jobs/fg/bg, process groups, stop/continue signals,
+  terminal foreground ownership and cleanup on shell exit. PTY allocation is a
+  separate capability from existing inherited-terminal support.
+
+Gate: failed commands leave the prompt usable; cwd/env changes affect later
+commands intentionally; no whole-session transaction accumulates. A forced conflict
+cannot silently replay an interactive external command. Ctrl-C cancels foreground
+work and returns to the prompt; EOF exits cleanly. Measure prompt-ready and
+per-command latency separately from fresh-process startup.
+
+#### F. Distribution, integration and optional scientific coverage
+
+Start the runner design during B; certify distribution alongside E rather than
+waiting for every optional library.
+
+- [ ] Ship a versioned `sol` command, help/version/script args and tested shebang
+  forms; resolve bundled libraries independently of cwd and source checkout.
+  Installation should work offline from the release bundle.
+- [ ] Separate disposable local cache from deployable artifacts. Existing cache
+  files contain compiler identity and are **not** a portable bytecode ABI. Decide
+  whether v1 distributes source plus runner first; add deployable bytecode only
+  with format/VM version, validation, target-feature and compatibility contracts.
+- [ ] Define module names/search order, pin/lock behavior, explicit upgrades,
+  reproducibility, offline resolution and cache retention. Resolve local shadowing
+  predictably. A package registry is not required for the first release.
+- [ ] Add HTTP with deadlines, bounded/streamed bodies, header/status handling,
+  certificate validation and explicit redirect policy. A documented external-tool
+  adapter can be an interim bridge, not an invisible claim of a built-in client.
+  Build Config/Git/Archive conveniences on the stable lower layers.
+- [ ] Restore Matrix/Plot imports; compare interpreter/native numerical results,
+  dimensions and resource ownership, deterministic PRNG, SVG escaping/output, and
+  larger-array throughput. Defer broad scientific/Python interoperability until
+  these foundations and realistic workloads have acceptance evidence.
+
+Gate: installed scripts run from an unrelated directory with no compiler checkout;
+missing dependencies and incompatible artifacts fail clearly. HTTP fixtures cover
+redirect/error/timeout/TLS handling; no live service is required for core CI.
+
+### Recommended first implementation slice
+
+**A: library compatibility and JSON/CSV correctness**, then **B: script host APIs
+and metadata-safe filesystem traversal**. Reuse Map/Set/Path now; avoid spending a
+milestone reimplementing collections that already work. Bytes/Streams is the
+shared dependency for robust text filters, file copying, hashing, pipelines and
+HTTP. Build the first persistent prompt on these explicit effect/resource rules,
+then add jobs and terminal polish.
+
+Maintain acceptance examples for: recursive inventory; UTF-8/CSV-to-JSON transform;
+binary copy plus digest; bounded log filtering; raw-argv process pipeline; and a
+session that survives failure/cancellation. Record exact bytes/status and memory
+scaling, not only successful compilation or attractive demos. Full native/hosted
+parity is a per-module decision, not a prerequisite for every Sol-specific feature.
