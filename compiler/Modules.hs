@@ -331,7 +331,7 @@ renameTops env qh tops = concatMap top tops
     -- is the HAL's (an fpr_g_ symbol some C file defines), global by
     -- nature, so it is never qualified with this module's hash.
     defined = S.fromList [n | TBind n _ _ _ <- tops]
-    qualSig n = if S.member n defined then qual n else n
+    qualSig n = if n == "$module" || S.member n defined then qual n else n
     top = \case
       TUse {} -> [] -- consumed by the loader
       TAlias {} -> [] -- folded into reAliasSubst

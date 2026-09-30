@@ -279,6 +279,15 @@ applyPreconds tab tops = (concat notes, tops')
           shadow = S.empty
           (body', PEnv _ ns) = runState (goE tab n shadow facts body) (PEnv 0 [])
        in (TBind n pats g body', reverse ns)
+    top (TEval body) =
+      let (body', PEnv _ ns) = runState (goE tab "<eval>" S.empty [] body) (PEnv 0 [])
+       in (TEval body', reverse ns)
+    top (TStruct n sigs fs) =
+      let field (f, body) =
+            let (body', PEnv _ ns) = runState (goE tab (n ++ "." ++ f) S.empty [] body) (PEnv 0 [])
+             in ((f, body'), reverse ns)
+          (fs', ns) = unzip (map field fs)
+       in (TStruct n sigs fs', concat ns)
     top t = (t, [])
     ownFacts n pats = case M.lookup n tab of
       Nothing -> []

@@ -28,7 +28,8 @@ import Sol.Lang
 import Sol.Mod (resolveModuleParsed, parseCachedSource)
 import Sol.Preamble (halArities, prelude)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
-import Safety (safetyCheck)
+import Safety (safetyCheck, trustedLibraryPaths)
+import Precond (applyPreconds, preTable, validatePre)
 import Sol.Infer (inferTops)
 import Sol.Width (widthReport)
 import Sol.HandJIT (JitCtx, initJIT)
@@ -37,6 +38,7 @@ import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import System.Exit (ExitCode (ExitFailure), exitFailure, exitWith)
 import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import System.IO.Error (ioeGetErrorString, isUserError)
+import System.Directory (canonicalizePath)
 import System.FilePath (dropExtension, takeDirectory, takeExtension)
 import Text.Megaparsec (errorBundlePretty, parse)
 import Sol.Txn
@@ -72,10 +74,13 @@ runScript = do
         Left err -> diagnostic err >> exitFailure >> pure []
         Right (_, tops) -> pure tops
     seenRef <- newIORef M.empty
-    expanded <- phase "imports" $ expandUses 8 "" seenRef (takeExtension path) (takeDirectory path) utops
-    cached path src prelude expanded $ do
+    trustRef <- newIORef S.empty
+    trustedPaths <- trustedLibraryPaths
+    expanded <- phase "imports" $ expandUses 8 "" trustedPaths trustRef seenRef (takeExtension path) (takeDirectory path) utops
+    trusted <- readIORef trustRef
+    cached path src prelude expanded (S.toList trusted) $ do
       ptops <- phase "prelude-parse" $ parseOrDie "<prelude>" prelude
-      compileScript path src ptops utops expanded
+      compileScript path src ptops utops expanded trusted
   let Prepared cons shapes prog bprog runList _ = prepared
   -- user constructors only (the builtins have their own spellings in render),
   -- by their BASE name: `L.O.Some` prints as `Some`
@@ -116,10 +121,14 @@ runScript = do
         hPutStrLn stderr (if "*** SOL PANIC" `isPrefixOf` msg then msg else "*** SOL PANIC: " ++ msg ++ " ***")
         exitFailure
 
+evalForSafety :: STop -> STop
+evalForSafety (TEval e) = TBind "main" [] [] e
+evalForSafety t = t
+
 -- Successful compiler output is pure data; transactions, actors, JIT state and
 -- script arguments are deliberately created outside this cached boundary.
-compileScript :: FilePath -> String -> [STop] -> [STop] -> [STop] -> IO Prepared
-compileScript path src ptops utops utopsX0' = do
+compileScript :: FilePath -> String -> [STop] -> [STop] -> [STop] -> S.Set Name -> IO Prepared
+compileScript path src ptops utops utopsX0' trusted = do
   noteRef <- newIORef []
   let note msg = modifyIORef' noteRef (msg :) >> diagnostic msg
   let anchored =
@@ -159,6 +168,14 @@ compileScript path src ptops utops utopsX0' = do
     mapM_ (diagnostic . ("  * " ++)) (perrs ++ structErrs1)
     exitFailure
 
+  let contracts = preTable (ptopsExp ++ topsExp)
+      contractErrors = validatePre contracts
+  unless (null contractErrors) $ do
+    diagnostic "=== PRECONDITION: ERRORS ==="
+    mapM_ (diagnostic . ("  * " ++)) (anchored contractErrors)
+    exitFailure
+  let checkedTops = snd (applyPreconds contracts (ptopsExp ++ topsExp))
+
   -- gradual boundary: `# sol:notypes` in a file header opts the run out
   -- of the checker (the MVU view DSL's heterogeneous node records need a
   -- Node ADT to type — a gen_view design decision, tracked in README)
@@ -169,11 +186,11 @@ compileScript path src ptops utops utopsX0' = do
   showTypes <- (== Just "1") <$> lookupEnv "SOL_TYPES"
   combined <-
     if noTypes
-      then pure (ptopsExp ++ topsExp) -- ops stay Int prims; debugging only
+      then pure checkedTops -- ops stay Int prims; debugging only
       else do
-        (terrs, notes, holes, rewritten) <- phase "typecheck" $ pure (inferTops sigs structs (ptopsExp ++ topsExp))
-        let preludeNames = S.fromList [n | TBind n _ _ _ <- ptopsExp]
-            (serrs, ssug) = safetyCheck preludeNames (ptopsExp ++ topsExp) notes
+        (terrs, notes, holes, rewritten) <- phase "typecheck" $ pure (inferTops sigs structs checkedTops)
+        let preludeNames = trusted <> S.fromList [n | TBind n _ _ _ <- ptopsExp]
+            (serrs, ssug) = safetyCheck preludeNames (map evalForSafety (ptopsExp ++ topsExp)) notes
             userNames = S.fromList [n | TBind n _ _ _ <- topsExp]
         unless (null terrs) $ do
           diagnostic "=== TYPE ERRORS ==="
@@ -342,15 +359,19 @@ parseOrDie name src = case parse program name src of
 -- their qualified references onto it. This is what keeps one type ONE type:
 -- a PT built by a library's internal logic import unifies with the app's
 -- own logic import because they are literally the same declarations.
-expandUses :: Int -> String -> IORef (M.Map String String) -> String -> FilePath -> [STop] -> IO [STop]
-expandUses 0 _ _ _ _ _ = diagnostic "[sol] use: module nesting too deep" >> exitFailure >> pure []
-expandUses depth prefix seenRef impExt baseDir tops = do
+expandUses :: Int -> String -> S.Set FilePath -> IORef (S.Set Name) -> IORef (M.Map String String) -> String -> FilePath -> [STop] -> IO [STop]
+expandUses 0 _ _ _ _ _ _ _ = diagnostic "[sol] use: module nesting too deep" >> exitFailure >> pure []
+expandUses depth prefix trustedPaths trustRef seenRef impExt baseDir tops = do
   let aliases = [(mn, spec) | TUse mn spec <- tops]
   pairs <- forM aliases $ \(mn, spec) -> do
     r <- resolveModuleParsed impExt baseDir spec
     case r of
       Left e -> diagnostic e >> exitFailure >> pure ([], (mn, mn))
       Right (mpath, h, pinned, mtops0) -> do
+        approved <- (`S.member` trustedPaths) <$> canonicalizePath mpath
+        when approved $ modifyIORef' trustRef (<> S.fromList
+          ([prefix ++ mn ++ "." ++ n | TBind n _ _ _ <- mtops0]
+           ++ [prefix ++ mn ++ "." ++ n ++ "." ++ f | TStruct n _ fs <- mtops0, (f, _) <- fs]))
         unless pinned $
           verbose ("[sol] use (compile): " ++ spec ++ " resolves to " ++ spec ++ "#" ++ h ++ " (pin this)")
         seen <- readIORef seenRef
@@ -364,7 +385,7 @@ expandUses depth prefix seenRef impExt baseDir tops = do
             pure ([], (mn, localName))
           Nothing -> do
             modifyIORef' seenRef (M.insert h (prefix ++ mn))
-            mtops1 <- expandUses (depth - 1) (prefix ++ mn ++ ".") seenRef (takeExtension mpath) (takeDirectory mpath) mtops0
+            mtops1 <- expandUses (depth - 1) (prefix ++ mn ++ ".") trustedPaths trustRef seenRef (takeExtension mpath) (takeDirectory mpath) mtops0
             let defs = [t | t <- mtops1, notEval t]
                 rn = M.fromList [(n, mn ++ "." ++ n) | n <- topNames defs]
             pure (renameTops rn defs, (mn, mn))

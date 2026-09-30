@@ -76,12 +76,15 @@ orders = "order,customer,amount,note
 
 1005, 1 ,0.01,".
 
+# Blank records are preserved by the CSV parser; this cleanup drops them.
+orderRows = unwrap (C.parse orders) |> List.filter (fn row -> row != [""]).
+
 trim rec = List.map (fn p -> (k, v) = p; (k, Str.trim v)) rec.
 amount rec = C.col "amount" rec |>? Try.parseNum.
 
-> rows = unwrap (C.parse orders);
+> rows = orderRows;
   recs = List.map trim (C.records rows);
-  _ = expect "rows parsed (blank line is not a row)" (List.len recs) 5;
+  _ = expect "cleanup drops the blank record" (List.len recs) 5;
   _ = expect "quoted comma and doubled quotes"
     (List.map (fn r -> okOr "" (C.col "note" r)) recs) ["first, with comma", "", "bad amount", "say \"hi\"", ""];
   good = List.filter (fn r -> isOk (amount r)) recs;
@@ -106,7 +109,7 @@ amount rec = C.col "amount" rec |>? Try.parseNum.
 
 # ---- 5. across the formats: records <-> JSON objects -------------------------
 
-> rows = unwrap (C.parse orders);
+> rows = orderRows;
   recs = List.map trim (C.records rows);
   asJson = JArr (List.map J.ofRecord recs);
   hdr :: body = rows;

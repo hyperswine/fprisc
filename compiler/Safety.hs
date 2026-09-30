@@ -16,8 +16,8 @@
 --        No inference hides recursion.  Missing marker = compile error.
 --     2. calling a MARKED-unsafe function from an unmarked function is
 --        itself unsafe and requires a marker — UNLESS the callee is
---        LIBRARY code (the prelude, or a use-spliced module: dotted
---        names).  The library is the vetted set: its recursive
+--        LIBRARY code (the prelude or explicitly allow-listed modules).
+--        The library is the vetted set: its recursive
 --        internals are marked (rule 1 applies to it too — honesty),
 --        but USING it is the sanctioned way to recurse, so the taint
 --        stops at the library boundary.  "Core functions rather than
@@ -29,13 +29,104 @@
 -- FPR_UNSAFE_SUGGEST=1 prints paste-ready signatures (with the
 -- INFERRED types) for every violation, so adopting the discipline is
 -- mechanical rather than archaeological.
-module Safety (safetyCheck) where
+module Safety (safetyCheck, trustedLibraryPaths) where
 
+import System.Directory (canonicalizePath)
+import System.FilePath (takeDirectory, (</>))
+import Home (underHome)
+import Data.Maybe (catMaybes)
 import Data.Graph (SCC (..), stronglyConnComp)
-import Data.List (nub)
+import Data.List (nub, isInfixOf, isPrefixOf, isSuffixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import FPRISC
+
+
+-- Explicit transitional trust policy for shipped library schemes and QOS
+-- service plumbing. Qualification alone conveys no trust. These are source
+-- allow-list entries, not proof certificates; local toolchain configuration
+-- controls their resolution. New library files require an explicit entry.
+trustedLibraryPaths :: IO (S.Set FilePath)
+trustedLibraryPaths = do
+  shipped <- catMaybes <$> mapM underHome approvedLibraries
+  -- The platform owns its own explicit allow-list, just as it owns the
+  -- foreign primitive declarations. Entries are relative to this file.
+  manifest <- underHome "core/trusted-modules.txt"
+  platform <- case manifest of
+    Nothing -> pure []
+    Just p -> do
+      entries <- lines <$> readFile p
+      pure [takeDirectory p </> line | line <- entries, c : _ <- [line], c /= '#']
+  S.fromList <$> mapM canonicalizePath (shipped ++ platform)
+
+approvedLibraries :: [FilePath]
+approvedLibraries =
+  [ "sol/lib/auth.sol",
+    "sol/lib/base.sol",
+    "sol/lib/csv.sol",
+    "sol/lib/fix.sol",
+    "sol/lib/git.sol",
+    "sol/lib/json.sol",
+    "sol/lib/logic.sol",
+    "sol/lib/matrix.sol",
+    "sol/lib/plot.sol",
+    "sol/lib/plparse.sol",
+    "sol/lib/proc.sol",
+    "sol/lib/rand.sol",
+    "sol/lib/ui.sol",
+    "sol/lib/web.sol",
+    "std/actor.fpr",
+    "std/binary.fpr",
+    "std/ble.fpr",
+    "std/clock.fpr",
+    "std/config.fpr",
+    "std/decode.fpr",
+    "std/digest.fpr",
+    "std/dir.fpr",
+    "std/encoding.fpr",
+    "std/esp.fpr",
+    "std/file.fpr",
+    "std/gpio.fpr",
+    "std/http.fpr",
+    "std/httpcore.fpr",
+    "std/job.fpr",
+    "std/json.fpr",
+    "std/kvlog.fpr",
+    "std/lens.fpr",
+    "std/list.fpr",
+    "std/live.fpr",
+    "std/livejs.fpr",
+    "std/log.fpr",
+    "std/ma.fpr",
+    "std/map.fpr",
+    "std/math.fpr",
+    "std/mvu.fpr",
+    "std/option.fpr",
+    "std/order.fpr",
+    "std/os.fpr",
+    "std/osfs.fpr",
+    "std/osio.fpr",
+    "std/osnet.fpr",
+    "std/oswatch.fpr",
+    "std/path.fpr",
+    "std/poller.fpr",
+    "std/proc.fpr",
+    "std/program.fpr",
+    "std/result.fpr",
+    "std/set.fpr",
+    "std/std.fpr",
+    "std/std.sol",
+    "std/store.fpr",
+    "std/stream.fpr",
+    "std/string.fpr",
+    "std/task.fpr",
+    "std/tcp.fpr",
+    "std/term.fpr",
+    "std/view.fpr",
+    "std/viewcache.fpr",
+    "std/wifi.fpr",
+    "std/ws.fpr"
+  ]
 
 safetyCheck :: S.Set Name -> [STop] -> [(Name, String)] -> ([String], [String])
 safetyCheck preludeNames tops notes = (errs, suggests)
@@ -53,8 +144,15 @@ safetyCheck preludeNames tops notes = (errs, suggests)
     -- redundant-marker nag below is silenced -- blanket IS the loose
     -- mode.  Per-function sigs remain the strict mode for library code.
     blanket = S.member "$module" markedSigs
-    marked = if blanket then S.union markedSigs topSet else markedSigs
-    blessed n = S.member n preludeNames || '.' `elem` n || '@' `elem` n -- module-spliced = library
+    -- Imported blanket declarations apply to their module, never the caller.
+    scopedMarkers = [n | n <- S.toList markedSigs, "$module@" `isPrefixOf` n || ".$module" `isSuffixOf` n]
+    moduleUnsafe n = any (owns n) scopedMarkers
+    owns n marker
+      | "$module@" `isPrefixOf` marker = drop (length "$module") marker `isInfixOf` n
+      | otherwise = take (length marker - length "$module") marker `isPrefixOf` n
+    marked = if blanket then S.union markedSigs topSet
+             else markedSigs <> S.fromList [n | n <- bindNames, moduleUnsafe n]
+    blessed n = S.member n preludeNames
     clausesOf n = [(ps, g, b) | TBind n' ps g b <- tops, n' == n]
     refs (ps, g, b) =
       let bound = S.fromList (concatMap patVars ps)
@@ -300,18 +398,14 @@ safetyCheck preludeNames tops notes = (errs, suggests)
     mspine (SApp f a) acc = mspine f (a : acc)
     mspine h acc = (h, acc)
     -- rule 2: taint from marked, non-library callees
+    importedTaint n = any (\g -> S.member g marked && not (blessed g) && ('.' `elem` g || '@' `elem` g)) (callsOf n)
     taints n = any (\g -> S.member g marked && not (blessed g)) (callsOf n)
-    -- the entry point is where taint terminates: main's WCET is the
-    -- program's, already the object of study (and `>` evals synthesize
-    -- a main the user never wrote).  Rule 1 still applies to it.
-    -- rule 1 binds where a signature can be WRITTEN: plain names.
-    -- Blessed names (prelude, module-spliced, struct fields) are the
-    -- library boundary -- trusted in both directions; their honesty is
-    -- carried by the plain helpers that back the schemes.
+    -- main retains the local-entry policy, but imported unsafe assumptions
+    -- must be explicit there too. Only the supplied allow-list stops taint.
     required =
       S.union
         (S.filter (not . blessed) recursive)
-        (S.fromList [n | n <- bindNames, n /= "main", not (blessed n), taints n])
+        (S.fromList [n | n <- bindNames, (n /= "main" || importedTaint n), not (blessed n), taints n])
     violated = [n | n <- bindNames, S.member n required, not (S.member n marked)]
     why n
       | S.member n recursive = "recursive"
@@ -326,7 +420,8 @@ safetyCheck preludeNames tops notes = (errs, suggests)
                n <- S.toList marked,
                not (S.member n required),
                S.member n topSet,
-               not (blessed n)
+               not (blessed n),
+               not (moduleUnsafe n)
            ]
     tyOf n = holed (maybe "_" id (M.lookup n (M.fromList notes)))
     -- rows aren't writable in the sig grammar: print '_' (the mono

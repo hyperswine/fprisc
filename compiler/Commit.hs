@@ -24,8 +24,8 @@
 --                              sig; additions are fine)
 --   otherwise               -> MAJOR, refused without --major
 -- The subset check is the commit-time face of the row-compatibility
--- question: a minor/patch version is safe to LiveReload into by
--- construction; only major versions carry compatibility risk.
+-- question: a patch retains the written interface. Inferred compatibility is
+-- not certified by this check.
 --
 -- .fpr/versions.db is structurally pkgstore's model (content blobs +
 -- append-only name/version->hash bindings): `fpr push` to a pkgstore
@@ -33,6 +33,8 @@
 module Commit (commitMain, versionsMain, pushMain, pullMain) where
 
 import Control.Monad (unless, when)
+import qualified Compile
+import System.Environment (withArgs)
 import qualified Data.IORef
 import Data.IORef (newIORef, readIORef)
 import Data.List (intercalate, isInfixOf, isPrefixOf, sort)
@@ -41,7 +43,8 @@ import Data.Maybe (fromMaybe)
 import FPRISC
 import Modules (ModUnit (..), loadModule)
 import System.Directory (copyFile, createDirectoryIfMissing, doesFileExist)
-import System.Exit (exitFailure)
+import System.Exit (ExitCode (..), exitFailure, exitWith)
+import Control.Exception (try)
 import System.FilePath (takeBaseName)
 import System.Process (readProcess)
 import System.Environment (lookupEnv)
@@ -121,9 +124,19 @@ commitMain args = do
       unpinned
     hPutStrLn stderr "commit refused: committed modules must be closed under their pin hash (all uses pinned)"
     exitFailure
+  -- Check before any store/database mutation, including no-op commits.
+  -- compileMain exits successfully at the check-only gate; isolate that exit.
+  checked <- try (withArgs ["--check-only", "--lib", file, "/dev/null"] Compile.compileMain) :: IO (Either ExitCode ())
+  case checked of
+    Left ExitSuccess -> pure ()
+    Left code -> exitWith code
+    Right () -> pure ()
   createDirectoryIfMissing True storeDir
   mapM_
-    (\(p, m) -> when (p /= file) $ copyFile p (storeDir ++ "/" ++ muHash m ++ ".fpr"))
+    (\(p, m) -> when (p /= file) $ do
+      let dest = storeDir ++ "/" ++ muHash m ++ ".fpr"
+      present <- doesFileExist dest
+      unless present (copyFile p dest))
     closure
   let name = takeBaseName file
       h = muHash mu

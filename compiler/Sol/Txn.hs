@@ -63,6 +63,7 @@ import System.IO.Error (isAlreadyExistsError, isDoesNotExistError, isResourceVan
 import System.IO (hFlush, hGetContents', hIsEOF, hGetLine, stderr, stdin, stdout, hPutStr, hPutStrLn)
 import System.Process (CreateProcess (..), StdStream (..), getPid, terminateProcess, createProcess, proc, readCreateProcessWithExitCode, shell, waitForProcess)
 import System.Timeout (timeout)
+import qualified System.Posix.Files as PF
 import System.Posix.Signals (signalProcessGroup, sigKILL, sigCONT, sigTTOU, blockSignals, getSignalMask, setSignalMask, addSignal, emptySignalSet)
 import System.Posix.Terminal (getTerminalProcessGroupID, setTerminalProcessGroupID)
 import System.Posix.Process (getProcessGroupID)
@@ -292,6 +293,9 @@ txHRead ref h = do
 txHWrite :: IORef TxState -> Int -> String -> IO ()
 txHWrite ref h v = do
   p <- txPathOf ref h
+  link <- (PF.isSymbolicLink <$> PF.getSymbolicLinkStatus p) `catch` \e ->
+    if isDoesNotExistError e then pure False else throwIO (e :: IOException)
+  when link $ ioError (userError ("writeAtomic: refusing symbolic link: " ++ p))
   pushEffect ref (EWrite p v)
   atomicModifyIORef' ref (\s -> (s {txView = M.insert p (Just v) (txView s)}, ()))
 
@@ -710,11 +714,20 @@ parentOf p = case reverse (dropWhile (/= '/') (reverse p)) of
 -- entirely-old or entirely-new, never torn; durable once we return
 writeAtomic :: FilePath -> String -> IO ()
 writeAtomic p v = do
+  -- Refuse symlinks explicitly: writing through them needs referent locks
+  -- and snapshots, not a rename under the link's transaction key.
+  status <- (Just <$> PF.getSymbolicLinkStatus p) `catch` \e ->
+    if isDoesNotExistError e then pure Nothing else throwIO (e :: IOException)
+  when (maybe False PF.isSymbolicLink status) $
+    ioError (userError ("writeAtomic: refusing symbolic link: " ++ p))
   let tmp = p ++ ".sol-tmp"
-  writeFile tmp v
-  fsyncPath tmp
-  renamePath tmp p
-  fsyncPath (parentOf p)
+      clean = removeFile tmp `catch` (\(_ :: IOException) -> pure ())
+  (do
+    writeFile tmp v
+    forM_ status (PF.setFileMode tmp . PF.fileMode)
+    fsyncPath tmp
+    renamePath tmp p
+    fsyncPath (parentOf p)) `onException` clean
 
 -- ---- locks ----------------------------------------------------------------
 

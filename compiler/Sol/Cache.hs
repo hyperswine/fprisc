@@ -60,8 +60,8 @@ ignoreIO action = action `catch` (\(_ :: IOException) -> pure ())
 -- Stat identity avoids reading/hash-scanning the entire executable on every
 -- tiny invocation. Replacement/rebuild changes inode, size, mtime or ctime;
 -- compiler/runtime ABI and schema are also part of the exact input key.
-cached :: FilePath -> String -> String -> [STop] -> IO Prepared -> IO Prepared
-cached path src prelude expanded compile = do
+cached :: FilePath -> String -> String -> [STop] -> [Name] -> IO Prepared -> IO Prepared
+cached path src prelude expanded trusted compile = do
   flag <- lookupEnv "SOL_CACHE"
   inspect <- mapM lookupEnv ["SOL_TYPES", "SOL_WIDTHS"]
   if flag == Just "0" || Just "1" `elem` inspect
@@ -89,7 +89,7 @@ cached path src prelude expanded compile = do
       absolute <- makeAbsolute path
       options <- mapM lookupEnv ["SOL_NOTYPES", "SOL_NO_SAFETY", "FPR_HOME", "FPR_PATH"]
       let identity = show (exe, deviceID st, fileID st, fileSize st, modificationTimeHiRes st, statusChangeTimeHiRes st)
-          key = BL.toStrict (encode (schema, identity, (arch, os, compilerName, show compilerVersion), absolute, path, src, prelude, expanded, options))
+          key = BL.toStrict (encode (schema, identity, (arch, os, compilerName, show compilerVersion), absolute, path, src, prelude, expanded, trusted, options))
           slot = showHex (fingerprint key) "" ++ ".cache"
       dir <- cacheDirectory
       pure (Just (dir </> slot, key))

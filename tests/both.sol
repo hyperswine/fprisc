@@ -1,8 +1,8 @@
-# both.sol — ONE file, ONE grammar, TWO profiles.
-#   AOT:            ./fprc --sol --profile=bare-metal ... tests/both.sol
-#   HostedBytecode: sol/sol tests/both.sol
-# Everything here is the surface intersection: clauses, guards, fn
-# lambdas, blocks, interpolation, and `>` top-level eval.
+# ONE grammar: native base execution and the hosted sketch of that program.
+# The explicit declaration overrides the .sol filename's default profile.
+#   AOT: make bare-metal-run PROG=tests/both.sol
+#   VM:  ./fpr sol tests/both.sol
+profile base.
 
 double x = x * 2.
 
@@ -17,4 +17,4 @@ go i n acc = case i > n of
   True -> acc
 | False -> go (i + 1) n (acc + i).
 
-> s = sumTo 10; print "both: sumTo(10)={s} double={double 21} k={classify (0 - 5)}".
+main = s = sumTo 10; print "both: sumTo(10)={s} double={double 21} k={classify (0 - 5)}".

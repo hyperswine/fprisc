@@ -19,7 +19,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import FPRISC
 import Infer (builtinLinShapes, inferTops)
-import Safety (safetyCheck)
+import Safety (safetyCheck, trustedLibraryPaths)
 import System.Environment (lookupEnv)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
 import Modules (LoadResult (..), ModExport (..), hashAST, loadProgram)
@@ -105,6 +105,7 @@ parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothin
     step o "--float-abi=hard" = o {oHardFloat = True}
     step o "--float-abi=soft" = o {oHardFloat = False}
     step o "--stdcheck" = o {oStdCheck = True}
+    step o "--check-only" = o
     step o "--sol" = o {oSol = True}
     step o "--target=rv32" = o {oTarget = rv32, oTargetFlag = True}
     step o "--target=rv64" = o {oTarget = rv64, oTargetFlag = True}
@@ -291,7 +292,9 @@ bindNames = M.keysSet . arities
 compileMain :: IO ()
 compileMain = do
   setLocaleEncoding utf8
-  opts0 <- parseArgs <$> getArgs
+  args <- getArgs
+  let checkOnly = "--check-only" `elem` args
+      opts0 = parseArgs args
   -- --stdcheck: parse the single file and run the std proof pass
   -- (StdBridge lowers the checkable fragment into StdCheck's interval /
   -- measure / WCET engine); no code is generated.
@@ -349,7 +352,7 @@ compileMain = do
   when (oRaw opts && not (oArc opts)) $ do
     hPutStrLn stderr "--raw needs --arc (it is the raw ABI without the ownership instrumentation)"
     exitFailure
-  when ((oLib opts || not (null (oExports opts))) && not (oArc opts && oBuiltin opts)) $ do
+  when (not checkOnly && (oLib opts || not (null (oExports opts))) && not (oArc opts && oBuiltin opts)) $ do
     hPutStrLn stderr "--lib / --export need profile builtin with --arc (the raw ABI is the C ABI)"
     exitFailure
   when (oArc opts && oPlugin opts) $ do
@@ -521,7 +524,11 @@ compileMain = do
       -- the safe/unsafe line (Safety.hs): recursion and unsafe-taint
       -- must be DECLARED.  --no-safety exists for transition only.
       unless (oNoSafety opts || oBuiltin opts) $ do
-        let preludeNames = S.fromList [n | TBind n _ _ _ <- preludeTops]
+        trustedPaths <- trustedLibraryPaths
+        let trustedAnchors = filter (\(_, (p, _)) -> S.member p trustedPaths) (M.toList unitAnchors)
+        let trustedHashes = S.fromList [drop 1 h | (n, _) <- trustedAnchors, let h = dropWhile (/= '@') n, not (null h)]
+            trustedTops = preludeE ++ concat [expandU ts | (h, ts) <- units0L, S.member h trustedHashes]
+            preludeNames = S.fromList [n | TBind n _ _ _ <- trustedTops]
             (serrs, ssug) = safetyCheck preludeNames tops' notes
         unless (null serrs) $ do
           putStrLn "=== SAFETY: the safe/unsafe line ==="
@@ -592,6 +599,7 @@ compileMain = do
         putStrLn "=== LINEARITY: ERRORS ==="
         mapM_ (putStrLn . ("  * " ++)) (anchored lerrs)
         exitFailure
+      when checkOnly exitSuccess
       -- ---- per-unit CODEGEN (separate compilation) ----
       -- Each unit is expanded already (preludeE/units/root'). For codegen
       -- we also need operator sites resolved locally (Int prim / Str.+),

@@ -38,7 +38,7 @@ zip2W : (a1 -> b1 -> c1) -> (xs : List a1 | measure xs) -> List b1 -> List c1 .
 zip2W f xs ys | xs == [] = [].
 zip2W f xs ys = x :: xr = xs; y :: yr = ys; f x y :: zip2W f xr yr.
 
-lSum : (xs : List d1 | measure xs) -> d1 .
+lSum : (xs : List Int | measure xs) -> Int .
 lSum xs | xs == [] = 0.
 lSum xs = x :: r = xs; x + lSum r.
 
@@ -123,7 +123,7 @@ epoch n lr xaug xrows ys w1rows w2 =
   w2n = lSub w2 (lScale lr dw2);
   (w1n, w2n, mse, xaug2).
 
-lDot : (xs : List e1 | measure xs) -> List e1 -> e1 .
+lDot : (xs : List Int | measure xs) -> List Int -> Int .
 lDot xs ys | xs == [] = 0.
 lDot xs ys = x :: xr = xs; y :: yr = ys; x * y + lDot xr yr.
 
@@ -134,7 +134,7 @@ dropLast xs | (x :: r) <- xs, r == [] = [].
 dropLast xs = x :: r = xs; x :: dropLast r.
 
 # acc += d_i * row_i, over all samples (the dW2 accumulation)
-accumRows : (rows : List _ | measure rows) -> List g1 -> List g1 -> List g1 .
+accumRows : (rows : List (List Int) | measure rows) -> List Int -> List Int -> List Int .
 accumRows rows ds acc | rows == [] = acc.
 accumRows rows ds acc =
   r :: rr = rows; d :: dr = ds;

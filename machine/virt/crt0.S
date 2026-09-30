@@ -35,7 +35,8 @@ _start:
     REG_S zero, 0(t0)
     addi  t0, t0, WSZ
     j     1b
-2:  call  fpr_rt_init          /* sets tp for hart 0, releases fpr_smp_go */
+2:  call  fpr_rvv_enable       /* before C: GCC may vectorize the init prologue */
+    call  fpr_rt_init          /* sets tp for hart 0, releases fpr_smp_go */
     li    a0, 0
     call  fpr_hart_main        /* never returns */
 9:  wfi
@@ -47,6 +48,7 @@ _start:
     fence r, rw                /* acquire: hart 0's init happens-before us */
     li    t0, 0x6000
     csrs  mstatus, t0
+    call  fpr_rvv_enable       /* secondary C can use V registers too */
     csrr  a0, mhartid
     call  fpr_hart_secondary   /* sets tp, per-hart init, hart loop */
     j     9b
