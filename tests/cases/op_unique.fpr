@@ -1,0 +1,7 @@
+# one structure implements V2 + V2, another only Int * V2: each site
+# has exactly one implementation and resolves to it
+V2 = Type (V2 Int Int).
+V2Ops = Struct { (+) = fn a b -> case a of V2 x y -> (case b of V2 p q -> V2 (x + p) (y + q)) }.
+Scale = Struct { (*) = fn k v -> case v of V2 x y -> V2 (k * x) (k * y) }.
+flat v = case v of V2 a b -> a * 100 + b.
+main = print (flat (V2 1 2 + V2 10 20) + flat (3 * V2 4 5)).

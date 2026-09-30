@@ -34,11 +34,16 @@ lock_dir=$(mktemp -d /tmp/sol-lock-test.XXXXXX)
 cat >"$lock_dir/fail.sol" <<'EOF'
 > u = writePath @/tmp/sol-lock-target "x"; print "queued".
 EOF
-mkdir "$lock_dir/fail.soljournal"
+# the journal is written beside the script: a read-only script directory
+# makes that write fail (the journal name is per run, so it cannot be
+# pre-empted by a directory of the same name)
+chmod 555 "$lock_dir"
 if ./fpr sol "$lock_dir/fail.sol" >/tmp/sol-lock-fail.out 2>&1; then
+  chmod 755 "$lock_dir"
   echo "journal failure unexpectedly succeeded" >&2
   exit 1
 fi
+chmod 755 "$lock_dir"
 [ ! -e /tmp/sol-lock-target.sol-lock ]
 [ ! -e /tmp/sol-lock-target ]
 

@@ -1,0 +1,3 @@
+# a signed Int function outside the checkable fragment: stdcheck FAILS
+count : Int -> Int .
+count n = listLen [n, n].

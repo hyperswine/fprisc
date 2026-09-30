@@ -35,7 +35,7 @@ import Sol.HandJIT (JitCtx, initJIT)
 import System.Environment (getArgs, lookupEnv)
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import System.Exit (ExitCode (ExitFailure), exitFailure, exitWith)
-import System.IO (hPutStrLn, stderr)
+import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import System.IO.Error (ioeGetErrorString, isUserError)
 import System.FilePath (dropExtension, takeDirectory, takeExtension)
 import Text.Megaparsec (errorBundlePretty, parse)
@@ -100,10 +100,10 @@ runScript = do
   let shapeNames = M.fromList [(tid, fields) | (fields, tid) <- M.toList shapes]
       consTV = M.map (\(t, v, _) -> (t, v)) cons
       dataFile = dropExtension path ++ ".soldata"
-      journalFile = dropExtension path ++ ".soljournal"
+  journalFile <- runJournalPath (dropExtension path)
   rt <- newRtCounts
-  -- heal first: a previous run of this script may have crashed mid-commit
-  unless dumpAsm $ recoverJournal True journalFile
+  -- heal first: an earlier run of this script may have crashed mid-commit
+  unless dumpAsm $ recoverScriptJournals (dropExtension path)
   -- a panic ends the run with the clean SOL PANIC line and exit 1 — not
   -- the raw `fpr: user error (...)` wrapper. Nothing was committed: the
   -- exception propagates out of runTxLoop before its commit call.
@@ -283,13 +283,14 @@ runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc c
       then pure (Conflict ["<forced>"]) -- discard this attempt's effects
       else phaseIO "transaction-commit" (commit tx journalFile)) `onException` cleanup
   case res of
-    Committed n ncmd sfail -> do
+    Committed n ncmd sfail efail -> do
       -- the receipt names every effect class that landed: files AND the
       -- deferred commands that ran inside the commit (a script that only
       -- queued commands still did something at commit)
       let cmds = if ncmd > 0 then " + " ++ show ncmd ++ " deferred command(s)" else ""
-      when ((n > 0 || ncmd > 0) && not sfail) $ verbose ("[sol] committed " ++ show n ++ " file(s)" ++ cmds ++ " (file transaction committed; external commands are not atomic)")
-      when sfail $ diagnostic ("[sol] committed " ++ show n ++ " file(s); NOT atomic: a deferred command failed (later queued commands skipped; file effects all applied)")
+      when ((n > 0 || ncmd > 0) && not sfail && not efail) $ verbose ("[sol] committed " ++ show n ++ " file(s)" ++ cmds ++ " (file transaction committed; external commands are not atomic)")
+      when (sfail && not efail) $ diagnostic ("[sol] committed " ++ show n ++ " file(s); NOT atomic: a deferred command failed (later queued commands skipped; file effects all applied)")
+      when efail $ diagnostic ("[sol] committed " ++ show n ++ " file(s); FAILED: a file effect did not reach its goal state (named above; later queued commands skipped)")
       -- if the run left the transaction at any point, say so plainly: the
       -- file commit does not make immediate external effects atomic
       total <- rtTotal rt
@@ -297,7 +298,14 @@ runTxLoop base scriptArgs dataFile journalFile consTV shapeNames bprog core jc c
         kinds <- rtReport rt
         diagnostic ("[sol] NOT atomic overall: " ++ show total
                     ++ " realtime escape(s) — " ++ intercalate ", " kinds)
-      when sfail exitFailure
+      -- `log` lines mean what they say happened: only a run whose every
+      -- effect reached its goal state emits them, once, after the commit
+      logs <- txTakeLogs tx
+      if sfail || efail
+        then do
+          unless (null logs) $ diagnostic ("[sol] " ++ show (length logs) ++ " log line(s) withheld: the commit did not complete")
+          exitFailure
+        else mapM_ putStrLn logs >> hFlush stdout
     Conflict stale
       | attempt + 1 >= maxRetries -> do
           diagnostic ("[sol] giving up after " ++ show maxRetries ++ " attempts (conflicts on " ++ show stale ++ ")")

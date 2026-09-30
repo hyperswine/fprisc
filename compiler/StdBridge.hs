@@ -272,7 +272,9 @@ isUnsafeName n = "unsafe" `isInfixOf` map toLower n
 isCoreName :: Name -> Bool
 isCoreName n = take 5 n == "core_" || take 5 n == "core."
 
-runStdCheck :: [STop] -> IO ()
+-- | True when every obligation was proven or guarded; the caller turns
+-- False into a non-zero exit so a proof failure fails the build.
+runStdCheck :: [STop] -> IO Bool
 runStdCheck tops0 = do
   let tops = liftSurfaceLams tops0
   let sigs = M.fromList [(n, (ps, ret, pcs)) | TSig n (ps, ret) pcs <- tops]
@@ -374,9 +376,9 @@ runStdCheck tops0 = do
     (\(n, err) -> putStrLn ("std: " ++ n ++ ": NOT in the checkable fragment (" ++ err ++ ")" ++ if declaredSafe n then "  <-- signed Int function: this is an error" else "  (inferred unsafe, opaque cost)"))
     failed
   case [n | (n, _) <- failed, declaredSafe n] of
-    (_ : _) -> putStrLn "stdcheck: FAILED (signed functions outside the fragment)"
+    (_ : _) -> putStrLn "stdcheck: FAILED (signed functions outside the fragment)" >> pure False
     [] -> case SC.compile prog of
-      Left errs -> mapM_ (putStrLn . SC.showErr) errs >> putStrLn "stdcheck: FAILED"
+      Left errs -> mapM_ (putStrLn . SC.showErr) errs >> putStrLn "stdcheck: FAILED" >> pure False
       Right c -> do
         putStr (SC.report [f | f <- prog, M.member (SC.fName f) okDefs] c)
-        putStrLn "stdcheck: OK — every obligation above is either PROVEN or carries an inserted DYNAMIC check; ω terms mark exactly where unsafe cost enters."
+        True <$ putStrLn "stdcheck: OK — every obligation above is either PROVEN or carries an inserted DYNAMIC check; ω terms mark exactly where unsafe cost enters."

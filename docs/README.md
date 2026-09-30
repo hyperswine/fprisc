@@ -82,3 +82,4 @@ they began.
 | 2026-09-29 | [Sol-Improvements-Needed.md](2026-09-29-Sol-Improvements-Needed.md) | Consolidated timestamped assessment, implementation updates, measurements and remaining Sol work |
 | 2026-09-29 | [NATIVE-IDEAL-AUDIT.md](2026-09-29-NATIVE-IDEAL-AUDIT.md) | Source-grounded comparison of native ownership, actors, vectors, optimization and C interoperability with the original language ideal |
 | 2026-09-29 | [TOOLING-SEMANTICS-AUDIT.md](2026-09-29-TOOLING-SEMANTICS-AUDIT.md) | Modules, static typing, refinements, termination, resource proofs, hosted optimization and MVU: implemented guarantees, verified gaps and proposed acceptance criteria; September 30 operator-resolution follow-up |
+| 2026-09-30 | [FAILURE-HONESTY.md](2026-09-30-FAILURE-HONESTY.md) | Ambiguous operators refused, `--stdcheck` exit status, the A64 `s10` crash, `receiveFromRes`/`std/actor call`, and Sol commit honesty (G1-G4, `log`) |

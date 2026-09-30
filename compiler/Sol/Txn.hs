@@ -100,14 +100,15 @@ data TxState = TxState
     txHandles :: IM.IntMap FilePath, -- open handle id -> path
     txNextH :: !Int,
     txNonText :: S.Set FilePath, -- snapshotted paths that are NOT valid UTF-8
-    txSealed :: !Bool -- commit has read the effect log; later effects are lost
+    txSealed :: !Bool, -- commit has read the effect log; later effects are lost
+    txLogs :: [String] -- REVERSED `log` lines: emitted only after a clean commit
   }
 
 newTx :: IO (IORef TxState)
 newTx = newIORef emptyTx
 
 emptyTx :: TxState
-emptyTx = TxState M.empty M.empty M.empty [] M.empty M.empty IM.empty 1 S.empty False
+emptyTx = TxState M.empty M.empty M.empty [] M.empty M.empty IM.empty 1 S.empty False []
 
 resetTx :: IORef TxState -> IO ()
 resetTx ref = writeIORef ref emptyTx
@@ -120,6 +121,21 @@ pushEffect ref e = do
   when sealed $
     hPutStrLn stderr ("[sol] effect AFTER COMMIT (lost): " ++ effectBrief e
                         ++ " — join actors before the script ends")
+
+-- `log`: a transactional line. `print` is a direct effect (it happens
+-- when called, repeats on retry, survives an abort); a log line records
+-- something the run DID, so it waits for the commit: discarded with the
+-- attempt on retry or panic, emitted once, and only when every effect
+-- reached its goal state. It lives beside the effect log, not in it, so a
+-- redo by another process never prints this run's lines.
+txLog :: IORef TxState -> String -> IO ()
+txLog ref line = do
+  sealed <- atomicModifyIORef' ref (\s -> (s {txLogs = line : txLogs s}, txSealed s))
+  when sealed $
+    hPutStrLn stderr ("[sol] log AFTER COMMIT (lost): " ++ line ++ " — join actors before the script ends")
+
+txTakeLogs :: IORef TxState -> IO [String]
+txTakeLogs ref = reverse . txLogs <$> readIORef ref
 
 -- one-line description of a queued effect, for the diagnostics that have
 -- to name what is still pending
@@ -756,7 +772,14 @@ tryReclaim recover p = do
             Left _ -> pure () -- someone else got it
             Right () -> do
               hPutStrLn stderr ("[sol] reclaimed stale lock on " ++ p ++ " (owner pid " ++ show pid ++ " is dead)")
-              when recover (recoverJournal False jL) `finally` removePathForcibly claim
+              -- a redo that fails puts the dead owner's lock back (its
+              -- journal is still there), rather than dropping the fence
+              r <- try (when recover (recoverJournal False jL))
+              case r of
+                Right () -> removePathForcibly claim
+                Left (e :: SomeException) -> do
+                  _ <- try (renamePath claim (lockPath p)) :: IO (Either IOException ())
+                  throwIO e
       _ -> pure ()
 
 release :: FilePath -> IO ()
@@ -765,9 +788,34 @@ release p = do
   pure ()
 
 withLocks :: (FilePath -> IO ()) -> [FilePath] -> IO a -> IO a
-withLocks takeLock paths action = mask $ \restore -> do
+withLocks takeLock paths action = do
+  hold <- newIORef False
+  withLocksHold hold takeLock paths action
+
+-- The locks are released when the action returns, and when it throws
+-- BEFORE the commit point. Once `hold` is set (the journal is written)
+-- an exception leaves them in place, owned by this about-to-die pid:
+-- releasing them would expose a half-replayed state to every other
+-- script. The dead-owner reclaim in tryReclaim then finishes the journal
+-- for whoever contends next, so the state others see is all-old until
+-- the redo and all-new after it.
+withLocksHold :: IORef Bool -> (FilePath -> IO ()) -> [FilePath] -> IO a -> IO a
+withLocksHold hold takeLock paths action = mask $ \restore -> do
   acquired <- acquireAll paths
-  restore action `finally` forM_ (reverse acquired) release
+  r <- try (restore action)
+  case r of
+    Right a -> forM_ (reverse acquired) release >> pure a
+    Left (e :: SomeException) -> do
+      held <- readIORef hold
+      if held
+        then
+          hPutStrLn stderr
+            ( "[sol] the commit failed after its journal was written: keeping the locks on "
+                ++ show (length acquired)
+                ++ " path(s) so no one sees a partial state; the next contender finishes it"
+            )
+        else forM_ (reverse acquired) release
+      throwIO e
   where
     acquireAll [] = pure []
     acquireAll (p : ps) = do
@@ -834,16 +882,63 @@ recoverJournal takeLocks j = do
                 hPutStrLn stderr ("[sol] recovering interrupted commit from " ++ j ++ " (" ++ show (length effs) ++ " effect(s), " ++ show (length done) ++ " shell(s) already done)")
                 _ <- replayEffs j True done Nothing (zip [0 ..] effs)
                 clearJournal j -- file effects all applied even past a failed shell
+        hold <- newIORef True
         if takeLocks
-          then withLocks (acquireGo False j) touched recover
+          then withLocksHold hold (acquireGo False j) touched recover
           else recover
+
+-- ---- one journal per run ---------------------------------------------------
+--
+-- The journal belongs to the RUN, not the script: two concurrent runs of
+-- one script with disjoint write sets never contend on a lock, so a
+-- shared <script>.soljournal let one clear or overwrite the other's and a
+-- crash in either lost its redo. Each run journals to
+-- <script>.soljournal.<pid>.<nonce>, a sibling file (no shared directory
+-- to create or remove, so no race on it).
+
+journalPrefix :: FilePath -> FilePath
+journalPrefix base = base ++ ".soljournal."
+
+-- this run's journal path; the nonce keeps a reused pid from naming a
+-- dead predecessor's journal
+runJournalPath :: FilePath -> IO FilePath
+runJournalPath base = do
+  me <- c_getpid
+  t <- getPOSIXTime
+  let nonce = floor (t * 1000000000) :: Integer
+  pure (journalPrefix base ++ show (fromIntegral me :: Int) ++ "." ++ show nonce)
+
+-- heal at startup: redo every journal of this script whose owner is dead
+-- (a live owner is mid-commit and holds its locks; leave it alone), plus
+-- the pre-per-run <script>.soljournal if an older sol left one
+recoverScriptJournals :: FilePath -> IO ()
+recoverScriptJournals base = do
+  recoverJournal True (base ++ ".soljournal")
+  let dir = parentOf base
+      stem = drop (length dir) (journalPrefix base)
+  r <- try (listDirectory dir) :: IO (Either IOException [String])
+  me <- c_getpid
+  forM_ (either (const []) sort r) $ \n ->
+    case stripPrefixL stem n of
+      Just rest
+        | not (".done" `isSuffixOf` n),
+          not (".sol-tmp" `isSuffixOf` n),
+          Just pid <- readMaybe (takeWhile (/= '.') rest) -> do
+            alive <- c_pidAlive (fromIntegral (pid :: Int))
+            -- our own pid cannot own a journal yet: that one is a dead
+            -- predecessor's whose pid was reused
+            when (alive == 0 || pid == fromIntegral me) $
+              recoverJournal True (dir ++ n)
+      _ -> pure ()
+  where
+    stripPrefixL pre x = if pre `isPrefixOf` x then Just (drop (length pre) x) else Nothing
 
 -- ---- commit ---------------------------------------------------------------
 
 -- Committed carries (applied file effects, deferred commands/processes
--- that ran, a deferred command failed); the receipt only says
--- "atomically" when the last is False
-data CommitResult = Committed Int Int Bool | Conflict [FilePath]
+-- that ran, a deferred command failed, a file effect failed); the run
+-- exits 0 only when both flags are False
+data CommitResult = Committed Int Int Bool Bool | Conflict [FilePath]
 
 effectPath :: Effect -> Maybe FilePath
 effectPath (EWrite p _) = Just p
@@ -873,7 +968,8 @@ commit ref jpath = do
                 M.fromList [(p, ()) | e <- effs, Just p <- [effectPath e]]
               ]
           )
-  withLocks (acquire jpath) touched $ do -- sorted: global lock order
+  hold <- newIORef False
+  withLocksHold hold (acquire jpath) touched $ do -- sorted: global lock order
     staleC <-
       foldM
         ( \acc (p, snap) -> do
@@ -908,9 +1004,10 @@ commit ref jpath = do
     if null stale
       then do
         crashAt <- (>>= readMaybe) <$> lookupEnv "SOL_CRASH_AT"
-        when (not (null effs)) (writeJournal jpath effs)
-        (n, sfail) <- replayEffs jpath False [] crashAt (zip [0 ..] effs)
+        when (not (null effs)) (writeJournal jpath effs >> writeIORef hold True)
+        (n, sfail, efail) <- replayEffs jpath False [] crashAt (zip [0 ..] effs)
         clearJournal jpath
+        writeIORef hold False
         -- a `run` PARENT set SOL_REPORT_COMMIT so it can learn which
         -- paths this child transaction committed (Mod.runModule reads
         -- the marker off stderr and checks them against its own sets)
@@ -919,7 +1016,7 @@ commit ref jpath = do
         when (reportC == Just "1" && not (null wrotePaths)) $
           hPutStrLn stderr (childCommitMarker ++ show wrotePaths)
         let ncmd = length [() | e <- effs, Nothing <- [effectPath e]]
-        pure (Committed n ncmd sfail)
+        pure (Committed n ncmd sfail efail)
       else pure (Conflict stale)
 
 -- the stderr line a child sol emits (under SOL_REPORT_COMMIT=1) naming
@@ -1006,11 +1103,19 @@ lockArtifact n =
 -- A FAILED deferred command does not tear the file transaction: file
 -- effects were validated under lock, so the replay keeps applying them
 -- past the failure. Only LATER SHELL commands are skipped (they may
--- have depended on the failed one), each named. The Bool that comes
--- back says a command failed, so the receipt can refuse the word
--- "atomically".
-replayEffs :: FilePath -> Bool -> [Int] -> Maybe Int -> [(Int, Effect)] -> IO (Int, Bool)
-replayEffs j0 recovery0 done0 crashAt0 effs0 = go False effs0
+-- have depended on the failed one), each named. A failed removal is
+-- treated the same way: later commands are skipped, and the run fails.
+-- What comes back is (file effects applied, a deferred command failed,
+-- a file effect failed); either failure makes the run exit non-zero.
+replayEffs :: FilePath -> Bool -> [Int] -> Maybe Int -> [(Int, Effect)] -> IO (Int, Bool, Bool)
+replayEffs j0 recovery0 done0 crashAt0 effs0 = do
+  bad <- newIORef False
+  (n, sf) <- replayGo bad j0 recovery0 done0 crashAt0 effs0
+  effFailed <- readIORef bad
+  pure (n, sf, effFailed)
+
+replayGo :: IORef Bool -> FilePath -> Bool -> [Int] -> Maybe Int -> [(Int, Effect)] -> IO (Int, Bool)
+replayGo bad j0 recovery0 done0 crashAt0 effs0 = go False effs0
   where
     go shellFailed [] = pure (0, shellFailed)
     go shellFailed ((i, e) : rest) = do
@@ -1026,14 +1131,14 @@ replayEffs j0 recovery0 done0 crashAt0 effs0 = go False effs0
           _ <- try (removeFile p) :: IO (Either IOException ())
           still <- doesFileExist p
           if still
-            then failedEff ("rm " ++ p ++ " (still exists)") >> rec' shellFailed 0 rest
+            then failedEff ("rm " ++ p ++ " (still exists)") >> rec' True 0 rest
             else rec' shellFailed 1 rest
         EMkdir p -> createDirectoryIfMissing True p >> rec' shellFailed 1 rest
         ERmdir p -> do
           _ <- try (removeDirectory p) :: IO (Either IOException ())
           still <- doesDirectoryExist p
           if still
-            then failedEff ("rmdir " ++ p ++ " (still exists — not empty?)") >> rec' shellFailed 0 rest
+            then failedEff ("rmdir " ++ p ++ " (still exists — not empty?)") >> rec' True 0 rest
             else rec' shellFailed 1 rest
         EShell cmd
           | shellFailed -> do
@@ -1080,7 +1185,7 @@ replayEffs j0 recovery0 done0 crashAt0 effs0 = go False effs0
                       diagnostic ("[sol] deferred process FAILED (exit " ++ show code ++ "): " ++ displayProcess spec)
                       diagnostic "[sol] later queued commands will be skipped; file effects still apply"
                       rec' True 0 rest
-    failedEff what = diagnostic ("[sol] effect FAILED (not counted): " ++ what)
+    failedEff what = writeIORef bad True >> diagnostic ("[sol] effect FAILED (not counted): " ++ what)
     rec' sf k rest = do
       (n, sf') <- go sf rest
       pure (k + n, sf')

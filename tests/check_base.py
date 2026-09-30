@@ -76,6 +76,19 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     out = run([build('tests/base/wide.fpr', 'wide')]).stdout
     assert 'wide: 4950' in out and 'tuple: 19 True' in out and '17, 18, 19)' in out, out
     print('A 100-parameter function and a 20-tuple (built, matched, compared, printed): PASS')
+    # 4g. the specialized Vec.filter loop lowers on AArch64: it used s10/s11,
+    # which the shared IR does not have, and fvec2 did not compile on A64
+    out = run([build('tests/fvec2.fpr', 'fvec2')]).stdout
+    assert 'kept=999' in out and 'FLOATVEC2 HOLDS' in out, out
+    print('The specialized float Vec.filter compiles and runs on AArch64 (tests/fvec2): PASS')
+    # 4h. receiveFromRes: a sender that exits is an answer (Err "dead actor"),
+    # never a caller parked for ever; a reply sent just before exiting is kept
+    dp = build('tests/base/deadpeer.fpr', 'deadpeer')
+    for harts in ('1', '4', '8'):
+        out = run([dp], env={'FPR_HARTS': harts}, timeout=60).stdout
+        assert 'reply=Ok 42 dead=Err dead actor died-while-waiting=Err dead actor' in out, out
+        assert 'rounds: oks=3000 errs=3000' in out, out
+    print('receiveFromRes: a dead sender is an answer; 3,000 reply-then-exit and exit-silently rounds on 1, 4 and 8 harts: PASS')
     # 6. fpr run: build to a temp file, pass the arguments through, return its status
     p = run(['./fpr', 'run', 'tests/base/args.fpr', 'x', 'y'], 3, env={'FPR_BASE_VAR': 'v'})
     assert 'args: x,y (2)' in p.stdout, p.stdout

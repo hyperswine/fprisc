@@ -64,3 +64,16 @@ refused('sig_too_general.fpr', 'the declared type of bad is more general than it
 refused('sig_two_vars.fpr', 'the declared type of swapish is more general')
 accepted('sig_ok.fpr')
 print('Signatures: `a -> a` over a body that adds 1, and `a -> b` over a body that returns its argument, are refused naming both types; a genuinely generic signature and one NARROWER than the body compile: PASS')
+
+# operator resolution: an ambiguous site is refused, never decided by name order
+refused('op_ambiguous.fpr', '(+) is ambiguous for V2', 'Alpha.+, Zulu.+')
+refused('op_ambiguous2.fpr', '(*) is ambiguous for Int and V2', 'Left.*, Right.*')
+p = subprocess.run(['./fpr', 'run', str(CASES / 'op_unique.fpr')], capture_output=True, text=True, timeout=300)
+assert p.returncode == 0 and p.stdout.strip().endswith('2337'), f'op_unique:\n{p.stdout}{p.stderr}'
+print('Operators: two structures implementing V2 + V2, or Int * V2, are refused naming both; one implementation per site resolves (1122 + 1215 = 2337): PASS')
+
+# --stdcheck is a build gate: a proof failure is a non-zero exit
+for name, want in [('stdcheck_ok.fpr', 0), ('stdcheck_fail.fpr', 1)]:
+    p = subprocess.run(['./fpr', 'stdcheck', str(CASES / name)], capture_output=True, text=True, timeout=120)
+    assert p.returncode == want, f'{name}: exit {p.returncode}, wanted {want}:\n{p.stdout}{p.stderr}'
+print('stdcheck: a proven Int function exits 0; a signed function outside the fragment prints FAILED and exits 1: PASS')

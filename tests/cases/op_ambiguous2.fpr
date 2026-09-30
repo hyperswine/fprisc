@@ -1,0 +1,5 @@
+# two structures implement Int * V2: the two-typed site is ambiguous too
+V2 = Type (V2 Int Int).
+Left = Struct { (*) = fn k v -> case v of V2 x y -> V2 (k * x) (k * y) }.
+Right = Struct { (*) = fn k v -> case v of V2 x y -> V2 k k }.
+main = case 3 * V2 1 2 of V2 a b -> a * 100 + b.

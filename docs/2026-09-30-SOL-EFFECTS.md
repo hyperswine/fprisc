@@ -263,3 +263,12 @@ rules, recorded now so the v1 API does not close them off:
 
 Items 1 and 2 are conformance fixes to the existing contract and do not wait
 on the rest.
+
+## 2026-09-30: G1 to G4 implemented
+
+G1, G2, G3 and the `print`/`log` split of G4 are implemented as described
+above, with the tests proposed here. See
+[FAILURE-HONESTY](2026-09-30-FAILURE-HONESTY.md#sol-the-commit-tells-the-truth).
+The journal is a sibling file per run, `<script>.soljournal.<pid>.<nonce>`,
+not a directory. `log` goes to stdout only; appending to a path is not
+built yet.

@@ -49,7 +49,7 @@ import FPRISC (Core (..), Prog, freeVars)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 9 -- r8 + the function-entry stack check (growable actor stacks)
+codegenRev = 10 -- r9 + Vec.filter spec stays inside s0..s9 (A64 has no s10)
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -2267,7 +2267,10 @@ emitFilterSpec tgt sym p = do
       ld = tgtLd tgt
       st = tgtSt tgt
       w = tgtW tgt
-      regs = ["ra"] ++ ["s" ++ show i | i <- [0 .. 11 :: Int]]
+      -- s0..s9 only: the shared IR has no s7/s9 (A64 maps s1..s9 to
+      -- x19..x27 and keeps x28 for the hart), so the kept count is s7 and
+      -- the element s9
+      regs = ["ra"] ++ ["s" ++ show i | i <- [0 .. 9 :: Int]]
       (_, pro, epi) = specFrame tgt regs 0
   ~[fb, louter, linner, lskip, lwadv, lnextb, ldone] <-
     mapM freshL ["vfb", "vouter", "vinner", "vskip", "vwadv", "vnextb", "vdone"]
@@ -2286,7 +2289,7 @@ emitFilterSpec tgt sym p = do
            "    li s2, 0",
            "    li s3, 0",
            "    " ++ ld ++ " s4, " ++ show (vCols0 tgt) ++ "(s0)",
-           "    li s10, 0", -- kept count
+           "    li s7, 0", -- kept count
            "    beqz s1, " ++ ldone, -- empty: base may not exist
            "    " ++ ld ++ " s8, " ++ show (colBlk0 tgt) ++ "(s4)" -- write ptr = base
          ]
@@ -2295,15 +2298,15 @@ emitFilterSpec tgt sym p = do
       ++ blk
       ++ [ linner ++ ":",
            "    beqz s6, " ++ lnextb,
-           "    " ++ ld ++ " s11, 0(s5)",
-           "    mv a0, s11",
+           "    " ++ ld ++ " s9, 0(s5)",
+           "    mv a0, s9",
            "    call fpr_ufn_" ++ mangle f, -- raw 0/1
            "    beqz a0, " ++ lskip,
            -- contiguous column: the write cursor never runs out (kept
            -- count can't exceed len), so it just advances
-           "    " ++ st ++ " s11, 0(s8)",
+           "    " ++ st ++ " s9, 0(s8)",
            "    addi s8, s8, " ++ show w,
-           "    addi s10, s10, 1",
+           "    addi s7, s7, 1",
            lskip ++ ":",
            "    addi s5, s5, " ++ show w,
            "    addi s2, s2, 1",
@@ -2312,7 +2315,7 @@ emitFilterSpec tgt sym p = do
          ]
       ++ [lnextb ++ ":", "    addi s3, s3, 1", "    j " ++ louter]
       ++ [ ldone ++ ":",
-           "    " ++ st ++ " s10, " ++ show vLen ++ "(s0)", -- len = kept
+           "    " ++ st ++ " s7, " ++ show vLen ++ "(s0)", -- len = kept
            "    mv a0, s0"
          ]
       ++ epi

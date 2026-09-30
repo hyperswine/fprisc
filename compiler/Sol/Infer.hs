@@ -84,6 +84,8 @@ solBuiltins =
       ("sendArc", scheme [0] (TFn tInt (TFn (sv 0) (tcon "Result" [tUnit, tStr])))),
       ("receive", scheme [0] (TFn tInt (sv 0))),
       ("receiveFrom", scheme [0] (TFn tInt (TFn tInt (sv 0)))),
+      ("receiveFromRes", scheme [0] (TFn tInt (TFn tInt (tcon "Result" [sv 0, tStr])))),
+      ("Sys.nextId", mono (TFn tUnit tInt)),
       ("spawn", scheme [0] (TFn (TFn tInt (sv 0)) tInt)),
       -- the mailbox policy (spawnCap) and placement are accepted and
       -- ignored here: the shim's actors are Haskell threads with

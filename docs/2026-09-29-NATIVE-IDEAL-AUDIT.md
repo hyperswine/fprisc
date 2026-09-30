@@ -121,3 +121,9 @@ The [operator-resolution follow-up](2026-09-29-TOOLING-SEMANTICS-AUDIT.md#2026-0
 examines row-based signatures, compile-time overload selection, mixed operand
 types, ambiguity and the remaining runtime dictionary fallback, with fresh native
 probes. It refines the static-dispatch boundary without changing this dated audit.
+
+## 2026-09-30: fixed since
+
+`tests/fvec2.fpr` compiles and runs on A64: the specialized `Vec.filter`
+used `s10`/`s11`, which are outside the shared IR. See
+[FAILURE-HONESTY](2026-09-30-FAILURE-HONESTY.md#a64-the-specialized-vecfilter-stays-inside-the-shared-ir).

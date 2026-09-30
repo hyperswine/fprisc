@@ -427,3 +427,9 @@ competing implementations in separate scopes, ambiguity diagnostics, imported
 modules, built-in override policy, and inspection of generated calls for the
 static-only profile. This evolves the machinery already present without adding
 traditional typeclasses.
+
+## 2026-09-30: fixed since
+
+Ambiguous operator resolution is now a compile error. `--stdcheck` exits 1
+on a proof failure. See [FAILURE-HONESTY](2026-09-30-FAILURE-HONESTY.md).
+The other resolution gaps listed above remain.

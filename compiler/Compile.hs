@@ -300,8 +300,8 @@ compileMain = do
       [i] -> pure i
       _ -> putStrLn "usage: fprc --stdcheck <in.fpr>" >> exitFailure >> pure ""
     tops <- parseFile inp
-    runStdCheck tops
-    exitSuccess
+    ok <- runStdCheck tops
+    if ok then exitSuccess else exitFailure
   (inp, out) <- case oFiles opts0 of
     [i, o] -> pure (i, o)
     _ -> putStrLn "usage: fprc [--system=posix|bare-metal|qos-native|qos-portable] [--host=unix|esp-idf] [--profile=builtin|base|extbase|sol] [--arc] [--target=rv32|rv64|a64|a64mac|x64|qx64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")

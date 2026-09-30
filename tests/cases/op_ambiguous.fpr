@@ -1,0 +1,5 @@
+# two structures implement V2 + V2: the site must not pick one by name
+V2 = Type (V2 Int Int).
+Alpha = Struct { (+) = fn a b -> case a of V2 x y -> (case b of V2 p q -> V2 (x + p) (y + q)) }.
+Zulu = Struct { (+) = fn a b -> case a of V2 x y -> (case b of V2 p q -> V2 (99 + 0 * p) (88 + 0 * q)) }.
+main = case V2 1 2 + V2 10 20 of V2 a b -> a * 100 + b.

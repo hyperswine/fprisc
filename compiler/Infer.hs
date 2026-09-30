@@ -540,6 +540,7 @@ builtinEnv =
       ("receiveRes", scheme [0, 1] (TFn tInt (tcon "Result" [sv 0, sv 1]))),
       -- without waiting: Ok message | Err "empty" (the Err is static: asking allocates nothing)
       ("receiveNow", scheme [0] (TFn tInt (tcon "Result" [sv 0, tStr]))),
+      ("receiveFromRes", scheme [0] (TFn tInt (TFn tInt (tcon "Result" [sv 0, tStr])))),
       ("spawn", scheme [0] (TFn (TFn tInt (sv 0)) tInt)),
       ("spawnCap", scheme [0] (TFn tInt (TFn tInt (TFn (TFn tInt (sv 0)) tInt)))),
       ("spawnCapOn", scheme [0] (TFn tInt (TFn tInt (TFn tInt (TFn (TFn tInt (sv 0)) tInt))))),
@@ -687,6 +688,7 @@ builtinEnv =
       ("Mod.plugs", scheme [0] (TFn tInt tInt)),
       ("Mod.findAt", scheme [0] (TFn tInt (TFn tStr (sv 0)))),
       ("Sys.actLive", scheme [0] (TFn tInt tInt)),
+      ("Sys.nextId", mono (TFn tUnit tInt)),
       ("Sys.actInfo", scheme [0] (TFn tInt (sv 0))),
       ("Sys.logAt", scheme [0] (TFn tInt (TFn tStr tUnit))),
       ("Sys.logSeq", scheme [0] (TFn tInt tInt)),
@@ -1173,29 +1175,43 @@ headCon (TC n) = Just n
 headCon (TAp f _) = headCon f
 headCon _ = Nothing
 
--- the operator global implementing `op` for type `tyName`: any
--- `<Struct>.<op>` whose FIRST parameter is that type. Deterministic when
--- several match (sorted), so a program compiles the same way every run.
-namedOpTarget :: TEnv -> Name -> Name -> Maybe Name
-namedOpTarget env tyName op =
-  case Data.List.sort [g | (g, Forall _ _ t) <- M.toList env, isOpNamed g, firstArgIs t] of
-    (g : _) -> Just g
-    [] -> Nothing
+-- the operator globals implementing `op` for type `tyName`: every
+-- `<Struct>.<op>` whose FIRST parameter is that type. The caller resolves
+-- only a unique match: several candidates are a compile error, never a
+-- silent choice (picking the first by name let a structure rename change
+-- arithmetic). Candidates whose second parameter is also `tyName` are the
+-- same-type implementations and are preferred over mixed ones such as
+-- `V2 -> Int -> V2`, because that is what the site's types say.
+namedOpTargets :: TEnv -> Name -> Name -> [Name]
+namedOpTargets env tyName op =
+  case filter sameType cands of
+    [] -> cands
+    same -> same
   where
+    cands = Data.List.sort [g | (g, Forall _ _ t) <- M.toList env, isOpNamed g, firstArgIs t]
     isOpNamed g = ("." ++ op) `Data.List.isSuffixOf` g
     firstArgIs (TFn a _) = headCon a == Just tyName
     firstArgIs _ = False
+    sameType g = case M.lookup g env of
+      Just (Forall _ _ (TFn _ (TFn b _))) -> headCon b == Just tyName
+      _ -> False
 
--- the two-typed form: `<Struct>.<op>` whose first AND second parameters
--- are the given types (Matrix * Vector, Int * Vector)
-namedOpTarget2 :: TEnv -> Name -> Name -> Name -> Maybe (Name, Scheme)
-namedOpTarget2 env tyA tyB op =
-  case Data.List.sort [g | (g, Forall _ _ t) <- M.toList env, ("." ++ op) `Data.List.isSuffixOf` g, argsAre t] of
-    (g : _) -> (,) g <$> M.lookup g env
-    [] -> Nothing
+-- the two-typed form: every `<Struct>.<op>` whose first AND second
+-- parameters are the given types (Matrix * Vector, Int * Vector)
+namedOpTargets2 :: TEnv -> Name -> Name -> Name -> [(Name, Scheme)]
+namedOpTargets2 env tyA tyB op =
+  [ (g, sc)
+    | g <- Data.List.sort [g | (g, Forall _ _ t) <- M.toList env, ("." ++ op) `Data.List.isSuffixOf` g, argsAre t],
+      Just sc <- [M.lookup g env]
+  ]
   where
     argsAre (TFn a (TFn b _)) = headCon a == Just tyA && headCon b == Just tyB
     argsAre _ = False
+
+ambiguousOp :: Name -> String -> [Name] -> String
+ambiguousOp op at gs =
+  "(" ++ op ++ ") is ambiguous for " ++ at ++ ": " ++ Data.List.intercalate ", " gs
+    ++ " all implement it -- keep one in scope or call the one you mean by name"
 
 -- decide every site once the substitution is final
 resolveSites :: Sigs -> TEnv -> I (IM.IntMap OpTarget)
@@ -1212,10 +1228,12 @@ resolveSites sigs env = do
           tb <- zonk tb0
           case (headCon ta, headCon tb) of
             (Just ca, Just cb)
-              | Just (g, sc) <- namedOpTarget2 env ca cb op -> do
+              | [(g, sc)] <- namedOpTargets2 env ca cb op -> do
                   ft <- instantiate sc
                   unify ("(" ++ op ++ ") at " ++ g) ft (TFn ta (TFn tb t0))
                   pure (OpGlobal g)
+              | gs@(_ : _ : _) <- namedOpTargets2 env ca cb op ->
+                  OpPrim op <$ report (ambiguousOp op (if ca == cb then ca else ca ++ " and " ++ cb) (map fst gs))
             _ -> do
               -- no two-typed operator: the ordinary same-type site
               unify ("(" ++ op ++ ")") ta t0
@@ -1285,8 +1303,11 @@ resolveSites sigs env = do
         -- implementation, and the specializer sees an ordinary call.
         other
           | Just tn <- headCon other,
-            Just g <- namedOpTarget env tn op ->
+            [g] <- namedOpTargets env tn op ->
               pure (OpGlobal g)
+          | Just tn <- headCon other,
+            gs@(_ : _ : _) <- namedOpTargets env tn op ->
+              OpPrim op <$ report (ambiguousOp op tn gs)
         other -> do
           p <- prettyT other
           OpPrim op <$ report ("(" ++ op ++ ") is not defined for " ++ p)

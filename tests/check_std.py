@@ -45,6 +45,7 @@ print('a codec literal in a Sol script: the same @Msg, the same JSON, the same r
 check('extbase', label='Math, Encoding (hex, Base64, URL), Binary, Digest: SHA-256 against the published vectors, incremental equals whole')
 check('proclimits', label='Proc: a time limit kills the child and says so; extra environment reaches it')
 check('tcp', label='Stream and Tcp: a server and its clients in ONE process, an actor per connection, 2 MB echoed, stop')
+check('call', label='std/actor call/reply: a correlated reply; a full mailbox and an ended service are answers, not a stranded caller; an event from another actor stays queued; a stale reply is not read as the answer')
 check('poller', label='receiveNow (an empty mailbox allocates nothing), receiveWithin, and a server whose accepts and reads wait on ONE poller')
 check('term', label='Term.decode: text a UTF-8 character at a time, named and function keys, Ctrl and Alt, sequences split across reads')
 check('http', label='Http: client and server, headers, a 100 KB POST, 404, chunked decoding, URL parsing')

@@ -368,7 +368,7 @@ builtinArities :: M.Map Name Int
 builtinArities =
   M.union schemeArities $
     M.fromList
-      [ ("myself", 1), ("spawn", 1), ("send", 2), ("sendLinear", 2), ("sendArc", 2), ("receive", 1), ("receiveFrom", 2),
+      [ ("myself", 1), ("spawn", 1), ("send", 2), ("sendLinear", 2), ("sendArc", 2), ("receive", 1), ("receiveFrom", 2), ("receiveFromRes", 2), ("Sys.nextId", 1),
         ("spawnCap", 3), ("spawnCapOn", 4), ("spawnOn", 2), ("Sys.spawnApp", 1), ("timeNow", 1),
         ("kill", 1), ("yield", 1), ("drop", 1), ("keep", 1), ("device", 1), ("reg32", 2),
         ("heapUsed", 1),
@@ -518,13 +518,18 @@ actorTake actors wants = do
         Just m -> pure m
         Nothing -> takeMVar (abSig b) >> loop b
 
+-- Sys.nextId: correlation ids for std/actor call
+{-# NOINLINE solNextId #-}
+solNextId :: IORef Int
+solNextId = unsafePerformIO (newIORef 0)
+
 mtimeT :: Int
 mtimeT = 9977 -- runtime-range tid for the shim's mtime handle
 
 actorNames :: S.Set Name
 actorNames =
   S.fromList
-    [ "myself", "spawn", "send", "sendLinear", "sendArc", "receive", "receiveFrom", "kill", "yield",
+    [ "myself", "spawn", "send", "sendLinear", "sendArc", "receive", "receiveFrom", "receiveFromRes", "Sys.nextId", "kill", "yield",
       "spawnCap", "spawnCapOn", "spawnOn", "Sys.spawnApp", "timeNow",
       "drop", "keep", "device", "reg32", "heapUsed",
       "Sys.poolReset", "Sys.sleepUs", "Sys.logAt", "Sys.memStats", "Sys.memInfo"
@@ -554,6 +559,10 @@ actorCall env "spawn" [f] = do
           atomicModifyIORef' (arReg actors) (\m -> (IM.delete i m, ()))
           atomicModifyIORef' (arByTid actors) (\m -> (M.delete t m, ()))
           _ <- tryPutMVar (abDone b) ()
+          -- a receiveFromRes waiting on this actor must learn it ended:
+          -- wake every mailbox (a spurious wake just re-checks)
+          reg <- readIORef (arReg actors)
+          forM_ (IM.elems reg) (\ob -> tryPutMVar (abSig ob) ())
           pure ()
     writeIORef (abTid b) (Just tid)
     putMVar start ()
@@ -570,8 +579,12 @@ actorCall _ "Sys.memInfo" [_] = pure (foldr (\x acc -> VData listT 1 [VInt x, ac
 actorCall env "send" [VInt to, m] = do
   let actors = vmActors env
   from <- actorSelf actors
-  actorEnqueue actors (fromIntegral to) from m
-  pure (VData 3 0 [vUnit]) -- Ok Unit: an unbounded queue never refuses
+  reg <- readIORef (arReg actors)
+  if IM.member (fromIntegral to) reg
+    then do
+      actorEnqueue actors (fromIntegral to) from m
+      pure (VData 3 0 [vUnit]) -- Ok Unit: an unbounded queue never refuses
+    else pure (VData 3 1 [VStr "dead actor"]) -- as the native runtime answers
 -- sendLinear: MOVE semantics.  In this profile values are immutable
 -- Haskell terms, so the move IS a send -- the verb exists for grammar
 -- parity with the AOT tiers, where it transfers the message slab
@@ -581,6 +594,27 @@ actorCall e "sendLinear" [to, m] = actorCall e "send" [to, m]
 actorCall e "sendArc" [to, m] = actorCall e "send" [to, m]
 actorCall env "receive" [VInt _me] = actorTake (vmActors env) (const True)
 actorCall env "receiveFrom" [VInt _me, VInt from] = actorTake (vmActors env) (== fromIntegral from)
+-- Ok m, or Err "dead actor" once `from` has ended with nothing from it queued
+actorCall env "receiveFromRes" [VInt _me, VInt from] = do
+  let actors = vmActors env
+  i <- actorSelf actors
+  reg0 <- readIORef (arReg actors)
+  case IM.lookup i reg0 of
+    Nothing -> vmPanic "receiveFromRes: the current actor has no mailbox"
+    Just b ->
+      let loop = do
+            gone <- not . IM.member (fromIntegral from) <$> readIORef (arReg actors)
+            r <- modifyMVar (abQ b) $ \q ->
+              case break (\(sd, _) -> sd == fromIntegral from) q of
+                (pre, (_, m) : post) -> pure (pre ++ post, Just m)
+                _ -> pure (q, Nothing)
+            case r of
+              Just m -> pure (VData 3 0 [m])
+              Nothing
+                | gone -> pure (VData 3 1 [VStr "dead actor"])
+                | otherwise -> takeMVar (abSig b) >> loop
+       in loop
+actorCall _ "Sys.nextId" [_] = VInt . fromIntegral <$> atomicModifyIORef' solNextId (\n -> (n + 1, n + 1))
 actorCall env "kill" [VInt i] = do
   let actors = vmActors env
   reg <- readIORef (arReg actors)
@@ -1051,6 +1085,7 @@ mkHal cons scriptArgs tx preempts rt =
 
     writeIoH pv v = case unPath pv of
       Just "/dev/out" -> putStrLn (render v) >> hFlush stdout >> pure vUnit
+      Just "/dev/log" -> txLog tx (render v) >> pure vUnit
       Just "/dev/sh" -> withS v (\c -> txShq tx c >> pure vUnit)
       Just "/dev/clock" -> case v of
         VInt ms -> threadDelay (fromIntegral ms * 1000) >> pure vUnit

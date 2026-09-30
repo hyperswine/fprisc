@@ -166,8 +166,10 @@ typedef struct fpr_sched {
   char *heap_lo, *heap_hi;            /* fpr_in_heap bounds, shared span */
   uw (*stack_grow)(uw sp);            /* the plane owns the actors, so their stacks */
   V (*receive_now)(V me);             /* receive without waiting (actors.c) */
+  V (*receive_from_res)(V me, V from); /* receiveFrom that answers a dead sender */
 } fpr_sched_t;
 extern fpr_sched_t *fpr_sched;        /* NULL = this image is the plane */
+uw fpr_pid_live(uw pid); /* actors of process pid not yet dead and off every hart */
 void fpr_sched_export(fpr_sched_t *out); /* fill with THIS image's impls */
 /* the IMAGE-STATICS window carved out of the heap span: a loaded
  * process's code/rodata/data sit INSIDE the buddy span (the fixed

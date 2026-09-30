@@ -1,0 +1,7 @@
+reply: Ok 42
+one-shot: Ok 1 then Err dead actor
+event kept for later: reply Ok 10, then tick
+stale id dropped: Ok 7
+full mailbox: Err mailbox full
+ended service: Err dead actor
+sendAwait: Ok 42 then Err dead actor

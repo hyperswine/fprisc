@@ -1,0 +1,72 @@
+# std/actor call/reply: a reply, a refused request, a service that ends while
+# the caller waits, an event from another actor that must not be read as the
+# reply, and a stale reply that must not be read as the answer
+AC = use "std/actor".
+
+doubler : unsafe Int -> a .
+doubler self =
+  m = receive self;
+  (from, id, q) = m;
+  _ = AC.reply (from, id) (q * 2);
+  doubler self.
+
+# answers the first request, then ends without answering the second
+oneShot self =
+  m = receive self;
+  (from, id, q) = m;
+  _ = AC.reply (from, id) 1;
+  _ = receive self;
+  Unit.
+
+# a stale reply (id 0 was never issued to this caller) queued before the real one
+staleFirst : unsafe Int -> a .
+staleFirst self =
+  m = receive self;
+  (from, id, q) = m;
+  _ = send from (0, 999);
+  _ = AC.reply (from, id) 7;
+  staleFirst self.
+
+fill : unsafe Int -> Int -> Unit .
+fill k n = case n == 0 of
+    True -> Unit
+  | False -> send k n >> fill k (n - 1).
+
+pinger target self = send target "tick".
+
+sleeper self = _ = receive self; Unit.
+# an uncorrelated wire: the bare reply, then the service ends
+bare self = case receive self of (from, q) -> send from (q + 1).
+# never reads its mailbox while the test runs
+stuck self = _ = Sys.sleepUs 2000000; Unit.
+
+main =
+  me = myself 0;
+  d = spawn doubler;
+  a = AC.call me d 21;
+  _ = print "reply: {a}";
+  o = spawn oneShot;
+  b = AC.call me o 0;
+  c = AC.call me o 0;
+  _ = print "one-shot: {b} then {c}";
+  _ = spawn (pinger me);
+  _ = Sys.sleepUs 20000;
+  e = AC.call me d 5;
+  ev = receive me;
+  _ = print "event kept for later: reply {e}, then {ev}";
+  s = spawn staleFirst;
+  f = AC.call me s 0;
+  _ = print "stale id dropped: {f}";
+  k = AC.spawnWith (AC.Static 8) stuck;
+  _ = fill k 8;
+  g = AC.call me k 0;
+  _ = print "full mailbox: {g}";
+  q = spawn sleeper;
+  _ = send q 0;
+  _ = Sys.sleepUs 20000;
+  h = AC.call me q 0;
+  _ = print "ended service: {h}";
+  b1 = spawn bare;
+  x1 = AC.sendAwait me b1 (me, 41);
+  x2 = AC.sendAwait me b1 (me, 0);
+  print "sendAwait: {x1} then {x2}".

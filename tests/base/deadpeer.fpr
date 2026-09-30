@@ -1,0 +1,33 @@
+# receiveFromRes: a caller's answer when the sender dies (std/actor askRes)
+replier self = case receive self of (who, n) -> send who (n * 2).
+quitter self = Unit.
+slowQuit self = _ = Sys.sleepUs 200000; Unit.
+main1 =
+  me = myself 0;
+  r = spawn replier;
+  _ = send r (me, 21);
+  a = receiveFromRes me r;
+  q = spawn quitter;
+  _ = Sys.sleepUs 50000;
+  b = receiveFromRes me q;
+  s = spawn slowQuit;
+  c = receiveFromRes me s;
+  print "reply={a} dead={b} died-while-waiting={c}".
+replyDie self = case receive self of who -> send who 7.
+silent self = case receive self of who -> _ = yield self; Unit.
+round : unsafe Int -> Int -> Int -> Int -> (Int, Int) .
+round me i oks errs = if i == 0 then (oks, errs) else
+  a = spawn replyDie;
+  _ = send a me;
+  b = spawn silent;
+  _ = send b me;
+  ra = receiveFromRes me a;
+  rb = receiveFromRes me b;
+  o = case ra of Ok v -> (if v == 7 then 1 else 0) | Err e -> 0;
+  e = case rb of Ok v -> 0 | Err m -> 1;
+  round me (i - 1) (oks + o) (errs + e).
+main =
+  _ = main1;
+  me = myself 0;
+  (o, e) = round me 3000 0 0;
+  print "rounds: oks={o} errs={e}".

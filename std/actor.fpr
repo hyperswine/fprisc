@@ -73,6 +73,76 @@ askSure me a q =
   _ = sendSure me a (me, q);
   receiveFrom me a.
 
+# ---- request / reply that ANSWERS ---------------------------------------------------
+# The prelude's `ask` sends (me, q) without looking at the answer and then waits
+# for the next message from the service -- for ever, if the service is gone.
+# `call` is the request/reply a caller can rely on:
+#
+#   Ok r                  the reply to THIS request
+#   Err "mailbox full"    refused: the request was never queued (callSure waits
+#                         for room instead)
+#   Err "dead actor"      refused because the service had ended, or it ended
+#                         before replying -- a caller is never left waiting
+#
+# The request is (me, id, q) with a fresh correlation id (Sys.nextId); the
+# service answers it with `reply req r`, which sends (id, r).  Only a message
+# FROM the service is taken, so an event queued by anyone else stays queued; a
+# reply whose id is not this request's belongs to an earlier request its caller
+# stopped waiting for, and is dropped rather than read as this answer.  Tuples,
+# not a declared type, so separately compiled units (QOS plugins) agree on it.
+call : unsafe Int -> Int -> q -> Result r String .
+call me a q =
+  id = Sys.nextId Unit;
+  case send a (me, id, q) of
+    Err e -> Err e
+  | Ok u -> awaitReply me a id.
+
+callSure : unsafe Int -> Int -> q -> Result r String .
+callSure me a q =
+  id = Sys.nextId Unit;
+  case sendSure me a (me, id, q) of
+    False -> Err "dead actor"
+  | True -> awaitReply me a id.
+
+# the reply to request `id` from `a`: Ok r, or Err "dead actor" once `a` has
+# ended with nothing from it left queued.  The reply is kept (copied into this
+# actor's heap) and the message released, as boundary does.
+awaitReply : unsafe Int -> Int -> Int -> Result r String .
+awaitReply me a id = case receiveFromRes me a of
+    Err e -> Err e
+  | Ok m -> replyOf me a id m.
+replyOf : unsafe Int -> Int -> Int -> (Int, r) -> Result r String .
+replyOf me a id m = case m of
+  (rid, r) -> if rid == id then replyKept m r else replyStale me a id m.
+replyKept m r =
+  v = keep r;
+  _ = drop m;
+  Ok v.
+replyStale me a id m =
+  _ = drop m;
+  awaitReply me a id.
+
+# the service half.  A server destructures the request, `(from, id, q) = m`,
+# keeps its RETURN ADDRESS `(from, id)` (two Ints: the message itself can be
+# dropped as usual), and answers with `reply (from, id) r`.  The Result says
+# whether the answer was queued (the caller may have gone, which is not the
+# service's problem).
+reply : unsafe (Int, Int) -> r -> Result Unit String .
+reply ret r = case ret of (from, id) -> send from (id, r).
+
+# the same guarantees for a wire that has no correlation id (svc's Rpc, whose
+# replies are the service's bare values): the request's send is checked, and
+# the next message FROM `a` is the answer, or Err "dead actor" once `a` has
+# ended.  Only for services that send this caller nothing but replies.
+sendAwait : unsafe Int -> Int -> m -> Result r String .
+sendAwait me a msg = case send a msg of
+    Err e -> Err e
+  | Ok u -> awaitFrom me a.
+awaitFrom : unsafe Int -> Int -> Result r String .
+awaitFrom me a = case receiveFromRes me a of
+    Err e -> Err e
+  | Ok m -> replyKept m m.
+
 # ---- the frame boundary: how a long-lived actor stays the same size ------------------
 # An actor's heap is a pool: values are not collected one by one, the WHOLE pool
 # is reclaimed when the actor dies -- or when it says so.  An actor that loops

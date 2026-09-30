@@ -194,6 +194,11 @@ typedef struct fpr_acb {
   uw stk_lo, stk_span, stk_total;
   /* Sys.sleepUs: linked on hart `slp_hart`'s sleeper list right now (see a_sleep_us) */
   uw slp_on, slp_hart;
+  /* receiveFromRes: the sender this actor is parked on (0 when not), and
+   * how many actors are parked on THIS one -- a dying actor walks the
+   * ledger to wake its watchers only when the count says there are any */
+  struct fpr_acb *watch;
+  uw watchers;
 } acb_t;
 #define TR(a, code) do { (a)->tr[(a)->tr_i++ % 16] = (uint8_t)((code) * 8 + (fpr_hart() ? fpr_hart()->id : 7)); } while (0)
 
@@ -672,6 +677,8 @@ static uw next_id;                 /* atomic fetch_add */
  * always safe; readers tolerate concurrent pushes -- push is a single
  * release store of the head) */
 static acb_t *g_all;
+static void wake_watchers(acb_t *s); /* receiveFromRes: a dying actor wakes its watchers */
+static int p_from_dead(acb_t *a, uw sid);
 static void ledger_push(acb_t *a) {
   acb_t *h;
   do {
@@ -1417,6 +1424,7 @@ static void trampoline(void) {
   }
   fpr_apply(a->entry, (V)a);
   __atomic_store_n(&a->var, ST_DEAD, __ATOMIC_SEQ_CST);
+  wake_watchers(a);
   to_sched();
   fpr_cpanic("actors: dead actor resumed");
 }
@@ -1494,7 +1502,7 @@ static void block_unless(acb_t *a, pred_t pred, uw arg) {
                                 __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
     return; /* whether we or a waker flipped it, we are READY */
   }
-  a->wait_kind = pred == p_from ? 2 : (pred == p_res ? 3 : 1);
+  a->wait_kind = (pred == p_from || pred == p_from_dead) ? 2 : (pred == p_res ? 3 : 1);
   a->wait_arg = arg;
   TR(a, 10);
   __atomic_fetch_add(&g_blocked, 1, __ATOMIC_RELAXED);
@@ -1625,6 +1633,11 @@ static int sh_has_from(acb_t *a, uw sid, uint32_t *at) {
 static int p_from(acb_t *a, uw sid) {
   chan_t *c = chan_for(a, sid, 0);
   return (c && ch_count(c)) || sh_has_from(a, sid, 0);
+}
+
+/* receiveFromRes waits for a message from sid OR for sid's death */
+static int p_from_dead(acb_t *a, uw sid) {
+  return p_from(a, sid) || __atomic_load_n(&((acb_t *)sid)->var, __ATOMIC_SEQ_CST) == ST_DEAD;
 }
 
 static int p_res(acb_t *a, uw unused) {
@@ -2108,6 +2121,62 @@ static V a_receive_from(V me, V fromv) {
   }
 }
 
+/* selective receive by sender that ANSWERS: `Ok message`, or the static
+ * `Err "dead actor"` once the sender has exited with nothing from it left
+ * queued.  A plain receiveFrom on a sender that dies waits forever; this is
+ * what a request/reply caller uses so a service that ends (its body
+ * returned, or it was killed) is an answer rather than a stranded caller.
+ *
+ * Wake-up without a lost race: the waiter publishes `watch` and bumps the
+ * sender's `watchers` BEFORE block_unless flips it BLOCKED and re-checks
+ * p_from_dead; the dying actor stores DEAD (seq_cst) and then reads
+ * `watchers`.  Either the waiter's re-check sees DEAD, or the dier sees
+ * the count and finds `watch` pointing at it on the ledger walk. */
+static const struct { uint32_t tid, var; uw len; uint8_t bytes[16]; } __attribute__((aligned(8))) recv_dead_s = {T_STR, 0, 10, "dead actor"};
+static const struct { uint32_t tid, var; V f; } __attribute__((aligned(8))) recv_dead = {T_RESULT, 1, (V)&recv_dead_s};
+
+static void wake_watchers(acb_t *s) {
+  if (__atomic_load_n(&s->watchers, __ATOMIC_SEQ_CST) == 0) return;
+  for (acb_t *a = __atomic_load_n(&g_all, __ATOMIC_ACQUIRE); a; a = a->all_nx)
+    if (__atomic_load_n(&a->watch, __ATOMIC_SEQ_CST) == s) wake(a);
+}
+
+static V ok_of(V m) {
+  V *ok = (V *)fpr_alloc(8 + sizeof(uw));
+  ((hdr_t *)ok)->tid = T_RESULT;
+  ((hdr_t *)ok)->var = 0;
+  FPR_FLD(ok, 0) = m;
+  return (V)ok;
+}
+
+static V a_receive_from_res(V me, V fromv) {
+  if (fpr_sched) return fpr_sched->receive_from_res(me, fromv);
+  fpr_hart_t *h = fpr_hart();
+  if (ISINT(me) || (acb_t *)me != h->current)
+    fpr_cpanic("receiveFromRes: not the current actor's handle");
+  if (ISINT(fromv) || TID(fromv) != T_ACTOR)
+    fpr_cpanic("receiveFromRes: sender is not an actor");
+  acb_t *a = h->current;
+  acb_t *s = (acb_t *)fromv;
+  drop_drain(a); /* the previous activation's borrows are dead here */
+  uw sid = (uw)fromv;
+  for (;;) {
+    /* read DEAD first: its seq_cst load orders every send the sender
+     * made before dying ahead of the queue check below */
+    int dead = __atomic_load_n(&s->var, __ATOMIC_SEQ_CST) == ST_DEAD;
+    chan_t *c = chan_for(a, sid, 0);
+    if (c && ch_count(c)) return ok_of(take_at(a, c, c->rh));
+    uint32_t k;
+    if (sh_has_from(a, sid, &k)) return ok_of(take_at(a, sh_chan(a), k));
+    if (dead) return (V)&recv_dead;
+    __atomic_store_n(&a->watch, s, __ATOMIC_SEQ_CST);
+    __atomic_fetch_add(&s->watchers, 1, __ATOMIC_SEQ_CST);
+    block_unless(a, p_from_dead, sid);
+    __atomic_fetch_sub(&s->watchers, 1, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&a->watch, 0, __ATOMIC_SEQ_CST);
+  }
+}
+
 /* selective receive by TYPE: next T_RESULT from any channel */
 static V a_receive_res(V me) {
   if (fpr_sched) return fpr_sched->receive_res(me);
@@ -2156,6 +2225,7 @@ static V a_kill(V av) {
   if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("kill: target is not an actor");
   acb_t *a = (acb_t *)av;
   __atomic_store_n(&a->var, ST_DEAD, __ATOMIC_SEQ_CST);
+  wake_watchers(a);
   if (a == fpr_hart()->current) {
     to_sched(); /* never resumed: deq skips DEAD */
     fpr_cpanic("actors: dead actor resumed");
@@ -2230,6 +2300,7 @@ FPR_FN(fpr_g_receive, a_receive, 1);
 FPR_FN(fpr_g_receiveFrom, a_receive_from, 2);
 FPR_FN(fpr_g_receiveRes, a_receive_res, 1);
 FPR_FN(fpr_g_receiveNow, a_receive_now, 1);
+FPR_FN(fpr_g_receiveFromRes, a_receive_from_res, 2);
 FPR_FN(fpr_g_yield, a_yield, 1);
 FPR_FN(fpr_g_kill, a_kill, 1);
 FPR_FN(fpr_g_myself, a_myself, 1);
@@ -2314,6 +2385,30 @@ static V g_actInfo(V iv) {
   return (V)nil;
 }
 FPR_FN(fpr_g_Sys_x2eactLive, g_actLive, 1);
+
+/* the actors of process `pid` that may still run its code: not DEAD, or
+ * DEAD but still switched in on a hart (the loader's quiescence rule:
+ * a process image's slot is reusable only when this is 0) */
+uw fpr_pid_live(uw pid) {
+  uw n = 0;
+  for (acb_t *a = __atomic_load_n(&g_all, __ATOMIC_ACQUIRE); a; a = a->all_nx) {
+    if (a->pid != pid) continue;
+    if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) != ST_DEAD ||
+        __atomic_load_n(&a->running, __ATOMIC_ACQUIRE) != 0)
+      n++;
+  }
+  return n;
+}
+
+/* Sys.nextId () -> a fresh Int, never repeated in this image: the
+ * correlation id a request/reply caller stamps on a request so a reply
+ * can be matched to it (std/actor.fpr call) */
+static V g_nextId(V u) {
+  (void)u;
+  static uw next;
+  return TAG((sw)__atomic_add_fetch(&next, 1, __ATOMIC_RELAXED));
+}
+FPR_FN(fpr_g_Sys_x2enextId, g_nextId, 1);
 FPR_FN(fpr_g_Sys_x2eactInfo, g_actInfo, 1);
 
 /* ---- the MEMORY ACTOR (fpr.h; docs/2026-08-25-MEMORY.md) -----------------------
@@ -2450,6 +2545,7 @@ static V sched_receive(V me) { return a_receive(me); }
 static V sched_receive_from(V me, V from) { return a_receive_from(me, from); }
 static V sched_receive_res(V me) { return a_receive_res(me); }
 static V sched_receive_now(V me) { return a_receive_now(me); }
+static V sched_receive_from_res(V me, V from) { return a_receive_from_res(me, from); }
 V fpr_receive_res_c(V me) { return a_receive_res(me); } /* process.c's syscall wait */
 static uw sched_arc_live(void) { return fpr_arc_live_count(); }
 void fpr_sched_export(fpr_sched_t *out) {
@@ -2458,6 +2554,7 @@ void fpr_sched_export(fpr_sched_t *out) {
   out->receive_from = sched_receive_from;
   out->receive_res = sched_receive_res;
   out->receive_now = sched_receive_now;
+  out->receive_from_res = sched_receive_from_res;
   out->spawn = sched_spawn;
   out->spawn_at = sched_spawn_at;
   out->spawn_pid = sched_spawn_pid;
