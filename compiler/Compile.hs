@@ -6,7 +6,7 @@ import System.Environment (lookupEnv)
 import System.IO (hPutStrLn, stderr)
 import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Inline (inlineSmall)
-import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, normArc)
+import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, normArc)
 import Data.Char (isAlphaNum, ord)
 import Numeric (showHex)
 import A64 (deTlsQosAppA64, lowerA64, a64Rev)
@@ -18,7 +18,7 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import FPRISC
-import Infer (builtinLinShapes, inferTops)
+import Infer (Scheme (..), Type (..), builtinEnv, builtinLinShapes, inferTops)
 import Safety (safetyCheck, trustedLibraryPaths)
 import System.Environment (lookupEnv)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
@@ -617,7 +617,17 @@ compileMain = do
           unitExt = M.unions [arities uts | (_, uts) <- units']
           sourceExt = M.union preludeExt unitExt
           extFor = M.union (if oArc opts then arcExterns else M.empty) sourceExt -- own names win via prog-first lookup
-          tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts}
+          -- primitive arities for direct calls: the compiler's builtin
+          -- schemes, and every bare signature (foreign declarations --
+          -- a signature with a definition names a global, which the
+          -- generator finds first)
+          halAr =
+            M.union
+              (M.fromList [(n, length as) | TSig n (as, _) _ <- preludeE' ++ concatMap snd units' ++ root'])
+              (M.map (\(Forall _ _ t) -> arrows t) builtinEnv)
+          arrows (TFn _ r) = 1 + arrows r
+          arrows _ = 0 :: Int
+          tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr}
           a64 = oA64 opts
           a64mac = oA64Mac opts
           x64 = oX64 opts

@@ -1,0 +1,9 @@
+# a zero-arity global runs where it is named: binding it (even to `_`, even
+# as an alias used twice) evaluates it exactly once, at that binding
+noisy = print "noisy ran".
+main =
+  _ = noisy;
+  a = noisy;
+  b = a;
+  c = a;
+  print "end".

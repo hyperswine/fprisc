@@ -64,7 +64,7 @@ import Data.List (isPrefixOf, isSuffixOf, stripPrefix)
 -- lowering fix invalidates cached lowered units (learned the hard way:
 -- the section-aware fixup fix left stale corrupt prelude units behind)
 x64Rev :: Int
-x64Rev = 4
+x64Rev = 5 -- r4 + lbu, or, srl
 
 -- deTlsQosApp: the QOS-x86_64 (--target=qx64) refinement.  A loaded
 -- QOS Portable app image is a fixed-slot ELF with no dynamic loader
@@ -272,6 +272,7 @@ instr0 body = case parts body of
   ("sw", ["zero", m]) -> ["movl $0, " ++ mem m]
   ("sw", [rs, m]) -> ["movl " ++ r32 rs ++ ", " ++ mem m]
   ("lw", [rd, m]) -> ["movslq " ++ mem m ++ ", " ++ reg rd] -- rv lw sign-extends
+  ("lbu", [rd, m]) -> ["movzbq " ++ mem m ++ ", " ++ reg rd] -- zero-extending byte
   -- moves / constants / addresses
   ("mv", [rd, "tp"]) ->
     ["movq %fs:fpr_posix_hart@tpoff, " ++ reg rd] -- initial-exec TLS
@@ -302,12 +303,14 @@ instr0 body = case parts body of
   ("mul", [rd, r1, r2]) -> arith "imulq" rd r1 r2 True
   ("and", [rd, r1, r2]) -> arith "andq" rd r1 r2 True
   ("xor", [rd, r1, r2]) -> arith "xorq" rd r1 r2 True
+  ("or", [rd, r1, r2]) -> arith "orq" rd r1 r2 True
   ("andi", [rd, rs, n]) -> two "andq" rd rs (imm n)
   ("ori", [rd, rs, n]) -> two "orq" rd rs (imm n)
   ("xori", [rd, rs, n]) -> two "xorq" rd rs (imm n)
   ("slli", [rd, rs, n]) -> two "shlq" rd rs (imm n)
   ("srai", [rd, rs, n]) -> two "sarq" rd rs (imm n)
-  ("sll", [rd, r1, r2]) -> shiftReg rd r1 r2
+  ("sll", [rd, r1, r2]) -> shiftReg "shlq" rd r1 r2
+  ("srl", [rd, r1, r2]) -> shiftReg "shrq" rd r1 r2
   ("div", [rd, r1, r2]) -> idiv rd r1 r2
   -- comparisons to a register
   ("slt", [rd, r1, r2]) -> setcc rd [r1, r2] "l" ("cmpq " ++ reg r2 ++ ", " ++ reg r1)
@@ -364,12 +367,12 @@ instr0 body = case parts body of
     -- operands are read before anything is clobbered, so any aliasing
     -- among rd/r1/r2/%rcx/%r11 is safe.  %r11 (t1) is written: the IR
     -- never keeps a t-reg live across a lowered op's expansion.
-    shiftReg rd r1 r2 =
+    shiftReg op rd r1 r2 =
       [ "pushq %rcx",
         "pushq " ++ reg r1, -- r1's value (r1 == %rcx still original: pushed above)
         "movq " ++ reg r2 ++ ", %rcx", -- count (r2 == %rcx: self-move, still original)
         "movq (%rsp), %r11",
-        "shlq %cl, %r11",
+        op ++ " %cl, %r11",
         "addq $8, %rsp",
         "popq %rcx",
         "movq %r11, " ++ reg rd ] -- after the pop: rd == %rcx lands correctly

@@ -1,4 +1,6 @@
--- A local cleanup of one function's emitted rv64 lines (builtin, --arc).
+-- A local cleanup of one function's emitted rv64 lines (every 64-bit
+-- target: the builtin profile, and the base profile before the a64/x64
+-- translators, which therefore see its output).
 --
 -- The generator moves every intermediate value through a frame slot:
 -- `sd a0, -40(s0)` and then, a line later, `ld a0, -40(s0)`.  Two
@@ -17,9 +19,6 @@
 --     are other memory), so a store nobody loads is dead.  Functions
 --     that address slots through a computed base (the deep-frame t2
 --     form) keep every store.
---
--- The x64/a64 translators never see this output: the pass runs only
--- for the rv64 builtin target.
 
 {-# LANGUAGE LambdaCase #-}
 

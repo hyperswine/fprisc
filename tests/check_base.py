@@ -81,6 +81,19 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     out = run([build('tests/fvec2.fpr', 'fvec2')]).stdout
     assert 'kept=999' in out and 'FLOATVEC2 HOLDS' in out, out
     print('The specialized float Vec.filter compiles and runs on AArch64 (tests/fvec2): PASS')
+    # 4i. a zero-arity global bound to a name runs there, once per binding:
+    # the base profile's let normalization must not drop or duplicate it
+    out = run([build('tests/base/cafalias.fpr', 'cafalias')]).stdout
+    assert out == 'noisy ran\nnoisy ran\nend\n', out
+    print('A zero-arity global bound to _ or aliased runs once per binding: PASS')
+    # 4j. the inline fast paths (charAt, strlen, band/bor/bxor, shifts, Int
+    # arithmetic) agree with the C primitives, and out-of-range still panics
+    out = run([build('tests/base/inlineprims.fpr', 'inlineprims')]).stdout
+    assert out == 'inline prims: 0 arithmetic/bit mismatches, 0 shift mismatches, 0 byte mismatches, strlen=5\n', out
+    (tmp / 'c0.fpr').write_text('main = charAt "abc" 0.\n')
+    p = run([build(tmp / 'c0.fpr', 'c0')], 1)
+    assert 'charAt: index out of range' in p.stdout + p.stderr, p.stdout + p.stderr
+    print('Inline primitive fast paths agree with C on 225 pairs, 64 shift counts and raw bytes; out of range is still the named panic: PASS')
     # 4h. receiveFromRes: a sender that exits is an answer (Err "dead actor"),
     # never a caller parked for ever; a reply sent just before exiting is kept
     dp = build('tests/base/deadpeer.fpr', 'deadpeer')

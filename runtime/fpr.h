@@ -619,7 +619,27 @@ void hal_poweroff(int code); /* hal.c: terminate the machine if the
 
 /* static PAP definition helper: NAME must already be mangled */
 #define FPR_FN(sym, cfn, ar) \
-  const pap0_t sym = {T_PAP, 0, (uw)(uintptr_t)(cfn), (ar), 0}
+  const pap0_t sym = {T_PAP, 0, (uw)(uintptr_t)(cfn), (ar), 0}; \
+  FPR_FN_CALL_##ar(sym, cfn)
+
+/* The DIRECT entry of a primitive: generated code calls a saturated
+ * primitive of known arity as `call <sym>_call<arity>` instead of staging
+ * the spine for fpr_applyN (Codegen.hs, tgtHal).  The arity is in the
+ * name, so a compiler that disagrees with the C side about it fails to
+ * LINK rather than calling with the wrong number of arguments. */
+#define FPR_FN_CALL_0(sym, cfn)
+#define FPR_FN_CALL_1(sym, cfn) \
+  V sym##_call1(V a) { return ((V(*)(V))(uintptr_t)(cfn))(a); }
+#define FPR_FN_CALL_2(sym, cfn) \
+  V sym##_call2(V a, V b) { return ((V(*)(V, V))(uintptr_t)(cfn))(a, b); }
+#define FPR_FN_CALL_3(sym, cfn) \
+  V sym##_call3(V a, V b, V c) { return ((V(*)(V, V, V))(uintptr_t)(cfn))(a, b, c); }
+#define FPR_FN_CALL_4(sym, cfn) \
+  V sym##_call4(V a, V b, V c, V d) { return ((V(*)(V, V, V, V))(uintptr_t)(cfn))(a, b, c, d); }
+#define FPR_FN_CALL_5(sym, cfn) \
+  V sym##_call5(V a, V b, V c, V d, V e) { return ((V(*)(V, V, V, V, V))(uintptr_t)(cfn))(a, b, c, d, e); }
+#define FPR_FN_CALL_6(sym, cfn) \
+  V sym##_call6(V a, V b, V c, V d, V e, V f) { return ((V(*)(V, V, V, V, V, V))(uintptr_t)(cfn))(a, b, c, d, e, f); }
 
 /* A primitive whose C work must run on an internal-RAM stack.  On ESP-IDF,
  * actor stacks are in PSRAM and flash operations (every FAT file call) assert

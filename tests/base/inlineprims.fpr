@@ -1,0 +1,43 @@
+# the base profile's inline fast paths agree with the C primitives: each
+# operation is computed inline (a saturated call) and through the C path
+# (the same primitive as a function value, applied generically)
+via2 : (Int -> Int -> Int) -> Int -> Int -> Int .
+via2 f a b = f a b.
+viaB : (Int -> Int -> Bool) -> Int -> Int -> Bool .
+viaB f a b = f a b.
+
+vals = [0, 1, -1, 2, -2, 7, -7, 63, 64, 12345, -12345, 4294967295, -4294967296, 4611686018427387903, -4611686018427387904].
+
+agree : unsafe List Int -> List Int -> Int -> Int .
+agree xs ys bad = case xs of
+    Nil -> bad
+  | x :: r -> agree r ys (bad + row x ys).
+row : unsafe Int -> List Int -> Int .
+row x ys = case ys of
+    Nil -> 0
+  | y :: r -> one x y + row x r.
+one : Int -> Int -> Int .
+one x y =
+  a = if band x y == via2 band x y then 0 else 1;
+  b = if bor x y == via2 bor x y then 0 else 1;
+  c = if bxor x y == via2 bxor x y then 0 else 1;
+  d = if x + y == via2 (fn p q -> p + q) x y then 0 else 1;
+  e = if (x < y) == viaB (fn p q -> p < q) x y then 0 else 1;
+  a + b + c + d + e.
+
+shifts : unsafe Int -> Int -> Int .
+shifts k bad = if k > 63 then bad else
+  s1 = if BITSHIFTL 12345 k == via2 BITSHIFTL 12345 k then 0 else 1;
+  s2 = if BITSHIFTR (-12345) k == via2 BITSHIFTR (-12345) k then 0 else 1;
+  shifts (k + 1) (bad + s1 + s2).
+
+bytes : unsafe String -> Int -> Int -> Int .
+bytes s i bad = if i > strlen s then bad else
+  bytes s (i + 1) (bad + (if charAt s i == via2 (fn t j -> charAt s j) 0 i then 0 else 1)).
+
+main =
+  m = agree vals vals 0;
+  sh = shifts 0 0;
+  s = strcat (strcat "h" (chr 233)) (strcat (chr 255) (strcat (chr 0) "z"));
+  by = bytes s 1 0;
+  print "inline prims: {m} arithmetic/bit mismatches, {sh} shift mismatches, {by} byte mismatches, strlen={strlen s}".

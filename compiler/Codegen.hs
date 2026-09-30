@@ -49,7 +49,7 @@ import FPRISC (Core (..), Prog, freeVars)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 11 -- r10 + base profile: inline Int ops, jumping conditions, direct args
+codegenRev = 16 -- r15 + inline charAt/strlen/band/bor/bxor/BITSHIFTL/BITSHIFTR
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -63,14 +63,17 @@ data Target = Target
     tgtName :: String,  -- for the banner comment
     tgtFuel :: Bool,    -- cooperative scheduler instrumentation
     tgtArc :: Bool,     -- explicit field layouts for managed constructors
-    tgtWeak :: Bool     -- a LIBRARY unit: its unqualified globals (the
+    tgtWeak :: Bool,    -- a LIBRARY unit: its unqualified globals (the
                         -- constructor stubs, $arc.mainManaged) are emitted
                         -- .weak so a program unit's copies win at link
+    tgtHal :: M.Map String Int -- primitive name -> arity (builtin schemes and
+                        -- foreign declarations): a saturated call to one is
+                        -- a direct `call fpr_g_<name>_call<n>` (fpr.h FPR_FN)
   }
 
 rv64, rv32 :: Target
-rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False
-rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False
+rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False M.empty
+rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False M.empty
 
 -- the visibility directive for a unit-visible global: a library unit
 -- shares every name it did not qualify with '@hash' with the program it
@@ -553,7 +556,7 @@ compileFn prog name (params, body0) = do
       -- the builtin target sees the body through normArc (let shapes the
       -- ownership lowering leaves behind, folded so the tag-test and
       -- inline-condition fusions in genT apply)
-      body = if tgtArc tgt && w == 8 then normArc body0 else body0
+      body = if w == 8 then normIn (S.fromList params) body0 else body0
       -- exact high-water mark (see slotsNeeded); +2 is pure paranoia
       nslots = length params + slotsNeeded ext prog (S.fromList params) body + 2
       frame = ((2 * w + w * nslots + 15) `div` 16) * 16
@@ -617,7 +620,7 @@ compileFn prog name (params, body0) = do
   -- the builtin target's lines pass through the peephole (Peephole.hs):
   -- slot forwarding and dead slot stores, per function, after the
   -- frame is opened
-  let tidy = if tgtArc tgt && w == 8 then peephole else id
+  let tidy = if w == 8 then peephole else id
   pure $ wcetAnnotate name $
     -- `# fn <name>`, never `# <name>`: a hosted backend runs the unit through
     -- the C preprocessor, which reads `# line ...`, `# error ...`, `# define
@@ -664,8 +667,17 @@ compileFn prog name (params, body0) = do
 -- Each is an equivalence: literals have no effects, and a let's
 -- binding is evaluated exactly once, in the same order, on both sides.
 normArc :: Core -> Core
-normArc = go
+normArc = normIn S.empty
+
+-- `ps`: the function's parameters.  A variable is LOCAL when it is a
+-- parameter or bound inside the body; only a local is a pure value.  A
+-- global of arity 0 is evaluated where it is named (base code: a CAF
+-- that prints), so an alias of one is never substituted -- that would
+-- drop the evaluation, or repeat it at every use.
+normIn :: S.Set String -> Core -> Core
+normIn ps body0 = go body0
   where
+    locals = S.union ps (S.fromList (binders body0))
     go e = rw (descend e)
     descend = \case
       CApp a b -> CApp (go a) (go b)
@@ -698,7 +710,7 @@ normArc = go
         | x `notElem` freeVars rest, x `elem` freeVars b -> rw (CLet y (rw (CLet x a b)) rest)
       -- a variable alias substitutes when nothing in the body rebinds
       -- the variable (so the substitution cannot be captured)
-      CLet x (CVar y) b | y `notElem` binders b -> go (substE x (CVar y) b)
+      CLet x (CVar y) b | S.member y locals, y `notElem` binders b -> go (substE x (CVar y) b)
       CIf (CLet x a c) th el
         | x `notElem` freeVars th, x `notElem` freeVars el -> rw (CLet x a (rw (CIf c th el)))
       e -> e
@@ -885,7 +897,24 @@ inlineTable =
       ("$arc.ge", Cond ["    slt t0, a0, a1", "    xori t0, t0, 1"]),
       -- deep equality stays in C; two Ints compare inline
       ("$arc.eq", GuardedCond bothInts ["    xor t0, a0, a1", "    seqz t0, t0"]),
-      ("$arc.ne", GuardedCond bothInts ["    xor t0, a0, a1", "    snez t0, t0"])
+      ("$arc.ne", GuardedCond bothInts ["    xor t0, a0, a1", "    snez t0, t0"]),
+      -- base-profile primitives with an inline fast path; the slow path is
+      -- the primitive's direct entry (FPR_FN _callN), which panics by name.
+      -- Each is exact against runtime.c / bits.c: str_t is {tid, var, len,
+      -- bytes} (len at 8, bytes at 16), T_STR = 9000; band/bor/bxor on two
+      -- tagged words then `ori 1` equal TAG(UNTAG a op UNTAG b) bit for bit.
+      ("charAt", Guarded isStr
+                   [ "    srai t1, a1, 1", "    addi t1, t1, -1", -- k - 1
+                     "    ld t0, 8(a0)" ]
+                 `andThen` \slow ->
+                   [ "    bgeu t1, t0, " ++ slow, -- k < 1 or k > len (unsigned)
+                     "    add t0, a0, t1", "    lbu a0, 16(t0)" ] ++ tag "a0"),
+      ("strlen", Guarded isStr ("    ld a0, 8(a0)" : tag "a0")),
+      ("band", Plain ["    and a0, a0, a1", "    ori a0, a0, 1"]),
+      ("bor", Plain ["    or a0, a0, a1", "    ori a0, a0, 1"]),
+      ("bxor", Plain ["    xor a0, a0, a1", "    ori a0, a0, 1"]),
+      ("BITSHIFTL", Guarded shiftOk ["    srai t0, a0, 1", "    sll t0, t0, t1", "    slli t0, t0, 1", "    ori a0, t0, 1"]),
+      ("BITSHIFTR", Guarded shiftOk ["    srai t0, a0, 1", "    srl t0, t0, t1", "    slli t0, t0, 1", "    ori a0, t0, 1"])
     ]
   where
     tag r = ["    slli " ++ r ++ ", " ++ r ++ ", 1", "    ori " ++ r ++ ", " ++ r ++ ", 1"]
@@ -895,6 +924,11 @@ inlineTable =
     shiftOk slow = ["    srai t1, a1, 1", "    li t0, 64", "    bgeu t1, t0, " ++ slow]
     alignedTo m slow = ["    andi t0, a0, " ++ show (m :: Int), "    bnez t0, " ++ slow]
     bothInts slow = ["    and t0, a0, a1", "    andi t0, t0, 1", "    beqz t0, " ++ slow]
+    -- a0 is a String (not a tagged Int, tid T_STR)
+    isStr slow = ["    andi t0, a0, 1", "    bnez t0, " ++ slow, "    lw t0, 0(a0)", "    li t1, 9000", "    bne t0, t1, " ++ slow]
+    -- a guarded expansion with further checks after some fast-path lines
+    andThen (Guarded checks pre) more = Guarded (\slow -> checks slow ++ pre ++ more slow) []
+    andThen other _ = other
 
 -- The base profile's Int operators are the same tagged-word operations
 -- as the builtin adapters: the C prims untag unconditionally (+ - * and
@@ -994,6 +1028,23 @@ genT tgt spec prog ext = go
       | spec, Just (plan, callArgs) <- vecSpec prog (`M.member` env) e = do
           sym <- requestSpec plan
           knownCall env nxt pos sym callArgs
+
+    -- a saturated primitive of known arity (tgtHal): a direct call to its
+    -- FPR_FN entry, not the fpr_applyN spine.  After the Vec specializations
+    -- above, so those still get their loops; the builtin profile has its
+    -- own adapters (Arc.hs).
+    go env nxt pos e
+      | not (tgtArc tgt),
+        (CVar h, args@(_ : _)) <- spineOf e,
+        not (M.member h env), not (M.member h prog), not (M.member h ext),
+        Just a <- M.lookup h (tgtHal tgt), a == length args, a <= 6 =
+          let target = "fpr_g_" ++ mangle h ++ "_call" ++ show a
+           in case (w == 8, inlineArc h) of
+                (True, Just emit) -> do
+                  argLines <- stageArgs env nxt args
+                  body <- emit target
+                  pure (argLines ++ argLoads env nxt args ++ body)
+                _ -> knownCall env nxt pos target args
 
     -- CIf and CLet are the only forms whose "last thing done" is a
     -- nested expression rather than themselves: propagate position so a

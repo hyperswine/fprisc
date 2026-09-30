@@ -64,7 +64,7 @@ import Data.Word (Word64)
 
 -- bump when the lowering changes (unit-cache tag component; see X64.hs)
 a64Rev :: Int
-a64Rev = 10 -- scalar F32/F64 lowering for qa64
+a64Rev = 11 -- r10 + lbu, or, srl (the base profile's inline primitives)
 
 lowerA64 :: Bool -> String -> String
 lowerA64 mach =
@@ -198,6 +198,15 @@ ld32 rd rm =
           then ["ldrsw " ++ xd ++ ", [" ++ rb ++ ", #" ++ show off ++ "]"]
           else farBase rb off ++ ["ldrsw " ++ xd ++ ", [x16]"]
 
+ld8u :: String -> String -> [String] -- lbu rd, off(rb): zero-extending byte
+ld8u rd rm =
+  let (off, rb) = mem rm; wd = wreg rd
+   in if off >= -256 && off <= 255
+        then ["ldurb " ++ wd ++ ", [" ++ rb ++ ", #" ++ show off ++ "]"]
+        else if off >= 0 && off <= 4095
+          then ["ldrb " ++ wd ++ ", [" ++ rb ++ ", #" ++ show off ++ "]"]
+          else farBase rb off ++ ["ldrb " ++ wd ++ ", [x16]"]
+
 st32 :: String -> String -> [String]
 st32 rs rm =
   let (off, rb) = mem rm; ws = wreg rs
@@ -247,6 +256,7 @@ instr mach body = case parts body of
   ("ld", [rd, rm]) -> ldst64 "ldur" "ldr" rm rd
   ("sd", [rs, rm]) -> ldst64 "stur" "str" rm rs
   ("lw", [rd, rm]) -> ld32 rd rm
+  ("lbu", [rd, rm]) -> ld8u rd rm
   ("sw", [rs, rm]) -> st32 rs rm
   -- moves / constants / addresses
   ("mv", [rd, "tp"])
@@ -294,12 +304,14 @@ instr mach body = case parts body of
   ("div", [rd, r1, r2]) -> [rrr "sdiv" rd r1 r2]
   ("and", [rd, r1, r2]) -> [rrr "and" rd r1 r2]
   ("xor", [rd, r1, r2]) -> [rrr "eor" rd r1 r2]
+  ("or", [rd, r1, r2]) -> [rrr "orr" rd r1 r2]
   ("andi", [rd, rs, n]) -> logImm "and" rd rs n
   ("ori", [rd, rs, n]) -> logImm "orr" rd rs n
   ("xori", [rd, rs, n]) -> logImm "eor" rd rs n
   ("slli", [rd, rs, n]) -> ["lsl " ++ xreg rd ++ ", " ++ xreg rs ++ ", #" ++ n]
   ("srai", [rd, rs, n]) -> ["asr " ++ xreg rd ++ ", " ++ xreg rs ++ ", #" ++ n]
   ("sll", [rd, r1, r2]) -> [rrr "lsl" rd r1 r2]
+  ("srl", [rd, r1, r2]) -> [rrr "lsr" rd r1 r2]
   -- scalar floats travel through the integer ABI as raw bits
   ("fmv.d.x", [fd, rs]) -> ["fmov " ++ freg "d" fd ++ ", " ++ xreg rs]
   ("fmv.x.d", [rd, fs]) -> ["fmov " ++ xreg rd ++ ", " ++ freg "d" fs]
