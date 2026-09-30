@@ -150,3 +150,13 @@ Step 1 comes first because it fixes linear memory's representation and the
 interpreter's value type; anything built before it would be rewritten. The
 performance items in section 1 matter here as well: an interpreter is exactly
 the byte-and-integer workload that 1.2 to 1.4 target.
+
+## 2026-09-30: most of 1.7 done
+
+In 1.7's terms: item 1 (the benchmark set) is `tools/bench.py` with
+`bench/baseline.json`. Item 2's peephole now runs on the shared IR, and item
+3 (inline primitive fast paths) is done, together with direct primitive
+calls and the builtin path's inline Int operators and branch conditions for
+the base profile. See [NATIVE-PERF](2026-09-30-NATIVE-PERF.md). Section
+1.6's fuel item was already handled by `x28`. Still open: item 2's
+base-profile inliner, item 4 (registers), item 5 (untagged locals).
