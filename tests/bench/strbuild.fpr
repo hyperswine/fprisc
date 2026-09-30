@@ -1,0 +1,9 @@
+# bench: string building -- a 1,000,000-piece strJoin and 20,000 strcats
+pieces : unsafe Int -> List String -> List String .
+pieces n acc = if n == 0 then acc else pieces (n - 1) ("item{n}" :: acc).
+cat : unsafe Int -> String -> String .
+cat n acc = if n == 0 then acc else cat (n - 1) (strcat acc "x").
+main =
+  j = strJoin "," (pieces 1000000 Nil);
+  c = cat 20000 "";
+  print "strbuild = {strlen j} {strlen c}".

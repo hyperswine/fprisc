@@ -49,7 +49,7 @@ import FPRISC (Core (..), Prog, freeVars)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 10 -- r9 + Vec.filter spec stays inside s0..s9 (A64 has no s10)
+codegenRev = 11 -- r10 + base profile: inline Int ops, jumping conditions, direct args
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -896,9 +896,25 @@ inlineTable =
     alignedTo m slow = ["    andi t0, a0, " ++ show (m :: Int), "    bnez t0, " ++ slow]
     bothInts slow = ["    and t0, a0, a1", "    andi t0, t0, 1", "    beqz t0, " ++ slow]
 
+-- The base profile's Int operators are the same tagged-word operations
+-- as the builtin adapters: the C prims untag unconditionally (+ - * and
+-- the orderings are exact on tagged words), / takes the C path for a zero
+-- divisor (its named panic), and == / != stay deep in C unless both
+-- operands are Ints.  Inference has already routed F64/F32/String/List
+-- sites to their own functions, so a bare `+` here is Int.
+baseOps :: M.Map String String
+baseOps =
+  M.fromList
+    [ ("+", "$arc.add"), ("-", "$arc.sub"), ("*", "$arc.mul"), ("/", "$arc.div"),
+      ("<", "$arc.lt"), (">", "$arc.gt"), ("<=", "$arc.le"), (">=", "$arc.ge"),
+      ("==", "$arc.eq"), ("!=", "$arc.ne") ]
+
+inlineKey :: String -> String
+inlineKey h = M.findWithDefault h h baseOps
+
 -- the expansion as a value in a0 (the adapter's result)
 inlineArc :: String -> Maybe (String -> G [String])
-inlineArc h = emit <$> M.lookup h inlineTable
+inlineArc h0 = emit <$> M.lookup (inlineKey h0) inlineTable
   where
     emit = \case
       Plain ls -> const (pure ls)
@@ -919,7 +935,7 @@ inlineArc h = emit <$> M.lookup h inlineTable
 -- the expansion as a condition: t0 = 0/1, for a branch that never
 -- materializes the Bool (the slow path reads the adapter's answer)
 inlineCond :: String -> Maybe (String -> G [String])
-inlineCond h = case M.lookup h inlineTable of
+inlineCond h = case M.lookup (inlineKey h) inlineTable of
   Just (Cond c) -> Just (const (pure c))
   Just (GuardedCond checks c) -> Just $ \t -> do
     ls <- freshL "slow"
@@ -959,7 +975,7 @@ genT tgt spec prog ext = go
     -- the call.  Never a tail jump -- the value lands in a0 and the
     -- enclosing epilogue returns it, as for any base expression.
     go env nxt _pos e
-      | tgtArc tgt, w == 8,
+      | w == 8,
         (CVar h, args@(_ : _)) <- spineOf e,
         Just target <- known env h (length args),
         Just emit <- inlineArc h = do
@@ -987,12 +1003,12 @@ genT tgt spec prog ext = go
     -- binder shares the variable's slot and no code is emitted (the
     -- inliner's argument bindings are mostly of this shape)
     go env nxt pos (CLet x (CVar y) b)
-      | tgtArc tgt, Just k <- M.lookup y env = go (M.insert x k env) nxt pos b
+      | Just k <- M.lookup y env = go (M.insert x k env) nxt pos b
     -- a branch: the condition is compiled as jumping code (jumpIf), so
     -- a comparison, a nested if, a nullary Bool or a tag test each
     -- branch directly and no Bool object is built
     go env nxt pos (CIf c t e)
-      | tgtArc tgt, w == 8 = do
+      | w == 8 = do
           lc <- jumpIf False env nxt c
           lt <- go env nxt pos t
           le <- go env nxt pos e
@@ -1027,8 +1043,8 @@ genT tgt spec prog ext = go
     -- an argument that is a local needs no staging: its slot is
     -- written once, so it is loaded straight from there at transfer
     -- time; every other argument is evaluated into slot nxt+i
-    directArg env (CVar y) | tgtArc tgt, Just k <- M.lookup y env = Just (\r -> ldSlot tgt r k)
-    directArg _ (CInt i) | tgtArc tgt, intFits tgt i = Just (\r -> ["    li " ++ r ++ ", " ++ show (2 * i + 1)])
+    directArg env (CVar y) | Just k <- M.lookup y env = Just (\r -> ldSlot tgt r k)
+    directArg _ (CInt i) | intFits tgt i = Just (\r -> ["    li " ++ r ++ ", " ++ show (2 * i + 1)])
     directArg _ _ = Nothing
     argLoad env nxt r (i, a) = maybe (ldSlot tgt r (nxt + i)) ($ r) (directArg env a)
     stageArgs env nxt args =

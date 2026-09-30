@@ -1,0 +1,11 @@
+{
+  "host": "Darwin-arm64-macm4",
+  "times": {
+    "byteloop": 0.3183,
+    "fib": 0.1041,
+    "nbody": 0.5196,
+    "pingpong": 0.1806,
+    "sha": 0.5597,
+    "strbuild": 0.1126
+  }
+}

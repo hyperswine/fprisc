@@ -1,0 +1,4 @@
+# bench: SHA-256 of 1 MiB written in FP-RISC (std/digest)
+String = use "std/string".
+Digest = use "std/digest".
+main = print "sha256 1MiB = {Digest.sha256 (String.repeat 1048576 "a")}".

@@ -1,0 +1,11 @@
+# bench: F64 arithmetic -- a two-body orbit, 10,000,000 Euler steps
+step : unsafe Int -> F64 -> F64 -> F64 -> F64 -> F64 .
+step n x y vx vy = if n == 0 then x * x + y * y else
+  r2 = x * x + y * y;
+  r3 = r2 * F64.sqrt r2;
+  ax = 0.0 - x / r3;
+  ay = 0.0 - y / r3;
+  vx2 = vx + ax * 0.001;
+  vy2 = vy + ay * 0.001;
+  step (n - 1) (x + vx2 * 0.001) (y + vy2 * 0.001) vx2 vy2.
+main = print "nbody r2 = {F64.str (step 10000000 1.0 0.0 0.0 1.0)}".
