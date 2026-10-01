@@ -21,9 +21,9 @@ putc c = putc c .
 # console text over THIS file's putc (the prelude cannot host these:
 # putc is per-target device code, and the prelude is a cached unit)
 puts : unsafe String -> Unit .
-puts s = putsFrom s 1 .
+puts s = putsFrom s 0 .
 putsFrom : unsafe String -> Int -> Unit .
-putsFrom s i | i > strlen s = Unit.
+putsFrom s i | i >= strlen s = Unit.
 putsFrom s i = putc (charAt s i) >> putsFrom s (i + 1) .
 nl : unsafe Unit .
 nl = putc 13 >> putc 10 .
@@ -46,14 +46,14 @@ render me =
 rloop : unsafe Int -> Int -> a .
 rloop me p =
   fb = receive me;
-  fb2 = paint fb 0 1;
+  fb2 = paint fb 0 0;
   _ = sendLinear p fb2;
   rloop me p .
 
 # paint: bulk mutation through the linear handle — in place, no
 # allocation, the same handle threads out.
 paint : unsafe (Vector Int) -> Int -> Int -> (Vector Int) .
-paint fb v i | i > wMax = fb.
+paint fb v i | i >= wMax = fb.
 paint fb v i = paint (Vec.set i v fb) v (i + 1) .
 
 # ---- the producer loop: the relay -------------------------------------

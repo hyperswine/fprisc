@@ -49,12 +49,12 @@ isIdent c = isDigit c.
 
 # strip comment: cut line at first '#'
 stripC ln =
-  k = Str.findFrom 35 ln 1;
-  case k == 0 of True -> ln | False -> Str.slice ln 1 (k - 1).
+  k = Str.find 35 ln;
+  case k < 0 of True -> ln | False -> Str.slice ln 0 k.
 
-tokLine ln = toks (stripC ln) 1.
+tokLine ln = toks (stripC ln) 0.
 
-toks ln i | i > Str.len ln = [].
+toks ln i | i >= Str.len ln = [].
 toks ln i = tok1 ln i (Str.at ln i).
 
 tok1 ln i 32 = toks ln (i + 1).
@@ -64,16 +64,16 @@ tok1 ln i c | isLower c = lexIdent ln i i tAtom.
 tok1 ln i c | isUpper c = lexIdent ln i i tVar.
 tok1 ln i c = lexPunct ln i c.
 
-lexInt ln i acc | i <= Str.len ln, isDigit (Str.at ln i) =
+lexInt ln i acc | i < Str.len ln, isDigit (Str.at ln i) =
   lexInt ln (i + 1) (acc * 10 + (Str.at ln i - 48)).
 lexInt ln i acc = tInt acc :: toks ln i.
 
-lexIdent ln s i mk | i <= Str.len ln, isIdent (Str.at ln i) = lexIdent ln s (i + 1) mk.
-lexIdent ln s i mk = mk (Str.slice ln s (i - 1)) :: toks ln i.
+lexIdent ln s i mk | i < Str.len ln, isIdent (Str.at ln i) = lexIdent ln s (i + 1) mk.
+lexIdent ln s i mk = mk (Str.slice ln s i) :: toks ln i.
 
 # multi-char puncts: <-  >=  <=  !=  (literal-pattern dispatch on (c, next))
 lexPunct ln i c = lexP2 c (punNxt ln i) ln i.
-punNxt ln i | i < Str.len ln = Str.at ln (i + 1).
+punNxt ln i | i + 1 < Str.len ln = Str.at ln (i + 1).
 punNxt _ _ = 0.
 lexP2 60 45 ln i = tP "<-" :: toks ln (i + 2).
 lexP2 62 61 ln i = tP ">=" :: toks ln (i + 2).
@@ -213,7 +213,7 @@ pStmts toks =
   s :: pStmts t2.
 
 # ---------- R -> PT: intern atoms, number variables ----------
-# cv = (varAssoc, nextIdx); syms threaded
+# cv = (varAssoc, nextIdx); variable indices are 0-based; syms threaded
 conv r syms cv = case r of
   RI n -> (logic.PI n, syms, cv)
 | RV nm -> convVar nm syms cv
@@ -252,16 +252,16 @@ clStep r rest syms cv =
 
 # a clause: number vars across head+body; db entry (functor, head, body, nv)
 buildClause hd body syms =
-  (hp, syms2, cv2) = conv hd syms ([], 1);
+  (hp, syms2, cv2) = conv hd syms ([], 0);
   (bp, syms3, cv3) = convList body syms2 cv2;
   (vm, nx) = cv3;
-  ((logic.functorOf hp, hp, bp, nx - 1), syms3).
+  ((logic.functorOf hp, hp, bp, nx), syms3).
 
 # a query: same, but report named vars in first-appearance order
 buildQuery gs syms =
-  (gp, syms2, cv2) = convList gs syms ([], 1);
+  (gp, syms2, cv2) = convList gs syms ([], 0);
   (vm, nx) = cv2;
-  (gp, nx - 1, List.rev vm, syms2).
+  (gp, nx, List.rev vm, syms2).
 
 # ---------- top level: source lines -> (db, queries, syms) ----------
 # queries: [(goalsPT, nqv, qnames)]

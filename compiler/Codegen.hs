@@ -50,7 +50,7 @@ import FPRISC (Core (..), Prog, freeVars)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 25 -- pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
+codegenRev = 26 -- 0-based charAt fast path (docs/2026-10-02-ZERO-BASED.md); 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -944,10 +944,10 @@ inlineTable =
       -- bytes} (len at 8, bytes at 16), T_STR = 9000; band/bor/bxor on two
       -- tagged words then `ori 1` equal TAG(UNTAG a op UNTAG b) bit for bit.
       ("charAt", Guarded isStr
-                   [ "    srai t1, a1, 1", "    addi t1, t1, -1", -- k - 1
+                   [ "    srai t1, a1, 1", -- k (0-based)
                      "    ld t0, 8(a0)" ]
                  `andThen` \slow ->
-                   [ "    bgeu t1, t0, " ++ slow, -- k < 1 or k > len (unsigned)
+                   [ "    bgeu t1, t0, " ++ slow, -- k < 0 or k >= len (unsigned)
                      "    add t0, a0, t1", "    lbu a0, 16(t0)" ] ++ tag "a0"),
       ("strlen", Guarded isStr ("    ld a0, 8(a0)" : tag "a0")),
       ("band", Plain ["    and a0, a0, a1", "    ori a0, a0, 1"]),

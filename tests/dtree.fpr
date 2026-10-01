@@ -112,7 +112,7 @@ ccounts ys idxs k = ccGo ys idxs (zerosL k).
 ccGo : unsafe (Vector _) -> List Int -> List Int -> _ .
 ccGo ys Nil acc = (acc, ys).
 ccGo ys (i :: r) acc =
-  (y, ys2) = Vec.get (i + 1) ys;
+  (y, ys2) = Vec.get i ys;
   ccGo ys2 r (bumpL acc y).
 
 # ---- the histogram: one scatter pass over the node's rows -------------------
@@ -120,9 +120,9 @@ ccGo ys (i :: r) acc =
 histB : unsafe (Vector _) -> (Vector _) -> (Vector _) -> List Int -> Int -> _ .
 histB h cs ys Nil k = (h, cs, ys).
 histB h cs ys (i :: r) k =
-  (b, cs2) = Vec.get (i + 1) cs;
-  (y, ys2) = Vec.get (i + 1) ys;
-  pos = b * k + y + 1;
+  (b, cs2) = Vec.get i cs;
+  (y, ys2) = Vec.get i ys;
+  pos = b * k + y;
   (old, h2) = Vec.get pos h;
   histB (Vec.set pos (old + 1) h2) cs2 ys2 r k.
 
@@ -131,7 +131,7 @@ rowL : unsafe (Vector _) -> Int -> Int -> Int -> _ .
 rowL h base j k = case j >= k of True -> (Nil, h) | False -> rowGo h base j k.
 rowGo : unsafe (Vector _) -> Int -> Int -> Int -> _ .
 rowGo h base j k =
-  (v, h2) = Vec.get (base + j + 1) h;
+  (v, h2) = Vec.get (base + j) h;
   (rest, h3) = rowL h2 base (j + 1) k;
   (v :: rest, h3).
 
@@ -185,7 +185,7 @@ bsc ps parentH cs ys idxs n totalC =
 part : unsafe (Vector _) -> List Int -> Int -> List Int -> List Int -> _ .
 part cs Nil t al ar = (al, ar, cs).
 part cs (i :: rest) t al ar =
-  (b, cs2) = Vec.get (i + 1) cs;
+  (b, cs2) = Vec.get i cs;
   case b <= t of
     True -> part cs2 rest t (i :: al) ar
   | False -> part cs2 rest t al (i :: ar).
@@ -266,7 +266,7 @@ binGo col i n lo w nb acc = case i >= n of
   | False -> binPut col i n lo w nb acc.
 binPut : unsafe (Vector _) -> Int -> Int -> F64 -> F64 -> Int -> (Vector _) -> _ .
 binPut col i n lo w nb acc =
-  (x, col2) = Vec.get (i + 1) col;
+  (x, col2) = Vec.get i col;
   binGo col2 (i + 1) n lo w nb (Vec.push (Int.min (nb - 1) (F64.toInt ((x - lo) / w))) acc).
 
 # ---- prediction + accuracy --------------------------------------------------
@@ -278,11 +278,11 @@ predAt (Split col thr l r) xs zs i = case col == 0 of
   | False -> pred1 thr l r xs zs i.
 pred0 : unsafe F64 -> Tree -> Tree -> (Vector _) -> (Vector _) -> Int -> _ .
 pred0 thr l r xs zs i =
-  (v, xs2) = Vec.get (i + 1) xs;
+  (v, xs2) = Vec.get i xs;
   case v < thr of True -> predAt l xs2 zs i | False -> predAt r xs2 zs i.
 pred1 : unsafe F64 -> Tree -> Tree -> (Vector _) -> (Vector _) -> Int -> _ .
 pred1 thr l r xs zs i =
-  (v, zs2) = Vec.get (i + 1) zs;
+  (v, zs2) = Vec.get i zs;
   case v < thr of True -> predAt l xs zs2 i | False -> predAt r xs zs2 i.
 
 accGo : unsafe Tree -> (Vector _) -> (Vector _) -> (Vector _) -> Int -> Int -> Int -> _ .
@@ -292,7 +292,7 @@ accGo tree xs zs ys i n hits = case i >= n of
 accOne : unsafe Tree -> (Vector _) -> (Vector _) -> (Vector _) -> Int -> Int -> Int -> _ .
 accOne tree xs zs ys i n hits =
   (p, xs2, zs2) = predAt tree xs zs i;
-  (y, ys2) = Vec.get (i + 1) ys;
+  (y, ys2) = Vec.get i ys;
   case p == y of
     True -> accGo tree xs2 zs2 ys2 (i + 1) n (hits + 1)
   | False -> accGo tree xs2 zs2 ys2 (i + 1) n hits.
@@ -334,9 +334,9 @@ lbl i n xs zs ns ys = case i >= n of
   | False -> lblOne i n xs zs ns ys.
 lblOne : unsafe Int -> Int -> (Vector _) -> (Vector _) -> (Vector _) -> (Vector _) -> _ .
 lblOne i n xs zs ns ys =
-  (x, xs2) = Vec.get (i + 1) xs;
-  (z, zs2) = Vec.get (i + 1) zs;
-  (nz, ns2) = Vec.get (i + 1) ns;
+  (x, xs2) = Vec.get i xs;
+  (z, zs2) = Vec.get i zs;
+  (nz, ns2) = Vec.get i ns;
   c = case neqB (x > 0.0) (z > 0.0) of True -> 1 | False -> 0;
   y = case nz < 0.05 of True -> 1 - c | False -> c;
   lbl (i + 1) n xs2 zs2 ns2 (Vec.push y ys).

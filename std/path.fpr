@@ -28,51 +28,51 @@ joinAll parts = joinGo parts "".
 joinGo : unsafe List String -> String -> String .
 joinGo parts acc = case parts of Nil -> acc | p :: r -> joinGo r (join acc p).
 
-# where the last "/" is, or 0
+# where the last "/" is (0-based), or -1
 lastSlash : String -> Int .
-lastSlash p = lastSlashGo p (strlen p).
+lastSlash p = lastSlashGo p (strlen p - 1).
 lastSlashGo : unsafe String -> Int -> Int .
-lastSlashGo p i = case i < 1 of True -> 0 | False -> (case charAt p i == 47 of True -> i | False -> lastSlashGo p (i - 1)).
+lastSlashGo p i = case i < 0 of True -> 0 - 1 | False -> (case charAt p i == 47 of True -> i | False -> lastSlashGo p (i - 1)).
 
 # "a/b/c.txt" -> "c.txt"
 fileName : String -> String .
-fileName p = S.dropLeft (lastSlash p) p.
+fileName p = S.dropLeft (lastSlash p + 1) p.
 
 # "a/b/c.txt" -> "a/b";  "c.txt" -> ".";  "/c" -> "/"
 parent : String -> String .
 parent p =
   at = lastSlash p;
-  case at == 0 of
+  case at < 0 of
     True -> "."
-  | False -> (case at == 1 of True -> "/" | False -> S.left (at - 1) p).
+  | False -> (case at == 0 of True -> "/" | False -> S.left at p).
 
-# where the extension's "." is within the FILE NAME, or 0 (a leading dot is a
+# where the extension's "." is within the FILE NAME (0-based), or -1 (a leading dot is a
 # hidden file, not an extension: ".bashrc" has none)
 extDot : String -> Int .
-extDot name = extDotGo name (strlen name).
+extDot name = extDotGo name (strlen name - 1).
 extDotGo : unsafe String -> Int -> Int .
-extDotGo name i = case i <= 1 of True -> 0 | False -> (case charAt name i == 46 of True -> i | False -> extDotGo name (i - 1)).
+extDotGo name i = case i <= 0 of True -> 0 - 1 | False -> (case charAt name i == 46 of True -> i | False -> extDotGo name (i - 1)).
 
 # "c.tar.gz" -> Some "gz"; "Makefile" -> None
 extension : String -> O.Option String .
 extension p =
   name = fileName p;
   at = extDot name;
-  case at == 0 of True -> O.None | False -> O.Some (S.dropLeft at name).
+  case at < 0 of True -> O.None | False -> O.Some (S.dropLeft (at + 1) name).
 
 # the file name without its extension: "a/b/c.txt" -> "c"
 stem : String -> String .
 stem p =
   name = fileName p;
   at = extDot name;
-  case at == 0 of True -> name | False -> S.left (at - 1) name.
+  case at < 0 of True -> name | False -> S.left at name.
 
 # Path.withExtension "md" "notes/a.txt" = "notes/a.md"
 withExtension : String -> String -> String .
 withExtension ext p =
   dir = parent p;
   name = strJoin "." (stem p :: ext :: Nil);
-  case lastSlash p == 0 of True -> name | False -> join dir name.
+  case lastSlash p < 0 of True -> name | False -> join dir name.
 
 # the parts between slashes, empty ones dropped
 parts : String -> List String .

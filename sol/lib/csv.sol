@@ -3,10 +3,10 @@
 # extra row. Quoted CR/LF and empty fields round-trip. Bare CR outside quotes,
 # quotes inside unquoted fields and text after a closing quote are errors.
 # Whole-document parser. Accumulate field fragments then join once.
-parse s = rows s 1 [] [] [] False.
+parse s = rows s 0 [] [] [] False.
 finish parts = Str.join "" (List.rev parts).
 close parts row acc = List.rev (finish parts :: row) :: acc.
-rows s i parts row acc active = case i > Str.len s of
+rows s i parts row acc active = case i >= Str.len s of
     True -> Ok (List.rev (case active of True -> close parts row acc | False -> acc))
   | False -> (case Str.at s i of
       34 -> (case parts == [] of True -> quoted s (i + 1) parts row acc | False -> Err "csv: quote inside unquoted field at {i}")
@@ -17,21 +17,21 @@ rows s i parts row acc active = case i > Str.len s of
 crlf s i parts row acc = case peek s (i + 1) == 10 of
     True -> rows s (i + 2) [] [] (close parts row acc) False
   | False -> Err "csv: bare CR outside quoted field at {i}".
-quoted s i parts row acc = case i > Str.len s of
+quoted s i parts row acc = case i >= Str.len s of
     True -> Err "csv: unterminated quote"
   | False -> (case Str.at s i == 34 of
       True -> (case peek s (i + 1) == 34 of
         True -> quoted s (i + 2) ("\"" :: parts) row acc
       | False -> afterQuote s (i + 1) parts row acc)
     | False -> quoted s (i + 1) (Str.fromCode (Str.at s i) :: parts) row acc).
-afterQuote s i parts row acc = case i > Str.len s of
+afterQuote s i parts row acc = case i >= Str.len s of
     True -> Ok (List.rev (close parts row acc))
   | False -> (case Str.at s i of
       44 -> rows s (i + 1) [] (finish parts :: row) acc True
     | 10 -> rows s (i + 1) [] [] (close parts row acc) False
     | 13 -> crlf s i parts row acc
     | _ -> Err "csv: expected separator after quote at {i}").
-peek s i = case i > Str.len s of True -> 0 | False -> Str.at s i.
+peek s i = case i >= Str.len s of True -> 0 | False -> Str.at s i.
 
 render rs = Str.join "" (List.map renderRow rs).
 renderRow r = case r of

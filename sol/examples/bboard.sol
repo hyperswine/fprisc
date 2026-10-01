@@ -55,8 +55,8 @@ parseLine ln =
 
 parseWs : unsafe List p101 -> List _ .
 parseWs ws =
-  nm = ws ! 1;
-  k = upC (Str.at nm 1);
+  nm = ws ! 0;
+  k = upC (Str.at nm 0);
   case or (k == 42) (k == 46) of  # '*' comment, '.' directive
     True -> []
   | False -> parseKind k nm ws (List.len ws).
@@ -66,10 +66,10 @@ placeableKinds = [82, 67, 76, 68, 66].  # R C L D B
 parseKind : unsafe Int -> t100 -> u100 -> Int -> List _ .
 parseKind k nm ws n =
   case and (member k placeableKinds) (n >= 3) of
-    True -> [{kind = k, na = ws ! 2, nb = ws ! 3, nm = nm,
-              val = (case n >= 4 of True -> ws ! 4 | False -> "")}]
+    True -> [{kind = k, na = ws ! 1, nb = ws ! 2, nm = nm,
+              val = (case n >= 4 of True -> ws ! 3 | False -> "")}]
   | False -> (case and (member k [86, 73]) (n >= 3) of  # V I sources
-      True -> [{kind = k, na = ws ! 2, nb = ws ! 3, nm = nm, val = "src"}]
+      True -> [{kind = k, na = ws ! 1, nb = ws ! 2, nm = nm, val = "src"}]
     | False -> []).
 
 parseNetlist : unsafe List String -> List _ .

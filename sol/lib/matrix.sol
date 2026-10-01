@@ -42,8 +42,9 @@ mFlatten c rss = r :: rest = rss; r + (mFlatten c rest).
 mRep n x | n == 0 = [].
 mRep n x = x :: mRep (n - 1) x.
 
-mIota n = mIotaFrom 1 n.
-mIotaFrom i n | i > n = [].
+# 0 .. n-1: row/column indices are 0-based
+mIota n = mIotaFrom 0 n.
+mIotaFrom i n | i >= n = [].
 mIotaFrom i n = i :: mIotaFrom (i + 1) n.
 
 # ---- interrogation (threads, like Vec.len) ---------------------------------
@@ -52,12 +53,12 @@ mDims m = Mat r c v = m; (r, c, Mat r c v).
 
 mGet i j m =
   Mat r c v = m;
-  (x, v2) = Vec.get ((i - 1) * c + j) v;
+  (x, v2) = Vec.get (i * c + j) v;
   (x, Mat r c v2).
 
 mSet i j x m =
   Mat r c v = m;
-  Mat r c (Vec.set ((i - 1) * c + j) x v).
+  Mat r c (Vec.set (i * c + j) x v).
 
 # n cells starting at k, striding s (shared by row and col)
 mGather k s n v | n == 0 = ([], v).
@@ -68,7 +69,7 @@ mGather k s n v =
 
 mRow i m =
   Mat r c v = m;
-  (xs, v2) = mGather ((i - 1) * c + 1) 1 c v;
+  (xs, v2) = mGather (i * c) 1 c v;
   (xs, Mat r c v2).
 
 mCol j m =
@@ -76,7 +77,7 @@ mCol j m =
   (xs, v2) = mGather j c r v;
   (xs, Mat r c v2).
 
-# rows by 1-based index, in the order given, as lists
+# rows by 0-based index, in the order given, as lists
 mRowsAt is m | is == [] = ([], m).
 mRowsAt is m =
   i :: rest = is;
@@ -111,10 +112,10 @@ mOverStride k s n f v =
   (x, v2) = Vec.get k v;
   mOverStride (k + s) s (n - 1) f (Vec.set k (f x) v2).
 
-mMapRow i f m = Mat r c v = m; Mat r c (mOverStride ((i - 1) * c + 1) 1 c f v).
+mMapRow i f m = Mat r c v = m; Mat r c (mOverStride (i * c) 1 c f v).
 mMapCol j f m = Mat r c v = m; Mat r c (mOverStride j c r f v).
 
-# every row-as-list to a value: [f (row 1), ..., f (row r)]
+# every row-as-list to a value: [f (row 0), ..., f (row r-1)]
 mMapRows f m = (rss, m2) = mAllRows m; (map f rss, m2).
 
 # ---- algebra ---------------------------------------------------------------
@@ -127,7 +128,7 @@ mSum xs = x :: r = xs; x + mSum r.
 
 mTRows c rss | c == 0 = [].
 mTRows c rss =
-  map (fn xs -> xs ! 1) rss :: mTRows (c - 1) (map (fn xs -> base.removeAt 1 xs) rss).
+  map (fn xs -> xs ! 0) rss :: mTRows (c - 1) (map (fn xs -> base.removeAt 0 xs) rss).
 
 mTranspose m =
   (r, c, m2) = mDims m;

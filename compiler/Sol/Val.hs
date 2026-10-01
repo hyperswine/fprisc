@@ -183,7 +183,7 @@ bsCpAt ref i = do
   let live = BS.take (bsUsed st) (bsBuf st)
   case BSU.decode (BS.drop (cpOffset live i) live) of
     Just (c, _) -> pure (fromEnum c)
-    Nothing     -> ioError (userError ("BStr.at: index " ++ show (i+1) ++ " out of range"))
+    Nothing     -> ioError (userError ("BStr.at: index " ++ show i ++ " out of range"))
   where
     -- skip i codepoints from the start of bs; pure byte offset
     cpOffset bs 0 = 0

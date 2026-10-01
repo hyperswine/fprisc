@@ -44,11 +44,11 @@ k = 1116352408 :: 1899447441 :: 3049323471 :: 3921009573 :: 961987163 :: 1508970
 
 update : String -> State -> State .
 update bytes st = case st of State h pending total ->
-  blocks (strcat pending bytes) 1 h (total + strlen bytes).
+  blocks (strcat pending bytes) 0 h (total + strlen bytes).
 # whole 64-byte blocks from `at`; what is left becomes the pending bytes
 blocks : unsafe String -> Int -> List Int -> Int -> State .
-blocks buf at h total = case at + 63 > strlen buf of
-    True -> State h (substr buf at (strlen buf - at + 1)) total
+blocks buf at h total = case at + 64 > strlen buf of
+    True -> State h (substr buf at (strlen buf - at)) total
   | False -> blocks buf (at + 64) (compress h (schedule buf at)) total.
 
 # the 64 message words of the block at `at`, oldest first
@@ -97,7 +97,7 @@ finish st = E.hex (finishBytes st).
 # the digest as its 32 bytes
 finishBytes : State -> String .
 finishBytes st = case st of State h pending total ->
-  (case blocks (strJoin "" (pending :: chr 128 :: zeros (padLen (strlen pending)) :: lengthBytes (total * 8) :: Nil)) 1 h total of
+  (case blocks (strJoin "" (pending :: chr 128 :: zeros (padLen (strlen pending)) :: lengthBytes (total * 8) :: Nil)) 0 h total of
       State h2 _ _ -> strJoin "" (wordsToBytes h2 Nil)).
 # zero bytes so that pending + 1 + zeros + 8 is a multiple of 64
 padLen : Int -> Int .
@@ -137,14 +137,14 @@ rotl : Int -> Int -> Int .
 rotl x n = rotr x (32 - n).
 
 sha1Bytes : String -> String .
-sha1Bytes bytes = sha1Blocks (strJoin "" (bytes :: chr 128 :: zeros (padLen (band (strlen bytes) 63)) :: lengthBytes (strlen bytes * 8) :: Nil)) 1
+sha1Bytes bytes = sha1Blocks (strJoin "" (bytes :: chr 128 :: zeros (padLen (band (strlen bytes) 63)) :: lengthBytes (strlen bytes * 8) :: Nil)) 0
   (1732584193 :: 4023233417 :: 2562383102 :: 271733878 :: 3285377520 :: Nil).
 
 sha1 : String -> String .
 sha1 bytes = E.hex (sha1Bytes bytes).
 
 sha1Blocks : unsafe String -> Int -> List Int -> String .
-sha1Blocks buf at h = case at + 63 > strlen buf of
+sha1Blocks buf at h = case at + 64 > strlen buf of
     True -> strJoin "" (wordsToBytes h Nil)
   | False -> sha1Blocks buf (at + 64) (sha1Compress h (rev (extend1 16 (first16 buf at 0 Nil)) Nil)).
 

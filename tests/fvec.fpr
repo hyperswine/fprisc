@@ -7,8 +7,8 @@ main =
   v3 = Vec.push 2.5 v2;
   v4 = Vec.push 3.0 v3;
   (n, v5) = Vec.len v4;
-  (e, v6) = Vec.get 2 v5;
-  u0 = print "len={n} elem2={F64.str e}";
+  (e, v6) = Vec.get 1 v5;
+  u0 = print "len={n} elem1={F64.str e}";
   v7 = Vec.map scale v6;
   (s, v8) = Vec.fold addf 0.0 v7;
   u1 = print "sum={F64.str s}";

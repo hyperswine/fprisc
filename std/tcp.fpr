@@ -44,9 +44,9 @@ acceptGo f wait = case IO.ready f of
 # serving for good.  Said on stderr -- a limit is never silent -- and backed
 # off a little, so a full table is not spun on.
 busy : String -> Bool .
-busy why = strIndexOf "busy: " why == 1.
+busy why = strIndexOf "busy: " why == 0.
 shortage : String -> Unit .
-shortage why = _ = Sys.stderr "tcp: accept: {substr why 7 (strlen why - 6)} (still serving)\n"; Sys.sleepUs 20000.
+shortage why = _ = Sys.stderr "tcp: accept: {substr why 6 (strlen why - 6)} (still serving)\n"; Sys.sleepUs 20000.
 
 stop : Listener -> Result Unit String .
 stop l = case l of Listener f -> IO.close f.

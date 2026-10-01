@@ -19,9 +19,9 @@ putc c = putc c .
 # console text over THIS file's putc (the prelude cannot host these:
 # putc is per-target device code, and the prelude is a cached unit)
 puts : unsafe String -> Unit .
-puts s = putsFrom s 1 .
+puts s = putsFrom s 0 .
 putsFrom : unsafe String -> Int -> Unit .
-putsFrom s i | i > strlen s = Unit.
+putsFrom s i | i >= strlen s = Unit.
 putsFrom s i = putc (charAt s i) >> putsFrom s (i + 1) .
 nl : unsafe Unit .
 nl = putc 13 >> putc 10 .

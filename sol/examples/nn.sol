@@ -95,7 +95,7 @@ augRows rss = map (fn r -> r + [Numeric.inexact 1]) rss.
 lTail xs = x :: r = xs; r.
 lT : (c : Int | measure c) -> List _ -> List _ .
 lT c rss | c <= 0 = [].
-lT c rss = map (fn xs -> xs ! 1) rss :: lT (c - 1) (map (fn xs -> lTail xs) rss).
+lT c rss = map (fn xs -> xs ! 0) rss :: lT (c - 1) (map (fn xs -> lTail xs) rss).
 
 epoch : Int -> Int -> _ -> List _ -> List Int -> List _ -> List Int -> _ .
 epoch n lr xaug xrows ys w1rows w2 =
@@ -174,7 +174,7 @@ chk name got want tol = case Numeric.abs (got - want) < tol of
 nestedProbe u =
   inner = Vec.fromList [1, 2, 3];
   outer = Vec.push inner (Vec.new Unit);   # inner CONSUMED into a boxed cell
-  (back, outer2) = Vec.get 1 outer;        # ...and retrieved: same store
+  (back, outer2) = Vec.get 0 outer;        # ...and retrieved: same store
   (s, back2) = Vec.fold (fn a x -> a + x) 0 back;
   u1 = Vec.free back2;
   u2 = Vec.free outer2;

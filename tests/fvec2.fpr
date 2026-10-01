@@ -16,7 +16,7 @@ main =
   v3 = Vec.filter keepBig v2;
   (n3, v4) = Vec.len v3;
   u1 = print "kept={n3}";
-  (e, v5) = Vec.get 1 v4;
+  (e, v5) = Vec.get 0 v4;
   u2 = print "first={F64.str e}";
   _ = Vec.free v5;
   print "FLOATVEC2 HOLDS".

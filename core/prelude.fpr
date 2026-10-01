@@ -75,11 +75,11 @@ intSq x = x * x.
 wireInt : String -> Result Int String .
 wireInt s = case strlen s == 0 of
     True -> Err "not a number"
-  | False -> (case charAt s 1 == 45 of
-      True -> (case strlen s == 1 of True -> Err "not a number" | False -> wireDigits s 2 0 True)
-    | False -> wireDigits s 1 0 False).
+  | False -> (case charAt s 0 == 45 of
+      True -> (case strlen s == 1 of True -> Err "not a number" | False -> wireDigits s 1 0 True)
+    | False -> wireDigits s 0 0 False).
 wireDigits : unsafe String -> Int -> Int -> Bool -> Result Int String .
-wireDigits s i acc neg = case i > strlen s of
+wireDigits s i acc neg = case i >= strlen s of
     True -> Ok (case neg of True -> 0 - acc | False -> acc)
   | False -> (case charAt s i >= 48 and charAt s i <= 57 of
       True -> wireDigits s (i + 1) (acc * 10 + (charAt s i - 48)) neg
@@ -140,11 +140,11 @@ wireCon w = case w of
 
 # ---- Str: (+) concatenates; (-) is DEconcatenation --------------------------
 # (a + b) - b == a: removes b when it is a suffix of a, else a unchanged.
-strTake s n = strTakeGo s n 1 "".
+strTake s n = strTakeGo s n 0 "".
 strTakeGo : unsafe String -> Int -> Int -> String -> String .
-strTakeGo s n i acc = case i > n of True -> acc | False -> strTakeGo s n (i + 1) (strcat acc (chr (charAt s i))).
+strTakeGo s n i acc = case i >= n of True -> acc | False -> strTakeGo s n (i + 1) (strcat acc (chr (charAt s i))).
 strSufEq : unsafe String -> String -> Int -> Int -> Bool .
-strSufEq s t off i = case i > strlen t of True -> True | False -> strSufEqAt s t off i.
+strSufEq s t off i = case i >= strlen t of True -> True | False -> strSufEqAt s t off i.
 strSufEqAt : unsafe String -> String -> Int -> Int -> Bool .
 strSufEqAt s t off i = case charAt s (off + i) == charAt t i of True -> strSufEq s t off (i + 1) | False -> False.
 strSub a b =
@@ -153,7 +153,7 @@ strSub a b =
   case lb > la of
     True -> a
   | False -> strSubGo a b la lb.
-strSubGo a b la lb = case strSufEq a b (la - lb) 1 of True -> strTake a (la - lb) | False -> a.
+strSubGo a b la lb = case strSufEq a b (la - lb) 0 of True -> strTake a (la - lb) | False -> a.
 
 Str = Struct Add Eq {
   (+) = fn a b -> strcat a b,

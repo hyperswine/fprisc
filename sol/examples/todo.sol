@@ -36,17 +36,17 @@ doRegchk stored model =
 
 # ---- todos: serialized one per line as "<done> <text>" in KV -------------
 findNl : unsafe String -> Int -> Int .
-findNl s i = case i > Str.len s of True -> 0 | False -> (case Str.at s i == 10 of True -> i | False -> findNl s (i + 1)).
+findNl s i = case i >= Str.len s of True -> 0 - 1 | False -> (case Str.at s i == 10 of True -> i | False -> findNl s (i + 1)).
 
 parseItem line = (d, x) = base.splitFirst line; (pI d, x).
 
 parseTodos : unsafe String -> List (Int, String) .
 parseTodos s | s == "" = [].
 parseTodos s =
-  k = findNl s 1;
-  case k of
-    0 -> [parseItem s]
-  | _ -> parseItem (Str.slice s 1 (k - 1)) :: parseTodos (Str.slice s (k + 1) (Str.len s)).
+  k = findNl s 0;
+  case k < 0 of
+    True -> [parseItem s]
+  | False -> parseItem (Str.slice s 0 k) :: parseTodos (Str.slice s (k + 1) (Str.len s)).
 
 serItem t = (d, x) = t; "{d} {x}".
 
@@ -84,7 +84,7 @@ update msg model =
   | ("refresh", v) -> (model, case unwrapU model == "" of True -> None | False -> Get "todos:{unwrapU model}" "gottodos")
   | ("gottodos", v) -> ({model | todos = parseTodos v}, None)
   | ("add", v) -> save ((0, v) :: model.todos) model
-  | ("toggle", v) -> save (tAt (Str.parse v) 1 model.todos) model
+  | ("toggle", v) -> save (tAt (Str.parse v) 0 model.todos) model
   | ("clear", v) -> save (List.filter isOpen model.todos) model
   | _ -> (model, None).
 
@@ -120,7 +120,7 @@ todoView model =
     ],
     ui.div [ui.Style.card, ui.Style.flex, ui.Style.flexcol, ui.Style.gap2] [
       ui.inputRow "add" "what needs doing?" "Add",
-      ui.div [ui.Style.flex, ui.Style.flexcol, ui.Style.gap1] (todoRows 1 model.todos)
+      ui.div [ui.Style.flex, ui.Style.flexcol, ui.Style.gap1] (todoRows 0 model.todos)
     ]
   ].
 

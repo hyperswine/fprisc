@@ -9,16 +9,17 @@ max0 n = Numeric.max 0 n.
 boolInt b = case b of True -> 1 | False -> 0.
 nl = Str.fromCode 10.
 
+# drop the element at 0-based position k (out of range: unchanged)
 removeAt k xs = case xs of
   [] -> []
-| x :: r -> (case k == 1 of True -> r | False -> x :: removeAt (k - 1) r).
+| x :: r -> (case k == 0 of True -> r | False -> x :: removeAt (k - 1) r).
 
 # split at the first space: (head, rest)
-splitFirst s = k = Str.findFrom 32 s 1; case k of 0 -> (s, "") | _ -> (Str.slice s 1 (k - 1), Str.slice s (k + 1) (Str.len s)).
+splitFirst s = k = Str.find 32 s; case k < 0 of True -> (s, "") | False -> (Str.slice s 0 k, Str.slice s (k + 1) (Str.len s)).
 
 # last path segment
 baseName p =
-  k = lastSlash p 1 0;
-  case k == 0 of True -> p | False -> Str.slice p (k + 1) (Str.len p).
-lastSlash p i best | i > Str.len p = best.
+  k = lastSlash p 0 (0 - 1);
+  case k < 0 of True -> p | False -> Str.slice p (k + 1) (Str.len p).
+lastSlash p i best | i >= Str.len p = best.
 lastSlash p i best = case Str.at p i == 47 of True -> lastSlash p (i + 1) i | False -> lastSlash p (i + 1) best.

@@ -32,10 +32,10 @@ addAt i d v =
 main =
   v = mk 10 (Vec.new Unit);          # [10,9,...,1]
   hold = flipGet v;                  # LINEAR PAP: owns v now
-  (x, v2) = hold 6;                  # applied exactly once: x = v[6] = 5
-  lam = fn d -> addAt 3 d v2;        # lambda CAPTURING the linear v2
-  v3 = lam 100;                      # applied exactly once: v[3] += 100
-  (y, v4) = Vec.get 1 v3;
-  (z, v5) = Vec.get 3 v4;
+  (x, v2) = hold 5;                  # applied exactly once: x = v[5] = 5
+  lam = fn d -> addAt 2 d v2;        # lambda CAPTURING the linear v2
+  v3 = lam 100;                      # applied exactly once: v[2] += 100
+  (y, v4) = Vec.get 0 v3;
+  (z, v5) = Vec.get 2 v4;
   _ = Vec.free v5;
   "linpap: x={x} y={y} z={z}".

@@ -91,7 +91,7 @@ posView model =
       ui.el "span" [ui.Style.badge] [ui.text "revenue: ${model.revenue}"],
       ui.onClick "logout" "" (ui.el "span" [ui.Style.tab] [ui.text "sign out"])
     ],
-    ui.el "div" [ui.Style.grid, ui.Style.gridcols2, ui.Style.gap3] (productGrid 1 catalog),
+    ui.el "div" [ui.Style.grid, ui.Style.gridcols2, ui.Style.gap3] (productGrid 0 catalog),
     ui.el "div" [ui.Style.card, ui.Style.flex, ui.Style.flexcol, ui.Style.gap2] [
       ui.el "h3" [ui.Style.fontbold] [ui.text "cart - total ${cartTotal model.cart}"],
       ui.el "div" [ui.Style.flex, ui.Style.flexcol, ui.Style.gap1] (List.map cartRow model.cart),

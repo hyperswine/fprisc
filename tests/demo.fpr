@@ -30,12 +30,12 @@ putc c =
   | False -> putc c .
 
 puts : unsafe String -> Unit .
-puts s = putsFrom s 1 .
+puts s = putsFrom s 0 .
 
 putsFrom : unsafe String -> Int -> Unit .
 putsFrom s i =
   n = strlen s;
-  case i > n of
+  case i >= n of
     True -> Unit
   | False -> putc (charAt s i) >> putsFrom s (i + 1) .
 

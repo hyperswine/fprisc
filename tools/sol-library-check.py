@@ -26,7 +26,7 @@ def main():
             count+=1;return r.stdout
         def lib(name, body): return f'L = use "{ROOT}/sol/lib/{name}.sol".\n{body}\n'
         calls={
-          'base':('> print (L.removeAt 2 [1,2,3]).', b'[1, 3]\n'),
+          'base':('> print (L.removeAt 1 [1,2,3]).', b'[1, 3]\n'),
           'csv':('> print (L.records [["name"],["Ada"]]).', b'[[(name, Ada)]]\n'),
           'fix':('> print (L.toInt (L.fmul (L.fromInt 3) (L.fromInt 4))).', b'12\n'),
           'git':('> print (L.rawSpec ["status"] (L.repo "dir with spaces")).', b'ProcessSpec [git, -C, dir with spaces, status]  []  0\n'),

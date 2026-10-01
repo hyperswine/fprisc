@@ -37,7 +37,7 @@ gridC = "#e7e6e2".
 surfC = "#fcfcfb".
 
 colors = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"].
-colAt i = colors ! (((i - 1) % (List.len colors)) + 1).
+colAt i = colors ! (i % (List.len colors)).   # i is a 0-based series number
 
 # ---- small numeric helpers -------------------------------------------------
 
@@ -63,7 +63,7 @@ mergeB a b =
   (a1, a2, a3, a4) = a; (b1, b2, b3, b4) = b;
   (Numeric.min a1 b1, Numeric.max a2 b2, Numeric.min a3 b3, Numeric.max a4 b4).
 
-allBounds ptss = bGo (fn a pts -> mergeB a (ptsBounds pts)) (lTailP ptss) (ptsBounds (ptss ! 1)).
+allBounds ptss = bGo (fn a pts -> mergeB a (ptsBounds pts)) (lTailP ptss) (ptsBounds (ptss ! 0)).
 lTailP xs = x :: r = xs; r.
 
 # data -> pixel (y flips)
@@ -104,11 +104,11 @@ axes bx b =
   b2 = gridX (x1, x2, y1, y2) (tickVals x1 x2) b;
   gridY (x1, x2, y1, y2) (tickVals y1 y2) b2.
 
-legend named b = legGo named 1 b.
+legend named b = legGo named 0 b.
 legGo named i b | named == [] = b.
 legGo named i b =
   nm :: r = named;
-  lx = pL + (i - 1) * 120;
+  lx = pL + i * 120;
   b2 = BStr.append "<rect x=\"{lx}\" y=\"{pB + 26}\" width=\"10\" height=\"10\" rx=\"2\" fill=\"{colAt i}\"/>{base.nl}" b;
   legGo r (i + 1) (BStr.append "<text x=\"{lx + 15}\" y=\"{pB + 35}\" fill=\"{inkS}\" font-size=\"12\">{nm}</text>{base.nl}" b2).
 
@@ -130,13 +130,13 @@ markers bx col pts b =
 pLine title pts =
   bx = ptsBounds pts;
   b = axes bx (svgOpen title (BStr.new Unit));
-  svgClose (polyline bx (colAt 1) pts b).
+  svgClose (polyline bx (colAt 0) pts b).
 
 # n series: fixed-order slot colors + a legend
 pSeries title named =
   bx = allBounds (map (fn s -> snd2 s) named);
   b = axes bx (svgOpen title (BStr.new Unit));
-  b2 = serGo bx named 1 b;
+  b2 = serGo bx named 0 b;
   svgClose (legend (map (fn s -> fst2 s) named) b2).
 serGo bx named i b | named == [] = b.
 serGo bx named i b =
@@ -146,7 +146,7 @@ serGo bx named i b =
 pScatter title pts =
   bx = ptsBounds pts;
   b = axes bx (svgOpen title (BStr.new Unit));
-  svgClose (markers bx (colAt 1) pts b).
+  svgClose (markers bx (colAt 0) pts b).
 
 # frames = [[(x, y)]], all the SAME length: one polyline whose points
 # MORPH through the frames (SMIL interpolates), looping every dur s.
@@ -155,8 +155,8 @@ pAnim title dur frames =
   bx = allBounds frames;
   b = axes bx (svgOpen title (BStr.new Unit));
   vals = BStr.toStr (valsGo bx frames (BStr.new Unit));
-  first = ptsS bx (frames ! 1);
-  b2 = BStr.append "<polyline points=\"{first}\" fill=\"none\" stroke=\"{colAt 1}\" stroke-width=\"2\" stroke-linejoin=\"round\"><animate attributeName=\"points\" dur=\"{dur}s\" repeatCount=\"indefinite\" values=\"{vals}\"/></polyline>{base.nl}" b;
+  first = ptsS bx (frames ! 0);
+  b2 = BStr.append "<polyline points=\"{first}\" fill=\"none\" stroke=\"{colAt 0}\" stroke-width=\"2\" stroke-linejoin=\"round\"><animate attributeName=\"points\" dur=\"{dur}s\" repeatCount=\"indefinite\" values=\"{vals}\"/></polyline>{base.nl}" b;
   svgClose b2.
 valsGo bx frames b | frames == [] = b.
 valsGo bx frames b =
@@ -169,8 +169,8 @@ valsGo bx frames b =
 pAnimDots title dur tracks =
   bx = allBounds tracks;
   b = axes bx (svgOpen title (BStr.new Unit));
-  b2 = trailGo bx tracks 1 b;
-  svgClose (dotGo bx tracks 1 dur b2).
+  b2 = trailGo bx tracks 0 b;
+  svgClose (dotGo bx tracks 0 dur b2).
 trailGo bx tracks i b | tracks == [] = b.
 trailGo bx tracks i b =
   t :: r = tracks;
@@ -178,7 +178,7 @@ trailGo bx tracks i b =
   trailGo bx r (i + 1) b2.
 dotGo bx tracks i dur b | tracks == [] = b.
 dotGo bx tracks i dur b =
-  t :: r = tracks; (x0, y0) = t ! 1;
+  t :: r = tracks; (x0, y0) = t ! 0;
   cxs = joinSemi (map (fn p -> fmtN (sx bx (fst2 p))) t);
   cys = joinSemi (map (fn p -> fmtN (sy bx (snd2 p))) t);
   b2 = BStr.append "<circle cx=\"{fmtN (sx bx x0)}\" cy=\"{fmtN (sy bx y0)}\" r=\"6\" fill=\"{colAt i}\"><animate attributeName=\"cx\" dur=\"{dur}s\" repeatCount=\"indefinite\" values=\"{cxs}\"/><animate attributeName=\"cy\" dur=\"{dur}s\" repeatCount=\"indefinite\" values=\"{cys}\"/></circle>{base.nl}" b;

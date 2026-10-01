@@ -23,7 +23,7 @@ fill v i lim = fill (Vec.push (mkStudent i) v) (i + 1) lim.
   u = print "students: {n}";
 
   # explicit access RECONSTRUCTS the product from the columns (slower path)
-  (s, v3) = Vec.get 3 v2;
+  (s, v3) = Vec.get 2 v2;           # 0-based: the third row, mkStudent 3
   u2 = print "student 3 reconstructed: age {s.age}, {s.name}";
 
   # DUALIZED filter: the predicate runs natively over the ages column only;
@@ -31,7 +31,7 @@ fill v i lim = fill (Vec.push (mkStudent i) v) (i + 1) lim.
   adults = Vec.filter (fn s -> s.age >= 18) v3;
   (m, adults2) = Vec.len adults;
   u3 = print "adults: {m}";
-  (a1, adults3) = Vec.get 1 adults2;
+  (a1, adults3) = Vec.get 0 adults2;
   u4 = print "first adult: {a1.name} age {a1.age}";
 
   # DUALIZED map: fn s -> s.age + 1 becomes (cols, i) -> ages[i] + 1
@@ -45,6 +45,6 @@ fill v i lim = fill (Vec.push (mkStudent i) v) (i + 1) lim.
   doubled = Vec.map (fn x -> x * 2) nums;
   (s, d2) = Vec.fold plus 0 doubled;
   u = print "sum doubled 1..1000: {s}";
-  (first, d3) = Vec.get 1 d2;
+  (first, d3) = Vec.get 0 d2;
   _ = Vec.free d3;
   first.

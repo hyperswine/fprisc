@@ -131,20 +131,20 @@ seed =
 
 rev l acc = l |> foldE (fn x xs -> x :: xs) acc.
 # the leading digits of s, 0 when there are none (a line's numbers are our own)
-num s = numGo s 1 (strlen s) 0.
-numGo s i n acc | i > n = acc.
+num s = numGo s 0 (strlen s) 0.
+numGo s i n acc | i >= n = acc.
 numGo s i n acc | isDig (charAt s i) = numGo s (i + 1) n (acc * 10 + charAt s i - 48).
 numGo s i n acc = acc.
 words s = S.words s.
 unwords ws = S.join " " ws.
 # "a|b" -> (a, b) at the first bar; no bar: (s, "")
-splitBar s = sbGo s 1 (strlen s).
-sbGo s i n | i > n = (s, "").
-sbGo s i n | charAt s i == 124 = (substr s 1 (i - 1), substr s (i + 1) (n - i)).
+splitBar s = sbGo s 0 (strlen s).
+sbGo s i n | i >= n = (s, "").
+sbGo s i n | charAt s i == 124 = (substr s 0 i, substr s (i + 1) (n - i - 1)).
 sbGo s i n = sbGo s (i + 1) n.
 # "a=b=c" -> list of parts
-splitEq s = seGo s 1 1 (strlen s) Nil.
-seGo s st i n acc | i > n = rev (substr s st (i - st) :: acc) Nil.
+splitEq s = seGo s 0 0 (strlen s) Nil.
+seGo s st i n acc | i >= n = rev (substr s st (i - st) :: acc) Nil.
 seGo s st i n acc | charAt s i == 61 = seGo s (i + 1) (i + 1) n (substr s st (i - st) :: acc).
 seGo s st i n acc = seGo s st (i + 1) n acc.
 takeN l 0 = Nil.
@@ -155,8 +155,8 @@ imax a b = b.
 imin a b | a < b = a.
 imin a b = b.
 # a name for the log: letters and digits only, 1..16 of them
-wordy s = strlen s >= 1 and strlen s <= 16 and wdGo s 1 (strlen s).
-wdGo s i n | i > n = True.
+wordy s = strlen s >= 1 and strlen s <= 16 and wdGo s 0 (strlen s).
+wdGo s i n | i >= n = True.
 wdGo s i n =
   c = charAt s i;
   ok = (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122);
@@ -166,12 +166,12 @@ pad2 n = "{n}".
 money c | c < 0 = "-" + money (0 - c).
 money c = "{c / 100}.{pad2 (c % 100)}".
 # "12.50", "12.5" or "12" -> cents (other characters are skipped)
-cents s = cWhole s 1 (strlen s) 0.
-cWhole s i n acc | i > n = acc * 100.
+cents s = cWhole s 0 (strlen s) 0.
+cWhole s i n acc | i >= n = acc * 100.
 cWhole s i n acc | charAt s i == 46 = acc * 100 + cFrac s (i + 1) n 10 0.
 cWhole s i n acc | isDig (charAt s i) = cWhole s (i + 1) n (acc * 10 + charAt s i - 48).
 cWhole s i n acc = cWhole s (i + 1) n acc.
-cFrac s i n mul acc | i > n or mul == 0 = acc.
+cFrac s i n mul acc | i >= n or mul == 0 = acc.
 cFrac s i n mul acc | isDig (charAt s i) = cFrac s (i + 1) n (mul / 10) (acc + (charAt s i - 48) * mul).
 cFrac s i n mul acc = acc.
 isDig c = c >= 48 and c <= 57.

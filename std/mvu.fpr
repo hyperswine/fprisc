@@ -191,7 +191,7 @@ portConv1 r acc tv =
   (tag, arg) = tv;
   portConv r (EMsg (strCopy tag) (strCopy arg) :: acc).
 # fresh allocation: the EMsg outlives the drained list root
-strCopy s = substr s 1 (strlen s).
+strCopy s = substr s 0 (strlen s).
 
 catEvs : unsafe List Ev -> List Ev -> List Ev .
 catEvs a b = case a of Nil -> b | x :: r -> x :: catEvs r b.

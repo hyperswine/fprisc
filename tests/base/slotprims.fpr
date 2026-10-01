@@ -3,9 +3,9 @@
 # argument's own evaluation calls into C -- a frame sized without them put
 # the slots below sp, where those calls' frames overwrote them
 f : String -> String .
-f s = substr (strJoin "" [s, s, s]) (strlen (strJoin "-" [s, "x"])) (strlen (strJoin "+" [s, s]) + 1).
+f s = substr (strJoin "" [s, s, s]) (strlen (strJoin "-" [s, "x"]) - 1) (strlen (strJoin "+" [s, s]) + 1).
 g : Int -> String .
-g n = strJoin (substr "-=+" (n + 1) 1) [substr "abcdef" n 2, substr "uvwxyz" (n + 2) 3, strJoin "" ["p", substr "qrs" n 1]].
+g n = strJoin (substr "-=+" n 1) [substr "abcdef" (n - 1) 2, substr "uvwxyz" (n + 1) 3, strJoin "" ["p", substr "qrs" (n - 1) 1]].
 main =
   _ = print "f: {f "abc"}";
   print "g: {g 1} {g 2}".

@@ -51,28 +51,29 @@ Slot = Type (Empty | Occ x).
 
 emptyZone = [Empty, Empty, Empty].
 
+# lanes and hand positions are 0-based (shown to the player as k + 1)
 slotAt k slots = slots ! k.
 
 setAt : unsafe Int -> p233 -> List p233 -> List p233 .
 setAt k v slots | slots == [] = [].
 setAt k v slots = case slots of
-  s :: r -> (case k == 1 of True -> v :: r | False -> s :: setAt (k - 1) v r).
+  s :: r -> (case k == 0 of True -> v :: r | False -> s :: setAt (k - 1) v r).
 
 removeAt : unsafe Int -> List q233 -> List q233 .
 removeAt k xs | xs == [] = [].
 removeAt k xs = case xs of
-  x :: r -> (case k == 1 of True -> r | False -> x :: removeAt (k - 1) r).
+  x :: r -> (case k == 0 of True -> r | False -> x :: removeAt (k - 1) r).
 
 occs slots = List.filter isOcc slots.
 isOcc s = case s of Occ c -> True | Empty -> False.
 
 firstEmpty : unsafe Int -> List Slot -> Int .
-firstEmpty k slots | slots == [] = 0.
+firstEmpty k slots | slots == [] = 0 - 1.
 firstEmpty k slots = case slots of
   s :: r -> (case s of Empty -> k | Occ c -> firstEmpty (k + 1) r).
 
 firstOcc : unsafe Int -> List Slot -> Int .
-firstOcc k slots | slots == [] = 0.
+firstOcc k slots | slots == [] = 0 - 1.
 firstOcc k slots = case slots of
   s :: r -> (case s of Occ c -> k | Empty -> firstOcc (k + 1) r).
 
@@ -156,7 +157,7 @@ ambientP env p =
 doPlay : unsafe Int -> _ -> _ .
 doPlay i g =
   p = me g;
-  case and2 (i >= 1) (i <= List.len p.hand) of
+  case and2 (i >= 0) (i < List.len p.hand) of
     False -> addLog "no such card" g
   | True -> playCard i (p.hand ! i) g.
 
@@ -173,8 +174,8 @@ placeUnit : unsafe Int -> _ -> _ -> _ .
 placeUnit i c g =
   p = me g;
   zone = case c.kind == :unit of True -> p.fwd | False -> p.rear;
-  k = firstEmpty 1 zone;
-  case k == 0 of
+  k = firstEmpty 0 zone;
+  case k < 0 of
     True -> addLog "zone full" g
   | False -> commitPlace i c k g.
 
@@ -185,7 +186,7 @@ commitPlace i c k g =
   p3 = case c.kind == :unit of
     True -> {p2 | fwd = setAt k (Occ c) p2.fwd}
   | False -> {p2 | rear = setAt k (Occ c) p2.rear};
-  addLog "{p.nm} fields {c.nm} (lane {k})" (setMe g p3).
+  addLog "{p.nm} fields {c.nm} (lane {k + 1})" (setMe g p3).
 
 # tactics: Barrage 2dmg first occupied enemy fwd; Field Repair +2 all my fwd;
 # Scorch: ENV +2 and 1 dmg to ALL forward units (aggression as debt, distilled)
@@ -203,8 +204,8 @@ doTactic i c g =
 doBarrage : unsafe _ -> _ .
 doBarrage g =
   e = foe g;
-  k = firstOcc 1 e.fwd;
-  case k == 0 of
+  k = firstOcc 0 e.fwd;
+  case k < 0 of
     True -> addLog "barrage finds no target" g
   | False -> resolveDamage k 2 g.
 
@@ -239,7 +240,7 @@ doAttack k g =
   p = me g;
   s = slotAt k p.fwd;
   case s of
-    Empty -> addLog "no unit in lane {k}" g
+    Empty -> addLog "no unit in lane {k + 1}" g
   | Occ u -> (case u.used == 1 of
       True -> addLog "{u.nm} already acted" g
     | False -> (case u.kind == :unit of
@@ -348,7 +349,7 @@ envCells k env | k > 10 = [].
 envCells k env = ui.el "span" (case k <= env of True -> [ui.Style.badge] | False -> [ui.Style.tab]) [ui.text (str k)] :: envCells (k + 1) env.
 
 slotView mine k s = case s of
-  Empty -> ui.el "div" [ui.Style.card, ui.Style.textmuted, ui.Style.textsm] [ui.text "lane {k}: --"]
+  Empty -> ui.el "div" [ui.Style.card, ui.Style.textmuted, ui.Style.textsm] [ui.text "lane {k + 1}: --"]
 | Occ c -> ui.el "div" [ui.Style.card, ui.Style.textsm] [
     ui.el "div" [ui.Style.fontbold] [ui.text "{c.nm}{shTag c}"],
     ui.el "div" [ui.Style.textmuted] [ui.text (statLine c)]
@@ -362,13 +363,13 @@ statLine c = case c.kind == :convoy of
 | False -> "atk {c.atk} - hp {c.hp}/{c.mx}{usedTag c}".
 
 laneBtns : unsafe w238 -> ui.Html .
-laneBtns g = ui.el "div" [ui.Style.grid, ui.Style.gridcols2, ui.Style.gap2] (laneBtn 1 g).
+laneBtns g = ui.el "div" [ui.Style.grid, ui.Style.gridcols2, ui.Style.gap2] (laneBtn 0 g).
 laneBtn : unsafe Int -> h238 -> List ui.Html .
-laneBtn k g | k > 3 = [].
-laneBtn k g = ui.onClick "attack" (str k) (ui.el "span" [ui.Style.btn] [ui.text "attack lane {k}"]) :: laneBtn (k + 1) g.
+laneBtn k g | k >= 3 = [].
+laneBtn k g = ui.onClick "attack" (str k) (ui.el "span" [ui.Style.btn] [ui.text "attack lane {k + 1}"]) :: laneBtn (k + 1) g.
 
 zoneRow : unsafe y238 -> z238 -> List Slot -> ui.Html .
-zoneRow mine tag2 slots = ui.el "div" [ui.Style.grid, ui.Style.gridcols2, ui.Style.gap2] (zoneCells mine 1 slots).
+zoneRow mine tag2 slots = ui.el "div" [ui.Style.grid, ui.Style.gridcols2, ui.Style.gap2] (zoneCells mine 0 slots).
 zoneCells : unsafe k238 -> Int -> List Slot -> List ui.Html .
 zoneCells mine k slots | slots == [] = [].
 zoneCells mine k slots = case slots of s :: r -> slotView mine k s :: zoneCells mine (k + 1) r.
@@ -419,7 +420,7 @@ board model =
     playerPanel g g.p1 (g.active == 1),
     ui.el "div" [ui.Style.card, ui.Style.flex, ui.Style.flexcol, ui.Style.gap2] [
       ui.el "div" [ui.Style.fontbold] [ui.text "{p.nm} hand (click to play)"],
-      ui.el "div" [ui.Style.grid, ui.Style.gridcols2, ui.Style.gap2] (handRow 1 p.hand),
+      ui.el "div" [ui.Style.grid, ui.Style.gridcols2, ui.Style.gap2] (handRow 0 p.hand),
       ui.el "div" [ui.Style.flex, ui.Style.flexrow, ui.Style.gap2, ui.Style.flexwrap] [
         laneBtns g,
         ui.onClick "end" "" (ui.el "span" [ui.Style.btn] [ui.text "end turn"])

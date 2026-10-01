@@ -49,19 +49,19 @@ showHead label n m =
 
   a2 = showHead "a" 3 a;
 
-  # select: rows [1,3,5] and cols [p, r] (= 1, 3) of a
-  (sel, a3) = M.selectRows [1, 3, 5] a2;
-  (sel2, sel3) = M.selectCols [1, 3] sel;
+  # select: rows [0,2,4] and cols [p, r] (= 0, 2) of a -- indices are 0-based
+  (sel, a3) = M.selectRows [0, 2, 4] a2;
+  (sel2, sel3) = M.selectCols [0, 2] sel;
   u4 = M.free sel3;
   (selS, sel4) = M.show sel2;
-  u5 = print "a rows [1,3,5] x cols [p,r]: {selS}";
+  u5 = print "a rows [0,2,4] x cols [p,r]: {selS}";
   u6 = M.free sel4;
 
   # elementwise map — one Vec.map over the cells column (the JIT path)
   centered = M.map (fn x -> x - 50) a3;
 
-  # row/col maps: double row 2, zero col 4
-  tweaked = M.mapCol 4 (fn x -> 0) (M.mapRow 2 (fn x -> x * 2) centered);
+  # row/col maps: double row 1, zero col 3 (0-based: the second row, the last col)
+  tweaked = M.mapCol 3 (fn x -> 0) (M.mapRow 1 (fn x -> x * 2) centered);
   t2 = showHead "centered/tweaked a" 3 tweaked;
 
   # matmul: a (6x4) * a^T (4x6) -> gram (6x6); operands thread back out

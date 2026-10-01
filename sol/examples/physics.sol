@@ -60,7 +60,7 @@ chkClose name got want tol = case Numeric.abs (got - want) < tol of
 
 > n = 300;
   vec = fill (Vec.new Unit) (upto 1 n);
-  (p1, vec2) = Vec.get 1 vec;
+  (p1, vec2) = Vec.get 0 vec;
   u = print "closed form R = {closedForm p1} m";
   u2 = print "integrated  R = {rangeN p1} m (drag-free, O(dt) error)";
   c1 = chkClose "drag-free vs closed form" (rangeN p1) (closedForm p1) 1;

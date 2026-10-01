@@ -114,10 +114,10 @@ emitFields kvs first acc = case kvs of
 
 # a JSON string literal: quotes, backslashes and control bytes escaped; UTF-8 passes
 quote : String -> String .
-quote s = strJoin "" ("\"" :: rev ("\"" :: quoteGo s 1 1 (strlen s) Nil) Nil).
+quote s = strJoin "" ("\"" :: rev ("\"" :: quoteGo s 0 0 (strlen s) Nil) Nil).
 # [from, i) is a clean run not yet emitted
 quoteGo : unsafe String -> Int -> Int -> Int -> List String -> List String .
-quoteGo s from i n acc = case i > n of
+quoteGo s from i n acc = case i >= n of
     True -> substr s from (i - from) :: acc
   | False -> (case escapeOf (charAt s i) of
         O.None -> quoteGo s from (i + 1) n acc
@@ -140,24 +140,24 @@ hexDigit d = chr (case d < 10 of True -> 48 + d | False -> 87 + d).
 # A parser step answers Ok (value, next position) or Err (position, what was
 # expected); `parse` turns the position into a line and a column.
 parse : String -> Result Value String .
-parse s = case value s (skip s 1) of
+parse s = case value s (skip s 0) of
     Err (at, why) -> Err (located s at why)
-  | Ok (v, next) -> (case skip s next > strlen s of
+  | Ok (v, next) -> (case skip s next >= strlen s of
         True -> Ok v
       | False -> Err (located s (skip s next) "unexpected text after the value")).
 
 located : String -> Int -> String -> String .
-located s at why = case lineCol s 1 at 1 1 of (l, c) -> "line {l}, column {c}: {why}".
+located s at why = case lineCol s 0 at 1 1 of (l, c) -> "line {l}, column {c}: {why}".
 lineCol : unsafe String -> Int -> Int -> Int -> Int -> (Int, Int) .
 lineCol s i at l c = case i >= at of
     True -> (l, c)
   | False -> (case charAt s i == 10 of True -> lineCol s (i + 1) at (l + 1) 1 | False -> lineCol s (i + 1) at l (c + 1)).
 
 skip : unsafe String -> Int -> Int .
-skip s i = case i > strlen s of True -> i | False -> (case S.isSpace (charAt s i) of True -> skip s (i + 1) | False -> i).
+skip s i = case i >= strlen s of True -> i | False -> (case S.isSpace (charAt s i) of True -> skip s (i + 1) | False -> i).
 
 value : unsafe String -> Int -> Result (Value, Int) (Int, String) .
-value s i = case i > strlen s of
+value s i = case i >= strlen s of
     True -> Err (i, "expected a value, found the end of the text")
   | False -> valueAt s i (charAt s i).
 valueAt : unsafe String -> Int -> Int -> Result (Value, Int) (Int, String) .
@@ -218,7 +218,7 @@ membersSep s i m = case charAtOr s i == 44 of
 
 # 0 past the end, so comparisons just fail
 charAtOr : String -> Int -> Int .
-charAtOr s i = case i > strlen s of True -> 0 | False -> charAt s i.
+charAtOr s i = case i >= strlen s of True -> 0 | False -> charAt s i.
 
 # ---- numbers ---------------------------------------------------------------------
 number : unsafe String -> Int -> Result (Value, Int) (Int, String) .
@@ -258,7 +258,7 @@ stringLit : unsafe String -> Int -> Result (String, Int) (Int, String) .
 stringLit s i = stringGo s i i Nil.
 # [from, i) is a clean run; acc the decoded pieces, newest first
 stringGo : unsafe String -> Int -> Int -> List String -> Result (String, Int) (Int, String) .
-stringGo s from i acc = case i > strlen s of
+stringGo s from i acc = case i >= strlen s of
     True -> Err (i, "unterminated string")
   | False -> (case charAt s i == 34 of
         True -> Ok (strJoin "" (rev (substr s from (i - from) :: acc) Nil), i + 1)

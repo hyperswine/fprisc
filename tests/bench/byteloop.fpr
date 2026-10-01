@@ -1,9 +1,9 @@
 # bench: a byte loop -- charAt, strlen, compare, add per byte
 String = use "std/string".
 sumB : unsafe String -> Int -> Int -> Int -> Int .
-sumB s i n acc = if i > n then acc else sumB s (i + 1) n (acc + charAt s i).
+sumB s i n acc = if i >= n then acc else sumB s (i + 1) n (acc + charAt s i).
 rounds : unsafe String -> Int -> Int -> Int .
-rounds s k acc = if k == 0 then acc else rounds s (k - 1) (acc + sumB s 1 (strlen s) 0).
+rounds s k acc = if k == 0 then acc else rounds s (k - 1) (acc + sumB s 0 (strlen s) 0).
 main =
   s = String.repeat 100000 "abcdefgh";
   print "byteloop = {rounds s 50 0}".

@@ -92,9 +92,11 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     # arithmetic) agree with the C primitives, and out-of-range still panics
     out = run([build('tests/base/inlineprims.fpr', 'inlineprims')]).stdout
     assert out == 'inline prims: 0 arithmetic/bit mismatches, 0 shift mismatches, 0 byte mismatches, strlen=5\n', out
-    (tmp / 'c0.fpr').write_text('main = charAt "abc" 0.\n')
-    p = run([build(tmp / 'c0.fpr', 'c0')], 1)
-    assert 'charAt: index out of range' in p.stdout + p.stderr, p.stdout + p.stderr
+    # 0-based: the first byte out of range on each side is len and -1
+    for name, idx in (('c0', '3'), ('cm1', '(-1)')):
+        (tmp / (name + '.fpr')).write_text('main = charAt "abc" ' + idx + '.\n')
+        p = run([build(tmp / (name + '.fpr'), name)], 1)
+        assert 'charAt: index out of range' in p.stdout + p.stderr, p.stdout + p.stderr
     print('Inline primitive fast paths agree with C on 225 pairs, 64 shift counts and raw bytes; out of range is still the named panic: PASS')
     # 4k. the base inliner is invisible: the same program built with and
     # without it (FPR_NO_INLINE=1) prints the same, effects in the same order
@@ -174,6 +176,22 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([build(tmp / 'vp3.fpr', 'vp3')], 1)
     assert 'Vec.get: index out of range' in p.stdout + p.stderr, p.stdout + p.stderr
     print('Vector reads taken apart at once build no pair: 2,000 reads 96 B (was 96,096), the same values, the same out-of-range panic: PASS')
+    # 4o. every position is 0-based (docs/2026-10-02-ZERO-BASED.md): the
+    # primitives at their first and last index and "not found" (-1), the
+    # same natively and under Sol; one past either end panics by name
+    want = 'charAt 104 111; substr [ell] [o] []; index 2 -1 3 -1; list 10 30; Str.at 104'
+    out = run([build('tests/base/zerobased.fpr', 'zerobased')]).stdout.strip()
+    assert out == want, out
+    sol = run(['./fpr', 'sol', 'tests/base/zerobased.fpr']).stdout.strip().splitlines()[-1]
+    assert sol == want, sol
+    for name, expr, msg in [('zb1', 'charAt "abc" (0 - 1)', 'charAt: index out of range'),
+                            ('zb2', 'charAt "abc" 3', 'charAt: index out of range'),
+                            ('zb3', '(1 :: 2 :: Nil) ! 2', '!: index out of range'),
+                            ('zb4', 'Vec.get 3 (Vec.iota 3)', 'Vec.get: index out of range')]:
+        (tmp / f'{name}.fpr').write_text(f'unsafe program.\nmain = {expr}.\n')
+        p = run([build(tmp / f'{name}.fpr', name)], 1)
+        assert msg in p.stdout + p.stderr, (name, p.stdout + p.stderr)
+    print('Every position is 0-based: first/last index and -1 for not found, native and Sol agree; index -1 and len panic by name: PASS')
     # 4h. receiveFromRes: a sender that exits is an answer (Err "dead actor"),
     # never a caller parked for ever; a reply sent just before exiting is kept
     dp = build('tests/base/deadpeer.fpr', 'deadpeer')

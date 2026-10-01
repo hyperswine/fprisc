@@ -31,9 +31,9 @@ customers = "\{
 \}".
 
 > doc = unwrap (J.parse customers);
-  _ = expect "path into nested objects" (J.path ["customers"] doc |>? J.at 2 |>? J.get "name" |>? J.text) (Ok "Bo \"the\" Bold");
-  _ = expect "numbers ride Numeric"     (J.path ["customers"] doc |>? J.at 1 |>? J.get "credit" |>? J.num) (Ok 120.5);
-  _ = expect "null is a value"          (J.path ["customers"] doc |>? J.at 1 |>? J.path ["address", "zip"]) (Ok JNull);
+  _ = expect "path into nested objects" (J.path ["customers"] doc |>? J.at 1 |>? J.get "name" |>? J.text) (Ok "Bo \"the\" Bold");
+  _ = expect "numbers ride Numeric"     (J.path ["customers"] doc |>? J.at 0 |>? J.get "credit" |>? J.num) (Ok 120.5);
+  _ = expect "null is a value"          (J.path ["customers"] doc |>? J.at 0 |>? J.path ["address", "zip"]) (Ok JNull);
   _ = expect "a missing key derails"    (J.path ["customers", "nope"] doc) (Err "json: not an object");
   expect "index out of range"       (J.path ["customers"] doc |>? J.at 9) (Err "json: index 9 out of range").
 

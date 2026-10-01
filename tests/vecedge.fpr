@@ -48,35 +48,35 @@ r3 i lim = ((i * 3 + 1 - 2) * 2) + r3 (i + 1) lim.
 main =
   # 1. records SoA -> get -> PROJECT -> reconstruct -> push back (AoS round trip)
   a1 = fillR (Vec.new Unit) 1 100;
-  (p, a2) = Vec.get 7 a1;
+  (p, a2) = Vec.get 6 a1;
   u1 = verdict "soa-get-project" (p.x == 7);
   a3 = Vec.push {x = p.x + 1000, y = p.y} a2;
   (n1, a4) = Vec.len a3;
-  (q, a5) = Vec.get n1 a4;
+  (q, a5) = Vec.get (n1 - 1) a4;
   u2 = verdict "soa-pushback" (q.x == 1007);
   _ = Vec.free a5;
 
   # 2. tuples SoA -> get -> destructure
   b1 = fillT (Vec.new Unit) 1 50;
-  (t, b2) = Vec.get 6 b1;
+  (t, b2) = Vec.get 5 b1;
   (ta, tb) = t;
   u3 = verdict "tuple-soa-destructure" (ta + tb == 6 + 36);
   _ = Vec.free b2;
 
   # 3. ADT constructor rows -> get -> CASE MATCH back
   c1 = fillC (Vec.new Unit) 1 50;
-  (pc, c2) = Vec.get 9 c1;
+  (pc, c2) = Vec.get 8 c1;
   m = case pc of Pt a b -> a * 100 + b;
   u4 = verdict "adt-get-match" (m == 914);
   cm = Vec.map matchElem c2;              # pattern-matching elem fn: generic tier
-  (mv, cm2) = Vec.get 9 cm;
+  (mv, cm2) = Vec.get 8 cm;
   u5 = verdict "adt-map-match" (mv == 23);
   _ = Vec.free cm2;
 
   # 4. nested records + nested lens through Vec.map
   d1 = fillN (Vec.new Unit) 1 50;
   d2 = Vec.map bumpN d1;
-  (nd, d3) = Vec.get 5 d2;
+  (nd, d3) = Vec.get 4 d2;
   u6 = verdict "nested-lens-map" (nd.pose.x == 15);
   u7 = verdict "nested-untouched" (nd.pose.y == 6);
   u8 = verdict "nested-flat-field" (nd.hp == 105);
@@ -89,7 +89,7 @@ main =
 
   # 6. fromList of records -> SoA vec -> get
   g1 = Vec.fromList (mkR 4 :: mkR 8 :: Nil);
-  (gp, g2) = Vec.get 2 g1;
+  (gp, g2) = Vec.get 1 g1;
   u10 = verdict "fromlist-soa" (gp.y == 16);
   _ = Vec.free g2;
 
@@ -103,7 +103,7 @@ main =
   # 8. fold-of-map (must NOT fuse; map writes visible after)
   i1 = fillI (Vec.new Unit) 1 100;
   (is, i2) = Vec.fold (fn a x -> a + x) 0 (Vec.map f1 i1);
-  (iv, i3) = Vec.get 100 i2;
+  (iv, i3) = Vec.get 99 i2;
   u12 = verdict "fold-of-map-sum" (is == 100 * 101 / 2 * 3 + 100);
   u13 = verdict "fold-of-map-writes" (iv == 301);
   _ = Vec.free i3;
@@ -121,7 +121,7 @@ main =
   # 10. 5-field record map: SoA storage, generic-tier map (note expected)
   k1 = fill5 (Vec.new Unit) 1 30;
   k2 = Vec.map bump5 k1;
-  (k5, k3) = Vec.get 30 k2;
+  (k5, k3) = Vec.get 29 k2;
   u16 = verdict "five-field-map" (k5.a == 60);
   u17 = verdict "five-field-e" (k5.e == 35);
   _ = Vec.free k3;

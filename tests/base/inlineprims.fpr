@@ -32,12 +32,12 @@ shifts k bad = if k > 63 then bad else
   shifts (k + 1) (bad + s1 + s2).
 
 bytes : unsafe String -> Int -> Int -> Int .
-bytes s i bad = if i > strlen s then bad else
+bytes s i bad = if i >= strlen s then bad else
   bytes s (i + 1) (bad + (if charAt s i == via2 (fn t j -> charAt s j) 0 i then 0 else 1)).
 
 main =
   m = agree vals vals 0;
   sh = shifts 0 0;
   s = strcat (strcat "h" (chr 233)) (strcat (chr 255) (strcat (chr 0) "z"));
-  by = bytes s 1 0;
+  by = bytes s 0 0;
   print "inline prims: {m} arithmetic/bit mismatches, {sh} shift mismatches, {by} byte mismatches, strlen={strlen s}".

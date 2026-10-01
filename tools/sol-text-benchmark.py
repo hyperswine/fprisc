@@ -32,8 +32,8 @@ def main():
         cases = {}
         for size in (1000, 4000, 16000):
             data = w / f'text-{size}.txt'; data.write_text('aλ😀z' * (size // 4))
-            source = 'scan : unsafe String -> Int -> Int -> Int.\nscan s i acc = case i > strlen s of True -> acc | False -> scan s (i + 1) (acc + charAt s i).\n'
-            source += f'> s = readPath @{data}; print "{{scan s 1 0}}".\n'
+            source = 'scan : unsafe String -> Int -> Int -> Int.\nscan s i acc = case i >= strlen s of True -> acc | False -> scan s (i + 1) (acc + charAt s i).\n'
+            source += f'> s = readPath @{data}; print "{{scan s 0 0}}".\n'
             cases[f'scan_{size}'] = (source, f'{sum(map(ord, data.read_text()))}\n'.encode())
         for size in (100, 400, 1600):
             data = w / f'json-{size}.json'; data.write_text('[' + ','.join(['42'] * size) + ']')

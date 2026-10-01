@@ -56,19 +56,19 @@ inverse s = "{esc}[7m{s}{esc}[0m".
 color : Int -> String -> String .
 color c s = "{esc}[3{c}m{s}{esc}[0m".
 
-# row and column from 1
+# row and column from 0, as every position is (the escape itself counts from 1)
 moveTo : Int -> Int -> String .
-moveTo row col = "{esc}[{row};{col}H".
+moveTo row col = "{esc}[{row + 1};{col + 1}H".
 
 # ---- decoding keys (pure) --------------------------------------------------------------------
 # the keys in `bytes`, and the tail that is not a whole key yet (an escape
 # sequence or a UTF-8 character split across reads).  `final`: no more bytes are
 # coming right now, so a lone ESC is the Escape key and not a sequence's start.
 decode : Bool -> String -> (List Key, String) .
-decode final bytes = decodeGo final bytes 1 Nil.
+decode final bytes = decodeGo final bytes 0 Nil.
 
 decodeGo : unsafe Bool -> String -> Int -> List Key -> (List Key, String) .
-decodeGo final s i acc = if i > strlen s then (rev acc Nil, "") else
+decodeGo final s i acc = if i >= strlen s then (rev acc Nil, "") else
   (case keyAt final s i of
       O.None -> (rev acc Nil, substr s i (strlen s))
     | O.Some (k, next) -> decodeGo final s next (k :: acc)).
@@ -89,13 +89,13 @@ keyAt final s i =
 
 # a whole UTF-8 character, however many bytes it is
 utf8At : String -> Int -> Int -> Int -> O.Option (Key, Int) .
-utf8At s i n len = if i + len - 1 > n then O.None else O.Some (Char (substr s i len), i + len).
+utf8At s i n len = if i + len > n then O.None else O.Some (Char (substr s i len), i + len).
 
 escapeAt : Bool -> String -> Int -> Int -> O.Option (Key, Int) .
 escapeAt final s i n =
-  if i == n then (if final then O.Some (Escape, i + 1) else O.None)
+  if i + 1 == n then (if final then O.Some (Escape, i + 1) else O.None)
   else if charAt s (i + 1) == 91 then csiAt s (i + 2) (i + 2) n
-  else if charAt s (i + 1) == 79 then (if i + 2 > n then O.None else O.Some (letterKey (charAt s (i + 2)) 0, i + 3))
+  else if charAt s (i + 1) == 79 then (if i + 2 >= n then O.None else O.Some (letterKey (charAt s (i + 2)) 0, i + 3))
   else if charAt s (i + 1) == 27 then O.Some (Escape, i + 1)
   else (case keyAt final s (i + 1) of
       O.Some (Char t, next) -> O.Some (Alt t, next)
@@ -104,7 +104,7 @@ escapeAt final s i n =
 
 # ESC [ params final : find the final byte (0x40..0x7e), then name the key
 csiAt : unsafe String -> Int -> Int -> Int -> O.Option (Key, Int) .
-csiAt s from j n = if j > n then O.None
+csiAt s from j n = if j >= n then O.None
   else if charAt s j >= 64 and charAt s j <= 126 then O.Some (csiKey (charAt s j) (firstNumber s from j 0), j + 1)
   else csiAt s from (j + 1) n.
 
@@ -187,7 +187,7 @@ step me app ev st = case st of St model screen cols rows pending ->
       quit = perform me cmds;
       _ = startSubs me (app.subs model2) (app.subs model);
       lines = app.view (cols, rows) model2;
-      _ = paint screen lines 1 rows Nil;
+      _ = paint screen lines 0 rows Nil;
       (if quit then O.None else O.Some (St model2 lines cols rows pending))).
 
 perform : unsafe Int -> List (Cmd msg) -> Bool .
@@ -213,14 +213,14 @@ ticking me ms msg = _ = Sys.sleepUs (ms * 1000); _ = send me (Ok msg); ticking m
 # repaint only the lines that differ from what is on the screen; lines past the
 # view's end are cleared
 paint : unsafe List String -> List String -> Int -> Int -> List String -> Unit .
-paint old new row rows acc = if row > rows then flush acc else
+paint old new row rows acc = if row >= rows then flush acc else
   (case new of
       Nil -> (case old of
           Nil -> flush acc
-        | _ :: orest -> paint orest Nil (row + 1) rows (strJoin "" (moveTo row 1 :: esc :: "[2K" :: Nil) :: acc))
+        | _ :: orest -> paint orest Nil (row + 1) rows (strJoin "" (moveTo row 0 :: esc :: "[2K" :: Nil) :: acc))
     | n :: nrest -> (case old of
-          Nil -> paint Nil nrest (row + 1) rows (strJoin "" (moveTo row 1 :: esc :: "[2K" :: n :: Nil) :: acc)
+          Nil -> paint Nil nrest (row + 1) rows (strJoin "" (moveTo row 0 :: esc :: "[2K" :: n :: Nil) :: acc)
         | o :: orest -> (if o == n then paint orest nrest (row + 1) rows acc
-                         else paint orest nrest (row + 1) rows (strJoin "" (moveTo row 1 :: esc :: "[2K" :: n :: Nil) :: acc)))).
+                         else paint orest nrest (row + 1) rows (strJoin "" (moveTo row 0 :: esc :: "[2K" :: n :: Nil) :: acc)))).
 flush : List String -> Unit .
 flush acc = case acc of Nil -> Unit | _ -> _ = OS.write 1 (strJoin "" (rev acc Nil)); Unit.

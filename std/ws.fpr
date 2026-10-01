@@ -109,7 +109,7 @@ totalGo : unsafe List String -> Int -> Int .
 totalGo parts n = case parts of Nil -> n | p :: r -> totalGo r (n + strlen p).
 
 closeCode : String -> Int .
-closeCode payload = if strlen payload >= 2 then charAt payload 1 * 256 + charAt payload 2 else 1005.
+closeCode payload = if strlen payload >= 2 then charAt payload 0 * 256 + charAt payload 1 else 1005.
 
 # one frame: (fin, opcode, masked, payload -- unmasked)
 readFrame : ST.Reader -> (Result (Bool, Int, Bool, String) String, ST.Reader) .
@@ -117,8 +117,8 @@ readFrame r = case ST.readExactly 2 r of (res, r2) ->
   (case res of
       Err why -> (Err why, r2)
     | Ok h ->
-        b0 = charAt h 1;
-        b1 = charAt h 2;
+        b0 = charAt h 0;
+        b1 = charAt h 1;
         (if band b0 112 != 0 then (Err "reserved bits set", r2)
          else lengthThen (band b0 128 != 0) (band b0 15) (band b1 128 != 0) (band b1 127) r2)).
 
@@ -127,19 +127,19 @@ lengthThen fin opcode masked len7 r =
   else (case ST.readExactly (if len7 == 126 then 2 else 8) r of (res, r2) ->
       (case res of
           Err why -> (Err why, r2)
-        | Ok lb -> bodyThen fin opcode masked (beInt lb 1 0) r2)).
+        | Ok lb -> bodyThen fin opcode masked (beInt lb 0 0) r2)).
 
 beInt : unsafe String -> Int -> Int -> Int .
-beInt s i acc = if i > strlen s then acc else beInt s (i + 1) (acc * 256 + charAt s i).
+beInt s i acc = if i >= strlen s then acc else beInt s (i + 1) (acc * 256 + charAt s i).
 
 bodyThen fin opcode masked n r =
   case ST.readExactly ((if masked then 4 else 0) + n) r of (res, r2) ->
     (case res of
         Err why -> (Err why, r2)
-      | Ok bytes -> (Ok (fin, opcode, masked, (if masked then unmask (substr bytes 1 4) (substr bytes 5 n) else bytes)), r2)).
+      | Ok bytes -> (Ok (fin, opcode, masked, (if masked then unmask (substr bytes 0 4) (substr bytes 4 n) else bytes)), r2)).
 
 # XOR with the 4-byte key, built in pieces and joined once
 unmask : String -> String -> String .
-unmask key data = strJoin "" (unmaskGo key data (strlen data) Nil).
+unmask key data = strJoin "" (unmaskGo key data (strlen data - 1) Nil).
 unmaskGo : unsafe String -> String -> Int -> List String -> List String .
-unmaskGo key data i acc = if i < 1 then acc else unmaskGo key data (i - 1) (chr (bxor (charAt data i) (charAt key (band (i - 1) 3 + 1))) :: acc).
+unmaskGo key data i acc = if i < 0 then acc else unmaskGo key data (i - 1) (chr (bxor (charAt data i) (charAt key (band i 3))) :: acc).

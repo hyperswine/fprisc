@@ -15,8 +15,8 @@ Res  = Type (Hit (List Int) | Miss).
 boolInt b = case b of True -> 1 | False -> 0.
 rev xs = List.fold (fn acc x -> x :: acc) [] xs.
 
-parseRx s = parseAt s 1 [] [].
-parseAt s i atoms classes | i > Str.len s = (rev atoms, rev classes).
+parseRx s = parseAt s 0 [] [].
+parseAt s i atoms classes | i >= Str.len s = (rev atoms, rev classes).
 parseAt s i atoms classes =
   c = charAt s i;
   case c == 94 of
@@ -40,7 +40,7 @@ escAtom c = case c == 100 of True -> Atom 4 0 0 0 0
   | False -> (case c == 115 of True -> Atom 6 0 0 0 0
   | False -> Atom 1 c 0 0 0)).
 withQuant (Atom k c n r _) q = Atom k c n r q.
-quantAt s j | j > Str.len s = (0, j).
+quantAt s j | j >= Str.len s = (0, j).
 quantAt s j = c = charAt s j;
   case c == 42 of True -> (1, j + 1)
   | False -> (case c == 43 of True -> (2, j + 1)
@@ -48,11 +48,13 @@ quantAt s j = c = charAt s j;
 parseClass s i classes =
   neg = boolInt (charAt s i == 94);
   (pairs, j) = classPairs s (i + neg) [];
-  (Atom 3 0 neg (List.len classes + 1) 0, j, Cls neg pairs :: classes).
+  (Atom 3 0 neg (List.len classes) 0, j, Cls neg pairs :: classes).
+# lookahead past the end reads 0 (`and` is strict: both sides evaluate)
+peekC s i = case i >= Str.len s of True -> 0 | False -> charAt s i.
 classPairs s i acc | charAt s i == 93 = (rev acc, i + 1).
 classPairs s i acc =
   c = charAt s i;
-  case and (charAt s (i + 1) == 45) (charAt s (i + 2) != 93) of
+  case and (peekC s (i + 1) == 45) (peekC s (i + 2) != 93) of
     True -> classPairs s (i + 3) ((c, charAt s (i + 2)) :: acc)
   | False -> classPairs s (i + 1) ((c, c) :: acc).
 

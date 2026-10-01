@@ -14,7 +14,7 @@ sumAt1 v i n acc =
   (x, v) = Vec.at i v;
   sumAt v (i + 1) n (acc + x).
 
-sumGet v i n acc = case i > n of
+sumGet v i n acc = case i == n of
     True -> (acc, v)
   | False -> sumGet1 v i n acc.
 sumGet1 v i n acc =
@@ -35,13 +35,13 @@ shadow v =
 heapRun v =
   h0 = heapUsed Unit;
   (s, v2) = sumAt v 0 1000 0;
-  (s2, v3) = sumGet v2 1 1000 0;
+  (s2, v3) = sumGet v2 0 1000 0;
   (heapUsed Unit - h0, s + s2, v3).
 
 main =
   v = Vec.axpb 3 1 (Vec.iota 1000);
   (a, v) = sumAt v 0 1000 0;
-  (g, v) = sumGet v 1 1000 0;
+  (g, v) = sumGet v 0 1000 0;
   (w, v) = whole v;
   (sh, v) = shadow v;
   _ = print "at {a} get {g} whole {w} shadow {sh}";

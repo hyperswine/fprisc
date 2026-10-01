@@ -12,8 +12,8 @@ isDigit c = and (c >= 48) (c <= 57).
 isNumberChar c = or (isDigit c) (c == 46).
 
 decimalText raw =
-  front = case Str.at raw 1 == 46 of True -> "0{raw}" | False -> raw;
-  case Str.at front (Str.len front) == 46 of
+  front = case Str.at raw 0 == 46 of True -> "0{raw}" | False -> raw;
+  case Str.at front (Str.len front - 1) == 46 of
     True -> "{front}0"
   | False -> front.
 
@@ -31,15 +31,16 @@ symbolToken c column = case c of
   | _ -> Err "unexpected character '{Str.fromCode c}' at column {column}".
 
 # One measured character walk emits tokens in reverse, then flips them once.
+# i is the 0-based cursor; tokens carry the human column i + 1 for messages.
 lexChars : String -> (i : Int | measure (limit - i)) -> (limit : Int) -> Int -> String -> Int -> List CalcToken -> Result (List CalcToken) String .
-lexChars s i limit mode raw start acc | i > limit = case mode of
+lexChars s i limit mode raw start acc | i >= limit = case mode of
   0 -> Ok (List.rev acc)
   | _ -> numberToken raw start |> mapOk (fn token -> List.rev (token :: acc)).
 lexChars s i limit mode raw start acc =
   c = Str.at s i;
   case isNumberChar c of
     True -> (case mode of
-      0 -> lexChars s (i + 1) limit 1 (Str.fromCode c) i acc
+      0 -> lexChars s (i + 1) limit 1 (Str.fromCode c) (i + 1) acc
       | _ -> lexChars s (i + 1) limit 1 "{raw}{Str.fromCode c}" start acc)
   | False -> (case Str.isSpace c of
       True -> (case mode of
@@ -47,13 +48,13 @@ lexChars s i limit mode raw start acc =
         | _ -> numberToken raw start
             |>? (fn token -> lexChars s (i + 1) limit 0 "" 0 (token :: acc)))
     | False -> (case mode of
-        0 -> symbolToken c i
+        0 -> symbolToken c (i + 1)
             |>? (fn token -> lexChars s (i + 1) limit 0 "" 0 (token :: acc))
         | _ -> numberToken raw start
-            |>? (fn number -> symbolToken c i
+            |>? (fn number -> symbolToken c (i + 1)
           |>? (fn symbol -> lexChars s (i + 1) limit 0 "" 0 (symbol :: number :: acc))))).
 
-tokenize source = lexChars source 1 (Str.len source) 0 "" 0 [].
+tokenize source = lexChars source 0 (Str.len source) 0 "" 0 [].
 
 isUnary op = case op of NegOp -> True | PosOp -> True | _ -> False.
 isLeft op = case op of LeftOp -> True | _ -> False.

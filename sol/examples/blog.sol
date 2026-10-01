@@ -26,7 +26,7 @@ posts = [
 
 unwrapP p = case p of Persistent x -> x.
 
-init tok = {tab = Persistent 1, comments = Persistent [], lucky = 0, ticks = 0, motd = ""}.
+init tok = {tab = Persistent 0, comments = Persistent [], lucky = 0, ticks = 0, motd = ""}.
 
 update msg model =
   case msg of
@@ -48,7 +48,7 @@ tabBtn cur i =
   ui.onClick "tab" (str i) (ui.el "span" (tabCls cur i) [ui.text p.title]).
 
 tabBar cur =
-  ui.el "nav" [ui.Style.flex, ui.Style.flexrow, ui.Style.flexwrap, ui.Style.gap2] (List.map (tabBtn cur) [1, 2, 3]).
+  ui.el "nav" [ui.Style.flex, ui.Style.flexrow, ui.Style.flexwrap, ui.Style.gap2] (List.map (tabBtn cur) [0, 1, 2]).
 
 postView tab =
   p = posts ! tab;

@@ -22,12 +22,12 @@ render me =
 rloop : unsafe Int -> Int -> a .
 rloop me p =
   f = receive me;
-  f2 = paint f 1;
+  f2 = paint f 0;
   _ = sendLinear p f2;
   rloop me p .
 
 paint : unsafe (Vector Int) -> Int -> (Vector Int) .
-paint fb i | i > wMax = fb.
+paint fb i | i >= wMax = fb.
 paint fb i = paint (Vec.set i (i * 3) fb) (i + 1) .
 
 fill : unsafe (Vector Int) -> Int -> Int -> (Vector Int) .

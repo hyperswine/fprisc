@@ -94,3 +94,4 @@ they began.
 | 2026-10-01 | [CODE-PUBLICATION.md](2026-10-01-CODE-PUBLICATION.md) | Loaded code publication: local fence and a generation acquired and fenced by every remote hart before actor dispatch |
 | 2026-10-01 | [TYPED-VECTORS.md](2026-10-01-TYPED-VECTORS.md) | Vector a links element reads/writes/maps, preserves linearity, derives raw-float output layouts and refuses unsupported representation-polymorphic allocation |
 | 2026-10-01 | [VEC-PEEK.md](2026-10-01-VEC-PEEK.md) | `(x, v2) = Vec.at i v` builds no (value, handle) pair: a Core rewrite to pair-free reads; 50M reads 2.9x faster, 2.4 GB -> 19 MB |
+| 2026-10-02 | [ZERO-BASED.md](2026-10-02-ZERO-BASED.md) | Every position is 0-based: the primitives, Sol, std (a major version) and every call site in both repos flipped in one change; -1 = not found; slices half-open |

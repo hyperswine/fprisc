@@ -49,7 +49,7 @@ describe r | Ok v <- chained r = "ok {v}".
 describe _ = "failed".
 
 b = "mystring".
-mystring = "g2 = {g2 (MyString b (String.len b))}, third = {[10, 20, 30] ! 3}".
+mystring = "g2 = {g2 (MyString b (String.len b))}, third = {[10, 20, 30] ! 2}".
 
 # `$` = low-precedence apply: `print $ e` == `print (e)`
 > print $ mystring + " " + describe 4.

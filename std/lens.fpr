@@ -49,9 +49,9 @@ catL xs ys = case xs of Nil -> ys | x :: r -> x :: catL r ys.
 strEq : unsafe String -> String -> Bool .
 strEq a b = case strlen a == strlen b of
     False -> False
-  | True -> strEqAt a b 1.
+  | True -> strEqAt a b 0.
 strEqAt : unsafe String -> String -> Int -> Bool .
-strEqAt a b i = case i > strlen a of
+strEqAt a b i = case i >= strlen a of
     True -> True
   | False -> case charAt a i == charAt b i of
       True -> strEqAt a b (i + 1)
@@ -81,13 +81,14 @@ get es p m = case find es p of
 # FIRST space (values may contain spaces; "path" alone -> Err)
 setWords : unsafe List _ -> String -> _ -> Result _ String .
 setWords es pv m =
-  cut = spaceAt pv 1;
-  case cut == 0 of
+  cut = spaceAt pv 0;
+  case cut < 0 of
     True -> Err "set: want 'path value', got '{pv}'"
-  | False -> set es (substr pv 1 (cut - 1)) (substr pv (cut + 1) (strlen pv - cut)) m.
+  | False -> set es (substr pv 0 cut) (substr pv (cut + 1) (strlen pv - cut - 1)) m.
+# the 0-based position of the first space at or after i; -1 = none
 spaceAt : unsafe String -> Int -> Int .
-spaceAt s i = case i > strlen s of
-    True -> 0
+spaceAt s i = case i >= strlen s of
+    True -> 0 - 1
   | False -> case charAt s i == 32 of
       True -> i
     | False -> spaceAt s (i + 1).

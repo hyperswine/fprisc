@@ -68,9 +68,9 @@ argGo args m = case args of
       | True ->
           body = S.dropLeft 2 a;
           at = strIndexOf "=" body;
-          (case at == 0 of
+          (case at < 0 of
               True -> argGo r (M.insert body (J.Boolean True) m)
-            | False -> argGo r (M.insert (S.left (at - 1) body) (D.infer (S.dropLeft at body)) m))).
+            | False -> argGo r (M.insert (S.left at body) (D.infer (S.dropLeft (at + 1) body)) m))).
 
 # the arguments that are not "--" settings, in order
 positional : List String -> List String .

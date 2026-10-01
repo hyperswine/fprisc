@@ -38,17 +38,17 @@ def main():
         data = w / 'text.txt'
         data.write_text(text)
         prefix = f's = readPath @{data}.\n'
-        expressions = ['strlen s', 'Str.at s 2', 'Str.at s 3', 'Str.at s 5', 'Str.at s 6']
+        expressions = ['strlen s', 'Str.at s 1', 'Str.at s 2', 'Str.at s 4', 'Str.at s 5']  # 0-based
         source = prefix + ''.join(f'> print "{{{e}}}".\n' for e in expressions)
         run(source, b'7\n955\n128512\n769\n0\n')
         for start, length in [(-2, 3), (3, 2), (8, 4), (2, -1), (10**40, 2), (2, 10**40), (-10**40, 2)]:
-            first = max(1, start) - 1
-            expected = text[first:first + max(0, length)]
+            # 0-based [start, start + length), cut to the string at both ends
+            expected = text[max(0, start):max(0, start + max(0, length))]
             run(prefix + f'> print (substr s {start} {length}).\n', (expected + '\n').encode())
-        for index in (0, -1, 8, 10**40, -10**40):
+        for index in (7, -1, 8, 10**40, -10**40):  # 7 == strlen: one past the last
             run(prefix + f'> charAt s {index}.\n', code=1, error=b'index out of range')
-        run('> print "{strlen \"\"}".\n> print (substr "" 1 10).\n', b'0\n\n')
-        run(prefix + '> print "{s == (substr s 1 7)}".\n> print (Str.join "|" (Str.lines "a\\nλ\\n")).\n', 'True\na|λ\n'.encode())
+        run('> print "{strlen \"\"}".\n> print (substr "" 0 10).\n', b'0\n\n')
+        run(prefix + '> print "{s == (substr s 0 7)}".\n> print (Str.join "|" (Str.lines "a\\nλ\\n")).\n', 'True\na|λ\n'.encode())
         run(f'J = use "{ROOT}/sol/lib/json.sol".\n> print (J.parse "[true,42,\\\"λ😀\\\"]" |>? (fn j -> Ok (J.render j))).\n', 'Ok [true,42,"λ😀"]\n'.encode())
 
         def spec(argv, timeout=0, stdin='', cwd=''):

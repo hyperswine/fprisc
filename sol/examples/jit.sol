@@ -35,4 +35,4 @@ collatzLen n = 1 + collatzLen (3 * n + 1).
 # NOT jittable (string result): same call shape, interpreter takes it
 shout x | x > 1995 = "big {x}".
 shout x = "small".
-> (List.map shout (iota 2000)) ! 1.
+> (List.map shout (iota 2000)) ! 0.

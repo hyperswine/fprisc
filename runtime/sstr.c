@@ -9,7 +9,7 @@
  * the checker enforces single ownership — the same discipline that lets a
  * Vector be mutated in place licenses SString's put/push to mutate the
  * buffer and return the same reference as the "new" value. All ops are
- * 1-indexed, matching the rest of the FPRISC string surface (charAt etc.).
+ * 0-based, matching the rest of the FPRISC string surface (charAt etc.).
  *
  * Char codes are Ints (TAG'd). fromStr/toStr bridge to heap str_t.
  */
@@ -48,21 +48,21 @@ static V g_sstrLen(V sv) {
   return sstr_pair(TAG(as_sstr(sv, "SStr.len: not an SString")->len), sv);
 }
 
-/* at : SString -> Int -> (Int, SString)   (1-indexed byte code) */
+/* at : SString -> Int -> (Int, SString)   (byte code at i, 0-based) */
 static V g_sstrAt(V sv, V iv) {
   sstr_t *s = as_sstr(sv, "SStr.at: not an SString");
   sw k = UNTAG(iv);
-  if (k < 1 || (uw)k > s->len) fpr_cpanic("SStr.at: index out of range");
-  return sstr_pair(TAG(s->bytes[k - 1]), sv);
+  if (k < 0 || (uw)k >= s->len) fpr_cpanic("SStr.at: index out of range");
+  return sstr_pair(TAG(s->bytes[k]), sv);
 }
 
-/* put : SString -> Int -> Int -> SString   (overwrite byte i, 1-indexed) */
+/* put : SString -> Int -> Int -> SString   (overwrite byte i, 0-based) */
 static V g_sstrPut(V sv, V iv, V cv) {
   sstr_t *s = as_sstr(sv, "SStr.put: not an SString");
   sw k = UNTAG(iv);
-  if (k < 1 || (uw)k > SSTR_CAP) fpr_cpanic("SStr.put: index out of range");
-  s->bytes[k - 1] = (uint8_t)UNTAG(cv);
-  if ((uw)k > s->len) s->len = (uw)k;
+  if (k < 0 || (uw)k >= SSTR_CAP) fpr_cpanic("SStr.put: index out of range");
+  s->bytes[k] = (uint8_t)UNTAG(cv);
+  if ((uw)k + 1 > s->len) s->len = (uw)k + 1;
   return sv; /* linear: same reference back */
 }
 

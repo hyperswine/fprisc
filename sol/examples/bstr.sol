@@ -1,16 +1,17 @@
 # BStr — the byte-buffer string tier. Linear: every op threads the buffer.
+# Positions are 0-based; BStr.sub b i j is the half-open range [i, j).
 
 > b0 = BStr.new Unit;
   b1 = BStr.append "hello, " b0;
   b2 = BStr.append "world" b1;
   (n, b3) = BStr.len b2;
   u = print "len:      {n}   (want 12)";
-  (c1, b4) = BStr.at b3 1;
-  u2 = print "at 1:     {c1}  (want 104 h)";
-  (c8, b5) = BStr.at b4 8;
-  u3 = print "at 8:     {c8}  (want 119 w)";
-  (sl, b6) = BStr.sub b5 1 5;
-  u4 = print "sub 1..5: {BStr.toStr sl}   (want hello)";
+  (c1, b4) = BStr.at b3 0;
+  u2 = print "at 0:     {c1}  (want 104 h)";
+  (c8, b5) = BStr.at b4 7;
+  u3 = print "at 7:     {c8}  (want 119 w)";
+  (sl, b6) = BStr.sub b5 0 5;
+  u4 = print "sub [0,5): {BStr.toStr sl}   (want hello)";
   print "toStr:    {BStr.toStr b6}   (want hello, world)".
 
 # UTF-8: indexing is by CODEPOINT, not byte

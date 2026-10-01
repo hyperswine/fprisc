@@ -330,30 +330,30 @@ static V h_len(V vec) {
   return mktup2(TAG((sw)x->len), (V)x);
 }
 
-/* 1-indexed, like `!` */
+/* 0-based, like `!` and every position (docs/2026-10-02-ZERO-BASED.md) */
 static V h_get(V iv, V vec) {
   vec_t *x = vchk(vec, "Vec.get: not a Vector");
   if (!ISINT(iv)) fpr_cpanic("Vec.get: index not an Int");
   sw i = UNTAG(iv);
-  if (i < 1 || (uw)i > x->len) fpr_cpanic("Vec.get: index out of range");
-  return mktup2(row_at(x, (uw)(i - 1)), (V)x);
+  if (i < 0 || (uw)i >= x->len) fpr_cpanic("Vec.get: index out of range");
+  return mktup2(row_at(x, (uw)i), (V)x);
 }
 
 static V h_set(V iv, V v, V vec) {
   vec_t *x = vchk(vec, "Vec.set: not a Vector");
   if (!ISINT(iv)) fpr_cpanic("Vec.set: index not an Int");
   sw i = UNTAG(iv);
-  if (i < 1 || (uw)i > x->len) fpr_cpanic("Vec.set: index out of range");
+  if (i < 0 || (uw)i >= x->len) fpr_cpanic("Vec.set: index out of range");
   switch (VREP(x)) {
     case VR_INT:
     case VR_FLT:
     case VR_BOX:
-      put_cell(x, 0, (uw)(i - 1), v);
+      put_cell(x, 0, (uw)i, v);
       break;
     default:
       if (ISINT(v) || TID(v) != x->eltid) fpr_cpanic("Vec.set: tuple shape differs");
       for (uw k = 0; k < x->ncols; k++)
-        put_cell(x, k, (uw)(i - 1), *(V *)((char *)v + 8 + k * sizeof(uw)));
+        put_cell(x, k, (uw)i, *(V *)((char *)v + 8 + k * sizeof(uw)));
   }
   return (V)x;
 }
@@ -503,14 +503,12 @@ FPR_FN(fpr_g_Vec_x2epush, h_push, 2);
 FPR_FN(fpr_g_Vec_x2elen, h_len, 1);
 FPR_FN(fpr_g_Vec_x2eget, h_get, 2);
 FPR_FN(fpr_g_Vec_x2eset, h_set, 3);
-/* the 0-BASED names.  get/set are 1-based (the standing trap); at/put
- * are the same ops with the index the rest of the system uses.  New
- * code should use at/put; get/set stay for existing callers -- the
- * rename makes the base visible at the call site instead of flipping
- * every program in one breaking sweep. */
+/* at/put: the same operations as get/set under their other names.  They
+ * were the 0-based pair while get/set were 1-based; since the whole system
+ * went 0-based (docs/2026-10-02-ZERO-BASED.md) the two pairs are one. */
 static V h_at(V iv, V vec) {
   if (!ISINT(iv)) fpr_cpanic("Vec.at: index not an Int");
-  return h_get(TAG(UNTAG(iv) + 1), vec);
+  return h_get(iv, vec);
 }
 /* The same three reads WITHOUT the (value, handle) pair.  The compiler
  * (Inline.hs vecPeek) calls these where the pair is taken apart at once,
@@ -521,12 +519,12 @@ static V h_peek_get(V iv, V vec) {
   vec_t *x = vchk(vec, "Vec.get: not a Vector");
   if (!ISINT(iv)) fpr_cpanic("Vec.get: index not an Int");
   sw i = UNTAG(iv);
-  if (i < 1 || (uw)i > x->len) fpr_cpanic("Vec.get: index out of range");
-  return row_at(x, (uw)(i - 1));
+  if (i < 0 || (uw)i >= x->len) fpr_cpanic("Vec.get: index out of range");
+  return row_at(x, (uw)i);
 }
 static V h_peek_at(V iv, V vec) {
   if (!ISINT(iv)) fpr_cpanic("Vec.at: index not an Int");
-  return h_peek_get(TAG(UNTAG(iv) + 1), vec);
+  return h_peek_get(iv, vec);
 }
 static V h_peek_len(V vec) {
   vec_t *x = vchk(vec, "Vec.len: not a Vector");
@@ -534,7 +532,7 @@ static V h_peek_len(V vec) {
 }
 static V h_put(V iv, V v, V vec) {
   if (!ISINT(iv)) fpr_cpanic("Vec.put: index not an Int");
-  return h_set(TAG(UNTAG(iv) + 1), v, vec);
+  return h_set(iv, v, vec);
 }
 FPR_FN(fpr_g_Vec_x2eat, h_at, 2);
 FPR_FN(fpr_g__x24vec_x2eget, h_peek_get, 2);

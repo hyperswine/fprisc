@@ -130,9 +130,9 @@ sessOf sid m = case List.find (fn s -> s.sid == sid) m.sessions of
   | Option.None -> newSess sid.
 
 # "tags|text": the part before the first bar is the tags, comma separated
-textOf raw = case String.indexOf "|" raw of Option.Some i -> String.trim (String.dropLeft i raw) | Option.None -> String.trim raw.
+textOf raw = case String.indexOf "|" raw of Option.Some i -> String.trim (String.dropLeft (i + 1) raw) | Option.None -> String.trim raw.
 tagsOf raw = case String.indexOf "|" raw of
-    Option.Some i -> List.filter (fn t -> strlen t > 0) (List.map String.trim (String.split "," (String.left (i - 1) raw)))
+    Option.Some i -> List.filter (fn t -> strlen t > 0) (List.map String.trim (String.split "," (String.left i raw)))
   | Option.None -> Nil.
 
 # the port to the page's script: {"name": "value", ...} for the inputs to take

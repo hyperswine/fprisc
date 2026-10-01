@@ -53,7 +53,7 @@ symName i syms = case syms of [] -> "?sym{i}" | p :: r -> snStep i p r.
 snStep i p r = (nm, k) = p; case k == i of True -> nm | False -> symName i r.
 
 # ---------- clause-store terms (pure data; copied to heap per try) ----------
-# PT: PA symid | PV varIdx (1..nv) | PI int | PC symid [PT]
+# PT: PA symid | PV varIdx (0..nv-1) | PI int | PC symid [PT]
 PT = Type (PA x | PV x | PI x | PC x y).
 
 functorOf t = case t of
@@ -68,7 +68,7 @@ cellRec t v = {tag = t, val = v}.
 # allocate a cell at the soft top (reuse or push); returns (m, addr)
 halloc t v m =
   (hp, ht, hl, tr, tt, tl) = m;
-  case ht <= hl of
+  case ht < hl of
     True -> hallocSet t v hp ht hl tr tt tl
   | False -> hallocPush t v hp ht hl tr tt tl.
 hallocSet t v hp ht hl tr tt tl =
@@ -93,7 +93,7 @@ setCell a t v m =
 # record a binding on the trail (soft top, reuse or push)
 trailPush a m =
   (hp, ht, hl, tr, tt, tl) = m;
-  case tt <= tl of
+  case tt < tl of
     True -> trSet a hp ht hl tr tt tl
   | False -> trPush a hp ht hl tr tt tl.
 trSet a hp ht hl tr tt tl = tr2 = Vec.set tt a tr; (hp, ht, hl, tr2, tt + 1, tl).
@@ -165,9 +165,9 @@ unifyArgs k n fa fb m =
   | True -> unifyArgs (k + 1) n fa fb m2.
 
 # ---------- instantiate a clause term onto the heap ----------
-# vars pre-allocated at vbase: PV i -> vbase + i - 1
+# vars pre-allocated at vbase: PV i -> vbase + i (i is 0-based)
 inst t vbase m = case t of
-  PV i -> (m, vbase + i - 1)
+  PV i -> (m, vbase + i)
 | PI n -> halloc 2 n m
 | PA s -> halloc 1 s m
 | PC s args -> instC s args vbase m.
@@ -372,14 +372,14 @@ tcBody2 db syms m body vbase gs fuel qvars sols =
 base2append xs ys = case xs of [] -> ys | x :: r -> x :: base2append r ys.
 
 # ---------- top-level query ----------
-# qpairs = [(name, varIdx)] — with vbase 1 the heap addr IS the index
+# qpairs = [(name, varIdx)] — with vbase 0 the heap addr IS the (0-based) index
 # returns (solutions in order, fuelLeft)
 runQuery db syms goalsPT nqv qpairs fuel =
   hp = Vec.new Unit;
   tr = Vec.new Unit;
-  m0 = (hp, 1, 0, tr, 1, 0);
+  m0 = (hp, 0, 0, tr, 0, 0);
   m1 = allocVars nqv m0;
-  (m2, gaddrs) = instArgs goalsPT 1 m1;
+  (m2, gaddrs) = instArgs goalsPT 0 m1;
   (m3, fuelLeft, sols) = solveG db syms m2 gaddrs fuel qpairs [];
   (hp2, ht, hl, tr2, tt, tl) = m3;
   u1 = Vec.free hp2;

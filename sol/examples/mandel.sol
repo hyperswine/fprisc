@@ -47,7 +47,7 @@ palette = ["@", "#", "*", "+", "=", "-", ":", ".", " "].
 # The palette is indexed by the escape count divided by 10, with 0 mapping to "@"
 charFor c = case c == 0 of
   True -> "@"
-| False -> palette ! (case c / 10 + 1 > 9 of True -> 9 | False -> c / 10 + 1).
+| False -> palette ! (case c / 10 > 8 of True -> 8 | False -> c / 10).
 
 # exemplar, the compiler is able to prove that cs always decreases in length, so the fold is safe
 # it calls charFor c, then calls itself recursively on the rest of the list, until cs is empty

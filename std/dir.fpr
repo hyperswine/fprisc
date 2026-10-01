@@ -47,13 +47,13 @@ pushAll children rest = rev (rev children Nil) rest.
 # a name against a pattern where "*" is any run of bytes and "?" any one:
 #   Dir.matches "*.fpr" "list.fpr"
 matches : String -> String -> Bool .
-matches pat name = matchGo pat 1 name 1.
+matches pat name = matchGo pat 0 name 0.
 matchGo : unsafe String -> Int -> String -> Int -> Bool .
-matchGo pat i name j = case i > strlen pat of
-    True -> j > strlen name
+matchGo pat i name j = case i >= strlen pat of
+    True -> j >= strlen name
   | False -> (case charAt pat i == 42 of
         True -> starGo pat (i + 1) name j
-      | False -> (case j > strlen name of
+      | False -> (case j >= strlen name of
             True -> False
           | False -> (case charAt pat i == 63 of
                 True -> matchGo pat (i + 1) name (j + 1)
@@ -64,7 +64,7 @@ matchGo pat i name j = case i > strlen pat of
 starGo : unsafe String -> Int -> String -> Int -> Bool .
 starGo pat i name j = case matchGo pat i name j of
     True -> True
-  | False -> (case j > strlen name of True -> False | False -> starGo pat i name (j + 1)).
+  | False -> (case j >= strlen name of True -> False | False -> starGo pat i name (j + 1)).
 
 # the entries of ONE directory whose NAME matches: Dir.glob "*.md" "docs"
 glob : String -> String -> Result (List String) String .

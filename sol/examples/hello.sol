@@ -4,7 +4,7 @@ inc x = x + 1.
 
 > print "hello from sol".
 > 1 + 2 * 3.
-> [10, 20, 30] |> fn xs -> xs ! 2.
+> [10, 20, 30] |> fn xs -> xs ! 1.
 
 # explicit linear-handle discipline: every operation rebinds the handle,
 # close consumes it. Forgetting any step is a compile error.

@@ -13,14 +13,14 @@
 Json = Type (JNull | JBool Bool | JNum Int | JStr String
            | JArr (List Json) | JObj (List (String, Json))).
 
-# ---- parse (recursive descent; i is a 1-based cursor, 0 = end) --------------
+# ---- parse (recursive descent; i is a 0-based cursor; peek past the end = 0)
 
-parse s = value s (ws s 1) |>? (fn r -> (v, i) = r;
-  case ws s i > Str.len s of
+parse s = value s (ws s 0) |>? (fn r -> (v, i) = r;
+  case ws s i >= Str.len s of
     True -> Ok v
   | False -> Err "json: trailing characters at {i}").
 
-peek s i = case i > Str.len s of True -> 0 | False -> Str.at s i.
+peek s i = case i >= Str.len s of True -> 0 | False -> Str.at s i.
 ws s i = case Str.isSpace (peek s i) of True -> ws s (i + 1) | False -> i.
 
 value s i = case peek s i of
@@ -44,7 +44,7 @@ digits s i = case isDigit (peek s i) of True -> digits s (i + 1) | False -> i.
 number s i =
   start = case peek s i == 45 of True -> i + 1 | False -> i;
   integerEnd s start |>? (fractionEnd s) |>? (exponentEnd s) |>? (fn j ->
-    Try.parseNum (Str.slice s i (j - 1)) |>? (fn n ->
+    Try.parseNum (Str.slice s i j) |>? (fn n ->
       case finite n of True -> Ok (JNum n, j) | False -> Err "json: number out of range at {i}")).
 integerEnd s i = case peek s i of
     48 -> (case isDigit (peek s (i + 1)) of True -> Err "json: leading zero at {i}" | False -> Ok (i + 1))
@@ -60,7 +60,7 @@ finite n = s = Str.lower "{n}"; not (or (Str.contains "inf" s) (Str.contains "na
 
 # Accumulate pieces in reverse; join once instead of copying a growing prefix.
 string s i acc = stringParts s i [acc].
-stringParts s i parts = case i > Str.len s of
+stringParts s i parts = case i >= Str.len s of
     True -> Err "json: unterminated string"
   | False -> (case peek s i of
       34 -> Ok (Str.join "" (List.rev parts), i + 1)
@@ -92,9 +92,10 @@ unicodeEscape s i parts cp = case and (cp >= 55296) (cp <= 56319) of
 hex4 s i n acc = case n == 4 of
     True -> Ok acc
   | False -> hexDigit (peek s i) |>? (fn d -> hex4 s (i + 1) (n + 1) (acc * 16 + d)).
-hexDigit c = case Str.find c "0123456789abcdefABCDEF" of
-    0 -> Err "json: bad \\u escape"
-  | k -> Ok (case k > 16 of True -> k - 7 | False -> k - 1).
+hexDigit c = k = Str.find c "0123456789abcdefABCDEF";
+  case k < 0 of
+    True -> Err "json: bad \\u escape"
+  | False -> Ok (case k > 15 of True -> k - 6 | False -> k).
 array s i acc = case and (acc == []) (peek s i == 93) of
     True -> Ok (JArr [], i + 1)
   | False -> value s i |>? (fn r -> (v, j) = r; k = ws s j;
@@ -136,7 +137,7 @@ quoteCode c = case c of
     | False -> (case and (c >= 55296) (c <= 57343) of
         True -> error "json: cannot render surrogate code point"
       | False -> Str.fromCode c)).
-hexCode n = Str.sub "0123456789abcdef" (n + 1) 1.
+hexCode n = Str.sub "0123456789abcdef" n 1.
 
 # two-space indentation; empty containers and scalars stay inline
 pretty j = prettyAt "" j.
@@ -155,7 +156,7 @@ get k j = case j of
   | _ -> Err "json: not an object".
 path ks j = List.fold (fn r k -> r |>? get k) (Ok j) ks.
 at i j = case j of
-    JArr xs -> (case and (i >= 1) (i <= List.len xs) of True -> Ok (xs ! i) | False -> Err "json: index {i} out of range")
+    JArr xs -> (case and (i >= 0) (i < List.len xs) of True -> Ok (xs ! i) | False -> Err "json: index {i} out of range")
   | _ -> Err "json: not an array".
 num j = case j of JNum n -> Ok n | _ -> Err "json: not a number".
 text j = case j of JStr t -> Ok t | _ -> Err "json: not a string".

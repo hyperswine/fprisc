@@ -1599,7 +1599,7 @@ static V g_drop(V v) {
   return (V)&fpr_unit;
 }
 
-/* substr s off len -- 1-indexed byte slice, clamped. Mechanism, not
+/* substr s off len -- the bytes [off, off + len), 0-based, clamped. Mechanism, not
  * policy: diskfs chunks payloads into pages (write) and takes the used
  * prefix of a page (read) with this; doing it via chr+strcat would be
  * one allocation PER BYTE of every page moved. */
@@ -1607,15 +1607,16 @@ static V g_substr(V sv, V off, V len) {
   if (ISINT(sv) || TID(sv) != T_STR) fpr_cpanic("substr: not a String");
   str_t *s = (str_t *)sv;
   sw o = UNTAG(off), l = UNTAG(len);
-  if (o < 1) o = 1;
+  if (o < 0) { l += o; o = 0; } /* [off, off+len) cut to the string, both ends */
   if (l < 0) l = 0;
-  if ((uw)(o - 1) >= s->len) { o = 1; l = 0; }
-  if ((uw)l > s->len - (uw)(o - 1)) l = (sw)(s->len - (uw)(o - 1));
-  return (V)fpr_mkstr(s->bytes + (o - 1), (uw)l);
+  if ((uw)o >= s->len) { o = 0; l = 0; }
+  if ((uw)l > s->len - (uw)o) l = (sw)(s->len - (uw)o);
+  return (V)fpr_mkstr(s->bytes + o, (uw)l);
 }
 /* ---- the string operations a library cannot build cheaply from substr ----
  * Same names and contracts as Sol's natives (compiler/Sol/VM.hs), so the two
- * profiles share one vocabulary: byte strings, 1-based, 0 = not found.
+ * profiles share one vocabulary: byte strings, 0-based, -1 = not found
+ * (docs/2026-10-02-ZERO-BASED.md).
  * strJoin is the one that matters: joining n pieces by repeated strcat copies
  * the accumulator n times (docs/2026-09-19-PRELIM_BASE_LIBRARY_DESIGN.md). */
 static str_t *want_str(V v, const char *who) {
@@ -1649,19 +1650,19 @@ static V g_strCmp(V av, V bv) { /* -1, 0, 1: bytewise, shorter first on a tie */
     if (a->bytes[i] != b->bytes[i]) return TAG(a->bytes[i] < b->bytes[i] ? -1 : 1);
   return TAG(a->len == b->len ? 0 : a->len < b->len ? -1 : 1);
 }
-static V g_strIndexFrom(V pv, V sv, V fromv) { /* the first match at or after `from`; 0 = none */
+static V g_strIndexFrom(V pv, V sv, V fromv) { /* the first match at or after `from`; -1 = none */
   str_t *p = want_str(pv, "strIndexFrom: not a String"), *s = want_str(sv, "strIndexFrom: not a String");
   sw from = UNTAG(fromv);
-  if (from < 1) from = 1;
-  if (p->len == 0) return TAG((uw)from <= s->len + 1 ? from : 0);
-  for (uw i = (uw)from - 1; i + p->len <= s->len; i++) {
+  if (from < 0) from = 0;
+  if (p->len == 0) return TAG((uw)from <= s->len ? from : -1);
+  for (uw i = (uw)from; i + p->len <= s->len; i++) {
     uw k = 0;
     while (k < p->len && s->bytes[i + k] == p->bytes[k]) k++; /* (no memcmp: freestanding boards) */
-    if (k == p->len) return TAG((sw)i + 1);
+    if (k == p->len) return TAG((sw)i);
   }
-  return TAG(0);
+  return TAG(-1);
 }
-static V g_strIndexOf(V pv, V sv) { return g_strIndexFrom(pv, sv, TAG(1)); }
+static V g_strIndexOf(V pv, V sv) { return g_strIndexFrom(pv, sv, TAG(0)); }
 
 static V g_arcLive(V d) {
   (void)d;
@@ -2469,7 +2470,7 @@ V fpr_prim_fn_String_x2elen(V s) {
   return TAG(t->len);
 }
 
-/* ! : list lookup, 1-indexed */
+/* ! : list lookup, 0-based */
 V fpr_prim_fn__x21(V xs, V iv) {
   sw i = UNTAG(iv);
   V c = xs;
@@ -2477,7 +2478,7 @@ V fpr_prim_fn__x21(V xs, V iv) {
     if (ISINT(c) || TID(c) != T_LIST || ((hdr_t *)c)->var != 1)
       fpr_cpanic("!: index out of range");
     V *f = (V *)((char *)c + 8);
-    if (i == 1) return f[0];
+    if (i == 0) return f[0];
     c = f[1];
     i--;
   }
@@ -2504,13 +2505,13 @@ void fpr_render_to_uart(V v) {
   for (int i = 0; i < rpos; i++) hal_putc(rbuf[i]);
 }
 
-/* string helpers exposed through the fpr_g_ contract (1-indexed, FPRISC) */
+/* string helpers exposed through the fpr_g_ contract (0-based) */
 static V g_charAt(V s, V i) {
   str_t *t = (str_t *)s;
   if (ISINT(s) || t->tid != T_STR) fpr_cpanic("charAt: not a string");
   sw k = UNTAG(i);
-  if (k < 1 || (uw)k > t->len) fpr_cpanic("charAt: index out of range");
-  return TAG(t->bytes[k - 1]);
+  if (k < 0 || (uw)k >= t->len) fpr_cpanic("charAt: index out of range");
+  return TAG(t->bytes[k]);
 }
 static V g_strlen(V s) {
   str_t *t = (str_t *)s;

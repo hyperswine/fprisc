@@ -10,13 +10,16 @@ expect what got want = case got == want of
 
 # ---- Str ----
 > expect "Str.len"        (Str.len "hello") 5.
-> expect "Str.slice"      (Str.slice "abcdef" 2 4) "bcd".
-> expect "Str.sub"        (Str.sub "abcdef" 3 2) "cd".
-> expect "Str.find"       (Str.find 98 "abc") 2.
-> expect "Str.find miss"  (Str.find 122 "abc") 0.
-> expect "Str.findFrom"   (Str.findFrom 97 "abab" 2) 3.
-> expect "Str.indexOf"    (Str.indexOf "cd" "abcdef") 3.
-> expect "Str.indexOf miss" (Str.indexOf "zz" "abcdef") 0.
+# positions are 0-based, -1 = not found, slices are half-open [i, j)
+> expect "Str.at"         (Str.at "abc" 0) 97.
+> expect "Str.slice"      (Str.slice "abcdef" 1 4) "bcd".
+> expect "Str.sub"        (Str.sub "abcdef" 2 2) "cd".
+> expect "Str.find"       (Str.find 98 "abc") 1.
+> expect "Str.find miss"  (Str.find 122 "abc") (0 - 1).
+> expect "Str.findFrom"   (Str.findFrom 97 "abab" 1) 2.
+> expect "Str.indexOf"    (Str.indexOf "cd" "abcdef") 2.
+> expect "Str.indexOf miss" (Str.indexOf "zz" "abcdef") (0 - 1).
+> expect "Str.indexFrom"  (Str.indexFrom "ab" "abab" 1) 2.
 > expect "Str.contains"   (Str.contains "cd" "abcdef", Str.contains "dc" "abcdef") (True, False).
 > expect "Str.startsWith" (Str.startsWith "ab" "abc", Str.startsWith "bc" "abc") (True, False).
 > expect "Str.endsWith"   (Str.endsWith "bc" "abc", Str.endsWith "ab" "abc") (True, False).
@@ -52,6 +55,7 @@ expect what got want = case got == want of
 > expect "List.concat"  (List.concat [[1], [2, 3], []]) [1, 2, 3].
 > expect "List.range"   (List.range 1 4) [1, 2, 3, 4].
 > expect "List.last"    (List.last [1, 2, 3]) 3.
+> expect "! (0-based)"  ([10, 20, 30] ! 0) 10.
 > expect "List.map"     (List.map (fn x -> x * 2) [1, 2]) [2, 4].
 > expect "List.filter"  (List.filter (fn x -> x > 1) [1, 2, 3]) [2, 3].
 > expect "List.fold"    (List.fold (fn a x -> a + x) 0 [1, 2, 3]) 6.

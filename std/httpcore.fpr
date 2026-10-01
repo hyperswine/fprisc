@@ -40,9 +40,11 @@ parseHeaders ls = parseHeadersGo ls Nil.
 parseHeadersGo : unsafe List String -> List (String, String) -> List (String, String) .
 parseHeadersGo ls acc = case ls of
     Nil -> rev acc Nil
-  | l :: r -> (case strIndexOf ":" l of
-        0 -> parseHeadersGo r acc
-      | at -> parseHeadersGo r ((S.toLower (S.trim (S.left (at - 1) l)), S.trim (S.dropLeft at l)) :: acc)).
+  | l :: r ->
+      at = strIndexOf ":" l;
+      (case at < 0 of
+          True -> parseHeadersGo r acc
+        | False -> parseHeadersGo r ((S.toLower (S.trim (S.left at l)), S.trim (S.dropLeft (at + 1) l)) :: acc)).
 
 renderHeaders : List (String, String) -> String .
 renderHeaders hs = strJoin "" (renderHeadersGo hs Nil).
@@ -105,8 +107,8 @@ requestFrom ls r = case ls of
 withBody method target hs r =
   n = (case headerGo "content-length" hs of O.Some t -> (case S.toInt t of Ok v -> v | Err _ -> 0) | O.None -> 0);
   at = strIndexOf "?" target;
-  path = (case at == 0 of True -> target | False -> S.left (at - 1) target);
-  query = (case at == 0 of True -> "" | False -> S.dropLeft at target);
+  path = (case at < 0 of True -> target | False -> S.left at target);
+  query = (case at < 0 of True -> "" | False -> S.dropLeft (at + 1) target);
   case n <= 0 of
     True -> Ok { method = method, path = path, query = query, headers = hs, body = "" }
   | False -> (case ST.readExactly n r of (res, _) ->
@@ -137,17 +139,19 @@ request q = case parseUrl q.url of
 
 # "http://host[:port][/path?query]" -> its parts
 parseUrl : String -> Result { scheme : String, host : String, port : Int, target : String } String .
-parseUrl url = case strIndexOf "://" url of
-    0 -> Err "not a URL (no scheme): {url}"
-  | at -> urlRest (S.toLower (S.left (at - 1) url)) (S.dropLeft (at + 2) url).
+parseUrl url =
+  at = strIndexOf "://" url;
+  case at < 0 of
+    True -> Err "not a URL (no scheme): {url}"
+  | False -> urlRest (S.toLower (S.left at url)) (S.dropLeft (at + 3) url).
 urlRest scheme rest =
   slash = strIndexOf "/" rest;
-  authority = (case slash == 0 of True -> rest | False -> S.left (slash - 1) rest);
-  target = (case slash == 0 of True -> "/" | False -> S.dropLeft (slash - 1) rest);
+  authority = (case slash < 0 of True -> rest | False -> S.left slash rest);
+  target = (case slash < 0 of True -> "/" | False -> S.dropLeft slash rest);
   colon = strIndexOf ":" authority;
-  host = (case colon == 0 of True -> authority | False -> S.left (colon - 1) authority);
+  host = (case colon < 0 of True -> authority | False -> S.left colon authority);
   dflt = (case scheme == "https" of True -> 443 | False -> 80);
-  port = (case colon == 0 of True -> Ok dflt | False -> S.toInt (S.dropLeft colon authority));
+  port = (case colon < 0 of True -> Ok dflt | False -> S.toInt (S.dropLeft (colon + 1) authority));
   case scheme == "http" or scheme == "https" of
     False -> Err "unsupported scheme: {scheme}"
   | True -> (case strlen host == 0 of
@@ -169,9 +173,11 @@ overTcp q u = case TCP.connect u.host u.port of
 
 # a whole reply: status line, headers, blank line, body (chunked or not)
 parseResponse : String -> Result { status : Int, headers : List (String, String), body : String } String .
-parseResponse raw = case strIndexOf "\r\n\r\n" raw of
-    0 -> Err "malformed reply (no end of headers)"
-  | at -> responseFrom (S.split "\r\n" (S.left (at - 1) raw)) (S.dropLeft (at + 3) raw).
+parseResponse raw =
+  at = strIndexOf "\r\n\r\n" raw;
+  case at < 0 of
+    True -> Err "malformed reply (no end of headers)"
+  | False -> responseFrom (S.split "\r\n" (S.left at raw)) (S.dropLeft (at + 4) raw).
 responseFrom ls body = case ls of
     Nil -> Err "empty reply"
   | line :: hs -> (case S.split " " line of
@@ -181,15 +187,17 @@ responseFrom ls body = case ls of
       | _ -> Err "malformed status line: {line}").
 finish status hs body = case headerGo "transfer-encoding" hs of
     O.Some enc -> (case S.contains "chunked" (S.toLower enc) of
-        True -> (case dechunk body 1 Nil of Ok b -> Ok { status = status, headers = hs, body = b } | Err e -> Err e)
+        True -> (case dechunk body 0 Nil of Ok b -> Ok { status = status, headers = hs, body = b } | Err e -> Err e)
       | False -> Ok { status = status, headers = hs, body = body })
   | O.None -> Ok { status = status, headers = hs, body = body }.
 
 # "<hex size>\r\n<bytes>\r\n" ... "0\r\n"
 dechunk : unsafe String -> Int -> List String -> Result String String .
-dechunk s i acc = case strIndexFrom "\r\n" s i of
-    0 -> Err "malformed chunked body"
-  | eol -> (case hexSize s i eol 0 of
+dechunk s i acc =
+  eol = strIndexFrom "\r\n" s i;
+  case eol < 0 of
+    True -> Err "malformed chunked body"
+  | False -> (case hexSize s i eol 0 of
         O.None -> Err "malformed chunk size"
       | O.Some n -> (case n == 0 of
             True -> Ok (strJoin "" (rev acc Nil))

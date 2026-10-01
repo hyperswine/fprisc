@@ -94,8 +94,10 @@ curlHeaders : unsafe List (String, String) -> List String -> List String .
 curlHeaders hs acc = case hs of Nil -> acc | (k, v) :: r -> curlHeaders r (strJoin ": " (k :: v :: Nil) :: "-H" :: acc).
 # curl -i prints a head per hop ("HTTP/1.1 100 Continue", a proxy's 200): the last one is the reply
 lastReply : unsafe String -> String .
-lastReply raw = case strIndexOf "\r\n\r\n" raw of
-    0 -> raw
-  | at -> (case S.startsWith "HTTP/" (S.dropLeft (at + 3) raw) and S.startsWith "HTTP/1.1 100" raw of
-        True -> lastReply (S.dropLeft (at + 3) raw)
+lastReply raw =
+  at = strIndexOf "\r\n\r\n" raw;
+  case at < 0 of
+    True -> raw
+  | False -> (case S.startsWith "HTTP/" (S.dropLeft (at + 4) raw) and S.startsWith "HTTP/1.1 100" raw of
+        True -> lastReply (S.dropLeft (at + 4) raw)
       | False -> raw).

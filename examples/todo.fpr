@@ -49,9 +49,9 @@ update ev m = case ev of
 changed m = (m, save m :: Nil).
 
 # one whole UTF-8 character off the end
-dropLastChar s = dropGo s (strlen s).
+dropLastChar s = dropGo s (strlen s - 1).
 dropGo : unsafe String -> Int -> String .
-dropGo s i = if i < 1 then "" else if charAt s i >= 128 and charAt s i < 192 then dropGo s (i - 1) else substr s 1 (i - 1).
+dropGo s i = if i < 0 then "" else if charAt s i >= 128 and charAt s i < 192 then dropGo s (i - 1) else substr s 0 i.
 
 view size m = case size of (cols, rows) ->
   Term.bold "To do" :: Term.dim "{List.length (List.filter (fn t -> t.done) m.items)} of {count m} done   up {m.seconds} s   {m.note}" :: ""

@@ -49,7 +49,7 @@ update msg model =
   | ("refresh", v) -> (model, case auth.unwrapU model == "" of True -> None | False -> Get "todos:{auth.unwrapU model}" "gottodos")
   | ("gottodos", v) -> ({model | todos = parseTodos v}, None)
   | ("add", v) -> save ((0, v) :: model.todos) model
-  | ("toggle", v) -> save (tAt (Str.parse v) 1 model.todos) model
+  | ("toggle", v) -> save (tAt (Str.parse v) 0 model.todos) model
   | ("clear", v) -> save (List.filter isOpen model.todos) model
   | _ -> (model, None).
 
@@ -75,7 +75,7 @@ todoView model =
     ],
     ui.card [
       ui.inputRow "add" "what needs doing?" "Add",
-      ui.col [ui.Style.gap1] (todoRows 1 model.todos)
+      ui.col [ui.Style.gap1] (todoRows 0 model.todos)
     ]
   ].
 

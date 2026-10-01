@@ -20,8 +20,8 @@ catalog = [("flat white", 5), ("long black", 4), ("cheese toastie", 9),
 
 nameOf (n, _) = n.
 priceOf (_, p) = p.
-priceAt k = catalog ! (k + 1) |> priceOf.   # `!` is 1-based
-nameAt k = catalog ! (k + 1) |> nameOf.
+priceAt k = catalog ! k |> priceOf.   # k is the 0-based catalog index
+nameAt k = catalog ! k |> nameOf.
 
 cartTotal cart = cart |> List.map (fn k -> priceAt k) |> List.fold (fn a b -> a + b) 0.
 
@@ -39,7 +39,7 @@ joinWith sep [] = "".
 joinWith sep [x] = x.
 joinWith sep (x :: r) = "{x}{sep}{joinWith sep r}".
 
-stockAt k ns = ns ! (k + 1).
+stockAt k ns = ns ! k.
 inStock k ns = stockAt k ns > 0.
 
 # take one of each cart item out of stock; restock adds a crate of 10

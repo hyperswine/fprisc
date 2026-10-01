@@ -431,10 +431,10 @@ evOf codec v = case D.run (D.field "e" D.string) v of
 # message is complete; "+" takes the event's argument as its final field
 # (View.sendWith).  The codec decides: anything it refuses never reaches update.
 decodeWire codec wire arg =
-  kind = substr wire 1 1;
+  kind = substr wire 0 1;
   case kind == "=" or kind == "+" of
     False -> Err "not a typed message: {wire}"
-  | True -> (case J.parse (substr wire 2 (strlen wire)) of
+  | True -> (case J.parse (substr wire 1 (strlen wire)) of
         Err why -> Err why
       | Ok v -> codec.dec (if kind == "+" then withLast arg (J.toWire v) else J.toWire v)).
 

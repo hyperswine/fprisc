@@ -926,17 +926,17 @@ mkHal cons scriptArgs tx preempts rt =
       -- (Str.split / indexOf / replace / upper / lower / trim / join in
       -- the preamble dispatch here; semantics are the preamble's own:
       -- split "" = [], a trailing separator ends the list, indexOf is
-      -- 1-based with 0 = miss and "" never found, replace is leftmost
+      -- 0-based with -1 = miss and "" never found, replace is leftmost
       -- non-overlapping, case folding is ASCII, trim strips 32/9/10/13)
       ("strSplit", (2, \[VInt c, sv] -> vsStr sv >>= \s -> pure (strList (splitCodes (toEnum (fromIntegral c)) s)))),
-      -- the first match at or after a 1-based position; 0 = none (runtime.c g_strIndexFrom)
+      -- the first match at or after a 0-based position; -1 = none (runtime.c g_strIndexFrom)
       ("strIndexFrom", (3, \[pv, sv, iv] -> case iv of
           VInt i0 -> liftA2 (\p s ->
-            let from = max 1 (fromIntegral i0) :: Int
-                rest = drop (from - 1) s
+            let from = max 0 (fromIntegral i0) :: Int
+                rest = drop from s
                 hit = indexOfStr p rest
-             in VInt (fromIntegral (if from > length s + 1 then 0 else if null p then from else if hit == 0 then 0 else hit + from - 1))) (vsStr pv) (vsStr sv)
-          _ -> pure (VInt 0))),
+             in VInt (fromIntegral (if from > length s then -1 else if null p then from else if hit < 0 then -1 else hit + from))) (vsStr pv) (vsStr sv)
+          _ -> pure (VInt (-1)))),
       ("strIndexOf", (2, \[pv, sv] -> liftA2 (\p s -> VInt (fromIntegral (indexOfStr p s))) (vsStr pv) (vsStr sv))),
       ("strReplace", (3, \[ov, nv, sv] -> do o <- vsStr ov; n <- vsStr nv; s <- vsStr sv; pure (VStr (replaceStr o n s)))),
       ("strUpper", (1, \[v] -> VStr . map (\ch -> if ch >= 'a' && ch <= 'z' then toEnum (fromEnum ch - 32) else ch) <$> vsStr v)),
@@ -966,13 +966,13 @@ mkHal cons scriptArgs tx preempts rt =
           r <- newIORef (BStrStore cap n (bs <> BS.replicate (max 0 (cap - n)) 0))
           mkBStr r)),
       ("BStr.len", (1, \[v] -> withBStr v (\r -> do n <- bsCpLen r; pure (VData 4 0 [VInt (fromIntegral n), v])))),
-      ("BStr.at", (2, \[v, VInt i] -> withBStr v (\r -> do c <- bsCpAt r (fromIntegral i - 1); pure (VData 4 0 [VInt (fromIntegral c), v])))),
+      ("BStr.at", (2, \[v, VInt i] -> withBStr v (\r -> do c <- bsCpAt r (fromIntegral i); pure (VData 4 0 [VInt (fromIntegral c), v])))),
       ("BStr.sub", (3, \[v, VInt i, VInt j] -> withBStr v (\r -> do
           s <- bsContent r
           let lo = fromIntegral i; hi = fromIntegral j
-          if lo < 1 || hi > length s || lo > hi
+          if lo < 0 || hi > length s || lo > hi
             then vmPanic "BStr.sub: index out of range"
-            else do let bs = BSU.fromString (take (hi - lo + 1) (drop (lo - 1) s)); n = BS.length bs; cap = max initialBsCap (n * 2)
+            else do let bs = BSU.fromString (take (hi - lo) (drop lo s)); n = BS.length bs; cap = max initialBsCap (n * 2)
                     r2 <- newIORef (BStrStore cap n (bs <> BS.replicate (max 0 (cap - n)) 0))
                     sl <- mkBStr r2
                     pure (VData 4 0 [sl, v])))),
@@ -1303,17 +1303,17 @@ mkHal cons scriptArgs tx preempts rt =
 
     charAtH [sv, VInt i]
       | Just a <- stringIndex sv, Just n <- stringLength sv =
-          if i >= 1 && i <= fromIntegral n
-            then pure (VInt (fromIntegral (fromEnum (a ! fromInteger i))))
+          if i >= 0 && i < fromIntegral n
+            then pure (VInt (fromIntegral (fromEnum (a ! fromInteger (i + 1)))))
             else vmPanic "charAt: index out of range"
     charAtH _ = vmPanic "charAt: bad args"
     -- Clamp in Integer before narrowing: huge Sol integers must not wrap.
     substrH [sv, VInt o0, VInt l0]
       | Just a <- stringIndex sv, Just size <- stringLength sv = do
           let n = fromIntegral size :: Integer
-              o = max 1 o0
-              count = max 0 (min l0 (n - o + 1))
-          pure (VStr [a ! fromInteger i | i <- [o .. o + count - 1]])
+              o = max 0 o0
+              count = max 0 (min (l0 + min 0 o0) (n - o)) -- [off, off+len) cut to the string, both ends
+          pure (VStr [a ! fromInteger (i + 1) | i <- [o .. o + count - 1]])
     substrH _ = vmPanic "substr: bad args"
     listItems :: Value -> [Value]
     listItems (VData t 1 [x, r]) | t == listT = x : listItems r
@@ -1324,10 +1324,10 @@ mkHal cons scriptArgs tx preempts rt =
       (pre, []) -> [pre]
       (pre, _ : rest) -> pre : splitCodes c rest
     indexOfStr :: String -> String -> Int
-    indexOfStr "" _ = 0
-    indexOfStr p s = go 1 s
+    indexOfStr "" _ = -1
+    indexOfStr p s = go 0 s
       where
-        go _ [] = 0
+        go _ [] = -1
         go i t@(_ : r) = if startsWithStr p t then i else go (i + 1) r
     startsWithStr :: String -> String -> Bool
     startsWithStr [] _ = True
@@ -1347,8 +1347,8 @@ mkHal cons scriptArgs tx preempts rt =
 
     indexH [xs, VInt i] = idx xs i
       where
-        idx (VVec r) k = getVec r (fromIntegral k - 1) -- O(1); consumes the vector (linearity) — Vec.get keeps it
-        idx (VData t 1 [x, _]) 1 | t == listT = pure x
+        idx (VVec r) k = getVec r (fromIntegral k) -- O(1); consumes the vector (linearity) — Vec.get keeps it
+        idx (VData t 1 [x, _]) 0 | t == listT = pure x
         idx (VData t 1 [_, r]) k | t == listT = idx r (k - 1)
         idx _ _ = vmPanic "!: index out of range"
     indexH _ = vmPanic "!: bad args"
@@ -1399,9 +1399,9 @@ vecCall env name args = case (name, args) of
   ("Vec.push", [x, VVec r]) -> pushVec r x >> pure (VVec r)
   ("Vec.len", [VVec r]) -> do n <- lenVec r; pure (VData 4 0 [VInt (fromIntegral n), VVec r])
   ("Vec.get", [VInt i, VVec r]) -> do
-    x <- getVec r (fromIntegral i - 1) -- 1-indexed like list !
+    x <- getVec r (fromIntegral i) -- 0-based like list !
     pure (VData 4 0 [x, VVec r])
-  ("Vec.set", [VInt i, x, VVec r]) -> setVec r (fromIntegral i - 1) x >> pure (VVec r)
+  ("Vec.set", [VInt i, x, VVec r]) -> setVec r (fromIntegral i) x >> pure (VVec r)
   ("Vec.free", [VVec _]) -> pure vUnit -- ForeignPtr finalizers reclaim
   -- the operator surface (VecOps in the prelude): elementwise + - *,
   -- the dot product, and scalar scaling -- both operands are consumed
