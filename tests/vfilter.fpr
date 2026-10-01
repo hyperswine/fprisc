@@ -1,3 +1,4 @@
+P2 = {x : Int, y : Int}.
 # vfilter.fpr — Vec.filter is EAGER COMPACTION, in place.
 #
 # The kept rows slide down with two cursors inside the SAME vector:
@@ -8,11 +9,11 @@
 keepEven x = x - (x / 2) * 2 == 0.
 keepBig p = p.x > 20.
 
-fillI : unsafe Vector -> Int -> Int -> Vector .
+fillI : unsafe (Vector Int) -> Int -> Int -> (Vector Int) .
 fillI v i lim | i > lim = v.
 fillI v i lim = fillI (Vec.push i v) (i + 1) lim.
 
-fillP : unsafe Vector -> Int -> Int -> Vector .
+fillP : unsafe (Vector P2) -> Int -> Int -> (Vector P2) .
 fillP v i lim | i > lim = v.
 fillP v i lim = fillP (Vec.push {x = i, y = i * 2} v) (i + 1) lim.
 

@@ -107,9 +107,9 @@ entP r n acc p = entGo r n (acc - p * log2f p).
 
 # ---- class counts at a node -------------------------------------------------
 
-ccounts : unsafe Vector -> List Int -> Int -> _ .
+ccounts : unsafe (Vector _) -> List Int -> Int -> _ .
 ccounts ys idxs k = ccGo ys idxs (zerosL k).
-ccGo : unsafe Vector -> List Int -> List Int -> _ .
+ccGo : unsafe (Vector _) -> List Int -> List Int -> _ .
 ccGo ys Nil acc = (acc, ys).
 ccGo ys (i :: r) acc =
   (y, ys2) = Vec.get (i + 1) ys;
@@ -117,7 +117,7 @@ ccGo ys (i :: r) acc =
 
 # ---- the histogram: one scatter pass over the node's rows -------------------
 
-histB : unsafe Vector -> Vector -> Vector -> List Int -> Int -> _ .
+histB : unsafe (Vector _) -> (Vector _) -> (Vector _) -> List Int -> Int -> _ .
 histB h cs ys Nil k = (h, cs, ys).
 histB h cs ys (i :: r) k =
   (b, cs2) = Vec.get (i + 1) cs;
@@ -127,9 +127,9 @@ histB h cs ys (i :: r) k =
   histB (Vec.set pos (old + 1) h2) cs2 ys2 r k.
 
 # the k counts of bin row t
-rowL : unsafe Vector -> Int -> Int -> Int -> _ .
+rowL : unsafe (Vector _) -> Int -> Int -> Int -> _ .
 rowL h base j k = case j >= k of True -> (Nil, h) | False -> rowGo h base j k.
-rowGo : unsafe Vector -> Int -> Int -> Int -> _ .
+rowGo : unsafe (Vector _) -> Int -> Int -> Int -> _ .
 rowGo h base j k =
   (v, h2) = Vec.get (base + j + 1) h;
   (rest, h3) = rowL h2 base (j + 1) k;
@@ -139,13 +139,13 @@ rowGo h base j k =
 # best = (gain, bin, found); an earlier best survives a tie (g0 >= g),
 # the reference's rule.
 
-sweep : unsafe Vector -> Int -> List Int -> F64 -> Int -> Int -> P -> Int -> F64 -> List Int -> _ .
+sweep : unsafe (Vector _) -> Int -> List Int -> F64 -> Int -> Int -> P -> Int -> F64 -> List Int -> _ .
 sweep h t lc bg bt has ps n parentH totalC =
   P bins md mg ml k = ps;
   case t >= bins - 1 of
     True -> ((bg, bt, has), h)
   | False -> swRow h t lc bg bt has ps n parentH totalC.
-swRow : unsafe Vector -> Int -> List Int -> F64 -> Int -> Int -> P -> Int -> F64 -> List Int -> _ .
+swRow : unsafe (Vector _) -> Int -> List Int -> F64 -> Int -> Int -> P -> Int -> F64 -> List Int -> _ .
 swRow h t lc bg bt has ps n parentH totalC =
   P bins md mg ml k = ps;
   (row, h2) = rowL h (t * k) 0 k;
@@ -156,7 +156,7 @@ swRow h t lc bg bt has ps n parentH totalC =
   | False -> case n - nl < ml of
       True -> sweep h2 (t + 1) lc2 bg bt has ps n parentH totalC
     | False -> swScore h2 t lc2 bg bt has ps n parentH totalC nl.
-swScore : unsafe Vector -> Int -> List Int -> F64 -> Int -> Int -> P -> Int -> F64 -> List Int -> Int -> _ .
+swScore : unsafe (Vector _) -> Int -> List Int -> F64 -> Int -> Int -> P -> Int -> F64 -> List Int -> Int -> _ .
 swScore h t lc2 bg bt has ps n parentH totalC nl =
   wl = F64.ofInt nl / F64.ofInt n;
   wr = F64.ofInt (n - nl) / F64.ofInt n;
@@ -169,7 +169,7 @@ swScore h t lc2 bg bt has ps n parentH totalC nl =
 
 # ---- best split of one column ----------------------------------------------
 
-bsc : unsafe P -> F64 -> Vector -> Vector -> List Int -> Int -> List Int -> _ .
+bsc : unsafe P -> F64 -> (Vector _) -> (Vector _) -> List Int -> Int -> List Int -> _ .
 bsc ps parentH cs ys idxs n totalC =
   P bins md mg ml k = ps;
   h0 = cvec (bins * k) 0;
@@ -182,7 +182,7 @@ bsc ps parentH cs ys idxs n totalC =
 # (prepend-built; every consumer is order-insensitive -- counts,
 # histograms, and the next partition see the same SET)
 
-part : unsafe Vector -> List Int -> Int -> List Int -> List Int -> _ .
+part : unsafe (Vector _) -> List Int -> Int -> List Int -> List Int -> _ .
 part cs Nil t al ar = (al, ar, cs).
 part cs (i :: rest) t al ar =
   (b, cs2) = Vec.get (i + 1) cs;
@@ -196,7 +196,7 @@ part cs (i :: rest) t al ar =
 
 B = Type (B lo0 w0 lo1 w1).
 
-build : unsafe P -> B -> Vector -> Vector -> Vector -> Int -> List Int -> _ .
+build : unsafe P -> B -> (Vector _) -> (Vector _) -> (Vector _) -> Int -> List Int -> _ .
 build ps bn c0 c1 ys depth idxs =
   P bins md mg ml k = ps;
   n = List.len idxs;
@@ -206,12 +206,12 @@ build ps bn c0 c1 ys depth idxs =
   | False -> case n < 2 * ml of
       True -> (Leaf (argmaxL counts), c0, c1, ys2)
     | False -> buildH ps bn c0 c1 ys2 depth idxs n counts (entL counts).
-buildH : unsafe P -> B -> Vector -> Vector -> Vector -> Int -> List Int -> Int -> List Int -> F64 -> _ .
+buildH : unsafe P -> B -> (Vector _) -> (Vector _) -> (Vector _) -> Int -> List Int -> Int -> List Int -> F64 -> _ .
 buildH ps bn c0 c1 ys depth idxs n counts parentH =
   case parentH == 0.0 of
     True -> (Leaf (argmaxL counts), c0, c1, ys)
   | False -> buildS ps bn c0 c1 ys depth idxs n counts parentH.
-buildS : unsafe P -> B -> Vector -> Vector -> Vector -> Int -> List Int -> Int -> List Int -> F64 -> _ .
+buildS : unsafe P -> B -> (Vector _) -> (Vector _) -> (Vector _) -> Int -> List Int -> Int -> List Int -> F64 -> _ .
 buildS ps bn c0 c1 ys depth idxs n counts parentH =
   ((g0, t0, f0), c0b, ys2) = bsc ps parentH c0 ys idxs n counts;
   ((g1, t1, f1), c1b, ys3) = bsc ps parentH c1 ys2 idxs n counts;
@@ -225,7 +225,7 @@ buildS ps bn c0 c1 ys depth idxs n counts parentH =
   | False -> case f1 == 1 of
       True -> buildGo ps bn c0b c1b ys3 depth idxs counts g1 1 t1
     | False -> (Leaf (argmaxL counts), c0b, c1b, ys3).
-buildGo : unsafe P -> B -> Vector -> Vector -> Vector -> Int -> List Int -> List Int -> F64 -> Int -> Int -> _ .
+buildGo : unsafe P -> B -> (Vector _) -> (Vector _) -> (Vector _) -> Int -> List Int -> List Int -> F64 -> Int -> Int -> _ .
 buildGo ps bn c0 c1 ys depth idxs counts gain col t =
   P bins md mg ml k = ps;
   case gain >= mg of
@@ -233,14 +233,14 @@ buildGo ps bn c0 c1 ys depth idxs counts gain col t =
   | True -> case col == 0 of
       True -> buildL0 ps bn c0 c1 ys depth idxs t
     | False -> buildL1 ps bn c0 c1 ys depth idxs t.
-buildL0 : unsafe P -> B -> Vector -> Vector -> Vector -> Int -> List Int -> Int -> _ .
+buildL0 : unsafe P -> B -> (Vector _) -> (Vector _) -> (Vector _) -> Int -> List Int -> Int -> _ .
 buildL0 ps bn c0 c1 ys depth idxs t =
   B lo0 w0 lo1 w1 = bn;
   (l, r, c0b) = part c0 idxs t Nil Nil;
   (tl, c0c, c1b, ys2) = build ps bn c0b c1 ys (depth + 1) l;
   (tr, c0d, c1c, ys3) = build ps bn c0c c1b ys2 (depth + 1) r;
   (Split 0 (lo0 + F64.ofInt (t + 1) * w0) tl tr, c0d, c1c, ys3).
-buildL1 : unsafe P -> B -> Vector -> Vector -> Vector -> Int -> List Int -> Int -> _ .
+buildL1 : unsafe P -> B -> (Vector _) -> (Vector _) -> (Vector _) -> Int -> List Int -> Int -> _ .
 buildL1 ps bn c0 c1 ys depth idxs t =
   B lo0 w0 lo1 w1 = bn;
   (l, r, c1b) = part c1 idxs t Nil Nil;
@@ -250,7 +250,7 @@ buildL1 ps bn c0 c1 ys depth idxs t =
 
 # ---- binning: raw F64 column -> Int codes -----------------------------------
 
-binCol : unsafe Vector -> Int -> _ .
+binCol : unsafe (Vector _) -> Int -> _ .
 binCol col nb =
   (n, col1) = Vec.len col;
   inf = 1.0 / 0.0;
@@ -258,38 +258,38 @@ binCol col nb =
   (hi, col3) = Vec.fold fmaxf (0.0 - inf) col2;
   w0 = (hi - lo) / F64.ofInt nb;
   w = case w0 <= 0.0 of True -> 1.0 | False -> w0;
-  (codes, col4) = binGo col3 0 n lo w nb (Vec.new Unit);
+  (codes, col4) = binGo col3 0 n lo w nb (Vec.newAs "i");
   (codes, lo, w, col4).
-binGo : unsafe Vector -> Int -> Int -> F64 -> F64 -> Int -> Vector -> _ .
+binGo : unsafe (Vector _) -> Int -> Int -> F64 -> F64 -> Int -> (Vector _) -> _ .
 binGo col i n lo w nb acc = case i >= n of
     True -> (acc, col)
   | False -> binPut col i n lo w nb acc.
-binPut : unsafe Vector -> Int -> Int -> F64 -> F64 -> Int -> Vector -> _ .
+binPut : unsafe (Vector _) -> Int -> Int -> F64 -> F64 -> Int -> (Vector _) -> _ .
 binPut col i n lo w nb acc =
   (x, col2) = Vec.get (i + 1) col;
   binGo col2 (i + 1) n lo w nb (Vec.push (Int.min (nb - 1) (F64.toInt ((x - lo) / w))) acc).
 
 # ---- prediction + accuracy --------------------------------------------------
 
-predAt : unsafe Tree -> Vector -> Vector -> Int -> _ .
+predAt : unsafe Tree -> (Vector _) -> (Vector _) -> Int -> _ .
 predAt (Leaf c) xs zs i = (c, xs, zs).
 predAt (Split col thr l r) xs zs i = case col == 0 of
     True -> pred0 thr l r xs zs i
   | False -> pred1 thr l r xs zs i.
-pred0 : unsafe F64 -> Tree -> Tree -> Vector -> Vector -> Int -> _ .
+pred0 : unsafe F64 -> Tree -> Tree -> (Vector _) -> (Vector _) -> Int -> _ .
 pred0 thr l r xs zs i =
   (v, xs2) = Vec.get (i + 1) xs;
   case v < thr of True -> predAt l xs2 zs i | False -> predAt r xs2 zs i.
-pred1 : unsafe F64 -> Tree -> Tree -> Vector -> Vector -> Int -> _ .
+pred1 : unsafe F64 -> Tree -> Tree -> (Vector _) -> (Vector _) -> Int -> _ .
 pred1 thr l r xs zs i =
   (v, zs2) = Vec.get (i + 1) zs;
   case v < thr of True -> predAt l xs zs2 i | False -> predAt r xs zs2 i.
 
-accGo : unsafe Tree -> Vector -> Vector -> Vector -> Int -> Int -> Int -> _ .
+accGo : unsafe Tree -> (Vector _) -> (Vector _) -> (Vector _) -> Int -> Int -> Int -> _ .
 accGo tree xs zs ys i n hits = case i >= n of
     True -> (hits, xs, zs, ys)
   | False -> accOne tree xs zs ys i n hits.
-accOne : unsafe Tree -> Vector -> Vector -> Vector -> Int -> Int -> Int -> _ .
+accOne : unsafe Tree -> (Vector _) -> (Vector _) -> (Vector _) -> Int -> Int -> Int -> _ .
 accOne tree xs zs ys i n hits =
   (p, xs2, zs2) = predAt tree xs zs i;
   (y, ys2) = Vec.get (i + 1) ys;
@@ -313,26 +313,26 @@ depthT (Split col thr l r) = 1 + Int.max (depthT l) (depthT r).
 
 lcgN s = (1103515245 * s + 12345) % 2147483648.
 
-fillM : unsafe Int -> Int -> Vector -> _ .
+fillM : unsafe Int -> Int -> (Vector _) -> _ .
 fillM cnt s v = case cnt == 0 of
     True -> (v, s)
   | False -> fillM2 cnt (lcgN s) v.
-fillM2 : unsafe Int -> Int -> Vector -> _ .
+fillM2 : unsafe Int -> Int -> (Vector _) -> _ .
 fillM2 cnt s2 v =
   fillM (cnt - 1) s2 (Vec.push (F64.ofInt s2 / 2147483648.0 * 2.0 - 1.0) v).
-fillU : unsafe Int -> Int -> Vector -> _ .
+fillU : unsafe Int -> Int -> (Vector _) -> _ .
 fillU cnt s v = case cnt == 0 of
     True -> (v, s)
   | False -> fillU2 cnt (lcgN s) v.
-fillU2 : unsafe Int -> Int -> Vector -> _ .
+fillU2 : unsafe Int -> Int -> (Vector _) -> _ .
 fillU2 cnt s2 v =
   fillU (cnt - 1) s2 (Vec.push (F64.ofInt s2 / 2147483648.0) v).
 
-lbl : unsafe Int -> Int -> Vector -> Vector -> Vector -> Vector -> _ .
+lbl : unsafe Int -> Int -> (Vector _) -> (Vector _) -> (Vector _) -> (Vector _) -> _ .
 lbl i n xs zs ns ys = case i >= n of
     True -> (ys, xs, zs, ns)
   | False -> lblOne i n xs zs ns ys.
-lblOne : unsafe Int -> Int -> Vector -> Vector -> Vector -> Vector -> _ .
+lblOne : unsafe Int -> Int -> (Vector _) -> (Vector _) -> (Vector _) -> (Vector _) -> _ .
 lblOne i n xs zs ns ys =
   (x, xs2) = Vec.get (i + 1) xs;
   (z, zs2) = Vec.get (i + 1) zs;
@@ -346,7 +346,7 @@ gen seed n =
   (xs, s1) = fillM n seed (Vec.newAs "d");
   (zs, s2) = fillM n s1 (Vec.newAs "d");
   (ns, s3) = fillU n s2 (Vec.newAs "d");
-  (ys, xs2, zs2, ns2) = lbl 0 n xs zs ns (Vec.new Unit);
+  (ys, xs2, zs2, ns2) = lbl 0 n xs zs ns (Vec.newAs "i");
   _ = Vec.free ns2;
   (xs2, zs2, ys).
 

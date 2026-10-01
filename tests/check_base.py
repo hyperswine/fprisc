@@ -15,6 +15,7 @@ def run(args, expected=0, timeout=120, stdin=None, env=None):
         raise AssertionError(f'{args}: exit {p.returncode}, expected {expected}\n{p.stdout}\n{p.stderr}')
     return p
 run(['make', 'fpr'], timeout=300)
+print(run(['python3', 'tests/check_typed_vectors.py'], timeout=300).stdout, end='')
 with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     tmp = Path(temp)
     def build(prog, name):

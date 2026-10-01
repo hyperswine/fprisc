@@ -15,7 +15,7 @@ mulMV m v =
     z = m.m20 * v.x + m.m21 * v.y + m.m22 * v.z + m.m23 * v.w,
     w = m.m30 * v.x + m.m31 * v.y + m.m32 * v.z + m.m33 * v.w } .
 
-fill : Vector -> (i : Int | measure (lim - i)) -> Int -> Vector .
+fill : (Vector Vec4) -> (i : Int | measure (lim - i)) -> Int -> (Vector Vec4) .
 fill v i lim | i > lim = v.
 fill v i lim = fill (Vec.push {x = i, y = i * 2 - 3, z = 7 - i, w = 1} v) (i + 1) lim.
 

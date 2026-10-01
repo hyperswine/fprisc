@@ -1,0 +1,24 @@
+identity : Vector a -> Vector a .
+identity v = v.
+repeatMap : (a -> a) -> Vector a -> Vector a .
+repeatMap f v = Vec.mapSame f v.
+main =
+  vi = identity (Vec.iota 3);
+  vd = Vec.map (fn n -> F64.ofInt n) vi;
+  (x, vd2) = Vec.at 2 vd;
+  vt = Vec.map (fn f -> (7, f + 0.5)) vd2;
+  ((i, y), vt2) = Vec.at 2 vt;
+  vs = Vec.map (fn p -> "ok") vt2;
+  (s, vs2) = Vec.at 1 vs;
+  _ = Vec.free vs2;
+  vf = identity (Vec.push 1.25 (Vec.new Unit));
+  vf2 = repeatMap (fn f -> f + 1.0) vf;
+  (z, vf3) = Vec.at 0 vf2;
+  _ = Vec.free vf3;
+  vl = Vec.fromList [2.0, 3.0];
+  (l, vl2) = Vec.at 1 vl;
+  _ = Vec.free vl2;
+  vb = Vec.map (fn f -> f > 0.0) (Vec.push 1.0 (Vec.newAs "d"));
+  (b, vb2) = Vec.at 0 vb;
+  _ = Vec.free vb2;
+  print "typed: {F64.str x} {i} {F64.str y} {s} {F64.str z} {F64.str l} {b}".

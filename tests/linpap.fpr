@@ -16,15 +16,15 @@
 #
 # Expected: "linpap: x=5 y=10 z=108"
 
-mk : (n : Int | measure n) -> Vector -> Vector .
+mk : (n : Int | measure n) -> (Vector Int) -> (Vector Int) .
 mk n v = case n <= 0 of True -> v | False -> mk (n - 1) (Vec.push n v).
 
 # arg order puts the VECTOR first, so partially applying it is exactly
 # the previously-refused shape
-flipGet : Vector -> Int -> (Int, Vector) .
+flipGet : (Vector Int) -> Int -> (Int, (Vector Int)) .
 flipGet v i = Vec.get i v.
 
-addAt : Int -> Int -> Vector -> Vector .
+addAt : Int -> Int -> (Vector Int) -> (Vector Int) .
 addAt i d v =
   (old, v2) = Vec.get i v;
   Vec.set i (old + d) v2.

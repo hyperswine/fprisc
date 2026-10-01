@@ -92,3 +92,4 @@ they began.
 | 2026-10-01 | [INDEXING.md](2026-10-01-INDEXING.md) | The 0-based / 1-based split as it stands (strings, `!`, `Vec.get/set` 1-based; `Vec.at/put`, offsets 0-based), and a proposed migration to 0-based everywhere |
 | 2026-10-01 | [PROCESS-IMAGES.md](2026-10-01-PROCESS-IMAGES.md) | Mortal process images: an O(1) image map for `fpr_in_heap`, the reap hook, and what the deep copier lets leave another process's image (data copied, functions refused) |
 | 2026-10-01 | [CODE-PUBLICATION.md](2026-10-01-CODE-PUBLICATION.md) | Loaded code publication: local fence and a generation acquired and fenced by every remote hart before actor dispatch |
+| 2026-10-01 | [TYPED-VECTORS.md](2026-10-01-TYPED-VECTORS.md) | Vector a links element reads/writes/maps, preserves linearity, derives raw-float output layouts and refuses unsupported representation-polymorphic allocation |

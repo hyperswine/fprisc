@@ -33,7 +33,7 @@ mixf acc x = acc * 0.5 + x.
 rnd x = Num.round (x * 3.7) + Num.floor (x / 3).
 step x | x > 500 = x * 3 - 7 .
 step x = x / 2 + 1 .
-fill : unsafe Vector -> Int -> Int -> Vector .
+fill : unsafe Vector Int -> Int -> Int -> Vector Int .
 fill v i lim | i > lim = v.
 fill v i lim = fill (Vec.push (i * 13) v) (i + 1) lim.
 > xs = List.range 1 3000;

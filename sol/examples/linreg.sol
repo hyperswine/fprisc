@@ -26,7 +26,7 @@ mkRow s =
   noise = Rand.gauss4 s3 / 20;
   {x1 = x1, x2 = x2, y = trueW1 * x1 + trueW2 * x2 + trueB + noise}.
 
-fill : Vector -> Int -> (k : Int | measure k) -> Vector .
+fill : (Vector _) -> Int -> (k : Int | measure k) -> (Vector _) .
 fill v s k | k <= 0 = v.
 fill v s k = fill (Vec.push (mkRow (Rand.next (s + k * 100003))) v) s (k - 1).
 
@@ -45,7 +45,7 @@ epoch n lr w1 w2 b v =
   (s3, v3) = Vec.fold (gB w1 w2 b) 0 v2;
   (w1 - lr * (s1 / n), w2 - lr * (s2 / n), b - lr * (s3 / n), v3).
 
-train : (k : Int | measure k) -> Int -> Int -> Int -> Int -> Int -> Vector -> (Int, Int, Int, Vector) .
+train : (k : Int | measure k) -> Int -> Int -> Int -> Int -> Int -> (Vector _) -> (Int, Int, Int, (Vector _)) .
 train k n lr w1 w2 b v | k <= 0 = (w1, w2, b, v).
 train k n lr w1 w2 b v =
   (w1a, w2a, ba, v2) = epoch n lr w1 w2 b v;

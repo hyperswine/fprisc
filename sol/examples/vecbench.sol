@@ -1,6 +1,6 @@
 Row = {key : Int, val : Int}.
 mkRow i = {key = i, val = i * 7 - (i / 13) * 13}.
-fill : unsafe Vector -> Int -> Int -> Vector .
+fill : unsafe (Vector _) -> Int -> Int -> (Vector _) .
 fill v i lim | i > lim = v.
 fill v i lim = fill (Vec.push (mkRow i) v) (i + 1) lim.
 plus a b = a + b.

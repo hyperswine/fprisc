@@ -19,11 +19,11 @@ shiftDn v = v - 2.
 bump p = {p | x = 2 * p.x + 1, y = p.y - 4}.
 swirl p = {x = p.x + p.y, y = p.x - p.y}.
 
-fillI : Vector -> (i : Int | measure (lim - i)) -> Int -> Vector .
+fillI : (Vector Int) -> (i : Int | measure (lim - i)) -> Int -> (Vector Int) .
 fillI v i lim | i > lim = v.
 fillI v i lim = fillI (Vec.push i v) (i + 1) lim.
 
-fillP : Vector -> (i : Int | measure (lim - i)) -> Int -> Vector .
+fillP : (Vector P2) -> (i : Int | measure (lim - i)) -> Int -> (Vector P2) .
 fillP v i lim | i > lim = v.
 fillP v i lim = fillP (Vec.push {x = i, y = i * 3} v) (i + 1) lim.
 

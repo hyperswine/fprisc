@@ -22,7 +22,7 @@
 
 base = use "base".
 
-Matrix 1 = Type (Mat Int Int Vector).
+Matrix 1 = Type (Mat Int Int (Vector Int)).
 
 # ---- construction ----------------------------------------------------------
 

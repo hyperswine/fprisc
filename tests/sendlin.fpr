@@ -26,15 +26,15 @@ rloop me p =
   _ = sendLinear p f2;
   rloop me p .
 
-paint : unsafe Vector -> Int -> Vector .
+paint : unsafe (Vector Int) -> Int -> (Vector Int) .
 paint fb i | i > wMax = fb.
 paint fb i = paint (Vec.set i (i * 3) fb) (i + 1) .
 
-fill : unsafe Vector -> Int -> Int -> Vector .
+fill : unsafe (Vector Int) -> Int -> Int -> (Vector Int) .
 fill v i lim | i > lim = v.
 fill v i lim = fill (Vec.push 0 v) (i + 1) lim .
 
-ploop : unsafe Int -> Int -> Vector -> Int -> Int -> Vector .
+ploop : unsafe Int -> Int -> (Vector Int) -> Int -> Int -> (Vector Int) .
 ploop me r f n stop | n > stop = f.
 ploop me r f n stop =
   _ = sendLinear r f;

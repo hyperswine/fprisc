@@ -4,7 +4,7 @@
 step x | x > 500 = x * 3 - 7 .
 step x = x / 2 + 1 .
 plus a b = a + b .
-fill : unsafe Vector -> Int -> Int -> Vector .
+fill : unsafe (Vector _) -> Int -> Int -> (Vector _) .
 fill v i lim | i > lim = v.
 fill v i lim = fill (Vec.push (i * 13) v) (i + 1) lim.
 

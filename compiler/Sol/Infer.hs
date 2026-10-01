@@ -32,6 +32,7 @@ solProf =
     { ipBuiltins = solBuiltins,
       ipTopEvals = True,
       ipPathStr = True,
+      ipVectorLayouts = False,
       ipMat4 = False
     }
 
@@ -118,7 +119,7 @@ solBuiltins =
       -- the float-literal splices: Int-is-Numeric, no width vocabulary
       ("f64frombits", mono (TFn tInt (TFn tInt tInt))),
       ("f32frombits", mono (TFn tInt tInt)),
-      ("!", scheme [0, 1] (TFn (sv 0) (TFn tInt (sv 1)))), -- indexing; builtin-overloaded List/Vector — candidate for an Index sig
+      ("!", scheme [0] (TFn (tList (sv 0)) (TFn tInt (sv 0)))), -- list indexing; vectors use the ownership-threading Vec.get
       ("map", scheme [0, 1] (TFn (TFn (sv 0) (sv 1)) (TFn (tList (sv 0)) (tList (sv 1))))),
       ("filter", scheme [0] (TFn (TFn (sv 0) tBool) (TFn (tList (sv 0)) (tList (sv 0))))),
       ("foldl", scheme [0, 1] (TFn (TFn (sv 1) (TFn (sv 0) (sv 1))) (TFn (sv 1) (TFn (tList (sv 0)) (sv 1)))))

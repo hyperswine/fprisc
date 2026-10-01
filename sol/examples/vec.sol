@@ -14,7 +14,7 @@ mkStudent i = {age = 17 + (i - (i / 40) * 40), name = "student{i}"}.
 plus a b = a + b.
 
 # build: push_back with doubling realloc, entirely in place (linear!)
-fill : Vector -> (i : Int | measure (lim - i)) -> (lim : Int) -> Vector .
+fill : (Vector _) -> (i : Int | measure (lim - i)) -> (lim : Int) -> (Vector _) .
 fill v i lim | i > lim = v.
 fill v i lim = fill (Vec.push (mkStudent i) v) (i + 1) lim.
 
@@ -45,4 +45,6 @@ fill v i lim = fill (Vec.push (mkStudent i) v) (i + 1) lim.
   doubled = Vec.map (fn x -> x * 2) nums;
   (s, d2) = Vec.fold plus 0 doubled;
   u = print "sum doubled 1..1000: {s}";
-  d2 ! 1.
+  (first, d3) = Vec.get 1 d2;
+  _ = Vec.free d3;
+  first.

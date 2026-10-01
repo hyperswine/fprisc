@@ -26,8 +26,8 @@
 --   * no value restriction (no ML-style refs at the language level)
 --   * monomorphic recursion; polymorphism via SCC-ordered generalization
 --   * sig matching by unification, not subsumption (weaker but simple)
---   * a handful of HAL builtins get generous schemes (Vec.get : Int ->
---     Vector -> (a, Vector) — the untyped-storage escape hatch)
+--   * some HAL builtins still have generous schemes; vectors preserve
+--     their element type throughout inference
 
 module Infer where
 
@@ -98,8 +98,8 @@ tAtom = TC "Atom"
 tList :: Type -> Type
 tList a = TAp (TC "List") a
 
-tVector :: Type
-tVector = TC "Vector"
+tVector :: Type -> Type
+tVector a = TAp (TC "Vector") a
 
 tSString :: Type
 tSString = TC "SString"
@@ -116,7 +116,8 @@ data IEnv = IEnv
     iHolesP :: [(String, String)], -- same, pretty (zonked at end)
     iHoledCons :: S.Set (Name, Int), -- constructors with ?? fields: calls trap
     iNextSite :: !Int,
-    iSites :: IM.IntMap (Name, Type), -- operator sites awaiting resolution
+    iSites :: IM.IntMap (Name, Type), -- operator/layout sites awaiting resolution
+    iSiteMarks :: IM.IntMap (Maybe Int), -- retain their diagnostic anchors
     iCarriers :: IM.IntMap (Name, Name), -- carrier var -> (param, sig)
     iHere :: Maybe Int, -- spans step 3: the innermost enclosing SMark's
                         -- source offset while inference walks under it;
@@ -405,6 +406,9 @@ tyToTypeA aliases tbl0 ty = runStateT (go ty) tbl0
       TCon n [] | Just fs <- M.lookup n aliases -> do
         tfs <- mapM (\(f, t) -> (,) f <$> go t) fs
         pure (TRec (foldr (\(f, t) r -> RExt f t r) RNil tfs))
+      TCon "Vector" args | length args /= 1 -> do
+        lift (report "Vector requires one element type: write Vector Int, Vector F64, or Vector a")
+        pure (TC "Vector")
       TCon n args -> foldl' TAp (TC (canon n)) <$> mapM go args
       TVApp n args -> do h <- var n; foldl' TAp h <$> mapM go args
       TArrT a b -> TFn <$> go a <*> go b
@@ -547,57 +551,49 @@ builtinEnv =
       ("spawnOn", scheme [0] (TFn tInt (TFn (TFn tInt (sv 0)) tInt))),
       ("myself", mono (TFn tInt tInt)),
       ("yield", scheme [0] (TFn tInt (sv 0))),
-      -- the `!` list/vector index — loosely typed pending an Index sig
-      ("!", scheme [0, 1] (TFn (sv 0) (TFn tInt (sv 1)))),
-      -- linear SoA Vector (vec.c) — carrier is the opaque Vector type
-      ("Vec.new", scheme [0] (TFn tUnit (tVector))),
-      -- DECLARED column layout ("d" F64, "s" F32, "i" Int, "b" boxed;
-      -- 2..8 chars = SoA).  Floats cannot be classified by first push:
-      -- their bits are indistinguishable from a pointer.
-      ("Vec.newAs", mono (TFn tStr tVector)),
-      -- bulk construction at native speed: one Int column filled by the
-      -- HAL loop; `Vec.range 1 n |> Vec.map f` is the fast spelling of
-      -- "generate n samples" (the per-element push loop it replaces is
-      -- the dominant cost of ML-scale pipelines)
-      ("Vec.range", mono (TFn tInt (TFn tInt tVector))),
-      ("Vec.push", scheme [0] (TFn (sv 0) (TFn tVector tVector))),
-      ("Vec.len", mono (TFn tVector (TTupT [tInt, tVector]))),
-      ("Vec.get", scheme [0] (TFn tInt (TFn tVector (TTupT [sv 0, tVector])))),
-      ("Vec.set", scheme [0] (TFn tInt (TFn (sv 0) (TFn tVector tVector)))),
-      ("Vec.at", scheme [0] (TFn tInt (TFn tVector (TTupT [sv 0, tVector])))),
-      ("Vec.put", scheme [0] (TFn tInt (TFn (sv 0) (TFn tVector tVector)))),
-      ("Vec.map", scheme [0, 1] (TFn (TFn (sv 0) (sv 1)) (TFn tVector tVector))),
-      ("Vec.filter", scheme [0] (TFn (TFn (sv 0) tBool) (TFn tVector tVector))),
-      ("Vec.fold", scheme [0, 1] (TFn (TFn (sv 1) (TFn (sv 0) (sv 1))) (TFn (sv 1) (TFn tVector (TTupT [sv 1, tVector]))))),
-      ("Vec.fromList", scheme [0] (TFn (tList (sv 0)) tVector)),
-      ("Vec.toList", scheme [0] (TFn tVector (tList (sv 0)))),
-      ("Vec.free", mono (TFn tVector tUnit)),
-      ("Vec.split", mono (TFn tInt (TFn tVector (TTupT [tVector, tVector])))),
-      -- the numeric SIMD tier (vec.c): element-wise ops over the raw
-      -- unboxed Int column; unary ops are in place, zips consume src
-      ("Vec.iota", mono (TFn tInt tVector)),
-      ("Vec.dup", mono (TFn tVector (TTupT [tVector, tVector]))),
-      ("Vec.axpb", mono (TFn tInt (TFn tInt (TFn tVector tVector)))),
-      ("Vec.sar", mono (TFn tInt (TFn tVector tVector))),
-      ("Vec.minS", mono (TFn tInt (TFn tVector tVector))),
-      ("Vec.maxS", mono (TFn tInt (TFn tVector tVector))),
-      ("Vec.ges", mono (TFn tInt (TFn tVector tVector))),
-      ("Vec.zipAdd", mono (TFn tVector (TFn tVector tVector))),
-      ("Vec.dot", mono (TFn tVector (TFn tVector tInt))),
-      ("Vec.scale", mono (TFn tInt (TFn tVector tVector))),
-      ("Vec.zipMul", mono (TFn tVector (TFn tVector tVector))),
-      ("Vec.zipMin", mono (TFn tVector (TFn tVector tVector))),
-      ("Vec.zipLt", mono (TFn tVector (TFn tVector tVector))),
-      ("Vec.zipDiv", mono (TFn tVector (TFn tVector tVector))),
-      ("Vec.gather", mono (TFn tVector (TFn tVector (TTupT [tVector, tVector])))),
-      ("Vec.blend", mono (TFn tVector (TFn tVector (TFn tVector tVector)))),
-      ("Vec.slice", mono (TFn tInt (TFn tInt (TFn tVector (TTupT [tVector, tVector]))))),
-      ("Vec.burst", mono (TFn tInt (TFn tVector (TFn tVector tVector)))),
-      ("Vec.zipSub", mono (TFn tVector (TFn tVector tVector))),
-      ("Vec.zipEq", mono (TFn tVector (TFn tVector tVector))),
-      ("Vec.zipMax", mono (TFn tVector (TFn tVector tVector))),
-      ("Vec.absv", mono (TFn tVector tVector)),
-      ("Vec.eqS", mono (TFn tInt (TFn tVector tVector))),
+      -- List indexing preserves its element type; vectors use at/get.
+      ("!", scheme [0] (TFn (tList (sv 0)) (TFn tInt (sv 0)))),
+      -- Linear vectors carry their element type through every operation.
+      ("Vec.new", scheme [0] (TFn tUnit (tVector (sv 0)))),
+      ("Vec.newAs", scheme [0] (TFn tStr (tVector (sv 0)))),
+      ("Vec.range", mono (TFn tInt (TFn tInt (tVector tInt)))),
+      ("Vec.push", scheme [0] (TFn (sv 0) (TFn (tVector (sv 0)) (tVector (sv 0))))),
+      ("Vec.len", scheme [0] (TFn (tVector (sv 0)) (TTupT [tInt, tVector (sv 0)]))),
+      ("Vec.get", scheme [0] (TFn tInt (TFn (tVector (sv 0)) (TTupT [sv 0, tVector (sv 0)])))),
+      ("Vec.set", scheme [0] (TFn tInt (TFn (sv 0) (TFn (tVector (sv 0)) (tVector (sv 0)))))),
+      ("Vec.at", scheme [0] (TFn tInt (TFn (tVector (sv 0)) (TTupT [sv 0, tVector (sv 0)])))),
+      ("Vec.put", scheme [0] (TFn tInt (TFn (sv 0) (TFn (tVector (sv 0)) (tVector (sv 0)))))),
+      ("Vec.map", scheme [0, 1] (TFn (TFn (sv 0) (sv 1)) (TFn (tVector (sv 0)) (tVector (sv 1))))),
+      ("Vec.mapSame", scheme [0] (TFn (TFn (sv 0) (sv 0)) (TFn (tVector (sv 0)) (tVector (sv 0))))),
+      ("Vec.filter", scheme [0] (TFn (TFn (sv 0) tBool) (TFn (tVector (sv 0)) (tVector (sv 0))))),
+      ("Vec.fold", scheme [0, 1] (TFn (TFn (sv 1) (TFn (sv 0) (sv 1))) (TFn (sv 1) (TFn (tVector (sv 0)) (TTupT [sv 1, tVector (sv 0)]))))),
+      ("Vec.fromList", scheme [0] (TFn (tList (sv 0)) (tVector (sv 0)))),
+      ("Vec.toList", scheme [0] (TFn (tVector (sv 0)) (tList (sv 0)))),
+      ("Vec.free", scheme [0] (TFn (tVector (sv 0)) tUnit)),
+      ("Vec.split", scheme [0] (TFn tInt (TFn (tVector (sv 0)) (TTupT [tVector (sv 0), tVector (sv 0)])))),
+      ("Vec.dup", scheme [0] (TFn (tVector (sv 0)) (TTupT [tVector (sv 0), tVector (sv 0)]))),
+      ("Vec.iota", mono (TFn tInt (tVector tInt))),
+      ("Vec.axpb", mono (TFn tInt (TFn tInt (TFn (tVector tInt) (tVector tInt))))),
+      ("Vec.sar", mono (TFn tInt (TFn (tVector tInt) (tVector tInt)))),
+      ("Vec.minS", mono (TFn tInt (TFn (tVector tInt) (tVector tInt)))),
+      ("Vec.maxS", mono (TFn tInt (TFn (tVector tInt) (tVector tInt)))),
+      ("Vec.ges", mono (TFn tInt (TFn (tVector tInt) (tVector tInt)))),
+      ("Vec.zipAdd", mono (TFn (tVector tInt) (TFn (tVector tInt) (tVector tInt)))),
+      ("Vec.dot", mono (TFn (tVector tInt) (TFn (tVector tInt) tInt))),
+      ("Vec.scale", mono (TFn tInt (TFn (tVector tInt) (tVector tInt)))),
+      ("Vec.zipMul", mono (TFn (tVector tInt) (TFn (tVector tInt) (tVector tInt)))),
+      ("Vec.zipMin", mono (TFn (tVector tInt) (TFn (tVector tInt) (tVector tInt)))),
+      ("Vec.zipLt", mono (TFn (tVector tInt) (TFn (tVector tInt) (tVector tInt)))),
+      ("Vec.zipDiv", mono (TFn (tVector tInt) (TFn (tVector tInt) (tVector tInt)))),
+      ("Vec.gather", mono (TFn (tVector tInt) (TFn (tVector tInt) (TTupT [tVector tInt, tVector tInt])))),
+      ("Vec.blend", mono (TFn (tVector tInt) (TFn (tVector tInt) (TFn (tVector tInt) (tVector tInt))))),
+      ("Vec.slice", mono (TFn tInt (TFn tInt (TFn (tVector tInt) (TTupT [(tVector tInt), (tVector tInt)]))))),
+      ("Vec.burst", mono (TFn tInt (TFn (tVector tInt) (TFn (tVector tInt) (tVector tInt))))),
+      ("Vec.zipSub", mono (TFn (tVector tInt) (TFn (tVector tInt) (tVector tInt)))),
+      ("Vec.zipEq", mono (TFn (tVector tInt) (TFn (tVector tInt) (tVector tInt)))),
+      ("Vec.zipMax", mono (TFn (tVector tInt) (TFn (tVector tInt) (tVector tInt)))),
+      ("Vec.absv", mono (TFn (tVector tInt) (tVector tInt))),
+      ("Vec.eqS", mono (TFn tInt (TFn (tVector tInt) (tVector tInt)))),
       -- floats (raw-bits payloads; see runtime.c's float essay)
       ("f64frombits", mono (TFn tInt (TFn tInt tF64))),
       ("f32frombits", mono (TFn tInt tF32)),
@@ -630,7 +626,7 @@ builtinEnv =
       -- a loop whose every step is an arena (runtime.c): the state is
       -- copied out step to step, the one linear Vector threads through
       -- by identity; memory is the live state however long it runs
-      ("Sys.loopWith", scheme [0] (TFn tVector (TFn (sv 0) (TFn (TFn (sv 0) (TFn tVector (TTupT [tBool, sv 0, tVector]))) (TTupT [sv 0, tVector]))))),
+      ("Sys.loopWith", scheme [0, 1] (TFn (tVector (sv 1)) (TFn (sv 0) (TFn (TFn (sv 0) (TFn (tVector (sv 1)) (TTupT [tBool, sv 0, tVector (sv 1)]))) (TTupT [sv 0, tVector (sv 1)]))))),
       ("heapUsed", mono (TFn tUnit tInt)),
       -- bit ops: band/bor/bxor are Int->Int->Int; BITTEST returns Bool
       ("band", mono (TFn tInt (TFn tInt tInt))),
@@ -833,12 +829,13 @@ data IProf = IProf
                         -- the AOT driver handles TEval itself)
     ipPathStr :: Bool, -- @Path literals type as String (HostedBytecode;
                        -- AOT expands them structurally before inference)
+    ipVectorLayouts :: Bool, -- raw-bit native elements need static output layouts
     ipMat4 :: Bool -- Mat4/Vec4 `*` elaboration -- only where the prelude
                    -- defines mulMM/mulMV (the AOT tiers)
   }
 
 aotProf :: IProf
-aotProf = IProf builtinEnv False False True
+aotProf = IProf builtinEnv False False True True
 
 data ICtx = ICtx
   { icEnv :: TEnv, -- values in scope
@@ -867,7 +864,7 @@ newSite :: Name -> Type -> I Int
 newSite op t = do
   st <- get
   let n = iNextSite st
-  put st {iNextSite = n + 1, iSites = IM.insert n (op, t) (iSites st)}
+  put st {iNextSite = n + 1, iSites = IM.insert n (op, t) (iSites st), iSiteMarks = IM.insert n (iHere st) (iSiteMarks st)}
   pure n
 
 -- carrier var of an in-scope `(s : Sig)` param: var id -> (param, sig)
@@ -931,6 +928,17 @@ inferE ctx e0 = case e0 of
         k <- gets (length . iHoles)
         pure (a, SApp (SVar "?trap!") (SInt (fromIntegral k - 1)))
       else pure (a, e0)
+  SApp (SVar "Vec.newAs") (SStrI [SegStr spec]) | ipVectorLayouts (icProf ctx) -> do
+    ts <- mapM (\c -> case c of
+      'i' -> pure tInt
+      'd' -> pure tF64
+      's' -> pure tF32
+      'b' -> freshT
+      _ -> freshT <* report "Vec.newAs: layout chars must be i, d, s, or b") spec
+    when (null spec || length spec > 8) (report "Vec.newAs: layout must have 1..8 columns")
+    let el = case ts of [t] -> t; _ -> TTupT ts
+    site <- newSite ("vec-declared:" ++ spec) el
+    pure (tVector el, SApp (SVar (markerPrefix ++ show site ++ "#vec")) e0)
   SInt n -> pure (tInt, SInt n)
   SAtom a -> pure (tAtom, SAtom a)
   SStrI segs -> do
@@ -971,7 +979,13 @@ inferE ctx e0 = case e0 of
     case [ar | (c, ar) <- S.toList hc, c == n] of
       (ar : _) ->
         pure (t, foldr (\i b -> SLam ["?c" ++ show (i :: Int)] b) (SApp (SVar "error") (SStrI [SegStr ("typed hole ?? in constructor " ++ n ++ " (unimplemented)")])) [1 .. ar])
-      [] -> pure (t, e')
+      [] | ipVectorLayouts (icProf ctx) && n == "Vec.newAs" ->
+             (t, e') <$ report "Vec.newAs requires a literal layout; dynamic or aliased layout declarations are not type-safe"
+         | ipVectorLayouts (icProf ctx) && n `elem` ["Vec.new", "Vec.fromList", "Vec.map"] -> do
+             site <- newSite ("vec-value:" ++ n) t
+             pure (t, SApp (SVar (markerPrefix ++ show site ++ "#vec")) e')
+         | n == "Vec.mapSame" -> pure (t, SVar "Vec.map")
+         | otherwise -> pure (t, e')
   SApp f x -> do
     (tf, f') <- inferE ctx f
     (tx, x') <- inferE ctx x
@@ -1171,7 +1185,7 @@ inferBin ctx op a b = case op of
 
 -- ---- post-solve operator resolution -----------------------------------------
 
-data OpTarget = OpPrim Name | OpGlobal Name | OpProj Name Name -- s.(+)
+data OpTarget = OpPrim Name | OpGlobal Name | OpVecLayout Name String | OpProj Name Name -- s.(+)
 
 -- head type constructor: Matrix -> "Matrix", Grid a b -> "Grid"
 headCon :: Type -> Maybe Name
@@ -1221,9 +1235,18 @@ ambiguousOp op at gs =
 resolveSites :: Sigs -> TEnv -> I (IM.IntMap OpTarget)
 resolveSites sigs env = do
   sites <- gets iSites
-  IM.traverseWithKey one sites
+  numeric <- IM.traverseWithKey one (IM.filter (\(op, _) -> not ("vec-" `Data.List.isPrefixOf` op)) sites)
+  layouts <- IM.traverseWithKey one (IM.filter (\(op, _) -> "vec-" `Data.List.isPrefixOf` op) sites)
+  pure (IM.union numeric layouts)
   where
-    one k (op, t0) = do
+    one k payload = do
+      old <- gets iHere
+      marks <- gets iSiteMarks
+      modify (\st -> st {iHere = IM.findWithDefault Nothing k marks})
+      target <- oneAt k payload
+      modify (\st -> st {iHere = old})
+      pure target
+    oneAt k (op, t0) = do
       pairs <- gets iPairs
       case IM.lookup k pairs of
         Nothing -> one' op t0
@@ -1245,7 +1268,22 @@ resolveSites sigs env = do
               one' op t0
     one' op t0 = do
       t <- zonk t0
-      if op `elem` ["==", "!="]
+      if "vec-declared:" `Data.List.isPrefixOf` op
+        then do
+          let spec = drop (length "vec-declared:") op
+              fields = case t of TTupT xs -> xs; _ -> [t]
+          forM_ (zip spec fields) $ \(c, ft) ->
+            when (c == 'b' && (mentionsFloat ft || unresolved ft)) $
+              report "Vec.newAs: boxed columns require a known non-float element type"
+          pure (OpPrim "")
+      else if "vec-value:" `Data.List.isPrefixOf` op
+        then case (drop (length "vec-value:") op, t) of
+          ("Vec.new", TFn _ (TAp (TC "Vector") el)) -> layout "Vec.new" el
+          ("Vec.fromList", TFn _ (TAp (TC "Vector") el)) -> layout "Vec.fromList" el
+          ("Vec.map", TFn (TFn a b) _) | a == b -> pure (OpPrim "")
+                                     | otherwise -> layout "Vec.map" b
+          _ -> OpPrim "" <$ report "Vector: cannot determine the element layout"
+      else if op `elem` ["==", "!="]
         then pure $ case t of
           -- IEEE compare prims (NaN /= NaN, -0.0 == 0.0); every other
           -- type keeps the generic shallow veq EXACTLY as before --
@@ -1316,6 +1354,31 @@ resolveSites sigs env = do
           p <- prettyT other
           OpPrim op <$ report ("(" ++ op ++ ") is not defined for " ++ p)
 
+    unresolved = \case
+      TV _ -> True
+      TAp a b -> unresolved a || unresolved b
+      TFn a b -> unresolved a || unresolved b
+      TTupT xs -> any unresolved xs
+      TRec r -> rowUnknown r
+      _ -> False
+    rowUnknown RNil = False
+    rowUnknown (RV _) = True
+    rowUnknown (RExt _ t r) = unresolved t || rowUnknown r
+    layout name el
+      | unresolved el = OpPrim "" <$ report (name ++ ": the output element layout is polymorphic; give it a concrete type (use Vec.mapSame for a representation-preserving generic map)")
+      | not (mentionsFloat el) = pure (OpVecLayout name "")
+      | Just spec <- floatLayout el = pure (OpVecLayout name spec)
+      | otherwise = OpPrim "" <$ report (name ++ ": floats require a scalar or flat tuple of at most eight fields; nested/record float layouts are unsupported")
+    floatLayout (TC "F64") = Just "d"
+    floatLayout (TC "F32") = Just "s"
+    floatLayout (TTupT xs) | length xs >= 2 && length xs <= 8 = mapM field xs
+    floatLayout _ = Nothing
+    field (TC "Int") = Just 'i'
+    field (TC "F64") = Just 'd'
+    field (TC "F32") = Just 's'
+    field t | not (mentionsFloat t) = Just 'b'
+    field _ = Nothing
+
 -- rewrite the markers by the decided targets
 applySites :: IM.IntMap OpTarget -> SExpr -> SExpr
 applySites tgts = go
@@ -1330,6 +1393,15 @@ applySites tgts = go
             case tgt of
               OpPrim "" -> go a
               OpPrim o -> SApp (SVar o) (go a)
+              OpVecLayout name spec ->
+                let desc = SStrI [SegStr spec]
+                 in case name of
+                      "Vec.new" | null spec -> go a
+                                | otherwise -> SLam ["?vecUnit"] (SApp (SVar "Vec.newAs") desc)
+                      "Vec.fromList" | null spec -> go a
+                                     | otherwise -> SApp (SVar "Vec.fromListAs") desc
+                      "Vec.map" -> SApp (SVar "Vec.mapAs") desc
+                      _ -> go a
               _ -> go a
       SBin op a b
         | Just rest <- stripPrefix markerPrefix op,
@@ -1411,7 +1483,7 @@ inferTops = inferTopsWith aotProf
 
 inferTopsWith :: IProf -> Sigs -> Structs -> [STop] -> ([String], [(Name, String)], [(String, String)], [(Name, ([LShape], LShape))], [STop])
 inferTopsWith prof sigs structs tops =
-  let (tops', st) = runState run (IEnv 0 IM.empty IM.empty [] [] [] [] S.empty 0 IM.empty IM.empty Nothing IM.empty [])
+  let (tops', st) = runState run (IEnv 0 IM.empty IM.empty [] [] [] [] S.empty 0 IM.empty IM.empty IM.empty Nothing IM.empty [])
    in (iErrs st, iNotes st, iHolesP st, iLinSigs st, tops')
   where
     aliases = M.fromList [(n, fs) | TShape n fs <- tops]

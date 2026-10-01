@@ -32,7 +32,7 @@ mkRow s =
   | True -> (case x2 > minusHalf of True -> 1 | False -> 0 - 1);
   {x1 = x1, x2 = x2, y = case flip == 0 of True -> 0 - ytrue | False -> ytrue}.
 
-fill : unsafe Vector -> Int -> Int -> Vector .
+fill : unsafe (Vector _) -> Int -> Int -> (Vector _) .
 fill v s k | k == 0 = v.
 fill v s k = fill (Vec.push (mkRow (Rand.next (s + k * 100003))) v) s (k - 1).
 
@@ -53,12 +53,12 @@ scoreOf c =
   Numeric.min lp ln + Numeric.min rp rn.
 
 # scan candidates, threading the linear vec; returns (feat, th, score, v)
-scan : unsafe List (Int, Int) -> Int -> Int -> Int -> Vector -> (Int, Int, Int, Vector) .
+scan : unsafe List (Int, Int) -> Int -> Int -> Int -> (Vector _) -> (Int, Int, Int, (Vector _)) .
 scan cands bf bt bs v | cands == [] = (bf, bt, bs, v).
 scan cands bf bt bs v = case cands of
   c :: rest -> scanStep c rest bf bt bs v.
 
-scanStep : unsafe (Int, Int) -> List (Int, Int) -> Int -> Int -> Int -> Vector -> (Int, Int, Int, Vector) .
+scanStep : unsafe (Int, Int) -> List (Int, Int) -> Int -> Int -> Int -> (Vector _) -> (Int, Int, Int, (Vector _)) .
 scanStep c rest bf bt bs v =
   (feat, th) = c;
   (packed, v2) = Vec.fold (cnt feat th) 0 v;
@@ -87,14 +87,14 @@ part feat th xs ls rs = case xs of
     True -> part feat th r (p :: ls) rs
   | False -> part feat th r ls (p :: rs)).
 
-buildVec : unsafe List v45 -> Vector -> Vector .
+buildVec : unsafe List v45 -> (Vector _) -> (Vector _) .
 buildVec [] v = v.
 buildVec (p :: r) v = buildVec r (Vec.push p v).
 
 majorityLeaf n np = Leaf (case np * 2 >= n of True -> 1 | False -> 0 - 1).
 
 # recursive build: packed-count scan for the split, interpreted partition
-build : unsafe Int -> Vector -> Tree .
+build : unsafe Int -> (Vector _) -> Tree .
 build depth v =
   (n, v0) = Vec.len v;
   (np, v1) = Vec.fold posCnt 0 v0;
@@ -104,7 +104,7 @@ build depth v =
 
 finishLeaf n np v = u = Vec.free v; majorityLeaf n np.
 
-tryNode : unsafe Int -> Int -> Int -> Vector -> Tree .
+tryNode : unsafe Int -> Int -> Int -> (Vector _) -> Tree .
 tryNode depth n np v =
   case np == 0 of
     True -> finishLeaf n np v
@@ -112,7 +112,7 @@ tryNode depth n np v =
       True -> finishLeaf n np v
     | False -> splitNode depth n v).
 
-splitNode : unsafe Int -> Int -> Vector -> Tree .
+splitNode : unsafe Int -> Int -> (Vector _) -> Tree .
 splitNode depth n v =
   (bf, bt, bs, v2) = scan allCands 0 0 999999 v;
   xs = Vec.toList v2;

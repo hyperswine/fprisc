@@ -46,7 +46,7 @@ rangeN p = flyN (Numeric.inexact 0) (Numeric.inexact 0) p.vx p.vy.
 # launch grid: vx 12..31 m/s, vy 8..27 m/s interleaved (ints promote on use)
 mkRow i = {vx = 12 + i - (i / 20) * 20, vy = 8 + (i * 7 - ((i * 7) / 20) * 20)}.
 
-fill : Vector -> (xs : List Int | measure xs) -> Vector .
+fill : (Vector _) -> (xs : List Int | measure xs) -> (Vector _) .
 fill v xs | xs == [] = v.
 fill v xs = case xs of i :: r -> fill (Vec.push (mkRow i) v) r.
 

@@ -390,6 +390,18 @@ V fpr_vec_map(V f, V vec) {
   return out;
 }
 
+/* Type-changing maps: the compiler supplies the OUTPUT layout rather than
+ * inheriting the input's float widths. Empty spec uses first-push layout
+ * inference, admitted only for a statically known non-float output type. */
+static V h_mapAs(V spec, V f, V vec) {
+  vec_t *x = vchk(vec, "Vec.map: not a Vector");
+  str_t *sp = (str_t *)spec;
+  V out = sp->len ? h_newAs(spec) : h_new((V)&fpr_unit);
+  for (uw i = 0; i < x->len; i++) out = h_push(fpr_apply(f, row_at(x, i)), out);
+  vfree(x);
+  return out;
+}
+
 /* filter is EAGER COMPACTION today: the kept rows slide down in place
  * with two cursors and len shrinks -- zero allocation, later scans
  * stay dense.  2026-08-25-MEMORY.md v2 names the branch-light end-state (a mask
@@ -431,6 +443,15 @@ V fpr_vec_fold(V f, V z, V vec) {
 
 static V h_fromList(V xs) {
   V out = h_new((V)&fpr_unit);
+  while (!ISINT(xs) && TID(xs) == T_LIST && ((hdr_t *)xs)->var == 1) {
+    out = h_push(*(V *)((char *)xs + 8), out);
+    xs = *(V *)((char *)xs + 8 + sizeof(uw));
+  }
+  return out;
+}
+
+static V h_fromListAs(V spec, V xs) {
+  V out = h_newAs(spec);
   while (!ISINT(xs) && TID(xs) == T_LIST && ((hdr_t *)xs)->var == 1) {
     out = h_push(*(V *)((char *)xs + 8), out);
     xs = *(V *)((char *)xs + 8 + sizeof(uw));
@@ -498,11 +519,13 @@ static V h_put(V iv, V v, V vec) {
 FPR_FN(fpr_g_Vec_x2eat, h_at, 2);
 FPR_FN(fpr_g_Vec_x2eput, h_put, 3);
 FPR_FN(fpr_g_Vec_x2emap, fpr_vec_map, 2);
+FPR_FN(fpr_g_Vec_x2emapAs, h_mapAs, 3);
 FPR_FN(fpr_g_Vec_x2efilter, fpr_vec_filter, 2);
 FPR_FN(fpr_g_Vec_x2efold, fpr_vec_fold, 3);
 FPR_FN(fpr_g_Vec_x2enewAs, h_newAs, 1);
 FPR_FN(fpr_g_Vec_x2erange, h_range, 2);
 FPR_FN(fpr_g_Vec_x2efromList, h_fromList, 1);
+FPR_FN(fpr_g_Vec_x2efromListAs, h_fromListAs, 2);
 FPR_FN(fpr_g_Vec_x2etoList, h_toList, 1);
 FPR_FN(fpr_g_Vec_x2efree, h_free, 1);
 FPR_FN(fpr_g_Vec_x2esplit, h_split, 2);

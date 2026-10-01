@@ -15,7 +15,7 @@
 #
 # Expected: "BIGFREE HOLDS: ..." with the arena flat across 40 cycles.
 
-fill : (n : Int | measure n) -> Vector -> Vector .
+fill : (n : Int | measure n) -> (Vector Int) -> (Vector Int) .
 fill n v = case n <= 0 of True -> v | False -> fill (n - 1) (Vec.push n v).
 
 cycle : (k : Int | measure k) -> Int -> Int .

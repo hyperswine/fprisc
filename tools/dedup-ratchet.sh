@@ -23,7 +23,7 @@ ck() { # ck <file> <ceiling>
 # The current 125-line shim adds profile primitive declarations (including
 # receiveFromRes / Sys.nextId from the failure-honesty round), not inference
 # machinery. Keep that reviewed surface as the ceiling; growth still fails.
-ck compiler/Sol/Infer.hs 125   # sol's primitive table + flags, no inference fork
+ck compiler/Sol/Infer.hs 126   # primitive table + flags; +1 for native vector layouts, no inference fork
 # Qualified nested struct references were repaired in cb71302; this is
 # profile module-splicing policy, not a restored parser/desugar/lift fork.
 ck compiler/Sol/Lang.hs  244   # profile-only: tids, decode, splicing

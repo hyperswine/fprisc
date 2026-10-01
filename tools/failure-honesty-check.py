@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-honesty-') as tmp:
     run(['commit', str(bad)], 1, 'TYPE ERRORS')
     assert not (work / '.fpr').exists()
     for name, source, diagnostic in [
-        ('linear', 'f x = v = Vec.new Unit; a = Vec.free v; Vec.free v.\n', 'LINEARITY'),
+        ('linear', 'f x = v = Vec.newAs "i"; a = Vec.free v; Vec.free v.\n', 'LINEARITY'),
         ('hole', 'f x = ?missing.\n', 'TYPED HOLES'),
         ('recursive', 'f n = f n.\n', 'SAFETY'),
     ]:

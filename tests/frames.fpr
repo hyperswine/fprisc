@@ -52,7 +52,7 @@ rloop me p =
 
 # paint: bulk mutation through the linear handle — in place, no
 # allocation, the same handle threads out.
-paint : unsafe Vector -> Int -> Int -> Vector .
+paint : unsafe (Vector Int) -> Int -> Int -> (Vector Int) .
 paint fb v i | i > wMax = fb.
 paint fb v i = paint (Vec.set i v fb) v (i + 1) .
 
@@ -61,7 +61,7 @@ paint fb v i = paint (Vec.set i v fb) v (i + 1) .
 # ownership move; frame lifetime is the LOOP STRUCTURE, not a
 # collector's discovery, and the steady state copies NOTHING per frame.
 
-loop : unsafe Int -> Int -> Vector -> Int -> Int -> Vector .
+loop : unsafe Int -> Int -> (Vector Int) -> Int -> Int -> (Vector Int) .
 loop me r fb n stop | n > stop = fb.
 loop me r fb n stop =
   _ = sendLinear r fb;

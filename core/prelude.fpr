@@ -19,7 +19,7 @@ newHandle v = Handle v.
 closeHandle : Handle -> Int.
 closeHandle h = case h of Handle v -> v.
 
-Vector 1 = Type Int.
+Vector 1 a = Type Int.
 
 and a b = case a of True -> b | False -> False.
 or a b = case a of True -> True | False -> b.
@@ -227,28 +227,26 @@ SStr = Struct {
 }.
 
 # ---- VList: the SoA vector (vec.c), linear carrier --------------------------
-# Namespace-only: the SoA Vector is a MONOMORPHIC opaque type (untyped
-# columns), so it can't satisfy Functor/Seq whose rows are `t a` (a
-# container parameterized by element type) -- same truth as Sol's
-# linear-Vector discussion. VList groups the ops under one namespace;
-# generic code over sequences uses List, not VList. Vec.* thread the
-# linear vector through their result (len/get return tuples), so the
-# linearity checker still sees single ownership.
+# Vector a is a linear carrier with an explicit element type. VList groups
+# its operations; reads/length thread the consumed handle through the result.
 
 foldRes r = (x, _) = r; x.
 lenRes r = (n, _) = r; n.
 
+vListFromList : List Int -> Vector Int .
+vListFromList xs = Vec.fromList xs.
+
 VList = Struct {
-  map = fn f v -> Vec.map f v,
+  map = fn f v -> Vec.mapSame f v,
   fold = fn f z v -> foldRes (Vec.fold f z v),
   len = fn v -> lenRes (Vec.len v),
-  new = fn u -> Vec.new u,
+  new = fn u -> Vec.newAs "i",
   push = fn x v -> Vec.push x v,
   get = fn i v -> Vec.get i v,
   set = fn i x v -> Vec.set i x v,
   filter = fn p v -> Vec.filter p v,
   split = fn i v -> Vec.split i v,
-  fromList = fn xs -> Vec.fromList xs,
+  fromList = fn xs -> vListFromList xs,
   toList = fn v -> Vec.toList v,
   free = fn v -> Vec.free v
 }.

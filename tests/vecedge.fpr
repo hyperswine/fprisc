@@ -8,22 +8,22 @@ mkR i = {x = i, y = i * 2}.
 mkN i = {pose = {x = i, y = i + 1}, hp = 100 + i}.
 mk5 i = {a = i, b = i + 1, c = i + 2, d = i + 3, e = i + 4}.
 
-fillR : Vector -> (i : Int | measure (lim - i)) -> (lim : Int) -> Vector .
+fillR : (Vector _) -> (i : Int | measure (lim - i)) -> (lim : Int) -> (Vector _) .
 fillR v i lim | i > lim = v.
 fillR v i lim = fillR (Vec.push (mkR i) v) (i + 1) lim.
-fillT : Vector -> (i : Int | measure (lim - i)) -> (lim : Int) -> Vector .
+fillT : (Vector _) -> (i : Int | measure (lim - i)) -> (lim : Int) -> (Vector _) .
 fillT v i lim | i > lim = v.
 fillT v i lim = fillT (Vec.push (i, i * i) v) (i + 1) lim.
-fillC : Vector -> (i : Int | measure (lim - i)) -> (lim : Int) -> Vector .
+fillC : (Vector _) -> (i : Int | measure (lim - i)) -> (lim : Int) -> (Vector _) .
 fillC v i lim | i > lim = v.
 fillC v i lim = fillC (Vec.push (Pt i (i + 5)) v) (i + 1) lim.
-fillN : Vector -> (i : Int | measure (lim - i)) -> (lim : Int) -> Vector .
+fillN : (Vector _) -> (i : Int | measure (lim - i)) -> (lim : Int) -> (Vector _) .
 fillN v i lim | i > lim = v.
 fillN v i lim = fillN (Vec.push (mkN i) v) (i + 1) lim.
-fill5 : Vector -> (i : Int | measure (lim - i)) -> (lim : Int) -> Vector .
+fill5 : (Vector _) -> (i : Int | measure (lim - i)) -> (lim : Int) -> (Vector _) .
 fill5 v i lim | i > lim = v.
 fill5 v i lim = fill5 (Vec.push (mk5 i) v) (i + 1) lim.
-fillI : Vector -> (i : Int | measure (lim - i)) -> (lim : Int) -> Vector .
+fillI : (Vector _) -> (i : Int | measure (lim - i)) -> (lim : Int) -> (Vector _) .
 fillI v i lim | i > lim = v.
 fillI v i lim = fillI (Vec.push i v) (i + 1) lim.
 

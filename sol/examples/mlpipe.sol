@@ -56,7 +56,7 @@ epoch n lr a b c v =
   (s3, v3) = Vec.fold (gC a b c) 0 v2;
   (a - lr * (s1 / n), b - lr * (s2 / n), c - lr * (s3 / n), v3).
 
-train : (k : Int | measure k) -> Int -> Int -> Int -> Int -> Int -> Vector -> (Int, Int, Int, Vector) .
+train : (k : Int | measure k) -> Int -> Int -> Int -> Int -> Int -> (Vector _) -> (Int, Int, Int, (Vector _)) .
 train k n lr a b c v | k <= 0 = (a, b, c, v).
 train k n lr a b c v =
   (a2, b2, c2, v2) = epoch n lr a b c v;
