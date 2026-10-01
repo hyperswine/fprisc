@@ -1,0 +1,10 @@
+# fail-stop (fpr_actor_fail): a child whose primitive fails ends alone with a
+# logged reason; its RPC caller hears Err "dead actor"; the program runs on
+Probe.fail : Int -> Int .
+child self = case receive self of (who, n) -> send who (Probe.fail n).
+main =
+  me = myself 0;
+  c = spawn child;
+  _ = send c (me, 7);
+  r = receiveFromRes me c;
+  print "after the child failed: {r}; the machine runs on".

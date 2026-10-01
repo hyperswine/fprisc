@@ -516,6 +516,9 @@ void fpr_mem_spawn(void);          /* actors.c: after actor 0, before any hart r
 void fpr_actor_sleep_us(uw us); /* parks the actor; routes through the scheduler plane */
 int fpr_actor_cleanup_set(void (*fn)(void *), void *arg); /* one pending external request */
 void fpr_actor_cleanup_clear(void *arg);
+/* end the current actor with a logged reason (fail-stop; never returns);
+ * the boot actor and routed process images panic instead */
+__attribute__((noreturn)) void fpr_actor_fail(const char *why);
 int fpr_hal_sleep_us(uw us);      /* the host sleep: Sys.sleepUs's fallback (runtime.c weak) */
 extern uw fpr_mem_reqs, fpr_mem_waits, fpr_mem_direct, fpr_mem_frees, fpr_mem_denied,
     fpr_mem_inline; /* takes served on the spot (the lock was free) */

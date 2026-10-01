@@ -1610,6 +1610,31 @@ void fpr_actor_cleanup_clear(void *arg) {
   if (a && a->external_arg == arg) { a->external_cleanup = 0; a->external_arg = 0; }
 }
 
+/* FAIL-STOP: end the CURRENT actor with a named reason instead of halting the
+ * machine.  For a device primitive whose request cannot be completed (a
+ * deadline passed, the device stalled or refused, an I/O error) the honest
+ * outcome belongs to the caller, not to every actor on the system: the
+ * reason goes to the error ring, the actor dies (its watchers wake, so an
+ * RPC caller hears Err "dead actor"; the reaper runs a pending cleanup
+ * hook), and the machine keeps running.  The boot actor has no one to fail
+ * to, and a routed process image cannot kill on the plane yet: both panic
+ * with the same reason. */
+static V a_kill(V av);
+void fpr_actor_fail(const char *why) {
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h ? h->current : 0;
+  if (fpr_sched || !a || a->id == 0) fpr_cpanic(why);
+  char msg[200];
+  uw n = 0;
+  const char *pre = "actor failed: ";
+  for (const char *c = pre; *c && n < sizeof msg - 1; c++) msg[n++] = *c;
+  for (const char *c = why; *c && n < sizeof msg - 1; c++) msg[n++] = *c;
+  fpr_logput(2, msg, n);
+  (void)a_kill((V)a);
+  fpr_cpanic("actors: a failed actor resumed");
+  for (;;) FPR_PARK();
+}
+
 FPR_FN(fpr_g_Sys_x2esleepUs, a_sleep_us, 1);
 /* wake the sleepers whose time has come (hart loop, every pass) */
 static void slp_drain(fpr_hart_t *h) {

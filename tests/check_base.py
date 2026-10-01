@@ -122,6 +122,14 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     print('External request cleanup runs when a parked actor is killed: PASS')
     run(['python3', 'tools/runtime-costs.py', '--quick', '--runs', '1'], timeout=300)
     print('Opt-in allocation/copy ledgers match exact workloads; ordinary builds have no increments: PASS')
+    # 4m. fail-stop: a primitive that cannot complete ends its caller alone
+    exe = tmp / 'actorfail'
+    run(['./fpr', 'build', 'tests/base/actorfail.fpr', '--with', 'tests/base/actorfail_probe.c', '-o', exe])
+    for harts in ('1', '2'):
+        p = run([exe], env={'FPR_HARTS': harts})
+        assert p.stdout.strip().endswith('after the child failed: Err dead actor; the machine runs on'), p.stdout
+        assert 'actor failed: probe: deliberate failure' in p.stdout + p.stderr, p.stdout + p.stderr
+    print('fpr_actor_fail: the failing actor ends alone with a logged reason, its caller hears Err dead actor: PASS')
     # 4h. receiveFromRes: a sender that exits is an answer (Err "dead actor"),
     # never a caller parked for ever; a reply sent just before exiting is kept
     dp = build('tests/base/deadpeer.fpr', 'deadpeer')
