@@ -1,0 +1,7 @@
+# record types in signatures: a closed record, and a row variable shared
+# across the signature (the shape every std/*.fpr header uses)
+bump : { a : Int | r } -> { a : Int | r } .
+bump p = { p | a = p.a + 1 }.
+getA : { a : Int, b : String } -> Int .
+getA p = p.a.
+main = print (getA (bump { a = 1, b = "x" })).

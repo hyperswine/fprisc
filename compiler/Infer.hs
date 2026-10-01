@@ -413,6 +413,12 @@ tyToTypeA aliases tbl0 ty = runStateT (go ty) tbl0
       TVApp n args -> do h <- var n; foldl' TAp h <$> mapM go args
       TArrT a b -> TFn <$> go a <*> go b
       TTup ts -> TTupT <$> mapM go ts
+      TRecT fs tl -> do
+        tfs <- mapM (\(f, t) -> (,) f <$> go t) fs
+        tail' <- case tl of
+          Nothing -> pure RNil
+          Just rn -> rowVar rn
+        pure (TRec (foldr (\(f, t) r -> RExt f t r) tail' tfs))
       TOther -> do
         a <- lift freshT
         Control.Monad.State.Strict.modify (M.insertWith keepBoth "$holes" a)
@@ -422,6 +428,13 @@ tyToTypeA aliases tbl0 ty = runStateT (go ty) tbl0
       case M.lookup n tbl of
         Just v -> pure v
         Nothing -> do v <- lift freshT; put (M.insert n v tbl); pure v
+    -- a named row variable, shared across the signature: kept in the same
+    -- table under a key no type variable can spell
+    rowVar n = do
+      tbl <- get
+      case M.lookup ('|' : n) tbl of
+        Just (TRec r) -> pure r
+        _ -> do r <- lift freshR; put (M.insert ('|' : n) (TRec r) tbl); pure r
     canon "Str" = "String"
     canon n = n
 
@@ -741,6 +754,7 @@ consEnv aliases tops = M.fromList . concat <$> mapM one [t | t@TType {} <- tops]
             TVApp _ as -> any hasHole as
             TArrT a b -> hasHole a || hasHole b
             TTup ts -> any hasHole ts
+            TRecT fs _ -> any (hasHole . snd) fs
             _ -> False
       when (any hasHole argTys) $
         modify (\st -> st {iHoledCons = S.insert (c, length argTys) (iHoledCons st)})

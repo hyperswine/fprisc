@@ -50,6 +50,7 @@ data Instr
   | Jz Reg Label -- jump if reg holds False
   | LabelI Label -- pseudo-instr, removed by assemble
   | Call Reg Name [Reg] -- static saturated call: fuel check at entry
+  | TailCall Name [Reg] -- the same call in tail position: this frame is done, the callee's result IS ours (no Ret follows)
   | Apply Reg Reg Reg -- rd <- apply rf ra   (generic PAP apply)
   | MkPap Reg Name -- global-as-value (arity known statically)
   | Ret Reg
@@ -147,10 +148,49 @@ compileProg halArity prog = M.mapWithKey one prog
     one _ (ps, body) =
       let env0 = M.fromList (zip ps [0 ..])
           st0 = CEnv (length ps) (length ps) env0 0 []
-          (r, st) = runState (cExpr ci body) st0
-          code = reverse (Ret r : cOut st)
+          st = execState (cTail ci body) st0
+          code = reverse (cOut st)
           assembled = assemble code
        in Fn (length ps) (cHigh st) (listArray (0, length assembled - 1) assembled)
+
+-- the body of a function, in TAIL position: every path ends in `Ret r` or
+-- in `TailCall g rs` for a known saturated call to a program global --
+-- the VM then replaces this frame instead of stacking a Haskell
+-- continuation on top of it, so a measured countdown runs in O(1)
+-- memory on the VM as it does natively (Codegen's knownCall jump).
+-- Exactly-saturated only: an over-applied call still needs this frame
+-- for the trailing APPLYs, and arithmetic/HAL/PAP calls are not frames.
+cTail :: CallInfo -> Core -> C ()
+cTail ci = tailGo
+  where
+    tailGo :: Core -> C ()
+    tailGo = \case
+      CLet x a b -> do
+        ra <- cExpr ci a
+        withVar x ra (tailGo b)
+      CIf c t e -> do
+        lElse <- freshLbl
+        rc <- cExpr ci c
+        emit (Jz rc lElse)
+        tailGo t
+        emit (LabelI lElse)
+        tailGo e
+      e@CApp {}
+        | (CVar g, args) <- spine e,
+          Just ar <- M.lookup g (ciProg ci),
+          length args == ar,
+          ar > 0,
+          not (M.member g arithOps) -> do
+            env <- gets cEnv
+            if M.member g env
+              then ret e
+              else do
+                rs <- mapM (cExpr ci) args
+                emit (TailCall g rs)
+      other -> ret other
+    ret e = do
+      r <- cExpr ci e
+      emit (Ret r)
 
 cExpr :: CallInfo -> Core -> C Reg
 cExpr ci = go

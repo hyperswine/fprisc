@@ -1,0 +1,3 @@
+getB : { a : Int } -> Int .
+getB p = p.b.
+main = print (getB { a = 1 }).

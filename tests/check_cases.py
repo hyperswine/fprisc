@@ -63,7 +63,15 @@ refused('sig_too_general.fpr', 'the declared type of bad is more general than it
         'the signature promises a -> a', 'only gives Int -> Int')
 refused('sig_two_vars.fpr', 'the declared type of swapish is more general')
 accepted('sig_ok.fpr')
-print('Signatures: `a -> a` over a body that adds 1, and `a -> b` over a body that returns its argument, are refused naming both types; a genuinely generic signature and one NARROWER than the body compile: PASS')
+# a signature the grammar cannot read is a parse error at the offending token;
+# it used to backtrack to a dropped annotation and the body was inferred alone
+refused('sig_malformed.fpr', "unexpected '|'")
+refused('sig_malformed_arrow.fpr', "unexpected '-'")
+# record types are signature grammar, checked like any other type
+accepted('sig_record_ok.fpr')
+refused('sig_record_missing_field.fpr', 'closed record has no field .b')
+refused('sig_record_wrong_type.fpr', 'cannot unify String with Int')
+print('Signatures: `a -> a` over a body that adds 1, and `a -> b` over a body that returns its argument, are refused naming both types; a genuinely generic signature and one NARROWER than the body compile; a malformed signature is a parse error, not a dropped one; record types with a shared row variable check, a missing field and a wrong field type are refused: PASS')
 
 # operator resolution: an ambiguous site is refused, never decided by name order
 refused('op_ambiguous.fpr', '(+) is ambiguous for V2', 'Alpha.+, Zulu.+')

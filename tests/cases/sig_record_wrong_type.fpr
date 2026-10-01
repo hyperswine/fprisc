@@ -1,0 +1,3 @@
+getA : { a : Int } -> String .
+getA p = p.a.
+main = print (getA { a = 1 }).

@@ -31,6 +31,7 @@
 -- mechanical rather than archaeological.
 module Safety (safetyCheck, trustedLibraryPaths) where
 
+import Data.Char (isHexDigit)
 import System.Directory (canonicalizePath)
 import System.FilePath (takeDirectory, (</>))
 import Home (underHome)
@@ -423,7 +424,15 @@ safetyCheck preludeNames tops notes = (errs, suggests)
                not (blessed n),
                not (moduleUnsafe n)
            ]
-    tyOf n = holed (maybe "_" id (M.lookup n (M.fromList notes)))
+    tyOf n = unhash (holed (maybe "_" id (M.lookup n (M.fromList notes))))
+    -- the suggestion must be SOURCE: the inferred type names this module's
+    -- own types by their hash-qualified compile names (Caps@81bf...), which
+    -- the signature grammar does not read.  Pasting one used to be
+    -- silently dropped (qos's svc.fpr accumulated nine stale copies per
+    -- function); now it would be a parse error.  Print the bare name.
+    unhash [] = []
+    unhash ('@' : rest) | (h, rest') <- span isHexDigit rest, length h == 16 = unhash rest'
+    unhash (c : rest) = c : unhash rest
     -- rows aren't writable in the sig grammar: print '_' (the mono
     -- hole) for any {...} segment, balanced-brace aware
     holed [] = []

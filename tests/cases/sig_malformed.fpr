@@ -1,0 +1,5 @@
+# a signature the grammar cannot read is a parse error, not a dropped
+# annotation: until 2026-10-02 this compiled with f inferred as Int -> String
+f : Int -> Int | junk .
+f x = "not an int".
+main = print (f 1).

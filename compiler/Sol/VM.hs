@@ -159,6 +159,31 @@ dumpTabStats env = case vmTab env of
       )
       (M.toList m)
 
+-- a TAIL call into the table: a hit is served, a miss runs the callee
+-- directly and is NOT stored.  Storing needs a continuation after the
+-- callee returns, which is exactly what a tail call must not keep -- with
+-- the ordinary probe a tail-recursive tabled function (count n acc) grew
+-- the Haskell stack by one probe frame per iteration (2.4 GB at 3M).
+-- The table still fills from the non-tail calls (fib's two recursive
+-- calls are not tail), so memoization is unchanged where it matters.
+execFnTail :: VMEnv -> Name -> [Value] -> IO Value
+execFnTail env name args = case vmTab env of
+  Nothing -> execFnRaw env name args
+  Just ref -> do
+    sts <- readIORef ref
+    case M.lookup name sts of
+      Just (TOn tref) | Just key <- mapM asI args -> do
+        t <- readIORef tref
+        case M.lookup key (ttMap t) of
+          Just (v, _) -> do
+            writeIORef tref t {ttHits = ttHits t + 1, ttTick = ttTick t + 1, ttMap = M.insert key (v, ttTick t) (ttMap t)}
+            pure v
+          Nothing -> execFnRaw env name args
+      _ -> execFnRaw env name args
+  where
+    asI (VInt i) = Just (fromIntegral i :: Int64)
+    asI _ = Nothing
+
 execFn :: VMEnv -> Name -> [Value] -> IO Value
 execFn env name args = case vmTab env of
   Nothing -> execFnRaw env name args
@@ -254,6 +279,11 @@ runLoop env frame code = go
         vs <- mapM rd as
         wr d =<< execFn env g vs
         go (pc + 1)
+      TailCall g as -> do
+        vs <- mapM rd as
+        -- the last action of this activation: GHC compiles it as a jump,
+        -- so nothing of this frame (the IORef, the continuation) survives
+        execFnTail env g vs
       HCall d g as -> do
         vs <- mapM rd as
         wr d =<< halCall env g vs

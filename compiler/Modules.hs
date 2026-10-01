@@ -365,6 +365,7 @@ renameTops env qh tops = concatMap top tops
       TTup ts -> TTup (map ty ts)
       TArrT a b -> TArrT (ty a) (ty b)
       TVApp n ts -> TVApp n (map ty ts)
+      TRecT fs tl -> TRecT [(f, ty t) | (f, t) <- fs] tl
       t -> t
 
     pats1 bound = foldl' (\(ps, b) p -> let (p', b') = pat b p in (ps ++ [p'], b')) ([], bound)

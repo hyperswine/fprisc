@@ -44,7 +44,7 @@ data Prepared = Prepared
 -- Changing the artifact format/meaning requires a new schema, even though a
 -- rebuilt executable normally also invalidates all entries through its identity.
 schema :: Int
-schema = 2
+schema = 3 -- 3: TailCall in the bytecode (2026-10-02)
 
 fingerprint :: BS.ByteString -> Word64
 fingerprint = BS.foldl' (\h b -> (h `xor` fromIntegral b) * 0x100000001b3) 0xcbf29ce484222325

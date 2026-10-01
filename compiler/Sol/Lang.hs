@@ -170,6 +170,7 @@ renameTops rn tops0 = map top tops0
       TTup ts -> TTup (map rt ts)
       TArrT a b -> TArrT (rt a) (rt b)
       TVApp n as -> TVApp n (map rt as)
+      TRecT fs tl -> TRecT [(f, rt t) | (f, t) <- fs] tl
       o -> o
     rp = \case
       PCon c ps -> PCon (look c) (map rp ps)
@@ -227,6 +228,7 @@ qualifyUses aliases = map top
       TTup ts -> TTup (map rt ts)
       TArrT a b -> TArrT (rt a) (rt b)
       TVApp n as -> TVApp n (map rt as)
+      TRecT fs tl -> TRecT [(f, rt t) | (f, t) <- fs] tl
       o -> o
     rp = \case
       PCon c ps -> PCon (retgt c) (map rp ps)

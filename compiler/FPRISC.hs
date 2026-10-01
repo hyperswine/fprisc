@@ -111,7 +111,14 @@ data STop
   | TSkip
   deriving (Show, Generic, NFData, Binary)
 
-data Ty = TCon Name [Ty] | TVarT Name | TTup [Ty] | TArrT Ty Ty | TVApp Name [Ty] | TOther
+data Ty
+  = TCon Name [Ty]
+  | TVarT Name
+  | TTup [Ty]
+  | TArrT Ty Ty
+  | TVApp Name [Ty]
+  | TRecT [(Name, Ty)] (Maybe Name) -- `{ f : T, g : U }` closed, `{ f : T | r }` open on row var r
+  | TOther
   deriving (Show, Generic, NFData, Binary)
 
 --------------------------------------------------------------------------------
@@ -1130,7 +1137,12 @@ signature :: P STop
 signature = do
   n <- (pName <|> upperName <|> lowerNameRaw)
   _ <- lexeme (char ':' <* notFollowedBy (char ':'))
-  try (fullSig n) <|> (skipTillDot >> pure TSkip)
+  -- no fallback: a `name :` header that does not parse as a signature is a
+  -- parse error at the offending token.  Until 2026-10-02 this backtracked
+  -- to `skipTillDot >> pure TSkip`, which DROPPED the signature and let the
+  -- body be inferred unannotated -- `f : Int -> Int | junk .` over a body
+  -- returning a String compiled and ran (docs/2026-10-02-TOOLING-SEMANTICS-AUDIT.md).
+  fullSig n
   where
     fullSig n = do
       mu <- optional (try (lexeme (string "unsafe" <* notFollowedBy (satisfy identChar))))
@@ -1173,6 +1185,7 @@ tyAtom =
       try (do m <- lowerNameRaw; _ <- char '.'; u <- upperName; pure (TCon (m ++ "." ++ u) [])),
       flip TCon [] <$> upperName,
       TOther <$ lexeme (char '_' <* notFollowedBy (satisfy identChar)),
+      recordTy,
       try (do _ <- char '?'; _ <- char '?'; sc; pure (TCon "??" [])),
       try (do _ <- char '?'; n <- lowerNameRaw; pure (TCon ("?" ++ n) [])),
       TVarT <$> lowerName
@@ -1189,9 +1202,20 @@ tyAtom =
       t <- tyApp
       arrows <- many (try (symbol "->") *> tyApp)
       pure (foldr1 TArrT (t : arrows))
+    -- a record type: `{ f : T, g : U }`, or `{ f : T | r }` open on the
+    -- row variable r (shared across the signature by name).  Until
+    -- 2026-10-02 this was not in the grammar: every signature mentioning a
+    -- record (13 std modules) was silently dropped and never checked.
+    recordTy = braces $ do
+      fs <- recField `sepBy` symbol ","
+      tl <- optional (pipeSep *> lowerName)
+      pure (TRecT fs tl)
+    recField = do
+      f <- lowerName
+      _ <- lexeme (char ':' <* notFollowedBy (char ':'))
+      t <- tyArrowChain
+      pure (f, t)
 
-skipTillDot :: P ()
-skipTillDot = void (skipManyTill anySingle dotTerm)
 
 typeDecl :: P STop
 typeDecl = do
@@ -2359,6 +2383,7 @@ shapeOfTy lin = \case
   TVarT _ -> LU
   TArrT _ _ -> LU
   TVApp _ _ -> LU
+  TRecT fs _ -> if any (isLin . shapeOfTy lin . snd) fs then LL else LU
   TOther -> LU
 
 buildLinInfo :: [STop] -> LinInfo
