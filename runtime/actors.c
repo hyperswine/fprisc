@@ -1454,16 +1454,18 @@ static chan_t *chan_for(acb_t *a, uw skey, int create) {
         else if (__atomic_load_n(&((acb_t *)s)->var, __ATOMIC_ACQUIRE) == ST_DEAD) {
           chan_t *c = &a->ch[i];
           uint32_t rt = __atomic_load_n(&c->rt, __ATOMIC_ACQUIRE);
-          if (c->rh == rt) { free_slot = c; free_expect = s; } /* dead + drained */
+          if (__atomic_load_n(&c->rh, __ATOMIC_ACQUIRE) == rt) { free_slot = c; free_expect = s; } /* dead + drained */
         }
       }
     }
     if (!create) return 0;
     if (!free_slot) return sh_chan(a); /* the dedicated slots are taken: share */
-    if (free_expect == 0) free_slot->rh = free_slot->rt = 0; /* fresh slot */
-    free_slot->dyn = a->mbdyn; /* the actor's mailbox policy (spawnCap) */
-    /* a stolen slot keeps rh==rt where they stand: the CAS's acquire
-     * side gives the new sender a coherent view of both counters */
+    /* chan_init / spawn initialize counters and policy BEFORE publishing
+     * the actor. Never write them while merely holding a candidate: another
+     * sender can win the CAS and publish a message before our CAS fails.
+     * Resetting rt here erased that message, stranding receiveRes forever.
+     * Reclaimed slots likewise keep their monotonic counters where they stand;
+     * the acquire of rh above observes the consumer's release of the last slot. */
     uw expect = free_expect;
     if (__atomic_compare_exchange_n(&free_slot->sender, &expect, key, 0,
                                     __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
@@ -1616,7 +1618,7 @@ static uint32_t ch_count(chan_t *c) {
 static int p_any(acb_t *a, uw unused) {
   (void)unused;
   for (int i = 0; i < MAXSND; i++)
-    if (a->ch[i].sender && ch_count(&a->ch[i])) return 1;
+    if (__atomic_load_n(&a->ch[i].sender, __ATOMIC_ACQUIRE) && ch_count(&a->ch[i])) return 1;
   return 0;
 }
 
@@ -1644,7 +1646,7 @@ static int p_res(acb_t *a, uw unused) {
   (void)unused;
   for (int i = 0; i < MAXSND; i++) {
     chan_t *c = &a->ch[i];
-    if (!c->sender) continue;
+    if (!__atomic_load_n(&c->sender, __ATOMIC_ACQUIRE)) continue;
     uint32_t rt = __atomic_load_n(&c->rt, __ATOMIC_ACQUIRE);
     ringv_t *rv = __atomic_load_n(&c->rv, __ATOMIC_ACQUIRE);
     for (uint32_t k = c->rh; k != rt; k++) {
@@ -2062,7 +2064,7 @@ static V a_receive(V me) {
   for (;;) {
     for (int n = 0; n < MAXSND; n++) {
       chan_t *c = &a->ch[(a->scan + n) % MAXSND];
-      if (c->sender && ch_count(c)) {
+      if (__atomic_load_n(&c->sender, __ATOMIC_ACQUIRE) && ch_count(c)) {
         a->scan = (a->scan + n + 1) % MAXSND;
         return take_at(a, c, c->rh);
       }
@@ -2088,7 +2090,7 @@ static V a_receive_now(V me) {
   drop_drain(a); /* the previous activation's borrows are dead here */
   for (int n = 0; n < MAXSND; n++) {
     chan_t *c = &a->ch[(a->scan + n) % MAXSND];
-    if (c->sender && ch_count(c)) {
+    if (__atomic_load_n(&c->sender, __ATOMIC_ACQUIRE) && ch_count(c)) {
       a->scan = (a->scan + n + 1) % MAXSND;
       V m = take_at(a, c, c->rh);
       V *ok = (V *)fpr_alloc(8 + sizeof(uw));
@@ -2188,7 +2190,7 @@ static V a_receive_res(V me) {
   for (;;) {
     for (int n = 0; n < MAXSND; n++) {
       chan_t *c = &a->ch[(a->scan + n) % MAXSND];
-      if (!c->sender) continue;
+      if (!__atomic_load_n(&c->sender, __ATOMIC_ACQUIRE)) continue;
       uint32_t rt = __atomic_load_n(&c->rt, __ATOMIC_ACQUIRE);
       ringv_t *rv = __atomic_load_n(&c->rv, __ATOMIC_ACQUIRE);
       for (uint32_t k = c->rh; k != rt; k++) {
@@ -2485,7 +2487,7 @@ static V mem_next(acb_t *a, uw *from) {
   for (;;) {
     for (int n = 0; n < MAXSND; n++) {
       chan_t *c = &a->ch[(a->scan + n) % MAXSND];
-      if (c->sender && ch_count(c)) {
+      if (__atomic_load_n(&c->sender, __ATOMIC_ACQUIRE) && ch_count(c)) {
         a->scan = (a->scan + n + 1) % MAXSND;
         if (c->sender == SHARED_KEY) {
           ringv_t *rv = __atomic_load_n(&c->rv, __ATOMIC_ACQUIRE);

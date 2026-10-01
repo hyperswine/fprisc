@@ -5,6 +5,7 @@ command line, the exit status, stdin/stdout/stderr, files, the clock --
 and the same actors, std modules and panics as every other profile."""
 from pathlib import Path
 import os, subprocess, tempfile
+from concurrent.futures import ThreadPoolExecutor
 ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
 def run(args, expected=0, timeout=120, stdin=None, env=None):
@@ -116,6 +117,23 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         assert 'reply=Ok 42 dead=Err dead actor died-while-waiting=Err dead actor' in out, out
         assert 'rounds: oks=3000 errs=3000' in out, out
     print('receiveFromRes: a dead sender is an answer; 3,000 reply-then-exit and exit-silently rounds on 1, 4 and 8 harts: PASS')
+    # Force the original first-sender race, then exercise real scheduler/wakes,
+    # dead-sender channel reuse and overflow under parallel host load.
+    run(['python3', 'tests/check_actor_claim.py'])
+    stress_runs = int(os.environ.get('FPR_ACTOR_STRESS_RUNS', '12'))
+    assert stress_runs > 0
+    for no_inline in ('0', '1'):
+        exe = tmp / ('taskstress-' + no_inline)
+        run(['./fpr', 'build', 'tests/base/taskstress.fpr', '-o', exe],
+            env={'FPR_NO_INLINE': no_inline})
+        for harts in ('1', '4'):
+            assert run([exe], env={'FPR_HARTS': harts}, timeout=300).stdout == 'shastress: 40\n'
+        def stress_once(_):
+            p = run([exe], env={'FPR_HARTS': '10'}, timeout=300)
+            assert p.stdout == 'shastress: 40\n', p.stdout + p.stderr
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            list(pool.map(stress_once, range(stress_runs)))
+    print(f'Channel claim preserves a queued Result; Task.map SHA stress: {stress_runs} runs per inliner setting on 10 harts, six concurrent: PASS')
     # 6. fpr run: build to a temp file, pass the arguments through, return its status
     p = run(['./fpr', 'run', 'tests/base/args.fpr', 'x', 'y'], 3, env={'FPR_BASE_VAR': 'v'})
     assert 'args: x,y (2)' in p.stdout, p.stdout

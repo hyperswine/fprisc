@@ -1,0 +1,11 @@
+# Concurrent short-lived senders: channel claim/reuse and shared overflow.
+Task = use "std/task".
+List = use "std/list".
+Digest = use "std/digest".
+String = use "std/string".
+words = List.map (fn i -> String.repeat 2000 "w{i}") (List.range 1 8).
+rounds : unsafe Int -> Int -> Int .
+rounds k ok = if k == 0 then ok else
+  par = Task.map Digest.sha256 words;
+  rounds (k - 1) (ok + (if par == Ok (List.map Digest.sha256 words) then 1 else 0)).
+main = print "shastress: {rounds 40 0}".
