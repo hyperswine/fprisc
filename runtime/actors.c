@@ -1336,7 +1336,22 @@ static void hart_reg_lost(fpr_hart_t *h, acb_t *last) {
   fpr_cpanic("actors: the hart register was overwritten");
 }
 
+/* A loader publishes code before publishing an actor that can execute it.
+ * Each hart acquires that generation and synchronizes its own instruction
+ * stream before dispatch. No acknowledgement wait: a busy hart cannot run
+ * the new image until it returns through this dispatch boundary. */
+static uw code_generation;
+__attribute__((weak)) void fpr_instruction_fence(void) {
+#if defined(__riscv)
+  __asm__ volatile(".option push\n.option arch, +zifencei\nfence.i\n.option pop" ::: "memory");
+#endif
+}
+void fpr_code_publish(void) {
+  fpr_instruction_fence(); /* the loader may call the image entry directly */
+  __atomic_add_fetch(&code_generation, 1, __ATOMIC_RELEASE);
+}
 static void hart_loop(fpr_hart_t *h) {
+  uw code_seen = 0;
   uw last_act = 0, stable = 0;
   uint64_t quiet_since = 0; /* CLINT time the current lull began (detector) */
   h->lcg = h->id * 2654435761u + 12345u; /* decorrelated, deterministic */
@@ -1390,6 +1405,11 @@ static void hart_loop(fpr_hart_t *h) {
         n->probe_drained = 0;
       }
 #endif
+      uw code_now = __atomic_load_n(&code_generation, __ATOMIC_ACQUIRE);
+      if (code_now != code_seen) {
+        fpr_instruction_fence();
+        code_seen = code_now;
+      }
       fpr_ctx_switch(h->sched_ctx, n->ctx);
       hal_actor_stack(0); /* the hart loop may free that stack (reap): nothing watched here */
       __atomic_store_n(&n->running, 0, __ATOMIC_RELEASE); /* saved: it may run elsewhere now */

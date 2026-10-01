@@ -1,0 +1,12 @@
+unsafe program.
+Probe.publish : Int -> Int .
+Probe.check : Int -> Int .
+worker who self = send who (Probe.check 0).
+rounds me n ok = if n == 0 then ok else
+  _ = Probe.publish 0;
+  _ = spawnOn 1 (worker me);
+  r = receive me;
+  rounds me (n - 1) (ok + r).
+main =
+  ok = rounds (myself 0) 100 0;
+  print "code publication: {ok}/100 remote dispatches fenced".

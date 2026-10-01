@@ -144,6 +144,12 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([build(tmp / 'lwstate.fpr', 'lwstate')], 1)
     assert 'Sys.loopWith: the state may not hold a Vector' in p.stdout + p.stderr, p.stdout + p.stderr
     print(f'Sys.loopWith: 1,000 and 20,000 steps of a double-buffered frame loop grow the caller pool by the same {g2} B; a moved vector and a Vector in the state are refused: PASS')
+    # Code publication must fence a remote hart before its next actor dispatch.
+    exe = tmp / 'codepublish'
+    run(['./fpr', 'build', 'tests/base/codepublish.fpr', '--with', 'tests/base/codepublish_probe.c', '-o', exe])
+    p = run([exe], env={'FPR_HARTS': '2'})
+    assert p.stdout.strip() == 'code publication: 100/100 remote dispatches fenced', p.stdout
+    print('Code publication: remote dispatch fences every new generation: PASS')
     # 4m. mortal process images: a data static of another process's image is
     # copied on send and outlives the image; a function into its code is
     # refused, the sender failing alone (images_probe.c makes a fake image)

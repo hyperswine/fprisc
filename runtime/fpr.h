@@ -174,6 +174,10 @@ typedef struct fpr_sched {
 extern fpr_sched_t *fpr_sched;        /* NULL = this image is the plane */
 uw fpr_pid_live(uw pid); /* actors of process pid not yet dead and off every hart */
 void fpr_sched_export(fpr_sched_t *out); /* fill with THIS image's impls */
+/* Call on the scheduler's runtime after code writes, before spawning an
+ * actor or directly entering the image. Remote harts fence at dispatch. */
+void fpr_code_publish(void);
+void fpr_instruction_fence(void); /* weak platform operation; RV fence.i */
 /* the IMAGE-STATICS window carved out of the heap span: a loaded
  * process's code/rodata/data sit INSIDE the buddy span (the fixed
  * slot), but its cells are statics -- no 16-byte alloc preheader, so
