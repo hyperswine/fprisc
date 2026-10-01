@@ -161,6 +161,19 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         assert p.stdout.strip().endswith('kept: from the image; a function of the image: refused (dead actor)'), p.stdout
         assert 'send: a function of another process cannot leave it' in p.stdout + p.stderr, p.stdout + p.stderr
     print('Process images: a static crossing to another process is copied and outlives the image; a function into it is refused: PASS')
+    # 4n. pair-free vector reads: `(x, v2) = Vec.at i v` builds no pair
+    # (Inline.vecPeek); the same program without the rewrite agrees on every
+    # value, and the 2,000 reads cost only the loops' two final pairs
+    on = run([build('tests/base/vecpeek.fpr', 'vp1')]).stdout.splitlines()
+    exe = tmp / 'vp2'
+    run(['./fpr', 'build', 'tests/base/vecpeek.fpr', '-o', exe], env={'FPR_NO_VEC_PEEK': '1'})
+    off = run([exe]).stdout.splitlines()
+    assert on[0] == off[0] == 'at 1499500 get 1499500 whole 70 shadow 3998', (on, off)
+    assert on[1] == '2000 reads: 96 bytes' and off[1] == '2000 reads: 96096 bytes', (on, off)
+    (tmp / 'vp3.fpr').write_text('unsafe program.\nmain =\n  v = Vec.iota 3;\n  (x, v2) = Vec.at 3 v;\n  _ = Vec.free v2;\n  x.\n')
+    p = run([build(tmp / 'vp3.fpr', 'vp3')], 1)
+    assert 'Vec.get: index out of range' in p.stdout + p.stderr, p.stdout + p.stderr
+    print('Vector reads taken apart at once build no pair: 2,000 reads 96 B (was 96,096), the same values, the same out-of-range panic: PASS')
     # 4h. receiveFromRes: a sender that exits is an answer (Err "dead actor"),
     # never a caller parked for ever; a reply sent just before exiting is kept
     dp = build('tests/base/deadpeer.fpr', 'deadpeer')

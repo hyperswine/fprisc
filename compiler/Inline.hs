@@ -21,7 +21,7 @@
 -- program (exports, constructor stubs and function values still need
 -- their symbols); only the sites change.
 
-module Inline (inlineSmall, inlineWith) where
+module Inline (inlineSmall, inlineWith, vecPeek) where
 
 import Control.Monad (foldM)
 import Control.Monad.State.Strict
@@ -226,3 +226,78 @@ rename m fresh = \case
   CTagEq t v x -> CTagEq t v (rename m fresh x)
   CProj i x -> CProj i (rename m fresh x)
   e -> e
+
+-- ---------------------------------------------------------------------
+-- vecPeek: a vector read whose pair is taken apart at once allocates
+-- nothing.  `(x, v2) = Vec.at i v` desugars to
+--
+--   let t = Vec.at i v in if tag(t) == Tup2 then let x = t.0; v2 = t.1 in ...
+--
+-- and the runtime builds a 48-byte (value, handle) pair per read -- in
+-- every vector loop, and for good in a long-lived actor's pool.  The
+-- handle returned is always the one passed in (vec.c), so the pair is
+-- redundant: this rewrites the site to `let t = $vec.at i v` -- the value
+-- alone -- with t.0 read as t and t.1 as v.  Vec.get and Vec.len likewise.
+--
+-- Run on the base pipeline after the linearity check (which sees the
+-- source), so aliasing the handle breaks no ownership rule; not under
+-- --arc, whose ownership lowering would count the alias.  A site is left
+-- alone unless the handle is a variable, the pair is used only through
+-- its projections, and neither name is rebound before those uses.
+vecPeek :: Prog -> Prog
+vecPeek = M.map (\(ps, b) -> (ps, peek b))
+  where
+    peek = \case
+      CLet t rhs body
+        | Just (op, args, v) <- peekable rhs,
+          Just body' <- retarget t v body ->
+            CLet t (foldl CApp (CVar op) (map peek args ++ [CVar v])) (peek body')
+      CLet x a b -> CLet x (peek a) (peek b)
+      CApp a b -> CApp (peek a) (peek b)
+      CLam ps b -> CLam ps (peek b)
+      CIf c a b -> CIf (peek c) (peek a) (peek b)
+      CMk t v fs -> CMk t v (map peek fs)
+      CTagEq t v e -> CTagEq t v (peek e)
+      CProj i e -> CProj i (peek e)
+      e -> e
+    peekable = \case
+      CApp (CApp (CVar "Vec.at") i) (CVar v) -> Just ("$vec.at", [i], v)
+      CApp (CApp (CVar "Vec.get") i) (CVar v) -> Just ("$vec.get", [i], v)
+      CApp (CVar "Vec.len") (CVar v) -> Just ("$vec.len", [], v)
+      _ -> Nothing
+    -- the pattern's shape check is on the pair (Tup2 = tid 4): drop it,
+    -- then read t.0 as t and t.1 as v; Nothing when that is not sound
+    retarget t v = \case
+      CIf (CTagEq 4 0 (CVar t')) yes _ | t' == t -> subst t v yes
+      _ -> Nothing
+    subst t v = go
+      where
+        go = \case
+          CProj 0 (CVar x) | x == t -> Just (CVar t)
+          CProj 1 (CVar x) | x == t -> Just (CVar v)
+          CVar x | x == t -> Nothing -- the pair itself is used
+          e@(CVar _) -> Just e
+          CLet x a b
+            | x == t -> (\a' -> CLet x a' b) <$> go a -- t rebound: b sees the new one
+            | x == v, mentions t b -> Nothing      -- v rebound before a use of t.1
+            | otherwise -> CLet x <$> go a <*> go b
+          CLam ps b
+            | t `elem` ps -> Just (CLam ps b)
+            | v `elem` ps, mentions t b -> Nothing
+            | otherwise -> CLam ps <$> go b
+          CApp a b -> CApp <$> go a <*> go b
+          CIf c a b -> CIf <$> go c <*> go a <*> go b
+          CMk tg vr fs -> CMk tg vr <$> mapM go fs
+          CTagEq tg vr e -> CTagEq tg vr <$> go e
+          CProj i e -> CProj i <$> go e
+          e -> Just e
+    mentions n = \case
+      CVar x -> x == n
+      CLet _ a b -> mentions n a || mentions n b
+      CApp a b -> mentions n a || mentions n b
+      CLam _ b -> mentions n b
+      CIf c a b -> mentions n c || mentions n a || mentions n b
+      CMk _ _ fs -> any (mentions n) fs
+      CTagEq _ _ e -> mentions n e
+      CProj _ e -> mentions n e
+      _ -> False

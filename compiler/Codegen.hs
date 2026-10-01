@@ -50,7 +50,7 @@ import FPRISC (Core (..), Prog, freeVars)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 24 -- typed vector constructors and output-layout map lowering
+codegenRev = 25 -- pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value

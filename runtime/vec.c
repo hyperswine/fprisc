@@ -512,11 +512,34 @@ static V h_at(V iv, V vec) {
   if (!ISINT(iv)) fpr_cpanic("Vec.at: index not an Int");
   return h_get(TAG(UNTAG(iv) + 1), vec);
 }
+/* The same three reads WITHOUT the (value, handle) pair.  The compiler
+ * (Inline.hs vecPeek) calls these where the pair is taken apart at once,
+ * `(x, v2) = Vec.at i v`: the handle returned is always the one passed
+ * in, so v2 is v and the 48-byte tuple was all that was allocated --
+ * per element read, in every vector loop.  Same checks, same messages. */
+static V h_peek_get(V iv, V vec) {
+  vec_t *x = vchk(vec, "Vec.get: not a Vector");
+  if (!ISINT(iv)) fpr_cpanic("Vec.get: index not an Int");
+  sw i = UNTAG(iv);
+  if (i < 1 || (uw)i > x->len) fpr_cpanic("Vec.get: index out of range");
+  return row_at(x, (uw)(i - 1));
+}
+static V h_peek_at(V iv, V vec) {
+  if (!ISINT(iv)) fpr_cpanic("Vec.at: index not an Int");
+  return h_peek_get(TAG(UNTAG(iv) + 1), vec);
+}
+static V h_peek_len(V vec) {
+  vec_t *x = vchk(vec, "Vec.len: not a Vector");
+  return TAG((sw)x->len);
+}
 static V h_put(V iv, V v, V vec) {
   if (!ISINT(iv)) fpr_cpanic("Vec.put: index not an Int");
   return h_set(TAG(UNTAG(iv) + 1), v, vec);
 }
 FPR_FN(fpr_g_Vec_x2eat, h_at, 2);
+FPR_FN(fpr_g__x24vec_x2eget, h_peek_get, 2);
+FPR_FN(fpr_g__x24vec_x2eat, h_peek_at, 2);
+FPR_FN(fpr_g__x24vec_x2elen, h_peek_len, 1);
 FPR_FN(fpr_g_Vec_x2eput, h_put, 3);
 FPR_FN(fpr_g_Vec_x2emap, fpr_vec_map, 2);
 FPR_FN(fpr_g_Vec_x2emapAs, h_mapAs, 3);

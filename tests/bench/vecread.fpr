@@ -1,0 +1,20 @@
+# vecread: 50 passes of 1,000,000 element reads, `(x, v) = Vec.at i v`.
+# Each read used to build a 48-byte (value, handle) pair -- 2.4 GB for this
+# run -- until Inline.vecPeek (docs/2026-10-01-VEC-PEEK.md).
+unsafe program.
+sumAt v i n acc = case i == n of
+    True -> (acc, v)
+  | False -> sumAt1 v i n acc.
+sumAt1 v i n acc =
+  (x, v) = Vec.at i v;
+  sumAt v (i + 1) n (acc + x).
+rounds v k acc = case k == 0 of
+    True -> (acc, v)
+  | False -> rounds1 v k acc.
+rounds1 v k acc =
+  (s, v2) = sumAt v 0 1000000 0;
+  rounds v2 (k - 1) (acc + s).
+main =
+  (t, v) = rounds (Vec.iota 1000000) 50 0;
+  _ = Vec.free v;
+  print "vecread 50x1M = {t}".

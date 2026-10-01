@@ -1,0 +1,50 @@
+# vecpeek.fpr -- pair-free vector reads (Inline.vecPeek, vec.c $vec.*).
+# `(x, v2) = Vec.at i v` reads x without building the (value, handle) pair.
+# check_base runs this with the rewrite and with FPR_NO_VEC_PEEK=1: every
+# line but the last must be the same, and the last shows the reads in a
+# 1,000-step loop allocated nothing with it (48 bytes each without).
+
+unsafe program.
+
+# every form: at, get, len; the handle rebound under the same name
+sumAt v i n acc = case i == n of
+    True -> (acc, v)
+  | False -> sumAt1 v i n acc.
+sumAt1 v i n acc =
+  (x, v) = Vec.at i v;
+  sumAt v (i + 1) n (acc + x).
+
+sumGet v i n acc = case i > n of
+    True -> (acc, v)
+  | False -> sumGet1 v i n acc.
+sumGet1 v i n acc =
+  (x, v2) = Vec.get i v;
+  sumGet v2 (i + 1) n (acc + x).
+
+# the pair kept whole: not rewritten, still right
+whole v =
+  p = Vec.at 2 v;
+  case p of (x, v2) -> (x * 10, v2).
+
+# the element's name shadows the handle's: x = t.0, then v rebinds
+shadow v =
+  (v1, v) = Vec.len v;
+  (x, v) = Vec.at (v1 - 1) v;
+  (x + v1, v).
+
+heapRun v =
+  h0 = heapUsed Unit;
+  (s, v2) = sumAt v 0 1000 0;
+  (s2, v3) = sumGet v2 1 1000 0;
+  (heapUsed Unit - h0, s + s2, v3).
+
+main =
+  v = Vec.axpb 3 1 (Vec.iota 1000);
+  (a, v) = sumAt v 0 1000 0;
+  (g, v) = sumGet v 1 1000 0;
+  (w, v) = whole v;
+  (sh, v) = shadow v;
+  _ = print "at {a} get {g} whole {w} shadow {sh}";
+  (bytes, s, v) = heapRun v;
+  _ = Vec.free v;
+  print "2000 reads: {bytes} bytes".
