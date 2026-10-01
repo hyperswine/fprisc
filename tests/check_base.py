@@ -144,6 +144,16 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([build(tmp / 'lwstate.fpr', 'lwstate')], 1)
     assert 'Sys.loopWith: the state may not hold a Vector' in p.stdout + p.stderr, p.stdout + p.stderr
     print(f'Sys.loopWith: 1,000 and 20,000 steps of a double-buffered frame loop grow the caller pool by the same {g2} B; a moved vector and a Vector in the state are refused: PASS')
+    # 4m. mortal process images: a data static of another process's image is
+    # copied on send and outlives the image; a function into its code is
+    # refused, the sender failing alone (images_probe.c makes a fake image)
+    exe = tmp / 'images'
+    run(['./fpr', 'build', 'tests/base/images.fpr', '--with', 'tests/base/images_probe.c', '-o', exe])
+    for harts in ('1', '2'):
+        p = run([exe], env={'FPR_HARTS': harts})
+        assert p.stdout.strip().endswith('kept: from the image; a function of the image: refused (dead actor)'), p.stdout
+        assert 'send: a function of another process cannot leave it' in p.stdout + p.stderr, p.stdout + p.stderr
+    print('Process images: a static crossing to another process is copied and outlives the image; a function into it is refused: PASS')
     # 4h. receiveFromRes: a sender that exits is an answer (Err "dead actor"),
     # never a caller parked for ever; a reply sent just before exiting is kept
     dp = build('tests/base/deadpeer.fpr', 'deadpeer')

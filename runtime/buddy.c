@@ -49,6 +49,13 @@ static int order_of(uw bytes) {
 
 static uw block_size(int order) { return BUDDY_MIN_BLOCK << order; }
 
+/* the span and its unit, for a per-block side table (runtime.c's image map) */
+void buddy_geometry(char **base, uw *size, uw *min_block) {
+  *base = arena_base;
+  *size = arena_size;
+  *min_block = BUDDY_MIN_BLOCK;
+}
+
 static uw offset_of(void *p) { return (uw)((char *)p - arena_base); }
 
 void buddy_init(void *base, uw size) {
@@ -113,7 +120,7 @@ void *buddy_alloc(uw bytes) {
 }
 
 /* ---- address-targeted reservation (the slab refactor's slot fix) ----
- * Process images are statically linked at _proc_arena_start, but buddy
+ * (Portable's fixed windows) Images statically linked at a fixed address, while buddy
  * now spans heap+proc as ONE region and ordinary allocations land
  * wherever.  These reserve/release the EXACT range a linked image
  * needs, by splitting free blocks TOWARD the aligned blocks that tile the range

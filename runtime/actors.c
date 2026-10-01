@@ -692,6 +692,9 @@ static void reap(acb_t *a) {
     a->ch = 0;
   }
   if (a->entry) { fpr_arc_decref(a->entry); a->entry = 0; } /* unpin the closure */
+  /* a process's actor reclaimed: its loader may end the image once none
+   * is left (fpr_pid_live is 0 only when no hart runs that code) */
+  if (a->pid && fpr_pid_quiet) fpr_pid_quiet(a->pid);
   /* the acb itself stays: it IS the actor value other actors hold
    * (send-to-dead reads a->var).  ~sizeof(acb_t) per actor, stated. */
 }
@@ -1939,7 +1942,8 @@ static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t d
   a->running = 0; /* the block may be reused: no hart has this context yet */
   a->irq_target = 0;
   if (!a->pool.buckets) fpr_cpanic("spawn: no memory for a bucket array");
-  f = fpr_msg_copy(f); /* the entry closure crosses like any message:
+  f = fpr_msg_copy_to(f, pid != (uw)-1 ? pid : fpr_current_pid());
+                       /* the entry closure crosses like any message:
                         * deep-copied, so captures never dangle into
                         * the spawner's pool */
   fpr_arc_incref(f); /* pinned for the child's lifetime */
@@ -2039,6 +2043,12 @@ static V a_spawn_app(V f) {
 }
 FPR_FN(fpr_g_Sys_x2espawnApp, a_spawn_app, 1);
 
+uw fpr_current_pid(void) {
+  fpr_hart_t *h = fpr_hart();
+  acb_t *cur = h ? h->current : 0;
+  return cur ? cur->pid : 0;
+}
+
 /* myPid u -> Int: the ACB's owning process (0 = the boot image) */
 static V a_mypid(V u) {
   (void)u;
@@ -2134,7 +2144,7 @@ V fpr_send_as(uw sender_key, V av, V m) {
   uint64_t q0 = FPR_PROBE_NOW();
 #endif
   chan_t *c = chan_for(a, sender_key, 1);
-  m = fpr_msg_copy(m); /* DEEP COPY: the receiver gets a self-contained
+  m = fpr_msg_copy_to(m, a->pid); /* DEEP COPY: the receiver gets a self-contained
                         * slab; nothing the sender does afterward can
                         * touch it, and drop-of-root frees all of it */
 #ifdef FPR_COST_PROBE
@@ -2194,7 +2204,9 @@ static V a_send_linear(V av, V m) {
   if (fpr_sched) return fpr_sched->send_as((uw)fpr_hart()->current, av, m);
   if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("sendLinear: target is not an actor");
   acb_t *a = (acb_t *)av;
-  int movable = fpr_arc_movable_root(m);
+  /* a move shares the value's statics too: across processes it copies,
+   * so nothing it holds can outlive a process image (runtime.c) */
+  int movable = fpr_arc_movable_root(m) && a->pid == fpr_current_pid();
   if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD) {
     if (movable) fpr_arc_decref(m); /* the drop the receiver would have done */
     else if (!ISINT(m) && fpr_in_heap(m) && TID(m) == T_VEC)
@@ -2204,7 +2216,7 @@ static V a_send_linear(V av, V m) {
   chan_t *c = chan_for(a, (uw)fpr_hart()->current, 1);
   if (!movable) {
     V orig = m;
-    m = fpr_msg_copy(m);
+    m = fpr_msg_copy_to(m, a->pid);
     fpr_arc_incref(m);
     if (!ISINT(orig) && fpr_in_heap(orig) && TID(orig) == T_VEC)
       fpr_vec_release(orig); /* the bulk case: consume frees it now */
@@ -2516,6 +2528,9 @@ static V a_send_arc(V av, V m) {
   acb_t *a = (acb_t *)av;
   if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD)
     return send_err("dead actor"); /* no promotion happened; sender keeps sole ownership */
+  /* sharing across processes would let the receiver hold the sender's
+   * image statics past its end: across processes, a share is a copy */
+  if (a->pid != fpr_current_pid()) return fpr_send_as((uw)fpr_hart()->current, av, m);
   chan_t *c = chan_for(a, (uw)fpr_hart()->current, 1);
   fpr_arc_promote_share(m);
   if (!ring_push(a, c, (uw)fpr_hart()->current, m)) {

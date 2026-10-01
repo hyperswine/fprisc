@@ -1,32 +1,30 @@
-/* link-app.ld -- the fixed-slot linker script for dynamically loadable
- * QOS processes (docs/PROCESS-LOADING.md). PROC_SLOT_BASE is supplied
- * on the link command line via --defsym (it is System.qa's actual
- * `_proc_arena_start` address for THIS build -- extracted from
- * system.elf's symbol table, not guessed; see the Makefile rule).
+/* link-app.ld -- a dynamically loadable QOS process image
+ * (qos docs/2026-10-01-PROCESS-IMAGES.md).  The image is RELOCATABLE: it
+ * is linked at PROC_IMAGE_BASE = 0 with --emit-relocs, and the kernel
+ * places it in a block from Memory.qa's buddy and moves its address words
+ * by wherever that block is (qos tools/mkqa.py writes the list).  Code
+ * reaches everything PC-relative (-mcmodel=medany), so only data words
+ * move.  A second link at another base is the build's check of the list.
  *
  * No .text.entry / reset vector: this image is never the machine's
- * boot image. `fpr_process_entry` (proc_entry.S) is a PLAIN CALLABLE
+ * boot image. `fpr_process_entry` (proc_entry.c) is a PLAIN CALLABLE
  * FUNCTION, and ENTRY() below just points the ELF header's e_entry at
- * it so the loader can read it straight out of the file, the way any
- * ELF loader would -- no ad hoc symbol lookup needed.
- *
- * No process-arena reservation at the end: apps don't recursively host
- * their own loadable sub-processes in this design.
+ * it so the loader can read it straight out of the file.
  */
 OUTPUT_ARCH(riscv)
 ENTRY(fpr_process_entry)
 
-MEMORY { SLOT (rwx) : ORIGIN = PROC_SLOT_BASE, LENGTH = 16M }
+MEMORY { IMAGE (rwx) : ORIGIN = PROC_IMAGE_BASE, LENGTH = 1024M }
 
 SECTIONS {
-  _proc_image_start = PROC_SLOT_BASE; /* statics window base (fpr_static_lo) */
-  .text : { *(.text .text.*) } > SLOT
-  .rodata : { *(.rodata .rodata.*) *(.srodata .srodata.*) } > SLOT
-  .data : { *(.data .data.*) *(.sdata .sdata.*) } > SLOT
+  _proc_image_start = PROC_IMAGE_BASE; /* statics window base (fpr_static_lo) */
+  .text : { *(.text .text.*) } > IMAGE
+  .rodata : { *(.rodata .rodata.*) *(.srodata .srodata.*) } > IMAGE
+  .data : { *(.data .data.*) *(.sdata .sdata.*) } > IMAGE
   .bss (NOLOAD) : {
     . = ALIGN(8); _bss_start = .;
     *(.bss .bss.*) *(.sbss .sbss.*) *(COMMON)
     . = ALIGN(8); _bss_end = .;
-  } > SLOT
-  . = ALIGN(16); _proc_image_end = .; /* where the loader's heap hand-off starts */
+  } > IMAGE
+  . = ALIGN(16); _proc_image_end = .; /* the image's end: its statics window's top */
 }

@@ -103,10 +103,8 @@ void fpr_rt_init(void) {
    * block.  Skipped when running AS a loaded process -- a process's
    * heap is the grant its loader handed it, not this machine's RAM. */
   if (!fpr_is_process) {
-    /* buddy over the heap region: slabs, stacks, acbs, growth grants.
-     * The process SLOT is not allocated at all -- images are LINKED at
-     * _proc_arena_start, so that fixed range is the slot by identity
-     * (one concurrent slot, per the stated design). */
+    /* buddy over the heap region: slabs, stacks, acbs, growth grants,
+     * and loaded process images (QOS's loader takes them as blocks) */
 #ifdef FPR_BUDDY_MIN
     uw minb = (uw)FPR_BUDDY_MIN;
 #else
@@ -129,12 +127,97 @@ void fpr_rt_init(void) {
 
 char *fpr_static_lo, *fpr_static_hi; /* image-statics window (fpr.h) */
 
+/* ---- mortal process images (fpr.h) -----------------------------------
+ * One bit per buddy minimum block over the buddy's span says "this block
+ * is a loaded image": fpr_in_heap's test is O(1) and takes no lock.  The
+ * map is sized from the span at the first registration (a fact of the
+ * machine, not a chosen limit) and lives as long as the buddy does.  The
+ * records -- range and pid -- are a list under img_lock, read only on the
+ * slow paths: the copier deciding what may leave an image, and teardown.
+ * Image blocks are whole buddy blocks, so they are whole units here. */
+static uint8_t *img_bits;
+static char *img_base;
+static uw img_units, img_shift;
+static fpr_image_t *img_list;
+static fpr_lock_t img_lock;
+static int in_image(const void *p) {
+  uint8_t *b = __atomic_load_n(&img_bits, __ATOMIC_ACQUIRE);
+  if (!b || (const char *)p < img_base) return 0;
+  uw u = (uw)((const char *)p - img_base) >> img_shift;
+  return u < img_units && ((__atomic_load_n(&b[u >> 3], __ATOMIC_RELAXED) >> (u & 7)) & 1);
+}
+static void img_mark(fpr_image_t *im, int on) {
+  uw u0 = (uw)(im->lo - img_base) >> img_shift;
+  uw u1 = (uw)(im->hi - img_base + ((uw)1 << img_shift) - 1) >> img_shift;
+  for (uw u = u0; u < u1 && u < img_units; u++) {
+    if (on) __atomic_fetch_or(&img_bits[u >> 3], (uint8_t)(1u << (u & 7)), __ATOMIC_RELEASE);
+    else __atomic_fetch_and(&img_bits[u >> 3], (uint8_t)~(1u << (u & 7)), __ATOMIC_RELEASE);
+  }
+}
+void fpr_image_add(fpr_image_t *im) {
+  fpr_lock(&img_lock);
+  if (!img_bits) {
+    char *base; uw size, unit;
+    buddy_geometry(&base, &size, &unit);
+    uw shift = 0;
+    while (((uw)1 << shift) < unit) shift++;
+    uw units = size >> shift;
+    uint8_t *b = (uint8_t *)buddy_alloc(units / 8 + 1);
+    if (!b) fpr_cpanic("images: no memory for the image map");
+    for (uw i = 0; i < units / 8 + 1; i++) b[i] = 0;
+    img_base = base; img_units = units; img_shift = shift;
+    __atomic_store_n(&img_bits, b, __ATOMIC_RELEASE);
+  }
+  if (im->lo < img_base || (uw)(im->hi - img_base) > (img_units << img_shift))
+    fpr_cpanic("images: an image block outside the buddy span");
+  im->next = img_list;
+  img_list = im;
+  img_mark(im, 1);
+  fpr_unlock(&img_lock);
+}
+void fpr_image_remove(fpr_image_t *im) {
+  fpr_lock(&img_lock);
+  for (fpr_image_t **pp = &img_list; *pp; pp = &(*pp)->next)
+    if (*pp == im) { *pp = im->next; break; }
+  img_mark(im, 0);
+  fpr_unlock(&img_lock);
+}
+fpr_image_t *fpr_image_of_pid(uw pid) {
+  fpr_lock(&img_lock);
+  fpr_image_t *im = img_list;
+  while (im && im->pid != pid) im = im->next;
+  fpr_unlock(&img_lock);
+  return im;
+}
+/* the pid of the image p lies in, when that is not the process the copy in
+ * progress is for (0: not an image, or the receiver's own) */
+static uw img_foreign(const void *p) {
+  if (!in_image(p)) return 0;
+  uw pid = 0;
+  fpr_lock(&img_lock);
+  for (fpr_image_t *im = img_list; im; im = im->next)
+    if ((const char *)p >= im->lo && (const char *)p < im->hi) { pid = im->pid; break; }
+  fpr_unlock(&img_lock);
+  fpr_hart_t *h = fpr_hart();
+  return pid && (!h || pid != h->copy_pid) ? pid : 0;
+}
+uw fpr_image_count(void) {
+  uw n = 0;
+  fpr_lock(&img_lock);
+  for (fpr_image_t *im = img_list; im; im = im->next) n++;
+  fpr_unlock(&img_lock);
+  return n;
+}
+void (*fpr_pid_quiet)(uw pid);
+
 #ifndef FPR_BUILTIN
 int fpr_in_heap(V v) { /* the buddy span: heap + process regions */
   /* a loaded process's IMAGE lives inside the span (the fixed slot)
    * but its cells are statics without alloc preheaders -- exclude the
    * window before either span test below can claim them */
   if (!ISINT(v) && (char *)v >= fpr_static_lo && (char *)v < fpr_static_hi)
+    return 0;
+  if (!ISINT(v) && in_image((const void *)v)) /* a loaded image's statics */
     return 0;
 #ifdef FPR_QOSAPP
   /* the PLUGIN slot sits inside the arena span but holds IMAGE data
@@ -642,8 +725,43 @@ typedef struct { char *hp; fpr_slab_t *sl; } dctx_t;
 /* a fresh cell's slab footprint: fpr_alloc's exact rounding + header */
 static uw dc_cellsz(uw raw) { return (((raw + 15) & ~(uw)15)) + 16; }
 
+/* A STATIC from another process's image may not travel by identity: the
+ * image goes when its process ends.  Data is copied -- the code generator
+ * and the runtime make only these shapes of static: a string, a header
+ * alone (a nullary constructor, Unit, a Bool, Nil), a Result over one
+ * value, a device handle.  A function is code in that image and cannot be
+ * copied: the send is refused, and the sender ends (fail-stop, like any
+ * other refused send).  Returns the cell's raw bytes. */
+static uw img_static_raw(V v, uw pid) {
+  hdr_t *h = (hdr_t *)v;
+  switch (h->tid) {
+    case T_STR: return 16 + ((str_t *)v)->len;
+    case T_RESULT: case T_DEVICE: return 16;
+    case T_PAP:
+      (void)pid;
+      fpr_actor_fail("send: a function of another process cannot leave it "
+                     "(its code goes when that process ends)");
+    case T_TUP2: case T_TUP3: case T_ATOM: case T_REGISTER: case T_BITS:
+    case T_ACTOR: case T_VEC: case T_SSTR:
+      fpr_actor_fail("send: a static of an unexpected kind in another process's image");
+    default:
+      if (h->tid >= T_TUP4 && h->tid <= T_TUP8)
+        fpr_actor_fail("send: a static of an unexpected kind in another process's image");
+      if (h->tid >= T_TUPN && h->tid < T_TUPN_END)
+        fpr_actor_fail("send: a static of an unexpected kind in another process's image");
+      return 8; /* a header alone */
+  }
+}
+
 static uw dc_size(V v) {
-  if (ISINT(v) || !v || !fpr_in_heap(v)) return 0;
+  if (ISINT(v) || !v) return 0;
+  if (!fpr_in_heap(v)) {
+    uw pid = img_foreign((const void *)v);
+    if (!pid) return 0; /* an immortal static, or the receiver's own image */
+    uw n = dc_cellsz(img_static_raw(v, pid));
+    if (TID(v) == T_RESULT) n += dc_size(*(V *)((char *)v + 8));
+    return n;
+  }
   uw total = *(uw *)((char *)v - 16);
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
@@ -665,6 +783,9 @@ static uw dc_size(V v) {
     case T_STR: case T_BITS: case T_DEVICE: case T_REGISTER: return total;
     case T_PAP: {
       pap_t *p = (pap_t *)v;
+      if (img_foreign((const void *)p->fn))
+        fpr_actor_fail("send: a function of another process cannot leave it "
+                       "(its code goes when that process ends)");
       uw n = total;
       for (uw i = 0; i < p->nargs; i++) n += dc_size((V)p->args[i]);
       return n;
@@ -720,7 +841,16 @@ static V dc_bump(dctx_t *c, uw raw) {
 }
 
 static V dc_dup(V v, dctx_t *c) {
-  if (ISINT(v) || !v || !fpr_in_heap(v)) return v;
+  if (ISINT(v) || !v) return v;
+  if (!fpr_in_heap(v)) {
+    uw pid = img_foreign((const void *)v);
+    if (!pid) return v;
+    uw raw = img_static_raw(v, pid);
+    V n = dc_bump(c, raw);
+    __builtin_memcpy((char *)n, (char *)v, raw);
+    if (TID(v) == T_RESULT) *(V *)((char *)n + 8) = dc_dup(*(V *)((char *)v + 8), c);
+    return n;
+  }
   uw total = *(uw *)((char *)v - 16);
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
@@ -845,7 +975,8 @@ void fpr_slabs_unhold(fpr_slab_t **sls, uw n) {
   for (uw i = 0; i < n; i++) slab_unhold_locked(sls[i]);
   fpr_unlock(&arc_lock);
 }
-static V msg_copy_in(V v, int fresh) {
+static V msg_copy_in(V v, int fresh, uw pid) {
+  if (fpr_hart()) fpr_hart()->copy_pid = pid;
   uw need = dc_size(v);
   FPR_COST_ADD(fpr_hart(), cost_copies, 1);
   FPR_COST_ADD(fpr_hart(), cost_copy_bytes, need);
@@ -876,9 +1007,12 @@ static V msg_copy_in(V v, int fresh) {
 #ifndef FPR_MSG_PACK
 #define FPR_MSG_PACK 1 /* 0: a slab per message (the bisecting switch) */
 #endif
-V fpr_msg_copy(V v) { return msg_copy_in(v, !FPR_MSG_PACK); }
+V fpr_msg_copy(V v) { return msg_copy_in(v, !FPR_MSG_PACK, fpr_current_pid()); }
+/* ... for a receiver in process pid: what may leave a mortal image is
+ * decided against it (img_foreign) */
+V fpr_msg_copy_to(V v, uw pid) { return msg_copy_in(v, !FPR_MSG_PACK, pid); }
 /* ... into a slab of its own: Sys.arena's transfer copy, freed by hand */
-V fpr_msg_copy_fresh(V v) { return msg_copy_in(v, 1); }
+V fpr_msg_copy_fresh(V v) { return msg_copy_in(v, 1, fpr_current_pid()); }
 
 /* keep: retain a received value past its message's drop -- a deep copy
  * into the CALLER'S OWN pool (fpr_alloc), vectors included (v2: a

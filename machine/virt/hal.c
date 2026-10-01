@@ -216,12 +216,12 @@ void hal_wfi_enable(void) {
 void hal_wfi(void) { __asm__ volatile("wfi"); }
 
 /* ---- the heap: this board's RAM ------------------------------------------
- * link.ld ends the heap where QEMU virt's default 128 MiB of RAM ends, and
- * the process slot follows it.  The RAM size belongs to the device tree the
+ * link.ld's heap, all of it the buddy's (loaded process images included:
+ * they are buddy blocks).  The RAM size belongs to the device tree the
  * firmware hands over, not to the linker script: docs/2026-09-19-BOUNDS.md. */
 void hal_heap_span(char **lo, char **hi, char **span_hi) {
   extern char _heap_start[], _heap_end[];
   *lo = _heap_start;
   *hi = _heap_end;
-  *span_hi = _proc_arena_end;
+  *span_hi = _heap_end;
 }

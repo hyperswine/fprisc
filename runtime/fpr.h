@@ -182,6 +182,25 @@ void fpr_sched_export(fpr_sched_t *out); /* fill with THIS image's impls */
  * process image itself at shared boot (its own link symbols); empty
  * (0,0) everywhere else. */
 extern char *fpr_static_lo, *fpr_static_hi;
+/* MORTAL PROCESS IMAGES (runtime.c; qos docs/2026-10-01-PROCESS-IMAGES.md):
+ * a loaded image is a buddy block like any other, owned by process `pid`.
+ * Registered, its cells are statics to fpr_in_heap (no preheader), and the
+ * deep copier will not let them outlive it: a data static crossing to
+ * another process is copied, a function into its code is refused.  The
+ * loader removes it, then frees the block, once the pid has ended. */
+typedef struct fpr_image {
+  struct fpr_image *next;
+  char *lo, *hi; /* the whole buddy block */
+  uw pid;
+  void *owner;   /* the loader's own record */
+} fpr_image_t;
+void fpr_image_add(fpr_image_t *im);
+void fpr_image_remove(fpr_image_t *im);
+fpr_image_t *fpr_image_of_pid(uw pid);   /* NULL when none */
+uw fpr_image_count(void);                /* images registered now */
+extern void (*fpr_pid_quiet)(uw pid);    /* actors.c reap: an actor of pid was reclaimed */
+uw fpr_current_pid(void);                /* actors.c: the running actor's process (0 = boot) */
+V fpr_msg_copy_to(V v, uw pid);          /* fpr_msg_copy for a receiver in process pid */
 fpr_slab_t *fpr_slab_new(uw want);   /* runtime.c: buddy-backed pool slab */
 void fpr_pool_reset_c(void);         /* runtime.c: Sys.poolReset, C-callable */
 uw fpr_arc_live_count(void);         /* runtime.c: the arc gauge */
@@ -211,6 +230,7 @@ void *buddy_realloc(void *p, uw bytes);      /* grow/shrink; in-place when
                                               * exhaustion, original intact. */
 void buddy_free(void *p);
 uw buddy_block_usable_size(void *p);
+void buddy_geometry(char **base, uw *size, uw *min_block);
 uw buddy_free_bytes(void);
 void *buddy_alloc_try(uw bytes, int *busy); /* inline when the lock is free */
 int buddy_free_try(void *p);                /* 1 done, 0 the lock was held */
@@ -269,6 +289,8 @@ typedef struct {
   struct fpr_acb *slp_head; /* actors parked by Sys.sleepUs on this hart,
                              * each with a deadline; the hart loop wakes
                              * them (appended, owner-hart only) */
+  uw copy_pid;              /* the process a deep copy in progress is for
+                             * (runtime.c msg_copy_in; appended) */
 #ifdef FPR_COST_PROBE
   uint64_t cost_alloc_requests, cost_alloc_bytes;
   uint64_t cost_copies, cost_copy_bytes, cost_msg_slabs;
@@ -463,10 +485,10 @@ typedef struct { fpr_flnode_t *head; fpr_lock_t mu; } fpr_freelist_t;
 void *fpr_fl_take(fpr_freelist_t *fl, uw want); /* first-fit; NULL = miss */
 void fpr_fl_put(fpr_freelist_t *fl, void *p, uw cap);
 
-/* ---- process loading (docs/PROCESS-LOADING.md) ------------------------
- * buddy.c: a power-of-two allocator over the reserved process arena
- * (_proc_arena_start.._proc_arena_end, defined in link.ld). Owned by
- * whichever image calls buddy_init -- System.qa, in this design.
+/* ---- buddy.c: the machine's one lower allocator ------------------------
+ * A power-of-two allocator over the heap, owned by whichever image calls
+ * buddy_init (fpr_rt_init, for the machine's boot image).  A loaded process
+ * image is one of its blocks (QOS docs/2026-10-01-PROCESS-IMAGES.md).
  */
 void buddy_init(void *base, uw size);
 void *buddy_alloc(uw bytes);   /* NULL on exhaustion */
@@ -478,7 +500,6 @@ void *buddy_reserve_range(void *addr, uw bytes);
 void buddy_release_range(void *addr, uw bytes);
 uw buddy_block_usable_size(void *p);
 
-extern char _proc_arena_start[], _proc_arena_end[]; /* boards with a linked process slot only */
 
 /* The heap's span, decided at run time by the machine layer:
  *   [*lo, *hi)       what the buddy runs over
@@ -558,6 +579,9 @@ typedef struct { void *entry; void *image_end; int ok; const char *err;
 typedef struct { uw base, entry, execsz, rwoff, memsz; } fpr_qaimg_t;
 fpr_elf_load_t fpr_qaimg_place(const fpr_qaimg_t *q, const unsigned char *img, uw img_len,
                                void *window, uw window_size);
+/* a relocatable image (linked at 0): add its address to each RELOC word */
+const char *fpr_qaimg_relocate(unsigned char *dst, uw img_len,
+                               const unsigned char *rel, uw rel_len);
 /* the first n Ints of an FP-RISC List, for a C primitive handed numbers that
  * FP-RISC computed (qaimg.fpr's `nums`); 0 if the list is short or not Ints */
 int fpr_list_ints(V list, uw *out, uw n);
@@ -592,7 +616,7 @@ void fpr_rt_init(void);          /* runtime.c: buddy, harts, actor 0 */
 void fpr_hart_main(int id);      /* actors.c: hart 0's loop */
 void fpr_hart_secondary(int id); /* actors.c: secondary hart's loop */
 void fpr_ctx_fabricate(uw *ctx, void (*entry)(void), uw stack_top16,
-                       fpr_hart_t *owner); /* ctx layer (virt/posix) */ /* process.c: buddy_init over _proc_arena_start.._end */
+                       fpr_hart_t *owner); /* ctx layer (virt/posix) */
 
 V fpr_alloc(V raw_bytes); /* runtime allocator; RAW byte count, not tagged */
 V fpr_realloc(V obj, V raw_bytes); /* grow to a new payload size (copy-based;

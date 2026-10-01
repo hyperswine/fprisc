@@ -1,0 +1,33 @@
+# images.fpr -- what may leave a process image (runtime.c, the deep copier).
+# A loaded image is mortal: it goes when its process ends.  A data static of
+# another process's image crossing a send is COPIED, so the receiver keeps it
+# after the image is gone; a function into its code cannot be copied, and the
+# send is refused (the sender ends, fail-stop).  The image here is a fake one
+# made by images_probe.c, as process 7; these actors are process 0.
+Probe.makeImage : Int -> Int .
+Probe.str : Int -> String .
+Probe.fn : Int -> (Int -> Int) .
+Probe.endImage : Int -> Int .
+
+keeper self = case receive self of
+  (who, s) -> (case receive self of
+    go -> send who (strcat "kept: " s)).
+
+leaker self = case receive self of
+  who -> send who (Probe.fn 0).
+
+main =
+  me = myself 0;
+  _ = Probe.makeImage 0;
+  k = spawn keeper;
+  _ = send k (me, Probe.str 0);
+  l = spawn leaker;
+  _ = send l me;
+  r = receiveFromRes me l;
+  _ = Probe.endImage 0;
+  _ = send k 1;
+  kept = receive me;
+  verdict = case r of
+      Err e -> "refused ({e})"
+    | Ok f -> "NOT REFUSED";
+  print "{kept}; a function of the image: {verdict}".

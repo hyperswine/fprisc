@@ -13,12 +13,12 @@ SECTIONS {
     . = ALIGN(8); _bss_end = .;
   } > RAM
   . = ALIGN(16); . += 256K; _stack_top = .;
-  /* heap runs from the image to the FIXED process-slot base: pinning
-   * _proc_arena_start absolutely means process apps linked against it
-   * never go stale when System.qa's own image size shifts. */
+  /* the heap: everything after the image, for the buddy -- actors' slabs
+   * and stacks, and loaded process images (QOS docs/2026-10-01-PROCESS-
+   * IMAGES.md), which are buddy blocks like any other.  It ends where QEMU
+   * virt's default 128 MiB of RAM ends; a fixed 32 MiB process slot used to
+   * follow it, beyond that RAM (QOS ran QEMU with 256 MiB for it), and is
+   * gone.  The RAM size belongs to the device tree the firmware hands over,
+   * not to this script: docs/2026-09-19-BOUNDS.md. */
   . = ALIGN(16); _heap_start = .; . = 0x88000000; _heap_end = .;
-  /* the process arena: reserved for buddy.c, owned by whichever image
-   * calls buddy_init (System.qa) -- docs/PROCESS-LOADING.md. Disjoint
-   * from _heap_start.._heap_end (that stays the runtime's OWN heap). */
-  _proc_arena_start = .; . += 32M; _proc_arena_end = .;
 }
