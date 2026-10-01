@@ -181,3 +181,29 @@ function.
 hangs. The caller stays in `receiveRes` while every worker has exited. It
 happens with inlining off too, and it survives the frame fix. It looks like
 a lost wake-up in the actor runtime and is being investigated separately.
+
+
+## 2026-10-01: actor repair and scalar F64 follow-up
+
+The Result-loss hang described above was repaired in `d3484b2`: a losing
+channel claimant reset the counters after a winning sender published a Result.
+See [ACTOR-RESULT-LOSS](2026-10-01-ACTOR-RESULT-LOSS.md) for the deterministic
+interleaving and stress evidence.
+
+Scalar F64 arithmetic/comparison fast paths and constant literal splices now
+have independent C-reference gates, RV64 execution coverage and an x64 backend
+probe. The comparison workload improved about 1.5x in paired single-hart runs;
+`nbody` gains were small and noisy. See [F64-FAST-PATHS](2026-10-01-F64-FAST-PATHS.md).
+Register-held locals, untagged Int locals and allocation/message-copy costs
+remain separate work.
+
+## 2026-10-01: preserved registers and runtime cost measurements
+
+Ordinary 64-bit functions now promote frequently accessed private slots into
+preserved registers, with a differential switch and backend execution gate.
+Paired improvements were about 8% for nbody and 6% for SHA; other sampled
+workloads were near noise. Allocation/message probes now separate ordinary
+throughput from opt-in counters. Same-payload round trips across two harts
+were roughly 25–31x slower than on one hart, making transport profiling a
+concrete next step. See [REGISTERS-AND-COSTS](2026-10-01-REGISTERS-AND-COSTS.md).
+These follow-ups ship together with the scalar F64 and runtime lifecycle fixes.

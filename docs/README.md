@@ -85,3 +85,5 @@ they began.
 | 2026-09-30 | [FAILURE-HONESTY.md](2026-09-30-FAILURE-HONESTY.md) | Ambiguous operators refused, `--stdcheck` exit status, the A64 `s10` crash, `receiveFromRes`/`std/actor call`, and Sol commit honesty (G1-G4, `log`) |
 | 2026-09-30 | [NATIVE-PERF.md](2026-09-30-NATIVE-PERF.md) | The benchmark ratchet (`tools/bench.py`) and the first base-profile code-generation steps: sha 3.6x, byteloop 3.1x, fib 1.9x |
 | 2026-10-01 | [ACTOR-RESULT-LOSS.md](2026-10-01-ACTOR-RESULT-LOSS.md) | A losing channel claimant erased a queued Result; counter ownership repair, deterministic regression and 240 parallel SHA stress runs |
+| 2026-10-01 | [F64-FAST-PATHS.md](2026-10-01-F64-FAST-PATHS.md) | Scalar F64 instructions and literal folding, independent C-reference and x64/RV64 checks, focused comparison benchmark |
+| 2026-10-01 | [REGISTERS-AND-COSTS.md](2026-10-01-REGISTERS-AND-COSTS.md) | Preserved-register private slots, differential/backend tests, paired performance and allocation/message cost ledgers |

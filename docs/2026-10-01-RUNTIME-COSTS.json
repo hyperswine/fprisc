@@ -1,0 +1,160 @@
+{
+  "results": [
+    {
+      "kind": "alloc",
+      "payload_bytes": 16,
+      "operations": 50000000,
+      "harts": 1,
+      "best_ms": 209.155,
+      "median_ms": 216.78,
+      "operations_per_second": 239057016,
+      "probe_best_ms": 248.709,
+      "ledger": {
+        "alloc_requests": 50000000,
+        "alloc_bytes": 1600000000,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      }
+    },
+    {
+      "kind": "alloc",
+      "payload_bytes": 256,
+      "operations": 50000000,
+      "harts": 1,
+      "best_ms": 207.303,
+      "median_ms": 211.732,
+      "operations_per_second": 241193377,
+      "probe_best_ms": 247.141,
+      "ledger": {
+        "alloc_requests": 50000000,
+        "alloc_bytes": 13600000000,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      }
+    },
+    {
+      "kind": "alloc",
+      "payload_bytes": 4096,
+      "operations": 50000000,
+      "harts": 1,
+      "best_ms": 207.551,
+      "median_ms": 208.134,
+      "operations_per_second": 240904598,
+      "probe_best_ms": 247.759,
+      "ledger": {
+        "alloc_requests": 50000000,
+        "alloc_bytes": 205600000000,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      }
+    },
+    {
+      "kind": "message",
+      "payload_bytes": 16,
+      "operations": 200000,
+      "harts": 1,
+      "best_ms": 26.667,
+      "median_ms": 27.501,
+      "operations_per_second": 7500012,
+      "probe_best_ms": 25.967,
+      "ledger": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 400000,
+        "copy_bytes": 9600000,
+        "message_slabs": 73
+      }
+    },
+    {
+      "kind": "message",
+      "payload_bytes": 256,
+      "operations": 200000,
+      "harts": 1,
+      "best_ms": 29.303,
+      "median_ms": 30.425,
+      "operations_per_second": 6825337,
+      "probe_best_ms": 26.301,
+      "ledger": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 400000,
+        "copy_bytes": 57600000,
+        "message_slabs": 440
+      }
+    },
+    {
+      "kind": "message",
+      "payload_bytes": 4096,
+      "operations": 200000,
+      "harts": 1,
+      "best_ms": 35.16,
+      "median_ms": 36.364,
+      "operations_per_second": 5688208,
+      "probe_best_ms": 35.46,
+      "ledger": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 400000,
+        "copy_bytes": 825600000,
+        "message_slabs": 6451
+      }
+    },
+    {
+      "kind": "message",
+      "payload_bytes": 16,
+      "operations": 200000,
+      "harts": 2,
+      "best_ms": 830.309,
+      "median_ms": 834.254,
+      "operations_per_second": 240874,
+      "probe_best_ms": 817.419,
+      "ledger": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 400000,
+        "copy_bytes": 9600000,
+        "message_slabs": 73
+      }
+    },
+    {
+      "kind": "message",
+      "payload_bytes": 256,
+      "operations": 200000,
+      "harts": 2,
+      "best_ms": 841.538,
+      "median_ms": 845.987,
+      "operations_per_second": 237660,
+      "probe_best_ms": 834.911,
+      "ledger": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 400000,
+        "copy_bytes": 57600000,
+        "message_slabs": 440
+      }
+    },
+    {
+      "kind": "message",
+      "payload_bytes": 4096,
+      "operations": 200000,
+      "harts": 2,
+      "best_ms": 889.813,
+      "median_ms": 901.621,
+      "operations_per_second": 224766,
+      "probe_best_ms": 920.397,
+      "ledger": {
+        "alloc_requests": 0,
+        "alloc_bytes": 0,
+        "copies": 400000,
+        "copy_bytes": 825600000,
+        "message_slabs": 6451
+      }
+    }
+  ],
+  "host": "Darwin-arm64",
+  "runs": 5,
+  "timing": "uninstrumented process wall time; fastest and median; counters from separate instrumented builds"
+}

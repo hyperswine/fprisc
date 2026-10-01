@@ -64,7 +64,7 @@ import Data.List (isPrefixOf, isSuffixOf, stripPrefix)
 -- lowering fix invalidates cached lowered units (learned the hard way:
 -- the section-aware fixup fix left stale corrupt prelude units behind)
 x64Rev :: Int
-x64Rev = 5 -- r4 + lbu, or, srl
+x64Rev = 6 -- r5 + scalar F64 moves, arithmetic and ordered IEEE comparisons
 
 -- deTlsQosApp: the QOS-x86_64 (--target=qx64) refinement.  A loaded
 -- QOS Portable app image is a fixed-slot ELF with no dynamic loader
@@ -312,6 +312,25 @@ instr0 body = case parts body of
   ("sll", [rd, r1, r2]) -> shiftReg "shlq" rd r1 r2
   ("srl", [rd, r1, r2]) -> shiftReg "shrq" rd r1 r2
   ("div", [rd, r1, r2]) -> idiv rd r1 r2
+  -- Scalar F64 operations preserve the integer/raw-bits ABI. XMM0/1
+  -- are temporaries, never live over calls. UCOMISD sets ZF/PF/CF on
+  -- unordered input: mask with !PF so NaN is false for <, <= and ==.
+  ("fmv.d.x", [fd, rs]) -> ["movq " ++ reg rs ++ ", " ++ freg fd]
+  ("fmv.x.d", [rd, fs]) -> ["movq " ++ freg fs ++ ", " ++ reg rd]
+  (op, [fd, f1, f2])
+    | Just xop <- lookup op [("fadd.d", "addsd"), ("fsub.d", "subsd"),
+                             ("fmul.d", "mulsd"), ("fdiv.d", "divsd")] ->
+        if fd == f1 then [xop ++ " " ++ freg f2 ++ ", " ++ freg fd]
+        else error "X64: float arithmetic requires destination == first operand"
+  (op, [rd, f1, f2])
+    | Just cc <- lookup op [("flt.d", "b"), ("fle.d", "be"), ("feq.d", "e")] ->
+        let s = scratch [reg rd]
+            u = scratch [reg rd, s]
+         in ["pushq " ++ s, "pushq " ++ u, "movq $0, " ++ s, "movq $0, " ++ u,
+             "ucomisd " ++ freg f2 ++ ", " ++ freg f1,
+             "set" ++ cc ++ " " ++ b8 s, "setnp " ++ b8 u,
+             "andq " ++ u ++ ", " ++ s, "movq " ++ s ++ ", " ++ reg rd,
+             "popq " ++ u, "popq " ++ s]
   -- comparisons to a register
   ("slt", [rd, r1, r2]) -> setcc rd [r1, r2] "l" ("cmpq " ++ reg r2 ++ ", " ++ reg r1)
   ("seqz", [rd, rs]) -> setcc rd [rs] "e" ("testq " ++ reg rs ++ ", " ++ reg rs)
@@ -336,6 +355,10 @@ instr0 body = case parts body of
   ("ret", []) -> ["ret"]
   (op, _) -> error ("X64: cannot lower `" ++ body ++ "` (op " ++ op ++ ")")
   where
+    freg = \case
+      "ft0" -> "%xmm0"
+      "ft1" -> "%xmm1"
+      r -> error ("X64: unmapped float register " ++ r)
     cmpBr r1 r2 j l = ["cmpq " ++ reg r2 ++ ", " ++ reg r1, j ++ " " ++ l]
     two op rd rs src
       | rd == rs = [op ++ " " ++ src ++ ", " ++ reg rd]

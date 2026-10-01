@@ -375,6 +375,8 @@ V fpr_alloc(V raw_bytes) {
   fpr_hart_t *h = fpr_hart();
   fpr_pool_t *pool = cur_pool(h);
   uw total = (((raw_bytes + 15) & ~(uw)15)) + 16;
+  FPR_COST_ADD(h, cost_alloc_requests, 1);
+  FPR_COST_ADD(h, cost_alloc_bytes, total);
   if (total <= (uw)16 * FPR_NBUCKETS) {
     uw idx = total / 16 - 1;
     void *p = bucket_take(pool, idx);
@@ -845,6 +847,8 @@ void fpr_slabs_unhold(fpr_slab_t **sls, uw n) {
 }
 static V msg_copy_in(V v, int fresh) {
   uw need = dc_size(v);
+  FPR_COST_ADD(fpr_hart(), cost_copies, 1);
+  FPR_COST_ADD(fpr_hart(), cost_copy_bytes, need);
   if (!need) return dc_dup(v, 0); /* ints, statics, bare actor handles */
   fpr_hart_t *h = fpr_hart();
   fpr_slab_t **slot = (!fresh && h && h->current) ? fpr_acb_msg_slot(h->current) : 0;
@@ -856,6 +860,7 @@ static V msg_copy_in(V v, int fresh) {
   }
   if (!sl) {
     sl = msg_slab_new(need);
+    FPR_COST_ADD(h, cost_msg_slabs, 1);
     if (slot && need + sizeof(fpr_slab_t) <= MSG_SLAB_SZ) {
       sl->holds = 1; /* the sender keeps packing into it */
       *slot = sl;
@@ -2313,10 +2318,10 @@ static V g_chr(V c) {
 /* ---- floats: F64 / F32 as RAW-BITS payloads --------------------------
  * A float is its IEEE bit pattern carried in an ordinary V -- moved by
  * the same ld/sd/mv, slots, argspill, PAP and constructor paths as any
- * word (nothing there interprets values).  All arithmetic happens HERE,
- * in C prims the type-directed operator elaboration routes to
- * (Infer.hs resolveSites), so the generated .s stays integer-only and
- * every target's C compiler emits its own FP instructions.  The lp64
+ * word (nothing there interprets values). Type-directed elaboration routes
+ * arithmetic to these primitives; saturated F64 calls can be emitted inline
+ * by Codegen with the same raw-bits boundary. Other operations and generic
+ * calls keep these C implementations as their reference. The lp64
  * integer ABI is untouched: prims take and return V.
  *
  * The two runtime functions that DO interpret values dynamically

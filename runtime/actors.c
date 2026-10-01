@@ -197,6 +197,8 @@ typedef struct fpr_acb {
   /* receiveFromRes: the sender this actor is parked on (0 when not), and
    * how many actors are parked on THIS one -- a dying actor walks the
    * ledger to wake its watchers only when the count says there are any */
+  void (*external_cleanup)(void *);
+  void *external_arg;
   struct fpr_acb *watch;
   uw watchers;
 } acb_t;
@@ -639,8 +641,22 @@ static void chb_limbo_put(chan_t *ch) {
 /* death reclamation (called from the hart loop, NEVER on the dying
  * actor's own stack): slabs via the ARC-locked teardown, stack -- which
  * cannot escape -- straight back to buddy.  Idempotent via stack=0. */
+static volatile uw g_blocked;      /* actors currently parked */
+static volatile uw g_sleepers;     /* of which: parked with a deadline */
+static volatile uw g_irq_waiting;  /* of which: an interrupt's actor, waiting for it */
 static void reap(acb_t *a) {
   if (!a->stack) return;
+  if (a->wait_kind) { /* a killed parked actor never returns through block_unless */
+    __atomic_fetch_sub(&g_blocked, 1, __ATOMIC_RELAXED);
+    if (a->irq_target) __atomic_fetch_sub(&g_irq_waiting, 1, __ATOMIC_RELAXED);
+    a->wait_kind = 0;
+  }
+  if (a->external_cleanup) {
+    void (*fn)(void *) = a->external_cleanup;
+    void *arg = a->external_arg;
+    a->external_cleanup = 0; a->external_arg = 0;
+    fn(arg);
+  }
   drop_drain(a); /* the holds of windows the dead actor never closed */
   if (a->msg_slab) { fpr_slab_unhold(a->msg_slab, 0); a->msg_slab = 0; } /* its packing slab */
   fpr_pool_reclaim(a);
@@ -687,9 +703,6 @@ static void ledger_push(acb_t *a) {
   } while (!__atomic_compare_exchange_n(&g_all, &h, a, 0, __ATOMIC_RELEASE,
                                         __ATOMIC_ACQUIRE));
 }
-static volatile uw g_blocked;      /* actors currently parked */
-static volatile uw g_sleepers;     /* of which: parked with a deadline */
-static volatile uw g_irq_waiting;  /* of which: an interrupt's actor, waiting for it */
 static volatile uw g_activity;     /* bumped on every ship/spawn */
 
 /* ---- cross-hart wake rings: xr[src][dst], strictly SPSC -------------- */
@@ -1577,6 +1590,26 @@ static V a_sleep_us(V usv) {
   }
   return (V)&fpr_unit;
 }
+void fpr_actor_sleep_us(uw us) {
+  if (fpr_sched) { fpr_sched->sleep_us(us); return; }
+  (void)a_sleep_us(TAG((sw)us));
+}
+int fpr_actor_cleanup_set(void (*fn)(void *), void *arg) {
+  if (fpr_sched) return fpr_sched->cleanup_set(fn, arg);
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h ? h->current : 0;
+  if (!a) return 0;
+  if (a->external_cleanup) fpr_cpanic("actors: nested external request");
+  a->external_arg = arg; a->external_cleanup = fn;
+  return 1;
+}
+void fpr_actor_cleanup_clear(void *arg) {
+  if (fpr_sched) { fpr_sched->cleanup_clear(arg); return; }
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h ? h->current : 0;
+  if (a && a->external_arg == arg) { a->external_cleanup = 0; a->external_arg = 0; }
+}
+
 FPR_FN(fpr_g_Sys_x2esleepUs, a_sleep_us, 1);
 /* wake the sleepers whose time has come (hart loop, every pass) */
 static void slp_drain(fpr_hart_t *h) {
@@ -1592,6 +1625,7 @@ static void slp_drain(fpr_hart_t *h) {
       __atomic_store_n(&a->slp_on, 0, __ATOMIC_RELEASE); /* after the unlink: a_sleep_us reads it */
       __atomic_fetch_sub(&g_sleepers, 1, __ATOMIC_RELAXED);
       if (st != ST_DEAD) wake(a);
+      else if (!__atomic_load_n(&a->running, __ATOMIC_ACQUIRE)) reap(a);
       fired = 1;
     } else
       pp = &a->slp_next;
@@ -1708,6 +1742,7 @@ void fpr_actors_init(void) { /* hart 0, before fpr_smp_go */
   main_acb.pin = 1; /* the result carrier never migrates */
   main_acb.parent = 0;
   main_acb.pid = 0;
+  main_acb.external_cleanup = 0; main_acb.external_arg = 0;
   ledger_push(&main_acb);
   uw stk_sz = 0;
   char *stk = (char *)stack_block(&stk_sz);
@@ -1793,6 +1828,8 @@ static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t d
   a->next = 0;
   a->stack = stk;
   a->stack_sz = stk_sz;
+  a->external_cleanup = 0; a->external_arg = 0;
+  a->wait_kind = a->wait_arg = 0;
   a->slp_on = 0;
   a->segs = a->spare = 0;
   a->stk_total = 0;
@@ -2551,6 +2588,9 @@ static V sched_receive_from_res(V me, V from) { return a_receive_from_res(me, fr
 V fpr_receive_res_c(V me) { return a_receive_res(me); } /* process.c's syscall wait */
 static uw sched_arc_live(void) { return fpr_arc_live_count(); }
 void fpr_sched_export(fpr_sched_t *out) {
+  out->sleep_us = fpr_actor_sleep_us;
+  out->cleanup_set = fpr_actor_cleanup_set;
+  out->cleanup_clear = fpr_actor_cleanup_clear;
   out->send_as = fpr_send_as;
   out->receive = sched_receive;
   out->receive_from = sched_receive_from;

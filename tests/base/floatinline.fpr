@@ -1,0 +1,48 @@
+# Exact finite/zero/infinity results and IEEE comparisons against C primitives.
+# NaN payload selection is target-dependent: compare NaN classification.
+floatBits : F64 -> String .
+floatRefAdd : F64 -> F64 -> F64 .
+floatRefSub : F64 -> F64 -> F64 .
+floatRefMul : F64 -> F64 -> F64 .
+floatRefDiv : F64 -> F64 -> F64 .
+floatRefLt : F64 -> F64 -> Bool .
+floatRefGt : F64 -> F64 -> Bool .
+floatRefLe : F64 -> F64 -> Bool .
+floatRefGe : F64 -> F64 -> Bool .
+floatRefEq : F64 -> F64 -> Bool .
+floatRefNe : F64 -> F64 -> Bool .
+values = [0.0, f64frombits 2147483648 0, 1.0, -1.0, 0.1, 0.2,
+          1.0e308, -1.0e308, f64frombits 0 1, f64frombits 2147483648 1,
+          f64frombits 1048576 0, f64frombits 2148532224 0,
+          f64frombits 2146435071 4294967295, f64frombits 4293918719 4294967295,
+          f64frombits 2146435072 0, f64frombits 4293918720 0,
+          f64frombits 2146959360 1, f64frombits 4294443008 1,
+          f64frombits 2146435072 1, f64frombits 4293918720 1].
+same : F64 -> F64 -> Bool .
+same a b = if a != a then b != b else floatBits a == floatBits b.
+bad b = if b then 0 else 1.
+one : F64 -> F64 -> Int .
+one a b =
+  r1 = bad (same (a + b) (floatRefAdd a b));
+  r2 = bad (same (a - b) (floatRefSub a b));
+  r3 = bad (same (a * b) (floatRefMul a b));
+  r4 = bad (same (a / b) (floatRefDiv a b));
+  # Both Bool materialization and direct branch conditions are exercised.
+  r5 = bad ((a < b) == floatRefLt a b);
+  r6 = bad ((a > b) == floatRefGt a b);
+  r7 = bad ((a <= b) == floatRefLe a b);
+  r8 = bad ((a >= b) == floatRefGe a b);
+  r9 = bad ((a == b) == floatRefEq a b);
+  r10 = bad ((a != b) == floatRefNe a b);
+  r11 = bad ((if a < b then True else False) == floatRefLt a b);
+  r12 = bad ((if a <= b then True else False) == floatRefLe a b);
+  r13 = bad ((if a > b then True else False) == floatRefGt a b);
+  r14 = bad ((if a >= b then True else False) == floatRefGe a b);
+  r15 = bad ((if a == b then True else False) == floatRefEq a b);
+  r16 = bad ((if a != b then True else False) == floatRefNe a b);
+  r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10 + r11 + r12 + r13 + r14 + r15 + r16.
+row : unsafe F64 -> List F64 -> Int .
+row x ys = case ys of Nil -> 0 | y :: r -> one x y + row x r.
+allPairs : unsafe List F64 -> List F64 -> Int .
+allPairs xs ys = case xs of Nil -> 0 | x :: r -> row x ys + allPairs r ys.
+main = print "F64 inline: {allPairs values values} mismatches over 400 pairs".

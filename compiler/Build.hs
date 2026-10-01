@@ -136,6 +136,7 @@ build p = do
   cc <- case pCC p of
     Just c -> pure c
     Nothing -> fromMaybe "cc" <$> lookupEnv "FPR_CC"
+  costProbe <- (== Just "1") <$> lookupEnv "FPR_COST_PROBE"
   let ctx = if System.Info.arch == "aarch64" then "ctx_a64.S" else "ctx_x64.S"
       core = [runtime </> f | f <- ["runtime.c", "actors.c", "bits.c", "vec.c", "sstr.c", "mod.c", "buddy.c"]]
       -- the posix system: what both hosts share (machine/posix), and the unix host (machine/unix)
@@ -154,7 +155,7 @@ build p = do
       -- function ever needs that pair.  Generated code still uses x27 (its s9):
       -- it saves registers one at a time, never paired with x28.
       fixed = if System.Info.arch == "aarch64" then ["-ffixed-x27", "-ffixed-x28", "-DFPR_HART_X28"] else [] -- x28 carries the hart (runtime/fpr.h)
-      cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed
+      cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed ++ ["-DFPR_COST_PROBE" | costProbe]
       linux = if System.Info.os == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []
       -- the runtime's objects are cached per hart count, rebuilt only
       -- when their source is newer: a warm build compiles the program
@@ -275,7 +276,8 @@ runKey p = do
   stamps <- mapM stamp (self : (home </> "core" </> "prelude.fpr") : rtFiles ++ pWith p)
   bodies <- mapM readFileStrict srcs
   foreignDecls <- lookupEnv "FPR_FOREIGN"
-  let text = unlines (srcs ++ bodies ++ stamps ++ [show (pHarts p), show (pCC p), unwords (pCFlags p ++ pLink p), show foreignDecls])
+  modes <- mapM lookupEnv ["FPR_COST_PROBE", "FPR_NO_REGISTERS", "FPR_NO_F64_INLINE", "FPR_NO_INLINE"]
+  let text = unlines (srcs ++ bodies ++ stamps ++ [show (pHarts p), show (pCC p), unwords (pCFlags p ++ pLink p), show foreignDecls, show modes])
   pure (showHex (fnv64 text) "")
   where
     listed d = do

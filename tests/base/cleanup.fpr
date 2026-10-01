@@ -1,0 +1,19 @@
+Probe.register : Unit -> Unit .
+Probe.clear : Unit -> Unit .
+Probe.count : Unit -> Int .
+worker boss self =
+  _ = Probe.register Unit;
+  _ = send boss 1;
+  _ = Sys.sleepUs 1000000;
+  Unit.
+main =
+  me = myself 0;
+  w = spawn (worker me);
+  ready = receiveFrom me w;
+  _ = drop ready;
+  _ = kill w;
+  _ = Sys.sleepUs 10000;
+  killed = Probe.count Unit;
+  _ = Probe.register Unit;
+  _ = Probe.clear Unit;
+  print "cleanup: {killed}".

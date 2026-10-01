@@ -2,8 +2,8 @@
 #
 #   * a float IS its IEEE bit pattern in an ordinary V: moved by the
 #     same slots, registers, argspill cells, PAPs, tuples and lists as
-#     any word.  All arithmetic is C prims routed by the type-directed
-#     site resolution; the generated .s stays integer-only.
+#     any word. Type-directed resolution selects float primitives; known
+#     F64 arithmetic/comparisons have inline instruction fast paths.
 #   * str/print of a bare float renders via F64.str/F32.str (elaborated
 #     automatically, incl. interpolation); str/print of a structure
 #     CONTAINING floats is a compile-time refusal (render is

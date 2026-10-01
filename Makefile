@@ -85,14 +85,15 @@ fpr:
 	$(MAKE) -C "$(FPR_TOOLCHAIN)" fpr
 else
 fpr: $(FPR_HOST_STAMP) compiler/*.hs compiler/Sol/*.hs compiler/cbits/fsx.c compiler/cbits/vecgpu.c compiler/cbits/handjit.c fp-risc.cabal Makefile
-	@if command -v cabal >/dev/null 2>&1; then \
-	  cabal build exe:fpr && cp "$$(cabal list-bin fpr)" fpr; \
+	@set -e; fresh=$$(mktemp ./.fpr.tmp.XXXXXX); trap 'rm -f "$$fresh"' 0; \
+	if command -v cabal >/dev/null 2>&1; then \
+	  cabal build exe:fpr; cp "$$(cabal list-bin fpr)" "$$fresh"; \
 	else \
-	  gcc -c compiler/cbits/fsx.c -o compiler/cbits/fsx.o && \
-	  gcc -c compiler/cbits/vecgpu.c -o compiler/cbits/vecgpu.o && \
-	  gcc -c compiler/cbits/handjit.c -o compiler/cbits/handjit.o && \
-	  cd compiler && ghc -O0 -threaded -rtsopts -with-rtsopts=-V0.001 -i. -o ../fpr Main.hs cbits/fsx.o cbits/vecgpu.o cbits/handjit.o $(GLLIBS); \
-	fi
+	  gcc -c compiler/cbits/fsx.c -o compiler/cbits/fsx.o; \
+	  gcc -c compiler/cbits/vecgpu.c -o compiler/cbits/vecgpu.o; \
+	  gcc -c compiler/cbits/handjit.c -o compiler/cbits/handjit.o; \
+	  (cd compiler && ghc -O0 -threaded -rtsopts -with-rtsopts=-V0.001 -i. -o ../"$$fresh" Main.hs cbits/fsx.o cbits/vecgpu.o cbits/handjit.o $(GLLIBS)); \
+	fi; chmod 755 "$$fresh"; mv -f "$$fresh" fpr
 	ln -sf fpr fprc
 endif
 
@@ -101,14 +102,15 @@ endif
 # resolves against the installed package db and needs no hackage
 # index, so it works offline.
 fpr-cabal:
-	@if command -v cabal >/dev/null 2>&1; then \
-	  cabal build exe:fpr && cp "$$(cabal list-bin fpr)" fpr; \
+	@set -e; fresh=$$(mktemp ./.fpr.tmp.XXXXXX); trap 'rm -f "$$fresh"' 0; \
+	if command -v cabal >/dev/null 2>&1; then \
+	  cabal build exe:fpr; cp "$$(cabal list-bin fpr)" "$$fresh"; \
 	else \
-	  ghc -o build/Setup Setup.hs >/dev/null && \
-	  ./build/Setup configure --ghc >/dev/null && \
-	  ./build/Setup build 2>&1 | tail -1 && \
-	  cp dist/build/fpr/fpr fpr; \
-	fi
+	  ghc -o build/Setup Setup.hs >/dev/null; \
+	  ./build/Setup configure --ghc >/dev/null; \
+	  ./build/Setup build; \
+	  cp dist/build/fpr/fpr "$$fresh"; \
+	fi; chmod 755 "$$fresh"; mv -f "$$fresh" fpr
 	ln -sf fpr fprc
 
 fprc: fpr

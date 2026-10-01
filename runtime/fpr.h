@@ -167,6 +167,9 @@ typedef struct fpr_sched {
   uw (*stack_grow)(uw sp);            /* the plane owns the actors, so their stacks */
   V (*receive_now)(V me);             /* receive without waiting (actors.c) */
   V (*receive_from_res)(V me, V from); /* receiveFrom that answers a dead sender */
+  void (*sleep_us)(uw us);
+  int (*cleanup_set)(void (*fn)(void *), void *arg);
+  void (*cleanup_clear)(void *arg);
 } fpr_sched_t;
 extern fpr_sched_t *fpr_sched;        /* NULL = this image is the plane */
 uw fpr_pid_live(uw pid); /* actors of process pid not yet dead and off every hart */
@@ -266,6 +269,10 @@ typedef struct {
   struct fpr_acb *slp_head; /* actors parked by Sys.sleepUs on this hart,
                              * each with a deadline; the hart loop wakes
                              * them (appended, owner-hart only) */
+#ifdef FPR_COST_PROBE
+  uint64_t cost_alloc_requests, cost_alloc_bytes;
+  uint64_t cost_copies, cost_copy_bytes, cost_msg_slabs;
+#endif
 } fpr_hart_t;
 
 /* the codegen contract for the spill cells: argspill[0] at exactly
@@ -276,6 +283,13 @@ _Static_assert(__builtin_offsetof(fpr_hart_t, argspill) == sizeof(sw),
 _Static_assert(__builtin_offsetof(fpr_hart_t, stk_lo) == sizeof(sw) * (1 + FPR_ARGSPILL) &&
                __builtin_offsetof(fpr_hart_t, stk_span) == sizeof(sw) * (2 + FPR_ARGSPILL),
                "stk_lo/stk_span must follow the spill cells (Codegen.hs stackCheck)");
+
+/* Opt-in per-hart cost ledger. Ordinary builds emit no increments. */
+#ifdef FPR_COST_PROBE
+#define FPR_COST_ADD(h, field, n) do { if (h) __atomic_fetch_add(&(h)->field, (uint64_t)(n), __ATOMIC_RELAXED); } while (0)
+#else
+#define FPR_COST_ADD(h, field, n) ((void)0)
+#endif
 
 extern fpr_hart_t fpr_harts[FPR_NHARTS];
 /* how many hart blocks are LIVE this run (threads actually started):
@@ -499,6 +513,9 @@ void *fpr_mem_take(uw bytes);      /* a buddy block (>= bytes usable); 0 = denie
 void *fpr_mem_take_direct(uw bytes); /* the same, never waits (under a spinlock) */
 void fpr_mem_give(void *p);        /* one-way; safe from any context */
 void fpr_mem_spawn(void);          /* actors.c: after actor 0, before any hart runs */
+void fpr_actor_sleep_us(uw us); /* parks the actor; routes through the scheduler plane */
+int fpr_actor_cleanup_set(void (*fn)(void *), void *arg); /* one pending external request */
+void fpr_actor_cleanup_clear(void *arg);
 int fpr_hal_sleep_us(uw us);      /* the host sleep: Sys.sleepUs's fallback (runtime.c weak) */
 extern uw fpr_mem_reqs, fpr_mem_waits, fpr_mem_direct, fpr_mem_frees, fpr_mem_denied,
     fpr_mem_inline; /* takes served on the spot (the lock was free) */

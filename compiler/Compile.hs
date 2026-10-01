@@ -6,7 +6,7 @@ import System.Environment (lookupEnv)
 import System.IO (hPutStrLn, stderr)
 import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Inline (inlineSmall, inlineWith)
-import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, normArc)
+import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, normArc)
 import Data.Char (isAlphaNum, ord)
 import Numeric (showHex)
 import A64 (deTlsQosAppA64, lowerA64, a64Rev)
@@ -324,6 +324,8 @@ compileMain = do
     (Just d, _) -> pure d
     (Nothing, Just f) -> pure f
     (Nothing, Nothing) -> pure "base"
+  envNoRegisters <- (== Just "1") <$> lookupEnv "FPR_NO_REGISTERS"
+  envNoFloatInline <- (== Just "1") <$> lookupEnv "FPR_NO_F64_INLINE"
   envNoInline <- (== Just "1") <$> lookupEnv "FPR_NO_INLINE"
   let system = fromMaybe "bare-metal" (oSystem opts0)
       espHost = oHost opts0 == Just "esp-idf" -- the posix system on an ESP-IDF board (docs/2026-09-23-ESP-IDF.md)
@@ -630,7 +632,7 @@ compileMain = do
               (M.map (\(Forall _ _ t) -> arrows t) builtinEnv)
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
-          tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr}
+          tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = not envNoFloatInline, tgtRegisters = not envNoRegisters}
           a64 = oA64 opts
           a64mac = oA64Mac opts
           x64 = oX64 opts
@@ -659,7 +661,7 @@ compileMain = do
                   else if x64 then "x64r" ++ show x64Rev
                   else if espHost then "rv32-idftls1"
                   else tgtName tgt
-          tag = "g" ++ show codegenRev ++ (if oNoInline opts then "-noinl" else "") ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
+          tag = "g" ++ show codegenRev ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit

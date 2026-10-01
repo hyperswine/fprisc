@@ -104,11 +104,24 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     assert on == off, (on, off)
     assert on.endswith('r1=6 r2=20 r3=7 r4=12 r5=-91 r6=False r7=15 r8=5\n') and on.count('eval tick') == 2, on
     print('Inlining changes nothing observable: argument order, CAF arguments, function-valued parameters, shadowing, mutual recursion: PASS')
+    run(['python3', 'tests/check_registers.py'], timeout=300)
+    print('Register-held slots preserve calls, effects, branches, tail calls and warm-cache modes: PASS')
     # 4l. a frame holds the argument slots of direct primitive calls: their
     # args were staged below sp and nested C calls overwrote them
     out = run([build('tests/base/slotprims.fpr', 'slotprims')]).stdout
     assert out == 'f: bcabc\ng: ab=wxy=pq bc+xyz+pr\n', out
     print('Frames count the argument slots of direct primitive calls (nested strJoin/substr): PASS')
+    # Independent C references cover IEEE edge cases, Bool values/branches,
+    # fast-path and inliner switches; the x64 lowering executes when available.
+    run(['python3', 'tests/check_float_inline.py'], timeout=300)
+    print('F64 arithmetic/comparisons and literal splices agree with the C reference: PASS')
+    cleanup = tmp / 'cleanup'
+    run(['./fpr', 'build', 'tests/base/cleanup.fpr', '--with', 'tests/base/cleanup_probe.c', '-o', cleanup])
+    for harts in ('1', '2'):
+        assert run([cleanup], env={'FPR_HARTS': harts}).stdout == 'cleanup: 1\n'
+    print('External request cleanup runs when a parked actor is killed: PASS')
+    run(['python3', 'tools/runtime-costs.py', '--quick', '--runs', '1'], timeout=300)
+    print('Opt-in allocation/copy ledgers match exact workloads; ordinary builds have no increments: PASS')
     # 4h. receiveFromRes: a sender that exits is an answer (Err "dead actor"),
     # never a caller parked for ever; a reply sent just before exiting is kept
     dp = build('tests/base/deadpeer.fpr', 'deadpeer')

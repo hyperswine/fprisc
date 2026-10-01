@@ -21,10 +21,10 @@
 --   (fpr_prim_obj_) -> ANYTHING ELSE becomes an extern fpr_g_<name>:
 --   the discoverable-symbol contract the HAL/runtime must satisfy.
 --
--- Codegen is deliberately naive: result always in a0, temporaries on
--- the real stack, locals in frame slots. Every effect is a real call;
--- combined with volatile MMIO in the HAL this guarantees device access
--- order matches program order -- nothing is elided or reordered.
+-- Results use a0 and private slots stage intermediate values. Ordinary
+-- 64-bit functions can promote hot slots to preserved registers after
+-- generation. Source effects retain evaluation order; HAL MMIO remains
+-- volatile, and slot promotion does not reorder device accesses.
 
 module Codegen (emitProgram, externals, Target (..), rv64, rv32, codegenRev, normArc) where
 -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
@@ -38,10 +38,11 @@ import Control.Monad (when)
 import Control.Monad.State.Strict
 import Data.Bits (shiftR, (.&.))
 import Data.Char (isAlphaNum, ord)
-import Data.List (foldl', intercalate, isPrefixOf, nub, sort)
+import Data.List (foldl', intercalate, isPrefixOf, nub, sort, sortOn)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Numeric (showHex)
+import Text.Read (readMaybe)
 import Peephole (peephole)
 
 import FPRISC (Core (..), Prog, freeVars)
@@ -49,7 +50,7 @@ import FPRISC (Core (..), Prog, freeVars)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 19 -- r18 + inlined bodies keep their callee's entry fuel tick ($fuel)
+codegenRev = 23 -- scalar F64 fast paths and preserved-register private slots
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -66,14 +67,16 @@ data Target = Target
     tgtWeak :: Bool,    -- a LIBRARY unit: its unqualified globals (the
                         -- constructor stubs, $arc.mainManaged) are emitted
                         -- .weak so a program unit's copies win at link
+    tgtRegisters :: Bool, -- promote private frame slots into preserved registers
+    tgtFloatInline :: Bool, -- F64 fast paths; false keeps the C primitives for differential checks
     tgtHal :: M.Map String Int -- primitive name -> arity (builtin schemes and
                         -- foreign declarations): a saturated call to one is
                         -- a direct `call fpr_g_<name>_call<n>` (fpr.h FPR_FN)
   }
 
 rv64, rv32 :: Target
-rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False M.empty
-rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False M.empty
+rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True True M.empty
+rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False False False M.empty
 
 -- the visibility directive for a unit-visible global: a library unit
 -- shares every name it did not qualify with '@hash' with the program it
@@ -565,9 +568,20 @@ compileFn prog name (params, body0) = do
       body = if w == 8 then normIn (S.fromList params) body0 else body0
       -- exact high-water mark (see slotsNeeded); +2 is pure paranoia
       nslots = length params + slotsNeeded (tgtHal tgt) ext prog (S.fromList params) body + 2
-      frame = ((2 * w + w * nslots + 15) `div` 16) * 16
+      baseFrame = ((2 * w + w * nslots + 15) `div` 16) * 16
       env0 = M.fromList (zip params [0 ..])
   bodyLines <- gen prog env0 (length params) Tail body
+  let regs = if tgtRegisters tgt && w == 8 && not (tgtArc tgt) && nslots < 240
+               then registerSlots tgt bodyLines else []
+      frame = ((baseFrame + w * length regs + 15) `div` 16) * 16
+      saved = zip (map snd regs) [nslots ..]
+      saveRegs = concat [stSlot tgt r k | (r,k) <- saved]
+      restoreRegs = concat [ldSlot tgt r k | (r,k) <- saved]
+      promote l = case slotAccess tgt l of
+        Just (op,r,k) | Just sr <- lookup k regs ->
+          ["    mv " ++ (if op == tgtLd tgt then r ++ ", " ++ sr else sr ++ ", " ++ r)]
+        _ | words l == [tgtLd tgt,"s0,",show (-2*w) ++ "(s0)"] -> restoreRegs ++ [l]
+          | otherwise -> [l]
   -- FUEL: every supercombinator entry decrements the global fuel
   -- counter and traps to the scheduler at zero. Function entry is the
   -- one safepoint every FPRISC loop must pass through (all loops are tail
@@ -642,7 +656,8 @@ compileFn prog name (params, body0) = do
       ++ [ "    " ++ visibility tgt name ++ " fpr_fn_" ++ m | S.member name exps ]
       ++ [ "fpr_fn_" ++ m ++ ":" ]
       ++ framePro tgt frame
-      ++ tidy (concat [stSlot tgt ("a" ++ show i) i | (i, _) <- zip [0 :: Int ..] params, i < 8]
+      ++ saveRegs
+      ++ concatMap promote (tidy (concat [stSlot tgt ("a" ++ show i) i | (i, _) <- zip [0 :: Int ..] params, i < 8]
       -- wide params ride the hart spill cells: copy them into frame
       -- slots BEFORE the fuel check (fpr_fuel_exhausted may deschedule;
       -- by then the cells must be dead)
@@ -659,7 +674,26 @@ compileFn prog name (params, body0) = do
            "    mv sp, t0",
            "    ret",
            ""
-         ])
+         ]))
+
+-- Private slot promotion: a register is the slot's storage for the entire
+-- function, including branches and scratch-slot reuse. No liveness guesses
+-- or stale cache copies. Calls preserve s1..s5 on all three 64-bit backends.
+-- Deep/computed frames and ARC/spec loops stay on the existing slot path.
+slotAccess :: Target -> String -> Maybe (String, String, Int)
+slotAccess t l = case words l of
+  [op, r, mem] | op == tgtLd t || op == tgtSt t,
+    (off, "(s0)") <- break (== '(') mem,
+    Just n <- readMaybe off, n <= -3 * tgtW t,
+    n `mod` tgtW t == 0 -> Just (op, filter (/= ',') r, (-n `div` tgtW t) - 3)
+  _ -> Nothing
+
+registerSlots :: Target -> [String] -> [(Int,String)]
+registerSlots t ls
+  | any (\l -> any (`elem` words (map (\c -> if c == ',' then ' ' else c) l)) ["s1","s2","s3","s4","s5"]) ls = []
+  | any (\l -> words l == ["add","t2,","s0,","t2"]) ls = []
+  | otherwise = zip (take 5 [k | (k,n) <- sortOn (\(k,n) -> (negate n,k)) (M.toList counts), n >= 6]) ["s1","s2","s3","s4","s5"]
+  where counts = M.fromListWith (+) [(k,1 :: Int) | Just (_,_,k) <- map (slotAccess t) ls]
 
 -- Shapes the ownership lowering leaves in a body, rewritten so the
 -- generator's fusions see through them (builtin target only):
@@ -856,7 +890,7 @@ data Inl
 
 inlineTable :: M.Map String Inl
 inlineTable =
-  M.fromList
+  M.fromList $
     [ -- Word: bare bits
       ("$arc.wordadd", Plain ["    add a0, a0, a1"]),
       ("$arc.wordsub", Plain ["    sub a0, a0, a1"]),
@@ -921,8 +955,24 @@ inlineTable =
       ("bxor", Plain ["    xor a0, a0, a1", "    ori a0, a0, 1"]),
       ("BITSHIFTL", Guarded shiftOk ["    srai t0, a0, 1", "    sll t0, t0, t1", "    slli t0, t0, 1", "    ori a0, t0, 1"]),
       ("BITSHIFTR", Guarded shiftOk ["    srai t0, a0, 1", "    srl t0, t0, t1", "    slli t0, t0, 1", "    ori a0, t0, 1"])
+    ] ++
+    [ ("F64.+", floatBin "fadd"), ("F64.-", floatBin "fsub"),
+      ("F64.*", floatBin "fmul"), ("F64./", floatBin "fdiv"),
+      ("F64.<", floatCmp "flt" "ft0" "ft1" False),
+      ("F64.<=", floatCmp "fle" "ft0" "ft1" False),
+      ("F64.>", floatCmp "flt" "ft1" "ft0" False),
+      ("F64.>=", floatCmp "fle" "ft1" "ft0" False),
+      ("F64.==", floatCmp "feq" "ft0" "ft1" False),
+      ("F64.!=", floatCmp "feq" "ft0" "ft1" True)
     ]
   where
+    -- Raw IEEE bits remain in the integer ABI and frame slots. Only the
+    -- operation uses caller-saved FP temporaries; nothing lives there over
+    -- a call or safepoint. Separate operations never fuse into an FMA.
+    floatArgs = ["    fmv.d.x ft0, a0", "    fmv.d.x ft1, a1"]
+    floatBin op = Plain (floatArgs ++ ["    " ++ op ++ ".d ft0, ft0, ft1", "    fmv.x.d a0, ft0"])
+    floatCmp op x y invert = Cond (floatArgs ++ ["    " ++ op ++ ".d t0, " ++ x ++ ", " ++ y]
+                                     ++ ["    xori t0, t0, 1" | invert])
     tag r = ["    slli " ++ r ++ ", " ++ r ++ ", 1", "    ori " ++ r ++ ", " ++ r ++ ", 1"]
     unit = "    la a0, fpr_unit"
     -- the untagged shift count lands in t1; anything outside 0..63
@@ -953,8 +1003,10 @@ inlineKey :: String -> String
 inlineKey h = M.findWithDefault h h baseOps
 
 -- the expansion as a value in a0 (the adapter's result)
-inlineArc :: String -> Maybe (String -> G [String])
-inlineArc h0 = emit <$> M.lookup (inlineKey h0) inlineTable
+inlineArc :: Target -> String -> Maybe (String -> G [String])
+inlineArc tgt h0
+  | not (tgtFloatInline tgt), "F64." `isPrefixOf` h0 = Nothing
+  | otherwise = emit <$> M.lookup (inlineKey h0) inlineTable
   where
     emit = \case
       Plain ls -> const (pure ls)
@@ -974,14 +1026,16 @@ inlineArc h0 = emit <$> M.lookup (inlineKey h0) inlineTable
 
 -- the expansion as a condition: t0 = 0/1, for a branch that never
 -- materializes the Bool (the slow path reads the adapter's answer)
-inlineCond :: String -> Maybe (String -> G [String])
-inlineCond h = case M.lookup (inlineKey h) inlineTable of
-  Just (Cond c) -> Just (const (pure c))
-  Just (GuardedCond checks c) -> Just $ \t -> do
-    ls <- freshL "slow"
-    lj <- freshL "join"
-    pure (checks ls ++ c ++ ["    j " ++ lj, ls ++ ":", "    call " ++ t, "    lw t0, 4(a0)", lj ++ ":"])
-  _ -> Nothing
+inlineCond :: Target -> String -> Maybe (String -> G [String])
+inlineCond tgt h
+  | not (tgtFloatInline tgt) || tgtW tgt /= 8, "F64." `isPrefixOf` h = Nothing
+  | otherwise = case M.lookup (inlineKey h) inlineTable of
+    Just (Cond c) -> Just (const (pure c))
+    Just (GuardedCond checks c) -> Just $ \t -> do
+      ls <- freshL "slow"
+      lj <- freshL "join"
+      pure (checks ls ++ c ++ ["    j " ++ lj, ls ++ ":", "    call " ++ t, "    lw t0, 4(a0)", lj ++ ":"])
+    _ -> Nothing
 
 genT :: Target -> Bool -> Prog -> M.Map String Int -> M.Map String Int -> Int -> Pos -> Core -> G [String]
 genT tgt spec prog ext = go
@@ -1009,6 +1063,14 @@ genT tgt spec prog ext = go
     go env nxt pos (CVar h)
       | tgtArc tgt, Just target <- known env h 0 =
           knownCall env nxt pos target []
+    -- A literal's two tagged halves are compile-time constants. Splice
+    -- their raw IEEE bits directly instead of calling C on every loop turn.
+    -- Respect local/global shadowing, just like other primitive fast paths.
+    go env _ _ e
+      | w == 8, tgtFloatInline tgt,
+        (CVar "f64frombits", args) <- spineOf e,
+        Just "fpr_prim_fn_f64frombits" <- known env "f64frombits" (length args),
+        Just bits <- floatLitBits e = pure ["    li a0, " ++ show bits]
     -- a raw primitive adapter ($arc.wordadd, $arc.memreadWord, tagged
     -- Int arithmetic ...) with an inline expansion: stage the args
     -- exactly as a call would, then emit the instructions in place of
@@ -1018,7 +1080,7 @@ genT tgt spec prog ext = go
       | w == 8,
         (CVar h, args@(_ : _)) <- spineOf e,
         Just target <- known env h (length args),
-        Just emit <- inlineArc h = do
+        Just emit <- inlineArc tgt h = do
           argLines <- stageArgs env nxt args
           body <- emit target
           pure (argLines ++ argLoads env nxt args ++ body)
@@ -1037,8 +1099,8 @@ genT tgt spec prog ext = go
 
     -- an inlined callee's entry safepoint (Inline.hs): the fuel tick the
     -- call's prologue would have run, so inlining never lengthens the
-    -- path between safepoints (G1).  Unit in a0; nothing is live in a
-    -- register here -- every value is in its slot.
+    -- path between safepoints (G1). Unit in a0; locals remain in slots
+    -- or in preserved registers assigned by the final promotion pass.
     go _ _ _ e
       | (CVar "$fuel", [_]) <- spineOf e = do
           tickLines <- specFuel tgt
@@ -1053,7 +1115,7 @@ genT tgt spec prog ext = go
         not (M.member h env), not (M.member h prog), not (M.member h ext),
         Just a <- M.lookup h (tgtHal tgt), a == length args, a <= 6 =
           let target = "fpr_g_" ++ mangle h ++ "_call" ++ show a
-           in case (w == 8, inlineArc h) of
+           in case (w == 8, inlineArc tgt h) of
                 (True, Just emit) -> do
                   argLines <- stageArgs env nxt args
                   body <- emit target
@@ -1191,7 +1253,7 @@ genT tgt spec prog ext = go
         | Just v <- nullaryBool env c -> pure $ \l -> ["    j " ++ l | v == sense]
         | (CVar h, args@(_ : _)) <- spineOf c,
           Just target <- known env h (length args),
-          Just cond <- inlineCond h -> do
+          Just cond <- inlineCond tgt h -> do
             argLines <- stageArgs env nxt args
             test <- cond target
             pure $ \l -> argLines ++ argLoads env nxt args ++ test ++ [(if sense then "    bnez t0, " else "    beqz t0, ") ++ l]

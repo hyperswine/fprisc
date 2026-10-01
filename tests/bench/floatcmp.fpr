@@ -1,0 +1,11 @@
+# bench: scalar F64 comparisons as branches, with finite moving inputs.
+loop : unsafe Int -> F64 -> Int -> Int .
+loop n x count = if n == 0 then count else
+  a = if x < 0.0 then 1 else 0;
+  b = if x <= 0.0 then 1 else 0;
+  c = if x > 0.0 then 1 else 0;
+  d = if x >= 0.0 then 1 else 0;
+  e = if x == 0.0 then 1 else 0;
+  f = if x != 0.0 then 1 else 0;
+  loop (n - 1) (0.0 - x) (count + a + b + c + d + e + f).
+main = print "floatcmp: {loop 10000000 1.0 0}".
