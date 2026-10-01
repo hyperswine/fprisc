@@ -128,3 +128,10 @@ execution and atomic compiler publication. QOS's complete sweep exited 0
 with `ALL LEGS GREEN`. Websocket, windowed graphics, actual GPU dispatch and
 alternate AArch64 cross-execution remain unavailable platform legs; the legacy
 Sol example tally remains informational at 38/47.
+
+## 2026-10-01: the transport component, identified
+
+The cross-hart gap was the OS park and wake on the posix machine (about 90%
+of a round trip), not shipping, scanning or cache transfer. See
+[XHART](2026-10-01-XHART.md): round trips are now 19.6x faster (0.20 us,
+1.5x the same-hart cost).

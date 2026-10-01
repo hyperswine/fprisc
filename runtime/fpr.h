@@ -272,6 +272,13 @@ typedef struct {
 #ifdef FPR_COST_PROBE
   uint64_t cost_alloc_requests, cost_alloc_bytes;
   uint64_t cost_copies, cost_copy_bytes, cost_msg_slabs;
+  /* the cross-hart ledger (docs/2026-10-01-XHART.md): ns spent and counts,
+   * each recorded on the hart where the work happened */
+  uint64_t xs_send_n, xs_send_ns, xs_copy_ns, xs_arc_ns, xs_push_ns, xs_wake_ns;
+  uint64_t xs_xship_n, xs_xpush_ns, xs_ipi_ns, xs_lship_n;
+  uint64_t xr_recv_n, xr_scan_ns, xr_block_n, xr_drop_ns;
+  uint64_t xl_drain_n, xl_drain_ns, xl_run_n, xl_run_ns;
+  uint64_t xp_park_n, xp_park_ns, xp_bell_n, xp_bell_ns;
 #endif
 } fpr_hart_t;
 
@@ -285,6 +292,12 @@ _Static_assert(__builtin_offsetof(fpr_hart_t, stk_lo) == sizeof(sw) * (1 + FPR_A
                "stk_lo/stk_span must follow the spill cells (Codegen.hs stackCheck)");
 
 /* Opt-in per-hart cost ledger. Ordinary builds emit no increments. */
+#ifdef FPR_COST_PROBE
+uint64_t hal_probe_ns(void); /* machine/posix/hal.c: a fine monotonic clock */
+#define FPR_PROBE_NOW() hal_probe_ns()
+#else
+#define FPR_PROBE_NOW() 0
+#endif
 #ifdef FPR_COST_PROBE
 #define FPR_COST_ADD(h, field, n) do { if (h) __atomic_fetch_add(&(h)->field, (uint64_t)(n), __ATOMIC_RELAXED); } while (0)
 #else

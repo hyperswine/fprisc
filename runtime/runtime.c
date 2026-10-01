@@ -1370,7 +1370,16 @@ static V g_heapUsed(V d) {
   return TAG((sw)pool->allocated);
 }
 
-static V g_drop(V v) { fpr_arc_decref(v); return (V)&fpr_unit; }
+static V g_drop(V v) {
+#ifdef FPR_COST_PROBE
+  uint64_t d0 = FPR_PROBE_NOW();
+  fpr_arc_decref(v);
+  FPR_COST_ADD(fpr_hart(), xr_drop_ns, FPR_PROBE_NOW() - d0);
+#else
+  fpr_arc_decref(v);
+#endif
+  return (V)&fpr_unit;
+}
 
 /* substr s off len -- 1-indexed byte slice, clamped. Mechanism, not
  * policy: diskfs chunks payloads into pages (write) and takes the used

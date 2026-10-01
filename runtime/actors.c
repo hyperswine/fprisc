@@ -103,16 +103,34 @@ typedef struct ringv {
 #define SLOT(rv, k) ((rv)->slots[(k) & ((rv)->cap - 1)])
 #define TAGAT(rv, k) ((rv)->from[(k) & ((rv)->cap - 1)])
 
-/* one SPSC channel: bound to a single sender for the actor's lifetime */
+/* one SPSC channel: bound to a single sender for the actor's lifetime.
+ *
+ * Cache lines (2026-10-01, docs/2026-10-01-XHART.md): the producer's fields
+ * (rt, rv, its cached view of rh) share one line, the consumer's head rh
+ * has its own, and the producer re-reads rh only when its cached view says
+ * the ring is full.  With both on one line, a producer and a consumer
+ * running at the same time on two harts moved that line between the cores
+ * on EVERY message: cross-hart streaming ran at 11.5M messages/s against
+ * 20M once the receiver stopped sleeping between batches. */
+#ifndef FPR_CACHELINE
+#if defined(__APPLE__) && defined(__aarch64__)
+#define FPR_CACHELINE 128
+#else
+#define FPR_CACHELINE 64
+#endif
+#endif
 typedef struct {
   uw sender;       /* sender id + 1; 0 = unbound (claimed by CAS) */
-  uint32_t rh, rt; /* free-running head/tail; count = rt - rh */
+  uint32_t rt;     /* free-running tail: producer-owned; count = rt - rh */
+  uint32_t rh_seen; /* the producer's last view of rh (never ahead of it) */
   uint32_t dyn;    /* 1 = the ring doubles when full (Dynamic n) */
   uint32_t pad;
   ringv_t *rv;     /* the ring in force (producer swaps it; readers
                     * load it AFTER rt: the producer publishes rv
                     * before rt, so a seen rt is covered by the rv) */
-  ringv_t rv0;     /* the inline default */
+  uint32_t rh __attribute__((aligned(FPR_CACHELINE))); /* free-running head: consumer-owned */
+  uint32_t rt_seen; /* the consumer's last view of rt (never ahead of it) */
+  ringv_t rv0 __attribute__((aligned(FPR_CACHELINE))); /* the inline default */
   V slots0[RING_CAP];
 } chan_t;
 uw fpr_ring_grows, fpr_send_full; /* growths; sends refused for a full ring */
@@ -201,6 +219,9 @@ typedef struct fpr_acb {
   void *external_arg;
   struct fpr_acb *watch;
   uw watchers;
+#ifdef FPR_COST_PROBE
+  uint64_t probe_shipped, probe_drained; /* cross-hart latency stamps (XHART.md) */
+#endif
 } acb_t;
 #define TR(a, code) do { (a)->tr[(a)->tr_i++ % 16] = (uint8_t)((code) * 8 + (fpr_hart() ? fpr_hart()->id : 7)); } while (0)
 
@@ -568,6 +589,9 @@ static void chan_init(chan_t *c, uw *shfrom, int fresh) {
   }
   c->sender = 0;
   c->rh = c->rt = 0;
+  c->rh_seen = c->rt_seen = 0; /* the cached views go with the counters: a
+                                * reused block's stale rt_seen claimed
+                                * messages that were never sent */
   c->dyn = 0;
   c->rv0.cap = RING_CAP;
   c->rv0.slots = c->slots0;
@@ -1108,6 +1132,15 @@ static void drain(fpr_hart_t *h) {
       acb_t *a = x->ring[x->rh % XCAP];
       __atomic_store_n(&x->rh, x->rh + 1, __ATOMIC_RELEASE);
       TR(a, 3);
+#ifdef FPR_COST_PROBE
+      if (a->probe_shipped) {
+        uint64_t now = FPR_PROBE_NOW();
+        FPR_COST_ADD(h, xl_drain_n, 1);
+        FPR_COST_ADD(h, xl_drain_ns, now - a->probe_shipped);
+        a->probe_shipped = 0;
+        a->probe_drained = now;
+      }
+#endif
       enq(h, a);
     }
   }
@@ -1118,10 +1151,24 @@ static void ship(acb_t *a) {
   fpr_hart_t *h = fpr_hart();
   __atomic_fetch_add(&g_activity, 1, __ATOMIC_RELAXED);
   if (a->hart == h->id) {
+    FPR_COST_ADD(h, xs_lship_n, 1);
     enq(h, a);
   } else {
+#ifdef FPR_COST_PROBE
+    uint64_t s0 = FPR_PROBE_NOW();
+    a->probe_shipped = s0;
+#endif
     xpush(h->id, a->hart, a); /* publish the work... */
+#ifdef FPR_COST_PROBE
+    uint64_t s1 = FPR_PROBE_NOW();
+#endif
     hal_ipi_send(a->hart);    /* ...THEN raise msip (Dekker with the sleeper) */
+#ifdef FPR_COST_PROBE
+    uint64_t s2 = FPR_PROBE_NOW();
+    FPR_COST_ADD(h, xs_xship_n, 1);
+    FPR_COST_ADD(h, xs_xpush_ns, s1 - s0);
+    FPR_COST_ADD(h, xs_ipi_ns, s2 - s1);
+#endif
   }
 }
 
@@ -1333,6 +1380,13 @@ static void hart_loop(fpr_hart_t *h) {
           double_run(n, h, free_);
       }
       if (n->stack && n->stk_span != ~(uw)0) hal_actor_stack((void *)(n->stk_lo - FPR_STACK_HEADROOM));
+#ifdef FPR_COST_PROBE
+      if (n->probe_drained) {
+        FPR_COST_ADD(h, xl_run_n, 1);
+        FPR_COST_ADD(h, xl_run_ns, FPR_PROBE_NOW() - n->probe_drained);
+        n->probe_drained = 0;
+      }
+#endif
       fpr_ctx_switch(h->sched_ctx, n->ctx);
       hal_actor_stack(0); /* the hart loop may free that stack (reap): nothing watched here */
       __atomic_store_n(&n->running, 0, __ATOMIC_RELEASE); /* saved: it may run elsewhere now */
@@ -1502,7 +1556,56 @@ static void wake(acb_t *a) {
  * half of the Dekker pairing with a_send. */
 typedef int (*pred_t)(acb_t *, uw);
 
+/* SPIN BEFORE BLOCKING (2026-10-01, docs/2026-10-01-XHART.md): an actor
+ * about to block, on a hart with nothing else to run, re-checks what it is
+ * waiting for for up to hal_block_spin_ns() first.  A reply or the next
+ * streamed message usually lands inside that window, and then there is no
+ * block, no wake, no ship to the hart and no two context switches.  Only
+ * when the hart is otherwise idle -- its run queue, backlog and incoming
+ * ships empty -- so no other actor waits behind the spin.  0 = block at
+ * once: bare metal (wfi and an IPI are cheap on real harts); the posix
+ * machine sets it ($FPR_BLOCK_SPIN_NS). */
+__attribute__((weak)) uw hal_block_spin_ns(void) { return 0; }
+/* the longest gap between two looks (spin_until's backoff doubles up to it) */
+#ifndef FPR_SPIN_GAP
+#define FPR_SPIN_GAP 64
+#endif
+static int hart_quiet(fpr_hart_t *h) {
+  if (h->rq_head || h->bl_head) return 0;
+  for (uw s = 0; s < fpr_live_harts; s++) {
+    xring_t *x = &xr[s][h->id];
+    if (__atomic_load_n(&x->rt, __ATOMIC_ACQUIRE) != x->rh) return 0;
+  }
+  return 1;
+}
+static int spin_until(acb_t *a, pred_t pred, uw arg) {
+  static uw spin_ns = (uw)-1;
+  if (spin_ns == (uw)-1) spin_ns = hal_block_spin_ns();
+  if (!spin_ns) return 0;
+  fpr_hart_t *h = fpr_hart();
+  if (!hart_quiet(h)) return 0;
+  uint64_t end = hal_mtime() + spin_ns / 100 + 1; /* 100 ns ticks */
+  /* exponential backoff between looks: an imminent reply is seen almost at
+   * once, and a waiter that is only keeping pace with its producer stops
+   * re-reading the producer's line (each look at an empty channel reads
+   * rt) -- that contention halved cross-hart streaming at a fixed gap */
+  int gap = 1;
+  do {
+    for (int i = 0; i < gap; i++) {
+#if defined(__aarch64__)
+      __asm__ volatile("isb");
+#elif defined(__x86_64__)
+      __asm__ volatile("pause");
+#endif
+    }
+    if (pred(a, arg)) return 1;
+    if (gap < FPR_SPIN_GAP) gap <<= 1;
+  } while (hal_mtime() < end && hart_quiet(h));
+  return 0;
+}
+
 static void block_unless(acb_t *a, pred_t pred, uw arg) {
+  if (spin_until(a, pred, arg)) return; /* it arrived while we looked */
   uint32_t exp = ST_READY;
   if (!__atomic_compare_exchange_n(&a->var, &exp, ST_BLOCKED, 0,
                                    __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
@@ -1673,11 +1776,23 @@ static void slp_wfi_arm(fpr_hart_t *h) {
 static uint32_t ch_count(chan_t *c) {
   return __atomic_load_n(&c->rt, __ATOMIC_ACQUIRE) - c->rh;
 }
+/* the same, for the CONSUMER only: rt is the producer's line, re-read only
+ * when the cached view says the channel is empty -- which is exactly when
+ * a wait has to see a newly published message, so blocking stays sound */
+static uint32_t ch_avail(chan_t *c) {
+  /* signed: receiveRes can take past the cached view (it scans to the
+   * real rt), and a reclaimed channel keeps an old view -- either way the
+   * cache is behind rh, and that means re-read, never "4 billion queued" */
+  int32_t n = (int32_t)(c->rt_seen - c->rh);
+  if (n > 0) return (uint32_t)n;
+  c->rt_seen = __atomic_load_n(&c->rt, __ATOMIC_ACQUIRE);
+  return c->rt_seen - c->rh;
+}
 
 static int p_any(acb_t *a, uw unused) {
   (void)unused;
   for (int i = 0; i < MAXSND; i++)
-    if (__atomic_load_n(&a->ch[i].sender, __ATOMIC_ACQUIRE) && ch_count(&a->ch[i])) return 1;
+    if (__atomic_load_n(&a->ch[i].sender, __ATOMIC_ACQUIRE) && ch_avail(&a->ch[i])) return 1;
   return 0;
 }
 
@@ -1693,7 +1808,7 @@ static int sh_has_from(acb_t *a, uw sid, uint32_t *at) {
 }
 static int p_from(acb_t *a, uw sid) {
   chan_t *c = chan_for(a, sid, 0);
-  return (c && ch_count(c)) || sh_has_from(a, sid, 0);
+  return (c && ch_avail(c)) || sh_has_from(a, sid, 0);
 }
 
 /* receiveFromRes waits for a message from sid OR for sid's death */
@@ -1981,7 +2096,11 @@ static int ring_push(acb_t *a, chan_t *c, uw key, V m) {
     if (shared) fpr_lock(&a->shlock);
     ringv_t *rv = c->rv; /* dedicated: single producer, private rt */
     uint32_t rt = c->rt;
-    if (rt - __atomic_load_n(&c->rh, __ATOMIC_ACQUIRE) < rv->cap) {
+    /* the cached head first: rh is the consumer's line, read only when
+     * the ring looks full (a stale view is never ahead of rh, so the
+     * check can only err towards re-reading) */
+    if (rt - c->rh_seen >= rv->cap) c->rh_seen = __atomic_load_n(&c->rh, __ATOMIC_ACQUIRE);
+    if (rt - c->rh_seen < rv->cap) {
       if (shared) TAGAT(rv, rt) = key;
       SLOT(rv, rt) = m;
       __atomic_store_n(&c->rt, rt + 1, __ATOMIC_RELEASE); /* publish */
@@ -2010,17 +2129,39 @@ V fpr_send_as(uw sender_key, V av, V m) {
   acb_t *a = (acb_t *)av;
   if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD)
     return send_err("dead actor");
+#ifdef FPR_COST_PROBE
+  fpr_hart_t *ph = fpr_hart();
+  uint64_t q0 = FPR_PROBE_NOW();
+#endif
   chan_t *c = chan_for(a, sender_key, 1);
   m = fpr_msg_copy(m); /* DEEP COPY: the receiver gets a self-contained
                         * slab; nothing the sender does afterward can
                         * touch it, and drop-of-root frees all of it */
+#ifdef FPR_COST_PROBE
+  uint64_t q1 = FPR_PROBE_NOW();
+#endif
   fpr_arc_incref(m); /* promotion: heap values become shared on send */
+#ifdef FPR_COST_PROBE
+  uint64_t q2 = FPR_PROBE_NOW();
+#endif
   if (!ring_push(a, c, sender_key, m)) {
     fpr_arc_decref(m); /* the copy goes back: nobody will receive it */
     return send_err("mailbox full");
   }
+#ifdef FPR_COST_PROBE
+  uint64_t q3 = FPR_PROBE_NOW();
+#endif
   __atomic_thread_fence(__ATOMIC_SEQ_CST); /* Dekker: publish before flag read */
   wake(a);
+#ifdef FPR_COST_PROBE
+  uint64_t q4 = FPR_PROBE_NOW();
+  FPR_COST_ADD(ph, xs_send_n, 1);
+  FPR_COST_ADD(ph, xs_send_ns, q4 - q0);
+  FPR_COST_ADD(ph, xs_copy_ns, q1 - q0);
+  FPR_COST_ADD(ph, xs_arc_ns, q2 - q1);
+  FPR_COST_ADD(ph, xs_push_ns, q3 - q2);
+  FPR_COST_ADD(ph, xs_wake_ns, q4 - q3);
+#endif
   return OK_UNIT;
 }
 
@@ -2123,15 +2264,30 @@ static V a_receive(V me) {
     fpr_cpanic("receive: not the current actor's handle");
   acb_t *a = h->current;
   drop_drain(a); /* the previous activation's borrows are dead here */
+#ifdef FPR_COST_PROBE
+  uint64_t r0 = FPR_PROBE_NOW();
+#endif
   for (;;) {
     for (int n = 0; n < MAXSND; n++) {
       chan_t *c = &a->ch[(a->scan + n) % MAXSND];
-      if (__atomic_load_n(&c->sender, __ATOMIC_ACQUIRE) && ch_count(c)) {
+      if (__atomic_load_n(&c->sender, __ATOMIC_ACQUIRE) && ch_avail(c)) {
         a->scan = (a->scan + n + 1) % MAXSND;
-        return take_at(a, c, c->rh);
+        V got = take_at(a, c, c->rh);
+#ifdef FPR_COST_PROBE
+        FPR_COST_ADD(fpr_hart(), xr_recv_n, 1);
+        FPR_COST_ADD(fpr_hart(), xr_scan_ns, FPR_PROBE_NOW() - r0);
+#endif
+        return got;
       }
     }
+#ifdef FPR_COST_PROBE
+    FPR_COST_ADD(fpr_hart(), xr_scan_ns, FPR_PROBE_NOW() - r0);
+    FPR_COST_ADD(fpr_hart(), xr_block_n, 1);
+#endif
     block_unless(a, p_any, 0);
+#ifdef FPR_COST_PROBE
+    r0 = FPR_PROBE_NOW();
+#endif
   }
 }
 
@@ -2152,7 +2308,7 @@ static V a_receive_now(V me) {
   drop_drain(a); /* the previous activation's borrows are dead here */
   for (int n = 0; n < MAXSND; n++) {
     chan_t *c = &a->ch[(a->scan + n) % MAXSND];
-    if (__atomic_load_n(&c->sender, __ATOMIC_ACQUIRE) && ch_count(c)) {
+    if (__atomic_load_n(&c->sender, __ATOMIC_ACQUIRE) && ch_avail(c)) {
       a->scan = (a->scan + n + 1) % MAXSND;
       V m = take_at(a, c, c->rh);
       V *ok = (V *)fpr_alloc(8 + sizeof(uw));
@@ -2176,13 +2332,27 @@ static V a_receive_from(V me, V fromv) {
   acb_t *a = h->current;
   drop_drain(a); /* the previous activation's borrows are dead here */
   uw sid = (uw)fromv; /* the key IS the sender's acb */
+#ifdef FPR_COST_PROBE
+  uint64_t r0 = FPR_PROBE_NOW();
+#define RECV_DONE(x) do { V got_ = (x); FPR_COST_ADD(fpr_hart(), xr_recv_n, 1); FPR_COST_ADD(fpr_hart(), xr_scan_ns, FPR_PROBE_NOW() - r0); return got_; } while (0)
+#else
+#define RECV_DONE(x) return (x)
+#endif
   for (;;) {
     chan_t *c = chan_for(a, sid, 0);
-    if (c && ch_count(c)) return take_at(a, c, c->rh);
+    if (c && ch_avail(c)) RECV_DONE(take_at(a, c, c->rh));
     uint32_t k;
-    if (sh_has_from(a, sid, &k)) return take_at(a, sh_chan(a), k);
+    if (sh_has_from(a, sid, &k)) RECV_DONE(take_at(a, sh_chan(a), k));
+#ifdef FPR_COST_PROBE
+    FPR_COST_ADD(fpr_hart(), xr_scan_ns, FPR_PROBE_NOW() - r0);
+    FPR_COST_ADD(fpr_hart(), xr_block_n, 1);
+#endif
     block_unless(a, p_from, sid);
+#ifdef FPR_COST_PROBE
+    r0 = FPR_PROBE_NOW();
+#endif
   }
+#undef RECV_DONE
 }
 
 /* selective receive by sender that ANSWERS: `Ok message`, or the static
@@ -2229,7 +2399,7 @@ static V a_receive_from_res(V me, V fromv) {
      * made before dying ahead of the queue check below */
     int dead = __atomic_load_n(&s->var, __ATOMIC_SEQ_CST) == ST_DEAD;
     chan_t *c = chan_for(a, sid, 0);
-    if (c && ch_count(c)) return ok_of(take_at(a, c, c->rh));
+    if (c && ch_avail(c)) return ok_of(take_at(a, c, c->rh));
     uint32_t k;
     if (sh_has_from(a, sid, &k)) return ok_of(take_at(a, sh_chan(a), k));
     if (dead) return (V)&recv_dead;
@@ -2549,7 +2719,7 @@ static V mem_next(acb_t *a, uw *from) {
   for (;;) {
     for (int n = 0; n < MAXSND; n++) {
       chan_t *c = &a->ch[(a->scan + n) % MAXSND];
-      if (__atomic_load_n(&c->sender, __ATOMIC_ACQUIRE) && ch_count(c)) {
+      if (__atomic_load_n(&c->sender, __ATOMIC_ACQUIRE) && ch_avail(c)) {
         a->scan = (a->scan + n + 1) % MAXSND;
         if (c->sender == SHARED_KEY) {
           ringv_t *rv = __atomic_load_n(&c->rv, __ATOMIC_ACQUIRE);

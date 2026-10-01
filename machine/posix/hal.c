@@ -15,6 +15,25 @@
 
 void hal_ipi_send(uw hart); /* park.c on unix, machine/esp-idf/hal.c on the board */
 
+#ifdef FPR_COST_PROBE
+#include <time.h>
+uint64_t hal_probe_ns(void) {
+#ifdef __APPLE__
+  return clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+#else
+  struct timespec t; clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+  return (uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec;
+#endif
+}
+#endif
+
+/* how long an actor about to block on an otherwise idle hart re-checks its
+ * mailbox first (actors.c spin_until): $FPR_BLOCK_SPIN_NS, default 2 us */
+uw hal_block_spin_ns(void) {
+  const char *s = getenv("FPR_BLOCK_SPIN_NS");
+  return s && *s ? (uw)strtoull(s, 0, 10) : 2000;
+}
+
 void hal_putc(char c) {
   fputc(c, stdout);
   if (c == '\n') fflush(stdout);
