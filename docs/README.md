@@ -89,3 +89,4 @@ they began.
 | 2026-10-01 | [REGISTERS-AND-COSTS.md](2026-10-01-REGISTERS-AND-COSTS.md) | Preserved-register private slots, differential/backend tests, paired performance and allocation/message cost ledgers |
 | 2026-10-01 | [XHART.md](2026-10-01-XHART.md) | Cross-hart messages profiled (OS park/wake was ~90%), then spin-before-sleep, spin-before-block and split ring cache lines: round trips 19.6x faster |
 | 2026-10-01 | [LOOPWITH.md](2026-10-01-LOOPWITH.md) | `Sys.loopWith`: every step an arena, one linear Vector threaded by identity; a long-lived loop runs in O(1) memory |
+| 2026-10-01 | [INDEXING.md](2026-10-01-INDEXING.md) | The 0-based / 1-based split as it stands (strings, `!`, `Vec.get/set` 1-based; `Vec.at/put`, offsets 0-based), and a proposed migration to 0-based everywhere |
