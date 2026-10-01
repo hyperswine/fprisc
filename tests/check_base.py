@@ -130,6 +130,20 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         assert p.stdout.strip().endswith('after the child failed: Err dead actor; the machine runs on'), p.stdout
         assert 'actor failed: probe: deliberate failure' in p.stdout + p.stderr, p.stdout + p.stderr
     print('fpr_actor_fail: the failing actor ends alone with a logged reason, its caller hears Err dead actor: PASS')
+    # 4l. Sys.loopWith: every step an arena, one linear Vector threaded by
+    # identity -- the caller's pool does not grow with the step count, and a
+    # vector whose storage moved, or a Vector in the state, is refused
+    out = run([build('tests/base/loopwith.fpr', 'loopwith')]).stdout
+    assert out.startswith('steps 1000 and 20000; cells changed 1919726 and 38399726; caller pool grew '), out
+    g1, g2 = [int(x) for x in out.split('caller pool grew ')[1].replace(' B', '').split(' and ')]
+    assert g1 == g2 and g2 < 1024, out
+    (tmp / 'lwgrow.fpr').write_text('unsafe program.\nst s v = (s < 3, s + 1, Vec.push 7 v).\nmain =\n  (s, v) = Sys.loopWith (Vec.iota 16) 0 st;\n  _ = Vec.free v;\n  print "no".\n')
+    p = run([build(tmp / 'lwgrow.fpr', 'lwgrow')], 1)
+    assert 'Sys.loopWith: the vector must come back as it went in' in p.stdout + p.stderr, p.stdout + p.stderr
+    (tmp / 'lwstate.fpr').write_text('unsafe program.\nst s v = (False, Vec.iota 3, v).\nmain =\n  (s, v) = Sys.loopWith (Vec.iota 16) (Vec.iota 2) st;\n  _ = Vec.free v;\n  _ = Vec.free s;\n  print "no".\n')
+    p = run([build(tmp / 'lwstate.fpr', 'lwstate')], 1)
+    assert 'Sys.loopWith: the state may not hold a Vector' in p.stdout + p.stderr, p.stdout + p.stderr
+    print(f'Sys.loopWith: 1,000 and 20,000 steps of a double-buffered frame loop grow the caller pool by the same {g2} B; a moved vector and a Vector in the state are refused: PASS')
     # 4h. receiveFromRes: a sender that exits is an answer (Err "dead actor"),
     # never a caller parked for ever; a reply sent just before exiting is kept
     dp = build('tests/base/deadpeer.fpr', 'deadpeer')

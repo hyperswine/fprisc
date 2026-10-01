@@ -88,3 +88,4 @@ they began.
 | 2026-10-01 | [F64-FAST-PATHS.md](2026-10-01-F64-FAST-PATHS.md) | Scalar F64 instructions and literal folding, independent C-reference and x64/RV64 checks, focused comparison benchmark |
 | 2026-10-01 | [REGISTERS-AND-COSTS.md](2026-10-01-REGISTERS-AND-COSTS.md) | Preserved-register private slots, differential/backend tests, paired performance and allocation/message cost ledgers |
 | 2026-10-01 | [XHART.md](2026-10-01-XHART.md) | Cross-hart messages profiled (OS park/wake was ~90%), then spin-before-sleep, spin-before-block and split ring cache lines: round trips 19.6x faster |
+| 2026-10-01 | [LOOPWITH.md](2026-10-01-LOOPWITH.md) | `Sys.loopWith`: every step an arena, one linear Vector threaded by identity; a long-lived loop runs in O(1) memory |

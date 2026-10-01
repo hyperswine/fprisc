@@ -1,0 +1,49 @@
+# loopwith.fpr -- Sys.loopWith: a loop whose every step is an arena, with
+# ONE linear Vector threaded through by identity (runtime.c).  Two frame
+# buffers live as the halves of one Vector; each step draws into the back
+# half, counts the cells that differ from the front, and swaps by flipping
+# an offset.  Each step also allocates garbage of its own (a list, the
+# tuples Vec.at returns).  The caller's pool must not grow with the step
+# count: after a first run (which pays a one-time 64 KiB), 1,000 steps and
+# 20,000 steps cost it the same few hundred bytes -- the final state and
+# the returned pair.
+
+unsafe program.
+
+cells = 1920.
+
+draw k v i e = case i == e of
+    True -> v
+  | False -> draw k (Vec.put i ((i + k) - ((i + k) / 7) * 7) v) (i + 1) e.
+
+diffc v fo bo i acc = case i == cells of
+    True -> (acc, v)
+  | False -> diffc1 v fo bo i acc.
+diffc1 v fo bo i acc =
+  (a, v2) = Vec.at (fo + i) v;
+  (b, v3) = Vec.at (bo + i) v2;
+  diffc v3 fo bo (i + 1) (acc + cmp a b).
+cmp a b = case a == b of True -> 0 | False -> 1 .
+
+junk n = case n == 0 of True -> Nil | False -> n :: junk (n - 1).
+lenL xs = case xs of Nil -> 0 | _ :: t -> 1 + lenL t.
+
+step last st v =
+  (k, fo, total) = st;
+  bo = cells - fo;
+  v2 = draw (k / 3) v bo (bo + cells);
+  (d, v3) = diffc v2 fo bo 0 0;
+  (k + 1 < last, (k + 1, bo, total + d + lenL (junk 50) - 50), v3).
+
+run last =
+  h0 = heapUsed Unit;
+  ((k, fo, t), v) = Sys.loopWith (Vec.axpb 0 0 (Vec.iota (2 * cells))) (0, 0, 0) (fn st v -> step last st v);
+  grew = heapUsed Unit - h0;
+  _ = Vec.free v;
+  (grew, k, t).
+
+main =
+  _ = run 10;
+  (g1, k1, t1) = run 1000;
+  (g2, k2, t2) = run 20000;
+  print "steps {k1} and {k2}; cells changed {t1} and {t2}; caller pool grew {g1} B and {g2} B".

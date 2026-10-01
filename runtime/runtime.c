@@ -1016,24 +1016,17 @@ static int has_vec(V v) {
   }
 }
 
-static V g_arena(V f) {
-  fpr_hart_t *h = fpr_hart();
-  struct fpr_pool *prev = h->pool_override;
-  fpr_pool_t ap;
-  fpr_pool_init(&ap, fpr_bkt_take()); /* bigfree=0 matters: a stack pool
-                                       * with garbage there walked it as
-                                       * a freelist on any >ceiling alloc */
-  if (!ap.buckets) fpr_cpanic("Sys.arena: no memory for a bucket array");
-  h->pool_override = (struct fpr_pool *)&ap;
-  V r = fpr_apply(f, (V)&fpr_unit);
-  if (has_vec(r))
-    fpr_cpanic("Sys.arena: Vector results cannot escape an arena "
-               "(their storage IS the arena) -- return scalars/trees, "
-               "or build pool-owned vectors outside");
-  V t = fpr_msg_copy_fresh(r); /* its own slab: survives the teardown, freed below */
-  /* teardown, poolReset-style, under arc_lock (owner/escaped race) */
+static void arena_open(fpr_hart_t *h, fpr_pool_t *ap) {
+  fpr_pool_init(ap, fpr_bkt_take()); /* bigfree=0 matters: a stack pool
+                                      * with garbage there walked it as
+                                      * a freelist on any >ceiling alloc */
+  if (!ap->buckets) fpr_cpanic("Sys.arena: no memory for a bucket array");
+  h->pool_override = (struct fpr_pool *)ap;
+}
+/* teardown, poolReset-style, under arc_lock (owner/escaped race) */
+static void arena_close(fpr_hart_t *h, fpr_pool_t *ap, struct fpr_pool *prev) {
   fpr_lock(&arc_lock);
-  fpr_slab_t *sl = ap.cur;
+  fpr_slab_t *sl = ap->cur;
   while (sl) {
     fpr_slab_t *nx = sl->next;
     if (sl->escaped == 0) slab_home(sl);
@@ -1041,19 +1034,118 @@ static V g_arena(V f) {
     sl = nx;
   }
   fpr_unlock(&arc_lock);
-  fpr_bkt_put(ap.buckets);
+  fpr_bkt_put(ap->buckets);
   h->pool_override = prev;
-  /* copy the result into the CALLER's pool; free the transfer slab */
-  if (ISINT(t) || !fpr_in_heap(t)) return t;
+}
+static void no_vec_out(V r, const char *who) {
+  if (has_vec(r))
+    fpr_cpanic(who);
+}
+/* a transfer copy's own slab goes home once nothing else keeps it */
+static void transfer_free(V t) {
+  if (ISINT(t) || !fpr_in_heap(t)) return;
   fpr_slab_t *ts = slab_of(t);
-  V out = kp_dup(t);
   if (ts && !ts->owner && ts->escaped == 0 && ts->holds == 0) {
     fpr_lock(&arc_lock);
     slab_home(ts);
     fpr_unlock(&arc_lock);
   }
+}
+
+static V g_arena(V f) {
+  fpr_hart_t *h = fpr_hart();
+  struct fpr_pool *prev = h->pool_override;
+  fpr_pool_t ap;
+  arena_open(h, &ap);
+  V r = fpr_apply(f, (V)&fpr_unit);
+  no_vec_out(r, "Sys.arena: Vector results cannot escape an arena "
+                "(their storage IS the arena) -- return scalars/trees, "
+                "or build pool-owned vectors outside");
+  V t = fpr_msg_copy_fresh(r); /* its own slab: survives the teardown, freed below */
+  arena_close(h, &ap, prev);
+  /* copy the result into the CALLER's pool; free the transfer slab */
+  if (ISINT(t) || !fpr_in_heap(t)) return t;
+  V out = kp_dup(t);
+  transfer_free(t);
   return out;
 }
+
+/* ---- Sys.loopWith: a loop whose every step is an arena --------------
+ * A long-lived loop in one actor allocates a little per turn (a key, a
+ * closure, a tuple); its pool is reclaimed only at death, so it grows
+ * forever.  loopWith runs each step `f state vec` under a fresh arena,
+ * copies the NEXT state out into a transfer slab of its own, tears the
+ * arena down and frees the previous state's slab: memory is the live
+ * state, twice at most, however long it runs.  Nothing is allocated in
+ * the caller's pool until the loop ends.
+ *
+ * The one linear Vector is threaded BY IDENTITY: the caller sizes it
+ * (two frame buffers are two halves of one), each step reads and
+ * writes it in place, and it must come back with the same storage --
+ * Vec.set/put/get/at never allocate; a push past capacity, a fresh
+ * vector or a free would leave it in the torn-down arena, and is
+ * refused rather than copied.  The state may hold no Vector.
+ *
+ *   Sys.loopWith vec s0 (fn s v -> (continue, s', v))  ->  (sFinal, vec) */
+typedef struct { vec_t *x; col_t *cols[VMAXCOLS]; uw *base[VMAXCOLS]; } vec_snap_t;
+static void vec_snap(vec_snap_t *sn, V v) {
+  sn->x = (vec_t *)v;
+  for (int i = 0; i < VMAXCOLS; i++) {
+    sn->cols[i] = sn->x->cols[i];
+    sn->base[i] = sn->cols[i] ? sn->cols[i]->base : 0;
+  }
+}
+static int vec_same(const vec_snap_t *sn, V v) {
+  if ((vec_t *)v != sn->x) return 0;
+  for (int i = 0; i < VMAXCOLS; i++) {
+    if (sn->x->cols[i] != sn->cols[i]) return 0;
+    if (sn->cols[i] && sn->cols[i]->base != sn->base[i]) return 0;
+  }
+  return 1;
+}
+static V g_loop_with(V vec, V s, V f) {
+  if (ISINT(vec) || !fpr_in_heap(vec) || TID(vec) != T_VEC)
+    fpr_cpanic("Sys.loopWith: not a Vector");
+  no_vec_out(s, "Sys.loopWith: the state may not hold a Vector "
+                "(thread the one buffer, keep the rest in it)");
+  vec_snap_t sn;
+  vec_snap(&sn, vec);
+  fpr_hart_t *h = fpr_hart();
+  struct fpr_pool *prev = h->pool_override;
+  V state = s, held = 0; /* held: the transfer copy `state` lives in */
+  for (;;) {
+    fpr_pool_t ap;
+    arena_open(h, &ap);
+    V r = fpr_apply(fpr_apply(f, state), vec);
+    if (ISINT(r) || !fpr_in_heap(r) || TID(r) != T_TUP3)
+      fpr_cpanic("Sys.loopWith: a step must return (continue, state, vector)");
+    V go = *(V *)((char *)r + 8);
+    V nx = *(V *)((char *)r + 8 + sizeof(uw));
+    V v2 = *(V *)((char *)r + 8 + 2 * sizeof(uw));
+    if (!vec_same(&sn, v2))
+      fpr_cpanic("Sys.loopWith: the vector must come back as it went in "
+                 "-- same storage: size it before the loop, only read "
+                 "and write it in a step (no push past capacity, no "
+                 "new vector)");
+    no_vec_out(nx, "Sys.loopWith: the state may not hold a Vector "
+                   "(thread the one buffer, keep the rest in it)");
+    V t = fpr_msg_copy_fresh(nx);
+    int more = !ISINT(go) && TID(go) == T_BOOL && ((hdr_t *)go)->var == 1;
+    arena_close(h, &ap, prev);
+    if (held) transfer_free(held);
+    state = held = t;
+    if (!more) break;
+  }
+  V out = kp_dup(state);
+  if (held) transfer_free(held);
+  hdr_t *tup = (hdr_t *)fpr_alloc(8 + 2 * sizeof(uw));
+  tup->tid = T_TUP2;
+  tup->var = 0;
+  *(V *)((char *)tup + 8) = out;
+  *(V *)((char *)tup + 8 + sizeof(uw)) = vec;
+  return (V)tup;
+}
+FPR_FN(fpr_g_Sys_x2eloopWith, g_loop_with, 3);
 FPR_FN(fpr_g_Sys_x2earena, g_arena, 1);
 
 /* death teardown (hart loop, after the switch OFF the actor's stack):

@@ -627,6 +627,10 @@ builtinEnv =
       -- process / system seam (fpr_g_ HAL)
       ("Sys.sleepUs", mono (TFn tInt tUnit)),
       ("Sys.arena", scheme [0] (TFn (TFn tUnit (sv 0)) (sv 0))),
+      -- a loop whose every step is an arena (runtime.c): the state is
+      -- copied out step to step, the one linear Vector threads through
+      -- by identity; memory is the live state however long it runs
+      ("Sys.loopWith", scheme [0] (TFn tVector (TFn (sv 0) (TFn (TFn (sv 0) (TFn tVector (TTupT [tBool, sv 0, tVector]))) (TTupT [sv 0, tVector]))))),
       ("heapUsed", mono (TFn tUnit tInt)),
       -- bit ops: band/bor/bxor are Int->Int->Int; BITTEST returns Bool
       ("band", mono (TFn tInt (TFn tInt tInt))),
