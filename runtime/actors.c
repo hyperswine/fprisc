@@ -754,7 +754,7 @@ static void xpush(uw src, uw dst, acb_t *a) {
   __atomic_store_n(&x->rt, x->rt + 1, __ATOMIC_RELEASE);
 }
 
-/* ---- the two-tier bounded-latency scheduler (docs/SCHED-MODEL.md) -----
+/* ---- the two-tier bounded-latency scheduler (docs/2026-10-02-SCHED-MODEL.md) -----
  *
  * READY actors land in the per-hart BACKLOG (owner-only list) stamped
  * with the machine-wide admission counter g_adm. Admission into the
@@ -1742,14 +1742,16 @@ void fpr_actor_cleanup_clear(void *arg) {
  * outcome belongs to the caller, not to every actor on the system: the
  * reason goes to the error ring, the actor dies (its watchers wake, so an
  * RPC caller hears Err "dead actor"; the reaper runs a pending cleanup
- * hook), and the machine keeps running.  The boot actor has no one to fail
- * to, and a routed process image cannot kill on the plane yet: both panic
- * with the same reason. */
+ * hook), and the machine keeps running.  A routed process image fails
+ * through the plane's own copy (fpr_sched->fail), so a device failure in
+ * a loaded process ends that actor, not the machine.  The boot actor has
+ * no one to fail to: it panics with the same reason. */
 static V a_kill(V av);
 void fpr_actor_fail(const char *why) {
+  if (fpr_sched) { fpr_sched->fail(why); for (;;) FPR_PARK(); }
   fpr_hart_t *h = fpr_hart();
   acb_t *a = h ? h->current : 0;
-  if (fpr_sched || !a || a->id == 0) fpr_cpanic(why);
+  if (!a || a->id == 0) fpr_cpanic(why);
   char msg[200];
   uw n = 0;
   const char *pre = "actor failed: ";
@@ -2058,7 +2060,12 @@ static V a_spawn_at(V hv, V f) {
 static uw next_pid; /* 0 = the boot image; apps count up from 1 */
 static V a_spawn_app(V f) {
   if (fpr_sched) fpr_cpanic("Sys.spawnApp: only the plane's own image launches apps");
+  if (ISINT(f) || TID(f) != T_PAP) fpr_cpanic("Sys.spawnApp: argument must be a function");
   uw pid = __atomic_add_fetch(&next_pid, 1, __ATOMIC_RELAXED);
+  /* the image the root's code lives in (an attached, not yet launched
+   * image is pid 0) becomes this process's: it is freed with the pid
+   * (runtime.c fpr_image_adopt; the loader's fpr_pid_quiet hook) */
+  (void)fpr_image_adopt((const void *)((pap0_t *)f)->fn, pid);
   return spawn_on_pid(fpr_hart()->id, f, 0, pid);
 }
 FPR_FN(fpr_g_Sys_x2espawnApp, a_spawn_app, 1);
@@ -2507,7 +2514,7 @@ static V a_myself(V dummy) {
 static V g_hart_id(V d) { (void)d; return TAG((sw)fpr_hart()->id); }
 static V g_harts(V d) { (void)d; return TAG((sw)fpr_live_harts); }
 
-/* scheduler introspection + tuning (docs/SCHED-MODEL.md) */
+/* scheduler introspection + tuning (docs/2026-10-02-SCHED-MODEL.md) */
 static V g_sched_tau(V d) { (void)d; return TAG((sw)g_tau); }
 static V g_sched_set_tau(V n) { g_tau = (uw)UNTAG(n); return (V)&fpr_unit; }
 static V g_sched_max_wait(V d) { (void)d; return TAG((sw)g_max_wait); }
@@ -2816,11 +2823,13 @@ static V sched_receive_res(V me) { return a_receive_res(me); }
 static V sched_receive_now(V me) { return a_receive_now(me); }
 static V sched_receive_from_res(V me, V from) { return a_receive_from_res(me, from); }
 V fpr_receive_res_c(V me) { return a_receive_res(me); } /* process.c's syscall wait */
+V fpr_receive_from_res_c(V me, V from) { return a_receive_from_res(me, from); }
 static uw sched_arc_live(void) { return fpr_arc_live_count(); }
 void fpr_sched_export(fpr_sched_t *out) {
   out->sleep_us = fpr_actor_sleep_us;
   out->cleanup_set = fpr_actor_cleanup_set;
   out->cleanup_clear = fpr_actor_cleanup_clear;
+  out->fail = fpr_actor_fail;
   out->send_as = fpr_send_as;
   out->receive = sched_receive;
   out->receive_from = sched_receive_from;

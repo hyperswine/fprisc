@@ -33,6 +33,7 @@ they began.
 | 2026-09-18-BASE.md | what the Base profile grants |
 | 2026-09-20-STD.md | the standard library as it ships |
 | 2026-09-19-LAYOUTS.md | typed memory layouts |
+| 2026-10-02-SCHED-MODEL.md | the scheduler's structures, policy and bound: in admissions as enforced, in time under stated assumptions |
 
 ## The record, oldest first
 
@@ -98,3 +99,4 @@ they began.
 | 2026-10-02 | [TOOLING-SEMANTICS-AUDIT.md](2026-10-02-TOOLING-SEMANTICS-AUDIT.md) | Second pass against the intended language: commit now type-checks, Sol applies preconditions, imported unsafe taints main, Vector a typed; new: malformed signatures silently dropped, Sol has no TCO (1.8 GB per million iterations), stdcheck and Safety disagree on measures |
 | 2026-10-02 | [SIGNATURES-AND-TAIL-CALLS.md](2026-10-02-SIGNATURES-AND-TAIL-CALLS.md) | A malformed signature is a parse error (it used to be dropped; record types `{ f : T | r }` were never signature grammar, so 13 std modules had unchecked headers); Sol `TailCall` replaces the frame, 30M iterations in 30 MB |
 | 2026-10-02 | [RESOURCE-BOUNDS.md](2026-10-02-RESOURCE-BOUNDS.md) | Proposal: work/alloc/live bounds in signatures; one measure language first, a cost pass on the typed Core, bounds in interfaces, target manifests that turn ops into time, live memory from linearity and arenas |
+| 2026-10-02 | [SCHED-MODEL.md](2026-10-02-SCHED-MODEL.md) | Living register: per-hart queues, the two tiers, donation; the admission bound the code enforces and the time bound it does not |

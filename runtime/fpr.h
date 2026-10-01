@@ -170,6 +170,7 @@ typedef struct fpr_sched {
   void (*sleep_us)(uw us);
   int (*cleanup_set)(void (*fn)(void *), void *arg);
   void (*cleanup_clear)(void *arg);
+  void (*fail)(const char *why);     /* fpr_actor_fail: the plane kills the current actor */
 } fpr_sched_t;
 extern fpr_sched_t *fpr_sched;        /* NULL = this image is the plane */
 uw fpr_pid_live(uw pid); /* actors of process pid not yet dead and off every hart */
@@ -201,6 +202,7 @@ typedef struct fpr_image {
 void fpr_image_add(fpr_image_t *im);
 void fpr_image_remove(fpr_image_t *im);
 fpr_image_t *fpr_image_of_pid(uw pid);   /* NULL when none */
+uw fpr_image_adopt(const void *p, uw pid); /* the pid-0 image holding p becomes pid's; 1 if so */
 uw fpr_image_count(void);                /* images registered now */
 extern void (*fpr_pid_quiet)(uw pid);    /* actors.c reap: an actor of pid was reclaimed */
 uw fpr_current_pid(void);                /* actors.c: the running actor's process (0 = boot) */
@@ -211,6 +213,7 @@ uw fpr_arc_live_count(void);         /* runtime.c: the arc gauge */
 int fpr_arc_movable_root(V v);       /* runtime.c: sendLinear's transfer test */
 void fpr_arc_promote_share(V v);     /* runtime.c: sendArc's promotion */
 V fpr_receive_res_c(V me);           /* actors.c: receiveRes, C-callable */
+V fpr_receive_from_res_c(V me, V from); /* actors.c: receiveFromRes, C-callable (a dead sender answers Err) */
 void fpr_fuel_exhausted(void);       /* actors.c: the fuel trap */
 
 /* deferred message-slab release (the drop-what-you-receive law's
@@ -281,7 +284,7 @@ typedef struct {
   uw fuel_preempts;
   char rbuf[FPR_RBUF_SZ];         /* per-hart render buffer (str/print) */
   int rpos;
-  /* two-tier bounded-latency scheduler (docs/SCHED-MODEL.md) */
+  /* two-tier bounded-latency scheduler (docs/2026-10-02-SCHED-MODEL.md) */
   struct fpr_acb *bl_head, *bl_tail; /* ready backlog (owner-only) */
   uw bl_len;
   uw rq_len;

@@ -201,6 +201,22 @@ static uw img_foreign(const void *p) {
   fpr_hart_t *h = fpr_hart();
   return pid && (!h || pid != h->copy_pid) ? pid : 0;
 }
+/* an image still owned by no process (pid 0: attached, not yet launched)
+ * that holds p becomes process pid's: Sys.spawnApp adopts the image its
+ * root function lives in, so the image ends with the pid (the loader's
+ * fpr_pid_quiet hook frees it).  1 when an image was adopted. */
+uw fpr_image_adopt(const void *p, uw pid) {
+  if (!in_image(p)) return 0;
+  uw took = 0;
+  fpr_lock(&img_lock);
+  for (fpr_image_t *im = img_list; im; im = im->next)
+    if ((const char *)p >= im->lo && (const char *)p < im->hi) {
+      if (im->pid == 0) { im->pid = pid; took = 1; }
+      break;
+    }
+  fpr_unlock(&img_lock);
+  return took;
+}
 uw fpr_image_count(void) {
   uw n = 0;
   fpr_lock(&img_lock);
