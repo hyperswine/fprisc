@@ -94,6 +94,20 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([build(tmp / 'c0.fpr', 'c0')], 1)
     assert 'charAt: index out of range' in p.stdout + p.stderr, p.stdout + p.stderr
     print('Inline primitive fast paths agree with C on 225 pairs, 64 shift counts and raw bytes; out of range is still the named panic: PASS')
+    # 4k. the base inliner is invisible: the same program built with and
+    # without it (FPR_NO_INLINE=1) prints the same, effects in the same order
+    on = run([build('tests/base/inlining.fpr', 'inl1')]).stdout
+    exe0 = tmp / 'inl0'
+    run(['./fpr', 'build', 'tests/base/inlining.fpr', '-o', exe0], env={'FPR_NO_INLINE': '1'})
+    off = run([exe0]).stdout
+    assert on == off, (on, off)
+    assert on.endswith('r1=6 r2=20 r3=7 r4=12 r5=-91 r6=False r7=15 r8=5\n') and on.count('eval tick') == 2, on
+    print('Inlining changes nothing observable: argument order, CAF arguments, function-valued parameters, shadowing, mutual recursion: PASS')
+    # 4l. a frame holds the argument slots of direct primitive calls: their
+    # args were staged below sp and nested C calls overwrote them
+    out = run([build('tests/base/slotprims.fpr', 'slotprims')]).stdout
+    assert out == 'f: bcabc\ng: ab=wxy=pq bc+xyz+pr\n', out
+    print('Frames count the argument slots of direct primitive calls (nested strJoin/substr): PASS')
     # 4h. receiveFromRes: a sender that exits is an answer (Err "dead actor"),
     # never a caller parked for ever; a reply sent just before exiting is kept
     dp = build('tests/base/deadpeer.fpr', 'deadpeer')

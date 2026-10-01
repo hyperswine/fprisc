@@ -1,0 +1,53 @@
+# the base inliner changes no observable behaviour: tools build this with and
+# without inlining (FPR_NO_INLINE=1) and the outputs must be equal
+say : String -> Int -> Int .
+say tag v = _ = print "eval {tag}"; v.
+
+# argument order and single evaluation: every argument is printed once, left to right
+add3 : Int -> Int -> Int -> Int .
+add3 a b c = a + b + c.
+
+# a zero-arity global passed as an argument runs once, at the call
+tick = say "tick" 10.
+
+# a function-valued parameter, substituted when it names a known function
+apply2 : (Int -> Int -> Int) -> Int -> Int -> Int .
+apply2 f x y = f x y.
+sub : Int -> Int -> Int .
+sub a b = a - b.
+
+# the parameter's name is also a global: the substitution must not reach it
+mixf : (Int -> Int -> Int) -> Int -> Int .
+mixf sub x = sub x 1.
+
+# a local in the CALLER named like a global the callee uses: the site is skipped
+usesSub : Int -> Int .
+usesSub x = sub x 100.
+
+# mutual recursion, inlined at most a bounded number of times
+isEven : unsafe Int -> Bool .
+isEven n = if n == 0 then True else isOdd (n - 1).
+isOdd : unsafe Int -> Bool .
+isOdd n = if n == 0 then False else isEven (n - 1).
+
+# a higher-order helper handed a primitive and a lambda
+twice : (Int -> Int -> Int) -> Int -> Int -> Int .
+twice f x y = f (f x y) y.
+
+# the caller binds a local named `sub` and calls a helper that uses the
+# global `sub`: inlining there would capture it, so the site stays a call
+shadow : Int -> Int .
+shadow v =
+  sub = v;
+  usesSub sub.
+
+main =
+  r1 = add3 (say "a" 1) (say "b" 2) (say "c" 3);
+  r2 = add3 tick tick 0;
+  r3 = apply2 sub 10 3;
+  r4 = mixf (fn p q -> p * q + 7) 5;
+  r5 = shadow 9;
+  r6 = isEven 11;
+  r7 = twice band 255 15;
+  r8 = twice (fn p q -> p + q) 1 2;
+  print "r1={r1} r2={r2} r3={r3} r4={r4} r5={r5} r6={r6} r7={r7} r8={r8}".

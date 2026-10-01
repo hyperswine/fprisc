@@ -1,0 +1,14 @@
+# bench: small helper functions called in a hot loop (the shape most library
+# and application code has): clamp, lerp, a mix built from both, and a
+# higher-order helper given a known function
+clamp : Int -> Int -> Int -> Int .
+clamp lo hi x = if x < lo then lo else if x > hi then hi else x.
+lerp : Int -> Int -> Int -> Int .
+lerp a b t = a + (b - a) * t / 256.
+mix : Int -> Int -> Int .
+mix x y = clamp 0 255 (lerp x y 77).
+twice : (Int -> Int -> Int) -> Int -> Int -> Int .
+twice f x y = f (f x y) y.
+loop : unsafe Int -> Int -> Int .
+loop n acc = if n == 0 then acc else loop (n - 1) (acc + twice mix (band n 255) (band acc 255)).
+main = print "helpers = {loop 10000000 0}".

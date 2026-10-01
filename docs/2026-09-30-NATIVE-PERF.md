@@ -104,3 +104,80 @@ the base flags.
 not in `qos/core/trusted-modules.txt`, and since the 2026-09-30 import-trust
 change, its unsafe helpers are refused. Adding the entry or marking the
 module is a trust-policy decision, so it is left open.
+
+## 2026-10-01: the base-profile inliner, and a frame-size bug it exposed
+
+**The inliner.** `Inline.inlineWith` now runs on every base unit before the
+generator. It is the builtin path's `inlineSmall`: small non-recursive
+functions at saturated sites, arguments let-bound in call order, fresh
+binders, three rounds. There are three base-specific additions:
+
+- **Function-valued arguments are substituted.** If an argument names a
+  function (a global of this unit with parameters, another unit's function,
+  or a primitive), it replaces the parameter instead of being let-bound. So
+  `twice band x y` inlines to direct, and here inline, `band` operations
+  instead of two generic applies through a local. A zero-arity global is
+  never substituted, because it runs where it is named.
+- **Alias propagation.** Clause desugaring rebinds each parameter under its
+  source name (`f = a1`), so a substituted parameter reappears as an alias
+  of a global function. Each round propagates such aliases when nothing in
+  scope shadows the name.
+- **Aliases are free in the size measure.** `x = y` costs nothing after
+  normalization. Counting it priced three-line helpers out of the 24-node
+  limit, because base clause desugaring adds one per parameter. Raising the
+  limit to 64 inlined more and gained nothing, so it stays at 24.
+
+- **Safepoint-preserving.** Every inlined body starts with the fuel tick
+  its callee's entry had (`$fuel`, a Core primitive the generator emits as
+  the standard tick). A call is a preemption point. Without the tick, the
+  kernel's WCET ratchet measured 408 IR instructions between safepoints,
+  against a ceiling of 200. With it, the longest path is 116, exactly as
+  without inlining. What goes is the frame, the argument staging and the
+  stack check. The cost is a few instructions, which does not show in any
+  benchmark.
+
+`--no-inline` or `FPR_NO_INLINE=1` turns it off, and the unit-cache tag
+records the choice. `FPR_DUMP_CORE=name` now also prints base Core.
+`tests/base/inlining.fpr` is built both ways and the outputs must match. It
+covers argument order with effects, a CAF argument, function-valued
+parameters, shadowing, mutual recursion, a primitive and a lambda.
+
+**The bug it exposed (fixed here, and present in the 2026-09-30 merge).**
+`slotsNeeded` sizes a frame from the argument slots of known calls. Direct
+primitive calls and their inline expansions stage arguments into slots too,
+but were not counted. A function whose only staged arguments belonged to
+primitives therefore got a frame too small. The slots sat below `sp`, where
+the nested C calls' frames overwrote them. `tests/base/slotprims.fpr` panics
+(`strJoin: not a List of String`) without the fix, with or without inlining.
+Inlining `std/digest`'s `lengthBytes` into a list literal made the
+`examples/logbook.fpr` WebSocket handshake hit it. The comment in
+`slotsNeeded` already named this class from an earlier incident (the
+cross-unit case). codegenRev 18.
+
+**A kernel leak it exposed (fixed in QOS).** The native launcher waited for
+a key by spinning on `svcPollKey`/`svcClock`. Each poll allocated a little
+(the route's substring, the boxed reply), and the launcher's pool is never
+reset, so an idle launcher grew without bound. It exhausted the heap in
+under 40 s with or without inlining, so the faster code only made it fail
+inside check-all's 8-second launch window. The bisect looked
+layout-dependent because it was really time-dependent. The fix is in
+`qos/programs/system.fpr` (`lWait`/`lPoll`): the wait runs inside
+`Sys.arena`, and it parks 1 ms between empty polls. See
+`qos/docs/2026-10-01-LAUNCHER-IDLE.md`.
+
+**Benchmarks** (min of 7, macm4, against the baseline recorded with
+inlining off): helpers 1.60x, sha 1.05x. fib, byteloop, nbody, pingpong and
+strbuild are within noise: their hot loops are self-recursive or already
+primitives. `tests/bench/helpers.fpr` was added for the shape the inliner is
+for: small helpers in a hot loop, and a higher-order helper given a known
+function.
+
+`tools/bench.py` now scores the *fastest* of 7 runs. Desktop background load
+(audio, other apps) only ever adds time, and it moved pingpong's median by
+50%.
+
+**Not caused by this work, still open.** About 1 in 100 runs of a
+`Task.map Digest.sha256` stress program (and once `tests/std/apps.fpr`)
+hangs. The caller stays in `receiveRes` while every worker has exited. It
+happens with inlining off too, and it survives the frame fix. It looks like
+a lost wake-up in the actor runtime and is being investigated separately.

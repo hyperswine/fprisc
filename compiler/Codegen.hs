@@ -49,7 +49,7 @@ import FPRISC (Core (..), Prog, freeVars)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 16 -- r15 + inline charAt/strlen/band/bor/bxor/BITSHIFTL/BITSHIFTR
+codegenRev = 19 -- r18 + inlined bodies keep their callee's entry fuel tick ($fuel)
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -258,6 +258,7 @@ externals ext prog = sort . nub $ concat [go ps b | (_, (ps, b)) <- M.toList pro
       CVar n
         | n `elem` env || M.member n prog || M.member n ext || n `elem` corePrims -> []
         | "$sym." `isPrefixOf` n -> [] -- a linker symbol, not a runtime contract
+        | n == "$fuel" -> [] -- an inlined entry's fuel tick (genT)
         | otherwise -> [n]
       CApp a b -> go env a ++ go env b
       CLet x a b -> go env a ++ go (x : env) b
@@ -511,8 +512,8 @@ emitProgram tgt rvv spec exports ext exps prog0 =
 --   * everything else (CIf branches, CMk fields, generic CApp) runs
 --     subterms at the same nxt: intermediate values go via the machine
 --     stack, not slots.
-slotsNeeded :: M.Map String Int -> Prog -> S.Set String -> Core -> Int
-slotsNeeded ext prog = go0
+slotsNeeded :: M.Map String Int -> M.Map String Int -> Prog -> S.Set String -> Core -> Int
+slotsNeeded hal ext prog = go0
   where
     isKnown bound h n
       | S.member h bound = False
@@ -522,6 +523,11 @@ slotsNeeded ext prog = go0
       -- sp, and let the timer trap eat the temp (the slotclobber bug)
       | Just a <- M.lookup h ext = a == n && n > 0
       | Just a <- lookup h primArities = a == n
+      -- and so do DIRECT primitive calls and their inline expansions
+      -- (genT's tgtHal clause): the same bug, once more, when they came
+      -- in -- the args of `substr (strJoin ..) ..` sat below sp and the
+      -- nested C calls' frames overwrote them (tests/base/slotprims.fpr)
+      | Just a <- M.lookup h hal = a == n && n > 0
       | otherwise = False
     go0 bound e
       | (CVar h, args@(_ : _)) <- spineOf e,
@@ -558,7 +564,7 @@ compileFn prog name (params, body0) = do
       -- inline-condition fusions in genT apply)
       body = if w == 8 then normIn (S.fromList params) body0 else body0
       -- exact high-water mark (see slotsNeeded); +2 is pure paranoia
-      nslots = length params + slotsNeeded ext prog (S.fromList params) body + 2
+      nslots = length params + slotsNeeded (tgtHal tgt) ext prog (S.fromList params) body + 2
       frame = ((2 * w + w * nslots + 15) `div` 16) * 16
       env0 = M.fromList (zip params [0 ..])
   bodyLines <- gen prog env0 (length params) Tail body
@@ -1029,6 +1035,14 @@ genT tgt spec prog ext = go
           sym <- requestSpec plan
           knownCall env nxt pos sym callArgs
 
+    -- an inlined callee's entry safepoint (Inline.hs): the fuel tick the
+    -- call's prologue would have run, so inlining never lengthens the
+    -- path between safepoints (G1).  Unit in a0; nothing is live in a
+    -- register here -- every value is in its slot.
+    go _ _ _ e
+      | (CVar "$fuel", [_]) <- spineOf e = do
+          tickLines <- specFuel tgt
+          pure (tickLines ++ ["    la a0, fpr_unit"])
     -- a saturated primitive of known arity (tgtHal): a direct call to its
     -- FPR_FN entry, not the fpr_applyN spine.  After the Vec specializations
     -- above, so those still get their loops; the builtin profile has its
@@ -1978,7 +1992,7 @@ compileUFn :: Target -> Prog -> S.Set String -> String -> ([String], Core) -> G 
 compileUFn tgt prog uset label (params, body) = do
   ext <- gets cgExt
   let w = tgtW tgt
-      nslots = length params + slotsNeeded ext prog (S.fromList params) body + 2
+      nslots = length params + slotsNeeded (tgtHal tgt) ext prog (S.fromList params) body + 2
       frame = ((2 * w + w * nslots + 15) `div` 16) * 16
       env0 = M.fromList (zip params [0 ..])
   bodyLines <- genU tgt prog uset env0 (length params) Tail body

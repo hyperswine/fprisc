@@ -5,7 +5,7 @@ import Data.Maybe (fromMaybe)
 import System.Environment (lookupEnv)
 import System.IO (hPutStrLn, stderr)
 import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
-import Inline (inlineSmall)
+import Inline (inlineSmall, inlineWith)
 import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, normArc)
 import Data.Char (isAlphaNum, ord)
 import Numeric (showHex)
@@ -59,11 +59,12 @@ data Opts = Opts
     oPrelude :: Maybe FilePath,
     oNoSafety :: Bool,
     oFiles :: [FilePath],
-    oForeign :: [FilePath] -- --foreign=FILE: the SYSTEM's primitive declarations (signatures only)
+    oForeign :: [FilePath], -- --foreign=FILE: the SYSTEM's primitive declarations (signatures only)
+    oNoInline :: Bool -- --no-inline / FPR_NO_INLINE=1: base code keeps every call (debugging, WCET comparison)
   }
 
 parseArgs :: [String] -> Opts
-parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothing Nothing False False False [] False False False False False False False False False False Nothing False [] [])
+parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothing Nothing False False False [] False False False False False False False False False False Nothing False [] [] False)
   where
     -- profile aliases (Target.hs): the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
@@ -124,6 +125,7 @@ parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothin
       | "--host=" `isPrefixOf` a = let h = drop (length "--host=") a in o {oHost = if h == "unix" then Nothing else Just h}
       | "--export=" `isPrefixOf` a = o {oExports = oExports o ++ exportSpecs (drop (length "--export=") a)}
       | a == "--no-safety" = o {oNoSafety = True}
+      | a == "--no-inline" = o {oNoInline = True}
       | otherwise = o {oFiles = oFiles o ++ [a]}
 
 -- the posix system's host decides the ISA and the lowering: this machine's
@@ -322,9 +324,10 @@ compileMain = do
     (Just d, _) -> pure d
     (Nothing, Just f) -> pure f
     (Nothing, Nothing) -> pure "base"
+  envNoInline <- (== Just "1") <$> lookupEnv "FPR_NO_INLINE"
   let system = fromMaybe "bare-metal" (oSystem opts0)
       espHost = oHost opts0 == Just "esp-idf" -- the posix system on an ESP-IDF board (docs/2026-09-23-ESP-IDF.md)
-      opts = opts0 {oBuiltin = profile == "builtin", oSol = oSol opts0 || profile == "sol"}
+      opts = opts0 {oBuiltin = profile == "builtin", oSol = oSol opts0 || profile == "sol", oNoInline = oNoInline opts0 || envNoInline}
   -- the posix system's hosts: this machine (unix, the default) and esp-idf
   case oHost opts0 of
     Just h | h /= "esp-idf" -> refuse ("--host=" ++ h ++ ": the posix system's hosts are unix (this machine, the default) and esp-idf")
@@ -656,7 +659,7 @@ compileMain = do
                   else if x64 then "x64r" ++ show x64Rev
                   else if espHost then "rv32-idftls1"
                   else tgtName tgt
-          tag = "g" ++ show codegenRev ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
+          tag = "g" ++ show codegenRev ++ (if oNoInline opts then "-noinl" else "") ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit
@@ -667,7 +670,17 @@ compileMain = do
                        forM_ [(n, d) | Just want <- [dump], (n, d) <- M.toList lowered, takeWhile (/= '@') n == want] $ \(n, d) ->
                          hPutStrLn stderr ("core " ++ n ++ ": " ++ show d ++ "\nnormalized: " ++ show (fmap normArc d))
                        pure lowered
-                     else pure prog
+                     -- base: inline small non-recursive functions at their
+                     -- saturated sites within the unit (Inline.hs), with
+                     -- function-valued arguments substituted
+                     else do
+                       let inl = if oNoInline opts then prog else inlineWith pureOutside 3 24 prog
+                       dump <- lookupEnv "FPR_DUMP_CORE"
+                       forM_ [(n, d) | Just want <- [dump], (n, d) <- M.toList inl, takeWhile (/= '@') n == want] $ \(n, d) ->
+                         hPutStrLn stderr ("core " ++ n ++ ": " ++ show d)
+                       pure inl
+          pureOutside g = maybe False (> 0) (M.lookup g extFor) || maybe False (> 0) (M.lookup g halAr) || g `elem` corePrimNames
+          corePrimNames = ["+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "strcat", "str", "String.len"]
           emitUnit path exps ext uts = do
             cached <- doesFileExist path
             if cached

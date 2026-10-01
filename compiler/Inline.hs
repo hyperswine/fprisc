@@ -21,7 +21,7 @@
 -- program (exports, constructor stubs and function values still need
 -- their symbols); only the sites change.
 
-module Inline (inlineSmall) where
+module Inline (inlineSmall, inlineWith) where
 
 import Control.Monad (foldM)
 import Control.Monad.State.Strict
@@ -31,8 +31,37 @@ import FPRISC (Core (..), Name, Prog)
 
 -- | rounds, then the largest callee body (in Core nodes) worth inlining
 inlineSmall :: Int -> Int -> Prog -> Prog
-inlineSmall rounds limit prog0 = evalState (foldM (const . step) prog0 [1 .. rounds]) 0
+inlineSmall = inlineGo False (const False)
+
+-- | The base profile's inliner: as inlineSmall, plus function-valued
+-- arguments (below), and SAFEPOINT-PRESERVING: an inlined body starts with
+-- the fuel tick the callee's entry had (`$fuel`, Codegen.hs).  A call is a
+-- preemption point, so removing one without its tick lengthened the
+-- longest path between safepoints -- the kernel's WCET ratchet saw 408
+-- instructions against its ceiling of 200.  With the tick, every path is
+-- exactly as long between safepoints as it was through the call; what goes
+-- is the frame, the argument staging and the stack check.
+inlineWith :: (Name -> Bool) -> Int -> Int -> Prog -> Prog
+inlineWith = inlineGo True
+
+-- | The same, with a predicate naming the globals outside this unit that
+-- are FUNCTION VALUES (primitives, other units' functions of arity > 0).
+-- An argument that names one -- or a function of this unit -- is
+-- substituted into the body instead of let-bound: naming a function is
+-- pure, and `f x` with f known is a direct (or inline) call where `$i.f x`
+-- was a generic apply.  A zero-arity global is never substituted: it is
+-- evaluated where it is named, so it is let-bound like any argument.
+inlineGo :: Bool -> (Name -> Bool) -> Int -> Int -> Prog -> Prog
+inlineGo tick pureOutside rounds limit prog0 = evalState (foldM (const . step') prog0 [1 .. rounds]) 0
   where
+    -- each round: inline at the sites, then propagate function-value
+    -- aliases (clause desugaring rebinds a parameter under its source
+    -- name, `f = a1`, so a substituted parameter reappears as one)
+    step' prog = M.mapWithKey (\_ (ps, b) -> (ps, propagate prog (S.fromList ps) b)) <$> step prog
+    funValue prog g = case M.lookup g prog of
+      Just (ps, _) -> not (null ps)
+      Nothing -> pureOutside g
+    propagate prog = propagateWith (funValue prog)
     step prog = M.traverseWithKey (\n (ps, b) -> (,) ps <$> site prog n (S.fromList ps) b) prog
     candidate prog n = case M.lookup n prog of
       Just (ps, body)
@@ -56,8 +85,14 @@ inlineSmall rounds limit prog0 = evalState (foldM (const . step) prog0 [1 .. rou
                 k <- get
                 put (k + 1)
                 let fresh v = "$i" ++ show k ++ "." ++ v
-                    body' = rename (M.fromList [(p, fresh p) | p <- ps]) fresh body
-                pure (foldr (\(p, a) rest -> CLet (fresh p) a rest) body' (zip ps args'))
+                    -- a function-valued argument (a global the caller does
+                    -- not shadow) replaces its parameter outright
+                    subst = [(p, g) | (p, CVar g) <- zip ps args', g `S.notMember` env, funValue prog g]
+                    substd = S.fromList (map fst subst)
+                    body' = rename (M.union (M.fromList subst) (M.fromList [(p, fresh p) | p <- ps])) fresh body
+                    -- the callee entry's safepoint, after its arguments
+                    entry = if tick then CLet (fresh "$tick") (CApp (CVar "$fuel") (CInt 0)) body' else body'
+                pure (foldr (\(p, a) rest -> CLet (fresh p) a rest) entry [(p, a) | (p, a) <- zip ps args', p `S.notMember` substd])
           _ -> descend env e
         descend env = \case
           CApp a b -> CApp <$> go env a <*> go env b
@@ -68,6 +103,47 @@ inlineSmall rounds limit prog0 = evalState (foldM (const . step) prog0 [1 .. rou
           CTagEq t v x -> CTagEq t v <$> go env x
           CProj i x -> CProj i <$> go env x
           e -> pure e
+
+-- `x = g` where g is a function value that nothing in scope shadows:
+-- replace x by g.  Naming a function is pure, so this changes no
+-- evaluation; it turns `x a` into a known call.
+propagateWith :: (Name -> Bool) -> S.Set Name -> Core -> Core
+propagateWith funValue = go
+  where
+    go env = \case
+      CLet x (CVar g) b
+        | g `S.notMember` env, funValue g, g `S.notMember` bindersOf b ->
+            go env (subst x g b)
+      CLet x a b -> CLet x (go env a) (go (S.insert x env) b)
+      CApp a b -> CApp (go env a) (go env b)
+      CLam ps b -> CLam ps (go (S.union (S.fromList ps) env) b)
+      CIf c t f -> CIf (go env c) (go env t) (go env f)
+      CMk t v fs -> CMk t v (map (go env) fs)
+      CTagEq t v x -> CTagEq t v (go env x)
+      CProj i x -> CProj i (go env x)
+      e -> e
+    -- x := g, stopping where x is rebound
+    subst x g = \case
+      CVar n | n == x -> CVar g
+      CLet y a b -> CLet y (subst x g a) (if y == x then b else subst x g b)
+      CLam ps b -> CLam ps (if x `elem` ps then b else subst x g b)
+      CApp a b -> CApp (subst x g a) (subst x g b)
+      CIf c t f -> CIf (subst x g c) (subst x g t) (subst x g f)
+      CMk t v fs -> CMk t v (map (subst x g) fs)
+      CTagEq t v e -> CTagEq t v (subst x g e)
+      CProj i e -> CProj i (subst x g e)
+      e -> e
+
+bindersOf :: Core -> S.Set Name
+bindersOf = \case
+  CLet x a b -> S.insert x (bindersOf a `S.union` bindersOf b)
+  CLam ps b -> S.fromList ps `S.union` bindersOf b
+  CApp a b -> bindersOf a `S.union` bindersOf b
+  CIf c t f -> S.unions [bindersOf c, bindersOf t, bindersOf f]
+  CMk _ _ fs -> S.unions (map bindersOf fs)
+  CTagEq _ _ x -> bindersOf x
+  CProj _ x -> bindersOf x
+  _ -> S.empty
 
 -- A STRAIGHT body: no branch, and nothing applied but lowered primitives
 -- (`$arc.*`).  Such a body is a fixed run of machine operations, so copying
@@ -95,8 +171,13 @@ spineOf = go []
     go acc (CApp f a) = go (a : acc) f
     go acc f = (f, acc)
 
+-- Core nodes, not counting what the generator emits nothing for: an alias
+-- `x = y` (normalization substitutes a local; a slot is shared) -- base
+-- clause desugaring adds one per parameter, which would otherwise price a
+-- three-line helper out of the limit
 size :: Core -> Int
 size = \case
+  CLet _ (CVar _) b -> size b
   CApp a b -> 1 + size a + size b
   CLam _ b -> 1 + size b
   CLet _ a b -> 1 + size a + size b

@@ -2,7 +2,9 @@
 """The native performance ratchet (docs/2026-09-30-SUGGESTIONS.md, section 1.7).
 
 Each tests/bench/<name>.fpr is built once with `fpr build` and its executable
-is run --runs times; the median wall time is the score.  A run's stdout must
+is run --runs times; the FASTEST run is the score (a desktop's background load
+only ever adds time, and it moved medians by 50% on a 2-thread benchmark),
+and the median is reported beside it.  A run's stdout must
 equal tests/bench/<name>.expected (a code-generation change that speeds a
 benchmark up by computing something else is a failure, not a win).
 
@@ -27,7 +29,7 @@ def host():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('names', nargs='*')
-    ap.add_argument('--runs', type=int, default=5)
+    ap.add_argument('--runs', type=int, default=7)
     ap.add_argument('--slack', type=float, default=0.10)
     ap.add_argument('--record', action='store_true')
     ap.add_argument('--bless', action='store_true')
@@ -59,15 +61,16 @@ def main():
                 elif out != want.read_text():
                     print(f'{n}: OUTPUT CHANGED\n  got  {out!r}\n  want {want.read_text()!r}'); bad.append(n); continue
                 med = statistics.median(times)
-                results[n] = round(med, 4)
+                best = min(times)
+                results[n] = round(best, 4)
                 old = base.get('times', {}).get(n)
                 note = ''
                 if old:
-                    ratio = med / old
+                    ratio = best / old
                     note = f'  x{1 / ratio:.2f} vs baseline' if ratio < 1 else f'  {ratio:.2f}x baseline'
                     if same_host and ratio > 1 + a.slack and not a.record:
                         note += '  <-- SLOWER'; bad.append(n)
-                print(f'{n:10} {med * 1000:9.1f} ms  (min {min(times) * 1000:.1f}){note}')
+                print(f'{n:10} {best * 1000:9.1f} ms  (median {med * 1000:.1f}){note}')
     if a.record:
         BASE.parent.mkdir(exist_ok=True)
         merged = base.get('times', {}) if same_host else {}
