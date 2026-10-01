@@ -219,14 +219,6 @@ int fpr_in_heap(V v) { /* the buddy span: heap + process regions */
     return 0;
   if (!ISINT(v) && in_image((const void *)v)) /* a loaded image's statics */
     return 0;
-#ifdef FPR_QOSAPP
-  /* the PLUGIN slot sits inside the arena span but holds IMAGE data
-   * (a loaded library's code + rodata literals) -- immortal, never
-   * slab-backed; ARC must treat its values like the shell's own
-   * static literals (qos_abi.h) */
-  if ((uw)v >= QOS_PLUG_BASE && (uw)v < QOS_PLUG_BASE + QOS_PLUG_SIZE)
-    return 0;
-#endif
   if (fpr_sched) /* shared plane: the KERNEL's span is the heap */
     return !ISINT(v) && (char *)v >= fpr_sched->heap_lo && (char *)v < fpr_sched->heap_hi;
   return !ISINT(v) && (char *)v >= fpr_heap_lo && (char *)v < fpr_heap_hi;
