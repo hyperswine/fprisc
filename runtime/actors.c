@@ -2087,6 +2087,15 @@ static V a_pid_of(V av) {
 }
 FPR_FN(fpr_g_Sys_x2epidOf, a_pid_of, 1);
 
+/* Sys.alive a -> Bool: has the actor not ended?  A service that holds a
+ * client's session (the graphics service's focus) asks before keeping it;
+ * a reply's refusal is the other way a dead client is learned of. */
+static V a_alive(V av) {
+  if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("Sys.alive: argument is not an actor");
+  return BOOL(__atomic_load_n(&((acb_t *)av)->var, __ATOMIC_ACQUIRE) != ST_DEAD);
+}
+FPR_FN(fpr_g_Sys_x2ealive, a_alive, 1);
+
 uw fpr_current_pid(void) {
   fpr_hart_t *h = fpr_hart();
   acb_t *cur = h ? h->current : 0;
