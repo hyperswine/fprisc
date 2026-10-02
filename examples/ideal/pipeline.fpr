@@ -1,0 +1,13 @@
+# Rewrite of tests/cases/bound_pipeline.fpr in the left-to-right style.
+# Result sizes in std/list are assumptions, printed by the compiler.
+profile base.
+
+List = use "std/list".
+
+double : Int -> Int | work double <= 1 | alloc double <= 0 .
+double x = x * 2.
+
+total : (xs : List Int) -> Int | work total <= 19 * len xs + 27 .
+total xs = xs |> List.map double |> List.sum.
+
+main = List.range 1 10 |> total |> print.

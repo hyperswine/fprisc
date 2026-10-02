@@ -1,0 +1,93 @@
+# Same concurrent service, configuration and routes as ../service.fpr.
+profile base.
+Http = use "std/http".
+Tcp = use "std/tcp".
+Config = use "std/config".
+Decode = use "std/decode".
+Json = use "std/json".
+Log = use "std/log".
+Task = use "std/task".
+Digest = use "std/digest".
+Program = use "std/program".
+Map = use "std/map".
+List = use "std/list".
+String = use "std/string".
+Option = use "std/option".
+Result = use "std/result".
+
+Settings = Type (Settings Int Int String).
+validPort p | p >= 0 and p < 65536 = Ok p.
+validPort _ = Err "must be 0..65535".
+validWorkers n | n >= 1 = Ok n.
+validWorkers _ = Err "must be at least 1".
+settings = Decode.map3 Settings
+  (Decode.field "port" (Decode.check validPort Decode.int))
+  (Decode.field "workers" (Decode.check validWorkers Decode.int))
+  (Decode.field "log" Decode.string).
+loadSettings args = Config.load {
+  defaults = Json.object [("port", Json.Integer 8080), ("workers", Json.Integer 4), ("log", Json.Text "info")],
+  file = Option.Some "service.json", envPrefix = "SERVICE_", args = args }
+  |> Result.andThen (Decode.run settings).
+
+Query = Type (Get String | Put String String | Keys | Count).
+Reply = Type (Found String | Missing | Stored | Listing (List String) | Size Int).
+found (Option.Some value) = Found value.
+found Option.None = Missing.
+store state (Get key) = (state, Map.get key state |> found).
+store state (Put key value) = (Map.insert (keep key) (keep value) state, Stored).
+store state Keys = (state, Listing (Map.keys state)).
+store state Count = (state, Size (Map.size state)).
+
+keyOf req = String.dropLeft 4 req.path.
+missing req = Http.text 404 "no such page: {req.path}\n".
+getReply key (Found value) = Http.text 200 value.
+getReply key _ = Http.text 404 "no such key: {key}\n".
+keysReply (Listing keys) = keys |> Json.strings |> Json.render |> Http.json 200.
+keysReply _ = Http.text 500 "store\n".
+
+# Routing asks WHAT, then guards ask WHETHER. Actor effects stay in helpers.
+route actor workers listener req = method req.method actor workers listener req.
+method "GET" actor _ _ req = get actor req.
+method "PUT" actor _ _ req = put actor req.
+method "POST" _ workers listener req = post req.path workers listener req.
+method _ _ _ _ _ = Http.text 405 "method not allowed\n".
+get actor req | String.startsWith "/kv/" req.path = ask (myself 0) actor (Get (keyOf req)) |> getReply (keyOf req).
+get actor req | req.path == "/keys" = ask (myself 0) actor Keys |> keysReply.
+get _ req = missing req.
+put actor req | String.startsWith "/kv/" req.path and strlen (keyOf req) > 0 =
+  _ = ask (myself 0) actor (Put (keyOf req) req.body);
+  Http.text 201 "stored {keyOf req}\n".
+put _ _ = Http.text 404 "PUT /kv/<key>\n".
+post "/digests" workers _ req = digests workers req.body.
+post "/shutdown" _ listener _ = _ = Tcp.stop listener; Http.text 200 "shutting down\n".
+post _ _ _ req = missing req.
+
+# Configuration validation is a Result; this internal API carries its invariant.
+digests : (workers : Int | workers >= 1) -> String -> {status : Int, headers : List (String, String), body : String} .
+digests workers body = String.lines body |> Task.mapBounded workers Digest.sha256 |> digested.
+digested (Ok hashes) = hashes |> String.join "\n" |> (fn text -> strcat text "\n") |> Http.text 200.
+digested (Err why) = Http.text 500 "{why}\n".
+
+requestFields req resp = [("method", req.method), ("path", req.path), ("status", str resp.status), ("bytes", str (strlen resp.body))].
+logResponse log req resp | resp.status >= 400 = Log.warn log "request failed" (requestFields req resp).
+logResponse log req resp = Log.info log "request" (requestFields req resp).
+logged log handler req = resp = handler req; _ = logResponse log req resp; resp.
+sizeReply (Size n) = n.
+sizeReply _ = 0.
+
+run (Settings port workers level) =
+  log = Log.toStderr (Log.levelOf level);
+  Tcp.listen "127.0.0.1" port |> listening log port workers.
+listening log port _ (Err why) =
+  _ = Log.error log "cannot listen" [("port", str port), ("why", why)]; 1.
+listening log _ workers (Ok listener) =
+  actor = spawn (fn self -> serve self store Map.strings);
+  _ = Log.info log "listening" [("port", str (Tcp.port listener)), ("workers", str workers)];
+  _ = print "ready {Tcp.port listener}";
+  why = Http.serve listener (logged log (route actor workers listener));
+  n = ask (myself 0) actor Count |> sizeReply;
+  _ = Log.info log "stopped" [("keys", str n), ("accept", why)];
+  0.
+configured (Ok s) = run s.
+configured (Err why) = Program.fail 2 "service: configuration: {why}".
+main = Program.args Unit |> loadSettings |> configured.

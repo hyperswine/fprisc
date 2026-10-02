@@ -1,0 +1,28 @@
+# Rewrite of tests/measure.fpr: clauses supply the descent and floor facts.
+# fpr build --cost examples/ideal/measure.fpr -o /tmp/ideal-measure
+profile base.
+
+lsum : (xs : List Int | measure xs) -> Int -> Int
+  | work lsum <= 6 * len xs + 6 | alloc lsum <= 0 .
+lsum xs acc = case xs of Nil -> acc | x :: rest -> lsum rest (acc + x).
+
+# A real allocating traversal: cell bytes remain live in the actor's pool.
+copy : (xs : List Int | measure xs) -> List Int
+  | alloc copy <= 24 * len xs + 24 | live copy <= 24 * len xs + 24 .
+copy xs = case xs of Nil -> Nil | x :: rest -> x :: copy rest.
+
+# Validate once at the boundary; the measured loop needs no repeated contract.
+fact : (n : Int | n >= 0) -> Int -> Int
+  | work fact <= 5 * n + 6 | alloc fact <= 0 .
+fact n acc = factGo n acc.
+factGo : (n : Int | measure n) -> Int -> Int
+  | work factGo <= 5 * n + 5 | alloc factGo <= 0 .
+factGo n acc | n <= 0 = acc.
+factGo n acc = factGo (n - 1) (acc * n).
+
+sumTo : (lim : Int) -> (i : Int | measure (lim - i)) -> Int -> Int .
+sumTo lim i acc | i > lim = acc.
+sumTo lim i acc = sumTo lim (i + 1) (acc + i).
+
+# Same observable result as the original; numeric cores carry real bounds.
+main = print "measure: {lsum (copy [1,2,3,4]) 0} {fact 5 1} {sumTo 10 1 0} (zero unsafe markers)".

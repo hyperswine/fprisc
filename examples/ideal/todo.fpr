@@ -1,0 +1,87 @@
+#!/usr/bin/env -S fpr run
+# Same terminal app, persisted model and commands as ../todo.fpr.
+profile base.
+Term = use "std/term".
+File = use "std/file".
+Json = use "std/json".
+List = use "std/list".
+String = use "std/string".
+Program = use "std/program".
+
+Todo = {text : String, done : Bool}.
+Model = {items : List Todo, at : Int, draft : String, path : String, note : String, seconds : Int}.
+Msg = Type (Saved String | Second).
+codec = @Model.items.
+
+saved (Ok _) = "saved".
+saved (Err why) = "NOT saved: {why}".
+save m = Term.Run (fn u -> Json.encode codec m.items |> File.writeText m.path |> saved |> Saved).
+changed m = (m, save m :: Nil).
+unchanged m = (m, Nil).
+quit m = (m, Term.Quit :: Nil).
+count m = List.length m.items.
+
+# Internal arithmetic invariant: an empty list selects 0, otherwise 0..n-1.
+selection : (n : Int | n >= 0) -> Int -> Int | work selection <= 12 | alloc selection <= 0 .
+selection 0 _ = 0.
+selection _ at | at < 0 = 0.
+selection n at | at >= n = n - 1.
+selection _ at = at.
+clampAt m = {m | at = selection (count m) m.at}.
+move delta m = {m | at = m.at + delta} |> clampAt |> unchanged.
+
+toggleAt at i t | i == at = {t | done = not t.done}.
+toggleAt _ _ t = t.
+notSelected at (i, _) = i != at.
+itemOf (_, item) = item.
+removeAt at items = items |> List.indexed |> List.filter (notSelected at) |> List.map itemOf.
+addDraft text m | strlen text == 0 = unchanged m.
+addDraft text m = {m | items = List.append m.items [{text = text, done = False}], draft = "", at = count m} |> changed.
+
+# One event per clause. Commands remain values; update performs no I/O.
+update (Term.Resized _ _) m = unchanged m.
+update (Term.Msg (Saved what)) m = {m | note = what} |> unchanged.
+update (Term.Msg Second) m = {m | seconds = m.seconds + 1} |> unchanged.
+update (Term.Key (Term.Char c)) m = {m | draft = strcat m.draft c} |> unchanged.
+update (Term.Key Term.Backspace) m = {m | draft = dropLastChar m.draft} |> unchanged.
+update (Term.Key Term.Enter) m = addDraft (String.trim m.draft) m.
+update (Term.Key Term.Up) m = move (-1) m.
+update (Term.Key Term.Down) m = move 1 m.
+update (Term.Key Term.Tab) m = {m | items = List.indexedMap (toggleAt m.at) m.items} |> changed.
+update (Term.Key Term.Delete) m = {m | items = removeAt m.at m.items} |> clampAt |> changed.
+update (Term.Key Term.Escape) m = quit m.
+update (Term.Key (Term.Ctrl "q")) m = quit m.
+update (Term.Key _) m = unchanged m.
+
+# UTF-8 backspace: remaining byte positions prove this recursion terminates.
+dropLastChar s = dropGo s (strlen s - 1).
+dropGo : String -> (i : Int | measure (i + 1)) -> String .
+dropGo _ i | i < 0 = "".
+dropGo s i | i >= 0 and charAt s i >= 128 and charAt s i < 192 = dropGo s (i - 1).
+dropGo s i = substr s 0 i.
+
+mark True = "[x]".
+mark False = "[ ]".
+style True _ line = Term.inverse line.
+style False True line = Term.dim line.
+style False False line = line.
+row here t = "{mark t.done} {t.text}" |> style here t.done.
+done t = t.done.
+rowAt at i t = row (i == at) t.
+view (_, _) m =
+  Term.bold "To do" :: Term.dim "{List.length (List.filter done m.items)} of {count m} done   up {m.seconds} s   {m.note}" :: ""
+  :: List.append (List.indexedMap (rowAt m.at) m.items)
+       ["", "> {m.draft}_", "", Term.dim "Enter add   Up/Down move   Tab tick   Delete remove   Esc quit"].
+subs _ = Term.Every 1000 Second :: Nil.
+
+pathOf (path :: _) = path.
+pathOf Nil = "todo.json".
+decoded _ (Ok items) = items.
+decoded path (Err why) = Program.fail 1 "todo: {path}: {why}".
+loaded path (Ok text) = Json.decode codec text |> decoded path.
+loaded _ (Err _) = Nil.
+initial path = {items = File.readText path |> loaded path, at = 0, draft = "", path = path, note = "", seconds = 0}.
+run : String -> Int .
+run path = Term.run {init = initial path, update = update, view = view, subs = subs}.
+main : Int .
+main = Program.args Unit |> pathOf |> run.

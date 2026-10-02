@@ -1,0 +1,83 @@
+# Same report, CLI and failure behavior as ../report.fpr.
+profile base.
+
+Dir = use "std/dir".
+File = use "std/file".
+Path = use "std/path".
+Proc = use "std/proc".
+Program = use "std/program".
+Clock = use "std/clock".
+List = use "std/list".
+Map = use "std/map".
+String = use "std/string".
+Option = use "std/option".
+Order = use "std/order".
+Result = use "std/result".
+Json = use "std/json".
+
+entry path = File.info path |> entryInfo path.
+entryInfo path (Ok info) = Option.Some {path = path, ext = Option.withDefault "(none)" (Path.extension path), size = info.size}.
+entryInfo _ (Err _) = Option.None.
+visible path = not (String.contains "/." path).
+entries paths = paths |> List.filter visible |> List.filterMap entry.
+
+tally groups e = Map.update e.ext (addFile e.size) groups.
+addFile bytes old = old |> Option.withDefault (0, 0) |> increased bytes |> Option.Some.
+increased bytes (n, total) = (n + 1, total + bytes).
+bytesOf (_, (_, bytes)) = bytes.
+sizeOf e = e.size.
+extensions es =
+     es
+  |> List.fold tally Map.strings
+  |> Map.entries
+  |> List.sortWith (Order.by bytesOf (Order.reverse Order.int)).
+largest es = es |> List.sortBy (Order.reverse Order.int) sizeOf |> List.take 5.
+
+kib : (n : Int | n >= 0) -> String .
+kib n = "{n / 1024}.{((n - (n / 1024) * 1024) * 10) / 1024} KiB".
+
+row (ext, (n, bytes)) = "  {String.padRight 10 " " ext}{String.padLeft 6 " " (String.fromInt n)} files{String.padLeft 14 " " (kib bytes)}".
+printRow r = r |> row |> print.
+printLarge e = e |> largeRow |> print.
+largeRow e = "  {String.padLeft 12 " " (kib e.size)}  {e.path}".
+
+revision dir = Proc.runIn dir ["git", "rev-parse", "--short", "HEAD"] |> revisionResult.
+revisionResult (Ok r) | r.status == 0 = Option.Some (String.trim r.out).
+revisionResult _ = Option.None.
+revisionJson (Option.Some r) = Json.Text r.
+revisionJson Option.None = Json.Null.
+
+extensionJson (ext, (n, bytes)) = (ext, Json.object [("files", Json.Integer n), ("bytes", Json.Integer bytes)]).
+pathOf e = e.path.
+document dir es groups big total = Json.object [
+  ("directory", Json.Text dir),
+  ("generated", Json.Text (Clock.iso (Clock.now Unit))),
+  ("revision", revision dir |> revisionJson),
+  ("files", Json.Integer (List.length es)),
+  ("bytes", Json.Integer total),
+  ("byExtension", groups |> List.map extensionJson |> Json.object),
+  ("largest", big |> List.map pathOf |> Json.strings)].
+
+walked (Ok paths) = paths.
+walked (Err why) = Program.fail 1 "report: {why}".
+written out start (Ok _) = print "wrote {out} in {Clock.elapsedMs start} ms".
+written out _ (Err why) = Program.fail 1 "report: {out}: {why}".
+
+report dir out =
+  start = Clock.monotonic Unit;
+  es = Dir.walk dir |> walked |> entries;
+  groups = extensions es;
+  big = largest es;
+  total = es |> List.map sizeOf |> List.sum;
+  _ = print "{dir}: {List.length es} files, {kib total}";
+  _ = groups |> List.take 8 |> List.each printRow;
+  _ = print "largest:";
+  _ = big |> List.each printLarge;
+  _ = document dir es groups big total |> Json.render |> File.writeText out |> written out start;
+  0.
+
+arguments [dir] = report dir "report.json".
+arguments [dir, out] = report dir out.
+arguments _ = Program.fail 2 "usage: report <directory> [report.json]".
+
+main = Program.args Unit |> arguments.
