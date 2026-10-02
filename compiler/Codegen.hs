@@ -50,7 +50,7 @@ import FPRISC (Core (..), Prog, freeVars)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 28 -- fusion requires effect-free, failure-free element functions (fusionSafe); 27: function-argument specialization (Mono); 26: 0-based charAt fast path; 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
+codegenRev = 29 -- vector descriptors: kinds bytes and a column directory behind pointers (vKindsP/vColsP); 28: fusion requires effect-free, failure-free element functions (fusionSafe); 27: function-argument specialization (Mono); 26: 0-based charAt fast path; 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -1398,16 +1398,28 @@ genT tgt spec prog ext = go
 -- recursion).
 --------------------------------------------------------------------------------
 
--- layout mirrors vec_t/col_t in runtime/vec.c
+-- layout mirrors vec_t/col_t in runtime/vec_layout.h (the DESCRIPTOR:
+-- docs/2026-10-03-VECTOR-DESCRIPTORS.md).  The header holds two
+-- pointers: `kinds`, one byte per column (bit 0 = raw word, bit 1 =
+-- float bits), and `cols`, the column directory.  A loop reads column k
+-- as `cols[k]` through the directory pointer, and tests a column's kind
+-- with a byte load off the kinds pointer; there is no column limit.
 vRep, vLen :: Int
 vRep = 4 -- u32
 vLen = 8
 
-vNcols, vKinds, vFkinds, vCols0 :: Target -> Int
+vNcols, vKindsP, vColsP :: Target -> Int
 vNcols t = 8 + 3 * tgtW t
-vKinds t = 8 + 4 * tgtW t
-vFkinds t = 8 + 5 * tgtW t -- bit i: column i holds raw IEEE float bits
-vCols0 t = 8 + 6 * tgtW t
+vKindsP t = 8 + 4 * tgtW t -- uint8_t *kinds
+vColsP t = 8 + 5 * tgtW t -- col_t **cols
+
+-- the used columns must be RAW: one byte test each off the kinds pointer in `reg`
+kindChecks :: String -> String -> [Int] -> [String]
+kindChecks reg fb ks =
+  concat
+    [ ["    lbu t1, " ++ show k ++ "(" ++ reg ++ ")", "    andi t1, t1, 1", "    beqz t1, " ++ fb]
+      | k <- ks
+    ]
 
 colBlk0 :: Target -> Int
 colBlk0 = tgtW -- col_t: cap at 0, base (the one contiguous span) at W
@@ -2054,10 +2066,20 @@ soaDualMapOn prog f cap el body0 = do
         CTagEq t v x -> CTagEq t v (inlineSat d x)
         CProj k x -> CProj k (inlineSat d x)
         other -> other
-    -- walk down to the record construction, consuming shape tests
+    -- walk down to the record construction, consuming shape tests.  A
+    -- shape test on the element is a DISPATCH the desugarer emits when
+    -- several record shapes could be meant (`{ r | f0 = .. }` with two
+    -- shapes carrying f0): the first arm is only right for vectors of
+    -- that first shape.  The kernel never materializes the row, so it
+    -- cannot run the dispatch; it takes the arm only when it is the sole
+    -- candidate (the else branch is the error arm), and declines
+    -- otherwise -- the generic tier runs bump on real rows.  Taking the
+    -- first arm regardless planned a two-field kernel for a four-field
+    -- vector (tests/base/vecwide.fpr, found 2026-10-03).
     strip cap el tv e = case e of
-      CIf (CTagEq t v (CVar x)) th _
-        | x == el -> strip cap el (tv `orKeep` Just (t, v)) th
+      CIf (CTagEq t v (CVar x)) th rest
+        | x == el, soleCandidate rest -> strip cap el (tv `orKeep` Just (t, v)) th
+        | x == el -> Nothing
         | x == cap -> strip cap el tv th -- statically true: typed Mat4
       CLet x a b -> strip cap el tv (substE x a b)
       CMk t v fs' -> do
@@ -2066,6 +2088,9 @@ soaDualMapOn prog f cap el body0 = do
       _ -> Nothing
     orKeep (Just x) _ = Just x
     orKeep Nothing y = y
+    soleCandidate = \case
+      CErr _ -> True
+      _ -> False
     dualField cap el e0 = do
       (e1, (ms, ks)) <- go e0
       let ms' = S.toAscList (S.fromList ms)
@@ -2407,7 +2432,7 @@ emitMapSpec tgt rvv sym p = do
            "    " ++ ld ++ " s1, " ++ show vLen ++ "(s0)",
            "    li s2, 0",
            "    li s3, 0",
-           "    " ++ ld ++ " s4, " ++ show (vCols0 tgt) ++ "(s0)"
+           "    " ++ ld ++ " s4, " ++ show (vColsP tgt) ++ "(s0)", "    " ++ ld ++ " s4, 0(s4)"
          ]
       ++ [louter ++ ":", "    bgeu s2, s1, " ++ ldone]
       ++ fuel
@@ -2521,7 +2546,7 @@ emitFilterSpec tgt sym p = do
            "    " ++ ld ++ " s1, " ++ show vLen ++ "(s0)",
            "    li s2, 0",
            "    li s3, 0",
-           "    " ++ ld ++ " s4, " ++ show (vCols0 tgt) ++ "(s0)",
+           "    " ++ ld ++ " s4, " ++ show (vColsP tgt) ++ "(s0)", "    " ++ ld ++ " s4, 0(s4)",
            "    li s7, 0", -- kept count
            "    beqz s1, " ++ ldone, -- empty: base may not exist
            "    " ++ ld ++ " s8, " ++ show (colBlk0 tgt) ++ "(s4)" -- write ptr = base
@@ -2582,7 +2607,6 @@ emitMvMapSpec tgt sym p = do
       regs = ["ra", "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s8"]
       (_, pro, epi) = specFrame tgt regs slots
       needCols = n
-      usedMask = sum [2 ^ k | k <- [0 .. n - 1]] :: Integer
   ~[fb, ldis, lo, li, lnb, ldone] <- mapM freshL ["mvfb", "mvdis", "mvo", "mvi", "mvnb", "mvdone"]
   fuel <- specFuel tgt
   blk <- specBlock tgt
@@ -2599,25 +2623,23 @@ emitMvMapSpec tgt sym p = do
                "    " ++ ld ++ " t0, " ++ show (vNcols tgt) ++ "(a1)",
                "    li t1, " ++ show needCols,
                "    bltu t0, t1, " ++ fb,
-               "    " ++ ld ++ " t0, " ++ show (vKinds tgt) ++ "(a1)",
-               "    li t1, " ++ show usedMask,
-               "    and t2, t0, t1",
-               "    bne t2, t1, " ++ fb,
-               "    j " ++ ldis
+               "    " ++ ld ++ " t0, " ++ show (vKindsP tgt) ++ "(a1)"
              ]
+          ++ kindChecks "t0" fb [0 .. n - 1] -- used columns raw
+          ++ [ "    j " ++ ldis ]
       setup =
         [ldis ++ ":"]
           ++ pro
           ++ [ "    mv s8, a0", -- captured record (boxed)
                "    mv s0, a1", -- the vector
                "    " ++ ld ++ " s1, " ++ show vLen ++ "(s0)",
-               "    " ++ ld ++ " s4, " ++ show (vCols0 tgt) ++ "(s0)",
+               "    " ++ ld ++ " s4, " ++ show (vColsP tgt) ++ "(s0)", "    " ++ ld ++ " s4, 0(s4)",
                "    li s2, 0",
                "    li s3, 0"
              ]
       cursorLoads =
         concat
-          [ [ "    " ++ ld ++ " t0, " ++ show (vCols0 tgt + k * w) ++ "(s0)",
+          [ [ "    " ++ ld ++ " t0, " ++ show (vColsP tgt) ++ "(s0)", "    " ++ ld ++ " t0, " ++ show (k * w) ++ "(t0)",
               "    " ++ ld ++ " t0, " ++ show (colBlk0 tgt) ++ "(t0)", -- base
               "    slli t1, s2, " ++ show (logW tgt),
               "    add t0, t0, t1", -- + done elements
@@ -2723,7 +2745,6 @@ emitFoldSpec tgt rvv sym p = do
   fuel2 <- specFuel tgt
   blk2 <- specBlock tgt
   let needCols = if null usedCols then 0 else maximum usedCols + 1
-      usedMask = sum [2 ^ k | k <- usedCols] :: Integer
       guards =
         vecGuard tgt "a1" fb
           ++ ["    mv t2, t0"] -- rep
@@ -2760,12 +2781,10 @@ emitFoldSpec tgt rvv sym p = do
                    ++ [ "    " ++ ld ++ " t0, " ++ show (vNcols tgt) ++ "(a1)",
                      "    li t1, " ++ show needCols,
                      "    bltu t0, t1, " ++ fb, -- enough columns
-                     "    " ++ ld ++ " t0, " ++ show (vKinds tgt) ++ "(a1)",
-                     "    li t1, " ++ show usedMask,
-                     "    and t2, t0, t1",
-                     "    bne t2, t1, " ++ fb, -- used columns unboxed
-                     "    j " ++ ldis
+                     "    " ++ ld ++ " t0, " ++ show (vKindsP tgt) ++ "(a1)"
                    ]
+                ++ kindChecks "t0" fb usedCols -- used columns raw
+                ++ [ "    j " ++ ldis ]
              )
       setup =
         [ ldis ++ ":" ]
@@ -2787,7 +2806,7 @@ emitFoldSpec tgt rvv sym p = do
         | not (spScalar p) = []
         | otherwise =
             [ lscal ++ ":",
-              "    " ++ ld ++ " s4, " ++ show (vCols0 tgt) ++ "(s0)"
+              "    " ++ ld ++ " s4, " ++ show (vColsP tgt) ++ "(s0)", "    " ++ ld ++ " s4, 0(s4)"
             ]
               ++ ( if doRvvSum
                      then ["    vsetvli t0, x0, e" ++ e ++ ", m1, ta, ma", "    vmv.v.i v1, 0"]
@@ -2839,11 +2858,11 @@ emitFoldSpec tgt rvv sym p = do
         Just (ks, _, _, _) ->
           [ lsoa ++ ":",
             -- all columns share block structure; cols[0] drives the count
-            "    " ++ ld ++ " s4, " ++ show (vCols0 tgt) ++ "(s0)"
+            "    " ++ ld ++ " s4, " ++ show (vColsP tgt) ++ "(s0)", "    " ++ ld ++ " s4, 0(s4)"
           ]
             ++ (if doGpuPairSum
-                  then [ "    " ++ ld ++ " a0, " ++ show (vCols0 tgt) ++ "(s0)",
-                         "    " ++ ld ++ " a1, " ++ show (vCols0 tgt + w) ++ "(s0)",
+                  then [ "    " ++ ld ++ " a0, " ++ show (vColsP tgt) ++ "(s0)", "    " ++ ld ++ " a0, 0(a0)",
+                         "    " ++ ld ++ " a1, " ++ show (vColsP tgt) ++ "(s0)", "    " ++ ld ++ " a1, " ++ show w ++ "(a1)",
                          "    mv a2, s1",
                          "    mv a3, s7",
                          "    mv a4, sp",
@@ -2879,7 +2898,7 @@ emitFoldSpec tgt rvv sym p = do
             blk2' =
               blk2 -- count math; its s5 (cols[0] base) load is simply unused here
                 ++ concat
-                  [ [ "    " ++ ld ++ " t0, " ++ show (vCols0 tgt + k * w) ++ "(s0)", -- col_t* for column k
+                  [ [ "    " ++ ld ++ " t0, " ++ show (vColsP tgt) ++ "(s0)", "    " ++ ld ++ " t0, " ++ show (k * w) ++ "(t0)", -- col_t* for column k
                       "    " ++ ld ++ " t0, " ++ show (colBlk0 tgt) ++ "(t0)", -- base
                       "    slli t1, s2, " ++ show (logW tgt),
                       "    add t0, t0, t1", -- + done elements
@@ -2962,7 +2981,7 @@ emitWFoldSpec tgt sym p g = do
            "    " ++ ld ++ " s1, " ++ show vLen ++ "(s0)",
            "    li s2, 0",
            "    li s3, 0",
-           "    " ++ ld ++ " s4, " ++ show (vCols0 tgt) ++ "(s0)"
+           "    " ++ ld ++ " s4, " ++ show (vColsP tgt) ++ "(s0)", "    " ++ ld ++ " s4, 0(s4)"
          ]
       ++ [louter ++ ":", "    bgeu s2, s1, " ++ ldone]
       ++ fuel

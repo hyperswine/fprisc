@@ -1,0 +1,203 @@
+# Vectors of records of every width, through push, get, set, map, filter,
+# fold, an actor round trip (the deep copier) and free.  The descriptor is
+# sized to the record: no eight-column slot limit, no bitmap
+# (docs/2026-10-03-VECTOR-DESCRIPTORS.md).  Expected output computed in
+# tests/check_base.py.
+unsafe base.
+AC = use "std/actor".
+R2 = { f0 : Int, f1 : Int }.
+mk2 b = { f0 = b * 1, f1 = b * 2 }.
+fill2 : (Vector R2) -> (i : Int | measure (n - i)) -> (n : Int) -> (Vector R2) .
+fill2 v i n | i >= n = v.
+fill2 v i n = fill2 (Vec.push (mk2 i) v) (i + 1) n.
+sum2 : R2 -> Int .
+sum2 r = r.f0 + r.f1.
+bump2 r = { r | f0 = r.f0 + 1000 }.
+keep2 r = r.f1 > 5.
+run2 = 
+  v = fill2 (Vec.new Unit) 0 10;
+  (r3, v2) = Vec.at 3 v;
+  v3 = Vec.put 0 (mk2 7) v2;
+  v4 = Vec.map bump2 v3;
+  v5 = Vec.filter keep2 v4;
+  (n, v6) = Vec.len v5;
+  (s, v7) = Vec.fold (fn a r -> a + sum2 r) 0 v6;
+  me = myself 0;
+  echo = spawn (fn self -> (from, m) = receive self; send from m);
+  _ = send echo (me, v7);
+  back = receive me;
+  (s2, v8) = Vec.fold (fn a r -> a + sum2 r) 0 back;
+  _ = Vec.free v8;
+  print "w2: at3={sum2 r3} kept={n} sum={s} echoed={s2}".
+R4 = { f0 : Int, f1 : Int, f2 : Int, f3 : Int }.
+mk4 b = { f0 = b * 1, f1 = b * 2, f2 = b * 3, f3 = b * 4 }.
+fill4 : (Vector R4) -> (i : Int | measure (n - i)) -> (n : Int) -> (Vector R4) .
+fill4 v i n | i >= n = v.
+fill4 v i n = fill4 (Vec.push (mk4 i) v) (i + 1) n.
+sum4 : R4 -> Int .
+sum4 r = r.f0 + r.f1 + r.f2 + r.f3.
+bump4 r = { r | f0 = r.f0 + 1000 }.
+keep4 r = r.f1 > 5.
+run4 = 
+  v = fill4 (Vec.new Unit) 0 10;
+  (r3, v2) = Vec.at 3 v;
+  v3 = Vec.put 0 (mk4 7) v2;
+  v4 = Vec.map bump4 v3;
+  v5 = Vec.filter keep4 v4;
+  (n, v6) = Vec.len v5;
+  (s, v7) = Vec.fold (fn a r -> a + sum4 r) 0 v6;
+  me = myself 0;
+  echo = spawn (fn self -> (from, m) = receive self; send from m);
+  _ = send echo (me, v7);
+  back = receive me;
+  (s2, v8) = Vec.fold (fn a r -> a + sum4 r) 0 back;
+  _ = Vec.free v8;
+  print "w4: at3={sum4 r3} kept={n} sum={s} echoed={s2}".
+R8 = { f0 : Int, f1 : Int, f2 : Int, f3 : Int, f4 : Int, f5 : Int, f6 : Int, f7 : Int }.
+mk8 b = { f0 = b * 1, f1 = b * 2, f2 = b * 3, f3 = b * 4, f4 = b * 5, f5 = b * 6, f6 = b * 7, f7 = b * 8 }.
+fill8 : (Vector R8) -> (i : Int | measure (n - i)) -> (n : Int) -> (Vector R8) .
+fill8 v i n | i >= n = v.
+fill8 v i n = fill8 (Vec.push (mk8 i) v) (i + 1) n.
+sum8 : R8 -> Int .
+sum8 r = r.f0 + r.f1 + r.f2 + r.f3 + r.f4 + r.f5 + r.f6 + r.f7.
+bump8 r = { r | f0 = r.f0 + 1000 }.
+keep8 r = r.f1 > 5.
+run8 = 
+  v = fill8 (Vec.new Unit) 0 10;
+  (r3, v2) = Vec.at 3 v;
+  v3 = Vec.put 0 (mk8 7) v2;
+  v4 = Vec.map bump8 v3;
+  v5 = Vec.filter keep8 v4;
+  (n, v6) = Vec.len v5;
+  (s, v7) = Vec.fold (fn a r -> a + sum8 r) 0 v6;
+  me = myself 0;
+  echo = spawn (fn self -> (from, m) = receive self; send from m);
+  _ = send echo (me, v7);
+  back = receive me;
+  (s2, v8) = Vec.fold (fn a r -> a + sum8 r) 0 back;
+  _ = Vec.free v8;
+  print "w8: at3={sum8 r3} kept={n} sum={s} echoed={s2}".
+R9 = { f0 : Int, f1 : Int, f2 : Int, f3 : Int, f4 : Int, f5 : Int, f6 : Int, f7 : Int, f8 : Int }.
+mk9 b = { f0 = b * 1, f1 = b * 2, f2 = b * 3, f3 = b * 4, f4 = b * 5, f5 = b * 6, f6 = b * 7, f7 = b * 8, f8 = b * 9 }.
+fill9 : (Vector R9) -> (i : Int | measure (n - i)) -> (n : Int) -> (Vector R9) .
+fill9 v i n | i >= n = v.
+fill9 v i n = fill9 (Vec.push (mk9 i) v) (i + 1) n.
+sum9 : R9 -> Int .
+sum9 r = r.f0 + r.f1 + r.f2 + r.f3 + r.f4 + r.f5 + r.f6 + r.f7 + r.f8.
+bump9 r = { r | f0 = r.f0 + 1000 }.
+keep9 r = r.f1 > 5.
+run9 = 
+  v = fill9 (Vec.new Unit) 0 10;
+  (r3, v2) = Vec.at 3 v;
+  v3 = Vec.put 0 (mk9 7) v2;
+  v4 = Vec.map bump9 v3;
+  v5 = Vec.filter keep9 v4;
+  (n, v6) = Vec.len v5;
+  (s, v7) = Vec.fold (fn a r -> a + sum9 r) 0 v6;
+  me = myself 0;
+  echo = spawn (fn self -> (from, m) = receive self; send from m);
+  _ = send echo (me, v7);
+  back = receive me;
+  (s2, v8) = Vec.fold (fn a r -> a + sum9 r) 0 back;
+  _ = Vec.free v8;
+  print "w9: at3={sum9 r3} kept={n} sum={s} echoed={s2}".
+R32 = { f0 : Int, f1 : Int, f2 : Int, f3 : Int, f4 : Int, f5 : Int, f6 : Int, f7 : Int, f8 : Int, f9 : Int, f10 : Int, f11 : Int, f12 : Int, f13 : Int, f14 : Int, f15 : Int, f16 : Int, f17 : Int, f18 : Int, f19 : Int, f20 : Int, f21 : Int, f22 : Int, f23 : Int, f24 : Int, f25 : Int, f26 : Int, f27 : Int, f28 : Int, f29 : Int, f30 : Int, f31 : Int }.
+mk32 b = { f0 = b * 1, f1 = b * 2, f2 = b * 3, f3 = b * 4, f4 = b * 5, f5 = b * 6, f6 = b * 7, f7 = b * 8, f8 = b * 9, f9 = b * 10, f10 = b * 11, f11 = b * 12, f12 = b * 13, f13 = b * 14, f14 = b * 15, f15 = b * 16, f16 = b * 17, f17 = b * 18, f18 = b * 19, f19 = b * 20, f20 = b * 21, f21 = b * 22, f22 = b * 23, f23 = b * 24, f24 = b * 25, f25 = b * 26, f26 = b * 27, f27 = b * 28, f28 = b * 29, f29 = b * 30, f30 = b * 31, f31 = b * 32 }.
+fill32 : (Vector R32) -> (i : Int | measure (n - i)) -> (n : Int) -> (Vector R32) .
+fill32 v i n | i >= n = v.
+fill32 v i n = fill32 (Vec.push (mk32 i) v) (i + 1) n.
+sum32 : R32 -> Int .
+sum32 r = r.f0 + r.f1 + r.f2 + r.f3 + r.f4 + r.f5 + r.f6 + r.f7 + r.f8 + r.f9 + r.f10 + r.f11 + r.f12 + r.f13 + r.f14 + r.f15 + r.f16 + r.f17 + r.f18 + r.f19 + r.f20 + r.f21 + r.f22 + r.f23 + r.f24 + r.f25 + r.f26 + r.f27 + r.f28 + r.f29 + r.f30 + r.f31.
+bump32 r = { r | f0 = r.f0 + 1000 }.
+keep32 r = r.f1 > 5.
+run32 = 
+  v = fill32 (Vec.new Unit) 0 10;
+  (r3, v2) = Vec.at 3 v;
+  v3 = Vec.put 0 (mk32 7) v2;
+  v4 = Vec.map bump32 v3;
+  v5 = Vec.filter keep32 v4;
+  (n, v6) = Vec.len v5;
+  (s, v7) = Vec.fold (fn a r -> a + sum32 r) 0 v6;
+  me = myself 0;
+  echo = spawn (fn self -> (from, m) = receive self; send from m);
+  _ = send echo (me, v7);
+  back = receive me;
+  (s2, v8) = Vec.fold (fn a r -> a + sum32 r) 0 back;
+  _ = Vec.free v8;
+  print "w32: at3={sum32 r3} kept={n} sum={s} echoed={s2}".
+R65 = { f0 : Int, f1 : Int, f2 : Int, f3 : Int, f4 : Int, f5 : Int, f6 : Int, f7 : Int, f8 : Int, f9 : Int, f10 : Int, f11 : Int, f12 : Int, f13 : Int, f14 : Int, f15 : Int, f16 : Int, f17 : Int, f18 : Int, f19 : Int, f20 : Int, f21 : Int, f22 : Int, f23 : Int, f24 : Int, f25 : Int, f26 : Int, f27 : Int, f28 : Int, f29 : Int, f30 : Int, f31 : Int, f32 : Int, f33 : Int, f34 : Int, f35 : Int, f36 : Int, f37 : Int, f38 : Int, f39 : Int, f40 : Int, f41 : Int, f42 : Int, f43 : Int, f44 : Int, f45 : Int, f46 : Int, f47 : Int, f48 : Int, f49 : Int, f50 : Int, f51 : Int, f52 : Int, f53 : Int, f54 : Int, f55 : Int, f56 : Int, f57 : Int, f58 : Int, f59 : Int, f60 : Int, f61 : Int, f62 : Int, f63 : Int, f64 : Int }.
+mk65 b = { f0 = b * 1, f1 = b * 2, f2 = b * 3, f3 = b * 4, f4 = b * 5, f5 = b * 6, f6 = b * 7, f7 = b * 8, f8 = b * 9, f9 = b * 10, f10 = b * 11, f11 = b * 12, f12 = b * 13, f13 = b * 14, f14 = b * 15, f15 = b * 16, f16 = b * 17, f17 = b * 18, f18 = b * 19, f19 = b * 20, f20 = b * 21, f21 = b * 22, f22 = b * 23, f23 = b * 24, f24 = b * 25, f25 = b * 26, f26 = b * 27, f27 = b * 28, f28 = b * 29, f29 = b * 30, f30 = b * 31, f31 = b * 32, f32 = b * 33, f33 = b * 34, f34 = b * 35, f35 = b * 36, f36 = b * 37, f37 = b * 38, f38 = b * 39, f39 = b * 40, f40 = b * 41, f41 = b * 42, f42 = b * 43, f43 = b * 44, f44 = b * 45, f45 = b * 46, f46 = b * 47, f47 = b * 48, f48 = b * 49, f49 = b * 50, f50 = b * 51, f51 = b * 52, f52 = b * 53, f53 = b * 54, f54 = b * 55, f55 = b * 56, f56 = b * 57, f57 = b * 58, f58 = b * 59, f59 = b * 60, f60 = b * 61, f61 = b * 62, f62 = b * 63, f63 = b * 64, f64 = b * 65 }.
+fill65 : (Vector R65) -> (i : Int | measure (n - i)) -> (n : Int) -> (Vector R65) .
+fill65 v i n | i >= n = v.
+fill65 v i n = fill65 (Vec.push (mk65 i) v) (i + 1) n.
+sum65 : R65 -> Int .
+sum65 r = r.f0 + r.f1 + r.f2 + r.f3 + r.f4 + r.f5 + r.f6 + r.f7 + r.f8 + r.f9 + r.f10 + r.f11 + r.f12 + r.f13 + r.f14 + r.f15 + r.f16 + r.f17 + r.f18 + r.f19 + r.f20 + r.f21 + r.f22 + r.f23 + r.f24 + r.f25 + r.f26 + r.f27 + r.f28 + r.f29 + r.f30 + r.f31 + r.f32 + r.f33 + r.f34 + r.f35 + r.f36 + r.f37 + r.f38 + r.f39 + r.f40 + r.f41 + r.f42 + r.f43 + r.f44 + r.f45 + r.f46 + r.f47 + r.f48 + r.f49 + r.f50 + r.f51 + r.f52 + r.f53 + r.f54 + r.f55 + r.f56 + r.f57 + r.f58 + r.f59 + r.f60 + r.f61 + r.f62 + r.f63 + r.f64.
+bump65 r = { r | f0 = r.f0 + 1000 }.
+keep65 r = r.f1 > 5.
+run65 = 
+  v = fill65 (Vec.new Unit) 0 10;
+  (r3, v2) = Vec.at 3 v;
+  v3 = Vec.put 0 (mk65 7) v2;
+  v4 = Vec.map bump65 v3;
+  v5 = Vec.filter keep65 v4;
+  (n, v6) = Vec.len v5;
+  (s, v7) = Vec.fold (fn a r -> a + sum65 r) 0 v6;
+  me = myself 0;
+  echo = spawn (fn self -> (from, m) = receive self; send from m);
+  _ = send echo (me, v7);
+  back = receive me;
+  (s2, v8) = Vec.fold (fn a r -> a + sum65 r) 0 back;
+  _ = Vec.free v8;
+  print "w65: at3={sum65 r3} kept={n} sum={s} echoed={s2}".
+R128 = { f0 : Int, f1 : Int, f2 : Int, f3 : Int, f4 : Int, f5 : Int, f6 : Int, f7 : Int, f8 : Int, f9 : Int, f10 : Int, f11 : Int, f12 : Int, f13 : Int, f14 : Int, f15 : Int, f16 : Int, f17 : Int, f18 : Int, f19 : Int, f20 : Int, f21 : Int, f22 : Int, f23 : Int, f24 : Int, f25 : Int, f26 : Int, f27 : Int, f28 : Int, f29 : Int, f30 : Int, f31 : Int, f32 : Int, f33 : Int, f34 : Int, f35 : Int, f36 : Int, f37 : Int, f38 : Int, f39 : Int, f40 : Int, f41 : Int, f42 : Int, f43 : Int, f44 : Int, f45 : Int, f46 : Int, f47 : Int, f48 : Int, f49 : Int, f50 : Int, f51 : Int, f52 : Int, f53 : Int, f54 : Int, f55 : Int, f56 : Int, f57 : Int, f58 : Int, f59 : Int, f60 : Int, f61 : Int, f62 : Int, f63 : Int, f64 : Int, f65 : Int, f66 : Int, f67 : Int, f68 : Int, f69 : Int, f70 : Int, f71 : Int, f72 : Int, f73 : Int, f74 : Int, f75 : Int, f76 : Int, f77 : Int, f78 : Int, f79 : Int, f80 : Int, f81 : Int, f82 : Int, f83 : Int, f84 : Int, f85 : Int, f86 : Int, f87 : Int, f88 : Int, f89 : Int, f90 : Int, f91 : Int, f92 : Int, f93 : Int, f94 : Int, f95 : Int, f96 : Int, f97 : Int, f98 : Int, f99 : Int, f100 : Int, f101 : Int, f102 : Int, f103 : Int, f104 : Int, f105 : Int, f106 : Int, f107 : Int, f108 : Int, f109 : Int, f110 : Int, f111 : Int, f112 : Int, f113 : Int, f114 : Int, f115 : Int, f116 : Int, f117 : Int, f118 : Int, f119 : Int, f120 : Int, f121 : Int, f122 : Int, f123 : Int, f124 : Int, f125 : Int, f126 : Int, f127 : Int }.
+mk128 b = { f0 = b * 1, f1 = b * 2, f2 = b * 3, f3 = b * 4, f4 = b * 5, f5 = b * 6, f6 = b * 7, f7 = b * 8, f8 = b * 9, f9 = b * 10, f10 = b * 11, f11 = b * 12, f12 = b * 13, f13 = b * 14, f14 = b * 15, f15 = b * 16, f16 = b * 17, f17 = b * 18, f18 = b * 19, f19 = b * 20, f20 = b * 21, f21 = b * 22, f22 = b * 23, f23 = b * 24, f24 = b * 25, f25 = b * 26, f26 = b * 27, f27 = b * 28, f28 = b * 29, f29 = b * 30, f30 = b * 31, f31 = b * 32, f32 = b * 33, f33 = b * 34, f34 = b * 35, f35 = b * 36, f36 = b * 37, f37 = b * 38, f38 = b * 39, f39 = b * 40, f40 = b * 41, f41 = b * 42, f42 = b * 43, f43 = b * 44, f44 = b * 45, f45 = b * 46, f46 = b * 47, f47 = b * 48, f48 = b * 49, f49 = b * 50, f50 = b * 51, f51 = b * 52, f52 = b * 53, f53 = b * 54, f54 = b * 55, f55 = b * 56, f56 = b * 57, f57 = b * 58, f58 = b * 59, f59 = b * 60, f60 = b * 61, f61 = b * 62, f62 = b * 63, f63 = b * 64, f64 = b * 65, f65 = b * 66, f66 = b * 67, f67 = b * 68, f68 = b * 69, f69 = b * 70, f70 = b * 71, f71 = b * 72, f72 = b * 73, f73 = b * 74, f74 = b * 75, f75 = b * 76, f76 = b * 77, f77 = b * 78, f78 = b * 79, f79 = b * 80, f80 = b * 81, f81 = b * 82, f82 = b * 83, f83 = b * 84, f84 = b * 85, f85 = b * 86, f86 = b * 87, f87 = b * 88, f88 = b * 89, f89 = b * 90, f90 = b * 91, f91 = b * 92, f92 = b * 93, f93 = b * 94, f94 = b * 95, f95 = b * 96, f96 = b * 97, f97 = b * 98, f98 = b * 99, f99 = b * 100, f100 = b * 101, f101 = b * 102, f102 = b * 103, f103 = b * 104, f104 = b * 105, f105 = b * 106, f106 = b * 107, f107 = b * 108, f108 = b * 109, f109 = b * 110, f110 = b * 111, f111 = b * 112, f112 = b * 113, f113 = b * 114, f114 = b * 115, f115 = b * 116, f116 = b * 117, f117 = b * 118, f118 = b * 119, f119 = b * 120, f120 = b * 121, f121 = b * 122, f122 = b * 123, f123 = b * 124, f124 = b * 125, f125 = b * 126, f126 = b * 127, f127 = b * 128 }.
+fill128 : (Vector R128) -> (i : Int | measure (n - i)) -> (n : Int) -> (Vector R128) .
+fill128 v i n | i >= n = v.
+fill128 v i n = fill128 (Vec.push (mk128 i) v) (i + 1) n.
+sum128 : R128 -> Int .
+sum128 r = r.f0 + r.f1 + r.f2 + r.f3 + r.f4 + r.f5 + r.f6 + r.f7 + r.f8 + r.f9 + r.f10 + r.f11 + r.f12 + r.f13 + r.f14 + r.f15 + r.f16 + r.f17 + r.f18 + r.f19 + r.f20 + r.f21 + r.f22 + r.f23 + r.f24 + r.f25 + r.f26 + r.f27 + r.f28 + r.f29 + r.f30 + r.f31 + r.f32 + r.f33 + r.f34 + r.f35 + r.f36 + r.f37 + r.f38 + r.f39 + r.f40 + r.f41 + r.f42 + r.f43 + r.f44 + r.f45 + r.f46 + r.f47 + r.f48 + r.f49 + r.f50 + r.f51 + r.f52 + r.f53 + r.f54 + r.f55 + r.f56 + r.f57 + r.f58 + r.f59 + r.f60 + r.f61 + r.f62 + r.f63 + r.f64 + r.f65 + r.f66 + r.f67 + r.f68 + r.f69 + r.f70 + r.f71 + r.f72 + r.f73 + r.f74 + r.f75 + r.f76 + r.f77 + r.f78 + r.f79 + r.f80 + r.f81 + r.f82 + r.f83 + r.f84 + r.f85 + r.f86 + r.f87 + r.f88 + r.f89 + r.f90 + r.f91 + r.f92 + r.f93 + r.f94 + r.f95 + r.f96 + r.f97 + r.f98 + r.f99 + r.f100 + r.f101 + r.f102 + r.f103 + r.f104 + r.f105 + r.f106 + r.f107 + r.f108 + r.f109 + r.f110 + r.f111 + r.f112 + r.f113 + r.f114 + r.f115 + r.f116 + r.f117 + r.f118 + r.f119 + r.f120 + r.f121 + r.f122 + r.f123 + r.f124 + r.f125 + r.f126 + r.f127.
+bump128 r = { r | f0 = r.f0 + 1000 }.
+keep128 r = r.f1 > 5.
+run128 = 
+  v = fill128 (Vec.new Unit) 0 10;
+  (r3, v2) = Vec.at 3 v;
+  v3 = Vec.put 0 (mk128 7) v2;
+  v4 = Vec.map bump128 v3;
+  v5 = Vec.filter keep128 v4;
+  (n, v6) = Vec.len v5;
+  (s, v7) = Vec.fold (fn a r -> a + sum128 r) 0 v6;
+  me = myself 0;
+  echo = spawn (fn self -> (from, m) = receive self; send from m);
+  _ = send echo (me, v7);
+  back = receive me;
+  (s2, v8) = Vec.fold (fn a r -> a + sum128 r) 0 back;
+  _ = Vec.free v8;
+  print "w128: at3={sum128 r3} kept={n} sum={s} echoed={s2}".
+# a float record: the layout is INFERRED from the element type
+P = { x : F64, y : F64, k : Int }.
+fillP : (Vector P) -> (i : Int | measure (n - i)) -> (n : Int) -> (Vector P) .
+fillP v i n | i >= n = v.
+fillP v i n = fillP (Vec.push { x = 1.5, y = 2.25, k = i } v) (i + 1) n.
+runP =
+  v = fillP (Vec.new Unit) 0 4;
+  (p, v2) = Vec.at 2 v;
+  (n, v3) = Vec.len v2;
+  _ = Vec.free v3;
+  print "float record: n={n} x={p.x} y={p.y} k={p.k}".
+# width 1 and width 0 records are boxed rows, and still work
+One = { a : Int }.
+runOne =
+  v = Vec.push { a = 2 } (Vec.push { a = 1 } (Vec.new Unit));
+  (s, v2) = Vec.fold (fn acc r -> acc + r.a) 0 v;
+  _ = Vec.free v2;
+  print "one: {s}".
+main =
+  _ = run2;
+  _ = run4;
+  _ = run8;
+  _ = run9;
+  _ = run32;
+  _ = run65;
+  _ = run128;
+  _ = runP;
+  runOne.

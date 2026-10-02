@@ -95,14 +95,51 @@ static col_t *col_copy(col_t *c, uw len) {
   }
   return n;
 }
+/* the descriptor: a directory of ncols column pointers and ncols kind
+ * bytes (zero padded to VK_PAD), allocated when the layout is fixed */
+static void vdir_alloc(vec_t *x, uw ncols) {
+  if (ncols == 0 || ncols > ((uw)1 << 30)) fpr_cpanic("Vec: column count out of range");
+  x->ncols = ncols;
+  x->cols = (col_t **)fpr_alloc(ncols * sizeof(col_t *));
+  x->kinds = (uint8_t *)fpr_alloc(VKINDS_BYTES(ncols));
+  for (uw k = 0; k < VKINDS_BYTES(ncols); k++) x->kinds[k] = VK_BOX;
+  for (uw k = 0; k < ncols; k++) x->cols[k] = 0;
+}
+static void vdir_free(vec_t *x) {
+  if (x->cols) fpr_free((V)x->cols);
+  if (x->kinds) fpr_free((V)x->kinds);
+  x->cols = 0;
+  x->kinds = 0;
+  x->ncols = 0;
+}
+static int vhas_float(const vec_t *x) {
+  for (uw k = 0; k < x->ncols; k++)
+    if (VK_FLOAT(x->kinds[k])) return 1;
+  return 0;
+}
+/* copy the descriptor (kinds, element identity, rep) of src into a fresh empty x */
+static void vdir_like(vec_t *x, const vec_t *src) {
+  x->var = (uint32_t)VREP(src);
+  x->eltid = src->eltid;
+  x->elvar = src->elvar;
+  if (src->ncols) {
+    vdir_alloc(x, src->ncols);
+    for (uw k = 0; k < src->ncols; k++) x->kinds[k] = src->kinds[k];
+  }
+}
 static vec_t *vcopy(vec_t *x) {
   vec_t *n = (vec_t *)fpr_alloc(sizeof(vec_t));
   n->tid = T_VEC;
   n->var = (uint32_t)VREP(x); /* rc 0: sole owner */
   n->len = x->len; n->eltid = x->eltid; n->elvar = x->elvar;
-  n->ncols = x->ncols; n->kinds = x->kinds; n->fkinds = x->fkinds;
-  for (int i = 0; i < VMAXCOLS; i++)
-    n->cols[i] = x->cols[i] ? col_copy(x->cols[i], x->len) : 0;
+  n->ncols = 0; n->kinds = 0; n->cols = 0;
+  if (x->ncols) {
+    vdir_alloc(n, x->ncols);
+    for (uw k = 0; k < x->ncols; k++) {
+      n->kinds[k] = x->kinds[k];
+      n->cols[k] = x->cols[k] ? col_copy(x->cols[k], x->len) : 0;
+    }
+  }
   return n;
 }
 /* one owner: writes need no ownership test, release IS the free.
@@ -119,8 +156,9 @@ static V h_new(V unit) {
   x->tid = T_VEC;
   x->var = VR_UNSET;
   x->len = 0;
-  x->eltid = x->elvar = x->ncols = x->kinds = x->fkinds = 0;
-  for (int i = 0; i < VMAXCOLS; i++) x->cols[i] = 0;
+  x->eltid = x->elvar = x->ncols = 0;
+  x->kinds = 0;
+  x->cols = 0;
   return (V)x;
 }
 
@@ -158,14 +196,14 @@ static uw tuple_arity(uw tid) {
  * -- one shape per tid), so a record VALUE is self-describing and a Vec
  * of records gets SoA columns by the same first-push rule as tuples.
  * Shape tids live in the content-addressed 0x00010000+ window
- * (FPRISC.hs shapeIdFor); >VMAXCOLS fields fall back to boxed. */
+ * (FPRISC.hs shapeIdFor).  Any width: the descriptor is sized to it. */
 static uw value_arity(V v) {
   uw tid = TID(v);
   uw t = tuple_arity(tid);
   if (t) return t;
   if (tid >= 0x00010000 && tid < 0x00010000 + 0x0FF00000) {
     uw ar = ((hdr_t *)v)->var;
-    return (ar >= 2 && ar <= VMAXCOLS) ? ar : 0;
+    return ar >= 2 ? ar : 0;
   }
   return 0;
 }
@@ -174,31 +212,29 @@ static uw value_arity(V v) {
 static void fix_layout(vec_t *x, V v) {
   if (ISINT(v)) {
     x->var = VR_INT;
-    x->ncols = 1;
-    x->kinds = 1;
+    vdir_alloc(x, 1);
+    x->kinds[0] = VK_INT;
   } else {
     uw ar = value_arity(v);
     if (ar) {
       x->var = VR_SOA;
       x->eltid = TID(v);
       x->elvar = ((hdr_t *)v)->var;
-      x->ncols = ar;
-      x->kinds = 0;
+      vdir_alloc(x, ar);
       for (uw k = 0; k < ar; k++) {
         V f = *(V *)((char *)v + 8 + k * sizeof(uw));
-        if (ISINT(f)) x->kinds |= (uw)1 << k;
+        x->kinds[k] = ISINT(f) ? VK_INT : VK_BOX;
       }
     } else {
       x->var = VR_BOX;
-      x->ncols = 1;
-      x->kinds = 0;
+      vdir_alloc(x, 1);
     }
   }
   for (uw k = 0; k < x->ncols; k++) x->cols[k] = col_new();
 }
 
 static void put_cell(vec_t *x, uw k, uw i, V f) {
-  int raw = (x->kinds >> k) & 1, flt = (x->fkinds >> k) & 1;
+  int raw = VK_RAW(x->kinds[k]) != 0, flt = VK_FLOAT(x->kinds[k]) != 0;
   /* a float column stores the V verbatim -- it ALREADY is the bit
    * pattern.  No ISINT check is possible (nor meaningful): the width
    * came from the declaration, not from the value. */
@@ -209,7 +245,7 @@ static void put_cell(vec_t *x, uw k, uw i, V f) {
 
 static V get_cell(vec_t *x, uw k, uw i) {
   uw raw = *vl_slot(x->cols[k], i);
-  int unb = (x->kinds >> k) & 1, flt = (x->fkinds >> k) & 1;
+  int unb = VK_RAW(x->kinds[k]) != 0, flt = VK_FLOAT(x->kinds[k]) != 0;
   return (unb && !flt) ? TAG((sw)raw) : (V)raw;
 }
 
@@ -230,25 +266,27 @@ static V h_newAs(V specv) {
   if (ISINT(specv) || TID(specv) != T_STR)
     fpr_cpanic("Vec.newAs: spec must be a String like \"d\" or \"iddd\"");
   str_t *sp = (str_t *)specv;
-  if (sp->len < 1 || sp->len > VMAXCOLS)
-    fpr_cpanic("Vec.newAs: spec must name 1..8 columns");
+  if (sp->len < 1 || sp->len >= (uw)(T_TUPN_END - T_TUPN))
+    fpr_cpanic("Vec.newAs: spec must name at least one column");
   vec_t *x = (vec_t *)h_new((V)&fpr_unit);
-  x->ncols = sp->len;
-  x->kinds = x->fkinds = 0;
+  vdir_alloc(x, sp->len);
   for (uw k = 0; k < sp->len; k++) {
     switch (sp->bytes[k]) {
-      case 'i': x->kinds |= (uw)1 << k; break;
-      case 'd':
-      case 's': x->kinds |= (uw)1 << k; x->fkinds |= (uw)1 << k; break;
-      case 'b': break;
+      case 'i': x->kinds[k] = VK_INT; break;
+      case 'd': x->kinds[k] = VK_F64; break;
+      case 's': x->kinds[k] = VK_F32; break;
+      case 'b': x->kinds[k] = VK_BOX; break;
       default: fpr_cpanic("Vec.newAs: spec chars are i (Int), d (F64), s (F32), b (boxed)");
     }
   }
   if (sp->len == 1) {
-    x->var = (x->fkinds & 1) ? VR_FLT : ((x->kinds & 1) ? VR_INT : VR_BOX);
+    x->var = VK_FLOAT(x->kinds[0]) ? VR_FLT : (VK_RAW(x->kinds[0]) ? VR_INT : VR_BOX);
   } else {
+    /* the KINDS are declared; the element identity (a tuple or a record
+     * shape of that many fields) is taken from the first value pushed,
+     * so one declared layout serves tuples and records alike */
     x->var = VR_SOA;
-    x->eltid = sp->len == 2 ? T_TUP2 : sp->len == 3 ? T_TUP3 : sp->len <= 8 ? T_TUP4 + (sp->len - 4) : T_TUPN + sp->len;
+    x->eltid = 0;
     x->elvar = 0;
   }
   for (uw k = 0; k < x->ncols; k++) x->cols[k] = col_new();
@@ -260,12 +298,7 @@ static V h_newAs(V specv) {
  * inference cannot recover a float layout from a float value. */
 static V h_new_like(vec_t *src) {
   vec_t *x = (vec_t *)h_new((V)&fpr_unit);
-  x->var = (uint32_t)VREP(src);
-  x->eltid = src->eltid;
-  x->elvar = src->elvar;
-  x->ncols = src->ncols;
-  x->kinds = src->kinds;
-  x->fkinds = src->fkinds;
+  vdir_like(x, src);
   for (uw k = 0; k < x->ncols; k++) x->cols[k] = col_new();
   return (V)x;
 }
@@ -287,8 +320,12 @@ static V h_push(V v, V vec) {
       put_cell(x, 0, x->len, v);
       break;
     case VR_SOA: {
+      if (x->eltid == 0 && !ISINT(v) && value_arity(v) == x->ncols) {
+        x->eltid = TID(v); /* a declared layout meets its first value */
+        x->elvar = ((hdr_t *)v)->var;
+      }
       if (ISINT(v) || TID(v) != x->eltid)
-        fpr_cpanic("Vec.push: tuple shape differs from first push");
+        fpr_cpanic("Vec.push: tuple shape differs from first push (or from the declared column count)");
       for (uw k = 0; k < x->ncols; k++)
         put_cell(x, k, x->len, *(V *)((char *)v + 8 + k * sizeof(uw)));
       break;
@@ -351,6 +388,10 @@ static V h_set(V iv, V v, V vec) {
       put_cell(x, 0, (uw)i, v);
       break;
     default:
+      if (x->eltid == 0 && !ISINT(v) && value_arity(v) == x->ncols) {
+        x->eltid = TID(v);
+        x->elvar = ((hdr_t *)v)->var;
+      }
       if (ISINT(v) || TID(v) != x->eltid) fpr_cpanic("Vec.set: tuple shape differs");
       for (uw k = 0; k < x->ncols; k++)
         put_cell(x, k, (uw)i, *(V *)((char *)v + 8 + k * sizeof(uw)));
@@ -361,6 +402,7 @@ static V h_set(V iv, V v, V vec) {
 static void vfree(vec_t *x) {
   for (uw k = 0; k < x->ncols; k++)
     if (x->cols[k]) col_free(x->cols[k]);
+  vdir_free(x);
   fpr_free((V)x);
 }
 
@@ -384,7 +426,7 @@ V fpr_vec_map(V f, V vec) {
    * Vector type carries no element type to check that against, so it
    * is a stated contract, with Vec.toList as the escape hatch when the
    * shape really changes. */
-  V out = x->fkinds ? h_new_like(x) : h_new((V)&fpr_unit);
+  V out = vhas_float(x) ? h_new_like(x) : h_new((V)&fpr_unit);
   for (uw i = 0; i < x->len; i++) out = h_push(fpr_apply(f, row_at(x, i)), out);
   vfree(x); /* consumed input */
   return out;
@@ -489,8 +531,8 @@ static V h_split(V nv, V vec) {
   sw n = UNTAG(nv);
   if (n < 0) n = 0;
   if ((uw)n > x->len) n = (sw)x->len;
-  V lo = x->fkinds ? h_new_like(x) : h_new((V)&fpr_unit);
-  V hi = x->fkinds ? h_new_like(x) : h_new((V)&fpr_unit);
+  V lo = vhas_float(x) ? h_new_like(x) : h_new((V)&fpr_unit);
+  V hi = vhas_float(x) ? h_new_like(x) : h_new((V)&fpr_unit);
   for (uw i = 0; i < (uw)n; i++) lo = h_push(row_at(x, i), lo);
   for (uw i = (uw)n; i < x->len; i++) hi = h_push(row_at(x, i), hi);
   vfree(x); /* consumed input */

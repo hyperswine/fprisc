@@ -45,6 +45,14 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([build('tests/base/vecfuse_fail.fpr', 'vff')], expected=1)
     assert 'first map failed on 2' in p.stdout + p.stderr and 'second' not in p.stdout, p.stdout + p.stderr
     print('Vector fusion: printing or failing element functions keep their pass order (and the decline is reported); a pure pair still fuses in place: PASS')
+    # vector descriptors: records of every width are SoA vectors; push, at,
+    # put, map, filter, len, fold, an actor round trip and free agree with a
+    # Python reference; a float record takes an inferred layout; two record
+    # shapes sharing a field no longer mislead the record-map kernel
+    # (docs/2026-10-03-VECTOR-DESCRIPTORS.md)
+    p = run([build('tests/base/vecwide.fpr', 'vecwide')])
+    assert p.stdout == 'w2: at3=9 kept=8 sum=8147 echoed=8147\nw4: at3=30 kept=8 sum=8490 echoed=8490\nw8: at3=108 kept=8 sum=9764 echoed=9764\nw9: at3=135 kept=8 sum=10205 echoed=10205\nw32: at3=1584 kept=8 sum=33872 echoed=33872\nw65: at3=6435 kept=8 sum=113105 echoed=113105\nw128: at3=24768 kept=8 sum=412544 echoed=412544\nfloat record: n=4 x=1.5 y=2.25 k=2\none: 3\n', p.stdout
+    print('Vector descriptors: record widths 2, 4, 8, 9, 32, 65 and 128 through the whole surface and the deep copier, an inferred float-record layout, boxed width-1 rows: PASS')
     # 1. hello: print reaches stdout, nothing else is echoed, status 0
     p = run([build('tests/base/hello.fpr', 'hello')])
     assert p.stdout == 'hello from base\n', p.stdout

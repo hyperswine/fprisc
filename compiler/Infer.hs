@@ -36,7 +36,7 @@ import Control.Monad.State.Strict
 import Data.Graph (SCC (..), stronglyConnComp)
 import qualified Data.IntMap.Strict as IM
 import qualified Data.List
-import Data.List (foldl', intercalate, isInfixOf, nub, stripPrefix)
+import Data.List (foldl', intercalate, isInfixOf, nub, stripPrefix, sortOn)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
@@ -950,7 +950,7 @@ inferE ctx e0 = case e0 of
       's' -> pure tF32
       'b' -> freshT
       _ -> freshT <* report "Vec.newAs: layout chars must be i, d, s, or b") spec
-    when (null spec || length spec > 8) (report "Vec.newAs: layout must have 1..8 columns")
+    when (null spec) (report "Vec.newAs: layout must name at least one column")
     let el = case ts of [t] -> t; _ -> TTupT ts
     site <- newSite ("vec-declared:" ++ spec) el
     pure (tVector el, SApp (SVar (markerPrefix ++ show site ++ "#vec")) e0)
@@ -1383,11 +1383,19 @@ resolveSites sigs env = do
       | unresolved el = OpPrim "" <$ report (name ++ ": the output element layout is polymorphic; give it a concrete type (use Vec.mapSame for a representation-preserving generic map)")
       | not (mentionsFloat el) = pure (OpVecLayout name "")
       | Just spec <- floatLayout el = pure (OpVecLayout name spec)
-      | otherwise = OpPrim "" <$ report (name ++ ": floats require a scalar or flat tuple of at most eight fields; nested/record float layouts are unsupported")
+      | otherwise = OpPrim "" <$ report (name ++ ": floats require a scalar, a flat tuple, or a closed record of scalars; nested float layouts are unsupported")
     floatLayout (TC "F64") = Just "d"
     floatLayout (TC "F32") = Just "s"
-    floatLayout (TTupT xs) | length xs >= 2 && length xs <= 8 = mapM field xs
+    floatLayout (TTupT xs) | length xs >= 2 = mapM field xs
+    -- a closed record: its fields in sorted name order, which is the
+    -- order the lowering constructs and projects them in (FPRISC.hs)
+    floatLayout t@(TRec _) | Just names <- recFields t, length names >= 2 = mapM field (recFieldTypes t)
     floatLayout _ = Nothing
+    recFieldTypes (TRec r) = map snd (sortOn fst (goR r))
+      where
+        goR (RExt n ft rest) = (n, ft) : goR rest
+        goR _ = []
+    recFieldTypes _ = []
     field (TC "Int") = Just 'i'
     field (TC "F64") = Just 'd'
     field (TC "F32") = Just 's'
