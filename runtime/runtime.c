@@ -252,8 +252,15 @@ int fpr_in_heap(V v) { /* the buddy span: heap + process regions */
 #define FPR_SLAB_MIN ((uw)64 * 1024 - 2 * sizeof(uw))
 #endif
 
+/* the arena override belongs to the ACTOR inside the arena (hart-loop
+ * context, with no actor, keeps the hart's): an actor parked in its arena
+ * must not shadow the pools of the actors the hart runs meanwhile */
+static struct fpr_pool **override_slot(fpr_hart_t *h) {
+  return h->current ? fpr_acb_override_slot(h->current) : &h->pool_override;
+}
 static fpr_pool_t *cur_pool(fpr_hart_t *h) {
-  if (h->pool_override) return (fpr_pool_t *)h->pool_override;
+  struct fpr_pool *ov = *override_slot(h);
+  if (ov) return (fpr_pool_t *)ov;
   return h->current ? fpr_acb_pool(h->current) : &h->pool;
 }
 
@@ -1163,7 +1170,7 @@ static void arena_open(fpr_hart_t *h, fpr_pool_t *ap) {
                                       * with garbage there walked it as
                                       * a freelist on any >ceiling alloc */
   if (!ap->buckets) fpr_cpanic("Sys.arena: no memory for a bucket array");
-  h->pool_override = (struct fpr_pool *)ap;
+  *override_slot(h) = (struct fpr_pool *)ap;
 }
 /* teardown, poolReset-style, under arc_lock (owner/escaped race) */
 static void arena_close(fpr_hart_t *h, fpr_pool_t *ap, struct fpr_pool *prev) {
@@ -1177,7 +1184,7 @@ static void arena_close(fpr_hart_t *h, fpr_pool_t *ap, struct fpr_pool *prev) {
   }
   fpr_unlock(&arc_lock);
   fpr_bkt_put(ap->buckets);
-  h->pool_override = prev;
+  *override_slot(h) = prev;
 }
 static void no_vec_out(V r, const char *who) {
   if (has_vec(r))
@@ -1196,7 +1203,7 @@ static void transfer_free(V t) {
 
 static V g_arena(V f) {
   fpr_hart_t *h = fpr_hart();
-  struct fpr_pool *prev = h->pool_override;
+  struct fpr_pool *prev = *override_slot(h);
   fpr_pool_t ap;
   arena_open(h, &ap);
   V r = fpr_apply(f, (V)&fpr_unit);
@@ -1253,7 +1260,7 @@ static V g_loop_with(V vec, V s, V f) {
   vec_snap_t sn;
   vec_snap(&sn, vec);
   fpr_hart_t *h = fpr_hart();
-  struct fpr_pool *prev = h->pool_override;
+  struct fpr_pool *prev = *override_slot(h);
   V state = s, held = 0; /* held: the transfer copy `state` lives in */
   for (;;) {
     fpr_pool_t ap;

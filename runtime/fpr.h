@@ -228,6 +228,7 @@ void fpr_slab_release(fpr_slab_t *sl);   /* runtime.c: grant/buddy */
 void fpr_vec_release(V v);               /* vec.c: universal vector free */
 
 fpr_pool_t *fpr_acb_pool(struct fpr_acb *a); /* actors.c: &a->pool */
+struct fpr_pool **fpr_acb_override_slot(struct fpr_acb *a); /* actors.c: the arena the actor is inside */
 void fpr_pool_reclaim(struct fpr_acb *a);    /* runtime.c: death teardown */
 void *buddy_alloc(uw bytes);                 /* buddy.c */
 void *buddy_realloc(void *p, uw bytes);      /* grow/shrink; in-place when

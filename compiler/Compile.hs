@@ -63,6 +63,17 @@ data Opts = Opts
     oNoInline :: Bool -- --no-inline / FPR_NO_INLINE=1: base code keeps every call (debugging, WCET comparison)
   }
 
+-- a module reached by two spellings (`ep` and `../programs/mods/ep`, a pin
+-- and a path) is ONE unit: its hash is its identity.  Listed twice it was
+-- compiled once (the cache) and linked twice (duplicate symbols, 2026-10-02).
+dedupeUnits :: [(String, b)] -> [(String, b)]
+dedupeUnits = go S.empty
+  where
+    go _ [] = []
+    go seen ((h, u) : r)
+      | S.member h seen = go seen r
+      | otherwise = (h, u) : go (S.insert h seen) r
+
 parseArgs :: [String] -> Opts
 parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothing Nothing False False False [] False False False False False False False False False False Nothing False [] [] False)
   where
@@ -442,7 +453,11 @@ compileMain = do
           (pathErrsM, tops0R) = expandPathLits ptbl ttbl tops0RL
           (pathErrsR, root0) = expandPathLits ptbl ttbl root0L
           unitsPR = [(h, expandPathLits ptbl ttbl uts) | (h, uts) <- units0L]
-          units0 = [(h, ts) | (h, (_, ts)) <- unitsPR]
+          -- a module reached by two spellings (`ep` and `../programs/mods/ep`,
+          -- a pin and a path) is ONE unit: its hash is its identity.  Listed
+          -- twice it was compiled once (the cache) and linked twice (duplicate
+          -- symbols, 2026-10-02).
+          units0 = dedupeUnits [(h, ts) | (h, (_, ts)) <- unitsPR]
           pathErrs = List.nub (pathErrsM ++ pathErrsR ++ concat [es | (_, (es, _)) <- unitsPR])
       unless (null pathErrs) $ do
         putStrLn "=== PATH LITERALS: ERRORS ==="

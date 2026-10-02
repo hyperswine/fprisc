@@ -177,6 +177,11 @@ typedef struct fpr_acb {
   uw dp_n;
   fpr_slab_t *msg_slab; /* the slab this actor's sends pack into (runtime.c) */
   fpr_pool_t pool; /* this actor's slabs + recycle buckets (slab refactor) */
+  struct fpr_pool *pool_override; /* Sys.arena / Sys.loopWith: the arena this ACTOR is
+                                   * inside, or 0.  It was a hart field until 2026-10-02:
+                                   * an actor parked inside its arena (a call's wait) let
+                                   * every other actor the hart ran allocate into that arena,
+                                   * torn down at the step's end under them. */
   fpr_lock_t shlock; /* producers' lock on the shared ring */
   uw wait_kind, wait_arg; /* while BLOCKED: 1 any, 2 from(arg = sender acb), 3 res */
   uint8_t tr[16]; uw tr_i; /* scheduler transition trace (site codes; the deadlock dump reads it) */
@@ -266,6 +271,7 @@ void fpr_drop_drain_current(void) {
 }
 
 fpr_pool_t *fpr_acb_pool(struct fpr_acb *a) { return &a->pool; }
+struct fpr_pool **fpr_acb_override_slot(struct fpr_acb *a) { return &a->pool_override; }
 
 /* big raw blocks (stacks, acbs, rings): the memory actor's buddy on an
  * image that owns one (fpr_mem_own -- a machine boot, the qosp app);
@@ -1959,6 +1965,7 @@ static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t d
   char *stk = (char *)stack_block(&stk_sz);
   if (!a || !stk) fpr_cpanic("spawn: buddy has no free block");
   fpr_pool_init(&a->pool, fpr_bkt_take()); /* zeroed; teardown returns it */
+  a->pool_override = 0;
   a->dp_n = 0;
   a->msg_slab = 0;
   a->running = 0; /* the block may be reused: no hart has this context yet */
@@ -2069,6 +2076,16 @@ static V a_spawn_app(V f) {
   return spawn_on_pid(fpr_hart()->id, f, 0, pid);
 }
 FPR_FN(fpr_g_Sys_x2espawnApp, a_spawn_app, 1);
+
+/* Sys.pidOf a -> Int: the process an actor belongs to (0 = the boot
+ * image).  The namespace (qos mods/ep.fpr) authorizes an open by the
+ * CALLER's pid: the grants a process was launched with, looked up by
+ * the sender of the request, never by anything the request says. */
+static V a_pid_of(V av) {
+  if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("Sys.pidOf: argument is not an actor");
+  return TAG((sw)((acb_t *)av)->pid);
+}
+FPR_FN(fpr_g_Sys_x2epidOf, a_pid_of, 1);
 
 uw fpr_current_pid(void) {
   fpr_hart_t *h = fpr_hart();
