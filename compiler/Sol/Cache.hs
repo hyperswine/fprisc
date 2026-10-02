@@ -87,7 +87,7 @@ cached path src prelude expanded trusted compile = do
       exe <- getExecutablePath >>= makeAbsolute
       st <- getFileStatus exe
       absolute <- makeAbsolute path
-      options <- mapM lookupEnv ["SOL_NOTYPES", "SOL_NO_SAFETY", "FPR_HOME", "FPR_PATH"]
+      options <- mapM lookupEnv ["SOL_NOTYPES", "SOL_NO_SAFETY", "FPR_HOME", "FPR_PATH", "FPR_NO_SPEC"]
       let identity = show (exe, deviceID st, fileID st, fileSize st, modificationTimeHiRes st, statusChangeTimeHiRes st)
           key = BL.toStrict (encode (schema, identity, (arch, os, compilerName, show compilerVersion), absolute, path, src, prelude, expanded, trusted, options))
           slot = showHex (fingerprint key) "" ++ ".cache"

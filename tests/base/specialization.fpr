@@ -1,0 +1,36 @@
+# Known callbacks, captures, aliases, shadowing, mutually recursive loops,
+# and callbacks that escape into a record. Run with specialization on and off.
+unsafe base.
+L = use "std/list".
+O = use "std/order".
+inc x = x + 1.
+add k x = k + x.
+positive x = x > 2.
+combine a b = a + b.
+apply f x = f x.
+shadow f x =
+  inc = 900;
+  f x + inc.
+evenLoop f n acc = if n == 0 then acc else oddLoop f (n - 1) (f acc).
+oddLoop f n acc = if n == 0 then acc else evenLoop f (n - 1) (f acc).
+mark label n = _ = print label; n.
+capture k xs =
+  cb = fn x -> x + k;
+  L.map cb xs.
+escape k = {call = add k}.
+aliasShadow =
+  cb = add 8;
+  add = fn x -> x * 10;
+  cb 2 + add 3.
+main =
+  _ = print "map: {L.map inc (L.range 1 4)}";
+  _ = print "capture: {capture 10 (L.range 1 4)}";
+  _ = print "pipeline: {L.fold combine 0 (L.filter positive (L.map inc (L.range 1 4)))}";
+  _ = print "sort: {L.sortWith O.int [4, 1, 3, 2]}";
+  _ = print "shadow: {shadow inc 2}";
+  _ = print "alias shadow: {aliasShadow}";
+  _ = print "mutual: {evenLoop (add 2) 20 0}";
+  effect = apply (add (mark "capture-effect" 4)) (mark "argument-effect" 8);
+  _ = print "effects: {effect}";
+  r = escape 7;
+  print "dynamic: {r.call 5}".

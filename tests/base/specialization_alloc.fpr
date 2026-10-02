@@ -1,0 +1,9 @@
+unsafe base.
+add k x = k + x.
+apply f x = f x.
+loop n k acc = if n == 0 then acc else loop (n - 1) k (acc + apply (add k) n).
+main =
+  before = heapUsed Unit;
+  total = loop 1000 7 0;
+  allocated = heapUsed Unit - before;
+  print "total {total}; callback bytes {allocated}".

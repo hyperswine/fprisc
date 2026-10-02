@@ -282,7 +282,7 @@ runKey p = do
   stamps <- mapM stamp (self : (home </> "core" </> "prelude.fpr") : rtFiles ++ pWith p)
   bodies <- mapM readFileStrict srcs
   foreignDecls <- lookupEnv "FPR_FOREIGN"
-  modes <- mapM lookupEnv ["FPR_COST_PROBE", "FPR_NO_REGISTERS", "FPR_NO_F64_INLINE", "FPR_NO_INLINE", "FPR_NO_VEC_PEEK"]
+  modes <- mapM lookupEnv ["FPR_COST_PROBE", "FPR_NO_REGISTERS", "FPR_NO_F64_INLINE", "FPR_NO_INLINE", "FPR_NO_VEC_PEEK", "FPR_NO_SPEC"]
   let text = unlines (srcs ++ bodies ++ stamps ++ [show (pHarts p), show (pCC p), unwords (pCFlags p ++ pLink p), show foreignDecls, show modes])
   pure (showHex (fnv64 text) "")
   where

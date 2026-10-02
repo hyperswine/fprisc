@@ -50,7 +50,7 @@ import FPRISC (Core (..), Prog, freeVars)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 26 -- 0-based charAt fast path (docs/2026-10-02-ZERO-BASED.md); 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
+codegenRev = 27 -- function-argument specialization (Mono); 26: 0-based charAt fast path; 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -440,7 +440,7 @@ emitProgram tgt rvv spec exports ext exps prog0 =
       | otherwise =
           let m = mangle n
            in (if tgtArc tgt then ["    .section .rodata.fpr_obj_" ++ m ++ ",\"a\",@progbits"] else [])
-              ++ [ "    .balign 8" ]
+              ++ [ "# static-pap: " ++ n, "    .balign 8" ]
               ++ [ "    " ++ visibility tgt (n) ++ " fpr_obj_" ++ m | S.member n exps ]
               ++ [
                 "fpr_obj_" ++ m ++ ":",
@@ -1298,8 +1298,12 @@ genT tgt spec prog ext = go
         lh <- go env nxt NonTail hd
         las <- mapM (go env nxt NonTail) args
         let nA = length args
+            knownArity h = M.lookup h (M.unions [M.map (length . fst) prog, ext, tgtHal tgt])
+            papNote = case hd of
+              CVar h | M.notMember h env, Just ar <- knownArity h, nA < ar -> ["# pap-create: " ++ h]
+              _ -> []
         pure $
-          lh
+          papNote ++ lh
             ++ push tgt -- head deepest
             ++ concat [la ++ push tgt | la <- las] -- args; LAST arg at 0(sp)
             ++ [ "    mv a2, sp", -- &args (reverse order, 16-byte strided)

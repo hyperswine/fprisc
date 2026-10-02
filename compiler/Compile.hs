@@ -5,6 +5,7 @@ import Data.Maybe (fromMaybe)
 import System.Environment (lookupEnv)
 import System.IO (hPutStrLn, stderr)
 import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
+import Mono (specializeFunctions, qualifyAux)
 import Inline (inlineSmall, inlineWith, vecPeek)
 import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, normArc)
 import Data.Char (isAlphaNum, ord)
@@ -346,6 +347,8 @@ compileMain = do
   -- FPR_NO_VEC_PEEK=1: keep the (value, handle) pair of every vector read
   -- (Inline.vecPeek off) -- the differential test's other half
   envNoVecPeek <- (== Just "1") <$> lookupEnv "FPR_NO_VEC_PEEK"
+  envNoSpec <- (== Just "1") <$> lookupEnv "FPR_NO_SPEC"
+  envApply <- (== Just "1") <$> lookupEnv "FPRC_APPLY"
   envNoInline <- (== Just "1") <$> lookupEnv "FPR_NO_INLINE"
   let system = fromMaybe "bare-metal" (oSystem opts0)
       espHost = oHost opts0 == Just "esp-idf" -- the posix system on an ESP-IDF board (docs/2026-09-23-ESP-IDF.md)
@@ -785,7 +788,7 @@ compileMain = do
                   else if x64 then "x64r" ++ show x64Rev
                   else if espHost then "rv32-idftls1"
                   else tgtName tgt
-          tag = "g" ++ show codegenRev ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
+          tag = "g" ++ show codegenRev ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit
@@ -807,12 +810,23 @@ compileMain = do
                        pure inl
           pureOutside g = maybe False (> 0) (M.lookup g extFor) || maybe False (> 0) (M.lookup g halAr) || g `elem` corePrimNames
           corePrimNames = ["+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "strcat", "str", "String.len"]
+          mono ns ext p = if envNoSpec || oArc opts then p else specializeFunctions ns halAr ext p
+          preludeResolved = let (_, _, _, _, rw) = inferTops sigs structs preludeE' in rw
+          importedCore = M.unions
+            (qualifyAux ("$specaux.p" ++ take 12 preludeHash ++ ".") (bindNames preludeE') (compileUnit preludeResolved)
+             : [qualifyAux ("$specaux.u" ++ take 12 h ++ ".") (bindNames uts) (compileUnit (resolveUnit uts)) | (h,uts) <- units'])
+          applyReport label asm = when envApply $ hPutStrLn stderr
+            ("apply " ++ label ++ ": dispatch=" ++ show (length [() | l <- lines asm, "fpr_apply" `List.isInfixOf` l, any (`List.isInfixOf` l) ["call ", "bl "]])
+             ++ " known-partial=" ++ show (length [() | l <- lines asm, "# pap-create:" `List.isPrefixOf` l])
+             ++ " static-descriptors=" ++ show (length [() | l <- lines asm, "# static-pap:" `List.isPrefixOf` l]))
           emitUnit path exps ext uts = do
             cached <- doesFileExist path
             if cached
-              then pure (path, "cached")
+              then do
+                when envApply (readFile path >>= applyReport (takeFileName path))
+                pure (path, "cached")
               else do
-                prog <- own (compileUnit uts)
+                prog <- own (mono (takeFileName path) M.empty (compileUnit uts))
                 -- FORCE before the write: an `error` raised while the
                 -- assembly is lazily produced must propagate, never
                 -- leave an empty file the cache then serves as a valid
@@ -822,11 +836,11 @@ compileMain = do
                 mapM_ putStrLn vnotes
                 length asm `seq` writeFile path asm
                 wcetSummary ("unit " ++ takeFileName path) asm
+                applyReport (takeFileName path) asm
                 pure (path, show (M.size prog) ++ " supercombinators")
       createDirectoryIfMissing True unitDir
       -- prelude unit (unqualified names; the always-linked stdlib unit).
       -- The prelude is self-contained, so resolve its own operators.
-      let preludeResolved = let (_, _, _, _, rw) = inferTops sigs structs preludeE' in rw
       preludeOut <-
         if oArc opts || null preludeTops
           then pure []
@@ -872,7 +886,11 @@ compileMain = do
       rootProgSym <- case symbolize rootProgRaw of
         Left e -> hPutStrLn stderr ("error: " ++ e) >> exitFailure
         Right p -> pure p
-      rootProg <- own rootProgSym
+      -- Imported private lifts are renamed into the root before cloning.
+      importedSym <- if envNoSpec || oArc opts then pure M.empty else case symbolize importedCore of
+        Left e -> hPutStrLn stderr ("error: " ++ e) >> exitFailure
+        Right p -> pure p
+      rootProg <- own (mono ("root" ++ take 12 rootHash) importedSym rootProgSym)
       let (rootAsm0, rootVNotes) = emitProgram tgt rvv spec imageExports extFor (if oArc opts then M.keysSet rootProg else bindNames root') rootProg
       -- the C-callable entries: each export needs a declared signature
       -- over C-representable types, a function of that arity, <= 8 params
@@ -918,6 +936,7 @@ compileMain = do
                             | (i, (tid, var, ar, _)) <- zip [0 :: Int ..] conRows ]
                   ++ [ "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "" ]
       let rootAsm = lower (rootAsm0 ++ conTab) ++ unlines (concat tramps)
+      applyReport "root" rootAsm
       mapM_ putStrLn rootVNotes
       writeFile out rootAsm
       wcetSummary "root" rootAsm

@@ -12,6 +12,7 @@
 
 module Sol.Main where
 
+import Mono (specializeFunctions)
 import Sol.Cache (Prepared (..), cached)
 import Sol.Startup (phase, phaseIO)
 import Control.DeepSeq (force)
@@ -255,7 +256,9 @@ compileScript path src ptops utops utopsX0' trusted = do
   (cons, shapes) <- phase "layout" $ pure (collectCons tops, collectShapes tops)
   -- The shared frontend stores UTF-8 bytes; the VM uses Chars.
   prog <- phase "lower" $ pure (decodeProgStrings (fst (runState (compileTop tops >>= liftFix) (DEnv 0 cons shapes []))))
-  bprog <- phase "bytecode" $ pure (compileProg halArities prog)
+  noSpec <- (== Just "1") <$> lookupEnv "FPR_NO_SPEC"
+  let specialized = if noSpec then prog else specializeFunctions "sol" halArities M.empty prog
+  bprog <- phase "bytecode" $ pure (compileProg halArities specialized)
 
   -- `>` statements run in file order; a zero-arity `main`, if defined,
   -- runs after them (so plain FPRISC-style files still do something)
@@ -264,7 +267,7 @@ compileScript path src ptops utops utopsX0' trusted = do
           Just fn | fnArity fn == 0 -> ["main"]
           _ -> []
   notes <- readIORef noteRef
-  pure (Prepared cons shapes prog bprog runList (reverse notes))
+  pure (Prepared cons shapes specialized bprog runList (reverse notes))
 
 -- run every `>` statement in order inside one transaction, then commit;
 -- on read-set conflict, reset and re-run the whole script
