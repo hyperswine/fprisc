@@ -1,0 +1,10 @@
+# A failure in the first map on element 2 comes BEFORE any work of the
+# second map on element 1: the second map must never start.
+unsafe base.
+check x = case x > 1 of True -> error "first map failed on {x}" | False -> x.
+second x = _ = print "second {x}"; x.
+main =
+  v = Vec.fromList [1, 2];
+  a = Vec.map check v;
+  b = Vec.map second a;
+  Vec.free b.

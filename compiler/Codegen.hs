@@ -38,7 +38,7 @@ import Control.Monad (when)
 import Control.Monad.State.Strict
 import Data.Bits (shiftR, (.&.))
 import Data.Char (isAlphaNum, ord)
-import Data.List (foldl', intercalate, isPrefixOf, nub, sort, sortOn)
+import Data.List (isSuffixOf, foldl', intercalate, isPrefixOf, nub, sort, sortOn)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Numeric (showHex)
@@ -50,7 +50,7 @@ import FPRISC (Core (..), Prog, freeVars)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 27 -- function-argument specialization (Mono); 26: 0-based charAt fast path; 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
+codegenRev = 28 -- fusion requires effect-free, failure-free element functions (fusionSafe); 27: function-argument specialization (Mono); 26: 0-based charAt fast path; 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -340,10 +340,11 @@ strLabel s = do
 
 emitProgram :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> Prog -> (String, [String])
 emitProgram tgt rvv spec exports ext exps prog0 =
-  let prog = fuseVecFix prog0 -- fusion is tier-independent: fewer passes
-      -- win in the generic apply tier too, and linearity (not the spec
-      -- loops) is what makes the rewrite sound
-      (body, st) = runState (top prog) (CG 0 M.empty tgt rvv spec M.empty ext exps [])
+  let (prog, fnotes) = fuseVecFix prog0 -- fusion is tier-independent: fewer passes
+      -- win in the generic apply tier too; linearity makes the single
+      -- pass unobservable through the vector, and fusionSafe (below) makes
+      -- it unobservable through effects and failures
+      (body, st) = runState (top prog) (CG 0 M.empty tgt rvv spec M.empty ext exps (reverse fnotes))
    in (unlines body, reverse (cgVNotes st))
   where
     top prog = do
@@ -1491,17 +1492,74 @@ declines spec prog owner = goD S.empty
 -- recursively), so a fully collapsed chain still dualizes.  The bound
 -- is a backstop, not a budget: a chain of length n needs n-1 rounds
 -- and real programs stop far short of it.
-fuseVecFix :: Prog -> Prog
+fuseVecFix :: Prog -> (Prog, [String])
 fuseVecFix = go (0 :: Int)
   where
     go r p
-      | r >= 16 = p
+      | r >= 16 = (p, [])
       | otherwise =
-          let p' = fuseVec r p
-           in if M.size p' == M.size p then p' else go (r + 1) p'
+          let (p', notes) = fuseVec r p
+           in if M.size p' == M.size p then (p', nub notes) else let (p'', more) = go (r + 1) p' in (p'', nub (notes ++ more))
 
-fuseVec :: Int -> Prog -> Prog
-fuseVec round' prog0 = M.union extras (M.map (\(ps, b) -> (ps, rewrite b)) prog0)
+-- EFFECT ORDER (docs/2026-10-03-FUSION-EFFECT-ORDER.md).  Two
+-- materializing maps run the first over EVERY element before the second
+-- starts; a fused pass interleaves them per element.  That is only
+-- unobservable when neither element function can be observed running:
+-- no I/O, no sends, no mutation, and no FAILURE either, since a panic in
+-- the first map on element 2 must come before any work of the second
+-- map on element 1.  `fusionSafe` is that judgement: the function and
+-- every known callee use only locals, literals, constructors, tag tests,
+-- projections, if/let, the non-trapping arithmetic/comparison/logic
+-- primitives and the fuel tick.  Division is excluded (it traps), as is
+-- every other primitive, every call through a parameter, and every
+-- partial application.  Declined pairs are reported, never silent.
+fusionSafe :: Prog -> String -> Bool
+fusionSafe prog f = fusionUnsafeReason prog f == Nothing
+
+-- the first construct that makes a function observable, if any
+fusionUnsafeReason :: Prog -> String -> Maybe String
+fusionUnsafeReason prog = go S.empty
+  where
+    go seen n
+      | S.member n seen = Nothing
+      | otherwise = case M.lookup n prog of
+          Nothing -> Just ("`" ++ n ++ "` is not a known function")
+          Just (ps, body) -> body' (S.insert n seen) (S.fromList ps) body
+    body' seen env e = case spineOf e of
+      (CVar h, args@(_ : _))
+        | h `elem` safePrims, Just ar <- lookup h primArities, length args == ar -> firstJust (map (body' seen env) args)
+        | h `elem` safePrims -> Just ("a partial application of `" ++ h ++ "`")
+        | h == "$fuel" -> Nothing
+        | S.member h env -> Just ("a call through the parameter `" ++ h ++ "` (unknown function)")
+        | Just (ps, _) <- M.lookup h prog, length ps == length args -> firstJust (map (body' seen env) args ++ [go seen h])
+        | Just _ <- M.lookup h prog -> Just ("a partial application of `" ++ h ++ "`")
+        | otherwise -> Just ("the primitive `" ++ h ++ "`")
+      _ -> case e of
+        CVar v | S.member v env -> Nothing
+        CVar g | Just (ps, _) <- M.lookup g prog, null ps -> go seen g -- a CAF
+        CVar g -> Just ("the function value `" ++ g ++ "`")
+        CInt _ -> Nothing
+        CStr _ -> Nothing
+        CMk _ _ fs -> firstJust (map (body' seen env) fs)
+        CTagEq _ _ x -> body' seen env x
+        CProj _ x -> body' seen env x
+        CIf c t f -> firstJust (map (body' seen env) [c, t, f])
+        CLet x a b -> firstJust [body' seen env a, body' seen (S.insert x env) b]
+        CLam ps b -> body' seen (S.union (S.fromList ps) env) b
+        CErr _ -> Nothing -- an exhaustiveness-proven dead arm
+        _ -> Just "an unrecognized construct"
+    firstJust xs = case [r | Just r <- xs] of
+      (r : _) -> Just r
+      [] -> Nothing
+    -- cannot trap, cannot be observed: everything in the Int/F64/F32
+    -- arithmetic tiers except division, plus comparison and logic
+    safePrims =
+      [op | op <- uPrims, op /= "/"]
+        ++ [op | w <- ["64", "32"], op <- fPrimsOf w, not ("/" `isSuffixOf` op) && op /= "F" ++ w ++ "./"]
+        ++ ["and", "or", "not", "and2", "or2"]
+
+fuseVec :: Int -> Prog -> (Prog, [String])
+fuseVec round' prog0 = (M.union extras (M.map (\(ps, b) -> (ps, rewrite b)) prog0), notes)
   where
     arity f = length . fst <$> M.lookup f prog0
 
@@ -1519,6 +1577,8 @@ fuseVec round' prog0 = M.union extras (M.map (\(ps, b) -> (ps, rewrite b)) prog0
     fusedAt e = do
       ((f, capF), ve) <- data' e
       ((g, capG), v) <- data' ve
+      -- both element functions must be unobservable (effect order)
+      if fusionSafe prog0 f && fusionSafe prog0 g then Just () else Nothing
       (side, cap) <- case (capF, capG) of
         (Nothing, Nothing) -> Just (0 :: Int, Nothing)
         (Just c, Nothing) -> Just (1, Just c)
@@ -1549,6 +1609,30 @@ fuseVec round' prog0 = M.union extras (M.map (\(ps, b) -> (ps, rewrite b)) prog0
           _ -> S.empty
 
     synth = M.fromList [(k, "_vfuse_" ++ show round' ++ "_" ++ show (i :: Int)) | (i, k) <- zip [0 ..] pairs]
+
+    -- every adjacent pair that is NOT fused because an element function
+    -- is observable gets a note naming the construct
+    notes = concat [declinedIn owner b | (owner, (_, b)) <- M.toList prog0]
+    declinedIn owner = goN
+      where
+        goN e0 =
+          let e = seeLet e0
+           in here e ++ case e of
+                CApp a b -> goN a ++ goN b
+                CLet _ a b -> goN a ++ goN b
+                CIf c t f -> concatMap goN [c, t, f]
+                CMk _ _ fs -> concatMap goN fs
+                CTagEq _ _ x -> goN x
+                CProj _ x -> goN x
+                CLam _ b -> goN b
+                _ -> []
+        here e = case (data' e, data' e >>= data' . snd) of
+          (Just ((f, _), _), Just ((g, _), _)) ->
+            [ "vec note: Vec.map `" ++ f ++ "` after Vec.map `" ++ g ++ "` (in " ++ owner ++ ") is NOT fused: `" ++ culprit ++ "` uses " ++ why ++ " -- the two passes run in order, each over the whole vector"
+              | (culprit, Just why) <- [(g, fusionUnsafeReason prog0 g), (f, fusionUnsafeReason prog0 f)], not (null culprit)
+            ] & take 1
+          _ -> []
+        xs & k = k xs
     extras =
       M.fromList
         [ (nm, comp k) | (k, nm) <- M.toList synth ]
@@ -1638,6 +1722,8 @@ vecSpec prog isLocal e = case spineOf e of
       not (isLocal "Vec.map"),
       okFn f 2,
       okFn g 1,
+      fusionSafe prog f,
+      fusionSafe prog g, -- a fold step and a map step interleave per element
       Just clf <- arithClosure prog [f],
       Just clg <- arithClosure prog [g],
       floatWidthOf prog clf == Nothing,

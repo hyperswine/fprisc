@@ -34,6 +34,17 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
                        'reset blocked by escaped data'):
             assert reason in p.stdout + p.stderr, p.stdout + p.stderr
     print('Fixed heap: admission, local reset, exhaustion, escaped lifetime and child-only failure: PASS')
+    # vector fusion keeps effect and failure ORDER: element functions that
+    # print or can fail are not fused (and the compile says so); pure pairs
+    # still fuse into one in-place pass (docs/2026-10-03-FUSION-EFFECT-ORDER.md)
+    p = run(['./fpr', 'build', '-v', 'tests/base/vecfuse_effects.fpr', '-o', tmp / 'vfe'])
+    assert 'is NOT fused: `first` uses the primitive `print`' in p.stdout, p.stdout
+    assert p.stdout.count('NOT fused') == 1, p.stdout
+    p = run([tmp / 'vfe'])
+    assert p.stdout == 'first 1\nfirst 2\nsecond 1\nsecond 2\npure pair: 62 (pool grew 0 B)\n', p.stdout
+    p = run([build('tests/base/vecfuse_fail.fpr', 'vff')], expected=1)
+    assert 'first map failed on 2' in p.stdout + p.stderr and 'second' not in p.stdout, p.stdout + p.stderr
+    print('Vector fusion: printing or failing element functions keep their pass order (and the decline is reported); a pure pair still fuses in place: PASS')
     # 1. hello: print reaches stdout, nothing else is echoed, status 0
     p = run([build('tests/base/hello.fpr', 'hello')])
     assert p.stdout == 'hello from base\n', p.stdout
