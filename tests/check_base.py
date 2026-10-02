@@ -23,6 +23,16 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         out = run(['./fpr', 'build', prog, '-o', exe])
         assert 'precond' not in out.stdout, 'a build is quiet unless -v'
         return exe
+    # Fixed heap admission is independent of mailbox capacity; failures
+    # belong to the child and escaped data delays grant reclamation.
+    fixed = build('tests/base/fixedheap.fpr', 'fixedheap')
+    for harts in ('1', '4'):
+        p = run([fixed], env={'FPR_HARTS': harts})
+        assert 'HOLDS' in p.stdout and 'FAILED' not in p.stdout, p.stdout + p.stderr
+        for reason in ('local grant exhausted', 'scratch arenas require separate admission',
+                       'reset blocked by escaped data'):
+            assert reason in p.stdout + p.stderr, p.stdout + p.stderr
+    print('Fixed heap: admission, local reset, exhaustion, escaped lifetime and child-only failure: PASS')
     # 1. hello: print reaches stdout, nothing else is echoed, status 0
     p = run([build('tests/base/hello.fpr', 'hello')])
     assert p.stdout == 'hello from base\n', p.stdout

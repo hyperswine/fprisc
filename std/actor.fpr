@@ -179,3 +179,8 @@ tidy me pair = case pair of (state, Tidy slack limit) ->
    else tidied me slack (boundary me state)).
 tidied : Int -> Int -> a -> (a, Tidy) .
 tidied me slack fresh = (fresh, Tidy slack (2 * heapUsed Unit + slack)).
+
+# Fixed local heap admission. Bytes include allocator block headers/padding;
+# mailbox, stack, outgoing messages and child actors are separate costs.
+# Err refuses the heap grant; allocation past it fail-stops the child.
+spawnWithHeap bytes f = spawnHeap bytes f.

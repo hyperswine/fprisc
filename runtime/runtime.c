@@ -518,7 +518,8 @@ V fpr_alloc(V raw_bytes) {
     }
   }
   fpr_slab_t *sl = pool->cur;
-  if (!sl || sl->hp + total > sl->end) {
+  if (!sl || total > (uw)(sl->end - sl->hp)) {
+    if (pool->fixed_heap) fpr_actor_fail("fixed heap: local grant exhausted");
     uw want = total + sizeof(fpr_slab_t);
     /* A pool's slabs START SMALL AND DOUBLE, to SLAB_SZ: the first is one
      * buddy block (64 KiB), each next twice the last.  Every actor that
@@ -1166,6 +1167,8 @@ static int has_vec(V v) {
 }
 
 static void arena_open(fpr_hart_t *h, fpr_pool_t *ap) {
+  if (cur_pool(h)->fixed_heap)
+    fpr_actor_fail("fixed heap: scratch arenas require separate admission");
   fpr_pool_init(ap, fpr_bkt_take()); /* bigfree=0 matters: a stack pool
                                       * with garbage there walked it as
                                       * a freelist on any >ceiling alloc */
@@ -1458,6 +1461,12 @@ void fpr_arc_decref(V v) {
   int found;
   uw i = arc_probe(v, &found);
   if (!found) { fpr_unlock(&arc_lock); return; } /* never shared: no-op */
+  /* Every holder's post-drop borrow counts, including a non-final drop.
+   * Otherwise the final holder could reset a fixed grant underneath an
+   * earlier reader whose borrow window has not closed. */
+  fpr_slab_t *fixed_sl = slab_of(v);
+  if (fixed_sl && fixed_sl->owner && fixed_sl->owner->fixed_heap)
+    fpr_drop_park(fixed_sl);
   int dead = (--arct[i].cnt == 0);
   if (dead) {
     arct[i].ptr = ARC_TOMB; /* tombstone keeps probe chains intact */
@@ -1476,6 +1485,10 @@ void fpr_arc_decref(V v) {
          * The slab goes home once escaped and holds are both zero. */
         dc_release(v);
         fpr_drop_park(sl);
+      } else if (sl->owner->fixed_heap) {
+        /* A retained fixed grant may reset while another actor is still
+         * reading after drop. Keep that borrow visible to reset/death. */
+        /* Retain locally until reset; the hold was recorded above. */
       } else {
         fpr_free(v); /* under arc_lock: owner read is death-race-free */
       }
@@ -1491,7 +1504,7 @@ void fpr_arc_teardown_pool(fpr_pool_t *pool) {
   fpr_slab_t *sl = pool->cur;
   while (sl) {
     fpr_slab_t *nx = sl->next;
-    if (sl->escaped == 0) slab_home(sl); /* home: the memory actor, or the
+    if (sl->escaped == 0 && sl->holds == 0) slab_home(sl); /* home: the memory actor, or the
                                           * grant recycler (see grant_take) */
     else sl->owner = 0; /* orphan: freed at last drop above */
     sl = nx;
@@ -1524,6 +1537,18 @@ static V g_poolReset(V u) {
   fpr_drop_drain_current(); /* soft death = end of frame: borrows are done */
   fpr_lock(&arc_lock);
   fpr_slab_t *sl = pool->cur;
+  if (pool->fixed_heap) {
+    if (!sl || sl->escaped || sl->holds) {
+      fpr_unlock(&arc_lock);
+      fpr_actor_fail("fixed heap: reset blocked by escaped data");
+    }
+    sl->hp = (char *)(sl + 1);
+    pool->allocated = 0; pool->bigfree = 0;
+    if (pool->buckets)
+      for (int i = 0; i < FPR_NBUCKETS; i++) pool->buckets[i] = 0;
+    fpr_unlock(&arc_lock);
+    return (V)&fpr_unit;
+  }
   while (sl) {
     fpr_slab_t *nx = sl->next;
     if (sl->escaped == 0) slab_home(sl);

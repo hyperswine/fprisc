@@ -1,0 +1,76 @@
+unsafe program.
+A = use "../../std/actor".
+junk n = case n == 0 of True -> Nil | False -> n :: junk (n - 1).
+length xs = case xs of Nil -> 0 | _ :: r -> 1 + length r.
+require (Ok a) = a.
+require (Err why) = error why.
+refused (Err _) = True.
+refused (Ok _) = False.
+dead (Err "dead actor") = True.
+dead _ = False.
+worker boss self =
+  (before, _) = Sys.memStats 0;
+  last = length (junk 1000);
+  _ = Sys.poolReset 0;
+  last2 = length (junk 1000);
+  (after, _) = Sys.memStats 0;
+  _ = send boss (last == 1000 and last2 == 1000 and before == after);
+  Unit.
+overflow boss self = _ = length (junk 1000); send boss False >> Unit.
+scratch boss self = _ = Sys.arena (fn u -> 42); send boss False >> Unit.
+sharing reset boss self =
+  t = (20, 22);
+  _ = sendArc boss t;
+  _ = drop t;
+  _ = case reset of True -> Sys.poolReset 0 | False -> Unit;
+  Unit.
+freeKiB u = case Sys.memInfo 0 of _ :: free :: _ -> free | _ -> error "bad memory info".
+escape me reset =
+  before = freeKiB 0;
+  a = require (A.spawnWithHeap 1048576 (sharing reset me));
+  value = receiveFrom me a;
+  _ = receiveFromRes me a;
+  (x, y) = value;
+  held = freeKiB 0;
+  _ = drop value;
+  _ = receiveNow me;
+  _ = Sys.sleepUs 20000;
+  returned = freeKiB 0;
+  x + y == 42 and before >= held + 1024 and returned >= held + 1024.
+borrowWorker boss self =
+  t = (junk 100, 42);
+  _ = sendArc boss t;
+  _ = receive self;
+  _ = drop t;
+  _ = receive self;
+  _ = Sys.poolReset 0;
+  _ = send boss False;
+  Unit.
+borrowReset me =
+  a = require (A.spawnWithHeap 1048576 (borrowWorker me));
+  value = receiveFrom me a;
+  (xs, marker) = value;
+  _ = drop value;
+  _ = send a 0;
+  _ = send a 1;
+  _ = Sys.sleepUs 50000;
+  valid = length xs == 100 and marker == 42;
+  failed = dead (receiveFromRes me a);
+  valid and failed.
+main =
+  me = myself 0;
+  invalid = refused (A.spawnWithHeap 0 (worker me));
+  denied = refused (A.spawnWithHeap 1099511627776 (worker me));
+  a = require (A.spawnWithHeap 131072 (worker me));
+  local = case receiveFromRes me a of Ok True -> True | _ -> False;
+  b = require (A.spawnWithHeap 128 (overflow me));
+  exhausted = dead (receiveFromRes me b);
+  c = require (A.spawnWithHeap 1024 (scratch me));
+  arena = dead (receiveFromRes me c);
+  d = require (A.spawnWithHeap 131072 (worker me));
+  survives = case receiveFromRes me d of Ok True -> True | _ -> False;
+  shared = escape me False;
+  resetEscaped = escape me True;
+  borrowed = borrowReset me;
+  verdict = if borrowed and shared and resetEscaped and invalid and denied and local and exhausted and arena and survives then "HOLDS" else "FAILED";
+  print "fixedheap: borrow-reset={borrowed} escaped={shared} escaped-reset={resetEscaped} invalid={invalid} denied={denied} local-reset={local} exhausted={exhausted} scratch-refused={arena} next-actor={survives} {verdict}".

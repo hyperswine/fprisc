@@ -558,6 +558,7 @@ builtinEnv =
       -- without waiting: Ok message | Err "empty" (the Err is static: asking allocates nothing)
       ("receiveNow", scheme [0] (TFn tInt (tcon "Result" [sv 0, tStr]))),
       ("receiveFromRes", scheme [0] (TFn tInt (TFn tInt (tcon "Result" [sv 0, tStr])))),
+      ("spawnHeap", scheme [0] (TFn tInt (TFn (TFn tInt (sv 0)) (tcon "Result" [tInt, tStr])))),
       ("spawn", scheme [0] (TFn (TFn tInt (sv 0)) tInt)),
       ("spawnCap", scheme [0] (TFn tInt (TFn tInt (TFn (TFn tInt (sv 0)) tInt)))),
       ("spawnCapOn", scheme [0] (TFn tInt (TFn tInt (TFn tInt (TFn (TFn tInt (sv 0)) tInt))))),

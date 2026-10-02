@@ -113,6 +113,7 @@ typedef struct fpr_pool {
                      * orphans escaped slabs first).  runtime.c owns
                      * the recycler (bkt_take/bkt_put). */
   uw allocated;     /* gauge: bytes ever bumped by this owner */
+  uw fixed_heap;   /* explicit pool-byte cap; 0 = legacy growable pool */
   void *bigfree;    /* freed blocks ABOVE the bucket ceiling: an
                      * exact-fit LIFO (CAS push any hart, owner
                      * swaps out on alloc).  Headers stay intact --
@@ -133,6 +134,7 @@ static inline void fpr_pool_init(fpr_pool_t *p, void **buckets) {
   p->buckets = buckets;
   p->allocated = 0;
   p->bigfree = 0;
+  p->fixed_heap = 0;
 }
 void **fpr_bkt_take(void);   /* runtime.c: bucket-array recycler */
 void fpr_bkt_put(void **b);
@@ -561,7 +563,7 @@ void fpr_actor_sleep_us(uw us); /* parks the actor; routes through the scheduler
 int fpr_actor_cleanup_set(void (*fn)(void *), void *arg); /* one pending external request */
 void fpr_actor_cleanup_clear(void *arg);
 /* end the current actor with a logged reason (fail-stop; never returns);
- * the boot actor and routed process images panic instead */
+ * the boot actor panics; routed processes fail through the shared plane */
 __attribute__((noreturn)) void fpr_actor_fail(const char *why);
 int fpr_hal_sleep_us(uw us);      /* the host sleep: Sys.sleepUs's fallback (runtime.c weak) */
 extern uw fpr_mem_reqs, fpr_mem_waits, fpr_mem_direct, fpr_mem_frees, fpr_mem_denied,

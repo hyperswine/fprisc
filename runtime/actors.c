@@ -1952,7 +1952,13 @@ static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t d
 static V spawn_on_pid(uw hart, V f, uw pin, uw pid) {
   return spawn_on_pid_cap(hart, f, pin, pid, RING_CAP, 0);
 }
+static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t dyn,
+                              fpr_slab_t *grant, uw heap_bytes);
 static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t dyn) {
+  return spawn_on_pid_cap_heap(hart, f, pin, pid, cap, dyn, 0, 0);
+}
+static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t dyn,
+                              fpr_slab_t *grant, uw heap_bytes) {
   fpr_spawns++;
   if (hart >= fpr_live_harts) fpr_cpanic("spawnOn: no such hart (Sys.harts is the live count)");
   if (ISINT(f) || TID(f) != T_PAP) fpr_cpanic("spawn: argument must be a function");
@@ -1961,6 +1967,14 @@ static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t d
   char *stk = (char *)stack_block(&stk_sz);
   if (!a || !stk) fpr_cpanic("spawn: buddy has no free block");
   fpr_pool_init(&a->pool, fpr_bkt_take()); /* zeroed; teardown returns it */
+  if (grant) {
+    grant->next = 0; grant->owner = &a->pool;
+    grant->escaped = grant->holds = 0;
+    grant->hp = (char *)(grant + 1);
+    grant->end = grant->hp + heap_bytes;
+    a->pool.cur = grant;
+    a->pool.fixed_heap = heap_bytes;
+  }
   a->pool_override = 0;
   a->dp_n = 0;
   a->msg_slab = 0;
@@ -2043,6 +2057,36 @@ static V a_spawn_cap(V modev, V nv, V f) {
   if (fpr_sched) return fpr_sched->spawn(f);
   if (!ISINT(modev)) fpr_cpanic("spawnCap: mode must be an Int");
   return spawn_on_pid_cap(fpr_hart()->id, f, 0, (uw)-1, cap_of(nv), UNTAG(modev) != 0);
+}
+/* First admission slice: one pre-granted local HEAP, not a total actor
+ * budget. Infrastructure and messaging retain their existing allocation. */
+#define HEAP_ERR(name, text) \
+  static const struct { hdr_t h; uw len; char bytes[sizeof(text)]; } name##_s = \
+    {{T_STR, 0}, sizeof(text) - 1, text}; \
+  static const struct { hdr_t h; V value; } name = {{T_RESULT, 1}, (V)&name##_s}
+HEAP_ERR(heap_routed, "fixed heap: routed process spawn not supported yet");
+HEAP_ERR(heap_size, "fixed heap: bytes must be positive");
+HEAP_ERR(heap_entry, "fixed heap: entry must be a function");
+HEAP_ERR(heap_large, "fixed heap: grant too large");
+HEAP_ERR(heap_denied, "fixed heap: admission denied");
+#undef HEAP_ERR
+static V a_spawn_heap(V bytesv, V f) {
+  if (fpr_sched) return (V)&heap_routed;
+  if (!ISINT(bytesv) || UNTAG(bytesv) <= 0)
+    return (V)&heap_size;
+  if (ISINT(f) || TID(f) != T_PAP)
+    return (V)&heap_entry;
+  uw bytes = (uw)UNTAG(bytesv);
+  if (bytes > ((uw)-1 >> 2)) return (V)&heap_large;
+  /* Reserve the success envelope before the child can run. Refusal
+   * results are static, so reporting denial requires no allocation. */
+  hdr_t *r = (hdr_t *)fpr_alloc(8 + sizeof(V));
+  fpr_slab_t *grant = fpr_slab_new(bytes + sizeof(fpr_slab_t));
+  if (!grant) return (V)&heap_denied;
+  V actor = spawn_on_pid_cap_heap(fpr_hart()->id, f, 0, (uw)-1, RING_CAP, 0, grant, bytes);
+  r->tid = T_RESULT; r->var = 0;
+  *(V *)((char *)r + 8) = actor;
+  return (V)r;
 }
 static V a_spawn_cap_on(V hv, V modev, V nv, V f) {
   if (fpr_sched) return fpr_sched->spawn_at(hv, f);
@@ -2557,6 +2601,7 @@ static V g_fuel_preempts(V d) {
 
 /* ---- the discoverable-symbol table ------------------------------------ */
 FPR_FN(fpr_g_spawn, a_spawn, 1);
+FPR_FN(fpr_g_spawnHeap, a_spawn_heap, 2);
 FPR_FN(fpr_g_spawnCap, a_spawn_cap, 3);
 FPR_FN(fpr_g_spawnCapOn, a_spawn_cap_on, 4);
 FPR_FN(fpr_g_spawnOn, a_spawn_at, 2);
