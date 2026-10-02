@@ -32,6 +32,7 @@ enum {
   T_ACTOR = 9005, T_VEC = 9006, T_SSTR = 9007,
 };
 
+typedef struct { volatile uw v; } fpr_lock_t; /* the spinlock (actors.c fpr_lock); declared here for the hart's backlog lock */
 typedef struct { uint32_t tid, var; } __attribute__((aligned(8))) hdr_t;
 typedef struct { uint32_t tid, var; uw fn, arity, nargs, args[]; } __attribute__((aligned(8))) pap_t;
 typedef struct { uint32_t tid, var; uw fn, arity, nargs; } __attribute__((aligned(8))) pap0_t;
@@ -299,6 +300,8 @@ typedef struct {
                              * them (appended, owner-hart only) */
   uw copy_pid;              /* the process a deep copy in progress is for
                              * (runtime.c msg_copy_in; appended) */
+  fpr_lock_t bl_lock;       /* the backlog's lock: the owner for every
+                             * change, a thief for a take (appended) */
 #ifdef FPR_COST_PROBE
   uint64_t cost_alloc_requests, cost_alloc_bytes;
   uint64_t cost_copies, cost_copy_bytes, cost_msg_slabs;
@@ -460,7 +463,6 @@ static inline fpr_hart_t *fpr_hart(void) {
  * only when a word is 8 bytes, and on rv32 it lands field 0 on the header's
  * variant half. */
 #define FPR_FLD(p, i) (((V *)((char *)(p) + 8))[i])
-typedef struct { volatile uw v; } fpr_lock_t;
 #define FPR_BACKOFF_CAP 1024 /* max pause iterations between retries */
 static inline void fpr_backoff(uw *delay) {
   for (uw i = 0; i < *delay; i++) __asm__ volatile("nop");

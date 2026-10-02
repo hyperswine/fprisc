@@ -776,10 +776,14 @@ static void xpush(uw src, uw dst, acb_t *a) {
  *   Randomness here decides only WHO runs among the un-aged — it
  *   shapes expected fairness and touches no worst case.
  *
- * Work stealing is DETERMINISTIC: a backlog past DONATE_HI donates its
- * oldest entries (stamps preserved) into a global FIFO under one lock
- * (same discipline as arc_lock); an idle hart pops the head — oldest
- * donated first, no victim scanning, no randomness. */
+ * Work stealing is per-hart and the THIEF's act (2026-10-02; it was a
+ * global donation ring under one lock): an idle hart walks the other
+ * harts' backlogs in turn, from its neighbour on, and takes the oldest
+ * unpinned READY entry it finds (stamp preserved: the admission clock is
+ * machine-wide).  A backlog is its owner's list, under the owner's own
+ * lock, which the thief takes for the take; a backlog past DONATE_HI
+ * rings an idle hart's doorbell so a sleeper comes to look.  No global
+ * scheduling state remains but the admission clock. */
 
 #ifndef FPR_TAU
 #define FPR_TAU 64 /* aging threshold, in machine-wide admissions */
@@ -787,95 +791,84 @@ static void xpush(uw src, uw dst, acb_t *a) {
 #ifndef RQ_CAP
 #define RQ_CAP 4 /* run-queue admissions per refill batch */
 #endif
-#define DONATE_HI 4 /* backlog length that triggers donation */
-#define SCAP 64     /* global steal FIFO capacity */
+#define DONATE_HI 4 /* backlog length past which an idle hart is rung */
 
 static uw g_tau = FPR_TAU;
 static volatile uw g_adm;      /* machine-wide admission counter (the clock) */
 static volatile uw g_max_wait; /* max observed backlog wait, in admissions */
 static volatile uw g_steals;
 
-static fpr_lock_t steal_lock;
-static acb_t *steal_ring[SCAP];
-static uw steal_h, steal_t;
-
 static void backlog_add(fpr_hart_t *h, acb_t *a);
 
-static void donate(fpr_hart_t *h) {
-  /* publish our OLDEST UNPINNED entry; full ring = keep it local.
-   * Pinned actors (actor 0, spawnOn placements) never migrate -- the
-   * walk is bounded by the backlog, which donation itself keeps near
-   * DONATE_HI. */
-  /* only ST_READY entries may cross: a BLOCKED actor left in the
-   * backlog is ALSO the target of its waker's re-ship (wake CAS ->
-   * xr) -- donating it puts the same acb in two harts' backlogs, and
-   * two harts then resume the same context.  And never h->current:
-   * fuel preemption (and yield) enqueue the RUNNING actor before
-   * to_sched() saves its context, so until this hart's loop regains
-   * control that backlog entry points at an unsaved context -- a
-   * stealer would resume it mid-flight on another hart.  Every other
-   * READY entry is quiescent and stable: it isn't running, and wake
-   * only fires on BLOCKED actors. */
-  acb_t *prev = 0, *a = h->bl_head;
-  while (a && (a->pin || a == h->current ||
+/* a backlog past DONATE_HI: ring one idle hart so it comes to steal.
+ * The publish-then-check order (the entry is on the list under the lock
+ * before the idle flags are read) pairs with the thief's idle-then-scan
+ * order in hart_loop (Dekker): either the thief's scan sees the entry,
+ * or we see its idle flag and raise msip. */
+static void offer(fpr_hart_t *h) {
+  for (uw i = 0; i < fpr_live_harts; i++)
+    if (i != h->id && fpr_harts[i].idle) { hal_ipi_send(i); break; }
+}
+
+/* take the oldest unpinned READY entry of another hart's backlog.  Only
+ * ST_READY entries may cross: a BLOCKED actor left in the backlog is ALSO
+ * the target of its waker's re-ship (wake CAS -> xr) -- taking it puts the
+ * same acb in two harts' backlogs, and two harts then resume the same
+ * context.  And never the victim's current: fuel preemption (and yield)
+ * enqueue the RUNNING actor before to_sched() saves its context, so until
+ * the victim's loop regains control that entry points at an unsaved
+ * context.  Every other READY entry is quiescent and stable: it isn't
+ * running, and wake only fires on BLOCKED actors.  The victim's lock
+ * covers the walk and the unlink; the thief holds no lock of its own. */
+static acb_t *steal_from(fpr_hart_t *v) {
+  fpr_lock(&v->bl_lock);
+  acb_t *prev = 0, *a = v->bl_head;
+  while (a && (a->pin || a == v->current ||
                __atomic_load_n(&a->var, __ATOMIC_ACQUIRE) != ST_READY)) {
     prev = a;
     a = a->bl_next;
   }
-  if (!a) return;
-  int shipped = 0;
-  fpr_lock(&steal_lock);
-  if (steal_t - steal_h < SCAP) {
-    if (prev) prev->bl_next = a->bl_next;
-    else h->bl_head = a->bl_next;
-    if (h->bl_tail == a) h->bl_tail = prev;
-    h->bl_len--;
-    a->in_bl = 0;
-    steal_ring[steal_t % SCAP] = a;
-    steal_t++;
-    shipped = 1;
-  }
-  fpr_unlock(&steal_lock);
-  /* wake a sleeper: an idle hart is in (or headed for) wfi with no
-   * timer of its own -- without a doorbell the donated work sits in
-   * the ring until some unrelated send happens to IPI it.  The
-   * publish-then-check order pairs with the idle-then-recheck order
-   * in hart_loop (Dekker): either the sleeper's post-idle steal sees
-   * our entry, or we see its idle flag and raise msip. */
-  if (shipped)
-    for (uw i = 0; i < fpr_live_harts; i++)
-      if (i != h->id && fpr_harts[i].idle) { hal_ipi_send(i); break; }
-}
-
-static acb_t *steal(fpr_hart_t *h) {
-  acb_t *a = 0;
-  fpr_lock(&steal_lock);
-  if (steal_h != steal_t) {
-    a = steal_ring[steal_h % SCAP];
-    steal_h++;
-  }
-  fpr_unlock(&steal_lock);
   if (a) {
-    a->hart = h->id; /* migrates; stamp is preserved (global clock) */
-    g_steals++;
+    if (prev) prev->bl_next = a->bl_next;
+    else v->bl_head = a->bl_next;
+    if (v->bl_tail == a) v->bl_tail = prev;
+    v->bl_len--;
+    a->in_bl = 0;
   }
+  fpr_unlock(&v->bl_lock);
   return a;
+}
+/* an idle hart's round: the other harts in turn, the neighbour first */
+static acb_t *steal(fpr_hart_t *h) {
+  for (uw i = 1; i < fpr_live_harts; i++) {
+    fpr_hart_t *v = &fpr_harts[(h->id + i) % fpr_live_harts];
+    if (!__atomic_load_n(&v->bl_len, __ATOMIC_RELAXED)) continue;
+    acb_t *a = steal_from(v);
+    if (a) {
+      a->hart = h->id; /* migrates; stamp is preserved (global clock) */
+      g_steals++;
+      return a;
+    }
+  }
+  return 0;
 }
 
 static void backlog_add(fpr_hart_t *h, acb_t *a) {
   if (a->in_bl || a->in_rq) { TR(a, 13); return; } /* already listed: one entry is the invariant */
   a->in_bl = 1;
   TR(a, 4);
-  a->bl_next = 0;
   a->ready_at = a->prio ? 0 : g_adm; /* stamped in admission time; a
                                       * priority actor is the oldest by
                                       * construction, so aging picks it */
+  fpr_lock(&h->bl_lock);
+  a->bl_next = 0;
   if (!a->weight) a->weight = 1;
   if (h->bl_tail) h->bl_tail->bl_next = a;
   else h->bl_head = a;
   h->bl_tail = a;
-  h->bl_len++;
-  if (h->bl_len > DONATE_HI) donate(h);
+  uw len = ++h->bl_len;
+  fpr_unlock(&h->bl_lock);
+  if (len > DONATE_HI) offer(h);
 }
 
 /* one O(backlog) scan: unlink DEAD/BLOCKED, find the oldest aged actor,
@@ -892,6 +885,7 @@ static void backlog_cycle(fpr_hart_t *h) {
   fpr_cpanic("actors: backlog list is cyclic");
 }
 static acb_t *select_backlog(fpr_hart_t *h) {
+  fpr_lock(&h->bl_lock); /* a thief may be walking this list */
   acb_t *prev = 0, *a = h->bl_head;
   acb_t *aged = 0, *aged_prev = 0;
   acb_t *pick = 0, *pick_prev = 0;
@@ -929,6 +923,7 @@ static acb_t *select_backlog(fpr_hart_t *h) {
     h->bl_len--;
     sel->in_bl = 0;
   }
+  fpr_unlock(&h->bl_lock);
   return sel;
 }
 
@@ -1426,11 +1421,12 @@ static void hart_loop(fpr_hart_t *h) {
       if (__atomic_load_n(&n->var, __ATOMIC_ACQUIRE) == ST_DEAD) reap(n);
       continue;
     }
-    /* nothing local: deterministic steal — oldest donated work first.
-     * idle is raised BEFORE the ring check (fenced), pairing with
-     * donate()'s publish-before-idle-scan: whichever side loses the
-     * race still observes the other's write, so a donated actor is
-     * never left in the ring under a sleeping hart. */
+    /* nothing local: steal -- the other harts' backlogs in turn, the
+     * oldest ready entry of the first that has one.  idle is raised
+     * BEFORE the scan (fenced), pairing with offer()'s publish-before-
+     * idle-check: whichever side loses the race still observes the
+     * other's write, so work past DONATE_HI is never left under a
+     * sleeping hart. */
     h->idle = 1;
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
     {
