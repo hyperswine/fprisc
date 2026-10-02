@@ -1,0 +1,9 @@
+# a bound over a std pipeline: range builds len b - a + 1, map keeps the
+# length (declared sizes), sum folds it; total closes to 19·(len xs + 1) + 8
+# and main to a number plus ω(print)
+L = use "std/list".
+double : Int -> Int | work double <= 1 .
+double x = x * 2.
+total : (xs : List Int) -> Int | work total <= 19 * len xs + 27 .
+total xs = L.sum (L.map double xs).
+main = print (total (L.range 1 10)).

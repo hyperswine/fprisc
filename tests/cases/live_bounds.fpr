@@ -1,0 +1,12 @@
+# live memory: under the pool model everything a call allocates stays until
+# a boundary, so live is alloc -- here 24 bytes per cons cell per step --
+# unless the work runs inside Sys.arena, whose cells are torn down and only
+# the result copied out
+build : (n : Int | measure n) -> List Int -> List Int | live build <= 24 * n + 24 .
+build n acc | n <= 0 = acc.
+build n acc = build (n - 1) (n :: acc).
+scratch : Int -> Int .
+scratch n = Sys.arena (fn u -> lenGo (build n Nil) 0).
+lenGo : (xs : List Int | measure xs) -> Int -> Int .
+lenGo xs k = case xs of Nil -> k | _ :: r -> lenGo r (k + 1).
+main = print (scratch 5).

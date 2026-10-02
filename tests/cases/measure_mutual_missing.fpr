@@ -1,0 +1,7 @@
+# only one member of the cycle declares a measure
+ping : (n : Int | measure n) -> Int -> Int .
+ping n acc | n <= 0 = acc.
+ping n acc = pong (n - 1) (acc + 1).
+pong n acc | n <= 0 = acc.
+pong n acc = ping (n - 1) (acc + 2).
+main = print (ping 10 0).

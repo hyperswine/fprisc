@@ -1,0 +1,8 @@
+# pong hands ping the SAME n back: the measure does not decrease there
+ping : (n : Int | measure n) -> Int -> Int .
+ping n acc | n <= 0 = acc.
+ping n acc = pong (n - 1) (acc + 1).
+pong : (n : Int | measure n) -> Int -> Int .
+pong n acc | n <= 0 = acc.
+pong n acc = ping n (acc + 2).
+main = print (ping 10 0).

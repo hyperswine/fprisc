@@ -1,0 +1,5 @@
+# `x >= 0 and measure x`: the precondition stays a value contract AND
+# supplies the floor the measure needs (the base case tests == 0, not <= 0)
+fact : (x : Int | x >= 0 and measure x) -> (acc : Int | acc >= 1) -> Int .
+fact x acc = case x == 0 of True -> acc | False -> fact (x - 1) (acc * x).
+main = print (fact 5 1).

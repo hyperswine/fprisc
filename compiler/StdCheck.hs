@@ -169,7 +169,13 @@ data Safety = SafeFn | UnsafeFn deriving (Eq, Show)
 
 data Param = Param {pName :: String, pPre :: Itv} deriving (Eq, Show)
 
-data FnDef = FnDef {fName :: String, fParams :: [Param], fPost :: Itv, fSafety :: Safety, fBody :: Expr} deriving (Eq, Show)
+-- the frontend's verified termination measure (Safety.measureCheck): a
+-- linear form over the parameters that is >= 0 wherever a recursive call
+-- happens and drops by at least msStep per call.  The ONLY source of a
+-- call-count bound here: this pass does not guess measures of its own.
+data MeasureSpec = MeasureSpec {msCoeffs :: Map String Integer, msConst :: Integer, msStep :: Integer} deriving (Eq, Show)
+
+data FnDef = FnDef {fName :: String, fParams :: [Param], fPost :: Itv, fSafety :: Safety, fMeasure :: Maybe MeasureSpec, fBody :: Expr} deriving (Eq, Show)
 
 type Prog = [FnDef]
 
@@ -201,7 +207,7 @@ data Note
   | NDynPre Int String Int Itv Itv
   | NPostProven String Itv Itv -- fn, derived, declared
   | NPostDyn String Itv Itv
-  | NTermination String String Integer Integer -- fn, param, step k, lower bound
+  | NTermination String String Integer -- fn, rendered measure, step k
   | NFoldBound Int String -- site, description
   | NInduction String -- self-call used declared post as IH
   deriving (Eq, Show)
@@ -233,13 +239,13 @@ callsIn e = case e of
 
 -- self-calls of fn in tail position within e?  Returns the set of site
 -- ids of self-calls that ARE in tail position.
-tailSelfCalls :: String -> Expr -> Set Int
-tailSelfCalls me = go
+tailCallsTo :: Set String -> Expr -> Set Int
+tailCallsTo grp = go
   where
     go e = case e of
       If _ t f -> go t `S.union` go f
       Let _ _ b -> go b -- binding value is NOT tail
-      Call i f _ | f == me -> S.singleton i
+      Call i f _ | f `S.member` grp -> S.singleton i
       _ -> S.empty
 
 allSelfCalls :: String -> Expr -> [(Int, [Expr])]
@@ -260,26 +266,6 @@ reachable env from = go S.empty [from]
           Nothing -> go (S.insert x seen) xs
           Just fd -> go (S.insert x seen) (callees fd ++ xs)
 
--- The conservative measure shape, shared by the safety checker and the
--- WCET pass: some param with a finite lower-bound precondition decreases
--- syntactically (p - k, k >= 1) at every self-call.
-findMeasure :: FnDef -> Maybe (String, Integer, Integer) -- (param, step k, lower bound)
-findMeasure fd =
-  let selfs = allSelfCalls (fName fd) (fBody fd)
-      ps = fParams fd
-      decreasesAt idx (Param nm pre) =
-        let steps =
-              [ k | (_, as) <- selfs, length as == length ps, Bin Sub (Var x) (Lit k) <- [as !! idx], x == nm, k >= 1
-              ]
-         in if not (null selfs) && length steps == length selfs
-              then case pre of
-                Itv (Fin lo) _ -> Just (nm, minimum steps, lo)
-                _ -> Nothing
-              else Nothing
-   in case mapMaybe (\(i, p) -> decreasesAt i p) (zip [0 ..] ps) of
-        (m : _) -> Just m
-        [] -> Nothing
-
 checkSafety :: Map String FnDef -> FnDef -> Either CompileError [Note]
 checkSafety env fd
   | fSafety fd == UnsafeFn = Right [] -- unsafe: no termination obligation
@@ -289,24 +275,41 @@ checkSafety env fd
       case [g | g <- S.toList reach, Just gd <- [M.lookup g env], fSafety gd == UnsafeFn] of
         (g : _) -> Left (ESafeCallsUnsafe (fName fd) g)
         [] -> Right ()
-      -- 2. mutual recursion (cycle through another function)
-      let mutual = [g | g <- S.toList reach, fName fd `S.member` reachable env g]
+      -- 2. mutual recursion (cycle through another function): accepted
+      -- only when every member carries a frontend-verified measure, which
+      -- Safety.measureCheck verified ACROSS the group
+      let mutual = mutualGroup env fd
       case mutual of
-        (_ : _) -> Left (EMutualRec (fName fd : mutual))
-        [] -> Right ()
-      -- 3. self-recursion: measure + tail
-      let selfs = allSelfCalls (fName fd) (fBody fd)
-      if null selfs
+        (_ : _) | any (\g -> maybe True (isNothingM . fMeasure) (M.lookup g env)) mutual -> Left (EMutualRec (fName fd : mutual))
+        _ -> Right ()
+      -- 3. recursion: the group's calls must be in tail position (the cost
+      -- model is `calls x per-call`) and this function needs its measure
+      let grp = S.fromList (fName fd : mutual)
+          groupCalls = [(i, as) | (i, g, as) <- callsIn (fBody fd), g `S.member` grp]
+      if null groupCalls
         then Right []
         else do
-          let tails = tailSelfCalls (fName fd) (fBody fd)
-          case [i | (i, _) <- selfs, not (i `S.member` tails)] of
+          let tails = tailCallsTo grp (fBody fd)
+          case [i | (i, _) <- groupCalls, not (i `S.member` tails)] of
             (i : _) -> Left (ENotTail (fName fd) i)
             [] -> Right ()
-          -- find a param that decreases syntactically at EVERY self-call
-          case findMeasure fd of
-            Just (nm, k, lo) -> Right [NTermination (fName fd) nm k lo]
-            Nothing -> Left (ENoMeasure (fName fd) "no parameter with a finite lower-bound precondition decreases syntactically (p - k, k>=1) at every self-call")
+          case fMeasure fd of
+            Just ms -> Right [NTermination (fName fd) (renderMeasure ms) (msStep ms)]
+            Nothing -> Left (ENoMeasure (fName fd) "no verified `measure` on a parameter -- write `(n : Int | measure n)` (or `(n : Int | n >= 0 and measure n)` to keep the precondition) and the compiler verifies the descent")
+  where
+    isNothingM = maybe True (const False)
+
+-- the other members of this function's recursive cycle (empty if none)
+mutualGroup :: Map String FnDef -> FnDef -> [String]
+mutualGroup env fd =
+  let reach = S.delete (fName fd) (reachable env (fName fd))
+   in [g | g <- S.toList reach, fName fd `S.member` reachable env g]
+
+renderMeasure :: MeasureSpec -> String
+renderMeasure (MeasureSpec cs k0 _) =
+  let terms = [(if c == 1 then "" else show c ++ "*") ++ x | (x, c) <- M.toList cs, c /= 0]
+      ks = [show k0 | k0 /= 0 || null terms]
+   in intercalate " + " (terms ++ ks)
 
 --------------------------------------------------------------------------
 -- 5. Abstract interpretation: discharge pre/post, insert dynamic checks
@@ -564,33 +567,46 @@ wcetAll env = M.fromList [(nm, wcetFn S.empty fd) | (nm, fd) <- M.toList env]
           CO (fName fd) -- uncertified recursion: the whole cost is opaque
       | otherwise =
           let me = fName fd
+              mutual = mutualGroup env fd
+              grp = S.fromList (me : mutual)
               vis' = S.insert me vis
               sub0 = M.fromList [(pName p, CP (pName p)) | p <- fParams fd]
-              body = costE vis' me sub0 (fBody fd)
-           in case (fSafety fd, findMeasure fd) of
-                (SafeFn, Just (nm, k, lo)) ->
-                  let calls = CAdd [CDivC (CAdd [CP nm, CN (negate lo)]) k, CN 1]
-                   in simp (CMul [calls, body])
+              body = costE vis' grp sub0 (fBody fd)
+              -- a mutual partner's per-call body, in its own parameters,
+              -- which we cannot name from here: opaque, like Fold's callee
+              partnerBody g = case M.lookup g env of
+                Just gd -> opaqueParams (costE (S.insert g vis') grp (M.fromList [(pName p, CP (pName p)) | p <- fParams gd]) (fBody gd))
+                Nothing -> CO g
+              perCall = if null mutual then body else CMax (body : map partnerBody mutual)
+              recursive = not (null [() | (_, g, _) <- callsIn (fBody fd), g `S.member` grp])
+           in case (fSafety fd, fMeasure fd) of
+                (SafeFn, Just ms) | recursive ->
+                  let calls = CAdd [CDivC (measureC ms) (msStep ms), CN 1]
+                   in simp (CMul [calls, perCall])
                 _ -> simp body
 
-    costE vis me sub e = case e of
+    -- the measure as a cost term over this function's parameters
+    measureC (MeasureSpec cs k0 _) = CAdd ([CMul [CN c, CP x] | (x, c) <- M.toList cs, c /= 0] ++ [CN k0])
+
+    costE vis grp sub e = case e of
       Lit _ -> CN 0
       Var _ -> CN 0
-      Bin _ a b -> CAdd [CN 1, costE vis me sub a, costE vis me sub b]
-      If (Cmp _ a b) t f -> CAdd [CN 1, costE vis me sub a, costE vis me sub b, CMax [costE vis me sub t, costE vis me sub f]]
+      Bin _ a b -> CAdd [CN 1, costE vis grp sub a, costE vis grp sub b]
+      If (Cmp _ a b) t f -> CAdd [CN 1, costE vis grp sub a, costE vis grp sub b, CMax [costE vis grp sub t, costE vis grp sub f]]
       Let x a b ->
         let xa = fromMaybe (CO "?") (symOfE sub a)
-         in CAdd [costE vis me sub a, costE vis me (M.insert x xa sub) b]
+         in CAdd [costE vis grp sub a, costE vis grp (M.insert x xa sub) b]
       Call _ g as
-        | g == me -> CAdd (CN 1 : map (costE vis me sub) as)
-        -- self-call: overhead only; the call-count factor multiplies in
-        | otherwise -> CAdd (CN 1 : map (costE vis me sub) as ++ [calleeCost vis sub g as])
+        | g `S.member` grp -> CAdd (CN 1 : map (costE vis grp sub) as)
+        -- a call within the recursive group: overhead only; the
+        -- call-count factor multiplies in
+        | otherwise -> CAdd (CN 1 : map (costE vis grp sub) as ++ [calleeCost vis sub g as])
       Fold _ lo hi g acc ->
         let iters = case (symOfE sub lo, symOfE sub hi) of
               (Just l, Just h) -> CAdd [h, CMul [CN (-1), l], CN 1]
               _ -> CO "?range"
             per = CAdd [CN 1, opaqueParams (calleeW vis g)]
-         in CAdd [costE vis me sub lo, costE vis me sub hi, costE vis me sub acc, CMul [iters, per]]
+         in CAdd [costE vis grp sub lo, costE vis grp sub hi, costE vis grp sub acc, CMul [iters, per]]
 
     calleeW vis g = case M.lookup g env of
       Nothing -> CN 0
@@ -778,7 +794,7 @@ report prog c = unlines (concatMap perFn prog)
             NDynPre _ g _ _ _ -> ownsCall g nt
             NPostProven f _ _ -> f == nm
             NPostDyn f _ _ -> f == nm
-            NTermination f _ _ _ -> f == nm
+            NTermination f _ _ -> f == nm
             NInduction f -> f == nm
             NFoldBound site _ -> siteIn site
           ownsCall _ nt' = case nt' of
@@ -787,7 +803,7 @@ report prog c = unlines (concatMap perFn prog)
             _ -> False
           siteIn site = site `elem` [i | (i, _, _) <- callsIn (fBody fd)]
           fmt nt = case nt of
-            NTermination _ p k lo -> "  termination: measure " ++ p ++ " decreases by >= " ++ show k ++ " per self-call, precondition lower bound " ++ show lo ++ "  ==>  call count <= (" ++ p ++ " - " ++ show lo ++ ")/" ++ show k ++ " + 1   (static WCET shape)"
+            NTermination _ m k -> "  termination: measure " ++ m ++ " decreases by >= " ++ show k ++ " per call (verified by the frontend), floor 0  ==>  call count <= (" ++ m ++ ")/" ++ show k ++ " + 1   (static WCET shape)"
             NInduction _ -> "  self-call result taken from declared post (induction hypothesis)"
             NStaticPre site g i got need -> "  pre  @site " ++ show site ++ " " ++ g ++ "#arg" ++ show i ++ ": derived " ++ show got ++ " <= required " ++ show need ++ "   STATIC, no runtime check"
             NDynPre site g i got need -> "  pre  @site " ++ show site ++ " " ++ g ++ "#arg" ++ show i ++ ": derived " ++ show got ++ " NOT <= " ++ show need ++ "   ==> DYNAMIC check inserted"
@@ -801,7 +817,7 @@ showErr = \case
   ENotTail f site -> "error[" ++ f ++ "]: self-call at site " ++ show site ++ " is NOT in tail position -- pending work per frame means the cost model is not `calls x per-call`; mark unsafe or rewrite with an accumulator / recursion scheme"
   ENoMeasure f why -> "error[" ++ f ++ "]: cannot certify termination: " ++ why ++ " -- mark unsafe or rewrite as a builtin recursion scheme (Fold)"
   ESafeCallsUnsafe f g -> "error[" ++ f ++ "]: declared safe but (transitively) calls UNSAFE `" ++ g ++ "` -- unsafety is infectious upward; mark " ++ f ++ " unsafe"
-  EMutualRec fs -> "error: mutual recursion among safe functions " ++ show fs ++ " -- conservatively rejected (measure would need to be checked across the group)"
+  EMutualRec fs -> "error: mutual recursion among safe functions " ++ show fs ++ " -- every function in the cycle needs a verified `measure` declaration"
   EUnknownFn f g -> "error[" ++ f ++ "]: unknown function " ++ g
   EArity site g w g' -> "error: call at site " ++ show site ++ " to " ++ g ++ ": expected " ++ show w ++ " args, got " ++ show g'
 
@@ -813,7 +829,7 @@ showErr = \case
 --     non-tail self-call, and no lower-bound precondition.
 factNaiveBad :: Prog
 factNaiveBad =
-  [ FnDef "fact" [Param "x" top] (atLeast 1) SafeFn $
+  [ FnDef "fact" [Param "x" top] (atLeast 1) SafeFn (Just (MeasureSpec (M.singleton "x" 1) 0 1)) $
       If
         (Cmp CEq (v "x") (n 0))
         (n 1)
@@ -823,9 +839,9 @@ factNaiveBad =
 -- (b) REJECTED: safe function calling an unsafe one.
 safeCallsUnsafe :: Prog
 safeCallsUnsafe =
-  [ FnDef "danger" [Param "x" top] top UnsafeFn $
+  [ FnDef "danger" [Param "x" top] top UnsafeFn Nothing $
       If (Cmp CEq (v "x") (n 0)) (n 0) (Call 1 "danger" [v "x" ./. n 2]),
-    FnDef "wrapper" [Param "x" top] top SafeFn $
+    FnDef "wrapper" [Param "x" top] top SafeFn Nothing $
       Call 2 "danger" [v "x"]
   ]
 
@@ -842,6 +858,7 @@ mainProg =
       [Param "x" (atLeast 0), Param "acc" (atLeast 1)]
       (atLeast 1)
       SafeFn
+      (Just (MeasureSpec (M.singleton "x" 1) 0 1))
       $ If
         (Cmp CEq (v "x") (n 0))
         (v "acc")
@@ -853,49 +870,50 @@ mainProg =
       [Param "i" (atLeast 1), Param "acc" (atLeast 1)]
       (atLeast 1)
       SafeFn
+      Nothing
       $ v "i" .*. v "acc",
-    FnDef "fact_fold" [Param "x" (atLeast 0)] (atLeast 1) SafeFn $
+    FnDef "fact_fold" [Param "x" (atLeast 0)] (atLeast 1) SafeFn Nothing $
       Fold 2 (n 1) (v "x") "mul_step" (n 1),
     -- a postcondition the intervals CANNOT prove: claims result >= 10
     -- but the body only supports >= 5.  Compiles -- with a dynamic
     -- post check inserted.  (mystery 20 passes, mystery 3 aborts.)
-    FnDef "mystery" [Param "x" (atLeast 0)] (atLeast 10) SafeFn $
+    FnDef "mystery" [Param "x" (atLeast 0)] (atLeast 10) SafeFn Nothing $
       v "x" .+. n 5,
     -- caller with an UNCONSTRAINED parameter calling fact_acc:
     -- x's interval (top) is not <= [0,+inf), so a dynamic
     -- precondition check is inserted at the call site.
-    FnDef "use_fact" [Param "x" top] (atLeast 1) SafeFn $
+    FnDef "use_fact" [Param "x" top] (atLeast 1) SafeFn Nothing $
       Call 3 "fact_acc" [v "x", n 1],
     -- caller that ESTABLISHES the precondition by branching first:
     -- the else-branch refines x to [0,+inf) and the same call is
     -- discharged statically.  Path sensitivity doing the work.
-    FnDef "use_fact_guarded" [Param "x" top] (atLeast 1) SafeFn $
+    FnDef "use_fact_guarded" [Param "x" top] (atLeast 1) SafeFn Nothing $
       If
         (Cmp CLt (v "x") (n 0))
         (n 1)
         (Call 4 "fact_acc" [v "x", n 1]),
     -- constraint propagation through a let: x >= 1 gives y = x + 1 >= 2,
     -- which satisfies fact_acc's acc-precondition (>= 1) statically.
-    FnDef "propagate" [Param "x" (atLeast 1)] (atLeast 1) SafeFn $
+    FnDef "propagate" [Param "x" (atLeast 1)] (atLeast 1) SafeFn Nothing $
       Let "y" (v "x" .+. n 1) $
         Call 5 "fact_acc" [v "x", v "y"],
     -- log2-by-halving: genuinely bounded, but n/2 is not the p-k shape
     -- the conservative checker accepts, so it MUST be unsafe.  Its
     -- postcondition is still PROVEN statically -- unsafe only forfeits
     -- the termination/WCET claim, not the pre/post machinery.
-    FnDef "log_half" [Param "x" (atLeast 1)] (atLeast 0) UnsafeFn $
+    FnDef "log_half" [Param "x" (atLeast 1)] (atLeast 0) UnsafeFn Nothing $
       If
         (Cmp CLe (v "x") (n 1))
         (n 0)
         (n 1 .+. Call 6 "log_half" [v "x" ./. n 2]),
     -- unsafe caller of an unsafe function: fine, unsafety only needs
     -- to be acknowledged, not forbidden.
-    FnDef "use_log" [Param "x" (atLeast 1)] (atLeast 0) UnsafeFn $
+    FnDef "use_log" [Param "x" (atLeast 1)] (atLeast 0) UnsafeFn Nothing $
       Call 7 "log_half" [v "x"],
     -- the naive factorial again, this time HONESTLY marked unsafe:
     -- compiles; fact_unsafe (-1) demonstrates what unsafe permits
     -- (divergence -- caught here by fuel).
-    FnDef "fact_unsafe" [Param "x" top] (atLeast 1) UnsafeFn $
+    FnDef "fact_unsafe" [Param "x" top] (atLeast 1) UnsafeFn Nothing $
       If
         (Cmp CEq (v "x") (n 0))
         (n 1)
@@ -908,8 +926,9 @@ mainProg =
       [Param "i" (atLeast 1), Param "acc" (atLeast 0)]
       (atLeast 0)
       UnsafeFn
+      Nothing
       $ v "acc" .+. Call 9 "log_half" [v "i"],
-    FnDef "sum_logs" [Param "x" (atLeast 1)] (atLeast 0) UnsafeFn $
+    FnDef "sum_logs" [Param "x" (atLeast 1)] (atLeast 0) UnsafeFn Nothing $
       Fold 10 (n 1) (v "x") "log_step" (n 0)
   ]
 

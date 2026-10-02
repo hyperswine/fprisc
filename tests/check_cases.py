@@ -65,13 +65,33 @@ refused('sig_two_vars.fpr', 'the declared type of swapish is more general')
 accepted('sig_ok.fpr')
 # a signature the grammar cannot read is a parse error at the offending token;
 # it used to backtrack to a dropped annotation and the body was inferred alone
-refused('sig_malformed.fpr', "unexpected '|'")
+refused('sig_malformed.fpr', 'a signature bound is `work f <= ...`')
 refused('sig_malformed_arrow.fpr', "unexpected '-'")
 # record types are signature grammar, checked like any other type
 accepted('sig_record_ok.fpr')
 refused('sig_record_missing_field.fpr', 'closed record has no field .b')
 refused('sig_record_wrong_type.fpr', 'cannot unify String with Int')
 print('Signatures: `a -> a` over a body that adds 1, and `a -> b` over a body that returns its argument, are refused naming both types; a genuinely generic signature and one NARROWER than the body compile; a malformed signature is a parse error, not a dropped one; record types with a shared row variable check, a missing field and a wrong field type are refused: PASS')
+
+# measures: ONE language for the compile and the std proof pass.  The safe/unsafe
+# line is enforced by `fpr build` (the builtin profile is the unchecked tier).
+def built(name, *needles, ok=True):
+    p = subprocess.run(['./fpr', 'build', str(CASES / name), '-o', str(Path(TMP.name) / 'm.out')],
+                       capture_output=True, text=True, timeout=300)
+    out = p.stdout + p.stderr
+    assert (p.returncode == 0) == ok, f'{name}: expected {"accepted" if ok else "refused"}:\n{out}'
+    for n in needles:
+        assert n in out, f'{name}: expected {n!r} in\n{out}'
+built('measure_mutual_ok.fpr')
+built('measure_with_pre.fpr')
+built('measure_mutual_bad.fpr', 'the measure does not decrease at the call to ping', ok=False)
+built('measure_mutual_missing.fpr', 'MUTUAL with pong, which declares no measure', ok=False)
+for name in ['measure_mutual_ok.fpr', 'measure_with_pre.fpr']:
+    p = subprocess.run(['./fpr', 'stdcheck', str(CASES / name)], capture_output=True, text=True, timeout=120)
+    assert p.returncode == 0 and 'verified by the frontend' in p.stdout and 'wcet: (' in p.stdout, f'{name}: {p.stdout}{p.stderr}'
+p = subprocess.run(['./fpr', 'stdcheck', str(ROOT / 'tests' / 'measure.fpr')], capture_output=True, text=True, timeout=120)
+assert p.returncode == 0 and 'measure -1*i + lim decreases' in p.stdout, p.stdout
+print('Measures: a measure verified across a mutual cycle, and `x >= 0 and measure x` keeping its precondition, compile; a non-decreasing mutual call and a cycle member without a measure are refused; stdcheck takes the SAME verified measures (tests/measure.fpr: fact, sumTo with measure lim - i) and prints their call-count bound: PASS')
 
 # operator resolution: an ambiguous site is refused, never decided by name order
 refused('op_ambiguous.fpr', '(+) is ambiguous for V2', 'Alpha.+, Zulu.+')

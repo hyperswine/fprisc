@@ -1,0 +1,6 @@
+# a bound with a NAMED coefficient: the program says the shape, a target
+# manifest says the number (coefficient omega N); without one it is unproved
+count : (n : Int | measure n) -> Int -> Int | work count <= omega * n + 5 .
+count n acc | n <= 0 = acc.
+count n acc = count (n - 1) (acc + 1).
+main = print (count 10 0).

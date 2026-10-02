@@ -1,0 +1,9 @@
+# a measure verified ACROSS a mutually recursive group: every member
+# declares one, and each call lowers the callee's measure below the caller's
+ping : (n : Int | measure n) -> Int -> Int .
+ping n acc | n <= 0 = acc.
+ping n acc = pong (n - 1) (acc + 1).
+pong : (n : Int | measure n) -> Int -> Int .
+pong n acc | n <= 0 = acc.
+pong n acc = ping (n - 1) (acc + 2).
+main = print (ping 10 0).

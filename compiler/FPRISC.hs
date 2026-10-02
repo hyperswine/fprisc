@@ -1147,13 +1147,29 @@ signature = do
     fullSig n = do
       mu <- optional (try (lexeme (string "unsafe" <* notFollowedBy (satisfy identChar))))
       parts <- sigPart `sepBy1` symbol "->"
+      -- resource bounds after the result type (docs/2026-10-02-RESOURCE-BOUNDS.md):
+      --   f : (a : Int) -> Int | work f <= 12 * a + 40 | alloc f <= 16 * a .
+      --   map : (a -> b) -> (xs : List a) -> List b | size map <= len xs .
+      -- carried as reserved entries ("$work" | "$alloc" | "$size", rhs)
+      -- after the per-param list, like the $unsafe marker.  work and alloc
+      -- are CHECKED against the derived cost; size (the result's length)
+      -- is an ASSUMPTION callers substitute, reported as such.
+      bounds <- many (pipeSep *> (expr >>= bound))
       dotTerm
       let mark = case mu of Just _ -> [Just ("$unsafe", SVar "$unsafe")]; Nothing -> []
       case parts of
         [] -> fail "empty signature"
         -- the $unsafe marker is APPENDED so the per-param precondition
         -- list stays position-aligned (consumers zip with params)
-        ps -> pure (TSig n (map fst (init ps), fst (last ps)) (map snd (init ps) ++ mark))
+        ps -> pure (TSig n (map fst (init ps), fst (last ps)) (map snd (init ps) ++ mark ++ bounds))
+      where
+        bound e = case e of
+          SBin "<=" lhs rhs | Just k <- kindOf lhs -> pure (Just ('$' : k, rhs))
+          _ -> fail ("a signature bound is `work " ++ n ++ " <= ...`, `alloc " ++ n ++ " <= ...`, `live " ++ n ++ " <= ...` or `size " ++ n ++ " <= ...` (an upper bound in the parameters)")
+        kindOf = \case
+          SVar k | k `elem` ["work", "alloc", "live", "size"] -> Just k
+          SApp (SVar k) (SVar f) | f == n, k `elem` ["work", "alloc", "live", "size"] -> Just k
+          _ -> Nothing
     -- a signature part is a type, optionally precondition-annotated:
     --   (b : Int | b != 0)   -- name the param, constrain its value
     sigPart =

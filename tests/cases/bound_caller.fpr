@@ -1,0 +1,7 @@
+# a caller composes on the DECLARED bound of its callee (the interface),
+# not on the callee's derived cost: inc is 1 op but promises 10
+inc : Int -> Int | work inc <= 10 .
+inc n = n + 1.
+g : Int -> Int | work g <= 12 .
+g n = inc n + 1.
+main = print (g 1).

@@ -132,13 +132,13 @@ trim s = trimRight (trimLeft s).
 trimLeft : String -> String .
 trimLeft s = dropLeft (leadGo s 0 (strlen s)) s.
 # the position of the first non-space byte (n when there is none) = how many lead
-leadGo : unsafe String -> Int -> Int -> Int .
+leadGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int .
 leadGo s i n = case i >= n of True -> i | False -> (case isSpace (charAt s i) of True -> leadGo s (i + 1) n | False -> i).
 
 trimRight : String -> String .
 trimRight s = left (trailGo s (strlen s - 1)) s.
 # one past the last non-space byte = how many to keep
-trailGo : unsafe String -> Int -> Int .
+trailGo : String -> (i : Int | measure i) -> Int .
 trailGo s i = case i < 0 of True -> 0 | False -> (case isSpace (charAt s i) of True -> trailGo s (i - 1) | False -> i + 1).
 
 # ---- rewriting -----------------------------------------------------------------------
@@ -148,7 +148,7 @@ replace old new s = case strlen old == 0 of True -> s | False -> strJoin new (sp
 
 repeat : Int -> String -> String .
 repeat n s = strJoin "" (repeatGo n s Nil).
-repeatGo : unsafe Int -> String -> List String -> List String .
+repeatGo : (n : Int | measure n) -> String -> List String -> List String .
 repeatGo n s acc = case n <= 0 of True -> acc | False -> repeatGo (n - 1) s (s :: acc).
 
 # to a width, with a pad byte given as a one-byte String: String.padLeft 5 "0" "42"
@@ -171,17 +171,17 @@ toLower s = mapCodes (fn c -> case c >= 65 and c <= 90 of True -> c + 32 | False
 # ---- bytes ---------------------------------------------------------------------------
 codes : String -> List Int .
 codes s = codesGo s (strlen s - 1) Nil.
-codesGo : unsafe String -> Int -> List Int -> List Int .
+codesGo : String -> (i : Int | measure i) -> List Int -> List Int .
 codesGo s i acc = case i < 0 of True -> acc | False -> codesGo s (i - 1) (charAt s i :: acc).
 
 fromCodes : List Int -> String .
 fromCodes cs = strJoin "" (chrs cs Nil).
-chrs : unsafe List Int -> List String -> List String .
+chrs : (cs : List Int | measure cs) -> List String -> List String .
 chrs cs acc = case cs of Nil -> rev acc Nil | c :: r -> chrs r (chr c :: acc).
 
 mapCodes : (Int -> Int) -> String -> String .
 mapCodes f s = strJoin "" (mapGo f s (strlen s - 1) Nil).
-mapGo : unsafe (Int -> Int) -> String -> Int -> List String -> List String .
+mapGo : (Int -> Int) -> String -> (i : Int | measure i) -> List String -> List String .
 mapGo f s i acc = case i < 0 of True -> acc | False -> mapGo f s (i - 1) (chr (f (charAt s i)) :: acc).
 
 isDigit : Int -> Bool .

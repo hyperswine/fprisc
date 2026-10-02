@@ -19,7 +19,9 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import FPRISC
 import Infer (Scheme (..), Type (..), builtinEnv, builtinLinShapes, inferTops)
-import Safety (safetyCheck, trustedLibraryPaths)
+import Safety (measureCheck, safetyCheck, trustedLibraryPaths)
+import qualified Cost
+import Manifest (Manifest (..), readManifest, renderNs)
 import System.Environment (lookupEnv)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
 import Modules (LoadResult (..), ModExport (..), hashAST, loadProgram)
@@ -60,7 +62,9 @@ data Opts = Opts
     oNoSafety :: Bool,
     oFiles :: [FilePath],
     oForeign :: [FilePath], -- --foreign=FILE: the SYSTEM's primitive declarations (signatures only)
-    oNoInline :: Bool -- --no-inline / FPR_NO_INLINE=1: base code keeps every call (debugging, WCET comparison)
+    oNoInline :: Bool, -- --no-inline / FPR_NO_INLINE=1: base code keeps every call (debugging, WCET comparison)
+    oCost :: Bool, -- --cost: print every root function's work/alloc equations (Cost.hs), then continue
+    oManifest :: Maybe FilePath -- --manifest=FILE: judge the root functions against a target manifest (Manifest.hs)
   }
 
 -- a module reached by two spellings (`ep` and `../programs/mods/ep`, a pin
@@ -75,7 +79,7 @@ dedupeUnits = go S.empty
       | otherwise = (h, u) : go (S.insert h seen) r
 
 parseArgs :: [String] -> Opts
-parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothing Nothing False False False [] False False False False False False False False False False Nothing False [] [] False)
+parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothing Nothing False False False [] False False False False False False False False False False Nothing False [] [] False False Nothing)
   where
     -- profile aliases (Target.hs): the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
@@ -112,6 +116,7 @@ parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothin
     step o "--profile=qos-native" = step o "--system=qos-native"
     step o "--profile=qos-portable" = step o "--system=qos-portable"
     step o "--arc" = o {oArc = True}
+    step o "--cost" = o {oCost = True}
     step o "--lib" = o {oLib = True}
     step o "--raw" = o {oRaw = True}
     step o "--float-abi=hard" = o {oHardFloat = True}
@@ -132,6 +137,7 @@ parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothin
     step o "--rvv" = o {oRvv = True}
     step o a
       | "--prelude=" `isPrefixOf` a = o {oPrelude = Just (drop (length "--prelude=") a)}
+      | "--manifest=" `isPrefixOf` a = o {oManifest = Just (drop (length "--manifest=") a), oCost = True}
       | "--foreign=" `isPrefixOf` a = o {oForeign = oForeign o ++ [drop (length "--foreign=") a]}
       | "--host=" `isPrefixOf` a = let h = drop (length "--host=") a in o {oHost = if h == "unix" then Nothing else Just h}
       | "--export=" `isPrefixOf` a = o {oExports = oExports o ++ exportSpecs (drop (length "--export=") a)}
@@ -552,7 +558,10 @@ compileMain = do
         let trustedHashes = S.fromList [drop 1 h | (n, _) <- trustedAnchors, let h = dropWhile (/= '@') n, not (null h)]
             trustedTops = preludeE ++ concat [expandU ts | (h, ts) <- units0L, S.member h trustedHashes]
             preludeNames = S.fromList [n | TBind n _ _ _ <- trustedTops]
-            (serrs, ssug) = safetyCheck preludeNames tops' notes
+            -- on the tops BEFORE precondition insertion (as Sol does): the
+            -- inserted guards wrap call arguments, and a measure must read
+            -- the user's arguments to verify the descent
+            (serrs, ssug) = safetyCheck preludeNames tops notes
         unless (null serrs) $ do
           putStrLn "=== SAFETY: the safe/unsafe line ==="
           mapM_ (putStrLn . ("  * " ++)) (anchored serrs)
@@ -622,6 +631,101 @@ compileMain = do
         putStrLn "=== LINEARITY: ERRORS ==="
         mapM_ (putStrLn . ("  * " ++)) (anchored lerrs)
         exitFailure
+      -- ---- resource equations (docs/2026-10-02-RESOURCE-BOUNDS.md) ----
+      -- The pass runs when a signature declares a bound (`| work f <= ...`),
+      -- or on --cost for the report.  A declared bound is checked against
+      -- the derived equation: OVER and UNPROVED are compile errors.
+      let declaredAny = or [True | TSig _ _ pres <- finalTops, Just (k, _) <- pres, k `elem` ["$work", "$alloc", "$live"]]
+      manifest <- case oManifest opts of
+        Nothing -> pure Nothing
+        Just path -> do
+          r <- readManifest path
+          case r of
+            Left err -> putStrLn ("=== MANIFEST: ERROR ===\n  * " ++ err) >> exitFailure
+            Right m -> pure (Just m)
+      when (oCost opts || declaredAny) $ do
+        let costProg = M.map (fmap eraseCast) (fst (runState (compileTop finalTops >>= liftFix) (DEnv 0 consAll shapes [])))
+            (measTable, _) = measureCheck tops
+            surface = M.fromList [(n, [case p of PVar v -> v; PSig v _ -> v; _ -> "arg" ++ show i | (i, p) <- zip [1 :: Int ..] ps]) | TBind n ps _ _ <- firstClauses finalTops]
+            firstClauses ts = M.elems (M.fromListWith (\_ old -> old) [(n, t) | t@(TBind n _ _ _) <- ts])
+            coefs = maybe M.empty mCoefs manifest
+            prims = maybe M.empty mPrims manifest
+            (declared0, declErrs) = Cost.declaredBounds (M.keysSet coefs) surface costProg finalTops
+            -- the manifest binds the coefficients; without one a bound that
+            -- uses them stays symbolic and cannot be judged
+            declared = M.map (\d -> d {Cost.dWork = Cost.substCoefs coefs <$> Cost.dWork d, Cost.dAlloc = Cost.substCoefs coefs <$> Cost.dAlloc d, Cost.dLive = Cost.substCoefs coefs <$> Cost.dLive d}) declared0
+            eqs = Cost.costProgram measTable declared costProg
+            rootNames = [n | n <- S.toList rootBinds, M.member n costProg]
+            priceW g = fst <$> M.lookup g prims
+            priceA g = snd <$> M.lookup g prims
+            -- checked and printed in the function's surface parameter names
+            verdicts =
+              [ (n, kind, derivedC', declC, verdict)
+                | (n, d) <- M.toList declared,
+                  Just (Cost.CostEq w a l _, _) <- [M.lookup n eqs],
+                  (kind, derivedC, Just declC, price) <- [("work", w, Cost.dWork d, priceW), ("alloc", a, Cost.dAlloc d, priceA), ("live", l, Cost.dLive d, priceA)],
+                  let derivedC' = Cost.resolvePrims price derivedC
+                      verdict = case Cost.coefsIn declC of
+                        [] -> Cost.checkBoundsWith (renamerFor n) derivedC' declC
+                        ks -> Cost.Unproved ["coefficient " ++ k ++ " (bind it in a manifest: --manifest=FILE)" | k <- ks]
+              ]
+            renamerFor n =
+              let ren = M.fromList (zip (fst (M.findWithDefault ([], CErr "") n costProg)) (M.findWithDefault [] n surface))
+                  r p = M.findWithDefault p p ren
+                  rn c = case c of
+                    Cost.CP p -> Cost.CP (r p)
+                    Cost.CLen p -> Cost.CLen (r p)
+                    Cost.CW p -> Cost.CW (r p)
+                    Cost.CA p -> Cost.CA (r p)
+                    _ -> c
+               in rn
+            failed = [v | v@(_, _, _, _, verdict) <- verdicts, verdict /= Cost.Proven]
+            renderV (n, kind, d, c, v) = n ++ ": declared " ++ kind ++ " <= " ++ Cost.prettyIn surface costProg n c ++ "   derived " ++ Cost.prettyIn surface costProg n d ++ "   " ++ Cost.renderVerdict v
+        when (oCost opts) $ do
+          putStrLn "cost (work in abstract ops; alloc in requested cell bytes; live where it differs; ω = opaque):"
+          mapM_ putStrLn (Cost.renderReport surface costProg (M.map fst eqs) (M.keysSet (M.filter (\d -> Cost.dLive d /= Nothing) declared)) rootNames)
+          unless (null verdicts) $ do
+            putStrLn "declared bounds:"
+            mapM_ (putStrLn . ("  " ++) . renderV) verdicts
+          let sizes = [(n, sz) | (n, d) <- M.toList declared, Just sz <- [Cost.dSize d]]
+          unless (null sizes) $ do
+            putStrLn "assumed result sizes (declared, not verified by this pass):"
+            mapM_ (\(n, sz) -> putStrLn ("  " ++ n ++ ": size <= " ++ Cost.prettyIn surface costProg n sz)) sizes
+        -- ---- the judgement against a target (stage 3) ----
+        let orDash x = if null x then "-" else x
+        budgetFails <- case manifest of
+          Nothing -> pure []
+          Just m -> do
+            putStrLn ("target " ++ mName m ++ ": compiler " ++ orDash (mCompiler m) ++ ", runtime " ++ orDash (mRuntime m) ++ ", " ++ orDash (mHardware m) ++ "; " ++ show (fromRational (mNsPerOp m) :: Double) ++ " ns/op")
+            unless (null (mAssume m)) $ putStrLn ("assumptions: " ++ intercalate "; " (mAssume m))
+            let judge n = case M.lookup n eqs of
+                  Nothing -> Nothing
+                  Just (Cost.CostEq w _ _ _, _) ->
+                    let w' = Cost.resolvePrims priceW w
+                        shown = Cost.prettyIn surface costProg n w'
+                        budget = M.lookup n (mBudgets m)
+                        line = case (Cost.evalConst w', Cost.omegas w', budget) of
+                          (Just ops, _, Just b) ->
+                            let ns = fromIntegral ops * mNsPerOp m
+                             in (ns <= b, "work " ++ show ops ++ " ops → " ++ renderNs ns ++ (if ns <= b then "   PROVEN within budget " else "   OVER budget ") ++ renderNs b)
+                          (Just ops, _, Nothing) -> (True, "work " ++ show ops ++ " ops → " ++ renderNs (fromIntegral ops * mNsPerOp m))
+                          (Nothing, [], Just b) -> (False, "work <= " ++ shown ++ "   UNPROVED against budget " ++ renderNs b ++ " (parametric: bound the parameters with preconditions)")
+                          (Nothing, [], Nothing) -> (True, "work <= " ++ shown ++ "   (parametric; × " ++ show (fromRational (mNsPerOp m) :: Double) ++ " ns)")
+                          (Nothing, os, Just b) -> (False, "work <= " ++ shown ++ "   UNPROVED against budget " ++ renderNs b ++ " (opaque: " ++ intercalate ", " os ++ ")")
+                          (Nothing, os, Nothing) -> (True, "work <= " ++ shown ++ "   UNPROVED (opaque: " ++ intercalate ", " os ++ ")")
+                     in Just line
+                width = maximum (8 : map length rootNames)
+                rows = [(n, l) | n <- rootNames, Just l <- [judge n]]
+            mapM_ (\(n, (_, l)) -> putStrLn ("  " ++ n ++ replicate (width - length n) ' ' ++ "  " ++ l)) rows
+            let unknownBudgets = [f | f <- M.keys (mBudgets m), f `notElem` rootNames]
+            unless (null unknownBudgets) $ putStrLn ("  (budgets for names not in this program: " ++ intercalate ", " unknownBudgets ++ ")")
+            pure [n ++ ": " ++ l | (n, (ok, l)) <- rows, not ok]
+        unless (null declErrs && null failed && null budgetFails) $ do
+          putStrLn "=== COST: ERRORS ==="
+          mapM_ (putStrLn . ("  * " ++)) (anchored declErrs)
+          mapM_ (putStrLn . ("  * " ++) . renderV) failed
+          mapM_ (putStrLn . ("  * " ++)) budgetFails
+          exitFailure
       when checkOnly exitSuccess
       -- ---- per-unit CODEGEN (separate compilation) ----
       -- Each unit is expanded already (preludeE/units/root'). For codegen

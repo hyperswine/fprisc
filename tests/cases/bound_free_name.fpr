@@ -1,0 +1,5 @@
+# a coefficient that is not a literal: stage 3's manifests give it a meaning, not a program
+count : (n : Int | measure n) -> Int -> Int | work count <= omega * n .
+count n acc | n <= 0 = acc.
+count n acc = count (n - 1) (acc + 1).
+main = print (count 10 0).

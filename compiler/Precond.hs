@@ -58,10 +58,37 @@ preTable tops =
   M.fromList
     [ (n, pres')
       | TSig n _ pres <- tops,
-        let pres' = [ if maybe False (isMeasureP . snd) p then Nothing else p
-                    | p <- pres, (fst <$> p) /= Just "$unsafe" ],
+        -- reserved entries ($unsafe, $work, $alloc) are not value predicates
+        let pres' = [ p >>= \(v, q) -> (,) v <$> snd (splitMeasure q)
+                    | p <- pres, not (reservedEntry p) ],
         any (/= Nothing) (map (fmap (const ())) pres')
     ]
+
+-- the signature list also carries the $unsafe marker and the $work/$alloc
+-- resource bounds (FPRISC.fullSig): never a value predicate
+reservedEntry :: Maybe (Name, SExpr) -> Bool
+reservedEntry = maybe False ((== "$") . take 1 . fst)
+
+-- `(x : T | x >= 0 and measure x)`: one predicate slot, two readers.  The
+-- `measure` conjunct is a termination declaration for Safety.measureCheck;
+-- whatever remains is the value precondition this pass discharges or
+-- guards.  Returns (the measure's expression, the remaining predicate).
+splitMeasure :: SExpr -> (Maybe SExpr, Maybe SExpr)
+splitMeasure e = case e of
+  SApp (SVar "measure") m -> (Just m, Nothing)
+  SBin "and" a b -> comb a b (SBin "and")
+  SApp (SApp (SVar "and2") a) b -> comb a b (\x y -> SApp (SApp (SVar "and2") x) y)
+  _ -> (Nothing, Just e)
+  where
+    comb a b mk =
+      let (ma, ra) = splitMeasure a
+          (mb, rb) = splitMeasure b
+       in ( case ma of Just _ -> ma; Nothing -> mb,
+            case (ra, rb) of
+              (Just x, Just y) -> Just (mk x y)
+              (Just x, Nothing) -> Just x
+              (Nothing, y) -> y
+          )
 
 -- `(x : T | measure e)` is a TERMINATION declaration, not a value
 -- precondition: route it to Safety.measureCheck and keep it out of

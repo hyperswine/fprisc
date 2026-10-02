@@ -15,6 +15,7 @@
 -- machine/esp-idf/build.sh (docs/2026-09-23-ESP-IDF.md).
 module Build (buildMain, runMain) where
 
+import Data.List (isPrefixOf)
 import Data.List (isInfixOf)
 import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
@@ -31,7 +32,7 @@ import System.Environment (getExecutablePath, lookupEnv, withArgs)
 import qualified System.Environment
 import System.Exit (ExitCode (..), exitFailure, exitWith)
 import System.FilePath (dropExtension, takeBaseName, takeDirectory, takeExtension, takeFileName, (</>))
-import System.IO (IOMode (..), hPutStrLn, openFile, stderr)
+import System.IO (IOMode (..), hClose, hPutStrLn, openFile, stderr)
 import qualified System.Info
 import System.Posix.Process (executeFile, getProcessID)
 import System.Process (CreateProcess (..), StdStream (..), createProcess, proc, rawSystem, readProcess, waitForProcess)
@@ -49,6 +50,8 @@ data Plan = Plan
     pLink :: [String],
     pHost :: String, -- the posix system's host: "unix" (this machine), or "esp-idf" (a board: machine/esp-idf)
     pPort :: Maybe String, -- esp-idf: the board's serial port
+    pCost :: Bool, -- --cost: print the root functions' work/alloc equations
+    pManifest :: Maybe String, -- --manifest=FILE: judge them against a target manifest (passed through)
     pRest :: [String]
   }
 
@@ -64,12 +67,14 @@ usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep
 plan :: [String] -> IO Plan
 plan args = do
   cores <- onlineCores
-  go (Plan "" Nothing (max 2 cores) False False Nothing [] [] [] "unix" Nothing []) args
+  go (Plan "" Nothing (max 2 cores) False False Nothing [] [] [] "unix" Nothing False Nothing []) args
   where
     go p ("-o" : o : rest) = go p {pOut = Just o} rest
     go p ("--harts" : n : rest) = go p {pHarts = read n} rest
     go p ("--cc" : c : rest) = go p {pCC = Just c} rest
     go p ("--keep" : rest) = go p {pKeep = True} rest
+    go p ("--cost" : rest) = go p {pCost = True} rest
+    go p (a : rest) | "--manifest=" `isPrefixOf` a = go p {pCost = True, pManifest = Just a} rest
     go p ("--with" : f : rest) = go p {pWith = pWith p ++ [f]} rest
     go p ("--cflag" : f : rest) = go p {pCFlags = pCFlags p ++ [f]} rest
     go p ("--link" : f : rest) = go p {pLink = pLink p ++ [f]} rest
@@ -118,14 +123,15 @@ build p = do
   -- checker refused exited 1 having said nothing at all.)
   let logf = asm ++ ".log"
   logh <- openFile logf WriteMode
-  (_, _, _, ch) <- createProcess (proc self ["compile", "--system=posix", "--prelude=" ++ prelude, pSource p, asm])
-                     {std_out = if pVerbose p then Inherit else UseHandle logh}
+  (_, _, _, ch) <- createProcess (proc self (["compile", "--system=posix", "--prelude=" ++ prelude] ++ ["--cost" | pCost p] ++ maybe [] pure (pManifest p) ++ [pSource p, asm]))
+                     {std_out = if pVerbose p || pCost p then Inherit else UseHandle logh}
   cc0 <- waitForProcess ch
   when (cc0 /= ExitSuccess) $ do
     -- a complaint in a shape isDiagnostic does not know (a module's parse
     -- error is megaparsec's own text) must still be heard: fall back to the
     -- log's tail rather than exit 1 in silence
-    unless (pVerbose p) $ do
+    unless (pVerbose p || pCost p) $ do
+      hClose logh
       ls <- lines <$> readFile logf
       let said = dropWhile (not . isDiagnostic) ls
       hPutStrLn stderr (unlines (if null said then drop (length ls - 12) ls else said))

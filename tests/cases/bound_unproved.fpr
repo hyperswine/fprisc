@@ -1,0 +1,4 @@
+# print has no declared cost: the bound cannot be proven, and says what blocks it
+shout : Int -> Int | work shout <= 10 .
+shout n = _ = print n; n + 1.
+main = print (shout 1).

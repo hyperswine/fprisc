@@ -74,7 +74,10 @@ sigOf :: [STop] -> [String]
 sigOf tops =
   sort $
     [ "fn " ++ n ++ "/" ++ show (length ps) | TBind n ps _ _ <- tops ]
-      ++ [ "sig " ++ n ++ " : " ++ show (ps, r) | TSig n (ps, r) _ <- tops ]
+      -- the resource bounds are part of the written interface: a changed
+      -- bound (wider or tighter) is a different signature, hence a major
+      -- version -- callers compose on the declared bound
+      ++ [ "sig " ++ n ++ " : " ++ show (ps, r) ++ concat [" | " ++ k ++ " " ++ show e | Just (k, e) <- pres, k `elem` ["$work", "$alloc", "$live", "$size"]] | TSig n (ps, r) pres <- tops ]
       ++ [ "type " ++ n ++ " " ++ show cs | TType n _ _ cs <- tops ]
 
 subsetOf :: [String] -> [String] -> Bool

@@ -1,0 +1,6 @@
+# a declared resource bound, proven against the derived equation: the
+# measured countdown is 5 ops per call and (n/1 + 1) calls
+count : (n : Int | measure n) -> Int -> Int | work count <= 5 * n + 5 | alloc count <= 0 .
+count n acc | n <= 0 = acc.
+count n acc = count (n - 1) (acc + 1).
+main = print (count 10 0).

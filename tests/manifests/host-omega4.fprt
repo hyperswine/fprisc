@@ -1,0 +1,11 @@
+# a TARGET manifest for the test host (docs/2026-10-02-RESOURCE-BOUNDS.md, stage 3).
+# The numbers are placeholders for the suite, not measurements of this machine.
+name      host-omega4
+compiler  edfbaac
+runtime   -
+hardware  "the development host; placeholder figures"
+ns_per_op 1.3
+coefficient omega 4
+primitive print 2000 0
+budget    main 5us
+assume    "single hart, no cache model, no interrupts"

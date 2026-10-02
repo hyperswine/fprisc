@@ -44,6 +44,8 @@ executable fpr
       Peephole
       Precond
       Safety
+      Cost
+      Manifest
       StdBridge
       StdCheck
       Struct

@@ -6,6 +6,12 @@
 # The list comes LAST, so calls chain with `|>`.  Every loop here is a tail
 # call with an accumulator: a list of any length costs no stack.  Absence is
 # an Option (head of an empty list), never a panic.  Sorting is STABLE.
+#
+# Every loop declares its MEASURE (the list it walks, the count it lowers),
+# so the compiler proves it terminates and `fpr build --cost` closes a
+# caller's equation to len xs x work f (docs/2026-10-02-RESOURCE-BOUNDS.md).
+# Only `merge` (two lists) and `mergeAll` (a halving) are still `unsafe`:
+# their descent is not one parameter.
 
 O = use "option".
 Ord = use "order".
@@ -15,65 +21,65 @@ singleton : a -> List a .
 singleton x = x :: Nil.
 
 # from `a` up to and including `b`; empty when a > b
-range : Int -> Int -> List Int .
+range : (a : Int) -> (b : Int) -> List Int | size range <= b - a + 1 .
 range a b = rangeGo a b Nil.
-rangeGo : unsafe Int -> Int -> List Int -> List Int .
+rangeGo : (a : Int) -> (b : Int | measure (b - a)) -> List Int -> List Int .
 rangeGo a b acc = case b < a of True -> acc | False -> rangeGo a (b - 1) (b :: acc).
 
-repeat : Int -> a -> List a .
+repeat : (n : Int) -> a -> List a | size repeat <= n .
 repeat n x = repeatGo n x Nil.
-repeatGo : unsafe Int -> a -> List a -> List a .
+repeatGo : (n : Int | measure n) -> a -> List a -> List a .
 repeatGo n x acc = case n <= 0 of True -> acc | False -> repeatGo (n - 1) x (x :: acc).
 
 # ---- size and order ------------------------------------------------------------
 length : List a -> Int .
 length xs = lengthGo xs 0.
-lengthGo : unsafe List a -> Int -> Int .
+lengthGo : (xs : List a | measure xs) -> Int -> Int .
 lengthGo xs n = case xs of Nil -> n | _ :: r -> lengthGo r (n + 1).
 
 isEmpty : List a -> Bool .
 isEmpty xs = case xs of Nil -> True | _ -> False.
 
-reverse : List a -> List a .
+reverse : (xs : List a) -> List a | size reverse <= len xs .
 reverse xs = revOnto xs Nil.
 # `xs` reversed, in front of `acc`
-revOnto : unsafe List a -> List a -> List a .
+revOnto : (xs : List a | measure xs) -> List a -> List a .
 revOnto xs acc = case xs of Nil -> acc | x :: r -> revOnto r (x :: acc).
 
-append : List a -> List a -> List a .
+append : (xs : List a) -> (ys : List a) -> List a | size append <= len xs + len ys .
 append xs ys = revOnto (reverse xs) ys.
 
 concat : List (List a) -> List a .
 concat xss = concatGo (reverse xss) Nil.
-concatGo : unsafe List (List a) -> List a -> List a .
+concatGo : (xss : List (List a) | measure xss) -> List a -> List a .
 concatGo xss acc = case xss of Nil -> acc | xs :: r -> concatGo r (append xs acc).
 
 # ---- transforming --------------------------------------------------------------
-map : (a -> b) -> List a -> List b .
+map : (a -> b) -> (xs : List a) -> List b | size map <= len xs .
 map f xs = mapGo f xs Nil.
-mapGo : unsafe (a -> b) -> List a -> List b -> List b .
+mapGo : (a -> b) -> (xs : List a | measure xs) -> List b -> List b .
 mapGo f xs acc = case xs of Nil -> reverse acc | x :: r -> mapGo f r (f x :: acc).
 
 # each element with its position, from 0
-indexedMap : (Int -> a -> b) -> List a -> List b .
+indexedMap : (Int -> a -> b) -> (xs : List a) -> List b | size indexedMap <= len xs .
 indexedMap f xs = imapGo f xs 0 Nil.
-imapGo : unsafe (Int -> a -> b) -> List a -> Int -> List b -> List b .
+imapGo : (Int -> a -> b) -> (xs : List a | measure xs) -> Int -> List b -> List b .
 imapGo f xs i acc = case xs of Nil -> reverse acc | x :: r -> imapGo f r (i + 1) (f i x :: acc).
 
-indexed : List a -> List (Int, a) .
+indexed : (xs : List a) -> List (Int, a) | size indexed <= len xs .
 indexed xs = indexedMap (fn i x -> (i, x)) xs.
 
-filter : (a -> Bool) -> List a -> List a .
+filter : (a -> Bool) -> (xs : List a) -> List a | size filter <= len xs .
 filter p xs = filterGo p xs Nil.
-filterGo : unsafe (a -> Bool) -> List a -> List a -> List a .
+filterGo : (a -> Bool) -> (xs : List a | measure xs) -> List a -> List a .
 filterGo p xs acc = case xs of
     Nil -> reverse acc
   | x :: r -> (case p x of True -> filterGo p r (x :: acc) | False -> filterGo p r acc).
 
 # map and keep what is there: List.filterMap parseLine lines
-filterMap : (a -> O.Option b) -> List a -> List b .
+filterMap : (a -> O.Option b) -> (xs : List a) -> List b | size filterMap <= len xs .
 filterMap f xs = fmapGo f xs Nil.
-fmapGo : unsafe (a -> O.Option b) -> List a -> List b -> List b .
+fmapGo : (a -> O.Option b) -> (xs : List a | measure xs) -> List b -> List b .
 fmapGo f xs acc = case xs of
     Nil -> reverse acc
   | x :: r -> (case f x of O.Some y -> fmapGo f r (y :: acc) | O.None -> fmapGo f r acc).
@@ -85,7 +91,7 @@ concatMap f xs = concat (map f xs).
 # left to right; the accumulator comes first in `f`
 fold : (b -> a -> b) -> b -> List a -> b .
 fold f z xs = foldGo f z xs.
-foldGo : unsafe (b -> a -> b) -> b -> List a -> b .
+foldGo : (b -> a -> b) -> b -> (xs : List a | measure xs) -> b .
 foldGo f z xs = case xs of Nil -> z | x :: r -> foldGo f (f z x) r.
 
 # right to left
@@ -100,7 +106,7 @@ product xs = fold (fn a x -> a * x) 1 xs.
 
 any : (a -> Bool) -> List a -> Bool .
 any p xs = anyGo p xs.
-anyGo : unsafe (a -> Bool) -> List a -> Bool .
+anyGo : (a -> Bool) -> (xs : List a | measure xs) -> Bool .
 anyGo p xs = case xs of Nil -> False | x :: r -> (case p x of True -> True | False -> anyGo p r).
 
 all : (a -> Bool) -> List a -> Bool .
@@ -119,7 +125,7 @@ maximum cmp xs = case xs of Nil -> O.None | x :: r -> O.Some (fold (fn m y -> Or
 # ---- searching ---------------------------------------------------------------------
 find : (a -> Bool) -> List a -> O.Option a .
 find p xs = findGo p xs.
-findGo : unsafe (a -> Bool) -> List a -> O.Option a .
+findGo : (a -> Bool) -> (xs : List a | measure xs) -> O.Option a .
 findGo p xs = case xs of Nil -> O.None | x :: r -> (case p x of True -> O.Some x | False -> findGo p r).
 
 # by deep equality
@@ -140,28 +146,28 @@ get : Int -> List a -> O.Option a .
 get i xs = case i < 0 of True -> O.None | False -> head (drop i xs).
 
 # ---- slicing -------------------------------------------------------------------------
-take : Int -> List a -> List a .
+take : Int -> (xs : List a) -> List a | size take <= len xs .
 take n xs = takeGo n xs Nil.
-takeGo : unsafe Int -> List a -> List a -> List a .
+takeGo : Int -> (xs : List a | measure xs) -> List a -> List a .
 takeGo n xs acc = case n <= 0 of
     True -> reverse acc
   | False -> (case xs of Nil -> reverse acc | x :: r -> takeGo (n - 1) r (x :: acc)).
 
-drop : Int -> List a -> List a .
+drop : Int -> (xs : List a) -> List a | size drop <= len xs .
 drop n xs = dropGo n xs.
-dropGo : unsafe Int -> List a -> List a .
+dropGo : Int -> (xs : List a | measure xs) -> List a .
 dropGo n xs = case n <= 0 of True -> xs | False -> (case xs of Nil -> Nil | _ :: r -> dropGo (n - 1) r).
 
-takeWhile : (a -> Bool) -> List a -> List a .
+takeWhile : (a -> Bool) -> (xs : List a) -> List a | size takeWhile <= len xs .
 takeWhile p xs = twGo p xs Nil.
-twGo : unsafe (a -> Bool) -> List a -> List a -> List a .
+twGo : (a -> Bool) -> (xs : List a | measure xs) -> List a -> List a .
 twGo p xs acc = case xs of
     Nil -> reverse acc
   | x :: r -> (case p x of True -> twGo p r (x :: acc) | False -> reverse acc).
 
-dropWhile : (a -> Bool) -> List a -> List a .
+dropWhile : (a -> Bool) -> (xs : List a) -> List a | size dropWhile <= len xs .
 dropWhile p xs = dwGo p xs.
-dwGo : unsafe (a -> Bool) -> List a -> List a .
+dwGo : (a -> Bool) -> (xs : List a | measure xs) -> List a .
 dwGo p xs = case xs of Nil -> Nil | x :: r -> (case p x of True -> dwGo p r | False -> xs).
 
 # (those that pass, those that do not), each in order
@@ -170,12 +176,12 @@ partition p xs = (filter p xs, filter (fn x -> not (p x)) xs).
 
 # ---- combining -----------------------------------------------------------------------
 # as long as the shorter
-zip : List a -> List b -> List (a, b) .
+zip : (xs : List a) -> List b -> List (a, b) | size zip <= len xs .
 zip xs ys = zipWith (fn x y -> (x, y)) xs ys.
 
-zipWith : (a -> b -> c) -> List a -> List b -> List c .
+zipWith : (a -> b -> c) -> (xs : List a) -> List b -> List c | size zipWith <= len xs .
 zipWith f xs ys = zipGo f xs ys Nil.
-zipGo : unsafe (a -> b -> c) -> List a -> List b -> List c -> List c .
+zipGo : (a -> b -> c) -> (xs : List a | measure xs) -> List b -> List c -> List c .
 zipGo f xs ys acc = case xs of
     Nil -> reverse acc
   | x :: xr -> (case ys of Nil -> reverse acc | y :: yr -> zipGo f xr yr (f x y :: acc)).
@@ -190,17 +196,17 @@ intersperse sep xs = case xs of
 
 # every element equal (deep ==) to an EARLIER one is dropped; order kept.
 # Quadratic: use a Set for big lists.
-unique : List a -> List a .
+unique : (xs : List a) -> List a | size unique <= len xs .
 unique xs = reverse (fold (fn seen x -> case member x seen of True -> seen | False -> x :: seen) Nil xs).
 
 # ---- sorting -------------------------------------------------------------------------
 # A stable merge sort: equal elements keep their order, so sorting by one key
 # and then by another composes.  O(n log n), no stack.
-sortWith : (a -> a -> Ord.Ordering) -> List a -> List a .
+sortWith : (a -> a -> Ord.Ordering) -> (xs : List a) -> List a | size sortWith <= len xs .
 sortWith cmp xs = mergeAll cmp (map singleton xs).
 
 # sort by a key: List.sortBy Order.int size files
-sortBy : (k -> k -> Ord.Ordering) -> (a -> k) -> List a -> List a .
+sortBy : (k -> k -> Ord.Ordering) -> (a -> k) -> (xs : List a) -> List a | size sortBy <= len xs .
 sortBy cmp key xs = sortWith (Ord.by key cmp) xs.
 
 mergeAll : unsafe (a -> a -> Ord.Ordering) -> List (List a) -> List a .
@@ -209,7 +215,7 @@ mergeAll cmp runs = case runs of
   | one :: Nil -> one
   | _ -> mergeAll cmp (mergePairs cmp runs Nil).
 
-mergePairs : unsafe (a -> a -> Ord.Ordering) -> List (List a) -> List (List a) -> List (List a) .
+mergePairs : (a -> a -> Ord.Ordering) -> (runs : List (List a) | measure runs) -> List (List a) -> List (List a) .
 mergePairs cmp runs acc = case runs of
     a :: b :: rest -> mergePairs cmp rest (merge cmp a b Nil :: acc)
   | one :: Nil -> reverse (one :: acc)
@@ -232,7 +238,7 @@ groupBy : (a -> k) -> List a -> List (k, List a) .
 groupBy key xs = case xs of
     Nil -> Nil
   | x :: r -> groupGo key r (key x) (x :: Nil) Nil.
-groupGo : unsafe (a -> k) -> List a -> k -> List a -> List (k, List a) -> List (k, List a) .
+groupGo : (a -> k) -> (xs : List a | measure xs) -> k -> List a -> List (k, List a) -> List (k, List a) .
 groupGo key xs k cur acc = case xs of
     Nil -> reverse ((k, reverse cur) :: acc)
   | x :: r -> (case key x == k of
@@ -242,5 +248,5 @@ groupGo key xs k cur acc = case xs of
 # do something for each element, for its effect
 each : (a -> b) -> List a -> Unit .
 each f xs = eachGo f xs.
-eachGo : unsafe (a -> b) -> List a -> Unit .
+eachGo : (a -> b) -> (xs : List a | measure xs) -> Unit .
 eachGo f xs = case xs of Nil -> Unit | x :: r -> _ = f x; eachGo f r.

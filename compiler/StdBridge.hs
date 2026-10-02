@@ -41,6 +41,8 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import FPRISC
 import qualified StdCheck as SC
+import Precond (splitMeasure)
+import Safety (Measure (..), MeasureKind (..), measureCheck)
 
 --------------------------------------------------------------------------
 -- interval extraction from the contract predicate fragment
@@ -296,11 +298,19 @@ runStdCheck tops0 = do
         Nothing -> False
       paramItv n pn = case M.lookup n sigs of
         Just (_, _, pcs) ->
-          case [itv | Just (x, pe) <- pcs, x == pn, Just itv <- [predItv x pe]] of
+          case [itv | Just (x, pe) <- pcs, x == pn, (_, Just rest) <- [splitMeasure pe], Just itv <- [predItv x rest]] of
             (i : _) -> i
             [] -> SC.top
         Nothing -> SC.top
       postOf n = M.findWithDefault SC.top n posts
+      -- the frontend's verified measures, over the bridge's canonical
+      -- parameter names (matched by position with the first clause's)
+      (measures, _) = measureCheck tops0
+      measureOf n pnames = case M.lookup n measures of
+        Just (Measure _ mps (MLinear cs k0) step _) ->
+          let ren = M.fromList (zip mps pnames)
+           in Just (SC.MeasureSpec (M.mapKeys (\x -> M.findWithDefault x x ren) cs) k0 step)
+        _ -> Nothing -- a structural measure is outside the Int fragment anyway
 
       -- bridge every clause group (foldRange itself is the builtin scheme:
       -- its .fpr definition exists so the file also COMPILES, but the
@@ -328,7 +338,7 @@ runStdCheck tops0 = do
               safety
                 | isUnsafeName n = SC.UnsafeFn
                 | otherwise = SC.SafeFn -- provisional; demotion pass below
-          pure (SC.FnDef n params (postOf n) safety body)
+          pure (SC.FnDef n params (postOf n) safety (measureOf n pnames) body)
 
       okDefs = M.fromList [(n, fd) | (n, Right fd) <- bridged]
       failed = [(n, err) | (n, Left err) <- bridged]
@@ -342,13 +352,14 @@ runStdCheck tops0 = do
             [SC.Param ("a" ++ show i) SC.top | i <- [1 .. arityOf g]]
             SC.top
             SC.UnsafeFn
+            Nothing
             (SC.Call (negate 1) g [SC.Var ("a" ++ show i) | i <- [1 .. arityOf g]])
           | g <- calledNames,
             not (M.member g okDefs),
             g `notElem` [n | (n, _) <- failed]
         ]
       failedStubs =
-        [ SC.FnDef n [SC.Param "a1" SC.top] SC.top SC.UnsafeFn (SC.Call (negate 2) n [SC.Var "a1"])
+        [ SC.FnDef n [SC.Param "a1" SC.top] SC.top SC.UnsafeFn Nothing (SC.Call (negate 2) n [SC.Var "a1"])
           | (n, _) <- failed
         ]
 

@@ -23,7 +23,7 @@ foldRange lo hi f acc = case lo > hi of
 # termination: measure x decreases by 1, lower bound 0 from the
 # contract => call count <= x + 1.  post r >= 1 proven by induction.
 
-fact_acc : (x : Int | x >= 0) -> (acc : Int | acc >= 1) -> Int.
+fact_acc : (x : Int | x >= 0 and measure x) -> (acc : Int | acc >= 1) -> Int.
 post_fact_acc : (r : Int | r >= 1) -> Int.
 fact_acc x acc = case x == 0 of
   True -> acc

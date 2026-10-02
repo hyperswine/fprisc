@@ -1,0 +1,11 @@
+# cost equations through higher-order parameters: `work f` stays a variable
+# in apply/twice and is substituted when useIt passes inc (a constant)
+apply f x = f x.
+twice f x = f (f x).
+inc : Int -> Int .
+inc n = n + 1.
+mk : Int -> Int -> (Int, Int) .
+mk a b = (a, b * 2).
+useIt : Int -> Int .
+useIt n = twice inc n + apply inc n.
+main = print (useIt 3).
