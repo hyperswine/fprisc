@@ -162,16 +162,7 @@ renameTops rn tops0 = map top tops0
       TSigDef n fs -> TSigDef (look n) fs
       TStruct n sigs fs -> TStruct (look n) (map look sigs) [(f, re S.empty e) | (f, e) <- fs]
       other -> other
-    -- EVERY position a type name can sit in: `(a -> Option b)` used to keep its
-    -- bare `Option` while the result became `O.Option`, and the module no
-    -- longer type-checked against itself (std/option.fpr under any alias)
-    rt = \case
-      TCon n as -> TCon (look n) (map rt as)
-      TTup ts -> TTup (map rt ts)
-      TArrT a b -> TArrT (rt a) (rt b)
-      TVApp n as -> TVApp n (map rt as)
-      TRecT fs tl -> TRecT [(f, rt t) | (f, t) <- fs] tl
-      o -> o
+    rt = renameTypeNames look
     rp = \case
       PCon c ps -> PCon (look c) (map rp ps)
       PTup ps -> PTup (map rp ps)
@@ -202,6 +193,19 @@ topNames tops =
 -- expressions, PATTERNS (`O.Some x ->`) and the TYPES in signatures and
 -- constructor fields (`-> O.Option a`).  It only did expressions, so the second
 -- importer's patterns and signatures named a module that was never spliced.
+-- EVERY position a type name can sit in: a bare `Option` left in `(a -> Option b)`
+-- once broke std/option.fpr under any alias.  Shared by both renamers above.
+renameTypeNames :: (Name -> Name) -> Ty -> Ty
+renameTypeNames f = rt
+  where
+    rt = \case
+      TCon n as -> TCon (f n) (map rt as)
+      TTup ts -> TTup (map rt ts)
+      TArrT a b -> TArrT (rt a) (rt b)
+      TVApp n as -> TVApp n (map rt as)
+      TRecT fs tl -> TRecT [(x, rt t) | (x, t) <- fs] tl
+      o -> o
+
 qualifyUses :: M.Map Name Name -> [STop] -> [STop]
 qualifyUses aliases = map top
   where
@@ -223,13 +227,7 @@ qualifyUses aliases = map top
     retgt tgt = case break (== '.') tgt of
       (m, '.' : rest) | Just canon <- M.lookup m aliases, canon /= m -> canon ++ "." ++ rest
       _ -> tgt
-    rt = \case
-      TCon n as -> TCon (retgt n) (map rt as)
-      TTup ts -> TTup (map rt ts)
-      TArrT a b -> TArrT (rt a) (rt b)
-      TVApp n as -> TVApp n (map rt as)
-      TRecT fs tl -> TRecT [(f, rt t) | (f, t) <- fs] tl
-      o -> o
+    rt = renameTypeNames retgt
     rp = \case
       PCon c ps -> PCon (retgt c) (map rp ps)
       PTup ps -> PTup (map rp ps)

@@ -345,7 +345,7 @@ halArities =
       ("Proc.query", 1), ("Proc.afterCommit", 1), ("Proc.runNow", 1), ("Proc.streamNow", 1), ("Proc.inheritNow", 1),
       ("read", 1), ("write", 2),
       ("myself", 1), ("spawn", 1), ("send", 2), ("sendLinear", 2), ("sendArc", 2), ("receive", 1), ("receiveFrom", 2), ("receiveFromRes", 2), ("Sys.nextId", 1),
-      ("spawnCap", 3), ("spawnCapOn", 4), ("spawnOn", 2), ("Sys.spawnApp", 1), ("timeNow", 1),
+      ("spawnCap", 3), ("spawnCapOn", 4), ("spawnOn", 2), ("spawnHeap", 2), ("Sys.spawnApp", 1), ("timeNow", 1),
       ("kill", 1), ("yield", 1), ("drop", 1), ("keep", 1), ("device", 1), ("reg32", 2),
       ("heapUsed", 1),
       ("Sys.poolReset", 1), ("Sys.sleepUs", 1), ("Sys.logAt", 2), ("Sys.memStats", 1), ("Sys.memInfo", 1),

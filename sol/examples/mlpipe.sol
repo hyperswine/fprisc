@@ -39,7 +39,7 @@ plus x y = x + y.
 sqDev mu acc x = d = x - mu; acc + d * d.
 std mu sd x = (x - mu) / sd.
 
-mkPt : Int -> Int -> Int -> {z : Numeric, y : Numeric} .
+mkPt : Int -> Int -> Int -> {z : Int, y : Int} . # Int IS Sol's one number type (Numeric is the struct of its operations)
 mkPt mu sd i =
   z = (toZ i - mu) / sd;
   {z = z, y = trueA * z * z + trueB * z + trueC + wiggle z}.

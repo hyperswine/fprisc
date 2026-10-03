@@ -23,7 +23,9 @@ ck() { # ck <file> <ceiling>
 # The current 125-line shim adds profile primitive declarations (including
 # receiveFromRes / Sys.nextId from the failure-honesty round), not inference
 # machinery. Keep that reviewed surface as the ceiling; growth still fails.
-ck compiler/Sol/Infer.hs 126   # primitive table + flags; +1 for native vector layouts, no inference fork
+# +1 (2026-10-03): spawnHeap's declaration, so std/actor's spawnWithHeap runs
+# under Sol (a primitive, not inference machinery).
+ck compiler/Sol/Infer.hs 127   # primitive table + flags; +1 for native vector layouts, +1 spawnHeap; no inference fork
 # Qualified nested struct references were repaired in cb71302; this is
 # profile module-splicing policy, not a restored parser/desugar/lift fork.
 ck compiler/Sol/Lang.hs  244   # profile-only: tids, decode, splicing

@@ -94,6 +94,7 @@ solBuiltins =
       ("spawnCap", scheme [0] (TFn tInt (TFn tInt (TFn (TFn tInt (sv 0)) tInt)))),
       ("spawnCapOn", scheme [0] (TFn tInt (TFn tInt (TFn tInt (TFn (TFn tInt (sv 0)) tInt))))),
       ("spawnOn", scheme [0] (TFn tInt (TFn (TFn tInt (sv 0)) tInt))),
+      ("spawnHeap", scheme [0] (TFn tInt (TFn (TFn tInt (sv 0)) (tcon "Result" [tInt, tStr])))), -- grant always Ok, not enforced (VM.hs)
       ("Sys.spawnApp", scheme [0] (TFn (TFn tInt (sv 0)) tInt)),
       ("timeNow", scheme [0] (TFn (sv 0) tInt)),
       ("Sys.memInfo", mono (TFn tInt (tList tInt))),

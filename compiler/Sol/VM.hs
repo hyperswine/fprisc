@@ -399,7 +399,7 @@ builtinArities =
   M.union schemeArities $
     M.fromList
       [ ("myself", 1), ("spawn", 1), ("send", 2), ("sendLinear", 2), ("sendArc", 2), ("receive", 1), ("receiveFrom", 2), ("receiveFromRes", 2), ("Sys.nextId", 1),
-        ("spawnCap", 3), ("spawnCapOn", 4), ("spawnOn", 2), ("Sys.spawnApp", 1), ("timeNow", 1),
+        ("spawnCap", 3), ("spawnCapOn", 4), ("spawnOn", 2), ("spawnHeap", 2), ("Sys.spawnApp", 1), ("timeNow", 1),
         ("kill", 1), ("yield", 1), ("drop", 1), ("keep", 1), ("device", 1), ("reg32", 2),
         ("heapUsed", 1),
         ("Sys.poolReset", 1), ("Sys.sleepUs", 1), ("Sys.logAt", 2), ("Sys.memStats", 1), ("Sys.memInfo", 1),
@@ -560,7 +560,7 @@ actorNames :: S.Set Name
 actorNames =
   S.fromList
     [ "myself", "spawn", "send", "sendLinear", "sendArc", "receive", "receiveFrom", "receiveFromRes", "Sys.nextId", "kill", "yield",
-      "spawnCap", "spawnCapOn", "spawnOn", "Sys.spawnApp", "timeNow",
+      "spawnCap", "spawnCapOn", "spawnOn", "spawnHeap", "Sys.spawnApp", "timeNow",
       "drop", "keep", "device", "reg32", "heapUsed",
       "Sys.poolReset", "Sys.sleepUs", "Sys.logAt", "Sys.memStats", "Sys.memInfo"
     ]
@@ -604,6 +604,10 @@ actorCall env "spawnCap" [_, _, f] = actorCall env "spawn" [f]
 actorCall env "spawnCapOn" [_, _, _, f] = actorCall env "spawn" [f]
 actorCall env "spawnOn" [_, f] = actorCall env "spawn" [f]
 actorCall env "Sys.spawnApp" [f] = actorCall env "spawn" [f]
+-- the heap grant (spawnHeap, std/actor spawnWithHeap) likewise: the shim's
+-- actors share the Haskell heap and have no per-actor budget to admit or
+-- refuse, so the grant is always Ok and is not enforced
+actorCall env "spawnHeap" [_, f] = (\pid -> VData 3 0 [pid]) <$> actorCall env "spawn" [f]
 actorCall _ "timeNow" [_] = VInt . round <$> getPOSIXTime
 actorCall _ "Sys.memInfo" [_] = pure (foldr (\x acc -> VData listT 1 [VInt x, acc]) (VData listT 0 []) (replicate 8 0))
 actorCall env "send" [VInt to, m] = do
