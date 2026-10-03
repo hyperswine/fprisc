@@ -101,13 +101,21 @@ full Base run passed. No RV32/RV64 hardware execution was performed here.
 
 The vector header appends recipe metadata, preserving existing field
 offsets but increasing its size. Hidden evidence changes generated helper
-arities, including module export tables. Codegen revision 33 and x64
+arities, including module export tables. Codegen revision 34 and x64
 revision 8 invalidate compiled-unit caches. Rebuild runtime and application
-images together; old and new runtime objects must not be mixed. QOS's
-compiler pin has not been changed by this implementation.
+images together; old and new runtime objects must not be mixed. Native ABI
+version 2 identifies the enlarged vector header; version 1 process archives
+must be refused by a version 2 kernel. QOS integration is recorded separately
+in its native-image integrity follow-up.
 
 Remaining audit work includes per-argument typed kernel plans, legal
 map/filter/fold pipeline fusion, A64/x64 SIMD, broader RVV coverage,
 compact F32 storage, generic Matrix/direct bulk builders and compute
 examples. No target hardware performance or WCET claim follows from these
 semantic and backend checks.
+
+The ABI-2 integration rerun also exposed a signed recursive mailbox regression.
+Layout evidence now records actual clause types without connecting the separate
+declared recursion placeholder. The signed generic builder and heterogeneous
+unsafe mailbox recursion have regression fixtures. The complete Base suite and
+the vector-limit suite passed after this correction at codegen revision 34.

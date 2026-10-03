@@ -1838,7 +1838,8 @@ inferTopsWith prof sigs structs tops =
               TV v | not (IM.member v reps) -> unify "numeric default" (TV v) tInt
               _ -> pure ()
       forM_ (zip ns mvs) $ \(n,t) -> do
-        tz <- zonk t
+        actual <- gets (M.lookup n . iDefTypes)
+        tz <- zonk (maybe t id actual)
         modify (\st -> st { iDefTypes = M.insert n tz (iDefTypes st) })
       -- generalize against the OUTER env
       newEnv <- forM (zip ns mvs) $ \(n, mv) -> do
@@ -1854,10 +1855,16 @@ inferTopsWith prof sigs structs tops =
           Just declared -> do
             dt <- instantiate declared
             unify ("declared type of " ++ n) dt t
-            -- Keep the native binding's actual type connected to its body,
-            -- including signed definitions. Layout obligations refer to
-            -- body variables, not the separately quantified written scheme.
-            when (ipVectorLayouts prof) (unify ("definition of " ++ n) mv t)
+            -- Record the body type for layout evidence without connecting
+            -- the recursion placeholder. Signed recursive groups retain
+            -- their existing declared-call typing (including unsafe mailbox
+            -- protocols); only layout-bearing references instantiate this
+            -- actual type together with their evidence obligations.
+            when (ipVectorLayouts prof) $ do
+              previous <- gets (M.lookup n . iDefTypes)
+              case previous of
+                Just actual -> unify ("vector definition of " ++ n) actual t
+                Nothing -> modify (\st -> st {iDefTypes=M.insert n t (iDefTypes st)})
             -- ... and only now, with the clause fully constrained, ask
             -- whether a WRITTEN signature was actually earned
             when (n `S.member` written) (checkDeclared n declared t)

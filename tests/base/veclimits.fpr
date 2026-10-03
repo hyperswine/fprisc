@@ -8,6 +8,7 @@ build x = Vec.push x (Vec.new Unit).
 wrap x = build x.
 from xs = Vec.fromList xs.
 convert f v = Vec.map f v.
+copies : a -> Int -> Vector a.
 copies x n | n <= 0 = Vec.new Unit.
 copies x n = Vec.push x (copies x (n - 1)).
 bump r = {r | pos.x = r.pos.x + 1.0}.

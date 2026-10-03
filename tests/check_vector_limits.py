@@ -13,6 +13,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-vector-limits-') as directory:
                 'nested: 2 4 4 2 second=2 one=2.5 sum=2.5\n'
                 'fold: 100020007 9999 45 9\n'
                 'record fold: 193\nmapAs: 0 9\n')
+    run(['./fprc','--profile=base','--check-only','tests/cases/signed_mailbox_recursion.fpr',tmp/'mail.s'])
     exe = tmp/'limits'
     p = run(['./fpr','build','-v','tests/base/veclimits.fpr','-o',exe])
     assert 'Vec.fold over `step`' not in p.stdout and 'Vec.fold over `rstep`' not in p.stdout, p.stdout

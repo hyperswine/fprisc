@@ -151,7 +151,7 @@ void fpr_bkt_put(void **b);
  * acb-carried.  fpr_sched is NULL on every normal boot (kernel, qosp,
  * bare-metal: zero behavior change); the loader hands a process its
  * table at entry. */
-#define FPR_NATIVE_ABI 1u /* shared ACB/pool/vector layout and scheduler table */
+#define FPR_NATIVE_ABI 2u /* v2: vector product recipe metadata appended to vec_t */
 typedef struct fpr_sched {
   V (*send_as)(uw sender_key, V target, V m);
   V (*receive)(V me);

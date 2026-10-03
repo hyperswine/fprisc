@@ -1,0 +1,11 @@
+# Signed unsafe message handlers intentionally dispatch heterogeneous mail.
+Msg = Type (Msg Int).
+loop : unsafe Int -> a.
+loop me = m = receive me; case m of
+    (from, req) -> dispatch me from req
+  | irq -> interrupt me irq.
+dispatch : unsafe Int -> Int -> Msg -> a.
+dispatch me from req = loop me.
+interrupt : unsafe Int -> Int -> a.
+interrupt me irq = loop me.
+main = Unit.
