@@ -1033,6 +1033,30 @@ V fpr_msg_copy(V v) { return msg_copy_in(v, !FPR_MSG_PACK, fpr_current_pid()); }
 /* ... for a receiver in process pid: what may leave a mortal image is
  * decided against it (img_foreign) */
 V fpr_msg_copy_to(V v, uw pid) { return msg_copy_in(v, !FPR_MSG_PACK, pid); }
+/* An unpublished actor's entry gets an independent ownerless slab.  Its
+ * hold replaces an ARC root reservation: no table growth can panic after
+ * admission.  Captures can still escape through the usual ARC rules; the
+ * slab returns only after both that escape count and this hold reach zero. */
+int fpr_entry_copy_try(V v, uw pid, V *out, fpr_slab_t **hold) {
+  fpr_hart_t *h = fpr_hart();
+  h->copy_pid = pid;
+  uw need = dc_size(v);
+  *hold = 0;
+  if (!need) { *out = dc_dup(v, 0); return 1; }
+  if (need > (uw)-1 - sizeof(fpr_slab_t)) return 0;
+  fpr_slab_t *sl = fpr_slab_new(need + sizeof(fpr_slab_t));
+  if (!sl) return 0;
+  sl->owner = 0; sl->escaped = 0; sl->holds = 1;
+  sl->hp = (char *)(sl + 1); sl->next = 0;
+  dctx_t c = {sl->hp, sl};
+  *out = dc_dup(v, &c);
+  sl->hp = c.hp;
+  *hold = sl;
+  FPR_COST_ADD(h, cost_copies, 1);
+  FPR_COST_ADD(h, cost_copy_bytes, need);
+  FPR_COST_ADD(h, cost_msg_slabs, 1);
+  return 1;
+}
 /* ... into a slab of its own: Sys.arena's transfer copy, freed by hand */
 V fpr_msg_copy_fresh(V v) { return msg_copy_in(v, 1, fpr_current_pid()); }
 

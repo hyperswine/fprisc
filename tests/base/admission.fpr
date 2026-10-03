@@ -1,0 +1,56 @@
+unsafe program.
+A = use "../../std/actor".
+Probe.failNext : Int -> Unit .
+Probe.denials : Unit -> Int .
+Probe.pauseNext : Int -> Int -> Unit .
+Probe.forceQueue : Unit -> Unit .
+worker value boss self = _ = send boss value; Unit.
+require (Ok a) = a.
+require (Err why) = error why.
+refused (Err "fixed heap: admission denied") = True.
+refused _ = False.
+freeKiB u = case Sys.memInfo 0 of _ :: n :: _ -> n | _ -> error "memInfo".
+failed me phase =
+  before = Sys.actLive 0;
+  _ = Probe.failNext phase;
+  r = A.spawnWithHeap 1048576 (worker (20, 22) me);
+  after = Sys.actLive 0;
+  refused r and before == after and (case receiveNow me of Err _ -> True | Ok _ -> False).
+round me n = case n == 0 of True -> True | False -> failed me 1 and failed me 2 and failed me 3 and failed me 4 and failed me 5 and failed me 6 and round me (n - 1).
+cancelWorker boss phase self =
+  _ = Probe.pauseNext boss phase;
+  _ = case phase >= 7 of True -> Probe.forceQueue Unit | False -> Unit;
+  _ = A.spawnWithHeap 1048576 (worker (20, 22) boss);
+  _ = send boss False;
+  Unit.
+cancelOne me phase =
+  before = Sys.actLive 0;
+  a = spawn (cancelWorker me phase);
+  _ = receive me;
+  _ = kill a;
+  _ = receiveFromRes me a;
+  _ = Sys.sleepUs (if phase >= 7 then 3200000 else 20000);
+  after = Sys.actLive 0;
+  before == after and (case receiveNow me of Err _ -> True | Ok _ -> False).
+main =
+  me = myself 0;
+  # Warm reserve caches, then repeated refusals must reuse the same reserve.
+  warm = round me 1;
+  _ = receiveNow me;
+  _ = Sys.sleepUs 20000;
+  before = freeKiB Unit;
+  checks = round me 50;
+  _ = receiveNow me;
+  _ = Sys.sleepUs 20000;
+  after = freeKiB Unit;
+  a = require (A.spawnWithHeap 131072 (worker (20, 22) me));
+  (x, y) = receiveFrom me a;
+  _ = receiveFromRes me a;
+  _ = Sys.sleepUs 20000;
+  cancelFree0 = freeKiB Unit;
+  cancelled = cancelOne me 1 and cancelOne me 2 and cancelOne me 3 and cancelOne me 4 and cancelOne me 5 and cancelOne me 6 and cancelOne me 7 and cancelOne me 8;
+  cancelFree1 = freeKiB Unit;
+  cancelReturned = cancelFree1 + 512 >= cancelFree0;
+  count = Probe.denials Unit;
+  verdict = if cancelled and cancelReturned and warm and checks and after >= before and x + y == 42 and count == 306 then "HOLDS" else "FAILED";
+  print "admission: rollback={checks} cancelled={cancelled} cancel-returned={cancelReturned} memory={before}/{after} refusals={count} next={x + y} {verdict}".

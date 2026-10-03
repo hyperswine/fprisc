@@ -147,6 +147,7 @@ typedef struct fpr_acb {
   uint32_t scan; /* round-robin cursor for fair receive (owner-only) */
   uint32_t mbdyn;  /* mailbox policy: 1 = rings grow (Dynamic n) */
   uint32_t mbcap;  /* initial ring capacity per channel (spawnCap) */
+  fpr_slab_t *entry_hold; /* admitted entry copy: separate from the local heap */
   V entry;       /* PAP to run: body = entry(self); 0 for main */
   struct fpr_acb *next; /* run-queue link (owner hart only) */
   struct fpr_acb *bl_next; /* backlog link (owner hart only) */
@@ -306,6 +307,7 @@ static uw big_block_size(void *p, uw want) {
 static fpr_freelist_t stack_fl; /* the one freelist discipline (fpr.h) */
 static fpr_lock_t acb_lock;     /* the acb bump arena below */
 static char *acb_hp, *acb_end;
+static fpr_freelist_t acb_unpublished;
 
 /* pool telemetry, always on, PULL-based (Sys.memStats reads them):
  * a print at an allocation site is a syscall inside the allocator */
@@ -512,6 +514,8 @@ void *fpr_current_stack(uw *id, uw *size) {
 }
 
 static acb_t *acb_block(void) {
+  acb_t *reserved = (acb_t *)fpr_fl_take(&acb_unpublished, sizeof(acb_t));
+  if (reserved) return reserved;
   uw sz = (sizeof(acb_t) + 15) & ~(uw)15;
   for (;;) {
     fpr_lock(&acb_lock);
@@ -671,11 +675,13 @@ static void chb_limbo_put(chan_t *ch) {
 /* death reclamation (called from the hart loop, NEVER on the dying
  * actor's own stack): slabs via the ARC-locked teardown, stack -- which
  * cannot escape -- straight back to buddy.  Idempotent via stack=0. */
+static void mem_cancel(acb_t *a);
 static volatile uw g_blocked;      /* actors currently parked */
 static volatile uw g_sleepers;     /* of which: parked with a deadline */
 static volatile uw g_irq_waiting;  /* of which: an interrupt's actor, waiting for it */
 static void reap(acb_t *a) {
   if (!a->stack) return;
+  mem_cancel(a);
   if (a->wait_kind) { /* a killed parked actor never returns through block_unless */
     __atomic_fetch_sub(&g_blocked, 1, __ATOMIC_RELAXED);
     if (a->irq_target) __atomic_fetch_sub(&g_irq_waiting, 1, __ATOMIC_RELAXED);
@@ -697,7 +703,8 @@ static void reap(acb_t *a) {
     chb_limbo_put(a->ch); /* deferred: see the epoch essay above */
     a->ch = 0;
   }
-  if (a->entry) { fpr_arc_decref(a->entry); a->entry = 0; } /* unpin the closure */
+  if (a->entry_hold) { fpr_slab_unhold(a->entry_hold, 0); a->entry_hold = 0; a->entry = 0; }
+  else if (a->entry) { fpr_arc_decref(a->entry); a->entry = 0; } /* unpin the closure */
   /* a process's actor reclaimed: its loader may end the image once none
    * is left (fpr_pid_live is 0 only when no hart runs that code) */
   if (a->pid && fpr_pid_quiet) fpr_pid_quiet(a->pid);
@@ -1903,6 +1910,8 @@ void fpr_actors_init(void) { /* hart 0, before fpr_smp_go */
                                  * ring too: chan_for only stamps the
                                  * dedicated slots, and a fan-in of
                                  * more than 7 senders lands there */
+  main_acb.mem_reply = 0;
+  main_acb.entry_hold = 0;
   main_acb.entry = 0; /* trampoline runs fpr_fn_main + fpr_exit */
   main_acb.id = 0;
   main_acb.hart = 0;
@@ -1952,21 +1961,30 @@ static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t d
 static V spawn_on_pid(uw hart, V f, uw pin, uw pid) {
   return spawn_on_pid_cap(hart, f, pin, pid, RING_CAP, 0);
 }
+typedef struct {
+  acb_t *acb;
+  char *stack;
+  uw stack_size;
+  void **buckets;
+  chan_t *channels;
+  fpr_slab_t *entry_hold;
+  fpr_slab_t *grant;
+} admission_t;
 static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t dyn,
-                              fpr_slab_t *grant, uw heap_bytes);
+                              fpr_slab_t *grant, uw heap_bytes, admission_t *admitted);
 static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t dyn) {
-  return spawn_on_pid_cap_heap(hart, f, pin, pid, cap, dyn, 0, 0);
+  return spawn_on_pid_cap_heap(hart, f, pin, pid, cap, dyn, 0, 0, 0);
 }
 static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t dyn,
-                              fpr_slab_t *grant, uw heap_bytes) {
+                              fpr_slab_t *grant, uw heap_bytes, admission_t *admitted) {
   fpr_spawns++;
   if (hart >= fpr_live_harts) fpr_cpanic("spawnOn: no such hart (Sys.harts is the live count)");
   if (ISINT(f) || TID(f) != T_PAP) fpr_cpanic("spawn: argument must be a function");
-  acb_t *a = (acb_t *)acb_block();
-  uw stk_sz = 0;
-  char *stk = (char *)stack_block(&stk_sz);
+  acb_t *a = admitted ? admitted->acb : (acb_t *)acb_block();
+  uw stk_sz = admitted ? admitted->stack_size : 0;
+  char *stk = admitted ? admitted->stack : (char *)stack_block(&stk_sz);
   if (!a || !stk) fpr_cpanic("spawn: buddy has no free block");
-  fpr_pool_init(&a->pool, fpr_bkt_take()); /* zeroed; teardown returns it */
+  fpr_pool_init(&a->pool, admitted ? admitted->buckets : fpr_bkt_take()); /* zeroed; teardown returns it */
   if (grant) {
     grant->next = 0; grant->owner = &a->pool;
     grant->escaped = grant->holds = 0;
@@ -1975,20 +1993,22 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
     a->pool.cur = grant;
     a->pool.fixed_heap = heap_bytes;
   }
+  a->mem_reply = 0;
   a->pool_override = 0;
   a->dp_n = 0;
   a->msg_slab = 0;
   a->running = 0; /* the block may be reused: no hart has this context yet */
   a->irq_target = 0;
   if (!a->pool.buckets) fpr_cpanic("spawn: no memory for a bucket array");
-  f = fpr_msg_copy_to(f, pid != (uw)-1 ? pid : fpr_current_pid());
+  a->entry_hold = admitted ? admitted->entry_hold : 0;
+  if (!admitted) f = fpr_msg_copy_to(f, pid != (uw)-1 ? pid : fpr_current_pid());
                        /* the entry closure crosses like any message:
                         * deep-copied, so captures never dangle into
                         * the spawner's pool */
-  fpr_arc_incref(f); /* pinned for the child's lifetime */
+  if (!admitted) fpr_arc_incref(f); /* admitted copies have their own slab hold */
   a->tid = T_ACTOR;
   a->var = ST_READY;
-  a->ch = chb_take(); /* cleared by chb_take */
+  a->ch = admitted ? admitted->channels : chb_take(); /* cleared by chb_take */
   if (!a->ch) fpr_cpanic("spawn: no memory for a channel block");
   a->mbdyn = dyn;
   a->mbcap = cap;
@@ -2064,30 +2084,69 @@ static V a_spawn_cap(V modev, V nv, V f) {
   static const struct { hdr_t h; uw len; char bytes[sizeof(text)]; } name##_s = \
     {{T_STR, 0}, sizeof(text) - 1, text}; \
   static const struct { hdr_t h; V value; } name = {{T_RESULT, 1}, (V)&name##_s}
-HEAP_ERR(heap_routed, "fixed heap: routed process spawn not supported yet");
 HEAP_ERR(heap_size, "fixed heap: bytes must be positive");
 HEAP_ERR(heap_entry, "fixed heap: entry must be a function");
 HEAP_ERR(heap_large, "fixed heap: grant too large");
 HEAP_ERR(heap_denied, "fixed heap: admission denied");
 #undef HEAP_ERR
+/* This record lives on the spawner's stack. A parked spawner may be
+ * killed; the reaper runs cleanup before freeing that stack. No reserved
+ * child pointer has been published, so its control blocks are reusable. */
+static void admission_rollback(void *arg) {
+  admission_t *ad = (admission_t *)arg;
+  if (ad->acb) fpr_fl_put(&acb_unpublished, ad->acb, sizeof(acb_t));
+  if (ad->entry_hold) fpr_slab_unhold(ad->entry_hold, 0);
+  if (ad->channels) fpr_fl_put(&chb_fl, ad->channels, sizeof(chblk_t));
+  if (ad->buckets) fpr_bkt_put(ad->buckets);
+  if (ad->stack) stack_recycle(ad->stack, ad->stack_size);
+  if (ad->grant) fpr_slab_release(ad->grant);
+  /* response belongs to the spawner's pool: ordinary refusal frees it
+   * below; cancellation's pool teardown owns it, never the reaper's pool. */
+}
+/* Test faults are linked only into explicit admission-test builds.  Each
+ * phase is after a reservation, so every partial prefix is exercised. */
+#ifdef FPR_ADMISSION_TEST
+extern int fpr_admission_test_fail(uw phase);
+#define ADMISSION_FAIL(phase) fpr_admission_test_fail(phase)
+#else
+#define ADMISSION_FAIL(phase) 0
+#endif
 static V a_spawn_heap(V bytesv, V f) {
-  if (fpr_sched) return (V)&heap_routed;
-  if (!ISINT(bytesv) || UNTAG(bytesv) <= 0)
-    return (V)&heap_size;
-  if (ISINT(f) || TID(f) != T_PAP)
-    return (V)&heap_entry;
+  if (fpr_sched) return fpr_sched->spawn_heap(bytesv, f);
+  if (!ISINT(bytesv) || UNTAG(bytesv) <= 0) return (V)&heap_size;
+  if (ISINT(f) || TID(f) != T_PAP) return (V)&heap_entry;
   uw bytes = (uw)UNTAG(bytesv);
   if (bytes > ((uw)-1 >> 2)) return (V)&heap_large;
-  /* Reserve the success envelope before the child can run. Refusal
-   * results are static, so reporting denial requires no allocation. */
+  /* Allocating the response belongs to the spawner, before any reservation.
+   * It is freed on refusal. No child is registered or scheduled until commit. */
   hdr_t *r = (hdr_t *)fpr_alloc(8 + sizeof(V));
-  fpr_slab_t *grant = fpr_slab_new(bytes + sizeof(fpr_slab_t));
-  if (!grant) return (V)&heap_denied;
-  V actor = spawn_on_pid_cap_heap(fpr_hart()->id, f, 0, (uw)-1, RING_CAP, 0, grant, bytes);
+  admission_t ad = {0};
+  if (!fpr_actor_cleanup_set(admission_rollback, &ad)) { fpr_free((V)r); return (V)&heap_denied; }
+  ad.grant = fpr_slab_new(bytes + sizeof(fpr_slab_t));
+  if (!ad.grant || ADMISSION_FAIL(1)) goto denied;
+  ad.stack = (char *)stack_block(&ad.stack_size);
+  if (!ad.stack || ADMISSION_FAIL(2)) goto denied;
+  ad.buckets = fpr_bkt_take();
+  if (!ad.buckets || ADMISSION_FAIL(3)) goto denied;
+  ad.channels = chb_take();
+  if (!ad.channels || ADMISSION_FAIL(4)) goto denied;
+  V entry;
+  if (!fpr_entry_copy_try(f, fpr_current_pid(), &entry, &ad.entry_hold) || ADMISSION_FAIL(5)) goto denied;
+  ad.acb = acb_block();
+  if (!ad.acb || ADMISSION_FAIL(6)) goto denied;
+  /* From here initialization and shipping do not park or allocate. */
+  fpr_actor_cleanup_clear(&ad);
+  V actor = spawn_on_pid_cap_heap(fpr_hart()->id, entry, 0, (uw)-1, RING_CAP, 0, ad.grant, bytes, &ad);
   r->tid = T_RESULT; r->var = 0;
   *(V *)((char *)r + 8) = actor;
   return (V)r;
+denied:
+  fpr_actor_cleanup_clear(&ad);
+  admission_rollback(&ad);
+  fpr_free((V)r);
+  return (V)&heap_denied;
 }
+#undef ADMISSION_FAIL
 static V a_spawn_cap_on(V hv, V modev, V nv, V f) {
   if (fpr_sched) return fpr_sched->spawn_at(hv, f);
   if (!ISINT(hv) || !ISINT(modev)) fpr_cpanic("spawnCapOn: hart and mode must be Ints");
@@ -2772,6 +2831,7 @@ FPR_FN(fpr_g_Sys_x2eactInfo, g_actInfo, 1);
  * not be queued, go to the buddy directly as well; those direct calls
  * are the reason buddy_lock still exists. */
 #define MEM_PENDING ((uw)-1)
+#define MEM_CANCELLED ((uw)-2)
 #define MEM_CAP 1024 /* its rings start here and grow (Dynamic) */
 int fpr_mem_own;
 uw fpr_mem_reqs, fpr_mem_waits, fpr_mem_direct, fpr_mem_frees, fpr_mem_denied, fpr_mem_inline;
@@ -2780,6 +2840,13 @@ static acb_t mem_hart_key[FPR_NHARTS]; /* var pinned READY: never "dead" */
 void *fpr_mem_take_direct(uw bytes) {
   __atomic_add_fetch(&fpr_mem_direct, 1, __ATOMIC_RELAXED);
   return buddy_alloc(bytes);
+}
+/* The reply slot transfers ownership by CAS. A killed waiter leaves a
+ * cancellation sentinel: a later grant goes home rather than becoming an
+ * orphan. If the reply already arrived, the reaper returns it itself. */
+static void mem_cancel(acb_t *a) {
+  uw reply = __atomic_exchange_n(&a->mem_reply, MEM_CANCELLED, __ATOMIC_ACQ_REL);
+  if (reply && reply != MEM_PENDING && reply != MEM_CANCELLED) buddy_free((void *)reply);
 }
 static int p_mem(acb_t *a, uw unused) {
   (void)unused;
@@ -2797,6 +2864,10 @@ void *fpr_mem_take(uw bytes) {
   fpr_hart_t *h = fpr_hart();
   acb_t *a = h ? h->current : 0;
   if (!mem_act || !a || a == mem_act) return fpr_mem_take_direct(bytes);
+#ifdef FPR_ADMISSION_TEST
+  extern int fpr_admission_test_queue(void);
+  if (!fpr_admission_test_queue())
+#endif
   { /* uncontended: served on the spot (buddy.c's essay); a miss with
      * the lock free is a real shortage, still queued behind the frees
      * ahead of it in case one of them makes room */
@@ -2805,13 +2876,16 @@ void *fpr_mem_take(uw bytes) {
     if (p) { __atomic_add_fetch(&fpr_mem_inline, 1, __ATOMIC_RELAXED); return p; }
   }
   __atomic_store_n(&a->mem_reply, MEM_PENDING, __ATOMIC_RELEASE);
-  if (!mem_post((uw)a, TAG((sw)((bytes << 1) | 1)))) return fpr_mem_take_direct(bytes);
+  if (!mem_post((uw)a, TAG((sw)((bytes << 1) | 1)))) {
+    __atomic_store_n(&a->mem_reply, 0, __ATOMIC_RELEASE);
+    return fpr_mem_take_direct(bytes);
+  }
   __atomic_add_fetch(&fpr_mem_reqs, 1, __ATOMIC_RELAXED);
   while (!p_mem(a, 0)) {
     __atomic_add_fetch(&fpr_mem_waits, 1, __ATOMIC_RELAXED);
     block_unless(a, p_mem, 0);
   }
-  return (void *)__atomic_load_n(&a->mem_reply, __ATOMIC_ACQUIRE);
+  return (void *)__atomic_exchange_n(&a->mem_reply, 0, __ATOMIC_ACQ_REL);
 }
 void fpr_mem_give(void *p) {
   if (!p) return;
@@ -2852,9 +2926,18 @@ static V mem_body(V me) {
       void *p = buddy_alloc(x >> 1);
       if (!p) fpr_mem_denied++;
       acb_t *r = (acb_t *)from;
-      __atomic_store_n(&r->mem_reply, (uw)p, __ATOMIC_RELEASE);
-      __atomic_thread_fence(__ATOMIC_SEQ_CST);
-      wake(r);
+#ifdef FPR_ADMISSION_TEST
+      (void)fpr_admission_test_fail(7); /* cancellation after allocation, before reply */
+#endif
+      uw expected = MEM_PENDING;
+      if (__atomic_compare_exchange_n(&r->mem_reply, &expected, (uw)p, 0,
+                                      __ATOMIC_RELEASE, __ATOMIC_RELAXED)) {
+#ifdef FPR_ADMISSION_TEST
+        (void)fpr_admission_test_fail(8); /* reply arrived, waiter not yet woken */
+#endif
+        __atomic_thread_fence(__ATOMIC_SEQ_CST);
+        wake(r);
+      } else if (p) buddy_free(p); /* cancelled before the reply */
     } else
       buddy_free((void *)(x << 1));
   }
@@ -2896,6 +2979,7 @@ void fpr_sched_export(fpr_sched_t *out) {
   out->sleep_us = fpr_actor_sleep_us;
   out->cleanup_set = fpr_actor_cleanup_set;
   out->cleanup_clear = fpr_actor_cleanup_clear;
+  out->spawn_heap = a_spawn_heap;
   out->fail = fpr_actor_fail;
   out->send_as = fpr_send_as;
   out->receive = sched_receive;

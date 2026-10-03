@@ -151,6 +151,7 @@ void fpr_bkt_put(void **b);
  * acb-carried.  fpr_sched is NULL on every normal boot (kernel, qosp,
  * bare-metal: zero behavior change); the loader hands a process its
  * table at entry. */
+#define FPR_NATIVE_ABI 1u /* shared ACB/pool/vector layout and scheduler table */
 typedef struct fpr_sched {
   V (*send_as)(uw sender_key, V target, V m);
   V (*receive)(V me);
@@ -174,6 +175,7 @@ typedef struct fpr_sched {
   int (*cleanup_set)(void (*fn)(void *), void *arg);
   void (*cleanup_clear)(void *arg);
   void (*fail)(const char *why);     /* fpr_actor_fail: the plane kills the current actor */
+  V (*spawn_heap)(V bytes, V f);     /* transactional initial admission on the plane */
 } fpr_sched_t;
 extern fpr_sched_t *fpr_sched;        /* NULL = this image is the plane */
 uw fpr_pid_live(uw pid); /* actors of process pid not yet dead and off every hart */
@@ -209,6 +211,7 @@ uw fpr_image_adopt(const void *p, uw pid); /* the pid-0 image holding p becomes 
 uw fpr_image_count(void);                /* images registered now */
 extern void (*fpr_pid_quiet)(uw pid);    /* actors.c reap: an actor of pid was reclaimed */
 uw fpr_current_pid(void);                /* actors.c: the running actor's process (0 = boot) */
+int fpr_entry_copy_try(V v, uw pid, V *out, fpr_slab_t **hold);
 V fpr_msg_copy_to(V v, uw pid);          /* fpr_msg_copy for a receiver in process pid */
 fpr_slab_t *fpr_slab_new(uw want);   /* runtime.c: buddy-backed pool slab */
 void fpr_pool_reset_c(void);         /* runtime.c: Sys.poolReset, C-callable */

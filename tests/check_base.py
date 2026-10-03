@@ -24,6 +24,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         out = run(['./fpr', 'build', prog, '-o', exe])
         assert 'precond' not in out.stdout, 'a build is quiet unless -v'
         return exe
+    print(run(['python3', 'tests/check_admission.py']).stdout.strip())
     # Fixed heap admission is independent of mailbox capacity; failures
     # belong to the child and escaped data delays grant reclamation.
     fixed = build('tests/base/fixedheap.fpr', 'fixedheap')

@@ -105,3 +105,11 @@ increment.
 - Bounded growable policy, cancellation of pending admission, and shared-plane ABI.
 - Bind certified `live`/stack/communication bounds to admission, with counters that
   prove fixed actors make no global backing requests during their run.
+
+## Update on 2026-10-03
+
+[Initial admission](2026-10-03-MEMORY-ADMISSION.md) now reserves the initial
+control resources and entry copy transactionally, rolls back cancellation and
+late grants, and supports loaded QOS processes through the shared plane. This
+supersedes the infrastructure-refusal and routed-spawn limitations above. The
+heap cap still does not certify a total actor budget.
