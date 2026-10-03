@@ -1,0 +1,43 @@
+# deep-stack.fpr -- actor stacks GROW on the board, as on unix.
+#
+# An actor's first stack segment is 64 KiB here.  Until 2026-10-03 the
+# stack check could not fire on a segment that small (its 64 KiB headroom
+# wrapped the span), so a deep recursion wrote past the segment and reset
+# the board (docs/2026-10-03-ESP-LIMITS.md item 1).  Two actors, one on each
+# core, each recurse 100,000 frames deep -- megabytes of stack, in doubling
+# segments -- while holding a 20,000-element list an overrun would trample;
+# both answers and both list sums must come back right.
+unsafe base.
+
+List = use "std/list".
+
+deep : unsafe Int -> Int .
+deep n = if n == 0 then 0 else 1 + deep (n - 1).
+
+build : unsafe Int -> List Int -> List Int .
+build n acc = if n == 0 then acc else build (n - 1) (n :: acc).
+
+sumL : unsafe List Int -> Int -> Int .
+sumL xs acc = case xs of
+    Nil -> acc
+  | x :: r -> sumL r (acc + x).
+
+worker : unsafe Int -> Int -> Int -> Unit .
+worker boss k me =
+  xs = build 20000 Nil;
+  d = deep 100000;
+  _ = send boss (k, d, sumL xs 0);
+  Unit.
+
+collect : unsafe Int -> Int -> Int -> Int .
+collect me left ok = if left == 0 then ok else
+  (case receive me of (k, d, s) ->
+    _ = print "actor {k}: deep {d}, list sum {s}";
+    collect me (left - 1) (if d == 100000 and s == 200010000 then ok + 1 else ok)).
+
+main =
+  me = myself 0;
+  _ = List.each (fn k -> spawnOn (k % Sys.harts Unit) (worker me k)) (List.range 0 1);
+  ok = collect me 2 0;
+  _ = print (if ok == 2 then "deep stacks: both actors grew past their first segment and kept their data" else "deep stacks: WRONG");
+  if ok == 2 then 0 else 1.

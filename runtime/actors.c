@@ -397,9 +397,20 @@ static void stack_recycle(void *p, uw size) {
  * so that run-away recursion is a named panic instead of the machine's
  * memory.  Bare metal has no guard page, and needs none for FP-RISC frames
  * any more: the check is the guard. */
+/* The headroom comes out of the first segment, so it must be smaller than
+ * it: half of it, up to 64 KiB (unix: 64 KiB less 8 bytes of a 128 KiB first
+ * segment, as before; the ESP32-P4's 64 KiB segment: 32 KiB).  It was a flat 64 KiB,
+ * and on the board's 64 KiB segment `size - FPR_STACK_HEADROOM` wrapped to
+ * a huge span: the check always passed, stacks never grew, and deep
+ * recursion wrote past the segment until the board reset
+ * (docs/2026-10-03-ESP-LIMITS.md item 1).  Grown segments are at least twice
+ * the first, so the first is the one this must fit. */
 #ifndef FPR_STACK_HEADROOM
-#define FPR_STACK_HEADROOM ((uw)64 * 1024)
+#define FPR_STACK_HEADROOM ((uw)STACK_SZ / 2 < (uw)64 * 1024 ? (uw)STACK_SZ / 2 : (uw)64 * 1024)
 #endif
+_Static_assert(FPR_STACK_HEADROOM < STACK_SZ,
+               "FPR_STACK_HEADROOM must leave the first stack segment room to run: "
+               "the stack check subtracts it from the segment size");
 uw fpr_stack_max = (uw)1 << 30;
 
 static void fpr_panic_stack(const char *what, uw kib) __attribute__((noreturn));
@@ -419,6 +430,12 @@ static void fpr_panic_stack(const char *what, uw kib) { /* "<what><kib> KiB" */
 typedef struct stkseg { struct stkseg *prev; char *lo; uw size; } stkseg_t; /* at the segment's TOP */
 
 static void stk_window(acb_t *a, fpr_hart_t *h, char *lo, uw size) {
+  /* a segment no larger than the headroom would wrap the span below, and
+   * the check would never fire: refuse it by name, never run on it */
+  if (size <= FPR_STACK_HEADROOM) {
+    if (h) { h->stk_lo = 0; h->stk_span = ~(uw)0; }
+    fpr_panic_stack("stack: a segment no larger than the headroom cannot be checked: ", size >> 10);
+  }
   a->stk_lo = (uw)lo + FPR_STACK_HEADROOM;
   a->stk_span = size - FPR_STACK_HEADROOM;
   if (h) { h->stk_lo = a->stk_lo; h->stk_span = a->stk_span; hal_actor_stack(lo); }

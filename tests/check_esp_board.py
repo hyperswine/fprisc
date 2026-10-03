@@ -68,6 +68,9 @@ p = subprocess.run(["./fpr", "run", "machine/esp-idf/examples/stack-guard.fpr", 
 assert p.returncode == 2 and "32 KiB of C frames on an actor stack: fine" in p.stdout \
     and "NOT CAUGHT" not in p.stdout and "that is the stack guard" in p.stderr, (p.returncode, p.stdout, p.stderr[-2000:])
 print("stack-guard: C code past an actor's stack bottom is a named fault (watchpoint), not a quiet write: PASS")
+run("deep-stack", 0, ["actor 0: deep 100000, list sum 200010000", "actor 1: deep 100000, list sum 200010000",
+                     "deep stacks: both actors grew past their first segment and kept their data"])
+print("deep-stack: FP-RISC stacks grow past their first 64 KiB segment on both cores, data intact: PASS")
 if not quick:
     run("wifi", 0, ["radio: station ", "network(s) in", "while Wi-Fi jobs ran", "access point fpr-p4-test on channel 6, wpa2, at 192.168.4.1"])
     print("wifi: typed info, scan while another core runs, WPA2 access point: PASS")

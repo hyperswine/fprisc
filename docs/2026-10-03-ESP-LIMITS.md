@@ -28,6 +28,25 @@ Each item also says whether the edge is **loud** (a named error) or **silent**.
 
 ## 1. Actor stacks never grow on the board (a bug; silent; confirmed)
 
+**Fixed the same day.** `FPR_STACK_HEADROOM` now defaults to half of the
+first segment, capped at 64 KiB: 64 KiB less 8 bytes on unix (as before), and
+32 KiB on the board.
+
+A first attempt used a quarter. That halved unix's headroom to about 32 KiB,
+and a QOS check-all leg hung with it, so the rule is half. A headroom that does not fit is a compile error, and `stk_window`
+refuses a segment no larger than the headroom by name.
+
+- **The new board check:** `machine/esp-idf/examples/deep-stack.fpr`, in
+  `check_esp_board.py`, runs two actors that each recurse 100,000 frames
+  beside a live list.
+  - It passes with the fix.
+  - With the old runtime the board resets ("Instruction access fault").
+- **Out of memory is now named:** `deep 200000` in two actors, about 8 MB of
+  stack each, ends in "stack overflow -- no memory to grow the actor's stack
+  by 8191 KiB" instead of a reset.
+- **QOS too:** its `QOSSTACK=65536` build mode had the same flaw from the
+  other side (a span of exactly 0). It is fixed by the same default.
+
 - **The cause:** `machine/esp-idf/project/main/CMakeLists.txt:40` sets
   `-DFPR_STACK_SZ=65528`. `runtime/actors.c:401` keeps the default
   `FPR_STACK_HEADROOM` of 64 KiB.
@@ -52,7 +71,7 @@ Each item also says whether the edge is **loud** (a named error) or **silent**.
   - `docs/2026-09-23-ESP-IDF.md` says "Stacks still grow on demand". On the
     board they do not.
 - **Removing it:** derive the headroom from the segment size, for example a
-  quarter of it, capped at 64 KiB. Assert at compile time that it is smaller
+  half of it, capped at 64 KiB. Assert at compile time that it is smaller
   than the stack, so no host can configure the wrap again. Then add a deep,
   non-tail recursion beside live heap data to `check_esp_board.py`.
 
