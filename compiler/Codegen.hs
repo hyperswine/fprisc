@@ -28,9 +28,8 @@
 
 module Codegen (emitProgram, externals, Target (..), rv64, rv32, codegenRev, normArc) where
 -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
--- specialization: x64 lowering runs with it OFF (SysV has too few
--- callee-saved registers for the s1..s9 spec loops; the generic C
--- vec path is used instead -- slower, correct).
+-- specialization. All scalar backends support the shared saved-register
+-- convention; x64 uses its XMM shadow bank for s6..s11.
 
 import Modules (ModExport (..))
 
@@ -38,7 +37,7 @@ import Control.Monad (when)
 import Control.Monad.State.Strict
 import Data.Bits (shiftR, (.&.))
 import Data.Char (isAlphaNum, ord)
-import Data.List (isSuffixOf, foldl', intercalate, isPrefixOf, nub, sort, sortOn)
+import Data.List (stripPrefix, isSuffixOf, foldl', intercalate, isPrefixOf, nub, sort, sortOn)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Numeric (showHex)
@@ -50,7 +49,7 @@ import FPRISC (Core (..), Prog, freeVars)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 30 -- scalar captures in map/filter kernels, record-map width via spill cells; 29: vector descriptors: kinds bytes and a column directory behind pointers (vKindsP/vColsP); 28: fusion requires effect-free, failure-free element functions (fusionSafe); 27: function-argument specialization (Mono); 26: 0-based charAt fast path; 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
+codegenRev = 33 -- inferred layout evidence, nested products, captured/wide folds and type-changing scalar kernels; 30: scalar captures in map/filter kernels, record-map width via spill cells; 29: vector descriptors: kinds bytes and a column directory behind pointers (vKindsP/vColsP); 28: fusion requires effect-free, failure-free element functions (fusionSafe); 27: function-argument specialization (Mono); 26: 0-based charAt fast path; 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -1474,10 +1473,10 @@ declines spec prog owner = goD S.empty
       where
         here = case spineOf e of
           (CVar op, args)
-            | Just n <- lookup op [("Vec.map", 2), ("Vec.filter", 2), ("Vec.fold", 3)],
+            | Just n <- lookup op [("Vec.map", 2), ("Vec.mapAs", 3), ("Vec.filter", 2), ("Vec.fold", 3)],
               length args == n, -- FULL spines only: a partial spine is
               -- just the inside of the real call, not a site
-              fe : _ <- args,
+              fe : _ <- (if op == "Vec.mapAs" then drop 1 args else args),
               (CVar f, caps) <- spineOf fe,
               M.member f prog,
               not (S.member f bound) ->
@@ -1491,8 +1490,7 @@ declines spec prog owner = goD S.empty
                         [ "vec note: " ++ op ++ " over `" ++ f ++ "` (in " ++ owner
                             ++ ") runs in the GENERIC apply tier -- a column loop"
                             ++ " accepts this site, but the specialization tier is"
-                            ++ " OFF on this target (x64: SysV has no s6+ callee-saved"
-                            ++ " registers); rv64/a64 builds specialize it"
+                            ++ " OFF on this target"
                         ]
                     | otherwise -> []
           _ -> []
@@ -1501,7 +1499,6 @@ declines spec prog owner = goD S.empty
         why op f caps
           | arithClosure prog [f] == Nothing =
               "the element fn is not a closed arithmetic/record dual, so no column loop specializes this site"
-          | op == "Vec.fold", not (null caps) = "a fold with captures has no column loop yet (the map and filter kernels take scalar captures)"
           | not (null caps), length caps + 1 > 8 = "the element fn takes " ++ show (length caps) ++ " captures; the kernels pass at most 7 ahead of the element"
           | not (null caps), floatWidthOf prog (maybe S.empty id (arithClosure prog [f])) /= Nothing =
               "a float closure with captures: a raw float capture carries no tag the entry guard could check"
@@ -1714,6 +1711,10 @@ fuseVec round' prog0 = (M.union extras (M.map (\(ps, b) -> (ps, rewrite b)) prog
 
 vecSpec :: Prog -> (String -> Bool) -> Core -> Maybe (SpecPlan, [Core])
 vecSpec prog isLocal e = case spineOf e of
+  (CVar "Vec.mapAs", [CStr layout, fe, v])
+    | (CVar f, caps) <- spineOf fe,
+      okOp "Vec.mapAs", okFn f (length caps + 1), length caps + 1 <= 8 ->
+        Just (SpecPlan ("mapAs@" ++ layout) f False S.empty Nothing Nothing Nothing Nothing (length caps), caps ++ [v])
   (CVar "Vec.map", [fe, v])
     | (CVar f, [capE]) <- spineOf fe,
       okOp "Vec.map",
@@ -1774,6 +1775,14 @@ vecSpec prog isLocal e = case spineOf e of
       floatWidthOf prog clf == Nothing,
       floatWidthOf prog clg == Nothing ->
         Just (SpecPlan ("wfold@" ++ g) f True (clf `S.union` clg) Nothing Nothing Nothing Nothing 0, [z, v])
+  (CVar "Vec.fold", [fe, z, v])
+    | (CVar f, caps@(_ : _)) <- spineOf fe,
+      okOp "Vec.fold", okFn f (length caps + 2), length caps + 2 <= 8 ->
+        let k = length caps in (,caps ++ [z,v]) <$> case planSpecCaps prog "fold" f k of
+          Just p -> Just p
+          Nothing -> do
+            (ks,ps,b,tv,cl) <- soaDualCaps prog f k
+            Just (SpecPlan "fold" f False cl (Just (ks,ps,b,tv)) Nothing Nothing Nothing k)
   (CVar "Vec.fold", [CVar f, z, v]) | okOp "Vec.fold", okFn f 2 -> plan "fold" f [z, v]
   _ -> Nothing
   where
@@ -1968,8 +1977,13 @@ straightLine ps body0 = body0 <$ chk (S.fromList ps) (peel body0)
 -- tuple is never built.  Returns (used columns, ufn params, body, extra
 -- arithmetic closure needed by calls inside the body).
 soaDual :: Prog -> String -> Maybe ([Int], [String], Core, (Int, Int), S.Set String)
-soaDual prog f = do
-  ([acc, el], body0) <- M.lookup f prog
+soaDual prog f = soaDualCaps prog f 0
+
+soaDualCaps :: Prog -> String -> Int -> Maybe ([Int], [String], Core, (Int, Int), S.Set String)
+soaDualCaps prog f k = do
+  (params, body0) <- M.lookup f prog
+  [acc,el] <- Just (drop k params)
+  let caps = take k params
   -- the desugarer re-lets params and the case scrutinee; peelDeep
   -- exposes projections as CProj k (CVar el) and the shape test as
   -- CTagEq tid var (CVar el)
@@ -1984,14 +1998,18 @@ soaDual prog f = do
     -- folds: their row-polymorphic bodies never carry a dispatch chain.
     [] | not (null ks) -> Just (-1, -1)
     _ -> Nothing -- conflicting shape tests: bail
-  if null ks || S.size (S.fromList ks) > 7 || acc == el -- acc + up to 7 used columns in a0..a7; any column index
+  if null ks || S.size (S.fromList ks) + k + 1 > 8 + spillCells || acc == el -- accumulator/captures plus used columns, with hart spills after a7
     then Nothing
     else do
       let cols = S.toAscList (S.fromList ks)
           cvars = ["$c" ++ show k | k <- cols]
-      calls <- bodyOK prog (S.fromList (acc : cvars)) body'
+      calls <- bodyOK prog (S.fromList (caps ++ acc : cvars)) body'
       cl <- arithClosure prog (S.toList calls)
-      Just (cols, acc : cvars, body', tv, cl)
+      -- The accumulator's representation is not inferred from arbitrary
+      -- mixed record arithmetic. Keep float record folds on the typed
+      -- runtime path until the kernel plan carries per-argument kinds.
+      if floatWidthOf (M.insert "$foldDual" (caps ++ acc : cvars,body') prog) (S.insert "$foldDual" cl) /= Nothing then Nothing else Just ()
+      Just (cols, caps ++ acc : cvars, body', tv, cl)
   where
     -- peel trivial alias-lets at every depth (not just the spine)
     peelDeep e = case peel e of
@@ -2255,7 +2273,7 @@ requestSpec :: SpecPlan -> G String
 requestSpec p = do
   let sym = case wfoldG p of
         Just g -> "fpr_vspec_wfold_" ++ mangle (spFn p) ++ "_" ++ mangle g
-        Nothing -> "fpr_vspec_" ++ spOp p ++ "_" ++ mangle (spFn p)
+        Nothing -> "fpr_vspec_" ++ mangle (spOp p) ++ "_" ++ mangle (spFn p)
   modify (\s -> s {cgSpecs = M.insert (spOp p, spFn p) (sym, p) (cgSpecs s)})
   pure sym
 
@@ -2371,7 +2389,9 @@ genU tgt prog uset = go
             [ (++ stSlot tgt "a0" (nxt + i)) <$> go env (nxt + i + 1) NonTail a
               | (i, a) <- zip [0 :: Int ..] args
             ]
-      pure (argLines ++ concat [ldSlot tgt ("a" ++ show i) (nxt + i) | i <- [0 .. length args - 1]])
+      pure (argLines ++ concat [ldSlot tgt ("a" ++ show i) (nxt + i) | i <- [0 .. min 7 (length args - 1)]]
+            ++ if length args <= 8 then [] else ["    mv t0, tp"] ++ concat
+              [ldSlot tgt "t1" (nxt+i) ++ ["    " ++ st ++ " t1, " ++ spillRef tgt (i-8) ++ "(t0)"] | i <- [8 .. length args - 1]])
     op2 = \case
       "+" -> ["    add a0, a0, a1"]
       "-" -> ["    sub a0, a0, a1"]
@@ -2497,6 +2517,7 @@ vecGuard _ reg fb =
 
 emitSpec :: Target -> Bool -> (String, SpecPlan) -> G [String]
 emitSpec tgt rvv (sym, p) = case spOp p of
+  op | Just layout <- stripPrefix "mapAs@" op -> emitMapAsSpec tgt sym p layout
   "map" -> emitMapSpec tgt rvv sym p
   "mvmap" -> emitMvMapSpec tgt sym p
   "filter" -> emitFilterSpec tgt sym p
@@ -2569,6 +2590,49 @@ emitMapSpec tgt rvv sym p = do
       ++ capFallback tgt f k "fpr_vec_map"
       ++ [""]
 
+-- Type-changing scalar maps preserve the declared OUTPUT layout and call
+-- the known callback directly. Unlike the generic scheme, no PAP is applied
+-- per element. The callback uses the ordinary tagged ABI, so Int/float/boxed
+-- inputs and arbitrary output values do not need guessed numeric semantics.
+-- Record inputs retain the correct row-reconstructing runtime fallback.
+emitMapAsSpec :: Target -> String -> SpecPlan -> String -> G [String]
+emitMapAsSpec tgt sym p layout = do
+  let k = spCaps p; f = spFn p; vreg = "a" ++ show k
+      w = tgtW tgt; ld = tgtLd tgt; st = tgtSt tgt
+      (_,pro,epi) = specFrame tgt (["ra"] ++ ["s" ++ show i | i <- [0..6 :: Int]]) k
+  ~[fb,ready,loop,raw,done] <- mapM freshL ["vasfb","vasready","vasloop","vasraw","vasdone"]
+  spec <- strLabel layout
+  fuel <- specFuel tgt
+  let makeOut = if null layout then ["    la a0, fpr_unit", "    call fpr_g_Vec_x2enew_call1"]
+                else ["    la a0, " ++ spec, "    call fpr_g_Vec_x2enewAs_call1"]
+      bytes = ((w*(k+2)+15) `div` 16)*16
+      fallback = [fb ++ ":", "    addi sp, sp, -" ++ show bytes, "    " ++ st ++ " ra, 0(sp)"]
+        ++ ["    " ++ st ++ " a" ++ show i ++ ", " ++ show ((i+1)*w) ++ "(sp)" | i <- [0..k]]
+        ++ ["    la a0, fpr_obj_" ++ mangle f]
+        ++ concat [["    " ++ ld ++ " a1, " ++ show ((i+1)*w) ++ "(sp)", "    call fpr_apply"] | i <- [0..k-1]]
+        ++ ["    mv a1, a0", "    la a0, " ++ spec, "    " ++ ld ++ " a2, " ++ show ((k+1)*w) ++ "(sp)",
+            "    " ++ ld ++ " ra, 0(sp)", "    addi sp, sp, " ++ show bytes, "    j fpr_g_Vec_x2emapAs_call3"]
+  pure $ ["# Vec.mapAs direct scalar kernel on " ++ f ++ " [output layout " ++ show layout ++ "]", "    .globl " ++ sym, sym ++ ":"]
+    ++ vecGuard tgt vreg fb
+    ++ ["    li t1, 1", "    beq t0, t1, " ++ ready,
+        "    li t1, 2", "    beq t0, t1, " ++ ready,
+        "    li t1, 4", "    bne t0, t1, " ++ fb, ready ++ ":"]
+    ++ pro
+    ++ ["    " ++ st ++ " a" ++ show i ++ ", " ++ show (i*w) ++ "(sp)" | i <- [0..k-1]]
+    ++ ["    mv s0, " ++ vreg, "    lw s5, " ++ show vRep ++ "(s0)",
+        "    " ++ ld ++ " s2, " ++ show vLen ++ "(s0)", "    li s3, 0",
+        "    " ++ ld ++ " s4, " ++ show (vColsP tgt) ++ "(s0)", "    " ++ ld ++ " s4, 0(s4)",
+        "    " ++ ld ++ " s4, " ++ show (colBlk0 tgt) ++ "(s4)"]
+    ++ makeOut ++ ["    mv s1, a0", loop ++ ":", "    bgeu s3, s2, " ++ done]
+    ++ fuel
+    ++ ["    " ++ ld ++ " s6, 0(s4)", "    li t0, 1", "    bne s5, t0, " ++ raw,
+        "    slli s6, s6, 1", "    ori s6, s6, 1", raw ++ ":"]
+    ++ capLoads tgt k ++ ["    mv " ++ vreg ++ ", s6", "    call fpr_fn_" ++ mangle f,
+        "    mv a1, s1", "    call fpr_g_Vec_x2epush_call2", "    mv s1, a0",
+        "    addi s4, s4, " ++ show w, "    addi s3, s3, 1", "    j " ++ loop,
+        done ++ ":", "    mv a0, s0", "    call fpr_g_Vec_x2efree_call1", "    mv a0, s1"]
+    ++ epi ++ ["    ret"] ++ fallback ++ [""]
+
 -- entry guard for k scalar captures in a0..a(k-1): each must be a tagged
 -- Int (bit 0 set); anything else goes to the generic tier
 capGuards :: Int -> String -> [String]
@@ -2607,6 +2671,21 @@ capFallback tgt f k scheme =
              "    addi sp, sp, " ++ show bytes,
              "    j " ++ scheme
            ]
+
+-- A declined captured fold must retain both its initial accumulator and
+-- vector while reconstructing the callback. The fallback uses the ordinary
+-- runtime fold, including its tagged/boxed accumulator semantics.
+foldFallback :: Target -> String -> Int -> [String]
+foldFallback _ f 0 = ["    mv a2, a1", "    mv a1, a0", "    la a0, fpr_obj_" ++ mangle f, "    j fpr_vec_fold"]
+foldFallback tgt f k =
+  let w = tgtW tgt; ld = tgtLd tgt; st = tgtSt tgt
+      bytes = ((w * (k + 3) + 15) `div` 16) * 16
+   in ["    addi sp, sp, -" ++ show bytes, "    " ++ st ++ " ra, 0(sp)"]
+        ++ ["    " ++ st ++ " a" ++ show i ++ ", " ++ show ((i+1)*w) ++ "(sp)" | i <- [0..k+1]]
+        ++ ["    la a0, fpr_obj_" ++ mangle f]
+        ++ concat [["    " ++ ld ++ " a1, " ++ show ((i+1)*w) ++ "(sp)", "    call fpr_apply"] | i <- [0..k-1]]
+        ++ ["    " ++ ld ++ " a1, " ++ show ((k+1)*w) ++ "(sp)", "    " ++ ld ++ " a2, " ++ show ((k+2)*w) ++ "(sp)",
+            "    " ++ ld ++ " ra, 0(sp)", "    addi sp, sp, " ++ show bytes, "    j fpr_vec_fold"]
 
 rvvMapInner :: Target -> String -> Core -> String -> String -> Maybe [String]
 rvvMapInner tgt prm body linner lnextb = do
@@ -3005,15 +3084,18 @@ emitMvMapSpec tgt sym p = do
 emitFoldSpec :: Target -> Bool -> String -> SpecPlan -> G [String]
 emitFoldSpec tgt rvv sym p = do
   let f = spFn p
+      k = spCaps p
+      zreg = "a" ++ show k
+      vreg = "a" ++ show (k + 1)
       ld = tgtLd tgt
       st = tgtSt tgt
       w = tgtW tgt
       usedCols = maybe [] (\(ks, _, _, _) -> ks) (spSoa p)
       nSlots = length usedCols
       regs = ["ra"] ++ ["s" ++ show i | i <- [0 .. 7 :: Int]]
-      (_, pro, epi) = specFrame tgt regs nSlots
+      (_, pro, epi) = specFrame tgt regs (nSlots + k)
       doRvvSum = rvv && spRvv p == Just RvvFoldSum && spScalar p
-      doGpuPairSum = isGpuPairSum p
+      doGpuPairSum = k == 0 && isGpuPairSum p
       e = rvvE tgt
   ~[fb, ldis, lscal, lsoa, ldone] <- mapM freshL ["vfb", "vdis", "vscal", "vsoa", "vdone"]
   -- scalar loop labels
@@ -3026,10 +3108,10 @@ emitFoldSpec tgt rvv sym p = do
   blk2 <- specBlock tgt
   let needCols = if null usedCols then 0 else maximum usedCols + 1
       guards =
-        vecGuard tgt "a1" fb
+        capGuards k fb ++ vecGuard tgt vreg fb
           ++ ["    mv t2, t0"] -- rep
           ++ ( if spFloat p == Nothing
-                 then [ "    andi t0, a0, 1",
+                 then [ "    andi t0, " ++ zreg ++ ", 1",
                         "    beqz t0, " ++ fb -- z must be Int (raw acc)
                       ]
                  else [] -- float z: raw bits, no tag to check
@@ -3050,18 +3132,18 @@ emitFoldSpec tgt rvv sym p = do
                           -- exactly as shape-checked as the generic
                           -- body, so only ncols/kinds gate below
                           else
-                            [ "    " ++ ld ++ " t0, " ++ show (8 + tgtW tgt) ++ "(a1)", -- eltid
+                            [ "    " ++ ld ++ " t0, " ++ show (8 + tgtW tgt) ++ "(" ++ vreg ++ ")", -- eltid
                               "    li t1, " ++ show etid,
                               "    bne t0, t1, " ++ fb,
-                              "    " ++ ld ++ " t0, " ++ show (8 + 2 * tgtW tgt) ++ "(a1)", -- elvar
+                              "    " ++ ld ++ " t0, " ++ show (8 + 2 * tgtW tgt) ++ "(" ++ vreg ++ ")", -- elvar
                               "    li t1, " ++ show evar,
                               "    bne t0, t1, " ++ fb
                             ]
                       )
-                   ++ [ "    " ++ ld ++ " t0, " ++ show (vNcols tgt) ++ "(a1)",
+                   ++ [ "    " ++ ld ++ " t0, " ++ show (vNcols tgt) ++ "(" ++ vreg ++ ")",
                      "    li t1, " ++ show needCols,
                      "    bltu t0, t1, " ++ fb, -- enough columns
-                     "    " ++ ld ++ " t0, " ++ show (vKindsP tgt) ++ "(a1)"
+                     "    " ++ ld ++ " t0, " ++ show (vKindsP tgt) ++ "(" ++ vreg ++ ")"
                    ]
                 ++ kindChecks "t0" fb usedCols -- used columns raw
                 ++ [ "    j " ++ ldis ]
@@ -3069,10 +3151,11 @@ emitFoldSpec tgt rvv sym p = do
       setup =
         [ ldis ++ ":" ]
           ++ pro
-          ++ [ "    mv s0, a1",
+          ++ capStores tgt k
+          ++ [ "    mv s0, " ++ vreg,
                ( if spFloat p == Nothing
-                   then "    srai s7, a0, 1" -- acc, raw int
-                   else "    mv s7, a0" -- acc, raw float bits
+                   then "    srai s7, " ++ zreg ++ ", 1" -- acc, raw int
+                   else "    mv s7, " ++ zreg -- acc, raw float bits
                ),
                "    " ++ ld ++ " s1, " ++ show vLen ++ "(s0)",
                "    li s2, 0",
@@ -3109,10 +3192,10 @@ emitFoldSpec tgt rvv sym p = do
                          "    j " ++ si
                        ]
                      else
-                       [ si ++ ":",
-                         "    beqz s6, " ++ snb,
-                         "    mv a0, s7",
-                         "    " ++ ld ++ " a1, 0(s5)",
+                       [ si ++ ":", "    beqz s6, " ++ snb ]
+                         ++ capLoads tgt k
+                         ++ [ "    mv " ++ zreg ++ ", s7",
+                         "    " ++ ld ++ " " ++ vreg ++ ", 0(s5)",
                          "    call fpr_ufn_" ++ mangle f,
                          "    mv s7, a0",
                          "    addi s5, s5, " ++ show w,
@@ -3158,15 +3241,18 @@ emitFoldSpec tgt rvv sym p = do
             ++ [ ai ++ ":",
                  "    beqz s6, " ++ anb
                ]
+            ++ capLoads tgt k
             ++ concat
-              [ [ "    " ++ ld ++ " t0, " ++ show (q * w) ++ "(sp)",
-                  "    " ++ ld ++ " a" ++ show (q + 1) ++ ", 0(t0)",
-                  "    addi t0, t0, " ++ show w,
-                  "    " ++ st ++ " t0, " ++ show (q * w) ++ "(sp)"
-                ]
+              [ let arg = k+q+1
+                    reg = if arg < 8 then "a" ++ show arg else "t1"
+                 in [ "    " ++ ld ++ " t0, " ++ show ((q+k) * w) ++ "(sp)",
+                      "    " ++ ld ++ " " ++ reg ++ ", 0(t0)" ]
+                    ++ (if arg < 8 then [] else ["    mv t2, tp", "    " ++ st ++ " t1, " ++ spillRef tgt (arg-8) ++ "(t2)"])
+                    ++ [ "    addi t0, t0, " ++ show w,
+                         "    " ++ st ++ " t0, " ++ show ((q+k) * w) ++ "(sp)" ]
                 | (q, _) <- zip [0 :: Int ..] ks
               ]
-            ++ [ "    mv a0, s7",
+            ++ [ "    mv " ++ zreg ++ ", s7",
                  "    call fpr_ufn_soa_" ++ mangle f,
                  "    mv s7, a0",
                  "    addi s2, s2, 1",
@@ -3178,13 +3264,13 @@ emitFoldSpec tgt rvv sym p = do
             blk2' =
               blk2 -- count math; its s5 (cols[0] base) load is simply unused here
                 ++ concat
-                  [ [ "    " ++ ld ++ " t0, " ++ show (vColsP tgt) ++ "(s0)", "    " ++ ld ++ " t0, " ++ show (k * w) ++ "(t0)", -- col_t* for column k
+                  [ [ "    " ++ ld ++ " t0, " ++ show (vColsP tgt) ++ "(s0)", "    " ++ ld ++ " t0, " ++ show (column * w) ++ "(t0)", -- col_t* for column k
                       "    " ++ ld ++ " t0, " ++ show (colBlk0 tgt) ++ "(t0)", -- base
                       "    slli t1, s2, " ++ show (logW tgt),
                       "    add t0, t0, t1", -- + done elements
-                      "    " ++ st ++ " t0, " ++ show (q * w) ++ "(sp)" -- cursor slot
+                      "    " ++ st ++ " t0, " ++ show ((q+k) * w) ++ "(sp)" -- cursor slot
                     ]
-                    | (q, k) <- zip [0 :: Int ..] ks
+                    | (q, column) <- zip [0 :: Int ..] ks
                   ]
       finish =
         [ ldone ++ ":",
@@ -3206,12 +3292,8 @@ emitFoldSpec tgt rvv sym p = do
           ++ epi
           ++ [ "    ret",
                fb ++ ":",
-               "    mv a2, a1",
-               "    mv a1, a0",
-               "    la a0, fpr_obj_" ++ mangle f,
-               "    j fpr_vec_fold",
                ""
-             ]
+             ] ++ foldFallback tgt f k
   pure $
     [ "# Vec.fold specialized on " ++ f
         ++ (if doRvvSum then "  [RVV vredsum]" else "")

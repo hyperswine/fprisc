@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix='typed-vector-') as d:
         'boxed-float': ('main = Vec.push 1.0 (Vec.newAs "b").', 'boxed columns'),
         'bare': ('bad : Vector -> Int .\nbad v = _ = Vec.free v; 1.\nmain = bad (Vec.iota 2).', 'requires one element type'),
         'numeric': ('main = Vec.scale 2 (Vec.push 1.0 (Vec.newAs "d")).', 'cannot unify'),
-        'polymorphic-layout': ('build x = Vec.push x (Vec.new Unit).\nmain = _ = Vec.free (build 1.0); print "no".', 'output element layout is polymorphic'),
+        'ambiguous-layout': ('main = _ = Vec.free (Vec.new Unit); print "no".', 'vector output layout is ambiguous'),
         'index-escape': ('main = print ((Vec.iota 2) ! 1).', 'cannot unify'),
         'linearity': ('main = v = Vec.iota 2; _ = Vec.free v; _ = Vec.free v; print "no".', 'linear'),
     }

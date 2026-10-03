@@ -743,8 +743,8 @@ compileMain = do
              in [t | t@(TBind n _ _ _) <- rw, S.member n bn]
                   ++ [t | t <- rw, not (isTBind t)]
           compileUnit uts = M.map (fmap eraseCast) (fst (runState (compileTop uts >>= liftFix) (DEnv 0 consAll shapes [])))
-          preludeExt = arities preludeE'
-          unitExt = M.unions [arities uts | (_, uts) <- units']
+          preludeExt = arities (resolveUnit preludeE')
+          unitExt = M.unions [arities (resolveUnit uts) | (_, uts) <- units']
           sourceExt = M.union preludeExt unitExt
           extFor = M.union (if oArc opts then arcExterns else M.empty) sourceExt -- own names win via prog-first lookup
           -- primitive arities for direct calls: the compiler's builtin
@@ -775,7 +775,7 @@ compileMain = do
                 | x64 = lowerX64
                 | otherwise = id
           rvv = oRvv opts && not a64 && not x64 -- no RVV lowering in the PoCs
-          spec = not x64 -- SysV callee-saved registers can't host the s6+ spec loops
+          spec = True -- x64 lowers the extra saved registers through its shadow bank
           -- every distinct lowering its own cache tag: a QOS app on Apple Silicon
           -- and a hosted posix program once shared "a64macr" while generating
           -- different code, and hosted AArch64 now reads its hart from x28
@@ -877,9 +877,9 @@ compileMain = do
           rootExports =
             [ ModExport rootHash n n (length ps)
               | oPlugin opts,
-                TBind n ps _ _ <- root'
+                TBind n ps _ _ <- rootProgTops
             ]
-          imageExports = exports ++ rootExports
+          imageExports = [e {meArity = M.findWithDefault (meArity e) (meQual e) extFor} | e <- exports] ++ rootExports
       when (oBuiltin opts && not (oArc opts) && M.member "machineInterrupt" rootProgRaw) $ do
         hPutStrLn stderr "machineInterrupt requires --arc (raw, allocation-free handler ABI)"
         exitFailure

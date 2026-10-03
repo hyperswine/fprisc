@@ -24,7 +24,7 @@
 #ifndef FPR_VEC_LAYOUT_H
 #define FPR_VEC_LAYOUT_H
 
-enum { VR_UNSET = 0, VR_INT = 1, VR_BOX = 2, VR_SOA = 3, VR_FLT = 4 };
+enum { VR_UNSET = 0, VR_INT = 1, VR_BOX = 2, VR_SOA = 3, VR_FLT = 4, VR_TREE = 5 };
 
 enum { VK_BOX = 0, VK_INT = 1, VK_F64 = 3, VK_F32 = 7 };
 #define VK_RAW(k) ((k) & 1u)
@@ -36,11 +36,19 @@ typedef struct {
   uw *base; /* the ONE contiguous span */
 } col_t;
 
+/* Preorder reconstruction recipe for finite nested products. Leaf nodes
+ * name a physical column; product nodes carry their concrete value identity.
+ * No V pointers or raw float values occur in this metadata. */
+typedef struct { uw arity, tid, var, column; } vec_shape_t;
+#define VS_PRODUCT ((uw)-1)
+
 typedef struct {
   uint32_t tid, var; /* var = rep (VR_*) */
   uw len, eltid, elvar, ncols;
   uint8_t *kinds; /* ncols kind bytes (VK_*), >= VK_PAD bytes allocated; 0 until the layout is fixed */
   col_t **cols;   /* the column directory: ncols col_t*; 0 until the layout is fixed */
+  vec_shape_t *shape;
+  uw shape_len;
 } vec_t;
 
 #define VREP(x) ((x)->var & 0xffu)

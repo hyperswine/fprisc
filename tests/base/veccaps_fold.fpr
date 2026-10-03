@@ -1,0 +1,9 @@
+unsafe base.
+R = {a:Int,b:Int,c:Int,d:Int,e:Int,f:Int,g:Int,h:Int,i:Int}.
+step scale bias acc r = acc + scale * (r.a + r.b + r.c + r.d + r.e + r.f + r.g + r.h + r.i) + bias.
+main =
+ r = {a=1,b=2,c=3,d=4,e=5,f=6,g=7,h=8,i=9};
+ v = Vec.push r (Vec.push r (Vec.new Unit));
+ (s,w) = Vec.fold (step 2 3) 7 v;
+ _ = Vec.free w;
+ print "record fold: {s}".

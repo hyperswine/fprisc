@@ -1,5 +1,9 @@
 # Vector kernels: captures, wide records, record filters
 
+Follow-up: [VECTOR-LIMITS](2026-10-03-VECTOR-LIMITS.md) adds captured/wide
+folds, direct type-changing scalar maps and x64 kernel execution. The
+limitations below describe the earlier step.
+
 Date: 2026-10-03. Kind: implementation record. Step 2 of
 [2026-10-03-VECTOR-AUDIT.md](2026-10-03-VECTOR-AUDIT.md), the scalar
 column kernels; x64 is the part not done (below).

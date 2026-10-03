@@ -1,0 +1,5 @@
+unsafe base.
+change : Int -> F64 .
+change x | x == 2 = error "type-changing map failed on 2".
+change x = _ = print "visited {x}"; F64.ofInt x.
+main = _ = Vec.free (Vec.map change (Vec.iota 4)); print "unreachable".

@@ -49,9 +49,8 @@
 --   t0 %r10  t1 %r11  t2 %rdi (dead at call boundaries, where the
 --                              translator claims %rdi for arg0)
 --   s0 %rbp  s1 %rbx  s2 %r12  s3 %r13  s4 %r14  s5 %r15
---   s6..s11: unmapped -- SysV has only 6 callee-saved registers, which
---   is WHY x64 codegen runs with vec-loop specialization disabled
---   (emitProgram's spec flag); the generic C vec path needs none.
+--   s6..s11: XMM2..7 shadow bank, saved at calls from functions using it.
+--   Integer instructions borrow preserved real registers for one instruction.
 --   zero -> $0 / a fixup per use.  tp -> initial-exec TLS load of
 --   fpr_posix_hart (multithreaded harts; matches A64.hs).
 module X64 (lowerX64, deTlsQosApp, x64Rev) where
@@ -64,7 +63,7 @@ import Data.List (isPrefixOf, isSuffixOf, stripPrefix)
 -- lowering fix invalidates cached lowered units (learned the hard way:
 -- the section-aware fixup fix left stale corrupt prelude units behind)
 x64Rev :: Int
-x64Rev = 6 -- r5 + scalar F64 moves, arithmetic and ordered IEEE comparisons
+x64Rev = 8 -- virtual callee-saved s6..s11 in XMM2..7, preserved at calls
 
 -- deTlsQosApp: the QOS-x86_64 (--target=qx64) refinement.  A loaded
 -- QOS Portable app image is a fixed-slot ELF with no dynamic loader
@@ -136,8 +135,17 @@ deTlsQosApp = unlines . concatMap detls . lines
           | otherwise = go2 (c : acc) cs
 
 lowerX64 :: String -> String
-lowerX64 = unlines . go (True, (False, False)) . map banner . lines
+lowerX64 source = unlines (go (True, (False, False)) False input)
   where
+    input = map banner (lines source)
+    shadowFunctions = scan Nothing False input
+    scan name used [] = [n | Just n <- [name], used]
+    scan name used (l:ls) = case functionLabel l of
+      Just n -> [old | Just old <- [name], used] ++ scan (Just n) False ls
+      Nothing -> scan name (used || any (`elem` words [if c `elem` "()," then ' ' else c | c <- l]) ["s6","s7","s8","s9","s10","s11"]) ls
+    functionLabel s = case break (== ':') s of
+      (n@(c:_), ":") | c /= '.' && c /= ' ' -> Just n
+      _ -> Nothing
     banner "# target: rv64" = "# target: x64 (lowered from the rv64 emission -- the shared RISC IR)"
     banner l = l
     -- section-aware scan: the arg0 entry fixup is only injected after
@@ -145,9 +153,11 @@ lowerX64 = unlines . go (True, (False, False)) . map banner . lines
     -- instruction bytes into the object and shifts every field.
     -- `staged` tracks a6/a7 values parked in the TLS cells since the
     -- last call/label; the next `call` spills them as stack args.
-    go _ [] = []
-    go st@(inText, _) (l : ls) =
-      let (out, st') = lowerLine st l in out ++ go (nextSect st' l) ls
+    go _ _ [] = []
+    go st@(inText, _) bank (l : ls) =
+      let bank' = maybe bank (`elem` shadowFunctions) (functionLabel l)
+          (out, st') = lowerLine bank' st l
+       in out ++ go (nextSect st' l) bank' ls
       where _ = inText
     nextSect (cur, stg) l
       | ".text" `isPrefixOf` dropWhile isSpace l = (True, stg)
@@ -168,7 +178,7 @@ reg = \case
   "ra" -> error "X64: ra outside the prologue/epilogue patterns"
   "sp" -> "%rsp" -- only valid via the mem/mv special cases below
   r@('a' : _) -> error ("X64: " ++ r ++ " -- arity <= 6 on x64 (SysV stack args not lowered yet)")
-  r@('s' : _) -> error ("X64: " ++ r ++ " -- spec loops need s6+; build with specs disabled")
+  r@('s' : _) -> error ("X64: " ++ r ++ " outside the virtual-register lowering")
   r -> error ("X64: unmapped register " ++ r)
 
 r32 :: String -> String -- the 32-bit name of a mapped register
@@ -184,13 +194,13 @@ scratch avoid = head [c | c <- ["%r10", "%r11", "%rsi", "%rcx"], c `notElem` avo
 
 type St = (Bool, (Bool, Bool)) -- (in .text, (a6 staged, a7 staged))
 
-lowerLine :: St -> String -> ([String], St)
-lowerLine st@(inText, staged) l
+lowerLine :: Bool -> St -> String -> ([String], St)
+lowerLine bank st@(inText, staged) l
   | null (dropWhile isSpace l) = ([l], st)
   | "#" `isPrefixOf` dropWhile isSpace l = ([l], st)
   | not inText = ([l], st) -- data lines pass through verbatim
   | Just body <- stripPrefix "    " l, not (isDirective body) =
-      let (out, staged') = instr staged body in (map ind out, (inText, staged'))
+      let (out, staged') = extendedInstr bank staged body in (map ind out, (inText, staged'))
   | Just lbl <- funcLabel l =
       ([l, ind ("movq %rdi, %rax # arg0 fixup (" ++ lbl ++ ")")], (inText, (False, False)))
   | otherwise = ([l], st)
@@ -262,6 +272,50 @@ instr staged@(s6, s7) body = case parts body of
       ("j", [lb]) -> not (".L" `isPrefixOf` lb)
       _ -> False
 
+-- The extra IR saved registers live in XMM2..7. Integer instructions
+-- borrow real registers for one instruction, preserving their old values.
+-- Calls spill the shadow bank: System V permits a C callee to clobber XMMs.
+-- The IR's own prologue/epilogue still saves/restores each virtual register,
+-- so recursion, tail calls and calls between kernels have the same ABI.
+extendedInstr :: Bool -> (Bool, Bool) -> String -> ([String], (Bool, Bool))
+extendedInstr bank staged body
+  | bank, ("call", _) <- parts body =
+      let (out, st) = instr staged body
+       in (["subq $48, %rsp"] ++ saveBank ++ out ++ loadBank ++ ["addq $48, %rsp"], st)
+  | null used = instr staged body
+  | otherwise =
+      let real = take (length used) [r | r <- ["s1", "s2", "s3", "s4", "s5", "a2", "a3", "a4", "a5", "t0", "t1"], r `notElem` tokens]
+          pairs = zip used real
+          replace t = maybe t id (lookup t pairs)
+          rewritten = unwords (map replaceWord (words body))
+          replaceWord = concatMap (\t -> if all (\c -> c /= '(' && c /= ')' && c /= ',') t then replace t else t) . chunks
+          chunks [] = []
+          chunks (c:cs) | c `elem` "()," = [c] : chunks cs
+          chunks xs = let (a,b) = break (`elem` "(),") xs in a : chunks b
+          bias = 8 * length used
+          shifted = case parts rewritten of
+            (op,[r,m]) | op `elem` ["ld","sd","lw","sw","lbu"], Just off <- stripSuffixSp m -> op ++ " " ++ r ++ ", " ++ show (readInt (if null off then "0" else off) + fromIntegral bias) ++ "(sp)"
+            ("mv",[r,"sp"]) -> "addi " ++ r ++ ", sp, " ++ show bias
+            ("addi",[r,"sp",n]) | r /= "sp" -> "addi " ++ r ++ ", sp, " ++ show (readInt n + fromIntegral bias)
+            _ -> rewritten
+          (out, st) = instr staged shifted
+          branching = case parts shifted of (op,_) -> op `elem` ["beqz","bnez","bgtz","beq","bne","bgeu","bltu"]
+          (before, after) = if branching then (init out, [last out]) else (out, [])
+       in (map (\(_,r) -> "pushq " ++ reg r) pairs
+             ++ ["movq " ++ shadow v ++ ", " ++ reg r | (v,r) <- pairs]
+             ++ before
+             ++ ["movq " ++ reg r ++ ", " ++ shadow v | (v,r) <- pairs]
+             ++ map (\(_,r) -> "popq " ++ reg r) (reverse pairs)
+             ++ after, st)
+  where
+    tokens = words [if c `elem` "()," then ' ' else c | c <- body]
+    used = [r | r <- ["s6","s7","s8","s9","s10","s11"], r `elem` tokens]
+    shadow r = "%xmm" ++ show (read (drop 1 r) - 4 :: Int)
+    saveBank = ["movq %xmm" ++ show (i+2) ++ ", " ++ show (i*8) ++ "(%rsp)" | i <- [0..5 :: Int]]
+    loadBank = ["movq " ++ show (i*8) ++ "(%rsp), %xmm" ++ show (i+2) | i <- [0..5 :: Int]]
+    stripSuffixSp m | "(sp)" `isSuffixOf` m = Just (take (length m - 4) m)
+                    | otherwise = Nothing
+
 instr0 :: String -> [String]
 instr0 body = case parts body of
   -- ra never materializes (rule 1): the hardware call/ret carry it
@@ -317,17 +371,22 @@ instr0 body = case parts body of
   -- unordered input: mask with !PF so NaN is false for <, <= and ==.
   ("fmv.d.x", [fd, rs]) -> ["movq " ++ reg rs ++ ", " ++ freg fd]
   ("fmv.x.d", [rd, fs]) -> ["movq " ++ freg fs ++ ", " ++ reg rd]
+  ("fmv.w.x", [fd, rs]) -> ["movd " ++ r32 rs ++ ", " ++ freg fd]
+  ("fmv.x.w", [rd, fs]) -> ["movd " ++ freg fs ++ ", " ++ r32 rd]
   (op, [fd, f1, f2])
     | Just xop <- lookup op [("fadd.d", "addsd"), ("fsub.d", "subsd"),
-                             ("fmul.d", "mulsd"), ("fdiv.d", "divsd")] ->
+                             ("fmul.d", "mulsd"), ("fdiv.d", "divsd"),
+                             ("fadd.s", "addss"), ("fsub.s", "subss"),
+                             ("fmul.s", "mulss"), ("fdiv.s", "divss")] ->
         if fd == f1 then [xop ++ " " ++ freg f2 ++ ", " ++ freg fd]
         else error "X64: float arithmetic requires destination == first operand"
   (op, [rd, f1, f2])
-    | Just cc <- lookup op [("flt.d", "b"), ("fle.d", "be"), ("feq.d", "e")] ->
+    | Just cc <- lookup op [("flt.d", "b"), ("fle.d", "be"), ("feq.d", "e"),
+                           ("flt.s", "b"), ("fle.s", "be"), ("feq.s", "e")] ->
         let s = scratch [reg rd]
             u = scratch [reg rd, s]
          in ["pushq " ++ s, "pushq " ++ u, "movq $0, " ++ s, "movq $0, " ++ u,
-             "ucomisd " ++ freg f2 ++ ", " ++ freg f1,
+             (if ".s" `isSuffixOf` op then "ucomiss " else "ucomisd ") ++ freg f2 ++ ", " ++ freg f1,
              "set" ++ cc ++ " " ++ b8 s, "setnp " ++ b8 u,
              "andq " ++ u ++ ", " ++ s, "movq " ++ s ++ ", " ++ reg rd,
              "popq " ++ u, "popq " ++ s]

@@ -15,7 +15,7 @@
  *
  * Layout is fixed by the FIRST push (the Sol PoC rule, verbatim):
  *   Int                    -> 1 unboxed column           (rep VR_INT)
- *   tuple/record, 2..8 fields -> one column per field, each unboxed
+ *   tuple/record, any width -> one column per field, each unboxed
  *                             if that field was an Int   (rep VR_SOA)
  *   anything else          -> 1 boxed column             (rep VR_BOX)
  * Unboxed columns hold RAW (untagged) machine words — the layout the
@@ -27,7 +27,7 @@
  * mutation (push/set/map return the same reference as the "new" vector)
  * and licenses the compiler's specialized loops to write columns
  * directly.  Record values carry their field count in `var`; tuple
- * arities come from their typeids.  Wider products stay boxed.
+ * arities come from their typeids. Nested float products carry a recipe.
  */
 #include "fpr.h"
 #include <limits.h>
@@ -98,7 +98,7 @@ static col_t *col_copy(col_t *c, uw len) {
 /* the descriptor: a directory of ncols column pointers and ncols kind
  * bytes (zero padded to VK_PAD), allocated when the layout is fixed */
 static void vdir_alloc(vec_t *x, uw ncols) {
-  if (ncols == 0 || ncols > ((uw)1 << 30)) fpr_cpanic("Vec: column count out of range");
+  if (ncols == 0 || ncols > ((uw)1 << 30) || ncols > ~(uw)0 / sizeof(col_t *)) fpr_cpanic("Vec: column count out of range");
   x->ncols = ncols;
   x->cols = (col_t **)fpr_alloc(ncols * sizeof(col_t *));
   x->kinds = (uint8_t *)fpr_alloc(VKINDS_BYTES(ncols));
@@ -111,14 +111,24 @@ static void vdir_free(vec_t *x) {
   x->cols = 0;
   x->kinds = 0;
   x->ncols = 0;
+  if (x->shape) fpr_free((V)x->shape);
+  x->shape = 0; x->shape_len = 0;
 }
 static int vhas_float(const vec_t *x) {
   for (uw k = 0; k < x->ncols; k++)
     if (VK_FLOAT(x->kinds[k])) return 1;
   return 0;
 }
+static void vshape_like(vec_t *x, const vec_t *src) {
+  x->shape_len = src->shape_len; x->shape = 0;
+  if (src->shape_len) {
+    x->shape = (vec_shape_t *)fpr_alloc(src->shape_len * sizeof(vec_shape_t));
+    __builtin_memcpy(x->shape, src->shape, src->shape_len * sizeof(vec_shape_t));
+  }
+}
 /* copy the descriptor (kinds, element identity, rep) of src into a fresh empty x */
 static void vdir_like(vec_t *x, const vec_t *src) {
+  vshape_like(x, src);
   x->var = (uint32_t)VREP(src);
   x->eltid = src->eltid;
   x->elvar = src->elvar;
@@ -133,6 +143,7 @@ static vec_t *vcopy(vec_t *x) {
   n->var = (uint32_t)VREP(x); /* rc 0: sole owner */
   n->len = x->len; n->eltid = x->eltid; n->elvar = x->elvar;
   n->ncols = 0; n->kinds = 0; n->cols = 0;
+  vshape_like(n, x);
   if (x->ncols) {
     vdir_alloc(n, x->ncols);
     for (uw k = 0; k < x->ncols; k++) {
@@ -159,6 +170,7 @@ static V h_new(V unit) {
   x->eltid = x->elvar = x->ncols = 0;
   x->kinds = 0;
   x->cols = 0;
+  x->shape = 0; x->shape_len = 0;
   return (V)x;
 }
 
@@ -203,7 +215,7 @@ static uw value_arity(V v) {
   if (t) return t;
   if (tid >= 0x00010000 && tid < 0x00010000 + 0x0FF00000) {
     uw ar = ((hdr_t *)v)->var;
-    return ar >= 2 ? ar : 0;
+    return ar >= 1 ? ar : 0;
   }
   return 0;
 }
@@ -252,7 +264,7 @@ static V get_cell(vec_t *x, uw k, uw i) {
 /* Vec.newAs spec -- DECLARE the column layout instead of inferring it.
  * One char per column: 'i' Int (raw, tagged on read), 'd' F64, 's' F32
  * (both raw float bits), 'b' boxed (any V).  One char = a flat vector;
- * 2..8 chars = an SoA vector of tuples of that arity.
+ * multiple chars = an SoA vector; parentheses describe nested products.
  *
  *   Vec.newAs "d"    a Vector of F64        (raw contiguous doubles)
  *   Vec.newAs "iddd" SoA rows (Int, F64, F64, F64)
@@ -262,13 +274,51 @@ static V get_cell(vec_t *x, uw k, uw i) {
  * would dereference a double as an object header.  Declaring is the
  * honest fix, and it doubles as the hook the specialized column loops
  * read to pick float instructions. */
+static uint8_t layout_kind(char c) {
+  switch (c) {
+    case 'i': return VK_INT; case 'd': return VK_F64;
+    case 's': return VK_F32; case 'b': return VK_BOX;
+    default: fpr_cpanic("Vec.newAs: invalid layout leaf");
+  }
+  return VK_BOX;
+}
+/* Parse bounded, finite products without C recursion. The descriptor
+ * comes from checked types, but malformed internal/foreign evidence still
+ * fails loudly before any element is inspected. */
+static void tree_layout(vec_t *x, str_t *sp) {
+  uw leaves = 0;
+  for (uw i=0; i<sp->len; i++) if (sp->bytes[i] != '(' && sp->bytes[i] != ')') {
+    (void)layout_kind(sp->bytes[i]); leaves++;
+  }
+  vdir_alloc(x, leaves);
+  x->shape = (vec_shape_t *)fpr_alloc(sp->len * sizeof(vec_shape_t));
+  uw *stack = (uw *)fpr_alloc(sp->len * sizeof(uw));
+  uw depth=0, col=0, nodes=0, roots=0;
+  for (uw i=0; i<sp->len; i++) {
+    char c=sp->bytes[i];
+    if (c == ')') { if (!depth) fpr_cpanic("Vec.newAs: unmatched product close"); depth--; continue; }
+    uw n=nodes++;
+    if (depth) x->shape[stack[depth-1]].arity++; else roots++;
+    x->shape[n] = (vec_shape_t){0,0,0,VS_PRODUCT};
+    if (c == '(') stack[depth++]=n;
+    else { x->shape[n].column=col; x->kinds[col++]=layout_kind(c); }
+  }
+  if (depth || roots != 1) fpr_cpanic("Vec.newAs: malformed product layout");
+  for (uw n=0; n<nodes; n++) if (x->shape[n].column == VS_PRODUCT && !x->shape[n].arity)
+    fpr_cpanic("Vec.newAs: empty product layout");
+  fpr_free((V)stack);
+  x->shape_len=nodes; x->var=VR_TREE;
+  for (uw k=0; k<x->ncols; k++) x->cols[k]=col_new();
+}
 static V h_newAs(V specv) {
   if (ISINT(specv) || TID(specv) != T_STR)
     fpr_cpanic("Vec.newAs: spec must be a String like \"d\" or \"iddd\"");
   str_t *sp = (str_t *)specv;
-  if (sp->len < 1 || sp->len >= (uw)(T_TUPN_END - T_TUPN))
+  if (sp->len == 0) return h_new((V)&fpr_unit); /* inferred non-float evidence */
+  if (sp->len >= (uw)(T_TUPN_END - T_TUPN))
     fpr_cpanic("Vec.newAs: spec must name at least one column");
   vec_t *x = (vec_t *)h_new((V)&fpr_unit);
+  if (sp->bytes[0] == '(') { tree_layout(x, sp); return (V)x; }
   vdir_alloc(x, sp->len);
   for (uw k = 0; k < sp->len; k++) {
     switch (sp->bytes[k]) {
@@ -303,12 +353,31 @@ static V h_new_like(vec_t *src) {
   return (V)x;
 }
 
+static void tree_put(vec_t *x, uw *cursor, uw row, V value) {
+  vec_shape_t *n=&x->shape[(*cursor)++];
+  if (n->column != VS_PRODUCT) { put_cell(x,n->column,row,value); return; }
+  if (ISINT(value) || value_arity(value) != n->arity)
+    fpr_cpanic("Vec: nested product shape differs from declared layout");
+  if (!n->tid) { n->tid=TID(value); n->var=((hdr_t *)value)->var; }
+  if (n->tid != TID(value) || n->var != ((hdr_t *)value)->var)
+    fpr_cpanic("Vec: nested product identity differs from first push");
+  for (uw k=0; k<n->arity; k++) tree_put(x,cursor,row,*(V *)((char *)value+8+k*sizeof(uw)));
+}
+static V tree_get(vec_t *x, uw *cursor, uw row) {
+  vec_shape_t *n=&x->shape[(*cursor)++];
+  if (n->column != VS_PRODUCT) return get_cell(x,n->column,row);
+  hdr_t *v=(hdr_t *)fpr_alloc(8+n->arity*sizeof(uw));
+  v->tid=(uint32_t)n->tid; v->var=(uint32_t)n->var;
+  for (uw k=0; k<n->arity; k++) *(V *)((char *)v+8+k*sizeof(uw))=tree_get(x,cursor,row);
+  return (V)v;
+}
 static V h_push(V v, V vec) {
   vec_t *x = vchk(vec, "Vec.push: not a Vector");
   if (VREP(x) == VR_UNSET) fix_layout(x, v);
   for (uw k = 0; k < x->ncols; k++)
     if (x->len == x->cols[k]->cap) col_grow(x->cols[k]);
   switch (VREP(x)) {
+    case VR_TREE: { uw cursor=0; tree_put(x,&cursor,x->len,v); break; }
     case VR_INT:
       if (!ISINT(v)) fpr_cpanic("Vec.push: Int vector got a non-Int");
       put_cell(x, 0, x->len, v);
@@ -338,6 +407,7 @@ static V h_push(V v, V vec) {
 /* reconstruct row i as a value — the deliberately slower escape hatch */
 static V row_at(vec_t *x, uw i) {
   switch (VREP(x)) {
+    case VR_TREE: { uw cursor=0; return tree_get(x,&cursor,i); }
     case VR_INT:
     case VR_FLT:
     case VR_BOX:
@@ -382,6 +452,7 @@ static V h_set(V iv, V v, V vec) {
   sw i = UNTAG(iv);
   if (i < 0 || (uw)i >= x->len) fpr_cpanic("Vec.set: index out of range");
   switch (VREP(x)) {
+    case VR_TREE: { uw cursor=0; tree_put(x,&cursor,(uw)i,v); break; }
     case VR_INT:
     case VR_FLT:
     case VR_BOX:
@@ -420,12 +491,9 @@ static V h_free(V vec) {
 
 V fpr_vec_map(V f, V vec) {
   vec_t *x = vchk(vec, "Vec.map: not a Vector");
-  /* float layouts are DECLARED, so they propagate: mapping a float
-   * vector yields a float vector of the same widths.  The element
-   * function must therefore be width-preserving (F64 -> F64) -- the
-   * Vector type carries no element type to check that against, so it
-   * is a stated contract, with Vec.toList as the escape hatch when the
-   * shape really changes. */
+  /* This runtime entry implements the same-element map: checked source
+   * calls preserve the element type and therefore its float layout.
+   * Type-changing maps are lowered to mapAs with output layout evidence. */
   V out = vhas_float(x) ? h_new_like(x) : h_new((V)&fpr_unit);
   for (uw i = 0; i < x->len; i++) out = h_push(fpr_apply(f, row_at(x, i)), out);
   vfree(x); /* consumed input */

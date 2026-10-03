@@ -1,5 +1,11 @@
 # Vector descriptors: a column directory instead of eight slots
 
+## Follow-up
+
+[VECTOR-LIMITS](2026-10-03-VECTOR-LIMITS.md) adds inferred generic layout
+evidence and finite nested float products; the restrictions recorded here
+describe the earlier descriptor step.
+
 Date: 2026-10-03. Kind: implementation record. Step 1 of
 [2026-10-03-VECTOR-AUDIT.md](2026-10-03-VECTOR-AUDIT.md).
 

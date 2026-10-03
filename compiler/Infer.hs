@@ -126,6 +126,10 @@ data IEnv = IEnv
                                      -- were NOT unified eagerly (both concrete,
                                      -- at least one user type): resolution may
                                      -- pick a two-typed operator global
+    iVecPlans :: M.Map Name [Type], -- hidden layout requirements of native bindings
+    iVecRefs :: IM.IntMap [Type], -- requirements instantiated at each reference
+    iVecOwners :: IM.IntMap Name,
+    iDefTypes :: M.Map Name Type,
     iLinSigs :: [(Name, ([LShape], LShape))] -- INFERRED linearity shapes
       -- per user bind (zonked types -> LShape): the linearity checker
       -- consumes these for functions WITHOUT an explicit sig, closing
@@ -856,11 +860,13 @@ data ICtx = ICtx
   { icEnv :: TEnv, -- values in scope
     icCons :: TEnv, -- constructor schemes (for patterns)
     icSigs :: Sigs,
-    icProf :: IProf
+    icProf :: IProf,
+    icBound :: S.Set Name,
+    icEvidence :: M.Map Name Name
   }
 
 extend :: TEnv -> ICtx -> ICtx
-extend e c = c {icEnv = M.union e (icEnv c)}
+extend e c = c {icEnv = M.union e (icEnv c), icBound = M.keysSet e `S.union` icBound c, icEvidence = foldr M.delete (icEvidence c) (M.keys e)}
 
 -- ---- operator resolution sites ----------------------------------------------
 --
@@ -1000,6 +1006,12 @@ inferE ctx e0 = case e0 of
              site <- newSite ("vec-value:" ++ n) t
              pure (t, SApp (SVar (markerPrefix ++ show site ++ "#vec")) e')
          | n == "Vec.mapSame" -> pure (t, SVar "Vec.map")
+         | ipVectorLayouts (icProf ctx), Just key <- M.lookup n (icEvidence ctx) -> do
+             site <- newSite ("vec-reference:" ++ key) t
+             pure (t, SApp (SVar (markerPrefix ++ show site ++ "#vec")) (SVar key))
+         | ipVectorLayouts (icProf ctx), not (S.member n (icBound ctx)) -> do
+             site <- newSite ("vec-reference:" ++ n) t
+             pure (t, SApp (SVar (markerPrefix ++ show site ++ "#vec")) e')
          | otherwise -> pure (t, e')
   SApp f x -> do
     (tf, f') <- inferE ctx f
@@ -1019,7 +1031,11 @@ inferE ctx e0 = case e0 of
       goBlock c [] = do (t, fin') <- inferE c fin; pure ([], fin', t)
       goBlock c (SBind n ps rhs : rest) = do
         a <- freshT
-        let cRec = extend (M.singleton n (mono a)) c
+        startSite <- gets iNextSite
+        let generic = ipVectorLayouts (icProf c) && (not (null ps) || isLamE rhs)
+            key = if generic then "$localVector." ++ n ++ "." ++ show startSite else n
+            localCtx cx = if generic then cx {icEvidence=M.insert n key (icEvidence cx)} else cx
+            cRec = localCtx (extend (M.singleton n (mono a)) c)
         pvs <- mapM (const freshT) ps
         let env' = M.fromList (zip ps (map mono pvs))
         (tb, rhs') <- inferE (extend env' cRec) rhs
@@ -1029,8 +1045,13 @@ inferE ctx e0 = case e0 of
           if null ps && not (isLamE rhs)
             then pure (mono t)
             else generalize (icEnv c) t
-        (rest', fin', tr) <- goBlock (extend (M.singleton n sc) c) rest
-        pure (SBind n ps rhs' : rest', fin', tr)
+        when generic $ do
+          endSite <- gets iNextSite
+          tz <- zonk t
+          modify (\st -> st {iDefTypes=M.insert key tz (iDefTypes st),
+            iVecOwners=IM.union (iVecOwners st) (IM.fromList [(i,key) | i <- [startSite..endSite-1]])})
+        (rest', fin', tr) <- goBlock (localCtx (extend (M.singleton n sc) c)) rest
+        pure (SBind key ps rhs' : rest', fin', tr)
       goBlock c (SBindPat p rhs : rest) = do
         (tr, rhs') <- inferE c rhs
         (tp, benv) <- inferPat (icCons c) p
@@ -1200,7 +1221,7 @@ inferBin ctx op a b = case op of
 
 -- ---- post-solve operator resolution -----------------------------------------
 
-data OpTarget = OpPrim Name | OpGlobal Name | OpVecLayout Name String | OpProj Name Name -- s.(+)
+data OpTarget = OpPrim Name | OpGlobal Name | OpVecLayout Name String | OpVecDynamic Name SExpr | OpDictionary [SExpr] | OpProj Name Name -- s.(+)
 
 -- head type constructor: Matrix -> "Matrix", Grid a b -> "Grid"
 headCon :: Type -> Maybe Name
@@ -1264,7 +1285,7 @@ resolveSites sigs env = do
     oneAt k (op, t0) = do
       pairs <- gets iPairs
       case IM.lookup k pairs of
-        Nothing -> one' op t0
+        Nothing -> one' k op t0
         Just (ta0, tb0) -> do
           ta <- zonk ta0
           tb <- zonk tb0
@@ -1280,10 +1301,14 @@ resolveSites sigs env = do
               -- no two-typed operator: the ordinary same-type site
               unify ("(" ++ op ++ ")") ta t0
               unify ("(" ++ op ++ ")") tb t0
-              one' op t0
-    one' op t0 = do
+              one' k op t0
+    one' k op t0 = do
       t <- zonk t0
-      if "vec-declared:" `Data.List.isPrefixOf` op
+      if "vec-reference:" `Data.List.isPrefixOf` op
+        then do
+          requirements <- gets (IM.findWithDefault [] k . iVecRefs)
+          OpDictionary <$> mapM (evidence k) requirements
+      else if "vec-declared:" `Data.List.isPrefixOf` op
         then do
           let spec = drop (length "vec-declared:") op
               fields = case t of TTupT xs -> xs; _ -> [t]
@@ -1293,10 +1318,10 @@ resolveSites sigs env = do
           pure (OpPrim "")
       else if "vec-value:" `Data.List.isPrefixOf` op
         then case (drop (length "vec-value:") op, t) of
-          ("Vec.new", TFn _ (TAp (TC "Vector") el)) -> layout "Vec.new" el
-          ("Vec.fromList", TFn _ (TAp (TC "Vector") el)) -> layout "Vec.fromList" el
+          ("Vec.new", TFn _ (TAp (TC "Vector") el)) -> siteLayout k "Vec.new" el
+          ("Vec.fromList", TFn _ (TAp (TC "Vector") el)) -> siteLayout k "Vec.fromList" el
           ("Vec.map", TFn (TFn a b) _) | a == b -> pure (OpPrim "")
-                                     | otherwise -> layout "Vec.map" b
+                                     | otherwise -> siteLayout k "Vec.map" b
           _ -> OpPrim "" <$ report "Vector: cannot determine the element layout"
       else if op `elem` ["==", "!="]
         then pure $ case t of
@@ -1379,28 +1404,127 @@ resolveSites sigs env = do
     rowUnknown RNil = False
     rowUnknown (RV _) = True
     rowUnknown (RExt _ t r) = unresolved t || rowUnknown r
+    paramFor k el = do
+      owners <- gets iVecOwners
+      plans <- gets iVecPlans
+      pure $ do
+        n <- IM.lookup k owners
+        i <- lookup el (zip (M.findWithDefault [] n plans) [0..])
+        pure (layoutParam n i)
+    evidence k el = do
+      param <- paramFor k el
+      case param of
+        Just n -> pure (SVar n)
+        Nothing -> layout "Vector layout evidence" el >>= \case
+          OpVecLayout _ spec -> pure (SStrI [SegStr spec])
+          _ -> pure (SStrI [SegStr ""])
+    siteLayout k name el = do
+      param <- paramFor k el
+      case param of
+        Just n -> pure (OpVecDynamic name (SVar n))
+        Nothing -> layout name el
     layout name el
       | unresolved el = OpPrim "" <$ report (name ++ ": the output element layout is polymorphic; give it a concrete type (use Vec.mapSame for a representation-preserving generic map)")
       | not (mentionsFloat el) = pure (OpVecLayout name "")
       | Just spec <- floatLayout el = pure (OpVecLayout name spec)
-      | otherwise = OpPrim "" <$ report (name ++ ": floats require a scalar, a flat tuple, or a closed record of scalars; nested float layouts are unsupported")
+      | otherwise = OpPrim "" <$ report (name ++ ": floats require a scalar or a finite tuple/closed record layout; this element layout is unsupported")
     floatLayout (TC "F64") = Just "d"
     floatLayout (TC "F32") = Just "s"
-    floatLayout (TTupT xs) | length xs >= 2 = mapM field xs
-    -- a closed record: its fields in sorted name order, which is the
-    -- order the lowering constructs and projects them in (FPRISC.hs)
-    floatLayout t@(TRec _) | Just names <- recFields t, length names >= 2 = mapM field (recFieldTypes t)
+    floatLayout (TTupT xs) | not (null xs) = productLayout xs
+    floatLayout t@(TRec _) | Just _ <- recFields t, not (null (recFieldTypes t)) = productLayout (recFieldTypes t)
     floatLayout _ = Nothing
+    productLayout ts = do
+      fs <- mapM field ts
+      let flat = concat fs
+      pure (if length ts == 1 || any (elem '(') fs then "(" ++ flat ++ ")" else flat)
     recFieldTypes (TRec r) = map snd (sortOn fst (goR r))
       where
         goR (RExt n ft rest) = (n, ft) : goR rest
         goR _ = []
     recFieldTypes _ = []
-    field (TC "Int") = Just 'i'
-    field (TC "F64") = Just 'd'
-    field (TC "F32") = Just 's'
-    field t | not (mentionsFloat t) = Just 'b'
+    field (TC "Int") = Just "i"
+    field (TC "F64") = Just "d"
+    field (TC "F32") = Just "s"
+    field t@(TTupT _) | mentionsFloat t = nested t
+    field t@(TRec _) | mentionsFloat t = nested t
+    field t | not (mentionsFloat t) = Just "b"
     field _ = Nothing
+    nested t = do
+      spec <- floatLayout t
+      pure (if take 1 spec == "(" then spec else "(" ++ spec ++ ")")
+
+layoutParam :: Name -> Int -> Name
+layoutParam n i = "$vectorLayout." ++ n ++ "." ++ show i
+
+layoutElement :: Name -> Type -> Maybe Type
+layoutElement "vec-value:Vec.new" (TFn _ (TAp (TC "Vector") a)) = Just a
+layoutElement "vec-value:Vec.fromList" (TFn _ (TAp (TC "Vector") a)) = Just a
+layoutElement "vec-value:Vec.map" (TFn (TFn a b) _) | a /= b = Just b
+layoutElement _ _ = Nothing
+
+unresolvedLayout :: Type -> Bool
+unresolvedLayout t = let (vs,rs) = ftv t in not (S.null vs && S.null rs)
+
+prepareVectorEvidence :: [(Name,[SPat],[SGuard],SExpr)] -> I ()
+prepareVectorEvidence binds = do
+  let owned = IM.fromList [(k,n) | (n,_,gs,b) <- binds, e <- b : [x | gd <- gs, x <- case gd of GBool x -> [x]; GPat _ x -> [x]], k <- markerIds e]
+  local <- gets iVecOwners
+  let owners = IM.union local owned
+  modify (\st -> st {iVecOwners=owners})
+  stabilize owners (0 :: Int)
+  where
+    stabilize owned round' = do
+      old <- gets iVecPlans
+      sites <- gets iSites
+      defs <- gets iDefTypes
+      refs <- IM.traverseWithKey (\_ (op,t0) -> case stripPrefix "vec-reference:" op of
+        Just n | Just reqs@(_:_) <- M.lookup n old, Just fn <- M.lookup n defs -> do
+          fn' <- zonk fn
+          reqs' <- mapM zonk reqs
+          joint <- generalize M.empty (TTupT (fn':reqs'))
+          instanceTypes <- instantiate joint
+          case instanceTypes of
+            TTupT (inst:es) -> do
+              unify ("vector layout call to " ++ n) inst t0
+              mapM zonk es
+            _ -> pure []
+        _ -> pure []) sites
+      entries <- forM (IM.toList sites) $ \(k,(op,t0)) -> do
+        t <- zonk t0
+        let direct = maybe [] pure (layoutElement op t)
+        required <- mapM zonk (direct ++ IM.findWithDefault [] k refs)
+        pure (k,filter unresolvedLayout required)
+      let plans = M.map nub $ M.fromListWith (++) [(n,es) | (k,es) <- entries, not (null es), Just n <- [IM.lookup k owned]]
+      modify (\st -> st { iVecPlans=plans, iVecRefs=refs })
+      if plans == old then do
+        -- An entry point has no caller from which to receive evidence.
+        -- Likewise a hidden type absent from the binding's public type is
+        -- ambiguous; allowing it would let raw floats masquerade as pointers.
+        forM_ (M.toList plans) $ \(n,es) -> do
+          fn <- maybe freshT zonk (M.lookup n defs)
+          let (fv,fr) = ftv fn
+          when (n `elem` ["main","machineMain","machineInterrupt"] || any (\e -> let (v,r)=ftv e in not (v `S.isSubsetOf` fv && r `S.isSubsetOf` fr)) es) $
+            report ("in " ++ n ++ ": vector output layout is ambiguous at this entry; give its element a concrete type")
+      -- A wrapper chain can be as long as the program. Bound the solver
+      -- by its graph size rather than imposing a 32-helper language limit.
+      else if round' >= IM.size sites + M.size defs then report "vector layout requirements did not converge" else stabilize owned (round'+1)
+    markerIds = \case
+      SApp (SVar op) a | Just rest <- stripPrefix markerPrefix op, (digits,'#':_) <- break (=='#') rest -> read digits : markerIds a
+      SMark _ a -> markerIds a
+      SApp a b -> markerIds a ++ markerIds b
+      SLam _ b -> markerIds b
+      SBlock ss b -> concatMap stmt ss ++ markerIds b
+      SCase a bs -> markerIds a ++ concatMap (markerIds . snd) bs
+      SBin _ a b -> markerIds a ++ markerIds b
+      SProj a _ -> markerIds a
+      SRec fs -> concatMap (markerIds . snd) fs
+      SUpd a fs -> markerIds a ++ concatMap (markerIds . snd) fs
+      STup es -> concatMap markerIds es
+      SList es -> concatMap markerIds es
+      SStrI ss -> concat [markerIds a | SegExpr a <- ss]
+      _ -> []
+    stmt (SBind _ _ a) = markerIds a
+    stmt (SBindPat _ a) = markerIds a
 
 -- rewrite the markers by the decided targets
 applySites :: IM.IntMap OpTarget -> SExpr -> SExpr
@@ -1416,6 +1540,12 @@ applySites tgts = go
             case tgt of
               OpPrim "" -> go a
               OpPrim o -> SApp (SVar o) (go a)
+              OpDictionary es -> foldl SApp (go a) es
+              OpVecDynamic name desc -> case name of
+                "Vec.new" -> SLam ["?vecUnit"] (SApp (SVar "Vec.newAs") desc)
+                "Vec.fromList" -> SApp (SVar "Vec.fromListAs") desc
+                "Vec.map" -> SApp (SVar "Vec.mapAs") desc
+                _ -> go a
               OpVecLayout name spec ->
                 let desc = SStrI [SegStr spec]
                  in case name of
@@ -1506,7 +1636,7 @@ inferTops = inferTopsWith aotProf
 
 inferTopsWith :: IProf -> Sigs -> Structs -> [STop] -> ([String], [(Name, String)], [(String, String)], [(Name, ([LShape], LShape))], [STop])
 inferTopsWith prof sigs structs tops =
-  let (tops', st) = runState run (IEnv 0 IM.empty IM.empty [] [] [] [] S.empty 0 IM.empty IM.empty IM.empty Nothing IM.empty [])
+  let (tops', st) = runState run (IEnv 0 IM.empty IM.empty [] [] [] [] S.empty 0 IM.empty IM.empty IM.empty Nothing IM.empty M.empty IM.empty IM.empty M.empty [])
    in (iErrs st, iNotes st, iHolesP st, iLinSigs st, tops')
   where
     aliases = M.fromList [(n, fs) | TShape n fs <- tops]
@@ -1546,7 +1676,7 @@ inferTopsWith prof sigs structs tops =
       -- statement-offset stamp instead of a file:line:col
       rwEvals <- forM (zip [1 :: Int ..] evals) $ \(evi, e) -> do
         nerrs0 <- length <$> gets iErrs
-        r <- snd <$> inferE (ICtx env cons sigs prof) e
+        r <- snd <$> inferE (ICtx env cons sigs prof S.empty M.empty) e
         modify $ \st ->
           let (old, new) = splitAt nerrs0 (iErrs st)
            in st {iErrs = old ++ ["in <eval " ++ show evi ++ ">: " ++ m | m <- new]}
@@ -1589,9 +1719,13 @@ inferTopsWith prof sigs structs tops =
               (pts, rt) = peel ar tz
               lsig = (map (linShapeT linNs) pts, linShapeT linNs rt)
           modify (\s -> s {iNotes = iNotes s ++ [(n, p)], iLinSigs = iLinSigs s ++ [(n, lsig)]})
+      when (ipVectorLayouts prof) (prepareVectorEvidence rwBinds)
       -- resolve operator sites against the final substitution, then
       -- rebuild the top list with markers rewritten, in original order
       tgts <- resolveSites sigs env
+      layoutPlans <- gets iVecPlans
+      let hidden n = [PVar (layoutParam n i) | i <- [0 .. length (M.findWithDefault [] n layoutPlans) - 1]]
+      modify (\st -> st { iLinSigs = [(n, (replicate (length (hidden n)) LU ++ ps, r)) | (n,(ps,r)) <- iLinSigs st] })
       let rwMap = M.fromListWith (++) [(n, [(ps, g, b)]) | (n, ps, g, b) <- rwBinds]
           apE0 = applySites tgts
           apE = everyE fixT . apE0
@@ -1612,7 +1746,7 @@ inferTopsWith prof sigs structs tops =
                 SList es -> SList (map go' es)
                 SStrI segs -> SStrI [case sg of SegExpr x -> SegExpr (go' x); other -> other | sg <- segs]
                 other -> other
-              goS (SBind n ps x) = SBind n ps (go' x)
+              goS (SBind n ps x) = SBind n ([v | PVar v <- hidden n] ++ ps) (go' x)
               goS (SBindPat p x) = SBindPat p (go' x)
       let rebuild (evs, bnds) t = case t of
             TEval _ -> case evs of
@@ -1620,8 +1754,9 @@ inferTopsWith prof sigs structs tops =
               [] -> ((evs, bnds), t)
             TBind n _ _ _ -> case M.lookup n bnds of
               Just ((ps, g, b) : more) ->
-                ((evs, M.insert n more bnds), TBind n ps (map (mapGuardE apE) g) (apE b))
+                ((evs, M.insert n more bnds), TBind n (hidden n ++ ps) (map (mapGuardE apE) g) (apE b))
               _ -> ((evs, bnds), t)
+            TSig n (ps,r) pre -> ((evs,bnds), TSig n (replicate (length (hidden n)) (TCon "String" []) ++ ps,r) (replicate (length (hidden n)) Nothing ++ pre))
             _ -> ((evs, bnds), t)
           (_, tops') = foldl' (\(st', acc) t -> let (st2, t') = rebuild st' t in (st2, acc ++ [t'])) ((rwEvals, fmap reverse rwMap), []) tops
       pure tops'
@@ -1650,7 +1785,7 @@ inferTopsWith prof sigs structs tops =
           nerrs0 <- gets (length . iErrs)
           -- params: PSig gets its sig's record type; others infer
           (ptys, penvs) <- unzip <$> mapM (inferParam cons) ps
-          let ctx = ICtx (M.union (M.unions penvs) recEnv) cons sigs prof
+          let ctx = ICtx (M.union (M.unions penvs) recEnv) cons sigs prof (M.keysSet (M.unions penvs)) M.empty
           -- guards run left to right; a pattern guard's binds are in
           -- scope for the guards to its right and for the body
           (ctx2, g') <-
@@ -1702,6 +1837,9 @@ inferTopsWith prof sigs structs tops =
             case t of
               TV v | not (IM.member v reps) -> unify "numeric default" (TV v) tInt
               _ -> pure ()
+      forM_ (zip ns mvs) $ \(n,t) -> do
+        tz <- zonk t
+        modify (\st -> st { iDefTypes = M.insert n tz (iDefTypes st) })
       -- generalize against the OUTER env
       newEnv <- forM (zip ns mvs) $ \(n, mv) -> do
         sc <- case M.lookup n env of
@@ -1716,6 +1854,10 @@ inferTopsWith prof sigs structs tops =
           Just declared -> do
             dt <- instantiate declared
             unify ("declared type of " ++ n) dt t
+            -- Keep the native binding's actual type connected to its body,
+            -- including signed definitions. Layout obligations refer to
+            -- body variables, not the separately quantified written scheme.
+            when (ipVectorLayouts prof) (unify ("definition of " ++ n) mv t)
             -- ... and only now, with the clause fully constrained, ask
             -- whether a WRITTEN signature was actually earned
             when (n `S.member` written) (checkDeclared n declared t)

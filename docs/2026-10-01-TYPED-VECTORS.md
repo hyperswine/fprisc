@@ -3,6 +3,10 @@
 Date: 2026-10-01. Implementation record; supersedes the opaque-Vector
 finding in 2026-09-29-NATIVE-IDEAL-AUDIT.md.
 
+Follow-up: [VECTOR-LIMITS](2026-10-03-VECTOR-LIMITS.md) supersedes the
+construction restrictions below with inferred generic layout evidence
+and support for finite nested float products.
+
 The native and HostedBytecode frontends now expose `Vector a`. The linear
 carrier declaration is `Vector 1 a = Type Int` (HostedBytecode retains its
 own runtime carrier). Bare `Vector` annotations are refused; use `Vector Int`,

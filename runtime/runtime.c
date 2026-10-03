@@ -785,6 +785,7 @@ static uw dc_size(V v) {
     case T_VEC: {
       vec_t *x = (vec_t *)v;
       uw n = dc_cellsz(sizeof(vec_t));
+      if (x->shape_len) n += dc_cellsz(x->shape_len * sizeof(vec_shape_t));
       if (x->ncols) n += dc_cellsz(x->ncols * sizeof(col_t *)) + dc_cellsz(VKINDS_BYTES(x->ncols));
       for (uw k = 0; k < x->ncols; k++) {
         if (!x->cols[k]) continue;
@@ -883,6 +884,11 @@ static V dc_dup(V v, dctx_t *c) {
       n->var = x->var;
       n->len = x->len; n->eltid = x->eltid; n->elvar = x->elvar;
       n->ncols = x->ncols; n->kinds = 0; n->cols = 0;
+      n->shape_len=x->shape_len; n->shape=0;
+      if (x->shape_len) {
+        n->shape=(vec_shape_t *)dc_bump(c,x->shape_len*sizeof(vec_shape_t));
+        __builtin_memcpy(n->shape,x->shape,x->shape_len*sizeof(vec_shape_t));
+      }
       if (x->ncols) {
         n->cols = (col_t **)dc_bump(c, x->ncols * sizeof(col_t *));
         n->kinds = (uint8_t *)dc_bump(c, VKINDS_BYTES(x->ncols));
@@ -1077,6 +1083,11 @@ static V kp_dup(V v) {
       n->var = x->var;
       n->len = x->len; n->eltid = x->eltid; n->elvar = x->elvar;
       n->ncols = x->ncols; n->kinds = 0; n->cols = 0;
+      n->shape_len=x->shape_len; n->shape=0;
+      if (x->shape_len) {
+        n->shape=(vec_shape_t *)fpr_alloc(x->shape_len*sizeof(vec_shape_t));
+        __builtin_memcpy(n->shape,x->shape,x->shape_len*sizeof(vec_shape_t));
+      }
       if (x->ncols) {
         n->cols = (col_t **)fpr_alloc(x->ncols * sizeof(col_t *));
         n->kinds = (uint8_t *)fpr_alloc(VKINDS_BYTES(x->ncols));
@@ -1276,12 +1287,13 @@ static V g_arena(V f) {
  *   Sys.loopWith vec s0 (fn s v -> (continue, s', v))  ->  (sFinal, vec) */
 /* the snapshot is sized to the vector's own column count: the directory
  * pointer, the kinds pointer, and each column's col_t and base */
-typedef struct { vec_t *x; uw ncols; col_t **dir; uint8_t *kinds; col_t **cols; uw **base; } vec_snap_t;
+typedef struct { vec_t *x; uw ncols; col_t **dir; uint8_t *kinds; vec_shape_t *shape; col_t **cols; uw **base; } vec_snap_t;
 static void vec_snap(vec_snap_t *sn, V v) {
   sn->x = (vec_t *)v;
   sn->ncols = sn->x->ncols;
   sn->dir = sn->x->cols;
   sn->kinds = sn->x->kinds;
+  sn->shape = sn->x->shape;
   sn->cols = sn->ncols ? (col_t **)fpr_alloc(sn->ncols * sizeof(col_t *)) : 0;
   sn->base = sn->ncols ? (uw **)fpr_alloc(sn->ncols * sizeof(uw *)) : 0;
   for (uw i = 0; i < sn->ncols; i++) {
@@ -1291,7 +1303,7 @@ static void vec_snap(vec_snap_t *sn, V v) {
 }
 static int vec_same(const vec_snap_t *sn, V v) {
   if ((vec_t *)v != sn->x) return 0;
-  if (sn->x->ncols != sn->ncols || sn->x->cols != sn->dir || sn->x->kinds != sn->kinds) return 0;
+  if (sn->x->ncols != sn->ncols || sn->x->cols != sn->dir || sn->x->kinds != sn->kinds || sn->x->shape != sn->shape) return 0;
   for (uw i = 0; i < sn->ncols; i++) {
     if (sn->x->cols[i] != sn->cols[i]) return 0;
     if (sn->cols[i] && sn->cols[i]->base != sn->base[i]) return 0;

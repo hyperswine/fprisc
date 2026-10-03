@@ -1,0 +1,71 @@
+# Native layout evidence, nested float products, and wider captured folds.
+unsafe base.
+P = {x : F64, y : F64}.
+R = {pos : P, tag : Int}.
+One = {x : F64}.
+R9 = {a:Int,b:Int,c:Int,d:Int,e:Int,f:Int,g:Int,h:Int,i:Int}.
+build x = Vec.push x (Vec.new Unit).
+wrap x = build x.
+from xs = Vec.fromList xs.
+convert f v = Vec.map f v.
+copies x n | n <= 0 = Vec.new Unit.
+copies x n = Vec.push x (copies x (n - 1)).
+bump r = {r | pos.x = r.pos.x + 1.0}.
+keepR r = r.pos.x > 1.0.
+receiveR : unsafe Int -> Vector R .
+receiveR me = receive me.
+step k bias acc x = acc + k * x + bias.
+bstep b acc x = case b of True -> acc + x | False -> acc - x.
+rstep scale bias acc r = acc + scale * (r.a + r.b + r.c + r.d + r.e + r.f + r.g + r.h + r.i) + bias.
+toFloat x = F64.ofInt x.
+main =
+  (a,v) = Vec.at 0 (wrap 2.5);
+  _ = Vec.free v;
+  (b,w) = Vec.at 0 (wrap 7);
+  _ = Vec.free w;
+  (c,u) = Vec.at 0 (wrap "yes");
+  _ = Vec.free u;
+  (d,z) = Vec.at 1 (from [1.25,2.5]);
+  _ = Vec.free z;
+  (e,q) = Vec.at 4 (copies 3.5 5);
+  _ = Vec.free q;
+  (f,t) = Vec.at 0 (convert (fn n -> 4.5) (Vec.iota 2));
+  _ = Vec.free t;
+  _ = print "generic: {a} {b} {c} {d} {e} {f}";
+  me = myself 0;
+  rows = Vec.push {pos={x=1.0,y=2.0},tag=1} (Vec.push {pos={x=3.0,y=4.0},tag=2} (Vec.new Unit));
+  rows2 = Vec.map bump rows;
+  rows3 = Vec.filter keepR rows2;
+  echo = spawn (fn self -> (who,m) = receive self; send who m);
+  _ = send echo (me, rows3);
+  back = receiveR me;
+  (r,back2) = Vec.at 0 back;
+  (n,back3) = Vec.len back2;
+  (copy,back4) = Vec.dup back3;
+  _ = Vec.free back4;
+  retained = keep copy;
+  (r2,retained2) = Vec.at 1 retained;
+  _ = Vec.free retained2;
+  one = Vec.push {x=2.5} (Vec.new Unit);
+  (o,one2) = Vec.at 0 one;
+  (fs,one3) = Vec.fold (fn acc p -> acc + p.x) 0.0 one2;
+  _ = Vec.free one3;
+  _ = print "nested: {n} {r.pos.x} {r.pos.y} {r.tag} second={r2.pos.x} one={o.x} sum={fs}";
+  (s,ints) = Vec.fold (step 2 3) 7 (Vec.iota 10000);
+  (last,ints2) = Vec.at 9999 ints;
+  _ = Vec.free ints2;
+  (s2,small) = Vec.fold (bstep True) 0 (Vec.iota 10);
+  _ = Vec.free small;
+  (s3,empty) = Vec.fold (step 2 3) 9 (Vec.iota 0);
+  _ = Vec.free empty;
+  _ = print "fold: {s} {last} {s2} {s3}";
+  row = {a=1,b=2,c=3,d=4,e=5,f=6,g=7,h=8,i=9};
+  rr = Vec.push row (Vec.push row (Vec.new Unit));
+  (rs,rr2) = Vec.fold (rstep 2 3) 7 rr;
+  _ = Vec.free rr2;
+  _ = print "record fold: {rs}";
+  fv = Vec.map toFloat (Vec.iota 10);
+  (v0,fv2) = Vec.at 0 fv;
+  (v9,fv3) = Vec.at 9 fv2;
+  _ = Vec.free fv3;
+  print "mapAs: {v0} {v9}".
