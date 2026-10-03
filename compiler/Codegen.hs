@@ -50,7 +50,7 @@ import FPRISC (Core (..), Prog, freeVars)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 29 -- vector descriptors: kinds bytes and a column directory behind pointers (vKindsP/vColsP); 28: fusion requires effect-free, failure-free element functions (fusionSafe); 27: function-argument specialization (Mono); 26: 0-based charAt fast path; 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
+codegenRev = 30 -- scalar captures in map/filter kernels, record-map width via spill cells; 29: vector descriptors: kinds bytes and a column directory behind pointers (vKindsP/vColsP); 28: fusion requires effect-free, failure-free element functions (fusionSafe); 27: function-argument specialization (Mono); 26: 0-based charAt fast path; 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -304,7 +304,13 @@ data SpecPlan = SpecPlan
     -- and the unboxed clone's arithmetic is fadd.d/fmul.d/...  The
     -- loop body itself is unchanged -- a raw column word is a raw
     -- column word.
-    spFloat :: Maybe String
+    spFloat :: Maybe String,
+    -- Vec.map (f c1 .. ck) v / Vec.filter (p c1 .. ck) v with k SCALAR
+    -- captures: the kernel takes them in a0..a(k-1) ahead of the vector,
+    -- checks each is a tagged Int at entry (anything else: the generic
+    -- tier), untags them once, and passes them raw to the unboxed clone
+    -- before the element.  0 for the capture-free and record-captured plans.
+    spCaps :: Int
   }
 
 data MvPlan = MvPlan
@@ -1472,15 +1478,13 @@ declines spec prog owner = goD S.empty
               length args == n, -- FULL spines only: a partial spine is
               -- just the inside of the real call, not a site
               fe : _ <- args,
-              Just f <- named fe,
+              (CVar f, caps) <- spineOf fe,
               M.member f prog,
               not (S.member f bound) ->
                 case vecSpec prog (`S.member` bound) e of
                   Nothing ->
-                    [ "vec note: " ++ op ++ " over `" ++ f ++ "` (in " ++ owner
-                        ++ ") runs in the GENERIC apply tier -- the element fn is"
-                        ++ " not a closed arithmetic/record dual, so no column loop"
-                        ++ " specializes this site"
+                    [ "vec note: " ++ op ++ " over `" ++ f ++ "`" ++ capsNote caps ++ " (in " ++ owner
+                        ++ ") runs in the GENERIC apply tier -- " ++ why op f caps
                     ]
                   Just _
                     | not spec ->
@@ -1492,9 +1496,16 @@ declines spec prog owner = goD S.empty
                         ]
                     | otherwise -> []
           _ -> []
-        named (CVar f) = Just f
-        named (CApp (CVar f) _) = Just f
-        named _ = Nothing
+        capsNote [] = ""
+        capsNote cs = " with " ++ show (length cs) ++ " capture" ++ (if length cs == 1 then "" else "s")
+        why op f caps
+          | arithClosure prog [f] == Nothing =
+              "the element fn is not a closed arithmetic/record dual, so no column loop specializes this site"
+          | op == "Vec.fold", not (null caps) = "a fold with captures has no column loop yet (the map and filter kernels take scalar captures)"
+          | not (null caps), length caps + 1 > 8 = "the element fn takes " ++ show (length caps) ++ " captures; the kernels pass at most 7 ahead of the element"
+          | not (null caps), floatWidthOf prog (maybe S.empty id (arithClosure prog [f])) /= Nothing =
+              "a float closure with captures: a raw float capture carries no tag the entry guard could check"
+          | otherwise = "no column loop accepts this site"
 
 -- run fusion to a FIXPOINT: a 3+ chain's outer pair fuses in round 1,
 -- the composite-over-inner pair in round 2, and so on until no pair is
@@ -1709,7 +1720,7 @@ vecSpec prog isLocal e = case spineOf e of
       okFn f 2,
       Just mp <- soaDualMap prog f -> do
         cl <- arithClosure prog [fn | (_, (_, b)) <- mvFields mp, fn <- S.toList (calleesOf prog b)]
-        Just (SpecPlan "mvmap" f False cl Nothing Nothing (Just mp) Nothing, [capE, v])
+        Just (SpecPlan "mvmap" f False cl Nothing Nothing (Just mp) Nothing 0, [capE, v])
   (CVar "Vec.map", [CVar f, v])
     | okOp "Vec.map",
       okFn f 1,
@@ -1718,9 +1729,31 @@ vecSpec prog isLocal e = case spineOf e of
         -- capture-free record->record map: same in-place column loop,
         -- with a dead capture slot (a0 = tagged 0, never dereferenced:
         -- ms is empty for every field, so nothing loads off s8)
-        Just (SpecPlan "mvmap" f False cl Nothing Nothing (Just mp) Nothing, [CInt 0, v])
+        Just (SpecPlan "mvmap" f False cl Nothing Nothing (Just mp) Nothing 0, [CInt 0, v])
   (CVar "Vec.map", [CVar f, v]) | okOp "Vec.map", okFn f 1 -> plan "map" f [v]
-  (CVar "Vec.filter", [CVar f, v]) | okOp "Vec.filter", okFn f 1 -> plan "filter" f [v]
+  (CVar "Vec.filter", [CVar f, v])
+    | okOp "Vec.filter", okFn f 1, Just pl <- planSpec prog "filter" f -> Just (pl, [v])
+  -- a predicate over a RECORD element: the column-compaction kernel
+  (CVar "Vec.filter", [CVar f, v])
+    | okOp "Vec.filter",
+      okFn f 1,
+      Just (ks, ps, b, tv, cl) <- soaDualPred prog f ->
+        Just (SpecPlan "rfilter" f False cl (Just (ks, ps, b, tv)) Nothing Nothing Nothing 0, [v])
+  -- scalar captures: Vec.map (affine a b) v, Vec.filter (above k) v.  The
+  -- captures ride ahead of the vector in the kernel's argument list; the
+  -- element function's arity is captures + 1 and fits the 8 registers.
+  (CVar "Vec.map", [fe, v])
+    | (CVar f, caps@(_ : _)) <- spineOf fe,
+      okOp "Vec.map",
+      okFn f (length caps + 1),
+      length caps + 1 <= 8 ->
+        (,caps ++ [v]) <$> planSpecCaps prog "map" f (length caps)
+  (CVar "Vec.filter", [fe, v])
+    | (CVar f, caps@(_ : _)) <- spineOf fe,
+      okOp "Vec.filter",
+      okFn f (length caps + 1),
+      length caps + 1 <= 8 ->
+        (,caps ++ [v]) <$> planSpecCaps prog "filter" f (length caps)
   -- WRITE-BACK FOLD: Vec.fold f z (Vec.map g v) fuses into ONE pass
   -- that stores g(el) back into the column AND folds f over it -- the
   -- map's writes stay program-visible through the returned vector, so
@@ -1740,7 +1773,7 @@ vecSpec prog isLocal e = case spineOf e of
       Just clg <- arithClosure prog [g],
       floatWidthOf prog clf == Nothing,
       floatWidthOf prog clg == Nothing ->
-        Just (SpecPlan ("wfold@" ++ g) f True (clf `S.union` clg) Nothing Nothing Nothing Nothing, [z, v])
+        Just (SpecPlan ("wfold@" ++ g) f True (clf `S.union` clg) Nothing Nothing Nothing Nothing 0, [z, v])
   (CVar "Vec.fold", [CVar f, z, v]) | okOp "Vec.fold", okFn f 2 -> plan "fold" f [z, v]
   _ -> Nothing
   where
@@ -1780,17 +1813,26 @@ planSpec prog "fold" f =
                 spSoa = (\(ks, ps, b, tv, _) -> (ks, ps, b, tv)) <$> soa,
                 spRvv = if fw == Nothing then rvv else Nothing,
                 spMv = Nothing,
-                spFloat = fw
+                spFloat = fw,
+                spCaps = 0
               }
-planSpec prog op f = do
+planSpec prog op f = planSpecCaps prog op f 0
+
+-- a map/filter plan whose element function takes k scalar captures
+-- ahead of the element.  Float closures decline: a raw float capture
+-- carries no tag to check, so the entry guard could not tell it from
+-- a pointer.
+planSpecCaps :: Prog -> String -> String -> Int -> Maybe SpecPlan
+planSpecCaps prog op f k = do
   cl <- arithClosure prog [f]
   let rvv = case M.lookup f prog of
-        Just ([p], body) | op == "map", Just b <- straightLine [p] body -> Just (RvvMap p b)
+        Just ([p], body) | op == "map", k == 0, Just b <- straightLine [p] body -> Just (RvvMap p b)
         _ -> Nothing
   let fw = floatWidthOf prog cl
-   in -- RVV lanes are integer vadd/vmul in this pass, so a float
-      -- closure takes the scalar float loop, not the vector one
-      Just (SpecPlan op f True cl Nothing (if fw == Nothing then rvv else Nothing) Nothing fw)
+  if k > 0 && fw /= Nothing then Nothing else Just ()
+   -- RVV lanes are integer vadd/vmul in this pass, so a float
+   -- closure takes the scalar float loop, not the vector one
+  Just (SpecPlan op f True cl Nothing (if fw == Nothing then rvv else Nothing) Nothing fw k)
 
 -- the closed arithmetic call graph rooted at the given functions;
 -- Nothing if anything outside the unboxable fragment is reachable
@@ -1942,7 +1984,7 @@ soaDual prog f = do
     -- folds: their row-polymorphic bodies never carry a dispatch chain.
     [] | not (null ks) -> Just (-1, -1)
     _ -> Nothing -- conflicting shape tests: bail
-  if null ks || any (>= 8) ks || acc == el
+  if null ks || S.size (S.fromList ks) > 7 || acc == el -- acc + up to 7 used columns in a0..a7; any column index
     then Nothing
     else do
       let cols = S.toAscList (S.fromList ks)
@@ -1979,6 +2021,70 @@ soaDual prog f = do
         go (CMk t v fs) = do rs <- mapM go fs; Just (CMk t v (map fst rs), mconcat (map snd rs))
         go _ = Nothing
         app2 c a b = do (a', k1) <- go a; (b', k2) <- go b; Just (c a' b', k1 <> k2)
+
+-- record FILTER dualization: a 1-ary predicate over a record element,
+-- rewritten like soaDual so the loop feeds it the used columns and the
+-- row is never built.  Returns (used cols, params, body, eltid/elvar,
+-- closure).  Helpers taking the whole element are inlined first, so
+-- `keep r = total r > 10` dualizes.
+soaDualPred :: Prog -> String -> Maybe ([Int], [String], Core, (Int, Int), S.Set String)
+soaDualPred prog f = do
+  ([el], body0) <- M.lookup f prog
+  let body1 = peelDeepC (inl (8 :: Int) (peelDeepC body0))
+      inl 0 e = e
+      inl d e = case spineOf e of
+        (CVar h, args@(_ : _))
+          | h /= f,
+            Just (ps, hb) <- M.lookup h prog,
+            length ps == length args,
+            any (mentions el) args ->
+              inl (d - 1) (peelDeepC (foldr (\(p, a) acc -> substE p a acc) hb (zip ps args)))
+        _ -> case e of
+          CApp a b -> CApp (inl d a) (inl d b)
+          CLet x a b -> CLet x (inl d a) (inl d b)
+          CIf c t e' -> CIf (inl d c) (inl d t) (inl d e')
+          CTagEq t v x -> CTagEq t v (inl d x)
+          CProj k x -> CProj k (inl d x)
+          other -> other
+      mentions v e = v `elem` freeVars e
+  (body', (ks, tvs)) <- go el body1
+  tv <- case S.toList (S.fromList tvs) of
+    [one] -> Just one
+    [] | not (null ks) -> Just (-1, -1)
+    _ -> Nothing
+  if null ks || S.size (S.fromList ks) > 8 + spillCells -- columns past the eighth ride the hart spill cells
+    then Nothing
+    else do
+      let cols = S.toAscList (S.fromList ks)
+          cvars = ["$c" ++ show k | k <- cols]
+      calls <- bodyOK prog (S.fromList cvars) body'
+      cl <- arithClosure prog (S.toList calls)
+      -- a float predicate would need float column loads: not in this kernel
+      if floatWidthOf prog cl /= Nothing || usesFloat body' then Nothing else Just ()
+      Just (cols, cvars, body', tv, cl)
+  where
+    usesFloat e = case spineOf e of
+      (CVar h, args) | h `elem` fPrims -> True
+                     | otherwise -> any usesFloat args
+      _ -> case e of
+        CIf c t f' -> any usesFloat [c, t, f']
+        CLet _ a b -> usesFloat a || usesFloat b
+        _ -> False
+    go el = g
+      where
+        g (CProj k (CVar v)) | v == el = Just (CVar ("$c" ++ show k), ([k], []))
+        g (CTagEq t v (CVar x)) | x == el = Just (CMk 1 1 [], ([], [(t, v)]))
+        g (CVar n) | n == el = Nothing -- the row escapes: cannot dualize
+        g e@(CVar _) = Just (e, mempty)
+        g e@(CInt _) = Just (e, mempty)
+        g e@(CErr _) = Just (e, mempty)
+        g (CApp a b) = app2 CApp a b
+        g (CLet x a b) | x /= el = app2 (CLet x) a b
+        g (CIf c t f') = do (c', k1) <- g c; (t', k2) <- g t; (f'', k3) <- g f'; Just (CIf c' t' f'', k1 <> k2 <> k3)
+        g (CTagEq t v e) = do (e', ks') <- g e; Just (CTagEq t v e', ks')
+        g e@(CMk 1 _ []) = Just (e, mempty) -- True / False
+        g _ = Nothing
+        app2 c a b = do (a', k1) <- g a; (b', k2) <- g b; Just (c a' b', k1 <> k2)
 
 -- map-over-SoA with one captured record: dualize
 --   f cap el = <inline everything> = Mk etid evar [e0..e_{n-1}]
@@ -2044,10 +2150,13 @@ composePlans gp fp =
 
 soaDualMapOn :: Prog -> String -> String -> String -> Core -> Maybe MvPlan
 soaDualMapOn prog f cap el body0 = do
-  let body1 = inlineSat (8 :: Int) (peelDeepC body0)
+  -- peel alias lets again AFTER inlining: a helper taking the whole
+  -- element (`total r`) inlines to `let r' = el in ..`, and an unpeeled
+  -- alias reads as the element escaping
+  let body1 = peelDeepC (inlineSat (8 :: Int) (peelDeepC body0))
   (tv, fs) <- strip cap el Nothing body1
   let n = length fs
-  if n == 0 || n > 4 then Nothing else Just ()
+  if n == 0 then Nothing else Just () -- any width: cursors and results are frame slots
   duals <- mapM (dualField cap el) fs
   Just (MvPlan tv n duals)
   where
@@ -2057,7 +2166,7 @@ soaDualMapOn prog f cap el body0 = do
         | h /= f,
           Just (ps, hb) <- M.lookup h prog,
           length ps == length args ->
-            inlineSat (d - 1) (foldr (\(p, a) acc -> substE p a acc) hb (zip ps args))
+            inlineSat (d - 1) (peelDeepC (foldr (\(p, a) acc -> substE p a acc) hb (zip ps args)))
       _ -> case e of
         CApp a b -> CApp (inlineSat d a) (inlineSat d b)
         CLet x a b -> CLet x (inlineSat d a) (inlineSat d b)
@@ -2096,7 +2205,7 @@ soaDualMapOn prog f cap el body0 = do
       let ms' = S.toAscList (S.fromList ms)
           ks' = S.toAscList (S.fromList ks)
           ps = ["$m" ++ show j | j <- ms'] ++ ["$c" ++ show k | k <- ks']
-      if length ps > 8 then Nothing else Just ()
+      if length ps > 8 + spillCells then Nothing else Just () -- args 8+ ride the hart spill cells
       _ <- bodyOK prog (S.fromList ps) e1
       Just ((ms', ks'), (ps, e1))
       where
@@ -2179,7 +2288,12 @@ compileUFn tgt prog uset label (params, body) = do
       "    .globl " ++ label,
       label ++ ":" ]
       ++ framePro tgt frame
-      ++ concat [stSlot tgt ("a" ++ show i) i | (i, _) <- zip [0 :: Int ..] params]
+      ++ concat [stSlot tgt ("a" ++ show i) i | (i, _) <- zip [0 :: Int ..] params, i < 8]
+      -- wide duals: args 8+ arrive in the hart spill cells (compileFn's convention)
+      ++ (if length params > 8 then "    mv t0, tp" : concat
+            [ ("    " ++ tgtLd tgt ++ " t1, " ++ spillRef tgt (i - 8) ++ "(t0)") : stSlot tgt "t1" i
+            | i <- [8 .. length params - 1] ]
+          else [])
       ++ (if not (tgtFuel tgt) then [] else [ "    mv t0, tp", -- per-hart fuel: 0(tp) is fpr_hart_t.fuel
            "    " ++ tgtLd tgt ++ " t1, 0(t0)",
            "    addi t1, t1, -1",
@@ -2386,6 +2500,7 @@ emitSpec tgt rvv (sym, p) = case spOp p of
   "map" -> emitMapSpec tgt rvv sym p
   "mvmap" -> emitMvMapSpec tgt sym p
   "filter" -> emitFilterSpec tgt sym p
+  "rfilter" -> emitRFilterSpec tgt sym p
   _ | Just g <- wfoldG p -> emitWFoldSpec tgt sym p g
   _ -> emitFoldSpec tgt rvv sym p
 
@@ -2396,39 +2511,46 @@ rvvE tgt = if tgtW tgt == 8 then "64" else "32"
 emitMapSpec :: Target -> Bool -> String -> SpecPlan -> G [String]
 emitMapSpec tgt rvv sym p = do
   let f = spFn p
+      k = spCaps p
+      vreg = "a" ++ show k -- the vector arrives after the captures
       ld = tgtLd tgt
       st = tgtSt tgt
-      (frame, pro, epi) = specFrame tgt ["ra", "s0", "s1", "s2", "s3", "s4", "s5", "s6"] 0
+      w = tgtW tgt
+      (frame, pro, epi) = specFrame tgt ["ra", "s0", "s1", "s2", "s3", "s4", "s5", "s6"] k
   ~[fb, louter, linner, lnextb, ldone] <- mapM freshL ["vfb", "vouter", "vinner", "vnextb", "vdone"]
   fuel <- specFuel tgt
   blk <- specBlock tgt
   vinner <- case spRvv p of
-    Just (RvvMap prm body) | rvv -> pure (rvvMapInner tgt prm body linner lnextb)
+    Just (RvvMap prm body) | rvv, k == 0 -> pure (rvvMapInner tgt prm body linner lnextb)
     _ -> pure Nothing
   let inner = case vinner of
         Just ls -> ls
         Nothing ->
           [ linner ++ ":",
-            "    beqz s6, " ++ lnextb,
-            "    " ++ ld ++ " a0, 0(s5)",
-            "    call fpr_ufn_" ++ mangle f,
-            "    " ++ st ++ " a0, 0(s5)",
-            "    addi s5, s5, " ++ show (tgtW tgt),
-            "    addi s2, s2, 1",
-            "    addi s6, s6, -1",
-            "    j " ++ linner
+            "    beqz s6, " ++ lnextb
           ]
+            ++ capLoads tgt k
+            ++ [ "    " ++ ld ++ " " ++ vreg ++ ", 0(s5)",
+                 "    call fpr_ufn_" ++ mangle f,
+                 "    " ++ st ++ " a0, 0(s5)",
+                 "    addi s5, s5, " ++ show w,
+                 "    addi s2, s2, 1",
+                 "    addi s6, s6, -1",
+                 "    j " ++ linner
+               ]
   pure $
-    [ "# Vec.map specialized on " ++ f ++ (if vinner /= Nothing then "  [RVV]" else ""),
+    [ "# Vec.map specialized on " ++ f ++ (if vinner /= Nothing then "  [RVV]" else "") ++ (if k > 0 then "  [" ++ show k ++ " scalar captures]" else ""),
       "    .globl " ++ sym,
       sym ++ ":"
     ]
-      ++ vecGuard tgt "a0" fb
+      ++ capGuards k fb
+      ++ vecGuard tgt vreg fb
       ++ [ "    li t1, " ++ show (repOf p),
            "    bne t0, t1, " ++ fb -- scalar rep only (Int or float)
          ]
       ++ pro
-      ++ [ "    mv s0, a0",
+      ++ capStores tgt k
+      ++ [ "    mv s0, " ++ vreg,
            "    " ++ ld ++ " s1, " ++ show vLen ++ "(s0)",
            "    li s2, 0",
            "    li s3, 0",
@@ -2442,12 +2564,49 @@ emitMapSpec tgt rvv sym p = do
       ++ [ldone ++ ":", "    mv a0, s0"]
       ++ epi
       ++ [ "    ret",
-           fb ++ ":",
-           "    mv a1, a0",
-           "    la a0, fpr_obj_" ++ mangle f,
-           "    j fpr_vec_map",
-           ""
+           fb ++ ":"
          ]
+      ++ capFallback tgt f k "fpr_vec_map"
+      ++ [""]
+
+-- entry guard for k scalar captures in a0..a(k-1): each must be a tagged
+-- Int (bit 0 set); anything else goes to the generic tier
+capGuards :: Int -> String -> [String]
+capGuards k fb = concat [["    andi t0, a" ++ show i ++ ", 1", "    beqz t0, " ++ fb] | i <- [0 .. k - 1]]
+
+-- after the prologue: the captures untagged into the first k frame slots
+capStores :: Target -> Int -> [String]
+capStores tgt k = concat [["    srai t0, a" ++ show i ++ ", 1", "    " ++ tgtSt tgt ++ " t0, " ++ show (i * tgtW tgt) ++ "(sp)"] | i <- [0 .. k - 1]]
+
+-- before each unboxed call: the raw captures back into a0..a(k-1)
+capLoads :: Target -> Int -> [String]
+capLoads tgt k = ["    " ++ tgtLd tgt ++ " a" ++ show i ++ ", " ++ show (i * tgtW tgt) ++ "(sp)" | i <- [0 .. k - 1]]
+
+-- the generic tier: rebuild (f c1 .. ck) as a real closure with k applies,
+-- then tail into the C scheme with (closure, vector).  The captures and
+-- the vector are still in a0..ak here (the guards use t0/t1 only).
+capFallback :: Target -> String -> Int -> String -> [String]
+capFallback tgt f 0 scheme =
+  [ "    mv a1, a0",
+    "    la a0, fpr_obj_" ++ mangle f,
+    "    j " ++ scheme
+  ]
+capFallback tgt f k scheme =
+  let w = tgtW tgt
+      ld = tgtLd tgt
+      st = tgtSt tgt
+      bytes = ((w * (k + 2) + 15) `div` 16) * 16
+   in [ "    addi sp, sp, -" ++ show bytes,
+        "    " ++ st ++ " ra, 0(sp)"
+      ]
+        ++ ["    " ++ st ++ " a" ++ show i ++ ", " ++ show ((i + 1) * w) ++ "(sp)" | i <- [0 .. k]]
+        ++ ["    la a0, fpr_obj_" ++ mangle f]
+        ++ concat [["    " ++ ld ++ " a1, " ++ show ((i + 1) * w) ++ "(sp)", "    call fpr_apply"] | i <- [0 .. k - 1]]
+        ++ [ "    " ++ ld ++ " a1, " ++ show ((k + 1) * w) ++ "(sp)", -- the vector
+             "    " ++ ld ++ " ra, 0(sp)",
+             "    addi sp, sp, " ++ show bytes,
+             "    j " ++ scheme
+           ]
 
 rvvMapInner :: Target -> String -> Core -> String -> String -> Maybe [String]
 rvvMapInner tgt prm body linner lnextb = do
@@ -2522,6 +2681,8 @@ compileV env0 c0 e0 = do
 emitFilterSpec :: Target -> String -> SpecPlan -> G [String]
 emitFilterSpec tgt sym p = do
   let f = spFn p
+      k = spCaps p
+      vreg = "a" ++ show k
       ld = tgtLd tgt
       st = tgtSt tgt
       w = tgtW tgt
@@ -2529,20 +2690,22 @@ emitFilterSpec tgt sym p = do
       -- x19..x27 and keeps x28 for the hart), so the kept count is s7 and
       -- the element s9
       regs = ["ra"] ++ ["s" ++ show i | i <- [0 .. 9 :: Int]]
-      (_, pro, epi) = specFrame tgt regs 0
+      (_, pro, epi) = specFrame tgt regs k
   ~[fb, louter, linner, lskip, lwadv, lnextb, ldone] <-
     mapM freshL ["vfb", "vouter", "vinner", "vskip", "vwadv", "vnextb", "vdone"]
   fuel <- specFuel tgt
   blk <- specBlock tgt
   pure $
-    [ "# Vec.filter specialized on " ++ f ++ "  (in place: linearity licenses it)",
+    [ "# Vec.filter specialized on " ++ f ++ "  (in place: linearity licenses it)" ++ (if k > 0 then "  [" ++ show k ++ " scalar captures]" else ""),
       "    .globl " ++ sym,
       sym ++ ":"
     ]
-      ++ vecGuard tgt "a0" fb
+      ++ capGuards k fb
+      ++ vecGuard tgt vreg fb
       ++ ["    li t1, " ++ show (repOf p), "    bne t0, t1, " ++ fb]
       ++ pro
-      ++ [ "    mv s0, a0",
+      ++ capStores tgt k
+      ++ [ "    mv s0, " ++ vreg,
            "    " ++ ld ++ " s1, " ++ show vLen ++ "(s0)",
            "    li s2, 0",
            "    li s3, 0",
@@ -2556,8 +2719,10 @@ emitFilterSpec tgt sym p = do
       ++ blk
       ++ [ linner ++ ":",
            "    beqz s6, " ++ lnextb,
-           "    " ++ ld ++ " s9, 0(s5)",
-           "    mv a0, s9",
+           "    " ++ ld ++ " s9, 0(s5)"
+         ]
+      ++ capLoads tgt k
+      ++ [ "    mv " ++ vreg ++ ", s9",
            "    call fpr_ufn_" ++ mangle f, -- raw 0/1
            "    beqz a0, " ++ lskip,
            -- contiguous column: the write cursor never runs out (kept
@@ -2572,6 +2737,113 @@ emitFilterSpec tgt sym p = do
            "    j " ++ linner
          ]
       ++ [lnextb ++ ":", "    addi s3, s3, 1", "    j " ++ louter]
+      ++ [ ldone ++ ":",
+           "    " ++ st ++ " s7, " ++ show vLen ++ "(s0)", -- len = kept
+           "    mv a0, s0"
+         ]
+      ++ epi
+      ++ [ "    ret",
+           fb ++ ":"
+         ]
+      ++ capFallback tgt f k "fpr_vec_filter"
+      ++ [""]
+
+-- Vec.filter p v over a RECORD vector, p dualized over the used columns
+-- (soaDualPred).  One pass, in place: the predicate reads its columns at
+-- row i straight from the column spans; a kept row's words are copied
+-- from i to the write position j in EVERY column (the column count is
+-- read from the header, so any record width compacts); len = kept.  No
+-- row is built and nothing is applied through a PAP.  The unboxed
+-- predicate carries its own fuel tick, so each element is a safepoint.
+emitRFilterSpec :: Target -> String -> SpecPlan -> G [String]
+emitRFilterSpec tgt sym p = do
+  let f = spFn p
+      Just (ks, _, _, (etid, evar)) = spSoa p
+      ld = tgtLd tgt
+      st = tgtSt tgt
+      w = tgtW tgt
+      lw' = show (logW tgt)
+      needCols = maximum ks + 1
+      regs = ["ra"] ++ ["s" ++ show i | i <- [0 .. 9 :: Int]]
+      (_, pro, epi) = specFrame tgt regs 0
+  ~[fb, ldis, lloop, lskip, lcp, lkept, ldone] <-
+    mapM freshL ["rffb", "rfdis", "rfloop", "rfskip", "rfcp", "rfkept", "rfdone"]
+  pure $
+    [ "# Vec.filter specialized on the record predicate " ++ f ++ "  (column compaction, no rows built)",
+      "    .globl " ++ sym,
+      sym ++ ":"
+    ]
+      ++ vecGuard tgt "a0" fb
+      ++ [ "    li t1, 3",
+           "    bne t0, t1, " ++ fb -- SoA rep only
+         ]
+      ++ ( if etid < 0
+             then []
+             else
+               [ "    " ++ ld ++ " t0, " ++ show (8 + w) ++ "(a0)", -- eltid
+                 "    li t1, " ++ show etid,
+                 "    bne t0, t1, " ++ fb,
+                 "    " ++ ld ++ " t0, " ++ show (8 + 2 * w) ++ "(a0)", -- elvar
+                 "    li t1, " ++ show evar,
+                 "    bne t0, t1, " ++ fb
+               ]
+         )
+      ++ [ "    " ++ ld ++ " t0, " ++ show (vNcols tgt) ++ "(a0)",
+           "    li t1, " ++ show needCols,
+           "    bltu t0, t1, " ++ fb,
+           "    " ++ ld ++ " t0, " ++ show (vKindsP tgt) ++ "(a0)"
+         ]
+      ++ kindChecks "t0" fb ks -- the columns the predicate reads are raw
+      ++ ["    j " ++ ldis, ldis ++ ":"]
+      ++ pro
+      ++ [ "    mv s0, a0",
+           "    " ++ ld ++ " s1, " ++ show vLen ++ "(s0)",
+           "    li s2, 0", -- read row i
+           "    li s7, 0", -- write row j = kept
+           "    " ++ ld ++ " s4, " ++ show (vColsP tgt) ++ "(s0)", -- the column directory
+           "    " ++ ld ++ " s8, " ++ show (vNcols tgt) ++ "(s0)" -- every column moves
+         ]
+      ++ [lloop ++ ":", "    bgeu s2, s1, " ++ ldone]
+      ++ concat
+        [ [ "    " ++ ld ++ " t0, " ++ show (k * w) ++ "(s4)",
+            "    " ++ ld ++ " t0, " ++ show (colBlk0 tgt) ++ "(t0)", -- base of column k
+            "    slli t1, s2, " ++ lw',
+            "    add t0, t0, t1"
+          ]
+            ++ ( if q < 8
+                   then ["    " ++ ld ++ " a" ++ show q ++ ", 0(t0)"]
+                   else
+                     [ "    " ++ ld ++ " t1, 0(t0)",
+                       "    mv t2, tp",
+                       "    " ++ st ++ " t1, " ++ spillRef tgt (q - 8) ++ "(t2)"
+                     ]
+               )
+          | (q, k) <- zip [0 :: Int ..] ks
+        ]
+      ++ [ "    call fpr_ufn_soa_" ++ mangle f, -- raw 0/1
+           "    beqz a0, " ++ lskip,
+           "    beq s2, s7, " ++ lkept, -- already in place
+           "    li s9, 0",
+           lcp ++ ":",
+           "    bgeu s9, s8, " ++ lkept,
+           "    slli t0, s9, " ++ lw',
+           "    add t0, s4, t0",
+           "    " ++ ld ++ " t0, 0(t0)", -- col_t*
+           "    " ++ ld ++ " t0, " ++ show (colBlk0 tgt) ++ "(t0)", -- base
+           "    slli t1, s2, " ++ lw',
+           "    add t1, t0, t1",
+           "    " ++ ld ++ " t2, 0(t1)",
+           "    slli t1, s7, " ++ lw',
+           "    add t1, t0, t1",
+           "    " ++ st ++ " t2, 0(t1)",
+           "    addi s9, s9, 1",
+           "    j " ++ lcp,
+           lkept ++ ":",
+           "    addi s7, s7, 1",
+           lskip ++ ":",
+           "    addi s2, s2, 1",
+           "    j " ++ lloop
+         ]
       ++ [ ldone ++ ":",
            "    " ++ st ++ " s7, " ++ show vLen ++ "(s0)", -- len = kept
            "    mv a0, s0"
@@ -2647,23 +2919,31 @@ emitMvMapSpec tgt sym p = do
             ]
             | k <- [0 .. n - 1]
           ]
+      -- one argument of a field dual: register a<q> for q < 8, else the
+      -- hart spill cell (q - 8) that the clone's prologue copies out
+      argInto q loadInto =
+        if q < 8
+          then loadInto ("a" ++ show q)
+          else loadInto "t1" ++ ["    mv t2, tp", "    " ++ st ++ " t1, " ++ spillRef tgt (q - 8) ++ "(t2)"]
       fieldCalls =
         concat
           [ concat
               [ concat
-                  [ [ "    " ++ ld ++ " a" ++ show q ++ ", " ++ show (8 + w * j) ++ "(s8)",
-                      -- the capture is a BOXED record: its fields are
-                      -- TAGGED ints, but the unboxed field fns speak
-                      -- raw words (same contract as the kinds-guarded
-                      -- element columns) -- untag on the way in
-                      "    srai a" ++ show q ++ ", a" ++ show q ++ ", 1"
-                    ]
+                  [ argInto q (\r ->
+                      [ "    " ++ ld ++ " " ++ r ++ ", " ++ show (8 + w * j) ++ "(s8)",
+                        -- the capture is a BOXED record: its fields are
+                        -- TAGGED ints, but the unboxed field fns speak
+                        -- raw words (same contract as the kinds-guarded
+                        -- element columns) -- untag on the way in
+                        "    srai " ++ r ++ ", " ++ r ++ ", 1"
+                      ])
                     | (q, j) <- zip [0 :: Int ..] ms
                   ],
                 concat
-                  [ [ "    " ++ ld ++ " t0, " ++ show (k * w) ++ "(sp)",
-                      "    " ++ ld ++ " a" ++ show (length ms + q) ++ ", 0(t0)"
-                    ]
+                  [ argInto (length ms + q) (\r ->
+                      [ "    " ++ ld ++ " t0, " ++ show (k * w) ++ "(sp)",
+                        "    " ++ ld ++ " " ++ r ++ ", 0(t0)"
+                      ])
                     | (q, k) <- zip [0 :: Int ..] ks
                   ],
                 [ "    call fpr_ufn_mv_" ++ mangle f ++ "_" ++ show i,

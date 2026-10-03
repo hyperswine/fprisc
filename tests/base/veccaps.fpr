@@ -1,0 +1,57 @@
+# Column kernels with scalar captures and wide records
+# (docs/2026-10-03-VECTOR-KERNELS.md).  Vec.map (affine 2 1) and
+# Vec.filter (above 5) run in the specialized loops with the captures
+# passed raw ahead of the element: the pool does not grow per element.
+# A capture that is not a tagged Int (a Bool) fails the entry guard and
+# the generic tier gives the same answer.  A nine-field record map runs
+# the in-place record kernel, and a field that reads all nine columns
+# takes its ninth argument through the hart spill cell.  A record filter
+# compacts every column in place from a predicate over the columns.
+unsafe base.
+affine a b x = a * x + b.
+above k x = x > k.
+pick b x = case b of True -> x | False -> 0.
+R9 = { f0 : Int, f1 : Int, f2 : Int, f3 : Int, f4 : Int, f5 : Int, f6 : Int, f7 : Int, f8 : Int }.
+mk9 b = { f0 = b, f1 = b + 1, f2 = b + 2, f3 = b + 3, f4 = b + 4, f5 = b + 5, f6 = b + 6, f7 = b + 7, f8 = b + 8 }.
+fill9 : (Vector R9) -> (i : Int | measure (n - i)) -> (n : Int) -> (Vector R9) .
+fill9 v i n | i >= n = v.
+fill9 v i n = fill9 (Vec.push (mk9 i) v) (i + 1) n.
+total9 r = r.f0 + r.f1 + r.f2 + r.f3 + r.f4 + r.f5 + r.f6 + r.f7 + r.f8.
+keep9 r = total9 r > 4000.
+bump9 r = { f0 = total9 r, f1 = r.f1 * 2, f2 = r.f2 * 2, f3 = r.f3 * 2, f4 = r.f4 * 2, f5 = r.f5 * 2, f6 = r.f6 * 2, f7 = r.f7 * 2, f8 = r.f8 * 2 }.
+main =
+  v = Vec.iota 100000;
+  h0 = heapUsed Unit;
+  v2 = Vec.map (affine 2 1) v;
+  g1 = heapUsed Unit - h0;
+  (s1, v3) = Vec.fold (fn a x -> a + x) 0 v2;
+  h1 = heapUsed Unit;
+  v4 = Vec.filter (above 100001) v3;
+  g2 = heapUsed Unit - h1;
+  (n, v5) = Vec.len v4;
+  (s2, v6) = Vec.fold (fn a x -> a + x) 0 v5;
+  _ = Vec.free v6;
+  _ = print "affine: sum={s1} grew={g1} B; above: kept={n} sum={s2} grew={g2} B";
+  w = Vec.iota 5;
+  w2 = Vec.map (pick True) w;
+  (s3, w3) = Vec.fold (fn a x -> a + x) 0 w2;
+  w4 = Vec.map (pick False) w3;
+  (s4, w5) = Vec.fold (fn a x -> a + x) 0 w4;
+  _ = Vec.free w5;
+  _ = print "bool capture falls back: {s3} {s4}";
+  r = fill9 (Vec.new Unit) 0 1000;
+  h2 = heapUsed Unit;
+  r2 = Vec.map bump9 r;
+  g3 = heapUsed Unit - h2;
+  (s5, r3) = Vec.fold (fn a x -> a + x.f0 + x.f8) 0 r2;
+  _ = Vec.free r3;
+  _ = print "nine-field record map: sum={s5} grew={g3} B";
+  q = fill9 (Vec.new Unit) 0 1000;
+  h3 = heapUsed Unit;
+  q2 = Vec.filter keep9 q;
+  g4 = heapUsed Unit - h3;
+  (kn, q3) = Vec.len q2;
+  (s6, q4) = Vec.fold (fn a x -> a + x.f0) 0 q3;
+  (last, q5) = Vec.at (kn - 1) q4;
+  _ = Vec.free q5;
+  print "record filter: kept={kn} sum={s6} last.f8={last.f8} grew={g4} B".

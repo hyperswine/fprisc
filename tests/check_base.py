@@ -53,6 +53,17 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([build('tests/base/vecwide.fpr', 'vecwide')])
     assert p.stdout == 'w2: at3=9 kept=8 sum=8147 echoed=8147\nw4: at3=30 kept=8 sum=8490 echoed=8490\nw8: at3=108 kept=8 sum=9764 echoed=9764\nw9: at3=135 kept=8 sum=10205 echoed=10205\nw32: at3=1584 kept=8 sum=33872 echoed=33872\nw65: at3=6435 kept=8 sum=113105 echoed=113105\nw128: at3=24768 kept=8 sum=412544 echoed=412544\nfloat record: n=4 x=1.5 y=2.25 k=2\none: 3\n', p.stdout
     print('Vector descriptors: record widths 2, 4, 8, 9, 32, 65 and 128 through the whole surface and the deep copier, an inferred float-record layout, boxed width-1 rows: PASS')
+    # column kernels: scalar captures in map and filter (zero pool growth, a
+    # non-Int capture falls back), a nine-field record map through the spill
+    # cell, a record filter that compacts columns in place; none of these
+    # sites declines (docs/2026-10-03-VECTOR-KERNELS.md)
+    p = run(['./fpr', 'build', '-v', 'tests/base/veccaps.fpr', '-o', tmp / 'veccaps'])
+    assert 'vec note' not in p.stdout, p.stdout
+    p = run([tmp / 'veccaps'])
+    assert p.stdout == 'affine: sum=10000000000 grew=0 B; above: kept=49999 sum=7499899999 grew=0 B\nbool capture falls back: 10 0\nnine-field record map: sum=5546500 grew=0 B\nrecord filter: kept=559 sum=402480 last.f8=1007 grew=0 B\n', p.stdout
+    for target in ('rv64', 'rv32', 'x64'):
+        run(['./fprc', '--profile=base', f'--target={target}', 'tests/base/veccaps.fpr', tmp / f'veccaps-{target}.s'])
+    print('Vector kernels: captured map/filter, wide record map and record filter run in place with no declines; RV64/RV32/x64 emit: PASS')
     # 1. hello: print reaches stdout, nothing else is echoed, status 0
     p = run([build('tests/base/hello.fpr', 'hello')])
     assert p.stdout == 'hello from base\n', p.stdout
