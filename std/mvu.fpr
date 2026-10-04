@@ -82,7 +82,8 @@
 #     sbs model                -> List Sub
 #
 # cfg is a RECORD, not a constructor: { env, mt, tick, input, render }.
-# tick is the FRAME budget (mt ticks: pacing, a runtime setting);
+# tick is the FRAME budget (10MHz monotonic ticks, a runtime setting);
+# mt is retained for existing cfg records; the driver uses Sys.mtime now.
 # STick is whether update HEARS time (a subscription).  Consumers
 # project the fields they use; apps may add fields freely (rows are
 # open) -- adding a capability never breaks arity again.
@@ -391,15 +392,15 @@ renderWorker parent render vl self =
 # ---- the loop ---------------------------------------------------------------
 
 waitTick : unsafe Int -> Int -> Int -> Int .
-waitTick mt t0 tick = case read mt - t0 >= tick of
-    True -> read mt
+waitTick mt t0 tick = case Sys.mtime Unit - t0 >= tick of
+    True -> Sys.mtime Unit
   | False -> napTick mt t0 tick.
 # sleep the REMAINDER instead of pegging a core on mtime; the loop
 # re-checks because the hook may undershoot (and the bare-metal weak
 # default is a no-op, i.e. today's spin, unchanged)
 napTick : unsafe Int -> Int -> Int -> Int .
 napTick mt t0 tick =
-  _ = Sys.sleepUs ((tick - (read mt - t0)) / 10);   # 10MHz mt -> us
+  _ = Sys.sleepUs ((tick - (Sys.mtime Unit - t0)) / 10);   # 10MHz mt -> us
   waitTick mt t0 tick.
 tickWait mt t0 tick = case tick == 0 of
     True -> 0
@@ -418,7 +419,7 @@ loopM : unsafe Int -> _ -> MApp -> Int -> (Int, Int) -> (Int, c) -> Ms -> String
 loopM me cfg app rw vp cache ms =
   env = cfg.env; mt = cfg.mt; input = cfg.input;
   Ms model fr sc lastR ltt = ms;
-  t0 = read mt;
+  t0 = Sys.mtime Unit;
   MApp ini upd sk vw vl dn sbs = app;
   ss = sbs model;
   (tickMs, keysOn, portA) = subFold ss (0, 0, 0);
@@ -487,7 +488,7 @@ run3 me cfg app rw vp m1 =
   # on frame 1): keeps the statics type fully polymorphic -- a Nil seed
   # would force every app's statics to be a List, and the GLES walker's
   # statics is a scene value
-  loopM me cfg app rw vp (0 - 1, vw vp m1) (Ms m1 0 0 (0, 0) (read cfg.mt)).
+  loopM me cfg app rw vp (0 - 1, vw vp m1) (Ms m1 0 0 (0, 0) (Sys.mtime Unit)).
 
 # ---- the elm façade: MVU.game -----------------------------------------------
 # The formal four run on the engine: view is computed per frame IN THE

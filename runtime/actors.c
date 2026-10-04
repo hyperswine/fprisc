@@ -1681,6 +1681,10 @@ static void block_unless(acb_t *a, pred_t pred, uw arg) {
   a->wait_kind = 0;
 }
 
+/* Shared monotonic clock in the scheduler's 10 MHz units. */
+static V a_mtime(V ignored) { (void)ignored; return TAG((sw)hal_mtime()); }
+FPR_FN(fpr_g_Sys_x2emtime, a_mtime, 1);
+
 /* ---- Sys.sleepUs: a PARKED sleep ------------------------------------
  * The sleeper leaves its hart: parked with a deadline on the hart's
  * own list (only this hart touches it), woken by the hart loop once

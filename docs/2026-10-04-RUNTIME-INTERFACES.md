@@ -65,8 +65,9 @@ publication/watch policy and publisher authentication remain outside this gate.
   interpolation inferred a generic argument, which correctly fails the new gate
   against string-only v2 without this explicit intended interface.
 
-See the verification results below for executed coverage. Host POSIX attachment,
-production Base clock, watchers/publication/restart, typed env reconstruction,
+See the verification results below for executed coverage. POSIX attachment and
+a production clock are now implemented in [POSIX-RELOAD](2026-10-04-POSIX-RELOAD.md).
+Watchers/publication/restart, typed env reconstruction,
 new-path QOS journal/replay, native RV64 reload, browser/GL reload and long-run
 memory/performance measurements remain open.
 

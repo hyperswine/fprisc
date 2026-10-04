@@ -402,7 +402,7 @@ builtinArities =
         ("spawnCap", 3), ("spawnCapOn", 4), ("spawnOn", 2), ("spawnHeap", 2), ("Sys.spawnApp", 1), ("timeNow", 1),
         ("kill", 1), ("yield", 1), ("drop", 1), ("keep", 1), ("device", 1), ("reg32", 2),
         ("heapUsed", 1),
-        ("Sys.poolReset", 1), ("Sys.sleepUs", 1), ("Sys.logAt", 2), ("Sys.memStats", 1), ("Sys.memInfo", 1),
+        ("Sys.poolReset", 1), ("Sys.mtime", 1), ("Sys.sleepUs", 1), ("Sys.logAt", 2), ("Sys.memStats", 1), ("Sys.memInfo", 1),
         ("use", 1), ("run", 2), ("View.serve", 5),
         ("Vec.new", 1), ("Vec.range", 2), ("Vec.mmul", 5), ("Vec.push", 2), ("Vec.len", 1), ("Vec.get", 2),
         ("Vec.set", 3), ("Vec.map", 2), ("Vec.filter", 2), ("Vec.fold", 3),
@@ -562,7 +562,7 @@ actorNames =
     [ "myself", "spawn", "send", "sendLinear", "sendArc", "receive", "receiveFrom", "receiveFromRes", "Sys.nextId", "kill", "yield",
       "spawnCap", "spawnCapOn", "spawnOn", "spawnHeap", "Sys.spawnApp", "timeNow",
       "drop", "keep", "device", "reg32", "heapUsed",
-      "Sys.poolReset", "Sys.sleepUs", "Sys.logAt", "Sys.memStats", "Sys.memInfo"
+      "Sys.poolReset", "Sys.mtime", "Sys.sleepUs", "Sys.logAt", "Sys.memStats", "Sys.memInfo"
     ]
 
 actorCall :: VMEnv -> Name -> [Value] -> IO Value
@@ -668,6 +668,7 @@ actorCall _ "device" [_] = pure (VInt 0)
 actorCall _ "reg32" [_, _] = pure (VData mtimeT 0 [])
 actorCall _ "heapUsed" [_] = pure (VInt 0)
 actorCall _ "Sys.poolReset" [_] = pure (VInt 0)
+actorCall _ "Sys.mtime" [_] = VInt . floor . (* 1e7) <$> getMonotonicTime
 actorCall _ "Sys.sleepUs" [VInt us] = threadDelay (fromIntegral us) >> pure vUnit
 actorCall _ "Sys.logAt" [VInt h, s] = do
   str <- vsStr s

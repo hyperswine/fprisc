@@ -62,7 +62,8 @@ compares the stored math baseline rather than the globally newest table.
   invalidation, quit, and invalid baseline preflight all pass.
 - Host tests explicitly supply `tests/base/mvuclock.c`, a deterministic test
   clock. The current MVU driver still uses QOS's `read`/CLINT clock interface;
-  this does not establish a production Base clock or image attachment path.
+  that historical test used a clock shim; the production clock and attachment
+  path now have separate coverage in POSIX-RELOAD.
 - QOS `python3 tools/mvu-reload-check.py` checks real plugin images on one/four
   harts: `20,22 -> 30 -> refused -> 36`, accumulator `108`, three frames/two
   statics builds, old saved function returning `20`, and three adopted tables.
@@ -82,8 +83,10 @@ compares the stored math baseline rather than the globally newest table.
    Source identity matching against event `from`/`to` is now implemented in
    [RELOAD-IDENTITY](2026-10-04-RELOAD-IDENTITY.md) for trusted compiled images.
    The production publisher/watch path and its binding policy remain open.
-2. POSIX image attachment and a production host clock for this driver, then
-   store watching (`SStore`/`std/watch`) and `fpr watch` publication/restart.
+2. POSIX attachment and a production clock are implemented in
+   [POSIX-RELOAD](2026-10-04-POSIX-RELOAD.md), with real host module/MVU tests.
+   Store watching (`SStore`/`std/watch`) and `fpr watch` publication/restart
+   remain open.
 3. Typed live-module declarations and automatic rebuilding of their env rows,
    instead of the explicit adapter used here.
 4. QOS journal/replay through the new event path, followed by migration of the

@@ -20,6 +20,7 @@ import Data.List (isInfixOf)
 import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
 import qualified Compile
+import Codegen (codegenRev)
 import FPRISC (declaredProfile)
 import Home (fprHome)
 import qualified Sol.Main
@@ -42,6 +43,7 @@ data Plan = Plan
   { pSource :: FilePath,
     pOut :: Maybe FilePath,
     pHarts :: Int,
+    pModule :: Bool, -- host shared module, with no private runtime
     pKeep :: Bool,
     pVerbose :: Bool,
     pCC :: Maybe String,
@@ -56,7 +58,7 @@ data Plan = Plan
   }
 
 usage :: String
-usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep]\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --host=esp-idf [-o dir] [--port P] [-v]"
+usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep] [--module]\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --host=esp-idf [-o dir] [--port P] [-v]"
 
 -- The hart CAP compiled in is this machine's processor count (it was a flat 2,
 -- so a server on a ten-core machine ran on two threads).  The running program
@@ -67,11 +69,12 @@ usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep
 plan :: [String] -> IO Plan
 plan args = do
   cores <- onlineCores
-  go (Plan "" Nothing (max 2 cores) False False Nothing [] [] [] "unix" Nothing False Nothing []) args
+  go (Plan "" Nothing (max 2 cores) False False False Nothing [] [] [] "unix" Nothing False Nothing []) args
   where
     go p ("-o" : o : rest) = go p {pOut = Just o} rest
     go p ("--harts" : n : rest) = go p {pHarts = read n} rest
     go p ("--cc" : c : rest) = go p {pCC = Just c} rest
+    go p ("--module" : rest) = go p {pModule = True} rest
     go p ("--keep" : rest) = go p {pKeep = True} rest
     go p ("--cost" : rest) = go p {pCost = True} rest
     go p (a : rest) | "--manifest=" `isPrefixOf` a = go p {pCost = True, pManifest = Just a} rest
@@ -112,7 +115,7 @@ build p = do
   pid <- getProcessID
   let dir = cache </> "build"
       asm = dir </> (takeBaseName (pSource p) ++ "-" ++ show pid ++ ".s")
-      out = fromMaybe (dropExtension (pSource p)) (pOut p)
+      out = fromMaybe (dropExtension (pSource p) ++ if pModule p then if System.Info.os == "darwin" then ".dylib" else ".so" else "") (pOut p)
   createDirectoryIfMissing True dir
   -- the compiler as a subprocess: its progress lines stay quiet unless
   -- asked for, its diagnostics (stderr) and its exit status pass through
@@ -123,7 +126,7 @@ build p = do
   -- checker refused exited 1 having said nothing at all.)
   let logf = asm ++ ".log"
   logh <- openFile logf WriteMode
-  (_, _, _, ch) <- createProcess (proc self (["compile", "--system=posix", "--prelude=" ++ prelude] ++ ["--cost" | pCost p] ++ maybe [] pure (pManifest p) ++ [pSource p, asm]))
+  (_, _, _, ch) <- createProcess (proc self (["compile", "--system=posix", "--prelude=" ++ prelude] ++ ["--plugin" | pModule p] ++ ["--cost" | pCost p] ++ maybe [] pure (pManifest p) ++ [pSource p, asm]))
                      {std_out = if pVerbose p || pCost p then Inherit else UseHandle logh}
   cc0 <- waitForProcess ch
   when (cc0 /= ExitSuccess) $ do
@@ -146,7 +149,7 @@ build p = do
   let ctx = if System.Info.arch == "aarch64" then "ctx_a64.S" else "ctx_x64.S"
       core = [runtime </> f | f <- ["runtime.c", "actors.c", "bits.c", "vec.c", "sstr.c", "mod.c", "buddy.c"]]
       -- the posix system: what both hosts share (machine/posix), and the unix host (machine/unix)
-      posix = [machine </> "posix" </> f | f <- ["hal.c", "base.c", "base_file.c", "os_fs.c", "os_io.c", "os_watch.c", "os_net.c", "os_job.c"]]
+      posix = [machine </> "posix" </> f | f <- ["hal.c", "base.c", "base_file.c", "os_fs.c", "os_io.c", "os_watch.c", "os_net.c", "os_job.c", "os_module.c"]]
            ++ [machine </> "unix" </> f | f <- ["main.c", "park.c", "host.c", "os_proc.c", "os_term.c", "os_clock.c", ctx]]
       -- x28 is RESERVED on aarch64: the context switch (machine/unix/ctx_a64.S)
       -- does not save it, because QOS apps keep the hart pointer there.  Without
@@ -161,7 +164,7 @@ build p = do
       -- function ever needs that pair.  Generated code still uses x27 (its s9):
       -- it saves registers one at a time, never paired with x28.
       fixed = if System.Info.arch == "aarch64" then ["-ffixed-x27", "-ffixed-x28", "-DFPR_HART_X28"] else [] -- x28 carries the hart (runtime/fpr.h)
-      cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed ++ ["-DFPR_COST_PROBE" | costProbe]
+      cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_POSIX_CODEGEN_REV=" ++ show codegenRev, "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed ++ ["-DFPR_COST_PROBE" | costProbe]
       linux = if System.Info.os == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []
       -- the runtime's objects are cached per hart count, rebuilt only
       -- when their source is newer: a warm build compiles the program
@@ -178,16 +181,20 @@ build p = do
   -- against old ones, which is a crash with no message
   hdrs <- fmap concat (mapM headersIn [runtime, machine </> "posix", machine </> "unix"])
   hdrTime <- if null hdrs then pure Nothing else Just . maximum <$> mapM getModificationTime hdrs
-  objs <- mapM (objectFor cc cflags rtdir hdrTime) (posix ++ core)
+  objs <- if pModule p then pure [] else mapM (objectFor cc cflags rtdir hdrTime) (posix ++ core)
   -- --with: a program that IS a host brings the device primitives it calls
   -- (the fpr_g_ names it leaves undefined) as C beside the runtime.  They
   -- are compiled with the runtime's flags plus --cflag, never cached.
-  let args = cflags ++ pCFlags p ++ linux ++ [asm] ++ units ++ objs ++ pWith p ++ pLink p ++ ["-lpthread", "-lm", "-o", out]
+  let shim = asm ++ ".module.c"
+  when (pModule p) $ writeFile shim ("#include \"fpr.h\"\nconst uw fpr_posix_module_nativeabi = FPR_NATIVE_ABI;\nconst uw fpr_posix_module_codegen = " ++ show codegenRev ++ ";\n")
+  let links = if pModule p then (if System.Info.os == "darwin" then ["-dynamiclib", "-Wl,-undefined,dynamic_lookup"] else ["-shared", "-Wl,-Bsymbolic"]) ++ [shim]
+              else linux ++ (if System.Info.os == "linux" then ["-rdynamic", "-ldl"] else ["-Wl,-export_dynamic"])
+      args = cflags ++ ["-fPIC" | pModule p] ++ pCFlags p ++ links ++ [asm] ++ units ++ objs ++ pWith p ++ pLink p ++ ["-lpthread", "-lm", "-o", out]
   code <- rawSystem cc args
   when (code /= ExitSuccess) $ hPutStrLn stderr ("fpr build: " ++ cc ++ " failed") >> exitWith code
   if pKeep p
     then hPutStrLn stderr ("fpr build: kept " ++ asm)
-    else mapM_ (\f -> doesFileExist f >>= \e -> when e (removeFile f)) [asm, asm ++ ".units", asm ++ ".abirev"]
+    else mapM_ (\f -> doesFileExist f >>= \e -> when e (removeFile f)) ([asm, asm ++ ".units", asm ++ ".abirev"] ++ [shim | pModule p])
   pure out
 
 -- where the compiler's progress lines end and its complaint begins
@@ -226,6 +233,7 @@ buildMain :: [String] -> IO ()
 buildMain args = do
   p <- plan args
   unless (null (pRest p)) $ hPutStrLn stderr usage >> exitFailure
+  when (pModule p && pHost p /= "unix") $ hPutStrLn stderr "host modules require --host=unix" >> exitFailure
   when (pHost p == "esp-idf") $ espIdf "build.sh" p []
   prof <- profileOf (pSource p)
   when (prof == "sol") $ hPutStrLn stderr "fpr build: a sol program runs on the VM (`fpr run`, `fpr sol`); it is not built into an executable" >> exitFailure
@@ -235,6 +243,7 @@ buildMain args = do
 runMain :: [String] -> IO ()
 runMain args = do
   p <- plan args
+  when (pModule p) $ hPutStrLn stderr "use fpr build --module, then Native.attach" >> exitFailure
   when (pHost p == "esp-idf") $ do
     unless (null (pRest p)) $ hPutStrLn stderr "fpr run: a board program is started with no arguments (Sys.args is [] there)" >> exitFailure
     espIdf "run.sh" p (maybe [] (: []) (pPort p))

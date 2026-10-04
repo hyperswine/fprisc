@@ -160,6 +160,7 @@ resolveHost o
   | oSystem o /= Just "posix" = o
   | oHost o == Just "esp-idf" = if oTargetFlag o then o else o {oTarget = rv32}
   | oHost o /= Nothing = o
+  | oPlugin o && oTargetFlag o && (oA64 o || oX64 o) = o {oBase = True}
   | otherwise = case (System.Info.os, System.Info.arch) of
       ("darwin", "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True, oA64Mac = True}
       (_, "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True}
@@ -391,8 +392,8 @@ compileWithInterface accepted = do
   when (oBuiltin opts && (oA64 opts || oX64 opts || oQosApp opts || oRvv opts || tgtName (oTarget opts) /= "rv64")) $ do
     hPutStrLn stderr "profile builtin currently supports scalar RV64 only"
     exitFailure
-  when (oBase opts && (oBuiltin opts || oQosApp opts || oPlugin opts || oRvv opts)) $ do
-    hPutStrLn stderr "--system=posix is a plain hosted executable: no builtin/arc, no QOS app image, no plugin, no RVV"
+  when (oBase opts && (oBuiltin opts || oQosApp opts || oRvv opts)) $ do
+    hPutStrLn stderr "--system=posix supports hosted executables/modules: no builtin/arc, no QOS app image, no RVV"
     exitFailure
   when (oArc opts && not (oBuiltin opts)) $ do
     hPutStrLn stderr "--arc needs profile builtin (the raw ABI)"
@@ -804,27 +805,29 @@ compileWithInterface accepted = do
           qsingle = oQosSingle opts
           -- hosted posix AArch64 reads its hart from x28 too (runtime/fpr.h):
           -- a thread-local cannot follow an actor that migrates between harts
-          lower | espHost = espTls
+          lower0 | espHost = espTls
                 | a64 && qapp = deTlsQosAppA64 a64mac qsingle . lowerA64 a64mac
                 | a64 && oBase opts = deTlsQosAppA64 a64mac False . lowerA64 a64mac
                 | a64 = lowerA64 a64mac
                 | x64 && qapp = deTlsQosApp . lowerX64
                 | x64 = lowerX64
                 | otherwise = id
+          lower = if oBase opts && oPlugin opts then posixPic a64 a64mac . lower0 else lower0
           rvv = oRvv opts && not a64 && not x64 -- no RVV lowering in the PoCs
           spec = True -- x64 lowers the extra saved registers through its shadow bank
           -- every distinct lowering its own cache tag: a QOS app on Apple Silicon
           -- and a hosted posix program once shared "a64macr" while generating
           -- different code, and hosted AArch64 now reads its hart from x28
-          tname = if qsingle then "qa64singler" ++ show a64Rev
+          tname0 = if qsingle then "qa64singler" ++ show a64Rev
                   else if a64mac && qapp then "qa64macr" ++ show a64Rev
-                  else if a64mac then "a64macx28r" ++ show a64Rev
+                  else if a64mac then (if oPlugin opts && oBase opts then "module-" else "") ++ "a64macx28r" ++ show a64Rev
                   else if a64 && qapp then "qa64r" ++ show a64Rev
                   else if a64 then "a64x28r" ++ show a64Rev
                   else if x64 && qapp then "qx64r" ++ show x64Rev
                   else if x64 then "x64r" ++ show x64Rev
                   else if espHost then "rv32-idftls1"
                   else tgtName tgt
+          tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0
           tag = "g" ++ show codegenRev ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
@@ -933,7 +936,7 @@ compileWithInterface accepted = do
             Just ty | opaque (meQual e) || oManifest opts /= Nothing -> ""
                     | otherwise -> "fpr-interface-1/g" ++ show codegenRev
                         ++ "/" ++ preludeHash ++ "/" ++ hashAST foreignTops
-                        ++ "/" ++ tgtName tgt ++ "/hardfloat=" ++ show (oHardFloat opts)
+                        ++ "/" ++ tname ++ "/hardfloat=" ++ show (oHardFloat opts)
                         ++ "/" ++ canonicalTypeWith interfaceName ty
                         ++ "/contracts=" ++ show (contractFor (meQual e))
                         ++ "/arity=" ++ show (meArity e)
@@ -1074,3 +1077,33 @@ espTls = unlines . concatMap lower . lines
       , "    add t0, t0, tp, %tprel_add(fpr_esp_hart)"
       , "    lw t0, %tprel_lo(fpr_esp_hart)(t0)" ]
     lower line = [line]
+
+-- Shared host modules resolve externally visible addresses through the GOT.
+-- Local labels keep direct PC-relative addresses. x64 borrows main's static
+-- TLS through the initial-exec model, never a module-local TLS block.
+posixPic :: Bool -> Bool -> String -> String
+posixPic a64 mach asm = unlines (go (lines asm))
+  where
+    locals = S.fromList [init l | l <- lines asm, not (null l), last l == ':']
+    external n = not (S.member n locals)
+    go [] = []
+    go (l:rest)
+      | a64, ["adrp", reg, sym] <- words l, external (takeWhile (/= '@') sym),
+        next:tail' <- rest, "add " `isPrefixOf` dropWhile (== ' ') next =
+          let r = filter (/= ',') reg; n = takeWhile (/= '@') sym
+          in (if mach then ["    adrp " ++ r ++ ", " ++ n ++ "@GOTPAGE", "    ldr " ++ r ++ ", [" ++ r ++ ", " ++ n ++ "@GOTPAGEOFF]"]
+                      else ["    adrp " ++ r ++ ", :got:" ++ n, "    ldr " ++ r ++ ", [" ++ r ++ ", :got_lo12:" ++ n ++ "]"]) ++ go tail'
+      | not a64, ["leaq", src, dst] <- words l,
+        let n = takeWhile (/= '(') src, "(%rip)," `List.isSuffixOf` src, external n =
+          ("    movq " ++ n ++ "@GOTPCREL(%rip), " ++ dst) : go rest
+      | not a64, "%fs:" `List.isInfixOf` l, "@tpoff" `List.isInfixOf` l =
+          let ws = words l; args = takeWhile (/= "#") (drop 1 ws)
+              n = takeWhile (/= '@') (drop 4 (head [w | w <- args, "%fs:" `isPrefixOf` w]))
+              scratch = if "%r11" `List.isInfixOf` l then "%r10" else "%r11"
+              old = "%fs:" ++ n ++ "@tpoff"
+              replace [] = []
+              replace xs | old `isPrefixOf` xs = "%fs:(" ++ scratch ++ ")" ++ replace (drop (length old) xs)
+                         | otherwise = head xs : replace (tail xs)
+          in ["    pushq " ++ scratch, "    movq " ++ n ++ "@GOTTPOFF(%rip), " ++ scratch, replace l, "    popq " ++ scratch] ++ go rest
+      | not mach, dropWhile (== ' ') l == ".section .rodata" = ".section .data.rel.ro" : go rest
+      | otherwise = l : go rest

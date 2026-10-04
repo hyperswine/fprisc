@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MVU ordering, env replacement/refusal and rendering with a test-only clock."""
+"""MVU ordering, env replacement/refusal and rendering with the production monotonic clock."""
 import os
 import subprocess
 import tempfile
@@ -35,13 +35,20 @@ variants.append(('baseline', SOURCE.replace('main =\n',
     '  _ = print "{Reload.attachAt (0 - 1) neverAttach \"\"}";\n'
     '  _ = print "{Reload.attachAt 0 neverAttach \"\"}";\n'),
     'Err reload: invalid baseline table\nErr reload: missing baseline table\n' + TRACE))
+# Frame pacing and STick use the same real monotonic clock. Timing is checked
+# by a bounded predicate, while observable model/render traces stay exact.
+clocked = SOURCE.replace('refused = 0, port = env.port', 'refused = 0, ticks = 0, port = env.port')
+clocked = clocked.replace('  | other -> (m, Nil).', '  | MV.ETick -> ({m | ticks = m.ticks + 1}, Nil)\n  | other -> (m, Nil).', 1)
+clocked = clocked.replace('subs m = MV.SEvents', 'subs m = MV.STick 1 :: MV.SEvents')
+clocked = clocked.replace('tick = 0', 'tick = 10000')
+clocked = clocked.replace('done m = "reload:', 'done m =\n  _ = case m.ticks > 0 of True -> Unit | False -> error "production tick never fired";\n  "reload:')
+variants.append(('productiontick', clocked, TRACE))
 with tempfile.TemporaryDirectory(prefix='fpr-mvu-reload-') as d:
     tmp = Path(d)
     for name, source, expected in variants:
         src = tmp / (name + '.fpr'); src.write_text(source)
         exe = tmp / name
-        p = subprocess.run([str(ROOT/'fpr'), 'build', str(src), '--with',
-                            str(ROOT/'tests/base/mvuclock.c'), '-o', str(exe)],
+        p = subprocess.run([str(ROOT/'fpr'), 'build', str(src), '-o', str(exe)],
                            cwd=ROOT, capture_output=True, text=True, timeout=180)
         assert p.returncode == 0, p.stdout + p.stderr
         for harts in ('1', '4', '4', '4'):

@@ -42,7 +42,7 @@ usage =
   unlines
     [ "fpr — the merged FP-RISC tool (one frontend, multiple execution profiles)",
       "",
-      "  fpr build <prog.fpr> [-o out]          an executable for this machine (the posix system)",
+      "  fpr build <prog.fpr> [-o out] [--module]          an executable for this machine (the posix system)",
       "  fpr run <prog.fpr> [args...]           build and run it; a `profile sol.` program runs on the VM",
       "  fpr compile [flags] <in.fpr> <out.s>   AOT for a --system (bare-metal | qos-native | qos-portable | posix [--host=unix|esp-idf])",
       "    the file declares its profile: `profile builtin|base|extbase|sol.` (docs/2026-09-19-PROFILES.md)",

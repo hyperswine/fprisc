@@ -1,0 +1,7 @@
+# Trusted POSIX shared modules, built with `fpr build --module`.
+# Images stay mapped after registry detach so old function values remain valid.
+Native.attach : String -> Result String String .
+Reload = use "reload".
+attach path = Native.attach path.
+loadAt baseline path = Reload.attachAt baseline Native.attach path.
+loadVersionAt baseline from to path = Reload.attachVersionAt baseline from to Native.attach path.

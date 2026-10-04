@@ -16,6 +16,8 @@ def run(args, expected=0, timeout=120, stdin=None, env=None):
     return p
 run(['make', 'fpr'], timeout=300)
 print(run(['python3', 'tests/check_commit_interfaces.py'], timeout=300).stdout, end='')
+print(run(['python3', 'tests/check_posix_modules.py'], timeout=600).stdout, end='')
+print(run(['python3', 'tests/check_posix_pic.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_mvu_reload.py'], timeout=300).stdout, end='')
 print(run(['python3', 'examples/ideal/check.py'], timeout=600).stdout, end='')
 print(run(['python3', 'tests/check_typed_vectors.py'], timeout=300).stdout, end='')

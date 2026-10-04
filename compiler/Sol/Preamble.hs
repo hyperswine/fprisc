@@ -348,7 +348,7 @@ halArities =
       ("spawnCap", 3), ("spawnCapOn", 4), ("spawnOn", 2), ("spawnHeap", 2), ("Sys.spawnApp", 1), ("timeNow", 1),
       ("kill", 1), ("yield", 1), ("drop", 1), ("keep", 1), ("device", 1), ("reg32", 2),
       ("heapUsed", 1),
-      ("Sys.poolReset", 1), ("Sys.sleepUs", 1), ("Sys.logAt", 2), ("Sys.memStats", 1), ("Sys.memInfo", 1),
+      ("Sys.poolReset", 1), ("Sys.mtime", 1), ("Sys.sleepUs", 1), ("Sys.logAt", 2), ("Sys.memStats", 1), ("Sys.memInfo", 1),
       ("Num.div", 2), ("Num.sqrt", 1), ("Num.floor", 1), ("Num.round", 1),
       ("map", 2), ("filter", 2), ("foldl", 3),
       ("Vec.new", 1), ("Vec.range", 2), ("Vec.mmul", 5), ("Vec.push", 2), ("Vec.len", 1), ("Vec.get", 2),

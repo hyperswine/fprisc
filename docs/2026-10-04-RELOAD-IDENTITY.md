@@ -42,7 +42,8 @@ names, provenance, publication authorization or major-version restart policy.
 Those belong to the future publisher/live-module binding policy. It also does
 not reclaim refused images or make registry publication concurrent/transactional.
 
-Next: POSIX image attachment and a production host clock, then store watching,
+POSIX attachment and a production clock now have coverage in
+[POSIX-RELOAD](2026-10-04-POSIX-RELOAD.md). Next: store watching,
 publication/restart, typed live-module declarations, and QOS journal/replay.
 The old QOS loader's global-newest baseline limitation remains unchanged.
 

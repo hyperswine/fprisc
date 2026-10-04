@@ -146,20 +146,23 @@ else
 POSIXCTX = $(MACHINE)/unix/ctx_x64.S
 endif
 ifeq ($(shell uname -s),Linux)
-POSIXLDFLAGS ?= -no-pie
+POSIXLDFLAGS ?= -no-pie -rdynamic -ldl
+endif
+ifeq ($(shell uname -s),Darwin)
+POSIXLDFLAGS ?= -Wl,-export_dynamic
 endif
 # x28 is reserved on aarch64: ctx_a64.S does not save it (compiler/Build.hs says why)
 ifneq ($(filter aarch64 arm64,$(shell uname -m)),)
 POSIXFIXED = -ffixed-x27 -ffixed-x28 -DFPR_HART_X28
 endif
-RT_POSIX = $(MACHINE)/posix/hal.c $(MACHINE)/posix/base.c $(MACHINE)/posix/base_file.c $(MACHINE)/posix/os_fs.c $(MACHINE)/posix/os_io.c $(MACHINE)/posix/os_watch.c $(MACHINE)/posix/os_net.c $(MACHINE)/posix/os_job.c $(MACHINE)/unix/main.c $(MACHINE)/unix/park.c $(MACHINE)/unix/host.c $(MACHINE)/unix/os_proc.c $(MACHINE)/unix/os_term.c $(MACHINE)/unix/os_clock.c $(POSIXCTX)
+RT_POSIX = $(MACHINE)/posix/hal.c $(MACHINE)/posix/base.c $(MACHINE)/posix/base_file.c $(MACHINE)/posix/os_fs.c $(MACHINE)/posix/os_io.c $(MACHINE)/posix/os_watch.c $(MACHINE)/posix/os_net.c $(MACHINE)/posix/os_job.c $(MACHINE)/posix/os_module.c $(MACHINE)/unix/main.c $(MACHINE)/unix/park.c $(MACHINE)/unix/host.c $(MACHINE)/unix/os_proc.c $(MACHINE)/unix/os_term.c $(MACHINE)/unix/os_clock.c $(POSIXCTX)
 BIN ?= $(BUILD)/$(basename $(notdir $(PROG)))
 $(BUILD)/base.s: fprc $(PROG) core/prelude.fpr FORCE
 	@mkdir -p $(BUILD)
 	LC_ALL=C.UTF-8 ./fprc --system=posix --prelude=core/prelude.fpr $(PROG) $@
 
 posix: $(BUILD)/base.s $(RT_POSIX) $(RT_CORE)
-	$(CC) -O2 -Wall -Wextra $(POSIXFIXED) -DFPR_POSIX -DFPR_NHARTS=$(POSIXHARTS) $(POSIXLDFLAGS) -I$(RUNTIME) -I$(MACHINE)/posix -I$(MACHINE)/unix \
+	$(CC) -O2 -Wall -Wextra $(POSIXFIXED) -DFPR_POSIX -DFPR_POSIX_CODEGEN_REV=$(shell sed -n 's/^codegenRev = \([0-9]*\).*/\1/p' compiler/Codegen.hs) -DFPR_NHARTS=$(POSIXHARTS) $(POSIXLDFLAGS) -I$(RUNTIME) -I$(MACHINE)/posix -I$(MACHINE)/unix \
 	  $(BUILD)/base.s $$(cat $(BUILD)/base.s.units) $(RT_POSIX) $(RT_CORE) -lpthread -lm -o $(BIN)
 
 posix-run: posix

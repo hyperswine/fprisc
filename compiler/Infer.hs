@@ -705,6 +705,7 @@ builtinEnv =
       ("Mod.fn", scheme [0] (TFn tStr (TFn tStr (sv 0)))),
       ("Mod.find", scheme [0] (TFn tStr (sv 0))),
       ("Mod.plugs", scheme [0] (TFn tInt tInt)),
+      ("Sys.mtime", mono (TFn tUnit tInt)),
       ("Mod.hashAt", mono (TFn tInt tStr)),
       ("Mod.findAt", scheme [0] (TFn tInt (TFn tStr (sv 0)))),
       ("Sys.actLive", scheme [0] (TFn tInt tInt)),

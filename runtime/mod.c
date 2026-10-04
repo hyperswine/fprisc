@@ -45,6 +45,10 @@ static const uw *rows(const uw *tab) {
     fpr_cpanic("module table: unsupported interface schema (rebuild image)");
   return tab + MOD_HEADER;
 }
+int fpr_mod_registered(const uw *tab) {
+  for (int i = 0; i < nxtabs; i++) if (xtabs[i] == tab) return 1;
+  return 0;
+}
 int fpr_mod_attach(const uw *tab) {
   /* Reject legacy tables before publishing or walking their old row layout. */
   if (!tab || tab[0] != MOD_MAGIC || tab[1] != MOD_SCHEMA) return -1;
