@@ -21,6 +21,7 @@
 -- Makefiles don't care which name they call.
 module Main where
 
+import qualified Publish
 import qualified Build
 import qualified Commit
 import qualified Compile
@@ -52,6 +53,8 @@ usage =
       "  fpr stdcheck <file.fpr>                the std proof pass",
       "  fpr commit <file.fpr> [--major]        mint an immutable version into .fpr/",
       "  fpr versions [name]                    list committed versions (use \"name#hash\")",
+      "  fpr publish <module.fpr>              build and publish an immutable host module",
+      "  fpr watch <module.fpr> [--once]        publish on saves (300 ms polling)",
       "  fpr push <name>                        push committed versions to a pkgstore",
       "  fpr pull <name>[.vX.Y]                 fetch a version into .fpr/store (PKGSTORE_URL)",
       "",
@@ -72,6 +75,8 @@ main = do
       withArgs ("--asm" : [a | a <- rest, a /= "--target=bytecode"]) Sol.Main.main
     ("compile" : rest) -> withArgs rest Compile.compileMain
     ("build" : rest) -> Build.buildMain rest
+    ("publish" : rest) -> Publish.publishMain rest
+    ("watch" : rest) -> Publish.watchMain rest
     ("run" : rest) -> Build.runMain rest
     ("stdcheck" : rest) -> withArgs ("--stdcheck" : rest) Compile.compileMain
     ("commit" : rest) -> Commit.commitMain rest

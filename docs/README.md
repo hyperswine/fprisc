@@ -125,3 +125,5 @@ they began.
 | 2026-10-04 | [RUNTIME-INTERFACES.md](2026-10-04-RUNTIME-INTERFACES.md) | Checked runtime type/contract/ABI stamps, root-only binding/gating, opaque and old-schema refusal, codegen 36/native ABI 3 and real plugin regressions |
 | 2026-10-04 | [RELOAD-IDENTITY.md](2026-10-04-RELOAD-IDENTITY.md) | Version-aware root source identity checks, pre-retrieval stale-event refusal, wrong-image rollback and real QOS MVU hash events; trusted compiler boundary |
 | 2026-10-04 | [POSIX-RELOAD.md](2026-10-04-POSIX-RELOAD.md) | Host shared-module build/attachment, ABI gates and production monotonic MVU clock; real host swaps/live MVU and Linux PIC artifact checks |
+
+- [Host publication and watching](2026-10-04-PUBLICATION-WATCH.md): immutable ready images, journal cursors and MVU notifications.

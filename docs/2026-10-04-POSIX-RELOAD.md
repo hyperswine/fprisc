@@ -77,3 +77,6 @@ run against the sibling compiler before publication.
 Next: publication/store watching and restart policy, typed live-module env
 reconstruction, QOS journal/replay, then image reclamation and measured long-run
 costs. This slice provides explicit attachment, not `fpr watch`.
+
+Host image publication and typed watcher notifications are now implemented in
+[the next milestone](2026-10-04-PUBLICATION-WATCH.md).

@@ -30,6 +30,7 @@ executable fpr
       A64
       Arc
       Build
+      Publish
       Representation
       Interrupt
       Codegen

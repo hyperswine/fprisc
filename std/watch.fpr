@@ -1,0 +1,72 @@
+# Host publication snapshots, written only after an immutable image is ready.
+# Poll on a tick; keep the returned cursor even for unrelated publications.
+# A cursor is a row count in this append-only snapshot, never a file mtime.
+# Start from current journal length to ignore historical notifications.
+# Candidates carry the checked image path separately from Reload identities.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+MV = use "std/mvu".
+
+Candidate = Type (Candidate info path).
+
+rows path = case O.readFile path of Err why -> Err why | Ok text -> Ok (S.lines text).
+start path = case rows path of Err why -> Err why | Ok ls -> Ok (L.length ls).
+poll path name cursor = case rows path of
+    Err why -> Err why
+  | Ok ls -> checked name cursor ls (L.length ls).
+checked name cursor ls count = case cursor < 0 or cursor > count of
+    True -> Err "watch: publication journal cursor invalid (journal truncated)"
+  | False -> parseRows name (L.drop cursor ls) Nil count.
+parseRows : unsafe String -> List String -> List Candidate -> Int -> Result (Int, List Candidate) String .
+parseRows name ls acc count = case ls of
+    Nil -> Ok (count, L.reverse acc)
+  | line :: rest -> parseRow name rest acc count (S.split "\t" line).
+parseRow : unsafe String -> List String -> List Candidate -> Int -> List String -> Result (Int, List Candidate) String .
+parseRow name rest acc count fields = case fields of
+    n :: version :: from :: to :: path :: Nil -> (case strlen n > 0 and strlen version > 0 and strlen to > 0 and strlen path > 0 of
+        False -> Err "watch: malformed publication row"
+      | True -> case n == name of
+          True -> parseRows name rest (Candidate {name = n, from = from, to = to, version = version} path :: acc) count
+        | False -> parseRows name rest acc count)
+  | _ -> Err "watch: malformed publication row".
+# Feed these onto MV.eventsPort; the runner delivers them at event boundaries.
+event candidate = case candidate of Candidate info path -> MV.EReload info.
+image candidate = case candidate of Candidate info path -> path.
+identity candidate = case candidate of Candidate info path -> info.
+
+# The caller owns this worker and must kill it when the app exits. Start with
+# the loaded version's cursor, not 0, to avoid replaying historical reloads.
+# A read/parse failure keeps the cursor; the next poll retries the snapshot.
+watch : unsafe String -> String -> Int -> Int -> Int -> Unit .
+watch path name cursor port me =
+  _ = Sys.sleepUs 300000;
+  result = poll path name cursor;
+  next = deliver port cursor result;
+  _ = drop result;
+  watch path name next port me.
+deliver port cursor result = case result of
+    Err why -> cursor
+  | Ok pair -> deliverPair port pair.
+deliverPair port pair =
+  (cursor, candidates) = pair;
+  _ = forward port candidates;
+  cursor.
+forward : unsafe Int -> List Candidate -> Unit .
+forward port candidates = case candidates of
+    Nil -> Unit
+  | c :: rest -> sendCandidate port c >> forward port rest.
+sendCandidate port candidate = case candidate of
+  Candidate info path -> _ = send port (MV.EReload (MV.copyReload info)); Unit.
+# Resolve the image only after the runner receives the notification. Keep
+# module name + identity scoped, and refuse a missing/malformed publication.
+imageFor path name hash = case poll path name 0 of
+    Err why -> Err why
+  | Ok pair -> findImage hash pair.
+findImage hash pair = (cursor, candidates) = pair; findCandidate hash candidates.
+findCandidate : unsafe String -> List Candidate -> Result String String .
+findCandidate hash candidates = case candidates of
+    Nil -> Err "watch: image not published"
+  | Candidate info path :: rest -> (case info.to == hash of
+      True -> Ok path
+    | False -> findCandidate hash rest).
