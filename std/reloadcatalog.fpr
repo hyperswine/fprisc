@@ -1,0 +1,28 @@
+# Pure publication catalog shared by host and QOS transports.
+S = use "std/string".
+L = use "std/list".
+MV = use "std/mvu".
+Candidate = Type (Candidate info path).
+parse text name cursor =
+  ls = S.lines text;
+  checked name cursor ls (L.length ls).
+checked name cursor ls count = case cursor < 0 or cursor > count of
+    True -> Err "watch: publication journal cursor invalid (journal truncated)"
+  | False -> parseRows name (L.drop cursor ls) Nil count.
+parseRows : unsafe String -> List String -> List Candidate -> Int -> Result (Int, List Candidate) String .
+parseRows name ls acc count = case ls of
+    Nil -> Ok (count, L.reverse acc)
+  | line :: rest -> parseRow name rest acc count (S.split "\t" line).
+parseRow : unsafe String -> List String -> List Candidate -> Int -> List String -> Result (Int, List Candidate) String .
+parseRow name rest acc count fields = case fields of
+    n :: version :: from :: to :: path :: Nil -> (case strlen n > 0 and strlen version > 0 and strlen to > 0 and strlen path > 0 of
+        False -> Err "watch: malformed publication row"
+      | True -> case n == name of
+          True -> parseRows name rest (Candidate {name = n, from = from, to = to, version = version} path :: acc) count
+        | False -> parseRows name rest acc count)
+  | _ -> Err "watch: malformed publication row".
+# Feed these onto MV.eventsPort; the runner delivers them at event boundaries.
+event candidate = case candidate of Candidate info path -> MV.EReload info.
+image candidate = case candidate of Candidate info path -> path.
+identity candidate = case candidate of Candidate info path -> info.
+

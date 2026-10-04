@@ -60,6 +60,7 @@
 #                            WORKER (it may svcCall), whole scene as
 #                            dynamics, no statics rebuilds
 #   LiveApp init update subs view has view env model -> scene.
+#   gameWatched/runWatched additionally own a platform watcher and its port.
 #   gameLive me cfg app reload / runLive me cfg mapp reload give the runner
 #   an adapter reload me info env -> Result env String. SEvents port supplies
 #   typed events; successful swaps precede update and invalidate statics.
@@ -232,6 +233,16 @@ eventEvs : unsafe Int -> Int -> List Ev .
 eventEvs me pa = case pa == 0 of
     True -> Nil
   | False -> eventAsk me pa.
+# Drain each subscribed typed port once, preserving subscription order.
+eventPorts : unsafe Int -> List Sub -> List Int -> List Ev .
+eventPorts me ss seen = case ss of
+    Nil -> Nil
+  | SEvents p :: rest -> (case hasPort p seen of
+      True -> eventPorts me rest seen
+    | False -> catEvs (eventEvs me p) (eventPorts me rest (p :: seen)))
+  | other :: rest -> eventPorts me rest seen.
+hasPort : unsafe Int -> List Int -> Bool .
+hasPort p seen = case seen of Nil -> False | x :: rest -> x == p or hasPort p rest.
 eventAsk : unsafe Int -> Int -> List Ev .
 eventAsk me pa =
   _ = AC.sendOrDie pa (PDrain me);
@@ -423,8 +434,7 @@ loopM me cfg app rw vp cache ms =
   MApp ini upd sk vw vl dn sbs = app;
   ss = sbs model;
   (tickMs, keysOn, portA) = subFold ss (0, 0, 0);
-  ep = eventSub ss;
-  evs0 = catEvs (catEvs (evsOf me input keysOn) (portEvs me portA)) (eventEvs me ep);
+  evs0 = catEvs (catEvs (evsOf me input keysOn) (portEvs me portA)) (eventPorts me ss Nil);
   (evs, ltt2) = dueTick evs0 t0 ltt tickMs;
   (env2, m2, quit, changed) = applyLiveEvs me cfg.reload env app evs (model, 0) 0;
   cache1 = liveCache cache changed;
@@ -471,6 +481,27 @@ run me cfg app = runLive me cfg app noReload.
 runLive me cfg app reload =
   runWith me {env = cfg.env, mt = cfg.mt, tick = cfg.tick, input = cfg.input,
               render = cfg.render, reload = reload} app.
+# The runner owns the extra typed port and the watcher returned by start.
+# start me port -> Result actor String. Other app subscriptions still work.
+runWatched me cfg app reload start =
+  port = AC.spawnWith (AC.Dynamic 64) eventsPort;
+  runWatchStarted me cfg app reload port (start me port).
+runWatchStarted me cfg app reload port started = case started of
+    Err why -> _ = kill port; Err why
+  | Ok worker -> runWatchOwned me cfg app reload port worker.
+runWatchOwned me cfg app reload port worker =
+  result = runLive me cfg (withEventPort app port) reload;
+  _ = kill worker;
+  _ = kill port;
+  Ok result.
+withEventPort app port =
+  MApp ini upd sk vw vl dn sbs = app;
+  MApp ini upd sk vw vl dn (watchSubs sbs port).
+watchSubs sbs port m = catSubs (sbs m) (SEvents port :: Nil).
+catSubs : unsafe List Sub -> List Sub -> List Sub .
+catSubs xs ys = case xs of Nil -> ys | x :: rest -> x :: catSubs rest ys.
+gameWatched me cfg app reload start = runWatched me cfg (gameApp app) reload start.
+
 runWith me cfg app =
   MApp ini upd sk vw vl dn sbs = app;
   vp = svcCall me cfg.render (Dims 0);

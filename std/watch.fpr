@@ -7,33 +7,18 @@ S = use "std/string".
 L = use "std/list".
 O = use "std/os".
 MV = use "std/mvu".
+AC = use "std/actor".
 
-Candidate = Type (Candidate info path).
-
+C = use "std/reloadcatalog".
+Candidate = C.Candidate.
 rows path = case O.readFile path of Err why -> Err why | Ok text -> Ok (S.lines text).
-start path = case rows path of Err why -> Err why | Ok ls -> Ok (L.length ls).
-poll path name cursor = case rows path of
+start path = case poll path "" 0 of Err why -> Err why | Ok pair -> (cursor, candidates) = pair; Ok cursor.
+poll path name cursor = case O.readFile path of
     Err why -> Err why
-  | Ok ls -> checked name cursor ls (L.length ls).
-checked name cursor ls count = case cursor < 0 or cursor > count of
-    True -> Err "watch: publication journal cursor invalid (journal truncated)"
-  | False -> parseRows name (L.drop cursor ls) Nil count.
-parseRows : unsafe String -> List String -> List Candidate -> Int -> Result (Int, List Candidate) String .
-parseRows name ls acc count = case ls of
-    Nil -> Ok (count, L.reverse acc)
-  | line :: rest -> parseRow name rest acc count (S.split "\t" line).
-parseRow : unsafe String -> List String -> List Candidate -> Int -> List String -> Result (Int, List Candidate) String .
-parseRow name rest acc count fields = case fields of
-    n :: version :: from :: to :: path :: Nil -> (case strlen n > 0 and strlen version > 0 and strlen to > 0 and strlen path > 0 of
-        False -> Err "watch: malformed publication row"
-      | True -> case n == name of
-          True -> parseRows name rest (Candidate {name = n, from = from, to = to, version = version} path :: acc) count
-        | False -> parseRows name rest acc count)
-  | _ -> Err "watch: malformed publication row".
-# Feed these onto MV.eventsPort; the runner delivers them at event boundaries.
-event candidate = case candidate of Candidate info path -> MV.EReload info.
-image candidate = case candidate of Candidate info path -> path.
-identity candidate = case candidate of Candidate info path -> info.
+  | Ok text -> C.parse text name cursor.
+event candidate = C.event candidate.
+image candidate = C.image candidate.
+identity candidate = C.identity candidate.
 
 # The caller owns this worker and must kill it when the app exits. Start with
 # the loaded version's cursor, not 0, to avoid replaying historical reloads.
@@ -44,7 +29,8 @@ watch path name cursor port me =
   result = poll path name cursor;
   next = deliver port cursor result;
   _ = drop result;
-  watch path name next port me.
+  fresh = AC.boundary me {path = path, name = name, cursor = next, port = port};
+  watch fresh.path fresh.name fresh.cursor fresh.port me.
 deliver port cursor result = case result of
     Err why -> cursor
   | Ok pair -> deliverPair port pair.
@@ -57,7 +43,7 @@ forward port candidates = case candidates of
     Nil -> Unit
   | c :: rest -> sendCandidate port c >> forward port rest.
 sendCandidate port candidate = case candidate of
-  Candidate info path -> _ = send port (MV.EReload (MV.copyReload info)); Unit.
+  C.Candidate info path -> _ = AC.sendOrDie port (MV.EReload (MV.copyReload info)); Unit.
 # Resolve the image only after the runner receives the notification. Keep
 # module name + identity scoped, and refuse a missing/malformed publication.
 imageFor path name hash = case poll path name 0 of
@@ -67,6 +53,9 @@ findImage hash pair = (cursor, candidates) = pair; findCandidate hash candidates
 findCandidate : unsafe String -> List Candidate -> Result String String .
 findCandidate hash candidates = case candidates of
     Nil -> Err "watch: image not published"
-  | Candidate info path :: rest -> (case info.to == hash of
+  | C.Candidate info path :: rest -> (case info.to == hash of
       True -> Ok path
     | False -> findCandidate hash rest).
+
+# Pass this starter to MV.runWatched; the runner owns both worker and port.
+watchFrom path name cursor me port = Ok (AC.spawnWith (AC.Dynamic 64) (watch path name cursor port)).

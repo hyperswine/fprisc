@@ -70,9 +70,22 @@ for this stage.
 - Watching covers the named scratch source. Closure dependencies must be pinned;
   changing one means committing it and updating the root's pin. No automatic
   transitive scratch dependency rewriting occurs.
-- The worker is explicitly owned by the app. Runner-owned default subscriptions,
-  bounded journal compaction and loaded-image reclamation remain unfinished.
-- QOS still needs equivalent `.qa` publication through its app store/qlog and a
-  watcher adapter for this runner. Its legacy journal/replay loader is separate.
+- `MV.runWatched`/`gameWatched` now own the extra event port and the worker
+  returned by a starter (`Watch.watchFrom path name cursor`). Cleanup covers
+  normal and initial-resize quit and startup refusal. Bounded journal compaction
+  and loaded-image reclamation remain unfinished.
+- QOS now has Files/qlog publication and an owned watcher adapter: see the
+  sibling QOS `docs/2026-10-04-QOS-PUBLICATION.md`. Development build/upload
+  bridging and native publication verification remain separate. The legacy
+  journal/replay loader is separate.
 - Whole-program restart for major versions, automatic environment generation and
   state migration remain later milestones in the original proposal.
+
+## Owned-runner follow-up verification
+
+The full Base suite passed after factoring the shared catalog and adding
+`runWatched`/`gameWatched`, multiple typed input ports and per-turn watcher
+allocation boundaries. `tests/check_owned_watchers.py` checks worker/port liveness
+after normal exit, quit during initial resize and startup refusal on one/four
+harts. Existing host publication, real module reload and legacy MVU tests also
+passed.
