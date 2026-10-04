@@ -1,0 +1,52 @@
+unsafe base.
+MV = use "std/mvu".
+init env = {acc = 0, refused = 0, port = env.port}.
+update me env ev m = case ev of
+    MV.EMsg tag arg -> onMsg env m tag
+  | MV.EReloadRefused info why -> ({m | refused = m.refused + 1}, Nil)
+  | other -> (m, Nil).
+onMsg env m tag = case tag == "quit" of
+    True -> (m, MV.MQuit :: Nil)
+  | False -> ({m | acc = m.acc + env.factor}, Nil).
+subs m = MV.SEvents m.port :: Nil.
+key m = 0.
+statics vp m = "statics" :: Nil.
+vals self env vp m = "factor={env.factor} acc={m.acc}" :: Nil.
+done m = "reload: acc={m.acc} refused={m.refused}".
+reload me info env =
+  _ = print "adapter: {info.to}";
+  case info.from == env.hash of
+    False -> Err "stale base"
+  | True -> candidate info env.
+candidate info env = case info.to == "bad" of
+    True -> Err "incompatible"
+  | False -> Ok {env | factor = 3, hash = info.to}.
+info from to = {name = "math", from = from, to = to, version = "v1.1"}.
+render p me =
+  m = receive me;
+  (from, q) = m;
+  rendered p me from q.
+rendered p me from q = case q of
+    MV.Dims u -> send from (80, 24) >> render p me
+  | MV.Render st vs sc fr -> renderFrame p me from vs sc fr
+  | MV.Poll u -> send from (0, 0, 0) >> render p me.
+renderFrame p me from vs sc fr =
+  _ = print "frame {fr}: {vs} builds={sc}";
+  _ = queueNext p fr;
+  _ = MV.portSync me p;
+  _ = send from (0, 0);
+  render p me.
+queueNext p fr = case fr of
+    0 -> send p (MV.EReload (info "v1" "v2")) >> send p (MV.EMsg "add" "")
+  | 1 -> send p (MV.EReload (info "v2" "bad")) >> send p (MV.EMsg "add" "") >> send p (MV.EReload (info "v1" "stale")) >> send p (MV.EMsg "add" "")
+  | n -> send p (MV.EMsg "quit" "") >> send p (MV.EReload (info "v2" "afterquit")).
+main =
+  p = spawn MV.eventsPort;
+  _ = send p (MV.EMsg "add" "");
+  rd = spawn (render p);
+  cfg = {env = {factor = 2, hash = "v1", port = p}, mt = 0, tick = 0, input = 0, render = rd};
+  app = MV.MApp init update key statics vals done subs;
+  result = MV.runLive (myself 0) cfg app reload;
+  _ = kill p;
+  _ = kill rd;
+  print result.

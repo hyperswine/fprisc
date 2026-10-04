@@ -41,8 +41,9 @@
 #
 # -- and events are DATA, not ints:
 #
-#   Ev  = ETick | EKey k | EMsg m a | EResize w h | EWheel dy dx  (the wheel, notches x10)
-#   Sub = STick ms | SKeys | SPort p
+#   Ev  = ETick | EKey k | EMsg m a | EResize w h | EWheel dy dx
+#         | EReload info | EReloadRefused info reason
+#   Sub = STick ms | SKeys | SPort p | SEvents p
 #
 # Subscriptions are elm's: update hears ONLY what subs(model) asks for.
 # STick ms delivers ETick when ms milliseconds elapsed (event pacing,
@@ -58,7 +59,12 @@
 #                            loop, view computed per frame IN THE
 #                            WORKER (it may svcCall), whole scene as
 #                            dynamics, no statics rebuilds
-#   LV.server app            the browser driver, same App value --
+#   LiveApp init update subs view has view env model -> scene.
+#   gameLive me cfg app reload / runLive me cfg mapp reload give the runner
+#   an adapter reload me info env -> Result env String. SEvents port supplies
+#   typed events; successful swaps precede update and invalidate statics.
+#
+#   LV.server app            the browser driver, same legacy App value --
 #                            see programs/mods/liveview.fpr
 #
 # The POWERED surface underneath (MApp) adds what the formal four
@@ -97,12 +103,14 @@
 AC = use "actor".
 
 MC   = Type (MQuit | MLog s).
-Ev   = Type (ETick | EKey k | EMsg m a | EResize w h | EWheel dy dx).
-Sub  = Type (STick ms | SKeys | SPort p).
-App  = Type (App ini upd sbs vw).
+Reload = {name : String, from : String, to : String, version : String}.
+Ev   = Type (ETick | EKey k | EMsg m a | EResize w h | EWheel dy dx
+             | EReload info | EReloadRefused info reason).
+Sub  = Type (STick ms | SKeys | SPort p | SEvents p).
+App  = Type (App ini upd sbs vw | LiveApp ini upd sbs vw).
 MApp = Type (MApp ini upd sk vw vl dn sbs).
 Rv   = Type (Render st vs sc fr | Dims u | Poll u).
-Rq   = Type (Rq st model vw vh sc fr).
+Rq   = Type (Rq st model env vw vh sc fr).
 Ms   = Type (Ms model fr sc lastR ltt).
 
 # ---- helpers ----------------------------------------------------------------
@@ -129,7 +137,8 @@ subOne r acc s =
   case s of
     STick ms -> subFold r (ms, k, p)
   | SKeys -> subFold r (t, 1, p)
-  | SPort pa -> subFold r (t, k, pa).
+  | SPort pa -> subFold r (t, k, pa)
+  | SEvents pa -> subFold r acc.
 
 # ---- the message port: EMsg from ANY actor, one writer, per-frame -----------
 # The debug/wire channel the paths design asks for (docs/2026-08-27-PATHS.md): a
@@ -150,7 +159,7 @@ subOne r acc s =
 # it) and dropped after the drain reply's deep copy; the drained list
 # root on the loop side is dropped after its strings are copied out.
 
-PortQ = Type (PDrain from).
+PortQ = Type (PDrain from | PBarrier from).
 
 port : unsafe Int -> a .
 port me = portLoop me Nil.
@@ -159,7 +168,20 @@ portLoop me q =
   m = receive me;
   case m of
     PDrain from -> portFlush me m from q
+  | PBarrier from -> portAck me m from q
   | _ -> portLoop me (m :: q).
+# Per-sender FIFO barrier: return only after this sender's queued events have
+# reached the port. A render/test driver can use it before replying to a frame.
+portSync me pa =
+  _ = AC.sendOrDie pa (PBarrier me);
+  r = receiveFrom me pa;
+  _ = drop r;
+  Unit.
+portAck : unsafe Int -> _ -> Int -> List _ -> a .
+portAck me m from q =
+  _ = AC.sendOrDie from Unit;
+  _ = drop m;
+  portLoop me q.
 portFlush : unsafe Int -> _ -> Int -> List _ -> a .
 portFlush me m from q =
   _ = send from (revK Nil q);
@@ -195,6 +217,40 @@ strCopy s = substr s 0 (strlen s).
 
 catEvs : unsafe List Ev -> List Ev -> List Ev .
 catEvs a b = case a of Nil -> b | x :: r -> x :: catEvs r b.
+
+# Typed event port: a watcher (or a test driver) sends Ev values. Reuse the
+# port's queue/drop laws; COPY strings before dropping the drain reply.
+# SEvents preserves the order of reloads and ordinary events on this port.
+eventsPort me = port me.
+eventSub : unsafe List Sub -> Int .
+eventSub l = case l of
+    Nil -> 0
+  | SEvents p :: r -> p
+  | s :: r -> eventSub r.
+eventEvs : unsafe Int -> Int -> List Ev .
+eventEvs me pa = case pa == 0 of
+    True -> Nil
+  | False -> eventAsk me pa.
+eventAsk : unsafe Int -> Int -> List Ev .
+eventAsk me pa =
+  _ = AC.sendOrDie pa (PDrain me);
+  ms = receiveFrom me pa;
+  evs = eventCopy ms;
+  _ = drop ms;
+  evs.
+eventCopy : unsafe List Ev -> List Ev .
+eventCopy l = case l of Nil -> Nil | e :: r -> copyEv e :: eventCopy r.
+copyReload : Reload -> Reload .
+copyReload i = {name = strCopy i.name, from = strCopy i.from,
+                to = strCopy i.to, version = strCopy i.version}.
+copyEv e = case e of
+    ETick -> ETick
+  | EKey k -> EKey k
+  | EMsg t a -> EMsg (strCopy t) (strCopy a)
+  | EResize w h -> EResize w h
+  | EWheel y x -> EWheel y x
+  | EReload i -> EReload (copyReload i)
+  | EReloadRefused i why -> EReloadRefused (copyReload i) (strCopy why).
 
 # ---- input: drain the poll service, ARRIVAL order ---------------------------
 # (prepend-built, reversed before applying -- the voxel-interactive law)
@@ -258,6 +314,34 @@ applyOne me env app r e mq =
   MApp ini upd sk vw vl dn sbs = app;
   (m2, cs) = upd me env e m;
   applyEvs me env app r (m2, doCmds cs q).
+# The runner owns the env. An adapter attaches/gates a candidate and returns
+# a COMPLETE successor env, or Err with the old env left usable. Call it only
+# between updates; deliver the result event with the corresponding env.
+noReload : Int -> Reload -> env -> Result env String .
+noReload me info env = Err "this runner has no reload adapter".
+applyLiveEvs : unsafe Int -> _ -> env -> MApp -> List Ev -> (model, Int) -> Int -> (env, model, Int, Int) .
+applyLiveEvs me reload env app evs mq changed = case evs of
+    Nil -> liveResult env mq changed
+  | e :: r -> liveEvent me reload env app r e mq changed.
+liveResult env mq changed = (m, q) = mq; (env, m, q, changed).
+liveEvent me reload env app r e mq changed = case e of
+    EReload info -> liveReload me reload env app r info mq changed
+  | other -> liveUpdate me reload env app r e mq changed.
+liveReload me reload env app r info mq changed = case reload me info env of
+    Ok next -> liveUpdate me reload next app r (EReload info) mq 1
+  | Err why -> liveUpdate me reload env app r (EReloadRefused info why) mq changed.
+liveUpdate me reload env app r e mq changed =
+  (m, q) = mq;
+  MApp ini upd sk vw vl dn sbs = app;
+  (m2, cs) = upd me env e m;
+  liveContinue me reload env app r (m2, doCmds cs q) changed.
+# MQuit is a turn boundary too: do not attach another candidate after quit.
+liveContinue me reload env app r mq changed =
+  (m, q) = mq;
+  case q == 1 of
+    True -> (env, m, q, changed)
+  | False -> applyLiveEvs me reload env app r mq changed.
+
 doCmds : unsafe List MC -> Int -> Int .
 doCmds cs q = case cs of
     Nil -> q
@@ -292,17 +376,17 @@ rebuild app vp key model =
 # `vl` is the app's vals function, and it is CALLED here, so it is spelled
 # as one: a bare `b` promised the caller any type at all for something this
 # body applies to four arguments (fprisc/docs/2026-08-25-SAFETY.md).
-renderWorker : unsafe Int -> Int -> env -> (Int -> env -> (Int, Int) -> model -> vals) -> Int -> c .
-renderWorker parent render env vl self =
+renderWorker : unsafe Int -> Int -> (Int -> env -> (Int, Int) -> model -> vals) -> Int -> c .
+renderWorker parent render vl self =
   m = receiveFrom self parent;
-  Rq st model vw vh sc fr = m;
+  Rq st model env vw vh sc fr = m;
   vs = vl self env (vw, vh) model;
   r = svcCall self render (Render st vs sc fr);
   _ = send parent r;
   _ = drop r;                      # forward then release OUR ref
   _ = drop m;                      # the request root
   _ = Sys.poolReset 0;             # the frame boundary: soft death
-  renderWorker parent render env vl self.
+  renderWorker parent render vl self.
 
 # ---- the loop ---------------------------------------------------------------
 
@@ -335,29 +419,43 @@ loopM me cfg app rw vp cache ms =
   env = cfg.env; mt = cfg.mt; input = cfg.input;
   Ms model fr sc lastR ltt = ms;
   t0 = read mt;
-  (tickMs, keysOn, portA) = subsOf app model;
-  evs0 = catEvs (evsOf me input keysOn) (portEvs me portA);
+  MApp ini upd sk vw vl dn sbs = app;
+  ss = sbs model;
+  (tickMs, keysOn, portA) = subFold ss (0, 0, 0);
+  ep = eventSub ss;
+  evs0 = catEvs (catEvs (evsOf me input keysOn) (portEvs me portA)) (eventEvs me ep);
   (evs, ltt2) = dueTick evs0 t0 ltt tickMs;
-  (m2, quit) = applyEvs me env app evs (model, 0);
+  (env2, m2, quit, changed) = applyLiveEvs me cfg.reload env app evs (model, 0) 0;
+  cache1 = liveCache cache changed;
   case quit == 1 of
-    True -> finish app m2 fr sc lastR
-  | False -> frame me cfg app rw vp cache (Ms m2 fr sc lastR ltt2) t0.
-frame : unsafe Int -> _ -> MApp -> Int -> (Int, Int) -> (Int, c) -> Ms -> Int -> String .
+    True -> finishWorker rw app m2 fr sc lastR
+  | False -> frame me {cfg | env = env2} app rw vp cache1 (Ms m2 fr sc lastR ltt2) t0.
+# Force the statics build after a successful swap even when skey is unchanged.
+# This generation marker is separate from the app key (which may be any Int).
+liveCache cache changed = (key, st) = cache; (key, st, changed).
+frame : unsafe Int -> _ -> MApp -> Int -> (Int, Int) -> (Int, c, Int) -> Ms -> Int -> String .
 frame me cfg app rw vp cache ms t0 =
   mt = cfg.mt; tick = cfg.tick;
   Ms m2 fr sc lastR ltt = ms;
   (vw, vh) = vp;
   key = skeyOf app m2;
-  (cache2, rebuilt) = ensure app vp cache key m2;
+  (oldKey, oldSt, changed) = cache;
+  (cache2, rebuilt) = liveEnsure app vp (oldKey, oldSt) key m2 changed;
   (k2, st2) = cache2;
-  _ = send rw (Rq st2 m2 vw vh (sc + rebuilt) fr);
+  _ = AC.sendOrDie rw (Rq st2 m2 cfg.env vw vh (sc + rebuilt) fr);
   r = receiveFrom me rw;
   _ = drop lastR;                  # the PREVIOUS reply's ARC entry
   _ = tickWait mt t0 tick;
   loopM me cfg app rw vp cache2 (Ms m2 (fr + 1) (sc + rebuilt) r ltt).
+liveEnsure app vp cache key m changed = case changed == 1 of
+    True -> rebuild app vp key m
+  | False -> ensure app vp cache key m.
 skeyOf app m =
   MApp ini upd sk vw vl dn sbs = app;
   sk m.
+finishWorker rw app m fr sc lastR =
+  _ = kill rw;
+  finish app m fr sc lastR.
 finish app m fr sc lastR =
   MApp ini upd sk vw vl dn sbs = app;
   _ = drop lastR;
@@ -366,16 +464,22 @@ finish app m fr sc lastR =
 # run me cfg app -> the result string.  Spawns the worker, asks the
 # render service for its dimensions, initializes, delivers the first
 # EResize (the viewport is a fact the model may record), loops.
-run me cfg app =
+run me cfg app = runLive me cfg app noReload.
+
+# reload me info env -> Result env String: a platform adapter, not app update.
+runLive me cfg app reload =
+  runWith me {env = cfg.env, mt = cfg.mt, tick = cfg.tick, input = cfg.input,
+              render = cfg.render, reload = reload} app.
+runWith me cfg app =
   MApp ini upd sk vw vl dn sbs = app;
   vp = svcCall me cfg.render (Dims 0);
-  rw = AC.spawnWith (AC.Dynamic 64) (renderWorker me cfg.render cfg.env vl);
+  rw = AC.spawnWith (AC.Dynamic 64) (renderWorker me cfg.render vl);
   run2 me cfg app rw vp (ini cfg.env).
 run2 me cfg app rw vp m0 =
   (w0, h0) = vp;
   (m1, quit) = applyEvs me cfg.env app (EResize w0 h0 :: Nil) (m0, 0);
   case quit == 1 of
-    True -> finish app m1 0 0 (0, 0)
+    True -> finishWorker rw app m1 0 0 (0, 0)
   | False -> run3 me cfg app rw vp m1.
 run3 me cfg app rw vp m1 =
   MApp ini upd sk vw vl dn sbs = app;
@@ -393,13 +497,16 @@ run3 me cfg app rw vp m1 =
 # built once (a voxel-class render service owns its own world batch;
 # a service that does want a statics split uses MApp directly).
 
-game me cfg app =
-  App ini upd sbs vw = app;
-  run me cfg (MApp ini (gUpd upd) gSk gVw (gVl vw) gDn sbs).
+game me cfg app = run me cfg (gameApp app).
+gameLive me cfg app reload = runLive me cfg (gameApp app) reload.
+gameApp app = case app of
+    App ini upd sbs vw -> MApp ini (gUpd upd) gSk gVw (gVl vw) gDn sbs
+  | LiveApp ini upd sbs vw -> MApp ini (gUpd upd) gSk gVw (gLiveVl vw) gDn sbs.
 gUpd upd me env ev m = upd env ev m.
 gSk m = 0.
 gVw vp m = 0.
 gVl vw self env vp m = vw m.
+gLiveVl vw self env vp m = vw env m.
 gDn m = "game over".
 
 # ---- textRender: the reference render service (headless) --------------------

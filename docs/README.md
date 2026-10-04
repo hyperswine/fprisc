@@ -120,3 +120,4 @@ they began.
 | 2026-10-03 | [ESP-LIMITS.md](2026-10-03-ESP-LIMITS.md) | What the ESP32-P4 host restricts: actor stacks never grow on the board (confirmed crash), 31-bit Int and no Float on rv32, build-time sizes, silent edges, board-only guards; an order of work |
 | 2026-10-04 | [IDEAL-CONTRACTS.md](2026-10-04-IDEAL-CONTRACTS.md) | Explicit linear vector ownership, guarded preconditions, measured event replay, proven bounds and negative examples in the Base suite |
 | 2026-10-04 | [VECTOR-KINDS-PIPELINES-SIMD.md](2026-10-04-VECTOR-KINDS-PIPELINES-SIMD.md) | Independent callback kinds, captured map/filter composition, strict capture order, initial A64 NEON and measured scalar/SIMD comparison |
+| 2026-10-04 | [LIVERELOAD-RUNNER.md](2026-10-04-LIVERELOAD-RUNNER.md) | MVU reload events, runner-owned env replacement, current-env rendering and scoped module gates; real QOS plugins and refusal tests; remaining interface/watch/replay work |

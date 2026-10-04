@@ -1,0 +1,35 @@
+# std/reload -- the runner's platform-independent attachment gate.
+# The caller is the SOLE attachment writer during this operation. Its env
+# stores a table index per live module; never compare with newest globally.
+# attach bytes must register exactly one table on Ok, none on Err.
+# Existing Mod.compatAt checks export presence and arity ONLY. This is a
+# transitional gate, not proof of signature, nominal-type or budget safety.
+attachAt : Int -> (String -> Result a String) -> String -> Result Int String .
+attachAt baseline attach bytes =
+  before = Mod.plugs 0;
+  case baseline >= 0 of
+    False -> Err "reload: invalid baseline table"
+  | True -> baselineAt baseline before attach bytes.
+baselineAt baseline before attach bytes = case baseline < before of
+    False -> Err "reload: missing baseline table"
+  | True -> attached baseline before (attach bytes).
+attached baseline before r = case r of
+    Err why -> Err why
+  | Ok u -> registered baseline before (Mod.plugs 0).
+registered baseline before after = case after == before + 1 of
+    False -> Err "reload: adapter must attach exactly one table"
+  | True -> gated baseline before (Mod.compatAt baseline before).
+gated baseline candidate r =
+  (ok, why) = r;
+  case ok == 1 of
+    True -> Ok candidate
+  | False -> refused why.
+refused why =
+  _ = Mod.detachLast Unit;
+  Err "reload: incompatible, refused: {why}".
+# Scope lookup to the adopted module. Stored old function values remain valid.
+bindAt table name =
+  (ok, f) = Mod.findAt table name;
+  case ok == 1 of
+    True -> f
+  | False -> error "reload: no export {name} in table {table}".

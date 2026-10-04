@@ -1,6 +1,10 @@
 # LiveReload as an object-level message
 
-Date: 2026-10-03. Kind: design proposal. Nothing here is implemented.
+Date: 2026-10-03. Kind: design proposal.
+Implementation status, 2026-10-04: the MVU runner/event and QOS adapter slice
+is implemented; see [LIVERELOAD-RUNNER](2026-10-04-LIVERELOAD-RUNNER.md) for
+tested scope and remaining gates. The complete watch/attach/certificate design
+below remains a proposal.
 Supersedes the mechanism split described in `qos/docs/2026-08-25-VERSIONING.md`
 and `std/live.fpr`'s header; builds on `docs/2026-08-27-PATHS.md` §4.
 
