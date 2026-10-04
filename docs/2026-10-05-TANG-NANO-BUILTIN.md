@@ -61,6 +61,36 @@ halt without the successful runtime marker. It handles partial writes and
 fragmented reads, keeps one exclusive port session open, and stops the CPU with
 Ctrl-C before closing it to avoid the documented BL616 close/reopen wedge.
 
+## Interactive example: factorial over the UART
+
+`examples/tangnano20k_fact.fpr` prints `n?`, reads a decimal line and
+answers with `n!` until it reads an empty line. It drives the UART directly
+with `Mem.read8` on STATUS (`0x1000_0004`, bit 1 = byte waiting) and RXDATA
+(`0x1000_0008`, a load consumes the byte); no C driver is involved. The two
+register addresses are built once, because in manual mode every `Word` and
+`Addr` value is a heap box. `Int` is 31 bits on RV32, so 12! is the largest
+answer; larger numbers and non-digits get an error line.
+
+```sh
+make bare-metal-builtin BUILTIN_BOARD=tangnano20k \
+  PROG=examples/tangnano20k_fact.fpr \
+  BUILD=build/tangnano20k-fact IMAGE=build/tangnano20k-fact/fact.elf
+
+python3 tools/run_simple_risc.py build/tangnano20k-fact/fact.bin \
+  --port /dev/cu.usbserial-20250303171 --freq-mhz 96 \
+  --prompt 'n?' --input 5 --input 0 --input 12 --input 13 --input ''
+```
+
+SimpleRisc's receiver holds one byte, and a byte that arrives while the
+program is printing is lost. `--prompt TEXT` therefore sends the next
+`--input` line only when TEXT appears in the output, so each line arrives
+while the program is waiting for it. The prompt text must not appear anywhere
+else in the output, or a line is sent early.
+
+On 2026-10-05, on the 96 MHz bitstream above, the image (10,624 bytes of
+code) printed `5! = 120`, `0! = 1` and `12! = 479001600`, refused 13, `abc`
+and 99999, and ended with `FPR EXIT 0`.
+
 ## Machine and value contracts
 
 - Code loads at address zero. Unified RAM is exactly `[0, 65536)`. Startup sets

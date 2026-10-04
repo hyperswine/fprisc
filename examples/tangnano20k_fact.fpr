@@ -1,0 +1,61 @@
+profile builtin.
+
+# Factorial over SimpleRisc's UART on the Tang Nano 20K
+# (docs/2026-10-05-TANG-NANO-BUILTIN.md).  The program prints "n?", reads a
+# decimal number ended by a newline and answers with n!; an empty line stops
+# it.  Int is 31 bits on RV32, so 12! is the largest factorial that fits.
+#
+# The UART is driven directly through raw memory: STATUS at 0x1000_0004
+# (bit 1 = a received byte is waiting) and RXDATA at 0x1000_0008 (a load
+# returns the byte and consumes it).  The receiver holds one byte, so input
+# is only read after the prompt, never while printing.
+
+byteWaiting s = (s / 2) - (s / 4) * 2 == 1.
+
+getc status rx = case byteWaiting (Mem.read8 status) of True -> Mem.read8 rx | False -> getc status rx.
+
+isDigit c = case c < 48 of True -> False | False -> c <= 57.
+
+# What readLine returns besides a number.
+emptyLine = 0 - 1.
+notANumber = 0 - 2.
+tooLarge = 1001.
+
+# Read up to a newline, ignoring carriage returns.  Values above 1000
+# saturate at tooLarge instead of overflowing.
+readLine status rx count value ok =
+  c = getc status rx;
+  case c == 10 of
+    True -> (case ok of False -> notANumber | True -> case count == 0 of True -> emptyLine | False -> value)
+    | False -> case c == 13 of
+      True -> readLine status rx count value ok
+      | False -> case isDigit c of
+        True -> readLine status rx (count + 1) (case value > 100 of True -> tooLarge | False -> value * 10 + c - 48) ok
+        | False -> readLine status rx (count + 1) value False.
+
+fact n acc = case n == 0 of True -> acc | False -> fact (n - 1) (acc * n).
+
+answer n =
+  case n == notANumber of
+    True -> print "send digits only"
+    | False -> case n >= tooLarge of
+      True -> print "too large: 12! is the largest factorial a 31-bit Int holds"
+      | False -> case n > 12 of
+        True -> print "{n}! does not fit a 31-bit Int: 12! is the largest"
+        | False -> print "{n}! = {fact n 1}".
+
+session status rx =
+  _ = print "n?";
+  n = readLine status rx 0 0 True;
+  case n == emptyLine of
+    True -> print "bye"
+    | False ->
+      _ = answer n;
+      session status rx.
+
+main =
+  # Built once: in manual mode every Word or Addr value is a heap box.
+  status = Addr.fromWord (Word.fromInt 268435460);
+  rx = Addr.fromWord (Word.fromInt 268435464);
+  _ = print "factorial on SimpleRisc RV32IM: answer each prompt with a number, an empty line to stop";
+  session status rx.

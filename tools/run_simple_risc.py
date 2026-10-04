@@ -3,6 +3,10 @@
 
 DONE is emitted even after an illegal instruction. Require the board runtime's
 FPR EXIT 0 marker as well, so an unexpected CPU halt cannot count as success.
+
+Interactive programs: with --prompt TEXT, each time TEXT appears in the output
+the next --input line is sent, followed by a newline.  SimpleRisc's receiver
+holds one byte, so input must only be sent once the program is waiting for it.
 """
 import argparse
 import fcntl
@@ -54,8 +58,10 @@ def write_all(fd, data, timeout):
             continue
 
 
-def receive(fd, timeout, until_done=False, display=False):
+def receive(fd, timeout, until_done=False, display=False, prompt=None, lines=()):
     output = bytearray()
+    lines = list(lines)
+    prompts_answered = 0
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         ready, _, _ = select.select([fd], [], [], min(.05, max(0, deadline - time.monotonic())))
@@ -68,12 +74,20 @@ def receive(fd, timeout, until_done=False, display=False):
             if display:
                 sys.stdout.buffer.write(chunk)
                 sys.stdout.buffer.flush()
+            if prompt:
+                while lines and output.count(prompt) > prompts_answered:
+                    prompts_answered += 1
+                    line = lines.pop(0).encode() + b'\n'
+                    if display:
+                        sys.stdout.buffer.write(b'> ' + line)
+                        sys.stdout.buffer.flush()
+                    write_all(fd, line, 2)
         if until_done and output.endswith(b'DONE'):
             break
     return bytes(output)
 
 
-def run(image, port, baud, timeout):
+def run(image, port, baud, timeout, prompt=None, lines=()):
     data = frame(image)
     fd = open_port(port, baud)
     try:
@@ -84,7 +98,7 @@ def run(image, port, baud, timeout):
         time.sleep(.02)
         write_all(fd, data, max(2, len(data) * 10 / baud + 2))
         termios.tcdrain(fd)
-        output = receive(fd, timeout, until_done=True, display=True)
+        output = receive(fd, timeout, until_done=True, display=True, prompt=prompt, lines=lines)
         if not output.endswith(b'FPR EXIT 0\nDONE'):
             raise RuntimeError(f'no successful runtime exit (received {len(output)} bytes)')
         return output
@@ -103,12 +117,17 @@ def main():
     parser.add_argument('--freq-mhz', type=float, default=96, help='loaded bitstream clock; baud = clock/868')
     parser.add_argument('--baud', type=int, help='override the derived baud rate')
     parser.add_argument('--timeout', type=float, default=30)
+    parser.add_argument('--prompt', help='send the next --input line each time this text is printed')
+    parser.add_argument('--input', action='append', default=[], help='an input line (repeatable; "" for an empty line)')
     args = parser.parse_args()
+    if args.input and not args.prompt:
+        parser.error('--input needs --prompt (input may only be sent while the program waits)')
     baud = args.baud if args.baud is not None else round(args.freq_mhz * 1e6 / 868)
     if baud <= 0 or args.timeout <= 0:
         parser.error('baud and timeout must be positive')
     try:
-        run(args.image.read_bytes(), args.port, baud, args.timeout)
+        run(args.image.read_bytes(), args.port, baud, args.timeout,
+            args.prompt.encode() if args.prompt else None, args.input)
     except (OSError, ValueError, RuntimeError, TimeoutError) as error:
         print(f'\nSimpleRisc: {error}', file=sys.stderr)
         return 1
