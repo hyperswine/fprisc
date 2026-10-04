@@ -73,13 +73,8 @@ progC = [
   "> run (cpu 0 0 0 0 0) 3 R?"
 ].
 
-showSols : unsafe List y156 -> Unit .
-showSols sols | sols == [] = Unit.
-showSols sols = case sols of s :: r -> ssStep s r.
-ssStep : unsafe z156 -> List z156 -> Unit .
-ssStep s r = u = print "  {s}"; showSols r.
+showSols sols = List.fold (fn u s -> print "  {s}") Unit sols.
 
-runQ : unsafe List (Int, logic.PT, List logic.PT, Int) -> i157 -> (List logic.PT, Int, List (j157, Int), List (String, Int)) -> Unit .
 runQ db syms q =
   (gp, nqv, qpairs, s2) = q;
   (sols, fl) = logic.runQuery db s2 gp nqv qpairs 200000;
@@ -87,14 +82,10 @@ runQ db syms q =
     True -> print "  false."
   | False -> showSols sols.
 
-runQs : unsafe List (Int, logic.PT, List logic.PT, Int) -> List (String, Int) -> List (List logic.PT, Int, List (c157, Int)) -> Int .
-runQs db syms qs | qs == [] = 0.
-runQs db syms qs = case qs of q :: r -> rqsStep db syms q r.
-rqsStep : unsafe List (Int, logic.PT, List logic.PT, Int) -> List (String, Int) -> (List logic.PT, Int, List (d157, Int)) -> List (List logic.PT, Int, List (d157, Int)) -> Int .
-rqsStep db syms q r = u = runQ db syms (withSyms q syms); runQs db syms r.
-withSyms q syms = (gp, nqv, qp) = q; (gp, nqv, qp, syms).
+# run each query in order; the result counts them
+runQs db syms qs = List.fold (fn n q -> u = runQ db syms (withSyms q syms); n + 1) 0 qs.
+withSyms (gp, nqv, qp) syms = (gp, nqv, qp, syms).
 
-runProgram : unsafe q157 -> List String -> Int .
 runProgram title extra =
   u0 = print "";
   u1 = print "=== {title} ===";

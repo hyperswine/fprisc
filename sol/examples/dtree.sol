@@ -32,9 +32,8 @@ mkRow s =
   | True -> (case x2 > minusHalf of True -> 1 | False -> 0 - 1);
   {x1 = x1, x2 = x2, y = case flip == 0 of True -> 0 - ytrue | False -> ytrue}.
 
-fill : unsafe (Vector _) -> Int -> Int -> (Vector _) .
-fill v s k | k == 0 = v.
-fill v s k = fill (Vec.push (mkRow (Rand.next (s + k * 100003))) v) s (k - 1).
+# k rows from seed s, pushed in the order k, k-1, .. 1
+fill v s k = List.range 1 k |> List.rev |> List.fold (fn acc j -> Vec.push (mkRow (Rand.next (s + j * 100003))) acc) v.
 
 # the packed counting fold: (feat, th) captured; four counts in one i64
 cnt feat th acc p =
@@ -52,44 +51,30 @@ scoreOf c =
   rp = (c / 1024) % 1024; rn = c % 1024;
   Numeric.min lp ln + Numeric.min rp rn.
 
-# scan candidates, threading the linear vec; returns (feat, th, score, v)
-scan : unsafe List (Int, Int) -> Int -> Int -> Int -> (Vector _) -> (Int, Int, Int, (Vector _)) .
-scan cands bf bt bs v | cands == [] = (bf, bt, bs, v).
-scan cands bf bt bs v = case cands of
-  c :: rest -> scanStep c rest bf bt bs v.
+# scan candidates, threading the linear vec through the fold; the first
+# strictly best split wins. Returns (feat, th, score, v)
+scan cands v = List.fold scanStep (0, 0, 999999, v) cands.
 
-scanStep : unsafe (Int, Int) -> List (Int, Int) -> Int -> Int -> Int -> (Vector _) -> (Int, Int, Int, (Vector _)) .
-scanStep c rest bf bt bs v =
-  (feat, th) = c;
+scanStep (bf, bt, bs, v) (feat, th) =
   (packed, v2) = Vec.fold (cnt feat th) 0 v;
   s = scoreOf packed;
   case s < bs of
-    True -> scan rest feat th s v2
-  | False -> scan rest bf bt bs v2.
+    True -> (feat, th, s, v2)
+  | False -> (bf, bt, bs, v2).
 
-grid : unsafe Int -> List Int .
-grid k | k > 6 = [].
-grid k = (k * quarter) :: grid (k + 1). # -1.5 .. 1.5 step 0.25
+grid = List.range (0 - 6) 6 |> List.map (fn k -> k * quarter). # -1.5 .. 1.5 step 0.25
 
-cands1 : unsafe p45 -> List q45 -> List (p45, q45) .
-cands1 f ts | ts == [] = [].
-cands1 f ts = case ts of t :: r -> (f, t) :: cands1 f r.
-allCands : unsafe List (Int, Int) .
-allCands = (cands1 1 (grid (0 - 6))) + (cands1 2 (grid (0 - 6))).
+allCands = (grid |> List.map (fn t -> (1, t))) + (grid |> List.map (fn t -> (2, t))).
 
 pick 1 p = p.x1.
 pick _ p = p.x2.
 
-part : unsafe Int -> Int -> List _ -> List _ -> List _ -> (List _, List _) .
-part feat th xs ls rs | xs == [] = (ls, rs).
-part feat th xs ls rs = case xs of
-  p :: r -> (case pick feat p < th of
-    True -> part feat th r (p :: ls) rs
-  | False -> part feat th r ls (p :: rs)).
+# split the rows at (feat, th); each side comes out in reverse order
+part feat th xs = List.fold (side feat th) ([], []) xs.
+side feat th (ls, rs) p | pick feat p < th = (p :: ls, rs).
+side feat th (ls, rs) p = (ls, p :: rs).
 
-buildVec : unsafe List v45 -> (Vector _) -> (Vector _) .
-buildVec [] v = v.
-buildVec (p :: r) v = buildVec r (Vec.push p v).
+buildVec xs v = List.fold (fn acc p -> Vec.push p acc) v xs.
 
 majorityLeaf n np = Leaf (case np * 2 >= n of True -> 1 | False -> 0 - 1).
 
@@ -114,9 +99,9 @@ tryNode depth n np v =
 
 splitNode : unsafe Int -> Int -> (Vector _) -> Tree .
 splitNode depth n v =
-  (bf, bt, bs, v2) = scan allCands 0 0 999999 v;
+  (bf, bt, bs, v2) = scan allCands v;
   xs = Vec.toList v2;
-  (ls, rs) = part bf bt xs [] [];
+  (ls, rs) = part bf bt xs;
   l = build (depth - 1) (buildVec ls (Vec.new Unit));
   r = build (depth - 1) (buildVec rs (Vec.new Unit));
   Node bf bt l r.
@@ -126,10 +111,9 @@ predict (Leaf c) _ = c.
 predict (Node f th l _) p | pick f p < th = predict l p.
 predict (Node _ _ _ r) p = predict r p.
 
-accGo : unsafe Tree -> List _ -> Int -> Int .
-accGo _ [] k = k.
-accGo t (p :: r) k | predict t p * p.y > 0 = accGo t r (k + 1).
-accGo t (_ :: r) k = accGo t r k.
+# how many rows the tree classifies correctly
+correct : unsafe Tree -> List _ -> Int .
+correct t xs = xs |> List.filter (fn p -> predict t p * p.y > 0) |> List.len.
 
 chkAtLeast name got want = case got >= want of
   True -> print "ok {name} ({got} >= {want})"
@@ -146,6 +130,6 @@ showT t = case t of
   u0 = print "tree: {showT tree}";
   test_v = fill (Vec.new Unit) 55667788 200;
   xs = Vec.toList test_v;
-  acc = accGo tree xs 0;
+  acc = correct tree xs;
   u1 = print "test accuracy: {acc * 100 / 200}% (5% label noise ceiling ~95%)";
   chkAtLeast "test accuracy %" (acc * 100 / 200) 85.

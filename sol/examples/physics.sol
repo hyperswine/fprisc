@@ -18,10 +18,6 @@ dt = Numeric.div 1 100.     # 0.01 s
 g  = Numeric.div 981 100.   # 9.81 m/s^2
 cD = Numeric.div 2 1000.    # drag coefficient 0.002 (quadratic)
 
-upto : (a : Int | measure (b - a)) -> (b : Int) -> List Int .
-upto a b | a > b = [].
-upto a b = a :: upto (a + 1) b.
-
 plus a b = a + b.
 
 # integrate with drag; returns range (metres) at impact
@@ -46,9 +42,8 @@ rangeN p = flyN (Numeric.inexact 0) (Numeric.inexact 0) p.vx p.vy.
 # launch grid: vx 12..31 m/s, vy 8..27 m/s interleaved (ints promote on use)
 mkRow i = {vx = 12 + i - (i / 20) * 20, vy = 8 + (i * 7 - ((i * 7) / 20) * 20)}.
 
-fill : (Vector _) -> (xs : List Int | measure xs) -> (Vector _) .
-fill v xs | xs == [] = v.
-fill v xs = case xs of i :: r -> fill (Vec.push (mkRow i) v) r.
+fill : (Vector _) -> List Int -> (Vector _) .
+fill v xs = List.fold (fn acc i -> Vec.push (mkRow i) acc) v xs.
 
 closedForm p = 2 * p.vx * p.vy / g.
 
@@ -59,7 +54,7 @@ chkClose name got want tol = case Numeric.abs (got - want) < tol of
 | False -> error "FAIL {name}: {got} vs {want}".
 
 > n = 300;
-  vec = fill (Vec.new Unit) (upto 1 n);
+  vec = fill (Vec.new Unit) (List.range 1 n);
   (p1, vec2) = Vec.get 0 vec;
   u = print "closed form R = {closedForm p1} m";
   u2 = print "integrated  R = {rangeN p1} m (drag-free, O(dt) error)";

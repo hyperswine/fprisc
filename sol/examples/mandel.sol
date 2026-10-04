@@ -38,9 +38,6 @@ pix i =
   row = (i - 1) / w;
   mand (xmin + col * dx) (ymin + row * dy) 0 0 maxIter.
 
-upto : (a : Int | measure (b - a)) -> (b : Int) -> List Int .
-upto a b | a > b = [].
-upto a b = a :: upto (a + 1) b.
 plus a b = a + b.
 
 palette = ["@", "#", "*", "+", "=", "-", ":", ".", " "].
@@ -49,34 +46,19 @@ charFor c = case c == 0 of
   True -> "@"
 | False -> palette ! (case c / 10 > 8 of True -> 8 | False -> c / 10).
 
-# exemplar, the compiler is able to prove that cs always decreases in length, so the fold is safe
-# it calls charFor c, then calls itself recursively on the rest of the list, until cs is empty
-rowStr : (cs : List Int | measure cs) -> String .
-rowStr cs | cs == [] = "".
-rowStr cs = case cs of c :: r -> "{charFor c}{rowStr r}".
+rowStr cs = cs |> List.map charFor |> Str.join "".
 
-# Review: dropN and takeN are just Vec.drop / Vec.take
-# they are all tail recursive, which is good
+# row r (0-based) of the row-major counts
+rowOf cs r = cs |> List.drop (r * w) |> List.take w |> rowStr.
 
-dropN : (n : Int | measure n) -> List y29 -> List y29 .
-dropN n xs | n <= 0 = xs.
-dropN n xs | xs == [] = [].
-dropN n xs = case xs of x :: r -> dropN (n - 1) r.
-
-takeN : (n : Int | measure n) -> List z29 -> List z29 .
-takeN n xs | n <= 0 = [].
-takeN n xs | xs == [] = [].
-takeN n xs = case xs of x :: r -> x :: takeN (n - 1) r.
-
-printRows : unsafe List Int -> Int .
-printRows cs | cs == [] = 0.
-printRows cs = u = print (rowStr (takeN w cs)); printRows (dropN w cs).
+# print each line, in order
+say lines = List.fold (fn n l -> u = print l; n + 1) 0 lines.
 
 # pix maps 1..(w*h) to the escape count for each pixel. The counts are collected
 # into a Vec, folded to compute the checksum, and printed row by row.
-> v = Vec.fromList (upto 1 (w * h));
+> v = Vec.fromList (List.range 1 (w * h));
   counts = Vec.map pix v;
   (checksum, c2) = Vec.fold plus 0 counts;
   cl = Vec.toList c2;
-  u = printRows cl;
+  u = say (List.range 0 (h - 1) |> List.map (rowOf cl));
   print "checksum: {checksum} ({w}x{h}, {maxIter} iters)".
