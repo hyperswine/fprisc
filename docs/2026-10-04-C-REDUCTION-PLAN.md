@@ -128,10 +128,12 @@ i` (table -1 is the image's own). `Mod.find` (newest attachment wins),
 `Mod.findAt`, `Mod.resolve`, `Mod.has` and the live-reload gate
 `Mod.compatAt` are a `Mod` structure in the prelude, with the same refusal
 texts. `Mod.fn` stays C only because `fn` is a keyword and cannot be a field
-name. The registry's cross-hart race is fixed on the way: attach and detach
-take a lock, an attach publishes the slot before the count, readers load the
-count with acquire. Row counts are taken once at attach, so a row index is
-bounds-checked in O(1).
+name. Attach and detach take a writer lock, an attach publishes the slot before
+the count, and readers load the count with acquire. Row counts are taken once
+at attach, so a row index is bounds-checked in O(1). Review follow-up: this does
+not establish a stable reader snapshot across detach/reattach slot reuse or
+across the separate row accesses of a compatibility check. That concurrency
+boundary remains open; the writer lock alone does not close it.
 
 ### Checked (2026-10-04)
 
@@ -148,3 +150,19 @@ needed): smoke 16/16; `livereload`, `loaderfail`, `moduleinterfaces` and
   by design; the silence is not).
 - The log rings cut lines to 95 bytes without a sign.
 - The virt TCP stack: 4 connections, a fixed 10.0.2.15.
+
+## Phase 2 started: shared virtio and pure block deadlines (2026-10-04)
+
+QOS's `hal/virt/virtio.fpr` now supplies shared allocation-free RV64 probe,
+feature negotiation and split-queue programming for block and network devices.
+`hal/virt/blockpolicy.fpr` supplies the exact full-word deadline predicate for
+the three block timeout paths. The kernel, bare-metal and native process build
+paths link both units; RV32 keeps the C fallback.
+
+Independent C register/deadline differentials passed on one/two QEMU harts;
+real network and disk refusal/recovery tests passed with virtio v1/v2 on
+one/two harts. A loaded native process still reaches its granted namespace and
+storage. QOS's `docs/2026-10-04-VIRTIO-POLICY.md` records scope and evidence.
+Deadline configuration, DMA ownership, reset/offline transitions and the
+TCP/ARP actor are not migrated by this first slice. No full regression sweep
+or target performance claim follows from these tests.
