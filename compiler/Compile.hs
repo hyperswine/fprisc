@@ -1,4 +1,4 @@
-module Compile (compileMain, parseFile) where
+module Compile (compileMain, checkedInterface, parseFile) where
 
 import Data.List (sortBy)
 import Data.Maybe (fromMaybe)
@@ -19,7 +19,7 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import FPRISC
-import Infer (Scheme (..), Type (..), builtinEnv, builtinLinShapes, inferTops)
+import Infer (Scheme (..), Type (..), aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTops, inferTopsInterfaces)
 import Safety (measureCheck, safetyCheck, trustedLibraryPaths)
 import qualified Cost
 import Manifest (Manifest (..), readManifest, renderNs)
@@ -32,7 +32,10 @@ import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Environment (getArgs)
 import qualified System.Info
 import StdBridge (runStdCheck)
-import System.Exit (exitFailure, exitSuccess)
+import System.Exit (ExitCode (..), exitFailure, exitSuccess, exitWith)
+import Control.Exception (try)
+import Data.IORef (newIORef, readIORef, writeIORef)
+import System.Environment (withArgs)
 import System.FilePath (takeDirectory, takeExtension, takeFileName, (</>))
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import Text.Megaparsec (errorBundlePretty, parse)
@@ -310,7 +313,22 @@ bindNames :: [STop] -> S.Set String
 bindNames = M.keysSet . arities
 
 compileMain :: IO ()
-compileMain = do
+compileMain = compileWithInterface (const (pure ()))
+
+-- Return interfaces only after the SAME normal checker has accepted the unit.
+-- No diagnostic parsing, alternate inference path or code-generation required.
+checkedInterface :: FilePath -> IO [(Name, String)]
+checkedInterface file = do
+  ref <- newIORef []
+  result <- try (withArgs ["--check-only", "--lib", file, "/dev/null"]
+                  (compileWithInterface (writeIORef ref))) :: IO (Either ExitCode ())
+  case result of
+    Left ExitSuccess -> readIORef ref
+    Left code -> exitWith code
+    Right () -> readIORef ref
+
+compileWithInterface :: ([(Name, String)] -> IO ()) -> IO ()
+compileWithInterface accepted = do
   setLocaleEncoding utf8
   args <- getArgs
   let checkOnly = "--check-only" `elem` args
@@ -436,7 +454,7 @@ compileMain = do
   lr <- loadProgram preludeTops inp rootTops
   case lr of
     Left e -> putStrLn e >> exitFailure
-    Right (LoadResult tops0RL exports notes units0L root0L rootHash unitAnchors unitSources) -> do
+    Right (LoadResult tops0RL exports notes units0L root0L rootHash unitAnchors rootAliases unitSources) -> do
       mapM_ putStrLn notes
       -- spans steps 1-3: every "in NAME:" diagnostic below gets the
       -- best available anchor -- a stamped statement offset, the named
@@ -538,7 +556,7 @@ compileMain = do
                   ++ " runtime-checked, " ++ show nTrap ++ " builtin traps")
       -- typecheck the merged expanded program; rewritten tops carry
       -- operator sites resolved to prims / Str.+ / s.(+)
-      let (terrs, notes, holes, linsigs, topsRW) = inferTops sigs structs tops'
+      let (terrs, notes, holes, linsigs, topsRW, interfaces) = inferTopsInterfaces aotProf sigs structs tops'
       unless (null terrs) $ do
         putStrLn "=== TYPE ERRORS ==="
         mapM_ (putStrLn . ("  * " ++)) (anchored terrs)
@@ -731,6 +749,23 @@ compileMain = do
           mapM_ (putStrLn . ("  * " ++) . renderV) failed
           mapM_ (putStrLn . ("  * " ++)) budgetFails
           exitFailure
+      -- A root-declared nominal type changes its runtime tid with unit hash,
+      -- even when its written constructor shape is identical. Structural
+      -- records keep their field-based identity; imported nominals already
+      -- carry their pinned unit qualification.
+      let rootNominals = S.fromList [n | TType n _ _ _ <- root']
+          interfaceName n = if S.member n rootNominals then n ++ "@" ++ rootHash else n
+      if oLib opts
+        then case lookup "Lib" rootAliases of
+          Nothing -> hPutStrLn stderr "checked interface: missing library identity" >> exitFailure
+          Just h -> do
+            let byName = M.fromList interfaces
+                missing = [meName e | e <- exports, meHash e == h, M.notMember (meQual e) byName]
+                public = [(meName e, t) | e <- exports, meHash e == h,
+                                         Just t <- [M.lookup (meQual e) byName]]
+            unless (null missing) $ hPutStrLn stderr ("checked interface: missing inferred exports: " ++ unwords missing) >> exitFailure
+            accepted [(n, canonicalTypeWith id t) | (n, t) <- public]
+        else accepted [(n, canonicalTypeWith interfaceName t) | (n, t) <- interfaces, S.member n rootBinds]
       when checkOnly exitSuccess
       -- ---- per-unit CODEGEN (separate compilation) ----
       -- Each unit is expanded already (preludeE/units/root'). For codegen

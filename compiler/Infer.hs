@@ -130,6 +130,7 @@ data IEnv = IEnv
     iVecRefs :: IM.IntMap [Type], -- requirements instantiated at each reference
     iVecOwners :: IM.IntMap Name,
     iDefTypes :: M.Map Name Type,
+    iInterfaces :: [(Name, Type)], -- zonked checked types for interface identity
     iLinSigs :: [(Name, ([LShape], LShape))] -- INFERRED linearity shapes
       -- per user bind (zonked types -> LShape): the linearity checker
       -- consumes these for functions WITHOUT an explicit sig, closing
@@ -1636,8 +1637,13 @@ inferTops = inferTopsWith aotProf
 
 inferTopsWith :: IProf -> Sigs -> Structs -> [STop] -> ([String], [(Name, String)], [(String, String)], [(Name, ([LShape], LShape))], [STop])
 inferTopsWith prof sigs structs tops =
-  let (tops', st) = runState run (IEnv 0 IM.empty IM.empty [] [] [] [] S.empty 0 IM.empty IM.empty IM.empty Nothing IM.empty M.empty IM.empty IM.empty M.empty [])
-   in (iErrs st, iNotes st, iHolesP st, iLinSigs st, tops')
+  let (es, ns, hs, ls, rw, _) = inferTopsInterfaces prof sigs structs tops
+   in (es, ns, hs, ls, rw)
+
+inferTopsInterfaces :: IProf -> Sigs -> Structs -> [STop] -> ([String], [(Name, String)], [(String, String)], [(Name, ([LShape], LShape))], [STop], [(Name, Type)])
+inferTopsInterfaces prof sigs structs tops =
+  let (tops', st) = runState run (IEnv 0 IM.empty IM.empty [] [] [] [] S.empty 0 IM.empty IM.empty IM.empty Nothing IM.empty M.empty IM.empty IM.empty M.empty [] [])
+   in (iErrs st, iNotes st, iHolesP st, iLinSigs st, tops', iInterfaces st)
   where
     aliases = M.fromList [(n, fs) | TShape n fs <- tops]
     run :: I [STop]
@@ -1718,7 +1724,7 @@ inferTopsWith prof sigs structs tops =
               peel _ tt = ([], tt)
               (pts, rt) = peel ar tz
               lsig = (map (linShapeT linNs) pts, linShapeT linNs rt)
-          modify (\s -> s {iNotes = iNotes s ++ [(n, p)], iLinSigs = iLinSigs s ++ [(n, lsig)]})
+          modify (\s -> s {iNotes = iNotes s ++ [(n, p)], iInterfaces = iInterfaces s ++ [(n, tz)], iLinSigs = iLinSigs s ++ [(n, lsig)]})
       when (ipVectorLayouts prof) (prepareVectorEvidence rwBinds)
       -- resolve operator sites against the final substitution, then
       -- rebuild the top list with markers rewritten, in original order
@@ -1963,6 +1969,40 @@ prettyT t0 = do t <- zonk t0; pure (go 0 t)
     paren True s = "(" ++ s ++ ")"
     paren False s = s
     tvName v = let l = ['a' ..] !! (v `mod` 26) in l : (if v >= 26 then show (v `div` 26) else "")
+
+-- Interface identity must not depend on fresh solver IDs or record order.
+-- Type and row variables have separate namespaces, preserving repeated uses.
+canonicalType :: Type -> String
+canonicalType = canonicalTypeWith id
+
+canonicalTypeWith :: (Name -> Name) -> Type -> String
+canonicalTypeWith nameOf t = evalState (go t) (IM.empty, IM.empty)
+  where
+    var :: Bool -> Int -> State (IM.IntMap Int, IM.IntMap Int) String
+    var row v = do
+      (ts, rs) <- get
+      let m = if row then rs else ts
+          k = IM.findWithDefault (IM.size m) v m
+          m' = IM.insert v k m
+      put (if row then (ts, m') else (m', rs))
+      pure ((if row then "r" else "t") ++ show k)
+    go :: Type -> State (IM.IntMap Int, IM.IntMap Int) String
+    go = \case
+      TV v -> var False v
+      TC n -> pure (show (nameOf n))
+      TAp a b -> binary "app" a b
+      TFn a b -> binary "fn" a b
+      TTupT xs -> do ys <- mapM go xs; pure ("tuple(" ++ intercalate "," ys ++ ")")
+      TRec r -> do
+        let (fields, tailVar) = flatten r
+        fs <- mapM (\(n, x) -> do y <- go x; pure (show n ++ ":" ++ y)) (sortOn fst fields)
+        tailS <- maybe (pure "closed") (var True) tailVar
+        pure ("record(" ++ intercalate "," fs ++ "|" ++ tailS ++ ")")
+    binary k a b = do x <- go a; y <- go b; pure (k ++ "(" ++ x ++ "," ++ y ++ ")")
+    flatten = \case
+      RNil -> ([], Nothing)
+      RV v -> ([], Just v)
+      RExt n x r -> let (fs, end) = flatten r in ((n, x) : fs, end)
 
 -- A type as a SIGNATURE is written: variables named a, b, c in order of
 -- appearance rather than by their internal numbers, so that a message

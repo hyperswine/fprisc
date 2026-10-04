@@ -121,3 +121,4 @@ they began.
 | 2026-10-04 | [IDEAL-CONTRACTS.md](2026-10-04-IDEAL-CONTRACTS.md) | Explicit linear vector ownership, guarded preconditions, measured event replay, proven bounds and negative examples in the Base suite |
 | 2026-10-04 | [VECTOR-KINDS-PIPELINES-SIMD.md](2026-10-04-VECTOR-KINDS-PIPELINES-SIMD.md) | Independent callback kinds, captured map/filter composition, strict capture order, initial A64 NEON and measured scalar/SIMD comparison |
 | 2026-10-04 | [LIVERELOAD-RUNNER.md](2026-10-04-LIVERELOAD-RUNNER.md) | MVU reload events, runner-owned env replacement, current-env rendering and scoped module gates; real QOS plugins and refusal tests; remaining interface/watch/replay work |
+| 2026-10-04 | [CHECKED-INTERFACES.md](2026-10-04-CHECKED-INTERFACES.md) | Commit compares canonical checked inferred types and complete contracts, fails closed on broken history, and publishes no dependency blobs on refusal; runtime image certification remains next |

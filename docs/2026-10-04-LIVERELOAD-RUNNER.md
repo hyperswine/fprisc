@@ -76,7 +76,9 @@ compares the stored math baseline rather than the globally newest table.
 ## Remaining work and delivery order
 
 1. Inferred interface certificates, including type/unsafe/contract/resource
-   boundaries, and corresponding runtime image checks. `Mod.compatAt` STILL
+   boundaries, and corresponding runtime image checks. The commit-time inferred
+   comparison is now implemented in [CHECKED-INTERFACES](2026-10-04-CHECKED-INTERFACES.md);
+   image serialization/runtime certification remains open. `Mod.compatAt` STILL
    checks only export presence and arity. The test metadata uses archive IDs in
    `from`/`to`, not authenticated content hashes. This slice cannot certify
    arbitrary same-arity replacements; automatic patch adoption must wait.

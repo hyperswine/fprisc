@@ -21,11 +21,11 @@
 --   identical hash          -> no-op (nothing changed)
 --   old signature <= new    -> PATCH bump  (compatible subset: every
 --                              exported name keeps arity + declared
---                              sig; additions are fine)
+--                              sig and inferred type; additions are fine)
 --   otherwise               -> MAJOR, refused without --major
 -- The subset check is the commit-time face of the row-compatibility
--- question: a patch retains the written interface. Inferred compatibility is
--- not certified by this check.
+-- question: a patch retains the checked inferred types and written contracts.
+-- Equality is conservative; this is not semantic subsumption or an image certificate.
 --
 -- .fpr/versions.db is structurally pkgstore's model (content blobs +
 -- append-only name/version->hash bindings): `fpr push` to a pkgstore
@@ -34,7 +34,6 @@ module Commit (commitMain, versionsMain, pushMain, pullMain) where
 
 import Control.Monad (unless, when)
 import qualified Compile
-import System.Environment (withArgs)
 import qualified Data.IORef
 import Data.IORef (newIORef, readIORef)
 import Data.List (intercalate, isInfixOf, isPrefixOf, sort)
@@ -43,8 +42,7 @@ import Data.Maybe (fromMaybe)
 import FPRISC
 import Modules (ModUnit (..), loadModule)
 import System.Directory (copyFile, createDirectoryIfMissing, doesFileExist)
-import System.Exit (ExitCode (..), exitFailure, exitWith)
-import Control.Exception (try)
+import System.Exit (exitFailure)
 import System.FilePath (takeBaseName)
 import System.Process (readProcess)
 import System.Environment (lookupEnv)
@@ -71,14 +69,15 @@ readDb = do
 -- name + arity for every binding, full rendered sig for every TSig,
 -- constructor shapes for every Type.  Sorted, so subset = compatibility.
 sigOf :: [STop] -> [String]
-sigOf tops =
-  sort $
+sigOf source =
+  let tops = stripPosTops source
+   in sort $
     [ "fn " ++ n ++ "/" ++ show (length ps) | TBind n ps _ _ <- tops ]
       -- the resource bounds are part of the written interface: a changed
       -- bound (wider or tighter) is a different signature, hence a major
       -- version -- callers compose on the declared bound
-      ++ [ "sig " ++ n ++ " : " ++ show (ps, r) ++ concat [" | " ++ k ++ " " ++ show e | Just (k, e) <- pres, k `elem` ["$work", "$alloc", "$live", "$size"]] | TSig n (ps, r) pres <- tops ]
-      ++ [ "type " ++ n ++ " " ++ show cs | TType n _ _ cs <- tops ]
+      ++ [ "sig " ++ n ++ " : " ++ show (ps, r) ++ " | contracts " ++ show pres | TSig n (ps, r) pres <- tops ]
+      ++ [ "type " ++ n ++ " " ++ show (lin, ps, cs) | TType n lin ps cs <- tops ]
 
 subsetOf :: [String] -> [String] -> Bool
 subsetOf old new = all (`elem` new) old
@@ -128,39 +127,28 @@ commitMain args = do
     hPutStrLn stderr "commit refused: committed modules must be closed under their pin hash (all uses pinned)"
     exitFailure
   -- Check before any store/database mutation, including no-op commits.
-  -- compileMain exits successfully at the check-only gate; isolate that exit.
-  checked <- try (withArgs ["--check-only", "--lib", file, "/dev/null"] Compile.compileMain) :: IO (Either ExitCode ())
-  case checked of
-    Left ExitSuccess -> pure ()
-    Left code -> exitWith code
-    Right () -> pure ()
-  createDirectoryIfMissing True storeDir
-  mapM_
-    (\(p, m) -> when (p /= file) $ do
-      let dest = storeDir ++ "/" ++ muHash m ++ ".fpr"
-      present <- doesFileExist dest
-      unless present (copyFile p dest))
-    closure
+  inferred <- Compile.checkedInterface file
   let name = takeBaseName file
       h = muHash mu
-      newSig = sigOf (muTops mu)
+      newSig = sigOf (muTops mu) ++ inferredSig inferred
   db <- readDb
   let mine = [(v, hh) | (n, v, hh) <- db, n == name]
   case reverse mine of
     [] -> do
-      writeVersion name "v1.0" h file
+      writeVersion closure name "v1.0" h file
       putStrLn ("committed " ++ name ++ ".v1.0#" ++ h ++ "  (first version)")
     ((pv, ph) : _)
-      | ph == h ->
+      | ph == h -> do
+          _ <- storeUnit ph
           putStrLn (name ++ "." ++ pv ++ "#" ++ h ++ " is already this exact content — no-op")
       | otherwise -> do
-          oldTops <- storeTops ph
-          let oldSig = sigOf oldTops
+          (oldTops, oldInferred) <- storeInterface ph
+          let oldSig = sigOf oldTops ++ inferredSig oldInferred
               compatible = oldSig `subsetOf` newSig
           if compatible
             then do
               let v = bump False pv
-              writeVersion name v h file
+              writeVersion closure name v h file
               putStrLn ("committed " ++ name ++ "." ++ v ++ "#" ++ h ++ "  (patch: signature-compatible with " ++ pv ++ ")")
             else do
               let missing = [s | s <- oldSig, s `notElem` newSig]
@@ -169,26 +157,36 @@ commitMain args = do
                 hPutStrLn stderr ("commit refused: not a compatible subset of " ++ pv ++ " — re-run with --major to mint " ++ bump True pv)
                 exitFailure
               let v = bump True pv
-              writeVersion name v h file
+              writeVersion closure name v h file
               putStrLn ("committed " ++ name ++ "." ++ v ++ "#" ++ h ++ "  (MAJOR: breaks " ++ pv ++ "'s signature)")
   where
-    writeVersion name v h file = do
+    inferredSig = map (\(n, t) -> "inferred " ++ n ++ " : " ++ t)
+    writeVersion closure name v h file = do
       createDirectoryIfMissing True storeDir
+      mapM_ (\(p, m) -> when (p /= file) $ do
+        let dest = storeDir ++ "/" ++ muHash m ++ ".fpr"
+        present <- doesFileExist dest
+        unless present (copyFile p dest)) closure
       copyFile file (storeDir ++ "/" ++ h ++ ".fpr")
       appendFile' dbPath (name ++ " " ++ v ++ " " ++ h ++ "\n")
     appendFile' p s = do
       createDirectoryIfMissing True ".fpr"
       appendFile p s
-    storeTops h = do
+    storeInterface h = do
+      mu <- storeUnit h
+      interface <- Compile.checkedInterface (storeDir ++ "/" ++ h ++ ".fpr")
+      pure (muTops mu, interface)
+    storeUnit h = do
       let p = storeDir ++ "/" ++ h ++ ".fpr"
       ok <- doesFileExist p
-      when (not ok) $ hPutStrLn stderr ("warning: prior version's blob missing from store: " ++ p)
-      if not ok
-        then pure []
-        else do
-          cache <- newIORef M.empty
-          r <- loadModule cache [] p
-          pure (either (const []) muTops r)
+      unless ok $ hPutStrLn stderr ("commit refused: prior version blob missing: " ++ p) >> exitFailure
+      cache <- newIORef M.empty
+      r <- loadModule cache [] p
+      case r of
+        Left e -> hPutStrLn stderr ("commit refused: prior version cannot load: " ++ e) >> exitFailure >> undefined
+        Right mu -> do
+          unless (muHash mu == h) $ hPutStrLn stderr "commit refused: prior version blob hash mismatch" >> exitFailure
+          pure mu
 
 -- ---- push / pull: the pkgstore seam, wired -----------------------------
 -- .fpr IS pkgstore one level down (docs/VERSIONING.md), so push is two

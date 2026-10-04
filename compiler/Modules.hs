@@ -79,6 +79,7 @@ data LoadResult = LoadResult
     lrAnchors :: Anchors, -- QUALIFIED bind name -> (file, line) across
                           -- every spliced unit (spans step 1: the error
                           -- sinks anchor "in NAME:" messages with this)
+    lrRootAliases :: [(Name, String)], -- checked library identity, not a diagnostic
     lrSources :: Sources -- unit file -> source (spans steps 2-3: the
                          -- locator scans ranges / resolves offsets)
   }
@@ -470,7 +471,7 @@ loadProgram preludeTops rootPath rootTops = do
       let unitAnchors =
             M.unions [M.mapKeys (qualify (muHash mu)) (muAnchors mu) | mu <- units]
           unitSources = M.fromList [muSrc mu | mu <- units]
-      pure (Right (LoadResult merged exports (notes ++ depNotes) unitPairs root' rootHash unitAnchors unitSources))
+      pure (Right (LoadResult merged exports (notes ++ depNotes) unitPairs root' rootHash unitAnchors rootAliases unitSources))
   where
     pinRoot aliases (TUse a spec) =
       let (nm, _) = specParts spec
