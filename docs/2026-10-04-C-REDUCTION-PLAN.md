@@ -166,3 +166,11 @@ storage. QOS's `docs/2026-10-04-VIRTIO-POLICY.md` records scope and evidence.
 Deadline configuration, DMA ownership, reset/offline transitions and the
 TCP/ARP actor are not migrated by this first slice. No full regression sweep
 or target performance claim follows from these tests.
+
+The next recovery slice moves the waiting/reset decision tables into
+`blockpolicy.fpr` and adds reset-owner cancellation cleanup. Killing the owner
+before or after the reset-status write now takes the disk offline while keeping
+DMA backing reserved, rather than leaving it resetting indefinitely. The eight
+legacy/modern, one/two-hart cancellation boots pass; a temporary build without
+the cleanup fails the same fixture. The QOS implementation record carries the
+full scope. Configurable budgets and the block service protocol remain open.
