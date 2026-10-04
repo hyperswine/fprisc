@@ -6,7 +6,7 @@
 #include <stdint.h>
 typedef struct block { uw size; struct block *prev, *next; uw used; uw fields; struct block *pending; const str_t *layout; uw alignment_padding; } block;
 _Static_assert((sizeof(block)+16)%16 == 0, "Builtin payload alignment");
-_Static_assert(sizeof(uw) == 8, "Builtin heap currently requires 64-bit words");
+_Static_assert(sizeof(uw) == 4 || sizeof(uw) == 8, "Builtin heap requires RV32/RV64 words");
 static block *head;
 static uw low, high;
 #define PREFIX (sizeof(block) + 16)

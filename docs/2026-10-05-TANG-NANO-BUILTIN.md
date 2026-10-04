@@ -1,0 +1,132 @@
+# Tang Nano 20K: builtin on SimpleRisc RV32IM
+
+This implements the board-port recipe in
+[BAREMETAL-BUILTIN](2026-09-18-BAREMETAL-BUILTIN.md): replace startup, the
+linker RAM map, console/exit behavior and raw machine primitives. The reference
+RV64 QEMU build remains the default. `BUILTIN_BOARD=tangnano20k` selects the new
+board files in `machine/builtin/tangnano20k/` and the compiler's RV32 backend.
+
+The target is the **HaskPlayground SimpleRisc soft processor**, not the BL616
+USB bridge or another processor on the board. It needs the current RV32IM,
+64 KiB RAM bitstream. The FPGA image is loaded separately; compiling an FP-RISC
+program does not synthesize or reconfigure the FPGA.
+
+## Build and run
+
+From the `fprisc` repository, with `riscv64-unknown-elf-gcc` installed:
+
+```sh
+make bare-metal-builtin BUILTIN_BOARD=tangnano20k \
+  PROG=tests/builtin_tangnano20k.fpr \
+  BUILD=build/tangnano20k IMAGE=build/tangnano20k/builtin.elf
+
+python3 tools/run_simple_risc.py build/tangnano20k/builtin.bin \
+  --port /dev/cu.usbserial-20250303171 --freq-mhz 96
+```
+
+Or use `bare-metal-builtin-run` with the same build arguments and
+`SIMPLE_RISC_FLAGS='--port /dev/cu.usbserial-20250303171 --freq-mhz 96'`.
+Choose the FPGA UART interface, not the JTAG serial interface. The port path is
+an example from the tested board; use the actual connected device.
+
+The tested bitstream from the preceding HaskPlayground hardware run is
+`../HaskPlayground/output/tangnano20k/simple_risc.fs`. Reload it into
+volatile SRAM when necessary:
+
+```sh
+~/Documents/Libs/oss-cad-suite/bin/openFPGALoader -b tangnano20k \
+  ../HaskPlayground/output/tangnano20k/simple_risc.fs
+```
+
+That artifact is generated locally, not shipped in this repository. To rebuild
+the FPGA from source, use HaskPlayground's board build script with
+`FREQ_MHZ=96`, then load its `simple_risc.fs`. Match `--freq-mhz` to the image
+actually loaded. The UART divider is 868 clocks per bit: 96 MHz needs 110,599
+baud. The loader uses macOS `IOSSIOSPEED` for arbitrary speeds. On other systems
+it currently accepts only standard termios baud rates. `--baud` overrides the
+derived rate. The CPU test is polling UART, 8-N-1.
+
+Expected output:
+
+```text
+TANG NANO BUILTIN HOLDS
+FPR EXIT 0
+DONE
+```
+
+`DONE` by itself is not proof of success: SimpleRisc emits it for illegal
+instructions and other unexpected halts too. The new runtime prints an explicit
+exit marker before ECALL. The host loader returns failure on panic, timeout or a
+halt without the successful runtime marker. It handles partial writes and
+fragmented reads, keeps one exclusive port session open, and stops the CPU with
+Ctrl-C before closing it to avoid the documented BL616 close/reopen wedge.
+
+## Machine and value contracts
+
+- Code loads at address zero. Unified RAM is exactly `[0, 65536)`. Startup sets
+  `gp` and `sp`, clears BSS, initializes the hart spill/render context and the
+  heap, then calls the generated `main`. No CSRs, FPU setup or trap vectors.
+- The upper 8 KiB is reserved for the downward-growing stack. The linker refuses
+  an image leaving less than 4 KiB between BSS and the stack reservation for the
+  heap. There is no runtime stack-overflow guard; call depth is the program's
+  responsibility. `BUILTIN_HEAP_BYTES` may reduce the heap for tests.
+- `Int` is signed with 31 payload bits (range `-2^30 .. 2^30-1`), while `Word`
+  and `Addr` preserve all 32 bits. `Word.bits Unit` returns 32. Header fields stay
+  at byte offsets 0 and 4; object fields begin at offset 8 and use 4-byte words.
+  The existing allocator's 16-byte allocation prefix and alignment are retained.
+- This port uses manual ownership and `heap.c`. `Rc.retain` and `Rc.release`
+  work for the documented acyclic supported values. Word/address results are
+  boxed, raw buffers still need `Mem.free`, and callers manage owning aliases.
+  ARC, raw units and C exports remain RV64-only and are refused on RV32.
+- F64 is refused before code generation, including imported definitions: a
+  64-bit float cannot fit this one-word value ABI. This is not a float or vector
+  portability milestone.
+- TXDATA is `0x10000000`, STATUS is `0x10000004` (TX-ready bit 0); these are
+  SimpleRisc registers, not QEMU's 16550 register layout. Console output preserves
+  LF. ECALL halts this core and returns control to its UART programming protocol.
+- Byte, halfword and word accesses are volatile, with alignment checked in the
+  common builtin adapter. `Mem.fence` emits the supported fence instruction.
+  Instruction fencing uses SimpleRisc's coherent instruction/data RAM behavior.
+  CSR, IRQ, wait and atomic operations panic explicitly. Internal runtime locks
+  use a board-only single-core path: there are no interrupts or other harts,
+  so a held lock indicates forbidden re-entry. This does not emulate user atomics.
+- Unsupported services still fail at link time. No actor scheduler, QOS service
+  layer, interrupts or multicore support is supplied by this port.
+
+## Verification on 2026-10-05
+
+```sh
+python3 tests/check_tangnano20k.py \
+  --port /dev/cu.usbserial-20250303171 --freq-mhz 96
+python3 tests/check_builtin.py
+```
+
+The new suite checks the linked image for scheduler/fuel/QOS dependencies,
+unresolved symbols and unsupported ISA instructions; rejects an oversized image
+and unsupported ARC/F64 configurations; and exercises the UART host against a
+pseudo-terminal for fragmented output, successful exit, panic, bare halt and
+timeout. Without `--port`, it explicitly skips physical FPGA tests.
+
+On the connected Tang Nano 20K, first at 51 MHz and then at 96 MHz with the
+revised HaskPlayground processor, repeated compiled FP-RISC runs passed
+tail recursion, shared-node release with allocation-count recovery, 32-bit word
+width/high-bit shifts/wraparound, byte/halfword/word memory, realloc preservation,
+free and fences. Hardware failure cases passed for shift 32, an overflowing
+mask, unaligned access, heap exhaustion, CSR, IRQ and atomic operations. A final
+successful program load checked recovery after the failures.
+
+The existing RV64 QEMU builtin suite also passed, including invalid-operation
+panics, separate profile caches and the C heap/refcount tests under ASan/UBSan.
+The 96 MHz FPGA build uses eight clocks per ordinary instruction, one-hot
+control, registered register-file reads/writeback, RAM input/output and
+load/store alignment. Seed 2 routed at an estimated 149.08 MHz; actual hardware
+passed five exact C arithmetic runs, UART echo/reset/clear recovery, memory
+stress and 30,720 RV32M reference checks before this builtin suite. The loader
+and test suite now default to 96 MHz; use `--freq-mhz 51` for older 51 MHz images.
+
+This does not establish arbitrary program stack bounds, ARC on RV32, or support
+for facilities absent from SimpleRisc.
+
+Larger memory and compute workloads, measured execution times, and the 98.72%
+heap / explicit-exhaustion checks are recorded in
+[the board stress results](2026-10-05-TANG-NANO-STRESS.md).

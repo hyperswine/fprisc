@@ -1,0 +1,6 @@
+profile builtin.
+rem a b = a - (a / b) * b.
+loop n state acc = case n == 0 of True -> acc | False ->
+  next = rem (state * 109 + 89) 65521;
+  loop (n - 1) next (rem (acc + next) 1000003).
+main = _ = print "BEGIN compute"; checksum = loop 1000000 123 0; print "COMPUTE iterations=1000000 checksum={checksum}".

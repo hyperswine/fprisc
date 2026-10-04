@@ -1,0 +1,45 @@
+profile builtin.
+rem a b = a - (a / b) * b.
+check ok = case ok of True -> Unit | False -> error "sort stress check failed".
+get p i = a = Addr.add p (i * 2); v = Mem.read16 a; _ = Rc.release a; v.
+put p i v = a = Addr.add p (i * 2); _ = Mem.write16 a v; Rc.release a.
+fill p i n state = case i == n of True -> Unit | False ->
+  next = rem (state * 109 + 89) 65536;
+  _ = put p i next;
+  fill p (i + 1) n next.
+merge src dst i j mid hi out = case out == hi of True -> Unit | False ->
+  case i == mid of
+    True -> _ = put dst out (get src j); merge src dst i (j + 1) mid hi (out + 1)
+    | False -> case j == hi of
+      True -> _ = put dst out (get src i); merge src dst (i + 1) j mid hi (out + 1)
+      | False -> a = get src i; b = get src j;
+        case a <= b of
+          True -> _ = put dst out a; merge src dst (i + 1) j mid hi (out + 1)
+          | False -> _ = put dst out b; merge src dst i (j + 1) mid hi (out + 1).
+minimum a b = case a < b of True -> a | False -> b.
+mergePass src dst lo width n = case lo >= n of True -> Unit | False ->
+  mid = minimum (lo + width) n;
+  hi = minimum (lo + width * 2) n;
+  _ = merge src dst lo mid mid hi lo;
+  mergePass src dst hi width n.
+sort src dst width n = case width >= n of True -> src | False ->
+  _ = mergePass src dst 0 width n;
+  sort dst src (width * 2) n.
+verify p i n prev hash = case i == n of True -> hash | False ->
+  v = get p i;
+  _ = check (v >= prev);
+  verify p (i + 1) n v (rem (hash * 257 + v) 1000003).
+main =
+  _ = print "BEGIN sort";
+  before = Mem.liveAllocations Unit;
+  a = Mem.alloc 16384;
+  b = Mem.alloc 16384;
+  _ = fill a 0 8192 123;
+  result = sort a b 1 8192;
+  hash = verify result 0 8192 0 0;
+  _ = Mem.free a;
+  _ = Mem.free b;
+  _ = Rc.release a;
+  _ = Rc.release b;
+  _ = check (Mem.liveAllocations Unit == before);
+  print "SORT n=8192 hash={hash}".

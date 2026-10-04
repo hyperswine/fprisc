@@ -473,15 +473,27 @@ static inline void fpr_backoff(uw *delay) {
   for (uw i = 0; i < *delay; i++) __asm__ volatile("nop");
   if (*delay < FPR_BACKOFF_CAP) *delay <<= 1;
 }
+void fpr_cpanic(const char *msg) __attribute__((noreturn));
 static inline void fpr_lock(fpr_lock_t *l) {
+#ifdef FPR_SIMPLE_RISC
+  /* Exactly one non-preemptible core, no interrupt handlers. A held lock
+   * therefore means re-entry, not contention from another execution context. */
+  if (l->v) fpr_cpanic("SimpleRisc: recursive runtime lock");
+  l->v = 1;
+#else
   uw delay = 1;
   for (;;) {
     if (!__atomic_exchange_n(&l->v, 1, __ATOMIC_ACQUIRE)) return;
     while (__atomic_load_n(&l->v, __ATOMIC_RELAXED)) fpr_backoff(&delay);
   }
+#endif
 }
 static inline void fpr_unlock(fpr_lock_t *l) {
+#ifdef FPR_SIMPLE_RISC
+  l->v = 0;
+#else
   __atomic_store_n(&l->v, 0, __ATOMIC_RELEASE);
+#endif
 }
 
 /* ---- the ONE freelist discipline (docs/2026-08-29-MEMORY-V2-PLAN.md phase 1) --
@@ -656,7 +668,6 @@ V fpr_syscall_wait_result(void);
 V fpr_mkresult(uw variant, const char *s);
 V fpr_mkresultn(uw variant, const char *s, uw n);
 void fpr_panic(V str_obj) __attribute__((noreturn));
-void fpr_cpanic(const char *msg) __attribute__((noreturn));
 /* the /logs rings (runtime.c): sev 0 normal / 1 warn / 2 error / 3 host */
 void fpr_logput(int sev, const char *line, uw n);
 /* #24: set by hosted entries (qosp) to persist a panic's last words */

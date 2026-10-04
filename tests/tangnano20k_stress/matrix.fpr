@@ -1,0 +1,38 @@
+profile builtin.
+rem a b = a - (a / b) * b.
+check ok = case ok of True -> Unit | False -> error "matrix stress check failed".
+get p i = a = Addr.add p (i * 2); v = Mem.read16 a; _ = Rc.release a; v.
+put p i v = a = Addr.add p (i * 2); _ = Mem.write16 a v; Rc.release a.
+fill a b i = case i == 4096 of True -> Unit | False ->
+  row = i / 64; col = rem i 64;
+  _ = put a i (rem (row * col + 3 * row + 5 * col) 17);
+  _ = put b i (rem (row + 2 * col + 7) 19);
+  fill a b (i + 1).
+dot a b row col k acc = case k == 64 of True -> acc | False ->
+  x = get a (row * 64 + k);
+  y = get b (k * 64 + col);
+  dot a b row col (k + 1) (acc + x * y).
+multiply a b c i = case i == 4096 of True -> Unit | False ->
+  _ = put c i (dot a b (i / 64) (rem i 64) 0 0);
+  multiply a b c (i + 1).
+hash p i acc = case i == 4096 of True -> acc | False ->
+  hash p (i + 1) (rem (acc * 257 + get p i) 1000003).
+total p i acc = case i == 4096 of True -> acc | False -> total p (i + 1) (acc + get p i).
+main =
+  _ = print "BEGIN matrix";
+  before = Mem.liveAllocations Unit;
+  a = Mem.alloc 8192;
+  b = Mem.alloc 8192;
+  c = Mem.alloc 8192;
+  _ = fill a b 0;
+  _ = multiply a b c 0;
+  digest = hash c 0 0;
+  sum = total c 0 0;
+  _ = Mem.free a;
+  _ = Mem.free b;
+  _ = Mem.free c;
+  _ = Rc.release a;
+  _ = Rc.release b;
+  _ = Rc.release c;
+  _ = check (Mem.liveAllocations Unit == before);
+  print "MATRIX n=64 hash={digest} sum={sum}".

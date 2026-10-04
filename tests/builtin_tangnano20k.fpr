@@ -1,0 +1,33 @@
+profile builtin.
+Node = Type (Node a b).
+check ok = case ok of True -> Unit | False -> error "Tang Nano builtin check failed".
+sum n acc = case n == 0 of True -> acc | False -> sum (n - 1) (acc + n).
+stress n = case n == 0 of True -> Unit | False ->
+  xs = [n];
+  alias = Rc.retain xs;
+  node = Node xs alias;
+  _ = Rc.release node;
+  stress (n - 1).
+main =
+  _ = check (sum 1000 0 == 500500);
+  before = Mem.liveAllocations Unit;
+  _ = stress 100;
+  _ = check (Mem.liveAllocations Unit == before);
+  _ = check (Word.bits Unit == 32);
+  all = Word.not (Word.fromInt 0);
+  _ = check (Word.eq all (Word.mask 32 0));
+  _ = check (Word.toInt all == -1);
+  high = Word.shl (Word.fromInt 1) 31;
+  _ = check (Word.eq (Word.shr high 31) (Word.fromInt 1));
+  _ = check (Word.eq (Word.add all (Word.fromInt 1)) (Word.fromInt 0));
+  p = Mem.alloc 16;
+  _ = Mem.write8 p 171;
+  _ = Mem.write16 (Addr.add p 2) 48879;
+  _ = Mem.writeWord (Addr.add p 8) all;
+  q = Mem.realloc p 512;
+  _ = check (Mem.read8 q == 171);
+  _ = check (Mem.read16 (Addr.add q 2) == 48879);
+  _ = check (Word.eq (Mem.readWord (Addr.add q 8)) all);
+  _ = Mem.free q;
+  _ = Mem.fence Unit;
+  print "TANG NANO BUILTIN HOLDS".

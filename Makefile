@@ -212,6 +212,25 @@ $(BUILD)/heap.s: fprc $(MACHINE)/builtin/heap.fpr FORCE
 	./fprc --system=bare-metal --profile=builtin --arc --raw --lib --export=$(HEAP_EXPORTS) $(MACHINE)/builtin/heap.fpr $@
 BUILTIN_RT = $(MACHINE)/builtin/crt0.S $(MACHINE)/builtin/virt.c $(BUILTIN_HEAP) \
              $(MACHINE)/builtin/unsafe.c $(MACHINE)/builtin/arc.c $(MACHINE)/builtin/machine.S $(MACHINE)/builtin/interrupt.S $(RUNTIME)/runtime.c $(MACHINE)/virt/memshim.c
+BUILTIN_BOARD ?= virt
+BUILTIN_LINK = $(MACHINE)/builtin/link.ld
+BUILTIN_ARCHFLAGS = $(CFLAGS)
+ifeq ($(BUILTIN_BOARD),tangnano20k)
+ifeq ($(ARC),1)
+$(error tangnano20k currently supports manual ownership only, not ARC=1)
+endif
+BUILTIN_LINK = $(MACHINE)/builtin/tangnano20k/link.ld
+BUILTIN_RT = $(MACHINE)/builtin/tangnano20k/crt0.S $(MACHINE)/builtin/tangnano20k/board.c \
+             $(MACHINE)/builtin/tangnano20k/machine.c $(MACHINE)/builtin/heap.c \
+             $(MACHINE)/builtin/unsafe.c $(RUNTIME)/runtime.c $(MACHINE)/virt/memshim.c
+BUILTIN_ARCHFLAGS = -march=rv32im_zifencei -mabi=ilp32 -mcmodel=medany \
+                   -ffreestanding -nostdlib -nostartfiles -Os -Wall -Wextra \
+                   -fno-builtin -fno-stack-protector -DFPR_SIMPLE_RISC
+BUILTIN_COMPILER_FLAGS = --target=rv32
+BUILTIN_LDFLAGS += -lgcc
+else ifneq ($(BUILTIN_BOARD),virt)
+$(error unknown BUILTIN_BOARD=$(BUILTIN_BOARD))
+endif
 ifeq ($(ARC),1)
 BUILTIN_COMPILER_FLAGS = --arc
 BUILTIN_CFLAGS = -DFPR_BUILTIN_ARC -DFPR_BUILTIN_RAW
@@ -235,13 +254,21 @@ endif
 ifeq ($(ARC_CHECK),1)
 BUILTIN_CFLAGS += -DFPR_ARC_CHECK
 endif
-bare-metal-builtin: fprc $(BUILTIN_RT) $(MACHINE)/builtin/link.ld FORCE
+bare-metal-builtin: fprc $(BUILTIN_RT) $(BUILTIN_LINK) FORCE
 	@mkdir -p $(BUILD)
 	./fprc --system=bare-metal --profile=builtin $(BUILTIN_COMPILER_FLAGS) $(FPRC_FLAGS) $(PROG) $(BUILD)/builtin.s
-	$(CROSS)gcc $(CFLAGS) -UFPR_NHARTS -DFPR_NHARTS=1 -DFPR_BUILTIN $(BUILTIN_CFLAGS) -ffunction-sections -fdata-sections \
-	  -Wl,--gc-sections -T $(MACHINE)/builtin/link.ld -I$(RUNTIME) -I$(MACHINE)/builtin \
+	$(CROSS)gcc $(BUILTIN_ARCHFLAGS) -UFPR_NHARTS -DFPR_NHARTS=1 -DFPR_BUILTIN $(BUILTIN_CFLAGS) -ffunction-sections -fdata-sections \
+	  -Wl,--gc-sections -T $(BUILTIN_LINK) -I$(RUNTIME) -I$(MACHINE)/builtin \
 	  $(BUILTIN_RT) $(BUILD)/builtin.s $$(cat $(BUILD)/builtin.s.units) $(BUILTIN_EXTRA) $(BUILTIN_LDFLAGS) -o $(IMAGE)
+ifeq ($(BUILTIN_BOARD),tangnano20k)
+	$(CROSS)objcopy -O binary $(IMAGE) $(basename $(IMAGE)).bin
+	$(CROSS)size $(IMAGE)
+endif
 
 bare-metal-builtin-run: bare-metal-builtin
+ifeq ($(BUILTIN_BOARD),virt)
 	$(QEMU) -machine virt -smp 1 -m 128M -nographic -bios none -kernel $(IMAGE)
+else
+	python3 tools/run_simple_risc.py $(basename $(IMAGE)).bin $(SIMPLE_RISC_FLAGS)
+endif
 .PHONY: bare-metal-builtin bare-metal-builtin-run

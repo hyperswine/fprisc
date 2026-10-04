@@ -56,8 +56,12 @@ with tempfile.TemporaryDirectory(prefix='fpr-builtin-') as temp:
     source.write_text('main = Mem.read8 123.\n')
     output = run(['./fprc', '--profile=bare-metal-builtin', source, tmp / 'bad.s'], 1)
     assert 'Int' in output and 'Addr' in output
-    run(['./fprc', '--profile=bare-metal-builtin', '--target=rv32', source, tmp / 'bad.s'], 1)
-    print('Type and unsupported-target rejection: PASS')
+    source.write_text('main = print "RV32".\n')
+    run(['./fprc', '--profile=bare-metal-builtin', '--target=rv32', source, tmp / 'rv32.s'])
+    output = run(['./fprc', '--profile=bare-metal-builtin', '--target=rv32', '--arc', source, tmp / 'bad.s'], 1)
+    assert 'manual ownership only' in output
+    run(['./fprc', '--profile=bare-metal-builtin', '--rvv', source, tmp / 'bad.s'], 1)
+    print('Type rejection, RV32 manual support and ARC/RVV refusals: PASS')
 
     # Both builds must keep their own module cache, including custom preludes.
     prelude = tmp / 'prelude.fpr'

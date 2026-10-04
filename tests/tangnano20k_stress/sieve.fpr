@@ -1,0 +1,25 @@
+profile builtin.
+check ok = case ok of True -> Unit | False -> error "sieve stress check failed".
+readByte p i = a = Addr.add p i; v = Mem.read8 a; _ = Rc.release a; v.
+writeByte p i v = a = Addr.add p i; _ = Mem.write8 a v; Rc.release a.
+clear p i n = case i > n of True -> Unit | False -> _ = writeByte p i 0; clear p (i + 1) n.
+mark p i stride n = case i > n of True -> Unit | False -> _ = writeByte p i 1; mark p (i + stride) stride n.
+sieve p i n = case i * i > n of True -> Unit | False ->
+  _ = case readByte p i == 0 of True -> mark p (i * i) i n | False -> Unit;
+  sieve p (i + 1) n.
+count p i n acc = case i > n of True -> acc | False ->
+  count p (i + 1) n (acc + (case readByte p i == 0 of True -> 1 | False -> 0)).
+sumPrimes p i n acc = case i > n of True -> acc | False ->
+  sumPrimes p (i + 1) n (acc + (case readByte p i == 0 of True -> i | False -> 0)).
+main =
+  _ = print "BEGIN sieve";
+  before = Mem.liveAllocations Unit;
+  p = Mem.alloc 36001;
+  _ = clear p 0 36000;
+  _ = sieve p 2 36000;
+  primes = count p 2 36000 0;
+  total = sumPrimes p 2 36000 0;
+  _ = Mem.free p;
+  _ = Rc.release p;
+  _ = check (Mem.liveAllocations Unit == before);
+  print "SIEVE primes={primes} sum={total}".

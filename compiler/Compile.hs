@@ -316,6 +316,20 @@ bindNames = M.keysSet . arities
 compileMain :: IO ()
 compileMain = compileWithInterface (const (pure ()))
 
+-- RV32's one-word manual ABI cannot carry a 64-bit float. Refuse before
+-- code generation, including imported definitions and unsaturated primitives.
+builtinWideFloat :: Core -> Bool
+builtinWideFloat e = case e of
+  CVar n -> "F64." `isPrefixOf` n || n == "f64frombits"
+  CApp f a -> builtinWideFloat f || builtinWideFloat a
+  CLam _ b -> builtinWideFloat b
+  CLet _ a b -> builtinWideFloat a || builtinWideFloat b
+  CIf c a b -> any builtinWideFloat [c,a,b]
+  CMk _ _ xs -> any builtinWideFloat xs
+  CTagEq _ _ a -> builtinWideFloat a
+  CProj _ a -> builtinWideFloat a
+  _ -> False
+
 -- Return interfaces only after the SAME normal checker has accepted the unit.
 -- No diagnostic parsing, alternate inference path or code-generation required.
 checkedInterface :: FilePath -> IO [(Name, String)]
@@ -389,8 +403,11 @@ compileWithInterface accepted = do
     refuse ("profile sol runs on the posix system (the VM: `fpr run`), not " ++ system)
   when (profile == "sol" && espHost) $
     refuse "profile sol runs on the VM (`fpr run`) on this machine, not on the esp-idf host"
-  when (oBuiltin opts && (oA64 opts || oX64 opts || oQosApp opts || oRvv opts || tgtName (oTarget opts) /= "rv64")) $ do
-    hPutStrLn stderr "profile builtin currently supports scalar RV64 only"
+  when (oBuiltin opts && (oA64 opts || oX64 opts || oQosApp opts || oRvv opts || tgtName (oTarget opts) `notElem` ["rv64", "rv32"])) $ do
+    hPutStrLn stderr "profile builtin supports scalar RV64 or RV32 only"
+    exitFailure
+  when (oBuiltin opts && oArc opts && tgtName (oTarget opts) == "rv32") $ do
+    hPutStrLn stderr "profile builtin RV32 currently supports manual ownership only; --arc/--raw/--export require RV64"
     exitFailure
   when (oBase opts && (oBuiltin opts || oQosApp opts || oRvv opts)) $ do
     hPutStrLn stderr "--system=posix supports hosted executables/modules: no builtin/arc, no QOS app image, no RVV"
@@ -781,6 +798,10 @@ compileWithInterface accepted = do
              in [t | t@(TBind n _ _ _) <- rw, S.member n bn]
                   ++ [t | t <- rw, not (isTBind t)]
           compileUnit uts = M.map (fmap eraseCast) (fst (runState (compileTop uts >>= liftFix) (DEnv 0 consAll shapes [])))
+          checkBuiltinWidth p = when (oBuiltin opts && tgtName (oTarget opts) == "rv32"
+                                      && any (builtinWideFloat . snd) (M.elems p)) $ do
+            hPutStrLn stderr "profile builtin RV32: F64 requires a 64-bit value ABI"
+            exitFailure
           preludeExt = arities (resolveUnit preludeE')
           unitExt = M.unions [arities (resolveUnit uts) | (_, uts) <- units']
           sourceExt = M.union preludeExt unitExt
@@ -860,6 +881,7 @@ compileWithInterface accepted = do
              ++ " known-partial=" ++ show (length [() | l <- lines asm, "# pap-create:" `List.isPrefixOf` l])
              ++ " static-descriptors=" ++ show (length [() | l <- lines asm, "# static-pap:" `List.isPrefixOf` l]))
           emitUnit path exps ext uts = do
+            checkBuiltinWidth (compileUnit uts)
             cached <- doesFileExist path
             if cached
               then do
@@ -944,6 +966,7 @@ compileWithInterface accepted = do
       when (oBuiltin opts && not (oArc opts) && M.member "machineInterrupt" rootProgRaw) $ do
         hPutStrLn stderr "machineInterrupt requires --arc (raw, allocation-free handler ABI)"
         exitFailure
+      checkBuiltinWidth rootProgRaw
       rootProgSym <- case symbolize rootProgRaw of
         Left e -> hPutStrLn stderr ("error: " ++ e) >> exitFailure
         Right p -> pure p
