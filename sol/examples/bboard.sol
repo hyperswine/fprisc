@@ -8,6 +8,8 @@
 #   * ASCII-only render (no ANSI/unicode), values kept verbatim,
 #     2-pin components (R C L D B; V/I are sources, not placed).
 #   * netlists are lists of line strings (no argv in Sol yet).
+#   * a line the tool cannot place (too few nodes, an unsupported kind) is
+#     reported under "-- skipped --" rather than dropped.
 #
 # Board model (identical to the Python):
 #   30 rows x 2 sides x 5 cols; a strip = (row, side) is one node.
@@ -21,6 +23,8 @@
 # find. There is no explicit recursion, so nothing here is `unsafe` and every
 # function is total.
 
+base = use "../lib/base".
+
 Opt = Type (Nope | Got x).
 
 # a parsed netlist line; kind is the upper-cased first letter's char code
@@ -33,14 +37,8 @@ valueOf (k, v) = v.
 firstGot [] = Nope.
 firstGot (v :: _) = Got v.
 
-firstOr d [] = d.
-firstOr d (x :: _) = x.
-
+padL : (w : Int | w >= 0) -> String -> String .
 padL w s = "{Str.repeat (w - Str.len s) " "}{s}".
-boolInt b = case b of True -> 1 | False -> 0.
-
-# print each line, in order
-say lines = List.fold (fn n l -> u = print l; n + 1) 0 lines.
 
 # ---------- parsing ----------
 placeableKinds = [82, 67, 76, 68, 66].  # R C L D B
@@ -49,23 +47,33 @@ sourceKinds = [86, 73].                 # V I
 upC c | c >= 97, c <= 122 = c - 32.
 upC c = c.
 
-parseNetlist : List String -> List Comp .
+# Each line gives nothing (blank, '*' comment, '.' directive), a component
+# (Ok), or the reason it cannot be used (Err). The netlist is input: a line
+# the tool cannot place is reported, not silently dropped.
+parseNetlist : List String -> List (Result Comp String) .
 parseNetlist ls = ls |> List.map parseLine |> List.concat.
 
-parseLine : String -> List Comp .
+parseLine : String -> List (Result Comp String) .
 parseLine ln = parseWords (Str.words ln).
 
-parseWords : List String -> List Comp .
+parseWords : List String -> List (Result Comp String) .
 parseWords [] = [].
 parseWords ws = parseKind (upC (Str.at (ws ! 0) 0)) ws.
 
-# NAME NODE_A NODE_B [VALUE]. A '*' comment or '.' directive has a kind that
-# is neither placeable nor a source, so it parses to nothing.
-parseKind : Int -> List String -> List Comp .
-parseKind k ws | List.len ws < 3 = [].
-parseKind k ws | List.has k placeableKinds = [comp k ws (valueField ws)].
-parseKind k ws | List.has k sourceKinds = [comp k ws "src"].
-parseKind k ws = [].
+# NAME NODE_A NODE_B [VALUE]
+parseKind : Int -> List String -> List (Result Comp String) .
+parseKind k ws | k == 42 or k == 46 = [].
+parseKind k ws | List.len ws < 3 = [Err "{ws ! 0}: needs two nodes"].
+parseKind k ws | List.has k placeableKinds = [Ok (comp k ws (valueField ws))].
+parseKind k ws | List.has k sourceKinds = [Ok (comp k ws "src")].
+parseKind k ws = [Err "{ws ! 0}: unsupported (2-pin R C L D B, or a V/I source)"].
+
+oks rs = rs |> List.map okPart |> List.concat.
+okPart (Ok c) = [c].
+okPart (Err e) = [].
+errs rs = rs |> List.map errPart |> List.concat.
+errPart (Ok c) = [].
+errPart (Err e) = [e].
 
 valueField ws | List.len ws >= 4 = ws ! 3.
 valueField ws = "".
@@ -89,10 +97,12 @@ netTag net pwrs | List.has net pwrs = " [PWR]".
 netTag net pwrs = "".
 
 # ---------- strip encoding ----------
+sKey : (row : Int | row >= 1 and row <= 30) -> (side : Int | side >= 0 and side <= 1) -> Int .
 sKey row side = row * 2 + side.
 sRow k = k / 2.
 sSide k = k - (k / 2) * 2.
 
+holeLetter : (side : Int | side >= 0 and side <= 1) -> (col : Int | col >= 1 and col <= 5) -> String .
 holeLetter side col = Str.fromCode (97 + side * 5 + col - 1).
 holeLabel k col = "{holeLetter (sSide k) col}{sRow k}".
 
@@ -107,7 +117,7 @@ st0 = {holes = [], owners = [], netstr = [], places = []}.
 usedCols k holes = holes |> List.filter (keyIs k) |> List.map valueOf.
 
 # the first free column 1..5 of a strip, or 0 when it is full
-freeCol k holes = used = usedCols k holes; List.range 1 5 |> List.filter (fn c -> not (List.has c used)) |> firstOr 0.
+freeCol k holes = used = usedCols k holes; List.range 1 5 |> List.filter (fn c -> not (List.has c used)) |> base.firstOr 0.
 
 stripOK k net owners = case lookupA k owners of Nope -> True | Got n -> n == net.
 
@@ -128,10 +138,10 @@ scoreCand na nb sA st =
   case and (and okA okB) (and (fA > 0) (fB > 0)) of
     False -> 0 - 1000000
   | True ->
-      100 * boolInt (ownA == Got na)
-      + 100 * boolInt (ownB == Got nb)
-      - 40 * boolInt (and (netStrips na st.netstr != []) (not (ownA == Got na)))
-      - 40 * boolInt (and (netStrips nb st.netstr != []) (not (ownB == Got nb)))
+      100 * base.boolInt (ownA == Got na)
+      + 100 * base.boolInt (ownB == Got nb)
+      - 40 * base.boolInt (and (netStrips na st.netstr != []) (not (ownA == Got na)))
+      - 40 * base.boolInt (and (netStrips nb st.netstr != []) (not (ownB == Got nb)))
       - Numeric.abs (sRow sA - 14).
 
 # pin a's candidate strips: rows 1..28 (pin b lands two rows down), both sides
@@ -221,7 +231,7 @@ jumperGap netstr wires n =
     True -> ["net {n}: {got}/{need} jumpers MISSING"]
   | False -> [].
 
-checkNets nets netstr wires = nets |> List.map (jumperGap netstr wires) |> List.concat |> firstOr "connectivity: OK".
+checkNets nets netstr wires = nets |> List.map (jumperGap netstr wires) |> List.concat |> base.firstOr "connectivity: OK".
 
 # ---------- rendering ----------
 pinName 68 0 = "A".  # diode anode / cathode
@@ -257,16 +267,20 @@ netLine pwrs netstr n = "  {n}{netTag n pwrs}: {stripsStr (netStrips n netstr)}"
 
 wireLine (n, f, t, kd) = "  [{kd}] net {n}: {f} -> {t}".
 
+skippedLines [] = [].
+skippedLines es = "-- skipped --" :: List.map (fn e -> "  {e}") es.
+
 # ---------- driver ----------
 runBoard title ls =
-  u = say ["", "=== {title} ==="];
-  comps = parseNetlist ls;
+  parsed = parseNetlist ls;
+  comps = oks parsed;
+  u = base.say (["", "=== {title} ==="] + skippedLines (errs parsed));
   placeable = List.filter (fn c -> not (isSource c)) comps;
   pwrs = pwrNetsOf comps;
   nets = netsOf placeable;
   st = List.fold placeOne st0 placeable;
   ws = List.fold (wireNet pwrs st.netstr) (mkWs st.holes) nets;
-  say (["-- components --"] + List.map compLine st.places
+  base.say (["-- components --"] + List.map compLine st.places
     + ["-- nets --"] + List.map (netLine pwrs st.netstr) nets
     + ["-- wires --"] + List.map wireLine ws.wires
     + ["-- checks --", "  {checkOwners st.owners}", "  {checkNets nets st.netstr ws.wires}", ""]

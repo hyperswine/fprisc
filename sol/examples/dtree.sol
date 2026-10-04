@@ -78,48 +78,43 @@ buildVec xs v = List.fold (fn acc p -> Vec.push p acc) v xs.
 
 majorityLeaf n np = Leaf (case np * 2 >= n of True -> 1 | False -> 0 - 1).
 
-# recursive build: packed-count scan for the split, interpreted partition
-build : unsafe Int -> (Vector _) -> Tree .
+# recursive build, measured by depth: packed-count scan for the split,
+# interpreted partition. A pure node (all one label) becomes a leaf.
+# Checker note: a measure covers self-recursion only, and a case arm cannot
+# hold bindings, so the split is computed before the purity test instead of
+# in a helper; on a pure node that scan is wasted work, not a wrong answer.
+build : (depth : Int | measure depth) -> (Vector _) -> Tree .
+build depth v | depth <= 0 = leafOf v.
 build depth v =
   (n, v0) = Vec.len v;
   (np, v1) = Vec.fold posCnt 0 v0;
-  case depth == 0 of
-    True -> finishLeaf n np v1
-  | False -> tryNode depth n np v1.
+  (bf, bt, bs, v2) = scan allCands v1;
+  (ls, rs) = part bf bt (Vec.toList v2);
+  case or (np == 0) (np == n) of
+    True -> majorityLeaf n np
+  | False -> Node bf bt (build (depth - 1) (buildVec ls (Vec.new Unit))) (build (depth - 1) (buildVec rs (Vec.new Unit))).
 
-finishLeaf n np v = u = Vec.free v; majorityLeaf n np.
+leafOf v =
+  (n, v0) = Vec.len v;
+  (np, v1) = Vec.fold posCnt 0 v0;
+  u = Vec.free v1;
+  majorityLeaf n np.
 
-tryNode : unsafe Int -> Int -> Int -> (Vector _) -> Tree .
-tryNode depth n np v =
-  case np == 0 of
-    True -> finishLeaf n np v
-  | False -> (case np == n of
-      True -> finishLeaf n np v
-    | False -> splitNode depth n v).
-
-splitNode : unsafe Int -> Int -> (Vector _) -> Tree .
-splitNode depth n v =
-  (bf, bt, bs, v2) = scan allCands v;
-  xs = Vec.toList v2;
-  (ls, rs) = part bf bt xs;
-  l = build (depth - 1) (buildVec ls (Vec.new Unit));
-  r = build (depth - 1) (buildVec rs (Vec.new Unit));
-  Node bf bt l r.
-
-predict : unsafe Tree -> _ -> i46 .
-predict (Leaf c) _ = c.
-predict (Node f th l _) p | pick f p < th = predict l p.
-predict (Node _ _ _ r) p = predict r p.
+# Structural measures read descent from a body case (pattern-headed
+# recursive clauses are refused), so the tree walks match in the body.
+predict : (t : Tree | measure t) -> _ -> Int .
+predict t p = case t of
+    Leaf c -> c
+  | Node f th l r -> (case pick f p < th of True -> predict l p | False -> predict r p).
 
 # how many rows the tree classifies correctly
-correct : unsafe Tree -> List _ -> Int .
 correct t xs = xs |> List.filter (fn p -> predict t p * p.y > 0) |> List.len.
 
 chkAtLeast name got want = case got >= want of
   True -> print "ok {name} ({got} >= {want})"
 | False -> error "FAIL {name}: {got} < {want}".
 
-showT : unsafe Tree -> String .
+showT : (t : Tree | measure t) -> String .
 showT t = case t of
   Leaf c -> "Leaf({c})"
 | Node f th l r -> "Node(x{f} < {th}: {showT l} | {showT r})".

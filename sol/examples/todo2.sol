@@ -2,7 +2,7 @@
 # web (view vocabulary), auth (sign-in pattern). Compare with todo.sol:
 # the app is now ONLY its own logic.
 
-base = use "../lib/base#4c9601596f2bd96b".
+base = use "../lib/base#f9616700c2a16d11".
 ui = use "../lib/ui#24f48582c24bf402".
 auth = use "../lib/auth#668a459dce40f198".
 
@@ -13,11 +13,8 @@ parseTodos s = Str.split 10 s |> List.map parseItem.
 serItem (d, x) = "{d} {x}".
 serTodos ts = ts |> List.map serItem |> Str.join base.nl.
 
-# each item paired with its 0-based position
-indexed xs = List.zip (List.range 0 (List.len xs - 1)) xs.
-
 flipItem (d, x) = (1 - d, x).
-toggleAt i ts = indexed ts |> List.map (flipIfAt i).
+toggleAt i ts = base.indexed ts |> List.map (flipIfAt i).
 flipIfAt i (k, t) | k == i = flipItem t.
 flipIfAt i (k, t) = t.
 
@@ -42,9 +39,14 @@ update ("refresh", v) model | auth.unwrapU model == "" = (model, None).
 update ("refresh", v) model = (model, Get "todos:{auth.unwrapU model}" "gottodos").
 update ("gottodos", v) model = ({model | todos = parseTodos v}, None).
 update ("add", v) model = save ((0, v) :: model.todos) model.
-update ("toggle", v) model = save (toggleAt (Str.parse v) model.todos) model.
+update ("toggle", v) model = toggle (Try.parseInt v) model.
 update ("clear", v) model = save (List.filter isOpen model.todos) model.
 update msg model = (model, None).
+
+# the browser names a row; a non-number is a forged or stale request, logged
+# and ignored (an out-of-range row already toggles nothing)
+toggle (Ok i) model = save (toggleAt i model.todos) model.
+toggle (Err e) model = (model, Print "ignored toggle: {e}").
 
 # ---- view --------------------------------------------------------------------
 todoItem (k, (d, x)) =
@@ -62,7 +64,7 @@ todoView model =
     ],
     ui.card [
       ui.inputRow "add" "what needs doing?" "Add",
-      ui.col [ui.Style.gap1] (indexed model.todos |> List.map todoItem)
+      ui.col [ui.Style.gap1] (base.indexed model.todos |> List.map todoItem)
     ]
   ].
 

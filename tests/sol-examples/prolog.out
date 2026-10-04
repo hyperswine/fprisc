@@ -1,0 +1,12 @@
+
+=== program A: 45 + 200 = 245 ===
+(24 clauses loaded)
+  R = (cpu 3 245 200 0 0)
+
+=== program B: countdown 5 -> 0 (dec/jnz loop) ===
+(24 clauses loaded)
+  R = (cpu 3 0 0 1 0)
+
+=== program C: 200 + 100 overflows (CF = 1) ===
+(24 clauses loaded)
+  R = (cpu 3 44 100 0 1)

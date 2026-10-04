@@ -33,11 +33,8 @@ parseTodos s = Str.lines s |> List.map parseItem.
 serItem (d, x) = "{d} {x}".
 serTodos ts = ts |> List.map serItem |> Str.join base.nl.
 
-# each item paired with its 0-based position
-indexed xs = List.zip (List.range 0 (List.len xs - 1)) xs.
-
 flipItem (d, x) = (1 - d, x).
-toggleAt i ts = indexed ts |> List.map (flipIfAt i).
+toggleAt i ts = base.indexed ts |> List.map (flipIfAt i).
 flipIfAt i (k, t) | k == i = flipItem t.
 flipIfAt i (k, t) = t.
 
@@ -62,9 +59,14 @@ update ("refresh", v) model | unwrapU model == "" = (model, None).
 update ("refresh", v) model = (model, Get "todos:{unwrapU model}" "gottodos").
 update ("gottodos", v) model = ({model | todos = parseTodos v}, None).
 update ("add", v) model = save ((0, v) :: model.todos) model.
-update ("toggle", v) model = save (toggleAt (Str.parse v) model.todos) model.
+update ("toggle", v) model = toggle (Try.parseInt v) model.
 update ("clear", v) model = save (List.filter isOpen model.todos) model.
 update msg model = (model, None).
+
+# the browser names a row; a non-number is a forged or stale request, logged
+# and ignored (an out-of-range row already toggles nothing)
+toggle (Ok i) model = save (toggleAt i model.todos) model.
+toggle (Err e) model = (model, Print "ignored toggle: {e}").
 
 # ---- view (typed DSL: ui.Html + ui.Style symbols) ---------------------------
 
@@ -92,7 +94,7 @@ todoView model =
     ],
     ui.div [ui.Style.card, ui.Style.flex, ui.Style.flexcol, ui.Style.gap2] [
       ui.inputRow "add" "what needs doing?" "Add",
-      ui.div [ui.Style.flex, ui.Style.flexcol, ui.Style.gap1] (indexed model.todos |> List.map todoItem)
+      ui.div [ui.Style.flex, ui.Style.flexcol, ui.Style.gap1] (base.indexed model.todos |> List.map todoItem)
     ]
   ].
 

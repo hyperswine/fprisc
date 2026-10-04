@@ -1,0 +1,3 @@
+tree: Node(x1 < 0.25: Node(x1 < -1.5: Leaf(1) | Leaf(-1)) | Node(x2 < -0.5: Leaf(-1) | Leaf(1)))
+test accuracy: 92% (5% label noise ceiling ~95%)
+ok test accuracy % (92 >= 85)

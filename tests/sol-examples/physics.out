@@ -1,0 +1,4 @@
+closed form R = 39.75535168195719 m
+integrated  R = 39.910000000000075 m (drag-free, O(dt) error)
+ok drag-free vs closed form (39.910000000000075 ~ 39.75535168195719)
+n = 300: mean range 69.66607434548409 m, best 129.5940156318307 m

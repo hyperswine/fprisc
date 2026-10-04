@@ -1,0 +1,23 @@
+VIEW El div container mx-auto flex flex-col gap-4 p-4 [El header flex flex-row items-center gap-3 [El h1 text-2xl font-bold [Txt Sol Ops]], DynN main (El div card flex flex-col gap-3 [El h2 text-xl font-bold [Txt Ops sign in], FormN login [username, password] Sign in, El h3 font-bold [Txt Register], FormN register [username, password] Create account, El span text-muted [Txt ]])]
+(refresh, ) => None :: <107.7     0 [] Persistent >
+(login, bob pw) => Get user:bob auth :: <107.7   pw bob 0 [] Persistent >
+(auth, ) => None :: <107.7  no such user pw bob 0 [] Persistent >
+(auth, pw) => Msg setuser bob :: <107.7  no such user pw bob 0 [] Persistent >
+(auth, zz) => None :: <107.7  wrong password pw bob 0 [] Persistent >
+(register, amy p) => Get user:amy regchk :: <107.7  wrong password p amy 0 [] Persistent >
+(regchk, ) => Batch [Put user:amy p, Msg setuser amy] :: <107.7  wrong password p amy 0 [] Persistent >
+(regchk, x) => None :: <107.7  user already exists p amy 0 [] Persistent >
+(setuser, bob) => Batch [Msg refresh , Get logins bump] :: <107.7   p amy 0 [] Persistent bob>
+(connected, ) => Msg refresh  :: <107.7   p amy 0 [] Persistent bob>
+(refresh, ) => Get logins gotlogins :: <107.7   p amy 0 [] Persistent bob>
+(nosuch, q) => None :: <107.7   p amy 0 [] Persistent bob>
+(tick, ) => Rng 20 95 sample :: <107.7   p amy 0 [] Persistent bob>
+(bump, 4) => Batch [Put logins 5, Msg gotlogins 5] :: <107.7   p amy 0 [] Persistent bob>
+(bump, ) => Batch [Put logins 1, Msg gotlogins 1] :: <107.7   p amy 0 [] Persistent bob>
+(gotlogins, 7) => None :: <107.7 7  p amy 0 [] Persistent bob>
+(sample, 50) => None :: <107.7 7  p amy 50 [50] Persistent bob>
+(sample, 0) => None :: <107.7 7  p amy 0 [0, 50] Persistent bob>
+(sample, 95) => None :: <107.7 7  p amy 95 [95, 0, 50] Persistent bob>
+VIEW El div container mx-auto flex flex-col gap-4 p-4 [El header flex flex-row items-center gap-3 [El h1 text-2xl font-bold [Txt Sol Ops]], DynN main (El div flex flex-col gap-3 [El div flex flex-row items-center gap-3 [El span badge [Txt bob], EvN logout  (El span tab [Txt sign out])], El div grid grid-cols-2 gap-3 [El div card flex flex-col gap-1 [El h3 font-bold [Txt requests/sec], El div text-2xl font-bold [Txt 95]], El div card flex flex-col gap-1 [El h3 font-bold [Txt total sign-ins], El div text-2xl font-bold [Txt 7]], El div card flex flex-col gap-1 [El h3 font-bold [Txt history], El div flex flex-col gap-1 [El div text-sm [Txt ########### 95], El div text-sm [Txt  0], El div text-sm [Txt ###### 50]]], El div card flex flex-col gap-1 [El h3 font-bold [Txt about], El p text-muted text-sm [Txt live series is runtime state - it resets on restart; sign-ins persist in KV]]]])]
+(logout, ) => None :: <107.7 7  p amy 95 [95, 0, 50] Persistent >
+VIEW El div container mx-auto flex flex-col gap-4 p-4 [El header flex flex-row items-center gap-3 [El h1 text-2xl font-bold [Txt Sol Ops]], DynN main (El div card flex flex-col gap-3 [El h2 text-xl font-bold [Txt Ops sign in], FormN login [username, password] Sign in, El h3 font-bold [Txt Register], FormN register [username, password] Create account, El span text-muted [Txt ]])]

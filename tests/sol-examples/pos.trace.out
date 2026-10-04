@@ -1,0 +1,31 @@
+VIEW El div container mx-auto flex flex-col gap-4 p-4 [El header flex flex-row items-center gap-3 [El h1 text-2xl font-bold [Txt Sol POS]], DynN main (El div card flex flex-col gap-3 [El h2 text-xl font-bold [Txt Cashier sign in], FormN login [username, password] Sign in, El h3 font-bold [Txt Register], FormN register [username, password] Create account, El span text-muted [Txt ]])]
+(refresh, ) => None :: <107.6 []     Persistent >
+(login, bob pw) => Get user:bob auth :: <107.6 []  pw bob  Persistent >
+(auth, ) => None :: <107.6 [] no such user pw bob  Persistent >
+(auth, pw) => Msg setuser bob :: <107.6 [] no such user pw bob  Persistent >
+(auth, zz) => None :: <107.6 [] wrong password pw bob  Persistent >
+(register, amy p) => Get user:amy regchk :: <107.6 [] wrong password p amy  Persistent >
+(regchk, ) => Batch [Put user:amy p, Msg setuser amy] :: <107.6 [] wrong password p amy  Persistent >
+(regchk, x) => None :: <107.6 [] user already exists p amy  Persistent >
+(setuser, bob) => Msg refresh  :: <107.6 []  p amy  Persistent bob>
+(connected, ) => Msg refresh  :: <107.6 []  p amy  Persistent bob>
+(refresh, ) => Get revenue gotrev :: <107.6 []  p amy  Persistent bob>
+(nosuch, q) => None :: <107.6 []  p amy  Persistent bob>
+(checkout, ) => None :: <107.6 []  p amy  Persistent bob>
+(buy, 0) => None :: <107.6 [(flat white, 5)]  p amy  Persistent bob>
+(buy, 2) => None :: <107.6 [(cheese toastie, 9), (flat white, 5)]  p amy  Persistent bob>
+(gotrev, 15) => None :: <107.6 [(cheese toastie, 9), (flat white, 5)]  p amy 15 Persistent bob>
+(checkout, ) => Get revenue dorev :: <107.6 [(cheese toastie, 9), (flat white, 5)]  p amy 15 Persistent bob>
+(dorev, 10) => Batch [Put revenue 24, Msg gotrev 24, Print sale: 14 by bob] :: <107.6 []  p amy 15 Persistent bob>
+(buy, 3) => None :: <107.6 [(brownie, 6)]  p amy 15 Persistent bob>
+(dorev, ) => Batch [Put revenue 6, Msg gotrev 6, Print sale: 6 by bob] :: <107.6 []  p amy 15 Persistent bob>
+VIEW El div container mx-auto flex flex-col gap-4 p-4 [El header flex flex-row items-center gap-3 [El h1 text-2xl font-bold [Txt Sol POS]], DynN main (El div flex flex-col gap-3 [El div flex flex-row items-center gap-3 [El span badge [Txt cashier: bob], El span badge [Txt revenue: $15], EvN logout  (El span tab [Txt sign out])], El div grid grid-cols-2 gap-3 [EvN buy 0 (El div card flex flex-col gap-1 [El div font-bold [Txt flat white], El div text-muted [Txt $5]]), EvN buy 1 (El div card flex flex-col gap-1 [El div font-bold [Txt long black], El div text-muted [Txt $4]]), EvN buy 2 (El div card flex flex-col gap-1 [El div font-bold [Txt cheese toastie], El div text-muted [Txt $9]]), EvN buy 3 (El div card flex flex-col gap-1 [El div font-bold [Txt brownie], El div text-muted [Txt $6]])], El div card flex flex-col gap-2 [El h3 font-bold [Txt cart - total $0], El div flex flex-col gap-1 [], El div flex flex-row gap-2 [EvN checkout  (El span btn [Txt checkout]), EvN void  (El span tab [Txt void])]]])]
+(logout, ) => None :: <107.6 []  p amy 15 Persistent >
+VIEW El div container mx-auto flex flex-col gap-4 p-4 [El header flex flex-row items-center gap-3 [El h1 text-2xl font-bold [Txt Sol POS]], DynN main (El div card flex flex-col gap-3 [El h2 text-xl font-bold [Txt Cashier sign in], FormN login [username, password] Sign in, El h3 font-bold [Txt Register], FormN register [username, password] Create account, El span text-muted [Txt ]])]
+(setuser, bob) => Msg refresh  :: <107.6 []  p amy 15 Persistent bob>
+(buy, 7) => Print ignored buy: no catalog item 7 :: <107.6 []  p amy 15 Persistent bob>
+(buy, -1) => Print ignored buy: no catalog item -1 :: <107.6 []  p amy 15 Persistent bob>
+(buy, x) => Print ignored buy: parseInt: not an integer: "x" :: <107.6 []  p amy 15 Persistent bob>
+(buy, ) => Print ignored buy: parseInt: not an integer: "" :: <107.6 []  p amy 15 Persistent bob>
+(buy, 1) => None :: <107.6 [(long black, 4)]  p amy 15 Persistent bob>
+VIEW El div container mx-auto flex flex-col gap-4 p-4 [El header flex flex-row items-center gap-3 [El h1 text-2xl font-bold [Txt Sol POS]], DynN main (El div flex flex-col gap-3 [El div flex flex-row items-center gap-3 [El span badge [Txt cashier: bob], El span badge [Txt revenue: $15], EvN logout  (El span tab [Txt sign out])], El div grid grid-cols-2 gap-3 [EvN buy 0 (El div card flex flex-col gap-1 [El div font-bold [Txt flat white], El div text-muted [Txt $5]]), EvN buy 1 (El div card flex flex-col gap-1 [El div font-bold [Txt long black], El div text-muted [Txt $4]]), EvN buy 2 (El div card flex flex-col gap-1 [El div font-bold [Txt cheese toastie], El div text-muted [Txt $9]]), EvN buy 3 (El div card flex flex-col gap-1 [El div font-bold [Txt brownie], El div text-muted [Txt $6]])], El div card flex flex-col gap-2 [El h3 font-bold [Txt cart - total $4], El div flex flex-col gap-1 [El div comment flex flex-row gap-2 [El span flex-1 [Txt long black], El span  [Txt $4]]], El div flex flex-row gap-2 [EvN checkout  (El span btn [Txt checkout]), EvN void  (El span tab [Txt void])]]])]

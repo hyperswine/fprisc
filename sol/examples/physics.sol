@@ -20,7 +20,10 @@ cD = Numeric.div 2 1000.    # drag coefficient 0.002 (quadratic)
 
 plus a b = a + b.
 
-# integrate with drag; returns range (metres) at impact
+# integrate with drag; returns range (metres) at impact.
+# unsafe on purpose: the loop ends when the projectile falls below y = 0,
+# which is physics, not a decreasing integer, so no measure can state it.
+# (The style accepts this for float-heavy numeric code.)
 fly : unsafe Int -> Int -> Int -> Int -> Int .
 fly x y vx vy | y < 0 = x.
 fly x y vx vy =
@@ -29,7 +32,7 @@ fly x y vx vy =
   ay = 0 - g - cD * (v * vy);
   fly (x + vx * dt) (y + vy * dt) (vx + ax * dt) (vy + ay * dt).
 
-# drag-free variant for the closed-form check
+# drag-free variant for the closed-form check; unsafe for the same reason
 flyN : unsafe Int -> Int -> Int -> Int -> Int .
 flyN x y vx vy | y < 0 = x.
 flyN x y vx vy = flyN (x + vx * dt) (y + vy * dt) vx (vy - g * dt).

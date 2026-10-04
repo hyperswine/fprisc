@@ -49,10 +49,8 @@ charFor c = case c == 0 of
 rowStr cs = cs |> List.map charFor |> Str.join "".
 
 # row r (0-based) of the row-major counts
+rowOf : List Int -> (r : Int | r >= 0) -> String .
 rowOf cs r = cs |> List.drop (r * w) |> List.take w |> rowStr.
-
-# print each line, in order
-say lines = List.fold (fn n l -> u = print l; n + 1) 0 lines.
 
 # pix maps 1..(w*h) to the escape count for each pixel. The counts are collected
 # into a Vec, folded to compute the checksum, and printed row by row.
@@ -60,5 +58,5 @@ say lines = List.fold (fn n l -> u = print l; n + 1) 0 lines.
   counts = Vec.map pix v;
   (checksum, c2) = Vec.fold plus 0 counts;
   cl = Vec.toList c2;
-  u = say (List.range 0 (h - 1) |> List.map (rowOf cl));
+  u = print (List.range 0 (h - 1) |> List.map (rowOf cl) |> Str.join (Str.fromCode 10));
   print "checksum: {checksum} ({w}x{h}, {maxIter} iters)".

@@ -23,3 +23,13 @@ baseName p =
   case k < 0 of True -> p | False -> Str.slice p (k + 1) (Str.len p).
 lastSlash p i best | i >= Str.len p = best.
 lastSlash p i best = case Str.at p i == 47 of True -> lastSlash p (i + 1) i | False -> lastSlash p (i + 1) best.
+
+# each item paired with its 0-based position: [(0, x0), (1, x1), ..]
+indexed xs = List.zip (List.range 0 (List.len xs - 1)) xs.
+
+# the first element, or d when there is none
+firstOr d [] = d.
+firstOr d (x :: _) = x.
+
+# print each line, in order; the result counts them
+say lines = List.fold (fn n l -> u = print l; n + 1) 0 lines.

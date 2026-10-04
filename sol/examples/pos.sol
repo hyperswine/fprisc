@@ -36,12 +36,18 @@ update ("connected", v) model = (model, Msg "refresh" "").
 update ("refresh", v) model | unwrapU model == "" = (model, None).
 update ("refresh", v) model = (model, Get "revenue" "gotrev").
 update ("gotrev", v) model = ({model | revenue = str (base.pI v)}, None).
-update ("buy", v) model = ({model | cart = (catalog ! Str.parse v) :: model.cart}, None).
+update ("buy", v) model = buy (Try.parseInt v) model.
 update ("void", v) model = ({model | cart = []}, None).
 update ("checkout", v) model | model.cart == [] = (model, None).
 update ("checkout", v) model = (model, Get "revenue" "dorev").
 update ("dorev", v) model = sale (base.pI v + cartTotal model.cart) model.
 update msg model = (model, None).
+
+# the browser names a catalog position; anything else is a forged or stale
+# request, logged and ignored rather than allowed to panic the update
+buy (Ok i) model | i >= 0, i < List.len catalog = ({model | cart = (catalog ! i) :: model.cart}, None).
+buy (Ok i) model = (model, Print "ignored buy: no catalog item {i}").
+buy (Err e) model = (model, Print "ignored buy: {e}").
 
 # record a sale: the new store-wide revenue goes to KV and back to this view
 sale total model =
@@ -72,8 +78,6 @@ productBtn (k, t) =
     ui.el "div" [ui.Style.textmuted] [ui.text "${priceOf t}"]
   ]).
 
-# each item paired with its 0-based position
-indexed xs = List.zip (List.range 0 (List.len xs - 1)) xs.
 
 cartRow t = ui.el "div" [ui.Style.comment, ui.Style.flex, ui.Style.flexrow, ui.Style.gap2] [
   ui.el "span" [ui.Style.flex1] [ui.text (nameOf t)], ui.el "span" [] [ui.text "${priceOf t}"]].
@@ -85,7 +89,7 @@ posView model =
       ui.el "span" [ui.Style.badge] [ui.text "revenue: ${model.revenue}"],
       ui.onClick "logout" "" (ui.el "span" [ui.Style.tab] [ui.text "sign out"])
     ],
-    ui.el "div" [ui.Style.grid, ui.Style.gridcols2, ui.Style.gap3] (indexed catalog |> List.map productBtn),
+    ui.el "div" [ui.Style.grid, ui.Style.gridcols2, ui.Style.gap3] (base.indexed catalog |> List.map productBtn),
     ui.el "div" [ui.Style.card, ui.Style.flex, ui.Style.flexcol, ui.Style.gap2] [
       ui.el "h3" [ui.Style.fontbold] [ui.text "cart - total ${cartTotal model.cart}"],
       ui.el "div" [ui.Style.flex, ui.Style.flexcol, ui.Style.gap1] (List.map cartRow model.cart),

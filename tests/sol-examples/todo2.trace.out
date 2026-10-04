@@ -1,0 +1,50 @@
+VIEW El div container mx-auto flex flex-col gap-4 p-4 [El header flex flex-row items-center gap-3 [El h1 text-2xl font-bold [Txt Sol Todos]], DynN main (El div card flex flex-col gap-2 [El h2 text-xl font-bold [Txt Sign in], FormN login [username, password] Sign in, El h3 font-bold [Txt New here? Register], FormN register [username, password] Create account, El span text-muted [Txt ]])]
+(refresh, ) => None :: <107.5    [] Persistent >
+(login, bob pw) => Get user:bob auth :: <107.5  pw bob [] Persistent >
+(auth, ) => None :: <107.5 no such user pw bob [] Persistent >
+(auth, pw) => Msg setuser bob :: <107.5 no such user pw bob [] Persistent >
+(auth, zz) => None :: <107.5 wrong password pw bob [] Persistent >
+(register, amy p) => Get user:amy regchk :: <107.5 wrong password p amy [] Persistent >
+(regchk, ) => Batch [Put user:amy p, Msg setuser amy] :: <107.5 wrong password p amy [] Persistent >
+(regchk, x) => None :: <107.5 user already exists p amy [] Persistent >
+(setuser, bob) => Msg refresh  :: <107.5  p amy [] Persistent bob>
+(connected, ) => Msg refresh  :: <107.5  p amy [] Persistent bob>
+(refresh, ) => Get todos:bob gottodos :: <107.5  p amy [] Persistent bob>
+(nosuch, q) => None :: <107.5  p amy [] Persistent bob>
+(gottodos, 0 a
+1 b
+
+0 c
+) => None :: <107.5  p amy [(0, a), (1, b), (0, ), (0, c)] Persistent bob>
+(add, d) => Put todos:bob 0 d
+0 a
+1 b
+0 
+0 c :: <107.5  p amy [(0, d), (0, a), (1, b), (0, ), (0, c)] Persistent bob>
+(toggle, 1) => Put todos:bob 0 d
+1 a
+1 b
+0 
+0 c :: <107.5  p amy [(0, d), (1, a), (1, b), (0, ), (0, c)] Persistent bob>
+(toggle, 9) => Put todos:bob 0 d
+1 a
+1 b
+0 
+0 c :: <107.5  p amy [(0, d), (1, a), (1, b), (0, ), (0, c)] Persistent bob>
+(toggle, 0) => Put todos:bob 1 d
+1 a
+1 b
+0 
+0 c :: <107.5  p amy [(1, d), (1, a), (1, b), (0, ), (0, c)] Persistent bob>
+(clear, ) => Put todos:bob 0 
+0 c :: <107.5  p amy [(0, ), (0, c)] Persistent bob>
+(gottodos, ) => None :: <107.5  p amy [] Persistent bob>
+(add, e) => Put todos:bob 0 e :: <107.5  p amy [(0, e)] Persistent bob>
+VIEW El div container mx-auto flex flex-col gap-4 p-4 [El header flex flex-row items-center gap-3 [El h1 text-2xl font-bold [Txt Sol Todos]], DynN main (El div flex flex-col gap-2 [El div flex flex-row gap-2 items-center [El span badge [Txt bob - 1 open], EvN clear  (El span tab [Txt clear done]), EvN logout  (El span tab [Txt sign out])], El div card flex flex-col gap-2 [InpN add what needs doing? Add, El div flex flex-col gap-2 gap-1 [EvN toggle 0 (El div comment [Txt [ ] e])]]])]
+(logout, ) => None :: <107.5  p amy [] Persistent >
+VIEW El div container mx-auto flex flex-col gap-4 p-4 [El header flex flex-row items-center gap-3 [El h1 text-2xl font-bold [Txt Sol Todos]], DynN main (El div card flex flex-col gap-2 [El h2 text-xl font-bold [Txt Sign in], FormN login [username, password] Sign in, El h3 font-bold [Txt New here? Register], FormN register [username, password] Create account, El span text-muted [Txt ]])]
+(setuser, bob) => Msg refresh  :: <107.5  p amy [] Persistent bob>
+(add, e) => Put todos:bob 0 e :: <107.5  p amy [(0, e)] Persistent bob>
+(toggle, x) => Print ignored toggle: parseInt: not an integer: "x" :: <107.5  p amy [(0, e)] Persistent bob>
+(toggle, ) => Print ignored toggle: parseInt: not an integer: "" :: <107.5  p amy [(0, e)] Persistent bob>
+VIEW El div container mx-auto flex flex-col gap-4 p-4 [El header flex flex-row items-center gap-3 [El h1 text-2xl font-bold [Txt Sol Todos]], DynN main (El div flex flex-col gap-2 [El div flex flex-row gap-2 items-center [El span badge [Txt bob - 1 open], EvN clear  (El span tab [Txt clear done]), EvN logout  (El span tab [Txt sign out])], El div card flex flex-col gap-2 [InpN add what needs doing? Add, El div flex flex-col gap-2 gap-1 [EvN toggle 0 (El div comment [Txt [ ] e])]]])]
