@@ -4,7 +4,9 @@
 frozen store blob as a host shared module, installs the image at an immutable
 identity/host/codegen path, and only then atomically publishes a journal snapshot.
 `fpr watch math.fpr` performs that operation on source-byte changes every 300 ms.
-`--once` performs one publication and exits. Neither command launches an app.
+`--once` performs one publication and exits. These original forms do not launch an app.
+The explicit `fpr watch app.fpr --module NAME` supervisor is described in
+[the host workflow follow-up](2026-10-04-HOST-LIVERELOAD-WORKFLOW.md).
 
 The source version database remains separate. A failed image build may leave a
 valid committed source version, but cannot advertise an image or replace the
@@ -44,7 +46,8 @@ adoption are separate steps; the runtime registry identity/type/contract gate
 remains authoritative. Receiving a notification does not adopt an image.
 A rejected candidate leaves the runner's environment intact. An app that rejects
 an intermediate candidate will also refuse a later candidate whose `from` hash
-does not match its loaded baseline; automatic rebasing/retry is future work.
+does not match its loaded baseline; the host workflow example instead checks against its actual loaded baseline
+to permit recovery after a refused intermediate publication.
 
 ## Evidence
 
@@ -78,7 +81,8 @@ for this stage.
   sibling QOS `docs/2026-10-04-QOS-PUBLICATION.md`. Development build/upload
   bridging and native publication verification remain separate. The legacy
   journal/replay loader is separate.
-- Whole-program restart for major versions, automatic environment generation and
+- The host workflow now offers opt-in checked root-edit cold restarts and a shared
+  runner with explicit export bindings. Compiler-generated typed descriptors and
   state migration remain later milestones in the original proposal.
 
 ## Owned-runner follow-up verification

@@ -31,6 +31,13 @@
 # a restock is a NEW line that names what it corrects; a committed sale
 # is never rewritten.
 #
+# Live pricing (from this checkout; use an isolated store while experimenting):
+#   fpr commit examples/pos1_pricing.fpr
+#   fpr watch examples/pos1.fpr --module pos1_pricing
+# Commit edits to examples/pos1_pricing.fpr in another terminal in the same cwd.
+# POS1_PORT / POS1_STORE select the listener and receipt log. Ordinary fpr run
+# uses the statically imported default policy.
+#
 #   login ana / 1234 (or ben / 2222)
 #
 # qos/tests-host/pos1-check.py drives it as websocket registers, the
@@ -41,6 +48,10 @@
 unsafe base.
 
 Live = use "std/live".
+Reload = use "std/livereload".
+Notice = use "std/livenotice".
+Watch = use "std/watch".
+Pricing = use "pos1_pricing".
 G = use "std/view".
 LJ = use "std/livejs".
 VC = use "std/viewcache".
@@ -74,7 +85,7 @@ strEq a b = a == b.
 # any other message (Live.SyncClientState), so a checkout sees the cart the
 # cashier saw.  The server still decides: it clamps to stock, prices, sells.
 Msg = Type (Login String | Logout | Quit | ClientState String
-          | Cash String | Card | Void Int | Restock String | Admin String | Rebuild | Dismiss | Theme).
+          | Cash String | Card | Void Int | Restock String | Admin String | Rebuild | Dismiss | Theme | PricingPoll | NoticeTick).
 codec = @Msg.
 Client = { tab : String, open : String, tender : String, delta : String, rsku : String, cmd : String, name : String, pin : String }.
 
@@ -86,7 +97,7 @@ foldE f z l = List.fold (fn acc x -> f x acc) z l.
 # registers: cart, toast and console output live per session
 
 initModel = { cat = Nil, tax = 0, lowAt = 3, sales = Nil, nsale = 0, revenue = 0, staff = Nil,
-              sess = Nil, pend = Nil, events = 0, theme = 0, fsOn = 0, booted = 0, prof = noProf }.
+              sess = Nil, pend = Nil, events = 0, theme = 0, fsOn = 0, booted = 0, prof = noProf, pricing = staticPricing, reloadNotice = Notice.init False 3000 }.
 
 # ---- profiling ---------------------------------------------------------------------------
 # What the app measures about itself, shown on the Admin tab (microseconds):
@@ -116,7 +127,7 @@ kindOf ev = case ev of
 msgKind msg = case msg of
     Login a -> "login" | Logout -> "logout" | Quit -> "quit" | ClientState a -> "sync"
   | Cash a -> "cash" | Card -> "card" | Void a -> "void" | Restock a -> "restock" | Admin a -> "admin" | Rebuild -> "rebuild"
-  | Dismiss -> "dismiss" | Theme -> "theme".
+  | Dismiss -> "dismiss" | Theme -> "theme" | PricingPoll -> "pricing" | NoticeTick -> "reload-notice".
 statLine label st = "{S.padRight 9 " " label} n {S.padLeft 6 " " "{st.n}"}  avg {S.padLeft 7 " " "{avg st}"} us  max {S.padLeft 7 " " "{st.max}"} us  last {st.last} us".
 noSess = { sid = 0, cashier = "", cart = Nil, toast = "", role = "", con = Nil, tab = 1 }.
 mkProduct sku price stock name = { sku = sku, name = name, price = price, stock = stock, retired = 0 }.
@@ -369,6 +380,8 @@ pMsg path sid msg m = case msg of
     Login arg -> signIn m sid (login m sid arg)
   # signing out empties the page's cart too, so the next cashier starts clean
   | Logout -> signOut m sid (sGet m.sess sid)
+  | PricingPoll -> (case sid == 0 of True -> (pollPricing m, Nil) | False -> (m, Nil))
+  | NoticeTick -> (case sid == 0 of True -> ({m | reloadNotice = Notice.tick m.reloadNotice}, Nil) | False -> (m, Nil))
   | Quit -> (m, Live.Quit :: Nil)
   | ClientState json -> mirror m sid json
   | other -> withUser path sid other m (sGet m.sess sid).
@@ -433,7 +446,7 @@ qtyOf ((k, q) :: r) sku | strEq k sku = q.
 qtyOf (l :: r) sku = qtyOf r sku.
 subtotal m cart = cart |> foldE (fn l acc -> acc + lineTotal m l) 0.
 lineTotal m (k, q) = q * priceOf m.cat k.
-taxOn m sub = (sub * m.tax + 5000) / 10000.
+taxOn m sub = (sub * activeRate m + 5000) / 10000.
 totalOf m cart = sub = subtotal m cart; sub + taxOn m sub.
 
 # ---- checkout: one line ------------------------------------------------------------------------
@@ -526,7 +539,9 @@ setV m s (k :: sku :: c :: x) | strEq k "price" = (m, "no such SKU").
 setV m s r = (m, "set tax N|lowat N|price SKU CENTS").
 
 # every page mirrors its client state, twice a second when it changed
-subs m = Live.SyncClientState 500 (ClientState "") :: Nil.
+subs m = Live.SyncClientState 500 (ClientState "") ::
+  List.append (case m.pricing.journal == "" of True -> Nil | False -> Live.Every 300 PricingPoll :: Nil)
+  (case Notice.pending m.reloadNotice of True -> Live.Every 100 NoticeTick :: Nil | False -> Nil).
 
 # ---- what a session sees (Live.serveProjected) --------------------------------------------------
 # The register hands each session's writer THIS, not the model: its own
@@ -541,7 +556,7 @@ project sid m =
   onAdmin = s0.tab == 4;
   # of the session, only what is DRAWN: its cart and its tab are the page's own,
   # so a mirror arriving changes nothing here and the writer stays quiet
-  { s = { cashier = s0.cashier, toast = s0.toast, role = s0.role, con = s0.con }, cat = m.cat, tax = m.tax, lowAt = m.lowAt, revenue = m.revenue,
+  { s = { cashier = s0.cashier, toast = s0.toast, role = s0.role, con = s0.con }, cat = m.cat, tax = activeRate m, pricingLabel = m.pricing.value.label Unit, reloadNotice = m.reloadNotice.text, lowAt = m.lowAt, revenue = m.revenue,
     nsales = List.length m.sales, sales = takeN m.sales 50, theme = m.theme, fsOn = m.fsOn,
     events = m.events, booted = m.booted, online = List.length m.sess,
     # the profile changes on every event: a session not looking at it must not re-render for it
@@ -571,11 +586,11 @@ view sid v old = case old of (cardsOld, rowsOld, rs) ->
   s = v.s;
   t0 = Sys.timeUs Unit;
   (case strEq s.cashier "" of
-    True -> (G.render (El "div" (Cls (rootCls v) :: locals) [loginView s]), old)
+    True -> (G.render (El "div" (Cls (rootCls v) :: locals) [loginView s, Notice.view v.reloadNotice]), old)
   | False ->
     (case VC.many (fn i -> i.p.sku) renderCard (List.map (fn p -> { p = p, lowAt = v.lowAt }) (live v.cat)) (VC.begin "pos1-card-v1" verify cardsOld) of (cards, cc) ->
     (case VC.many (fn x -> "{x.n}") receiptRow v.sales (VC.begin "pos1-receipt-v1" verify rowsOld) of (rows, rc) ->
-      out = G.render (El "div" (Cls (rootCls v) :: locals) (nav v s :: toasts s :: body v s cards rows rs));
+      out = G.render (El "div" (Cls (rootCls v) :: locals) (Notice.view v.reloadNotice :: nav v s :: toasts s :: body v s cards rows rs));
       (ch, cm, cn) = VC.stats cc;
       (rh, rm, rn) = VC.stats rc;
       rs2 = { st = note rs.st (Sys.timeUs Unit - t0), hits = rs.hits + ch + rh, misses = rs.misses + cm + rm, cards = cn, rows = rn };
@@ -585,14 +600,14 @@ verify = Program.envOr "0" "POS1_VIEW_VERIFY" == "1".
 # the same page with nothing remembered: the stylesheet's sample, and the check
 # that the cached page is the fresh one
 viewFresh v = El "div" (Cls (rootCls v) :: locals)
-  (nav v v.s :: toasts v.s :: body v v.s (List.map renderCard (List.map (fn p -> { p = p, lowAt = v.lowAt }) (live v.cat))) (List.map receiptRow v.sales) noRender).
+  (Notice.view v.reloadNotice :: nav v v.s :: toasts v.s :: body v v.s (List.map renderCard (List.map (fn p -> { p = p, lowAt = v.lowAt }) (live v.cat))) (List.map receiptRow v.sales) noRender).
 
 # The stylesheet is a function of the tree -- and the page is served
 # from the signed-out view, so the rules the register needs would never
 # be emitted.  The sheet is therefore built over a SAMPLE tree that
 # shows everything: a signed-in session with a cart, receipts with a
 # void, the console -- every class the app can ever use appears once.
-cssAll v = strcat (G.cssFor (El "div" Nil (viewFresh (project 1 sampleModel) :: loginView noSess :: Nil))) cssApp.
+cssAll v = strcat (G.cssFor (El "div" Nil (viewFresh (project 1 sampleModel) :: loginView noSess :: Nil))) (strcat Notice.css cssApp).
 # The layout rule: the page is the viewport, every region has its size from
 # the viewport, and what does not fit SCROLLS inside its region.  Nothing is
 # sized by its contents, so adding to the cart, opening a receipt's lines
@@ -649,6 +664,7 @@ nav m s =
     , El "div" [Cls "row gap-2 center dim text-sm wrap"]
         [ El "span" [Cls (case m.fsOn == 1 of True -> "badge ok" | False -> "badge warn")] [Txt (case m.fsOn == 1 of True -> "disk" | False -> "no disk")]
         , El "span" [Att "id" "lv-link", Cls "badge"] [Txt "live"]
+        , El "span" [Att "id" "pricing-policy", Cls "badge"] [Dyn m.pricingLabel]
         , Txt "cashier ", El "b" [Cls "ink"] [Dyn s.cashier]
         , El "button" [Cls "btn pill px-3 py-2", G.send codec Theme] [Txt (case m.theme == 1 of True -> "day" | False -> "night")]
         , El "button" [Cls "btn pill px-3 py-2", G.send codec Logout] [Txt "sign out"] ] ].
@@ -858,21 +874,59 @@ rttScript = "
 })();
 ".
 
+# ---- dynamic pricing: only the register's internal subscription can adopt ----
+# Runtime session/function values never enter disk receipts or browser projections.
+# Every adopted policy is checked at the same single-writer boundary as checkout.
+staticPricing = {journal = "", name = "pos1_pricing", cursor = 0, table = 0, hash = "",
+                 value = {rate = Pricing.rate, label = Pricing.label}}.
+pricingBindings : Int -> Result {rate : Int -> Int, label : Unit -> String} String .
+pricingBindings table = case Reload.function table "rate" of
+    Err why -> Err why
+  | Ok rate -> case Reload.function table "label" of
+      Err why -> Err why
+    | Ok label -> Ok {rate = rate, label = label}.
+pricingSpec = {name = "pos1_pricing", bind = pricingBindings}.
+bootPricing store reloadNotice =
+  model = {boot store | reloadNotice = Notice.init reloadNotice 3000};
+  case Program.env "FPR_RELOAD_JOURNAL" of
+    Option.None -> model
+  | Option.Some journal -> case Reload.open pricingSpec of
+      Err why -> error "pos1: pricing startup refused: {why}"
+    | Ok pricing -> {model | pricing = pricing}.
+activeRate model = model.pricing.value.rate model.tax.
+pollPricing model = case Watch.poll model.pricing.journal model.pricing.name model.pricing.cursor of
+    Err why -> model
+  | Ok pair ->
+      (cursor, candidates) = pair;
+      current = {model.pricing | cursor = cursor};
+      case List.reverse candidates of
+        Nil -> {model | pricing = current}
+      | candidate :: rest -> pricingAdopted model current
+          (Reload.reload pricingSpec 0 (Watch.identity candidate) current).
+pricingAdopted model current result = case result of
+    Err why -> _ = Sys.stderr "[pos1] pricing refused: {why}\n"; {model | pricing = current}
+  | Ok pricing ->
+      _ = print "[pos1] pricing adopted: {pricing.value.label Unit}#{pricing.hash}";
+      notice = case pricing.hash == current.hash of
+        True -> model.reloadNotice
+      | False -> Notice.adopted pricing.name pricing.hash model.reloadNotice;
+      {model | pricing = pricing, reloadNotice = notice}.
+
 # ---- main ---------------------------------------------------------------------------------------------
 
-Settings = Type (Settings port address store).
-settings = Decode.map3 Settings (Decode.field "port" Decode.int) (Decode.field "address" Decode.string) (Decode.field "store" Decode.string).
+Settings = Type (Settings port address store reloadNotice).
+settings = Decode.map4 Settings (Decode.field "port" Decode.int) (Decode.field "address" Decode.string) (Decode.field "store" Decode.string) (Decode.field "reload-notice" Decode.bool).
 
-main = case Config.load { defaults = Json.object (("port", Json.Integer 6710) :: ("address", Json.Text "127.0.0.1") :: ("store", Json.Text "pos1.log") :: Nil),
+main = case Config.load { defaults = Json.object (("port", Json.Integer 6710) :: ("address", Json.Text "127.0.0.1") :: ("store", Json.Text "pos1.log") :: ("reload-notice", Json.Boolean False) :: Nil),
                           file = Option.None, envPrefix = "POS1_", args = Program.args Unit } |> Result.andThen (Decode.run settings) of
     Err why -> Program.fail 2 "pos1: {why}"
-  | Ok (Settings port address store) ->
+  | Ok (Settings port address store reloadNotice) ->
       # the shop is the log, folded at boot; std/live's own store holds nothing
       # of the model (fields = Nil, no journal), it is there because the driver
       # wants one
       cfg = { address = address, port = port, title = "POS v1", store = "{store}.kvlog", journal = False,
               script = script, watch = Nil, rebuild = Nil, restart = Nil };
-      _ = Live.serveProjected cfg { init = boot store, update = update store, subs = subs, fields = Nil, codec = codec,
+      _ = Live.serveProjected cfg { init = bootPricing store reloadNotice, update = update store, subs = subs, fields = Nil, codec = codec,
                                     project = project, same = (fn a b -> a == b),
                                     view = view, cache = (VC.empty Unit, VC.empty Unit, noRender), css = cssAll };
       0.

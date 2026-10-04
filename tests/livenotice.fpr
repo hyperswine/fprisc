@@ -1,0 +1,29 @@
+unsafe base.
+N = use "std/livenotice".
+G = use "std/view".
+check b = case b of True -> Unit | False -> error "reload notice check failed".
+main =
+  disabled = N.init False 3000;
+  _ = check (N.adoptedAt 100 0 "policy" "abc" disabled == disabled);
+  _ = check (N.adopted "policy" "abc" disabled == disabled);
+  zero = N.init True 0;
+  _ = check (N.adoptedAt 100 0 "policy" "abc" zero == zero);
+  negative = N.init True (0 - 1);
+  _ = check (negative.durationMs == 0);
+  first = N.adoptedAt 100 0 "policy" "abc" (N.init True 3000);
+  _ = check (first.text == "Live Reload new policy#abc 1970-01-01T00:00:00Z");
+  _ = check (first.untilUs == 3000100);
+  _ = check (N.expireAt 3000099 first == first);
+  _ = check (not (N.pending (N.expireAt 3000100 first)));
+  # A newer adoption replaces the deadline; an older timer cannot clear it.
+  newer = N.adoptedAt 2000100 1 "policy" "def" first;
+  _ = check (N.expireAt first.untilUs newer == newer);
+  _ = check (newer.text == "Live Reload new policy#def 1970-01-01T00:00:01Z");
+  gone = N.expireAt newer.untilUs newer;
+  _ = check (gone.text == "" and gone.untilUs == 0);
+  _ = check (N.expireAt (newer.untilUs + 1) gone == gone);
+  (statics, dynamics) = G.render (N.view first.text);
+  (emptyStatics, emptyDynamics) = G.render (N.view "");
+  _ = check (statics == emptyStatics and dynamics != emptyDynamics);
+  _ = print "reload notice: opt-in, UTC text, deadline, replacement and stable view PASS";
+  0.

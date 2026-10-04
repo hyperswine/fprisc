@@ -1,5 +1,12 @@
 
 === bboard-stress ===
+-- notes --
+  V2: a second supply (vb); one positive rail is modelled, so it is not wired
+  R13: both pins are on net n6
+  R15: both pins are on net n1
+  R30: both pins are on net n2
+  R45: both pins are on net n3
+  R60: both pins are on net n4
 !! no legal position for R40
 !! no legal position for R42
 !! no legal position for R43
@@ -32,48 +39,48 @@
   R2  f14 -> f16
   R3  a13 -> a15
   R4  f13 -> f15
-  R5  f11 -> g13
-  R6  g16 -> f18
+  R5  g11 -> g13
+  R6  g16 -> g18
   R7  a17 -> a19
-  R8  g15 -> f17
-  R9  g17 -> f19
+  R8  g15 -> g17
+  R9  f17 -> f19
   R10  a10 -> a12
   R11  f10 -> f12
-  R12  a11 -> b13
+  R12  b11 -> b13
   R13  a18 -> a20
   R14  f20 -> f22
   R15  a7 -> a9
-  R16  f8 -> g10
+  R16  g8 -> g10
   R17  f7 -> f9
   R18  a21 -> a23
-  R19  g19 -> f21
-  R20  b20 -> a22
+  R19  g19 -> g21
+  R20  b20 -> b22
   R21  a6 -> a8
-  R22  a4 -> b6
-  R23  g21 -> f23
-  R24  g23 -> f25
+  R22  b4 -> b6
+  R23  f21 -> f23
+  R24  g23 -> g25
   R25  f4 -> f6
-  R26  b22 -> a24
-  R27  g25 -> f27
+  R26  a22 -> a24
+  R27  f25 -> f27
   R28  f24 -> f26
-  R29  b24 -> a26
+  R29  b24 -> b26
   R30  a3 -> a5
   R31  f3 -> f5
-  R32  g27 -> f29
+  R32  g27 -> g29
   R33  a25 -> a27
-  R34  f1 -> g3
-  R35  b27 -> a29
+  R34  g1 -> g3
+  R35  b27 -> b29
   R36  a28 -> a30
   R37  b5 -> b7
-  R38  f2 -> g4
+  R38  g2 -> g4
   R39  f28 -> f30
-  R41  a1 -> b3
-  R48  a2 -> b4
+  R41  b1 -> b3
+  R48  a2 -> a4
   R63  g12 -> g14
-  R64  b9 -> b11
+  R64  c9 -> c11
 -- nets --
   0 [GND]: 
-  vb [PWR]: 
+  vb: 
   n9: row 15 L, row 22 R, row 6 R, row 30 L
   n6: row 16 R, row 18 L, row 20 L, row 25 R, row 1 R, row 29 L, row 1 L, row 2 L
   n5: row 11 R, row 19 R, row 11 L, row 22 L, row 5 R, row 25 L
@@ -94,12 +101,12 @@
   [JUMPER] net n6: h16 -> b18
   [JUMPER] net n6: c18 -> c20
   [JUMPER] net n6: d20 -> h25
-  [JUMPER] net n6: i25 -> g1
-  [JUMPER] net n6: h1 -> b29
-  [JUMPER] net n6: c29 -> b1
+  [JUMPER] net n6: i25 -> f1
+  [JUMPER] net n6: h1 -> a29
+  [JUMPER] net n6: c29 -> a1
   [JUMPER] net n6: c1 -> b2
-  [JUMPER] net n5: g11 -> h19
-  [JUMPER] net n5: i19 -> c11
+  [JUMPER] net n5: f11 -> h19
+  [JUMPER] net n5: i19 -> a11
   [JUMPER] net n5: d11 -> c22
   [JUMPER] net n5: d22 -> g5
   [JUMPER] net n5: h5 -> b25
@@ -107,7 +114,7 @@
   [JUMPER] net n3: c10 -> g7
   [JUMPER] net n3: h7 -> h23
   [JUMPER] net n3: i23 -> h3
-  [JUMPER] net n3: i3 -> g2
+  [JUMPER] net n3: i3 -> f2
   [JUMPER] net n4: h13 -> h10
   [JUMPER] net n4: i10 -> b21
   [JUMPER] net n4: c21 -> h4
@@ -119,54 +126,57 @@
   [JUMPER] net n0: d6 -> g24
   [JUMPER] net n0: h24 -> c27
   [JUMPER] net n8: b12 -> b8
-  [JUMPER] net n8: c8 -> g29
+  [JUMPER] net n8: c8 -> f29
   [JUMPER] net n2: h14 -> h17
-  [JUMPER] net n2: i17 -> g8
+  [JUMPER] net n2: i17 -> f8
   [JUMPER] net n2: h8 -> h21
   [JUMPER] net n2: i21 -> c3
   [JUMPER] net n2: d3 -> c5
   [JUMPER] net n1: h15 -> c7
-  [JUMPER] net n1: d7 -> c9
+  [JUMPER] net n1: d7 -> b9
   [JUMPER] net n1: d9 -> c4
   [JUMPER] net n1: d4 -> c24
   [JUMPER] net n1: d24 -> b28
   [JUMPER] net n10: b19 -> b23
-  [JUMPER] net n10: c23 -> b26
-  [JUMPER] net n7: g18 -> g9
+  [JUMPER] net n10: c23 -> a26
+  [JUMPER] net n7: f18 -> g9
   [JUMPER] net n7: h9 -> g26
   [JUMPER] net n7: h26 -> g30
 -- checks --
+  27 part(s) NOT placed: R40, R42, R43, R44, R45, R46, R47, R49, R50, R51, R52, R53, R54, R55, R56, R57, R58, R59, R60, R61, R62, R65, R66, R67, R68, R69, D9
   no shorts: OK
+  one end per hole: OK
   connectivity: OK
+  net 0: NO rail wire
 
-     L-  L+     a   b   c   d   e  ||     f   g   h   i   j
-  1   |   |  R41a W9bW10a   .   .  ||  R34a W7b W8a   .   .
-  2   |   |  R48aW10b   .   .   .  ||  R38aW20b   .   .   .
-  3   |   |  R30aR41bW36bW37a   .  ||  R31aR34bW19bW20a   .
-  4   |   |  R22aR48bW40bW41a   .  ||  R25aR38bW23bW24a   .
-  5   |   |  R30bR37aW37b   .   .  ||  R31bW14bW15a   .   .
-  6   |   |  R21aR22bW28bW29a   .  ||  R25b W2b W3a   .   .
-  7   |   |  R15aR37bW38bW39a   .  ||  R17aW17bW18a   .   .
-  8   |   |  R21bW31bW32a   .   .  ||  R16aW34bW35a   .   .
-  9   |   |  R15bR64aW39bW40a   .  ||  R17bW45bW46a   .   .
- 10   |   |  R10aW16bW17a   .   .  ||  R11aR16bW21bW22a   .
- 11   |   |  R12aR64bW12bW13a   .  ||   R5aW11a   .   .   .
- 12   |   |  R10bW31a   .   .   .  ||  R11bR63aW26bW27a   .
- 13   |   |   R3aR12bW16a   .   .  ||   R4a R5bW21a   .   .
- 14   |   |   r1a   .   .   .   .  ||   R2aR63bW33a   .   .
- 15   |   |   R3b W1a   .   .   .  ||   R4b R8aW38a   .   .
- 16   |   |   r1b   .   .   .   .  ||   R2b R6a W4a   .   .
- 17   |   |   R7aW26a   .   .   .  ||   R8b R9aW33bW34a   .
- 18   |   |  R13a W4b W5a   .   .  ||   R6bW45a   .   .   .
- 19   |   |   R7bW43a   .   .   .  ||   R9bR19aW11bW12a   .
- 20   |   |  R13bR20a W5b W6a   .  ||  R14aW27bW28a   .   .
- 21   |   |  R18aW22bW23a   .   .  ||  R19bR23aW35bW36a   .
- 22   |   |  R20bR26aW13bW14a   .  ||  R14b W1b W2a   .   .
- 23   |   |  R18bW43bW44a   .   .  ||  R23bR24aW18bW19a   .
- 24   |   |  R26bR29aW41bW42a   .  ||  R28aW29bW30a   .   .
- 25   |   |  R33aW15b   .   .   .  ||  R24bR27a W6b W7a   .
- 26   |   |  R29bW44b   .   .   .  ||  R28bW46bW47a   .   .
- 27   |   |  R33bR35aW30b   .   .  ||  R27bR32aW24bW25a   .
- 28   |   |  R36aW42b   .   .   .  ||  R39aW25b   .   .   .
- 29   |   |  R35b W8b W9a   .   .  ||  R32bW32b   .   .   .
- 30   |   |  R36b W3b   .   .   .  ||  R39bW47b   .   .   .
+     L-  L+      a    b    c    d    e  ||      f    g    h    i    j
+  1   |   |    W9b R41a W10a    .    .  ||    W7b R34a  W8a    .    .
+  2   |   |   R48a W10b    .    .    .  ||   W20b R38a    .    .    .
+  3   |   |   R30a R41b W36b W37a    .  ||   R31a R34b W19b W20a    .
+  4   |   |   R48b R22a W40b W41a    .  ||   R25a R38b W23b W24a    .
+  5   |   |   R30b R37a W37b    .    .  ||   R31b W14b W15a    .    .
+  6   |   |   R21a R22b W28b W29a    .  ||   R25b  W2b  W3a    .    .
+  7   |   |   R15a R37b W38b W39a    .  ||   R17a W17b W18a    .    .
+  8   |   |   R21b W31b W32a    .    .  ||   W34b R16a W35a    .    .
+  9   |   |   R15b W39b R64a W40a    .  ||   R17b W45b W46a    .    .
+ 10   |   |   R10a W16b W17a    .    .  ||   R11a R16b W21b W22a    .
+ 11   |   |   W12b R12a R64b W13a    .  ||   W11a  R5a    .    .    .
+ 12   |   |   R10b W31a    .    .    .  ||   R11b R63a W26b W27a    .
+ 13   |   |    R3a R12b W16a    .    .  ||    R4a  R5b W21a    .    .
+ 14   |   |    r1a    .    .    .    .  ||    R2a R63b W33a    .    .
+ 15   |   |    R3b  W1a    .    .    .  ||    R4b  R8a W38a    .    .
+ 16   |   |    r1b    .    .    .    .  ||    R2b  R6a  W4a    .    .
+ 17   |   |    R7a W26a    .    .    .  ||    R9a  R8b W33b W34a    .
+ 18   |   |   R13a  W4b  W5a    .    .  ||   W45a  R6b    .    .    .
+ 19   |   |    R7b W43a    .    .    .  ||    R9b R19a W11b W12a    .
+ 20   |   |   R13b R20a  W5b  W6a    .  ||   R14a W27b W28a    .    .
+ 21   |   |   R18a W22b W23a    .    .  ||   R23a R19b W35b W36a    .
+ 22   |   |   R26a R20b W13b W14a    .  ||   R14b  W1b  W2a    .    .
+ 23   |   |   R18b W43b W44a    .    .  ||   R23b R24a W18b W19a    .
+ 24   |   |   R26b R29a W41b W42a    .  ||   R28a W29b W30a    .    .
+ 25   |   |   R33a W15b    .    .    .  ||   R27a R24b  W6b  W7a    .
+ 26   |   |   W44b R29b    .    .    .  ||   R28b W46b W47a    .    .
+ 27   |   |   R33b R35a W30b    .    .  ||   R27b R32a W24b W25a    .
+ 28   |   |   R36a W42b    .    .    .  ||   R39a W25b    .    .    .
+ 29   |   |    W8b R35b  W9a    .    .  ||   W32b R32b    .    .    .
+ 30   |   |   R36b  W3b    .    .    .  ||   R39b W47b    .    .    .

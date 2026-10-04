@@ -128,3 +128,5 @@ they began.
 | 2026-10-04 | [SOL-EXAMPLES-STYLE.md](2026-10-04-SOL-EXAMPLES-STYLE.md) | Ten Sol examples rewritten in the intended style: folds and clauses, contracts and measures (dtree and terra drop all `unsafe`), refused rather than panicking browser input, shared helpers in base, and `tools/sol-examples-check.py` with golden traces; checker limits met and STYLE catalogue corrections |
 
 - [Host publication and watching](2026-10-04-PUBLICATION-WATCH.md): immutable ready images, journal cursors and MVU notifications.
+
+- [Tang Nano 20K builtin port](2026-10-05-TANG-NANO-BUILTIN.md): physical RV32IM SimpleRisc execution, build and UART loader, manual ownership and explicit capability refusals.

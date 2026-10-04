@@ -6,17 +6,20 @@
   x: needs two nodes
 -- components --
   R1  a14 -> a16
-  C1  b16 -> a18
+  C1  b16 -> b18
 -- nets --
   0 [GND]: row 18 L
   out: row 16 L
   vcc [PWR]: row 14 L
 -- wires --
-  [RAIL] net 0: b18 -> L-
+  [RAIL] net 0: a18 -> L-
   [RAIL] net vcc: b14 -> L+
 -- checks --
+  all parts placed: OK
   no shorts: OK
+  one end per hole: OK
   connectivity: OK
+  rails: OK
 
      L-  L+     a   b   c   d   e  ||     f   g   h   i   j
   1   |   |     .   .   .   .   .  ||     .   .   .   .   .
@@ -36,7 +39,7 @@
  15   |   |     .   .   .   .   .  ||     .   .   .   .   .
  16   |   |   R1b C1a   .   .   .  ||     .   .   .   .   .
  17   |   |     .   .   .   .   .  ||     .   .   .   .   .
- 18 W1b   |   C1b W1a   .   .   .  ||     .   .   .   .   .
+ 18 W1b   |   W1a C1b   .   .   .  ||     .   .   .   .   .
  19   |   |     .   .   .   .   .  ||     .   .   .   .   .
  20   |   |     .   .   .   .   .  ||     .   .   .   .   .
  21   |   |     .   .   .   .   .  ||     .   .   .   .   .

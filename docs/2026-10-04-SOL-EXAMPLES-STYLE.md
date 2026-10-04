@@ -129,3 +129,26 @@ These shaped the code. Each is noted where it applies.
 - `tools/sol-examples-check.py` is a standalone tool like the other
   `tools/sol-*-check` scripts, not part of `tests/check_base.py`, which covers
   native Base.
+
+## Later the same day: bboard's core logic
+
+A review of the placer found that its output could say OK for a board that
+was wrong. `sol/examples/bboard.sol` changed, and its three goldens with it:
+
+- A strip takes at most 3 component pins. Two of its five holes stay free
+  for wires, so a jumper or rail wire can no longer find the strip full.
+  A wire end that has no hole is never counted as a connection.
+- The supply is the first voltage source whose negative node is 0. A
+  current source, a second supply, and a supply not referenced to node 0
+  are listed under `-- notes --` and not wired to the positive rail, which
+  two supplies would have shorted.
+- Both pins of a part sit in one column, as the header always said.
+- The checks are computed from the placements, the netlist and the wires
+  that landed: all parts placed, no strip with two nets, no hole used
+  twice, every net's strips joined by its jumpers, ground and the supply
+  on their rails. Each can fail; the full-board golden shows two failing.
+- Every rail wire end is drawn, and cells widen to the longest label.
+
+Not modelled, and said in the file's header: parts with more than two
+pins, a DIP across the centre gap, pin pitch other than two rows, and the
+body of a part over the row between its pins.

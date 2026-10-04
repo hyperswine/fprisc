@@ -1,0 +1,66 @@
+# Trusted POSIX MVU modules. Explicit logical bindings, frozen static imports.
+# spec = {name = "math", bind = bindings}
+# bindings table -> Result env String; called once at startup and per adoption.
+# Live.run me cfg app spec: cfg has mt/tick/input/render, app sees just env.
+# Attachment is serialized at MVU event boundaries. Failed bindings roll back
+# their registry entry; mapped images remain alive for old function values.
+W = use "std/watch".
+N = use "std/native".
+MV = use "std/mvu".
+
+# Missing export names are ordinary binding refusals rather than panics.
+# The binder still declares how exports form env; generated typed descriptors
+# are a compiler follow-up, not supplied by this name-based helper.
+function table name =
+  (found, value) = Mod.findAt table name;
+  case found == 1 of True -> Ok value | False -> Err "reload: missing export {name}".
+
+open spec = case W.session Unit of
+    Err why -> Err why
+  | Ok journal -> openJournal spec journal (W.latest journal spec.name).
+openJournal spec journal result = case result of
+    Err why -> Err why
+  | Ok pair ->
+      (cursor, candidate) = pair;
+      table = Mod.plugs 0;
+      opened spec journal cursor table candidate (N.attach (W.image candidate)).
+opened spec journal cursor table candidate result = case result of
+    Err why -> Err why
+  | Ok unit -> initialIdentity spec journal cursor table (W.identity candidate).
+initialIdentity spec journal cursor table info = case Mod.plugs 0 == table + 1 and Mod.hashAt table == info.to of
+    False -> rollback "reload: initial image identity mismatch"
+  | True -> bound spec journal cursor table info (spec.bind table).
+bound spec journal cursor table info result = case result of
+    Err why -> rollback why
+  | Ok value -> Ok {journal = journal, name = spec.name, cursor = cursor,
+                    table = table, hash = info.to, value = value}.
+rollback why = _ = Mod.detachLast Unit; Err why.
+
+reload spec me info session = case info.name == session.name of
+    False -> Err "reload: unexpected module"
+  | True -> case info.to == session.hash of
+      True -> Ok session
+    | False -> resolve spec info session (W.imageFor session.journal session.name info.to).
+resolve spec info session result = case result of
+    Err why -> Err why
+  | Ok image -> attached spec info session (N.loadVersionAt session.table session.hash info.to image).
+attached spec info session result = case result of
+    Err why -> Err why
+  | Ok table -> rebound info session table (spec.bind table).
+rebound info session table result = case result of
+    Err why -> rollback why
+  | Ok value -> Ok {session | table = table, hash = info.to, value = value}.
+
+run me cfg app spec = case open spec of
+    Err why -> Err why
+  | Ok session -> runOpened me cfg app spec session.
+runOpened me cfg app spec session =
+  runner = {env = session, mt = cfg.mt, tick = cfg.tick, input = cfg.input, render = cfg.render};
+  MV.runWatched me runner (project app) (reload spec)
+    (W.watchFrom session.journal session.name session.cursor).
+project app =
+  MV.MApp ini upd key statics vals done subs = app;
+  MV.MApp (initial ini) (updated upd) key statics (values vals) done subs.
+initial ini session = ini session.value.
+updated upd me session event model = upd me session.value event model.
+values vals me session viewport model = vals me session.value viewport model.

@@ -59,3 +59,13 @@ findCandidate hash candidates = case candidates of
 
 # Pass this starter to MV.runWatched; the runner owns both worker and port.
 watchFrom path name cursor me port = Ok (AC.spawnWith (AC.Dynamic 64) (watch path name cursor port)).
+
+# Host supervisor supplies the journal without hard-coding its host/ABI path.
+session u = Sys.env "FPR_RELOAD_JOURNAL".
+# Bootstrap from one snapshot: its cursor preserves commits arriving afterward.
+latest path name = case poll path name 0 of
+    Err why -> Err why
+  | Ok pair -> latestPair pair.
+latestPair pair = (cursor, candidates) = pair; case L.reverse candidates of
+    Nil -> Err "watch: module not published"
+  | candidate :: rest -> Ok (cursor, candidate).

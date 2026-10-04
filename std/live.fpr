@@ -4,6 +4,9 @@
 # instead of the QOS socket tier.
 #
 #   Live.serve config { init, update, view, css, subs, fields, codec }
+#   Optional FP-RISC reload toast: use std/livenotice in the model/view and
+#   update it after successful adoption. See docs/2026-10-04-RELOAD-NOTICE.md
+#   and examples/pos1.fpr (--reload-notice / POS1_RELOAD_NOTICE=true).
 #
 #     init    : model                                  the shared model
 #     codec   : @Msg                                   the app's message type, on the wire

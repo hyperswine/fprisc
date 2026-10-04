@@ -2,17 +2,20 @@
 === RC low-pass filter ===
 -- components --
   R1  a14 -> a16
-  C1  b16 -> a18
+  C1  b16 -> b18
 -- nets --
   0 [GND]: row 18 L
   mid: row 16 L
   vcc [PWR]: row 14 L
 -- wires --
-  [RAIL] net 0: b18 -> L-
+  [RAIL] net 0: a18 -> L-
   [RAIL] net vcc: b14 -> L+
 -- checks --
+  all parts placed: OK
   no shorts: OK
+  one end per hole: OK
   connectivity: OK
+  rails: OK
 
      L-  L+     a   b   c   d   e  ||     f   g   h   i   j
   1   |   |     .   .   .   .   .  ||     .   .   .   .   .
@@ -32,7 +35,7 @@
  15   |   |     .   .   .   .   .  ||     .   .   .   .   .
  16   |   |   R1b C1a   .   .   .  ||     .   .   .   .   .
  17   |   |     .   .   .   .   .  ||     .   .   .   .   .
- 18 W1b   |   C1b W1a   .   .   .  ||     .   .   .   .   .
+ 18 W1b   |   W1a C1b   .   .   .  ||     .   .   .   .   .
  19   |   |     .   .   .   .   .  ||     .   .   .   .   .
  20   |   |     .   .   .   .   .  ||     .   .   .   .   .
  21   |   |     .   .   .   .   .  ||     .   .   .   .   .
@@ -49,22 +52,25 @@
 === Voltage divider + filter ===
 -- components --
   R1  a14 -> a16
-  R2  b16 -> a18
+  R2  b16 -> b18
   C1  f14 -> f16
-  R3  g16 -> f18
+  R3  g16 -> g18
 -- nets --
   0 [GND]: row 18 L, row 18 R
   mid2: row 16 R
   mid1: row 16 L, row 14 R
   vcc [PWR]: row 14 L
 -- wires --
-  [JUMPER] net 0: b18 -> g18
+  [JUMPER] net 0: a18 -> f18
   [RAIL] net 0: c18 -> L-
   [JUMPER] net mid1: c16 -> g14
   [RAIL] net vcc: b14 -> L+
 -- checks --
+  all parts placed: OK
   no shorts: OK
+  one end per hole: OK
   connectivity: OK
+  rails: OK
 
      L-  L+     a   b   c   d   e  ||     f   g   h   i   j
   1   |   |     .   .   .   .   .  ||     .   .   .   .   .
@@ -84,7 +90,7 @@
  15   |   |     .   .   .   .   .  ||     .   .   .   .   .
  16   |   |   R1b R2a W3a   .   .  ||   C1b R3a   .   .   .
  17   |   |     .   .   .   .   .  ||     .   .   .   .   .
- 18 W2b   |   R2b W1a W2a   .   .  ||   R3b W1b   .   .   .
+ 18 W2b   |   W1a R2b W2a   .   .  ||   W1b R3b   .   .   .
  19   |   |     .   .   .   .   .  ||     .   .   .   .   .
  20   |   |     .   .   .   .   .  ||     .   .   .   .   .
  21   |   |     .   .   .   .   .  ||     .   .   .   .   .
@@ -101,23 +107,26 @@
 === Debounced push-button LED ===
 -- components --
   B1  a14 -> a16
-  R1  b16 -> a18
-  C1  c16 -> b18
+  R1  b16 -> b18
+  C1  c16 -> c18
   R2  f14 -> f16
-  D1  g16 -> f18
+  D1  g16 -> g18
 -- nets --
   0 [GND]: row 18 L, row 18 R
   led_a: row 16 R
   sw_out: row 16 L, row 14 R
   vcc [PWR]: row 14 L
 -- wires --
-  [JUMPER] net 0: c18 -> g18
+  [JUMPER] net 0: a18 -> f18
   [RAIL] net 0: d18 -> L-
   [JUMPER] net sw_out: d16 -> g14
   [RAIL] net vcc: b14 -> L+
 -- checks --
+  all parts placed: OK
   no shorts: OK
+  one end per hole: OK
   connectivity: OK
+  rails: OK
 
      L-  L+     a   b   c   d   e  ||     f   g   h   i   j
   1   |   |     .   .   .   .   .  ||     .   .   .   .   .
@@ -137,7 +146,7 @@
  15   |   |     .   .   .   .   .  ||     .   .   .   .   .
  16   |   |   B1b R1a C1a W3a   .  ||   R2b D1A   .   .   .
  17   |   |     .   .   .   .   .  ||     .   .   .   .   .
- 18 W2b   |   R1b C1b W1a W2a   .  ||   D1K W1b   .   .   .
+ 18 W2b   |   W1a R1b C1b W2a   .  ||   W1b D1K   .   .   .
  19   |   |     .   .   .   .   .  ||     .   .   .   .   .
  20   |   |     .   .   .   .   .  ||     .   .   .   .   .
  21   |   |     .   .   .   .   .  ||     .   .   .   .   .

@@ -1,0 +1,38 @@
+# Run from a workspace with a committed math module:
+#   fpr commit math.fpr
+#   fpr watch app.fpr --module math
+# Commit compatible edits to math.fpr in another terminal. The model survives.
+unsafe base.
+MV = use "std/mvu".
+Live = use "std/livereload".
+O = use "std/os".
+ok result = case result of Ok value -> value | Err why -> error why.
+init env = {acc = 7, refused = 0, old = env.op}.
+update me env event model = case event of
+    MV.ETick -> tick env model
+  | MV.EReloadRefused info why ->
+      _ = print "refused: {why}";
+      ({model | refused = model.refused + 1}, Nil)
+  | other -> (model, Nil).
+tick env model = case O.readFile "stop" of
+    Ok text -> (model, MV.MQuit :: Nil)
+  | Err why ->
+      next = {model | acc = model.acc + env.op 1};
+      _ = print "live: factor={env.op 1} acc={next.acc} old={model.old 10}";
+      (next, Nil).
+subs model = MV.STick 100 :: Nil.
+key model = 0.
+statics viewport model = "LiveReload" :: Nil.
+vals self env viewport model = "factor={env.op 1} acc={model.acc}" :: Nil.
+done model = "finished: acc={model.acc} refused={model.refused}".
+bindings : Int -> Result {op : Int -> Int} String .
+bindings table = case Live.function table "mathOp" of
+    Err why -> Err why
+  | Ok op -> Ok {op = op}.
+main =
+  renderer = spawn MV.textRender;
+  cfg = {mt = 0, tick = 1000000, input = 0, render = renderer};
+  app = MV.MApp init update key statics vals done subs;
+  result = Live.run (myself 0) cfg app {name = "math", bind = bindings};
+  _ = kill renderer;
+  print (ok result).

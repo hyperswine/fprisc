@@ -1,0 +1,2 @@
+mathOp : Int -> Int .
+mathOp value = value * 2.

@@ -1,0 +1,49 @@
+# fpr watch interactive.fpr --module math
+# Type + and Enter to add, r to reset, q to quit. Commit math in another terminal.
+unsafe base.
+MV = use "std/mvu".
+Live = use "std/livereload".
+O = use "std/os".
+AC = use "std/actor".
+ok result = case result of Ok value -> value | Err why -> error why.
+bindings : Int -> Result {op : Int -> Int} String .
+bindings table = case Live.function table "mathOp" of
+    Err why -> Err why
+  | Ok op -> Ok {op = op}.
+init env = {total = 0, refused = 0}.
+update me env event model = case event of
+    MV.EKey code -> keyCommand env model code
+  | MV.EReloadRefused info why -> _ = print "refused: {why}"; ({model | refused = model.refused + 1}, Nil)
+  | other -> (model, Nil).
+# MVU normalizes literal ASCII to negative codes; positive codes are evdev.
+keyCommand env model code = case code == 0 - 43 of
+    True -> _ = print "added: step={env.op 1} total={model.total + env.op 1}"; ({model | total = model.total + env.op 1}, Nil)
+  | False -> case code == 0 - 114 of
+      True -> ({model | total = 0}, Nil)
+    | False -> case code == 0 - 113 of True -> (model, MV.MQuit :: Nil) | False -> (model, Nil).
+subs model = MV.SKeys :: Nil.
+key model = 0.
+statics viewport model = "Live calculator: + add, r reset, q quit (then Enter)" :: Nil.
+vals self env viewport model = "step={env.op 1} total={model.total} refused={model.refused}" :: Nil.
+done model = "calculator: total={model.total} refused={model.refused}".
+# Canonical terminal and pipe input; readiness is checked before every read.
+# Reading only one available byte never waits for the rest of a partial line.
+input me =
+  (sender, request) = receive me;
+  _ = send sender (poll Unit);
+  _ = AC.boundary me Unit;
+  input me.
+poll unit = case O.ready 0 of
+    False -> (0, 0, 0)
+  | True -> case O.read 0 1 of
+      Err why -> (1, 113, 0)
+    | Ok text -> case strlen text == 0 of True -> (1, 113, 0) | False -> (1, charAt text 0, 0).
+main =
+  renderer = spawn MV.textRender;
+  keyboard = spawn input;
+  cfg = {mt = 0, tick = 200000, input = keyboard, render = renderer};
+  app = MV.MApp init update key statics vals done subs;
+  result = Live.run (myself 0) cfg app {name = "math", bind = bindings};
+  _ = kill keyboard;
+  _ = kill renderer;
+  print (ok result).

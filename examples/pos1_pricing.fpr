@@ -1,0 +1,6 @@
+# POS pricing policy. Publish new versions to affect future checkouts.
+# Configuration is in basis points. Receipts keep their already committed tax.
+rate : Int -> Int .
+rate configured = configured.
+label : Unit -> String .
+label unit = "standard pricing".
