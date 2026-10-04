@@ -212,3 +212,20 @@ plugin persistence, loaded native process storage, failure injection and raw
 format/compaction/swap regressions pass. The implementation record contains
 exact scope and publication pins. Automatic storage supervision/rebinding and
 moving DMA ownership/reset effects out of C remain open.
+
+The 2026-10-05 QOS checkpoint adds a stable Files owner in `std/fs`, published
+only after Qlog readiness. On Qlog transport failure it returns the interrupted
+request's Error without replay, then initializes/rescans a replacement on the
+next request. Failed recovery latches offline. Native process syscalls and
+namespace clients retain one stable address, so replacing Qlog requires no C
+binding update. Native and Portable roots use the same owner; explicit raw and
+standalone factories remain available.
+
+Two Portable runs and 24 native boots cover routing/readiness, same-handle
+partial-write recovery without replay, later append/replay/verification,
+latched offline DMA reservation, persistence/startup refusal, and the real
+loaded-process syscall binding across replacement. Portable plugin persistence
+and the disk-hardening/reset-cancellation suite also pass. DMA ownership/reset
+effects, block namespace/cancel/drain, and the remaining Phase 2/3 items remain
+open; this checkpoint completes storage supervision rather than that broader
+migration. QOS's dated implementation record specifies the exact boundary.
