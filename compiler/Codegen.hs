@@ -50,7 +50,7 @@ import FPRISC (Core (..), Prog, freeVars)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 35 -- explicit kernel kinds, captured map/filter pipelines and A64 NEON; 34: preserve signed recursive typing; inferred layout evidence, nested products, captured/wide folds and type-changing scalar kernels; 30: scalar captures in map/filter kernels, record-map width via spill cells; 29: vector descriptors: kinds bytes and a column directory behind pointers (vKindsP/vColsP); 28: fusion requires effect-free, failure-free element functions (fusionSafe); 27: function-argument specialization (Mono); 26: 0-based charAt fast path; 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
+codegenRev = 36 -- versioned, checked module interface tables; 35: explicit kernel kinds, captured map/filter pipelines and A64 NEON; 34: preserve signed recursive typing; inferred layout evidence, nested products, captured/wide folds and type-changing scalar kernels; 30: scalar captures in map/filter kernels, record-map width via spill cells; 29: vector descriptors: kinds bytes and a column directory behind pointers (vKindsP/vColsP); 28: fusion requires effect-free, failure-free element functions (fusionSafe); 27: function-argument specialization (Mono); 26: 0-based charAt fast path; 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -391,12 +391,14 @@ emitProgram tgt rvv spec exports ext exps prog0 =
           ++ concatMap strFor (M.toList strs)
           ++ ["    .section .rodata" | tgtArc tgt]
           ++ concatMap nulFor (S.toList (nullaries prog))
-    -- the module table: (hash str, export-name str, static PAP) triples,
+    -- Versioned module table: magic/schema/root hash, then four-word rows
+    -- (hash str, export-name str, static PAP, checked interface string),
     -- zero-terminated.  mod.c's `Mod.fn hash name` scans it — the local
     -- half of FPRLive remote calling: dispatch is by module HASH plus
     -- function name, never by position or link order.
     modTable = do
       rows <- concat <$> mapM row [me | me <- exports, meArity me >= 1]
+      rootLabel <- strLabel (case [meHash e | e <- exports, meQual e == meName e] of h : _ -> h; [] -> "")
       pure $
         -- a section of its own on the builtin target: that profile links no
         -- module registry, so nothing refers to the table -- but in the
@@ -405,7 +407,10 @@ emitProgram tgt rvv spec exports ext exps prog0 =
         ["    .section .rodata.fpr_modtab,\"a\",@progbits" | tgtArc tgt]
           ++ [ "    .balign 8",
                "    .globl fpr_modtab",
-               "fpr_modtab:"
+               "fpr_modtab:",
+               "    " ++ tgtDir tgt ++ " 0x4650524d",
+               "    " ++ tgtDir tgt ++ " 1",
+               "    " ++ tgtDir tgt ++ " " ++ rootLabel
              ]
           ++ rows
           ++ ["    " ++ tgtDir tgt ++ " 0", ""]
@@ -413,10 +418,12 @@ emitProgram tgt rvv spec exports ext exps prog0 =
         row me = do
           hl <- strLabel (meHash me)
           nl <- strLabel (meName me)
+          il <- strLabel (meInterface me)
           pure
             [ "    " ++ tgtDir tgt ++ " " ++ hl,
               "    " ++ tgtDir tgt ++ " " ++ nl,
-              "    " ++ tgtDir tgt ++ " fpr_obj_" ++ mangle (meQual me)
+              "    " ++ tgtDir tgt ++ " fpr_obj_" ++ mangle (meQual me),
+              "    " ++ tgtDir tgt ++ " " ++ il
             ]
     -- with --rvv the runtime calls this (weak hook from fpr_rt_init) to
     -- turn the vector unit on: mstatus.VS = Initial (01 << 9).  Emitted

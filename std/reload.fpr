@@ -2,8 +2,9 @@
 # The caller is the SOLE attachment writer during this operation. Its env
 # stores a table index per live module; never compare with newest globally.
 # attach bytes must register exactly one table on Ok, none on Err.
-# Existing Mod.compatAt checks export presence and arity ONLY. This is a
-# transitional gate, not proof of signature, nominal-type or budget safety.
+# Mod.compatAt checks root exports, arities and compiler-generated checked
+# type/contract/ABI stamps. Opaque exports refuse reload. Images are trusted;
+# these stamps are not cryptographic signatures or image identity proofs.
 attachAt : Int -> (String -> Result a String) -> String -> Result Int String .
 attachAt baseline attach bytes =
   before = Mod.plugs 0;

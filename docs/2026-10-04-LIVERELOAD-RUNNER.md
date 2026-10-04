@@ -75,13 +75,12 @@ compares the stored math baseline rather than the globally newest table.
 
 ## Remaining work and delivery order
 
-1. Inferred interface certificates, including type/unsafe/contract/resource
-   boundaries, and corresponding runtime image checks. The commit-time inferred
-   comparison is now implemented in [CHECKED-INTERFACES](2026-10-04-CHECKED-INTERFACES.md);
-   image serialization/runtime certification remains open. `Mod.compatAt` STILL
-   checks only export presence and arity. The test metadata uses archive IDs in
-   `from`/`to`, not authenticated content hashes. This slice cannot certify
-   arbitrary same-arity replacements; automatic patch adoption must wait.
+1. Runtime interface stamps and gates are now implemented in
+   [RUNTIME-INTERFACES](2026-10-04-RUNTIME-INTERFACES.md), following
+   [CHECKED-INTERFACES](2026-10-04-CHECKED-INTERFACES.md). Types, contracts and
+   ABI are compared for trusted compiled images; opaque boundaries refuse.
+   Content identity checking against event `from`/`to` remains open. Test
+   metadata still uses archive IDs; automatic watcher adoption must wait.
 2. POSIX image attachment and a production host clock for this driver, then
    store watching (`SStore`/`std/watch`) and `fpr watch` publication/restart.
 3. Typed live-module declarations and automatic rebuilding of their env rows,

@@ -60,7 +60,8 @@ data ModExport = ModExport
   { meHash :: String,
     meName :: String,
     meQual :: String,
-    meArity :: Int
+    meArity :: Int,
+    meInterface :: String -- checked export stamp; empty means not reload-certified
   }
   deriving (Show)
 
@@ -464,7 +465,7 @@ loadProgram preludeTops rootPath rootTops = do
           merged = preludeTops ++ concat unitTops ++ root'
           rootHash = hashAST [pinRoot rootAliases t | t <- rootTops]
           exports =
-            [ ModExport (muHash mu) n (qualify (muHash mu) n) (length ps)
+            [ ModExport (muHash mu) n (qualify (muHash mu) n) (length ps) ""
               | mu <- units,
                 TBind n ps _ _ <- muTops mu
             ]

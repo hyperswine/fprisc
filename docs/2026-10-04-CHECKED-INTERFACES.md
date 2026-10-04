@@ -58,16 +58,12 @@ not run for this checker-only increment.
 
 ## What this does not certify yet
 
-These interfaces are recomputed under the current checker and prelude. There
-is no persisted checker/prelude/target certificate, signed artifact or runtime
-signature hash. `Mod.compatAt` STILL checks names and arities only. This change
-does not make QOS's arbitrary loaded images type-safe and does not enable
-watcher-driven automatic patch adoption.
-
-The next step is to serialize the checked interface, tie it to image/module
-identity and the compiler/runtime ABI, and have the runtime gate compare it
-before adopting an env. It must include actual hidden layout parameters and
-representation details, reject uncertified/opaque boundaries, and preserve
-nominal identities and contracts. Old versions that no longer pass the current
-checker must be migrated explicitly; there is no silent inference fallback. Declared result-size bounds remain
-assumptions in the existing cost system; retaining one does not prove it.
+Commit interfaces are recomputed under the current checker and prelude.
+Runtime serialization and comparison are now implemented separately in
+[RUNTIME-INTERFACES](2026-10-04-RUNTIME-INTERFACES.md). Those stamps include
+checked types/contracts and compiler/target/prelude context, with opaque
+boundaries refusing reload. They are claims for trusted images, not signed
+proofs, and end-to-end content identity checking is still open. Old versions
+that no longer pass the current checker must be migrated explicitly; there is
+no silent inference fallback. Declared result-size bounds remain assumptions
+in the existing cost system; retaining one does not prove it.

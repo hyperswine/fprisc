@@ -201,6 +201,10 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([exe], env={'FPR_HARTS': '2'})
     assert p.stdout.strip() == 'code publication: 100/100 remote dispatches fenced', p.stdout
     print('Code publication: remote dispatch fences every new generation: PASS')
+    modinterface = str(tmp/'modinterface')
+    run(['./fpr', 'build', 'tests/base/modinterface.fpr', '--with', 'tests/base/modinterface_probe.c', '-o', modinterface])
+    assert run([modinterface]).stdout == 'module interfaces: schema root-scope missing changed uncertified rollback PASS\n'
+    print('Checked module interfaces: schema/root scope/refusals/rollback PASS')
     # 4m. mortal process images: a data static of another process's image is
     # copied on send and outlives the image; a function into its code is
     # refused, the sender failing alone (images_probe.c makes a fake image)

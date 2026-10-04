@@ -1,0 +1,25 @@
+Probe.legacy : Int -> Bool .
+Probe.attach : Int -> Int .
+Reload = use "std/reload".
+setup k bytes = case Probe.attach k == 0 of True -> Ok Unit | False -> Err "attach failed".
+expect why result = case result of
+    Err actual -> checkReason why actual
+  | Ok i -> error "unexpected adoption".
+main =
+  _ = case Probe.legacy 0 and Mod.plugs 0 == 0 of True -> Unit | False -> error "legacy schema published";
+  _ = Probe.attach 0;
+  _ = case Reload.attachAt 0 (setup 1) "" of Ok i -> Unit | Err why -> error why;
+  op = Reload.bindAt 1 "op";
+  _ = case op 0 == 11 of True -> Unit | False -> error "bound dependency export";
+  _ = expect "export missing in the new module" (Reload.attachAt 1 (setup 2) "");
+  _ = expect "checked type, contract or ABI changed for an export" (Reload.attachAt 1 (setup 3) "");
+  _ = expect "new export has no checked interface" (Reload.attachAt 1 (setup 4) "");
+  _ = Probe.attach 4;
+  _ = expect "old export has no checked interface" (Reload.attachAt 2 (setup 0) "");
+  _ = case Mod.plugs 0 == 3 of True -> Unit | False -> error "refused candidate still registered";
+  _ = Probe.attach 5;
+  _ = expect "old module has no callable root exports" (Reload.attachAt 3 (setup 0) "");
+  _ = case Mod.plugs 0 == 4 of True -> Unit | False -> error "empty baseline leaked candidate";
+  print "module interfaces: schema root-scope missing changed uncertified rollback PASS".
+
+checkReason why actual = case actual == "reload: incompatible, refused: {why}" of True -> Unit | False -> error actual.

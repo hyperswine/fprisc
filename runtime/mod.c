@@ -1,7 +1,7 @@
 /* mod.c — dynamic dispatch over the compile-time module table.
  *
- * Codegen emits `fpr_modtab`: zero-terminated (hash, name, PAP) word
- * triples, one per remote-callable module export.  `Mod.fn hash name`
+ * Codegen emits `fpr_modtab`: schema header followed by zero-terminated
+ * (hash, name, PAP, checked-interface) word rows, one per remote-callable export.  `Mod.fn hash name`
  * resolves a function value from a module HASH and an export name —
  * the same (hash, name) pair FPRLive ships over the wire, so a remote
  * call and a local one go through the identical lookup.  The hash of a
@@ -27,7 +27,7 @@ __attribute__((weak)) const uw fpr_modtab[1] = {0};
 
 /* ---- attached tables: DYNAMICALLY LOADED module tables --------------
  * A loaded plugin image (qos_abi.h's plugin slot) carries its own
- * (hash, name, PAP) table; fpr_mod_attach registers it and every
+ * checked module table; fpr_mod_attach registers it and every
  * lookup below searches the static table first, then attachments in
  * attach order.  Mod.find resolves BY NAME ONLY across attachments --
  * the caller of a runtime-loaded library has no hash to pin (the whole
@@ -35,8 +35,20 @@ __attribute__((weak)) const uw fpr_modtab[1] = {0};
 static const uw **xtabs; /* doubles: a program attaches as many libraries as it has memory for */
 static int nxtabs, capxtabs;
 
+#define MOD_MAGIC ((uw)0x4650524d)
+#define MOD_SCHEMA ((uw)1)
+#define MOD_HEADER 3
+#define MOD_ROW 4
+static const uw *rows(const uw *tab) {
+  if (!tab || !tab[0]) return 0;
+  if (tab[0] != MOD_MAGIC || tab[1] != MOD_SCHEMA)
+    fpr_cpanic("module table: unsupported interface schema (rebuild image)");
+  return tab + MOD_HEADER;
+}
 int fpr_mod_attach(const uw *tab) {
-  if (!tab) return -1;
+  /* Reject legacy tables before publishing or walking their old row layout. */
+  if (!tab || tab[0] != MOD_MAGIC || tab[1] != MOD_SCHEMA) return -1;
+  if (!tab[2] || ISINT(tab[2]) || TID(tab[2]) != T_STR) return -1;
   for (int i = 0; i < nxtabs; i++)
     if (xtabs[i] == tab) return 0; /* re-attach: idempotent */
   if (nxtabs == capxtabs) {
@@ -60,7 +72,7 @@ static int str_eq(const str_t *a, const str_t *b) {
 }
 
 static const uw *tab_at(int i) { /* -1 = the static table */
-  return i < 0 ? fpr_modtab : xtabs[i];
+  return rows(i < 0 ? fpr_modtab : xtabs[i]);
 }
 
 static V h_modfn(V hash, V name) {
@@ -68,7 +80,7 @@ static V h_modfn(V hash, V name) {
   if (ISINT(name) || TID(name) != T_STR) fpr_cpanic("Mod.fn: name not a String");
   const str_t *h = (const str_t *)hash, *n = (const str_t *)name;
   for (int t = -1; t < nxtabs; t++)
-    for (const uw *p = tab_at(t); p && p[0]; p += 3)
+    for (const uw *p = tab_at(t); p && p[0]; p += MOD_ROW)
       if (str_eq((const str_t *)p[0], h) && str_eq((const str_t *)p[1], n))
         return (V)p[2];
   fpr_cpanic("Mod.fn: no such (hash, name) in the module table");
@@ -80,7 +92,7 @@ static V h_modhas(V hash) {
   if (ISINT(hash) || TID(hash) != T_STR) fpr_cpanic("Mod.has: hash not a String");
   const str_t *h = (const str_t *)hash;
   for (int t = -1; t < nxtabs; t++)
-    for (const uw *p = tab_at(t); p && p[0]; p += 3)
+    for (const uw *p = tab_at(t); p && p[0]; p += MOD_ROW)
       if (str_eq((const str_t *)p[0], h)) return BOOL(1);
   return BOOL(0);
 }
@@ -103,7 +115,7 @@ static V h_modresolve(V hash, V name) {
   if (ISINT(name) || TID(name) != T_STR) fpr_cpanic("Mod.resolve: name not a String");
   const str_t *h = (const str_t *)hash, *n = (const str_t *)name;
   for (int t = -1; t < nxtabs; t++)
-    for (const uw *p = tab_at(t); p && p[0]; p += 3)
+    for (const uw *p = tab_at(t); p && p[0]; p += MOD_ROW)
       if (str_eq((const str_t *)p[0], h) && str_eq((const str_t *)p[1], n))
         return mktup2(TAG(1), (V)p[2]);
   return mktup2(TAG(0), TAG(0));
@@ -122,8 +134,9 @@ static V h_modfindat(V iv, V name) {
   sw i = UNTAG(iv);
   if (i < 0 || i >= nxtabs) return mktup2(TAG(0), TAG(0));
   const str_t *n = (const str_t *)name;
-  for (const uw *p = xtabs[i]; p && p[0]; p += 3)
-    if (str_eq((const str_t *)p[1], n)) return mktup2(TAG(1), (V)p[2]);
+  for (const uw *p = rows(xtabs[i]); p && p[0]; p += MOD_ROW)
+    if (str_eq((const str_t *)p[0], (const str_t *)xtabs[i][2]) &&
+        str_eq((const str_t *)p[1], n)) return mktup2(TAG(1), (V)p[2]);
   return mktup2(TAG(0), TAG(0));
 }
 
@@ -138,19 +151,15 @@ static V h_modfind(V name) {
   if (ISINT(name) || TID(name) != T_STR) fpr_cpanic("Mod.find: name not a String");
   const str_t *n = (const str_t *)name;
   for (int t = nxtabs - 1; t >= 0; t--)
-    for (const uw *p = xtabs[t]; p && p[0]; p += 3)
+    for (const uw *p = rows(xtabs[t]); p && p[0]; p += MOD_ROW)
       if (str_eq((const str_t *)p[1], n)) return mktup2(TAG(1), (V)p[2]);
   return mktup2(TAG(0), TAG(0));
 }
 
-/* Mod.compatAt iOld iNew -> (1, "") | (0, why): the RUNTIME half of
- * the live-reload compatibility gate.  Every export of table iOld
- * must exist in iNew with the SAME ARITY (the pap carries it), so a
- * re-resolving actor can never bind a function whose call shape
- * changed under it.  The DEEP check -- row-polymorphic signature
- * compatibility -- happens statically at `fpr commit` time, which is
- * what mints a version into the store at all; this gate is the
- * load-time seatbelt for name/arity drift between store and disk. */
+/* Mod.compatAt: compare the root module's checked exports. Dependency
+ * closures are private to their image; nominal dependency IDs are retained
+ * in the root interface. Old images/closures remain mapped. Stamps are
+ * compiler-generated claims for trusted images, not cryptographic signatures. */
 static V mkstr_c(const char *m) {
   uw n = 0;
   while (m[n]) n++;
@@ -161,19 +170,29 @@ static V h_modcompatat(V iov, V inv) {
   sw io = UNTAG(iov), in = UNTAG(inv);
   if (io < 0 || io >= nxtabs || in < 0 || in >= nxtabs)
     return mktup2(TAG(0), mkstr_c("no such attached table"));
-  for (const uw *p = xtabs[io]; p && p[0]; p += 3) {
+  int checked = 0;
+  for (const uw *p = rows(xtabs[io]); p && p[0]; p += MOD_ROW) {
+    if (!str_eq((const str_t *)p[0], (const str_t *)xtabs[io][2])) continue;
+    checked++;
     const str_t *nm = (const str_t *)p[1];
+    if (!p[3] || ISINT(p[3]) || TID(p[3]) != T_STR || !((const str_t *)p[3])->len)
+      return mktup2(TAG(0), mkstr_c("old export has no checked interface"));
     uw want = ((const pap_t *)p[2])->arity;
     int hit = 0;
-    for (const uw *q = xtabs[in]; q && q[0]; q += 3)
-      if (str_eq((const str_t *)q[1], nm)) {
+    for (const uw *q = rows(xtabs[in]); q && q[0]; q += MOD_ROW)
+      if (str_eq((const str_t *)q[0], (const str_t *)xtabs[in][2]) && str_eq((const str_t *)q[1], nm)) {
         if (((const pap_t *)q[2])->arity != want)
           return mktup2(TAG(0), mkstr_c("arity changed for an export"));
+        if (!q[3] || ISINT(q[3]) || TID(q[3]) != T_STR || !((const str_t *)q[3])->len)
+          return mktup2(TAG(0), mkstr_c("new export has no checked interface"));
+        if (!str_eq((const str_t *)p[3], (const str_t *)q[3]))
+          return mktup2(TAG(0), mkstr_c("checked type, contract or ABI changed for an export"));
         hit = 1;
         break;
       }
     if (!hit) return mktup2(TAG(0), mkstr_c("export missing in the new module"));
   }
+  if (!checked) return mktup2(TAG(0), mkstr_c("old module has no callable root exports"));
   return mktup2(TAG(1), mkstr_c(""));
 }
 

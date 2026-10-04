@@ -912,11 +912,32 @@ compileWithInterface accepted = do
           -- Until signatures/layouts are serialized, do not reuse ARC unit code.
           rootProgRaw = compileUnit (if oArc opts then finalTops else rootProgTops)
           rootExports =
-            [ ModExport rootHash n n (length ps)
+            [ ModExport rootHash n n (length ps) ""
               | oPlugin opts,
-                TBind n ps _ _ <- rootProgTops
+                TBind n ps _ _ <- rootProgTops, S.member n rootNames
             ]
-          imageExports = [e {meArity = M.findWithDefault (meArity e) (meQual e) extFor} | e <- exports] ++ rootExports
+          rawExports = [e {meArity = M.findWithDefault (meArity e) (meQual e) extFor} | e <- exports] ++ rootExports
+          checkedTypes = M.fromList interfaces
+          contractTops = stripPosTops tops
+          contractFor n = [(as, r, pres) | TSig q (as, r) pres <- contractTops, q == n]
+          unsafeMarkers = [q | TSig q _ pres <- contractTops, any (\p -> (fst <$> p) == Just "$unsafe") pres]
+          ownsUnsafe n marker
+            | marker == "$module" = n `S.member` rootNames
+            | "$module@" `isPrefixOf` marker = drop (length "$module") marker `List.isInfixOf` n
+            | ".$module" `List.isSuffixOf` marker = take (length marker - length "$module") marker `isPrefixOf` n
+            | otherwise = marker == n
+          opaque n = any (ownsUnsafe n) unsafeMarkers
+                     || any (\(_, _, pres) -> any (\p -> (fst <$> p) == Just "$size") pres) (contractFor n)
+          stamp e = case M.lookup (meQual e) checkedTypes of
+            Nothing -> ""
+            Just ty | opaque (meQual e) || oManifest opts /= Nothing -> ""
+                    | otherwise -> "fpr-interface-1/g" ++ show codegenRev
+                        ++ "/" ++ preludeHash ++ "/" ++ hashAST foreignTops
+                        ++ "/" ++ tgtName tgt ++ "/hardfloat=" ++ show (oHardFloat opts)
+                        ++ "/" ++ canonicalTypeWith interfaceName ty
+                        ++ "/contracts=" ++ show (contractFor (meQual e))
+                        ++ "/arity=" ++ show (meArity e)
+          imageExports = [e {meInterface = stamp e} | e <- rawExports]
       when (oBuiltin opts && not (oArc opts) && M.member "machineInterrupt" rootProgRaw) $ do
         hPutStrLn stderr "machineInterrupt requires --arc (raw, allocation-free handler ABI)"
         exitFailure
