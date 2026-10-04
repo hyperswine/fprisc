@@ -35,6 +35,24 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         assert 'precond' not in out.stdout, 'a build is quiet unless -v'
         return exe
     print(run(['python3', 'tests/check_admission.py']).stdout.strip())
+    # strCmp, strIndexOf, strIndexFrom and parseInt left runtime.c for the
+    # prelude; the expected text is what the C primitives printed
+    p = run([build('tests/base/strprims.fpr', 'strprims')])
+    assert p.stdout == Path('tests/base/strprims.expected').read_text(), p.stdout
+    print('String order, search and parse in FP-RISC: the C primitives\' answers, edge cases and overflow included: PASS')
+    # a shift or bit index outside 0..63 is a named panic inline and through a
+    # function value (runtime/bits.c used to compute C's undefined shift)
+    bits = build('tests/base/bitrange.fpr', 'bitrange')
+    assert run([bits, '63', 'value']).stdout == 'in range: True True\nvalue: 0\n'
+    for args, msg in ((['64', 'inline'], 'BITSHIFTL: shift must be 0..63'), (['-1', 'value'], 'BITSET: bit index must be 0..63')):
+        p = run([bits] + args, expected=1)
+        assert msg in p.stdout + p.stderr, p.stdout + p.stderr
+    print('Bit ops: an index or shift outside 0..63 is a named panic, inline and as a value: PASS')
+    # a panic message is printed from its own String, whole (it was copied
+    # into a shared 160-byte buffer: cut silently, and racy across harts)
+    p = run([build('tests/base/longpanic.fpr', 'longpanic')], expected=1)
+    assert 'PANIC [actor 0]: long:' + '0123456789' * 30 + ':end ***' in p.stdout + p.stderr, p.stdout + p.stderr
+    print('Panic: a 310-byte error message is printed whole: PASS')
     # Fixed heap admission is independent of mailbox capacity; failures
     # belong to the child and escaped data delays grant reclamation.
     fixed = build('tests/base/fixedheap.fpr', 'fixedheap')

@@ -1,0 +1,17 @@
+# a shift or bit index outside 0..63 is a named panic on every path: the
+# inline guard's slow path and a call through a function value both reach
+# runtime/bits.c, which used to compute C's undefined shift instead
+via2 : (Int -> Int -> Int) -> Int -> Int -> Int .
+via2 f a b = f a b.
+argAt : unsafe List String -> Int -> String -> String .
+argAt as i d = case as of
+    Nil -> d
+  | a :: r -> (case i == 0 of True -> a | False -> argAt r (i - 1) d).
+
+main =
+  as = Sys.args Unit;
+  n = parseInt (argAt as 0 "64");
+  _ = print "in range: {BITSHIFTL 1 63 == via2 BITSHIFTL 1 63} {BITSET 0 63 == via2 BITSET 0 63}";
+  case argAt as 1 "inline" == "inline" of
+    True -> print "inline: {BITSHIFTL 1 n}"
+  | False -> print "value: {via2 BITSET 0 n}".

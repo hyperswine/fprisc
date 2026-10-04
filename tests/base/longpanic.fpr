@@ -1,0 +1,5 @@
+# an `error` message longer than the old 160-byte panic buffer prints whole:
+# fpr_panic passes the String's own bytes, with no shared copy to cut or race
+grow : unsafe String -> Int -> String .
+grow s n = case n == 0 of True -> s | False -> grow (strcat s "0123456789") (n - 1).
+main = error (strcat (grow "long:" 30) ":end").

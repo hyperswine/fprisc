@@ -1,0 +1,47 @@
+# strCmp, strIndexOf, strIndexFrom and parseInt: the contracts they had as C
+# primitives, now that they are FP-RISC in core/prelude.fpr.  The expected
+# output in check_base.py is what the C versions printed for these inputs.
+
+cmps = [("", ""), ("", "a"), ("a", ""), ("abc", "abc"), ("abc", "abd"), ("abd", "abc"),
+        ("ab", "abc"), ("abc", "ab"), ("B", "a"), ("\xff", "a")].
+
+finds = [("", "", 0), ("", "abc", 0), ("", "abc", 3), ("", "abc", 4), ("", "abc", -5),
+         ("a", "", 0), ("b", "abc", 0), ("c", "abc", 2), ("c", "abc", 3), ("abc", "abc", 0),
+         ("abcd", "abc", 0), ("aab", "aaab", 0), ("ab", "abab", 1), ("ab", "abab", 3), ("x", "abc", -2)].
+
+ints = ["", "-", "0", "42", "-42", "007", "12ab", "ab12", "--3", "-0", " 5", "9223372036854775807", "4611686018427387903"].
+
+showCmps : unsafe List (String, String) -> Int .
+showCmps xs = case xs of
+    Nil -> 0
+  | (a, b) :: r -> showCmp a b r.
+showCmp : unsafe String -> String -> List (String, String) -> Int .
+showCmp a b r =
+  _ = print "strCmp {strlen a} {strlen b} = {strCmp a b}";
+  showCmps r.
+
+showFinds : unsafe List (String, String, Int) -> Int .
+showFinds xs = case xs of
+    Nil -> 0
+  | (p, s, i) :: r -> showFind p s i r.
+showFind : unsafe String -> String -> Int -> List (String, String, Int) -> Int .
+showFind p s i r =
+  _ = print "strIndexFrom [{p}] [{s}] {i} = {strIndexFrom p s i}";
+  showFinds r.
+
+showInts : unsafe List String -> Int .
+showInts xs = case xs of
+    Nil -> 0
+  | s :: r -> showInt s r.
+showInt : unsafe String -> List String -> Int .
+showInt s r =
+  _ = print "parseInt [{s}] = {parseInt s}";
+  showInts r.
+
+main =
+  _ = showCmps cmps;
+  _ = showFinds finds;
+  _ = print "strIndexOf = {strIndexOf "lo" "hello world"} {strIndexOf "zz" "hello"}";
+  _ = print "as values: {listFold (fn f n -> n + f "ab" "xab") 0 [strCmp, strIndexOf]}";
+  _ = showInts ints;
+  print "done".

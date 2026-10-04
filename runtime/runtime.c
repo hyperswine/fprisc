@@ -1716,12 +1716,11 @@ static V g_substr(V sv, V off, V len) {
   if ((uw)l > s->len - (uw)o) l = (sw)(s->len - (uw)o);
   return (V)fpr_mkstr(s->bytes + o, (uw)l);
 }
-/* ---- the string operations a library cannot build cheaply from substr ----
- * Same names and contracts as Sol's natives (compiler/Sol/VM.hs), so the two
- * profiles share one vocabulary: byte strings, 0-based, -1 = not found
- * (docs/2026-10-02-ZERO-BASED.md).
- * strJoin is the one that matters: joining n pieces by repeated strcat copies
- * the accumulator n times (docs/2026-09-19-PRELIM_BASE_LIBRARY_DESIGN.md). */
+/* ---- strJoin: the string operation a library cannot build cheaply -------
+ * One allocation and a copy; joining n pieces by repeated strcat copies the
+ * accumulator n times (docs/2026-09-19-PRELIM_BASE_LIBRARY_DESIGN.md).
+ * strCmp, strIndexOf, strIndexFrom and parseInt are FP-RISC in
+ * core/prelude.fpr, with Sol's names and contracts. */
 static str_t *want_str(V v, const char *who) {
   if (ISINT(v) || TID(v) != T_STR) fpr_cpanic(who);
   return (str_t *)v;
@@ -1746,27 +1745,6 @@ static V g_strJoin(V sepv, V list) {
   }
   return (V)out;
 }
-static V g_strCmp(V av, V bv) { /* -1, 0, 1: bytewise, shorter first on a tie */
-  str_t *a = want_str(av, "strCmp: not a String"), *b = want_str(bv, "strCmp: not a String");
-  uw n = a->len < b->len ? a->len : b->len;
-  for (uw i = 0; i < n; i++)
-    if (a->bytes[i] != b->bytes[i]) return TAG(a->bytes[i] < b->bytes[i] ? -1 : 1);
-  return TAG(a->len == b->len ? 0 : a->len < b->len ? -1 : 1);
-}
-static V g_strIndexFrom(V pv, V sv, V fromv) { /* the first match at or after `from`; -1 = none */
-  str_t *p = want_str(pv, "strIndexFrom: not a String"), *s = want_str(sv, "strIndexFrom: not a String");
-  sw from = UNTAG(fromv);
-  if (from < 0) from = 0;
-  if (p->len == 0) return TAG((uw)from <= s->len ? from : -1);
-  for (uw i = (uw)from; i + p->len <= s->len; i++) {
-    uw k = 0;
-    while (k < p->len && s->bytes[i + k] == p->bytes[k]) k++; /* (no memcmp: freestanding boards) */
-    if (k == p->len) return TAG((sw)i);
-  }
-  return TAG(-1);
-}
-static V g_strIndexOf(V pv, V sv) { return g_strIndexFrom(pv, sv, TAG(0)); }
-
 static V g_arcLive(V d) {
   (void)d;
   if (fpr_sched) return TAG((sw)fpr_sched->arc_live());
@@ -1801,22 +1779,27 @@ void fpr_logput(int sev, const char *b, uw n);
  * actor's RPC from panic context, and honesty beats a fake hook. */
 void (*fpr_panic_persist)(const char *msg, uw n);
 #ifndef FPR_BUILTIN
-void fpr_cpanic(const char *m) {
+/* the message is (bytes, length), not a C string: a user's `error` text is
+ * printed from its own String, whole, with no copy into a shared buffer */
+void fpr_cpanic_n(const char *m, uw n) {
   static int in_panic;
   if (!in_panic) {
     in_panic = 1;
-    uw n = 0;
-    while (m[n]) n++;
     fpr_logput(2, m, n); /* the error ring keeps the last words */
     if (fpr_panic_persist) fpr_panic_persist(m, n);
   }
   praw("\n*** FPRISC PANIC [actor ");
   pdec(fpr_current_id());
   praw("]: ");
-  praw(m);
+  for (uw i = 0; i < n; i++) hal_putc(m[i]);
   praw(" ***\n");
   hal_poweroff(1); /* QEMU: exit 1; real HW: no-op, park below */
   for (;;) FPR_PARK();
+}
+void fpr_cpanic(const char *m) {
+  uw n = 0;
+  while (m[n]) n++;
+  fpr_cpanic_n(m, n);
 }
 
 #endif
@@ -1826,13 +1809,9 @@ void fpr_cpanic(const char *m) {
  * like a runtime one (it previously printed raw and died -- last words
  * that never made /logs/errors). */
 void fpr_panic(V s) {
-  static char pbuf[160];
   if (!ISINT(s) && TID(s) == T_STR) {
     str_t *t = (str_t *)s;
-    uw n = t->len < sizeof pbuf - 1 ? t->len : sizeof pbuf - 1;
-    for (uw i = 0; i < n; i++) pbuf[i] = (char)t->bytes[i];
-    pbuf[n] = 0;
-    fpr_cpanic(pbuf);
+    fpr_cpanic_n((const char *)t->bytes, t->len);
   }
   fpr_cpanic("panic (non-string value)");
 }
@@ -1924,7 +1903,7 @@ static V callf(uw fn, uw ar, V *a) {
     return ((F8)fn)(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
 #endif
   }
-  fpr_cpanic("apply: arity > 24");
+  fpr_cpanic("apply: arity > 64 (8 registers + FPR_ARGSPILL)");
 }
 
 V fpr_apply(V f, V a) {
@@ -2622,22 +2601,6 @@ static V g_strlen(V s) {
   return TAG(t->len);
 }
 
-/* parseInt : String -> Int — decimal, leading '-' allowed, stops at the
- * first non-digit. Empty or all-non-digit yields 0 (the pI idiom). */
-static V g_parseInt(V sv) {
-  if (ISINT(sv) || ((str_t *)sv)->tid != T_STR) fpr_cpanic("parseInt: not a String");
-  str_t *s = (str_t *)sv;
-  uw i = 0;
-  sw sign = 1, acc = 0;
-  if (i < s->len && s->bytes[i] == '-') { sign = -1; i++; }
-  for (; i < s->len; i++) {
-    uint8_t c = s->bytes[i];
-    if (c < '0' || c > '9') break;
-    acc = acc * 10 + (c - '0');
-  }
-  return TAG(sign * acc);
-}
-
 /* chr : Int -> String -- the inverse of charAt. One byte. The line
  * editor and path splitter build strings incrementally with this. */
 static V g_chr(V c) {
@@ -2960,12 +2923,8 @@ FPR_FN(fpr_prim_obj_error, fpr_prim_fn_error, 1);
 FPR_FN(fpr_g_charAt, g_charAt, 2);
 FPR_FN(fpr_g_strlen, g_strlen, 1);
 FPR_FN(fpr_g_chr, g_chr, 1);
-FPR_FN(fpr_g_parseInt, g_parseInt, 1);
 FPR_FN(fpr_g_substr, g_substr, 3);
 FPR_FN(fpr_g_strJoin, g_strJoin, 2);
-FPR_FN(fpr_g_strCmp, g_strCmp, 2);
-FPR_FN(fpr_g_strIndexOf, g_strIndexOf, 2);
-FPR_FN(fpr_g_strIndexFrom, g_strIndexFrom, 3);
 FPR_FN(fpr_g_drop, g_drop, 1);
 FPR_FN(fpr_g_arcLive, g_arcLive, 1);
 FPR_FN(fpr_g_heapUsed, g_heapUsed, 1);

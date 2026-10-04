@@ -155,6 +155,145 @@ strSub a b =
   | False -> strSubGo a b la lb.
 strSubGo a b la lb = case strSufEq a b (la - lb) 0 of True -> strTake a (la - lb) | False -> a.
 
+# ---- string order, search and parse (were C in runtime.c) -------------------
+# Same names and contracts as Sol's natives: byte strings, 0-based, -1 = not
+# found (docs/2026-10-02-ZERO-BASED.md).  strJoin stays a primitive: it is
+# one allocation and a copy, which repeated strcat cannot be.
+
+# -1, 0, 1: bytewise, the shorter first on a tie
+strCmp : String -> String -> Int .
+strCmp a b = strCmpGo a b 0 (strlen a) (strlen b).
+strCmpGo : unsafe String -> String -> Int -> Int -> Int -> Int .
+strCmpGo a b i la lb = case i >= la or i >= lb of
+    True -> (case la == lb of True -> 0 | False -> (case la < lb of True -> 0 - 1 | False -> 1))
+  | False -> strCmpAt a b i la lb (charAt a i) (charAt b i).
+strCmpAt : unsafe String -> String -> Int -> Int -> Int -> Int -> Int -> Int .
+strCmpAt a b i la lb ca cb = case ca == cb of
+    True -> strCmpGo a b (i + 1) la lb
+  | False -> (case ca < cb of True -> 0 - 1 | False -> 1).
+
+# the first match of p in s at or after `from` (a negative from is 0); -1 = none
+strIndexFrom : String -> String -> Int -> Int .
+strIndexFrom p s from = strIndexGo p s (case from < 0 of True -> 0 | False -> from) (strlen p) (strlen s).
+strIndexGo : unsafe String -> String -> Int -> Int -> Int -> Int .
+strIndexGo p s i lp ls = case lp == 0 of
+    True -> (case i <= ls of True -> i | False -> 0 - 1)
+  | False -> (case i + lp > ls of
+      True -> 0 - 1
+    | False -> (case strMatchAt p s i 0 lp of True -> i | False -> strIndexGo p s (i + 1) lp ls)).
+strMatchAt : unsafe String -> String -> Int -> Int -> Int -> Bool .
+strMatchAt p s i k lp = case k >= lp of
+    True -> True
+  | False -> (case charAt s (i + k) == charAt p k of True -> strMatchAt p s i (k + 1) lp | False -> False).
+strIndexOf : String -> String -> Int .
+strIndexOf p s = strIndexFrom p s 0.
+
+# decimal, a leading "-" allowed, stops at the first non-digit; no digits is 0.
+# The lenient parse; wireInt above is the checked one.
+parseInt : String -> Int .
+parseInt s = case strlen s == 0 of
+    True -> 0
+  | False -> (case charAt s 0 == 45 of
+      True -> 0 - parseDigits s 1 0
+    | False -> parseDigits s 0 0).
+parseDigits : unsafe String -> Int -> Int -> Int .
+parseDigits s i acc = case i >= strlen s of
+    True -> acc
+  | False -> parseDigit s i acc (charAt s i).
+parseDigit : unsafe String -> Int -> Int -> Int -> Int .
+parseDigit s i acc c = case c >= 48 and c <= 57 of
+    True -> parseDigits s (i + 1) (acc * 10 + (c - 48))
+  | False -> acc.
+
+# ---- module tables: lookup and compatibility (were C in runtime/mod.c) ------
+# mod.c is the registry and reads rows: Mod.plugs, Mod.hashAt, Mod.rows t and
+# Mod.rowHash/rowName/rowIface/rowFn/rowArity t i.  Table -1 is the image's
+# own; 0.. are attachments in attach order.  A miss is (0, 0), as it was.
+modMiss : Unit -> (Int, a) .
+modMiss u = (0, Mod.rowFn (0 - 2) 0).
+
+# the first row of table t at or after i that p accepts; -1 = none
+modRow : unsafe Int -> Int -> Int -> (Int -> Bool) -> Int .
+modRow t i n p = case i >= n of
+    True -> 0 - 1
+  | False -> (case p i of True -> i | False -> modRow t (i + 1) n p).
+modRowIn : Int -> (Int -> Bool) -> Int .
+modRowIn t p = modRow t 0 (Mod.rows t) p.
+modHit : Int -> Int -> (Unit -> (Int, a)) -> (Int, a) .
+modHit t i next = case i >= 0 of True -> (1, Mod.rowFn t i) | False -> next Unit.
+
+# does the image carry this module at all? (what a remote node answers an
+# FPRLive resolve probe with)
+modHas : String -> Bool .
+modHas h = modHasFrom h (0 - 1) (Mod.plugs 0).
+modHasFrom : unsafe String -> Int -> Int -> Bool .
+modHasFrom h t n = case t >= n of
+    True -> False
+  | False -> (case modRowIn t (fn i -> Mod.rowHash t i == h) >= 0 of True -> True | False -> modHasFrom h (t + 1) n).
+
+# (1, fn) | (0, 0) by (hash, name), the image's own table first: the
+# URL-service resolver contract, where a miss is data
+modResolve : String -> String -> (Int, a) .
+modResolve h name = modResolveFrom h name (0 - 1) (Mod.plugs 0).
+modResolveFrom : unsafe String -> String -> Int -> Int -> (Int, a) .
+modResolveFrom h name t n = case t >= n of
+    True -> modMiss Unit
+  | False -> modHit t (modRowIn t (fn i -> Mod.rowHash t i == h and Mod.rowName t i == name)) (fn u -> modResolveFrom h name (t + 1) n).
+
+# table t ONLY, its root module's exports: every app plugin exports the same
+# names (appMeta, appInit, ...), so scoped search is what lets N apps coexist
+modFindAt : Int -> String -> (Int, a) .
+modFindAt t name = case t >= 0 and t < Mod.plugs 0 of
+    True -> modHit t (modRowIn t (fn i -> Mod.rowHash t i == Mod.hashAt t and Mod.rowName t i == name)) (fn u -> modMiss Unit)
+  | False -> modMiss Unit.
+
+# by name only, ATTACHED tables only, NEWEST ATTACHMENT WINS: attach Math.v2
+# beside Math.v1 and whoever re-resolves binds v2, while calls already in v1
+# run to completion (the old table and image stay mapped)
+modFind : String -> (Int, a) .
+modFind name = modFindDown name (Mod.plugs 0 - 1).
+modFindDown : unsafe String -> Int -> (Int, a) .
+modFindDown name t = case t < 0 of
+    True -> modMiss Unit
+  | False -> modHit t (modRowIn t (fn i -> Mod.rowName t i == name)) (fn u -> modFindDown name (t - 1)).
+
+# the live-reload gate: every root export of table o is in table n with the
+# same arity and the same checked type, contract and ABI.  (1, "") or the
+# first reason it is not.  Stamps are compiler claims for trusted images,
+# not signatures.
+modCompatAt : Int -> Int -> (Int, String) .
+modCompatAt o n = case o >= 0 and o < Mod.plugs 0 and n >= 0 and n < Mod.plugs 0 of
+    True -> modCompatRows o n 0 (Mod.rows o) 0
+  | False -> (0, "no such attached table").
+modCompatRows : unsafe Int -> Int -> Int -> Int -> Int -> (Int, String) .
+modCompatRows o n i rows checked = case i >= rows of
+    True -> (case checked == 0 of True -> (0, "old module has no callable root exports") | False -> (1, ""))
+  | False -> (case Mod.rowHash o i == Mod.hashAt o of
+      True -> modCompatRow o n i rows checked
+    | False -> modCompatRows o n (i + 1) rows checked).
+modCompatRow : unsafe Int -> Int -> Int -> Int -> Int -> (Int, String) .
+modCompatRow o n i rows checked = case Mod.rowIface o i == "" of
+    True -> (0, "old export has no checked interface")
+  | False -> modCompatMatch o n i rows checked (modRowIn n (fn j -> Mod.rowHash n j == Mod.hashAt n and Mod.rowName n j == Mod.rowName o i)).
+modCompatMatch : unsafe Int -> Int -> Int -> Int -> Int -> Int -> (Int, String) .
+modCompatMatch o n i rows checked j = case j < 0 of
+    True -> (0, "export missing in the new module")
+  | False -> (case Mod.rowArity n j == Mod.rowArity o i of
+      False -> (0, "arity changed for an export")
+    | True -> (case Mod.rowIface n j == "" of
+        True -> (0, "new export has no checked interface")
+      | False -> (case Mod.rowIface n j == Mod.rowIface o i of
+          False -> (0, "checked type, contract or ABI changed for an export")
+        | True -> modCompatRows o n (i + 1) rows (checked + 1)))).
+
+Mod = Struct {
+  find = fn name -> modFind name,
+  findAt = fn t name -> modFindAt t name,
+  resolve = fn h name -> modResolve h name,
+  has = fn h -> modHas h,
+  compatAt = fn o n -> modCompatAt o n
+}.
+
 Str = Struct Add Eq {
   (+) = fn a b -> strcat a b,
   (-) = fn a b -> strSub a b,

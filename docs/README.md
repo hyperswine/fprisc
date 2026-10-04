@@ -128,3 +128,4 @@ they began.
 | 2026-10-04 | [SOL-EXAMPLES-STYLE.md](2026-10-04-SOL-EXAMPLES-STYLE.md) | Ten Sol examples rewritten in the intended style: folds and clauses, contracts and measures (dtree and terra drop all `unsafe`), refused rather than panicking browser input, shared helpers in base, and `tools/sol-examples-check.py` with golden traces; checker limits met and STYLE catalogue corrections |
 
 - [Host publication and watching](2026-10-04-PUBLICATION-WATCH.md): immutable ready images, journal cursors and MVU notifications.
+- [C reduction, second round](2026-10-04-C-REDUCTION-PLAN.md): the C read function by function (about a third can move), what the compiler needs first, phases; landed: string search/order/parse and module lookup in the prelude, bits.c mechanism-only with no undefined shifts, whole panic text, a race-free module registry.
