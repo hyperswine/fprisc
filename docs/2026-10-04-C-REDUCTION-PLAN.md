@@ -193,3 +193,22 @@ cancellation boots now also prove the configurable waiter allowance and busy
 configuration refusal. Full disk hardening (including Portable), raw policy
 boundary differentials, loaded native process storage and RV32 compile checks
 pass. No full repository sweep or hardware verification is claimed.
+
+Qlog/bootstrap routing now follows that protocol. Qlog v3.0 takes explicit
+raw or routed page sources; every page path uses the adapter, and its default
+storage actor routes through a block service. Native System.qa creates the
+shared block owner first, keeps its workers and Qlog on the storage hart, and
+publishes the process storage syscall binding only after Qlog initialization
+and index scan answer a readiness request. Portable roots follow the same
+routing/readiness order through the shared `std/blockio` protocol. Native
+budget callbacks remain in `std/block`; Portable explicitly refuses them.
+
+Routed I/O failure stops Qlog rather than continuing a possibly partial append
+with stale state. Restart on the surviving block service rolls back the pending
+append and rescans. Eighteen matching one/two-hart native boots cover checked
+partial metadata/header writes, restart, service death, two-boot persistence,
+failed initialization and no disk, with virtio v1/v2. Portable readiness,
+plugin persistence, loaded native process storage, failure injection and raw
+format/compaction/swap regressions pass. The implementation record contains
+exact scope and publication pins. Automatic storage supervision/rebinding and
+moving DMA ownership/reset effects out of C remain open.
