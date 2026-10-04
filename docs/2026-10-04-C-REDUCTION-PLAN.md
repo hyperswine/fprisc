@@ -229,3 +229,23 @@ and the disk-hardening/reset-cancellation suite also pass. DMA ownership/reset
 effects, block namespace/cancel/drain, and the remaining Phase 2/3 items remain
 open; this checkpoint completes storage supervision rather than that broader
 migration. QOS's dated implementation record specifies the exact boundary.
+
+The next 2026-10-05 checkpoint moves RV64 DMA ownership/recovery transitions
+into allocation-free `blockpolicy.fpr`. One atomic ownership word replaces
+QOS's separate busy/orphan/offline flags. Claimed completion and reset states
+retain backing until their effects finish; failed/cancelled recovery atomically
+publishes an absorbing offline state. C keeps atomics, fences, cleanup hooks,
+MMIO/status polling, queue acknowledgement and DMA memory as mechanisms.
+RV32 retains C policy fallbacks.
+
+Post-claim completion/deadline revalidation also closes a stale observation
+race: an old completed orphan can be replaced by a new incomplete orphan
+before a waiter wins its claim CAS. The pure policy returns that claim to
+orphan instead of releasing its DMA. Eight virtio v1/v2 matching one/two-hart
+boots cover late completion without reset, acknowledgement cancellation, and
+a controlled stale claim. A temporary policy without revalidation fails the
+race fixture. Raw ABI differentials, RV32/RV64 production compile/no-hook
+checks, block-service and disk-hardening/reset-cancellation suites, and the
+24-boot Qlog/loaded-process routing matrix pass. This completes the next block
+ownership policy slice; physical effects/polling stay in C. Block namespace,
+cancel/drain, TCP/ARP and the other Phase 2/3 items remain open.
