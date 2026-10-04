@@ -174,3 +174,22 @@ DMA backing reserved, rather than leaving it resetting indefinitely. The eight
 legacy/modern, one/two-hart cancellation boots pass; a temporary build without
 the cleanup fails the same fixture. The QOS implementation record carries the
 full scope. Configurable budgets and the block service protocol remain open.
+
+The next QOS slice adds opt-in `std/block.fpr`: correlated capacity/read/write,
+budget query and versioned configuration requests. A serial service uses one
+short-lived I/O worker per operation so device fail-stops become Results without
+killing the service. Request deadline, reset probes and waiter factor are now
+configurable; idle-only atomic replacement refuses invalid/stale/busy/offline
+updates and preserves orphan budgets. RV64 validation is raw FP-RISC policy.
+The service's administrator check is cooperative, not a process grant boundary.
+Qlog/legacy callers and bootstrap are not yet routed through this service;
+C still owns DMA reservations and cleanup/reset effects. QOS's implementation
+record specifies these remaining boundaries and the executable test matrix.
+
+Validation: the block service passes four virtio v1/v2, one/two-hart boots,
+including measured configurable request timeout, reset-probe exhaustion,
+mailbox overload, caller death, recovery and offline refusal. Eight held-reset
+cancellation boots now also prove the configurable waiter allowance and busy
+configuration refusal. Full disk hardening (including Portable), raw policy
+boundary differentials, loaded native process storage and RV32 compile checks
+pass. No full repository sweep or hardware verification is claimed.
