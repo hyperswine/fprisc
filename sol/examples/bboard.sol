@@ -15,91 +15,78 @@
 #   side+col. GND net -> left neg rail, PWR nets -> left pos rail.
 #   Strips are encoded as ints: key = row*2 + side (side: 0=left 1=right),
 #   so "two rows down, same side" is just key+4.
-
-# Ideally should use more |> and |>? and less explicit let-binding
-
-base = use "../lib/base".
+#
+# Style (docs/2026-10-03-STYLE-DIRECTION.md): clauses select by shape, guards
+# say when they apply, and every traversal is a List fold, map, filter or
+# find. There is no explicit recursion, so nothing here is `unsafe` and every
+# function is total.
 
 Opt = Type (Nope | Got x).
 
+# a parsed netlist line; kind is the upper-cased first letter's char code
+Comp = {kind : Int, na : String, nb : String, nm : String, val : String}.
+
 # ---------- generic helpers ----------
-member : unsafe i93 -> List i93 -> Bool .
-member _ [] = False.
-member x (y :: _) | x == y = True.
-member x (_ :: r) = member x r.
+lookupA k ps = ps |> List.filter (keyIs k) |> List.map valueOf |> firstGot.
+keyIs k (k2, v) = k2 == k.
+valueOf (k, v) = v.
+firstGot [] = Nope.
+firstGot (v :: _) = Got v.
 
-lookupA : unsafe k93 -> List (k93, j93) -> Opt .
-lookupA _ [] = Nope.
-lookupA k ((k2, v) :: _) | k2 == k = Got v.
-lookupA k (_ :: r) = lookupA k r.
+firstOr d [] = d.
+firstOr d (x :: _) = x.
 
-pad3 : unsafe String -> String .
-pad3 s | Str.len s >= 3 = s.
-pad3 s = pad3 " {s}".
-pad4 : unsafe String -> String .
-pad4 s | Str.len s >= 4 = s.
-pad4 s = pad4 " {s}".
+padL w s = "{Str.repeat (w - Str.len s) " "}{s}".
+boolInt b = case b of True -> 1 | False -> 0.
 
-# ---------- tokenizing ----------
-nonEmpty s = s != "".
-words ln = Str.split 32 ln |> List.filter nonEmpty.
+# print each line, in order
+say lines = List.fold (fn n l -> u = print l; n + 1) 0 lines.
+
+# ---------- parsing ----------
+placeableKinds = [82, 67, 76, 68, 66].  # R C L D B
+sourceKinds = [86, 73].                 # V I
+
 upC c | c >= 97, c <= 122 = c - 32.
 upC c = c.
 
-# ---------- parsing ----------
-# component: {kind (char code), na, nb, nm, val}
-parseLine : unsafe String -> List _ .
-parseLine ln =
-  ws = words ln;
-  case ws == [] of True -> [] | False -> parseWs ws.
+parseNetlist : List String -> List Comp .
+parseNetlist ls = ls |> List.map parseLine |> List.concat.
 
-parseWs : unsafe List p101 -> List _ .
-parseWs ws =
-  nm = ws ! 0;
-  k = upC (Str.at nm 0);
-  case or (k == 42) (k == 46) of  # '*' comment, '.' directive
-    True -> []
-  | False -> parseKind k nm ws (List.len ws).
+parseLine : String -> List Comp .
+parseLine ln = parseWords (Str.words ln).
 
-placeableKinds = [82, 67, 76, 68, 66].  # R C L D B
+parseWords : List String -> List Comp .
+parseWords [] = [].
+parseWords ws = parseKind (upC (Str.at (ws ! 0) 0)) ws.
 
-parseKind : unsafe Int -> t100 -> u100 -> Int -> List _ .
-parseKind k nm ws n =
-  case and (member k placeableKinds) (n >= 3) of
-    True -> [{kind = k, na = ws ! 1, nb = ws ! 2, nm = nm,
-              val = (case n >= 4 of True -> ws ! 3 | False -> "")}]
-  | False -> (case and (member k [86, 73]) (n >= 3) of  # V I sources
-      True -> [{kind = k, na = ws ! 1, nb = ws ! 2, nm = nm, val = "src"}]
-    | False -> []).
+# NAME NODE_A NODE_B [VALUE]. A '*' comment or '.' directive has a kind that
+# is neither placeable nor a source, so it parses to nothing.
+parseKind : Int -> List String -> List Comp .
+parseKind k ws | List.len ws < 3 = [].
+parseKind k ws | List.has k placeableKinds = [comp k ws (valueField ws)].
+parseKind k ws | List.has k sourceKinds = [comp k ws "src"].
+parseKind k ws = [].
 
-parseNetlist : unsafe List String -> List _ .
-parseNetlist ls | ls == [] = [].
-parseNetlist ls = case ls of l :: r -> (parseLine l) + (parseNetlist r).
+valueField ws | List.len ws >= 4 = ws ! 3.
+valueField ws = "".
 
-isSource c = or (c.kind == 86) (c.kind == 73).
-notSource c = not (isSource c).
+comp : Int -> List String -> String -> Comp .
+comp k ws val = {kind = k, na = ws ! 1, nb = ws ! 2, nm = ws ! 0, val = val}.
+
+isSource c = List.has c.kind sourceKinds.
 
 # ---------- net classification ----------
-pwrNetsOf : unsafe List _ -> List b101 .
-pwrNetsOf comps | comps == [] = [].
-pwrNetsOf comps = case comps of c :: r -> pwStep2 c r.
-pwStep2 : unsafe _ -> List _ -> List d101 .
-pwStep2 c r = case and (isSource c) (c.nb == "0") of
-  True -> c.na :: pwrNetsOf r
-| False -> pwrNetsOf r.
+# a source's positive node, when its negative node is ground
+pwrNetsOf comps = comps |> List.filter (fn c -> and (isSource c) (c.nb == "0")) |> List.map (fn c -> c.na).
 
-netsOf : unsafe List _ -> List f101 .
-netsOf comps | comps == [] = [].
-netsOf comps = case comps of c :: r -> addNet c.na (addNet c.nb (netsOf r)).
-addNet : unsafe m99 -> List m99 -> List m99 .
-addNet n ns | member n ns = ns.
-addNet n ns = n :: ns.
+# every net once, walking the components from the last back, pin b before pin a
+netsOf comps = List.rev comps |> List.fold (fn ns c -> ns |> addNet c.nb |> addNet c.na) [].
+addNet n ns | List.has n ns = ns.
+addNet n ns = ns + [n].
 
-netTag : unsafe String -> List String -> String .
-netTag net pwrs =
-  case net == "0" of
-    True -> " [GND]"
-  | False -> (case member net pwrs of True -> " [PWR]" | False -> "").
+netTag net pwrs | net == "0" = " [GND]".
+netTag net pwrs | List.has net pwrs = " [PWR]".
+netTag net pwrs = "".
 
 # ---------- strip encoding ----------
 sKey row side = row * 2 + side.
@@ -110,36 +97,26 @@ holeLetter side col = Str.fromCode (97 + side * 5 + col - 1).
 holeLabel k col = "{holeLetter (sSide k) col}{sRow k}".
 
 # ---------- placement state ----------
-# st = {holes  : [(stripKey, col)]        occupied holes
-#       owners : [(stripKey, net)]        the one net a strip carries
-#       netstr : [(net, [stripKey])]      strips per net, in placement order
-#       places : [(nm, kind, sA, cA, cB)] placements (pinB strip = sA + 4)}
+# holes  : occupied (stripKey, col)
+# owners : the one net each strip carries, (stripKey, net)
+# netstr : strips per net in placement order, (net, [stripKey])
+# places : placements (nm, kind, sA, cA, cB); pin b's strip is sA + 4
+Board = {holes : List (Int, Int), owners : List (Int, String), netstr : List (String, List Int), places : List (String, Int, Int, Int, Int)}.
 st0 = {holes = [], owners = [], netstr = [], places = []}.
 
-usedCols : unsafe m94 -> List (m94, l94) -> List l94 .
-usedCols _ [] = [].
-usedCols k ((k2, c) :: r) | k2 == k = c :: usedCols k r.
-usedCols k (_ :: r) = usedCols k r.
+usedCols k holes = holes |> List.filter (keyIs k) |> List.map valueOf.
 
-freeCol : unsafe t99 -> List (t99, Int) -> Int .
-freeCol k holes = firstNot 1 (usedCols k holes).
-firstNot : unsafe Int -> List Int -> Int .
-firstNot c used | c > 5 = 0.
-firstNot c used | member c used = firstNot (c + 1) used.
-firstNot c used = c.
+# the first free column 1..5 of a strip, or 0 when it is full
+freeCol k holes = used = usedCols k holes; List.range 1 5 |> List.filter (fn c -> not (List.has c used)) |> firstOr 0.
 
-stripOK : unsafe u99 -> v99 -> List (u99, w99) -> Bool .
-stripOK k net owners =
-  case lookupA k owners of Nope -> True | Got n -> n == net.
+stripOK k net owners = case lookupA k owners of Nope -> True | Got n -> n == net.
 
-netStrips : unsafe x99 -> List (x99, y99) -> List z99 .
 netStrips net netstr = case lookupA net netstr of Nope -> [] | Got ss -> ss.
 
 # ---------- candidate scoring ----------
 # reward reusing a strip that already carries this net (direct connection);
 # penalise a placement that IGNORES an existing strip of the net (jumper
 # debt); small pull toward row 15.
-scoreCand : unsafe v101 -> v101 -> Int -> _ -> Int .
 scoreCand na nb sA st =
   sB = sA + 4;
   ownA = lookupA sA st.owners;
@@ -151,76 +128,49 @@ scoreCand na nb sA st =
   case and (and okA okB) (and (fA > 0) (fB > 0)) of
     False -> 0 - 1000000
   | True ->
-      100 * base.boolInt (ownA == Got na)
-      + 100 * base.boolInt (ownB == Got nb)
-      - 40 * base.boolInt (and (netStrips na st.netstr != []) (not (ownA == Got na)))
-      - 40 * base.boolInt (and (netStrips nb st.netstr != []) (not (ownB == Got nb)))
+      100 * boolInt (ownA == Got na)
+      + 100 * boolInt (ownB == Got nb)
+      - 40 * boolInt (and (netStrips na st.netstr != []) (not (ownA == Got na)))
+      - 40 * boolInt (and (netStrips nb st.netstr != []) (not (ownB == Got nb)))
       - Numeric.abs (sRow sA - 14).
 
-allKeys : unsafe Int -> List Int .
-allKeys r | r > 28 = [].
-allKeys r = sKey r 0 :: sKey r 1 :: allKeys (r + 1).
+# pin a's candidate strips: rows 1..28 (pin b lands two rows down), both sides
+allKeys = List.range 1 28 |> List.map (fn r -> [sKey r 0, sKey r 1]) |> List.concat.
 
-bestCand : unsafe b102 -> b102 -> List Int -> Int -> Int -> _ -> Int .
-bestCand na nb ks bk bs st | ks == [] = bk.
-bestCand na nb ks bk bs st = case ks of
-  k :: r -> bestStep na nb k r bk bs st.
-bestStep : unsafe f102 -> f102 -> Int -> List Int -> Int -> Int -> _ -> Int .
-bestStep na nb k r bk bs st =
+# the first strictly best candidate, or 0 when none is legal
+bestStrip na nb st = (k, s) = List.fold (better na nb st) (0, 0 - 999999) allKeys; k.
+better na nb st best k =
+  (bk, bs) = best;
   s = scoreCand na nb k st;
-  case s > bs of
-    True -> bestCand na nb r k s st
-  | False -> bestCand na nb r bk bs st.
+  case s > bs of True -> (k, s) | False -> best.
 
 # ---------- committing a placement ----------
-own : unsafe m100 -> n100 -> List (m100, n100) -> List (m100, n100) .
-own k net owners = case lookupA k owners of
-  Nope -> (k, net) :: owners
-| Got n -> owners.
+own k net owners | lookupA k owners == Nope = (k, net) :: owners.
+own k net owners = owners.
 
-track : unsafe o100 -> p100 -> List (o100, List p100) -> List (o100, List p100) .
-track net k netstr =
-  ss = netStrips net netstr;
-  case member k ss of
-    True -> netstr
-  | False -> (net, ss + [k]) :: dropKey net netstr.
+track net k netstr | List.has k (netStrips net netstr) = netstr.
+track net k netstr = (net, netStrips net netstr + [k]) :: List.filter (fn p -> not (keyIs net p)) netstr.
 
-dropKey : unsafe l95 -> List (l95, k95) -> List (l95, k95) .
-dropKey _ [] = [].
-dropKey k ((k2, _) :: r) | k2 == k = dropKey k r.
-dropKey k (p :: r) = p :: dropKey k r.
+placeOne : Board -> Comp -> Board .
+placeOne st c = place c (bestStrip c.na c.nb st) st.
 
-placeOne : unsafe _ -> _ -> _ .
-placeOne c st =
-  sA = bestCand c.na c.nb (allKeys 1) 0 (0 - 999999) st;
-  case sA == 0 of
-    True -> placeFail c st
-  | False -> commit c sA st.
-
-placeFail c st =
-  u = print "!! no legal position for {c.nm}";
-  st.
-
-commit : unsafe _ -> Int -> _ -> _ .
-commit c sA st =
+place c sA st | sA == 0 = u = print "!! no legal position for {c.nm}"; st.
+place c sA st =
   sB = sA + 4;
   cA = freeCol sA st.holes;
   cB = freeCol sB st.holes;
   {st | holes = (sA, cA) :: (sB, cB) :: st.holes,
         owners = own sB c.nb (own sA c.na st.owners),
         netstr = track c.nb sB (track c.na sA st.netstr),
-      places = (st.places + [(c.nm, c.kind, sA, cA, cB)])}.
-
-placeAll : unsafe List _ -> _ -> _ .
-placeAll cs st | cs == [] = st.
-placeAll cs st = case cs of c :: r -> placeAll r (placeOne c st).
+        places = st.places + [(c.nm, c.kind, sA, cA, cB)]}.
 
 # ---------- wiring ----------
-# ws = {holes, labels : [((strip,col), lbl)], rails : [(railName, (row, lbl))],
-#       wires : [(net, from, to, kind)], k : counter}
+# labels : wire ends written into holes, ((strip, col), label)
+# rails  : wire ends on a rail, (railName, (row, label))
+# wires  : (net, from, to, kind);  k : wire counter
+Wiring = {holes : List (Int, Int), labels : List ((Int, Int), String), rails : List (String, (Int, String)), wires : List (String, String, String, String), k : Int}.
 mkWs holes = {holes = holes, labels = [], rails = [], wires = [], k = 0}.
 
-allocLbl : unsafe Int -> j103 -> _ -> (String, _) .
 allocLbl k lbl ws =
   c = freeCol k ws.holes;
   case c == 0 of
@@ -229,180 +179,98 @@ allocLbl k lbl ws =
       {ws | holes = (k, c) :: ws.holes, labels = ((k, c), lbl) :: ws.labels}).
 
 # jumpers between consecutive strips of one net
-jumpNet : unsafe l103 -> List Int -> _ -> _ .
-jumpNet net ss ws | ss == [] = ws.
-jumpNet net ss ws = case ss of
-  s1 :: rest -> (case rest == [] of True -> ws | False -> jumpStep net s1 rest ws).
-jumpStep : unsafe n103 -> Int -> List Int -> _ -> _ .
-jumpStep net s1 rest ws = case rest of
-  s2 :: more -> jumpDo net s1 s2 more ws.
-jumpDo : unsafe p103 -> Int -> Int -> List Int -> _ -> _ .
-jumpDo net s1 s2 more ws =
+jumpNet net ss ws = List.zip ss (List.drop 1 ss) |> List.fold (jumper net) ws.
+jumper net ws (s1, s2) =
   wsA = {ws | k = ws.k + 1};
   (la, ws2) = allocLbl s1 "W{wsA.k}a" wsA;
   (lb, ws3) = allocLbl s2 "W{wsA.k}b" ws2;
-  jumpNet net (s2 :: more) {ws3 | wires = (ws3.wires + [(net, la, lb, "JUMPER")])}.
+  {ws3 | wires = ws3.wires + [(net, la, lb, "JUMPER")]}.
 
 # rail wire: from the net's first strip to the given rail
-railWire : unsafe f103 -> g103 -> List Int -> _ -> _ .
-railWire net rail ss ws =
-  case ss of s1 :: rest -> railDo net rail s1 ws.
-railDo : unsafe u103 -> v103 -> Int -> _ -> _ .
-railDo net rail s1 ws =
+railWire net rail [] ws = ws.
+railWire net rail (s1 :: _) ws =
   wsA = {ws | k = ws.k + 1};
   (la, ws2) = allocLbl s1 "W{wsA.k}a" wsA;
   {ws2 | rails = (rail, (sRow s1, "W{wsA.k}b")) :: ws2.rails,
-      wires = (ws2.wires + [(net, la, rail, "RAIL")])}.
+         wires = ws2.wires + [(net, la, rail, "RAIL")]}.
 
-wireNets : unsafe List String -> List String -> List (String, x103) -> _ -> _ .
-wireNets nets pwrs netstr ws | nets == [] = ws.
-wireNets nets pwrs netstr ws = case nets of
-  n :: r -> wireNets r pwrs netstr (wireOne n pwrs netstr ws).
-
-wireOne : unsafe String -> List String -> List (String, z103) -> _ -> _ .
-wireOne n pwrs netstr ws =
+wireNet pwrs netstr ws n =
   ss = netStrips n netstr;
-  ws2 = jumpNet n ss ws;
-  case n == "0" of
-    True -> railWire n "L-" ss ws2
-  | False -> (case member n pwrs of
-      True -> railWire n "L+" ss ws2
-    | False -> ws2).
+  jumpNet n ss ws |> railFor n pwrs ss.
+
+railFor n pwrs ss ws | n == "0" = railWire n "L-" ss ws.
+railFor n pwrs ss ws | List.has n pwrs = railWire n "L+" ss ws.
+railFor n pwrs ss ws = ws.
 
 # ---------- self-check ----------
 # every strip carries exactly one net; every multi-strip net has strips-1
 # jumpers (fully connected by construction) — verified, not assumed.
-checkOwners : unsafe List (a97, b97) -> List a97 -> String .
-checkOwners owners seen | owners == [] = "no shorts: OK".
-checkOwners owners seen = case owners of o :: r -> ownStep o r seen.
-ownStep : unsafe (c97, d97) -> List (c97, d97) -> List c97 -> String .
-ownStep o r seen =
-  (k, n) = o;
-  case member k seen of
-    True -> "SHORT at strip {k}!"
-  | False -> checkOwners r (k :: seen).
+checkOwners owners =
+  (seen, short) = List.fold noteStrip ([], Nope) owners;
+  case short of Nope -> "no shorts: OK" | Got k -> "SHORT at strip {k}!".
+noteStrip (seen, short) (k, n) | short != Nope = (seen, short).
+noteStrip (seen, short) (k, n) | List.has k seen = (seen, Got k).
+noteStrip (seen, short) (k, n) = (k :: seen, short).
 
-countWires : unsafe g97 -> List (g97, e97, f97, String) -> Int .
-countWires net wires | wires == [] = 0.
-countWires net wires = case wires of w :: r -> cwStep net w r.
-cwStep : unsafe j97 -> (j97, h97, i97, String) -> List (j97, h97, i97, String) -> Int .
-cwStep net w r =
-  (n2, f, t, kd) = w;
-  countWires net r + base.boolInt (and (n2 == net) (kd == "JUMPER")).
+isJumperOf net (n, f, t, kd) = and (n == net) (kd == "JUMPER").
 
-checkNets : unsafe List n97 -> List (n97, k97) -> List (n97, l97, m97, String) -> String .
-checkNets nets netstr wires | nets == [] = "connectivity: OK".
-checkNets nets netstr wires = case nets of n :: r -> cnStep n r netstr wires.
-cnStep : unsafe r97 -> List r97 -> List (r97, o97) -> List (r97, p97, q97, String) -> String .
-cnStep n r netstr wires =
-  ss = netStrips n netstr;
-  need = List.len ss - 1;
-  got = countWires n wires;
-  case and (need > 0) (not (got == need)) of
-    True -> "net {n}: {got}/{need} jumpers MISSING"
-  | False -> checkNets r netstr wires.
+jumperGap netstr wires n =
+  need = List.len (netStrips n netstr) - 1;
+  got = wires |> List.filter (isJumperOf n) |> List.len;
+  case and (need > 0) (got != need) of
+    True -> ["net {n}: {got}/{need} jumpers MISSING"]
+  | False -> [].
+
+checkNets nets netstr wires = nets |> List.map (jumperGap netstr wires) |> List.concat |> firstOr "connectivity: OK".
 
 # ---------- rendering ----------
-pinName kind idx =
-  case kind == 68 of
-    True -> (case idx == 0 of True -> "A" | False -> "K")   # diode A/K
-  | False -> (case idx == 0 of True -> "a" | False -> "b").
+pinName 68 0 = "A".  # diode anode / cathode
+pinName 68 _ = "K".
+pinName _ 0 = "a".
+pinName _ _ = "b".
 
-cellMapOf : unsafe List (s97, Int, Int, t97, t97) -> List ((Int, t97), String) .
-cellMapOf places | places == [] = [].
-cellMapOf places = case places of p :: r -> cmStep p r.
-cmStep : unsafe (u97, Int, Int, v97, v97) -> List (u97, Int, Int, v97, v97) -> List ((Int, v97), String) .
-cmStep p r =
-  (nm, kd, sA, cA, cB) = p;
-  ((sA, cA), "{nm}{pinName kd 0}") :: ((sA + 4, cB), "{nm}{pinName kd 1}") :: cellMapOf r.
+cellMapOf places = places |> List.map pinCells |> List.concat.
+pinCells (nm, kd, sA, cA, cB) = [((sA, cA), "{nm}{pinName kd 0}"), ((sA + 4, cB), "{nm}{pinName kd 1}")].
 
-cellAt : unsafe List ((c103, d103), e103) -> c103 -> d103 -> String .
-cellAt cm k c = case lookupA (k, c) cm of Nope -> "   ." | Got l -> pad4 l.
+cellAt cm k c = case lookupA (k, c) cm of Nope -> "   ." | Got l -> padL 4 l.
+cells cm k = List.range 1 5 |> List.map (cellAt cm k) |> Str.join "".
 
-cells : unsafe List ((z97, Int), a98) -> z97 -> Int -> String .
-cells cm k c | c > 5 = "".
-cells cm k c = "{cellAt cm k c}{cells cm k (c + 1)}".
+railCell rails name row = case lookupA name rails of Nope -> "  |" | Got rl -> railHit rl row.
+railHit (r2, lbl) row | r2 == row = padL 3 lbl.
+railHit rl row = "  |".
 
-railCell : unsafe List (h103, j103) -> h103 -> i103 -> String .
-railCell rails name row =
-  case lookupA name rails of
-    Nope -> "  |"
-  | Got rl -> railHit rl row.
-railHit : unsafe (k103, String) -> k103 -> String .
-railHit rl row = (r2, lbl) = rl; case r2 == row of True -> pad3 lbl | False -> "  |".
-
-renderRow : unsafe List ((Int, Int), m103) -> List (String, l103) -> Int -> String .
 renderRow cm rails r =
-  "{pad3 (str r)} {railCell rails "L-" r} {railCell rails "L+" r}  {cells cm (sKey r 0) 1}  ||  {cells cm (sKey r 1) 1}".
-
-renderRows : unsafe List ((Int, Int), i98) -> List (String, h98) -> Int -> Int .
-renderRows cm rails r | r > 30 = 0.
-renderRows cm rails r =
-  u = print (renderRow cm rails r);
-  renderRows cm rails (r + 1).
+  "{padL 3 (str r)} {railCell rails "L-" r} {railCell rails "L+" r}  {cells cm (sKey r 0)}  ||  {cells cm (sKey r 1)}".
 
 header = "     L-  L+     a   b   c   d   e  ||     f   g   h   i   j".
 
+boardLines cm rails = [header] + (List.range 1 30 |> List.map (renderRow cm rails)).
+
 # ---------- summaries ----------
-printComps : unsafe List (j98, k98, Int, Int, Int) -> Int .
-printComps ps | ps == [] = 0.
-printComps ps = case ps of p :: r -> pcStep p r.
-pcStep : unsafe (l98, m98, Int, Int, Int) -> List (l98, m98, Int, Int, Int) -> Int .
-pcStep p r =
-  (nm, kd, sA, cA, cB) = p;
-  u = print "  {nm}  {holeLabel sA cA} -> {holeLabel (sA + 4) cB}";
-  printComps r.
+compLine (nm, kd, sA, cA, cB) = "  {nm}  {holeLabel sA cA} -> {holeLabel (sA + 4) cB}".
 
-stripsStr : unsafe List Int -> String .
-stripsStr ss | ss == [] = "".
-stripsStr ss = case ss of
-  s :: r -> (case r == [] of
-    True -> "row {sRow s} {sideName s}"
-  | False -> "row {sRow s} {sideName s}, {stripsStr r}").
 sideName k | sSide k == 0 = "L".
-sideName _ = "R".
+sideName k = "R".
+stripName s = "row {sRow s} {sideName s}".
+stripsStr ss = ss |> List.map stripName |> Str.join ", ".
+netLine pwrs netstr n = "  {n}{netTag n pwrs}: {stripsStr (netStrips n netstr)}".
 
-printNets : unsafe List String -> List String -> List (String, n98) -> Int .
-printNets nets pwrs netstr | nets == [] = 0.
-printNets nets pwrs netstr = case nets of n :: r -> pnStep n r pwrs netstr.
-pnStep : unsafe String -> List String -> List String -> List (String, o98) -> Int .
-pnStep n r pwrs netstr =
-  u = print "  {n}{netTag n pwrs}: {stripsStr (netStrips n netstr)}";
-  printNets r pwrs netstr.
-
-printWires : unsafe List (p98, q98, r98, s98) -> Int .
-printWires wl | wl == [] = 0.
-printWires wl = case wl of w :: r -> pwStep w r.
-pwStep : unsafe (t98, u98, v98, w98) -> List (t98, u98, v98, w98) -> Int .
-pwStep w r =
-  (n, f, t, kd) = w;
-  u = print "  [{kd}] net {n}: {f} -> {t}";
-  printWires r.
+wireLine (n, f, t, kd) = "  [{kd}] net {n}: {f} -> {t}".
 
 # ---------- driver ----------
-runBoard : unsafe d104 -> List String -> Int .
 runBoard title ls =
-  u0 = print "";
-  u1 = print "=== {title} ===";
+  u = say ["", "=== {title} ==="];
   comps = parseNetlist ls;
-  placeable = List.filter notSource comps;
+  placeable = List.filter (fn c -> not (isSource c)) comps;
   pwrs = pwrNetsOf comps;
-  nets = List.rev (netsOf placeable);
-  st = placeAll placeable st0;
-  ws = wireNets nets pwrs st.netstr (mkWs st.holes);
-  u2 = print "-- components --";
-  u3 = printComps st.places;
-  u4 = print "-- nets --";
-  u5 = printNets nets pwrs st.netstr;
-  u6 = print "-- wires --";
-  u7 = printWires ws.wires;
-  u8 = print "-- checks --";
-  u9 = print "  {checkOwners st.owners []}";
-  ua = print "  {checkNets nets st.netstr ws.wires}";
-  ub = print "";
-  uc = print header;
-  cm = (cellMapOf st.places) + ws.labels;
-  renderRows cm ws.rails 1.
+  nets = netsOf placeable;
+  st = List.fold placeOne st0 placeable;
+  ws = List.fold (wireNet pwrs st.netstr) (mkWs st.holes) nets;
+  say (["-- components --"] + List.map compLine st.places
+    + ["-- nets --"] + List.map (netLine pwrs st.netstr) nets
+    + ["-- wires --"] + List.map wireLine ws.wires
+    + ["-- checks --", "  {checkOwners st.owners}", "  {checkNets nets st.netstr ws.wires}", ""]
+    + boardLines (cellMapOf st.places + ws.labels) ws.rails).
 
 ex1 = [
   "* RC low-pass filter",
