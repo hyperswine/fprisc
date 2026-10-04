@@ -1,0 +1,33 @@
+profile base.
+Row = {i:Int,x:F64,y:F64}.
+affine : F64 -> F64 -> F64 -> F64.
+affine a b x = x * a + b.
+above : F64 -> F64 -> Bool.
+above threshold x = x > threshold.
+mixed : F64 -> Int -> F64 -> Row -> F64.
+mixed factor threshold acc row = acc + row.x * factor + (if row.i > threshold then row.y else 0.0).
+sumFloat : F64 -> F64 -> F64.
+sumFloat acc x = acc + x.
+plus n x = x + n.
+less n x = x < n.
+more n x = x > n.
+scale32 : F32 -> F32 -> F32.
+scale32 factor x = x * factor.
+sum32 : F32 -> F32 -> F32.
+sum32 acc x = acc + x.
+main =
+  floats = Vec.push 3.0 (Vec.push 2.0 (Vec.push 1.0 (Vec.new Unit)));
+  floats2 = Vec.map (affine 1.5 2.0) floats |> Vec.filter (above 4.0);
+  (total, floats3) = Vec.fold sumFloat 0.0 floats2;
+  _ = Vec.free floats3;
+  rows = Vec.push {i=(-1),x=3.5,y=4.0} (Vec.push {i=1,x=1.5,y=2.0} (Vec.new Unit));
+  (sum,rows2) = Vec.fold (mixed 2.0 0) 0.0 rows;
+  _ = Vec.free rows2;
+  ints = Vec.iota 20 |> Vec.map (plus 2) |> Vec.map (plus 3) |> Vec.filter (more 7) |> Vec.filter (less 12);
+  (count,ints2) = Vec.len ints;
+  (isum,ints3) = Vec.fold (fn a x -> a + x) 0 ints2;
+  _ = Vec.free ints3;
+  floats32 = Vec.push 2.5f (Vec.push 1.5f (Vec.new Unit));
+  (s32,floats32b) = Vec.fold sum32 0f (Vec.map (scale32 2f) floats32);
+  _ = Vec.free floats32b;
+  print "kinds: floats={total} mixed={sum} pipeline={count},{isum} f32={F32.str s32}".

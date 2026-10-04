@@ -1,0 +1,28 @@
+profile base.
+floatBits : F64 -> String.
+floatRefAdd : F64 -> F64 -> F64.
+floatRefSub : F64 -> F64 -> F64.
+floatRefMul : F64 -> F64 -> F64.
+values = [0.0, f64frombits 2147483648 0, 1.0, -1.0, 0.1, 0.2,
+          1.0e308, -1.0e308, f64frombits 0 1, f64frombits 2147483648 1,
+          f64frombits 1048576 0, f64frombits 2148532224 0,
+          f64frombits 2146435071 4294967295, f64frombits 4293918719 4294967295,
+          f64frombits 2146435072 0, f64frombits 4293918720 0,
+          f64frombits 2146959360 1, f64frombits 4294443008 1,
+          f64frombits 2146435072 1, f64frombits 4293918720 1].
+same : F64 -> F64 -> Bool .
+same a b = if a != a then b != b else floatBits a == floatBits b.
+first : F64 -> F64.
+first x = x * 1.5 + 2.0.
+second : F64 -> F64.
+second x = x - 1.0.
+check : (xs:List F64 | measure xs) -> Int -> Vector F64 -> Int -> Int.
+check xs i rows errors = case xs of
+    Nil -> Vec.free rows >> errors
+  | x :: rest ->
+      (actual,next) = Vec.get i rows;
+      expected = floatRefSub (floatRefAdd (floatRefMul x 1.5) 2.0) 1.0;
+      check rest (i + 1) next (errors + (if same actual expected then 0 else 1)).
+main =
+  mapped = Vec.fromList values |> Vec.map first |> Vec.map second;
+  print "SIMD IEEE reference: {check values 0 mapped 0} mismatches".

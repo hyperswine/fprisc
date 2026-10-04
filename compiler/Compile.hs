@@ -7,7 +7,7 @@ import System.IO (hPutStrLn, stderr)
 import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Mono (specializeFunctions, qualifyAux)
 import Inline (inlineSmall, inlineWith, vecPeek)
-import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, normArc)
+import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, normArc)
 import Data.Char (isAlphaNum, ord)
 import Numeric (showHex)
 import A64 (deTlsQosAppA64, lowerA64, a64Rev)
@@ -346,6 +346,8 @@ compileMain = do
   envNoFloatInline <- (== Just "1") <$> lookupEnv "FPR_NO_F64_INLINE"
   -- FPR_NO_VEC_PEEK=1: keep the (value, handle) pair of every vector read
   -- (Inline.vecPeek off) -- the differential test's other half
+  envNoSimd <- (== Just "1") <$> lookupEnv "FPR_NO_VEC_SIMD"
+  envNoFusion <- (== Just "1") <$> lookupEnv "FPR_NO_VEC_FUSE"
   envNoVecPeek <- (== Just "1") <$> lookupEnv "FPR_NO_VEC_PEEK"
   envNoSpec <- (== Just "1") <$> lookupEnv "FPR_NO_SPEC"
   envApply <- (== Just "1") <$> lookupEnv "FPRC_APPLY"
@@ -759,7 +761,7 @@ compileMain = do
                 M.fromList [("$vec.at", 2), ("$vec.get", 2), ("$vec.len", 1)] ]
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
-          tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = not envNoFloatInline, tgtRegisters = not envNoRegisters}
+          tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = not envNoFloatInline, tgtRegisters = not envNoRegisters, tgtSimd=oA64 opts && not envNoSimd, tgtFusion=not envNoFusion}
           a64 = oA64 opts
           a64mac = oA64Mac opts
           x64 = oX64 opts
@@ -788,7 +790,7 @@ compileMain = do
                   else if x64 then "x64r" ++ show x64Rev
                   else if espHost then "rv32-idftls1"
                   else tgtName tgt
-          tag = "g" ++ show codegenRev ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
+          tag = "g" ++ show codegenRev ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit

@@ -85,13 +85,13 @@ def service(exe, tmp):
 def check(tmp):
     ENV['XDG_CACHE_HOME'] = str(tmp / 'cache')
     bins = {}
-    for name in ['wc', 'report', 'todo', 'service', 'measure', 'pipeline']:
+    for name in ['wc', 'report', 'todo', 'service', 'measure', 'pipeline', 'buffer', 'transitions']:
         exe = tmp / ('ideal-' + name)
         p = build(IDEAL / (name + '.fpr'), exe, '--cost')
         bins[name] = exe
-        if name in ['measure', 'pipeline', 'todo']:
+        if name in ['measure', 'pipeline', 'todo', 'transitions']:
             assert 'PROVEN' in p.stdout and 'UNPROVED' not in p.stdout, p.stdout
-    print('six ideal programs build; their declared bounds are proven', flush=True)
+    print('eight ideal programs build; their declared bounds are proven', flush=True)
 
     # File tool: empty, CRLF, Unicode, multiple inputs and a missing file.
     inputs = []
@@ -216,6 +216,62 @@ main = if O.main == "measure: {{I.lsum [1,2,3,4] 0}} {{I.fact 5 1}} {{I.sumTo 10
     old_pipeline = tmp / 'old-pipeline'
     build(ROOT / 'tests/cases/bound_pipeline.fpr', old_pipeline)
     assert run([bins['pipeline']]).stdout == run([old_pipeline]).stdout == '110\n'
+
+    p = harness(tmp, 'buffer-parity', f'O = use "{ROOT / "tests/linpap.fpr"}".\nmain = print O.main.\n')
+    assert p.stdout == run([bins['buffer']]).stdout == 'linpap: x=5 y=10 z=108\n'
+    # Independent arithmetic reference, including empty and singleton carriers.
+    cases = [(n, factor) for n in [0, 1, 2, 10, 64] for factor in [-3, 0, 5]]
+    body = f'M = use "{IDEAL / "buffer.fpr"}".\nmain =\n'
+    body += ''.join(f'  _ = print (M.build {n} |> M.evenOnly |> M.scale ({factor}) |> M.total);\n' for n, factor in cases)
+    body += '  Unit.\n'
+    p = harness(tmp, 'buffer-compute', body)
+    assert [int(x) for x in p.stdout.splitlines()] == [sum(x * f for x in range(1, n + 1) if x % 2 == 0) for n, f in cases]
+
+    # Compare every transition with the original and an independent state trace.
+    events = [('Increment', 30), ('Increment', 40), ('Decrement', 25),
+              ('Increment', 0), ('Decrement', -7), ('Decrement', 200),
+              ('Reset', None), ('Increment', 7)]
+    body = f'O = use "{ROOT / "tests/precond.fpr"}".\nI = use "{IDEAL / "transitions.fpr"}".\nmain =\n  o0 = {{amount = 50, hist = 0}}; i0 = {{amount = 50, hist = 0}};\n'
+    expected = []
+    amount, hist = 50, 0
+    for j, (kind, n) in enumerate(events, 1):
+        event = kind if n is None else f'{kind} ({n})'
+        body += f'  o{j} = O.update (O.{event}) o{j-1}; i{j} = I.update (I.{event}) i{j-1};\n'
+        body += f'  _ = print "{{o{j}.amount}},{{o{j}.hist}}|{{i{j}.amount}},{{i{j}.hist}}";\n'
+        if kind == 'Reset': amount, hist = 0, hist + 1
+        elif n > 0:
+            amount = min(100, amount + n) if kind == 'Increment' else max(0, amount - n)
+            hist += 1
+        expected.append(f'{amount},{hist}|{amount},{hist}')
+    body += '  replayed = I.replay [I.Increment 30, I.Increment 40, I.Decrement 25] {amount = 50, hist = 0};\n  print "replayed={replayed.amount},{replayed.hist}".\n'
+    p = harness(tmp, 'transitions-parity', body)
+    assert p.stdout.splitlines() == expected + ['replayed=75,3'], p.stdout
+    assert run([bins['transitions']]).stdout == 'transitions: amount=75,7 hist=5 avg=30,0\n'
+    print('linear buffer parity and map/filter/fold; guarded transitions and measured replay agree with independent references', flush=True)
+
+    for name, expression in [('negative-count', 'build (-1)'), ('large-count', 'build 4097'), ('negative-index', 'peek (-1) (M.build 2)')]:
+        p = harness(tmp, name, f'M = use "{IDEAL / "buffer.fpr"}".\nmain = M.{expression}.\n', ok=False)
+        assert p.returncode != 0 and 'precondition violated:' in p.stdout + p.stderr, p.stdout + p.stderr
+    p = harness(tmp, 'bad-transition', f'M = use "{IDEAL / "transitions.fpr"}".\nmain = print (M.bump 0 {{amount = 10, hist = 0}}).\n', ok=False)
+    assert p.returncode != 0 and 'precondition violated: addAmount' in p.stdout + p.stderr, p.stdout + p.stderr
+    for name, body in [
+        ('owner-reuse', 'main = s = M.build 10; _ = M.finish s; M.finish s.'),
+        ('owner-alias', 'main = s = M.build 10; (x, next) = M.peek 0 s; _ = M.finish s; M.finish next.')]:
+        src = tmp / (name + '.fpr')
+        src.write_text(f'profile base.\nM = use "{IDEAL / "buffer.fpr"}".\n' + body + '\n')
+        p = build(src, tmp / name, ok=False)
+        assert p.returncode != 0 and 'linear variable' in p.stdout + p.stderr and 'used 2 time(s)' in p.stdout + p.stderr, p.stdout + p.stderr
+    for name, module, old, new, needle in [
+        ('bad-buffer-descent', 'buffer', 'buildGo (n - 1)', 'buildGo n', 'measure does not decrease'),
+        ('bad-replay-descent', 'transitions', 'replay rest (update', 'replay events (update', 'measure does not decrease'),
+        ('bad-replay-bound', 'transitions', '31 * len events + 31', '1', 'OVER')]:
+        src = tmp / (name + '.fpr')
+        source = (IDEAL / (module + '.fpr')).read_text()
+        assert old in source
+        src.write_text(source.replace(old, new))
+        p = build(src, tmp / name, ok=False)
+        assert p.returncode != 0 and needle in p.stdout + p.stderr, p.stdout + p.stderr
+    print('linear reuse/aliasing, broken buffer contracts, nondecreasing replay/build and insufficient replay bounds are refused', flush=True)
 
     # Refuse broken guarantees, rather than just displaying happy-path syntax.
     for name, module, expression in [

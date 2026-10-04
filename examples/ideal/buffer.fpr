@@ -1,0 +1,56 @@
+# Rewrite of tests/linpap.fpr with named ownership transfers, not owner captures.
+profile base.
+
+# `1` makes this application's carrier explicitly linear. Its vector is owned.
+Samples 1 = Type (Samples (Vector Int)).
+
+# Limit the caller's requested allocation. Validate external input before here.
+build : (n : Int | n >= 0 and n <= 4096) -> Samples.
+build n = Samples (buildGo n (Vec.new Unit)).
+buildGo : (n : Int | measure n) -> Vector Int -> Vector Int.
+buildGo n rows | n <= 0 = rows.
+buildGo n rows = buildGo (n - 1) (Vec.push n rows).
+
+# A read consumes and returns the owner; there is no borrowed alias.
+# The lower bound is a value contract; Vec.get checks the actual upper bound.
+peek : (i : Int | i >= 0) -> Samples -> (Int, Samples).
+peek i samples =
+  Samples rows = samples;
+  (value, next) = Vec.get i rows;
+  (value, Samples next).
+
+adjust : (i : Int | i >= 0) -> Int -> Samples -> Samples.
+adjust i delta samples =
+  Samples rows = samples;
+  (value, next) = Vec.get i rows;
+  Samples (Vec.set i (value + delta) next).
+
+# Compute stays in Vector: map/filter/fold each consumes one owner and returns
+# its successor. Callbacks have no contracts requiring first-class enforcement.
+times factor x = x * factor.
+isEven x = x - (x / 2) * 2 == 0.
+add acc x = acc + x.
+
+scale : Int -> Samples -> Samples.
+scale factor samples = Samples rows = samples; Samples (Vec.map (times factor) rows).
+evenOnly : Samples -> Samples.
+evenOnly samples = Samples rows = samples; Samples (Vec.filter isEven rows).
+total : Samples -> Int.
+total samples =
+  Samples rows = samples;
+  (sum, next) = Vec.fold add 0 rows;
+  _ = Vec.free next;
+  sum.
+
+finish : Samples -> Unit.
+finish samples = Samples rows = samples; Vec.free rows.
+
+# Pipelines pass the owner to named operations. Every generation is used once.
+main =
+  samples = build 10;
+  (x, afterX) = peek 5 samples;
+  edited = afterX |> adjust 2 100;
+  (y, afterY) = peek 0 edited;
+  (z, afterZ) = peek 2 afterY;
+  _ = finish afterZ;
+  print "linpap: x={x} y={y} z={z}".

@@ -1,0 +1,19 @@
+profile base.
+fill : (n:Int | measure n) -> Vector F64 -> Vector F64.
+fill n v | n <= 0 = v.
+fill n v = fill (n - 1) (Vec.push (F64.ofInt n) v).
+first : F64 -> F64.
+first x = x * 1.5 + 2.0.
+second : F64 -> F64.
+second x = x - 1.0.
+sum : F64 -> F64 -> F64.
+sum acc x = acc + x.
+probe n =
+  v = fill n (Vec.new Unit) |> Vec.map first |> Vec.map second;
+  (total,next) = Vec.fold sum 0.0 v;
+  _ = Vec.free next;
+  print "simd: {n} {total}".
+probes : (n:Int | measure n) -> Unit.
+probes n | n < 0 = Unit.
+probes n = probe n >> probes (n - 1).
+main = probes 99.

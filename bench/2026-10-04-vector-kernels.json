@@ -1,0 +1,48 @@
+{
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "elements": 500000,
+  "timed": "maps only, construction and ordered fold excluded",
+  "warmups": 1,
+  "samples": 9,
+  "median_us": {
+    "neon": 193,
+    "scalar": 2025,
+    "two_pass_scalar": 1934
+  },
+  "samples_us": {
+    "neon": [
+      192,
+      193,
+      192,
+      192,
+      197,
+      218,
+      193,
+      193,
+      192
+    ],
+    "scalar": [
+      2052,
+      2016,
+      2016,
+      2018,
+      2035,
+      2048,
+      2085,
+      2025,
+      2022
+    ],
+    "two_pass_scalar": [
+      1899,
+      1968,
+      1896,
+      1974,
+      2033,
+      1892,
+      1926,
+      1979,
+      1934
+    ]
+  },
+  "checksum": "187500875000"
+}

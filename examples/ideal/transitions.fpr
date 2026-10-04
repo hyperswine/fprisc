@@ -1,0 +1,46 @@
+# Rewrite of tests/precond.fpr; messages select clauses, guards prove contracts.
+profile base.
+
+State = { amount : Int, hist : Int }.
+Msg = Type (Increment Int | Decrement Int | Reset).
+
+addAmount : (n : Int | n > 0) -> State -> State | work addAmount <= 5 | alloc addAmount <= 24.
+addAmount n s = {s | amount = s.amount + n, hist = s.hist + 1}.
+subAmount : (n : Int | n > 0) -> State -> State | work subAmount <= 5 | alloc subAmount <= 24.
+subAmount n s = {s | amount = s.amount - n, hist = s.hist + 1}.
+
+clampMax s | s.amount > 100 = {s | amount = 100}.
+clampMax s = s.
+clampMin s | s.amount < 0 = {s | amount = 0}.
+clampMin s = s.
+reset s = {amount = 0, hist = s.hist + 1}.
+
+update : Msg -> State -> State | work update <= 25 | alloc update <= 48.
+update (Increment n) s | n > 0 = s |> addAmount n |> clampMax.
+update (Increment _) s = s.
+update (Decrement n) s | n > 0 = s |> subAmount n |> clampMin.
+update (Decrement _) s = s.
+update Reset s = s |> reset.
+
+# Invalid messages are ordinary input: ignored, without a contract panic.
+# A structural measure verifies termination of replay. The current checker
+# needs descent in a body case, rather than a pattern-headed recursive clause.
+replay : (events : List Msg | measure events) -> State -> State
+  | work replay <= 31 * len events + 31 | alloc replay <= 48 * len events + 48.
+replay events s = case events of
+    Nil -> s
+  | event :: rest -> replay rest (update event s).
+
+avg : Int -> (n : Int | n != 0) -> Int.
+avg total n = total / n.
+safeAvg total n | n != 0 = avg total n.
+safeAvg total _ = 0.
+
+# This dynamic caller demonstrates named runtime blame for a broken invariant.
+bump k s = addAmount k s.
+
+main =
+  initial = {amount = 50, hist = 0};
+  first = replay [Increment 30, Increment 40, Decrement 25] initial;
+  last = replay [Increment 0, Reset] first |> bump 7;
+  print "transitions: amount={first.amount},{last.amount} hist={last.hist} avg={avg 90 first.hist},{safeAvg 10 0}".

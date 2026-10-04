@@ -1,0 +1,10 @@
+profile base.
+plus n x = x + n.
+capture n = print "capture {n}" >> n.
+main =
+  a = Vec.iota 3;
+  b = Vec.map (plus (capture 1)) a;
+  c = Vec.map (plus (capture 2)) b;
+  (sum,d) = Vec.fold (fn acc x -> acc + x) 0 c;
+  _ = Vec.free d;
+  print "sum {sum}".

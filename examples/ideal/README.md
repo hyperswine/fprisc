@@ -1,8 +1,8 @@
 # Writing FP-RISC in the intended style
 
-Six working programs exploring the language as small functions, clauses,
+Eight working programs exploring the language as small functions, clauses,
 guards, preconditions, measures and left-to-right pipelines. Four rewrite
-complete applications; two rewrite the existing measure and cost fixtures.
+complete applications; four rewrite existing contract, ownership and cost fixtures.
 The originals remain available as behavioral references.
 
 | Program | Reference | What the rewrite demonstrates |
@@ -12,6 +12,8 @@ The originals remain available as behavioral references.
 | [todo.fpr](todo.fpr) | [todo](../todo.fpr) | One clause per event, guarded transitions, pure command-producing updates, a bounded selection function and measured UTF-8 backspace |
 | [service.fpr](service.fpr) | [service](../service.fpr) | Routes expressed as clauses and guards, Result-based configuration validation, a worker-count contract and bounded concurrent digests |
 | [measure.fpr](measure.fpr) | [measure fixture](../../tests/measure.fpr) | Verified recursion, a checked factorial boundary, work/allocation bounds, and an allocating traversal with a live-memory bound |
+| [buffer.fpr](buffer.fpr) | [linear ownership fixture](../../tests/linpap.fpr) | Explicit `Samples 1`, single-owner read/edit pipelines, measured construction and vector map/filter/fold |
+| [transitions.fpr](transitions.fpr) | [precondition fixture](../../tests/precond.fpr) | Message clauses, guards discharging contracts, measured replay and proven work/allocation bounds |
 | [pipeline.fpr](pipeline.fpr) | [pipeline fixture](../../tests/cases/bound_pipeline.fpr) | A range/map/sum pipeline whose work bound composes through std/list |
 
 ## Run them
@@ -25,6 +27,8 @@ From the repository root:
 ./fpr run examples/ideal/service.fpr --port=8080 --workers=2
 ./fpr run examples/ideal/measure.fpr
 ./fpr run examples/ideal/pipeline.fpr
+./fpr run examples/ideal/buffer.fpr
+./fpr run examples/ideal/transitions.fpr
 ```
 
 Todo uses the same keys and JSON format as the original. Service exposes the
@@ -83,7 +87,7 @@ python3 examples/ideal/check.py
 ./fpr build --manifest=tests/manifests/host.fprt examples/ideal/pipeline.fpr -o /tmp/ideal-pipeline
 ```
 
-`check.py` builds all six programs in a temporary workspace and compares:
+`check.py` builds all eight programs in a temporary workspace and compares:
 
 - wc stdout/stderr against the original for empty, Unicode, CRLF and missing inputs;
 - report JSON and console output, excluding the timestamp and elapsed time,
@@ -131,5 +135,43 @@ Two rough edges surfaced while writing these:
   around the measured loop closes the bound without hiding that limitation.
 
 The larger live-browser examples (logbook and POS) remain future comparisons.
-These six establish the style on complete smaller programs and expose the
+These eight establish the style on complete smaller programs and expose the
 places where the compiler or libraries still make it awkward.
+
+## Ownership and contracts together (2026-10-04)
+
+`buffer.fpr` uses an application-specific linear type:
+
+```fpr
+Samples 1 = Type (Samples (Vector Int)).
+
+adjust : (i : Int | i >= 0) -> Int -> Samples -> Samples.
+```
+
+A read returns `(value, successorOwner)`; the old binding cannot be reused.
+`finish` frees the vector explicitly. The compute path is also an ownership
+pipeline, exercised for empty, singleton and larger inputs:
+
+```fpr
+build 10 |> evenOnly |> scale 3 |> total
+```
+
+This computes 90 using Vector map/filter/fold. It does not imply those operations
+fuse or provide a whole-pipeline memory/WCET bound. The element-count contract
+is `0 <= n <= 4096`; index contracts state the lower bound, while Vec.get still
+checks the actual upper bound. Custom `1` types and `Vector a` are linear without
+adding a special arrow notation to each signature. Automatic cleanup remains
+available in the language; this example shows explicit ownership completion.
+
+`transitions.fpr` keeps invalid event payloads at a fallible/guarded input
+boundary. Positive increments/decrements call contracted internal functions;
+the guards discharge their obligations. Event replay has a structural measure
+and proven bounds `work <= 31 * len events + 31` and
+`alloc <= 48 * len events + 48`. These bounds concern the abstract compiler cost
+model, not elapsed time, and the contracts do not prove integer overflow absent.
+
+The suite compares both rewrites with their original fixtures and independent
+references. It checks vector arithmetic, every state transition, invalid events,
+contract blame, owner reuse and aliasing, nondecreasing construction/replay, and
+an insufficient replay bound. `tests/check_base.py` now runs this suite so these
+examples remain exercised alongside compiler regressions.

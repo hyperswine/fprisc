@@ -2,8 +2,8 @@
 # (docs/2026-10-03-VECTOR-KERNELS.md).  Vec.map (affine 2 1) and
 # Vec.filter (above 5) run in the specialized loops with the captures
 # passed raw ahead of the element: the pool does not grow per element.
-# A capture that is not a tagged Int (a Bool) fails the entry guard and
-# the generic tier gives the same answer.  A nine-field record map runs
+# Bool captures have their own checked object/variant guard and are
+# unboxed to raw 0/1 for the callback.  A nine-field record map runs
 # the in-place record kernel, and a field that reads all nine columns
 # takes its ninth argument through the hart spill cell.  A record filter
 # compacts every column in place from a predicate over the columns.
@@ -38,7 +38,7 @@ main =
   w4 = Vec.map (pick False) w3;
   (s4, w5) = Vec.fold (fn a x -> a + x) 0 w4;
   _ = Vec.free w5;
-  _ = print "bool capture falls back: {s3} {s4}";
+  _ = print "bool capture unboxed: {s3} {s4}";
   r = fill9 (Vec.new Unit) 0 1000;
   h2 = heapUsed Unit;
   r2 = Vec.map bump9 r;

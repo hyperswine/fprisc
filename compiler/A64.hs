@@ -64,7 +64,7 @@ import Data.Word (Word64)
 
 -- bump when the lowering changes (unit-cache tag component; see X64.hs)
 a64Rev :: Int
-a64Rev = 11 -- r10 + lbu, or, srl (the base profile's inline primitives)
+a64Rev = 12 -- NEON two-lane map IR; r11: lbu, or, srl
 
 lowerA64 :: Bool -> String -> String
 lowerA64 mach =
@@ -252,6 +252,12 @@ addImm xd xs n
 
 instr :: Bool -> String -> [String]
 instr mach body = case parts body of
+  ("simd.ld",[r,base]) -> ["ldr q" ++ drop 1 r ++ ", [" ++ xreg base ++ "]"]
+  ("simd.st",[r,base]) -> ["str q" ++ drop 1 r ++ ", [" ++ xreg base ++ "]"]
+  ("simd.dup",[r,base]) -> ["dup " ++ r ++ ".2d, " ++ xreg base]
+  (op,[r,a,b]) | Just inst <- stripPrefix "simd." op,
+               inst `elem` ["add","sub","fadd","fsub","fmul"] ->
+    [inst ++ " " ++ r ++ ".2d, " ++ a ++ ".2d, " ++ b ++ ".2d"]
   -- loads/stores (rv64 words)
   ("ld", [rd, rm]) -> ldst64 "ldur" "ldr" rm rd
   ("sd", [rs, rm]) -> ldst64 "stur" "str" rm rs

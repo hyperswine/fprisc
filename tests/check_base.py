@@ -15,8 +15,10 @@ def run(args, expected=0, timeout=120, stdin=None, env=None):
         raise AssertionError(f'{args}: exit {p.returncode}, expected {expected}\n{p.stdout}\n{p.stderr}')
     return p
 run(['make', 'fpr'], timeout=300)
+print(run(['python3', 'examples/ideal/check.py'], timeout=600).stdout, end='')
 print(run(['python3', 'tests/check_typed_vectors.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_vector_limits.py'], timeout=300).stdout, end='')
+print(run(['python3', 'tests/check_vector_kinds.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_x64_vectors.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_specialization.py'], timeout=300).stdout, end='')
 with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
@@ -63,7 +65,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run(['./fpr', 'build', '-v', 'tests/base/veccaps.fpr', '-o', tmp / 'veccaps'])
     assert 'vec note' not in p.stdout, p.stdout
     p = run([tmp / 'veccaps'])
-    assert p.stdout == 'affine: sum=10000000000 grew=0 B; above: kept=49999 sum=7499899999 grew=0 B\nbool capture falls back: 10 0\nnine-field record map: sum=5546500 grew=0 B\nrecord filter: kept=559 sum=402480 last.f8=1007 grew=0 B\n', p.stdout
+    assert p.stdout == 'affine: sum=10000000000 grew=0 B; above: kept=49999 sum=7499899999 grew=0 B\nbool capture unboxed: 10 0\nnine-field record map: sum=5546500 grew=0 B\nrecord filter: kept=559 sum=402480 last.f8=1007 grew=0 B\n', p.stdout
     for target in ('rv64', 'rv32', 'x64'):
         run(['./fprc', '--profile=base', f'--target={target}', 'tests/base/veccaps.fpr', tmp / f'veccaps-{target}.s'])
     print('Vector kernels: captured map/filter, wide record map and record filter run in place with no declines; RV64/RV32/x64 emit: PASS')

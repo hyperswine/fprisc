@@ -43,13 +43,14 @@ import qualified Data.Set as S
 import Numeric (showHex)
 import Text.Read (readMaybe)
 import Peephole (peephole)
+import KernelKinds (Kind(..), signature)
 
 import FPRISC (Core (..), Prog, freeVars)
 
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 34 -- preserve signed recursive typing; inferred layout evidence, nested products, captured/wide folds and type-changing scalar kernels; 30: scalar captures in map/filter kernels, record-map width via spill cells; 29: vector descriptors: kinds bytes and a column directory behind pointers (vKindsP/vColsP); 28: fusion requires effect-free, failure-free element functions (fusionSafe); 27: function-argument specialization (Mono); 26: 0-based charAt fast path; 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
+codegenRev = 35 -- explicit kernel kinds, captured map/filter pipelines and A64 NEON; 34: preserve signed recursive typing; inferred layout evidence, nested products, captured/wide folds and type-changing scalar kernels; 30: scalar captures in map/filter kernels, record-map width via spill cells; 29: vector descriptors: kinds bytes and a column directory behind pointers (vKindsP/vColsP); 28: fusion requires effect-free, failure-free element functions (fusionSafe); 27: function-argument specialization (Mono); 26: 0-based charAt fast path; 25: pair-free vector reads ($vec.at/get/len, Inline.vecPeek); 24: typed vector constructors and output-layout map lowering
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -67,6 +68,8 @@ data Target = Target
                         -- constructor stubs, $arc.mainManaged) are emitted
                         -- .weak so a program unit's copies win at link
     tgtRegisters :: Bool, -- promote private frame slots into preserved registers
+    tgtSimd :: Bool, -- A64 NEON, scalar fallback/tails remain available
+    tgtFusion :: Bool, -- differential switch for pipeline passes
     tgtFloatInline :: Bool, -- F64 fast paths; false keeps the C primitives for differential checks
     tgtHal :: M.Map String Int -- primitive name -> arity (builtin schemes and
                         -- foreign declarations): a saturated call to one is
@@ -74,8 +77,8 @@ data Target = Target
   }
 
 rv64, rv32 :: Target
-rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True True M.empty
-rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False False False M.empty
+rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True M.empty
+rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False False False True False M.empty
 
 -- the visibility directive for a unit-visible global: a library unit
 -- shares every name it did not qualify with '@hash' with the program it
@@ -272,7 +275,8 @@ externals ext prog = sort . nub $ concat [go ps b | (_, (ps, b)) <- M.toList pro
       _ -> []
 
 data CG = CG
-  { cgN :: Int,
+  { cgProg :: Prog,
+    cgN :: Int,
     cgStrs :: M.Map String String,
     cgTgt :: Target,
     cgRvv :: Bool,
@@ -298,23 +302,21 @@ data SpecPlan = SpecPlan
     -- captured record's fields (the Mat4*Vec4 shape).  Per output
     -- column one tiny unboxed field fn; the loop runs IN PLACE.
     spMv :: Maybe MvPlan,
-    -- Just w when the element closure computes in floats: the loop's
-    -- rep guard demands the FLOAT column rep instead of the Int one,
-    -- and the unboxed clone's arithmetic is fadd.d/fmul.d/...  The
-    -- loop body itself is unchanged -- a raw column word is a raw
-    -- column word.
+    -- Accumulator/result float width. Element and capture kinds are
+    -- independent in spKinds; primitive opcodes select their own arithmetic.
     spFloat :: Maybe String,
     -- Vec.map (f c1 .. ck) v / Vec.filter (p c1 .. ck) v with k SCALAR
     -- captures: the kernel takes them in a0..a(k-1) ahead of the vector,
-    -- checks each is a tagged Int at entry (anything else: the generic
-    -- tier), untags them once, and passes them raw to the unboxed clone
-    -- before the element.  0 for the capture-free and record-captured plans.
-    spCaps :: Int
+    -- Int captures are guarded/untagged once; typed float captures retain
+    -- their IEEE bits. Each argument has an independent kind in spKinds.  0 for the capture-free and record-captured plans.
+    spCaps :: Int,
+    spKinds :: Maybe ([Kind], Kind) -- captures, accumulator/columns, result
   }
 
 data MvPlan = MvPlan
   { mvTid :: (Int, Int), -- required eltid/elvar (spec guard)
     mvN :: Int, -- field/column count (cols 0..n-1, in place)
+    mvKinds :: Maybe [([Kind],Kind)],
     mvFields :: [(([Int], [Int]), ([String], Core))] -- per field: ((cap projs, col idxs), (params, dual body))
   }
   deriving (Eq)
@@ -345,11 +347,11 @@ strLabel s = do
 
 emitProgram :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> Prog -> (String, [String])
 emitProgram tgt rvv spec exports ext exps prog0 =
-  let (prog, fnotes) = fuseVecFix prog0 -- fusion is tier-independent: fewer passes
+  let (prog, fnotes) = if tgtFusion tgt then fuseVecFix prog0 else (prog0,[]) -- fusion is tier-independent: fewer passes
       -- win in the generic apply tier too; linearity makes the single
       -- pass unobservable through the vector, and fusionSafe (below) makes
       -- it unobservable through effects and failures
-      (body, st) = runState (top prog) (CG 0 M.empty tgt rvv spec M.empty ext exps (reverse fnotes))
+      (body, st) = runState (top prog) (CG prog 0 M.empty tgt rvv spec M.empty ext exps (reverse fnotes))
    in (unlines body, reverse (cgVNotes st))
   where
     top prog = do
@@ -1500,9 +1502,8 @@ declines spec prog owner = goD S.empty
           | arithClosure prog [f] == Nothing =
               "the element fn is not a closed arithmetic/record dual, so no column loop specializes this site"
           | not (null caps), length caps + 1 > 8 = "the element fn takes " ++ show (length caps) ++ " captures; the kernels pass at most 7 ahead of the element"
-          | not (null caps), floatWidthOf prog (maybe S.empty id (arithClosure prog [f])) /= Nothing =
-              "a float closure with captures: a raw float capture carries no tag the entry guard could check"
-          | otherwise = "no column loop accepts this site"
+          | otherwise = "callback input/output kinds or layout do not admit this column kernel"
+
 
 -- run fusion to a FIXPOINT: a 3+ chain's outer pair fuses in round 1,
 -- the composite-over-inner pair in round 2, and so on until no pair is
@@ -1545,6 +1546,7 @@ fusionUnsafeReason prog = go S.empty
       | otherwise = case M.lookup n prog of
           Nothing -> Just ("`" ++ n ++ "` is not a known function")
           Just (ps, body) -> body' (S.insert n seen) (S.fromList ps) body
+    body' _ _ e | Just _ <- floatLitBits e = Nothing
     body' seen env e = case spineOf e of
       (CVar h, args@(_ : _))
         | h `elem` safePrims, Just ar <- lookup h primArities, length args == ar -> firstJust (map (body' seen env) args)
@@ -1579,149 +1581,131 @@ fusionUnsafeReason prog = go S.empty
         ++ ["and", "or", "not", "and2", "or2"]
 
 fuseVec :: Int -> Prog -> (Prog, [String])
-fuseVec round' prog0 = (M.union extras (M.map (\(ps, b) -> (ps, rewrite b)) prog0), notes)
+fuseVec round' prog = (M.union extras (M.map (\(ps,b) -> (ps,rewrite b)) prog), nub notes)
   where
-    arity f = length . fst <$> M.lookup f prog0
-
-    -- a Vec.map spine's element-fn form: plain 1-ary global, or a
-    -- 2-ary global with exactly one capture applied
-    data' e = case spineOf e of
-      (CVar "Vec.map", [fe, v]) -> case fe of
-        CVar f | arity f == Just 1 -> Just ((f, Nothing), v)
-        CApp (CVar f) capE | arity f == Just 2 -> Just ((f, Just capE), v)
-        _ -> Nothing
+    apps = foldl' CApp
+    opAt e = case spineOf e of
+      (CVar op,[fe,v]) | op `elem` ["Vec.map","Vec.filter"],
+        (CVar f,caps) <- spineOf fe,
+        Just (ps,_) <- M.lookup f prog, length ps == length caps + 1 -> Just ((op,f,caps),v)
       _ -> Nothing
-
-    -- fusable outer/inner pair at this node (after seeing through the
-    -- adjacent single-use let): key + the surviving capture + source vec
+    -- Moving capture evaluation across a pass requires the same effect/trap
+    -- judgement as moving callbacks. Locals and pure expressions are safe.
+    capSafe e = fusionSafe (M.insert "$capture" (locals,e) prog) "$capture"
+      where locals = [n | n <- freeVars e, M.notMember n prog, n `notElem` prims]
+            prims = map fst primArities
     fusedAt e = do
-      ((f, capF), ve) <- data' e
-      ((g, capG), v) <- data' ve
-      -- both element functions must be unobservable (effect order)
-      if fusionSafe prog0 f && fusionSafe prog0 g then Just () else Nothing
-      (side, cap) <- case (capF, capG) of
-        (Nothing, Nothing) -> Just (0 :: Int, Nothing)
-        (Just c, Nothing) -> Just (1, Just c)
-        (Nothing, Just c) -> Just (2, Just c)
-        _ -> Nothing -- both captured: composite would need two captures
-      pure ((f, g, side), cap, v)
-
-    pairs = S.toList (S.unions [walk b | (_, (_, b)) <- M.toList prog0])
-      where
-        -- walk the SAME tree rewrite walks: seeLet first, THEN recurse
-        -- into the transformed node.  Recursing into the original
-        -- children instead missed pairs that only exist after the
-        -- let-pipeline substitution (a pipeline whose fn pair appears
-        -- nowhere as a nested spine), and rewrite then hit synth with
-        -- an unregistered key.
-        walk e0 =
-          let e = seeLet e0
-              here = maybe S.empty (\(k, _, _) -> S.singleton k) (fusedAt e)
-           in here `S.union` kids e
-        kids e = case e of
-          CApp a b -> walk a `S.union` walk b
-          CLet _ a b -> walk a `S.union` walk b
-          CIf c t f -> S.unions [walk c, walk t, walk f]
-          CMk _ _ fs -> S.unions (map walk fs)
-          CTagEq _ _ x -> walk x
-          CProj _ x -> walk x
-          CLam _ b -> walk b
-          _ -> S.empty
-
-    synth = M.fromList [(k, "_vfuse_" ++ show round' ++ "_" ++ show (i :: Int)) | (i, k) <- zip [0 ..] pairs]
-
-    -- every adjacent pair that is NOT fused because an element function
-    -- is observable gets a note naming the construct
-    notes = concat [declinedIn owner b | (owner, (_, b)) <- M.toList prog0]
-    declinedIn owner = goN
-      where
-        goN e0 =
-          let e = seeLet e0
-           in here e ++ case e of
-                CApp a b -> goN a ++ goN b
-                CLet _ a b -> goN a ++ goN b
-                CIf c t f -> concatMap goN [c, t, f]
-                CMk _ _ fs -> concatMap goN fs
-                CTagEq _ _ x -> goN x
-                CProj _ x -> goN x
-                CLam _ b -> goN b
-                _ -> []
-        here e = case (data' e, data' e >>= data' . snd) of
-          (Just ((f, _), _), Just ((g, _), _)) ->
-            [ "vec note: Vec.map `" ++ f ++ "` after Vec.map `" ++ g ++ "` (in " ++ owner ++ ") is NOT fused: `" ++ culprit ++ "` uses " ++ why ++ " -- the two passes run in order, each over the whole vector"
-              | (culprit, Just why) <- [(g, fusionUnsafeReason prog0 g), (f, fusionUnsafeReason prog0 f)], not (null culprit)
-            ] & take 1
-          _ -> []
-        xs & k = k xs
-    extras =
-      M.fromList
-        [ (nm, comp k) | (k, nm) <- M.toList synth ]
-      where
-        comp (f, g, 0) = (["$fe"], CApp (CVar f) (CApp (CVar g) (CVar "$fe")))
-        comp (f, g, 1) = (["$fc", "$fe"], CApp (CApp (CVar f) (CVar "$fc")) (CApp (CVar g) (CVar "$fe")))
-        comp (f, g, _) = (["$fc", "$fe"], CApp (CVar f) (CApp (CApp (CVar g) (CVar "$fc")) (CVar "$fe")))
-
-    rewrite e0 =
-      let e = seeLet e0
-       in case fusedAt e of
-            Just (k, cap, v) ->
-              let fe = maybe (CVar (synth M.! k)) (CApp (CVar (synth M.! k)) . rewrite) cap
-               in CApp (CApp (CVar "Vec.map") fe) (rewrite v)
-            Nothing -> case e of
-              CApp a b -> CApp (rewrite a) (rewrite b)
-              CLet x a b -> CLet x (rewrite a) (rewrite b)
-              CIf c t f -> CIf (rewrite c) (rewrite t) (rewrite f)
-              CMk t v fs -> CMk t v (map rewrite fs)
-              CTagEq t v x -> CTagEq t v (rewrite x)
-              CProj k x -> CProj k (rewrite x)
-              CLam ps b -> CLam ps (rewrite b)
-              other -> other
-
-    -- the pipeline spelling: substitute a let-bound map into the
-    -- IMMEDIATELY following map's vector position when that is the
-    -- name's only use -- nothing runs between the two passes, so
-    -- effect order (fuel, panics, allocation) is preserved exactly
-    seeLet (CLet x ve b)
-      | Just _ <- data' ve = case b of
-          _ | isNextUse b -> seeLet (subst b)
-          CLet y inner rest
-            | isNextUse inner, occurs x rest == 0 -> seeLet (CLet y (subst inner) rest)
-          _ -> CLet x ve b
-      where
-        isNextUse m = case data' m of
-          Just ((_, mcap), CVar v') ->
-            v' == x && maybe 0 (occurs x) mcap == 0
-          _ -> False
-        subst m = case spineOf m of
-          (CVar "Vec.map", [fe, CVar _]) -> CApp (CApp (CVar "Vec.map") fe) ve
-          _ -> m
+      ((op,f,fc),v1) <- opAt e
+      ((op',g,gc),v) <- opAt v1
+      if op == op' && fusionSafe prog f && fusionSafe prog g && all capSafe (fc++gc)
+         && length fc + length gc <= 7 then Just () else Nothing
+      pure ((op,f,g,length fc,length gc),fc++gc,v)
+    walk e0 = let e = seeLet e0 in e : concatMap walk (children e)
+    children (CApp a b) = [a,b]
+    children (CLet _ a b) = [a,b]
+    children (CIf c a b) = [c,a,b]
+    children (CMk _ _ fs) = fs
+    children (CTagEq _ _ x) = [x]
+    children (CProj _ x) = [x]
+    children (CLam _ x) = [x]
+    children _ = []
+    nodes = concat [walk b | (_,b) <- M.elems prog]
+    keys = S.toList (S.fromList [k | e <- nodes, Just (k,_,_) <- [fusedAt e]])
+    names = M.fromList [(k,"_vfuse_" ++ show round' ++ "_" ++ show i) | (i,k) <- zip [0::Int ..] keys]
+    extras = M.fromList [(names M.! k,composite k) | k <- keys]
+    composite (op,f,g,nf,ng) =
+      let ps = ["$fc" ++ show i | i <- [0..nf+ng-1]]
+          x = CVar "$fe"
+          outer = apps (CVar f) (map CVar (take nf ps) ++ [x])
+          inner = apps (CVar g) (map CVar (drop nf ps) ++ [x])
+          body | op == "Vec.map" = apps (CVar f) (map CVar (take nf ps) ++ [inner])
+               | otherwise = CIf (CTagEq 1 1 inner) outer (CMk 1 0 [])
+       in (ps ++ ["$fe"],body)
+    notes = ["vec note: " ++ op ++ " `" ++ f ++ "` after " ++ op ++ " `" ++ g
+               ++ "` is NOT fused: " ++ why ++ " -- the two passes run in order, each over the whole vector"
+            | e <- nodes ++ concatMap letCandidates nodes, Just ((op,f,fc),v) <- [opAt e], Just ((op',g,gc),_) <- [opAt v], op == op',
+              Nothing <- [fusedAt e],
+              let why = case [(n,r) | (n,Just r) <- [(g,fusionUnsafeReason prog g),(f,fusionUnsafeReason prog f)]] of
+                          (n,r):_ -> "`" ++ n ++ "` uses " ++ r
+                          [] | not (all capSafe (fc++gc)) -> "capture evaluation can have effects or fail"
+                             | otherwise -> "combined capture budget exceeded"]
+    rewrite e0 = let e = seeLet e0 in case fusedAt e of
+      Just (key,caps,v) -> let (op,_,_,_,_) = key
+                          in apps (CVar op) [apps (CVar (names M.! key)) (map rewrite caps),rewrite v]
+      _ -> case e of
+        CApp a b -> CApp (rewrite a) (rewrite b)
+        CLet x a b -> CLet x (rewrite a) (rewrite b)
+        CIf c a b -> CIf (rewrite c) (rewrite a) (rewrite b)
+        CMk t v fs -> CMk t v (map rewrite fs)
+        CTagEq t v x -> CTagEq t v (rewrite x)
+        CProj k x -> CProj k (rewrite x)
+        CLam ps x -> CLam ps (rewrite x)
+        _ -> e
+    seeLet (CLet x ve b) | Just ((op,_,_),_) <- opAt ve =
+      let next m = case opAt m of
+            Just ((op',_,caps),CVar v) -> op == op' && v == x && all (not . elem x . freeVars) caps &&
+              case fusedAt (plug m) of Just _ -> True; Nothing -> False
+            _ -> False
+          plug m = case spineOf m of (CVar h,[fe,_]) -> apps (CVar h) [fe,ve]; _ -> m
+       in case b of
+            _ | next b -> seeLet (plug b)
+            CLet y inner rest | next inner, x `notElem` freeVars rest -> seeLet (CLet y (plug inner) rest)
+            _ -> CLet x ve b
     seeLet e = e
-
-    occurs x = go
-      where
-        go (CVar n) = if n == x then 1 else 0 :: Int
-        go (CApp a b) = go a + go b
-        go (CLet y a b) = go a + (if y == x then 0 else go b)
-        go (CIf c t f) = go c + go t + go f
-        go (CMk _ _ fs) = sum (map go fs)
-        go (CTagEq _ _ e') = go e'
-        go (CProj _ e') = go e'
-        go (CLam ps b) = if x `elem` ps then 0 else go b
-        go _ = 0
+    letCandidates (CLet x ve b) | Just ((op,_,_),_) <- opAt ve =
+      [apps (CVar op) [fe,ve] | m <- b : (case b of CLet _ inner rest | x `notElem` freeVars rest -> [inner]; _ -> []),
+         (CVar op',[fe,CVar v]) <- [spineOf m], op == op', v == x]
+    letCandidates _ = []
 
 vecSpec :: Prog -> (String -> Bool) -> Core -> Maybe (SpecPlan, [Core])
-vecSpec prog isLocal e = case spineOf e of
+vecSpec prog isLocal e = do
+  (p,args) <- vecSpecRaw prog isLocal e
+  typed <- typePlan prog p
+  pure (typed,args)
+
+-- Each raw argument has its own kind. Record maps retain their field plans;
+-- mapAs retains the ordinary tagged callback ABI, rather than guessing kinds.
+typePlan :: Prog -> SpecPlan -> Maybe SpecPlan
+typePlan prog p
+  | Just mp <- spMv p = do
+      sigs <- mapM (\(_, (ps,b)) -> signature prog ps b) (mvFields mp)
+      if any (\(ks,out) -> KB `elem` (out:ks)) sigs then Nothing else Just ()
+      let reads = [(col,k) | (((ms,cs),_), (ks,_)) <- zip (mvFields mp) sigs,
+                            (col,k) <- zip cs (drop (length ms) ks)]
+          outputs = zip [0..] (map snd sigs)
+      if all (\(col,k) -> all (\(c,t) -> c /= col || t == k) reads) outputs then Just () else Nothing
+      pure p {spMv=Just mp {mvKinds=Just sigs}}
+  | "mapAs@" `isPrefixOf` spOp p = Just p
+  | otherwise = do
+      (ps,b) <- case spSoa p of
+        Just (_,ps,b,_) -> Just (ps,b)
+        Nothing -> M.lookup (spFn p) prog
+      sig@(ks,out) <- signature prog ps b
+      let foldOp = spOp p == "fold" || wfoldG p /= Nothing
+          args = drop (spCaps p) ks
+      pure () -- Bool captures have a checked boxed-to-raw entry path
+      if foldOp then case args of
+        acc:_ | acc == out, out /= KB -> Just ()
+        _ -> Nothing
+      else if spOp p `elem` ["filter","rfilter"] then
+        if out == KB then Just () else Nothing
+      else if args == [out] && out /= KB then Just () else Nothing
+      if any (== KB) args then Nothing else Just ()
+      pure p {spKinds=Just sig, spFloat=case out of KD -> Just "64"; KS -> Just "32"; _ -> Nothing}
+
+vecSpecRaw :: Prog -> (String -> Bool) -> Core -> Maybe (SpecPlan,[Core])
+vecSpecRaw prog isLocal e = case spineOf e of
   (CVar "Vec.mapAs", [CStr layout, fe, v])
     | (CVar f, caps) <- spineOf fe,
       okOp "Vec.mapAs", okFn f (length caps + 1), length caps + 1 <= 8 ->
-        Just (SpecPlan ("mapAs@" ++ layout) f False S.empty Nothing Nothing Nothing Nothing (length caps), caps ++ [v])
+        Just (SpecPlan ("mapAs@" ++ layout) f False S.empty Nothing Nothing Nothing Nothing (length caps) Nothing, caps ++ [v])
   (CVar "Vec.map", [fe, v])
     | (CVar f, [capE]) <- spineOf fe,
       okOp "Vec.map",
       okFn f 2,
       Just mp <- soaDualMap prog f -> do
         cl <- arithClosure prog [fn | (_, (_, b)) <- mvFields mp, fn <- S.toList (calleesOf prog b)]
-        Just (SpecPlan "mvmap" f False cl Nothing Nothing (Just mp) Nothing 0, [capE, v])
+        Just (SpecPlan "mvmap" f False cl Nothing Nothing (Just mp) Nothing 0 Nothing, [capE, v])
   (CVar "Vec.map", [CVar f, v])
     | okOp "Vec.map",
       okFn f 1,
@@ -1730,7 +1714,7 @@ vecSpec prog isLocal e = case spineOf e of
         -- capture-free record->record map: same in-place column loop,
         -- with a dead capture slot (a0 = tagged 0, never dereferenced:
         -- ms is empty for every field, so nothing loads off s8)
-        Just (SpecPlan "mvmap" f False cl Nothing Nothing (Just mp) Nothing 0, [CInt 0, v])
+        Just (SpecPlan "mvmap" f False cl Nothing Nothing (Just mp) Nothing 0 Nothing, [CInt 0, v])
   (CVar "Vec.map", [CVar f, v]) | okOp "Vec.map", okFn f 1 -> plan "map" f [v]
   (CVar "Vec.filter", [CVar f, v])
     | okOp "Vec.filter", okFn f 1, Just pl <- planSpec prog "filter" f -> Just (pl, [v])
@@ -1739,7 +1723,7 @@ vecSpec prog isLocal e = case spineOf e of
     | okOp "Vec.filter",
       okFn f 1,
       Just (ks, ps, b, tv, cl) <- soaDualPred prog f ->
-        Just (SpecPlan "rfilter" f False cl (Just (ks, ps, b, tv)) Nothing Nothing Nothing 0, [v])
+        Just (SpecPlan "rfilter" f False cl (Just (ks, ps, b, tv)) Nothing Nothing Nothing 0 Nothing, [v])
   -- scalar captures: Vec.map (affine a b) v, Vec.filter (above k) v.  The
   -- captures ride ahead of the vector in the kernel's argument list; the
   -- element function's arity is captures + 1 and fits the 8 registers.
@@ -1774,7 +1758,7 @@ vecSpec prog isLocal e = case spineOf e of
       Just clg <- arithClosure prog [g],
       floatWidthOf prog clf == Nothing,
       floatWidthOf prog clg == Nothing ->
-        Just (SpecPlan ("wfold@" ++ g) f True (clf `S.union` clg) Nothing Nothing Nothing Nothing 0, [z, v])
+        Just (SpecPlan ("wfold@" ++ g) f True (clf `S.union` clg) Nothing Nothing Nothing Nothing 0 Nothing, [z, v])
   (CVar "Vec.fold", [fe, z, v])
     | (CVar f, caps@(_ : _)) <- spineOf fe,
       okOp "Vec.fold", okFn f (length caps + 2), length caps + 2 <= 8 ->
@@ -1782,7 +1766,7 @@ vecSpec prog isLocal e = case spineOf e of
           Just p -> Just p
           Nothing -> do
             (ks,ps,b,tv,cl) <- soaDualCaps prog f k
-            Just (SpecPlan "fold" f False cl (Just (ks,ps,b,tv)) Nothing Nothing Nothing k)
+            Just (SpecPlan "fold" f False cl (Just (ks,ps,b,tv)) Nothing Nothing Nothing k Nothing)
   (CVar "Vec.fold", [CVar f, z, v]) | okOp "Vec.fold", okFn f 2 -> plan "fold" f [z, v]
   _ -> Nothing
   where
@@ -1823,7 +1807,8 @@ planSpec prog "fold" f =
                 spRvv = if fw == Nothing then rvv else Nothing,
                 spMv = Nothing,
                 spFloat = fw,
-                spCaps = 0
+                spCaps = 0,
+                spKinds = Nothing
               }
 planSpec prog op f = planSpecCaps prog op f 0
 
@@ -1838,10 +1823,10 @@ planSpecCaps prog op f k = do
         Just ([p], body) | op == "map", k == 0, Just b <- straightLine [p] body -> Just (RvvMap p b)
         _ -> Nothing
   let fw = floatWidthOf prog cl
-  if k > 0 && fw /= Nothing then Nothing else Just ()
+  pure () -- captures are validated individually by typePlan
    -- RVV lanes are integer vadd/vmul in this pass, so a float
    -- closure takes the scalar float loop, not the vector one
-  Just (SpecPlan op f True cl Nothing (if fw == Nothing then rvv else Nothing) Nothing fw k)
+  Just (SpecPlan op f True cl Nothing (if fw == Nothing then rvv else Nothing) Nothing fw k Nothing)
 
 -- the closed arithmetic call graph rooted at the given functions;
 -- Nothing if anything outside the unboxable fragment is reachable
@@ -1899,7 +1884,33 @@ fPrims = fPrimsOf "64" ++ fPrimsOf "32"
 -- the runtime rep a specialized loop demands: VR_INT (1) normally,
 -- VR_FLT (4) when the closure computes in floats (vec.c's enum)
 repOf :: SpecPlan -> Int
-repOf p = if spFloat p == Nothing then 1 else 4
+repOf p = case spKinds p of
+  Just (ks,_) | spScalar p -> kindRep (last ks)
+  _ -> if spFloat p == Nothing then 1 else 4
+kindRep KI = 1
+kindRep _ = 4
+kindByte KI = 1
+kindByte KD = 3
+kindByte KS = 7
+kindByte KB = 0
+
+planKindChecks p reg fb cols = case spKinds p of
+  Just (ks,_) -> concat
+    [ ["    lbu t1, " ++ show col ++ "(" ++ reg ++ ")", "    li t2, " ++ show (kindByte k), "    bne t1, t2, " ++ fb]
+    | (col,k) <- zip cols (drop (spCaps p + if spOp p == "fold" then 1 else 0) ks)]
+  _ -> kindChecks reg fb cols
+
+planCapKinds p = maybe (replicate (spCaps p) KI) (take (spCaps p) . fst) (spKinds p)
+planCapGuards p fb = concat [guardCap i k | (i,k) <- zip [0..] (planCapKinds p)]
+  where
+    guardCap i KI = ["    andi t0, a" ++ show i ++ ", 1", "    beqz t0, " ++ fb]
+    guardCap i KB = ["    andi t0, a" ++ show i ++ ", 1", "    bnez t0, " ++ fb,
+                     "    lw t0, 0(a" ++ show i ++ ")", "    li t1, 1", "    bne t0, t1, " ++ fb,
+                     "    lw t0, 4(a" ++ show i ++ ")", "    bltu t1, t0, " ++ fb]
+    guardCap _ _ = [] -- raw floats rely on the type-checked callback signature
+planCapStores tgt p = concat
+  [["    " ++ (case k of KI -> "srai t0, a" ++ show i ++ ", 1"; KB -> "lw t0, 4(a" ++ show i ++ ")"; _ -> "mv t0, a" ++ show i),
+    "    " ++ tgtSt tgt ++ " t0, " ++ show (i*tgtW tgt) ++ "(sp)"] | (i,k) <- zip [0..] (planCapKinds p)]
 
 -- "F64.+" -> ("64", "+")
 fSplit :: String -> Maybe (String, String)
@@ -2005,10 +2016,8 @@ soaDualCaps prog f k = do
           cvars = ["$c" ++ show k | k <- cols]
       calls <- bodyOK prog (S.fromList (caps ++ acc : cvars)) body'
       cl <- arithClosure prog (S.toList calls)
-      -- The accumulator's representation is not inferred from arbitrary
-      -- mixed record arithmetic. Keep float record folds on the typed
-      -- runtime path until the kernel plan carries per-argument kinds.
-      if floatWidthOf (M.insert "$foldDual" (caps ++ acc : cvars,body') prog) (S.insert "$foldDual" cl) /= Nothing then Nothing else Just ()
+      -- The raw ABI receives separately typed accumulator and columns.
+      pure () -- typePlan supplies accumulator/capture/column kinds
       Just (cols, caps ++ acc : cvars, body', tv, cl)
   where
     -- peel trivial alias-lets at every depth (not just the spine)
@@ -2149,7 +2158,7 @@ soaDualMap prog h = do
 -- skips both-captured), so the merged capture set is that side's.
 composePlans :: MvPlan -> MvPlan -> MvPlan
 composePlans gp fp =
-  MvPlan (mvTid gp) (length fields') fields'
+  MvPlan (mvTid gp) (length fields') Nothing fields'
   where
     gduals = mvFields gp
     fields' =
@@ -2176,7 +2185,7 @@ soaDualMapOn prog f cap el body0 = do
   let n = length fs
   if n == 0 then Nothing else Just () -- any width: cursors and results are frame slots
   duals <- mapM (dualField cap el) fs
-  Just (MvPlan tv n duals)
+  Just (MvPlan tv n Nothing duals)
   where
     inlineSat 0 e = e
     inlineSat d e = case spineOf e of
@@ -2295,11 +2304,13 @@ wfoldG p = case splitAt 6 (spOp p) of
 compileUFn :: Target -> Prog -> S.Set String -> String -> ([String], Core) -> G [String]
 compileUFn tgt prog uset label (params, body) = do
   ext <- gets cgExt
-  let w = tgtW tgt
-      nslots = length params + slotsNeeded (tgtHal tgt) ext prog (S.fromList params) body + 2
+  let (lowered,extraTicks) = if ("fpr_ufn_" ++ mangle "_vfuse_") `isPrefixOf` label
+                            then maybe (body,0) id (expandKernel prog 12 body) else (body,0)
+      w = tgtW tgt
+      nslots = length params + slotsNeeded (tgtHal tgt) ext prog (S.fromList params) lowered + 2
       frame = ((2 * w + w * nslots + 15) `div` 16) * 16
       env0 = M.fromList (zip params [0 ..])
-  bodyLines <- genU tgt prog uset env0 (length params) Tail body
+  bodyLines <- genU tgt prog uset env0 (length params) Tail lowered
   fuelOk <- freshL "ufuel"
   pure $
     [ "# unboxed clone (raw ints, native arithmetic)",
@@ -2314,7 +2325,7 @@ compileUFn tgt prog uset label (params, body) = do
           else [])
       ++ (if not (tgtFuel tgt) then [] else [ "    mv t0, tp", -- per-hart fuel: 0(tp) is fpr_hart_t.fuel
            "    " ++ tgtLd tgt ++ " t1, 0(t0)",
-           "    addi t1, t1, -1",
+           "    addi t1, t1, -" ++ show (extraTicks+1),
            "    " ++ tgtSt tgt ++ " t1, 0(t0)",
            "    bgtz t1, " ++ fuelOk,
            "    call fpr_fuel_exhausted",
@@ -2477,13 +2488,14 @@ specFrame tgt regs slots = (frame, pro, epi)
     epi = ["    " ++ tgtLd tgt ++ " " ++ r ++ ", " ++ at i | (i, r) <- zip [0 ..] regs] ++ ["    addi sp, sp, " ++ show frame]
 
 specFuel :: Target -> G [String]
-specFuel tgt | not (tgtFuel tgt) = pure []
-specFuel tgt = do
+specFuel tgt = specFuelN tgt 1
+specFuelN tgt amount | not (tgtFuel tgt) = pure []
+specFuelN tgt amount = do
   ok <- freshL "vfuel"
   pure
     [ "    mv t0, tp", -- per-hart fuel: 0(tp) is fpr_hart_t.fuel
       "    " ++ tgtLd tgt ++ " t1, 0(t0)",
-      "    addi t1, t1, -1",
+      "    addi t1, t1, -" ++ show amount,
       "    " ++ tgtSt tgt ++ " t1, 0(t0)",
       "    bgtz t1, " ++ ok,
       "    call fpr_fuel_exhausted",
@@ -2516,7 +2528,10 @@ vecGuard _ reg fb =
   ]
 
 emitSpec :: Target -> Bool -> (String, SpecPlan) -> G [String]
-emitSpec tgt rvv (sym, p) = case spOp p of
+emitSpec tgt rvv pair@(_,p) = do
+  ls <- emitSpecBody tgt rvv pair
+  pure (["# vector kinds " ++ spOp p ++ " " ++ show (spKinds p) ++ maybe "" (\mp -> " fields=" ++ show (mvKinds mp)) (spMv p)] ++ ls)
+emitSpecBody tgt rvv (sym, p) = case spOp p of
   op | Just layout <- stripPrefix "mapAs@" op -> emitMapAsSpec tgt sym p layout
   "map" -> emitMapSpec tgt rvv sym p
   "mvmap" -> emitMvMapSpec tgt sym p
@@ -2524,6 +2539,38 @@ emitSpec tgt rvv (sym, p) = case spOp p of
   "rfilter" -> emitRFilterSpec tgt sym p
   _ | Just g <- wfoldG p -> emitWFoldSpec tgt sym p g
   _ -> emitFoldSpec tgt rvv sym p
+
+-- Normalize synthesized callbacks before SIMD selection, retaining the number
+-- of callback entry ticks. Depth and register budgets decline to scalar code.
+expandKernel :: Prog -> Int -> Core -> Maybe (Core,Int)
+expandKernel prog depth e
+  | Just _ <- floatLitBits e = Just (e,0)
+  | depth <= 0 = Nothing
+  | otherwise = case spineOf e of
+      (CVar f,args@(_:_)) | Just (ps,b) <- M.lookup f prog, length ps == length args -> do
+        (body,n) <- expandKernel prog (depth-1) (foldr (\(p,a) rest -> CLet p a rest) b (zip ps args))
+        pure (body,n+1)
+      _ -> case e of
+        CApp a b -> do (x,n) <- expandKernel prog depth a; (y,m) <- expandKernel prog depth b; pure (CApp x y,n+m)
+        CLet x a b -> do (v,n) <- expandKernel prog depth a; (body,m) <- expandKernel prog depth b; pure (CLet x v body,n+m)
+        _ -> Just (e,0)
+
+neonExpr :: Kind -> M.Map String String -> Int -> Core -> Maybe ([String],String)
+neonExpr kind env next body = evalStateT (go env body) next
+  where
+    reg = do n <- get; if n >= 32 then lift Nothing else put (n+1) >> pure ("v" ++ show n)
+    literal bits = do r <- reg; pure (["    li t2, " ++ show bits,"    simd.dup " ++ r ++ ", t2"],r)
+    go env e | Just bits <- floatLitBits e, kind == KD = literal bits
+    go env (CInt n) | kind == KI = literal n
+    go env (CVar n) = do r <- lift (M.lookup n env); pure ([],r)
+    go env (CLet x a b) = do
+      (ls,r) <- go env a; (more,out) <- go (M.insert x r env) b; pure (ls++more,out)
+    go env e | (CVar op,[a,b]) <- spineOf e,
+               Just inst <- lookup op (if kind == KI then [("+","add"),("-","sub")]
+                                        else if kind == KD then [("F64.+","fadd"),("F64.-","fsub"),("F64.*","fmul")] else []) = do
+      (al,ar) <- go env a; (bl,br) <- go env b; r <- reg
+      pure (al++bl++["    simd." ++ inst ++ " " ++ r ++ ", " ++ ar ++ ", " ++ br],r)
+    go _ _ = lift Nothing
 
 -- RVV strip-mine wrapper: load -> body -> store, bump by vl
 rvvE :: Target -> String
@@ -2544,7 +2591,23 @@ emitMapSpec tgt rvv sym p = do
   vinner <- case spRvv p of
     Just (RvvMap prm body) | rvv, k == 0 -> pure (rvvMapInner tgt prm body linner lnextb)
     _ -> pure Nothing
-  let inner = case vinner of
+  neon <- if tgtSimd tgt && k == 0 then do
+    prog <- gets cgProg
+    case M.lookup f prog >>= \(ps,b) -> do
+           [prm] <- Just ps
+           (body,ticks) <- expandKernel prog 12 b
+           kind <- case spKinds p of Just ([kind],out) | kind == out -> Just kind; _ -> Nothing
+           (ls,res) <- neonExpr kind (M.singleton prm "v16") 17 body
+           pure (ls,res,ticks) of
+      Just (ls,res,ticks) -> do
+        loop <- freshL "vneon"
+        charge <- specFuelN tgt (2*(ticks+1))
+        pure [loop ++ ":", "    li t0, 2", "    bltu s6, t0, " ++ linner]
+          >>= \prefix -> pure (Just (prefix ++ charge ++ ["    simd.ld v16, s5"] ++ ls
+            ++ ["    simd.st " ++ res ++ ", s5", "    addi s5, s5, 16", "    addi s2, s2, 2", "    addi s6, s6, -2", "    j " ++ loop]))
+      _ -> pure Nothing
+    else pure Nothing
+  let inner = maybe [] id neon ++ case vinner of
         Just ls -> ls
         Nothing ->
           [ linner ++ ":",
@@ -2560,17 +2623,17 @@ emitMapSpec tgt rvv sym p = do
                  "    j " ++ linner
                ]
   pure $
-    [ "# Vec.map specialized on " ++ f ++ (if vinner /= Nothing then "  [RVV]" else "") ++ (if k > 0 then "  [" ++ show k ++ " scalar captures]" else ""),
+    [ "# Vec.map specialized on " ++ f ++ (if vinner /= Nothing then "  [RVV]" else "") ++ (if neon /= Nothing then " [NEON 2 lanes]" else "") ++ (if k > 0 then "  [" ++ show k ++ " scalar captures]" else ""),
       "    .globl " ++ sym,
       sym ++ ":"
     ]
-      ++ capGuards k fb
+      ++ planCapGuards p fb
       ++ vecGuard tgt vreg fb
       ++ [ "    li t1, " ++ show (repOf p),
            "    bne t0, t1, " ++ fb -- scalar rep only (Int or float)
          ]
       ++ pro
-      ++ capStores tgt k
+      ++ planCapStores tgt p
       ++ [ "    mv s0, " ++ vreg,
            "    " ++ ld ++ " s1, " ++ show vLen ++ "(s0)",
            "    li s2, 0",
@@ -2779,11 +2842,11 @@ emitFilterSpec tgt sym p = do
       "    .globl " ++ sym,
       sym ++ ":"
     ]
-      ++ capGuards k fb
+      ++ planCapGuards p fb
       ++ vecGuard tgt vreg fb
       ++ ["    li t1, " ++ show (repOf p), "    bne t0, t1, " ++ fb]
       ++ pro
-      ++ capStores tgt k
+      ++ planCapStores tgt p
       ++ [ "    mv s0, " ++ vreg,
            "    " ++ ld ++ " s1, " ++ show vLen ++ "(s0)",
            "    li s2, 0",
@@ -2872,7 +2935,7 @@ emitRFilterSpec tgt sym p = do
            "    bltu t0, t1, " ++ fb,
            "    " ++ ld ++ " t0, " ++ show (vKindsP tgt) ++ "(a0)"
          ]
-      ++ kindChecks "t0" fb ks -- the columns the predicate reads are raw
+      ++ planKindChecks p "t0" fb ks -- the columns the predicate reads are raw
       ++ ["    j " ++ ldis, ldis ++ ":"]
       ++ pro
       ++ [ "    mv s0, a0",
@@ -2942,6 +3005,7 @@ emitRFilterSpec tgt sym p = do
 -- stored so later columns still read this element's ORIGINAL values.
 emitMvMapSpec :: Target -> String -> SpecPlan -> G [String]
 emitMvMapSpec tgt sym p = do
+  prog <- gets cgProg
   let f = spFn p
       Just mp = spMv p
       (etid, evar) = mvTid mp
@@ -2976,7 +3040,8 @@ emitMvMapSpec tgt sym p = do
                "    bltu t0, t1, " ++ fb,
                "    " ++ ld ++ " t0, " ++ show (vKindsP tgt) ++ "(a1)"
              ]
-          ++ kindChecks "t0" fb [0 .. n - 1] -- used columns raw
+          ++ concat [["    lbu t1, " ++ show i ++ "(t0)", "    li t2, " ++ show (kindByte out), "    bne t1, t2, " ++ fb]
+                     | (i,(_,out)) <- zip [0..] (maybe [] id (mvKinds mp))] -- used columns raw
           ++ [ "    j " ++ ldis ]
       setup =
         [ldis ++ ":"]
@@ -3014,7 +3079,7 @@ emitMvMapSpec tgt sym p = do
                         -- TAGGED ints, but the unboxed field fns speak
                         -- raw words (same contract as the kinds-guarded
                         -- element columns) -- untag on the way in
-                        "    srai " ++ r ++ ", " ++ r ++ ", 1"
+                        "    " ++ (if maybe KI (\sigs -> fst (sigs !! i) !! q) (mvKinds mp) == KI then "srai " ++ r ++ ", " ++ r ++ ", 1" else "mv " ++ r ++ ", " ++ r)
                       ])
                     | (q, j) <- zip [0 :: Int ..] ms
                   ],
@@ -3055,8 +3120,9 @@ emitMvMapSpec tgt sym p = do
              ]
           ++ [lnb ++ ":", "    addi s3, s3, 1", "    j " ++ lo]
       finish = [ldone ++ ":", "    mv a0, s0"] ++ epi ++ ["    ret"]
-      fallback =
-        [ fb ++ ":",
+      fallback = if maybe False ((==1) . length . fst) (M.lookup f prog) then
+        [fb ++ ":", "    mv a0, a1"] ++ capFallback tgt f 0 "fpr_vec_map" ++ [""]
+        else [ fb ++ ":",
           -- build (f cap) as a real closure, then the generic C tier
           "    addi sp, sp, -" ++ show (2 * w),
           "    " ++ st ++ " ra, 0(sp)",
@@ -3108,7 +3174,7 @@ emitFoldSpec tgt rvv sym p = do
   blk2 <- specBlock tgt
   let needCols = if null usedCols then 0 else maximum usedCols + 1
       guards =
-        capGuards k fb ++ vecGuard tgt vreg fb
+        planCapGuards p fb ++ vecGuard tgt vreg fb
           ++ ["    mv t2, t0"] -- rep
           ++ ( if spFloat p == Nothing
                  then [ "    andi t0, " ++ zreg ++ ", 1",
@@ -3145,13 +3211,13 @@ emitFoldSpec tgt rvv sym p = do
                      "    bltu t0, t1, " ++ fb, -- enough columns
                      "    " ++ ld ++ " t0, " ++ show (vKindsP tgt) ++ "(" ++ vreg ++ ")"
                    ]
-                ++ kindChecks "t0" fb usedCols -- used columns raw
+                ++ planKindChecks p "t0" fb usedCols -- used columns raw
                 ++ [ "    j " ++ ldis ]
              )
       setup =
         [ ldis ++ ":" ]
           ++ pro
-          ++ capStores tgt k
+          ++ planCapStores tgt p
           ++ [ "    mv s0, " ++ vreg,
                ( if spFloat p == Nothing
                    then "    srai s7, " ++ zreg ++ ", 1" -- acc, raw int

@@ -33,6 +33,7 @@ executable fpr
       Representation
       Interrupt
       Codegen
+      KernelKinds
       Commit
       Compile
       FPRISC

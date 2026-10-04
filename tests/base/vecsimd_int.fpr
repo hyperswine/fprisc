@@ -1,0 +1,13 @@
+profile base.
+bump x = x + 7.
+sum acc x = acc + x.
+probe n =
+  rows = Vec.map bump (Vec.iota n);
+  (count,next) = Vec.len rows;
+  (total,v) = Vec.fold sum 0 next;
+  _ = Vec.free v;
+  print "simd-int: {count} {total}".
+probes : (n:Int | measure n) -> Unit.
+probes n | n < 0 = Unit.
+probes n = probe n >> probes (n - 1).
+main = probes 99.
