@@ -13,54 +13,40 @@ unwrapU model = case model.user of Persistent u -> u.
 doLogin v model = (u, p) = base.splitFirst v; ({model | pendu = u, pendp = p}, Get "user:{u}" "auth").
 
 
-# doAuth stored model =
-#   case stored == "" of
-#     True -> ({model | note = "no such user"}, None)
-#   | False -> case stored == model.pendp of
-#       True -> (model, Msg "setuser" model.pendu)
-#     | False -> ({model | note = "wrong password"}, None).
-
 # check if user exists and password matches; if so, set as current user
 doAuth stored model | stored == "" = ({model | note = "no such user"}, None).
 doAuth stored model | stored == model.pendp = (model, Msg "setuser" model.pendu).
-doAuth stored model | stored != model.pendp = ({model | note = "wrong password"}, None).
+doAuth stored model = ({model | note = "wrong password"}, None).
 
 doReg v model = (u, p) = base.splitFirst v; ({model | pendu = u, pendp = p}, Get "user:{u}" "regchk").
-# doRegchk stored model =
-#   case stored == "" of
-#     True -> (model, Batch [Put "user:{model.pendu}" model.pendp, Msg "setuser" model.pendu])
-#   | False -> ({model | note = "user already exists"}, None).
 
 # check if user exists; if not, create it and set as current user. If exists, return error note.
 doRegchk stored model | stored == "" = (model, Batch [Put "user:{model.pendu}" model.pendp, Msg "setuser" model.pendu]).
-doRegchk stored model | stored != "" = ({model | note = "user already exists"}, None).
+doRegchk stored model = ({model | note = "user already exists"}, None).
 
 init tok = {user = Persistent "", pendu = "", pendp = "", note = "", series = [], reqs = 0, logins = ""}.
 
-# technically could match directly on the string in the clause head
+# one clause per message
 update : (String, String) -> _ -> (_, Cmd) .
-update msg model =
-  case msg of
-    ("login", v) -> doLogin v model
-  | ("auth", v) -> doAuth v model
-  | ("register", v) -> doReg v model
-  | ("regchk", v) -> doRegchk v model
-  | ("setuser", u) -> ({model | user = Persistent u, note = ""}, Batch [Msg "refresh" "", Get "logins" "bump"])
-  | ("bump", v) -> (model, Batch [Put "logins" (str (base.pI v + 1)), Msg "gotlogins" (str (base.pI v + 1))])
-  | ("logout", v) -> ({model | user = Persistent ""}, None)
-  | ("connected", v) -> (model, Msg "refresh" "")
-  | ("refresh", v) -> (model, case unwrapU model == "" of True -> None | False -> Get "logins" "gotlogins")
-  | ("gotlogins", v) -> ({model | logins = v}, None)
-  | ("tick", v) -> (model, case unwrapU model == "" of True -> None | False -> Rng 20 95 "sample")
-  | ("sample", v) -> ({model | reqs = Str.parse v, series = List.take 10 (Str.parse v :: model.series)}, None)
-  | _ -> (model, None).
+update ("login", v) model = doLogin v model.
+update ("auth", v) model = doAuth v model.
+update ("register", v) model = doReg v model.
+update ("regchk", v) model = doRegchk v model.
+update ("setuser", u) model = ({model | user = Persistent u, note = ""}, Batch [Msg "refresh" "", Get "logins" "bump"]).
+update ("bump", v) model = (model, Batch [Put "logins" (str (base.pI v + 1)), Msg "gotlogins" (str (base.pI v + 1))]).
+update ("logout", v) model = ({model | user = Persistent ""}, None).
+update ("connected", v) model = (model, Msg "refresh" "").
+update ("refresh", v) model | unwrapU model == "" = (model, None).
+update ("refresh", v) model = (model, Get "logins" "gotlogins").
+update ("gotlogins", v) model = ({model | logins = v}, None).
+update ("tick", v) model | unwrapU model == "" = (model, None).
+update ("tick", v) model = (model, Rng 20 95 "sample").
+update ("sample", v) model = ({model | reqs = Str.parse v, series = List.take 10 (Str.parse v :: model.series)}, None).
+update msg model = (model, None).
 
+bar n = Str.repeat n "#".
 
-bar : unsafe Int -> String .
-bar n | n == 0 = "".
-bar n = "#{bar (n - 1)}".
-
-sampleRow : unsafe Int -> ui.Html .
+sampleRow : Int -> ui.Html .
 sampleRow v = ui.el "div" [ui.Style.textsm] [ui.text "{bar (v / 8)} {v}"].
 
 loginView model =
@@ -72,7 +58,6 @@ loginView model =
     ui.el "span" [ui.Style.textmuted] [ui.text model.note]
   ].
 
-dashView : unsafe _ -> ui.Html .
 dashView model =
   ui.el "div" [ui.Style.flex, ui.Style.flexcol, ui.Style.gap3] [
     ui.el "div" [ui.Style.flex, ui.Style.flexrow, ui.Style.itemscenter, ui.Style.gap3] [
@@ -99,7 +84,6 @@ dashView model =
     ]
   ].
 
-view : unsafe _ -> ui.Html .
 view model =
   ui.el "div" [ui.Style.container, ui.Style.mxauto, ui.Style.flex, ui.Style.flexcol, ui.Style.gap4, ui.Style.p4] [
     ui.el "header" [ui.Style.flex, ui.Style.flexrow, ui.Style.itemscenter, ui.Style.gap3] [ui.el "h1" [ui.Style.text2xl, ui.Style.fontbold] [ui.text "Sol Ops"]],

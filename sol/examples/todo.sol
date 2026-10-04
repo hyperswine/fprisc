@@ -8,9 +8,6 @@
 base = use "../lib/base".
 ui = use "../lib/ui".
 
-nl = Str.fromCode 10.
-pI s = case s == "" of True -> 0 | False -> Str.parse s.
-
 # ---- auth (the shared pattern: KV accounts + replay-safe Msg setuser) ----
 unwrapU model = case model.user of Persistent u -> u.
 
@@ -18,75 +15,56 @@ doLogin v model =
   (u, p) = base.splitFirst v;
   ({model | pendu = u, pendp = p}, Get "user:{u}" "auth").
 
-doAuth stored model =
-  case stored == "" of
-    True -> ({model | note = "no such user"}, None)
-  | False -> case stored == model.pendp of
-      True -> (model, Msg "setuser" model.pendu)
-    | False -> ({model | note = "wrong password"}, None).
+doAuth stored model | stored == "" = ({model | note = "no such user"}, None).
+doAuth stored model | stored == model.pendp = (model, Msg "setuser" model.pendu).
+doAuth stored model = ({model | note = "wrong password"}, None).
 
 doReg v model =
   (u, p) = base.splitFirst v;
   ({model | pendu = u, pendp = p}, Get "user:{u}" "regchk").
 
-doRegchk stored model =
-  case stored == "" of
-    True -> (model, Batch [Put "user:{model.pendu}" model.pendp, Msg "setuser" model.pendu])
-  | False -> ({model | note = "user already exists"}, None).
+doRegchk stored model | stored == "" = (model, Batch [Put "user:{model.pendu}" model.pendp, Msg "setuser" model.pendu]).
+doRegchk stored model = ({model | note = "user already exists"}, None).
 
 # ---- todos: serialized one per line as "<done> <text>" in KV -------------
-findNl : unsafe String -> Int -> Int .
-findNl s i = case i >= Str.len s of True -> 0 - 1 | False -> (case Str.at s i == 10 of True -> i | False -> findNl s (i + 1)).
+parseItem line = (d, x) = base.splitFirst line; (base.pI d, x).
+parseTodos s = Str.lines s |> List.map parseItem.
 
-parseItem line = (d, x) = base.splitFirst line; (pI d, x).
+serItem (d, x) = "{d} {x}".
+serTodos ts = ts |> List.map serItem |> Str.join base.nl.
 
-parseTodos : unsafe String -> List (Int, String) .
-parseTodos s | s == "" = [].
-parseTodos s =
-  k = findNl s 0;
-  case k < 0 of
-    True -> [parseItem s]
-  | False -> parseItem (Str.slice s 0 k) :: parseTodos (Str.slice s (k + 1) (Str.len s)).
+# each item paired with its 0-based position
+indexed xs = List.zip (List.range 0 (List.len xs - 1)) xs.
 
-serItem t = (d, x) = t; "{d} {x}".
+flipItem (d, x) = (1 - d, x).
+toggleAt i ts = indexed ts |> List.map (flipIfAt i).
+flipIfAt i (k, t) | k == i = flipItem t.
+flipIfAt i (k, t) = t.
 
-serTodos : unsafe List (i103, j103) -> String .
-serTodos ts | ts == [] = "".
-serTodos ts = case ts of
-  x :: rest -> (case rest == [] of True -> serItem x | False -> "{serItem x}{nl}{serTodos rest}").
+isOpen (d, x) = d == 0.
+openCount ts = ts |> List.filter isOpen |> List.len.
 
-flipItem t = (d, x) = t; (1 - d, x).
-
-tAt : unsafe Int -> Int -> List (Int, l103) -> List (Int, l103) .
-tAt i k ts | ts == [] = [].
-tAt i k ts = case ts of
-  x :: rest -> (case i == k of True -> flipItem x :: rest | False -> x :: tAt i (k + 1) rest).
-
-isOpen t = (d, x) = t; d == 0.
-openCount ts = List.fold (fn a t -> a + (case isOpen t of True -> 1 | False -> 0)) 0 ts.
-
-save : unsafe List (a104, b104) -> _ -> (_, Cmd) .
 save ts model = ({model | todos = ts}, Put "todos:{unwrapU model}" (serTodos ts)).
 
 # ---- MVU ------------------------------------------------------------------
 init tok = {user = Persistent "", pendu = "", pendp = "", note = "", todos = []}.
 
-update : unsafe (String, String) -> _ -> (_, Cmd) .
-update msg model =
-  case msg of
-    ("login", v) -> doLogin v model
-  | ("auth", v) -> doAuth v model
-  | ("register", v) -> doReg v model
-  | ("regchk", v) -> doRegchk v model
-  | ("setuser", u) -> ({model | user = Persistent u, note = ""}, Msg "refresh" "")
-  | ("logout", v) -> ({model | user = Persistent "", todos = []}, None)
-  | ("connected", v) -> (model, Msg "refresh" "")
-  | ("refresh", v) -> (model, case unwrapU model == "" of True -> None | False -> Get "todos:{unwrapU model}" "gottodos")
-  | ("gottodos", v) -> ({model | todos = parseTodos v}, None)
-  | ("add", v) -> save ((0, v) :: model.todos) model
-  | ("toggle", v) -> save (tAt (Str.parse v) 0 model.todos) model
-  | ("clear", v) -> save (List.filter isOpen model.todos) model
-  | _ -> (model, None).
+# one clause per message
+update : (String, String) -> _ -> (_, Cmd) .
+update ("login", v) model = doLogin v model.
+update ("auth", v) model = doAuth v model.
+update ("register", v) model = doReg v model.
+update ("regchk", v) model = doRegchk v model.
+update ("setuser", u) model = ({model | user = Persistent u, note = ""}, Msg "refresh" "").
+update ("logout", v) model = ({model | user = Persistent "", todos = []}, None).
+update ("connected", v) model = (model, Msg "refresh" "").
+update ("refresh", v) model | unwrapU model == "" = (model, None).
+update ("refresh", v) model = (model, Get "todos:{unwrapU model}" "gottodos").
+update ("gottodos", v) model = ({model | todos = parseTodos v}, None).
+update ("add", v) model = save ((0, v) :: model.todos) model.
+update ("toggle", v) model = save (toggleAt (Str.parse v) model.todos) model.
+update ("clear", v) model = save (List.filter isOpen model.todos) model.
+update msg model = (model, None).
 
 # ---- view (typed DSL: ui.Html + ui.Style symbols) ---------------------------
 
@@ -99,18 +77,12 @@ loginView model =
     ui.span [ui.Style.textmuted] [ui.text model.note]
   ].
 
-todoItem k t =
-  (d, x) = t;
+todoItem (k, (d, x)) =
   ui.onClick "toggle" (str k)
     (ui.div (case d == 1 of True -> [ui.Style.comment, ui.Style.textmuted] | False -> [ui.Style.comment]) [
       ui.text (case d == 1 of True -> "[x] {x}" | False -> "[ ] {x}")
     ]).
 
-todoRows : unsafe Int -> List (Int, x103) -> List ui.Html .
-todoRows k ts | ts == [] = [].
-todoRows k ts = case ts of x :: rest -> todoItem k x :: todoRows (k + 1) rest.
-
-todoView : unsafe _ -> ui.Html .
 todoView model =
   ui.div [ui.Style.flex, ui.Style.flexcol, ui.Style.gap3] [
     ui.div [ui.Style.flex, ui.Style.flexrow, ui.Style.itemscenter, ui.Style.gap3] [
@@ -120,11 +92,10 @@ todoView model =
     ],
     ui.div [ui.Style.card, ui.Style.flex, ui.Style.flexcol, ui.Style.gap2] [
       ui.inputRow "add" "what needs doing?" "Add",
-      ui.div [ui.Style.flex, ui.Style.flexcol, ui.Style.gap1] (todoRows 0 model.todos)
+      ui.div [ui.Style.flex, ui.Style.flexcol, ui.Style.gap1] (indexed model.todos |> List.map todoItem)
     ]
   ].
 
-view : unsafe _ -> ui.Html .
 view model =
   ui.div [ui.Style.container, ui.Style.mxauto, ui.Style.flex, ui.Style.flexcol, ui.Style.gap4, ui.Style.p4] [
     ui.el "header" [ui.Style.flex, ui.Style.flexrow, ui.Style.itemscenter, ui.Style.gap3] [
