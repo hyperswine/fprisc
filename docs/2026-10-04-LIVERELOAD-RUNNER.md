@@ -79,8 +79,9 @@ compares the stored math baseline rather than the globally newest table.
    [RUNTIME-INTERFACES](2026-10-04-RUNTIME-INTERFACES.md), following
    [CHECKED-INTERFACES](2026-10-04-CHECKED-INTERFACES.md). Types, contracts and
    ABI are compared for trusted compiled images; opaque boundaries refuse.
-   Content identity checking against event `from`/`to` remains open. Test
-   metadata still uses archive IDs; automatic watcher adoption must wait.
+   Source identity matching against event `from`/`to` is now implemented in
+   [RELOAD-IDENTITY](2026-10-04-RELOAD-IDENTITY.md) for trusted compiled images.
+   The production publisher/watch path and its binding policy remain open.
 2. POSIX image attachment and a production host clock for this driver, then
    store watching (`SStore`/`std/watch`) and `fpr watch` publication/restart.
 3. Typed live-module declarations and automatic rebuilding of their env rows,

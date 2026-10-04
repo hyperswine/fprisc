@@ -8,7 +8,12 @@ expect why result = case result of
 main =
   _ = case Probe.legacy 0 and Mod.plugs 0 == 0 of True -> Unit | False -> error "legacy schema published";
   _ = Probe.attach 0;
-  _ = case Reload.attachAt 0 (setup 1) "" of Ok i -> Unit | Err why -> error why;
+  _ = identityExpect "reload: stale module identity" (Reload.attachVersionAt 0 "stale" "root" neverAttach "");
+  _ = identityExpect "reload: empty source identity" (Reload.attachVersionAt 0 "" "root" neverAttach "");
+  _ = identityExpect "reload: empty candidate identity" (Reload.attachVersionAt 0 "root" "" neverAttach "");
+  _ = identityExpect "reload: candidate module identity mismatch" (Reload.attachVersionAt 0 "root" "wrong" (setup 1) "");
+  _ = case Mod.plugs 0 == 1 and Mod.hashAt 99 == "" of True -> Unit | False -> error "identity refusal leaked candidate";
+  _ = case Reload.attachVersionAt 0 "root" "root" (setup 1) "" of Ok i -> Unit | Err why -> error why;
   op = Reload.bindAt 1 "op";
   _ = case op 0 == 11 of True -> Unit | False -> error "bound dependency export";
   _ = expect "export missing in the new module" (Reload.attachAt 1 (setup 2) "");
@@ -23,3 +28,7 @@ main =
   print "module interfaces: schema root-scope missing changed uncertified rollback PASS".
 
 checkReason why actual = case actual == "reload: incompatible, refused: {why}" of True -> Unit | False -> error actual.
+
+neverAttach bytes = error "identity preflight attached code".
+identityExpect why r = case r of Err actual -> exact why actual | Ok i -> error "unexpected identity adoption".
+exact why actual = case why == actual of True -> Unit | False -> error actual.

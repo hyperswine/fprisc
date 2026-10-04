@@ -705,6 +705,7 @@ builtinEnv =
       ("Mod.fn", scheme [0] (TFn tStr (TFn tStr (sv 0)))),
       ("Mod.find", scheme [0] (TFn tStr (sv 0))),
       ("Mod.plugs", scheme [0] (TFn tInt tInt)),
+      ("Mod.hashAt", mono (TFn tInt tStr)),
       ("Mod.findAt", scheme [0] (TFn tInt (TFn tStr (sv 0)))),
       ("Sys.actLive", scheme [0] (TFn tInt tInt)),
       ("Sys.nextId", mono (TFn tUnit tInt)),
@@ -722,7 +723,7 @@ builtinEnv =
       ("logWarn", scheme [0] (TFn tStr tUnit)),
       ("logErr", scheme [0] (TFn tStr tUnit)),
       ("Mod.has", mono (TFn tStr tBool)),
-      -- live-reload gate: every old export present in new, same arity
+      -- live-reload gate: checked root type/contract/ABI interfaces
       ("Mod.compatAt", scheme [0] (TFn tInt (TFn tInt (sv 0)))),
       ("Mod.detachLast", mono (TFn tUnit tUnit)),
       ("Sys.harts", mono (TFn tUnit tInt))

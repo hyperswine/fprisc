@@ -34,3 +34,38 @@ bindAt table name =
   case ok == 1 of
     True -> f
   | False -> error "reload: no export {name} in table {table}".
+
+# Version-aware adoption: event hashes must name the actual compiled roots.
+# Source hashes identify trusted compiler output; they are not signatures.
+attachVersionAt : Int -> String -> String -> (String -> Result a String) -> String -> Result Int String .
+attachVersionAt baseline from to attach bytes = case preflightVersionAt baseline from to of
+    Err why -> Err why
+  | Ok u -> attachedVersion baseline (Mod.plugs 0) to (attach bytes).
+preflightVersionAt : Int -> String -> String -> Result Unit String .
+preflightVersionAt baseline from to = case baseline >= 0 of
+    False -> Err "reload: invalid baseline table"
+  | True -> versionBaseline baseline from to (Mod.plugs 0).
+versionBaseline baseline from to count = case baseline < count of
+    False -> Err "reload: missing baseline table"
+  | True -> versionFrom baseline from to.
+versionFrom baseline from to = case from == "" of
+    True -> Err "reload: empty source identity"
+  | False -> versionTo baseline from to.
+versionTo baseline from to = case to == "" of
+    True -> Err "reload: empty candidate identity"
+  | False -> versionMatch baseline from.
+versionMatch baseline from = case Mod.hashAt baseline == from of
+    False -> Err "reload: stale module identity"
+  | True -> Ok Unit.
+attachedVersion baseline before to r = case r of
+    Err why -> Err why
+  | Ok u -> registeredVersion baseline before to (Mod.plugs 0).
+registeredVersion baseline before to after = case after == before + 1 of
+    False -> Err "reload: adapter must attach exactly one table"
+  | True -> candidateVersion baseline before to.
+candidateVersion baseline candidate to = case Mod.hashAt candidate == to of
+    True -> gated baseline candidate (Mod.compatAt baseline candidate)
+  | False -> identityRefused Unit.
+identityRefused u =
+  _ = Mod.detachLast Unit;
+  Err "reload: candidate module identity mismatch".

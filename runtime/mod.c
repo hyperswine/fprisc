@@ -128,6 +128,15 @@ static V h_modresolve(V hash, V name) {
  * scoped search is what makes N apps coexist. */
 static V h_modplugs(V u) { (void)u; return TAG(nxtabs); }
 
+/* Root source identity from a trusted compiled image. Empty means invalid index. */
+static V h_modhashat(V iv) {
+  if (!ISINT(iv)) fpr_cpanic("Mod.hashAt: index not an Int");
+  sw i = UNTAG(iv);
+  if (i < 0 || i >= nxtabs) return (V)fpr_mkstr((const unsigned char *)"", 0);
+  return (V)xtabs[i][2];
+}
+FPR_FN(fpr_g_Mod_x2ehashAt, h_modhashat, 1);
+
 static V h_modfindat(V iv, V name) {
   if (!ISINT(iv)) fpr_cpanic("Mod.findAt: index not an Int");
   if (ISINT(name) || TID(name) != T_STR) fpr_cpanic("Mod.findAt: name not a String");

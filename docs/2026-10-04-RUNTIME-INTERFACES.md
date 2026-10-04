@@ -48,9 +48,9 @@ newest global table; use the scoped MVU adapter for independent live modules.
 These are compiler-generated interface claims for trusted images, not signed
 proofs. A malicious image can forge them. Written bounds are checked by the
 existing cost analysis, whose trusted primitive assumptions still apply; stamps
-do not establish target-time WCET. Module headers carry root identity, but the
-MVU event adapter does not yet verify content hashes against `from`/`to`.
-Automatic watcher adoption still needs that end-to-end identity check.
+do not establish target-time WCET. Module headers carry root identity; event matching against `from`/`to` is now
+implemented in [RELOAD-IDENTITY](2026-10-04-RELOAD-IDENTITY.md). Production
+publication/watch policy and publisher authentication remain outside this gate.
 
 ## Regression coverage
 
