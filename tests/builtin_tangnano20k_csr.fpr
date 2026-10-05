@@ -34,5 +34,5 @@ main =
   _ = check (CPU.csrRead 2946 == Word.fromInt 5);
   _ = CPU.csrWrite 773 (Word.fromInt 259);
   _ = check (CPU.csrRead 773 == Word.fromInt 256);
-  # Leave mtvec installed: hal_poweroff must restore host termination.
+  # Leave mtvec installed: the finisher must bypass guest trap handling.
   print "TANG NANO CSR HOLDS".

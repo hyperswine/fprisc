@@ -115,8 +115,10 @@ and 99999, and ended with `FPR EXIT 0`.
   portability milestone.
 - TXDATA is `0x10000000`, STATUS is `0x10000004` (TX-ready bit 0); these are
   SimpleRisc registers, not QEMU's 16550 register layout. Console output preserves
-  LF. Exit clears `mtvec`, then ECALL halts this core and returns control to
-  its UART programming protocol.
+  LF. Exit writes the finisher at `0x00100000`, preserving `mtvec` and
+  returning control to the UART programming protocol. Success uses `0x5555`;
+  failure uses `(code << 16) | 0x3333`. The host still receives `DONE` after
+  the existing `FPR EXIT` status text.
 - Byte, halfword and word accesses are volatile, with alignment checked in the
   common builtin adapter. `Mem.fence` emits the supported fence instruction.
   Instruction fencing uses SimpleRisc's coherent instruction/data RAM behavior.
@@ -229,3 +231,30 @@ placements and the 72 MHz diagnostic checks.
 
 TIME, interrupt sources and official architecture-test coverage remain later
 roadmap work. This is not a full Zicntr or higher-clock claim.
+
+## Explicit exit continuation
+
+`hal_poweroff` now writes the processor's registered finisher device at
+`0x00100000` instead of clearing the trap vector and executing ECALL.
+The startup fallback calls `hal_poweroff(1)` if the runtime unexpectedly
+returns. Normal exit and panic retain their existing printed status and
+`DONE` protocol. This runtime requires the finisher-enabled processor image;
+older processor images do not map the new address.
+
+The CSR fixture leaves a nonzero trap vector installed, so its board run
+checks that termination bypasses guest trap handling. The host harness also
+checks linked `hal_poweroff` for the finisher address/store and rejects ECALL
+or trap-vector clearing in that adapter. RAM and stack layout remain unchanged
+in this first step 3 slice; registered bus, RAM relocation and boot ROM are
+next.
+
+On the finisher-enabled image at 96 MHz, the complete Tang Nano harness
+passes the host/link/ISA/loader checks, three smoke runs, three counter/CSR
+runs leaving `mtvec` nonzero, all seven panic/refusal cases and recovery.
+HaskPlayground's 15 finisher cases, 270 counter assertions, 267 trap assertions,
+CPU/UART/memory checks and 34,560 RV32IM reference comparisons also pass.
+The final image uses seed 3 and a 144 MHz route target, with an estimated
+maximum of 144.61 MHz. Its SHA-256 is
+`f25b38e65bec2678de2bb902a1cafa834a4205853efb2e90ae28ec04e3ee9762`.
+Loads/stores gain one device-selection stage; ordinary arithmetic stays at
+eight clocks. The board is left on this 96 MHz SRAM image; flash is unchanged.

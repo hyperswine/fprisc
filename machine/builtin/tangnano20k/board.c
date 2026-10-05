@@ -10,10 +10,11 @@ void hal_putc(char c) {
 }
 static void puts_raw(const char *s) { while (*s) hal_putc(*s++); }
 void hal_poweroff(int code) {
-  /* With mtvec zero, ECALL halts SimpleRisc and the loader emits DONE.
-   * Print status first: DONE alone also follows an illegal instruction. */
+  /* The finisher stops execution independently of the guest trap vector.
+   * Print status first: the existing DONE protocol has no exit-code payload. */
   puts_raw(code ? "FPR EXIT 1\n" : "FPR EXIT 0\n");
-  __asm__ volatile("csrw mtvec, zero\n ecall" ::: "memory");
+  *(volatile uint32_t *)0x00100000 = code
+      ? (((uint32_t)code << 16) | 0x3333) : 0x5555;
   for (;;) {}
 }
 void fpr_cpanic(const char *s) {

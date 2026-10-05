@@ -70,7 +70,12 @@ def main():
         assert not command(['riscv64-unknown-elf-nm', '-u', image]).strip()
         disassembly = command(['riscv64-unknown-elf-objdump', '-d', image])
         assert not re.search(r'\t(?:wfi|amo\w*|lr\.w|sc\.w|fadd\S*|fld|fsd)\s', disassembly)
-        assert re.search(r'\tcsrw\s+mtvec,', disassembly), 'startup must restore DONE compatibility'
+        poweroff = re.search(r'<hal_poweroff>:\n(.*?)(?=\n\n|\Z)', disassembly, re.S)
+        assert poweroff, 'linked image must contain the board exit adapter'
+        exit_code = poweroff.group(1)
+        assert re.search(r'\tlui\s+\w+,0x100\b', exit_code), 'exit must address the finisher'
+        assert re.search(r'\tsw\s+\w+,0\(\w+\)', exit_code), 'exit must write the finisher'
+        assert not re.search(r'\t(?:ecall|csrw\s+mtvec,)', exit_code), 'exit must preserve guest trap state'
         assert 0 < binary.stat().st_size <= 65536
         assert 'call fpr_fuel_exhausted' not in (tmp / 'builtin.s').read_text()
         rejected = command(['./fprc', '--system=bare-metal', '--profile=builtin',

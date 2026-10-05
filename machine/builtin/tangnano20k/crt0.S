@@ -14,6 +14,6 @@ _start:
     addi t0, t0, 4
     j 1b
 2:  call fpr_builtin_main
-    csrw mtvec, zero /* restore host DONE compatibility */
-    ecall
+    li a0, 1 /* fpr_builtin_main must not return */
+    call hal_poweroff
 3:  j 3b
