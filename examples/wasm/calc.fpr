@@ -1,0 +1,59 @@
+#!/usr/bin/env -S fpr run
+# calc.fpr -- the calculator demo of the Haskell HaskPlayground/src/WASM/Main.hs:
+# a hand-written WebAssembly calculator (calc.wat) run by the VM in wasmvm.fpr,
+# under the capability scheduler in actors.fpr.
+#
+#   fpr run examples/wasm/calc.fpr                    # the Haskell demo's five runs
+#   fpr run examples/wasm/calc.fpr "6 * 7" "81 / 9"   # your expressions
+#
+# The calculator opens "expr.txt", which the world holds in memory; the open
+# is capability-gated, so the first one suspends the actor and asks the user
+# (here a policy that allows reading expr.txt and nothing else).  With no
+# arguments the first run interleaves it with ticker.wat, slice by slice.
+# The .wat files are read from WASM_DIR, by default examples/wasm.
+profile base.
+unsafe program.
+
+A = use "actors".
+V = use "wasmvm".
+W = use "wat".
+File = use "std/file".
+List = use "std/list".
+Map = use "std/map".
+O = use "std/option".
+Program = use "std/program".
+
+mayRead res = case res of A.FileCap A.R "expr.txt" -> True | _ -> False.
+
+worldFor expr = A.mkWorld [("expr.txt", "{expr}\n")] mayRead.
+
+# (the module, its _start function)
+load path = case File.readText path of
+    Err why -> Err "{path}: {why}"
+  | Ok src -> (case W.parse src of
+        Err why -> Err "{path}: {why}"
+      | Ok pm -> (case Map.get "_start" pm.module.exports of
+            O.Some entry -> Ok (pm.module, entry)
+          | O.None -> Err "{path}: no _start export")).
+
+actorFrom name (m, entry) = A.mkActor name (V.instantiate m) entry.
+
+runCalc calc expr =
+  _ = print "";
+  _ = print "=== run: {A.quoted expr} ===";
+  A.runRounds (worldFor expr) [actorFrom "calc" calc].
+
+demo dir calc = case load "{dir}/ticker.wat" of
+    Err why -> Program.fail 1 "calc: {why}"
+  | Ok tick ->
+      _ = print "=== run 1: \"23 * 45\"  (calc + ticker interleaved; open prompts user) ===";
+      _ = A.runRounds (worldFor "23 * 45") [actorFrom "calc" calc, actorFrom "ticker" tick];
+      List.each (runCalc calc) ["100 / 7", "7 - 100", "9 / 0", "1 ? 2"].
+
+main =
+  dir = Program.envOr "examples/wasm" "WASM_DIR";
+  case load "{dir}/calc.wat" of
+    Err why -> Program.fail 1 "calc: {why}"
+  | Ok calc -> (case Program.args Unit of
+        Nil -> demo dir calc
+      | exprs -> List.each (runCalc calc) exprs).

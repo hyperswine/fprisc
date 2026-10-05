@@ -1,0 +1,172 @@
+# actors.fpr -- the capability layer and round-robin scheduler over wasmvm,
+# ported from the Haskell HaskPlayground/src/WASM/Actors.hs.
+#
+# An actor is a VM record plus a descriptor table.  A host call that misses
+# the grant cache parks the actor in WaitPerm while the round continues; one
+# prompt is resolved at the end of each round.
+#
+# The host ABI is the toy "thin translation layer", not WASI preview1:
+#   path_open (ptr, len, rights) -> fd | -1      rights 0 = read
+#   fd_read   (fd, ptr, len)     -> bytes | -1
+#   fd_write  (fd, ptr, len)     -> bytes | -1
+unsafe module.
+
+List = use "std/list".
+Map = use "std/map".
+O = use "std/option".
+V = use "wasmvm".
+
+Rights = Type (R | W).
+Resource = Type (FileCap Rights String).
+
+# text as Haskell's `show` writes a String, so the transcripts compare
+quoted s = strJoin "" (List.append ("\"" :: List.map quoteByte (V.codesOf s (strlen s - 1) Nil)) ["\""]).
+quoteByte c = case c of
+    10 -> "\\n"
+  | 9 -> "\\t"
+  | 13 -> "\\r"
+  | 34 -> "\\\""
+  | 92 -> "\\\\"
+  | _ -> chr c.
+
+showRes (FileCap rights path) = "FileCap {(case rights of R -> "R" | W -> "W")} {quoted path}".
+
+# world: grants (decisions already made, by showRes), files (the contents by
+# path) and policy (what the user would answer to a prompt)
+mkWorld files policy = {grants = Map.strings, files = Map.fromList strOrder files, policy = policy}.
+strOrder = (case Map.strings of Map.Map cmp _ _ -> cmp).
+
+FdEntry = Type (FdStdout | FdFile String Int).
+
+Status vm = Type (
+    Runnable vm
+  | WaitPerm Resource String (List V.Val) vm   # suspended, awaiting the user
+  | Dead String).
+
+mkActor name inst entry = {
+  name = name,
+  status = (case V.newVM inst entry Nil of Ok vm -> Runnable vm | Err why -> Dead "bad entry: {why}"),
+  fds = Map.insert 1 FdStdout Map.ints,
+  nextFd = 3 }.
+
+withVM f a = case a.status of
+    Runnable vm -> {a | status = Runnable (f vm)}
+  | WaitPerm r h g vm -> {a | status = WaitPerm r h g (f vm)}
+  | Dead _ -> a.
+
+i32v n = V.VI32 (V.m32 n).
+argInt v = case v of V.VI32 w -> w | _ -> 0.
+failed = [i32v (0 - 1)].
+
+# a host call's outcome: a capability miss (the user must be asked), or the
+# world, the actor, the results and the lines to log
+HostOut w a = Type (Miss Resource | Done w a (List V.Val) (List String)).
+
+# `vm` is the calling actor's VM, stopped at the import
+doHost w a vm call args = case call of
+    "fd_write" -> (case args of
+        fd :: p :: n :: Nil -> fdWrite w a vm fd p n
+      | _ -> unknownCall w a call)
+  | "fd_read" -> (case args of
+        fd :: p :: n :: Nil -> fdRead w a vm fd p n
+      | _ -> unknownCall w a call)
+  | "path_open" -> (case args of
+        p :: n :: rw :: Nil -> pathOpen w a vm p n rw
+      | _ -> unknownCall w a call)
+  | _ -> unknownCall w a call.
+
+unknownCall w a call = Done w a failed ["[host] unknown call {call}"].
+
+fdWrite w a vm fd p n = case Map.get fd a.fds of
+    O.Some FdStdout -> (case V.memReadString vm.inst.mem p n of
+        Err _ -> Done w a failed Nil
+      | Ok text -> Done w a [i32v n] ["[{a.name} stdout] {quoted text}"])
+  | O.Some (FdFile path _) -> Miss (FileCap W path)
+  | O.None -> Done w a failed Nil.
+
+fdRead w a vm fd p n = case Map.get fd a.fds of
+    O.Some (FdFile path off) -> (case Map.get path w.files of
+        O.None -> Done w a failed Nil
+      | O.Some body ->
+          chunk = substr body off n;
+          (case V.memWriteString vm.inst.mem p chunk of
+              Err _ -> Done w a failed Nil
+            | Ok mem ->
+                moved = {a | fds = Map.insert fd (FdFile path (off + strlen chunk)) a.fds};
+                Done w (withVM (fn m -> V.setInst m mem) moved) [i32v (strlen chunk)] Nil))
+  | _ -> Done w a failed Nil.
+
+pathOpen w a vm p n rw = case V.memReadString vm.inst.mem p n of
+    Err _ -> Done w a failed Nil
+  | Ok path ->
+      res = FileCap (case rw == 0 of True -> R | False -> W) path;
+      (case Map.get (showRes res) w.grants of
+          O.Some True ->
+            fd = a.nextFd;
+            Done w {a | fds = Map.insert fd (FdFile path 0) a.fds, nextFd = fd + 1} [i32v fd]
+              ["[cap] {a.name} uses cached grant for {showRes res} -> fd {fd}"]
+        | O.Some False -> Done w a failed ["[cap] {a.name} denied (cached) for {showRes res}"]
+        | O.None -> Miss res).
+
+fuelSlice = 60.
+hostFuelCost = 10.
+
+isDead a = case a.status of Dead _ -> True | _ -> False.
+
+runRounds w actors = roundsGo 1 w actors.
+roundsGo r w actors = case List.all isDead actors of
+    True -> print "[sched] all actors finished."
+  | False ->
+      _ = print "----- round {r} -----";
+      (w1, ran) = runRound w actors Nil;
+      (w2, settled) = resolveOnePrompt w1 ran Nil;
+      roundsGo (r + 1) w2 settled.
+
+runRound w actors acc = case actors of
+    Nil -> (w, List.reverse acc)
+  | a :: more -> (case runActorSlice w a of (w1, a1) -> runRound w1 more (a1 :: acc)).
+
+runActorSlice w a = case a.status of
+    Runnable vm -> slice w {a | status = Runnable {vm | fuel = fuelSlice}}
+  | _ -> (w, a).
+
+slice w a = case a.status of
+    Runnable vm -> (case V.step vm of
+        V.Running next -> slice w {a | status = Runnable next}
+      | V.Yielded next ->
+          _ = print "[sched] {a.name} fuel exhausted -> yields";
+          (w, {a | status = Runnable next})
+      | V.Finished _ _ ->
+          _ = print "[sched] {a.name} finished.";
+          (w, {a | status = Dead "ok"})
+      | V.Trapped why ->
+          _ = print "[sched] {a.name} TRAPPED: {why}";
+          (w, {a | status = Dead why})
+      | V.NeedHost _ call args next ->
+          charged = {next | fuel = next.fuel - hostFuelCost};
+          asked = {a | status = Runnable charged};
+          (case doHost w asked charged call (List.map argInt args) of
+              Done w1 a1 results logs ->
+                _ = List.each print logs;
+                slice w1 (withVM (V.resumeHost results) a1)
+            | Miss res ->
+                _ = print "[cap] {a.name} needs {showRes res} -> no grant cached; SUSPENDING actor, asking user";
+                (w, {a | status = WaitPerm res call args charged})))
+  | _ -> (w, a).
+
+# the first waiting actor gets its answer; the others wait another round
+resolveOnePrompt w actors acc = case actors of
+    Nil -> (w, List.reverse acc)
+  | a :: more -> (case a.status of
+        WaitPerm res call args vm ->
+          verdict = w.policy res;
+          _ = print "[user] prompt: {quoted a.name} requests {showRes res} -> user says {(case verdict of True -> "ALLOW" | False -> "DENY")}";
+          w1 = {w | grants = Map.insert (showRes res) verdict w.grants};
+          asked = {a | status = Runnable vm};
+          answered = (case doHost w1 asked vm call (List.map argInt args) of
+              Done _ a1 results logs ->
+                _ = List.each print logs;
+                withVM (V.resumeHost results) a1
+            | Miss _ -> a);
+          (w1, List.append (List.reverse acc) (answered :: more))
+      | _ -> resolveOnePrompt w more (a :: acc)).

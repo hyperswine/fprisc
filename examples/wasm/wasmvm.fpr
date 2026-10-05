@@ -1,0 +1,905 @@
+# wasmvm.fpr -- a small-step WebAssembly interpreter (MVP + bulk memory +
+# sign extension + saturating truncation), ported from the Haskell
+# HaskPlayground/src/WASM/WasmVM.hs.
+#
+# The whole execution state is one record, so running out of fuel or meeting
+# a host call is "return the record":
+#
+#   * typed operand stack.  An Int here is 63 bits, so an i32 is its unsigned
+#     value 0 .. 2^32-1 and an i64 is two such halves (high, low);
+#     f32/f64 are F32/F64
+#   * structured control flow with LABELS carrying arities (br with values,
+#     multi-value blocks), br_table / return / unreachable / select
+#   * FUNCTION FRAMES: call, call_indirect (table + runtime type check),
+#     locals per activation, result arity, depth limit
+#   * globals, memory.size/grow/fill/copy, all load/store widths
+#   * linear memory is a persistent sparse byte map, bounds-checked; it and
+#     the globals live in the instance the record carries
+#   * host functions are imports; the VM stops with NeedHost and the embedder
+#     decides what "fd_write" means (the capability layer is actors.fpr)
+#
+# Differences from the Haskell, on purpose or for now:
+#   * the instance is a value, not IORefs: a finished or stopped VM hands its
+#     instance back, and the caller threads it to the next invocation
+#   * nothing is reclaimed while a VM runs (each step allocates); long runs
+#     want a flat code representation under Sys.loopWith
+#   * f32.convert_i64 and decimal float literals may round twice
+unsafe module.
+
+List = use "std/list".
+Map = use "std/map".
+O = use "std/option".
+
+# ---- values and types ---------------------------------------------------------
+
+ValType = Type (TI32 | TI64 | TF32 | TF64).
+
+Val = Type (VI32 Int | VI64 Int Int | VF32 F32 | VF64 F64).
+
+typeOf (VI32 _) = TI32.
+typeOf (VI64 _ _) = TI64.
+typeOf (VF32 _) = TF32.
+typeOf (VF64 _) = TF64.
+
+zeroOf TI32 = VI32 0.
+zeroOf TI64 = VI64 0 0.
+zeroOf TF32 = VF32 (F32.ofInt 0).
+zeroOf TF64 = VF64 0.0.
+
+FuncType = Type (FuncType (List ValType) (List ValType)).
+
+paramsOf (FuncType ps _) = ps.
+resultsOf (FuncType _ rs) = rs.
+
+# ---- instructions ---------------------------------------------------------------
+
+ISz = Type (S32 | S64).
+FSz = Type (P32 | P64).
+
+IBin = Type (IAdd | ISub | IMul | IDivS | IDivU | IRemS | IRemU | IAnd | IOr | IXor | IShl | IShrS | IShrU | IRotl | IRotr).
+IUn = Type (IClz | ICtz | IPopcnt | IExt8S | IExt16S | IExt32S).
+IRel = Type (IEq | INe | ILtS | ILtU | IGtS | IGtU | ILeS | ILeU | IGeS | IGeU).
+FBin = Type (FAdd | FSub | FMul | FDiv | FMin | FMax | FCopysign).
+FUn = Type (FAbs | FNeg | FCeil | FFloor | FTrunc | FNearest | FSqrt).
+FRel = Type (FEq | FNe | FLt | FGt | FLe | FGe).
+
+Cvt = Type (
+    Wrap | ExtendS | ExtendU
+  | TruncS ISz FSz | TruncU ISz FSz
+  | TruncSatS ISz FSz | TruncSatU ISz FSz
+  | ConvertS FSz ISz | ConvertU FSz ISz
+  | Demote | Promote
+  | Reinterpret ValType).
+
+# a block type, resolved to (params, results)
+BlockType = Type (BT (List ValType) (List ValType)).
+
+# Load: type, bytes read, sign-extend, offset.  Store: type, bytes, offset.
+Instr = Type (
+    Unreachable | Nop
+  | Block BlockType (List Instr)
+  | Loop BlockType (List Instr)
+  | If BlockType (List Instr) (List Instr)
+  | Br Int | BrIf Int | BrTable (List Int) Int
+  | Return | Call Int | CallIndirect Int
+  | Drop | Select
+  | LocalGet Int | LocalSet Int | LocalTee Int
+  | GlobalGet Int | GlobalSet Int
+  | Load ValType Int Bool Int
+  | Store ValType Int Int
+  | MemSize | MemGrow | MemFill | MemCopy
+  | Const Val
+  | IBinop ISz IBin | IUnop ISz IUn | IEqz ISz | IRelop ISz IRel
+  | FBinop FSz FBin | FUnop FSz FUn | FRelop FSz FRel
+  | Cvtop Cvt).
+
+valSize TI32 = 4.
+valSize TI64 = 8.
+valSize TF32 = 4.
+valSize TF64 = 8.
+
+# ---- module and instance ------------------------------------------------------
+
+Func = Type (Func FuncType (List ValType) (List Instr)).
+Import = Type (Import String String FuncType).
+Global = Type (Global ValType Bool Val).
+
+globalInit (Global _ _ v) = v.
+
+# imports are the function imports in index order; funcs are the defined
+# functions keyed by (funcidx - number of imports); memMin < 0 = no memory,
+# memMax < 0 = no declared maximum; start < 0 = none
+emptyModule = {
+  types = Nil, imports = Nil, funcs = Map.ints, tableSize = 0, table = Map.ints,
+  memMin = 0 - 1, memMax = 0 - 1, globals = Nil, datas = Nil, exports = Map.strings,
+  start = 0 - 1 }.
+
+pageSize = 65536.
+
+# the runtime cap: 1024 pages, 64 MiB
+instantiate m =
+  minP = (case m.memMin < 0 of True -> 0 | False -> m.memMin);
+  cap = (case m.memMax < 0 of True -> 1024 | False -> (case m.memMax < 1024 of True -> m.memMax | False -> 1024));
+  mem0 = {bytes = Map.ints, size = minP * pageSize, maxPages = cap};
+  mem = List.fold placeData mem0 m.datas;
+  {mod = m, mem = mem, globals = Map.fromList intOrder (List.indexed (List.map globalInit m.globals))}.
+
+intOrder = (case Map.ints of Map.Map cmp _ _ -> cmp).
+
+placeData mem (off, bytes) = pokeString mem off bytes 0.
+pokeString mem off s i = case i >= strlen s of
+    True -> mem
+  | False -> pokeString {mem | bytes = Map.insert (off + i) (charAt s i) mem.bytes} off s (i + 1).
+
+# function index space = imports ++ defined
+funcTypeAt m i =
+  ni = List.length m.imports;
+  case i < ni of
+    True -> (case List.get i m.imports of O.Some (Import _ _ ft) -> O.Some ft | O.None -> O.None)
+  | False -> (case Map.get (i - ni) m.funcs of O.Some (Func ft _ _) -> O.Some ft | O.None -> O.None).
+
+# ---- memory (bounds-checked; Err = trap) --------------------------------------
+
+oob = "out of bounds memory access".
+
+# n bytes from addr, lowest address first
+memReadBytes mem addr n = case addr < 0 or n < 0 or addr + n > mem.size of
+    True -> Err oob
+  | False -> Ok (readGo mem.bytes addr (n - 1) Nil).
+readGo bytes addr i acc = case i < 0 of
+    True -> acc
+  | False -> readGo bytes addr (i - 1) (Map.getOr 0 (addr + i) bytes :: acc).
+
+memWriteBytes mem addr bs =
+  n = List.length bs;
+  case addr < 0 or addr + n > mem.size of
+    True -> Err oob
+  | False -> Ok {mem | bytes = writeGo mem.bytes addr bs}.
+writeGo bytes addr bs = case bs of
+    Nil -> bytes
+  | b :: r -> writeGo (Map.insert addr b bytes) (addr + 1) r.
+
+# the old page count, or -1
+memGrow mem delta =
+  old = mem.size / pageSize;
+  new = old + delta;
+  case delta < 0 or new > mem.maxPages of
+    True -> (0 - 1, mem)
+  | False -> (old, {mem | size = new * pageSize}).
+
+# convenience for embedders
+memReadString mem p n = case memReadBytes mem p n of
+    Err e -> Err e
+  | Ok bs -> Ok (strJoin "" (List.map chr bs)).
+
+memWriteString mem p s = memWriteBytes mem p (codesOf s (strlen s - 1) Nil).
+codesOf s i acc = case i < 0 of True -> acc | False -> codesOf s (i - 1) (charAt s i :: acc).
+
+# little-endian packing: up to four bytes to a word, and back
+bytesToWord bs = List.foldr (fn b acc -> acc * 256 + b) 0 bs.
+wordToBytes n w = case n <= 0 of True -> Nil | False -> band w 255 :: wordToBytes (n - 1) (BITSHIFTR w 8).
+
+# ---- i32: an unsigned 32-bit value in an Int ------------------------------------
+
+two31 = 2147483648.
+two32 = 4294967296.
+ones = 4294967295.
+
+m32 x = band x ones.
+# the signed reading
+s32 x = case x >= two31 of True -> x - two32 | False -> x.
+# no product here passes 2^48, so nothing leans on how Int overflows
+mul32 a b = m32 (a * band b 65535 + BITSHIFTL (m32 (a * BITSHIFTR b 16)) 16).
+
+divZero = "integer divide by zero".
+intOverflow = "integer overflow".
+badConv = "invalid conversion to integer".
+
+# sign-extend the low `bits` of w to 32
+sext bits w =
+  low = band w (BITSHIFTL 1 bits - 1);
+  case BITTEST low (bits - 1) of
+    True -> m32 (bor low (ones - (BITSHIFTL 1 bits - 1)))
+  | False -> low.
+
+shrS32 a k = case a >= two31 of
+    True -> m32 (bor (BITSHIFTR a k) (m32 (BITSHIFTL ones (32 - k))))
+  | False -> BITSHIFTR a k.
+
+ibin32 op a b = k = band b 31; case op of
+    IAdd -> Ok (m32 (a + b))
+  | ISub -> Ok (m32 (a - b))
+  | IMul -> Ok (mul32 a b)
+  | IDivU -> (case b == 0 of True -> Err divZero | False -> Ok (a / b))
+  | IRemU -> (case b == 0 of True -> Err divZero | False -> Ok (a - (a / b) * b))
+  | IDivS -> (case b == 0 of
+        True -> Err divZero
+      | False -> (case a == two31 and b == ones of
+            True -> Err intOverflow
+          | False -> Ok (m32 (s32 a / s32 b))))
+  | IRemS -> (case b == 0 of
+        True -> Err divZero
+      | False -> (case b == ones of
+            True -> Ok 0
+          | False -> Ok (m32 (s32 a - (s32 a / s32 b) * s32 b))))
+  | IAnd -> Ok (band a b)
+  | IOr -> Ok (bor a b)
+  | IXor -> Ok (bxor a b)
+  | IShl -> Ok (m32 (BITSHIFTL a k))
+  | IShrU -> Ok (BITSHIFTR a k)
+  | IShrS -> Ok (shrS32 a k)
+  | IRotl -> Ok (m32 (bor (BITSHIFTL a k) (BITSHIFTR a (32 - k))))
+  | IRotr -> Ok (m32 (bor (BITSHIFTR a k) (BITSHIFTL a (32 - k)))).
+
+clz32 a = clzGo a 31 0.
+clzGo a bit n = case bit < 0 of
+    True -> n
+  | False -> (case BITTEST a bit of True -> n | False -> clzGo a (bit - 1) (n + 1)).
+ctz32 a = ctzGo a 0.
+ctzGo a bit = case bit >= 32 of
+    True -> 32
+  | False -> (case BITTEST a bit of True -> bit | False -> ctzGo a (bit + 1)).
+popcnt32 a = popGo a 0.
+popGo a n = case a == 0 of True -> n | False -> popGo (BITSHIFTR a 1) (n + band a 1).
+
+iun32 op a = case op of
+    IClz -> clz32 a
+  | ICtz -> ctz32 a
+  | IPopcnt -> popcnt32 a
+  | IExt8S -> sext 8 a
+  | IExt16S -> sext 16 a
+  | IExt32S -> a.
+
+irel32 op a b = case op of
+    IEq -> a == b
+  | INe -> a != b
+  | ILtU -> a < b
+  | IGtU -> a > b
+  | ILeU -> a <= b
+  | IGeU -> a >= b
+  | ILtS -> s32 a < s32 b
+  | IGtS -> s32 a > s32 b
+  | ILeS -> s32 a <= s32 b
+  | IGeS -> s32 a >= s32 b.
+
+# ---- i64: (high, low), each an unsigned 32-bit value ----------------------------
+
+add64 (ah, al) (bh, bl) = l = al + bl; (m32 (ah + bh + BITSHIFTR l 32), m32 l).
+sub64 (ah, al) (bh, bl) =
+  l = al - bl;
+  borrow = (case l < 0 of True -> 1 | False -> 0);
+  (m32 (ah - bh - borrow), m32 l).
+neg64 a = sub64 (0, 0) a.
+isNeg64 (h, _) = h >= two31.
+abs64 a = case isNeg64 a of True -> neg64 a | False -> a.
+
+# the low 64 bits of the product, in 16-bit limbs
+mul64 (ah, al) (bh, bl) =
+  a0 = band al 65535; a1 = BITSHIFTR al 16; a2 = band ah 65535; a3 = BITSHIFTR ah 16;
+  b0 = band bl 65535; b1 = BITSHIFTR bl 16; b2 = band bh 65535; b3 = BITSHIFTR bh 16;
+  c0 = a0 * b0;
+  c1 = a0 * b1 + a1 * b0 + BITSHIFTR c0 16;
+  c2 = a0 * b2 + a1 * b1 + a2 * b0 + BITSHIFTR c1 16;
+  c3 = a0 * b3 + a1 * b2 + a2 * b1 + a3 * b0 + BITSHIFTR c2 16;
+  (bor (BITSHIFTL (band c3 65535) 16) (band c2 65535), bor (BITSHIFTL (band c1 65535) 16) (band c0 65535)).
+
+ltU64 (ah, al) (bh, bl) = ah < bh or (ah == bh and al < bl).
+ltS64 (ah, al) (bh, bl) = s32 ah < s32 bh or (ah == bh and al < bl).
+
+shl64 (h, l) k = case k == 0 of
+    True -> (h, l)
+  | False -> (case k < 32 of
+        True -> (m32 (bor (BITSHIFTL h k) (BITSHIFTR l (32 - k))), m32 (BITSHIFTL l k))
+      | False -> (m32 (BITSHIFTL l (k - 32)), 0)).
+shrU64 (h, l) k = case k == 0 of
+    True -> (h, l)
+  | False -> (case k < 32 of
+        True -> (BITSHIFTR h k, m32 (bor (BITSHIFTR l k) (BITSHIFTL h (32 - k))))
+      | False -> (0, BITSHIFTR h (k - 32))).
+shrS64 (h, l) k = case k == 0 of
+    True -> (h, l)
+  | False -> (case k < 32 of
+        True -> (shrS32 h k, m32 (bor (BITSHIFTR l k) (BITSHIFTL h (32 - k))))
+      | False -> ((case h >= two31 of True -> ones | False -> 0), shrS32 h (k - 32))).
+or64 (ah, al) (bh, bl) = (bor ah bh, bor al bl).
+
+# unsigned quotient and remainder, one bit at a time from the top
+divMod64 a b = case a of
+    (0, al) -> (case b of
+        (0, bl) -> ((0, al / bl), (0, al - (al / bl) * bl))
+      | _ -> ((0, 0), a))
+  | _ -> divGo a b 63 (0, 0) (0, 0).
+divGo a b i q r = case i < 0 of
+    True -> (q, r)
+  | False ->
+      r1 = or64 (shl64 r 1) (0, bit64 a i);
+      (case ltU64 r1 b of
+          True -> divGo a b (i - 1) q r1
+        | False -> divGo a b (i - 1) (or64 q (shl64 (0, 1) i)) (sub64 r1 b)).
+bit64 (h, l) i = case i >= 32 of
+    True -> band (BITSHIFTR h (i - 32)) 1
+  | False -> band (BITSHIFTR l i) 1.
+
+isZero64 (h, l) = h == 0 and l == 0.
+minS64 = (two31, 0).
+allOnes64 = (ones, ones).
+
+ibin64 op a b = k = (case b of (_, bl) -> band bl 63); case op of
+    IAdd -> Ok (add64 a b)
+  | ISub -> Ok (sub64 a b)
+  | IMul -> Ok (mul64 a b)
+  | IDivU -> (case isZero64 b of True -> Err divZero | False -> (case divMod64 a b of (q, _) -> Ok q))
+  | IRemU -> (case isZero64 b of True -> Err divZero | False -> (case divMod64 a b of (_, r) -> Ok r))
+  | IDivS -> (case isZero64 b of
+        True -> Err divZero
+      | False -> (case a == minS64 and b == allOnes64 of
+            True -> Err intOverflow
+          | False -> (case divMod64 (abs64 a) (abs64 b) of
+              (q, _) -> Ok (case isNeg64 a == isNeg64 b of True -> q | False -> neg64 q))))
+  | IRemS -> (case isZero64 b of
+        True -> Err divZero
+      | False -> (case divMod64 (abs64 a) (abs64 b) of
+          (_, r) -> Ok (case isNeg64 a of True -> neg64 r | False -> r)))
+  | IAnd -> (case a of (ah, al) -> (case b of (bh, bl) -> Ok (band ah bh, band al bl)))
+  | IOr -> Ok (or64 a b)
+  | IXor -> (case a of (ah, al) -> (case b of (bh, bl) -> Ok (bxor ah bh, bxor al bl)))
+  | IShl -> Ok (shl64 a k)
+  | IShrU -> Ok (shrU64 a k)
+  | IShrS -> Ok (shrS64 a k)
+  | IRotl -> Ok (case k == 0 of True -> a | False -> or64 (shl64 a k) (shrU64 a (64 - k)))
+  | IRotr -> Ok (case k == 0 of True -> a | False -> or64 (shrU64 a k) (shl64 a (64 - k))).
+
+signFill l = case l >= two31 of True -> ones | False -> 0.
+
+iun64 op (h, l) = case op of
+    IClz -> (0, (case h == 0 of True -> 32 + clz32 l | False -> clz32 h))
+  | ICtz -> (0, (case l == 0 of True -> 32 + ctz32 h | False -> ctz32 l))
+  | IPopcnt -> (0, popcnt32 h + popcnt32 l)
+  | IExt8S -> (signFill (sext 8 l), sext 8 l)
+  | IExt16S -> (signFill (sext 16 l), sext 16 l)
+  | IExt32S -> (signFill l, l).
+
+irel64 op a b = case op of
+    IEq -> a == b
+  | INe -> a != b
+  | ILtU -> ltU64 a b
+  | IGtU -> ltU64 b a
+  | ILeU -> not (ltU64 b a)
+  | IGeU -> not (ltU64 a b)
+  | ILtS -> ltS64 a b
+  | IGtS -> ltS64 b a
+  | ILeS -> not (ltS64 b a)
+  | IGeS -> not (ltS64 a b).
+
+not b = case b of True -> False | False -> True.
+
+# ---- floats ---------------------------------------------------------------------
+# F64 carries the work; an f32 operation that is exact in doubles (rounding to
+# an integer, min, max, copysign) goes there and back.
+
+fTwo32 : F64 .
+fTwo32 = 4294967296.0.
+fTwo52 : F64 .
+fTwo52 = 4503599627370496.0.
+fTwo63 : F64 .
+fTwo63 = 4294967296.0 * 2147483648.0.
+fTwo64 : F64 .
+fTwo64 = 4294967296.0 * 4294967296.0.
+nan64 : F64 .
+nan64 = 0.0 / 0.0.
+negZero : F64 .
+negZero = 0.0 * (0.0 - 1.0).
+
+isNan : F64 -> Bool .
+isNan x = case x == x of True -> False | False -> True.
+signBit : F64 -> Bool .
+signBit x = x < 0.0 or (x == 0.0 and 1.0 / x < 0.0).
+fneg : F64 -> F64 .
+fneg x = x * (0.0 - 1.0).
+fabs : F64 -> F64 .
+fabs x = case signBit x of True -> fneg x | False -> x.
+fcopysign : F64 -> F64 -> F64 .
+fcopysign a b = case signBit b of True -> fneg (fabs a) | False -> fabs a.
+
+fmin : F64 -> F64 -> F64 .
+fmin a b = case isNan a or isNan b of
+    True -> nan64
+  | False -> (case a == 0.0 and b == 0.0 of
+        True -> (case signBit a or signBit b of True -> negZero | False -> 0.0)
+      | False -> (case a < b of True -> a | False -> b)).
+fmax : F64 -> F64 -> F64 .
+fmax a b = case isNan a or isNan b of
+    True -> nan64
+  | False -> (case a == 0.0 and b == 0.0 of
+        True -> (case signBit a and signBit b of True -> negZero | False -> 0.0)
+      | False -> (case a > b of True -> a | False -> b)).
+
+# these four take a finite x with |x| < 2^52
+truncF : F64 -> F64 .
+truncF x = F64.ofInt (F64.toInt x).
+floorF : F64 -> F64 .
+floorF x = t = truncF x; (case t > x of True -> t - 1.0 | False -> t).
+ceilF : F64 -> F64 .
+ceilF x = t = truncF x; (case t < x of True -> t + 1.0 | False -> t).
+# ties go to the even neighbour
+nearestF : F64 -> F64 .
+nearestF x =
+  f = floorF x;
+  d = x - f;
+  case d < 0.5 of
+    True -> f
+  | False -> (case d > 0.5 of
+        True -> f + 1.0
+      | False -> (case band (F64.toInt f) 1 == 0 of True -> f | False -> f + 1.0)).
+
+# rounding to an integer keeps NaN, infinities, large values and the sign of zero
+roundWith : (F64 -> F64) -> F64 -> F64 .
+roundWith f x = case isNan x or fabs x >= fTwo52 of
+    True -> x
+  | False -> r = f x; (case r == 0.0 of True -> fcopysign 0.0 x | False -> r).
+
+fbin64 : FBin -> F64 -> F64 -> F64 .
+fbin64 op a b = case op of
+    FAdd -> a + b
+  | FSub -> a - b
+  | FMul -> a * b
+  | FDiv -> a / b
+  | FMin -> fmin a b
+  | FMax -> fmax a b
+  | FCopysign -> fcopysign a b.
+
+fbin32 : FBin -> F32 -> F32 -> F32 .
+fbin32 op a b = case op of
+    FAdd -> a + b
+  | FSub -> a - b
+  | FMul -> a * b
+  | FDiv -> a / b
+  | FMin -> F32.ofF64 (fmin (F64.ofF32 a) (F64.ofF32 b))
+  | FMax -> F32.ofF64 (fmax (F64.ofF32 a) (F64.ofF32 b))
+  | FCopysign -> F32.ofF64 (fcopysign (F64.ofF32 a) (F64.ofF32 b)).
+
+fun64 : FUn -> F64 -> F64 .
+fun64 op x = case op of
+    FAbs -> fabs x
+  | FNeg -> fneg x
+  | FCeil -> roundWith ceilF x
+  | FFloor -> roundWith floorF x
+  | FTrunc -> roundWith truncF x
+  | FNearest -> roundWith nearestF x
+  | FSqrt -> F64.sqrt x.
+
+fun32 : FUn -> F32 -> F32 .
+fun32 op x = case op of
+    FSqrt -> F32.sqrt x
+  | _ -> F32.ofF64 (fun64 op (F64.ofF32 x)).
+
+frel64 : FRel -> F64 -> F64 -> Bool .
+frel64 op a b = case op of
+    FEq -> a == b
+  | FNe -> not (a == b)
+  | FLt -> a < b
+  | FGt -> a > b
+  | FLe -> a <= b
+  | FGe -> a >= b.
+
+# a finite double with an integral value, as an i64
+splitF : F64 -> (Int, Int) .
+splitF t =
+  h = floorF (t / fTwo32);
+  (m32 (F64.toInt h), F64.toInt (t - h * fTwo32)).
+
+# float -> integer truncation with wasm's trap / saturate rules
+truncFloat signed sz sat x =
+  low = lowBound signed sz x;
+  high = highBound signed sz x;
+  case isNan x of
+    True -> (case sat of True -> Ok (zeroOfSz sz) | False -> Err badConv)
+  | False -> (case low of
+        True -> (case sat of True -> Ok (minOf signed sz) | False -> Err intOverflow)
+      | False -> (case high of
+            True -> (case sat of True -> Ok (maxOf signed sz) | False -> Err intOverflow)
+          | False -> Ok (intOfFloat sz x))).
+
+lowBound : Bool -> ISz -> F64 -> Bool .
+lowBound signed sz x = case signed of
+    False -> x <= 0.0 - 1.0
+  | True -> (case sz of S32 -> x <= 0.0 - 2147483649.0 | S64 -> x < 0.0 - fTwo63).
+highBound : Bool -> ISz -> F64 -> Bool .
+highBound signed sz x = case sz of
+    S32 -> (case signed of True -> x >= 2147483648.0 | False -> x >= fTwo32)
+  | S64 -> (case signed of True -> x >= fTwo63 | False -> x >= fTwo64).
+
+zeroOfSz S32 = VI32 0.
+zeroOfSz S64 = VI64 0 0.
+minOf signed sz = case signed of
+    False -> zeroOfSz sz
+  | True -> (case sz of S32 -> VI32 two31 | S64 -> VI64 two31 0).
+maxOf signed sz = case sz of
+    S32 -> (case signed of True -> VI32 (two31 - 1) | False -> VI32 ones)
+  | S64 -> (case signed of True -> VI64 (two31 - 1) ones | False -> VI64 ones ones).
+
+intOfFloat : ISz -> F64 -> Val .
+intOfFloat sz x = case sz of
+    S32 -> VI32 (m32 (F64.toInt x))
+  | S64 -> t = (case fabs x >= fTwo52 of True -> x | False -> truncF x); (case splitF t of (h, l) -> VI64 h l).
+
+# the IEEE bits: there is no primitive from a float to its bits, so the
+# exponent is found by scaling.  (m, e) with x = m * 2^e and 1 <= m < 2
+normalize : F64 -> Int -> (F64, Int) .
+normalize m e = case m >= fTwo32 of
+    True -> normalize (m / fTwo32) (e + 32)
+  | False -> (case m >= 2.0 of
+        True -> normalize (m / 2.0) (e + 1)
+      | False -> (case m * fTwo32 < 2.0 of
+            True -> normalize (m * fTwo32) (e - 32)
+          | False -> (case m < 1.0 of
+                True -> normalize (m * 2.0) (e - 1)
+              | False -> (m, e)))).
+pow2 : Int -> F64 .
+pow2 k = case k < 0 of True -> 1.0 / twoTo (0 - k) 1.0 | False -> twoTo k 1.0.
+twoTo : Int -> F64 -> F64 .
+twoTo k acc = case k <= 0 of True -> acc | False -> twoTo (k - 1) (acc * 2.0).
+isInf : F64 -> Bool .
+isInf a = a * 0.5 == a.
+
+# (high, low) of a double
+bits64 : F64 -> (Int, Int) .
+bits64 x = case isNan x of
+    True -> (2146959360, 0)
+  | False ->
+      sign = (case signBit x of True -> two31 | False -> 0);
+      a = fabs x;
+      (case a == 0.0 of
+          True -> (sign, 0)
+        | False -> (case isInf a of
+              True -> (bor sign 2146435072, 0)
+            | False -> (case normalize a 0 of (m, e) -> packBits64 sign m e))).
+packBits64 : Int -> F64 -> Int -> (Int, Int) .
+packBits64 sign m e = case e < 0 - 1022 of
+    True -> mant = F64.toInt (m * pow2 (e + 1022) * fTwo52); (bor sign (BITSHIFTR mant 32), m32 mant)
+  | False ->
+      mant = F64.toInt ((m - 1.0) * fTwo52);
+      (bor sign (bor (BITSHIFTL (e + 1023) 20) (BITSHIFTR mant 32)), m32 mant).
+
+bits32 : F32 -> Int .
+bits32 f =
+  x = F64.ofF32 f;
+  case isNan x of
+    True -> 2143289344
+  | False ->
+      sign = (case signBit x of True -> two31 | False -> 0);
+      a = fabs x;
+      (case a == 0.0 of
+          True -> sign
+        | False -> (case isInf a of
+              True -> bor sign 2139095040
+            | False -> (case normalize a 0 of (m, e) -> packBits32 sign m e))).
+packBits32 : Int -> F64 -> Int -> Int .
+packBits32 sign m e = case e < 0 - 126 of
+    True -> bor sign (F64.toInt (m * pow2 (e + 126) * 8388608.0))
+  | False -> bor sign (bor (BITSHIFTL (e + 127) 23) (F64.toInt ((m - 1.0) * 8388608.0))).
+
+asF64 : Val -> F64 .
+asF64 (VF32 f) = F64.ofF32 f.
+asF64 (VF64 d) = d.
+asF64 _ = nan64.
+
+signedF : Val -> F64 .
+signedF (VI32 w) = F64.ofInt (s32 w).
+signedF (VI64 h l) = F64.ofInt (s32 h) * fTwo32 + F64.ofInt l.
+signedF _ = nan64.
+unsignedF : Val -> F64 .
+unsignedF (VI32 w) = F64.ofInt w.
+unsignedF (VI64 h l) = F64.ofInt h * fTwo32 + F64.ofInt l.
+unsignedF _ = nan64.
+
+mkF : FSz -> F64 -> Val .
+mkF P32 d = VF32 (F32.ofF64 d).
+mkF P64 d = VF64 d.
+
+isInt (VI32 _) = True.
+isInt (VI64 _ _) = True.
+isInt _ = False.
+isFloat v = not (isInt v).
+
+convErr = "type error in conversion".
+
+cvt op v = case op of
+    Wrap -> (case v of VI64 _ l -> Ok (VI32 l) | _ -> Err convErr)
+  | ExtendS -> (case v of VI32 w -> Ok (VI64 (signFill w) w) | _ -> Err convErr)
+  | ExtendU -> (case v of VI32 w -> Ok (VI64 0 w) | _ -> Err convErr)
+  | TruncS sz _ -> floatOnly v (truncFloat True sz False (asF64 v))
+  | TruncU sz _ -> floatOnly v (truncFloat False sz False (asF64 v))
+  | TruncSatS sz _ -> floatOnly v (truncFloat True sz True (asF64 v))
+  | TruncSatU sz _ -> floatOnly v (truncFloat False sz True (asF64 v))
+  | ConvertS fs _ -> (case isInt v of True -> Ok (mkF fs (signedF v)) | False -> Err convErr)
+  | ConvertU fs _ -> (case isInt v of True -> Ok (mkF fs (unsignedF v)) | False -> Err convErr)
+  | Demote -> (case v of VF64 d -> Ok (VF32 (F32.ofF64 d)) | _ -> Err convErr)
+  | Promote -> (case v of VF32 f -> Ok (VF64 (F64.ofF32 f)) | _ -> Err convErr)
+  | Reinterpret ty -> reinterpret ty v.
+
+floatOnly v r = case isFloat v of True -> r | False -> Err convErr.
+
+reinterpret ty v = case ty of
+    TI32 -> (case v of VF32 f -> Ok (VI32 (bits32 f)) | _ -> Err convErr)
+  | TI64 -> (case v of VF64 d -> (case bits64 d of (h, l) -> Ok (VI64 h l)) | _ -> Err convErr)
+  | TF32 -> (case v of VI32 w -> Ok (VF32 (f32frombits w)) | _ -> Err convErr)
+  | TF64 -> (case v of VI64 h l -> Ok (VF64 (f64frombits h l)) | _ -> Err convErr).
+
+# ---- the VM state -----------------------------------------------------------------
+#
+# a label: arity  = values a branch carries to it
+#          stack  = operand stack below the label's params
+#          cont   = code after the construct
+#          br     = code to run when branching here (a loop re-enters)
+# a frame is a suspended caller: its arity, code, labels, locals and stack
+# the VM:  inst, code, stk (head = top), labels, locals, arity (result count
+#          of the current function), frames, depth, fuel
+
+Step = Type (
+    Running { inst : { mod : m, mem : mm, globals : g }, code : List Instr, stk : List Val, labels : l, locals : lo, arity : Int, frames : f, depth : Int, fuel : Int }
+  | Yielded { inst : { mod : m, mem : mm, globals : g }, code : List Instr, stk : List Val, labels : l, locals : lo, arity : Int, frames : f, depth : Int, fuel : Int }
+  | NeedHost String String (List Val) { inst : { mod : m, mem : mm, globals : g }, code : List Instr, stk : List Val, labels : l, locals : lo, arity : Int, frames : f, depth : Int, fuel : Int }
+  | Finished (List Val) { mod : m, mem : mm, globals : g }
+  | Trapped String).
+
+maxDepth = 2000.
+
+localsOf args locals = Map.fromList intOrder (List.indexed (List.append args (List.map zeroOf locals))).
+
+# a VM ready to run function `idx` with `args`
+newVM inst idx args =
+  m = inst.mod;
+  ni = List.length m.imports;
+  case idx < ni of
+    True -> Err "cannot start in an imported function"
+  | False -> (case Map.get (idx - ni) m.funcs of
+        O.None -> Err "no such function {idx}"
+      | O.Some (Func ft locals body) -> (case List.map typeOf args == paramsOf ft of
+            False -> Err "argument type mismatch"
+          | True -> Ok {
+              inst = inst, code = body, stk = Nil, labels = Nil,
+              locals = localsOf args locals,
+              arity = List.length (resultsOf ft),
+              frames = Nil, depth = 0, fuel = 0 })).
+
+# ---- the small-step transition --------------------------------------------------
+
+step vm = case vm.fuel <= 0 of
+    True -> Yielded vm
+  | False -> (case vm.code of
+        Nil -> (case vm.labels of
+            # fall off the end of a block: keep exactly `arity` results
+            l :: ls -> Running {vm | code = l.cont, labels = ls, stk = List.append (List.take l.arity vm.stk) l.stack}
+          | Nil -> doReturn vm)
+      | i :: rest -> exec i {vm | code = rest, fuel = vm.fuel - 1}).
+
+doReturn vm =
+  rs = List.take vm.arity vm.stk;
+  case vm.frames of
+    Nil -> Finished (List.reverse rs) vm.inst
+  | f :: fs -> Running {vm |
+        code = f.code, stk = List.append rs f.stack, labels = f.labels, locals = f.locals,
+        arity = f.arity, frames = fs, depth = vm.depth - 1}.
+
+branch n vm = case List.drop n vm.labels of
+    l :: ls -> Running {vm | code = l.br, labels = ls, stk = List.append (List.take l.arity vm.stk) l.stack}
+  | Nil -> Trapped "br depth {n} exceeds label stack".
+
+enterBlock nparams arity body brCode vm =
+  Running {vm |
+    code = body,
+    labels = {arity = arity, stack = List.drop nparams vm.stk, cont = vm.code, br = brCode} :: vm.labels}.
+
+underflow = Trapped "stack underflow".
+tyErr what = Trapped "operand type mismatch at {what}".
+
+push v vs vm = Running {vm | stk = v :: vs}.
+pushE r vs vm = case r of Ok v -> push v vs vm | Err e -> Trapped e.
+bool b = VI32 (case b of True -> 1 | False -> 0).
+
+setInst vm mem = i = vm.inst; {vm | inst = {i | mem = mem}}.
+
+exec ins vm = case ins of
+    Unreachable -> Trapped "unreachable executed"
+  | Nop -> Running vm
+  | Block (BT ps rs) body -> enterBlock (List.length ps) (List.length rs) body vm.code vm
+  | Loop (BT ps rs) body -> enterBlock (List.length ps) (List.length ps) body (ins :: vm.code) vm
+  | If (BT ps rs) t e -> (case vm.stk of
+        VI32 c :: vs -> m = {vm | stk = vs}; enterBlock (List.length ps) (List.length rs) (case c != 0 of True -> t | False -> e) m.code m
+      | _ -> tyErr "if")
+  | Br n -> branch n vm
+  | BrIf n -> (case vm.stk of
+        VI32 c :: vs -> m = {vm | stk = vs}; (case c != 0 of True -> branch n m | False -> Running m)
+      | _ -> tyErr "br_if")
+  | BrTable ls d -> (case vm.stk of
+        VI32 c :: vs -> branch (O.withDefault d (List.get c ls)) {vm | stk = vs}
+      | _ -> tyErr "br_table")
+  | Return -> doReturn vm
+  | Call idx -> callFunc idx vm
+  | CallIndirect tyIdx -> (case vm.stk of
+        VI32 k :: vs -> callIndirect tyIdx k {vm | stk = vs}
+      | _ -> tyErr "call_indirect")
+  | Drop -> (case vm.stk of _ :: vs -> Running {vm | stk = vs} | Nil -> underflow)
+  | Select -> (case vm.stk of
+        VI32 c :: v2 :: v1 :: vs -> push (case c != 0 of True -> v1 | False -> v2) vs vm
+      | _ -> underflow)
+  | LocalGet k -> (case Map.get k vm.locals of
+        O.Some v -> push v vm.stk vm
+      | O.None -> Trapped "unknown local {k}")
+  | LocalSet k -> (case vm.stk of
+        v :: vs -> Running {vm | locals = Map.insert k v vm.locals, stk = vs}
+      | Nil -> underflow)
+  | LocalTee k -> (case vm.stk of
+        v :: vs -> Running {vm | locals = Map.insert k v vm.locals}
+      | Nil -> underflow)
+  | GlobalGet k -> (case Map.get k vm.inst.globals of
+        O.Some v -> push v vm.stk vm
+      | O.None -> Trapped "unknown global {k}")
+  | GlobalSet k -> (case vm.stk of
+        v :: vs -> i = vm.inst; Running {vm | inst = {i | globals = Map.insert k v i.globals}, stk = vs}
+      | Nil -> underflow)
+  | Load ty bytes signed off -> (case vm.stk of
+        VI32 a :: vs -> (case memReadBytes vm.inst.mem (a + off) bytes of
+            Err e -> Trapped e
+          | Ok bs -> push (loaded ty bytes signed bs) vs vm)
+      | _ -> tyErr "load")
+  | Store ty bytes off -> (case vm.stk of
+        v :: VI32 a :: vs -> (case memWriteBytes vm.inst.mem (a + off) (storedBytes bytes v) of
+            Err e -> Trapped e
+          | Ok mem -> Running (setInst {vm | stk = vs} mem))
+      | _ -> tyErr "store")
+  | MemSize -> push (VI32 (vm.inst.mem.size / pageSize)) vm.stk vm
+  | MemGrow -> (case vm.stk of
+        VI32 d :: vs -> (case memGrow vm.inst.mem d of
+            (old, mem) -> Running (setInst {vm | stk = VI32 (m32 old) :: vs} mem))
+      | _ -> tyErr "memory.grow")
+  | MemFill -> (case vm.stk of
+        VI32 n :: VI32 v :: VI32 d :: vs -> (case memWriteBytes vm.inst.mem d (List.repeat n (band v 255)) of
+            Err e -> Trapped e
+          | Ok mem -> Running (setInst {vm | stk = vs} mem))
+      | _ -> tyErr "memory.fill")
+  | MemCopy -> (case vm.stk of
+        VI32 n :: VI32 s :: VI32 d :: vs -> (case memReadBytes vm.inst.mem s n of
+            Err e -> Trapped e
+          | Ok bs -> (case memWriteBytes vm.inst.mem d bs of
+                Err e -> Trapped e
+              | Ok mem -> Running (setInst {vm | stk = vs} mem)))
+      | _ -> tyErr "memory.copy")
+  | Const v -> push v vm.stk vm
+  | IBinop sz op -> (case vm.stk of
+        VI32 y :: VI32 x :: vs -> (case ibin32 op x y of Ok r -> push (VI32 r) vs vm | Err e -> Trapped e)
+      | VI64 yh yl :: VI64 xh xl :: vs -> (case ibin64 op (xh, xl) (yh, yl) of
+            Ok (h, l) -> push (VI64 h l) vs vm
+          | Err e -> Trapped e)
+      | _ -> tyErr "integer binary operator")
+  | IUnop sz op -> (case vm.stk of
+        VI32 x :: vs -> push (VI32 (iun32 op x)) vs vm
+      | VI64 xh xl :: vs -> (case iun64 op (xh, xl) of (h, l) -> push (VI64 h l) vs vm)
+      | _ -> tyErr "integer unary operator")
+  | IEqz sz -> (case vm.stk of
+        VI32 x :: vs -> push (bool (x == 0)) vs vm
+      | VI64 xh xl :: vs -> push (bool (xh == 0 and xl == 0)) vs vm
+      | _ -> tyErr "eqz")
+  | IRelop sz op -> (case vm.stk of
+        VI32 y :: VI32 x :: vs -> push (bool (irel32 op x y)) vs vm
+      | VI64 yh yl :: VI64 xh xl :: vs -> push (bool (irel64 op (xh, xl) (yh, yl))) vs vm
+      | _ -> tyErr "integer comparison")
+  | FBinop sz op -> (case vm.stk of
+        VF32 y :: VF32 x :: vs -> push (VF32 (fbin32 op x y)) vs vm
+      | VF64 y :: VF64 x :: vs -> push (VF64 (fbin64 op x y)) vs vm
+      | _ -> tyErr "float binary operator")
+  | FUnop sz op -> (case vm.stk of
+        VF32 x :: vs -> push (VF32 (fun32 op x)) vs vm
+      | VF64 x :: vs -> push (VF64 (fun64 op x)) vs vm
+      | _ -> tyErr "float unary operator")
+  | FRelop sz op -> (case vm.stk of
+        VF32 y :: VF32 x :: vs -> push (bool (frel64 op (F64.ofF32 x) (F64.ofF32 y))) vs vm
+      | VF64 y :: VF64 x :: vs -> push (bool (frel64 op x y)) vs vm
+      | _ -> tyErr "float comparison")
+  | Cvtop op -> (case vm.stk of
+        v :: vs -> pushE (cvt op v) vs vm
+      | Nil -> underflow).
+
+# the value a load of `bytes` bytes makes
+loaded ty bytes signed bs =
+  lo = bytesToWord (List.take 4 bs);
+  hi = bytesToWord (List.drop 4 bs);
+  lo32 = (case bytes < 4 and signed of True -> sext (8 * bytes) lo | False -> lo);
+  case ty of
+    TI32 -> VI32 lo32
+  | TI64 -> (case bytes == 8 of
+        True -> VI64 hi lo
+      | False -> VI64 (case signed of True -> signFill lo32 | False -> 0) lo32)
+  | TF32 -> VF32 (f32frombits lo)
+  | TF64 -> VF64 (f64frombits hi lo).
+
+storedBytes bytes v = case v of
+    VI32 x -> wordToBytes bytes x
+  | VI64 h l -> List.append (wordToBytes (case bytes < 4 of True -> bytes | False -> 4) l) (wordToBytes (bytes - 4) h)
+  | VF32 f -> wordToBytes bytes (bits32 f)
+  | VF64 d -> (case bits64 d of (h, l) -> List.append (wordToBytes 4 l) (wordToBytes 4 h)).
+
+callIndirect tyIdx k vm =
+  mo = vm.inst.mod;
+  case k >= mo.tableSize of
+    True -> Trapped "undefined element"
+  | False -> (case Map.get k mo.table of
+        O.None -> Trapped "uninitialized element"
+      | O.Some fidx -> (case List.get tyIdx mo.types of
+            O.None -> Trapped "bad type index in call_indirect"
+          | O.Some want -> (case funcTypeAt mo fidx of
+                O.None -> Trapped "bad type index in call_indirect"
+              | O.Some have -> (case want == have of
+                    True -> callFunc fidx vm
+                  | False -> Trapped "indirect call type mismatch")))).
+
+callFunc idx vm =
+  mo = vm.inst.mod;
+  ni = List.length mo.imports;
+  case idx < ni of
+    True -> (case List.get idx mo.imports of
+        O.None -> Trapped "unknown function {idx}"
+      | O.Some (Import md nm ft) ->
+          np = List.length (paramsOf ft);
+          NeedHost md nm (List.reverse (List.take np vm.stk)) {vm | stk = List.drop np vm.stk})
+  | False -> (case vm.depth >= maxDepth of
+        True -> Trapped "call stack exhausted"
+      | False -> (case Map.get (idx - ni) mo.funcs of
+            O.None -> Trapped "unknown function {idx}"
+          | O.Some (Func ft locals body) ->
+              np = List.length (paramsOf ft);
+              frame = {arity = vm.arity, code = vm.code, labels = vm.labels, locals = vm.locals, stack = List.drop np vm.stk};
+              Running {vm |
+                code = body, stk = Nil, labels = Nil,
+                locals = localsOf (List.reverse (List.take np vm.stk)) locals,
+                arity = List.length (resultsOf ft),
+                frames = frame :: vm.frames, depth = vm.depth + 1})).
+
+# push host-call results back (results in order)
+resumeHost rs vm = {vm | stk = List.append (List.reverse rs) vm.stk}.
+
+# ---- a driver: run to the end with a synchronous host ------------------------
+# `host md nm args inst` answers Ok (results, inst) or Err why.  The answer is
+# (Ok results | Err why, the instance as the run left it).
+
+runToEnd host vm = runGo host {vm | fuel = 1000000}.
+runGo host vm = case step vm of
+    Running next -> runGo host next
+  | Yielded next -> runGo host {next | fuel = 1000000}
+  | Finished rs inst -> (Ok rs, inst)
+  | Trapped e -> (Err "trap: {e}", vm.inst)
+  | NeedHost md nm args next -> (case host md nm args next.inst of
+        Err e -> (Err e, next.inst)
+      | Ok (rs, inst) -> runGo host (resumeHost rs {next | inst = inst})).
+
+invoke host inst name args = case Map.get name inst.mod.exports of
+    O.None -> (Err "no export {name}", inst)
+  | O.Some idx -> (case newVM inst idx args of
+        Err e -> (Err e, inst)
+      | Ok vm -> runToEnd host vm).
+
+# ---- showing values (a structure holding a float cannot be printed) ---------
+
+showVal v = case v of
+    VI32 w -> "{s32 w}"
+  | VI64 h l -> show64 (h, l)
+  | VF32 f -> F32.str f
+  | VF64 d -> F64.str d.
+
+# signed decimal of an i64
+show64 a = case isNeg64 a of
+    True -> strcat "-" (showU64 (neg64 a))
+  | False -> showU64 a.
+showU64 a = case a of
+    (0, l) -> "{l}"
+  | _ -> strJoin "" (digits64 a Nil).
+digits64 a acc = case isZero64 a of
+    True -> acc
+  | False -> (case divMod64 a (0, 10) of (q, (_, d)) -> digits64 q ("{d}" :: acc)).
+
+valEq a b = case a of
+    VI32 x -> (case b of VI32 y -> x == y | _ -> False)
+  | VI64 xh xl -> (case b of VI64 yh yl -> xh == yh and xl == yl | _ -> False)
+  | VF32 x -> (case b of VF32 y -> x == y | _ -> False)
+  | VF64 x -> (case b of VF64 y -> x == y | _ -> False).

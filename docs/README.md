@@ -130,3 +130,5 @@ they began.
 - [Host publication and watching](2026-10-04-PUBLICATION-WATCH.md): immutable ready images, journal cursors and MVU notifications.
 
 - [Tang Nano 20K builtin port](2026-10-05-TANG-NANO-BUILTIN.md): physical RV32IM SimpleRisc execution, build and UART loader, manual ownership and explicit capability refusals.
+
+- [A WebAssembly VM in FP-RISC](2026-10-05-WASM-VM.md): the HaskPlayground interpreter, WAT parser and capability scheduler ported to FP-RISC source; calculator transcript identical to the Haskell, 57 of 57 semantics cases.
