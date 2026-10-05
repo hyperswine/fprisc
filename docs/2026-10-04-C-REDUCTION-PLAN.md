@@ -272,3 +272,38 @@ budget/recovery, disk hardening, 24-boot Qlog/loaded-process routing, Portable
 plugin and shared Files persistence/refusal checks pass. Global singleton and
 Files quiesce/stop coordination, physical resume/reprobe, TCP/ARP and the other
 Phase 2/3 work remain open; the QOS implementation record details the boundary.
+
+## Files shutdown and TCP/ARP policy checkpoint (2026-10-05)
+
+QOS `std/fs` v2.0 coordinates shutdown of its stable Files owner with the block
+service. Creator-checked quiesce runs after the current request, stops the Qlog
+child, and permanently refuses later operations at the same gateway. The creator
+then requests block Drain; failure preserves quiesce and returns an explicit
+error. Native System calls this sequence before halting. No mutation replay,
+compaction, flush/durability claim or physical resume is implied. Tests include
+shutdown queued behind timed-out page I/O: the logical service drains while the
+HAL reservation remains held. This closes the Files quiesce/stop coordination
+item listed at the previous checkpoint.
+
+RV64 now runs TCP/ARP packet formats, checksums, bounded parsing, connection
+lookup/allocation/sequence policy, receive buffering/backpressure, fair poll
+selection and segment/read limits in raw `hal/virt/netpolicy.fpr`. C retains NIC
+DMA/queues, MMIO/fences, TX ownership/deadlines and storage/String mechanisms;
+RV32 keeps its C transport. Malformed headers, fragments and bad checksums are
+rejected before state mutation, and overflow no longer acknowledges dropped
+payload. The public net API and native process link path remain compatible.
+
+Fresh QOS checks: Files shutdown (two Portable, four ordinary native and four
+native in-flight-failure runs); packet/state fixtures on one/two RV64 harts,
+RV32/RV64 production object ABI, and rejection of a checksum-blind mutation;
+four real slirp v1/v2 h1/h2 runs with four simultaneous segmented binary peers;
+eight TX stall/orphan cases; routed Qlog/bootstrap/process and Portable
+Files/plugin regressions. Native test images match QEMU hart counts.
+
+The protocol policy migration is not the full TCP/ARP actor milestone: a
+frame-only `rxFrame`/`txFrame`/`kick` HAL, dedicated network owner and client
+migration still remain. Connection storage/polling retain the compatibility HAL
+composition, and this is still the fixed-address four-peer slirp PoC without
+retransmission or congestion control. Physical block resume/reprobe and other
+Phase 2/3 work remain open. QOS's dated implementation record contains the exact
+shutdown, authentication and verification boundaries.
