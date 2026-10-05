@@ -53,6 +53,14 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([build('tests/base/longpanic.fpr', 'longpanic')], expected=1)
     assert 'PANIC [actor 0]: long:' + '0123456789' * 30 + ':end ***' in p.stdout + p.stderr, p.stdout + p.stderr
     print('Panic: a 310-byte error message is printed whole: PASS')
+    # interrupt routing is an FP-RISC router (core/prelude.fpr): an actor
+    # binds itself and unbinds what it bound, other actors are refused by name
+    irq = build('tests/base/irqroute.fpr', 'irqroute')
+    assert run([irq]).stdout == 'bind/unbind: True True True\n'
+    for arg, msg in (('other', 'Sys.irqBind: an actor binds itself'), ('steal', 'Sys.irqUnbind: not the bound actor')):
+        p = run([irq, arg], expected=1)
+        assert msg in p.stdout + p.stderr, p.stdout + p.stderr
+    print('Interrupt routing in FP-RISC: bind and unbind your own sources, another actor\'s refused by name: PASS')
     # Fixed heap admission is independent of mailbox capacity; failures
     # belong to the child and escaped data delays grant reclamation.
     fixed = build('tests/base/fixedheap.fpr', 'fixedheap')

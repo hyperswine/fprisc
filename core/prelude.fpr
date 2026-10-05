@@ -294,6 +294,144 @@ Mod = Struct {
   compatAt = fn o n -> modCompatAt o n
 }.
 
+# ---- device interrupts: the routing table (was C in runtime/actors.c) ------
+# The irq hart claims a source and posts it, a plain Int, to ONE router
+# actor; the router hands it to the actor bound to that source with
+# Sys.irqDeliver, on the deliveries' own channel, so a binder waiting for
+# the router's reply never takes an interrupt for it.  Any number of
+# sources: the table is a List.  A source nobody bound is dropped and stays
+# masked (nobody would ack it).  The router starts at the first bind
+# (Sys.irqInstall: one wins, a losing candidate ends) with a mailbox that
+# doubles when full, because the irq hart's post cannot wait or retry.
+#
+# An actor binds ITSELF: being bound marks it as waiting on a device, which
+# the deadlock detector counts, and only an actor changes its own mark.
+# Requests are (from, kind, src): kind 1 binds, 2 unbinds.
+
+sysIrqBind : Int -> Int -> Unit .
+sysIrqBind src target =
+  me = myself 0;
+  _ = case target == me of True -> Unit | False -> error "Sys.irqBind: an actor binds itself";
+  _ = case src >= 1 of True -> Unit | False -> error "Sys.irqBind: irq out of range";
+  _ = Sys.irqTarget 1;
+  _ = irqAsk me 1 src;
+  Unit.
+
+# True once nothing more for src reaches the caller: the router answers in
+# order, so whatever it handed over before the unbind is already queued
+sysIrqUnbind : Int -> Bool .
+sysIrqUnbind src =
+  me = myself 0;
+  _ = case src >= 1 of True -> Unit | False -> error "Sys.irqUnbind: irq out of range";
+  irqUnbound (irqAsk me 2 src).
+irqUnbound : Int -> Bool .
+irqUnbound left = case left < 0 of
+    True -> error "Sys.irqUnbind: not the bound actor"
+  | False -> irqStillBound (left > 0).
+irqStillBound : Bool -> Bool .
+irqStillBound bound = case bound of
+    True -> True
+  | False -> Sys.irqTarget 0 >> True.
+
+irqAsk : unsafe Int -> Int -> Int -> Int .
+irqAsk me kind src =
+  r = irqRouterOf me;
+  _ = irqSendSure me r (me, kind, src);
+  receiveFrom me r.
+
+irqSendSure : unsafe Int -> Int -> a -> Unit .
+irqSendSure me who m = case send who m of
+    Ok u -> Unit
+  | Err why -> (case why == "dead actor" of
+      True -> error "Sys.irqBind: the interrupt router has ended"
+    | False -> yield me >> irqSendSure me who m).
+
+irqRouterOf : unsafe Int -> Int .
+irqRouterOf me = irqRouterHave me (Sys.irqRouter Unit).
+irqRouterHave : unsafe Int -> Int -> Int .
+irqRouterHave me r = case r == 0 of False -> r | True -> irqRouterStart me.
+irqRouterStart : unsafe Int -> Int .
+irqRouterStart me =
+  c = spawnCap 1 64 (fn self -> irqRouteStart me self);
+  case Sys.irqInstall c of
+    True -> irqSendSure me c 1 >> c
+  | False -> irqSendSure me c 0 >> Sys.irqRouter Unit.
+
+irqRouteStart : unsafe Int -> Int -> Unit .
+irqRouteStart spawner self = case receiveFrom self spawner of
+    1 -> irqRoute self Nil
+  | _ -> Unit.
+
+irqRoute : unsafe Int -> List (Int, Int) -> a .
+irqRoute self tab =
+  m = receive self;
+  case m of
+    (from, kind, src) -> irqRouteReq self tab m from kind src
+  | src -> irqRouteSrc self tab src.
+
+irqRouteReq : unsafe Int -> List (Int, Int) -> a -> Int -> Int -> Int -> b .
+irqRouteReq self tab m from kind src =
+  _ = drop m;
+  case kind == 1 of
+    True -> irqBindNow self (irqSet tab src from) from src
+  | False -> irqUnbindNow self tab from src (irqOwner tab src).
+irqBindNow : unsafe Int -> List (Int, Int) -> Int -> Int -> a .
+irqBindNow self tab from src =
+  _ = Sys.irqOpen src;
+  _ = irqReply self from 1;
+  irqRoute self tab.
+irqUnbindNow : unsafe Int -> List (Int, Int) -> Int -> Int -> Int -> a .
+irqUnbindNow self tab from src owner = case owner == 0 or owner == from of
+    True -> irqUnbindDone self (irqRemove tab src) from
+  | False -> irqReply self from (0 - 1) >> irqRoute self tab.
+irqUnbindDone : unsafe Int -> List (Int, Int) -> Int -> a .
+irqUnbindDone self tab from =
+  _ = irqReply self from (irqCount tab from);
+  irqRoute self tab.
+
+irqRouteSrc : unsafe Int -> List (Int, Int) -> Int -> a .
+irqRouteSrc self tab src =
+  _ = irqHand self (irqOwner tab src) src;
+  irqRoute self tab.
+irqHand : unsafe Int -> Int -> Int -> Unit .
+irqHand self who src = case who == 0 of
+    True -> Unit
+  | False -> irqHandTo self who src.
+irqHandTo : unsafe Int -> Int -> Int -> Unit .
+irqHandTo self who src = case Sys.irqDeliver who src of
+    Ok u -> Unit
+  | Err why -> (case why == "dead actor" of
+      True -> Unit
+    | False -> yield self >> irqHandTo self who src).
+
+# a reply is not lost to a full mailbox; a binder that has ended gets none
+irqReply : unsafe Int -> Int -> Int -> Unit .
+irqReply self who n = case send who n of
+    Ok u -> Unit
+  | Err why -> (case why == "dead actor" of
+      True -> Unit
+    | False -> yield self >> irqReply self who n).
+
+irqOwner : unsafe List (Int, Int) -> Int -> Int .
+irqOwner tab src = case tab of
+    Nil -> 0
+  | (s, who) :: r -> (case s == src of True -> who | False -> irqOwner r src).
+irqRemove : unsafe List (Int, Int) -> Int -> List (Int, Int) .
+irqRemove tab src = case tab of
+    Nil -> Nil
+  | (s, who) :: r -> (case s == src of True -> r | False -> (s, who) :: irqRemove r src).
+irqSet : List (Int, Int) -> Int -> Int -> List (Int, Int) .
+irqSet tab src who = (src, who) :: irqRemove tab src.
+irqCount : unsafe List (Int, Int) -> Int -> Int .
+irqCount tab who = case tab of
+    Nil -> 0
+  | (s, b) :: r -> (case b == who of True -> 1 | False -> 0) + irqCount r who.
+
+Sys = Struct {
+  irqBind = fn src target -> sysIrqBind src target,
+  irqUnbind = fn src -> sysIrqUnbind src
+}.
+
 Str = Struct Add Eq {
   (+) = fn a b -> strcat a b,
   (-) = fn a b -> strSub a b,

@@ -334,3 +334,63 @@ startup/lifecycle, four concurrent binary peers, HTTP/WebSocket clients,
 transmit timeout with unrelated heartbeat progress, process image release,
 raw packet/ABI checks and storage/bootstrap regressions. See QOS's
 `docs/2026-10-05-NETWORK-ACTOR.md` for exact compatibility and failure limits.
+
+## Phase 3 started: interrupt routing is an FP-RISC router (2026-10-05)
+
+Which actor a device source belongs to is no longer C. `runtime/actors.c`
+loses `IRQ_MAX`, the two 1,024-entry tables (`irq_act`, `irq_inflight`), the
+in-flight retry protocol and unbind's scan of all 1,024 entries. What stays
+is mechanism: the irq hart claims a source and posts it, a plain Int, to
+ONE installed router, and five primitives -- `Sys.irqInstall` (compare-and-
+swap the router in; never replaced), `Sys.irqRouter`, `Sys.irqOpen`,
+`Sys.irqDeliver` (post on the deliveries' own channel key, returning the
+send's Result) and `Sys.irqTarget` (mark or unmark the CALLER as waiting on
+a device). `Sys.irqAck` is unchanged.
+
+The router is in `core/prelude.fpr`: a `List` from source to actor, any
+number of sources. `Sys.irqBind` and `Sys.irqUnbind` are a `Sys` structure
+there, and they are synchronous asks: the router records the binding and
+opens the source before it replies, so `std/job`'s bind-then-start order
+holds, and an unbind's True means nothing more for that source will reach
+the caller (the router answers in order). Unbind therefore never answers
+False now; `std/poller`'s retry loop simply does not loop. The router starts
+at the first bind: candidates race on `Sys.irqInstall`, and a loser ends
+without ever reading its mailbox. Its mailbox is Dynamic (doubles when
+full), because the irq hart's post cannot wait or retry; the router's own
+hand-over to the bound actor retries a full mailbox, which the C delivery
+could not do. A source nobody bound is dropped and stays masked, as before.
+
+Decided on the way:
+
+- **An actor binds itself.** The bound actor is still the one marked as
+  waiting on a device, so the deadlock detector keeps working: the router
+  is an ordinary blocked actor, and a job's waiter that has ended no longer
+  counts. Only a running actor may change its own mark, so
+  `Sys.irqBind src other` is now refused by name. Every caller in both
+  trees already bound itself.
+- **Deliveries keep their own channel.** A binder waits for the router's
+  reply with `receiveFrom`; if interrupts came from the router too, one
+  could be taken for the reply.
+
+Cost: one more actor hop per interrupt. 3,000 sequential host-interrupt
+round trips through `std/job`: 260-277 ticks each before, 268-288 after,
+inside the run-to-run spread.
+
+Checked: `tests/base/irqroute.fpr` (bind/unbind, the two refusals) and
+`tests/base/job.fpr` on one and four harts; every fprisc suite; a deadlock
+after a job's waiter ended is still reported. QOS: the bare-metal UART
+service with real PLIC transmit and receive interrupts on two harts
+(`uartsvc`, `UARTDMA[payload-0123456789]`, 28 bytes out, `ABC` in) with
+`fpr_fn_irqRoute` confirmed in the image; `uartsvc`, `uartroute` and
+`kbdread` on QOS Portable; the native kernel boot; smoke 16/16;
+`net-transport-check` HOLDS.
+
+Not changed: a loaded process still cannot bind an interrupt (the process
+plane never exported routing; its runtime copy's router would never be
+posted to). The router finds an owner by walking the List, which is
+proportional to the number of bound sources.
+
+Also fixed: `tests/check_posix_modules.py` hard-coded native ABI 3 in its
+schema fixture, so after the ABI went to 4 the module was refused for its
+ABI before the schema check ran, and `check_base` stopped there. It reads
+`FPR_NATIVE_ABI` from `runtime/fpr.h` now.

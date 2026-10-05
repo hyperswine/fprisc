@@ -669,8 +669,13 @@ builtinEnv =
       -- device interrupts -> actor messages (actors.c irq bridge):
       -- bind a PLIC source to an actor (deliveries arrive as plain
       -- Int messages); ack re-arms the claimed-and-masked source
-      ("Sys.irqUnbind", mono (TFn tInt tBool)),
-      ("Sys.irqBind", mono (TFn tInt (TFn tInt tUnit))),
+      -- interrupt routing: the table and Sys.irqBind/irqUnbind are FP-RISC
+      -- (core/prelude.fpr); these are the mechanism under them (actors.c)
+      ("Sys.irqInstall", mono (TFn tInt tBool)),
+      ("Sys.irqRouter", mono (TFn tUnit tInt)),
+      ("Sys.irqOpen", mono (TFn tInt tUnit)),
+      ("Sys.irqDeliver", mono (TFn tInt (TFn tInt (tcon "Result" [tUnit, tStr])))),
+      ("Sys.irqTarget", mono (TFn tInt tUnit)),
       ("Sys.irqAck", mono (TFn tInt tUnit)),
       -- the CLINT timer bridge (actors.c tmr_drain): bind Timer.qa's
       -- actor (answers 1 = hardware timer present, 0 = host fallback);
