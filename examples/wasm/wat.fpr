@@ -1,4 +1,4 @@
-# wat.fpr -- WebAssembly text format -> a wasmvm module, ported from the
+# wat.fpr -- WebAssembly text format -> a wasmvm program, ported from the
 # Haskell HaskPlayground/src/WASM/WatParser.hs.
 #
 # Module fields:
@@ -16,493 +16,604 @@
 # Not supported: flat `block ... end`, typed select, more than one memory or
 # table, (elem) offsets other than i32.const, hexadecimal float literals.
 #
-#   parse source = Ok {module = m, funcNames = names} | Err why
-unsafe module.
+#   parse source = Ok {program = p, funcNames = names} | Err why
+#
+# How it is written (docs/2026-10-03-STYLE-DIRECTION.md).  The source is
+# external input, so everything it can get wrong is an Err.  Reading is three
+# folds with no recursion of our own: bytes to tokens (a state machine, one
+# clause per state and byte), tokens to a tree (a stack), digits to a number.
+# The instruction compiler walks the tree and is the one recursive group; it
+# descends into sub-lists, which the measure checker cannot follow, so it is
+# marked unsafe, and with it everything that reaches it, up to `parse`.
 
 List = use "std/list".
 Map = use "std/map".
 O = use "std/option".
+R = use "std/result".
+String = use "std/string".
 V = use "wasmvm".
 
-# ---- S-expressions ---------------------------------------------------------------
-
-SExp = Type (Atom String | Str String | SList (List SExp)).
-
-# the byte at i, or -1 past the end
-at s i = case i < strlen s of True -> charAt s i | False -> 0 - 1.
+# ---- bytes ------------------------------------------------------------------------
 
 isSpace c = c == 32 or c == 9 or c == 10 or c == 13 or c == 12.
 isDigit c = c >= 48 and c <= 57.
-hexVal c = case isDigit c of
-    True -> c - 48
-  | False -> (case c >= 97 and c <= 102 of
-        True -> c - 87
-      | False -> (case c >= 65 and c <= 70 of True -> c - 55 | False -> 0 - 1)).
+hexVal c | isDigit c = c - 48.
+hexVal c | c >= 97 and c <= 102 = c - 87.
+hexVal c | c >= 65 and c <= 70 = c - 55.
+hexVal _ = 0 - 1.
 
-# past white space, ;; line comments and (; block comments ;)
-skipWs s i = c = at s i; case c == 59 and at s (i + 1) == 59 of
-    True -> skipWs s (lineEnd s i)
-  | False -> (case c == 40 and at s (i + 1) == 59 of
-        True -> skipWs s (blockEnd s (i + 2))
-      | False -> (case isSpace c of True -> skipWs s (i + 1) | False -> i)).
-lineEnd s i = c = at s i; case c < 0 or c == 10 of True -> i | False -> lineEnd s (i + 1).
-blockEnd s i = c = at s i; case c < 0 of
-    True -> i
-  | False -> (case c == 59 and at s (i + 1) == 41 of True -> i + 2 | False -> blockEnd s (i + 1)).
+# ---- tokens: a state machine over the bytes ------------------------------------
 
-tokenize s = case sexps s 0 Nil of Err e -> Err e | Ok (es, _) -> Ok es.
+Tok = Type (TOpen | TClose | TAtom String | TStr String).
 
-# expressions up to a ')' or the end; the position is left ON the ')'
-sexps s i acc = j = skipWs s i; c = at s j; case c < 0 or c == 41 of
-    True -> Ok (List.reverse acc, j)
-  | False -> (case sexp s j of
-        Err e -> Err e
-      | Ok (e, k) -> sexps s k (e :: acc)).
+# OpenSeen: a '(' that may begin "(;".   SemiSeen: a ';' that must begin ";;".
+# HexDigit: the first digit of a \hh escape.  BlockSemi: a ';' inside (; ;).
+Mode = Type (Idle | InAtom | InQuote | Escaped | HexDigit Int | OpenSeen | SemiSeen | LineComment | BlockComment | BlockSemi).
 
-sexp s i = c = at s i; case c == 40 of
-    True -> (case sexps s (i + 1) Nil of
-        Err e -> Err e
-      | Ok (es, k) -> (case at s k == 41 of
-            True -> Ok (SList es, k + 1)
-          | False -> Err "unclosed '('"))
-  | False -> (case c == 34 of
-        True -> strLit s (i + 1) Nil
-      | False -> j = atomEnd s i; (case j == i of
-            True -> Err "unexpected input: {substr s i 20}"
-          | False -> Ok (Atom (substr s i (j - i)), j))).
+# text: the bytes of the atom or string being read, newest first.
+# toks: the tokens so far, newest first.  err: "" until something is wrong.
+Lexer = { mode : Mode, text : List String, toks : List Tok, err : String }.
 
-atomEnd s i = c = at s i; case c < 0 or isSpace c or c == 40 or c == 41 or c == 34 or c == 59 of
-    True -> i
-  | False -> atomEnd s (i + 1).
+emit : Tok -> Lexer -> Lexer .
+emit tok st = {st | toks = tok :: st.toks}.
+word st = st.text |> List.reverse |> strJoin "".
+refused why st = {st | err = why}.
+kept c st = {st | text = chr c :: st.text}.
+inQuote c st = {st | mode = InQuote, text = chr c :: st.text}.
 
-strLit s i acc = c = at s i; case c < 0 of
-    True -> Err "unterminated string"
-  | False -> (case c == 34 of
-        True -> Ok (Str (strJoin "" (List.reverse acc)), i + 1)
-      | False -> (case c == 92 of
-            True -> escape s (i + 1) acc
-          | False -> strLit s (i + 1) (chr c :: acc))).
-escape s i acc = c = at s i; case c of
-    110 -> strLit s (i + 1) (chr 10 :: acc)
-  | 116 -> strLit s (i + 1) (chr 9 :: acc)
-  | 114 -> strLit s (i + 1) (chr 13 :: acc)
-  | 34 -> strLit s (i + 1) (chr 34 :: acc)
-  | 39 -> strLit s (i + 1) (chr 39 :: acc)
-  | 92 -> strLit s (i + 1) (chr 92 :: acc)
-  | _ -> (case hexVal c >= 0 and hexVal (at s (i + 1)) >= 0 of
-        True -> strLit s (i + 2) (chr (16 * hexVal c + hexVal (at s (i + 1))) :: acc)
-      | False -> Err "bad string escape").
+feed : Lexer -> Int -> Lexer .
+feed st _ | st.err != "" = st.
+feed st c = lexed st.mode c st.
+
+lexed : Mode -> Int -> Lexer -> Lexer .
+lexed Idle c st = idle c st.
+lexed InAtom c st | isSpace c or c == 40 or c == 41 or c == 34 or c == 59 = idle c (emit (TAtom (word st)) st).
+lexed InAtom c st = kept c st.
+lexed InQuote 34 st = emit (TStr (word st)) {st | mode = Idle}.
+lexed InQuote 92 st = {st | mode = Escaped}.
+lexed InQuote c st = kept c st.
+lexed Escaped c st = escaped c st.
+lexed (HexDigit hi) c st | hexVal c >= 0 = inQuote (16 * hi + hexVal c) st.
+lexed (HexDigit _) _ st = refused "bad string escape" st.
+lexed OpenSeen 59 st = {st | mode = BlockComment}.
+lexed OpenSeen c st = idle c (emit TOpen st).
+lexed SemiSeen 59 st = {st | mode = LineComment}.
+lexed SemiSeen _ st = refused "unexpected ';'" st.
+lexed LineComment 10 st = {st | mode = Idle}.
+lexed LineComment _ st = st.
+lexed BlockComment 59 st = {st | mode = BlockSemi}.
+lexed BlockComment _ st = st.
+lexed BlockSemi 41 st = {st | mode = Idle}.
+lexed BlockSemi 59 st = st.
+lexed BlockSemi _ st = {st | mode = BlockComment}.
+
+# a byte met between tokens
+idle : Int -> Lexer -> Lexer .
+idle c st | isSpace c = {st | mode = Idle}.
+idle 40 st = {st | mode = OpenSeen}.
+idle 41 st = emit TClose {st | mode = Idle}.
+idle 34 st = {st | mode = InQuote, text = Nil}.
+idle 59 st = {st | mode = SemiSeen}.
+idle c st = {st | mode = InAtom, text = [chr c]}.
+
+# the byte after a backslash
+escaped : Int -> Lexer -> Lexer .
+escaped 110 st = inQuote 10 st.
+escaped 116 st = inQuote 9 st.
+escaped 114 st = inQuote 13 st.
+escaped 34 st = inQuote 34 st.
+escaped 39 st = inQuote 39 st.
+escaped 92 st = inQuote 92 st.
+escaped c st | hexVal c >= 0 = {st | mode = HexDigit (hexVal c)}.
+escaped _ st = refused "bad string escape" st.
+
+# what the end of the input means in each state
+ended : Mode -> Lexer -> Result (List Tok) String .
+ended InAtom st = Ok (List.reverse (TAtom (word st) :: st.toks)).
+ended OpenSeen st = Ok (List.reverse (TOpen :: st.toks)).
+ended InQuote _ = Err "unterminated string".
+ended Escaped _ = Err "unterminated string".
+ended (HexDigit _) _ = Err "unterminated string".
+ended SemiSeen _ = Err "unexpected ';'".
+ended _ st = Ok (List.reverse st.toks).
+
+lexedAll : Lexer -> Result (List Tok) String .
+lexedAll st | st.err != "" = Err st.err.
+lexedAll st = ended st.mode st.
+
+tokens : String -> Result (List Tok) String .
+tokens src = String.codes src |> List.fold feed {mode = Idle, text = Nil, toks = Nil, err = ""} |> lexedAll.
+
+# ---- S-expressions: a stack of the lists still open ---------------------------
+
+SExp = Type (Atom String | Str String | SList (List SExp)).
+
+# open: the lists being read, innermost first, each newest first
+Nest = { open : List (List SExp), err : String }.
+
+place : Nest -> Tok -> Nest .
+place st _ | st.err != "" = st.
+place st TOpen = {st | open = Nil :: st.open}.
+place st TClose = closed st.open st.
+place st (TAtom a) = added (Atom a) st.open st.
+place st (TStr s) = added (Str s) st.open st.
+
+added e (top :: under) st = {st | open = (e :: top) :: under}.
+added _ Nil st = st.
+closed (top :: under :: rest) st = {st | open = (SList (List.reverse top) :: under) :: rest}.
+closed _ st = {st | err = "unexpected ')'"}.
+
+nested : Nest -> Result (List SExp) String .
+nested st | st.err != "" = Err st.err.
+nested st = topLevel st.open.
+topLevel (top :: Nil) = Ok (List.reverse top).
+topLevel _ = Err "unclosed '('".
+
+tree : List Tok -> Result (List SExp) String .
+tree toks = List.fold place {open = [Nil], err = ""} toks |> nested.
+
+tokenize : String -> Result (List SExp) String .
+tokenize src = tokens src |> R.andThen tree.
 
 # ---- small helpers ---------------------------------------------------------------
 
 isDollar a = strlen a > 0 and charAt a 0 == 36.
-isName e = case e of Atom a -> isDollar a | _ -> False.
-allDigits a = strlen a > 0 and digitsFrom a 0.
-digitsFrom a i = case i >= strlen a of True -> True | False -> (case isDigit (charAt a i) of True -> digitsFrom a (i + 1) | False -> False).
-not b = case b of True -> False | False -> True.
+isName (Atom a) = isDollar a.
+isName _ = False.
+allDigits a = strlen a > 0 and List.all isDigit (String.codes a).
+unnamed a = not (isDollar a).
 
 # the rest of every (kind ...) field
+restOf kind (SList (Atom k :: rest)) | k == kind = O.Some rest.
+restOf _ _ = O.None.
 fieldsOf kind fields = List.filterMap (restOf kind) fields.
-restOf kind e = case e of
-    SList (Atom k :: rest) -> (case k == kind of True -> O.Some rest | False -> O.None)
-  | _ -> O.None.
-headIs kinds e = case e of
-    SList (Atom k :: _) -> List.member k kinds
-  | _ -> False.
-atomsOf es = List.filterMap (fn e -> case e of Atom a -> O.Some a | _ -> O.None) es.
-strsOf es = List.filterMap (fn e -> case e of Str a -> O.Some a | _ -> O.None) es.
 
-andThen f r = case r of Err e -> Err e | Ok x -> f x.
-mapOk f r = case r of Err e -> Err e | Ok x -> Ok (f x).
-mapM f xs = mapMGo f xs Nil.
-mapMGo f xs acc = case xs of
-    Nil -> Ok (List.reverse acc)
-  | x :: r -> (case f x of Err e -> Err e | Ok y -> mapMGo f r (y :: acc)).
-orErr why o = case o of O.Some x -> Ok x | O.None -> Err why.
+headIs kinds (SList (Atom k :: _)) = List.member k kinds.
+headIs _ _ = False.
 
-named pairs = Map.fromList strOrder (List.filterMap (fn p -> p) pairs).
+atomOf (Atom a) = O.Some a.
+atomOf _ = O.None.
+atomsOf es = List.filterMap atomOf es.
+strOf (Str s) = O.Some s.
+strOf _ = O.None.
+strsOf es = List.filterMap strOf es.
+
+orErr why (O.Some x) = Ok x.
+orErr why O.None = Err why.
+
+# every item through a fallible step, in order
+each f xs = List.map f xs |> R.collect.
+
 strOrder = (case Map.strings of Map.Map cmp _ _ -> cmp).
 intOrder = (case Map.ints of Map.Map cmp _ _ -> cmp).
+byName pairs = Map.fromList strOrder pairs.
 
 # ---- numbers --------------------------------------------------------------------
 
+signOf text = charAt (strcat text " ") 0.
+unsigned text = String.dropLeft 1 text.
+
+# digits in a base, `_` allowed between them: (the value as an i64, digits seen)
+digit : Int -> String -> Result ((Int, Int), Int) String -> Int -> Result ((Int, Int), Int) String .
+digit _ _ (Err why) _ = Err why.
+digit _ _ (Ok (acc, seen)) 95 = Ok (acc, seen).
+digit base _ (Ok (acc, seen)) c | hexVal c >= 0 and hexVal c < base = Ok (V.add64 (V.mul64 acc (0, base)) (0, hexVal c), seen + 1).
+digit _ text (Ok _) _ = Err "bad integer: {text}".
+
+counted text (Ok (_, 0)) = Err "bad integer: {text}".
+counted _ (Ok (acc, _)) = Ok acc.
+counted _ (Err why) = Err why.
+
+digits base text = String.codes text |> List.fold (digit base text) (Ok ((0, 0), 0)) |> counted text.
+
+magnitude text | substr text 0 2 == "0x" = digits 16 (String.dropLeft 2 text).
+magnitude text = digits 10 text.
+
 # an integer literal as an i64 (high, low): sign, 0x, and _ separators
-readI64 s0 = case at s0 0 == 45 of
-    True -> mapOk V.neg64 (magnitude s0 1)
-  | False -> (case at s0 0 == 43 of True -> magnitude s0 1 | False -> magnitude s0 0).
-magnitude s i = case at s i == 48 and at s (i + 1) == 120 of
-    True -> digitsIn s 16 (i + 2) 0 (0, 0)
-  | False -> digitsIn s 10 i 0 (0, 0).
-digitsIn s base i seen acc = c = at s i; case c < 0 of
-    True -> (case seen > 0 of True -> Ok acc | False -> Err "bad integer: {s}")
-  | False -> (case c == 95 of
-        True -> digitsIn s base (i + 1) seen acc
-      | False -> d = hexVal c; (case d >= 0 and d < base of
-            True -> digitsIn s base (i + 1) (seen + 1) (V.add64 (V.mul64 acc (0, base)) (0, d))
-          | False -> Err "bad integer: {s}")).
+readI64 : String -> Result (Int, Int) String .
+readI64 text | signOf text == 45 = magnitude (unsigned text) |> R.map V.neg64.
+readI64 text | signOf text == 43 = magnitude (unsigned text).
+readI64 text = magnitude text.
 
 # the low 32 bits: an i32 constant, an offset, a count
-readInt s = case readI64 s of Err e -> Err e | Ok (_, l) -> Ok l.
+lowWord (_, l) = l.
+readInt : String -> Result Int String .
+readInt text = readI64 text |> R.map lowWord.
 
-readFloat : String -> Result F64 String .
-readFloat s = case s == "inf" or s == "+inf" of
-    True -> Ok (1.0 / 0.0)
-  | False -> (case s == "-inf" of
-        True -> Ok ((0.0 - 1.0) / 0.0)
-      | False -> (case substr s 0 3 == "nan" or substr s 0 4 == "-nan" or substr s 0 4 == "+nan" of
-            True -> Ok (0.0 / 0.0)
-          | False -> (case at s 0 == 45 of
-                True -> mapOk (fn x -> x * (0.0 - 1.0)) (unsignedFloat s 1)
-              | False -> (case at s 0 == 43 of True -> unsignedFloat s 1 | False -> unsignedFloat s 0)))).
+# A decimal float: digits [. digits] [e [sign] digits].  The digits are read
+# as one integer-valued double and scaled once by a power of ten.
+Part = Type (Whole | Fraction | ExpSign | ExpDigits).
+Decimal = { m : F64, seen : Int, frac : Int, part : Part, down : Bool, exp : Int, expSeen : Int, bad : Bool }.
 
-unsignedFloat : String -> Int -> Result F64 String .
-unsignedFloat s i = case at s i == 48 and at s (i + 1) == 120 of
-    True -> (case digitsIn s 16 (i + 2) 0 (0, 0) of
-        Err e -> Err "bad float: {s}"
-      | Ok (h, l) -> Ok (F64.ofInt h * 4294967296.0 + F64.ofInt l))
-  | False -> decimal s i 0.0 0 0 False.
+isE c = c == 101 or c == 69.
 
-# digits [. digits] [e [sign] digits]: the digits as one integer-valued
-# double, scaled once by a power of ten
-decimal : String -> Int -> F64 -> Int -> Int -> Bool -> Result F64 String .
-decimal s i m seen frac inFrac = c = at s i; case isDigit c of
-    True -> decimal s (i + 1) (m * 10.0 + F64.ofInt (c - 48)) (seen + 1) (case inFrac of True -> frac + 1 | False -> frac) inFrac
-  | False -> (case c == 95 of
-        True -> decimal s (i + 1) m seen frac inFrac
-      | False -> (case c == 46 and not inFrac of
-            True -> decimal s (i + 1) m seen frac True
-          | False -> (case seen == 0 of
-                True -> Err "bad float: {s}"
-              | False -> (case c < 0 of
-                    True -> Ok (scale10 m (0 - frac))
-                  | False -> (case c == 101 or c == 69 of
-                        True -> (case exponent s (i + 1) of
-                            Err e -> Err e
-                          | Ok e -> Ok (scale10 m (e - frac)))
-                      | False -> Err "bad float: {s}"))))).
-exponent s i = case at s i == 45 of
-    True -> mapOk (fn n -> 0 - n) (expDigits s (i + 1) 0 0)
-  | False -> (case at s i == 43 of True -> expDigits s (i + 1) 0 0 | False -> expDigits s i 0 0).
-expDigits s i seen acc = c = at s i; case isDigit c of
-    True -> expDigits s (i + 1) (seen + 1) (acc * 10 + c - 48)
-  | False -> (case c < 0 and seen > 0 of True -> Ok acc | False -> Err "bad float: {s}").
+mantissa : Int -> Decimal -> Decimal .
+mantissa c st = {st | m = st.m * 10.0 + F64.ofInt (c - 48), seen = st.seen + 1}.
+fraction : Int -> Decimal -> Decimal .
+fraction c st = mantissa c {st | frac = st.frac + 1}.
+expDigit : Int -> Decimal -> Decimal .
+expDigit c st = {st | part = ExpDigits, exp = st.exp * 10 + c - 48, expSeen = st.expSeen + 1}.
+
+decimalByte : Decimal -> Int -> Decimal .
+decimalByte st _ | st.bad = st.
+decimalByte st 95 = st.
+decimalByte st c = inPart st.part c st.
+
+inPart : Part -> Int -> Decimal -> Decimal .
+inPart Whole c st | isDigit c = mantissa c st.
+inPart Whole 46 st = {st | part = Fraction}.
+inPart Fraction c st | isDigit c = fraction c st.
+inPart Whole c st | isE c and st.seen > 0 = {st | part = ExpSign}.
+inPart Fraction c st | isE c and st.seen > 0 = {st | part = ExpSign}.
+inPart ExpSign 45 st = {st | part = ExpDigits, down = True}.
+inPart ExpSign 43 st = {st | part = ExpDigits}.
+inPart ExpSign c st | isDigit c = expDigit c st.
+inPart ExpDigits c st | isDigit c = expDigit c st.
+inPart _ _ st = {st | bad = True}.
+
 # powers of ten by repeated multiplication: exact up to 10^22, where F64.pow
 # is not exact even for 10^1
+tenTo : (k : Int | measure k) -> F64 -> F64 .
+tenTo k acc | k <= 0 = acc.
+tenTo k acc = tenTo (k - 1) (acc * 10.0).
 scale10 : F64 -> Int -> F64 .
-scale10 m k = case k < 0 of
-    True -> m / tenTo (0 - k) 1.0
-  | False -> m * tenTo k 1.0.
-tenTo : Int -> F64 -> F64 .
-tenTo k acc = case k <= 0 of True -> acc | False -> tenTo (k - 1) (acc * 10.0).
+scale10 m k | k < 0 = m / tenTo (0 - k) 1.0.
+scale10 m k = m * tenTo k 1.0.
+
+exponentOf : Decimal -> Int .
+exponentOf st | st.down = 0 - st.exp.
+exponentOf st = st.exp.
+
+complete ExpSign _ = False.
+complete ExpDigits st = st.expSeen > 0.
+complete _ _ = True.
+
+decimalValue : String -> Decimal -> Result F64 String .
+decimalValue text st | st.bad or st.seen == 0 or not (complete st.part st) = Err "bad float: {text}".
+decimalValue _ st = Ok (scale10 st.m (exponentOf st - st.frac)).
+
+decimal : String -> Result F64 String .
+decimal text = String.codes text
+  |> List.fold decimalByte {m = 0.0, seen = 0, frac = 0, part = Whole, down = False, exp = 0, expSeen = 0, bad = False}
+  |> decimalValue text.
+
+wholeOf : (Int, Int) -> F64 .
+wholeOf (h, l) = F64.ofInt h * 4294967296.0 + F64.ofInt l.
+
+positive : String -> Result F64 String .
+positive text | text == "inf" = Ok (1.0 / 0.0).
+positive text | substr text 0 3 == "nan" = Ok (0.0 / 0.0).
+positive text | substr text 0 2 == "0x" = digits 16 (String.dropLeft 2 text) |> R.map wholeOf.
+positive text = decimal text.
+
+negated : F64 -> F64 .
+negated x = x * (0.0 - 1.0).
+
+readFloat : String -> Result F64 String .
+readFloat text | signOf text == 45 = positive (unsigned text) |> R.map negated.
+readFloat text | signOf text == 43 = positive (unsigned text).
+readFloat text = positive text.
 
 # ---- types and signatures ------------------------------------------------------
 
-valType t = case t of
-    "i32" -> Ok V.TI32
-  | "i64" -> Ok V.TI64
-  | "f32" -> Ok V.TF32
-  | "f64" -> Ok V.TF64
-  | _ -> Err "unknown value type {t}".
+valType "i32" = Ok V.TI32.
+valType "i64" = Ok V.TI64.
+valType "f32" = Ok V.TF32.
+valType "f64" = Ok V.TF64.
+valType t = Err "unknown value type {t}".
 
-plainAtoms r = List.filter (fn a -> not (isDollar a)) (atomsOf r).
+typesIn group = atomsOf group |> List.filter unnamed |> each valType.
 
 # (param $x i32) (param i32 i32) (result i32) ...
-sigOf sig =
-  mapM (fn r -> mapM valType (plainAtoms r)) (fieldsOf "param" sig) |> andThen (fn ps ->
-  mapM (fn r -> mapM valType (atomsOf r)) (fieldsOf "result" sig) |> andThen (fn rs ->
-  Ok (V.FuncType (List.concat ps) (List.concat rs)))).
+sigOf : List SExp -> Result V.FuncType String .
+sigOf sig = fieldsOf "param" sig |> each typesIn |> R.andThen (withResults sig).
+withResults sig ps = fieldsOf "result" sig |> each typesIn |> R.map (funcType ps).
+funcType ps rs = V.FuncType (List.concat ps) (List.concat rs).
 
 # one name per declared slot: a named slot is `$x T`, the rest are anonymous
 # and still occupy indices
-slotNames r = case r of
-    Atom n :: _ -> (case isDollar n of True -> [n] | False -> List.map (fn a -> "") (atomsOf r))
-  | _ -> List.map (fn a -> "") (atomsOf r).
-paramNames sig = List.concat (List.map slotNames (fieldsOf "param" sig)).
+anonymous _ = "".
+slotNames (Atom n :: _) | isDollar n = [n].
+slotNames group = atomsOf group |> List.map anonymous.
+slotsOf kind sig = fieldsOf kind sig |> List.concatMap slotNames.
 
 # (type $t (func (param ..) (result ..))): (name or "", the type)
-typeDecl rest = case rest of
-    Atom n :: SList (Atom "func" :: sig) :: Nil -> mapOk (fn ft -> (n, ft)) (sigOf sig)
-  | SList (Atom "func" :: sig) :: Nil -> mapOk (fn ft -> ("", ft)) (sigOf sig)
-  | _ -> Err "bad (type ...)".
+labelled n ft = (n, ft).
+typeDecl (Atom n :: SList (Atom "func" :: sig) :: Nil) = sigOf sig |> R.map (labelled n).
+typeDecl (SList (Atom "func" :: sig) :: Nil) = sigOf sig |> R.map (labelled "").
+typeDecl _ = Err "bad (type ...)".
 
-indexOfType ft types = indexGo ft types 0.
-indexGo ft types i = case types of
-    Nil -> 0 - 1
-  | t :: r -> (case t == ft of True -> i | False -> indexGo ft r (i + 1)).
+Names = { types : Map.Map String Int, funcs : Map.Map String Int, globals : Map.Map String Int }.
 
-typeIndex names t = case allDigits t of
-    True -> O.Some (parseInt t)
-  | False -> Map.get t names.types.
+indexIn : Map.Map String Int -> String -> O.Option Int .
+indexIn table n | allDigits n = O.Some (parseInt n).
+indexIn table n = Map.get n table.
 
 # a signature that is (type $t) or inline; an inline one is interned.
 # Answers (the type, the types so far)
-resolveSig names types sig = case fieldsOf "type" sig of
-    (Atom t :: Nil) :: _ ->
-      typeIndex names t |> orErr "unknown type {t}" |> andThen (fn idx ->
-      List.get idx types |> orErr "type index out of range" |> andThen (fn ft ->
-      Ok (ft, types)))
-  | _ -> sigOf sig |> andThen (fn ft -> case indexOfType ft types < 0 of
-        True -> Ok (ft, List.append types [ft])
-      | False -> Ok (ft, types)).
+resolveSig : Names -> List V.FuncType -> List SExp -> Result (V.FuncType, List V.FuncType) String .
+resolveSig names types sig = typeUse names types sig (fieldsOf "type" sig).
+
+typeUse names types _ ((Atom t :: Nil) :: _) = indexIn names.types t |> O.andThen (typeAt types) |> orErr "unknown type {t}" |> R.map (among types).
+typeUse _ types sig _ = sigOf sig |> R.map (interned types).
+
+typeAt types i = List.get i types.
+among types ft = (ft, types).
+interned types ft | List.member ft types = (ft, types).
+interned types ft = (ft, List.append types [ft]).
 
 # ---- module assembly ---------------------------------------------------------------
 
-parse src = tokenize src |> andThen (fn es -> case es of
-    SList (Atom "module" :: fs) :: Nil -> assemble (List.dropWhile isName fs)
-  | _ -> Err "expected a single (module ...)").
+Parsed = { program : V.Program, funcNames : Map.Map String Int }.
 
-funcNameOf nImp (i, rest) = case rest of
-    Atom n :: _ -> (case isDollar n of True -> O.Some (n, nImp + i) | False -> O.None)
-  | _ -> O.None.
-importNameOf (i, rest) = case rest of
-    Str _ :: Str _ :: SList (Atom "func" :: Atom n :: _) :: Nil -> (case isDollar n of True -> O.Some (n, i) | False -> O.None)
-  | _ -> O.None.
-typeNameOf (i, decl) = case decl of (n, _) -> (case n == "" of True -> O.None | False -> O.Some (n, i)).
+parse : unsafe String -> Result Parsed String .
+parse src = tokenize src |> R.andThen wholeModule.
 
+wholeModule : unsafe List SExp -> Result Parsed String .
+wholeModule (SList (Atom "module" :: fs) :: Nil) = assemble (List.dropWhile isName fs).
+wholeModule _ = Err "expected a single (module ...)".
+
+# (index, a field's rest) -> its $name and index, when it has a name
+namedAt base (i, Atom n :: _) | isDollar n = O.Some (n, base + i).
+namedAt _ _ = O.None.
+importNamed (i, Str _ :: Str _ :: SList (Atom "func" :: Atom n :: _) :: Nil) | isDollar n = O.Some (n, i).
+importNamed _ = O.None.
+typeNamed (_, ("", _)) = O.None.
+typeNamed (i, (n, _)) = O.Some (n, i).
+
+namesIn pick fields = List.indexed fields |> List.filterMap pick |> byName.
+okOnly (Ok x) = O.Some x.
+okOnly (Err _) = O.None.
+second (_, x) = x.
+
+# pass 1 names everything; pass 2 resolves the function types, interning the
+# inline ones, and compiles the bodies
+assemble : unsafe List SExp -> Result Parsed String .
 assemble fields =
-  # pass 1: explicit types, then the function index space (imports first)
-  typeDecls = List.filterMap (fn rest -> case typeDecl rest of Ok d -> O.Some d | Err _ -> O.None) (fieldsOf "type" fields);
-  explicitTypes = List.map (fn d -> case d of (_, ft) -> ft) typeDecls;
+  typeDecls = fieldsOf "type" fields |> List.map typeDecl |> List.filterMap okOnly;
   importFields = fieldsOf "import" fields;
   funcFields = fieldsOf "func" fields;
   globalFields = fieldsOf "global" fields;
   nImp = List.length importFields;
-  funcNames = Map.fromList strOrder (List.append
-    (List.filterMap importNameOf (List.indexed importFields))
-    (List.filterMap (funcNameOf nImp) (List.indexed funcFields)));
-  names = {
-    types = Map.fromList strOrder (List.filterMap typeNameOf (List.indexed typeDecls)),
-    funcs = funcNames,
-    globals = Map.fromList strOrder (List.filterMap (funcNameOf 0) (List.indexed globalFields)) };
-  ops = opTable;
-  # pass 2: function types, interning the inline ones
-  foldDecl (importDecl names) (Nil, explicitTypes) importFields |> andThen (fn pr1 -> case pr1 of (imports, types1) ->
-  foldDecl (funcDecl names ops) (Nil, types1) funcFields |> andThen (fn pr2 -> case pr2 of (funcs, types2) ->
-  mapM globalDecl globalFields |> andThen (fn globals ->
-  mapM dataSeg (fieldsOf "data" fields) |> andThen (fn datas ->
-  tableAndElems names fields |> andThen (fn pr3 -> case pr3 of (tblSize, elems) ->
-    (memMin, memMax) = memPages fields;
-    Ok {
-      module = {
-        types = types2, imports = imports,
-        funcs = Map.fromList intOrder (List.indexed funcs),
-        tableSize = tblSize, table = elems,
-        memMin = memMin, memMax = memMax,
-        globals = globals, datas = datas,
-        exports = Map.fromList strOrder (List.append (exportFields names fields) (inlineExports nImp funcFields)),
-        start = startOf names fields },
-      funcNames = funcNames }))))).
+  funcNames = Map.union (namesIn importNamed importFields) (namesIn (namedAt nImp) funcFields);
+  names = {types = namesIn typeNamed typeDecls, funcs = funcNames, globals = namesIn (namedAt 0) globalFields};
+  declaring (importDecl names) (List.map second typeDecls) importFields |> R.andThen (fn imported ->
+  declaring (funcDecl names opTable) (second imported) funcFields |> R.andThen (fn defined ->
+  each globalDecl globalFields |> R.andThen (fn globals ->
+  each dataSeg (fieldsOf "data" fields) |> R.andThen (fn datas ->
+  each (elemSeg names) (fieldsOf "elem" fields) |> R.map (fn segs ->
+    {program = V.Program {
+       types = second defined, imports = first imported,
+       funcs = first defined |> List.indexed |> Map.fromList intOrder,
+       tableSize = tableSize (List.concat segs) (fieldsOf "table" fields),
+       table = Map.fromList intOrder (List.concat segs),
+       memMin = memMin (fieldsOf "memory" fields), memMax = memMax (fieldsOf "memory" fields),
+       globals = globals, datas = datas,
+       exports = byName (List.append (List.filterMap (exportOf names) fields) (inlineExports nImp funcFields)),
+       start = startOf names (fieldsOf "start" fields) },
+     funcNames = funcNames}))))).
 
-# thread the type list through the declarations, collecting what each makes
-foldDecl decl state fields = case fields of
-    Nil -> (case state of (acc, types) -> Ok (List.reverse acc, types))
-  | rest :: more -> (case state of (acc, types) -> (case decl types rest of
-        Err e -> Err e
-      | Ok (x, types2) -> foldDecl decl (x :: acc, types2) more)).
+first (x, _) = x.
 
-memPages fields = case fieldsOf "memory" fields of
-    Nil -> (0 - 1, 0 - 1)
-  | rest :: _ -> (case List.filter allDigits (atomsOf rest) of
-        a :: Nil -> (parseInt a, 0 - 1)
-      | a :: b :: Nil -> (parseInt a, parseInt b)
-      | _ -> (0, 0 - 1)).
+# thread the type list through the declarations, collecting what each makes:
+# (the things declared in order, the types afterwards)
+declaring decl types fields = List.fold (declared decl) (Ok (Nil, types)) fields |> R.map inOrder.
+declared decl (Ok (acc, types)) field = decl types field |> R.map (after acc).
+declared _ (Err why) _ = Err why.
+after acc (x, types) = (x :: acc, types).
+inOrder (acc, types) = (List.reverse acc, types).
 
-resolveFunc names f = case allDigits f of
-    True -> O.Some (parseInt f)
-  | False -> Map.get f names.funcs.
+numbersIn group = atomsOf group |> List.filter allDigits |> List.map parseInt.
 
-exportFields names fields = List.filterMap (exportOf names) fields.
-exportOf names e = case e of
-    SList (Atom "export" :: Str n :: SList (Atom "func" :: Atom f :: Nil) :: Nil) ->
-      (case resolveFunc names f of O.Some i -> O.Some (n, i) | O.None -> O.None)
-  | _ -> O.None.
+limits Nil = Nil.
+limits (group :: _) = numbersIn group.
+memMin memories = bound 0 (limits memories) memories.
+memMax memories = bound 1 (limits memories) memories.
+# no (memory): none.  (memory a): min a, no max.  (memory a b): min a, max b.
+bound _ _ Nil = 0 - 1.
+bound 0 (a :: Nil) _ = a.
+bound 0 (a :: _ :: Nil) _ = a.
+bound 1 (_ :: b :: Nil) _ = b.
+bound 0 _ _ = 0.
+bound _ _ _ = 0 - 1.
 
-inlineExports nImp funcFields = List.concat (List.map (inlineOf nImp) (List.indexed funcFields)).
-inlineOf nImp (i, rest) = List.concatMap (fn e -> case e of
-    SList (Atom "export" :: Str n :: Nil) -> [(n, nImp + i)]
-  | _ -> Nil) rest.
+# the declared size, or one past the highest element placed, whichever is more
+declaredSize Nil = 0.
+declaredSize (group :: _) = numbersIn group |> List.head |> O.withDefault 0.
+reach size (i, _) | i + 1 > size = i + 1.
+reach size _ = size.
+tableSize elems tables = List.fold reach (declaredSize tables) elems.
 
-startOf names fields = case fieldsOf "start" fields of
-    (Atom f :: Nil) :: _ -> O.withDefault (0 - 1) (resolveFunc names f)
-  | _ -> 0 - 1.
+exportOf names (SList (Atom "export" :: Str n :: SList (Atom "func" :: Atom f :: Nil) :: Nil)) = indexIn names.funcs f |> O.map (labelled n).
+exportOf _ _ = O.None.
 
-importDecl names types rest = case rest of
-    Str md :: Str nm :: SList (Atom "func" :: r) :: Nil ->
-      resolveSig names types (List.dropWhile isName r) |> andThen (fn pr4 -> case pr4 of (ft, types2) ->
-      Ok (V.Import md nm ft, types2))
-  | _ -> Err "only function imports are supported".
+inlineExport index (SList (Atom "export" :: Str n :: Nil)) = O.Some (n, index).
+inlineExport _ _ = O.None.
+inlineOf nImp (i, rest) = List.filterMap (inlineExport (nImp + i)) rest.
+inlineExports nImp funcFields = List.indexed funcFields |> List.concatMap (inlineOf nImp).
 
-funcDecl names ops types rest =
-  r1 = List.filter (fn e -> not (headIs ["export"] e)) (List.dropWhile isName rest);
-  sig = List.takeWhile (headIs ["type", "param", "result"]) r1;
-  r2 = List.dropWhile (headIs ["type", "param", "result"]) r1;
-  localDecls = fieldsOf "local" (List.takeWhile (headIs ["local"]) r2);
-  body = List.dropWhile (headIs ["local"]) r2;
-  resolveSig names types sig |> andThen (fn pr5 -> case pr5 of (ft, types2) ->
-  mapM (fn l -> mapM valType (plainAtoms l)) localDecls |> andThen (fn ltypes ->
-    allNames = List.append (paramNames sig) (List.concat (List.map slotNames localDecls));
-    localMap = Map.fromList strOrder (List.filterMap (fn p -> case p of (i, n) -> (case n == "" of True -> O.None | False -> O.Some (n, i))) (List.indexed allNames));
-    env = {names = names, ops = ops, locals = localMap, labels = Nil};
-    compileSeq env body |> andThen (fn code ->
-    Ok (V.Func ft (List.concat ltypes) code, types2)))).
+startOf names ((Atom f :: Nil) :: _) = indexIn names.funcs f |> O.withDefault (0 - 1).
+startOf _ _ = 0 - 1.
 
-globalDecl rest = case List.dropWhile isName rest of
-    SList (Atom "mut" :: Atom t :: Nil) :: initE :: Nil -> mkGlobal True t initE
-  | Atom t :: initE :: Nil -> mkGlobal False t initE
-  | _ -> Err "bad (global ...)".
-mkGlobal mut t initE =
-  valType t |> andThen (fn ty ->
-  constExpr initE |> andThen (fn v ->
-  Ok (V.Global ty mut v))).
+importDecl : Names -> List V.FuncType -> List SExp -> Result (V.Import, List V.FuncType) String .
+importDecl names types (Str md :: Str nm :: SList (Atom "func" :: r) :: Nil) = resolveSig names types (List.dropWhile isName r) |> R.map (importOf md nm).
+importDecl _ _ _ = Err "only function imports are supported".
+importOf md nm (ft, types) = (V.Import md nm ft, types).
 
-constExpr e = case e of
-    SList (Atom op :: Atom n :: Nil) -> constOf op n
-  | _ -> Err "unsupported constant expression".
-constOf op n = case op of
-    "i32.const" -> mapOk (fn w -> V.VI32 w) (readInt n)
-  | "i64.const" -> mapOk (fn p -> case p of (h, l) -> V.VI64 h l) (readI64 n)
-  | "f32.const" -> mapOk (fn x -> V.VF32 (F32.ofF64 x)) (readFloat n)
-  | "f64.const" -> mapOk (fn x -> V.VF64 x) (readFloat n)
-  | _ -> Err "unsupported constant expression".
+isSig = headIs ["type", "param", "result"].
+isLocal = headIs ["local"].
+isExport = headIs ["export"].
+notExport e = not (isExport e).
+namedSlot (_, "") = O.None.
+namedSlot (i, n) = O.Some (n, i).
 
-dataSeg rest = case List.dropWhile isName rest of
-    SList (Atom "i32.const" :: Atom n :: Nil) :: strs ->
-      mapOk (fn off -> (off, strJoin "" (strsOf strs))) (readInt n)
-  | _ -> Err "unsupported (data ...) form".
+# a function field: [$name] [(export ..)]* signature locals body
+funcDecl : unsafe Names -> Map.Map String Op -> List V.FuncType -> List SExp -> Result (V.Func, List V.FuncType) String .
+funcDecl names ops types rest = funcParts names ops types (List.dropWhile isName rest |> List.filter notExport).
 
-tableAndElems names fields =
-  declared = (case fieldsOf "table" fields of
-      rest :: _ -> (case List.filter allDigits (atomsOf rest) of a :: _ -> parseInt a | Nil -> 0)
-    | Nil -> 0);
-  mapM (elemSeg names) (fieldsOf "elem" fields) |> andThen (fn segs ->
-    elems = List.concat segs;
-    top = List.fold (fn m p -> case p of (i, _) -> (case i + 1 > m of True -> i + 1 | False -> m)) declared elems;
-    Ok (top, Map.fromList intOrder elems)).
-elemSeg names rest = case List.dropWhile isName rest of
-    SList (Atom "i32.const" :: Atom n :: Nil) :: fs ->
-      readInt n |> andThen (fn off ->
-      mapM (fn f -> resolveFunc names f |> orErr "unknown func in elem: {f}") (List.filter (fn f -> f != "func") (atomsOf fs)) |> andThen (fn idxs ->
-      Ok (List.map (fn p -> case p of (i, f) -> (off + i, f)) (List.indexed idxs))))
-  | _ -> Err "unsupported (elem ...) form".
+funcParts : unsafe Names -> Map.Map String Op -> List V.FuncType -> List SExp -> Result (V.Func, List V.FuncType) String .
+funcParts names ops types parts =
+  sig = List.takeWhile isSig parts;
+  locals = List.dropWhile isSig parts |> List.takeWhile isLocal;
+  body = List.dropWhile isSig parts |> List.dropWhile isLocal;
+  slots = List.append (slotsOf "param" sig) (slotsOf "local" locals);
+  env = {names = names, ops = ops, locals = List.indexed slots |> List.filterMap namedSlot |> byName, labels = Nil};
+  resolveSig names types sig |> R.andThen (fn resolved ->
+  fieldsOf "local" locals |> each typesIn |> R.andThen (fn ltypes ->
+  compileSeq env body |> R.map (fn code ->
+    (V.Func (first resolved) (List.concat ltypes) code, second resolved)))).
+
+globalDecl : List SExp -> Result V.Global String .
+globalDecl rest = globalOf (List.dropWhile isName rest).
+globalOf (SList (Atom "mut" :: Atom t :: Nil) :: initE :: Nil) = mkGlobal True t initE.
+globalOf (Atom t :: initE :: Nil) = mkGlobal False t initE.
+globalOf _ = Err "bad (global ...)".
+mkGlobal mut t initE = valType t |> R.andThen (fn ty -> constExpr initE |> R.map (V.Global ty mut)).
+
+i64Const (h, l) = V.VI64 h l.
+f32Const : F64 -> V.Val .
+f32Const x = V.VF32 (F32.ofF64 x).
+
+constOf : String -> String -> Result V.Val String .
+constOf "i32.const" n = readInt n |> R.map V.VI32.
+constOf "i64.const" n = readI64 n |> R.map i64Const.
+constOf "f32.const" n = readFloat n |> R.map f32Const.
+constOf "f64.const" n = readFloat n |> R.map V.VF64.
+constOf _ _ = Err "unsupported constant expression".
+
+constExpr (SList (Atom op :: Atom n :: Nil)) = constOf op n.
+constExpr _ = Err "unsupported constant expression".
+
+dataSeg : List SExp -> Result (Int, String) String .
+dataSeg rest = dataOf (List.dropWhile isName rest).
+dataOf (SList (Atom "i32.const" :: Atom n :: Nil) :: strs) = readInt n |> R.map (textAt (strsOf strs |> strJoin "")).
+dataOf _ = Err "unsupported (data ...) form".
+textAt text off = (off, text).
+
+notFuncWord f = f != "func".
+funcIndex names f = indexIn names.funcs f |> orErr "unknown func in elem: {f}".
+placedFrom off (i, f) = (off + i, f).
+
+# (elem (i32.const n) [func] $f ...): the (table index, function) pairs
+elemSeg : Names -> List SExp -> Result (List (Int, Int)) String .
+elemSeg names rest = elemOf names (List.dropWhile isName rest).
+elemOf names (SList (Atom "i32.const" :: Atom n :: Nil) :: fs) = readInt n |> R.andThen (elemsAt names fs).
+elemOf _ _ = Err "unsupported (elem ...) form".
+elemsAt names fs off = atomsOf fs |> List.filter notFuncWord |> each (funcIndex names) |> R.map (fn idxs -> List.indexed idxs |> List.map (placedFrom off)).
 
 # ---- instruction compilation ----------------------------------------------------
 # env: names, the opcode table, the function's locals by name, and the label
 # names innermost first ("" = an unnamed label)
 
-compileSeq env es = case es of
-    Nil -> Ok Nil
-  | Atom a :: rest ->
-      plainInstr env a rest |> andThen (fn pr6 -> case pr6 of (ins, rest2) ->
-      mapOk (fn more -> List.append ins more) (compileSeq env rest2))
-  | SList l :: rest ->
-      compileFolded env l |> andThen (fn ins ->
-      mapOk (fn more -> List.append ins more) (compileSeq env rest))
-  | Str _ :: _ -> Err "unexpected string in code".
+Env = { names : Names, ops : Map.Map String Op, locals : Map.Map String Int, labels : List String }.
 
-# immediates are consumed from the tokens that follow the opcode.
-# Answers (instructions, the tokens left)
-plainInstr env a rest = case a of
-    "i32.const" -> immAtom rest |> andThen (fn pr7 -> case pr7 of (n, r) -> mapOk (fn w -> ([V.Const (V.VI32 w)], r)) (readInt n))
-  | "i64.const" -> immAtom rest |> andThen (fn pr8 -> case pr8 of (n, r) -> mapOk (fn p -> case p of (h, l) -> ([V.Const (V.VI64 h l)], r)) (readI64 n))
-  | "f32.const" -> immAtom rest |> andThen (fn pr9 -> case pr9 of (n, r) -> mapOk (fn x -> ([V.Const (V.VF32 (F32.ofF64 x))], r)) (readFloat n))
-  | "f64.const" -> immAtom rest |> andThen (fn pr10 -> case pr10 of (n, r) -> mapOk (fn x -> ([V.Const (V.VF64 x)], r)) (readFloat n))
-  | "local.get" -> mapOk (fn pr11 -> case pr11 of (k, r) -> ([V.LocalGet k], r)) (immIndex "local" env.locals rest)
-  | "local.set" -> mapOk (fn pr12 -> case pr12 of (k, r) -> ([V.LocalSet k], r)) (immIndex "local" env.locals rest)
-  | "local.tee" -> mapOk (fn pr13 -> case pr13 of (k, r) -> ([V.LocalTee k], r)) (immIndex "local" env.locals rest)
-  | "global.get" -> mapOk (fn pr14 -> case pr14 of (k, r) -> ([V.GlobalGet k], r)) (immIndex "global" env.names.globals rest)
-  | "global.set" -> mapOk (fn pr15 -> case pr15 of (k, r) -> ([V.GlobalSet k], r)) (immIndex "global" env.names.globals rest)
-  | "br" -> mapOk (fn pr16 -> case pr16 of (d, r) -> ([V.Br d], r)) (immLabel env rest)
-  | "br_if" -> mapOk (fn pr17 -> case pr17 of (d, r) -> ([V.BrIf d], r)) (immLabel env rest)
-  | "br_table" ->
-      labels = List.takeWhile isLabelAtom rest;
-      mapM (fn l -> mapOk (fn pr18 -> case pr18 of (d, _) -> d) (immLabel env [l])) labels |> andThen (fn ds -> case List.reverse ds of
-          d :: revTs -> Ok ([V.BrTable (List.reverse revTs) d], List.dropWhile isLabelAtom rest)
-        | Nil -> Err "br_table needs a default label")
-  | "call" -> immAtom rest |> andThen (fn pr19 -> case pr19 of (f, r) -> case resolveFunc env.names f of
-        O.Some i -> Ok ([V.Call i], r)
-      | O.None -> Err "unknown function: {f}")
-  | "call_indirect" ->
-      r0 = (case rest of Atom t :: r -> (case isDollar t of True -> r | False -> rest) | _ -> rest);
-      tyUse = List.takeWhile (headIs ["type", "param", "result"]) r0;
-      r1 = List.dropWhile (headIs ["type", "param", "result"]) r0;
-      (case fieldsOf "type" tyUse of
-          (Atom t :: Nil) :: _ -> (case typeIndex env.names t of
-              O.Some i -> Ok ([V.CallIndirect i], r1)
-            | O.None -> Err "unknown type {t}")
-        | _ -> Err "call_indirect requires (type $t)")
-  | _ -> (case Map.get a env.ops of
-        O.Some (Plain i) -> Ok ([i], rest)
-      | O.Some (Loads ty bytes signed) -> (case memarg rest 0 of (off, r) -> Ok ([V.Load ty bytes signed off], r))
-      | O.Some (Stores ty bytes) -> (case memarg rest 0 of (off, r) -> Ok ([V.Store ty bytes off], r))
-      | O.None -> Err "unknown instruction: {a}").
+# unsafe: compileSeq, compileFolded and blockLike call each other down the
+# tree.  They end because every call is on a strictly smaller piece of a
+# finite tree; no measure can say that yet.
+compileSeq : unsafe Env -> List SExp -> Result (List V.Instr) String .
+compileSeq _ Nil = Ok Nil.
+compileSeq env (Atom a :: rest) = plainInstr env a rest |> R.andThen (fn made -> compileSeq env (second made) |> R.map (List.append (first made))).
+compileSeq env (SList l :: rest) = compileFolded env l |> R.andThen (fn ins -> compileSeq env rest |> R.map (List.append ins)).
+compileSeq _ (Str _ :: _) = Err "unexpected string in code".
 
-isLabelAtom e = case e of Atom n -> isDollar n or allDigits n | _ -> False.
+compileFolded : unsafe Env -> List SExp -> Result (List V.Instr) String .
+compileFolded env (Atom "block" :: rest) = blockLike env (labelOf rest) (blockType (unlabelled rest)) V.Block.
+compileFolded env (Atom "loop" :: rest) = blockLike env (labelOf rest) (blockType (unlabelled rest)) V.Loop.
+compileFolded env (Atom "if" :: rest) = ifForm env (labelOf rest) (blockType (unlabelled rest)).
+compileFolded env (Atom a :: rest) = plainInstr env a rest |> R.andThen (fn made -> compileSeq env (second made) |> R.map (fn operands -> List.append operands (first made))).
+compileFolded _ _ = Err "cannot compile a form that does not start with an instruction".
 
-# offset=N and align=N, in any order
-memarg rest off = case rest of
-    Atom a :: r -> (case substr a 0 7 == "offset=" of
-        True -> (case readInt (substr a 7 (strlen a)) of Ok v -> memarg r (off + v) | Err _ -> memarg r off)
-      | False -> (case substr a 0 6 == "align=" of True -> memarg r off | False -> (off, rest)))
-  | _ -> (off, rest).
+under label env = {env | labels = label :: env.labels}.
 
-compileFolded env l = case l of
-    Atom "block" :: rest -> blockLike env rest (fn bt inner -> V.Block bt inner)
-  | Atom "loop" :: rest -> blockLike env rest (fn bt inner -> V.Loop bt inner)
-  | Atom "if" :: rest ->
-      (lbl, r) = takeLabel rest;
-      (bt, r2) = blockType r;
-      isArm = headIs ["then", "else"];
-      inner = {env | labels = lbl :: env.labels};
-      compileSeq env (List.takeWhile (fn e -> not (isArm e)) r2) |> andThen (fn cond ->
-      compileSeq inner (List.concat (fieldsOf "then" r2)) |> andThen (fn t ->
-      compileSeq inner (List.concat (fieldsOf "else" r2)) |> andThen (fn e ->
-      Ok (List.append cond [V.If bt t e]))))
-  | Atom a :: rest ->
-      plainInstr env a rest |> andThen (fn pr20 -> case pr20 of (opIns, rest2) ->
-      mapOk (fn operands -> List.append operands opIns) (compileSeq env rest2))
-  | _ -> Err "cannot compile a form that does not start with an instruction".
+blockLike : unsafe Env -> String -> (V.BlockType, List SExp) -> (V.BlockType -> List V.Instr -> V.Instr) -> Result (List V.Instr) String .
+blockLike env label (bt, body) mk = compileSeq (under label env) body |> R.map (fn inner -> [mk bt inner]).
 
-blockLike env rest mk =
-  (lbl, r) = takeLabel rest;
-  (bt, body) = blockType r;
-  mapOk (fn inner -> [mk bt inner]) (compileSeq {env | labels = lbl :: env.labels} body).
+isArm = headIs ["then", "else"].
+notArm e = not (isArm e).
 
-takeLabel rest = case rest of
-    Atom n :: r -> (case isDollar n of True -> (n, r) | False -> ("", rest))
-  | _ -> ("", rest).
+# (if label? blocktype condition.. (then ..) (else ..)?)
+ifForm : unsafe Env -> String -> (V.BlockType, List SExp) -> Result (List V.Instr) String .
+ifForm env label (bt, parts) =
+  compileSeq env (List.takeWhile notArm parts) |> R.andThen (fn cond ->
+  compileSeq (under label env) (List.concat (fieldsOf "then" parts)) |> R.andThen (fn t ->
+  compileSeq (under label env) (List.concat (fieldsOf "else" parts)) |> R.map (fn e ->
+    List.append cond [V.If bt t e]))).
+
+labelOf (Atom n :: _) | isDollar n = n.
+labelOf _ = "".
+unlabelled (Atom n :: r) | isDollar n = r.
+unlabelled rest = rest.
 
 # (param ..)* (result ..)* at the head of a block body; a (type $t) block is
-# taken as no params and no results, as in the Haskell
-blockType r =
-  isSig = headIs ["type", "param", "result"];
-  sig = List.takeWhile isSig r;
-  body = List.dropWhile isSig r;
-  case fieldsOf "type" sig of
-    _ :: _ -> (V.BT Nil Nil, body)
-  | Nil -> (case sigOf sig of
-        Ok (V.FuncType ps rs) -> (V.BT ps rs, body)
-      | Err _ -> (V.BT Nil Nil, body)).
+# taken as no params and no results, as in the Haskell.
+# Answers (the block type, the body)
+blockType rest = (blockSig (List.takeWhile isSig rest), List.dropWhile isSig rest).
+blockSig sig = typedBlock (fieldsOf "type" sig) (sigOf sig).
+typedBlock Nil (Ok (V.FuncType ps rs)) = V.BT ps rs.
+typedBlock _ _ = V.BT Nil Nil.
+
+# An instruction and its immediates, which are consumed from the tokens that
+# follow the opcode.  Answers (instructions, the tokens left)
+plainInstr : Env -> String -> List SExp -> Result (List V.Instr, List SExp) String .
+plainInstr _ "i32.const" rest = constant "i32.const" rest.
+plainInstr _ "i64.const" rest = constant "i64.const" rest.
+plainInstr _ "f32.const" rest = constant "f32.const" rest.
+plainInstr _ "f64.const" rest = constant "f64.const" rest.
+plainInstr env "local.get" rest = immIndex "local" env.locals rest |> R.map (one V.LocalGet).
+plainInstr env "local.set" rest = immIndex "local" env.locals rest |> R.map (one V.LocalSet).
+plainInstr env "local.tee" rest = immIndex "local" env.locals rest |> R.map (one V.LocalTee).
+plainInstr env "global.get" rest = immIndex "global" env.names.globals rest |> R.map (one V.GlobalGet).
+plainInstr env "global.set" rest = immIndex "global" env.names.globals rest |> R.map (one V.GlobalSet).
+plainInstr env "br" rest = immLabel env rest |> R.map (one V.Br).
+plainInstr env "br_if" rest = immLabel env rest |> R.map (one V.BrIf).
+plainInstr env "br_table" rest = List.takeWhile isLabelAtom rest |> atomsOf |> each (labelDepth env) |> R.andThen (brTable (List.dropWhile isLabelAtom rest)).
+plainInstr env "call" rest = immIndex "function" env.names.funcs rest |> R.map (one V.Call).
+plainInstr env "call_indirect" rest = callIndirect env (List.dropWhile isName rest).
+plainInstr env a rest = Map.get a env.ops |> opcode a rest.
+
+one mk (k, rest) = ([mk k], rest).
+
+constant op (Atom n :: rest) = constOf op n |> R.map (fn v -> ([V.Const v], rest)).
+constant _ _ = Err "expected immediate".
+
+# the targets, then the default last
+brTable rest depths = List.reverse depths |> defaultLast rest.
+defaultLast rest (d :: targets) = Ok ([V.BrTable (List.reverse targets) d], rest).
+defaultLast _ Nil = Err "br_table needs a default label".
+
+callIndirect env rest = typeUsed env (List.takeWhile isSig rest |> fieldsOf "type") (List.dropWhile isSig rest).
+typeUsed env ((Atom t :: Nil) :: _) rest = indexIn env.names.types t |> orErr "unknown type {t}" |> R.map (fn i -> ([V.CallIndirect i], rest)).
+typeUsed _ _ _ = Err "call_indirect requires (type $t)".
+
+opcode _ rest (O.Some (Plain i)) = Ok ([i], rest).
+opcode _ rest (O.Some (Loads ty bytes signed)) = Ok ([V.Load ty bytes signed (offsetIn rest)], pastMemarg rest).
+opcode _ rest (O.Some (Stores ty bytes)) = Ok ([V.Store ty bytes (offsetIn rest)], pastMemarg rest).
+opcode a _ O.None = Err "unknown instruction: {a}".
+
+# offset=N and align=N, in any order, after a load or store
+isMemarg (Atom a) = substr a 0 7 == "offset=" or substr a 0 6 == "align=".
+isMemarg _ = False.
+offsetOf (Atom a) | substr a 0 7 == "offset=" = readInt (String.dropLeft 7 a) |> R.withDefault 0.
+offsetOf _ = 0.
+offsetIn rest = List.takeWhile isMemarg rest |> List.map offsetOf |> List.sum.
+pastMemarg rest = List.dropWhile isMemarg rest.
 
 # ---- immediates -----------------------------------------------------------------
 
-immAtom rest = case rest of
-    Atom n :: r -> Ok (n, r)
-  | _ -> Err "expected immediate".
+isLabelAtom (Atom n) = isDollar n or allDigits n.
+isLabelAtom _ = False.
 
-immIndex what table rest = case rest of
-    Atom n :: r -> (case Map.get n table of
-        O.Some i -> Ok (i, r)
-      | O.None -> (case allDigits n of True -> Ok (parseInt n, r) | False -> Err "unknown {what}: {n}"))
-  | _ -> Err "expected {what} immediate".
+# a name or a number, looked up in `table`
+immIndex what table (Atom n :: rest) = indexIn table n |> orErr "unknown {what}: {n}" |> R.map (fn i -> (i, rest)).
+immIndex what _ _ = Err "expected {what} immediate".
 
-immLabel env rest = case rest of
-    Atom n :: r -> (case allDigits n of
-        True -> Ok (parseInt n, r)
-      | False -> d = labelDepth n env.labels 0; (case d < 0 of True -> Err "unknown label: {n}" | False -> Ok (d, r)))
-  | _ -> Err "expected label immediate".
-labelDepth n labels i = case labels of
-    Nil -> 0 - 1
-  | l :: r -> (case l == n of True -> i | False -> labelDepth n r (i + 1)).
+immLabel env (Atom n :: rest) = labelDepth env n |> R.map (fn d -> (d, rest)).
+immLabel _ _ = Err "expected label immediate".
+
+# how many labels out the named one is
+isLabel n (_, l) = l == n.
+labelDepth env n | allDigits n = Ok (parseInt n).
+labelDepth env n = List.indexed env.labels |> List.find (isLabel n) |> O.map first |> orErr "unknown label: {n}".
 
 # ---- the opcode name table ----------------------------------------------------------
 
@@ -512,22 +623,23 @@ isizes = [("i32", V.S32), ("i64", V.S64)].
 fsizes = [("f32", V.P32), ("f64", V.P64)].
 
 # every (size name).(operator name)
-sized sizes ops mk = List.concatMap (fn sp -> case sp of (s, sz) ->
-  List.map (fn op -> case op of (n, c) -> ("{s}.{n}", Plain (mk sz c))) ops) sizes.
+entry mk s sz (n, c) = ("{s}.{n}", Plain (mk sz c)).
+forSize ops mk (s, sz) = List.map (entry mk s sz) ops.
+sized sizes ops mk = List.concatMap (forSize ops mk) sizes.
 
-truncs = List.concatMap (fn ip -> case ip of (is, isz) ->
-  List.concatMap (fn fp -> case fp of (fs, fsz) -> [
-    ("{is}.trunc_{fs}_s", Plain (V.Cvtop (V.TruncS isz fsz))),
-    ("{is}.trunc_{fs}_u", Plain (V.Cvtop (V.TruncU isz fsz))),
-    ("{is}.trunc_sat_{fs}_s", Plain (V.Cvtop (V.TruncSatS isz fsz))),
-    ("{is}.trunc_sat_{fs}_u", Plain (V.Cvtop (V.TruncSatU isz fsz)))]) fsizes) isizes.
+truncsOf (is, isz) (fs, fsz) = [
+  ("{is}.trunc_{fs}_s", Plain (V.Cvtop (V.TruncS isz fsz))),
+  ("{is}.trunc_{fs}_u", Plain (V.Cvtop (V.TruncU isz fsz))),
+  ("{is}.trunc_sat_{fs}_s", Plain (V.Cvtop (V.TruncSatS isz fsz))),
+  ("{is}.trunc_sat_{fs}_u", Plain (V.Cvtop (V.TruncSatU isz fsz)))].
+truncsInto isize = List.concatMap (truncsOf isize) fsizes.
 
-converts = List.concatMap (fn fp -> case fp of (fs, fsz) ->
-  List.concatMap (fn ip -> case ip of (is, isz) -> [
-    ("{fs}.convert_{is}_s", Plain (V.Cvtop (V.ConvertS fsz isz))),
-    ("{fs}.convert_{is}_u", Plain (V.Cvtop (V.ConvertU fsz isz)))]) isizes) fsizes.
+convertsOf (fs, fsz) (is, isz) = [
+  ("{fs}.convert_{is}_s", Plain (V.Cvtop (V.ConvertS fsz isz))),
+  ("{fs}.convert_{is}_u", Plain (V.Cvtop (V.ConvertU fsz isz)))].
+convertsInto fsize = List.concatMap (convertsOf fsize) isizes.
 
-opTable = Map.fromList strOrder (List.concat [
+opTable = byName (List.concat [
   [ ("unreachable", Plain V.Unreachable), ("nop", Plain V.Nop), ("return", Plain V.Return),
     ("drop", Plain V.Drop), ("select", Plain V.Select),
     ("memory.size", Plain V.MemSize), ("memory.grow", Plain V.MemGrow),
@@ -547,25 +659,25 @@ opTable = Map.fromList strOrder (List.concat [
     ("add", V.IAdd), ("sub", V.ISub), ("mul", V.IMul), ("div_s", V.IDivS), ("div_u", V.IDivU),
     ("rem_s", V.IRemS), ("rem_u", V.IRemU), ("and", V.IAnd), ("or", V.IOr), ("xor", V.IXor),
     ("shl", V.IShl), ("shr_s", V.IShrS), ("shr_u", V.IShrU), ("rotl", V.IRotl), ("rotr", V.IRotr)]
-    (fn sz c -> V.IBinop sz c),
+    V.IBinop,
   sized isizes [
     ("clz", V.IClz), ("ctz", V.ICtz), ("popcnt", V.IPopcnt), ("extend8_s", V.IExt8S), ("extend16_s", V.IExt16S)]
-    (fn sz c -> V.IUnop sz c),
+    V.IUnop,
   sized isizes [
     ("eq", V.IEq), ("ne", V.INe), ("lt_s", V.ILtS), ("lt_u", V.ILtU), ("gt_s", V.IGtS),
     ("gt_u", V.IGtU), ("le_s", V.ILeS), ("le_u", V.ILeU), ("ge_s", V.IGeS), ("ge_u", V.IGeU)]
-    (fn sz c -> V.IRelop sz c),
+    V.IRelop,
   sized fsizes [
     ("add", V.FAdd), ("sub", V.FSub), ("mul", V.FMul), ("div", V.FDiv), ("min", V.FMin), ("max", V.FMax), ("copysign", V.FCopysign)]
-    (fn sz c -> V.FBinop sz c),
+    V.FBinop,
   sized fsizes [
     ("abs", V.FAbs), ("neg", V.FNeg), ("ceil", V.FCeil), ("floor", V.FFloor), ("trunc", V.FTrunc), ("nearest", V.FNearest), ("sqrt", V.FSqrt)]
-    (fn sz c -> V.FUnop sz c),
+    V.FUnop,
   sized fsizes [
     ("eq", V.FEq), ("ne", V.FNe), ("lt", V.FLt), ("gt", V.FGt), ("le", V.FLe), ("ge", V.FGe)]
-    (fn sz c -> V.FRelop sz c),
-  truncs,
-  converts,
+    V.FRelop,
+  List.concatMap truncsInto isizes,
+  List.concatMap convertsInto fsizes,
   [ ("i32.load", Loads V.TI32 4 False), ("i64.load", Loads V.TI64 8 False),
     ("f32.load", Loads V.TF32 4 False), ("f64.load", Loads V.TF64 8 False),
     ("i32.load8_s", Loads V.TI32 1 True), ("i32.load8_u", Loads V.TI32 1 False),

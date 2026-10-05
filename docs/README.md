@@ -132,3 +132,5 @@ they began.
 - [Tang Nano 20K builtin port](2026-10-05-TANG-NANO-BUILTIN.md): physical RV32IM SimpleRisc execution, build and UART loader, manual ownership and explicit capability refusals.
 
 - [A WebAssembly VM in FP-RISC](2026-10-05-WASM-VM.md): the HaskPlayground interpreter, WAT parser and capability scheduler ported to FP-RISC source; calculator transcript identical to the Haskell, 57 of 57 semantics cases.
+
+- [The WASM VM in the intended style](2026-10-05-WASM-STYLE.md): clauses, guards, folds and measures in place of unsafe modules; the language issues found, from 63-bit Int to measure floors and cross-module records.

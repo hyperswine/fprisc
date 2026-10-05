@@ -7,8 +7,10 @@
 # One instance serves every case in order, so state carries from one call to
 # the next: global_inc answers 10 and then 20, and oob_grown reads memory that
 # memgrow added.
+#
+# The functions that reach V.invoke or W.parse are marked unsafe: a guest
+# function ends when it chooses to.
 profile base.
-unsafe program.
 
 V = use "wasmvm".
 W = use "wat".
@@ -85,37 +87,58 @@ suite = [
   ("oob", Nil, Traps "out of bounds"),
   ("oob_grown", Nil, Returns [i32c 0])].
 
-noHost md nm args inst = Err "unexpected host call {md}.{nm}".
+noHost : String -> String -> List V.Val -> V.Instance -> Result (List V.Val, V.Instance) String .
+noHost md nm _ _ = Err "unexpected host call {md}.{nm}".
 
-typeTag v = case v of V.VI32 _ -> "i32" | V.VI64 _ _ -> "i64" | V.VF32 _ -> "f32" | V.VF64 _ -> "f64".
+typeTag (V.VI32 _) = "i32".
+typeTag (V.VI64 _ _) = "i64".
+typeTag (V.VF32 _) = "f32".
+typeTag (V.VF64 _) = "f64".
 showV v = "{V.showVal v}{typeTag v}".
-showVs vs = "[{strJoin ", " (List.map showV vs)}]".
+showVs vs = "[{List.map showV vs |> strJoin ", "}]".
 
-sameVals got want = List.length got == List.length want
-  and List.all (fn p -> case p of (a, b) -> V.valEq a b) (List.zip got want).
+sameVal (a, b) = V.valEq a b.
+sameVals got want = List.length got == List.length want and List.all sameVal (List.zip got want).
 
-met result want = case result of
-    Ok vs -> (case want of Returns ws -> sameVals vs ws | Traps _ -> False)
-  | Err e -> (case want of Traps part -> strIndexOf part e >= 0 | Returns _ -> False).
+met : Result (List V.Val) String -> Expect -> Bool .
+met (Ok vs) (Returns ws) = sameVals vs ws.
+met (Err why) (Traps part) = strIndexOf part why >= 0.
+met _ _ = False.
 
-# (the instance, suite passed)
-runCase (inst, passed) (name, args, want) =
-  (result, next) = V.invoke noHost inst name args;
-  ok = met result want;
-  shown = (case result of Ok vs -> showVs vs | Err e -> e);
-  _ = print "{(case ok of True -> "  ok   " | False -> "  FAIL ")}{name}{showVs args} -> {shown}";
-  (next, (case ok of True -> passed + 1 | False -> passed)).
+shown (Ok vs) = showVs vs.
+shown (Err why) = why.
+verdict True = "  ok   ".
+verdict False = "  FAIL ".
+tally True passed = passed + 1.
+tally False passed = passed.
 
-pathOf args = case args of p :: _ -> p | Nil -> "examples/wasm/tests.wat".
+# (the instance, cases passed) through one case
+runCase : unsafe (V.Instance, Int) -> (String, List V.Val, Expect) -> (V.Instance, Int) .
+runCase (inst, passed) (name, args, want) = V.invoke noHost inst name args |> judged passed name args want.
 
-main = path = pathOf (Program.args Unit); case File.readText path of
-    Err why -> Program.fail 1 "wasmtest: {path}: {why}"
-  | Ok src -> (case W.parse src of
-        Err why -> Program.fail 1 "wasmtest: parse error: {why}"
-      | Ok pm -> runAll pm.module).
+judged passed name args want (result, inst) =
+  _ = print "{verdict (met result want)}{name}{showVs args} -> {shown result}";
+  (inst, tally (met result want) passed).
 
-runAll m =
-  start = (V.instantiate m, 0);
-  (inst, count) = List.fold runCase start suite;
-  _ = print "{count}/{List.length suite} passed";
-  case count == List.length suite of True -> Unit | False -> Program.exit 1.
+summary total (_, passed) =
+  _ = print "{passed}/{total} passed";
+  passed == total.
+
+exitFor True = Unit.
+exitFor False = Program.exit 1.
+
+runAll : unsafe V.Program -> Unit .
+runAll program = List.fold runCase (V.instantiate program, 0) suite |> summary (List.length suite) |> exitFor.
+
+parsed : unsafe Result String String -> Unit .
+parsed (Err why) = Program.fail 1 "wasmtest: {why}".
+parsed (Ok src) = compiled (W.parse src).
+
+compiled : unsafe Result { program : V.Program | r } String -> Unit .
+compiled (Err why) = Program.fail 1 "wasmtest: parse error: {why}".
+compiled (Ok module) = runAll module.program.
+
+pathOf (path :: _) = path.
+pathOf Nil = "examples/wasm/tests.wat".
+
+main = Program.args Unit |> pathOf |> File.readText |> parsed.

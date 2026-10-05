@@ -1,172 +1,215 @@
 # actors.fpr -- the capability layer and round-robin scheduler over wasmvm,
 # ported from the Haskell HaskPlayground/src/WASM/Actors.hs.
 #
-# An actor is a VM record plus a descriptor table.  A host call that misses
-# the grant cache parks the actor in WaitPerm while the round continues; one
+# An actor is a VM plus a descriptor table.  A host call that misses the
+# grant cache parks the actor in WaitPerm while the round continues; one
 # prompt is resolved at the end of each round.
 #
 # The host ABI is the toy "thin translation layer", not WASI preview1:
 #   path_open (ptr, len, rights) -> fd | -1      rights 0 = read
 #   fd_read   (fd, ptr, len)     -> bytes | -1
 #   fd_write  (fd, ptr, len)     -> bytes | -1
-unsafe module.
+#
+# How it is written (docs/2026-10-03-STYLE-DIRECTION.md): one clause per host
+# call, per descriptor kind and per step outcome.  What a guest asks for is
+# input, so a bad descriptor or pointer answers -1 and is never a contract.
+# The slice and the rounds are unsafe: a slice ends when its fuel does and
+# the rounds when every guest has, and neither is a count a measure can see.
 
 List = use "std/list".
 Map = use "std/map".
 O = use "std/option".
+String = use "std/string".
 V = use "wasmvm".
 
 Rights = Type (R | W).
 Resource = Type (FileCap Rights String).
 
 # text as Haskell's `show` writes a String, so the transcripts compare
-quoted s = strJoin "" (List.append ("\"" :: List.map quoteByte (V.codesOf s (strlen s - 1) Nil)) ["\""]).
-quoteByte c = case c of
-    10 -> "\\n"
-  | 9 -> "\\t"
-  | 13 -> "\\r"
-  | 34 -> "\\\""
-  | 92 -> "\\\\"
-  | _ -> chr c.
+quoteByte 10 = "\\n".
+quoteByte 9 = "\\t".
+quoteByte 13 = "\\r".
+quoteByte 34 = "\\\"".
+quoteByte 92 = "\\\\".
+quoteByte c = chr c.
+quoted s = strJoin "" ["\"", String.codes s |> List.map quoteByte |> strJoin "", "\""].
 
-showRes (FileCap rights path) = "FileCap {(case rights of R -> "R" | W -> "W")} {quoted path}".
+rightsName R = "R".
+rightsName W = "W".
+showRes (FileCap rights path) = "FileCap {rightsName rights} {quoted path}".
 
-# world: grants (decisions already made, by showRes), files (the contents by
-# path) and policy (what the user would answer to a prompt)
-mkWorld files policy = {grants = Map.strings, files = Map.fromList strOrder files, policy = policy}.
+# grants: decisions already made, by showRes.  files: contents by path.
+# policy: what the user would answer to a prompt.
+World = { grants : Map.Map String Bool, files : Map.Map String String, policy : Resource -> Bool }.
+
 strOrder = (case Map.strings of Map.Map cmp _ _ -> cmp).
+mkWorld files policy = {grants = Map.strings, files = Map.fromList strOrder files, policy = policy}.
 
 FdEntry = Type (FdStdout | FdFile String Int).
 
-Status vm = Type (
-    Runnable vm
-  | WaitPerm Resource String (List V.Val) vm   # suspended, awaiting the user
+Status = Type (
+    Runnable V.VM
+  | WaitPerm Resource String (List V.Val) V.VM   # suspended, awaiting the user
   | Dead String).
+
+Actor = { name : String, status : Status, fds : Map.Map Int FdEntry, nextFd : Int }.
+
+entering (Ok vm) = Runnable vm.
+entering (Err why) = Dead "bad entry: {why}".
 
 mkActor name inst entry = {
   name = name,
-  status = (case V.newVM inst entry Nil of Ok vm -> Runnable vm | Err why -> Dead "bad entry: {why}"),
+  status = V.newVM inst entry Nil |> entering,
   fds = Map.insert 1 FdStdout Map.ints,
   nextFd = 3 }.
 
-withVM f a = case a.status of
-    Runnable vm -> {a | status = Runnable (f vm)}
-  | WaitPerm r h g vm -> {a | status = WaitPerm r h g (f vm)}
-  | Dead _ -> a.
+onVM f (Runnable vm) = Runnable (f vm).
+onVM f (WaitPerm res call args vm) = WaitPerm res call args (f vm).
+onVM _ (Dead why) = Dead why.
+withVM f a = {a | status = onVM f a.status}.
+
+isDead (Dead _) = True.
+isDead _ = False.
+isWaiting (WaitPerm _ _ _ _) = True.
+isWaiting _ = False.
+finished a = isDead a.status.
+
+# ---- host calls ---------------------------------------------------------------
 
 i32v n = V.VI32 (V.m32 n).
-argInt v = case v of V.VI32 w -> w | _ -> 0.
+argInt (V.VI32 w) = w.
+argInt _ = 0.
 failed = [i32v (0 - 1)].
 
 # a host call's outcome: a capability miss (the user must be asked), or the
 # world, the actor, the results and the lines to log
-HostOut w a = Type (Miss Resource | Done w a (List V.Val) (List String)).
+HostOut = Type (Miss Resource | Done World Actor (List V.Val) (List String)).
 
 # `vm` is the calling actor's VM, stopped at the import
-doHost w a vm call args = case call of
-    "fd_write" -> (case args of
-        fd :: p :: n :: Nil -> fdWrite w a vm fd p n
-      | _ -> unknownCall w a call)
-  | "fd_read" -> (case args of
-        fd :: p :: n :: Nil -> fdRead w a vm fd p n
-      | _ -> unknownCall w a call)
-  | "path_open" -> (case args of
-        p :: n :: rw :: Nil -> pathOpen w a vm p n rw
-      | _ -> unknownCall w a call)
-  | _ -> unknownCall w a call.
+doHost : World -> Actor -> V.VM -> String -> List Int -> HostOut .
+doHost w a vm "fd_write" (fd :: p :: n :: Nil) = fdWrite w a (Map.get fd a.fds) (V.memoryOf vm) p n.
+doHost w a vm "fd_read" (fd :: p :: n :: Nil) = chunkBehind w (Map.get fd a.fds) n |> delivered w a vm fd p.
+doHost w a vm "path_open" (p :: n :: rw :: Nil) = V.memReadString (V.memoryOf vm) p n |> opened w a rw.
+doHost w a _ call _ = Done w a failed ["[host] unknown call {call}"].
 
-unknownCall w a call = Done w a failed ["[host] unknown call {call}"].
+fdWrite w a (O.Some FdStdout) mem p n = V.memReadString mem p n |> written w a n.
+fdWrite _ _ (O.Some (FdFile path _)) _ _ _ = Miss (FileCap W path).
+fdWrite w a O.None _ _ _ = Done w a failed Nil.
 
-fdWrite w a vm fd p n = case Map.get fd a.fds of
-    O.Some FdStdout -> (case V.memReadString vm.inst.mem p n of
-        Err _ -> Done w a failed Nil
-      | Ok text -> Done w a [i32v n] ["[{a.name} stdout] {quoted text}"])
-  | O.Some (FdFile path _) -> Miss (FileCap W path)
-  | O.None -> Done w a failed Nil.
+written w a n (Ok text) = Done w a [i32v n] ["[{a.name} stdout] {quoted text}"].
+written w a _ (Err _) = Done w a failed Nil.
 
-fdRead w a vm fd p n = case Map.get fd a.fds of
-    O.Some (FdFile path off) -> (case Map.get path w.files of
-        O.None -> Done w a failed Nil
-      | O.Some body ->
-          chunk = substr body off n;
-          (case V.memWriteString vm.inst.mem p chunk of
-              Err _ -> Done w a failed Nil
-            | Ok mem ->
-                moved = {a | fds = Map.insert fd (FdFile path (off + strlen chunk)) a.fds};
-                Done w (withVM (fn m -> V.setInst m mem) moved) [i32v (strlen chunk)] Nil))
-  | _ -> Done w a failed Nil.
+# the next n bytes of the file behind a descriptor: (path, offset, bytes)
+chunkBehind w (O.Some (FdFile path off)) n = Map.get path w.files |> O.map (fn body -> (path, off, substr body off n)).
+chunkBehind _ _ _ = O.None.
 
-pathOpen w a vm p n rw = case V.memReadString vm.inst.mem p n of
-    Err _ -> Done w a failed Nil
-  | Ok path ->
-      res = FileCap (case rw == 0 of True -> R | False -> W) path;
-      (case Map.get (showRes res) w.grants of
-          O.Some True ->
-            fd = a.nextFd;
-            Done w {a | fds = Map.insert fd (FdFile path 0) a.fds, nextFd = fd + 1} [i32v fd]
-              ["[cap] {a.name} uses cached grant for {showRes res} -> fd {fd}"]
-        | O.Some False -> Done w a failed ["[cap] {a.name} denied (cached) for {showRes res}"]
-        | O.None -> Miss res).
+delivered w a _ _ _ O.None = Done w a failed Nil.
+delivered w a vm fd p (O.Some (path, off, chunk)) = V.memWriteString (V.memoryOf vm) p chunk |> advanced w a fd path (off + strlen chunk) (strlen chunk).
+
+advanced w a fd path off count (Ok mem) = Done w ({a | fds = Map.insert fd (FdFile path off) a.fds} |> withVM (V.withMemory mem)) [i32v count] Nil.
+advanced w a _ _ _ _ (Err _) = Done w a failed Nil.
+
+rightsOf 0 = R.
+rightsOf _ = W.
+pathIn (FileCap _ path) = path.
+
+opened w a rw (Ok path) = granted w a (FileCap (rightsOf rw) path).
+opened w a _ (Err _) = Done w a failed Nil.
+
+granted w a res = decided w a res (Map.get (showRes res) w.grants).
+decided w a res (O.Some True) = Done w {a | fds = Map.insert a.nextFd (FdFile (pathIn res) 0) a.fds, nextFd = a.nextFd + 1} [i32v a.nextFd]
+  ["[cap] {a.name} uses cached grant for {showRes res} -> fd {a.nextFd}"].
+decided w a res (O.Some False) = Done w a failed ["[cap] {a.name} denied (cached) for {showRes res}"].
+decided _ _ res O.None = Miss res.
+
+# ---- one time slice --------------------------------------------------------------
 
 fuelSlice = 60.
 hostFuelCost = 10.
 
-isDead a = case a.status of Dead _ -> True | _ -> False.
+# one step's effect on the slice: go on, or the actor leaves the slice
+Turn = Type (Again World Actor | Parked World Actor).
 
-runRounds w actors = roundsGo 1 w actors.
-roundsGo r w actors = case List.all isDead actors of
-    True -> print "[sched] all actors finished."
-  | False ->
-      _ = print "----- round {r} -----";
-      (w1, ran) = runRound w actors Nil;
-      (w2, settled) = resolveOnePrompt w1 ran Nil;
-      roundsGo (r + 1) w2 settled.
+charged vm = V.withFuel (V.fuelOf vm - hostFuelCost) vm.
 
-runRound w actors acc = case actors of
-    Nil -> (w, List.reverse acc)
-  | a :: more -> (case runActorSlice w a of (w1, a1) -> runRound w1 more (a1 :: acc)).
+stepOnce : World -> Actor -> Turn .
+stepOnce w a = stepped w a a.status.
+stepped w a (Runnable vm) = outcome w a (V.step vm).
+stepped w a _ = Parked w a.
 
-runActorSlice w a = case a.status of
-    Runnable vm -> slice w {a | status = Runnable {vm | fuel = fuelSlice}}
-  | _ -> (w, a).
+outcome : World -> Actor -> V.Step -> Turn .
+outcome w a (V.Running next) = Again w {a | status = Runnable next}.
+outcome w a (V.Yielded next) =
+  _ = print "[sched] {a.name} fuel exhausted -> yields";
+  Parked w {a | status = Runnable next}.
+outcome w a (V.Finished _ _) =
+  _ = print "[sched] {a.name} finished.";
+  Parked w {a | status = Dead "ok"}.
+outcome w a (V.Trapped why) =
+  _ = print "[sched] {a.name} TRAPPED: {why}";
+  Parked w {a | status = Dead why}.
+outcome w a (V.NeedHost _ call args next) = hosted w {a | status = Runnable (charged next)} call args (charged next).
 
-slice w a = case a.status of
-    Runnable vm -> (case V.step vm of
-        V.Running next -> slice w {a | status = Runnable next}
-      | V.Yielded next ->
-          _ = print "[sched] {a.name} fuel exhausted -> yields";
-          (w, {a | status = Runnable next})
-      | V.Finished _ _ ->
-          _ = print "[sched] {a.name} finished.";
-          (w, {a | status = Dead "ok"})
-      | V.Trapped why ->
-          _ = print "[sched] {a.name} TRAPPED: {why}";
-          (w, {a | status = Dead why})
-      | V.NeedHost _ call args next ->
-          charged = {next | fuel = next.fuel - hostFuelCost};
-          asked = {a | status = Runnable charged};
-          (case doHost w asked charged call (List.map argInt args) of
-              Done w1 a1 results logs ->
-                _ = List.each print logs;
-                slice w1 (withVM (V.resumeHost results) a1)
-            | Miss res ->
-                _ = print "[cap] {a.name} needs {showRes res} -> no grant cached; SUSPENDING actor, asking user";
-                (w, {a | status = WaitPerm res call args charged})))
-  | _ -> (w, a).
+hosted w a call args vm = doHost w a vm call (List.map argInt args) |> afterHost w a call args vm.
+afterHost _ _ _ _ _ (Done w a results logs) =
+  _ = List.each print logs;
+  Again w (withVM (V.resumeHost results) a).
+afterHost w a call args vm (Miss res) =
+  _ = print "[cap] {a.name} needs {showRes res} -> no grant cached; SUSPENDING actor, asking user";
+  Parked w {a | status = WaitPerm res call args vm}.
+
+# unsafe: a slice ends when its fuel does.  Fuel is spent per instruction, and
+# the steps that only close a block or return spend none, so the number of
+# steps is not the fuel and no measure on a counter here would be true.
+slice : unsafe World -> Actor -> (World, Actor) .
+slice w a = case stepOnce w a of
+    Again w1 a1 -> slice w1 a1
+  | Parked w1 a1 -> (w1, a1).
+
+fuelled (Runnable vm) = Runnable (V.withFuel fuelSlice vm).
+fuelled status = status.
+
+runActorSlice : unsafe World -> Actor -> (World, Actor) .
+runActorSlice w a = slice w {a | status = fuelled a.status}.
+
+# (the world, the actors that have had their slice, newest first)
+turn : unsafe (World, List Actor) -> Actor -> (World, List Actor) .
+turn (w, ran) a = runActorSlice w a |> joined ran.
+joined ran (w, a) = (w, a :: ran).
+runRound : unsafe World -> List Actor -> (World, List Actor) .
+runRound w actors = List.fold turn (w, Nil) actors |> inOrder.
+inOrder (w, ran) = (w, List.reverse ran).
+
+# ---- prompts and rounds ------------------------------------------------------------
+
+verdictName True = "ALLOW".
+verdictName False = "DENY".
+notWaiting a = not (isWaiting a.status).
 
 # the first waiting actor gets its answer; the others wait another round
-resolveOnePrompt w actors acc = case actors of
-    Nil -> (w, List.reverse acc)
-  | a :: more -> (case a.status of
-        WaitPerm res call args vm ->
-          verdict = w.policy res;
-          _ = print "[user] prompt: {quoted a.name} requests {showRes res} -> user says {(case verdict of True -> "ALLOW" | False -> "DENY")}";
-          w1 = {w | grants = Map.insert (showRes res) verdict w.grants};
-          asked = {a | status = Runnable vm};
-          answered = (case doHost w1 asked vm call (List.map argInt args) of
-              Done _ a1 results logs ->
-                _ = List.each print logs;
-                withVM (V.resumeHost results) a1
-            | Miss _ -> a);
-          (w1, List.append (List.reverse acc) (answered :: more))
-      | _ -> resolveOnePrompt w more (a :: acc)).
+resolveOnePrompt (w, actors) = answerFirst w (List.takeWhile notWaiting actors) (List.dropWhile notWaiting actors).
+answerFirst w before Nil = (w, before).
+answerFirst w before (a :: after) = prompted w before a after a.status.
+
+prompted w before a after (WaitPerm res call args vm) =
+  verdict = w.policy res;
+  _ = print "[user] prompt: {quoted a.name} requests {showRes res} -> user says {verdictName verdict}";
+  w1 = {w | grants = Map.insert (showRes res) verdict w.grants};
+  retried = doHost w1 {a | status = Runnable vm} vm call (List.map argInt args) |> resumed a;
+  (w1, List.append before (retried :: after)).
+prompted w before a after _ = (w, List.append before (a :: after)).
+
+resumed _ (Done _ a results logs) =
+  _ = List.each print logs;
+  withVM (V.resumeHost results) a.
+resumed a (Miss _) = a.
+
+# unsafe: the rounds go on until every actor is dead, and a guest need not die
+runRounds : unsafe World -> List Actor -> Unit .
+runRounds w actors = rounds 1 (w, actors).
+
+rounds : unsafe Int -> (World, List Actor) -> Unit .
+rounds _ (_, actors) | List.all finished actors = print "[sched] all actors finished.".
+rounds r (w, actors) =
+  _ = print "----- round {r} -----";
+  rounds (r + 1) (runRound w actors |> resolveOnePrompt).
