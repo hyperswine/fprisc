@@ -21,8 +21,7 @@ Program = use "std/program".
 Expect = Type (Returns (List V.Val) | Traps String).
 
 i32c n = V.VI32 (V.m32 n).
-# from an Int that holds the value (anything within 63 bits)
-i64c n = low = V.m32 n; V.VI64 (V.m32 ((n - low) / 4294967296)) low.
+i64c n = V.VI64 (I64.ofInt n).
 f32c : F64 -> V.Val .
 f32c x = V.VF32 (F32.ofF64 x).
 f64c : F64 -> V.Val .
@@ -55,7 +54,7 @@ suite = [
   ("f64div", Nil, Returns [f64c 0.25]),
   ("nearest_even", Nil, Returns [f64c 2.0]),
   ("nearest_odd", Nil, Returns [f64c 4.0]),
-  ("fmin_zero", Nil, Returns [V.VI64 2147483648 0]),
+  ("fmin_zero", Nil, Returns [V.VI64 (I64.fromParts 2147483648 0)]),
   ("copysign", Nil, Returns [f32c (0.0 - 3.0)]),
   ("truncsat", Nil, Returns [i32c 4294967295]),
   ("truncsat_neg", Nil, Returns [i32c (0 - 2147483648)]),
@@ -91,7 +90,7 @@ noHost : String -> String -> List V.Val -> V.Instance -> Result (List V.Val, V.I
 noHost md nm _ _ = Err "unexpected host call {md}.{nm}".
 
 typeTag (V.VI32 _) = "i32".
-typeTag (V.VI64 _ _) = "i64".
+typeTag (V.VI64 _) = "i64".
 typeTag (V.VF32 _) = "f32".
 typeTag (V.VF64 _) = "f64".
 showV v = "{V.showVal v}{typeTag v}".

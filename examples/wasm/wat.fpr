@@ -19,9 +19,10 @@
 #   parse source = Ok {program = p, funcNames = names} | Err why
 #
 # How it is written (docs/2026-10-03-STYLE-DIRECTION.md).  The source is
-# external input, so everything it can get wrong is an Err.  Reading is three
+# external input, so everything it can get wrong is an Err.  Reading is
 # folds with no recursion of our own: bytes to tokens (a state machine, one
-# clause per state and byte), tokens to a tree (a stack), digits to a number.
+# clause per state and byte), tokens to a tree (a stack), and the digits of
+# a float; integers are I64.parse.
 # The instruction compiler walks the tree and is the one recursive group; it
 # descends into sub-lists, which the measure checker cannot follow, so it is
 # marked unsafe, and with it everything that reaches it, up to `parse`.
@@ -193,32 +194,15 @@ byName pairs = Map.fromList strOrder pairs.
 signOf text = charAt (strcat text " ") 0.
 unsigned text = String.dropLeft 1 text.
 
-# digits in a base, `_` allowed between them: (the value as an i64, digits seen)
-digit : Int -> String -> Result ((Int, Int), Int) String -> Int -> Result ((Int, Int), Int) String .
-digit _ _ (Err why) _ = Err why.
-digit _ _ (Ok (acc, seen)) 95 = Ok (acc, seen).
-digit base _ (Ok (acc, seen)) c | hexVal c >= 0 and hexVal c < base = Ok (V.add64 (V.mul64 acc (0, base)) (0, hexVal c), seen + 1).
-digit _ text (Ok _) _ = Err "bad integer: {text}".
-
-counted text (Ok (_, 0)) = Err "bad integer: {text}".
-counted _ (Ok (acc, _)) = Ok acc.
-counted _ (Err why) = Err why.
-
-digits base text = String.codes text |> List.fold (digit base text) (Ok ((0, 0), 0)) |> counted text.
-
-magnitude text | substr text 0 2 == "0x" = digits 16 (String.dropLeft 2 text).
-magnitude text = digits 10 text.
-
-# an integer literal as an i64 (high, low): sign, 0x, and _ separators
-readI64 : String -> Result (Int, Int) String .
-readI64 text | signOf text == 45 = magnitude (unsigned text) |> R.map V.neg64.
-readI64 text | signOf text == 43 = magnitude (unsigned text).
-readI64 text = magnitude text.
+# an integer literal as an i64: sign, 0x, and _ separators (I64.parse; a
+# magnitude past the signed range wraps, as a wasm literal's does)
+badInteger text _ = "bad integer: {text}".
+readI64 : String -> Result I64 String .
+readI64 text = I64.parse text |> R.mapError (badInteger text).
 
 # the low 32 bits: an i32 constant, an offset, a count
-lowWord (_, l) = l.
 readInt : String -> Result Int String .
-readInt text = readI64 text |> R.map lowWord.
+readInt text = readI64 text |> R.map I64.lo.
 
 # A decimal float: digits [. digits] [e [sign] digits].  The digits are read
 # as one integer-valued double and scaled once by a power of ten.
@@ -277,13 +261,10 @@ decimal text = String.codes text
   |> List.fold decimalByte {m = 0.0, seen = 0, frac = 0, part = Whole, down = False, exp = 0, expSeen = 0, bad = False}
   |> decimalValue text.
 
-wholeOf : (Int, Int) -> F64 .
-wholeOf (h, l) = F64.ofInt h * 4294967296.0 + F64.ofInt l.
-
 positive : String -> Result F64 String .
 positive text | text == "inf" = Ok (1.0 / 0.0).
 positive text | substr text 0 3 == "nan" = Ok (0.0 / 0.0).
-positive text | substr text 0 2 == "0x" = digits 16 (String.dropLeft 2 text) |> R.map wholeOf.
+positive text | substr text 0 2 == "0x" = I64.parse text |> R.mapError (badInteger text) |> R.map I64.toF64U.
 positive text = decimal text.
 
 negated : F64 -> F64 .
@@ -470,13 +451,12 @@ globalOf (Atom t :: initE :: Nil) = mkGlobal False t initE.
 globalOf _ = Err "bad (global ...)".
 mkGlobal mut t initE = valType t |> R.andThen (fn ty -> constExpr initE |> R.map (V.Global ty mut)).
 
-i64Const (h, l) = V.VI64 h l.
 f32Const : F64 -> V.Val .
 f32Const x = V.VF32 (F32.ofF64 x).
 
 constOf : String -> String -> Result V.Val String .
 constOf "i32.const" n = readInt n |> R.map V.VI32.
-constOf "i64.const" n = readI64 n |> R.map i64Const.
+constOf "i64.const" n = readI64 n |> R.map V.VI64.
 constOf "f32.const" n = readFloat n |> R.map f32Const.
 constOf "f64.const" n = readFloat n |> R.map V.VF64.
 constOf _ _ = Err "unsupported constant expression".

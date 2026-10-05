@@ -6,8 +6,8 @@
 # a host call is "return the record":
 #
 #   * typed operand stack.  An Int here is 63 bits, so an i32 is its unsigned
-#     value 0 .. 2^32-1 and an i64 is two such halves (high, low);
-#     f32/f64 are F32/F64
+#     value 0 .. 2^32-1 in an Int; an i64 is an I64 (wrapping 64-bit,
+#     docs/2026-10-05-I64.md); f32/f64 are F32/F64
 #   * structured control flow with LABELS carrying arities (br with values,
 #     multi-value blocks), br_table / return / unreachable / select
 #   * FUNCTION FRAMES: call, call_indirect (table + runtime type check),
@@ -41,15 +41,15 @@ String = use "std/string".
 
 ValType = Type (TI32 | TI64 | TF32 | TF64).
 
-Val = Type (VI32 Int | VI64 Int Int | VF32 F32 | VF64 F64).
+Val = Type (VI32 Int | VI64 I64 | VF32 F32 | VF64 F64).
 
 typeOf (VI32 _) = TI32.
-typeOf (VI64 _ _) = TI64.
+typeOf (VI64 _) = TI64.
 typeOf (VF32 _) = TF32.
 typeOf (VF64 _) = TF64.
 
 zeroOf TI32 = VI32 0.
-zeroOf TI64 = VI64 0 0.
+zeroOf TI64 = VI64 (I64.ofInt 0).
 zeroOf TF32 = VF32 (F32.ofInt 0).
 zeroOf TF64 = VF64 0.0.
 
@@ -200,7 +200,6 @@ wordToBytes n w = List.range 0 (n - 1) |> List.map (byteOf w).
 # ---- i32: an unsigned 32-bit value in an Int ------------------------------------
 
 two31 = 2147483648.
-two32 = 4294967296.
 ones = 4294967295.
 
 m32 : Int -> Int .
@@ -231,8 +230,8 @@ shrS32 a k | a >= two31 = m32 (bor (BITSHIFTR a k) (m32 (BITSHIFTL ones (32 - k)
 shrS32 a k = BITSHIFTR a k.
 
 # a shift or rotate count is taken modulo the width, as wasm says
+# (I64's shifts take theirs modulo 64 themselves)
 count32 b = band b 31.
-count64 b = band b 63.
 
 ibin32 : IBin -> Int -> Int -> Result Int String .
 ibin32 IAdd a b = Ok (m32 (a + b)).
@@ -285,138 +284,66 @@ irel32 IGtS a b = s32 a > s32 b.
 irel32 ILeS a b = s32 a <= s32 b.
 irel32 IGeS a b = s32 a >= s32 b.
 
-# ---- i64: (high, low), each an unsigned 32-bit value ----------------------------
-
-add64 : (Int, Int) -> (Int, Int) -> (Int, Int) .
-add64 (ah, al) (bh, bl) = (m32 (ah + bh + BITSHIFTR (al + bl) 32), m32 (al + bl)).
-
-sub64 : (Int, Int) -> (Int, Int) -> (Int, Int) .
-sub64 (ah, al) (bh, bl) | al < bl = (m32 (ah - bh - 1), m32 (al - bl)).
-sub64 (ah, al) (bh, bl) = (m32 (ah - bh), al - bl).
-
-neg64 a = sub64 (0, 0) a.
-isNeg64 (h, _) = h >= two31.
-isZero64 (h, l) = h == 0 and l == 0.
-abs64 a | isNeg64 a = neg64 a.
-abs64 a = a.
-
-# the low 64 bits of the product, in 16-bit limbs
-mul64 : (Int, Int) -> (Int, Int) -> (Int, Int) .
-mul64 (ah, al) (bh, bl) =
-  a0 = band al 65535; a1 = BITSHIFTR al 16; a2 = band ah 65535; a3 = BITSHIFTR ah 16;
-  b0 = band bl 65535; b1 = BITSHIFTR bl 16; b2 = band bh 65535; b3 = BITSHIFTR bh 16;
-  c0 = a0 * b0;
-  c1 = a0 * b1 + a1 * b0 + BITSHIFTR c0 16;
-  c2 = a0 * b2 + a1 * b1 + a2 * b0 + BITSHIFTR c1 16;
-  c3 = a0 * b3 + a1 * b2 + a2 * b1 + a3 * b0 + BITSHIFTR c2 16;
-  (bor (BITSHIFTL (band c3 65535) 16) (band c2 65535), bor (BITSHIFTL (band c1 65535) 16) (band c0 65535)).
-
-# (16 bytes: destructuring two tuple arguments is costed as an allocation)
-ltU64 : (Int, Int) -> (Int, Int) -> Bool | work ltU64 <= 15 | alloc ltU64 <= 16 .
-ltU64 (ah, al) (bh, bl) = ah < bh or (ah == bh and al < bl).
-ltS64 : (Int, Int) -> (Int, Int) -> Bool | work ltS64 <= 23 | alloc ltS64 <= 16 .
-ltS64 (ah, al) (bh, bl) = s32 ah < s32 bh or (ah == bh and al < bl).
-
-shl64 : (Int, Int) -> (k : Int | k >= 0 and k < 64) -> (Int, Int) .
-shl64 a 0 = a.
-shl64 (h, l) k | k < 32 = (m32 (bor (BITSHIFTL h k) (BITSHIFTR l (32 - k))), m32 (BITSHIFTL l k)).
-shl64 (_, l) k = (m32 (BITSHIFTL l (k - 32)), 0).
-
-shrU64 : (Int, Int) -> (k : Int | k >= 0 and k < 64) -> (Int, Int) .
-shrU64 a 0 = a.
-shrU64 (h, l) k | k < 32 = (BITSHIFTR h k, m32 (bor (BITSHIFTR l k) (BITSHIFTL h (32 - k)))).
-shrU64 (h, _) k = (0, BITSHIFTR h (k - 32)).
-
-shrS64 : (Int, Int) -> (k : Int | k >= 0 and k < 64) -> (Int, Int) .
-shrS64 a 0 = a.
-shrS64 (h, l) k | k < 32 = (shrS32 h k, m32 (bor (BITSHIFTR l k) (BITSHIFTL h (32 - k)))).
-shrS64 (h, _) k = (signFill h, shrS32 h (k - 32)).
-
-rotl64 a 0 = a.
-rotl64 a k = or64 (shl64 a k) (shrU64 a (64 - k)).
-rotr64 a 0 = a.
-rotr64 a k = or64 (shrU64 a k) (shl64 a (64 - k)).
-
-and64 (ah, al) (bh, bl) = (band ah bh, band al bl).
-or64 (ah, al) (bh, bl) = (bor ah bh, bor al bl).
-xor64 (ah, al) (bh, bl) = (bxor ah bh, bxor al bl).
+# ---- i64: I64 does the arithmetic -------------------------------------------
+# What is left here is wasm's view of it: the traps I64 would panic on are
+# checked first and answered as values, and the narrow sign extensions go
+# through the low 32-bit word.
 
 # all ones when the 32-bit word is negative: the upper half of its extension
+# (literals, not two31: a named constant is costed as an allocating call)
 signFill : Int -> Int | work signFill <= 2 | alloc signFill <= 0 .
 signFill l | l >= 2147483648 = 4294967295.
 signFill _ = 0.
 
-bit64 : (Int, Int) -> (i : Int | i >= 0 and i < 64) -> Int .
-bit64 (h, _) i | i >= 32 = band (BITSHIFTR h (i - 32)) 1.
-bit64 (_, l) i = band (BITSHIFTR l i) 1.
-
-# unsigned (quotient, remainder).  Both small: one machine division.
-# Otherwise one bit at a time from the top.
-divMod64 : (Int, Int) -> (Int, Int) -> ((Int, Int), (Int, Int)) .
-divMod64 (0, al) (0, bl) | bl != 0 = ((0, al / bl), (0, al - (al / bl) * bl)).
-divMod64 a b = divBits a b 63 (0, 0) (0, 0).
-
-divBits : (Int, Int) -> (Int, Int) -> (i : Int | measure (i + 1)) -> (Int, Int) -> (Int, Int) -> ((Int, Int), (Int, Int)) .
-divBits a b i q r | i < 0 = (q, r).
-divBits a b i q r | ltU64 (broughtDown a i r) b = divBits a b (i - 1) q (broughtDown a i r).
-divBits a b i q r = divBits a b (i - 1) (or64 q (shl64 (0, 1) i)) (sub64 (broughtDown a i r) b).
-# the remainder with the dividend's bit i brought down
-broughtDown a i r = or64 (shl64 r 1) (0, bit64 a i).
-
-quotient (q, _) = q.
-remainder (_, r) = r.
-signedAs True x = neg64 x.
-signedAs False x = x.
-
-minS64 = (two31, 0).
-allOnes64 = (ones, ones).
-
-ibin64 : IBin -> (Int, Int) -> (Int, Int) -> Result (Int, Int) String .
-ibin64 IAdd a b = Ok (add64 a b).
-ibin64 ISub a b = Ok (sub64 a b).
-ibin64 IMul a b = Ok (mul64 a b).
-ibin64 IDivU _ b | isZero64 b = Err divZero.
-ibin64 IDivU a b = Ok (divMod64 a b |> quotient).
-ibin64 IRemU _ b | isZero64 b = Err divZero.
-ibin64 IRemU a b = Ok (divMod64 a b |> remainder).
-ibin64 IDivS _ b | isZero64 b = Err divZero.
-ibin64 IDivS a b | a == minS64 and b == allOnes64 = Err intOverflow.
-ibin64 IDivS a b = Ok (divMod64 (abs64 a) (abs64 b) |> quotient |> signedAs (isNeg64 a != isNeg64 b)).
-ibin64 IRemS _ b | isZero64 b = Err divZero.
-ibin64 IRemS a b = Ok (divMod64 (abs64 a) (abs64 b) |> remainder |> signedAs (isNeg64 a)).
-ibin64 IAnd a b = Ok (and64 a b).
-ibin64 IOr a b = Ok (or64 a b).
-ibin64 IXor a b = Ok (xor64 a b).
-ibin64 IShl a (_, bl) = Ok (shl64 a (count64 bl)).
-ibin64 IShrU a (_, bl) = Ok (shrU64 a (count64 bl)).
-ibin64 IShrS a (_, bl) = Ok (shrS64 a (count64 bl)).
-ibin64 IRotl a (_, bl) = Ok (rotl64 a (count64 bl)).
-ibin64 IRotr a (_, bl) = Ok (rotr64 a (count64 bl)).
+zero64 = I64.ofInt 0.
+minS64 = I64.fromParts 2147483648 0.
+allOnes64 = I64.ofInt (0 - 1).
 
 # a 32-bit word as the i64 it sign-extends to
-widened l = (signFill l, l).
+widened : Int -> I64 .
+widened l = I64.fromParts (signFill l) l.
 
-iun64 : IUn -> (Int, Int) -> (Int, Int) .
-iun64 IClz (0, l) = (0, 32 + clz32 l).
-iun64 IClz (h, _) = (0, clz32 h).
-iun64 ICtz (h, 0) = (0, 32 + ctz32 h).
-iun64 ICtz (_, l) = (0, ctz32 l).
-iun64 IPopcnt (h, l) = (0, popcnt32 h + popcnt32 l).
-iun64 IExt8S (_, l) = widened (sext 8 l).
-iun64 IExt16S (_, l) = widened (sext 16 l).
-iun64 IExt32S (_, l) = widened l.
+ibin64 : IBin -> I64 -> I64 -> Result I64 String .
+ibin64 IAdd a b = Ok (a + b).
+ibin64 ISub a b = Ok (a - b).
+ibin64 IMul a b = Ok (a * b).
+ibin64 IDivU _ b | b == zero64 = Err divZero.
+ibin64 IDivU a b = Ok (I64.divU a b).
+ibin64 IRemU _ b | b == zero64 = Err divZero.
+ibin64 IRemU a b = Ok (I64.remU a b).
+ibin64 IDivS _ b | b == zero64 = Err divZero.
+ibin64 IDivS a b | a == minS64 and b == allOnes64 = Err intOverflow.
+ibin64 IDivS a b = Ok (a / b).
+ibin64 IRemS _ b | b == zero64 = Err divZero.
+ibin64 IRemS a b = Ok (a % b).
+ibin64 IAnd a b = Ok (I64.and a b).
+ibin64 IOr a b = Ok (I64.or a b).
+ibin64 IXor a b = Ok (I64.xor a b).
+ibin64 IShl a b = Ok (I64.shl a (I64.lo b)).
+ibin64 IShrU a b = Ok (I64.shr a (I64.lo b)).
+ibin64 IShrS a b = Ok (I64.sar a (I64.lo b)).
+ibin64 IRotl a b = Ok (I64.rotl a (I64.lo b)).
+ibin64 IRotr a b = Ok (I64.rotr a (I64.lo b)).
 
-irel64 : IRel -> (Int, Int) -> (Int, Int) -> Bool .
+iun64 : IUn -> I64 -> I64 .
+iun64 IClz x = I64.ofInt (I64.clz x).
+iun64 ICtz x = I64.ofInt (I64.ctz x).
+iun64 IPopcnt x = I64.ofInt (I64.popcnt x).
+iun64 IExt8S x = widened (sext 8 (I64.lo x)).
+iun64 IExt16S x = widened (sext 16 (I64.lo x)).
+iun64 IExt32S x = widened (I64.lo x).
+
+irel64 : IRel -> I64 -> I64 -> Bool .
 irel64 IEq a b = a == b.
 irel64 INe a b = a != b.
-irel64 ILtU a b = ltU64 a b.
-irel64 IGtU a b = ltU64 b a.
-irel64 ILeU a b = not (ltU64 b a).
-irel64 IGeU a b = not (ltU64 a b).
-irel64 ILtS a b = ltS64 a b.
-irel64 IGtS a b = ltS64 b a.
-irel64 ILeS a b = not (ltS64 b a).
-irel64 IGeS a b = not (ltS64 a b).
+irel64 ILtU a b = I64.ltU a b.
+irel64 IGtU a b = I64.gtU a b.
+irel64 ILeU a b = I64.leU a b.
+irel64 IGeU a b = I64.geU a b.
+irel64 ILtS a b = a < b.
+irel64 IGtS a b = a > b.
+irel64 ILeS a b = a <= b.
+irel64 IGeS a b = a >= b.
 
 # ---- floats ---------------------------------------------------------------------
 # F64 carries the work; an f32 operation that is exact in doubles (rounding to
@@ -530,14 +457,14 @@ frel64 FGe a b = a >= b.
 # ---- float <-> integer ----------------------------------------------------------
 
 zeroOfSz S32 = VI32 0.
-zeroOfSz S64 = VI64 0 0.
+zeroOfSz S64 = VI64 zero64.
 minOf False sz = zeroOfSz sz.
 minOf True S32 = VI32 two31.
-minOf True S64 = VI64 two31 0.
+minOf True S64 = VI64 minS64.
 maxOf True S32 = VI32 (two31 - 1).
 maxOf False S32 = VI32 ones.
-maxOf True S64 = VI64 (two31 - 1) ones.
-maxOf False S64 = VI64 ones ones.
+maxOf True S64 = VI64 (I64.not minS64).
+maxOf False S64 = VI64 allOnes64.
 
 # would the truncation of x fall below / above the type (signed, size)
 below : Bool -> ISz -> F64 -> Bool .
@@ -550,17 +477,15 @@ above False S32 x = x >= fTwo32.
 above True S64 x = x >= fTwo63.
 above False S64 x = x >= fTwo64.
 
-# a finite double with an integral value, as an i64
-splitF : F64 -> Val .
-splitF t = VI64 (m32 (F64.toInt (floorF (t / fTwo32)))) (F64.toInt (t - floorF (t / fTwo32) * fTwo32)).
+# x is in range here (truncFloat checked below/above first), so the I64
+# conversions answer Ok; the zero is only what the types ask for
+inRange (Ok v) = v.
+inRange (Err _) = zero64.
 
-integral : F64 -> F64 .
-integral x | fabs x >= fTwo52 = x.
-integral x = truncF x.
-
-intOfFloat : ISz -> F64 -> Val .
-intOfFloat S32 x = VI32 (m32 (F64.toInt x)).
-intOfFloat S64 x = splitF (integral x).
+intOfFloat : Bool -> ISz -> F64 -> Val .
+intOfFloat _ S32 x = VI32 (m32 (F64.toInt x)).
+intOfFloat True S64 x = VI64 (I64.ofF64 x |> inRange).
+intOfFloat False S64 x = VI64 (I64.ofF64U x |> inRange).
 
 saturated True v = Ok v.
 saturated False _ = Err intOverflow.
@@ -571,62 +496,32 @@ truncFloat _ sz True x | isNan x = Ok (zeroOfSz sz).
 truncFloat _ _ False x | isNan x = Err badConv.
 truncFloat signed sz sat x | below signed sz x = saturated sat (minOf signed sz).
 truncFloat signed sz sat x | above signed sz x = saturated sat (maxOf signed sz).
-truncFloat _ sz _ x = Ok (intOfFloat sz x).
+truncFloat signed sz _ x = Ok (intOfFloat signed sz x).
 
-# The IEEE bits.  There is no primitive from a float to its bits, so the
-# exponent is found by scaling: (m, e) with x = m * 2^e and 1 <= m < 2.
-# `left` bounds the scaling steps; a double needs at most 34 + 31 of them.
-normalize : (left : Int | measure left) -> F64 -> Int -> (F64, Int) .
-normalize left m e | left <= 0 = (m, e).
-normalize left m e | m >= fTwo32 = normalize (left - 1) (m / fTwo32) (e + 32).
-normalize left m e | m >= 2.0 = normalize (left - 1) (m / 2.0) (e + 1).
-normalize left m e | m * fTwo32 < 2.0 = normalize (left - 1) (m * fTwo32) (e - 32).
-normalize left m e | m < 1.0 = normalize (left - 1) (m * 2.0) (e - 1).
-normalize _ m e = (m, e).
-
-# exact, where F64.pow is not: it answers 9.99999999999999 for 10^1
-twoTo : (k : Int | measure k) -> F64 -> F64 .
-twoTo k acc | k <= 0 = acc.
-twoTo k acc = twoTo (k - 1) (acc * 2.0).
-pow2 : Int -> F64 .
-pow2 k | k < 0 = 1.0 / twoTo (0 - k) 1.0.
-pow2 k = twoTo k 1.0.
-
-signWord : F64 -> Int .
-signWord x | signBit x = two31.
-signWord _ = 0.
-
-# (high, low) of a double
-bits64 : F64 -> (Int, Int) .
-bits64 x | isNan x = (2146959360, 0).
-bits64 x | x == 0.0 = (signWord x, 0).
-bits64 x | isInf x = (bor (signWord x) 2146435072, 0).
-bits64 x = normalize 128 (fabs x) 0 |> packBits64 (signWord x).
-
-packBits64 : Int -> (F64, Int) -> (Int, Int) .
-packBits64 sign (m, e) | e < 0 - 1022 = fields64 sign 0 (F64.toInt (m * pow2 (e + 1022) * fTwo52)).
-packBits64 sign (m, e) = fields64 sign (e + 1023) (F64.toInt ((m - 1.0) * fTwo52)).
-fields64 sign biased mant = (bor sign (bor (BITSHIFTL biased 20) (BITSHIFTR mant 32)), m32 mant).
-
+# The bits of an f32, read off the double it widens to exactly: the sign,
+# the 11-bit exponent, and the top 23 bits of the 52-bit mantissa.
 bits32 : F32 -> Int .
-bits32 f = wordOf (F64.ofF32 f).
-wordOf : F64 -> Int .
-wordOf x | isNan x = 2143289344.
-wordOf x | x == 0.0 = signWord x.
-wordOf x | isInf x = bor (signWord x) 2139095040.
-wordOf x = normalize 128 (fabs x) 0 |> packBits32 (signWord x).
+bits32 f = I64.ofF64Bits (F64.ofF32 f) |> f32Fields.
 
-packBits32 : Int -> (F64, Int) -> Int .
-packBits32 sign (m, e) | e < 0 - 126 = bor sign (F64.toInt (m * pow2 (e + 126) * 8388608.0)).
-packBits32 sign (m, e) = bor sign (bor (BITSHIFTL (e + 127) 23) (F64.toInt ((m - 1.0) * 8388608.0))).
+f32Fields : I64 -> Int .
+f32Fields b = packF32 (band (I64.hi b) two31) (band (BITSHIFTR (I64.hi b) 20) 2047) (bor (BITSHIFTL (band (I64.hi b) 1048575) 3) (BITSHIFTR (I64.lo b) 29)).
+
+# sign, the double's biased exponent, the 23 mantissa bits
+packF32 : Int -> Int -> Int -> Int .
+packF32 sign 2047 m = bor sign (bor 2139095040 m).
+packF32 sign 0 _ = sign.
+packF32 sign e m | e > 896 = bor sign (bor (BITSHIFTL (e - 896) 23) m).
+# an f32 subnormal: the implicit one comes back into the mantissa
+packF32 sign e m | e >= 874 = bor sign (BITSHIFTR (8388608 + m) (897 - e)).
+packF32 sign _ _ = sign.
 
 signedF : Val -> F64 .
 signedF (VI32 w) = F64.ofInt (s32 w).
-signedF (VI64 h l) = F64.ofInt (s32 h) * fTwo32 + F64.ofInt l.
+signedF (VI64 x) = I64.toF64 x.
 signedF _ = nan64.
 unsignedF : Val -> F64 .
 unsignedF (VI32 w) = F64.ofInt w.
-unsignedF (VI64 h l) = F64.ofInt h * fTwo32 + F64.ofInt l.
+unsignedF (VI64 x) = I64.toF64U x.
 unsignedF _ = nan64.
 
 mkF : FSz -> F64 -> Val .
@@ -634,15 +529,15 @@ mkF P32 d = VF32 (F32.ofF64 d).
 mkF P64 d = VF64 d.
 
 isInt (VI32 _) = True.
-isInt (VI64 _ _) = True.
+isInt (VI64 _) = True.
 isInt _ = False.
 
 convErr = Err "type error in conversion".
 
 cvt : Cvt -> Val -> Result Val String .
-cvt Wrap (VI64 _ l) = Ok (VI32 l).
-cvt ExtendS (VI32 w) = Ok (VI64 (signFill w) w).
-cvt ExtendU (VI32 w) = Ok (VI64 0 w).
+cvt Wrap (VI64 x) = Ok (VI32 (I64.lo x)).
+cvt ExtendS (VI32 w) = Ok (VI64 (widened w)).
+cvt ExtendU (VI32 w) = Ok (VI64 (I64.ofInt w)).
 cvt (TruncS sz _) (VF32 f) = truncFloat True sz False (F64.ofF32 f).
 cvt (TruncS sz _) (VF64 d) = truncFloat True sz False d.
 cvt (TruncU sz _) (VF32 f) = truncFloat False sz False (F64.ofF32 f).
@@ -656,12 +551,10 @@ cvt (ConvertU fs _) v | isInt v = Ok (mkF fs (unsignedF v)).
 cvt Demote (VF64 d) = Ok (VF32 (F32.ofF64 d)).
 cvt Promote (VF32 f) = Ok (VF64 (F64.ofF32 f)).
 cvt (Reinterpret TI32) (VF32 f) = Ok (VI32 (bits32 f)).
-cvt (Reinterpret TI64) (VF64 d) = Ok (bits64 d |> i64Val).
+cvt (Reinterpret TI64) (VF64 d) = Ok (VI64 (I64.ofF64Bits d)).
 cvt (Reinterpret TF32) (VI32 w) = Ok (VF32 (f32frombits w)).
-cvt (Reinterpret TF64) (VI64 h l) = Ok (VF64 (f64frombits h l)).
+cvt (Reinterpret TF64) (VI64 x) = Ok (VF64 (I64.toF64Bits x)).
 cvt _ _ = convErr.
-
-i64Val (h, l) = VI64 h l.
 
 # ---- the VM state -----------------------------------------------------------------
 #
@@ -694,8 +587,6 @@ maxDepth = 2000.
 instOf (VM m) = Instance m.inst.
 memoryOf (VM m) = m.inst.mem.
 withInst (Instance inst) (VM m) = VM {m | inst = inst}.
-instanceMemory (Instance inst) = inst.mem.
-instanceWithMemory mem (Instance inst) = Instance {inst | mem = mem}.
 withMemory mem (VM m) = VM (remembering mem m).
 fuelOf (VM m) = m.fuel.
 withFuel fuel (VM m) = VM {m | fuel = fuel}.
@@ -765,7 +656,7 @@ pushed vs m (Ok v) = push v vs m.
 pushed _ _ (Err why) = Trapped why.
 pushedI32 vs m (Ok w) = push (VI32 w) vs m.
 pushedI32 _ _ (Err why) = Trapped why.
-pushedI64 vs m (Ok (h, l)) = push (VI64 h l) vs m.
+pushedI64 vs m (Ok x) = push (VI64 x) vs m.
 pushedI64 _ _ (Err why) = Trapped why.
 # a memory operation's outcome
 stored vs m (Ok mem) = running (remembering mem {m | stk = vs}).
@@ -805,13 +696,13 @@ exec MemFill (VI32 n :: VI32 v :: VI32 d :: vs) m = memWriteBytes m.inst.mem d (
 exec MemCopy (VI32 n :: VI32 s :: VI32 d :: vs) m = memReadBytes m.inst.mem s n |> copiedTo d vs m.
 exec (Const v) stk m = push v stk m.
 exec (IBinop _ op) (VI32 y :: VI32 x :: vs) m = ibin32 op x y |> pushedI32 vs m.
-exec (IBinop _ op) (VI64 yh yl :: VI64 xh xl :: vs) m = ibin64 op (xh, xl) (yh, yl) |> pushedI64 vs m.
+exec (IBinop _ op) (VI64 y :: VI64 x :: vs) m = ibin64 op x y |> pushedI64 vs m.
 exec (IUnop _ op) (VI32 x :: vs) m = push (VI32 (iun32 op x)) vs m.
-exec (IUnop _ op) (VI64 xh xl :: vs) m = push (iun64 op (xh, xl) |> i64Val) vs m.
+exec (IUnop _ op) (VI64 x :: vs) m = push (VI64 (iun64 op x)) vs m.
 exec (IEqz _) (VI32 x :: vs) m = push (bool (x == 0)) vs m.
-exec (IEqz _) (VI64 xh xl :: vs) m = push (bool (isZero64 (xh, xl))) vs m.
+exec (IEqz _) (VI64 x :: vs) m = push (bool (x == zero64)) vs m.
 exec (IRelop _ op) (VI32 y :: VI32 x :: vs) m = push (bool (irel32 op x y)) vs m.
-exec (IRelop _ op) (VI64 yh yl :: VI64 xh xl :: vs) m = push (bool (irel64 op (xh, xl) (yh, yl))) vs m.
+exec (IRelop _ op) (VI64 y :: VI64 x :: vs) m = push (bool (irel64 op x y)) vs m.
 exec (FBinop _ op) (VF32 y :: VF32 x :: vs) m = push (VF32 (fbin32 op x y)) vs m.
 exec (FBinop _ op) (VF64 y :: VF64 x :: vs) m = push (VF64 (fbin64 op x y)) vs m.
 exec (FUnop _ op) (VF32 x :: vs) m = push (VF32 (fun32 op x)) vs m.
@@ -841,9 +732,9 @@ narrow _ _ lo = lo.
 # the value a load of `bytes` bytes makes from its low and high words
 loaded : ValType -> Int -> Bool -> Int -> Int -> Val .
 loaded TI32 bytes signed lo _ = VI32 (narrow bytes signed lo).
-loaded TI64 8 _ lo hi = VI64 hi lo.
-loaded TI64 bytes True lo _ = narrow bytes True lo |> widened |> i64Val.
-loaded TI64 _ False lo _ = VI64 0 lo.
+loaded TI64 8 _ lo hi = VI64 (I64.fromParts hi lo).
+loaded TI64 bytes True lo _ = VI64 (narrow bytes True lo |> widened).
+loaded TI64 _ False lo _ = VI64 (I64.ofInt lo).
 loaded TF32 _ _ lo _ = VF32 (f32frombits lo).
 loaded TF64 _ _ lo hi = VF64 (f64frombits hi lo).
 
@@ -857,13 +748,14 @@ highBytes bytes | bytes > 8 = 4.
 highBytes bytes | bytes > 4 = bytes - 4.
 highBytes _ = 0.
 
+i64Bytes bytes x = twoWords bytes (I64.hi x, I64.lo x).
 twoWords bytes (h, l) = List.append (wordToBytes (lowBytes bytes) l) (wordToBytes (highBytes bytes) h).
 
 storedBytes : Int -> Val -> List Int .
 storedBytes bytes (VI32 x) = wordToBytes (lowBytes bytes) x.
-storedBytes bytes (VI64 h l) = twoWords bytes (h, l).
+storedBytes bytes (VI64 x) = i64Bytes bytes x.
 storedBytes bytes (VF32 f) = wordToBytes (lowBytes bytes) (bits32 f).
-storedBytes bytes (VF64 d) = twoWords bytes (bits64 d).
+storedBytes bytes (VF64 d) = I64.ofF64Bits d |> i64Bytes bytes.
 
 callIndirect : Int -> Int -> Machine -> Step .
 callIndirect _ k m | k >= m.inst.mod.tableSize = Trapped "undefined element".
@@ -937,25 +829,13 @@ launched host _ (Ok vm) = runToEnd host vm.
 
 showVal : Val -> String .
 showVal (VI32 w) = "{s32 w}".
-showVal (VI64 h l) = show64 (h, l).
+showVal (VI64 x) = I64.str x.
 showVal (VF32 f) = F32.str f.
 showVal (VF64 d) = F64.str d.
 
-# signed decimal of an i64
-show64 a | isNeg64 a = strcat "-" (showU64 (neg64 a)).
-show64 a = showU64 a.
-showU64 (0, l) = "{l}".
-showU64 a = digits64 20 a Nil |> strJoin "".
-# an unsigned 64-bit value has at most 20 decimal digits
-digits64 : (left : Int | measure left) -> (Int, Int) -> List String -> List String .
-digits64 left a acc | left <= 0 = acc.
-digits64 left a acc | isZero64 a = acc.
-digits64 left a acc = digits64 (left - 1) (divMod64 a (0, 10) |> quotient) ("{divMod64 a (0, 10) |> remainder |> lowWord}" :: acc).
-lowWord (_, l) = l.
-
 valEq : Val -> Val -> Bool .
 valEq (VI32 x) (VI32 y) = x == y.
-valEq (VI64 xh xl) (VI64 yh yl) = xh == yh and xl == yl.
+valEq (VI64 x) (VI64 y) = x == y.
 valEq (VF32 x) (VF32 y) = x == y.
 valEq (VF64 x) (VF64 y) = x == y.
 valEq _ _ = False.
