@@ -2656,12 +2656,22 @@ static V a_yield(V me) {
 static V a_kill(V av) {
   if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("kill: target is not an actor");
   acb_t *a = (acb_t *)av;
-  __atomic_store_n(&a->var, ST_DEAD, __ATOMIC_SEQ_CST);
+  uint32_t st = __atomic_load_n(&a->var, __ATOMIC_ACQUIRE);
+  while (st != ST_DEAD &&
+         !__atomic_compare_exchange_n(&a->var, &st, ST_DEAD, 0, __ATOMIC_SEQ_CST, __ATOMIC_ACQUIRE)) {}
+  if (st == ST_DEAD) return (V)&fpr_unit; /* already ended: its watchers were woken then */
   wake_watchers(a);
   if (a == fpr_hart()->current) {
     to_sched(); /* never resumed: deq skips DEAD */
     fpr_cpanic("actors: dead actor resumed");
   }
+  /* A READY actor is on a queue and a RUNNING one returns to its hart loop:
+   * both are reaped there.  A BLOCKED one is on no queue, and nothing would
+   * ever reap it -- its stack, pool and channel block leaked.  Hand it to
+   * its owner hart, as a wake does: only that hart dequeues it, so it has
+   * switched out before deq or the backlog scan reaps it (reap is idempotent,
+   * and a sleeper's list entry is unlinked by slp_drain). */
+  if (st == ST_BLOCKED) ship(a);
   return (V)&fpr_unit;
 }
 

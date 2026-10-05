@@ -309,3 +309,24 @@ that it does not?
    actor's input.
 5. Then S4-S6 (restart policy) and Q2/Q6 (what a grant covers), which can
    follow one service and one budget at a time.
+
+## Fixed: a killed blocked actor is reaped (2026-10-05)
+
+`a_kill` now changes the state with a compare-and-swap and, when the actor
+was BLOCKED, hands it to its owner hart (`ship`), as a wake does. Only the
+owner hart dequeues it, so it has switched out before `deq` or the backlog
+scan reaps it; `reap` already had the branch for "a killed parked actor"
+that nothing ever reached. Killing an actor that has already ended is now a
+no-op (its watchers were woken when it ended).
+
+Measured with `tests/base/killblocked.fpr` (free buddy memory before and
+after 1,500 kills of actors blocked in `receive`): about 100 MB lost before,
+under 4 MiB after on one hart. On four harts about 9 MB, settling rather
+than growing -- 7,500 further kills cost about 16 MB more in falling steps,
+where the old code would have lost about 530 MB -- which is per-hart caches
+and the cross-hart channel-block epoch filling, not a leak.
+
+A consequence worth knowing: a killed blocked actor's cleanup hook
+(`fpr_actor_cleanup_set`) now RUNS. Before, it never did, for exactly the
+actors QOS kills on purpose -- the Files owner's Qlog child, a cancelled
+block I/O worker, a losing network candidate.

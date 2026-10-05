@@ -71,6 +71,13 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     assert p.stdout.count('[log] line') == 32 and 'suppressed 47 line(s); rings intact' in p.stdout, p.stdout
     assert '[ERR] staged by C' in p.stdout, p.stdout
     print('Logs as an actor: 505-byte lines kept whole, rings sized at run time, C-staged lines counted, echo rate-limited: PASS')
+    # kill an actor blocked in receive: it is reaped (a_kill left it on no
+    # queue, and 1500 kills leaked about 100 MB of stacks and pools)
+    kb = build('tests/base/killblocked.fpr', 'killblocked')
+    for harts in ('1', '4'):
+        p = run([kb], env={'FPR_HARTS': harts})
+        assert p.stdout == 'killblocked: 1500 more kills of blocked actors cost under 32 MiB\n', p.stdout
+    print('Killing a blocked actor reclaims it: 1500 kills stay under 32 MiB on one and four harts (was about 100 MB): PASS')
     # Fixed heap admission is independent of mailbox capacity; failures
     # belong to the child and escaped data delays grant reclamation.
     fixed = build('tests/base/fixedheap.fpr', 'fixedheap')
