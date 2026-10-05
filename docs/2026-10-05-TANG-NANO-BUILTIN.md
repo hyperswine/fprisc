@@ -258,3 +258,26 @@ maximum of 144.61 MHz. Its SHA-256 is
 `f25b38e65bec2678de2bb902a1cafa834a4205853efb2e90ae28ec04e3ee9762`.
 Loads/stores gain one device-selection stage; ordinary arithmetic stays at
 eight clocks. The board is left on this 96 MHz SRAM image; flash is unchanged.
+
+## Registered data bus continuation
+
+HaskPlayground now routes CPU data accesses through registered requests and
+responses, with the bus owning RAM timing, UART side effects and finisher
+completion. The CPU keeps the faulting PC until completion. Signed byte loads
+from UART RX now sign-extend correctly, and an empty read coinciding with a
+new byte preserves it for the next read. RAM stays at zero; the runtime ABI,
+linker layout and host protocol remain unchanged in this slice.
+
+The complete Tang Nano harness passes at 96 MHz on the new image: all
+host/link/ISA/loader checks, three smoke runs, three CSR runs with a nonzero
+trap vector, seven panic/refusal cases and recovery. HaskPlayground also
+passes 3,852 mixed-width RAM/RX checks, 15 finisher cases, 270 counter and
+267 trap assertions, the CPU regression and 34,560 RV32IM comparisons.
+All Haskell suites pass, including 30 SimpleRisc properties, and generated
+RTL returns `HiDONE`.
+
+The final image uses seed 7, a 144 MHz route target and a modeled maximum of
+144.61 MHz, with 8,161 LUT4s, 2,832 flip-flops and 32 BSRAM blocks.
+SHA-256: `7ff9d560cff604e7b05983bf68385c02c46b23212cb1e443b264b0bf6ae3afc2`.
+The board is left on this 96 MHz SRAM image; flash is unchanged. RAM relocation,
+boot ROM and removal of the hardware loader/legacy halt rules remain next.
