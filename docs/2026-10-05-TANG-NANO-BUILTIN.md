@@ -123,7 +123,8 @@ and 99999, and ended with `FPR EXIT 0`.
   `CPU.csrRead`/`CPU.csrWrite` dispatch to real instructions for the implemented
   status, trap, scratch and identification CSRs. Unknown CSR numbers panic;
   writes to read-only CSRs raise a hardware illegal-instruction exception.
-  Counter CSRs remain pending. IRQ, wait and atomic operations still panic
+  Writable `mcycle`/`minstret` halves and their read-only `cycle`/`instret`
+  aliases are supported. IRQ, wait and atomic operations still panic
   explicitly. Internal runtime locks
   use a board-only single-core path: there are no interrupts or other harts,
   so a held lock indicates forbidden re-entry. This does not emulate user atomics.
@@ -193,9 +194,38 @@ the focused CSR harness passes all three physical runs with that fixture.
 Matching HaskPlayground image SHA-256:
 `a2e89522be688958329a7f96be16d72840813ad5dd1820c2bcc5cac70a17f81c`.
 The C trap-handler test in HaskPlayground passes 89 assertions on each of
-three board runs. Step 1's split cycle/retirement counters remain pending.
+three board runs. The counter continuation below completes the planned
+step 1 scope.
 
 These results used the current fprisc compiler/runtime, including the I64
 work committed separately as `8c5bd0a`. The CSR target changes do not modify
 the compiler/runtime. The target harness accepts the updated F64 refusal
 diagnostic wording while still checking the 64-bit ABI restriction.
+
+## Split counter continuation
+
+The CSR adapter now supports writable `mcycle`/`mcycleh` and
+`minstret`/`minstreth`, and read-only `cycle`/`cycleh` and
+`instret`/`instreth` aliases. Counter aliases use the same hardware access
+rules; attempted writes trap. Unknown CSR numbers still panic in the adapter.
+The updated FP-RISC fixture writes the halves, forces cycle rollover, checks
+high aliases and increasing retirement, then leaves its trap vector installed
+to verify exit cleanup.
+
+On the final matching 96 MHz processor image, `tests/check_tangnano20k.py
+--port /dev/cu.usbserial-20250303171 --freq-mhz 96` passes all host/link/ISA
+checks, three builtin smoke runs, three updated CSR fixture runs, seven
+refusal cases and recovery. HaskPlayground's C counter fixture passes 270
+assertions and its trap fixture passes 267 assertions; the CPU regression and
+30,720 RV32M / 3,840 RV32I comparisons also pass.
+
+Matching image SHA-256:
+`3c29163eb1375600f2b5e22ac953f68c6af0c487ac39d12e202e603275b58958`.
+It uses placement seed 2 and a 144 MHz route target (estimated maximum
+147.19 MHz), with actual operation checked at 96 MHz. The first placement's
+higher-than-96 timing estimate did not prevent physical failures; see
+HaskPlayground's `boards/tangnano20k/MACHINE-MODE-2026-10-05.md` for both
+placements and the 72 MHz diagnostic checks.
+
+TIME, interrupt sources and official architecture-test coverage remain later
+roadmap work. This is not a full Zicntr or higher-clock claim.
