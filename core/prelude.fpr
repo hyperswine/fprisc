@@ -427,9 +427,185 @@ irqCount tab who = case tab of
     Nil -> 0
   | (s, b) :: r -> (case b == who of True -> 1 | False -> 0) + irqCount r who.
 
+# ---- the logs: a log actor (was C rings in runtime/runtime.c) -------------
+# Each severity (0 normal, 1 warn, 2 error, 3 host) keeps its last lines as
+# a List, newest first: as many as Sys.logKeep says (64 to start), any
+# width.  An FP-RISC line is a message to the log actor, which echoes it to
+# the console under the rate limit (16 echoes per 64 lines, and one line
+# naming what was suppressed when echo resumes).  A line C writes -- a
+# panic, an actor failing, a host thread -- cannot be a message: C stages
+# it and echoes it at once (runtime.c fpr_logput), and the actor takes
+# what is staged before every answer, so Sys.logSnap and Sys.logSeq count
+# both.  If the log actor has ended, a line goes C's way instead.
+# Requests are (from, kind, sev, text): 1 put, 2 seq, 3 snap,
+# 4 keep (sev carries the count).
+
+LogSt = Type (LogState (List (Int, List String)) Int Int Int Int Int).
+
+log : String -> Unit .
+log line = logPut 0 line.
+logWarn : String -> Unit .
+logWarn line = logPut 1 line.
+logErr : String -> Unit .
+logErr line = logPut 2 line.
+
+logPut : Int -> String -> Unit .
+logPut sev line =
+  me = myself 0;
+  logPutTo me (loggerOf me) sev line.
+# a put is answered once the line is kept and echoed, so a line logged just
+# before an exit or a panic still reaches the console, in order with the
+# caller's own prints
+logPutTo : unsafe Int -> Int -> Int -> String -> Unit .
+logPutTo me r sev line = case send r (me, 1, sev, line) of
+    Ok u -> (case receiveFrom me r of _ -> Unit)
+  | Err why -> (case why == "dead actor" of
+      True -> Sys.logStage sev line
+    | False -> yield me >> logPutTo me r sev line).
+
+logAsk : unsafe Int -> Int -> String -> a .
+logAsk kind sev who =
+  me = myself 0;
+  r = loggerOf me;
+  _ = logSendSure me r (me, kind, sev, "") who;
+  receiveFrom me r.
+logSendSure : unsafe Int -> Int -> a -> String -> Unit .
+logSendSure me who m name = case send who m of
+    Ok u -> Unit
+  | Err why -> (case why == "dead actor" of
+      True -> error (strcat name ": the log actor has ended")
+    | False -> yield me >> logSendSure me who m name).
+
+# total lines ever written at a severity (0 for a severity that is not one)
+sysLogSeq : Int -> Int .
+sysLogSeq sev = logAsk 2 sev "Sys.logSeq".
+# newest first, fresh copies in the caller's pool (a severity that is not
+# one reads severity 0)
+sysLogSnap : Int -> List String .
+sysLogSnap sev = logAsk 3 sev "Sys.logSnap".
+# how many lines each severity keeps from now on (at least 1)
+sysLogKeep : Int -> Unit .
+sysLogKeep n = case n >= 1 of
+    True -> (case logAsk 4 n "Sys.logKeep" of _ -> Unit)
+  | False -> error "Sys.logKeep: a ring keeps at least one line".
+
+loggerOf : unsafe Int -> Int .
+loggerOf me = loggerHave me (Sys.logger Unit).
+loggerHave : unsafe Int -> Int -> Int .
+loggerHave me r = case r == 0 of False -> r | True -> loggerStart me.
+loggerStart : unsafe Int -> Int .
+loggerStart me =
+  c = spawnCap 1 64 (fn self -> logStart me self);
+  case Sys.logInstall c of
+    True -> logGo me c 1 >> c
+  | False -> logGo me c 0 >> Sys.logger Unit.
+logGo : unsafe Int -> Int -> Int -> Unit .
+logGo me c go = case send c go of
+    Ok u -> Unit
+  | Err why -> yield me >> logGo me c go.
+
+logStart : unsafe Int -> Int -> Unit .
+logStart spawner self = case receiveFrom self spawner of
+    1 -> logServe self (LogState [(0, Nil), (0, Nil), (0, Nil), (0, Nil)] 64 0 0 0 0)
+  | _ -> Unit.
+
+logServe : unsafe Int -> LogSt -> a .
+logServe self st =
+  m = receive self;
+  (from, kind, sev, text) = m;
+  st2 = logStaged st (Sys.logStaged Unit);
+  logServe self (logDo self st2 from kind sev text).
+
+logDo : unsafe Int -> LogSt -> Int -> Int -> Int -> String -> LogSt .
+logDo self st from kind sev text = case kind of
+    1 -> logPutDone self from (logEcho (logKeepLine st (logSev sev) text) (logSev sev) text)
+  | 2 -> logReply self from (logSeqOf st sev) >> st
+  | 3 -> logReply self from (logLinesOf st (logSev sev)) >> st
+  | _ -> logReply self from 0 >> logSetKeep st sev.
+
+logPutDone : unsafe Int -> Int -> LogSt -> LogSt .
+logPutDone self from st = logReply self from 0 >> st.
+
+logSev : Int -> Int .
+logSev sev = case sev < 0 of True -> 0 | False -> (case sev > 3 of True -> 3 | False -> sev).
+
+# C's staged lines, oldest first, into the rings (C echoed them already);
+# lines C could not stage are named in the error ring
+logStaged : unsafe LogSt -> (Int, List (Int, String)) -> LogSt .
+logStaged st got =
+  (dropped, lines) = got;
+  st2 = logStagedGo st (wireRev lines Nil);
+  case dropped == 0 of
+    True -> st2
+  | False -> logKeepLine st2 2 "(log: {dropped} line(s) written from C were not kept: its staging area was full)".
+logStagedGo : unsafe LogSt -> List (Int, String) -> LogSt .
+logStagedGo st lines = case lines of
+    Nil -> st
+  | (sev, line) :: r -> logStagedGo (logKeepLine st sev line) r.
+
+logKeepLine : unsafe LogSt -> Int -> String -> LogSt .
+logKeepLine st sev line = case st of
+    LogState rings keep total base used supp -> LogState (logRingPut rings sev line keep) keep total base used supp.
+logRingPut : unsafe List (Int, List String) -> Int -> String -> Int -> List (Int, List String) .
+logRingPut rings sev line keep = case rings of
+    Nil -> Nil
+  | (seq, lines) :: r -> (case sev == 0 of
+      True -> (seq + 1, listTake (line :: lines) keep) :: r
+    | False -> (seq, lines) :: logRingPut r (sev - 1) line keep).
+
+logRingAt : unsafe List (Int, List String) -> Int -> (Int, List String) .
+logRingAt rings sev = case rings of
+    Nil -> (0, Nil)
+  | x :: r -> (case sev == 0 of True -> x | False -> logRingAt r (sev - 1)).
+logSeqOf : unsafe LogSt -> Int -> Int .
+logSeqOf st sev = case sev < 0 or sev > 3 of
+    True -> 0
+  | False -> (case st of LogState rings keep total base used supp -> (case logRingAt rings sev of (seq, lines) -> seq)).
+logLinesOf : unsafe LogSt -> Int -> List String .
+logLinesOf st sev = case st of
+    LogState rings keep total base used supp -> (case logRingAt rings (case sev > 3 of True -> 0 | False -> sev) of (seq, lines) -> lines).
+
+logSetKeep : unsafe LogSt -> Int -> LogSt .
+logSetKeep st n = case st of
+    LogState rings keep total base used supp -> LogState (logTrim rings n) n total base used supp.
+logTrim : unsafe List (Int, List String) -> Int -> List (Int, List String) .
+logTrim rings n = case rings of
+    Nil -> Nil
+  | (seq, lines) :: r -> (seq, listTake lines n) :: logTrim r n.
+
+# the console echo, rate-limited by sequence
+logEcho : unsafe LogSt -> Int -> String -> LogSt .
+logEcho st sev line = case st of
+    LogState rings keep total base used supp -> logEchoAt rings keep (total + 1) (case total + 1 - base >= 64 of True -> total + 1 | False -> base) (case total + 1 - base >= 64 of True -> 0 | False -> used) supp sev line.
+logEchoAt : unsafe List (Int, List String) -> Int -> Int -> Int -> Int -> Int -> Int -> String -> LogSt .
+logEchoAt rings keep total base used supp sev line = case used < 16 of
+    True -> logSuppressed supp >> print "{logPrefix sev}{line}" >> LogState rings keep total base (used + 1) 0
+  | False -> LogState rings keep total base used (supp + 1).
+logSuppressed : Int -> Unit .
+logSuppressed supp = case supp == 0 of
+    True -> Unit
+  | False -> print "[log] (console echo suppressed {supp} line(s); rings intact)".
+logPrefix : Int -> String .
+logPrefix sev = case sev of
+    1 -> "[warn] "
+  | 2 -> "[ERR] "
+  | 3 -> "[host] "
+  | _ -> "[log] ".
+
+logReply : unsafe Int -> Int -> a -> Unit .
+logReply self who v = case send who v of
+    Ok u -> Unit
+  | Err why -> (case why == "dead actor" of
+      True -> Unit
+    | False -> yield self >> logReply self who v).
+
 Sys = Struct {
   irqBind = fn src target -> sysIrqBind src target,
-  irqUnbind = fn src -> sysIrqUnbind src
+  irqUnbind = fn src -> sysIrqUnbind src,
+  logAt = fn sev line -> logPut sev line,
+  logSeq = fn sev -> sysLogSeq sev,
+  logSnap = fn sev -> sysLogSnap sev,
+  logKeep = fn n -> sysLogKeep n
 }.
 
 Str = Struct Add Eq {

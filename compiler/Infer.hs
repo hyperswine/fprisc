@@ -713,18 +713,19 @@ builtinEnv =
       ("Sys.actLive", scheme [0] (TFn tInt tInt)),
       ("Sys.nextId", mono (TFn tUnit tInt)),
       ("Sys.actInfo", scheme [0] (TFn tInt (sv 0))),
-      ("Sys.logAt", scheme [0] (TFn tInt (TFn tStr tUnit))),
-      ("Sys.logSeq", scheme [0] (TFn tInt tInt)),
-      ("Sys.logSnap", scheme [0] (TFn tInt (sv 0))),
+      -- the logs: the rings, echo and Sys.logAt/logSeq/logSnap/logKeep and
+      -- log/logWarn/logErr are a log actor in core/prelude.fpr; these are
+      -- C's staged lines (panics, failures, host threads) and its slot
+      ("Sys.logStage", mono (TFn tInt (TFn tStr tUnit))),
+      ("Sys.logStaged", mono (TFn tUnit (TTupT [tInt, tList (TTupT [tInt, tStr])]))),
+      ("Sys.logInstall", mono (TFn tInt tBool)),
+      ("Sys.logger", mono (TFn tUnit tInt)),
       ("Sys.memStats", scheme [0] (TFn tInt (sv 0))),
       ("Sys.memInfo", mono (TFn tInt (tList tInt))),
       ("Sys.spawnApp", scheme [0] (TFn (TFn tInt (sv 0)) tInt)),
       ("Sys.stkStats", scheme [0] (TFn tInt (sv 0))),
       ("Sys.growLog", scheme [0] (TFn tInt (sv 0))),
       ("Sys.poolReset", scheme [0] (TFn tInt (sv 0))),
-      ("log", scheme [0] (TFn tStr tUnit)),
-      ("logWarn", scheme [0] (TFn tStr tUnit)),
-      ("logErr", scheme [0] (TFn tStr tUnit)),
       ("Mod.detachLast", mono (TFn tUnit tUnit)),
       ("Sys.harts", mono (TFn tUnit tInt))
     ]

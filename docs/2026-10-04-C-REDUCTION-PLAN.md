@@ -394,3 +394,45 @@ Also fixed: `tests/check_posix_modules.py` hard-coded native ABI 3 in its
 schema fixture, so after the ABI went to 4 the module was refused for its
 ABI before the schema check ran, and `check_base` stopped there. It reads
 `FPR_NATIVE_ABI` from `runtime/fpr.h` now.
+
+## The logs are a log actor (2026-10-05)
+
+The fixed rings are gone from `runtime/runtime.c`: 16 lines per severity,
+each cut silently at 95 bytes (`LOG_N`, `LOG_W`). A log actor in
+`core/prelude.fpr` keeps each severity's last lines as a `List`, newest
+first, as many as `Sys.logKeep n` says (64 to start), of any width. It
+echoes FP-RISC lines to the console under the same rule as before (16
+echoes per 64 lines, then one line naming how many were suppressed) and
+answers `Sys.logSeq` and `Sys.logSnap`. `log`, `logWarn`, `logErr` and
+`Sys.logAt`/`logSeq`/`logSnap`/`logKeep` are prelude definitions now.
+
+Some writers cannot message an actor: a panic, an actor failing, a hosted
+program's host threads (QOS Portable's `entry.c`, severity 3). For them C
+keeps `fpr_logput`, which STAGES the line in a 32 KiB byte area and echoes
+it at once under C's own copy of the rate rule -- the console never waits on
+an actor, and a panic's last words print as before. (Decided with the user:
+"echo now, ring later" over routing every echo through the actor, which
+would print a host thread's line late, or never if the system is stuck.)
+The log actor takes what is staged before every answer, so C's lines are
+counted and snapshotted with everyone else's. The staging area is fixed
+because a host thread or a panic cannot allocate; a line that does not fit
+is COUNTED and the count is written to the error ring, never cut. The drain
+allocates before taking the staging lock: an allocation can wait on the
+memory actor, and a writer on the same hart would spin on that lock.
+Mechanism left in C: `Sys.logStage` (an FP-RISC line by C's path, used when
+the log actor has ended), `Sys.logStaged`, `Sys.logInstall`, `Sys.logger`.
+
+A put is answered once the line is kept and echoed. The first version sent
+and returned, and a line logged just before an exit never reached the
+console (and could print after the caller's own later output). The cost:
+20,000 `Sys.logAt` calls take 13-25 ticks each against 1-2 before -- about
+1.3-2.5 us a line, a round trip to the log actor.
+
+Checked: `tests/base/logplane.fpr` (100 lines give seq 100 and the default
+64 kept; a 505-byte line whole; a C-staged line counted in the error ring;
+`Sys.logKeep 5`; 32 of 100 echoed with the suppression line); a log line
+before a panic prints; `std/math`'s own `log` still compiles beside the
+prelude's; every fprisc suite. QOS: `hostlog` (host-thread lines reach the
+app's host ring), `logstorm` (32 of 100 echoed, "rings intact", ring seq
+100), `qsys-check` (logs through `/logs`, two boots), smoke 16/16, native
+boot.

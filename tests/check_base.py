@@ -64,6 +64,13 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         p = run([irq, arg], expected=1)
         assert msg in p.stdout + p.stderr, p.stdout + p.stderr
     print('Interrupt routing in FP-RISC: bind and unbind your own sources, another actor\'s refused by name: PASS')
+    # the logs are a log actor (core/prelude.fpr): any width, sized at run
+    # time; a line staged by C is still counted; the echo stays rate-limited
+    p = run([build('tests/base/logplane.fpr', 'logplane')])
+    assert 'logplane: seq=100 kept=64 wide=505 errors=1 [staged by C] keep5=5 newest=[line 1]' in p.stdout, p.stdout
+    assert p.stdout.count('[log] line') == 32 and 'suppressed 47 line(s); rings intact' in p.stdout, p.stdout
+    assert '[ERR] staged by C' in p.stdout, p.stdout
+    print('Logs as an actor: 505-byte lines kept whole, rings sized at run time, C-staged lines counted, echo rate-limited: PASS')
     # Fixed heap admission is independent of mailbox capacity; failures
     # belong to the child and escaped data delays grant reclamation.
     fixed = build('tests/base/fixedheap.fpr', 'fixedheap')
