@@ -1,0 +1,32 @@
+# the interrupt routing table is FP-RISC (core/prelude.fpr): an actor binds
+# itself and unbinds what it bound; binding for another actor, or unbinding
+# a source another actor holds, is refused by name
+unsafe base.
+
+argAt : List String -> Int -> String -> String .
+argAt as i d = case as of
+    Nil -> d
+  | a :: r -> (case i == 0 of True -> a | False -> argAt r (i - 1) d).
+
+holder : Int -> Int -> Unit .
+holder boss self =
+  _ = Sys.irqBind 9 self;
+  _ = send boss 1;
+  m = receive self;
+  Unit.
+
+main =
+  me = myself 0;
+  case argAt (Sys.args Unit) 0 "ok" of
+    "other" -> Sys.irqBind 7 (spawn (fn self -> receive self)) >> print "bound another"
+  | "steal" ->
+      h = spawn (fn self -> holder me self);
+      _ = receiveFrom me h;
+      print "unbound another: {Sys.irqUnbind 9}"
+  | _ ->
+      _ = Sys.irqBind 7 me;
+      _ = Sys.irqBind 8 me;
+      a = Sys.irqUnbind 7;
+      b = Sys.irqUnbind 8;
+      c = Sys.irqUnbind 8;
+      print "bind/unbind: {a} {b} {c}".

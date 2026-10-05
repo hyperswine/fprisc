@@ -855,6 +855,11 @@ static V dc_bump(dctx_t *c, uw raw) {
   c->hp += total;
   *(uw *)p = total;
   *(fpr_slab_t **)(p + 8) = c->sl;
+  /* Generic constructor walkers include alignment padding in their field
+   * count. A foreign image's nullary constructor only supplies its header;
+   * clear the remaining bytes just as fpr_alloc does before copying it. */
+  if (total - 16 > raw)
+    __builtin_memset(p + 16 + raw, 0, total - 16 - raw);
   return (V)(p + 16);
 }
 
@@ -1716,12 +1721,11 @@ static V g_substr(V sv, V off, V len) {
   if ((uw)l > s->len - (uw)o) l = (sw)(s->len - (uw)o);
   return (V)fpr_mkstr(s->bytes + o, (uw)l);
 }
-/* ---- the string operations a library cannot build cheaply from substr ----
- * Same names and contracts as Sol's natives (compiler/Sol/VM.hs), so the two
- * profiles share one vocabulary: byte strings, 0-based, -1 = not found
- * (docs/2026-10-02-ZERO-BASED.md).
- * strJoin is the one that matters: joining n pieces by repeated strcat copies
- * the accumulator n times (docs/2026-09-19-PRELIM_BASE_LIBRARY_DESIGN.md). */
+/* ---- strJoin: the string operation a library cannot build cheaply -------
+ * One allocation and a copy; joining n pieces by repeated strcat copies the
+ * accumulator n times (docs/2026-09-19-PRELIM_BASE_LIBRARY_DESIGN.md).
+ * strCmp, strIndexOf, strIndexFrom and parseInt are FP-RISC in
+ * core/prelude.fpr, with Sol's names and contracts. */
 static str_t *want_str(V v, const char *who) {
   if (ISINT(v) || TID(v) != T_STR) fpr_cpanic(who);
   return (str_t *)v;
@@ -1746,27 +1750,6 @@ static V g_strJoin(V sepv, V list) {
   }
   return (V)out;
 }
-static V g_strCmp(V av, V bv) { /* -1, 0, 1: bytewise, shorter first on a tie */
-  str_t *a = want_str(av, "strCmp: not a String"), *b = want_str(bv, "strCmp: not a String");
-  uw n = a->len < b->len ? a->len : b->len;
-  for (uw i = 0; i < n; i++)
-    if (a->bytes[i] != b->bytes[i]) return TAG(a->bytes[i] < b->bytes[i] ? -1 : 1);
-  return TAG(a->len == b->len ? 0 : a->len < b->len ? -1 : 1);
-}
-static V g_strIndexFrom(V pv, V sv, V fromv) { /* the first match at or after `from`; -1 = none */
-  str_t *p = want_str(pv, "strIndexFrom: not a String"), *s = want_str(sv, "strIndexFrom: not a String");
-  sw from = UNTAG(fromv);
-  if (from < 0) from = 0;
-  if (p->len == 0) return TAG((uw)from <= s->len ? from : -1);
-  for (uw i = (uw)from; i + p->len <= s->len; i++) {
-    uw k = 0;
-    while (k < p->len && s->bytes[i + k] == p->bytes[k]) k++; /* (no memcmp: freestanding boards) */
-    if (k == p->len) return TAG((sw)i);
-  }
-  return TAG(-1);
-}
-static V g_strIndexOf(V pv, V sv) { return g_strIndexFrom(pv, sv, TAG(0)); }
-
 static V g_arcLive(V d) {
   (void)d;
   if (fpr_sched) return TAG((sw)fpr_sched->arc_live());
@@ -1801,22 +1784,27 @@ void fpr_logput(int sev, const char *b, uw n);
  * actor's RPC from panic context, and honesty beats a fake hook. */
 void (*fpr_panic_persist)(const char *msg, uw n);
 #ifndef FPR_BUILTIN
-void fpr_cpanic(const char *m) {
+/* the message is (bytes, length), not a C string: a user's `error` text is
+ * printed from its own String, whole, with no copy into a shared buffer */
+void fpr_cpanic_n(const char *m, uw n) {
   static int in_panic;
   if (!in_panic) {
     in_panic = 1;
-    uw n = 0;
-    while (m[n]) n++;
     fpr_logput(2, m, n); /* the error ring keeps the last words */
     if (fpr_panic_persist) fpr_panic_persist(m, n);
   }
   praw("\n*** FPRISC PANIC [actor ");
   pdec(fpr_current_id());
   praw("]: ");
-  praw(m);
+  for (uw i = 0; i < n; i++) hal_putc(m[i]);
   praw(" ***\n");
   hal_poweroff(1); /* QEMU: exit 1; real HW: no-op, park below */
   for (;;) FPR_PARK();
+}
+void fpr_cpanic(const char *m) {
+  uw n = 0;
+  while (m[n]) n++;
+  fpr_cpanic_n(m, n);
 }
 
 #endif
@@ -1826,13 +1814,9 @@ void fpr_cpanic(const char *m) {
  * like a runtime one (it previously printed raw and died -- last words
  * that never made /logs/errors). */
 void fpr_panic(V s) {
-  static char pbuf[160];
   if (!ISINT(s) && TID(s) == T_STR) {
     str_t *t = (str_t *)s;
-    uw n = t->len < sizeof pbuf - 1 ? t->len : sizeof pbuf - 1;
-    for (uw i = 0; i < n; i++) pbuf[i] = (char)t->bytes[i];
-    pbuf[n] = 0;
-    fpr_cpanic(pbuf);
+    fpr_cpanic_n((const char *)t->bytes, t->len);
   }
   fpr_cpanic("panic (non-string value)");
 }
@@ -1924,7 +1908,7 @@ static V callf(uw fn, uw ar, V *a) {
     return ((F8)fn)(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
 #endif
   }
-  fpr_cpanic("apply: arity > 24");
+  fpr_cpanic("apply: arity > 64 (8 registers + FPR_ARGSPILL)");
 }
 
 V fpr_apply(V f, V a) {
@@ -2337,42 +2321,49 @@ V fpr_prim_fn_str(V v) {
 
 fpr_lock_t fpr_con_lock; /* console: one LINE at a time across harts */
 
-/* ---- the /logs substrate: three severity rings ----------------------
- * The `log` family lands HERE, in C-owned storage: LOG_N lines of
- * LOG_W bytes per severity (0 normal, 1 warn, 2 error), copied at
- * write.  C ownership is the point -- snapshots hand out fresh copies
- * in the CALLER's pool, so no cross-actor lifetime exists at all (the
- * copy-on-retain and live-state lessons, designed away).  fpr_cpanic
- * appends the panic text to the error ring first, so a post-mortem
- * Logs screen -- or gdb -- can read the last words. */
-#define LOG_SEVS 4 /* 0 normal, 1 warn, 2 error, 3 HOST (qos_hostlog) */
-#define LOG_N 16
-#define LOG_W 96
-static char log_ring[LOG_SEVS][LOG_N][LOG_W];
-static uw log_seq[LOG_SEVS]; /* total ever; head = seq % LOG_N */
+/* ---- the /logs substrate: C's lines, staged -------------------------
+ * The rings are FP-RISC: a log actor in core/prelude.fpr keeps each
+ * severity's last lines as a List (as many as Sys.logKeep says, any width),
+ * echoes FP-RISC lines to the console and answers Sys.logSeq/logSnap.
+ * What stays here is for writers that cannot message an actor: a panic,
+ * an actor failing, a hosted program's host threads (QOS Portable's
+ * entry.c, severity 3).  fpr_logput STAGES their line, which the log
+ * actor drains before every answer, and echoes it at once, so the console
+ * never waits on an actor.  Severities: 0 normal, 1 warn, 2 error, 3 host. */
+#define LOG_SEVS 4
+/* C's lines between two drains.  Fixed, because a host thread or a panic
+ * cannot allocate; a line that does not fit is COUNTED (the log actor
+ * reports the count), never cut. */
+#define STAGE_BYTES (32u * 1024u)
+#define STAGE_HDR 5u /* severity byte + 32-bit length */
+static unsigned char stage[STAGE_BYTES];
+static uw stage_used, stage_dropped;
 static fpr_lock_t log_lock;
 
-/* #25: the console echo is rate-limited BY SEQUENCE, not by time
- * (runtime.c has no clock): 16 echoes per 64 ring writes.  At human
- * rates everything echoes; a frame-worker storm gets a bounded 25%
- * plus one honest summary line when suppression ends.  The RINGS are
- * never limited -- /logs/* always holds everything. */
+/* #25: C's console echo is rate-limited BY SEQUENCE, not by time
+ * (runtime.c has no clock): 16 echoes per 64 lines.  At human rates
+ * everything echoes; a storm gets a bounded 25% plus one honest summary
+ * line when suppression ends.  Staging is never limited by the echo.
+ * (The log actor applies the same rule to FP-RISC's lines.) */
 #define ECHO_WIN 64
 #define ECHO_ALLOW 16
-static uw echo_win_base, echo_used, echo_suppressed;
+static uw echo_total, echo_win_base, echo_used, echo_suppressed;
 
 void fpr_logput(int sev, const char *b, uw n) {
   if (sev < 0) sev = 0;
   if (sev >= LOG_SEVS) sev = LOG_SEVS - 1;
-  if (n >= LOG_W) n = LOG_W - 1;
-  uw do_echo, supp_note = 0, total;
+  uw do_echo, supp_note = 0;
   fpr_lock(&log_lock);
-  char *dst = log_ring[sev][log_seq[sev] % LOG_N];
-  for (uw i = 0; i < n; i++) dst[i] = b[i];
-  dst[n] = 0;
-  log_seq[sev]++;
-  total = log_seq[0] + log_seq[1] + log_seq[2] + log_seq[3];
-  if (total - echo_win_base >= ECHO_WIN) { echo_win_base = total; echo_used = 0; }
+  if (n <= STAGE_BYTES - STAGE_HDR && stage_used <= STAGE_BYTES - STAGE_HDR - n) {
+    unsigned char *d = stage + stage_used;
+    d[0] = (unsigned char)sev;
+    d[1] = (unsigned char)n; d[2] = (unsigned char)(n >> 8);
+    d[3] = (unsigned char)(n >> 16); d[4] = (unsigned char)(n >> 24);
+    for (uw i = 0; i < n; i++) d[STAGE_HDR + i] = (unsigned char)b[i];
+    stage_used += STAGE_HDR + n;
+  } else stage_dropped++;
+  echo_total++;
+  if (echo_total - echo_win_base >= ECHO_WIN) { echo_win_base = echo_total; echo_used = 0; }
   do_echo = echo_used < ECHO_ALLOW;
   if (do_echo) {
     echo_used++;
@@ -2399,52 +2390,85 @@ void fpr_logput(int sev, const char *b, uw n) {
   fpr_unlock(&fpr_con_lock);
 }
 
-static V g_logAt(V sevv, V sv) {
-  if (ISINT(sv) || TID(sv) != T_STR) fpr_cpanic("log: not a string");
+/* Sys.logStage sev line: an FP-RISC line by C's path -- what `log` falls
+ * back to when the log actor has ended */
+static V g_logStage(V sevv, V sv) {
+  if (!ISINT(sevv)) fpr_cpanic("Sys.logStage: severity must be an Int");
+  if (ISINT(sv) || TID(sv) != T_STR) fpr_cpanic("Sys.logStage: not a String");
   str_t *t = (str_t *)sv;
   fpr_logput((int)UNTAG(sevv), (const char *)t->bytes, t->len);
   return (V)&fpr_unit;
 }
-static V g_log(V sv) { return g_logAt(TAG(0), sv); }
-static V g_logW(V sv) { return g_logAt(TAG(1), sv); }
-static V g_logE(V sv) { return g_logAt(TAG(2), sv); }
-static V g_logSeq(V sevv) {
-  sw sev = UNTAG(sevv);
-  if (sev < 0 || sev >= LOG_SEVS) return TAG(0);
-  return TAG((sw)log_seq[sev]);
+
+static V log_tup2(V a, V b) {
+  hdr_t *t = (hdr_t *)fpr_alloc(8 + 2 * sizeof(uw));
+  t->tid = T_TUP2;
+  t->var = 0;
+  FPR_FLD(t, 0) = a;
+  FPR_FLD(t, 1) = b;
+  return (V)t;
 }
-/* newest-first list of fresh string COPIES in the caller's pool */
-static V g_logSnap(V sevv) {
-  sw sev = UNTAG(sevv);
-  if (sev < 0 || sev >= LOG_SEVS) sev = 0;
-  fpr_lock(&log_lock);
-  uw have = log_seq[sev] < LOG_N ? log_seq[sev] : LOG_N;
+/* Sys.logStaged () -> (dropped, [(sev, line)] newest first): take what C
+ * staged since the last call.  The copy is taken BEFORE the lock is held
+ * for it, and the List built after it is let go: an allocation may wait on
+ * the memory actor, and a writer on this hart would spin on the lock. */
+static V g_logStaged(V u) {
+  (void)u;
+  unsigned char *buf = 0;
+  uw n, dropped, cap = 0;
+  for (;;) {
+    uw want = __atomic_load_n(&stage_used, __ATOMIC_RELAXED);
+    if (want > cap) {
+      if (buf) fpr_free((V)buf);
+      buf = (unsigned char *)fpr_alloc((V)want);
+      cap = want;
+    }
+    fpr_lock(&log_lock);
+    if (stage_used > cap) { fpr_unlock(&log_lock); continue; }
+    n = stage_used;
+    for (uw i = 0; i < n; i++) buf[i] = stage[i];
+    dropped = stage_dropped;
+    stage_used = 0;
+    stage_dropped = 0;
+    fpr_unlock(&log_lock);
+    break;
+  }
   hdr_t *nil = (hdr_t *)fpr_alloc(8);
   nil->tid = T_LIST;
   nil->var = 0;
   V list = (V)nil;
-  /* build oldest -> newest by consing, so the head is newest */
-  for (uw i = 0; i < have; i++) {
-    const char *line = log_ring[sev][(log_seq[sev] - have + i) % LOG_N];
-    uw n = 0;
-    while (line[n]) n++;
-    V str = (V)fpr_mkstr((const uint8_t *)line, n);
+  for (uw at = 0; at < n;) { /* oldest first, consed: the head is newest */
+    uw len = (uw)buf[at + 1] | (uw)buf[at + 2] << 8 | (uw)buf[at + 3] << 16 | (uw)buf[at + 4] << 24;
+    V line = (V)fpr_mkstr(buf + at + STAGE_HDR, len);
     V *cell = (V *)fpr_alloc(24);
     ((hdr_t *)cell)->tid = T_LIST;
     ((hdr_t *)cell)->var = 1;
-    FPR_FLD(cell, 0) = str;
+    FPR_FLD(cell, 0) = log_tup2(TAG((sw)buf[at]), line);
     FPR_FLD(cell, 1) = list;
     list = (V)cell;
+    at += STAGE_HDR + len;
   }
-  fpr_unlock(&log_lock);
-  return list;
+  if (buf) fpr_free((V)buf);
+  return log_tup2(TAG((sw)dropped), list);
 }
-FPR_FN(fpr_g_log, g_log, 1);
-FPR_FN(fpr_g_logWarn, g_logW, 1);
-FPR_FN(fpr_g_logErr, g_logE, 1);
-FPR_FN(fpr_g_Sys_x2elogAt, g_logAt, 2);
-FPR_FN(fpr_g_Sys_x2elogSeq, g_logSeq, 1);
-FPR_FN(fpr_g_Sys_x2elogSnap, g_logSnap, 1);
+
+/* the log actor: installed once, like the interrupt router */
+static V log_actor; /* an actor value; 0 until installed */
+static V g_logInstall(V av) {
+  if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("Sys.logInstall: not an actor");
+  V none = 0;
+  return __atomic_compare_exchange_n(&log_actor, &none, av, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
+             ? (V)&fpr_true : (V)&fpr_false;
+}
+static V g_logger(V u) {
+  (void)u;
+  V a = __atomic_load_n(&log_actor, __ATOMIC_ACQUIRE);
+  return a ? a : TAG(0);
+}
+FPR_FN(fpr_g_Sys_x2elogStage, g_logStage, 2);
+FPR_FN(fpr_g_Sys_x2elogStaged, g_logStaged, 1);
+FPR_FN(fpr_g_Sys_x2elogInstall, g_logInstall, 1);
+FPR_FN(fpr_g_Sys_x2elogger, g_logger, 1);
 
 /* Sys.memStats () -> (grows, mib): the arena growth ledger */
 static V g_memstats(V u) {
@@ -2620,22 +2644,6 @@ static V g_strlen(V s) {
   str_t *t = (str_t *)s;
   if (ISINT(s) || t->tid != T_STR) fpr_cpanic("strlen: not a string");
   return TAG(t->len);
-}
-
-/* parseInt : String -> Int — decimal, leading '-' allowed, stops at the
- * first non-digit. Empty or all-non-digit yields 0 (the pI idiom). */
-static V g_parseInt(V sv) {
-  if (ISINT(sv) || ((str_t *)sv)->tid != T_STR) fpr_cpanic("parseInt: not a String");
-  str_t *s = (str_t *)sv;
-  uw i = 0;
-  sw sign = 1, acc = 0;
-  if (i < s->len && s->bytes[i] == '-') { sign = -1; i++; }
-  for (; i < s->len; i++) {
-    uint8_t c = s->bytes[i];
-    if (c < '0' || c > '9') break;
-    acc = acc * 10 + (c - '0');
-  }
-  return TAG(sign * acc);
 }
 
 /* chr : Int -> String -- the inverse of charAt. One byte. The line
@@ -3164,12 +3172,8 @@ FPR_FN(fpr_prim_obj_error, fpr_prim_fn_error, 1);
 FPR_FN(fpr_g_charAt, g_charAt, 2);
 FPR_FN(fpr_g_strlen, g_strlen, 1);
 FPR_FN(fpr_g_chr, g_chr, 1);
-FPR_FN(fpr_g_parseInt, g_parseInt, 1);
 FPR_FN(fpr_g_substr, g_substr, 3);
 FPR_FN(fpr_g_strJoin, g_strJoin, 2);
-FPR_FN(fpr_g_strCmp, g_strCmp, 2);
-FPR_FN(fpr_g_strIndexOf, g_strIndexOf, 2);
-FPR_FN(fpr_g_strIndexFrom, g_strIndexFrom, 3);
 FPR_FN(fpr_g_drop, g_drop, 1);
 FPR_FN(fpr_g_arcLive, g_arcLive, 1);
 FPR_FN(fpr_g_heapUsed, g_heapUsed, 1);

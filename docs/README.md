@@ -136,3 +136,5 @@ they began.
 - [The WASM VM in the intended style](2026-10-05-WASM-STYLE.md): clauses, guards, folds and measures in place of unsafe modules; the language issues found, from 63-bit Int to measure floors and cross-module records.
 
 - [I64](2026-10-05-I64.md): a boxed, wrapping 64-bit integer type beside the tagged 63-bit Int; why boxed (a raw word near 2^40 hung send), the operations, and the cost.
+- [C reduction, second round](2026-10-04-C-REDUCTION-PLAN.md): the C read function by function (about a third can move), what the compiler needs first, phases; landed: string search/order/parse and module lookup in the prelude, bits.c mechanism-only with no undefined shifts, whole panic text, a race-free module registry.
+- [Supervision and admission](2026-10-05-SUPERVISION-AND-ADMISSION.md): how actors fail and are admitted today, written down as rules, with the open questions for an FP-RISC supervisor and admission actor; found: a killed blocked actor is never reaped.

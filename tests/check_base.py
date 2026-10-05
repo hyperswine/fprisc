@@ -38,6 +38,46 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         assert 'precond' not in out.stdout, 'a build is quiet unless -v'
         return exe
     print(run(['python3', 'tests/check_admission.py']).stdout.strip())
+    # strCmp, strIndexOf, strIndexFrom and parseInt left runtime.c for the
+    # prelude; the expected text is what the C primitives printed
+    p = run([build('tests/base/strprims.fpr', 'strprims')])
+    assert p.stdout == Path('tests/base/strprims.expected').read_text(), p.stdout
+    print('String order, search and parse in FP-RISC: the C primitives\' answers, edge cases and overflow included: PASS')
+    # a shift or bit index outside 0..63 is a named panic inline and through a
+    # function value (runtime/bits.c used to compute C's undefined shift)
+    bits = build('tests/base/bitrange.fpr', 'bitrange')
+    assert run([bits, '63', 'value']).stdout == 'in range: True True\nvalue: 0\n'
+    for args, msg in ((['64', 'inline'], 'BITSHIFTL: shift must be 0..63'), (['-1', 'value'], 'BITSET: bit index must be 0..63')):
+        p = run([bits] + args, expected=1)
+        assert msg in p.stdout + p.stderr, p.stdout + p.stderr
+    print('Bit ops: an index or shift outside 0..63 is a named panic, inline and as a value: PASS')
+    # a panic message is printed from its own String, whole (it was copied
+    # into a shared 160-byte buffer: cut silently, and racy across harts)
+    p = run([build('tests/base/longpanic.fpr', 'longpanic')], expected=1)
+    assert 'PANIC [actor 0]: long:' + '0123456789' * 30 + ':end ***' in p.stdout + p.stderr, p.stdout + p.stderr
+    print('Panic: a 310-byte error message is printed whole: PASS')
+    # interrupt routing is an FP-RISC router (core/prelude.fpr): an actor
+    # binds itself and unbinds what it bound, other actors are refused by name
+    irq = build('tests/base/irqroute.fpr', 'irqroute')
+    assert run([irq]).stdout == 'bind/unbind: True True True\n'
+    for arg, msg in (('other', 'Sys.irqBind: an actor binds itself'), ('steal', 'Sys.irqUnbind: not the bound actor')):
+        p = run([irq, arg], expected=1)
+        assert msg in p.stdout + p.stderr, p.stdout + p.stderr
+    print('Interrupt routing in FP-RISC: bind and unbind your own sources, another actor\'s refused by name: PASS')
+    # the logs are a log actor (core/prelude.fpr): any width, sized at run
+    # time; a line staged by C is still counted; the echo stays rate-limited
+    p = run([build('tests/base/logplane.fpr', 'logplane')])
+    assert 'logplane: seq=100 kept=64 wide=505 errors=1 [staged by C] keep5=5 newest=[line 1]' in p.stdout, p.stdout
+    assert p.stdout.count('[log] line') == 32 and 'suppressed 47 line(s); rings intact' in p.stdout, p.stdout
+    assert '[ERR] staged by C' in p.stdout, p.stdout
+    print('Logs as an actor: 505-byte lines kept whole, rings sized at run time, C-staged lines counted, echo rate-limited: PASS')
+    # kill an actor blocked in receive: it is reaped (a_kill left it on no
+    # queue, and 1500 kills leaked about 100 MB of stacks and pools)
+    kb = build('tests/base/killblocked.fpr', 'killblocked')
+    for harts in ('1', '4'):
+        p = run([kb], env={'FPR_HARTS': harts})
+        assert p.stdout == 'killblocked: 1500 more kills of blocked actors cost under 32 MiB\n', p.stdout
+    print('Killing a blocked actor reclaims it: 1500 kills stay under 32 MiB on one and four harts (was about 100 MB): PASS')
     # Fixed heap admission is independent of mailbox capacity; failures
     # belong to the child and escaped data delays grant reclamation.
     fixed = build('tests/base/fixedheap.fpr', 'fixedheap')

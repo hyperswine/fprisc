@@ -1,0 +1,25 @@
+# the logs are a log actor (core/prelude.fpr): rings of any width, sized at
+# run time; a line C writes (Sys.logStage is fpr_logput, the path of a panic,
+# a failing actor and a host thread) is staged, echoed by C, and still counted
+unsafe base.
+
+spam : Int -> Unit .
+spam n = if n == 0 then Unit else log "line {n}" >> spam (n - 1).
+
+grow : String -> Int -> String .
+grow s n = if n == 0 then s else grow (strcat s "0123456789") (n - 1).
+
+main =
+  _ = spam 100;
+  _ = logWarn (grow "wide:" 50);
+  _ = Sys.logStage 2 "staged by C";
+  a = Sys.logSeq 0;
+  b = listLen (Sys.logSnap 0);
+  c = case Sys.logSnap 1 of Nil -> 0 | x :: _ -> strlen x;
+  errs = Sys.logSnap 2;
+  d = listLen errs;
+  e = case errs of Nil -> "none" | x :: _ -> x;
+  _ = Sys.logKeep 5;
+  f = listLen (Sys.logSnap 0);
+  g = case Sys.logSnap 0 of Nil -> "none" | x :: _ -> x;
+  print "logplane: seq={a} kept={b} wide={c} errors={d} [{e}] keep5={f} newest=[{g}]".

@@ -155,6 +155,459 @@ strSub a b =
   | False -> strSubGo a b la lb.
 strSubGo a b la lb = case strSufEq a b (la - lb) 0 of True -> strTake a (la - lb) | False -> a.
 
+# ---- string order, search and parse (were C in runtime.c) -------------------
+# Same names and contracts as Sol's natives: byte strings, 0-based, -1 = not
+# found (docs/2026-10-02-ZERO-BASED.md).  strJoin stays a primitive: it is
+# one allocation and a copy, which repeated strcat cannot be.
+
+# -1, 0, 1: bytewise, the shorter first on a tie
+strCmp : String -> String -> Int .
+strCmp a b = strCmpGo a b 0 (strlen a) (strlen b).
+strCmpGo : unsafe String -> String -> Int -> Int -> Int -> Int .
+strCmpGo a b i la lb = case i >= la or i >= lb of
+    True -> (case la == lb of True -> 0 | False -> (case la < lb of True -> 0 - 1 | False -> 1))
+  | False -> strCmpAt a b i la lb (charAt a i) (charAt b i).
+strCmpAt : unsafe String -> String -> Int -> Int -> Int -> Int -> Int -> Int .
+strCmpAt a b i la lb ca cb = case ca == cb of
+    True -> strCmpGo a b (i + 1) la lb
+  | False -> (case ca < cb of True -> 0 - 1 | False -> 1).
+
+# the first match of p in s at or after `from` (a negative from is 0); -1 = none
+strIndexFrom : String -> String -> Int -> Int .
+strIndexFrom p s from = strIndexGo p s (case from < 0 of True -> 0 | False -> from) (strlen p) (strlen s).
+strIndexGo : unsafe String -> String -> Int -> Int -> Int -> Int .
+strIndexGo p s i lp ls = case lp == 0 of
+    True -> (case i <= ls of True -> i | False -> 0 - 1)
+  | False -> (case i + lp > ls of
+      True -> 0 - 1
+    | False -> (case strMatchAt p s i 0 lp of True -> i | False -> strIndexGo p s (i + 1) lp ls)).
+strMatchAt : unsafe String -> String -> Int -> Int -> Int -> Bool .
+strMatchAt p s i k lp = case k >= lp of
+    True -> True
+  | False -> (case charAt s (i + k) == charAt p k of True -> strMatchAt p s i (k + 1) lp | False -> False).
+strIndexOf : String -> String -> Int .
+strIndexOf p s = strIndexFrom p s 0.
+
+# decimal, a leading "-" allowed, stops at the first non-digit; no digits is 0.
+# The lenient parse; wireInt above is the checked one.
+parseInt : String -> Int .
+parseInt s = case strlen s == 0 of
+    True -> 0
+  | False -> (case charAt s 0 == 45 of
+      True -> 0 - parseDigits s 1 0
+    | False -> parseDigits s 0 0).
+parseDigits : unsafe String -> Int -> Int -> Int .
+parseDigits s i acc = case i >= strlen s of
+    True -> acc
+  | False -> parseDigit s i acc (charAt s i).
+parseDigit : unsafe String -> Int -> Int -> Int -> Int .
+parseDigit s i acc c = case c >= 48 and c <= 57 of
+    True -> parseDigits s (i + 1) (acc * 10 + (c - 48))
+  | False -> acc.
+
+# ---- module tables: lookup and compatibility (were C in runtime/mod.c) ------
+# mod.c is the registry and reads rows: Mod.plugs, Mod.hashAt, Mod.rows t and
+# Mod.rowHash/rowName/rowIface/rowFn/rowArity t i.  Table -1 is the image's
+# own; 0.. are attachments in attach order.  A miss is (0, 0), as it was.
+modMiss : Unit -> (Int, a) .
+modMiss u = (0, Mod.rowFn (0 - 2) 0).
+
+# the first row of table t at or after i that p accepts; -1 = none
+modRow : unsafe Int -> Int -> Int -> (Int -> Bool) -> Int .
+modRow t i n p = case i >= n of
+    True -> 0 - 1
+  | False -> (case p i of True -> i | False -> modRow t (i + 1) n p).
+modRowIn : Int -> (Int -> Bool) -> Int .
+modRowIn t p = modRow t 0 (Mod.rows t) p.
+modHit : Int -> Int -> (Unit -> (Int, a)) -> (Int, a) .
+modHit t i next = case i >= 0 of True -> (1, Mod.rowFn t i) | False -> next Unit.
+
+# does the image carry this module at all? (what a remote node answers an
+# FPRLive resolve probe with)
+modHas : String -> Bool .
+modHas h = modHasFrom h (0 - 1) (Mod.plugs 0).
+modHasFrom : unsafe String -> Int -> Int -> Bool .
+modHasFrom h t n = case t >= n of
+    True -> False
+  | False -> (case modRowIn t (fn i -> Mod.rowHash t i == h) >= 0 of True -> True | False -> modHasFrom h (t + 1) n).
+
+# (1, fn) | (0, 0) by (hash, name), the image's own table first: the
+# URL-service resolver contract, where a miss is data
+modResolve : String -> String -> (Int, a) .
+modResolve h name = modResolveFrom h name (0 - 1) (Mod.plugs 0).
+modResolveFrom : unsafe String -> String -> Int -> Int -> (Int, a) .
+modResolveFrom h name t n = case t >= n of
+    True -> modMiss Unit
+  | False -> modHit t (modRowIn t (fn i -> Mod.rowHash t i == h and Mod.rowName t i == name)) (fn u -> modResolveFrom h name (t + 1) n).
+
+# table t ONLY, its root module's exports: every app plugin exports the same
+# names (appMeta, appInit, ...), so scoped search is what lets N apps coexist
+modFindAt : Int -> String -> (Int, a) .
+modFindAt t name = case t >= 0 and t < Mod.plugs 0 of
+    True -> modHit t (modRowIn t (fn i -> Mod.rowHash t i == Mod.hashAt t and Mod.rowName t i == name)) (fn u -> modMiss Unit)
+  | False -> modMiss Unit.
+
+# by name only, ATTACHED tables only, NEWEST ATTACHMENT WINS: attach Math.v2
+# beside Math.v1 and whoever re-resolves binds v2, while calls already in v1
+# run to completion (the old table and image stay mapped)
+modFind : String -> (Int, a) .
+modFind name = modFindDown name (Mod.plugs 0 - 1).
+modFindDown : unsafe String -> Int -> (Int, a) .
+modFindDown name t = case t < 0 of
+    True -> modMiss Unit
+  | False -> modHit t (modRowIn t (fn i -> Mod.rowName t i == name)) (fn u -> modFindDown name (t - 1)).
+
+# the live-reload gate: every root export of table o is in table n with the
+# same arity and the same checked type, contract and ABI.  (1, "") or the
+# first reason it is not.  Stamps are compiler claims for trusted images,
+# not signatures.
+modCompatAt : Int -> Int -> (Int, String) .
+modCompatAt o n = case o >= 0 and o < Mod.plugs 0 and n >= 0 and n < Mod.plugs 0 of
+    True -> modCompatRows o n 0 (Mod.rows o) 0
+  | False -> (0, "no such attached table").
+modCompatRows : unsafe Int -> Int -> Int -> Int -> Int -> (Int, String) .
+modCompatRows o n i rows checked = case i >= rows of
+    True -> (case checked == 0 of True -> (0, "old module has no callable root exports") | False -> (1, ""))
+  | False -> (case Mod.rowHash o i == Mod.hashAt o of
+      True -> modCompatRow o n i rows checked
+    | False -> modCompatRows o n (i + 1) rows checked).
+modCompatRow : unsafe Int -> Int -> Int -> Int -> Int -> (Int, String) .
+modCompatRow o n i rows checked = case Mod.rowIface o i == "" of
+    True -> (0, "old export has no checked interface")
+  | False -> modCompatMatch o n i rows checked (modRowIn n (fn j -> Mod.rowHash n j == Mod.hashAt n and Mod.rowName n j == Mod.rowName o i)).
+modCompatMatch : unsafe Int -> Int -> Int -> Int -> Int -> Int -> (Int, String) .
+modCompatMatch o n i rows checked j = case j < 0 of
+    True -> (0, "export missing in the new module")
+  | False -> (case Mod.rowArity n j == Mod.rowArity o i of
+      False -> (0, "arity changed for an export")
+    | True -> (case Mod.rowIface n j == "" of
+        True -> (0, "new export has no checked interface")
+      | False -> (case Mod.rowIface n j == Mod.rowIface o i of
+          False -> (0, "checked type, contract or ABI changed for an export")
+        | True -> modCompatRows o n (i + 1) rows (checked + 1)))).
+
+Mod = Struct {
+  find = fn name -> modFind name,
+  findAt = fn t name -> modFindAt t name,
+  resolve = fn h name -> modResolve h name,
+  has = fn h -> modHas h,
+  compatAt = fn o n -> modCompatAt o n
+}.
+
+# ---- device interrupts: the routing table (was C in runtime/actors.c) ------
+# The irq hart claims a source and posts it, a plain Int, to ONE router
+# actor; the router hands it to the actor bound to that source with
+# Sys.irqDeliver, on the deliveries' own channel, so a binder waiting for
+# the router's reply never takes an interrupt for it.  Any number of
+# sources: the table is a List.  A source nobody bound is dropped and stays
+# masked (nobody would ack it).  The router starts at the first bind
+# (Sys.irqInstall: one wins, a losing candidate ends) with a mailbox that
+# doubles when full, because the irq hart's post cannot wait or retry.
+#
+# An actor binds ITSELF: being bound marks it as waiting on a device, which
+# the deadlock detector counts, and only an actor changes its own mark.
+# Requests are (from, kind, src): kind 1 binds, 2 unbinds.
+
+sysIrqBind : Int -> Int -> Unit .
+sysIrqBind src target =
+  me = myself 0;
+  _ = case target == me of True -> Unit | False -> error "Sys.irqBind: an actor binds itself";
+  _ = case src >= 1 of True -> Unit | False -> error "Sys.irqBind: irq out of range";
+  _ = Sys.irqTarget 1;
+  _ = irqAsk me 1 src;
+  Unit.
+
+# True once nothing more for src reaches the caller: the router answers in
+# order, so whatever it handed over before the unbind is already queued
+sysIrqUnbind : Int -> Bool .
+sysIrqUnbind src =
+  me = myself 0;
+  _ = case src >= 1 of True -> Unit | False -> error "Sys.irqUnbind: irq out of range";
+  irqUnbound (irqAsk me 2 src).
+irqUnbound : Int -> Bool .
+irqUnbound left = case left < 0 of
+    True -> error "Sys.irqUnbind: not the bound actor"
+  | False -> irqStillBound (left > 0).
+irqStillBound : Bool -> Bool .
+irqStillBound bound = case bound of
+    True -> True
+  | False -> Sys.irqTarget 0 >> True.
+
+irqAsk : unsafe Int -> Int -> Int -> Int .
+irqAsk me kind src =
+  r = irqRouterOf me;
+  _ = irqSendSure me r (me, kind, src);
+  receiveFrom me r.
+
+irqSendSure : unsafe Int -> Int -> a -> Unit .
+irqSendSure me who m = case send who m of
+    Ok u -> Unit
+  | Err why -> (case why == "dead actor" of
+      True -> error "Sys.irqBind: the interrupt router has ended"
+    | False -> yield me >> irqSendSure me who m).
+
+irqRouterOf : unsafe Int -> Int .
+irqRouterOf me = irqRouterHave me (Sys.irqRouter Unit).
+irqRouterHave : unsafe Int -> Int -> Int .
+irqRouterHave me r = case r == 0 of False -> r | True -> irqRouterStart me.
+irqRouterStart : unsafe Int -> Int .
+irqRouterStart me =
+  c = spawnCap 1 64 (fn self -> irqRouteStart me self);
+  case Sys.irqInstall c of
+    True -> irqSendSure me c 1 >> c
+  | False -> irqSendSure me c 0 >> Sys.irqRouter Unit.
+
+irqRouteStart : unsafe Int -> Int -> Unit .
+irqRouteStart spawner self = case receiveFrom self spawner of
+    1 -> irqRoute self Nil
+  | _ -> Unit.
+
+irqRoute : unsafe Int -> List (Int, Int) -> a .
+irqRoute self tab =
+  m = receive self;
+  case m of
+    (from, kind, src) -> irqRouteReq self tab m from kind src
+  | src -> irqRouteSrc self tab src.
+
+irqRouteReq : unsafe Int -> List (Int, Int) -> a -> Int -> Int -> Int -> b .
+irqRouteReq self tab m from kind src =
+  _ = drop m;
+  case kind == 1 of
+    True -> irqBindNow self (irqSet tab src from) from src
+  | False -> irqUnbindNow self tab from src (irqOwner tab src).
+irqBindNow : unsafe Int -> List (Int, Int) -> Int -> Int -> a .
+irqBindNow self tab from src =
+  _ = Sys.irqOpen src;
+  _ = irqReply self from 1;
+  irqRoute self tab.
+irqUnbindNow : unsafe Int -> List (Int, Int) -> Int -> Int -> Int -> a .
+irqUnbindNow self tab from src owner = case owner == 0 or owner == from of
+    True -> irqUnbindDone self (irqRemove tab src) from
+  | False -> irqReply self from (0 - 1) >> irqRoute self tab.
+irqUnbindDone : unsafe Int -> List (Int, Int) -> Int -> a .
+irqUnbindDone self tab from =
+  _ = irqReply self from (irqCount tab from);
+  irqRoute self tab.
+
+irqRouteSrc : unsafe Int -> List (Int, Int) -> Int -> a .
+irqRouteSrc self tab src =
+  _ = irqHand self (irqOwner tab src) src;
+  irqRoute self tab.
+irqHand : unsafe Int -> Int -> Int -> Unit .
+irqHand self who src = case who == 0 of
+    True -> Unit
+  | False -> irqHandTo self who src.
+irqHandTo : unsafe Int -> Int -> Int -> Unit .
+irqHandTo self who src = case Sys.irqDeliver who src of
+    Ok u -> Unit
+  | Err why -> (case why == "dead actor" of
+      True -> Unit
+    | False -> yield self >> irqHandTo self who src).
+
+# a reply is not lost to a full mailbox; a binder that has ended gets none
+irqReply : unsafe Int -> Int -> Int -> Unit .
+irqReply self who n = case send who n of
+    Ok u -> Unit
+  | Err why -> (case why == "dead actor" of
+      True -> Unit
+    | False -> yield self >> irqReply self who n).
+
+irqOwner : unsafe List (Int, Int) -> Int -> Int .
+irqOwner tab src = case tab of
+    Nil -> 0
+  | (s, who) :: r -> (case s == src of True -> who | False -> irqOwner r src).
+irqRemove : unsafe List (Int, Int) -> Int -> List (Int, Int) .
+irqRemove tab src = case tab of
+    Nil -> Nil
+  | (s, who) :: r -> (case s == src of True -> r | False -> (s, who) :: irqRemove r src).
+irqSet : List (Int, Int) -> Int -> Int -> List (Int, Int) .
+irqSet tab src who = (src, who) :: irqRemove tab src.
+irqCount : unsafe List (Int, Int) -> Int -> Int .
+irqCount tab who = case tab of
+    Nil -> 0
+  | (s, b) :: r -> (case b == who of True -> 1 | False -> 0) + irqCount r who.
+
+# ---- the logs: a log actor (was C rings in runtime/runtime.c) -------------
+# Each severity (0 normal, 1 warn, 2 error, 3 host) keeps its last lines as
+# a List, newest first: as many as Sys.logKeep says (64 to start), any
+# width.  An FP-RISC line is a message to the log actor, which echoes it to
+# the console under the rate limit (16 echoes per 64 lines, and one line
+# naming what was suppressed when echo resumes).  A line C writes -- a
+# panic, an actor failing, a host thread -- cannot be a message: C stages
+# it and echoes it at once (runtime.c fpr_logput), and the actor takes
+# what is staged before every answer, so Sys.logSnap and Sys.logSeq count
+# both.  If the log actor has ended, a line goes C's way instead.
+# Requests are (from, kind, sev, text): 1 put, 2 seq, 3 snap,
+# 4 keep (sev carries the count).
+
+LogSt = Type (LogState (List (Int, List String)) Int Int Int Int Int).
+
+log : String -> Unit .
+log line = logPut 0 line.
+logWarn : String -> Unit .
+logWarn line = logPut 1 line.
+logErr : String -> Unit .
+logErr line = logPut 2 line.
+
+logPut : Int -> String -> Unit .
+logPut sev line =
+  me = myself 0;
+  logPutTo me (loggerOf me) sev line.
+# a put is answered once the line is kept and echoed, so a line logged just
+# before an exit or a panic still reaches the console, in order with the
+# caller's own prints
+logPutTo : unsafe Int -> Int -> Int -> String -> Unit .
+logPutTo me r sev line = case send r (me, 1, sev, line) of
+    Ok u -> (case receiveFrom me r of _ -> Unit)
+  | Err why -> (case why == "dead actor" of
+      True -> Sys.logStage sev line
+    | False -> yield me >> logPutTo me r sev line).
+
+logAsk : unsafe Int -> Int -> String -> a .
+logAsk kind sev who =
+  me = myself 0;
+  r = loggerOf me;
+  _ = logSendSure me r (me, kind, sev, "") who;
+  receiveFrom me r.
+logSendSure : unsafe Int -> Int -> a -> String -> Unit .
+logSendSure me who m name = case send who m of
+    Ok u -> Unit
+  | Err why -> (case why == "dead actor" of
+      True -> error (strcat name ": the log actor has ended")
+    | False -> yield me >> logSendSure me who m name).
+
+# total lines ever written at a severity (0 for a severity that is not one)
+sysLogSeq : Int -> Int .
+sysLogSeq sev = logAsk 2 sev "Sys.logSeq".
+# newest first, fresh copies in the caller's pool (a severity that is not
+# one reads severity 0)
+sysLogSnap : Int -> List String .
+sysLogSnap sev = logAsk 3 sev "Sys.logSnap".
+# how many lines each severity keeps from now on (at least 1)
+sysLogKeep : Int -> Unit .
+sysLogKeep n = case n >= 1 of
+    True -> (case logAsk 4 n "Sys.logKeep" of _ -> Unit)
+  | False -> error "Sys.logKeep: a ring keeps at least one line".
+
+loggerOf : unsafe Int -> Int .
+loggerOf me = loggerHave me (Sys.logger Unit).
+loggerHave : unsafe Int -> Int -> Int .
+loggerHave me r = case r == 0 of False -> r | True -> loggerStart me.
+loggerStart : unsafe Int -> Int .
+loggerStart me =
+  c = spawnCap 1 64 (fn self -> logStart me self);
+  case Sys.logInstall c of
+    True -> logGo me c 1 >> c
+  | False -> logGo me c 0 >> Sys.logger Unit.
+logGo : unsafe Int -> Int -> Int -> Unit .
+logGo me c go = case send c go of
+    Ok u -> Unit
+  | Err why -> yield me >> logGo me c go.
+
+logStart : unsafe Int -> Int -> Unit .
+logStart spawner self = case receiveFrom self spawner of
+    1 -> logServe self (LogState [(0, Nil), (0, Nil), (0, Nil), (0, Nil)] 64 0 0 0 0)
+  | _ -> Unit.
+
+logServe : unsafe Int -> LogSt -> a .
+logServe self st =
+  m = receive self;
+  (from, kind, sev, text) = m;
+  st2 = logStaged st (Sys.logStaged Unit);
+  logServe self (logDo self st2 from kind sev text).
+
+logDo : unsafe Int -> LogSt -> Int -> Int -> Int -> String -> LogSt .
+logDo self st from kind sev text = case kind of
+    1 -> logPutDone self from (logEcho (logKeepLine st (logSev sev) text) (logSev sev) text)
+  | 2 -> logReply self from (logSeqOf st sev) >> st
+  | 3 -> logReply self from (logLinesOf st (logSev sev)) >> st
+  | _ -> logReply self from 0 >> logSetKeep st sev.
+
+logPutDone : unsafe Int -> Int -> LogSt -> LogSt .
+logPutDone self from st = logReply self from 0 >> st.
+
+logSev : Int -> Int .
+logSev sev = case sev < 0 of True -> 0 | False -> (case sev > 3 of True -> 3 | False -> sev).
+
+# C's staged lines, oldest first, into the rings (C echoed them already);
+# lines C could not stage are named in the error ring
+logStaged : unsafe LogSt -> (Int, List (Int, String)) -> LogSt .
+logStaged st got =
+  (dropped, lines) = got;
+  st2 = logStagedGo st (wireRev lines Nil);
+  case dropped == 0 of
+    True -> st2
+  | False -> logKeepLine st2 2 "(log: {dropped} line(s) written from C were not kept: its staging area was full)".
+logStagedGo : unsafe LogSt -> List (Int, String) -> LogSt .
+logStagedGo st lines = case lines of
+    Nil -> st
+  | (sev, line) :: r -> logStagedGo (logKeepLine st sev line) r.
+
+logKeepLine : unsafe LogSt -> Int -> String -> LogSt .
+logKeepLine st sev line = case st of
+    LogState rings keep total base used supp -> LogState (logRingPut rings sev line keep) keep total base used supp.
+logRingPut : unsafe List (Int, List String) -> Int -> String -> Int -> List (Int, List String) .
+logRingPut rings sev line keep = case rings of
+    Nil -> Nil
+  | (seq, lines) :: r -> (case sev == 0 of
+      True -> (seq + 1, listTake (line :: lines) keep) :: r
+    | False -> (seq, lines) :: logRingPut r (sev - 1) line keep).
+
+logRingAt : unsafe List (Int, List String) -> Int -> (Int, List String) .
+logRingAt rings sev = case rings of
+    Nil -> (0, Nil)
+  | x :: r -> (case sev == 0 of True -> x | False -> logRingAt r (sev - 1)).
+logSeqOf : unsafe LogSt -> Int -> Int .
+logSeqOf st sev = case sev < 0 or sev > 3 of
+    True -> 0
+  | False -> (case st of LogState rings keep total base used supp -> (case logRingAt rings sev of (seq, lines) -> seq)).
+logLinesOf : unsafe LogSt -> Int -> List String .
+logLinesOf st sev = case st of
+    LogState rings keep total base used supp -> (case logRingAt rings (case sev > 3 of True -> 0 | False -> sev) of (seq, lines) -> lines).
+
+logSetKeep : unsafe LogSt -> Int -> LogSt .
+logSetKeep st n = case st of
+    LogState rings keep total base used supp -> LogState (logTrim rings n) n total base used supp.
+logTrim : unsafe List (Int, List String) -> Int -> List (Int, List String) .
+logTrim rings n = case rings of
+    Nil -> Nil
+  | (seq, lines) :: r -> (seq, listTake lines n) :: logTrim r n.
+
+# the console echo, rate-limited by sequence
+logEcho : unsafe LogSt -> Int -> String -> LogSt .
+logEcho st sev line = case st of
+    LogState rings keep total base used supp -> logEchoAt rings keep (total + 1) (case total + 1 - base >= 64 of True -> total + 1 | False -> base) (case total + 1 - base >= 64 of True -> 0 | False -> used) supp sev line.
+logEchoAt : unsafe List (Int, List String) -> Int -> Int -> Int -> Int -> Int -> Int -> String -> LogSt .
+logEchoAt rings keep total base used supp sev line = case used < 16 of
+    True -> logSuppressed supp >> print "{logPrefix sev}{line}" >> LogState rings keep total base (used + 1) 0
+  | False -> LogState rings keep total base used (supp + 1).
+logSuppressed : Int -> Unit .
+logSuppressed supp = case supp == 0 of
+    True -> Unit
+  | False -> print "[log] (console echo suppressed {supp} line(s); rings intact)".
+logPrefix : Int -> String .
+logPrefix sev = case sev of
+    1 -> "[warn] "
+  | 2 -> "[ERR] "
+  | 3 -> "[host] "
+  | _ -> "[log] ".
+
+logReply : unsafe Int -> Int -> a -> Unit .
+logReply self who v = case send who v of
+    Ok u -> Unit
+  | Err why -> (case why == "dead actor" of
+      True -> Unit
+    | False -> yield self >> logReply self who v).
+
+Sys = Struct {
+  irqBind = fn src target -> sysIrqBind src target,
+  irqUnbind = fn src -> sysIrqUnbind src,
+  logAt = fn sev line -> logPut sev line,
+  logSeq = fn sev -> sysLogSeq sev,
+  logSnap = fn sev -> sysLogSnap sev,
+  logKeep = fn n -> sysLogKeep n
+}.
+
 Str = Struct Add Eq {
   (+) = fn a b -> strcat a b,
   (-) = fn a b -> strSub a b,

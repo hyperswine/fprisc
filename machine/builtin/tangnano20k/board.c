@@ -17,11 +17,15 @@ void hal_poweroff(int code) {
       ? (((uint32_t)code << 16) | 0x3333) : 0x5555;
   for (;;) {}
 }
-void fpr_cpanic(const char *s) {
-  puts_raw("Builtin panic: "); puts_raw(s); hal_putc('\n');
+/* (bytes, length): fpr_panic prints an `error` String from its own bytes */
+void fpr_cpanic_n(const char *s, uw n) {
+  puts_raw("Builtin panic: ");
+  for (uw i = 0; i < n; i++) hal_putc(s[i]);
+  hal_putc('\n');
   hal_poweroff(1);
   for (;;) {}
 }
+void fpr_cpanic(const char *s) { uw n = 0; while (s[n]) n++; fpr_cpanic_n(s, n); }
 void fpr_builtin_main(void) {
   fpr_set_tp(&fpr_harts[0]);
 #ifdef FPR_BUILTIN_HEAP_BYTES

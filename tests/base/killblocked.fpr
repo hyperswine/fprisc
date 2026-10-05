@@ -1,0 +1,29 @@
+# kill an actor that is blocked in `receive`: its stack, pool and channel
+# block come back.  a_kill used to mark it dead and leave it on no queue, so
+# nothing ever reaped it -- 128 KiB of stack and more per kill, for good.
+unsafe base.
+
+round : Int -> Int .
+round n = if n == 0 then 0 else
+  w = spawn (fn self -> receive self);
+  _ = yield (myself 0);
+  _ = kill w;
+  round (n - 1).
+
+freeKiB : Unit -> Int .
+freeKiB u = case Sys.memInfo 0 of _ :: f :: _ -> f | _ -> 0.
+
+settle : Unit -> Int .
+settle u = Sys.sleepUs 100000 >> freeKiB Unit.
+
+main =
+  _ = round 500;
+  a = settle Unit;
+  _ = round 500;
+  _ = round 500;
+  _ = round 500;
+  b = settle Unit;
+  lost = a - b;
+  # before the fix 1500 kills cost about 100 MB; per-hart caches settle within
+  # a few MB on several harts
+  print "killblocked: 1500 more kills of blocked actors cost {case lost < 32768 of True -> "under 32 MiB" | False -> "{lost} KiB"}".

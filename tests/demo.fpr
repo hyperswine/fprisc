@@ -1,8 +1,8 @@
 # demo.fpr — FPRISC driving QEMU virt devices through the HAL glue.
 #
 # Nothing here knows an address. `uart`, `clint`, `read`, `write`,
-# `reg8`, `reg32`, BITSET/BITCLEAR/BITTEST/BITMASK/BITSHIFT*, bitsLE/
-# bitsBE/toInt, charAt/strlen all resolve to fpr_g_* symbols provided
+# `reg8`, `reg32`, BITSET/BITCLEAR/BITTEST/BITMASK/BITSHIFT*,
+# charAt/strlen all resolve to fpr_g_* symbols provided
 # by hal.c / runtime.c at link time.
 #
 # NOTE (PoC codegen): no tail-call optimization, so unbounded spin
@@ -90,16 +90,14 @@ mtimeTest =
   _ = puts "clint mtime: {b}  (delta {b - a})" >> nl;
   puts "mtime advancing ... " >> putRes (b > a) >> nl .
 
-# Array Bit: same value 1, LE vs BE indexing.
+# bit ops on an Int: value 1, set bit 3, test both ends.
 bitsDemo : unsafe Unit .
 bitsDemo =
-  x = bitsLE 8 1;
-  y = bitsBE 8 1;
+  x = 1;
   s = BITSET x 3;
-  _ = puts "Array Bit, value 1, len 8:" >> nl;
-  _ = puts "  LE bit0 = {BITTEST x 0}   (LSB first)" >> nl;
-  _ = puts "  BE bit0 = {BITTEST y 0}, BE bit7 = {BITTEST y 7}   (MSB first)" >> nl;
-  puts "  LE with bit3 set -> {toInt s}" >> nl .
+  _ = puts "bits, value 1:" >> nl;
+  _ = puts "  bit0 = {BITTEST x 0}, bit7 = {BITTEST x 7}" >> nl;
+  puts "  with bit3 set -> {s}" >> nl .
 
 hexDemo : unsafe Unit .
 hexDemo =

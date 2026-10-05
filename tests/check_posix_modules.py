@@ -23,11 +23,12 @@ with tempfile.TemporaryDirectory(prefix='fpr-host-modules-') as directory:
         run([FPR,'build',src,'--module','-o',mods[name]])
     # Real loader failures before publication, with controlled shared objects.
     rev = re.search(r'codegenRev = (\d+)', (ROOT/'compiler/Codegen.hs').read_text()).group(1)
+    nabi = re.search(r'#define FPR_NATIVE_ABI (\d+)u', (ROOT/'runtime/fpr.h').read_text()).group(1)
     badlibs = {}
     for name, body in {
         'metadata':'int unrelated = 1;',
         'abi':f'const unsigned long fpr_posix_module_nativeabi=0, fpr_posix_module_codegen={rev}, fpr_modtab[]={{0}};',
-        'schema':f'const unsigned long fpr_posix_module_nativeabi=3, fpr_posix_module_codegen={rev}, fpr_modtab[]={{123,1,0}};'
+        'schema':f'const unsigned long fpr_posix_module_nativeabi={nabi}, fpr_posix_module_codegen={rev}, fpr_modtab[]={{123,1,0}};'
     }.items():
         src=d/(name+'.c');src.write_text(body);badlibs[name]=d/(name+ext)
         run(['cc', '-dynamiclib' if ext=='.dylib' else '-shared', '-fPIC',src,'-o',badlibs[name]])

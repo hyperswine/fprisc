@@ -1025,66 +1025,79 @@ __attribute__((weak)) void hal_irq_open(uw src) { (void)src; }
 __attribute__((weak)) sw hal_irq_claim(void) { return 0; }
 __attribute__((weak)) void hal_irq_ack(uw src) { (void)src; }
 
-/* the PLIC's own ceiling (sources 1..1023): a bound the DEVICE has, so the
- * table is simply that big (8 KiB).  It was 64, which was nobody's limit. */
-#define IRQ_MAX 1024
-static acb_t *irq_act[IRQ_MAX];
-static unsigned irq_inflight[IRQ_MAX];
-static volatile int irq_bound; /* gate: keep the hot loop MMIO-free */
+/* Which actor a source belongs to is FP-RISC: the router in
+ * core/prelude.fpr keeps the table (any number of sources, no capacity
+ * here) and implements Sys.irqBind / Sys.irqUnbind.  C keeps the
+ * mechanism: claim on the irq hart, post the source to the ONE installed
+ * router, and the primitives the router and binders need.  A delivery
+ * still reaches the bound actor on irq_src_key's channel, so a binder
+ * waiting for the router's reply never takes an interrupt for it. */
+static acb_t *irq_router;      /* installed once (Sys.irqInstall); never replaced */
+static volatile int irq_bound; /* gate: keep the hot loop MMIO-free until a router exists */
 static uw irq_src_key;         /* the deliveries' stable channel key */
 
-static V a_irq_bind(V irqv, V av) {
-  if (!ISINT(irqv)) fpr_cpanic("Sys.irqBind: irq must be an Int");
-  if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("Sys.irqBind: target is not an actor");
-  uw n = (uw)UNTAG(irqv);
-  if (n == 0 || n >= IRQ_MAX) fpr_cpanic("Sys.irqBind: irq out of range");
-  __atomic_store_n(&irq_act[n], (acb_t *)av, __ATOMIC_SEQ_CST);
-  ((acb_t *)av)->irq_target = 1;
-  __atomic_store_n(&irq_bound, 1, __ATOMIC_RELEASE);
-  hal_irq_open(n);
-  return (V)&fpr_unit;
+static acb_t *want_actor(V av, const char *who) {
+  if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic(who);
+  return (acb_t *)av;
 }
-/* Self-unbind: only the running recipient may change its IRQ wait flag.
- * False means an IRQ hart is finishing delivery; yield and retry. ACBs are
- * immortal, but completion also lets a caller retire the recipient cleanly. */
-static V a_irq_unbind(V irqv) {
-  if (!ISINT(irqv)) fpr_cpanic("Sys.irqUnbind: irq must be an Int");
-  uw n = (uw)UNTAG(irqv);
-  if (!n || n >= IRQ_MAX) fpr_cpanic("Sys.irqUnbind: irq out of range");
-  acb_t *me = fpr_hart()->current;
-  acb_t *expected = me;
-  if (!__atomic_compare_exchange_n(&irq_act[n], &expected, 0, 0,
-                                  __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST) && expected)
-    fpr_cpanic("Sys.irqUnbind: not the bound actor");
-  if (__atomic_load_n(&irq_inflight[n], __ATOMIC_SEQ_CST)) return (V)&fpr_false;
-  int bound = 0;
-  for (uw i = 1; i < IRQ_MAX; i++)
-    if (__atomic_load_n(&irq_act[i], __ATOMIC_SEQ_CST) == me) { bound = 1; break; }
-  me->irq_target = bound;
+/* Sys.irqInstall a -> Bool: make a THE router; False if one already is */
+static V a_irq_install(V av) {
+  acb_t *a = want_actor(av, "Sys.irqInstall: not an actor");
+  acb_t *none = 0;
+  if (!__atomic_compare_exchange_n(&irq_router, &none, a, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+    return (V)&fpr_false;
+  __atomic_store_n(&irq_bound, 1, __ATOMIC_RELEASE);
   return (V)&fpr_true;
 }
-FPR_FN(fpr_g_Sys_x2eirqUnbind, a_irq_unbind, 1);
-
+/* Sys.irqRouter () -> the router, or 0 before one is installed */
+static V a_irq_router(V u) {
+  (void)u;
+  acb_t *r = __atomic_load_n(&irq_router, __ATOMIC_ACQUIRE);
+  return r ? (V)r : TAG(0);
+}
+/* Sys.irqOpen src: let the device raise it (the router, at bind) */
+static V a_irq_open(V srcv) {
+  if (!ISINT(srcv) || UNTAG(srcv) < 1) fpr_cpanic("Sys.irqOpen: a source is an Int >= 1");
+  hal_irq_open((uw)UNTAG(srcv));
+  return (V)&fpr_unit;
+}
+/* Sys.irqDeliver a src -> Result Unit String: the router hands a claimed
+ * source to its actor on the deliveries' channel; a full mailbox refuses
+ * (the router retries), a dead actor is "dead actor", as `send` says */
+static V a_irq_deliver(V av, V srcv) {
+  want_actor(av, "Sys.irqDeliver: not an actor");
+  return fpr_send_as((uw)&irq_src_key, av, srcv);
+}
+/* Sys.irqTarget n: mark (n != 0) or unmark the CALLER as waiting on a
+ * device, which the deadlock detector counts as a way to be woken.  Only
+ * the running actor changes its own flag: the blocking path counts it
+ * around a block. */
+static V a_irq_target(V n) {
+  if (!ISINT(n)) fpr_cpanic("Sys.irqTarget: not an Int");
+  fpr_hart()->current->irq_target = UNTAG(n) != 0;
+  return (V)&fpr_unit;
+}
 static V a_irq_ack(V irqv) {
   if (!ISINT(irqv)) fpr_cpanic("Sys.irqAck: irq must be an Int");
   hal_irq_ack((uw)UNTAG(irqv));
   return (V)&fpr_unit;
 }
-FPR_FN(fpr_g_Sys_x2eirqBind, a_irq_bind, 2);
+FPR_FN(fpr_g_Sys_x2eirqInstall, a_irq_install, 1);
+FPR_FN(fpr_g_Sys_x2eirqRouter, a_irq_router, 1);
+FPR_FN(fpr_g_Sys_x2eirqOpen, a_irq_open, 1);
+FPR_FN(fpr_g_Sys_x2eirqDeliver, a_irq_deliver, 2);
+FPR_FN(fpr_g_Sys_x2eirqTarget, a_irq_target, 1);
 FPR_FN(fpr_g_Sys_x2eirqAck, a_irq_ack, 1);
 
 static void irq_drain(fpr_hart_t *h) {
   if (h->id != fpr_irq_hart || !__atomic_load_n(&irq_bound, __ATOMIC_ACQUIRE)) return;
+  acb_t *r = __atomic_load_n(&irq_router, __ATOMIC_ACQUIRE);
   for (;;) {
     sw s = hal_irq_claim(); /* claims AND masks: no same-source spin */
     if (!s) return;
-    if ((uw)s < IRQ_MAX) {
-      __atomic_fetch_add(&irq_inflight[s], 1, __ATOMIC_SEQ_CST);
-      acb_t *a = __atomic_load_n(&irq_act[s], __ATOMIC_SEQ_CST);
-      if (a) fpr_send_as((uw)&irq_src_key, (V)a, TAG(s));
-      __atomic_fetch_sub(&irq_inflight[s], 1, __ATOMIC_SEQ_CST);
-    }
-    /* unbound sources stay masked: nobody would ever ack them */
+    /* a plain Int: copy-free and allocation-free from scheduler context.
+     * A source nobody bound is dropped by the router and stays masked. */
+    fpr_send_as((uw)&irq_src_key, (V)r, TAG(s));
   }
 }
 
@@ -2643,12 +2656,22 @@ static V a_yield(V me) {
 static V a_kill(V av) {
   if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("kill: target is not an actor");
   acb_t *a = (acb_t *)av;
-  __atomic_store_n(&a->var, ST_DEAD, __ATOMIC_SEQ_CST);
+  uint32_t st = __atomic_load_n(&a->var, __ATOMIC_ACQUIRE);
+  while (st != ST_DEAD &&
+         !__atomic_compare_exchange_n(&a->var, &st, ST_DEAD, 0, __ATOMIC_SEQ_CST, __ATOMIC_ACQUIRE)) {}
+  if (st == ST_DEAD) return (V)&fpr_unit; /* already ended: its watchers were woken then */
   wake_watchers(a);
   if (a == fpr_hart()->current) {
     to_sched(); /* never resumed: deq skips DEAD */
     fpr_cpanic("actors: dead actor resumed");
   }
+  /* A READY actor is on a queue and a RUNNING one returns to its hart loop:
+   * both are reaped there.  A BLOCKED one is on no queue, and nothing would
+   * ever reap it -- its stack, pool and channel block leaked.  Hand it to
+   * its owner hart, as a wake does: only that hart dequeues it, so it has
+   * switched out before deq or the backlog scan reaps it (reap is idempotent,
+   * and a sleeper's list entry is unlinked by slp_drain). */
+  if (st == ST_BLOCKED) ship(a);
   return (V)&fpr_unit;
 }
 
