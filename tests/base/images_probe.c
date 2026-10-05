@@ -27,6 +27,19 @@ static V probe_make(V u) {
 }
 static V probe_str(V u) { (void)u; return (V)(g_blk + 64); }
 static V probe_fn(V u) { (void)u; return (V)(g_blk + 256); }
+/* Force dirty packed-slab memory under the padding of a copied nullary
+ * constructor. Generic walkers must see a zero field, never old bytes. */
+static V probe_padding(V u) {
+  (void)u;
+  hdr_t *h = (hdr_t *)(g_blk + 512);
+  h->tid = 0x12345678; h->var = 0;
+  V first = fpr_msg_copy_to((V)h, 0);
+  fpr_slab_t *sl = *(fpr_slab_t **)((char *)first - sizeof(uw));
+  if (sl->end - sl->hp < 32) fpr_cpanic("probe: packed slab unexpectedly full");
+  for (int i = 0; i < 32; i++) sl->hp[i] = (char)0xAA;
+  V second = fpr_msg_copy_to((V)h, 0);
+  return TAG(*(uw *)((char *)second + 8) == 0);
+}
 /* the process ended: unregister, poison what was there, free the block */
 static V probe_end(V u) {
   (void)u;
@@ -39,3 +52,4 @@ FPR_FN(fpr_g_Probe_x2emakeImage, probe_make, 1);
 FPR_FN(fpr_g_Probe_x2estr, probe_str, 1);
 FPR_FN(fpr_g_Probe_x2efn, probe_fn, 1);
 FPR_FN(fpr_g_Probe_x2eendImage, probe_end, 1);
+FPR_FN(fpr_g_Probe_x2epadding, probe_padding, 1);

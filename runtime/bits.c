@@ -1,75 +1,53 @@
-/* bits.c — the Array Bit tier: constructors and bit ops.
+/* bits.c — bitwise primitives on Int.
  *
- * Pure value manipulation with NO machine dependence -- it only lived
- * in the virt HAL because that is where it was born.  Moved to core
- * when the posix HAL needed BITTEST for programs that poll device
- * status registers (the ops work on plain Ints too).
+ * Mechanism only: each is one or two machine instructions.  Codegen inlines
+ * band/bor/bxor and the shifts behind a range guard (Codegen.hs shiftOk);
+ * these C bodies are what a closure, a generic call and the guard's slow
+ * path reach, so the range check that makes the inline code safe is here
+ * too: an index or shift outside 0..63 is a named panic, never C's
+ * undefined behaviour.  The Array Bit tier (bitsLE/bitsBE/bitlen/toInt)
+ * had no users and is gone.
  */
 #include "fpr.h"
 
-static V mkbits(uint32_t endian, uw len, uw val) {
-  if (len == 0 || len > 64) fpr_cpanic("bits: length must be 1..64");
-  bits_t *b = (bits_t *)fpr_alloc(sizeof(bits_t));
-  b->tid = T_BITS;
-  b->var = endian;
-  b->len = len;
-  b->val = (len >= (sw)(sizeof(uw) * 8)) ? val : (val & (((uw)1 << len) - 1));
-  return (V)b;
-}
-static V h_bitsLE(V l, V v) { return mkbits(0, (uw)UNTAG(l), (uw)UNTAG(v)); }
-static V h_bitsBE(V l, V v) { return mkbits(1, (uw)UNTAG(l), (uw)UNTAG(v)); }
-static V h_toInt(V b) {
-  if (ISINT(b)) return b;
-  if (TID(b) != T_BITS) fpr_cpanic("toInt: not Array Bit");
-  return TAG(((bits_t *)b)->val);
-}
-static V h_bitlen(V b) {
-  if (ISINT(b) || TID(b) != T_BITS) fpr_cpanic("bitlen: not Array Bit");
-  return TAG(((bits_t *)b)->len);
-}
-
-static uw bitpos(bits_t *b, sw i) {
-  if (i < 0 || (uw)i >= b->len) fpr_cpanic("bit index out of range");
-  return b->var ? (b->len - 1 - (uw)i) : (uw)i;
+static uw bit_index(V i, const char *who) {
+  sw k = UNTAG(i);
+  if (k < 0 || k > 63) fpr_cpanic(who);
+  return (uw)k;
 }
 
 static V h_bittest(V b, V i) {
-  sw k = UNTAG(i);
-  if (ISINT(b)) return BOOL((UNTAG(b) >> k) & 1);
-  if (TID(b) != T_BITS) fpr_cpanic("BITTEST: not Int/Array Bit");
-  bits_t *t = (bits_t *)b;
-  return BOOL((t->val >> bitpos(t, k)) & 1);
+  uw k = bit_index(i, "BITTEST: bit index must be 0..63");
+  if (!ISINT(b)) fpr_cpanic("BITTEST: not an Int");
+  return BOOL(((uw)UNTAG(b) >> k) & 1);
 }
 static V h_bitset(V b, V i) {
-  sw k = UNTAG(i);
-  if (ISINT(b)) return TAG(UNTAG(b) | (1L << k));
-  if (TID(b) != T_BITS) fpr_cpanic("BITSET: not Int/Array Bit");
-  bits_t *t = (bits_t *)b;
-  return mkbits(t->var, t->len, t->val | ((uw)1 << bitpos(t, k)));
+  uw k = bit_index(i, "BITSET: bit index must be 0..63");
+  if (!ISINT(b)) fpr_cpanic("BITSET: not an Int");
+  return TAG((sw)((uw)UNTAG(b) | ((uw)1 << k)));
 }
 static V h_bitclear(V b, V i) {
-  sw k = UNTAG(i);
-  if (ISINT(b)) return TAG(UNTAG(b) & ~(1L << k));
-  if (TID(b) != T_BITS) fpr_cpanic("BITCLEAR: not Int/Array Bit");
-  bits_t *t = (bits_t *)b;
-  return mkbits(t->var, t->len, t->val & ~((uw)1 << bitpos(t, k)));
+  uw k = bit_index(i, "BITCLEAR: bit index must be 0..63");
+  if (!ISINT(b)) fpr_cpanic("BITCLEAR: not an Int");
+  return TAG((sw)((uw)UNTAG(b) & ~((uw)1 << k)));
 }
 static V h_bitmask(V w, V o) {
   sw width = UNTAG(w), off = UNTAG(o);
-  if (width < 0 || width > (sw)(sizeof(uw) * 8 - 1) || off < 0) fpr_cpanic("BITMASK: bad width/offset");
-  return TAG(((width == (sw)(sizeof(uw) * 8 - 1) ? ~(uw)0 >> 1 : ((uw)1 << width) - 1)) << off);
+  if (width < 0 || width > (sw)(sizeof(uw) * 8 - 1) || off < 0 || off > 63) fpr_cpanic("BITMASK: bad width/offset");
+  return TAG((sw)(((width == (sw)(sizeof(uw) * 8 - 1) ? ~(uw)0 >> 1 : ((uw)1 << width) - 1)) << off));
 }
-static V h_shiftl(V v, V k) { return TAG(UNTAG(v) << UNTAG(k)); }
-static V h_shiftr(V v, V k) { return TAG((uw)UNTAG(v) >> UNTAG(k)); }
+static V h_shiftl(V v, V k) {
+  uw n = bit_index(k, "BITSHIFTL: shift must be 0..63");
+  return TAG((sw)((uw)UNTAG(v) << n));
+}
+static V h_shiftr(V v, V k) {
+  uw n = bit_index(k, "BITSHIFTR: shift must be 0..63");
+  return TAG((sw)((uw)UNTAG(v) >> n));
+}
 static V h_band(V a, V b) { return TAG(UNTAG(a) & UNTAG(b)); }
 static V h_bor(V a, V b) { return TAG(UNTAG(a) | UNTAG(b)); }
 static V h_bxor(V a, V b) { return TAG(UNTAG(a) ^ UNTAG(b)); }
 
-
-FPR_FN(fpr_g_bitsLE, h_bitsLE, 2);
-FPR_FN(fpr_g_bitsBE, h_bitsBE, 2);
-FPR_FN(fpr_g_toInt, h_toInt, 1);
-FPR_FN(fpr_g_bitlen, h_bitlen, 1);
 FPR_FN(fpr_g_BITTEST, h_bittest, 2);
 FPR_FN(fpr_g_BITSET, h_bitset, 2);
 FPR_FN(fpr_g_BITCLEAR, h_bitclear, 2);

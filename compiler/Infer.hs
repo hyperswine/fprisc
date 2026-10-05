@@ -536,7 +536,6 @@ builtinEnv =
       ("String.len", mono (TFn tStr tInt)),
       ("charAt", mono (TFn tStr (TFn tInt tInt))), -- returns the char CODE
       ("chr", mono (TFn tInt tStr)),
-      ("parseInt", mono (TFn tStr tInt)),
       ("fileRead", mono (TFn tStr tStr)),
       -- the Base environment (machine/posix/base.c; docs/2026-09-18-BASE.md)
       ("fileWrite", mono (TFn tStr (TFn tStr (tcon "Result" [tUnit, tStr])))),
@@ -657,11 +656,6 @@ builtinEnv =
       ("BITMASK", mono (TFn tInt (TFn tInt tInt))),
       ("BITSHIFTL", mono (TFn tInt (TFn tInt tInt))),
       ("BITSHIFTR", mono (TFn tInt (TFn tInt tInt))),
-      ("bitlen", scheme [0] (TFn (sv 0) tInt)),
-      -- Bits value: length+endian-tagged word (net/blk framing)
-      ("bitsLE", scheme [0] (TFn tInt (TFn tInt (sv 0)))),
-      ("bitsBE", scheme [0] (TFn tInt (TFn tInt (sv 0)))),
-      ("toInt", scheme [0] (TFn (sv 0) tInt)),
       -- device / register access: device : String -> Device (opaque)
       ("device", scheme [0] (TFn tStr (sv 0))),
       ("reg8", scheme [0, 1] (TFn (sv 0) (TFn tInt (sv 1)))),
@@ -675,8 +669,13 @@ builtinEnv =
       -- device interrupts -> actor messages (actors.c irq bridge):
       -- bind a PLIC source to an actor (deliveries arrive as plain
       -- Int messages); ack re-arms the claimed-and-masked source
-      ("Sys.irqUnbind", mono (TFn tInt tBool)),
-      ("Sys.irqBind", mono (TFn tInt (TFn tInt tUnit))),
+      -- interrupt routing: the table and Sys.irqBind/irqUnbind are FP-RISC
+      -- (core/prelude.fpr); these are the mechanism under them (actors.c)
+      ("Sys.irqInstall", mono (TFn tInt tBool)),
+      ("Sys.irqRouter", mono (TFn tUnit tInt)),
+      ("Sys.irqOpen", mono (TFn tInt tUnit)),
+      ("Sys.irqDeliver", mono (TFn tInt (TFn tInt (tcon "Result" [tUnit, tStr])))),
+      ("Sys.irqTarget", mono (TFn tInt tUnit)),
       ("Sys.irqAck", mono (TFn tInt tUnit)),
       -- the CLINT timer bridge (actors.c tmr_drain): bind Timer.qa's
       -- actor (answers 1 = hardware timer present, 0 = host fallback);
@@ -695,19 +694,22 @@ builtinEnv =
       ("substr", mono (TFn tStr (TFn tInt (TFn tInt tStr)))),
       -- Sol's names and contracts (Sol/Infer.hs): byte strings, 0-based, -1 = not found
       ("strJoin", mono (TFn tStr (TFn (TAp (TC "List") tStr) tStr))),
-      ("strCmp", mono (TFn tStr (TFn tStr tInt))),
-      ("strIndexOf", mono (TFn tStr (TFn tStr tInt))),
-      ("strIndexFrom", mono (TFn tStr (TFn tStr (TFn tInt tInt)))),
       -- block device + net (bytes/words; loosely typed payloads)
       -- GPU tier (runtime/posix/gfx.c: scene-driven render function)
-      -- Mod runtime resolution (remote calling)
-      ("Mod.resolve", scheme [0] (TFn tStr (TFn tStr (sv 0)))),
+      -- Mod runtime resolution (remote calling).  runtime/mod.c is the
+      -- registry and a row reader (table -1 = the image's own); the lookup
+      -- and compatibility policy (Mod.find, findAt, resolve, has, compatAt)
+      -- is core/prelude.fpr
       ("Mod.fn", scheme [0] (TFn tStr (TFn tStr (sv 0)))),
-      ("Mod.find", scheme [0] (TFn tStr (sv 0))),
+      ("Mod.rows", mono (TFn tInt tInt)),
+      ("Mod.rowHash", mono (TFn tInt (TFn tInt tStr))),
+      ("Mod.rowName", mono (TFn tInt (TFn tInt tStr))),
+      ("Mod.rowIface", mono (TFn tInt (TFn tInt tStr))),
+      ("Mod.rowFn", scheme [0] (TFn tInt (TFn tInt (sv 0)))),
+      ("Mod.rowArity", mono (TFn tInt (TFn tInt tInt))),
       ("Mod.plugs", scheme [0] (TFn tInt tInt)),
       ("Sys.mtime", mono (TFn tUnit tInt)),
       ("Mod.hashAt", mono (TFn tInt tStr)),
-      ("Mod.findAt", scheme [0] (TFn tInt (TFn tStr (sv 0)))),
       ("Sys.actLive", scheme [0] (TFn tInt tInt)),
       ("Sys.nextId", mono (TFn tUnit tInt)),
       ("Sys.actInfo", scheme [0] (TFn tInt (sv 0))),
@@ -723,9 +725,6 @@ builtinEnv =
       ("log", scheme [0] (TFn tStr tUnit)),
       ("logWarn", scheme [0] (TFn tStr tUnit)),
       ("logErr", scheme [0] (TFn tStr tUnit)),
-      ("Mod.has", mono (TFn tStr tBool)),
-      -- live-reload gate: checked root type/contract/ABI interfaces
-      ("Mod.compatAt", scheme [0] (TFn tInt (TFn tInt (sv 0)))),
       ("Mod.detachLast", mono (TFn tUnit tUnit)),
       ("Sys.harts", mono (TFn tUnit tInt))
     ]
