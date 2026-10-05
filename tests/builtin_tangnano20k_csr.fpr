@@ -1,0 +1,27 @@
+profile builtin.
+check ok = case ok of True -> Unit | False -> error "Tang Nano CSR check failed".
+main =
+  _ = check (CPU.csrRead 769 == Word.or (Word.shl (Word.fromInt 1) 30) (Word.fromInt 4352));
+  _ = check (CPU.csrRead 3860 == Word.fromInt 0);
+  _ = CPU.csrWrite 832 (Word.fromInt 305419896);
+  _ = check (CPU.csrRead 832 == Word.fromInt 305419896);
+  _ = CPU.csrWrite 832 (Word.fromInt -1);
+  _ = check (CPU.csrRead 832 == Word.fromInt -1);
+  _ = CPU.csrWrite 768 (Word.fromInt 136);
+  _ = check (CPU.csrRead 768 == Word.fromInt 6280);
+  _ = CPU.csrWrite 772 (Word.fromInt -1);
+  _ = check (CPU.csrRead 772 == Word.fromInt 2184);
+  _ = CPU.csrWrite 784 (Word.fromInt -1);
+  _ = check (CPU.csrRead 784 == Word.fromInt 0);
+  _ = CPU.csrWrite 836 (Word.fromInt -1);
+  _ = check (CPU.csrRead 836 == Word.fromInt 0);
+  _ = CPU.csrWrite 833 (Word.fromInt 291);
+  _ = check (CPU.csrRead 833 == Word.fromInt 288);
+  _ = CPU.csrWrite 834 (Word.fromInt 7);
+  _ = check (CPU.csrRead 834 == Word.fromInt 7);
+  _ = CPU.csrWrite 835 (Word.fromInt 57005);
+  _ = check (CPU.csrRead 835 == Word.fromInt 57005);
+  _ = CPU.csrWrite 773 (Word.fromInt 259);
+  _ = check (CPU.csrRead 773 == Word.fromInt 256);
+  # Leave mtvec installed: hal_poweroff must restore host termination.
+  print "TANG NANO CSR HOLDS".

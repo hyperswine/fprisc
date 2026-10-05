@@ -95,7 +95,9 @@ and 99999, and ended with `FPR EXIT 0`.
 
 - Code loads at address zero. Unified RAM is exactly `[0, 65536)`. Startup sets
   `gp` and `sp`, clears BSS, initializes the hart spill/render context and the
-  heap, then calls the generated `main`. No CSRs, FPU setup or trap vectors.
+  heap, then calls the generated `main`. No FPU setup. The current processor
+  supports Zicsr and direct machine traps; startup/exit clear `mtvec` for the
+  legacy host `DONE` protocol.
 - The upper 8 KiB is reserved for the downward-growing stack. The linker refuses
   an image leaving less than 4 KiB between BSS and the stack reservation for the
   heap. There is no runtime stack-overflow guard; call depth is the program's
@@ -113,11 +115,16 @@ and 99999, and ended with `FPR EXIT 0`.
   portability milestone.
 - TXDATA is `0x10000000`, STATUS is `0x10000004` (TX-ready bit 0); these are
   SimpleRisc registers, not QEMU's 16550 register layout. Console output preserves
-  LF. ECALL halts this core and returns control to its UART programming protocol.
+  LF. Exit clears `mtvec`, then ECALL halts this core and returns control to
+  its UART programming protocol.
 - Byte, halfword and word accesses are volatile, with alignment checked in the
   common builtin adapter. `Mem.fence` emits the supported fence instruction.
   Instruction fencing uses SimpleRisc's coherent instruction/data RAM behavior.
-  CSR, IRQ, wait and atomic operations panic explicitly. Internal runtime locks
+  `CPU.csrRead`/`CPU.csrWrite` dispatch to real instructions for the implemented
+  status, trap, scratch and identification CSRs. Unknown CSR numbers panic;
+  writes to read-only CSRs raise a hardware illegal-instruction exception.
+  Counter CSRs remain pending. IRQ, wait and atomic operations still panic
+  explicitly. Internal runtime locks
   use a board-only single-core path: there are no interrupts or other harts,
   so a held lock indicates forbidden re-entry. This does not emulate user atomics.
 - Unsupported services still fail at link time. No actor scheduler, QOS service
@@ -169,3 +176,26 @@ registering the barrel shifter. 117 MHz produced incorrect sieve results and
 original coverage; the expanded ALU test subsequently exposed shift errors
 in that older image. See [the clock retest](2026-10-05-TANG-NANO-CLOCK-SWEEP.md)
 for current evidence and commands. Match `--freq-mhz` to the loaded bitstream.
+
+## Machine-mode continuation
+
+The processor and this runtime now build with `rv32im_zicsr_zifencei`.
+`tests/builtin_tangnano20k_csr.fpr` exercises the software-visible CSR adapter;
+`tests/check_tangnano20k_csr.py --port /dev/cu.usbserial-20250303171
+--freq-mhz 96` builds it and requires three exact success runs on the board.
+The full Tang Nano harness includes the same fixture and retains the unknown
+CSR refusal test. Trap-handler execution and `mret` are tested by
+HaskPlayground's `boards/tangnano20k/c/traps.c` and `check_traps.py`.
+At 96 MHz, the full harness passes the host/link/ISA/loader checks, three
+builtin smoke runs, three CSR runs, all seven refusal cases and recovery.
+The final CSR fixture leaves `mtvec` nonzero to test runtime exit cleanup;
+the focused CSR harness passes all three physical runs with that fixture.
+Matching HaskPlayground image SHA-256:
+`a2e89522be688958329a7f96be16d72840813ad5dd1820c2bcc5cac70a17f81c`.
+The C trap-handler test in HaskPlayground passes 89 assertions on each of
+three board runs. Step 1's split cycle/retirement counters remain pending.
+
+These results used the current fprisc compiler/runtime, including the I64
+work committed separately as `8c5bd0a`. The CSR target changes do not modify
+the compiler/runtime. The target harness accepts the updated F64 refusal
+diagnostic wording while still checking the 64-bit ABI restriction.

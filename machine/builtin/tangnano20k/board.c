@@ -10,10 +10,10 @@ void hal_putc(char c) {
 }
 static void puts_raw(const char *s) { while (*s) hal_putc(*s++); }
 void hal_poweroff(int code) {
-  /* ECALL is SimpleRisc's halt instruction. Its loader then emits DONE.
+  /* With mtvec zero, ECALL halts SimpleRisc and the loader emits DONE.
    * Print status first: DONE alone also follows an illegal instruction. */
   puts_raw(code ? "FPR EXIT 1\n" : "FPR EXIT 0\n");
-  __asm__ volatile("ecall" ::: "memory");
+  __asm__ volatile("csrw mtvec, zero\n ecall" ::: "memory");
   for (;;) {}
 }
 void fpr_cpanic(const char *s) {

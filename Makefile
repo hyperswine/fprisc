@@ -223,7 +223,7 @@ BUILTIN_LINK = $(MACHINE)/builtin/tangnano20k/link.ld
 BUILTIN_RT = $(MACHINE)/builtin/tangnano20k/crt0.S $(MACHINE)/builtin/tangnano20k/board.c \
              $(MACHINE)/builtin/tangnano20k/machine.c $(MACHINE)/builtin/heap.c \
              $(MACHINE)/builtin/unsafe.c $(RUNTIME)/runtime.c $(MACHINE)/virt/memshim.c
-BUILTIN_ARCHFLAGS = -march=rv32im_zifencei -mabi=ilp32 -mcmodel=medany \
+BUILTIN_ARCHFLAGS = -march=rv32im_zicsr_zifencei -mabi=ilp32 -mcmodel=medany \
                    -ffreestanding -nostdlib -nostartfiles -Os -Wall -Wextra \
                    -fno-builtin -fno-stack-protector -DFPR_SIMPLE_RISC
 BUILTIN_COMPILER_FLAGS = --target=rv32

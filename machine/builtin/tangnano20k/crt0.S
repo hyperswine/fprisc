@@ -1,4 +1,4 @@
-/* SimpleRisc RV32IM: one core, no CSR/FPU/interrupt instructions. */
+/* SimpleRisc RV32IM + Zicsr: one core, no FPU or interrupt sources yet. */
     .section .text.entry,"ax",@progbits
     .globl _start
 _start:
@@ -14,5 +14,6 @@ _start:
     addi t0, t0, 4
     j 1b
 2:  call fpr_builtin_main
+    csrw mtvec, zero /* restore host DONE compatibility */
     ecall
 3:  j 3b

@@ -69,7 +69,8 @@ def main():
         assert not re.search(r'\b(?:fpr_\w*(?:actor|sched|fuel)\w*|buddy_\w*|qos_\w*)\b', symbols)
         assert not command(['riscv64-unknown-elf-nm', '-u', image]).strip()
         disassembly = command(['riscv64-unknown-elf-objdump', '-d', image])
-        assert not re.search(r'\t(?:csr\w*|wfi|amo\w*|lr\.w|sc\.w|fadd\S*|fld|fsd)\s', disassembly)
+        assert not re.search(r'\t(?:wfi|amo\w*|lr\.w|sc\.w|fadd\S*|fld|fsd)\s', disassembly)
+        assert re.search(r'\tcsrw\s+mtvec,', disassembly), 'startup must restore DONE compatibility'
         assert 0 < binary.stat().st_size <= 65536
         assert 'call fpr_fuel_exhausted' not in (tmp / 'builtin.s').read_text()
         rejected = command(['./fprc', '--system=bare-metal', '--profile=builtin',
@@ -78,18 +79,24 @@ def main():
         floating = tmp / 'float.fpr'
         floating.write_text('profile builtin.\nmain = F64.toInt 1.5.\n')
         rejected = command(['./fprc', '--system=bare-metal', '--target=rv32', floating, tmp / 'bad.s'], 1)
-        assert 'F64 requires a 64-bit value ABI' in rejected, rejected
+        assert 'F64' in rejected and '64-bit value ABI' in rejected, rejected
         dependency = tmp / 'float_dep.fpr'
         dependency.write_text('asInt x = F64.toInt x.\n')
         floating.write_text('profile builtin.\nFloatDep = use "./float_dep".\nmain = Unit.\n')
         rejected = command(['./fprc', '--system=bare-metal', '--target=rv32', floating, tmp / 'bad.s'], 1)
-        assert 'F64 requires a 64-bit value ABI' in rejected, rejected
+        assert 'F64' in rejected and '64-bit value ABI' in rejected, rejected
         command(['make', '-n', 'bare-metal-builtin', 'BUILTIN_BOARD=tangnano20k', 'ARC=1'], 2)
         oversized = tmp / 'oversized.c'
         oversized.write_text('__attribute__((used,section(".text.entry"))) const char excess[65536] = {1};\n')
         command(['make', 'bare-metal-builtin', 'BUILTIN_BOARD=tangnano20k',
                  f'PROG={source}', f'BUILD={tmp}', f'IMAGE={image}', f'BUILTIN_EXTRA={oversized}'], 2)
-        print('RV32 link, ISA, memory bounds and ARC refusals: PASS')
+        csr_source = ROOT / 'tests/builtin_tangnano20k_csr.fpr'
+        build(csr_source)
+        csr_disassembly = command(['riscv64-unknown-elf-objdump', '-d', image])
+        assert re.search(r'\tcsrr\s+', csr_disassembly), 'CSR runtime reads missing'
+        assert re.search(r'\tcsrw\s+', csr_disassembly), 'CSR runtime writes missing'
+        assert not command(['riscv64-unknown-elf-nm', '-u', image]).strip()
+        print('RV32 link, ISA, CSR code generation, memory bounds and ARC refusals: PASS')
         # Tiny binary for the fake loader; production image rebuilt below.
         probe = tmp / 'probe.bin'
         probe.write_bytes(b'\x73\0\0\0')
@@ -109,12 +116,16 @@ def main():
         for _ in range(3):
             assert 'TANG NANO BUILTIN HOLDS\nFPR EXIT 0\nDONE' in board(0)
         print('Physical board: three RV32 builtin smoke runs: PASS')
+        build(csr_source)
+        for _ in range(3):
+            assert 'TANG NANO CSR HOLDS\nFPR EXIT 0\nDONE' in board(0)
+        print('Physical board: three FP-RISC CSR runs: PASS')
         cases = [
             ('shift', 'Word.shl (Word.fromInt 1) 32', 'shift out of range'),
             ('mask', 'Word.mask 32 1', 'mask out of range'),
             ('unaligned', 'Mem.readWord (Addr.fromWord (Word.fromInt 3))', 'unaligned access'),
             ('exhaustion', 'Mem.alloc 60000', 'out of memory'),
-            ('csr', 'CPU.csrRead 0', 'operations are unsupported'),
+            ('csr', 'CPU.csrRead 0', 'unknown CSR'),
             ('irq', 'CPU.irqSave Unit', 'operations are unsupported'),
             ('atomic', 'Mem.atomicExchange (Mem.alloc 16) (Word.fromInt 1)', 'operations are unsupported'),
         ]
