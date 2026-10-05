@@ -249,3 +249,26 @@ checks, block-service and disk-hardening/reset-cancellation suites, and the
 24-boot Qlog/loaded-process routing matrix pass. This completes the next block
 ownership policy slice; physical effects/polling stay in C. Block namespace,
 cancel/drain, TCP/ARP and the other Phase 2/3 items remain open.
+
+The next 2026-10-05 checkpoint adds QOS's block namespace and direct lifecycle
+protocol. `blockio` v2 uses a responsive admission actor, one I/O worker and a
+completion relay, with at most 64 admitted queued requests. Queued cancellation
+prevents I/O; active cancellation reports an unknown outcome and retains HAL
+cleanup/DMA ownership. Creator-only drain closes admission and settles accepted
+protocol work. It is neither a durability flush nor a physical DMA-quiescence
+promise after cancellation; resume/reprobe is not added.
+
+Native and Portable roots register `/services/block` over their existing owner.
+Capacity, admission status, native budgets and page-byte operations use explicit
+namespace grants and client/mode-bound handles. No default application gets raw
+page grants. Lifecycle controls stay on the direct creator protocol; endpoint
+close is not a page-request cancel. Qlog v4/native block v2/Files v1.1 pins follow
+the new blockio constructor identity. No C device primitive is added.
+
+Eight matching one/two-hart virtio v1/v2 boots and four Portable runs cover
+queue bounds, responsiveness, cancellation replies, drain, forged completion,
+binary pages, malformed paths and permission/handle enforcement. Existing
+budget/recovery, disk hardening, 24-boot Qlog/loaded-process routing, Portable
+plugin and shared Files persistence/refusal checks pass. Global singleton and
+Files quiesce/stop coordination, physical resume/reprobe, TCP/ARP and the other
+Phase 2/3 work remain open; the QOS implementation record details the boundary.
