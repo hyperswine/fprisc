@@ -105,3 +105,12 @@ The verified FPGA image is
 `2563be842bfbabcaf77c6a0e784feff27fc3077d2a28d2b01a4f423ecf51211e`.
 See [the builtin port](2026-10-05-TANG-NANO-BUILTIN.md) for startup, ABI and
 unsupported services.
+
+## Later clock sweep
+
+The processor now passes the expanded CPU and workload tests at 114 MHz after
+registering the barrel shifter. 117 MHz produced incorrect sieve results and
+120 MHz failed an ALU check. The earlier 96 MHz results above describe their
+original coverage; the expanded ALU test subsequently exposed shift errors
+in that older image. See [the clock retest](2026-10-05-TANG-NANO-CLOCK-SWEEP.md)
+for current evidence and commands. Match `--freq-mhz` to the loaded bitstream.

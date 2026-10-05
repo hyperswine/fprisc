@@ -160,3 +160,12 @@ for facilities absent from SimpleRisc.
 Larger memory and compute workloads, measured execution times, and the 98.72%
 heap / explicit-exhaustion checks are recorded in
 [the board stress results](2026-10-05-TANG-NANO-STRESS.md).
+
+## Later clock sweep
+
+The processor now passes the expanded CPU and workload tests at 114 MHz after
+registering the barrel shifter. 117 MHz produced incorrect sieve results and
+120 MHz failed an ALU check. The earlier 96 MHz results above describe their
+original coverage; the expanded ALU test subsequently exposed shift errors
+in that older image. See [the clock retest](2026-10-05-TANG-NANO-CLOCK-SWEEP.md)
+for current evidence and commands. Match `--freq-mhz` to the loaded bitstream.
