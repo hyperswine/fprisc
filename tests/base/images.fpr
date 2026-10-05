@@ -8,6 +8,7 @@ Probe.makeImage : Int -> Int .
 Probe.str : Int -> String .
 Probe.fn : Int -> (Int -> Int) .
 Probe.endImage : Int -> Int .
+Probe.padding : Int -> Int .
 
 keeper self = case receive self of
   (who, s) -> (case receive self of
@@ -19,6 +20,7 @@ leaker self = case receive self of
 main =
   me = myself 0;
   _ = Probe.makeImage 0;
+  _ = if Probe.padding 0 == 1 then Unit else error "foreign constructor padding was not cleared";
   k = spawn keeper;
   _ = send k (me, Probe.str 0);
   l = spawn leaker;

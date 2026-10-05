@@ -307,3 +307,30 @@ composition, and this is still the fixed-address four-peer slirp PoC without
 retransmission or congestion control. Physical block resume/reprobe and other
 Phase 2/3 work remain open. QOS's dated implementation record contains the exact
 shutdown, authentication and verification boundaries.
+
+## Frame HAL and dedicated network actor checkpoint (2026-10-05)
+
+QOS now completes the remaining RV64 frame/actor boundary from the preceding
+checkpoint. The NIC HAL copies Ethernet RX before reposting descriptors and
+copies TX into reserved DMA buffers; it exposes frame, MAC and acknowledgement
+mechanisms only. `std/net` v1.0 drives raw FP-RISC TCP/ARP policy, polls a bounded
+frame batch, segments writes and serves correlated client requests. FPRLive,
+LiveView and System use the actor. C retains a guarded image-lifetime arena and
+boxed/raw memory conversions; protocol choices stay in FP-RISC. Portable/RV32
+serialize their compatibility transports through the same protocol.
+
+CAS startup initializes only the installed candidate. Creator stop closes
+admission permanently; owner death stays latched without replay/restart. Native
+process clients share the kernel owner through native runtime ABI v4, avoiding
+NIC DMA buffers in unloadable process images. System starts this owner before
+applications and stops admission before Files shutdown. General TCP, physical
+NIC reset/reprobe and a network namespace remain open.
+
+The loaded-process regression exposed uncleared alignment padding in packed
+message copies of foreign nullary constructors. The runtime now clears it just
+as normal allocation does; a poisoned-slab fixture proves the field is zero.
+FPRLive also retains borrowed messages across network RPCs. Local checks cover
+startup/lifecycle, four concurrent binary peers, HTTP/WebSocket clients,
+transmit timeout with unrelated heartbeat progress, process image release,
+raw packet/ABI checks and storage/bootstrap regressions. See QOS's
+`docs/2026-10-05-NETWORK-ACTOR.md` for exact compatibility and failure limits.

@@ -855,6 +855,11 @@ static V dc_bump(dctx_t *c, uw raw) {
   c->hp += total;
   *(uw *)p = total;
   *(fpr_slab_t **)(p + 8) = c->sl;
+  /* Generic constructor walkers include alignment padding in their field
+   * count. A foreign image's nullary constructor only supplies its header;
+   * clear the remaining bytes just as fpr_alloc does before copying it. */
+  if (total - 16 > raw)
+    __builtin_memset(p + 16 + raw, 0, total - 16 - raw);
   return (V)(p + 16);
 }
 
