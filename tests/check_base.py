@@ -307,3 +307,18 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([build('tests/base/sendmem.fpr', 'sendmem')], timeout=30)
     assert p.stdout.startswith('sendmem: 8 counters received'), p.stdout
     print('A primitive-built list survives send (the heap nil is a leaf to the copier): PASS')
+    # 11. I64: the raw 64-bit two's-complement integer (docs/2026-10-05-I64.md).
+    # Every operation and edge in tests/i64.fpr, values in structures and sent
+    # between actors, then the refusals: I64 never mixes with Int implicitly.
+    p = run([build('tests/i64.fpr', 'i64')])
+    assert p.stdout.endswith('i64: all ok\n') and 'FAIL' not in p.stdout, p.stdout + p.stderr
+    p = run([build('tests/base/i64_divzero.fpr', 'i64dz')], expected=1)
+    assert 'I64: division by zero' in p.stdout + p.stderr, p.stdout + p.stderr
+    for body, said in (('print (I64.ofInt 1 + 2)', 'cannot unify Int with I64'),
+                       ('print (I64.ofInt 1 == 1)', 'cannot unify I64 with Int'),
+                       ('print (I64.ofInt 2 ^ I64.ofInt 3)', '(^) is not defined for I64')):
+        src = tmp / 'i64_refused.fpr'
+        src.write_text(f'profile base.\nmain = {body}.\n')
+        q = subprocess.run(['./fpr', 'build', str(src), '-o', str(tmp / 'i64_refused')], capture_output=True, text=True, timeout=120)
+        assert q.returncode != 0 and said in q.stdout + q.stderr, (body, q.stdout, q.stderr)
+    print('I64: wrapping 64-bit arithmetic, unsigned views, conversions, parse, structures, send, and no implicit mixing with Int: PASS')

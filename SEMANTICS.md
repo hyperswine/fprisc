@@ -89,8 +89,11 @@ file suffixes; a clause applies to both unless it says which.
 
 ### 3. Values and types
 
-- Ints are 64-bit.  Overflow: (decide -- wrap / trap / refuse where
-  `measure` can derive it).  `[test: ]`
+- Int is a tagged machine word: 63 bits on 64-bit targets, 31 on 32-bit
+  ones.  Overflow wraps silently today (decide -- wrap / trap / refuse
+  where `measure` can derive it).  `I64` is the exact 64-bit
+  two's-complement type, wrapping by contract, boxed
+  (docs/2026-10-05-I64.md).  (today)  `[test: tests/i64.fpr]`
 - Floats: `F64`, `F32`, literal suffixes `1.5`, `1.5d`, `2f`, `1e3`.
   Floats inside structures cannot be printed via the tid-directed
   render and the compiler REFUSES at compile time rather than printing

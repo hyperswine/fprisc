@@ -69,9 +69,14 @@ tcon n = foldl' TAp (TC n)
 tInt, tStr, tBool, tUnit, tAtom :: Type
 tInt = TC "Int"
 
-tF64, tF32 :: Type
+tF64, tF32, tI64 :: Type
 tF64 = TC "F64"
 tF32 = TC "F32"
+-- I64: a 64-bit two's-complement integer (Int is tagged and 63 bits).
+-- Wraps on overflow, by contract.  A boxed leaf at run time (runtime.c), so
+-- unlike the raw-bits floats it may sit inside any structure and render:
+-- only its operators, == and str/print route to its own prims.
+tI64 = TC "I64"
 
 -- does a type MENTION a float anywhere?  Bare floats str/render via
 -- their prims; floats inside containers may not reach the tid-directed
@@ -639,6 +644,42 @@ builtinEnv =
       ("F32.toInt", mono (TFn tF32 tInt)),
       ("F32.ofF64", mono (TFn tF64 tF32)),
       ("F32.str", mono (TFn tF32 tStr)),
+      -- I64 (raw 64-bit; wraps).  Operators come from the site resolution.
+      ("I64.ofInt", mono (TFn tInt tI64)),
+      ("I64.toInt", mono (TFn tI64 (tcon "Result" [tInt, tStr]))),
+      ("I64.fromParts", mono (TFn tInt (TFn tInt tI64))),
+      ("I64.hi", mono (TFn tI64 tInt)),
+      ("I64.lo", mono (TFn tI64 tInt)),
+      ("I64.toF64", mono (TFn tI64 tF64)),
+      ("I64.toF64U", mono (TFn tI64 tF64)),
+      ("I64.ofF64", mono (TFn tF64 (tcon "Result" [tI64, tStr]))),
+      ("I64.ofF64U", mono (TFn tF64 (tcon "Result" [tI64, tStr]))),
+      ("I64.ofF64Bits", mono (TFn tF64 tI64)),
+      ("I64.toF64Bits", mono (TFn tI64 tF64)),
+      ("I64.str", mono (TFn tI64 tStr)),
+      ("I64.strU", mono (TFn tI64 tStr)),
+      ("I64.hex", mono (TFn tI64 tStr)),
+      ("I64.parse", mono (TFn tStr (tcon "Result" [tI64, tStr]))),
+      ("I64.rem", mono (TFn tI64 (TFn tI64 tI64))),
+      ("I64.divU", mono (TFn tI64 (TFn tI64 tI64))),
+      ("I64.remU", mono (TFn tI64 (TFn tI64 tI64))),
+      ("I64.ltU", mono (TFn tI64 (TFn tI64 tBool))),
+      ("I64.gtU", mono (TFn tI64 (TFn tI64 tBool))),
+      ("I64.leU", mono (TFn tI64 (TFn tI64 tBool))),
+      ("I64.geU", mono (TFn tI64 (TFn tI64 tBool))),
+      ("I64.and", mono (TFn tI64 (TFn tI64 tI64))),
+      ("I64.or", mono (TFn tI64 (TFn tI64 tI64))),
+      ("I64.xor", mono (TFn tI64 (TFn tI64 tI64))),
+      ("I64.not", mono (TFn tI64 tI64)),
+      ("I64.neg", mono (TFn tI64 tI64)),
+      ("I64.shl", mono (TFn tI64 (TFn tInt tI64))),
+      ("I64.shr", mono (TFn tI64 (TFn tInt tI64))),
+      ("I64.sar", mono (TFn tI64 (TFn tInt tI64))),
+      ("I64.rotl", mono (TFn tI64 (TFn tInt tI64))),
+      ("I64.rotr", mono (TFn tI64 (TFn tInt tI64))),
+      ("I64.clz", mono (TFn tI64 tInt)),
+      ("I64.ctz", mono (TFn tI64 tInt)),
+      ("I64.popcnt", mono (TFn tI64 tInt)),
       -- process / system seam (fpr_g_ HAL)
       ("Sys.sleepUs", mono (TFn tInt tUnit)),
       ("Sys.arena", scheme [0] (TFn (TFn tUnit (sv 0)) (sv 0))),
@@ -1185,7 +1226,7 @@ inferBin ctx op a b = case op of
             -- may be a two-typed global (`Matrix * Vector`, `Int * Vector`),
             -- so unification with the site type is deferred to resolution;
             -- every other site unifies eagerly exactly as before
-            let builtinTy c = c `elem` ["Int", "F64", "F32", "String", "List", "Bool", "Unit"]
+            let builtinTy c = c `elem` ["Int", "I64", "F64", "F32", "String", "List", "Bool", "Unit"]
                 userTy ty = maybe False (not . builtinTy) (headCon ty)
                 concreteTy ty = headCon ty /= Nothing
             site <- newSite op t
@@ -1336,6 +1377,7 @@ resolveSites sigs env = do
           -- resolver decision.
           TC "F64" -> OpPrim ("F64." ++ op)
           TC "F32" -> OpPrim ("F32." ++ op)
+          TC "I64" -> OpPrim ("I64." ++ op)
           _ -> OpPrim op
       else if op == "str!"
         then case t of
@@ -1346,6 +1388,7 @@ resolveSites sigs env = do
           -- printed wrong.  OpPrim "" means "strip the marker".
           TC "F64" -> pure (OpPrim "F64.str")
           TC "F32" -> pure (OpPrim "F32.str")
+          TC "I64" -> pure (OpPrim "I64.str")
           _ | mentionsFloat t -> do
                 p <- prettyT t
                 OpPrim "" <$ report ("str/print of " ++ p ++ ": render is tid-directed and floats are raw bits -- format float fields individually with F64.str/F32.str (v1)")
@@ -1361,6 +1404,10 @@ resolveSites sigs env = do
                  | otherwise -> pure (OpPrim ("F64." ++ op))
         TC "F32" | op `elem` ["%", "^"] -> OpPrim op <$ report ("(" ++ op ++ ") is not defined for F32")
                  | otherwise -> pure (OpPrim ("F32." ++ op))
+        -- % is C's remainder (the sign of the dividend), as I64.rem
+        TC "I64" | op == "%" -> pure (OpPrim "I64.rem")
+                 | op == "^" -> OpPrim op <$ report "(^) is not defined for I64"
+                 | otherwise -> pure (OpPrim ("I64." ++ op))
         TC "String"
           | op == "+" -> pure (OpGlobal "Str.+")
           | op == "-" -> pure (OpGlobal "Str.-") -- deconcatenation: suffix removal

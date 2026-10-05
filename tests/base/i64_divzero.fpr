@@ -1,0 +1,3 @@
+# Division of an I64 by zero panics, as Int division does.
+profile base.
+main = print (I64.ofInt 1 / I64.ofInt 0).

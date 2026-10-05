@@ -2102,7 +2102,7 @@ static int veq_shallow(V a, V b) {
       if (s->bytes[i] != t->bytes[i]) return 0;
     return 1;
   }
-  if (x->tid == T_BITS && (x->var == 2 || x->var == 3))
+  if (x->tid == T_BITS && (x->var == 2 || x->var == 3 || x->var == 4)) /* Word, Addr, I64 */
     return ((bits_t *)a)->val == ((bits_t *)b)->val;
   switch (x->tid) {
     case T_VEC: case T_ACTOR: case T_PAP:
@@ -2937,6 +2937,210 @@ V fpr_prim_fn_F32_x2estr(V a) {
   char b[40];
   return (V)fpr_mkstr((const uint8_t *)b, dtoa(b, (double)fbits(a), 7));
 }
+
+/* ---- I64: a 64-bit two's-complement integer, BOXED ---------------------
+ * Int is tagged and has 63 bits.  I64 is the whole 64-bit word, for code
+ * that needs exact 64-bit arithmetic (wasm i64, C interop, hashes, wire
+ * formats).  It WRAPS on overflow, like C's uint64_t and wasm's i64; that
+ * is its contract, not an accident, and why it is a separate type from Int.
+ * Shift and rotate counts are taken modulo 64.  Division by zero and
+ * INT64_MIN / -1 panic, as Int's / does.
+ *
+ * Boxed, not a raw word as F64 is: a raw word whose bits look like a heap
+ * address is followed as a pointer by the copier on send (a value near
+ * 2^40 hung a program on this Mac), and integers -- timestamps in
+ * milliseconds are about 2^40 -- land there far more often than floats.
+ * The box is a bits_t of variant 4 (fpr.h), which every walker already
+ * treats as a leaf: send, drop, keep and arena copy-out copy it by size,
+ * veq compares its value, and render prints it as a signed decimal.  So
+ * an I64 can sit in lists, records, vectors and polymorphic code.  The
+ * price is one 24-byte cell per result (docs/2026-10-05-I64.md). */
+static uint64_t u64(V v) { return (uint64_t)((bits_t *)v)->val; }
+static int64_t i64(V v) { return (int64_t)u64(v); }
+static V vu64(uint64_t x) {
+  bits_t *b = (bits_t *)fpr_alloc(sizeof(bits_t));
+  *b = (bits_t){T_BITS, 4, 64, (uw)x};
+  return (V)b;
+}
+static V vi64(int64_t x) { return vu64((uint64_t)x); }
+static unsigned cnt64(V k) { return (unsigned)((uint64_t)UNTAG(k) & 63u); }
+
+static V result_of(unsigned var, V payload) {
+  V *r = (V *)fpr_alloc(8 + sizeof(uw));
+  ((hdr_t *)r)->tid = T_RESULT;
+  ((hdr_t *)r)->var = var;
+  FPR_FLD(r, 0) = payload;
+  return (V)r;
+}
+static V ok_v(V payload) { return result_of(0, payload); }
+static V err_c(const char *msg) { return result_of(1, (V)fpr_mkstr((const uint8_t *)msg, (uw)__builtin_strlen(msg))); }
+
+static V i64_add(V a, V b) { return vu64(u64(a) + u64(b)); }
+static V i64_sub(V a, V b) { return vu64(u64(a) - u64(b)); }
+static V i64_mul(V a, V b) { return vu64(u64(a) * u64(b)); }
+static V i64_div(V a, V b) {
+  if (i64(b) == 0) fpr_cpanic("I64: division by zero");
+  if (i64(a) == INT64_MIN && i64(b) == -1) fpr_cpanic("I64: division overflow (INT64_MIN / -1)");
+  return vi64(i64(a) / i64(b));
+}
+/* the C remainder: its sign is the dividend's; INT64_MIN rem -1 is 0 */
+static V i64_rem(V a, V b) {
+  if (i64(b) == 0) fpr_cpanic("I64: division by zero");
+  if (i64(b) == -1) return vi64(0);
+  return vi64(i64(a) % i64(b));
+}
+static V i64_divU(V a, V b) {
+  if (u64(b) == 0) fpr_cpanic("I64: division by zero");
+  return vu64(u64(a) / u64(b));
+}
+static V i64_remU(V a, V b) {
+  if (u64(b) == 0) fpr_cpanic("I64: division by zero");
+  return vu64(u64(a) % u64(b));
+}
+static V i64_lt(V a, V b) { return BOOL(i64(a) < i64(b)); }
+static V i64_gt(V a, V b) { return BOOL(i64(a) > i64(b)); }
+static V i64_le(V a, V b) { return BOOL(i64(a) <= i64(b)); }
+static V i64_ge(V a, V b) { return BOOL(i64(a) >= i64(b)); }
+static V i64_eq(V a, V b) { return BOOL(u64(a) == u64(b)); }
+static V i64_ne(V a, V b) { return BOOL(u64(a) != u64(b)); }
+static V i64_ltU(V a, V b) { return BOOL(u64(a) < u64(b)); }
+static V i64_gtU(V a, V b) { return BOOL(u64(a) > u64(b)); }
+static V i64_leU(V a, V b) { return BOOL(u64(a) <= u64(b)); }
+static V i64_geU(V a, V b) { return BOOL(u64(a) >= u64(b)); }
+static V i64_and(V a, V b) { return vu64(u64(a) & u64(b)); }
+static V i64_or(V a, V b) { return vu64(u64(a) | u64(b)); }
+static V i64_xor(V a, V b) { return vu64(u64(a) ^ u64(b)); }
+static V i64_not(V a) { return vu64(~u64(a)); }
+static V i64_neg(V a) { return vu64(0u - u64(a)); }
+static V i64_shl(V a, V k) { return vu64(u64(a) << cnt64(k)); }
+static V i64_shr(V a, V k) { return vu64(u64(a) >> cnt64(k)); }
+static V i64_sar(V a, V k) { return vi64(i64(a) >> cnt64(k)); } /* arithmetic on every target we build */
+static V i64_rotl(V a, V k) { unsigned n = cnt64(k); return n ? vu64((u64(a) << n) | (u64(a) >> (64 - n))) : vu64(u64(a)); }
+static V i64_rotr(V a, V k) { unsigned n = cnt64(k); return n ? vu64((u64(a) >> n) | (u64(a) << (64 - n))) : vu64(u64(a)); }
+static V i64_clz(V a) { return TAG(u64(a) ? __builtin_clzll(u64(a)) : 64); }
+static V i64_ctz(V a) { return TAG(u64(a) ? __builtin_ctzll(u64(a)) : 64); }
+static V i64_popcnt(V a) { return TAG(__builtin_popcountll(u64(a))); }
+
+/* conversions with Int: every Int fits; the reverse is checked */
+#define INT_MAX63 ((int64_t)(((uint64_t)1 << 62) - 1))
+#define INT_MIN63 (-INT_MAX63 - 1)
+static V i64_ofInt(V a) { return vi64((int64_t)UNTAG(a)); }
+static V i64_toInt(V a) {
+  int64_t x = i64(a);
+  if (x > INT_MAX63 || x < INT_MIN63) return err_c("I64.toInt: does not fit an Int (63 bits)");
+  return ok_v(TAG((sw)x));
+}
+/* the halves as unsigned 32-bit Ints, and back (each half masked to 32 bits) */
+static V i64_hi(V a) { return TAG((sw)(u64(a) >> 32)); }
+static V i64_lo(V a) { return TAG((sw)(u64(a) & 0xFFFFFFFFu)); }
+static V i64_fromParts(V hi, V lo) {
+  return vu64(((uint64_t)UNTAG(hi) & 0xFFFFFFFFu) << 32 | ((uint64_t)UNTAG(lo) & 0xFFFFFFFFu));
+}
+
+/* floats: to a double rounds to nearest; from one truncates toward zero
+ * and refuses NaN and values outside the range */
+static V i64_toF64(V a) { return bitsd((double)i64(a)); }
+static V i64_toF64U(V a) { return bitsd((double)u64(a)); }
+static V i64_ofF64(V a) {
+  double d = dbits(a);
+  if (d != d) return err_c("I64.ofF64: NaN");
+  if (!(d >= -9223372036854775808.0 && d < 9223372036854775808.0)) return err_c("I64.ofF64: out of range");
+  return ok_v(vi64((int64_t)d));
+}
+static V i64_ofF64U(V a) {
+  double d = dbits(a);
+  if (d != d) return err_c("I64.ofF64U: NaN");
+  if (!(d > -1.0 && d < 18446744073709551616.0)) return err_c("I64.ofF64U: out of range");
+  return ok_v(vu64((uint64_t)d));
+}
+/* the IEEE bits of a double, and back: what reinterpret means in wasm */
+static V i64_ofF64Bits(V a) { return vu64((uint64_t)(uw)a); }
+static V i64_toF64Bits(V a) { return (V)(uw)u64(a); }
+
+/* text */
+static V i64_digits(uint64_t m, int neg) {
+  char buf[24]; int i = 24;
+  do { buf[--i] = (char)('0' + m % 10u); m /= 10u; } while (m);
+  if (neg) buf[--i] = '-';
+  return (V)fpr_mkstr((const uint8_t *)buf + i, (uw)(24 - i));
+}
+static V i64_str(V a) { int64_t x = i64(a); return x < 0 ? i64_digits(0u - (uint64_t)x, 1) : i64_digits((uint64_t)x, 0); }
+static V i64_strU(V a) { return i64_digits(u64(a), 0); }
+static V i64_hex(V a) {
+  char buf[16]; int i = 16; uint64_t m = u64(a);
+  do { buf[--i] = "0123456789abcdef"[m & 15u]; m >>= 4; } while (m);
+  return (V)fpr_mkstr((const uint8_t *)buf + i, (uw)(16 - i));
+}
+/* [+-]digits, or [+-]0x hex digits; `_` between digits.  A magnitude past
+ * 2^64 is refused; one past the signed range wraps, as a wasm i64 literal
+ * does (0xffff_ffff_ffff_ffff is -1). */
+static V i64_parse(V s) {
+  str_t *t = want_str(s, "I64.parse: not a String");
+  uw i = 0, n = t->len, seen = 0;
+  int neg = 0; unsigned base = 10; uint64_t m = 0;
+  if (i < n && (t->bytes[i] == '-' || t->bytes[i] == '+')) neg = t->bytes[i++] == '-';
+  if (i + 1 < n && t->bytes[i] == '0' && t->bytes[i + 1] == 'x') { base = 16; i += 2; }
+  for (; i < n; i++) {
+    unsigned c = t->bytes[i], d;
+    if (c == '_') continue;
+    if (c >= '0' && c <= '9') d = c - '0';
+    else if (base == 16 && c >= 'a' && c <= 'f') d = c - 'a' + 10;
+    else if (base == 16 && c >= 'A' && c <= 'F') d = c - 'A' + 10;
+    else return err_c("I64.parse: not a number");
+    if (d >= base) return err_c("I64.parse: not a number");
+    if (m > (UINT64_MAX - d) / base) return err_c("I64.parse: more than 64 bits");
+    m = m * base + d; seen++;
+  }
+  if (!seen) return err_c("I64.parse: no digits");
+  return ok_v(vu64(neg ? 0u - m : m));
+}
+
+FPR_FN(fpr_g_I64_x2e_x2b, i64_add, 2);
+FPR_FN(fpr_g_I64_x2e_x2d, i64_sub, 2);
+FPR_FN(fpr_g_I64_x2e_x2a, i64_mul, 2);
+FPR_FN(fpr_g_I64_x2e_x2f, i64_div, 2);
+FPR_FN(fpr_g_I64_x2erem, i64_rem, 2);
+FPR_FN(fpr_g_I64_x2edivU, i64_divU, 2);
+FPR_FN(fpr_g_I64_x2eremU, i64_remU, 2);
+FPR_FN(fpr_g_I64_x2e_x3c, i64_lt, 2);
+FPR_FN(fpr_g_I64_x2e_x3e, i64_gt, 2);
+FPR_FN(fpr_g_I64_x2e_x3c_x3d, i64_le, 2);
+FPR_FN(fpr_g_I64_x2e_x3e_x3d, i64_ge, 2);
+FPR_FN(fpr_g_I64_x2e_x3d_x3d, i64_eq, 2);
+FPR_FN(fpr_g_I64_x2e_x21_x3d, i64_ne, 2);
+FPR_FN(fpr_g_I64_x2eltU, i64_ltU, 2);
+FPR_FN(fpr_g_I64_x2egtU, i64_gtU, 2);
+FPR_FN(fpr_g_I64_x2eleU, i64_leU, 2);
+FPR_FN(fpr_g_I64_x2egeU, i64_geU, 2);
+FPR_FN(fpr_g_I64_x2eand, i64_and, 2);
+FPR_FN(fpr_g_I64_x2eor, i64_or, 2);
+FPR_FN(fpr_g_I64_x2exor, i64_xor, 2);
+FPR_FN(fpr_g_I64_x2enot, i64_not, 1);
+FPR_FN(fpr_g_I64_x2eneg, i64_neg, 1);
+FPR_FN(fpr_g_I64_x2eshl, i64_shl, 2);
+FPR_FN(fpr_g_I64_x2eshr, i64_shr, 2);
+FPR_FN(fpr_g_I64_x2esar, i64_sar, 2);
+FPR_FN(fpr_g_I64_x2erotl, i64_rotl, 2);
+FPR_FN(fpr_g_I64_x2erotr, i64_rotr, 2);
+FPR_FN(fpr_g_I64_x2eclz, i64_clz, 1);
+FPR_FN(fpr_g_I64_x2ectz, i64_ctz, 1);
+FPR_FN(fpr_g_I64_x2epopcnt, i64_popcnt, 1);
+FPR_FN(fpr_g_I64_x2eofInt, i64_ofInt, 1);
+FPR_FN(fpr_g_I64_x2etoInt, i64_toInt, 1);
+FPR_FN(fpr_g_I64_x2ehi, i64_hi, 1);
+FPR_FN(fpr_g_I64_x2elo, i64_lo, 1);
+FPR_FN(fpr_g_I64_x2efromParts, i64_fromParts, 2);
+FPR_FN(fpr_g_I64_x2etoF64, i64_toF64, 1);
+FPR_FN(fpr_g_I64_x2etoF64U, i64_toF64U, 1);
+FPR_FN(fpr_g_I64_x2eofF64, i64_ofF64, 1);
+FPR_FN(fpr_g_I64_x2eofF64U, i64_ofF64U, 1);
+FPR_FN(fpr_g_I64_x2eofF64Bits, i64_ofF64Bits, 1);
+FPR_FN(fpr_g_I64_x2etoF64Bits, i64_toF64Bits, 1);
+FPR_FN(fpr_g_I64_x2estr, i64_str, 1);
+FPR_FN(fpr_g_I64_x2estrU, i64_strU, 1);
+FPR_FN(fpr_g_I64_x2ehex, i64_hex, 1);
+FPR_FN(fpr_g_I64_x2eparse, i64_parse, 1);
+
 #endif /* 64-bit V */
 
 /* ---- static PAP objects (symbol names = mangled FPRISC names) ---------- */

@@ -320,7 +320,7 @@ compileMain = compileWithInterface (const (pure ()))
 -- code generation, including imported definitions and unsaturated primitives.
 builtinWideFloat :: Core -> Bool
 builtinWideFloat e = case e of
-  CVar n -> "F64." `isPrefixOf` n || n == "f64frombits"
+  CVar n -> "F64." `isPrefixOf` n || "I64." `isPrefixOf` n || n == "f64frombits"
   CApp f a -> builtinWideFloat f || builtinWideFloat a
   CLam _ b -> builtinWideFloat b
   CLet _ a b -> builtinWideFloat a || builtinWideFloat b
@@ -800,7 +800,7 @@ compileWithInterface accepted = do
           compileUnit uts = M.map (fmap eraseCast) (fst (runState (compileTop uts >>= liftFix) (DEnv 0 consAll shapes [])))
           checkBuiltinWidth p = when (oBuiltin opts && tgtName (oTarget opts) == "rv32"
                                       && any (builtinWideFloat . snd) (M.elems p)) $ do
-            hPutStrLn stderr "profile builtin RV32: F64 requires a 64-bit value ABI"
+            hPutStrLn stderr "profile builtin RV32: F64 and I64 require a 64-bit value ABI"
             exitFailure
           preludeExt = arities (resolveUnit preludeE')
           unitExt = M.unions [arities (resolveUnit uts) | (_, uts) <- units']

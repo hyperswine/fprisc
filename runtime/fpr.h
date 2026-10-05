@@ -39,7 +39,7 @@ typedef struct { uint32_t tid, var; uw fn, arity, nargs; } __attribute__((aligne
 typedef struct { uint32_t tid, var; uw len; uint8_t bytes[]; } __attribute__((aligned(8))) str_t;
 typedef struct { uint32_t tid, var; uw base; } __attribute__((aligned(8))) fpr_dev_t;
 typedef struct { uint32_t tid, var /* = width in bytes */; uw addr; } __attribute__((aligned(8))) reg_t;
-typedef struct { uint32_t tid, var /* 0 LE, 1 BE; Builtin: 2 Word, 3 Addr */; uw len, val; } __attribute__((aligned(8))) bits_t;
+typedef struct { uint32_t tid, var /* 0 LE, 1 BE; Builtin: 2 Word, 3 Addr; 4 I64 (runtime.c) */; uw len, val; } __attribute__((aligned(8))) bits_t;
 
 #define TAG(n) ((V)((((uw)(n)) << 1) | 1))
 #define UNTAG(v) (((sw)(v)) >> 1)

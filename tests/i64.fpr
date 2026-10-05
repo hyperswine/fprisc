@@ -1,0 +1,91 @@
+# i64.fpr -- I64, the 64-bit two's-complement integer (docs/2026-10-05-I64.md).
+# Int is tagged and has 63 bits; I64 is the whole word and wraps by contract.
+# It is a boxed leaf at run time, so it may sit inside any structure: the
+# last cases print, store and SEND values near 2^40, which on this Mac look
+# like heap addresses and hung a raw-word I64 on send.
+profile base.
+List = use "../std/list".
+
+# send v to an echo actor and back
+echo parent me = case receiveRes me of
+    Ok pair -> send parent (Ok pair)
+  | Err why -> send parent (Err why).
+roundTrip : I64 -> String .
+roundTrip v =
+  me = myself 0;
+  child = spawn (echo me);
+  _ = send child (Ok (v, [v, I64.neg v]));
+  case receiveRes me of
+    Ok (x, xs) -> "{x == v} {xs}"
+  | Err why -> why.
+
+one = I64.ofInt 1.
+min64 = I64.shl one 63.
+max64 = I64.not min64.
+minus1 = I64.ofInt (0 - 1).
+
+okOr d (Ok x) = x.
+okOr d (Err _) = d.
+said (Ok x) = I64.str x.
+said (Err why) = "Err {why}".
+saidInt (Ok n) = "{n}".
+saidInt (Err why) = "Err {why}".
+
+expect : String -> String -> String -> Unit .
+expect name got want | got == want = print "ok {name}".
+expect name got want = error "FAIL {name}: [{got}] vs [{want}]".
+
+big = I64.parse "9223372036854775807" |> okOr one.
+
+main =
+  _ = expect "max" (I64.str max64) "9223372036854775807";
+  _ = expect "min" (I64.str min64) "-9223372036854775808";
+  _ = expect "wrap +" (I64.str (max64 + one)) "-9223372036854775808";
+  _ = expect "wrap *" (I64.str (I64.ofInt 4294967296 * I64.ofInt 4294967296)) "0";
+  _ = expect "mul" (I64.str (I64.ofInt 4294967296 * I64.ofInt 3)) "12884901888";
+  _ = expect "sub" (I64.str (I64.ofInt 5 - I64.ofInt 7)) "-2";
+  _ = expect "div" (I64.str (I64.ofInt (0 - 7) / I64.ofInt 2)) "-3";
+  _ = expect "rem %" (I64.str (I64.ofInt (0 - 7) % I64.ofInt 2)) "-1";
+  _ = expect "rem min/-1" (I64.str (I64.rem min64 minus1)) "0";
+  _ = expect "divU" (I64.strU (I64.divU minus1 (I64.ofInt 2))) "9223372036854775807";
+  _ = expect "remU" (I64.str (I64.remU minus1 (I64.ofInt 10))) "5";
+  _ = expect "strU" (I64.strU minus1) "18446744073709551615";
+  _ = expect "hex" (I64.hex minus1) "ffffffffffffffff";
+  _ = expect "lt signed" "{minus1 < one}" "True";
+  _ = expect "ltU" "{I64.ltU minus1 one}" "False";
+  _ = expect "== and !=" "{max64 == big} {max64 != big}" "True False";
+  _ = expect "<= >= >" "{one <= one} {one >= min64} {min64 > one}" "True True False";
+  _ = expect "shr logical" (I64.hex (I64.shr minus1 60)) "f";
+  _ = expect "sar" (I64.str (I64.sar (I64.ofInt (0 - 16)) 2)) "-4";
+  _ = expect "shl mod 64" (I64.str (I64.shl one 65)) "2";
+  _ = expect "rotl" (I64.hex (I64.rotl (I64.fromParts 2147483648 1) 1)) "3";
+  _ = expect "rotr" (I64.hex (I64.rotr one 1)) "8000000000000000";
+  _ = expect "and or xor" (I64.hex (I64.xor (I64.or (I64.and minus1 (I64.ofInt 240)) one) (I64.ofInt 3))) "f2";
+  _ = expect "neg" (I64.str (I64.neg min64)) "-9223372036854775808";
+  _ = expect "clz ctz popcnt" "{I64.clz one} {I64.ctz min64} {I64.popcnt minus1} {I64.clz (I64.ofInt 0)}" "63 63 64 64";
+  _ = expect "parts" "{I64.hi minus1} {I64.lo (I64.fromParts 1 2)} {I64.hi (I64.fromParts 1 2)}" "4294967295 2 1";
+  _ = expect "toInt fits" (saidInt (I64.toInt (I64.ofInt (0 - 42)))) "-42";
+  _ = expect "toInt refuses" (saidInt (I64.toInt max64)) "Err I64.toInt: does not fit an Int (63 bits)";
+  _ = expect "parse hex wraps" (said (I64.parse "0xffff_ffff_ffff_ffff")) "-1";
+  _ = expect "parse neg" (said (I64.parse "-9223372036854775808")) "-9223372036854775808";
+  _ = expect "parse refuses" (said (I64.parse "18446744073709551616")) "Err I64.parse: more than 64 bits";
+  _ = expect "parse junk" (said (I64.parse "12a")) "Err I64.parse: not a number";
+  _ = expect "toF64" (F64.str (I64.toF64 (I64.ofInt (0 - 3)))) "-3";
+  _ = expect "toF64U" (F64.str (I64.toF64U (I64.fromParts 1 0))) "4294967296";
+  _ = expect "ofF64" (said (I64.ofF64 (0.0 - 7.9))) "-7";
+  _ = expect "ofF64 range" (said (I64.ofF64 1.0e19)) "Err I64.ofF64: out of range";
+  _ = expect "ofF64U" (I64.strU (okOr one (I64.ofF64U 1.0e19))) "10000000000000000000";
+  _ = expect "F64 bits" (I64.hex (I64.ofF64Bits 1.0)) "3ff0000000000000";
+  _ = expect "bits back" (F64.str (I64.toF64Bits (I64.fromParts 1074003968 0))) "2.5";
+  _ = expect "first-class" (List.map I64.str [one, minus1, max64] |> List.map (fn t -> strlen t) |> List.sum |> str) "22";
+  _ = expect "interpolation" "{max64}" "9223372036854775807";
+  _ = expect "fold" (I64.str (List.fold (fn a b -> a * b) one [I64.ofInt 3037000499, I64.ofInt 3037000499])) "9223372030926249001";
+  near40 = I64.fromParts 256 4096;
+  _ = expect "list renders" "{[one, minus1, min64]}" "[1, -1, -9223372036854775808]";
+  rec = {at = I64.ofInt 7, n = 2};
+  _ = expect "record field" "{rec.at}" "7";
+  _ = expect "tuple ==" "{(one, max64) == (one, big)}" "True";
+  _ = expect "vector" (Vec.fromList [one, max64, minus1] |> Vec.toList |> List.map I64.str |> strJoin ",") "1,9223372036854775807,-1";
+  _ = expect "send near 2^40" (roundTrip near40) "True [1099511631872, -1099511631872]";
+  _ = expect "send min" (roundTrip min64) "True [-9223372036854775808, -9223372036854775808]";
+  print "i64: all ok".
