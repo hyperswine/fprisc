@@ -281,3 +281,36 @@ The final image uses seed 7, a 144 MHz route target and a modeled maximum of
 SHA-256: `7ff9d560cff604e7b05983bf68385c02c46b23212cb1e443b264b0bf6ae3afc2`.
 The board is left on this 96 MHz SRAM image; flash is unchanged. RAM relocation,
 boot ROM and removal of the hardware loader/legacy halt rules remain next.
+
+## Gowin execution timing experiment (2026-10-06)
+
+HaskPlayground's execution stage now registers decoded controls and ALU
+operands, then registers candidates and split 16-bit comparison flags before
+selecting results. CSR selection is registered separately. Ordinary
+instructions take nine clocks, shifts ten and CSR reads eleven. Iterative
+multiply/divide retains its unit latency. RAM layout, builtin runtime ABI,
+finisher, loader and UART contracts remain unchanged.
+
+The licensed Gowin 108 MHz placement passes internal setup/hold timing:
+108.038 MHz estimated maximum, +0.003 ns worst setup slack, zero setup/hold
+violating endpoints. The final 111, 114 and 120 MHz trials fail timing and
+were not loaded. This is a narrow margin, not a temperature/voltage stress
+qualification. HaskPlayground's experiment report records all placements.
+
+At 108 MHz the complete Tang Nano harness passes host/link/ISA/loader checks,
+three smoke runs, three CSR runs, seven panic/refusal cases and recovery.
+The board also passes 3,852 bus/RX assertions, 15 finisher cases, 270 counter
+assertions, 267 trap assertions, CPU/UART/memory checks and 34,560 RV32IM
+reference comparisons. All Haskell suites pass, including 33 SimpleRisc
+properties; generated RTL returns `HiDONE`.
+
+108 MHz image SHA-256:
+`77bcc3dcc58aa8a3f9134c2341564090a98b3535d304b70b1dcbbb488c0b2e7a`.
+Use `--freq-mhz 108` with the board runner/harness for that image; default
+frequency remains 96 MHz. SRAM programming leaves flash unchanged.
+
+The final split-comparison image also passes the complete board and FP-RISC
+harness at 96 MHz. Vendor timing reports 96.252 MHz maximum, +0.027 ns setup
+slack and zero setup/hold violations. Its SHA-256 is
+`e8394da4ec3b4c92bfa338d3900d173591afae765230a6e7a79399c786890d88`.
+The board is left on the tested 108 MHz SRAM image; flash is unchanged.
