@@ -317,19 +317,22 @@ The board is left on the tested 108 MHz SRAM image; flash is unchanged.
 
 ## SDRAM main memory (2026-10-06)
 
-HaskPlayground provides a separate uncached SDRAM processor at 54 MHz.
+HaskPlayground provides a separate SDRAM processor with a unified 1 KiB cache,
+now physically tested at 66 MHz (54 MHz remains the build default).
 Its controller passes all 8 MiB with 12,582,912 word comparisons, independent
 byte-mask writes and 250 ms retention under refresh. The integrated C core
 passes a 1 MiB full working-set check, all four bank ends and the last RAM
 word/byte lanes, alongside the CPU/bus/finisher/counter/trap/RV32IM suites.
-Vendor internal timing passes at 54 MHz; SDRAM I/O signoff and faster CPU clock
-are still work to do. This prototype does not meet the roadmap's 96 MHz gate.
+Vendor internal timing passes at 66 MHz with only +0.038 ns setup slack; SDRAM
+I/O signoff and more clock margin are still work to do. This prototype does not meet the roadmap's 96 MHz gate.
 
 `BUILTIN_RAM=sdram` selects an 8 MiB linker map at `0x80000000`, with a 64 KiB
 stack reservation. The ordinary board option retains its 64 KiB BRAM map.
-The existing complete builtin harness passes on the SDRAM core's zero alias.
+The existing complete builtin harness passes on the cached SDRAM core's zero
+alias at 66 MHz.
 A high-linked fixture allocates 2 MiB, checks 32 samples at 64 KiB intervals
-and its last byte, frees it and prints `FPR EXIT 0` followed by `DONE`.
+and its last byte, frees it and prints `FPR EXIT 0` followed by `DONE`. This
+fixture also passes on the physical cached board at 66 MHz.
 A denser 2,048-sample fixture exceeded its 30/60 second budgets after allocation;
 its verification loop is not claimed as passing and needs separate profiling.
 
@@ -338,7 +341,7 @@ make bare-metal-builtin BUILTIN_BOARD=tangnano20k BUILTIN_RAM=sdram \
   PROG=tests/builtin_tangnano20k_sdram.fpr \
   BUILD=build/tangnano20k-sdram IMAGE=build/tangnano20k-sdram/builtin.elf
 python3 tools/run_simple_risc.py build/tangnano20k-sdram/builtin.bin \
-  --port /dev/cu.usbserial-20250303171 --freq-mhz 54 \
+  --port /dev/cu.usbserial-20250303171 --freq-mhz 66 \
   --ram-base 0x80000000 --timeout 60
 ```
 
@@ -346,6 +349,15 @@ The runners use the new `H` command for high-address entry, preserving `R`
 for existing images. Loader images remain limited to 64 KiB; BSS, heap and
 stack may use the rest of SDRAM. `M` clears only the zero-address compatibility
 region. The hardware loader, boot ROM and legacy halt cleanup remain roadmap
-work. The board is left on the tested 54 MHz SDRAM SRAM image, SHA-256
-`815d54bf81454c37809e1445f31490990ff1c881f566c15b7c247d6809219b5a`;
+work. The board is left on the tested cached 66 MHz SDRAM SRAM image, SHA-256
+`0d4e7e54fe6e70ea7f268aa8f3ce8337ffa0c8065c3caec4cbdd2365ffc06565`;
 flash is unchanged.
+
+
+The cache uses physical tags and writes through after invalidating the indexed
+line, so low/high aliases, loader writes and instruction modifications remain
+coherent. A C repeated-read benchmark improves from 54.322 ms uncached at
+54 MHz to 36.207 ms cached at 66 MHz, about 1.50x throughput. This is a measured
+C workload result, not a general FP-RISC performance claim. The earlier dense
+FP-RISC allocation fixture has not been re-profiled. Further clock work should
+address the routed processor state path and SDRAM timing/clock-domain separation.
