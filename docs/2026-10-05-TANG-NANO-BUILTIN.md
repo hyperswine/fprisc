@@ -361,3 +361,12 @@ coherent. A C repeated-read benchmark improves from 54.322 ms uncached at
 C workload result, not a general FP-RISC performance claim. The earlier dense
 FP-RISC allocation fixture has not been re-profiled. Further clock work should
 address the routed processor state path and SDRAM timing/clock-domain separation.
+
+## Separate Base/RV64 host, 2026-10-06
+
+For `profile base.` on the new RV64IM FPGA image, see
+[machine/tangnano20k/README.md](../machine/tangnano20k/README.md). That host has
+8 MiB SDRAM, software floating point and rooted UART virtual-device services,
+with explicit errors for unavailable operations. It builds through its own
+script; `BUILTIN_BOARD=tangnano20k` here continues to select the RV32 Builtin
+port. Each host requires its matching FPGA image and clock.

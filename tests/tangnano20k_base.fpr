@@ -1,0 +1,15 @@
+profile base.
+File = use "std/file".
+Program = use "std/program".
+require r = case r of Ok _ -> Unit | Err e -> Program.fail 1 e.
+refused r = case r of Err _ -> print "UNAVAILABLE REFUSED" | Ok _ -> Program.fail 1 "unexpected available service".
+main : Unit .
+main =
+  _ = print "RV64 BASE {4294967295 + 2}";
+  _ = print "SOFT FLOAT {F64.str (F64.sqrt 81.0)}";
+  _ = print "VIRTUAL ENV {Program.envOr "unset" "TEST_UART"}";
+  _ = require (File.writeText "output.txt" "UART write");
+  _ = require (File.appendText "output.txt" " + append");
+  _ = refused (File.open "hello.txt" "r");
+  text = File.readText "output.txt";
+  case text of Ok s -> print "VIRTUAL FILE {s}" | Err e -> Program.fail 1 e.

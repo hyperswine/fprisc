@@ -1,0 +1,19 @@
+profile base.
+V = use "../examples/wasm/wasmvm".
+W = use "../examples/wasm/wat".
+File = use "std/file".
+Program = use "std/program".
+noHost : String -> String -> List V.Val -> V.Instance -> Result (List V.Val, V.Instance) String .
+noHost _ _ _ _ = Err "guest imports unavailable".
+execute : unsafe V.Program -> Unit .
+execute program =
+  case V.invoke noHost (V.instantiate program) "answer" Nil of
+    (Ok [V.VI32 42], _) -> print "WASM BOARD 42"
+    | (Err e, _) -> Program.fail 1 e
+    | _ -> Program.fail 1 "unexpected WASM result".
+parse : unsafe String -> Unit .
+parse text = case W.parse text of Ok parsed -> execute parsed.program | Err e -> Program.fail 1 e.
+start : unsafe Unit -> Unit .
+start _ = case File.readText "answer.wat" of Ok text -> parse text | Err e -> Program.fail 1 e.
+main : Unit .
+main = start Unit.

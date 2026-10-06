@@ -1,0 +1,3 @@
+profile base.
+main : Unit .
+main = _ = myself 0; print "unexpected actor support".
