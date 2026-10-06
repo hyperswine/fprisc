@@ -213,6 +213,7 @@ $(BUILD)/heap.s: fprc $(MACHINE)/builtin/heap.fpr FORCE
 BUILTIN_RT = $(MACHINE)/builtin/crt0.S $(MACHINE)/builtin/virt.c $(BUILTIN_HEAP) \
              $(MACHINE)/builtin/unsafe.c $(MACHINE)/builtin/arc.c $(MACHINE)/builtin/machine.S $(MACHINE)/builtin/interrupt.S $(RUNTIME)/runtime.c $(MACHINE)/virt/memshim.c
 BUILTIN_BOARD ?= virt
+BUILTIN_RAM ?= bram
 BUILTIN_LINK = $(MACHINE)/builtin/link.ld
 BUILTIN_ARCHFLAGS = $(CFLAGS)
 ifeq ($(BUILTIN_BOARD),tangnano20k)
@@ -220,6 +221,11 @@ ifeq ($(ARC),1)
 $(error tangnano20k currently supports manual ownership only, not ARC=1)
 endif
 BUILTIN_LINK = $(MACHINE)/builtin/tangnano20k/link.ld
+ifeq ($(BUILTIN_RAM),sdram)
+BUILTIN_LINK = $(MACHINE)/builtin/tangnano20k/link-sdram.ld
+else ifneq ($(BUILTIN_RAM),bram)
+$(error unknown Tang Nano memory option BUILTIN_RAM=$(BUILTIN_RAM))
+endif
 BUILTIN_RT = $(MACHINE)/builtin/tangnano20k/crt0.S $(MACHINE)/builtin/tangnano20k/board.c \
              $(MACHINE)/builtin/tangnano20k/machine.c $(MACHINE)/builtin/heap.c \
              $(MACHINE)/builtin/unsafe.c $(RUNTIME)/runtime.c $(MACHINE)/virt/memshim.c
