@@ -249,8 +249,7 @@ allocLbl k lbl ws =
   c = freeCol k ws.holes;
   case c == 0 of
     True -> (noHole, ws)
-  | False -> (holeLabel k c,
-      {ws | holes = (k, c) :: ws.holes, labels = ((k, c), lbl) :: ws.labels}).
+  | False -> (holeLabel k c, {ws | holes = (k, c) :: ws.holes, labels = ((k, c), lbl) :: ws.labels}).
 
 # jumpers between consecutive strips of one net
 jumpNet net ss ws = List.zip ss (List.drop 1 ss) |> List.fold (jumper net) ws.
@@ -359,8 +358,7 @@ cells w cm k = List.range 1 5 |> List.map (cellAt w cm k) |> Str.join "".
 
 railCell rails name row = case lookupA (name, row) rails of Nope -> "  |" | Got lbl -> padL 3 lbl.
 
-renderRow w cm rails r =
-  "{padL 3 (str r)} {railCell rails "L-" r} {railCell rails "L+" r}  {cells w cm (sKey r 0)}  ||  {cells w cm (sKey r 1)}".
+renderRow w cm rails r = "{padL 3 (str r)} {railCell rails "L-" r} {railCell rails "L+" r}  {cells w cm (sKey r 0)}  ||  {cells w cm (sKey r 1)}".
 
 letters w side = List.range 1 5 |> List.map (fn c -> padL w (holeLetter side c)) |> Str.join "".
 header w = "     L-  L+  {letters w 0}  ||  {letters w 1}".
@@ -389,17 +387,20 @@ runBoard title ls =
   comps = oks parsed;
   placeable = List.filter (fn c -> not (isSource c)) comps;
   pwrs = pwrNetsOf comps;
+
   u = base.say (["", "=== {title} ==="] + skippedLines (errs parsed) + noteLines (notesOf pwrs comps));
+
   nets = netsOf placeable;
   st = List.fold placeOne st0 placeable;
   ws = List.fold (wireNet pwrs st.netstr) (mkWs st.holes) nets;
   pins = pinNets placeable st.places;
   cm = cellMapOf st.places + ws.labels;
-  base.say (["-- components --"] + List.map compLine st.places
+
+  base.say
+     (["-- components --"] + List.map compLine st.places
     + ["-- nets --"] + List.map (netLine pwrs st.netstr) nets
     + ["-- wires --"] + List.map wireLine ws.wires
-    + ["-- checks --", "  {checkPlaced placeable st.places}", "  {checkShorts pins}", "  {checkHoles cm}",
-       "  {checkNets nets pins ws.links}", "  {checkRails nets pwrs ws.railed}", ""]
+    + ["-- checks --", "  {checkPlaced placeable st.places}", "  {checkShorts pins}", "  {checkHoles cm}", "  {checkNets nets pins ws.links}", "  {checkRails nets pwrs ws.railed}", ""]
     + boardLines cm ws.rails).
 
 ex1 = [
