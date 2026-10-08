@@ -231,7 +231,8 @@ typedef struct fpr_acb {
 } acb_t;
 #define TR(a, code) do { (a)->tr[(a)->tr_i++ % 16] = (uint8_t)((code) * 8 + (fpr_hart() ? fpr_hart()->id : 7)); } while (0)
 
-fpr_sched_t *fpr_sched = 0; /* see fpr.h: NULL = this image is the plane */
+fpr_plane_actors_t *fpr_plane_actors = 0; /* see fpr.h: NULL = this image is the plane */
+fpr_plane_memory_t *fpr_plane_memory = 0; /* NULL = this image owns its heap */
 static void dl_put(char **p, const char *e, const char *str);
 static void dl_num(char **p, const char *e, uw u);
 static void dl_out(const char *b, uw n);
@@ -457,7 +458,7 @@ static uw stack_grow_at(uw sp);
 uw fpr_stack_grow(void) {
   uw sp = (uw)__builtin_frame_address(0);
   /* a loaded process's actors are the PLANE's: its scheduler grows them */
-  if (fpr_sched) return fpr_sched->stack_grow(sp);
+  if (fpr_plane_memory) return fpr_plane_memory->stack_grow(sp);
   return stack_grow_at(sp);
 }
 static uw stack_grow_at(uw sp) {
@@ -596,6 +597,7 @@ static fpr_freelist_t chb_fl; /* never-referenced carve extras ONLY --
 static chblk_t *chb_limbo;
 static fpr_lock_t chb_lock; /* the limbo list + its epoch stamps */
 
+static void chb_drain(chan_t *ch); /* below reap: releases what a dead actor's rings still hold */
 static int chb_matured(chblk_t *b) {
   for (uw i = 0; i < fpr_live_harts; i++)
     if (fpr_harts[i].epoch < b->stamp[i] + 2) return 0;
@@ -657,6 +659,7 @@ static chan_t *chb_take(void) {
     pp = &(*pp)->nx;
   }
   fpr_unlock(&chb_lock);
+  if (b) chb_drain(b->ch); /* a send that raced the kill landed here: release it */
   if (!b) { b = (chblk_t *)fpr_fl_take(&chb_fl, sizeof(chblk_t)); fresh = 1; }
   if (!b) {
     fresh = 1;
@@ -689,6 +692,27 @@ static void chb_limbo_put(chan_t *ch) {
   fpr_unlock(&chb_lock);
 }
 
+/* release what is still queued on a channel: each slot's root is dropped
+ * exactly as the receiver's own drop would have (a send's copy or an ARC
+ * share goes back, a transferred root is released), and the head catches
+ * up with the tail.  Called by reap on the owner hart, and again when a
+ * matured limbo block is taken: a sender that read var != DEAD before the
+ * kill may push after reap drained -- its message waits in limbo (the
+ * block is type-stable and epoch-deferred, so the slot is well-formed)
+ * and is released here, two epochs later, before the block is reused.
+ * Before this, 300 deaths with 50 one-KiB messages unread lost 16.5 MB
+ * per round (docs/2026-10-07-STATES.md 1.5). */
+static void chan_drain(chan_t *c) {
+  uint32_t rt = __atomic_load_n(&c->rt, __ATOMIC_ACQUIRE);
+  ringv_t *rv = __atomic_load_n(&c->rv, __ATOMIC_ACQUIRE); /* after rt: covers every slot below it */
+  for (uint32_t k = c->rh; k != rt; k++) fpr_arc_decref(SLOT(rv, k));
+  __atomic_store_n(&c->rh, rt, __ATOMIC_RELEASE);
+}
+static void chb_drain(chan_t *ch) {
+  for (int i = 0; i < MAXSND; i++)
+    if (__atomic_load_n(&ch[i].sender, __ATOMIC_ACQUIRE)) chan_drain(&ch[i]);
+}
+
 /* death reclamation (called from the hart loop, NEVER on the dying
  * actor's own stack): slabs via the ARC-locked teardown, stack -- which
  * cannot escape -- straight back to buddy.  Idempotent via stack=0. */
@@ -710,6 +734,7 @@ static void reap(acb_t *a) {
     a->external_cleanup = 0; a->external_arg = 0;
     fn(arg);
   }
+  if (a->ch) chb_drain(a->ch); /* mail it never read: released, not stranded (holds park below) */
   drop_drain(a); /* the holds of windows the dead actor never closed */
   if (a->msg_slab) { fpr_slab_unhold(a->msg_slab, 0); a->msg_slab = 0; } /* its packing slab */
   fpr_pool_reclaim(a);
@@ -1527,7 +1552,7 @@ static void to_sched(void) {
 
 /* the compiler-inserted fuel check (0(tp) hit zero) lands here */
 void fpr_fuel_exhausted(void) {
-  if (fpr_sched) { fpr_sched->fuel(); return; }
+  if (fpr_plane_actors) { fpr_plane_actors->fuel(); return; }
   fpr_hart_t *h = fpr_hart();
   h->fuel_preempts++;
   h->fuel = FUEL_QUANTUM;
@@ -1551,7 +1576,13 @@ static void trampoline(void) {
     }
     fpr_exit(r);                /* normal boot: halts the machine */
   }
-  fpr_apply(a->entry, (V)a);
+  V r = fpr_apply(a->entry, (V)a);
+  /* the body's result has no reader: release it.  A received message root
+   * returned as the result (`fn self -> receive self`) kept its whole
+   * message slab alive -- the slab goes home only when every root in it
+   * is dropped, so one undropped root pinned 49 drained neighbours
+   * (tests/base/deadmail.fpr).  A pool-local or by-value result is a no-op. */
+  fpr_arc_decref(r);
   __atomic_store_n(&a->var, ST_DEAD, __ATOMIC_SEQ_CST);
   wake_watchers(a);
   to_sched();
@@ -1721,7 +1752,7 @@ static V a_sleep_us(V usv) {
 #ifndef FPR_PARKED_SLEEP
 #define FPR_PARKED_SLEEP 1 /* 0: the hart-blocking host sleep (the bisecting switch) */
 #endif
-  if (!a || fpr_sched || !now || !FPR_PARKED_SLEEP) { /* no actor to park, or no clock: the host sleep */
+  if (!a || fpr_plane_actors || !now || !FPR_PARKED_SLEEP) { /* no actor to park, or no clock: the host sleep */
     fpr_hal_sleep_us((uw)us);
     return (V)&fpr_unit;
   }
@@ -1760,11 +1791,11 @@ static V a_sleep_us(V usv) {
   return (V)&fpr_unit;
 }
 void fpr_actor_sleep_us(uw us) {
-  if (fpr_sched) { fpr_sched->sleep_us(us); return; }
+  if (fpr_plane_actors) { fpr_plane_actors->sleep_us(us); return; }
   (void)a_sleep_us(TAG((sw)us));
 }
 int fpr_actor_cleanup_set(void (*fn)(void *), void *arg) {
-  if (fpr_sched) return fpr_sched->cleanup_set(fn, arg);
+  if (fpr_plane_actors) return fpr_plane_actors->cleanup_set(fn, arg);
   fpr_hart_t *h = fpr_hart();
   acb_t *a = h ? h->current : 0;
   if (!a) return 0;
@@ -1773,7 +1804,7 @@ int fpr_actor_cleanup_set(void (*fn)(void *), void *arg) {
   return 1;
 }
 void fpr_actor_cleanup_clear(void *arg) {
-  if (fpr_sched) { fpr_sched->cleanup_clear(arg); return; }
+  if (fpr_plane_actors) { fpr_plane_actors->cleanup_clear(arg); return; }
   fpr_hart_t *h = fpr_hart();
   acb_t *a = h ? h->current : 0;
   if (a && a->external_arg == arg) { a->external_cleanup = 0; a->external_arg = 0; }
@@ -1786,12 +1817,12 @@ void fpr_actor_cleanup_clear(void *arg) {
  * reason goes to the error ring, the actor dies (its watchers wake, so an
  * RPC caller hears Err "dead actor"; the reaper runs a pending cleanup
  * hook), and the machine keeps running.  A routed process image fails
- * through the plane's own copy (fpr_sched->fail), so a device failure in
+ * through the plane's own copy (fpr_plane_actors->fail), so a device failure in
  * a loaded process ends that actor, not the machine.  The boot actor has
  * no one to fail to: it panics with the same reason. */
 static V a_kill(V av);
 void fpr_actor_fail(const char *why) {
-  if (fpr_sched) { fpr_sched->fail(why); for (;;) FPR_PARK(); }
+  if (fpr_plane_actors) { fpr_plane_actors->fail(why); for (;;) FPR_PARK(); }
   fpr_hart_t *h = fpr_hart();
   acb_t *a = h ? h->current : 0;
   if (!a || a->id == 0) fpr_cpanic(why);
@@ -2092,14 +2123,15 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
 }
 
 static V a_spawn(V f) {
-  if (fpr_sched) return fpr_sched->spawn(f);
+  if (fpr_plane_actors) return fpr_plane_actors->spawn(f);
   return spawn_on(fpr_hart()->id, f, 0);
 }
 /* spawnCap mode n f / spawnCapOn hart mode n f: the mailbox policy --
  * mode 0 Static n (rings of n, never grow: a WCET bound), 1 Dynamic n
  * (rings start at n and double when full).  n rounds up to a power of
- * two, 8..RING_MAX.  On the shared plane a process's actors keep the
- * plane's default (the policy is not routed through the table yet). */
+ * two, 8..RING_MAX.  On the shared plane the policy goes through the
+ * actors table (spawn_cap), so a process's Static ring refuses and says
+ * so exactly as the plane's own would. */
 static uint32_t cap_of(V nv) {
   if (!ISINT(nv)) fpr_cpanic("spawnCap: n must be an Int");
   sw n = UNTAG(nv);
@@ -2108,7 +2140,7 @@ static uint32_t cap_of(V nv) {
   return c;
 }
 static V a_spawn_cap(V modev, V nv, V f) {
-  if (fpr_sched) return fpr_sched->spawn(f);
+  if (fpr_plane_actors) return fpr_plane_actors->spawn_cap(TAG(0), 0, modev, nv, f);
   if (!ISINT(modev)) fpr_cpanic("spawnCap: mode must be an Int");
   return spawn_on_pid_cap(fpr_hart()->id, f, 0, (uw)-1, cap_of(nv), UNTAG(modev) != 0);
 }
@@ -2146,7 +2178,7 @@ extern int fpr_admission_test_fail(uw phase);
 #define ADMISSION_FAIL(phase) 0
 #endif
 static V a_spawn_heap(V bytesv, V f) {
-  if (fpr_sched) return fpr_sched->spawn_heap(bytesv, f);
+  if (fpr_plane_actors) return fpr_plane_actors->spawn_heap(bytesv, f);
   if (!ISINT(bytesv) || UNTAG(bytesv) <= 0) return (V)&heap_size;
   if (ISINT(f) || TID(f) != T_PAP) return (V)&heap_entry;
   uw bytes = (uw)UNTAG(bytesv);
@@ -2182,12 +2214,12 @@ denied:
 }
 #undef ADMISSION_FAIL
 static V a_spawn_cap_on(V hv, V modev, V nv, V f) {
-  if (fpr_sched) return fpr_sched->spawn_at(hv, f);
+  if (fpr_plane_actors) return fpr_plane_actors->spawn_cap(hv, 1, modev, nv, f);
   if (!ISINT(hv) || !ISINT(modev)) fpr_cpanic("spawnCapOn: hart and mode must be Ints");
   return spawn_on_pid_cap((uw)UNTAG(hv), f, 1, (uw)-1, cap_of(nv), UNTAG(modev) != 0);
 }
 static V a_spawn_at(V hv, V f) {
-  if (fpr_sched) return fpr_sched->spawn_at(hv, f);
+  if (fpr_plane_actors) return fpr_plane_actors->spawn_at(hv, f);
   if (ISINT(hv) == 0) fpr_cpanic("spawnOn: hart must be an Int");
   return spawn_on((uw)UNTAG(hv), f, 1); /* explicit placement pins */
 }
@@ -2199,7 +2231,7 @@ static V a_spawn_at(V hv, V f) {
  * routed: an image on the shared plane is itself a process already. */
 static uw next_pid; /* 0 = the boot image; apps count up from 1 */
 static V a_spawn_app(V f) {
-  if (fpr_sched) fpr_cpanic("Sys.spawnApp: only the plane's own image launches apps");
+  if (fpr_plane_actors) fpr_cpanic("Sys.spawnApp: only the plane's own image launches apps");
   if (ISINT(f) || TID(f) != T_PAP) fpr_cpanic("Sys.spawnApp: argument must be a function");
   uw pid = __atomic_add_fetch(&next_pid, 1, __ATOMIC_RELAXED);
   /* the image the root's code lives in (an attached, not yet launched
@@ -2320,7 +2352,7 @@ static int ring_push(acb_t *a, chan_t *c, uw key, V m) {
   }
 }
 V fpr_send_as(uw sender_key, V av, V m) {
-  if (fpr_sched) return fpr_sched->send_as(sender_key, av, m);
+  if (fpr_plane_actors) return fpr_plane_actors->send_as(sender_key, av, m);
   if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("send: target is not an actor");
   acb_t *a = (acb_t *)av;
   if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD)
@@ -2387,7 +2419,7 @@ static V a_send(V av, V m) {
  * so it is released exactly as a received-then-dropped message would
  * be, never silently retained. */
 static V a_send_linear(V av, V m) {
-  if (fpr_sched) return fpr_sched->send_as((uw)fpr_hart()->current, av, m);
+  if (fpr_plane_actors) return fpr_plane_actors->send_as((uw)fpr_hart()->current, av, m);
   if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("sendLinear: target is not an actor");
   acb_t *a = (acb_t *)av;
   /* a move shares the value's statics too: across processes it copies,
@@ -2456,7 +2488,7 @@ V fpr_syscall_wait_result(void) {
 
 /* fair receive: round-robin over channels, FIFO within a channel */
 static V a_receive(V me) {
-  if (fpr_sched) return fpr_sched->receive(me);
+  if (fpr_plane_actors) return fpr_plane_actors->receive(me);
   fpr_hart_t *h = fpr_hart();
   if (ISINT(me) || (acb_t *)me != h->current)
     fpr_cpanic("receive: not the current actor's handle");
@@ -2498,7 +2530,7 @@ static V a_receive(V me) {
 static const struct { uint32_t tid, var; uw len; uint8_t bytes[8]; } __attribute__((aligned(8))) recv_empty_s = {T_STR, 0, 5, "empty"};
 static const struct { uint32_t tid, var; V f; } __attribute__((aligned(8))) recv_empty = {T_RESULT, 1, (V)&recv_empty_s};
 static V a_receive_now(V me) {
-  if (fpr_sched) return fpr_sched->receive_now(me);
+  if (fpr_plane_actors) return fpr_plane_actors->receive_now(me);
   fpr_hart_t *h = fpr_hart();
   if (ISINT(me) || (acb_t *)me != h->current)
     fpr_cpanic("receiveNow: not the current actor's handle");
@@ -2521,7 +2553,7 @@ static V a_receive_now(V me) {
 
 /* selective receive by SENDER: only that sender's channel, FIFO */
 static V a_receive_from(V me, V fromv) {
-  if (fpr_sched) return fpr_sched->receive_from(me, fromv);
+  if (fpr_plane_actors) return fpr_plane_actors->receive_from(me, fromv);
   fpr_hart_t *h = fpr_hart();
   if (ISINT(me) || (acb_t *)me != h->current)
     fpr_cpanic("receiveFrom: not the current actor's handle");
@@ -2582,7 +2614,7 @@ static V ok_of(V m) {
 }
 
 static V a_receive_from_res(V me, V fromv) {
-  if (fpr_sched) return fpr_sched->receive_from_res(me, fromv);
+  if (fpr_plane_actors) return fpr_plane_actors->receive_from_res(me, fromv);
   fpr_hart_t *h = fpr_hart();
   if (ISINT(me) || (acb_t *)me != h->current)
     fpr_cpanic("receiveFromRes: not the current actor's handle");
@@ -2611,7 +2643,7 @@ static V a_receive_from_res(V me, V fromv) {
 
 /* selective receive by TYPE: next T_RESULT from any channel */
 static V a_receive_res(V me) {
-  if (fpr_sched) return fpr_sched->receive_res(me);
+  if (fpr_plane_actors) return fpr_plane_actors->receive_res(me);
   fpr_hart_t *h = fpr_hart();
   if (ISINT(me) || (acb_t *)me != h->current)
     fpr_cpanic("receiveRes: not the current actor's handle");
@@ -2633,7 +2665,7 @@ static V a_receive_res(V me) {
 }
 
 static V a_yield(V me) {
-  if (fpr_sched) {
+  if (fpr_plane_actors) {
     /* routed: requeue-and-reschedule THROUGH THE PLANE.  Running the
      * local enq here would push the acb through this image's private
      * copy of the backlog/donation machinery -- and a donation would
@@ -2641,7 +2673,7 @@ static V a_yield(V me) {
     fpr_hart_t *h = fpr_hart();
     if (ISINT(me) || (acb_t *)me != h->current)
       fpr_cpanic("yield: not the current actor's handle");
-    fpr_sched->fuel();
+    fpr_plane_actors->fuel();
     return (V)&fpr_unit;
   }
   fpr_hart_t *h = fpr_hart();
@@ -2718,7 +2750,7 @@ FPR_FN(fpr_g_spawnOn, a_spawn_at, 2);
  * Deep trees reclaim shallowly at zero (children are pool-scoped) --
  * share flat records/tuples, or accept pool lifetime for the rest. */
 static V a_send_arc(V av, V m) {
-  if (fpr_sched) return fpr_sched->send_as((uw)fpr_hart()->current, av, m);
+  if (fpr_plane_actors) return fpr_plane_actors->send_as((uw)fpr_hart()->current, av, m);
   if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("sendArc: target is not an actor");
   if (!ISINT(m) && fpr_in_heap(m) && TID(m) == T_VEC)
     fpr_cpanic("sendArc: a Vector is linear bulk -- sendLinear moves it, send copies it");
@@ -2989,7 +3021,7 @@ static V mem_body(V me) {
 }
 FPR_FN(mem_entry, mem_body, 1);
 void fpr_mem_spawn(void) {
-  if (!fpr_mem_own || fpr_sched || mem_act) return;
+  if (!fpr_mem_own || fpr_plane_memory || mem_act) return;
   for (uw i = 0; i < FPR_NHARTS; i++) {
     mem_hart_key[i].tid = T_ACTOR;
     mem_hart_key[i].var = ST_READY;
@@ -3002,11 +3034,19 @@ void fpr_mem_spawn(void) {
                       * spawn above only queued it on this hart) */
 }
 
-/* ---- the exported plane (fpr.h fpr_sched_t) ------------------------- */
+/* ---- the exported plane (fpr.h: fpr_plane_actors_t, fpr_plane_memory_t) --- */
 static V sched_spawn(V f) { return spawn_on(fpr_hart()->id, f, 0); }
 static V sched_spawn_at(V hv, V f) {
   if (ISINT(hv) == 0) fpr_cpanic("spawnOn: hart must be an Int");
   return spawn_on((uw)UNTAG(hv), f, 1);
+}
+/* a process's spawnCap / spawnCapOn: the same rounding and the same pin
+ * rule as the plane's own, the pid inherited from the spawner */
+static V sched_spawn_cap(V hv, uw pinned, V modev, V nv, V f) {
+  if (!ISINT(modev)) fpr_cpanic("spawnCap: mode must be an Int");
+  if (pinned && !ISINT(hv)) fpr_cpanic("spawnCapOn: hart must be an Int");
+  uw hart = pinned ? (uw)UNTAG(hv) : fpr_hart()->id;
+  return spawn_on_pid_cap(hart, f, pinned ? 1 : 0, (uw)-1, cap_of(nv), UNTAG(modev) != 0);
 }
 static V sched_spawn_pid(V f, uw pid) {
   return spawn_on_pid(fpr_hart()->id, f, 0, pid);
@@ -3019,29 +3059,32 @@ static V sched_receive_from_res(V me, V from) { return a_receive_from_res(me, fr
 V fpr_receive_res_c(V me) { return a_receive_res(me); } /* process.c's syscall wait */
 V fpr_receive_from_res_c(V me, V from) { return a_receive_from_res(me, from); }
 static uw sched_arc_live(void) { return fpr_arc_live_count(); }
-void fpr_sched_export(fpr_sched_t *out) {
-  out->sleep_us = fpr_actor_sleep_us;
-  out->cleanup_set = fpr_actor_cleanup_set;
-  out->cleanup_clear = fpr_actor_cleanup_clear;
-  out->spawn_heap = a_spawn_heap;
-  out->fail = fpr_actor_fail;
-  out->send_as = fpr_send_as;
-  out->receive = sched_receive;
-  out->receive_from = sched_receive_from;
-  out->receive_res = sched_receive_res;
-  out->receive_now = sched_receive_now;
-  out->receive_from_res = sched_receive_from_res;
-  out->spawn = sched_spawn;
-  out->spawn_at = sched_spawn_at;
-  out->spawn_pid = sched_spawn_pid;
-  out->arc_incref = fpr_arc_incref;
-  out->arc_decref = fpr_arc_decref;
-  out->slab_new = fpr_slab_new;
-  out->slab_release = fpr_slab_release;
-  out->pool_reset = fpr_pool_reset_c;
-  out->fuel = fpr_fuel_exhausted;
-  out->arc_live = sched_arc_live;
-  out->stack_grow = stack_grow_at;
-  out->heap_lo = fpr_heap_lo;
-  out->heap_hi = fpr_heap_hi;
+void fpr_plane_export(fpr_plane_actors_t *actors, fpr_plane_memory_t *memory) {
+  actors->abi = FPR_PLANE_ACTORS_ABI;
+  actors->send_as = fpr_send_as;
+  actors->receive = sched_receive;
+  actors->receive_now = sched_receive_now;
+  actors->receive_from = sched_receive_from;
+  actors->receive_from_res = sched_receive_from_res;
+  actors->receive_res = sched_receive_res;
+  actors->spawn = sched_spawn;
+  actors->spawn_at = sched_spawn_at;
+  actors->spawn_cap = sched_spawn_cap;
+  actors->spawn_pid = sched_spawn_pid;
+  actors->spawn_heap = a_spawn_heap;
+  actors->fuel = fpr_fuel_exhausted;
+  actors->sleep_us = fpr_actor_sleep_us;
+  actors->cleanup_set = fpr_actor_cleanup_set;
+  actors->cleanup_clear = fpr_actor_cleanup_clear;
+  actors->fail = fpr_actor_fail;
+  memory->abi = FPR_PLANE_MEMORY_ABI;
+  memory->arc_incref = fpr_arc_incref;
+  memory->arc_decref = fpr_arc_decref;
+  memory->arc_live = sched_arc_live;
+  memory->slab_new = fpr_slab_new;
+  memory->slab_release = fpr_slab_release;
+  memory->pool_reset = fpr_pool_reset_c;
+  memory->stack_grow = stack_grow_at;
+  memory->heap_lo = fpr_heap_lo;
+  memory->heap_hi = fpr_heap_hi;
 }

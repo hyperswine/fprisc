@@ -187,8 +187,10 @@ heap keeps the whole grant until every reference and borrow ends.
 A6. **The mailbox is separate from memory.** `spawnCap Static n` never
 grows; `Dynamic n` doubles to `RING_MAX` (2^20), then sends fail. `n` is
 rounded to a power of two and clamped to 8..2^20 **silently**. On QOS's
-shared plane the mode and size are **silently ignored**. `spawnHeap`
-always gets the default static ring of 64.
+shared plane the mode and size were **silently ignored** until 2026-10-08;
+they now go through the plane's actors table (`2026-10-08-PLANE-TABLES.md`,
+tested by `Q/tools/mailbox-process-check.sh`). `spawnHeap` always gets the
+default static ring of 64.
 
 A7. **Stacks grow without admission** from 128 KiB (256 KiB in QOS apps)
 by doubling, to `fpr_stack_max` (1 GiB; `FPR_STACK_MAX_MB`, read once at
@@ -256,11 +258,10 @@ change is refused? Can a limit be lowered below what is outstanding (the
 draft says no)?
 
 **Q5. Silent clamps.** The mailbox size is rounded and clamped silently,
-ignored silently on the shared plane, and a bad `FPR_STACK_MAX_MB` is
-ignored silently. The bounds rule says limits are never silent. Refuse
-instead? **Suggested:** refuse a size outside 8..2^20 and a bad
-environment value by name; make the shared plane honour the mailbox policy
-or refuse it.
+and a bad `FPR_STACK_MAX_MB` is ignored silently (the shared plane honours
+the mailbox policy since 2026-10-08). The bounds rule says limits are never
+silent. Refuse instead? **Suggested:** refuse a size outside 8..2^20 and a
+bad environment value by name.
 
 **Q6. Growth after admission.** Which growth is admitted, and against
 which budget: stack doubling, Dynamic mailboxes, outgoing message slabs,

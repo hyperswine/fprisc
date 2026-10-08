@@ -139,47 +139,71 @@ static inline void fpr_pool_init(fpr_pool_t *p, void **buckets) {
 void **fpr_bkt_take(void);   /* runtime.c: bucket-array recycler */
 void fpr_bkt_put(void **b);
 
-/* ---- the SHARED SCHEDULER PLANE (transparent ACBs) -----------------
+/* ---- the SHARED PLANE (transparent ACBs): two contracts -------------
  * The unification: everything that runs is an ACB with a pid on ONE
  * set of per-hart queues -- System.qa's actors are pid 0, a loaded
  * process's actors are pid N, and the same donation/steal machinery
  * moves all of them.  A separately-compiled process image reaches the
- * ONE scheduler by routing its STRUCTURAL operations (send, receive,
- * spawn, arc, slab grow/release, the fuel trap) through this table of
- * the kernel's own functions; pool-local hot paths (bucket take, slab
- * bump, fpr_free) need no routing because the slab refactor made them
- * acb-carried.  fpr_sched is NULL on every normal boot (kernel, qosp,
- * bare-metal: zero behavior change); the loader hands a process its
- * table at entry. */
-#define FPR_NATIVE_ABI 4u /* v4: shared boot network-owner callback; v3: checked module table schema; v2: vector product recipe metadata appended to vec_t */
-typedef struct fpr_sched {
+ * ONE scheduler and the ONE heap by routing its STRUCTURAL operations
+ * through two tables of the kernel's own functions; pool-local hot
+ * paths (bucket take, slab bump, fpr_free) need no routing because the
+ * slab refactor made them acb-carried.
+ *
+ * The two tables are two contracts, versioned apart from each other and
+ * from FPR_NATIVE_ABI (which covers the shared struct layouts and the
+ * boot block that carries the tables):
+ *
+ *   fpr_plane_actors_t -- what the Base profile means by an actor:
+ *     send, receive in its five forms, spawn with its placement and
+ *     mailbox policy, the process root, admission, yield/fuel, sleep,
+ *     the one cleanup hook, fail-stop.  Owned by the scheduler.
+ *   fpr_plane_memory_t -- the shared heap: ARC, slab growth and release,
+ *     pool reset, stack growth, the heap span.  Owned by the memory
+ *     plane (today the kernel's buddy behind the memory actor).
+ *
+ * Both pointers are NULL on every normal boot (kernel, qosp, bare-metal:
+ * zero behavior change); the loader hands a process both at entry, and
+ * the process refuses to start on a version it was not built against.
+ * Every operation here still speaks in tagged values (V): the tables
+ * bind one FP-RISC runtime to another.  A plain-word API for other
+ * languages is the next step, not this one. */
+#define FPR_NATIVE_ABI 5u /* v5: the plane table split in two, carried by the boot block; v4: shared boot network-owner callback; v3: checked module table schema; v2: vector product recipe metadata appended to vec_t */
+#define FPR_PLANE_ACTORS_ABI 1u /* v1: the scheduler half of the old fpr_sched_t, plus spawn_cap */
+#define FPR_PLANE_MEMORY_ABI 1u /* v1: the memory half of the old fpr_sched_t */
+typedef struct fpr_plane_actors {
+  uw abi;                             /* FPR_PLANE_ACTORS_ABI of the exporter */
   V (*send_as)(uw sender_key, V target, V m);
   V (*receive)(V me);
+  V (*receive_now)(V me);             /* receive without waiting */
   V (*receive_from)(V me, V from);
+  V (*receive_from_res)(V me, V from); /* receiveFrom that answers a dead sender */
   V (*receive_res)(V me);
   V (*spawn)(V f);                    /* pid inherits from the spawner */
-  V (*spawn_at)(V hart, V f);
+  V (*spawn_at)(V hart, V f);         /* explicit placement pins */
+  V (*spawn_cap)(V hart, uw pinned, V mode, V n, V f); /* the mailbox policy: Static/Dynamic n, optionally pinned */
   V (*spawn_pid)(V f, uw pid);        /* the process root: explicit pid */
-  void (*arc_incref)(V v);
-  void (*arc_decref)(V v);
-  fpr_slab_t *(*slab_new)(uw want);   /* pool growth: the shared buddy */
-  void (*slab_release)(fpr_slab_t *sl);
-  void (*pool_reset)(void);
-  void (*fuel)(void);                 /* fpr_fuel_exhausted, kernel copy */
-  uw (*arc_live)(void);
-  char *heap_lo, *heap_hi;            /* fpr_in_heap bounds, shared span */
-  uw (*stack_grow)(uw sp);            /* the plane owns the actors, so their stacks */
-  V (*receive_now)(V me);             /* receive without waiting (actors.c) */
-  V (*receive_from_res)(V me, V from); /* receiveFrom that answers a dead sender */
+  V (*spawn_heap)(V bytes, V f);      /* transactional initial admission */
+  void (*fuel)(void);                 /* fpr_fuel_exhausted / yield: requeue through the plane */
   void (*sleep_us)(uw us);
   int (*cleanup_set)(void (*fn)(void *), void *arg);
   void (*cleanup_clear)(void *arg);
-  void (*fail)(const char *why);     /* fpr_actor_fail: the plane kills the current actor */
-  V (*spawn_heap)(V bytes, V f);     /* transactional initial admission on the plane */
-} fpr_sched_t;
-extern fpr_sched_t *fpr_sched;        /* NULL = this image is the plane */
+  void (*fail)(const char *why);      /* fpr_actor_fail: the plane kills the current actor */
+} fpr_plane_actors_t;
+typedef struct fpr_plane_memory {
+  uw abi;                             /* FPR_PLANE_MEMORY_ABI of the exporter */
+  void (*arc_incref)(V v);
+  void (*arc_decref)(V v);
+  uw (*arc_live)(void);
+  fpr_slab_t *(*slab_new)(uw want);   /* pool growth: the shared buddy */
+  void (*slab_release)(fpr_slab_t *sl);
+  void (*pool_reset)(void);
+  uw (*stack_grow)(uw sp);            /* a stack segment for the current actor, from the shared heap */
+  char *heap_lo, *heap_hi;            /* fpr_in_heap bounds, shared span */
+} fpr_plane_memory_t;
+extern fpr_plane_actors_t *fpr_plane_actors; /* NULL = this image is the plane */
+extern fpr_plane_memory_t *fpr_plane_memory; /* NULL = this image owns its heap */
 uw fpr_pid_live(uw pid); /* actors of process pid not yet dead and off every hart */
-void fpr_sched_export(fpr_sched_t *out); /* fill with THIS image's impls */
+void fpr_plane_export(fpr_plane_actors_t *actors, fpr_plane_memory_t *memory); /* fill with THIS image's impls */
 /* Call on the scheduler's runtime after code writes, before spawning an
  * actor or directly entering the image. Remote harts fence at dispatch. */
 void fpr_code_publish(void);

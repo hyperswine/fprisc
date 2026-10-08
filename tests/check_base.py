@@ -78,6 +78,13 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         p = run([kb], env={'FPR_HARTS': harts})
         assert p.stdout == 'killblocked: 1500 more kills of blocked actors cost under 32 MiB\n', p.stdout
     print('Killing a blocked actor reclaims it: 1500 kills stay under 32 MiB on one and four harts (was about 100 MB): PASS')
+    # an actor that dies with mail queued: reap drops what its rings still
+    # hold (300 deaths with 50 one-KiB messages unread lost 16.5 MB a round)
+    dm = build('tests/base/deadmail.fpr', 'deadmail')
+    for harts in ('1', '4'):
+        p = run([dm], env={'FPR_HARTS': harts})
+        assert p.stdout == 'deadmail: 900 more deaths with 49 KiB of mail unread each cost under 16 MiB\n', p.stdout
+    print('Mail queued on a dead actor is released, and so is its result: 900 deaths with 49 KiB unread each stay under 16 MiB on one and four harts (was about 47 MB): PASS')
     # Fixed heap admission is independent of mailbox capacity; failures
     # belong to the child and escaped data delays grant reclamation.
     fixed = build('tests/base/fixedheap.fpr', 'fixedheap')

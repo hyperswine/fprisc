@@ -6,7 +6,8 @@ static V unavailable(const char *name){
  uw n=strlen(name);str_t *s=(str_t *)fpr_alloc(sizeof(str_t)+n);s->tid=T_STR;s->var=0;s->len=n;memcpy(s->bytes,name,n);
  hdr_t *r=(hdr_t *)fpr_alloc(8+sizeof(V));r->tid=T_RESULT;r->var=1;*(V *)((char *)r+8)=(V)s;return (V)r;
 }
-fpr_sched_t *fpr_sched;
+fpr_plane_actors_t *fpr_plane_actors;
+fpr_plane_memory_t *fpr_plane_memory;
 volatile int fpr_is_process;
 int fpr_mem_own;
 uw fpr_stack_grow(void){fpr_cpanic("Base: 64 KiB stack exhausted");return 0;}

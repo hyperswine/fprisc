@@ -1,0 +1,54 @@
+# an actor dies with mail still queued: the messages are released with it.
+# reap used to put the channel block in limbo without dropping what was in
+# its rings -- 300 deaths with 50 one-KiB messages unread lost 16.5 MB per
+# round, linearly (docs/2026-10-07-STATES.md 1.5).
+unsafe base.
+
+kib : Int -> String .
+kib 0 = "".
+kib n = strcat "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" (kib (n - 1)).
+
+# fill w's mailbox with n copies of the payload (the first one wakes it)
+fill : Int -> Int -> String -> Int .
+fill w 0 payload = 0.
+fill w n payload = case send w payload of
+    Ok u -> fill w (n - 1) payload
+  | Err e -> error "deadmail: send refused: {e}".
+
+# w waits for the gate, then reads ONE message from main and returns it as
+# its result; the other 49 are still queued when it dies.  The gate keeps w
+# alive until all 50 have landed, whatever the hart count.
+gate : Int -> Int .
+gate g = w = receive g; _ = send w 0; 0.
+round : Int -> String -> Int .
+round 0 payload = 0.
+round n payload =
+  me = myself 0;
+  g = spawn gate;
+  w = spawn (fn self -> _ = receiveFrom self g; receiveFrom self me);
+  _ = fill w 50 payload;
+  _ = send g w;
+  _ = yield me;
+  round (n - 1) payload.
+
+freeKiB : Unit -> Int .
+freeKiB u = case Sys.memInfo 0 of _ :: f :: _ -> f | _ -> 0.
+
+settle : Unit -> Int .
+settle u = Sys.sleepUs 100000 >> freeKiB Unit.
+
+main =
+  payload = kib 16;
+  _ = round 300 payload;
+  a = settle Unit;
+  _ = round 300 payload;
+  _ = round 300 payload;
+  _ = round 300 payload;
+  b = settle Unit;
+  lost = a - b;
+  # three more rounds once cost about 47 MB on one hart and the same on
+  # four.  Measured after the fix: under 4 MiB on one hart; 9-10 MiB on four
+  # harts, and 12 MiB after nine rounds instead of three -- per-hart caches
+  # plus a residue near 1 KiB per death that is not yet explained
+  # (docs/2026-10-07-STATES.md 2.5).
+  print "deadmail: 900 more deaths with 49 KiB of mail unread each cost {case lost < 16384 of True -> "under 16 MiB" | False -> "{lost} KiB"}".

@@ -235,8 +235,8 @@ int fpr_in_heap(V v) { /* the buddy span: heap + process regions */
     return 0;
   if (!ISINT(v) && in_image((const void *)v)) /* a loaded image's statics */
     return 0;
-  if (fpr_sched) /* shared plane: the KERNEL's span is the heap */
-    return !ISINT(v) && (char *)v >= fpr_sched->heap_lo && (char *)v < fpr_sched->heap_hi;
+  if (fpr_plane_memory) /* shared plane: the KERNEL's span is the heap */
+    return !ISINT(v) && (char *)v >= fpr_plane_memory->heap_lo && (char *)v < fpr_plane_memory->heap_hi;
   return !ISINT(v) && (char *)v >= fpr_heap_lo && (char *)v < fpr_heap_hi;
 }
 
@@ -411,12 +411,12 @@ static void slab_home(fpr_slab_t *sl) {
 /* the actual release of an ownerless (message) slab.  Split out so
  * actors.c's deferred-drop list can call it at drain time. */
 void fpr_slab_release(fpr_slab_t *sl) {
-  if (fpr_sched) { fpr_sched->slab_release(sl); return; }
+  if (fpr_plane_memory) { fpr_plane_memory->slab_release(sl); return; }
   slab_home(sl);
 }
 
 /* a fresh pool slab from THIS image's lower allocator -- the shared
- * plane's growth path for routed process pools (fpr.h fpr_sched_t);
+ * plane's growth path for routed process pools (fpr.h fpr_plane_memory_t);
  * the caller is the process's actor, so the request parks it like
  * any other */
 fpr_slab_t *fpr_slab_new(uw want) {
@@ -529,16 +529,16 @@ V fpr_alloc(V raw_bytes) {
      * blocks on the way up.  A loaded process without a buddy keeps the one
      * size: its grant recycler matches by size. */
     uw floor = SLAB_SZ;
-    if (fpr_mem_own || fpr_sched) {
+    if (fpr_mem_own || fpr_plane_memory) {
       floor = sl ? 2 * (uw)(sl->end - (char *)sl) : FPR_SLAB_MIN;
       if (floor > SLAB_SZ) floor = SLAB_SZ;
     }
     if (want < floor) want = floor;
-    if (fpr_sched) {
+    if (fpr_plane_memory) {
       /* shared plane: pools grow from the KERNEL's buddy, so every
        * value this process builds lives in the one heap span and the
        * kernel reaps its acbs like any other */
-      sl = fpr_sched->slab_new(want);
+      sl = fpr_plane_memory->slab_new(want);
       if (!sl) fpr_cpanic("heap exhausted (shared buddy has no free block)");
     } else {
       sl = 0;
@@ -1496,7 +1496,7 @@ static int arc_by_value(V v) {
   return !fpr_in_heap(v) || TID(v) == T_ACTOR;
 }
 void fpr_arc_incref(V v) {
-  if (fpr_sched) { fpr_sched->arc_incref(v); return; }
+  if (fpr_plane_memory) { fpr_plane_memory->arc_incref(v); return; }
   if (arc_by_value(v)) return; /* ints, immortal statics, handles: by value */
   arc_reserve(); /* the next table, if one is due, before the lock */
   fpr_lock(&arc_lock);
@@ -1515,7 +1515,7 @@ void fpr_arc_incref(V v) {
 }
 
 void fpr_arc_decref(V v) {
-  if (fpr_sched) { fpr_sched->arc_decref(v); return; }
+  if (fpr_plane_memory) { fpr_plane_memory->arc_decref(v); return; }
   if (arc_by_value(v)) return;
   fpr_lock(&arc_lock);
   int found;
@@ -1591,7 +1591,7 @@ void fpr_arc_teardown_pool(fpr_pool_t *pool) {
  * free cell lives in a slab this walk just recycled or orphaned. */
 static V g_poolReset(V u) {
   (void)u;
-  if (fpr_sched) { fpr_sched->pool_reset(); return (V)&fpr_unit; }
+  if (fpr_plane_memory) { fpr_plane_memory->pool_reset(); return (V)&fpr_unit; }
   fpr_hart_t *h = fpr_hart();
   fpr_pool_t *pool = cur_pool(h);
   fpr_drop_drain_current(); /* soft death = end of frame: borrows are done */
@@ -1639,7 +1639,7 @@ uw fpr_arc_live_count(void) { return arc_live; }
  * ARC.qa (docs/2026-08-29-MEMORY-V2-PLAN.md phase 4) replaces the table+lock
  * underneath without changing this contract. */
 void fpr_arc_promote_share(V v) {
-  if (fpr_sched) { fpr_sched->arc_incref(v); return; }
+  if (fpr_plane_memory) { fpr_plane_memory->arc_incref(v); return; }
   if (arc_by_value(v)) return; /* ints, immortal statics, handles: by value */
   arc_reserve(); /* the next table, if one is due, before the lock */
   fpr_lock(&arc_lock);
@@ -1665,7 +1665,7 @@ void fpr_arc_promote_share(V v) {
  * fails here and takes the copy path -- a child's slab lifetime
  * belongs to its parent root, never to a forwarded pointer. */
 int fpr_arc_movable_root(V v) {
-  if (fpr_sched) return 0; /* shared plane: conservative copy path */
+  if (fpr_plane_memory) return 0; /* shared plane: conservative copy path */
   if (!fpr_in_heap(v) || ISINT(v)) return 0;
   if (TID(v) == T_ACTOR) return 0; /* handles: no preheader, share raw */
   fpr_slab_t *sl = slab_of(v);
@@ -1752,7 +1752,7 @@ static V g_strJoin(V sepv, V list) {
 }
 static V g_arcLive(V d) {
   (void)d;
-  if (fpr_sched) return TAG((sw)fpr_sched->arc_live());
+  if (fpr_plane_memory) return TAG((sw)fpr_plane_memory->arc_live());
   return TAG(fpr_arc_live());
 }
 
@@ -2981,7 +2981,11 @@ static V result_of(unsigned var, V payload) {
   return (V)r;
 }
 static V ok_v(V payload) { return result_of(0, payload); }
-static V err_c(const char *msg) { return result_of(1, (V)fpr_mkstr((const uint8_t *)msg, (uw)__builtin_strlen(msg))); }
+/* The length of a C string without the builtin: on the freestanding
+ * targets gcc lowers a non-constant __builtin_strlen to a call to libc's
+ * strlen, which the virt and native links do not have. */
+static uw cstr_len(const char *s) { uw n = 0; while (s[n]) n++; return n; }
+static V err_c(const char *msg) { return result_of(1, (V)fpr_mkstr((const uint8_t *)msg, cstr_len(msg))); }
 
 static V i64_add(V a, V b) { return vu64(u64(a) + u64(b)); }
 static V i64_sub(V a, V b) { return vu64(u64(a) - u64(b)); }
@@ -3025,9 +3029,41 @@ static V i64_shr(V a, V k) { return vu64(u64(a) >> cnt64(k)); }
 static V i64_sar(V a, V k) { return vi64(i64(a) >> cnt64(k)); } /* arithmetic on every target we build */
 static V i64_rotl(V a, V k) { unsigned n = cnt64(k); return n ? vu64((u64(a) << n) | (u64(a) >> (64 - n))) : vu64(u64(a)); }
 static V i64_rotr(V a, V k) { unsigned n = cnt64(k); return n ? vu64((u64(a) >> n) | (u64(a) << (64 - n))) : vu64(u64(a)); }
-static V i64_clz(V a) { return TAG(u64(a) ? __builtin_clzll(u64(a)) : 64); }
-static V i64_ctz(V a) { return TAG(u64(a) ? __builtin_ctzll(u64(a)) : 64); }
-static V i64_popcnt(V a) { return TAG(__builtin_popcountll(u64(a))); }
+/* Bit counts written out: without the Zbb extension gcc turns the clz,
+ * ctz and popcount builtins into libgcc calls (__clzdi2, ...), and the
+ * virt and native links are -nostdlib with no -lgcc.  A zero argument
+ * answers 64 for clz and ctz. */
+static unsigned clz64(uint64_t x) {
+  unsigned n = 0;
+  if (!x) return 64;
+  if (!(x & 0xFFFFFFFF00000000ull)) { n += 32; x <<= 32; }
+  if (!(x & 0xFFFF000000000000ull)) { n += 16; x <<= 16; }
+  if (!(x & 0xFF00000000000000ull)) { n += 8;  x <<= 8; }
+  if (!(x & 0xF000000000000000ull)) { n += 4;  x <<= 4; }
+  if (!(x & 0xC000000000000000ull)) { n += 2;  x <<= 2; }
+  if (!(x & 0x8000000000000000ull)) { n += 1; }
+  return n;
+}
+static unsigned ctz64(uint64_t x) {
+  unsigned n = 0;
+  if (!x) return 64;
+  if (!(x & 0x00000000FFFFFFFFull)) { n += 32; x >>= 32; }
+  if (!(x & 0x000000000000FFFFull)) { n += 16; x >>= 16; }
+  if (!(x & 0x00000000000000FFull)) { n += 8;  x >>= 8; }
+  if (!(x & 0x000000000000000Full)) { n += 4;  x >>= 4; }
+  if (!(x & 0x0000000000000003ull)) { n += 2;  x >>= 2; }
+  if (!(x & 0x0000000000000001ull)) { n += 1; }
+  return n;
+}
+static unsigned popcnt64(uint64_t x) {
+  x = x - ((x >> 1) & 0x5555555555555555ull);
+  x = (x & 0x3333333333333333ull) + ((x >> 2) & 0x3333333333333333ull);
+  x = (x + (x >> 4)) & 0x0F0F0F0F0F0F0F0Full;
+  return (unsigned)((x * 0x0101010101010101ull) >> 56);
+}
+static V i64_clz(V a) { return TAG(clz64(u64(a))); }
+static V i64_ctz(V a) { return TAG(ctz64(u64(a))); }
+static V i64_popcnt(V a) { return TAG(popcnt64(u64(a))); }
 
 /* conversions with Int: every Int fits; the reverse is checked */
 #define INT_MAX63 ((int64_t)(((uint64_t)1 << 62) - 1))
