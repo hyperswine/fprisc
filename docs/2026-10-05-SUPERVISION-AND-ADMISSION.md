@@ -134,9 +134,14 @@ rest with S8.
 
 **S8. Processes.** A loaded process's root failing is reported to the
 launcher as "dead actor". Should the launcher get the reason (S2), restart
-the app (S4), and should a PANIC inside a process -- which today appears
-to halt the machine, because a process image has its own copy of the panic
-path -- end only that process? (Unverified; needs a test.)
+the app (S4)? Verified 2026-10-10 (`Q/tools/error-process-check.sh`): a
+PANIC from `error` inside a process DID halt the machine, through the
+image's own copy of the panic path. Since that day `fpr_panic` in a routed
+image fail-stops the current actor through the plane instead (the reason
+logged, watchers hear "dead actor", the launcher reports the root); the
+plane's own actors keep `error` as a panic (S1). A C invariant panic
+(`fpr_cpanic`) inside a process still halts the machine: those are bugs,
+and may be raised under a lock.
 
 **S9. What may the failing path itself do?** `fpr_actor_fail` runs in the
 failing actor, from C, often inside a device primitive. To tell a

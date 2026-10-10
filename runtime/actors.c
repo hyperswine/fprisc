@@ -1114,6 +1114,7 @@ FPR_FN(fpr_g_Sys_x2eirqDeliver, a_irq_deliver, 2);
 FPR_FN(fpr_g_Sys_x2eirqTarget, a_irq_target, 1);
 FPR_FN(fpr_g_Sys_x2eirqAck, a_irq_ack, 1);
 
+uw fpr_irq_unrouted; /* claims the router could not take: acked back to the device, counted */
 static void irq_drain(fpr_hart_t *h) {
   if (h->id != fpr_irq_hart || !__atomic_load_n(&irq_bound, __ATOMIC_ACQUIRE)) return;
   acb_t *r = __atomic_load_n(&irq_router, __ATOMIC_ACQUIRE);
@@ -1122,7 +1123,15 @@ static void irq_drain(fpr_hart_t *h) {
     if (!s) return;
     /* a plain Int: copy-free and allocation-free from scheduler context.
      * A source nobody bound is dropped by the router and stays masked. */
-    fpr_send_as((uw)&irq_src_key, (V)r, TAG(s));
+    if (!fpr_sent(fpr_send_as((uw)&irq_src_key, (V)r, TAG(s)))) {
+      /* the router's ring could not grow (or the router has ended): the
+       * claim must not be lost with the source masked for good.  Ack it
+       * so the device raises it again, count it, and leave this pass --
+       * a level source would be re-claimed at once and spin here. */
+      hal_irq_ack((uw)s);
+      __atomic_add_fetch(&fpr_irq_unrouted, 1, __ATOMIC_RELAXED);
+      return;
+    }
   }
 }
 
@@ -1181,10 +1190,14 @@ static void tmr_drain(fpr_hart_t *h) {
   if (h->id != fpr_irq_hart || !__atomic_load_n(&tmr_bound, __ATOMIC_ACQUIRE)) return;
   uint64_t dl = tmr_dl_get();
   if (!dl || hal_mtime() < dl) return;
-  tmr_dl_set(0);
   if (h->id != 0) hal_timer_park(h->id); /* else MTIP pends forever (hart
                                           * 0's detector re-arms its own) */
-  fpr_send_as((uw)&tmr_src_key, (V)tmr_act, TAG((sw)(dl & 0x3FFFFFFFFFFFFFFFull)));
+  /* the deadline is cleared only once the tick is queued: a refused send
+   * (the service's ring could not grow) leaves it due, and the next pass
+   * delivers it -- Timer.qa re-arms only on a tick it received, so a
+   * dropped one was a stalled timer service until the next arm */
+  if (fpr_sent(fpr_send_as((uw)&tmr_src_key, (V)tmr_act, TAG((sw)(dl & 0x3FFFFFFFFFFFFFFFull)))))
+    tmr_dl_set(0);
 }
 
 static void slp_drain(fpr_hart_t *h);   /* the parked sleep, below block_unless */

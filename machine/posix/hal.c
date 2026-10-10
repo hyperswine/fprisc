@@ -79,6 +79,15 @@ void hal_irq_raise(uw src) {
   __atomic_store_n(&irq_pending[src], 1, __ATOMIC_RELEASE);
   hal_ipi_send(fpr_irq_hart);
 }
+/* Sys.irqRaise src: raise a host source from FP-RISC itself -- what a host
+ * thread does on an actor's behalf, available to a program so the routing
+ * can be exercised without a device (tests/base/irqdead.fpr) */
+static V h_irq_raise(V srcv) {
+  if (!ISINT(srcv) || UNTAG(srcv) < 1) fpr_cpanic("Sys.irqRaise: a source is an Int >= 1");
+  hal_irq_raise((uw)UNTAG(srcv));
+  return (V)&fpr_unit;
+}
+FPR_FN(fpr_g_Sys_x2eirqRaise, h_irq_raise, 1);
 
 /* ---- interrupt sources for host threads ----------------------------------
  * Whoever raises from a host thread on actors' behalf (os_watch.c, os_job.c)

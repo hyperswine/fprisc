@@ -1,0 +1,14 @@
+# the log actor has ended: puts go C's way, and the asks answer the empty
+# value instead of halting the program that asked
+unsafe base.
+
+main =
+  _ = log "before";
+  r = Sys.logger Unit;
+  _ = kill r;
+  _ = Sys.sleepUs 20000;
+  _ = log "after (staged by C)";
+  a = Sys.logSeq 0;
+  b = listLen (Sys.logSnap 0);
+  _ = Sys.logKeep 3;
+  print "logdead: seq={a} kept={b} asks answered".

@@ -1,0 +1,35 @@
+# a bound actor that has ended: the router drops its binding and acks the
+# source, instead of leaving a source nobody will ever ack masked for good
+# (on a host the ack is nothing; what this checks is the path and the rebind)
+unsafe base.
+
+Sys.irqRaise : Int -> Unit .
+
+holder : Int -> Int -> Unit .
+holder boss self =
+  _ = Sys.irqBind 9 self;
+  _ = send boss 1;
+  m = receive self;      # dies on the first delivery (or the kill below)
+  Unit.
+
+taker : Int -> Int -> Unit .
+taker boss self =
+  _ = Sys.irqBind 9 self;
+  _ = send boss 1;
+  src = receive self;
+  _ = send boss (src, Sys.irqUnbind 9);
+  Unit.
+
+main =
+  me = myself 0;
+  h = spawn (holder me);
+  _ = receiveFrom me h;
+  _ = kill h;
+  _ = Sys.sleepUs 20000;
+  _ = Sys.irqRaise 9;        # routed to a dead owner: dropped, binding removed
+  _ = Sys.sleepUs 20000;
+  t = spawn (taker me);
+  _ = receiveFrom me t;
+  _ = Sys.irqRaise 9;
+  (src, unbound) = receiveFrom me t;
+  print "irqdead: a later binder of the dead owner's source receives {src}, unbinds {unbound}".

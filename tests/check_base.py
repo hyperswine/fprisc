@@ -64,6 +64,11 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         p = run([irq, arg], expected=1)
         assert msg in p.stdout + p.stderr, p.stdout + p.stderr
     print('Interrupt routing in FP-RISC: bind and unbind your own sources, another actor\'s refused by name: PASS')
+    # a bound actor that ended: the router drops the binding and acks the
+    # source; a later binder receives it
+    p = run([build('tests/base/irqdead.fpr', 'irqdead')])
+    assert p.stdout == 'irqdead: a later binder of the dead owner\'s source receives 9, unbinds True\n', p.stdout + p.stderr
+    print('A dead interrupt owner: its binding is dropped and its source acked; the next binder receives it: PASS')
     # the logs are a log actor (core/prelude.fpr): any width, sized at run
     # time; a line staged by C is still counted; the echo stays rate-limited
     p = run([build('tests/base/logplane.fpr', 'logplane')])
@@ -71,6 +76,10 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     assert p.stdout.count('[log] line') == 32 and 'suppressed 47 line(s); rings intact' in p.stdout, p.stdout
     assert '[ERR] staged by C' in p.stdout, p.stdout
     print('Logs as an actor: 505-byte lines kept whole, rings sized at run time, C-staged lines counted, echo rate-limited: PASS')
+    # the log actor has ended: puts are staged by C, asks answer the empty value
+    p = run([build('tests/base/logdead.fpr', 'logdead')])
+    assert 'logdead: seq=0 kept=0 asks answered' in p.stdout and '[log] after (staged by C)' in p.stdout, p.stdout + p.stderr
+    print('A dead log actor: puts go C\'s way, Sys.logSeq/logSnap/logKeep answer instead of halting: PASS')
     # kill an actor blocked in receive: it is reaped (a_kill left it on no
     # queue, and 1500 kills leaked about 100 MB of stacks and pools)
     kb = build('tests/base/killblocked.fpr', 'killblocked')

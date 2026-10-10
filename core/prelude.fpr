@@ -389,19 +389,24 @@ irqUnbindDone self tab from =
   _ = irqReply self from (irqCount tab from);
   irqRoute self tab.
 
+# a claim for a source whose bound actor has ended: the binding is dropped
+# and the source acked (unmasked), so the next binder is not handed a source
+# that can never raise again; the claim itself is lost, as a delivery to a
+# dead actor always is
 irqRouteSrc : unsafe Int -> List (Int, Int) -> Int -> a .
-irqRouteSrc self tab src =
-  _ = irqHand self (irqOwner tab src) src;
-  irqRoute self tab.
-irqHand : unsafe Int -> Int -> Int -> Unit .
+irqRouteSrc self tab src = case irqHand self (irqOwner tab src) src of
+    True -> irqRoute self tab
+  | False -> Sys.irqAck src >> irqRoute self (irqRemove tab src).
+# True: delivered (or nobody bound); False: the owner has ended
+irqHand : unsafe Int -> Int -> Int -> Bool .
 irqHand self who src = case who == 0 of
-    True -> Unit
+    True -> True
   | False -> irqHandTo self who src.
-irqHandTo : unsafe Int -> Int -> Int -> Unit .
+irqHandTo : unsafe Int -> Int -> Int -> Bool .
 irqHandTo self who src = case Sys.irqDeliver who src of
-    Ok u -> Unit
+    Ok u -> True
   | Err why -> (case why == "dead actor" of
-      True -> Unit
+      True -> False
     | False -> yield self >> irqHandTo self who src).
 
 # a reply is not lost to a full mailbox; a binder that has ended gets none
@@ -463,30 +468,31 @@ logPutTo me r sev line = case send r (me, 1, sev, line) of
       True -> Sys.logStage sev line
     | False -> yield me >> logPutTo me r sev line).
 
-logAsk : unsafe Int -> Int -> String -> a .
-logAsk kind sev who =
+# an ask of a log actor that has ended is answered with the empty value (the
+# lines since then went C's way, staged and echoed, and are not kept); it is
+# not a reason to halt the program that asked.  `fallback` is that answer.
+logAsk : unsafe Int -> Int -> a -> a .
+logAsk kind sev fallback =
   me = myself 0;
   r = loggerOf me;
-  _ = logSendSure me r (me, kind, sev, "") who;
-  receiveFrom me r.
-logSendSure : unsafe Int -> Int -> a -> String -> Unit .
-logSendSure me who m name = case send who m of
-    Ok u -> Unit
+  case send r (me, kind, sev, "") of
+    Ok u -> receiveFrom me r
   | Err why -> (case why == "dead actor" of
-      True -> error (strcat name ": the log actor has ended")
-    | False -> yield me >> logSendSure me who m name).
+      True -> fallback
+    | False -> yield me >> logAsk kind sev fallback).
 
-# total lines ever written at a severity (0 for a severity that is not one)
+# total lines ever written at a severity (0 for a severity that is not one,
+# and 0 once the log actor has ended)
 sysLogSeq : Int -> Int .
-sysLogSeq sev = logAsk 2 sev "Sys.logSeq".
+sysLogSeq sev = logAsk 2 sev 0.
 # newest first, fresh copies in the caller's pool (a severity that is not
-# one reads severity 0)
+# one reads severity 0; Nil once the log actor has ended)
 sysLogSnap : Int -> List String .
-sysLogSnap sev = logAsk 3 sev "Sys.logSnap".
+sysLogSnap sev = logAsk 3 sev Nil.
 # how many lines each severity keeps from now on (at least 1)
 sysLogKeep : Int -> Unit .
 sysLogKeep n = case n >= 1 of
-    True -> (case logAsk 4 n "Sys.logKeep" of _ -> Unit)
+    True -> (case logAsk 4 n 0 of _ -> Unit)
   | False -> error "Sys.logKeep: a ring keeps at least one line".
 
 loggerOf : unsafe Int -> Int .

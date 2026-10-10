@@ -1816,6 +1816,19 @@ void fpr_cpanic(const char *m) {
 void fpr_panic(V s) {
   if (!ISINT(s) && TID(s) == T_STR) {
     str_t *t = (str_t *)s;
+    if (fpr_plane_actors) {
+      /* a LOADED PROCESS on the shared plane: the language's `error` ends
+       * this actor with its reason (the plane's fail-stop; its watchers
+       * hear "dead actor", the launcher reports the root), not the
+       * machine -- which is what this image's own panic path would do,
+       * and did until 2026-10-10 (QOS tools/error-process-check.sh).
+       * The plane's own actors keep `error` as a panic (SUPERVISION S1). */
+      char why[200];
+      uw n = t->len < sizeof why - 1 ? t->len : sizeof why - 1;
+      for (uw i = 0; i < n; i++) why[i] = (char)t->bytes[i];
+      why[n] = 0;
+      fpr_actor_fail(why);
+    }
     fpr_cpanic_n((const char *)t->bytes, t->len);
   }
   fpr_cpanic("panic (non-string value)");
