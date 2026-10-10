@@ -113,3 +113,7 @@ pointer the receiver reads. The scheduler never sees it.
 3. Replace the single watcher with a list. SUPERVISION S3 (monitors)
    becomes possible.
 4. Only then let QOS own `fpr_sched_t`'s implementation file, and move it.
+
+Continued in `2026-10-10-UNIFORM-LOADING.md`: once the kernel is the
+only runtime, a module is a file and a load is a message to the
+program's supervisor actor, and the plugin concept goes.
