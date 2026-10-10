@@ -780,6 +780,9 @@ par2 h f a g b =
   w = spawnOn h parWorker;
   _ = send w (me, f, a);
   rb = g b;
+  # the worker's reply is a received root: its payload is KEPT into this
+  # actor's pool, so the root may be dropped (autodrop does, at the arm's
+  # start) and the pair outlives the next receive
   case receiveRes me of
-    Ok ra -> (ra, rb)
+    Ok ra -> (keep ra, rb)
   | Err _ -> error "par2: the worker failed".

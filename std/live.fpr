@@ -278,7 +278,9 @@ serveProjected cfg app =
   poller = PL.start Unit;
   _ = spawn (fn self -> TCP.serveOn poller listener (connection reg poller cfg app));
   _ = (case cfg.watch of Nil -> Unit | _ -> _ = spawn (watcher reg cfg (stamps cfg.watch)); Unit);
-  (case receiveRes main of Ok why -> why | Err why -> why).
+  # the register's last word is a received root's payload: kept, so the drop
+  # autodrop puts at the arm's start leaves the caller a value of its own
+  (case receiveRes main of Ok why -> keep why | Err why -> keep why).
 
 # every durable field's last value, laid over `init`
 restore : List (Field m) -> KV.KvLog -> m -> Result m String .
