@@ -94,6 +94,12 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         p = run([dm], env={'FPR_HARTS': harts})
         assert p.stdout == 'deadmail: 900 more deaths with 49 KiB of mail unread each cost under 16 MiB\n', p.stdout
     print('Mail queued on a dead actor is released, and so is its result: 900 deaths with 49 KiB unread each stay under 16 MiB on one and four harts (was about 47 MB): PASS')
+    # the drop law for the direct shapes: `(a, b) = receiveFrom me w` and
+    # `case receiveFromRes me w of Ok m -> ...` had no compiler-inserted drop
+    # and kept a 128 KiB packing slab per message
+    p = run([build('tests/base/autodrop2.fpr', 'autodrop2')])
+    assert p.stdout == 'autodrop2: 3000 direct destructures cost under 32 MiB; 3000 Result-wrapped receives cost under 32 MiB\n', p.stdout + p.stderr
+    print('Autodrop covers the direct destructure and the Result-wrapped receive: 6,000 receives stay under 32 MiB each way (was 128 KiB a receive): PASS')
     # Fixed heap admission is independent of mailbox capacity; failures
     # belong to the child and escaped data delays grant reclamation.
     fixed = build('tests/base/fixedheap.fpr', 'fixedheap')

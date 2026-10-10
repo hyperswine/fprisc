@@ -777,6 +777,18 @@ aritySpill tops = (map top tops, notes)
 --             (v2: the general shape -- covers the rpc-helper idiom
 --              `r = rpc svc msg; k = case r of ...; ...` that every
 --              client used to discharge by hand)
+--   shape 4   (a, b) = receive me; ...             the DIRECT destructure:
+--             bound to a fresh name first, then shape 1.  (2026-10-10:
+--             this shape leaked the sender's whole packing slab per
+--             message -- 128 KiB a receive on the plane, found as QOS's
+--             admission check never getting its memory back)
+--   shape 5   case receive me of ...               the direct scrutinee,
+--             as a statement or a block's final expression: bound to a
+--             fresh name first, then shape 2
+--   shape 5b  case receiveFromRes me a of Ok m -> body
+--             the Result-wrapped receives (receiveFromRes, receiveNow):
+--             the ROOT is the Ok payload; `drop m` lands at the arm's
+--             start when every use of m in the body is borrow-shaped
 --
 -- RECEIVE-ORIGIN (v2) is TRANSITIVE: a fixpoint over the program marks
 -- every function whose result position IS the message root -- receive/
@@ -827,6 +839,29 @@ autoDrop tops = (tops', concat notess)
     -- later uses of the pattern's children -- SOUND because the runtime
     -- defers the slab's release to this actor's next receive
     -- (fpr_drop_park), where copy-on-retain says every borrow is dead.
+    -- shape 4: `pat = receive me` with no name for the root -- give it
+    -- one, and let shape 1 do the rest
+    goStmts n (SBindPat p rhs : rest) fin
+      | isReceive rhs,
+        not (plainVar p) =
+          let m = freshRoot n (length rest)
+           in goStmts n (SBind m [] rhs : SBindPat p (SVar m) : rest) fin
+    -- shape 5: `case receive me of ...` as a statement: name the root,
+    -- then shape 2 on the arms (the statement's own binding is kept)
+    goStmts n (SBind b ps rhs : rest) fin
+      | SCase sc arms <- unmark rhs,
+        isReceive sc =
+          let m = freshRoot n (length rest)
+           in goStmts n (SBind m [] sc : SBind b ps (SCase (SVar m) arms) : rest) fin
+    -- shape 5b: the Result-wrapped receives, as a statement
+    goStmts n (SBind b ps rhs : rest) fin
+      | SCase sc arms <- unmark rhs,
+        isResultReceive sc,
+        any okArm arms =
+          let (rest', fin', ns) = goStmts n rest fin
+           in ( SBind b ps (SCase sc (map dropOkArm arms)) : rest',
+                fin',
+                ("autodrop: " ++ n ++ ": inserted `drop` into the Ok arm of a Result-wrapped receive") : ns )
     goStmts n (SBind m [] rhs : rest) fin
       | isReceive rhs,
         (SBindPat p rhsP : after) <- rest,
@@ -877,7 +912,28 @@ autoDrop tops = (tops', concat notess)
                 ("autodrop: " ++ n ++ ": inserted `drop " ++ m ++ "` after its last use") : ns )
     goStmts n (st : rest) fin =
       let (rest', fin', ns) = goStmts n rest fin in (st : rest', fin', ns)
+    -- shape 5 / 5b on the block's final expression
+    goStmts n [] fin
+      | SCase sc arms <- unmark fin,
+        isReceive sc =
+          let m = freshRoot n 0
+           in goStmts n [SBind m [] sc] (SCase (SVar m) arms)
+      | SCase sc arms <- unmark fin,
+        isResultReceive sc, any okArm arms =
+          ([], SCase sc (map dropOkArm arms),
+           ["autodrop: " ++ n ++ ": inserted `drop` into the Ok arm of a Result-wrapped receive"])
     goStmts _ [] fin = ([], fin, [])
+    plainVar p = case p of PVar _ -> True; PSig _ _ -> True; _ -> False
+    freshRoot n k = "_autodrop_root_" ++ filter (`notElem` ".#") n ++ "_" ++ show k
+    -- the Result-wrapped receives: Ok m carries the message root
+    isResultReceive e = case adHeadName e of
+      Just h -> h `elem` ["receiveFromRes", "receiveNow"]
+      Nothing -> False
+    okArm (pt, b) | PCon "Ok" [pv] <- pt, PVar m <- unmarkPat pv = okE m b && not (droppedIn m [] b)
+    okArm _ = False
+    dropOkArm arm@(pt, b) | okArm arm, PCon "Ok" [pv] <- pt, PVar m <- unmarkPat pv = (pt, dropInto m b)
+    dropOkArm arm = arm
+    unmarkPat pv = case pv of PSig v _ -> PVar v; _ -> pv
     -- borrow-shaped uses of m within one statement: the destructure
     -- statement itself, a case scrutinee (arms checked recursively),
     -- or a DIRECT argument of a borrowing builtin.  Anything else

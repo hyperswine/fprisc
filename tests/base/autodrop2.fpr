@@ -1,0 +1,33 @@
+# the drop law for the DIRECT shapes: `(a, b) = receiveFrom me w` and
+# `case receiveFromRes me w of Ok m -> ...` with no name for the root and no
+# manual drop.  Until 2026-10-10 the autodrop pass covered only the named
+# shapes, and every such receive kept the SENDER's whole packing slab: a
+# 128 KiB buddy block per message (QOS's admission check found it).
+unsafe base.
+worker : Int -> Int -> Unit .
+worker boss self = _ = send boss (True, 7); Unit.
+# shape 4: the direct destructure
+round : Int -> Int .
+round 0 = 0.
+round n = me = myself 0; w = spawn (worker me); (a, b) = receiveFrom me w; _ = receiveFromRes me w; round (n - 1).
+# shape 5b: the Result-wrapped receive, the root read in the arm
+roundRes : Int -> Int .
+roundRes 0 = 0.
+roundRes n = me = myself 0; w = spawn (worker me);
+  k = case receiveFromRes me w of Ok m -> (case m of (a, b) -> b) | Err e -> 0;
+  _ = receiveFromRes me w;
+  roundRes (n - 1).
+freeKiB : Unit -> Int .
+freeKiB u = case Sys.memInfo 0 of _ :: f :: _ -> f | _ -> 0.
+settle : Unit -> Int .
+settle u = Sys.sleepUs 100000 >> freeKiB Unit.
+main =
+  _ = round 300; _ = roundRes 300;
+  a = settle Unit;
+  _ = round 3000;
+  b = settle Unit;
+  _ = roundRes 3000;
+  c = settle Unit;
+  # before: 386,560 KiB for 3,000 (a 128 KiB block each); after: under 8 MiB on
+  # one hart, about 17 MiB on four (per-hart caches)
+  print "autodrop2: 3000 direct destructures cost {case a - b < 32768 of True -> "under 32 MiB" | False -> "{a - b} KiB"}; 3000 Result-wrapped receives cost {case b - c < 32768 of True -> "under 32 MiB" | False -> "{b - c} KiB"}".
