@@ -1,0 +1,8 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+main =
+  s = strcat (S.repeat 100000 "[") (S.repeat 100000 "]");
+  case J.parse s of Ok v -> print "parsed deep" | Err e -> print "Err: {e}".

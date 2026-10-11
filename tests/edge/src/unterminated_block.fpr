@@ -1,0 +1,4 @@
+unsafe base.
+main =
+  x = 1;
+  print "{x}"

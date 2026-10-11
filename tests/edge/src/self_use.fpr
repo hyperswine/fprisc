@@ -1,0 +1,3 @@
+unsafe base.
+M = use "self_use".
+main = print "x".

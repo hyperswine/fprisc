@@ -1,0 +1,12 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+show r = case r of Ok fd -> "Ok" | Err e -> "Err({e})".
+main =
+  _ = print "refused: {show (O.connect "127.0.0.1" 1)}";
+  _ = print "badport: {show (O.connect "127.0.0.1" 70000)} negport: {show (O.connect "127.0.0.1" (0 - 1))}";
+  _ = print "emptyhost: {show (O.connect "" 80)}";
+  _ = print "badname: {show (O.connect "nonexistent.invalid" 80)}";
+  print "done".

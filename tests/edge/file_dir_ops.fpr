@@ -1,0 +1,14 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+showU r = case r of Ok u -> "Ok" | Err e -> "Err({e})".
+showL r = case r of Ok l -> "Ok({L.length l})" | Err e -> "Err({e})".
+main =
+  d = "/tmp/fpr-edge-dir";
+  _ = print "mkdir: {showU (O.mkdir d)} again: {showU (O.mkdir d)} nested: {showU (O.mkdir "/tmp/fpr-edge-nope/a/b")}";
+  _ = print "listdir-file: {showL (O.listDir "/etc/hosts")} listdir-missing: {showL (O.listDir "/nonexistent")}";
+  _ = print "remove-dir: {showU (O.remove d)} rename-self: {showU (O.rename "/etc/hosts" "/etc/hosts")} rename-missing: {showU (O.rename "/nonexistent/a" "/tmp/b")}";
+  _ = print "stat-empty: {case O.stat "" of Ok t -> "Ok" | Err e -> "Err({e})"}";
+  print "done".

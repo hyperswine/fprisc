@@ -1,0 +1,6 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+main = print "[{chr 255}] [{chr 1114111}] [{chr 1114112}] [{chr (0 - 1)}]".

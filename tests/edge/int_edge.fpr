@@ -1,0 +1,13 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+main =
+  a = 4611686018427387903;
+  _ = print "max63={a} plus1={a + 1} twice={a * 2} square={a * a}";
+  b = 0 - a - 1;
+  _ = print "min63={b} minus1={b - 1} neg={0 - b} abs-min={(0 - b) + 0}";
+  _ = print "mod: {(0 - 7) % 3} {7 % (0 - 3)} div: {(0 - 7) / 2} {7 / (0 - 2)} {(0 - 7) / (0 - 2)}";
+  _ = print "mul-ovf: {3037000500 * 3037000500} {3037000500 * 3037000500 * 4}";
+  print "done".

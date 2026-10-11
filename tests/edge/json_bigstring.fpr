@@ -1,0 +1,8 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+main =
+  s = strcat "\"" (strcat (S.repeat 10000000 "a") "\"");
+  case J.parse s of Ok v -> print "parsed {strlen (J.render v)}" | Err e -> print "Err: {e}".

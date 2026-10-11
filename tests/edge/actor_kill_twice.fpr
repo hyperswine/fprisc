@@ -1,0 +1,6 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+main = w = spawn (fn self -> receive self); _ = kill w; _ = kill w; _ = kill w; print "killed thrice".

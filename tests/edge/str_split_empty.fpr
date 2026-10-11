@@ -1,0 +1,6 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+main = print "{L.length (S.split "" "abc")} {L.length (S.split "," "")} {L.length (S.split "," ",,")}".

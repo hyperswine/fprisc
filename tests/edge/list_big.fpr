@@ -1,0 +1,9 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+build : Int -> List Int -> List Int .
+build 0 acc = acc.
+build n acc = build (n - 1) (n :: acc).
+main = xs = build 5000000 Nil; print "len={L.length xs}".

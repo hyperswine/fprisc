@@ -1,0 +1,3 @@
+unsafe base.
+prüfung x = x + 1.
+main = print "{prüfung 1}".

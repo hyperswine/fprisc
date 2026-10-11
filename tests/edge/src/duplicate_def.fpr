@@ -1,0 +1,4 @@
+unsafe base.
+f x = 1.
+f x = 2.
+main = print "{f 0}".

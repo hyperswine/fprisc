@@ -1,0 +1,15 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+TCP = use "std/tcp".
+ST = use "std/stream".
+main =
+  l = case TCP.listen "127.0.0.1" 0 of Ok l -> l | Err e -> error e;
+  c = case TCP.connect "127.0.0.1" (TCP.port l) of Ok s -> s | Err e -> error e;
+  _ = ST.close c;
+  _ = print "read-own-closed: {case ST.read 10 c of Ok s -> "Ok({strlen s})" | Err e -> "Err({e})"}";
+  _ = print "write-own-closed: {case ST.write "x" c of Ok u -> "Ok" | Err e -> "Err({e})"}";
+  _ = print "close-again: {case ST.close c of Ok u -> "Ok" | Err e -> "Err({e})"}";
+  print "done".

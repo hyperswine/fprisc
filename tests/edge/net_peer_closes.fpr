@@ -1,0 +1,21 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+TCP = use "std/tcp".
+ST = use "std/stream".
+main =
+  l = case TCP.listen "127.0.0.1" 0 of Ok l -> l | Err e -> error e;
+  port = TCP.port l;
+  c = case TCP.connect "127.0.0.1" port of Ok s -> s | Err e -> error e;
+  (srv, peer) = case TCP.accept l of Ok p -> p | Err e -> error e;
+  _ = ST.close srv;
+  _ = Sys.sleepUs 50000;
+  w1 = ST.write (S.repeat 100000 "x") c;
+  _ = print "write-after-peer-close: {case w1 of Ok u -> "Ok" | Err e -> "Err({e})"}";
+  w2 = ST.write (S.repeat 100000 "y") c;
+  _ = print "second-write: {case w2 of Ok u -> "Ok" | Err e -> "Err({e})"}";
+  r = ST.read 10 c;
+  _ = print "read-after-peer-close: {case r of Ok s -> "Ok({strlen s})" | Err e -> "Err({e})"}";
+  print "survived (no SIGPIPE death)".

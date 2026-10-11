@@ -1,0 +1,9 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+openN : Int -> Int -> String .
+openN 0 ok = "opened {ok}".
+openN n ok = case O.open "/etc/hosts" "r" of Ok fd -> openN (n - 1) (ok + 1) | Err e -> "opened {ok} then Err({e})".
+main = print (openN 20000 0).

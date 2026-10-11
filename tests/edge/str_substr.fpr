@@ -1,0 +1,9 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+main =
+  _ = print "neg=[{substr "abc" (0 - 1) 5}] past=[{substr "abc" 5 2}] huge=[{substr "abc" 0 999999999999}]";
+  _ = print "len-utf8={strlen "é"} len-emoji={strlen "😀"} charAt-multibyte={charAt "é" 0}";
+  print "done".

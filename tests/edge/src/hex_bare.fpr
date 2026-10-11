@@ -1,0 +1,2 @@
+unsafe base.
+main = print "{0x}".

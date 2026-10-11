@@ -1,0 +1,2 @@
+unsafe base.
+main = print "{F64.str 1e999} {F64.str (0.0 / 0.0)} {F64.str (1.0 / 0.0)} {F64.str (0.0 - 0.0)} {F64.str 5e-324}".

@@ -1,0 +1,247 @@
+{
+ "int_edge": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain =\n  a = 4611686018427387903;\n  _ = print \"max63={a} plus1={a + 1} twice={a * 2} square={a * a}\";\n  b = 0 - a - 1;\n  _ = print \"min63={b} minus1={b - 1} neg={0 - b} abs-min={(0 - b) + 0}\";\n  _ = print \"mod: {(0 - 7) % 3} {7 % (0 - 3)} div: {(0 - 7) / 2} {7 / (0 - 2)} {(0 - 7) / (0 - 2)}\";\n  _ = print \"mul-ovf: {3037000500 * 3037000500} {3037000500 * 3037000500 * 4}\";\n  print \"done\".\n",
+  "run": "",
+  "note": "arithmetic at the 63-bit edge"
+ },
+ "int_literal_big": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = print \"{9223372036854775807}\".\n",
+  "run": "",
+  "note": "literal past 63 bits"
+ },
+ "int_literal_2pow62": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = print \"{4611686018427387904}\".\n",
+  "run": "",
+  "note": "2^62 literal, one past the tagged max"
+ },
+ "str_edge": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain =\n  _ = print \"charAt-empty={charAt \"\" 0}\";\n  print \"unreached\".\n",
+  "run": "",
+  "note": ""
+ },
+ "str_substr": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain =\n  _ = print \"neg=[{substr \"abc\" (0 - 1) 5}] past=[{substr \"abc\" 5 2}] huge=[{substr \"abc\" 0 999999999999}]\";\n  _ = print \"len-utf8={strlen \"\u00e9\"} len-emoji={strlen \"\ud83d\ude00\"} charAt-multibyte={charAt \"\u00e9\" 0}\";\n  print \"done\".\n",
+  "run": "",
+  "note": ""
+ },
+ "str_toint": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nshow s = case S.toInt s of Ok n -> \"{n}\" | Err e -> \"Err({e})\".\nmain =\n  _ = print \"[{show \"-\"}] [{show \"+5\"}] [{show \"007\"}] [{show \" 5\"}] [{show \"5 \"}] [{show \"\"}] [{show \"-0\"}]\";\n  _ = print \"[{show \"4611686018427387903\"}] [{show \"4611686018427387904\"}] [{show \"9223372036854775808\"}] [{show \"99999999999999999999999\"}]\";\n  print \"done\".\n",
+  "run": "",
+  "note": ""
+ },
+ "str_nul": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain =\n  s = strcat \"ab\" (strcat (chr 0) \"cd\");\n  _ = print \"len={strlen s} text=[{s}]\";\n  print \"done\".\n",
+  "run": "",
+  "note": ""
+ },
+ "str_huge": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain =\n  s = S.repeat 100000000 \"x\";\n  print \"len={strlen s}\".\n",
+  "run": "",
+  "note": "100 MB string"
+ },
+ "str_split_empty": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = print \"{L.length (S.split \"\" \"abc\")} {L.length (S.split \",\" \"\")} {L.length (S.split \",\" \",,\")}\".\n",
+  "run": "",
+  "note": ""
+ },
+ "chr_range": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = print \"[{chr 255}] [{chr 1114111}] [{chr 1114112}] [{chr (0 - 1)}]\".\n",
+  "run": "",
+  "note": ""
+ },
+ "json_deep": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain =\n  s = strcat (S.repeat 100000 \"[\") (S.repeat 100000 \"]\");\n  case J.parse s of Ok v -> print \"parsed deep\" | Err e -> print \"Err: {e}\".\n",
+  "run": "",
+  "note": "100k nesting"
+ },
+ "json_numbers": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nshow s = case J.parse s of Ok v -> \"Ok({J.render v})\" | Err e -> \"Err({e})\".\nq = chr 34.\nmain =\n  _ = print \"{show \"1e400\"} {show \"-0\"} {show \"9223372036854775808\"} {show \"4611686018427387904\"} {show \"1.5e308\"} {show \"-1e400\"}\";\n  _ = print \"{show \"[1,]\"} {show (strcat (strcat (chr 123) q) (strcat \"a\" (strcat q (strcat \":1,\" (strcat q (strcat \"a\" (strcat q (strcat \":2\" (chr 125)))))))))} {show \"1 2\"} {show \"\"} {show \"   \"}\";\n  _ = print \"{show (strcat q (strcat (chr 0) q))} {show (strcat q (strcat (chr 1) q))} {show (strcat q (strcat (chr 255) q))} {show \"[1e-400]\"} {show \"0.1e\"} {show \"00\"} {show \"-\"}\";\n  print \"done\".\n",
+  "run": "",
+  "note": "json numbers, duplicate keys, control and invalid bytes"
+ },
+ "json_bigstring": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain =\n  s = strcat \"\\\"\" (strcat (S.repeat 10000000 \"a\") \"\\\"\");\n  case J.parse s of Ok v -> print \"parsed {strlen (J.render v)}\" | Err e -> print \"Err: {e}\".\n",
+  "run": "",
+  "note": "10 MB string"
+ },
+ "list_big": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nbuild : Int -> List Int -> List Int .\nbuild 0 acc = acc.\nbuild n acc = build (n - 1) (n :: acc).\nmain = xs = build 5000000 Nil; print \"len={L.length xs}\".\n",
+  "run": "",
+  "note": ""
+ },
+ "recursion_deep": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nsum : Int -> Int .\nsum 0 = 0.\nsum n = n + sum (n - 1).\nmain = print \"{sum 3000000}\".\n",
+  "run": "",
+  "note": "3M non-tail frames: grows to the ceiling?"
+ },
+ "vec_neg": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = v = Vec.fromList [1, 2, 3]; (x, v2) = Vec.at (0 - 1) v; _ = Vec.free v2; print \"{x}\".\n",
+  "run": "",
+  "note": "Vec.at -1"
+ },
+ "actor_spawn_many": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nspawnN : Int -> Int .\nspawnN 0 = 0.\nspawnN n = _ = spawn (fn self -> Unit); spawnN (n - 1).\nmain = _ = spawnN 100000; _ = Sys.sleepUs 200000; print \"spawned 100000\".\n",
+  "run": "",
+  "note": ""
+ },
+ "actor_kill_self": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = me = myself 0; _ = kill me; print \"after killing myself\".\n",
+  "run": "",
+  "note": ""
+ },
+ "actor_kill_twice": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = w = spawn (fn self -> receive self); _ = kill w; _ = kill w; _ = kill w; print \"killed thrice\".\n",
+  "run": "",
+  "note": ""
+ },
+ "actor_send_self": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = me = myself 0; _ = send me 42; m = receive me; print \"got {m}\".\n",
+  "run": "",
+  "note": ""
+ },
+ "actor_recv_self_wait": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = me = myself 0; m = receiveFrom me me; print \"got {m}\".\n",
+  "run": "",
+  "note": "waits for a message from itself: deadlock"
+ },
+ "actor_mutual_deadlock": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain =\n  me = myself 0;\n  a = spawn (fn self -> m = receive self; Unit);\n  m = receiveFrom me a;\n  print \"unreached\".\n",
+  "run": "",
+  "note": "main waits on a child that waits on main"
+ },
+ "actor_sleep_neg": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = _ = Sys.sleepUs (0 - 5); _ = Sys.sleepUs 0; print \"slept\".\n",
+  "run": "",
+  "note": ""
+ },
+ "actor_sleep_huge": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = _ = Sys.sleepUs 1099511627776; print \"unreached\".\n",
+  "run": "timeout 3",
+  "note": "2^40 us: must not return early"
+ },
+ "actor_static_zero": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nAC = use \"std/actor\".\nmain = w = AC.spawnWith (AC.Static 0) (fn self -> receive self); r = send w 1; print \"{case r of Ok u -> \"queued\" | Err e -> e}\".\n",
+  "run": "",
+  "note": "Static 0: clamped silently?"
+ },
+ "file_errors": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nshow r = case r of Ok s -> \"Ok({strlen s})\" | Err e -> \"Err({e})\".\nmain =\n  _ = print \"nonexistent: {show (O.readFile \"/nonexistent/x\")}\";\n  _ = print \"directory: {show (O.readFile \"/\")}\";\n  _ = print \"noperm: {show (O.readFile \"/etc/sudoers\")}\";\n  _ = print \"empty-path: {show (O.readFile \"\")}\";\n  _ = print \"nul-in-path: {show (O.readFile (strcat \"/etc/pass\" (strcat (chr 0) \"wd\")))}\";\n  _ = print \"long-path: {show (O.readFile (S.repeat 5000 \"a\"))}\";\n  _ = print \"devnull: {show (O.readFile \"/dev/null\")}\";\n  print \"done\".\n",
+  "run": "",
+  "note": ""
+ },
+ "file_fd_errors": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nshowI r = case r of Ok n -> \"Ok({n})\" | Err e -> \"Err({e})\".\nshowU r = case r of Ok u -> \"Ok\" | Err e -> \"Err({e})\".\nshowS r = case r of Ok s -> \"Ok({strlen s})\" | Err e -> \"Err({e})\".\nmain =\n  _ = print \"badmode: {showI (O.open \"/tmp/x\" \"zz\")} emptymode: {showI (O.open \"/tmp/x\" \"\")}\";\n  fd = case O.open \"/etc/hosts\" \"r\" of Ok f -> f | Err e -> error \"open: {e}\";\n  _ = print \"write-rdonly: {showI (O.write fd \"data\")}\";\n  _ = print \"read-neg: {showS (O.read fd (0 - 1))}\";\n  _ = print \"read-zero: {showS (O.read fd 0)}\";\n  _ = print \"read-huge: {showS (O.read fd 1000000000000)}\";\n  _ = print \"seek-neg: {showI (O.seek fd (0 - 100))} seek-huge: {showI (O.seek fd 1000000000000)}\";\n  _ = print \"close: {showU (O.close fd)}\";\n  _ = print \"close-again: {showU (O.close fd)}\";\n  _ = print \"write-closed: {showI (O.write fd \"x\")} read-closed: {showS (O.read fd 1)}\";\n  _ = print \"close-999: {showU (O.close 999)} close-neg: {showU (O.close (0 - 1))}\";\n  _ = print \"write-stdin: {showI (O.write 0 \"x\")}\";\n  _ = print \"close-stdout: {showU (O.close 1)}\";\n  print \"after closing stdout (should not appear)\".\n",
+  "run": "",
+  "note": "fd misuse"
+ },
+ "file_dir_ops": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nshowU r = case r of Ok u -> \"Ok\" | Err e -> \"Err({e})\".\nshowL r = case r of Ok l -> \"Ok({L.length l})\" | Err e -> \"Err({e})\".\nmain =\n  d = \"/tmp/fpr-edge-dir\";\n  _ = print \"mkdir: {showU (O.mkdir d)} again: {showU (O.mkdir d)} nested: {showU (O.mkdir \"/tmp/fpr-edge-nope/a/b\")}\";\n  _ = print \"listdir-file: {showL (O.listDir \"/etc/hosts\")} listdir-missing: {showL (O.listDir \"/nonexistent\")}\";\n  _ = print \"remove-dir: {showU (O.remove d)} rename-self: {showU (O.rename \"/etc/hosts\" \"/etc/hosts\")} rename-missing: {showU (O.rename \"/nonexistent/a\" \"/tmp/b\")}\";\n  _ = print \"stat-empty: {case O.stat \"\" of Ok t -> \"Ok\" | Err e -> \"Err({e})\"}\";\n  print \"done\".\n",
+  "run": "",
+  "note": ""
+ },
+ "file_symlink_loop": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain =\n  _ = Os.run (\"sh\" :: \"-c\" :: \"rm -f /tmp/fpr-loop-a /tmp/fpr-loop-b; ln -s /tmp/fpr-loop-a /tmp/fpr-loop-b; ln -s /tmp/fpr-loop-b /tmp/fpr-loop-a\" :: Nil) \"/tmp\" \"\" Nil 5000;\n  case O.readFile \"/tmp/fpr-loop-a\" of Ok s -> print \"read {strlen s}\" | Err e -> print \"Err({e})\".\n",
+  "run": "",
+  "note": ""
+ },
+ "file_emfile": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nopenN : Int -> Int -> String .\nopenN 0 ok = \"opened {ok}\".\nopenN n ok = case O.open \"/etc/hosts\" \"r\" of Ok fd -> openN (n - 1) (ok + 1) | Err e -> \"opened {ok} then Err({e})\".\nmain = print (openN 20000 0).\n",
+  "run": "",
+  "note": "20,000 opens: EMFILE by name?"
+ },
+ "file_unlinked": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain =\n  p = \"/tmp/fpr-edge-unlinked\";\n  fd = case O.open p \"w\" of Ok f -> f | Err e -> error e;\n  _ = O.remove p;\n  r = O.write fd \"still writable\";\n  print \"write-after-unlink: {case r of Ok n -> \"Ok({n})\" | Err e -> \"Err({e})\"}\".\n",
+  "run": "",
+  "note": ""
+ },
+ "net_connect_errors": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nshow r = case r of Ok fd -> \"Ok\" | Err e -> \"Err({e})\".\nmain =\n  _ = print \"refused: {show (O.connect \"127.0.0.1\" 1)}\";\n  _ = print \"badport: {show (O.connect \"127.0.0.1\" 70000)} negport: {show (O.connect \"127.0.0.1\" (0 - 1))}\";\n  _ = print \"emptyhost: {show (O.connect \"\" 80)}\";\n  _ = print \"badname: {show (O.connect \"nonexistent.invalid\" 80)}\";\n  print \"done\".\n",
+  "run": "",
+  "note": ""
+ },
+ "net_connect_unroutable": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain =\n  t0 = Sys.timeUs Unit;\n  r = O.connect \"10.255.255.1\" 80;\n  print \"unroutable: {case r of Ok fd -> \"Ok\" | Err e -> \"Err({e})\"} after {(Sys.timeUs Unit - t0) / 1000} ms\".\n",
+  "run": "timeout 120",
+  "note": "how long does a connect to a black hole wait?"
+ },
+ "net_listen_errors": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nshow r = case r of Ok fd -> \"Ok\" | Err e -> \"Err({e})\".\nmain =\n  _ = print \"privileged: {show (O.listen \"127.0.0.1\" 80)}\";\n  a = O.listen \"127.0.0.1\" 0;\n  fd = case a of Ok f -> f | Err e -> error e;\n  port = case O.localPort fd of Ok p -> p | Err e -> error e;\n  _ = print \"inuse: {show (O.listen \"127.0.0.1\" port)}\";\n  _ = print \"badaddr: {show (O.listen \"300.1.1.1\" 0)} name: {show (O.listen \"localhost\" 0)}\";\n  _ = print \"accept-closed: {case O.close fd of _ -> (case O.accept fd of Ok p -> \"Ok\" | Err e -> \"Err({e})\")}\";\n  print \"done\".\n",
+  "run": "",
+  "note": ""
+ },
+ "net_peer_closes": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nTCP = use \"std/tcp\".\nST = use \"std/stream\".\nmain =\n  l = case TCP.listen \"127.0.0.1\" 0 of Ok l -> l | Err e -> error e;\n  port = TCP.port l;\n  c = case TCP.connect \"127.0.0.1\" port of Ok s -> s | Err e -> error e;\n  (srv, peer) = case TCP.accept l of Ok p -> p | Err e -> error e;\n  _ = ST.close srv;\n  _ = Sys.sleepUs 50000;\n  w1 = ST.write (S.repeat 100000 \"x\") c;\n  _ = print \"write-after-peer-close: {case w1 of Ok u -> \"Ok\" | Err e -> \"Err({e})\"}\";\n  w2 = ST.write (S.repeat 100000 \"y\") c;\n  _ = print \"second-write: {case w2 of Ok u -> \"Ok\" | Err e -> \"Err({e})\"}\";\n  r = ST.read 10 c;\n  _ = print \"read-after-peer-close: {case r of Ok s -> \"Ok({strlen s})\" | Err e -> \"Err({e})\"}\";\n  print \"survived (no SIGPIPE death)\".\n",
+  "run": "",
+  "note": ""
+ },
+ "net_read_closed": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nTCP = use \"std/tcp\".\nST = use \"std/stream\".\nmain =\n  l = case TCP.listen \"127.0.0.1\" 0 of Ok l -> l | Err e -> error e;\n  c = case TCP.connect \"127.0.0.1\" (TCP.port l) of Ok s -> s | Err e -> error e;\n  _ = ST.close c;\n  _ = print \"read-own-closed: {case ST.read 10 c of Ok s -> \"Ok({strlen s})\" | Err e -> \"Err({e})\"}\";\n  _ = print \"write-own-closed: {case ST.write \"x\" c of Ok u -> \"Ok\" | Err e -> \"Err({e})\"}\";\n  _ = print \"close-again: {case ST.close c of Ok u -> \"Ok\" | Err e -> \"Err({e})\"}\";\n  print \"done\".\n",
+  "run": "",
+  "note": ""
+ },
+ "net_readwithin": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nTCP = use \"std/tcp\".\nST = use \"std/stream\".\nmain =\n  l = case TCP.listen \"127.0.0.1\" 0 of Ok l -> l | Err e -> error e;\n  c = case TCP.connect \"127.0.0.1\" (TCP.port l) of Ok s -> s | Err e -> error e;\n  t0 = Sys.timeUs Unit;\n  r = ST.readWithin 300 10 c;\n  _ = print \"readWithin-300ms: {case r of Ok s -> \"Ok({strlen s})\" | Err e -> \"Err({e})\"} after {(Sys.timeUs Unit - t0) / 1000} ms\";\n  t1 = Sys.timeUs Unit;\n  r2 = ST.readWithin 0 10 c;\n  _ = print \"readWithin-0: {case r2 of Ok s -> \"Ok({strlen s})\" | Err e -> \"Err({e})\"} after {(Sys.timeUs Unit - t1) / 1000} ms\";\n  r3 = ST.readWithin (0 - 1) 10 c;\n  print \"readWithin-neg: {case r3 of Ok s -> \"Ok({strlen s})\" | Err e -> \"Err({e})\"}\".\n",
+  "run": "timeout 30",
+  "note": "read deadlines: 300 ms, 0, negative"
+ },
+ "http_errors": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nHTTP = use \"std/http\".\nshow r = case r of Ok p -> \"Ok({p.status})\" | Err e -> \"Err({e})\".\nmain =\n  _ = print \"refused: {show (HTTP.get \"http://127.0.0.1:1/\")}\";\n  _ = print \"noturl: {show (HTTP.get \"not a url\")} empty: {show (HTTP.get \"\")} https: {show (HTTP.get \"https://example.com/\")}\";\n  _ = print \"badport: {show (HTTP.get \"http://127.0.0.1:99999/\")}\";\n  print \"done\".\n",
+  "run": "",
+  "note": ""
+ },
+ "http_garbage_server": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nHTTP = use \"std/http\".\nTCP = use \"std/tcp\".\nST = use \"std/stream\".\nshow r = case r of Ok p -> \"Ok({p.status} {strlen p.body})\" | Err e -> \"Err({e})\".\nsrv l self = case TCP.accept l of Ok (s, peer) -> _ = ST.write \"HTTP/1.1 200 OK\\r\\nContent-Length: 99999999\\r\\n\\r\\nshort\" s; _ = ST.close s; Unit | Err e -> Unit.\nsrv2 l self = case TCP.accept l of Ok (s, peer) -> _ = ST.write \"garbage without a status line\\r\\n\\r\\n\" s; _ = ST.close s; Unit | Err e -> Unit.\nmain =\n  l = case TCP.listen \"127.0.0.1\" 0 of Ok l -> l | Err e -> error e;\n  _ = spawn (srv l);\n  _ = print \"short-body: {show (HTTP.get \"http://127.0.0.1:{TCP.port l}/\")}\";\n  l2 = case TCP.listen \"127.0.0.1\" 0 of Ok l -> l | Err e -> error e;\n  _ = spawn (srv2 l2);\n  _ = print \"garbage: {show (HTTP.get \"http://127.0.0.1:{TCP.port l2}/\")}\";\n  print \"done\".\n",
+  "run": "timeout 30",
+  "note": ""
+ },
+ "http_huge_request": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nHTTP = use \"std/http\".\nTCP = use \"std/tcp\".\nST = use \"std/stream\".\nmain =\n  l = case TCP.listen \"127.0.0.1\" 0 of Ok l -> l | Err e -> error e;\n  port = TCP.port l;\n  _ = spawn (fn self -> HTTP.serve l (fn req -> {status = 200, headers = Nil, body = \"ok {strlen req.path}\"}));\n  c = case TCP.connect \"127.0.0.1\" port of Ok s -> s | Err e -> error e;\n  _ = ST.write (strcat \"GET /\" (strcat (S.repeat 5000000 \"a\") \" HTTP/1.1\\r\\nHost: x\\r\\n\\r\\n\")) c;\n  r = ST.readWithin 5000 200 c;\n  _ = print \"5MB-request-line: {case r of Ok s -> \"reply [{substr s 0 40}]\" | Err e -> \"Err({e})\"}\";\n  c2 = case TCP.connect \"127.0.0.1\" port of Ok s -> s | Err e -> error e;\n  _ = ST.write \"GET / HTTP/1.1\\r\\nHost: x\\r\\nContent-Length: -5\\r\\n\\r\\n\" c2;\n  r2 = ST.readWithin 2000 200 c2;\n  _ = print \"negative-content-length: {case r2 of Ok s -> \"reply [{substr s 0 40}]\" | Err e -> \"Err({e})\"}\";\n  c3 = case TCP.connect \"127.0.0.1\" port of Ok s -> s | Err e -> error e;\n  _ = ST.write \"GET / HTTP/1.1\\r\\nHost: x\\r\\nContent-Length: 999999999999\\r\\n\\r\\nabc\" c3;\n  r3 = ST.readWithin 2000 200 c3;\n  _ = print \"huge-content-length: {case r3 of Ok s -> \"reply [{substr s 0 40}]\" | Err e -> \"Err({e})\"}\";\n  print \"done\".\n",
+  "run": "timeout 40",
+  "note": ""
+ },
+ "env_stdout_closed": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = _ = print \"line1\"; _ = print \"line2\"; print \"line3\".\n",
+  "run": ">&-",
+  "note": "stdout closed"
+ },
+ "env_epipe": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nloop : Int -> Int .\nloop 0 = 0.\nloop n = _ = print \"line {n}\"; loop (n - 1).\nmain = _ = loop 100000; print \"finished all lines\".\n",
+  "run": "| head -c 10; echo \"pipestatus=${PIPESTATUS[0]}\"",
+  "note": "reader goes away: SIGPIPE?"
+ },
+ "env_stdin_closed": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = print \"readLine: {case Sys.readLine Unit of Ok s -> \"Ok({s})\" | Err e -> \"Err({e})\"}\".\n",
+  "run": "<&-",
+  "note": ""
+ },
+ "env_harts": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = print \"harts={Sys.harts Unit}\".\n",
+  "run": "",
+  "note": "run with FPR_HARTS=0, abc, 999"
+ },
+ "env_args_bytes": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = print \"{L.length (Sys.args Unit)} [{S.join \"|\" (Sys.args Unit)}]\".\n",
+  "run": "$'\\xff\\xfe' '' ' '",
+  "note": "argv with invalid UTF-8 and empty strings"
+ },
+ "env_exit_codes": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = Sys.exit 300.\n",
+  "run": "",
+  "note": "exit 300"
+ },
+ "env_main_string": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = \"a string, not an Int\".\n",
+  "run": "",
+  "note": "main returns a String"
+ },
+ "env_bigenv": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = print \"{case Sys.env \"BIG\" of Ok v -> strlen v | Err e -> 0 - 1}\".\n",
+  "run": "",
+  "note": "BIG = 1 MB"
+ },
+ "env_sigterm": {
+  "src": "unsafe base.\nS = use \"std/string\".\nL = use \"std/list\".\nO = use \"std/os\".\nJ = use \"std/json\".\nmain = _ = Sys.sleepUs 30000000; print \"unreached\".\n",
+  "run": "& sleep 1; kill -TERM $!; wait $!",
+  "note": "SIGTERM during sleep"
+ }
+}

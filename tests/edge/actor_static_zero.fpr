@@ -1,0 +1,7 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+AC = use "std/actor".
+main = w = AC.spawnWith (AC.Static 0) (fn self -> receive self); r = send w 1; print "{case r of Ok u -> "queued" | Err e -> e}".

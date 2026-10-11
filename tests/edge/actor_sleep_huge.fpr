@@ -1,0 +1,6 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+main = _ = Sys.sleepUs 1099511627776; print "unreached".

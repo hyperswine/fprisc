@@ -1,0 +1,19 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+HTTP = use "std/http".
+TCP = use "std/tcp".
+ST = use "std/stream".
+show r = case r of Ok p -> "Ok({p.status} {strlen p.body})" | Err e -> "Err({e})".
+srv l self = case TCP.accept l of Ok (s, peer) -> _ = ST.write "HTTP/1.1 200 OK\r\nContent-Length: 99999999\r\n\r\nshort" s; _ = ST.close s; Unit | Err e -> Unit.
+srv2 l self = case TCP.accept l of Ok (s, peer) -> _ = ST.write "garbage without a status line\r\n\r\n" s; _ = ST.close s; Unit | Err e -> Unit.
+main =
+  l = case TCP.listen "127.0.0.1" 0 of Ok l -> l | Err e -> error e;
+  _ = spawn (srv l);
+  _ = print "short-body: {show (HTTP.get "http://127.0.0.1:{TCP.port l}/")}";
+  l2 = case TCP.listen "127.0.0.1" 0 of Ok l -> l | Err e -> error e;
+  _ = spawn (srv2 l2);
+  _ = print "garbage: {show (HTTP.get "http://127.0.0.1:{TCP.port l2}/")}";
+  print "done".

@@ -1,0 +1,10 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+show s = case S.toInt s of Ok n -> "{n}" | Err e -> "Err({e})".
+main =
+  _ = print "[{show "-"}] [{show "+5"}] [{show "007"}] [{show " 5"}] [{show "5 "}] [{show ""}] [{show "-0"}]";
+  _ = print "[{show "4611686018427387903"}] [{show "4611686018427387904"}] [{show "9223372036854775808"}] [{show "99999999999999999999999"}]";
+  print "done".

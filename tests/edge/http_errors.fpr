@@ -1,0 +1,12 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+HTTP = use "std/http".
+show r = case r of Ok p -> "Ok({p.status})" | Err e -> "Err({e})".
+main =
+  _ = print "refused: {show (HTTP.get "http://127.0.0.1:1/")}";
+  _ = print "noturl: {show (HTTP.get "not a url")} empty: {show (HTTP.get "")} https: {show (HTTP.get "https://example.com/")}";
+  _ = print "badport: {show (HTTP.get "http://127.0.0.1:99999/")}";
+  print "done".

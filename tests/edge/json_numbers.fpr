@@ -1,0 +1,12 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+show s = case J.parse s of Ok v -> "Ok({J.render v})" | Err e -> "Err({e})".
+q = chr 34.
+main =
+  _ = print "{show "1e400"} {show "-0"} {show "9223372036854775808"} {show "4611686018427387904"} {show "1.5e308"} {show "-1e400"}";
+  _ = print "{show "[1,]"} {show (strcat (strcat (chr 123) q) (strcat "a" (strcat q (strcat ":1," (strcat q (strcat "a" (strcat q (strcat ":2" (chr 125)))))))))} {show "1 2"} {show ""} {show "   "}";
+  _ = print "{show (strcat q (strcat (chr 0) q))} {show (strcat q (strcat (chr 1) q))} {show (strcat q (strcat (chr 255) q))} {show "[1e-400]"} {show "0.1e"} {show "00"} {show "-"}";
+  print "done".

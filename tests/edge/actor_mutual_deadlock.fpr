@@ -1,0 +1,10 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+main =
+  me = myself 0;
+  a = spawn (fn self -> m = receive self; Unit);
+  m = receiveFrom me a;
+  print "unreached".

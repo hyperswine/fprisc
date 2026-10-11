@@ -1,0 +1,15 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+show r = case r of Ok fd -> "Ok" | Err e -> "Err({e})".
+main =
+  _ = print "privileged: {show (O.listen "127.0.0.1" 80)}";
+  a = O.listen "127.0.0.1" 0;
+  fd = case a of Ok f -> f | Err e -> error e;
+  port = case O.localPort fd of Ok p -> p | Err e -> error e;
+  _ = print "inuse: {show (O.listen "127.0.0.1" port)}";
+  _ = print "badaddr: {show (O.listen "300.1.1.1" 0)} name: {show (O.listen "localhost" 0)}";
+  _ = print "accept-closed: {case O.close fd of _ -> (case O.accept fd of Ok p -> "Ok" | Err e -> "Err({e})")}";
+  print "done".

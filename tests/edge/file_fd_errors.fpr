@@ -1,0 +1,23 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+showI r = case r of Ok n -> "Ok({n})" | Err e -> "Err({e})".
+showU r = case r of Ok u -> "Ok" | Err e -> "Err({e})".
+showS r = case r of Ok s -> "Ok({strlen s})" | Err e -> "Err({e})".
+main =
+  _ = print "badmode: {showI (O.open "/tmp/x" "zz")} emptymode: {showI (O.open "/tmp/x" "")}";
+  fd = case O.open "/etc/hosts" "r" of Ok f -> f | Err e -> error "open: {e}";
+  _ = print "write-rdonly: {showI (O.write fd "data")}";
+  _ = print "read-neg: {showS (O.read fd (0 - 1))}";
+  _ = print "read-zero: {showS (O.read fd 0)}";
+  _ = print "read-huge: {showS (O.read fd 1000000000000)}";
+  _ = print "seek-neg: {showI (O.seek fd (0 - 100))} seek-huge: {showI (O.seek fd 1000000000000)}";
+  _ = print "close: {showU (O.close fd)}";
+  _ = print "close-again: {showU (O.close fd)}";
+  _ = print "write-closed: {showI (O.write fd "x")} read-closed: {showS (O.read fd 1)}";
+  _ = print "close-999: {showU (O.close 999)} close-neg: {showU (O.close (0 - 1))}";
+  _ = print "write-stdin: {showI (O.write 0 "x")}";
+  _ = print "close-stdout: {showU (O.close 1)}";
+  print "after closing stdout (should not appear)".

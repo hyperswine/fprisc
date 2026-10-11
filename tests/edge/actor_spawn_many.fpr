@@ -1,0 +1,9 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+spawnN : Int -> Int .
+spawnN 0 = 0.
+spawnN n = _ = spawn (fn self -> Unit); spawnN (n - 1).
+main = _ = spawnN 100000; _ = Sys.sleepUs 200000; print "spawned 100000".

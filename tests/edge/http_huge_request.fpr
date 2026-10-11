@@ -1,0 +1,25 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+HTTP = use "std/http".
+TCP = use "std/tcp".
+ST = use "std/stream".
+main =
+  l = case TCP.listen "127.0.0.1" 0 of Ok l -> l | Err e -> error e;
+  port = TCP.port l;
+  _ = spawn (fn self -> HTTP.serve l (fn req -> {status = 200, headers = Nil, body = "ok {strlen req.path}"}));
+  c = case TCP.connect "127.0.0.1" port of Ok s -> s | Err e -> error e;
+  _ = ST.write (strcat "GET /" (strcat (S.repeat 5000000 "a") " HTTP/1.1\r\nHost: x\r\n\r\n")) c;
+  r = ST.readWithin 5000 200 c;
+  _ = print "5MB-request-line: {case r of Ok s -> "reply [{substr s 0 40}]" | Err e -> "Err({e})"}";
+  c2 = case TCP.connect "127.0.0.1" port of Ok s -> s | Err e -> error e;
+  _ = ST.write "GET / HTTP/1.1\r\nHost: x\r\nContent-Length: -5\r\n\r\n" c2;
+  r2 = ST.readWithin 2000 200 c2;
+  _ = print "negative-content-length: {case r2 of Ok s -> "reply [{substr s 0 40}]" | Err e -> "Err({e})"}";
+  c3 = case TCP.connect "127.0.0.1" port of Ok s -> s | Err e -> error e;
+  _ = ST.write "GET / HTTP/1.1\r\nHost: x\r\nContent-Length: 999999999999\r\n\r\nabc" c3;
+  r3 = ST.readWithin 2000 200 c3;
+  _ = print "huge-content-length: {case r3 of Ok s -> "reply [{substr s 0 40}]" | Err e -> "Err({e})"}";
+  print "done".

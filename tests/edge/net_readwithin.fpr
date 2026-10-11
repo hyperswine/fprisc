@@ -1,0 +1,18 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+TCP = use "std/tcp".
+ST = use "std/stream".
+main =
+  l = case TCP.listen "127.0.0.1" 0 of Ok l -> l | Err e -> error e;
+  c = case TCP.connect "127.0.0.1" (TCP.port l) of Ok s -> s | Err e -> error e;
+  t0 = Sys.timeUs Unit;
+  r = ST.readWithin 300 10 c;
+  _ = print "readWithin-300ms: {case r of Ok s -> "Ok({strlen s})" | Err e -> "Err({e})"} after {(Sys.timeUs Unit - t0) / 1000} ms";
+  t1 = Sys.timeUs Unit;
+  r2 = ST.readWithin 0 10 c;
+  _ = print "readWithin-0: {case r2 of Ok s -> "Ok({strlen s})" | Err e -> "Err({e})"} after {(Sys.timeUs Unit - t1) / 1000} ms";
+  r3 = ST.readWithin (0 - 1) 10 c;
+  print "readWithin-neg: {case r3 of Ok s -> "Ok({strlen s})" | Err e -> "Err({e})"}".

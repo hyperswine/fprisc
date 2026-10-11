@@ -1,0 +1,9 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+loop : Int -> Int .
+loop 0 = 0.
+loop n = _ = print "line {n}"; loop (n - 1).
+main = _ = loop 100000; print "finished all lines".

@@ -1,0 +1,11 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+main =
+  p = "/tmp/fpr-edge-unlinked";
+  fd = case O.open p "w" of Ok f -> f | Err e -> error e;
+  _ = O.remove p;
+  r = O.write fd "still writable";
+  print "write-after-unlink: {case r of Ok n -> "Ok({n})" | Err e -> "Err({e})"}".

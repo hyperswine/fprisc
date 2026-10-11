@@ -1,0 +1,15 @@
+unsafe base.
+S = use "std/string".
+L = use "std/list".
+O = use "std/os".
+J = use "std/json".
+show r = case r of Ok s -> "Ok({strlen s})" | Err e -> "Err({e})".
+main =
+  _ = print "nonexistent: {show (O.readFile "/nonexistent/x")}";
+  _ = print "directory: {show (O.readFile "/")}";
+  _ = print "noperm: {show (O.readFile "/etc/sudoers")}";
+  _ = print "empty-path: {show (O.readFile "")}";
+  _ = print "nul-in-path: {show (O.readFile (strcat "/etc/pass" (strcat (chr 0) "wd")))}";
+  _ = print "long-path: {show (O.readFile (S.repeat 5000 "a"))}";
+  _ = print "devnull: {show (O.readFile "/dev/null")}";
+  print "done".
