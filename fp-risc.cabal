@@ -42,6 +42,7 @@ executable fpr
       Exhaust
       Infer
       Inline
+      ReceiveTurns
       Mono
       Modules
       Peephole

@@ -24,6 +24,7 @@ print(run(['python3', 'tests/check_posix_modules.py'], timeout=600).stdout, end=
 print(run(['python3', 'tests/check_posix_pic.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_owned_watchers.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_loop_state.py'], timeout=300).stdout, end='')
+print(run(['python3', 'tests/check_receive_turns.py'], timeout=600).stdout, end='')
 print(run(['python3', 'tests/check_mvu_reload.py'], timeout=300).stdout, end='')
 print(run(['python3', 'examples/ideal/check.py'], timeout=600).stdout, end='')
 print(run(['python3', 'tests/check_typed_vectors.py'], timeout=300).stdout, end='')
@@ -247,7 +248,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         assert run([cleanup], env={'FPR_HARTS': harts}).stdout == 'cleanup: 1\n'
     print('External request cleanup runs when a parked actor is killed: PASS')
     run(['python3', 'tools/runtime-costs.py', '--quick', '--runs', '1'], timeout=300)
-    print('Opt-in allocation/copy ledgers match exact workloads; ordinary builds have no increments: PASS')
+    print('Runtime ledgers: exact primitive baseline, paired automatic-turn overhead; ordinary builds have no increments: PASS')
     # 4m. fail-stop: a primitive that cannot complete ends its caller alone
     exe = tmp / 'actorfail'
     run(['./fpr', 'build', 'tests/base/actorfail.fpr', '--with', 'tests/base/actorfail_probe.c', '-o', exe])

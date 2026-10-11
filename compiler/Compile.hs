@@ -7,6 +7,7 @@ import System.IO (hPutStrLn, stderr)
 import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Mono (specializeFunctions, qualifyAux)
 import Inline (inlineSmall, inlineWith, vecPeek)
+import ReceiveTurns (receiveTurns)
 import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, normArc)
 import Data.Char (isAlphaNum, isAscii, ord)
 import Numeric (showHex)
@@ -397,6 +398,8 @@ compileWithInterface accepted = do
   envNoFusion <- (== Just "1") <$> lookupEnv "FPR_NO_VEC_FUSE"
   envNoVecPeek <- (== Just "1") <$> lookupEnv "FPR_NO_VEC_PEEK"
   envNoSpec <- (== Just "1") <$> lookupEnv "FPR_NO_SPEC"
+  envNoReceiveTurns <- (== Just "1") <$> lookupEnv "FPR_NO_RECEIVE_TURNS"
+  envReceiveNotes <- (== Just "1") <$> lookupEnv "FPR_RECEIVE_NOTES"
   envApply <- (== Just "1") <$> lookupEnv "FPRC_APPLY"
   envNoInline <- (== Just "1") <$> lookupEnv "FPR_NO_INLINE"
   let system = fromMaybe "bare-metal" (oSystem opts0)
@@ -650,6 +653,11 @@ compileWithInterface accepted = do
                   : [collectCons h uts | (h, uts) <- units]
               )
           shapes = collectShapes finalTops -- structural fnv ids: globally consistent
+          compileRaw uts = M.map (fmap eraseCast) (fst (runState (compileTop uts >>= liftFix) (DEnv 0 consAll shapes [])))
+          turnContext = compileRaw finalTops
+          turnPass p = if oBuiltin opts || oArc opts || envNoReceiveTurns then (p, [])
+                       else receiveTurns (M.fromList interfaces) finalTops turnContext p
+          compileUnit = fst . turnPass . compileRaw
           -- tid collision check (fnv32 is probabilistic; fail LOUDLY)
           tidDecls =
             [ (t, ownerT ++ "." ++ n)
@@ -704,7 +712,7 @@ compileWithInterface accepted = do
             Left err -> putStrLn ("=== MANIFEST: ERROR ===\n  * " ++ err) >> exitFailure
             Right m -> pure (Just m)
       when (oCost opts || declaredAny) $ do
-        let costProg = M.map (fmap eraseCast) (fst (runState (compileTop finalTops >>= liftFix) (DEnv 0 consAll shapes [])))
+        let costProg = compileUnit finalTops
             (measTable, _) = measureCheck tops
             surface = M.fromList [(n, [case p of PVar v -> v; PSig v _ -> v; _ -> "arg" ++ show i | (i, p) <- zip [1 :: Int ..] ps]) | TBind n ps _ _ <- firstClauses finalTops]
             firstClauses ts = M.elems (M.fromListWith (\_ old -> old) [(n, t) | t@(TBind n _ _ _) <- ts])
@@ -816,7 +824,8 @@ compileWithInterface accepted = do
                 bn = S.fromList ([fst3 b | b@(TBind {}) <- uts])
              in [t | t@(TBind n _ _ _) <- rw, S.member n bn]
                   ++ [t | t <- rw, not (isTBind t)]
-          compileUnit uts = M.map (fmap eraseCast) (fst (runState (compileTop uts >>= liftFix) (DEnv 0 consAll shapes [])))
+          reportTurns uts = when (envReceiveNotes || oCost opts) $
+            mapM_ (hPutStrLn stderr) (snd (turnPass (compileRaw uts)))
           checkBuiltinWidth p = when (oBuiltin opts && tgtName (oTarget opts) == "rv32"
                                       && any (builtinWideFloat . snd) (M.elems p)) $ do
             hPutStrLn stderr "profile builtin RV32: F64 and I64 require a 64-bit value ABI"
@@ -834,7 +843,7 @@ compileWithInterface accepted = do
               [ M.fromList [(n, length as) | TSig n (as, _) _ <- preludeE' ++ concatMap snd units' ++ root'],
                 M.map (\(Forall _ _ t) -> arrows t) builtinEnv,
                 -- the internal pair-free vector reads (Inline.vecPeek, vec.c)
-                M.fromList [("$vec.at", 2), ("$vec.get", 2), ("$vec.len", 1)] ]
+                M.fromList [("$vec.at", 2), ("$vec.get", 2), ("$vec.len", 1), ("$receiveLoop", 1)] ]
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
           tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = not envNoFloatInline, tgtRegisters = not envNoRegisters, tgtSimd=oA64 opts && not envNoSimd, tgtFusion=not envNoFusion}
@@ -868,7 +877,7 @@ compileWithInterface accepted = do
                   else if espHost then "rv32-idftls1"
                   else tgtName tgt
           tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0
-          tag = "g" ++ show codegenRev ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
+          tag = "g" ++ show codegenRev ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt1pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit
@@ -900,6 +909,7 @@ compileWithInterface accepted = do
              ++ " known-partial=" ++ show (length [() | l <- lines asm, "# pap-create:" `List.isPrefixOf` l])
              ++ " static-descriptors=" ++ show (length [() | l <- lines asm, "# static-pap:" `List.isPrefixOf` l]))
           emitUnit path exps ext uts = do
+            reportTurns uts
             checkBuiltinWidth (compileUnit uts)
             cached <- doesFileExist path
             if cached
@@ -986,6 +996,7 @@ compileWithInterface accepted = do
         hPutStrLn stderr "machineInterrupt requires --arc (raw, allocation-free handler ABI)"
         exitFailure
       checkBuiltinWidth rootProgRaw
+      reportTurns (if oArc opts then finalTops else rootProgTops)
       rootProgSym <- case symbolize rootProgRaw of
         Left e -> hPutStrLn stderr ("error: " ++ e) >> exitFailure
         Right p -> pure p

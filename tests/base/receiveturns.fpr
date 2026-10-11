@@ -1,0 +1,28 @@
+# Ordinary recursive actors: no arena, pool reset or loop API.
+unsafe base.
+freeKiB u = case Sys.memInfo 0 of _ :: f :: _ -> f | _ -> 0.
+turn me n text total =
+  _ = send me ("row {n}", n);
+  message = receiveFrom me me;
+  (row, number) = message;
+  garbage = "{text}: temporary scratch for message {number}";
+  _ = if number == n and row == "row {n}" then Unit else error "receive turn message";
+  if n == 0 then (row, total) else turn me (n - 1) row (total + strlen garbage).
+run me n =
+  caller = strcat "caller" "-owned";
+  before = heapUsed Unit;
+  (row, total) = turn me n caller 0;
+  growth = heapUsed Unit - before;
+  _ = if caller == "caller-owned" and row == "row 0" and total > 0 and growth < 4096
+      then Unit else error "receive turns: caller heap grew {growth}";
+  Unit.
+main =
+  me = myself 0;
+  _ = run me 100;
+  before = freeKiB Unit;
+  roots = arcLive 0;
+  _ = run me 1000000;
+  retained = before - freeKiB Unit;
+  _ = if retained < 4096 and arcLive 0 == roots then Unit
+      else error "receive turns: retained={retained} roots={arcLive 0 - roots}";
+  print "receiveturns: one million ordinary recursive receives bounded; caller and roots survive".

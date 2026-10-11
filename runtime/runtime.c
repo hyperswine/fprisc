@@ -1381,6 +1381,22 @@ static V g_loop(V s, V f) {
 }
 FPR_FN(fpr_g_Sys_x2eloop, g_loop, 2);
 
+/* Compiler-private tail-call trampoline. A checked receive SCC returns
+ * (True, next partially-applied step) or (False, its original result).
+ * Only closed value-state SCCs are lowered; g_loop also checks the actual
+ * graphs so unsafe/foreign code cannot smuggle mutable storage through.
+ * Reusing g_loop retains migration, nested scopes and cancellation cleanup. */
+static V receive_step(V thunk) {
+  if (ISINT(thunk) || !thunk || TID(thunk) != T_PAP)
+    fpr_cpanic("receive loop: expected a next-turn closure");
+  return fpr_apply(thunk, (V)&fpr_unit);
+}
+static const pap0_t receive_step_fn = {T_PAP, 0, (uw)(uintptr_t)receive_step, 1, 0};
+static V g_receive_loop(V thunk) {
+  return g_loop(thunk, (V)&receive_step_fn);
+}
+FPR_FN(fpr_g__x24receiveLoop, g_receive_loop, 1);
+
 static V g_loop_with(V vec, V s, V f) {
   if (ISINT(vec) || !fpr_in_heap(vec) || TID(vec) != T_VEC)
     fpr_cpanic("Sys.loopWith: not a Vector");

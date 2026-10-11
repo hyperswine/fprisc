@@ -7,9 +7,10 @@ Date: 2026-10-12. Kind: review with proposals. Applies from revision
 cited below. The original review used source reading only; the implementation
 checkpoint below records the subsequent executable checks.
 
-Status: Proposal A has a first implementation: value-state turn regions and
-bounded-by-default MVU library loops. Automatic compiler transformation of
-receive loops, precise Base ARC, I32 and refinement types remain proposals.
+Status: Proposal A has a first implementation: value-state turn regions,
+bounded-by-default MVU library loops and automatic regions for recognized
+value-state recursive receive loops. General mutable/higher-order recursion,
+precise Base ARC, I32 and refinement types remain proposals.
 
 Three topics, independent of each other:
 
@@ -135,6 +136,75 @@ recycling its stack. It tears down nested `arena`, `loop` and `loopWith`
 regions and releases their transferred state, independently of any pending
 external request cleanup. This adds an ACB field and advances the shared
 native ABI to **6**; rebuild native kernels and applications together.
+
+### Compiler checkpoint: ordinary recursive receive loops
+
+`compiler/ReceiveTurns.hs` recognizes tail-recursive groups that receive
+messages, including mutual recursion and receives through imported helpers.
+The pass runs after source checking and lambda lifting, before function
+specialization and inlining. It preserves the public function type and
+entry point. Each group member gets a private step; a recursive tail call
+evaluates its arguments strictly, left to right, and returns a closure carrying
+only those next-call arguments. A private runtime trampoline runs each step
+through the same region engine as `Sys.loop`. A terminating branch copies its
+ordinary result back into the caller's pool. State bundling accommodates the
+native wide argument convention without adding an argument to a wide call.
+
+This applies only when every parameter and returning result has closed,
+first-order value type evidence: supported scalar values, lists, results,
+tuples, closed records and recursively checked non-linear nominal types.
+An infinite actor's polymorphic bottom result is allowed when every terminal
+path is a saturated call inside its recursive group or a compiler trap;
+there is then no returning result to copy.
+Vectors, linear nominal types, functions/callback captures, open or polymorphic
+state, non-tail recursion, escaping/partially applied recursive references,
+and missing evidence keep their existing behavior. Existing explicit region
+management also stays in control. In particular, this is a first automatic
+pass, not a claim that arbitrary recursion is now bounded. Regions bound
+temporary lifetimes; an accumulating list or growing model still grows.
+
+Use `FPR_RECEIVE_NOTES=1` or `--cost` to see transformed groups and reasons
+for leaving recognized groups unchanged. `FPR_NO_RECEIVE_TURNS=1` restores
+the previous pool behavior for comparison; it has a separate assembly cache
+identity. The generated code requires the matching runtime's private
+`$receiveLoop` import. Code generation revision is **39**; the ACB layout
+remains ABI 6. Cost analysis sees the transformed Core and leaves trampoline
+work/copy sizes opaque until it can derive them, so it cannot silently reuse
+a pre-transformation numeric cost bound.
+
+Received ARC roots still follow `drop`/autodrop and copy-on-retain rules.
+The region pass does not manufacture ownership evidence for an unrecognized
+root use or keep a borrowed message alive across another receive. Its runtime
+graph checks also refuse a Vector that unsafe code smuggles into a continuation
+despite the checked source type.
+
+`tests/check_receive_turns.py` exercises one million ordinary recursive receives
+under a 64 MiB heap, final-state/caller survival, stable received roots, mutual
+case branches, nominal state, argument effect order, imported helper receives,
+wide state and cache isolation, and cancellation after transferring state.
+It also reproduces pool growth with the pass disabled and checks that mutable,
+functional, non-tail and explicitly managed loops are reported unchanged.
+
+These checks passed on macOS ARM64 and Linux ARM64. The ordinary million-message
+fixture also passed on the physical Pi 4 with one/four workers and a 64 MiB
+heap (about 8.3 seconds, 1,920/2,048 KiB peak RSS). A reduced 10,000-message
+fixture linked and ran on four-hart RV64 QEMU. QOS native boot, Portable MVU,
+real plugin reloads and the ARM64 Linux real-GL Main harness also passed.
+The Main harness includes Files/Logs scrolling, onboard apps, refusal paths,
+two boots and graceful shutdown. The separate Pi Main-session checks for
+the preceding library-default commit are recorded in QOS's
+`docs/2026-10-12-PI4-DEFAULT-TURN-MEMORY.md`.
+The complete Base regression suite and the symbolic cost checks also passed.
+
+`tools/runtime-costs.py` now pairs primitive-only (`receive_turns: false`)
+and default turn-region (`receive_turns: true`) message measurements. The
+primitive baseline retains its exact copy ledger; the default also counts
+continuation/state transfers. Its last worker boundary may race cancellation,
+so it reports the observed overhead rather than asserting one exact count.
+Use `--receive-turns=off` for comparable primitive calibration. Prior recorded
+throughput numbers do not establish the cost of the new default.
+
+### Executed library acceptance checks
 
 Executed acceptance checks:
 

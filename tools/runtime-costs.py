@@ -15,14 +15,15 @@ def run(args,env,timeout=180):
  p=subprocess.run([str(x) for x in args],cwd=ROOT,env=env,capture_output=True,text=True,timeout=timeout)
  assert p.returncode==0,f'{args}: {p.returncode}\n{p.stdout}{p.stderr}'
  return p.stdout
-ap=argparse.ArgumentParser();ap.add_argument('--runs',type=int,default=5);ap.add_argument('--harts',type=int,nargs='+',default=[1,2]);ap.add_argument('--quick',action='store_true');a=ap.parse_args()
+ap=argparse.ArgumentParser();ap.add_argument('--runs',type=int,default=5);ap.add_argument('--harts',type=int,nargs='+',default=[1,2]);ap.add_argument('--quick',action='store_true');ap.add_argument('--receive-turns',choices=['on','off','both'],default='both');a=ap.parse_args()
 assert a.runs>0 and all(1<=h<=8 for h in a.harts)
 base={**os.environ,'FPR_HOME':str(ROOT),'FPR_PATH':str(ROOT),'FPR_HARTS':'1'};base.pop('FPR_FOREIGN',None)
 run(['make','fpr'],base)
 results=[]
 with tempfile.TemporaryDirectory(prefix='fpr-cost-') as d:
  tmp=Path(d)
- for harts,kind in [(1,'alloc')]+[(h,'message') for h in a.harts]:
+ modes=[False,True] if a.receive_turns=='both' else [a.receive_turns=='on']
+ for harts,kind,turns in [(1,'alloc',False)]+[(h,'message',turns) for h in a.harts for turns in modes]:
   for size in (16,256,4096):
    n=(4096 if kind=='alloc' else 256) if a.quick else (50000000 if kind=='alloc' else 200000)
    if kind=='alloc':
@@ -49,7 +50,7 @@ loop me w n payload acc = if n == 0 then acc else
    for probe in (False,True):
     exe=tmp/f'{kind}-{size}-{probe}'
     args=['./fpr','build',src,'--harts',str(max(a.harts)),'--with',ROOT/'tests/bench/costprobe.c','-o',exe]
-    probe_env={**base,'FPR_HARTS':str(harts),'FPR_COST_PROBE':'1' if probe else '0'}
+    probe_env={**base,'FPR_HARTS':str(harts),'FPR_COST_PROBE':'1' if probe else '0','FPR_NO_RECEIVE_TURNS':'0' if turns else '1'}
     run(args,probe_env)
     for _ in range(a.runs):
      start=time.perf_counter();out=run([exe],probe_env);times[probe].append(time.perf_counter()-start)
@@ -59,8 +60,14 @@ loop me w n payload acc = if n == 0 then acc else
      else:assert not any(ledger.values()),ledger
    ledger=ledgers[-1]
    if kind=='alloc':assert ledger['alloc_requests']==n and ledger['alloc_bytes']==n*((size+15)//16*16+16),ledger
-   else:assert ledger['copy_bytes']==n*(size+32) and ledger['copies']==2*n,ledger
-   results.append({'kind':kind,'payload_bytes':size,'operations':n,'harts':harts,
+   elif not turns:assert ledger['copy_bytes']==n*(size+32) and ledger['copies']==2*n,ledger
+   else:
+    # The default includes continuation/state transfers in addition to the
+    # two message copies. A worker killed after its last reply may be at
+    # either side of its final boundary, so no exact layout/race count is
+    # promised. Keep the primitive-only ledger exact in the paired mode.
+    assert ledger['copy_bytes']>n*(size+32) and ledger['copies']>2*n,ledger
+   results.append({'kind':kind,'receive_turns':turns,'payload_bytes':size,'operations':n,'harts':harts,
     'best_ms':round(min(times[0])*1000,3),'median_ms':round(statistics.median(times[0])*1000,3),
     'operations_per_second':round(n/min(times[0])),
     'probe_best_ms':round(min(times[1])*1000,3),'ledger':ledger})
