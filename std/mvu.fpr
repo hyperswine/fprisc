@@ -226,12 +226,14 @@ eventEvs me pa = case pa == 0 of
   | False -> eventAsk me pa.
 # Drain each subscribed typed port once, preserving subscription order.
 eventPorts : unsafe Int -> List Sub -> List Int -> List Ev .
-eventPorts me ss seen = case ss of
-    Nil -> Nil
+eventPorts me ss seen = eventPortsAcc me ss seen Nil.
+eventPortsAcc : unsafe Int -> List Sub -> List Int -> List Ev -> List Ev .
+eventPortsAcc me ss seen acc = case ss of
+    Nil -> revK Nil acc
   | SEvents p :: rest -> (case hasPort p seen of
-      True -> eventPorts me rest seen
-    | False -> catEvs (eventEvs me p) (eventPorts me rest (p :: seen)))
-  | other :: rest -> eventPorts me rest seen.
+      True -> eventPortsAcc me rest seen acc
+    | False -> eventPortsAcc me rest (p :: seen) (revK acc (eventEvs me p)))
+  | other :: rest -> eventPortsAcc me rest seen acc.
 hasPort : unsafe Int -> List Int -> Bool .
 hasPort p seen = case seen of Nil -> False | x :: rest -> x == p or hasPort p rest.
 eventAsk : unsafe Int -> Int -> List Ev .

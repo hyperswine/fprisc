@@ -207,6 +207,15 @@ ARC roots. MVU Ev/Sub fields are now concretely typed, while the generic render
 payload contract remains intact; the renderer explicitly keeps/drops its
 received root before handing a request to its helpers.
 
+MVU's typed `eventPorts` collector now tail-accumulates batches in reverse
+and reverses once at completion. Its `eventPortsAcc` group gets automatic
+turn regions. Subscription order, per-port FIFO, initial exclusions and
+duplicate-port suppression are preserved. `tests/base/mvueventports.fpr`
+checks all event variants, a port that counts drain requests, and 20,000
+three-port batches with stable roots and less than 4 MiB retained buddy
+allocation on one/four workers. Output and the remaining subscription list
+are still legitimate live state; their size is not bounded by this pass.
+
 These checks passed on macOS ARM64 and Linux ARM64. The ordinary million-message
 fixture also passed on the physical Pi 4 with one/four workers and a 64 MiB
 heap (about 8.3 seconds, 1,920/2,048 KiB peak RSS). A reduced 10,000-message

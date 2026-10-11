@@ -44,6 +44,13 @@ with tempfile.TemporaryDirectory(prefix='fpr-receive-turns-') as directory:
         p = run(exe, h)
         assert p.returncode == 0 and 'received roots released HOLDS' in p.stdout, (h, p.stdout, p.stderr)
     print('automatic receive turns: concrete MVU text protocol and root ownership PASS')
+    exe, notes = build(ROOT/'tests/base/mvueventports.fpr', 'event-ports')
+    assert any('eventPortsAcc@' in line and 'automatic value-state turn regions' in line
+               for line in notes.splitlines()), notes
+    for h in (1, 4):
+        p = run(exe, h)
+        assert p.returncode == 0 and 'multi-port batches bounded, roots released HOLDS' in p.stdout, (h, p.stdout, p.stderr)
+    print('automatic receive turns: ordered typed ports, deduplication and ownership PASS')
     # Same source, separate cache identity: baseline keeps the old growing pool.
     old,_=build(ROOT/'tests/base/receiveturns.fpr','baseline',{'FPR_NO_RECEIVE_TURNS':'1'})
     p=run(old)

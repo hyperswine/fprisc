@@ -1,0 +1,63 @@
+# Typed ports preserve batch/subscription order, deduplicate, and release roots.
+unsafe base.
+MV = use "std/mvu".
+AC = use "std/actor".
+check True = Unit.
+check False = error "mvueventports: order, copy or dedup failed".
+info = {name = "module", from = "old", to = "new", version = "1"}.
+subs a b c = [MV.SKeys, MV.SEvents a, MV.STick 10, MV.SEvents 0,
+              MV.SEvents b, MV.SEvents a, MV.SPort c, MV.SEvents c, MV.SEvents b].
+fill a b c =
+  _ = send a MV.ETick;
+  _ = send a (MV.EMsg "tag" "payload");
+  _ = send b (MV.EReload info);
+  _ = send b (MV.EReloadRefused info "refused");
+  _ = send c (MV.EKey 28);
+  _ = send c (MV.EWheel (0 - 2) 3);
+  send c (MV.EResize 800 600).
+expected = [MV.ETick, MV.EMsg "tag" "payload", MV.EReload info,
+            MV.EReloadRefused info "refused", MV.EKey 28,
+            MV.EWheel (0 - 2) 3, MV.EResize 800 600].
+step me a b c n =
+  _ = fill a b c;
+  evs = MV.eventPorts me (subs a b c) Nil;
+  _ = check (evs == expected);
+  _ = check (MV.eventPorts me (subs a b c) Nil == Nil);
+  (n + 1 < 20000, n + 1).
+freeKiB u = case Sys.memInfo 0 of _ :: f :: _ -> f | _ -> 0.
+counting : unsafe Int -> Int -> Unit .
+counting n me =
+  borrowed = receive me;
+  message = keep borrowed;
+  _ = drop borrowed;
+  case message of
+    MV.PDrain from -> _ = send from [MV.EKey n]; counting (n + 1) me
+  | _ -> error "unexpected counting-port request".
+main =
+  me = myself 0;
+  counter = spawn (counting 1);
+  _ = check (MV.eventPorts me [MV.SEvents counter, MV.SEvents counter] Nil == [MV.EKey 1]);
+  _ = check (MV.eventPorts me [MV.SEvents counter] [counter] == Nil);
+  _ = check (MV.eventEvs me counter == [MV.EKey 2]);
+  _ = kill counter;
+  a = AC.spawnWith (AC.Dynamic 8) MV.eventsPort;
+  b = AC.spawnWith (AC.Dynamic 8) MV.eventsPort;
+  c = AC.spawnWith (AC.Dynamic 8) MV.eventsPort;
+  _ = fill a b c;
+  _ = check (MV.eventPorts me (subs a b c) [b] ==
+             [MV.ETick, MV.EMsg "tag" "payload", MV.EKey 28,
+              MV.EWheel (0 - 2) 3, MV.EResize 800 600]);
+  _ = check (MV.eventEvs me b == [MV.EReload info, MV.EReloadRefused info "refused"]);
+  _ = Sys.loop 19900 (step me a b c);
+  _ = Sys.sleepUs 10000;
+  before = freeKiB Unit;
+  roots = arcLive 0;
+  _ = Sys.loop 0 (step me a b c);
+  _ = Sys.sleepUs 10000;
+  retained = before - freeKiB Unit;
+  _ = if retained < 4096 and arcLive 0 == roots then Unit else
+      error "mvueventports: retained={retained} KiB roots={arcLive 0 - roots}";
+  _ = kill a;
+  _ = kill b;
+  _ = kill c;
+  print "mvueventports: 20000 ordered multi-port batches bounded, roots released HOLDS".
