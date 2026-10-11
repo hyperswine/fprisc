@@ -18,4 +18,4 @@ with tempfile.TemporaryDirectory(prefix='fpr-arena-migration-') as directory:
         assert p.returncode == 0, p.stdout + p.stderr
         match = re.fullmatch(r'arenamigrate: nested arenas and loopWith survive; migrations=(\d+)\n', p.stdout)
         assert match and (harts == 1 or int(match[1]) > 0), p.stdout
-    print('Nested Sys.arena / Sys.loopWith: caller state survives observed migration on one/four harts PASS')
+    print('Nested Sys.arena / Sys.loop / Sys.loopWith: caller state survives observed migration on one/four harts PASS')

@@ -1,0 +1,28 @@
+# Repeatedly fill and drain the default event port, checking FIFO and roots.
+unsafe base.
+MV = use "std/mvu".
+AC = use "std/actor".
+freeKiB u = case Sys.memInfo 0 of _ :: f :: _ -> f | _ -> 0.
+step me port limit n =
+  _ = send port ("first {n}");
+  _ = send port ("second {n}");
+  _ = send port (MV.PDrain me);
+  batch = receiveFrom me port;
+  valid = batch == ("first {n}" :: "second {n}" :: Nil);
+  _ = drop batch;
+  _ = if valid then Unit else error "port queue lost FIFO or strings";
+  (n + 1 < limit, n + 1).
+main =
+  me = myself 0;
+  port = AC.spawnWith (AC.Dynamic 8) MV.port;
+  _ = Sys.loop 0 (step me port 1000);
+  _ = Sys.sleepUs 10000;
+  before = freeKiB Unit;
+  roots = arcLive 0;
+  _ = Sys.loop 0 (step me port 20000);
+  _ = Sys.sleepUs 10000;
+  retained = before - freeKiB Unit;
+  _ = if retained < 4096 and arcLive 0 == roots then Unit else
+      error "mvuportmemory: retained={retained} KiB roots={arcLive 0 - roots}";
+  _ = kill port;
+  print "mvuportmemory: 20000 FIFO batches bounded; received roots released".

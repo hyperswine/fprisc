@@ -78,6 +78,7 @@ extern const hdr_t fpr_true, fpr_false, fpr_unit;
 #define FPR_RBUF_SZ 4096
 
 struct fpr_acb; /* actors.c */
+struct fpr_scope; /* runtime.c: stack-resident scratch-region cleanup */
 
 /* ---- per-actor slab pools (the slab refactor) -----------------------
  * Buddy is the ONE lower allocator (init'd over heap+proc regions at
@@ -167,7 +168,7 @@ void fpr_bkt_put(void **b);
  * Every operation here still speaks in tagged values (V): the tables
  * bind one FP-RISC runtime to another.  A plain-word API for other
  * languages is the next step, not this one. */
-#define FPR_NATIVE_ABI 5u /* v5: the plane table split in two, carried by the boot block; v4: shared boot network-owner callback; v3: checked module table schema; v2: vector product recipe metadata appended to vec_t */
+#define FPR_NATIVE_ABI 6u /* v6: actor scratch-scope cleanup chain; v5: plane table split carried by boot block; v4: boot network-owner callback; v3: module table schema; v2: vector recipe metadata */
 #define FPR_PLANE_ACTORS_ABI 1u /* v1: the scheduler half of the old fpr_sched_t, plus spawn_cap */
 #define FPR_PLANE_MEMORY_ABI 1u /* v1: the memory half of the old fpr_sched_t */
 typedef struct fpr_plane_actors {
@@ -259,6 +260,7 @@ void fpr_vec_release(V v);               /* vec.c: universal vector free */
 
 fpr_pool_t *fpr_acb_pool(struct fpr_acb *a); /* actors.c: &a->pool */
 struct fpr_pool **fpr_acb_override_slot(struct fpr_acb *a); /* actors.c: the arena the actor is inside */
+struct fpr_scope **fpr_acb_scope_slot(struct fpr_acb *a); /* cancellation cleanup, before stack recycling */
 void fpr_pool_reclaim(struct fpr_acb *a);    /* runtime.c: death teardown */
 void *buddy_alloc(uw bytes);                 /* buddy.c */
 void *buddy_realloc(void *p, uw bytes);      /* grow/shrink; in-place when

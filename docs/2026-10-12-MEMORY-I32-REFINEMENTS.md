@@ -4,10 +4,12 @@ Date: 2026-10-12. Kind: review with proposals. Applies from revision
 `e32e533`. Evidence: a source and documentation reading of `compiler/`
 (`Infer.hs`, `Precond.hs`, `Safety.hs`, `Cost.hs`, `Arc.hs`,
 `Representation.hs`, `Compile.hs`), `runtime/`, `std/mvu.fpr`, and the pages
-cited below. Nothing was built or run for this page; each section ends with
-the tests that should land with its implementation.
+cited below. The original review used source reading only; the implementation
+checkpoint below records the subsequent executable checks.
 
-Status: proposals, none implemented.
+Status: Proposal A has a first implementation: value-state turn regions and
+bounded-by-default MVU library loops. Automatic compiler transformation of
+receive loops, precise Base ARC, I32 and refinement types remain proposals.
 
 Three topics, independent of each other:
 
@@ -100,6 +102,73 @@ Open points:
   anything aliased needs explicit handling or a refusal.
 - **Boundary frequency.** Per message is simplest; every N messages trades
   copy cost against peak memory. Make it a declared policy.
+
+### Implementation checkpoint: value-state loops and default MVU
+
+`Sys.loop : a -> (a -> (Bool, a)) -> a` runs each callback in a fresh scratch
+region. `True` continues with the returned state; `False` returns that state
+to the caller. The runtime copies the next state into an independent transfer
+slab before tearing down the scratch region, releases the previous transfer,
+and copies the final result into the caller's pool. The caller's allocations
+and callback captures stay alive. Heap use depends on the largest turn and
+live state, rather than the number of turns; transferring state costs time
+proportional to its size. The cost report exposes a per-step estimate and
+leaves unknown state sizes symbolic rather than claiming a numeric bound.
+
+The initial state, returned state and callback captures may not contain a
+`Vector`; each case has a named runtime refusal. Mutable buffers still use
+`Sys.loopWith` with its explicit storage-identity contract. This does not
+establish ownership for unsafe foreign pointers. Received ARC roots still
+need `drop`/autodrop; copying a state does not release its received root.
+
+`MVU.run`, `runLive`, the game façades and watched runners now reclaim their
+driver temporaries every frame. `runScoped` and `runLiveScoped` remain as
+compatibility aliases. The render worker carries its callback as value state
+through its own turn loop. Event ports keep each received message into owned
+queue state, release the received root, and reclaim each receive turn. This
+also reclaims list spines after drains. A queue or model that grows without
+limit still consumes unbounded memory: this change is reclamation, not an
+application-state or admission budget.
+
+Cancellation now walks an actor-owned chain of active scratch scopes before
+recycling its stack. It tears down nested `arena`, `loop` and `loopWith`
+regions and releases their transferred state, independently of any pending
+external request cleanup. This adds an ACB field and advances the shared
+native ABI to **6**; rebuild native kernels and applications together.
+
+Executed acceptance checks:
+
+- `tests/check_loop_state.py`: one million turns under a 64 MiB heap on one
+  and four harts; caller/captured strings and final state survive; caller
+  allocations stay below 4 KiB per run and retained global heap below 4 MiB.
+  Bare actor handles preserve identity and remain live through `loop`/`arena`.
+  Initial, returned and captured vectors receive named refusals. Killing 256
+  more blocked actors inside all three nested scope forms retains under
+  4 MiB after warmup.
+- `tests/check_arena_migration.py`: nested regions and both loop forms preserve
+  caller state across observed migration on four harts, plus the one-hart case.
+- `tests/check_mvu_reload.py`: ordinary `run` completes 20,000 frames under
+  64 MiB on one and four harts, with under 4 MiB additional retained heap and
+  live caller/callback strings. The same workload exhausted that heap before
+  this change. Reload ordering, accepted environment state across boundaries,
+  legacy façades, the scoped alias and production ticks also pass. Event ports
+  complete 20,000 FIFO fill/drain batches with stable ARC-root counts.
+- Cost reporting exposes a `Sys.loop` scoped-step estimate. External request
+  cleanup still runs when an actor parked inside an arena is killed.
+- The value-state fixture also links and runs 10,000 turns on RV64 QEMU with
+  four harts. QOS Portable's MVU engine and real plugin reloads pass on one and
+  four harts; QOS Native links and boots to its launcher.
+- A fresh ARM64 Linux build passes the real QOS GL shell harness on four
+  harts: Files/Logs scrolling, onboard clock/browser, refusal paths, pointer
+  protocol and state across two boots, with matching rebuilt plugins.
+- The complete Base regression suite passes, including admission rollback,
+  fixed heaps, logger bounds, actor teardown and live module replacement.
+
+These are heap-reclamation assertions, not process RSS measurements or a Pi
+soak. Arbitrary handwritten recursive receive loops retain the previous pool
+behavior. A compiler pass to recognize and transform those loops remains the
+next larger step; precise per-value ARC and fixed admission for scratch
+regions remain separate work.
 
 ### Proposal B (long term): precise ARC in Base
 

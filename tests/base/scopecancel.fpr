@@ -1,0 +1,37 @@
+# Kill an actor parked inside nested arena / loop / loopWith scopes, after
+# both loops have transferred heap-owned state. All scratch slabs must return.
+unsafe base.
+AC = use "std/actor".
+freeKiB u = case Sys.memInfo 0 of _ :: f :: _ -> f | _ -> 0.
+park boss me text u =
+  scratch = strcat text "-parked";
+  _ = send boss (strlen scratch);
+  receive me.
+inner boss me state =
+  (n, text) = state;
+  if n == 1 then (True, (2, strcat text "-inner")) else
+  _ = Sys.arena (park boss me text);
+  (False, state).
+outer boss me state v =
+  (n, text) = state;
+  if n == 0 then (True, (1, strcat text "-outer"), v) else
+  final = Sys.loop state (inner boss me);
+  (False, final, v).
+worker boss me =
+  (state, v) = Sys.loopWith (Vec.iota 8) (0, strcat "heap" "-state") (outer boss me);
+  Vec.free v.
+cycles me n = if n == 0 then Unit else
+  a = AC.spawnWith (AC.Dynamic 8) (worker me);
+  ready = receiveFrom me a;
+  _ = drop ready;
+  _ = kill a;
+  _ = Sys.sleepUs 1000;
+  cycles me (n - 1).
+main =
+  me = myself 0;
+  _ = cycles me 32;
+  before = freeKiB Unit;
+  _ = cycles me 256;
+  retained = before - freeKiB Unit;
+  _ = if retained < 4096 then Unit else error "scopecancel: retained {retained} KiB";
+  print "scopecancel: nested scratch and transferred state reclaimed on kill".

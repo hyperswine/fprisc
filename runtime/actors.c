@@ -228,6 +228,7 @@ typedef struct fpr_acb {
 #ifdef FPR_COST_PROBE
   uint64_t probe_shipped, probe_drained; /* cross-hart latency stamps (XHART.md) */
 #endif
+  struct fpr_scope *scopes; /* active scratch regions on this actor's stack */
 } acb_t;
 #define TR(a, code) do { (a)->tr[(a)->tr_i++ % 16] = (uint8_t)((code) * 8 + (fpr_hart() ? fpr_hart()->id : 7)); } while (0)
 
@@ -274,6 +275,7 @@ void fpr_drop_drain_current(void) {
 
 fpr_pool_t *fpr_acb_pool(struct fpr_acb *a) { return &a->pool; }
 struct fpr_pool **fpr_acb_override_slot(struct fpr_acb *a) { return &a->pool_override; }
+struct fpr_scope **fpr_acb_scope_slot(struct fpr_acb *a) { return &a->scopes; }
 
 /* big raw blocks (stacks, acbs, rings): the memory actor's buddy on an
  * image that owns one (fpr_mem_own -- a machine boot, the qosp app);
@@ -2014,6 +2016,7 @@ void fpr_actors_init(void) { /* hart 0, before fpr_smp_go */
   main_acb.parent = 0;
   main_acb.pid = 0;
   main_acb.external_cleanup = 0; main_acb.external_arg = 0;
+  main_acb.scopes = 0;
   ledger_push(&main_acb);
   uw stk_sz = 0;
   char *stk = (char *)stack_block(&stk_sz);
@@ -2090,6 +2093,7 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
   }
   a->mem_reply = 0;
   a->pool_override = 0;
+  a->scopes = 0;
   a->dp_n = 0;
   a->msg_slab = 0;
   a->running = 0; /* the block may be reused: no hart has this context yet */

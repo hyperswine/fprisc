@@ -52,7 +52,7 @@ data Cost
 
 -- work, alloc (bytes requested), live (bytes resident at the peak: under
 -- the pool model everything allocated stays until a boundary, so live is
--- alloc except inside Sys.arena and a Sys.loopWith step, which are torn
+-- alloc except inside Sys.arena and a Sys.loop/loopWith step, which are torn
 -- down), and for each persistent loop the body costs of ONE step
 data CostEq = CostEq {ceWork :: Cost, ceAlloc :: Cost, ceLive :: Cost, ceSteps :: [(Cost, Cost, Cost)]} deriving (Eq, Show)
 
@@ -403,6 +403,10 @@ costProgram measures declared prog = M.mapWithKey (\n e -> (e, effective n e)) f
                       let fw = fnWork f
                           fa = fnAlloc f
                        in plus (R (CAdd [CN 2, fw]) (CAdd [CN 24, CO "?len"]) (CAdd [fa, CN 24, CO "?len"]) []) rargs
+                  | g == "Sys.loop", [_, step] <- args ->
+                      let sw = fnWork step
+                          sa = fnAlloc step
+                       in plus (R (CO "loop:Sys.loop") (CO "?len") (CAdd [sa, CMul [CN 2, CO "?len"]]) [(sw, sa, sa)]) rargs
                   -- Sys.loopWith v s step: a PERSISTENT loop.  Its total work is
                   -- not bounded by anything in the program (it runs until the
                   -- step says stop), so it is the opaque loop; what IS bounded is
@@ -506,7 +510,7 @@ renderReport surfaceNames prog eqs liveDeclared names =
         pad "" ++ "  alloc <= " ++ prettyCost (rename a) ++ " bytes"
       ]
         ++ [pad "" ++ "  live  <= " ++ prettyCost (rename l) ++ " bytes" | simp l /= simp a || S.member n liveDeclared]
-        ++ [pad "" ++ "  per step (Sys.loopWith): work <= " ++ prettyCost (rename sw) ++ ", alloc <= " ++ prettyCost (rename sa) ++ " bytes" | (sw, sa, _) <- steps]
+        ++ [pad "" ++ "  per scoped step: work <= " ++ prettyCost (rename sw) ++ ", alloc <= " ++ prettyCost (rename sa) ++ " bytes" | (sw, sa, _) <- steps]
         ++ [pad "" ++ "  opaque: " ++ intercalate ", " os | let os = nub (omegas w ++ omegas a ++ omegas l), not (null os)]
       | n <- names,
         Just (CostEq w a l steps) <- [M.lookup n eqs],

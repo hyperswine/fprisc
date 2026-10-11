@@ -99,7 +99,10 @@ assert 'build: declared live <= 24·n + 24   derived 24·(n + 1)   PROVEN' in r,
 assert re.search(r'^  scratch\s+work  <= .*\n\s+alloc <= ω\(\?len\) \+ 48 bytes\n\s+live  <= ω\(\?len\) \+ 24·\(ω\(\?\) \+ 1\) \+ 64 bytes', r, re.M), r
 r = cost(ROOT / 'tests' / 'base' / 'loopwith.fpr')
 assert re.search(r'^  run\s+work  <= .*ω\(loop:Sys\.loopWith\)', r, re.M), r
-assert 'per step (Sys.loopWith): work <= ω(diffc) + ω(draw) + ω(junk) + ω(lenL) + 27, alloc <= ω(diffc) + ω(draw) + ω(junk) + ω(lenL) + 96 bytes' in r, r
+assert 'per scoped step: work <= ω(diffc) + ω(draw) + ω(junk) + ω(lenL) + 27, alloc <= ω(diffc) + ω(draw) + ω(junk) + ω(lenL) + 96 bytes' in r, r
+r = cost(ROOT / 'tests' / 'base' / 'loopstate.fpr')
+assert re.search(r'^  run\s+work  <= .*ω\(loop:Sys\.loop\)', r, re.M), r
+assert 'per scoped step: work <=' in r, r
 
 t0 = time.time()
 r = cost(ROOT / 'examples' / 'todo.fpr', timeout=120)

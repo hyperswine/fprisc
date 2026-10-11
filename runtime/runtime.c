@@ -1246,7 +1246,8 @@ static void no_vec_out(V r, const char *who) {
 }
 /* a transfer copy's own slab goes home once nothing else keeps it */
 static void transfer_free(V t) {
-  if (ISINT(t) || !fpr_in_heap(t)) return;
+  /* Actor handles are shared ACBs, not copied cells with slab preheaders. */
+  if (ISINT(t) || !fpr_in_heap(t) || TID(t) == T_ACTOR) return;
   fpr_slab_t *ts = slab_of(t);
   if (ts && !ts->owner && ts->escaped == 0 && ts->holds == 0) {
     fpr_lock(&arc_lock);
@@ -1255,23 +1256,49 @@ static void transfer_free(V t) {
   }
 }
 
+/* These frames live on the actor's stack. The reaper visits them before
+ * recycling that stack, including when a region is parked in receive or
+ * allocation. Keep this separate from the one pending external request:
+ * a scoped callback may itself wait for heap admission or a syscall. */
+struct fpr_scope {
+  struct fpr_scope *previous;
+  fpr_pool_t *arena;
+  V held;
+};
+static struct fpr_scope *bootstrap_scopes[FPR_NHARTS];
+static struct fpr_scope **scope_push(struct fpr_scope *scope) {
+  fpr_hart_t *h = fpr_hart();
+  struct fpr_scope **head = h->current ? fpr_acb_scope_slot(h->current)
+                                     : &bootstrap_scopes[h->id];
+  scope->previous = *head;
+  scope->arena = 0;
+  scope->held = 0;
+  *head = scope;
+  return head;
+}
+
 static V g_arena(V f) {
   /* Capture actor-owned storage, not its current hart: allocation and the
    * thunk may park, and a resumed actor can migrate before teardown. */
   struct fpr_pool **slot = override_slot(fpr_hart());
   struct fpr_pool *prev = *slot;
+  struct fpr_scope scope;
+  struct fpr_scope **head = scope_push(&scope);
   fpr_pool_t ap;
   arena_open(slot, &ap);
+  scope.arena = &ap;
   V r = fpr_apply(f, (V)&fpr_unit);
   no_vec_out(r, "Sys.arena: Vector results cannot escape an arena "
                 "(their storage IS the arena) -- return scalars/trees, "
                 "or build pool-owned vectors outside");
   V t = fpr_msg_copy_fresh(r); /* its own slab: survives the teardown, freed below */
+  scope.held = t;
   arena_close(slot, &ap, prev);
+  scope.arena = 0;
   /* copy the result into the CALLER's pool; free the transfer slab */
-  if (ISINT(t) || !fpr_in_heap(t)) return t;
   V out = kp_dup(t);
   transfer_free(t);
+  *head = scope.previous;
   return out;
 }
 
@@ -1317,6 +1344,43 @@ static int vec_same(const vec_snap_t *sn, V v) {
   }
   return 1;
 }
+/* Sys.loop state step -> finalState. The value-only form of loopWith is
+ * the default engine for library receive/frame loops. A callback cannot
+ * smuggle mutable storage around the state check through a capture. */
+static V g_loop(V s, V f) {
+  no_vec_out(s, "Sys.loop: the state may not hold a Vector (use Sys.loopWith)");
+  no_vec_out(f, "Sys.loop: the callback may not capture a Vector (use Sys.loopWith)");
+  struct fpr_pool **slot = override_slot(fpr_hart());
+  struct fpr_pool *prev = *slot;
+  struct fpr_scope scope;
+  struct fpr_scope **head = scope_push(&scope);
+  V state = s;
+  for (;;) {
+    fpr_pool_t ap;
+    arena_open(slot, &ap);
+    scope.arena = &ap;
+    V r = fpr_apply(f, state);
+    if (ISINT(r) || !fpr_in_heap(r) || TID(r) != T_TUP2)
+      fpr_cpanic("Sys.loop: a step must return (continue, state)");
+    V go = FPR_FLD(r, 0), nx = FPR_FLD(r, 1);
+    if (ISINT(go) || !go || TID(go) != T_BOOL || ((hdr_t *)go)->var > 1)
+      fpr_cpanic("Sys.loop: continue must be a Bool");
+    no_vec_out(nx, "Sys.loop: the state may not hold a Vector (use Sys.loopWith)");
+    V t = fpr_msg_copy_fresh(nx);
+    int more = ((hdr_t *)go)->var == 1;
+    arena_close(slot, &ap, prev);
+    scope.arena = 0;
+    if (scope.held) transfer_free(scope.held);
+    state = scope.held = t;
+    if (!more) break;
+  }
+  V out = kp_dup(state);
+  if (scope.held) transfer_free(scope.held);
+  *head = scope.previous;
+  return out;
+}
+FPR_FN(fpr_g_Sys_x2eloop, g_loop, 2);
+
 static V g_loop_with(V vec, V s, V f) {
   if (ISINT(vec) || !fpr_in_heap(vec) || TID(vec) != T_VEC)
     fpr_cpanic("Sys.loopWith: not a Vector");
@@ -1326,10 +1390,13 @@ static V g_loop_with(V vec, V s, V f) {
   vec_snap(&sn, vec);
   struct fpr_pool **slot = override_slot(fpr_hart());
   struct fpr_pool *prev = *slot;
-  V state = s, held = 0; /* held: the transfer copy `state` lives in */
+  struct fpr_scope scope;
+  struct fpr_scope **head = scope_push(&scope);
+  V state = s;
   for (;;) {
     fpr_pool_t ap;
     arena_open(slot, &ap);
+    scope.arena = &ap;
     V r = fpr_apply(fpr_apply(f, state), vec);
     if (ISINT(r) || !fpr_in_heap(r) || TID(r) != T_TUP3)
       fpr_cpanic("Sys.loopWith: a step must return (continue, state, vector)");
@@ -1346,17 +1413,20 @@ static V g_loop_with(V vec, V s, V f) {
     V t = fpr_msg_copy_fresh(nx);
     int more = !ISINT(go) && TID(go) == T_BOOL && ((hdr_t *)go)->var == 1;
     arena_close(slot, &ap, prev);
-    if (held) transfer_free(held);
-    state = held = t;
+    scope.arena = 0;
+    if (scope.held) transfer_free(scope.held);
+    state = scope.held = t;
     if (!more) break;
   }
   V out = kp_dup(state);
-  if (held) transfer_free(held);
+  if (scope.held) transfer_free(scope.held);
+  scope.held = 0;
   hdr_t *tup = (hdr_t *)fpr_alloc(8 + 2 * sizeof(uw));
   tup->tid = T_TUP2;
   tup->var = 0;
   *(V *)((char *)tup + 8) = out;
   *(V *)((char *)tup + 8 + sizeof(uw)) = vec;
+  *head = scope.previous;
   return (V)tup;
 }
 FPR_FN(fpr_g_Sys_x2eloopWith, g_loop_with, 3);
@@ -1368,6 +1438,13 @@ FPR_FN(fpr_g_Sys_x2earena, g_arena, 1);
  * The stack never escapes: always reclaimed. */
 void fpr_arc_teardown_pool(fpr_pool_t *pool); /* below, with the ARC state */
 void fpr_pool_reclaim(struct fpr_acb *a) {
+  struct fpr_scope **head = fpr_acb_scope_slot(a);
+  for (struct fpr_scope *s = *head; s; s = s->previous) {
+    if (s->arena) fpr_arc_teardown_pool(s->arena);
+    if (s->held) transfer_free(s->held);
+  }
+  *head = 0;
+  *fpr_acb_override_slot(a) = 0;
   fpr_arc_teardown_pool(fpr_acb_pool(a));
 }
 

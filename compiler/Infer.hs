@@ -682,6 +682,9 @@ builtinEnv =
       -- process / system seam (fpr_g_ HAL)
       ("Sys.sleepUs", mono (TFn tInt tUnit)),
       ("Sys.arena", scheme [0] (TFn (TFn tUnit (sv 0)) (sv 0))),
+      -- A value-state loop: each step has a scratch arena; only the next
+      -- state survives. Mutable buffers use loopWith's explicit ownership.
+      ("Sys.loop", scheme [0] (TFn (sv 0) (TFn (TFn (sv 0) (TTupT [tBool, sv 0])) (sv 0)))),
       -- a loop whose every step is an arena (runtime.c): the state is
       -- copied out step to step, the one linear Vector threads through
       -- by identity; memory is the live state however long it runs

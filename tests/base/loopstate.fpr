@@ -1,0 +1,26 @@
+# Per-step garbage is reclaimed without allocating into the caller's pool.
+# A heap-owned closure capture and string state survive one million turns.
+unsafe base.
+freeKiB u = case Sys.memInfo 0 of _ :: f :: _ -> f | _ -> 0.
+step label limit st =
+  (n, text, total) = st;
+  garbage = "{label}:{n}:temporary allocation temporary allocation temporary allocation";
+  _ = if text == "row {n}" then Unit else error "loopstate: transferred string lost";
+  (n + 1 < limit, (n + 1, "row {n + 1}", total + strlen garbage)).
+run label limit =
+  before = heapUsed Unit;
+  (n, text, total) = Sys.loop (0, "row 0", 0) (step label limit);
+  grew = heapUsed Unit - before;
+  _ = if n == limit and text == "row {limit}" and total > limit
+      then Unit else error "loopstate: final state";
+  if grew < 4096 then Unit else error "loopstate: caller grew {grew} bytes".
+main =
+  caller = strcat "caller" "-owned";
+  _ = run caller 1000;
+  before = freeKiB Unit;
+  roots = arcLive 0;
+  _ = run caller 1000000;
+  grew = before - freeKiB Unit;
+  _ = if caller == "caller-owned" and grew < 4096 and arcLive 0 == roots
+      then Unit else error "loopstate: retainedKiB={grew} roots={arcLive 0 - roots}";
+  print "loopstate: one million turns bounded; caller and captured state survive".

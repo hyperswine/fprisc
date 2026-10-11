@@ -6,10 +6,10 @@
 #   PERSISTENT RENDER WORKER   one actor for the life of the app; the
 #                              frame loop SENDS a request instead of
 #                              spawning (no per-frame acb ledger)
-#   SOFT DEATH                 Sys.poolReset at every frame boundary:
+#   TURN REGIONS               Sys.loop at every frame boundary:
 #                              frame-per-actor memory semantics without
-#                              the actor; a drop lapse inside a frame
-#                              self-heals at the reset
+#                              the actor; frame temporaries are reclaimed
+#                              after each frame (received roots still drop)
 #   STATICS CACHE              view is rebuilt ONLY when skey(model)
 #                              changes -- the rebuilt statics VALUE is
 #                              the renderer's recompile trigger
@@ -156,22 +156,26 @@ subOne r acc s =
 #   port = spawn MV.port;              # anyone: send port ("set", "cap 9")
 #   subs m = SPort port :: ...         # the app: hear it as EMsg
 #
-# Drop laws here: queued roots are kept ACROSS receives (the one shape
-# autodrop must not touch -- the fallthrough arm references m to block
-# it) and dropped after the drain reply's deep copy; the drained list
-# root on the loop side is dropped after its strings are copied out.
+# Each input root is kept into owned queue state and dropped in its turn.
+# The drained list root on the driver side is dropped after copying strings.
 
 PortQ = Type (PDrain from | PBarrier from).
 
-port : unsafe Int -> a .
-port me = portLoop me Nil.
-portLoop : unsafe Int -> List _ -> a .
-portLoop me q =
-  m = receive me;
-  case m of
-    PDrain from -> portFlush me m from q
-  | PBarrier from -> portAck me m from q
-  | _ -> portLoop me (m :: q).
+port : unsafe Int -> Unit .
+port me =
+  _ = Sys.loop Nil (portStep me);
+  Unit.
+# Queue owned values, not received roots: a turn may copy its live queue.
+# Flushing discards that value state; no list spine or message root survives.
+portStep me q =
+  received = receive me;
+  m = keep received;
+  _ = drop received;
+  next = case m of
+      PDrain from -> _ = send from (revK Nil q); Nil
+    | PBarrier from -> _ = AC.sendOrDie from Unit; q
+    | _ -> m :: q;
+  (True, next).
 # Per-sender FIFO barrier: return only after this sender's queued events have
 # reached the port. A render/test driver can use it before replying to a frame.
 portSync me pa =
@@ -179,21 +183,6 @@ portSync me pa =
   r = receiveFrom me pa;
   _ = drop r;
   Unit.
-portAck : unsafe Int -> _ -> Int -> List _ -> a .
-portAck me m from q =
-  _ = AC.sendOrDie from Unit;
-  _ = drop m;
-  portLoop me q.
-portFlush : unsafe Int -> _ -> Int -> List _ -> a .
-portFlush me m from q =
-  _ = send from (revK Nil q);
-  _ = drop m;
-  _ = portDropAll q;
-  portLoop me Nil.
-portDropAll : unsafe List _ -> Int .
-portDropAll l = case l of Nil -> 0 | x :: r -> portDrop1 r x.
-portDrop1 : unsafe List _ -> _ -> Int .
-portDrop1 r x = _ = drop x; portDropAll r.
 
 # loop side: drain the subscribed port into EMsg events (Nil when
 # no port is subscribed)
@@ -383,13 +372,17 @@ rebuild app vp key model =
 # ---- the persistent render worker -------------------------------------------
 # One actor, forever: request in, vals computed HERE (this is the actor
 # that may svcCall services from vals), one render call, reply
-# forwarded, everything released, pool reset -- the soft death.
+# forwarded, received roots released, and only the callback state survives.
 
 # `vl` is the app's vals function, and it is CALLED here, so it is spelled
 # as one: a bare `b` promised the caller any type at all for something this
 # body applies to four arguments (fprisc/docs/2026-08-25-SAFETY.md).
-renderWorker : unsafe Int -> Int -> (Int -> env -> (Int, Int) -> model -> vals) -> Int -> c .
+renderWorker : unsafe Int -> Int -> (Int -> env -> (Int, Int) -> model -> vals) -> Int -> Unit .
 renderWorker parent render vl self =
+  _ = Sys.loop (parent, render, vl) (renderStep self);
+  Unit.
+renderStep self state =
+  (parent, render, vl) = state;
   m = receiveFrom self parent;
   Rq st model env vw vh sc fr = m;
   vs = vl self env (vw, vh) model;
@@ -397,8 +390,7 @@ renderWorker parent render vl self =
   _ = send parent r;
   _ = drop r;                      # forward then release OUR ref
   _ = drop m;                      # the request root
-  _ = Sys.poolReset 0;             # the frame boundary: soft death
-  renderWorker parent render vl self.
+  (True, state).
 
 # ---- the loop ---------------------------------------------------------------
 
@@ -426,7 +418,7 @@ dueTick2 evs t0 ltt tickMs = case t0 - ltt >= tickMs * 10000 of
     True -> (apnd evs ETick, t0)
   | False -> (evs, ltt).
 
-loopM : unsafe Int -> _ -> MApp -> Int -> (Int, Int) -> (Int, c) -> Ms -> String .
+loopM : unsafe Int -> _ -> MApp -> Int -> (Int, Int) -> (Int, c) -> Ms -> _ .
 loopM me cfg app rw vp cache ms =
   env = cfg.env; mt = cfg.mt; input = cfg.input;
   Ms model fr sc lastR ltt = ms;
@@ -439,12 +431,12 @@ loopM me cfg app rw vp cache ms =
   (env2, m2, quit, changed) = applyLiveEvs me cfg.reload env app evs (model, 0) 0;
   cache1 = liveCache cache changed;
   case quit == 1 of
-    True -> finishWorker rw app m2 fr sc lastR
+    True -> (False, (cfg, cache, Ms m2 fr sc (0, 0) ltt2, finishWorker rw app m2 fr sc lastR))
   | False -> frame me {cfg | env = env2} app rw vp cache1 (Ms m2 fr sc lastR ltt2) t0.
 # Force the statics build after a successful swap even when skey is unchanged.
 # This generation marker is separate from the app key (which may be any Int).
 liveCache cache changed = (key, st) = cache; (key, st, changed).
-frame : unsafe Int -> _ -> MApp -> Int -> (Int, Int) -> (Int, c, Int) -> Ms -> Int -> String .
+frame : unsafe Int -> _ -> MApp -> Int -> (Int, Int) -> (Int, c, Int) -> Ms -> Int -> _ .
 frame me cfg app rw vp cache ms t0 =
   mt = cfg.mt; tick = cfg.tick;
   Ms m2 fr sc lastR ltt = ms;
@@ -457,18 +449,10 @@ frame me cfg app rw vp cache ms t0 =
   r = receiveFrom me rw;
   _ = drop lastR;                  # the PREVIOUS reply's ARC entry
   _ = tickWait mt t0 tick;
-  case cfg.scoped == 1 of
-    False -> loopM me cfg app rw vp cache2 (Ms m2 (fr + 1) (sc + rebuilt) r ltt)
-  | True ->
-      # A transferred state cannot carry the ARC identity of a received root.
-      # The reply has no consumer beyond this frame; release it before copying.
-      _ = drop r;
-      next = Ms m2 (fr + 1) (sc + rebuilt) (0, 0) ltt;
-      case fr % 32 == 31 of
-        False -> loopM me cfg app rw vp cache2 next
-      | True -> scopedAgain me app rw vp (AC.boundary me (cfg, cache2, next)).
-scopedAgain me app rw vp state =
-  (cfg, cache, ms) = state;
+  _ = drop r;
+  (True, (cfg, cache2, Ms m2 (fr + 1) (sc + rebuilt) (0, 0) ltt, "")).
+driverStep me app rw vp state =
+  (cfg, cache, ms, result) = state;
   loopM me cfg app rw vp cache ms.
 liveEnsure app vp cache key m changed = case changed == 1 of
     True -> rebuild app vp key m
@@ -489,20 +473,19 @@ finish app m fr sc lastR =
 # EResize (the viewport is a fact the model may record), loops.
 run me cfg app = runLive me cfg app noReload.
 
-# The driver owns a scratch arena, so reclaiming frame temporaries does not
-# reset its caller's pool (the caller may still need its shutdown handles).
-# This opt-in runner transfers its model/cache/env every 32 frames: they are
-# value state, not externally aliased mutable Vector storage. The ordinary
-# runner retains its existing allocation/aliasing behavior.
-runScoped me cfg app = runLiveMode 1 me cfg app noReload.
-runLiveScoped me cfg app reload = runLiveMode 1 me cfg app reload.
+# All drivers reclaim every frame's scratch allocations. Configuration,
+# model, cache and reload callbacks have value semantics: a Vector in this
+# state (including captured storage) is refused by Sys.loop. Stable mutable
+# buffers belong in an explicit owner using Sys.loopWith.
+# The caller's pool is never reset; its shutdown handles remain valid.
+# Compatibility names now select the same default behavior.
+runScoped me cfg app = run me cfg app.
+runLiveScoped me cfg app reload = runLive me cfg app reload.
 
 # reload me info env -> Result env String: a platform adapter, not app update.
 runLive me cfg app reload =
-  runLiveMode 0 me cfg app reload.
-runLiveMode scoped me cfg app reload =
   runWith me {env = cfg.env, mt = cfg.mt, tick = cfg.tick, input = cfg.input,
-              render = cfg.render, reload = reload, scoped = scoped} app.
+              render = cfg.render, reload = reload} app.
 # The runner owns the extra typed port and the watcher returned by start.
 # start me port -> Result actor String. Other app subscriptions still work.
 runWatched me cfg app reload start =
@@ -543,9 +526,8 @@ run3 me cfg app rw vp m1 =
   # statics is a scene value
   cache = (0 - 1, vw vp m1);
   ms = Ms m1 0 0 (0, 0) (Sys.mtime Unit);
-  case cfg.scoped == 1 of
-    True -> Sys.arena (fn u -> loopM me cfg app rw vp cache ms)
-  | False -> loopM me cfg app rw vp cache ms.
+  (finalCfg, finalCache, finalMs, result) = Sys.loop (cfg, cache, ms, "") (driverStep me app rw vp);
+  result.
 
 # ---- the elm façade: MVU.game -----------------------------------------------
 # The formal four run on the engine: view is computed per frame IN THE

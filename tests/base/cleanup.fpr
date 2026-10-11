@@ -1,7 +1,8 @@
 Probe.register : Unit -> Unit .
 Probe.clear : Unit -> Unit .
 Probe.count : Unit -> Int .
-worker boss self =
+worker boss self = Sys.arena (wait boss self).
+wait boss self u =
   _ = Probe.register Unit;
   _ = send boss 1;
   _ = Sys.sleepUs 1000000;

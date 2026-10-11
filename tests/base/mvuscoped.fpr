@@ -1,4 +1,4 @@
-# The caller's live values survive a scoped driver; frame state stays bounded.
+# The caller's live values survive the default driver; frame state stays bounded.
 # A string model is rebuilt every key, and a backend allocates fresh replies.
 unsafe base.
 MV = use "std/mvu".
@@ -12,7 +12,9 @@ update me env ev m = case ev of
 subs m = MV.SKeys :: Nil.
 key m = 0.
 statics vp m = "static value".
-vals self env vp m = (m.text, env.label).
+vals captured self env vp m =
+  _ = if captured == "callback-owned" then Unit else error "render callback capture lost";
+  (m.text, env.label).
 done m = m.text.
 backend me =
   (from, q) = receive me;
@@ -26,8 +28,8 @@ reply me from q =
   backend me.
 run me rd limit =
   cfg = {env = {label = strcat "caller" "-owned", limit = limit}, mt = 0, tick = 0, input = rd, render = rd};
-  app = MV.MApp init update key statics vals done subs;
-  result = MV.runScoped me cfg app;
+  app = MV.MApp init update key statics (vals (strcat "callback" "-owned")) done subs;
+  result = MV.run me cfg app;
   _ = if cfg.env.label == "caller-owned" then Unit else error "caller pool was reset";
   result.
 main =

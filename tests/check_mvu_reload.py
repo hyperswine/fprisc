@@ -44,13 +44,14 @@ clocked = clocked.replace('tick = 0', 'tick = 10000')
 clocked = clocked.replace('done m = "reload:', 'done m =\n  _ = case m.ticks > 0 of True -> Unit | False -> error "production tick never fired";\n  "reload:')
 variants.append(('productiontick', clocked, TRACE))
 # Keep running across two reclamation boundaries after accepting a new env.
-scoped = SOURCE.replace('MV.runLive (myself 0)', 'MV.runLiveScoped (myself 0)')
+scoped = SOURCE
 scoped = scoped.replace('queueNext p fr =',
     'queueNext p fr | fr > 1 and fr < 65 = Ok Unit.\nqueueNext p fr =')
 scoped_trace = TRACE.rsplit('reload:', 1)[0] + ''.join(
     f'frame {n}: [factor=3 acc=11] builds=2\n' for n in range(3, 66))
 scoped_trace += 'reload: acc=11 refused=2 [mvu: 66 frames, 2 statics builds]\n'
-variants.append(('scoped', scoped, scoped_trace))
+variants.append(('default-boundaries', scoped, scoped_trace))
+variants.append(('scoped-alias', scoped.replace('MV.runLive (myself 0)', 'MV.runLiveScoped (myself 0)'), scoped_trace))
 with tempfile.TemporaryDirectory(prefix='fpr-mvu-reload-') as d:
     tmp = Path(d)
     for name, source, expected in variants:
@@ -73,4 +74,14 @@ with tempfile.TemporaryDirectory(prefix='fpr-mvu-reload-') as d:
         p = subprocess.run([str(exe)], env={**os.environ, 'FPR_HARTS': harts, 'FPR_HEAP_MB': '64'},
                            capture_output=True, text=True, timeout=120)
         assert p.returncode == 0 and p.stdout == (ROOT/'tests/base/mvuscoped.expected').read_text(), (harts, p.stdout, p.stderr)
-    print('MVU scoped: caller lifetime and bounded 20000-frame state, one/four harts PASS')
+    print('MVU default: caller lifetime and bounded 20000-frame state, one/four harts PASS')
+    exe = tmp / 'mvuportmemory'
+    p = subprocess.run([str(ROOT/'fpr'), 'build', 'tests/base/mvuportmemory.fpr',
+                        '--harts', '4', '-o', str(exe)], cwd=ROOT,
+                       capture_output=True, text=True, timeout=180)
+    assert p.returncode == 0, p.stdout + p.stderr
+    for harts in ('1', '4'):
+        p = subprocess.run([str(exe)], env={**os.environ, 'FPR_HARTS': harts, 'FPR_HEAP_MB': '64'},
+                           capture_output=True, text=True, timeout=120)
+        assert p.returncode == 0 and p.stdout == 'mvuportmemory: 20000 FIFO batches bounded; received roots released\n', (harts, p.stdout, p.stderr)
+    print('MVU event port: 20000 FIFO batches and released roots, one/four harts PASS')
