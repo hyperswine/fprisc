@@ -6,7 +6,7 @@ SECTIONS {
   .rodata : { *(.rodata .rodata.* .srodata .srodata.*) } > RAM
   .data : { *(.data .data.*) PROVIDE(__global_pointer$ = . + 0x800); *(.sdata .sdata.*) } > RAM
   _image_end = .;
-  ASSERT(_image_end - ORIGIN(RAM) <= 64K, "SDRAM loader currently supports 64 KiB images")
+  ASSERT(_image_end - ORIGIN(RAM) <= 64K, "the SimpleRisc boot ROM loads images of at most 64 KiB")
   .bss (NOLOAD) : {
     . = ALIGN(16); _bss_start = .;
     *(.bss .bss.* .sbss .sbss.* COMMON)

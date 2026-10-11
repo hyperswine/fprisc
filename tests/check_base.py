@@ -264,6 +264,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([build(tmp / 'lwstate.fpr', 'lwstate')], 1)
     assert 'Sys.loopWith: the state may not hold a Vector' in p.stdout + p.stderr, p.stdout + p.stderr
     print(f'Sys.loopWith: 1,000 and 20,000 steps of a double-buffered frame loop grow the caller pool by the same {g2} B; a moved vector and a Vector in the state are refused: PASS')
+    run(['python3', 'tests/check_arena_migration.py'], timeout=600)
+    print('Scratch arenas restore actor-owned pools across observed migration: PASS')
     # Code publication must fence a remote hart before its next actor dispatch.
     exe = tmp / 'codepublish'
     run(['./fpr', 'build', 'tests/base/codepublish.fpr', '--with', 'tests/base/codepublish_probe.c', '-o', exe])

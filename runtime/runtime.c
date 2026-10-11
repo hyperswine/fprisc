@@ -1217,17 +1217,17 @@ static int has_vec(V v) {
   }
 }
 
-static void arena_open(fpr_hart_t *h, fpr_pool_t *ap) {
-  if (cur_pool(h)->fixed_heap)
+static void arena_open(struct fpr_pool **slot, fpr_pool_t *ap) {
+  if (cur_pool(fpr_hart())->fixed_heap)
     fpr_actor_fail("fixed heap: scratch arenas require separate admission");
   fpr_pool_init(ap, fpr_bkt_take()); /* bigfree=0 matters: a stack pool
                                       * with garbage there walked it as
                                       * a freelist on any >ceiling alloc */
   if (!ap->buckets) fpr_cpanic("Sys.arena: no memory for a bucket array");
-  *override_slot(h) = (struct fpr_pool *)ap;
+  *slot = (struct fpr_pool *)ap;
 }
 /* teardown, poolReset-style, under arc_lock (owner/escaped race) */
-static void arena_close(fpr_hart_t *h, fpr_pool_t *ap, struct fpr_pool *prev) {
+static void arena_close(struct fpr_pool **slot, fpr_pool_t *ap, struct fpr_pool *prev) {
   fpr_lock(&arc_lock);
   fpr_slab_t *sl = ap->cur;
   while (sl) {
@@ -1238,7 +1238,7 @@ static void arena_close(fpr_hart_t *h, fpr_pool_t *ap, struct fpr_pool *prev) {
   }
   fpr_unlock(&arc_lock);
   fpr_bkt_put(ap->buckets);
-  *override_slot(h) = prev;
+  *slot = prev;
 }
 static void no_vec_out(V r, const char *who) {
   if (has_vec(r))
@@ -1256,16 +1256,18 @@ static void transfer_free(V t) {
 }
 
 static V g_arena(V f) {
-  fpr_hart_t *h = fpr_hart();
-  struct fpr_pool *prev = *override_slot(h);
+  /* Capture actor-owned storage, not its current hart: allocation and the
+   * thunk may park, and a resumed actor can migrate before teardown. */
+  struct fpr_pool **slot = override_slot(fpr_hart());
+  struct fpr_pool *prev = *slot;
   fpr_pool_t ap;
-  arena_open(h, &ap);
+  arena_open(slot, &ap);
   V r = fpr_apply(f, (V)&fpr_unit);
   no_vec_out(r, "Sys.arena: Vector results cannot escape an arena "
                 "(their storage IS the arena) -- return scalars/trees, "
                 "or build pool-owned vectors outside");
   V t = fpr_msg_copy_fresh(r); /* its own slab: survives the teardown, freed below */
-  arena_close(h, &ap, prev);
+  arena_close(slot, &ap, prev);
   /* copy the result into the CALLER's pool; free the transfer slab */
   if (ISINT(t) || !fpr_in_heap(t)) return t;
   V out = kp_dup(t);
@@ -1322,12 +1324,12 @@ static V g_loop_with(V vec, V s, V f) {
                 "(thread the one buffer, keep the rest in it)");
   vec_snap_t sn;
   vec_snap(&sn, vec);
-  fpr_hart_t *h = fpr_hart();
-  struct fpr_pool *prev = *override_slot(h);
+  struct fpr_pool **slot = override_slot(fpr_hart());
+  struct fpr_pool *prev = *slot;
   V state = s, held = 0; /* held: the transfer copy `state` lives in */
   for (;;) {
     fpr_pool_t ap;
-    arena_open(h, &ap);
+    arena_open(slot, &ap);
     V r = fpr_apply(fpr_apply(f, state), vec);
     if (ISINT(r) || !fpr_in_heap(r) || TID(r) != T_TUP3)
       fpr_cpanic("Sys.loopWith: a step must return (continue, state, vector)");
@@ -1343,7 +1345,7 @@ static V g_loop_with(V vec, V s, V f) {
                    "(thread the one buffer, keep the rest in it)");
     V t = fpr_msg_copy_fresh(nx);
     int more = !ISINT(go) && TID(go) == T_BOOL && ((hdr_t *)go)->var == 1;
-    arena_close(h, &ap, prev);
+    arena_close(slot, &ap, prev);
     if (held) transfer_free(held);
     state = held = t;
     if (!more) break;
@@ -1816,6 +1818,7 @@ void fpr_cpanic(const char *m) {
 void fpr_panic(V s) {
   if (!ISINT(s) && TID(s) == T_STR) {
     str_t *t = (str_t *)s;
+#ifndef FPR_BUILTIN /* builtin images have no actor plane to fail-stop through */
     if (fpr_plane_actors) {
       /* a LOADED PROCESS on the shared plane: the language's `error` ends
        * this actor with its reason (the plane's fail-stop; its watchers
@@ -1829,6 +1832,7 @@ void fpr_panic(V s) {
       why[n] = 0;
       fpr_actor_fail(why);
     }
+#endif
     fpr_cpanic_n((const char *)t->bytes, t->len);
   }
   fpr_cpanic("panic (non-string value)");

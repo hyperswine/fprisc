@@ -1,0 +1,40 @@
+# Nested arenas and loopWith must restore the ACTOR's pool after parking,
+# including when work stealing resumes it on another hart.
+unsafe base.
+AC = use "std/actor".
+pause u = Sys.sleepUs 100.
+inner marker u =
+  h = hartId 0;
+  _ = pause Unit;
+  (marker, if hartId 0 != h then 1 else 0).
+round marker u =
+  owned = strcat marker "-inner";
+  (back, moved) = Sys.arena (inner owned);
+  _ = if back == "caller-inner" and owned == "caller-inner" then Unit else error "nested arena lost caller";
+  (strcat back "-outer", moved).
+turns : unsafe String -> Int -> Int -> Int .
+turns marker n moves = if n == 0 then moves else
+  (value, crossed) = Sys.arena (round marker);
+  _ = if value == "caller-inner-outer" and marker == "caller" then Unit else error "arena restored wrong pool";
+  turns marker (n - 1) (moves + crossed).
+step marker n v =
+  (value, moves) = Sys.arena (inner marker);
+  _ = if value == "caller" then Unit else error "loopWith nested state";
+  (n < 100, n + 1, Vec.put 0 n v).
+worker boss me =
+  caller = strcat "call" "er";
+  moves = turns caller 300 0;
+  (n, v) = Sys.loopWith (Vec.iota 8) 0 (step caller);
+  (first, v2) = Vec.at 0 v;
+  _ = Vec.free v2;
+  _ = if caller == "caller" and n == 101 and first == 100 then Unit else error "loopWith restored wrong pool";
+  send boss moves >> Unit.
+start me n = if n == 0 then Nil else AC.spawnWith (AC.Dynamic 8) (worker me) :: start me (n - 1).
+wait me actors = case actors of
+    Nil -> 0
+  | a :: rest -> moves = receiveFrom me a; _ = drop moves; moves + wait me rest.
+main =
+  me = myself 0;
+  moves = wait me (start me 16);
+  _ = if Sys.harts Unit == 1 or moves > 0 then Unit else error "migration was not exercised";
+  print "arenamigrate: nested arenas and loopWith survive; migrations={moves}".

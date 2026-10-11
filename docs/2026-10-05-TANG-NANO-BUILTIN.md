@@ -327,7 +327,7 @@ Vendor internal timing passes at 66 MHz with only +0.038 ns setup slack; SDRAM
 I/O signoff and more clock margin are still work to do. This prototype does not meet the roadmap's 96 MHz gate.
 
 `BUILTIN_RAM=sdram` selects an 8 MiB linker map at `0x80000000`, with a 64 KiB
-stack reservation. The ordinary board option retains its 64 KiB BRAM map.
+stack reservation. The ordinary board option uses the 64 KiB BRAM map, also at `0x80000000` since 2026-10-11.
 The existing complete builtin harness passes on the cached SDRAM core's zero
 alias at 66 MHz.
 A high-linked fixture allocates 2 MiB, checks 32 samples at 64 KiB intervals
@@ -341,15 +341,13 @@ make bare-metal-builtin BUILTIN_BOARD=tangnano20k BUILTIN_RAM=sdram \
   PROG=tests/builtin_tangnano20k_sdram.fpr \
   BUILD=build/tangnano20k-sdram IMAGE=build/tangnano20k-sdram/builtin.elf
 python3 tools/run_simple_risc.py build/tangnano20k-sdram/builtin.bin \
-  --port /dev/cu.usbserial-20250303171 --freq-mhz 66 \
-  --ram-base 0x80000000 --timeout 60
+  --port /dev/cu.usbserial-20250303171 --freq-mhz 66 --timeout 60
 ```
 
-The runners use the new `H` command for high-address entry, preserving `R`
-for existing images. Loader images remain limited to 64 KiB; BSS, heap and
-stack may use the rest of SDRAM. `M` clears only the zero-address compatibility
-region. The hardware loader, boot ROM and legacy halt cleanup remain roadmap
-work. The board is left on the tested cached 66 MHz SDRAM SRAM image, SHA-256
+Since 2026-10-11 (below) both images load and run at `0x80000000` through
+the boot ROM's `R`; the `H` command, `--ram-base` and the zero alias are gone.
+Loader images remain limited to 64 KiB; BSS, heap and stack may use the rest
+of SDRAM. `M` clears only the first 64 KiB. The board is left on the tested cached 66 MHz SDRAM SRAM image, SHA-256
 `0d4e7e54fe6e70ea7f268aa8f3ce8337ffa0c8065c3caec4cbdd2365ffc06565`;
 flash is unchanged.
 
@@ -370,3 +368,31 @@ For `profile base.` on the new RV64IM FPGA image, see
 with explicit errors for unavailable operations. It builds through its own
 script; `BUILTIN_BOARD=tangnano20k` here continues to select the RV32 Builtin
 port. Each host requires its matching FPGA image and clock.
+
+## Boot ROM and RAM at 0x80000000 (2026-10-11)
+
+HaskPlayground's roadmap step 3 moved the host protocol into a 2 KiB boot ROM
+at address 0 and RAM to `0x80000000`, on both the BRAM and the SDRAM image
+(see HaskPlayground's `boards/tangnano20k/BOOT-ROM-2026-10-11.md`). For this
+port:
+
+- `machine/builtin/tangnano20k/link.ld` now places the image at `0x80000000`,
+  like `link-sdram.ld`. `board.c` and `crt0.S` are unchanged: programs already
+  exited through the finisher, after which the ROM sends `DONE`.
+- `tools/run_simple_risc.py` always sends `R`; `--ram-base` is gone.
+- The protocol, `FPR EXIT` markers and the factorial example's `--prompt` and
+  `--input` are unchanged. Ctrl-C only breaks running programs, so images
+  containing `0x03` bytes load intact.
+
+On the new 96 MHz BRAM image, the complete harness (`tests/check_tangnano20k.py`),
+all seven stress workloads and the factorial example pass. On the new cached
+66 MHz SDRAM image, the complete harness and the 2 MiB fixture pass.
+
+The same change fixes a link regression: since commit `84e1f05` (2026-10-10),
+`fpr_panic` referenced `fpr_plane_actors` and `fpr_actor_fail`, which builtin
+images do not link, so every builtin build failed, the QEMU reference
+included. That actor-plane branch is now compiled only outside builtin
+(`#ifndef FPR_BUILTIN`); builtin images have no plane to fail-stop through and
+keep panicking as before. With it, the QEMU reference program boots
+(`BUILTIN HOLDS`) and `tests/check_builtin.py` passes, as do the board results
+above.

@@ -1,6 +1,8 @@
 OUTPUT_ARCH(riscv)
 ENTRY(_start)
-MEMORY { RAM (rwx) : ORIGIN = 0, LENGTH = 64K }
+/* SimpleRisc's 64 KiB RAM at 0x80000000, where its boot ROM loads and runs
+ * images. */
+MEMORY { RAM (rwx) : ORIGIN = 0x80000000, LENGTH = 64K }
 SECTIONS {
   .text : { KEEP(*(.text.entry)) *(.text .text.*) } > RAM
   .rodata : { *(.rodata .rodata.* .srodata .srodata.*) } > RAM

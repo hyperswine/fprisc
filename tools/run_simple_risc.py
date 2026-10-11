@@ -19,13 +19,12 @@ import termios
 import time
 
 
-def frame(image, ram_base=0):
-    if ram_base not in (0, 0x80000000):
-        raise ValueError("RAM base must be 0 or 0x80000000")
+def frame(image):
+    # The boot ROM's protocol: it loads at 0x80000000 and 'R' runs from there.
     if not image or len(image) > 65536:
         raise ValueError('image must contain 1..65536 bytes')
     image += b'\0' * (-len(image) % 4)
-    return b'P' + struct.pack('<H', len(image) // 4) + image + (b'H' if ram_base else b'R')
+    return b'P' + struct.pack('<H', len(image) // 4) + image + b'R'
 
 
 def open_port(port, baud):
@@ -89,8 +88,8 @@ def receive(fd, timeout, until_done=False, display=False, prompt=None, lines=())
     return bytes(output)
 
 
-def run(image, port, baud, timeout, prompt=None, lines=(), ram_base=0):
-    data = frame(image, ram_base)
+def run(image, port, baud, timeout, prompt=None, lines=()):
+    data = frame(image)
     fd = open_port(port, baud)
     try:
         # Stop a previous CPU before programming; never reopen during TX.
@@ -118,7 +117,6 @@ def main():
     parser.add_argument('--port', required=True, help='FPGA UART interface, not JTAG')
     parser.add_argument('--freq-mhz', type=float, default=96, help='loaded bitstream clock; baud = clock/868')
     parser.add_argument('--baud', type=int, help='override the derived baud rate')
-    parser.add_argument('--ram-base',type=lambda x: int(x,0),default=0,choices=(0,0x80000000),help='execution address; high base requires SDRAM image')
     parser.add_argument('--timeout', type=float, default=30)
     parser.add_argument('--prompt', help='send the next --input line each time this text is printed')
     parser.add_argument('--input', action='append', default=[], help='an input line (repeatable; "" for an empty line)')
@@ -130,7 +128,7 @@ def main():
         parser.error('baud and timeout must be positive')
     try:
         run(args.image.read_bytes(), args.port, baud, args.timeout,
-            args.prompt.encode() if args.prompt else None, args.input, args.ram_base)
+            args.prompt.encode() if args.prompt else None, args.input)
     except (OSError, ValueError, RuntimeError, TimeoutError) as error:
         print(f'\nSimpleRisc: {error}', file=sys.stderr)
         return 1
