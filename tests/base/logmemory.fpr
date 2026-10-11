@@ -1,0 +1,28 @@
+# Logging APIs return owned values even when snapshots are passed whole to
+# a helper. Repeated snapshots and bounded-ring updates must release roots.
+unsafe program.
+must yes why = if yes then Unit else error "logmemory: {why}".
+checkSnapshot lines =
+  _ = must (listLen lines == 4) "ring length";
+  case lines of newest :: _ -> must (strIndexOf "row " newest == 0) "newest line" | _ -> error "empty ring".
+cycle n =
+  _ = log "row {n}";
+  _ = checkSnapshot (Sys.logSnap 0);
+  _ = must (Sys.logSeq 0 >= 4) "sequence";
+  Unit.
+cycles : unsafe Int -> Unit .
+cycles n = if n == 0 then Unit else
+  _ = Sys.arena (fn u -> cycle n);
+  cycles (n - 1).
+main =
+  _ = Sys.logKeep 4;
+  _ = log "row seed 1"; _ = log "row seed 2";
+  _ = log "row seed 3"; _ = log "row seed 4";
+  saved = Sys.logSnap 0;
+  _ = cycles 100;
+  before = arcLive 0;
+  _ = cycles 2000;
+  delta = arcLive 0 - before;
+  _ = must (delta < 16) "retained message roots: {delta}";
+  _ = must (case saved of "row seed 4" :: _ -> True | _ -> False) "owned snapshot changed";
+  print "logmemory: HOLDS arcGrowth={delta}; owned snapshots and bounded rings survive 2000 cycles".

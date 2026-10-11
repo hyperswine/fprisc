@@ -33,6 +33,12 @@ __thread uw fpr_x64_a6, fpr_x64_a7;
 int fpr_posix_argc;
 char **fpr_posix_argv;
 
+/* An embedding host may reserve FPR_HARTS for a guest runtime. Keep this
+ * a link hook: --with C is linked beside the cached Base runtime objects. */
+__attribute__((weak)) const char *fpr_posix_harts_env(void) {
+  return getenv("FPR_HARTS");
+}
+
 void fpr_set_tp(fpr_hart_t *h); /* runtime.c: the hart register (x28 on AArch64) */
 
 static void *hart_thread(void *arg) {
@@ -70,7 +76,7 @@ int main(int argc, char **argv) {
     if (*end || mb < 1) { fprintf(stderr, "FPR_STACK_MAX_MB=%s: must be a whole number of MiB, at least 1\n", sm); exit(2); }
     fpr_stack_max = (uw)mb << 20;
   }
-  const char *e = getenv("FPR_HARTS");
+  const char *e = fpr_posix_harts_env();
   if (e && *e) {
     char *end; long n = strtol(e, &end, 10);
     if (*end || n < 1 || n > FPR_NHARTS) {

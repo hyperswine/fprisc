@@ -476,10 +476,19 @@ logAsk kind sev fallback =
   me = myself 0;
   r = loggerOf me;
   case send r (me, kind, sev, "") of
-    Ok u -> receiveFrom me r
+    Ok u -> logAnswer me r
   | Err why -> (case why == "dead actor" of
       True -> fallback
     | False -> yield me >> logAsk kind sev fallback).
+
+# The public logging API returns owned values, including a snapshot passed
+# whole to another function. Do not make callers discharge a hidden receive.
+logAnswer : unsafe Int -> Int -> a .
+logAnswer me r =
+  m = receiveFrom me r;
+  v = keep m;
+  _ = drop m;
+  v.
 
 # total lines ever written at a severity (0 for a severity that is not one,
 # and 0 once the log actor has ended)
@@ -515,12 +524,19 @@ logStart spawner self = case receiveFrom self spawner of
     1 -> logServe self (LogState [(0, Nil), (0, Nil), (0, Nil), (0, Nil)] 64 0 0 0 0)
   | _ -> Unit.
 
-logServe : unsafe Int -> LogSt -> a .
+logServe : unsafe Int -> LogSt -> Unit .
 logServe self st =
+  # Each request has its own arena. Only the bounded rings survive a turn;
+  # loopWith transfers that state without requiring room in our mailbox.
+  (final, buffer) = Sys.loopWith (Vec.iota 0) st (logStep self);
+  Vec.free buffer.
+logStep : unsafe Int -> LogSt -> Vector Int -> (Bool, LogSt, Vector Int) .
+logStep self st buffer =
   m = receive self;
   (from, kind, sev, text) = m;
+  _ = drop m;
   st2 = logStaged st (Sys.logStaged Unit);
-  logServe self (logDo self st2 from kind sev text).
+  (True, logDo self st2 from kind sev text, buffer).
 
 logDo : unsafe Int -> LogSt -> Int -> Int -> Int -> String -> LogSt .
 logDo self st from kind sev text = case kind of

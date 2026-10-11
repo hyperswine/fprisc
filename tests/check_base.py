@@ -79,6 +79,11 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     # the log actor has ended: puts are staged by C, asks answer the empty value
     p = run([build('tests/base/logdead.fpr', 'logdead')])
     assert 'logdead: seq=0 kept=0 asks answered' in p.stdout and '[log] after (staged by C)' in p.stdout, p.stdout + p.stderr
+    logmemory = build('tests/base/logmemory.fpr', 'logmemory')
+    for harts in (1, 4):
+        p = run([logmemory], env={'FPR_HARTS': str(harts), 'FPR_HEAP_MB': '64'})
+        assert 'logmemory: HOLDS' in p.stdout, p.stdout + p.stderr
+    print('Logging: owned snapshots and bounded rings release message roots on one/four harts: PASS')
     print('A dead log actor: puts go C\'s way, Sys.logSeq/logSnap/logKeep answer instead of halting: PASS')
     # kill an actor blocked in receive: it is reaped (a_kill left it on no
     # queue, and 1500 kills leaked about 100 MB of stacks and pools)
