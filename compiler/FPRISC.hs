@@ -1436,7 +1436,10 @@ data DEnv = DEnv
   { dFresh :: Int,
     dCons :: M.Map Name (Int, Int, Int),
     dShapes :: M.Map [Name] Int,
-    dLifted :: [(Name, [Name], Core)]
+    dLifted :: [(Name, [Name], Core)],
+    -- Private, saturated control-flow joins; ordinary lifted lambdas are
+    -- not joins. Later passes may traverse these within the current turn.
+    dJoins :: [Name]
   }
 
 type D = Control.Monad.State.Strict.State DEnv
@@ -2116,7 +2119,7 @@ compileGroup (n, clauses@((ps0, _, _) : _)) = do
       nxt <- case sum (map patternTests ps) + length g of
         t | t > 1, not (trivial nxt0) -> do
           jn <- fresh (n ++ "_fb")
-          modify (\s -> s {dLifted = (jn, args, nxt0) : dLifted s})
+          modify (\s -> s {dLifted = (jn, args, nxt0) : dLifted s, dJoins = jn : dJoins s})
           pure (foldl' CApp (CVar jn) (map CVar args))
         _ -> pure nxt0
       b' <- dExpr b
@@ -2179,7 +2182,7 @@ liftProg prog = do
             -- may have bound the same spelling before its last test failed.
             saved <- mapM (const (fresh "$case_capture")) capture
             nm <- fresh "case_join"
-            modify (\s -> s {dLifted = (nm, capture ++ ps, fallback') : dLifted s})
+            modify (\s -> s {dLifted = (nm, capture ++ ps, fallback') : dLifted s, dJoins = nm : dJoins s})
             let target = foldl' CApp (CVar nm) (map CVar saved)
             body' <- go (saved ++ env) (replaceJoin jn target body)
             pure (foldr (\(v, snapshot) b -> CLet snapshot (CVar v) b) body' (zip capture saved))

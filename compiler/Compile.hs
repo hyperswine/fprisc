@@ -653,10 +653,11 @@ compileWithInterface accepted = do
                   : [collectCons h uts | (h, uts) <- units]
               )
           shapes = collectShapes finalTops -- structural fnv ids: globally consistent
-          compileRaw uts = M.map (fmap eraseCast) (fst (runState (compileTop uts >>= liftFix) (DEnv 0 consAll shapes [])))
-          turnContext = compileRaw finalTops
-          turnPass p = if oBuiltin opts || oArc opts || envNoReceiveTurns then (p, [])
-                       else receiveTurns (M.fromList interfaces) finalTops turnContext p
+          compileRaw uts = let (p, st) = runState (compileTop uts >>= liftFix) (DEnv 0 consAll shapes [] [])
+                            in (M.map (fmap eraseCast) p, S.fromList (dJoins st))
+          turnContext = fst (compileRaw finalTops)
+          turnPass (p, joins) = if oBuiltin opts || oArc opts || envNoReceiveTurns then (p, [])
+                       else receiveTurns (M.fromList interfaces) finalTops turnContext joins p
           compileUnit = fst . turnPass . compileRaw
           -- tid collision check (fnv32 is probabilistic; fail LOUDLY)
           tidDecls =
@@ -877,7 +878,7 @@ compileWithInterface accepted = do
                   else if espHost then "rv32-idftls1"
                   else tgtName tgt
           tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0
-          tag = "g" ++ show codegenRev ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt1pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
+          tag = "g" ++ show codegenRev ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit

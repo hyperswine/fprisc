@@ -106,9 +106,11 @@ AC = use "actor".
 
 MC   = Type (MQuit | MLog s).
 Reload = {name : String, from : String, to : String, version : String}.
-Ev   = Type (ETick | EKey k | EMsg m a | EResize w h | EWheel dy dx
-             | EReload info | EReloadRefused info reason).
-Sub  = Type (STick ms | SKeys | SPort p | SEvents p).
+# These protocol fields are concrete values. Unconstrained constructor
+# fields would hide their ownership from automatic receive-turn analysis.
+Ev   = Type (ETick | EKey Int | EMsg String String | EResize Int Int | EWheel Int Int
+             | EReload Reload | EReloadRefused Reload String).
+Sub  = Type (STick Int | SKeys | SPort Int | SEvents Int).
 App  = Type (App ini upd sbs vw | LiveApp ini upd sbs vw).
 MApp = Type (MApp ini upd sk vw vl dn sbs).
 Rv   = Type (Render st vs sc fr | Dims u | Poll u).
@@ -558,7 +560,9 @@ textRender : unsafe Int -> a .
 textRender me = trLoop me (0 - 1).
 trLoop : unsafe Int -> Int -> a .
 trLoop me lastSc =
-  m = receive me;
+  borrowed = receive me;
+  m = keep borrowed;
+  _ = drop borrowed;
   (replyTo, q) = m;
   trMsg me lastSc replyTo q.
 trMsg : unsafe Int -> Int -> Int -> Rv -> a .

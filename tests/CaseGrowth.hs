@@ -18,7 +18,7 @@ nodes expr = 1 + case expr of
 size n = do
   let arms = [(PTup [PInt i, PInt i], SInt i) | i <- [1..n]] ++ [(PWild, SInt (-1))]
       tops = [TBind "pick" [PVar "p"] [] (SCase (SVar "p") arms)]
-      (prog, _) = runState (compileTop tops >>= liftFix) (DEnv 0 builtinCons M.empty [])
+      (prog, _) = runState (compileTop tops >>= liftFix) (DEnv 0 builtinCons M.empty [] [])
       count = sum [nodes b | (_, b) <- M.elems prog]
   pure count
 

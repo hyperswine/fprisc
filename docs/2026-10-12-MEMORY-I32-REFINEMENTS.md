@@ -143,32 +143,47 @@ native ABI to **6**; rebuild native kernels and applications together.
 messages, including mutual recursion and receives through imported helpers.
 The pass runs after source checking and lambda lifting, before function
 specialization and inlining. It preserves the public function type and
-entry point. Each group member gets a private step; a recursive tail call
-evaluates its arguments strictly, left to right, and returns a closure carrying
-only those next-call arguments. A private runtime trampoline runs each step
-through the same region engine as `Sys.loop`. A terminating branch copies its
-ordinary result back into the caller's pool. State bundling accommodates the
-native wide argument convention without adding an argument to a wide call.
+entry point. Receive entries get a private step; a tail call to the next
+entry evaluates its arguments strictly, left to right, and returns a closure
+carrying only the live next-entry arguments. A private runtime trampoline runs
+these steps through the same region engine as `Sys.loop`. A terminating branch
+copies its ordinary result back into the caller's pool. State bundling
+accommodates the native wide argument convention without adding an argument
+to a wide call; capture-free/zero-argument entries use Unit state.
 
-This applies only when every parameter and returning result has closed,
+Compiler-generated clause/case joins and source helpers between receive
+entries are direct calls inside the current turn. Their temporary callback,
+message and Vector values are not copied as persistent state. Private joins
+are identified by lowering provenance, not a function-name convention, and
+retain their shared control-flow DAG. Ordinary lifted lambdas still need
+checked evidence if they are themselves receive entries. Public helper entry
+points keep their original calling behavior.
+
+A least-fixed-point liveness analysis omits unused parameters, including those
+only forwarded around a recursive group. Strict argument effects still run,
+and mutable storage still must be consumed before the boundary.
+
+This applies only when live entry parameters and returning results have closed,
 first-order value type evidence: supported scalar values, lists, results,
 tuples, closed records and recursively checked non-linear nominal types.
 An infinite actor's polymorphic bottom result is allowed when every terminal
-path is a saturated call inside its recursive group or a compiler trap;
+path of every group member, including private joins, is a saturated call
+inside its recursive group or a compiler trap;
 there is then no returning result to copy.
-Vectors, linear nominal types, functions/callback captures, open or polymorphic
-state, non-tail recursion, escaping/partially applied recursive references,
+Loop-carried Vectors, linear nominal types, functions/callback captures, open
+or polymorphic state, non-tail recursion, escaping/partially applied recursive references,
 and missing evidence keep their existing behavior. Existing explicit region
 management also stays in control. In particular, this is a first automatic
 pass, not a claim that arbitrary recursion is now bounded. Regions bound
 temporary lifetimes; an accumulating list or growing model still grows.
 
 Use `FPR_RECEIVE_NOTES=1` or `--cost` to see transformed groups and reasons
-for leaving recognized groups unchanged. `FPR_NO_RECEIVE_TURNS=1` restores
+for leaving recognized groups unchanged, including the specific live parameter
+or result that lacks value evidence. `FPR_NO_RECEIVE_TURNS=1` restores
 the previous pool behavior for comparison; it has a separate assembly cache
 identity. The generated code requires the matching runtime's private
 `$receiveLoop` import. Code generation revision is **39**; the ACB layout
-remains ABI 6. Cost analysis sees the transformed Core and leaves trampoline
+remains ABI 6; the expanded pass uses assembly cache tag `rt3pc1`. Cost analysis sees the transformed Core and leaves trampoline
 work/copy sizes opaque until it can derive them, so it cannot silently reuse
 a pre-transformation numeric cost bound.
 
@@ -184,6 +199,13 @@ case branches, nominal state, argument effect order, imported helper receives,
 wide state and cache isolation, and cancellation after transferring state.
 It also reproduces pool growth with the pass disabled and checks that mutable,
 functional, non-tail and explicitly managed loops are reported unchanged.
+`tests/base/receivecoverage.fpr` also covers zero arguments, shared clause/case
+joins with shadowed captures, dead forwarding slots, argument effects, and
+temporary callbacks/linear vectors used and released within a turn.
+`tests/base/mvutextmemory.fpr` checks 20,000 text-renderer requests and released
+ARC roots. MVU Ev/Sub fields are now concretely typed, while the generic render
+payload contract remains intact; the renderer explicitly keeps/drops its
+received root before handing a request to its helpers.
 
 These checks passed on macOS ARM64 and Linux ARM64. The ordinary million-message
 fixture also passed on the physical Pi 4 with one/four workers and a 64 MiB
@@ -234,11 +256,12 @@ Executed acceptance checks:
 - The complete Base regression suite passes, including admission rollback,
   fixed heaps, logger bounds, actor teardown and live module replacement.
 
-These are heap-reclamation assertions, not process RSS measurements or a Pi
-soak. Arbitrary handwritten recursive receive loops retain the previous pool
-behavior. A compiler pass to recognize and transform those loops remains the
-next larger step; precise per-value ARC and fixed admission for scratch
-regions remain separate work.
+These library checks assert heap reclamation. The compiler checkpoint above
+covers recognized handwritten recursive receive loops; unsupported loops keep
+the previous pool behavior. Precise per-value ARC and fixed admission for
+scratch regions remain separate work. QOS records the actual application
+coverage and subsequent Pi residency/workload measurements in
+`docs/2026-10-12-RECEIVE-TURN-COVERAGE.md`.
 
 ### Proposal B (long term): precise ARC in Base
 

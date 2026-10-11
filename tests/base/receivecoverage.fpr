@@ -1,0 +1,83 @@
+# Compiler joins and dead state must not prevent safe automatic turns.
+unsafe base.
+
+# No parameters: all state arrives in messages, not a captured continuation.
+zero =
+  me = myself 0;
+  msg = receiveFrom me me;
+  (n, text) = msg;
+  answer = "zero {n}: {text}";
+  _ = if n == 0 then Unit else _ = send me (n - 1, "next"); Unit;
+  _ = drop msg;
+  if n == 0 then answer else zero.
+
+# More than one failing test creates a shared clause-fallback join.
+clauses me (0, 0) text = text.
+clauses me (n, total) text =
+  _ = send me n;
+  got = receiveFrom me me;
+  _ = drop got;
+  clauses me (n - 1, 0) "clause {n}".
+
+# A nested pattern creates a case-fallback join with scratch captures.
+# Its first binder shadows an outer parameter before the second test fails.
+patterns me n text = case (n, me) of
+    (text, 0) -> "unreachable"
+  | other ->
+      _ = send me n;
+      got = receiveFrom me me;
+      _ = drop got;
+      if n == 0 then text else patterns me (n - 1) "case {n}".
+
+# Ignored callbacks need not cross a turn. Their ARGUMENT EFFECTS still run.
+side me n = _ = send me n; fn x -> x + 1.
+dead me n ignored =
+  got = receiveFrom me me;
+  _ = if got == n then Unit else error "dead argument effect order: {got}, {n}";
+  _ = drop got;
+  if n == 0 then "dead done" else dead me (n - 1) (side me (n - 1)).
+forwardLeft me n ignored =
+  _ = send me n;
+  got = receiveFrom me me;
+  _ = drop got;
+  if n == 0 then n else forwardRight me (n - 1) ignored.
+forwardRight me n ignored = forwardLeft me n ignored.
+
+# A used callback/Vector is temporary helper state, not loop-carried state.
+inside me n =
+  _ = send me n;
+  got = receiveFrom me me;
+  _ = drop got;
+  applyInside me n (fn x -> x + got).
+applyInside me n callback =
+  _ = if callback 0 == n then Unit else error "inside callback";
+  if n == 0 then 0 else inside me (n - 1).
+temporary me n =
+  v = Vec.iota 4;
+  _ = send me n;
+  got = receiveFrom me me;
+  _ = drop got;
+  releaseTemporary me n v.
+releaseTemporary me n v =
+  (total, owned) = Vec.fold (fn acc x -> acc + x) 0 v;
+  _ = Vec.free owned;
+  _ = if total == 6 then Unit else error "inside Vector";
+  if n == 0 then 0 else temporary me (n - 1).
+
+main =
+  me = myself 0;
+  roots = arcLive 0;
+  before = heapUsed Unit;
+  _ = send me (20000, "initial");
+  a = zero;
+  b = clauses me (20000, 0) "initial";
+  c = patterns me 20000 "initial";
+  d = dead me 20000 (side me 20000);
+  e = forwardLeft me 20000 (fn x -> x);
+  f = inside me 20000;
+  g = temporary me 20000;
+  retained = heapUsed Unit - before;
+  _ = if a == "zero 0: next" and b == "clause 1" and c == "case 1" and d == "dead done" and e == 0 and f == 0 and g == 0
+      and retained < 4096 and arcLive 0 == roots then Unit
+      else error "receive coverage: {a}, {b}, {c}, {d}, {e}, retained={retained}, roots={arcLive 0 - roots}";
+  print "receivecoverage: zero args, clause/case joins, dead forwarding and strict effects and temporary ownership HOLDS".

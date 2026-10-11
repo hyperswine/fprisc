@@ -27,6 +27,23 @@ with tempfile.TemporaryDirectory(prefix='fpr-receive-turns-') as directory:
         p=run(exe,h)
         assert p.returncode == 0 and 'one million ordinary recursive receives bounded' in p.stdout,(h,p.stdout,p.stderr)
     print('automatic receive turns: million messages, one/four harts, 64 MiB PASS')
+    for no_inline in (False, True):
+        exe, notes = build(ROOT/'tests/base/receivecoverage.fpr', 'coverage'+str(no_inline),
+                           {'FPR_NO_INLINE': str(int(no_inline))})
+        for name in ('zero', 'clauses', 'patterns', 'dead', 'forwardLeft', 'inside', 'temporary'):
+            assert any(name in line.split(': ')[1].split() and 'automatic value-state' in line
+                       for line in notes.splitlines() if line.startswith('receive-turns: ')), notes
+        for h in (1, 4):
+            p = run(exe, h)
+            assert p.returncode == 0 and 'temporary ownership HOLDS' in p.stdout, (h, p.stdout, p.stderr)
+    print('automatic receive turns: zero args, shared joins, dead state and strict effects PASS')
+    exe, notes = build(ROOT/'tests/base/mvutextmemory.fpr', 'text-memory')
+    assert any('trLoop@' in line and 'automatic value-state turn regions' in line
+               for line in notes.splitlines()), notes
+    for h in (1, 4):
+        p = run(exe, h)
+        assert p.returncode == 0 and 'received roots released HOLDS' in p.stdout, (h, p.stdout, p.stderr)
+    print('automatic receive turns: concrete MVU text protocol and root ownership PASS')
     # Same source, separate cache identity: baseline keeps the old growing pool.
     old,_=build(ROOT/'tests/base/receiveturns.fpr','baseline',{'FPR_NO_RECEIVE_TURNS':'1'})
     p=run(old)
@@ -144,6 +161,11 @@ main =
     print('automatic receive turns: cancellation releases transferred closures PASS')
 
     skips={
+        'functional-result':('''loop me n = case (n, 0) of
+    (0, 0) -> fn x -> x + 1
+  | other -> _ = send me n; got = receiveFrom me me; _ = drop got; loop me (n - 1).
+main = print (str ((loop (myself 0) 10) 4)).
+''','state/result is mutable, functional'),
         'mutable':('''loop me n v =
   _ = send me n;
   got = receiveFrom me me;

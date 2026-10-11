@@ -255,7 +255,7 @@ compileScript path src ptops utops utopsX0' trusted = do
 
   (cons, shapes) <- phase "layout" $ pure (collectCons tops, collectShapes tops)
   -- The shared frontend stores UTF-8 bytes; the VM uses Chars.
-  prog <- phase "lower" $ pure (decodeProgStrings (fst (runState (compileTop tops >>= liftFix) (DEnv 0 cons shapes []))))
+  prog <- phase "lower" $ pure (decodeProgStrings (fst (runState (compileTop tops >>= liftFix) (DEnv 0 cons shapes [] []))))
   noSpec <- (== Just "1") <$> lookupEnv "FPR_NO_SPEC"
   let specialized = if noSpec then prog else specializeFunctions "sol" halArities M.empty prog
   bprog <- phase "bytecode" $ pure (compileProg halArities specialized)
