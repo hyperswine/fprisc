@@ -40,6 +40,20 @@ Preemption is cooperative at compiler-inserted fuel safepoints on every
 FP-RISC function entry, `FUEL_QUANTUM = 2000` entries per slice. A parked
 receive or sleep leaves the hart at once.
 
+### Ownership repair, 2026-10-11
+
+A four-worker Pi MVU stress test triggered the guard for one actor being
+resumed on two harts. A ready backlog entry can be stolen while a wake is
+still travelling to its previous owner. Migration now publishes the new
+owner under the victim's backlog lock; admission checks ownership under that
+same lock and forwards a late wake. A ship uses one captured destination for
+both its ring write and doorbell. Stealing also checks the atomic `running`
+marker rather than reading another hart's unsynchronized `current` pointer.
+These changes preserve one queue owner across migration; the guard remains.
+
+The physical reproducer passed ten consecutive four-worker runs after this
+repair. This is regression evidence, not a proof of every scheduler interleaving.
+
 ## The bound, stated honestly
 
 In admissions: an actor ready on hart h waits at most

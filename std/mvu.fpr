@@ -457,7 +457,19 @@ frame me cfg app rw vp cache ms t0 =
   r = receiveFrom me rw;
   _ = drop lastR;                  # the PREVIOUS reply's ARC entry
   _ = tickWait mt t0 tick;
-  loopM me cfg app rw vp cache2 (Ms m2 (fr + 1) (sc + rebuilt) r ltt).
+  case cfg.scoped == 1 of
+    False -> loopM me cfg app rw vp cache2 (Ms m2 (fr + 1) (sc + rebuilt) r ltt)
+  | True ->
+      # A transferred state cannot carry the ARC identity of a received root.
+      # The reply has no consumer beyond this frame; release it before copying.
+      _ = drop r;
+      next = Ms m2 (fr + 1) (sc + rebuilt) (0, 0) ltt;
+      case fr % 32 == 31 of
+        False -> loopM me cfg app rw vp cache2 next
+      | True -> scopedAgain me app rw vp (AC.boundary me (cfg, cache2, next)).
+scopedAgain me app rw vp state =
+  (cfg, cache, ms) = state;
+  loopM me cfg app rw vp cache ms.
 liveEnsure app vp cache key m changed = case changed == 1 of
     True -> rebuild app vp key m
   | False -> ensure app vp cache key m.
@@ -477,10 +489,20 @@ finish app m fr sc lastR =
 # EResize (the viewport is a fact the model may record), loops.
 run me cfg app = runLive me cfg app noReload.
 
+# The driver owns a scratch arena, so reclaiming frame temporaries does not
+# reset its caller's pool (the caller may still need its shutdown handles).
+# This opt-in runner transfers its model/cache/env every 32 frames: they are
+# value state, not externally aliased mutable Vector storage. The ordinary
+# runner retains its existing allocation/aliasing behavior.
+runScoped me cfg app = runLiveMode 1 me cfg app noReload.
+runLiveScoped me cfg app reload = runLiveMode 1 me cfg app reload.
+
 # reload me info env -> Result env String: a platform adapter, not app update.
 runLive me cfg app reload =
+  runLiveMode 0 me cfg app reload.
+runLiveMode scoped me cfg app reload =
   runWith me {env = cfg.env, mt = cfg.mt, tick = cfg.tick, input = cfg.input,
-              render = cfg.render, reload = reload} app.
+              render = cfg.render, reload = reload, scoped = scoped} app.
 # The runner owns the extra typed port and the watcher returned by start.
 # start me port -> Result actor String. Other app subscriptions still work.
 runWatched me cfg app reload start =
@@ -519,7 +541,11 @@ run3 me cfg app rw vp m1 =
   # on frame 1): keeps the statics type fully polymorphic -- a Nil seed
   # would force every app's statics to be a List, and the GLES walker's
   # statics is a scene value
-  loopM me cfg app rw vp (0 - 1, vw vp m1) (Ms m1 0 0 (0, 0) (Sys.mtime Unit)).
+  cache = (0 - 1, vw vp m1);
+  ms = Ms m1 0 0 (0, 0) (Sys.mtime Unit);
+  case cfg.scoped == 1 of
+    True -> Sys.arena (fn u -> loopM me cfg app rw vp cache ms)
+  | False -> loopM me cfg app rw vp cache ms.
 
 # ---- the elm façade: MVU.game -----------------------------------------------
 # The formal four run on the engine: view is computed per frame IN THE

@@ -1,0 +1,44 @@
+# The caller's live values survive a scoped driver; frame state stays bounded.
+# A string model is rebuilt every key, and a backend allocates fresh replies.
+unsafe base.
+MV = use "std/mvu".
+AC = use "std/actor".
+freeKiB u = case Sys.memInfo 0 of _ :: f :: _ -> f | _ -> 0.
+init env = {n = 0, text = "model {env.label}"}.
+update me env ev m = case ev of
+    MV.EKey k -> ({n = m.n + 1, text = "model {env.label} {m.n + 1}"},
+      if m.n + 1 >= env.limit then MV.MQuit :: Nil else Nil)
+  | other -> (m, Nil).
+subs m = MV.SKeys :: Nil.
+key m = 0.
+statics vp m = "static value".
+vals self env vp m = (m.text, env.label).
+done m = m.text.
+backend me =
+  (from, q) = receive me;
+  reply me from q.
+reply me from q =
+  _ = case q of
+      MV.Dims u -> send from (80, 24)
+    | MV.Poll u -> send from (1, 65, 1)
+    | MV.Render st vs sc fr -> send from (fr, strlen (str vs));
+  _ = Sys.poolReset 0;
+  backend me.
+run me rd limit =
+  cfg = {env = {label = strcat "caller" "-owned", limit = limit}, mt = 0, tick = 0, input = rd, render = rd};
+  app = MV.MApp init update key statics vals done subs;
+  result = MV.runScoped me cfg app;
+  _ = if cfg.env.label == "caller-owned" then Unit else error "caller pool was reset";
+  result.
+main =
+  me = myself 0;
+  rd = AC.spawnWith (AC.Dynamic 64) backend;
+  _ = run me rd 16000;
+  before = freeKiB Unit;
+  result = run me rd 320000;
+  after = freeKiB Unit;
+  _ = kill rd;
+  _ = if result == "model caller-owned 320000 [mvu: 19999 frames, 1 statics builds]" and before - after < 4096
+      then print "mvuscoped: caller state survives; 20000 frames cost under 4 MiB"
+      else error "mvuscoped: result={result} retainedKiB={before - after}";
+  Unit.

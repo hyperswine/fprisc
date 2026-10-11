@@ -848,6 +848,7 @@ static volatile uw g_max_wait; /* max observed backlog wait, in admissions */
 static volatile uw g_steals;
 
 static void backlog_add(fpr_hart_t *h, acb_t *a);
+static void ship(acb_t *a);
 
 /* a backlog past DONATE_HI: ring one idle hart so it comes to steal.
  * The publish-then-check order (the entry is on the list under the lock
@@ -866,13 +867,13 @@ static void offer(fpr_hart_t *h) {
  * context.  And never the victim's current: fuel preemption (and yield)
  * enqueue the RUNNING actor before to_sched() saves its context, so until
  * the victim's loop regains control that entry points at an unsaved
- * context.  Every other READY entry is quiescent and stable: it isn't
- * running, and wake only fires on BLOCKED actors.  The victim's lock
- * covers the walk and the unlink; the thief holds no lock of its own. */
-static acb_t *steal_from(fpr_hart_t *v) {
+ * context. Read the atomic running marker rather than a racy snapshot of
+ * the victim's current pointer. A late wake follows ownership under the
+ * admission lock below. The thief holds no lock of its own. */
+static acb_t *steal_from(fpr_hart_t *v, uw target) {
   fpr_lock(&v->bl_lock);
   acb_t *prev = 0, *a = v->bl_head;
-  while (a && (a->pin || a == v->current ||
+  while (a && (a->pin || __atomic_load_n(&a->running, __ATOMIC_ACQUIRE) ||
                __atomic_load_n(&a->var, __ATOMIC_ACQUIRE) != ST_READY)) {
     prev = a;
     a = a->bl_next;
@@ -883,6 +884,9 @@ static acb_t *steal_from(fpr_hart_t *v) {
     if (v->bl_tail == a) v->bl_tail = prev;
     v->bl_len--;
     a->in_bl = 0;
+    /* Publish the new owner BEFORE releasing the old owner's admission
+     * lock. A wake may still be travelling to that old owner. */
+    __atomic_store_n(&a->hart, target, __ATOMIC_RELEASE);
   }
   fpr_unlock(&v->bl_lock);
   return a;
@@ -892,9 +896,8 @@ static acb_t *steal(fpr_hart_t *h) {
   for (uw i = 1; i < fpr_live_harts; i++) {
     fpr_hart_t *v = &fpr_harts[(h->id + i) % fpr_live_harts];
     if (!__atomic_load_n(&v->bl_len, __ATOMIC_RELAXED)) continue;
-    acb_t *a = steal_from(v);
+    acb_t *a = steal_from(v, h->id);
     if (a) {
-      a->hart = h->id; /* migrates; stamp is preserved (global clock) */
       g_steals++;
       return a;
     }
@@ -903,13 +906,26 @@ static acb_t *steal(fpr_hart_t *h) {
 }
 
 static void backlog_add(fpr_hart_t *h, acb_t *a) {
-  if (a->in_bl || a->in_rq) { TR(a, 13); return; } /* already listed: one entry is the invariant */
+  fpr_lock(&h->bl_lock);
+  /* A BLOCKED entry can become READY while its wake is in flight. If a
+   * thief takes that entry, the late wake must follow it, not admit a
+   * second copy on the old hart. The owner check and insertion share the
+   * same lock as the thief's unlink/ownership publication. */
+  if (__atomic_load_n(&a->hart, __ATOMIC_ACQUIRE) != h->id) {
+    fpr_unlock(&h->bl_lock);
+    ship(a);
+    return;
+  }
+  if (a->in_bl || a->in_rq) {
+    TR(a, 13);
+    fpr_unlock(&h->bl_lock);
+    return;
+  } /* already listed: one entry is the invariant */
   a->in_bl = 1;
   TR(a, 4);
   a->ready_at = a->prio ? 0 : g_adm; /* stamped in admission time; a
                                       * priority actor is the oldest by
                                       * construction, so aging picks it */
-  fpr_lock(&h->bl_lock);
   a->bl_next = 0;
   if (!a->weight) a->weight = 1;
   if (h->bl_tail) h->bl_tail->bl_next = a;
@@ -1228,8 +1244,9 @@ static void drain(fpr_hart_t *h) {
 /* ship a runnable actor to its owner hart's queue */
 static void ship(acb_t *a) {
   fpr_hart_t *h = fpr_hart();
+  uw target = __atomic_load_n(&a->hart, __ATOMIC_ACQUIRE);
   __atomic_fetch_add(&g_activity, 1, __ATOMIC_RELAXED);
-  if (a->hart == h->id) {
+  if (target == h->id) {
     FPR_COST_ADD(h, xs_lship_n, 1);
     enq(h, a);
   } else {
@@ -1237,11 +1254,11 @@ static void ship(acb_t *a) {
     uint64_t s0 = FPR_PROBE_NOW();
     a->probe_shipped = s0;
 #endif
-    xpush(h->id, a->hart, a); /* publish the work... */
+    xpush(h->id, target, a); /* publish the work... */
 #ifdef FPR_COST_PROBE
     uint64_t s1 = FPR_PROBE_NOW();
 #endif
-    hal_ipi_send(a->hart);    /* ...THEN raise msip (Dekker with the sleeper) */
+    hal_ipi_send(target);    /* ...THEN raise msip (Dekker with the sleeper) */
 #ifdef FPR_COST_PROBE
     uint64_t s2 = FPR_PROBE_NOW();
     FPR_COST_ADD(h, xs_xship_n, 1);
