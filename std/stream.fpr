@@ -89,24 +89,37 @@ Reader = Type (Reader Stream String (O.Option PL.Poller)).
 reader : Stream -> Reader .
 reader s = Reader s "" O.None.
 
-# one read for a Reader, waiting its way
+# one read for a Reader, waiting its way.  `deadline` (Sys.timeUs, 0 = none)
+# bounds the wait on a plain Reader: Err "timed out".  A Reader on a Poller
+# sleeps in its mailbox until the poller says readable, and that sleep has
+# no deadline yet; the deadline then bounds nothing (stated, not hidden).
 fill : O.Option PL.Poller -> Stream -> Result String String .
-fill w s = case w of O.None -> read 65536 s | O.Some p -> readOn p 65536 s.
+fill w s = fillBy 0 w s.
+fillBy : Int -> O.Option PL.Poller -> Stream -> Result String String .
+fillBy deadline w s = case w of O.None -> readGo 65536 (fd s) 100 deadline | O.Some p -> readOn p 65536 s.
 
 # up to and excluding `sep`; the Reader continues after it.
 # Err "closed" when the stream ends first (what was buffered is lost with it).
 readUntil : String -> Reader -> (Result String String, Reader) .
-readUntil sep r = untilGo sep r 0.
+readUntil sep r = untilGo sep r 0 0 0.
+# the same, within `ms` milliseconds and with the separator inside the first
+# `max` bytes: Err "timed out", or Err "no separator within N bytes" (also
+# when the separator is there but what precedes it is longer than `max`).
+# Without a bound the buffer grows with whatever the peer sends and never ends.
+readUntilWithin : Int -> Int -> String -> Reader -> (Result String String, Reader) .
+readUntilWithin ms max sep r = untilGo sep r 0 max (Sys.timeUs Unit + ms * 1000).
 # `from`: where an occurrence could still start (no rescanning what was searched)
-untilGo : unsafe String -> Reader -> Int -> (Result String String, Reader) .
-untilGo sep r from = case r of Reader s buf w ->
+untilGo : unsafe String -> Reader -> Int -> Int -> Int -> (Result String String, Reader) .
+untilGo sep r from max deadline = case r of Reader s buf w ->
   at = strIndexFrom sep buf from;
-  (case at < 0 of
-      True -> (case fill w s of
-          Err why -> (Err why, r)
-        | Ok more -> (case strlen more == 0 of
-              True -> (Err "closed", r)
-            | False -> untilGo sep (Reader s (strcat buf more) w) (keep (strlen buf - strlen sep + 1))))
+  (case at < 0 or (max > 0 and at > max) of
+      True -> (case max > 0 and (at > max or strlen buf >= max) of
+          True -> (Err "no separator within {max} bytes", r)
+        | False -> (case fillBy deadline w s of
+              Err why -> (Err why, r)
+            | Ok more -> (case strlen more == 0 of
+                  True -> (Err "closed", r)
+                | False -> untilGo sep (Reader s (strcat buf more) w) (keep (strlen buf - strlen sep + 1)) max deadline)))
     | False -> (Ok (substr buf 0 at), Reader s (substr buf (at + strlen sep) (strlen buf)) w)).
 keep : Int -> Int .
 keep n = case n < 0 of True -> 0 | False -> n.
@@ -120,16 +133,19 @@ readLine r = case readUntil "\n" r of (res, r2) ->
 
 # exactly `n` bytes
 readExactly : Int -> Reader -> (Result String String, Reader) .
-readExactly n r = exactGo n r.
-exactGo : unsafe Int -> Reader -> (Result String String, Reader) .
-exactGo n r = case r of Reader s buf w ->
+readExactly n r = exactGo n r 0.
+# the same within `ms` milliseconds (Err "timed out"; see fill for a Poller)
+readExactlyWithin : Int -> Int -> Reader -> (Result String String, Reader) .
+readExactlyWithin ms n r = exactGo n r (Sys.timeUs Unit + ms * 1000).
+exactGo : unsafe Int -> Reader -> Int -> (Result String String, Reader) .
+exactGo n r deadline = case r of Reader s buf w ->
   (case strlen buf >= n of
       True -> (Ok (substr buf 0 n), Reader s (substr buf n (strlen buf)) w)
-    | False -> (case fill w s of
+    | False -> (case fillBy deadline w s of
           Err why -> (Err why, r)
         | Ok more -> (case strlen more == 0 of
               True -> (Err "closed", r)
-            | False -> exactGo n (Reader s (strcat buf more) w)))).
+            | False -> exactGo n (Reader s (strcat buf more) w) deadline))).
 
 # what is buffered plus everything until the end
 readRest : Reader -> Result String String .

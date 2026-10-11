@@ -150,7 +150,13 @@ void hal_heap_span(char **lo, char **hi, char **span_hi) {
   hal_heap_before_reserve();
   uw bytes = 0, max = (uw)1 << 40;
   const char *cap = getenv("FPR_HEAP_MB");
-  if (cap && atol(cap) > 0) max = (uw)atol(cap) << 20;
+  if (cap && *cap) {
+    /* refused by name, never ignored: a cap that is not a number of MiB
+     * at least 1 would otherwise leave the heap unbounded without a word */
+    char *end; long mb = strtol(cap, &end, 10);
+    if (*end || mb < 1) { fprintf(stderr, "FPR_HEAP_MB=%s: must be a whole number of MiB, at least 1\n", cap); exit(2); }
+    max = (uw)mb << 20;
+  }
   char *p = fpr_heap_reserve(0, max, cap ? max : (uw)16 << 20, &bytes);
   if (!p) { fprintf(stderr, "fpr: cannot reserve address space for the heap\n"); exit(1); }
   *lo = p;

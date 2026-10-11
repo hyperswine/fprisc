@@ -201,7 +201,25 @@ upperName = try $ do
     _ -> fail "expected uppercase identifier"
 
 integer :: P Integer
-integer = lexeme L.decimal
+integer = integerN False
+
+-- An Int is tagged: 63 bits, -4611686018427387904..4611686018427387903.
+-- A literal past that is refused HERE, at its position, not deep in
+-- codegen (which used to stop with a Haskell `error`).  `neg`: the
+-- literal follows a minus sign, so the magnitude may reach 2^62.
+intMax :: Integer
+intMax = 2 ^ (62 :: Int) - 1
+
+integerN :: Bool -> P Integer
+integerN neg = lexeme $ do
+  n <- L.decimal
+  hex <- optional (lookAhead (try (oneOf ("xX" :: String) *> hexDigitChar)))
+  when (n == 0 && hex /= Nothing) $
+    fail "0x...: FP-RISC has no hexadecimal literal; write the number in decimal"
+  when (n > intMax + (if neg then 1 else 0)) $
+    fail ("integer literal " ++ (if neg then "-" else "") ++ show n
+          ++ " does not fit an Int (-4611686018427387904..4611686018427387903)")
+  pure n
 
 -- 1.5 / 2.0e-3 : an F64 literal.  `try` in term backtracks cleanly on
 -- "1." (int + the clause terminator) since the fraction needs a digit.
@@ -234,7 +252,9 @@ floatLit = try $ do
       txt = ipart ++ maybe "" ('.' :) frac ++ maybe "" id ex
   -- an unsuffixed whole number with no fraction/exponent is an Int:
   -- this parser runs BEFORE `integer`, so it must decline those
-  when (frac == Nothing && ex == Nothing && suf == Nothing) (fail "integer")
+  -- `empty`, not `fail "integer"`: a message here would be merged into
+  -- the error of a literal `integer` refuses at the same position
+  when (frac == Nothing && ex == Nothing && suf == Nothing) empty
   let d = read (if frac == Nothing then ipart ++ ".0" ++ maybe "" id ex else txt) :: Double
   pure $
     if isF32
@@ -369,7 +389,7 @@ chainl1' p op = p >>= rest
 negLit :: P SExpr
 negLit = try $ do
   _ <- char '-'
-  e <- floatLit <|> (SInt <$> integer)
+  e <- floatLit <|> (SInt <$> integerN True)
   pure $ case e of
     SInt n -> SInt (negate n)
     SApp (SApp v@(SVar "f64frombits") (SInt hi)) lo ->
@@ -495,6 +515,22 @@ caseE = do
     -- the doX/doX2 helper-splitting idiom is retired.
     arm = do p <- pattern'; _ <- symbol "->"; o <- getOffset; b <- block; pure (p, SMark o b)
 
+-- the expression inside `{...}`.  A failure here is reported AT ITS
+-- OWN POSITION: the statement around the string sits behind a `try`,
+-- which would drop the error and report the next statement instead
+-- (the battery saw `"{S.join}"` blamed on the line after it), so the
+-- error is registered as a delayed one, the braces are skipped, and the
+-- parse goes on; the bundle reports it at the end with the position.
+interpolation :: P SExpr
+interpolation = do
+  r <- observing (expr <* char '}')
+  case r of
+    Right e -> pure e
+    Left err -> do
+      registerParseError err
+      _ <- skipManyTill anySingle (char '}')
+      pure (SInt 0)
+
 stringLit :: P SExpr
 stringLit = lexeme $ do
   _ <- char '"'
@@ -503,7 +539,7 @@ stringLit = lexeme $ do
   where
     seg =
       choice
-        [ SegExpr <$> (char '{' *> sc *> expr <* char '}'),
+        [ SegExpr <$> (char '{' *> sc *> interpolation),
           SegStr . pure <$> (char '\\' *> escaped),
           -- A LITERAL source character is TEXT: encode it to UTF-8
           -- bytes here, at the one place that knows it came from the
@@ -514,7 +550,9 @@ stringLit = lexeme $ do
           -- be a middle dot or an SPI payload byte, and guessing gets
           -- one of them wrong (it got '·' wrong, and served invalid
           -- UTF-8 to the browser).
-          SegStr . utf8Bytes . pure <$> satisfy (\c -> c /= '"' && c /= '{' && c /= '\\')
+          -- a RUN of plain characters at a time (not one per segment:
+          -- that was a segment per byte, merged by repeated append)
+          SegStr . utf8Bytes <$> takeWhile1P Nothing (\c -> c /= '"' && c /= '{' && c /= '\\')
         ]
     escaped =
       choice
@@ -547,9 +585,14 @@ stringLit = lexeme $ do
           | v < 0x10000 = map toEnum [0xE0 + div v 4096, 0x80 + mod (div v 64) 64, 0x80 + mod v 64]
           | otherwise = map toEnum [0xF0 + div v 262144, 0x80 + mod (div v 4096) 64, 0x80 + mod (div v 64) 64, 0x80 + mod v 64]
           where v = fromEnum c
-    mergeSegs (SegStr a : SegStr b : r) = mergeSegs (SegStr (a ++ b) : r)
+    -- adjacent text segments become one, concatenated ONCE per run:
+    -- merging two at a time copied the growing head at every step
+    -- (quadratic: a 100 KB literal took 116 s to lex)
+    mergeSegs (SegStr a : r) = let (bs, r') = textRun r in SegStr (concat (a : bs)) : mergeSegs r'
     mergeSegs (x : r) = x : mergeSegs r
     mergeSegs [] = []
+    textRun (SegStr b : t) = let (bs, t') = textRun t in (b : bs, t')
+    textRun t = ([], t)
 
 --------------------------------------------------------------------------------
 -- Patterns
@@ -2178,6 +2221,20 @@ replaceJoin name target = go
       CTagEq t v e -> CTagEq t v (go e)
       CProj i e -> CProj i (go e)
       e -> e
+
+-- does `x` occur free in `e`?  Stops at the first occurrence, where
+-- `freeVars` lists every one (and filters the list at every lambda).
+occurs :: Name -> Core -> Bool
+occurs x = \case
+  CVar n -> n == x
+  CApp a b -> occurs x a || occurs x b
+  CLam ps b -> x `notElem` ps && occurs x b
+  CLet y a b -> occurs x a || (y /= x && occurs x b)
+  CIf c t e -> occurs x c || occurs x t || occurs x e
+  CMk _ _ fs -> any (occurs x) fs
+  CTagEq _ _ e -> occurs x e
+  CProj _ e -> occurs x e
+  _ -> False
 
 freeVars :: Core -> [Name]
 freeVars = \case

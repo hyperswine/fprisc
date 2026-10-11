@@ -203,14 +203,24 @@ toInt s =
   case first >= n of
     True -> Err "not a number: \"{s}\""
   | False -> (case digitsGo s first n 0 of
-        O.None -> Err "not a number: \"{s}\""
-      | O.Some v -> Ok (case neg of True -> 0 - v | False -> v)).
-digitsGo : unsafe String -> Int -> Int -> Int -> O.Option Int .
+        Err 1 -> Err "out of range: \"{s}\" (an Int holds -4611686018427387904..4611686018427387903)"
+      | Err _ -> Err "not a number: \"{s}\""
+      | Ok v -> (case neg of
+            True -> Ok v
+          | False -> (case v == (0 - 4611686018427387903) - 1 of
+                True -> Err "out of range: \"{s}\" (an Int holds -4611686018427387904..4611686018427387903)"
+              | False -> Ok (0 - v)))).
+# The digits accumulate NEGATIVELY so the most negative Int is reachable.
+# Err 0: not a digit; Err 1: the value would pass the 63-bit Int (it used
+# to wrap silently: "4611686018427387904" answered -4611686018427387904)
+digitsGo : unsafe String -> Int -> Int -> Int -> Result Int Int .
 digitsGo s i n acc = case i >= n of
-    True -> O.Some acc
+    True -> Ok acc
   | False -> (case isDigit (charAt s i) of
-        True -> digitsGo s (i + 1) n (acc * 10 + (charAt s i - 48))
-      | False -> O.None).
+        True -> (case acc < ((0 - 4611686018427387903) - 1 + (charAt s i - 48)) / 10 of
+            True -> Err 1
+          | False -> digitsGo s (i + 1) n (acc * 10 - (charAt s i - 48)))
+      | False -> Err 0).
 
 # ---- ordering ------------------------------------------------------------------------
 compare : String -> String -> Ord.Ordering .

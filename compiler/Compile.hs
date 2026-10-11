@@ -8,8 +8,12 @@ import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Mono (specializeFunctions, qualifyAux)
 import Inline (inlineSmall, inlineWith, vecPeek)
 import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, normArc)
-import Data.Char (isAlphaNum, ord)
+import Data.Char (isAlphaNum, isAscii, ord)
 import Numeric (showHex)
+import qualified Data.ByteString as BS
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import qualified Data.Text.Encoding.Error as TEE
 import A64 (deTlsQosAppA64, lowerA64, a64Rev)
 import X64 (lowerX64, deTlsQosApp, x64Rev)
 import Control.Monad (forM, forM_, unless, when)
@@ -284,7 +288,7 @@ mangleName :: String -> String
 mangleName = concatMap enc
   where
     enc c
-      | isAlphaNum c = [c]
+      | isAscii c && isAlphaNum c = [c]
       | otherwise = "_x" ++ pad (showHex (ord c) "")
     pad str = if length str < 2 then '0' : str else str
 
@@ -295,7 +299,17 @@ parseFile p = snd <$> parseFileSrc p
 -- top-level definition (spans step 1)
 parseFileSrc :: FilePath -> IO (String, [STop])
 parseFileSrc p = do
-  src <- readFile p
+  bytes <- BS.readFile p
+  -- a source file is UTF-8 text; a byte order mark is skipped (an editor
+  -- wrote it, it is not a character) and a byte that is not UTF-8 is
+  -- refused by name, not reported as a decoding exception or a parse error
+  let body = fromMaybe bytes (BS.stripPrefix (BS.pack [0xEF, 0xBB, 0xBF]) bytes)
+  src <- case TE.decodeUtf8' body of
+    Right t -> pure (T.unpack t)
+    Left _ -> do
+      let bad = length (takeWhile id (zipWith (==) (BS.unpack body) (BS.unpack (TE.encodeUtf8 (TE.decodeUtf8With TEE.lenientDecode body)))))
+      hPutStrLn stderr ("error: " ++ p ++ ": byte " ++ show bad ++ " is not UTF-8 (a source file is UTF-8 text)")
+      exitFailure
   case parse program p src of
     Left e -> putStrLn (errorBundlePretty e) >> exitFailure >> pure (src, [])
     Right tops -> pure (src, tops)
@@ -468,6 +482,11 @@ compileWithInterface accepted = do
     exitFailure
   when (nEvals > 0 && any isMain rootTops0) $ do
     hPutStrLn stderr "error: both `main` and top-level `>` statements -- the `>` list IS main in the sol view"
+    exitFailure
+  -- a program starts at `main`; without one the link used to fail on an
+  -- undefined symbol, which is the linker's word for a compiler's fact
+  when (nEvals == 0 && not (oPlugin opts) && not (oLib opts) && not (any isMain rootTops0)) $ do
+    hPutStrLn stderr ("error: " ++ inp ++ " has no `main` (a program starts at main; a library unit is built with --module)")
     exitFailure
   lr <- loadProgram preludeTops inp rootTops
   case lr of

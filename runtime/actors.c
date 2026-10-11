@@ -2165,8 +2165,12 @@ static V a_spawn(V f) {
 static uint32_t cap_of(V nv) {
   if (!ISINT(nv)) fpr_cpanic("spawnCap: n must be an Int");
   sw n = UNTAG(nv);
+  /* rounded UP to a power of two of at least 8 (the inline ring); a size
+   * below 1 or above RING_MAX is refused by name, not clamped */
+  if (n < 1) fpr_cpanic("spawnCap: a ring holds at least 1 message (n < 1)");
+  if (n > (sw)RING_MAX) fpr_cpanic("spawnCap: n exceeds the ring maximum of 1048576 messages");
   uint32_t c = 8;
-  while ((sw)c < n && c < RING_MAX) c <<= 1;
+  while ((sw)c < n) c <<= 1;
   return c;
 }
 static V a_spawn_cap(V modev, V nv, V f) {
@@ -2718,6 +2722,15 @@ static V a_yield(V me) {
 static V a_kill(V av) {
   if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("kill: target is not an actor");
   acb_t *a = (acb_t *)av;
+  /* the machine's own actors are not anyone's to kill (SUPERVISION S7):
+   * killing actor 0 used to end in the deadlock detector two seconds
+   * later.  The log actor is NOT on this list: it is one the program
+   * installed, and a dead logger is a case the log path handles
+   * (tests/base/logdead.fpr). */
+  if (a == &main_acb) fpr_cpanic("kill: actor 0 is the program; it cannot be killed (Sys.exit ends it)");
+  if (a == mem_act) fpr_cpanic("kill: the memory actor cannot be killed");
+  if (a == __atomic_load_n(&irq_router, __ATOMIC_ACQUIRE)) fpr_cpanic("kill: the interrupt router cannot be killed");
+  if (a == tmr_act) fpr_cpanic("kill: the timer actor cannot be killed");
   uint32_t st = __atomic_load_n(&a->var, __ATOMIC_ACQUIRE);
   while (st != ST_DEAD &&
          !__atomic_compare_exchange_n(&a->var, &st, ST_DEAD, 0, __ATOMIC_SEQ_CST, __ATOMIC_ACQUIRE)) {}

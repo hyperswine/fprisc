@@ -36,16 +36,17 @@ import Modules (ModExport (..))
 import Control.Monad (when)
 import Control.Monad.State.Strict
 import Data.Bits (shiftR, (.&.))
-import Data.Char (isAlphaNum, ord)
+import Data.Char (isAlphaNum, isAscii, ord)
 import Data.List (stripPrefix, isSuffixOf, foldl', intercalate, isPrefixOf, nub, sort, sortOn)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Numeric (showHex)
 import Text.Read (readMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Peephole (peephole)
 import KernelKinds (Kind(..), signature)
 
-import FPRISC (Core (..), Prog, freeVars)
+import FPRISC (Core (..), Prog, freeVars, occurs)
 
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
@@ -249,30 +250,36 @@ wcetAnnotate fname lns =
 mangle :: String -> String
 mangle = concatMap enc
   where
+    -- ASCII only: `isAlphaNum` is true of 'ü', which the assembler then
+    -- refused in a symbol name (a parse would have been the honest place)
     enc c
-      | isAlphaNum c = [c]
+      | isAscii c && isAlphaNum c = [c]
       | otherwise = "_x" ++ pad (showHex (ord c) "")
     pad s = if length s < 2 then '0' : s else s
 
 -- every CVar that is neither local, global, nor core prim: the assumed
 -- external symbol set (for reporting the HAL contract)
 externals :: M.Map String Int -> Prog -> [String]
-externals ext prog = sort . nub $ concat [go ps b | (_, (ps, b)) <- M.toList prog]
+externals ext prog = S.toList (S.fromList (concat [go (S.fromList ps) b [] | (_, (ps, b)) <- M.toList prog]))
   where
-    go env = \case
+    -- `env` is a Set and the result an accumulator: a list env made every
+    -- variable test cost the number of lets above it (a 16000-let body
+    -- spent a quarter of its compile here)
+    prims = S.fromList corePrims
+    go env e acc = case e of
       CVar n
-        | n `elem` env || M.member n prog || M.member n ext || n `elem` corePrims -> []
-        | "$sym." `isPrefixOf` n -> [] -- a linker symbol, not a runtime contract
-        | n == "$fuel" -> [] -- an inlined entry's fuel tick (genT)
-        | otherwise -> [n]
-      CApp a b -> go env a ++ go env b
-      CLet x a b -> go env a ++ go (x : env) b
-      CIf a b c -> go env a ++ go env b ++ go env c
-      CMk _ _ fs -> concatMap (go env) fs
-      CTagEq _ _ e -> go env e
-      CProj _ e -> go env e
-      CLam ps b -> go (ps ++ env) b
-      _ -> []
+        | S.member n env || M.member n prog || M.member n ext || S.member n prims -> acc
+        | "$sym." `isPrefixOf` n -> acc -- a linker symbol, not a runtime contract
+        | n == "$fuel" -> acc -- an inlined entry's fuel tick (genT)
+        | otherwise -> n : acc
+      CApp a b -> go env a (go env b acc)
+      CLet x a b -> go env a (go (S.insert x env) b acc)
+      CIf a b c -> go env a (go env b (go env c acc))
+      CMk _ _ fs -> foldr (go env) acc fs
+      CTagEq _ _ x -> go env x acc
+      CProj _ x -> go env x acc
+      CLam ps b -> go (S.union (S.fromList ps) env) b acc
+      _ -> acc
 
 data CG = CG
   { cgProg :: Prog,
@@ -730,44 +737,111 @@ normArc = normIn S.empty
 -- that prints), so an alias of one is never substituted -- that would
 -- drop the evaluation, or repeat it at every use.
 normIn :: S.Set String -> Core -> Core
-normIn ps body0 = go body0
+normIn ps body0 = go M.empty body0
   where
     locals = S.union ps (S.fromList (binders body0))
-    go e = rw (descend e)
-    descend = \case
-      CApp a b -> CApp (go a) (go b)
-      CLam ps b -> CLam ps (go b)
-      CLet x a b -> CLet x (go a) (go b)
-      CIf c t e -> CIf (go c) (go t) (go e)
-      CMk t v fs -> CMk t v (map go fs)
-      CTagEq t v x -> CTagEq t v (go x)
-      CProj i x -> CProj i (go x)
+    -- `env`: the substitutions pending (an Int literal or an alias for a
+    -- let-bound name), applied as the walk reaches each variable.  ONE
+    -- pass: substituting with substE and re-walking the result cost a
+    -- whole traversal per let, and a let per element made an 8000-
+    -- element list literal take 86 s to compile (quadratic); the free-
+    -- variable tests use `occurs`, which stops at the first hit, where
+    -- `freeVars` built the whole list and filtered it by the parameter
+    -- list at every lambda (a 400-parameter function took 67 s: cubic).
+    go env e = case e of
+      CLet x a b -> letChain env (counts e) [] x a b -- rw is applied inside, per let
+      _ -> rw (descend env e)
+    descend env = \case
+      CVar n -> fromMaybe (CVar n) (M.lookup n env)
+      CApp a b -> CApp (go env a) (go env b)
+      CLam qs b -> CLam qs (go (foldr M.delete env qs) b)
+      CLet x a b -> letChain env (counts (CLet x a b)) [] x a b
+      CIf c t e -> CIf (go env c) (go env t) (go env e)
+      CMk t v fs -> CMk t v (map (go env) fs)
+      CTagEq t v x -> CTagEq t v (go env x)
+      CProj i x -> CProj i (go env x)
       e -> e
-    binders = \case
-      CLet x a b -> x : binders a ++ binders b
-      CLam ps b -> ps ++ binders b
-      CApp a b -> binders a ++ binders b
-      CIf c t e -> binders c ++ binders t ++ binders e
-      CMk _ _ fs -> concatMap binders fs
-      CTagEq _ _ x -> binders x
-      CProj _ x -> binders x
-      _ -> []
+    -- A chain of lets (every block is one) is walked top-down ONCE.
+    -- Each let's right-hand side is normalized under the substitutions
+    -- so far; the let then vanishes (an Int, or an alias of a local),
+    -- or stays as a PENDING binding.  A pending binding used only by
+    -- the next let's right-hand side sinks into it (the rule
+    -- `let x = a in let y = b in r -> let y = (let x = a in b) in r`),
+    -- which the nest of earlier sinks may repeat: `absorb` pops the
+    -- pending bindings from the innermost while each sinks.  Applying
+    -- the sink rule per let, bottom-up, re-descended the nest the inner
+    -- sinks had built at every level: cubic, 114 s for a 4000-statement
+    -- block.  "Used later" is answered from `left`, the raw occurrence
+    -- counts of every variable in what remains of the chain, kept as
+    -- the walk passes each right-hand side (a scan of the remainder per
+    -- let was still quadratic); an alias that vanishes hands its
+    -- remaining uses to the variable it named.
+    letChain env left pend x a b =
+      let a' = go env a
+          here = counts a
+          left1 = M.differenceWith (\l h -> Just (l - h)) left here
+       in case a' of
+            -- let x = <int> in b  ->  b[x := <int>]
+            CInt _ -> chainOn (M.insert x a' env) left1 pend b
+            -- let x = y in b  ->  b[x := y]: a local alias, when nothing
+            -- in the body rebinds y (so the substitution is not captured)
+            CVar y | S.member y locals, not (rebinds y b) ->
+              chainOn (M.insert x a' env) (M.insertWith (+) y (M.findWithDefault 0 x left1) left1) pend b
+            _ -> let (n, pend') = absorb env left1 here pend a' in chainOn (M.delete x env) left1 ((x, n) : pend') b
+    chainOn env left pend b = case b of
+      CLet y c rest -> letChain env left pend y c rest
+      _ -> foldl (\acc (x, a') -> rw (CLet x a' acc)) (go env b) pend
+    absorb env left here pend n = case pend of
+      (y, c) : more | usedHere env here y, M.findWithDefault 0 y left == 0 -> absorb env left here more (rw (CLet y c n))
+      _ -> (n, pend)
+    -- is y used in the right-hand side just passed, by name or through
+    -- an alias that vanished into it?
+    usedHere env here y = M.member y here || any (\v -> M.lookup v env == Just (CVar y)) (M.keys here)
+    -- raw occurrence counts of the variables in e (accumulator form:
+    -- `concatMap` would copy the deep last child at every level)
+    counts e = M.fromListWith (+) [(v, 1 :: Int) | v <- varsInto e []]
+    varsInto e acc = case e of
+      CVar n -> n : acc
+      CApp a b -> varsInto a (varsInto b acc)
+      CLam _ b -> varsInto b acc
+      CLet _ a b -> varsInto a (varsInto b acc)
+      CIf c t f -> varsInto c (varsInto t (varsInto f acc))
+      CMk _ _ fs -> foldr varsInto acc fs
+      CTagEq _ _ x -> varsInto x acc
+      CProj _ x -> varsInto x acc
+      _ -> acc
+    -- accumulator form, like varsInto (the `++` form copied the deep
+    -- part of a nest at every level)
+    binders e = bindersInto e []
+    bindersInto e acc = case e of
+      CLet x a b -> x : bindersInto a (bindersInto b acc)
+      CLam qs b -> qs ++ bindersInto b acc
+      CApp a b -> bindersInto a (bindersInto b acc)
+      CIf c t f -> bindersInto c (bindersInto t (bindersInto f acc))
+      CMk _ _ fs -> foldr bindersInto acc fs
+      CTagEq _ _ x -> bindersInto x acc
+      CProj _ x -> bindersInto x acc
+      _ -> acc
+    rebinds y = \case
+      CLet x a b -> x == y || rebinds y a || rebinds y b
+      CLam qs b -> y `elem` qs || rebinds y b
+      CApp a b -> rebinds y a || rebinds y b
+      CIf c t e -> rebinds y c || rebinds y t || rebinds y e
+      CMk _ _ fs -> any (rebinds y) fs
+      CTagEq _ _ x -> rebinds y x
+      CProj _ x -> rebinds y x
+      _ -> False
     rw = \case
       CLet x a (CVar y) | x == y -> a
-      CLet x (CInt n) b -> go (substE x (CInt n) b)
       CLet x a (CIf (CTagEq t v (CVar y)) th el)
-        | x == y, x `notElem` freeVars th, x `notElem` freeVars el -> rw (CIf (CTagEq t v a) th el)
+        | x == y, not (occurs x th), not (occurs x el) -> rw (CIf (CTagEq t v a) th el)
       CLet x a (CIf (CVar y) th el)
-        | x == y, x `notElem` freeVars th, x `notElem` freeVars el -> rw (CIf a th el)
-      -- a binding used only by the next binding sinks into it (same
-      -- evaluation order: a, then b, then the rest)
-      CLet x a (CLet y b rest)
-        | x `notElem` freeVars rest, x `elem` freeVars b -> rw (CLet y (rw (CLet x a b)) rest)
-      -- a variable alias substitutes when nothing in the body rebinds
-      -- the variable (so the substitution cannot be captured)
-      CLet x (CVar y) b | S.member y locals, y `notElem` binders b -> go (substE x (CVar y) b)
+        | x == y, not (occurs x th), not (occurs x el) -> rw (CIf a th el)
+      -- (a binding used only by the next binding sinks into it: the
+      -- same evaluation order, a, then b, then the rest -- done by
+      -- letChain over the whole chain, not here)
       CIf (CLet x a c) th el
-        | x `notElem` freeVars th, x `notElem` freeVars el -> rw (CLet x a (rw (CIf c th el)))
+        | not (occurs x th), not (occurs x el) -> rw (CLet x a (rw (CIf c th el)))
       e -> e
 
 -- slot k lives below the saved ra/s0 pair: -(3W + W*k)(s0)
@@ -1144,8 +1218,6 @@ genT tgt spec prog ext = go
     -- a let of a local is an alias: slots are written once, so the
     -- binder shares the variable's slot and no code is emitted (the
     -- inliner's argument bindings are mostly of this shape)
-    go env nxt pos (CLet x (CVar y) b)
-      | Just k <- M.lookup y env = go (M.insert x k env) nxt pos b
     -- a branch: the condition is compiled as jumping code (jumpIf), so
     -- a comparison, a nested if, a nullary Bool or a tag test each
     -- branch directly and no Bool object is built
@@ -1170,11 +1242,27 @@ genT tgt spec prog ext = go
           ++ ["    j " ++ lD, lE ++ ":"]
           ++ le
           ++ [lD ++ ":"]
-    go env nxt pos (CLet x a b) = do
-      la <- go env nxt NonTail a
-      lb <- go (M.insert x nxt env) (nxt + 1) pos b
-      pure (la ++ stSlot tgt "a0" nxt ++ lb)
+    -- through goThen: after normIn's sinking a block is a nest whose
+    -- RIGHT-HAND SIDE is the deep part, and `la ++ ...` copied it once
+    -- per level
+    go env nxt pos e@(CLet _ _ _) = goThen env nxt pos e []
     go env nxt _pos core = base env nxt core
+
+    -- the allocation of a constructor whose `n` fields were pushed in
+    -- order: the object in a0, the fields popped into it
+    mkAlloc tid var n =
+      [ "    li a0, " ++ show (8 + w * n) ]
+        ++ (if tgtArc tgt then ["    li a1, " ++ show n, "    call fpr_builtin_alloc_adt"]
+            else ["    call fpr_alloc"])
+        ++ [ "    li t0, " ++ show tid,
+             "    sw t0, 0(a0)",
+             "    li t0, " ++ show var,
+             "    sw t0, 4(a0)"
+           ]
+        ++ concat
+          [ popTo tgt "t1" ++ ["    " ++ st ++ " t1, " ++ show (8 + w * i) ++ "(a0)"]
+            | i <- reverse [0 .. n - 1]
+          ]
 
     -- Evaluate args left-to-right into consecutive slots (arg i's own
     -- sub-lets stage above slot nxt+i, overwriting earlier args' dead
@@ -1198,8 +1286,33 @@ genT tgt spec prog ext = go
             | (i, a) <- zip [0 :: Int ..] args
           ]
     argLoads env nxt args = concat [argLoad env nxt ("a" ++ show i) (i, a) | (i, a) <- zip [0 .. 7] args]
-    knownCall env nxt pos target args = do
-      argLines <- stageArgs env nxt args
+    knownCall env nxt pos target args = knownCallThen env nxt pos target args []
+    -- `rest`: the code that FOLLOWS the call, passed down so the last
+    -- argument's own code (when it is a known call or a construction
+    -- too: a list literal, a `::` chain, `a ++ b ++ c`) appends it at
+    -- the innermost level.  Staging the last argument with `go` and
+    -- appending afterwards copied the whole inner code once per level:
+    -- quadratic, 24 s for an 8000-element list literal.
+    goThen env nxt pos e rest
+      | (CVar h, args@(_ : _)) <- spineOf e,
+        h /= "f64frombits",
+        Just target <- known env h (length args),
+        not (w == 8 && isJust (inlineArc tgt h)) =
+          knownCallThen env nxt pos target args rest
+      | CMk tid var fs@(_ : _) <- e = do
+          pre <- concat <$> mapM (\f -> (++ push tgt) <$> go env nxt NonTail f) (init fs)
+          lastCode <- goThen env nxt NonTail (last fs) (push tgt ++ mkAlloc tid var (length fs) ++ rest)
+          pure (pre ++ lastCode)
+      -- a let of a local is an alias: slots are written once, so the
+      -- binder shares the variable's slot and no code is emitted (the
+      -- inliner's argument bindings are mostly of this shape)
+      | CLet x (CVar y) b <- e, Just k <- M.lookup y env = goThen (M.insert x k env) nxt pos b rest
+      | CLet x a b <- e = do
+          lb <- go (M.insert x nxt env) (nxt + 1) pos b
+          goThen env nxt NonTail a (stSlot tgt "a0" nxt ++ lb ++ rest)
+      | otherwise = (++ rest) <$> go env nxt pos e
+    knownCallThen env nxt pos target args rest = do
+      prefix <- stageArgs env nxt (if null args then [] else init args)
       -- args 0..7 in registers; 8+ through the hart spill cells.  ALL
       -- args are fully evaluated into slots first (an arg's own
       -- evaluation may contain wide calls that clobber the cells), so
@@ -1215,11 +1328,7 @@ genT tgt spec prog ext = go
                          ++ ["    " ++ st ++ " t1, " ++ spillRef tgt (i - 8) ++ "(t0)"]
                      | (i, a) <- drop 8 (zip [0 ..] args) ]
               else []
-      pure $
-        argLines
-          ++ spills
-          ++ loads
-          ++ case pos of
+      let transfer = case pos of
             NonTail -> ["    call " ++ target]
             Tail ->
               [ "    " ++ ld ++ " ra, " ++ show (-w) ++ "(s0)",
@@ -1228,6 +1337,14 @@ genT tgt spec prog ext = go
                 "    mv sp, t0",
                 "    j " ++ target
               ]
+          suffix = spills ++ loads ++ transfer ++ rest
+          n = length args
+      lastCode <- case args of
+        [] -> pure suffix
+        _ -> case directArg env (last args) of
+          Just _ -> pure suffix
+          Nothing -> goThen env (nxt + n) NonTail (last args) (stSlot tgt "a0" (nxt + n - 1) ++ suffix)
+      pure (prefix ++ lastCode)
 
     -- jumping code for a Bool-valued Core: the lines jump to the label
     -- when the value is `sense` and fall through otherwise.  A tag test
@@ -1357,25 +1474,7 @@ genT tgt spec prog ext = go
       -- a polling loop turned into ~100 MB/s of slab garbage.
       CMk tid var [] ->
         pure ["    la a0, .Lnul_" ++ show tid ++ "_" ++ show var]
-      CMk tid var fs -> do
-        ls <- mapM (\f -> (++ push tgt) <$> go env nxt NonTail f) fs
-        let n = length fs
-            pops =
-              concat
-                [ popTo tgt "t1" ++ ["    " ++ st ++ " t1, " ++ show (8 + w * i) ++ "(a0)"]
-                  | i <- reverse [0 .. n - 1]
-                ]
-        pure $
-          concat ls
-            ++ [ "    li a0, " ++ show (8 + w * n) ]
-            ++ (if tgtArc tgt then ["    li a1, " ++ show n, "    call fpr_builtin_alloc_adt"]
-                else ["    call fpr_alloc"])
-            ++ [ "    li t0, " ++ show tid,
-                 "    sw t0, 0(a0)",
-                 "    li t0, " ++ show var,
-                 "    sw t0, 4(a0)"
-               ]
-            ++ pops
+      CMk tid var fs -> goThen env nxt NonTail (CMk tid var fs) []
       CErr msg -> do
         l <- strLabel msg
         pure ["    la a0, " ++ l, "    call fpr_panic"]
@@ -1607,7 +1706,11 @@ fuseVec round' prog = (M.union extras (M.map (\(ps,b) -> (ps,rewrite b)) prog), 
       if op == op' && fusionSafe prog f && fusionSafe prog g && all capSafe (fc++gc)
          && length fc + length gc <= 7 then Just () else Nothing
       pure ((op,f,g,length fc,length gc),fc++gc,v)
-    walk e0 = let e = seeLet e0 in e : concatMap walk (children e)
+    -- accumulator form: `e : concatMap walk (children e)` ended in
+    -- `walk lastChild ++ []`, which copies the deep child's whole list at
+    -- every level of a let chain or a list literal (quadratic)
+    walk e0 = walkInto e0 []
+    walkInto e0 acc = let e = seeLet e0 in e : foldr walkInto acc (children e)
     children (CApp a b) = [a,b]
     children (CLet _ a b) = [a,b]
     children (CIf c a b) = [c,a,b]

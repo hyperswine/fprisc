@@ -71,50 +71,90 @@ reason : Int -> String .
 reason status = case status of
     200 -> "OK" | 201 -> "Created" | 204 -> "No Content" | 301 -> "Moved Permanently" | 302 -> "Found"
   | 304 -> "Not Modified" | 400 -> "Bad Request" | 401 -> "Unauthorized" | 403 -> "Forbidden"
-  | 404 -> "Not Found" | 405 -> "Method Not Allowed" | 409 -> "Conflict" | 413 -> "Content Too Large"
+  | 404 -> "Not Found" | 405 -> "Method Not Allowed" | 408 -> "Request Timeout" | 409 -> "Conflict" | 413 -> "Content Too Large"
+  | 431 -> "Request Header Fields Too Large"
   | 500 -> "Internal Server Error" | 503 -> "Service Unavailable" | _ -> "Status".
 
 # ---- the server --------------------------------------------------------------------
+# What one connection may ask of the server.  A request whose header block
+# passes `header` bytes is answered 431, one whose body passes `body` bytes
+# 413, one that does not arrive within `readMs` milliseconds 408; a
+# content-length that is not a whole number is 400.  Without these a peer
+# that never sends "\r\n\r\n" grew the buffer without end, and a
+# connection that went quiet held its actor for ever.  `limits` is the
+# default; `serveWith`/`serveOnWith`/`readRequestWith` take another.
+# The read deadline bounds a plain connection; a Poller connection waits in
+# its mailbox for readability, which has no deadline yet (std/stream fill).
+limits : { header : Int, body : Int, readMs : Int } .
+limits = { header = 65536, body = 1048576, readMs = 10000 }.
+
 # every connection gets an actor (Tcp.serve); one request is read, `handler`
 # answers it, the connection closes.  Answers when the listener is stopped.
 serve : TCP.Listener -> ({ method : String, path : String, query : String, headers : List (String, String), body : String } -> { status : Int, headers : List (String, String), body : String }) -> String .
-serve listener handler = TCP.serve listener (fn conn peer -> answer handler conn).
+serve listener handler = serveWith limits listener handler.
+serveWith : { header : Int, body : Int, readMs : Int } -> TCP.Listener -> ({ method : String, path : String, query : String, headers : List (String, String), body : String } -> { status : Int, headers : List (String, String), body : String }) -> String .
+serveWith lim listener handler = TCP.serve listener (fn conn peer -> answerWith lim (ST.reader conn) handler conn).
 
 # the same server, waiting for connections AND request bytes on a Poller
 # (std/poller.fpr) instead of polling on a timer: no latency floor, no idle ticks
 serveOn : PL.Poller -> TCP.Listener -> ({ method : String, path : String, query : String, headers : List (String, String), body : String } -> { status : Int, headers : List (String, String), body : String }) -> String .
-serveOn p listener handler = TCP.serveOn p listener (fn conn peer -> answerWith (ST.readerOn p conn) handler conn).
+serveOn p listener handler = serveOnWith limits p listener handler.
+serveOnWith : { header : Int, body : Int, readMs : Int } -> PL.Poller -> TCP.Listener -> ({ method : String, path : String, query : String, headers : List (String, String), body : String } -> { status : Int, headers : List (String, String), body : String }) -> String .
+serveOnWith lim p listener handler = TCP.serveOn p listener (fn conn peer -> answerWith lim (ST.readerOn p conn) handler conn).
 
-answer handler conn = answerWith (ST.reader conn) handler conn.
-answerWith rd handler conn = case requestOn rd of
-    Err why -> ST.write (renderResponse (text 400 "bad request: {why}\n")) conn
+answerWith lim rd handler conn = case requestOn lim rd of
+    Err why -> ST.write (renderResponse (text (refusedStatus why) "bad request: {why}\n")) conn
   | Ok req -> ST.write (renderResponse (handler req)) conn.
 
-# a request that does not arrive within 10 s is abandoned
-readRequest : ST.Stream -> Result { method : String, path : String, query : String, headers : List (String, String), body : String } String .
-readRequest conn = requestOn (ST.reader conn).
-requestOn rd = case ST.readUntil "\r\n\r\n" rd of (res, r) ->
-  (case res of
-      Err why -> Err why
-    | Ok head -> requestFrom (S.split "\r\n" head) r).
+# the status a refused request is answered with, from the reason's shape
+refusedStatus : String -> Int .
+refusedStatus why = case S.startsWith "header: no separator" why of
+    True -> 431
+  | False -> (case S.startsWith "body: larger" why of
+        True -> 413
+      | False -> (case why == "header: timed out" or why == "body: timed out" of
+            True -> 408
+          | False -> 400)).
 
-requestFrom ls r = case ls of
+# one request from a connection, under `limits`
+readRequest : ST.Stream -> Result { method : String, path : String, query : String, headers : List (String, String), body : String } String .
+readRequest conn = requestOn limits (ST.reader conn).
+readRequestWith : { header : Int, body : Int, readMs : Int } -> ST.Stream -> Result { method : String, path : String, query : String, headers : List (String, String), body : String } String .
+readRequestWith lim conn = requestOn lim (ST.reader conn).
+requestOn lim rd = case ST.readUntilWithin lim.readMs lim.header "\r\n\r\n" rd of (res, r) ->
+  (case res of
+      Err why -> Err "header: {why}"
+    | Ok head -> requestFrom lim (S.split "\r\n" head) r).
+
+requestFrom lim ls r = case ls of
     Nil -> Err "empty request"
   | line :: hs -> (case S.split " " line of
-        method :: target :: _ -> withBody method target (parseHeaders hs) r
+        method :: target :: _ -> withBody lim method target (parseHeaders hs) r
       | _ -> Err "malformed request line").
 
-withBody method target hs r =
-  n = (case headerGo "content-length" hs of O.Some t -> (case S.toInt t of Ok v -> v | Err _ -> 0) | O.None -> 0);
+withBody lim method target hs r =
   at = strIndexOf "?" target;
   path = (case at < 0 of True -> target | False -> S.left at target);
   query = (case at < 0 of True -> "" | False -> S.dropLeft (at + 1) target);
-  case n <= 0 of
-    True -> Ok { method = method, path = path, query = query, headers = hs, body = "" }
-  | False -> (case ST.readExactly n r of (res, _) ->
-        (case res of
-            Ok body -> Ok { method = method, path = path, query = query, headers = hs, body = body }
-          | Err why -> Err "body: {why}")).
+  case bodyLength hs of
+    Err why -> Err why
+  | Ok n -> (case n > lim.body of
+        True -> Err "body: larger than {lim.body} bytes (content-length {n})"
+      | False -> (case n == 0 of
+            True -> Ok { method = method, path = path, query = query, headers = hs, body = "" }
+          | False -> (case ST.readExactlyWithin lim.readMs n r of (res, _) ->
+                (case res of
+                    Ok body -> Ok { method = method, path = path, query = query, headers = hs, body = body }
+                  | Err why -> Err "body: {why}")))).
+
+# content-length: absent is 0; not a whole number, or negative, is refused
+# (it used to be read as 0, so a bad length was a silently empty body)
+bodyLength : List (String, String) -> Result Int String .
+bodyLength hs = case headerGo "content-length" hs of
+    O.None -> Ok 0
+  | O.Some t -> (case S.toInt (S.trim t) of
+        Err _ -> Err "content-length is not a number: {t}"
+      | Ok v -> (case v < 0 of True -> Err "content-length is negative: {t}" | False -> Ok v)).
 
 renderResponse : { status : Int, headers : List (String, String), body : String } -> String .
 renderResponse resp = strJoin "" (

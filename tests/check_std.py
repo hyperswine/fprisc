@@ -49,6 +49,7 @@ check('call', label='std/actor call/reply: a correlated reply; a full mailbox an
 check('poller', label='receiveNow (an empty mailbox allocates nothing), receiveWithin, and a server whose accepts and reads wait on ONE poller')
 check('term', label='Term.decode: text a UTF-8 character at a time, named and function keys, Ctrl and Alt, sequences split across reads')
 check('http', label='Http: client and server, headers, a 100 KB POST, 404, chunked decoding, URL parsing')
+check('httplimits', label='Http.serveWith limits: a 4 KB header block is 431, a 100 KB body 413, a quiet connection and a short body 408 within readMs, a bad content-length 400')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
     check('compact', cwd=t, label='KvLog.compact: the latest of every key, the journal kept whole, written beside the log and renamed over it; the store reopens the same')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:

@@ -93,6 +93,7 @@ executable fpr
     , mtl
     , network
     , process
+    , text
     , unix
     , time
     , utf8-string

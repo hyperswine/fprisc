@@ -27,6 +27,7 @@ module Peephole (peephole) where
 import Data.Char (isDigit)
 import Data.List (isPrefixOf, tails)
 import qualified Data.Set as S
+import qualified Data.Map.Strict as M
 
 peephole :: [String] -> [String]
 peephole = deadStores . forward
@@ -106,10 +107,11 @@ deadStores ls
         ]
     -- control flow in a body is forward-only (loops are tail calls);
     -- should a branch ever go back, fall back to the function-wide rule
-    labels = [(init l, i) | (i, l) <- zip [0 :: Int ..] ls, not ("    " `isPrefixOf` l), not (null l), last l == ':']
+    -- a Map: a list lookup per branch made a 4,000-label function quadratic
+    labels = M.fromList [(init l, i) | (i, l) <- zip [0 :: Int ..] ls, not ("    " `isPrefixOf` l), not (null l), last l == ':']
     backward =
       or
-        [ maybe False (<= i) (lookup t labels)
+        [ maybe False (<= i) (M.lookup t labels)
           | (i, l) <- zip [0 ..] ls,
             Just (Ins op args) <- [parse l],
             S.member op branches,

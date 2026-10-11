@@ -1,0 +1,37 @@
+unsafe base.
+# The server's bounds (std/httpcore `limits`): a header block past `header`
+# bytes is 431, a body past `body` is 413, a connection quiet for `readMs`
+# is 408, a content-length that is not a whole number is 400.
+Http = use "std/http".
+Tcp = use "std/tcp".
+ST = use "std/stream".
+S = use "std/string".
+L = use "std/list".
+O = use "std/option".
+
+handle req = Http.text 200 "ok {strlen req.body}\n".
+
+# send raw bytes, answer the status line the server replies with
+probe : Int -> String -> String .
+probe p bytes = case Tcp.connect "127.0.0.1" p of
+    Err why -> "connect: {why}"
+  | Ok c ->
+      _ = ST.write bytes c;
+      reply = (case ST.readAll c of Ok s -> s | Err why -> "read: {why}");
+      _ = ST.close c;
+      (case L.head (S.split "\r\n" reply) of O.Some l -> l | O.None -> "<empty reply>").
+
+main =
+  l = (case Tcp.listen "127.0.0.1" 0 of Ok x -> x | Err e -> error e);
+  port = Tcp.port l;
+  _ = spawn (fn self -> Http.serveWith { header = 1024, body = 2048, readMs = 500 } l handle);
+  _ = print "plain: {probe port "GET / HTTP/1.1\r\nhost: x\r\n\r\n"}";
+  _ = print "body 10: {probe port "POST / HTTP/1.1\r\ncontent-length: 10\r\n\r\n0123456789"}";
+  _ = print "header 4 KB: {probe port "GET / HTTP/1.1\r\nx-pad: {S.repeat 4000 "p"}\r\n\r\n"}";
+  _ = print "body 100000: {probe port "POST / HTTP/1.1\r\ncontent-length: 100000\r\n\r\n"}";
+  _ = print "negative length: {probe port "POST / HTTP/1.1\r\ncontent-length: -5\r\n\r\n"}";
+  _ = print "length abc: {probe port "POST / HTTP/1.1\r\ncontent-length: abc\r\n\r\n"}";
+  _ = print "quiet: {probe port "GET / HTTP/1.1\r\n"}";
+  _ = print "short body: {probe port "POST / HTTP/1.1\r\ncontent-length: 10\r\n\r\n01234"}";
+  _ = Tcp.stop l;
+  print "done".

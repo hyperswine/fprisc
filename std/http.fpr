@@ -56,6 +56,16 @@ serveOn : PL.Poller -> TCP.Listener -> ({ method : String, path : String, query 
 serveOn p listener handler = C.serveOn p listener handler.
 readRequest : ST.Stream -> Result { method : String, path : String, query : String, headers : List (String, String), body : String } String .
 readRequest conn = C.readRequest conn.
+# the bounds a connection is held to (std/httpcore `limits`): header bytes,
+# body bytes, milliseconds to arrive; `serve`/`serveOn`/`readRequest` use `limits`
+limits : { header : Int, body : Int, readMs : Int } .
+limits = C.limits.
+serveWith : { header : Int, body : Int, readMs : Int } -> TCP.Listener -> ({ method : String, path : String, query : String, headers : List (String, String), body : String } -> { status : Int, headers : List (String, String), body : String }) -> String .
+serveWith lim listener handler = C.serveWith lim listener handler.
+serveOnWith : { header : Int, body : Int, readMs : Int } -> PL.Poller -> TCP.Listener -> ({ method : String, path : String, query : String, headers : List (String, String), body : String } -> { status : Int, headers : List (String, String), body : String }) -> String .
+serveOnWith lim p listener handler = C.serveOnWith lim p listener handler.
+readRequestWith : { header : Int, body : Int, readMs : Int } -> ST.Stream -> Result { method : String, path : String, query : String, headers : List (String, String), body : String } String .
+readRequestWith lim conn = C.readRequestWith lim conn.
 renderResponse : { status : Int, headers : List (String, String), body : String } -> String .
 renderResponse resp = C.renderResponse resp.
 parseUrl : String -> Result { scheme : String, host : String, port : Int, target : String } String .
