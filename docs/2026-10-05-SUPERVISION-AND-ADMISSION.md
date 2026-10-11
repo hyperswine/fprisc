@@ -336,3 +336,13 @@ A consequence worth knowing: a killed blocked actor's cleanup hook
 (`fpr_actor_cleanup_set`) now RUNS. Before, it never did, for exactly the
 actors QOS kills on purpose -- the Files owner's Qlog child, a cancelled
 block I/O worker, a losing network candidate.
+
+## Correction (2026-10-12)
+
+"How others learn of a death" above lists `receiveRes` with
+`receiveFromRes` as answering `Err "dead actor"`. It does not: `receiveRes`
+only takes a Result already in the mailbox, and a death posts nothing
+(`runtime/actors.c` `a_receive_res`; checked by killing the only peer, after
+which the deadlock detector halts the machine). Only `receiveFromRes` and the
+`std/actor` calls built on it answer a death. See `2026-10-07-STATES.md`
+section 5.1.
