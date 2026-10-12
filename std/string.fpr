@@ -203,12 +203,12 @@ toInt s =
   case first >= n of
     True -> Err "not a number: \"{s}\""
   | False -> (case digitsGo s first n 0 of
-        Err 1 -> Err "out of range: \"{s}\" (an Int holds -4611686018427387904..4611686018427387903)"
+        Err 1 -> Err "out of range: \"{s}\" (an Int holds {intMin Unit}..{intMax Unit})"
       | Err _ -> Err "not a number: \"{s}\""
       | Ok v -> (case neg of
             True -> Ok v
-          | False -> (case v == (0 - 4611686018427387903) - 1 of
-                True -> Err "out of range: \"{s}\" (an Int holds -4611686018427387904..4611686018427387903)"
+          | False -> (case v == intMin Unit of
+                True -> Err "out of range: \"{s}\" (an Int holds {intMin Unit}..{intMax Unit})"
               | False -> Ok (0 - v)))).
 # The digits accumulate NEGATIVELY so the most negative Int is reachable.
 # Err 0: not a digit; Err 1: the value would pass the 63-bit Int (it used
@@ -217,7 +217,7 @@ digitsGo : unsafe String -> Int -> Int -> Int -> Result Int Int .
 digitsGo s i n acc = case i >= n of
     True -> Ok acc
   | False -> (case isDigit (charAt s i) of
-        True -> (case acc < ((0 - 4611686018427387903) - 1 + (charAt s i - 48)) / 10 of
+        True -> (case acc < (intMin Unit + (charAt s i - 48)) / 10 of
             True -> Err 1
           | False -> digitsGo s (i + 1) n (acc * 10 - (charAt s i - 48)))
       | False -> Err 0).

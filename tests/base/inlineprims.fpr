@@ -21,7 +21,10 @@ one x y =
   a = if band x y == via2 band x y then 0 else 1;
   b = if bor x y == via2 bor x y then 0 else 1;
   c = if bxor x y == via2 bxor x y then 0 else 1;
-  d = if x + y == via2 (fn p q -> p + q) x y then 0 else 1;
+  # Int + traps on overflow (docs/2026-10-12-INT-OVERFLOW.md): the sum is
+  # compared only where it fits; the trap itself is tests/base/intovf.fpr
+  fits = (y >= 0 and x <= intMax Unit - y) or (y < 0 and x >= intMin Unit - y);
+  d = if fits then (if x + y == via2 (fn p q -> p + q) x y then 0 else 1) else 0;
   e = if (x < y) == viaB (fn p q -> p < q) x y then 0 else 1;
   a + b + c + d + e.
 

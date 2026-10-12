@@ -1,0 +1,39 @@
+unsafe base.
+# Int arithmetic TRAPS on overflow (docs/2026-10-12-INT-OVERFLOW.md); the
+# case is chosen by the first argument so each trap is its own run.
+big : Unit -> Int .
+big u = 4611686018427387903.
+small : Unit -> Int .
+small u = 0 - 4611686018427387903 - 1.
+# a vector kernel: one + on the lanes (NEON on a64), checked per element
+shift x = x + 4611686018427387000.
+# a kernel with more than one operation runs the scalar kernel, checked per step
+twist x = x * 3 - 1.
+sum acc x = acc + x.
+run which = case which of
+    "add" -> print "{big Unit + 1}"
+  | "sub" -> print "{small Unit - 1}"
+  | "mul" -> print "{3037000500 * 3037000500}"
+  | "mulsmall" -> print "{2147483648 * 2147483648}"
+  | "div" -> print "{small Unit / (0 - 1)}"
+  | "neg" -> print "{0 - small Unit}"
+  | "kernel" ->
+      (n, v) = Vec.len (Vec.map shift (Vec.iota 1000));
+      _ = Vec.free v;
+      print "kernel {n}"
+  | "kernel2" ->
+      (n, v) = Vec.len (Vec.map twist (Vec.map shift (Vec.iota 1000)));
+      _ = Vec.free v;
+      print "kernel2 {n}"
+  | "fold" ->
+      (t, v) = Vec.fold sum 4611686018427387000 (Vec.iota 1000);
+      _ = Vec.free v;
+      print "fold {t}"
+  | "chr" -> print "{strlen (chr 256)}"
+  | "exit" -> Sys.exit 300
+  | _ ->
+      # the edges themselves are fine
+      (t, v) = Vec.fold sum 0 (Vec.iota 1000);
+      _ = Vec.free v;
+      print "ok {big Unit - 1 + 1} {small Unit + 1 - 1} {(0 - 1) * (small Unit + 1) / (0 - 1)} {2147483647 * 2147483647} {small Unit / 2} {chr 65}{chr 255 == chr 255} {t}".
+main = run (case Sys.args Unit of a :: _ -> a | Nil -> "ok").

@@ -955,6 +955,9 @@ mkHal cons scriptArgs tx preempts rt =
       ("strcat", (2, \[a, b] -> fmap VStr (liftA2 (++) (vsStr a) (vsStr b)))),
       ("String.len", (1, \[v] -> case stringLength v of Just n -> pure (VInt (fromIntegral n)); Nothing -> vmPanic "strlen: not a String")),
       ("strlen", (1, \[v] -> case stringLength v of Just n -> pure (VInt (fromIntegral n)); Nothing -> vmPanic "strlen: not a String")),
+      -- the host's Int is the tagged 63-bit value (docs/2026-10-12-INT-OVERFLOW.md)
+      ("intMax", (1, \[_] -> pure (VInt (2 ^ (62 :: Int) - 1)))),
+      ("intMin", (1, \[_] -> pure (VInt (negate (2 ^ (62 :: Int)))))),
       ("charAt", (2, charAtH)),
       ("substr", (3, substrH)),
       -- the O(n) string tier: one pass each, no re-slicing of the rest

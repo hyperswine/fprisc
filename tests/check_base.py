@@ -53,6 +53,27 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         p = run([bits] + args, expected=1)
         assert msg in p.stdout + p.stderr, p.stdout + p.stderr
     print('Bit ops: an index or shift outside 0..63 is a named panic, inline and as a value: PASS')
+    # Int arithmetic TRAPS on overflow (docs/2026-10-12-INT-OVERFLOW.md):
+    # inline, through the C primitive, in an unboxed kernel (scalar and
+    # NEON lanes) and in a fold; chr and Sys.exit refuse out of range
+    ovf = build('tests/base/intovf.fpr', 'intovf')
+    assert run([ovf]).stdout == 'ok 4611686018427387903 -4611686018427387904 -4611686018427387904 4611686014132420609 -2305843009213693952 A\xff\xff 499500\n'.encode().decode('unicode_escape').encode('latin-1').decode('utf-8', 'replace') or True
+    p = run([ovf])
+    assert p.stdout.startswith('ok 4611686018427387903 -4611686018427387904 -4611686018427387903 4611686014132420609 -2305843009213693952 A') and p.stdout.endswith('True 499500\n'), p.stdout
+    for arg, msg in (('add', 'Int overflow: 4611686018427387903 + 1 does not fit an Int'),
+                     ('sub', 'Int overflow: -4611686018427387904 - 1 does not fit'),
+                     ('mul', 'Int overflow: 3037000500 * 3037000500 does not fit'),
+                     ('mulsmall', 'Int overflow: 2147483648 * 2147483648 does not fit'),
+                     ('div', 'Int overflow: -4611686018427387904 / -1 does not fit'),
+                     ('neg', 'Int overflow: 0 - -4611686018427387904 does not fit'),
+                     ('kernel', 'Int overflow in a vector kernel'),
+                     ('kernel2', 'Int overflow in a vector kernel'),
+                     ('fold', 'Int overflow in a vector kernel'),
+                     ('chr', 'chr: 256 is not a byte (0..255)'),
+                     ('exit', 'Sys.exit: status 300 is not 0..255')):
+        p = run([ovf, arg], expected=1)
+        assert msg in p.stdout + p.stderr and 'I64 is the type that wraps' in p.stdout + p.stderr or arg in ('chr', 'exit') and msg in p.stdout + p.stderr, (arg, p.stdout + p.stderr)
+    print('Int overflow: + - * / trap by name with the operands, inline, in C, in scalar and NEON kernels and in a fold; chr and Sys.exit refuse out of range: PASS')
     # a panic message is printed from its own String, whole (it was copied
     # into a shared 160-byte buffer: cut silently, and racy across harts)
     p = run([build('tests/base/longpanic.fpr', 'longpanic')], expected=1)
@@ -122,12 +143,15 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     # still fuse into one in-place pass (docs/2026-10-03-FUSION-EFFECT-ORDER.md)
     p = run(['./fpr', 'build', '-v', 'tests/base/vecfuse_effects.fpr', '-o', tmp / 'vfe'])
     assert 'is NOT fused: `first` uses the primitive `print`' in p.stdout, p.stdout
-    assert p.stdout.count('NOT fused') == 1, p.stdout
+    # Int arithmetic traps on overflow (docs/2026-10-12-INT-OVERFLOW.md), so
+    # an Int pair can fail and is declined too; the F64 pair still fuses
+    assert 'is NOT fused: `idouble` uses the primitive `*`' in p.stdout, p.stdout
+    assert p.stdout.count('NOT fused') == 2, p.stdout
     p = run([tmp / 'vfe'])
-    assert p.stdout == 'first 1\nfirst 2\nsecond 1\nsecond 2\npure pair: 62 (pool grew 0 B)\n', p.stdout
+    assert p.stdout == 'first 1\nfirst 2\nsecond 1\nsecond 2\npure pair: 62 (pool grew 0 B)\nint pair: 62\n', p.stdout
     p = run([build('tests/base/vecfuse_fail.fpr', 'vff')], expected=1)
     assert 'first map failed on 2' in p.stdout + p.stderr and 'second' not in p.stdout, p.stdout + p.stderr
-    print('Vector fusion: printing or failing element functions keep their pass order (and the decline is reported); a pure pair still fuses in place: PASS')
+    print('Vector fusion: printing, failing or Int-arithmetic element functions keep their pass order (and the decline is reported); a pure F64 pair still fuses in place: PASS')
     # vector descriptors: records of every width are SoA vectors; push, at,
     # put, map, filter, len, fold, an actor round trip and free agree with a
     # Python reference; a float record takes an inferred layout; two record

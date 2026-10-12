@@ -31,6 +31,19 @@ RAW2(wordbitSet, "raw unit: bit index out of range")
 RAW2(wordbitClear, "raw unit: bit index out of range")
 RAW2(wordbitTest, "raw unit: bit index out of range")
 
+/* Int + - * / TRAP on overflow (docs/2026-10-12-INT-OVERFLOW.md): the
+ * inline guards of a raw unit branch to these adapters when the result
+ * would not fit (or the divisor is 0 or -1); the core primitives do the
+ * exact check and panic naming the operands.  They allocate nothing. */
+extern V fpr_prim_fn__x2b(V a, V b);
+extern V fpr_prim_fn__x2d(V a, V b);
+extern V fpr_prim_fn__x2a(V a, V b);
+extern V fpr_prim_fn__x2f(V a, V b);
+V fpr_fn__x24arc_x2eadd(V a, V b) { return fpr_prim_fn__x2b(a, b); }
+V fpr_fn__x24arc_x2esub(V a, V b) { return fpr_prim_fn__x2d(a, b); }
+V fpr_fn__x24arc_x2emul(V a, V b) { return fpr_prim_fn__x2a(a, b); }
+V fpr_fn__x24arc_x2ediv(V a, V b) { return fpr_prim_fn__x2f(a, b); }
+
 V fpr_builtin_alloc_adt(V bytes, uw fields) {
   (void)bytes; (void)fields;
   fpr_cpanic("raw unit: tried to allocate (it is linked without an allocator of its own)");

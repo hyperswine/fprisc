@@ -2122,12 +2122,68 @@ str_t *fpr_mkstr(const uint8_t *src, uw n) {
 }
 
 /* ---- core prims ------------------------------------------------------ */
-V fpr_prim_fn__x2b(V a, V b) { return TAG(UNTAG(a) + UNTAG(b)); }
-V fpr_prim_fn__x2d(V a, V b) { return TAG(UNTAG(a) - UNTAG(b)); }
-V fpr_prim_fn__x2a(V a, V b) { return TAG(UNTAG(a) * UNTAG(b)); }
+/* Int arithmetic TRAPS on overflow (docs/2026-10-12-INT-OVERFLOW.md): the
+ * mathematical result must fit the tagged Int, -2^(W-2) .. 2^(W-2)-1 for
+ * a W-bit word.  Nothing wraps silently; I64 is the type that wraps, by
+ * contract.  The inline fast paths (Codegen inlineTable, genU) check the
+ * same condition and come HERE for the panic, which names the operands. */
+static char *put_dec(char *p, sw n) {
+  uw m = n < 0 ? (uw)0 - (uw)n : (uw)n;
+  char d[24]; int k = 0;
+  do { d[k++] = (char)('0' + m % 10); m /= 10; } while (m);
+  if (n < 0) *p++ = '-';
+  while (k) *p++ = d[--k];
+  return p;
+}
+static char *put_str(char *p, const char *s) { while (*s) *p++ = *s++; return p; }
+void fpr_cpanic_num(const char *pre, sw n, const char *post) {
+  static char buf[192]; char *p = buf;
+  p = put_str(p, pre); p = put_dec(p, n); p = put_str(p, post);
+  fpr_cpanic_n(buf, (uw)(p - buf));
+}
+#define INT_MIN_TAGGED (-((sw)1 << (sizeof(sw) * 8 - 2)))
+#define INT_MAX_TAGGED (((sw)1 << (sizeof(sw) * 8 - 2)) - 1)
+static int fits_int(sw n) { return ((sw)((uw)n << 1) >> 1) == n; }
+static void int_overflow(const char *op, sw a, sw b) __attribute__((noreturn));
+static void int_overflow(const char *op, sw a, sw b) {
+  static char buf[192]; char *p = buf;
+  p = put_str(p, "Int overflow: "); p = put_dec(p, a); p = put_str(p, " "); p = put_str(p, op);
+  p = put_str(p, " "); p = put_dec(p, b); p = put_str(p, " does not fit an Int (");
+  p = put_dec(p, INT_MIN_TAGGED); p = put_str(p, ".."); p = put_dec(p, INT_MAX_TAGGED);
+  p = put_str(p, "); I64 is the type that wraps");
+  fpr_cpanic_n(buf, (uw)(p - buf));
+}
+/* the traps of the unboxed vector kernels (Codegen genU, the NEON lanes):
+ * entries, not strings, so a kernel links alone against a probe */
+void fpr_int_overflow_kernel(void) {
+  static char buf[160]; char *p = buf;
+  p = put_str(p, "Int overflow in a vector kernel: the result does not fit an Int (");
+  p = put_dec(p, INT_MIN_TAGGED); p = put_str(p, ".."); p = put_dec(p, INT_MAX_TAGGED);
+  p = put_str(p, "); I64 is the type that wraps");
+  fpr_cpanic_n(buf, (uw)(p - buf));
+}
+void fpr_div_zero_kernel(void) { fpr_cpanic("division by zero"); }
+V fpr_prim_fn__x2b(V a, V b) {
+  sw x = UNTAG(a), y = UNTAG(b), r;
+  if (__builtin_add_overflow(x, y, &r) || !fits_int(r)) int_overflow("+", x, y);
+  return TAG(r);
+}
+V fpr_prim_fn__x2d(V a, V b) {
+  sw x = UNTAG(a), y = UNTAG(b), r;
+  if (__builtin_sub_overflow(x, y, &r) || !fits_int(r)) int_overflow("-", x, y);
+  return TAG(r);
+}
+V fpr_prim_fn__x2a(V a, V b) {
+  sw x = UNTAG(a), y = UNTAG(b), r;
+  if (__builtin_mul_overflow(x, y, &r) || !fits_int(r)) int_overflow("*", x, y);
+  return TAG(r);
+}
 V fpr_prim_fn__x2f(V a, V b) {
-  if (UNTAG(b) == 0) fpr_cpanic("division by zero");
-  return TAG(UNTAG(a) / UNTAG(b));
+  sw x = UNTAG(a), y = UNTAG(b);
+  if (y == 0) fpr_cpanic("division by zero");
+  sw r = x / y; /* the one overflow: the most negative Int / -1 */
+  if (!fits_int(r)) int_overflow("/", x, y);
+  return TAG(r);
 }
 V fpr_prim_fn__x3c(V a, V b) { return BOOL(UNTAG(a) < UNTAG(b)); }
 V fpr_prim_fn__x3e(V a, V b) { return BOOL(UNTAG(a) > UNTAG(b)); }
@@ -2758,8 +2814,16 @@ static V g_strlen(V s) {
 
 /* chr : Int -> String -- the inverse of charAt. One byte. The line
  * editor and path splitter build strings incrementally with this. */
+/* the Int's bounds on this word, as primitives: a 63-bit literal is refused
+ * where the Int is narrower, and a module cannot name a prelude constant */
+static V g_intMax(V u) { (void)u; return TAG(INT_MAX_TAGGED); }
+static V g_intMin(V u) { (void)u; return TAG(INT_MIN_TAGGED); }
 static V g_chr(V c) {
   if (!ISINT(c)) fpr_cpanic("chr: not an Int");
+  /* chr makes ONE BYTE; a value outside 0..255 used to be truncated
+   * silently (chr 1114112 was a replacement character) */
+  if (UNTAG(c) < 0 || UNTAG(c) > 255)
+    fpr_cpanic_num("chr: ", UNTAG(c), " is not a byte (0..255); chr makes one byte, String.fromCodes makes UTF-8");
   uint8_t b = (uint8_t)UNTAG(c);
   return (V)fpr_mkstr(&b, 1);
 }
@@ -3318,6 +3382,8 @@ FPR_FN(fpr_prim_obj_error, fpr_prim_fn_error, 1);
 FPR_FN(fpr_g_charAt, g_charAt, 2);
 FPR_FN(fpr_g_strlen, g_strlen, 1);
 FPR_FN(fpr_g_chr, g_chr, 1);
+FPR_FN(fpr_g_intMax, g_intMax, 1);
+FPR_FN(fpr_g_intMin, g_intMin, 1);
 FPR_FN(fpr_g_substr, g_substr, 3);
 FPR_FN(fpr_g_strJoin, g_strJoin, 2);
 FPR_FN(fpr_g_drop, g_drop, 1);

@@ -242,6 +242,7 @@ primCostOf g lens
   | g == "keep" = Just (CN 0, CN 0)
   | g `elem` ["strlen", "String.len", "charAt"] = unit
   | g == "chr" = Just (CN 1, CN 17)
+  | g `elem` ["intMax", "intMin"] = unit
   | g == "strcat", [a, b] <- lens = Just (CAdd [CN 1, a, b], CAdd [CN 16, a, b])
   | g == "substr", (a : _) <- lens = Just (CAdd [CN 1, a], CAdd [CN 16, a])
   | g == "parseInt", [a] <- lens = Just (CAdd [CN 1, a], CN 0)

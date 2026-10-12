@@ -49,6 +49,8 @@ intptr_t probe_a6,probe_a7;
 void fpr_fuel_exhausted(void) { fuel_calls++; clobber(); hart[0]=1; }
 void *fpr_alloc(intptr_t n) { clobber(); return calloc(1,n); }
 void fpr_panic(void *v) { abort(); }
+void fpr_int_overflow_kernel(void) { abort(); }
+void fpr_div_zero_kernel(void) { abort(); }
 void fpr_apply(void) { abort(); }
 void fpr_vec_map(void) { abort(); }
 void fpr_vec_filter(void) { abort(); }

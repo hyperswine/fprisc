@@ -541,6 +541,8 @@ builtinEnv =
       ("String.len", mono (TFn tStr tInt)),
       ("charAt", mono (TFn tStr (TFn tInt tInt))), -- returns the char CODE
       ("chr", mono (TFn tInt tStr)),
+      ("intMax", mono (TFn tUnit tInt)), -- the Int's bounds on this word (docs/2026-10-12-INT-OVERFLOW.md)
+      ("intMin", mono (TFn tUnit tInt)),
       ("fileRead", mono (TFn tStr tStr)),
       -- the Base environment (machine/posix/base.c; docs/2026-09-18-BASE.md)
       ("fileWrite", mono (TFn tStr (TFn tStr (tcon "Result" [tUnit, tStr])))),

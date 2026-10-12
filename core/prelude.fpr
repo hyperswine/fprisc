@@ -78,11 +78,18 @@ wireInt s = case strlen s == 0 of
   | False -> (case charAt s 0 == 45 of
       True -> (case strlen s == 1 of True -> Err "not a number" | False -> wireDigits s 1 0 True)
     | False -> wireDigits s 0 0 False).
+# The digits accumulate NEGATIVELY so the most negative Int is readable; a
+# value past the Int is an Err, never a trap (Int arithmetic traps on
+# overflow, docs/2026-10-12-INT-OVERFLOW.md, and wire input is untrusted).
 wireDigits : unsafe String -> Int -> Int -> Bool -> Result Int String .
 wireDigits s i acc neg = case i >= strlen s of
-    True -> Ok (case neg of True -> 0 - acc | False -> acc)
+    True -> (case neg of
+        True -> Ok acc
+      | False -> (case acc == intMin Unit of True -> Err "out of range" | False -> Ok (0 - acc)))
   | False -> (case charAt s i >= 48 and charAt s i <= 57 of
-      True -> wireDigits s (i + 1) (acc * 10 + (charAt s i - 48)) neg
+      True -> (case acc < (intMin Unit + (charAt s i - 48)) / 10 of
+          True -> Err "out of range"
+        | False -> wireDigits s (i + 1) (acc * 10 - (charAt s i - 48)) neg)
     | False -> Err "not a number").
 
 # ---- Wire: the neutral tree a generated codec speaks (FPRISC.hs encE / decE) --------
@@ -189,7 +196,11 @@ strIndexOf : String -> String -> Int .
 strIndexOf p s = strIndexFrom p s 0.
 
 # decimal, a leading "-" allowed, stops at the first non-digit; no digits is 0.
-# The lenient parse; wireInt above is the checked one.
+# The lenient parse; wireInt above is the checked one.  It also stops at a
+# digit that would carry the value past the Int (Int arithmetic traps on
+# overflow, docs/2026-10-12-INT-OVERFLOW.md; it used to wrap, and this parse
+# answered -1 for "9223372036854775807"), so the most negative Int is the one
+# value it cannot read: use wireInt or String.toInt for a checked parse.
 parseInt : String -> Int .
 parseInt s = case strlen s == 0 of
     True -> 0
@@ -201,7 +212,7 @@ parseDigits s i acc = case i >= strlen s of
     True -> acc
   | False -> parseDigit s i acc (charAt s i).
 parseDigit : unsafe String -> Int -> Int -> Int -> Int .
-parseDigit s i acc c = case c >= 48 and c <= 57 of
+parseDigit s i acc c = case c >= 48 and c <= 57 and acc <= (intMax Unit - (c - 48)) / 10 of
     True -> parseDigits s (i + 1) (acc * 10 + (c - 48))
   | False -> acc.
 

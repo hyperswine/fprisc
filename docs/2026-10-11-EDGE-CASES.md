@@ -140,17 +140,21 @@ files is the acceptance test; the battery is kept for that.
 ## Fixed on 2026-10-11 (the same day, after the battery)
 
 Work items 2, 3 and 4 above, and the parts of item 1 that are bugs rather
-than policy, are done; the overflow DECISION (Int arithmetic wrap or trap,
-`chr`, `Sys.exit` masking) is still open.
+than policy, are done. The overflow DECISION was taken on 2026-10-12:
+Int arithmetic TRAPS (docs/2026-10-12-INT-OVERFLOW.md); `chr` and
+`Sys.exit` refuse out of range.
 
 | # | Now |
 | --- | --- |
+| 1 | (2026-10-12) Int `+ - * /` trap by name with the operands when the result does not fit; in the C primitives, the inline fast paths, the unboxed kernels and the NEON lanes. I64 is the type that wraps. Int pairs leave vector fusion (tests/base/vecfuse_effects.fpr) |
 | 2 | `S.toInt` answers `Err "out of range: ..."` past 63 bits, and reaches the most negative Int (digits accumulate negatively) |
+| 3 | (2026-10-12) `chr` outside 0..255 is refused by name (chr makes one byte; String.fromCodes makes UTF-8) |
 | 10 | `kill` refuses actor 0, the memory actor, the irq router and the timer by name (not the log actor: a program installs its own, and a dead logger is handled, tests/base/logdead.fpr) |
 | 12 | `Static 0` and any `spawnCap n` with `n < 1` or `n > 1048576` are panics by name; rounding up to a power of two from 8 stays and is documented |
 | 17 | `signal(SIGPIPE, SIG_IGN)` at the start of `main` (machine/unix/main.c); the program behind `head` finishes, status 0 |
 | 18, 19, 20 | `std/httpcore limits` `{ header = 65536, body = 1048576, readMs = 10000 }`: 431 / 413 / 408, a non-numeric or negative content-length 400; `serveWith`, `serveOnWith`, `readRequestWith` take other limits; `std/stream readUntilWithin`, `readExactlyWithin`. tests/std/httplimits.fpr. Open: a Poller connection's wait in its mailbox has no deadline, so `readMs` bounds nothing there (stated in `fillBy`) |
 | 24 | `FPR_HARTS`, `FPR_HEAP_MB`, `FPR_STACK_MAX_MB` refused by name (exit 2) when not what they claim |
+| 25 | (2026-10-12) `Sys.exit` outside 0..255 is refused by name |
 | 28 | the parser refuses an Int literal past 63 bits at its position (`integerN`); `-4611686018427387904` parses |
 | 29 | the source is read as bytes; a byte that is not UTF-8 is refused by name with its offset |
 | 30, 31, 32 | four super-linear passes, all in the compiler's own data handling, none in the algorithms it implements. (a) `Codegen.normIn` substituted with `substE` and re-walked the body per let (quadratic) and tested free variables with `freeVars`, which lists them all and filters by the parameter list at every lambda (cubic in arity): now one env-carrying pass and `occurs`, which stops at the first hit. (b) The let-SINK rule (`let x = a in let y = b in r -> let y = (let x = a in b) in r`), applied per let bottom-up, re-descended the nest the inner sinks had built: CUBIC IN THE LENGTH OF ANY BLOCK (a 4000-statement block, `x_i = x_{i-1} + i`, took 114 s; nothing to do with literals). Now `letChain` walks a chain top-down once, with occurrence counts for "used later". (c) Code generation appended the code that follows a let's right-hand side, a call's last argument and a constructor's last field with `++`, copying the deep part once per level: now `goThen` passes the following code down (`rest`) and the innermost level appends it. (d) The string lexer made a segment per character and merged adjacent segments two at a time (`a ++ b` with a growing `a`): now a run at a time, merged once. (e) `externals` kept the let-bound names in a LIST and tested every variable against it (quadratic in a body's lets), and `normIn.binders`, `fuseVec.walk` and the `Peephole` label lookup had the same `concatMap`/list shapes. Measured (compile to asm, this Mac): 400 parameters 67 s to 0.29 s; list literal of 8000 / 16000 / 32000 elements 86 s / - / - to 3.4 / 5.2 / 9.5 s (linear now; about 1.5 s of that is the prelude); 4000-statement block 104 s to 0.9 s; 2 MB string literal (300 s timeout) to 1.1 s. The generated code is unchanged (label numbering aside) |

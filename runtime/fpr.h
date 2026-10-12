@@ -695,6 +695,9 @@ V fpr_mkresult(uw variant, const char *s);
 V fpr_mkresultn(uw variant, const char *s, uw n);
 void fpr_panic(V str_obj) __attribute__((noreturn));
 void fpr_cpanic_n(const char *msg, uw n) __attribute__((noreturn));
+void fpr_cpanic_num(const char *pre, sw n, const char *post) __attribute__((noreturn)); /* pre, the number, post */
+void fpr_int_overflow_kernel(void) __attribute__((noreturn)); /* a vector kernel's Int overflow trap */
+void fpr_div_zero_kernel(void) __attribute__((noreturn));
 /* the /logs rings (runtime.c): sev 0 normal / 1 warn / 2 error / 3 host */
 void fpr_logput(int sev, const char *line, uw n);
 /* #24: set by hosted entries (qosp) to persist a panic's last words */

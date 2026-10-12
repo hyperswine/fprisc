@@ -64,7 +64,9 @@ FPR_FN(fpr_g_Sys_x2eargs, h_args, 1);
 
 static V h_exit(V code) {
   if (!ISINT(code)) fpr_cpanic("Sys.exit: expected an Int");
-  hal_poweroff((int)(UNTAG(code) & 255));
+  /* a process status is one byte; 300 used to become 44 without a word */
+  if (UNTAG(code) < 0 || UNTAG(code) > 255) fpr_cpanic_num("Sys.exit: status ", UNTAG(code), " is not 0..255");
+  hal_poweroff((int)UNTAG(code));
   return (V)&fpr_unit;
 }
 FPR_FN(fpr_g_Sys_x2eexit, h_exit, 1);

@@ -34,7 +34,10 @@ with tempfile.TemporaryDirectory(prefix='fpr-vector-kinds-') as d:
     run(['./fprc','--profile=base','--target=a64','tests/base/veckinds.fpr',asm])
     text=asm.read_text()
     assert '([KD,KD,KD],KD)' in text and '([KD,KI,KD,KI,KD,KD],KD)' in text,text[-15000:]
-    assert re.search(r'Vec.map specialized on _vfuse_',text),text[-15000:]
+    # the Int map/map pair (`plus`) is NOT fused since Int + traps on
+    # overflow (docs/2026-10-12-INT-OVERFLOW.md); the filter/filter pair
+    # (comparisons only) still is, and so is vecsimd's F64 map/map below
+    assert not re.search(r'Vec.map specialized on _vfuse_',text),text[-15000:]
     assert re.search(r'Vec.filter specialized on _vfuse_',text),text[-15000:]
     run(['./fprc','--profile=base','--target=a64','tests/base/vecsimd.fpr',asm])
     text=asm.read_text()
@@ -53,5 +56,5 @@ with tempfile.TemporaryDirectory(prefix='fpr-vector-kinds-') as d:
             run(['./fpr','build','tests/base/'+source,'-o',exe],env)
             p=run([exe],env,ok=False);outputs.append((p.returncode,p.stdout))
         assert outputs[0]==outputs[1],(source,outputs)
-    print('Vector kinds: float captures, mixed record fold, captured map/map and filter/filter, strict order and 100 SIMD tails PASS')
+    print('Vector kinds: float captures, mixed record fold, captured filter/filter fused and the Int map/map pair declined (it can trap), strict order and 100 SIMD tails PASS')
     print('A64 NEON execution: '+('native host and C IEEE reference PASS' if platform.machine() in ('arm64','aarch64') else 'emission PASS; host SIMD execution unavailable'))

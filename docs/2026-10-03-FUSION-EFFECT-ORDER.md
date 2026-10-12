@@ -57,3 +57,11 @@ hold.
 
 Not changed: the width, kernel, layout and SIMD items of the audit (steps
 1 to 5), which depend on this rule being in place first.
+
+## 2026-10-12: Int arithmetic can fail
+
+Int `+ - *` trap on overflow now ([2026-10-12-INT-OVERFLOW.md](2026-10-12-INT-OVERFLOW.md)),
+so they leave the fusion-safe set as `/` did: an Int pair is declined with
+`` `idouble` uses the primitive `*` `` and runs in order. The pure pair of
+the evidence is F64 from this date; `tests/base/vecfuse_effects.fpr` holds
+both pairs.

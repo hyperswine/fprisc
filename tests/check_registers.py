@@ -51,6 +51,11 @@ with tempfile.TemporaryDirectory(prefix='fpr-regs-') as d:
 static intptr_t hart[60]={1000000};
 void *probe_hart=hart;
 void fpr_fuel_exhausted(void) { hart[0]=1000000; }
+/* the slow paths of the inline Int arithmetic (never taken here) */
+intptr_t fpr_prim_fn__x2b(intptr_t a, intptr_t b) { (void)a; (void)b; __builtin_trap(); }
+intptr_t fpr_prim_fn__x2d(intptr_t a, intptr_t b) { (void)a; (void)b; __builtin_trap(); }
+intptr_t fpr_prim_fn__x2a(intptr_t a, intptr_t b) { (void)a; (void)b; __builtin_trap(); }
+intptr_t fpr_prim_fn__x2f(intptr_t a, intptr_t b) { (void)a; (void)b; __builtin_trap(); }
 extern intptr_t fpr_fn_hot(intptr_t,intptr_t,intptr_t,intptr_t,intptr_t);
 int main(void) {
  for(intptr_t a=-7;a<=7;a++) for(intptr_t b=-9;b<=9;b++) {

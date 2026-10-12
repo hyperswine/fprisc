@@ -109,7 +109,9 @@ csiAt s from j n = if j >= n then O.None
   else csiAt s from (j + 1) n.
 
 firstNumber : unsafe String -> Int -> Int -> Int -> Int .
-firstNumber s i j acc = if i >= j or not (S.isDigit (charAt s i)) then acc else firstNumber s (i + 1) j (acc * 10 + (charAt s i - 48)).
+# stops at a digit that would carry past the Int as well: a sequence's
+# parameter is small, and a hostile one must not trap the terminal
+firstNumber s i j acc = if i >= j or not (S.isDigit (charAt s i)) or acc > (intMax Unit - (charAt s i - 48)) / 10 then acc else firstNumber s (i + 1) j (acc * 10 + (charAt s i - 48)).
 
 csiKey : Int -> Int -> Key .
 csiKey final num = if final == 126 then tildeKey num else if final == 90 then BackTab else letterKey final num.

@@ -1,21 +1,34 @@
 # Two materializing maps run the first over EVERY element before the second
 # starts.  A fused pass would interleave them: first 1, second 1, first 2,
 # second 2 -- a different observable trace.  Element functions that print
-# (or could fail) must therefore not fuse; pure ones still do.
+# (or could fail) must therefore not fuse; pure ones still do.  Since Int
+# arithmetic traps on overflow (docs/2026-10-12-INT-OVERFLOW.md) an Int
+# pair CAN fail, so the pure pair here is F64, which cannot.
 unsafe base.
 first x = _ = print "first {x}"; x.
 second x = _ = print "second {x}"; x.
-double x = x * 2.
-inc x = x + 1.
+double : F64 -> F64.
+double x = x * 2.0.
+inc : F64 -> F64.
+inc x = x + 1.0.
+idouble x = x * 2.
+iinc x = x + 1.
+fsum : F64 -> F64 -> F64.
+fsum acc x = acc + x.
 main =
   v = Vec.fromList [1, 2];
   a = Vec.map first v;
   b = Vec.map second a;
   _ = Vec.free b;
-  w = Vec.fromList [10, 20];
+  w = Vec.fromList [10.0, 20.0];
   h0 = heapUsed Unit;
   w2 = Vec.map inc (Vec.map double w);
   grew = heapUsed Unit - h0;
-  (s, w3) = Vec.fold (fn acc x -> acc + x) 0 w2;
+  (s, w3) = Vec.fold fsum 0.0 w2;
   _ = Vec.free w3;
-  print "pure pair: {s} (pool grew {grew} B)".
+  _ = print "pure pair: {s} (pool grew {grew} B)";
+  iw = Vec.fromList [10, 20];
+  iw2 = Vec.map iinc (Vec.map idouble iw);
+  (is, iw3) = Vec.fold (fn acc x -> acc + x) 0 iw2;
+  _ = Vec.free iw3;
+  print "int pair: {is}".

@@ -51,7 +51,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 39 -- automatic value-state receive turns; 38: POSIX module PIC and MVU clock
+codegenRev = 40 -- Int overflow traps (inline guards, checked kernels, NEON lane checks); 39: automatic value-state receive turns
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -1014,11 +1014,25 @@ inlineTable =
       ("$arc.memwrite16", Guarded (alignedTo 1) ["    srai t0, a1, 1", "    sh t0, 0(a0)", unit]),
       ("$arc.memwrite8", Plain ["    srai t0, a1, 1", "    sb t0, 0(a0)", unit]),
       ("$arc.memfence", Plain ["    fence iorw, iorw", unit]),
-      -- Int: tagged (n << 1) | 1
-      ("$arc.add", Plain ["    add a0, a0, a1", "    addi a0, a0, -1"]),
-      ("$arc.sub", Plain ["    sub a0, a0, a1", "    addi a0, a0, 1"]),
-      ("$arc.mul", Plain ["    srai t0, a0, 1", "    srai t1, a1, 1", "    mul t0, t0, t1", "    slli t0, t0, 1", "    ori a0, t0, 1"]),
-      ("$arc.div", Guarded (\slow -> ["    srai t1, a1, 1", "    beqz t1, " ++ slow])
+      -- Int: tagged (n << 1) | 1.  + - * / TRAP on overflow (docs/
+      -- 2026-10-12-INT-OVERFLOW.md): the guard detects it and takes the
+      -- slow path, the C primitive, which panics naming the operands.
+      -- +: (a0 - 1) + a1 is exactly 2(x+y)+1, so its 64-bit signed
+      -- overflow is exactly the 63-bit overflow of x+y.
+      ("$arc.add", Guarded (\slow -> [ "    addi t1, a0, -1", "    add t0, t1, a1", "    xor t1, t1, t0", "    xor t0, t0, a1",
+                                      "    and t1, t1, t0", "    srai t1, t1, 63", "    bnez t1, " ++ slow ])
+                           ["    addi t0, a0, -1", "    add a0, t0, a1"]),
+      -- -: a0 - a1 is exactly 2(x-y); same argument
+      ("$arc.sub", Guarded (\slow -> [ "    sub t0, a0, a1", "    xor t1, a0, a1", "    xor t0, t0, a0",
+                                      "    and t1, t1, t0", "    srai t1, t1, 63", "    bnez t1, " ++ slow ])
+                           ["    sub t0, a0, a1", "    addi a0, t0, 1"]),
+      -- *: inline only when both operands fit 31 bits (the product then
+      -- fits 61); anything wider takes the exact check in C
+      ("$arc.mul", Guarded (\slow -> [ "    srai t0, a0, 1", "    slli t1, t0, 33", "    srai t1, t1, 33", "    bne t1, t0, " ++ slow,
+                                      "    srai t0, a1, 1", "    slli t1, t0, 33", "    srai t1, t1, 33", "    bne t1, t0, " ++ slow ])
+                           ["    srai t0, a0, 1", "    srai t1, a1, 1", "    mul t0, t0, t1", "    slli t0, t0, 1", "    ori a0, t0, 1"]),
+      -- /: a zero divisor and -1 (the most negative Int / -1 overflows) go to C
+      ("$arc.div", Guarded (\slow -> ["    srai t1, a1, 1", "    beqz t1, " ++ slow, "    addi t0, t1, 1", "    beqz t0, " ++ slow])
                            ["    srai t0, a0, 1", "    div t0, t0, t1", "    slli t0, t0, 1", "    ori a0, t0, 1"]),
       ("$arc.lt", Cond ["    slt t0, a0, a1"]),
       ("$arc.gt", Cond ["    slt t0, a1, a0"]),
@@ -1681,8 +1695,10 @@ fusionUnsafeReason prog = go S.empty
       [] -> Nothing
     -- cannot trap, cannot be observed: everything in the Int/F64/F32
     -- arithmetic tiers except division, plus comparison and logic
+    -- Int + - * / all TRAP on overflow (docs/2026-10-12-INT-OVERFLOW.md),
+    -- so none of them is fusion-safe: only the comparisons remain
     safePrims =
-      [op | op <- uPrims, op /= "/"]
+      [op | op <- uPrims, op `notElem` ["+", "-", "*", "/"]]
         ++ [op | w <- ["64", "32"], op <- fPrimsOf w, not ("/" `isSuffixOf` op) && op /= "F" ++ w ++ "./"]
         ++ ["and", "or", "not", "and2", "or2"]
 
@@ -2461,7 +2477,8 @@ genU tgt prog uset = go
     go env nxt pos e
       | (CVar h, [a, b]) <- spineOf e, h `elem` uPrims || h `elem` fPrims = do
           lines1 <- stage env nxt [a, b]
-          pure (lines1 ++ op2 h)
+          ops <- op2 h
+          pure (lines1 ++ ops)
     go env nxt pos e
       | (CVar h, args@(_ : _)) <- spineOf e,
         S.member h uset,
@@ -2513,17 +2530,42 @@ genU tgt prog uset = go
       pure (argLines ++ concat [ldSlot tgt ("a" ++ show i) (nxt + i) | i <- [0 .. min 7 (length args - 1)]]
             ++ if length args <= 8 then [] else ["    mv t0, tp"] ++ concat
               [ldSlot tgt "t1" (nxt+i) ++ ["    " ++ st ++ " t1, " ++ spillRef tgt (i-8) ++ "(t0)"] | i <- [8 .. length args - 1]])
+    -- Int + - * / on bare words TRAP on overflow here too (docs/
+    -- 2026-10-12-INT-OVERFLOW.md): the operands fit 63 bits, so + and -
+    -- cannot wrap the 64-bit word and the result's 63-bit fit is the
+    -- whole test; * checks its wrap through a division unless both
+    -- operands fit 31 bits.  The trap is fpr_panic from inside the
+    -- kernel's own frame, as a CErr is.
+    -- the trap is a runtime entry, not a string in .rodata: a kernel is
+    -- also linked ALONE against a probe (tests/check_x64_vectors.py)
+    checked body = do
+      lt <- freshL "iovf"
+      lk <- freshL "iok"
+      pure (body lt ++ ["    slli t1, t0, 1", "    srai t1, t1, 1", "    bne t1, t0, " ++ lt, "    mv a0, t0", "    j " ++ lk,
+                        lt ++ ":", "    call fpr_int_overflow_kernel", lk ++ ":"])
     op2 = \case
-      "+" -> ["    add a0, a0, a1"]
-      "-" -> ["    sub a0, a0, a1"]
-      "*" -> ["    mul a0, a0, a1"]
-      "/" -> ["    div a0, a0, a1"]
-      "==" -> ["    xor t0, a0, a1", "    seqz a0, t0"]
-      "!=" -> ["    xor t0, a0, a1", "    snez a0, t0"]
-      "<" -> ["    slt a0, a0, a1"]
-      ">" -> ["    slt a0, a1, a0"]
-      "<=" -> ["    slt a0, a1, a0", "    xori a0, a0, 1"]
-      ">=" -> ["    slt a0, a0, a1", "    xori a0, a0, 1"]
+      "+" -> checked (const ["    add t0, a0, a1"])
+      "-" -> checked (const ["    sub t0, a0, a1"])
+      "*" -> do
+        ls <- freshL "imul"
+        lc <- freshL "imulok"
+        -- small operands: half the word less a bit each, so the product fits
+        let sh = show (if w == 8 then 33 else 17 :: Int)
+        checked (\lt -> [ "    mul t0, a0, a1",
+                          "    slli t1, a0, " ++ sh, "    srai t1, t1, " ++ sh, "    bne t1, a0, " ++ ls,
+                          "    slli t1, a1, " ++ sh, "    srai t1, t1, " ++ sh, "    bne t1, a1, " ++ ls,
+                          "    j " ++ lc,
+                          ls ++ ":", "    beqz a1, " ++ lc, "    div t1, t0, a1", "    bne t1, a0, " ++ lt,
+                          lc ++ ":" ])
+      "/" -> do
+        lz <- freshL "idivz"
+        checked (const [ "    bnez a1, " ++ lz, "    call fpr_div_zero_kernel", lz ++ ":", "    div t0, a0, a1" ])
+      "==" -> pure ["    xor t0, a0, a1", "    seqz a0, t0"]
+      "!=" -> pure ["    xor t0, a0, a1", "    snez a0, t0"]
+      "<" -> pure ["    slt a0, a0, a1"]
+      ">" -> pure ["    slt a0, a1, a0"]
+      "<=" -> pure ["    slt a0, a1, a0", "    xori a0, a0, 1"]
+      ">=" -> pure ["    slt a0, a0, a1", "    xori a0, a0, 1"]
       -- floats: the raw word IS the bit pattern, so move it into an f
       -- register, operate, move the result back.  Values stay in
       -- integer registers/slots between ops, which is what keeps the
@@ -2535,7 +2577,7 @@ genU tgt prog uset = go
                 bin i = [mvx ++ " ft0, a0", mvx ++ " ft1, a1", i ++ sfx ++ " ft0, ft0, ft1", mvi ++ " a0, ft0"]
                 cmp i = [mvx ++ " ft0, a0", mvx ++ " ft1, a1", i ++ sfx ++ " a0, ft0, ft1"]
                 cmpn i = [mvx ++ " ft0, a0", mvx ++ " ft1, a1", i ++ sfx ++ " a0, ft0, ft1", "xori a0, a0, 1"]
-             in map ("    " ++) $ case o of
+             in pure $ map ("    " ++) $ case o of
                   "+" -> bin "fadd"
                   "-" -> bin "fsub"
                   "*" -> bin "fmul"
@@ -2665,6 +2707,23 @@ expandKernel prog depth e
         CLet x a b -> do (v,n) <- expandKernel prog depth a; (body,m) <- expandKernel prog depth b; pure (CLet x v body,n+m)
         _ -> Just (e,0)
 
+-- exactly one Int + or - over the element and literals (see the NEON gate)
+singleIntOp :: String -> Core -> Bool
+singleIntOp prm body = case spineOf (strip body) of
+  (CVar op, [a, b]) | op `elem` ["+", "-"] -> leaf a && leaf b
+  _ -> False
+  where
+    strip (CLet x (CVar y) e) | x /= prm = strip (subst1 x y e)
+    strip e = e
+    subst1 x y = \case
+      CVar n | n == x -> CVar y
+      CApp a b -> CApp (subst1 x y a) (subst1 x y b)
+      CLet n a b -> CLet n (subst1 x y a) (if n == x then b else subst1 x y b)
+      e -> e
+    leaf (CVar n) = n == prm
+    leaf (CInt _) = True
+    leaf _ = False
+
 neonExpr :: Kind -> M.Map String String -> Int -> Core -> Maybe ([String],String)
 neonExpr kind env next body = evalStateT (go env body) next
   where
@@ -2707,14 +2766,24 @@ emitMapSpec tgt rvv sym p = do
            [prm] <- Just ps
            (body,ticks) <- expandKernel prog 12 b
            kind <- case spKinds p of Just ([kind],out) | kind == out -> Just kind; _ -> Nothing
+           -- an Int body takes the lanes only when it is ONE + or -: the
+           -- stored lanes are then checked for the 63-bit fit, which is
+           -- the whole overflow test for one operation on fitting
+           -- operands (a longer body could wrap an intermediate and come
+           -- back; it runs the scalar kernel, which checks every step)
+           if kind == KI && not (singleIntOp prm body) then Nothing else Just ()
            (ls,res) <- neonExpr kind (M.singleton prm "v16") 17 body
-           pure (ls,res,ticks) of
-      Just (ls,res,ticks) -> do
+           pure (ls,res,ticks,kind) of
+      Just (ls,res,ticks,kind) -> do
         loop <- freshL "vneon"
         charge <- specFuelN tgt (2*(ticks+1))
+        ltrap <- freshL "vovf"
+        let lanes = if kind /= KI then [] else concat
+              [ ["    ld t0, " ++ show off ++ "(s5)", "    slli t1, t0, 1", "    srai t1, t1, 1", "    bne t1, t0, " ++ ltrap] | off <- [0, 8 :: Int] ]
+            trap = if kind /= KI then [] else [ltrap ++ ":", "    call fpr_int_overflow_kernel"]
         pure [loop ++ ":", "    li t0, 2", "    bltu s6, t0, " ++ linner]
           >>= \prefix -> pure (Just (prefix ++ charge ++ ["    simd.ld v16, s5"] ++ ls
-            ++ ["    simd.st " ++ res ++ ", s5", "    addi s5, s5, 16", "    addi s2, s2, 2", "    addi s6, s6, -2", "    j " ++ loop]))
+            ++ ["    simd.st " ++ res ++ ", s5"] ++ lanes ++ ["    addi s5, s5, 16", "    addi s2, s2, 2", "    addi s6, s6, -2", "    j " ++ loop] ++ trap))
       _ -> pure Nothing
     else pure Nothing
   let inner = maybe [] id neon ++ case vinner of
@@ -2862,6 +2931,9 @@ foldFallback tgt f k =
 
 rvvMapInner :: Target -> String -> Core -> String -> String -> Maybe [String]
 rvvMapInner tgt prm body linner lnextb = do
+  -- Int + - * TRAP on overflow (docs/2026-10-12-INT-OVERFLOW.md) and the
+  -- vector lanes have no check yet: an Int body runs the scalar kernel
+  Nothing
   (lines1, res) <- compileV (M.fromList [(prm, VR 8)]) (9, 2) body
   let e = rvvE tgt
       resReg = case res of
