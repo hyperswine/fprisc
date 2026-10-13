@@ -39,6 +39,12 @@
 # Tab (or Enter after choosing with the arrow keys) takes a suggestion, and on a
 # phone tapping the field you are already in takes the first one.
 #
+# THE ADMIN PANE (pos1's).  A profile of the app measuring itself -- each kind
+# of event's update, the disk append, the boot fold, this tab's renders and
+# its card cache, the runtime's memory, the browser's round trip -- projected
+# only to a tab looking at it.  And a console over the data: `help` lists the
+# commands; the ones that change things commit lines like any other edit.
+#
 # SIGNING IN.  A member signs in once per device with a name and password; the
 # server then hands the page a random token, which the page keeps in
 # localStorage and mirrors back on every connection.  Only its hash is in the
@@ -72,7 +78,8 @@ Att = G.Att.
 Inp = G.Inp.
 
 Msg = Type (Login String | Logout | ClientState String | New | Edit Int | Save | Cancel | Delete Int
-          | AddTag String | AddMember String | Password String | ForgetDevices | Theme | Dismiss | Clear Int Int | Page Int).
+          | AddTag String | AddMember String | Password String | ForgetDevices | Theme | Dismiss | Clear Int Int | Page Int
+          | Admin String).
 codec = @Msg.
 
 # What the page holds.  The search, the sort and the editor's drafts are
@@ -82,7 +89,7 @@ codec = @Msg.
 # page's script from localStorage.
 Client = { pane : String, q : String, sort : String, confirm : String,
            name : String, loc : String, sub : String, desc : String, tags : String,
-           user : String, pw : String, tok : String, mname : String, mpw : String, npw : String }.
+           user : String, pw : String, tok : String, mname : String, mpw : String, npw : String, cmd : String }.
 
 Move = { at : Int, from : String }.
 Item = { id : Int, name : String, loc : String, sub : String, desc : String, tags : List String,
@@ -92,9 +99,9 @@ Item = { id : Int, name : String, loc : String, sub : String, desc : String, tag
 # members are (name, salt, hash); devices are (token hash, name)
 
 initModel = { items = Nil, nextId = 1, members = Nil, devices = Nil, pend = Nil, events = 0, skipped = 0,
-              fails = Nil, sess = Nil, booted = 0 }.
+              fails = Nil, sess = Nil, booted = 0, path = "", prof = noProf }.
 noDraft = { name = "", loc = "", sub = "", desc = "", tags = "" }.
-noSess = { sid = 0, user = "", toast = "", role = "", tn = 0, editing = 0 - 1, q = "", sort = "recent", page = 0,
+noSess = { sid = 0, user = "", toast = "", role = "", tn = 0, editing = 0 - 1, q = "", sort = "recent", page = 0, pane = "items", con = Nil,
            tried = "", theme = 1, d = noDraft }.
 
 # the tags offered while editing, before the household has its own
@@ -156,7 +163,8 @@ apply m line = case Json.parse line of
 applyOp m op v | strEq op "item" =
   at = int "at" v;
   made = int "created" v;
-  putItem m { id = int "id" v, name = txt "name" v, loc = txt "loc" v, sub = txt "sub" v, desc = txt "desc" v,
+  # a place renamed (the console's `rename`) is the same place: not a move
+  putItem (strEq (txt "why" v) "rename") m { id = int "id" v, name = txt "name" v, loc = txt "loc" v, sub = txt "sub" v, desc = txt "desc" v,
               tags = strs "tags" v, created = (case made == 0 of True -> at | False -> made), at = at, by = txt "by" v, moves = Nil }.
 applyOp m op v | strEq op "del" = { m | items = List.filter (fn it -> it.id != int "id" v) m.items }.
 applyOp m op v | strEq op "member" =
@@ -167,10 +175,10 @@ applyOp m op v | strEq op "revoke" = { m | devices = List.filter (fn d -> not (s
 applyOp m op v = m.
 
 findItem items id = List.find (fn x -> x.id == id) items.
-putItem m it = case findItem m.items it.id of
+putItem renamed m it = case findItem m.items it.id of
     Option.None -> { m | items = it :: m.items, nextId = imax m.nextId (it.id + 1) }
   | Option.Some old ->
-      new = { it | created = old.created, moves = movedFrom old it };
+      new = { it | created = old.created, moves = (case renamed of True -> old.moves | False -> movedFrom old it) };
       { m | items = List.map (fn x -> (case x.id == it.id of True -> new | False -> x)) m.items, nextId = imax m.nextId (it.id + 1) }.
 movedFrom old it | strEq (place old) (place it) = old.moves.
 movedFrom old it = List.take 3 ({ at = it.at, from = place old } :: old.moves).
@@ -180,6 +188,11 @@ commit m line = apply { m | pend = line :: m.pend, events = m.events + 1 } line.
 
 itemLine it by at = Json.render (Json.object
   [("op", Json.Text "item"), ("id", Json.Integer it.id), ("name", Json.Text it.name), ("loc", Json.Text it.loc),
+   ("sub", Json.Text it.sub), ("desc", Json.Text it.desc), ("tags", Json.strings it.tags), ("by", Json.Text by),
+   ("at", Json.Integer at), ("created", Json.Integer it.created)]).
+# the same, marked as a rename of the place it is in
+renameLine it by at = Json.render (Json.object
+  [("op", Json.Text "item"), ("why", Json.Text "rename"), ("id", Json.Integer it.id), ("name", Json.Text it.name), ("loc", Json.Text it.loc),
    ("sub", Json.Text it.sub), ("desc", Json.Text it.desc), ("tags", Json.strings it.tags), ("by", Json.Text by),
    ("at", Json.Integer at), ("created", Json.Integer it.created)]).
 delLine id by at = Json.render (Json.object [("op", Json.Text "del"), ("id", Json.Integer id), ("by", Json.Text by), ("at", Json.Integer at)]).
@@ -219,7 +232,7 @@ boot path =
   _ = print "[inventory] log {path}: {m2.events} lines in {t1 - t0} us, {List.length m2.items} items, {List.length m2.members} members, {List.length m2.devices} devices";
   _ = (case m2.skipped > 0 of True -> Sys.stderr "[inventory] {m2.skipped} unreadable lines skipped\n" | False -> Unit);
   _ = (case List.isEmpty m2.members of True -> Sys.stderr "[inventory] no members yet: add one with --member=NAME and INV_PASSWORD\n" | False -> Unit);
-  m2.
+  { m2 | path = path, prof = { noProf | bootUs = t1 - t0, bootLines = m2.events } }.
 replayed m (Ok ls) = List.fold (fn mm l -> apply { mm | events = mm.events + 1 } l) m ls.
 replayed m (Err e) = m.
 
@@ -257,9 +270,16 @@ draftLocals d = [("name", d.name), ("loc", d.loc), ("sub", d.sub), ("desc", d.de
 
 # ---- update ------------------------------------------------------------------------------
 
+# every event is timed: the app's own work, and the disk append when it wrote
 update path ev m =
+  t0 = Sys.timeUs Unit;
   (m2, cs) = step ev m;
-  (flush path m2, cs).
+  t1 = Sys.timeUs Unit;
+  wrote = not (List.isEmpty m2.pend);
+  m3 = flush path m2;
+  t2 = Sys.timeUs Unit;
+  prof = noteUpd (kindOf ev) (t1 - t0) m3.prof;
+  ({ m3 | prof = (case wrote of True -> { prof | flush = note prof.flush (t2 - t1) } | False -> prof) }, cs).
 step ev m = case ev of
     Live.Msg sid msg -> pMsg sid msg m
   | Live.Left sid -> (forget m sid, Nil)
@@ -278,6 +298,36 @@ flipTheme m s = sPut m { s | theme = 1 - s.theme }.
 clearToast m sid n =
   s = sGet m.sess sid;
   case s.tn == n of True -> sPut m { s | toast = "", role = "" } | False -> m.
+
+# ---- profiling -----------------------------------------------------------------------------
+# What the app measures about itself, shown on the admin pane (microseconds):
+#   update  per kind of event: how long `step` took, i.e. the app's own work
+#   append  how long the disk append took, per event that wrote
+#   boot    folding the log at start
+#   render  per TAB, in its writer: how long `view` took, the card cache's hits
+#           and misses and how many cards it keeps (kept in the writer's cache,
+#           so it lags the render that shows it by one)
+#   memory  the runtime's ledgers (Sys.memInfo, Sys.memStats) and harts
+#   rtt     in the browser: from a click's send to the next frame received
+# A Stat is a count, a sum, a maximum and the last.
+noStat = { n = 0, sum = 0, max = 0, last = 0 }.
+note st us = { n = st.n + 1, sum = st.sum + us, max = imax st.max us, last = us }.
+avg st = case st.n == 0 of True -> 0 | False -> st.sum / st.n.
+noProf = { bootUs = 0, bootLines = 0, upd = Nil, flush = noStat, nev = 0 }.
+noteUpd kind us prof = { prof | upd = noteKind prof.upd kind us, nev = prof.nev + 1 }.
+noteKind Nil kind us = (kind, note noStat us) :: Nil.
+noteKind ((k, st) :: r) kind us | strEq k kind = (k, note st us) :: r.
+noteKind (e :: r) kind us = e :: noteKind r kind us.
+kindOf ev = case ev of
+    Live.Msg sid msg -> msgKind msg
+  | Live.Joined sid -> "join"
+  | Live.Left sid -> "leave"
+  | Live.Refused sid why -> "refused".
+msgKind msg = case msg of
+    Login a -> "login" | Logout -> "logout" | ClientState a -> "sync" | New -> "new" | Edit a -> "edit" | Save -> "save"
+  | Cancel -> "cancel" | Delete a -> "delete" | AddTag a -> "tag" | AddMember a -> "member" | Password a -> "password"
+  | ForgetDevices -> "forget" | Theme -> "theme" | Dismiss -> "dismiss" | Clear a b -> "toast" | Page a -> "page" | Admin a -> "admin".
+statLine label st = "{S.padRight 9 " " label} n {S.padLeft 6 " " "{st.n}"}  avg {S.padLeft 7 " " "{avg st}"} us  max {S.padLeft 7 " " "{st.max}"} us  last {st.last} us".
 
 # ---- signing in ---------------------------------------------------------------------------
 # at most 8 wrong passwords in five minutes, for the whole house: a guesser
@@ -307,7 +357,7 @@ mirror m sid json = case Json.parse json of
     sort = localOf v "sort";
     # a new search or a new order starts at the first page
     page = (case strEq q s0.q and strEq sort s0.sort of True -> s0.page | False -> 0);
-    s = { s0 | q = q, sort = sort, page = page,
+    s = { s0 | q = q, sort = sort, page = page, pane = localOf v "pane",
                d = { name = localOf v "name", loc = localOf v "loc", sub = localOf v "sub", desc = localOf v "desc", tags = localOf v "tags" } };
     resume m sid s (localOf v "tok").
 resume m sid s tok | strlen s.user > 0 or strlen tok == 0 or strEq tok s.tried = (sPut m s, Nil).
@@ -328,6 +378,7 @@ withUser sid msg m s = case msg of
   | AddMember arg -> addMember m sid s (splitBar arg)
   | Password pw -> password m sid s pw
   | ForgetDevices -> forgetDevices m sid s
+  | Admin cmd -> console m sid s cmd
   | other -> refuse m sid "no such action".
 
 signOut m sid s =
@@ -396,6 +447,159 @@ suggestJson user items =
 # the first spelling of each value, ignoring case and the empty one
 uniqueCi xs = List.reverse (List.fold (fn seen x -> (case strlen x == 0 or List.any (fn y -> strEq (lower y) (lower x)) seen of True -> seen | False -> x :: seen)) Nil xs).
 
+# ---- the console: the data, live -------------------------------------------------------------------
+# A command and what it answered go on this tab's console (the newest 40
+# lines); the input is emptied for the next one.
+
+console m sid s cmd =
+  line = S.trim cmd;
+  (m2, out) = run m s line;
+  s2 = sGet m2.sess sid;
+  con = (case strEq line "clear" of True -> Nil | False -> List.take 40 (out :: "> {line}" :: s2.con));
+  (sPut m2 { s2 | con = con }, setLocals sid [("cmd", "")] :: Nil).
+
+run m s line = case S.words line of
+    Nil -> (m, helpText)
+  | w :: r -> runW m s (lower w) (S.trim (S.dropLeft (strlen w) line)).
+runW m s w rest | strEq w "help" = (m, helpText).
+runW m s w rest | strEq w "clear" = (m, "").
+runW m s w rest | strEq w "stats" = (m, statsText m).
+runW m s w rest | strEq w "find" = (m, findText m rest).
+runW m s w rest | strEq w "show" = (m, withItem m rest showText).
+runW m s w rest | strEq w "history" = (m, historyText m (idOf rest)).
+runW m s w rest | strEq w "places" = (m, countsText (ranked (List.map (fn it -> it.loc) m.items))).
+runW m s w rest | strEq w "tags" = (m, countsText (ranked (List.concatMap (fn it -> it.tags) m.items))).
+runW m s w rest | strEq w "spots" = (m, spotsText m rest).
+runW m s w rest | strEq w "move" = moveCmd m s (splitArrow rest).
+runW m s w rest | strEq w "rename" = renameCmd m s (splitArrow rest).
+runW m s w rest | strEq w "retag" = retagCmd m s (splitArrow rest).
+runW m s w rest | strEq w "delete" = deleteCmd m s (idOf rest).
+runW m s w rest | strEq w "rebuild" = rebuildCmd m.
+runW m s w rest = (m, "unknown: {w} (try help)").
+
+helpText = S.join "\n"
+  [ "stats                       counts, the log, who is signed in"
+  , "find WORDS                  matching items, with their ids"
+  , "show ID                     an item, every field"
+  , "history ID                  every change to an item, read from the log"
+  , "places | tags               each, with how many items have it"
+  , "spots PLACE                 the spots in a place"
+  , "move ID -> PLACE [/ SPOT]   put an item somewhere else"
+  , "rename OLD -> NEW           rename a place on every item in it"
+  , "retag ID -> TAGS            replace an item's tags (comma separated)"
+  , "delete ID                   delete an item"
+  , "rebuild                     fold the log again and compare with the model"
+  , "clear                       empty this console" ].
+
+# "#12", "12" -> 12; anything else is 0, which no item has
+idOf s = num (S.trim (case S.startsWith "#" (S.trim s) of True -> S.dropLeft 1 (S.trim s) | False -> s)).
+# "a -> b" -> (a, b); no arrow: (s, "")
+splitArrow s = case S.indexOf "->" s of
+    Option.Some i -> (S.trim (S.left i s), S.trim (S.dropLeft (i + 2) s))
+  | Option.None -> (S.trim s, "").
+# "room / spot" -> (room, spot)
+splitSlash s = case S.indexOf "/" s of
+    Option.Some i -> (S.trim (S.left i s), S.trim (S.dropLeft (i + 1) s))
+  | Option.None -> (S.trim s, "").
+
+withItem m arg f = case findItem m.items (idOf arg) of
+    Option.None -> "no item {S.trim arg} (find WORDS gives ids)"
+  | Option.Some it -> f it.
+itemRow it = "#{S.padRight 4 " " "{it.id}"} {it.name}  @ {place it}".
+plural 1 one many = "1 {one}".
+plural n one many = "{n} {many}".
+
+statsText m =
+  places = List.length (List.unique (List.map (fn it -> lower it.loc) m.items));
+  tags = List.length (List.unique (List.concatMap (fn it -> it.tags) m.items));
+  S.join "\n"
+    [ "{plural (List.length m.items) "item" "items"} in {plural places "place" "places"}, {plural tags "tag" "tags"}"
+    , "{plural (List.length m.members) "member" "members"} ({S.join ", " (List.map memName m.members)}), {plural (List.length m.devices) "signed-in device" "signed-in devices"}"
+    , "signed in now: {S.join ", " (List.filter (fn u -> strlen u > 0) (List.map (fn x -> x.user) m.sess))}"
+    , "log {m.path}: {m.events} lines ({m.skipped} unreadable), next id {m.nextId}"
+    , "up since {Clock.stamp m.booted}" ].
+
+findText m words | strlen words == 0 = "find WORDS".
+findText m words =
+  hits = List.filter (matches (lower words)) m.items;
+  case hits of
+    Nil -> "nothing matches \"{words}\""
+  | _ -> S.join "\n" (List.map itemRow (List.take 25 hits) + (case List.length hits > 25 of True -> ["... and {List.length hits - 25} more"] | False -> Nil)).
+
+showText it = S.join "\n"
+  ( "#{it.id} {it.name}"
+  :: "  place  {place it}"
+  :: "  tags   {S.join ", " it.tags}"
+  :: "  added  {Clock.stamp it.created}, updated {Clock.stamp it.at} by {it.by}"
+  :: List.map (fn mv -> "  moved from {mv.from} on {Clock.stamp mv.at}") it.moves
+  + (case strlen it.desc == 0 of True -> Nil | False -> ["  notes  " + S.replace "\n" "\n         " it.desc]) ).
+
+# from the disk, not the model: every line that wrote this item, oldest first
+historyText m id = case File.lines m.path of
+    Err why -> "cannot read the log: {why}"
+  | Ok ls ->
+      evs = List.filterMap (fn l -> (case Json.parse l of
+                Ok v -> (case int "id" v == id and (strEq (txt "op" v) "item" or strEq (txt "op" v) "del") of True -> Option.Some v | False -> Option.None)
+              | Err _ -> Option.None)) ls;
+      case evs of
+        Nil -> "no item #{id} in the log"
+      | _ -> S.join "\n" (List.map histLine (List.drop (imax 0 (List.length evs - 30)) evs)).
+histLine v | strEq (txt "op" v) "del" = "{Clock.stamp (int "at" v)}  {S.padRight 8 " " (txt "by" v)} deleted".
+histLine v =
+  where = (case strlen (txt "sub" v) == 0 of True -> txt "loc" v | False -> "{txt "loc" v} / {txt "sub" v}");
+  why = (case strEq (txt "why" v) "rename" of True -> " (place renamed)" | False -> "");
+  "{Clock.stamp (int "at" v)}  {S.padRight 8 " " (txt "by" v)} {txt "name" v} @ {where}  [{S.join ", " (strs "tags" v)}]{why}".
+
+countsText kcs | List.isEmpty kcs = "none yet".
+countsText kcs = S.join "\n" (List.map (fn kc -> (case kc of (k, c) -> "{S.padLeft 5 " " "{c}"}  {k}")) kcs).
+
+spotsText m p | strlen p == 0 = "spots PLACE".
+spotsText m p =
+  here = List.filter (fn it -> strEq (lower it.loc) (lower p)) m.items;
+  case here of
+    Nil -> "no items in {p}"
+  | _ -> countsText (ranked (List.map (fn it -> (case strlen it.sub == 0 of True -> "(no spot)" | False -> it.sub)) here)).
+
+moveCmd m s (l, r) = case findItem m.items (idOf l) of
+    Option.None -> (m, "move ID -> PLACE [/ SPOT]")
+  | Option.Some it ->
+      (loc, sub) = splitSlash r;
+      (case strlen loc == 0 of
+        True -> (m, "move ID -> PLACE [/ SPOT]")
+      | False ->
+          new = { it | loc = clip 60 loc, sub = clip 60 sub };
+          (commit m (itemLine new s.user (Clock.now Unit)), "#{it.id} {it.name}: {place it} -> {place new}")).
+
+renameCmd m s (old, new) | strlen old == 0 or strlen new == 0 = (m, "rename OLD -> NEW").
+renameCmd m s (old, new) =
+  hits = List.filter (fn it -> strEq (lower it.loc) (lower old)) m.items;
+  now = Clock.now Unit;
+  case hits of
+    Nil -> (m, "no items in {old} (places lists them)")
+  | _ -> (List.fold (fn mm it -> commit mm (renameLine { it | loc = clip 60 new } s.user now)) m hits,
+          "{old} -> {new} on {plural (List.length hits) "item" "items"}").
+
+retagCmd m s (l, r) = case findItem m.items (idOf l) of
+    Option.None -> (m, "retag ID -> TAGS")
+  | Option.Some it ->
+      new = { it | tags = List.take 12 (tagsOf r) };
+      (commit m (itemLine new s.user (Clock.now Unit)), "#{it.id} {it.name}: [{S.join ", " new.tags}]").
+
+deleteCmd m s id = case findItem m.items id of
+    Option.None -> (m, "delete ID")
+  | Option.Some it -> (commit m (delLine id s.user (Clock.now Unit)), "deleted #{id} {it.name}").
+
+# the log wins: fold the disk again and compare every item
+rebuildCmd m = case File.lines m.path of
+    Err why -> (m, "cannot read the log: {why}")
+  | Ok ls ->
+      d = replayed initModel (Ok ls);
+      wrong = List.length (List.filter (fn it -> findItem m.items it.id != Option.Some it) d.items)
+            + List.length (List.filter (fn it -> findItem d.items it.id == Option.None) m.items);
+      case wrong == 0 of
+        True -> (m, "the model matches the log: {d.events} lines, {plural (List.length d.items) "item" "items"}")
+      | False -> ({ m | items = d.items, nextId = d.nextId }, "rebuilt from the log: {plural wrong "item" "items"} corrected").
+
 # ---- the household ---------------------------------------------------------------------------
 
 addMember m sid s (name0, pw) =
@@ -448,10 +652,13 @@ firsts kcs = List.map (fn kc -> (case kc of (k, c) -> k)) kcs.
 
 noView = { signed = 0, user = "", toast = "", role = "", theme = 1, editing = 0 - 1, items = Nil, total = 0, shown = 0,
            page = 0, pages = 1, first = 0, q = "", places = Nil, tags = Nil, quick = Nil, members = Nil, devices = 0, online = 0,
-           events = 0, booted = 0 }.
+           events = 0, booted = 0, con = Nil, nplaces = 0, ntags = 0, ndevices = 0, skipped = 0, pageSize = 0, keep = 0,
+           prof = noProf, mem = Nil, grows = (0, 0), harts = 0 }.
 
-# `size` items a page; a page past the end (the list shrank under it) is the last one
-project size sid m =
+# `size` items a page; a page past the end (the list shrank under it) is the last one.
+# The profile and the runtime's numbers change on every event: only a tab on
+# the admin pane gets them, so the others do not re-render for them.
+project size keep sid m =
   s = sGet m.sess sid;
   case strEq s.user "" of
     True -> { noView | toast = s.toast, role = s.role, theme = s.theme }
@@ -460,6 +667,7 @@ project size sid m =
       n = List.length hits;
       pages = imax 1 ((n + size - 1) / size);
       page = (case s.page >= pages of True -> pages - 1 | False -> s.page);
+      onAdmin = strEq s.pane "admin";
       places = firsts (ranked (List.map (fn it -> it.loc) m.items));
       tags = firsts (ranked (List.concatMap (fn it -> it.tags) m.items));
       { signed = 1, user = s.user, toast = s.toast, role = s.role, theme = s.theme, editing = s.editing,
@@ -470,7 +678,13 @@ project size sid m =
         members = List.map memName m.members,
         devices = List.length (List.filter (fn d -> strEq (devName d) s.user) m.devices),
         online = List.length (List.filter (fn x -> strlen x.user > 0) m.sess),
-        events = m.events, booted = m.booted }.
+        events = m.events, booted = m.booted, con = s.con,
+        nplaces = List.length places, ntags = List.length tags, ndevices = List.length m.devices, skipped = m.skipped,
+        pageSize = size, keep = keep,
+        prof = (case onAdmin of True -> m.prof | False -> noProf),
+        mem = (case onAdmin of True -> Sys.memInfo 0 | False -> Nil),
+        grows = (case onAdmin of True -> Sys.memStats 0 | False -> (0, 0)),
+        harts = Sys.harts Unit }.
 
 # ---- view ------------------------------------------------------------------------------------------
 # Mobile first: one column the width of a phone, capped on a desktop; buttons
@@ -479,17 +693,25 @@ project size sid m =
 # that item changes.
 
 locals = G.locals @Client { pane = "items", q = "", sort = "recent", confirm = "", name = "", loc = "", sub = "", desc = "",
-                            tags = "", user = "", pw = "", tok = "", mname = "", mpw = "", npw = "" }.
+                            tags = "", user = "", pw = "", tok = "", mname = "", mpw = "", npw = "", cmd = "" }.
 rootCls v = case v.theme == 1 of True -> "col gap-4 inv-page day" | False -> "col gap-4 inv-page".
 # the remembered device lives in a hidden input, so the page's script can fill it
 root v kids = El "div" (Cls (rootCls v) :: locals) (Inp [G.bind @Client.tok, Att "type" "hidden"] :: kids).
 
 # `keep`: how many cards this tab's writer remembers, this page's and then the
-# ones it drew most recently
-view keep sid v old = case v.signed == 0 of
+# ones it drew most recently.  The writer's cache also holds its own render
+# statistics, which the admin pane shows.
+noRender = { st = noStat, hits = 0, misses = 0, kept = 0 }.
+view keep sid v old = case old of (cardsOld, rs) ->
+  (case v.signed == 0 of
     True -> (G.render (root v [loginView v]), old)
-  | False -> (case VC.many (fn it -> "{it.id}") itemCard v.items (VC.begin "inventory-card-v1" verify old) of (cards, cc) ->
-      (G.render (root v (signedIn v cards)), VC.retain keep cc)).
+  | False ->
+      t0 = Sys.timeUs Unit;
+      (case VC.many (fn it -> "{it.id}") itemCard v.items (VC.begin "inventory-card-v1" verify cardsOld) of (cards, cc) ->
+        out = G.render (root v (signedIn v cards rs));
+        kept = VC.retain keep cc;
+        (h, mi, n) = VC.stats cc;
+        (out, (kept, { st = note rs.st (Sys.timeUs Unit - t0), hits = rs.hits + h, misses = rs.misses + mi, kept = VC.size kept })))).
 verify = Program.envOr "0" "INV_VIEW_VERIFY" == "1".
 
 btn label attrs = El "button" (Cls "btn round px-3 py-2 tall" :: attrs) [Txt label].
@@ -506,22 +728,25 @@ loginView v =
     , primary "sign in" [G.OnClick (G.wireOpen codec (Login "")) "user,pw"]
     , El "div" [Cls "warm text-sm"] [Dyn v.toast] ].
 
-signedIn v cards =
+signedIn v cards rs =
   [ header v
   , El "div" [Cls "toast ok"] [Dyn (roleText v "ok")]
   , El "div" [Cls "toast warn"] [Dyn (roleText v "warn")]
   , itemsPane v cards
-  , housePane v ].
+  , housePane v
+  , adminPane v rs ].
 roleText v role | strEq v.role role = v.toast.
 roleText v role = "".
 
+# on a phone the title takes its own line and the pane buttons go below it
 header v =
   El "div" [Cls "row center gap-2 wrap"]
-    [ El "div" [Cls "col grow min-w-0"]
+    [ El "div" [Cls "col grow min-w-0 narrow:basis-full"]
         [ El "div" [Cls "text-xs upper dim"] [Txt "home inventory"]
         , El "div" [Cls "text-2xl bold tabular"] [Dyn (things v.total)] ]
     , El "button" [Cls "btn pill px-3 py-2 tall", G.setTo @Client.pane "items", Att "data-on" "pane:items"] [Txt "items"]
-    , El "button" [Cls "btn pill px-3 py-2 tall", G.setTo @Client.pane "house", Att "data-on" "pane:house"] [Txt "household"] ].
+    , El "button" [Cls "btn pill px-3 py-2 tall", G.setTo @Client.pane "house", Att "data-on" "pane:house"] [Txt "household"]
+    , El "button" [Cls "btn pill px-3 py-2 tall", G.setTo @Client.pane "admin", Att "data-on" "pane:admin"] [Txt "admin"] ].
 things 1 = "1 thing".
 things n = "{n} things".
 
@@ -617,6 +842,45 @@ housePane v =
             , field [G.bind @Client.mpw, Att "type" "password", Att "placeholder" "their password", Att "autocomplete" "new-password"] ]
         , btn "add member" [G.OnClick (G.wireOpen codec (AddMember "")) "mname,mpw"] ]
     , El "div" [Cls "text-xs dim"] [Dyn "{v.events} changes in the log · {v.online} signed in now · up since {Clock.stamp v.booted}"] ].
+# ---- the admin pane: the numbers, the console, the profile ----------------------------------------
+
+adminPane v rs =
+  El "div" [Cls "col gap-3", G.showIf @Client.pane "admin"]
+    [ El "div" [Cls "row gap-2 wrap"]
+        [ watch "items" "{v.total}", watch "places" "{v.nplaces}", watch "tags" "{v.ntags}", watch "members" "{List.length v.members}"
+        , watch "devices" "{v.ndevices}", watch "online" "{v.online}", watch "log lines" "{v.events}", watch "since" (Clock.stamp v.booted) ]
+    , El "div" [Cls "row gap-2 center"]
+        [ Inp [Cls "field inp grow tall mono min-w-0", G.bind @Client.cmd, G.enterWith codec (Admin "") @Client.cmd, Att "data-console" "",
+               Att "placeholder" "help | find usb | move 12 -> Room 2 / desk", Att "autocapitalize" "none", Att "autocomplete" "off", Att "spellcheck" "false"]
+        , btn "run" [G.sendWith codec (Admin "") @Client.cmd, Att "data-console-run" ""] ]
+    , El "div" [Cls "mono text-sm pre show-empty card round p-3 console"] [Dyn (consoleText v.con)]
+    , El "div" [Cls "text-xs upper dim"] [Txt "profile"]
+    , El "div" [Cls "mono text-xs card round p-3 pre-x"] [Dyn (profileText v rs)]
+    , El "div" [Cls "row gap-2 center dim text-xs"] [Txt "browser round trip: ", El "span" [Att "id" "inv-rtt"] [Txt "measuring"]] ].
+consoleText Nil = "type help and press enter".
+consoleText con = S.join "\n" (List.reverse con).
+watch label v =
+  El "div" [Cls "col card round p-2 watch"] [El "div" [Cls "text-xs upper dim"] [Txt label], El "div" [Cls "tabular bold"] [Dyn v]].
+
+profileText v rs =
+  S.join "\n"
+    ( "update, per kind of event ({v.prof.nev} events since boot)"
+      :: List.map (fn e -> (case e of (k, st) -> "  {statLine k st}")) v.prof.upd
+      + ( "disk"
+       :: "  {statLine "append" v.prof.flush}"
+       :: "  boot: {v.prof.bootLines} lines folded in {v.prof.bootUs} us"
+       :: "this tab's writer"
+       :: "  {statLine "render" rs.st}"
+       :: "  card cache: {rs.hits} hits, {rs.misses} misses; {rs.kept} cards kept of at most {v.keep} ({v.pageSize} a page)"
+       :: "runtime"
+       :: memLines v.mem v.grows
+       + ("  harts {v.harts}, tabs signed in {v.online}" :: Nil))).
+memLines mem (grows, mib) = case mem of
+    arena :: free :: reqs :: waits :: direct :: frees :: denied :: inl :: x ->
+      "  arena {arena / 1024} MiB reserved, {(arena - free) / 1024} MiB in use, grown {grows} times ({mib} MiB)"
+      :: "  memory actor: {reqs} requests, {waits} waits, {direct} direct, {inl} inline, {frees} frees, {denied} denied" :: Nil
+  | x -> "  memory: not sampled" :: Nil.
+
 devicesText 1 = "this is your only signed-in device".
 devicesText n = "{n} devices signed in as you".
 
@@ -627,6 +891,11 @@ styles =
   G.Style "inv-page" [G.MaxWidth (G.Px 760), G.Width (G.Pct 100), G.Prop "margin" "0 auto", G.Prop "padding" "14px 14px 48px"] ::
   G.Style "tall" [G.MinHeight (G.Px 44)] ::
   G.Style "chip" [G.MinHeight (G.Px 34)] ::
+  G.Style "watch" [G.MinWidth (G.Px 96)] ::
+  G.Style "basis-full" [G.Basis (G.Pct 100)] ::
+  # the profile's columns line up only unwrapped: it scrolls sideways instead
+  G.Style "pre-x" [G.Prop "white-space" "pre", G.Prop "overflow-x" "auto"] ::
+  G.Style "console" [G.MinHeight (G.Px 120), G.MaxHeight (G.Vh 50), G.Prop "overflow" "auto"] ::
   G.Style "off" [G.Prop "opacity" ".35", G.Prop "pointer-events" "none"] ::
   G.Style "scroll-x" [G.Prop "overflow-x" "auto", G.Prop "padding-bottom" "4px", G.Prop "scrollbar-width" "thin"] ::
   G.Style "inp" [G.Prop "font-size" "16px"] ::   # 16px keeps iOS from zooming into an input
@@ -634,15 +903,16 @@ styles =
 sampleItem = { id = 1, name = "USB-C cable", loc = "study", sub = "top drawer", desc = "two of them", tags = ["cables"],
                created = 0, at = 0, by = "sam", moves = [{ at = 0, from = "garage" }] }.
 sampleView = { noView | signed = 1, user = "sam", toast = "sample", role = "ok", editing = 0, items = [sampleItem], total = 41, shown = 41,
-               page = 1, pages = 3, first = 20, q = "x", places = ["study"], tags = ["cables"], quick = quickTags, members = ["sam"], devices = 2 }.
-cssAll v = G.cssWith styles (El "div" Nil [root sampleView (signedIn sampleView [itemCard sampleItem, empty sampleView]), loginView sampleView]).
+               page = 1, pages = 3, first = 20, q = "x", places = ["study"], tags = ["cables"], quick = quickTags, members = ["sam"], devices = 2,
+               con = ["> help"] }.
+cssAll v = G.cssWith styles (El "div" Nil [root sampleView (signedIn sampleView [itemCard sampleItem, empty sampleView] noRender), loginView sampleView]).
 
 # The page's own script: the remembered device.  Once the client has painted,
 # the token from localStorage goes into the hidden `tok` input (so it is
 # mirrored, and the server signs this page in); afterwards whatever the server
 # puts in `tok` -- a new token at sign-in, "" at sign-out or when it no longer
 # knows the token -- is what localStorage keeps.
-script = strcat (LJ.src 0) "
+script = strcat rttScript (strcat (LJ.src 0) "
 (function () \{
   var KEY = 'inventory-device', ready = false;
   function stored() \{ try \{ return localStorage.getItem(KEY) || ''; } catch (e) \{ return ''; } }
@@ -663,6 +933,71 @@ script = strcat (LJ.src 0) "
     if (!e.target.closest || !e.target.closest('[data-pager]')) return;
     setTimeout(function () \{ var l = document.getElementById('inv-list'); if (l) l.scrollIntoView(\{ block: 'start', behavior: 'smooth' }); }, 150);
   });
+})();
+" + consoleScript).
+
+# The console behaves like a terminal: the newest output is at the bottom and in
+# view, and the arrow keys walk back through the commands this browser ran.
+consoleScript = "
+(function () \{
+  var KEY = 'inventory-console', hist = [], at = 0;
+  try \{ hist = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) \{}
+  at = hist.length;
+  function remember(c) \{
+    c = (c || '').trim();
+    if (!c) return;
+    if (hist[hist.length - 1] !== c) hist.push(c);
+    hist = hist.slice(-50); at = hist.length;
+    try \{ localStorage.setItem(KEY, JSON.stringify(hist)); } catch (e) \{}
+  }
+  function input() \{ return document.querySelector('[data-console]'); }
+  /* after the client has sent the command (its handler runs after this one):
+     the client never repaints the input that has the focus, so empty it here */
+  function ran(el) \{
+    remember(el.value);
+    setTimeout(function () \{ el.value = ''; el.dispatchEvent(new Event('input', \{ bubbles: true })); }, 0);
+  }
+  document.addEventListener('keydown', function (e) \{
+    var el = input();
+    if (!el || e.target !== el) return;
+    if (e.key === 'Enter') ran(el);
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') \{
+      if (!hist.length) return;
+      at = Math.max(0, Math.min(hist.length, at + (e.key === 'ArrowUp' ? -1 : 1)));
+      el.value = hist[at] || '';
+      el.dispatchEvent(new Event('input', \{ bubbles: true }));
+      e.preventDefault();
+    }
+  }, true);
+  document.addEventListener('click', function (e) \{
+    if (e.target.closest && e.target.closest('[data-console-run]')) \{ var el = input(); if (el) ran(el); }
+  }, true);
+  new MutationObserver(function () \{
+    var c = document.querySelector('.console');
+    if (c) c.scrollTop = c.scrollHeight;
+  }).observe(document.getElementById('lv-root'), \{ childList: true, subtree: true, characterData: true });
+})();
+".
+# pos1's: installed BEFORE the client, which opens its socket as soon as it runs.
+# From a send to the next frame that arrives, written into the admin pane's slot.
+rttScript = "
+(function () \{
+  var sent = 0, last = 0, n = 0, sum = 0, max = 0, recent = [];
+  var S = WebSocket.prototype.send;
+  WebSocket.prototype.send = function (d) \{ sent = performance.now(); return S.call(this, d); };
+  var d = Object.getOwnPropertyDescriptor(WebSocket.prototype, 'onmessage');
+  Object.defineProperty(WebSocket.prototype, 'onmessage', \{ get: d.get, set: function (f) \{
+    d.set.call(this, function (e) \{
+      if (sent) \{ last = performance.now() - sent; sent = 0; n++; sum += last; if (last > max) max = last; recent.push(last); if (recent.length > 32) recent.shift(); }
+      return f.call(this, e);
+    });
+  } });
+  setInterval(function () \{
+    var el = document.getElementById('inv-rtt');
+    if (!el || el.offsetParent === null) return;
+    var sorted = recent.slice().sort(function (a, b) \{ return a - b; });
+    el.textContent = n ? ('last ' + last.toFixed(1) + ' ms, median of the last ' + sorted.length + ' ' + sorted[sorted.length >> 1].toFixed(1) + ' ms, avg ' + (sum / n).toFixed(1) + ' ms, max ' + max.toFixed(1) + ' ms, over ' + n) : 'no round trips yet';
+  }, 500);
 })();
 ".
 
@@ -874,6 +1209,6 @@ main = case Config.load { defaults = Json.object [("port", Json.Integer 6720), (
             cfg = { address = address, port = port, title = "Home inventory", store = "{store}.kvlog", journal = False,
                     script = script, watch = Nil, rebuild = Nil, restart = Nil };
             _ = Live.serveProjected cfg { init = boot store, update = update store, subs = subs, fields = Nil, codec = codec,
-                                          project = project size, same = (fn a b -> a == b),
-                                          view = view keep, cache = VC.empty Unit, css = cssAll };
+                                          project = project size keep, same = (fn a b -> a == b),
+                                          view = view keep, cache = (VC.empty Unit, noRender), css = cssAll };
             0)).

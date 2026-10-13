@@ -22,6 +22,13 @@ The app's own settings take defaults: 20 items a page (`--page-size`) and at
 most 200 rendered cards remembered per open tab (`--cache-items`). To change
 them, add the flags to `ProgramArguments` in `cloud.cswine.inventory.plist`.
 
+## The admin pane
+
+Any member can open it: counts, a console over the data (`help` lists the
+commands: `find`, `show`, `history`, `places`, `move`, `rename`, `retag`,
+`delete`, `rebuild`, ...) and the app's profile. `rename OLD -> NEW` is the
+way to fix a misspelt room on every item in it; it is not recorded as a move.
+
 ## On the Mac mini
 
 - `~/inventory/inventory.log`: the inventory. One JSON line per change, never
