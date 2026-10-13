@@ -1,0 +1,61 @@
+unsafe base.
+# KvLog in Wire frames (std/wire): every level round-trips through a reopen,
+# dump reads it as JSON lines, a JSON log migrates by compaction, a torn tail is
+# cut off at open, and a binary log refuses a file it did not write.
+KV = use "std/kvlog".
+W = use "std/wire".
+J = use "std/json".
+F = use "std/file".
+OS = use "std/os".
+L = use "std/list".
+O = use "std/option".
+S = use "std/string".
+
+open fmt p = case KV.openWith fmt p of Ok db -> db | Err e -> error e.
+
+value : Int -> J.Value .
+value i = J.object (("name", J.Text "customer-{i % 7}") :: ("qty", J.Integer (i - 50)) :: ("price", J.Real "12.50") :: ("note", J.Null) :: ("ok", J.Boolean (i % 2 == 0)) :: ("tags", J.Sequence (J.Text "a" :: J.Text "b" :: Nil)) :: Nil).
+
+fill db = L.each (fn i -> KV.put "cart/{i % 20}" (value i) db) (L.range 1 100).
+
+kvs p = case KV.records p of Ok (recs, _) -> L.map (fn r -> case r of (_, k, v) -> (k, v)) recs | Err _ -> Nil.
+
+sizeOf p = case OS.stat p of Ok (_, n, _) -> n | Err _ -> 0 - 1.
+
+roundTrip name fmt =
+  p = "{name}.kvlog";
+  _ = F.remove p;
+  db = open fmt p;
+  _ = fill db;
+  db2 = open fmt p;
+  same = L.all (fn i -> KV.get "cart/{i}" db2 == KV.get "cart/{i}" db) (L.range 0 19);
+  print "{name}: {sizeOf p} bytes, reopened equal {same}, keys {KV.size db2}".
+
+main =
+  _ = roundTrip "lines" KV.Lines;
+  _ = roundTrip "fast" KV.Fast;
+  _ = roundTrip "compact" KV.Compact;
+  _ = roundTrip "small" KV.Small;
+  _ = print "history of cart/3 in small: {case KV.history "small.kvlog" "cart/3" of Ok h -> L.length h | Err _ -> 0 - 1} records";
+  _ = print "records of small equal records of lines (keys and values): {kvs "small.kvlog" == kvs "lines.kvlog"}";
+  _ = print "dump is JSON lines: {case KV.dump "small.kvlog" of Ok d -> L.length (S.lines d) | Err e -> 0 - 1} lines";
+  # migration: a JSON log opened asking for Compact keeps JSON until compaction rewrites it
+  m = open KV.Compact "lines.kvlog";
+  before = case F.readBytes "lines.kvlog" of Ok b -> W.isStream b | Err _ -> True;
+  _ = KV.compact Nil m;
+  after = case F.readBytes "lines.kvlog" of Ok b -> W.isStream b | Err _ -> False;
+  _ = KV.put "after" (J.Integer 1) m;
+  m2 = open KV.Lines "lines.kvlog";
+  _ = print "migration: binary before {before}, after compaction {after}, {sizeOf "lines.kvlog"} bytes, keys {KV.size m2}, cart/5 kept {KV.get "cart/5" m2 == KV.get "cart/5" (open KV.Small "small.kvlog")}";
+  # a torn tail: half a frame of garbage at the end
+  _ = F.appendText "small.kvlog" "garbage-without-a-frame";
+  t = open KV.Small "small.kvlog";
+  _ = KV.put "late" (J.Text "after the cut") t;
+  t2 = open KV.Small "small.kvlog";
+  _ = print "torn tail: cut, then late = {KV.get "late" t2}, keys {KV.size t2}";
+  # a binary log whose file is replaced by one it did not write
+  r = open KV.Compact "replaced.kvlog";
+  _ = KV.put "a" (J.Integer 1) r;
+  _ = F.remove "replaced.kvlog";
+  _ = F.writeText "replaced.kvlog" "someone else's data\n";
+  print "replaced: {case KV.tryPut "b" (J.Integer 2) r of Ok _ -> "accepted" | Err why -> why}".

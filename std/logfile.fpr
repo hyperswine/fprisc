@@ -1,0 +1,119 @@
+# std/logfile.fpr -- LogFile: an append-only file kept open by its one writer.
+#
+#   LF = use "std/logfile".
+#   sink = LF.sink "app.log" 0                       # the path, and the size the writer read
+#   case LF.ready sink of
+#       LF.Same s -> LF.write s bytes                # still the file it read: append
+#     | LF.Fresh s -> ...                            # the path now names an empty file
+#     | LF.Other s -> ...                            # ... or another non-empty one
+#     | LF.Failed s why -> ...                       # a directory, or no way to open it
+#
+# Opening a file for every append costs about 18 us; keeping it open makes an
+# append one write.  But a kept descriptor keeps writing to the file it opened
+# even after the path is removed or replaced, which would lose everything after
+# a restart.  So before each write `ready` checks that the path is still a
+# regular file of exactly the size this writer left it, and reopens it when it
+# is not -- telling the writer which case it is in, because a log whose records
+# refer to earlier ones (std/wire's Compact and Small) cannot continue a file it
+# did not write.  The descriptor is opened by the first `ready`, so a sink on a
+# path whose directory is missing exists, and its first write says why not.
+#
+# Used by std/kvlog and std/store.
+
+OS = use "os".
+F = use "file".
+
+# the path; the descriptor (-1: none); the bytes the file should hold (-1: unknown)
+Sink = Type (Sink String Int Int).
+
+sink : String -> Int -> Sink .
+sink path size = Sink path (0 - 1) size.
+
+path : Sink -> String .
+path s = case s of Sink p _ _ -> p.
+
+# what the path names now: the file this writer left (Same), a new or empty file
+# (Fresh), another non-empty file (Other) -- each with a descriptor open on it --
+# or why there is nothing to write to (Failed, with a sink that is safe to keep:
+# it never holds a descriptor that was closed)
+Ready = Type (Same Sink | Fresh Sink | Other Sink | Failed Sink String).
+
+ready : Sink -> Ready .
+ready s = case s of Sink p fd size -> (case OS.stat p of
+    Err _ -> reopenAs s 0
+  | Ok (kind, now, _) -> (case kind == 0 of
+      False -> Failed s "{p} is no longer a regular file"
+    | True -> (case now == size of
+        False -> reopenAs s now
+      | True -> (case fd >= 0 of True -> Same s | False -> openSame s now)))).
+
+openSame : Sink -> Int -> Ready .
+openSame s now = case s of Sink p _ _ -> (case OS.open p "a" of
+    Err why -> Failed s why
+  | Ok fd -> Same (Sink p fd now)).
+
+# the path names another file than the one held open: let go of the old one and
+# open what is there now
+reopenAs : Sink -> Int -> Ready .
+reopenAs s now = case s of Sink p fd _ ->
+  _ = (if fd >= 0 then (case OS.close fd of _ -> Unit) else Unit);
+  case OS.open p "a" of
+    Err why -> Failed (Sink p (0 - 1) (0 - 1)) why
+  | Ok fd2 -> (if now == 0 then Fresh (Sink p fd2 0) else Other (Sink p fd2 now)).
+
+# append all of `bytes`; on failure the size is unknown, so the next `ready`
+# looks again
+write : Sink -> String -> Result Sink String .
+write s bytes = case s of Sink p fd size -> (case writeAll fd bytes of
+    Ok _ -> Ok (Sink p fd (size + strlen bytes))
+  | Err why -> Err why).
+writeAll : unsafe Int -> String -> Result Unit String .
+writeAll fd s = case OS.write fd s of
+    Err why -> Err why
+  | Ok n -> (case n >= strlen s of True -> Ok Unit | False -> writeAll fd (substr s n (strlen s - n))).
+
+# the size is no longer known (after a failed write)
+unknown : Sink -> Sink .
+unknown s = case s of Sink p fd _ -> Sink p fd (0 - 1).
+
+close : Sink -> Sink .
+close s = case s of Sink p fd size ->
+  _ = (if fd >= 0 then (case OS.close fd of _ -> Unit) else Unit);
+  Sink p (0 - 1) size.
+
+# a whole file, written beside `path` and renamed over it: a crash leaves the old
+# file or the new one, never half
+replace : String -> String -> Result Unit String .
+replace p bytes =
+  tmp = strcat p ".compact";
+  case OS.open tmp "w" of
+    Err why -> Err why
+  | Ok fd -> replaceWith fd tmp p (writeAll fd bytes).
+replaceWith : Int -> String -> String -> Result Unit String -> Result Unit String .
+replaceWith fd tmp p wrote =
+  _ = OS.close fd;
+  case wrote of
+    Err why -> _ = OS.remove tmp; Err why
+  | Ok _ -> (case OS.rename tmp p of Err why -> _ = OS.remove tmp; Err why | Ok _ -> Ok Unit).
+
+# a sink that has just replaced its file with `size` bytes
+replaced : Sink -> Int -> Sink .
+replaced s size = case close s of Sink p _ _ -> Sink p (0 - 1) size.
+
+# keep only the first `keep` bytes of a file (a torn tail cut off before anything
+# is appended after it); nothing to do when that is the whole file
+truncate : String -> Int -> Result Unit String .
+truncate p keep = case F.readBytes p of
+    Err why -> Err why
+  | Ok bytes -> (case strlen bytes == keep of
+      True -> Ok Unit
+    | False -> replace p (substr bytes 0 keep)).
+
+# the length up to and including the last newline: a text log's tail after it
+# is torn (the process died mid-append)
+wholeLines : String -> Int .
+wholeLines bytes = lastNewline bytes (strlen bytes - 1).
+lastNewline : unsafe String -> Int -> Int .
+lastNewline s i = case i < 0 of
+    True -> 0
+  | False -> (case charAt s i == 10 of True -> i + 1 | False -> lastNewline s (i - 1)).

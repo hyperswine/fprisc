@@ -28,6 +28,8 @@ check('map', label='Map and Set: a persistent AVL tree, 100,000 keys in and half
 check('json', label='Json: parse with line and column, escapes and surrogate pairs, deterministic render, a 640 KB round trip')
 with tempfile.TemporaryDirectory(prefix='fpr-store-') as t:
     check('store', args=(str(Path(t) / 'store'),), label='Store: shard actors, pages across shards newest first, search on every shard at once, removal, a shard compacting its own file, reopening from the files')
+with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
+    check('storewire', args=(str(Path(t) / 'store'),), label='Store in Wire frames: the same contract, a reopen keeps each shard\'s format, a JSON store migrates as its shards compact, a torn shard tail cut at reopen')
 # the SAME module files from a Sol script (docs/2026-09-19-WHAT_IS_SOL.md: one vocabulary)
 p = subprocess.run([fpr, 'sol', str(ROOT / 'tests' / 'std' / 'solstd.sol')], capture_output=True, text=True, timeout=300)
 got = [l for l in p.stdout.splitlines() if not l.startswith(('[sol]', '[table]', '[jit]'))]
@@ -53,6 +55,8 @@ check('http', label='Http: client and server, headers, a 100 KB POST, 404, chunk
 check('httplimits', label='Http.serveWith limits: a 4 KB header block is 431, a 100 KB body 413, a quiet connection and a short body 408 within readMs, a bad content-length 400')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
     check('compact', cwd=t, label='KvLog.compact: the latest of every key, the journal kept whole, written beside the log and renamed over it; the store reopens the same')
+with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
+    check('kvwire', cwd=t, label='KvLog in Wire frames: Fast/Compact/Small round-trip through a reopen (null, reals, negatives), history and dump, a JSON log migrated by compaction, a torn tail cut at open, a foreign file refused')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
     check('apps', cwd=t, env={'T16_HOST': 'from-env'}, label='Decode (errors name the path), Config (defaults < file < env < args), Log, streaming File, Task (bounded, parallel)')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:

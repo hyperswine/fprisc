@@ -1,0 +1,10 @@
+lines: 11930 bytes, reopened equal True, keys 20
+fast: 8656 bytes, reopened equal True, keys 20
+compact: 5958 bytes, reopened equal True, keys 20
+small: 4830 bytes, reopened equal True, keys 20
+history of cart/3 in small: 5 records
+records of small equal records of lines (keys and values): True
+dump is JSON lines: 100 lines
+migration: binary before False, after compaction True, 1338 bytes, keys 21, cart/5 kept True
+torn tail: cut, then late = Some (Text after the cut), keys 21
+replaced: replaced.kvlog was replaced by a file this store did not write

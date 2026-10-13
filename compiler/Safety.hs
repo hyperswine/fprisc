@@ -99,6 +99,7 @@ approvedLibraries =
     "std/live.fpr",
     "std/livejs.fpr",
     "std/log.fpr",
+    "std/logfile.fpr",
     "std/ma.fpr",
     "std/map.fpr",
     "std/math.fpr",
@@ -127,6 +128,7 @@ approvedLibraries =
     "std/view.fpr",
     "std/viewcache.fpr",
     "std/wifi.fpr",
+    "std/wire.fpr",
     "std/ws.fpr"
   ]
 

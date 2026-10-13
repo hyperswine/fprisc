@@ -39,6 +39,15 @@ L = use "list".
 OS = use "os".
 S = use "string".
 Ord = use "order".
+W = use "wire".
+LF = use "logfile".
+
+# how a shard's file is written: JSON lines, or Wire frames at a level of the dial
+# (std/wire); `open` keeps what each file is and starts new ones as JSON lines,
+# `openWith fmt` starts new shards in `fmt` and compacts every shard into it
+Format = Type (Lines | Fast | Compact | Small).
+levelOf fmt = case fmt of Small -> W.Small | Compact -> W.Compact | _ -> W.Fast.
+formatOf level = case level of W.Small -> Small | W.Compact -> Compact | W.Fast -> Fast.
 
 # the front's handle, and the key function (which also fixes the element type)
 Store a = Type (Store Int (a -> Int)).
@@ -48,36 +57,40 @@ Fans = Type (FDone n | FPlanIs n parts | FShardsAre shards | FRouteIs shard).
 Sreq = Type (SPut x | SRemove k | SPage skip take | SFilter pred | SGet k | SCount).
 Sans = Type (SCountIs n | SRows rows | SOne found).
 
-Fs = Type (Fs cfg shards counts).
-# a shard's state: its entries, its file's line count, and the file's path --
-# everything that must survive a tidy is IN the tidied value (the path is built
-# inside the actor, so outside the state it would dangle after the reset)
-Sh = Type (Sh entries lines path).
+Fs = Type (Fs cfg shards counts want).
+# a shard's state: its entries, its file's record count, the format the file is
+# in and the one compaction writes, the encoder continuing it, and the file it
+# appends to -- everything that must survive a tidy is IN the tidied value (the
+# path is built inside the actor, so outside the state it would dangle after
+# the reset)
+Sh = Type (Sh entries lines fmt want enc sink).
 
 # ---- opening ------------------------------------------------------------------------
-open cfg =
+open cfg = openGo O.None cfg.
+openWith fmt cfg = openGo (O.Some fmt) cfg.
+openGo want cfg =
   _ = OS.mkdir cfg.dir;
   case OS.listDir cfg.dir of
     Err why -> Err "store: cannot read {cfg.dir}: {why}"
   | Ok names ->
       idxs = L.filterMap (fn n -> if S.startsWith "shard-" n and S.endsWith ".log" n
                                   then (case S.toInt (S.dropRight 4 (S.dropLeft 6 n)) of Ok i -> O.Some i | Err _ -> O.None) else O.None) names;
-      front = A.spawnWith (A.Dynamic 256) (fn self -> frontStart self cfg idxs);
+      front = A.spawnWith (A.Dynamic 256) (fn self -> frontStart self cfg want idxs);
       Ok (Store front cfg.key).
 
 shardPath dir idx = "{dir}/shard-{idx}.log".
 
 # every existing shard starts at once (they load in parallel), then the front
 # learns their counts and starts serving
-frontStart : unsafe Int -> { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> List Int -> Unit .
-frontStart self cfg idxs =
-  shards = L.fold (fn m idx -> M.insert idx (spawnShard cfg idx) m) (M.empty Ord.int) idxs;
+frontStart : unsafe Int -> { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> O.Option Format -> List Int -> Unit .
+frontStart self cfg want idxs =
+  shards = L.fold (fn m idx -> M.insert idx (spawnShard cfg want idx) m) (M.empty Ord.int) idxs;
   counts = L.fold (fn m idx -> (case M.get idx shards of
       O.Some sh -> M.insert idx (countOf self sh) m
     | O.None -> m)) (M.empty Ord.int) idxs;
-  front self (Fs cfg shards counts) A.tidy0.
+  front self (Fs cfg shards counts want) A.tidy0.
 
-spawnShard cfg idx = A.spawnWith (A.Dynamic 64) (fn self -> shardStart self cfg idx).
+spawnShard cfg want idx = A.spawnWith (A.Dynamic 64) (fn self -> shardStart self cfg want idx).
 
 countOf me sh =
   r = A.askSure me sh SCount;
@@ -94,18 +107,18 @@ front self st0 t0 = case A.tidy self (st0, t0) of (st, t) ->
   _ = drop m;
   front self next t.
 
-serveFront self from q st = case st of Fs cfg shards counts -> (case q of
+serveFront self from q st = case st of Fs cfg shards counts want -> (case q of
     FPut x ->
       idx = (cfg.key x) / cfg.span;
       (sh, shards2) = (case M.get idx shards of
           O.Some s -> (s, shards)
-        | O.None -> s = spawnShard cfg idx; (s, M.insert idx s shards));
+        | O.None -> s = spawnShard cfg want idx; (s, M.insert idx s shards));
       r = A.askSure self sh (SPut x);
       n = (case r of SCountIs c -> c | _ -> 0);
       _ = drop r;
       counts2 = M.insert idx n counts;
       _ = A.sendSure self from (FDone (total counts2));
-      Fs cfg shards2 counts2
+      Fs cfg shards2 counts2 want
   | FRemove k ->
       idx = k / cfg.span;
       (case M.get idx shards of
@@ -116,7 +129,7 @@ serveFront self from q st = case st of Fs cfg shards counts -> (case q of
             _ = drop r;
             counts2 = M.insert idx n counts;
             _ = A.sendSure self from (FDone (total counts2));
-            Fs cfg shards counts2)
+            Fs cfg shards counts2 want)
   | FPlan skip take ->
       _ = A.sendSure self from (FPlanIs (total counts) (plan shards (L.reverse (M.entries counts)) skip take Nil));
       st
@@ -143,11 +156,13 @@ plan shards counts skip take acc = if take <= 0 then L.reverse acc
              | O.None -> plan shards rest 0 take acc))).
 
 # ---- a shard -----------------------------------------------------------------------------
-shardStart : unsafe Int -> { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> Int -> Unit .
-shardStart self cfg idx =
+shardStart : unsafe Int -> { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> O.Option Format -> Int -> Unit .
+shardStart self cfg want idx =
   path = shardPath cfg.dir idx;
-  (entries, lines) = load cfg path;
-  shard self cfg (Sh entries lines path) A.tidy0.
+  (entries, lines, fmt0, d, size) = load cfg path;
+  fmt = (if size == 0 then O.withDefault Lines want else fmt0);
+  _ = LF.truncate path size;
+  shard self cfg (Sh entries lines fmt (O.withDefault fmt want) (W.continuing (levelOf fmt) d) (LF.sink path size)) A.tidy0.
 
 shard : unsafe Int -> { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> Sh -> A.Tidy -> Unit .
 shard self cfg st0 t0 = case A.tidy self (st0, t0) of (st, t) ->
@@ -158,19 +173,10 @@ shard self cfg st0 t0 = case A.tidy self (st0, t0) of (st, t) ->
   _ = drop m;
   shard self cfg next t.
 
-serveShard cfg q st = case st of Sh entries lines path -> (case q of
-    SPut x ->
-      k = cfg.key x;
-      _ = append path (J.render (J.object (("k", J.Integer k) :: ("v", one cfg x) :: Nil)));
-      entries2 = M.insert k (keep x) entries;
-      lines2 = compactIf cfg path entries2 (lines + 1);
-      (Sh entries2 lines2 path, SCountIs (M.size entries2))
+serveShard cfg q st = case st of Sh entries lines fmt want enc sink -> (case q of
+    SPut x -> after cfg (append cfg st (cfg.key x) (O.Some x)) (M.insert (cfg.key x) (keep x) entries)
   | SRemove k ->
-      (if M.member k entries then
-         _ = append path (J.render (J.object (("k", J.Integer k) :: ("d", J.Boolean True) :: Nil)));
-         entries2 = M.remove k entries;
-         lines2 = compactIf cfg path entries2 (lines + 1);
-         (Sh entries2 lines2 path, SCountIs (M.size entries2))
+      (if M.member k entries then after cfg (append cfg st k O.None) (M.remove k entries)
        else (st, SCountIs (M.size entries)))
   | SPage skip take -> (st, SRows (L.take take (L.drop skip (newestFirst entries))))
   | SFilter pred -> (st, SRows (M.fold (fn acc k v -> if pred v then v :: acc else acc) Nil entries))
@@ -186,27 +192,70 @@ unone cfg v = case cfg.codec.dec (WList (J.toWire v :: Nil)) of
     Ok (x :: Nil) -> O.Some x
   | _ -> O.None.
 
-append path line = case F.appendText path (strcat line "\n") of
-    Ok _ -> Unit
-  | Err why -> error "store: cannot append to {path}: {why}".
+# the shard after a record was appended: its new entries, one more record, and
+# its file compacted if superseded records now outnumber the live ones
+after cfg st2 entries2 = case st2 of Sh _ lines fmt want enc sink ->
+  (compactIf cfg (Sh entries2 (lines + 1) fmt want enc sink), SCountIs (M.size entries2)).
 
-# THIS shard's file only: rewritten with its live entries when superseded
-# lines outnumber them, so no compaction ever waits on the rest of the store
-compactIf cfg path entries lines =
-  live = M.size entries;
-  if lines <= 2 * live + 32 then lines
-  else
-    text = strJoin "" (L.map (fn kv -> (case kv of (k, v) -> strcat (J.render (J.object (("k", J.Integer k) :: ("v", one cfg v) :: Nil))) "\n")) (M.entries entries));
-    tmp = strcat path ".compact";
-    (case F.writeText tmp text of
-        Err why -> lines
-      | Ok _ -> (case OS.rename tmp path of Ok _ -> live | Err why -> lines)).
+# append one record -- a put (Some x) or a removal (None) -- to the shard's file,
+# kept open (std/logfile); a write that cannot happen stops the program, as the
+# per-put append did
+append cfg st k mx = case st of Sh entries lines fmt want enc sink -> appendReady cfg st k mx (LF.ready sink).
+appendReady cfg st k mx r = case st of Sh entries lines fmt want enc sink -> (case r of
+    LF.Same s -> appendTo cfg (Sh entries lines fmt want enc s) k mx
+  | LF.Failed s why -> error "store: cannot append to {LF.path s}: {why}"
+  | LF.Fresh s -> (case fmt of
+      Lines -> appendTo cfg (Sh entries lines fmt want enc s) k mx
+    | _ -> (case LF.write s (W.header (levelOf fmt)) of
+        Err why -> error "store: cannot append to {LF.path s}: {why}"
+      | Ok s2 -> appendTo cfg (Sh entries lines fmt want (W.encoder (levelOf fmt)) s2) k mx))
+  | LF.Other s -> (case fmt of
+      Lines -> appendTo cfg (Sh entries lines fmt want enc s) k mx
+    | _ -> error "store: {LF.path s} was replaced by a file this store did not write")).
+appendTo cfg st k mx = case st of Sh entries lines fmt want enc sink -> (case encodeRec cfg fmt enc k mx of
+  (bytes, enc2) -> (case LF.write sink bytes of
+      Err why -> error "store: cannot append to {LF.path sink}: {why}"
+    | Ok s2 -> Sh entries lines fmt want enc2 s2)).
 
-# a shard's file, replayed: the last line of each key wins; a torn last line
-# (the process died mid-append) does not parse and is skipped
-load cfg path = case F.lines path of
-    Err _ -> (M.empty Ord.int, 0)
-  | Ok ls -> (L.fold (fn m l -> loadLine cfg m l) (M.empty Ord.int) ls, L.length ls).
+# a record in a format: JSON lines {"k": key, "v": element} or {"k": key, "d": true};
+# a frame holds the key and, for a put, the element's Wire
+encodeRec cfg fmt enc k mx = case fmt of
+    Lines -> (case mx of
+        O.Some x -> (strcat (J.render (J.object (("k", J.Integer k) :: ("v", one cfg x) :: Nil))) "\n", enc)
+      | O.None -> (strcat (J.render (J.object (("k", J.Integer k) :: ("d", J.Boolean True) :: Nil))) "\n", enc))
+  | _ -> (case mx of
+        O.Some x -> (case W.putWire enc (wireOf cfg x) of (vb, enc2) -> (W.frame (strcat (W.putInt k) vb), enc2))
+      | O.None -> (W.frame (W.putInt k), enc)).
+wireOf cfg x = case cfg.codec.enc (x :: Nil) of WList (w :: Nil) -> w | w -> w.
+unwire cfg w = case cfg.codec.dec (WList (w :: Nil)) of
+    Ok (x :: Nil) -> O.Some x
+  | _ -> O.None.
+
+# THIS shard's file only: rewritten with its live entries, in the format
+# compaction writes, when superseded records outnumber them -- so no compaction
+# ever waits on the rest of the store
+compactIf cfg st = case st of Sh entries lines fmt want enc sink ->
+  (if lines <= 2 * M.size entries + 32 then st
+   else (case serialise cfg want entries of
+     (bytes, enc2) -> (case LF.replace (LF.path sink) bytes of
+         Err why -> st
+       | Ok _ -> Sh entries (M.size entries) want want enc2 (LF.replaced sink (strlen bytes))))).
+serialise cfg fmt entries = case fmt of
+    Lines -> (strJoin "" (L.map (fn kv -> (case kv of (k, v) -> (case encodeRec cfg Lines (W.encoder W.Fast) k (O.Some v) of (b, _) -> b))) (M.entries entries)), W.encoder W.Fast)
+  | _ -> serialiseFrames cfg fmt (W.encoder (levelOf fmt)) (M.entries entries) (W.header (levelOf fmt) :: Nil).
+serialiseFrames : unsafe { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> Format -> W.Enc -> List (Int, a) -> List String -> (String, W.Enc) .
+serialiseFrames cfg fmt enc kvs acc = case kvs of
+    Nil -> (strJoin "" (L.reverse acc), enc)
+  | (k, v) :: r -> (case encodeRec cfg fmt enc k (O.Some v) of (b, enc2) -> serialiseFrames cfg fmt enc2 r (b :: acc)).
+
+# a shard's file, replayed: the last record of each key wins.  Answers its
+# entries, its record count, its format, the decoder at its end, and the length
+# that could be read (a torn tail after it is cut off before anything is appended)
+load cfg path = case F.readBytes path of
+    Err _ -> (M.empty Ord.int, 0, Lines, W.decoder Unit, 0)
+  | Ok bytes -> (if W.isStream bytes then loadFrames cfg bytes else loadLines cfg bytes).
+loadLines cfg bytes = case S.lines bytes of
+  ls -> (L.fold (fn m l -> loadLine cfg m l) (M.empty Ord.int) ls, L.length ls, Lines, W.decoder Unit, LF.wholeLines bytes).
 loadLine cfg m l = case J.parse l of
     Err _ -> m
   | Ok v -> (case O.andThen J.asInt (J.field "k" v) of
@@ -215,6 +264,19 @@ loadLine cfg m l = case J.parse l of
                    else (case O.andThen (unone cfg) (J.field "v" v) of
                        O.Some x -> M.insert k x m
                      | O.None -> m))).
+loadFrames cfg bytes = case W.frames bytes of
+    Err _ -> (M.empty Ord.int, 0, Lines, W.decoder Unit, 0)
+  | Ok (W.Stream level fs bad) -> (case framesGo cfg fs (W.decoder Unit) (M.empty Ord.int) of
+      (m, d) -> (m, L.length fs, formatOf level, d, strlen bytes - bad)).
+framesGo : unsafe { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> List String -> W.Dec -> M.Map Int a -> (M.Map Int a, W.Dec) .
+framesGo cfg fs d m = case fs of
+    Nil -> (m, d)
+  | p :: r -> (case W.getInt p 0 of
+      W.Bad _ -> (m, d)
+    | W.Got k at _ -> (if at >= strlen p then framesGo cfg r d (M.remove k m)
+        else (case W.getWire d p at of
+          W.Bad _ -> (m, d)
+        | W.Got w _ d2 -> framesGo cfg r d2 (case unwire cfg w of O.Some x -> M.insert k x m | O.None -> m)))).
 
 # ---- the API: writes through the front, reads from the shards --------------------------------
 put : a -> Store a -> Int .

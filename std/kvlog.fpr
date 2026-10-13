@@ -6,16 +6,39 @@
 #       Ok db -> _ = KvLog.put "cart/42" value db; KvLog.get "cart/42" db
 #     | Err why -> ...
 #
-# Every `put` appends one line -- {"t": seconds, "k": key, "v": value} -- and
-# nothing is ever rewritten.  So the file is the whole HISTORY: opening it
-# replays it (the last value of each key wins), `history key` is every value a
-# key ever had, and `at time` is the store as it stood then.  State you can
-# replay is state you can debug, audit and migrate.
+# Every `put` appends one record -- when, key, value -- and nothing is ever
+# rewritten.  So the file is the whole HISTORY: opening it replays it (the last
+# value of each key wins), `history key` is every value a key ever had, and
+# `at time` is the store as it stood then.  State you can replay is state you
+# can debug, audit and migrate.
 #
 # One actor owns the file and the working set (the MVU rule: a single writer;
 # everyone else asks).  Values are Json.Value, so anything decodes with
-# std/decode.  A torn last line -- the process died mid-append -- fails to
-# parse and is skipped, and `open` says how many lines it skipped.
+# std/decode.
+#
+# FORMATS.  A log is JSON lines -- {"t": seconds, "k": key, "v": value}, one per
+# record, readable with any tool -- or Wire frames (std/wire) at a level of the
+# dial: `Fast` (each record stands alone), `Compact` (keys and field names
+# written once, then numbered), `Small` (every string too).  `open` keeps the
+# format a file already has and starts a new file as JSON lines; `openWith fmt`
+# starts a new file in `fmt`, and its `compact` rewrites the log in `fmt` --
+# which is how an existing log changes format.  `dump` reads either as JSON
+# lines.
+#
+# GROUP COMMIT.  The file stays open.  When the actor wakes it takes every
+# request already waiting (up to `batch`), and a run of puts is ONE write: fifty
+# writers at once cost about one append, not fifty.  A put is answered after its
+# batch is written; a get, keys, size or compact first writes the puts queued
+# before it, so it sees them.  Before each write the actor checks that the path
+# still names the file it holds open (a regular file of the size it wrote): if
+# the file was replaced it reopens it, a directory or an unreadable path fails
+# the batch, and a binary log refuses a non-empty file it did not write.
+#
+# DAMAGE.  A torn tail -- the process died mid-append -- is reported on stderr
+# when the log is opened and cut off before anything is appended after it, so a
+# later record is never glued to a broken one.  A binary log whose write fails
+# stops taking writes (the bytes on disk may end in a partial frame) until it
+# is reopened, which keeps every record that was answered.
 #
 # The log only grows until you say otherwise: `compact keepAll db` rewrites it
 # with the LATEST record of every key, and the whole history of the keys you
@@ -32,21 +55,50 @@ S = use "string".
 F = use "file".
 C = use "clock".
 A = use "actor".
+W = use "wire".
+LF = use "logfile".
+OS = use "os".
+L = use "list".
 
 KvLog = Type (KvLog Int String).
 
-Req = Type (Put key value | Get key | Keys | Size | Compact keepAll).
+# how a log is written: JSON lines, or Wire frames at a level of the dial
+Format = Type (Lines | Fast | Compact | Small).
+
+Req = Type (Put key value | Get key | Keys | Size | Rewrite keepAll).
 Rep = Type (Done | Value v | Listing ks | Count n | Failed why).
+
+# the most requests one wake takes before it answers: a bound on how long a
+# writer waits behind a stream of others, not on what is accepted
+batch : Int .
+batch = 1024.
 
 rev : unsafe List a -> List a -> List a .
 rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
 
+levelOf : Format -> W.Level .
+levelOf fmt = case fmt of Small -> W.Small | Compact -> W.Compact | _ -> W.Fast.
+formatOf : W.Level -> Format .
+formatOf level = case level of W.Small -> Small | W.Compact -> Compact | W.Fast -> Fast.
+
 # ---- reading a log file (no actor: a file is just data) -------------------------------
-# every record in order: (time, key, value); unparsable lines are counted, not fatal
-records : String -> Result (List (Int, String, J.Value), Int) String .
-records path = case F.exists path of
-    False -> Ok (Nil, 0)
-  | True -> (case F.lines path of Err why -> Err why | Ok ls -> Ok (recordsGo ls Nil 0)).
+# its records in order (time, key, value), how many lines or bytes could not be
+# read, the format it is in, the decoder at its end, and the length of the part
+# that could be read
+Loaded = Type (Loaded (List (Int, String, J.Value)) Int Format W.Dec Int).
+
+load : String -> Result Loaded String .
+load path = case F.exists path of
+    False -> Ok (Loaded Nil 0 Lines (W.decoder Unit) 0)
+  | True -> (case F.readBytes path of Err why -> Err why | Ok bytes -> loadBytes bytes).
+loadBytes : String -> Result Loaded String .
+loadBytes bytes = case W.isStream bytes of
+    True -> loadFrames bytes
+  | False -> Ok (loadLines bytes).
+
+loadLines : String -> Loaded .
+loadLines bytes = case recordsGo (S.lines bytes) Nil 0 of
+  (recs, bad) -> Loaded recs bad Lines (W.decoder Unit) (LF.wholeLines bytes).
 recordsGo : unsafe List String -> List (Int, String, J.Value) -> Int -> (List (Int, String, J.Value), Int) .
 recordsGo ls acc bad = case ls of
     Nil -> (rev acc Nil, bad)
@@ -61,6 +113,40 @@ record line = case J.parse line of
             O.Some x -> O.Some ((case J.field "t" v of O.Some (J.Integer t) -> t | _ -> 0), k, x)
           | O.None -> O.None)
       | _ -> O.None).
+
+loadFrames : String -> Result Loaded String .
+loadFrames bytes = case W.frames bytes of
+    Err why -> Err why
+  | Ok (W.Stream level fs bad) -> (case decodeAll fs (W.decoder Unit) Nil of
+      Err why -> Err why
+    | Ok (recs, d) -> Ok (Loaded recs bad (formatOf level) d (strlen bytes - bad))).
+decodeAll : unsafe List String -> W.Dec -> List (Int, String, J.Value) -> Result (List (Int, String, J.Value), W.Dec) String .
+decodeAll fs d acc = case fs of
+    Nil -> Ok (rev acc Nil, d)
+  | p :: r -> (case decodeRec d p of
+      Err why -> Err "record {listLen acc + 1}: {why}"
+    | Ok (rec, d2) -> decodeAll r d2 (rec :: acc)).
+# a record's frame: the time, the key (a name: numbered from Compact up), the value
+decodeRec : W.Dec -> String -> Result ((Int, String, J.Value), W.Dec) String .
+decodeRec d p = case W.getInt p 0 of
+    W.Bad why -> Err why
+  | W.Got t a _ -> (case W.getString d p a of
+      W.Bad why -> Err why
+    | W.Got k b d2 -> (case W.getValue d2 p b of
+        W.Bad why -> Err why
+      | W.Got v _ d3 -> Ok ((t, k, v), d3))).
+
+# every record in order: (time, key, value); what could not be read is counted
+records : String -> Result (List (Int, String, J.Value), Int) String .
+records path = case load path of
+    Err why -> Err why
+  | Ok (Loaded recs bad _ _ _) -> Ok (recs, bad).
+
+# the file as JSON lines, whatever its format: for reading, grepping, diffing
+dump : String -> Result String String .
+dump path = case records path of
+    Err why -> Err why
+  | Ok (recs, _) -> Ok (strJoin "" (L.map (fn rec -> case rec of (t, k, v) -> jsonLine t k v) recs)).
 
 # every value `key` ever had, oldest first, with when
 history : String -> String -> Result (List (Int, J.Value)) String .
@@ -82,70 +168,214 @@ replayGo time recs m = case recs of
     Nil -> m
   | (t, k, v) :: r -> (if time > 0 and t > time then m else replayGo time r (M.insert k v m)).
 
-# ---- the store -------------------------------------------------------------------------
-# replays the file, then serves it.  `skipped` lines could not be read (a torn tail).
+# ---- writing records ---------------------------------------------------------------------
+jsonLine : Int -> String -> J.Value -> String .
+jsonLine t k v = strcat (J.render (J.object (("t", J.Integer t) :: ("k", J.Text k) :: ("v", v) :: Nil))) "\n".
+
+encodeRec : Format -> W.Enc -> Int -> String -> J.Value -> (String, W.Enc) .
+encodeRec fmt e t k v = case fmt of
+    Lines -> (jsonLine t k v, e)
+  | _ -> (case W.putName e k of
+      (kb, e2) -> (case W.putValue e2 v of
+        (vb, e3) -> (W.frame (strJoin "" (W.putInt t :: kb :: vb :: Nil)), e3))).
+
+# ---- the store ---------------------------------------------------------------------------
+# the actor's state: the path; the working set; the format the file is in, and
+# the one compaction writes; the encoder continuing the file; the file it
+# appends to (std/logfile); why writes stopped ("" while they have not)
+St = Type (St String (M.Map String J.Value) Format Format W.Enc LF.Sink String).
+
+# replays the file, then serves it; a new file starts as JSON lines
 open : String -> Result KvLog String .
-open path = case records path of
+open path = openGo O.None path.
+
+# the same, starting a NEW file in `fmt`; `compact` rewrites the log in `fmt`
+openWith : Format -> String -> Result KvLog String .
+openWith fmt path = openGo (O.Some fmt) path.
+
+openGo : O.Option Format -> String -> Result KvLog String .
+openGo want path = case load path of
     Err why -> Err "{path}: {why}"
-  | Ok (recs, skipped) ->
-      m = replayGo 0 recs (M.empty S.compare);
-      _ = (if skipped > 0 then Sys.stderr "kvlog: {path}: skipped {skipped} unreadable line(s)\n" else Unit);
-      Ok (KvLog (spawn (fn self -> serveLog self path m)) path).
+  | Ok (Loaded recs bad fmt0 d size) -> (case recs of
+      Nil -> (case size == 0 of
+          True -> fresh want path
+        | False -> existing want path recs bad fmt0 d size)
+    | _ -> existing want path recs bad fmt0 d size).
 
-# the store's loop: the prelude's `serve`, except that a request from nobody
-# (a `post`: sender 0) gets no reply -- only a failure worth telling about
-serveLog : unsafe Int -> String -> M.Map String J.Value -> a .
-serveLog self path m =
-  msg = receive self;
+# a new (or empty) log: a binary one starts with its header
+fresh : O.Option Format -> String -> Result KvLog String .
+fresh want path =
+  fmt = O.withDefault Lines want;
+  case fmt of
+    Lines -> start path (M.empty S.compare) fmt fmt (W.encoder W.Fast)
+  | _ -> (case LF.replace path (W.header (levelOf fmt)) of
+      Err why -> Err "{path}: {why}"
+    | Ok _ -> startAt path (M.empty S.compare) fmt fmt (W.encoder (levelOf fmt)) W.headerSize).
+
+existing : O.Option Format -> String -> List (Int, String, J.Value) -> Int -> Format -> W.Dec -> Int -> Result KvLog String .
+existing want path recs bad fmt d size =
+  _ = (if bad > 0 then Sys.stderr "kvlog: {path}: {bad} unreadable {case fmt of Lines -> "line(s)" | _ -> "byte(s)"} at the end, cut off\n" else Unit);
+  case LF.truncate path size of
+    Err why -> Err "{path}: {why}"
+  | Ok _ -> startAt path (replayGo 0 recs (M.empty S.compare)) fmt (O.withDefault fmt want) (W.continuing (levelOf fmt) d) size.
+
+# the descriptor is opened by the first write (`ready`), as the old per-put
+# append did: a log whose directory is missing opens, and its put says why not
+start : String -> M.Map String J.Value -> Format -> Format -> W.Enc -> Result KvLog String .
+start path m fmt want e = Ok (KvLog (spawn (fn self -> serveLog self (St path m fmt want e (LF.sink path 0) ""))) path).
+# an existing file of `size` bytes this store has read: the first write opens it
+# and checks it is still that file
+startAt : String -> M.Map String J.Value -> Format -> Format -> W.Enc -> Int -> Result KvLog String .
+startAt path m fmt want e size = Ok (KvLog (spawn (fn self -> serveLog self (St path m fmt want e (LF.sink path size) ""))) path).
+
+# the loop: take what is waiting, write each run of puts once, answer
+serveLog : unsafe Int -> St -> a .
+serveLog self st =
+  first = receive self;
+  items = drain self (batch - 1) (item first :: Nil);
+  serveLog self (runBatch self st items Nil).
+
+# a request, copied out of its message (which is then let go)
+item : (Int, Req) -> (Int, Req) .
+item msg =
   (rt, q) = msg;
-  (m2, r) = step path m q;
-  _ = (if rt == 0 then (case r of Failed why -> _ = Sys.stderr "kvlog: {path}: a posted write failed: {why}\n"; Unit | _ -> Unit)
-       else _ = send rt r; Unit);
+  out = (rt, keep q);
   _ = drop msg;
-  serveLog self path m2.
+  out.
+drain : unsafe Int -> Int -> List (Int, Req) -> List (Int, Req) .
+drain self more acc = case more <= 0 of
+    True -> rev acc Nil
+  | False -> (case receiveNow self of
+      Ok m -> drain self (more - 1) (item m :: acc)
+    | Err _ -> rev acc Nil).
 
-# the store's state never holds on to a request: `keep` makes it its own
-step : String -> M.Map String J.Value -> Req -> (M.Map String J.Value, Rep) .
-step path m q = case q of
-  Put k v ->
-    (case fileAppend path (strcat (J.render (J.object (("t", J.Integer (C.now Unit)) :: ("k", J.Text k) :: ("v", v) :: Nil))) "\n") of
-      Ok _ -> (M.insert (keep k) (keep v) m, Done)
-    | Err why -> (m, Failed why))
-  | Get k -> (m, (case M.get k m of O.Some v -> Value v | O.None -> Done))
-  | Keys -> (m, Listing (M.keys m))
-  | Size -> (m, Count (M.size m))
-  | Compact keepAll -> (m, (case rewrite path keepAll of Ok dropped -> Count dropped | Err why -> Failed why)).
+runBatch : unsafe Int -> St -> List (Int, Req) -> List (Int, String, J.Value) -> St .
+runBatch self st items pending = case items of
+    Nil -> flush self st pending
+  | (rt, q) :: r -> (case q of
+      Put k v -> runBatch self st r ((rt, k, v) :: pending)
+    | _ -> runOther self (flush self st pending) rt q r).
+runOther : unsafe Int -> St -> Int -> Req -> List (Int, Req) -> St .
+runOther self st rt q r = case other st q of
+  (st2, rep) -> _ = answer self st2 rt rep; runBatch self st2 r Nil.
 
-# the log again, with only what is still worth keeping; answers how many records went
-rewrite : String -> List String -> Result Int String .
-rewrite path keepAll = case records path of
-    Err why -> Err why
-  | Ok (recs, _) ->
-      latest = lastIndex recs 0 (M.empty S.compare);
-      kept = keepGo recs 0 keepAll latest Nil;
-      tmp = strcat path ".compact";
-      (case F.writeText tmp (strJoin "" kept) of
-          Err why -> Err why
-        | Ok _ -> (case F.rename tmp path of
-              Err why -> Err why
-            | Ok _ -> Ok (countOf recs 0 - countOf kept 0))).
+answer : Int -> St -> Int -> Rep -> Unit .
+answer self st rt rep = case rt == 0 of
+    False -> _ = A.sendSure self rt rep; Unit
+  | True -> (case rep of
+      Failed why -> Sys.stderr "kvlog: {pathOf st}: a posted write failed: {why}\n"
+    | _ -> Unit).
+pathOf : St -> String .
+pathOf st = case st of St p _ _ _ _ _ _ -> p.
+
+# the requests that are not puts (the puts before them are already written)
+other : St -> Req -> (St, Rep) .
+other st q = case st of St path m fmt want e sk dead -> (case q of
+    Get k -> (st, (case M.get k m of O.Some v -> Value v | O.None -> Done))
+  | Keys -> (st, Listing (M.keys m))
+  | Size -> (st, Count (M.size m))
+  | Rewrite keepAll -> rewrite st keepAll
+  | Put _ _ -> (st, Failed "kvlog: a put reached the wrong path")).
+
+# ---- one write for a run of puts ----------------------------------------------------------
+flush : unsafe Int -> St -> List (Int, String, J.Value) -> St .
+flush self st pending = case pending of
+    Nil -> st
+  | _ -> written self st (rev pending Nil) (ready st).
+
+# the file at `path` is still the one this store writes -- or what to do instead
+Prep = Type (Go St | Stop St String).
+ready : St -> Prep .
+ready st = case st of St path m fmt want e sk dead -> (case dead == "" of
+    False -> Stop st dead
+  | True -> readyAs st (LF.ready sk)).
+readyAs : St -> LF.Ready -> Prep .
+readyAs st r = case st of St path m fmt want e sk dead -> (case r of
+    LF.Same s -> Go (St path m fmt want e s dead)
+  | LF.Failed s why -> Stop (St path m fmt want e s dead) why
+  | LF.Fresh s -> (case fmt of
+      Lines -> Go (St path m fmt want e s dead)
+    | _ -> freshHeader (St path m fmt want e s dead) s)
+  | LF.Other s -> (case fmt of
+      Lines -> Go (St path m fmt want e s dead)
+    | _ -> Stop (St path m fmt want e (LF.unknown (LF.close s)) dead) "{path} was replaced by a file this store did not write")).
+# the path names a new, empty file: a binary log starts it with a header and a
+# fresh numbering (the old file's numbers mean nothing in it)
+freshHeader : St -> LF.Sink -> Prep .
+freshHeader st s = case st of St path m fmt want e _ dead -> (case LF.write s (W.header (levelOf fmt)) of
+    Err why -> Stop (St path m fmt want e (LF.unknown s) dead) why
+  | Ok s2 -> Go (St path m fmt want (W.encoder (levelOf fmt)) s2 dead)).
+
+written : unsafe Int -> St -> List (Int, String, J.Value) -> Prep -> St .
+written self st items r = case r of
+    Stop st2 why -> failAll self st2 items why
+  | Go st2 -> (case st2 of St path m fmt want e sk dead ->
+      (case encodeAll fmt e (C.now Unit) items Nil of
+        (pieces, e2) -> wrote self st2 items e2 (strJoin "" pieces))).
+encodeAll : unsafe Format -> W.Enc -> Int -> List (Int, String, J.Value) -> List String -> (List String, W.Enc) .
+encodeAll fmt e t items acc = case items of
+    Nil -> (rev acc Nil, e)
+  | (_, k, v) :: r -> (case encodeRec fmt e t k v of (b, e2) -> encodeAll fmt e2 t r (b :: acc)).
+
+wrote : unsafe Int -> St -> List (Int, String, J.Value) -> W.Enc -> String -> St .
+wrote self st items e2 bytes = case st of St path m fmt want e sk dead -> (case LF.write sk bytes of
+    Ok sk2 -> answerAll self (St path (insertAll items m) fmt want e2 sk2 dead) items Done
+  | Err why -> failAll self (St path m fmt want e (LF.unknown sk) (case fmt of
+      Lines -> dead
+    | _ -> "kvlog: an earlier write failed ({why}); reopen the store to recover what was answered")) items why).
+
+insertAll : unsafe List (Int, String, J.Value) -> M.Map String J.Value -> M.Map String J.Value .
+insertAll items m = case items of
+    Nil -> m
+  | (_, k, v) :: r -> insertAll r (M.insert k v m).
+
+answerAll : unsafe Int -> St -> List (Int, String, J.Value) -> Rep -> St .
+answerAll self st items rep = case items of
+    Nil -> st
+  | (rt, _, _) :: r -> _ = answer self st rt rep; answerAll self st r rep.
+failAll : unsafe Int -> St -> List (Int, String, J.Value) -> String -> St .
+failAll self st items why = answerAll self st items (Failed why).
+
+# ---- compaction ----------------------------------------------------------------------------
+# rewrite the log, in the format compaction writes, keeping the latest record of
+# every key and every record of the keys in keepAll; answers how many went
+rewrite : St -> List String -> (St, Rep) .
+rewrite st keepAll = case st of St path m fmt want e sk dead -> (case records path of
+    Err why -> (st, Failed why)
+  | Ok (recs, _) -> rewriteWith st recs (keepGo recs 0 keepAll (lastIndex recs 0 (M.empty S.compare)) Nil)).
+rewriteWith : St -> List (Int, String, J.Value) -> List (Int, String, J.Value) -> (St, Rep) .
+rewriteWith st recs kept = case st of St path m fmt want e sk dead ->
+  (case serialise want kept of
+    (bytes, e2) -> (case LF.replace path bytes of
+      Err why -> (st, Failed why)
+    | Ok _ -> (St path m want want e2 (LF.replaced sk (strlen bytes)) dead, Count (listLen recs - listLen kept)))).
+
+# a whole log in `fmt`
+serialise : Format -> List (Int, String, J.Value) -> (String, W.Enc) .
+serialise fmt recs = case fmt of
+    Lines -> (strJoin "" (L.map (fn rec -> case rec of (t, k, v) -> jsonLine t k v) recs), W.encoder W.Fast)
+  | _ -> (case serialiseGo fmt (W.encoder (levelOf fmt)) recs Nil of
+      (pieces, e) -> (strcat (W.header (levelOf fmt)) (strJoin "" pieces), e)).
+serialiseGo : unsafe Format -> W.Enc -> List (Int, String, J.Value) -> List String -> (List String, W.Enc) .
+serialiseGo fmt e recs acc = case recs of
+    Nil -> (rev acc Nil, e)
+  | (t, k, v) :: r -> (case encodeRec fmt e t k v of (b, e2) -> serialiseGo fmt e2 r (b :: acc)).
 
 # key -> the position of its last record
 lastIndex : unsafe List (Int, String, J.Value) -> Int -> M.Map String Int -> M.Map String Int .
 lastIndex recs i m = case recs of Nil -> m | (_, k, _) :: r -> lastIndex r (i + 1) (M.insert k i m).
 
-# the lines to keep, in their original order
-keepGo : unsafe List (Int, String, J.Value) -> Int -> List String -> M.Map String Int -> List String -> List String .
+# the records to keep, in their original order
+keepGo : unsafe List (Int, String, J.Value) -> Int -> List String -> M.Map String Int -> List (Int, String, J.Value) -> List (Int, String, J.Value) .
 keepGo recs i keepAll latest acc = case recs of
     Nil -> rev acc Nil
   | (t, k, v) :: r -> (if isIn k keepAll or M.get k latest == O.Some i
-      then keepGo r (i + 1) keepAll latest (strcat (J.render (J.object (("t", J.Integer t) :: ("k", J.Text k) :: ("v", v) :: Nil))) "\n" :: acc)
+      then keepGo r (i + 1) keepAll latest ((t, k, v) :: acc)
       else keepGo r (i + 1) keepAll latest acc).
 isIn : unsafe String -> List String -> Bool .
 isIn k ks = case ks of Nil -> False | x :: r -> (if x == k then True else isIn k r).
-countOf : unsafe List a -> Int -> Int .
-countOf xs n = case xs of Nil -> n | _ :: r -> countOf r (n + 1).
 
+# ---- asking the store ----------------------------------------------------------------------
 # A reply is a MESSAGE: it is dropped once read (or it pins the store's slab for
 # as long as the caller lives), and what is taken out of it to keep is `keep`-copied.
 # Compatibility convenience: a failed append stops the caller instead of claiming
@@ -199,7 +429,7 @@ size db = case db of KvLog a _ ->
 # keys in `keepAll`; answers how many records were dropped
 compact : List String -> KvLog -> Result Int String .
 compact keepAll db = case db of KvLog a _ ->
-  r = A.askSure (myself 0) a (Compact keepAll);
+  r = A.askSure (myself 0) a (Rewrite keepAll);
   out = (case r of Count n -> Ok n | Failed why -> Err (keep why) | _ -> Err "compact: no answer");
   _ = drop r;
   out.

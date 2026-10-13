@@ -1,0 +1,6 @@
+compact store: count 34, page 0/5 35,34,33,32,31 of 34, shard-1 binary True
+reopened with open (keeps the format): count 34, get 17 Some item 17 first, get 20 False
+json store: shard-0 binary False
+after rewrites under Small: shard-0 binary True, get 4 Some item 4 v8
+reopened: count 9, get 4 Some item 4 v8
+torn shard tail: count 34, get 33 Some after the tear, get 31 Some item 31 first

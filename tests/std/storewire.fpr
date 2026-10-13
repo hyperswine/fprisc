@@ -1,0 +1,51 @@
+# the store in Wire frames: the same contract as tests/std/store.fpr, a reopen
+# keeps each shard's format, a JSON store migrates as its shards compact, and a
+# torn shard tail is cut at reopen
+unsafe base.
+Store = use "std/store".
+List = use "std/list".
+String = use "std/string".
+Option = use "std/option".
+Program = use "std/program".
+File = use "std/file".
+W = use "std/wire".
+
+Item = {id : Int, text : String}.
+Items = {items : List Item}.
+
+cfgFor dir = {dir = dir, span = 10, key = (fn i -> i.id), codec = @Items.items}.
+ids rows = String.join "," (List.map (fn i -> str i.id) rows).
+binary path = case File.readBytes path of Ok b -> W.isStream b | Err _ -> False.
+
+fill : unsafe Int -> Int -> String -> Store.Store Item -> Unit .
+fill i n tag s = case i > n of
+    True -> Unit
+  | False -> _ = Store.put {id = i, text = "item {i} {tag}"} s; fill (i + 1) n tag s.
+
+openOr fmt dir = case Store.openWith fmt (cfgFor dir) of Ok x -> x | Err why -> Program.fail 1 why.
+
+main =
+  dir = case Program.args Unit of d :: _ -> d | Nil -> "/tmp/storewire-test";
+  s = openOr Store.Compact dir;
+  _ = fill 1 35 "first" s;
+  _ = Store.remove 20 s;
+  (p1, n1) = Store.page 0 5 s;
+  _ = print "compact store: count {Store.count s}, page 0/5 {ids p1} of {n1}, shard-1 binary {binary "{dir}/shard-1.log"}";
+  r = (case Store.open (cfgFor dir) of Ok x -> x | Err why -> Program.fail 1 why);
+  _ = print "reopened with open (keeps the format): count {Store.count r}, get 17 {Option.map (fn i -> i.text) (Store.get 17 r)}, get 20 {Option.isSome (Store.get 20 r)}";
+  # a JSON store migrating: shard 0 compacts after enough superseded records
+  jdir = "{dir}-json";
+  j = (case Store.open (cfgFor jdir) of Ok x -> x | Err why -> Program.fail 1 why);
+  _ = fill 1 9 "v1" j;
+  _ = print "json store: shard-0 binary {binary "{jdir}/shard-0.log"}";
+  m = openOr Store.Small jdir;
+  _ = List.each (fn k -> fill 1 9 "v{k}" m) (List.range 2 8);
+  _ = print "after rewrites under Small: shard-0 binary {binary "{jdir}/shard-0.log"}, get 4 {Option.map (fn i -> i.text) (Store.get 4 m)}";
+  m2 = (case Store.open (cfgFor jdir) of Ok x -> x | Err why -> Program.fail 1 why);
+  _ = print "reopened: count {Store.count m2}, get 4 {Option.map (fn i -> i.text) (Store.get 4 m2)}";
+  # a torn tail on a binary shard
+  _ = File.appendText "{dir}/shard-3.log" "torn";
+  t = (case Store.open (cfgFor dir) of Ok x -> x | Err why -> Program.fail 1 why);
+  _ = Store.put {id = 33, text = "after the tear"} t;
+  t2 = (case Store.open (cfgFor dir) of Ok x -> x | Err why -> Program.fail 1 why);
+  print "torn shard tail: count {Store.count t2}, get 33 {Option.map (fn i -> i.text) (Store.get 33 t2)}, get 31 {Option.map (fn i -> i.text) (Store.get 31 t2)}".
