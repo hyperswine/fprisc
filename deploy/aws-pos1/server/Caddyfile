@@ -1,0 +1,22 @@
+# TLS ends here (Let's Encrypt, automatic); pos1 listens on loopback.
+{
+	admin 127.0.0.1:2019
+	# HTTP metrics on the admin endpoint (scraped by Alloy)
+	metrics
+}
+
+{$POS1_HOSTS} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		-Server
+	}
+	# the page at / and the registers' websocket at /ws
+	reverse_proxy 127.0.0.1:6710
+	log {
+		output stderr
+		format json
+	}
+}
