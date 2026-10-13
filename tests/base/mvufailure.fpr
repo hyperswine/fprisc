@@ -1,0 +1,65 @@
+# Service refusal/death exits through Result and releases the owned worker.
+unsafe base.
+MV = use "std/mvu".
+AC = use "std/actor".
+Sys.alive : Int -> Bool .
+check yes why = if yes then Unit else error "mvufailure: {why}".
+init env = {mode = env.mode, port = env.port, n = 0}.
+update me env ev m = case ev of
+    MV.ETick -> ({m | n = m.n + 1}, MV.MQuit :: Nil)
+  | other -> (m, Nil).
+subs m = case m.mode of
+    3 -> MV.SKeys :: Nil
+  | 4 -> MV.SPort m.port :: Nil
+  | 5 -> MV.SEvents m.port :: Nil
+  | 7 -> MV.STick 1 :: Nil
+  | other -> Nil.
+key m = 0.
+statics vp m = 0.
+vals self env vp m = if env.mode == 6 then _ = kill self; 0 else 0.
+done m = "done".
+backend mode me =
+  message = receive me;
+  (from, q) = keep message;
+  _ = drop message;
+  case q of
+      MV.Dims u -> if mode == 1 then Unit else _ = AC.sendSure me from (80, 24); backend mode me
+    | MV.Render st vs sc fr -> if mode == 2 then Unit else _ = AC.sendSure me from (0, 0); backend mode me
+    | MV.Poll u -> if mode == 3 then Unit else _ = AC.sendSure me from (0, 0, 0); backend mode me.
+runCase me render input port mode =
+  cfg = {env = {mode = mode, port = port}, mt = 0, tick = 10000, input = input, render = render};
+  app = MV.MApp init update key statics vals done subs;
+  MV.runResult me cfg app.
+refused why result = case result of Err text -> text == why | other -> False.
+ended me = a = spawn (fn self -> Unit); _ = Sys.sleepUs 20000; a.
+full self = _ = Sys.sleepUs 2000000; Unit.
+fill who n = if n == 0 then Unit else _ = send who n; fill who (n - 1).
+main =
+  me = myself 0;
+  dead = ended me;
+  _ = check (refused "dead actor" (MV.svcCallRes me dead (MV.Dims 0))) "already dead service";
+  rd1 = spawn (backend 1);
+  _ = check (refused "mvu dimensions: dead actor" (runCase me rd1 0 0 1)) "death during dimensions";
+  rd2 = spawn (backend 2);
+  _ = check (refused "mvu: render: dead actor" (runCase me rd2 0 0 2)) "death during render";
+  rd3 = spawn (backend 3);
+  _ = check (refused "mvu: input: dead actor" (runCase me rd3 rd3 0 3)) "death during input";
+  watcher = spawn (fn self -> receive self);
+  wr = spawn (backend 1);
+  cfg = {env = {mode = 1, port = 0}, mt = 0, tick = 0, input = 0, render = wr};
+  app = MV.MApp init update key statics vals done subs;
+  watched = MV.runWatched me cfg app MV.noReload (fn caller port -> Ok watcher);
+  _ = check (refused "mvu dimensions: dead actor" watched and not (Sys.alive watcher)) "owned watcher cleanup";
+  rd = spawn (backend 0);
+  _ = check (refused "mvu: message port: dead actor" (runCase me rd 0 dead 4)) "dead message port";
+  _ = check (refused "mvu: event port: dead actor" (runCase me rd 0 dead 5)) "dead typed port";
+  _ = check (refused "mvu: render worker: dead actor" (runCase me rd 0 0 6)) "render worker death";
+  stuck = AC.spawnWith (AC.Static 8) full;
+  _ = fill stuck 8;
+  _ = check (refused "mailbox full" (MV.svcCallRes me stuck (MV.Dims 0))) "service admission";
+  _ = check (refused "mvu dimensions: mailbox full" (runCase me stuck 0 0 0)) "dimensions admission";
+  _ = kill stuck;
+  result = runCase me rd 0 0 7;
+  _ = check (case result of Ok text -> strIndexOf "done [mvu:" text == 0 | other -> False) "healthy run after failures";
+  _ = kill rd;
+  print "mvufailure: admission/death/input/ports/worker Results and subsequent healthy run HOLDS".

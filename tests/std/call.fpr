@@ -69,4 +69,9 @@ main =
   b1 = spawn bare;
   x1 = AC.sendAwait me b1 (me, 41);
   x2 = AC.sendAwait me b1 (me, 0);
-  print "sendAwait: {x1} then {x2}".
+  _ = print "sendAwait: {x1} then {x2}";
+  b2 = spawn bare;
+  y1 = AC.askSureRes me b2 41;
+  y2 = AC.askSureRes me b2 0;
+  _ = if y1 == Ok 42 and y2 == Err "dead actor" then Unit else error "askSureRes: wrong outcome";
+  print "askSureRes: {y1} then {y2}".

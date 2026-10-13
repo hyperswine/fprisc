@@ -85,3 +85,14 @@ with tempfile.TemporaryDirectory(prefix='fpr-mvu-reload-') as d:
                            capture_output=True, text=True, timeout=120)
         assert p.returncode == 0 and p.stdout == 'mvuportmemory: 20000 FIFO batches bounded; received roots released\n', (harts, p.stdout, p.stderr)
     print('MVU event port: 20000 FIFO batches and released roots, one/four harts PASS')
+
+    exe = tmp / 'mvufailure'
+    p = subprocess.run([str(ROOT/'fpr'), 'build', 'tests/base/mvufailure.fpr',
+                        '--harts', '4', '-o', str(exe)], cwd=ROOT,
+                       capture_output=True, text=True, timeout=180)
+    assert p.returncode == 0, p.stdout + p.stderr
+    for harts in ('1', '4'):
+        p = subprocess.run([str(exe)], env={**os.environ, 'FPR_HARTS': harts},
+                           capture_output=True, text=True, timeout=15)
+        assert p.returncode == 0 and p.stdout == 'mvufailure: admission/death/input/ports/worker Results and subsequent healthy run HOLDS\n', (harts, p.stdout, p.stderr)
+    print('MVU service failures: request refusal, service/worker death, cleanup and subsequent run, one/four harts PASS')

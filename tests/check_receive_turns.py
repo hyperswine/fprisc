@@ -45,7 +45,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-receive-turns-') as directory:
         assert p.returncode == 0 and 'received roots released HOLDS' in p.stdout, (h, p.stdout, p.stderr)
     print('automatic receive turns: concrete MVU text protocol and root ownership PASS')
     exe, notes = build(ROOT/'tests/base/mvueventports.fpr', 'event-ports')
-    assert any('eventPortsAcc@' in line and 'automatic value-state turn regions' in line
+    assert any('eventPortsAccRes@' in line and 'automatic value-state turn regions' in line
                for line in notes.splitlines()), notes
     for h in (1, 4):
         p = run(exe, h)

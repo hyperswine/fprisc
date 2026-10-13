@@ -119,7 +119,15 @@ Ms   = Type (Ms model fr sc lastR ltt).
 
 # ---- helpers ----------------------------------------------------------------
 
-svcCall me a q = _ = send a (me, q); receiveFrom me a.
+# Existing renderer/input services use the uncorrelated (caller, request)
+# wire and send only replies to a caller. Keep that ABI, but check admission
+# and observe service death. Callers that own cleanup use the Result API.
+svcCallRes : unsafe Int -> Int -> q -> Result r String .
+svcCallRes me a q = AC.sendAwait me a (me, q).
+svcCall me a q = serviceValue "service" (svcCallRes me a q).
+serviceValue label result = case result of
+    Ok value -> value
+  | Err why -> error "mvu {label}: {why}".
 
 lenL : unsafe List a -> Int .
 lenL l = case l of Nil -> 0 | x :: r -> 1 + lenL r.
@@ -174,29 +182,27 @@ portStep me q =
   m = keep received;
   _ = drop received;
   next = case m of
-      PDrain from -> _ = send from (revK Nil q); Nil
-    | PBarrier from -> _ = AC.sendOrDie from Unit; q
+      PDrain from -> _ = AC.sendSure me from (revK Nil q); Nil
+    | PBarrier from -> _ = AC.sendSure me from Unit; q
     | _ -> m :: q;
   (True, next).
 # Per-sender FIFO barrier: return only after this sender's queued events have
 # reached the port. A render/test driver can use it before replying to a frame.
-portSync me pa =
-  _ = AC.sendOrDie pa (PBarrier me);
-  r = receiveFrom me pa;
-  _ = drop r;
-  Unit.
+portSyncRes : unsafe Int -> Int -> Result Unit String .
+portSyncRes me pa = AC.sendAwait me pa (PBarrier me).
+portSync me pa = serviceValue "port barrier" (portSyncRes me pa).
 
-# loop side: drain the subscribed port into EMsg events (Nil when
-# no port is subscribed)
+# loop side: drain the subscribed port into EMsg events.
+portEvsRes : unsafe Int -> Int -> Result (List Ev) String .
+portEvsRes me pa = if pa == 0 then Ok Nil else portAskRes me pa.
 portEvs : unsafe Int -> Int -> List Ev .
-portEvs me pa = case pa == 0 of True -> Nil | False -> portAsk me pa.
+portEvs me pa = serviceValue "port" (portEvsRes me pa).
+portAskRes : unsafe Int -> Int -> Result (List Ev) String .
+portAskRes me pa = case AC.sendAwait me pa (PDrain me) of
+    Err why -> Err "message port: {why}"
+  | Ok ms -> Ok (portConv ms Nil).
 portAsk : unsafe Int -> Int -> List Ev .
-portAsk me pa =
-  _ = send pa (PDrain me);
-  ms = receiveFrom me pa;
-  evs = portConv ms Nil;
-  _ = drop ms;
-  evs.
+portAsk me pa = serviceValue "port" (portAskRes me pa).
 portConv : unsafe List _ -> List Ev -> List Ev .
 portConv ms acc = case ms of
     Nil -> revK Nil acc
@@ -220,29 +226,34 @@ eventSub l = case l of
     Nil -> 0
   | SEvents p :: r -> p
   | s :: r -> eventSub r.
+eventEvsRes : unsafe Int -> Int -> Result (List Ev) String .
+eventEvsRes me pa = if pa == 0 then Ok Nil else eventAskRes me pa.
 eventEvs : unsafe Int -> Int -> List Ev .
-eventEvs me pa = case pa == 0 of
-    True -> Nil
-  | False -> eventAsk me pa.
-# Drain each subscribed typed port once, preserving subscription order.
+eventEvs me pa = serviceValue "event port" (eventEvsRes me pa).
+# Drain each subscribed typed port once, preserving subscription/FIFO order.
 eventPorts : unsafe Int -> List Sub -> List Int -> List Ev .
-eventPorts me ss seen = eventPortsAcc me ss seen Nil.
+eventPorts me ss seen = serviceValue "event ports" (eventPortsRes me ss seen).
+eventPortsRes : unsafe Int -> List Sub -> List Int -> Result (List Ev) String .
+eventPortsRes me ss seen = eventPortsAccRes me ss seen Nil.
 eventPortsAcc : unsafe Int -> List Sub -> List Int -> List Ev -> List Ev .
-eventPortsAcc me ss seen acc = case ss of
-    Nil -> revK Nil acc
+eventPortsAcc me ss seen acc = serviceValue "event ports" (eventPortsAccRes me ss seen acc).
+eventPortsAccRes : unsafe Int -> List Sub -> List Int -> List Ev -> Result (List Ev) String .
+eventPortsAccRes me ss seen acc = case ss of
+    Nil -> Ok (revK Nil acc)
   | SEvents p :: rest -> (case hasPort p seen of
-      True -> eventPortsAcc me rest seen acc
-    | False -> eventPortsAcc me rest (p :: seen) (revK acc (eventEvs me p)))
-  | other :: rest -> eventPortsAcc me rest seen acc.
+      True -> eventPortsAccRes me rest seen acc
+    | False -> case eventEvsRes me p of
+          Err why -> Err why
+        | Ok evs -> eventPortsAccRes me rest (p :: seen) (revK acc evs))
+  | other :: rest -> eventPortsAccRes me rest seen acc.
 hasPort : unsafe Int -> List Int -> Bool .
 hasPort p seen = case seen of Nil -> False | x :: rest -> x == p or hasPort p rest.
+eventAskRes : unsafe Int -> Int -> Result (List Ev) String .
+eventAskRes me pa = case AC.sendAwait me pa (PDrain me) of
+    Err why -> Err "event port: {why}"
+  | Ok ms -> Ok (eventCopy ms).
 eventAsk : unsafe Int -> Int -> List Ev .
-eventAsk me pa =
-  _ = AC.sendOrDie pa (PDrain me);
-  ms = receiveFrom me pa;
-  evs = eventCopy ms;
-  _ = drop ms;
-  evs.
+eventAsk me pa = serviceValue "event port" (eventAskRes me pa).
 eventCopy : unsafe List Ev -> List Ev .
 eventCopy l = case l of Nil -> Nil | e :: r -> copyEv e :: eventCopy r.
 copyReload : Reload -> Reload .
@@ -273,27 +284,28 @@ ascii2code c = case c == 27 of
           | False -> 0 - c.        # negative = literal ascii
 
 drain : unsafe Int -> Int -> Int -> List Ev -> List Ev .
-drain me inp n acc = case n == 0 of
-    True -> revK Nil acc
-  | False -> drainOne me inp n acc.
-drainOne : unsafe Int -> Int -> Int -> List Ev -> List Ev .
-drainOne me inp n acc =
-  ev = svcCall me inp (Poll 0);
-  (kind, a, b) = ev;
-  _ = drop ev;                     # every received message, once read
-  drainEv me inp n acc kind a b.
+drain me inp n acc = serviceValue "input" (drainRes me inp n acc).
+drainRes : unsafe Int -> Int -> Int -> List Ev -> Result (List Ev) String .
+drainRes me inp n acc = if n == 0 then Ok (revK Nil acc) else
+  case svcCallRes me inp (Poll 0) of
+      Err why -> Err "input: {why}"
+    | Ok ev -> (kind, a, b) = ev; drainEvRes me inp n acc kind a b.
+drainOne me inp n acc = drain me inp n acc.
 drainEv : unsafe Int -> Int -> Int -> List Ev -> Int -> Int -> Int -> List Ev .
-drainEv me inp n acc kind a b = case kind == 0 of
-    True -> revK Nil acc
+drainEv me inp n acc kind a b = serviceValue "input" (drainEvRes me inp n acc kind a b).
+drainEvRes : unsafe Int -> Int -> Int -> List Ev -> Int -> Int -> Int -> Result (List Ev) String .
+drainEvRes me inp n acc kind a b = case kind == 0 of
+    True -> Ok (revK Nil acc)
   | False -> case kind == 4 of
-      True -> drainKey me inp n acc a b
+      True -> drainRes me inp (n - 1) (if b == 1 then EKey a :: acc else acc)
     | False -> case kind == 1 of
-        True -> drain me inp (n - 1) (EKey (ascii2code a) :: acc)
+        True -> drainRes me inp (n - 1) (EKey (ascii2code a) :: acc)
       | False -> case kind == 5 of
-          True -> drain me inp (n - 1) (EResize a b :: acc)
+          True -> drainRes me inp (n - 1) (EResize a b :: acc)
         | False -> case kind == 6 of
-            True -> drain me inp (n - 1) (EWheel a b :: acc)
-          | False -> drain me inp (n - 1) acc.
+            True -> drainRes me inp (n - 1) (EWheel a b :: acc)
+          | False -> drainRes me inp (n - 1) acc.
+
 drainKey : unsafe Int -> Int -> Int -> List Ev -> Int -> Int -> List Ev .
 drainKey me inp n acc a b = case b == 1 of
     True -> drain me inp (n - 1) (EKey a :: acc)
@@ -387,13 +399,16 @@ renderWorker parent render vl self =
   Unit.
 renderStep self state =
   (parent, render, vl) = state;
-  m = receiveFrom self parent;
-  Rq st model env vw vh sc fr = m;
+  case receiveFromRes self parent of
+      Err why -> (False, state)
+    | Ok m -> renderRequest self state m.
+renderRequest self state m =
+  (parent, render, vl) = state;
+  (from, id, Rq st model env vw vh sc fr) = m;
   vs = vl self env (vw, vh) model;
-  r = svcCall self render (Render st vs sc fr);
-  _ = send parent r;
-  _ = drop r;                      # forward then release OUR ref
-  _ = drop m;                      # the request root
+  result = svcCallRes self render (Render st vs sc fr);
+  _ = AC.sendSure self from (id, result);
+  _ = drop m;
   (True, state).
 
 # ---- the loop ---------------------------------------------------------------
@@ -430,12 +445,26 @@ loopM me cfg app rw vp cache ms =
   MApp ini upd sk vw vl dn sbs = app;
   ss = sbs model;
   (tickMs, keysOn, portA) = subFold ss (0, 0, 0);
-  evs0 = catEvs (catEvs (evsOf me input keysOn) (portEvs me portA)) (eventPorts me ss Nil);
+  events = collectEvents me input keysOn portA ss;
+  case events of
+      Err why -> failedLoop rw cfg cache ms why
+    | Ok evs0 -> loopEvents me cfg app rw vp cache ms t0 tickMs evs0.
+collectEvents me input keysOn portA ss =
+  case (if input == 0 or keysOn == 0 then Ok Nil else drainRes me input 16 Nil) of
+      Err why -> Err why
+    | Ok keys -> case portEvsRes me portA of
+          Err why -> Err why
+        | Ok messages -> case eventPortsRes me ss Nil of
+              Err why -> Err why
+            | Ok events -> Ok (catEvs (catEvs keys messages) events).
+loopEvents me cfg app rw vp cache ms t0 tickMs evs0 =
+  env = cfg.env;
+  Ms model fr sc lastR ltt = ms;
   (evs, ltt2) = dueTick evs0 t0 ltt tickMs;
   (env2, m2, quit, changed) = applyLiveEvs me cfg.reload env app evs (model, 0) 0;
   cache1 = liveCache cache changed;
   case quit == 1 of
-    True -> (False, (cfg, cache, Ms m2 fr sc (0, 0) ltt2, finishWorker rw app m2 fr sc lastR))
+    True -> (False, (cfg, cache, Ms m2 fr sc (0, 0) ltt2, Ok (finishWorker rw app m2 fr sc lastR)))
   | False -> frame me {cfg | env = env2} app rw vp cache1 (Ms m2 fr sc lastR ltt2) t0.
 # Force the statics build after a successful swap even when skey is unchanged.
 # This generation marker is separate from the app key (which may be any Int).
@@ -449,12 +478,20 @@ frame me cfg app rw vp cache ms t0 =
   (oldKey, oldSt, changed) = cache;
   (cache2, rebuilt) = liveEnsure app vp (oldKey, oldSt) key m2 changed;
   (k2, st2) = cache2;
-  _ = AC.sendOrDie rw (Rq st2 m2 cfg.env vw vh (sc + rebuilt) fr);
-  r = receiveFrom me rw;
-  _ = drop lastR;                  # the PREVIOUS reply's ARC entry
-  _ = tickWait mt t0 tick;
-  _ = drop r;
-  (True, (cfg, cache2, Ms m2 (fr + 1) (sc + rebuilt) (0, 0) ltt, "")).
+  result = frameReply (AC.call me rw (Rq st2 m2 cfg.env vw vh (sc + rebuilt) fr));
+  case result of
+      Err why -> failedLoop rw cfg cache2 ms why
+    | Ok r ->
+        _ = drop lastR;
+        _ = tickWait mt t0 tick;
+        (True, (cfg, cache2, Ms m2 (fr + 1) (sc + rebuilt) (0, 0) ltt, Ok "")).
+frameReply result = case result of
+    Err why -> Err "render worker: {why}"
+  | Ok reply -> case reply of Ok r -> Ok r | Err why -> Err "render: {why}".
+failedLoop rw cfg cache ms why =
+  _ = kill rw;
+  (False, (cfg, cache, ms, Err "mvu: {why}")).
+
 driverStep me app rw vp state =
   (cfg, cache, ms, result) = state;
   loopM me cfg app rw vp cache ms.
@@ -475,7 +512,8 @@ finish app m fr sc lastR =
 # run me cfg app -> the result string.  Spawns the worker, asks the
 # render service for its dimensions, initializes, delivers the first
 # EResize (the viewport is a fact the model may record), loops.
-run me cfg app = runLive me cfg app noReload.
+run me cfg app = serviceValue "run" (runResult me cfg app).
+runResult me cfg app = runLiveResult me cfg app noReload.
 
 # All drivers reclaim every frame's scratch allocations. Configuration,
 # model, cache and reload callbacks have value semantics: a Vector in this
@@ -487,8 +525,9 @@ runScoped me cfg app = run me cfg app.
 runLiveScoped me cfg app reload = runLive me cfg app reload.
 
 # reload me info env -> Result env String: a platform adapter, not app update.
-runLive me cfg app reload =
-  runWith me {env = cfg.env, mt = cfg.mt, tick = cfg.tick, input = cfg.input,
+runLive me cfg app reload = serviceValue "run" (runLiveResult me cfg app reload).
+runLiveResult me cfg app reload =
+  runWithResult me {env = cfg.env, mt = cfg.mt, tick = cfg.tick, input = cfg.input,
               render = cfg.render, reload = reload} app.
 # The runner owns the extra typed port and the watcher returned by start.
 # start me port -> Result actor String. Other app subscriptions still work.
@@ -499,10 +538,10 @@ runWatchStarted me cfg app reload port started = case started of
     Err why -> _ = kill port; Err why
   | Ok worker -> runWatchOwned me cfg app reload port worker.
 runWatchOwned me cfg app reload port worker =
-  result = runLive me cfg (withEventPort app port) reload;
+  result = runLiveResult me cfg (withEventPort app port) reload;
   _ = kill worker;
   _ = kill port;
-  Ok result.
+  result.
 withEventPort app port =
   MApp ini upd sk vw vl dn sbs = app;
   MApp ini upd sk vw vl dn (watchSubs sbs port).
@@ -511,26 +550,28 @@ catSubs : unsafe List Sub -> List Sub -> List Sub .
 catSubs xs ys = case xs of Nil -> ys | x :: rest -> x :: catSubs rest ys.
 gameWatched me cfg app reload start = runWatched me cfg (gameApp app) reload start.
 
-runWith me cfg app =
+runWith me cfg app = serviceValue "run" (runWithResult me cfg app).
+runWithResult me cfg app =
   MApp ini upd sk vw vl dn sbs = app;
-  vp = svcCall me cfg.render (Dims 0);
-  rw = AC.spawnWith (AC.Dynamic 64) (renderWorker me cfg.render vl);
-  run2 me cfg app rw vp (ini cfg.env).
-run2 me cfg app rw vp m0 =
+  case svcCallRes me cfg.render (Dims 0) of
+      Err why -> Err "mvu dimensions: {why}"
+    | Ok vp ->
+        rw = AC.spawnWith (AC.Dynamic 64) (renderWorker me cfg.render vl);
+        run2Result me cfg app rw vp (ini cfg.env).
+run2 me cfg app rw vp m0 = serviceValue "run" (run2Result me cfg app rw vp m0).
+run2Result me cfg app rw vp m0 =
   (w0, h0) = vp;
   (m1, quit) = applyEvs me cfg.env app (EResize w0 h0 :: Nil) (m0, 0);
   case quit == 1 of
-    True -> finishWorker rw app m1 0 0 (0, 0)
-  | False -> run3 me cfg app rw vp m1.
-run3 me cfg app rw vp m1 =
+    True -> Ok (finishWorker rw app m1 0 0 (0, 0))
+  | False -> run3Result me cfg app rw vp m1.
+run3 me cfg app rw vp m1 = serviceValue "run" (run3Result me cfg app rw vp m1).
+run3Result me cfg app rw vp m1 =
   MApp ini upd sk vw vl dn sbs = app;
-  # seed the cache with a throwaway build (key -1 forces a real rebuild
-  # on frame 1): keeps the statics type fully polymorphic -- a Nil seed
-  # would force every app's statics to be a List, and the GLES walker's
-  # statics is a scene value
+  # A real view value keeps statics polymorphic; -1 forces the first rebuild.
   cache = (0 - 1, vw vp m1);
   ms = Ms m1 0 0 (0, 0) (Sys.mtime Unit);
-  (finalCfg, finalCache, finalMs, result) = Sys.loop (cfg, cache, ms, "") (driverStep me app rw vp);
+  (finalCfg, finalCache, finalMs, result) = Sys.loop (cfg, cache, ms, Ok "") (driverStep me app rw vp);
   result.
 
 # ---- the elm façade: MVU.game -----------------------------------------------
@@ -569,14 +610,14 @@ trLoop me lastSc =
   trMsg me lastSc replyTo q.
 trMsg : unsafe Int -> Int -> Int -> Rv -> a .
 trMsg me lastSc replyTo q = case q of
-    Dims u -> send replyTo (80, 24) >> trLoop me lastSc
+    Dims u -> AC.sendSure me replyTo (80, 24) >> trLoop me lastSc
   | Render st vs sc fr -> trFrame me lastSc replyTo st vs sc fr
-  | Poll u -> send replyTo (0, 0, 0) >> trLoop me lastSc.
+  | Poll u -> AC.sendSure me replyTo (0, 0, 0) >> trLoop me lastSc.
 trFrame : unsafe Int -> Int -> Int -> List String -> List String -> Int -> Int -> a .
 trFrame me lastSc replyTo st vs sc fr =
   _ = trStatics st sc lastSc;
   _ = trVals vs sc fr;
-  _ = send replyTo (lenL vs, trBytes vs 0);
+  _ = AC.sendSure me replyTo (lenL vs, trBytes vs 0);
   trLoop me sc.
 trStatics : unsafe List String -> Int -> Int -> Int .
 trStatics st sc lastSc = case sc == lastSc of

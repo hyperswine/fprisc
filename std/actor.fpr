@@ -69,9 +69,14 @@ sendSure me who m = case send who m of
 
 # the prelude's `ask`, with a request that cannot be lost
 askSure : unsafe Int -> Int -> q -> r .
-askSure me a q =
-  _ = sendSure me a (me, q);
-  receiveFrom me a.
+askSure me a q = case askSureRes me a q of
+    Ok value -> value
+  | Err why -> error "askSure: {why}".
+# Compatibility wire with explicit failure for owners that must clean up.
+askSureRes : unsafe Int -> Int -> q -> Result r String .
+askSureRes me a q = case sendSure me a (me, q) of
+    False -> Err "dead actor"
+  | True -> awaitFrom me a.
 
 # ---- request / reply that ANSWERS ---------------------------------------------------
 # The prelude's `ask` sends (me, q) without looking at the answer and then waits
