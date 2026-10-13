@@ -28,6 +28,7 @@ Redeploy after changing pos1: `./deploy.sh`. If SSH times out, your IP changed: 
 
 - **Host**: node_exporter metrics as `job="integrations/node_exporter", instance="pos1"`, so Grafana Cloud's Linux integration dashboards work.
 - **Shop log as metrics**: `pos1_sales_total`, `pos1_revenue_cents_total`, `pos1_tax_cents_total` (labels `cashier`, `pay`=cash|card), `pos1_voids_total`, `pos1_restocked_units_total`. Derived from the append-only log, so pos1 itself is unchanged.
+- **Stock**: pos1 runs with `--metrics=/var/lib/pos1/pos1.prom` and rewrites that file whenever a stock or the low mark changes. Alloy's textfile collector reads it as `pos1_stock{sku, name}` and `pos1_low_stock_at`.
 - **Shop log as logs**: `{job="pos1-shop"}` with a `kind` label. `staff` lines carry PINs and are dropped before shipping.
 - **Caddy**: `caddy_http_*` request metrics. **Journald**: pos1, caddy, alloy, sshd as `{job="systemd-journal", unit=...}`.
 

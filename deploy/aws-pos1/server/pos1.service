@@ -6,12 +6,13 @@ Wants=network-online.target
 [Service]
 User=pos1
 Group=pos1
-# /var/lib/pos1: the shop log (pos1.log) and the registers' state (pos1.log.kvlog)
+# /var/lib/pos1: the shop log (pos1.log), the registers' state (pos1.log.kvlog)
+# and the stock gauges (pos1.prom, read by Alloy's textfile collector)
 StateDirectory=pos1
 StateDirectoryMode=0750
 WorkingDirectory=/var/lib/pos1
 # loopback only: Caddy is the public face
-ExecStart=/opt/pos1/pos1 --address=127.0.0.1 --port=6710 --store=/var/lib/pos1/pos1.log
+ExecStart=/opt/pos1/pos1 --address=127.0.0.1 --port=6710 --store=/var/lib/pos1/pos1.log --metrics=/var/lib/pos1/pos1.prom
 Restart=on-failure
 RestartSec=2
 LimitNOFILE=65536

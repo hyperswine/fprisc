@@ -1,6 +1,7 @@
 // Grafana Alloy for POS v1 on EC2.  Everything is collected on the box:
 //
-//   host metrics (node_exporter equivalent)          -> Grafana Cloud Prometheus
+//   host metrics (node_exporter equivalent), and pos1's
+//     stock gauges through its textfile collector     -> Grafana Cloud Prometheus
 //   the shop log /var/lib/pos1/pos1.log, as logs AND
 //     as pos1_* metrics: sales, revenue, tax, voids,
 //     restocked units.  The log is the shop (THE ONE
@@ -52,6 +53,12 @@ loki.write "cloud" {
 
 prometheus.exporter.unix "host" {
   disable_collectors = ["btrfs", "infiniband", "ipvs", "nfs", "nfsd", "xfs", "zfs", "fibrechannel", "tapestats"]
+
+  // pos1 --metrics keeps pos1_stock{sku,name} and pos1_low_stock_at in
+  // /var/lib/pos1/pos1.prom; only *.prom files in the directory are read
+  textfile {
+    directory = "/var/lib/pos1"
+  }
 }
 
 discovery.relabel "host" {

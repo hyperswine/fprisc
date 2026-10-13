@@ -369,6 +369,184 @@
     }
    },
    {
+    "type": "bargauge",
+    "title": "Stock",
+    "gridPos": {
+     "x": 0,
+     "y": 4,
+     "w": 10,
+     "h": 8
+    },
+    "description": "Units in stock per live product, from pos1's stock file. Red: sold out; orange: at or below the shop's low mark when it is 3 (the Low stock panel follows the live mark).",
+    "targets": [
+     {
+      "expr": "pos1_stock{instance=\"pos1\"}",
+      "legendFormat": "{{name}}",
+      "instant": true,
+      "refId": "A",
+      "datasource": {
+       "type": "prometheus",
+       "uid": "grafanacloud-prom"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "short",
+      "decimals": 0,
+      "min": 0,
+      "thresholds": {
+       "mode": "absolute",
+       "steps": [
+        {
+         "color": "red",
+         "value": null
+        },
+        {
+         "color": "orange",
+         "value": 1
+        },
+        {
+         "color": "green",
+         "value": 4
+        }
+       ]
+      }
+     },
+     "overrides": []
+    },
+    "options": {
+     "orientation": "horizontal",
+     "displayMode": "gradient",
+     "showUnfilled": true,
+     "valueMode": "color",
+     "namePlacement": "left",
+     "reduceOptions": {
+      "calcs": [
+       "lastNotNull"
+      ],
+      "fields": "",
+      "values": false
+     }
+    },
+    "id": 16,
+    "datasource": {
+     "type": "prometheus",
+     "uid": "grafanacloud-prom"
+    }
+   },
+   {
+    "type": "stat",
+    "title": "Low stock",
+    "gridPos": {
+     "x": 10,
+     "y": 4,
+     "w": 4,
+     "h": 8
+    },
+    "description": "Products at or below the shop's low-stock mark (lowat).",
+    "targets": [
+     {
+      "expr": "count(pos1_stock{instance=\"pos1\"} <= scalar(pos1_low_stock_at{instance=\"pos1\"})) or vector(0)",
+      "instant": true,
+      "refId": "A",
+      "datasource": {
+       "type": "prometheus",
+       "uid": "grafanacloud-prom"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "short",
+      "decimals": 0,
+      "thresholds": {
+       "mode": "absolute",
+       "steps": [
+        {
+         "color": "green",
+         "value": null
+        },
+        {
+         "color": "orange",
+         "value": 1
+        }
+       ]
+      }
+     },
+     "overrides": []
+    },
+    "options": {
+     "reduceOptions": {
+      "calcs": [
+       "lastNotNull"
+      ],
+      "fields": "",
+      "values": false
+     },
+     "colorMode": "background",
+     "graphMode": "none",
+     "textMode": "value"
+    },
+    "id": 17,
+    "datasource": {
+     "type": "prometheus",
+     "uid": "grafanacloud-prom"
+    }
+   },
+   {
+    "type": "timeseries",
+    "title": "Stock over time",
+    "gridPos": {
+     "x": 14,
+     "y": 4,
+     "w": 10,
+     "h": 8
+    },
+    "targets": [
+     {
+      "expr": "pos1_stock{instance=\"pos1\"}",
+      "legendFormat": "{{name}}",
+      "refId": "A",
+      "datasource": {
+       "type": "prometheus",
+       "uid": "grafanacloud-prom"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "short",
+      "decimals": 0,
+      "min": 0,
+      "custom": {
+       "drawStyle": "line",
+       "lineInterpolation": "stepAfter",
+       "fillOpacity": 0,
+       "lineWidth": 1,
+       "showPoints": "never"
+      }
+     },
+     "overrides": []
+    },
+    "options": {
+     "legend": {
+      "displayMode": "list",
+      "placement": "bottom",
+      "showLegend": true
+     },
+     "tooltip": {
+      "mode": "multi",
+      "sort": "desc"
+     }
+    },
+    "id": 18,
+    "datasource": {
+     "type": "prometheus",
+     "uid": "grafanacloud-prom"
+    }
+   },
+   {
     "id": 7,
     "type": "timeseries",
     "title": "Sales per hour, by payment",
@@ -378,7 +556,7 @@
     },
     "gridPos": {
      "x": 0,
-     "y": 4,
+     "y": 12,
      "w": 12,
      "h": 8
     },
@@ -432,7 +610,7 @@
     },
     "gridPos": {
      "x": 12,
-     "y": 4,
+     "y": 12,
      "w": 12,
      "h": 8
     },
@@ -486,7 +664,7 @@
     },
     "gridPos": {
      "x": 0,
-     "y": 12,
+     "y": 20,
      "w": 12,
      "h": 8
     },
@@ -539,7 +717,7 @@
     },
     "gridPos": {
      "x": 12,
-     "y": 12,
+     "y": 20,
      "w": 12,
      "h": 8
     },
@@ -592,7 +770,7 @@
     },
     "gridPos": {
      "x": 0,
-     "y": 20,
+     "y": 28,
      "w": 8,
      "h": 8
     },
@@ -645,7 +823,7 @@
     },
     "gridPos": {
      "x": 8,
-     "y": 20,
+     "y": 28,
      "w": 8,
      "h": 8
     },
@@ -698,7 +876,7 @@
     },
     "gridPos": {
      "x": 16,
-     "y": 20,
+     "y": 28,
      "w": 8,
      "h": 8
     },
@@ -751,7 +929,7 @@
     },
     "gridPos": {
      "x": 0,
-     "y": 28,
+     "y": 36,
      "w": 12,
      "h": 10
     },
@@ -783,7 +961,7 @@
     },
     "gridPos": {
      "x": 12,
-     "y": 28,
+     "y": 36,
      "w": 12,
      "h": 10
     },
