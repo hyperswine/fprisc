@@ -3143,6 +3143,7 @@ static V sched_receive_now(V me) { return a_receive_now(me); }
 static V sched_receive_from_res(V me, V from) { return a_receive_from_res(me, from); }
 V fpr_receive_res_c(V me) { return a_receive_res(me); } /* process.c's syscall wait */
 V fpr_receive_from_res_c(V me, V from) { return a_receive_from_res(me, from); }
+V fpr_receive_from_now_c(V me, V from) { return a_receive_from_now(me, from); }
 static uw sched_arc_live(void) { return fpr_arc_live_count(); }
 void fpr_plane_export(fpr_plane_actors_t *actors, fpr_plane_memory_t *memory) {
   actors->abi = FPR_PLANE_ACTORS_ABI;

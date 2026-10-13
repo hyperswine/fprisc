@@ -249,6 +249,7 @@ uw fpr_arc_live_count(void);         /* runtime.c: the arc gauge */
 int fpr_arc_movable_root(V v);       /* runtime.c: sendLinear's transfer test */
 void fpr_arc_promote_share(V v);     /* runtime.c: sendArc's promotion */
 V fpr_receive_res_c(V me);           /* actors.c: receiveRes, C-callable */
+V fpr_receive_from_now_c(V me, V from); /* selective nonblocking C wait */
 V fpr_receive_from_res_c(V me, V from); /* actors.c: receiveFromRes, C-callable (a dead sender answers Err) */
 void fpr_fuel_exhausted(void);       /* actors.c: the fuel trap */
 
