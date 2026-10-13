@@ -30,6 +30,9 @@ with tempfile.TemporaryDirectory(prefix='fpr-store-') as t:
     check('store', args=(str(Path(t) / 'store'),), label='Store: shard actors, pages across shards newest first, search on every shard at once, removal, a shard compacting its own file, reopening from the files')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
     check('storewire', args=(str(Path(t) / 'store'),), label='Store in Wire frames: the same contract, a reopen keeps each shard\'s format, a JSON store migrates as its shards compact, a torn shard tail cut at reopen')
+with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
+    for harts in ('1', '4'):
+        check('storeconc', args=(str(Path(t) / f'store{harts}'),), env={'FPR_HARTS': harts}, label=f'Store with routed writes on {harts} hart(s): fifty writers at once over forty shards, every key lands, an exact count, each writer reads its own write, a reopen agrees')
 # the SAME module files from a Sol script (docs/2026-09-19-WHAT_IS_SOL.md: one vocabulary)
 p = subprocess.run([fpr, 'sol', str(ROOT / 'tests' / 'std' / 'solstd.sol')], capture_output=True, text=True, timeout=300)
 got = [l for l in p.stdout.splitlines() if not l.startswith(('[sol]', '[table]', '[jit]'))]

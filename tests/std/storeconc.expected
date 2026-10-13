@@ -1,0 +1,2 @@
+50 writers x 200 puts, 4 removals each: count 9800 (want 9800); writers that read their own write 50/50
+reopened: count 9800; newest [50199, 50198, 50197] of 9800

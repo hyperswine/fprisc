@@ -1,0 +1,38 @@
+# the store's routed writes: fifty writers at once over forty shards -- each
+# write goes to its shard directly, a shard appends a run of them as one write,
+# and the front's counts are reported back with versions.  Every key lands,
+# the count is exact, a writer reads its own last write, and a reopen agrees.
+unsafe base.
+Store = use "std/store".
+O = use "std/option".
+Program = use "std/program".
+L = use "std/list".
+Item = {id : Int, text : String}.
+Items = {items : List Item}.
+cfgFor dir = {dir = dir, span = 256, key = (fn i -> i.id), codec = @Items.items}.
+
+writer : Store.Store Item -> Int -> Int -> Int -> Int -> Unit .
+writer s boss w n self = if n == 0 then
+    seen = O.isSome (Store.get (w * 1000 + 1) s);
+    (case send boss (if seen then 1 else 0) of _ -> Unit)
+  else
+    _ = Store.put {id = w * 1000 + n, text = "writer {w} item {n}"} s;
+    _ = (if n % 50 == 0 then Store.remove (w * 1000 + n) s else 0);
+    writer s boss w (n - 1) self.
+
+spawnAll s boss w n = if w == 0 then Unit else
+  _ = spawn (fn self -> writer s boss w n self);
+  spawnAll s boss (w - 1) n.
+
+await me k acc = if k == 0 then acc else (case receive me of v -> await me (k - 1) (acc + v)).
+
+main =
+  dir = case Program.args Unit of d :: _ -> d | Nil -> "/tmp/storeconc-test";
+  s = (case Store.open (cfgFor dir) of Ok x -> x | Err why -> Program.fail 1 why);
+  me = myself 0;
+  _ = spawnAll s me 50 200;
+  ok = await me 50 0;
+  _ = print "50 writers x 200 puts, 4 removals each: count {Store.count s} (want 9800); writers that read their own write {ok}/50";
+  r = (case Store.open (cfgFor dir) of Ok x -> x | Err why -> Program.fail 1 why);
+  (p, n) = Store.page 0 3 r;
+  print "reopened: count {Store.count r}; newest {L.map (fn i -> i.id) p} of {n}".

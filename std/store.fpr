@@ -18,12 +18,18 @@
 # small shard at a time, never the rest -- and opening starts every shard at
 # once, so the files load in parallel.
 #
-# THE FRONT.  One actor routes.  Writes go through it: it asks the shard and
-# keeps every shard's count, so a read that follows a write sees it.  Reads do
-# NOT queue behind it: it answers a read with a PLAN (which shards, and what
-# slice of each) and the reader asks those shards itself; a search asks every
-# shard at once and they scan in parallel, on as many harts as there are.  So
-# fifty tabs loading their pages are fifty actors asking shards, not a queue.
+# THE FRONT.  One actor routes; it never waits on a shard.  A WRITE asks it
+# which shard holds the key (it starts the shard if none does), goes to that
+# shard directly, and reports the shard's new count back with the shard's write
+# version -- the highest version wins, so reports arriving out of order cannot
+# roll a count back, and because the writer waits for that report a read that
+# follows its write sees it.  A shard takes every write already waiting and
+# appends a run of them as ONE write (group commit), so writes to different
+# shards run at once and writes to one shard share their appends.  A READ is
+# answered with a PLAN (which shards, and what slice of each) and the reader
+# asks those shards itself; a search asks every shard at once and they scan in
+# parallel, on as many harts as there are.  So fifty tabs loading their pages
+# are fifty actors asking shards, not a queue.
 #
 # THE CODEC is any path literal whose field is a `List a` (the compiler mints
 # enc/dec for it from the declaration): an element is written as a list of one.
@@ -52,18 +58,20 @@ formatOf level = case level of W.Small -> Small | W.Compact -> Compact | W.Fast 
 # the front's handle, and the key function (which also fixes the element type)
 Store a = Type (Store Int (a -> Int)).
 
-Freq = Type (FPut x | FRemove k | FPlan skip take | FShards | FCount | FRoute k).
-Fans = Type (FDone n | FPlanIs n parts | FShardsAre shards | FRouteIs shard).
+Freq = Type (FRouteW k | FRouteRm k | FCounted idx n ver | FPlan skip take | FShards | FCount | FRoute k).
+Fans = Type (FDone n | FPlanIs n parts | FShardsAre shards | FRouteIs shard | FRoutedTo shard idx).
 Sreq = Type (SPut x | SRemove k | SPage skip take | SFilter pred | SGet k | SCount).
-Sans = Type (SCountIs n | SRows rows | SOne found).
+Sans = Type (SCountIs n | SRows rows | SOne found | SWrote n ver).
 
-Fs = Type (Fs cfg shards counts want).
+# the front's state: the config, shard actors and their entry counts by index,
+# the write version each count was reported at, and the format new shards take
+Fs = Type (Fs cfg shards counts vers want).
 # a shard's state: its entries, its file's record count, the format the file is
-# in and the one compaction writes, the encoder continuing it, and the file it
-# appends to -- everything that must survive a tidy is IN the tidied value (the
+# in and the one compaction writes, the encoder continuing it, the file it
+# appends to, and its write version (one more for every put or removal) -- everything that must survive a tidy is IN the tidied value (the
 # path is built inside the actor, so outside the state it would dangle after
 # the reset)
-Sh = Type (Sh entries lines fmt want enc sink).
+Sh = Type (Sh entries lines fmt want enc sink ver).
 
 # ---- opening ------------------------------------------------------------------------
 open cfg = openGo O.None cfg.
@@ -88,7 +96,7 @@ frontStart self cfg want idxs =
   counts = L.fold (fn m idx -> (case M.get idx shards of
       O.Some sh -> M.insert idx (countOf self sh) m
     | O.None -> m)) (M.empty Ord.int) idxs;
-  front self (Fs cfg shards counts want) A.tidy0.
+  front self (Fs cfg shards counts (M.empty Ord.int) want) A.tidy0.
 
 spawnShard cfg want idx = A.spawnWith (A.Dynamic 64) (fn self -> shardStart self cfg want idx).
 
@@ -107,29 +115,30 @@ front self st0 t0 = case A.tidy self (st0, t0) of (st, t) ->
   _ = drop m;
   front self next t.
 
-serveFront self from q st = case st of Fs cfg shards counts want -> (case q of
-    FPut x ->
-      idx = (cfg.key x) / cfg.span;
-      (sh, shards2) = (case M.get idx shards of
-          O.Some s -> (s, shards)
-        | O.None -> s = spawnShard cfg want idx; (s, M.insert idx s shards));
-      r = A.askSure self sh (SPut x);
-      n = (case r of SCountIs c -> c | _ -> 0);
-      _ = drop r;
-      counts2 = M.insert idx n counts;
-      _ = A.sendSure self from (FDone (total counts2));
-      Fs cfg shards2 counts2 want
-  | FRemove k ->
+# The front ROUTES; it never waits on a shard.  A writer asks it which shard
+# holds a key (starting the shard if none does), writes to that shard itself,
+# and reports the shard's new count back, with the shard's write version: the
+# highest version wins, so reports that arrive out of order cannot roll a count
+# back.  The writer waits for that report's answer, so its own next read plans
+# with its write included.
+serveFront self from q st = case st of Fs cfg shards counts vers want -> (case q of
+    FRouteW k ->
       idx = k / cfg.span;
       (case M.get idx shards of
-          O.None -> _ = A.sendSure self from (FDone (total counts)); st
-        | O.Some sh ->
-            r = A.askSure self sh (SRemove k);
-            n = (case r of SCountIs c -> c | _ -> 0);
-            _ = drop r;
-            counts2 = M.insert idx n counts;
-            _ = A.sendSure self from (FDone (total counts2));
-            Fs cfg shards counts2 want)
+          O.Some sh -> _ = A.sendSure self from (FRoutedTo sh idx); st
+        | O.None -> sh = spawnShard cfg want idx;
+                    _ = A.sendSure self from (FRoutedTo sh idx);
+                    Fs cfg (M.insert idx sh shards) (M.insert idx 0 counts) vers want)
+  | FRouteRm k ->
+      idx = k / cfg.span;
+      _ = A.sendSure self from (FRoutedTo (O.withDefault 0 (M.get idx shards)) idx);
+      st
+  | FCounted idx n ver ->
+      (if ver > M.getOr 0 idx vers then
+         counts2 = M.insert idx n counts;
+         _ = A.sendSure self from (FDone (total counts2));
+         Fs cfg shards counts2 (M.insert idx ver vers) want
+       else _ = A.sendSure self from (FDone (total counts)); st)
   | FPlan skip take ->
       _ = A.sendSure self from (FPlanIs (total counts) (plan shards (L.reverse (M.entries counts)) skip take Nil));
       st
@@ -162,26 +171,70 @@ shardStart self cfg want idx =
   (entries, lines, fmt0, d, size) = load cfg path;
   fmt = (if size == 0 then O.withDefault Lines want else fmt0);
   _ = LF.truncate path size;
-  shard self cfg (Sh entries lines fmt (O.withDefault fmt want) (W.continuing (levelOf fmt) d) (LF.sink path size)) A.tidy0.
+  shard self cfg (Sh entries lines fmt (O.withDefault fmt want) (W.continuing (levelOf fmt) d) (LF.sink path size) 0) A.tidy0.
+
+# a shard's loop: take what is waiting (up to `batch`), write each run of puts
+# and removals as ONE append, then answer -- group commit, as std/kvlog does.
+# A read first sees the writes queued before it.
+batch = 1024.
 
 shard : unsafe Int -> { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> Sh -> A.Tidy -> Unit .
 shard self cfg st0 t0 = case A.tidy self (st0, t0) of (st, t) ->
-  m = receive self;
-  (from, q) = m;
-  (next, ans) = serveShard cfg q st;
-  _ = A.sendSure self from ans;
-  _ = drop m;
-  shard self cfg next t.
+  first = receive self;
+  items = drain self (batch - 1) (item first :: Nil);
+  shard self cfg (runBatch self cfg st items Nil) t.
 
-serveShard cfg q st = case st of Sh entries lines fmt want enc sink -> (case q of
-    SPut x -> after cfg (append cfg st (cfg.key x) (O.Some x)) (M.insert (cfg.key x) (keep x) entries)
-  | SRemove k ->
-      (if M.member k entries then after cfg (append cfg st k O.None) (M.remove k entries)
-       else (st, SCountIs (M.size entries)))
-  | SPage skip take -> (st, SRows (L.take take (L.drop skip (newestFirst entries))))
+# a request, copied out of its message (which is then let go)
+item msg =
+  (from, q) = msg;
+  out = (from, keep q);
+  _ = drop msg;
+  out.
+drain : unsafe Int -> Int -> List (Int, Sreq) -> List (Int, Sreq) .
+drain self more acc = case more <= 0 of
+    True -> L.reverse acc
+  | False -> (case receiveNow self of
+      Ok m -> drain self (more - 1) (item m :: acc)
+    | Err _ -> L.reverse acc).
+
+runBatch : unsafe Int -> { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> Sh -> List (Int, Sreq) -> List (Int, Sreq) -> Sh .
+runBatch self cfg st items pending = case items of
+    Nil -> flush self cfg st pending
+  | (from, q) :: r -> (case q of
+      SPut _ -> runBatch self cfg st r ((from, q) :: pending)
+    | SRemove _ -> runBatch self cfg st r ((from, q) :: pending)
+    | _ -> readThen self cfg (flush self cfg st pending) from q r).
+readThen self cfg st from q r = case serveShard cfg q st of
+  (st2, ans) -> _ = A.sendSure self from ans; runBatch self cfg st2 r Nil.
+
+# the writes of one run: applied in order, appended in one write, each writer
+# answered with the count and the version after ITS write; then, if superseded
+# records now outnumber the live ones, the file is compacted
+flush self cfg st pending = case pending of
+    Nil -> st
+  | _ -> (case applyAll cfg st (L.reverse pending) Nil Nil of
+      (st2, recs, answers) -> written self cfg (append cfg st2 recs) answers).
+written self cfg st answers =
+  _ = L.each (fn a -> (case a of (from, n, ver) -> A.sendSure self from (SWrote n ver))) answers;
+  compactIf cfg st.
+
+# each write against the entries; the records to append, in order, and the answers
+applyAll : unsafe { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> Sh -> List (Int, Sreq) -> List (Int, O.Option a) -> List (Int, Int, Int) -> (Sh, List (Int, O.Option a), List (Int, Int, Int)) .
+applyAll cfg st items recs answers = case items of
+    Nil -> (st, L.reverse recs, L.reverse answers)
+  | (from, q) :: r -> (case st of Sh entries lines fmt want enc sink ver -> (case q of
+      SPut x -> applyAll cfg (Sh (M.insert (cfg.key x) x entries) (lines + 1) fmt want enc sink (ver + 1)) r ((cfg.key x, O.Some x) :: recs) ((from, M.size (M.insert (cfg.key x) x entries), ver + 1) :: answers)
+    | SRemove k -> (if M.member k entries
+        then applyAll cfg (Sh (M.remove k entries) (lines + 1) fmt want enc sink (ver + 1)) r ((k, O.None) :: recs) ((from, M.size entries - 1, ver + 1) :: answers)
+        else applyAll cfg st r recs ((from, M.size entries, ver) :: answers))
+    | _ -> applyAll cfg st r recs answers)).
+
+serveShard cfg q st = case st of Sh entries lines fmt want enc sink ver -> (case q of
+    SPage skip take -> (st, SRows (L.take take (L.drop skip (newestFirst entries))))
   | SFilter pred -> (st, SRows (M.fold (fn acc k v -> if pred v then v :: acc else acc) Nil entries))
   | SGet k -> (st, SOne (M.get k entries))
-  | SCount -> (st, SCountIs (M.size entries))).
+  | SCount -> (st, SCountIs (M.size entries))
+  | _ -> (st, SCountIs (M.size entries))).
 
 # the entries greatest key first (an ascending fold, consing, reverses the order)
 newestFirst entries = M.fold (fn acc k v -> v :: acc) Nil entries.
@@ -192,30 +245,31 @@ unone cfg v = case cfg.codec.dec (WList (J.toWire v :: Nil)) of
     Ok (x :: Nil) -> O.Some x
   | _ -> O.None.
 
-# the shard after a record was appended: its new entries, one more record, and
-# its file compacted if superseded records now outnumber the live ones
-after cfg st2 entries2 = case st2 of Sh _ lines fmt want enc sink ->
-  (compactIf cfg (Sh entries2 (lines + 1) fmt want enc sink), SCountIs (M.size entries2)).
-
-# append one record -- a put (Some x) or a removal (None) -- to the shard's file,
-# kept open (std/logfile); a write that cannot happen stops the program, as the
-# per-put append did
-append cfg st k mx = case st of Sh entries lines fmt want enc sink -> appendReady cfg st k mx (LF.ready sink).
-appendReady cfg st k mx r = case st of Sh entries lines fmt want enc sink -> (case r of
-    LF.Same s -> appendTo cfg (Sh entries lines fmt want enc s) k mx
+# append a run of records -- puts (Some x) and removals (None) -- to the shard's
+# file, kept open (std/logfile), in ONE write; a write that cannot happen stops
+# the program, as the per-put append did
+append cfg st recs = case recs of
+    Nil -> st
+  | _ -> (case st of Sh entries lines fmt want enc sink ver -> appendReady cfg st recs (LF.ready sink)).
+appendReady cfg st recs r = case st of Sh entries lines fmt want enc sink ver -> (case r of
+    LF.Same s -> appendTo cfg (Sh entries lines fmt want enc s ver) recs
   | LF.Failed s why -> error "store: cannot append to {LF.path s}: {why}"
   | LF.Fresh s -> (case fmt of
-      Lines -> appendTo cfg (Sh entries lines fmt want enc s) k mx
+      Lines -> appendTo cfg (Sh entries lines fmt want enc s ver) recs
     | _ -> (case LF.write s (W.header (levelOf fmt)) of
         Err why -> error "store: cannot append to {LF.path s}: {why}"
-      | Ok s2 -> appendTo cfg (Sh entries lines fmt want (W.encoder (levelOf fmt)) s2) k mx))
+      | Ok s2 -> appendTo cfg (Sh entries lines fmt want (W.encoder (levelOf fmt)) s2 ver) recs))
   | LF.Other s -> (case fmt of
-      Lines -> appendTo cfg (Sh entries lines fmt want enc s) k mx
+      Lines -> appendTo cfg (Sh entries lines fmt want enc s ver) recs
     | _ -> error "store: {LF.path s} was replaced by a file this store did not write")).
-appendTo cfg st k mx = case st of Sh entries lines fmt want enc sink -> (case encodeRec cfg fmt enc k mx of
+appendTo cfg st recs = case st of Sh entries lines fmt want enc sink ver -> (case encodeAll cfg fmt enc recs Nil of
   (bytes, enc2) -> (case LF.write sink bytes of
       Err why -> error "store: cannot append to {LF.path sink}: {why}"
-    | Ok s2 -> Sh entries lines fmt want enc2 s2)).
+    | Ok s2 -> Sh entries lines fmt want enc2 s2 ver)).
+encodeAll : unsafe { dir : String, span : Int, key : a -> Int, codec : { enc : List a -> Wire, dec : Wire -> Result (List a) String | r } | q } -> Format -> W.Enc -> List (Int, O.Option a) -> List String -> (String, W.Enc) .
+encodeAll cfg fmt enc recs acc = case recs of
+    Nil -> (strJoin "" (L.reverse acc), enc)
+  | (k, mx) :: r -> (case encodeRec cfg fmt enc k mx of (b, enc2) -> encodeAll cfg fmt enc2 r (b :: acc)).
 
 # a record in a format: JSON lines {"k": key, "v": element} or {"k": key, "d": true};
 # a frame holds the key and, for a put, the element's Wire
@@ -234,12 +288,12 @@ unwire cfg w = case cfg.codec.dec (WList (w :: Nil)) of
 # THIS shard's file only: rewritten with its live entries, in the format
 # compaction writes, when superseded records outnumber them -- so no compaction
 # ever waits on the rest of the store
-compactIf cfg st = case st of Sh entries lines fmt want enc sink ->
+compactIf cfg st = case st of Sh entries lines fmt want enc sink ver ->
   (if lines <= 2 * M.size entries + 32 then st
    else (case serialise cfg want entries of
      (bytes, enc2) -> (case LF.replace (LF.path sink) bytes of
          Err why -> st
-       | Ok _ -> Sh entries (M.size entries) want want enc2 (LF.replaced sink (strlen bytes))))).
+       | Ok _ -> Sh entries (M.size entries) want want enc2 (LF.replaced sink (strlen bytes)) ver))).
 serialise cfg fmt entries = case fmt of
     Lines -> (strJoin "" (L.map (fn kv -> (case kv of (k, v) -> (case encodeRec cfg Lines (W.encoder W.Fast) k (O.Some v) of (b, _) -> b))) (M.entries entries)), W.encoder W.Fast)
   | _ -> serialiseFrames cfg fmt (W.encoder (levelOf fmt)) (M.entries entries) (W.header (levelOf fmt) :: Nil).
@@ -279,19 +333,36 @@ framesGo cfg fs d m = case fs of
         | W.Got w _ d2 -> framesGo cfg r d2 (case unwire cfg w of O.Some x -> M.insert k x m | O.None -> m)))).
 
 # ---- the API: writes through the front, reads from the shards --------------------------------
+# a write goes to its shard directly: the front only says which shard (and
+# starts it), and hears the shard's new count afterwards -- so writes to
+# different shards run at once, and a shard writes a run of them as one append
 put : a -> Store a -> Int .
-put x store = case store of Store front _ ->
-  r = A.askSure (myself 0) front (FPut x);
-  n = (case r of FDone c -> c | _ -> 0);
+put x store = case store of Store front key ->
+  me = myself 0;
+  r = A.askSure me front (FRouteW (key x));
+  (sh, idx) = (case r of FRoutedTo s i -> (s, i) | _ -> (0, 0));
   _ = drop r;
-  n.
+  wrote me front idx (SPut x) sh.
 
 remove : Int -> Store a -> Int .
 remove k store = case store of Store front _ ->
-  r = A.askSure (myself 0) front (FRemove k);
-  n = (case r of FDone c -> c | _ -> 0);
+  me = myself 0;
+  r = A.askSure me front (FRouteRm k);
+  (sh, idx) = (case r of FRoutedTo s i -> (s, i) | _ -> (0, 0));
   _ = drop r;
-  n.
+  (if sh == 0 then count store else wrote me front idx (SRemove k) sh).
+
+# ask the shard, then report its count to the front; answers the store's total
+wrote me front idx q sh =
+  r = A.askSure me sh q;
+  (n, ver) = (case r of SWrote c v -> (c, v) | _ -> (0, 0));
+  _ = drop r;
+  report me front idx n ver.
+report me front idx n ver =
+  r = A.askSure me front (FCounted idx n ver);
+  total = (case r of FDone c -> c | _ -> 0);
+  _ = drop r;
+  total.
 
 count : Store a -> Int .
 count store = case store of Store front _ ->

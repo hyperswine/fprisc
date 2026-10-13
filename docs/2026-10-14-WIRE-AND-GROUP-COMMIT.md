@@ -109,3 +109,36 @@ torn tail cut at open, a foreign file refused. `tests/std/storewire.fpr`: the
 store contract in Compact, a reopen keeping each shard's format, a JSON store
 migrating, a torn shard tail. `tests/std/compact.fpr`, `tests/std/store.fpr`
 and `tests/check_persistence.py` are unchanged and pass.
+
+## Store writes routed to their shard (2026-10-14, later)
+
+The first limit above is gone. The front no longer forwards a write and waits
+for the shard; it ROUTES. A writer asks it which shard holds the key
+(`FRouteW`, which starts a shard that does not exist yet), sends the put or
+removal to that shard itself, and reports the shard's answer back
+(`FCounted idx n ver`). The answer carries the shard's **write version**, one
+more for every put or removal; the front keeps the highest version per shard,
+so two writers' reports arriving out of order cannot roll a count back. The
+writer waits for the report's answer before `put` returns, which keeps the
+documented promise that a read following one's own write sees it (the plan is
+built from the front's counts). A removal routes with `FRouteRm`, which never
+starts a shard.
+
+Shards now take every request already waiting (up to `batch` = 1024) and
+append a run of puts and removals as one write, answering each writer with the
+count and version after its own write; a read in the run first sees the writes
+queued before it. Compaction runs after the batch.
+
+Measured (50 writers x 200 puts, 10,000 keys over 40 shards; this Mac):
+
+| | previous main (586cc1d) | routed |
+|---|---|---|
+| 1 hart | 10 us a put | 11 us |
+| 4 harts | 10 us a put | 4 us |
+| one writer | 7 us | 8 us |
+
+Every run ends with exactly 10,000 keys and every writer reading its own last
+write. Writes now scale with harts; a lone writer pays about 1 us for the
+extra round trips (route, shard, report instead of one round trip to the
+front, which made two of its own). A failed shard append still stops the
+program.
