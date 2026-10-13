@@ -1136,6 +1136,7 @@ static V msg_copy_held_in(V v, int fresh, uw pid, fpr_slab_t **hold) {
     *hold = sl;
   }
   /* Allocation above can park; another actor on this hart can change it. */
+  h = fpr_hart(); /* the sender may also have migrated while parked */
   if (h) h->copy_pid = pid;
   dctx_t c = {sl->hp, sl};
   V r = dc_dup(v, &c);

@@ -13,7 +13,7 @@ failed me phase =
   result = Sys.spawnInbox (0 - 1) 8 1048576 (worker me);
   refused result and before == Sys.actLive 0 and (case receiveNow me of Err _ -> True | _ -> False).
 round me 0 = True.
-round me n = failed me 2 and failed me 3 and failed me 4 and failed me 5 and failed me 6 and round me (n - 1).
+round me n = failed me 2 and failed me 3 and failed me 4 and failed me 5 and failed me 6 and failed me 7 and round me (n - 1).
 canceller boss phase self = _ = Probe.pauseNext boss phase; _ = Sys.spawnInbox (0 - 1) 8 1048576 (worker boss); send boss False.
 cancelOne me phase =
   before = Sys.actLive 0;
@@ -31,9 +31,9 @@ main =
   checks = round me 50;
   _ = Sys.sleepUs 20000;
   after = freeKiB Unit;
-  cancelled = cancelOne me 2 and cancelOne me 3 and cancelOne me 4 and cancelOne me 5 and cancelOne me 6;
+  cancelled = cancelOne me 2 and cancelOne me 3 and cancelOne me 4 and cancelOne me 5 and cancelOne me 6 and cancelOne me 7;
   count = Probe.denials Unit;
   child = case Sys.spawnInbox (0 - 1) 8 1048576 (worker me) of Ok a -> a | Err why -> error why;
   value = receiveFrom me child;
-  _ = if warm and checks and cancelled and after >= before and count == 255 and value == 42 then Unit else error "inbox admission rollback";
-  print "inboxadmission: five reservation rollback/cancellation phases, bounded reserve reuse and later spawn HOLDS".
+  _ = if warm and checks and cancelled and after >= before and count == 306 and value == 42 then Unit else error "inbox admission rollback";
+  print "inboxadmission: six reservation rollback/cancellation phases, bounded reserve reuse and later spawn HOLDS".

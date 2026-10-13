@@ -134,7 +134,6 @@ typedef struct {
   uint32_t rt_seen; /* the consumer's last view of rt (never ahead of it) */
   ringv_t rv0 __attribute__((aligned(FPR_CACHELINE))); /* the inline default */
   V slots0[RING_CAP];
-  uw charges0[RING_CAP];
   struct fpr_acb *budget_owner;
 } chan_t;
 uw fpr_ring_grows, fpr_send_full; /* growths; sends refused for a full ring */
@@ -154,6 +153,7 @@ typedef struct fpr_acb {
   uint32_t mbcap;  /* initial ring capacity per channel (spawnCap) */
   fpr_lock_t inbox_lock;
   uw inbox_max_messages, inbox_max_bytes, inbox_messages, inbox_bytes;
+  uw *inbox_charges;
   /* A send may park while copying/growing. Reaping the actual sender
    * returns this unpublished reservation and promoted root exactly once. */
   struct fpr_acb *send_to;
@@ -772,6 +772,25 @@ static void send_committed(acb_t *a) {
     sender->send_to = 0; sender->send_charge = 0; sender->send_root = 0;
   }
 }
+/* Charge slots exist only for opted-in actors. Reuse their own type-stable
+ * blocks; unbounded legacy channels do not carry inline charge arrays. */
+static fpr_freelist_t inbox_charges_fl;
+#define INBOX_CHARGES_SIZE ((uw)MAXSND * RING_CAP * sizeof(uw))
+static uw *inbox_charges_take(void) {
+  uw *slots = fpr_fl_take(&inbox_charges_fl, INBOX_CHARGES_SIZE);
+  if (slots) return slots;
+  uw want = INBOX_CHARGES_SIZE * 4;
+  char *p = big_block(want);
+  if (!p) return 0;
+  uw got = big_block_size(p, want);
+  if (got < INBOX_CHARGES_SIZE) return 0;
+  for (uw off = INBOX_CHARGES_SIZE; off + INBOX_CHARGES_SIZE <= got; off += INBOX_CHARGES_SIZE)
+    fpr_fl_put(&inbox_charges_fl, p + off, INBOX_CHARGES_SIZE);
+  return (uw *)p;
+}
+static void inbox_charges_put(uw *slots) {
+  if (slots) fpr_fl_put(&inbox_charges_fl, slots, INBOX_CHARGES_SIZE);
+}
 static void chan_drain(chan_t *c) {
   uint32_t rt = __atomic_load_n(&c->rt, __ATOMIC_ACQUIRE);
   ringv_t *rv = __atomic_load_n(&c->rv, __ATOMIC_ACQUIRE); /* after rt: covers every slot below it */
@@ -818,6 +837,9 @@ static void reap(acb_t *a) {
     fn(arg);
   }
   if (a->ch) chb_drain(a->ch); /* mail it never read: released, not stranded (holds park below) */
+  /* Bounded producers cannot pass their locked death check now. The drained
+   * limbo rings are empty and never dereference charges again before init. */
+  inbox_charges_put(a->inbox_charges); a->inbox_charges = 0;
   drop_drain(a); /* the holds of windows the dead actor never closed */
   if (a->msg_slab) { fpr_slab_unhold(a->msg_slab, 0); a->msg_slab = 0; } /* its packing slab */
   fpr_pool_reclaim(a);
@@ -2163,6 +2185,7 @@ typedef struct {
   uw stack_size;
   void **buckets;
   chan_t *channels;
+  uw *inbox_charges;
   fpr_slab_t *entry_hold;
   fpr_slab_t *grant;
   uw inbox_max_messages, inbox_max_bytes;
@@ -2194,6 +2217,7 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
   a->inbox_max_messages = admitted ? admitted->inbox_max_messages : 0;
   a->inbox_max_bytes = admitted ? admitted->inbox_max_bytes : 0;
   a->inbox_messages = a->inbox_bytes = 0;
+  a->inbox_charges = admitted ? admitted->inbox_charges : 0;
   a->send_to = 0; a->send_charge = 0; a->send_root = 0; a->send_hold = 0;
   a->mem_reply = 0;
   a->pool_override = 0;
@@ -2222,7 +2246,7 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
     a->ch[i].dyn = dyn;
     if (a->inbox_max_messages) {
       a->ch[i].budget_owner = a;
-      a->ch[i].rv0.charge = a->ch[i].charges0;
+      a->ch[i].rv0.charge = a->inbox_charges + (uw)i * RING_CAP;
     }
     if (cap > RING_CAP) { /* a bigger first ring than the inline one */
       ringv_t *rv = ring_block(cap, i == SHIDX, a->ch[i].rv);
@@ -2309,6 +2333,7 @@ static void admission_rollback(void *arg) {
   admission_t *ad = (admission_t *)arg;
   if (ad->acb) fpr_fl_put(&acb_unpublished, ad->acb, sizeof(acb_t));
   if (ad->entry_hold) fpr_slab_unhold(ad->entry_hold, 0);
+  inbox_charges_put(ad->inbox_charges);
   if (ad->channels) fpr_fl_put(&chb_fl, ad->channels, sizeof(chblk_t));
   if (ad->buckets) fpr_bkt_put(ad->buckets);
   if (ad->stack) stack_recycle(ad->stack, ad->stack_size);
@@ -2380,6 +2405,8 @@ static V a_spawn_inbox(V hv, V countv, V bytesv, V f) {
   if (!ad.buckets || ADMISSION_FAIL(3)) goto denied;
   ad.channels = chb_take();
   if (!ad.channels || ADMISSION_FAIL(4)) goto denied;
+  ad.inbox_charges = inbox_charges_take();
+  if (!ad.inbox_charges || ADMISSION_FAIL(7)) goto denied;
   V entry;
   if (!fpr_entry_copy_try(f, fpr_current_pid(), &entry, &ad.entry_hold) || ADMISSION_FAIL(5)) goto denied;
   ad.acb = acb_block();

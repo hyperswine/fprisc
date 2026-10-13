@@ -4,7 +4,9 @@
 with a global inbox limit. Use `hart = -1` for an unpinned actor, or a live hart
 index to pin it. Both limits must be positive. Existing spawn APIs keep their
 current behavior. Infrastructure is reserved transactionally before publication;
-failed admission returns an error and releases partial reservations.
+failed admission returns an error and releases partial reservations. Per-slot
+charge storage is allocated only for opted-in actors and reused after teardown;
+legacy channels do not carry inline charge arrays.
 
 A send reserves one global slot and a conservative byte charge before copying,
 across all producers and copies still in progress. It returns `mailbox full`
