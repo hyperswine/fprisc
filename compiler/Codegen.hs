@@ -51,7 +51,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 40 -- Int overflow traps (inline guards, checked kernels, NEON lane checks); 39: automatic value-state receive turns
+codegenRev = 41 -- Int pairs fuse again (overflow may surface out of order); 40: Int overflow traps; 39: automatic value-state receive turns
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -1650,8 +1650,10 @@ fuseVecFix = go (0 :: Int)
 -- the first map on element 2 must come before any work of the second
 -- map on element 1.  `fusionSafe` is that judgement: the function and
 -- every known callee use only locals, literals, constructors, tag tests,
--- projections, if/let, the non-trapping arithmetic/comparison/logic
--- primitives and the fuel tick.  Division is excluded (it traps), as is
+-- projections, if/let, the arithmetic/comparison/logic primitives and
+-- the fuel tick -- Int + - * trap on overflow since 2026-10-12, and the
+-- 2026-10-13 relaxation lets a fused pair raise that one trap out of
+-- order (safePrims below).  Division is excluded (it traps), as is
 -- every other primitive, every call through a parameter, and every
 -- partial application.  Declined pairs are reported, never silent.
 fusionSafe :: Prog -> String -> Bool
@@ -1693,12 +1695,17 @@ fusionUnsafeReason prog = go S.empty
     firstJust xs = case [r | Just r <- xs] of
       (r : _) -> Just r
       [] -> Nothing
-    -- cannot trap, cannot be observed: everything in the Int/F64/F32
-    -- arithmetic tiers except division, plus comparison and logic
-    -- Int + - * / all TRAP on overflow (docs/2026-10-12-INT-OVERFLOW.md),
-    -- so none of them is fusion-safe: only the comparisons remain
+    -- cannot be OBSERVED: everything in the Int/F64/F32 arithmetic tiers
+    -- except division, plus comparison and logic.  Int + - * trap on
+    -- overflow (docs/2026-10-12-INT-OVERFLOW.md); a fused pair may then
+    -- panic on an earlier element, or in the other function, than the
+    -- two passes would -- the ONE reordering fusion is allowed, by the
+    -- relaxation of 2026-10-13 (docs/2026-10-03-FUSION-EFFECT-ORDER.md):
+    -- the program still fail-stops with an Int overflow, and the pair
+    -- was its own two passes otherwise.  Division stays out: a zero
+    -- divisor is a different failure, and the line is kept narrow.
     safePrims =
-      [op | op <- uPrims, op `notElem` ["+", "-", "*", "/"]]
+      [op | op <- uPrims, op /= "/"]
         ++ [op | w <- ["64", "32"], op <- fPrimsOf w, not ("/" `isSuffixOf` op) && op /= "F" ++ w ++ "./"]
         ++ ["and", "or", "not", "and2", "or2"]
 

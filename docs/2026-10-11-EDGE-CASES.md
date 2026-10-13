@@ -146,7 +146,7 @@ Int arithmetic TRAPS (docs/2026-10-12-INT-OVERFLOW.md); `chr` and
 
 | # | Now |
 | --- | --- |
-| 1 | (2026-10-12) Int `+ - * /` trap by name with the operands when the result does not fit; in the C primitives, the inline fast paths, the unboxed kernels and the NEON lanes. I64 is the type that wraps. Int pairs leave vector fusion (tests/base/vecfuse_effects.fpr) |
+| 1 | (2026-10-12) Int `+ - * /` trap by name with the operands when the result does not fit; in the C primitives, the inline fast paths, the unboxed kernels and the NEON lanes. I64 is the type that wraps. Int pairs still fuse, by the 2026-10-13 relaxation in docs/2026-10-03-FUSION-EFFECT-ORDER.md (tests/base/vecfuse_effects.fpr) |
 | 2 | `S.toInt` answers `Err "out of range: ..."` past 63 bits, and reaches the most negative Int (digits accumulate negatively) |
 | 3 | (2026-10-12) `chr` outside 0..255 is refused by name (chr makes one byte; String.fromCodes makes UTF-8) |
 | 10 | `kill` refuses actor 0, the memory actor, the irq router and the timer by name (not the log actor: a program installs its own, and a dead logger is handled, tests/base/logdead.fpr) |

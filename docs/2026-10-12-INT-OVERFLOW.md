@@ -78,10 +78,14 @@ terminal decoder use them.
 
 [2026-10-03-FUSION-EFFECT-ORDER.md](2026-10-03-FUSION-EFFECT-ORDER.md)
 fuses two maps only when neither element function can be observed
-running, failure included. Int `+ - *` can now fail, so they leave the
-fusion-safe set as `/` did: an Int pair is declined and the compile says
-so (`` `idouble` uses the primitive `*` ``). F64 pairs still fuse.
-`tests/base/vecfuse_effects.fpr` shows both.
+running, failure included. Int `+ - *` can now fail, so on this day they
+left the fusion-safe set as `/` did and every Int pair ran as two passes.
+On 2026-10-13 that was relaxed: a pair whose only possible failure is an
+Int overflow fuses, and the fused kernel may raise that overflow on an
+earlier element or in the other function than the two passes would. The
+reasoning, the evidence and the better answer still wanted are in the
+fusion page's 2026-10-13 section. `tests/base/vecfuse_effects.fpr` shows
+an F64 pair and an Int pair fusing beside the declined printing pair.
 
 ## Cost
 

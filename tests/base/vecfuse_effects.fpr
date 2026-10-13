@@ -1,9 +1,10 @@
 # Two materializing maps run the first over EVERY element before the second
 # starts.  A fused pass would interleave them: first 1, second 1, first 2,
 # second 2 -- a different observable trace.  Element functions that print
-# (or could fail) must therefore not fuse; pure ones still do.  Since Int
-# arithmetic traps on overflow (docs/2026-10-12-INT-OVERFLOW.md) an Int
-# pair CAN fail, so the pure pair here is F64, which cannot.
+# (or could fail) must therefore not fuse; pure ones still do.  Int
+# arithmetic traps on overflow (docs/2026-10-12-INT-OVERFLOW.md), the one
+# failure a fused pair may raise out of order (the 2026-10-13 relaxation):
+# the F64 pair cannot fail at all, the Int pair fuses under that rule.
 unsafe base.
 first x = _ = print "first {x}"; x.
 second x = _ = print "second {x}"; x.

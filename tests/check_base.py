@@ -145,15 +145,16 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     # still fuse into one in-place pass (docs/2026-10-03-FUSION-EFFECT-ORDER.md)
     p = run(['./fpr', 'build', '-v', 'tests/base/vecfuse_effects.fpr', '-o', tmp / 'vfe'])
     assert 'is NOT fused: `first` uses the primitive `print`' in p.stdout, p.stdout
-    # Int arithmetic traps on overflow (docs/2026-10-12-INT-OVERFLOW.md), so
-    # an Int pair can fail and is declined too; the F64 pair still fuses
-    assert 'is NOT fused: `idouble` uses the primitive `*`' in p.stdout, p.stdout
-    assert p.stdout.count('NOT fused') == 2, p.stdout
+    # an Int pair fuses although Int + and * trap on overflow: the one
+    # reordering fusion may make (docs/2026-10-03-FUSION-EFFECT-ORDER.md,
+    # the 2026-10-13 relaxation); the F64 pair fuses as before
+    assert 'idouble' not in p.stdout or 'NOT fused: `iinc`' not in p.stdout, p.stdout
+    assert p.stdout.count('NOT fused') == 1, p.stdout
     p = run([tmp / 'vfe'])
     assert p.stdout == 'first 1\nfirst 2\nsecond 1\nsecond 2\npure pair: 62 (pool grew 0 B)\nint pair: 62\n', p.stdout
     p = run([build('tests/base/vecfuse_fail.fpr', 'vff')], expected=1)
     assert 'first map failed on 2' in p.stdout + p.stderr and 'second' not in p.stdout, p.stdout + p.stderr
-    print('Vector fusion: printing, failing or Int-arithmetic element functions keep their pass order (and the decline is reported); a pure F64 pair still fuses in place: PASS')
+    print('Vector fusion: printing or failing element functions keep their pass order (and the decline is reported); pure F64 and Int pairs fuse in place: PASS')
     # vector descriptors: records of every width are SoA vectors; push, at,
     # put, map, filter, len, fold, an actor round trip and free agree with a
     # Python reference; a float record takes an inferred layout; two record
