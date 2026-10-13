@@ -48,11 +48,16 @@ posix`.  See [docs/2026-09-19-PROFILES.md](docs/2026-09-19-PROFILES.md) for the 
 ./fpr run tests/base/args.fpr one two
 ```
 
-`fpr build` makes an ordinary executable for the host (x86-64 or AArch64,
-Linux or macOS): the same core runtime as bare metal, with libc as the board
+`fpr build` makes an ordinary executable for the host (x86-64 or AArch64
+on Linux/macOS, or RV64GC/LP64D on Linux): the same core runtime as bare metal, with libc as the board
 (`machine/posix`).  A program gets the command line, the environment, stdin,
 stdout, stderr, files, the clock and the exit status -- see
 [docs/2026-09-18-BASE.md](docs/2026-09-18-BASE.md).  `tests/check_base.py` is the conformance run.
+
+Cross-build Linux RISC-V programs with `fpr build prog.fpr
+--target=linux-riscv64 --cc riscv64-linux-gnu-gcc`. Shared modules use the
+same command with `--module`. See [Linux RV64 support](docs/2026-10-14-LINUX-RV64.md)
+for the ABI, QOS images and hardware checks.
 
 The same system runs on an ESP32-P4: `fpr run prog.fpr --host=esp-idf`
 builds the program as an ESP-IDF application, flashes it, and is its console,

@@ -17,6 +17,7 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TEE
 import A64 (deTlsQosAppA64, lowerA64, a64Rev)
 import X64 (lowerX64, deTlsQosApp, x64Rev)
+import RV64 (lowerPosixRV64, lowerQosRV64, rv64HostRev)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (runState)
 import Data.List (intercalate, isPrefixOf)
@@ -103,7 +104,7 @@ parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothin
     -- lowering is the host's ISA.
     step o "--system=bare-metal" = o {oTarget = rv64, oSystem = Just "bare-metal"}
     step o "--system=qos-native" = o {oTarget = rv64, oSystem = Just "qos-native"}
-    step o "--system=qos-portable" = o {oTarget = rv64, oX64 = True, oQosApp = True, oSystem = Just "qos-portable"}
+    step o "--system=qos-portable" = o {oTarget = rv64, oX64 = if oTargetFlag o then oX64 o else True, oQosApp = True, oSystem = Just "qos-portable"}
     -- posix runs on more than one kind of HOST (docs/2026-09-19-PROFILES.md): this
     -- machine (--host=unix, the default: the ISA is the build host's), or an
     -- ESP-IDF board (--host=esp-idf: rv32imafc code around which
@@ -139,6 +140,7 @@ parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothin
     step o "--target=a64mac" = o {oTarget = rv64, oA64 = True, oA64Mac = True, oTargetFlag = True} -- same lowering, Mach-O syntax
     step o "--target=x64" = o {oTarget = rv64, oX64 = True, oTargetFlag = True} -- likewise
     step o "--target=qx64" = o {oTarget = rv64, oX64 = True, oQosApp = True, oTargetFlag = True} -- QOS-x86_64
+    step o "--target=qrv64" = o {oTarget = rv64, oA64 = False, oA64Mac = False, oX64 = False, oQosApp = True, oTargetFlag = True} -- Linux QOS-RISC-V
     step o "--target=qa64" = o {oTarget = rv64, oA64 = True, oQosApp = True, oTargetFlag = True} -- QOS-aarch64
     step o "--target=qa64single" = o {oTarget = rv64, oA64 = True, oQosApp = True, oQosSingle = True, oTargetFlag = True} -- QOS-aarch64, global hart cell
     step o "--target=qa64mac" = o {oTarget = rv64, oA64 = True, oA64Mac = True, oQosApp = True, oTargetFlag = True} -- QOS app, Apple Silicon
@@ -167,12 +169,15 @@ resolveHost o
   | oHost o /= Nothing = o
   -- an explicit hosted target (--target=a64 | x64) is a CROSS build: it wins over
   -- this machine's lowering, so a Mac can emit ELF for a Linux server
-  | oTargetFlag o && (oA64 o || oX64 o) = o {oBase = True}
+  | oTargetFlag o && (oA64 o || oX64 o || tgtName (oTarget o) == "rv64") =
+      o {oBase = True, oHardFloat = oHardFloat o || not (oA64 o || oX64 o)}
+  | oTargetFlag o = o
   | otherwise = case (System.Info.os, System.Info.arch) of
       ("darwin", "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True, oA64Mac = True}
       (_, "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True}
       (_, "x86_64") -> o {oTarget = rv64, oBase = True, oX64 = True}
-      (os', arch') -> error ("--system=posix: no hosted lowering for " ++ os' ++ "/" ++ arch' ++ " (x86_64 and aarch64 are supported)")
+      ("linux", "riscv64") -> o {oTarget = rv64, oBase = True, oHardFloat = True}
+      (os', arch') -> error ("--system=posix: no hosted lowering for " ++ os' ++ "/" ++ arch' ++ " (x86_64, aarch64 and Linux riscv64 are supported)")
 
 -- `--export=name,name:c_symbol,...`: an fpr function and the C symbol it
 -- is callable as (default: the same name)
@@ -377,7 +382,7 @@ compileWithInterface accepted = do
     if ok then exitSuccess else exitFailure
   (inp, out) <- case oFiles opts0 of
     [i, o] -> pure (i, o)
-    _ -> putStrLn "usage: fprc [--system=posix|bare-metal|qos-native|qos-portable] [--host=unix|esp-idf] [--profile=builtin|base|extbase|sol] [--arc] [--target=rv32|rv64|a64|a64mac|x64|qx64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
+    _ -> putStrLn "usage: fprc [--system=posix|bare-metal|qos-native|qos-portable] [--host=unix|esp-idf] [--profile=builtin|base|extbase|sol] [--arc] [--target=rv32|rv64|a64|a64mac|x64|qx64|qrv64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
   (rootSrc0, rootTopsParsed) <- parseFileSrc inp
   -- the PROFILE is the file's: `profile base.` (or `unsafe base.`), a
   -- .sol file is sol; the flag serves a file that says nothing, and
@@ -418,6 +423,8 @@ compileWithInterface accepted = do
     refuse ("profile builtin runs on the bare-metal system only, not " ++ system ++ " (--system=bare-metal)")
   when (espHost && (oA64 opts0 || oX64 opts0 || oQosApp opts0 || oPlugin opts0 || oRvv opts0 || tgtName (oTarget opts0) /= "rv32")) $
     refuse "--host=esp-idf is rv32 code for an ESP-IDF application: no other --target, QOS app image, plugin or RVV"
+  when (system == "posix" && not espHost && tgtName (oTarget opts0) /= "rv64") $
+    refuse "--system=posix on Unix requires a 64-bit target (a64, x64 or rv64)"
   when (profile == "sol" && system /= "posix") $
     refuse ("profile sol runs on the posix system (the VM: `fpr run`), not " ++ system)
   when (profile == "sol" && espHost) $
@@ -863,6 +870,8 @@ compileWithInterface accepted = do
                 | a64 = lowerA64 a64mac
                 | x64 && qapp = deTlsQosApp . lowerX64
                 | x64 = lowerX64
+                | qapp = lowerQosRV64
+                | oBase opts = lowerPosixRV64 (oPlugin opts)
                 | otherwise = id
           lower = if oBase opts && oPlugin opts then posixPic a64 a64mac . lower0 else lower0
           rvv = oRvv opts && not a64 && not x64 -- no RVV lowering in the PoCs
@@ -878,6 +887,8 @@ compileWithInterface accepted = do
                   else if x64 && qapp then "qx64r" ++ show x64Rev
                   else if x64 then "x64r" ++ show x64Rev
                   else if espHost then "rv32-idftls1"
+                  else if qapp then "qrv64r" ++ show rv64HostRev
+                  else if oBase opts then "rv64posixr" ++ show rv64HostRev
                   else tgtName tgt
           tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0
           tag = "g" ++ show codegenRev ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")

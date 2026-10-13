@@ -2151,7 +2151,7 @@ void fpr_actors_init(void) { /* hart 0, before fpr_smp_go */
   main_acb.segs = main_acb.spare = 0;
   main_acb.stk_total = 0;
   stk_window(&main_acb, 0, stk, stk_sz);
-  for (int i = 0; i < 16; i++) main_acb.ctx[i] = 0;
+  for (int i = 0; i < FPR_CTX_WORDS; i++) main_acb.ctx[i] = 0;
   fpr_ctx_fabricate(main_acb.ctx, (void (*)(void))trampoline,
                     ((uw)stk + stk_sz) & ~(uw)15, &fpr_harts[0]);
   enq(&fpr_harts[0], &main_acb);
@@ -2278,7 +2278,7 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
     a->pid = pid != (uw)-1 ? pid : (cur ? cur->pid : 0);
   }
   ledger_push(a);
-  for (int i = 0; i < 16; i++) a->ctx[i] = 0;
+  for (int i = 0; i < FPR_CTX_WORDS; i++) a->ctx[i] = 0;
   /* first-activation state is machine-specific (x86 needs a stack-
    * alignment bias; rv needs tp) -- the ctx layer owns fabrication */
   fpr_ctx_fabricate(a->ctx, (void (*)(void))trampoline,

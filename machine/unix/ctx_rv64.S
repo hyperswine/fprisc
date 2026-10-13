@@ -1,0 +1,66 @@
+/* Linux RV64 LP64D: preserve integer/FP callee-saved state and fenv.
+ * gp belongs to the process, tp to libc; neither is actor state.
+ * Layout: 0 ra, 1 sp, 2..3 unused, 4..15 s0..s11, 16..27 fs0..fs11, 28 fcsr.
+ */
+.text
+.balign 4
+.globl fpr_ctx_switch
+fpr_ctx_switch:
+    sd ra, 0(a0)
+    sd sp, 8(a0)
+    sd s0, 32(a0)
+    sd s1, 40(a0)
+    sd s2, 48(a0)
+    sd s3, 56(a0)
+    sd s4, 64(a0)
+    sd s5, 72(a0)
+    sd s6, 80(a0)
+    sd s7, 88(a0)
+    sd s8, 96(a0)
+    sd s9, 104(a0)
+    sd s10, 112(a0)
+    sd s11, 120(a0)
+    fsd fs0, 128(a0)
+    fsd fs1, 136(a0)
+    fsd fs2, 144(a0)
+    fsd fs3, 152(a0)
+    fsd fs4, 160(a0)
+    fsd fs5, 168(a0)
+    fsd fs6, 176(a0)
+    fsd fs7, 184(a0)
+    fsd fs8, 192(a0)
+    fsd fs9, 200(a0)
+    fsd fs10, 208(a0)
+    fsd fs11, 216(a0)
+    frcsr t0
+    sd t0, 224(a0)
+    ld t0, 224(a1)
+    fscsr t0
+    ld ra, 0(a1)
+    ld sp, 8(a1)
+    ld s0, 32(a1)
+    ld s1, 40(a1)
+    ld s2, 48(a1)
+    ld s3, 56(a1)
+    ld s4, 64(a1)
+    ld s5, 72(a1)
+    ld s6, 80(a1)
+    ld s7, 88(a1)
+    ld s8, 96(a1)
+    ld s9, 104(a1)
+    ld s10, 112(a1)
+    ld s11, 120(a1)
+    fld fs0, 128(a1)
+    fld fs1, 136(a1)
+    fld fs2, 144(a1)
+    fld fs3, 152(a1)
+    fld fs4, 160(a1)
+    fld fs5, 168(a1)
+    fld fs6, 176(a1)
+    fld fs7, 184(a1)
+    fld fs8, 192(a1)
+    fld fs9, 200(a1)
+    fld fs10, 208(a1)
+    fld fs11, 216(a1)
+    ret
+.section .note.GNU-stack,"",@progbits

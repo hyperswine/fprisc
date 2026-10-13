@@ -55,11 +55,11 @@ data Plan = Plan
     pCost :: Bool, -- --cost: print the root functions' work/alloc equations
     pManifest :: Maybe String, -- --manifest=FILE: judge them against a target manifest (passed through)
     pRest :: [String],
-    pTarget :: Maybe (String, String) -- --target=linux-aarch64|linux-x86_64: a cross build (os, arch); Nothing is this machine
+    pTarget :: Maybe (String, String) -- --target=linux-aarch64|linux-x86_64|linux-riscv64: a cross build (os, arch); Nothing is this machine
   }
 
 usage :: String
-usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep] [--module]\n                 [--target=linux-aarch64|linux-x86_64 --cc CROSS-GCC]\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --host=esp-idf [-o dir] [--port P] [-v]"
+usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep] [--module]\n                 [--target=linux-aarch64|linux-x86_64|linux-riscv64 --cc CROSS-GCC]\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --host=esp-idf [-o dir] [--port P] [-v]"
 
 -- The hart CAP compiled in is this machine's processor count (it was a flat 2,
 -- so a server on a ten-core machine ran on two threads).  The running program
@@ -85,6 +85,7 @@ plan args = do
     go p ("-v" : rest) = go p {pVerbose = True} rest
     go p ("--target=linux-aarch64" : rest) = go p {pTarget = Just ("linux", "aarch64")} rest
     go p ("--target=linux-x86_64" : rest) = go p {pTarget = Just ("linux", "x86_64")} rest
+    go p ("--target=linux-riscv64" : rest) = go p {pTarget = Just ("linux", "riscv64")} rest
     go p ("--system=posix" : rest) = go p rest -- the only system these commands build
     go p ("--host=unix" : rest) = go p {pHost = "unix"} rest
     go p ("--host=esp-idf" : rest) = go p {pHost = "esp-idf"} rest
@@ -110,9 +111,12 @@ build p = do
   let (tOS, tArch) = fromMaybe (System.Info.os, System.Info.arch) (pTarget p)
       crossTarget = case pTarget p of
         Nothing -> []
-        Just (_, a) -> [if a == "aarch64" then "--target=a64" else "--target=x64"]
+        Just (_, "aarch64") -> ["--target=a64"]
+        Just (_, "riscv64") -> ["--target=rv64"]
+        Just _ -> ["--target=x64"]
   when (pTarget p /= Nothing && pCC p == Nothing) $ hPutStrLn stderr "fpr build: a --target cross build needs --cc (e.g. --cc aarch64-linux-gnu-gcc)" >> exitFailure
-  when (pTarget p /= Nothing && pModule p) $ hPutStrLn stderr "fpr build: --module is not cross-built" >> exitFailure
+  when (pTarget p /= Nothing && pModule p && tArch /= "riscv64") $
+    hPutStrLn stderr "fpr build: cross-built modules currently support linux-riscv64 only" >> exitFailure
   let prelude = home </> "core" </> "prelude.fpr"
       runtime = home </> "runtime" -- the language runtime
       machine = home </> "machine" -- the machine layer under it, one per system (docs/2026-09-19-HAL.md)
@@ -156,7 +160,10 @@ build p = do
     Just c -> pure c
     Nothing -> fromMaybe "cc" <$> lookupEnv "FPR_CC"
   costProbe <- (== Just "1") <$> lookupEnv "FPR_COST_PROBE"
-  let ctx = if tArch == "aarch64" then "ctx_a64.S" else "ctx_x64.S"
+  let ctx = case tArch of
+        "aarch64" -> "ctx_a64.S"
+        "riscv64" -> "ctx_rv64.S"
+        _ -> "ctx_x64.S"
       core = [runtime </> f | f <- ["runtime.c", "actors.c", "bits.c", "vec.c", "sstr.c", "mod.c", "buddy.c"]]
       -- the posix system: what both hosts share (machine/posix), and the unix host (machine/unix)
       posix = [machine </> "posix" </> f | f <- ["hal.c", "base.c", "base_file.c", "os_fs.c", "os_io.c", "os_watch.c", "os_net.c", "os_job.c", "os_module.c"]]
@@ -173,7 +180,10 @@ build p = do
       -- the old thread's hart (runtime/fpr.h).  With x27 reserved too, no C
       -- function ever needs that pair.  Generated code still uses x27 (its s9):
       -- it saves registers one at a time, never paired with x28.
-      fixed = if tArch == "aarch64" then ["-ffixed-x27", "-ffixed-x28", "-DFPR_HART_X28"] else [] -- x28 carries the hart (runtime/fpr.h)
+      fixed = case tArch of
+        "aarch64" -> ["-ffixed-x27", "-ffixed-x28", "-DFPR_HART_X28"]
+        "riscv64" -> ["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany"]
+        _ -> []
       cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_POSIX_CODEGEN_REV=" ++ show codegenRev, "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed ++ ["-DFPR_COST_PROBE" | costProbe]
       linux = if tOS == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []
       -- the runtime's objects are cached per hart count, rebuilt only
@@ -199,7 +209,7 @@ build p = do
   when (pModule p) $ writeFile shim ("#include \"fpr.h\"\nconst uw fpr_posix_module_nativeabi = FPR_NATIVE_ABI;\nconst uw fpr_posix_module_codegen = " ++ show codegenRev ++ ";\n")
   let links = if pModule p then (if tOS == "darwin" then ["-dynamiclib", "-Wl,-undefined,dynamic_lookup"] else ["-shared", "-Wl,-Bsymbolic"]) ++ [shim]
               else linux ++ (if tOS == "linux" then ["-rdynamic", "-ldl"] else ["-Wl,-export_dynamic"])
-      args = cflags ++ ["-fPIC" | pModule p] ++ pCFlags p ++ links ++ [asm] ++ units ++ objs ++ pWith p ++ pLink p ++ ["-lpthread", "-lm", "-o", out]
+      args = cflags ++ (if pModule p then ["-fPIC", "-DFPR_POSIX_MODULE"] else []) ++ pCFlags p ++ links ++ [asm] ++ units ++ objs ++ pWith p ++ pLink p ++ ["-lpthread", "-lm", "-o", out]
   code <- rawSystem cc args
   when (code /= ExitSuccess) $ hPutStrLn stderr ("fpr build: " ++ cc ++ " failed") >> exitWith code
   if pKeep p

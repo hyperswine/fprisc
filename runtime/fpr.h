@@ -289,11 +289,18 @@ void *buddy_reserve_range(void *addr, uw bytes);
 void buddy_release_range(void *addr, uw bytes);
 void buddy_init(void *base, uw size);
 
-/* words in a saved actor context: ra sp gp tp s0..s11 (16), and on a machine
- * whose C ABI keeps float registers callee-saved (machine/esp-idf: ilp32f) the
- * twelve fs registers after them.  Past every offset generated code uses. */
+/* Saved actor context: integer slots, then callee-saved FP state where
+ * required. Linux RV64 adds fs0..fs11 and fcsr; libc's gp/tp never migrate.
+ * ESP-IDF supplies its own ILP32F layout. */
+#if defined(FPR_POSIX) && defined(__riscv) && __riscv_xlen == 64 && !defined(__riscv_float_abi_double)
+#error "Linux RV64 requires the LP64D ABI (-march=rv64gc -mabi=lp64d)"
+#endif
 #ifndef FPR_CTX_WORDS
+#if defined(FPR_POSIX) && defined(__riscv) && __riscv_xlen == 64
+#define FPR_CTX_WORDS 29 /* integer state, fs0..fs11, fcsr */
+#else
 #define FPR_CTX_WORDS 16
+#endif
 #endif
 typedef struct {
   sw fuel; /* MUST stay at offset 0: generated code does ld/sd 0(tp) */
@@ -417,7 +424,7 @@ static inline fpr_hart_t *fpr_hart(void) { return fpr_posix_hart; }
 /* a loaded QOS Portable app image (runtime/qosapp): fixed-slot with no
  * dynamic loader behind it -- nothing registers a TLS block for the
  * image, and link-time TLS constants would index the HOST's TCB at
- * meaningless offsets.  Two arch-specific answers:
+ * meaningless offsets. Architecture-specific answers:
  *
  * AArch64 (v3): x28 IS the hosted world's tp.  Generated
  * code never allocates it (the IR map is x19..x27 + x29), ctx_a64.S
@@ -430,14 +437,28 @@ static inline fpr_hart_t *fpr_hart(void) { return fpr_posix_hart; }
  * x86-64 (v2): BORROW THE HOST'S TLS -- qosp keeps one __thread
  * borrow block {hart, a6, a7} per hart thread and publishes its %fs
  * displacement in the boot record; entry.c lands it in fpr_g_tlsoff.
- * The displacement is identical in every thread (static TLS on
- * Linux, the only x64 host).  fpr_posix_hart/fpr_x64_a6/a7 are
- * lvalue MACROS over the block so shared sources read unchanged. */
+ * Linux RV64 borrows the same block using libc's tp; argument spills stay
+ * in the hart structure. The displacement is identical in every thread.
+ * The lvalue macros let shared runtime sources read the block unchanged. */
 #define FPR_TLS
 #if defined(__aarch64__)
 /* read x28 with a volatile asm (see the hosted AArch64 case below: C must
  * never save x28, so app C is compiled -ffixed-x27 as well, qos-app.mk) */
 static inline fpr_hart_t *fpr_hart(void) { fpr_hart_t *h; __asm__ volatile("mov %0, x28" : "=r"(h)); return h; }
+#elif defined(__riscv) && __riscv_xlen == 64
+extern uw fpr_g_tlsoff;
+static inline char *fpr_tls_blk(void) {
+  char *p;
+  __asm__ volatile("add %0, tp, %1" : "=&r"(p) : "r"(fpr_g_tlsoff) : "memory");
+  return p;
+}
+#define fpr_posix_hart (*(fpr_hart_t **)fpr_tls_blk())
+static inline fpr_hart_t *fpr_hart(void) {
+  fpr_hart_t *h;
+  __asm__ volatile("add %0, tp, %1\nld %0, 0(%0)"
+                   : "=&r"(h) : "r"(fpr_g_tlsoff) : "memory");
+  return h;
+}
 #else
 extern uw fpr_g_tlsoff; /* entry.c: boot->tls_off */
 static inline char *fpr_tls_blk(void) {
@@ -474,6 +495,25 @@ static inline fpr_hart_t *fpr_hart(void) { return fpr_posix_hart; }
  * when the body returned).  So every C file is compiled -ffixed-x27 as well
  * (compiler/Build.hs), and no C function needs that pair. */
 static inline fpr_hart_t *fpr_hart(void) { fpr_hart_t *h; __asm__ volatile("mov %0, x28" : "=r"(h)); return h; }
+#elif defined(FPR_POSIX) && defined(__riscv) && __riscv_xlen == 64
+/* Every read must use the running pthread's TLS, including after actor
+ * migration. A C-computed TLS address may otherwise survive a switch. */
+#define FPR_TLS __thread
+extern __thread fpr_hart_t *fpr_posix_hart;
+static inline fpr_hart_t *fpr_hart(void) {
+  fpr_hart_t *h;
+#ifdef FPR_POSIX_MODULE
+  __asm__ volatile("la.tls.ie %0, fpr_posix_hart\n"
+                   "add %0, %0, tp\nld %0, 0(%0)"
+                   : "=&r"(h) :: "memory");
+#else
+  __asm__ volatile("lui %0, %%tprel_hi(fpr_posix_hart)\n"
+                   "add %0, %0, tp, %%tprel_add(fpr_posix_hart)\n"
+                   "ld %0, %%tprel_lo(fpr_posix_hart)(%0)"
+                   : "=&r"(h) :: "memory");
+#endif
+  return h;
+}
 #elif defined(FPR_POSIX)
 /* hosted x86-64: no free per-thread register (fs belongs to libc TLS);
  * the SAME thread-local that X64.hs makes generated code load.  __thread:
