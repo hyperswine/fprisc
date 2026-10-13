@@ -5,17 +5,22 @@ G = use "view".
 M = use "map".
 O = use "option".
 S = use "string".
+L = use "list".
 
 Output = { statics : List String, dynamics : List String, classes : List String }.
-Cache a = Type (Cache String (M.Map String (a, Output))).
-Frame a = Type (Frame String Bool (M.Map String (a, Output)) (M.Map String (a, Output)) Int Int).
+# A cache remembers its keys most recently used first, so `retain` can keep
+# what was used lately beyond the page that was just drawn.  A frame carries
+# that order, and the keys this render used (most recent first).
+Cache a = Type (Cache String (M.Map String (a, Output)) (List String)).
+Frame a = Type (Frame String Bool (M.Map String (a, Output)) (M.Map String (a, Output)) Int Int (List String) (List String)).
 
 empty : Unit -> Cache a .
-empty u = Cache "" (M.empty S.compare).
+empty u = Cache "" (M.empty S.compare) Nil.
 
 begin : String -> Bool -> Cache a -> Frame a .
-begin version verify old = case old of Cache was values ->
-  Frame version verify (if version == was then values else M.empty S.compare) (M.empty S.compare) 0 0.
+begin version verify old = case old of Cache was values order ->
+  if version == was then Frame version verify values (M.empty S.compare) 0 0 order Nil
+  else Frame version verify (M.empty S.compare) (M.empty S.compare) 0 0 Nil Nil.
 
 output : G.Node -> Output .
 output node = case G.render node of (s, d) -> {statics = s, dynamics = d, classes = G.allClasses node Nil}.
@@ -23,20 +28,20 @@ fragment : Output -> G.Node .
 fragment out = G.Fragment out.statics out.dynamics out.classes.
 
 item : String -> a -> (a -> G.Node) -> Frame a -> (G.Node, Frame a) .
-item key input render frame = case frame of Frame version verify previous current hits misses ->
+item key input render frame = case frame of Frame version verify previous current hits misses order used ->
   if M.member key current then error "ViewCache: duplicate key {key}"
   else case M.get key previous of
       O.Some (was, out) ->
         if was == input then
           _ = (if verify and output (render input) != out then error "ViewCache: stale output for {key}; check inputs or renderer version" else Unit);
-          (fragment out, Frame version verify previous (M.insert key (input, out) current) (hits + 1) misses)
+          (fragment out, Frame version verify previous (M.insert key (input, out) current) (hits + 1) misses order (key :: used))
         else fresh key input render frame
     | O.None -> fresh key input render frame.
 
 fresh : String -> a -> (a -> G.Node) -> Frame a -> (G.Node, Frame a) .
-fresh key input render frame = case frame of Frame version verify previous current hits misses ->
+fresh key input render frame = case frame of Frame version verify previous current hits misses order used ->
   out = output (render input);
-  (fragment out, Frame version verify previous (M.insert key (input, out) current) hits (misses + 1)).
+  (fragment out, Frame version verify previous (M.insert key (input, out) current) hits (misses + 1) order (key :: used)).
 
 many : (a -> String) -> (a -> G.Node) -> List a -> Frame a -> (List G.Node, Frame a) .
 many key render inputs frame = manyGo key render inputs frame Nil.
@@ -47,8 +52,19 @@ manyGo key render inputs frame acc = case inputs of
 
 # Only this render's entries survive. Removed/off-page items are evicted.
 finish : Frame a -> Cache a .
-finish frame = case frame of Frame version _ _ current _ _ -> Cache version current.
+finish frame = case frame of Frame version _ _ current _ _ _ used -> Cache version current used.
+
+# This render's entries, and then the earlier ones most recently used, up to
+# `limit` in all: a paged list keeps the pages just left without keeping every
+# page ever seen.  An entry kept this way is still checked against its input
+# when it is next used, so a kept card for a changed item renders again.
+retain : Int -> Frame a -> Cache a .
+retain limit frame = case frame of Frame version _ previous current _ _ order used ->
+  extra = L.take (limit - M.size current) (L.filter (fn k -> not (M.member k current) and M.member k previous) order);
+  Cache version (L.fold (fn m k -> (case M.get k previous of O.Some e -> M.insert k e m | O.None -> m)) current extra)
+        (L.append used extra).
+
 stats : Frame a -> (Int, Int, Int) .
-stats frame = case frame of Frame _ _ _ current hits misses -> (hits, misses, M.size current).
+stats frame = case frame of Frame _ _ _ current hits misses _ _ -> (hits, misses, M.size current).
 size : Cache a -> Int .
-size cache = case cache of Cache _ entries -> M.size entries.
+size cache = case cache of Cache _ entries _ -> M.size entries.

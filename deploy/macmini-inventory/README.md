@@ -18,6 +18,10 @@ phone ──https/wss──▶ nginx on localhost-0 (Linode) ──tailscale─�
 
 Settings are in `state.env`. Redeploy after changing the app: `./deploy.sh`.
 
+The app's own settings take defaults: 20 items a page (`--page-size`) and at
+most 200 rendered cards remembered per open tab (`--cache-items`). To change
+them, add the flags to `ProgramArguments` in `cloud.cswine.inventory.plist`.
+
 ## On the Mac mini
 
 - `~/inventory/inventory.log`: the inventory. One JSON line per change, never

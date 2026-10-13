@@ -52,5 +52,17 @@ main =
                           _ = check (C.stats o == (0,2,2));
                           (case run "v1" True old Nil of (_, empty) ->
                             _ = check (C.size (C.finish empty) == 0);
-                            _ = print "cache: hits skip rendering; edits, reordering, eviction, version, session isolation, slots and CSS agree";
-                            0))))))))))).
+                            # retain: a later page keeps the most recently used earlier
+                            # entries up to the bound (a, then b were drawn: b is newer)
+                            (case run "v1" True old [c] of (_, onlyC) ->
+                              kept = C.retain 2 onlyC;
+                              _ = check (C.size kept == 2);
+                              _ = check (C.size (C.retain 1 onlyC) == 1);
+                              _ = check (C.size (C.retain 9 onlyC) == 3);
+                              (case run "v1" True kept [b,c] of (back, kb) ->
+                                _ = compare back [b,c];
+                                _ = check (C.stats kb == (2,0,2));
+                                (case run "v1" True kept [a] of (_, ka) ->
+                                  _ = check (C.stats ka == (0,1,1));
+                                  _ = print "cache: hits skip rendering; edits, reordering, eviction, retention, version, session isolation, slots and CSS agree";
+                                  0)))))))))))))).

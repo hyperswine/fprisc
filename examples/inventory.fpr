@@ -5,6 +5,7 @@
 # holds ONE append-only log, which is the inventory.
 #
 #   fpr run examples/inventory.fpr [--port=6720] [--address=127.0.0.1] [--store=inventory.log]
+#                                  [--page-size=20] [--cache-items=200]
 #   fpr run examples/inventory.fpr --member=NAME --password=SECRET      (add a member, then exit)
 #   fpr run examples/inventory.fpr --import=firestore.json             (the old app's items, then exit)
 #
@@ -25,6 +26,18 @@
 #
 # An edit is a new "item" line with the same id, so the log is every item's
 # history: the model keeps the last few places an item was moved from.
+#
+# PAGES.  A tab shows `page-size` items at a time.  Its writer remembers the
+# rendered cards of the pages it showed lately, up to `cache-items` of them
+# (std/viewcache `retain`): going back a page is free, and a tab that has
+# looked at every page still holds at most that many cards -- past that, a card
+# is rendered again from the model.
+#
+# AUTOCOMPLETE.  When the editor opens, the server hands the page the household's
+# rooms, spots (per room) and tags, the ones edited lately first and your own
+# edits before others'.  The page's script suggests from them as you type:
+# Tab (or Enter after choosing with the arrow keys) takes a suggestion, and on a
+# phone tapping the field you are already in takes the first one.
 #
 # SIGNING IN.  A member signs in once per device with a name and password; the
 # server then hands the page a random token, which the page keeps in
@@ -59,7 +72,7 @@ Att = G.Att.
 Inp = G.Inp.
 
 Msg = Type (Login String | Logout | ClientState String | New | Edit Int | Save | Cancel | Delete Int
-          | AddTag String | AddMember String | Password String | ForgetDevices | Theme | Dismiss | Clear Int Int).
+          | AddTag String | AddMember String | Password String | ForgetDevices | Theme | Dismiss | Clear Int Int | Page Int).
 codec = @Msg.
 
 # What the page holds.  The search, the sort and the editor's drafts are
@@ -81,7 +94,7 @@ Item = { id : Int, name : String, loc : String, sub : String, desc : String, tag
 initModel = { items = Nil, nextId = 1, members = Nil, devices = Nil, pend = Nil, events = 0, skipped = 0,
               fails = Nil, sess = Nil, booted = 0 }.
 noDraft = { name = "", loc = "", sub = "", desc = "", tags = "" }.
-noSess = { sid = 0, user = "", toast = "", role = "", tn = 0, editing = 0 - 1, q = "", sort = "recent",
+noSess = { sid = 0, user = "", toast = "", role = "", tn = 0, editing = 0 - 1, q = "", sort = "recent", page = 0,
            tried = "", theme = 1, d = noDraft }.
 
 # the tags offered while editing, before the household has its own
@@ -290,7 +303,11 @@ mirror m sid json = case Json.parse json of
     Err why -> (m, Nil)
   | Ok v ->
     s0 = sGet m.sess sid;
-    s = { s0 | q = clip 100 (S.trim (localOf v "q")), sort = localOf v "sort",
+    q = clip 100 (S.trim (localOf v "q"));
+    sort = localOf v "sort";
+    # a new search or a new order starts at the first page
+    page = (case strEq q s0.q and strEq sort s0.sort of True -> s0.page | False -> 0);
+    s = { s0 | q = q, sort = sort, page = page,
                d = { name = localOf v "name", loc = localOf v "loc", sub = localOf v "sub", desc = localOf v "desc", tags = localOf v "tags" } };
     resume m sid s (localOf v "tok").
 resume m sid s tok | strlen s.user > 0 or strlen tok == 0 or strEq tok s.tried = (sPut m s, Nil).
@@ -301,7 +318,8 @@ resume m sid s tok = case deviceUser m.devices (Digest.sha256 tok) of
 withUser sid msg m s | strEq s.user "" = refuse m sid "sign in first".
 withUser sid msg m s = case msg of
     Logout -> signOut m sid s
-  | New -> (sPut m { s | editing = 0, d = noDraft }, setLocals sid (draftLocals noDraft) :: Nil)
+  | New -> (sPut m { s | editing = 0, d = noDraft }, setLocals sid (draftLocals noDraft) :: suggest sid s.user m :: Nil)
+  | Page n -> (sPut m { s | page = imax 0 n }, Nil)
   | Edit id -> edit m sid s id
   | Cancel -> (sPut m { s | editing = 0 - 1 }, setLocals sid (draftLocals noDraft) :: Nil)
   | Save -> save m sid s
@@ -322,7 +340,7 @@ edit m sid s id = case findItem m.items id of
     Option.None -> refuse m sid "that item is gone"
   | Option.Some it ->
       d = { name = it.name, loc = it.loc, sub = it.sub, desc = it.desc, tags = S.join ", " it.tags };
-      (sPut m { s | editing = id, d = d }, setLocals sid (draftLocals d) :: Nil).
+      (sPut m { s | editing = id, d = d }, setLocals sid (draftLocals d) :: suggest sid s.user m :: Nil).
 
 save m sid s =
   d = s.d;
@@ -360,6 +378,23 @@ addTag m sid s t =
   | False ->
       tags = S.join ", " (have + [t]);
       (sPut m { s | d = { s.d | tags = tags } }, setLocals sid [("tags", tags)] :: Nil).
+
+# ---- autocomplete: what the editor's script suggests from ----------------------------------------
+# Rooms, spots and tags in the order they were last used, a member's own edits
+# counted as a month more recent than they are; the page does the matching.
+#   {"loc": [...], "sub": {"*": [...], "<room, lower case>": [...]}, "tags": [...]}
+suggest sid user m = Live.Emit sid "suggest" (suggestJson user m.items).
+suggestJson user items =
+  recent = List.sortBy (Order.reverse Order.int) (fn it -> it.at + (case strEq it.by user of True -> 2592000 | False -> 0)) items;
+  locs = List.take 100 (uniqueCi (List.map (fn it -> it.loc) recent));
+  spots l = List.take 30 (uniqueCi (List.map (fn it -> it.sub) (List.filter (fn it -> strEq (lower it.loc) (lower l)) recent)));
+  Json.render (Json.object
+    [ ("loc", Json.strings locs)
+    , ("sub", Json.object (("*", Json.strings (List.take 100 (uniqueCi (List.map (fn it -> it.sub) recent))))
+                           :: List.map (fn l -> (lower l, Json.strings (spots l))) locs))
+    , ("tags", Json.strings (List.take 100 (List.unique (List.concatMap (fn it -> it.tags) recent)))) ]).
+# the first spelling of each value, ignoring case and the empty one
+uniqueCi xs = List.reverse (List.fold (fn seen x -> (case strlen x == 0 or List.any (fn y -> strEq (lower y) (lower x)) seen of True -> seen | False -> x :: seen)) Nil xs).
 
 # ---- the household ---------------------------------------------------------------------------
 
@@ -412,19 +447,25 @@ ranked xs = List.sortBy (Order.reverse Order.int) (fn kc -> (case kc of (k, c) -
 firsts kcs = List.map (fn kc -> (case kc of (k, c) -> k)) kcs.
 
 noView = { signed = 0, user = "", toast = "", role = "", theme = 1, editing = 0 - 1, items = Nil, total = 0, shown = 0,
-           q = "", places = Nil, allPlaces = Nil, tags = Nil, quick = Nil, members = Nil, devices = 0, online = 0, events = 0, booted = 0 }.
+           page = 0, pages = 1, first = 0, q = "", places = Nil, tags = Nil, quick = Nil, members = Nil, devices = 0, online = 0,
+           events = 0, booted = 0 }.
 
-project sid m =
+# `size` items a page; a page past the end (the list shrank under it) is the last one
+project size sid m =
   s = sGet m.sess sid;
   case strEq s.user "" of
     True -> { noView | toast = s.toast, role = s.role, theme = s.theme }
   | False ->
       hits = sorted s.sort (List.filter (matches (lower s.q)) m.items);
+      n = List.length hits;
+      pages = imax 1 ((n + size - 1) / size);
+      page = (case s.page >= pages of True -> pages - 1 | False -> s.page);
       places = firsts (ranked (List.map (fn it -> it.loc) m.items));
       tags = firsts (ranked (List.concatMap (fn it -> it.tags) m.items));
       { signed = 1, user = s.user, toast = s.toast, role = s.role, theme = s.theme, editing = s.editing,
-        items = List.take 300 hits, total = List.length m.items, shown = List.length hits, q = s.q,
-        places = List.take 8 places, allPlaces = places, tags = List.take 12 tags,
+        items = List.take size (List.drop (page * size) hits), total = List.length m.items, shown = n,
+        page = page, pages = pages, first = page * size, q = s.q,
+        places = List.take 8 places, tags = List.take 12 tags,
         quick = List.take 18 (List.unique (tags + quickTags)),
         members = List.map memName m.members,
         devices = List.length (List.filter (fn d -> strEq (devName d) s.user) m.devices),
@@ -443,10 +484,12 @@ rootCls v = case v.theme == 1 of True -> "col gap-4 inv-page day" | False -> "co
 # the remembered device lives in a hidden input, so the page's script can fill it
 root v kids = El "div" (Cls (rootCls v) :: locals) (Inp [G.bind @Client.tok, Att "type" "hidden"] :: kids).
 
-view sid v old = case v.signed == 0 of
+# `keep`: how many cards this tab's writer remembers, this page's and then the
+# ones it drew most recently
+view keep sid v old = case v.signed == 0 of
     True -> (G.render (root v [loginView v]), old)
   | False -> (case VC.many (fn it -> "{it.id}") itemCard v.items (VC.begin "inventory-card-v1" verify old) of (cards, cc) ->
-      (G.render (root v (signedIn v cards)), VC.finish cc)).
+      (G.render (root v (signedIn v cards)), VC.retain keep cc)).
 verify = Program.envOr "0" "INV_VIEW_VERIFY" == "1".
 
 btn label attrs = El "button" (Cls "btn round px-3 py-2 tall" :: attrs) [Txt label].
@@ -494,14 +537,28 @@ itemsPane v cards =
     :: chipRow (List.map (fn p -> El "button" [Cls "btn pill px-3 chip text-sm flex-none", G.setTo @Client.q (lower p)] [Txt p]) v.places)
     :: chipRow (List.map (fn t -> El "button" [Cls "btn pill px-3 chip text-sm dim flex-none", G.setTo @Client.q t] [Txt "#{t}"]) v.tags)
     :: (case v.editing == 0 of True -> [editor v] | False -> Nil)
-    + [ El "div" [Cls "text-sm dim"] [Dyn (countText v)]
-      , G.key "items" (El "div" [Cls "col gap-3"] (case List.isEmpty cards of True -> [empty v] | False -> inPlace v cards)) ]).
+    + [ El "div" [Cls "text-sm dim", Att "id" "inv-list"] [Dyn (countText v)]
+      , G.key "items" (El "div" [Cls "col gap-3"] (case List.isEmpty cards of True -> [empty v] | False -> inPlace v cards))
+      , pager v ]).
+# the pager, when there is more than one page
+pager v | v.pages <= 1 = El "span" Nil Nil.
+pager v =
+  El "div" [Cls "row center gap-2"]
+    [ pageBtn "previous" (v.page - 1) (v.page == 0)
+    , El "div" [Cls "grow text-center text-sm dim tabular"] [Dyn "page {v.page + 1} of {v.pages}"]
+    , pageBtn "next" (v.page + 1) (v.page + 1 >= v.pages) ].
+pageBtn label n off = El "button" [Cls (case off of True -> "btn round px-3 py-2 tall off" | False -> "btn round px-3 py-2 tall"),
+                                   G.send codec (Page n), Att "data-pager" ""] [Txt label].
 # the item being edited is its editor, where its card was
 inPlace v cards | v.editing <= 0 = cards.
 inPlace v cards = List.zipWith (fn it card -> (case it.id == v.editing of True -> G.key "edit-{it.id}" (editor v) | False -> card)) v.items cards.
 sortBtn key label = El "button" [Cls "btn pill px-3 chip", G.setTo @Client.sort key, Att "data-on" "sort:{key}"] [Txt label].
-countText v | strlen v.q == 0 = "".
-countText v = "{v.shown} of {v.total} match \"{v.q}\"".
+countText v | v.shown == 0 = "".
+countText v =
+  range = (case v.pages <= 1 of True -> "" | False -> "{v.first + 1}-{v.first + List.length v.items} of ");
+  case strlen v.q == 0 of
+    True -> (case v.pages <= 1 of True -> "" | False -> "{range}{v.total}")
+  | False -> "{range}{v.shown} matching \"{v.q}\"".
 empty v | v.total == 0 = El "div" [Cls "card round p-6 text-center dim"] [Txt "Nothing here yet. Add the first thing with + add."].
 empty v = El "div" [Cls "card round p-6 text-center dim"] [Txt "Nothing matches."].
 
@@ -513,11 +570,10 @@ editor v =
       [ El "div" [Cls "text-lg bold"] [Txt (case v.editing == 0 of True -> "Add an item" | False -> "Edit item")]
       , labelled "name" (field [G.bind @Client.name, Att "placeholder" "e.g. USB-C cable", Att "maxlength" "120"])
       , El "div" [Cls "row gap-2 narrow:col"]
-          [ labelled "room or place" (field [G.bind @Client.loc, Att "placeholder" "e.g. study", Att "list" "inv-places", Att "maxlength" "60"])
-          , labelled "spot" (field [G.bind @Client.sub, Att "placeholder" "e.g. top drawer", Att "maxlength" "60"]) ]
-      , El "datalist" [Att "id" "inv-places"] (List.map (fn p -> El "option" [Att "value" p] Nil) v.allPlaces)
+          [ labelled "room or place" (field [G.bind @Client.loc, Att "data-ac" "loc", Att "placeholder" "e.g. study", Att "maxlength" "60", Att "autocomplete" "off"])
+          , labelled "spot" (field [G.bind @Client.sub, Att "data-ac" "sub", Att "placeholder" "e.g. top drawer", Att "maxlength" "60", Att "autocomplete" "off"]) ]
       , labelled "notes" (El "textarea" [Cls "field inp w-full", G.bind @Client.desc, Att "rows" "3", Att "maxlength" "2000"] Nil)
-      , labelled "tags, comma separated" (field [G.bind @Client.tags, Att "placeholder" "e.g. electronics, cables", Att "autocapitalize" "none"])
+      , labelled "tags, comma separated" (field [G.bind @Client.tags, Att "data-ac" "tags", Att "placeholder" "e.g. electronics, cables", Att "autocapitalize" "none", Att "autocomplete" "off"])
       , El "div" [Cls "row gap-2 wrap"] (List.map (fn t -> El "button" [Cls "btn pill px-3 chip text-sm", G.send codec (AddTag t)] [Txt t]) v.quick)
       , El "div" [Cls "row gap-2"] [ primary (case v.editing == 0 of True -> "add item" | False -> "save") [G.send codec Save, Cls "grow"],
                                      btn "cancel" [G.send codec Cancel] ] ].
@@ -571,13 +627,14 @@ styles =
   G.Style "inv-page" [G.MaxWidth (G.Px 760), G.Width (G.Pct 100), G.Prop "margin" "0 auto", G.Prop "padding" "14px 14px 48px"] ::
   G.Style "tall" [G.MinHeight (G.Px 44)] ::
   G.Style "chip" [G.MinHeight (G.Px 34)] ::
+  G.Style "off" [G.Prop "opacity" ".35", G.Prop "pointer-events" "none"] ::
   G.Style "scroll-x" [G.Prop "overflow-x" "auto", G.Prop "padding-bottom" "4px", G.Prop "scrollbar-width" "thin"] ::
   G.Style "inp" [G.Prop "font-size" "16px"] ::   # 16px keeps iOS from zooming into an input
   Nil.
 sampleItem = { id = 1, name = "USB-C cable", loc = "study", sub = "top drawer", desc = "two of them", tags = ["cables"],
                created = 0, at = 0, by = "sam", moves = [{ at = 0, from = "garage" }] }.
-sampleView = { noView | signed = 1, user = "sam", toast = "sample", role = "ok", editing = 0, items = [sampleItem], total = 1, shown = 1,
-               q = "x", places = ["study"], allPlaces = ["study"], tags = ["cables"], quick = quickTags, members = ["sam"], devices = 2 }.
+sampleView = { noView | signed = 1, user = "sam", toast = "sample", role = "ok", editing = 0, items = [sampleItem], total = 41, shown = 41,
+               page = 1, pages = 3, first = 20, q = "x", places = ["study"], tags = ["cables"], quick = quickTags, members = ["sam"], devices = 2 }.
 cssAll v = G.cssWith styles (El "div" Nil [root sampleView (signedIn sampleView [itemCard sampleItem, empty sampleView]), loginView sampleView]).
 
 # The page's own script: the remembered device.  Once the client has painted,
@@ -598,6 +655,132 @@ script = strcat (LJ.src 0) "
   var t = stored(), el = document.querySelector('[data-input=\"tok\"]');
   if (t && el) \{ el.value = t; el.dispatchEvent(new Event('input')); }
   ready = true;
+})();
+" + autocomplete + "
+(function () \{
+  /* a page turn shows the new page from its top */
+  document.addEventListener('click', function (e) \{
+    if (!e.target.closest || !e.target.closest('[data-pager]')) return;
+    setTimeout(function () \{ var l = document.getElementById('inv-list'); if (l) l.scrollIntoView(\{ block: 'start', behavior: 'smooth' }); }, 150);
+  });
+})();
+".
+
+# The editor's autocomplete, in the page so it answers each keystroke at once.
+# An input with data-ac=loc|sub|tags is completed from the lists the server
+# sent ('live:suggest'); tags complete the part after the last comma.  The
+# box of suggestions lives outside the live root, so a render never touches
+# it.  Taking one sets the input and fires 'input', which is how the client
+# hears any change (and mirrors it to the server).
+autocomplete = "
+(function () \{
+  var lists = \{ loc: [], sub: \{}, tags: [] }, cur = null, opts = [], sel = 0, moved = false, touchAgain = false;
+  var box = document.createElement('div');
+  box.style.cssText = 'position:absolute;z-index:50;display:none;flex-wrap:wrap;gap:6px;padding:8px;border-radius:12px;' +
+    'background:var(--card);color:var(--ink);border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.18)';
+  document.body.appendChild(box);
+  document.addEventListener('live:suggest', function (e) \{
+    try \{ lists = JSON.parse(e.detail); } catch (x) \{}
+    refresh();
+  });
+  function kind(el) \{ return el && el.getAttribute ? el.getAttribute('data-ac') : null; }
+  function valueOf(name) \{ var e = document.querySelector('[data-input=\"' + name + '\"]'); return e ? e.value : ''; }
+  function part(el) \{
+    var v = el.value;
+    return (kind(el) === 'tags' ? v.slice(v.lastIndexOf(',') + 1) : v).trim().toLowerCase();
+  }
+  function pool(el) \{
+    var k = kind(el), sub = lists.sub || \{};
+    if (k === 'loc') return lists.loc || [];
+    if (k === 'sub') \{
+      var here = sub[valueOf('loc').trim().toLowerCase()] || [];
+      return here.concat((sub['*'] || []).filter(function (x) \{ return here.indexOf(x) < 0; }));
+    }
+    if (k === 'tags') \{
+      var have = el.value.split(',').slice(0, -1).map(function (t) \{ return t.trim().toLowerCase(); });
+      return (lists.tags || []).filter(function (t) \{ return have.indexOf(t) < 0; });
+    }
+    return [];
+  }
+  /* what starts with the typed text, then what has a word starting with it, then the rest that contains it */
+  function rank(el) \{
+    var p = part(el), all = pool(el), a = [], b = [], c = [];
+    all.forEach(function (x) \{
+      var l = x.toLowerCase();
+      if (l === p) return;
+      if (!p || l.indexOf(p) === 0) a.push(x);
+      else if (l.indexOf(' ' + p) >= 0) b.push(x);
+      else if (l.indexOf(p) >= 0) c.push(x);
+    });
+    return a.concat(b, c).slice(0, 6);
+  }
+  function hide() \{ box.style.display = 'none'; opts = []; }
+  function refresh() \{
+    if (!cur || !document.contains(cur) || document.activeElement !== cur) \{ hide(); return; }
+    opts = rank(cur);
+    if (sel >= opts.length) sel = 0;
+    if (!opts.length) \{ hide(); return; }
+    box.innerHTML = '';
+    opts.forEach(function (o, i) \{
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn pill px-3 chip text-sm' + (i === sel ? ' is-on' : '');
+      b.textContent = o;
+      b.addEventListener('pointerdown', function (e) \{ e.preventDefault(); take(i); });
+      box.appendChild(b);
+    });
+    var hint = document.createElement('span');
+    hint.className = 'text-xs dim';
+    hint.style.alignSelf = 'center';
+    hint.textContent = matchMedia('(pointer: coarse)').matches ? 'tap the field again for the first' : 'tab takes the highlighted one';
+    box.appendChild(hint);
+    /* the box is outside the page's root: it takes the theme's colours from the field */
+    var cs = getComputedStyle(cur);
+    ['--card', '--line', '--ink', '--dim', '--bg'].forEach(function (v) \{ box.style.setProperty(v, cs.getPropertyValue(v)); });
+    var r = cur.getBoundingClientRect();
+    box.style.left = (r.left + scrollX) + 'px';
+    box.style.top = (r.bottom + scrollY + 4) + 'px';
+    box.style.width = r.width + 'px';
+    box.style.display = 'flex';
+  }
+  function take(i) \{
+    var o = opts[i], v = cur.value;
+    if (o === undefined) return;
+    if (kind(cur) === 'tags') \{
+      var head = v.slice(0, v.lastIndexOf(',') + 1).trim();
+      cur.value = (head ? head + ' ' : '') + o + ', ';
+    } else cur.value = o;
+    sel = 0; moved = false;
+    cur.dispatchEvent(new Event('input', \{ bubbles: true }));
+    if (kind(cur) === 'tags') refresh(); else hide();
+  }
+  document.addEventListener('focusin', function (e) \{
+    if (kind(e.target)) \{ cur = e.target; sel = 0; moved = false; refresh(); } else \{ cur = null; hide(); }
+  });
+  document.addEventListener('focusout', function (e) \{ if (e.target === cur) setTimeout(refresh, 0); });
+  document.addEventListener('input', function (e) \{ if (e.target === cur) \{ sel = 0; moved = false; refresh(); } });
+  addEventListener('resize', refresh);
+  /* Tab takes a suggestion once you have typed, or chosen one with the arrows;
+     on an empty field Tab moves on as usual */
+  document.addEventListener('keydown', function (e) \{
+    if (!cur || e.target !== cur || !opts.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') \{
+      sel = (sel + (e.key === 'ArrowDown' ? 1 : opts.length - 1)) % opts.length; moved = true;
+      e.preventDefault(); refresh();
+    } else if (e.key === 'Tab' && !e.shiftKey && (part(cur) || moved)) \{
+      e.preventDefault(); take(sel);
+    } else if (e.key === 'Enter' && moved) \{
+      e.preventDefault(); take(sel);
+    } else if (e.key === 'Escape') hide();
+  }, true);
+  /* on a touch screen, tapping the field you are already in takes the first */
+  document.addEventListener('pointerdown', function (e) \{
+    touchAgain = e.pointerType !== 'mouse' && kind(e.target) && e.target === cur && document.activeElement === cur;
+  }, true);
+  document.addEventListener('click', function (e) \{
+    if (touchAgain && e.target === cur && opts.length) take(sel);
+    touchAgain = false;
+  }, true);
 })();
 ".
 
@@ -668,6 +851,7 @@ setting d k v = case Decode.run (Decode.field k d) v of
   | Err why -> Program.fail 2 "inventory: {why}".
 
 main = case Config.load { defaults = Json.object [("port", Json.Integer 6720), ("address", Json.Text "127.0.0.1"), ("store", Json.Text "inventory.log"),
+                                                  ("page-size", Json.Integer 20), ("cache-items", Json.Integer 200),
                                                   ("member", Json.Text ""), ("password", Json.Text ""), ("import", Json.Text "")],
                           file = Option.None, envPrefix = "INV_", args = Program.args Unit } of
     Err why -> Program.fail 2 "inventory: {why}"
@@ -682,11 +866,14 @@ main = case Config.load { defaults = Json.object [("port", Json.Integer 6720), (
         | False ->
             port = setting Decode.int "port" v;
             address = setting Decode.string "address" v;
+            size = imax 1 (setting Decode.int "page-size" v);
+            # at least a page: the cards on show are always kept
+            keep = imax size (setting Decode.int "cache-items" v);
             # the inventory is the log, folded at boot; std/live's own store holds
             # nothing of the model, it is there because the driver wants one
             cfg = { address = address, port = port, title = "Home inventory", store = "{store}.kvlog", journal = False,
                     script = script, watch = Nil, rebuild = Nil, restart = Nil };
             _ = Live.serveProjected cfg { init = boot store, update = update store, subs = subs, fields = Nil, codec = codec,
-                                          project = project, same = (fn a b -> a == b),
-                                          view = view, cache = VC.empty Unit, css = cssAll };
+                                          project = project size, same = (fn a b -> a == b),
+                                          view = view keep, cache = VC.empty Unit, css = cssAll };
             0)).
