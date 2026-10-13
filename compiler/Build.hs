@@ -54,11 +54,12 @@ data Plan = Plan
     pPort :: Maybe String, -- esp-idf: the board's serial port
     pCost :: Bool, -- --cost: print the root functions' work/alloc equations
     pManifest :: Maybe String, -- --manifest=FILE: judge them against a target manifest (passed through)
-    pRest :: [String]
+    pRest :: [String],
+    pTarget :: Maybe (String, String) -- --target=linux-aarch64|linux-x86_64: a cross build (os, arch); Nothing is this machine
   }
 
 usage :: String
-usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep] [--module]\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --host=esp-idf [-o dir] [--port P] [-v]"
+usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep] [--module]\n                 [--target=linux-aarch64|linux-x86_64 --cc CROSS-GCC]\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --host=esp-idf [-o dir] [--port P] [-v]"
 
 -- The hart CAP compiled in is this machine's processor count (it was a flat 2,
 -- so a server on a ten-core machine ran on two threads).  The running program
@@ -69,7 +70,7 @@ usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep
 plan :: [String] -> IO Plan
 plan args = do
   cores <- onlineCores
-  go (Plan "" Nothing (max 2 cores) False False False Nothing [] [] [] "unix" Nothing False Nothing []) args
+  go (Plan "" Nothing (max 2 cores) False False False Nothing [] [] [] "unix" Nothing False Nothing [] Nothing) args
   where
     go p ("-o" : o : rest) = go p {pOut = Just o} rest
     go p ("--harts" : n : rest) = go p {pHarts = read n} rest
@@ -82,6 +83,8 @@ plan args = do
     go p ("--cflag" : f : rest) = go p {pCFlags = pCFlags p ++ [f]} rest
     go p ("--link" : f : rest) = go p {pLink = pLink p ++ [f]} rest
     go p ("-v" : rest) = go p {pVerbose = True} rest
+    go p ("--target=linux-aarch64" : rest) = go p {pTarget = Just ("linux", "aarch64")} rest
+    go p ("--target=linux-x86_64" : rest) = go p {pTarget = Just ("linux", "x86_64")} rest
     go p ("--system=posix" : rest) = go p rest -- the only system these commands build
     go p ("--host=unix" : rest) = go p {pHost = "unix"} rest
     go p ("--host=esp-idf" : rest) = go p {pHost = "esp-idf"} rest
@@ -103,6 +106,13 @@ onlineCores = do
 build :: Plan -> IO FilePath
 build p = do
   home <- fprHome
+  -- the machine the executable is FOR: this one, or a --target cross build
+  let (tOS, tArch) = fromMaybe (System.Info.os, System.Info.arch) (pTarget p)
+      crossTarget = case pTarget p of
+        Nothing -> []
+        Just (_, a) -> [if a == "aarch64" then "--target=a64" else "--target=x64"]
+  when (pTarget p /= Nothing && pCC p == Nothing) $ hPutStrLn stderr "fpr build: a --target cross build needs --cc (e.g. --cc aarch64-linux-gnu-gcc)" >> exitFailure
+  when (pTarget p /= Nothing && pModule p) $ hPutStrLn stderr "fpr build: --module is not cross-built" >> exitFailure
   let prelude = home </> "core" </> "prelude.fpr"
       runtime = home </> "runtime" -- the language runtime
       machine = home </> "machine" -- the machine layer under it, one per system (docs/2026-09-19-HAL.md)
@@ -115,7 +125,7 @@ build p = do
   pid <- getProcessID
   let dir = cache </> "build"
       asm = dir </> (takeBaseName (pSource p) ++ "-" ++ show pid ++ ".s")
-      out = fromMaybe (dropExtension (pSource p) ++ if pModule p then if System.Info.os == "darwin" then ".dylib" else ".so" else "") (pOut p)
+      out = fromMaybe (dropExtension (pSource p) ++ if pModule p then if tOS == "darwin" then ".dylib" else ".so" else "") (pOut p)
   createDirectoryIfMissing True dir
   -- the compiler as a subprocess: its progress lines stay quiet unless
   -- asked for, its diagnostics (stderr) and its exit status pass through
@@ -126,7 +136,7 @@ build p = do
   -- checker refused exited 1 having said nothing at all.)
   let logf = asm ++ ".log"
   logh <- openFile logf WriteMode
-  (_, _, _, ch) <- createProcess (proc self (["compile", "--system=posix", "--prelude=" ++ prelude] ++ ["--plugin" | pModule p] ++ ["--cost" | pCost p] ++ maybe [] pure (pManifest p) ++ [pSource p, asm]))
+  (_, _, _, ch) <- createProcess (proc self (["compile", "--system=posix", "--prelude=" ++ prelude] ++ ["--plugin" | pModule p] ++ crossTarget ++ ["--cost" | pCost p] ++ maybe [] pure (pManifest p) ++ [pSource p, asm]))
                      {std_out = if pVerbose p || pCost p then Inherit else UseHandle logh}
   cc0 <- waitForProcess ch
   when (cc0 /= ExitSuccess) $ do
@@ -146,7 +156,7 @@ build p = do
     Just c -> pure c
     Nothing -> fromMaybe "cc" <$> lookupEnv "FPR_CC"
   costProbe <- (== Just "1") <$> lookupEnv "FPR_COST_PROBE"
-  let ctx = if System.Info.arch == "aarch64" then "ctx_a64.S" else "ctx_x64.S"
+  let ctx = if tArch == "aarch64" then "ctx_a64.S" else "ctx_x64.S"
       core = [runtime </> f | f <- ["runtime.c", "actors.c", "bits.c", "vec.c", "sstr.c", "mod.c", "buddy.c"]]
       -- the posix system: what both hosts share (machine/posix), and the unix host (machine/unix)
       posix = [machine </> "posix" </> f | f <- ["hal.c", "base.c", "base_file.c", "os_fs.c", "os_io.c", "os_watch.c", "os_net.c", "os_job.c", "os_module.c"]]
@@ -163,9 +173,9 @@ build p = do
       -- the old thread's hart (runtime/fpr.h).  With x27 reserved too, no C
       -- function ever needs that pair.  Generated code still uses x27 (its s9):
       -- it saves registers one at a time, never paired with x28.
-      fixed = if System.Info.arch == "aarch64" then ["-ffixed-x27", "-ffixed-x28", "-DFPR_HART_X28"] else [] -- x28 carries the hart (runtime/fpr.h)
+      fixed = if tArch == "aarch64" then ["-ffixed-x27", "-ffixed-x28", "-DFPR_HART_X28"] else [] -- x28 carries the hart (runtime/fpr.h)
       cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_POSIX_CODEGEN_REV=" ++ show codegenRev, "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed ++ ["-DFPR_COST_PROBE" | costProbe]
-      linux = if System.Info.os == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []
+      linux = if tOS == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []
       -- the runtime's objects are cached per hart count, rebuilt only
       -- when their source is newer: a warm build compiles the program
       -- and links, nothing more
@@ -174,7 +184,7 @@ build p = do
       -- asks for a target binary, and an object another toolchain's gcc built
       -- against another libc is not this object either -- without cc in the
       -- key a warm host build silently hands its own .o files to the linker
-      rtdir = cache </> "rt" </> (System.Info.arch ++ "-h" ++ show (pHarts p) ++ "-" ++ showHex (fnv64 (cc ++ " " ++ unwords cflags)) "")
+      rtdir = cache </> "rt" </> (tOS ++ "-" ++ tArch ++ "-h" ++ show (pHarts p) ++ "-" ++ showHex (fnv64 (cc ++ " " ++ unwords cflags)) "")
   createDirectoryIfMissing True rtdir
   -- an object is stale when ANY header is newer, not just its own source: a
   -- changed struct in fpr.h (the hart block) otherwise links new objects
@@ -187,8 +197,8 @@ build p = do
   -- are compiled with the runtime's flags plus --cflag, never cached.
   let shim = asm ++ ".module.c"
   when (pModule p) $ writeFile shim ("#include \"fpr.h\"\nconst uw fpr_posix_module_nativeabi = FPR_NATIVE_ABI;\nconst uw fpr_posix_module_codegen = " ++ show codegenRev ++ ";\n")
-  let links = if pModule p then (if System.Info.os == "darwin" then ["-dynamiclib", "-Wl,-undefined,dynamic_lookup"] else ["-shared", "-Wl,-Bsymbolic"]) ++ [shim]
-              else linux ++ (if System.Info.os == "linux" then ["-rdynamic", "-ldl"] else ["-Wl,-export_dynamic"])
+  let links = if pModule p then (if tOS == "darwin" then ["-dynamiclib", "-Wl,-undefined,dynamic_lookup"] else ["-shared", "-Wl,-Bsymbolic"]) ++ [shim]
+              else linux ++ (if tOS == "linux" then ["-rdynamic", "-ldl"] else ["-Wl,-export_dynamic"])
       args = cflags ++ ["-fPIC" | pModule p] ++ pCFlags p ++ links ++ [asm] ++ units ++ objs ++ pWith p ++ pLink p ++ ["-lpthread", "-lm", "-o", out]
   code <- rawSystem cc args
   when (code /= ExitSuccess) $ hPutStrLn stderr ("fpr build: " ++ cc ++ " failed") >> exitWith code

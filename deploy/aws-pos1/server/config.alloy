@@ -1,0 +1,321 @@
+// Grafana Alloy for POS v1 on EC2.  Everything is collected on the box:
+//
+//   host metrics (node_exporter equivalent)          -> Grafana Cloud Prometheus
+//   the shop log /var/lib/pos1/pos1.log, as logs AND
+//     as pos1_* metrics: sales, revenue, tax, voids,
+//     restocked units.  The log is the shop (THE ONE
+//     RULE in pos1.fpr), so the metrics need no
+//     change to the program.                          -> Loki + Prometheus
+//   Caddy's HTTP metrics                              -> Prometheus
+//   pos1 / caddy / alloy / sshd journald logs         -> Loki
+//   blackbox probes of pos1 behind and in front of
+//     Caddy (probe_success, probe_duration_seconds)   -> Prometheus
+//
+// Credentials: /etc/alloy/grafana-cloud.env (sudo set-grafana-cloud).  Until
+// it exists the writers point at a dead local port and only log errors.
+
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// ------------------------------------------------------------------ outputs
+
+prometheus.remote_write "cloud" {
+  endpoint {
+    url = coalesce(sys.env("GCLOUD_PROM_URL"), "http://127.0.0.1:9/unset")
+
+    basic_auth {
+      username = coalesce(sys.env("GCLOUD_PROM_USER"), "unset")
+      password = coalesce(sys.env("GCLOUD_TOKEN"), "unset")
+    }
+  }
+}
+
+loki.write "cloud" {
+  endpoint {
+    url = coalesce(sys.env("GCLOUD_LOKI_URL"), "http://127.0.0.1:9/unset")
+
+    basic_auth {
+      username = coalesce(sys.env("GCLOUD_LOKI_USER"), "unset")
+      password = coalesce(sys.env("GCLOUD_TOKEN"), "unset")
+    }
+  }
+  external_labels = {
+    instance = "pos1",
+  }
+}
+
+// ------------------------------------------------------------- host metrics
+// job/instance as Grafana Cloud's Linux integration expects, so its
+// prebuilt dashboards light up.
+
+prometheus.exporter.unix "host" {
+  disable_collectors = ["btrfs", "infiniband", "ipvs", "nfs", "nfsd", "xfs", "zfs", "fibrechannel", "tapestats"]
+}
+
+discovery.relabel "host" {
+  targets = prometheus.exporter.unix.host.targets
+
+  rule {
+    target_label = "instance"
+    replacement  = "pos1"
+  }
+
+  rule {
+    target_label = "job"
+    replacement  = "integrations/node_exporter"
+  }
+}
+
+prometheus.scrape "host" {
+  targets         = discovery.relabel.host.output
+  forward_to      = [prometheus.remote_write.cloud.receiver]
+  scrape_interval = "60s"
+}
+
+// --------------------------------------------------------------- shop log
+
+local.file_match "shop" {
+  path_targets = [{
+    "__path__" = "/var/lib/pos1/pos1.log",
+    "job"      = "pos1-shop",
+  }]
+}
+
+loki.source.file "shop" {
+  targets    = local.file_match.shop.targets
+  forward_to = [loki.process.shop.receiver]
+}
+
+loki.process "shop" {
+  forward_to = [loki.write.cloud.receiver]
+
+  // a staff line carries a PIN: it never leaves the box
+  stage.drop {
+    expression          = "^staff "
+    drop_counter_reason = "staff_pin"
+  }
+
+  // the line's kind (product, sale, void, restock, price, retire, tax, lowat)
+  stage.regex {
+    expression = "^(?P<kind>[a-z]+) "
+  }
+
+  stage.labels {
+    values = {
+      kind = "",
+    }
+  }
+
+  // sale <n> <cashier> <at> <pay> <tendered> <total> <tax> <sku>=<qty>=<price>...
+  stage.match {
+    selector = "{kind=\"sale\"}"
+
+    stage.regex {
+      expression = "^sale (?P<receipt>\\d+) (?P<cashier>\\S+) \\S+ (?P<pay>\\d+) \\d+ (?P<total>\\d+) (?P<tax>\\d+)"
+    }
+
+    // pay 0 is cash (pos1.fpr: tendered is only kept for cash)
+    stage.template {
+      source   = "pay"
+      template = "{{ if eq .Value \"0\" }}cash{{ else }}card{{ end }}"
+    }
+
+    stage.labels {
+      values = {
+        pay     = "",
+        cashier = "",
+      }
+    }
+
+    stage.metrics {
+      metric.counter {
+        name              = "sales_total"
+        prefix            = "pos1_"
+        description       = "Checkouts committed to the shop log"
+        source            = "receipt"
+        action            = "inc"
+        max_idle_duration = "8760h"
+      }
+
+      metric.counter {
+        name              = "revenue_cents_total"
+        prefix            = "pos1_"
+        description       = "Sale totals in cents, tax included"
+        source            = "total"
+        action            = "add"
+        max_idle_duration = "8760h"
+      }
+
+      metric.counter {
+        name              = "tax_cents_total"
+        prefix            = "pos1_"
+        description       = "Tax collected in cents"
+        source            = "tax"
+        action            = "add"
+        max_idle_duration = "8760h"
+      }
+    }
+  }
+
+  // void <n> <cashier> <at>
+  stage.match {
+    selector = "{kind=\"void\"}"
+
+    stage.regex {
+      expression = "^void (?P<receipt>\\d+) (?P<cashier>\\S+)"
+    }
+
+    stage.metrics {
+      metric.counter {
+        name              = "voids_total"
+        prefix            = "pos1_"
+        description       = "Receipts voided"
+        source            = "receipt"
+        action            = "inc"
+        max_idle_duration = "8760h"
+      }
+    }
+  }
+
+  // restock <sku> <delta> <cashier> <at>
+  stage.match {
+    selector = "{kind=\"restock\"}"
+
+    stage.regex {
+      expression = "^restock (?P<sku>\\S+) (?P<delta>\\d+)"
+    }
+
+    stage.metrics {
+      metric.counter {
+        name              = "restocked_units_total"
+        prefix            = "pos1_"
+        description       = "Units added by restock lines"
+        source            = "delta"
+        action            = "add"
+        max_idle_duration = "8760h"
+      }
+    }
+  }
+}
+
+// The pos1_* counters live in Alloy's own registry: scrape it, keep only them.
+prometheus.exporter.self "alloy" { }
+
+prometheus.scrape "self" {
+  targets         = prometheus.exporter.self.alloy.targets
+  forward_to      = [prometheus.relabel.pos1_only.receiver]
+  scrape_interval = "30s"
+}
+
+prometheus.relabel "pos1_only" {
+  forward_to = [prometheus.remote_write.cloud.receiver]
+
+  rule {
+    source_labels = ["__name__"]
+    regex         = "pos1_.*"
+    action        = "keep"
+  }
+
+  rule {
+    regex  = "component_path|component_id|filename"
+    action = "labeldrop"
+  }
+
+  rule {
+    target_label = "job"
+    replacement  = "pos1"
+  }
+
+  rule {
+    target_label = "instance"
+    replacement  = "pos1"
+  }
+}
+
+// ------------------------------------------------------------------ caddy
+
+prometheus.scrape "caddy" {
+  targets = [{
+    "__address__" = "127.0.0.1:2019",
+    "job"         = "caddy",
+    "instance"    = "pos1",
+  }]
+  forward_to      = [prometheus.relabel.caddy_http.receiver]
+  scrape_interval = "60s"
+}
+
+prometheus.relabel "caddy_http" {
+  forward_to = [prometheus.remote_write.cloud.receiver]
+
+  rule {
+    source_labels = ["__name__"]
+    regex         = "caddy_http_.*|up"
+    action        = "keep"
+  }
+}
+
+// ----------------------------------------------------------------- probes
+
+prometheus.exporter.blackbox "pos1" {
+  config = "{ modules: { http_2xx: { prober: http, timeout: 5s } } }"
+
+  target {
+    name    = "direct"
+    address = "http://127.0.0.1:6710/"
+    module  = "http_2xx"
+  }
+
+  target {
+    name    = "public"
+    address = coalesce(sys.env("POS1_PUBLIC_URL"), "http://127.0.0.1:6710/")
+    module  = "http_2xx"
+  }
+}
+
+discovery.relabel "probes" {
+  targets = prometheus.exporter.blackbox.pos1.targets
+
+  rule {
+    target_label = "instance"
+    replacement  = "pos1"
+  }
+
+  rule {
+    target_label = "job"
+    replacement  = "pos1-probe"
+  }
+}
+
+prometheus.scrape "probes" {
+  targets         = discovery.relabel.probes.output
+  forward_to      = [prometheus.remote_write.cloud.receiver]
+  scrape_interval = "60s"
+}
+
+// --------------------------------------------------------------- journald
+
+loki.relabel "journal" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+
+  rule {
+    source_labels = ["unit"]
+    regex         = "(pos1|caddy|alloy|sshd)\\.service"
+    action        = "keep"
+  }
+}
+
+loki.source.journal "units" {
+  max_age       = "12h"
+  relabel_rules = loki.relabel.journal.rules
+  forward_to    = [loki.write.cloud.receiver]
+  labels        = {
+    job = "systemd-journal",
+  }
+}

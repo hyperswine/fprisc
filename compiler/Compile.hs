@@ -165,7 +165,9 @@ resolveHost o
   | oSystem o /= Just "posix" = o
   | oHost o == Just "esp-idf" = if oTargetFlag o then o else o {oTarget = rv32}
   | oHost o /= Nothing = o
-  | oPlugin o && oTargetFlag o && (oA64 o || oX64 o) = o {oBase = True}
+  -- an explicit hosted target (--target=a64 | x64) is a CROSS build: it wins over
+  -- this machine's lowering, so a Mac can emit ELF for a Linux server
+  | oTargetFlag o && (oA64 o || oX64 o) = o {oBase = True}
   | otherwise = case (System.Info.os, System.Info.arch) of
       ("darwin", "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True, oA64Mac = True}
       (_, "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True}
