@@ -1,0 +1,692 @@
+# ============================================================================
+# inventory.fpr -- where everything in the house is.  A household inventory in
+# FP-RISC Base on the posix system, served by std/live, shaped like pos1.fpr:
+# phones and laptops are websocket sessions over ONE model actor, and the disk
+# holds ONE append-only log, which is the inventory.
+#
+#   fpr run examples/inventory.fpr [--port=6720] [--address=127.0.0.1] [--store=inventory.log]
+#   fpr run examples/inventory.fpr --member=NAME --password=SECRET      (add a member, then exit)
+#   fpr run examples/inventory.fpr --import=firestore.json             (the old app's items, then exit)
+#
+# Every setting is also INV_<NAME> in the environment (INV_PASSWORD keeps a
+# password out of the shell history).
+#
+# THE ONE RULE (pos1's).  Every change is a LINE, and `apply` is the only thing
+# that reads a line into the model.  A handler validates, then `commit`s the
+# line: apply it now and queue it for the disk.  Boot is the same `apply`
+# folded over the log, so what a phone shows is what a restart would rebuild.
+# A line is one JSON object, because names and notes are free text:
+#
+#   {"op":"item","id":7,"name":..,"loc":..,"sub":..,"desc":..,"tags":[..],"by":..,"at":..[,"created":..]}
+#   {"op":"del","id":7,"by":..,"at":..}
+#   {"op":"member","name":..,"salt":..,"hash":..,"at":..}     a password, salted and hashed
+#   {"op":"device","name":..,"hash":..,"at":..}               a remembered phone (the token's hash)
+#   {"op":"undevice","hash":..,"at":..}   {"op":"revoke","name":..,"at":..}
+#
+# An edit is a new "item" line with the same id, so the log is every item's
+# history: the model keeps the last few places an item was moved from.
+#
+# SIGNING IN.  A member signs in once per device with a name and password; the
+# server then hands the page a random token, which the page keeps in
+# localStorage and mirrors back on every connection.  Only its hash is in the
+# log.  Signing out forgets that device; "sign out other devices" forgets the rest.
+# ============================================================================
+
+unsafe base.
+
+Live = use "std/live".
+G = use "std/view".
+LJ = use "std/livejs".
+VC = use "std/viewcache".
+List = use "std/list".
+S = use "std/string".
+File = use "std/file".
+Stream = use "std/stream".
+Clock = use "std/clock".
+Config = use "std/config".
+Decode = use "std/decode".
+Json = use "std/json".
+Program = use "std/program".
+Option = use "std/option".
+Order = use "std/order".
+Digest = use "std/digest".
+
+El = G.El.
+Txt = G.Txt.
+Dyn = G.Dyn.
+Cls = G.Cls.
+Att = G.Att.
+Inp = G.Inp.
+
+Msg = Type (Login String | Logout | ClientState String | New | Edit Int | Save | Cancel | Delete Int
+          | AddTag String | AddMember String | Password String | ForgetDevices | Theme | Dismiss | Clear Int Int).
+codec = @Msg.
+
+# What the page holds.  The search, the sort and the editor's drafts are
+# mirrored to the server (Live.SyncClientState), so a Save reads the draft the
+# person saw; password inputs never are -- they travel only as a sign-in's or
+# a member form's argument.  `tok` is the remembered device, put there by the
+# page's script from localStorage.
+Client = { pane : String, q : String, sort : String, confirm : String,
+           name : String, loc : String, sub : String, desc : String, tags : String,
+           user : String, pw : String, tok : String, mname : String, mpw : String, npw : String }.
+
+Move = { at : Int, from : String }.
+Item = { id : Int, name : String, loc : String, sub : String, desc : String, tags : List String,
+         created : Int, at : Int, by : String, moves : List Move }.
+
+# ---- the model --------------------------------------------------------------------
+# members are (name, salt, hash); devices are (token hash, name)
+
+initModel = { items = Nil, nextId = 1, members = Nil, devices = Nil, pend = Nil, events = 0, skipped = 0,
+              fails = Nil, sess = Nil, booted = 0 }.
+noDraft = { name = "", loc = "", sub = "", desc = "", tags = "" }.
+noSess = { sid = 0, user = "", toast = "", role = "", tn = 0, editing = 0 - 1, q = "", sort = "recent",
+           tried = "", theme = 1, d = noDraft }.
+
+# the tags offered while editing, before the household has its own
+quickTags = ["electronics", "cables", "tools", "kitchen", "bathroom", "office", "bedroom", "storage",
+             "cleaning", "books", "clothes", "charging", "computer", "gaming", "furniture", "documents"].
+
+# ---- little prelude -----------------------------------------------------------------
+
+strEq : String -> String -> Bool .
+strEq a b = a == b.
+imax a b | a > b = a.
+imax a b = b.
+num s = numGo s 0 (strlen s) 0.
+numGo s i n acc | i >= n = acc.
+numGo s i n acc | isDig (charAt s i) = numGo s (i + 1) n (acc * 10 + charAt s i - 48).
+numGo s i n acc = acc.
+isDig c = c >= 48 and c <= 57.
+# "a|b" -> (a, b) at the first bar; no bar: (s, "")
+splitBar s = sbGo s 0 (strlen s).
+sbGo s i n | i >= n = (s, "").
+sbGo s i n | charAt s i == 124 = (substr s 0 i, substr s (i + 1) (n - i - 1)).
+sbGo s i n = sbGo s (i + 1) n.
+# a member's name: lower-case letters and digits, 1..16 of them
+wordy s = strlen s >= 1 and strlen s <= 16 and wdGo s 0 (strlen s).
+wdGo s i n | i >= n = True.
+wdGo s i n =
+  c = charAt s i;
+  case (c >= 48 and c <= 57) or (c >= 97 and c <= 122) of True -> wdGo s (i + 1) n | False -> False.
+clip n s | strlen s > n = substr s 0 n.
+clip n s = s.
+lower s = S.toLower s.
+place it | strlen it.sub == 0 = it.loc.
+place it = "{it.loc} / {it.sub}".
+# "USB, cables ,usb" -> ["usb", "cables"]
+tagsOf raw = List.unique (List.filter (fn t -> strlen t > 0) (List.map (fn t -> clip 32 (lower (S.trim t))) (S.split "," raw))).
+
+memName (n, salt, hash) = n.
+memSalt (n, salt, hash) = salt.
+memHash (n, salt, hash) = hash.
+devHash (h, n) = h.
+devName (h, n) = n.
+
+# ---- reading a line ----------------------------------------------------------------
+
+txt k v = Option.withDefault "" (Option.andThen Json.asString (Json.field k v)).
+int k v = Option.withDefault 0 (Option.andThen Json.asInt (Json.field k v)).
+strs k v = case Option.andThen Json.asList (Json.field k v) of
+    Option.Some xs -> List.filterMap Json.asString xs
+  | Option.None -> Nil.
+
+# ---- the interpreter: one line into the model --------------------------------------
+# the whole meaning of the log, live and at boot alike
+
+apply m line | strlen (S.trim line) == 0 = m.
+apply m line = case Json.parse line of
+    Err why -> { m | skipped = m.skipped + 1 }
+  | Ok v -> applyOp m (txt "op" v) v.
+
+applyOp m op v | strEq op "item" =
+  at = int "at" v;
+  made = int "created" v;
+  putItem m { id = int "id" v, name = txt "name" v, loc = txt "loc" v, sub = txt "sub" v, desc = txt "desc" v,
+              tags = strs "tags" v, created = (case made == 0 of True -> at | False -> made), at = at, by = txt "by" v, moves = Nil }.
+applyOp m op v | strEq op "del" = { m | items = List.filter (fn it -> it.id != int "id" v) m.items }.
+applyOp m op v | strEq op "member" =
+  { m | members = (txt "name" v, txt "salt" v, txt "hash" v) :: List.filter (fn mm -> not (strEq (memName mm) (txt "name" v))) m.members }.
+applyOp m op v | strEq op "device" = { m | devices = (txt "hash" v, txt "name" v) :: m.devices }.
+applyOp m op v | strEq op "undevice" = { m | devices = List.filter (fn d -> not (strEq (devHash d) (txt "hash" v))) m.devices }.
+applyOp m op v | strEq op "revoke" = { m | devices = List.filter (fn d -> not (strEq (devName d) (txt "name" v))) m.devices }.
+applyOp m op v = m.
+
+findItem items id = List.find (fn x -> x.id == id) items.
+putItem m it = case findItem m.items it.id of
+    Option.None -> { m | items = it :: m.items, nextId = imax m.nextId (it.id + 1) }
+  | Option.Some old ->
+      new = { it | created = old.created, moves = movedFrom old it };
+      { m | items = List.map (fn x -> (case x.id == it.id of True -> new | False -> x)) m.items, nextId = imax m.nextId (it.id + 1) }.
+movedFrom old it | strEq (place old) (place it) = old.moves.
+movedFrom old it = List.take 3 ({ at = it.at, from = place old } :: old.moves).
+
+# a validated change: applied now, queued for the disk
+commit m line = apply { m | pend = line :: m.pend, events = m.events + 1 } line.
+
+itemLine it by at = Json.render (Json.object
+  [("op", Json.Text "item"), ("id", Json.Integer it.id), ("name", Json.Text it.name), ("loc", Json.Text it.loc),
+   ("sub", Json.Text it.sub), ("desc", Json.Text it.desc), ("tags", Json.strings it.tags), ("by", Json.Text by),
+   ("at", Json.Integer at), ("created", Json.Integer it.created)]).
+delLine id by at = Json.render (Json.object [("op", Json.Text "del"), ("id", Json.Integer id), ("by", Json.Text by), ("at", Json.Integer at)]).
+memberLine name salt hash at = Json.render (Json.object
+  [("op", Json.Text "member"), ("name", Json.Text name), ("salt", Json.Text salt), ("hash", Json.Text hash), ("at", Json.Integer at)]).
+deviceLine name hash at = Json.render (Json.object [("op", Json.Text "device"), ("name", Json.Text name), ("hash", Json.Text hash), ("at", Json.Integer at)]).
+undeviceLine hash at = Json.render (Json.object [("op", Json.Text "undevice"), ("hash", Json.Text hash), ("at", Json.Integer at)]).
+revokeLine name at = Json.render (Json.object [("op", Json.Text "revoke"), ("name", Json.Text name), ("at", Json.Integer at)]).
+
+# ---- secrets -------------------------------------------------------------------------------
+# 32 bytes of the kernel's randomness, as 64 hex digits
+randomHex u = case File.open "/dev/urandom" "r" of
+    Err why -> error "inventory: no randomness: {why}"
+  | Ok st -> (case Stream.read 32 st of
+      Ok bytes -> _ = Stream.close st; Digest.sha256 bytes
+    | Err why -> _ = Stream.close st; error "inventory: no randomness: {why}").
+# a password is stored as sha256 iterated over salt and password: slow enough to
+# make a stolen log a chore, quick enough for a sign-in
+pwHash salt pw = stretch 200 (Digest.sha256 "{salt}:{pw}") salt.
+stretch 0 h salt = h.
+stretch n h salt = stretch (n - 1) (Digest.sha256 "{salt}{h}") salt.
+checkPw members name pw = case List.find (fn mm -> strEq (memName mm) name) members of
+    Option.Some mm -> strEq (pwHash (memSalt mm) pw) (memHash mm)
+  | Option.None -> _ = pwHash "x" pw; False.   # the same work for a name that does not exist
+hasMember m name = List.any (fn mm -> strEq (memName mm) name) m.members.
+deviceUser devices h = case List.find (fn d -> strEq (devHash d) h) devices of
+    Option.Some d -> Option.Some (devName d)
+  | Option.None -> Option.None.
+
+# ---- the disk ----------------------------------------------------------------------------
+
+boot path =
+  m0 = { initModel | booted = Clock.now Unit };
+  t0 = Sys.timeUs Unit;
+  m2 = replayed m0 (File.lines path);
+  t1 = Sys.timeUs Unit;
+  _ = print "[inventory] log {path}: {m2.events} lines in {t1 - t0} us, {List.length m2.items} items, {List.length m2.members} members, {List.length m2.devices} devices";
+  _ = (case m2.skipped > 0 of True -> Sys.stderr "[inventory] {m2.skipped} unreadable lines skipped\n" | False -> Unit);
+  _ = (case List.isEmpty m2.members of True -> Sys.stderr "[inventory] no members yet: add one with --member=NAME and INV_PASSWORD\n" | False -> Unit);
+  m2.
+replayed m (Ok ls) = List.fold (fn mm l -> apply { mm | events = mm.events + 1 } l) m ls.
+replayed m (Err e) = m.
+
+# the pending lines, oldest first, in ONE append.  A write that fails stops the
+# server: the page must never show a change the disk does not have.
+flush path m = case m.pend of
+    Nil -> m
+  | ls -> (case File.appendText path (S.concat (List.map (fn l -> "{l}\n") (List.reverse ls))) of
+      Ok _ -> { m | pend = Nil }
+    | Err why -> error "inventory: cannot write {path}: {why}").
+
+# ---- sessions ----------------------------------------------------------------------------
+
+sGet Nil sid = { noSess | sid = sid }.
+sGet (s :: r) sid | s.sid == sid = s.
+sGet (s :: r) sid = sGet r sid.
+sPut m s = { m | sess = s :: sDel m.sess s.sid }.
+sDel Nil sid = Nil.
+sDel (s :: r) sid | s.sid == sid = sDel r sid.
+sDel (s :: r) sid = s :: sDel r sid.
+forget m sid = { m | sess = sDel m.sess sid }.
+# a toast: text with a role (ok, warn); it clears itself after a while unless
+# a newer one replaced it
+toast m sid role text =
+  s = sGet m.sess sid;
+  (sPut m { s | toast = text, role = role, tn = s.tn + 1 }, Live.After 4000 (Clear sid (s.tn + 1)) :: Nil).
+say m sid text = toast m sid "ok" text.
+refuse m sid text = toast m sid "warn" text.
+also (m, cs) more = (m, List.append cs more).
+
+localOf v name = Option.withDefault "" (Option.andThen Json.asString (Json.field name v)).
+localsJson kvs = Json.render (Json.object (List.map (fn kv -> (case kv of (k, x) -> (k, Json.Text x))) kvs)).
+setLocals sid kvs = Live.Emit sid "locals" (localsJson kvs).
+draftLocals d = [("name", d.name), ("loc", d.loc), ("sub", d.sub), ("desc", d.desc), ("tags", d.tags)].
+
+# ---- update ------------------------------------------------------------------------------
+
+update path ev m =
+  (m2, cs) = step ev m;
+  (flush path m2, cs).
+step ev m = case ev of
+    Live.Msg sid msg -> pMsg sid msg m
+  | Live.Left sid -> (forget m sid, Nil)
+  | Live.Joined sid -> (m, Nil)
+  | Live.Refused sid why -> refuse m sid "refused: {why}".
+
+pMsg sid msg m = case msg of
+    Login arg -> login m sid arg
+  | ClientState json -> mirror m sid json
+  | Clear who n -> (case sid == 0 of True -> (clearToast m who n, Nil) | False -> (m, Nil))
+  | Dismiss -> (dismiss m (sGet m.sess sid), Nil)
+  | Theme -> (flipTheme m (sGet m.sess sid), Nil)
+  | other -> withUser sid other m (sGet m.sess sid).
+dismiss m s = clearToast m s.sid s.tn.
+flipTheme m s = sPut m { s | theme = 1 - s.theme }.
+clearToast m sid n =
+  s = sGet m.sess sid;
+  case s.tn == n of True -> sPut m { s | toast = "", role = "" } | False -> m.
+
+# ---- signing in ---------------------------------------------------------------------------
+# at most 8 wrong passwords in five minutes, for the whole house: a guesser
+# gains nothing by opening more tabs
+login m sid arg =
+  (name0, pw) = splitBar arg;
+  name = lower (S.trim name0);
+  now = Clock.now Unit;
+  recent = List.filter (fn t -> t > now - 300) m.fails;
+  case List.length recent >= 8 of
+    True -> refuse { m | fails = recent } sid "too many wrong passwords: try again in a few minutes"
+  | False -> (case checkPw m.members name pw of
+      False -> refuse { m | fails = now :: recent } sid "unknown name or wrong password"
+    | True ->
+        tok = randomHex Unit;
+        m2 = commit m (deviceLine name (Digest.sha256 tok) now);
+        s = sGet m2.sess sid;
+        (sPut m2 { s | user = name, tried = tok, toast = "", role = "" }, setLocals sid [("pw", ""), ("tok", tok)] :: Nil)).
+
+# The mirror: the page's locals, as the server knows them.  A page that is not
+# signed in but holds a token is signed in by it, once per token.
+mirror m sid json = case Json.parse json of
+    Err why -> (m, Nil)
+  | Ok v ->
+    s0 = sGet m.sess sid;
+    s = { s0 | q = clip 100 (S.trim (localOf v "q")), sort = localOf v "sort",
+               d = { name = localOf v "name", loc = localOf v "loc", sub = localOf v "sub", desc = localOf v "desc", tags = localOf v "tags" } };
+    resume m sid s (localOf v "tok").
+resume m sid s tok | strlen s.user > 0 or strlen tok == 0 or strEq tok s.tried = (sPut m s, Nil).
+resume m sid s tok = case deviceUser m.devices (Digest.sha256 tok) of
+    Option.Some name -> (sPut m { s | user = name, tried = tok }, Nil)
+  | Option.None -> (sPut m { s | tried = tok }, setLocals sid [("tok", "")] :: Nil).
+
+withUser sid msg m s | strEq s.user "" = refuse m sid "sign in first".
+withUser sid msg m s = case msg of
+    Logout -> signOut m sid s
+  | New -> (sPut m { s | editing = 0, d = noDraft }, setLocals sid (draftLocals noDraft) :: Nil)
+  | Edit id -> edit m sid s id
+  | Cancel -> (sPut m { s | editing = 0 - 1 }, setLocals sid (draftLocals noDraft) :: Nil)
+  | Save -> save m sid s
+  | Delete id -> delete m sid s id
+  | AddTag t -> addTag m sid s t
+  | AddMember arg -> addMember m sid s (splitBar arg)
+  | Password pw -> password m sid s pw
+  | ForgetDevices -> forgetDevices m sid s
+  | other -> refuse m sid "no such action".
+
+signOut m sid s =
+  m2 = (case strlen s.tried > 0 of True -> commit m (undeviceLine (Digest.sha256 s.tried) (Clock.now Unit)) | False -> m);
+  (forget m2 sid, setLocals sid [("tok", ""), ("pane", "items")] :: Nil).
+
+# ---- items ---------------------------------------------------------------------------------
+
+edit m sid s id = case findItem m.items id of
+    Option.None -> refuse m sid "that item is gone"
+  | Option.Some it ->
+      d = { name = it.name, loc = it.loc, sub = it.sub, desc = it.desc, tags = S.join ", " it.tags };
+      (sPut m { s | editing = id, d = d }, setLocals sid (draftLocals d) :: Nil).
+
+save m sid s =
+  d = s.d;
+  name = clip 120 (S.trim d.name);
+  loc = clip 60 (S.trim d.loc);
+  isNew = s.editing <= 0;
+  old = findItem m.items s.editing;
+  case strlen name == 0 of
+    True -> refuse m sid "give the item a name"
+  | False -> (case strlen loc == 0 of
+      True -> refuse m sid "where is it? a room or place is needed"
+    | False -> (case not isNew and old == Option.None of
+        True -> refuse (sPut m { s | editing = 0 - 1 }) sid "that item was deleted while you were editing it"
+      | False ->
+          now = Clock.now Unit;
+          id = (case isNew of True -> m.nextId | False -> s.editing);
+          it = { id = id, name = name, loc = loc, sub = clip 60 (S.trim d.sub), desc = clip 2000 (S.trim d.desc),
+                 tags = List.take 12 (tagsOf d.tags), created = (case old of Option.Some o -> o.created | Option.None -> now),
+                 at = now, by = s.user, moves = Nil };
+          m2 = sPut (commit m (itemLine it s.user now)) { s | editing = 0 - 1, d = noDraft };
+          also (say m2 sid (case isNew of True -> "added {name}" | False -> "saved {name}")) (setLocals sid (draftLocals noDraft) :: Nil))).
+
+delete m sid s id = case findItem m.items id of
+    Option.None -> refuse m sid "already deleted"
+  | Option.Some it ->
+      m2 = commit m (delLine id s.user (Clock.now Unit));
+      s2 = sGet m2.sess sid;
+      m3 = sPut m2 { s2 | editing = (case s2.editing == id of True -> 0 - 1 | False -> s2.editing) };
+      also (say m3 sid "deleted {it.name}") (setLocals sid [("confirm", "")] :: Nil).
+
+addTag m sid s t =
+  have = tagsOf s.d.tags;
+  case List.member t have of
+    True -> (m, Nil)
+  | False ->
+      tags = S.join ", " (have + [t]);
+      (sPut m { s | d = { s.d | tags = tags } }, setLocals sid [("tags", tags)] :: Nil).
+
+# ---- the household ---------------------------------------------------------------------------
+
+addMember m sid s (name0, pw) =
+  name = lower (S.trim name0);
+  case not (wordy name) of
+    True -> refuse m sid "a name is 1 to 16 letters or digits"
+  | False -> (case hasMember m name of
+      True -> refuse m sid "{name} is already a member"
+    | False -> (case strlen pw < 8 of
+        True -> refuse m sid "a password is at least 8 characters"
+      | False ->
+          salt = randomHex Unit;
+          m2 = commit m (memberLine name salt (pwHash salt pw) (Clock.now Unit));
+          also (say m2 sid "{name} can sign in now") (setLocals sid [("mname", ""), ("mpw", "")] :: Nil))).
+
+password m sid s pw | strlen pw < 8 = refuse m sid "a password is at least 8 characters".
+password m sid s pw =
+  salt = randomHex Unit;
+  m2 = commit m (memberLine s.user salt (pwHash salt pw) (Clock.now Unit));
+  also (say m2 sid "password changed") (setLocals sid [("npw", "")] :: Nil).
+
+# every device of this member is forgotten, then this one is remembered again
+forgetDevices m sid s =
+  now = Clock.now Unit;
+  n = List.length (List.filter (fn d -> strEq (devName d) s.user) m.devices);
+  m2 = commit m (revokeLine s.user now);
+  m3 = (case strlen s.tried > 0 of True -> commit m2 (deviceLine s.user (Digest.sha256 s.tried) now) | False -> m2);
+  say m3 sid "signed out {imax 0 (n - 1)} other devices".
+
+# every page mirrors its locals, a third of a second after they change
+subs m = Live.SyncClientState 300 (ClientState "") :: Nil.
+
+# ---- what a session sees (Live.serveProjected) -------------------------------------------------
+# Its own search, sorted and filtered here; the counts; the chips.  A session
+# whose projection did not change renders nothing.
+
+matches q it = List.all (fn w -> hit w it) (S.words q).
+hit w it = S.contains w (lower it.name) or S.contains w (lower it.loc) or S.contains w (lower it.sub)
+        or S.contains w (lower it.desc) or List.any (fn t -> S.contains w t) it.tags.
+
+sorted key items | strEq key "name" = List.sortBy Order.string (fn it -> lower it.name) items.
+sorted key items | strEq key "place" = List.sortBy Order.string (fn it -> lower "{place it} {it.name}") items.
+sorted key items = List.sortBy (Order.reverse Order.int) (fn it -> it.at) items.
+
+# the most used values first: (value, count).  groupBy groups RUNS of equal
+# values, hence the sort first
+ranked xs = List.sortBy (Order.reverse Order.int) (fn kc -> (case kc of (k, c) -> c))
+              (List.map (fn g -> (case g of (k, vs) -> (k, List.length vs))) (List.groupBy (fn x -> x) (List.sortBy Order.string (fn x -> x) xs))).
+firsts kcs = List.map (fn kc -> (case kc of (k, c) -> k)) kcs.
+
+noView = { signed = 0, user = "", toast = "", role = "", theme = 1, editing = 0 - 1, items = Nil, total = 0, shown = 0,
+           q = "", places = Nil, allPlaces = Nil, tags = Nil, quick = Nil, members = Nil, devices = 0, online = 0, events = 0, booted = 0 }.
+
+project sid m =
+  s = sGet m.sess sid;
+  case strEq s.user "" of
+    True -> { noView | toast = s.toast, role = s.role, theme = s.theme }
+  | False ->
+      hits = sorted s.sort (List.filter (matches (lower s.q)) m.items);
+      places = firsts (ranked (List.map (fn it -> it.loc) m.items));
+      tags = firsts (ranked (List.concatMap (fn it -> it.tags) m.items));
+      { signed = 1, user = s.user, toast = s.toast, role = s.role, theme = s.theme, editing = s.editing,
+        items = List.take 300 hits, total = List.length m.items, shown = List.length hits, q = s.q,
+        places = List.take 8 places, allPlaces = places, tags = List.take 12 tags,
+        quick = List.take 18 (List.unique (tags + quickTags)),
+        members = List.map memName m.members,
+        devices = List.length (List.filter (fn d -> strEq (devName d) s.user) m.devices),
+        online = List.length (List.filter (fn x -> strlen x.user > 0) m.sess),
+        events = m.events, booted = m.booted }.
+
+# ---- view ------------------------------------------------------------------------------------------
+# Mobile first: one column the width of a phone, capped on a desktop; buttons
+# a thumb can hit.  Item cards are remembered per writer (std/viewcache): a
+# card is a function of its item alone, so it renders once and again only when
+# that item changes.
+
+locals = G.locals @Client { pane = "items", q = "", sort = "recent", confirm = "", name = "", loc = "", sub = "", desc = "",
+                            tags = "", user = "", pw = "", tok = "", mname = "", mpw = "", npw = "" }.
+rootCls v = case v.theme == 1 of True -> "col gap-4 inv-page day" | False -> "col gap-4 inv-page".
+# the remembered device lives in a hidden input, so the page's script can fill it
+root v kids = El "div" (Cls (rootCls v) :: locals) (Inp [G.bind @Client.tok, Att "type" "hidden"] :: kids).
+
+view sid v old = case v.signed == 0 of
+    True -> (G.render (root v [loginView v]), old)
+  | False -> (case VC.many (fn it -> "{it.id}") itemCard v.items (VC.begin "inventory-card-v1" verify old) of (cards, cc) ->
+      (G.render (root v (signedIn v cards)), VC.finish cc)).
+verify = Program.envOr "0" "INV_VIEW_VERIFY" == "1".
+
+btn label attrs = El "button" (Cls "btn round px-3 py-2 tall" :: attrs) [Txt label].
+primary label attrs = El "button" (Cls "btn round px-3 py-2 tall glow ink bold" :: attrs) [Txt label].
+field attrs = Inp (Cls "field inp w-full tall" :: attrs).
+labelled label kid = El "label" [Cls "col gap-1 grow min-w-0"] [El "div" [Cls "text-xs upper dim"] [Txt label], kid].
+
+loginView v =
+  El "div" [Cls "col gap-3 p-6 panel round mt-4"]
+    [ El "div" [Cls "text-xs upper dim"] [Txt "home inventory"]
+    , El "div" [Cls "text-2xl bold"] [Txt "Sign in"]
+    , field [G.bind @Client.user, Att "placeholder" "name", Att "autocomplete" "username", Att "autocapitalize" "none", Att "maxlength" "16"]
+    , field [G.bind @Client.pw, G.OnEnter (G.wireOpen codec (Login "")) "user,pw", Att "type" "password", Att "placeholder" "password", Att "autocomplete" "current-password"]
+    , primary "sign in" [G.OnClick (G.wireOpen codec (Login "")) "user,pw"]
+    , El "div" [Cls "warm text-sm"] [Dyn v.toast] ].
+
+signedIn v cards =
+  [ header v
+  , El "div" [Cls "toast ok"] [Dyn (roleText v "ok")]
+  , El "div" [Cls "toast warn"] [Dyn (roleText v "warn")]
+  , itemsPane v cards
+  , housePane v ].
+roleText v role | strEq v.role role = v.toast.
+roleText v role = "".
+
+header v =
+  El "div" [Cls "row center gap-2 wrap"]
+    [ El "div" [Cls "col grow min-w-0"]
+        [ El "div" [Cls "text-xs upper dim"] [Txt "home inventory"]
+        , El "div" [Cls "text-2xl bold tabular"] [Dyn (things v.total)] ]
+    , El "button" [Cls "btn pill px-3 py-2 tall", G.setTo @Client.pane "items", Att "data-on" "pane:items"] [Txt "items"]
+    , El "button" [Cls "btn pill px-3 py-2 tall", G.setTo @Client.pane "house", Att "data-on" "pane:house"] [Txt "household"] ].
+things 1 = "1 thing".
+things n = "{n} things".
+
+itemsPane v cards =
+  El "div" [Cls "col gap-3", G.showIf @Client.pane "items"]
+    ( El "div" [Cls "row gap-2 center"]
+        [ Inp [Cls "field inp grow tall min-w-0", G.bind @Client.q, Att "type" "search", Att "placeholder" "search names, places, notes, tags",
+               Att "autocomplete" "off", Att "autocapitalize" "none"]
+        , primary "+ add" [G.send codec New] ]
+    :: El "div" [Cls "row gap-2 wrap center text-sm"]
+        [ El "span" [Cls "dim"] [Txt "sort"], sortBtn "recent" "recent", sortBtn "name" "a-z", sortBtn "place" "by place"
+        , El "button" [Cls "btn pill px-3 chip", G.ShowIf "q", G.setTo @Client.q ""] [Txt "clear search"] ]
+    :: chipRow (List.map (fn p -> El "button" [Cls "btn pill px-3 chip text-sm flex-none", G.setTo @Client.q (lower p)] [Txt p]) v.places)
+    :: chipRow (List.map (fn t -> El "button" [Cls "btn pill px-3 chip text-sm dim flex-none", G.setTo @Client.q t] [Txt "#{t}"]) v.tags)
+    :: (case v.editing == 0 of True -> [editor v] | False -> Nil)
+    + [ El "div" [Cls "text-sm dim"] [Dyn (countText v)]
+      , G.key "items" (El "div" [Cls "col gap-3"] (case List.isEmpty cards of True -> [empty v] | False -> inPlace v cards)) ]).
+# the item being edited is its editor, where its card was
+inPlace v cards | v.editing <= 0 = cards.
+inPlace v cards = List.zipWith (fn it card -> (case it.id == v.editing of True -> G.key "edit-{it.id}" (editor v) | False -> card)) v.items cards.
+sortBtn key label = El "button" [Cls "btn pill px-3 chip", G.setTo @Client.sort key, Att "data-on" "sort:{key}"] [Txt label].
+countText v | strlen v.q == 0 = "".
+countText v = "{v.shown} of {v.total} match \"{v.q}\"".
+empty v | v.total == 0 = El "div" [Cls "card round p-6 text-center dim"] [Txt "Nothing here yet. Add the first thing with + add."].
+empty v = El "div" [Cls "card round p-6 text-center dim"] [Txt "Nothing matches."].
+
+# a tap on a place or a tag searches for it; a row scrolls sideways on a phone
+chipRow kids = El "div" [Cls "row gap-2 scroll-x"] kids.
+
+editor v =
+  El "div" [Cls "col gap-3 panel round p-4"]
+      [ El "div" [Cls "text-lg bold"] [Txt (case v.editing == 0 of True -> "Add an item" | False -> "Edit item")]
+      , labelled "name" (field [G.bind @Client.name, Att "placeholder" "e.g. USB-C cable", Att "maxlength" "120"])
+      , El "div" [Cls "row gap-2 narrow:col"]
+          [ labelled "room or place" (field [G.bind @Client.loc, Att "placeholder" "e.g. study", Att "list" "inv-places", Att "maxlength" "60"])
+          , labelled "spot" (field [G.bind @Client.sub, Att "placeholder" "e.g. top drawer", Att "maxlength" "60"]) ]
+      , El "datalist" [Att "id" "inv-places"] (List.map (fn p -> El "option" [Att "value" p] Nil) v.allPlaces)
+      , labelled "notes" (El "textarea" [Cls "field inp w-full", G.bind @Client.desc, Att "rows" "3", Att "maxlength" "2000"] Nil)
+      , labelled "tags, comma separated" (field [G.bind @Client.tags, Att "placeholder" "e.g. electronics, cables", Att "autocapitalize" "none"])
+      , El "div" [Cls "row gap-2 wrap"] (List.map (fn t -> El "button" [Cls "btn pill px-3 chip text-sm", G.send codec (AddTag t)] [Txt t]) v.quick)
+      , El "div" [Cls "row gap-2"] [ primary (case v.editing == 0 of True -> "add item" | False -> "save") [G.send codec Save, Cls "grow"],
+                                     btn "cancel" [G.send codec Cancel] ] ].
+
+itemCard : Item -> G.Node .
+itemCard it =
+  El "div" [Cls "col gap-2 card round p-4"]
+    ( El "div" [Cls "row center gap-2"]
+        [ El "div" [Cls "text-lg bold grow min-w-0"] [Txt it.name]
+        , El "button" [Cls "btn pill px-3 chip text-sm", G.send codec (Edit it.id)] [Txt "edit"]
+        , El "button" [Cls "btn pill px-3 chip text-sm", G.setTo @Client.confirm "{it.id}"] [Txt "delete"] ]
+    :: El "div" [Cls "row gap-2 center wrap"] (El "span" [Cls "badge ok"] [Txt it.loc] :: (case strlen it.sub == 0 of True -> Nil | False -> [El "span" [Cls "badge"] [Txt it.sub]]))
+    :: (case strlen it.desc == 0 of True -> Nil | False -> [El "div" [Cls "text-sm pre"] [Txt it.desc]])
+    + (case List.isEmpty it.tags of True -> Nil | False -> [El "div" [Cls "row gap-1 wrap"] (List.map (fn t -> El "button" [Cls "btn pill px-3 chip text-xs dim", G.setTo @Client.q t] [Txt "#{t}"]) it.tags)])
+    + [ El "div" [Cls "text-xs dim"] [Txt (metaText it)]
+      , El "div" [Cls "row gap-2 center wrap", G.showIf @Client.confirm "{it.id}"]
+          [ El "span" [Cls "warm text-sm grow"] [Txt "Delete {it.name}?"]
+          , El "button" [Cls "btn round px-3 py-2 tall bad", G.send codec (Delete it.id)] [Txt "delete"]
+          , btn "keep" [G.setTo @Client.confirm ""] ] ]).
+metaText it =
+  moved = (case it.moves of Nil -> "" | mv :: r -> " · moved from {mv.from} on {Clock.date mv.at}");
+  "added {Clock.date it.created} · updated {Clock.date it.at} by {it.by}{moved}".
+
+housePane v =
+  El "div" [Cls "col gap-3", G.showIf @Client.pane "house"]
+    [ El "div" [Cls "col gap-3 card round p-4"]
+        [ El "div" [Cls "text-lg bold"] [Txt "Signed in as {v.user}"]
+        , El "div" [Cls "text-sm dim"] [Dyn (devicesText v.devices)]
+        , El "div" [Cls "row gap-2 wrap"]
+            [ btn "sign out" [G.send codec Logout], btn "sign out my other devices" [G.send codec ForgetDevices]
+            , btn "day / night" [G.send codec Theme] ] ]
+    , El "div" [Cls "col gap-3 card round p-4"]
+        [ El "div" [Cls "text-lg bold"] [Txt "Change my password"]
+        , field [G.bind @Client.npw, Att "type" "password", Att "placeholder" "new password, 8 or more characters", Att "autocomplete" "new-password"]
+        , btn "change password" [G.OnClick (G.wireOpen codec (Password "")) "npw"] ]
+    , El "div" [Cls "col gap-3 card round p-4"]
+        [ El "div" [Cls "text-lg bold"] [Txt "Members"]
+        , El "div" [Cls "row gap-2 wrap"] (List.map (fn n -> El "span" [Cls "badge"] [Txt n]) v.members)
+        , El "div" [Cls "row gap-2 narrow:col"]
+            [ field [G.bind @Client.mname, Att "placeholder" "name", Att "autocapitalize" "none", Att "maxlength" "16"]
+            , field [G.bind @Client.mpw, Att "type" "password", Att "placeholder" "their password", Att "autocomplete" "new-password"] ]
+        , btn "add member" [G.OnClick (G.wireOpen codec (AddMember "")) "mname,mpw"] ]
+    , El "div" [Cls "text-xs dim"] [Dyn "{v.events} changes in the log · {v.online} signed in now · up since {Clock.stamp v.booted}"] ].
+devicesText 1 = "this is your only signed-in device".
+devicesText n = "{n} devices signed in as you".
+
+# The stylesheet is a function of the tree, so it is made from a SAMPLE that
+# shows everything -- the editor, a card with every part, both panes, the
+# sign-in -- not from the signed-out page the server first sends.
+styles =
+  G.Style "inv-page" [G.MaxWidth (G.Px 760), G.Width (G.Pct 100), G.Prop "margin" "0 auto", G.Prop "padding" "14px 14px 48px"] ::
+  G.Style "tall" [G.MinHeight (G.Px 44)] ::
+  G.Style "chip" [G.MinHeight (G.Px 34)] ::
+  G.Style "scroll-x" [G.Prop "overflow-x" "auto", G.Prop "padding-bottom" "4px", G.Prop "scrollbar-width" "thin"] ::
+  G.Style "inp" [G.Prop "font-size" "16px"] ::   # 16px keeps iOS from zooming into an input
+  Nil.
+sampleItem = { id = 1, name = "USB-C cable", loc = "study", sub = "top drawer", desc = "two of them", tags = ["cables"],
+               created = 0, at = 0, by = "sam", moves = [{ at = 0, from = "garage" }] }.
+sampleView = { noView | signed = 1, user = "sam", toast = "sample", role = "ok", editing = 0, items = [sampleItem], total = 1, shown = 1,
+               q = "x", places = ["study"], allPlaces = ["study"], tags = ["cables"], quick = quickTags, members = ["sam"], devices = 2 }.
+cssAll v = G.cssWith styles (El "div" Nil [root sampleView (signedIn sampleView [itemCard sampleItem, empty sampleView]), loginView sampleView]).
+
+# The page's own script: the remembered device.  Once the client has painted,
+# the token from localStorage goes into the hidden `tok` input (so it is
+# mirrored, and the server signs this page in); afterwards whatever the server
+# puts in `tok` -- a new token at sign-in, "" at sign-out or when it no longer
+# knows the token -- is what localStorage keeps.
+script = strcat (LJ.src 0) "
+(function () \{
+  var KEY = 'inventory-device', ready = false;
+  function stored() \{ try \{ return localStorage.getItem(KEY) || ''; } catch (e) \{ return ''; } }
+  function keep(t) \{ try \{ if (t) localStorage.setItem(KEY, t); else localStorage.removeItem(KEY); } catch (e) \{} }
+  document.addEventListener('live:locals', function (e) \{
+    if (!ready) return;
+    var t = e.detail.tok || '';
+    if (t !== stored()) keep(t);
+  });
+  var t = stored(), el = document.querySelector('[data-input=\"tok\"]');
+  if (t && el) \{ el.value = t; el.dispatchEvent(new Event('input')); }
+  ready = true;
+})();
+".
+
+# ---- the old app's items: a Firestore REST listing ------------------------------------------------
+# GET .../documents/inventory?pageSize=1000 saved to a file.  Items already
+# here (same name and place) are skipped, so an import can be run again.
+
+importFirestore path store = case File.readText path of
+    Err why -> Program.fail 1 "inventory: {why}"
+  | Ok text -> (case Json.parse text of
+      Err why -> Program.fail 1 "inventory: {path}: {why}"
+    | Ok v ->
+        m = boot store;
+        docs = Option.withDefault Nil (Option.andThen Json.asList (Json.field "documents" v));
+        its = List.filterMap fsItem docs;
+        fresh = List.filter (fn it -> not (List.any (fn x -> strEq (lower x.name) (lower it.name) and strEq (lower (place x)) (lower (place it))) m.items)) its;
+        numbered = List.indexedMap (fn i it -> { it | id = m.nextId + i }) fresh;
+        _ = (case File.appendText store (S.concat (List.map (fn it -> "{itemLine it "import" it.at}\n") numbered)) of
+               Ok _ -> Unit | Err why -> Program.fail 1 "inventory: {why}");
+        _ = print "[inventory] imported {List.length numbered} items ({List.length its - List.length fresh} already here)";
+        0).
+fsStr k doc = Option.withDefault "" (Option.andThen Json.asString (Json.at ["fields", k, "stringValue"] doc)).
+fsTime k doc = isoSecs (Option.withDefault "" (Option.andThen Json.asString (Json.at ["fields", k, "timestampValue"] doc))).
+fsTags doc = case Option.andThen Json.asList (Json.at ["fields", "tags", "arrayValue", "values"] doc) of
+    Option.Some xs -> List.filterMap (fn x -> Option.andThen Json.asString (Json.field "stringValue" x)) xs
+  | Option.None -> Nil.
+fsItem doc =
+  name = S.trim (fsStr "name" doc);
+  made = fsTime "createdAt" doc;
+  upd = fsTime "updatedAt" doc;
+  case strlen name == 0 of
+    True -> Option.None
+  | False -> Option.Some { id = 0, name = clip 120 name, loc = clip 60 (S.trim (fsStr "location" doc)), sub = clip 60 (S.trim (fsStr "subLocation" doc)),
+                           desc = clip 2000 (S.trim (fsStr "description" doc)), tags = tagsOf (S.join "," (fsTags doc)),
+                           created = made, at = (case upd == 0 of True -> made | False -> upd), by = "import", moves = Nil }.
+# "2025-06-01T12:34:56.789Z" -> epoch seconds (UTC)
+isoSecs s | strlen s < 19 = 0.
+isoSecs s = days (num (substr s 0 4)) (num (substr s 5 2)) (num (substr s 8 2)) * 86400
+          + num (substr s 11 2) * 3600 + num (substr s 14 2) * 60 + num (substr s 17 2).
+days y0 mo d =
+  y = (case mo <= 2 of True -> y0 - 1 | False -> y0);
+  era = y / 400;
+  yoe = y - era * 400;
+  mp = (case mo > 2 of True -> mo - 3 | False -> mo + 9);
+  doy = (153 * mp + 2) / 5 + d - 1;
+  era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468.
+
+# ---- a member from the command line ------------------------------------------------------------
+
+addMemberCli store name0 pw =
+  name = lower (S.trim name0);
+  m = boot store;
+  case not (wordy name) of
+    True -> Program.fail 2 "inventory: a member's name is 1 to 16 letters or digits"
+  | False -> (case strlen pw < 8 of
+      True -> Program.fail 2 "inventory: give a password of 8 or more characters (--password or INV_PASSWORD)"
+    | False ->
+        salt = randomHex Unit;
+        _ = (case File.appendText store "{memberLine name salt (pwHash salt pw) (Clock.now Unit)}\n" of
+               Ok _ -> Unit | Err why -> Program.fail 1 "inventory: {why}");
+        _ = print "[inventory] {name} {case hasMember m name of True -> "has a new password" | False -> "is a member"}";
+        0).
+
+# ---- main ---------------------------------------------------------------------------------------------
+
+setting d k v = case Decode.run (Decode.field k d) v of
+    Ok x -> x
+  | Err why -> Program.fail 2 "inventory: {why}".
+
+main = case Config.load { defaults = Json.object [("port", Json.Integer 6720), ("address", Json.Text "127.0.0.1"), ("store", Json.Text "inventory.log"),
+                                                  ("member", Json.Text ""), ("password", Json.Text ""), ("import", Json.Text "")],
+                          file = Option.None, envPrefix = "INV_", args = Program.args Unit } of
+    Err why -> Program.fail 2 "inventory: {why}"
+  | Ok v ->
+      store = setting Decode.string "store" v;
+      member = setting Decode.string "member" v;
+      from = setting Decode.string "import" v;
+      (case strlen member > 0 of
+        True -> addMemberCli store member (setting Decode.string "password" v)
+      | False -> (case strlen from > 0 of
+          True -> importFirestore from store
+        | False ->
+            port = setting Decode.int "port" v;
+            address = setting Decode.string "address" v;
+            # the inventory is the log, folded at boot; std/live's own store holds
+            # nothing of the model, it is there because the driver wants one
+            cfg = { address = address, port = port, title = "Home inventory", store = "{store}.kvlog", journal = False,
+                    script = script, watch = Nil, rebuild = Nil, restart = Nil };
+            _ = Live.serveProjected cfg { init = boot store, update = update store, subs = subs, fields = Nil, codec = codec,
+                                          project = project, same = (fn a b -> a == b),
+                                          view = view, cache = VC.empty Unit, css = cssAll };
+            0)).
