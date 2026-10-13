@@ -169,7 +169,7 @@ void fpr_bkt_put(void **b);
  * bind one FP-RISC runtime to another.  A plain-word API for other
  * languages is the next step, not this one. */
 #define FPR_NATIVE_ABI 6u /* v6: actor scratch-scope cleanup chain; v5: plane table split carried by boot block; v4: boot network-owner callback; v3: module table schema; v2: vector recipe metadata */
-#define FPR_PLANE_ACTORS_ABI 2u /* v2: selective nonblocking receive_from_now appended */
+#define FPR_PLANE_ACTORS_ABI 3u /* v3: opt-in transactional spawn_inbox; v2: receive_from_now */
 #define FPR_PLANE_MEMORY_ABI 2u /* v2: shared scratch region execution appended */
 typedef struct fpr_plane_actors {
   uw abi;                             /* FPR_PLANE_ACTORS_ABI of the exporter */
@@ -190,6 +190,9 @@ typedef struct fpr_plane_actors {
   void (*cleanup_clear)(void *arg);
   void (*fail)(const char *why);      /* fpr_actor_fail: the plane kills the current actor */
   V (*receive_from_now)(V me, V from); /* Ok message, Err empty/dead actor */
+  V (*spawn_inbox)(V hart, V messages, V bytes, V f); /* global inbox admission */
+  V (*send_linear)(V target, V m);    /* preserves move ownership on the plane */
+  V (*send_arc)(V target, V m);       /* preserves same-process shares */
 } fpr_plane_actors_t;
 typedef struct fpr_plane_memory {
   uw abi;                             /* FPR_PLANE_MEMORY_ABI of the exporter */
@@ -243,12 +246,15 @@ extern void (*fpr_pid_quiet)(uw pid);    /* actors.c reap: an actor of pid was r
 uw fpr_current_pid(void);                /* actors.c: the running actor's process (0 = boot) */
 int fpr_entry_copy_try(V v, uw pid, V *out, fpr_slab_t **hold);
 V fpr_msg_copy_to(V v, uw pid);          /* fpr_msg_copy for a receiver in process pid */
+uw fpr_msg_charge_to(V v, uw pid, int shared, uw limit);       /* conservative queued representation charge */
+V fpr_msg_copy_held_to(V v, uw pid, fpr_slab_t **hold); /* unpublished send hold */
 fpr_slab_t *fpr_slab_new(uw want);   /* runtime.c: buddy-backed pool slab */
 void fpr_pool_reset_c(void);         /* runtime.c: Sys.poolReset, C-callable */
 uw fpr_arc_live_count(void);         /* runtime.c: the arc gauge */
 int fpr_arc_movable_root(V v);       /* runtime.c: sendLinear's transfer test */
 void fpr_arc_promote_share(V v);     /* runtime.c: sendArc's promotion */
 V fpr_receive_res_c(V me);           /* actors.c: receiveRes, C-callable */
+V fpr_receive_from_now_c(V me, V from); /* selective nonblocking C wait */
 V fpr_receive_from_res_c(V me, V from); /* actors.c: receiveFromRes, C-callable (a dead sender answers Err) */
 void fpr_fuel_exhausted(void);       /* actors.c: the fuel trap */
 

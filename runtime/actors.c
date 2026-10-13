@@ -98,10 +98,12 @@ typedef struct ringv {
   uint32_t cap, pad;
   V *slots;
   uw *from;           /* sender tags, the shared ring only; else 0 */
+  uw *charge;         /* per-message admission charge for bounded inboxes */
   struct ringv *old;  /* the ring this one replaced (freed at reuse) */
 } ringv_t;
 #define SLOT(rv, k) ((rv)->slots[(k) & ((rv)->cap - 1)])
 #define TAGAT(rv, k) ((rv)->from[(k) & ((rv)->cap - 1)])
+#define CHARGEAT(rv, k) ((rv)->charge[(k) & ((rv)->cap - 1)])
 
 /* one SPSC channel: bound to a single sender for the actor's lifetime.
  *
@@ -132,6 +134,7 @@ typedef struct {
   uint32_t rt_seen; /* the consumer's last view of rt (never ahead of it) */
   ringv_t rv0 __attribute__((aligned(FPR_CACHELINE))); /* the inline default */
   V slots0[RING_CAP];
+  struct fpr_acb *budget_owner;
 } chan_t;
 uw fpr_ring_grows, fpr_send_full; /* growths; sends refused for a full ring */
 
@@ -148,6 +151,15 @@ typedef struct fpr_acb {
   uint32_t scan; /* round-robin cursor for fair receive (owner-only) */
   uint32_t mbdyn;  /* mailbox policy: 1 = rings grow (Dynamic n) */
   uint32_t mbcap;  /* initial ring capacity per channel (spawnCap) */
+  fpr_lock_t inbox_lock;
+  uw inbox_max_messages, inbox_max_bytes, inbox_messages, inbox_bytes;
+  uw *inbox_charges;
+  /* A send may park while copying/growing. Reaping the actual sender
+   * returns this unpublished reservation and promoted root exactly once. */
+  struct fpr_acb *send_to;
+  uw send_charge;
+  V send_root;
+  fpr_slab_t *send_hold;
   fpr_slab_t *entry_hold; /* admitted entry copy: separate from the local heap */
   V entry;       /* PAP to run: body = entry(self); 0 for main */
   struct fpr_acb *next; /* run-queue link (owner hart only) */
@@ -628,24 +640,27 @@ static void chan_init(chan_t *c, uw *shfrom, int fresh) {
   c->rv0.cap = RING_CAP;
   c->rv0.slots = c->slots0;
   c->rv0.from = shfrom;
+  c->rv0.charge = 0;
+  c->budget_owner = 0;
   c->rv0.old = 0;
   c->rv = &c->rv0;
 }
 /* a ring of cap slots (plus tags when the channel is the shared one),
  * in one block; 0 when there is no memory */
-static ringv_t *ring_block_d(uint32_t cap, int tagged, ringv_t *old, int direct) {
-  uw bytes = sizeof(ringv_t) + (uw)cap * sizeof(V) + (tagged ? (uw)cap * sizeof(uw) : 0);
+static ringv_t *ring_block_d(uint32_t cap, int tagged, ringv_t *old, int direct, int budgeted) {
+  uw bytes = sizeof(ringv_t) + (uw)cap * sizeof(V) + (tagged ? (uw)cap * sizeof(uw) : 0) + (budgeted ? (uw)cap * sizeof(uw) : 0);
   ringv_t *nv = (ringv_t *)big_block_d(bytes, direct);
   if (!nv) return 0;
   nv->cap = cap;
   nv->pad = 0;
   nv->slots = (V *)(nv + 1);
   nv->from = tagged ? (uw *)(nv->slots + cap) : 0;
+  nv->charge = budgeted ? (uw *)(nv->slots + cap) + (tagged ? cap : 0) : 0;
   nv->old = old;
   return nv;
 }
 static ringv_t *ring_block(uint32_t cap, int tagged, ringv_t *old) {
-  return ring_block_d(cap, tagged, old, 0);
+  return ring_block_d(cap, tagged, old, 0, 0);
 }
 static chan_t *chb_take(void) {
   chblk_t *b = 0;
@@ -705,10 +720,84 @@ static void chb_limbo_put(chan_t *ch) {
  * and is released here, two epochs later, before the block is reused.
  * Before this, 300 deaths with 50 one-KiB messages unread lost 16.5 MB
  * per round (docs/2026-10-07-STATES.md 1.5). */
+/* Global limits include every sender and unpublished copies. These locks
+ * never cover allocation, ARC operations or a scheduler park. */
+#ifdef FPR_INBOX_TEST
+extern void fpr_inbox_test_phase(uw phase, V target);
+#define INBOX_TEST(phase, actor) fpr_inbox_test_phase(phase, (V)(actor))
+#else
+#define INBOX_TEST(phase, actor) ((void)0)
+#endif
+static void inbox_release(acb_t *a, uw bytes) {
+  if (!a || !a->inbox_max_messages) return;
+  fpr_lock(&a->inbox_lock);
+  if (!a->inbox_messages || bytes > a->inbox_bytes) fpr_cpanic("inbox: reservation underflow");
+  a->inbox_messages--; a->inbox_bytes -= bytes;
+  fpr_unlock(&a->inbox_lock);
+}
+static const char *inbox_reserve(acb_t *a, V m, int shared, uw *charged) {
+  *charged = 0;
+  if (!a->inbox_max_messages) return 0;
+  uw bytes = fpr_msg_charge_to(m, a->pid, shared, a->inbox_max_bytes);
+  if (bytes > a->inbox_max_bytes) return "message too large";
+  fpr_lock(&a->inbox_lock);
+  const char *why = 0;
+  if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD) why = "dead actor";
+  else if (a->inbox_messages >= a->inbox_max_messages || bytes > a->inbox_max_bytes - a->inbox_bytes) why = "mailbox full";
+  else { a->inbox_messages++; a->inbox_bytes += bytes; }
+  fpr_unlock(&a->inbox_lock);
+  if (!why) *charged = bytes;
+  if (!why && fpr_hart()->current) {
+    acb_t *sender = fpr_hart()->current;
+    if (sender->send_to) fpr_cpanic("inbox: nested send reservation");
+    sender->send_to = a; sender->send_charge = bytes;
+  }
+  if (!why) INBOX_TEST(1, a);
+  return why;
+}
+static void send_cancel(acb_t *sender) {
+  acb_t *target = sender->send_to;
+  uw bytes = sender->send_charge;
+  V root = sender->send_root;
+  fpr_slab_t *hold = sender->send_hold;
+  sender->send_to = 0; sender->send_charge = 0;
+  sender->send_root = 0; sender->send_hold = 0;
+  if (root) fpr_arc_decref(root);
+  if (hold) fpr_slab_unhold(hold, 0);
+  if (target) inbox_release(target, bytes);
+}
+static void send_committed(acb_t *a) {
+  if (a->inbox_max_messages && fpr_hart()->current) {
+    acb_t *sender = fpr_hart()->current;
+    sender->send_to = 0; sender->send_charge = 0; sender->send_root = 0;
+  }
+}
+/* Charge slots exist only for opted-in actors. Reuse their own type-stable
+ * blocks; unbounded legacy channels do not carry inline charge arrays. */
+static fpr_freelist_t inbox_charges_fl;
+#define INBOX_CHARGES_SIZE ((uw)MAXSND * RING_CAP * sizeof(uw))
+static uw *inbox_charges_take(void) {
+  uw *slots = fpr_fl_take(&inbox_charges_fl, INBOX_CHARGES_SIZE);
+  if (slots) return slots;
+  uw want = INBOX_CHARGES_SIZE * 4;
+  char *p = big_block(want);
+  if (!p) return 0;
+  uw got = big_block_size(p, want);
+  if (got < INBOX_CHARGES_SIZE) return 0;
+  for (uw off = INBOX_CHARGES_SIZE; off + INBOX_CHARGES_SIZE <= got; off += INBOX_CHARGES_SIZE)
+    fpr_fl_put(&inbox_charges_fl, p + off, INBOX_CHARGES_SIZE);
+  return (uw *)p;
+}
+static void inbox_charges_put(uw *slots) {
+  if (slots) fpr_fl_put(&inbox_charges_fl, slots, INBOX_CHARGES_SIZE);
+}
 static void chan_drain(chan_t *c) {
   uint32_t rt = __atomic_load_n(&c->rt, __ATOMIC_ACQUIRE);
   ringv_t *rv = __atomic_load_n(&c->rv, __ATOMIC_ACQUIRE); /* after rt: covers every slot below it */
-  for (uint32_t k = c->rh; k != rt; k++) fpr_arc_decref(SLOT(rv, k));
+  for (uint32_t k = c->rh; k != rt; k++) {
+    if (c->budget_owner) inbox_release(c->budget_owner, CHARGEAT(rv, k));
+    fpr_arc_decref(SLOT(rv, k));
+  }
   __atomic_store_n(&c->rh, rt, __ATOMIC_RELEASE);
 }
 static void chb_drain(chan_t *ch) {
@@ -732,6 +821,10 @@ static void reap(acb_t *a) {
                                    __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) return;
   if (!a->stack) return;
   mem_cancel(a);
+  send_cancel(a);
+  if (a->inbox_max_messages) { /* wait for an already publishing producer */
+    fpr_lock(&a->shlock); fpr_unlock(&a->shlock);
+  }
   if (a->wait_kind) { /* a killed parked actor never returns through block_unless */
     __atomic_fetch_sub(&g_blocked, 1, __ATOMIC_RELAXED);
     if (a->irq_target) __atomic_fetch_sub(&g_irq_waiting, 1, __ATOMIC_RELAXED);
@@ -744,6 +837,9 @@ static void reap(acb_t *a) {
     fn(arg);
   }
   if (a->ch) chb_drain(a->ch); /* mail it never read: released, not stranded (holds park below) */
+  /* Bounded producers cannot pass their locked death check now. The drained
+   * limbo rings are empty and never dereference charges again before init. */
+  inbox_charges_put(a->inbox_charges); a->inbox_charges = 0;
   drop_drain(a); /* the holds of windows the dead actor never closed */
   if (a->msg_slab) { fpr_slab_unhold(a->msg_slab, 0); a->msg_slab = 0; } /* its packing slab */
   fpr_pool_reclaim(a);
@@ -1793,13 +1889,17 @@ static V a_sleep_us(V usv) {
   if (!ISINT(usv)) fpr_cpanic("Sys.sleepUs: microseconds must be an Int");
   sw us = UNTAG(usv);
   if (us <= 0) return (V)&fpr_unit;
+  if (fpr_plane_actors) {
+    fpr_plane_actors->sleep_us((uw)us);
+    return (V)&fpr_unit;
+  }
   fpr_hart_t *h = fpr_hart();
   acb_t *a = h ? h->current : 0;
   uint64_t now = hal_mtime();
 #ifndef FPR_PARKED_SLEEP
 #define FPR_PARKED_SLEEP 1 /* 0: the hart-blocking host sleep (the bisecting switch) */
 #endif
-  if (!a || fpr_plane_actors || !now || !FPR_PARKED_SLEEP) { /* no actor to park, or no clock: the host sleep */
+  if (!a || !now || !FPR_PARKED_SLEEP) { /* no actor to park, or no clock: the host sleep */
     fpr_hal_sleep_us((uw)us);
     return (V)&fpr_unit;
   }
@@ -1984,7 +2084,9 @@ static V take_at(acb_t *a, chan_t *c, uint32_t k) {
   if (k == rh) { /* the head: no shifting, no lock (the caller loaded rt first) */
     ringv_t *rv = __atomic_load_n(&c->rv, __ATOMIC_ACQUIRE);
     V m = SLOT(rv, k);
+    uw charge = rv->charge ? CHARGEAT(rv, k) : 0;
     __atomic_store_n(&c->rh, rh + 1, __ATOMIC_RELEASE); /* frees a slot */
+    if (c->budget_owner) inbox_release(a, charge);
     return m;
   }
   /* shifting rewrites consumer-owned slots; a producer growing the
@@ -1992,12 +2094,15 @@ static V take_at(acb_t *a, chan_t *c, uint32_t k) {
   fpr_lock(&a->shlock);
   ringv_t *rv = c->rv;
   V m = SLOT(rv, k);
+  uw charge = rv->charge ? CHARGEAT(rv, k) : 0;
   for (uint32_t j = k; j > rh; j--) {
     SLOT(rv, j) = SLOT(rv, j - 1);
     if (rv->from) TAGAT(rv, j) = TAGAT(rv, j - 1);
+    if (rv->charge) CHARGEAT(rv, j) = CHARGEAT(rv, j - 1);
   }
   __atomic_store_n(&c->rh, rh + 1, __ATOMIC_RELEASE);
   fpr_unlock(&a->shlock);
+  if (c->budget_owner) inbox_release(a, charge);
   return m;
 }
 
@@ -2080,8 +2185,10 @@ typedef struct {
   uw stack_size;
   void **buckets;
   chan_t *channels;
+  uw *inbox_charges;
   fpr_slab_t *entry_hold;
   fpr_slab_t *grant;
+  uw inbox_max_messages, inbox_max_bytes;
 } admission_t;
 static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t dyn,
                               fpr_slab_t *grant, uw heap_bytes, admission_t *admitted);
@@ -2106,6 +2213,12 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
     a->pool.cur = grant;
     a->pool.fixed_heap = heap_bytes;
   }
+  __builtin_memset(&a->inbox_lock, 0, sizeof a->inbox_lock);
+  a->inbox_max_messages = admitted ? admitted->inbox_max_messages : 0;
+  a->inbox_max_bytes = admitted ? admitted->inbox_max_bytes : 0;
+  a->inbox_messages = a->inbox_bytes = 0;
+  a->inbox_charges = admitted ? admitted->inbox_charges : 0;
+  a->send_to = 0; a->send_charge = 0; a->send_root = 0; a->send_hold = 0;
   a->mem_reply = 0;
   a->pool_override = 0;
   a->scopes = 0;
@@ -2131,6 +2244,10 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
   a->in_rq = 0;
   for (int i = 0; i < MAXSND; i++) {
     a->ch[i].dyn = dyn;
+    if (a->inbox_max_messages) {
+      a->ch[i].budget_owner = a;
+      a->ch[i].rv0.charge = a->inbox_charges + (uw)i * RING_CAP;
+    }
     if (cap > RING_CAP) { /* a bigger first ring than the inline one */
       ringv_t *rv = ring_block(cap, i == SHIDX, a->ch[i].rv);
       if (!rv) fpr_cpanic("spawn: no memory for the mailbox rings (spawnCap)");
@@ -2216,6 +2333,7 @@ static void admission_rollback(void *arg) {
   admission_t *ad = (admission_t *)arg;
   if (ad->acb) fpr_fl_put(&acb_unpublished, ad->acb, sizeof(acb_t));
   if (ad->entry_hold) fpr_slab_unhold(ad->entry_hold, 0);
+  inbox_charges_put(ad->inbox_charges);
   if (ad->channels) fpr_fl_put(&chb_fl, ad->channels, sizeof(chblk_t));
   if (ad->buckets) fpr_bkt_put(ad->buckets);
   if (ad->stack) stack_recycle(ad->stack, ad->stack_size);
@@ -2266,6 +2384,46 @@ denied:
   fpr_free((V)r);
   return (V)&heap_denied;
 }
+/* Opt-in inbox admission: -1 is unpinned, otherwise pinned to a live hart.
+ * No child is visible until every infrastructure reservation succeeded. */
+static const struct { hdr_t h; uw len; char bytes[sizeof("inbox: invalid quota or entry")]; } inbox_bad_s =
+  {{T_STR, 0}, sizeof("inbox: invalid quota or entry") - 1, "inbox: invalid quota or entry"};
+static const struct { hdr_t h; V value; } inbox_bad = {{T_RESULT, 1}, (V)&inbox_bad_s};
+static V a_spawn_inbox(V hv, V countv, V bytesv, V f) {
+  if (fpr_plane_actors) return fpr_plane_actors->spawn_inbox(hv, countv, bytesv, f);
+  if (!ISINT(hv) || !ISINT(countv) || !ISINT(bytesv) || UNTAG(hv) < -1 ||
+      UNTAG(hv) >= (sw)fpr_live_harts || UNTAG(countv) < 1 || UNTAG(countv) > RING_MAX ||
+      UNTAG(bytesv) < 1 || ISINT(f) || TID(f) != T_PAP) return (V)&inbox_bad;
+  hdr_t *r = (hdr_t *)fpr_alloc(8 + sizeof(V));
+  admission_t ad = {0};
+  ad.inbox_max_messages = (uw)UNTAG(countv);
+  ad.inbox_max_bytes = (uw)UNTAG(bytesv);
+  if (!fpr_actor_cleanup_set(admission_rollback, &ad)) { fpr_free((V)r); return (V)&heap_denied; }
+  ad.stack = (char *)stack_block(&ad.stack_size);
+  if (!ad.stack || ADMISSION_FAIL(2)) goto denied;
+  ad.buckets = fpr_bkt_take();
+  if (!ad.buckets || ADMISSION_FAIL(3)) goto denied;
+  ad.channels = chb_take();
+  if (!ad.channels || ADMISSION_FAIL(4)) goto denied;
+  ad.inbox_charges = inbox_charges_take();
+  if (!ad.inbox_charges || ADMISSION_FAIL(7)) goto denied;
+  V entry;
+  if (!fpr_entry_copy_try(f, fpr_current_pid(), &entry, &ad.entry_hold) || ADMISSION_FAIL(5)) goto denied;
+  ad.acb = acb_block();
+  if (!ad.acb || ADMISSION_FAIL(6)) goto denied;
+  fpr_actor_cleanup_clear(&ad);
+  uw pin = UNTAG(hv) >= 0;
+  uw hart = pin ? (uw)UNTAG(hv) : fpr_hart()->id;
+  V actor = spawn_on_pid_cap_heap(hart, entry, pin, (uw)-1, RING_CAP, 0, 0, 0, &ad);
+  r->tid = T_RESULT; r->var = 0; *(V *)((char *)r + 8) = actor;
+  return (V)r;
+denied:
+  fpr_actor_cleanup_clear(&ad);
+  admission_rollback(&ad);
+  fpr_free((V)r);
+  return (V)&heap_denied;
+}
+FPR_FN(fpr_g_Sys_x2espawnInbox, a_spawn_inbox, 4);
 #undef ADMISSION_FAIL
 static V a_spawn_cap_on(V hv, V modev, V nv, V f) {
   if (fpr_plane_actors) return fpr_plane_actors->spawn_cap(hv, 1, modev, nv, f);
@@ -2359,6 +2517,7 @@ static void ring_install(chan_t *c, ringv_t *nv) {
   for (uint32_t k = rh; k != rt; k++) {
     SLOT(nv, k) = SLOT(ov, k);
     if (nv->from) TAGAT(nv, k) = TAGAT(ov, k);
+    if (nv->charge) CHARGEAT(nv, k) = CHARGEAT(ov, k);
   }
   nv->old = ov;
   __atomic_store_n(&c->rv, nv, __ATOMIC_RELEASE);
@@ -2372,10 +2531,18 @@ static void ring_install(chan_t *c, ringv_t *nv) {
  * have grown it meanwhile, and ours goes back.  The memory actor's own
  * rings grow through the direct path: a request to it cannot be what
  * makes room for that request. */
-static int ring_push(acb_t *a, chan_t *c, uw key, V m) {
-  int shared = c->sender == SHARED_KEY; /* many producers: the lock orders them */
+static int ring_push(acb_t *a, chan_t *c, uw key, V m, uw charge) {
+  /* Bounded sends resolve the channel under the same lock as the death
+   * check. Reap can clear a->ch after an earlier unlocked alive check. */
+  int shared = c && c->sender == SHARED_KEY; /* many producers: the lock orders them */
+  int locked = shared || a->inbox_max_messages;
   for (;;) {
-    if (shared) fpr_lock(&a->shlock);
+    if (locked) fpr_lock(&a->shlock);
+    if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD) {
+      if (locked) fpr_unlock(&a->shlock);
+      return -1;
+    }
+    if (!c) { c = chan_for(a, key, 1); shared = c->sender == SHARED_KEY; }
     ringv_t *rv = c->rv; /* dedicated: single producer, private rt */
     uint32_t rt = c->rt;
     /* the cached head first: rh is the consumer's line, read only when
@@ -2385,17 +2552,24 @@ static int ring_push(acb_t *a, chan_t *c, uw key, V m) {
     if (rt - c->rh_seen < rv->cap) {
       if (shared) TAGAT(rv, rt) = key;
       SLOT(rv, rt) = m;
+      if (rv->charge) CHARGEAT(rv, rt) = charge;
       __atomic_store_n(&c->rt, rt + 1, __ATOMIC_RELEASE); /* publish */
-      if (shared) fpr_unlock(&a->shlock);
+      if (locked) fpr_unlock(&a->shlock);
       return 1;
     }
     uint32_t ncap = rv->cap * 2;
     int can = c->dyn && rv->cap < RING_MAX;
-    if (shared) fpr_unlock(&a->shlock);
+    if (locked) fpr_unlock(&a->shlock);
     if (!can) return 0;
-    ringv_t *nv = ring_block_d(ncap, shared, 0, a == mem_act);
+    ringv_t *nv = ring_block_d(ncap, shared, 0, a == mem_act, a->inbox_max_messages != 0);
     if (!nv) return 0;
-    fpr_lock(&a->shlock); /* take_at's shifting and the copy exclude each other */
+    fpr_lock(&a->shlock);
+    if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD) {
+      fpr_unlock(&a->shlock);
+      if (fpr_mem_own) fpr_mem_give(nv);
+      return -1;
+    }
+    /* take_at's shifting and the copy exclude each other */
     if (c->rv->cap >= ncap) { /* a racer grew it first */
       fpr_unlock(&a->shlock);
       if (fpr_mem_own) fpr_mem_give(nv);
@@ -2415,21 +2589,40 @@ V fpr_send_as(uw sender_key, V av, V m) {
   fpr_hart_t *ph = fpr_hart();
   uint64_t q0 = FPR_PROBE_NOW();
 #endif
-  chan_t *c = chan_for(a, sender_key, 1);
-  m = fpr_msg_copy_to(m, a->pid); /* DEEP COPY: the receiver gets a self-contained
+  uw charge;
+  const char *admission = inbox_reserve(a, m, 0, &charge);
+  if (admission) return send_err(admission);
+  acb_t *sender = fpr_hart()->current;
+  m = a->inbox_max_messages && sender ? fpr_msg_copy_held_to(m, a->pid, &sender->send_hold) : fpr_msg_copy_to(m, a->pid); /* DEEP COPY: the receiver gets a self-contained
                         * slab; nothing the sender does afterward can
                         * touch it, and drop-of-root frees all of it */
+  if (a->inbox_max_messages) INBOX_TEST(2, a);
 #ifdef FPR_COST_PROBE
   uint64_t q1 = FPR_PROBE_NOW();
 #endif
   fpr_arc_incref(m); /* promotion: heap values become shared on send */
+  if (a->inbox_max_messages && sender) {
+    sender->send_root = m;
+    if (sender->send_hold) { fpr_slab_t *hold = sender->send_hold; sender->send_hold = 0; fpr_slab_unhold(hold, 0); }
+  }
+  if (a->inbox_max_messages) INBOX_TEST(3, a);
 #ifdef FPR_COST_PROBE
   uint64_t q2 = FPR_PROBE_NOW();
 #endif
-  if (!ring_push(a, c, sender_key, m)) {
-    fpr_arc_decref(m); /* the copy goes back: nobody will receive it */
-    return send_err("mailbox full");
+  int pushed = -1;
+  if (a->inbox_max_messages) {
+    INBOX_TEST(4, a);
+    pushed = ring_push(a, 0, sender_key, m, charge);
+  } else if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) != ST_DEAD) {
+    chan_t *c = chan_for(a, sender_key, 1);
+    pushed = ring_push(a, c, sender_key, m, charge);
   }
+  if (pushed != 1) {
+    if (a->inbox_max_messages && sender) send_cancel(sender);
+    else { fpr_arc_decref(m); if (a->inbox_max_messages) inbox_release(a, charge); }
+    return send_err(pushed < 0 ? "dead actor" : "mailbox full");
+  }
+  send_committed(a);
 #ifdef FPR_COST_PROBE
   uint64_t q3 = FPR_PROBE_NOW();
 #endif
@@ -2447,6 +2640,21 @@ V fpr_send_as(uw sender_key, V av, V m) {
   return OK_UNIT;
 }
 
+static V bounded_publish(acb_t *a, V m, uw charge) {
+  acb_t *sender = fpr_hart()->current;
+  uw key = (uw)sender;
+  INBOX_TEST(4, a);
+  int pushed = ring_push(a, 0, key, m, charge);
+  if (pushed != 1) {
+    if (sender) send_cancel(sender);
+    else { fpr_arc_decref(m); inbox_release(a, charge); }
+    return send_err(pushed < 0 ? "dead actor" : "mailbox full");
+  }
+  send_committed(a);
+  __atomic_thread_fence(__ATOMIC_SEQ_CST);
+  wake(a);
+  return OK_UNIT;
+}
 static V a_send(V av, V m) {
   return fpr_send_as((uw)fpr_hart()->current, av, m);
 }
@@ -2473,7 +2681,7 @@ static V a_send(V av, V m) {
  * so it is released exactly as a received-then-dropped message would
  * be, never silently retained. */
 static V a_send_linear(V av, V m) {
-  if (fpr_plane_actors) return fpr_plane_actors->send_as((uw)fpr_hart()->current, av, m);
+  if (fpr_plane_actors) return fpr_plane_actors->send_linear(av, m);
   if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("sendLinear: target is not an actor");
   acb_t *a = (acb_t *)av;
   /* a move shares the value's statics too: across processes it copies,
@@ -2485,7 +2693,28 @@ static V a_send_linear(V av, V m) {
       fpr_vec_release(m);
     return send_err("dead actor");
   }
-  chan_t *c = chan_for(a, (uw)fpr_hart()->current, 1);
+  if (a->inbox_max_messages) {
+    uw charge;
+    const char *why = inbox_reserve(a, m, movable, &charge);
+    if (why) {
+      if (movable) fpr_arc_decref(m);
+      else if (!ISINT(m) && fpr_in_heap(m) && TID(m) == T_VEC) fpr_vec_release(m);
+      return send_err(why);
+    }
+    acb_t *sender = fpr_hart()->current;
+    if (!movable) {
+      V original = m;
+      m = sender ? fpr_msg_copy_held_to(m, a->pid, &sender->send_hold) : fpr_msg_copy_to(m, a->pid);
+      fpr_arc_incref(m);
+      if (sender) {
+        sender->send_root = m;
+        if (sender->send_hold) { fpr_slab_t *hold = sender->send_hold; sender->send_hold = 0; fpr_slab_unhold(hold, 0); }
+      }
+      if (!ISINT(original) && fpr_in_heap(original) && TID(original) == T_VEC) fpr_vec_release(original);
+    } else if (sender) sender->send_root = m;
+    return bounded_publish(a, m, charge);
+  }
+  chan_t *c = 0;
   if (!movable) {
     V orig = m;
     m = fpr_msg_copy_to(m, a->pid);
@@ -2493,9 +2722,14 @@ static V a_send_linear(V av, V m) {
     if (!ISINT(orig) && fpr_in_heap(orig) && TID(orig) == T_VEC)
       fpr_vec_release(orig); /* the bulk case: consume frees it now */
   }
-  if (!ring_push(a, c, (uw)fpr_hart()->current, m)) {
+  int pushed = -1;
+  if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) != ST_DEAD) {
+    c = chan_for(a, (uw)fpr_hart()->current, 1);
+    pushed = ring_push(a, c, (uw)fpr_hart()->current, m, 0);
+  }
+  if (pushed != 1) {
     fpr_arc_decref(m); /* consumed either way: the value left the sender */
-    return send_err("mailbox full");
+    return send_err(pushed < 0 ? "dead actor" : "mailbox full");
   }
   __atomic_thread_fence(__ATOMIC_SEQ_CST); /* Dekker: publish before flag read */
   wake(a);
@@ -2834,7 +3068,7 @@ FPR_FN(fpr_g_spawnOn, a_spawn_at, 2);
  * Deep trees reclaim shallowly at zero (children are pool-scoped) --
  * share flat records/tuples, or accept pool lifetime for the rest. */
 static V a_send_arc(V av, V m) {
-  if (fpr_plane_actors) return fpr_plane_actors->send_as((uw)fpr_hart()->current, av, m);
+  if (fpr_plane_actors) return fpr_plane_actors->send_arc(av, m);
   if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("sendArc: target is not an actor");
   if (!ISINT(m) && fpr_in_heap(m) && TID(m) == T_VEC)
     fpr_cpanic("sendArc: a Vector is linear bulk -- sendLinear moves it, send copies it");
@@ -2844,11 +3078,26 @@ static V a_send_arc(V av, V m) {
   /* sharing across processes would let the receiver hold the sender's
    * image statics past its end: across processes, a share is a copy */
   if (a->pid != fpr_current_pid()) return fpr_send_as((uw)fpr_hart()->current, av, m);
-  chan_t *c = chan_for(a, (uw)fpr_hart()->current, 1);
+  if (a->inbox_max_messages) {
+    uw charge;
+    const char *why = inbox_reserve(a, m, 1, &charge);
+    if (why) return send_err(why);
+    fpr_arc_promote_share(m);
+    acb_t *sender = fpr_hart()->current;
+    if (sender) sender->send_root = m;
+    return bounded_publish(a, m, charge);
+  }
+  /* Promotion can park, so resolve the channel afterward. */
+  chan_t *c = 0;
   fpr_arc_promote_share(m);
-  if (!ring_push(a, c, (uw)fpr_hart()->current, m)) {
+  int pushed = -1;
+  if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) != ST_DEAD) {
+    c = chan_for(a, (uw)fpr_hart()->current, 1);
+    pushed = ring_push(a, c, (uw)fpr_hart()->current, m, 0);
+  }
+  if (pushed != 1) {
     fpr_arc_decref(m); /* the receiver's share, returned */
-    return send_err("mailbox full");
+    return send_err(pushed < 0 ? "dead actor" : "mailbox full");
   }
   __atomic_thread_fence(__ATOMIC_SEQ_CST); /* Dekker: publish before flag read */
   wake(a);
@@ -3016,7 +3265,7 @@ static int p_mem(acb_t *a, uw unused) {
 /* queue an Int request on the memory actor as `key`: 1 queued */
 static int mem_post(uw key, V m) {
   chan_t *c = chan_for(mem_act, key, 1);
-  if (!ring_push(mem_act, c, key, m)) return 0;
+  if (ring_push(mem_act, c, key, m, 0) != 1) return 0;
   __atomic_thread_fence(__ATOMIC_SEQ_CST); /* Dekker: publish before flag read */
   wake(mem_act);
   return 1;
@@ -3143,6 +3392,7 @@ static V sched_receive_now(V me) { return a_receive_now(me); }
 static V sched_receive_from_res(V me, V from) { return a_receive_from_res(me, from); }
 V fpr_receive_res_c(V me) { return a_receive_res(me); } /* process.c's syscall wait */
 V fpr_receive_from_res_c(V me, V from) { return a_receive_from_res(me, from); }
+V fpr_receive_from_now_c(V me, V from) { return a_receive_from_now(me, from); }
 static uw sched_arc_live(void) { return fpr_arc_live_count(); }
 void fpr_plane_export(fpr_plane_actors_t *actors, fpr_plane_memory_t *memory) {
   actors->abi = FPR_PLANE_ACTORS_ABI;
@@ -3163,6 +3413,9 @@ void fpr_plane_export(fpr_plane_actors_t *actors, fpr_plane_memory_t *memory) {
   actors->cleanup_clear = fpr_actor_cleanup_clear;
   actors->fail = fpr_actor_fail;
   actors->receive_from_now = a_receive_from_now;
+  actors->spawn_inbox = a_spawn_inbox;
+  actors->send_linear = a_send_linear;
+  actors->send_arc = a_send_arc;
   memory->abi = FPR_PLANE_MEMORY_ABI;
   memory->arc_incref = fpr_arc_incref;
   memory->arc_decref = fpr_arc_decref;

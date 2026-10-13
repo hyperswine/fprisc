@@ -1,0 +1,44 @@
+# Same-process ARC shares and movable roots retain pointer/ownership semantics.
+unsafe program.
+Sys.spawnInbox : Int -> Int -> Int -> (Int -> a) -> Result Int String .
+Inbox.address : a -> Int .
+S = use "std/string".
+ok (Ok value) = value.
+ok (Err why) = error why.
+check yes why = if yes then Unit else error "inboxownership: {why}".
+sleeping me = Sys.sleepUs 30000000.
+inspect boss me =
+  value = receive me;
+  address = Inbox.address value;
+  _ = drop value;
+  _ = send boss address;
+  Unit.
+move target boss me =
+  value = receive me;
+  address = Inbox.address value;
+  _ = sendLinear target value;
+  _ = send boss address;
+  Unit.
+main =
+  me = myself 0;
+  shared = ok (Sys.spawnInbox (0 - 1) 2 4194304 (inspect me));
+  value = S.repeat 1000 "a";
+  address = Inbox.address value;
+  _ = ok (sendArc shared value);
+  got = receiveFrom me shared;
+  _ = check (got == address and strlen value == 1000) "ARC share copied or consumed";
+  _ = drop value;
+  destination = ok (Sys.spawnInbox (0 - 1) 2 4194304 (inspect me));
+  mover = spawn (move destination me);
+  _ = send mover (S.repeat 1000 "b");
+  old = receiveFrom me mover;
+  fresh = receiveFrom me destination;
+  _ = check (old == fresh) "linear move copied";
+  full = ok (Sys.spawnInbox (0 - 1) 1 4194304 sleeping);
+  _ = ok (send full 1);
+  blocked = S.repeat 1000 "c";
+  _ = case sendArc full blocked of Err "mailbox full" -> Unit | Err why -> error "inboxownership: share refusal: {why}" | Ok _ -> error "inboxownership: share unexpectedly admitted";
+  _ = check (strlen blocked == 1000) "refusal consumed ARC owner";
+  _ = drop blocked;
+  _ = kill full;
+  print "inboxownership: ARC identity/retention/refusal and linear identity HOLDS".

@@ -1,0 +1,48 @@
+# More live sender channels than dedicated rings; selective shared-ring shifts
+# must move each slot's byte charge along with its value and sender tag.
+unsafe program.
+Sys.spawnInbox : Int -> Int -> Int -> (Int -> a) -> Result Int String .
+S = use "std/string".
+ok (Ok value) = value.
+ok (Err why) = error why.
+check yes why = if yes then Unit else error "inboxshared: {why}".
+producer target boss me =
+  result = send target (me, S.repeat 1000 "x");
+  _ = send boss (me, result);
+  Unit.
+start target boss 0 = Unit.
+start target boss n = _ = spawn (producer target boss); start target boss (n - 1).
+collect me 0 ids = ids.
+collect me n ids =
+  message = receive me;
+  (sender, result) = message;
+  _ = ok result;
+  _ = drop message;
+  collect me (n - 1) (sender :: ids).
+drain me Nil = Unit.
+drain me (sender :: rest) =
+  message = receiveFrom me sender;
+  (from, bytes) = message;
+  _ = check (sender == from and strlen bytes == 1000) "selective value/tag mismatch";
+  _ = drop message;
+  drain me rest.
+receiver boss me =
+  message = receiveFrom me boss;
+  ids = keep message;
+  _ = drop message;
+  _ = drain me ids;
+  _ = send boss True;
+  Sys.sleepUs 30000000.
+fill target 0 = Unit.
+fill target n = _ = ok (send target (S.repeat 1000 "y")); fill target (n - 1).
+main =
+  me = myself 0;
+  target = ok (Sys.spawnInbox (0 - 1) 16 1048576 (receiver me));
+  _ = start target me 12;
+  ids = collect me 12 Nil;
+  _ = ok (send target ids);
+  _ = check (receiveFrom me target) "receiver failed";
+  _ = fill target 16;
+  _ = check (case send target (S.repeat 1000 "z") of Err "mailbox full" -> True | _ -> False) "shifted charges not reclaimed";
+  _ = kill target;
+  print "inboxshared: twelve senders, selective shared-ring shifts and full budget reuse HOLDS".

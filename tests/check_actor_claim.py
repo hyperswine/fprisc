@@ -17,8 +17,12 @@ def check(temp):
     harness = r'''
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 static void claim_interleave(void *a, unsigned long key);
 #include "actors-claim.c"
+/* take_at now links the quota-underflow invariant even for this unbounded
+ * harness. Keep a real failing panic path rather than masking the invariant. */
+void fpr_cpanic(const char *why) { fprintf(stderr, "%s\n", why); abort(); }
 static acb_t winner, loser, previous;
 static int inject;
 static struct { hdr_t h; V value; } result = {{T_RESULT, 0}, 0};

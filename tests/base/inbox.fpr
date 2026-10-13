@@ -1,0 +1,61 @@
+# Opt-in global inbox bounds include every sender and queued graph bytes.
+unsafe program.
+Sys.spawnInbox : Int -> Int -> Int -> (Int -> a) -> Result Int String .
+AC = use "std/actor".
+S = use "std/string".
+ok (Ok value) = value.
+ok (Err why) = error why.
+check yes why = if yes then Unit else error "inbox: {why}".
+isErr (Err why) want = why == want.
+isErr _ _ = False.
+Tree = Type (Leaf | Node Tree Tree).
+tree 0 = Leaf.
+tree n = child = tree (n - 1); Node child child.
+sleeping me = Sys.sleepUs 30000000.
+producer target boss me = _ = send boss (send target me); Unit.
+producers target boss 0 = Unit.
+producers target boss n = _ = spawn (producer target boss); producers target boss (n - 1).
+answers me 0 yes no = (yes, no).
+answers me n yes no =
+  reply = receive me;
+  case reply of Ok _ -> answers me (n - 1) (yes + 1) no | Err "mailbox full" -> answers me (n - 1) yes (no + 1) | Err why -> error why.
+# A selective receive must return the charge of the removed slot, including
+# middle-of-shared-ring shifts. All replies have their own unbounded mailbox.
+receiver boss me =
+  _ = send boss me;
+  signal = receiveFrom me boss;
+  _ = drop signal;
+  _ = drop (receive me);
+  _ = send boss "drained";
+  signal = receiveFrom me boss;
+  _ = drop signal;
+  _ = drop (receive me);
+  _ = send boss "drained again";
+  Sys.sleepUs 30000000.
+main =
+  me = myself 0;
+  invalid = Sys.spawnInbox (0 - 2) 1 65536 sleeping;
+  _ = check (isErr invalid "inbox: invalid quota or entry") "invalid admission";
+  slots = ok (Sys.spawnInbox (0 - 1) 3 1048576 sleeping);
+  _ = producers slots me 12;
+  (accepted, refused) = answers me 12 0 0;
+  _ = check (accepted == 3 and refused == 9) "per-sender bypassed global slots";
+  _ = kill slots;
+  bytes = ok (Sys.spawnInbox (0 - 1) 8 65536 sleeping);
+  _ = check (isErr (AC.callSure me bytes (S.repeat 70000 "x")) "message too large") "permanent callSure refusal retried";
+  start = AC.nowUs Unit;
+  _ = check (isErr (send bytes (tree 60)) "message too large" and AC.nowUs Unit - start < 250000) "exponential graph admission";
+  _ = check (isErr (send bytes (S.repeat 70000 "x")) "message too large") "oversize graph admitted";
+  _ = check (case send bytes (S.repeat 1000 "x") of Ok _ -> True | _ -> False) "byte budget first";
+  _ = check (isErr (send bytes (S.repeat 1000 "y")) "mailbox full") "aggregate bytes ignored";
+  _ = kill bytes;
+  dst = ok (Sys.spawnInbox (0 - 1) 2 65536 (receiver me));
+  _ = receive me;
+  _ = check (case send dst (S.repeat 1000 "a") of Ok _ -> True | _ -> False) "initial reservation";
+  _ = send dst 0;
+  _ = check (receive me == "drained") "drain handshake";
+  _ = check (case send dst (S.repeat 1000 "b") of Ok _ -> True | _ -> False) "dequeue did not release bytes";
+  _ = send dst 0;
+  _ = check (receive me == "drained again") "second drain";
+  _ = kill dst;
+  print "inbox: global producer slots, charged bytes, oversize refusal and dequeue release HOLDS".
