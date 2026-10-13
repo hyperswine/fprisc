@@ -169,8 +169,8 @@ void fpr_bkt_put(void **b);
  * bind one FP-RISC runtime to another.  A plain-word API for other
  * languages is the next step, not this one. */
 #define FPR_NATIVE_ABI 6u /* v6: actor scratch-scope cleanup chain; v5: plane table split carried by boot block; v4: boot network-owner callback; v3: module table schema; v2: vector recipe metadata */
-#define FPR_PLANE_ACTORS_ABI 1u /* v1: the scheduler half of the old fpr_sched_t, plus spawn_cap */
-#define FPR_PLANE_MEMORY_ABI 1u /* v1: the memory half of the old fpr_sched_t */
+#define FPR_PLANE_ACTORS_ABI 2u /* v2: selective nonblocking receive_from_now appended */
+#define FPR_PLANE_MEMORY_ABI 2u /* v2: shared scratch region execution appended */
 typedef struct fpr_plane_actors {
   uw abi;                             /* FPR_PLANE_ACTORS_ABI of the exporter */
   V (*send_as)(uw sender_key, V target, V m);
@@ -189,6 +189,7 @@ typedef struct fpr_plane_actors {
   int (*cleanup_set)(void (*fn)(void *), void *arg);
   void (*cleanup_clear)(void *arg);
   void (*fail)(const char *why);      /* fpr_actor_fail: the plane kills the current actor */
+  V (*receive_from_now)(V me, V from); /* Ok message, Err empty/dead actor */
 } fpr_plane_actors_t;
 typedef struct fpr_plane_memory {
   uw abi;                             /* FPR_PLANE_MEMORY_ABI of the exporter */
@@ -200,10 +201,14 @@ typedef struct fpr_plane_memory {
   void (*pool_reset)(void);
   uw (*stack_grow)(uw sp);            /* a stack segment for the current actor, from the shared heap */
   char *heap_lo, *heap_hi;            /* fpr_in_heap bounds, shared span */
+  V (*arena)(V f);                    /* scopes, transfers and ARC share one allocator */
+  V (*loop)(V state, V f);
+  V (*loop_with)(V vec, V state, V f);
 } fpr_plane_memory_t;
 extern fpr_plane_actors_t *fpr_plane_actors; /* NULL = this image is the plane */
 extern fpr_plane_memory_t *fpr_plane_memory; /* NULL = this image owns its heap */
 uw fpr_pid_live(uw pid); /* actors of process pid not yet dead and off every hart */
+void fpr_memory_scopes_export(fpr_plane_memory_t *memory);
 void fpr_plane_export(fpr_plane_actors_t *actors, fpr_plane_memory_t *memory); /* fill with THIS image's impls */
 /* Call on the scheduler's runtime after code writes, before spawning an
  * actor or directly entering the image. Remote harts fence at dispatch. */

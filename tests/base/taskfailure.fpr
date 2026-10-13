@@ -1,0 +1,86 @@
+unsafe base.
+Task = use "std/task".
+AC = use "std/actor".
+Probe.fail : Int -> Int .
+Sys.alive : Int -> Bool .
+check ok why = if ok then Unit else error "taskfailure: {why}".
+# Wait for both jobs before releasing either, so the failed job certainly has
+# a live, stalled sibling. Only this coordinator sends handles to the caller.
+barrier parent self =
+  (a, aid, ah) = receive self;
+  (b, bid, bh) = receive self;
+  _ = send parent (ah, bh);
+  _ = AC.reply (a, aid) Unit;
+  _ = AC.reply (b, bid) Unit;
+  Unit.
+job gate i =
+  me = myself 0;
+  _ = AC.callSure me gate me;
+  if i == 0 then Probe.fail 0 else _ = Sys.sleepUs 2000000; i.
+stall i = _ = Sys.sleepUs 2000000; i.
+announce root i = _ = send root (myself 0); _ = Sys.sleepUs 2000000; i.
+cancellable root self = _ = Task.map (announce root) (0 :: Nil); Unit.
+# Counter service refuses any admission above the configured limit.
+monitor self = _ = Sys.loop (0, 0) (countStep self); Unit.
+countStep self state =
+  (live, high) = state;
+  m = receive self;
+  (from, id, delta) = m;
+  n = live + delta;
+  _ = check (n >= 0 and n <= 2) "concurrency limit";
+  h = if n > high then n else high;
+  _ = AC.reply (from, id) h;
+  _ = drop m;
+  (True, (n, h)).
+ordered counter i =
+  me = myself 0;
+  _ = AC.callSure me counter 1;
+  _ = Sys.sleepUs ((5 - i) * 1000);
+  _ = AC.callSure me counter (0 - 1);
+  "result {i}".
+die i = _ = kill (myself 0); _ = yield (myself 0); i.
+freeKiB u = case Sys.memInfo 0 of _ :: f :: _ -> f | _ -> 0.
+repeat me n = if n == 0 then Unit else
+  result = Task.map die (0 :: Nil);
+  _ = check (case result of Err why -> strIndexOf "task: worker 0: dead actor" why == 0 | other -> False) "repeat failed join";
+  repeat me (n - 1).
+main =
+  me = myself 0;
+  gate = spawn (barrier me);
+  _ = send me (Ok "unrelated");
+  result = Task.map (job gate) (0 :: 1 :: Nil);
+  _ = check (case result of Err why -> strIndexOf "dead actor" why >= 0 | other -> False) "worker failure Result";
+  (a, b) = receiveFrom me gate;
+  _ = check (not (Sys.alive a) and not (Sys.alive b)) "sibling cancellation";
+  message = receiveFrom me me;
+  _ = check (message == Ok "unrelated") "caller message consumed";
+  _ = drop message;
+  t0 = AC.nowUs Unit;
+  _ = check (Task.mapBoundedWithin 20 2 stall (0 :: 1 :: 2 :: Nil) == Err "task: deadline exceeded") "stalled batch deadline";
+  _ = check (AC.nowUs Unit - t0 < 500000) "join timeout too long";
+  _ = check (Task.mapWithin 0 stall (0 :: Nil) == Err "task: deadline exceeded") "expired join admission";
+  _ = check (Task.mapBounded (0 - 1) stall Nil == Err "task: invalid concurrency limit") "negative limit";
+  counter = spawn monitor;
+  answers = Task.mapBounded 2 (ordered counter) (1 :: 2 :: 3 :: 4 :: Nil);
+  _ = check (answers == Ok ("result 1" :: "result 2" :: "result 3" :: "result 4" :: Nil)) "ordered results";
+  _ = kill counter;
+  owner = spawn (cancellable me);
+  borrowed = receive me;
+  child = keep borrowed;
+  _ = drop borrowed;
+  _ = kill owner;
+  _ = Sys.sleepUs 20000;
+  _ = check (not (Sys.alive child)) "caller cancellation leaves worker live";
+  _ = repeat me 300;
+  _ = Sys.sleepUs 20000;
+  before = freeKiB Unit;
+  _ = repeat me 300;
+  _ = Sys.sleepUs 20000;
+  _ = check (before - freeKiB Unit < 4096) "failed joins retain worker messages delta={before - freeKiB Unit}";
+  _ = check (Task.map (fn x -> x + 1) Nil == Ok Nil) "empty batch";
+  _ = send me (Ok 999);
+  _ = check (par2 0 (fn x -> x + 1) 20 (fn x -> x * 2) 5 == (21, 10)) "par2 join";
+  untouched = receiveFrom me me;
+  _ = check (untouched == Ok 999) "par2 consumed unrelated Result";
+  _ = drop untouched;
+  print "taskfailure: death/sibling cancellation/deadline/order/limit/inbox/cleanup contracts HOLDS".

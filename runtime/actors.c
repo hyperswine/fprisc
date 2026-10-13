@@ -138,6 +138,7 @@ uw fpr_ring_grows, fpr_send_full; /* growths; sends refused for a full ring */
 typedef struct fpr_acb {
   uint32_t tid, var; /* var = status word (atomic; doubles as header) */
   uw ctx[FPR_CTX_WORDS]; /* ra sp gp tp s0..s11, then fs0..fs11 where the machine saves them */
+  uint32_t reaping; /* exactly one hart may tear down this immortal identity */
   chan_t *ch;        /* MAXSND channels, OUT-OF-LINE (see chblk below):
                       * the acb stays permanent (send-to-dead reads
                       * var), but its 8 KiB of rings is reclaimed at
@@ -717,12 +718,18 @@ static void chb_drain(chan_t *ch) {
 
 /* death reclamation (called from the hart loop, NEVER on the dying
  * actor's own stack): slabs via the ARC-locked teardown, stack -- which
- * cannot escape -- straight back to buddy.  Idempotent via stack=0. */
+ * cannot escape -- straight back to buddy. A migrated sleeper can be seen
+ * by its sleep hart and its admission hart: claim teardown exactly once,
+ * and never while the actor is still switched in. */
 static void mem_cancel(acb_t *a);
 static volatile uw g_blocked;      /* actors currently parked */
 static volatile uw g_sleepers;     /* of which: parked with a deadline */
 static volatile uw g_irq_waiting;  /* of which: an interrupt's actor, waiting for it */
 static void reap(acb_t *a) {
+  if (__atomic_load_n(&a->running, __ATOMIC_ACQUIRE)) return;
+  uint32_t expected = 0;
+  if (!__atomic_compare_exchange_n(&a->reaping, &expected, 1, 0,
+                                   __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) return;
   if (!a->stack) return;
   mem_cancel(a);
   if (a->wait_kind) { /* a killed parked actor never returns through block_unless */
@@ -952,6 +959,7 @@ static void backlog_cycle(fpr_hart_t *h) {
   fpr_cpanic("actors: backlog list is cyclic");
 }
 static acb_t *select_backlog(fpr_hart_t *h) {
+retry:
   fpr_lock(&h->bl_lock); /* a thief may be walking this list */
   acb_t *prev = 0, *a = h->bl_head;
   acb_t *aged = 0, *aged_prev = 0;
@@ -968,7 +976,14 @@ static acb_t *select_backlog(fpr_hart_t *h) {
       if (h->bl_tail == a) h->bl_tail = prev;
       h->bl_len--;
       a->in_bl = 0;
-      if (st == ST_DEAD) reap(a);
+      if (st == ST_DEAD) {
+        /* Teardown may wake the memory actor on this hart, re-entering
+         * backlog_add. Unlock first, then restart: admissions/steals can
+         * invalidate every saved list link while cleanup runs. */
+        fpr_unlock(&h->bl_lock);
+        reap(a);
+        goto retry;
+      }
       a = nx;
       continue;
     }
@@ -2094,6 +2109,7 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
   a->mem_reply = 0;
   a->pool_override = 0;
   a->scopes = 0;
+  a->reaping = 0;
   a->dp_n = 0;
   a->msg_slab = 0;
   a->running = 0; /* the block may be reused: no hart has this context yet */
@@ -2651,6 +2667,27 @@ static V ok_of(V m) {
   return (V)ok;
 }
 
+/* Selective poll, including the shared overflow channel. Empty/dead are
+ * static Results: a deadline loop allocates only when it receives a message.
+ * Read death before the queues, as receiveFromRes does, so a final queued
+ * reply wins over the sender's exit. Unrelated messages remain untouched. */
+static V a_receive_from_now(V me, V fromv) {
+  if (fpr_plane_actors) return fpr_plane_actors->receive_from_now(me, fromv);
+  fpr_hart_t *h = fpr_hart();
+  if (ISINT(me) || (acb_t *)me != h->current)
+    fpr_cpanic("receiveFromNow: not the current actor's handle");
+  if (ISINT(fromv) || TID(fromv) != T_ACTOR)
+    fpr_cpanic("receiveFromNow: sender is not an actor");
+  acb_t *a = h->current;
+  drop_drain(a);
+  int dead = __atomic_load_n(&((acb_t *)fromv)->var, __ATOMIC_SEQ_CST) == ST_DEAD;
+  chan_t *c = chan_for(a, (uw)fromv, 0);
+  if (c && ch_avail(c)) return ok_of(take_at(a, c, c->rh));
+  uint32_t k;
+  if (sh_has_from(a, (uw)fromv, &k)) return ok_of(take_at(a, sh_chan(a), k));
+  return dead ? (V)&recv_dead : (V)&recv_empty;
+}
+
 static V a_receive_from_res(V me, V fromv) {
   if (fpr_plane_actors) return fpr_plane_actors->receive_from_res(me, fromv);
   fpr_hart_t *h = fpr_hart();
@@ -2826,6 +2863,7 @@ FPR_FN(fpr_g_receiveFrom, a_receive_from, 2);
 FPR_FN(fpr_g_receiveRes, a_receive_res, 1);
 FPR_FN(fpr_g_receiveNow, a_receive_now, 1);
 FPR_FN(fpr_g_receiveFromRes, a_receive_from_res, 2);
+FPR_FN(fpr_g_receiveFromNow, a_receive_from_now, 2);
 FPR_FN(fpr_g_yield, a_yield, 1);
 FPR_FN(fpr_g_kill, a_kill, 1);
 FPR_FN(fpr_g_myself, a_myself, 1);
@@ -3124,6 +3162,7 @@ void fpr_plane_export(fpr_plane_actors_t *actors, fpr_plane_memory_t *memory) {
   actors->cleanup_set = fpr_actor_cleanup_set;
   actors->cleanup_clear = fpr_actor_cleanup_clear;
   actors->fail = fpr_actor_fail;
+  actors->receive_from_now = a_receive_from_now;
   memory->abi = FPR_PLANE_MEMORY_ABI;
   memory->arc_incref = fpr_arc_incref;
   memory->arc_decref = fpr_arc_decref;
@@ -3134,4 +3173,5 @@ void fpr_plane_export(fpr_plane_actors_t *actors, fpr_plane_memory_t *memory) {
   memory->stack_grow = stack_grow_at;
   memory->heap_lo = fpr_heap_lo;
   memory->heap_hi = fpr_heap_hi;
+  fpr_memory_scopes_export(memory);
 }

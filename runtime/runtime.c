@@ -1278,6 +1278,7 @@ static struct fpr_scope **scope_push(struct fpr_scope *scope) {
 }
 
 static V g_arena(V f) {
+  if (fpr_plane_memory) return fpr_plane_memory->arena(f);
   /* Capture actor-owned storage, not its current hart: allocation and the
    * thunk may park, and a resumed actor can migrate before teardown. */
   struct fpr_pool **slot = override_slot(fpr_hart());
@@ -1348,6 +1349,7 @@ static int vec_same(const vec_snap_t *sn, V v) {
  * the default engine for library receive/frame loops. A callback cannot
  * smuggle mutable storage around the state check through a capture. */
 static V g_loop(V s, V f) {
+  if (fpr_plane_memory) return fpr_plane_memory->loop(s, f);
   no_vec_out(s, "Sys.loop: the state may not hold a Vector (use Sys.loopWith)");
   no_vec_out(f, "Sys.loop: the callback may not capture a Vector (use Sys.loopWith)");
   struct fpr_pool **slot = override_slot(fpr_hart());
@@ -1398,6 +1400,7 @@ static V g_receive_loop(V thunk) {
 FPR_FN(fpr_g__x24receiveLoop, g_receive_loop, 1);
 
 static V g_loop_with(V vec, V s, V f) {
+  if (fpr_plane_memory) return fpr_plane_memory->loop_with(vec, s, f);
   if (ISINT(vec) || !fpr_in_heap(vec) || TID(vec) != T_VEC)
     fpr_cpanic("Sys.loopWith: not a Vector");
   no_vec_out(s, "Sys.loopWith: the state may not hold a Vector "
@@ -1447,6 +1450,14 @@ static V g_loop_with(V vec, V s, V f) {
 }
 FPR_FN(fpr_g_Sys_x2eloopWith, g_loop_with, 3);
 FPR_FN(fpr_g_Sys_x2earena, g_arena, 1);
+/* Region bookkeeping must live with the plane's ARC lock and recycler,
+ * including callbacks executing code in a loaded process. Export the whole
+ * operation rather than mixing process-local teardown with shared slabs. */
+void fpr_memory_scopes_export(fpr_plane_memory_t *memory) {
+  memory->arena = g_arena;
+  memory->loop = g_loop;
+  memory->loop_with = g_loop_with;
+}
 
 /* death teardown (hart loop, after the switch OFF the actor's stack):
  * slabs with no escaped objects return to buddy now; the rest are
@@ -2482,7 +2493,13 @@ V fpr_prim_fn_str(V v) {
   if (!ISINT(v) && TID(v) == T_STR) return v;
   rpos = 0;
   render(v);
-  return (V)fpr_mkstr((const uint8_t *)rbuf, (uw)rpos);
+  /* Allocating can park this actor for a slab grant. Another actor on the
+   * same hart may then render into rbuf (or this actor may migrate). Keep
+   * the rendered bytes on this actor's stack BEFORE that allocation. */
+  uint8_t snapshot[FPR_RBUF_SZ];
+  uw n = (uw)rpos;
+  __builtin_memcpy(snapshot, rbuf, n);
+  return (V)fpr_mkstr(snapshot, n);
 }
 
 fpr_lock_t fpr_con_lock; /* console: one LINE at a time across harts */

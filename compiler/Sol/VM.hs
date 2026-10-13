@@ -398,7 +398,7 @@ builtinArities :: M.Map Name Int
 builtinArities =
   M.union schemeArities $
     M.fromList
-      [ ("myself", 1), ("spawn", 1), ("send", 2), ("sendLinear", 2), ("sendArc", 2), ("receive", 1), ("receiveFrom", 2), ("receiveFromRes", 2), ("Sys.nextId", 1),
+      [ ("myself", 1), ("spawn", 1), ("send", 2), ("sendLinear", 2), ("sendArc", 2), ("receive", 1), ("receiveFrom", 2), ("receiveFromRes", 2), ("receiveFromNow", 2), ("Sys.nextId", 1),
         ("spawnCap", 3), ("spawnCapOn", 4), ("spawnOn", 2), ("spawnHeap", 2), ("Sys.spawnApp", 1), ("timeNow", 1),
         ("kill", 1), ("yield", 1), ("drop", 1), ("keep", 1), ("device", 1), ("reg32", 2),
         ("heapUsed", 1),
@@ -559,7 +559,7 @@ mtimeT = 9977 -- runtime-range tid for the shim's mtime handle
 actorNames :: S.Set Name
 actorNames =
   S.fromList
-    [ "myself", "spawn", "send", "sendLinear", "sendArc", "receive", "receiveFrom", "receiveFromRes", "Sys.nextId", "kill", "yield",
+    [ "myself", "spawn", "send", "sendLinear", "sendArc", "receive", "receiveFrom", "receiveFromRes", "receiveFromNow", "Sys.nextId", "kill", "yield",
       "spawnCap", "spawnCapOn", "spawnOn", "spawnHeap", "Sys.spawnApp", "timeNow",
       "drop", "keep", "device", "reg32", "heapUsed",
       "Sys.poolReset", "Sys.mtime", "Sys.sleepUs", "Sys.logAt", "Sys.memStats", "Sys.memInfo"
@@ -648,6 +648,21 @@ actorCall env "receiveFromRes" [VInt _me, VInt from] = do
                 | gone -> pure (VData 3 1 [VStr "dead actor"])
                 | otherwise -> takeMVar (abSig b) >> loop
        in loop
+actorCall env "receiveFromNow" [VInt _me, VInt from] = do
+  let actors = vmActors env
+  i <- actorSelf actors
+  reg <- readIORef (arReg actors)
+  case IM.lookup i reg of
+    Nothing -> vmPanic "receiveFromNow: the current actor has no mailbox"
+    Just b -> do
+      gone <- not . IM.member (fromIntegral from) <$> readIORef (arReg actors)
+      r <- modifyMVar (abQ b) $ \q ->
+        case break (\(sd, _) -> sd == fromIntegral from) q of
+          (pre, (_, m) : post) -> pure (pre ++ post, Just m)
+          _ -> pure (q, Nothing)
+      pure $ case r of
+        Just m -> VData 3 0 [m]
+        Nothing -> VData 3 1 [VStr (if gone then "dead actor" else "empty")]
 actorCall _ "Sys.nextId" [_] = VInt . fromIntegral <$> atomicModifyIORef' solNextId (\n -> (n + 1, n + 1))
 actorCall env "kill" [VInt i] = do
   let actors = vmActors env

@@ -805,11 +805,15 @@ ask me a q =
 par2 h f a g b =
   me = myself 0;
   w = spawnOn h parWorker;
-  _ = send w (me, f, a);
+  _ = case send w (me, f, a) of
+      Ok u -> u
+    | Err why -> _ = kill w; error "par2 admission: {why}";
   rb = g b;
   # the worker's reply is a received root: its payload is KEPT into this
   # actor's pool, so the root may be dropped (autodrop does, at the arm's
   # start) and the pair outlives the next receive
-  case receiveRes me of
-    Ok ra -> (keep ra, rb)
-  | Err _ -> error "par2: the worker failed".
+  case receiveFromRes me w of
+      Ok message -> (case message of
+          Ok ra -> owned = keep ra; _ = drop message; (owned, rb)
+        | Err why -> error "par2 worker: {why}")
+    | Err why -> error "par2 worker: {why}".

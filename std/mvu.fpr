@@ -23,9 +23,9 @@
 #                              service conversations inside update can
 #                              never eat the worker's reply by mistake
 #
-# TWO ACTORS, not three (the settled design): dispatch/input + update
-# live in the CALLER's actor; drawing is a RENDER SERVICE -- any actor
-# answering the Rv protocol.  textRender below is the reference
+# Dispatch/input + update live in the CALLER's actor. A persistent render
+# worker and reusable legacy-call session are owned by each run; drawing is
+# a caller-owned RENDER SERVICE -- any actor answering the Rv protocol.  textRender below is the reference
 # implementation (headless); pshell's GLES walker is another, and a
 # voxel-class software renderer holding its world batch is a third.
 #
@@ -114,7 +114,7 @@ Sub  = Type (STick Int | SKeys | SPort Int | SEvents Int).
 App  = Type (App ini upd sbs vw | LiveApp ini upd sbs vw).
 MApp = Type (MApp ini upd sk vw vl dn sbs).
 Rv   = Type (Render st vs sc fr | Dims u | Poll u).
-Rq   = Type (Rq st model env vw vh sc fr).
+Rq   = Type (Rq st model env vw vh sc fr deadline).
 Ms   = Type (Ms model fr sc lastR ltt).
 
 # ---- helpers ----------------------------------------------------------------
@@ -404,12 +404,12 @@ renderStep self state =
     | Ok m -> renderRequest self state m.
 renderRequest self state m =
   (parent, render, vl) = state;
-  (from, id, Rq st model env vw vh sc fr) = m;
+  (from, id, Rq st model env vw vh sc fr deadline) = m;
   vs = vl self env (vw, vh) model;
-  result = svcCallRes self render (Render st vs sc fr);
+  result = AC.sendAwaitUntil deadline self render (self, Render st vs sc fr);
   _ = AC.sendSure self from (id, result);
   _ = drop m;
-  (True, state).
+  (AC.sent result, state).
 
 # ---- the loop ---------------------------------------------------------------
 
@@ -445,7 +445,9 @@ loopM me cfg app rw vp cache ms =
   MApp ini upd sk vw vl dn sbs = app;
   ss = sbs model;
   (tickMs, keysOn, portA) = subFold ss (0, 0, 0);
-  events = collectEvents me input keysOn portA ss;
+  events = case AC.deadlineAfter cfg.serviceMs of
+      Err why -> Err why
+    | Ok deadline -> collectEventsUntil deadline me cfg.calls input keysOn portA ss;
   case events of
       Err why -> failedLoop rw cfg cache ms why
     | Ok evs0 -> loopEvents me cfg app rw vp cache ms t0 tickMs evs0.
@@ -457,6 +459,43 @@ collectEvents me input keysOn portA ss =
         | Ok messages -> case eventPortsRes me ss Nil of
               Err why -> Err why
             | Ok events -> Ok (catEvs (catEvs keys messages) events).
+# One reusable legacy session supplies a disposable return address on failure.
+# A single absolute deadline covers all input polls and subscribed ports in
+# this turn. Caller-owned render/input/port services remain caller-owned.
+collectEventsUntil deadline me calls input keysOn portA ss =
+  case (if input == 0 or keysOn == 0 then Ok Nil else drainUntil deadline me calls input 16 Nil) of
+      Err why -> Err why
+    | Ok keys -> case (if portA == 0 then Ok Nil else messagePortUntil deadline me calls portA) of
+          Err why -> Err why
+        | Ok messages -> case eventPortsUntil deadline me calls ss Nil Nil of
+              Err why -> Err why
+            | Ok events -> Ok (catEvs (catEvs keys messages) events).
+drainUntil : unsafe Int -> Int -> Int -> Int -> Int -> List Ev -> Result (List Ev) String .
+drainUntil deadline me calls input n acc = if n == 0 then Ok (revK Nil acc) else
+  case AC.sessionCallUntil deadline me calls input (fn ret -> (ret, Poll 0)) of
+      Err why -> Err "input: {why}"
+    | Ok ev ->
+        (kind, a, b) = ev;
+        if kind == 0 then Ok (revK Nil acc) else
+          drainUntil deadline me calls input (n - 1) (inputEvent kind a b acc).
+inputEvent kind a b acc = case kind of
+    4 -> if b == 1 then EKey a :: acc else acc
+  | 1 -> EKey (ascii2code a) :: acc
+  | 5 -> EResize a b :: acc
+  | 6 -> EWheel a b :: acc
+  | other -> acc.
+messagePortUntil deadline me calls port =
+  case AC.sessionCallUntil deadline me calls port (fn ret -> PDrain ret) of
+      Err why -> Err "message port: {why}"
+    | Ok messages -> Ok (portConv messages Nil).
+eventPortsUntil : unsafe Int -> Int -> Int -> List Sub -> List Int -> List Ev -> Result (List Ev) String .
+eventPortsUntil deadline me calls ss seen acc = case ss of
+    Nil -> Ok (revK Nil acc)
+  | SEvents p :: rest -> (if hasPort p seen or p == 0 then eventPortsUntil deadline me calls rest seen acc else
+      case AC.sessionCallUntil deadline me calls p (fn ret -> PDrain ret) of
+          Err why -> Err "event port: {why}"
+        | Ok messages -> eventPortsUntil deadline me calls rest (p :: seen) (revK acc (eventCopy messages)))
+  | other :: rest -> eventPortsUntil deadline me calls rest seen acc.
 loopEvents me cfg app rw vp cache ms t0 tickMs evs0 =
   env = cfg.env;
   Ms model fr sc lastR ltt = ms;
@@ -478,7 +517,9 @@ frame me cfg app rw vp cache ms t0 =
   (oldKey, oldSt, changed) = cache;
   (cache2, rebuilt) = liveEnsure app vp (oldKey, oldSt) key m2 changed;
   (k2, st2) = cache2;
-  result = frameReply (AC.call me rw (Rq st2 m2 cfg.env vw vh (sc + rebuilt) fr));
+  result = case AC.deadlineAfter cfg.serviceMs of
+      Err why -> Err why
+    | Ok deadline -> frameReply (AC.callUntil deadline me rw (Rq st2 m2 cfg.env vw vh (sc + rebuilt) fr deadline));
   case result of
       Err why -> failedLoop rw cfg cache2 ms why
     | Ok r ->
@@ -513,7 +554,10 @@ finish app m fr sc lastR =
 # render service for its dimensions, initializes, delivers the first
 # EResize (the viewport is a fact the model may record), loops.
 run me cfg app = serviceValue "run" (runResult me cfg app).
-runResult me cfg app = runLiveResult me cfg app noReload.
+runResult me cfg app = runResultWithin 5000 me cfg app.
+# A configurable bound for each event collection and render turn (ms).
+# App update/reload callbacks are synchronous; the driver cannot preempt them.
+runResultWithin ms me cfg app = runLiveResultWithin ms me cfg app noReload.
 
 # All drivers reclaim every frame's scratch allocations. Configuration,
 # model, cache and reload callbacks have value semantics: a Vector in this
@@ -526,19 +570,23 @@ runLiveScoped me cfg app reload = runLive me cfg app reload.
 
 # reload me info env -> Result env String: a platform adapter, not app update.
 runLive me cfg app reload = serviceValue "run" (runLiveResult me cfg app reload).
-runLiveResult me cfg app reload =
-  runWithResult me {env = cfg.env, mt = cfg.mt, tick = cfg.tick, input = cfg.input,
+runLiveResult me cfg app reload = runLiveResultWithin 5000 me cfg app reload.
+runLiveResultWithin ms me cfg app reload =
+  runWithResultWithin ms me {env = cfg.env, mt = cfg.mt, tick = cfg.tick, input = cfg.input,
               render = cfg.render, reload = reload} app.
 # The runner owns the extra typed port and the watcher returned by start.
 # start me port -> Result actor String. Other app subscriptions still work.
-runWatched me cfg app reload start =
+runWatched me cfg app reload start = runWatchedWithin 5000 me cfg app reload start.
+runWatchedWithin ms me cfg app reload start =
   port = AC.spawnWith (AC.Dynamic 64) eventsPort;
-  runWatchStarted me cfg app reload port (start me port).
-runWatchStarted me cfg app reload port started = case started of
+  runWatchStartedWithin ms me cfg app reload port (start me port).
+runWatchStarted me cfg app reload port started = runWatchStartedWithin 5000 me cfg app reload port started.
+runWatchStartedWithin ms me cfg app reload port started = case started of
     Err why -> _ = kill port; Err why
-  | Ok worker -> runWatchOwned me cfg app reload port worker.
-runWatchOwned me cfg app reload port worker =
-  result = runLiveResult me cfg (withEventPort app port) reload;
+  | Ok worker -> runWatchOwnedWithin ms me cfg app reload port worker.
+runWatchOwned me cfg app reload port worker = runWatchOwnedWithin 5000 me cfg app reload port worker.
+runWatchOwnedWithin ms me cfg app reload port worker =
+  result = runLiveResultWithin ms me cfg (withEventPort app port) reload;
   _ = kill worker;
   _ = kill port;
   result.
@@ -551,9 +599,19 @@ catSubs xs ys = case xs of Nil -> ys | x :: rest -> x :: catSubs rest ys.
 gameWatched me cfg app reload start = runWatched me cfg (gameApp app) reload start.
 
 runWith me cfg app = serviceValue "run" (runWithResult me cfg app).
-runWithResult me cfg app =
+runWithResult me cfg app = runWithResultWithin 5000 me cfg app.
+runWithResultWithin ms me cfg app = case AC.deadlineAfter ms of
+    Err why -> Err "mvu: {why}"
+  | Ok deadline ->
+      calls = spawn (AC.session me);
+      owned = {env = cfg.env, mt = cfg.mt, tick = cfg.tick, input = cfg.input,
+               render = cfg.render, reload = cfg.reload, calls = calls, serviceMs = ms};
+      result = runStartedResult deadline me owned app;
+      _ = kill calls;
+      result.
+runStartedResult deadline me cfg app =
   MApp ini upd sk vw vl dn sbs = app;
-  case svcCallRes me cfg.render (Dims 0) of
+  case AC.sessionCallUntil deadline me cfg.calls cfg.render (fn ret -> (ret, Dims 0)) of
       Err why -> Err "mvu dimensions: {why}"
     | Ok vp ->
         rw = AC.spawnWith (AC.Dynamic 64) (renderWorker me cfg.render vl);

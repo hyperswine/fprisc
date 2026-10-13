@@ -28,7 +28,7 @@ receiveTurns types tops context joins prog = (M.union rewritten prog, notes)
       let seeds = S.fromList names
           external = reaches (edges context) seeds `S.intersection` M.keysSet types
        in reaches (edges prog) (seeds `S.union` external)
-    receivers = effect ["receive", "receiveFrom", "receiveRes", "receiveNow", "receiveFromRes"]
+    receivers = effect ["receive", "receiveFrom", "receiveRes", "receiveNow", "receiveFromRes", "receiveFromNow"]
     managed = effect ["Sys.poolReset", "Sys.arena", "Sys.loop", "Sys.loopWith", "$receiveLoop"]
     groups = [ns | CyclicSCC ns <- stronglyConnComp
                   [(n, n, S.toList (refs ps b `S.intersection` M.keysSet prog)) | (n,(ps,b)) <- M.toList prog],

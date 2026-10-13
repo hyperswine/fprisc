@@ -1,0 +1,99 @@
+# Selective polling, total budgets, late replies and legacy return addresses.
+unsafe base.
+AC = use "std/actor".
+Sys.alive : Int -> Bool .
+check ok why = if ok then Unit else error "deadlines: {why}".
+stuck self = _ = receive self; _ = receive self; Unit.
+sleeper self = _ = Sys.sleepUs 2000000; Unit.
+fill target n = if n == 0 then Unit else _ = AC.sendOrDie target n; fill target (n - 1).
+empty me target n = if n == 0 then Unit else
+  _ = check (receiveFromNow me target == Err "empty") "empty selective poll";
+  empty me target (n - 1).
+source parent n self =
+  _ = AC.sendSure self parent (n, "first {n}");
+  _ = AC.sendSure self parent (n, "second {n}");
+  _ = receive self;
+  Unit.
+sources parent n acc = if n == 0 then acc else
+  who = spawn (source parent n);
+  sources parent (n - 1) ((who, n) :: acc).
+await me who = case receiveFromNow me who of
+    Err why -> if why == "empty" then _ = yield me; await me who else error "unexpected death"
+  | Ok m -> value = keep m; _ = drop m; value.
+checkSources me actors = case actors of
+    Nil -> Unit
+  | (who, n) :: rest ->
+      a = await me who;
+      b = await me who;
+      _ = check (a == (n, "first {n}") and b == (n, "second {n}")) "overflow FIFO";
+      _ = kill who;
+      checkSources me rest.
+finalReply parent self = _ = send parent "final reply"; Unit.
+late self =
+  (from, id, q) = receive self;
+  _ = Sys.sleepUs 60000;
+  _ = AC.reply (from, id) q;
+  _ = drop q;
+  (from2, id2, q2) = receive self;
+  _ = AC.reply (from2, id2) q2;
+  Unit.
+legacy self =
+  (from, q) = receive self;
+  _ = Sys.sleepUs 60000;
+  _ = send from q;
+  (from2, q2) = receive self;
+  _ = send from2 q2;
+  Unit.
+stale self =
+  (from, id, q) = receive self;
+  _ = Sys.loop from (fn target -> (AC.sendSure self target (0, "stale"), target));
+  Unit.
+drainOwned me who = case receiveFromNow me who of
+    Ok m -> _ = drop m; drainOwned me who
+  | Err why -> Unit.
+main =
+  me = myself 0;
+  idle = spawn stuck;
+  before = heapUsed Unit;
+  _ = empty me idle 100000;
+  _ = check (heapUsed Unit - before < 1024) "empty polls allocate";
+  _ = kill idle;
+  _ = check (receiveFromNow me idle == Err "dead actor") "dead poll";
+  many = sources me 48 Nil;
+  _ = Sys.sleepUs 20000;
+  _ = send me (Err "unrelated Result");
+  _ = checkSources me many;
+  unrelated = receiveFrom me me;
+  _ = check (unrelated == Err "unrelated Result") "unrelated message consumed";
+  _ = drop unrelated;
+  final = spawn (finalReply me);
+  _ = Sys.sleepUs 20000;
+  _ = check (await me final == "final reply") "queued reply before death";
+  _ = check (receiveFromNow me final == Err "dead actor") "drained dead sender";
+  full = AC.spawnWith (AC.Static 8) sleeper;
+  _ = fill full 8;
+  _ = check (AC.callWithin 20 me full 0 == Err "mailbox full") "full admission";
+  _ = check (AC.callSureWithin 20 me full 0 == Err "deadline exceeded before admission") "admission budget";
+  _ = check (AC.callWithin 0 me full 0 == Err "deadline exceeded before admission") "zero budget";
+  _ = check (AC.callWithin (0 - 1) me full 0 == Err "invalid deadline duration") "negative budget";
+  _ = check (AC.callWithin (intMax Unit) me full 0 == Err "invalid deadline duration") "overflow budget";
+  _ = kill full;
+  slow = spawn late;
+  _ = check (AC.callWithin 20 me slow "first" == Err "deadline exceeded (outcome unknown)") "live timeout";
+  _ = check (AC.callWithin 500 me slow "second" == Ok "second") "late correlated reply reused";
+  flood = spawn stale;
+  t0 = AC.nowUs Unit;
+  _ = check (AC.callWithin 20 me flood 0 == Err "deadline exceeded (outcome unknown)") "stale stream resets budget";
+  _ = check (AC.nowUs Unit - t0 < 500000) "timeout took too long";
+  _ = kill flood;
+  _ = drainOwned me flood;
+  raw = spawn legacy;
+  first = spawn (AC.session me);
+  d1 = AC.nowUs Unit + 20000;
+  _ = check (AC.sessionCallUntil d1 me first raw (fn ret -> (ret, "first")) == Err "deadline exceeded (outcome unknown)") "legacy timeout";
+  _ = kill first;
+  second = spawn (AC.session me);
+  d2 = AC.nowUs Unit + 500000;
+  _ = check (AC.sessionCallUntil d2 me second raw (fn ret -> (ret, "second")) == Ok "second") "late legacy reply reused";
+  _ = kill second;
+  print "deadlines: selective/FIFO/overflow/death/admission/stale/late-reply contracts HOLDS".

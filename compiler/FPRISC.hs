@@ -970,7 +970,7 @@ autoDrop tops = (tops', concat notess)
     freshRoot n k = "_autodrop_root_" ++ filter (`notElem` ".#") n ++ "_" ++ show k
     -- the Result-wrapped receives: Ok m carries the message root
     isResultReceive e = case adHeadName e of
-      Just h -> h `elem` ["receiveFromRes", "receiveNow"]
+      Just h -> h `elem` ["receiveFromRes", "receiveFromNow", "receiveNow"]
       Nothing -> False
     okArm (pt, b) | PCon "Ok" [pv] <- pt, PVar m <- unmarkPat pv = okE m b && not (droppedIn m [] b)
     okArm _ = False

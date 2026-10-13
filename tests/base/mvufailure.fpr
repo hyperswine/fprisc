@@ -57,7 +57,11 @@ main =
   stuck = AC.spawnWith (AC.Static 8) full;
   _ = fill stuck 8;
   _ = check (refused "mailbox full" (MV.svcCallRes me stuck (MV.Dims 0))) "service admission";
-  _ = check (refused "mvu dimensions: mailbox full" (runCase me stuck 0 0 0)) "dimensions admission";
+  # A new session owns a separate sender channel: the root's full ring does
+  # not imply its ring is full. The live service still must time out.
+  timeoutCfg = {env = {mode = 0, port = 0}, mt = 0, tick = 0, input = 0, render = stuck};
+  _ = check (refused "mvu dimensions: deadline exceeded (outcome unknown)"
+      (MV.runResultWithin 20 me timeoutCfg app)) "dimensions deadline";
   _ = kill stuck;
   result = runCase me rd 0 0 7;
   _ = check (case result of Ok text -> strIndexOf "done [mvu:" text == 0 | other -> False) "healthy run after failures";

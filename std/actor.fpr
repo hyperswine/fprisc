@@ -148,6 +148,108 @@ awaitFrom me a = case receiveFromRes me a of
     Err e -> Err e
   | Ok m -> replyKept m m.
 
+# ---- deadlines -------------------------------------------------------------
+# Deadlines are absolute monotonic microseconds; Within takes milliseconds.
+# The SAME deadline covers admission, stale replies and the answer. A timeout
+# after admission leaves the operation's outcome unknown: never replay it
+# automatically. Only correlated calls may reuse the return address afterward.
+nowUs u = Sys.mtime u / 10.
+deadlineAfter ms =
+  now = nowUs Unit;
+  if ms < 0 or ms > (intMax Unit - now) / 1000 then Err "invalid deadline duration"
+  else Ok (now + ms * 1000).
+# Sleep no further than the remaining budget; yielding on an expired budget
+# would let an already-expired request through. No helper actor per request.
+napUntil deadline =
+  left = deadline - nowUs Unit;
+  if left <= 0 then Unit else _ = Sys.sleepUs (if left < 100 then left else 100); Unit.
+
+callWithin ms me a q = case deadlineAfter ms of
+    Err why -> Err why
+  | Ok deadline -> callUntil deadline me a q.
+callSureWithin ms me a q = case deadlineAfter ms of
+    Err why -> Err why
+  | Ok deadline -> callSureUntil deadline me a q.
+callUntil : unsafe Int -> Int -> Int -> q -> Result r String .
+callUntil deadline me a q =
+  id = Sys.nextId Unit;
+  if nowUs Unit >= deadline then Err "deadline exceeded before admission" else
+  case send a (me, id, q) of
+      Err why -> Err why
+    | Ok u -> awaitReplyUntil deadline me a id.
+callSureUntil : unsafe Int -> Int -> Int -> q -> Result r String .
+callSureUntil deadline me a q =
+  id = Sys.nextId Unit;
+  case sendSureUntil deadline me a (me, id, q) of
+      Err why -> Err why
+    | Ok u -> awaitReplyUntil deadline me a id.
+sendSureUntil : unsafe Int -> Int -> Int -> a -> Result Unit String .
+sendSureUntil deadline me a msg =
+  if nowUs Unit >= deadline then Err "deadline exceeded before admission" else
+  case send a msg of
+      Ok u -> Ok u
+    | Err why -> if why == "mailbox full" then
+        _ = napUntil deadline;
+        sendSureUntil deadline me a msg
+      else Err why.
+awaitReplyUntil : unsafe Int -> Int -> Int -> Int -> Result r String .
+awaitReplyUntil deadline me a id =
+  if nowUs Unit >= deadline then Err "deadline exceeded (outcome unknown)" else
+  case receiveFromNow me a of
+      Err why -> if why == "empty" then
+          _ = napUntil deadline;
+          awaitReplyUntil deadline me a id
+        else Err why
+    | Ok m -> replyUntil deadline me a id m.
+replyUntil deadline me a id m =
+  (rid, r) = m;
+  if rid == id then replyKept m r else
+    _ = drop m;
+    awaitReplyUntil deadline me a id.
+
+# A raw legacy reply carries NO correlation id. Use only when the receiver
+# retires on timeout; otherwise its late reply could answer a future call.
+sendAwaitUntil : unsafe Int -> Int -> Int -> q -> Result r String .
+sendAwaitUntil deadline me a msg =
+  if nowUs Unit >= deadline then Err "deadline exceeded before admission" else
+  case send a msg of
+      Err why -> Err why
+    | Ok u -> awaitFromUntil deadline me a.
+awaitFromUntil : unsafe Int -> Int -> Int -> Result r String .
+awaitFromUntil deadline me a =
+  if nowUs Unit >= deadline then Err "deadline exceeded (outcome unknown)" else
+  case receiveFromNow me a of
+      Err why -> if why == "empty" then
+          _ = napUntil deadline;
+          awaitFromUntil deadline me a
+        else Err why
+    | Ok m -> replyKept m m.
+
+# Reusable legacy session, one per owner lifetime, not one per request.
+# makeRequest gets the session's return address (also for embedded addresses
+# such as PDrain). On ANY failure the session retires: late bare replies land
+# on a dead inbox. The owner must kill it at normal shutdown as well.
+session owner self =
+  (again, next) = sessionStep self owner;
+  if again then session (boundary self next) self else Unit.
+sessionStep self owner = case receiveFromRes self owner of
+    Err why -> (False, owner)
+  | Ok m -> sessionRequest self owner m.
+sessionRequest self owner m =
+  (from, id, (target, deadline, makeRequest)) = m;
+  result = sendAwaitUntil deadline self target (makeRequest self);
+  _ = sendSure self from (id, result);
+  _ = drop m;
+  (sent result, owner).
+sessionCallUntil : unsafe Int -> Int -> Int -> Int -> (Int -> q) -> Result r String .
+sessionCallUntil deadline me calls target makeRequest =
+  # The session enforces the budget. Wait for its final answer/death so a
+  # timeout result cannot arrive afterward and strand a root in the owner.
+  if nowUs Unit >= deadline then Err "deadline exceeded before admission" else
+  case call me calls (target, deadline, makeRequest) of
+      Err why -> Err why
+    | Ok result -> result.
+
 # ---- the frame boundary: how a long-lived actor stays the same size ------------------
 # An actor's heap is a pool: values are not collected one by one, the WHOLE pool
 # is reclaimed when the actor dies -- or when it says so.  An actor that loops
