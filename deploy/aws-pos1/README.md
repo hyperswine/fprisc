@@ -18,7 +18,9 @@ browser ──https/wss──▶ Caddy :443 ──▶ pos1 127.0.0.1:6710 ──
 | `provision.sh` | Mac | key pair, security group, instance, Elastic IP; writes `state.env` (idempotent) |
 | `deploy.sh` | Mac | build, copy, run `server/install.sh` over SSH |
 | `server/install.sh` | instance | users, pos1 + Caddy + Alloy units and config, restart (idempotent) |
-| `server/set-grafana-cloud.sh` | instance | installed as `sudo set-grafana-cloud`: prompts for Grafana Cloud URLs, users and token |
+| `grafana-cloud.sh` | Mac | reads `fprisc/secrets.env`, uploads the dashboard, finds the stack's endpoints and gives Alloy its credentials over ssh stdin, then checks data arrived |
+| `allow-my-ip.sh` | Mac | replaces the SSH rule with your current IP |
+| `server/set-grafana-cloud.sh` | instance | the manual alternative: `sudo set-grafana-cloud` prompts for URLs, users and token |
 
 Redeploy after changing pos1: `./deploy.sh`. If SSH times out, your IP changed: `./allow-my-ip.sh`. SSH: `ssh -i ~/.ssh/pos1-key.pem ec2-user@<PUBLIC_IP>`.
 
@@ -28,9 +30,22 @@ Redeploy after changing pos1: `./deploy.sh`. If SSH times out, your IP changed: 
 - **Shop log as metrics**: `pos1_sales_total`, `pos1_revenue_cents_total`, `pos1_tax_cents_total` (labels `cashier`, `pay`=cash|card), `pos1_voids_total`, `pos1_restocked_units_total`. Derived from the append-only log, so pos1 itself is unchanged.
 - **Shop log as logs**: `{job="pos1-shop"}` with a `kind` label. `staff` lines carry PINs and are dropped before shipping.
 - **Caddy**: `caddy_http_*` request metrics. **Journald**: pos1, caddy, alloy, sshd as `{job="systemd-journal", unit=...}`.
-- **Probes**: `probe_success{job="pos1-probe"}` for loopback and the public HTTPS URL.
 
-Example queries: `sum(increase(pos1_revenue_cents_total[1d])) / 100`, `sum by (pay) (increase(pos1_sales_total[1h]))`.
+- **Probes**: `probe_success{job="pos1-probe", probe="direct"|"public"}`.
+
+## Grafana Cloud
+
+`fprisc/secrets.env` (gitignored) holds `GRAFANA_URL`, `GRAFANA_TOKEN` (a service
+account token, for the dashboard and to look up endpoints) and
+`GRAFANA_WRITE_TOKEN` (an access policy token with `metrics:write` and
+`logs:write`, which Alloy pushes with). Then `./grafana-cloud.sh`.
+
+The dashboard (`grafana/pos1-dashboard.json`, uid `pos1`) takes sales, revenue
+and voids from the shop log in **Loki**, e.g.
+`sum(count_over_time({job="pos1-shop", kind="sale"} [$__range]))`. Every sale
+is one line there, so the sums are exact. The `pos1_*` counters are kept for
+alerting, but `increase()` drops a brand-new series' first increment, so the
+first sale per cashier and payment would be missing from them.
 
 ## A custom domain
 

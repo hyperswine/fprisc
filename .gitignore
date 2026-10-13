@@ -24,3 +24,5 @@ MAINTHING*
 /examples/pos1
 pos1.log
 pos1.log.kvlog
+
+secrets.env

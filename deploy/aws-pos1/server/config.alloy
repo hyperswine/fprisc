@@ -277,6 +277,19 @@ prometheus.exporter.blackbox "pos1" {
 discovery.relabel "probes" {
   targets = prometheus.exporter.blackbox.pos1.targets
 
+  // keep the probe's name (direct | public) and URL before job is replaced,
+  // or the two probes would be one series
+  rule {
+    source_labels = ["job"]
+    regex         = "integrations/blackbox/(.*)"
+    target_label  = "probe"
+  }
+
+  rule {
+    source_labels = ["__param_target"]
+    target_label  = "target"
+  }
+
   rule {
     target_label = "instance"
     replacement  = "pos1"

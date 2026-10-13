@@ -1,0 +1,813 @@
+{
+ "dashboard": {
+  "uid": "pos1",
+  "title": "POS v1",
+  "tags": [
+   "pos1",
+   "fp-risc"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "time": {
+   "from": "now-24h",
+   "to": "now"
+  },
+  "refresh": "1m",
+  "panels": [
+   {
+    "id": 1,
+    "type": "stat",
+    "title": "Revenue",
+    "datasource": {
+     "type": "loki",
+     "uid": "grafanacloud-logs"
+    },
+    "gridPos": {
+     "x": 0,
+     "y": 0,
+     "w": 4,
+     "h": 4
+    },
+    "targets": [
+     {
+      "expr": "sum(sum_over_time({job=\"pos1-shop\", kind=\"sale\"} | regexp `^sale \\S+ \\S+ \\S+ \\S+ \\S+ (?P<total>\\d+) (?P<tax>\\d+)` | unwrap total [$__range])) / 100",
+      "queryType": "instant",
+      "refId": "A",
+      "datasource": {
+       "type": "loki",
+       "uid": "grafanacloud-logs"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "currencyUSD",
+      "decimals": 2,
+      "mappings": [],
+      "thresholds": {
+       "mode": "absolute",
+       "steps": [
+        {
+         "color": "blue",
+         "value": null
+        }
+       ]
+      },
+      "noValue": "0"
+     },
+     "overrides": []
+    },
+    "options": {
+     "reduceOptions": {
+      "calcs": [
+       "lastNotNull"
+      ],
+      "fields": "",
+      "values": false
+     },
+     "colorMode": "value",
+     "graphMode": "none",
+     "textMode": "auto"
+    }
+   },
+   {
+    "id": 2,
+    "type": "stat",
+    "title": "Sales",
+    "datasource": {
+     "type": "loki",
+     "uid": "grafanacloud-logs"
+    },
+    "gridPos": {
+     "x": 4,
+     "y": 0,
+     "w": 4,
+     "h": 4
+    },
+    "targets": [
+     {
+      "expr": "sum(count_over_time({job=\"pos1-shop\", kind=\"sale\"} [$__range]))",
+      "queryType": "instant",
+      "refId": "A",
+      "datasource": {
+       "type": "loki",
+       "uid": "grafanacloud-logs"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "short",
+      "decimals": 0,
+      "mappings": [],
+      "thresholds": {
+       "mode": "absolute",
+       "steps": [
+        {
+         "color": "blue",
+         "value": null
+        }
+       ]
+      },
+      "noValue": "0"
+     },
+     "overrides": []
+    },
+    "options": {
+     "reduceOptions": {
+      "calcs": [
+       "lastNotNull"
+      ],
+      "fields": "",
+      "values": false
+     },
+     "colorMode": "value",
+     "graphMode": "none",
+     "textMode": "auto"
+    }
+   },
+   {
+    "id": 3,
+    "type": "stat",
+    "title": "Voids",
+    "datasource": {
+     "type": "loki",
+     "uid": "grafanacloud-logs"
+    },
+    "gridPos": {
+     "x": 8,
+     "y": 0,
+     "w": 4,
+     "h": 4
+    },
+    "targets": [
+     {
+      "expr": "sum(count_over_time({job=\"pos1-shop\", kind=\"void\"} [$__range]))",
+      "queryType": "instant",
+      "refId": "A",
+      "datasource": {
+       "type": "loki",
+       "uid": "grafanacloud-logs"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "short",
+      "decimals": 0,
+      "mappings": [],
+      "thresholds": {
+       "mode": "absolute",
+       "steps": [
+        {
+         "color": "blue",
+         "value": null
+        }
+       ]
+      },
+      "noValue": "0"
+     },
+     "overrides": []
+    },
+    "options": {
+     "reduceOptions": {
+      "calcs": [
+       "lastNotNull"
+      ],
+      "fields": "",
+      "values": false
+     },
+     "colorMode": "value",
+     "graphMode": "none",
+     "textMode": "auto"
+    }
+   },
+   {
+    "id": 4,
+    "type": "stat",
+    "title": "Avg sale",
+    "datasource": {
+     "type": "loki",
+     "uid": "grafanacloud-logs"
+    },
+    "gridPos": {
+     "x": 12,
+     "y": 0,
+     "w": 4,
+     "h": 4
+    },
+    "targets": [
+     {
+      "expr": "sum(sum_over_time({job=\"pos1-shop\", kind=\"sale\"} | regexp `^sale \\S+ \\S+ \\S+ \\S+ \\S+ (?P<total>\\d+) (?P<tax>\\d+)` | unwrap total [$__range])) / sum(count_over_time({job=\"pos1-shop\", kind=\"sale\"} [$__range])) / 100",
+      "queryType": "instant",
+      "refId": "A",
+      "datasource": {
+       "type": "loki",
+       "uid": "grafanacloud-logs"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "currencyUSD",
+      "decimals": 2,
+      "mappings": [],
+      "thresholds": {
+       "mode": "absolute",
+       "steps": [
+        {
+         "color": "blue",
+         "value": null
+        }
+       ]
+      },
+      "noValue": "0"
+     },
+     "overrides": []
+    },
+    "options": {
+     "reduceOptions": {
+      "calcs": [
+       "lastNotNull"
+      ],
+      "fields": "",
+      "values": false
+     },
+     "colorMode": "value",
+     "graphMode": "none",
+     "textMode": "auto"
+    }
+   },
+   {
+    "id": 5,
+    "type": "stat",
+    "title": "Up",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "grafanacloud-prom"
+    },
+    "gridPos": {
+     "x": 16,
+     "y": 0,
+     "w": 4,
+     "h": 4
+    },
+    "targets": [
+     {
+      "expr": "min(probe_success{job=\"pos1-probe\"})",
+      "instant": true,
+      "refId": "A",
+      "datasource": {
+       "type": "prometheus",
+       "uid": "grafanacloud-prom"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "short",
+      "decimals": 0,
+      "mappings": [
+       {
+        "type": "value",
+        "options": {
+         "0": {
+          "text": "DOWN",
+          "color": "red"
+         },
+         "1": {
+          "text": "UP",
+          "color": "green"
+         }
+        }
+       }
+      ],
+      "thresholds": {
+       "mode": "absolute",
+       "steps": [
+        {
+         "color": "red",
+         "value": null
+        },
+        {
+         "color": "green",
+         "value": 1
+        }
+       ]
+      },
+      "noValue": "0"
+     },
+     "overrides": []
+    },
+    "options": {
+     "reduceOptions": {
+      "calcs": [
+       "lastNotNull"
+      ],
+      "fields": "",
+      "values": false
+     },
+     "colorMode": "value",
+     "graphMode": "none",
+     "textMode": "auto"
+    }
+   },
+   {
+    "id": 6,
+    "type": "stat",
+    "title": "p95 latency",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "grafanacloud-prom"
+    },
+    "gridPos": {
+     "x": 20,
+     "y": 0,
+     "w": 4,
+     "h": 4
+    },
+    "targets": [
+     {
+      "expr": "histogram_quantile(0.95, sum by (le) (rate(caddy_http_request_duration_seconds_bucket[5m])))",
+      "instant": true,
+      "refId": "A",
+      "datasource": {
+       "type": "prometheus",
+       "uid": "grafanacloud-prom"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "s",
+      "decimals": 3,
+      "mappings": [],
+      "thresholds": {
+       "mode": "absolute",
+       "steps": [
+        {
+         "color": "blue",
+         "value": null
+        }
+       ]
+      },
+      "noValue": "0"
+     },
+     "overrides": []
+    },
+    "options": {
+     "reduceOptions": {
+      "calcs": [
+       "lastNotNull"
+      ],
+      "fields": "",
+      "values": false
+     },
+     "colorMode": "value",
+     "graphMode": "none",
+     "textMode": "auto"
+    }
+   },
+   {
+    "id": 7,
+    "type": "timeseries",
+    "title": "Sales per hour, by payment",
+    "datasource": {
+     "type": "loki",
+     "uid": "grafanacloud-logs"
+    },
+    "gridPos": {
+     "x": 0,
+     "y": 4,
+     "w": 12,
+     "h": 8
+    },
+    "targets": [
+     {
+      "expr": "sum by (pay) (count_over_time({job=\"pos1-shop\", kind=\"sale\"} [1h]))",
+      "legendFormat": "{{pay}}",
+      "step": "1h",
+      "refId": "A",
+      "datasource": {
+       "type": "loki",
+       "uid": "grafanacloud-logs"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "short",
+      "custom": {
+       "drawStyle": "bars",
+       "fillOpacity": 60,
+       "lineWidth": 1,
+       "showPoints": "never",
+       "stacking": {
+        "mode": "normal",
+        "group": "A"
+       }
+      }
+     },
+     "overrides": []
+    },
+    "options": {
+     "legend": {
+      "displayMode": "list",
+      "placement": "bottom",
+      "showLegend": true
+     },
+     "tooltip": {
+      "mode": "multi",
+      "sort": "desc"
+     }
+    }
+   },
+   {
+    "id": 8,
+    "type": "timeseries",
+    "title": "Revenue per hour, by cashier",
+    "datasource": {
+     "type": "loki",
+     "uid": "grafanacloud-logs"
+    },
+    "gridPos": {
+     "x": 12,
+     "y": 4,
+     "w": 12,
+     "h": 8
+    },
+    "targets": [
+     {
+      "expr": "sum by (cashier) (sum_over_time({job=\"pos1-shop\", kind=\"sale\"} | regexp `^sale \\S+ \\S+ \\S+ \\S+ \\S+ (?P<total>\\d+) (?P<tax>\\d+)` | unwrap total [1h])) / 100",
+      "legendFormat": "{{cashier}}",
+      "step": "1h",
+      "refId": "A",
+      "datasource": {
+       "type": "loki",
+       "uid": "grafanacloud-logs"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "currencyUSD",
+      "custom": {
+       "drawStyle": "bars",
+       "fillOpacity": 60,
+       "lineWidth": 1,
+       "showPoints": "never",
+       "stacking": {
+        "mode": "normal",
+        "group": "A"
+       }
+      }
+     },
+     "overrides": []
+    },
+    "options": {
+     "legend": {
+      "displayMode": "list",
+      "placement": "bottom",
+      "showLegend": true
+     },
+     "tooltip": {
+      "mode": "multi",
+      "sort": "desc"
+     }
+    }
+   },
+   {
+    "id": 9,
+    "type": "timeseries",
+    "title": "HTTP requests/s, by status",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "grafanacloud-prom"
+    },
+    "gridPos": {
+     "x": 0,
+     "y": 12,
+     "w": 12,
+     "h": 8
+    },
+    "targets": [
+     {
+      "expr": "sum by (code) (rate(caddy_http_request_duration_seconds_count[5m]))",
+      "legendFormat": "{{code}}",
+      "refId": "A",
+      "datasource": {
+       "type": "prometheus",
+       "uid": "grafanacloud-prom"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "reqps",
+      "custom": {
+       "drawStyle": "line",
+       "fillOpacity": 10,
+       "lineWidth": 1,
+       "showPoints": "never",
+       "stacking": {
+        "mode": "none",
+        "group": "A"
+       }
+      }
+     },
+     "overrides": []
+    },
+    "options": {
+     "legend": {
+      "displayMode": "list",
+      "placement": "bottom",
+      "showLegend": true
+     },
+     "tooltip": {
+      "mode": "multi",
+      "sort": "desc"
+     }
+    }
+   },
+   {
+    "id": 10,
+    "type": "timeseries",
+    "title": "Probe duration",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "grafanacloud-prom"
+    },
+    "gridPos": {
+     "x": 12,
+     "y": 12,
+     "w": 12,
+     "h": 8
+    },
+    "targets": [
+     {
+      "expr": "probe_duration_seconds{job=\"pos1-probe\"}",
+      "legendFormat": "{{probe}}",
+      "refId": "A",
+      "datasource": {
+       "type": "prometheus",
+       "uid": "grafanacloud-prom"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "s",
+      "custom": {
+       "drawStyle": "line",
+       "fillOpacity": 10,
+       "lineWidth": 1,
+       "showPoints": "never",
+       "stacking": {
+        "mode": "none",
+        "group": "A"
+       }
+      }
+     },
+     "overrides": []
+    },
+    "options": {
+     "legend": {
+      "displayMode": "list",
+      "placement": "bottom",
+      "showLegend": true
+     },
+     "tooltip": {
+      "mode": "multi",
+      "sort": "desc"
+     }
+    }
+   },
+   {
+    "id": 11,
+    "type": "timeseries",
+    "title": "CPU",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "grafanacloud-prom"
+    },
+    "gridPos": {
+     "x": 0,
+     "y": 20,
+     "w": 8,
+     "h": 8
+    },
+    "targets": [
+     {
+      "expr": "1 - avg(rate(node_cpu_seconds_total{instance=\"pos1\", mode=\"idle\"}[5m]))",
+      "legendFormat": "busy",
+      "refId": "A",
+      "datasource": {
+       "type": "prometheus",
+       "uid": "grafanacloud-prom"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "percentunit",
+      "custom": {
+       "drawStyle": "line",
+       "fillOpacity": 10,
+       "lineWidth": 1,
+       "showPoints": "never",
+       "stacking": {
+        "mode": "none",
+        "group": "A"
+       }
+      }
+     },
+     "overrides": []
+    },
+    "options": {
+     "legend": {
+      "displayMode": "list",
+      "placement": "bottom",
+      "showLegend": true
+     },
+     "tooltip": {
+      "mode": "multi",
+      "sort": "desc"
+     }
+    }
+   },
+   {
+    "id": 12,
+    "type": "timeseries",
+    "title": "Memory used",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "grafanacloud-prom"
+    },
+    "gridPos": {
+     "x": 8,
+     "y": 20,
+     "w": 8,
+     "h": 8
+    },
+    "targets": [
+     {
+      "expr": "1 - node_memory_MemAvailable_bytes{instance=\"pos1\"} / node_memory_MemTotal_bytes{instance=\"pos1\"}",
+      "legendFormat": "used",
+      "refId": "A",
+      "datasource": {
+       "type": "prometheus",
+       "uid": "grafanacloud-prom"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "percentunit",
+      "custom": {
+       "drawStyle": "line",
+       "fillOpacity": 10,
+       "lineWidth": 1,
+       "showPoints": "never",
+       "stacking": {
+        "mode": "none",
+        "group": "A"
+       }
+      }
+     },
+     "overrides": []
+    },
+    "options": {
+     "legend": {
+      "displayMode": "list",
+      "placement": "bottom",
+      "showLegend": true
+     },
+     "tooltip": {
+      "mode": "multi",
+      "sort": "desc"
+     }
+    }
+   },
+   {
+    "id": 13,
+    "type": "timeseries",
+    "title": "Disk used (/)",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "grafanacloud-prom"
+    },
+    "gridPos": {
+     "x": 16,
+     "y": 20,
+     "w": 8,
+     "h": 8
+    },
+    "targets": [
+     {
+      "expr": "1 - node_filesystem_avail_bytes{instance=\"pos1\", mountpoint=\"/\"} / node_filesystem_size_bytes{instance=\"pos1\", mountpoint=\"/\"}",
+      "legendFormat": "/",
+      "refId": "A",
+      "datasource": {
+       "type": "prometheus",
+       "uid": "grafanacloud-prom"
+      }
+     }
+    ],
+    "fieldConfig": {
+     "defaults": {
+      "unit": "percentunit",
+      "custom": {
+       "drawStyle": "line",
+       "fillOpacity": 10,
+       "lineWidth": 1,
+       "showPoints": "never",
+       "stacking": {
+        "mode": "none",
+        "group": "A"
+       }
+      }
+     },
+     "overrides": []
+    },
+    "options": {
+     "legend": {
+      "displayMode": "list",
+      "placement": "bottom",
+      "showLegend": true
+     },
+     "tooltip": {
+      "mode": "multi",
+      "sort": "desc"
+     }
+    }
+   },
+   {
+    "id": 14,
+    "type": "logs",
+    "title": "Shop log (staff lines are never shipped)",
+    "datasource": {
+     "type": "loki",
+     "uid": "grafanacloud-logs"
+    },
+    "gridPos": {
+     "x": 0,
+     "y": 28,
+     "w": 12,
+     "h": 10
+    },
+    "targets": [
+     {
+      "expr": "{job=\"pos1-shop\"}",
+      "queryType": "range",
+      "refId": "A",
+      "datasource": {
+       "type": "loki",
+       "uid": "grafanacloud-logs"
+      }
+     }
+    ],
+    "options": {
+     "showTime": true,
+     "wrapLogMessage": true,
+     "sortOrder": "Descending",
+     "enableLogDetails": true
+    }
+   },
+   {
+    "id": 15,
+    "type": "logs",
+    "title": "pos1 and Caddy logs",
+    "datasource": {
+     "type": "loki",
+     "uid": "grafanacloud-logs"
+    },
+    "gridPos": {
+     "x": 12,
+     "y": 28,
+     "w": 12,
+     "h": 10
+    },
+    "targets": [
+     {
+      "expr": "{job=\"systemd-journal\", unit=~\"pos1.service|caddy.service\"}",
+      "queryType": "range",
+      "refId": "A",
+      "datasource": {
+       "type": "loki",
+       "uid": "grafanacloud-logs"
+      }
+     }
+    ],
+    "options": {
+     "showTime": true,
+     "wrapLogMessage": true,
+     "sortOrder": "Descending",
+     "enableLogDetails": true
+    }
+   }
+  ],
+  "description": "POS v1 on EC2 (deploy/aws-pos1): sales from the shop log in Loki, the web front from Caddy, the host from node_exporter, health from blackbox probes."
+ },
+ "overwrite": true,
+ "message": "deploy/aws-pos1/grafana-cloud.sh"
+}
