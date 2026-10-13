@@ -2505,7 +2505,9 @@ static void ring_install(chan_t *c, ringv_t *nv) {
  * rings grow through the direct path: a request to it cannot be what
  * makes room for that request. */
 static int ring_push(acb_t *a, chan_t *c, uw key, V m, uw charge) {
-  int shared = c->sender == SHARED_KEY; /* many producers: the lock orders them */
+  /* Bounded sends resolve the channel under the same lock as the death
+   * check. Reap can clear a->ch after an earlier unlocked alive check. */
+  int shared = c && c->sender == SHARED_KEY; /* many producers: the lock orders them */
   int locked = shared || a->inbox_max_messages;
   for (;;) {
     if (locked) fpr_lock(&a->shlock);
@@ -2513,6 +2515,7 @@ static int ring_push(acb_t *a, chan_t *c, uw key, V m, uw charge) {
       if (locked) fpr_unlock(&a->shlock);
       return -1;
     }
+    if (!c) { c = chan_for(a, key, 1); shared = c->sender == SHARED_KEY; }
     ringv_t *rv = c->rv; /* dedicated: single producer, private rt */
     uint32_t rt = c->rt;
     /* the cached head first: rh is the consumer's line, read only when
@@ -2580,7 +2583,10 @@ V fpr_send_as(uw sender_key, V av, V m) {
   uint64_t q2 = FPR_PROBE_NOW();
 #endif
   int pushed = -1;
-  if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) != ST_DEAD) {
+  if (a->inbox_max_messages) {
+    INBOX_TEST(4, a);
+    pushed = ring_push(a, 0, sender_key, m, charge);
+  } else if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) != ST_DEAD) {
     chan_t *c = chan_for(a, sender_key, 1);
     pushed = ring_push(a, c, sender_key, m, charge);
   }
@@ -2610,11 +2616,8 @@ V fpr_send_as(uw sender_key, V av, V m) {
 static V bounded_publish(acb_t *a, V m, uw charge) {
   acb_t *sender = fpr_hart()->current;
   uw key = (uw)sender;
-  int pushed = -1;
-  if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) != ST_DEAD) {
-    chan_t *c = chan_for(a, key, 1);
-    pushed = ring_push(a, c, key, m, charge);
-  }
+  INBOX_TEST(4, a);
+  int pushed = ring_push(a, 0, key, m, charge);
   if (pushed != 1) {
     if (sender) send_cancel(sender);
     else { fpr_arc_decref(m); inbox_release(a, charge); }
