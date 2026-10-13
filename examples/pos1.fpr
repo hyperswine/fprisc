@@ -572,7 +572,7 @@ project sid m =
 # and the low-water mark, a row of its receipt, so they render once each and
 # again only when that changes.
 
-rootCls v = case v.theme == 1 of True -> "col gap-4 p-4 page app" | False -> "col gap-4 p-4 page app day".
+rootCls v = case v.theme == 1 of True -> "col gap-4 p-4 screen" | False -> "col gap-4 p-4 screen day".
 locals = G.locals @Client { tab = "1", open = "0", tender = "", delta = "10", rsku = "", cmd = "", name = "", pin = "" }.
 
 Product = { sku : String, name : String, price : Int, stock : Int, retired : Int }.
@@ -607,40 +607,25 @@ viewFresh v = El "div" (Cls (rootCls v) :: locals)
 # be emitted.  The sheet is therefore built over a SAMPLE tree that
 # shows everything: a signed-in session with a cart, receipts with a
 # void, the console -- every class the app can ever use appears once.
-cssAll v = strcat (G.cssFor (El "div" Nil (viewFresh (project 1 sampleModel) :: loginView noSess :: Nil))) (strcat Notice.css cssApp).
-# The layout rule: the page is the viewport, every region has its size from
-# the viewport, and what does not fit SCROLLS inside its region.  Nothing is
-# sized by its contents, so adding to the cart, opening a receipt's lines
-# or a long product name moves nothing else.
-cssApp = "
-.app\{height:100vh;height:100dvh;width:100vw;max-width:100vw;overflow:hidden}
-body\{overflow:hidden}
-.nav\{flex:none}
-.tabbody\{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
-.tabbody>*\{flex:1 1 auto;min-height:0}
-.fill\{flex:1 1 auto;min-height:0}
-.list\{flex:1 1 auto;min-height:0;overflow:auto}
-.register\{align-items:stretch}
-.products\{align-content:flex-start;overflow:auto;min-height:0}
-.pcard\{width:180px;height:140px;flex:none;justify-content:space-between}
-.w-cart\{display:flex;flex-direction:column;min-height:0}
-.w-cart .scroll\{flex:1 1 auto;min-height:0;max-height:none}
-.tr\{min-height:46px;flex:none}
-.clip\{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.w-badge\{width:56px;text-align:center;flex:none}
-.act\{width:72px;flex:none;display:flex;justify-content:flex-end}
-.lines\{max-height:180px;overflow:auto;flex:none}
-.console\{flex:1 1 auto;min-height:0;overflow:auto}
-.profile\{flex:none;max-height:38vh;overflow:auto}
-.pre:has(>[data-slot]:empty)\{display:block}
-.toast\{min-height:0}
-@media (max-width:760px)\{
-  .register\{flex-direction:column}
-  .products\{flex:1 1 auto}
-  .w-cart\{width:100%;flex:0 0 46vh}
-  .pcard\{width:calc(50% - 4px)}
-}
-".
+cssAll v = G.cssWith (Notice.styles + styles) (El "div" Nil (viewFresh (project 1 sampleModel) :: loginView noSess :: Nil)).
+# The layout rule: the page is the viewport (`screen`), every region has its
+# size from the viewport (flex-auto min-h-0), and what does not fit SCROLLS
+# inside its region (overflow-auto).  Nothing is sized by its contents, so
+# adding to the cart, opening a receipt's lines or a long product name moves
+# nothing else.  On a narrow screen the register stacks: the products above,
+# the cart docked below at a fixed share of the height.
+#
+# What the utilities do not say -- this app's own sizes -- as values:
+styles =
+  G.Style "pcard" [G.Width (G.Px 180), G.Height (G.Px 140)] ::
+  # narrow: two cards to a row, each half the row less half the gap
+  G.Style "pcard-half" [G.Width (G.Less (G.Pct 50) (G.Px 4))] ::
+  G.Style "cart-dock" [G.Basis (G.Vh 46)] ::
+  G.Style "min-h-row" [G.MinHeight (G.Px 46)] ::
+  G.Style "w-badge" [G.Width (G.Px 56)] ::
+  G.Style "w-act" [G.Width (G.Px 72)] ::
+  G.Style "max-h-lines" [G.MaxHeight (G.Px 180)] ::
+  G.Style "max-h-profile" [G.MaxHeight (G.Vh 38)] :: Nil.
 sampleModel =
   m0 = seed |> foldE (fn l mm -> apply mm l) initModel;
   m1 = apply (apply m0 "sale 1 ana 0 0 0 1650 150 FW=3=500") "sale 2 ben 0 1 550 550 50 LB=1=400";
@@ -657,7 +642,7 @@ loginView s =
     , El "div" [Cls "warm text-sm"] [Dyn s.toast] ].
 
 nav m s =
-  El "div" [Cls "row between center gap-2 wrap nav"]
+  El "div" [Cls "row between center gap-2 wrap flex-none"]
     [ El "div" [Cls "row gap-2 center wrap"]
         [ El "div" [Cls "bold"] [Txt "POS"], El "div" [Cls "dim text-xs"] [Txt "v1"]
         , tab "1" "Register", tab "2" "Receipts", tab "3" "Inventory", tab "4" "Admin" ]
@@ -674,18 +659,18 @@ tab n label = El "button" [Cls "btn pill px-3 py-2", G.setTo @Client.tab n, Att 
 # change is then a delta, not a reshape); an empty toast is not shown
 toasts s =
   El "div" [Cls "row gap-2"]
-    [ El "div" [Cls "toast ok"] [Dyn (roleText s "ok")]
-    , El "div" [Cls "toast celebrate"] [Dyn (roleText s "celebrate")]
-    , El "div" [Cls "toast warn"] [Dyn (roleText s "warn")]
-    , El "div" [Cls "toast bad"] [Dyn (roleText s "bad")] ].
+    [ El "div" [Cls "toast min-h-0 ok"] [Dyn (roleText s "ok")]
+    , El "div" [Cls "toast min-h-0 celebrate"] [Dyn (roleText s "celebrate")]
+    , El "div" [Cls "toast min-h-0 warn"] [Dyn (roleText s "warn")]
+    , El "div" [Cls "toast min-h-0 bad"] [Dyn (roleText s "bad")] ].
 roleText s role | strEq s.role role = s.toast.
 roleText s role = "".
 
 body v s cards rows rs =
-  El "div" [Cls "tabbody", G.showIf @Client.tab "1"] [register v cards] ::
-  El "div" [Cls "tabbody", G.showIf @Client.tab "2"] [receipts v rows] ::
-  El "div" [Cls "tabbody", G.showIf @Client.tab "3"] [inventory v] ::
-  El "div" [Cls "tabbody", G.showIf @Client.tab "4"] [admin v s rs] :: Nil.
+  El "div" [Cls "col flex-auto min-h-0", G.showIf @Client.tab "1"] [register v cards] ::
+  El "div" [Cls "col flex-auto min-h-0", G.showIf @Client.tab "2"] [receipts v rows] ::
+  El "div" [Cls "col flex-auto min-h-0", G.showIf @Client.tab "3"] [inventory v] ::
+  El "div" [Cls "col flex-auto min-h-0", G.showIf @Client.tab "4"] [admin v s rs] :: Nil.
 
 # ---- register ------------------------------------------------------------------------------------
 
@@ -696,12 +681,12 @@ body v s cards rows rs =
 # from those quantities (cartScript below).  None of it depends on a session,
 # so nothing here is rendered again until the catalogue or the tax changes.
 register v cards =
-  El "div" [Cls "row gap-4 register"]
-    [ El "div" [Cls "row wrap gap-2 grow products"] cards
+  El "div" [Cls "row gap-4 flex-auto min-h-0 narrow:col"]
+    [ El "div" [Cls "row wrap gap-2 grow content-start overflow-auto min-h-0 narrow:flex-auto"] cards
     , cartPanel v ].
 qLocal p = "q_{p.sku}".
 productCard lowAt p =
-  El "div" [Cls "col gap-2 card round p-3 pcard"]
+  El "div" [Cls "col gap-2 card round p-3 pcard flex-none between narrow:pcard-half"]
     [ El "div" [Cls "bold"] [Txt p.name]
     , El "div" [Cls "row between center"]
         [ El "div" [Cls "tabular"] [Txt "$", Dyn (money p.price)]
@@ -716,9 +701,9 @@ stockText lowAt p = "{p.stock} in stock".
 
 cartPanel m =
   ps = live m.cat;
-  El "div" (Cls "col gap-2 panel round p-4 w-cart" :: Att "data-tax" "{m.tax}" :: (ps |> List.map (fn p -> G.Local (qLocal p) "0")))
+  El "div" (Cls "col gap-2 panel round p-4 w-cart min-h-0 narrow:w-full narrow:cart-dock" :: Att "data-tax" "{m.tax}" :: (ps |> List.map (fn p -> G.Local (qLocal p) "0")))
     [ El "div" [Cls "text-xs upper dim"] [Txt "cart"]
-    , El "div" [Cls "col gap-1 scroll"] (El "div" [Cls "dim text-sm", Att "id" "cart-empty"] [Txt "nothing yet"] :: (ps |> List.map (fn p -> cartLine p)))
+    , El "div" [Cls "col gap-1 flex-auto min-h-0 overflow-auto"] (El "div" [Cls "dim text-sm", Att "id" "cart-empty"] [Txt "nothing yet"] :: (ps |> List.map (fn p -> cartLine p)))
     , El "div" [Cls "rule"] []
     , totalRow "subtotal" "cart-sub"
     , totalRow "tax {m.tax / 100}.{pad2 (m.tax % 100)}%" "cart-tax"
@@ -732,8 +717,8 @@ cartPanel m =
 totalRow label slot =
   El "div" [Cls "row between center dim text-sm"] [ Txt label, El "div" [Cls "tabular", Att "id" slot] [Txt "$0.00"] ].
 cartLine p =
-  El "div" [Cls "row between center gap-2 tr", G.ShowIf (qLocal p), Att "data-line" p.sku, Att "data-price" "{p.price}"]
-    [ El "div" [Cls "grow clip"] [Txt p.name]
+  El "div" [Cls "row between center gap-2 tr flex-none min-h-row", G.ShowIf (qLocal p), Att "data-line" p.sku, Att "data-price" "{p.price}"]
+    [ El "div" [Cls "grow truncate min-w-0"] [Txt p.name]
     , El "button" [Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "-1", Att "data-min" "0"] [Txt "-"]
     , El "div" [Cls "tabular w-40 right"] [G.LTxt (qLocal p)]
     , El "button" [Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "+1", Att "data-min" "0", Att "data-max" "{imin 999 p.stock}"] [Txt "+"]
@@ -743,26 +728,26 @@ cartLine p =
 # ---- receipts ---------------------------------------------------------------------------------------
 
 receipts v rows =
-  El "div" [Cls "col gap-3 fill"]
+  El "div" [Cls "col gap-3 flex-auto min-h-0"]
     [ El "div" [Cls "row gap-4 center"]
         [ El "div" [Cls "col"] [ El "div" [Cls "text-xs upper dim"] [Txt "receipts"], El "div" [Cls "text-2xl bold tabular"] [Dyn "{v.nsales}"] ]
         , El "div" [Cls "col"] [ El "div" [Cls "text-xs upper dim"] [Txt "revenue"], El "div" [Cls "text-2xl bold tabular"] [Txt "$", Dyn (money v.revenue)] ]
         , El "div" [Cls "dim text-sm"] [Txt "newest 50 shown"] ]
-    , El "div" [Cls "col list"] rows ].
+    , El "div" [Cls "col flex-auto min-h-0 overflow-auto"] rows ].
 receiptRow x =
-  El "div" [Cls "col tr"]
+  El "div" [Cls "col tr flex-none min-h-row"]
     [ El "div" [Cls "row gap-3 center"]
         [ El "div" [Cls "bold tabular w-24"] [Txt "#{x.n}"]
         , El "div" [Cls "dim text-sm w-24"] [Txt x.cashier]
-        , El "div" [Cls "grow text-sm clip"] [Txt (summary x.lines)]
+        , El "div" [Cls "grow text-sm truncate min-w-0"] [Txt (summary x.lines)]
         , El "div" [Cls "tabular w-24 right"] [Txt "$", Txt (money x.total)]
         , El "div" [Cls "dim text-xs"] [Txt (fmtTime x.at)]
-        , El "span" [Cls "badge w-badge"] [Txt (case x.pay == 0 of True -> "cash" | False -> "card")]
-        , El "span" [Cls (case x.voided == 1 of True -> "badge bad w-badge" | False -> "badge ok w-badge")] [Txt (case x.voided == 1 of True -> "void" | False -> "paid")]
+        , El "span" [Cls "badge w-badge text-center flex-none"] [Txt (case x.pay == 0 of True -> "cash" | False -> "card")]
+        , El "span" [Cls (case x.voided == 1 of True -> "badge bad w-badge text-center flex-none" | False -> "badge ok w-badge text-center flex-none")] [Txt (case x.voided == 1 of True -> "void" | False -> "paid")]
         , El "button" [Cls "btn pill px-3 py-2", G.setTo @Client.open "{x.n}", Att "data-on" "open:{x.n}"] [Txt "lines"]
-        , El "div" [Cls "act"] [voidButton x] ]
-    , El "div" [G.showIf @Client.open "{x.n}", Cls "col text-sm dim p-2 lines"] (x.lines |> List.map (fn l -> lineRow l) |> withVoid x) ].
-voidButton x | x.voided == 1 = El "div" [Cls "dim text-xs clip"] [Txt "by {x.voidBy}"].
+        , El "div" [Cls "row justify-end flex-none w-act"] [voidButton x] ]
+    , El "div" [G.showIf @Client.open "{x.n}", Cls "col text-sm dim p-2 overflow-auto flex-none max-h-lines"] (x.lines |> List.map (fn l -> lineRow l) |> withVoid x) ].
+voidButton x | x.voided == 1 = El "div" [Cls "dim text-xs truncate min-w-0"] [Txt "by {x.voidBy}"].
 voidButton x = El "button" [Cls "btn pill px-3 py-2", G.send codec (Void x.n)] [Txt "void"].
 lineRow (sku, q, pr, nm) = El "div" [Cls "row between"] [ Txt "{q} x {nm}", El "div" [Cls "tabular"] [Txt (money (q * pr))] ].
 withVoid x rows | x.voided == 1 = rows + (El "div" [Cls "warm"] [Txt "void by {x.voidBy} at {fmtTime x.voidAt}"] :: Nil).
@@ -773,13 +758,13 @@ lineWord (sku, q, pr, nm) = "{q}x {nm}".
 # ---- inventory --------------------------------------------------------------------------------------
 
 inventory m =
-  El "div" [Cls "col gap-3 fill"]
+  El "div" [Cls "col gap-3 flex-auto min-h-0"]
     [ El "div" [Cls "row gap-2 center"]
         [ El "div" [Cls "text-xs upper dim"] [Txt "restock by"]
         , Inp [Cls "field w-24", G.bind @Client.delta, Att "placeholder" "10"] ]
-    , El "div" [Cls "col list"] (live m.cat |> List.map (fn p -> invRow m p)) ].
+    , El "div" [Cls "col flex-auto min-h-0 overflow-auto"] (live m.cat |> List.map (fn p -> invRow m p)) ].
 invRow m p =
-  El "div" [Cls "row gap-3 center tr"]
+  El "div" [Cls "row gap-3 center tr flex-none min-h-row"]
     [ El "div" [Cls "grow"] [Txt p.name]
     , El "div" [Cls "dim text-xs mono w-24"] [Txt p.sku]
     , El "div" [Cls "tabular w-24 right"] [Txt "$", Dyn (money p.price)]
@@ -790,7 +775,7 @@ invRow m p =
 # ---- admin: the data console ---------------------------------------------------------------------------
 
 admin m s rs =
-  El "div" [Cls "col gap-3 fill"]
+  El "div" [Cls "col gap-3 flex-auto min-h-0"]
     [ El "div" [Cls "row gap-2 wrap"]
         [ watch "tax" "{m.tax / 100}.{pad2 (m.tax % 100)}%", watch "low at" "{m.lowAt}", watch "products" "{pCount m.cat}"
         , watch "sales" "{m.nsales}", watch "revenue" (money m.revenue), watch "log lines" "{m.events}"
@@ -799,9 +784,9 @@ admin m s rs =
         [ Inp [Cls "field grow mono", G.bind @Client.cmd, G.enterWith codec (Admin "") @Client.cmd, Att "placeholder" "get tax | set price FW 550 | add SKU 450 10 name | rebuild | help"]
         , El "button" [Cls "btn round px-3 py-2", G.sendWith codec (Admin "") @Client.cmd] [Txt "run"]
         , El "button" [Cls "btn round px-3 py-2", G.send codec Rebuild] [Txt "rebuild stock"] ]
-    , El "div" [Cls "mono text-sm pre card round p-3 console"] [Dyn (S.join "\n" (rev s.con Nil))]
+    , El "div" [Cls "mono text-sm pre show-empty card round p-3 flex-auto min-h-0 overflow-auto"] [Dyn (S.join "\n" (rev s.con Nil))]
     , El "div" [Cls "text-xs upper dim"] [Txt "profile"]
-    , El "div" [Cls "mono text-xs pre card round p-3 profile"] [Dyn (profileText m rs)]
+    , El "div" [Cls "mono text-xs pre card round p-3 flex-none overflow-auto max-h-profile"] [Dyn (profileText m rs)]
     , El "div" [Cls "row gap-2 center dim text-xs"] [ Txt "browser round trip: ", El "span" [Att "id" "pos-rtt"] [Txt "measuring"] ] ].
 
 profileText v rs =

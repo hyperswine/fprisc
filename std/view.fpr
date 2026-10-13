@@ -32,7 +32,9 @@
 #
 # CSS is generated from the tree too: only the utility classes actually
 # used anywhere in it are emitted, so the stylesheet is a function of
-# the view, not a 3MB file you filter later.
+# the view, not a 3MB file you filter later.  An app's own classes are
+# VALUES (Style, below), never a string of CSS, and any class takes a
+# breakpoint prefix: `narrow:col` is `col` on a narrow screen.
 
 
 Attr = Type (Cls String | Att String String | Local String String
@@ -131,14 +133,87 @@ attrOf (OnFile msg) = " type=\"file\" data-file=\"{esc msg}\"".
 attrOf (Local n init) = "".
 
 # ---- CSS: only the classes this tree actually uses -------------------------
+#
+# A class is a utility from the table below, or one the APP defines as a
+# value and passes to cssWith:
+#
+#   G.Style "pcard" [G.Width (G.Px 180), G.Height (G.Px 140)]
+#
+# An app style with a utility's name replaces it.  Any class, a utility or
+# the app's, takes a breakpoint prefix:
+#
+#   narrow:col     `col` when the screen is at most 760px wide
+#   wide:col       `col` when it is wider
+#
+# Prefixed rules are emitted after every plain one, inside their @media,
+# so on their screen they win over the plain class they contradict.
 
-cssFor tree = strcat cssBase (rules (nub (allClasses tree Nil))).
+# lengths and declarations: what an app style is made of
+Len = Type (Px Int | Pct Int | Vh Int | Vw Int | Less Len Len).
+Decl = Type (Width Len | Height Len | MinWidth Len | MinHeight Len
+           | MaxWidth Len | MaxHeight Len | Basis Len
+           | Prop String String).   # any other property: the escape hatch
+Style = Type (Style String (List Decl)).
 
-rules : unsafe List String -> String .
-rules Nil = "".
-rules (c :: r) = strcat (rule1 c (cssRule c)) (rules r).
-rule1 c "" = "".
-rule1 c d = ".{c}\{{d}}\n".
+cssFor tree = cssWith Nil tree.
+
+cssWith : List Style -> Node -> String .
+cssWith styles tree =
+  cs = nub (allClasses tree Nil);
+  strcat cssBase (strcat (rules styles cs)
+    (strcat (media styles "narrow" "(max-width:760px)" cs) (media styles "wide" "(min-width:761px)" cs))).
+
+rules : unsafe List Style -> List String -> String .
+rules styles Nil = "".
+rules styles (c :: r) = strcat (strcat (rule1 ".{c}" (declsOf styles c)) (cssExtra c)) (rules styles r).
+rule1 sel "" = "".
+rule1 sel d = "{sel}\{{d}}\n".
+
+# the breakpoint's rules: every `name:` class in the tree, as its base class
+media : unsafe List Style -> String -> String -> List String -> String .
+media styles name query cs = wrapMedia query (mediaGo styles name cs "").
+wrapMedia q "" = "".
+wrapMedia q body = "@media {q}\{\n{body}}\n".
+mediaGo : unsafe List Style -> String -> List String -> String -> String .
+mediaGo styles name Nil acc = acc.
+mediaGo styles name (c :: r) acc | hasPrefix "{name}:" c = mediaGo styles name r (strcat acc (mediaRule styles name (dropPrefix (strlen name + 1) c))).
+mediaGo styles name (c :: r) acc = mediaGo styles name r acc.
+mediaRule styles name base = rule1 ".{name}\\:{base}" (declsOf styles base).
+hasPrefix : unsafe String -> String -> Bool .
+hasPrefix pre s = and2 (strlen s > strlen pre) (strEq (substr s 0 (strlen pre)) pre).
+dropPrefix : unsafe Int -> String -> String .
+dropPrefix n s = substr s n (strlen s - n).
+
+# a class's declarations: the app's style of that name, else the utility's
+declsOf : unsafe List Style -> String -> String .
+declsOf Nil c = cssRule c.
+declsOf (Style n ds :: r) c | strEq n c = declsCss ds.
+declsOf (st :: r) c = declsOf r c.
+
+declsCss : unsafe List Decl -> String .
+declsCss Nil = "".
+declsCss (d :: Nil) = declCss d.
+declsCss (d :: r) = "{declCss d};{declsCss r}".
+declCss : unsafe Decl -> String .
+declCss (Width l) = "width:{lenCss l}".
+declCss (Height l) = "height:{lenCss l}".
+declCss (MinWidth l) = "min-width:{lenCss l}".
+declCss (MinHeight l) = "min-height:{lenCss l}".
+declCss (MaxWidth l) = "max-width:{lenCss l}".
+declCss (MaxHeight l) = "max-height:{lenCss l}".
+declCss (Basis l) = "flex-basis:{lenCss l}".
+declCss (Prop p v) = "{p}:{v}".
+lenCss : unsafe Len -> String .
+lenCss (Px n) = "{n}px".
+lenCss (Pct n) = "{n}%".
+lenCss (Vh n) = "{n}vh".
+lenCss (Vw n) = "{n}vw".
+lenCss (Less a b) = "calc({lenCss a} - {lenCss b})".
+
+# what a utility needs beyond its own rule (the page around it, a state)
+cssExtra "screen" = "body:has(.screen)\{overflow:hidden}\n".
+cssExtra "hide-empty" = ".hide-empty:has(>[data-slot]:empty)\{display:none}\n".
+cssExtra c = "".
 
 allClasses : unsafe Node -> List String -> List String .
 allClasses (El tag attrs kids) acc = allKids kids (attrCls attrs acc).
@@ -218,6 +293,22 @@ cssRule "page" = "max-width:1120px;margin:0 auto;width:100%".
 cssRule "mx-auto" = "margin-left:auto;margin-right:auto".
 cssRule "gap-5" = "gap:22px".
 cssRule "p-5" = "padding:22px".
+# layout: regions sized by the viewport, content scrolling inside them
+cssRule "screen" = "height:100vh;height:100dvh;width:100vw;max-width:100vw;overflow:hidden".
+cssRule "flex-auto" = "flex:1 1 auto".
+cssRule "flex-none" = "flex:none".
+cssRule "min-h-0" = "min-height:0".
+cssRule "min-w-0" = "min-width:0".
+cssRule "overflow-auto" = "overflow:auto".
+cssRule "overflow-hidden" = "overflow:hidden".
+cssRule "content-start" = "align-content:flex-start".
+cssRule "justify-end" = "justify-content:flex-end".
+cssRule "text-center" = "text-align:center".
+cssRule "truncate" = "white-space:nowrap;overflow:hidden;text-overflow:ellipsis".
+# an empty live slot hides its .toast / .pre (cssBase) unless the element
+# says show-empty; hide-empty gives any element that behaviour (cssExtra)
+cssRule "show-empty" = "".
+cssRule "hide-empty" = "".
 cssRule "day" = "".
 cssRule c = "".
 
@@ -235,7 +326,7 @@ a\{color:inherit}
 .btn.is-on\{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 [data-slot]\{transition:color .2s}
 .lv-flash\{animation:lvf .55s ease-out}
-.toast:has(>[data-slot]:empty),.pre:has(>[data-slot]:empty)\{display:none}
+.toast:not(.show-empty):has(>[data-slot]:empty),.pre:not(.show-empty):has(>[data-slot]:empty)\{display:none}
 button\{font:inherit}
 @keyframes lvf\{from\{color:#57e2d2;text-shadow:0 0 16px rgba(87,226,210,.9)}to\{color:inherit}}
 ".

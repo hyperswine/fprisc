@@ -38,8 +38,9 @@ hash, invalid commits and refused reloads do not announce a successful adoption.
    Handle that message only for internal sid 0 by setting the state to
    `Notice.tick model.notice`. Ignore external attempts to send the tick message.
 4. Project `.text` into every session that should see the status. Include
-   `Notice.view projectedText` in the view tree and append `Notice.css` to the
-   app stylesheet. Reserve this node even when the text is empty.
+   `Notice.view projectedText` in the view tree and pass `Notice.styles` to
+   `G.cssWith` with the app's own styles. Reserve this node even when the text
+   is empty.
 
 The helper reports **adoption**, rather than merely observing a new publication.
 Applications own that boundary, so it is explicit rather than inferred by the

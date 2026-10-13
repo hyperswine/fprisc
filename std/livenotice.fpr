@@ -29,6 +29,16 @@ expireAt mono notice = case pending notice and mono >= notice.untilUs of
 
 # Fixed shape: only the escaped text slot changes on adoption/expiry.
 view : String -> G.Node .
-view text = G.El "div" [G.Cls "fpr-reload-notice", G.Att "role" "status",
+view text = G.El "div" [G.Cls "fpr-reload-notice hide-empty", G.Att "role" "status",
   G.Att "aria-live" "polite", G.Att "aria-atomic" "true"] [G.Dyn text].
-css = ".fpr-reload-notice\{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:10000;max-width:calc(100vw - 40px);padding:12px 18px;border-radius:16px;background:#172132;color:#fff;box-shadow:0 6px 24px #0004;font:13px/1.5 system-ui;overflow-wrap:anywhere;pointer-events:none}.fpr-reload-notice:has(>[data-slot]:empty)\{display:none}".
+# The notice's class, as a value: pass it to G.cssWith with the app's own.
+# (hide-empty, a std/view utility, hides it while its slot is empty.)
+styles : List G.Style .
+styles = G.Style "fpr-reload-notice"
+  [ G.Prop "position" "fixed", G.Prop "bottom" "20px", G.Prop "left" "50%"
+  , G.Prop "transform" "translateX(-50%)", G.Prop "z-index" "10000"
+  , G.MaxWidth (G.Less (G.Vw 100) (G.Px 40))
+  , G.Prop "padding" "12px 18px", G.Prop "border-radius" "16px"
+  , G.Prop "background" "#172132", G.Prop "color" "#fff"
+  , G.Prop "box-shadow" "0 6px 24px #0004", G.Prop "font" "13px/1.5 system-ui"
+  , G.Prop "overflow-wrap" "anywhere", G.Prop "pointer-events" "none" ] :: Nil.
