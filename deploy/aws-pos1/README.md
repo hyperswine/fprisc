@@ -20,7 +20,7 @@ browser ──https/wss──▶ Caddy :443 ──▶ pos1 127.0.0.1:6710 ──
 | `server/install.sh` | instance | users, pos1 + Caddy + Alloy units and config, restart (idempotent) |
 | `server/set-grafana-cloud.sh` | instance | installed as `sudo set-grafana-cloud`: prompts for Grafana Cloud URLs, users and token |
 
-Redeploy after changing pos1: `./deploy.sh`. SSH: `ssh -i ~/.ssh/pos1-key.pem ec2-user@<PUBLIC_IP>`.
+Redeploy after changing pos1: `./deploy.sh`. If SSH times out, your IP changed: `./allow-my-ip.sh`. SSH: `ssh -i ~/.ssh/pos1-key.pem ec2-user@<PUBLIC_IP>`.
 
 ## What Alloy collects
 
@@ -34,7 +34,7 @@ Example queries: `sum(increase(pos1_revenue_cents_total[1d])) / 100`, `sum by (p
 
 ## A custom domain
 
-Add an `A` record (e.g. `pos.cswine.cloud`) for the Elastic IP, then `EXTRA_HOSTS=pos.cswine.cloud SKIP_BUILD=1 ./deploy.sh`.
+Add an `A` record for the Elastic IP, put `EXTRA_HOSTS=<name>` in `state.env`, then `SKIP_BUILD=1 ./deploy.sh`. Currently `pos.aws.cswine.cloud`.
 
 ## Tear down
 
