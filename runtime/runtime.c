@@ -836,6 +836,77 @@ static uw dc_size(V v) {
   }
 }
 
+/* Admission walks only as much graph as the receiver can accept. A compact
+ * source can share subtrees whose copied representation is exponential.
+ * Saturating subtraction and a depth ceiling refuse it before any copy. */
+static int budget_take(uw *left, uw bytes) {
+  if (bytes > *left) return 0;
+  *left -= bytes; return 1;
+}
+static int budget_cells(uw *left, uw count, uw width) {
+  if (count > ((uw)-1 - 31) / width) return 0;
+  return budget_take(left, dc_cellsz(count * width));
+}
+static int dc_budget(V v, uw *left, unsigned depth) {
+  if (ISINT(v) || !v) return 1;
+  if (depth > 256) return 0;
+  if (!fpr_in_heap(v)) {
+    uw pid = img_foreign((const void *)v);
+    if (!pid) return 1;
+    uw raw = img_static_raw(v, pid);
+    if (raw > (uw)-1 - 31 || !budget_take(left, dc_cellsz(raw))) return 0;
+    return TID(v) != T_RESULT || dc_budget(*(V *)((char *)v + 8), left, depth + 1);
+  }
+  uw total = *(uw *)((char *)v - 16);
+  switch (TID(v)) {
+    case T_ACTOR: return 1;
+    case T_VEC: {
+      vec_t *x = (vec_t *)v;
+      if (!budget_take(left, dc_cellsz(sizeof(vec_t)))) return 0;
+      if (x->shape_len && !budget_cells(left, x->shape_len, sizeof(vec_shape_t))) return 0;
+      if (x->ncols && (!budget_cells(left, x->ncols, sizeof(col_t *)) ||
+                       !budget_cells(left, VKINDS_BYTES(x->ncols), 1))) return 0;
+      for (uw k = 0; k < x->ncols; k++) {
+        if (!x->cols[k]) continue;
+        if (!budget_take(left, dc_cellsz(sizeof(col_t)))) return 0;
+        if (x->len && !budget_cells(left, x->len, sizeof(uw))) return 0;
+        if (!VK_RAW(x->kinds[k]))
+          for (uw i = 0; i < x->len; i++)
+            if (!dc_budget((V)x->cols[k]->base[i], left, depth + 1)) return 0;
+      }
+      return 1;
+    }
+    case T_SSTR: fpr_cpanic("send/keep: SString is linear-local");
+    case T_STR: case T_BITS: case T_DEVICE: case T_REGISTER: return budget_take(left, total);
+    case T_PAP: {
+      pap_t *p = (pap_t *)v;
+      if (img_foreign((const void *)p->fn))
+        fpr_actor_fail("send: a function of another process cannot leave it (its code goes when that process ends)");
+      if (!budget_take(left, total)) return 0;
+      for (uw i = 0; i < p->nargs; i++) if (!dc_budget((V)p->args[i], left, depth + 1)) return 0;
+      return 1;
+    }
+    case T_LIST: {
+      V c = v;
+      while (!ISINT(c) && fpr_in_heap(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1) {
+        if (!budget_take(left, *(uw *)((char *)c - 16)) ||
+            !dc_budget(*(V *)((char *)c + 8), left, depth + 1)) return 0;
+        c = *(V *)((char *)c + 8 + sizeof(uw));
+      }
+      if (!ISINT(c) && c && fpr_in_heap(c) && TID(c) == T_LIST)
+        return budget_take(left, *(uw *)((char *)c - 16));
+      return dc_budget(c, left, depth + 1);
+    }
+    default: {
+      if (!budget_take(left, total)) return 0;
+      uw nf = (total - 16 - 8) / sizeof(uw);
+      V *fields = (V *)((char *)v + 8);
+      for (uw i = 0; i < nf; i++) if (!dc_budget(fields[i], left, depth + 1)) return 0;
+      return 1;
+    }
+  }
+}
+
 static V dc_dup(V v, dctx_t *c); /* fwd */
 
 static V dc_cell(V v, dctx_t *c, uw total) {
@@ -975,6 +1046,34 @@ static V dc_dup(V v, dctx_t *c) {
 #define FPR_MSG_SLAB_SZ ((uw)64 * 1024)
 #endif
 #define MSG_SLAB_SZ FPR_MSG_SLAB_SZ
+/* Charge a whole potential message slab per queued graph. Packing can share
+ * slabs, so this deliberately overcounts; it includes the slab floor and
+ * buddy rounding. Allocator arenas and the sender's reusable hold are separate.
+ * Size walking does not allocate or park, so the hart-local copy pid is safe. */
+uw fpr_msg_charge_to(V v, uw pid, int shared, uw limit) {
+  fpr_hart_t *h = fpr_hart();
+  uw prior = h ? h->copy_pid : 0;
+  if (h) h->copy_pid = pid;
+  uw left = limit;
+  int fits = dc_budget(v, &left, 0);
+  uw need = limit - left;
+  if (h) h->copy_pid = prior;
+  if (!fits) return (uw)-1;
+  if (shared && !ISINT(v) && fpr_in_heap(v) && TID(v) != T_ACTOR) {
+    fpr_slab_t *sl = *(fpr_slab_t **)((char *)v - 8);
+    if (sl && (uw)(sl->end - (char *)sl) > need) need = (uw)(sl->end - (char *)sl);
+  }
+  if (!need) return 0;
+  if (need > (uw)-1 - sizeof(fpr_slab_t) - 32) return (uw)-1;
+  uw want = need + sizeof(fpr_slab_t) + 32;
+  if (want < MSG_SLAB_SZ) want = MSG_SLAB_SZ;
+  uw bound = 1;
+  while (bound < want) {
+    if (bound > (uw)-1 / 2) return (uw)-1;
+    bound <<= 1;
+  }
+  return bound;
+}
 static fpr_slab_t *msg_slab_new(uw need) {
   fpr_slab_t *sl = 0;
   uw want = need + sizeof(fpr_slab_t);
@@ -1008,7 +1107,7 @@ void fpr_slabs_unhold(fpr_slab_t **sls, uw n) {
   for (uw i = 0; i < n; i++) slab_unhold_locked(sls[i]);
   fpr_unlock(&arc_lock);
 }
-static V msg_copy_in(V v, int fresh, uw pid) {
+static V msg_copy_held_in(V v, int fresh, uw pid, fpr_slab_t **hold) {
   if (fpr_hart()) fpr_hart()->copy_pid = pid;
   uw need = dc_size(v);
   FPR_COST_ADD(fpr_hart(), cost_copies, 1);
@@ -1030,11 +1129,20 @@ static V msg_copy_in(V v, int fresh, uw pid) {
       *slot = sl;
     }
   }
+  if (hold) {
+    fpr_lock(&arc_lock);
+    sl->holds++;
+    fpr_unlock(&arc_lock);
+    *hold = sl;
+  }
+  /* Allocation above can park; another actor on this hart can change it. */
+  if (h) h->copy_pid = pid;
   dctx_t c = {sl->hp, sl};
   V r = dc_dup(v, &c);
   sl->hp = c.hp;
   return r;
 }
+static V msg_copy_in(V v, int fresh, uw pid) { return msg_copy_held_in(v, fresh, pid, 0); }
 /* copy v into the sender's message slab; returns the new root (or v
  * itself when there is nothing to copy: ints, statics, bare handles) */
 #ifndef FPR_MSG_PACK
@@ -1044,6 +1152,7 @@ V fpr_msg_copy(V v) { return msg_copy_in(v, !FPR_MSG_PACK, fpr_current_pid()); }
 /* ... for a receiver in process pid: what may leave a mortal image is
  * decided against it (img_foreign) */
 V fpr_msg_copy_to(V v, uw pid) { return msg_copy_in(v, !FPR_MSG_PACK, pid); }
+V fpr_msg_copy_held_to(V v, uw pid, fpr_slab_t **hold) { return msg_copy_held_in(v, !FPR_MSG_PACK, pid, hold); }
 /* An unpublished actor's entry gets an independent ownerless slab.  Its
  * hold replaces an ARC root reservation: no table growth can panic after
  * admission.  Captures can still escape through the usual ARC rules; the

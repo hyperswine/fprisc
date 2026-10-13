@@ -1,0 +1,51 @@
+# Deterministic cancellation at reservation, copied slab and promoted root.
+unsafe program.
+Sys.spawnInbox : Int -> Int -> Int -> (Int -> a) -> Result Int String .
+Inbox.arm : Int -> Int -> Int -> Unit .
+S = use "std/string".
+AC = use "std/actor".
+ok (Ok value) = value.
+ok (Err why) = error why.
+check yes why = if yes then Unit else error "inboxkill: {why}".
+sleeping me = Sys.sleepUs 30000000.
+sender target boss me = _ = send boss (send target (S.repeat 1000 "x")); Unit.
+retry me target n = case send target (S.repeat 1000 "y") of
+    Ok _ -> True
+  | Err "mailbox full" -> if n <= 0 then False else _ = Sys.sleepUs 100; retry me target (n - 1)
+  | Err why -> error why.
+killSender me phase =
+  target = ok (Sys.spawnInbox (0 - 1) 1 1048576 sleeping);
+  _ = Inbox.arm target me phase;
+  child = spawn (sender target me);
+  reached = receiveFrom me child;
+  _ = check (reached == phase) "copy hook not reached";
+  _ = kill child;
+  _ = check (retry me target 1000) "sender death leaked inbox reservation";
+  _ = kill target;
+  Unit.
+killReceiver me =
+  target = ok (Sys.spawnInbox (0 - 1) 1 1048576 sleeping);
+  _ = Inbox.arm target me 2;
+  child = spawn (sender target me);
+  _ = check (receiveFrom me child == 2) "receiver hook not reached";
+  _ = kill target;
+  reply = receiveFrom me child;
+  _ = check (case reply of Err "dead actor" -> True | other -> False) "dead receiver accepted unpublished copy";
+  _ = drop reply;
+  Unit.
+rounds me 0 = Unit.
+rounds me n =
+  _ = killSender me 1;
+  _ = killSender me 2;
+  _ = killSender me 3;
+  _ = killReceiver me;
+  rounds me (n - 1).
+main =
+  me = myself 0;
+  _ = rounds me 3;
+  _ = Sys.sleepUs 20000;
+  roots = arcLive 0;
+  _ = rounds me 30;
+  _ = Sys.sleepUs 20000;
+  _ = check (arcLive 0 - roots < 8) "unpublished sends retained ARC roots";
+  print "inboxkill: reserved/copied/promoted sender death, receiver death and ARC retention HOLDS".

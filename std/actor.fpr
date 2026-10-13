@@ -57,15 +57,15 @@ sendRetry me who m n = case send who m of
 # `send` never waits: a full mailbox REFUSES, and the answer is easy to ignore.
 # Where a lost message means somebody waits forever -- a request that expects a
 # reply, a wake-up, a welcome -- use these.  They give the hart away between
-# tries so the receiver can drain, and end only when the message is queued or
-# the receiver is dead.  (A burst of 500 sessions joining lost one in a few
+# tries so the receiver can drain, and end when queued or permanently refused.
+# Only mailbox-full errors are retryable. (A burst of 500 sessions lost one in a few
 # hundred runs before std/live, std/poller and std/kvlog used them.)
 sendSure : unsafe Int -> Int -> a -> Bool .
-sendSure me who m = case send who m of
-    Ok u -> True
-  | Err why -> (case why == "dead actor" of
-      True -> False
-    | False -> _ = yield me; sendSure me who m).
+sendSure me who m = case sendSureResult me who m of Ok u -> True | Err why -> False.
+sendSureResult : unsafe Int -> Int -> a -> Result Unit String .
+sendSureResult me who m = case send who m of
+    Ok u -> Ok u
+  | Err why -> if why == "mailbox full" then _ = yield me; sendSureResult me who m else Err why.
 
 # the prelude's `ask`, with a request that cannot be lost
 askSure : unsafe Int -> Int -> q -> r .
@@ -74,9 +74,9 @@ askSure me a q = case askSureRes me a q of
   | Err why -> error "askSure: {why}".
 # Compatibility wire with explicit failure for owners that must clean up.
 askSureRes : unsafe Int -> Int -> q -> Result r String .
-askSureRes me a q = case sendSure me a (me, q) of
-    False -> Err "dead actor"
-  | True -> awaitFrom me a.
+askSureRes me a q = case sendSureResult me a (me, q) of
+    Err why -> Err why
+  | Ok u -> awaitFrom me a.
 
 # ---- request / reply that ANSWERS ---------------------------------------------------
 # The prelude's `ask` sends (me, q) without looking at the answer and then waits
@@ -105,9 +105,9 @@ call me a q =
 callSure : unsafe Int -> Int -> q -> Result r String .
 callSure me a q =
   id = Sys.nextId Unit;
-  case sendSure me a (me, id, q) of
-    False -> Err "dead actor"
-  | True -> awaitReply me a id.
+  case sendSureResult me a (me, id, q) of
+    Err why -> Err why
+  | Ok u -> awaitReply me a id.
 
 # the reply to request `id` from `a`: Ok r, or Err "dead actor" once `a` has
 # ended with nothing from it left queued.  The reply is kept (copied into this
