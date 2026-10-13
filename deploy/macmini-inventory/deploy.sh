@@ -31,6 +31,8 @@ ls -t backups/inventory.log.* 2>/dev/null | tail -n +31 | xargs rm -f || true   
 mv inventory.new inventory
 uid=$(id -u)
 launchctl bootout "gui/$uid/cloud.cswine.inventory" 2>/dev/null || true
+# bootout returns before the agent is gone, and bootstrapping over it fails (error 5)
+for i in $(seq 1 50); do launchctl print "gui/$uid/cloud.cswine.inventory" >/dev/null 2>&1 || break; sleep 0.2; done
 launchctl bootstrap "gui/$uid" ~/Library/LaunchAgents/cloud.cswine.inventory.plist
 sleep 2
 launchctl print "gui/$uid/cloud.cswine.inventory" | grep -E "state =|pid =" || true
