@@ -16,7 +16,10 @@ src u = "/* fprlive.js -- the FPRLive client.
  *     the wire only as the arg of a data-click / data-enter -- or, when the
  *     server asked for it (\{sync:\{every,msg}}: Live.SyncClientState), as a
  *     MIRROR: the whole set, as JSON, every `every` ms when it changed and
- *     just before any other message.  The server sets them with the 'locals'
+ *     just before any other message.  An element marked data-sync-now (a
+ *     search box, a button that sets the search) does not wait for the
+ *     interval: a click mirrors at once, typing within a short debounce.
+ *     The server sets them with the 'locals'
  *     command.  data-set honours data-min / data-max on its element.  After
  *     every paint the page's own script hears 'live:locals' (detail: them).
  */
@@ -175,6 +178,13 @@ src u = "/* fprlive.js -- the FPRLive client.
     dirty = false;
     ws.send(JSON.stringify(\{ msg: sync.msg, arg: JSON.stringify(mirrored()) }));
   }
+  // data-sync-now: a change someone is waiting to see goes now, not on the
+  // next tick; typing is coalesced over a few keystrokes' worth of time
+  var soon = null;
+  function flushSoon() \{
+    if (soon) return;
+    soon = setTimeout(function () \{ soon = null; flush(); }, 60);
+  }
   function startSync(spec) \{
     if (syncTimer) clearInterval(syncTimer);
     sync = spec; dirty = true;
@@ -197,6 +207,7 @@ src u = "/* fprlive.js -- the FPRLive client.
       el.onclick = function () \{
         applySet(el.getAttribute('data-set'), el.getAttribute('data-val'), el);
         paintLocals();
+        if (el.hasAttribute('data-sync-now')) flush();
       };
     });
     root.querySelectorAll('[data-click]').forEach(function (el) \{
@@ -221,7 +232,7 @@ src u = "/* fprlive.js -- the FPRLive client.
     root.querySelectorAll('[data-input]').forEach(function (el) \{
       var n = el.getAttribute('data-input');
       if (el.type === 'password') secrets[n] = true;
-      el.oninput = function () \{ locals[n] = el.value; dirty = true; paintLocals(); };
+      el.oninput = function () \{ locals[n] = el.value; dirty = true; paintLocals(); if (el.hasAttribute('data-sync-now')) flushSoon(); };
       el.onkeydown = function (e) \{
         if (e.key === 'Enter' && el.hasAttribute('data-enter')) send(el.getAttribute('data-enter'), argOf(el));
       };

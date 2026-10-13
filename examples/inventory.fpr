@@ -753,14 +753,14 @@ things n = "{n} things".
 itemsPane v cards =
   El "div" [Cls "col gap-3", G.showIf @Client.pane "items"]
     ( El "div" [Cls "row gap-2 center"]
-        [ Inp [Cls "field inp grow tall min-w-0", G.bind @Client.q, Att "type" "search", Att "placeholder" "search names, places, notes, tags",
+        [ Inp [Cls "field inp grow tall min-w-0", G.bind @Client.q, now, Att "type" "search", Att "placeholder" "search names, places, notes, tags",
                Att "autocomplete" "off", Att "autocapitalize" "none"]
         , primary "+ add" [G.send codec New] ]
     :: El "div" [Cls "row gap-2 wrap center text-sm"]
         [ El "span" [Cls "dim"] [Txt "sort"], sortBtn "recent" "recent", sortBtn "name" "a-z", sortBtn "place" "by place"
-        , El "button" [Cls "btn pill px-3 chip", G.ShowIf "q", G.setTo @Client.q ""] [Txt "clear search"] ]
-    :: chipRow (List.map (fn p -> El "button" [Cls "btn pill px-3 chip text-sm flex-none", G.setTo @Client.q (lower p)] [Txt p]) v.places)
-    :: chipRow (List.map (fn t -> El "button" [Cls "btn pill px-3 chip text-sm dim flex-none", G.setTo @Client.q t] [Txt "#{t}"]) v.tags)
+        , El "button" [Cls "btn pill px-3 chip", G.ShowIf "q", G.setTo @Client.q "", now] [Txt "clear search"] ]
+    :: chipRow (List.map (fn p -> El "button" [Cls "btn pill px-3 chip text-sm flex-none", G.setTo @Client.q (lower p), now] [Txt p]) v.places)
+    :: chipRow (List.map (fn t -> El "button" [Cls "btn pill px-3 chip text-sm dim flex-none", G.setTo @Client.q t, now] [Txt "#{t}"]) v.tags)
     :: (case v.editing == 0 of True -> [editor v] | False -> Nil)
     + [ El "div" [Cls "text-sm dim", Att "id" "inv-list"] [Dyn (countText v)]
       , G.key "items" (El "div" [Cls "col gap-3"] (case List.isEmpty cards of True -> [empty v] | False -> inPlace v cards))
@@ -777,7 +777,10 @@ pageBtn label n off = El "button" [Cls (case off of True -> "btn round px-3 py-2
 # the item being edited is its editor, where its card was
 inPlace v cards | v.editing <= 0 = cards.
 inPlace v cards = List.zipWith (fn it card -> (case it.id == v.editing of True -> G.key "edit-{it.id}" (editor v) | False -> card)) v.items cards.
-sortBtn key label = El "button" [Cls "btn pill px-3 chip", G.setTo @Client.sort key, Att "data-on" "sort:{key}"] [Txt label].
+# what changes the search is mirrored at once (std/livejs data-sync-now), not
+# on the next tick: the list is what someone is waiting to see
+now = Att "data-sync-now" "".
+sortBtn key label = El "button" [Cls "btn pill px-3 chip", G.setTo @Client.sort key, now, Att "data-on" "sort:{key}"] [Txt label].
 countText v | v.shown == 0 = "".
 countText v =
   range = (case v.pages <= 1 of True -> "" | False -> "{v.first + 1}-{v.first + List.length v.items} of ");
@@ -812,7 +815,7 @@ itemCard it =
         , El "button" [Cls "btn pill px-3 chip text-sm", G.setTo @Client.confirm "{it.id}"] [Txt "delete"] ]
     :: El "div" [Cls "row gap-2 center wrap"] (El "span" [Cls "badge ok"] [Txt it.loc] :: (case strlen it.sub == 0 of True -> Nil | False -> [El "span" [Cls "badge"] [Txt it.sub]]))
     :: (case strlen it.desc == 0 of True -> Nil | False -> [El "div" [Cls "text-sm pre"] [Txt it.desc]])
-    + (case List.isEmpty it.tags of True -> Nil | False -> [El "div" [Cls "row gap-1 wrap"] (List.map (fn t -> El "button" [Cls "btn pill px-3 chip text-xs dim", G.setTo @Client.q t] [Txt "#{t}"]) it.tags)])
+    + (case List.isEmpty it.tags of True -> Nil | False -> [El "div" [Cls "row gap-1 wrap"] (List.map (fn t -> El "button" [Cls "btn pill px-3 chip text-xs dim", G.setTo @Client.q t, now] [Txt "#{t}"]) it.tags)])
     + [ El "div" [Cls "text-xs dim"] [Txt (metaText it)]
       , El "div" [Cls "row gap-2 center wrap", G.showIf @Client.confirm "{it.id}"]
           [ El "span" [Cls "warm text-sm grow"] [Txt "Delete {it.name}?"]
@@ -934,7 +937,7 @@ script = strcat rttScript (strcat (LJ.src 0) "
     setTimeout(function () \{ var l = document.getElementById('inv-list'); if (l) l.scrollIntoView(\{ block: 'start', behavior: 'smooth' }); }, 150);
   });
 })();
-" + consoleScript).
+" + consoleScript + pendingScript).
 
 # The console behaves like a terminal: the newest output is at the bottom and in
 # view, and the arrow keys walk back through the commands this browser ran.
@@ -978,6 +981,73 @@ consoleScript = "
   }).observe(document.getElementById('lv-root'), \{ childList: true, subtree: true, characterData: true });
 })();
 ".
+# Never frozen.  A button pressed gives way at once.  Anything that waits on
+# the server -- a message, a search -- shows a thin bar at the top, pulses the
+# button and fades the list if nothing has come back after 100 ms, until the
+# next frame does (or 2.5 s, for an
+# action that changed nothing the page shows).  A dropped connection (a phone
+# waking, a network change) shows "reconnecting" until the client is back:
+# std/livejs writes its link state into #lv-link, which lives here, outside
+# the live root, so no render replaces it.  Animations are the Web Animations
+# API, so the app still has no CSS text.
+pendingScript = "
+(function () \{
+  var root = document.getElementById('lv-root');
+  function theme(v) \{ var p = root.firstElementChild; return p ? getComputedStyle(p).getPropertyValue(v) : ''; }
+  var bar = document.createElement('div'), anim = null, showT = null, failT = null, pulses = [], faded = null;
+  bar.style.cssText = 'position:fixed;top:0;left:0;height:3px;width:30%;z-index:60;pointer-events:none;display:none;border-radius:0 3px 3px 0;opacity:.6';
+  document.body.appendChild(bar);
+  function done() \{
+    clearTimeout(showT); showT = null; clearTimeout(failT); failT = null;
+    if (anim) \{ anim.cancel(); anim = null; }
+    bar.style.display = 'none';
+    pulses.forEach(function (a) \{ a.cancel(); }); pulses = [];
+    if (faded) \{ faded.style.opacity = ''; faded = null; }
+  }
+  function waiting(el, ms) \{
+    clearTimeout(failT); failT = setTimeout(done, ms);
+    if (showT || anim) return;
+    showT = setTimeout(function () \{
+      showT = null;
+      bar.style.background = theme('--ink') || '#888';
+      bar.style.display = 'block';
+      anim = bar.animate([\{ transform: 'translateX(-100%)' }, \{ transform: 'translateX(340%)' }], \{ duration: 900, iterations: Infinity, easing: 'ease-in-out' });
+      if (el && document.contains(el)) pulses.push(el.animate([\{ opacity: 1 }, \{ opacity: .45 }, \{ opacity: 1 }], \{ duration: 800, iterations: Infinity }));
+      /* the list on show is about to change: say so (a render replaces it anyway) */
+      faded = root.querySelector('[data-lv-key=\"items\"]');
+      if (faded) \{ faded.style.transition = 'opacity .15s'; faded.style.opacity = '.55'; }
+    }, 100);
+  }
+  document.addEventListener('inv:frame', done);
+  /* every button gives way the moment it is pressed, client-only ones too */
+  document.addEventListener('pointerdown', function (e) \{
+    var b = e.target.closest && e.target.closest('#lv-root button');
+    if (b) b.animate([\{ transform: 'scale(1)' }, \{ transform: 'scale(.94)' }, \{ transform: 'scale(1)' }], \{ duration: 160, easing: 'ease-out' });
+  }, true);
+  /* what goes to the server: a message (data-click), a search (data-sync-now) */
+  document.addEventListener('click', function (e) \{
+    var b = e.target.closest && e.target.closest('#lv-root [data-click], #lv-root button[data-sync-now]');
+    if (b) waiting(b, 2500);
+  }, true);
+  document.addEventListener('input', function (e) \{
+    if (e.target.hasAttribute && e.target.hasAttribute('data-sync-now')) waiting(null, 1200);
+  }, true);
+  document.addEventListener('keydown', function (e) \{
+    if (e.key === 'Enter' && e.target.hasAttribute && e.target.hasAttribute('data-enter')) waiting(null, 2500);
+  }, true);
+  /* the link */
+  var link = document.createElement('span');
+  link.id = 'lv-link';
+  link.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:61;display:none;padding:4px 12px;border-radius:999px;font-size:12px;' +
+    'background:#3a2a10;border:1px solid #7a5a18;color:#ffc65c';
+  document.body.appendChild(link);
+  new MutationObserver(function () \{
+    var up = link.textContent === 'live';
+    link.style.display = up ? 'none' : 'block';
+    if (!up) link.textContent.indexOf('reconnecting') < 0 && (link.textContent = 'reconnecting');
+  }).observe(link, \{ childList: true, characterData: true, subtree: true });
+})();
+".
 # pos1's: installed BEFORE the client, which opens its socket as soon as it runs.
 # From a send to the next frame that arrives, written into the admin pane's slot.
 rttScript = "
@@ -989,7 +1059,9 @@ rttScript = "
   Object.defineProperty(WebSocket.prototype, 'onmessage', \{ get: d.get, set: function (f) \{
     d.set.call(this, function (e) \{
       if (sent) \{ last = performance.now() - sent; sent = 0; n++; sum += last; if (last > max) max = last; recent.push(last); if (recent.length > 32) recent.shift(); }
-      return f.call(this, e);
+      var r = f.call(this, e);
+      document.dispatchEvent(new Event('inv:frame'));   /* the pending indicator's 'answered' */
+      return r;
     });
   } });
   setInterval(function () \{
