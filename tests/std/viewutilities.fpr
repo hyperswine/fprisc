@@ -1,0 +1,62 @@
+unsafe base.
+G = use "std/view".
+C = use "std/viewcache".
+P = use "std/program".
+E = use "std/encoding".
+check label yes = if yes then Unit else error "viewutilities: {label}".
+has text part = strIndexOf part text >= 0.
+name scope css = "fpr-u-{scope}-{E.hex css}".
+defaults = [G.Width (G.Px 180), G.Padding (G.Px 8), G.Foreground (G.Rgb 1 2 3)].
+primary = G.El "button"
+  [G.Att "id" "primary", G.Cls "row", G.utilities defaults,
+   G.utilities [G.Width (G.Px 220), G.PaddingLeft (G.Px 3), G.Display G.Block],
+   G.narrow [G.Width (G.Px 100)], G.wide [G.Width (G.Px 240)],
+   G.hover [G.Foreground (G.Rgb 200 0 0)],
+   G.focus [G.Foreground (G.Rgb 0 0 200)],
+   G.disabled [G.Foreground (G.Rgb 0 100 0)]] [G.Txt "Primary"].
+sibling = G.El "button" [G.Att "id" "sibling", G.utilities defaults] [G.Txt "Sibling"].
+layout = G.El "section" [G.Att "id" "layout", G.utilities
+  [G.Display G.Flex, G.Direction G.Column, G.AlignItems G.AlignCenter,
+   G.JustifyContent G.SpaceBetween, G.FlexWrap G.Wrap,
+   G.Margin (G.Px 4), G.MarginLeft (G.Px 9),
+   G.Overflow G.OverflowAuto, G.OverflowX G.OverflowHidden, G.WhiteSpace G.PreSpace,
+   G.Position G.Relative, G.Left (G.Px 10), G.ZIndex 2,
+   G.Transform [G.TranslateX (G.Px 3), G.TranslateY (G.Px 4)],
+   G.FontFamily G.SystemFont, G.FontWeight 600, G.LineHeight 150, G.FontSize (G.Px 14),
+   G.WordWrap G.WrapAnywhere, G.Shadow (G.Px 0) (G.Px 6) (G.Px 24) (G.Px 0) (G.Rgba 0 0 0 68)]] [G.Txt "Layout"].
+palette = {bg = G.Rgb 10 20 30, ink = G.Rgb 40 50 60, dim = G.Rgb 70 80 90,
+  card = G.Rgb 100 110 120, panel = G.Rgb 130 140 150, line = G.Rgb 160 170 180}.
+themed = G.El "section" [G.theme palette]
+  [G.El "span" [G.Att "id" "inherited", G.utilities [G.Foreground (G.ThemeColour G.Ink), G.Background (G.ThemeColour G.Bg)]] [G.Txt "Inherited"],
+   G.El "span" [G.Att "id" "scoped", G.utilities [G.DefineColour G.Ink (G.Rgb 200 100 50), G.Foreground (G.ThemeColour G.Ink), G.Background (G.ThemeColour G.Bg)]] [G.Txt "Scoped"]].
+tree = G.El "main" Nil [primary, sibling, layout, themed].
+page = case G.render tree of (ss, _) -> "<!doctype html><html><head><style>{G.cssFor tree}</style></head><body>{strJoin "" ss}</body></html>".
+main = case P.args Unit of
+    ["page"] -> _ = print page; 0
+  | ["bad-prop"] -> _ = print (G.attrsOf [G.utilities [G.Prop "color" "red"]]); 0
+  | ["bad-rgb"] -> _ = print (G.attrsOf [G.utilities [G.Foreground (G.Rgb 256 0 0)]]); 0
+  | ["bad-opacity"] -> _ = print (G.attrsOf [G.utilities [G.Opacity 101]]); 0
+  | ["bad-rgba"] -> _ = print (G.attrsOf [G.utilities [G.Background (G.Rgba 0 0 0 256)]]); 0
+  | ["bad-weight"] -> _ = print (G.attrsOf [G.utilities [G.FontWeight 0]]); 0
+  | _ ->
+      attrs = case primary of G.El _ as _ -> G.attrsOf as | _ -> "";
+      css = G.cssFor tree;
+      _ = check "palette is not global" (not (has css ":root\{") and not (has css ".day\{") and not (has css "body:has(.day)"));
+      _ = check "later width wins" (has attrs (name 0 "width:220px") and not (has attrs (name 0 "width:180px")));
+      _ = check "padding shorthand expanded before override" (has attrs (name 0 "padding-left:3px") and not (has attrs (name 0 "padding-left:8px")) and has attrs (name 0 "padding-right:8px"));
+      _ = check "siblings remain independent" (has css ".{name 0 "width:180px"}\{width:180px}" and has css ".{name 0 "width:220px"}\{width:220px}");
+      _ = check "no inline style" (not (has attrs "style="));
+      _ = check "narrow" (has css "@media (max-width:760px)\{\n.{name 1 "width:100px"}\{width:100px}");
+      _ = check "wide" (has css "@media (min-width:761px)\{\n.{name 2 "width:240px"}\{width:240px}");
+      _ = check "state precedence" (strIndexOf ":disabled\{color:rgb(0,100,0)}" css > strIndexOf ":focus-visible\{color:rgb(0,0,200)}" css and strIndexOf ":focus-visible\{color:rgb(0,0,200)}" css > strIndexOf ":hover\{color:rgb(200,0,0)}" css);
+      _ = check "no unused rule" (not (has css (name 0 "height:42px")));
+      cached = C.fragment (C.output tree);
+      _ = check "cached fragment retains styling" (G.render cached == G.render tree and G.cssFor cached == css);
+      _ = check "styled rendering works through cached fragments" (G.renderStyled cached == G.renderStyled tree);
+      _ = check "styled rendering carries CSS" (case G.renderStyled tree of (first :: _, _) -> has first "<style data-lv-local-css" and has first "width:220px" | _ -> False);
+      empty = G.El "div" [G.utilities Nil] Nil;
+      _ = check "empty utilities are empty" (G.render empty == G.render (G.El "div" Nil Nil));
+      _ = check "override an earlier shorthand with another shorthand" (G.localAtoms [G.utilities [G.PaddingLeft (G.Px 3)], G.utilities [G.Padding (G.Px 8)]] == G.localAtoms [G.utilities [G.Padding (G.Px 8)]]);
+      _ = check "overflow expands before override" (G.localAtoms [G.utilities [G.Overflow G.OverflowAuto, G.OverflowX G.OverflowHidden]] == G.localAtoms [G.utilities [G.OverflowY G.OverflowAuto, G.OverflowX G.OverflowHidden]]);
+      _ = print "view utilities: local overrides, padding, variants, siblings and cached CSS PASS";
+      0.

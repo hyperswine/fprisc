@@ -1,0 +1,18 @@
+# Integer cents and basis-point tax. One computation describes both native
+# checkout and generated browser display. No floating point or JS formula.
+C = use "clientcalc".
+
+positive : C.IntExpr -> C.IntExpr .
+positive n = C.IfInt (C.Less n (C.Literal 0)) (C.Sub (C.Literal 0) n) n.
+amount : C.IntExpr -> C.TextExpr .
+amount cents = C.Concat
+  [C.IfText (C.Less cents (C.Literal 0)) (C.Text "-") (C.Text ""),
+   C.Decimal (positive (C.Quot cents (C.Literal 100))), C.Text ".",
+   C.PadZero 2 (positive (C.Rem cents (C.Literal 100)))].
+taxExpr : C.IntExpr -> C.IntExpr -> C.IntExpr .
+taxExpr cents basisPoints = C.Quot (C.Add (C.Mul cents basisPoints) (C.Literal 5000)) (C.Literal 10000).
+format : Int -> String .
+format cents = C.text (fn k -> cents) (fn k -> "") (amount (C.Number "cents")).
+tax : Int -> Int -> Int .
+tax cents basisPoints = C.integer (fn k -> if k == "cents" then cents else basisPoints)
+  (taxExpr (C.Number "cents") (C.Number "rate")).

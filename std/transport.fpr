@@ -1,0 +1,160 @@
+# Byte-stream operations and policy shared by TCP and future TLS drivers.
+# All deadlines are absolute monotonic microseconds. Drivers must never block
+# a hart: one I/O attempt, or a bounded/yielding wait. Cancellation queries
+# must also be nonblocking. Error results retain already-transferred progress.
+L = use "list".
+
+Interest = Type (Readable | Writable | ReadWrite | Progress).
+Failure = Type (TimedOut | Cancelled | Closed | EndOfStream | WrongOwner |
+  Invalid String | DriverViolation String | Io String | Unsupported String |
+  CleanupFailed Failure Failure | OutcomeUnknown Failure).
+ReadStep = Type (Data String | End | ReadWait Interest | ReadFault Failure).
+WriteStep = Type (Wrote Int | WriteWait Interest | WriteFault Failure).
+Backend s = Type (Backend
+  (Int -> s -> (ReadStep, s))
+  (String -> s -> (WriteStep, s))
+  (Interest -> Budget -> s -> (Result Unit Failure, s))
+  (s -> Int)
+  (s -> (Result Unit Failure, s))
+  (s -> Result Unit Failure)
+  (Failure -> s -> (Failure, s))).
+Connection s = Type (Open (Backend s) s Int | Shut s).
+Budget = Type (Budget Int (Unit -> Bool) | Uncancelled Int).
+deadline : Budget -> Int .
+deadline budget = case budget of Budget d _ -> d | Uncancelled d -> d.
+isCancelled : Budget -> Bool .
+isCancelled budget = case budget of Budget _ query -> query Unit | Uncancelled _ -> False.
+
+# The chunk limit bounds each backend buffer/attempt, not an application's
+# total message size. Protocol decoders choose their own message limits.
+open : Int -> Backend s -> s -> Result (Connection s) Failure .
+open chunk backend state = if chunk <= 0 then Err (Invalid "chunk limit must be positive") else Ok (Open backend state chunk).
+state : Connection s -> s .
+state conn = case conn of Open _ s _ -> s | Shut s -> s.
+neverCancel : Unit -> Bool .
+neverCancel u = False.
+deadlineFrom : Int -> Int -> Result Int Failure .
+deadlineFrom now ms = if now < 0 or ms < 0 then Err (Invalid "negative clock or duration") else
+  if ms > (intMax Unit - now) / 1000 then Err (Invalid "deadline exceeds Int range") else Ok (now + ms * 1000).
+gate : Budget -> Connection s -> Result Unit Failure .
+gate budget conn = case conn of
+    Shut _ -> Err Closed
+  | Open (Backend _ _ _ clock _ valid _) s _ ->
+      d = deadline budget;
+      if d < 0 then Err (Invalid "negative deadline") else
+      if isCancelled budget then Err Cancelled else
+      now = clock s;
+      if now < 0 then Err (Invalid "negative monotonic clock") else
+      if now >= d then Err TimedOut else valid s.
+
+# The backend receives the same absolute budget. It can park on a directional
+# watcher with a kernel deadline, or clip timer fallback to the remaining time.
+pause : Budget -> Interest -> Connection s -> (Result Unit Failure, Connection s) .
+pause budget interest conn = case gate budget conn of
+    Err why -> (Err why, conn)
+  | Ok _ -> (case conn of
+      Shut _ -> (Err Closed, conn)
+    | Open backend s chunk -> (case backend of Backend _ _ wait clock _ _ _ ->
+        left = deadline budget - clock s;
+        if left <= 0 then (Err TimedOut, conn) else
+        (result, next) = wait interest budget s;
+        (result, Open backend next chunk))).
+
+# Native async engines can still commit after a caller stops waiting. The
+# backend retires/poisons that resource and reports OutcomeUnknown explicitly.
+failed why conn = case conn of
+    Shut _ -> (why, conn)
+  | Open backend s chunk -> (case backend of Backend _ _ _ _ _ _ abort ->
+      (reason, next) = abort why s; (reason, Open backend next chunk)).
+# One nonblocking attempt for event loops. A ReadWait is retained state, not
+# a failed operation; callers can run protocol timers before resuming it.
+# Use pause with a shorter wake budget without abandoning the pending read.
+attemptRead budget n conn = if n <= 0 then (Err (Invalid "read attempt size must be positive", ""), conn) else
+  case gate budget conn of
+    Err why -> (case failed why conn of (reason, next) -> (Err (reason, ""), next))
+  | Ok _ -> (case conn of
+      Shut _ -> (Err (Closed, ""), conn)
+    | Open backend s chunk -> (case backend of Backend read _ _ _ _ _ _ ->
+        ask = if n < chunk then n else chunk;
+        (step, next) = read ask s;
+        c = Open backend next chunk;
+        case step of
+          Data bytes -> if strlen bytes == 0 or strlen bytes > ask then
+              (Err (DriverViolation "invalid read progress", ""), c)
+            else (case finishRead budget bytes c of (Ok _, c2) -> (Ok step, c2) | (Err why, c2) -> (Err why, c2))
+        | End -> (case finishRead budget "" c of (Ok _, c2) -> (Ok End, c2) | (Err why, c2) -> (Err why, c2))
+        | ReadFault why -> (case failed why c of (reason, c2) -> (Err (reason, ""), c2))
+        | ReadWait interest -> (Ok step, c))).
+readSome : Budget -> Int -> Connection s -> (Result String (Failure, String), Connection s) .
+readSome budget n conn = if n < 0 then (Err (Invalid "negative read size", ""), conn) else someGo budget n conn.
+someGo : unsafe Budget -> Int -> Connection s -> (Result String (Failure, String), Connection s) .
+someGo budget n conn = case gate budget conn of
+    Err why -> (case failed why conn of (reason, next) -> (Err (reason, ""), next))
+  | Ok _ -> if n == 0 then (Ok "", conn) else (case conn of
+      Shut _ -> (Err (Closed, ""), conn)
+    | Open backend s chunk -> (case backend of Backend read _ _ _ _ _ _ ->
+        ask = if n < chunk then n else chunk;
+        (step, next) = read ask s;
+        c = Open backend next chunk;
+        case step of
+          Data bytes -> if strlen bytes == 0 or strlen bytes > ask then (Err (DriverViolation "invalid read progress", ""), c)
+            else finishRead budget bytes c
+        | End -> finishRead budget "" c
+        | ReadFault why -> (case failed why c of (reason, next) -> (Err (reason, ""), next))
+        | ReadWait interest -> (case pause budget interest c of
+            (Err why, c2) -> (case failed why c2 of (reason, next) -> (Err (reason, ""), next))
+          | (Ok _, c2) -> someGo budget n c2))).
+finishRead : Budget -> String -> Connection s -> (Result String (Failure, String), Connection s) .
+finishRead budget bytes conn = case gate budget conn of Ok _ -> (Ok bytes, conn) | Err why -> (case failed why conn of (reason, next) -> (Err (reason, bytes), next)).
+
+readExactly : Budget -> Int -> Connection s -> (Result String (Failure, String), Connection s) .
+readExactly budget n conn = if n < 0 then (Err (Invalid "negative read size", ""), conn) else exactGo budget n Nil conn.
+exactGo : unsafe Budget -> Int -> List String -> Connection s -> (Result String (Failure, String), Connection s) .
+exactGo budget left acc conn = case readSome budget left conn of
+    (Err (why, consumed), c2) -> (Err (why, strJoin "" (L.reverse (consumed :: acc))), c2)
+  | (Ok bytes, c2) -> if left == 0 then (Ok (strJoin "" (L.reverse acc)), c2) else
+      if strlen bytes == 0 then (Err (EndOfStream, strJoin "" (L.reverse acc)), c2) else
+      if strlen bytes == left then (Ok (strJoin "" (L.reverse (bytes :: acc))), c2)
+      else exactGo budget (left - strlen bytes) (bytes :: acc) c2.
+
+# Errors include the number of bytes committed. Retrying from byte zero can
+# duplicate an MQTT packet; the caller must account for this prefix.
+writeAll : Budget -> String -> Connection s -> (Result Int (Failure, Int), Connection s) .
+writeAll budget bytes conn = writeGo budget bytes 0 conn.
+writeGo : unsafe Budget -> String -> Int -> Connection s -> (Result Int (Failure, Int), Connection s) .
+writeGo budget bytes sent conn = case gate budget conn of
+    Err why -> (case failed why conn of (reason, next) -> (Err (reason, sent), next))
+  | Ok _ -> if sent == strlen bytes then (Ok sent, conn) else (case conn of
+      Shut _ -> (Err (Closed, sent), conn)
+    | Open backend s chunk -> (case backend of Backend _ write _ _ _ _ _ ->
+        left = strlen bytes - sent;
+        ask = if left < chunk then left else chunk;
+        (step, next) = write (substr bytes sent ask) s;
+        c = Open backend next chunk;
+        case step of
+          Wrote n -> if n <= 0 or n > ask then (Err (DriverViolation "invalid write progress", sent), c)
+            else (case gate budget c of
+                Err why -> (case failed why c of (reason, next) -> (Err (reason, sent + n), next))
+              | Ok _ -> if sent + n == strlen bytes then (Ok (sent + n), c) else writeGo budget bytes (sent + n) c)
+        | WriteFault why -> (case failed why c of (reason, next) -> (Err (reason, sent), next))
+        | WriteWait interest -> (case pause budget interest c of
+            (Err why, c2) -> (case failed why c2 of (reason, next) -> (Err (reason, sent), next))
+          | (Ok _, c2) -> writeGo budget bytes sent c2))).
+
+# Single-owner, state-threaded lifetime. Always discard the previous handle
+# and continue with the returned one. Aliasing is not yet linearly checked.
+close : Connection s -> (Result Unit Failure, Connection s) .
+close conn = case conn of
+    Shut _ -> (Ok Unit, conn)
+  | Open backend s chunk -> (case backend of Backend _ _ _ _ release _ _ ->
+      (result, next) = release s;
+      case result of Err WrongOwner -> (result, Open backend next chunk) | _ -> (result, Shut next)).
+withConnection : Connection s -> (Connection s -> (Result a Failure, Connection s)) -> Result a Failure .
+withConnection conn body = case conn of
+    Shut _ -> Err Closed
+  | _ ->
+      (result, next) = body conn;
+      (cleanup, _) = close next;
+      case result of
+          Ok value -> (case cleanup of Ok _ -> Ok value | Err why -> Err why)
+        | Err why -> (case cleanup of Ok _ -> Err why | Err releaseWhy -> Err (CleanupFailed why releaseWhy)).

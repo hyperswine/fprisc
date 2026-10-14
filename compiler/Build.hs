@@ -166,7 +166,7 @@ build p = do
         _ -> "ctx_x64.S"
       core = [runtime </> f | f <- ["runtime.c", "actors.c", "bits.c", "vec.c", "sstr.c", "mod.c", "buddy.c"]]
       -- the posix system: what both hosts share (machine/posix), and the unix host (machine/unix)
-      posix = [machine </> "posix" </> f | f <- ["hal.c", "base.c", "base_file.c", "os_fs.c", "os_io.c", "os_watch.c", "os_net.c", "os_job.c", "os_module.c"]]
+      posix = [machine </> "posix" </> f | f <- ["hal.c", "base.c", "base_file.c", "os_fs.c", "os_io.c", "os_watch.c", "os_net.c", "os_owned.c", "os_connection.c", "os_resolver.c", "os_tls_unavailable.c", "os_job.c", "os_module.c"]]
            ++ [machine </> "unix" </> f | f <- ["main.c", "park.c", "host.c", "os_proc.c", "os_term.c", "os_clock.c", ctx]]
       -- x28 is RESERVED on aarch64: the context switch (machine/unix/ctx_a64.S)
       -- does not save it, because QOS apps keep the hart pointer there.  Without

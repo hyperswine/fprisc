@@ -1,0 +1,26 @@
+unsafe base.
+G = use "std/view".
+C = use "std/viewcache".
+L = use "std/live".
+JS = use "std/livejs".
+Msg = Type (Bump | Reset).
+codec = @Msg.
+update ev m = case ev of
+    L.Msg _ Bump -> ({count = m.count + 1}, Nil)
+  | L.Msg _ Reset -> ({count = 0}, Nil)
+  | _ -> (m, Nil).
+probe n = G.key "probe" (G.El "div" [G.Att "id" "probe",
+  G.utilities (if n == 0 then Nil else [G.Width (G.Px (200 + n)), G.Height (G.Px 40),
+    G.Background (G.Rgb (20 + n) 40 60)]),
+  G.hover (if n == 0 then Nil else [G.Background (G.Rgb 100 80 60)])] [G.Dyn (str n)]).
+view sid m old = case C.item "probe" m.count probe (C.begin "v1" True old) of (node, frame) ->
+  (G.renderStyled (G.El "main" [G.Local "draft" ""]
+    [G.key "draft" (G.Inp [G.Att "id" "draft", G.Input "draft"]),
+     G.El "button" [G.send codec Bump] [G.Txt "bump"],
+     G.El "button" [G.send codec Reset] [G.Txt "reset"], node]), C.finish frame).
+main =
+  _ = L.serveProjected {L.defaults | port = 0, script = JS.src Unit, journal = False}
+    {init = {count = 0}, update = update, subs = (fn m -> Nil), fields = Nil,
+     codec = codec, project = (fn sid m -> m), same = (fn a b -> a == b),
+     cache = C.empty Unit, view = view, css = (fn m -> "")};
+  0.

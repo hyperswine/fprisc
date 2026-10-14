@@ -1,0 +1,40 @@
+unsafe base.
+C = use "std/clientcalc".
+B = use "std/browsercalc".
+Console = use "std/browserconsole".
+J = use "std/json".
+L = use "std/list".
+P = use "std/program".
+check label yes = if yes then Unit else error "browserconsole: {label}".
+env hist at cmd = C.TextEnv (fn k -> at) (fn k -> cmd) (fn k -> Nil) (fn k -> hist).
+history = ["help", "café", "<img src=x onerror=alert(1)>"] .
+boundRow code want bindings = case bindings of C.TextEnv ns ss _ ts ->
+    J.object [("code", J.Text code), ("want", J.Text want), ("cursor", J.Text (str (ns "cursor"))),
+      ("command", J.Text (ss "command")), ("history", J.strings (ts "history"))]
+  | _ -> error "fixture TextEnv".
+textRow e bindings = boundRow (C.jsText e) (C.evalText bindings e) bindings.
+intRow e bindings = boundRow ("String({C.jsInt e})") (str (C.evalInt bindings e)) bindings.
+textsRow e bindings = boundRow ("JSON.stringify({C.jsTexts e})") (J.render (J.strings (C.evalTexts bindings e))) bindings.
+vectors = L.concat
+  [L.map (fn ws -> textRow (C.Trim (C.Text ("{ws}café{ws}"))) (env Nil 0 "")) C.spaces,
+   L.concatMap (fn at -> L.map (fn delta -> intRow (Console.recallIndex delta) (env history at "")) [0 - 1, 1]) (L.range 0 4),
+   L.map (fn cmd -> textsRow (Console.remembered 3) (env history 3 cmd)) ["", "  \t", "help", "  café  ", " new ", "<img src=x onerror=alert(1)>"],
+   L.map (fn at -> textRow (C.TextAt (C.TextSequence "history") (C.Literal at)) (env history 0 "")) [0 - 1, 0, 1, 3, intMax Unit],
+   [textsRow (C.TextTakeLast 0 (C.TextSequence "history")) (env history 0 ""),
+    textsRow (C.TextTakeLast 50 (C.TextSequence "history")) (env (L.map str (L.range 1 60)) 0 ""),
+    textsRow (C.IfTexts (C.Equal (C.Literal 1) (C.Literal 1)) (C.Texts [C.Text "lazy"])
+      (C.Texts [C.Decimal (C.Quot (C.Literal 1) (C.Literal 0))])) (env Nil 0 ""),
+    textRow (C.Trim (C.Text " a b ")) (env Nil 0 "")]].
+snapshot = J.object [("runtime", J.Text (B.runtime Unit)), ("vectors", J.Sequence vectors)].
+main = case P.args Unit of
+    ["snapshot"] -> _ = print (J.render snapshot); 0
+  | ["bad-limit"] -> _ = print (Console.script {scope = B.Id "scope", input = B.Id "input", run = B.Id "run", output = B.Id "out", storageKey = "test", limit = 0}); 0
+  | ["bad-take"] -> _ = print (C.jsTexts (C.TextTakeLast (0 - 1) (C.Texts Nil))); 0
+  | ["bad-delay"] -> _ = print (B.program Nil [B.On "test" [B.After (0 - 1) Nil]]); 0
+  | ["bad-defer"] -> _ = print (B.onLocals [B.Each (B.Id "input") [B.ClearValueLater]]); 0
+  | _ ->
+      _ = check "duplicate" (C.evalTexts (env history 3 "<img src=x onerror=alert(1)>") (Console.remembered 3) == history);
+      _ = check "bound" (C.evalTexts (env history 3 "new") (Console.remembered 3) == ["café", "<img src=x onerror=alert(1)>", "new"]);
+      _ = check "blank" (C.evalTexts (env history 3 "\t ") (Console.remembered 3) == history);
+      _ = print "browserconsole: bounded text history, duplicates/blanks, cursor bounds, Unicode trim and lazy branches PASS";
+      0.

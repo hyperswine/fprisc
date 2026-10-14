@@ -54,7 +54,12 @@ Notice = use "std/livenotice".
 Watch = use "std/watch".
 Pricing = use "pos1_pricing".
 G = use "std/view".
+Appearance = use "std/appearance".
+C = use "std/clientcalc".
+B = use "std/browsercalc".
+Money = use "std/money".
 LJ = use "std/livejs".
+Metrics = use "std/livemetrics".
 VC = use "std/viewcache".
 List = use "std/list".
 S = use "std/string".
@@ -176,8 +181,7 @@ wdGo s i n =
   case ok of True -> wdGo s (i + 1) n | False -> False.
 pad2 n | n < 10 = "0{n}".
 pad2 n = "{n}".
-money c | c < 0 = "-" + money (0 - c).
-money c = "{c / 100}.{pad2 (c % 100)}".
+money c = Money.format c.
 # "12.50", "12.5" or "12" -> cents (other characters are skipped)
 cents s = cWhole s 0 (strlen s) 0.
 cWhole s i n acc | i >= n = acc * 100.
@@ -508,7 +512,7 @@ qtyOf ((k, q) :: r) sku | strEq k sku = q.
 qtyOf (l :: r) sku = qtyOf r sku.
 subtotal m cart = cart |> foldE (fn l acc -> acc + lineTotal m l) 0.
 lineTotal m (k, q) = q * priceOf m.cat k.
-taxOn m sub = (sub * activeRate m + 5000) / 10000.
+taxOn m sub = Money.tax sub (activeRate m).
 totalOf m cart = sub = subtotal m cart; sub + taxOn m sub.
 
 # ---- checkout: one line ------------------------------------------------------------------------
@@ -634,7 +638,8 @@ project sid m =
 # and the low-water mark, a row of its receipt, so they render once each and
 # again only when that changes.
 
-rootCls v = case v.theme == 1 of True -> "col gap-4 p-4 screen" | False -> "col gap-4 p-4 screen day".
+pageRoot v kids = El "div" (Cls "col gap-4 p-4 screen" :: Att "data-theme" (if v.theme == 1 then "night" else "day") ::
+  List.append (Appearance.frame (v.theme != 1)) locals) kids.
 locals = G.locals @Client { tab = "1", open = "0", tender = "", delta = "10", rsku = "", cmd = "", name = "", pin = "" }.
 
 Product = { sku : String, name : String, price : Int, stock : Int, retired : Int }.
@@ -648,11 +653,11 @@ view sid v old = case old of (cardsOld, rowsOld, rs) ->
   s = v.s;
   t0 = Sys.timeUs Unit;
   (case strEq s.cashier "" of
-    True -> (G.render (El "div" (Cls (rootCls v) :: locals) [loginView s, Notice.view v.reloadNotice]), old)
+    True -> (G.renderStyled (pageRoot v [loginView s, Notice.view v.reloadNotice]), old)
   | False ->
     (case VC.many (fn i -> i.p.sku) renderCard (List.map (fn p -> { p = p, lowAt = v.lowAt }) (live v.cat)) (VC.begin "pos1-card-v1" verify cardsOld) of (cards, cc) ->
     (case VC.many (fn x -> "{x.n}") receiptRow v.sales (VC.begin "pos1-receipt-v1" verify rowsOld) of (rows, rc) ->
-      out = G.render (El "div" (Cls (rootCls v) :: locals) (Notice.view v.reloadNotice :: nav v s :: toasts s :: body v s cards rows rs));
+      out = G.renderStyled (pageRoot v (Notice.view v.reloadNotice :: nav v s :: toasts s :: body v s cards rows rs));
       (ch, cm, cn) = VC.stats cc;
       (rh, rm, rn) = VC.stats rc;
       rs2 = { st = note rs.st (Sys.timeUs Unit - t0), hits = rs.hits + ch + rh, misses = rs.misses + cm + rm, cards = cn, rows = rn };
@@ -661,7 +666,7 @@ verify = Program.envOr "0" "POS1_VIEW_VERIFY" == "1".
 
 # the same page with nothing remembered: the stylesheet's sample, and the check
 # that the cached page is the fresh one
-viewFresh v = El "div" (Cls (rootCls v) :: locals)
+viewFresh v = pageRoot v
   (Notice.view v.reloadNotice :: nav v v.s :: toasts v.s :: body v v.s (List.map renderCard (List.map (fn p -> { p = p, lowAt = v.lowAt }) (live v.cat))) (List.map receiptRow v.sales) noRender).
 
 # The stylesheet is a function of the tree -- and the page is served
@@ -669,25 +674,16 @@ viewFresh v = El "div" (Cls (rootCls v) :: locals)
 # be emitted.  The sheet is therefore built over a SAMPLE tree that
 # shows everything: a signed-in session with a cart, receipts with a
 # void, the console -- every class the app can ever use appears once.
-cssAll v = G.cssWith (Notice.styles + styles) (El "div" Nil (viewFresh (project 1 sampleModel) :: loginView noSess :: Nil)).
+cssAll v = G.cssWith Notice.styles (El "div" Nil (viewFresh (project 1 sampleModel) :: loginView noSess :: Nil)).
 # The layout rule: the page is the viewport (`screen`), every region has its
 # size from the viewport (flex-auto min-h-0), and what does not fit SCROLLS
 # inside its region (overflow-auto).  Nothing is sized by its contents, so
 # adding to the cart, opening a receipt's lines or a long product name moves
 # nothing else.  On a narrow screen the register stacks: the products above,
 # the cart docked below at a fixed share of the height.
-#
-# What the utilities do not say -- this app's own sizes -- as values:
-styles =
-  G.Style "pcard" [G.Width (G.Px 180), G.Height (G.Px 140)] ::
-  # narrow: two cards to a row, each half the row less half the gap
-  G.Style "pcard-half" [G.Width (G.Less (G.Pct 50) (G.Px 4))] ::
-  G.Style "cart-dock" [G.Basis (G.Vh 46)] ::
-  G.Style "min-h-row" [G.MinHeight (G.Px 46)] ::
-  G.Style "w-badge" [G.Width (G.Px 56)] ::
-  G.Style "w-act" [G.Width (G.Px 72)] ::
-  G.Style "max-h-lines" [G.MaxHeight (G.Px 180)] ::
-  G.Style "max-h-profile" [G.MaxHeight (G.Vh 38)] :: Nil.
+# Shared component dimensions compose locally with other attributes.
+rowHeight = G.utilities [G.MinHeight (G.Px 46)].
+badgeWidth = G.utilities [G.Width (G.Px 56)].
 sampleModel =
   m0 = seed |> foldE (fn l mm -> apply mm l) initModel;
   m1 = apply (apply m0 "sale 1 ana 0 0 0 1650 150 FW=3=500") "sale 2 ben 0 1 550 550 50 LB=1=400";
@@ -695,7 +691,7 @@ sampleModel =
   sPut m2 { noSess | sid = 1, cashier = "ana", cart = ("FW", 2) :: ("BR", 1) :: Nil, toast = "sample", role = "ok", con = "> help" :: Nil }.
 
 loginView s =
-  El "div" [Cls "col gap-3 p-6 panel round mx-auto mt-4 w-full", Att "style" "max-width:420px"]
+  El "div" [Cls "col gap-3 p-6 panel round mx-auto mt-4 w-full", G.utilities [G.MaxWidth (G.Px 420)]]
     [ El "div" [Cls "text-xs upper dim"] [Txt "point of sale"]
     , El "div" [Cls "text-2xl bold"] [Txt "Sign in"]
     , Inp [Cls "field w-full", G.bind @Client.name, Att "placeholder" "cashier", Att "maxlength" "16"]
@@ -748,7 +744,9 @@ register v cards =
     , cartPanel v ].
 qLocal p = "q_{p.sku}".
 productCard lowAt p =
-  El "div" [Cls "col gap-2 card round p-3 pcard flex-none between narrow:pcard-half"]
+  El "div" [Cls "col gap-2 card round p-3 flex-none between",
+    G.utilities [G.Width (G.Px 180), G.Height (G.Px 140)],
+    G.narrow [G.Width (G.Less (G.Pct 50) (G.Px 4))]]
     [ El "div" [Cls "bold"] [Txt p.name]
     , El "div" [Cls "row between center"]
         [ El "div" [Cls "tabular"] [Txt "$", Dyn (money p.price)]
@@ -763,7 +761,7 @@ stockText lowAt p = "{p.stock} in stock".
 
 cartPanel m =
   ps = live m.cat;
-  El "div" (Cls "col gap-2 panel round p-4 w-cart min-h-0 narrow:w-full narrow:cart-dock" :: Att "data-tax" "{m.tax}" :: (ps |> List.map (fn p -> G.Local (qLocal p) "0")))
+  El "div" (Cls "col gap-2 panel round p-4 w-cart min-h-0 narrow:w-full" :: G.narrow [G.Basis (G.Vh 46)] :: Att "data-tax" "{m.tax}" :: (ps |> List.map (fn p -> G.Local (qLocal p) "0")))
     [ El "div" [Cls "text-xs upper dim"] [Txt "cart"]
     , El "div" [Cls "col gap-1 flex-auto min-h-0 overflow-auto"] (El "div" [Cls "dim text-sm", Att "id" "cart-empty"] [Txt "nothing yet"] :: (ps |> List.map (fn p -> cartLine p)))
     , El "div" [Cls "rule"] []
@@ -779,7 +777,7 @@ cartPanel m =
 totalRow label slot =
   El "div" [Cls "row between center dim text-sm"] [ Txt label, El "div" [Cls "tabular", Att "id" slot] [Txt "$0.00"] ].
 cartLine p =
-  El "div" [Cls "row between center gap-2 tr flex-none min-h-row", G.ShowIf (qLocal p), Att "data-line" p.sku, Att "data-price" "{p.price}"]
+  El "div" [Cls "row between center gap-2 tr flex-none", rowHeight, G.ShowIf (qLocal p), Att "data-line" p.sku, Att "data-price" "{p.price}"]
     [ El "div" [Cls "grow truncate min-w-0"] [Txt p.name]
     , El "button" [Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "-1", Att "data-min" "0"] [Txt "-"]
     , El "div" [Cls "tabular w-40 right"] [G.LTxt (qLocal p)]
@@ -797,18 +795,18 @@ receipts v rows =
         , El "div" [Cls "dim text-sm"] [Txt "newest 50 shown"] ]
     , El "div" [Cls "col flex-auto min-h-0 overflow-auto"] rows ].
 receiptRow x =
-  El "div" [Cls "col tr flex-none min-h-row"]
+  El "div" [Cls "col tr flex-none", rowHeight]
     [ El "div" [Cls "row gap-3 center"]
         [ El "div" [Cls "bold tabular w-24"] [Txt "#{x.n}"]
         , El "div" [Cls "dim text-sm w-24"] [Txt x.cashier]
         , El "div" [Cls "grow text-sm truncate min-w-0"] [Txt (summary x.lines)]
         , El "div" [Cls "tabular w-24 right"] [Txt "$", Txt (money x.total)]
         , El "div" [Cls "dim text-xs"] [Txt (fmtTime x.at)]
-        , El "span" [Cls "badge w-badge text-center flex-none"] [Txt (case x.pay == 0 of True -> "cash" | False -> "card")]
-        , El "span" [Cls (case x.voided == 1 of True -> "badge bad w-badge text-center flex-none" | False -> "badge ok w-badge text-center flex-none")] [Txt (case x.voided == 1 of True -> "void" | False -> "paid")]
+        , El "span" [Cls "badge text-center flex-none", badgeWidth] [Txt (case x.pay == 0 of True -> "cash" | False -> "card")]
+        , El "span" [Cls (case x.voided == 1 of True -> "badge bad text-center flex-none" | False -> "badge ok text-center flex-none"), badgeWidth] [Txt (case x.voided == 1 of True -> "void" | False -> "paid")]
         , El "button" [Cls "btn pill px-3 py-2", G.setTo @Client.open "{x.n}", Att "data-on" "open:{x.n}"] [Txt "lines"]
-        , El "div" [Cls "row justify-end flex-none w-act"] [voidButton x] ]
-    , El "div" [G.showIf @Client.open "{x.n}", Cls "col text-sm dim p-2 overflow-auto flex-none max-h-lines"] (x.lines |> List.map (fn l -> lineRow l) |> withVoid x) ].
+        , El "div" [Cls "row justify-end flex-none", G.utilities [G.Width (G.Px 72)]] [voidButton x] ]
+    , El "div" [G.showIf @Client.open "{x.n}", Cls "col text-sm dim p-2 overflow-auto flex-none", G.utilities [G.MaxHeight (G.Px 180)]] (x.lines |> List.map (fn l -> lineRow l) |> withVoid x) ].
 voidButton x | x.voided == 1 = El "div" [Cls "dim text-xs truncate min-w-0"] [Txt "by {x.voidBy}"].
 voidButton x = El "button" [Cls "btn pill px-3 py-2", G.send codec (Void x.n)] [Txt "void"].
 lineRow (sku, q, pr, nm) = El "div" [Cls "row between"] [ Txt "{q} x {nm}", El "div" [Cls "tabular"] [Txt (money (q * pr))] ].
@@ -826,7 +824,7 @@ inventory m =
         , Inp [Cls "field w-24", G.bind @Client.delta, Att "placeholder" "10"] ]
     , El "div" [Cls "col flex-auto min-h-0 overflow-auto"] (live m.cat |> List.map (fn p -> invRow m p)) ].
 invRow m p =
-  El "div" [Cls "row gap-3 center tr flex-none min-h-row"]
+  El "div" [Cls "row gap-3 center tr flex-none", rowHeight]
     [ El "div" [Cls "grow"] [Txt p.name]
     , El "div" [Cls "dim text-xs mono w-24"] [Txt p.sku]
     , El "div" [Cls "tabular w-24 right"] [Txt "$", Dyn (money p.price)]
@@ -848,7 +846,7 @@ admin m s rs =
         , El "button" [Cls "btn round px-3 py-2", G.send codec Rebuild] [Txt "rebuild stock"] ]
     , El "div" [Cls "mono text-sm pre show-empty card round p-3 flex-auto min-h-0 overflow-auto"] [Dyn (S.join "\n" (rev s.con Nil))]
     , El "div" [Cls "text-xs upper dim"] [Txt "profile"]
-    , El "div" [Cls "mono text-xs pre card round p-3 flex-none overflow-auto max-h-profile"] [Dyn (profileText m rs)]
+    , El "div" [Cls "mono text-xs pre card round p-3 flex-none overflow-auto", G.utilities [G.MaxHeight (G.Vh 38)]] [Dyn (profileText m rs)]
     , El "div" [Cls "row gap-2 center dim text-xs"] [ Txt "browser round trip: ", El "span" [Att "id" "pos-rtt"] [Txt "measuring"] ] ].
 
 profileText v rs =
@@ -870,7 +868,7 @@ memLines mem (grows, mib) = case mem of
       :: "  memory actor: {reqs} requests, {waits} waits, {direct} direct, {inl} inline, {frees} frees, {denied} denied" :: Nil
   | x -> "  memory: not sampled" :: Nil.
 watch label v =
-  El "div" [Cls "col card round p-2", Att "style" "min-width:120px"]
+  El "div" [Cls "col card round p-2", G.utilities [G.MinWidth (G.Px 120)]]
     [ El "div" [Cls "text-xs upper dim"] [Txt label], El "div" [Cls "tabular bold"] [Dyn v] ].
 
 # the page's script: the client, plus the round trip it sees -- from a send to
@@ -878,48 +876,28 @@ watch label v =
 script = strcat rttScript (strcat cartScript (LJ.src 0)).
 # the cart's arithmetic, in the page: after every paint of the locals, each
 # line's total and the cart's, from the quantities the page holds and the
-# prices and the tax the server drew (cents, the server's own rounding)
-cartScript = "
-(function () \{
-  function money(c) \{ return '$' + Math.floor(c / 100) + '.' + String(c % 100).padStart(2, '0'); }
-  function put(id, text) \{ var el = document.getElementById(id); if (el) el.textContent = text; }
-  document.addEventListener('live:locals', function (e) \{
-    var L = e.detail, panel = document.querySelector('[data-tax]'), sub = 0, any = false;
-    if (!panel) return;
-    document.querySelectorAll('[data-line]').forEach(function (row) \{
-      var q = +L['q_' + row.getAttribute('data-line')] || 0, line = q * (+row.getAttribute('data-price'));
-      var t = row.querySelector('[data-line-total]');
-      if (t) t.textContent = money(line);
-      sub += line; if (q > 0) any = true;
-    });
-    var tax = Math.floor((sub * (+panel.getAttribute('data-tax')) + 5000) / 10000);
-    put('cart-sub', money(sub)); put('cart-tax', money(tax)); put('cart-total', money(sub + tax));
-    var empty = document.getElementById('cart-empty');
-    if (empty) empty.style.display = any ? 'none' : '';
-  });
-})();
-".
+# prices and the tax the server drew. The program below is data: numeric/text
+# expressions and scoped DOM effects, with no embedded JavaScript. Money.amount
+# and Money.taxExpr are also the definitions used by native checkout above.
+dollars n = C.Concat [C.Text "$", Money.amount n].
+cartScript = B.onLocals
+  [B.Each (B.Attribute "data-tax")
+    [B.ReadAttribute "rate" "data-tax", B.SetNumber "sub" (C.Literal 0), B.SetNumber "count" (C.Literal 0),
+     B.Each (B.Attribute "data-line")
+       [B.ReadTextAttribute "sku" "data-line", B.ReadAttribute "price" "data-price",
+        B.ReadLocal "qty" (C.Concat [C.Text "q_", C.StringVar "sku"]),
+        B.SetNumber "line" (C.Mul (C.Number "qty") (C.Number "price")),
+        B.PutText (B.Attribute "data-line-total") (dollars (C.Number "line")),
+        B.SetNumber "sub" (C.Add (C.Number "sub") (C.Number "line")),
+        B.SetNumber "count" (C.Add (C.Number "count")
+          (C.IfInt (C.Less (C.Literal 0) (C.Number "qty")) (C.Literal 1) (C.Literal 0)))],
+     B.SetNumber "tax" (Money.taxExpr (C.Number "sub") (C.Number "rate")),
+     B.PutText (B.Id "cart-sub") (dollars (C.Number "sub")),
+     B.PutText (B.Id "cart-tax") (dollars (C.Number "tax")),
+     B.PutText (B.Id "cart-total") (dollars (C.Add (C.Number "sub") (C.Number "tax"))),
+     B.Show (B.Id "cart-empty") (C.Equal (C.Number "count") (C.Literal 0))]].
 # installed BEFORE the client, which opens its socket as soon as it runs
-rttScript = "
-(function () \{
-  var sent = 0, last = 0, n = 0, sum = 0, max = 0, recent = [];
-  var S = WebSocket.prototype.send;
-  WebSocket.prototype.send = function (d) \{ sent = performance.now(); return S.call(this, d); };
-  var d = Object.getOwnPropertyDescriptor(WebSocket.prototype, 'onmessage');
-  Object.defineProperty(WebSocket.prototype, 'onmessage', \{ get: d.get, set: function (f) \{
-    d.set.call(this, function (e) \{
-      if (sent) \{ last = performance.now() - sent; sent = 0; n++; sum += last; if (last > max) max = last; recent.push(last); if (recent.length > 32) recent.shift(); }
-      return f.call(this, e);
-    });
-  } });
-  setInterval(function () \{
-    var el = document.getElementById('pos-rtt');
-    var sorted = recent.slice().sort(function (a, b) \{ return a - b; });
-    if (el) el.textContent = n ? ('last ' + last.toFixed(1) + ' ms, median of the last ' + sorted.length + ' ' + sorted[sorted.length >> 1].toFixed(1) + ' ms, avg ' + (sum / n).toFixed(1) + ' ms, max ' + max.toFixed(1) + ' ms, over ' + n
-                                  + ' (a tab the browser pauses or throttles inflates this; the server side is above)') : 'no round trips yet';
-  }, 500);
-})();
-".
+rttScript = Metrics.script (B.Id "pos-rtt") " (a tab the browser pauses or throttles inflates this; the server side is above)".
 
 # ---- dynamic pricing: only the register's internal subscription can adopt ----
 # Runtime session/function values never enter disk receipts or browser projections.

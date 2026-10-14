@@ -1,0 +1,29 @@
+unsafe base.
+T = use "../std/transport".
+S = use "../std/sockettransport".
+D = use "../std/resolver".
+C = use "../std/connect".
+TLS = use "../std/tls".
+P = use "../std/program".
+String = use "../std/string".
+need r = case r of Ok x -> x | Err why -> error "TLS capacity fixture: {why}".
+check why yes = if yes then Unit else error "TLS capacity fixture: {why}".
+main = case P.args Unit of
+    [portText, fifo, roots] ->
+      port = need (String.toInt portText);
+      pool = need (D.create 1);
+      tcp = need (C.connect (need (S.forMs 1000)) pool "127.0.0.1" port 16384);
+      began = Sys.timeUs Unit;
+      abandoned = TLS.upgradeWith 1 (need (S.forMs 100)) "server.example" (TLS.CaFile fifo) TLS.TLS12 tcp;
+      elapsed = Sys.timeUs Unit - began;
+      _ = check "caller not blocked by trust-file I/O" (abandoned == Err T.TimedOut and elapsed < 350000);
+      other = need (C.connect (need (S.forMs 1000)) pool "127.0.0.1" port 16384);
+      busy = TLS.upgradeWith 1 (need (S.forMs 1000)) "server.example" (TLS.CaFile roots) TLS.TLS12 other;
+      _ = check "abandoned native work retains admission slot" (busy == Err (T.Io "TLS worker pool busy"));
+      _ = Sys.sleepUs 600000;
+      fresh = need (C.connect (need (S.forMs 1000)) pool "127.0.0.1" port 16384);
+      secure = need (TLS.upgradeWith 1 (need (S.forMs 1000)) "server.example" (TLS.CaFile roots) TLS.TLS12 fresh);
+      _ = T.close secure;
+      _ = need (D.close pool);
+      print "TLS capacity: trust-file stall is off-hart, abandoned work stays bounded, slot recovers PASS"
+  | _ -> error "TLS capacity fixture needs port fifo roots".

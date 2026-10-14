@@ -29,16 +29,19 @@ expireAt mono notice = case pending notice and mono >= notice.untilUs of
 
 # Fixed shape: only the escaped text slot changes on adoption/expiry.
 view : String -> G.Node .
-view text = G.El "div" [G.Cls "fpr-reload-notice hide-empty", G.Att "role" "status",
+view text = G.El "div" [G.Cls "fpr-reload-notice hide-empty", appearance, G.Att "role" "status",
   G.Att "aria-live" "polite", G.Att "aria-atomic" "true"] [G.Dyn text].
-# The notice's class, as a value: pass it to G.cssWith with the app's own.
-# (hide-empty, a std/view utility, hides it while its slot is empty.)
-styles : List G.Style .
-styles = G.Style "fpr-reload-notice"
-  [ G.Prop "position" "fixed", G.Prop "bottom" "20px", G.Prop "left" "50%"
-  , G.Prop "transform" "translateX(-50%)", G.Prop "z-index" "10000"
+# The notice owns its typed appearance. hide-empty retains the stable text-only
+# update shape until empty-slot visibility is expressed by the client layer.
+appearance = G.utilities
+  [ G.Position G.Fixed, G.Bottom (G.Px 20), G.Left (G.Pct 50)
+  , G.Transform [G.TranslateX (G.Pct (0 - 50))], G.ZIndex 10000
   , G.MaxWidth (G.Less (G.Vw 100) (G.Px 40))
-  , G.Prop "padding" "12px 18px", G.Prop "border-radius" "16px"
-  , G.Prop "background" "#172132", G.Prop "color" "#fff"
-  , G.Prop "box-shadow" "0 6px 24px #0004", G.Prop "font" "13px/1.5 system-ui"
-  , G.Prop "overflow-wrap" "anywhere", G.Prop "pointer-events" "none" ] :: Nil.
+  , G.PaddingY (G.Px 12), G.PaddingX (G.Px 18), G.Radius (G.Px 16)
+  , G.Background (G.Rgb 23 33 50), G.Foreground (G.Rgb 255 255 255)
+  , G.Shadow (G.Px 0) (G.Px 6) (G.Px 24) (G.Px 0) (G.Rgba 0 0 0 68)
+  , G.FontSize (G.Px 13), G.LineHeight 150, G.FontFamily G.SystemFont
+  , G.WordWrap G.WrapAnywhere, G.PointerEvents G.PointerNone ].
+# Compatibility for callers that already pass Notice.styles to cssWith.
+styles : List G.Style .
+styles = Nil.

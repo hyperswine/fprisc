@@ -1,0 +1,33 @@
+unsafe base.
+T = use "std/transport".
+Q = use "std/mqtt".
+SS = use "std/mqttsession".
+C = use "std/mqttclient".
+check name yes = if yes then Unit else error "MQTT pump: {name}".
+need r = case r of Ok x -> x | Err why -> error "MQTT pump fixture: {why}".
+scriptRead n state = (T.Data (need (Q.encode (Q.Publish "t" "received" 1 9 False False))), state).
+scriptWrite bytes state = (T.WriteFault (T.Io "ack failed"), state).
+wait interest budget state = (Ok Unit, state).
+clock state = 0.
+release state = (Ok Unit, state + 1).
+backend = T.Backend scriptRead scriptWrite wait clock release (fn s -> Ok Unit) (fn why s -> (why, s)).
+budget = T.Uncancelled (intMax Unit).
+main =
+  cfg = need (SS.config "pump" False 0 1000 1);
+  conn = need (T.open 4096 backend 0);
+  client = need (C.create cfg 4096 4096 conn);
+  initial = client.session;
+  online = {initial | phase = SS.Online, epoch = 1};
+  (answer, next) = C.next budget {client | session = online};
+  _ = check "ack failure still reports I/O failure" (answer == Err (T.Io "ack failed"));
+  (notices, drained) = C.takeNotices next;
+  _ = check "publication survives failed PUBACK" (notices == [SS.Delivered "t" "received" 1 False False]);
+  (again, _) = C.takeNotices drained;
+  _ = check "drained exactly once and socket released" (again == Nil and T.state next.connection == 1);
+  queued = {client | session = online, canSend = False};
+  (first, q1) = C.publish budget "t" "one" 0 False queued;
+  (second, q2) = C.publish budget "t" "two" 0 False q1;
+  _ = check "QoS0 queue admission is bounded" (first == Ok Nil and second == Err (T.Invalid "MQTT outgoing queue full") and q1.outbox == q2.outbox);
+  (stopped, final) = C.stop budget q2;
+  _ = check "unsent DISCONNECT is explicit failure with cleanup" (stopped == Err (T.Io "MQTT DISCONNECT was not sent before close") and final.session.phase == SS.Offline and T.state final.connection == 1);
+  print "MQTT pump: publication retention on PUBACK failure, queue admission and explicit stop cleanup PASS".

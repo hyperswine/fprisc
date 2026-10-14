@@ -1,0 +1,25 @@
+# Appended to inventory.fpr after its main is renamed by the browser harness.
+# Pure sample view: no account, real store or network is accessed.
+N = use "std/livenotice".
+sampleSuggestions = Json.render (Json.object
+  [("loc", Json.strings ["study", "Storage room", "Workshop", "Office"]),
+   ("sub", Json.object [("study", Json.strings ["top drawer", "desk"]), ("*", Json.strings ["top drawer", "desk", "shelf"])]),
+   ("tags", Json.strings ["cables", "electronics", "tools", "<img src=x onerror=alert(1)>"])]).
+# Only fixture presentation changes. The application's persistence and account
+# updates are never invoked, even if a different UI button is pressed.
+sampleUpdate ev v = case ev of
+    Live.Joined sid -> (v, [Live.Emit sid "suggest" sampleSuggestions])
+  | Live.Msg _ Theme -> ({v | theme = 1 - v.theme}, Nil)
+  | _ -> (v, Nil).
+main = if Program.args Unit == ["serve"] then
+    _ = Live.serveProjected {Live.defaults | port = 0, script = script, journal = False}
+      {init = {sampleView | page = 0}, update = sampleUpdate, subs = (fn v -> Nil), fields = Nil,
+       codec = codec, project = (fn sid v -> v), same = (fn a b -> a == b),
+       cache = (VC.empty Unit, noRender), view = view 12, css = cssAll};
+    0
+  else
+    v = {sampleView | page = 0};
+    node = root v (signedIn v [itemCard sampleItem, empty v] noRender);
+    (ss, ds) = G.renderStyled (G.El "div" Nil [node, N.view "Example reload notice"]);
+    _ = print (Json.render (Json.object [("s", Json.strings ss), ("d", Json.strings ds), ("css", Json.Text (cssAll v))]));
+    0.

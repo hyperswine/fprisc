@@ -1,0 +1,3 @@
+# Signature verification is required in demo and LAN modes.
+cryptography>=46,<49
+paho-mqtt>=2.0,<3

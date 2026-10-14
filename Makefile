@@ -155,7 +155,7 @@ endif
 ifneq ($(filter aarch64 arm64,$(shell uname -m)),)
 POSIXFIXED = -ffixed-x27 -ffixed-x28 -DFPR_HART_X28
 endif
-RT_POSIX = $(MACHINE)/posix/hal.c $(MACHINE)/posix/base.c $(MACHINE)/posix/base_file.c $(MACHINE)/posix/os_fs.c $(MACHINE)/posix/os_io.c $(MACHINE)/posix/os_watch.c $(MACHINE)/posix/os_net.c $(MACHINE)/posix/os_job.c $(MACHINE)/posix/os_module.c $(MACHINE)/unix/main.c $(MACHINE)/unix/park.c $(MACHINE)/unix/host.c $(MACHINE)/unix/os_proc.c $(MACHINE)/unix/os_term.c $(MACHINE)/unix/os_clock.c $(POSIXCTX)
+RT_POSIX = $(MACHINE)/posix/hal.c $(MACHINE)/posix/base.c $(MACHINE)/posix/base_file.c $(MACHINE)/posix/os_fs.c $(MACHINE)/posix/os_io.c $(MACHINE)/posix/os_watch.c $(MACHINE)/posix/os_net.c $(MACHINE)/posix/os_owned.c $(MACHINE)/posix/os_connection.c $(MACHINE)/posix/os_resolver.c $(MACHINE)/posix/os_tls_unavailable.c $(MACHINE)/posix/os_job.c $(MACHINE)/posix/os_module.c $(MACHINE)/unix/main.c $(MACHINE)/unix/park.c $(MACHINE)/unix/host.c $(MACHINE)/unix/os_proc.c $(MACHINE)/unix/os_term.c $(MACHINE)/unix/os_clock.c $(POSIXCTX)
 BIN ?= $(BUILD)/$(basename $(notdir $(PROG)))
 $(BUILD)/base.s: fprc $(PROG) core/prelude.fpr FORCE
 	@mkdir -p $(BUILD)

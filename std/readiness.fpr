@@ -1,0 +1,238 @@
+# Directional, deadline-bound, one-shot descriptor registrations.
+# One off-hart watcher serves all waits. One outstanding ticket per actor per
+# service; always await or cancel it before reusing that actor's return address.
+# Cancellation acknowledges removal before the descriptor may be closed/reused.
+# A ticket may be handed to another actor for explicit cancellation.
+OS = use "oswatch".
+IO = use "osio".
+M = use "map".
+L = use "list".
+Ord = use "order".
+O = use "option".
+A = use "actor".
+
+Poller = Type (Poller Int).
+Ticket = Type (Ticket Int Int Int).
+Entry = Type (Entry Int Int Int Int).
+Req = Type (Register Int Int Int Int Int | Retire Int Int Int | Woke |
+  Stop Int | WakerStopped | Inspect Int Int).
+Note = Type (Admitted Int (Result Unit String) | Done Int (Result Unit String) |
+  Retired Int | Stopped | Snapshot Int Int Int Int).
+
+start : Unit -> Poller .
+start u = Poller (A.spawnWith (A.Dynamic 256) (fn self -> begin self)).
+# Explicit timer backend, also used when watchOpen refuses. This permits
+# deterministic fallback checks without exhausting unrelated host resources.
+startPolling : Unit -> Poller .
+startPolling u = Poller (A.spawnWith (A.Dynamic 256) (fn self ->
+  loop self 0 0 (M.empty Ord.int) A.tidySmall 0 0)).
+begin : unsafe Int -> Unit .
+begin me = case OS.watchOpen Unit of
+    Err why ->
+      _ = Sys.stderr "readiness: no watcher ({why}); timer fallback\n";
+      loop me 0 0 (M.empty Ord.int) A.tidySmall 0 0
+  | Ok irq ->
+      w = spawn (fn self -> waker me irq self);
+      m = receiveFrom me w;
+      _ = drop m;
+      loop me irq w (M.empty Ord.int) A.tidySmall 0 0.
+waker : unsafe Int -> Int -> Int -> Unit .
+waker poller irq self =
+  _ = Sys.irqBind irq self;
+  _ = A.sendSure self poller Woke;
+  waking poller irq self.
+waking : unsafe Int -> Int -> Int -> Unit .
+waking poller irq self =
+  m = receive self;
+  done = m == 0;
+  _ = drop m;
+  if done then
+    _ = unbind irq;
+    _ = A.sendSure self poller WakerStopped;
+    Unit
+  else
+    _ = Sys.irqAck irq;
+    _ = A.sendSure self poller Woke;
+    waking poller irq self.
+unbind irq = if Sys.irqUnbind irq then Unit else _ = Sys.sleepUs 1000; unbind irq.
+closeWatcher irq = if OS.watchClose irq then Unit else _ = Sys.sleepUs 1000; closeWatcher irq.
+
+matches fd mask events = L.any (fn pair -> case pair of (f, ready) ->
+  fd == f and (mask == 3 or ready == 3 or mask == ready)) events.
+settle me now events entries = M.fold (fn fresh id entry -> case entry of Entry fd mask deadline who ->
+  if now >= deadline then _ = A.sendSure me who (Done id (Err "timed out")); fresh
+  else if matches fd mask events then _ = A.sendSure me who (Done id (Ok Unit)); fresh
+  else M.insert id entry fresh) (M.empty Ord.int) entries.
+rejectAll me why entries = M.fold (fn u id entry -> case entry of Entry _ _ _ who ->
+  _ = A.sendSure me who (Done id (Err why)); Unit) Unit entries.
+events entries = M.fold (fn acc id entry -> case entry of Entry fd mask _ _ -> (fd, mask) :: acc) Nil entries.
+nearest entries = M.fold (fn best id entry -> case entry of Entry _ _ deadline _ ->
+  if deadline < best then deadline else best) (intMax Unit) entries.
+remaining now entries = if M.isEmpty entries then 0 - 1 else
+  d = nearest entries;
+  if now >= d then 0 else d - now.
+# A re-arm replaces the native generation and clears pending old events. This
+# happens before Retired, so late IRQs cannot revive a removed registration.
+arm me irq entries =
+  fresh = settle me (Sys.timeUs Unit) Nil entries;
+  if irq == 0 then fresh else
+  case OS.watchArmEvents irq (events fresh) (remaining (Sys.timeUs Unit) fresh) of
+    Ok _ -> fresh
+  | Err why -> _ = rejectAll me why fresh; M.empty Ord.int.
+pollEvents entries = L.map (fn pair -> case pair of (fd, mask) ->
+  (fd, case IO.readyFor fd mask of Ok True -> mask | Ok False -> 0 | Err _ -> 3)) (events entries)
+  |> L.filter (fn pair -> case pair of (_, mask) -> mask != 0).
+
+loop : unsafe Int -> Int -> Int -> M.Map Int Entry -> A.Tidy -> Int -> Int -> Unit .
+loop me irq w entries0 tidy0 wakes arms = case A.tidy me (entries0, tidy0) of (entries, tidy) ->
+  if irq == 0 and not (M.isEmpty entries) then
+    case receiveNow me of
+      Ok m -> dispatch me irq w entries tidy wakes arms m
+    | Err _ ->
+        fresh = settle me (Sys.timeUs Unit) (pollEvents entries) entries;
+        left = remaining (Sys.timeUs Unit) fresh;
+        _ = if left < 0 then Unit else Sys.sleepUs (if left < 1000 then left else 1000);
+        loop me irq w fresh tidy wakes arms
+  else dispatch me irq w entries tidy wakes arms (receive me).
+dispatch me irq w entries tidy wakes arms m = case m of
+    Register id fd mask deadline who ->
+      _ = drop m;
+      if Sys.timeUs Unit >= deadline then
+        _ = A.sendSure me who (Admitted id (Err "timed out"));
+        drain me irq w entries tidy wakes arms
+      else
+        fresh = M.insert id (Entry fd mask deadline who) entries;
+        _ = A.sendSure me who (Admitted id (Ok Unit));
+        drain me irq w fresh tidy wakes arms
+  | Retire id owner requester ->
+      _ = drop m;
+      found = case M.get id entries of O.Some (Entry _ _ _ who) -> who == owner | O.None -> False;
+      fresh = if found then M.remove id entries else entries;
+      armed = arm me irq fresh;
+      _ = if found then A.sendSure me owner (Done id (Err "cancelled")) else False;
+      _ = A.sendSure me requester (Retired id);
+      loop me irq w armed tidy wakes (arms + 1)
+  | Woke ->
+      _ = drop m;
+      ready = if irq == 0 then Nil else OS.watchTakeEvents irq;
+      fresh = settle me (Sys.timeUs Unit) ready entries;
+      drain me irq w fresh tidy (wakes + 1) arms
+  | Inspect who id ->
+      _ = drop m;
+      _ = A.sendSure me who (Snapshot id (M.size entries) wakes arms);
+      # Inspection must not re-arm a quiet set or reset its kernel deadline.
+      loop me irq w entries tidy wakes arms
+  | Stop who ->
+      _ = drop m;
+      _ = if irq == 0 then Ok Unit else OS.watchArmEvents irq Nil (0 - 1);
+      _ = rejectAll me "readiness stopped" entries;
+      shutdown me irq w who
+  | WakerStopped -> _ = drop m; drain me irq w entries tidy wakes arms.
+drain me irq w entries tidy wakes arms =
+  fresh = arm me irq entries;
+  loop me irq w fresh tidy wakes (arms + 1).
+
+shutdown me irq w who = if irq == 0 then _ = A.sendSure me who Stopped; Unit else
+  _ = A.sendSure me w 0;
+  retiring me irq w who.
+retiring me irq w who =
+  m = receive me;
+  case m of
+    WakerStopped -> _ = drop m; _ = closeWatcher irq; _ = A.sendSure me who Stopped; Unit
+  | Register id _ _ _ client -> _ = drop m; _ = A.sendSure me client (Admitted id (Err "readiness stopped")); retiring me irq w who
+  | Retire id _ client -> _ = drop m; _ = A.sendSure me client (Retired id); retiring me irq w who
+  | Woke -> _ = drop m; retiring me irq w who
+  | Inspect client id -> _ = drop m; _ = A.sendSure me client (Snapshot id 0 0 0); retiring me irq w who
+  | Stop client -> error "Readiness.stop: concurrent stops are not supported".
+
+register : Int -> Int -> Int -> Poller -> Result Ticket String .
+register fd mask deadline p = case p of Poller service ->
+  if fd < 0 or mask < 1 or mask > 3 or deadline < 0 then Err "invalid readiness registration" else
+  if Sys.timeUs Unit >= deadline then Err "timed out" else
+  case IO.readyFor fd mask of Err why -> Err why | Ok _ -> admit fd mask deadline service.
+admit fd mask deadline service =
+  me = myself 0;
+  id = Sys.nextId Unit;
+  case A.sendSureUntil deadline me service (Register id fd mask deadline me) of
+    Err why -> Err why
+  | Ok _ -> (case receiveFromRes me service of
+      Err why -> Err why
+    | Ok m ->
+        result = case m of Admitted rid answer -> if rid == id then answer else Err "unexpected readiness admission" | _ -> Err "unexpected readiness note";
+        kept = keep result;
+        _ = drop m;
+        case kept of Ok _ -> Ok (Ticket service id me) | Err why -> Err why).
+await : Ticket -> Result Unit String .
+await ticket = case ticket of Ticket service id owner ->
+  if owner != myself 0 then Err "wrong readiness owner" else awaitDone service id owner.
+awaitDone service id me = case receiveFromRes me service of
+    Err why -> Err why
+  | Ok m ->
+      result = case m of Done rid answer -> if rid == id then answer else Err "unexpected readiness completion" | _ -> Err "unexpected readiness note";
+      kept = keep result;
+      _ = drop m;
+      kept.
+# Wait for acknowledgement even when readiness/expiry won the race. A caller
+# cancelling its own ticket drains the preceding Done before Retired.
+cancel : Ticket -> Result Unit String .
+cancel ticket = case ticket of Ticket service id owner ->
+  me = myself 0;
+  case A.sendSureResult me service (Retire id owner me) of
+    Err why -> Err why
+  | Ok _ -> retired service id me.
+retired service id me = case receiveFromRes me service of
+    Err why -> Err why
+  | Ok m ->
+      done = case m of Retired rid -> rid == id | _ -> False;
+      _ = drop m;
+      if done then Ok Unit else retired service id me.
+awaitUntil : Int -> Int -> Int -> Poller -> Result Unit String .
+awaitUntil fd mask deadline p = case register fd mask deadline p of
+    Err why -> Err why
+  | Ok ticket ->
+      result = await ticket;
+      if Sys.timeUs Unit >= deadline then Err "timed out" else result.
+# Callback cancellation has no notification channel: check at most 1 ms apart.
+# Descriptor readiness/expiry still comes from one off-hart watcher. Prefer
+# await/cancel when a controller can hold a ticket and explicitly notify it.
+awaitChecking : Int -> Int -> Int -> (Unit -> Bool) -> Poller -> Result Unit String .
+awaitChecking fd mask deadline cancelled p =
+  if cancelled Unit then Err "cancelled" else
+  case register fd mask deadline p of Err why -> Err why | Ok ticket -> checking deadline cancelled ticket.
+checking deadline cancelled ticket = case ticket of Ticket service id me ->
+  if cancelled Unit then _ = cancel ticket; Err "cancelled" else
+  if Sys.timeUs Unit >= deadline then _ = cancel ticket; Err "timed out" else
+  case receiveFromNow me service of
+    Ok m ->
+      result = case m of Done rid answer -> if rid == id then answer else Err "unexpected readiness completion" | _ -> Err "unexpected readiness note";
+      kept = keep result;
+      _ = drop m;
+      if cancelled Unit then Err "cancelled" else
+      if Sys.timeUs Unit >= deadline then Err "timed out" else kept
+  | Err why -> if why != "empty" then Err why else
+      left = deadline - Sys.timeUs Unit;
+      _ = if left <= 0 then Unit else Sys.sleepUs (if left < 1000 then left else 1000);
+      checking deadline cancelled ticket.
+# Diagnostics; use from an actor without an outstanding ticket on this poller.
+# (active registrations, IRQ wakes, re-arms). Quiet inspection changes none.
+stats p = case p of Poller service ->
+  me = myself 0;
+  id = Sys.nextId Unit;
+  case A.sendSureResult me service (Inspect me id) of
+    Err why -> Err why
+  | Ok _ -> (case receiveFromRes me service of
+      Err why -> Err why
+    | Ok m ->
+        result = case m of Snapshot rid active wakes arms -> if rid == id then Ok (active, wakes, arms) else Err "unexpected readiness snapshot" | _ -> Err "unexpected readiness note";
+        kept = keep result; _ = drop m; kept).
+# Owner-coordinated shutdown: stop admission first, then stop once. Awaiting
+# tickets receive explicit failure. Discard the stopped poller; do not kill it.
+stop p = case p of Poller service ->
+  me = myself 0;
+  if A.sendSure me service (Stop me) then stopped service me else Unit.
+stopped service me = case receiveFromRes me service of
+    Err _ -> Unit
+  | Ok m ->
+      done = case m of Stopped -> True | _ -> False;
+      _ = drop m;
+      if done then Unit else stopped service me.

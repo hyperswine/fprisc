@@ -1,0 +1,88 @@
+unsafe base.
+T = use "../std/transport".
+S = use "../std/sockettransport".
+D = use "../std/resolver".
+C = use "../std/connect".
+TCP = use "../std/tcp".
+ST = use "../std/stream".
+R = use "../std/readiness".
+W = use "../std/watchedtransport".
+ReuseHost.open : Int -> Result (Int, Int) String .
+check name yes = if yes then Unit else error "connection: {name}".
+need r = case r of Ok x -> x | Err why -> error "connection fixture: {why}".
+get actor = m = receiveFrom (myself 0) actor; value = keep m; _ = drop m; value.
+cancelled sender u = case receiveFromNow (myself 0) sender of Err _ -> False | Ok m -> _ = drop m; True.
+duplicate conn = case conn of
+    T.Shut _ -> False
+  | T.Open _ state _ -> (case S.descriptor state of
+      Err _ -> False
+    | Ok fd -> (case S.adopt 16 (ST.Stream fd) of Err _ -> True | Ok _ -> False)).
+main =
+  me = myself 0;
+  pool = need (D.create 1);
+  p = R.start Unit;
+  began = Sys.timeUs Unit;
+  timed = D.resolve (need (S.forMs 20)) "fpr-delay.invalid" 12345 pool;
+  elapsed = Sys.timeUs Unit - began;
+  _ = check "caller abandons slow OS resolver" (timed == Err T.TimedOut and elapsed < 150000);
+  busy = D.resolve (need (S.forMs 50)) "localhost" 12345 pool;
+  _ = check "abandoned work still occupies bounded pool" (busy == Err (T.Io "resolver busy"));
+  _ = Sys.sleepUs 220000;
+  addresses = need (D.resolve (need (S.forMs 1000)) "localhost" 12345 pool);
+  _ = check "pool recovers when abandoned OS work finishes" (addresses != Nil);
+  signal = spawn (fn self -> _ = Sys.sleepUs 10000; _ = send me Unit; Unit);
+  stopped = D.resolve (need (S.within 1000 (cancelled signal))) "fpr-delay.invalid" 12345 pool;
+  _ = check "resolver cancellation" (stopped == Err T.Cancelled);
+  _ = Sys.sleepUs 220000;
+  listener = need (TCP.listen "127.0.0.1" 0);
+  port = TCP.port listener;
+  server = spawn (fn self ->
+    (raw, _) = need (TCP.accept listener);
+    _ = check "connected managed write arrives" (ST.readExactly 3 (ST.reader raw) |> (fn pair -> case pair of (answer, _) -> answer == Ok "abc"));
+    _ = need (ST.write "xyz" raw);
+    _ = need (ST.close raw);
+    _ = send me Unit; Unit);
+  conn = need (C.connectWith (W.wait p) (need (S.forMs 1000)) pool "localhost" port 16);
+  _ = check "duplicate adoption rejected" (duplicate conn);
+  oldFd = case conn of T.Open _ state _ -> need (S.descriptor state) | T.Shut _ -> error "unexpected closed fixture";
+  (written, c1) = T.writeAll (need (S.forMs 1000)) "abc" conn;
+  _ = check "write connected" (written == Ok 3);
+  (read, c2) = T.readExactly (need (S.forMs 1000)) 3 c1;
+  _ = check "read connected" (read == Ok "xyz");
+  _ = need (case T.close c2 of (answer, _) -> answer);
+  (staleRead, _) = T.readSome (need (S.forMs 1000)) 0 conn;
+  (staleWrite, _) = T.writeAll (need (S.forMs 1000)) "" conn;
+  _ = check "old aliases refuse even empty operations" (staleRead == Err (T.Closed, "") and staleWrite == Err (T.Closed, 0));
+  _ = get server;
+  (reusedFd, otherFd) = need (ReuseHost.open oldFd);
+  _ = check "same descriptor number reused" (reusedFd == oldFd);
+  fresh = need (S.adopt 16 (ST.Stream reusedFd));
+  (oldClose, _) = T.close conn;
+  _ = check "stale close cannot close reused descriptor" (oldClose == Err T.Closed);
+  (newWrite, fresh2) = T.writeAll (need (S.forMs 1000)) "new" fresh;
+  _ = check "new lease remains usable" (newWrite == Ok 3 and ST.readWithin 1000 3 (ST.Stream otherFd) == Ok "new");
+  _ = T.close fresh2;
+  _ = need (ST.close (ST.Stream otherFd));
+  # A killed owner's lease is released by the reaper, even without close.
+  observer = spawn (fn self ->
+    (raw, _) = need (TCP.accept listener);
+    ended = ST.readWithin 1000 1 raw;
+    _ = ST.close raw;
+    _ = send me (ended == Ok ""); Unit);
+  owner = spawn (fn self ->
+    c = need (C.connect (need (S.forMs 1000)) pool "127.0.0.1" port 16);
+    _ = send me c;
+    receive self);
+  alias = get owner;
+  (wrong, _) = T.readSome (need (S.forMs 1000)) 0 alias;
+  _ = check "empty operations enforce owner" (wrong == Err (T.WrongOwner, ""));
+  _ = kill owner;
+  _ = check "actor death closes managed socket" (get observer);
+  (afterDeath, _) = T.writeAll (need (S.forMs 1000)) "" alias;
+  _ = check "dead owner handle cannot access reused resource" (afterDeath == Err (T.Closed, 0));
+  _ = need (TCP.stop listener);
+  refused = C.connect (need (S.forMs 1000)) pool "127.0.0.1" port 16;
+  _ = check "refused TCP cleans attempt" (case refused of Err (T.Io _) -> True | _ -> False);
+  _ = R.stop p;
+  _ = need (D.close pool);
+  print "connection: bounded DNS, pool admission/recovery, cancellation, nonblocking connect, stale aliases, owner checks and death cleanup PASS".

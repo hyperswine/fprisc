@@ -1,0 +1,57 @@
+unsafe base.
+C = use "std/clientcalc".
+B = use "std/browsercalc".
+M = use "std/livemetrics".
+J = use "std/json".
+L = use "std/list".
+P = use "std/program".
+JS = use "std/livejs".
+
+check label yes = if yes then Unit else error "livemetrics: {label}".
+env = C.Env (fn k -> error "unexpected number {k}") (fn k -> error "unexpected text {k}")
+  (fn k -> if k == "values" then [9007199254740993, 4, 0 - 2, 9007199254740992] else error "unexpected sequence").
+values ns = C.Values (L.map C.Literal ns).
+intRow e = J.object [("code", J.Text ("String({C.jsInt e})")), ("want", J.Text (str (C.evalInt env e)))].
+listRow e = J.object [("code", J.Text ("({C.jsList e}).map(String).join(',')")),
+  ("want", J.Text (strJoin "," (L.map str (C.evalList env e))))].
+formatRow micros divisor =
+  e = M.milliseconds (C.Literal micros) (C.Literal divisor);
+  J.object [("code", J.Text (C.jsText e)), ("want", J.Text (C.evalText env e))].
+vectors = L.append
+  (L.map intRow [C.Length (C.Sequence "values"), C.Sum (values [0 - 3, 4, 9]),
+    C.Maximum (values [0 - 9, 0 - 2]) (C.Literal 0),
+    C.Maximum (values Nil) (C.Literal 7),
+    C.Maximum (values [3]) (C.Quot (C.Literal 1) (C.Literal 0)),
+    C.At (C.Sorted (C.Sequence "values")) (C.Literal 2)])
+  (L.append
+    (L.map listRow [C.Sorted (C.Sequence "values"),
+      C.TakeLast 0 (C.Sequence "values"), C.TakeLast 2 (C.Sequence "values"),
+      C.TakeLast 10 (C.Sequence "values"), C.Snoc (C.Sequence "values") (C.Literal 8),
+      C.TakeLast 32 (values (L.range 1 40))])
+    (L.concatMap (fn n -> L.map (formatRow n) [1, 3, 7]) (L.range 0 250))).
+rollback = B.program [B.SetNumber "n" (C.Literal 0), B.SetSequence "xs" (values Nil)]
+  [B.On "test:bad" [B.SetNumber "n" (C.Literal 1), B.SetSequence "xs" (C.Snoc (C.Sequence "xs") (C.Literal 1)),
+    B.PutText (B.Id "rollback") (C.Text "wrong"),
+    B.SetNumber "overflow" (C.Add (C.Literal (intMax Unit)) (C.Literal 1))],
+   B.On "test:show" [B.PutText (B.Id "rollback") (C.Concat [C.Decimal (C.Number "n"), C.Text ":", C.Decimal (C.Length (C.Sequence "xs"))])]].
+snapshot = J.object [("runtime", J.Text (B.runtime Unit)),
+  ("vectors", J.Sequence vectors), ("script", J.Text (M.script (B.Id "rtt") "")),
+  ("rollback", J.Text rollback), ("transport", J.Text (JS.src Unit)),
+  ("errors", J.strings [C.jsInt (C.At (values [1]) (C.Literal (0 - 1))),
+    C.jsInt (C.At (values [1]) (C.Literal 1)),
+    C.jsInt (C.Sum (values [intMax Unit, 1, 0 - 1]))])].
+main = case P.args Unit of
+    ["snapshot"] -> _ = print (J.render snapshot); 0
+  | ["bad-take"] -> _ = print (C.jsList (C.TakeLast (0 - 1) (values Nil))); 0
+  | ["bad-at"] -> _ = print (C.evalInt env (C.At (values [1]) (C.Literal 1))); 0
+  | ["bad-sum"] -> _ = print (C.evalInt env (C.Sum (values [intMax Unit, 1, 0 - 1]))); 0
+  | ["bad-interval"] -> _ = print (B.program Nil [B.Every 0 Nil]); 0
+  | _ ->
+      _ = check "last 32" (C.evalList env (C.TakeLast 32 (values (L.range 1 40))) == L.range 9 40);
+      _ = check "sequence predicate" (C.evalBool env (C.Equal (C.Length (C.Sequence "values")) (C.Literal 4)));
+      _ = check "rounding boundary" (C.evalText env (M.ms (C.Literal 49)) == "0.0" and C.evalText env (M.ms (C.Literal 50)) == "0.1");
+      _ = check "exact average" (C.evalText env (M.milliseconds (C.Literal 149) (C.Literal 3)) == "0.0" and
+        C.evalText env (M.milliseconds (C.Literal 150) (C.Literal 3)) == "0.1");
+      _ = check "timer bounds" (B.validInterval 1 and B.validInterval 2147483647 and not (B.validInterval 2147483648));
+      _ = print "livemetrics: exact rounding, bounded immutable sequences, checked reductions and timer bounds PASS";
+      0.

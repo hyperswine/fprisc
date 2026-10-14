@@ -1,0 +1,187 @@
+# Read-only printer dashboard. std/live owns the model and per-tab controls;
+# the LAN bridge atomically replaces a small, public telemetry snapshot.
+# Run tools/printer_dashboard.py --demo, or see examples/printer-dashboard/README.md.
+unsafe base.
+Live = use "std/live".
+G = use "std/view".
+LJ = use "std/livejs".
+List = use "std/list".
+S = use "std/string".
+File = use "std/file".
+Clock = use "std/clock".
+Config = use "std/config".
+Decode = use "std/decode".
+Json = use "std/json".
+Option = use "std/option".
+Program = use "std/program".
+El = G.El.
+Txt = G.Txt.
+Dyn = G.Dyn.
+Cls = G.Cls.
+Att = G.Att.
+Msg = Type (Tick | Expand String | Camera String).
+codec = @Msg.
+Sess = {sid : Int, expanded : List String, cameras : List String}.
+# Public allowlist only. The gateway verifies signatures and gates HTTP/WS/camera;
+# private keys, challenges and bearer sessions never enter the live model.
+Model = {printers : List Json.Value, auth : List Json.Value, generated : Int, now : Int,
+         tickUs : Int, lastTick : Int, ticks : Int, sessions : List Sess, demo : Bool, issue : String}.
+noSess = { sid = 0, expanded = Nil, cameras = Nil }.
+getSess sid m = Option.withDefault { noSess | sid = sid } (List.find (fn s -> s.sid == sid) m.sessions).
+putSess m s = { m | sessions = s :: List.filter (fn old -> old.sid != s.sid) m.sessions }.
+toggle k xs = if List.member k xs then List.filter (fn x -> x != k) xs else k :: xs.
+text k v = Option.withDefault "" (Option.andThen Json.asString (Json.field k v)).
+integer k v = Option.withDefault 0 (Option.andThen Json.asInt (Json.field k v)).
+boolean k v = Option.withDefault False (Option.andThen Json.asBool (Json.field k v)).
+number k v = Option.withDefault "—" (Option.andThen Json.asReal (Json.field k v)).
+values k v = Option.withDefault Nil (Option.andThen Json.asList (Json.field k v)).
+validPrinter p = strlen (text "id" p) > 0 and strlen (text "name" p) > 0.
+validSnapshot v = case Option.andThen Json.asList (Json.field "printers" v) of
+    Option.None -> False
+  | Option.Some ps -> List.length ps <= 24 and List.all validPrinter ps and List.length (List.unique (List.map (text "id") ps)) == List.length ps and integer "generated_at" v > 0.
+load path m = case File.readText path of
+    Err _ -> { m | issue = "Waiting for the local printer bridge. Last known values may be out of date." }
+  | Ok raw -> (if strlen raw > 262144 then { m | issue = "Printer snapshot is too large; keeping the previous values." }
+      else case Json.parse raw of
+        Err _ -> { m | issue = "Could not read the printer snapshot; keeping the previous values." }
+      | Ok v -> (if integer "schema" v != 1 or not (validSnapshot v) then { m | issue = "Unsupported printer snapshot; keeping the previous values." }
+          else { m | printers = values "printers" v, auth = values "auth" v, generated = integer "generated_at" v, demo = boolean "demo" v, issue = "" })).
+initial : String -> Model.
+initial path = load path { printers = Nil, auth = Nil, generated = 0, now = Clock.now Unit, tickUs = 0, lastTick = Clock.monotonic Unit,
+                          ticks = 0, sessions = Nil, demo = False, issue = "" }.
+update path ev m = case ev of
+    Live.Msg 0 Tick ->
+      t = Clock.monotonic Unit;
+      next = load path m;
+      ({ next | now = Clock.now Unit, tickUs = t - m.lastTick, lastTick = t, ticks = m.ticks + 1 }, Nil)
+  | Live.Msg sid (Expand id) ->
+      s = getSess sid m;
+      (if List.any (fn p -> text "id" p == id) m.printers then (putSess m { s | expanded = toggle id s.expanded }, Nil) else (m, Nil))
+  | Live.Msg sid (Camera id) ->
+      s = getSess sid m;
+      allowed = List.any (fn p -> text "id" p == id and boolean "camera_available" p) m.printers;
+      (if allowed then (putSess m { s | cameras = toggle id s.cameras, expanded = (if List.member id s.expanded then s.expanded else id :: s.expanded) }, Nil) else (m, Nil))
+  | Live.Left sid -> ({ m | sessions = List.filter (fn s -> s.sid != sid) m.sessions }, Nil)
+  | _ -> (m, Nil).
+subs ms m = [Live.Every ms Tick].
+project sid m = { printers = m.printers, now = m.now, generated = m.generated, tickUs = m.tickUs, ticks = m.ticks,
+                   demo = m.demo, issue = m.issue, session = getSess sid m }.
+age now at = if at <= 0 then "No report yet" else "{(if now > at then now - at else 0)}s ago".
+stale v = v.generated == 0 or v.now - v.generated > 5 or strlen v.issue > 0.
+link p v = if stale v then "STALE" else text "connection" p.
+pill c s = El "span" [Cls c] [Txt s].
+metric title value suffix = El "div" [Cls "metric"] [El "dt" Nil [Txt title], El "dd" Nil [Dyn value, El "small" Nil [Txt suffix]]].
+row title value = El "div" [Cls "data-row"] [El "dt" Nil [Txt title], El "dd" Nil [Dyn value]].
+button label msg attrs = El "button" (G.send codec msg :: Att "type" "button" :: attrs) [Txt label].
+card v p =
+  id = text "id" p;
+  expanded = List.member id v.session.expanded;
+  camera = List.member id v.session.cameras;
+  connection = link p v;
+  progress = integer "progress" p;
+  G.key id (El "article" [Cls "printer-card"]
+    [ El "div" [Cls "card-head"]
+        [ El "div" [Cls "identity"] [El "span" [Cls "printer-mark", Att "aria-hidden" "true"] [Txt "▤"], El "div" Nil
+            [El "h2" Nil [Dyn (text "name" p)], El "p" [Cls "muted"] [Dyn (text "model" p), Txt " · ", Dyn (text "location" p)]]]
+        , pill (if connection == "ONLINE" then "badge online" else "badge offline") connection ]
+    , El "div" [Cls "job-line"] [El "strong" Nil [Dyn (text "state" p)], El "span" [Cls "muted"] [Dyn (text "remaining" p)]]
+    , El "p" [Cls "job-name"] [Dyn (text "job" p)]
+    , El "progress" [Att "max" "100", Att "value" (str progress), Att "aria-label" "Print progress"] Nil
+    , El "div" [Cls "progress-label"] [Dyn "{progress}%", El "span" [Cls "muted"] [Dyn (text "layers" p)]]
+    , El "dl" [Cls "metrics"] [metric "Nozzle" (number "nozzle" p) "°C", metric "Bed" (number "bed" p) "°C", metric "Reports" (number "report_hz" p) "Hz"]
+    , El "div" [Cls "freshness"] [El "span" [Cls "pulse"] Nil, Txt "Last report ", Dyn (age v.now (integer "last_report" p)), Txt " · ", Dyn (text "wifi" p)]
+    , El "div" [Cls "card-actions"]
+        [button (if expanded then "Hide details ↑" else "View details ↓") (Expand id) [Cls "quiet", Att "aria-expanded" (if expanded then "true" else "false"), Att "aria-controls" "details-{id}"]
+        , button (if camera then "Camera on" else "Camera off") (Camera id)
+            [Cls (if camera then "camera-toggle selected" else "camera-toggle"), Att "role" "switch", Att "aria-checked" (if camera then "true" else "false"), Att "aria-disabled" (if boolean "camera_available" p then "false" else "true")]]
+    , El "section" [Att "id" "details-{id}", Cls (if expanded then "details" else "details hidden")]
+        [El "dl" [Cls "detail-grid"]
+          [row "Nozzle target" (number "nozzle_target" p), row "Bed target" (number "bed_target" p), row "Print error" (text "error" p), row "Filament" (text "filament" p), row "Reports received" (number "reports" p), row "Last report (UTC)" (text "last_report_iso" p)]
+        , El "p" [Cls "notice"] [Dyn (text "note" p)]
+        , El "div" [Cls (if camera then "camera-pane" else "camera-pane hidden")]
+          [El "div" [Cls "camera-heading"] [Txt "LIVE VIEW", El "span" [Cls "muted"] [Txt "Native camera cadence"]]
+          , El "div" [Att "data-camera-id" id, Att "data-camera-on" (if camera and expanded then "true" else "false"), Att "aria-label" "Camera view from {text "name" p}"] Nil
+          , El "p" [Cls "camera-status muted", Att "data-camera-status" id] [Txt "Camera is off"]
+          , El "p" [Cls "muted footnote"] [Txt "Stream: ", Dyn (text "camera_state" p), Txt " · ", Dyn (number "camera_hz" p), Txt " Hz · last frame ", Dyn (age v.now (integer "camera_last_frame" p))]
+          , El "p" [Cls "muted footnote"] [Txt "Camera sleeps when this tab is hidden. A printer camera may update slowly; telemetry is the source of truth."]]]]).
+palette = {bg = G.Rgb 246 245 240, ink = G.Rgb 38 51 46, dim = G.Rgb 116 128 120,
+  card = G.Rgb 255 254 250, panel = G.Rgb 255 254 250, line = G.Rgb 228 231 223}.
+frame = [G.theme palette, G.utilities [G.MinHeight (G.Vh 100), G.ColourScheme G.LightScheme,
+  G.Background (G.ThemeColour G.Bg), G.Foreground (G.ThemeColour G.Ink),
+  G.DefineColour (G.NamedToken "paper") palette.card, G.DefineColour (G.NamedToken "muted") palette.dim,
+  G.DefineColour (G.NamedToken "green") (G.Rgb 38 108 81), G.DefineColour (G.NamedToken "orange") (G.Rgb 189 113 58)]].
+view ms sid v = G.renderStyled (El "div" frame [El "main" [Cls "page"]
+  [ El "header" [Cls "page-header"]
+      [El "div" Nil [El "p" [Cls "eyebrow"] [Txt "LOCAL WORKSHOP / PRINTERS"], El "h1" Nil [Txt "Print room"], El "p" [Cls "subtitle"] [Txt "A quiet view of what’s happening on the beds."]]
+      , El "div" [Cls "header-pills"] [pill "badge" "READ ONLY", pill (if v.demo then "badge demo" else "hidden") "DEMO DATA", El "button" [Att "type" "button", Att "data-sign-out" "true", Cls "quiet"] [Txt "Sign out"]]]
+  , El "section" [Cls "overview", Att "aria-label" "Dashboard health"]
+      [El "div" Nil [El "strong" Nil [Dyn (str (List.length v.printers))], Txt " printers"]
+      , El "div" Nil [Txt "Refresh ", El "strong" Nil [Txt "{ms} ms"], Txt " · observed ", Dyn "{v.tickUs / 1000} ms"]
+      , El "div" [Cls (if stale v then "health warning" else "health")] [Dyn (if stale v then "Bridge stale / unavailable" else "Bridge connected")]
+      , El "div" [Att "id" "lv-link", Cls "muted"] [Txt "live"]]
+  , El "p" [Cls (if strlen v.issue > 0 then "banner" else "hidden"), Att "role" "status"] [Dyn v.issue]
+  , El "section" [Cls "cards", Att "aria-label" "Printers"] (List.map (card v) v.printers)
+  , El "p" [Cls (if List.length v.printers == 0 then "empty" else "hidden")] [Txt "No printers yet. Start the bridge in demo mode or configure your local printers."]
+  , El "footer" Nil [Txt "FP-RISC · Shared live telemetry, per-tab controls. No print, motion or temperature commands."]]]).
+setting d k v = case Decode.run (Decode.field k d) v of Ok x -> x | Err why -> Program.fail 2 "printers: {why}".
+main = case Config.load { defaults = Json.object [("port", Json.Integer 6732), ("address", Json.Text "127.0.0.1"), ("status", Json.Text "printers-status.json"), ("store", Json.Text "printers.kvlog"), ("poll-ms", Json.Integer 1000)], file = Option.None, envPrefix = "PRINTERS_", args = Program.args Unit } of
+    Err why -> Program.fail 2 "printers: {why}"
+  | Ok v ->
+      ms = setting Decode.int "poll-ms" v;
+      (if ms < 250 or ms > 10000 then Program.fail 2 "printers: poll-ms must be 250..10000" else
+        path = setting Decode.string "status" v;
+        cfg = { Live.defaults | port = setting Decode.int "port" v, address = setting Decode.string "address" v, store = setting Decode.string "store" v, journal = False, title = "Print room", script = strcat (LJ.src Unit) cameraScript };
+        _ = Live.serveProjected cfg { init = initial path, update = update path, subs = subs ms, fields = Nil, codec = codec, project = project, same = (fn a b -> a == b), cache = Unit, view = (fn sid v cache -> (view ms sid v, Unit)), css = css };
+        0).
+
+css v = "*\{box-sizing:border-box}body\{margin:0;font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:14px}button\{font:inherit;cursor:pointer}button:focus-visible\{outline:3px solid #d49d69;outline-offset:4px}.page\{max-width:1160px;margin:auto;padding:56px 32px 30px}.page-header\{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:32px}.eyebrow\{font-size:11px;letter-spacing:2px;color:var(--green);font-weight:700;margin:0 0 12px}h1\{font-size:48px;letter-spacing:-2px;font-weight:600;margin:0 0 10px}h2\{font-size:20px;letter-spacing:-.4px;margin:0 0 6px}.subtitle\{color:var(--muted);margin:0;font-size:15px}.header-pills\{display:flex;gap:8px;margin-top:8px}.badge\{font-size:10px;font-weight:700;letter-spacing:1px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;white-space:nowrap}.demo\{background:#fff0cf;border-color:#efddb5;color:#8a641f}.online\{color:var(--green);background:#eef6ef;border-color:#d9e8dc}.offline\{background:#f8eee3;color:#996638}.overview\{display:flex;flex-wrap:wrap;gap:16px 32px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:17px 0;margin-bottom:28px;color:var(--muted);font-size:12px}.overview strong\{color:var(--ink)}.health\{margin-left:auto;color:var(--green)}.warning\{color:#ad673a}.cards\{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;align-items:start}.printer-card\{border:1px solid var(--line);border-radius:16px;background:var(--paper);padding:26px;box-shadow:0 4px 16px #22302503}.card-head,.identity\{display:flex;align-items:center;gap:12px}.card-head\{justify-content:space-between;gap:6px}.printer-mark\{width:46px;height:46px;display:grid;place-items:center;background:#f1f2ec;border:1px solid var(--line);border-radius:12px;font-size:26px;color:#52685b}.muted\{color:var(--muted)}p\{line-height:1.5}.identity p\{font-size:12px;margin:0}.job-line\{display:flex;justify-content:space-between;gap:10px;margin-top:27px;font-size:12px}.job-line strong\{text-transform:uppercase;letter-spacing:1.2px;color:var(--green)}.job-name\{margin:8px 0 19px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}progress\{display:block;appearance:none;width:100%;height:5px;border:0;border-radius:10px;overflow:hidden;background:#e9eee6}progress::-webkit-progress-bar\{background:#e9eee6}progress::-webkit-progress-value\{background:#729b79;border-radius:10px}progress::-moz-progress-bar\{background:#729b79}.progress-label\{display:flex;justify-content:space-between;font-size:11px;margin-top:8px;font-variant-numeric:tabular-nums}.metrics\{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:26px 0 22px}dt\{font-size:11px;color:var(--muted);margin-bottom:8px}dd\{margin:0;font-variant-numeric:tabular-nums;font-size:25px;font-weight:500}dd small\{font-size:11px;color:var(--muted);margin-left:4px}.freshness\{font-size:11px;color:var(--muted);display:flex;gap:5px;align-items:center;flex-wrap:wrap}.pulse\{height:5px;width:5px;border-radius:50%;background:#a2b29d;margin-right:3px}.card-actions\{display:flex;justify-content:space-between;gap:12px;border-top:1px solid var(--line);margin-top:23px;padding-top:18px}.quiet\{background:none;border:0;color:var(--ink);padding:6px 0;font-size:12px}.camera-toggle\{border:1px solid var(--line);border-radius:30px;background:transparent;color:var(--muted);padding:7px 12px;font-size:12px}.camera-toggle:before\{content:'';display:inline-block;background:#c6cec3;width:7px;height:7px;border-radius:50%;margin-right:7px}.camera-toggle.selected\{background:#edf5ed;border-color:#ccdccc;color:var(--green)}.camera-toggle.selected:before\{background:var(--green)}.camera-toggle[aria-disabled=true]\{opacity:.45;cursor:not-allowed}.details\{padding-top:24px}.detail-grid\{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.data-row dd\{font-size:12px;overflow-wrap:anywhere;line-height:1.4}.data-row dt\{margin-bottom:5px}.notice\{font-size:12px;color:#94724e;min-height:0}.camera-pane\{border-top:1px solid var(--line);margin-top:23px;padding-top:18px}.camera-heading\{font-size:10px;letter-spacing:1px;display:flex;justify-content:space-between;margin-bottom:13px}.camera-pane [data-camera-id]\{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;border-radius:8px;background:#202d27}.camera-status,.footnote\{font-size:11px;line-height:1.5}.hidden\{display:none!important}.banner\{padding:14px;border:1px solid #ecdabf;border-radius:8px;color:#966131;background:#fff5e8}.empty\{padding:60px;text-align:center;color:var(--muted)}footer\{margin-top:32px;padding-top:20px;border-top:1px solid var(--line);font-size:11px;color:var(--muted);line-height:1.7}@media(max-width:760px)\{.page\{padding:30px 18px}.page-header\{flex-direction:column}h1\{font-size:38px}.header-pills\{margin-top:0}.cards\{grid-template-columns:1fr}.health\{margin-left:0}.printer-card\{padding:22px}.overview\{gap:12px 20px}}@media(prefers-reduced-motion:no-preference)\{button\{transition:background .15s,border-color .15s}}
+".
+cameraScript = "
+// Only browser media lifecycle lives here. Telemetry and controls are FP-RISC.
+(function () \{
+  const media = new Map();
+  let queued = false;
+  function message(label, text) \{ if (label && label.textContent !== text) label.textContent = text; }
+  function sync() \{
+    queued = false;
+    const connected = document.getElementById('lv-link')?.textContent === 'live';
+    for (const [host, state] of media) \{
+      if (!host.isConnected) \{ state.img.removeAttribute('src'); media.delete(host); }
+    }
+    document.querySelectorAll('[data-camera-id]').forEach(host => \{
+      const id = host.dataset.cameraId;
+      const label = document.querySelector('[data-camera-status=\"' + id + '\"]');
+      let state = media.get(host);
+      if (!state) \{
+        // Shadow contents are media-owned: std/live morphs the host's
+        // attributes/light DOM, never this image's src. A progress change
+        // therefore does not reconnect an otherwise healthy video stream.
+        const shadow = host.attachShadow(\{mode:'open'});
+        const img = document.createElement('img');
+        img.alt = host.getAttribute('aria-label') || 'Printer camera';
+        img.style.cssText = 'display:block;width:100%;height:100%;aspect-ratio:16/9;object-fit:contain;border-radius:8px';
+        shadow.appendChild(img);
+        state = \{img, text:'Camera is off'};
+        img.onload = () => \{ state.text = 'Camera connected · native frame rate'; schedule(); };
+        img.onerror = () => \{ state.text = 'Camera unavailable. Switch off and on to retry.'; schedule(); };
+        media.set(host, state);
+      }
+      const on = host.dataset.cameraOn === 'true' && !document.hidden && connected;
+      if (!on) \{
+        if (state.img.hasAttribute('src')) state.img.removeAttribute('src');
+        state.text = host.dataset.cameraOn === 'true' ? 'Camera paused while this tab is hidden or disconnected' : 'Camera is off';
+      } else if (!state.img.hasAttribute('src')) \{
+        state.text = 'Connecting to camera…';
+        state.img.src = '/camera/' + encodeURIComponent(id) + '.mjpg';
+      }
+      message(label, state.text);
+    });
+  }
+  function schedule() \{ if (!queued) \{ queued = true; queueMicrotask(sync); } }
+  new MutationObserver(schedule).observe(document.getElementById('lv-root'), \{childList:true, subtree:true, attributes:true, attributeFilter:['data-camera-on']});
+  new MutationObserver(schedule).observe(document.getElementById('lv-link'), \{childList:true, subtree:true, characterData:true});
+  document.addEventListener('visibilitychange', schedule);
+  addEventListener('pagehide', () => \{ for (const state of media.values()) state.img.removeAttribute('src'); });
+  schedule();
+})();
+".

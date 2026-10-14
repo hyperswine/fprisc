@@ -1,0 +1,47 @@
+unsafe base.
+T = use "../std/transport".
+S = use "../std/sockettransport".
+D = use "../std/resolver".
+C = use "../std/connect".
+TLS = use "../std/tls".
+P = use "../std/program".
+String = use "../std/string".
+R = use "../std/readiness".
+W = use "../std/watchedtransport".
+need r = case r of Ok x -> x | Err why -> error "TLS fixture: {why}".
+check why yes = if yes then Unit else error "TLS fixture: {why}".
+main = case P.args Unit of
+  [portText, roots, peer, mode] ->
+    port = need (String.toInt portText);
+    pool = need (D.create 2);
+    p = R.start Unit;
+    tcp = need (C.connectWith (W.wait p) (need (S.forMs 2000)) pool "127.0.0.1" port 16384);
+    limit = need (S.forMs (if mode == "stall" then 30 else 2000));
+    upgraded = TLS.upgrade limit peer (TLS.CaFile roots) (if mode == "reject13" then TLS.TLS13 else TLS.TLS12) tcp;
+    _ = case mode of
+      "reject" -> check "certificate/name rejection" (case upgraded of Err (T.Io why) -> String.contains "certificate verify failed" why | _ -> False)
+    | "reject13" -> check "minimum protocol rejection" (case upgraded of Err (T.Io _) -> True | _ -> False)
+    | "unsupported" -> check "explicit unsupported backend" (case upgraded of Err (T.Unsupported _) -> True | _ -> False)
+    | "stall" -> check "handshake deadline" (upgraded == Err T.TimedOut)
+    | _ ->
+        conn = need upgraded;
+        (stale, _) = T.writeAll (need (S.forMs 1000)) "" tcp;
+        _ = check "TLS upgrade consumes TCP identity" (stale == Err (T.Closed, 0));
+        payload = if mode == "large" then String.repeat 32768 "abcdefgh" else "hello TLS";
+        (written, c1) = T.writeAll limit payload conn;
+        _ = check "TLS write" (written == Ok (strlen payload));
+        if mode == "readstall" then
+          (answer, c2) = T.readSome (need (S.forMs 20)) 9 c1;
+          _ = check "pending TLS read timeout reports uncertainty" (case answer of Err (T.OutcomeUnknown T.TimedOut, _) -> True | Err (T.TimedOut, _) -> True | _ -> False);
+          (stale2, _) = T.writeAll (need (S.forMs 1000)) "" c2;
+          _ = check "aborted TLS lease is retired" (stale2 == Err (T.Closed, 0));
+          Unit
+        else
+          (answer, c2) = T.readExactly limit (strlen payload) c1;
+          _ = check "TLS echo" (answer == Ok payload);
+          (closed, _) = TLS.shutdown limit c2;
+          need closed;
+    _ = R.stop p;
+    _ = need (D.close pool);
+    print "TLS {mode}: PASS"
+  | _ -> error "TLS fixture needs port roots peer mode".

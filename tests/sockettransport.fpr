@@ -1,0 +1,150 @@
+unsafe base.
+T = use "../std/transport".
+Socket = use "../std/sockettransport".
+Tcp = use "../std/tcp".
+ST = use "../std/stream".
+IO = use "../std/osio".
+F = use "../std/file".
+S = use "../std/string".
+P = use "../std/program".
+Notice = Type (Ready | Cancel | Unrelated | CancelDone Bool).
+check label yes = if yes then Unit else error "sockettransport: {label}".
+need r = case r of Ok x -> x | Err why -> error "fixture: {why}".
+budget ms = need (Socket.within ms T.neverCancel).
+adopt raw = need (Socket.adopt 16384 raw).
+readFailure result = case result of Ok _ -> error "expected read failure" | Err x -> x.
+finish peer listener =
+  m = receiveFrom (myself 0) peer;
+  result = keep m;
+  _ = drop m;
+  _ = need (Tcp.stop listener);
+  check "peer completed" (result == Ok Unit).
+pair handler =
+  listener = need (Tcp.listen "127.0.0.1" 0);
+  me = myself 0;
+  peer = spawn (fn self ->
+    (raw, _) = need (Tcp.accept listener);
+    result = handler raw;
+    _ = send me result;
+    Unit);
+  raw = need (Tcp.connect "127.0.0.1" (Tcp.port listener));
+  (listener, peer, raw).
+echo raw = T.withConnection (adopt raw) (fn c ->
+  limit = budget 5000;
+  case T.readExactly limit 262144 c of
+    (Err (why, _), c2) -> (Err why, c2)
+  | (Ok bytes, c2) -> (case T.writeAll limit bytes c2 of (Err (why, _), c3) -> (Err why, c3) | (Ok _, c3) -> (Ok Unit, c3))).
+fragments raw =
+  _ = need (ST.write "a" raw);
+  _ = Sys.sleepUs 1000;
+  _ = need (ST.write "bc" raw);
+  _ = Sys.sleepUs 1000;
+  _ = need (ST.write "def" raw);
+  _ = need (ST.close raw);
+  Ok Unit.
+short raw = _ = need (ST.write "abc" raw); _ = need (ST.close raw); Ok Unit.
+drip raw = _ = dripGo raw 10; _ = need (ST.close raw); Ok Unit.
+dripGo raw n = if n == 0 then Unit else
+  case ST.write "x" raw of Err _ -> Unit | Ok _ -> _ = Sys.sleepUs 20000; dripGo raw (n - 1).
+quiet raw = _ = Sys.sleepUs 600000; _ = need (ST.close raw); Ok Unit.
+cancelFrom sender u = case receiveFromNow (myself 0) sender of
+    Err _ -> False
+  | Ok m -> result = case m of Cancel -> True | _ -> False; _ = drop m; result.
+readyLoop fd n count = if n == 0 then count else case IO.readyFor fd 2 of
+  Ok b -> readyLoop fd (n - 1) (if b then count + 1 else count)
+  | Err why -> error why.
+main =
+  (l1, p1, raw1) = pair echo;
+  c1 = adopt raw1;
+  _ = check "writable readiness" (IO.readyFor (ST.fd raw1) 2 == Ok True);
+  _ = check "invalid readiness mask" (case IO.readyFor (ST.fd raw1) 0 of Err _ -> True | _ -> False);
+  _ = check "invalid descriptor" (case IO.readyFor (0 - 1) 1 of Err _ -> True | _ -> False);
+  _ = readyLoop (ST.fd raw1) 10 0;
+  before = heapUsed Unit;
+  count = readyLoop (ST.fd raw1) 10000 0;
+  after = heapUsed Unit;
+  _ = check "successful primitive readiness allocates nothing" (count == 10000 and after == before);
+  data = S.repeat 32768 "01234567";
+  result = T.withConnection c1 (fn c ->
+    limit = budget 5000;
+    (written, c2) = T.writeAll limit data c;
+    case written of
+      Err (why, _) -> (Err why, c2)
+    | Ok n -> (case T.readExactly limit n c2 of
+        (Err (why, _), c3) -> (Err why, c3)
+      | (Ok back, c3) -> (Ok (back == data), c3)));
+  _ = check "256 KiB native duplex transfer" (result == Ok True);
+  _ = finish p1 l1;
+  (l2, p2, raw2) = pair fragments;
+  (fragmented, c2) = T.readExactly (budget 1000) 6 (adopt raw2);
+  _ = check "fragmented socket read" (fragmented == Ok "abcdef");
+  _ = T.close c2;
+  _ = finish p2 l2;
+  (l3, p3, raw3) = pair short;
+  (ended, c3) = T.readExactly (budget 1000) 5 (adopt raw3);
+  _ = check "native EOF reports consumed prefix" (ended == Err (T.EndOfStream, "abc"));
+  _ = T.close c3;
+  _ = finish p3 l3;
+  (l4, p4, raw4) = pair drip;
+  c4 = adopt raw4;
+  limit4 = budget 45;
+  start4 = Sys.timeUs Unit;
+  (timed, c4b) = T.readExactly limit4 10 c4;
+  elapsed4 = Sys.timeUs Unit - start4;
+  _ = check "slow drip cannot renew deadline" (case timed of Err (T.TimedOut, prefix) -> strlen prefix > 0 and strlen prefix < 10 and elapsed4 < 300000 | _ -> False);
+  _ = T.close c4b;
+  _ = finish p4 l4;
+  large = S.repeat 2097152 "abcdefgh";
+  (l5, p5, raw5) = pair quiet;
+  me = myself 0;
+  c5 = adopt raw5;
+  wrong = spawn (fn self ->
+    (answer, copy) = T.readSome (budget 1000) 1 c5;
+    (release, _) = T.close copy;
+    _ = send me (answer == Err (T.WrongOwner, "") and release == Err T.WrongOwner);
+    Unit);
+  m5 = receiveFrom me wrong;
+  _ = check "another actor cannot use or release socket" (keep m5);
+  _ = drop m5;
+  limit5 = budget 20;
+  start5 = Sys.timeUs Unit;
+  (blocked, c5b) = T.writeAll limit5 large c5;
+  elapsed5 = Sys.timeUs Unit - start5;
+  _ = check "native backpressure bounded, with committed count" (case blocked of Err (T.TimedOut, sent) -> sent >= 0 and sent < strlen large and elapsed5 < 400000 | _ -> False);
+  (closed5, shut5) = T.close c5b;
+  (closedAgain, shut5b) = T.close shut5;
+  (stale, _) = T.writeAll (budget 100) "" shut5b;
+  _ = check "returned closed socket handle" (closed5 == Ok Unit and closedAgain == Ok Unit and stale == Err (T.Closed, 0));
+  _ = finish p5 l5;
+  listener = need (Tcp.listen "127.0.0.1" 0);
+  server = spawn (fn self -> (raw, _) = need (Tcp.accept listener); result = quiet raw; _ = send me result; Unit);
+  port = Tcp.port listener;
+  client = spawn (fn self ->
+    raw = need (Tcp.connect "127.0.0.1" port);
+    conn = adopt raw;
+    limit = need (Socket.within 2000 (cancelFrom me));
+    _ = send me Ready;
+    begun = Sys.timeUs Unit;
+    (answer, next) = T.readSome limit 1 conn;
+    elapsed = Sys.timeUs Unit - begun;
+    _ = T.close next;
+    untouched = case receiveNow self of Ok m -> value = case m of Unrelated -> True | _ -> False; _ = drop m; value | Err _ -> False;
+    _ = send me (CancelDone (answer == Err (T.Cancelled, "") and elapsed < 400000 and untouched));
+    Unit);
+  ready = receiveFrom me client;
+  _ = check "cancellation client ready" (case ready of Ready -> True | _ -> False);
+  _ = drop ready;
+  unrelated = spawn (fn self -> _ = send client Unrelated; _ = send me Unit; Unit);
+  ack = receiveFrom me unrelated;
+  _ = drop ack;
+  _ = Sys.sleepUs 5000;
+  _ = send client Cancel;
+  done = receiveFrom me client;
+  _ = check "cancel during quiet wait preserves unrelated mailbox" (case done of CancelDone yes -> yes | _ -> False);
+  _ = drop done;
+  _ = finish server listener;
+  file = case P.args Unit of [path] -> path | _ -> error "fixture needs a temporary regular file";
+  rejected = F.withOpen file "r" (fn raw -> case Socket.adopt 4096 raw of Err _ -> Ok True | Ok _ -> Ok False);
+  _ = check "blocking regular file cannot be adopted" (rejected == Ok True);
+  _ = print "sockettransport: real TCP fragmentation/EOF, duplex, backpressure/deadline, cancellation, actor ownership, close and readiness PASS";
+  0.

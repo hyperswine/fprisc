@@ -1,0 +1,22 @@
+[
+  {
+    "id": "a1",
+    "name": "Bambu A1",
+    "model": "A1 + AMS Lite",
+    "location": "Work bench",
+    "host": "192.168.1.100",
+    "serial": "YOUR_A1_SERIAL",
+    "access_code_env": "BAMBU_A1_ACCESS_CODE",
+    "camera": "bambu-jpeg"
+  },
+  {
+    "id": "p1s",
+    "name": "Bambu P1S",
+    "model": "P1S",
+    "location": "Enclosure shelf",
+    "host": "192.168.1.101",
+    "serial": "YOUR_P1S_SERIAL",
+    "access_code_env": "BAMBU_P1S_ACCESS_CODE",
+    "camera": "bambu-jpeg"
+  }
+]

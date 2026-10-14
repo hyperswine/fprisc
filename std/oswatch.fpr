@@ -6,6 +6,12 @@ Os.watchTake : Int -> List Int .
 watchOpen u = Os.watchOpen u.
 watchArm w fds = Os.watchArm w fds.
 watchTake w = Os.watchTake w.
+# Directional off-hart wait, with a relative kernel timer (-1 means untimed).
+# Timer-only expiry raises an IRQ; take then returns Nil. Policy lives above.
+Os.watchArmEvents : Int -> List (Int, Int) -> Int -> Result Unit String .
+Os.watchTakeEvents : Int -> List (Int, Int) .
+watchArmEvents w events us = Os.watchArmEvents w events us.
+watchTakeEvents w = Os.watchTakeEvents w.
 IO = use "osio".
 poll fds = IO.poll fds.
 

@@ -1,0 +1,197 @@
+# Small, pure client computations (ExtBase). These values can be evaluated
+# natively or lowered to JavaScript. No raw-code constructor is provided.
+# JavaScript uses checked BigInt arithmetic with this target's Int bounds,
+# including truncation toward zero and a check after EACH operation.
+S = use "string".
+J = use "json".
+L = use "list".
+O = use "order".
+Opt = use "option".
+
+IntExpr = Type (Literal Int | Number String | Add IntExpr IntExpr |
+  Sub IntExpr IntExpr | Mul IntExpr IntExpr | Quot IntExpr IntExpr |
+  Rem IntExpr IntExpr | IfInt BoolExpr IntExpr IntExpr |
+  Length IntListExpr | Sum IntListExpr | Maximum IntListExpr IntExpr |
+  At IntListExpr IntExpr | TextLength TextListExpr).
+BoolExpr = Type (Equal IntExpr IntExpr | Less IntExpr IntExpr |
+  And BoolExpr BoolExpr | Or BoolExpr BoolExpr | Not BoolExpr |
+  TextEqual TextExpr TextExpr).
+TextExpr = Type (Text String | StringVar String | Decimal IntExpr |
+  Concat (List TextExpr) | PadZero Int IntExpr | IfText BoolExpr TextExpr TextExpr |
+  Trim TextExpr | TextAt TextListExpr IntExpr).
+IntListExpr = Type (Values (List IntExpr) | Sequence String |
+  Snoc IntListExpr IntExpr | TakeLast Int IntListExpr | Sorted IntListExpr).
+TextListExpr = Type (Texts (List TextExpr) | TextSequence String |
+  TextSnoc TextListExpr TextExpr | TextTakeLast Int TextListExpr |
+  IfTexts BoolExpr TextListExpr TextListExpr).
+Env = Type (Env (String -> Int) (String -> String) (String -> List Int) |
+  TextEnv (String -> Int) (String -> String) (String -> List Int) (String -> List String)).
+noNumber k = error "ClientCalc: missing number {k}".
+noString k = error "ClientCalc: missing text {k}".
+noSequence k = error "ClientCalc: missing sequence {k}".
+
+integer : (String -> Int) -> IntExpr -> Int .
+integer env e = intGo (Env env noString noSequence) e.
+evalInt : Env -> IntExpr -> Int .
+evalInt env e = intGo env e.
+intGo : unsafe Env -> IntExpr -> Int .
+intGo env e = case e of
+    Literal n -> n
+  | Number k -> (case env of Env ns _ _ -> ns k | TextEnv ns _ _ _ -> ns k)
+  | Add a b -> intGo env a + intGo env b
+  | Sub a b -> intGo env a - intGo env b
+  | Mul a b -> intGo env a * intGo env b
+  | Quot a b -> intGo env a / intGo env b
+  | Rem a b -> intGo env a % intGo env b
+  | IfInt p a b -> if boolGo env p then intGo env a else intGo env b
+  | Length xs -> L.length (listGo env xs)
+  | Sum xs -> L.sum (listGo env xs)
+  | Maximum xs fallback -> (case L.maximum O.int (listGo env xs) of
+      Opt.Some n -> n | Opt.None -> intGo env fallback)
+  | At xs index -> (case L.get (intGo env index) (listGo env xs) of
+      Opt.Some n -> n | Opt.None -> error "ClientCalc.At: index out of bounds")
+  | TextLength xs -> L.length (textListGo env xs).
+boolean : (String -> Int) -> BoolExpr -> Bool .
+boolean env e = boolGo (Env env noString noSequence) e.
+evalBool : Env -> BoolExpr -> Bool .
+evalBool env e = boolGo env e.
+boolGo : unsafe Env -> BoolExpr -> Bool .
+boolGo env e = case e of
+    Equal a b -> intGo env a == intGo env b
+  | Less a b -> intGo env a < intGo env b
+  | And a b -> if boolGo env a then boolGo env b else False
+  | Or a b -> if boolGo env a then True else boolGo env b
+  | Not a -> not (boolGo env a)
+  | TextEqual a b -> textGo env a == textGo env b.
+text : (String -> Int) -> (String -> String) -> TextExpr -> String .
+text numbers strings e = textGo (Env numbers strings noSequence) e.
+evalText : Env -> TextExpr -> String .
+evalText env e = textGo env e.
+textGo : unsafe Env -> TextExpr -> String .
+textGo env e = case e of
+    Text s -> s
+  | StringVar k -> (case env of Env _ ss _ -> ss k | TextEnv _ ss _ _ -> ss k)
+  | Decimal n -> str (intGo env n)
+  | Concat xs -> strJoin "" (textsGo env xs)
+  | PadZero width n -> if width < 0 then error "ClientCalc.PadZero: negative width"
+      else S.padLeft width "0" (str (intGo env n))
+  | IfText p a b -> if boolGo env p then textGo env a else textGo env b
+  | Trim t -> trim (textGo env t)
+  | TextAt xs index -> (case L.get (intGo env index) (textListGo env xs) of
+      Opt.Some t -> t | Opt.None -> "").
+textsGo : unsafe Env -> List TextExpr -> List String .
+textsGo env xs = case xs of Nil -> Nil | x :: r -> textGo env x :: textsGo env r.
+evalList : Env -> IntListExpr -> List Int .
+evalList env e = listGo env e.
+listGo : unsafe Env -> IntListExpr -> List Int .
+listGo env e = case e of
+    Values xs -> L.map (intGo env) xs
+  | Sequence k -> (case env of Env _ _ ls -> ls k | TextEnv _ _ ls _ -> ls k)
+  | Snoc xs n -> L.append (listGo env xs) [intGo env n]
+  | TakeLast n xs -> if n < 0 then error "ClientCalc.TakeLast: negative count"
+      else L.reverse (L.take n (L.reverse (listGo env xs)))
+  | Sorted xs -> L.sortWith O.int (listGo env xs).
+evalTexts : Env -> TextListExpr -> List String .
+evalTexts env e = textListGo env e.
+textListGo : unsafe Env -> TextListExpr -> List String .
+textListGo env e = case e of
+    Texts xs -> textsGo env xs
+  | TextSequence k -> (case env of TextEnv _ _ _ ts -> ts k | _ -> error "ClientCalc: missing text sequence {k}")
+  | TextSnoc xs t -> L.append (textListGo env xs) [textGo env t]
+  | TextTakeLast n xs -> if n < 0 then error "ClientCalc.TextTakeLast: negative count"
+      else L.reverse (L.take n (L.reverse (textListGo env xs)))
+  | IfTexts p a b -> if boolGo env p then textListGo env a else textListGo env b.
+
+# Browser trim whitespace, represented as UTF-8 byte strings for native
+# evaluation. Non-whitespace Unicode and internal whitespace remain intact.
+spaces = L.append [" ", "\t", "\n", "\r", chr 11, chr 12]
+  (L.map (fn escaped -> case J.parse ("\"{escaped}\"") of Ok (J.Text s) -> s | _ -> error "ClientCalc: whitespace literal")
+    ["\\u00a0", "\\u1680", "\\u2000", "\\u2001", "\\u2002", "\\u2003", "\\u2004", "\\u2005",
+     "\\u2006", "\\u2007", "\\u2008", "\\u2009", "\\u200a", "\\u2028", "\\u2029", "\\u202f", "\\u205f", "\\u3000", "\\ufeff"]).
+trim : String -> String .
+trim s = trimLeftGo s 0 |> trimRightGo.
+spaceAt : unsafe String -> Int -> List String -> Int .
+spaceAt s at ws = case ws of Nil -> 0 | w :: r ->
+  if substr s at (strlen w) == w then strlen w else spaceAt s at r.
+trimLeftGo : unsafe String -> Int -> String .
+trimLeftGo s at = n = spaceAt s at spaces;
+  if n == 0 then S.dropLeft at s else trimLeftGo s (at + n).
+spaceEnd : unsafe String -> List String -> Int .
+spaceEnd s ws = case ws of Nil -> 0 | w :: r ->
+  if strlen s >= strlen w and S.right (strlen w) s == w then strlen w else spaceEnd s r.
+trimRightGo : unsafe String -> String .
+trimRightGo s = n = spaceEnd s spaces;
+  if n == 0 then s else trimRightGo (S.dropRight n s).
+
+# A JavaScript string literal safe even inside an HTML script element. Keys
+# are quoted data, never identifiers; prototype-looking names stay data too.
+quote : String -> String .
+quote s = J.quote s |> S.replace "<" "\\u003c" |> S.replace ">" "\\u003e"
+  |> S.replace "&" "\\u0026" |> S.replace (chr 226 + chr 128 + chr 168) "\\u2028" |> S.replace (chr 226 + chr 128 + chr 169) "\\u2029".
+
+# Internal backend vocabulary: _int, _number, _string are supplied by the
+# browser effect generator. These emit expressions, not complete programs.
+jsInt : IntExpr -> String .
+jsInt e = emitInt e.
+emitInt : unsafe IntExpr -> String .
+emitInt e = case e of
+    Literal n -> "({n}n)"
+  | Number k -> "_number({quote k})"
+  | Add a b -> binary "+" a b
+  | Sub a b -> binary "-" a b
+  | Mul a b -> binary "*" a b
+  | Quot a b -> binary "/" a b
+  | Rem a b -> binary "%" a b
+  | IfInt p a b -> "({emitBool p}?{emitInt a}:{emitInt b})"
+  | Length xs -> "_int(BigInt(({emitList xs}).length))"
+  | Sum xs -> "({emitList xs}).reduce(function(a,b)\{return _int(a+b);},0n)"
+  | Maximum xs fallback -> "(function(xs)\{return xs.length?xs.reduce(function(a,b)\{return a>b?a:b;}):{emitInt fallback};})({emitList xs})"
+  | At xs index -> "_at({emitList xs},{emitInt index})"
+  | TextLength xs -> "_int(BigInt(({emitTextList xs}).length))".
+binary : unsafe String -> IntExpr -> IntExpr -> String .
+binary op a b = "_int(({emitInt a}{op}{emitInt b}))".
+jsBool : BoolExpr -> String .
+jsBool e = emitBool e.
+emitBool : unsafe BoolExpr -> String .
+emitBool e = case e of
+    Equal a b -> "({emitInt a}==={emitInt b})"
+  | Less a b -> "({emitInt a}<{emitInt b})"
+  | And a b -> "({emitBool a}&&{emitBool b})"
+  | Or a b -> "({emitBool a}||{emitBool b})"
+  | Not a -> "(!{emitBool a})"
+  | TextEqual a b -> "({emitText a}==={emitText b})".
+jsText : TextExpr -> String .
+jsText e = emitText e.
+emitText : unsafe TextExpr -> String .
+emitText e = case e of
+    Text s -> quote s
+  | StringVar k -> "_string({quote k})"
+  | Decimal n -> "String({emitInt n})"
+  | Concat xs -> "[{strJoin "," (emitTexts xs)}].join('')"
+  | PadZero width n -> if width < 0 then error "ClientCalc.PadZero: negative width"
+      else "String({emitInt n}).padStart({width},'0')"
+  | IfText p a b -> "({emitBool p}?{emitText a}:{emitText b})"
+  | Trim t -> "({emitText t}).trim()"
+  | TextAt xs index -> "_textAt({emitTextList xs},{emitInt index})".
+emitTexts : unsafe List TextExpr -> List String .
+emitTexts xs = case xs of Nil -> Nil | x :: r -> emitText x :: emitTexts r.
+jsList : IntListExpr -> String .
+jsList e = emitList e.
+emitList : unsafe IntListExpr -> String .
+emitList e = case e of
+    Values xs -> "[{strJoin "," (L.map emitInt xs)}]"
+  | Sequence k -> "_sequence({quote k})"
+  | Snoc xs n -> "({emitList xs}).concat([{emitInt n}])"
+  | TakeLast n xs -> if n < 0 then error "ClientCalc.TakeLast: negative count"
+      else "({emitList xs}).slice({if n == 0 then "0,0" else "-{n}"})"
+  | Sorted xs -> "({emitList xs}).slice().sort(function(a,b)\{return a<b?-1:a>b?1:0;})".
+jsTexts : TextListExpr -> String .
+jsTexts e = emitTextList e.
+emitTextList : unsafe TextListExpr -> String .
+emitTextList e = case e of
+    Texts xs -> "[{strJoin "," (emitTexts xs)}]"
+  | TextSequence k -> "_textSequence({quote k})"
+  | TextSnoc xs t -> "({emitTextList xs}).concat([{emitText t}])"
+  | TextTakeLast n xs -> if n < 0 then error "ClientCalc.TextTakeLast: negative count"
+      else "({emitTextList xs}).slice({if n == 0 then "0,0" else "-{n}"})"
+  | IfTexts p a b -> "({emitBool p}?{emitTextList a}:{emitTextList b})".

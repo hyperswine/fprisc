@@ -1,0 +1,17 @@
+# Socket transport over a caller-owned shared Readiness service. The service
+# must outlive these connections. Budget callbacks retain their periodic check;
+# Uncancelled budgets park until the kernel reports readiness or expiry.
+T = use "transport".
+Socket = use "sockettransport".
+ST = use "stream".
+R = use "readiness".
+Resolver = use "resolver".
+failure why = if why == "timed out" then T.TimedOut else if why == "cancelled" then T.Cancelled else T.Io why.
+wait poller interest budget fd = if interest == T.Progress then _ = Resolver.nap budget; Resolver.gate budget else
+  mask = Socket.mask interest;
+  result = case budget of
+      T.Uncancelled d -> R.awaitUntil fd mask d poller
+    | T.Budget d cancelled -> R.awaitChecking fd mask d cancelled poller;
+  case result of Ok _ -> Ok Unit | Err why -> Err (failure why).
+adoptOn : R.Poller -> Int -> ST.Stream -> Result (T.Connection Socket.SocketState) T.Failure .
+adoptOn poller chunk stream = Socket.adoptWith (wait poller) chunk stream.

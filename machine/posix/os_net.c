@@ -2,6 +2,7 @@
 #include "os_value.h"
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -49,6 +50,24 @@ static void sock_tune(int fd) {
   setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
 #endif
 }
+
+/* Adoption must not accidentally run the bounded transport over a blocking
+ * file descriptor. Check socket type and nonblocking setup, reporting errors. */
+static V h_prepare_socket(V fdv) {
+  int fd = want_fd(fdv, "Os.prepareSocket: descriptor must be an Int");
+  if (UNTAG(fdv) < 0 || UNTAG(fdv) > INT_MAX) return os_err("descriptor outside host range");
+  int type;
+  socklen_t len = sizeof type;
+  if (getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &len)) return os_errno();
+  if (type != SOCK_STREAM) return os_err("transport needs a stream socket");
+  struct sockaddr_storage peer;
+  len = sizeof peer;
+  if (getpeername(fd, (struct sockaddr *)&peer, &len)) return os_errno();
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) return os_errno();
+  return os_ok((V)&fpr_unit);
+}
+FPR_FN(fpr_g_Os_x2eprepareSocket, h_prepare_socket, 1);
 
 /* name resolution and the connect itself DO wait (bounded by the system's own
  * timeouts): there is no portable non-blocking resolver.  Everything after is

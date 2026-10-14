@@ -1,6 +1,6 @@
-# fprlivejs.fpr -- the FPRLive client: one websocket, statics + dynamics,
-# locals.  Hand-written (the long-poll client in livejs.fpr is generated
-# by tools/livegen.sol); braces are escaped for the FPRISC string literal.
+# std/livejs.fpr -- the FPRLive client: one websocket, statics + dynamics,
+# locals. Transport/patching is still handwritten; application behaviors can
+# consume the explicit Live events through generated BrowserCalc programs.
 
 src u = "/* fprlive.js -- the FPRLive client.
  *
@@ -22,6 +22,9 @@ src u = "/* fprlive.js -- the FPRLive client.
  *     The server sets them with the 'locals'
  *     command.  data-set honours data-min / data-max on its element.  After
  *     every paint the page's own script hears 'live:locals' (detail: them).
+ *  4. Transport observations carry NO payload: live:sent after this client's
+ *     successful send, live:frame after an accepted/applied frame, and
+ *     live:disconnected when its socket closes. Other sockets are untouched.
  */
 'use strict';
 (function () \{
@@ -177,6 +180,7 @@ src u = "/* fprlive.js -- the FPRLive client.
     if (!sync || !dirty || !ws || ws.readyState !== 1) return;
     dirty = false;
     ws.send(JSON.stringify(\{ msg: sync.msg, arg: JSON.stringify(mirrored()) }));
+    document.dispatchEvent(new Event('live:sent'));
   }
   // data-sync-now: a change someone is waiting to see goes now, not on the
   // next tick; typing is coalesced over a few keystrokes' worth of time
@@ -244,6 +248,7 @@ src u = "/* fprlive.js -- the FPRLive client.
     flush();   /* the server's mirror of this page is current BEFORE the event */
     t0 = performance.now(); sent++;
     ws.send(JSON.stringify(\{ msg: msg, arg: String(arg) }));
+    document.dispatchEvent(new Event('live:sent'));
   }
 
   function spliced(old, patch) \{
@@ -305,7 +310,7 @@ src u = "/* fprlive.js -- the FPRLive client.
     ws.onopen = function () \{ wait = 500; status('live'); };
     ws.onmessage = function (ev) \{
       var res; try \{ res = JSON.parse(ev.data); } catch (e) \{ ws.close(4002, 'resync'); return; }
-      try \{ apply(res); } catch (e) \{
+      try \{ apply(res); document.dispatchEvent(new Event('live:frame')); } catch (e) \{
         // Closing with an error reconnects to a fresh full snapshot. Ordered
         // WebSocket frames need no per-patch ack on a surviving connection.
         console.error('live patch rejected', e);
@@ -313,6 +318,7 @@ src u = "/* fprlive.js -- the FPRLive client.
       }
     };
     ws.onclose = function (ev) \{
+      document.dispatchEvent(new Event('live:disconnected'));
       status('offline (' + ev.code + ')');
       if (ev.code === 1000 || ev.code === 1001) return;   /* deliberate close: stay down */
       setTimeout(connect, wait);

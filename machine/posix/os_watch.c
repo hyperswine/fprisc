@@ -1,6 +1,8 @@
 /* Shared descriptor watcher: pthread worker plus host wake transport. */
 #include "os_value.h"
 #include <fcntl.h>
+#include <limits.h>
+#include <time.h>
 #ifdef FPR_ESP_IDF
 #include <sys/poll.h>
 #else
@@ -23,6 +25,8 @@
  *   Os.watchArm  : Int -> List Int -> Unit        wait on these (Nil: on none)
  *   Os.watchTake : Int -> List Int                what was ready, and forget it
  *   Os.watchClose : Int -> Bool                   retry until closed; discard handle
+ *   Os.watchArmEvents : Int -> List (Int, Int) -> Int -> Result Unit String
+ *   Os.watchTakeEvents : Int -> List (Int, Int)   directional masks; timer IRQ = Nil
  *
  * One-shot: after a raise the watcher waits on nothing until it is armed
  * again.  Level-triggered underneath, so data that arrived while it was
@@ -35,10 +39,11 @@ typedef struct {
   pthread_mutex_t mu;
   pthread_cond_t cv;
   int wake[2];                /* the self-pipe: [0] polled, [1] written by arm */
-  int *want; size_t nwant, capwant;
+  struct pollfd *want; size_t nwant, capwant;
+  uint64_t deadline_us; /* kernel timer mechanism; zero means untimed */
   int armed, polling, closing, stopped;
   uint64_t generation; /* reject readiness from a replaced descriptor set */
-  int *ready; size_t nready, capready;
+  struct pollfd *ready; size_t nready, capready;
   uw irq;
 } watcher_t;
 /* the open watchers by interrupt source (hal_irq_host_alloc): a table indexed
@@ -68,14 +73,27 @@ unsigned fpr_watch_raised;
 #endif
 static pthread_mutex_t watch_mu = PTHREAD_MUTEX_INITIALIZER;
 
-static int grow_ints(int **a, size_t *cap, size_t need) {
+static int grow_polls(struct pollfd **a, size_t *cap, size_t need) {
   if (need <= *cap) return 1;
   size_t c = *cap ? *cap : 16;
   while (c < need) c *= 2;
-  int *n = realloc(*a, c * sizeof **a);
+  struct pollfd *n = realloc(*a, c * sizeof **a);
   if (!n) return 0;
   *a = n; *cap = c;
   return 1;
+}
+
+static uint64_t watch_now_us(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
+}
+static int watch_timeout(uint64_t deadline) {
+  if (!deadline) return -1;
+  uint64_t now = watch_now_us();
+  if (now >= deadline) return 0;
+  uint64_t ms = (deadline - now + 999) / 1000;
+  return ms > INT_MAX ? INT_MAX : (int)ms;
 }
 
 static void *watch_thread(void *arg) {
@@ -89,6 +107,7 @@ static void *watch_thread(void *arg) {
     if (w->closing) break;
     size_t n = w->nwant;
     uint64_t generation = w->generation;
+    uint64_t deadline = w->deadline_us;
     if (n + 1 > cap) {
       size_t c = cap ? cap : 16;
       while (c < n + 1) c *= 2;
@@ -97,11 +116,11 @@ static void *watch_thread(void *arg) {
       p = np; cap = c;
     }
     p[0].fd = w->wake[0]; p[0].events = POLLIN; p[0].revents = 0;
-    for (size_t i = 0; i < n; i++) { p[i + 1].fd = w->want[i]; p[i + 1].events = POLLIN; p[i + 1].revents = 0; }
+    for (size_t i = 0; i < n; i++) { p[i + 1].fd = w->want[i].fd; p[i + 1].events = w->want[i].events; p[i + 1].revents = 0; }
     w->polling = 1;
     pthread_mutex_unlock(&w->mu);
     int r;
-    do r = poll(p, (nfds_t)(n + 1), -1); while (r < 0 && errno == EINTR);
+    do r = poll(p, (nfds_t)(n + 1), watch_timeout(deadline)); while (r < 0 && errno == EINTR);
     pthread_mutex_lock(&w->mu);
     w->polling = 0;
     if (w->closing) break;
@@ -112,13 +131,14 @@ static void *watch_thread(void *arg) {
     size_t got = 0;
     for (size_t i = 1; i <= n; i++)
       if (p[i].revents) {
-        if (!grow_ints(&w->ready, &w->capready, w->nready + 1)) { pthread_mutex_unlock(&w->mu); fpr_cpanic("Os.watch: out of memory"); }
-        w->ready[w->nready++] = p[i].fd;
+        if (!grow_polls(&w->ready, &w->capready, w->nready + 1)) { pthread_mutex_unlock(&w->mu); fpr_cpanic("Os.watch: out of memory"); }
+        w->ready[w->nready++] = p[i];
         got++;
       }
-    if (got) w->armed = 0; /* one-shot: the actor re-arms after it takes */
+    int expired = deadline && watch_now_us() >= deadline;
+    if (got || expired) w->armed = 0; /* one-shot, including a timer-only wake */
     pthread_mutex_unlock(&w->mu);
-    if (got) {
+    if (got || expired) {
 #ifdef FPR_ESP_IO_SMOKE
       __atomic_add_fetch(&fpr_watch_raised, 1, __ATOMIC_RELAXED);
 #endif
@@ -201,18 +221,19 @@ static V h_watch_arm(V irqv, V fdsv) {
   for (V c = fdsv; !ISINT(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = ((V *)((char *)c + 8))[1]) n++;
   watcher_t *w = watcher_of(irqv);
   /* the same set, already armed: nothing to tell the thread */
-  int same = w->armed && n == w->nwant;
-  if (!grow_ints(&w->want, &w->capwant, n ? n : 1)) { pthread_mutex_unlock(&w->mu); fpr_cpanic("Os.watchArm: out of memory"); }
+  int same = w->armed && !w->deadline_us && n == w->nwant;
+  if (!grow_polls(&w->want, &w->capwant, n ? n : 1)) { pthread_mutex_unlock(&w->mu); fpr_cpanic("Os.watchArm: out of memory"); }
   size_t i = 0;
   for (V c = fdsv; i < n; c = ((V *)((char *)c + 8))[1], i++) {
     V f = ((V *)((char *)c + 8))[0];
     int fd = ISINT(f) ? (int)UNTAG(f) : -1;
-    if (same && w->want[i] != fd) same = 0;
-    w->want[i] = fd;
+    if (same && (w->want[i].fd != fd || w->want[i].events != POLLIN)) same = 0;
+    w->want[i] = (struct pollfd){fd, POLLIN, 0};
   }
   if (!same) {
     w->generation++;
     w->nwant = n;
+    w->deadline_us = 0;
     w->armed = n > 0;
     if (w->armed) pthread_cond_signal(&w->cv);
     if (w->polling) watch_wake_signal(w->wake); /* interrupt the old set's poll */
@@ -222,22 +243,77 @@ static V h_watch_arm(V irqv, V fdsv) {
 }
 FPR_FN(fpr_g_Os_x2ewatchArm, h_watch_arm, 2);
 
-static V h_watch_take(V irqv) {
+/* Direction masks: 1 readable, 2 writable, 3 either. Timeout is a relative
+ * kernel wait in microseconds (-1 means no timer). Registration IDs, absolute
+ * deadlines, cancellation, retry and capacity policy stay in FP-RISC. */
+static V h_watch_arm_events(V irqv, V eventsv, V usv) {
+  if (!ISINT(usv) || UNTAG(usv) < -1) return os_err("invalid watcher timeout");
+  size_t n = 0;
+  for (V c = eventsv; !ISINT(c) && TID(c) == T_LIST && ((hdr_t *)c)->var == 1; c = FPR_FLD(c, 1)) {
+    V pair = FPR_FLD(c, 0);
+    if (ISINT(pair) || TID(pair) != T_TUP2) return os_err("watch event must be (fd, mask)");
+    V fd = FPR_FLD(pair, 0), mask = FPR_FLD(pair, 1);
+    if (!ISINT(fd) || UNTAG(fd) < 0 || UNTAG(fd) > INT_MAX) return os_err("invalid watch descriptor");
+    if (!ISINT(mask) || UNTAG(mask) < 1 || UNTAG(mask) > 3) return os_err("invalid watch direction");
+    n++;
+  }
   watcher_t *w = watcher_of(irqv);
-  /* copy under the lock, build after it: an allocation may switch actors,
-   * and nothing may be switched away while holding the watcher's mutex */
-  int small[64], *got = small;
+  if (!grow_polls(&w->want, &w->capwant, n ? n : 1)) {
+    /* Fail disarmed: callers must not release descriptors while a rejected
+     * replacement leaves an old generation active in the kernel. */
+    w->generation++;
+    w->nwant = w->nready = 0;
+    w->deadline_us = 0;
+    w->armed = 0;
+    if (w->polling) watch_wake_signal(w->wake);
+    pthread_mutex_unlock(&w->mu); return os_err("out of memory");
+  }
+  size_t i = 0;
+  for (V c = eventsv; i < n; c = FPR_FLD(c, 1), i++) {
+    V pair = FPR_FLD(c, 0);
+    int fd = (int)UNTAG(FPR_FLD(pair, 0)), mask = (int)UNTAG(FPR_FLD(pair, 1));
+    w->want[i] = (struct pollfd){fd, (short)(((mask & 1) ? POLLIN : 0) | ((mask & 2) ? POLLOUT : 0)), 0};
+  }
+  w->generation++;
+  w->nwant = n;
+  w->nready = 0; /* a new generation must not inherit queued old readiness */
+  w->deadline_us = UNTAG(usv) < 0 ? 0 : watch_now_us() + (uint64_t)UNTAG(usv);
+  w->armed = n > 0 || w->deadline_us;
+  if (w->armed) pthread_cond_signal(&w->cv);
+  if (w->polling) watch_wake_signal(w->wake);
+  pthread_mutex_unlock(&w->mu);
+  return os_ok((V)&fpr_unit);
+}
+FPR_FN(fpr_g_Os_x2ewatchArmEvents, h_watch_arm_events, 3);
+
+static V watch_take(V irqv, int events) {
+  watcher_t *w = watcher_of(irqv);
+  /* Copy under the lock, allocate values after unlocking: allocations can
+   * switch actors. Never switch away while holding the watcher's mutex. */
+  struct pollfd small[64], *got = small;
   size_t n = w->nready;
   if (n > 64 && !(got = malloc(n * sizeof *got))) { pthread_mutex_unlock(&w->mu); fpr_cpanic("Os.watchTake: out of memory"); }
   memcpy(got, w->ready, n * sizeof *got);
   w->nready = 0;
   pthread_mutex_unlock(&w->mu);
   V out = (V)&os_nil;
-  for (size_t i = n; i-- > 0;) out = os_cons(TAG(got[i]), out);
+  for (size_t i = n; i-- > 0;) {
+    V item = TAG(got[i].fd);
+    if (events) {
+      int mask = ((got[i].revents & POLLIN) ? 1 : 0) | ((got[i].revents & POLLOUT) ? 2 : 0);
+      if (got[i].revents & (POLLERR | POLLHUP | POLLNVAL)) mask = 3;
+      V pair[2] = {item, TAG(mask)};
+      item = os_cell(T_TUP2, 0, 2, pair);
+    }
+    out = os_cons(item, out);
+  }
   if (got != small) free(got);
   return out;
 }
+static V h_watch_take(V irqv) { return watch_take(irqv, 0); }
 FPR_FN(fpr_g_Os_x2ewatchTake, h_watch_take, 1);
+static V h_watch_take_events(V irqv) { return watch_take(irqv, 1); }
+FPR_FN(fpr_g_Os_x2ewatchTakeEvents, h_watch_take_events, 1);
 
 /* Begin shutdown, then report whether teardown is complete. False means the
  * caller must yield/sleep before trying again; True releases the handle.

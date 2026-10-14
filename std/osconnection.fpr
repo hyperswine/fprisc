@@ -1,0 +1,15 @@
+# Checked owned sockets; IDs never reuse. Raw Os.* is an unsafe escape hatch.
+ConnHost.adopt : Int -> Result Int String .
+ConnHost.begin : Int -> String -> Int -> Result Int String .
+ConnHost.fd : Int -> Result Int String .
+ConnHost.status : Int -> Result Bool String .
+ConnHost.read : Int -> Int -> Result String String .
+ConnHost.write : Int -> String -> Result Int String .
+ConnHost.close : Int -> Result Unit String .
+adopt fd = ConnHost.adopt fd.
+begin family address port = ConnHost.begin family address port.
+fd id = ConnHost.fd id.
+status id = ConnHost.status id.
+read id n = ConnHost.read id n.
+write id bytes = ConnHost.write id bytes.
+close id = ConnHost.close id.

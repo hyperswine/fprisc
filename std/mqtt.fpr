@@ -1,0 +1,132 @@
+# MQTT 3.1.1 packets, in FP-RISC. Initial profile: anonymous CONNECT, QoS 0/1,
+# subscriptions, acknowledgements, ping and disconnect. QoS 2/auth/wills are
+# explicitly refused. Input bounds are checked before extracting a body.
+B = use "binary".
+L = use "list".
+S = use "string".
+O = use "option".
+Packet = Type (Connect String Bool Int | ConnAck Bool Int |
+  Publish String String Int Int Bool Bool | PubAck Int |
+  Subscribe Int (List (String, Int)) | SubAck Int (List Int) |
+  Unsubscribe Int (List String) | UnsubAck Int | PingReq | PingResp | Disconnect).
+Decoder = Type (Decoder Int Int String).
+Length = Type (Incomplete | Sized Int Int).
+identifier n = n > 0 and n <= 65535.
+# Strict UTF-8, no NUL, surrogate or Unicode noncharacter scalars. BOM remains
+# part of the string. This also rejects overlong encodings and bad continuations.
+utf8 text = utfGo text 0.
+utfGo : unsafe String -> Int -> Bool .
+utfGo text at = if at == strlen text then True else
+  lead = charAt text at;
+  if lead < 128 then lead != 0 and utfGo text (at + 1) else
+  count = if lead >= 194 and lead <= 223 then 1 else if lead >= 224 and lead <= 239 then 2 else if lead >= 240 and lead <= 244 then 3 else 0;
+  if count == 0 or at + count >= strlen text then False else
+  cp = continuation text (at + 1) count (band lead (if count == 1 then 31 else if count == 2 then 15 else 7));
+  cp >= (if count == 1 then 128 else if count == 2 then 2048 else 65536) and cp <= 1114111 and
+  not (cp >= 55296 and cp <= 57343) and not (cp >= 64976 and cp <= 65007) and band cp 65535 < 65534 and
+  utfGo text (at + count + 1).
+continuation : unsafe String -> Int -> Int -> Int -> Int .
+continuation text at left value = if left == 0 then value else
+  b = charAt text at;
+  if b < 128 or b > 191 then 0 - 1 else continuation text (at + 1) (left - 1) (value * 64 + b - 128).
+topic text = strlen text > 0 and utf8 text and not (S.contains "+" text) and not (S.contains "#" text).
+filter text = strlen text > 0 and utf8 text and filterLevels (S.split "/" text).
+filterLevels : unsafe List String -> Bool .
+filterLevels levels = case levels of Nil -> True | level :: rest ->
+  if level == "#" then rest == Nil else
+  if level == "+" then filterLevels rest else
+  not (S.contains "#" level) and not (S.contains "+" level) and filterLevels rest.
+field text = if strlen text > 65535 or not (utf8 text) then Err "invalid MQTT UTF-8 field" else Ok (strcat (B.putU16be (strlen text)) text).
+takeField bytes = if strlen bytes < 2 then Err "short MQTT field" else
+  n = charAt bytes 0 * 256 + charAt bytes 1;
+  if n > strlen bytes - 2 then Err "short MQTT field" else
+  text = substr bytes 2 n;
+  if not (utf8 text) then Err "invalid MQTT UTF-8 field" else Ok (text, substr bytes (n + 2) (strlen bytes - n - 2)).
+remaining n = if n < 128 then B.putU8 n else strcat (B.putU8 (n % 128 + 128)) (remaining (n / 128)).
+frame header body = if strlen body > 268435455 then Err "MQTT packet too large" else Ok (strJoin "" [B.putU8 header, remaining (strlen body), body]).
+fields xs = case xs of Nil -> Ok "" | text :: rest -> case field text of
+  Err why -> Err why | Ok part -> case fields rest of Err why -> Err why | Ok tail -> Ok (strcat part tail).
+subscriptions xs = case xs of Nil -> Ok "" | (text, qos) :: rest ->
+  if not (filter text) or qos < 0 or qos > 1 then Err "unsupported MQTT filter/QoS" else
+  case field text of Err why -> Err why | Ok part -> case subscriptions rest of Err why -> Err why | Ok tail -> Ok (strJoin "" [part, B.putU8 qos, tail]).
+encode packet = case packet of
+    Connect client clean keepalive -> if strlen client == 0 or keepalive < 0 or keepalive > 65535 then Err "invalid MQTT CONNECT" else
+      (case field client of Err why -> Err why | Ok name -> frame 16 (strJoin "" [B.putU16be 4, "MQTT", B.putU8 4, B.putU8 (if clean then 2 else 0), B.putU16be keepalive, name]))
+  | ConnAck present code -> if code < 0 or code > 5 or (present and code != 0) then Err "invalid CONNACK" else frame 32 (strcat (B.putU8 (if present then 1 else 0)) (B.putU8 code))
+  | Publish name data qos id retain dup ->
+      if not (topic name) or qos < 0 or qos > 1 or (qos == 1 and not (identifier id)) or (qos == 0 and (id != 0 or dup)) then Err "invalid/unsupported MQTT PUBLISH" else
+      (case field name of Err why -> Err why | Ok text -> frame (48 + qos * 2 + (if retain then 1 else 0) + (if dup then 8 else 0))
+        (strJoin "" [text, (if qos == 1 then B.putU16be id else ""), data]))
+  | PubAck id -> idPacket 64 id
+  | Subscribe id topics -> if not (identifier id) or topics == Nil then Err "invalid SUBSCRIBE" else
+      (case subscriptions topics of Err why -> Err why | Ok bytes -> frame 130 (strcat (B.putU16be id) bytes))
+  | SubAck id grants -> if not (identifier id) or grants == Nil or not (L.all (fn q -> q == 0 or q == 1 or q == 2 or q == 128) grants) then Err "invalid SUBACK" else frame 144 (strcat (B.putU16be id) (strJoin "" (L.map B.putU8 grants)))
+  | Unsubscribe id topics -> if not (identifier id) or topics == Nil or not (L.all filter topics) then Err "invalid UNSUBSCRIBE" else
+      (case fields topics of Err why -> Err why | Ok bytes -> frame 162 (strcat (B.putU16be id) bytes))
+  | UnsubAck id -> idPacket 176 id
+  | PingReq -> frame 192 ""
+  | PingResp -> frame 208 ""
+  | Disconnect -> frame 224 "".
+idPacket header id = if identifier id then frame header (B.putU16be id) else Err "invalid MQTT packet identifier".
+lengthAt bytes at value multiplier = if at >= strlen bytes then Ok Incomplete else
+  if at > 4 then Err "MQTT Remaining Length exceeds four bytes" else
+  b = charAt bytes at;
+  total = value + band b 127 * multiplier;
+  if b < 128 then
+    if at > 1 and b == 0 then Err "noncanonical MQTT Remaining Length" else Ok (Sized (at + 1) total)
+  else if at == 4 then Err "MQTT Remaining Length exceeds four bytes" else lengthAt bytes (at + 1) total (multiplier * 128).
+decoder packetLimit chunkLimit = if packetLimit < 1 or packetLimit > 268435455 or chunkLimit < 1 then Err "invalid MQTT decoder limits" else Ok (Decoder packetLimit chunkLimit "").
+feed bytes dec = case dec of Decoder packetLimit chunkLimit pending ->
+  if strlen bytes > chunkLimit then Err "MQTT input chunk exceeds limit" else decodeFrames packetLimit chunkLimit (strcat pending bytes) Nil.
+decodeFrames : unsafe Int -> Int -> String -> List Packet -> Result (List Packet, Decoder) String .
+decodeFrames limit chunk bytes acc = if strlen bytes < 2 then Ok (L.reverse acc, Decoder limit chunk bytes) else
+  case lengthAt bytes 1 0 1 of
+    Err why -> Err why
+  | Ok Incomplete -> Ok (L.reverse acc, Decoder limit chunk bytes)
+  | Ok (Sized header n) -> if n > limit then Err "MQTT packet exceeds limit" else
+      if strlen bytes - header < n then Ok (L.reverse acc, Decoder limit chunk bytes) else
+      case decodePacket (charAt bytes 0) (substr bytes header n) of
+        Err why -> Err why
+      | Ok packet -> decodeFrames limit chunk (substr bytes (header + n) (strlen bytes - header - n)) (packet :: acc).
+readId bytes = if strlen bytes < 2 then Err "short MQTT identifier" else
+  id = charAt bytes 0 * 256 + charAt bytes 1;
+  if identifier id then Ok (id, substr bytes 2 (strlen bytes - 2)) else Err "zero MQTT identifier".
+decodeSubscriptions bytes = if strlen bytes == 0 then Ok Nil else case takeField bytes of
+  Err why -> Err why
+  | Ok (text, rest) -> if strlen rest == 0 or not (filter text) or charAt rest 0 > 1 then Err "invalid/unsupported subscription" else
+      case decodeSubscriptions (substr rest 1 (strlen rest - 1)) of Err why -> Err why | Ok tail -> Ok ((text, charAt rest 0) :: tail).
+decodeFields bytes = if strlen bytes == 0 then Ok Nil else case takeField bytes of
+  Err why -> Err why | Ok (text, rest) -> if not (filter text) then Err "invalid topic filter" else
+    case decodeFields rest of Err why -> Err why | Ok tail -> Ok (text :: tail).
+decodePacket first body =
+  kind = first / 16;
+  flags = first % 16;
+  if kind != 3 and flags != (if kind == 8 or kind == 10 then 2 else 0) then Err "invalid MQTT fixed flags" else
+  case kind of
+    1 -> (case takeField body of Err why -> Err why | Ok (protocol, rest) ->
+      if protocol != "MQTT" or strlen rest < 4 or charAt rest 0 != 4 then Err "unsupported MQTT protocol" else
+      if charAt rest 1 != 0 and charAt rest 1 != 2 then Err "unsupported CONNECT auth/will flags" else
+      case takeField (substr rest 4 (strlen rest - 4)) of Err why -> Err why | Ok (client, tail) ->
+        if strlen client == 0 or strlen tail != 0 then Err "invalid MQTT CONNECT payload" else Ok (Connect client (charAt rest 1 == 2) (charAt rest 2 * 256 + charAt rest 3)))
+  | 2 -> if strlen body != 2 then Err "invalid CONNACK size" else
+      present = charAt body 0; code = charAt body 1;
+      if present > 1 or code > 5 or (code != 0 and present != 0) then Err "invalid CONNACK" else Ok (ConnAck (present == 1) code)
+  | 3 ->
+      qos = band (BITSHIFTR flags 1) 3;
+      dup = band flags 8 != 0;
+      if qos > 1 or (qos == 0 and dup) then Err "unsupported/invalid PUBLISH QoS" else
+      (case takeField body of Err why -> Err why | Ok (name, rest) ->
+        if not (topic name) then Err "invalid PUBLISH topic" else
+        if qos == 0 then Ok (Publish name rest 0 0 (band flags 1 != 0) dup) else
+        (case readId rest of Err why -> Err why | Ok (id, payload) -> Ok (Publish name payload 1 id (band flags 1 != 0) dup)))
+  | 4 -> (case readId body of Err why -> Err why | Ok (id, rest) -> if rest == "" then Ok (PubAck id) else Err "invalid PUBACK size")
+  | 8 -> (case readId body of Err why -> Err why | Ok (id, rest) -> case decodeSubscriptions rest of Err why -> Err why | Ok xs -> if xs == Nil then Err "empty SUBSCRIBE" else Ok (Subscribe id xs))
+  | 9 -> (case readId body of Err why -> Err why | Ok (id, rest) ->
+      grants = L.map (fn at -> charAt rest at) (L.range 0 (strlen rest - 1));
+      if strlen rest == 0 or not (L.all (fn q -> q == 0 or q == 1 or q == 2 or q == 128) grants) then Err "invalid SUBACK grants" else Ok (SubAck id grants))
+  | 10 -> (case readId body of Err why -> Err why | Ok (id, rest) -> case decodeFields rest of Err why -> Err why | Ok xs -> if xs == Nil then Err "empty UNSUBSCRIBE" else Ok (Unsubscribe id xs))
+  | 11 -> (case readId body of Err why -> Err why | Ok (id, rest) -> if rest == "" then Ok (UnsubAck id) else Err "invalid UNSUBACK size")
+  | 12 -> if body == "" then Ok PingReq else Err "invalid PINGREQ size"
+  | 13 -> if body == "" then Ok PingResp else Err "invalid PINGRESP size"
+  | 14 -> if body == "" then Ok Disconnect else Err "invalid DISCONNECT size"
+  | _ -> Err "unsupported MQTT control packet".

@@ -1,0 +1,9 @@
+# Appended to printers.fpr with its original main renamed. No LAN/config access.
+main =
+  printer = Json.object [("id", Json.Text "sample"), ("name", Json.Text "Sample printer"),
+    ("model", Json.Text "A1"), ("location", Json.Text "Workshop"), ("state", Json.Text "IDLE"),
+    ("connection", Json.Text "ONLINE"), ("job", Json.Text "No active job"), ("progress", Json.Integer 0)];
+  v = {printers = [printer], now = 1, generated = 1, tickUs = 0, ticks = 0, demo = True, issue = "", session = noSess};
+  (ss, ds) = view 1000 1 v;
+  _ = print (Json.render (Json.object [("s", Json.strings ss), ("d", Json.strings ds), ("css", Json.Text (css v))]));
+  0.

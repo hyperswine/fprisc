@@ -654,6 +654,18 @@ void fpr_mem_spawn(void);          /* actors.c: after actor 0, before any hart r
 void fpr_actor_sleep_us(uw us); /* parks the actor; routes through the scheduler plane */
 int fpr_actor_cleanup_set(void (*fn)(void *), void *arg); /* one pending external request */
 void fpr_actor_cleanup_clear(void *arg);
+/* Native owned resources, separate from the one transactional request hook.
+ * Nodes are supplied by the owner and may be embedded in a native object or
+ * on its actor stack (never a shared host/CSTACK stack). Death unlinks before
+ * calling release, before freeing stacks.
+ * Routed planes without this capability refuse registration (return 0). */
+typedef struct fpr_resource {
+  struct fpr_resource *next;
+  void (*release)(void *);
+  void *arg;
+} fpr_resource_t;
+int fpr_actor_resource_add(fpr_resource_t *node, void (*release)(void *), void *arg);
+void fpr_actor_resource_remove(fpr_resource_t *node);
 /* end the current actor with a logged reason (fail-stop; never returns);
  * the boot actor panics; routed processes fail through the shared plane */
 __attribute__((noreturn)) void fpr_actor_fail(const char *why);

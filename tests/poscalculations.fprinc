@@ -1,0 +1,8 @@
+# Appended to the real POS source with its main renamed. This is a pure
+# snapshot: no store/account IO, and the production cart definition is used.
+main =
+  v = project 1 sampleModel;
+  (ss, ds) = G.renderStyled (viewFresh v);
+  _ = print (Json.render (Json.object [("s", Json.strings ss), ("d", Json.strings ds),
+    ("css", Json.Text (cssAll v)), ("script", Json.Text cartScript)]));
+  0.

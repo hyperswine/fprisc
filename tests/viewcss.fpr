@@ -30,6 +30,7 @@ main =
   _ = check "wide app style" (has css "@media (min-width:761px)\{\n.wide\\:card-x\{width:180px;");
   _ = check "media after plain" (at css "@media" > at css ".card-x\{");
   _ = check "unused utility absent" (not (has css ".flex-none"));
+  _ = check "no global palettes" (not (has css ":root\{") and not (has css ".day\{") and not (has css "body:has(.day)"));
   plain = G.cssFor (G.El "div" [G.Cls "row"] Nil);
   _ = check "cssFor unchanged" (has plain ".row\{display:flex;flex-direction:row}" and not (has plain "@media"));
   _ = print "view css: utilities, typed app styles, breakpoints, empty slots PASS";

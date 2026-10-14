@@ -102,3 +102,19 @@ operations, CSR access, interrupt masking, atomics and fences. Try
 
 For a chronological account of the QOS review, repository split, profile design
 and BareMetal implementation, see the [project progress summary](docs/2026-09-18-PROJECT-PROGRESS-SUMMARY.md).
+
+## Local printer dashboard
+
+`examples/printers.fpr` is a small read-only `std/live` dashboard, with
+expandable printer cards, live telemetry/freshness, measured report and refresh
+rates, and cameras that connect only on demand. It uses a narrow Python LAN
+transport for Bambu MQTT/TLS and camera framing; the UI and per-session state
+are FP-RISC. Try it without any printer or credentials:
+
+```sh
+./fpr build examples/printers.fpr -o build/printers
+python3 tools/printer_dashboard.py --demo
+```
+
+See [setup and checks](examples/printer-dashboard/README.md) for local-printer
+configuration and the current validation boundary.

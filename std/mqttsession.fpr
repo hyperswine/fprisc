@@ -1,0 +1,110 @@
+# Pure MQTT 3.1.1 client state/effects. Connection epochs exclude late events.
+# QoS 1 stays in flight until PUBACK; retransmission is on explicit reconnect,
+# with DUP and the original ID. State survives reconnect, not process restart.
+Q = use "mqtt".
+M = use "map".
+L = use "list".
+O = use "option".
+Ord = use "order".
+Phase = Type (Offline | Connecting | Online).
+Config = Type (Config String Bool Int Int Int).
+Pending = Type (Publication Q.Packet | Subscription (List (String, Int)) | Unsubscription (List String)).
+Event = Type (Start Int | Received Int Int Q.Packet | PublishMsg Int String String Int Bool |
+  SubscribeTo Int (List (String, Int)) | UnsubscribeFrom Int (List String) | Tick Int | Lost Int String | Stop Int).
+Effect = Type (Send Int Q.Packet | Delivered String String Int Bool Bool |
+  Acked Int | Subscribed Int (List Int) | Unsubscribed Int | Up Int Bool | Down Int String | Rejected String).
+config client clean keepalive ackMs capacity =
+  if strlen client == 0 or strlen client > 65535 or not (Q.utf8 client) or keepalive < 0 or keepalive > 65535 or ackMs < 1 or capacity < 1 or capacity > 65535 then Err "invalid MQTT session configuration"
+  else Ok (Config client clean keepalive ackMs capacity).
+initial cfg = {config = cfg, phase = Offline, pending = M.empty Ord.int,
+  order = Nil, nextId = 1, lastSent = 0, ping = O.None, epoch = 0, connDeadline = 0}.
+ackMs cfg = case cfg of Config _ _ _ ms _ -> ms.
+clean cfg = case cfg of Config _ value _ _ _ -> value.
+capacity cfg = case cfg of Config _ _ _ _ n -> n.
+keepMs cfg = case cfg of Config _ _ sec _ _ -> sec * 1000.
+nextIdentifier id pending = if M.member id pending then nextIdentifier (if id == 65535 then 1 else id + 1) pending else id.
+down why state = ({state | phase = Offline, ping = O.None,
+  order = if clean state.config then Nil else state.order,
+  pending = if clean state.config then M.empty Ord.int else state.pending}, [Down state.epoch why]).
+retry id item = case item of
+    Publication (Q.Publish topic payload qos packetId retain _) -> Q.Publish topic payload qos packetId retain True
+  | Publication packet -> packet
+  | Subscription topics -> Q.Subscribe id topics
+  | Unsubscription topics -> Q.Unsubscribe id topics.
+resend now state =
+  pending = M.map (fn pair -> case pair of (item, _) -> (item, now + ackMs state.config)) state.pending;
+  effects = L.filterMap (fn id -> case M.get id pending of O.None -> O.None | O.Some (item, _) -> O.Some (Send state.epoch (retry id item))) state.order;
+  ({state | pending = pending, lastSent = if effects == Nil then state.lastSent else now}, effects).
+admit now item packet id state = case Q.encode packet of
+    Err why -> (state, [Rejected why])
+  | Ok _ ->
+      pending = if id == 0 then state.pending else M.insert id (item, now + ackMs state.config) state.pending;
+      ({state | pending = pending, order = if id == 0 then state.order else L.append state.order [id], lastSent = now, nextId = if id == 0 then state.nextId else if id == 65535 then 1 else id + 1}, [Send state.epoch packet]).
+step event state =
+  now = case event of Start n -> n | Received _ n _ -> n | PublishMsg n _ _ _ _ -> n | SubscribeTo n _ -> n | UnsubscribeFrom n _ -> n | Tick n -> n | Lost _ _ -> state.lastSent | Stop n -> n;
+  if now < 0 or now > intMax Unit - ackMs state.config or now > intMax Unit - keepMs state.config then (state, [Rejected "invalid MQTT clock"]) else
+  case event of
+    Start _ -> if state.epoch == intMax Unit then (state, [Rejected "MQTT connection epoch exhausted"]) else
+      if state.phase != Offline then (state, [Rejected "already connected/connecting"]) else
+      (case state.config of Config client clean keepalive _ _ ->
+        epoch = state.epoch + 1;
+        ({state | phase = Connecting, epoch = epoch, connDeadline = now + ackMs state.config, lastSent = now, ping = O.None}, [Send epoch (Q.Connect client clean keepalive)]))
+  | Lost epoch why -> if epoch != state.epoch then (state, Nil) else down why state
+  | Stop _ ->
+      (next, notes) = down "client stopped" state;
+      (next, if state.phase == Offline then notes else Send state.epoch Q.Disconnect :: notes)
+  | PublishMsg _ topic payload qos retain ->
+      if state.phase != Online then (state, [Rejected "not connected"]) else
+      if qos == 1 and M.size state.pending >= capacity state.config then (state, [Rejected "MQTT in-flight limit"]) else
+      id = if qos == 1 then nextIdentifier state.nextId state.pending else 0;
+      packet = Q.Publish topic payload qos id retain False;
+      admit now (Publication packet) packet id state
+  | SubscribeTo _ topics -> if state.phase != Online then (state, [Rejected "not connected"]) else
+      if M.size state.pending >= capacity state.config then (state, [Rejected "MQTT in-flight limit"]) else
+      id = nextIdentifier state.nextId state.pending;
+      admit now (Subscription topics) (Q.Subscribe id topics) id state
+  | UnsubscribeFrom _ topics -> if state.phase != Online then (state, [Rejected "not connected"]) else
+      if M.size state.pending >= capacity state.config then (state, [Rejected "MQTT in-flight limit"]) else
+      id = nextIdentifier state.nextId state.pending;
+      admit now (Unsubscription topics) (Q.Unsubscribe id topics) id state
+  | Tick _ -> tick now state
+  | Received epoch _ packet -> if epoch != state.epoch or state.phase == Offline then (state, Nil) else
+      if state.phase == Connecting then (case packet of
+        Q.ConnAck present code -> if code != 0 then down "broker refused CONNECT ({code})" state else
+          if present and clean state.config then down "session present with clean CONNECT" state else
+          (fresh, sends) = resend now {state | phase = Online};
+          (fresh, Up epoch present :: sends)
+      | _ -> down "expected CONNACK" state)
+      else incoming now packet state.
+incoming now packet state = case packet of
+    Q.Publish topic payload qos id retain dup ->
+      if not (Q.topic topic) or qos < 0 or qos > 1 or (qos == 1 and not (Q.identifier id)) or (qos == 0 and (id != 0 or dup)) then down "invalid server PUBLISH" state else
+      ({state | lastSent = if qos == 1 then now else state.lastSent},
+       Delivered topic payload qos retain dup :: (if qos == 1 then [Send state.epoch (Q.PubAck id)] else Nil))
+  | Q.PubAck id -> (case M.get id state.pending of
+      O.Some (Publication _, _) -> ({state | pending = M.remove id state.pending, order = L.filter (fn n -> n != id) state.order}, [Acked id])
+    | _ -> down "unexpected PUBACK identifier" state)
+  | Q.SubAck id grants -> (case M.get id state.pending of
+      O.Some (Subscription topics, _) ->
+        if L.length topics != L.length grants or not (L.all (fn pair -> case pair of ((_, requested), grant) -> grant == 128 or (grant >= 0 and grant <= requested)) (L.zip topics grants)) then down "invalid SUBACK grants" state
+        else ({state | pending = M.remove id state.pending, order = L.filter (fn n -> n != id) state.order}, [Subscribed id grants])
+    | _ -> down "unexpected SUBACK identifier" state)
+  | Q.UnsubAck id -> (case M.get id state.pending of
+      O.Some (Unsubscription _, _) -> ({state | pending = M.remove id state.pending, order = L.filter (fn n -> n != id) state.order}, [Unsubscribed id])
+    | _ -> down "unexpected UNSUBACK identifier" state)
+  | Q.PingResp -> if state.ping == O.None then down "unsolicited PINGRESP" state else ({state | ping = O.None}, Nil)
+  | _ -> down "unexpected server control packet" state.
+tick now state = if state.phase == Connecting then
+  if now >= state.connDeadline then down "CONNACK timed out" state else (state, Nil)
+  else if state.phase != Online then (state, Nil) else
+  if L.any (fn pair -> case pair of (_, deadline) -> now >= deadline) (M.values state.pending) then down "acknowledgement timed out" state else
+  case state.ping of
+    O.Some deadline -> if now >= deadline then down "PINGRESP timed out" state else (state, Nil)
+  | O.None -> if keepMs state.config > 0 and now - state.lastSent >= keepMs state.config then
+      ({state | lastSent = now, ping = O.Some (now + ackMs state.config)}, [Send state.epoch Q.PingReq])
+    else (state, Nil).
+nextDeadline state =
+  base = if state.phase == Connecting then state.connDeadline else intMax Unit;
+  pending = M.fold (fn d id pair -> case pair of (_, deadline) -> if deadline < d then deadline else d) base state.pending;
+  ping = case state.ping of O.Some deadline -> deadline | O.None -> if state.phase == Online and keepMs state.config > 0 then state.lastSent + keepMs state.config else intMax Unit;
+  if ping < pending then ping else pending.

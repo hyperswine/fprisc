@@ -55,7 +55,11 @@ unsafe base.
 
 Live = use "std/live".
 G = use "std/view".
+Appearance = use "std/appearance".
 LJ = use "std/livejs".
+Metrics = use "std/livemetrics".
+B = use "std/browsercalc".
+Console = use "std/browserconsole".
 VC = use "std/viewcache".
 List = use "std/list".
 S = use "std/string".
@@ -728,9 +732,38 @@ project size keep sid m =
 
 locals = G.locals @Client { pane = "items", q = "", sort = "recent", confirm = "", name = "", loc = "", sub = "", desc = "",
                             tags = "", user = "", pw = "", tok = "", mname = "", mpw = "", npw = "", cmd = "" }.
-rootCls v = case v.theme == 1 of True -> "col gap-4 inv-page day" | False -> "col gap-4 inv-page".
+pageSize = G.utilities [G.MaxWidth (G.Px 760), G.Width (G.Pct 100),
+  G.MarginY (G.Px 0), G.MarginX G.Auto, G.Padding (G.Px 14), G.PaddingBottom (G.Px 48)].
+touchSize = G.utilities [G.MinHeight (G.Px 44)].
+chipSize = G.utilities [G.MinHeight (G.Px 34)].
+inputSize = G.utilities [G.FontSize (G.Px 16)]. # avoids iOS input zoom
 # the remembered device lives in a hidden input, so the page's script can fill it
-root v kids = El "div" (Cls (rootCls v) :: locals) (Inp [G.bind @Client.tok, Att "type" "hidden"] :: kids).
+root v kids = El "div" (Att "data-theme" (if v.theme == 1 then "day" else "night") :: Appearance.frame (v.theme == 1))
+  [El "div" (Att "data-ac-scope" "" :: Cls "col gap-4" :: pageSize :: locals)
+    (Inp [G.bind @Client.tok, Att "type" "hidden"] :: autocompletePrototypes v :: kids)].
+
+# Browser-owned suggestions clone these ordinary view nodes. The appearance,
+# selected state and explicit palette live here, with all rules retained by
+# renderStyled even while the prototypes themselves are hidden.
+autocompletePrototypes v = El "div" [Att "data-ac-prototypes" "", G.utilities [G.Display G.Hidden]]
+  [El "div" (Att "data-ac-frame" "" :: Att "role" "listbox" :: Att "aria-label" "Suggestions" ::
+      G.utilities [G.Position G.Absolute, G.ZIndex 50, G.Display G.Flex, G.FlexWrap G.Wrap,
+        G.Gap (G.Px 6), G.Padding (G.Px 8), G.Radius (G.Px 12),
+        G.Background (G.ThemeColour G.Card), G.Foreground (G.ThemeColour G.Ink),
+        G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour G.Line),
+        G.Shadow (G.Px 0) (G.Px 8) (G.Px 24) (G.Px 0) (G.RgbaPercent 0 0 0 18),
+        G.FontFamily G.ReadingFont, G.FontSize (G.Px 15), G.LineHeight 155] :: Appearance.tokens (v.theme == 1)) Nil,
+   autocompleteOption False, autocompleteOption True,
+   El "span" [Att "data-ac-hint" "", G.utilities [G.FontSize (G.Px 11), G.Foreground (G.ThemeColour G.Dim), G.AlignSelf G.AlignCenter]] Nil].
+autocompleteOption selected = El "button"
+  [Att "data-ac-option" (if selected then "selected" else "normal"), Att "type" "button", Att "role" "option",
+   Att "tabindex" "-1", Att "aria-selected" (if selected then "true" else "false"), chipSize,
+   G.utilities [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder,
+     G.BorderColour (G.ThemeColour (if selected then G.Ink else G.Line)), G.Radius (G.Px 999),
+     G.PaddingX (G.Px 12), G.PaddingY (G.Px 2), G.FontSize (G.Px 13),
+     G.Background (G.ThemeColour (if selected then G.Ink else G.Card)),
+     G.Foreground (G.ThemeColour (if selected then G.Bg else G.Dim))],
+   G.hover (if selected then Nil else [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)])] Nil.
 
 # `keep`: how many cards this tab's writer remembers, this page's and then the
 # ones it drew most recently.  The writer's cache also holds its own render
@@ -738,19 +771,19 @@ root v kids = El "div" (Cls (rootCls v) :: locals) (Inp [G.bind @Client.tok, Att
 noRender = { st = noStat, hits = 0, misses = 0, kept = 0 }.
 view keep sid v old = case old of (cardsOld, rs) ->
   (case v.signed == 0 of
-    True -> (G.render (root v [loginView v]), old)
+    True -> (G.renderStyled (root v [loginView v]), old)
   | False ->
       t0 = Sys.timeUs Unit;
       (case VC.many (fn it -> "{it.id}") itemCard v.items (VC.begin "inventory-card-v1" verify cardsOld) of (cards, cc) ->
-        out = G.render (root v (signedIn v cards rs));
+        out = G.renderStyled (root v (signedIn v cards rs));
         kept = VC.retain keep cc;
         (h, mi, n) = VC.stats cc;
         (out, (kept, { st = note rs.st (Sys.timeUs Unit - t0), hits = rs.hits + h, misses = rs.misses + mi, kept = VC.size kept })))).
 verify = Program.envOr "0" "INV_VIEW_VERIFY" == "1".
 
-btn label attrs = El "button" (Cls "btn round px-3 py-2 tall" :: attrs) [Txt label].
-primary label attrs = El "button" (Cls "btn round px-3 py-2 tall glow ink bold" :: attrs) [Txt label].
-field attrs = Inp (Cls "field inp w-full tall" :: attrs).
+btn label attrs = El "button" (Cls "btn round px-3 py-2" :: touchSize :: attrs) [Txt label].
+primary label attrs = El "button" (Cls "btn round px-3 py-2 glow ink bold" :: touchSize :: attrs) [Txt label].
+field attrs = Inp (Cls "field w-full" :: inputSize :: touchSize :: attrs).
 labelled label kid = El "label" [Cls "col gap-1 grow min-w-0"] [El "div" [Cls "text-xs upper dim"] [Txt label], kid].
 
 loginView v =
@@ -775,26 +808,26 @@ roleText v role = "".
 # on a phone the title takes its own line and the pane buttons go below it
 header v =
   El "div" [Cls "row center gap-2 wrap"]
-    [ El "div" [Cls "col grow min-w-0 narrow:basis-full"]
+    [ El "div" [Cls "col grow min-w-0", G.narrow [G.Basis (G.Pct 100)]]
         [ El "div" [Cls "text-xs upper dim"] [Txt "home inventory"]
         , El "div" [Cls "text-2xl bold tabular"] [Dyn (things v.total)] ]
-    , El "button" [Cls "btn pill px-3 py-2 tall", G.setTo @Client.pane "items", Att "data-on" "pane:items"] [Txt "items"]
-    , El "button" [Cls "btn pill px-3 py-2 tall", G.setTo @Client.pane "house", Att "data-on" "pane:house"] [Txt "household"]
-    , El "button" [Cls "btn pill px-3 py-2 tall", G.setTo @Client.pane "admin", Att "data-on" "pane:admin"] [Txt "admin"] ].
+    , El "button" [Cls "btn pill px-3 py-2", touchSize, G.setTo @Client.pane "items", Att "data-on" "pane:items"] [Txt "items"]
+    , El "button" [Cls "btn pill px-3 py-2", touchSize, G.setTo @Client.pane "house", Att "data-on" "pane:house"] [Txt "household"]
+    , El "button" [Cls "btn pill px-3 py-2", touchSize, G.setTo @Client.pane "admin", Att "data-on" "pane:admin"] [Txt "admin"] ].
 things 1 = "1 thing".
 things n = "{n} things".
 
 itemsPane v cards =
   El "div" [Cls "col gap-3", G.showIf @Client.pane "items"]
     ( El "div" [Cls "row gap-2 center"]
-        [ Inp [Cls "field inp grow tall min-w-0", G.bind @Client.q, now, Att "type" "search", Att "placeholder" "search names, places, notes, tags",
+        [ Inp [Cls "field grow min-w-0", inputSize, touchSize, G.bind @Client.q, now, Att "type" "search", Att "placeholder" "search names, places, notes, tags",
                Att "autocomplete" "off", Att "autocapitalize" "none"]
         , primary "+ add" [G.send codec New] ]
     :: El "div" [Cls "row gap-2 wrap center text-sm"]
         [ El "span" [Cls "dim"] [Txt "sort"], sortBtn "recent" "recent", sortBtn "name" "a-z", sortBtn "place" "by place"
-        , El "button" [Cls "btn pill px-3 chip", G.ShowIf "q", G.setTo @Client.q "", now] [Txt "clear search"] ]
-    :: chipRow (List.map (fn p -> El "button" [Cls "btn pill px-3 chip text-sm flex-none", G.setTo @Client.q (lower p), now] [Txt p]) v.places)
-    :: chipRow (List.map (fn t -> El "button" [Cls "btn pill px-3 chip text-sm dim flex-none", G.setTo @Client.q t, now] [Txt "#{t}"]) v.tags)
+        , El "button" [Cls "btn pill px-3", chipSize, G.ShowIf "q", G.setTo @Client.q "", now] [Txt "clear search"] ]
+    :: chipRow (List.map (fn p -> El "button" [Cls "btn pill px-3 text-sm flex-none", chipSize, G.setTo @Client.q (lower p), now] [Txt p]) v.places)
+    :: chipRow (List.map (fn t -> El "button" [Cls "btn pill px-3 text-sm dim flex-none", chipSize, G.setTo @Client.q t, now] [Txt "#{t}"]) v.tags)
     :: (case v.editing == 0 of True -> [editor v] | False -> Nil)
     + [ El "div" [Cls "text-sm dim", Att "id" "inv-list"] [Dyn (countText v)]
       , G.key "items" (El "div" [Cls "col gap-3"] (case List.isEmpty cards of True -> [empty v] | False -> inPlace v cards))
@@ -806,7 +839,8 @@ pager v =
     [ pageBtn "previous" (v.page - 1) (v.page == 0)
     , El "div" [Cls "grow text-center text-sm dim tabular"] [Dyn "page {v.page + 1} of {v.pages}"]
     , pageBtn "next" (v.page + 1) (v.page + 1 >= v.pages) ].
-pageBtn label n off = El "button" [Cls (case off of True -> "btn round px-3 py-2 tall off" | False -> "btn round px-3 py-2 tall"),
+pageBtn label n off = El "button" [Cls "btn round px-3 py-2", touchSize,
+                                   G.utilities (if off then [G.Opacity 35, G.PointerEvents G.PointerNone] else Nil),
                                    G.send codec (Page n), Att "data-pager" ""] [Txt label].
 # the item being edited is its editor, where its card was
 inPlace v cards | v.editing <= 0 = cards.
@@ -814,7 +848,7 @@ inPlace v cards = List.zipWith (fn it card -> (case it.id == v.editing of True -
 # what changes the search is mirrored at once (std/livejs data-sync-now), not
 # on the next tick: the list is what someone is waiting to see
 now = Att "data-sync-now" "".
-sortBtn key label = El "button" [Cls "btn pill px-3 chip", G.setTo @Client.sort key, now, Att "data-on" "sort:{key}"] [Txt label].
+sortBtn key label = El "button" [Cls "btn pill px-3", chipSize, G.setTo @Client.sort key, now, Att "data-on" "sort:{key}"] [Txt label].
 countText v | v.shown == 0 = "".
 countText v =
   range = (case v.pages <= 1 of True -> "" | False -> "{v.first + 1}-{v.first + List.length v.items} of ");
@@ -825,7 +859,8 @@ empty v | v.total == 0 = El "div" [Cls "card round p-6 text-center dim"] [Txt "N
 empty v = El "div" [Cls "card round p-6 text-center dim"] [Txt "Nothing matches."].
 
 # a tap on a place or a tag searches for it; a row scrolls sideways on a phone
-chipRow kids = El "div" [Cls "row gap-2 scroll-x"] kids.
+chipRow kids = El "div" [Cls "row gap-2", G.utilities [G.OverflowX G.OverflowAuto,
+  G.PaddingBottom (G.Px 4), G.ScrollbarWidth G.ScrollbarThin]] kids.
 
 editor v =
   El "div" [Cls "col gap-3 panel round p-4"]
@@ -834,9 +869,9 @@ editor v =
       , El "div" [Cls "row gap-2 narrow:col"]
           [ labelled "room or place" (field [G.bind @Client.loc, Att "data-ac" "loc", Att "placeholder" "e.g. study", Att "maxlength" "60", Att "autocomplete" "off"])
           , labelled "spot" (field [G.bind @Client.sub, Att "data-ac" "sub", Att "placeholder" "e.g. top drawer", Att "maxlength" "60", Att "autocomplete" "off"]) ]
-      , labelled "notes" (El "textarea" [Cls "field inp w-full", G.bind @Client.desc, Att "rows" "3", Att "maxlength" "2000"] Nil)
+      , labelled "notes" (El "textarea" [Cls "field w-full", inputSize, G.bind @Client.desc, Att "rows" "3", Att "maxlength" "2000"] Nil)
       , labelled "tags, comma separated" (field [G.bind @Client.tags, Att "data-ac" "tags", Att "placeholder" "e.g. electronics, cables", Att "autocapitalize" "none", Att "autocomplete" "off"])
-      , El "div" [Cls "row gap-2 wrap"] (List.map (fn t -> El "button" [Cls "btn pill px-3 chip text-sm", G.send codec (AddTag t)] [Txt t]) v.quick)
+      , El "div" [Cls "row gap-2 wrap"] (List.map (fn t -> El "button" [Cls "btn pill px-3 text-sm", chipSize, G.send codec (AddTag t)] [Txt t]) v.quick)
       , El "div" [Cls "row gap-2"] [ primary (case v.editing == 0 of True -> "add item" | False -> "save") [G.send codec Save, Cls "grow"],
                                      btn "cancel" [G.send codec Cancel] ] ].
 
@@ -845,15 +880,15 @@ itemCard it =
   El "div" [Cls "col gap-2 card round p-4"]
     ( El "div" [Cls "row center gap-2"]
         [ El "div" [Cls "text-lg bold grow min-w-0"] [Txt it.name]
-        , El "button" [Cls "btn pill px-3 chip text-sm", G.send codec (Edit it.id)] [Txt "edit"]
-        , El "button" [Cls "btn pill px-3 chip text-sm", G.setTo @Client.confirm "{it.id}"] [Txt "delete"] ]
+        , El "button" [Cls "btn pill px-3 text-sm", chipSize, G.send codec (Edit it.id)] [Txt "edit"]
+        , El "button" [Cls "btn pill px-3 text-sm", chipSize, G.setTo @Client.confirm "{it.id}"] [Txt "delete"] ]
     :: El "div" [Cls "row gap-2 center wrap"] (El "span" [Cls "badge ok"] [Txt it.loc] :: (case strlen it.sub == 0 of True -> Nil | False -> [El "span" [Cls "badge"] [Txt it.sub]]))
     :: (case strlen it.desc == 0 of True -> Nil | False -> [El "div" [Cls "text-sm pre"] [Txt it.desc]])
-    + (case List.isEmpty it.tags of True -> Nil | False -> [El "div" [Cls "row gap-1 wrap"] (List.map (fn t -> El "button" [Cls "btn pill px-3 chip text-xs dim", G.setTo @Client.q t, now] [Txt "#{t}"]) it.tags)])
+    + (case List.isEmpty it.tags of True -> Nil | False -> [El "div" [Cls "row gap-1 wrap"] (List.map (fn t -> El "button" [Cls "btn pill px-3 text-xs dim", chipSize, G.setTo @Client.q t, now] [Txt "#{t}"]) it.tags)])
     + [ El "div" [Cls "text-xs dim"] [Txt (metaText it)]
       , El "div" [Cls "row gap-2 center wrap", G.showIf @Client.confirm "{it.id}"]
           [ El "span" [Cls "warm text-sm grow"] [Txt "Delete {it.name}?"]
-          , El "button" [Cls "btn round px-3 py-2 tall bad", G.send codec (Delete it.id)] [Txt "delete"]
+          , El "button" [Cls "btn round px-3 py-2 bad", touchSize, G.send codec (Delete it.id)] [Txt "delete"]
           , btn "keep" [G.setTo @Client.confirm ""] ] ]).
 metaText it =
   moved = (case it.moves of Nil -> "" | mv :: r -> " · moved from {mv.from} on {Clock.date mv.at}");
@@ -882,22 +917,23 @@ housePane v =
 # ---- the admin pane: the numbers, the console, the profile ----------------------------------------
 
 adminPane v rs =
-  El "div" [Cls "col gap-3", G.showIf @Client.pane "admin"]
+  El "div" [Cls "col gap-3", G.showIf @Client.pane "admin", Att "data-console-scope" ""]
     [ El "div" [Cls "row gap-2 wrap"]
         [ watch "items" "{v.total}", watch "places" "{v.nplaces}", watch "tags" "{v.ntags}", watch "members" "{List.length v.members}"
         , watch "devices" "{v.ndevices}", watch "online" "{v.online}", watch "log lines" "{v.events}", watch "since" (Clock.stamp v.booted) ]
     , El "div" [Cls "row gap-2 center"]
-        [ Inp [Cls "field inp grow tall mono min-w-0", G.bind @Client.cmd, G.enterWith codec (Admin "") @Client.cmd, Att "data-console" "",
+        [ Inp [Cls "field grow mono min-w-0", inputSize, touchSize, G.bind @Client.cmd, G.enterWith codec (Admin "") @Client.cmd, Att "data-console" "",
                Att "placeholder" "help | find usb | move 12 -> Room 2 / desk", Att "autocapitalize" "none", Att "autocomplete" "off", Att "spellcheck" "false"]
         , btn "run" [G.sendWith codec (Admin "") @Client.cmd, Att "data-console-run" ""] ]
-    , El "div" [Cls "mono text-sm pre show-empty card round p-3 console"] [Dyn (consoleText v.con)]
+    , El "div" [Cls "mono text-sm pre show-empty card round p-3 console", Att "data-console-output" "",
+        G.utilities [G.MinHeight (G.Px 120), G.MaxHeight (G.Vh 50), G.Overflow G.OverflowAuto]] [Dyn (consoleText v.con)]
     , El "div" [Cls "text-xs upper dim"] [Txt "profile"]
-    , El "div" [Cls "mono text-xs card round p-3 pre-x"] [Dyn (profileText v rs)]
+    , El "div" [Cls "mono text-xs card round p-3", G.utilities [G.WhiteSpace G.PreSpace, G.OverflowX G.OverflowAuto]] [Dyn (profileText v rs)]
     , El "div" [Cls "row gap-2 center dim text-xs"] [Txt "browser round trip: ", El "span" [Att "id" "inv-rtt"] [Txt "measuring"]] ].
 consoleText Nil = "type help and press enter".
 consoleText con = S.join "\n" (List.reverse con).
 watch label v =
-  El "div" [Cls "col card round p-2 watch"] [El "div" [Cls "text-xs upper dim"] [Txt label], El "div" [Cls "tabular bold"] [Dyn v]].
+  El "div" [Cls "col card round p-2", G.utilities [G.MinWidth (G.Px 96)]] [El "div" [Cls "text-xs upper dim"] [Txt label], El "div" [Cls "tabular bold"] [Dyn v]].
 
 profileText v rs =
   S.join "\n"
@@ -924,25 +960,12 @@ devicesText n = "{n} devices signed in as you".
 # The stylesheet is a function of the tree, so it is made from a SAMPLE that
 # shows everything -- the editor, a card with every part, both panes, the
 # sign-in -- not from the signed-out page the server first sends.
-styles =
-  G.Style "inv-page" [G.MaxWidth (G.Px 760), G.Width (G.Pct 100), G.Prop "margin" "0 auto", G.Prop "padding" "14px 14px 48px"] ::
-  G.Style "tall" [G.MinHeight (G.Px 44)] ::
-  G.Style "chip" [G.MinHeight (G.Px 34)] ::
-  G.Style "watch" [G.MinWidth (G.Px 96)] ::
-  G.Style "basis-full" [G.Basis (G.Pct 100)] ::
-  # the profile's columns line up only unwrapped: it scrolls sideways instead
-  G.Style "pre-x" [G.Prop "white-space" "pre", G.Prop "overflow-x" "auto"] ::
-  G.Style "console" [G.MinHeight (G.Px 120), G.MaxHeight (G.Vh 50), G.Prop "overflow" "auto"] ::
-  G.Style "off" [G.Prop "opacity" ".35", G.Prop "pointer-events" "none"] ::
-  G.Style "scroll-x" [G.Prop "overflow-x" "auto", G.Prop "padding-bottom" "4px", G.Prop "scrollbar-width" "thin"] ::
-  G.Style "inp" [G.Prop "font-size" "16px"] ::   # 16px keeps iOS from zooming into an input
-  Nil.
 sampleItem = { id = 1, name = "USB-C cable", loc = "study", sub = "top drawer", desc = "two of them", tags = ["cables"],
                created = 0, at = 0, by = "sam", moves = [{ at = 0, from = "garage" }] }.
 sampleView = { noView | signed = 1, user = "sam", toast = "sample", role = "ok", editing = 0, items = [sampleItem], total = 41, shown = 41,
                page = 1, pages = 3, first = 20, q = "x", places = ["study"], tags = ["cables"], quick = quickTags, members = ["sam"], devices = 2,
                con = ["> help"] }.
-cssAll v = G.cssWith styles (El "div" Nil [root sampleView (signedIn sampleView [itemCard sampleItem, empty sampleView] noRender), loginView sampleView]).
+cssAll v = G.cssFor (El "div" Nil [root sampleView (signedIn sampleView [itemCard sampleItem, empty sampleView] noRender), loginView sampleView]).
 
 # The page's own script: the remembered device.  Once the client has painted,
 # the token from localStorage goes into the hidden `tok` input (so it is
@@ -963,58 +986,14 @@ script = strcat rttScript (strcat (LJ.src 0) "
   if (t && el) \{ el.value = t; el.dispatchEvent(new Event('input')); }
   ready = true;
 })();
-" + autocomplete + "
-(function () \{
-  /* a page turn shows the new page from its top */
-  document.addEventListener('click', function (e) \{
-    if (!e.target.closest || !e.target.closest('[data-pager]')) return;
-    setTimeout(function () \{ var l = document.getElementById('inv-list'); if (l) l.scrollIntoView(\{ block: 'start', behavior: 'smooth' }); }, 150);
-  });
-})();
-" + consoleScript + pendingScript).
+" + autocomplete + pagerScript + consoleScript + pendingScript).
 
 # The console behaves like a terminal: the newest output is at the bottom and in
 # view, and the arrow keys walk back through the commands this browser ran.
-consoleScript = "
-(function () \{
-  var KEY = 'inventory-console', hist = [], at = 0;
-  try \{ hist = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) \{}
-  at = hist.length;
-  function remember(c) \{
-    c = (c || '').trim();
-    if (!c) return;
-    if (hist[hist.length - 1] !== c) hist.push(c);
-    hist = hist.slice(-50); at = hist.length;
-    try \{ localStorage.setItem(KEY, JSON.stringify(hist)); } catch (e) \{}
-  }
-  function input() \{ return document.querySelector('[data-console]'); }
-  /* after the client has sent the command (its handler runs after this one):
-     the client never repaints the input that has the focus, so empty it here */
-  function ran(el) \{
-    remember(el.value);
-    setTimeout(function () \{ el.value = ''; el.dispatchEvent(new Event('input', \{ bubbles: true })); }, 0);
-  }
-  document.addEventListener('keydown', function (e) \{
-    var el = input();
-    if (!el || e.target !== el) return;
-    if (e.key === 'Enter') ran(el);
-    else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') \{
-      if (!hist.length) return;
-      at = Math.max(0, Math.min(hist.length, at + (e.key === 'ArrowUp' ? -1 : 1)));
-      el.value = hist[at] || '';
-      el.dispatchEvent(new Event('input', \{ bubbles: true }));
-      e.preventDefault();
-    }
-  }, true);
-  document.addEventListener('click', function (e) \{
-    if (e.target.closest && e.target.closest('[data-console-run]')) \{ var el = input(); if (el) ran(el); }
-  }, true);
-  new MutationObserver(function () \{
-    var c = document.querySelector('.console');
-    if (c) c.scrollTop = c.scrollHeight;
-  }).observe(document.getElementById('lv-root'), \{ childList: true, subtree: true, characterData: true });
-})();
-".
+consoleScript = Console.script {scope = B.Attribute "data-console-scope", input = B.Attribute "data-console",
+  run = B.Attribute "data-console-run", output = B.Attribute "data-console-output",
+  storageKey = "inventory-console", limit = 50}.
+pagerScript = Console.pager (B.Id "lv-root") (B.Attribute "data-pager") (B.Id "inv-list").
 # Never frozen.  A button pressed gives way at once.  Anything that waits on
 # the server -- a message, a search -- shows a thin bar at the top, pulses the
 # button and fades the list if nothing has come back after 100 ms, until the
@@ -1027,7 +1006,7 @@ consoleScript = "
 pendingScript = "
 (function () \{
   var root = document.getElementById('lv-root');
-  function theme(v) \{ var p = root.firstElementChild; return p ? getComputedStyle(p).getPropertyValue(v) : ''; }
+  function theme(v) \{ var p = root.querySelector('[data-theme]'); return p ? getComputedStyle(p).getPropertyValue(v) : ''; }
   var bar = document.createElement('div'), anim = null, showT = null, failT = null, pulses = [], faded = null;
   bar.style.cssText = 'position:fixed;top:0;left:0;height:3px;width:30%;z-index:60;pointer-events:none;display:none;border-radius:0 3px 3px 0;opacity:.6';
   document.body.appendChild(bar);
@@ -1052,7 +1031,7 @@ pendingScript = "
       if (faded) \{ faded.style.transition = 'opacity .15s'; faded.style.opacity = '.55'; }
     }, 100);
   }
-  document.addEventListener('inv:frame', done);
+  document.addEventListener('live:frame', done);
   /* every button gives way the moment it is pressed, client-only ones too */
   document.addEventListener('pointerdown', function (e) \{
     var b = e.target.closest && e.target.closest('#lv-root button');
@@ -1082,50 +1061,28 @@ pendingScript = "
   }).observe(link, \{ childList: true, characterData: true, subtree: true });
 })();
 ".
-# pos1's: installed BEFORE the client, which opens its socket as soon as it runs.
-# From a send to the next frame that arrives, written into the admin pane's slot.
-rttScript = "
-(function () \{
-  var sent = 0, last = 0, n = 0, sum = 0, max = 0, recent = [];
-  var S = WebSocket.prototype.send;
-  WebSocket.prototype.send = function (d) \{ sent = performance.now(); return S.call(this, d); };
-  var d = Object.getOwnPropertyDescriptor(WebSocket.prototype, 'onmessage');
-  Object.defineProperty(WebSocket.prototype, 'onmessage', \{ get: d.get, set: function (f) \{
-    d.set.call(this, function (e) \{
-      if (sent) \{ last = performance.now() - sent; sent = 0; n++; sum += last; if (last > max) max = last; recent.push(last); if (recent.length > 32) recent.shift(); }
-      var r = f.call(this, e);
-      document.dispatchEvent(new Event('inv:frame'));   /* the pending indicator's 'answered' */
-      return r;
-    });
-  } });
-  setInterval(function () \{
-    var el = document.getElementById('inv-rtt');
-    if (!el || el.offsetParent === null) return;
-    var sorted = recent.slice().sort(function (a, b) \{ return a - b; });
-    el.textContent = n ? ('last ' + last.toFixed(1) + ' ms, median of the last ' + sorted.length + ' ' + sorted[sorted.length >> 1].toFixed(1) + ' ms, avg ' + (sum / n).toFixed(1) + ' ms, max ' + max.toFixed(1) + ' ms, over ' + n) : 'no round trips yet';
-  }, 500);
-})();
-".
+# Shared generated monitor, installed before the client opens its socket.
+# Observes successful Live sends and accepted frames through explicit events.
+rttScript = Metrics.script (B.Id "inv-rtt") "".
 
 # The editor's autocomplete, in the page so it answers each keystroke at once.
 # An input with data-ac=loc|sub|tags is completed from the lists the server
 # sent ('live:suggest'); tags complete the part after the last comma.  The
-# box of suggestions lives outside the live root, so a render never touches
-# it.  Taking one sets the input and fires 'input', which is how the client
-# hears any change (and mirrors it to the server).
+# box lives outside the live root and clones FP-RISC-owned appearance
+# prototypes inside its explicit data-ac-scope. Taking a suggestion fires
+# 'input', which is how the client hears the change (and mirrors it).
 autocomplete = "
 (function () \{
   var lists = \{ loc: [], sub: \{}, tags: [] }, cur = null, opts = [], sel = 0, moved = false, touchAgain = false;
   var box = document.createElement('div');
-  box.style.cssText = 'position:absolute;z-index:50;display:none;flex-wrap:wrap;gap:6px;padding:8px;border-radius:12px;' +
-    'background:var(--card);color:var(--ink);border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.18)';
+  box.style.display = 'none';
   document.body.appendChild(box);
   document.addEventListener('live:suggest', function (e) \{
     try \{ lists = JSON.parse(e.detail); } catch (x) \{}
     refresh();
   });
   function kind(el) \{ return el && el.getAttribute ? el.getAttribute('data-ac') : null; }
-  function valueOf(name) \{ var e = document.querySelector('[data-input=\"' + name + '\"]'); return e ? e.value : ''; }
+  function valueOf(name) \{ var scope = cur && cur.closest('[data-ac-scope]'); var e = scope && scope.querySelector('[data-input=\"' + name + '\"]'); return e ? e.value : ''; }
   function part(el) \{
     var v = el.value;
     return (kind(el) === 'tags' ? v.slice(v.lastIndexOf(',') + 1) : v).trim().toLowerCase();
@@ -1158,26 +1115,26 @@ autocomplete = "
   function hide() \{ box.style.display = 'none'; opts = []; }
   function refresh() \{
     if (!cur || !document.contains(cur) || document.activeElement !== cur) \{ hide(); return; }
+    var scope = cur.closest('[data-ac-scope]');
+    var prototypes = scope && scope.querySelector('[data-ac-prototypes]');
+    var frame = prototypes && prototypes.querySelector('[data-ac-frame]');
+    if (!frame) \{ hide(); return; }
     opts = rank(cur);
     if (sel >= opts.length) sel = 0;
     if (!opts.length) \{ hide(); return; }
-    box.innerHTML = '';
+    Array.from(box.attributes).forEach(function (a) \{ if (a.name !== 'style') box.removeAttribute(a.name); });
+    Array.from(frame.attributes).forEach(function (a) \{ box.setAttribute(a.name, a.value); });
+    box.setAttribute('data-ac-popup', '');
+    box.replaceChildren();
     opts.forEach(function (o, i) \{
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'btn pill px-3 chip text-sm' + (i === sel ? ' is-on' : '');
+      var b = prototypes.querySelector('[data-ac-option=\"' + (i === sel ? 'selected' : 'normal') + '\"]').cloneNode(true);
       b.textContent = o;
       b.addEventListener('pointerdown', function (e) \{ e.preventDefault(); take(i); });
       box.appendChild(b);
     });
-    var hint = document.createElement('span');
-    hint.className = 'text-xs dim';
-    hint.style.alignSelf = 'center';
+    var hint = prototypes.querySelector('[data-ac-hint]').cloneNode(true);
     hint.textContent = matchMedia('(pointer: coarse)').matches ? 'tap the field again for the first' : 'tab takes the highlighted one';
     box.appendChild(hint);
-    /* the box is outside the page's root: it takes the theme's colours from the field */
-    var cs = getComputedStyle(cur);
-    ['--card', '--line', '--ink', '--dim', '--bg'].forEach(function (v) \{ box.style.setProperty(v, cs.getPropertyValue(v)); });
     var r = cur.getBoundingClientRect();
     box.style.left = (r.left + scrollX) + 'px';
     box.style.top = (r.bottom + scrollY + 4) + 'px';
@@ -1201,6 +1158,9 @@ autocomplete = "
   document.addEventListener('focusout', function (e) \{ if (e.target === cur) setTimeout(refresh, 0); });
   document.addEventListener('input', function (e) \{ if (e.target === cur) \{ sel = 0; moved = false; refresh(); } });
   addEventListener('resize', refresh);
+  addEventListener('scroll', refresh, true);
+  document.addEventListener('live:frame', refresh);
+  addEventListener('pagehide', hide);
   /* Tab takes a suggestion once you have typed, or chosen one with the arrows;
      on an empty field Tab moves on as usual */
   document.addEventListener('keydown', function (e) \{

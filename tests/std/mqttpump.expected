@@ -1,0 +1,1 @@
+MQTT pump: publication retention on PUBACK failure, queue admission and explicit stop cleanup PASS

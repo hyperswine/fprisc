@@ -1,0 +1,99 @@
+# A single-owner MQTT pump over any Transport, including native TLS. next uses
+# one-attempt reads and shorter readiness wakes for keepalive; an idle deadline
+# returns Ok Nil and retains the pending read instead of abandoning it.
+T = use "transport".
+Q = use "mqtt".
+SS = use "mqttsession".
+L = use "list".
+create config packetLimit chunkLimit connection = case Q.decoder packetLimit chunkLimit of
+    Err why -> Err (T.Invalid why)
+  | Ok decoder -> Ok {session = SS.initial config, decoder = decoder, connection = connection,
+      packetLimit = packetLimit, chunkLimit = chunkLimit, outbox = Nil, canSend = True, undelivered = Nil}.
+now u = Sys.timeUs Unit / 1000.
+update event client =
+  (session, effects) = SS.step event client.session;
+  packets = L.filterMap (fn effect -> case effect of SS.Send epoch packet -> if epoch == session.epoch then Option.Some packet else Option.None | _ -> Option.None) effects;
+  notices = L.filter (fn effect -> case effect of SS.Send _ _ -> False | _ -> True) effects;
+  ({client | session = session, outbox = L.append client.outbox packets}, notices).
+Option = use "option".
+lost why client =
+  (session, _) = SS.step (SS.Lost client.session.epoch "{why}") client.session;
+  (reason, conn) = T.failed why client.connection;
+  (_, closed) = T.close conn;
+  (Err reason, {client | session = session, connection = closed, outbox = Nil}).
+flush budget client = if not client.canSend then (Ok Unit, client) else case client.outbox of
+    Nil -> (Ok Unit, client)
+  | packet :: rest -> (case Q.encode packet of
+      Err why -> lost (T.Invalid why) client
+    | Ok bytes -> if not (withinLimit client.packetLimit bytes) then lost (T.Invalid "outgoing MQTT packet exceeds limit") client else
+        case T.writeAll budget bytes client.connection of
+          (Err (why, _), conn) -> lost why {client | connection = conn}
+        | (Ok _, conn) -> flush budget {client | connection = conn, outbox = rest}).
+withinLimit limit bytes = case Q.lengthAt bytes 1 0 1 of Ok (Q.Sized _ n) -> n <= limit | _ -> False.
+needsRoom event = case event of SS.PublishMsg _ _ _ _ _ -> True | SS.SubscribeTo _ _ -> True | SS.UnsubscribeFrom _ _ -> True | _ -> False.
+apply budget event client = if needsRoom event and L.length client.outbox >= SS.capacity client.session.config then (Err (T.Invalid "MQTT outgoing queue full"), client) else
+  (updated, notices) = update event client;
+  case flush budget updated of (Err why, next) -> (Err why, next) | (Ok _, next) -> (Ok notices, next).
+begin budget client = apply budget (SS.Start (now Unit)) client.
+publish budget topic payload qos retain client = if strlen topic > client.packetLimit or strlen payload > client.packetLimit - strlen topic then
+  (Err (T.Invalid "outgoing MQTT packet exceeds limit"), client)
+  else apply budget (SS.PublishMsg (now Unit) topic payload qos retain) client.
+subscribe budget topics client = apply budget (SS.SubscribeTo (now Unit) topics) client.
+unsubscribe budget topics client = apply budget (SS.UnsubscribeFrom (now Unit) topics) client.
+received packets client = case packets of
+    Nil -> (client, Nil)
+  | packet :: rest ->
+      (updated, notices) = update (SS.Received client.session.epoch (now Unit) packet) client;
+      (next, more) = received rest updated;
+      (next, L.append notices more).
+wakeBudget budget session =
+  ms = SS.nextDeadline session;
+  deadline = if ms > intMax Unit / 1000 then T.deadline budget else
+    if ms * 1000 < T.deadline budget then ms * 1000 else T.deadline budget;
+  case budget of T.Uncancelled _ -> T.Uncancelled deadline | T.Budget _ cancelled -> T.Budget deadline cancelled.
+next budget client = if T.isCancelled budget then lost T.Cancelled client else
+  if Sys.timeUs Unit >= T.deadline budget then (Ok Nil, client) else
+  (ticked, notices) = update (SS.Tick (now Unit)) client;
+  if ticked.session.phase == SS.Offline then
+    (_, closed) = T.close ticked.connection;
+    (Ok notices, {ticked | connection = closed, outbox = Nil})
+  else case flush budget ticked of
+    (Err why, fresh) -> (Err why, fresh)
+  | (Ok _, fresh) -> (case T.attemptRead budget fresh.chunkLimit fresh.connection of
+      (Err (why, _), conn) -> lost why {fresh | connection = conn}
+    | (Ok step, conn) ->
+        current = {fresh | connection = conn};
+        case step of
+          T.End -> lost T.EndOfStream current
+        | T.ReadFault why -> lost why current
+        | T.Data bytes -> (case Q.feed bytes current.decoder of
+            Err why -> lost (T.Invalid why) current
+          | Ok (packets, decoder) ->
+              (updated, notes) = received packets {current | decoder = decoder, canSend = True};
+              if updated.session.phase == SS.Offline then
+                (_, closed) = T.close updated.connection;
+                (Ok notes, {updated | connection = closed, outbox = Nil})
+              else case flush budget {updated | undelivered = notes} of
+                (Err why, final) -> (Err why, final)
+              | (Ok _, final) -> if notes == Nil then next budget final else (Ok notes, {final | undelivered = Nil}))
+        | T.ReadWait interest ->
+            waiting = {current | canSend = interest == T.Readable or interest == T.ReadWrite};
+            # A timer can emit PINGREQ while the retained TLS read waits for
+            # readable I/O. Flush it before blocking on that read again.
+            if waiting.canSend and waiting.outbox != Nil then next budget waiting else
+            case T.pause (wakeBudget budget waiting.session) interest waiting.connection of
+              (Err T.TimedOut, conn2) -> next budget {waiting | connection = conn2}
+            | (Err why, conn2) -> lost why {waiting | connection = conn2}
+            | (Ok _, conn2) -> next budget {waiting | connection = conn2}).
+reattach connection client =
+  (_, _) = T.close client.connection;
+  (session, _) = SS.step (SS.Lost client.session.epoch "connection replaced") client.session;
+  decoder = case Q.decoder client.packetLimit client.chunkLimit of Ok d -> d | Err why -> error why;
+  {client | connection = connection, session = session, decoder = decoder, outbox = Nil, canSend = True}.
+# A received publication is retained even when sending its PUBACK fails. Drain
+# these notices on the error path; retries do not imply application deduplication.
+takeNotices client = (client.undelivered, {client | undelivered = Nil}).
+stop budget client =
+  (result, next) = apply budget (SS.Stop (now Unit)) client;
+  (_, closed) = T.close next.connection;
+  (if next.outbox != Nil then Err (T.Io "MQTT DISCONNECT was not sent before close") else result, {next | connection = closed, outbox = Nil}).

@@ -1,0 +1,60 @@
+unsafe base.
+C = use "std/clientcalc".
+B = use "std/browsercalc".
+M = use "std/money".
+J = use "std/json".
+L = use "std/list".
+P = use "std/program".
+
+check label yes = if yes then Unit else error "clientcalc: {label}".
+noNumber k = error "unexpected number: {k}".
+noString k = error "unexpected string: {k}".
+int e = C.integer noNumber e.
+text e = C.text noNumber noString e.
+row code want = J.object [("code", J.Text code), ("want", J.Text want)].
+moneyRow n = row (C.jsText (M.amount (C.Literal n))) (M.format n).
+intRow e = row ("String({C.jsInt e})") (str (int e)).
+taxRow n rate = intRow (M.taxExpr (C.Literal n) (C.Literal rate)).
+bad = C.Quot (C.Literal 1) (C.Literal 0).
+negative = C.Less (C.Literal (0 - 1)) (C.Literal 0).
+positive = C.Not negative.
+expressions =
+  [C.Quot (C.Literal (0 - 7)) (C.Literal 3),
+   C.Rem (C.Literal (0 - 7)) (C.Literal 3),
+   C.Add (C.Literal 9007199254740993) (C.Literal 2),
+   C.Sub (C.Literal (intMin Unit)) (C.Literal 0),
+   C.IfInt negative (C.Literal 7) bad].
+tricky = "</script><img src=x onerror=alert(1)>\"\\\n" + chr 226 + chr 128 + chr 168 + chr 226 + chr 128 + chr 169.
+vectors = L.append (L.map moneyRow [0, 1, 9, 10, 99, 100, 101, 999, 0 - 1, 0 - 101, 9007199254740993, intMin Unit, intMax Unit])
+  (L.append (L.map intRow expressions)
+    (L.append (L.concatMap (fn n -> L.map (taxRow n) [0, 1, 333, 1000, 9999]) (L.range 0 201))
+      [row (C.jsText (C.Text tricky)) tricky,
+       row (C.jsText (C.IfText (C.Or negative (C.Equal bad (C.Literal 0))) (C.Text "lazy") (C.Text "bad"))) "lazy",
+       row (C.jsText (C.IfText (C.And positive (C.Equal bad (C.Literal 0))) (C.Text "bad") (C.Text "lazy"))) "lazy"])).
+snapshot = J.object [("runtime", J.Text (B.runtime Unit)), ("vectors", J.Sequence vectors),
+  ("effects", J.Text (B.onLocals
+    [B.SetNumber "__proto__" (C.Literal 42), B.SetText tricky (C.Text tricky),
+     B.PutText (B.Id "probe") (C.Concat [C.Decimal (C.Number "__proto__"), C.StringVar tricky])])),
+  ("errors", J.strings [C.jsInt (C.Add (C.Literal (intMax Unit)) (C.Literal 1)),
+    C.jsInt (C.Sub (C.Literal (intMin Unit)) (C.Literal 1)),
+    C.jsInt (C.Mul (C.Literal (intMax Unit)) (C.Literal 2)),
+    C.jsInt (C.Quot (C.Literal (intMin Unit)) (C.Literal (0 - 1))), C.jsInt bad,
+    C.jsInt (C.Rem (C.Literal 1) (C.Literal 0)),
+    C.jsInt (C.Sub (C.Add (C.Literal (intMax Unit)) (C.Literal 1)) (C.Literal 1))])].
+main = case P.args Unit of
+    ["snapshot"] -> _ = print (J.render snapshot); 0
+  | ["bad-overflow"] -> _ = print (int (C.Add (C.Literal (intMax Unit)) (C.Literal 1))); 0
+  | ["bad-intermediate"] -> _ = print (int (C.Sub (C.Add (C.Literal (intMax Unit)) (C.Literal 1)) (C.Literal 1))); 0
+  | ["bad-divide"] -> _ = print (int bad); 0
+  | ["bad-pad"] -> _ = print (C.jsText (C.PadZero (0 - 1) (C.Literal 0))); 0
+  | _ ->
+      _ = check "negative quotient/remainder" (int (C.Quot (C.Literal (0 - 7)) (C.Literal 3)) == (0 - 2));
+      _ = check "remainder sign" (int (C.Rem (C.Literal (0 - 7)) (C.Literal 3)) == (0 - 1));
+      _ = check "money" (M.format (0 - 101) == "-1.01" and M.format 9 == "0.09");
+      _ = check "minimum Int money" (M.format (intMin Unit) == "-46116860184273879.04");
+      _ = check "half cent rounds up" (M.tax 5 1000 == 1 and M.tax 4 1000 == 0);
+      _ = check "lazy and" (not (C.boolean noNumber (C.And positive (C.Equal bad (C.Literal 0)))));
+      _ = check "lazy or" (C.boolean noNumber (C.Or negative (C.Equal bad (C.Literal 0))));
+      _ = check "quoted script boundary" (strIndexOf "</script" (C.quote tricky) < 0);
+      _ = print "clientcalc: shared cents/tax, checked integers, lazy branches and script-safe text PASS";
+      0.

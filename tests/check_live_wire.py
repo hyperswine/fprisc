@@ -6,7 +6,7 @@ import base64, json, os, select, socket, struct, subprocess, sys, tempfile, time
 from pathlib import Path
 
 class Client:
-    def __init__(self, port, modern):
+    def __init__(self, port, modern, headers=None):
         self.s = socket.create_connection(('127.0.0.1', port), timeout=10)
         self.buf = b''
         self.state = None
@@ -14,7 +14,9 @@ class Client:
         # modern: True asks for v2 (one splice per array), 3 for v3 (a list of them)
         target = '/ws?lv=3' if modern == 3 else '/ws?lv=2' if modern else '/ws'
         key = base64.b64encode(os.urandom(16)).decode()
-        self.s.sendall(f'GET {target} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n'.encode())
+        extra = ''.join(f'{name}: {value}\r\n' for name, value in (headers or {}).items())
+        host = f'localhost:{port}' if headers else 'localhost'
+        self.s.sendall(f'GET {target} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n{extra}\r\n'.encode())
         while b'\r\n\r\n' not in self.buf:
             self.buf += self.s.recv(4096)
         header, self.buf = self.buf.split(b'\r\n\r\n', 1)

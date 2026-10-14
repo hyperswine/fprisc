@@ -2,9 +2,8 @@
 # qos/programs/mods/ma.fpr).
 #
 # tokens.json becomes two things here:
-#   1. CSS custom properties per theme (day is :root, night is .night on
-#      the page root) -- every utility below references a var, so the
-#      whole palette flips with ONE class.
+#   1. Explicit inherited custom properties on each page. Utilities read
+#      tokens from that scope; day/night pages can coexist without leakage.
 #   2. a utility table in Ma's vocabulary (bg-surface, tx-2, r-md,
 #      sh-sm, gap-5 ...) -- genview's rule: using a class anywhere in
 #      the tree is what emits it; the stylesheet is a function of the
@@ -16,6 +15,7 @@
 # divs.  Layout is stacks only -- tokens.json says gridAllowed:false,
 # and cardGrid is an HStack that wraps (SPEC 0/4).
 G = use "view".
+L = use "list".
 
 # ---- layout primitives ------------------------------------------------------
 vstack g kids = G.El "div" [G.Cls "col gap-{g}"] kids.
@@ -87,13 +87,19 @@ crumbSep    = G.El "span" [G.Cls "t-caption tx-3"] [G.Txt " / "].
 crumbHere s = G.El "span" [G.Cls "t-caption tx-2"] [G.Txt s].
 breadcrumb a b here = hsA 1 Nil [crumb a, crumbSep, crumb b, crumbSep, crumbHere here].
 
-# ---- page root: theme class comes from the MODEL, so switching theme
-# is a genuine reshape (statics change -> full re-render), while text
-# slots ride deltas.  Both halves of the split, on purpose.
-page themeCls kids = G.El "div" [G.Cls "canvas {themeCls}"] kids.
+# ---- page root: the MODEL selects scoped token declarations. A theme change
+# changes static attributes; text slots continue to ride deltas.
+page themeCls kids = G.El "div" [G.Cls "canvas", G.Att "data-ma-theme" themeCls,
+  G.utilities (themeDecls (themeCls == "night"))] kids.
 
 # ---- the stylesheet: vars + base + only the utilities the tree uses ---------
-maCssFor tree = strcat maVars (strcat maBase (maRules (G.nub (G.allClasses tree Nil)))).
+maCssFor tree =
+  # Include both public page palettes for older render callers that change
+  # theme after load. Definitions remain inert until a page carries the class.
+  cs = G.nub (L.append (G.allClasses tree Nil) (L.append (paletteNames False) (paletteNames True)));
+  strcat maBase (strcat (maRules cs) (G.localCss cs)).
+paletteNames : Bool -> List String .
+paletteNames dark = G.atomNames (G.localAtoms [G.utilities (themeDecls dark)]).
 maRules : unsafe List String -> String .
 maRules Nil = "".
 maRules (c :: r) = strcat (ma1 c (maRule c)) (maRules r).
@@ -106,22 +112,30 @@ ma1 "btn-primary" d = ".btn.btn-primary\{{d}}\n".
 ma1 "btn-danger" d = ".btn.btn-danger\{{d}}\n".
 ma1 c d = ".{c}\{{d}}\n".
 
-# tokens.color -> custom properties, day at :root, night as a class
-maVars = ":root\{--bg-canvas:#F7F8FA;--bg-surface:#FFFFFF;--bg-raised:#FFFFFF;
---bd-subtle:#E4E7EC;--bd-strong:#C7CCD6;
---tx-1:#1A1D23;--tx-2:#5B6472;--tx-3:#8A93A3;--tx-on:#FFFFFF;
---ac:#3D6FE0;--ac-hover:#3560C7;--ac-press:#2C51AD;--ac-subtle:#EAF0FE;
---success:#2E9E6B;--warning:#C98A2E;--danger:#D14E4E;--celebration:#2FAE6E;
---sh-sm:0 1px 2px rgba(30,41,59,.06),0 1px 1px rgba(30,41,59,.04);
---sh-md:0 4px 12px rgba(30,41,59,.08);--sh-lg:0 12px 32px rgba(30,41,59,.12)}
-.night\{--bg-canvas:#15171C;--bg-surface:#1D2027;--bg-raised:#242830;
---bd-subtle:#2A2F38;--bd-strong:#3A404C;
---tx-1:#EDEFF3;--tx-2:#9AA3B2;--tx-3:#6B7280;
---ac:#5B8AF0;--ac-hover:#7099F5;--ac-press:#4A78D6;--ac-subtle:#1E2A45;
---success:#4CBE87;--warning:#E0A94F;--danger:#E8706F;--celebration:#4ED28E;
---sh-sm:0 1px 2px rgba(0,0,0,.3);--sh-md:0 4px 12px rgba(0,0,0,.35);
---sh-lg:0 12px 32px rgba(0,0,0,.45)}
-".
+# The token vocabulary is named data, validated by View.NamedToken. No global
+# :root/.night palette and no application-defined selectors are involved.
+colourToken pair = case pair of (name, colour) -> G.DefineColour (G.NamedToken name) colour.
+shadow y blur r g b a = G.ShadowPart (G.Px 0) (G.Px y) (G.Px blur) (G.Px 0) (G.RgbaPercent r g b a).
+themeDecls : Bool -> List G.Decl .
+themeDecls dark = L.append (L.map colourToken (("tx-on", G.Rgb 255 255 255) :: (if dark then nightColours else dayColours)))
+  (if dark then
+    [G.DefineShadows (G.NamedToken "sh-sm") [shadow 1 2 0 0 0 30],
+     G.DefineShadows (G.NamedToken "sh-md") [shadow 4 12 0 0 0 35],
+     G.DefineShadows (G.NamedToken "sh-lg") [shadow 12 32 0 0 0 45]]
+   else
+    [G.DefineShadows (G.NamedToken "sh-sm") [shadow 1 2 30 41 59 6, shadow 1 1 30 41 59 4],
+     G.DefineShadows (G.NamedToken "sh-md") [shadow 4 12 30 41 59 8],
+     G.DefineShadows (G.NamedToken "sh-lg") [shadow 12 32 30 41 59 12]]).
+dayColours = [("bg-canvas", G.Rgb 247 248 250), ("bg-surface", G.Rgb 255 255 255), ("bg-raised", G.Rgb 255 255 255),
+  ("bd-subtle", G.Rgb 228 231 236), ("bd-strong", G.Rgb 199 204 214),
+  ("tx-1", G.Rgb 26 29 35), ("tx-2", G.Rgb 91 100 114), ("tx-3", G.Rgb 138 147 163),
+  ("ac", G.Rgb 61 111 224), ("ac-hover", G.Rgb 53 96 199), ("ac-press", G.Rgb 44 81 173), ("ac-subtle", G.Rgb 234 240 254),
+  ("success", G.Rgb 46 158 107), ("warning", G.Rgb 201 138 46), ("danger", G.Rgb 209 78 78), ("celebration", G.Rgb 47 174 110)].
+nightColours = [("bg-canvas", G.Rgb 21 23 28), ("bg-surface", G.Rgb 29 32 39), ("bg-raised", G.Rgb 36 40 48),
+  ("bd-subtle", G.Rgb 42 47 56), ("bd-strong", G.Rgb 58 64 76),
+  ("tx-1", G.Rgb 237 239 243), ("tx-2", G.Rgb 154 163 178), ("tx-3", G.Rgb 107 114 128),
+  ("ac", G.Rgb 91 138 240), ("ac-hover", G.Rgb 112 153 245), ("ac-press", G.Rgb 74 120 214), ("ac-subtle", G.Rgb 30 42 69),
+  ("success", G.Rgb 76 190 135), ("warning", G.Rgb 224 169 79), ("danger", G.Rgb 232 112 111), ("celebration", G.Rgb 78 210 142)].
 
 maBase = "*\{box-sizing:border-box;margin:0}
 body\{margin:0}

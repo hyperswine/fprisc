@@ -278,7 +278,7 @@ css v = strcat (Ma.maCssFor (view 0 {v | editing = 1, q = "x"} cssSample)) "
 
 # the whole model to `Live.serve` (no projection, no cache): kept as the baseline
 appOf store = { init = init, update = updateWith store, subs = subs, fields = fields, codec = codec,
-                view = (fn sid m -> v = project sid m; G.render (view sid v (load store v))), css = (fn m -> css (project 0 m)) }.
+                view = (fn sid m -> v = project sid m; G.renderStyled (view sid v (load store v))), css = (fn m -> css (project 0 m)) }.
 
 # Complete, immutable inputs: changing ANY entry field invalidates its card.
 # No session ID, query, clock, permissions or mutable global is read by renderCard.
@@ -294,8 +294,8 @@ cachedView store verify sid v old = case old of (cardsOld, sectionsOld) ->
   inputs = List.map (fn e -> {entry = e, editing = v.editing == e.id}) d.rows;
   (case VC.many (fn input -> str input.entry.id) renderCard inputs (VC.begin "logbook-card-v1" verify cardsOld) of (cards, next) ->
     (case VC.many sectionKey renderSection (sectionsOf v d) (VC.begin "logbook-section-v1" verify sectionsOld) of (secs, snext) ->
-      rendered = G.render (pageOf secs (listNode v.q d.count cards));
-      _ = (if verify and rendered != G.render (view sid v d) then error "logbook: cached view differs from fresh rendering" else Unit);
+      rendered = G.renderStyled (pageOf secs (listNode v.q d.count cards));
+      _ = (if verify and rendered != G.renderStyled (view sid v d) then error "logbook: cached view differs from fresh rendering" else Unit);
       (rendered, (VC.finish next, VC.finish snext)))).
 cachedAppOf store verify =
   { init = init, update = updateWith store, subs = subs, fields = fields, codec = codec,

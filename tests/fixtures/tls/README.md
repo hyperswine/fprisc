@@ -1,0 +1,1 @@
+These are public OpenSSL test fixtures from https://github.com/openssl/openssl/tree/openssl-3.0/test/certs under the OpenSSL Apache-2.0 license. The published server key is test material, not a secret and not suitable for any deployed identity. They are used only by isolated loopback tests.

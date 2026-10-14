@@ -1,0 +1,1 @@
+MQTT: wire vectors, fragmentation/coalescing, bounds/refusals, QoS1 IDs/reconnect, subscription refusal, epochs and keepalive PASS

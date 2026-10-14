@@ -1,0 +1,33 @@
+# The SAME absolute budget covers DNS, all address attempts and TCP setup.
+T = use "transport".
+S = use "sockettransport".
+R = use "resolver".
+CH = use "osconnection".
+connect budget pool host port chunk = connectWith S.timerWait budget pool host port chunk.
+connectWith wait budget pool host port chunk = if chunk <= 0 then Err (T.Invalid "chunk limit must be positive") else
+  case R.resolve budget host port pool of
+    Err why -> Err why
+  | Ok addresses -> attempts wait budget port chunk addresses (T.Io "no address to connect to").
+attempts : unsafe (T.Interest -> T.Budget -> Int -> Result Unit T.Failure) -> T.Budget -> Int -> Int -> List (Int, String) -> T.Failure -> Result (T.Connection S.SocketState) T.Failure .
+attempts wait budget port chunk addresses last = case R.gate budget of
+    Err why -> Err why
+  | Ok _ -> (case addresses of
+      Nil -> Err last
+    | (family, address) :: rest -> (case CH.begin family address port of
+        Err why -> attempts wait budget port chunk rest (S.failure why)
+      | Ok id ->
+          result = establishing wait budget id;
+          case result of
+            Ok _ -> S.fromHandle wait chunk id
+          | Err why ->
+              _ = CH.close id;
+              case why of T.TimedOut -> Err why | T.Cancelled -> Err why | _ -> attempts wait budget port chunk rest why)).
+establishing : unsafe (T.Interest -> T.Budget -> Int -> Result Unit T.Failure) -> T.Budget -> Int -> Result Unit T.Failure .
+establishing wait budget id = case R.gate budget of
+    Err why -> Err why
+  | Ok _ -> (case CH.status id of
+      Err why -> Err (S.failure why)
+    | Ok True -> R.gate budget
+    | Ok False -> (case CH.fd id of
+        Err why -> Err (S.failure why)
+      | Ok fd -> (case wait T.Writable budget fd of Err why -> Err why | Ok _ -> establishing wait budget id))).

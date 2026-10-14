@@ -1,0 +1,18 @@
+# Presentation-only inventory server. No account, device or persistence update
+# is called. Observed command text proves delivery precedes deferred clearing.
+consoleSampleUpdate ev v = case ev of
+    Live.Msg sid (Admin cmd) ->
+      ({v | con = ["received: {cmd}", S.join "\n" (List.map (fn n -> "fixture output {n}") (List.range 1 40))], events = v.events + 1},
+       [Live.Emit sid "console-observed" cmd])
+  | Live.Msg _ (Page n) -> ({v | page = n, first = n * 20}, Nil)
+  | Live.Msg _ Theme -> ({v | theme = 1 - v.theme}, Nil)
+  | _ -> (v, Nil).
+main = if Program.args Unit == ["serve"] then
+    _ = Live.serveProjected {Live.defaults | port = 0, script = script, journal = False}
+      {init = {sampleView | page = 0}, update = consoleSampleUpdate, subs = (fn v -> Nil), fields = Nil,
+       codec = codec, project = (fn sid v -> v), same = (fn a b -> a == b),
+       cache = (VC.empty Unit, noRender), view = view 12, css = cssAll};
+    0
+  else
+    _ = print (Json.render (Json.object [("console", Json.Text consoleScript), ("pager", Json.Text pagerScript)]));
+    0.

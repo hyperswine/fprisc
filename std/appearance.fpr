@@ -1,0 +1,25 @@
+# Explicit page appearance shared by POS and inventory. Every palette and
+# gradient belongs to the supplied element; no body/ancestor theme selectors.
+G = use "view".
+day = { bg = G.Rgb 243 245 249, ink = G.Rgb 13 21 38, dim = G.Rgb 91 106 134,
+  card = G.Rgb 255 255 255, panel = G.Rgb 255 255 255, line = G.Rgb 211 219 232 }.
+night = { bg = G.Rgb 6 10 18, ink = G.Rgb 233 239 247, dim = G.Rgb 124 138 163,
+  card = G.Rgb 10 17 32, panel = G.Rgb 12 20 36, line = G.Rgb 27 39 64 }.
+palette : Bool -> { bg : G.Colour, ink : G.Colour, dim : G.Colour, card : G.Colour, panel : G.Colour, line : G.Colour } .
+palette light = if light then day else night.
+panel : Bool -> G.BackgroundImage .
+panel light = G.LinearGradient 180 (if light then
+  [G.Stop day.panel (G.Pct 0), G.Stop (G.Rgb 238 242 248) (G.Pct 100)]
+  else [G.Stop night.panel (G.Pct 0), G.Stop (G.Rgb 8 14 26) (G.Pct 100)]).
+tokens : Bool -> List G.Attr .
+tokens light = [G.theme (palette light), G.utilities [G.DefineImage G.Panel (panel light)]].
+backdrop : Bool -> List G.BackgroundImage .
+backdrop light = G.RadialGradient (G.Px 900) (G.Px 500) (G.Pct 20) (G.Pct (0 - 10))
+  [G.Stop (if light then G.Rgb 223 232 247 else G.Rgb 15 32 53) (G.Pct 0), G.Stop G.Transparent (G.Pct 60)] ::
+  (if light then Nil else [G.RadialGradient (G.Px 700) (G.Px 400) (G.Pct 95) (G.Pct 5)
+    [G.Stop (G.Rgb 26 21 38) (G.Pct 0), G.Stop G.Transparent (G.Pct 55)]]).
+frame : Bool -> List G.Attr .
+frame light = G.utilities [G.MinHeight (G.Vh 100), G.Width (G.Pct 100),
+  G.Background (G.ThemeColour G.Bg), G.Foreground (G.ThemeColour G.Ink),
+  G.BackgroundImages (backdrop light), G.BackgroundAttachment G.FixedBackground,
+  G.BackgroundRepeat G.NoRepeat, G.FontFamily G.ReadingFont, G.FontSize (G.Px 15), G.LineHeight 155] :: tokens light.

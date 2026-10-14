@@ -236,6 +236,7 @@ typedef struct fpr_acb {
    * ledger to wake its watchers only when the count says there are any */
   void (*external_cleanup)(void *);
   void *external_arg;
+  fpr_resource_t *resources;
   struct fpr_acb *watch;
   uw watchers;
 #ifdef FPR_COST_PROBE
@@ -835,6 +836,11 @@ static void reap(acb_t *a) {
     void *arg = a->external_arg;
     a->external_cleanup = 0; a->external_arg = 0;
     fn(arg);
+  }
+  while (a->resources) {
+    fpr_resource_t *r = a->resources;
+    a->resources = r->next;
+    r->release(r->arg);
   }
   if (a->ch) chb_drain(a->ch); /* mail it never read: released, not stranded (holds park below) */
   /* Bounded producers cannot pass their locked death check now. The drained
@@ -1956,6 +1962,23 @@ void fpr_actor_cleanup_clear(void *arg) {
   acb_t *a = h ? h->current : 0;
   if (a && a->external_arg == arg) { a->external_cleanup = 0; a->external_arg = 0; }
 }
+int fpr_actor_resource_add(fpr_resource_t *node, void (*release)(void *), void *arg) {
+  if (fpr_plane_actors) return 0; /* no private ACB access across a plane */
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h ? h->current : 0;
+  if (!a) return 0;
+  node->release = release; node->arg = arg;
+  node->next = a->resources; a->resources = node;
+  return 1;
+}
+void fpr_actor_resource_remove(fpr_resource_t *node) {
+  if (fpr_plane_actors) return;
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h ? h->current : 0;
+  if (!a) return;
+  for (fpr_resource_t **p = &a->resources; *p; p = &(*p)->next)
+    if (*p == node) { *p = node->next; return; }
+}
 
 /* FAIL-STOP: end the CURRENT actor with a named reason instead of halting the
  * machine.  For a device primitive whose request cannot be completed (a
@@ -2136,6 +2159,7 @@ void fpr_actors_init(void) { /* hart 0, before fpr_smp_go */
   main_acb.parent = 0;
   main_acb.pid = 0;
   main_acb.external_cleanup = 0; main_acb.external_arg = 0;
+  main_acb.resources = 0;
   main_acb.scopes = 0;
   ledger_push(&main_acb);
   uw stk_sz = 0;
@@ -2264,6 +2288,7 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
   a->stack = stk;
   a->stack_sz = stk_sz;
   a->external_cleanup = 0; a->external_arg = 0;
+  a->resources = 0;
   a->wait_kind = a->wait_arg = 0;
   a->slp_on = 0;
   a->segs = a->spare = 0;

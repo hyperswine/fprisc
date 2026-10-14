@@ -1,0 +1,89 @@
+unsafe base.
+T = use "std/transport".
+L = use "std/list".
+O = use "std/option".
+check label yes = if yes then Unit else error "transport: {label}".
+blank = {reads = Nil, writes = Nil, clock = 0, tick = 0, calls = 0,
+  offers = Nil, output = "", waits = Nil, closes = 0, waitError = O.None, closeError = O.None}.
+readScript n s =
+  next = {s | calls = s.calls + 1, clock = s.clock + s.tick};
+  case s.reads of Nil -> (T.ReadWait T.Readable, next) | x :: xs -> (x, {next | reads = xs}).
+writeScript bytes s =
+  next = {s | calls = s.calls + 1, clock = s.clock + s.tick, offers = L.append s.offers [bytes]};
+  case s.writes of
+    Nil -> (T.WriteWait T.Writable, next)
+  | x :: xs ->
+      out = case x of T.Wrote n -> if n > 0 and n <= strlen bytes then substr bytes 0 n else "" | _ -> "";
+      (x, {next | writes = xs, output = s.output + out}).
+waitScript interest budget s =
+  left = T.deadline budget - s.clock;
+  us = if left < 1000 then left else 1000;
+  next = {s | clock = s.clock + us, waits = L.append s.waits [(interest, us)]};
+  (case s.waitError of O.None -> Ok Unit | O.Some why -> Err why, next).
+clockScript s = s.clock.
+closeScript s = (case s.closeError of O.None -> Ok Unit | O.Some why -> Err why, {s | closes = s.closes + 1}).
+driver = T.Backend readScript writeScript waitScript clockScript closeScript (fn s -> Ok Unit) (fn why s -> (why, s)).
+connection chunk s = case T.open chunk driver s of Ok c -> c | Err _ -> error "fixture open".
+budget = T.Budget 10000 T.neverCancel.
+calls c = s = T.state c; s.calls.
+closes c = s = T.state c; s.closes.
+offers c = s = T.state c; s.offers.
+output c = s = T.state c; s.output.
+waits c = s = T.state c; s.waits.
+main =
+  (r1, c1) = T.readExactly budget 5 (connection 2 {blank | reads = [T.Data "ab", T.Data "cd", T.Data "e"]});
+  _ = check "fragmented exact read and chunking" (r1 == Ok "abcde" and (calls c1) == 3);
+  (r2, c2) = T.readSome budget 2 (connection 2 {blank | reads = [T.ReadWait T.Writable, T.Data "x"]});
+  _ = check "TLS-style read needs writable" (r2 == Ok "x" and (waits c2) == [(T.Writable, 1000)]);
+  (r3, c3) = T.writeAll budget "abcdef" (connection 3 {blank | writes = [T.Wrote 1, T.Wrote 2, T.WriteWait T.Readable, T.Wrote 1, T.Wrote 2]});
+  _ = check "partial write offsets and same pending bytes" (r3 == Ok 6 and (output c3) == "abcdef" and
+    (offers c3) == ["abc", "bcd", "def", "def", "ef"] and (waits c3) == [(T.Readable, 1000)]);
+  (r4, c4) = T.writeAll budget "ab" (connection 3 {blank | writes = [T.WriteWait T.ReadWrite, T.Wrote 2]});
+  _ = check "either readiness" (r4 == Ok 2 and (waits c4) == [(T.ReadWrite, 1000)]);
+  (r5, c5) = T.readExactly budget 4 (connection 2 {blank | reads = [T.Data "ab", T.End]});
+  _ = check "short EOF retains prefix" (r5 == Err (T.EndOfStream, "ab"));
+  (r6, c6) = T.readSome budget 1 (connection 2 {blank | reads = [T.End]});
+  _ = check "ordinary EOF" (r6 == Ok "");
+  (parked, _) = T.readSome (T.Uncancelled 10000) 1
+    (connection 2 {blank | reads = [T.ReadWait T.Readable, T.Data "u"]});
+  _ = check "uncancelled finite budget uses same driver" (parked == Ok "u");
+  (r7, c7) = T.readSome (T.Budget 0 T.neverCancel) 1 (connection 2 {blank | reads = [T.Data "x"]});
+  _ = check "expired before ready I/O" (r7 == Err (T.TimedOut, "") and (calls c7) == 0);
+  (r8, c8) = T.readExactly (T.Budget 25 T.neverCancel) 4
+    (connection 2 {blank | reads = [T.Data "a", T.Data "b", T.Data "c", T.Data "d"], tick = 10});
+  _ = check "progress never renews deadline; late data retained" (r8 == Err (T.TimedOut, "abc") and (calls c8) == 3);
+  (r9, c9) = T.readSome (T.Budget 250 T.neverCancel) 1 (connection 2 {blank | reads = [T.ReadWait T.Readable, T.Data "x"]});
+  _ = check "wait clips to absolute budget" (r9 == Err (T.TimedOut, "") and (calls c9) == 1 and (waits c9) == [(T.Readable, 250)]);
+  (r10, c10) = T.writeAll (T.Budget 20 T.neverCancel) "abc" (connection 2 {blank | writes = [T.Wrote 1, T.Wrote 1, T.Wrote 1], tick = 10});
+  _ = check "late committed write prefix retained" (r10 == Err (T.TimedOut, 2) and (output c10) == "ab");
+  (r11, c11) = T.readSome (T.Budget 0 (fn u -> True)) 1 (connection 2 blank);
+  _ = check "cancellation before expired deadline and I/O" (r11 == Err (T.Cancelled, "") and (calls c11) == 0);
+  (r12, c12) = T.readExactly budget 3 (connection 2 {blank | reads = [T.Data "a", T.ReadWait T.Readable], waitError = O.Some T.Cancelled});
+  _ = check "wait failure retains read prefix" (r12 == Err (T.Cancelled, "a"));
+  (r13, c13) = T.writeAll budget "abc" (connection 2 {blank | writes = [T.Wrote 1, T.WriteFault (T.Io "broken")]});
+  _ = check "write failure retains committed count" (r13 == Err (T.Io "broken", 1));
+  (bad1, _) = T.readSome budget 1 (connection 2 {blank | reads = [T.Data "ab"]});
+  (bad2, _) = T.readSome budget 1 (connection 2 {blank | reads = [T.Data ""]});
+  (bad3, _) = T.writeAll budget "x" (connection 2 {blank | writes = [T.Wrote 0]});
+  (bad4, _) = T.writeAll budget "x" (connection 2 {blank | writes = [T.Wrote 2]});
+  _ = check "backend progress checked" ((case bad1 of Err (T.DriverViolation _, _) -> True | _ -> False) and
+    (case bad2 of Err (T.DriverViolation _, _) -> True | _ -> False) and
+    (case bad3 of Err (T.DriverViolation _, _) -> True | _ -> False) and
+    (case bad4 of Err (T.DriverViolation _, _) -> True | _ -> False));
+  (emptyRead, ec1) = T.readExactly budget 0 (connection 2 blank);
+  (emptyWrite, ec2) = T.writeAll budget "" ec1;
+  _ = check "empty operations avoid backend" (emptyRead == Ok "" and emptyWrite == Ok 0 and (calls ec2) == 0);
+  (released, shut) = T.close c1;
+  (again, shut2) = T.close shut;
+  (afterClose, shut3) = T.readSome budget 0 shut2;
+  _ = check "returned closed handle releases once and refuses operations" (released == Ok Unit and again == Ok Unit and
+    (closes shut3) == 1 and afterClose == Err (T.Closed, ""));
+  cleanup = connection 2 {blank | closeError = O.Some (T.Io "release")};
+  both = T.withConnection cleanup (fn c -> (Err (T.Io "body"), c));
+  _ = check "operation and cleanup failures both survive" (both == Err (T.CleanupFailed (T.Io "body") (T.Io "release")));
+  closeOnly = T.withConnection cleanup (fn c -> (Ok 1, c));
+  _ = check "cleanup failure on success" (closeOnly == Err (T.Io "release"));
+  _ = check "deadline arithmetic refuses overflow" (T.deadlineFrom (intMax Unit) 1 == Err (T.Invalid "deadline exceeds Int range"));
+  _ = check "duration validation" (T.deadlineFrom 0 (0 - 1) == Err (T.Invalid "negative clock or duration"));
+  _ = print "transport: fragmented I/O, readiness direction, absolute budgets, cancellation, progress, driver validation and cleanup PASS";
+  0.

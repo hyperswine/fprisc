@@ -1,0 +1,55 @@
+unsafe base.
+Q = use "../std/mqtt".
+SS = use "../std/mqttsession".
+Client = use "../std/mqttclient".
+TLS = use "../std/tls".
+T = use "../std/transport".
+S = use "../std/sockettransport".
+D = use "../std/resolver".
+C = use "../std/connect".
+R = use "../std/readiness".
+W = use "../std/watchedtransport".
+P = use "../std/program".
+String = use "../std/string".
+L = use "../std/list".
+need r = case r of Ok x -> x | Err why -> error "MQTT client fixture: {why}".
+check why yes = if yes then Unit else error "MQTT client fixture: {why}".
+exercise conn =
+  config = need (SS.config "fpr-native-test" False 1 2000 8);
+  client = need (Client.create config 65536 4096 conn);
+  limit = need (S.forMs 4000);
+  (_, c1) = Client.begin limit client;
+  (connected, c2) = Client.next limit c1;
+  _ = check "broker CONNACK" (L.any (fn effect -> case effect of SS.Up _ _ -> True | _ -> False) (need connected));
+  (_, c3) = Client.subscribe limit [("fpr-test/#",1)] c2;
+  (subscribed, c4) = Client.next limit c3;
+  _ = check "broker SUBACK" (need subscribed == [SS.Subscribed 1 [1]]);
+  (_, c5) = Client.publish limit "fpr-test/echo" "native payload" 1 False c4;
+  c6 = deliveries limit c5 False False;
+  before = c6.session.lastSent;
+  (idle, c7) = Client.next (need (S.forMs 1500)) c6;
+  _ = check "idle TLS/TCP keepalive remains online" (need idle == Nil and c7.session.phase == SS.Online and c7.session.lastSent > before);
+  (stopped, _) = Client.stop (need (S.forMs 1000)) c7;
+  _ = need stopped;
+  Unit.
+deliveries budget client gotAck gotPayload = if gotAck and gotPayload then client else
+  (result, next) = Client.next budget client;
+  notes = need result;
+  _ = check "expected QoS1 notices before budget" (notes != Nil);
+  ack = gotAck or L.any (fn effect -> case effect of SS.Acked 2 -> True | _ -> False) notes;
+  payload = gotPayload or L.any (fn effect -> case effect of SS.Delivered "fpr-test/echo" "native payload" 1 _ _ -> True | _ -> False) notes;
+  deliveries budget next ack payload.
+main = case P.args Unit of
+    [portText, roots, mode] ->
+      port = need (String.toInt portText);
+      pool = need (D.create 2);
+      p = R.start Unit;
+      tcp = need (C.connectWith (W.wait p) (need (S.forMs 2000)) pool "127.0.0.1" port 16384);
+      _ = if mode == "tls" then
+        secure = need (TLS.upgrade (need (S.forMs 2000)) "server.example" (TLS.CaFile roots) TLS.TLS12 tcp);
+        exercise secure
+      else exercise tcp;
+      _ = R.stop p;
+      _ = need (D.close pool);
+      print "MQTT {mode}: broker subscribe/publish/QoS1 echo and idle keepalive PASS"
+  | _ -> error "MQTT fixture needs port roots mode".

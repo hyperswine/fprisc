@@ -1,0 +1,39 @@
+# Connected TCP with checked identity, actor ownership and death cleanup.
+# Old state aliases cannot access a descriptor after its lease is consumed.
+T = use "transport".
+ST = use "stream".
+IO = use "osio".
+CH = use "osconnection".
+SocketState = Type (SocketState Int (T.Interest -> T.Budget -> Int -> Result Unit T.Failure)).
+within ms cancelled = case T.deadlineFrom (Sys.timeUs Unit) ms of Err why -> Err why | Ok d -> Ok (T.Budget d cancelled).
+forMs ms = case T.deadlineFrom (Sys.timeUs Unit) ms of Err why -> Err why | Ok d -> Ok (T.Uncancelled d).
+failure why = if why == "closed" then T.Closed else if why == "wrong owner" then T.WrongOwner else T.Io why.
+handle s = case s of SocketState id _ -> id.
+descriptor s = case CH.fd (handle s) of Ok fd -> Ok fd | Err why -> Err (failure why).
+valid s = case descriptor s of Ok _ -> Ok Unit | Err why -> Err why.
+mask interest = case interest of T.Readable -> 1 | T.Writable -> 2 | T.ReadWrite -> 3 | T.Progress -> 0.
+readNow n s = case CH.read (handle s) n of
+    Ok bytes -> (if strlen bytes == 0 then T.End else T.Data bytes, s)
+  | Err why -> (if why == "again" then T.ReadWait T.Readable else T.ReadFault (failure why), s).
+writeNow bytes s = case CH.write (handle s) bytes of
+    Ok n -> (T.Wrote n, s)
+  | Err why -> (if why == "again" then T.WriteWait T.Writable else T.WriteFault (failure why), s).
+waitNow interest budget s = case descriptor s of
+    Err why -> (Err why, s)
+  | Ok fd -> (case s of SocketState _ wait ->
+      result = wait interest budget fd;
+      (case result of Err why -> Err why | Ok _ -> valid s, s)).
+timerWait interest budget fd =
+  left = T.deadline budget - Sys.timeUs Unit;
+  us = if left < 1000 then left else 1000;
+  if us <= 0 then Err T.TimedOut else
+  if interest == T.Progress then _ = Sys.sleepUs us; Ok Unit else
+  case IO.readyFor fd (mask interest) of
+    Err why -> Err (T.Io why)
+  | Ok ready -> _ = if ready then yield (myself 0) else Sys.sleepUs us; Ok Unit.
+now s = Sys.timeUs Unit.
+release s = (case CH.close (handle s) of Ok _ -> Ok Unit | Err why -> Err (failure why), s).
+fromHandle wait chunk id = T.open chunk (T.Backend readNow writeNow waitNow now release valid (fn why state -> (why, state))) (SocketState id wait).
+adopt chunk stream = adoptWith timerWait chunk stream.
+adoptWith wait chunk stream = if chunk <= 0 then Err (T.Invalid "chunk limit must be positive") else
+  case CH.adopt (ST.fd stream) of Err why -> Err (failure why) | Ok id -> fromHandle wait chunk id.

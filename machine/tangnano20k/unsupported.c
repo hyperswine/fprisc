@@ -41,6 +41,10 @@ static V h_fpr_g_Os_x2eread(V a0,V a1){(void)a0;(void)a1;return unavailable("Bas
 FPR_FN(fpr_g_Os_x2eread,h_fpr_g_Os_x2eread,2);
 static V h_fpr_g_Os_x2eready(V a0){(void)a0;fpr_cpanic("Base: Os.ready unavailable");return (V)&fpr_unit;}
 FPR_FN(fpr_g_Os_x2eready,h_fpr_g_Os_x2eready,1);
+static V h_fpr_g_Os_x2ereadyFor(V a0,V a1){(void)a0;(void)a1;return unavailable("Base: Os.readyFor unavailable");}
+FPR_FN(fpr_g_Os_x2ereadyFor,h_fpr_g_Os_x2ereadyFor,2);
+static V h_fpr_g_Os_x2eprepareSocket(V a0){(void)a0;return unavailable("Base: Os.prepareSocket unavailable");}
+FPR_FN(fpr_g_Os_x2eprepareSocket,h_fpr_g_Os_x2eprepareSocket,1);
 static V h_fpr_g_Os_x2eremove(V a0){(void)a0;return unavailable("Base: Os.remove unavailable");}
 FPR_FN(fpr_g_Os_x2eremove,h_fpr_g_Os_x2eremove,1);
 static V h_fpr_g_Os_x2erename(V a0,V a1){(void)a0;(void)a1;return unavailable("Base: Os.rename unavailable");}
@@ -51,6 +55,10 @@ static V h_fpr_g_Os_x2estat(V a0){(void)a0;return unavailable("Base: Os.stat una
 FPR_FN(fpr_g_Os_x2estat,h_fpr_g_Os_x2estat,1);
 static V h_fpr_g_Os_x2ewatchArm(V a0,V a1){(void)a0;(void)a1;fpr_cpanic("Base: Os.watchArm unavailable");return (V)&fpr_unit;}
 FPR_FN(fpr_g_Os_x2ewatchArm,h_fpr_g_Os_x2ewatchArm,2);
+static V h_fpr_g_Os_x2ewatchArmEvents(V a0,V a1,V a2){(void)a0;(void)a1;(void)a2;return unavailable("Base: Os.watchArmEvents unavailable");}
+FPR_FN(fpr_g_Os_x2ewatchArmEvents,h_fpr_g_Os_x2ewatchArmEvents,3);
+static V h_fpr_g_Os_x2ewatchTakeEvents(V a0){(void)a0;fpr_cpanic("Base: Os.watchTakeEvents unavailable");return (V)&fpr_unit;}
+FPR_FN(fpr_g_Os_x2ewatchTakeEvents,h_fpr_g_Os_x2ewatchTakeEvents,1);
 static V h_fpr_g_Os_x2ewatchClose(V a0){(void)a0;fpr_cpanic("Base: Os.watchClose unavailable");return (V)&fpr_unit;}
 FPR_FN(fpr_g_Os_x2ewatchClose,h_fpr_g_Os_x2ewatchClose,1);
 static V h_fpr_g_Os_x2ewatchOpen(V a0){(void)a0;return unavailable("Base: Os.watchOpen unavailable");}
@@ -97,3 +105,39 @@ static V h_fpr_g_spawn(V a0){(void)a0;fpr_cpanic("Base: spawn unavailable");retu
 FPR_FN(fpr_g_spawn,h_fpr_g_spawn,1);
 static V h_fpr_g_yield(V a0){(void)a0;fpr_cpanic("Base: yield unavailable");return (V)&fpr_unit;}
 FPR_FN(fpr_g_yield,h_fpr_g_yield,1);
+
+/* Checked native connection, resolver and TLS capabilities. */
+static V unavailable_ConnHost_adopt(V a0){(void)a0;return unavailable("Base: ConnHost.adopt unavailable");}
+FPR_FN(fpr_g_ConnHost_x2eadopt,unavailable_ConnHost_adopt,1);
+static V unavailable_ConnHost_begin(V a0,V a1,V a2){(void)a0;(void)a1;(void)a2;return unavailable("Base: ConnHost.begin unavailable");}
+FPR_FN(fpr_g_ConnHost_x2ebegin,unavailable_ConnHost_begin,3);
+static V unavailable_ConnHost_fd(V a0){(void)a0;return unavailable("Base: ConnHost.fd unavailable");}
+FPR_FN(fpr_g_ConnHost_x2efd,unavailable_ConnHost_fd,1);
+static V unavailable_ConnHost_status(V a0){(void)a0;return unavailable("Base: ConnHost.status unavailable");}
+FPR_FN(fpr_g_ConnHost_x2estatus,unavailable_ConnHost_status,1);
+static V unavailable_ConnHost_read(V a0,V a1){(void)a0;(void)a1;return unavailable("Base: ConnHost.read unavailable");}
+FPR_FN(fpr_g_ConnHost_x2eread,unavailable_ConnHost_read,2);
+static V unavailable_ConnHost_write(V a0,V a1){(void)a0;(void)a1;return unavailable("Base: ConnHost.write unavailable");}
+FPR_FN(fpr_g_ConnHost_x2ewrite,unavailable_ConnHost_write,2);
+static V unavailable_ConnHost_close(V a0){(void)a0;return unavailable("Base: ConnHost.close unavailable");}
+FPR_FN(fpr_g_ConnHost_x2eclose,unavailable_ConnHost_close,1);
+static V unavailable_DnsHost_pool(V a0){(void)a0;return unavailable("Base: DnsHost.pool unavailable");}
+FPR_FN(fpr_g_DnsHost_x2epool,unavailable_DnsHost_pool,1);
+static V unavailable_DnsHost_begin(V a0,V a1,V a2){(void)a0;(void)a1;(void)a2;return unavailable("Base: DnsHost.begin unavailable");}
+FPR_FN(fpr_g_DnsHost_x2ebegin,unavailable_DnsHost_begin,3);
+static V unavailable_DnsHost_poll(V a0){(void)a0;return unavailable("Base: DnsHost.poll unavailable");}
+FPR_FN(fpr_g_DnsHost_x2epoll,unavailable_DnsHost_poll,1);
+static V unavailable_DnsHost_abandon(V a0){(void)a0;return unavailable("Base: DnsHost.abandon unavailable");}
+FPR_FN(fpr_g_DnsHost_x2eabandon,unavailable_DnsHost_abandon,1);
+static V unavailable_DnsHost_close(V a0){(void)a0;return unavailable("Base: DnsHost.close unavailable");}
+FPR_FN(fpr_g_DnsHost_x2eclose,unavailable_DnsHost_close,1);
+static V unavailable_TlsHost_start(V a0,V a1,V a2,V a3,V a4){(void)a0;(void)a1;(void)a2;(void)a3;(void)a4;return unavailable("Base: TlsHost.start unavailable");}
+FPR_FN(fpr_g_TlsHost_x2estart,unavailable_TlsHost_start,5);
+static V unavailable_TlsHost_fd(V a0){(void)a0;return unavailable("Base: TlsHost.fd unavailable");}
+FPR_FN(fpr_g_TlsHost_x2efd,unavailable_TlsHost_fd,1);
+static V unavailable_TlsHost_step(V a0,V a1,V a2,V a3){(void)a0;(void)a1;(void)a2;(void)a3;return unavailable("Base: TlsHost.step unavailable");}
+FPR_FN(fpr_g_TlsHost_x2estep,unavailable_TlsHost_step,4);
+static V unavailable_TlsHost_pending(V a0){(void)a0;return unavailable("Base: TlsHost.pending unavailable");}
+FPR_FN(fpr_g_TlsHost_x2epending,unavailable_TlsHost_pending,1);
+static V unavailable_TlsHost_close(V a0){(void)a0;return unavailable("Base: TlsHost.close unavailable");}
+FPR_FN(fpr_g_TlsHost_x2eclose,unavailable_TlsHost_close,1);

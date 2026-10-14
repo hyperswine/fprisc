@@ -1,6 +1,7 @@
 /* Shared descriptor I/O for Unix and ESP-IDF VFS/lwIP. */
 #include "os_value.h"
 #include <fcntl.h>
+#include <limits.h>
 #ifdef FPR_ESP_IDF
 #include <sys/poll.h>
 #else
@@ -36,6 +37,24 @@ static V h_ready(V fdv) {
   return (r > 0 || (r < 0 && errno != EINTR)) ? (V)&fpr_true : (V)&fpr_false;
 }
 FPR_FN(fpr_g_Os_x2eready, h_ready, 1);
+
+/* Directional zero-time readiness; no retry/deadline policy lives here.
+ * Static successful results keep quiet readiness checks allocation-free. */
+static const struct { hdr_t h; V value; } ready_yes = {{T_RESULT, 0}, (V)&fpr_true};
+static const struct { hdr_t h; V value; } ready_no = {{T_RESULT, 0}, (V)&fpr_false};
+static V h_ready_for(V fdv, V maskv) {
+  int fd = want_fd(fdv, "Os.readyFor: descriptor must be an Int");
+  if (UNTAG(fdv) < 0 || UNTAG(fdv) > INT_MAX) return os_err("descriptor outside host range");
+  if (!ISINT(maskv) || UNTAG(maskv) < 1 || UNTAG(maskv) > 3)
+    return os_err("readiness mask must be 1, 2 or 3");
+  int mask = (int)UNTAG(maskv);
+  struct pollfd p = {fd, (short)(((mask & 1) ? POLLIN : 0) | ((mask & 2) ? POLLOUT : 0)), 0};
+  int r = poll(&p, 1, 0);
+  if (r < 0) return errno == EINTR ? (V)&ready_no : os_errno();
+  if (p.revents & POLLNVAL) return os_err("invalid descriptor");
+  return r > 0 ? (V)&ready_yes : (V)&ready_no;
+}
+FPR_FN(fpr_g_Os_x2ereadyFor, h_ready_for, 2);
 
 /* ONE system call for every descriptor a server is waiting on (std/poller.fpr).
  * Nothing ready answers the static Nil: an idle server's poller allocates

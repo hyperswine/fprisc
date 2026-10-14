@@ -1,0 +1,128 @@
+# Declarative Live-local projections (ExtBase). All reads, computations and
+# DOM effects are structured FP-RISC values. This is a deliberately small
+# browser backend, not a compiler for arbitrary FP-RISC functions.
+C = use "clientcalc".
+L = use "list".
+
+# Targets are DOM hooks, not application CSS selectors. Each nests a scope;
+# output hooks and inner loops only search descendants of the current scope.
+Target = Type (Attribute String | Id String).
+Effect = Type (SetNumber String C.IntExpr | SetText String C.TextExpr |
+  ReadAttribute String String | ReadLocal String C.TextExpr |
+  ReadTextAttribute String String | Each Target (List Effect) |
+  PutText Target C.TextExpr | Show Target C.BoolExpr |
+  SetSequence String C.IntListExpr | ReadClock String |
+  When C.BoolExpr (List Effect) | PutVisibleText Target C.TextExpr |
+  SetTexts String C.TextListExpr | LoadStoredTexts String String |
+  SaveStoredTexts String C.TextListExpr | ReadValue String | SetValue C.TextExpr |
+  ClearValueLater | PreventDefault | Ancestor Target (List Effect) |
+  After Int (List Effect) | AtDocument (List Effect) |
+  ScrollBottom Target | ScrollStart Target ScrollBehavior).
+ScrollBehavior = Type (Instant | Smooth).
+Handler = Type (On String (List Effect) | Every Int (List Effect) |
+  OnSuspend (List Effect) | Key Target String (List Effect) |
+  Click Target (List Effect)).
+
+# Persistent page-local state, event subscriptions and owned timers. Each
+# invocation copies state and queues DOM writes; computation refusal commits
+# neither. This does not provide rollback for arbitrary DOM mutation failures.
+# pagehide stops work; persisted pageshow restarts it without duplicate timers.
+program : List Effect -> List Handler -> String .
+program initial handlers = "(function()\{\n" + runtime Unit +
+  "let _state=[Object.create(null),Object.create(null),Object.create(null),Object.create(null)];let _running=false;const _cleanups=[],_timeouts=new Set();\n" +
+  "function _later(fn,ms)\{const id=setTimeout(function()\{_timeouts.delete(id);if(_running)fn();},ms);_timeouts.add(id);}\n" +
+  "({invoke initial})(null);\n" +
+  "function _start()\{if(_running)return;_running=true;\n" + strJoin "" (L.map subscription handlers) + "}\n" +
+  "function _stop()\{if(!_running)return;_running=false;\n" + strJoin "" (L.map suspended handlers) +
+  "_cleanups.splice(0).forEach(function(cleanup)\{cleanup();});_timeouts.forEach(clearTimeout);_timeouts.clear();}\n" +
+  "window.addEventListener('pagehide',_stop);window.addEventListener('pageshow',function(e)\{if(e.persisted)_start();});_start();})();\n".
+accessors : Unit -> String .
+accessors u =
+  "function _number(k)\{if(!Object.hasOwn(_ns,k))throw Error('BrowserCalc: missing number '+k);return _ns[k];}\n" +
+  "function _string(k)\{if(!Object.hasOwn(_ss,k))throw Error('BrowserCalc: missing text '+k);return _ss[k];}\n" +
+  "function _sequence(k)\{if(!Object.hasOwn(_ls,k))throw Error('BrowserCalc: missing sequence '+k);return _ls[k];}\n" +
+  "function _textSequence(k)\{if(!Object.hasOwn(_ts,k))throw Error('BrowserCalc: missing text sequence '+k);return _ts[k];}\n".
+invoke : List Effect -> String .
+invoke effects = "function(_event,_n=document)\{const [_ns,_ss,_ls,_ts]=_state.map(function(s)\{return Object.assign(Object.create(null),s);});\n" +
+  "const _writes=[];\n" + accessors Unit + "try\{\n" + emit effects +
+  "_state=[_ns,_ss,_ls,_ts];_writes.forEach(function(write)\{write();});\n" +
+  "}catch(error)\{document.dispatchEvent(new CustomEvent('fpr:client-error',\{detail:\{message:String(error.message)}}));}}".
+subscription : Handler -> String .
+subscription handler = case handler of
+    On name effects -> "\{const listener={invoke effects};document.addEventListener({C.quote name},listener);_cleanups.push(function()\{document.removeEventListener({C.quote name},listener);});}\n"
+  | Every ms effects -> if not (validInterval ms) then error "BrowserCalc.Every: interval 1..2147483647 ms"
+      else "\{const timer=setInterval({invoke effects},{ms});_cleanups.push(function()\{clearInterval(timer);});}\n"
+  | OnSuspend _ -> ""
+  | Key target key effects -> "\{const listener=function(e)\{if(e.key==={C.quote key}&&e.target instanceof Element&&e.target.matches({selector target}))({invoke effects})(e,e.target);};document.addEventListener('keydown',listener,true);_cleanups.push(function()\{document.removeEventListener('keydown',listener,true);});}\n"
+  | Click target effects -> "\{const listener=function(e)\{const node=e.target instanceof Element?e.target.closest({selector target}):null;if(node)({invoke effects})(e,node);};document.addEventListener('click',listener,true);_cleanups.push(function()\{document.removeEventListener('click',listener,true);});}\n".
+# Constants fit a 31-bit Int as well; the browser timer limit is 2^31-1.
+validInterval : Int -> Bool .
+validInterval ms = ms >= 1 and (ms / 1000000000 < 2 or
+  (ms / 1000000000 == 2 and ms % 1000000000 <= 147483647)).
+suspended : Handler -> String .
+suspended handler = case handler of OnSuspend effects -> "({invoke effects})(null);\n" | _ -> "".
+
+onLocals : List Effect -> String .
+onLocals effects = if ownsTimeouts effects then error "BrowserCalc: deferred effects require program" else "(function()\{\n" + runtime Unit +
+  "document.addEventListener('live:locals',function(_event)\{\n" +
+  "const _ns=Object.create(null),_ss=Object.create(null),_ls=Object.create(null),_ts=Object.create(null),_writes=[];\n" + accessors Unit +
+  "const _n=document;try\{\n" + emit effects +
+  "_writes.forEach(function(write)\{write();});\n" +
+  "}catch(error)\{document.dispatchEvent(new CustomEvent('fpr:client-error',\{detail:\{message:String(error.message)}}));}\n" +
+  "});})();\n".
+
+# Browser inputs are decimal TEXT, as Live locals are. Missing/malformed
+# locals become zero; malformed server attributes and out-of-range integers
+# refuse the projection. Queued DOM writes keep the previous display intact.
+runtime : Unit -> String .
+runtime u =
+  "function _int(n)\{if(n<({intMin Unit}n)||n>{intMax Unit}n)throw Error('BrowserCalc: Int overflow');return n;}\n" +
+  "function _at(xs,i)\{if(i<0n||i>=BigInt(xs.length))throw Error('ClientCalc.At: index out of bounds');return xs[Number(i)];}\n" +
+  "function _textAt(xs,i)\{return i<0n||i>=BigInt(xs.length)?'':xs[Number(i)];}\n" +
+  "function _loadTexts(key)\{try\{const xs=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(xs)&&xs.every(function(x)\{return typeof x==='string';})?xs:[];}catch(e)\{return [];}}\n" +
+  "function _parse(s,local)\{if(typeof s!=='string'||!(/^-?[0-9]+$/).test(s)||s.trim()!==s)\{if(local)return 0n;throw Error('BrowserCalc: expected decimal attribute');}return _int(BigInt(s));}\n".
+selector : Target -> String .
+selector target = case target of
+    Attribute name -> "('['+CSS.escape({C.quote name})+']')"
+  | Id name -> "('#'+CSS.escape({C.quote name}))".
+emit : unsafe List Effect -> String .
+emit effects = strJoin "" (emitGo effects).
+emitGo : unsafe List Effect -> List String .
+emitGo effects = case effects of Nil -> Nil | e :: r -> statement e :: emitGo r.
+statement : unsafe Effect -> String .
+statement e = case e of
+    SetNumber name expr -> "_ns[{C.quote name}]={C.jsInt expr};\n"
+  | SetText name expr -> "_ss[{C.quote name}]={C.jsText expr};\n"
+  | ReadAttribute name attr -> "_ns[{C.quote name}]=_parse(_n.getAttribute({C.quote attr}),false);\n"
+  | ReadLocal name key -> "_ns[{C.quote name}]=_parse((_event.detail||\{})[{C.jsText key}],true);\n"
+  | ReadTextAttribute name attr -> "_ss[{C.quote name}]=_n.getAttribute({C.quote attr})||'';\n"
+  | Each target body -> "_n.querySelectorAll({selector target}).forEach(function(_n)\{\n{emit body}});\n"
+  | PutText target expr -> "\{const _text={C.jsText expr};_n.querySelectorAll({selector target}).forEach(function(node)\{_writes.push(function()\{node.textContent=_text;});});}\n"
+  | Show target expr -> "\{const _show={C.jsBool expr};_n.querySelectorAll({selector target}).forEach(function(node)\{_writes.push(function()\{node.style.display=_show?'':'none';});});}\n"
+  | SetSequence name expr -> "_ls[{C.quote name}]={C.jsList expr};\n"
+  | ReadClock name -> "_ns[{C.quote name}]=_int(BigInt(Math.floor(performance.now()*1000)));\n"
+  | When condition body -> "if({C.jsBool condition})\{\n{emit body}}\n"
+  | PutVisibleText target expr -> "_n.querySelectorAll({selector target}).forEach(function(node)\{if(node.getClientRects().length)\{const _text={C.jsText expr};_writes.push(function()\{node.textContent=_text;});}});\n"
+  | SetTexts name expr -> "_ts[{C.quote name}]={C.jsTexts expr};\n"
+  | LoadStoredTexts name key -> "_ts[{C.quote name}]=_loadTexts({C.quote key});\n"
+  | SaveStoredTexts key expr -> "\{const texts={C.jsTexts expr};_writes.push(function()\{try\{localStorage.setItem({C.quote key},JSON.stringify(texts));}catch(e)\{}});}\n"
+  | ReadValue name -> "_ss[{C.quote name}]=_n.value;\n"
+  | SetValue expr -> "\{const value={C.jsText expr},node=_n;_writes.push(function()\{node.value=value;node.dispatchEvent(new Event('input',\{bubbles:true}));});}\n"
+  | ClearValueLater -> "\{const node=_n,value=node.value;_writes.push(function()\{_later(function()\{if(node.isConnected&&node.value===value)\{node.value='';node.dispatchEvent(new Event('input',\{bubbles:true}));}},0);});}\n"
+  | PreventDefault -> "_writes.push(function()\{_event.preventDefault();});\n"
+  | Ancestor target body -> "\{const parent=_n instanceof Element?_n.closest({selector target}):null;if(parent)(function(_n)\{\n{emit body}})(parent);}\n"
+  | After ms body -> if ms != 0 and not (validInterval ms) then error "BrowserCalc.After: delay 0..2147483647 ms"
+      else "\{const scope=_n,event=_event;_writes.push(function()\{_later(function()\{({invoke body})(event,scope);},{ms});});}\n"
+  | AtDocument body -> "(function(_n)\{\n{emit body}})(document);\n"
+  | ScrollBottom target -> "_n.querySelectorAll({selector target}).forEach(function(node)\{_writes.push(function()\{if(node.getClientRects().length)node.scrollTop=node.scrollHeight;});});\n"
+  | ScrollStart target behavior -> "_n.querySelectorAll({selector target}).forEach(function(node)\{_writes.push(function()\{if(node.getClientRects().length)node.scrollIntoView(\{block:'start',behavior:{C.quote (scrollBehavior behavior)}});});});\n".
+scrollBehavior : ScrollBehavior -> String .
+scrollBehavior behavior = case behavior of Instant -> "instant" | Smooth -> "smooth".
+ownsTimeouts : unsafe List Effect -> Bool .
+ownsTimeouts effects = L.any ownsTimeout effects.
+ownsTimeout : unsafe Effect -> Bool .
+ownsTimeout effect = case effect of
+    After _ _ -> True | ClearValueLater -> True
+  | Each _ body -> ownsTimeouts body | When _ body -> ownsTimeouts body
+  | Ancestor _ body -> ownsTimeouts body | AtDocument body -> ownsTimeouts body
+  | _ -> False.

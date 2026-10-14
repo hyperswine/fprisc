@@ -1,0 +1,30 @@
+# Caller-bounded DNS. An abandoned OS call still occupies its configured pool
+# slot until it finishes; no unbounded worker/thread queue is admitted.
+T = use "transport".
+DnsHost.pool : Int -> Result Int String .
+DnsHost.begin : Int -> String -> Int -> Result Int String .
+DnsHost.poll : Int -> Result (List (Int, String)) String .
+DnsHost.abandon : Int -> Result Unit String .
+DnsHost.close : Int -> Result Unit String .
+Pool = Type (Pool Int).
+create count = if count < 1 then Err (T.Invalid "resolver capacity must be positive") else
+  case DnsHost.pool count of Ok id -> Ok (Pool id) | Err why -> Err (T.Io why).
+close pool = case pool of Pool id -> case DnsHost.close id of Ok _ -> Ok Unit | Err why -> Err (T.Io why).
+gate budget = if T.isCancelled budget then Err T.Cancelled else
+  if T.deadline budget < 0 then Err (T.Invalid "negative deadline") else
+  if Sys.timeUs Unit >= T.deadline budget then Err T.TimedOut else Ok Unit.
+nap budget =
+  left = T.deadline budget - Sys.timeUs Unit;
+  if left <= 0 then Unit else Sys.sleepUs (if left < 1000 then left else 1000).
+resolve budget host port pool = if port < 1 or port > 65535 then Err (T.Invalid "invalid TCP port") else
+  case gate budget of Err why -> Err why | Ok _ -> (case pool of Pool id ->
+    case DnsHost.begin id host port of Err why -> Err (T.Io why) | Ok job ->
+      result = resolving budget job;
+      cleanup = DnsHost.abandon job;
+      case cleanup of Err why -> Err (T.Io why) | Ok _ -> result).
+resolving : unsafe T.Budget -> Int -> Result (List (Int, String)) T.Failure .
+resolving budget job = case gate budget of
+    Err why -> Err why
+  | Ok _ -> (case DnsHost.poll job of
+      Ok addresses -> (case gate budget of Err why -> Err why | Ok _ -> Ok addresses)
+    | Err why -> if why == "again" then _ = nap budget; resolving budget job else Err (T.Io why)).

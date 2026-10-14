@@ -1,0 +1,80 @@
+unsafe base.
+Q = use "std/mqtt".
+SS = use "std/mqttsession".
+S = use "std/string".
+L = use "std/list".
+M = use "std/map".
+check name yes = if yes then Unit else error "MQTT: {name}".
+need r = case r of Ok x -> x | Err why -> error "MQTT fixture: {why}".
+bytes ns = strJoin "" (L.map chr ns).
+decode text = need (Q.feed text (need (Q.decoder 4096 4096))).
+fragmented text decoder = if strlen text == 0 then (Nil, decoder) else
+  (packets, next) = need (Q.feed (substr text 0 1) decoder);
+  (tail, final) = fragmented (substr text 1 (strlen text - 1)) next;
+  (L.append packets tail, final).
+roundtrip packet =
+  wire = need (Q.encode packet);
+  (whole, _) = decode wire;
+  (split, _) = fragmented wire (need (Q.decoder 4096 4096));
+  _ = check "whole and byte-fragmented decode" (whole == [packet] and split == [packet]);
+  _ = L.map (fn at ->
+    (prefix, decoder) = decode (substr wire 0 at);
+    (suffix, _) = need (Q.feed (substr wire at (strlen wire - at)) decoder);
+    check "all incomplete prefixes retained" (prefix == Nil and suffix == [packet])) (L.range 0 (strlen wire - 1));
+  Unit.
+bad wire = case Q.feed wire (need (Q.decoder 32 4096)) of Err _ -> True | Ok _ -> False.
+main =
+  _ = check "known CONNECT wire vector" (Q.encode (Q.Connect "abc" True 30) == Ok (bytes [16,15,0,4,77,81,84,84,4,2,0,30,0,3,97,98,99]));
+  _ = check "known QoS1 PUBLISH vector" (Q.encode (Q.Publish "t" "abc" 1 7 False False) == Ok (bytes [50,8,0,1,116,0,7,97,98,99]));
+  packets = [Q.Connect "abc" False 0, Q.ConnAck True 0, Q.ConnAck False 5,
+    Q.Publish "t/λ" "binary\0data" 0 0 True False,
+    Q.Publish "t" (S.repeat 140 "x") 1 65535 False True,
+    Q.PubAck 7, Q.Subscribe 8 [("a/+",1),("b/#",0)], Q.SubAck 8 [1,128],
+    Q.Unsubscribe 9 ["a/+"], Q.UnsubAck 9, Q.PingReq, Q.PingResp, Q.Disconnect];
+  _ = L.map roundtrip packets;
+  joined = strJoin "" (L.map (fn p -> need (Q.encode p)) packets);
+  (coalesced, _) = decode joined;
+  _ = check "coalesced frames" (coalesced == packets);
+  _ = check "bounds checked on header before payload" (bad (bytes [48,127]));
+  _ = check "remaining length overflow/noncanonical" (bad (bytes [192,128,128,128,128]) and bad (bytes [192,128,0]));
+  _ = check "flags, QoS2, zero ID and malformed UTF8" (bad (bytes [65,2,0,1]) and bad (bytes [52,3,0,1,116]) and bad (bytes [64,2,0,0]) and not (Q.utf8 (bytes [192,128])) and not (Q.utf8 (bytes [237,160,128])) and not (Q.utf8 (bytes [244,144,128,128])));
+  _ = check "topic locality and filter grammar" (not (Q.topic "a/#") and Q.filter "a/+/b/#" and not (Q.filter "a/#/b") and not (Q.filter "a+b"));
+  cfg = need (SS.config "fp-client" False 1 100 2);
+  (s1, e1) = SS.step (SS.Start 0) (SS.initial cfg);
+  _ = check "CONNECT effect" (e1 == [SS.Send 1 (Q.Connect "fp-client" False 1)]);
+  (s2, e2) = SS.step (SS.Received 1 1 (Q.ConnAck False 0)) s1;
+  _ = check "CONNACK opens session" (e2 == [SS.Up 1 False] and s2.phase == SS.Online);
+  (_, firstPing) = SS.step (SS.Tick 1000) s2;
+  _ = check "CONNACK alone does not reset outbound keepalive clock" (firstPing == [SS.Send 1 Q.PingReq]);
+  (wrap1, _) = SS.step (SS.PublishMsg 2 "t" "first" 1 False) {s2 | nextId = 65535};
+  (wrap2, _) = SS.step (SS.PublishMsg 3 "t" "second" 1 False) wrap1;
+  (wrap3, _) = SS.step (SS.Lost 1 "network") wrap2;
+  (wrap4, _) = SS.step (SS.Start 4) wrap3;
+  (_, wrappedReplay) = SS.step (SS.Received 2 5 (Q.ConnAck True 0)) wrap4;
+  _ = check "retransmission preserves original order across identifier wrap" (wrappedReplay == [SS.Up 2 True,
+    SS.Send 2 (Q.Publish "t" "first" 1 65535 False True), SS.Send 2 (Q.Publish "t" "second" 1 1 False True)]);
+  (s3, _) = SS.step (SS.PublishMsg 2 "t" "data" 1 False) s2;
+  (s4, _) = SS.step (SS.SubscribeTo 3 [("t/#",1)]) s3;
+  (full, refused) = SS.step (SS.PublishMsg 4 "t" "extra" 1 False) s4;
+  _ = check "inflight cap does not consume identifier" (full.nextId == s4.nextId and refused == [SS.Rejected "MQTT in-flight limit"]);
+  (s5, refusal) = SS.step (SS.Received 1 5 (Q.SubAck 2 [128])) s4;
+  _ = check "refused subscription remains visible" (refusal == [SS.Subscribed 2 [128]] and M.size s5.pending == 1);
+  (s6, _) = SS.step (SS.Lost 1 "network") s5;
+  (s7, _) = SS.step (SS.Start 6) s6;
+  (s8, retransmit) = SS.step (SS.Received 2 7 (Q.ConnAck True 0)) s7;
+  _ = check "QoS1 reconnect resends same ID with DUP" (retransmit == [SS.Up 2 True, SS.Send 2 (Q.Publish "t" "data" 1 1 False True)]);
+  (old, ignored) = SS.step (SS.Received 1 8 (Q.PubAck 1)) s8;
+  _ = check "stale epoch cannot acknowledge new connection" (ignored == Nil and M.size old.pending == 1);
+  (s9, ack) = SS.step (SS.Received 2 9 (Q.PubAck 1)) old;
+  _ = check "PUBACK completes once" (ack == [SS.Acked 1] and M.isEmpty s9.pending);
+  (s10, delivery) = SS.step (SS.Received 2 10 (Q.Publish "t" "incoming" 1 99 False True)) s9;
+  _ = check "incoming QoS1 delivery and acknowledgement" (delivery == [SS.Delivered "t" "incoming" 1 False True, SS.Send 2 (Q.PubAck 99)]);
+  (s11, ping) = SS.step (SS.Tick 1010) s10;
+  _ = check "keepalive sends PINGREQ" (ping == [SS.Send 2 Q.PingReq]);
+  (s12, _) = SS.step (SS.Received 2 1011 Q.PingResp) s11;
+  (s13, _) = SS.step (SS.Tick 2010) s12;
+  (dead, timeout) = SS.step (SS.Tick 2110) s13;
+  _ = check "missed ping response closes" (dead.phase == SS.Offline and timeout == [SS.Down 2 "PINGRESP timed out"]);
+  (badAck, _) = SS.step (SS.Received 2 11 (Q.PubAck 222)) s10;
+  _ = check "unmatched ACK refuses protocol" (badAck.phase == SS.Offline);
+  print "MQTT: wire vectors, fragmentation/coalescing, bounds/refusals, QoS1 IDs/reconnect, subscription refusal, epochs and keepalive PASS".

@@ -1,6 +1,7 @@
 # Internal primitive seam: osio. Higher-level modules select only needed facilities.
 Os.open      : String -> String -> Result Int String .
 Os.ready     : Int -> Bool .
+Os.readyFor  : Int -> Int -> Result Bool String .
 Os.poll      : List Int -> List Int .
 Os.read      : Int -> Int -> Result String String .
 Os.write     : Int -> String -> Result Int String .
@@ -9,6 +10,8 @@ Os.close     : Int -> Result Unit String .
 
 open path mode = Os.open path mode.
 ready fd = Os.ready fd.
+# Readiness mask: 1 = read, 2 = write, 3 = either. Never blocks.
+readyFor fd mask = Os.readyFor fd mask.
 poll fds = Os.poll fds.
 read fd n = Os.read fd n.
 write fd bytes = Os.write fd bytes.

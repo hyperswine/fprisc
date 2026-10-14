@@ -35,9 +35,14 @@
 # the view, not a 3MB file you filter later.  An app's own classes are
 # VALUES (Style, below), never a string of CSS, and any class takes a
 # breakpoint prefix: `narrow:col` is `col` on a narrow screen.
+# New code can compose typed declarations directly on an element with
+# utilities/narrow/wide/hover/focus/disabled; no named Style is required.
+# See docs/2026-10-14-LOCAL-UI-AND-NATIVE-SERVICES.md for precedence and scope.
 
 
-Attr = Type (Cls String | Att String String | Local String String
+Encoding = use "encoding".
+
+Attr = Type (Cls String | Utilities (List Utility) | Att String String | Local String String
            | OnClick String String | OnSet String String | ShowIf String
            | OnBoth String String String String
            | OnSend String String | Input String | OnEnter String String | OnFile String).
@@ -58,6 +63,16 @@ Ctx = Type (Ctx cur statics dyns).
 # ---- rendering: tree -> (statics, dynamics) --------------------------------
 
 render n = fin (goN (Ctx "" Nil Nil) n).
+# At the FINAL page render, carry the current local rules in the normal view
+# protocol. New conditional styles then travel with their elements. Component
+# caches still use render; their class lists retain these rule definitions.
+renderStyled : Node -> (List String, List String) .
+renderStyled n =
+  css = localCss (nub (allClasses n Nil));
+  # Keep the style node even when empty: adding/removing the final utility
+  # must not replace an unkeyed page root and lose its form state.
+  start = "<style data-lv-local-css=\"\">{css}</style>";
+  fin (goN (Ctx start Nil Nil) n).
 fin (Ctx cur ss ds) = (rev (cur :: ss), rev ds).
 
 goN : unsafe Ctx -> Node -> Ctx .
@@ -95,7 +110,7 @@ slot (Ctx cur ss ds) v = Ctx "" (cur :: ss) (v :: ds).
 # `vsA 3 [Cls "bg-surface ..."]`, a Cls from the layout and a Cls from the
 # caller on one element -- and with two class attributes the browser kept the
 # first, so no card ever had its surface.  One attribute, every class.
-attrsOf as = strcat (xdata (localsOf as)) (strcat (classAttr (classesOf as)) (others as)).
+attrsOf as = strcat (xdata (localsOf as)) (strcat (classAttr (joinSp (classesOf as) (atomClasses (localAtoms as)))) (others as)).
 localsOf : unsafe List Attr -> String .
 localsOf Nil = "".
 localsOf (Local n init :: r) = join2 (localsOf r) "{n}={init}".
@@ -115,6 +130,7 @@ others : unsafe List Attr -> String .
 others Nil = "".
 others (Local n init :: r) = others r.
 others (Cls s :: r) = others r.
+others (Utilities _ :: r) = others r.
 others (a :: r) = strcat (attrOf a) (others r).
 
 attrOf (Cls s) = " class=\"{s}\"".
@@ -131,6 +147,7 @@ attrOf (OnFile msg) = " type=\"file\" data-file=\"{esc msg}\"".
 # x-data (`xdata`) instead.  `others` already skips it, so this clause is
 # how the function stays total rather than depending on that one caller.
 attrOf (Local n init) = "".
+attrOf (Utilities _) = "".
 
 # ---- CSS: only the classes this tree actually uses -------------------------
 #
@@ -149,11 +166,149 @@ attrOf (Local n init) = "".
 # so on their screen they win over the plain class they contradict.
 
 # lengths and declarations: what an app style is made of
-Len = Type (Px Int | Pct Int | Vh Int | Vw Int | Less Len Len).
+Len = Type (Px Int | Pct Int | Vh Int | Vw Int | Less Len Len | Auto).
 Decl = Type (Width Len | Height Len | MinWidth Len | MinHeight Len
            | MaxWidth Len | MaxHeight Len | Basis Len
+           | Display DisplayMode | Direction FlexDirection | Gap Len
+           | Padding Len | PaddingX Len | PaddingY Len
+           | PaddingTop Len | PaddingRight Len | PaddingBottom Len | PaddingLeft Len
+           | Radius Len | FontSize Len | Foreground Colour | Background Colour
+           | Margin Len | MarginX Len | MarginY Len
+           | MarginTop Len | MarginRight Len | MarginBottom Len | MarginLeft Len
+           | AlignItems Alignment | JustifyContent Justification | FlexWrap WrapMode
+           | Overflow OverflowMode | OverflowX OverflowMode | OverflowY OverflowMode
+           | WhiteSpace WhiteSpaceMode | PointerEvents PointerMode | ScrollbarWidth ScrollbarMode
+           | Position PositionMode | Top Len | Right Len | Bottom Len | Left Len | ZIndex Int
+           | Transform (List TransformOp) | Shadow Len Len Len Len Colour
+           | Shadows (List ShadowPart) | DefineShadows ThemeToken (List ShadowPart)
+           | BackgroundImages (List BackgroundImage) | DefineImage ThemeToken BackgroundImage
+           | BackgroundAttachment Attachment | BackgroundRepeat RepeatMode
+           | BorderWidth Len | BorderColour Colour | BorderStyle BorderMode | AlignSelf Alignment
+           | Cursor CursorMode
+           | ColourScheme ColourMode
+           | FontFamily Typeface | FontWeight Int | LineHeight Int | WordWrap WordWrapMode
+           | DefineColour ThemeToken Colour
+           | Opacity Int
            | Prop String String).   # any other property: the escape hatch
 Style = Type (Style String (List Decl)).
+
+DisplayMode = Type (Block | InlineBlock | Flex | Grid | Hidden).
+FlexDirection = Type (Row | Column).
+Colour = Type (Rgb Int Int Int | Rgba Int Int Int Int | RgbaPercent Int Int Int Int | Transparent | CurrentColour | ThemeColour ThemeToken).
+ShadowPart = Type (ShadowPart Len Len Len Len Colour).
+GradientStop = Type (Stop Colour Len).
+BackgroundImage = Type (LinearGradient Int (List GradientStop)
+                      | RadialGradient Len Len Len Len (List GradientStop)).
+Attachment = Type (FixedBackground | ScrollBackground).
+RepeatMode = Type (NoRepeat | Repeat).
+BorderMode = Type (SolidBorder | DashedBorder | NoBorder).
+CursorMode = Type (PointerCursor | DefaultCursor).
+ColourMode = Type (LightScheme | DarkScheme).
+Alignment = Type (AlignStart | AlignCenter | AlignEnd | AlignStretch | AlignBaseline).
+Justification = Type (JustifyStart | JustifyCenter | JustifyEnd | SpaceBetween | SpaceAround | SpaceEvenly).
+WrapMode = Type (NoWrap | Wrap | WrapReverse).
+OverflowMode = Type (OverflowAuto | OverflowHidden | OverflowScroll | OverflowVisible).
+WhiteSpaceMode = Type (NormalSpace | NoWrapSpace | PreSpace | PreWrapSpace).
+PointerMode = Type (PointerAuto | PointerNone).
+ScrollbarMode = Type (ScrollbarAuto | ScrollbarThin | ScrollbarNone).
+PositionMode = Type (Static | Relative | Absolute | Fixed | Sticky).
+TransformOp = Type (TranslateX Len | TranslateY Len).
+Typeface = Type (SystemFont | MonoFont | ReadingFont).
+WordWrapMode = Type (WrapNormal | WrapAnywhere).
+# Explicit inherited colour scopes. Tokens are fixed names, not arbitrary CSS.
+ThemeToken = Type (Bg | Ink | Dim | Card | Panel | Line | NamedToken String).
+Theme = { bg : Colour, ink : Colour, dim : Colour, card : Colour, panel : Colour, line : Colour }.
+theme : Theme -> Attr .
+theme colours = utilities [DefineColour Bg colours.bg, DefineColour Ink colours.ink,
+  DefineColour Dim colours.dim, DefineColour Card colours.card,
+  DefineColour Panel colours.panel, DefineColour Line colours.line].
+
+# Local utility composition. Multiple Utilities attributes merge in attribute
+# order, last declaration wins per property and condition. Shorthands expand
+# BEFORE merging. No selector/class registry and no stylesheet-order conflicts.
+# Prop remains available to legacy Style; local utilities deliberately refuse it.
+Utility = Type (Base (List Decl) | Narrow (List Decl) | Wide (List Decl)
+              | Hover (List Decl) | Focus (List Decl) | Disabled (List Decl)).
+utilities : List Decl -> Attr .
+utilities ds = Utilities [Base ds].
+narrow : List Decl -> Attr .
+narrow ds = Utilities [Narrow ds].
+wide : List Decl -> Attr .
+wide ds = Utilities [Wide ds].
+hover : List Decl -> Attr .
+hover ds = Utilities [Hover ds].
+focus : List Decl -> Attr .
+focus ds = Utilities [Focus ds].
+disabled : List Decl -> Attr .
+disabled ds = Utilities [Disabled ds].
+
+Atom = Type (Atom Int String String).
+localAtoms : List Attr -> List Atom .
+localAtoms attrs = lastAtoms (collectAtoms attrs).
+collectAtoms : unsafe List Attr -> List Atom .
+collectAtoms Nil = Nil.
+collectAtoms (Utilities us :: rest) = append (utilityAtoms us) (collectAtoms rest).
+collectAtoms (_ :: rest) = collectAtoms rest.
+utilityAtoms : unsafe List Utility -> List Atom .
+utilityAtoms Nil = Nil.
+utilityAtoms (u :: rest) = append (oneUtility u) (utilityAtoms rest).
+oneUtility (Base ds) = declarations 0 ds.
+oneUtility (Narrow ds) = declarations 1 ds.
+oneUtility (Wide ds) = declarations 2 ds.
+oneUtility (Hover ds) = declarations 3 ds.
+oneUtility (Focus ds) = declarations 4 ds.
+oneUtility (Disabled ds) = declarations 5 ds.
+declarations : unsafe Int -> List Decl -> List Atom .
+declarations scope Nil = Nil.
+declarations scope (d :: rest) = append (declaration scope d) (declarations scope rest).
+declaration scope (Padding l) = declarations scope [PaddingTop l, PaddingRight l, PaddingBottom l, PaddingLeft l].
+declaration scope (PaddingX l) = declarations scope [PaddingLeft l, PaddingRight l].
+declaration scope (PaddingY l) = declarations scope [PaddingTop l, PaddingBottom l].
+declaration scope (Margin l) = declarations scope [MarginTop l, MarginRight l, MarginBottom l, MarginLeft l].
+declaration scope (MarginX l) = declarations scope [MarginLeft l, MarginRight l].
+declaration scope (MarginY l) = declarations scope [MarginTop l, MarginBottom l].
+declaration scope (Overflow mode) = declarations scope [OverflowX mode, OverflowY mode].
+declaration scope (Prop _ _) = error "View.utilities: Prop is a legacy escape hatch; use typed declarations".
+declaration scope d =
+  css = declCss d;
+  [Atom scope (substr css 0 (strIndexOf ":" css)) css].
+lastAtoms : unsafe List Atom -> List Atom .
+lastAtoms Nil = Nil.
+lastAtoms (Atom scope property css :: rest) =
+  if hasAtom scope property rest then lastAtoms rest
+  else Atom scope property css :: lastAtoms rest.
+hasAtom : unsafe Int -> String -> List Atom -> Bool .
+hasAtom scope property Nil = False.
+hasAtom scope property (Atom s p _ :: rest) = (scope == s and property == p) or hasAtom scope property rest.
+# Encoding the declaration is collision-free, deterministic and CSS-safe. The
+# class carries enough information for cached Fragment classes to emit CSS too.
+atomClass (Atom scope _ css) = "fpr-u-{scope}-{Encoding.hex css}".
+atomClasses : unsafe List Atom -> String .
+atomClasses Nil = "".
+atomClasses (a :: rest) = joinSp (atomClass a) (atomClasses rest).
+atomNames : unsafe List Atom -> List String .
+atomNames Nil = Nil.
+atomNames (a :: rest) = atomClass a :: atomNames rest.
+
+# Fixed precedence: base, viewport, hover, focus, disabled. State rules share
+# specificity, so disabled wins even when focus and hover are also active.
+localCss cs = localStages 0 cs.
+localStages : unsafe Int -> List String -> String .
+localStages scope cs = if scope > 5 then "" else strcat (localStage scope cs) (localStages (scope + 1) cs).
+localStage : unsafe Int -> List String -> String .
+localStage scope Nil = "".
+localStage scope (c :: rest) = strcat (localRule scope c) (localStage scope rest).
+localRule scope c = if hasPrefix "fpr-u-{scope}-" c then
+    case Encoding.fromHex (substr c 8 (strlen c)) of
+        Err _ -> ""
+      | Ok css -> (case scope of
+          0 -> rule1 ".{c}" css
+        | 1 -> wrapMedia "(max-width:760px)" (rule1 ".{c}" css)
+        | 2 -> wrapMedia "(min-width:761px)" (rule1 ".{c}" css)
+        | 3 -> rule1 ".{c}:hover" css
+        | 4 -> rule1 ".{c}:focus-visible" css
+        | _ -> rule1 ".{c}:disabled" css)
+  else "".
 
 cssFor tree = cssWith Nil tree.
 
@@ -161,7 +316,8 @@ cssWith : List Style -> Node -> String .
 cssWith styles tree =
   cs = nub (allClasses tree Nil);
   strcat cssBase (strcat (rules styles cs)
-    (strcat (media styles "narrow" "(max-width:760px)" cs) (media styles "wide" "(min-width:761px)" cs))).
+    (strcat (media styles "narrow" "(max-width:760px)" cs)
+      (strcat (media styles "wide" "(min-width:761px)" cs) (localCss cs)))).
 
 rules : unsafe List Style -> List String -> String .
 rules styles Nil = "".
@@ -202,13 +358,159 @@ declCss (MinHeight l) = "min-height:{lenCss l}".
 declCss (MaxWidth l) = "max-width:{lenCss l}".
 declCss (MaxHeight l) = "max-height:{lenCss l}".
 declCss (Basis l) = "flex-basis:{lenCss l}".
+declCss (Display mode) = "display:{displayCss mode}".
+declCss (Direction direction) = "flex-direction:{directionCss direction}".
+declCss (Gap l) = "gap:{lenCss l}".
+declCss (Padding l) = "padding:{lenCss l}".
+declCss (PaddingX l) = "padding-left:{lenCss l};padding-right:{lenCss l}".
+declCss (PaddingY l) = "padding-top:{lenCss l};padding-bottom:{lenCss l}".
+declCss (PaddingTop l) = "padding-top:{lenCss l}".
+declCss (PaddingRight l) = "padding-right:{lenCss l}".
+declCss (PaddingBottom l) = "padding-bottom:{lenCss l}".
+declCss (PaddingLeft l) = "padding-left:{lenCss l}".
+declCss (Radius l) = "border-radius:{lenCss l}".
+declCss (FontSize l) = "font-size:{lenCss l}".
+declCss (Foreground colour) = "color:{colourCss colour}".
+declCss (Background colour) = "background-color:{colourCss colour}".
+declCss (Margin l) = "margin:{lenCss l}".
+declCss (MarginX l) = "margin-left:{lenCss l};margin-right:{lenCss l}".
+declCss (MarginY l) = "margin-top:{lenCss l};margin-bottom:{lenCss l}".
+declCss (MarginTop l) = "margin-top:{lenCss l}".
+declCss (MarginRight l) = "margin-right:{lenCss l}".
+declCss (MarginBottom l) = "margin-bottom:{lenCss l}".
+declCss (MarginLeft l) = "margin-left:{lenCss l}".
+declCss (AlignItems value) = "align-items:{alignmentCss value}".
+declCss (AlignSelf value) = "align-self:{alignmentCss value}".
+declCss (JustifyContent value) = "justify-content:{justificationCss value}".
+declCss (FlexWrap value) = "flex-wrap:{wrapCss value}".
+declCss (Overflow value) = "overflow:{overflowCss value}".
+declCss (OverflowX value) = "overflow-x:{overflowCss value}".
+declCss (OverflowY value) = "overflow-y:{overflowCss value}".
+declCss (WhiteSpace value) = "white-space:{whiteSpaceCss value}".
+declCss (PointerEvents PointerAuto) = "pointer-events:auto".
+declCss (PointerEvents PointerNone) = "pointer-events:none".
+declCss (ScrollbarWidth ScrollbarAuto) = "scrollbar-width:auto".
+declCss (ScrollbarWidth ScrollbarThin) = "scrollbar-width:thin".
+declCss (ScrollbarWidth ScrollbarNone) = "scrollbar-width:none".
+declCss (Position value) = "position:{positionCss value}".
+declCss (Top l) = "top:{lenCss l}".
+declCss (Right l) = "right:{lenCss l}".
+declCss (Bottom l) = "bottom:{lenCss l}".
+declCss (Left l) = "left:{lenCss l}".
+declCss (ZIndex n) = "z-index:{n}".
+declCss (Transform ops) = "transform:{transformCss ops}".
+declCss (Shadow x y blur spread colour) = "box-shadow:{lenCss x} {lenCss y} {lenCss blur} {lenCss spread} {colourCss colour}".
+declCss (Shadows parts) = "box-shadow:{shadowsCss parts}".
+declCss (DefineShadows token parts) = "--{themeName token}:{shadowsCss parts}".
+declCss (BackgroundImages images) = "background-image:{imagesCss images}".
+declCss (DefineImage token image) = "--{themeName token}:{imageCss image}".
+declCss (BackgroundAttachment FixedBackground) = "background-attachment:fixed".
+declCss (BackgroundAttachment ScrollBackground) = "background-attachment:scroll".
+declCss (BackgroundRepeat NoRepeat) = "background-repeat:no-repeat".
+declCss (BackgroundRepeat Repeat) = "background-repeat:repeat".
+declCss (BorderWidth l) = "border-width:{lenCss l}".
+declCss (BorderColour colour) = "border-color:{colourCss colour}".
+declCss (BorderStyle SolidBorder) = "border-style:solid".
+declCss (BorderStyle DashedBorder) = "border-style:dashed".
+declCss (BorderStyle NoBorder) = "border-style:none".
+declCss (Cursor PointerCursor) = "cursor:pointer".
+declCss (Cursor DefaultCursor) = "cursor:default".
+declCss (ColourScheme LightScheme) = "color-scheme:light".
+declCss (ColourScheme DarkScheme) = "color-scheme:dark".
+declCss (FontFamily SystemFont) = "font-family:system-ui".
+declCss (FontFamily MonoFont) = "font-family:ui-monospace,monospace".
+declCss (FontFamily ReadingFont) = "font-family:'Archivo',system-ui,sans-serif".
+declCss (FontWeight n) = if n >= 1 and n <= 1000 then "font-weight:{n}" else error "View.FontWeight: expected 1..1000".
+declCss (LineHeight n) = if n >= 0 then "line-height:{n}%" else error "View.LineHeight: expected a nonnegative percentage".
+declCss (WordWrap WrapNormal) = "overflow-wrap:normal".
+declCss (WordWrap WrapAnywhere) = "overflow-wrap:anywhere".
+declCss (DefineColour token colour) = "--{themeName token}:{colourCss colour}".
+declCss (Opacity n) = if n >= 0 and n <= 100 then "opacity:{n}%" else error "View.Opacity: expected 0..100".
 declCss (Prop p v) = "{p}:{v}".
+displayCss Block = "block".
+displayCss InlineBlock = "inline-block".
+displayCss Flex = "flex".
+displayCss Grid = "grid".
+displayCss Hidden = "none".
+directionCss Row = "row".
+directionCss Column = "column".
+colourCss (Rgb r g b) = if r >= 0 and r <= 255 and g >= 0 and g <= 255 and b >= 0 and b <= 255 then "rgb({r},{g},{b})" else error "View.Rgb: expected channels 0..255".
+colourCss (Rgba r g b a) = if r >= 0 and r <= 255 and g >= 0 and g <= 255 and b >= 0 and b <= 255 and a >= 0 and a <= 255 then "#{Encoding.hexInt 2 r}{Encoding.hexInt 2 g}{Encoding.hexInt 2 b}{Encoding.hexInt 2 a}" else error "View.Rgba: expected channels 0..255".
+colourCss (RgbaPercent r g b a) = if r >= 0 and r <= 255 and g >= 0 and g <= 255 and b >= 0 and b <= 255 and a >= 0 and a <= 100 then "rgba({r},{g},{b},{a}%)" else error "View.RgbaPercent: expected RGB 0..255 and alpha 0..100".
+colourCss Transparent = "transparent".
+colourCss CurrentColour = "currentColor".
+colourCss (ThemeColour token) = "var(--{themeName token})".
+themeName Bg = "bg".
+themeName Ink = "ink".
+themeName Dim = "dim".
+themeName Card = "card".
+themeName Panel = "panel".
+themeName Line = "line".
+themeName (NamedToken name) = if validToken name then name else error "View.NamedToken: expected a lowercase letter followed by lowercase letters, digits or hyphens".
+validToken name = if strlen name == 0 then False else charAt name 0 >= 97 and charAt name 0 <= 122 and tokenTail name 1.
+tokenTail : unsafe String -> Int -> Bool .
+tokenTail name i = if i >= strlen name then True else
+  c = charAt name i;
+  ((c >= 97 and c <= 122) or (c >= 48 and c <= 57) or c == 45) and tokenTail name (i + 1).
+shadowsCss Nil = "none".
+shadowsCss parts = strJoin "," (shadowParts parts).
+shadowParts : unsafe List ShadowPart -> List String .
+shadowParts Nil = Nil.
+shadowParts (ShadowPart x y blur spread colour :: rest) =
+  "{lenCss x} {lenCss y} {lenCss blur} {lenCss spread} {colourCss colour}" :: shadowParts rest.
+imagesCss Nil = "none".
+imagesCss images = strJoin "," (imageParts images).
+imageParts : unsafe List BackgroundImage -> List String .
+imageParts Nil = Nil.
+imageParts (image :: rest) = imageCss image :: imageParts rest.
+imageCss (LinearGradient degrees stops) = "linear-gradient({degrees}deg,{stopsCss stops})".
+imageCss (RadialGradient x y atX atY stops) = "radial-gradient({lenCss x} {lenCss y} at {lenCss atX} {lenCss atY},{stopsCss stops})".
+stopsCss stops = case stops of
+    _ :: _ :: _ -> strJoin "," (stopParts stops)
+  | _ -> error "View.gradient: expected at least two stops".
+stopParts : unsafe List GradientStop -> List String .
+stopParts Nil = Nil.
+stopParts (Stop colour at :: rest) = "{colourCss colour} {lenCss at}" :: stopParts rest.
+alignmentCss AlignStart = "flex-start".
+alignmentCss AlignCenter = "center".
+alignmentCss AlignEnd = "flex-end".
+alignmentCss AlignStretch = "stretch".
+alignmentCss AlignBaseline = "baseline".
+justificationCss JustifyStart = "flex-start".
+justificationCss JustifyCenter = "center".
+justificationCss JustifyEnd = "flex-end".
+justificationCss SpaceBetween = "space-between".
+justificationCss SpaceAround = "space-around".
+justificationCss SpaceEvenly = "space-evenly".
+wrapCss NoWrap = "nowrap".
+wrapCss Wrap = "wrap".
+wrapCss WrapReverse = "wrap-reverse".
+overflowCss OverflowAuto = "auto".
+overflowCss OverflowHidden = "hidden".
+overflowCss OverflowScroll = "scroll".
+overflowCss OverflowVisible = "visible".
+whiteSpaceCss NormalSpace = "normal".
+whiteSpaceCss NoWrapSpace = "nowrap".
+whiteSpaceCss PreSpace = "pre".
+whiteSpaceCss PreWrapSpace = "pre-wrap".
+positionCss Static = "static".
+positionCss Relative = "relative".
+positionCss Absolute = "absolute".
+positionCss Fixed = "fixed".
+positionCss Sticky = "sticky".
+transformCss Nil = "none".
+transformCss ops = transformOps ops.
+transformOps : unsafe List TransformOp -> String .
+transformOps Nil = "".
+transformOps (TranslateX l :: rest) = joinSp "translateX({lenCss l})" (transformOps rest).
+transformOps (TranslateY l :: rest) = joinSp "translateY({lenCss l})" (transformOps rest).
 lenCss : unsafe Len -> String .
 lenCss (Px n) = "{n}px".
 lenCss (Pct n) = "{n}%".
 lenCss (Vh n) = "{n}vh".
 lenCss (Vw n) = "{n}vw".
 lenCss (Less a b) = "calc({lenCss a} - {lenCss b})".
+lenCss Auto = "auto".
 
 # what a utility needs beyond its own rule (the page around it, a state)
 cssExtra "screen" = "body:has(.screen)\{overflow:hidden}\n".
@@ -216,9 +518,9 @@ cssExtra "hide-empty" = ".hide-empty:has(>[data-slot]:empty)\{display:none}\n".
 cssExtra c = "".
 
 allClasses : unsafe Node -> List String -> List String .
-allClasses (El tag attrs kids) acc = allKids kids (attrCls attrs acc).
+allClasses (El tag attrs kids) acc = allKids kids (append (atomNames (localAtoms attrs)) (attrCls attrs acc)).
 allClasses (Fragment _ _ classes) acc = append classes acc.
-allClasses (Inp attrs) acc = attrCls attrs acc.
+allClasses (Inp attrs) acc = append (atomNames (localAtoms attrs)) (attrCls attrs acc).
 allClasses n acc = acc.
 allKids : unsafe List Node -> List String -> List String .
 allKids Nil acc = acc.
@@ -276,7 +578,7 @@ cssRule "field" = "background:var(--card);border:1px solid var(--line);color:var
 cssRule "w-full" = "width:100%".
 cssRule "pre" = "white-space:pre-wrap".
 # roles: a badge takes a role, never a colour (red / amber / green carry
-# meaning only); the theme is one class on the page root
+# meaning only); palette tokens are inherited from an explicit page scope
 cssRule "badge" = "display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);color:var(--dim)".
 cssRule "bad" = "background:#3a1220;border-color:#7a2238;color:#ff7d95".
 cssRule "warn" = "background:#3a2a10;border-color:#7a5a18;color:#ffc65c".
@@ -309,20 +611,13 @@ cssRule "truncate" = "white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
 # says show-empty; hide-empty gives any element that behaviour (cssExtra)
 cssRule "show-empty" = "".
 cssRule "hide-empty" = "".
-cssRule "day" = "".
 cssRule c = "".
 
 cssBase = "*\{box-sizing:border-box;margin:0}
-:root\{--bg:#060a12;--ink:#e9eff7;--dim:#7c8aa3;--card:#0a1120;--panel:linear-gradient(180deg,#0c1424,#080e1a);--line:#1b2740}
-.day\{--bg:#f3f5f9;--ink:#0d1526;--dim:#5b6a86;--card:#ffffff;--panel:linear-gradient(180deg,#ffffff,#eef2f8);--line:#d3dbe8;color:var(--ink)}
 html\{min-height:100%}
-body\{min-height:100vh;background:var(--bg);color:var(--ink);font:15px/1.55 'Archivo',system-ui,sans-serif;
-  background-image:radial-gradient(900px 500px at 20% -10%,#0f2035 0,transparent 60%),
-                   radial-gradient(700px 400px at 95% 5%,#1a1526 0,transparent 55%);
-  background-repeat:no-repeat;background-attachment:fixed}
-body:has(.day)\{background:#f3f5f9;background-image:radial-gradient(900px 500px at 20% -10%,#dfe8f7 0,transparent 60%);color:#0d1526}
+body\{min-height:100vh;font:15px/1.55 'Archivo',system-ui,sans-serif}
 a\{color:inherit}
-.btn:hover\{color:#e9eff7;border-color:#31456b}
+.btn:hover\{color:var(--ink);border-color:var(--line)}
 .btn.is-on\{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 [data-slot]\{transition:color .2s}
 .lv-flash\{animation:lvf .55s ease-out}

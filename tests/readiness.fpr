@@ -1,0 +1,148 @@
+unsafe base.
+R = use "../std/readiness".
+T = use "../std/transport".
+Socket = use "../std/sockettransport".
+Tcp = use "../std/tcp".
+ST = use "../std/stream".
+Watched = use "../std/watchedtransport".
+S = use "../std/string".
+Msg = Type (Datum String | Finish | Flag | Noise).
+check name yes = if yes then Unit else error "readiness: {name}".
+need result = case result of Ok x -> x | Err why -> error "readiness fixture: {why}".
+deadline ms = need (T.deadlineFrom (Sys.timeUs Unit) ms).
+emptyFrom p = case p of R.Poller service -> case receiveFromNow (myself 0) service of
+  Err why -> why == "empty" | Ok m -> _ = drop m; False.
+peer me listener self =
+  (raw, _) = need (Tcp.accept listener);
+  peerLoop me raw self.
+peerLoop me raw self =
+  m = receive self;
+  case m of
+    Datum text ->
+      _ = need (ST.write text raw);
+      _ = drop m;
+      peerLoop me raw self
+  | Finish -> _ = drop m; _ = need (ST.close raw); _ = send me Unit; Unit
+  | _ -> _ = drop m; error "unexpected peer command".
+waiter p fd ms boss self =
+  ticket = need (R.register fd 1 (deadline ms) p);
+  _ = send boss ticket;
+  result = R.await ticket;
+  _ = send boss result;
+  Unit.
+get sender =
+  m = receiveFrom (myself 0) sender;
+  result = keep m;
+  _ = drop m;
+  result.
+callback sender u = case receiveFromNow (myself 0) sender of
+  Err _ -> False | Ok m -> answer = case m of Flag -> True | _ -> False; _ = drop m; answer.
+cycles p fd n = if n == 0 then Unit else
+  ticket = need (R.register fd 1 (deadline 1000) p);
+  _ = need (R.cancel ticket);
+  _ = check "cancel barrier drains completion" (emptyFrom p);
+  _ = need (R.awaitUntil fd 2 (deadline 1000) p);
+  cycles p fd (n - 1).
+main =
+  me = myself 0;
+  listener = need (Tcp.listen "127.0.0.1" 0);
+  server = spawn (peer me listener);
+  raw = need (Tcp.connect "127.0.0.1" (Tcp.port listener));
+  fd = ST.fd raw;
+  p = R.start Unit;
+  _ = need (R.awaitUntil fd 2 (deadline 1000) p);
+  _ = need (R.awaitUntil fd 3 (deadline 1000) p);
+  (_, nativeWakes, _) = need (R.stats p);
+  _ = check "native watcher is active in parking tests" (nativeWakes > 0);
+  start = Sys.timeUs Unit;
+  timed = R.awaitUntil fd 1 (deadline 20) p;
+  elapsed = Sys.timeUs Unit - start;
+  _ = check "kernel expiry on quiet read" (timed == Err "timed out" and elapsed >= 20000 and elapsed < 400000);
+  _ = check "invalid direction refused" (R.register fd 0 (deadline 1000) p == Err "invalid readiness registration");
+  _ = check "expired before registration" (R.register fd 1 0 p == Err "timed out");
+  _ = check "no stale timeout note" (emptyFrom p);
+  first = spawn (waiter p fd 2000 me);
+  ticket1 = get first;
+  second = spawn (waiter p fd 2000 me);
+  ticket2 = get second;
+  (count, _, _) = need (R.stats p);
+  _ = check "duplicate descriptor registrations retained" (count == 2);
+  _ = need (R.awaitUntil fd 2 (deadline 1000) p);
+  (stillReading, _, _) = need (R.stats p);
+  _ = check "writable event does not satisfy readable waiters" (stillReading == 2);
+  stranger = spawn (fn self -> _ = send me (R.await ticket1); Unit);
+  _ = check "ticket await enforces actor owner" (get stranger == Err "wrong readiness owner");
+  # Let any registration IRQ settle; a quiet set then receives no timer ticks.
+  _ = Sys.sleepUs 10000;
+  before = need (R.stats p);
+  _ = Sys.sleepUs 30000;
+  after = need (R.stats p);
+  _ = check "quiet waits cause no IRQ wakes or re-arms" (before == after);
+  _ = need (R.cancel ticket1);
+  result1 = get first;
+  (remaining, _, _) = need (R.stats p);
+  _ = check "foreign cancellation removes only matching ticket" (result1 == Err "cancelled" and remaining == 1);
+  _ = need (send server (Datum "x"));
+  result2 = get second;
+  _ = check "other waiter still wakes" (result2 == Ok Unit);
+  _ = check "read consumes readiness" (ST.read 1 raw == Ok "x");
+  _ = need (R.cancel ticket2);
+  _ = check "cancel after completion has no stale note" (emptyFrom p);
+  _ = cycles p fd 40;
+  # A queued readiness result followed by cancellation must be drained in order.
+  readyTicket = need (R.register fd 2 (deadline 1000) p);
+  _ = Sys.sleepUs 5000;
+  _ = need (R.cancel readyTicket);
+  _ = check "cancel after readiness publication drains Done" (emptyFrom p);
+  short = spawn (waiter p fd 20 me);
+  _ = get short;
+  long = spawn (waiter p fd 1000 me);
+  longTicket = get long;
+  _ = check "nearest expiry does not remove later wait" (get short == Err "timed out");
+  (left, _, _) = need (R.stats p);
+  _ = check "later wait retained" (left == 1);
+  _ = need (R.cancel longTicket);
+  _ = check "later wait cancellation" (get long == Err "cancelled");
+  # Callback cancellation consumes only its designated sender's signal.
+  signaller = spawn (fn self -> _ = Sys.sleepUs 10000; _ = send me Flag; Unit);
+  noise = spawn (fn self -> _ = send me Noise; Unit);
+  checked = R.awaitChecking fd 1 (deadline 1000) (callback signaller) p;
+  _ = check "callback cancellation" (checked == Err "cancelled");
+  _ = check "unrelated message preserved" (get noise == Noise);
+  _ = check "callback cancellation leaves no pending note" (emptyFrom p);
+  # The transport passes its full absolute budget into the watcher backend.
+  conn = need (Watched.adoptOn p 16384 raw);
+  (quiet, c1) = T.readSome (need (Socket.forMs 20)) 1 conn;
+  _ = check "watched transport deadline" (quiet == Err (T.TimedOut, ""));
+  delayed = spawn (fn self -> _ = Sys.sleepUs 10000; _ = send server (Datum "abcdef"); Unit);
+  (bytes, c2) = T.readExactly (need (Socket.forMs 1000)) 6 c1;
+  _ = check "watched transport fragmented read" (bytes == Ok "abcdef");
+  signaller2 = spawn (fn self -> _ = Sys.sleepUs 10000; _ = send me Flag; Unit);
+  (cancelled, c3) = T.readSome (need (Socket.within 1000 (callback signaller2))) 1 c2;
+  _ = check "watched transport cancellation" (cancelled == Err (T.Cancelled, ""));
+  large = S.repeat 2097152 "abcdefgh";
+  (blocked, c4) = T.writeAll (need (Socket.forMs 20)) large c3;
+  _ = check "watched writable backpressure retains prefix" (case blocked of Err (T.TimedOut, n) -> n > 0 and n < strlen large | _ -> False);
+  (active, _, _) = need (R.stats p);
+  _ = check "transport waits retired" (active == 0);
+  # Stop resolves outstanding waits before watcher/IRQ reuse.
+  stopped = spawn (waiter p fd 2000 me);
+  _ = get stopped;
+  _ = R.stop p;
+  _ = check "stop wakes pending waiter" (get stopped == Err "readiness stopped");
+  (closed, _) = T.close c4;
+  _ = need closed;
+  _ = need (send server Finish);
+  _ = get server;
+  _ = need (Tcp.stop listener);
+  # Exercise the same directional timer fallback used if watchOpen refuses.
+  fallbackListener = need (Tcp.listen "127.0.0.1" 0);
+  fallbackFd = case fallbackListener of Tcp.Listener n -> n;
+  fallback = R.startPolling Unit;
+  _ = check "fallback expiry" (R.awaitUntil fallbackFd 1 (deadline 20) fallback == Err "timed out");
+  ticket = need (R.register fallbackFd 1 (deadline 1000) fallback);
+  _ = need (R.cancel ticket);
+  _ = check "fallback cancellation barrier" (emptyFrom fallback);
+  _ = R.stop fallback;
+  _ = need (Tcp.stop fallbackListener);
+  print "readiness: directions, deadlines, duplicate waiters, cancellation barriers, quiet parking, transport, stop and fallback PASS".

@@ -3,8 +3,10 @@ Os.connect   : String -> Int -> Result Int String .
 Os.listen    : String -> Int -> Result Int String .
 Os.accept    : Int -> Result (Int, String) String .
 Os.localPort : Int -> Result Int String .
+Os.prepareSocket : Int -> Result Unit String .
 
 connect host port = Os.connect host port.
 listen addr port = Os.listen addr port.
 accept fd = Os.accept fd.
 localPort fd = Os.localPort fd.
+prepareSocket fd = Os.prepareSocket fd.

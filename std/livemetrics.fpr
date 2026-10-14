@@ -1,0 +1,46 @@
+# Observable Live send-to-next-accepted-frame latency. Policy is FP-RISC
+# expression/effect data; BrowserCalc supplies clock/event/timer primitives.
+# This is not a correlated server processing time or a network-only RTT.
+C = use "clientcalc".
+B = use "browsercalc".
+
+# Microseconds -> one decimal millisecond, rounding half up. Divisor also
+# describes an exact all-time average without first truncating to whole us.
+milliseconds : C.IntExpr -> C.IntExpr -> C.TextExpr .
+milliseconds total divisor =
+  tenths = C.Quot (C.Add total (C.Mul divisor (C.Literal 50))) (C.Mul divisor (C.Literal 100));
+  C.Concat [C.Decimal (C.Quot tenths (C.Literal 10)), C.Text ".", C.Decimal (C.Rem tenths (C.Literal 10))].
+ms n = milliseconds n (C.Literal 1).
+summary : String -> C.TextExpr .
+summary suffix =
+  count = C.Number "count";
+  recent = C.Sequence "recent";
+  median = C.At (C.Sorted recent) (C.Quot (C.Length recent) (C.Literal 2));
+  C.IfText (C.Equal count (C.Literal 0)) (C.Text "no round trips yet")
+    (C.Concat [C.Text "last ", ms (C.Number "last"), C.Text " ms, median of the last ",
+      C.Decimal (C.Length recent), C.Text " ", ms median, C.Text " ms, avg ",
+      milliseconds (C.Number "sum") count, C.Text " ms, max ", ms (C.Number "max"),
+      C.Text " ms, over ", C.Decimal count, C.Text suffix]).
+initial : List B.Effect .
+initial = [B.SetNumber "pending" (C.Literal 0), B.SetNumber "sent" (C.Literal 0),
+  B.SetNumber "last" (C.Literal 0), B.SetNumber "count" (C.Literal 0),
+  B.SetNumber "sum" (C.Literal 0), B.SetNumber "max" (C.Literal 0),
+  B.SetSequence "recent" (C.Values Nil)].
+sent : List B.Effect .
+sent = [B.ReadClock "sent", B.SetNumber "pending" (C.Literal 1)].
+reset : List B.Effect .
+reset = [B.SetNumber "pending" (C.Literal 0)].
+frame : List B.Effect .
+frame = [B.When (C.Equal (C.Number "pending") (C.Literal 1))
+  [B.ReadClock "now", B.SetNumber "pending" (C.Literal 0),
+   B.SetNumber "last" (C.IfInt (C.Less (C.Number "now") (C.Number "sent"))
+     (C.Literal 0) (C.Sub (C.Number "now") (C.Number "sent"))),
+   B.SetNumber "count" (C.Add (C.Number "count") (C.Literal 1)),
+   B.SetNumber "sum" (C.Add (C.Number "sum") (C.Number "last")),
+   B.SetNumber "max" (C.IfInt (C.Less (C.Number "max") (C.Number "last")) (C.Number "last") (C.Number "max")),
+   B.SetSequence "recent" (C.TakeLast 32 (C.Snoc (C.Sequence "recent") (C.Number "last")))]].
+script : B.Target -> String -> String .
+script target suffix = B.program initial
+  [B.On "live:sent" sent, B.On "live:frame" frame,
+   B.On "live:disconnected" reset, B.OnSuspend reset,
+   B.Every 500 [B.PutVisibleText target (summary suffix)]].
