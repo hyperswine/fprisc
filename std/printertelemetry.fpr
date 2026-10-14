@@ -1,0 +1,78 @@
+# Pure, bounded Bambu report projection shared by the native collector/tests.
+# Only display fields survive; printer codes and arbitrary report data do not.
+J = use "json".
+M = use "map".
+O = use "option".
+L = use "list".
+S = use "string".
+C = use "clock".
+Ord = use "order".
+initial = {fields = M.empty S.compare, buckets = M.empty Ord.int, reports = 0, last = 0, wall = 0}.
+get key value = O.withDefault J.Null (J.field key value).
+items value = O.withDefault Nil (J.asList value).
+short value fallback = case value of J.Text s -> S.left 160 s | J.Integer n -> str n | J.Real n -> S.left 160 n | _ -> fallback.
+# Retain integers and bounded plain decimal values. Exponent/unbounded numeric
+# text is refused rather than overflowing another consumer's JSON number.
+number value = case value of
+    J.Integer n -> if n >= 0 - 1000000000 and n <= 1000000000 then value else J.Null
+  | J.Real text ->
+      whole = case S.split "." text of x :: _ -> x | _ -> "";
+      if strlen text <= 24 and strlen whole <= 9 and not (S.contains "e" (S.toLower text)) then value else J.Null
+  | _ -> J.Null.
+numeric = ["mc_percent", "nozzle_temper", "bed_temper", "mc_remaining_time", "layer_num", "total_layer_num", "nozzle_target_temper", "bed_target_temper", "print_error"].
+texts = ["gcode_state", "gcode_file", "subtask_name", "wifi_signal"].
+putField payload key fields = case J.field key payload of
+    O.None -> fields
+  | O.Some value -> M.insert key (if L.member key numeric then number value else case value of J.Text s -> J.Text (S.left 160 s) | _ -> J.Null) fields.
+tray value = case get "tray_type" value of J.Text s -> if strlen s == 0 then Nil else [S.left 40 s] | _ -> Nil.
+filaments payload =
+  units = L.take 16 (items (get "ams" (get "ams" payload)));
+  trays = L.concatMap (fn unit -> L.concatMap tray (L.take 16 (items (get "tray" unit)))) units;
+  S.join ", " (L.take 32 (L.append trays (tray (get "vt_tray" payload)))).
+report now wall value state =
+  payload = get "print" value;
+  sample = L.any (fn k -> case J.field k payload of O.Some _ -> True | _ -> False) ["gcode_state", "nozzle_temper", "bed_temper", "mc_percent", "layer_num", "mc_remaining_time"];
+  if not sample then state else
+  fields = L.fold (fn acc k -> putField payload k acc) state.fields (L.append numeric texts);
+  ams = case J.field "ams" payload of O.None -> fields | O.Some value -> M.insert "_ams_filament" (J.Text (filaments (J.object [("ams", value)]))) fields;
+  external = case J.field "vt_tray" payload of O.None -> ams | O.Some value -> M.insert "_ext_filament" (J.Text (S.join ", " (tray value))) ams;
+  joined = S.join ", " (L.filter (fn text -> text != "") (L.map (fn key -> O.withDefault "" (J.asString (M.getOr J.Null key external))) ["_ams_filament", "_ext_filament"]));
+  fields2 = if J.field "ams" payload != O.None or J.field "vt_tray" payload != O.None then M.insert "filament" (J.Text (if joined == "" then "Not reported" else joined)) external else fields;
+  second = now / 1000;
+  buckets = M.filter (fn key count -> key > second - 30 and key <= second) state.buckets;
+  {state | fields = fields2, buckets = M.insert second (M.getOr 0 second buckets + 1) buckets, reports = state.reports + 1, last = now, wall = wall}.
+# Depth preflight bounds the recursive JSON parser even for malicious reports.
+# Quotes/escapes are tracked so braces inside strings do not count as nesting.
+bounded text = strlen text <= 262144 and scan text 0 0 False False.
+scan : unsafe String -> Int -> Int -> Bool -> Bool -> Bool .
+scan text at depth quoted escaped = if at == strlen text then depth == 0 and not quoted else
+  byte = charAt text at;
+  if quoted then scan text (at + 1) depth (if escaped then True else byte != 34) (not escaped and byte == 92)
+  else if byte == 34 then scan text (at + 1) depth True False
+  else if byte == 123 or byte == 91 then depth < 32 and scan text (at + 1) (depth + 1) False False
+  else if byte == 125 or byte == 93 then depth > 0 and scan text (at + 1) (depth - 1) False False
+  else scan text (at + 1) depth False False.
+accept now wall text state = if not (bounded text) then Err "Printer report exceeds size/depth limit." else
+  case J.parse text of Err _ -> Err "Malformed printer report ignored." | Ok value -> Ok (report now wall value state).
+display key fallback state = short (M.getOr J.Null key state.fields) fallback.
+num key state = M.getOr J.Null key state.fields.
+integer key state = case num key state of J.Integer n -> n | J.Real text -> O.withDefault 0 (S.toInt (case S.split "." text of x :: _ -> x | _ -> "0") |> resultOption) | _ -> 0.
+resultOption r = case r of Ok x -> O.Some x | Err _ -> O.None.
+snapshot now connected note state =
+  count = M.fold (fn acc second n -> if second > now / 1000 - 30 and second <= now / 1000 then acc + n else acc) 0 state.buckets;
+  rate = count * 100 / 30;
+  percent = integer "mc_percent" state;
+  remaining = num "mc_remaining_time" state;
+  J.object [("connection", J.Text (if not connected then "OFFLINE" else if state.reports > 0 and now - state.last < 15000 then "ONLINE" else "STALE")),
+    ("state", J.Text (display "gcode_state" "Waiting for telemetry" state)),
+    ("job", J.Text (display "subtask_name" (display "gcode_file" "No current job reported" state) state)),
+    ("progress", J.Integer (if percent < 0 then 0 else if percent > 100 then 100 else percent)),
+    ("remaining", J.Text (if remaining == J.Null then "Time unavailable" else "{integer "mc_remaining_time" state} min remaining")),
+    ("layers", J.Text "Layer {display "layer_num" "—" state} / {display "total_layer_num" "—" state}"),
+    ("nozzle", num "nozzle_temper" state), ("bed", num "bed_temper" state),
+    ("nozzle_target", num "nozzle_target_temper" state), ("bed_target", num "bed_target_temper" state),
+    ("wifi", J.Text (display "wifi_signal" "Wi-Fi unavailable" state)),
+    ("reports", J.Integer state.reports), ("report_hz", J.Real "{rate / 100}.{S.padLeft 2 "0" (str (rate % 100))}"),
+    ("last_report", J.Integer state.wall), ("last_report_iso", J.Text (if state.wall == 0 then "—" else C.iso state.wall)),
+    ("error", J.Text (if num "print_error" state == J.Integer 0 then "None reported" else display "print_error" "Not reported" state)),
+    ("filament", J.Text (O.withDefault "Not reported" (J.asString (num "filament" state)))), ("note", J.Text note)].

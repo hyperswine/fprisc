@@ -35,6 +35,7 @@ from printer_auth import Auth, load_keys, COOKIE, BINDING, CHALLENGE_SECONDS, SE
 ROOT = Path(__file__).resolve().parents[1]
 MAX_FRAME = 4 * 1024 * 1024
 STATUS_FIELDS = {"gcode_state", "mc_percent", "nozzle_temper", "bed_temper", "mc_remaining_time", "layer_num", "total_layer_num", "nozzle_target_temper", "bed_target_temper", "gcode_file", "subtask_name", "wifi_signal", "print_error", "ams", "vt_tray"}
+NATIVE_FIELDS = {"connection", "state", "job", "progress", "remaining", "layers", "nozzle", "bed", "nozzle_target", "bed_target", "wifi", "reports", "report_hz", "last_report", "last_report_iso", "error", "filament", "note"}
 
 
 def merge(dst, src):
@@ -54,7 +55,7 @@ def short(value, default="—"):
 
 
 class Printer:
-    def __init__(self, config, demo=False):
+    def __init__(self, config, demo=False, native_binary=None):
         self.config = config
         self.demo = demo
         self.lock = threading.RLock()
@@ -66,6 +67,11 @@ class Printer:
         self.times = collections.deque()
         self.note = "Demo telemetry. No printer is connected." if demo else "Waiting for a status report."
         self.client = None
+        self.native_binary = native_binary
+        self.native_state = None
+        self.native_received = 0.0
+        self.native_environment = None
+        self.native = None
         self.camera = Camera(self)
 
     def report(self, data):
@@ -84,6 +90,16 @@ class Printer:
     def snapshot(self):
         now = time.monotonic()
         with self.lock:
+            if self.native_state is not None:
+                result = dict(self.native_state)
+                if not self.connected:
+                    result.update(connection="OFFLINE", note=self.note)
+                elif now - self.native_received >= 2:
+                    result["connection"] = "STALE"
+                result.update(id=self.config["id"], name=self.config["name"], model=self.config["model"],
+                              location=self.config.get("location", "Workshop"),
+                              camera_available=self.config.get("camera", "bambu-jpeg") == "bambu-jpeg", **self.camera.stats())
+                return result
             while self.times and self.times[0] < now - 30:
                 self.times.popleft()
             p = self.state
@@ -122,6 +138,10 @@ class Printer:
     def start(self):
         if self.demo:
             self.connected = True
+            return
+        if self.native_binary:
+            self.native = NativeTelemetry(self, self.native_binary)
+            self.native.start()
             return
         # Values are inherited at runtime. Never copy them into a public
         # snapshot, logs, browser attributes, URLs or subprocess arguments.
@@ -175,9 +195,91 @@ class Printer:
 
     def close(self):
         self.camera.stop()
+        if self.native:
+            self.native.close()
         if self.client:
             self.client.disconnect()
             self.client.loop_stop()
+
+
+class NativeTelemetry:
+    """Supervision only: MQTT, TLS and report projection run in FP-RISC.
+
+    The child receives one code through its environment; stdout is a bounded
+    public projection. It never receives the gateway's browser auth sessions.
+    """
+    def __init__(self, printer, binary):
+        self.printer, self.binary = printer, binary
+        self.process = None
+        self.thread = None
+
+    def start(self):
+        p = self.printer
+        c = p.config
+        code = os.environ.get(c["access_code_env"], "")
+        if not code:
+            p.note = "Printer access-code environment variable is not set."
+            return
+        environment = dict(p.native_environment if p.native_environment is not None else view_environment({c["id"]: p}, os.environ))
+        environment["FPR_PRINTER_CODE"] = code
+        try:
+            self.process = subprocess.Popen(
+                [self.binary, c["host"], str(c.get("mqtt_port", 8883)), c["serial"], c["tls_peer"], c["tls_ca"], "FPR_PRINTER_CODE"],
+                env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        except OSError:
+            p.note = "Cannot start native printer telemetry."
+            return
+        self.thread = threading.Thread(target=self.read, daemon=True)
+        self.thread.start()
+
+    def read(self):
+        p = self.printer
+        try:
+            while True:
+                line = self.process.stdout.readline(32769)
+                if not line:
+                    break
+                if len(line) > 32768 or not line.endswith(b"\n"):
+                    break
+                value = json.loads(line)
+                if not isinstance(value, dict) or set(value) != NATIVE_FIELDS:
+                    break
+                if any(isinstance(v, (dict, list)) or (isinstance(v, str) and len(v) > 4096)
+                       or (isinstance(v, float) and not math.isfinite(v)) for v in value.values()):
+                    break
+                if value["connection"] not in ("ONLINE", "STALE", "OFFLINE") or not isinstance(value["last_report"], int):
+                    break
+                with p.lock:
+                    p.native_state = value
+                    p.native_received = time.monotonic()
+                    p.connected = value["connection"] != "OFFLINE"
+                    p.note = value["note"]
+        except (ValueError, OSError, TypeError):
+            pass
+        finally:
+            with p.lock:
+                p.connected = False
+                p.note = "Native telemetry stopped. Last known values are retained."
+            if self.process.poll() is None:
+                self.process.terminate()
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=5)
+            self.process.stdout.close()
+
+    def close(self):
+        if self.process:
+            if self.process.poll() is None:
+                self.process.terminate()
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=5)
+        if self.thread:
+            self.thread.join(timeout=5)
 
 
 def printer_tls():
@@ -658,7 +760,7 @@ def atomic_snapshot(path, value):
 
 def view_environment(printers, environment):
     private = {p.config.get("access_code_env") for p in printers.values()}
-    return {k: v for k, v in environment.items() if k not in private and not k.startswith("BAMBU_")}
+    return {k: v for k, v in environment.items() if k not in private and k != "FPR_PRINTER_CODE" and not k.startswith("BAMBU_")}
 
 
 def main():
@@ -673,6 +775,7 @@ def main():
     parser.add_argument("--port", type=int, default=6730)
     parser.add_argument("--poll-ms", type=int, default=1000)
     parser.add_argument("--binary", default=str(ROOT / "build/printers"))
+    parser.add_argument("--native-telemetry", help="Native collector executable; live --config entries require tls_ca and tls_peer")
     parser.add_argument("--auth", default=str(ROOT / "examples/printer-dashboard/auth.json"), help="Public Ed25519 key allowlist (required in all modes)")
     parser.add_argument("--origin", help="Public origin, e.g. https://3dprint.cswine.cloud; defaults to local listener")
     args = parser.parse_args()
@@ -693,13 +796,24 @@ def main():
         parser.error("build the view first: ./fpr build examples/printers.fpr -o build/printers")
     try:
         loaded = env_configs(args.env_file, args.discovery_seconds, tuple(args.printers.split(","))) if args.env_file else configs(args.config, args.demo)
-        printers = {c["id"]: Printer(c, args.demo) for c in loaded}
+        if args.native_telemetry:
+            if args.demo or args.env_file or not Path(args.native_telemetry).is_file():
+                raise ValueError("native telemetry requires --config and an existing collector executable")
+            for c in loaded:
+                if not all(isinstance(c.get(k), str) and c[k] for k in ("tls_ca", "tls_peer")) or not Path(c["tls_ca"]).is_file():
+                    raise ValueError("native telemetry requires a CA file and verified peer for each printer")
+                if type(c.get("mqtt_port", 8883)) is not int or not 1 <= c.get("mqtt_port", 8883) <= 65535:
+                    raise ValueError("invalid native MQTT port")
+        printers = {c["id"]: Printer(c, args.demo, args.native_telemetry) for c in loaded}
+        public_environment = view_environment(printers, os.environ)
+        for printer in printers.values():
+            printer.native_environment = public_environment
     except (OSError, ValueError, TypeError) as exc:
         # Only our fixed validation messages are safe; never echo source lines.
         if args.env_file and type(exc) is ValueError:
             parser.error(str(exc))
         parser.error("cannot load printer configuration; see examples/printer-dashboard/README.md")
-    if not args.demo:
+    if not args.demo and not args.native_telemetry:
         try:
             import paho.mqtt.client
         except ImportError:

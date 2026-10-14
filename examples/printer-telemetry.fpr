@@ -1,0 +1,81 @@
+# Native MQTT/TLS telemetry collector. stdout contains public JSON only.
+# One process per printer; the gateway owns process supervision and cameras.
+unsafe base.
+Q = use "std/mqtt".
+SS = use "std/mqttsession".
+MC = use "std/mqttclient".
+PT = use "std/printertelemetry".
+T = use "std/transport".
+TLS = use "std/tls".
+Socket = use "std/sockettransport".
+DNS = use "std/resolver".
+Connect = use "std/connect".
+Ready = use "std/readiness".
+Watch = use "std/watchedtransport".
+P = use "std/program".
+J = use "std/json".
+S = use "std/string".
+L = use "std/list".
+O = use "std/option".
+Clock = use "std/clock".
+need result = case result of Ok x -> x | Err _ -> P.fail 2 "printer telemetry: invalid configuration or unavailable native service".
+budget ms = need (Socket.forMs ms).
+now u = Sys.timeUs Unit / 1000.
+request = J.render (J.object [("pushing", J.object [("sequence_id", J.Text "1"), ("command", J.Text "pushall"), ("version", J.Integer 1), ("push_target", J.Integer 1)])]).
+dial cfg pool watcher =
+  limit = budget 5000;
+  case Connect.connectWith (Watch.wait watcher) limit pool cfg.host cfg.port 16384 of
+    Err why -> Err why
+  | Ok tcp -> case TLS.upgrade limit cfg.peer (TLS.CaFile cfg.ca) TLS.TLS12 tcp of
+      Err why -> Err why
+    | Ok secure -> case MC.create cfg.session 262144 16384 secure of
+        Err why -> _ = T.close secure; Err why
+      | Ok client -> case MC.begin limit client of (result, next) -> case result of Err why -> _ = T.close next.connection; Err why | Ok _ -> Ok next.
+closeClient client = _ = T.close client.connection; Unit.
+offline state =
+  _ = (case state.client of O.Some client -> closeClient client | O.None -> Unit);
+  {state | client = O.None, retryAt = now Unit + state.backoff, backoff = if state.backoff < 16000 then state.backoff * 2 else 30000,
+    note = "Disconnected; retrying. Last known values are retained."}.
+reports cfg notes state = L.fold (fn acc effect -> case effect of
+    SS.Delivered topic payload _ _ _ -> if topic != cfg.report then acc else
+      (case PT.accept (now Unit) (Clock.now Unit) payload acc.telemetry of Err why -> {acc | note = why} | Ok telemetry -> {acc | telemetry = telemetry, note = ""})
+  | _ -> acc) state notes.
+effects cfg notes state = case notes of
+    Nil -> state
+  | effect :: rest ->
+      current = reports cfg [effect] state;
+      case current.client of O.None -> current | O.Some client ->
+        action = case effect of
+            SS.Up _ _ -> MC.subscribe (budget 2000) [(cfg.report, 0)] client
+          | SS.Subscribed _ grants -> if L.any (fn n -> n == 128) grants then (Err (T.Invalid "subscription refused"), client) else MC.publish (budget 2000) cfg.request request 0 False client
+          | SS.Down _ _ -> (Err T.Closed, client)
+          | SS.Rejected _ -> (Err (T.Invalid "MQTT operation refused"), client)
+          | _ -> (Ok Nil, client);
+        (result, next) = action;
+        case result of Err _ -> offline {current | client = O.Some next} | Ok _ -> effects cfg rest {current | client = O.Some next, backoff = 1000}.
+step cfg pool watcher state =
+  current = case state.client of
+      O.None -> if now Unit < state.retryAt then _ = Clock.sleepMs 250; state else
+        (case dial cfg pool watcher of Err _ -> offline state | Ok client -> {state | client = O.Some client, note = "Waiting for a status report."})
+    | O.Some client ->
+        (result, next) = MC.next (budget 250) client;
+        (retained, drained) = MC.takeNotices next;
+        base = reports cfg retained {state | client = O.Some drained};
+        (case result of Err _ -> offline base | Ok notes -> effects cfg notes base);
+  _ = print (J.render (PT.snapshot (now Unit) (case current.client of O.Some c -> c.session.phase == SS.Online | _ -> False) current.note current.telemetry));
+  (True, current).
+main = case P.args Unit of
+    [host, portText, serial, peer, ca, codeEnv] ->
+      port = need (S.toInt portText);
+      _ = if port < 1 or port > 65535 or strlen host == 0 or strlen ca == 0 or strlen peer == 0 or not (Q.topic serial) or S.contains "/" serial then P.fail 2 "printer telemetry: invalid public configuration" else Unit;
+      code = P.envOr "" codeEnv;
+      _ = if strlen code == 0 then P.fail 2 "printer telemetry: access-code environment variable is not set" else Unit;
+      session = need (SS.configAuth (Q.UserPassword "bblp" code) "fpr-read-{serial}" True 30 5000 8);
+      pool = need (DNS.create 1);
+      watcher = Ready.start Unit;
+      cfg = {host = host, port = port, peer = peer, ca = ca, session = session, report = "device/{serial}/report", request = "device/{serial}/request"};
+      _ = Sys.loop {client = O.None, telemetry = PT.initial, retryAt = 0, backoff = 1000, note = "Waiting for a status report."} (step cfg pool watcher);
+      _ = Ready.stop watcher;
+      _ = need (DNS.close pool);
+      Unit
+  | _ -> P.fail 2 "usage: printer-telemetry HOST PORT SERIAL TLS_PEER CA_FILE CODE_ENV".

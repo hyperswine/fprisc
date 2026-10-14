@@ -5,7 +5,9 @@ Applies to: this checkout's Base/ExtBase libraries, after the generated
 inventory-console work in [the local UI record](2026-10-14-LOCAL-UI-AND-NATIVE-SERVICES.md).
 Status: bounded DNS/TCP setup, checked native lifetime, shared directional
 readiness, a Unix OpenSSL 3 TLS client and an initial MQTT 3.1.1 QoS 0/1 client
-are implemented. Printer transport replacement and HTTPS migration remain.
+are implemented. MQTT username/password authentication and an opt-in native
+printer telemetry collector are now available; camera/gateway and HTTPS
+migrations remain.
 
 ## Architecture and ownership
 
@@ -395,9 +397,9 @@ separate body and input-chunk limits. Remaining Length is checked before body
 extraction; incomplete prefixes survive reads and coalesced packets are decoded
 in order. Fixed flags, field lengths, UTF-8, packet identifiers, publish topics
 and filter grammar are validated. Binary publication payloads are preserved.
-This initial profile supports anonymous CONNECT, QoS 0/1, subscribe/unsubscribe,
-acknowledgements, ping and disconnect. Authentication, wills, QoS 2 and MQTT 5
-are explicit unsupported features, not ignored flags.
+CONNECT supports anonymous, username-only and username/password authentication,
+plus QoS 0/1, subscribe/unsubscribe, acknowledgements, ping and disconnect.
+Wills, QoS 2 and MQTT 5 remain explicit unsupported features.
 
 `std/mqttsession.step event state` is pure and emits typed effects. In-flight
 admission is bounded by configuration; outgoing IDs are not reused before their
@@ -468,7 +470,83 @@ codec/session tests also pass under two-hart RV64 QEMU. Tang Nano refusal shims
 and host-compiled ESP-IDF refusal branches compile; those are not physical-board
 or ESP-IDF runtime validation.
 
-Remaining integration: replace HTTPS's curl path, add the application-required
-MQTT authentication/trust options, migrate printer telemetry/camera transport,
-then validate the actual broker/device policies and physical printers. Existing
-application helpers remain until those migrations have acceptance evidence.
+Remaining integration: replace HTTPS's curl path, validate native telemetry
+against real printer certificate/device policies, and migrate camera framing,
+gateway authentication and process supervision. Existing application helpers
+remain until those migrations have acceptance evidence.
+
+
+## Implementation slice 4: authenticated MQTT and native printer telemetry (2026-10-15)
+
+`MQTT.Connect client clean keepalive` remains the anonymous packet. The new
+`ConnectAuth client clean keepalive credentials` takes `UserName name` or
+`UserPassword name bytes`. Usernames use MQTT's UTF-8 rules; the password is
+0..65535 binary bytes, with no UTF-8 or NUL restriction. CONNECT flags and
+payload ordering are checked on decode, including password-without-username,
+reserved/will bits, truncated fields and trailing data. Both fields are bounded
+at 65535 bytes. Errors describe the field/condition without copying its value.
+
+`MQTTSession.config` preserves the anonymous configuration helper.
+`configAuth credentials client clean keepalive ackMs capacity` validates and
+retains explicit credentials for subsequent `Start`/reconnect effects. Broker
+CONNACK refusals remain `Down` notices. These pure APIs do not provide transport
+secrecy: an authenticated application must use verified TLS. Credentials are
+ordinary immutable runtime values, not zeroizing secret buffers; do not print
+packets, configuration or client state. No AWS secrets are fetched by this code.
+
+`examples/printer-telemetry.fpr` is the first application migration. It connects
+through bounded DNS/TCP and verified native TLS, reads one access code from the
+specified environment variable, authenticates as `bblp`, subscribes to exactly
+`device/SERIAL/report`, and requests `pushall` on `device/SERIAL/request` only
+after SUBACK. There are no print, motion or temperature commands. It restores
+the subscription/status request after reconnect with 1..30 second backoff.
+The original 5-second setup budget covers TCP and TLS; protocol reads use
+250-ms turns and keepalive. `Sys.loop` reclaims turn scratch. There is one
+collector process, resolver slot and active TLS connection per configured
+printer (at most 24 through the gateway).
+
+`std/printertelemetry` performs the public report projection in FP-RISC.
+It retains an allowlist of bounded display fields, merges scalar deltas and
+keeps AMS/external filament labels, ignores command acknowledgements as fresh
+telemetry, preserves last known values offline, and uses monotonic freshness.
+A 256-KiB body and depth-32 preflight bound parsing; labels and tray counts are
+bounded. Numeric fields accept integers and bounded plain decimals, rejecting
+exponents rather than risking non-finite values in downstream JSON consumers.
+Report rate uses at most thirty one-second buckets (a quantized 30-second
+window). The stdout projection never includes access codes, raw reports, host
+configuration or arbitrary JSON fields.
+
+The gateway's opt-in `--native-telemetry=EXECUTABLE` path supervises this
+collector and consumes its public JSON projection. It does not import Paho or
+parse MQTT/report payloads in native mode. Each child receives only its selected
+printer code under `FPR_PRINTER_CODE`; codes are absent from arguments, public
+snapshots and the UI process environment. Camera framing, login/signature
+verification, HTTP/WebSocket proxying and supervision still use Python. The
+existing default path is unchanged; no deployed dashboard was restarted.
+
+Native mode currently requires explicit `--config` entries with `tls_ca` and
+`tls_peer` (and optional `mqtt_port`, default 8883). The peer must match the
+printer certificate and the CA file must establish trust. The old Python LAN
+adapter disables certificate verification; that behavior is intentionally not
+an available native fallback. Discovering/checking real Bambu certificates,
+device-specific trust requirements, and physical-printer acceptance remain.
+See [the application instructions](../examples/printer-dashboard/README.md#native-telemetry-opt-in).
+
+Acceptance executed on macOS AArch64:
+
+- Authenticated CONNECT wire vectors, binary/empty passwords, username-only,
+  invalid flags/lengths/UTF-8, session refusal and reconnect; portable codec and
+  session checks also pass on two-hart RV64 QEMU.
+- Pinned Mosquitto 2.0.22 anonymous/authenticated TCP and TLS, invalid-password
+  refusal, QoS 1 echo and idle keepalive on one/four harts. All native DNS/TLS
+  setup, ownership, worker-bound and failure regressions still pass.
+- A synthetic TLS printer plus the actual gateway supervisor on one/four harts:
+  authenticated CONNECT, exact report subscription, read-only status request,
+  fragmented/coalesced reports, wrong-topic exclusion, delta retention across
+  reconnect, resubscribe, private-field exclusion, auth refusal and wrong-peer
+  TLS rejection. Test identities/credentials are public or synthetic.
+- Pure projection checks cover freshness, AMS/external deltas, invalid numeric
+  values, packet/depth bounds and expiry/bounds of rate storage.
+
+This is local/simulator evidence, not real A1/P1S validation, a completed
+Python removal, or a long-duration process memory bound.

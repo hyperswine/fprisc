@@ -4,8 +4,9 @@ A small read-only LAN printer dashboard. The application is
 [../printers.fpr](../printers.fpr): a shared FP-RISC `std/live` model, typed
 messages, per-browser expanded cards and camera switches, `std/view` trees,
 and incremental WebSocket updates. It follows `pos1.fpr` and `inventory.fpr`.
-A narrow Python transport handles Bambu's MQTT/TLS and framed-JPEG camera
-protocols, which FP-RISC's current standard library does not implement.
+The default Python transport handles Bambu MQTT/TLS and framed-JPEG cameras.
+An opt-in FP-RISC collector now handles authenticated native TLS/MQTT and
+telemetry projection; Python still serves login, cameras and the gateway.
 JavaScript manages browser media lifecycle and local challenge signing; it does
 not fetch/render printer status or own the dashboard model.
 
@@ -241,3 +242,60 @@ print. Anonymous status and P1S camera requests still received 401. Restarting
 the bridge expired earlier sessions, so existing users need to sign in again.
 Sanitized evidence is in `build/printer-dashboard-two-printers-check.json`
 (ignored by Git).
+
+
+## Native telemetry (opt-in)
+
+Build the collector with the optional OpenSSL 3 engine, and build the view:
+
+```sh
+./fpr build examples/printer-telemetry.fpr -o build/printer-telemetry \
+  --with machine/unix/tls_openssl.c \
+  --cflag -I/opt/homebrew/opt/openssl@3/include \
+  --link -L/opt/homebrew/opt/openssl@3/lib --link -lssl --link -lcrypto
+./fpr build examples/printers.fpr -o build/printers
+```
+
+Use a public configuration like `printers.example.json`, adding `tls_ca` (an
+absolute path to a trusted CA PEM) and `tls_peer` (the certificate's verified
+DNS/IP identity) to each printer. `mqtt_port` is optional, default 8883. The
+host/serial and access-code environment-variable name still belong in that
+configuration; the access-code value does not. Use `--config` for this mode;
+the existing `.env` discovery launcher does not yet carry trust metadata.
+Certificates must chain to the configured CA and satisfy identity/validity
+checks. There is no insecure fallback. Establish the real printer's trust
+material before selecting this mode; simulator acceptance does not establish
+A1/P1S certificate compatibility.
+
+With each code already supplied privately in the caller's runtime environment:
+
+```sh
+/path/to/dashboard-venv/bin/python tools/printer_dashboard.py \
+  --config=/absolute/path/printers.json \
+  --native-telemetry="$PWD/build/printer-telemetry"
+```
+
+Native mode needs `cryptography` for existing gateway login, but does not load
+Paho. One native process owns each printer's DNS/TCP/TLS/MQTT, report merging,
+projection, keepalive and reconnect. Only its selected code is passed to it,
+through `FPR_PRINTER_CODE`, with no code in arguments, public output or the UI
+process environment. The only publication is the existing read-only `pushall`
+status request after subscribing, repeated after reconnect. Python remains for
+supervision, HTTP/WebSocket/login, cameras and snapshot aggregation. This is
+an opt-in migration; the live deployment is unchanged.
+
+Verify without a printer or real credentials:
+
+```sh
+/path/to/dashboard-venv/bin/python tests/check_printer_native.py \
+  --binary=build/printer-telemetry
+python3 tests/check_native_services.py --broker \
+  --openssl-prefix=/opt/homebrew/opt/openssl@3
+```
+
+The first check uses an isolated TLS printer simulator and the actual gateway
+handoff on one/four harts. It covers authenticated subscription/status requests,
+fragmented/coalesced delta reports, reconnect/resubscribe, private-field
+exclusion, bad-password refusal and verified-peer rejection. The second also
+uses pinned Mosquitto for authenticated QoS 1 and keepalive. Real printer trust,
+telemetry and camera acceptance are still separate tasks.

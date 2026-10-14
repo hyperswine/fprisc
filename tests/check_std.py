@@ -55,6 +55,7 @@ check('browserconsole', label='BrowserConsole: text history bounds, blank/duplic
 check('proclimits', label='Proc: a time limit kills the child and says so; extra environment reaches it')
 check('tcp', label='Stream and Tcp: a server and its clients in ONE process, an actor per connection, 2 MB echoed, stop')
 check('mqttpump', label='MQTT pump: received delivery retained on PUBACK failure, bounded outgoing queue and stop cleanup')
+check('printertelemetry', label='Printer telemetry: pure bounded projection, delta merge, redaction and freshness')
 check('mqtt', label='MQTT 3.1.1 codec and pure client session: wire vectors, fragmentation, bounds, QoS1 reconnect, epochs and keepalive')
 check('transport', label='Transport: partial I/O, direction-changing readiness, absolute deadlines, cancellation, progress preservation and cleanup')
 check('call', env={'FPR_HARTS':'4'}, label='Actor call/reply and legacy ask failures on four harts')

@@ -108,8 +108,9 @@ and BareMetal implementation, see the [project progress summary](docs/2026-09-18
 `examples/printers.fpr` is a small read-only `std/live` dashboard, with
 expandable printer cards, live telemetry/freshness, measured report and refresh
 rates, and cameras that connect only on demand. It uses a narrow Python LAN
-transport for Bambu MQTT/TLS and camera framing; the UI and per-session state
-are FP-RISC. Try it without any printer or credentials:
+transport for Bambu MQTT/TLS and camera framing; an opt-in native TLS/MQTT
+collector now owns authenticated telemetry. The UI and per-session state are
+FP-RISC. Try it without any printer or credentials:
 
 ```sh
 ./fpr build examples/printers.fpr -o build/printers

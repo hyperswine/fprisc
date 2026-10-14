@@ -1,0 +1,33 @@
+unsafe base.
+PT = use "std/printertelemetry".
+J = use "std/json".
+L = use "std/list".
+S = use "std/string".
+M = use "std/map".
+check name yes = if yes then Unit else error "printer telemetry: {name}".
+need r = case r of Ok x -> x | Err _ -> error "printer telemetry fixture".
+main =
+  packet = J.object [("print", J.object [("gcode_state", J.Text "RUNNING"), ("mc_percent", J.Integer 24), ("nozzle_temper", J.Real "215.5"), ("access_code", J.Text "must-not-be-public"), ("unknown", J.Text "ignore-me")])];
+  first = need (PT.accept 1000 1720000000 (J.render packet) PT.initial);
+  delta = J.object [("print", J.object [("bed_temper", J.Integer 60)])];
+  second = need (PT.accept 2000 1720000001 (J.render delta) first);
+  view = PT.snapshot 2001 True "" second;
+  _ = check "delta preserves prior values" (PT.get "nozzle" view == J.Real "215.5" and PT.get "bed" view == J.Integer 60 and PT.get "progress" view == J.Integer 24);
+  _ = check "unknown fields and codes removed" (not (S.contains "must-not-be-public" (J.render view)) and not (S.contains "ignore-me" (J.render view)));
+  ack = J.object [("print", J.object [("command", J.Text "pushall"), ("result", J.Text "success")])];
+  ignored = need (PT.accept 5000 1720000004 (J.render ack) second);
+  _ = check "command ack is not telemetry" (ignored.reports == 2 and ignored.wall == second.wall);
+  _ = check "freshness is monotonic and last values survive loss" (PT.get "connection" (PT.snapshot 17000 True "" ignored) == J.Text "STALE" and PT.get "connection" (PT.snapshot 2001 False "" ignored) == J.Text "OFFLINE" and PT.get "nozzle" (PT.snapshot 17000 False "" ignored) == J.Real "215.5");
+  _ = check "malformed, deep and oversized reports rejected" (case PT.accept 1 1 "bad" first of Err _ -> True | _ -> False);
+  _ = check "depth limit" (not (PT.bounded (strcat (S.repeat 33 "[") (S.repeat 33 "]"))) and PT.bounded (J.render (J.Text "[[[\"")));
+  _ = check "packet size limit" (not (PT.bounded (S.repeat 262145 "x")));
+  weird = J.object [("print", J.object [("nozzle_temper", J.Real "1e9999"), ("mc_percent", J.Integer 999), ("bed_temper", J.Boolean True)])];
+  third = need (PT.accept 3000 1720000002 (J.render weird) ignored);
+  _ = check "non-finite/boolean numbers refused and progress clamped" (PT.get "nozzle" (PT.snapshot 3000 True "" third) == J.Null and PT.get "bed" (PT.snapshot 3000 True "" third) == J.Null and PT.get "progress" (PT.snapshot 3000 True "" third) == J.Integer 100);
+  ext = J.object [("print", J.object [("bed_temper", J.Integer 60), ("vt_tray", J.object [("tray_type", J.Text "PETG")])])];
+  ams = J.object [("print", J.object [("bed_temper", J.Integer 61), ("ams", J.object [("ams", J.Sequence [J.object [("tray", J.Sequence [J.object [("tray_type", J.Text "PLA")]])]])])])];
+  fil = PT.report 2 2 ams (PT.report 1 1 ext PT.initial);
+  _ = check "AMS delta preserves external filament" (PT.get "filament" (PT.snapshot 2 True "" fil) == J.Text "PLA, PETG");
+  many = L.fold (fn state second -> PT.report (second * 1000) second delta state) PT.initial (L.range 0 100);
+  _ = check "rate storage bounded and expires" (M.size many.buckets <= 30 and PT.get "report_hz" (PT.snapshot 131000 True "" many) == J.Real "0.00");
+  print "Printer telemetry: delta projection, redaction, freshness, numeric/depth/size bounds and rate window PASS".

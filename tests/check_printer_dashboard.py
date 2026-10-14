@@ -134,8 +134,11 @@ class Transport(unittest.TestCase):
     def test_view_process_gets_no_transport_environment(self):
         p = self.printer()
         p.config["access_code_env"] = "LOCAL_PRINTER_CODE"
-        public = bridge.view_environment({"a1": p}, {"PATH": "/bin", "FPR_HARTS": "4", "LOCAL_PRINTER_CODE": "test-only", "BAMBU_ACCESS_CODE": "test-only"})
+        public = bridge.view_environment({"a1": p}, {"PATH": "/bin", "FPR_HARTS": "4", "LOCAL_PRINTER_CODE": "test-only", "BAMBU_ACCESS_CODE": "test-only", "FPR_PRINTER_CODE": "test-only"})
         self.assertEqual(public, {"PATH": "/bin", "FPR_HARTS": "4"})
+        other = self.printer()
+        other.config["access_code_env"] = "OTHER_PRINTER_CODE"
+        self.assertEqual(bridge.view_environment({"a1": p, "other": other}, {"LOCAL_PRINTER_CODE": "first-test-only", "OTHER_PRINTER_CODE": "second-test-only", "FPR_PRINTER_CODE": "selected-test-only", "PATH": "/bin"}), {"PATH": "/bin"})
 
     def test_dotenv_selects_only_a1_without_executing_or_echoing_values(self):
         with tempfile.TemporaryDirectory() as tmp:

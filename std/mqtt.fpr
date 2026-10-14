@@ -1,11 +1,12 @@
-# MQTT 3.1.1 packets, in FP-RISC. Initial profile: anonymous CONNECT, QoS 0/1,
-# subscriptions, acknowledgements, ping and disconnect. QoS 2/auth/wills are
-# explicitly refused. Input bounds are checked before extracting a body.
+# MQTT 3.1.1 packets in FP-RISC: anonymous or username/password CONNECT,
+# QoS 0/1, subscriptions, acknowledgements, ping and disconnect. QoS 2/wills
+# remain refused. Authentication bytes must travel over a verified transport.
 B = use "binary".
 L = use "list".
 S = use "string".
 O = use "option".
-Packet = Type (Connect String Bool Int | ConnAck Bool Int |
+Credentials = Type (UserName String | UserPassword String String).
+Packet = Type (Connect String Bool Int | ConnectAuth String Bool Int Credentials | ConnAck Bool Int |
   Publish String String Int Int Bool Bool | PubAck Int |
   Subscribe Int (List (String, Int)) | SubAck Int (List Int) |
   Unsubscribe Int (List String) | UnsubAck Int | PingReq | PingResp | Disconnect).
@@ -49,9 +50,22 @@ fields xs = case xs of Nil -> Ok "" | text :: rest -> case field text of
 subscriptions xs = case xs of Nil -> Ok "" | (text, qos) :: rest ->
   if not (filter text) or qos < 0 or qos > 1 then Err "unsupported MQTT filter/QoS" else
   case field text of Err why -> Err why | Ok part -> case subscriptions rest of Err why -> Err why | Ok tail -> Ok (strJoin "" [part, B.putU8 qos, tail]).
+# MQTT usernames are UTF-8; passwords are length-delimited BINARY bytes,
+# including empty values, NUL and non-UTF-8. Errors never include their values.
+binaryField text = if strlen text > 65535 then Err "MQTT binary field too long" else Ok (strcat (B.putU16be (strlen text)) text).
+takeBinary bytes = if strlen bytes < 2 then Err "short MQTT binary field" else
+  n = charAt bytes 0 * 256 + charAt bytes 1;
+  if n > strlen bytes - 2 then Err "short MQTT binary field" else Ok (substr bytes 2 n, substr bytes (n + 2) (strlen bytes - n - 2)).
+credentials auth = case auth of
+    UserName name -> (case field name of Err why -> Err why | Ok user -> Ok (128, user))
+  | UserPassword name secret -> case field name of Err why -> Err why | Ok user ->
+      case binaryField secret of Err why -> Err why | Ok password -> Ok (192, strcat user password).
+connectPacket client clean keepalive auth = case auth of O.None -> Connect client clean keepalive | O.Some c -> ConnectAuth client clean keepalive c.
+connectBody client clean keepalive flags payload = if strlen client == 0 or keepalive < 0 or keepalive > 65535 then Err "invalid MQTT CONNECT" else
+  case field client of Err why -> Err why | Ok name -> frame 16 (strJoin "" [B.putU16be 4, "MQTT", B.putU8 4, B.putU8 (flags + (if clean then 2 else 0)), B.putU16be keepalive, name, payload]).
 encode packet = case packet of
-    Connect client clean keepalive -> if strlen client == 0 or keepalive < 0 or keepalive > 65535 then Err "invalid MQTT CONNECT" else
-      (case field client of Err why -> Err why | Ok name -> frame 16 (strJoin "" [B.putU16be 4, "MQTT", B.putU8 4, B.putU8 (if clean then 2 else 0), B.putU16be keepalive, name]))
+    Connect client clean keepalive -> connectBody client clean keepalive 0 ""
+  | ConnectAuth client clean keepalive auth -> (case credentials auth of Err why -> Err why | Ok (flags, payload) -> connectBody client clean keepalive flags payload)
   | ConnAck present code -> if code < 0 or code > 5 or (present and code != 0) then Err "invalid CONNACK" else frame 32 (strcat (B.putU8 (if present then 1 else 0)) (B.putU8 code))
   | Publish name data qos id retain dup ->
       if not (topic name) or qos < 0 or qos > 1 or (qos == 1 and not (identifier id)) or (qos == 0 and (id != 0 or dup)) then Err "invalid/unsupported MQTT PUBLISH" else
@@ -105,9 +119,18 @@ decodePacket first body =
   case kind of
     1 -> (case takeField body of Err why -> Err why | Ok (protocol, rest) ->
       if protocol != "MQTT" or strlen rest < 4 or charAt rest 0 != 4 then Err "unsupported MQTT protocol" else
-      if charAt rest 1 != 0 and charAt rest 1 != 2 then Err "unsupported CONNECT auth/will flags" else
+      flags = charAt rest 1;
+      if band flags 61 != 0 or (band flags 64 != 0 and band flags 128 == 0) then Err "unsupported/invalid CONNECT flags" else
       case takeField (substr rest 4 (strlen rest - 4)) of Err why -> Err why | Ok (client, tail) ->
-        if strlen client == 0 or strlen tail != 0 then Err "invalid MQTT CONNECT payload" else Ok (Connect client (charAt rest 1 == 2) (charAt rest 2 * 256 + charAt rest 3)))
+        if strlen client == 0 then Err "invalid MQTT CONNECT payload" else
+        clean = band flags 2 != 0; keepalive = charAt rest 2 * 256 + charAt rest 3;
+        if band flags 128 == 0 then
+          if tail != "" then Err "invalid MQTT CONNECT payload" else Ok (Connect client clean keepalive)
+        else case takeField tail of Err why -> Err why | Ok (user, more) ->
+          if band flags 64 == 0 then
+            if more != "" then Err "invalid MQTT CONNECT payload" else Ok (ConnectAuth client clean keepalive (UserName user))
+          else case takeBinary more of Err why -> Err why | Ok (secret, extra) ->
+            if extra != "" then Err "invalid MQTT CONNECT payload" else Ok (ConnectAuth client clean keepalive (UserPassword user secret)))
   | 2 -> if strlen body != 2 then Err "invalid CONNACK size" else
       present = charAt body 0; code = charAt body 1;
       if present > 1 or code > 5 or (code != 0 and present != 0) then Err "invalid CONNACK" else Ok (ConnAck (present == 1) code)

@@ -168,17 +168,21 @@ def broker_case(binary, directory, host):
     for name in ('rootcert.pem', 'servercert.pem', 'serverkey.pem'):
         shutil.copyfile(FIXTURES / name, broker_files / name)
     (broker_files / 'mosquitto.conf').write_text(
-        'listener 1883\nallow_anonymous true\nlistener 8883\nallow_anonymous true\n'
+        'per_listener_settings true\nlistener 1883\nallow_anonymous true\nlistener 8883\nallow_anonymous true\n'
+        'cafile /mosquitto/config/rootcert.pem\ncertfile /mosquitto/config/servercert.pem\n'
+        'keyfile /mosquitto/config/serverkey.pem\n'
+        'listener 1884\nallow_anonymous false\npassword_file /mosquitto/config/passwords\n'
+        'listener 8884\nallow_anonymous false\npassword_file /mosquitto/config/passwords\n'
         'cafile /mosquitto/config/rootcert.pem\ncertfile /mosquitto/config/servercert.pem\n'
         'keyfile /mosquitto/config/serverkey.pem\n')
     container = subprocess.check_output(docker + ['create', '-p', '127.0.0.1::1883',
-                                               '-p', '127.0.0.1::8883', IMAGE], text=True).strip()
+                                               '-p', '127.0.0.1::8883', '-p', '127.0.0.1::1884', '-p', '127.0.0.1::8884', '--user', '0:0', IMAGE, '/bin/sh', '-c', 'mosquitto_passwd -b -c /mosquitto/config/passwords fpr-test test-only && chmod 644 /mosquitto/config/passwords && exec /usr/sbin/mosquitto -c /mosquitto/config/mosquitto.conf'], text=True).strip()
     try:
         # Docker file copy works even when a VM does not share the host's /tmp.
         run(docker + ['cp', str(broker_files) + '/.', container + ':/mosquitto/config/'])
         run(docker + ['start', container], stdout=subprocess.DEVNULL)
         ports = {}
-        for mode, internal in [('tcp', '1883/tcp'), ('tls', '8883/tcp')]:
+        for mode, internal in [('tcp', '1883/tcp'), ('tls', '8883/tcp'), ('tcp-auth', '1884/tcp'), ('tls-auth', '8884/tcp'), ('tls-reject', '8884/tcp')]:
             port = int(subprocess.check_output(docker + ['port', container, internal], text=True).strip().rsplit(':', 1)[1])
             ports[mode] = port
         for _ in range(50):
@@ -194,8 +198,8 @@ def broker_case(binary, directory, host):
                 result = subprocess.run([str(binary), str(port), str(FIXTURES / 'rootcert.pem'), mode],
                                         env={**os.environ, 'FPR_HARTS': harts}, capture_output=True, text=True, timeout=15)
                 assert result.returncode == 0, result.stdout + result.stderr
-                assert f'MQTT {mode}: broker subscribe/publish/QoS1 echo and idle keepalive PASS\n' == result.stdout
-                print(f'{harts} hart(s): {result.stdout.strip()}', flush=True)
+                assert ('' if mode == 'tls-reject' else f'MQTT {mode}: broker subscribe/publish/QoS1 echo and idle keepalive PASS\n') == result.stdout
+                print(f'{harts} hart(s): {result.stdout.strip() or mode + " authentication refusal PASS"}', flush=True)
     except BaseException:
         print(subprocess.check_output(docker + ['logs', container], stderr=subprocess.STDOUT, text=True)[-4000:])
         raise
@@ -254,7 +258,7 @@ def main():
                 result = subprocess.run([str(binary)], cwd=directory, env={**env, 'FPR_HARTS': harts},
                                         capture_output=True, text=True, timeout=20)
                 assert result.returncode == 0, result.stdout + result.stderr
-                print(f'{harts} hart(s): {result.stdout.strip()}', flush=True)
+                print(f'{harts} hart(s): {result.stdout.strip() or mode + " authentication refusal PASS"}', flush=True)
             tls_case(tls, harts, 'echo', roots)
             tls_case(tls, harts, 'large', roots)
             tls_case(tls, harts, 'reject', roots, peer='wrong.example')

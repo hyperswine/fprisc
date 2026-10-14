@@ -7,21 +7,25 @@ L = use "list".
 O = use "option".
 Ord = use "order".
 Phase = Type (Offline | Connecting | Online).
-Config = Type (Config String Bool Int Int Int).
+Config = Type (Config String Bool Int Int Int (O.Option Q.Credentials)).
 Pending = Type (Publication Q.Packet | Subscription (List (String, Int)) | Unsubscription (List String)).
 Event = Type (Start Int | Received Int Int Q.Packet | PublishMsg Int String String Int Bool |
   SubscribeTo Int (List (String, Int)) | UnsubscribeFrom Int (List String) | Tick Int | Lost Int String | Stop Int).
 Effect = Type (Send Int Q.Packet | Delivered String String Int Bool Bool |
   Acked Int | Subscribed Int (List Int) | Unsubscribed Int | Up Int Bool | Down Int String | Rejected String).
-config client clean keepalive ackMs capacity =
+config client clean keepalive ackMs capacity = configWith O.None client clean keepalive ackMs capacity.
+configAuth auth client clean keepalive ackMs capacity = configWith (O.Some auth) client clean keepalive ackMs capacity.
+configWith auth client clean keepalive ackMs capacity =
   if strlen client == 0 or strlen client > 65535 or not (Q.utf8 client) or keepalive < 0 or keepalive > 65535 or ackMs < 1 or capacity < 1 or capacity > 65535 then Err "invalid MQTT session configuration"
-  else Ok (Config client clean keepalive ackMs capacity).
+  else case Q.encode (Q.connectPacket client clean keepalive auth) of
+    Err _ -> Err "invalid MQTT authentication configuration"
+  | Ok _ -> Ok (Config client clean keepalive ackMs capacity auth).
 initial cfg = {config = cfg, phase = Offline, pending = M.empty Ord.int,
   order = Nil, nextId = 1, lastSent = 0, ping = O.None, epoch = 0, connDeadline = 0}.
-ackMs cfg = case cfg of Config _ _ _ ms _ -> ms.
-clean cfg = case cfg of Config _ value _ _ _ -> value.
-capacity cfg = case cfg of Config _ _ _ _ n -> n.
-keepMs cfg = case cfg of Config _ _ sec _ _ -> sec * 1000.
+ackMs cfg = case cfg of Config _ _ _ ms _ _ -> ms.
+clean cfg = case cfg of Config _ value _ _ _ _ -> value.
+capacity cfg = case cfg of Config _ _ _ _ n _ -> n.
+keepMs cfg = case cfg of Config _ _ sec _ _ _ -> sec * 1000.
 nextIdentifier id pending = if M.member id pending then nextIdentifier (if id == 65535 then 1 else id + 1) pending else id.
 down why state = ({state | phase = Offline, ping = O.None,
   order = if clean state.config then Nil else state.order,
@@ -46,9 +50,9 @@ step event state =
   case event of
     Start _ -> if state.epoch == intMax Unit then (state, [Rejected "MQTT connection epoch exhausted"]) else
       if state.phase != Offline then (state, [Rejected "already connected/connecting"]) else
-      (case state.config of Config client clean keepalive _ _ ->
+      (case state.config of Config client clean keepalive _ _ auth ->
         epoch = state.epoch + 1;
-        ({state | phase = Connecting, epoch = epoch, connDeadline = now + ackMs state.config, lastSent = now, ping = O.None}, [Send epoch (Q.Connect client clean keepalive)]))
+        ({state | phase = Connecting, epoch = epoch, connDeadline = now + ackMs state.config, lastSent = now, ping = O.None}, [Send epoch (Q.connectPacket client clean keepalive auth)]))
   | Lost epoch why -> if epoch != state.epoch then (state, Nil) else down why state
   | Stop _ ->
       (next, notes) = down "client stopped" state;

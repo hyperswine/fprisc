@@ -212,9 +212,11 @@ updates the theme/autocomplete boundaries that were still open after slice two.
    and refused-subscription behaviour. Test against a broker before claiming
    interoperability. Protocol facilities belong in ExtBase; minimal environment
    and resource primitives remain Base.
-   The initial anonymous MQTT 3.1.1 QoS 0/1 codec, pure session and native pump
-   now pass Mosquitto TCP/TLS acceptance, including idle keepalive. Authentication
-   and printer-specific integration remain separate work in the native record.
+   The MQTT 3.1.1 QoS 0/1 codec, pure session and native pump now support
+   username/password authentication and pass Mosquitto TCP/TLS acceptance,
+   including refusal and idle keepalive. An opt-in native printer telemetry
+   collector is tested through the gateway against a TLS simulator; real device
+   trust and camera/gateway migrations remain in the native record.
 5. Move printer telemetry merging, native camera framing and camera sharing
    into FP-RISC. Add reusable HTTP streaming and serve the dashboard directly.
    Keep Bambu-specific details in an application library. Preserve read-only

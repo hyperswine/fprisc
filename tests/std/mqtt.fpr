@@ -26,6 +26,13 @@ bad wire = case Q.feed wire (need (Q.decoder 32 4096)) of Err _ -> True | Ok _ -
 main =
   _ = check "known CONNECT wire vector" (Q.encode (Q.Connect "abc" True 30) == Ok (bytes [16,15,0,4,77,81,84,84,4,2,0,30,0,3,97,98,99]));
   _ = check "known QoS1 PUBLISH vector" (Q.encode (Q.Publish "t" "abc" 1 7 False False) == Ok (bytes [50,8,0,1,116,0,7,97,98,99]));
+  auth = Q.ConnectAuth "abc" True 30 (Q.UserPassword "u" (bytes [0,255]));
+  _ = check "authenticated CONNECT binary password vector" (Q.encode auth == Ok (bytes [16,22,0,4,77,81,84,84,4,194,0,30,0,3,97,98,99,0,1,117,0,2,0,255]));
+  _ = L.map roundtrip [auth, Q.ConnectAuth "abc" False 0 (Q.UserName ""), Q.ConnectAuth "abc" True 1 (Q.UserPassword "λ" "")];
+  base = bytes [0,4,77,81,84,84,4];
+  tail = bytes [0,30,0,3,97,98,99];
+  _ = check "auth flags, lengths, username UTF8 and trailing bytes refused" (L.all bad [need (Q.frame 16 (strJoin "" [base, chr 64, tail])), need (Q.frame 16 (strJoin "" [base, chr 3, tail])), need (Q.frame 16 (strJoin "" [base, chr 128, tail, bytes [0,2,192,128]])), need (Q.frame 16 (strJoin "" [base, chr 192, tail, bytes [0,1,117,0,3,0]]))] and bad (need (Q.frame 16 (strJoin "" [base, chr 128, tail, bytes [0,0,1]]))));
+  _ = check "auth maximum fields bounded without echo" (case Q.encode (Q.ConnectAuth "x" True 0 (Q.UserPassword "u" (S.repeat 65536 "x"))) of Err why -> not (S.contains "xxx" why) | _ -> False);
   packets = [Q.Connect "abc" False 0, Q.ConnAck True 0, Q.ConnAck False 5,
     Q.Publish "t/λ" "binary\0data" 0 0 True False,
     Q.Publish "t" (S.repeat 140 "x") 1 65535 False True,
@@ -40,6 +47,11 @@ main =
   _ = check "flags, QoS2, zero ID and malformed UTF8" (bad (bytes [65,2,0,1]) and bad (bytes [52,3,0,1,116]) and bad (bytes [64,2,0,0]) and not (Q.utf8 (bytes [192,128])) and not (Q.utf8 (bytes [237,160,128])) and not (Q.utf8 (bytes [244,144,128,128])));
   _ = check "topic locality and filter grammar" (not (Q.topic "a/#") and Q.filter "a/+/b/#" and not (Q.filter "a/#/b") and not (Q.filter "a+b"));
   cfg = need (SS.config "fp-client" False 1 100 2);
+  acfg = need (SS.configAuth (Q.UserPassword "u" "test-only") "abc" True 1 100 2);
+  (a1, ae1) = SS.step (SS.Start 0) (SS.initial acfg);
+  (a2, _) = SS.step (SS.Received 1 1 (Q.ConnAck False 4)) a1;
+  (_, ae2) = SS.step (SS.Start 2) a2;
+  _ = check "auth rejection closes and reconnect reuses explicit credentials" (a2.phase == SS.Offline and ae1 == [SS.Send 1 (Q.ConnectAuth "abc" True 1 (Q.UserPassword "u" "test-only"))] and ae2 == [SS.Send 2 (Q.ConnectAuth "abc" True 1 (Q.UserPassword "u" "test-only"))]);
   (s1, e1) = SS.step (SS.Start 0) (SS.initial cfg);
   _ = check "CONNECT effect" (e1 == [SS.Send 1 (Q.Connect "fp-client" False 1)]);
   (s2, e2) = SS.step (SS.Received 1 1 (Q.ConnAck False 0)) s1;

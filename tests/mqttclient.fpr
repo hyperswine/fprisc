@@ -14,12 +14,16 @@ String = use "../std/string".
 L = use "../std/list".
 need r = case r of Ok x -> x | Err why -> error "MQTT client fixture: {why}".
 check why yes = if yes then Unit else error "MQTT client fixture: {why}".
-exercise conn =
-  config = need (SS.config "fpr-native-test" False 1 2000 8);
+exercise mode conn =
+  config = need (if String.contains "auth" mode or String.contains "reject" mode then SS.configAuth (Q.UserPassword "fpr-test" (if String.contains "reject" mode then "wrong-test-only" else "test-only")) "fpr-native-test" False 1 2000 8 else SS.config "fpr-native-test" False 1 2000 8);
   client = need (Client.create config 65536 4096 conn);
   limit = need (S.forMs 4000);
   (_, c1) = Client.begin limit client;
   (connected, c2) = Client.next limit c1;
+  _ = if String.contains "reject" mode then
+    _ = check "real broker rejects invalid authentication" (L.any (fn effect -> case effect of SS.Down _ _ -> True | _ -> False) (need connected) and c2.session.phase == SS.Offline);
+    P.exit 0
+  else Unit;
   _ = check "broker CONNACK" (L.any (fn effect -> case effect of SS.Up _ _ -> True | _ -> False) (need connected));
   (_, c3) = Client.subscribe limit [("fpr-test/#",1)] c2;
   (subscribed, c4) = Client.next limit c3;
@@ -45,10 +49,10 @@ main = case P.args Unit of
       pool = need (D.create 2);
       p = R.start Unit;
       tcp = need (C.connectWith (W.wait p) (need (S.forMs 2000)) pool "127.0.0.1" port 16384);
-      _ = if mode == "tls" then
+      _ = if String.startsWith "tls" mode then
         secure = need (TLS.upgrade (need (S.forMs 2000)) "server.example" (TLS.CaFile roots) TLS.TLS12 tcp);
-        exercise secure
-      else exercise tcp;
+        exercise mode secure
+      else exercise mode tcp;
       _ = R.stop p;
       _ = need (D.close pool);
       print "MQTT {mode}: broker subscribe/publish/QoS1 echo and idle keepalive PASS"
