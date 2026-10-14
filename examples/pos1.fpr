@@ -59,6 +59,7 @@ VC = use "std/viewcache".
 List = use "std/list".
 S = use "std/string".
 File = use "std/file".
+LF = use "std/logfile".
 Clock = use "std/clock".
 Config = use "std/config".
 Decode = use "std/decode".
@@ -98,7 +99,7 @@ foldE f z l = List.fold (fn acc x -> f x acc) z l.
 # registers: cart, toast and console output live per session
 
 initModel = { cat = Nil, tax = 0, lowAt = 3, sales = Nil, nsale = 0, revenue = 0, staff = Nil,
-              sess = Nil, pend = Nil, events = 0, theme = 0, fsOn = 0, booted = 0, prof = noProf, pricing = staticPricing, reloadNotice = Notice.init False 3000, metrics = "" }.
+              sess = Nil, pend = Nil, events = 0, theme = 0, fsOn = 0, booted = 0, prof = noProf, pricing = staticPricing, reloadNotice = Notice.init False 3000, metrics = "", sink = LF.sink "" 0 }.
 
 # ---- profiling ---------------------------------------------------------------------------
 # What the app measures about itself, shown on the Admin tab (microseconds):
@@ -306,29 +307,66 @@ commit m line = apply { m | pend = line :: m.pend, events = m.events + 1 } line.
 # ---- the disk ----------------------------------------------------------------------------
 
 # the log is a text file, one line per change; a shop that has no log yet
-# gets the seed, written as its first lines
+# gets the seed, written as its first lines.
+#
+# The log is read once.  A last line without its newline is a torn append (the
+# process died mid-write): it is cut off before anything is appended after it,
+# or the next line would be glued to it and lost as well.  The writer's sink
+# (std/logfile) starts at the size that is left, so its first write knows it is
+# still that file.  A log that is there and cannot be read stops the start: a
+# shop must never be seeded over one it could not see.
 boot path =
   m0 = { initModel | booted = Clock.now Unit };
   t0 = Sys.timeUs Unit;
-  m2 = replayed m0 (File.lines path);
+  bytes = logBytes path;
+  keep = LF.wholeLines bytes;
+  _ = (case keep < strlen bytes of
+         True -> (case LF.truncate path keep of
+             Ok _ -> Sys.stderr "[pos1] cut a torn last line ({strlen bytes - keep} bytes) off {path}\n"
+           | Err why -> error "pos1: cannot cut the torn end off {path}: {why}")
+       | False -> Unit);
+  m2 = replayed m0 (Ok (S.lines (substr bytes 0 keep)));
   t1 = Sys.timeUs Unit;
   m3 = case pCount m2.cat == 0 of
     True -> seed |> foldE (fn l mm -> commit mm l) m2
   | False -> m2;
   _ = print "[pos1] log {path}: {m3.events} lines folded in {t1 - t0} us, {pCount m3.cat} products, {List.length m3.sales} sales, revenue {money m3.revenue}";
-  flush path { m3 | fsOn = 1, prof = { noProf | bootUs = t1 - t0, bootLines = m2.events } }.
+  flush path { m3 | fsOn = 1, sink = LF.sink path keep, prof = { noProf | bootUs = t1 - t0, bootLines = m2.events } }.
+# no log yet is an empty one, created now so the writer opens the file it
+# expects; a log that is there and cannot be read stops the start
+logBytes path | not (File.exists path) = (case File.writeText path "" of
+    Ok _ -> ""
+  | Err why -> error "pos1: cannot create {path}: {why}").
+logBytes path = case File.readBytes path of
+    Ok bytes -> bytes
+  | Err why -> error "pos1: cannot read {path}: {why}".
 replayed m (Ok ls) = ls |> foldE (fn l mm -> apply { mm | events = mm.events + 1 } l) m.
 replayed m (Err e) = m.
 
-# the pending lines, oldest first, in ONE append
+# The pending lines, oldest first, in ONE write to the log the server keeps
+# open (std/logfile: opening the file for every append was most of an
+# append's cost).  A write that fails stops the server: a register must never
+# show a change the log does not have (THE ONE RULE), and the supervisor's
+# restart folds the log again.
+#
+# Before each write the sink checks the path still names the file it left.
+# When it does not -- a backup restored over it, the file emptied or replaced
+# while the server runs -- the change still goes in (every line stands alone),
+# and then the server stops, to fold what the file holds now.
 flush path m = case m.pend of
     Nil -> m
   | ls ->
-    _ = writeAll path (rev ls Nil);
-    { m | pend = Nil }.
-writeAll path ls = case File.appendText path (S.concat (List.map (fn l -> "{l}\n") ls)) of
-    Ok _ -> 0
-  | Err why -> _ = Sys.stderr "[pos1] disk: {why}\n"; 1.
+    bytes = S.concat (List.map (fn l -> "{l}\n") (rev ls Nil));
+    (case LF.ready m.sink of
+        LF.Same s -> wrote path m (LF.write s bytes)
+      | LF.Fresh s -> underUs path s bytes "is empty now"
+      | LF.Other s -> underUs path s bytes "is not the file this server wrote"
+      | LF.Failed s why -> error "pos1: cannot write {path}: {why}").
+wrote path m (Ok s) = { m | pend = Nil, sink = s }.
+wrote path m (Err why) = error "pos1: cannot write {path}: {why}".
+underUs path s bytes what =
+  _ = (case LF.write s bytes of Ok _ -> Unit | Err why -> Sys.stderr "[pos1] cannot write {path}: {why}\n");
+  error "pos1: {path} {what}: wrote this change to it and stopped, to fold the file again".
 
 # ---- stock, for a scraper ------------------------------------------------------------------
 # With --metrics=FILE the stock of every live product, and the low-stock mark,
@@ -389,8 +427,9 @@ update path ev m =
   t1 = Sys.timeUs Unit;
   wrote = not (List.isEmpty m2.pend);
   m3 = flush path m2;
-  _ = case stockMoved m m3 of True -> writeStock m3 | False -> 0;
   t2 = Sys.timeUs Unit;
+  # after t2: the profile's "append" is the log's write alone
+  _ = case stockMoved m m3 of True -> writeStock m3 | False -> 0;
   prof = noteUpd (kindOf ev) (t1 - t0) m3.prof;
   ({ m3 | prof = (case wrote of True -> { prof | flush = note prof.flush (t2 - t1) } | False -> prof) }, cs).
 step path ev m = case ev of
