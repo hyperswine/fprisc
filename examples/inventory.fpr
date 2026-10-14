@@ -61,6 +61,7 @@ List = use "std/list".
 S = use "std/string".
 File = use "std/file".
 Stream = use "std/stream".
+LF = use "std/logfile".
 Clock = use "std/clock".
 Config = use "std/config".
 Decode = use "std/decode".
@@ -99,7 +100,7 @@ Item = { id : Int, name : String, loc : String, sub : String, desc : String, tag
 # members are (name, salt, hash); devices are (token hash, name)
 
 initModel = { items = Nil, nextId = 1, members = Nil, devices = Nil, pend = Nil, events = 0, skipped = 0,
-              fails = Nil, sess = Nil, booted = 0, path = "", prof = noProf }.
+              fails = Nil, sess = Nil, booted = 0, path = "", prof = noProf, sink = LF.sink "" 0 }.
 noDraft = { name = "", loc = "", sub = "", desc = "", tags = "" }.
 noSess = { sid = 0, user = "", toast = "", role = "", tn = 0, editing = 0 - 1, q = "", sort = "recent", page = 0, pane = "items", con = Nil,
            tried = "", theme = 1, d = noDraft }.
@@ -224,25 +225,58 @@ deviceUser devices h = case List.find (fn d -> strEq (devHash d) h) devices of
 
 # ---- the disk ----------------------------------------------------------------------------
 
+# The log is read once.  A last line without its newline is a torn append (the
+# process died mid-write): it is cut off before anything is appended after it,
+# or the next line would be glued to it and lost as well.  The sink starts at
+# the size that is left, so the first write knows it is still that file.
 boot path =
   m0 = { initModel | booted = Clock.now Unit };
   t0 = Sys.timeUs Unit;
-  m2 = replayed m0 (File.lines path);
+  bytes = logBytes path;
+  keep = LF.wholeLines bytes;
+  _ = (case keep < strlen bytes of
+         True -> (case LF.truncate path keep of
+             Ok _ -> Sys.stderr "[inventory] cut a torn last line ({strlen bytes - keep} bytes) off {path}\n"
+           | Err why -> error "inventory: cannot cut the torn end off {path}: {why}")
+       | False -> Unit);
+  m2 = replayed m0 (Ok (S.lines (substr bytes 0 keep)));
   t1 = Sys.timeUs Unit;
   _ = print "[inventory] log {path}: {m2.events} lines in {t1 - t0} us, {List.length m2.items} items, {List.length m2.members} members, {List.length m2.devices} devices";
   _ = (case m2.skipped > 0 of True -> Sys.stderr "[inventory] {m2.skipped} unreadable lines skipped\n" | False -> Unit);
   _ = (case List.isEmpty m2.members of True -> Sys.stderr "[inventory] no members yet: add one with --member=NAME and INV_PASSWORD\n" | False -> Unit);
-  { m2 | path = path, prof = { noProf | bootUs = t1 - t0, bootLines = m2.events } }.
+  { m2 | path = path, sink = LF.sink path keep, prof = { noProf | bootUs = t1 - t0, bootLines = m2.events } }.
+# no log yet is an empty one; a log that is there and cannot be read stops the start
+logBytes path | not (File.exists path) = "".
+logBytes path = case File.readBytes path of
+    Ok bytes -> bytes
+  | Err why -> error "inventory: cannot read {path}: {why}".
 replayed m (Ok ls) = List.fold (fn mm l -> apply { mm | events = mm.events + 1 } l) m ls.
 replayed m (Err e) = m.
 
-# the pending lines, oldest first, in ONE append.  A write that fails stops the
-# server: the page must never show a change the disk does not have.
+# The pending lines, oldest first, in ONE write to the log the server keeps
+# open (std/logfile; opening the file for every append was most of an append's
+# cost).  A write that fails stops the server: the page must never show a
+# change the disk does not have.
+#
+# Before each write the sink checks the path still names the file it left.
+# When it does not -- a backup restored over it, a member added from the
+# command line while the server runs -- the change still goes in (every line
+# stands alone), and then the server stops; launchd starts it again, and the
+# model is folded from what the file holds now.
 flush path m = case m.pend of
     Nil -> m
-  | ls -> (case File.appendText path (S.concat (List.map (fn l -> "{l}\n") (List.reverse ls))) of
-      Ok _ -> { m | pend = Nil }
-    | Err why -> error "inventory: cannot write {path}: {why}").
+  | ls ->
+      bytes = S.concat (List.map (fn l -> "{l}\n") (List.reverse ls));
+      (case LF.ready m.sink of
+        LF.Same s -> wrote m (LF.write s bytes)
+      | LF.Fresh s -> underUs m s bytes "is empty now"
+      | LF.Other s -> underUs m s bytes "is not the file this server wrote"
+      | LF.Failed s why -> error "inventory: cannot write {path}: {why}").
+wrote m (Ok s) = { m | pend = Nil, sink = s }.
+wrote m (Err why) = error "inventory: cannot write {m.path}: {why}".
+underUs m s bytes what =
+  _ = (case LF.write s bytes of Ok _ -> Unit | Err why -> Sys.stderr "[inventory] cannot write {m.path}: {why}\n");
+  error "inventory: {m.path} {what}: wrote this change to it and stopped, to fold the file again".
 
 # ---- sessions ----------------------------------------------------------------------------
 
