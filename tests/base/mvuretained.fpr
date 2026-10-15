@@ -1,0 +1,57 @@
+# Opt-in retained frames keep event cadence and service failure handling.
+unsafe base.
+MV = use "std/mvu".
+AC = use "std/actor".
+Audit = Type (Draw | View | Poll | Counts Int).
+check yes why = if yes then Unit else error "mvuretained: {why}".
+audit me = auditLoop me (0, 0, 0).
+auditLoop me state =
+  (draws, views, polls) = state;
+  case receive me of
+      Draw -> auditLoop me (draws + 1, views, polls)
+    | View -> auditLoop me (draws, views + 1, polls)
+    | Poll -> auditLoop me (draws, views, polls + 1)
+    | Counts ret -> _ = send ret state; auditLoop me state.
+counts me who = _ = send who (Counts me); receiveFrom me who.
+backend mode tally me =
+  (from, req) = receive me;
+  case req of
+      MV.Dims u -> _ = send from (80, 24); backend mode tally me
+    | MV.Poll u -> _ = send tally Poll; _ = send from (0, 0, 0); backend mode tally me
+    | MV.Render st vs sc fr ->
+        _ = send tally Draw;
+        if mode == 2 and vs == 1 then _ = Sys.sleepUs 2000000; Unit else
+          _ = send from (1, 1);
+          if mode == 1 then Unit else backend mode tally me.
+init env = {n = 0}.
+update me env ev m = case ev of
+    MV.ETick -> next = {m | n = m.n + 1};
+      (next, (if next.n >= 20 then [MV.MQuit] else Nil))
+  | other -> (m, Nil).
+key m = if m.n < 5 then 0 else if m.n < 10 then 1 else 2.
+statics vp m = 0.
+vals self env vp m = _ = send env.tally View; key m.
+subs m = [MV.STick 1, MV.SKeys].
+done m = "done".
+run me mode retained =
+  tally = spawn audit;
+  rd = spawn (backend mode tally);
+  cfg = {env = {tally = tally}, mt = 0, tick = 20000, input = (if mode == 1 then 0 else rd), render = rd};
+  app = MV.MApp init update key statics vals done subs;
+  result = if retained then MV.runRetainedResultWithin 30 me cfg app else MV.runResultWithin 30 me cfg app;
+  totals = counts me tally;
+  _ = kill rd; _ = kill tally;
+  (result, totals).
+main =
+  me = myself 0;
+  (healthy, (draws, views, polls)) = run me 0 True;
+  _ = check (case healthy of Ok text -> True | Err why -> False) "healthy retained run";
+  _ = check (draws == 3 and views == 3 and polls >= 20) "only changed frames draw while input keeps polling";
+  (ordinary, (draws2, views2, polls2)) = run me 0 False;
+  _ = check (case ordinary of Ok text -> True | Err why -> False) "ordinary run";
+  _ = check (draws2 > 10 and views2 == draws2) "ordinary animation still renders every turn";
+  (dead, _) = run me 1 True;
+  _ = check (case dead of Err why -> strIndexOf "render: dead actor" why >= 0 | other -> False) "dead renderer noticed on unchanged frame";
+  (hung, _) = run me 2 True;
+  _ = check (case hung of Err why -> strIndexOf "deadline exceeded" why >= 0 | other -> False) "changed frame keeps render deadline";
+  print "mvuretained: HOLDS".
