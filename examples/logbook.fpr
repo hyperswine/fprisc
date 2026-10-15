@@ -214,7 +214,7 @@ listNode q n cards = UI.keyed "entries" (UI.vstack { UI.stack | gap = 3 }
 # (capped on a desktop); the client state is declared on the column.
 pageOf secs list = case secs of
     top :: form :: bar :: foot :: _ ->
-      UI.page True { UI.stack | pad = 3 } [
+      UI.page UI.day { UI.stack | pad = 3 } [
         UI.vstackWith { UI.stack | gap = 4, fill = UI.Reading } (G.locals @Client {draft = "", tags = "", edit = "", etags = "", q = ""})
           (top :: form :: bar :: list :: foot :: Nil) ]
   | _ -> error "logbook: a page has four sections".

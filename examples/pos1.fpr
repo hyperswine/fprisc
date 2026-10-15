@@ -64,7 +64,7 @@ VC = use "std/viewcache".
 List = use "std/list".
 S = use "std/string".
 File = use "std/file".
-LF = use "std/logfile".
+Journal = use "std/journal".
 Clock = use "std/clock".
 Config = use "std/config".
 Decode = use "std/decode".
@@ -105,7 +105,7 @@ foldE f z l = List.fold (fn acc x -> f x acc) z l.
 # registers: cart, toast and console output live per session
 
 initModel = { cat = Nil, tax = 0, lowAt = 3, sales = Nil, nsale = 0, revenue = 0, staff = Nil,
-              sess = Nil, pend = Nil, events = 0, theme = 0, fsOn = 0, booted = 0, prof = noProf, pricing = staticPricing, reloadNotice = Notice.init False 3000, metrics = "", sink = LF.sink "" 0 }.
+              sess = Nil, pend = Nil, events = 0, theme = 0, fsOn = 0, booted = 0, prof = noProf, pricing = staticPricing, reloadNotice = Notice.init False 3000, metrics = "" }.
 
 # ---- profiling ---------------------------------------------------------------------------
 # What the app measures about itself, shown on the Admin tab (microseconds):
@@ -306,67 +306,42 @@ commit m line = apply { m | pend = line :: m.pend, events = m.events + 1 } line.
 
 # ---- the disk ----------------------------------------------------------------------------
 
-# the log is a text file, one line per change; a shop that has no log yet
-# gets the seed, written as its first lines.
-#
-# The log is read once.  A last line without its newline is a torn append (the
-# process died mid-write): it is cut off before anything is appended after it,
-# or the next line would be glued to it and lost as well.  The writer's sink
-# (std/logfile) starts at the size that is left, so its first write knows it is
-# still that file.  A log that is there and cannot be read stops the start: a
-# shop must never be seeded over one it could not see.
-boot path =
+# The log is an event JOURNAL (std/journal): opened once, a torn last line (a
+# process that died mid-write) cut before anything is appended after it, its
+# lines folded into the model.  The journal's owner keeps the file open; the
+# model holds the lines it has yet to write, never a handle.  A log that is
+# there and cannot be read stops the start: a shop must never be seeded over
+# one it could not see.  A shop that has no log yet gets the seed, written as
+# its first lines.
+openLog path = case Journal.open path of
+    Ok o -> o
+  | Err why -> Program.fail 1 "pos1: {why}".
+boot o path =
   m0 = { initModel | booted = Clock.now Unit };
   t0 = Sys.timeUs Unit;
-  bytes = logBytes path;
-  keep = LF.wholeLines bytes;
-  _ = (case keep < strlen bytes of
-         True -> (case LF.truncate path keep of
-             Ok _ -> Sys.stderr "[pos1] cut a torn last line ({strlen bytes - keep} bytes) off {path}\n"
-           | Err why -> error "pos1: cannot cut the torn end off {path}: {why}")
-       | False -> Unit);
-  m2 = replayed m0 (Ok (S.lines (substr bytes 0 keep)));
+  _ = (case o.cut > 0 of True -> Sys.stderr "[pos1] cut a torn last line ({o.cut} bytes) off {path}\n" | False -> Unit);
+  m2 = replayed m0 o.lines;
   t1 = Sys.timeUs Unit;
   m3 = case pCount m2.cat == 0 of
     True -> seed |> foldE (fn l mm -> commit mm l) m2
   | False -> m2;
   _ = print "[pos1] log {path}: {m3.events} lines folded in {t1 - t0} us, {pCount m3.cat} products, {List.length m3.sales} sales, revenue {money m3.revenue}";
-  flush path { m3 | fsOn = 1, sink = LF.sink path keep, prof = { noProf | bootUs = t1 - t0, bootLines = m2.events } }.
-# no log yet is an empty one, created now so the writer opens the file it
-# expects; a log that is there and cannot be read stops the start
-logBytes path | not (File.exists path) = (case File.writeText path "" of
-    Ok _ -> ""
-  | Err why -> error "pos1: cannot create {path}: {why}").
-logBytes path = case File.readBytes path of
-    Ok bytes -> bytes
-  | Err why -> error "pos1: cannot read {path}: {why}".
-replayed m (Ok ls) = ls |> foldE (fn l mm -> apply { mm | events = mm.events + 1 } l) m.
-replayed m (Err e) = m.
+  flush o.journal { m3 | fsOn = 1, prof = { noProf | bootUs = t1 - t0, bootLines = m2.events } }.
+replayed m ls = ls |> foldE (fn l mm -> apply { mm | events = mm.events + 1 } l) m.
 
-# The pending lines, oldest first, in ONE write to the log the server keeps
-# open (std/logfile: opening the file for every append was most of an
-# append's cost).  A write that fails stops the server: a register must never
-# show a change the log does not have (THE ONE RULE), and the supervisor's
-# restart folds the log again.
-#
-# Before each write the sink checks the path still names the file it left.
-# When it does not -- a backup restored over it, the file emptied or replaced
-# while the server runs -- the change still goes in (every line stands alone),
-# and then the server stops, to fold what the file holds now.
-flush path m = case m.pend of
+# The pending lines, oldest first, in ONE write (std/journal keeps the file
+# open: opening it for every append was most of an append's cost).  A write
+# that fails stops the server: a register must never show a change the log
+# does not have (THE ONE RULE), and the supervisor's restart folds the log
+# again.  So does a file that is no longer the one the journal left (a backup
+# restored over it, the file emptied or replaced while the server runs): the
+# change still goes in, every line stands alone, and the next start folds
+# what the file holds now.
+flush j m = case m.pend of
     Nil -> m
-  | ls ->
-    bytes = S.concat (List.map (fn l -> "{l}\n") (rev ls Nil));
-    (case LF.ready m.sink of
-        LF.Same s -> wrote path m (LF.write s bytes)
-      | LF.Fresh s -> underUs path s bytes "is empty now"
-      | LF.Other s -> underUs path s bytes "is not the file this server wrote"
-      | LF.Failed s why -> error "pos1: cannot write {path}: {why}").
-wrote path m (Ok s) = { m | pend = Nil, sink = s }.
-wrote path m (Err why) = error "pos1: cannot write {path}: {why}".
-underUs path s bytes what =
-  _ = (case LF.write s bytes of Ok _ -> Unit | Err why -> Sys.stderr "[pos1] cannot write {path}: {why}\n");
-  error "pos1: {path} {what}: wrote this change to it and stopped, to fold the file again".
+  | ls -> (case Journal.append (rev ls Nil) j of
+      Ok _ -> { m | pend = Nil }
+    | Err why -> error "pos1: {why}").
 
 # ---- stock, for a scraper ------------------------------------------------------------------
 # With --metrics=FILE the stock of every live product, and the low-stock mark,
@@ -390,9 +365,9 @@ promLine p = "pos1_stock\{sku=\"{promEsc p.sku}\",name=\"{promEsc p.name}\"} {p.
 promEsc v = S.replace "\"" "\\\"" (S.replace "\\" "\\\\" v).
 
 # the log wins: fold the disk again and compare every product's stock
-rebuild path m = case File.lines path of
+rebuild j m = case Journal.lines j of
     Err why -> (m, "cannot read the log: {why}")
-  | Ok ls -> rebuildWith m (replayed initModel (Ok ls)).
+  | Ok ls -> rebuildWith m (replayed initModel ls).
 rebuildWith m m2 =
   diffs = m.cat |> foldE (fn p acc -> acc + bi (stockOf m2.cat p.sku != p.stock)) 0;
   case diffs == 0 of
@@ -417,24 +392,24 @@ withCart m sid cart =
 
 # ---- update ------------------------------------------------------------------------------
 
-update path ev m =
+update j ev m =
   t0 = Sys.timeUs Unit;
-  (m2, cs) = step path ev m;
+  (m2, cs) = step j ev m;
   t1 = Sys.timeUs Unit;
   wrote = not (List.isEmpty m2.pend);
-  m3 = flush path m2;
+  m3 = flush j m2;
   t2 = Sys.timeUs Unit;
   # after t2: the profile's "append" is the log's write alone
   _ = case stockMoved m m3 of True -> writeStock m3 | False -> 0;
   prof = noteUpd (kindOf ev) (t1 - t0) m3.prof;
   ({ m3 | prof = (case wrote of True -> { prof | flush = note prof.flush (t2 - t1) } | False -> prof) }, cs).
-step path ev m = case ev of
-    Live.Msg sid msg -> pMsg path sid msg m
+step j ev m = case ev of
+    Live.Msg sid msg -> pMsg j sid msg m
   | Live.Left sid -> (forget m sid, Nil)
   | Live.Joined sid -> (m, Nil)
   | Live.Refused sid why -> (refuse m sid "refused: {why}", Nil).
 
-pMsg path sid msg m = case msg of
+pMsg j sid msg m = case msg of
     Login arg -> signIn m sid (login m sid arg)
   # signing out empties the page's cart too, so the next cashier starts clean
   | Logout -> signOut m sid (sGet m.sess sid)
@@ -442,7 +417,7 @@ pMsg path sid msg m = case msg of
   | NoticeTick -> (case sid == 0 of True -> ({m | reloadNotice = Notice.tick m.reloadNotice}, Nil) | False -> (m, Nil))
   | Quit -> (m, Live.Quit :: Nil)
   | ClientState json -> mirror m sid json
-  | other -> withUser path sid other m (sGet m.sess sid).
+  | other -> withUser j sid other m (sGet m.sess sid).
 
 # a PIN has done its work once it is checked: the page forgets it
 signIn m sid m2 = s = sGet m2.sess sid; (m2, case strEq s.cashier "" of True -> Nil | False -> Live.Emit sid "locals" (localsJson (("pin", "") :: Nil)) :: Nil).
@@ -485,14 +460,14 @@ pinOk es name pin = case List.find (fn e -> case e of (nm, _) -> strEq nm name) 
     Option.Some (_, pn) -> strEq pn pin
   | Option.None -> False.
 
-withUser path sid msg m s | strEq s.cashier "" = (refuse m sid "sign in first", Nil).
-withUser path sid msg m s = case msg of
+withUser j sid msg m s | strEq s.cashier "" = (refuse m sid "sign in first", Nil).
+withUser j sid msg m s = case msg of
     Cash arg -> sold m sid s (checkout m sid s 0 (cents arg))
   | Card -> sold m sid s (checkout m sid s 1 0)
   | Void n -> (voidSale m sid s n, Nil)
   | Restock arg -> (restock m sid s (splitBar arg), Nil)
-  | Admin cmd -> (console path m sid s cmd, Nil)
-  | Rebuild -> (console path m sid s "rebuild", Nil)
+  | Admin cmd -> (console j m sid s cmd, Nil)
+  | Rebuild -> (console j m sid s "rebuild", Nil)
   | Dismiss -> (toast m sid "" "", Nil)
   | Theme -> ({ m | theme = 1 - m.theme }, Nil)
   | other -> (refuse m sid "no such action", Nil).
@@ -556,22 +531,22 @@ restock m sid s (sku, ds) =
 
 # ---- the admin console: the data model, live ---------------------------------------------------
 
-console path m sid s cmd =
-  (m2, out) = run path m s (words cmd);
+console j m sid s cmd =
+  (m2, out) = run j m s (words cmd);
   s2 = sGet m2.sess sid;
   sPut m2 { s2 | con = takeN (("> " + cmd) :: out :: s2.con) 12 }.
 helpText = "help: get tax|lowat|revenue|price SKU|stock SKU; set tax N|lowat N|price SKU N; add SKU PRICE STOCK NAME; retire SKU; staff NAME PIN; rebuild".
-run path m s ws = case ws of
-    w :: r -> runW path m s w r
+run j m s ws = case ws of
+    w :: r -> runW j m s w r
   | Nil -> (m, helpText).
-runW path m s w r | strEq w "help" = (m, helpText).
-runW path m s w r | strEq w "get" = (m, getV m r).
-runW path m s w r | strEq w "set" = setV m s r.
-runW path m s w r | strEq w "add" = addCmd m r.
-runW path m s w r | strEq w "retire" = retireCmd m s r.
-runW path m s w r | strEq w "staff" = staffCmd m r.
-runW path m s w r | strEq w "rebuild" = rebuild path m.
-runW path m s w r = (m, "unknown: {w} (try help)").
+runW j m s w r | strEq w "help" = (m, helpText).
+runW j m s w r | strEq w "get" = (m, getV m r).
+runW j m s w r | strEq w "set" = setV m s r.
+runW j m s w r | strEq w "add" = addCmd m r.
+runW j m s w r | strEq w "retire" = retireCmd m s r.
+runW j m s w r | strEq w "staff" = staffCmd m r.
+runW j m s w r | strEq w "rebuild" = rebuild j m.
+runW j m s w r = (m, "unknown: {w} (try help)").
 
 addCmd m (sku :: price :: stock :: nameWs) | wordy sku and not (hasP m.cat sku) and List.length nameWs > 0 =
   (commit m "product {sku} {num price} {num stock} {unwords nameWs}", "added {sku}").
@@ -902,8 +877,8 @@ pricingBindings table = case Reload.function table "rate" of
       Err why -> Err why
     | Ok label -> Ok {rate = rate, label = label}.
 pricingSpec = {name = "pos1_pricing", bind = pricingBindings}.
-bootPricing store metrics reloadNotice =
-  booted = {boot store | reloadNotice = Notice.init reloadNotice 3000, metrics = metrics};
+bootPricing o store metrics reloadNotice =
+  booted = {boot o store | reloadNotice = Notice.init reloadNotice 3000, metrics = metrics};
   _ = writeStock booted;
   model = booted;
   case Program.env "FPR_RELOAD_JOURNAL" of
@@ -942,9 +917,10 @@ main = case Config.load { defaults = Json.object (("port", Json.Integer 6710) ::
       # the shop is the log, folded at boot; std/live's own store holds nothing
       # of the model (fields = Nil, no journal), it is there because the driver
       # wants one
+      o = openLog store;
       cfg = { address = address, port = port, title = "POS v1", store = "{store}.kvlog", journal = False,
               script = script, watch = Nil, rebuild = Nil, restart = Nil };
-      _ = Live.serveProjectedBody [G.utilities [G.Margin (G.Px 0), G.Overflow G.OverflowHidden]] cfg { init = bootPricing store metrics reloadNotice, update = update store, subs = subs, fields = Nil, codec = codec,
+      _ = Live.serveProjectedBody [G.utilities [G.Margin (G.Px 0), G.Overflow G.OverflowHidden]] cfg { init = bootPricing o store metrics reloadNotice, update = update o.journal, subs = subs, fields = Nil, codec = codec,
                                     project = project, same = (fn a b -> a == b),
                                     view = view, cache = (VC.empty Unit, VC.empty Unit, noRender), css = cssAll };
       0.

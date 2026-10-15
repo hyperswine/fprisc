@@ -11,7 +11,7 @@ has css s = S.contains s css.
 show what b = print "{what}: {b}".
 
 main =
-  tree = UI.page True { UI.stack | gap = 4, pad = 4, fill = UI.Screen } [
+  tree = UI.page UI.day { UI.stack | gap = 4, pad = 4, fill = UI.Screen } [
     UI.hstack { UI.stack | justify = UI.Between, align = UI.Center, vary = [UI.OnNarrow [UI.GapOf 1]] } [
       UI.label { UI.txt | size = UI.Title } "Inventory",
       UI.space Unit,

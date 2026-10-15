@@ -38,8 +38,8 @@ Req = Type (Append String | Close).
 Rep = Type (Done | Failed String | Closed).
 
 open : String -> Result Opened String .
-open path = case (if F.exists path then F.readBytes path else Ok "") of
-    Err why -> Err "journal: cannot read {path}: {why}"
+open path = case (if F.exists path then readAll path else create path) of
+    Err why -> Err why
   | Ok bytes ->
       keep = LF.wholeLines bytes;
       (case (if keep < strlen bytes then LF.truncate path keep else Ok Unit) of
@@ -47,6 +47,17 @@ open path = case (if F.exists path then F.readBytes path else Ok "") of
         | Ok _ ->
             owner = spawn (fn self -> serve self path (LF.sink path keep));
             Ok { lines = L.filter (fn l -> strlen l > 0) (S.lines (substr bytes 0 keep)), cut = strlen bytes - keep, journal = Journal owner path }).
+
+readAll : String -> Result String String .
+readAll path = case F.readBytes path of
+    Ok bytes -> Ok bytes
+  | Err why -> Err "journal: cannot read {path}: {why}".
+# no journal yet is an empty one, created now, so the owner's first write finds
+# the file it expects (a path that names nothing would read as a fresh file)
+create : String -> Result String String .
+create path = case F.writeText path "" of
+    Ok _ -> Ok ""
+  | Err why -> Err "journal: cannot create {path}: {why}".
 
 # the lines, oldest first, as one write
 append : List String -> Journal -> Result Unit String .
