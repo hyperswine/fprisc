@@ -50,9 +50,10 @@ Acceptance: `tests/check_native_gateway.py --binary=build/printer-host` covers
 same-origin/auth/replay/revocation and isolated MQTT/TLS + camera/TLS peers on
 one/four harts with no tools on PATH. `tests/check_native_login.cjs` drives the
 actual generated login/session UI in Chromium. Shared browser/UI suites cover
-the interactions and local styling. These checks do not establish a production
-redeployment or fresh physical-printer acceptance. The previously running public
-process remains until a deliberate redeployment.
+the interactions and local styling. The native host was subsequently deployed
+and checked against both real printers through public HTTPS/WSS; see the
+[production acceptance record](#single-process-native-host-deployed-2026-10-15).
+Simulator checks alone do not establish that deployment boundary.
 
 Additional migration checks:
 
@@ -488,3 +489,54 @@ still require migration; see the [completion contract](../../docs/2026-10-15-PUR
 and media lifecycle checks on one/four harts. `tests/check_http_native.py` checks
 the native HTTP/TLS client against isolated loopback simulators. These changes
 have not been deployed by this implementation step.
+
+## Single-process native host deployed (2026-10-15)
+
+The public dashboard now runs `build/printer-host`, built from application commit
+`9782b38420bb24c5b61d095adecfaea93abd3be2`. The previous Python gateway and its
+native helper processes exited. One FP-RISC process owns the public gateway,
+authentication, register, view, telemetry and cameras; it runs with four harts
+and `PATH=/nonexistent`, with no child processes. nginx, Tailscale, the public
+allowlist, printer configuration and CA trust were preserved.
+
+The runtime command uses the current native entry point above, adding
+`--store=build/printer-native-runtime/native-view.kvlog`. Runtime access codes
+remain in the existing selected credential file. The PID, log, deployed source
+commit, previous deployment backups and sanitized acceptance evidence remain
+under ignored `build/printer-native-runtime/`. No boot service was installed.
+Restarting expired existing sessions; sign in again to use the new host.
+
+Fresh acceptance through `https://3dprint.cswine.cloud` established:
+
+- Verified public HTTPS, signature login and Secure/HttpOnly/SameSite cookies;
+  anonymous status, WSS, session script and both camera routes return 401.
+- Both real A1 and P1S report ONLINE with fresh native telemetry. Public WSS
+  upgrades, snapshots, subsequent updates and camera controls work.
+- Two consecutive JPEG frames from each camera, two viewers sharing one native
+  upstream, continued delivery after the first viewer closes, and OFF/zero
+  viewers after the final viewer closes.
+- Logout revokes the bearer and closes an already-open WSS connection and both
+  active camera responses; another validation login observes source cleanup.
+- Chromium performs the generated login, receives public WSS, decodes the real
+  A1/P1S images, checks wide/narrow layout and signs out without persisting or
+  transmitting the private key. The browser driver waits for the initial WSS
+  snapshot before issuing controls, rather than assuming the initial HTML is
+  already an interactive channel.
+
+Repeat the explicitly live, read-only checks from the repository root:
+
+```sh
+/path/to/test-venv/bin/python tests/check_printer_public.py \
+  --origin=https://3dprint.cswine.cloud \
+  --key-file="$HOME/.config/fprisc/printer-dashboard/mac-ed25519.pem" \
+  --output=build/printer-native-runtime/deployment-check.json \
+  --commit=9782b38420bb24c5b61d095adecfaea93abd3be2
+node tests/check_printer_public_browser.cjs https://3dprint.cswine.cloud \
+  "$HOME/.config/fprisc/printer-dashboard/mac-ed25519.pem" \
+  build/printer-native-runtime/public-browser-check.json
+```
+
+The drivers keep key contents, bearer cookies and camera pixels out of output
+and saved evidence. The wire driver decodes HTTP transfer framing before MJPEG
+framing, including nginx's chunked responses. These are deployment-time read-only
+transport/UI checks, not a long-duration soak or physical-print verdict.

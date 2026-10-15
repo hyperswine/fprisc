@@ -11,7 +11,7 @@ https://3dprint.cswine.cloud
     -> Linode nginx (TLS, public login endpoint)
     -> Tailscale 100.94.229.117:6730
     -> macm4 127.0.0.1:6730
-    -> FP-RISC UI / A1 and P1S LAN bridge
+    -> native FP-RISC host / A1 and P1S LAN services
 ```
 
 The Tailscale route is a TCP forward, preserving the public Host and Origin
@@ -98,3 +98,26 @@ Native telemetry and two consecutive native-camera JPEGs per printer were
 verified through authenticated public HTTPS, followed by final-viewer cleanup
 and logout revocation. Anonymous status still returns 401. The PID/log/evidence
 live under ignored `build/printer-native-runtime/`; no boot job was installed.
+
+## Single-process native host verified 2026-10-15
+
+The Python gateway has now been replaced by `build/printer-host` from application
+commit `9782b38420bb24c5b61d095adecfaea93abd3be2`. The old gateway and all its
+helper processes exited. FP-RISC owns the public gateway, Ed25519 authentication,
+Live view, telemetry register and both MQTT/camera services within one process.
+The native host uses four harts and an empty tool PATH; it has no child processes.
+The existing nginx/Tailscale route, origin, public allowlist, runtime access-code
+file and verified vendor CA/serial identities were preserved.
+
+Authenticated real-device acceptance through public HTTPS and WSS covered fresh
+ONLINE A1/P1S reports, live snapshots/updates/camera controls, consecutive JPEGs,
+one upstream shared by two viewers per camera, final-viewer cleanup and logout
+revocation of active WSS/camera responses. Chromium also decoded both real camera
+images after the generated login, checked wide/narrow layouts and signed out.
+Anonymous protected routes remain 401. Existing browser sessions expired during
+the switchover, so users must sign in again.
+
+The [current launcher and repeatable acceptance commands](../../examples/printer-dashboard/README.md#single-process-native-host-deployed-2026-10-15)
+replace earlier Python commands. Sanitized evidence and rollback files are under
+ignored `build/printer-native-runtime/`. No proxy change or boot service was needed.
+This is read-only deployment acceptance, not a printer operation or long soak.

@@ -175,6 +175,22 @@ Live data and document titles. Native crypto checks cover retained admission
 through completion, explicit close and invalidated job identities as well as
 the signature/entropy vectors.
 
-The current public production process has not been restarted or replaced.
-Fresh real-device/public HTTPS/WSS acceptance remains a deployment gate for the
-native host. This source migration does not claim that gate has passed.
+## Public native deployment acceptance (2026-10-15)
+
+Application commit `9782b38420bb24c5b61d095adecfaea93abd3be2` was committed and
+pushed before replacing the public Python process with the native host. The
+previous gateway and helper processes exited. One native FP-RISC process now
+serves port 6730 with four harts, an empty tool PATH and no child processes;
+the existing public proxy, allowlist, configuration and printer trust remain.
+
+Fresh verified public HTTPS/WSS checks against real A1/P1S printers passed:
+signature login, fresh ONLINE reports, live snapshots/updates and controls,
+consecutive camera JPEGs, two viewers sharing one upstream, final-viewer cleanup,
+and logout revocation of active WSS/camera responses. Anonymous protected routes
+return 401. Chromium also exercised generated login/sign-out, public WSS,
+decoded images from both cameras and wide/narrow layout. Test drivers keep
+private keys, bearer cookies and camera pixels out of output/saved evidence.
+See the [launcher and acceptance record](../examples/printer-dashboard/README.md#single-process-native-host-deployed-2026-10-15).
+
+The deployment gate for these read-only paths has passed. This does not establish
+a long-duration memory/stress bound, every-target acceptance or a physical print.

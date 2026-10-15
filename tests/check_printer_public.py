@@ -105,13 +105,23 @@ def stream(origin, login, printer):
 
 
 def part(response):
-    assert response.fp.readline(1025) == b'--frame\r\n', 'bad MJPEG boundary'
-    assert response.fp.readline(1025) == b'Content-Type: image/jpeg\r\n'
-    size = int(response.fp.readline(1025).split(b':', 1)[1])
-    assert 4 <= size <= 4194304 and response.fp.readline(1025) == b'\r\n'
-    image = response.fp.read(size)
+    # Read through HTTPResponse so public proxies' transfer chunks are decoded.
+    def line():
+        value = bytearray()
+        while len(value) <= 1024:
+            byte = response.read(1)
+            assert byte, 'MJPEG ended before a complete header'
+            value.extend(byte)
+            if byte == b'\n':
+                return bytes(value)
+        raise AssertionError('MJPEG header exceeds bound')
+    assert line() == b'--frame\r\n', 'bad MJPEG boundary'
+    assert line() == b'Content-Type: image/jpeg\r\n'
+    size = int(line().split(b':', 1)[1])
+    assert 4 <= size <= 4194304 and line() == b'\r\n'
+    image = response.read(size)
     assert len(image) == size and image.startswith(b'\xff\xd8') and image.endswith(b'\xff\xd9'), 'bad camera JPEG'
-    assert response.fp.read(2) == b'\r\n'
+    assert response.read(2) == b'\r\n'
     return len(image)
 
 
@@ -125,6 +135,21 @@ def closed(sock, label):
         except (ConnectionError, ssl.SSLError):
             return
     raise AssertionError(label)
+
+
+def camera_closed(response):
+    # A completed chunked HTTP body can end while nginx keeps its TCP connection
+    # alive. The response body must end; TCP keep-alive is not a camera viewer.
+    until, total = time.monotonic() + 8, 0
+    while time.monotonic() < until and total <= 67108864:
+        try:
+            data = response.read(65536)
+            if not data:
+                return
+            total += len(data)
+        except (ConnectionError, ssl.SSLError, http.client.IncompleteRead):
+            return
+    raise AssertionError('logout left camera response alive')
 
 
 def main():
@@ -186,7 +211,6 @@ def main():
         # Keep real feeds open during logout; a second test login observes cleanup.
         for printer in printers:
             feed = stream(args.origin, login, printer); feeds.append(feed); part(feed[1])
-        sockets = [feed[0].sock or feed[1].fp.raw._sock for feed in feeds]
         stale_cookie = login.cookie()
         assert login.request('/auth/logout', {})[0] == 200
         with contextlib.suppress(HTTPError):
@@ -198,8 +222,8 @@ def main():
                 assert error.code == 401
                 error.close()
         closed(ws.s, 'logout left WSS alive')
-        for sock in sockets:
-            closed(sock, 'logout left camera stream alive')
+        for _, response in feeds:
+            camera_closed(response)
         eventually(observer.snapshot, lambda rows: all(rows[p]['camera_viewers'] == 0 and rows[p]['camera_state'] == 'OFF' for p in printers), 'logout did not stop native camera sources')
         evidence['logout_closes_wss_and_cameras'] = True
         args.output.write_text(json.dumps(evidence, indent=2) + '\n')
