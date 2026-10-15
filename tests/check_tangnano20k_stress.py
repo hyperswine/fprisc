@@ -49,6 +49,7 @@ def references():
         'sort': (f'SORT n=8192 hash={digest(sorted(values))}', 32768),
         'matrix': (f'MATRIX n=64 hash={digest(matrix)} sum={sum(matrix)}', 24576),
         'tree': (f'TREE nodes=447 rounds=8 sum={447*448//2}', 447*80),
+        'tree_large': (f'TREE nodes=8191 rounds=2 sum={8191*8192//2}', 8191*80),
         'tree_near': (f'TREE nodes=500 rounds=8 sum={500*501//2}', 500*80),
         'tree_limit': ('Builtin panic: Builtin: out of memory', 600*80),
         'compute': (f'COMPUTE iterations=1000000 checksum={checksum}', 0),
@@ -124,13 +125,17 @@ def main():
     parser.add_argument('--compressed', action='store_true', help='requires a compressed-capable FPGA image')
     parser.add_argument('--legacy-codegen', action='store_true', help='same compiler with RV32 fast paths and indexed fusion disabled')
     parser.add_argument('--baseline-heap-ref', help='compare against the C heap at this local git revision')
-    parser.add_argument('--only', choices=['sieve','sort','matrix','tree','tree_near','tree_limit','compute'])
+    parser.add_argument('--only', choices=['sieve','sort','matrix','tree','tree_large','tree_near','tree_limit','compute'])
     parser.add_argument('--report', type=Path, default=ROOT / 'build/tangnano20k-stress/results.json')
     args = parser.parse_args()
     if args.freq_mhz <= 0 or args.timeout <= 0 or args.repeat < 1:
         parser.error('frequency, timeout and repeat must be positive')
+    if args.ram == 'bram' and args.only == 'tree_large':
+        parser.error('tree_large requires the SDRAM memory map')
     refs = references()
     names = [args.only] if args.only else list(refs)
+    if args.ram == 'bram' and not args.only:
+        names = [name for name in names if name != 'tree_large']
     if args.ram == 'sdram' and not args.only:
         # The original BRAM exhaustion sizes are deliberately not OOM in 8 MiB.
         names = [name for name in names if name not in ('tree_near','tree_limit')]

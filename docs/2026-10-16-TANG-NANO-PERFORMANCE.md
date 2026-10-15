@@ -19,8 +19,8 @@ Cross-repository links assume the two checkouts are siblings.
 
 ## Physical FP-RISC results on the same RV32IM image
 
-Both modes used the same 54 MHz SDRAM pipeline FPGA image, with compression
-disabled. The baseline uses the current compiler with RV32 scalar fast paths
+Each comparison kept the 54 MHz SDRAM pipeline FPGA image unchanged, with
+compression disabled. The baseline uses the current compiler with RV32 scalar fast paths
 and indexed-memory fusion disabled, plus `heap.c` from revision `4bba11b`.
 The new mode enables those compiler changes and the indexed heap. Language
 semantics, including checked Int overflow, are current in both modes.
@@ -29,6 +29,7 @@ semantics, including checked Int overflow, are current in both modes.
 | --- | ---: | ---: | ---: | --- |
 | 64×64 integer matrix multiplication | 43.039 s | 8.447 s | 5.10× | One in each mode |
 | Build/sum/release 447-node trees eight times | 0.672 s | 0.318 s | 2.11× | One baseline; three new runs, each 0.318 s |
+| Build/sum/release 8,191-node trees twice | 33.038 s | 1.476 s | 22.38× | One in each mode; 655,280 B of live objects |
 
 Every run matched its independent output reference and `FPR EXIT 0`.
 Timing starts at the received `BEGIN` line and ends at verified exit,
@@ -37,7 +38,13 @@ excluding upload and startup, including final UART output. These measure the
 component or compare processor frequencies. The matrix evidence is one pair,
 not a broad benchmark distribution.
 
-Raw local reports are `build/tangnano20k-stress/pipeline54-{matrix,tree}-{legacy,fast}.json`.
+The matrix/small-tree pairs used the original pipeline route; the large-tree
+pair used the final SDRAM bank-initialization route, SHA-256
+`6344f120881e8f4dcad6f16d60106358446f55fffc29a72f6250c36ecf365fab`.
+Each pair used the same image in both modes. The large tree exceeds BRAM
+capacity, checks every node's sum and verifies allocation recovery after both
+rounds. Raw local reports are
+`build/tangnano20k-stress/pipeline54-{matrix,tree,tree-large}-{legacy,fast}.json`.
 To reproduce on the matching 54 MHz RV32IM SDRAM image, from fprisc:
 
 ```sh
@@ -53,6 +60,20 @@ python3 tests/check_tangnano20k_stress.py --port "$PORT" --freq-mhz 54 \
 Keep the loaded FPGA image and clock unchanged between these commands.
 The [board target guide](2026-10-05-TANG-NANO-BUILTIN.md#scalar-heap-and-compressed-code-options-2026-10-16)
 documents build modes and the separate compressed comparison options.
+
+### Larger allocation workload
+
+`tests/tangnano20k_stress/tree_large.fpr` builds, checks and releases an
+8,191-node balanced tree twice. Its sum is 33,550,336, with exactly 8,191 live
+allocations at peak and allocation-count recovery after each release. The
+RV32 object blocks occupy 655,280 bytes, excluding the heap's side bitmap
+and static state. This exceeds BRAM capacity: the default BRAM suite omits
+it and an explicit BRAM request is refused before opening the UART.
+
+Use `--ram sdram --only tree_large --timeout 240` with the same baseline/new
+options above. The SDRAM full suite includes it. Current and baseline-heap
+RV32IM images are prebuilt in `build/tangnano20k-stress/sdram-im-{fast,legacy}/tree_large/`.
+Both images physically passed with the times recorded above.
 
 ## Hardware and code-density measurements
 
@@ -70,7 +91,9 @@ python3 boards/tangnano20k/sdram/check_core.py --port "$PORT" --freq-mhz 54
 python3 boards/tangnano20k/sdram/check_burst.py --freq-mhz 27 48 54 66
 ```
 
-The burst check uses the controller's functional pin model; it is not an
+The standalone physical burst tester also passed all 8 MiB at 48 and 54 MHz,
+with 12,582,912 comparisons per run, including byte masks and refresh retention.
+The burst check command above uses the controller's functional pin model; it is not an
 electrical timing test. Pipeline cache/CPU RTL checks also cover masked-write
 ordering, coherence, physical clocks during memory holds and Ctrl-C recovery.
 
