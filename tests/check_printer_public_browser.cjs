@@ -30,25 +30,38 @@ let phase='launch';
    wireReady.then(()=>{clearTimeout(timer);resolve();});});
   assert(sockets.some(url=>url.startsWith(origin.replace('https://','wss://')+'/ws')));
   phase='real camera decoding';
-  const dimensions={};
+  const dimensions={},cameraAttempts={};
   for(const [id,name] of [['a1','Bambu A1'],['p1s','Bambu P1S']]) {
    phase=id+' camera switch';
    const card=page.locator('article').filter({has:page.getByRole('heading',{name,exact:true})});
    await card.getByRole('switch').click();
    phase=id+' camera decode';
-   try {
+   for(let attempt=1;attempt<=2;attempt++) {
+    cameraAttempts[id]=attempt;
+    try {
     await page.waitForFunction(id=>{
      const image=document.querySelector('[data-camera-id="'+id+'"]')?.shadowRoot?.querySelector('img');
      return image?.naturalWidth>0&&image?.naturalHeight>0;
     },id,{timeout:25000});
-   } catch {
+     break;
+    } catch {
     const diagnostic=await page.evaluate(id=>{
      const host=document.querySelector('[data-camera-id="'+id+'"]'),image=host?.shadowRoot?.querySelector('img');
      return {id,hidden:document.hidden,live:document.getElementById('lv-link')?.textContent==='live',
       selected:host?.getAttribute('data-camera-on'),shadow:!!host?.shadowRoot,image:!!image,
       source:!!image?.getAttribute('src'),complete:image?.complete,width:image?.naturalWidth};
     },id);
-    console.log(JSON.stringify(diagnostic));throw Error('camera decode failed');
+     console.log(JSON.stringify({...diagnostic,attempt}));
+     if(attempt===2)throw Error('camera decode failed after explicit reconnect');
+     // Exercise the UI's documented retry, after observing upstream cleanup.
+     await card.getByRole('switch').click();
+     await page.waitForFunction(async id=>{
+       const snapshot=await (await fetch('/api/status')).json();
+       const printer=snapshot.printers.find(p=>p.id===id);
+       return printer?.camera_viewers===0&&printer?.camera_state==='OFF';
+     },id,{timeout:12000});
+     await card.getByRole('switch').click();
+    }
    }
    dimensions[id]=await card.locator('img').evaluate(e=>({width:e.naturalWidth,height:e.naturalHeight}));
   }
@@ -57,6 +70,21 @@ let phase='launch';
    await page.setViewportSize({width,height:1000});
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   }
+  phase='public maintenance view';
+  await page.locator('article').filter({has:page.getByRole('heading',{name:'Bambu A1',exact:true})})
+    .getByRole('button',{name:'Care & print log',exact:true}).click();
+  const workshop=page.getByRole('region',{name:'Workshop log'});
+  await workshop.getByLabel('Every N days',{exact:true}).waitFor();
+  assert.equal(await workshop.getByLabel('Every N days',{exact:true}).getAttribute('min'),'1');
+  assert.equal(await workshop.getByLabel('Every N days',{exact:true}).getAttribute('max'),'3650');
+  for(const name of ['Issues','Print watchlist','History','Maintenance'])
+    await workshop.getByRole('button',{name,exact:true}).click();
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  const maintenance=await page.evaluate(async()=>{
+    const status=await (await fetch('/api/status')).json();
+    return {healthy:status.maintenance_problem==='',tasks:status.maintenance.tasks.length};
+  });
+  assert(maintenance.healthy&&maintenance.tasks===10);
   phase='public sign out';
   await page.getByRole('button',{name:'Sign out',exact:true}).click();
   await page.getByRole('heading',{name:'Sign in to Print room',exact:true}).waitFor();
@@ -64,7 +92,7 @@ let phase='launch';
   assert.equal(await page.evaluate(()=>Object.keys(localStorage).length),0);
   assert.equal(leaked,false);assert.deepEqual(errors,[]);
   const evidence={origin,checked_at:Math.floor(Date.now()/1000),generated_login:true,public_wss:true,
-   decoded_real_cameras:dimensions,responsive_widths:[1300,390],sign_out:true,no_key_persistence_or_transmission:true};
+   decoded_real_cameras:dimensions,camera_attempts:cameraAttempts,responsive_widths:[1300,390],maintenance,sign_out:true,no_key_persistence_or_transmission:true};
   fs.writeFileSync(output,JSON.stringify(evidence,null,2)+'\n');
   console.log(JSON.stringify(evidence,null,2));
  } finally {

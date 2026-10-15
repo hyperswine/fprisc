@@ -66,6 +66,9 @@ not telemetry-derived claims of maintenance or print quality.
 The maintenance log is stored separately from the executable, so redeployments
 can preserve its schedules, observations and history.
 
+This feature was deployed to `https://3dprint.cswine.cloud` on 2026-10-15;
+see the [deployment acceptance record](#maintenance-deployment-2026-10-15).
+
 - Maintenance schedules accept 1–3650 whole days. Log completed work with a
   note, change its cadence, or postpone its reminder by one day. Postponing
   never marks work completed. New schedules have no assumed past completion;
@@ -653,3 +656,37 @@ The drivers keep key contents, bearer cookies and camera pixels out of output
 and saved evidence. The wire driver decodes HTTP transfer framing before MJPEG
 framing, including nginx's chunked responses. These are deployment-time read-only
 transport/UI checks, not a long-duration soak or physical-print verdict.
+
+## Maintenance deployment (2026-10-15)
+
+The public native host was upgraded to application commit
+`6f3cccb8dd44861159c13a950d9e957b596ab14b`, using the tested executable with
+SHA-256 `7ad754f7cfe40e9656010de41d663973579107522be252a54e75d6479862c821`.
+The prior executable and receipt were retained in the rollback directory named
+by `build/printer-native-runtime/native-deployment.json`. Existing login keys,
+printer addresses, CA trust and public routing were preserved.
+
+Its persistent log is `build/printer-native-runtime/native-view.kvlog.care.json`.
+The host runs with a private file-creation mask (077); the new log has mode 0600.
+Ten A1/P1S maintenance schedules were initialized with no fabricated past work,
+issues or print outcomes. The host still uses four harts, no child processes and
+an empty tool PATH. No boot service was added. The restart expired old sessions;
+sign in again to see the Care & print log controls.
+
+Public verification established healthy maintenance storage and schedules,
+authenticated WSS controls, fresh ONLINE reports from both real printers, frames
+from both cameras, shared-upstream cleanup and logout revocation. Chromium
+verified the generated login, maintenance tabs, 1300/390px layouts, decoded
+A1 (1536×1080) and P1S (1280×720) camera frames, and sign-out without persisting or
+transmitting the private key. The first browser run failed to decode its initial
+P1S camera stream; the subsequent complete run decoded both feeds on their first
+connections. The cause of the initial failure was not established. Camera retry
+remains the documented off/on switch; the driver permits one explicit retry
+after observing upstream cleanup and records attempt counts.
+
+Repeat the wire acceptance above with
+`--commit=6f3cccb8dd44861159c13a950d9e957b596ab14b --maintenance`.
+Sanitized wire/browser evidence and the executable receipt remain in the ignored
+runtime directory. These checks did not add production maintenance or print
+records, and do not establish closed-app notification delivery or physical print
+quality.
