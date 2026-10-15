@@ -721,15 +721,9 @@ locals = G.locals @Client { pane = "items", q = "", sort = "recent", confirm = "
 # the page: its look is the household's day or night (Appearance), the column a
 # broad reading one with the client state declared on it; the remembered device
 # lives in a hidden input so the page's script can fill it
-look light = { UI.day | canvas = (if light then G.Rgb 243 245 249 else G.Rgb 6 10 18), surface = (if light then G.Rgb 255 255 255 else G.Rgb 10 17 32),
-  raised = (if light then G.Rgb 255 255 255 else G.Rgb 12 20 36), line = (if light then G.Rgb 211 219 232 else G.Rgb 27 39 64), lineStrong = (if light then G.Rgb 180 190 206 else G.Rgb 40 56 88),
-  ink = (if light then G.Rgb 13 21 38 else G.Rgb 233 239 247), dim = (if light then G.Rgb 91 106 134 else G.Rgb 124 138 163), faint = (if light then G.Rgb 120 134 160 else G.Rgb 100 112 136),
-  accent = G.Rgb 87 226 210, accentInk = G.Rgb 13 21 38, accentSubtle = (if light then G.Rgb 223 232 247 else G.Rgb 15 32 53),
-  success = (if light then G.Rgb 31 107 80 else G.Rgb 87 226 166), warning = G.Rgb 255 138 92, danger = (if light then G.Rgb 209 78 78 else G.Rgb 255 125 149),
-  face = G.ReadingFont, lineHeight = 155, backdrop = Appearance.backdrop light, dark = not light }.
 root v kids =
   light = v.theme == 1;
-  UI.pageWith (look light) { UI.stack | pad = 3 } [Att "data-theme" (if light then "day" else "night")]
+  UI.pageWith (Appearance.look light) { UI.stack | pad = 3 } [Att "data-theme" (if light then "day" else "night")]
     [UI.vstackWith { UI.stack | gap = 4, fill = UI.Broad } (Att "data-ac-scope" "" :: locals + Appearance.tokens light)
       (UI.input { UI.field | kind = UI.HiddenField } [G.bind @Client.tok, Att "data-device-token" ""] :: autocompletePrototypes v :: Feedback.prototypes (Appearance.tokens light) :: kids)].
 

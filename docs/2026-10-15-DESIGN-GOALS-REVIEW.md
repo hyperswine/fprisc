@@ -135,6 +135,9 @@ same four-hart, browser and failure-path acceptance.
 ## Progress (2026-10-15)
 
 Steps 1 and 2 are done ([2026-10-15-SAFETY-ALLOW-LIST-REVIEW.md](2026-10-15-SAFETY-ALLOW-LIST-REVIEW.md),
-[2026-10-15-STD-UI.md](2026-10-15-STD-UI.md)); step 3's todo and logbook
-are rewritten, and what they taught is on the std/ui page. Next: inventory,
-then pos1, pane by pane.
+[2026-10-15-STD-UI.md](2026-10-15-STD-UI.md)); step 3 is done: todo,
+logbook, inventory and pos1 are rewritten onto std/ui, inventory and pos1
+keep their logs through std/journal, and what each taught is on the std/ui
+page (the named gaps: the two-field send, browser hooks as values,
+prototypes as typed nodes, sizes). Step 4 is the lessons and the std/ma
+retirement.

@@ -32,9 +32,9 @@ Justify = Type (Lead | Middle | Trail | Between | Around | Evenly).
 # axis), the full width, or the viewport (and the body stops scrolling)
 # `Reading`: a reading column, capped and centred (the page's measure)
 # `Reading`: a reading column (640px), `Broad`: a broader one (760px), both capped and centred
-Fill = Type (Natural | Grow | Wide | Screen | Reading | Broad).
+Fill = Type (Natural | Grow | Wide | Screen | Slim | Reading | Broad).
 # `Overline`: the small upper-case label over a field or a tile
-Scale = Type (Hero | Title | Heading | Body | Caption | Tag | Mono | Overline).
+Scale = Type (Hero | Title | Heading | Body | Strong | Caption | Tag | Mono | Overline).
 Tone = Type (Ink | Muted | Faint | Accent | Danger | Success | Warning | OnAccent).
 # `Chip`: a small accent pill (a tag, a filter)
 # `Pill`: a rounded secondary button (a tab, a sort, a filter); `Destructive` is
@@ -122,6 +122,16 @@ hstackWith s attrs kids = box G.Row s attrs kids.
 # a column whose content scrolls inside it
 scroll : Stack -> List G.Node -> G.Node .
 scroll s kids = box G.Column { s | scroll = True } Nil kids.
+# a row of a list (a receipt, a product): a hairline under it, a little room
+# above and below, a height it keeps, and it never shrinks when the list is
+# squeezed; `listItem` is the same as a column (a row that opens)
+listRow : Stack -> List G.Attr -> List G.Node -> G.Node .
+listRow s attrs kids = box G.Row s (ruledAttr :: attrs) kids.
+listItem : Stack -> List G.Attr -> List G.Node -> G.Node .
+listItem s attrs kids = box G.Column s (ruledAttr :: attrs) kids.
+ruledAttr : G.Attr .
+ruledAttr = G.utilities [G.BorderBottom (G.Px 1) (G.ThemeColour (G.NamedToken "bd-subtle")), G.PaddingY (G.Px 6), G.MinHeight (G.Px 44),
+  G.FlexGrow 0, G.FlexShrink 0, G.Basis G.Auto].
 # nothing: the node a branch renders when it has nothing to show
 none : Unit -> G.Node .
 none u = G.El "span" Nil Nil.
@@ -141,7 +151,7 @@ stackDecls dir s = L.concat [
   (if s.pad == 0 then Nil else [G.Padding (G.Px (Ma.spacing s.pad))]),
   [G.AlignItems (alignOf s.align), G.JustifyContent (justifyOf s.justify)],
   fillDecls s.fill,
-  (if s.wrap then [G.FlexWrap G.Wrap] else Nil),
+  (if s.wrap then [G.FlexWrap G.Wrap, G.AlignContent G.AlignStart] else Nil),
   (if s.scroll then [G.Overflow G.OverflowAuto, G.MinHeight (G.Px 0), G.MinWidth (G.Px 0)] else Nil),
   (if s.scrollX then [G.OverflowX G.OverflowAuto, G.PaddingBottom (G.Px 4), G.ScrollbarWidth G.ScrollbarThin] else Nil)].
 
@@ -155,6 +165,7 @@ fillDecls f = case f of
   | Grow -> [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.MinHeight (G.Px 0), G.MinWidth (G.Px 0)]
   | Wide -> [G.Width (G.Pct 100)]
   | Screen -> [G.Height (G.Vh 100), G.Height (G.Dvh 100), G.Width (G.Vw 100), G.MaxWidth (G.Vw 100), G.Overflow G.OverflowHidden]
+  | Slim -> [G.MaxWidth (G.Px 420), G.MarginX G.Auto, G.Width (G.Pct 100)]
   | Reading -> [G.MaxWidth (G.Px 640), G.MarginX G.Auto, G.Width (G.Pct 100)]
   | Broad -> [G.MaxWidth (G.Px 760), G.MarginX G.Auto, G.Width (G.Pct 100)].
 textAlignOf : Align -> G.TextAlignment .
@@ -199,6 +210,11 @@ labelWith : Txt -> List G.Attr -> String -> G.Node .
 labelWith t attrs s = Ma.element "div" (L.append (textAttrs t) attrs) [G.Txt s].
 textWith : Txt -> List G.Attr -> String -> G.Node .
 textWith t attrs v = Ma.element "div" (L.append (textAttrs t) attrs) [G.Dyn v].
+# the page's own value (a local the page holds, std/view's LTxt), shown where it is
+local : Txt -> String -> G.Node .
+local t name = localWith t Nil name.
+localWith : Txt -> List G.Attr -> String -> G.Node .
+localWith t attrs name = Ma.element "div" (L.append (textAttrs t) attrs) [G.LTxt name].
 textAttrs : Txt -> List G.Attr .
 textAttrs t = L.append (if t.hideEmpty then [G.Att "data-hide-empty" ""] else Nil) (G.utilities (textDecls t) :: variants t.vary).
 textDecls : Txt -> List G.Decl .
@@ -213,6 +229,7 @@ scaleDecls s = case s of
   | Title -> [G.FontSize (G.Px 22), G.LineHeightLength (G.Px 28), G.FontWeight 600]
   | Heading -> [G.FontSize (G.Px 17), G.LineHeightLength (G.Px 24), G.FontWeight 600]
   | Body -> [G.FontSize (G.Px 15), G.LineHeightLength (G.Px 22), G.FontWeight 400]
+  | Strong -> [G.FontSize (G.Px 15), G.LineHeightLength (G.Px 22), G.FontWeight 600]
   | Caption -> [G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 400]
   | Tag -> [G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 500]
   | Mono -> [G.FontFamily G.MonoFont, G.FontSize (G.Px 14), G.LineHeightLength (G.Px 20), G.FontWeight 400]
@@ -269,16 +286,25 @@ labelled name kid = G.El "label" [G.utilities [G.Display G.Flex, G.Direction G.C
   [label { txt | size = Overline, tone = Muted } name, kid].
 fieldDecls : Field -> List G.Decl .
 # an input's text is never under 16px: a phone zooms into a smaller one
-fieldDecls f = L.concat [scaleDecls f.size, (case f.size of Body -> [G.FontSize (G.Px 16)] | Caption -> [G.FontSize (G.Px 16)] | Tag -> [G.FontSize (G.Px 16)] | _ -> Nil), fillDecls f.fill,
+fieldDecls f = L.concat [scaleDecls f.size,
+  (case f.size of Body -> [G.FontSize (G.Px 16)] | Strong -> [G.FontSize (G.Px 16)] | Caption -> [G.FontSize (G.Px 16)] | Tag -> [G.FontSize (G.Px 16)] | Mono -> [G.FontSize (G.Px 16)] | _ -> Nil),
+  (case f.size of Mono -> Nil | _ -> [G.FontFamily G.SystemFont]), fillDecls f.fill,
   [G.Radius (G.Px 8), G.PaddingY (G.Px 10), G.PaddingX (G.Px 12), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder,
    G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")), G.Background (G.ThemeColour (G.NamedToken "bg-surface")),
-   G.Foreground (G.ThemeColour (G.NamedToken "tx-1")), G.FontFamily G.SystemFont, G.Resize G.VerticalResize, G.OutlineWidth (G.Px 0)]].
+   G.Foreground (G.ThemeColour (G.NamedToken "tx-1")), G.Resize G.VerticalResize, G.OutlineWidth (G.Px 0)]].
 
-# a small upper-case pill that names a state or a place, in a tone
+# a small upper-case pill that names a state or a place, in a tone; `status`
+# is the same with a value from the model (a dynamic slot), as `text` is to `label`
 badge : Tone -> String -> G.Node .
-badge t s = Ma.element "span" [G.utilities [G.Display G.InlineBlock, G.PaddingY (G.Px 2), G.PaddingX (G.Px 9), G.Radius (G.Px 9999),
+badge t s = badgeWith t Nil s.
+badgeWith : Tone -> List G.Attr -> String -> G.Node .
+badgeWith t attrs s = Ma.element "span" (badgeAttrs t attrs) [G.Txt s].
+status : Tone -> List G.Attr -> String -> G.Node .
+status t attrs v = Ma.element "span" (badgeAttrs t attrs) [G.Dyn v].
+badgeAttrs : Tone -> List G.Attr -> List G.Attr .
+badgeAttrs t attrs = G.utilities [G.Display G.InlineBlock, G.PaddingY (G.Px 2), G.PaddingX (G.Px 9), G.Radius (G.Px 9999),
   G.FontSize (G.Px 11), G.FontWeight 700, G.LetterSpacing (G.Em 60), G.TextCase G.UpperCase,
-  G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (tone t), G.Foreground (tone t)]] [G.Txt s].
+  G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (tone t), G.Foreground (tone t)] :: attrs.
 # a notice from the server in a tone, hidden while it has nothing to say
 toast : Tone -> String -> G.Node .
 toast t v = Ma.element "div" [G.Att "data-hide-empty" "", G.utilities [G.PaddingY (G.Px 10), G.PaddingX (G.Px 14), G.Radius (G.Px 12),
