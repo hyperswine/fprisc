@@ -3,7 +3,6 @@ unsafe base.
 #   ./fpr run tests/std/ui.fpr
 UI = use "std/ui".
 G = use "std/view".
-Ma = use "std/ma".
 S = use "std/string".
 L = use "std/list".
 
@@ -39,7 +38,7 @@ main =
   _ = show "theme scope" (has css "--tx-1:");
   _ = show "no class strings, no raw properties" (not (has css ".btn") and not (has css ".row") and not (has css ".card"));
   # the lowering is the hand-written tree, node for node
-  hand = Ma.element "div" [G.utilities [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12), G.Padding (G.Px 16), G.AlignItems G.AlignStretch, G.JustifyContent G.JustifyStart]] [G.Txt "x"];
+  hand = UI.element "div" [G.utilities [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12), G.Padding (G.Px 16), G.AlignItems G.AlignStretch, G.JustifyContent G.JustifyStart]] [G.Txt "x"];
   (hs, hd) = G.renderStyled hand;
   (us, ud) = G.renderStyled (UI.vstack { UI.stack | gap = 3, pad = 4 } [G.Txt "x"]);
   _ = show "vstack is the hand-written column" (hs == us and hd == ud and G.cssFor hand == G.cssFor (UI.vstack { UI.stack | gap = 3, pad = 4 } [G.Txt "x"]));

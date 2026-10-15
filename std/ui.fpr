@@ -17,13 +17,23 @@
 # property: every node lowers to the typed `std/view` tree (utilities on the
 # element, variants as Narrow/Wide/Hover utilities), so the stylesheet
 # generator, the live diff, keys and inputs are the ones std/view has.
-# The tokens are std/ma's (tx-1, bg-surface, bd-subtle, ac, danger, ...), so a
-# page built here shares a theme scope with Ma components during the move.
+# The tokens (tx-1, bg-surface, bd-subtle, ac, danger, ...) came from the Ma
+# design system (std/ma, retired 2026-10-15), whose element reset, spacing
+# scale and stylesheet are this module's now.
 # docs/2026-10-15-DESIGN-GOALS-REVIEW.md is the direction; the record is
 # docs/2026-10-15-STD-UI.md.
 G = use "view".
-Ma = use "ma".
 L = use "list".
+
+# ---- the element and the scale --------------------------------------------------
+# every node is an element with the box reset (border-box, no margin, the
+# page's face); a button also shows it is one under the pointer
+element : String -> List G.Attr -> List G.Node -> G.Node .
+element tag attrs kids = G.El tag (G.utilities [G.BoxSizing G.BorderBox, G.Margin (G.Px 0), G.FontFamily G.InheritFont] ::
+  (if tag == "button" then G.hover [G.BorderColour (G.ThemeColour (G.NamedToken "bd-strong")), G.Background (G.ThemeColour (G.NamedToken "ac-subtle"))] :: attrs else attrs)) kids.
+# the spacing scale: a gap or a pad is a step on it, never pixels
+spacing : Int -> Int .
+spacing n = case n of 0 -> 0 | 1 -> 4 | 2 -> 8 | 3 -> 12 | 4 -> 16 | 5 -> 24 | _ -> 32.
 
 # ---- vocabulary ---------------------------------------------------------------
 Align = Type (Start | Center | End | Stretch | Baseline).
@@ -68,7 +78,7 @@ night : Look .
 night = { day | canvas = G.Rgb 21 23 28, surface = G.Rgb 29 32 39, raised = G.Rgb 36 40 48, line = G.Rgb 42 47 56, lineStrong = G.Rgb 58 64 76,
           ink = G.Rgb 237 239 243, dim = G.Rgb 154 163 178, faint = G.Rgb 107 114 128, accent = G.Rgb 91 138 240, accentSubtle = G.Rgb 30 42 69,
           success = G.Rgb 76 190 135, warning = G.Rgb 224 169 79, danger = G.Rgb 232 112 111, dark = True }.
-# the token scope a theme defines (the names std/ma's utilities read too)
+# the token scope a look defines (the names every tone and surface reads)
 themeDecls : Look -> List G.Decl .
 themeDecls t = L.append
   (L.map (fn pair -> case pair of (name, colour) -> G.DefineColour (G.NamedToken name) colour)
@@ -137,18 +147,18 @@ none : Unit -> G.Node .
 none u = G.El "span" Nil Nil.
 # the filler between siblings
 space : Unit -> G.Node .
-space u = Ma.element "div" [G.utilities [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0)]] Nil.
+space u = element "div" [G.utilities [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0)]] Nil.
 # a stable identity among siblings (std/view's key)
 keyed : String -> G.Node -> G.Node .
 keyed k n = G.key k n.
 
 box : G.FlexDirection -> Stack -> List G.Attr -> List G.Node -> G.Node .
-box dir s attrs kids = Ma.element "div" (G.utilities (stackDecls dir s) :: L.append (variants s.vary) attrs) kids.
+box dir s attrs kids = element "div" (G.utilities (stackDecls dir s) :: L.append (variants s.vary) attrs) kids.
 
 stackDecls : G.FlexDirection -> Stack -> List G.Decl .
 stackDecls dir s = L.concat [
-  [G.Display G.Flex, G.Direction dir, G.Gap (G.Px (Ma.spacing s.gap))],
-  (if s.pad == 0 then Nil else [G.Padding (G.Px (Ma.spacing s.pad))]),
+  [G.Display G.Flex, G.Direction dir, G.Gap (G.Px (spacing s.gap))],
+  (if s.pad == 0 then Nil else [G.Padding (G.Px (spacing s.pad))]),
   [G.AlignItems (alignOf s.align), G.JustifyContent (justifyOf s.justify)],
   fillDecls s.fill,
   (if s.wrap then [G.FlexWrap G.Wrap, G.AlignContent G.AlignStart] else Nil),
@@ -185,8 +195,8 @@ tweaks : List Tweak -> List G.Decl .
 tweaks ts = L.concat (L.map tweak ts).
 tweak : Tweak -> List G.Decl .
 tweak t = case t of
-    GapOf n -> [G.Gap (G.Px (Ma.spacing n))]
-  | PadOf n -> [G.Padding (G.Px (Ma.spacing n))]
+    GapOf n -> [G.Gap (G.Px (spacing n))]
+  | PadOf n -> [G.Padding (G.Px (spacing n))]
   | Hidden -> [G.Display G.Hidden]
   | Shown -> [G.Display G.Flex]
   | WrapOf w -> [G.FlexWrap (if w then G.Wrap else G.NoWrap)]
@@ -207,14 +217,14 @@ text : Txt -> String -> G.Node .
 text t v = textWith t Nil v.
 # the same with std/view attributes on the node (an id a script scrolls to)
 labelWith : Txt -> List G.Attr -> String -> G.Node .
-labelWith t attrs s = Ma.element "div" (L.append (textAttrs t) attrs) [G.Txt s].
+labelWith t attrs s = element "div" (L.append (textAttrs t) attrs) [G.Txt s].
 textWith : Txt -> List G.Attr -> String -> G.Node .
-textWith t attrs v = Ma.element "div" (L.append (textAttrs t) attrs) [G.Dyn v].
+textWith t attrs v = element "div" (L.append (textAttrs t) attrs) [G.Dyn v].
 # the page's own value (a local the page holds, std/view's LTxt), shown where it is
 local : Txt -> String -> G.Node .
 local t name = localWith t Nil name.
 localWith : Txt -> List G.Attr -> String -> G.Node .
-localWith t attrs name = Ma.element "div" (L.append (textAttrs t) attrs) [G.LTxt name].
+localWith t attrs name = element "div" (L.append (textAttrs t) attrs) [G.LTxt name].
 textAttrs : Txt -> List G.Attr .
 textAttrs t = L.append (if t.hideEmpty then [G.Att "data-hide-empty" ""] else Nil) (G.utilities (textDecls t) :: variants t.vary).
 textDecls : Txt -> List G.Decl .
@@ -243,7 +253,7 @@ tone t = G.ThemeColour (G.NamedToken (case t of
 # the events are std/view's typed ones: `G.send codec Msg`, `G.sendWith codec
 # Msg @Client.field`, `G.setTo @Client.open "1"`; the message VALUE travels
 button : Btn -> List G.Attr -> String -> G.Node .
-button b events s = Ma.element "button" (G.utilities (buttonDecls b) :: L.append (variants b.vary) events) [G.Txt s].
+button b events s = element "button" (G.utilities (buttonDecls b) :: L.append (variants b.vary) events) [G.Txt s].
 buttonDecls : Btn -> List G.Decl .
 buttonDecls b = L.concat [
   [G.Cursor G.PointerCursor, G.TransitionAll 120],
@@ -269,7 +279,7 @@ buttonDecls b = L.concat [
 # std/view's (`G.bind @Client.q`, `G.enterWith codec Search @Client.q`).
 input : Field -> List G.Attr -> G.Node .
 input f attrs = if f.rows > 1
-  then Ma.element "textarea" (L.append (fieldAttrs f) (G.Att "rows" (str f.rows) :: attrs)) Nil
+  then element "textarea" (L.append (fieldAttrs f) (G.Att "rows" (str f.rows) :: attrs)) Nil
   else G.Inp (G.utilities [G.BoxSizing G.BorderBox, G.Margin (G.Px 0)] :: L.append (fieldAttrs f) attrs).
 fieldAttrs : Field -> List G.Attr .
 fieldAttrs f = L.concat [[G.utilities (fieldDecls f), G.focus [G.BorderColour (G.ThemeColour (G.NamedToken "ac"))]],
@@ -298,29 +308,29 @@ fieldDecls f = L.concat [scaleDecls f.size,
 badge : Tone -> String -> G.Node .
 badge t s = badgeWith t Nil s.
 badgeWith : Tone -> List G.Attr -> String -> G.Node .
-badgeWith t attrs s = Ma.element "span" (badgeAttrs t attrs) [G.Txt s].
+badgeWith t attrs s = element "span" (badgeAttrs t attrs) [G.Txt s].
 status : Tone -> List G.Attr -> String -> G.Node .
-status t attrs v = Ma.element "span" (badgeAttrs t attrs) [G.Dyn v].
+status t attrs v = element "span" (badgeAttrs t attrs) [G.Dyn v].
 badgeAttrs : Tone -> List G.Attr -> List G.Attr .
 badgeAttrs t attrs = G.utilities [G.Display G.InlineBlock, G.PaddingY (G.Px 2), G.PaddingX (G.Px 9), G.Radius (G.Px 9999),
   G.FontSize (G.Px 11), G.FontWeight 700, G.LetterSpacing (G.Em 60), G.TextCase G.UpperCase,
   G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (tone t), G.Foreground (tone t)] :: attrs.
 # a notice from the server in a tone, hidden while it has nothing to say
 toast : Tone -> String -> G.Node .
-toast t v = Ma.element "div" [G.Att "data-hide-empty" "", G.utilities [G.PaddingY (G.Px 10), G.PaddingX (G.Px 14), G.Radius (G.Px 12),
+toast t v = element "div" [G.Att "data-hide-empty" "", G.utilities [G.PaddingY (G.Px 10), G.PaddingX (G.Px 14), G.Radius (G.Px 12),
   G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (tone t), G.Background (G.ThemeColour (G.NamedToken "bg-surface")), G.Foreground (tone t)]] [G.Dyn v].
 
 # ---- surfaces ----------------------------------------------------------------
 card : Panel -> List G.Node -> G.Node .
 card p kids = cardWith p Nil kids.
 cardWith : Panel -> List G.Attr -> List G.Node -> G.Node .
-cardWith p attrs kids = Ma.element "div" (G.utilities (L.concat [stackDecls G.Column { stack | gap = p.gap, pad = p.pad }, cardDecls p.raised, (if p.tile then [G.MinWidth (G.Px 96)] else Nil)]) :: L.append (variants p.vary) attrs) kids.
+cardWith p attrs kids = element "div" (G.utilities (L.concat [stackDecls G.Column { stack | gap = p.gap, pad = p.pad }, cardDecls p.raised, (if p.tile then [G.MinWidth (G.Px 96)] else Nil)]) :: L.append (variants p.vary) attrs) kids.
 cardDecls : Bool -> List G.Decl .
 cardDecls raised = [G.Background (G.ThemeColour (G.NamedToken (if raised then "bg-raised" else "bg-surface"))),
   G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")),
   G.Radius (G.Px 10), G.ShadowToken (G.NamedToken (if raised then "sh-md" else "sh-sm"))].
 rule : Unit -> G.Node .
-rule u = Ma.element "div" [G.utilities [G.BorderTop (G.Px 1) (G.ThemeColour (G.NamedToken "bd-subtle"))]] Nil.
+rule u = element "div" [G.utilities [G.BorderTop (G.Px 1) (G.ThemeColour (G.NamedToken "bd-subtle"))]] Nil.
 
 # ---- the page ------------------------------------------------------------------
 # the root owns the theme scope (day or night tokens) and the canvas; it is a
@@ -328,7 +338,7 @@ rule u = Ma.element "div" [G.utilities [G.BorderTop (G.Px 1) (G.ThemeColour (G.N
 page : Look -> Stack -> List G.Node -> G.Node .
 page t s kids = pageWith t s Nil kids.
 pageWith : Look -> Stack -> List G.Attr -> List G.Node -> G.Node .
-pageWith t s attrs kids = Ma.element "div"
+pageWith t s attrs kids = element "div"
   (G.utilities (themeDecls t)
    :: G.utilities (L.concat [
         [G.MinHeight (G.Vh 100), G.Background (G.ThemeColour (G.NamedToken "bg-canvas")), G.Foreground (G.ThemeColour (G.NamedToken "tx-1")),
@@ -337,6 +347,6 @@ pageWith t s attrs kids = Ma.element "div"
         stackDecls G.Column s])
    :: L.append (variants s.vary) attrs) kids.
 
-# the stylesheet of a page: only what the tree uses (std/view's generator)
+# the stylesheet of a page: only the utilities the tree uses (std/view's generator)
 css : G.Node -> String .
-css tree = Ma.maCssFor tree.
+css tree = G.localCss (G.nub (G.allClasses tree Nil)).

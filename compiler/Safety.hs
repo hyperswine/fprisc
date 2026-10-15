@@ -122,7 +122,6 @@ approvedLibraries =
     "std/livereload.fpr",
     "std/log.fpr",
     "std/logfile.fpr",
-    "std/ma.fpr",
     "std/map.fpr",
     "std/math.fpr",
     "std/mjpeg.fpr",
