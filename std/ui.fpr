@@ -1,7 +1,7 @@
 # std/ui.fpr -- UI: layout and appearance as the application's own words.
 #
 #   UI = use "std/ui".
-#   page model = UI.page True { UI.stack | gap = 4 } [
+#   page model = UI.page UI.day { UI.stack | gap = 4 } [
 #       UI.hstack { UI.stack | justify = Between, align = Center } [
 #           UI.label { UI.txt | size = Title } "Inventory",
 #           UI.button { UI.btn | kind = Primary } [G.send codec Save] "Save" ],
@@ -31,35 +31,83 @@ Justify = Type (Lead | Middle | Trail | Between | Around | Evenly).
 # how a stack takes room: its content's, all it can (in its parent's main
 # axis), the full width, or the viewport (and the body stops scrolling)
 # `Reading`: a reading column, capped and centred (the page's measure)
-Fill = Type (Natural | Grow | Wide | Screen | Reading).
-Scale = Type (Hero | Title | Heading | Body | Caption | Tag | Mono).
+# `Reading`: a reading column (640px), `Broad`: a broader one (760px), both capped and centred
+Fill = Type (Natural | Grow | Wide | Screen | Reading | Broad).
+# `Overline`: the small upper-case label over a field or a tile
+Scale = Type (Hero | Title | Heading | Body | Caption | Tag | Mono | Overline).
 Tone = Type (Ink | Muted | Faint | Accent | Danger | Success | Warning | OnAccent).
 # `Chip`: a small accent pill (a tag, a filter)
-Kind = Type (Plain | Primary | Quiet | Destructive | Chip).
+# `Pill`: a rounded secondary button (a tab, a sort, a filter); `Destructive` is
+# a danger button; `Chip` a small accent pill (a tag)
+Kind = Type (Plain | Primary | Quiet | Destructive | Chip | Pill).
 # what a variant may change (the same words as the records)
-Tweak = Type (GapOf Int | PadOf Int | Hidden | Shown | WrapOf Bool | AlignOf Align | JustifyOf Justify | FillOf Fill).
+# `Inverted`: ink on canvas (a selected tab); `Dimmed`: faded and inert (a pager
+# at its end); `Rigid`: keeps its size in a scrolling row
+# `Stacked`: a row becomes a column (on a narrow screen)
+Tweak = Type (GapOf Int | PadOf Int | Hidden | Shown | WrapOf Bool | AlignOf Align | JustifyOf Justify | FillOf Fill | Inverted | Dimmed | Rigid | Stacked).
 # a variant: on a narrow screen (<= 760px), a wide one, or under the pointer
-Variant = Type (OnNarrow (List Tweak) | OnWide (List Tweak) | OnHover (List Tweak)).
+# `Always`: no condition; `OnState name value`: while the client local `name`
+# holds `value` (std/view's localStyle: a selected tab, the current sort)
+Variant = Type (Always (List Tweak) | OnNarrow (List Tweak) | OnWide (List Tweak) | OnHover (List Tweak) | OnState String String (List Tweak)).
+
+# ---- the theme -------------------------------------------------------------------
+# A LOOK (the theme as a value; `Theme` is std/view's token record): the colours
+# of the roles a page uses, a type face and a backdrop.  `day` and `night` are std/ma's palettes; an application makes its
+# own by record update (`{ UI.day | accent = G.Rgb 0 90 200 }`).  `page` turns
+# it into the inherited token scope every tone and surface reads.
+Look = { canvas : G.Colour, surface : G.Colour, raised : G.Colour, line : G.Colour, lineStrong : G.Colour,
+          ink : G.Colour, dim : G.Colour, faint : G.Colour, accent : G.Colour, accentInk : G.Colour, accentSubtle : G.Colour,
+          success : G.Colour, warning : G.Colour, danger : G.Colour,
+          face : G.Typeface, textSize : Int, lineHeight : Int, backdrop : List G.BackgroundImage, dark : Bool }.
+day : Look .
+day = { canvas = G.Rgb 247 248 250, surface = G.Rgb 255 255 255, raised = G.Rgb 255 255 255, line = G.Rgb 228 231 236, lineStrong = G.Rgb 199 204 214,
+        ink = G.Rgb 26 29 35, dim = G.Rgb 91 100 114, faint = G.Rgb 138 147 163, accent = G.Rgb 61 111 224, accentInk = G.Rgb 255 255 255, accentSubtle = G.Rgb 234 240 254,
+        success = G.Rgb 46 158 107, warning = G.Rgb 201 138 46, danger = G.Rgb 209 78 78,
+        face = G.SystemFont, textSize = 15, lineHeight = 147, backdrop = Nil, dark = False }.
+night : Look .
+night = { day | canvas = G.Rgb 21 23 28, surface = G.Rgb 29 32 39, raised = G.Rgb 36 40 48, line = G.Rgb 42 47 56, lineStrong = G.Rgb 58 64 76,
+          ink = G.Rgb 237 239 243, dim = G.Rgb 154 163 178, faint = G.Rgb 107 114 128, accent = G.Rgb 91 138 240, accentSubtle = G.Rgb 30 42 69,
+          success = G.Rgb 76 190 135, warning = G.Rgb 224 169 79, danger = G.Rgb 232 112 111, dark = True }.
+# the token scope a theme defines (the names std/ma's utilities read too)
+themeDecls : Look -> List G.Decl .
+themeDecls t = L.append
+  (L.map (fn pair -> case pair of (name, colour) -> G.DefineColour (G.NamedToken name) colour)
+    [("bg-canvas", t.canvas), ("bg-surface", t.surface), ("bg-raised", t.raised), ("bd-subtle", t.line), ("bd-strong", t.lineStrong),
+     ("tx-1", t.ink), ("tx-2", t.dim), ("tx-3", t.faint), ("ac", t.accent), ("ac-hover", t.accent), ("ac-press", t.accent), ("ac-subtle", t.accentSubtle),
+     ("tx-on", t.accentInk), ("success", t.success), ("warning", t.warning), ("danger", t.danger), ("celebration", t.success)])
+  (if t.dark then
+    [G.DefineShadows (G.NamedToken "sh-sm") [shadow 1 2 0 0 0 30], G.DefineShadows (G.NamedToken "sh-md") [shadow 4 12 0 0 0 35], G.DefineShadows (G.NamedToken "sh-lg") [shadow 12 32 0 0 0 45]]
+   else
+    [G.DefineShadows (G.NamedToken "sh-sm") [shadow 1 2 30 41 59 6, shadow 1 1 30 41 59 4], G.DefineShadows (G.NamedToken "sh-md") [shadow 4 12 30 41 59 8], G.DefineShadows (G.NamedToken "sh-lg") [shadow 12 32 30 41 59 12]]).
+shadow : Int -> Int -> Int -> Int -> Int -> Int -> G.ShadowPart .
+shadow y blur r g b a = G.ShadowPart (G.Px 0) (G.Px y) (G.Px blur) (G.Px 0) (G.RgbaPercent r g b a).
 
 # ---- records and their defaults ----------------------------------------------
-Stack = { gap : Int, pad : Int, align : Align, justify : Justify, fill : Fill, wrap : Bool, scroll : Bool, vary : List Variant }.
+# `scroll`: the content scrolls inside; `scrollX`: a row that scrolls sideways (chips on a phone)
+Stack = { gap : Int, pad : Int, align : Align, justify : Justify, fill : Fill, wrap : Bool, scroll : Bool, scrollX : Bool, vary : List Variant }.
 stack : Stack .
-stack = { gap = 0, pad = 0, align = Stretch, justify = Lead, fill = Natural, wrap = False, scroll = False, vary = Nil }.
+stack = { gap = 0, pad = 0, align = Stretch, justify = Lead, fill = Natural, wrap = False, scroll = False, scrollX = False, vary = Nil }.
 # `pre`: the text keeps its line breaks; `hideEmpty`: the node hides while
 # its dynamic slot is empty (std/view's data-hide-empty)
-Txt = { size : Scale, tone : Tone, align : Align, wrap : Bool, pre : Bool, hideEmpty : Bool, vary : List Variant }.
+# `tabular`: digits of one width (a count that changes); `fill`: the room it takes in its row
+Txt = { size : Scale, tone : Tone, align : Align, wrap : Bool, pre : Bool, hideEmpty : Bool, tabular : Bool, fill : Fill, vary : List Variant }.
 txt : Txt .
-txt = { size = Body, tone = Ink, align = Start, wrap = True, pre = False, hideEmpty = False, vary = Nil }.
+txt = { size = Body, tone = Ink, align = Start, wrap = True, pre = False, hideEmpty = False, tabular = False, fill = Natural, vary = Nil }.
 # `tall`: a thumb-sized target (44px) for a primary action on a phone
 Btn = { kind : Kind, size : Scale, tall : Bool, vary : List Variant }.
 btn : Btn .
 btn = { kind = Plain, size = Tag, tall = False, vary = Nil }.
-Field = { size : Scale, fill : Fill, rows : Int, placeholder : String, vary : List Variant }.
+# what the browser is told about an input: its kind, what it may suggest (the
+# autocomplete token: "username", "current-password", "new-password", "off"),
+# its longest value (0: unbounded), whether to capitalise or spell-check
+FieldKind = Type (TextField | Password | Search | HiddenField).
+Field = { size : Scale, fill : Fill, rows : Int, placeholder : String, kind : FieldKind, suggest : String, maxLength : Int, caps : Bool, spell : Bool, vary : List Variant }.
 field : Field .
-field = { size = Body, fill = Wide, rows = 1, placeholder = "", vary = Nil }.
-Panel = { gap : Int, pad : Int, raised : Bool, vary : List Variant }.
+field = { size = Body, fill = Wide, rows = 1, placeholder = "", kind = TextField, suggest = "", maxLength = 0, caps = True, spell = True, vary = Nil }.
+# `tile`: a small stat tile that keeps a minimum width in a wrapping row
+Panel = { gap : Int, pad : Int, raised : Bool, tile : Bool, vary : List Variant }.
 panel : Panel .
-panel = { gap = 3, pad = 4, raised = False, vary = Nil }.
+panel = { gap = 3, pad = 4, raised = False, tile = False, vary = Nil }.
 
 # ---- layout ------------------------------------------------------------------
 vstack : Stack -> List G.Node -> G.Node .
@@ -94,7 +142,8 @@ stackDecls dir s = L.concat [
   [G.AlignItems (alignOf s.align), G.JustifyContent (justifyOf s.justify)],
   fillDecls s.fill,
   (if s.wrap then [G.FlexWrap G.Wrap] else Nil),
-  (if s.scroll then [G.Overflow G.OverflowAuto, G.MinHeight (G.Px 0), G.MinWidth (G.Px 0)] else Nil)].
+  (if s.scroll then [G.Overflow G.OverflowAuto, G.MinHeight (G.Px 0), G.MinWidth (G.Px 0)] else Nil),
+  (if s.scrollX then [G.OverflowX G.OverflowAuto, G.PaddingBottom (G.Px 4), G.ScrollbarWidth G.ScrollbarThin] else Nil)].
 
 alignOf : Align -> G.Alignment .
 alignOf a = case a of Start -> G.AlignStart | Center -> G.AlignCenter | End -> G.AlignEnd | Stretch -> G.AlignStretch | Baseline -> G.AlignBaseline.
@@ -106,7 +155,8 @@ fillDecls f = case f of
   | Grow -> [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.MinHeight (G.Px 0), G.MinWidth (G.Px 0)]
   | Wide -> [G.Width (G.Pct 100)]
   | Screen -> [G.Height (G.Vh 100), G.Height (G.Dvh 100), G.Width (G.Vw 100), G.MaxWidth (G.Vw 100), G.Overflow G.OverflowHidden]
-  | Reading -> [G.MaxWidth (G.Px 640), G.MarginX G.Auto, G.Width (G.Pct 100)].
+  | Reading -> [G.MaxWidth (G.Px 640), G.MarginX G.Auto, G.Width (G.Pct 100)]
+  | Broad -> [G.MaxWidth (G.Px 760), G.MarginX G.Auto, G.Width (G.Pct 100)].
 textAlignOf : Align -> G.TextAlignment .
 textAlignOf a = case a of Center -> G.TextCenter | End -> G.TextEnd | _ -> G.TextStart.
 
@@ -115,9 +165,11 @@ variants : List Variant -> List G.Attr .
 variants vs = L.map variant vs.
 variant : Variant -> G.Attr .
 variant v = case v of
-    OnNarrow ts -> G.narrow (tweaks ts)
+    Always ts -> G.utilities (tweaks ts)
+  | OnNarrow ts -> G.narrow (tweaks ts)
   | OnWide ts -> G.wide (tweaks ts)
-  | OnHover ts -> G.hover (tweaks ts).
+  | OnHover ts -> G.hover (tweaks ts)
+  | OnState name value ts -> G.localStyle name value (tweaks ts).
 tweaks : List Tweak -> List G.Decl .
 tweaks ts = L.concat (L.map tweak ts).
 tweak : Tweak -> List G.Decl .
@@ -129,19 +181,29 @@ tweak t = case t of
   | WrapOf w -> [G.FlexWrap (if w then G.Wrap else G.NoWrap)]
   | AlignOf a -> [G.AlignItems (alignOf a)]
   | JustifyOf j -> [G.JustifyContent (justifyOf j)]
-  | FillOf f -> fillDecls f.
+  | FillOf f -> fillDecls f
+  | Inverted -> [G.Background (G.ThemeColour (G.NamedToken "tx-1")), G.Foreground (G.ThemeColour (G.NamedToken "bg-canvas")), G.BorderColour (G.ThemeColour (G.NamedToken "tx-1"))]
+  | Dimmed -> [G.Opacity 35, G.PointerEvents G.PointerNone]
+  | Rigid -> [G.FlexGrow 0, G.FlexShrink 0, G.Basis G.Auto]
+  | Stacked -> [G.Display G.Flex, G.Direction G.Column].
 
 # ---- text --------------------------------------------------------------------
 # `label`: fixed text, part of the page's statics.  `text`: a value from the
 # model, a dynamic slot that updates by delta.
 label : Txt -> String -> G.Node .
-label t s = Ma.element "div" (textAttrs t) [G.Txt s].
+label t s = labelWith t Nil s.
 text : Txt -> String -> G.Node .
-text t v = Ma.element "div" (textAttrs t) [G.Dyn v].
+text t v = textWith t Nil v.
+# the same with std/view attributes on the node (an id a script scrolls to)
+labelWith : Txt -> List G.Attr -> String -> G.Node .
+labelWith t attrs s = Ma.element "div" (L.append (textAttrs t) attrs) [G.Txt s].
+textWith : Txt -> List G.Attr -> String -> G.Node .
+textWith t attrs v = Ma.element "div" (L.append (textAttrs t) attrs) [G.Dyn v].
 textAttrs : Txt -> List G.Attr .
 textAttrs t = L.append (if t.hideEmpty then [G.Att "data-hide-empty" ""] else Nil) (G.utilities (textDecls t) :: variants t.vary).
 textDecls : Txt -> List G.Decl .
-textDecls t = L.concat [scaleDecls t.size, [G.Foreground (tone t.tone), G.TextAlign (textAlignOf t.align)],
+textDecls t = L.concat [scaleDecls t.size, [G.Foreground (tone t.tone), G.TextAlign (textAlignOf t.align)], fillDecls t.fill,
+  (if t.tabular then [G.Numerals G.TabularNumerals] else Nil),
   (if t.wrap then Nil else [G.WhiteSpace G.NoWrapSpace, G.Overflow G.OverflowHidden, G.TextOverflow G.Ellipsis]),
   (if t.pre then [G.WhiteSpace G.PreWrapSpace, G.WordWrap G.WrapAnywhere] else Nil)].
 # the type scale (std/ma's tokens.json roles)
@@ -153,7 +215,8 @@ scaleDecls s = case s of
   | Body -> [G.FontSize (G.Px 15), G.LineHeightLength (G.Px 22), G.FontWeight 400]
   | Caption -> [G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 400]
   | Tag -> [G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 500]
-  | Mono -> [G.FontFamily G.MonoFont, G.FontSize (G.Px 14), G.LineHeightLength (G.Px 20), G.FontWeight 400].
+  | Mono -> [G.FontFamily G.MonoFont, G.FontSize (G.Px 14), G.LineHeightLength (G.Px 20), G.FontWeight 400]
+  | Overline -> [G.FontSize (G.Px 11), G.LineHeightLength (G.Px 16), G.FontWeight 500, G.TextCase G.UpperCase, G.LetterSpacing (G.Em 180)].
 tone : Tone -> G.Colour .
 tone t = G.ThemeColour (G.NamedToken (case t of
     Ink -> "tx-1" | Muted -> "tx-2" | Faint -> "tx-3" | Accent -> "ac"
@@ -167,7 +230,10 @@ button b events s = Ma.element "button" (G.utilities (buttonDecls b) :: L.append
 buttonDecls : Btn -> List G.Decl .
 buttonDecls b = L.concat [
   [G.Cursor G.PointerCursor, G.TransitionAll 120],
-  (case b.kind of Chip -> [G.Radius (G.Px 9999), G.PaddingY (G.Px 4), G.PaddingX (G.Px 12)] | _ -> [G.Radius (G.Px 6), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12)]),
+  (case b.kind of
+      Chip -> [G.Radius (G.Px 9999), G.PaddingY (G.Px 4), G.PaddingX (G.Px 12)]
+    | Pill -> [G.Radius (G.Px 9999), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12)]
+    | _ -> [G.Radius (G.Px 6), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12)]),
   (if b.tall then [G.MinHeight (G.Px 44)] else Nil),
   scaleDecls b.size,
   (case b.kind of
@@ -178,7 +244,9 @@ buttonDecls b = L.concat [
     | Quiet -> [G.BorderStyle G.NoBorder, G.Background G.Transparent, G.Foreground (G.ThemeColour (G.NamedToken "tx-2"))]
     | Destructive -> [G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "danger")),
                       G.Background (G.ThemeColour (G.NamedToken "danger")), G.Foreground (G.ThemeColour (G.NamedToken "tx-on"))]
-    | Chip -> [G.BorderStyle G.NoBorder, G.Background (G.ThemeColour (G.NamedToken "ac-subtle")), G.Foreground (G.ThemeColour (G.NamedToken "ac"))])].
+    | Chip -> [G.BorderStyle G.NoBorder, G.Background (G.ThemeColour (G.NamedToken "ac-subtle")), G.Foreground (G.ThemeColour (G.NamedToken "ac"))]
+    | Pill -> [G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")),
+               G.Background (G.ThemeColour (G.NamedToken "bg-surface")), G.Foreground (G.ThemeColour (G.NamedToken "tx-2"))])].
 
 # a text input; `rows > 1` is a text area.  The binding and the send are
 # std/view's (`G.bind @Client.q`, `G.enterWith codec Search @Client.q`).
@@ -188,18 +256,39 @@ input f attrs = if f.rows > 1
   else G.Inp (G.utilities [G.BoxSizing G.BorderBox, G.Margin (G.Px 0)] :: L.append (fieldAttrs f) attrs).
 fieldAttrs : Field -> List G.Attr .
 fieldAttrs f = L.concat [[G.utilities (fieldDecls f), G.focus [G.BorderColour (G.ThemeColour (G.NamedToken "ac"))]],
-  (if strlen f.placeholder == 0 then Nil else [G.Att "placeholder" f.placeholder]), variants f.vary].
+  (if strlen f.placeholder == 0 then Nil else [G.Att "placeholder" f.placeholder]),
+  (case f.kind of TextField -> Nil | Password -> [G.Att "type" "password"] | Search -> [G.Att "type" "search"] | HiddenField -> [G.Att "type" "hidden"]),
+  (if strlen f.suggest == 0 then Nil else [G.Att "autocomplete" f.suggest]),
+  (if f.maxLength <= 0 then Nil else [G.Att "maxlength" (str f.maxLength)]),
+  (if f.caps then Nil else [G.Att "autocapitalize" "none"]),
+  (if f.spell then Nil else [G.Att "spellcheck" "false"]),
+  variants f.vary].
+# an input under its small label (a `label` element: tapping the label focuses the input)
+labelled : String -> G.Node -> G.Node .
+labelled name kid = G.El "label" [G.utilities [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 4), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.MinWidth (G.Px 0)]]
+  [label { txt | size = Overline, tone = Muted } name, kid].
 fieldDecls : Field -> List G.Decl .
-fieldDecls f = L.concat [scaleDecls f.size, fillDecls f.fill,
+# an input's text is never under 16px: a phone zooms into a smaller one
+fieldDecls f = L.concat [scaleDecls f.size, (case f.size of Body -> [G.FontSize (G.Px 16)] | Caption -> [G.FontSize (G.Px 16)] | Tag -> [G.FontSize (G.Px 16)] | _ -> Nil), fillDecls f.fill,
   [G.Radius (G.Px 8), G.PaddingY (G.Px 10), G.PaddingX (G.Px 12), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder,
    G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")), G.Background (G.ThemeColour (G.NamedToken "bg-surface")),
    G.Foreground (G.ThemeColour (G.NamedToken "tx-1")), G.FontFamily G.SystemFont, G.Resize G.VerticalResize, G.OutlineWidth (G.Px 0)]].
+
+# a small upper-case pill that names a state or a place, in a tone
+badge : Tone -> String -> G.Node .
+badge t s = Ma.element "span" [G.utilities [G.Display G.InlineBlock, G.PaddingY (G.Px 2), G.PaddingX (G.Px 9), G.Radius (G.Px 9999),
+  G.FontSize (G.Px 11), G.FontWeight 700, G.LetterSpacing (G.Em 60), G.TextCase G.UpperCase,
+  G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (tone t), G.Foreground (tone t)]] [G.Txt s].
+# a notice from the server in a tone, hidden while it has nothing to say
+toast : Tone -> String -> G.Node .
+toast t v = Ma.element "div" [G.Att "data-hide-empty" "", G.utilities [G.PaddingY (G.Px 10), G.PaddingX (G.Px 14), G.Radius (G.Px 12),
+  G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (tone t), G.Background (G.ThemeColour (G.NamedToken "bg-surface")), G.Foreground (tone t)]] [G.Dyn v].
 
 # ---- surfaces ----------------------------------------------------------------
 card : Panel -> List G.Node -> G.Node .
 card p kids = cardWith p Nil kids.
 cardWith : Panel -> List G.Attr -> List G.Node -> G.Node .
-cardWith p attrs kids = Ma.element "div" (G.utilities (L.append (stackDecls G.Column { stack | gap = p.gap, pad = p.pad }) (cardDecls p.raised)) :: L.append (variants p.vary) attrs) kids.
+cardWith p attrs kids = Ma.element "div" (G.utilities (L.concat [stackDecls G.Column { stack | gap = p.gap, pad = p.pad }, cardDecls p.raised, (if p.tile then [G.MinWidth (G.Px 96)] else Nil)]) :: L.append (variants p.vary) attrs) kids.
 cardDecls : Bool -> List G.Decl .
 cardDecls raised = [G.Background (G.ThemeColour (G.NamedToken (if raised then "bg-raised" else "bg-surface"))),
   G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")),
@@ -210,14 +299,16 @@ rule u = Ma.element "div" [G.utilities [G.BorderTop (G.Px 1) (G.ThemeColour (G.N
 # ---- the page ------------------------------------------------------------------
 # the root owns the theme scope (day or night tokens) and the canvas; it is a
 # column like any other, so `{ stack | gap = 4, pad = 4, fill = Screen }` works
-page : Bool -> Stack -> List G.Node -> G.Node .
-page light s kids = pageWith light s Nil kids.
-pageWith : Bool -> Stack -> List G.Attr -> List G.Node -> G.Node .
-pageWith light s attrs kids = Ma.element "div"
-  (G.utilities (Ma.themeDecls (not light))
-   :: G.utilities (L.append [G.MinHeight (G.Vh 100), G.Background (G.ThemeColour (G.NamedToken "bg-canvas")),
-        G.Foreground (G.ThemeColour (G.NamedToken "tx-1")), G.FontFamily G.SystemFont, G.FontSize (G.Px 15), G.LineHeight 147]
-        (stackDecls G.Column s))
+page : Look -> Stack -> List G.Node -> G.Node .
+page t s kids = pageWith t s Nil kids.
+pageWith : Look -> Stack -> List G.Attr -> List G.Node -> G.Node .
+pageWith t s attrs kids = Ma.element "div"
+  (G.utilities (themeDecls t)
+   :: G.utilities (L.concat [
+        [G.MinHeight (G.Vh 100), G.Background (G.ThemeColour (G.NamedToken "bg-canvas")), G.Foreground (G.ThemeColour (G.NamedToken "tx-1")),
+         G.FontFamily t.face, G.FontSize (G.Px t.textSize), G.LineHeight t.lineHeight],
+        (if L.isEmpty t.backdrop then Nil else [G.BackgroundImages t.backdrop, G.BackgroundAttachment G.FixedBackground, G.BackgroundRepeat G.NoRepeat]),
+        stackDecls G.Column s])
    :: L.append (variants s.vary) attrs) kids.
 
 # the stylesheet of a page: only what the tree uses (std/view's generator)
