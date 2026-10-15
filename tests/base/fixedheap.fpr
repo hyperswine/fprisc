@@ -6,7 +6,8 @@ require (Ok a) = a.
 require (Err why) = error why.
 refused (Err _) = True.
 refused (Ok _) = False.
-dead (Err "dead actor") = True.
+# a death with its reason since 2026-10-15: "dead actor: fixed heap ..."
+dead (Err why) = strIndexOf "dead actor" why == 0.
 dead _ = False.
 worker boss self =
   (before, _) = Sys.memStats 0;

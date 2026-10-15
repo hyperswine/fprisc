@@ -6,7 +6,9 @@ physical Pi 4 validation recorded in the sibling QOS document.
 ## Contracts
 
 `receiveFromNow me sender` selectively returns `Ok message`, `Err "empty"`,
-or `Err "dead actor"`. Empty/dead Results are static. It preserves unrelated
+or `Err "dead actor"` (since 2026-10-15 `Err "dead actor: <why>"` when the
+sender failed or was killed, built on the caller; the bare text for a
+return is static). Empty Results are static. It preserves unrelated
 messages and per-sender FIFO, including the shared overflow ring. A queued
 reply is drained before the sender's death is reported. Successful receives
 have the same keep/drop and automatic-turn rules as `receiveFromRes`.

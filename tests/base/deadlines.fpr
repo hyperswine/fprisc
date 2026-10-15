@@ -58,7 +58,7 @@ main =
   _ = empty me idle 100000;
   _ = check (heapUsed Unit - before < 1024) "empty polls allocate";
   _ = kill idle;
-  _ = check (receiveFromNow me idle == Err "dead actor") "dead poll";
+  _ = check (receiveFromNow me idle == Err "dead actor: killed") "dead poll";
   many = sources me 48 Nil;
   _ = Sys.sleepUs 20000;
   _ = send me (Err "unrelated Result");

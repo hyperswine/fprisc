@@ -47,8 +47,9 @@ joinStep me parent deadline limit f state =
         else collect me parent state
     | Nil -> if count == 0 then stop me parent active state (Ok (M.values done))
         else collect me parent state.
+# a dead owner is "dead actor", or "dead actor: <why>" when it failed or was killed
 ownerAlive me parent = case receiveFromNow me parent of
-    Err why -> why != "dead actor"
+    Err why -> strIndexOf "dead actor" why != 0
   | Ok m -> _ = drop m; True.
 collect me parent state =
   (xs, next, active, count, done) = state;
