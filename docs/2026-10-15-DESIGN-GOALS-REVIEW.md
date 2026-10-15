@@ -131,3 +131,10 @@ The completion contract's rules stand: generated assets only, local typed
 presentation, no selector strings, no raw CSS, native services with
 budgets. `std/ui` is a layer above them, and each rewritten app passes the
 same four-hart, browser and failure-path acceptance.
+
+## Progress (2026-10-15)
+
+Steps 1 and 2 are done ([2026-10-15-SAFETY-ALLOW-LIST-REVIEW.md](2026-10-15-SAFETY-ALLOW-LIST-REVIEW.md),
+[2026-10-15-STD-UI.md](2026-10-15-STD-UI.md)); step 3's todo and logbook
+are rewritten, and what they taught is on the std/ui page. Next: inventory,
+then pos1, pane by pane.

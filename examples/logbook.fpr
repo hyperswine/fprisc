@@ -18,8 +18,6 @@
 # costs its page, not the log.  Drafts live in the browser (client state); the
 # server fills them for an edit through the one JavaScript port the page has.
 
-# MA SHOULD BE CALLED Design. like the default design
-
 profile base.
 
 Live = use "std/live".
@@ -37,7 +35,7 @@ Order = use "std/order".
 G = use "std/view".
 VC = use "std/viewcache".
 Store = use "std/store".
-Ma = use "std/ma".
+UI = use "std/ui".
 LJ = use "std/livejs".
 FormFill = use "std/browserformfill".
 
@@ -171,7 +169,7 @@ load store v =
   rows = (if page == v.page then rows0 else (case fetch page of (r, _) -> r));
   {rows = rows, count = n, total = (if strlen q == 0 then n else Store.count store), pages = pages, page = page}.
 
-# ---- view: Ma primitives only ---------------------------------------------------------------
+# ---- view: std/ui ---------------------------------------------------------------------------
 # The page is FIVE SECTIONS, each a function of only what it shows, so each can
 # be remembered on its own (cachedView): the form never renders twice, the search
 # bar only when the query changes, the pager only when the page does, the header
@@ -181,75 +179,73 @@ view sid v d = pageOf (map5 renderSection (sectionsOf v d)) (listNode v.q d.coun
 Section = Type (Top Int Int String | Form | Bar String | Foot Int Int).
 sectionsOf v d = Top d.total v.online v.toast :: Form :: Bar v.q :: Foot d.page d.pages :: Nil.
 sectionKey sec = case sec of Top _ _ _ -> "top" | Form -> "form" | Bar _ -> "bar" | Foot _ _ -> "foot".
+caption = { UI.txt | size = UI.Caption, tone = UI.Faint }.
+tall = { UI.btn | tall = True }.
 renderSection sec = case sec of
     Top total online toast ->
-      Ma.hstack 3 [Ma.vstack 1 [Ma.title "Logbook", element "div" [G.Utilities [G.Base [G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 400, G.Foreground (G.ThemeColour (G.NamedToken "tx-3"))]], G.Cls "t-caption tx-3"] [G.Dyn "{total} entries, {online} online"]], Ma.spacer,
-                   element "div" [G.Utilities [G.Base [G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 400, G.Foreground (G.ThemeColour (G.NamedToken "success"))]], G.Cls "t-caption tx-success"] [G.Dyn toast]]
+      UI.hstack { UI.stack | gap = 3, align = UI.Center } [
+        UI.vstack { UI.stack | gap = 1 } [ UI.label { UI.txt | size = UI.Title } "Logbook", UI.text caption "{total} entries, {online} online" ],
+        UI.space Unit,
+        UI.text { caption | tone = UI.Success } toast ]
   | Form ->
-      Ma.card
-        ( Ma.heading "New observation"
-          :: element "textarea" [G.Utilities [G.Base [G.FontSize (G.Px 15), G.LineHeightLength (G.Px 22), G.FontWeight 400]], G.Cls "inp t-body w-full", inputAppearance, G.focus [G.BorderColour (G.ThemeColour (G.NamedToken "ac"))], G.bind @Client.draft, G.Att "rows" "3", G.Att "placeholder" "what happened"] Nil
-          :: input [G.Utilities [G.Base [G.FontSize (G.Px 15), G.LineHeightLength (G.Px 22), G.FontWeight 400]], G.Cls "inp t-body w-full", inputAppearance, G.focus [G.BorderColour (G.ThemeColour (G.NamedToken "ac"))], G.bind @Client.tags, G.OnEnter (G.wireOpen codec (Add "")) "tags,draft", G.Att "placeholder" "tags, comma separated"]
-          :: element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")), G.Background (G.ThemeColour (G.NamedToken "bg-surface")), G.Foreground (G.ThemeColour (G.NamedToken "tx-1")), G.Radius (G.Px 6), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.TransitionAll 120, G.Background (G.ThemeColour (G.NamedToken "ac")), G.Foreground (G.ThemeColour (G.NamedToken "tx-on")), G.BorderColour (G.ThemeColour (G.NamedToken "ac")), G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 500]], G.Cls "btn btn-primary t-label tall", G.utilities [G.MinHeight (G.Px 44)], G.OnClick (G.wireOpen codec (Add "")) "tags,draft"] [G.Txt "add entry"]
-          :: Nil )
+      UI.card UI.panel [
+        UI.label { UI.txt | size = UI.Heading } "New observation",
+        UI.input { UI.field | rows = 3, placeholder = "what happened" } [G.bind @Client.draft],
+        UI.input { UI.field | placeholder = "tags, comma separated" } [G.bind @Client.tags, G.OnEnter (G.wireOpen codec (Add "")) "tags,draft"],
+        UI.button { tall | kind = UI.Primary } [G.OnClick (G.wireOpen codec (Add "")) "tags,draft"] "add entry" ]
   | Bar q ->
-      Ma.hstack 2
-        ( input [G.Utilities [G.Base [G.FontSize (G.Px 15), G.LineHeightLength (G.Px 22), G.FontWeight 400, G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0)]], G.Cls "inp t-body grow", inputAppearance, G.focus [G.BorderColour (G.ThemeColour (G.NamedToken "ac"))], G.bind @Client.q, G.enterWith codec (Search "") @Client.q, G.Att "placeholder" "search text or tag"]
-          :: element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")), G.Background (G.ThemeColour (G.NamedToken "bg-surface")), G.Foreground (G.ThemeColour (G.NamedToken "tx-1")), G.Radius (G.Px 6), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.TransitionAll 120, G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 500]], G.Cls "btn t-label tall", G.utilities [G.MinHeight (G.Px 44)], G.sendWith codec (Search "") @Client.q] [G.Txt "search"]
-          :: (if strlen q == 0 then element "span" Nil Nil else btn "clear" (Search ""))
-          :: Nil )
+      UI.hstack { UI.stack | gap = 2 } [
+        UI.input { UI.field | fill = UI.Grow, placeholder = "search text or tag" } [G.bind @Client.q, G.enterWith codec (Search "") @Client.q],
+        UI.button tall [G.sendWith codec (Search "") @Client.q] "search",
+        (if strlen q == 0 then UI.none Unit else btn "clear" (Search "")) ]
   | Foot page pages ->
-      (if pages <= 1 then element "span" Nil Nil
-       else Ma.hstack 2 [ (if page > 0 then btn "newer" (Page (page - 1)) else element "span" Nil Nil), Ma.spacer,
-                          Ma.caption "page {page + 1} of {pages}", Ma.spacer,
-                          (if page + 1 < pages then btn "older" (Page (page + 1)) else element "span" Nil Nil) ]).
+      (if pages <= 1 then UI.none Unit
+       else UI.hstack { UI.stack | gap = 2, align = UI.Center } [
+         (if page > 0 then btn "newer" (Page (page - 1)) else UI.none Unit), UI.space Unit,
+         UI.label caption "page {page + 1} of {pages}", UI.space Unit,
+         (if page + 1 < pages then btn "older" (Page (page + 1)) else UI.none Unit) ]).
 
 # the list: its cards (or why there are none), in a keyed container
-listNode q n cards = G.key "entries" (Ma.vstack 3
-  (if n == 0 then [Ma.caption (if strlen q == 0 then "nothing logged yet" else "nothing matches \"{q}\"")] else cards)).
+listNode q n cards = UI.keyed "entries" (UI.vstack { UI.stack | gap = 3 }
+  (if n == 0 then [UI.label caption (if strlen q == 0 then "nothing logged yet" else "nothing matches \"{q}\"")] else cards)).
 
-# the sections in page order, the list between the search bar and the pager
+# the sections in page order, the list between the search bar and the pager.
+# Mobile first: the canvas padding is a phone's, the column is a reading column
+# (capped on a desktop); the client state is declared on the column.
 pageOf secs list = case secs of
     top :: form :: bar :: foot :: _ ->
-      Ma.vsA 0 [G.utilities (Ma.themeDecls False), G.utilities [G.MinHeight (G.Vh 100), G.Background (G.ThemeColour (G.NamedToken "bg-canvas")), G.Foreground (G.ThemeColour (G.NamedToken "tx-1")), G.Padding (G.Px 12), G.FontFamily G.SystemFont, G.FontSize (G.Px 15), G.LineHeight 147], G.wide [G.Padding (G.Px 24)]]
-        ( element "div" (G.utilities [G.MaxWidth (G.Px 640), G.MarginX G.Auto, G.Width (G.Pct 100)] :: G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 16)]] :: G.Cls "col gap-4" :: G.locals @Client {draft = "", tags = "", edit = "", etags = "", q = ""})
-            (top :: form :: bar :: list :: foot :: Nil)
-          :: Nil )
+      UI.page True { UI.stack | pad = 3 } [
+        UI.vstackWith { UI.stack | gap = 4, fill = UI.Reading } (G.locals @Client {draft = "", tags = "", edit = "", etags = "", q = ""})
+          (top :: form :: bar :: list :: foot :: Nil) ]
   | _ -> error "logbook: a page has four sections".
 map5 f xs = List.map f xs.
 
 # an entry, or -- for the one this session is editing -- its edit form
 entryCard editing e =
-  G.key "entry-{e.id}" (if editing then
-    Ma.card
-      ( element "div" [G.Utilities [G.Base [G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 400, G.Foreground (G.ThemeColour (G.NamedToken "tx-3"))]], G.Cls "t-caption tx-3"] [G.Txt "#{e.id} · {Clock.stamp e.at} · editing"]
-        :: element "textarea" [G.Utilities [G.Base [G.FontSize (G.Px 15), G.LineHeightLength (G.Px 22), G.FontWeight 400]], G.Cls "inp t-body w-full", inputAppearance, G.focus [G.BorderColour (G.ThemeColour (G.NamedToken "ac"))], G.bind @Client.edit, G.Att "rows" "4"] Nil
-        :: input [G.Utilities [G.Base [G.FontSize (G.Px 15), G.LineHeightLength (G.Px 22), G.FontWeight 400]], G.Cls "inp t-body w-full", inputAppearance, G.focus [G.BorderColour (G.ThemeColour (G.NamedToken "ac"))], G.bind @Client.etags, G.Att "placeholder" "tags, comma separated"]
-        :: Ma.hstack 2 [ element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")), G.Background (G.ThemeColour (G.NamedToken "bg-surface")), G.Foreground (G.ThemeColour (G.NamedToken "tx-1")), G.Radius (G.Px 6), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.TransitionAll 120, G.Background (G.ThemeColour (G.NamedToken "ac")), G.Foreground (G.ThemeColour (G.NamedToken "tx-on")), G.BorderColour (G.ThemeColour (G.NamedToken "ac")), G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 500]], G.Cls "btn btn-primary t-label tall", G.utilities [G.MinHeight (G.Px 44)], G.OnClick (G.wireOpen codec (Save e.id "")) "etags,edit"] [G.Txt "save"],
-                         btn "cancel" (Edit 0), Ma.spacer,
-                         element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")), G.Background (G.ThemeColour (G.NamedToken "bg-surface")), G.Foreground (G.ThemeColour (G.NamedToken "tx-1")), G.Radius (G.Px 6), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.TransitionAll 120, G.Background (G.ThemeColour (G.NamedToken "danger")), G.Foreground (G.ThemeColour (G.NamedToken "tx-on")), G.BorderColour (G.ThemeColour (G.NamedToken "danger")), G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 500]], G.Cls "btn btn-danger t-label tall", G.utilities [G.MinHeight (G.Px 44)], G.send codec (Delete e.id)] [G.Txt "delete"] ]
-        :: Nil )
+  UI.keyed "entry-{e.id}" (if editing then
+    UI.card UI.panel [
+      UI.label caption "#{e.id} · {Clock.stamp e.at} · editing",
+      UI.input { UI.field | rows = 4 } [G.bind @Client.edit],
+      UI.input { UI.field | placeholder = "tags, comma separated" } [G.bind @Client.etags],
+      UI.hstack { UI.stack | gap = 2 } [
+        UI.button { tall | kind = UI.Primary } [G.OnClick (G.wireOpen codec (Save e.id "")) "etags,edit"] "save",
+        btn "cancel" (Edit 0), UI.space Unit,
+        UI.button { tall | kind = UI.Destructive } [G.send codec (Delete e.id)] "delete" ] ]
   else
-    Ma.card
-      ( Ma.hstack 2 [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 400, G.Foreground (G.ThemeColour (G.NamedToken "tx-3"))]], G.Cls "t-caption tx-3"] [G.Txt "#{e.id} · {Clock.stamp e.at}"], Ma.spacer,
-                      element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")), G.Background (G.ThemeColour (G.NamedToken "bg-surface")), G.Foreground (G.ThemeColour (G.NamedToken "tx-1")), G.Radius (G.Px 6), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.TransitionAll 120, G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 500]], G.Cls "btn t-label", G.send codec (Edit e.id)] [G.Txt "edit"] ]
-        :: element "div" [G.Att "data-hide-empty" "", G.Utilities [G.Base [G.FontSize (G.Px 15), G.LineHeightLength (G.Px 22), G.FontWeight 400, G.Foreground (G.ThemeColour (G.NamedToken "tx-1"))]], G.Cls "t-body tx-1 pre", G.utilities [G.WhiteSpace G.PreWrapSpace, G.WordWrap G.WrapAnywhere]] [G.Dyn e.text]
-        :: (if List.isEmpty e.tags then element "span" Nil Nil
-            else element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.FlexWrap G.Wrap, G.Gap (G.Px 4)]], G.Cls "row wrap gap-1"] (List.map (fn t -> element "button" [G.Utilities [G.Base [G.Background (G.ThemeColour (G.NamedToken "ac-subtle")), G.Foreground (G.ThemeColour (G.NamedToken "ac")), G.Radius (G.Px 9999), G.PaddingY (G.Px 4), G.PaddingX (G.Px 12), G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 500]], G.Cls "chip t-label", G.send codec (Search t)] [G.Txt t]) e.tags))
-        :: Nil )).
+    UI.card UI.panel [
+      UI.hstack { UI.stack | gap = 2, align = UI.Center } [ UI.label caption "#{e.id} · {Clock.stamp e.at}", UI.space Unit,
+                                                           UI.button UI.btn [G.send codec (Edit e.id)] "edit" ],
+      UI.text { UI.txt | pre = True, hideEmpty = True } e.text,
+      (if List.isEmpty e.tags then UI.none Unit
+       else UI.hstack { UI.stack | gap = 1, wrap = True } (List.map (fn t -> UI.button { UI.btn | kind = UI.Chip } [G.send codec (Search t)] t) e.tags)) ]).
 
 btn : String -> Msg -> G.Node .
-btn label msg = element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")), G.Background (G.ThemeColour (G.NamedToken "bg-surface")), G.Foreground (G.ThemeColour (G.NamedToken "tx-1")), G.Radius (G.Px 6), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.TransitionAll 120, G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 500]], G.Cls "btn t-label tall", G.utilities [G.MinHeight (G.Px 44)], G.send codec msg] [G.Txt label].
+btn label msg = UI.button tall [G.send codec msg] label.
 
 # the page's own script: the one port -- the server fills or clears inputs by
 # name (Live.Emit sid "set" json), which is how an edit form gets its text.  The
 # event can arrive BEFORE the render that creates the input (a command is pushed
 # as soon as update answers it), so a value waits until its input exists.
-element tag attrs kids = G.El tag (G.utilities [G.BoxSizing G.BorderBox, G.Margin (G.Px 0), G.FontFamily G.InheritFont] :: attrs) kids.
-input attrs = G.Inp (G.utilities [G.BoxSizing G.BorderBox, G.Margin (G.Px 0)] :: attrs).
-inputAppearance = G.utilities [G.Background (G.ThemeColour (G.NamedToken "bg-surface")), G.Foreground (G.ThemeColour (G.NamedToken "tx-1")),
-  G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")),
-  G.PaddingY (G.Px 10), G.PaddingX (G.Px 12), G.Radius (G.Px 8), G.FontFamily G.SystemFont, G.Resize G.VerticalResize, G.OutlineWidth (G.Px 0)].
 script = LJ.src Unit + FormFill.src Unit.
 
 # mobile first: the canvas padding is a phone's, the column is capped on a desktop.
@@ -258,7 +254,7 @@ script = LJ.src Unit + FormFill.src Unit.
 # a tab whose first page was empty still has the styles its later cards need.
 cssSample = {rows = {id = 2, at = 0, text = "", tags = "t" :: Nil} :: {id = 1, at = 0, text = "", tags = Nil} :: Nil,
              count = 41, total = 41, pages = 3, page = 1}.
-css v = Ma.maCssFor (view 0 {v | editing = 1, q = "x"} cssSample).
+css v = UI.css (view 0 {v | editing = 1, q = "x"} cssSample).
 
 # the whole model to `Live.serve` (no projection, no cache): kept as the baseline
 appOf store = { init = init, update = updateWith store, subs = subs, fields = fields, codec = codec,

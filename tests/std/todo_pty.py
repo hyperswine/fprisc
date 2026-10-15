@@ -26,7 +26,8 @@ until('up 1 s', 10)
 os.write(fd, b'\x11')                       # Ctrl-q
 pump(1.5)
 _, status = os.waitpid(pid, 0)
-saved = json.load(open(store))
+# the store is an append-only kvlog (JSON lines): the field's last record is the list
+saved = [json.loads(l)['v'] for l in open(store) if l.strip() and json.loads(l).get('k') == 'model.items'][-1]
 assert os.WEXITSTATUS(status) == 0, status
 assert saved == [{'done': True, 'text': 'buy milk'}, {'done': False, 'text': 'third'}], saved
 assert b'\x1b[?1049l' in out and b'\x1b[?25h' in out, 'the terminal was not put back'

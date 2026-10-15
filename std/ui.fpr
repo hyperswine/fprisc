@@ -30,10 +30,12 @@ Align = Type (Start | Center | End | Stretch | Baseline).
 Justify = Type (Lead | Middle | Trail | Between | Around | Evenly).
 # how a stack takes room: its content's, all it can (in its parent's main
 # axis), the full width, or the viewport (and the body stops scrolling)
-Fill = Type (Natural | Grow | Wide | Screen).
+# `Reading`: a reading column, capped and centred (the page's measure)
+Fill = Type (Natural | Grow | Wide | Screen | Reading).
 Scale = Type (Hero | Title | Heading | Body | Caption | Tag | Mono).
 Tone = Type (Ink | Muted | Faint | Accent | Danger | Success | Warning | OnAccent).
-Kind = Type (Plain | Primary | Quiet | Destructive).
+# `Chip`: a small accent pill (a tag, a filter)
+Kind = Type (Plain | Primary | Quiet | Destructive | Chip).
 # what a variant may change (the same words as the records)
 Tweak = Type (GapOf Int | PadOf Int | Hidden | Shown | WrapOf Bool | AlignOf Align | JustifyOf Justify | FillOf Fill).
 # a variant: on a narrow screen (<= 760px), a wide one, or under the pointer
@@ -43,15 +45,18 @@ Variant = Type (OnNarrow (List Tweak) | OnWide (List Tweak) | OnHover (List Twea
 Stack = { gap : Int, pad : Int, align : Align, justify : Justify, fill : Fill, wrap : Bool, scroll : Bool, vary : List Variant }.
 stack : Stack .
 stack = { gap = 0, pad = 0, align = Stretch, justify = Lead, fill = Natural, wrap = False, scroll = False, vary = Nil }.
-Txt = { size : Scale, tone : Tone, align : Align, wrap : Bool, vary : List Variant }.
+# `pre`: the text keeps its line breaks; `hideEmpty`: the node hides while
+# its dynamic slot is empty (std/view's data-hide-empty)
+Txt = { size : Scale, tone : Tone, align : Align, wrap : Bool, pre : Bool, hideEmpty : Bool, vary : List Variant }.
 txt : Txt .
-txt = { size = Body, tone = Ink, align = Start, wrap = True, vary = Nil }.
-Btn = { kind : Kind, size : Scale, vary : List Variant }.
+txt = { size = Body, tone = Ink, align = Start, wrap = True, pre = False, hideEmpty = False, vary = Nil }.
+# `tall`: a thumb-sized target (44px) for a primary action on a phone
+Btn = { kind : Kind, size : Scale, tall : Bool, vary : List Variant }.
 btn : Btn .
-btn = { kind = Plain, size = Body, vary = Nil }.
-Field = { size : Scale, fill : Fill, rows : Int, vary : List Variant }.
+btn = { kind = Plain, size = Tag, tall = False, vary = Nil }.
+Field = { size : Scale, fill : Fill, rows : Int, placeholder : String, vary : List Variant }.
 field : Field .
-field = { size = Body, fill = Wide, rows = 1, vary = Nil }.
+field = { size = Body, fill = Wide, rows = 1, placeholder = "", vary = Nil }.
 Panel = { gap : Int, pad : Int, raised : Bool, vary : List Variant }.
 panel : Panel .
 panel = { gap = 3, pad = 4, raised = False, vary = Nil }.
@@ -69,6 +74,9 @@ hstackWith s attrs kids = box G.Row s attrs kids.
 # a column whose content scrolls inside it
 scroll : Stack -> List G.Node -> G.Node .
 scroll s kids = box G.Column { s | scroll = True } Nil kids.
+# nothing: the node a branch renders when it has nothing to show
+none : Unit -> G.Node .
+none u = G.El "span" Nil Nil.
 # the filler between siblings
 space : Unit -> G.Node .
 space u = Ma.element "div" [G.utilities [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0)]] Nil.
@@ -97,7 +105,8 @@ fillDecls f = case f of
     Natural -> Nil
   | Grow -> [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.MinHeight (G.Px 0), G.MinWidth (G.Px 0)]
   | Wide -> [G.Width (G.Pct 100)]
-  | Screen -> [G.Height (G.Vh 100), G.Height (G.Dvh 100), G.Width (G.Vw 100), G.MaxWidth (G.Vw 100), G.Overflow G.OverflowHidden].
+  | Screen -> [G.Height (G.Vh 100), G.Height (G.Dvh 100), G.Width (G.Vw 100), G.MaxWidth (G.Vw 100), G.Overflow G.OverflowHidden]
+  | Reading -> [G.MaxWidth (G.Px 640), G.MarginX G.Auto, G.Width (G.Pct 100)].
 textAlignOf : Align -> G.TextAlignment .
 textAlignOf a = case a of Center -> G.TextCenter | End -> G.TextEnd | _ -> G.TextStart.
 
@@ -126,12 +135,15 @@ tweak t = case t of
 # `label`: fixed text, part of the page's statics.  `text`: a value from the
 # model, a dynamic slot that updates by delta.
 label : Txt -> String -> G.Node .
-label t s = Ma.element "div" (G.utilities (textDecls t) :: variants t.vary) [G.Txt s].
+label t s = Ma.element "div" (textAttrs t) [G.Txt s].
 text : Txt -> String -> G.Node .
-text t v = Ma.element "div" (G.utilities (textDecls t) :: variants t.vary) [G.Dyn v].
+text t v = Ma.element "div" (textAttrs t) [G.Dyn v].
+textAttrs : Txt -> List G.Attr .
+textAttrs t = L.append (if t.hideEmpty then [G.Att "data-hide-empty" ""] else Nil) (G.utilities (textDecls t) :: variants t.vary).
 textDecls : Txt -> List G.Decl .
 textDecls t = L.concat [scaleDecls t.size, [G.Foreground (tone t.tone), G.TextAlign (textAlignOf t.align)],
-  (if t.wrap then Nil else [G.WhiteSpace G.NoWrapSpace, G.Overflow G.OverflowHidden, G.TextOverflow G.Ellipsis])].
+  (if t.wrap then Nil else [G.WhiteSpace G.NoWrapSpace, G.Overflow G.OverflowHidden, G.TextOverflow G.Ellipsis]),
+  (if t.pre then [G.WhiteSpace G.PreWrapSpace, G.WordWrap G.WrapAnywhere] else Nil)].
 # the type scale (std/ma's tokens.json roles)
 scaleDecls : Scale -> List G.Decl .
 scaleDecls s = case s of
@@ -154,7 +166,9 @@ button : Btn -> List G.Attr -> String -> G.Node .
 button b events s = Ma.element "button" (G.utilities (buttonDecls b) :: L.append (variants b.vary) events) [G.Txt s].
 buttonDecls : Btn -> List G.Decl .
 buttonDecls b = L.concat [
-  [G.Cursor G.PointerCursor, G.Radius (G.Px 10), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12)],
+  [G.Cursor G.PointerCursor, G.TransitionAll 120],
+  (case b.kind of Chip -> [G.Radius (G.Px 9999), G.PaddingY (G.Px 4), G.PaddingX (G.Px 12)] | _ -> [G.Radius (G.Px 6), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12)]),
+  (if b.tall then [G.MinHeight (G.Px 44)] else Nil),
   scaleDecls b.size,
   (case b.kind of
       Plain -> [G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")),
@@ -163,19 +177,23 @@ buttonDecls b = L.concat [
                   G.Background (G.ThemeColour (G.NamedToken "ac")), G.Foreground (G.ThemeColour (G.NamedToken "tx-on"))]
     | Quiet -> [G.BorderStyle G.NoBorder, G.Background G.Transparent, G.Foreground (G.ThemeColour (G.NamedToken "tx-2"))]
     | Destructive -> [G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "danger")),
-                      G.Background (G.ThemeColour (G.NamedToken "danger")), G.Foreground (G.ThemeColour (G.NamedToken "tx-on"))])].
+                      G.Background (G.ThemeColour (G.NamedToken "danger")), G.Foreground (G.ThemeColour (G.NamedToken "tx-on"))]
+    | Chip -> [G.BorderStyle G.NoBorder, G.Background (G.ThemeColour (G.NamedToken "ac-subtle")), G.Foreground (G.ThemeColour (G.NamedToken "ac"))])].
 
 # a text input; `rows > 1` is a text area.  The binding and the send are
 # std/view's (`G.bind @Client.q`, `G.enterWith codec Search @Client.q`).
 input : Field -> List G.Attr -> G.Node .
 input f attrs = if f.rows > 1
-  then Ma.element "textarea" (G.utilities (fieldDecls f) :: G.Att "rows" (str f.rows) :: L.append (variants f.vary) attrs) Nil
-  else G.Inp (G.utilities (fieldDecls f) :: L.append (variants f.vary) attrs).
+  then Ma.element "textarea" (L.append (fieldAttrs f) (G.Att "rows" (str f.rows) :: attrs)) Nil
+  else G.Inp (G.utilities [G.BoxSizing G.BorderBox, G.Margin (G.Px 0)] :: L.append (fieldAttrs f) attrs).
+fieldAttrs : Field -> List G.Attr .
+fieldAttrs f = L.concat [[G.utilities (fieldDecls f), G.focus [G.BorderColour (G.ThemeColour (G.NamedToken "ac"))]],
+  (if strlen f.placeholder == 0 then Nil else [G.Att "placeholder" f.placeholder]), variants f.vary].
 fieldDecls : Field -> List G.Decl .
 fieldDecls f = L.concat [scaleDecls f.size, fillDecls f.fill,
-  [G.Radius (G.Px 10), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder,
+  [G.Radius (G.Px 8), G.PaddingY (G.Px 10), G.PaddingX (G.Px 12), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder,
    G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")), G.Background (G.ThemeColour (G.NamedToken "bg-surface")),
-   G.Foreground (G.ThemeColour (G.NamedToken "tx-1"))]].
+   G.Foreground (G.ThemeColour (G.NamedToken "tx-1")), G.FontFamily G.SystemFont, G.Resize G.VerticalResize, G.OutlineWidth (G.Px 0)]].
 
 # ---- surfaces ----------------------------------------------------------------
 card : Panel -> List G.Node -> G.Node .
