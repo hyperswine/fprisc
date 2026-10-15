@@ -23,7 +23,7 @@ From the repository root:
 ```sh
 ./fpr run examples/ideal/wc.fpr examples/wc.fpr
 ./fpr run examples/ideal/report.fpr examples /tmp/ideal-report.json
-./fpr run examples/ideal/todo.fpr /tmp/ideal-todo.json
+./fpr run examples/ideal/todo.fpr /tmp/ideal-todo.kvlog
 ./fpr run examples/ideal/service.fpr --port=8080 --workers=2
 ./fpr run examples/ideal/measure.fpr
 ./fpr run examples/ideal/pipeline.fpr
@@ -31,7 +31,7 @@ From the repository root:
 ./fpr run examples/ideal/transitions.fpr
 ```
 
-Todo uses the same keys and JSON format as the original. Service exposes the
+Todo uses the same keys and durable store (std/durable over std/kvlog, since 2026-10-15; a JSON file before) as the original. Service exposes the
 same endpoints, configuration file and environment variables. Report writes
 the same document, with the current timestamp. The measure fixture originally
 returned a string from `main`; its script version prints that result explicitly.
@@ -93,7 +93,7 @@ python3 examples/ideal/check.py
 - report JSON and console output, excluding the timestamp and elapsed time,
   plus missing-directory, write and usage failures;
 - Todo models, command kinds and rendered rows throughout an event trace,
-  plus Unicode backspace, save success/failure and corrupt JSON;
+  plus Unicode backspace, the durable list and an unopenable store (2026-10-15; before: save failure and corrupt JSON);
 - live service HTTP responses, store ownership, digest results, shutdown and
   invalid configuration against the original;
 - the numerical outputs against the original fixtures;

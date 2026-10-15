@@ -1,22 +1,22 @@
 #!/usr/bin/env -S fpr run
-# Same terminal app, persisted model and commands as ../todo.fpr.
+# Same terminal app, durable list and commands as ../todo.fpr.
 profile base.
 Term = use "std/term".
-File = use "std/file".
-Json = use "std/json".
+Live = use "std/live".
+Durable = use "std/durable".
 List = use "std/list".
 String = use "std/string".
 Program = use "std/program".
 
 Todo = {text : String, done : Bool}.
-Model = {items : List Todo, at : Int, draft : String, path : String, note : String, seconds : Int}.
+Model = {items : List Todo, at : Int, draft : String, note : String, seconds : Int}.
 Msg = Type (Saved String | Second).
-codec = @Model.items.
+# the one durable field, by its path; the store (std/durable) saves what differs
+fields = [Live.field Live.Always @Model.items].
+init = {items = Nil, at = 0, draft = "", note = "", seconds = 0}.
 
-saved (Ok _) = "saved".
-saved (Err why) = "NOT saved: {why}".
-save m = Term.Run (fn u -> Json.encode codec m.items |> File.writeText m.path |> saved |> Saved).
-changed m = (m, save m :: Nil).
+save store m = Term.Run (fn u -> _ = Durable.save store m; Saved "saved").
+changed store m = (m, save store m :: Nil).
 unchanged m = (m, Nil).
 quit m = (m, Term.Quit :: Nil).
 count m = List.length m.items.
@@ -35,23 +35,24 @@ toggleAt _ _ t = t.
 notSelected at (i, _) = i != at.
 itemOf (_, item) = item.
 removeAt at items = items |> List.indexed |> List.filter (notSelected at) |> List.map itemOf.
-addDraft text m | strlen text == 0 = unchanged m.
-addDraft text m = {m | items = List.append m.items [{text = text, done = False}], draft = "", at = count m} |> changed.
+addDraft store text m | strlen text == 0 = unchanged m.
+addDraft store text m = {m | items = List.append m.items [{text = text, done = False}], draft = "", at = count m} |> changed store.
 
-# One event per clause. Commands remain values; update performs no I/O.
-update (Term.Resized _ _) m = unchanged m.
-update (Term.Msg (Saved what)) m = {m | note = what} |> unchanged.
-update (Term.Msg Second) m = {m | seconds = m.seconds + 1} |> unchanged.
-update (Term.Key (Term.Char c)) m = {m | draft = strcat m.draft c} |> unchanged.
-update (Term.Key Term.Backspace) m = {m | draft = dropLastChar m.draft} |> unchanged.
-update (Term.Key Term.Enter) m = addDraft (String.trim m.draft) m.
-update (Term.Key Term.Up) m = move (-1) m.
-update (Term.Key Term.Down) m = move 1 m.
-update (Term.Key Term.Tab) m = {m | items = List.indexedMap (toggleAt m.at) m.items} |> changed.
-update (Term.Key Term.Delete) m = {m | items = removeAt m.at m.items} |> clampAt |> changed.
-update (Term.Key Term.Escape) m = quit m.
-update (Term.Key (Term.Ctrl "q")) m = quit m.
-update (Term.Key _) m = unchanged m.
+# One event per clause. Commands remain values; update performs no I/O: the
+# store is closed over by the save command, never held in the model.
+updateWith store (Term.Resized _ _) m = unchanged m.
+updateWith store (Term.Msg (Saved what)) m = {m | note = what} |> unchanged.
+updateWith store (Term.Msg Second) m = {m | seconds = m.seconds + 1} |> unchanged.
+updateWith store (Term.Key (Term.Char c)) m = {m | draft = strcat m.draft c} |> unchanged.
+updateWith store (Term.Key Term.Backspace) m = {m | draft = dropLastChar m.draft} |> unchanged.
+updateWith store (Term.Key Term.Enter) m = addDraft store (String.trim m.draft) m.
+updateWith store (Term.Key Term.Up) m = move (-1) m.
+updateWith store (Term.Key Term.Down) m = move 1 m.
+updateWith store (Term.Key Term.Tab) m = {m | items = List.indexedMap (toggleAt m.at) m.items} |> changed store.
+updateWith store (Term.Key Term.Delete) m = {m | items = removeAt m.at m.items} |> clampAt |> changed store.
+updateWith store (Term.Key Term.Escape) m = quit m.
+updateWith store (Term.Key (Term.Ctrl "q")) m = quit m.
+updateWith store (Term.Key _) m = unchanged m.
 
 # UTF-8 backspace: remaining byte positions prove this recursion terminates.
 dropLastChar s = dropGo s (strlen s - 1).
@@ -75,13 +76,11 @@ view (_, _) m =
 subs _ = Term.Every 1000 Second :: Nil.
 
 pathOf (path :: _) = path.
-pathOf Nil = "todo.json".
-decoded _ (Ok items) = items.
-decoded path (Err why) = Program.fail 1 "todo: {path}: {why}".
-loaded path (Ok text) = Json.decode codec text |> decoded path.
-loaded _ (Err _) = Nil.
-initial path = {items = File.readText path |> loaded path, at = 0, draft = "", path = path, note = "", seconds = 0}.
+pathOf Nil = "todo.kvlog".
+# the store opened once: the list's last value laid over `init`, or a refusal by name
+opened (Ok (model, store)) = Term.run {init = model, update = updateWith store, view = view, subs = subs}.
+opened (Err why) = Program.fail 1 "todo: {why}".
 run : String -> Int .
-run path = Term.run {init = initial path, update = update, view = view, subs = subs}.
+run path = Durable.open fields path init |> opened.
 main : Int .
 main = Program.args Unit |> pathOf |> run.

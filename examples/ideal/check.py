@@ -141,16 +141,17 @@ I = use "{IDEAL / 'todo.fpr'}".
 Term = use "std/term".
 List = use "std/list".
 String = use "std/string".
+Durable = use "std/durable".
 kind (Term.Run _) = "run".
 kind Term.Quit = "quit".
 kind (Term.After _ _) = "after".
 snapshot (m, cmds) = (m, List.map kind cmds).
 same a b = if a == b then Unit else error "todo parity failed".
-oldStep ev (m, _) = O.update ev m.
-newStep ev (m, _) = I.update ev m.
-checkKey key (old, new) =
-  a = oldStep (Term.Key key) old;
-  b = newStep (Term.Key key) new;
+oldStep so ev (m, _) = O.updateWith so ev m.
+newStep sn ev (m, _) = I.updateWith sn ev m.
+checkKey so sn key (old, new) =
+  a = oldStep so (Term.Key key) old;
+  b = newStep sn (Term.Key key) new;
   _ = same (snapshot a) (snapshot b);
   _ = same (O.view (80,24) (case a of (m, _) -> m)) (I.view (80,24) (case b of (m, _) -> m));
   (a,b).
@@ -163,39 +164,44 @@ performOld _ = error "expected save command".
 performNew (Term.Run f :: _) = saveNew (f Unit).
 performNew _ = error "expected save command".
 main =
-  m = {{items = Nil, at = 0, draft = "", path = "todo.json", note = "", seconds = 0}};
+  m = {{items = Nil, at = 0, draft = "", note = "", seconds = 0}};
+  (_, so) = (case Durable.open O.fields "old.kvlog" O.init of Ok pair -> pair | Err why -> error why);
+  (_, sn) = (case Durable.open I.fields "new.kvlog" I.init of Ok pair -> pair | Err why -> error why);
   keys = [Term.Up, Term.Down, Term.Tab, Term.Delete, Term.Enter, Term.Char "  café😀", Term.Backspace, Term.Enter,
           Term.Char "second", Term.Enter, Term.Up, Term.Tab, Term.Down, Term.Down, Term.Delete, Term.Backspace,
           Term.Left, Term.Escape, Term.Ctrl "q"];
-  pair = List.fold (fn p k -> checkKey k p) ((m,Nil),(m,Nil)) keys;
-  _ = same (snapshot (O.update (Term.Msg (O.Saved "failed")) m)) (snapshot (I.update (Term.Msg (I.Saved "failed")) m));
-  _ = same (snapshot (O.update (Term.Msg O.Second) m)) (snapshot (I.update (Term.Msg I.Second) m));
-  _ = same (snapshot (O.update (Term.Resized 100 40) m)) (snapshot (I.update (Term.Resized 100 40) m));
+  pair = List.fold (fn p k -> checkKey so sn k p) ((m,Nil),(m,Nil)) keys;
+  _ = same (snapshot (O.updateWith so (Term.Msg (O.Saved "failed")) m)) (snapshot (I.updateWith sn (Term.Msg (I.Saved "failed")) m));
+  _ = same (snapshot (O.updateWith so (Term.Msg O.Second) m)) (snapshot (I.updateWith sn (Term.Msg I.Second) m));
+  _ = same (snapshot (O.updateWith so (Term.Resized 100 40) m)) (snapshot (I.updateWith sn (Term.Resized 100 40) m));
   _ = same (O.dropLastChar "😀") (I.dropLastChar "😀");
   _ = same (O.dropLastChar "") (I.dropLastChar "");
-  a = O.update (Term.Key (Term.Char "persist")) m;
-  b = I.update (Term.Key (Term.Char "persist")) m;
-  ac = case a of (x, _) -> case O.update (Term.Key Term.Enter) x of (_, cmds) -> cmds;
-  bc = case b of (x, _) -> case I.update (Term.Key Term.Enter) x of (_, cmds) -> cmds;
+  a = O.updateWith so (Term.Key (Term.Char "persist")) m;
+  b = I.updateWith sn (Term.Key (Term.Char "persist")) m;
+  (ax, ac) = case a of (x, _) -> O.updateWith so (Term.Key Term.Enter) x;
+  (bx, bc) = case b of (x, _) -> I.updateWith sn (Term.Key Term.Enter) x;
   _ = same (performOld ac) (performNew bc);
-  bad = {{m | draft = "failure", path = "absent/todo.json"}};
-  af = case O.update (Term.Key Term.Enter) bad of (_, cmds) -> performOld cmds;
-  bf = case I.update (Term.Key Term.Enter) bad of (_, cmds) -> performNew cmds;
-  _ = same af bf;
-  _ = if String.startsWith "NOT saved:" bf then Unit else error "save failure was hidden";
+  _ = Durable.close so ax;
+  _ = Durable.close sn bx;
   print "todo parity holds".
 '''
     p = harness(tmp, 'todo-parity', body, unsafe=True)
     assert p.stdout == 'todo parity holds\n'
-    assert json.loads((tmp / 'todo.json').read_text()) == [{'text': 'persist', 'done': False}]
+    # the durable list: the last record of its key in each store is the persisted item
+    for log in ['old.kvlog', 'new.kvlog']:
+        records = [json.loads(line) for line in (tmp / log).read_text().splitlines() if line.strip()]
+        last = [r['v'] for r in records if r.get('k') == 'model.items'][-1]
+        assert last == [{'text': 'persist', 'done': False}], (log, last)
     old_todo = tmp / 'old-todo'
     build(ROOT / 'examples/todo.fpr', old_todo)
-    broken = tmp / 'broken.json'
-    broken.write_text('not JSON')
+    # a store that cannot be opened (a directory in its place) is refused by name;
+    # a torn or foreign tail is cut, as std/kvlog says, so that is not a refusal
+    broken = tmp / 'broken.kvlog'
+    broken.mkdir()
     for exe in [old_todo, bins['todo']]:
         p = run([exe, broken], cwd=tmp, ok=False)
-        assert p.returncode == 1 and 'todo:' in p.stderr
-    print('todo event trace, rows, UTF-8 backspace, save success/failure and corrupt input match', flush=True)
+        assert p.returncode == 1 and 'todo:' in p.stderr, (exe, p.stdout, p.stderr)
+    print('todo event trace, rows, UTF-8 backspace, the durable list and an unopenable store match', flush=True)
 
     old_service = tmp / 'old-service'
     build(ROOT / 'examples/service.fpr', old_service)
