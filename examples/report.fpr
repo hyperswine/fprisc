@@ -1,6 +1,6 @@
 # report.fpr -- the design's "automation script" acceptance example
 # (docs/2026-09-19-PRELIM_BASE_LIBRARY_DESIGN.md, section 9): traverse files, filter,
-# group and sort their metadata, ask an external tool a question, and write a
+# group and sort their metadata, read native revision metadata, and write a
 # report -- with every failure said in words.
 #
 #   fpr run examples/report.fpr <directory> [report.json]
@@ -9,7 +9,7 @@ profile base.
 Dir = use "std/dir".
 File = use "std/file".
 Path = use "std/path".
-Proc = use "std/proc".
+GitRevision = use "std/gitrevision".
 Program = use "std/program".
 Clock = use "std/clock".
 List = use "std/list".
@@ -33,10 +33,8 @@ kib n = "{n / 1024}.{((n - (n / 1024) * 1024) * 10) / 1024} KiB".
 row r = case r of (ext, (n, bytes)) ->
   "  {String.padRight 10 " " ext}{String.padLeft 6 " " (String.fromInt n)} files{String.padLeft 14 " " (kib bytes)}".
 
-# the commit this tree is at, when it is a git checkout and git is installed
-revision dir = case Proc.runIn dir ("git" :: "rev-parse" :: "--short" :: "HEAD" :: Nil) of
-    Ok r -> (case r.status == 0 of True -> Option.Some (String.trim r.out) | False -> Option.None)
-  | Err _ -> Option.None.
+# Full commit id when this tree belongs to a Git repository.
+revision dir = GitRevision.head dir.
 
 report dir out =
   t0 = Clock.monotonic Unit;

@@ -107,6 +107,13 @@ prelude =
       "BStr.at : BStr -> Int -> (Int, BStr).",
       "BStr.sub : BStr -> Int -> Int -> (BStr, BStr).",
       "BStr.free : BStr -> Unit.",
+      -- Typed native capabilities; byte/admission budgets come from callers.
+      "GitOperation = Type (GitInit String | GitAdd String (List String) | GitUnadd String (List String) | GitCommit String | GitUncommit String | GitBranch String | GitDeleteBranch String | GitSwitch String | GitTag String | GitUntag String | GitStatus | GitDiff | GitDiffStaged | GitLog Int | GitHead).",
+      "NativeGit.afterCommit : Int -> String -> String -> String -> GitOperation -> Unit.",
+      "NativeGit.query : Int -> String -> GitOperation -> Result String String.",
+      "NativeGit.push : Int -> String -> String -> String -> Result String String.",
+      "NativeArchive.afterCommit : String -> String -> Int -> Int -> Unit.",
+      "Host.snapshot : Int -> Result (String, String, String, Int, List (String, Int, Int), List (Int, Int, String)) String.",
       -- Structured processes use raw argv, never shell parsing. Empty cwd
       -- inherits the script's cwd; env entries override inherited values;
       -- timeoutMs <= 0 means no timeout.
@@ -342,6 +349,8 @@ halArities =
       ("BStr.new", 1), ("BStr.fromStr", 1), ("BStr.toStr", 1),
       ("BStr.append", 2), ("BStr.cat", 2), ("BStr.len", 1),
       ("BStr.at", 2), ("BStr.sub", 3), ("BStr.free", 1),
+      ("NativeGit.afterCommit", 5), ("NativeGit.query", 3), ("NativeGit.push", 4), ("NativeArchive.afterCommit", 4),
+      ("Host.snapshot", 1),
       ("Proc.query", 1), ("Proc.afterCommit", 1), ("Proc.runNow", 1), ("Proc.streamNow", 1), ("Proc.inheritNow", 1),
       ("read", 1), ("write", 2),
       ("myself", 1), ("spawn", 1), ("send", 2), ("sendLinear", 2), ("sendArc", 2), ("receive", 1), ("receiveFrom", 2), ("receiveFromRes", 2), ("receiveFromNow", 2), ("Sys.nextId", 1),

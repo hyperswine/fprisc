@@ -1,0 +1,54 @@
+# Read-only revision metadata from native files: no Git executable. Full object
+# ids avoid ambiguous fixed-width abbreviations. Supports bare repos, gitfiles,
+# linked worktrees, loose/packed refs and detached HEAD; follows no hooks/config.
+F = use "file".
+P = use "path".
+S = use "string".
+O = use "option".
+OS = use "osfs".
+
+hex : String -> (i : Int | measure i) -> Bool .
+hex s i = if i < 0 then True else
+  c = charAt s i;
+  if (c >= 48 and c <= 57) or (c >= 97 and c <= 102) then hex s (i - 1) else False.
+objectId : String -> O.Option String .
+objectId s = if (strlen s == 40 or strlen s == 64) and hex s (strlen s - 1) then O.Some s else O.None.
+read : String -> O.Option String .
+read p = case F.readText p of Ok s -> O.Some (S.trim s) | Err _ -> O.None.
+
+# Discover upwards with an explicit bound; resolve a gitfile relative to itself.
+discover : String -> (fuel : Int | measure fuel) -> O.Option String .
+discover dir fuel = if fuel <= 0 then O.None else
+  marker = P.join dir ".git";
+  if F.isDir marker then O.Some marker else
+    case read marker of
+      O.Some text -> if S.startsWith "gitdir: " text then O.Some (P.normalize (P.join dir (S.dropLeft 8 text))) else O.None
+    | O.None -> if F.isFile (P.join dir "HEAD") and F.isDir (P.join dir "objects") then O.Some dir else
+        parent = P.parent dir;
+        if parent == dir then O.None else discover parent (fuel - 1).
+common : String -> String .
+common git = case read (P.join git "commondir") of O.Some dir -> P.normalize (P.join git dir) | O.None -> git.
+packed : String -> (lines : List String | measure lines) -> O.Option String .
+packed ref lines = case lines of
+  Nil -> O.None
+| line :: rest -> case S.split " " line of
+    id :: name :: Nil -> if name == ref then objectId id else packed ref rest
+  | _ -> packed ref rest.
+packedAt : String -> String -> O.Option String .
+packedAt git ref = case F.lines (P.join git "packed-refs") of Ok lines -> packed ref lines | Err _ -> O.None.
+resolve : String -> String -> (fuel : Int | measure fuel) -> O.Option String .
+resolve git text fuel = if fuel <= 0 then O.None else
+  if S.startsWith "ref: " text then
+    ref = S.dropLeft 5 text;
+    if not (S.startsWith "refs/" ref) or S.contains ".." ref then O.None else
+      shared = common git;
+      case read (P.join git ref) of
+        O.Some value -> resolve git value (fuel - 1)
+      | O.None -> case read (P.join shared ref) of
+          O.Some value -> resolve git value (fuel - 1)
+        | O.None -> packedAt shared ref
+  else objectId text.
+head : String -> O.Option String .
+head dir = case discover (P.normalize (P.join (OS.cwd Unit) dir)) 256 of
+    O.None -> O.None
+  | O.Some git -> case read (P.join git "HEAD") of O.Some value -> resolve git value 8 | O.None -> O.None.

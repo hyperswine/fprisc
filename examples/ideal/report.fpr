@@ -4,7 +4,7 @@ profile base.
 Dir = use "std/dir".
 File = use "std/file".
 Path = use "std/path".
-Proc = use "std/proc".
+GitRevision = use "std/gitrevision".
 Program = use "std/program".
 Clock = use "std/clock".
 List = use "std/list".
@@ -41,9 +41,7 @@ printRow r = r |> row |> print.
 printLarge e = e |> largeRow |> print.
 largeRow e = "  {String.padLeft 12 " " (kib e.size)}  {e.path}".
 
-revision dir = Proc.runIn dir ["git", "rev-parse", "--short", "HEAD"] |> revisionResult.
-revisionResult (Ok r) | r.status == 0 = Option.Some (String.trim r.out).
-revisionResult _ = Option.None.
+revision dir = GitRevision.head dir.
 revisionJson (Option.Some r) = Json.Text r.
 revisionJson Option.None = Json.Null.
 

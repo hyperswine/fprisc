@@ -35,6 +35,8 @@ import Data.List (minimumBy)
 import Data.Ord (comparing)
 import GHC.Clock (getMonotonicTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import Data.Time.Clock (getCurrentTime)
+import Data.Time.Format (formatTime, defaultTimeLocale)
 import System.Environment (lookupEnv)
 import System.IO.Unsafe (unsafePerformIO)
 import Sol.HandJIT
@@ -60,6 +62,7 @@ import Control.Monad (unless, when)
 import Control.Applicative (liftA2)
 import System.IO (hFlush, hGetContents', hPutStrLn, stderr, stdin, stdout)
 import Sol.Txn
+import Sol.Native
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.UTF8 as BSU
 
@@ -1039,6 +1042,11 @@ mkHal cons scriptArgs tx preempts rt =
       ("Try.parseInt", (1, tryParseIntH)),
       ("Try.parseNum", (1, tryParseNumH)),
       ("Try.readPath", (1, tryReadPathH)),
+      ("NativeGit.afterCommit", (5, gitAfterCommitH)),
+      ("NativeGit.query", (3, gitQueryH)),
+      ("NativeGit.push", (4, gitPushH)),
+      ("NativeArchive.afterCommit", (4, archiveAfterCommitH)),
+      ("Host.snapshot", (1, hostSnapshotH)),
       ("Proc.query", (1, procQueryH)),
       ("Proc.afterCommit", (1, procAfterCommitH)),
       ("Proc.runNow", (1, procRunNowH)),
@@ -1275,6 +1283,54 @@ mkHal cons scriptArgs tx preempts rt =
         TxNonText -> vErr ("readPath: not a UTF-8 text file: " ++ p)
         TxReadError e -> vErr ("readPath: " ++ p ++ ": " ++ e)
     tryReadPathH _ = vmPanic "Try.readPath: arity"
+
+    hostSnapshotH [VInt limit] | limit > 0 && limit <= 1000000 = do
+      result <- nativeHost (fromInteger limit)
+      date <- formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" <$> getCurrentTime
+      pure $ case result of
+        Left why -> vErr why
+        Right rows ->
+          let hosts = [(host,os) | (0,_,_,host,os) <- rows]
+              uptime = sum [n | (1,n,_,_,_) <- rows]
+              tuple fields = VData (if length fields == 3 then 5 else 12) 0 fields
+              disks = listValue [tuple [VStr path,VInt total,VInt available] | (2,total,available,path,_) <- rows]
+              processes = listValue [tuple [VInt pid,VInt ppid,VStr name] | (3,pid,ppid,name,_) <- rows]
+          in case hosts of
+            [(host,os)] -> vOk (tuple [VStr date,VStr host,VStr os,VInt uptime,disks,processes])
+            _ -> vErr "missing native host facts"
+    hostSnapshotH _ = pure (vErr "host observation limit must be 1..1000000")
+    listValue = foldr (\x xs -> VData listT 1 [x,xs]) (VData listT 0 [])
+
+    gitOp (VData t op fields) | t == tidOf "GitInit" = do
+      (arg, paths) <- case fields of
+        [] -> pure ("", [])
+        [VStr a] -> pure (a, [])
+        [VStr a, ps] -> (\xs -> (a,xs)) <$> stringValues "Git paths" ps
+        [VInt n] | n >= 0 && n <= 100000 -> pure (show n, [])
+        _ -> vmPanic "invalid native Git fields or log count (0..100000)"
+      pure (op,arg,paths)
+    gitOp _ = vmPanic "expected GitOperation"
+    gitAfterCommitH [VInt limit,VStr path,VStr name,VStr email,v] = do
+      (op,arg,paths) <- gitOp v
+      if op >= 10 then vmPanic "only Git mutations may be deferred" else
+        pushEffect tx (EGit (GitRequest path op arg name email paths limit)) >> pure vUnit
+    gitAfterCommitH _ = vmPanic "NativeGit.afterCommit: arguments"
+    gitQueryH [VInt limit,VStr path,v] = do
+      (op,arg,paths) <- gitOp v
+      if op < 10 || op > 14 then pure (vErr "Git query requires a read operation") else
+        nativeGit (GitRequest path op arg "" "" paths limit) >>= pure . either vErr (vOk . VStr)
+    gitQueryH _ = vmPanic "NativeGit.query: arguments"
+    gitPushH [VInt limit,VStr path,VStr remote,VStr branch] = do
+      pending <- txPendingBrief tx
+      if not (null pending) then pure (vErr (pendingOrderMsg "Git.push" "Git.commit in a separate run" pending)) else do
+        noteEscape rt "Git.push" "publishes immediately through libgit2; survives rollback and repeats on retry"
+        nativeGit (GitRequest path 15 remote "" "" [branch] limit) >>= pure . either vErr (vOk . VStr)
+    gitPushH _ = vmPanic "NativeGit.push: arguments"
+    archiveAfterCommitH [VStr source,VStr target,VInt entries,VInt bytes]
+      | entries > 0 && entries <= toInteger (maxBound :: Int64)
+      , bytes > 0 && bytes <= toInteger (maxBound :: Int64) =
+          pushEffect tx (EArchive source target entries bytes) >> pure vUnit
+    archiveAfterCommitH _ = vmPanic "archive limits must be positive signed 64-bit integers"
 
     procQueryH [v] = decodeProcessSpec v >>= runProcessH
     procQueryH _ = vmPanic "Proc.query: arity"

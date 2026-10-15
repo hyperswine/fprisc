@@ -1,28 +1,20 @@
-# system-report.sol -- collect a portable host snapshot without a shell.
-# Every command is a structured, read-only Proc.query. Failures stay on the
-# Result rail; an optional report file is written in one Sol transaction.
-#
-#   ./fpr sol sol/scripts/system-report.sol
-#   ./fpr sol sol/scripts/system-report.sol report.txt
-
-P = use "../lib/proc".
+# Native host snapshot. FP-RISC owns rendering and report policy.
+System = use "../lib/system".
 
 section title body =
   "---------------------------------------------------\n{title}\n---------------------------------------------------\n{body}".
 
-capture title argv =
-  P.output (Proc.query (P.spec argv))
-    |> mapOk (fn body -> section title body)
-    |> context title.
-
-buildReport u = collect [
-  capture "Date" ["date", "-u"],
-  capture "Hostname" ["hostname"],
-  capture "Operating system" ["uname", "-a"],
-  capture "Uptime" ["uptime"],
-  capture "Disk usage" ["df", "-h"],
-  capture "Processes" ["ps", "-Ao", "pid,ppid,%cpu,%mem,command"]
-] |> mapOk (fn sections -> Str.join "\n" sections).
+diskRow (path, total, available) = "{path}: total={total} available={available} bytes".
+processRow (pid, ppid, name) = "{pid}\t{ppid}\t{name}".
+renderReport (date, host, os, uptime, disks, processes) = Str.join "\n" [
+  section "Date" date,
+  section "Hostname" host,
+  section "Operating system" os,
+  section "Uptime" "{uptime} seconds",
+  section "Disk usage (bytes)" (Str.join "\n" (List.map diskRow disks)),
+  section "Processes (pid, parent pid, executable name)" (Str.join "\n" (List.map processRow processes))
+].
+buildReport u = System.snapshot Unit |> mapOk renderReport.
 
 emit target result = case result of
   Err message -> error "system-report: {message}"

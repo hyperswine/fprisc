@@ -13,7 +13,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 APPS = ['examples/' + name + '.fpr' for name in
-        ('inventory', 'logbook', 'pos1', 'printers', 'printer-host')]
+        ('inventory', 'logbook', 'pos1', 'printers', 'printer-host', 'report')]
+APPS += ['examples/ideal/report.fpr']
 BROWSER = ['std/' + name + '.fpr' for name in
            ('livejs', 'browsercalc', 'clientcalc', 'browserautocomplete',
             'browserfeedback', 'browserformfill', 'browserstorage', 'browsermedia')]
@@ -87,6 +88,16 @@ assert 'watch = Nil' in source('examples/pos1.fpr')
 assert 'watch = if dev then src :: Nil else Nil' in source('examples/logbook.fpr')
 assert 'watch = Nil' in source('std/live.fpr')  # printer uses these defaults
 
+# Migrated hosted automation has no process capability, even transitively
+# through its small libraries. Native adapters cannot invoke external tools.
+for path in ('sol/lib/git.sol', 'sol/lib/archive.sol', 'sol/lib/system.sol',
+             'sol/scripts/archive.sol', 'sol/scripts/system-report.sol'):
+    assert not re.search(r'\bProc\.|\bProcessSpec\b|\bshq?\b|\buse\s+"[^"\n]*proc"', source(path)), path
+for path in ('compiler/Sol/Native.hs', 'compiler/cbits/native_git.c',
+             'compiler/cbits/native_archive.c', 'compiler/cbits/native_host.c'):
+    text = (ROOT / path).read_text()
+    assert not re.search(r'System\.Process|\b(?:system|popen|execve|execl|posix_spawn|readProcess|createProcess)\s*\(', text), path
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--binary', type=Path)
 args = parser.parse_args()
@@ -96,5 +107,5 @@ if args.binary:
                        cwd=ROOT, check=True, capture_output=True, timeout=15)
         for name in ('printer_login.js', 'printer_session.js', 'printer_login.html'):
             assert (ROOT / 'tools' / name).read_bytes() == (Path(directory) / name).read_bytes(), name
-print(f'PASS pure application source boundaries ({len(modules)} native modules and Sol web); generated browser syntax, local styles, retired Python runtime, explicit development-only reload' +
+print(f'PASS pure application source boundaries ({len(modules)} native modules, Sol web and automation); generated browser syntax, local styles, retired Python runtime, explicit development-only reload' +
       (' and reproducible compatibility exports' if args.binary else ''))

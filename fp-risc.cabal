@@ -8,7 +8,7 @@ description:
   runtime), fpr commit/push/pull, and the safety line (Safety.hs).
   .
   The build knowledge that used to live only in the Makefile's fpr
-  recipe is declared here: the three C shims and the native libraries
+  recipe is declared here: the C shims and the native libraries
   they need.  The Makefile remains the driver for everything cabal was
   never going to do -- cross-compilation, QEMU boots, .qa packaging,
   disk seeding, and the sweep (check-all.sh).  `make fpr-cabal` builds
@@ -70,6 +70,7 @@ executable fpr
       Sol.Lang
       Sol.Main
       Sol.Mod
+      Sol.Native
       Sol.Preamble
       Sol.Txn
       Sol.VM
@@ -81,6 +82,10 @@ executable fpr
       compiler/cbits/fsx.c
       compiler/cbits/vecgpu.c
       compiler/cbits/handjit.c
+      compiler/cbits/native_git.c
+      compiler/cbits/native_archive.c
+      compiler/cbits/native_host.c
+  pkgconfig-depends: libgit2 >= 1.9, libarchive >= 3.6
   if !os(darwin)
     extra-libraries:  EGL GL
   build-depends:

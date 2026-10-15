@@ -79,6 +79,10 @@ GLLIBS :=
 else
 GLLIBS := -lEGL -lGL
 endif
+# Homebrew's libarchive is keg-only. Standard Linux pkg-config paths and an
+# explicit caller override work unchanged; do not pin a Cellar version.
+NATIVE_PKG_CONFIG_PATH ?= $(firstword $(wildcard /opt/homebrew/opt/libarchive/lib/pkgconfig /usr/local/opt/libarchive/lib/pkgconfig))
+NATIVE_PKG_ENV = PKG_CONFIG_PATH="$(NATIVE_PKG_CONFIG_PATH):$${PKG_CONFIG_PATH}"
 $(FPR_HOST_STAMP):
 	@mkdir -p $(BUILD)
 	@rm -f build/.fpr-host-*
@@ -95,15 +99,19 @@ else ifneq ($(FPR_TOOLCHAIN),.)
 fpr:
 	$(MAKE) -C "$(FPR_TOOLCHAIN)" fpr
 else
-fpr: $(FPR_HOST_STAMP) compiler/*.hs compiler/Sol/*.hs compiler/cbits/fsx.c compiler/cbits/vecgpu.c compiler/cbits/handjit.c fp-risc.cabal Makefile
+fpr: $(FPR_HOST_STAMP) compiler/*.hs compiler/Sol/*.hs compiler/cbits/fsx.c compiler/cbits/vecgpu.c compiler/cbits/handjit.c compiler/cbits/native_git.c compiler/cbits/native_archive.c compiler/cbits/native_host.c fp-risc.cabal Makefile
 	@set -e; fresh=$$(mktemp ./.fpr.tmp.XXXXXX); trap 'rm -f "$$fresh"' 0; \
 	if command -v cabal >/dev/null 2>&1; then \
-	  cabal build exe:fpr; cp "$$(cabal list-bin fpr)" "$$fresh"; \
+	  $(NATIVE_PKG_ENV) cabal build exe:fpr; cp "$$(cabal list-bin fpr)" "$$fresh"; \
 	else \
 	  gcc -c compiler/cbits/fsx.c -o compiler/cbits/fsx.o; \
 	  gcc -c compiler/cbits/vecgpu.c -o compiler/cbits/vecgpu.o; \
 	  gcc -c compiler/cbits/handjit.c -o compiler/cbits/handjit.o; \
-	  (cd compiler && ghc -O0 -threaded -rtsopts -with-rtsopts=-V0.001 -i. -o ../"$$fresh" Main.hs cbits/fsx.o cbits/vecgpu.o cbits/handjit.o $(GLLIBS)); \
+	  $(NATIVE_PKG_ENV) pkg-config --cflags --libs libgit2 libarchive > build/native-libs.flags; \
+	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libgit2 libarchive) -c compiler/cbits/native_git.c -o compiler/cbits/native_git.o; \
+	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libgit2 libarchive) -c compiler/cbits/native_archive.c -o compiler/cbits/native_archive.o; \
+	  gcc -c compiler/cbits/native_host.c -o compiler/cbits/native_host.o; \
+	  (cd compiler && ghc -O0 -threaded -rtsopts -with-rtsopts=-V0.001 -i. -o ../"$$fresh" Main.hs cbits/fsx.o cbits/vecgpu.o cbits/handjit.o cbits/native_git.o cbits/native_archive.o cbits/native_host.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
 	fi; chmod 755 "$$fresh"; mv -f "$$fresh" fpr
 	ln -sf fpr fprc
 endif
@@ -115,10 +123,10 @@ endif
 fpr-cabal:
 	@set -e; fresh=$$(mktemp ./.fpr.tmp.XXXXXX); trap 'rm -f "$$fresh"' 0; \
 	if command -v cabal >/dev/null 2>&1; then \
-	  cabal build exe:fpr; cp "$$(cabal list-bin fpr)" "$$fresh"; \
+	  $(NATIVE_PKG_ENV) cabal build exe:fpr; cp "$$(cabal list-bin fpr)" "$$fresh"; \
 	else \
 	  ghc -o build/Setup Setup.hs >/dev/null; \
-	  ./build/Setup configure --ghc >/dev/null; \
+	  $(NATIVE_PKG_ENV) ./build/Setup configure --ghc >/dev/null; \
 	  ./build/Setup build; \
 	  cp dist/build/fpr/fpr "$$fresh"; \
 	fi; chmod 755 "$$fresh"; mv -f "$$fresh" fpr

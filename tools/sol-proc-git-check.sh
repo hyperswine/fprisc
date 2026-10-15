@@ -50,7 +50,7 @@ printf '%s\n' second > /tmp/sol-git-wrap/second.txt
 git init --bare -q /tmp/sol-git-remote.git
 git -C /tmp/sol-git-wrap remote add origin /tmp/sol-git-remote.git
 push_output=$(./fpr sol tests/gitpush.sol 2>&1)
-printf '%s\n' "$push_output" | grep -Fq '[sol] REALTIME: Proc.runNow'
+printf '%s\n' "$push_output" | grep -Fq '[sol] REALTIME: Git.push'
 printf '%s\n' "$push_output" | grep -Fq 'push: Ok Repo '
 [ "$(git -C /tmp/sol-git-wrap rev-parse main)" = "$(git --git-dir=/tmp/sol-git-remote.git rev-parse refs/heads/main)" ]
 

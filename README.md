@@ -11,7 +11,10 @@ make bare-metal PROG=tests/fmath.fpr
 ```
 
 The compiler needs GHC and the dependencies declared in `fp-risc.cabal` (normally
-resolved with Cabal). Bare-metal builds additionally need the RISC-V cross compiler;
+resolved with Cabal), plus pkg-config, libgit2 >= 1.9 and libarchive >= 3.6 for
+native hosted automation. On macOS install `pkg-config libgit2 libarchive` with
+Homebrew; on Linux install their development packages. Bare-metal builds
+additionally need the RISC-V cross compiler;
 `make bare-metal-run` needs QEMU. Neither building the compiler nor running Sol or
 building bare-metal examples requires QOS.
 

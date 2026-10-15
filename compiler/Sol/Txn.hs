@@ -27,6 +27,7 @@
 module Sol.Txn where
 
 import Sol.Diagnostic (diagnostic)
+import Sol.Native
 import Control.Concurrent (threadDelay, forkIOWithUnmask, killThread, newEmptyMVar, putMVar, takeMVar, newChan, writeChan, readChan)
 import Control.Exception (SomeException, bracket, catch, IOException, finally, mask, onException, throwIO, try)
 import Control.Monad (foldM, forM_, unless, when)
@@ -89,6 +90,8 @@ data Effect
   | ERmdir FilePath
   | EShell String
   | EProcess ProcessSpec
+  | EGit GitRequest
+  | EArchive FilePath FilePath Integer Integer
   deriving (Show, Read)
 
 data TxState = TxState
@@ -147,6 +150,8 @@ effectBrief (EMkdir p) = "mkdirp " ++ p
 effectBrief (ERmdir p) = "rmdir " ++ p
 effectBrief (EShell c) = "shq " ++ c
 effectBrief (EProcess spec) = "Proc.afterCommit " ++ displayProcess spec
+effectBrief (EGit (GitRequest path op _ _ _ _ _)) = "native Git " ++ show op ++ " in " ++ path
+effectBrief (EArchive source target _ _) = "native archive " ++ source ++ " -> " ++ target
 
 -- The effects this transaction has queued but NOT yet applied, in
 -- declaration order. A realtime escape runs BEFORE all of them (they
@@ -960,6 +965,8 @@ effectPath (EMkdir p) = Just p
 effectPath (ERmdir p) = Just p
 effectPath (EShell _) = Nothing
 effectPath (EProcess _) = Nothing
+effectPath (EGit (GitRequest path _ _ _ _ _ _)) = Just path
+effectPath (EArchive _ target _ _) = Just target
 
 -- lock (sorted) -> validate reads AND dir listings -> journal the effect
 -- log (fsynced; the commit point) -> replay it in order -> clear the
@@ -1028,9 +1035,15 @@ commit ref jpath = do
         let wrotePaths = nub [p | e <- effs, Just p <- [effectPath e]]
         when (reportC == Just "1" && not (null wrotePaths)) $
           hPutStrLn stderr (childCommitMarker ++ show wrotePaths)
-        let ncmd = length [() | e <- effs, Nothing <- [effectPath e]]
+        let ncmd = length [() | e <- effs, deferredEffect e]
         pure (Committed n ncmd sfail efail)
       else pure (Conflict stale)
+
+-- Native effects have lockable paths as well as deferred-operation receipts.
+deferredEffect :: Effect -> Bool
+deferredEffect (EGit _) = True
+deferredEffect (EArchive _ _ _ _) = True
+deferredEffect e = case effectPath e of Nothing -> True; Just _ -> False
 
 -- the stderr line a child sol emits (under SOL_REPORT_COMMIT=1) naming
 -- the paths its commit touched; the parent's `run` parses it
@@ -1173,6 +1186,8 @@ replayGo bad j0 recovery0 done0 crashAt0 effs0 = go False effs0
                   diagnostic ("[sol] deferred command FAILED (exit " ++ show code ++ "): " ++ cmd)
                   diagnostic ("[sol] later queued commands will be skipped; file effects still apply")
                   rec' True 0 rest
+        EGit request -> nativeEffect i e shellFailed (nativeGit request) rest
+        EArchive source target entries bytes -> nativeEffect i e shellFailed (nativeArchive source target entries bytes) rest
         EProcess spec
           | shellFailed -> do
               diagnostic ("[sol] skipping queued process (an earlier one failed): " ++ displayProcess spec)
@@ -1198,6 +1213,19 @@ replayGo bad j0 recovery0 done0 crashAt0 effs0 = go False effs0
                       diagnostic ("[sol] deferred process FAILED (exit " ++ show code ++ "): " ++ displayProcess spec)
                       diagnostic "[sol] later queued commands will be skipped; file effects still apply"
                       rec' True 0 rest
+    -- Native operations use the same durable completion and failure fence as
+    -- deferred processes. Recovery can repeat an unmarked operation; this is
+    -- explicitly at-least-once, not an atomic multi-operation Git transaction.
+    nativeEffect i e sf action rest
+      | sf = diagnostic ("[sol] skipping queued native effect: " ++ effectBrief e) >> rec' sf 0 rest
+      | recovery0 && i `elem` done0 = rec' sf 0 rest
+      | otherwise = do
+          when recovery0 $ diagnostic ("[sol] redo: native effect may repeat (at-least-once): " ++ effectBrief e)
+          result <- action
+          markDone j0 i
+          case result of
+            Left why -> diagnostic ("[sol] native effect FAILED: " ++ effectBrief e ++ ": " ++ why) >> rec' True 0 rest
+            Right _ -> rec' sf 0 rest
     failedEff what = writeIORef bad True >> diagnostic ("[sol] effect FAILED (not counted): " ++ what)
     rec' sf k rest = do
       (n, sf') <- go sf rest

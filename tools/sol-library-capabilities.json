@@ -31,7 +31,7 @@
       "module": "sol/lib/git.sol",
       "status": "hosted",
       "gate": "import-and-call",
-      "note": "Representative call coverage; not exhaustive feature certification."
+      "note": "Native libgit2 operations; deferred mutations, guarded immediate push, bounded responses, SSH agent with no external helpers."
     },
     {
       "module": "sol/lib/json.sol",
@@ -188,6 +188,18 @@
       "status": "native-only",
       "gate": "known-string-contract-gap",
       "note": "Native byte-string Unicode construction corrupts escapes in Sol. Use sol/lib/json.sol; consolidation requires an explicit Unicode adapter."
+    },
+    {
+      "module": "sol/lib/archive.sol",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Native libarchive, deferred streaming with explicit entry/byte limits and atomic output."
+    },
+    {
+      "module": "sol/lib/system.sol",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Native kernel host snapshot; process inventory requires OS permission."
     }
   ]
 }

@@ -207,11 +207,11 @@ remaining boundaries outside that scope:
   global CSS classes rather than typed node-local declarations. This backend
   needed structured browser generation and local presentation. The completion
   below supersedes this remaining item.
-- `examples/report.fpr` and `examples/ideal/report.fpr` invoke Git for revision
-  metadata. Sol's system-report/archive scripts and Git library use external
-  commands as well. These are actual tool integrations, even though they are
-  structured rather than shell-interpolated; a repository-wide no-tools goal
-  would require native APIs/libraries for those operations.
+- The audit also found Git/tool calls in both report examples and Sol's
+  system-report/archive scripts and Git library. The
+  [native automation migration](2026-10-15-NATIVE-AUTOMATION.md) completes this
+  item using revision file APIs, kernel host facts, linked libarchive and
+  linked libgit2, with no runtime tool fallback.
 - Live's explicitly selected development reload still invokes the compiler;
   process demonstrations deliberately exercise subprocesses. Python remains in
   test/build/benchmark/device-development drivers and the legacy test fixtures.
