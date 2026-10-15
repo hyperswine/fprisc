@@ -4,6 +4,9 @@
  */
 #include "builtin.h"
 #include <string.h>
+#if FPR_CPU_MHZ <= 0
+#error "FPR_CPU_MHZ must be positive"
+#endif
 extern char _heap_start[],_heap_end[];
 extern V fpr_fn_main(void);
 #define UART ((volatile uint32_t *)0x10000000)
@@ -20,6 +23,16 @@ void fpr_builtin_main(void){
 }
 void fpr_fuel_exhausted(void){fpr_harts[0].fuel=1000000;}
 static uint64_t cycles(void){uint64_t v;__asm__ volatile("csrr %0,mcycle":"=r"(v));return v;}
+/* Sys.mtime's shared contract is 10 MHz ticks, not microseconds. Divide
+ * before multiplying so a long-running cycle counter cannot wrap silently. */
+static V h_mtime(V u){
+ (void)u;uint64_t c=cycles(),whole=c/FPR_CPU_MHZ,limit=UINTPTR_MAX>>2;
+ if(whole>limit/10)fpr_cpanic("Sys.mtime exceeds Int range");
+ uint64_t ticks=whole*10+(c%FPR_CPU_MHZ)*10/FPR_CPU_MHZ;
+ if(ticks>limit)fpr_cpanic("Sys.mtime exceeds Int range");
+ return TAG(ticks);
+}
+FPR_FN(fpr_g_Sys_x2emtime,h_mtime,1);
 static uint64_t deadline;
 static unsigned byte(void){
  deadline=cycles()+(uint64_t)FPR_CPU_MHZ*1000000*5;

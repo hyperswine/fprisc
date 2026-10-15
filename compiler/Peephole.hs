@@ -1,5 +1,5 @@
--- A local cleanup of one function's emitted rv64 lines (every 64-bit
--- target: the builtin profile, and the base profile before the a64/x64
+-- A local cleanup of one function's emitted RISC-V lines (RV32 and every
+-- 64-bit target: the builtin profile, and base before the a64/x64
 -- translators, which therefore see its output).
 --
 -- The generator moves every intermediate value through a frame slot:
@@ -22,7 +22,7 @@
 
 {-# LANGUAGE LambdaCase #-}
 
-module Peephole (peephole) where
+module Peephole (peephole, peepholeFor) where
 
 import Data.Char (isDigit)
 import Data.List (isPrefixOf, tails)
@@ -30,7 +30,12 @@ import qualified Data.Set as S
 import qualified Data.Map.Strict as M
 
 peephole :: [String] -> [String]
-peephole = deadStores . forward
+peephole = peepholeFor "ld" "sd"
+
+-- A frame slot is one target word. In particular an RV32 lw/sw pair is
+-- a complete value, whereas lw after sd on RV64 must not be forwarded.
+peepholeFor :: String -> String -> [String] -> [String]
+peepholeFor ld st = deadStores . forward ld st
 
 data Ins = Ins String [String]
 
@@ -62,14 +67,14 @@ branches = S.fromList ["beq", "bne", "blt", "bge", "bltu", "bgeu", "beqz", "bnez
 clobbersAll = S.fromList ["call", "jal", "jalr", "jr", "ret", "tail", "ecall", "ebreak", "fence", "fence.i", "wfi"]
 
 -- pairs (register, slot): the register holds the slot's current value
-forward :: [String] -> [String]
-forward = go S.empty
+forward :: String -> String -> [String] -> [String]
+forward ld st = go S.empty
   where
     go _ [] = []
     go known (l : ls) = case parse l of
       Nothing -> l : go S.empty ls
       Just (Ins op args)
-        | op == "ld", [r, m] <- args, Just k <- slotOf m ->
+        | op == ld, [r, m] <- args, Just k <- slotOf m ->
             if S.member (r, k) known
               then go known ls
               else case [r2 | (r2, k2) <- S.toList known, k2 == k, r2 /= r] of
@@ -78,7 +83,7 @@ forward = go S.empty
                     : go (S.union (S.fromList [(r, s) | (r', s) <- S.toList known, r' == r2]) (dropReg r known)) ls
                 [] -> l : go (S.insert (r, k) (dropReg r known)) ls
         | S.member op stores, [r, m] <- args, Just k <- slotOf m ->
-            l : go (if op == "sd" then S.insert (r, k) (dropSlot k known) else dropSlot k known) ls
+            l : go (if op == st then S.insert (r, k) (dropSlot k known) else dropSlot k known) ls
         | S.member op stores -> l : go S.empty ls
         | S.member op clobbersAll -> l : go S.empty ls
         | S.member op branches -> l : go known ls

@@ -1,54 +1,203 @@
-/* Single-threaded, coalescing first-fit heap. No scheduler or OS dependency.
+/* Single-threaded, coalescing segregated heap. No scheduler or OS dependency.
  * The 16 bytes immediately before every payload remain compatible with the
  * shared runtime's object-size ABI; the second word holds a reference count.
+ *
+ * Physical neighbours permit constant-time coalescing; free blocks alone are
+ * indexed by size. A side bitmap authenticates exact live payload starts before
+ * find() reads a header. Subtracting PREFIX without this check would accept a
+ * forged header inside an allocation. The bitmap uses one bit per 16 bytes
+ * (0.78%, rounded to 16 bytes), outside every allocation; no host allocation or
+ * fixed heap cap is required.
  */
 #include "builtin.h"
 #include <stdint.h>
 typedef struct block { uw size; struct block *prev, *next; uw used; uw fields; struct block *pending; const str_t *layout; uw alignment_padding; } block;
 _Static_assert((sizeof(block)+16)%16 == 0, "Builtin payload alignment");
 _Static_assert(sizeof(uw) == 4 || sizeof(uw) == 8, "Builtin heap requires RV32/RV64 words");
-static block *head;
 static uw low, high;
 #define PREFIX (sizeof(block) + 16)
+#define WORD_BITS (sizeof(uw) * 8)
+#define SUBS 8
+#ifdef FPR_BUILTIN_HEAP_MAX_BYTES
+_Static_assert(FPR_BUILTIN_HEAP_MAX_BYTES > 0,
+               "Builtin heap maximum must be positive");
+_Static_assert(FPR_BUILTIN_HEAP_MAX_BYTES >= PREFIX + 32,
+               "Builtin heap maximum is too small");
+_Static_assert(FPR_BUILTIN_HEAP_MAX_BYTES <= UINTPTR_MAX,
+               "Builtin heap maximum exceeds address space");
+/* Constant-folded at compile time; no runtime clz instruction/libgcc dependency.
+ * Class f is log2(size/16)-2 for sizes >=128, with a separate small row. */
+enum { CLASS_ROWS = FPR_BUILTIN_HEAP_MAX_BYTES < 128 ? 1 :
+  62 - __builtin_clzll((unsigned long long)FPR_BUILTIN_HEAP_MAX_BYTES >> 4) };
+#else
+enum { CLASS_ROWS = WORD_BITS };
+#endif
+static block *bins[CLASS_ROWS][SUBS];
+static unsigned char submap[CLASS_ROWS];
+static uw firstmap, live_count;
+static unsigned char *live_map;
+#ifdef FPR_BUILTIN_HEAP_TEST
+/* Logical allocator work, excluding required payload zero/copy bytes. */
+uw fpr_builtin_heap_lookup_steps, fpr_builtin_heap_allocation_steps;
+#define LOOKUP_STEP() (++fpr_builtin_heap_lookup_steps)
+#define ALLOCATION_STEP() (++fpr_builtin_heap_allocation_steps)
+#else
+#define LOOKUP_STEP() ((void)0)
+#define ALLOCATION_STEP() ((void)0)
+#endif
 static uw *meta(block *b) { return (uw *)((char *)b + sizeof(block)); }
 static V payload(block *b) { return (V)((char *)b + PREFIX); }
+/* Every payload/capacity is 16-byte aligned. Word stores avoid eight separate
+ * read/modify/write bus transactions per word on the 64-bit board's 32-bit RAM
+ * port. may_alias permits the payload's arbitrary runtime object layout. */
+typedef uw heap_word __attribute__((may_alias));
+static void zero_words(V v, uw bytes) {
+  heap_word *p = (heap_word *)v;
+  for (uw i = 0; i < bytes / sizeof(heap_word); i++) p[i] = 0;
+}
+static void copy_payload(V to, V from, uw bytes) {
+  heap_word *dst = (heap_word *)to, *src = (heap_word *)from;
+  for (uw i = 0; i < bytes / sizeof(heap_word); i++) dst[i] = src[i];
+}
+static void initialize_block(block *b, uw size, block *prev, block *next) {
+  /* A struct zero initializer becomes a byte-oriented memset at -Os. These
+   * aligned words keep splitting a block cheap on the board's RAM port. */
+  zero_words((V)b, sizeof(*b));
+  b->size = size; b->prev = prev; b->next = next;
+}
+/* log2 and first-set-bit without libgcc or a hardware bit-manip extension. */
+static unsigned log2_word(uw v) {
+  unsigned n = 0;
+#if UINTPTR_MAX > UINT32_MAX
+  if (v >> 32) { v >>= 32; n += 32; }
+#endif
+  if (v >> 16) { v >>= 16; n += 16; }
+  if (v >> 8) { v >>= 8; n += 8; }
+  if (v >> 4) { v >>= 4; n += 4; }
+  if (v >> 2) { v >>= 2; n += 2; }
+  return n + (unsigned)(v >> 1);
+}
+static unsigned first_bit(uw bits) { return log2_word(bits & (0 - bits)); }
+static void size_class(uw size, unsigned *f, unsigned *s) {
+  uw units = size >> 4;
+  unsigned n = log2_word(units);
+  if (n < 3) { *f = 0; *s = (unsigned)units; }
+  else { *f = n - 2; *s = (unsigned)(units >> (n - 3)) - SUBS; }
+}
+/* fields/pending are free-list links only while the block is free. They retain
+ * their existing exact-layout/worklist meanings throughout its allocated life. */
+static block *free_prev(block *b) { return (block *)b->fields; }
+static void insert_free(block *b) {
+  unsigned f, s; size_class(b->size, &f, &s);
+  b->alignment_padding = f * SUBS + s;
+  b->fields = 0; b->pending = bins[f][s];
+  if (b->pending) b->pending->fields = (uw)b;
+  bins[f][s] = b; submap[f] |= (unsigned char)(1u << s);
+  firstmap |= (uw)1 << f;
+}
+static void remove_free(block *b) {
+  unsigned f = (unsigned)(b->alignment_padding / SUBS);
+  unsigned s = (unsigned)(b->alignment_padding % SUBS);
+  block *p = free_prev(b), *n = b->pending;
+  if (p) p->pending = n; else bins[f][s] = n;
+  if (n) n->fields = (uw)p;
+  if (!bins[f][s]) {
+    submap[f] &= (unsigned char)~(1u << s);
+    if (!submap[f]) firstmap &= ~((uw)1 << f);
+  }
+}
+static void mark_live(V v, int live) {
+  uw bit = (v - low) >> 4;
+  unsigned char mask = (unsigned char)(1u << (bit & 7));
+  if (live) live_map[bit >> 3] |= mask;
+  else live_map[bit >> 3] &= (unsigned char)~mask;
+}
 void fpr_builtin_heap_init(void *start, void *end) {
-  low = ((uw)start + 15) & ~(uw)15;
-  high = (uw)end & ~(uw)15;
-  if (high <= low || high - low < PREFIX + 16) fpr_cpanic("Builtin: heap too small");
-  head = (block *)low;
-  *head = (block){.size=high-low};
+  uw lo = (uw)start, hi = (uw)end & ~(uw)15;
+  if (lo > UINTPTR_MAX - 15) fpr_cpanic("Builtin: heap too small");
+  low = (lo + 15) & ~(uw)15;
+  if (hi <= low) fpr_cpanic("Builtin: heap too small");
+#ifdef FPR_BUILTIN_HEAP_MAX_BYTES
+  if (hi - low > (uw)FPR_BUILTIN_HEAP_MAX_BYTES)
+    fpr_cpanic("Builtin: configured heap exceeds maximum");
+#endif
+  /* One bit per 16-byte slot; rounding applies to the bitmap, not the payload. */
+  uw map_bytes = ((((hi - low) >> 4) + 7) >> 3);
+  map_bytes = (map_bytes + 15) & ~(uw)15;
+  if (hi - low < map_bytes + PREFIX + 16) fpr_cpanic("Builtin: heap too small");
+  high = hi - map_bytes; live_map = (unsigned char *)high;
+  zero_words((V)live_map, map_bytes);
+  for (unsigned f = 0; f < CLASS_ROWS; f++) {
+    submap[f] = 0;
+    for (unsigned s = 0; s < SUBS; s++) bins[f][s] = 0;
+  }
+  firstmap = live_count = 0;
+#ifdef FPR_BUILTIN_HEAP_TEST
+  fpr_builtin_heap_lookup_steps = fpr_builtin_heap_allocation_steps = 0;
+#endif
+  block *head = (block *)low;
+  initialize_block(head, high-low, 0, 0);
+  insert_free(head);
 }
 int fpr_in_heap(V v) { return !ISINT(v) && v >= low + PREFIX && v < high; }
 static block *find(V v) {
-  for (block *b = head; b; b = b->next)
-    if (payload(b) == v && b->used) return b;
+  LOOKUP_STEP();
+  if (fpr_in_heap(v) && !(v & 15)) {
+    uw bit = (v - low) >> 4;
+    if (live_map[bit >> 3] & (1u << (bit & 7))) {
+      block *b = (block *)(v - PREFIX);
+      if (b->used && b->size >= PREFIX + 16 && !(b->size & 15)
+          && b->size <= high - (uw)b && meta(b)[0] == b->size - sizeof(block))
+        return b;
+    }
+  }
   fpr_cpanic("Builtin: invalid allocation pointer");
   return 0;
 }
 static void split(block *b, uw size) {
   if (b->size - size < PREFIX + 16) return;
   block *n = (block *)((char *)b + size);
-  *n = (block){.size=b->size-size,.prev=b,.next=b->next};
+  initialize_block(n, b->size-size, b, b->next);
   if (n->next) n->next->prev = n;
   b->next = n; b->size = size;
+  insert_free(n);
+}
+static block *available(uw size) {
+  unsigned f, s; size_class(size, &f, &s);
+  block *same = bins[f][s];
+  ALLOCATION_STEP();
+  if (same && same->size >= size) return same;
+  /* Every block in a higher class fits. Select it without walking allocations
+   * or free blocks. Only if there is no higher class do we inspect the rest of
+   * the request's own class: refusing a fitting block there would be false OOM.
+   * Small objects (whole block <256 bytes) have exact 16-byte classes, so this
+   * fallback is unnecessary for them. Large-class fallback is free-block-only. */
+  uw subs = submap[f] & (0xffu << (s + 1));
+  if (subs) return bins[f][first_bit(subs)];
+  uw later = firstmap & ~(((uw)1 << (f + 1)) - 1);
+  if (later) { f = first_bit(later); return bins[f][first_bit(submap[f])]; }
+  for (block *b = same ? same->pending : 0; b; b = b->pending) {
+    ALLOCATION_STEP();
+    if (b->size >= size) return b;
+  }
+  fpr_cpanic("Builtin: out of memory"); return 0;
 }
 V fpr_alloc(V bytes) {
   if (bytes > UINTPTR_MAX - PREFIX - 15) fpr_cpanic("Builtin: allocation overflow");
   uw size = PREFIX + ((bytes + 15) & ~(uw)15);
   if (size == PREFIX) size += 16;
-  for (block *b = head; b; b = b->next) if (!b->used && b->size >= size) {
-    split(b, size); b->used = 1; b->fields = 0; b->pending = 0; b->layout = 0;
-    meta(b)[0] = b->size - sizeof(block); meta(b)[1] = 1;
-    unsigned char *p = (unsigned char *)payload(b);
-    for (uw i = 0; i < b->size - PREFIX; i++) p[i] = 0;
-    return (V)p;
-  }
-  fpr_cpanic("Builtin: out of memory"); return 0;
+  block *b = available(size);
+  remove_free(b); split(b, size); b->used = 1; b->fields = 0; b->pending = 0; b->layout = 0;
+  b->alignment_padding = 0;
+  meta(b)[0] = b->size - sizeof(block); meta(b)[1] = 1;
+  mark_live(payload(b), 1); live_count++;
+  V p = payload(b); zero_words(p, b->size - PREFIX);
+  return p;
 }
 static void merge(block *b) {
   block *n = b->next;
   if (n && !n->used) {
+    remove_free(n);
     b->size += n->size; b->next = n->next;
     if (b->next) b->next->prev = b;
   }
@@ -57,8 +206,14 @@ void fpr_free(V v) {
   if (!v) return;
   block *b = find(v);
   if (meta(b)[1] != 1) fpr_cpanic("Builtin: free of shared allocation");
-  b->used = 0; merge(b);
-  if (b->prev && !b->prev->used) merge(b->prev);
+  mark_live(v, 0); live_count--; b->used = 0; merge(b);
+  if (b->prev && !b->prev->used) {
+    block *p = b->prev; remove_free(p);
+    p->size += b->size; p->next = b->next;
+    if (p->next) p->next->prev = p;
+    b = p;
+  }
+  insert_free(b);
 }
 V fpr_realloc(V v, V bytes) {
   if (!v) return bytes ? fpr_alloc(bytes) : 0;
@@ -66,8 +221,18 @@ V fpr_realloc(V v, V bytes) {
   if (meta(b)[1] != 1) fpr_cpanic("Builtin: realloc of shared allocation");
   if (!bytes) { fpr_free(v); return 0; }
   if (bytes <= b->size - PREFIX) return v;
+  if (bytes > UINTPTR_MAX - PREFIX - 15) fpr_cpanic("Builtin: allocation overflow");
+  uw old_capacity = b->size - PREFIX;
+  uw size = PREFIX + ((bytes + 15) & ~(uw)15);
+  if (b->next && !b->next->used && b->size + b->next->size >= size) {
+    merge(b); split(b, size);
+    meta(b)[0] = b->size - sizeof(block);
+    zero_words(v + old_capacity, b->size - PREFIX - old_capacity);
+    return v;
+  }
   V n = fpr_alloc(bytes);
-  for (uw i = 0; i < b->size - PREFIX; i++) ((char *)n)[i] = ((char *)v)[i];
+  copy_payload(n, v, b->size - PREFIX);
+  block *m = find(n); m->fields = b->fields; m->layout = b->layout;
   fpr_free(v); return n;
 }
 /* Explicit owning references, not automatic compiler ARC. Constructors move
@@ -108,9 +273,7 @@ V fpr_builtin_alloc_adt(V bytes, uw fields) {
   V v = fpr_alloc(bytes); find(v)->fields = fields; return v;
 }
 uw fpr_builtin_live_allocations(void) {
-  uw n = 0;
-  for (block *b = head; b; b = b->next) if (b->used) n++;
-  return n;
+  return live_count;
 }
 /* Worklist lives in dead blocks themselves. No recursive C stack, allocation
  * or fixed queue capacity is needed to release arbitrarily deep acyclic data.

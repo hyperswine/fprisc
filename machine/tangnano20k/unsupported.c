@@ -13,18 +13,29 @@ int fpr_mem_own;
 uw fpr_stack_grow(void){fpr_cpanic("Base: 64 KiB stack exhausted");return 0;}
 void fpr_actor_fail(const char *why){fpr_cpanic(why);for(;;){}}
 uw fpr_actor_is_program(void){return 1;}
+/* Same identities as the shared runtime's bootstrap thread, not actors. */
+uw fpr_current_pid(void){return 0;}
+uw fpr_current_id(void){return 900;}
 void fpr_mem_give(void *p){(void)p;fpr_cpanic("Base: process memory grants unavailable");}
+void *fpr_mem_take(uw bytes){(void)bytes;fpr_cpanic("Base: process memory grants unavailable");return 0;}
 void buddy_free(void *p){(void)p;fpr_cpanic("Base: buddy allocator unavailable");}
+uw buddy_block_usable_size(void *p){(void)p;fpr_cpanic("Base: buddy allocator unavailable");return 0;}
 void fpr_drop_park(fpr_slab_t *p){(void)p;fpr_cpanic("Base: cross-actor drops unavailable");}
 void fpr_drop_drain_current(void){fpr_cpanic("Base: actor drop queue unavailable");}
 fpr_pool_t *fpr_acb_pool(struct fpr_acb *p){(void)p;fpr_cpanic("Base: actor pool unavailable");return 0;}
 struct fpr_pool **fpr_acb_override_slot(struct fpr_acb *p){(void)p;fpr_cpanic("Base: actor arenas unavailable");return 0;}
+struct fpr_scope **fpr_acb_scope_slot(struct fpr_acb *p){(void)p;fpr_cpanic("Base: actor scopes unavailable");return 0;}
+fpr_slab_t **fpr_acb_msg_slot(struct fpr_acb *p){(void)p;fpr_cpanic("Base: actor message slabs unavailable");return 0;}
 size_t strlen(const char *p){size_t n=0;while(p[n])n++;return n;}
 // GCC's libatomic fallback, valid only for this single core without interrupts.
 int single_cas(volatile void *p,void *expected,unsigned long long value,int success,int failure) __asm__("__atomic_compare_exchange_8");
 int single_cas(volatile void *p,void *expected,unsigned long long value,int success,int failure){
  (void)success;(void)failure;volatile unsigned long long *v=p;unsigned long long *e=expected;
  if(*v==*e){*v=value;return 1;}*e=*v;return 0;
+}
+unsigned long long single_fetch_add(volatile void *p,unsigned long long value,int order) __asm__("__atomic_fetch_add_8");
+unsigned long long single_fetch_add(volatile void *p,unsigned long long value,int order){
+ (void)order;volatile unsigned long long *v=p;unsigned long long old=*v;*v=old+value;return old;
 }
 static V h_fpr_g_Os_x2eclose(V a0){(void)a0;return unavailable("Base: Os.close unavailable");}
 FPR_FN(fpr_g_Os_x2eclose,h_fpr_g_Os_x2eclose,1);
@@ -84,6 +95,8 @@ static V h_fpr_g_myself(V a0){(void)a0;fpr_cpanic("Base: myself unavailable");re
 FPR_FN(fpr_g_myself,h_fpr_g_myself,1);
 static V h_fpr_g_receiveFromRes(V a0,V a1){(void)a0;(void)a1;fpr_cpanic("Base: receiveFromRes unavailable");return (V)&fpr_unit;}
 FPR_FN(fpr_g_receiveFromRes,h_fpr_g_receiveFromRes,2);
+static V h_receive_from_now(V me,V from){(void)me;(void)from;return unavailable("Base: receiveFromNow unavailable");}
+FPR_FN(fpr_g_receiveFromNow,h_receive_from_now,2);
 static V h_fpr_g_receiveFrom(V a0,V a1){(void)a0;(void)a1;fpr_cpanic("Base: receiveFrom unavailable");return (V)&fpr_unit;}
 FPR_FN(fpr_g_receiveFrom,h_fpr_g_receiveFrom,2);
 static V h_fpr_g_receiveNow(V a0){(void)a0;fpr_cpanic("Base: receiveNow unavailable");return (V)&fpr_unit;}
@@ -106,6 +119,8 @@ static V h_fpr_g_spawn(V a0){(void)a0;fpr_cpanic("Base: spawn unavailable");retu
 FPR_FN(fpr_g_spawn,h_fpr_g_spawn,1);
 static V h_fpr_g_yield(V a0){(void)a0;fpr_cpanic("Base: yield unavailable");return (V)&fpr_unit;}
 FPR_FN(fpr_g_yield,h_fpr_g_yield,1);
+static V h_kill(V actor){(void)actor;fpr_cpanic("Base: kill unavailable");return (V)&fpr_unit;}
+FPR_FN(fpr_g_kill,h_kill,1);
 
 /* Checked native connection, resolver and TLS capabilities. */
 static V unavailable_ConnHost_adopt(V a0){(void)a0;return unavailable("Base: ConnHost.adopt unavailable");}

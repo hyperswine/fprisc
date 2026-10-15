@@ -1,12 +1,14 @@
 # heap.fpr -- the BareMetal-Builtin allocator, in FP-RISC.
 #
-# The same allocator as heap.c -- single-threaded, coalescing, first-fit,
+# The original C allocator -- single-threaded, coalescing, first-fit,
 # a 16-byte meta pair (capacity, reference count) before every payload,
 # the ARC release worklist threaded through dead blocks -- written over
 # Word/Addr and raw memory only, so it allocates nothing to allocate.
 # Compiled as a LIBRARY unit (make ... HEAP=fpr) its exports carry the
 # C symbols heap.c defined, and the C runtime, the ARC adapters and the
 # program link against it unchanged.
+# The C heap's 2026-10-16 size bins and checked-pointer bitmap are not yet
+# ported here. This implementation retains the same exported allocation ABI.
 #
 # Its one piece of state lives at a linker symbol (Addr.symbol
 # "_heap_state", machine/builtin/link.ld): head, low, high.  An FP-RISC unit

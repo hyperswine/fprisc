@@ -1,12 +1,12 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 
--- Core -> RISC-V (rv64) assembly.
+-- Core -> RISC-V (rv32/rv64) assembly.
 --
--- Value representation (uniform 64-bit "V"):
---   * integers:   (n << 1) | 1                      (63-bit tagged)
+-- Value representation (one target word "V"):
+--   * integers:   (n << 1) | 1                      (31/63-bit tagged)
 --   * everything else: 8-aligned pointer to object:
---       [ u32 typeid | u32 variant | u64 fields... ]
+--       [ u32 typeid | u32 variant | target-word fields... ]
 --     typeids: 0..8 = FPRISC builtins, 10+/100+ = user types/shapes,
 --              9000 = string, 9001 = PAP (function), 9002 = Device,
 --              9003 = Register, 9004 = Array Bit
@@ -22,7 +22,7 @@
 --   the discoverable-symbol contract the HAL/runtime must satisfy.
 --
 -- Results use a0 and private slots stage intermediate values. Ordinary
--- 64-bit functions can promote hot slots to preserved registers after
+-- functions can promote hot slots to preserved registers after
 -- generation. Source effects retain evaluation order; HAL MMIO remains
 -- volatile, and slot promotion does not reorder device accesses.
 
@@ -43,7 +43,7 @@ import qualified Data.Set as S
 import Numeric (showHex)
 import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, isJust)
-import Peephole (peephole)
+import Peephole (peepholeFor)
 import KernelKinds (Kind(..), signature)
 
 import FPRISC (Core (..), Prog, freeVars, occurs)
@@ -51,7 +51,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 41 -- Int pairs fuse again (overflow may surface out of order); 40: Int overflow traps; 39: automatic value-state receive turns
+codegenRev = 42 -- width-correct RV32 scalar fast paths and checked indexed memory
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -72,14 +72,16 @@ data Target = Target
     tgtSimd :: Bool, -- A64 NEON, scalar fallback/tails remain available
     tgtFusion :: Bool, -- differential switch for pipeline passes
     tgtFloatInline :: Bool, -- F64 fast paths; false keeps the C primitives for differential checks
+    tgtScalarFast :: Bool, -- differential old RV32 slot/primitive path
+    tgtIndexedMemory :: Bool, -- fuse private manual Addr.add/access/release
     tgtHal :: M.Map String Int -- primitive name -> arity (builtin schemes and
                         -- foreign declarations): a saturated call to one is
                         -- a direct `call fpr_g_<name>_call<n>` (fpr.h FPR_FN)
   }
 
 rv64, rv32 :: Target
-rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True M.empty
-rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False False False True False M.empty
+rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True M.empty
+rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True M.empty
 
 -- the visibility directive for a unit-visible global: a library unit
 -- shares every name it did not qualify with '@hash' with the program it
@@ -587,13 +589,15 @@ compileFn prog name (params, body0) = do
       -- the builtin target sees the body through normArc (let shapes the
       -- ownership lowering leaves behind, folded so the tag-test and
       -- inline-condition fusions in genT apply)
-      body = if w == 8 then normIn (S.fromList params) body0 else body0
+      fused = if tgtIndexedMemory tgt && not (tgtFuel tgt || tgtArc tgt)
+                then indexedMemory (M.keysSet prog `S.union` M.keysSet ext) (S.fromList params) body0 else body0
+      body = if tgtScalarFast tgt then normIn (S.fromList params) fused else fused
       -- exact high-water mark (see slotsNeeded); +2 is pure paranoia
       nslots = length params + slotsNeeded (tgtHal tgt) ext prog (S.fromList params) body + 2
       baseFrame = ((2 * w + w * nslots + 15) `div` 16) * 16
       env0 = M.fromList (zip params [0 ..])
   bodyLines <- gen prog env0 (length params) Tail body
-  let regs = if tgtRegisters tgt && w == 8 && not (tgtArc tgt) && nslots < 240
+  let regs = if tgtRegisters tgt && tgtScalarFast tgt && not (tgtArc tgt) && nslots < 240
                then registerSlots tgt bodyLines else []
       frame = ((baseFrame + w * length regs + 15) `div` 16) * 16
       saved = zip (map snd regs) [nslots ..]
@@ -662,7 +666,7 @@ compileFn prog name (params, body0) = do
   -- the builtin target's lines pass through the peephole (Peephole.hs):
   -- slot forwarding and dead slot stores, per function, after the
   -- frame is opened
-  let tidy = if w == 8 then peephole else id
+  let tidy = if tgtScalarFast tgt then peepholeFor (tgtLd tgt) (tgtSt tgt) else id
   pure $ wcetAnnotate name $
     -- `# fn <name>`, never `# <name>`: a hosted backend runs the unit through
     -- the C preprocessor, which reads `# line ...`, `# error ...`, `# define
@@ -700,7 +704,7 @@ compileFn prog name (params, body0) = do
 
 -- Private slot promotion: a register is the slot's storage for the entire
 -- function, including branches and scratch-slot reuse. No liveness guesses
--- or stale cache copies. Calls preserve s1..s5 on all three 64-bit backends.
+-- or stale cache copies. Calls preserve s1..s5 on RV32 and the 64-bit backends.
 -- Deep/computed frames and ARC/spec loops stay on the existing slot path.
 slotAccess :: Target -> String -> Maybe (String, String, Int)
 slotAccess t l = case words l of
@@ -844,6 +848,64 @@ normIn ps body0 = go M.empty body0
         | not (occurs x th), not (occurs x el) -> rw (CLet x a (rw (CIf c th el)))
       e -> e
 
+-- Manual Builtin only: a private address used for one volatile access and
+-- immediately released has no observable identity. Keep the base/offset
+-- evaluation order, access checks and result representation, but avoid the
+-- temporary box. No alias, intervening effect, shadowed primitive, retained
+-- address or effectful write argument is accepted by this deliberately small
+-- pattern. The release still yields Unit when its result is used.
+indexedMemory :: S.Set String -> S.Set String -> Core -> Core
+indexedMemory globals initial body = go initial body
+  where
+    -- One occurrence ledger for the function, not a scan of the remaining
+    -- let chain per candidate. Reused/shadowed names conservatively decline.
+    uses = M.fromListWith (+) [(n, 1 :: Int) | n <- vars body []]
+    vars e acc = case e of
+      CVar n -> n : acc
+      CApp a b -> vars a (vars b acc)
+      CLet _ a b -> vars a (vars b acc)
+      CIf c t f -> vars c (vars t (vars f acc))
+      CLam _ b -> vars b acc
+      CMk _ _ fs -> foldr vars acc fs
+      CTagEq _ _ x -> vars x acc
+      CProj _ x -> vars x acc
+      _ -> acc
+    primitive bound h = S.notMember h bound && S.notMember h globals
+    call h = foldl CApp (CVar h)
+    access h = lookup h [("Mem." ++ op ++ width, "$mem." ++ op ++ width ++ "at")
+                        | op <- ["read", "write"], width <- ["8", "16", "32", "Word"]]
+    release bound addr e = case e of
+      CLet r a rest | spineOf a == (CVar "Rc.release", [CVar addr]),
+                      primitive bound "Rc.release", r /= addr ->
+        Just (CLet r (CMk 0 0 []) rest)
+      _ | spineOf e == (CVar "Rc.release", [CVar addr]), primitive bound "Rc.release" -> Just (CMk 0 0 [])
+      _ -> Nothing
+    pureArg bound (CVar n) = S.member n bound
+    pureArg _ (CInt _) = True
+    pureArg _ _ = False
+    fuse bound e = case e of
+      CLet addr a (CLet v mem rest)
+        | (CVar "Addr.add", [base, offset]) <- spineOf a,
+          primitive bound "Addr.add", addr /= v,
+          M.findWithDefault 0 addr uses == 2,
+          (CVar h, args) <- spineOf mem, primitive (S.insert addr bound) h,
+          Just fused <- access h,
+          CVar p : values <- args, p == addr,
+          (null values && "Mem.read" `isPrefixOf` h)
+            || (length values == 1 && "Mem.write" `isPrefixOf` h && all (pureArg bound) values),
+          Just tail' <- release (S.insert v (S.insert addr bound)) addr rest ->
+            CLet v (call fused (base : offset : values)) tail'
+      _ -> e
+    go bound e = fuse bound $ case e of
+      CLet x a b -> CLet x (go bound a) (go (S.insert x bound) b)
+      CApp a b -> CApp (go bound a) (go bound b)
+      CIf c t f -> CIf (go bound c) (go bound t) (go bound f)
+      CLam ps b -> CLam ps (go (S.union bound (S.fromList ps)) b)
+      CMk t v fs -> CMk t v (map (go bound) fs)
+      CTagEq t v x -> CTagEq t v (go bound x)
+      CProj k x -> CProj k (go bound x)
+      _ -> e
+
 -- slot k lives below the saved ra/s0 pair: -(3W + W*k)(s0)
 slotRef :: Target -> Int -> String
 slotRef t k = show (slotOff t k) ++ "(s0)"
@@ -934,6 +996,8 @@ primArities =
                "log", "log2", "exp", "sin", "cos"] ]
   ++ [ ("F" ++ w ++ ".pow", 2) | w <- ["64", "32"] ]
   ++ [("F64.ofF32", 1), ("F32.ofF64", 1)]
+  ++ [("$mem." ++ op ++ width ++ "at", if op == "read" then 2 else 3)
+       | op <- ["read", "write"], width <- ["8", "16", "32", "Word"]]
 
 -- the full application spine: (head expr, args left-to-right)
 spineOf :: Core -> (Core, [Core])
@@ -977,8 +1041,8 @@ data Inl
   | Cond [String] -- leaves t0 = 0/1
   | GuardedCond (String -> [String]) [String]
 
-inlineTable :: M.Map String Inl
-inlineTable =
+inlineTable :: Target -> M.Map String Inl
+inlineTable tgt =
   M.fromList $
     [ -- Word: bare bits
       ("$arc.wordadd", Plain ["    add a0, a0, a1"]),
@@ -989,7 +1053,7 @@ inlineTable =
       ("$arc.wordnot", Plain ["    not a0, a0"]),
       ("$arc.wordfromInt", Plain ["    srai a0, a0, 1"]),
       ("$arc.wordtoInt", Plain (tag "a0")),
-      ("$arc.wordbits", Plain ["    li a0, 129"]), -- TAG(64)
+      ("$arc.wordbits", Plain ["    li a0, " ++ show (2 * bits + 1)]),
       ("$arc.wordshl", Guarded shiftOk ["    sll a0, a0, t1"]),
       ("$arc.wordshr", Guarded shiftOk ["    srl a0, a0, t1"]),
       ("$arc.wordbitSet", Guarded shiftOk ["    li t0, 1", "    sll t0, t0, t1", "    or a0, a0, t0"]),
@@ -1005,11 +1069,11 @@ inlineTable =
       ("$arc.rawEq", Cond ["    xor t0, a0, a1", "    seqz t0, t0"]),
       ("$arc.rawNe", Cond ["    xor t0, a0, a1", "    snez t0, t0"]),
       -- Mem: aligned accesses; 8/16-bit values are Ints, wider are Words
-      ("$arc.memreadWord", Guarded (alignedTo 7) ["    ld a0, 0(a0)"]),
-      ("$arc.memread32", Guarded (alignedTo 3) ["    lwu a0, 0(a0)"]),
+      ("$arc.memreadWord", Guarded (alignedTo (tgtW tgt - 1)) ["    " ++ tgtLd tgt ++ " a0, 0(a0)"]),
+      ("$arc.memread32", Guarded (alignedTo 3) ["    " ++ (if bits == 64 then "lwu" else "lw") ++ " a0, 0(a0)"]),
       ("$arc.memread16", Guarded (alignedTo 1) ("    lhu a0, 0(a0)" : tag "a0")),
       ("$arc.memread8", Plain ("    lbu a0, 0(a0)" : tag "a0")),
-      ("$arc.memwriteWord", Guarded (alignedTo 7) ["    sd a1, 0(a0)", unit]),
+      ("$arc.memwriteWord", Guarded (alignedTo (tgtW tgt - 1)) ["    " ++ tgtSt tgt ++ " a1, 0(a0)", unit]),
       ("$arc.memwrite32", Guarded (alignedTo 3) ["    sw a1, 0(a0)", unit]),
       ("$arc.memwrite16", Guarded (alignedTo 1) ["    srai t0, a1, 1", "    sh t0, 0(a0)", unit]),
       ("$arc.memwrite8", Plain ["    srai t0, a1, 1", "    sb t0, 0(a0)", unit]),
@@ -1017,19 +1081,19 @@ inlineTable =
       -- Int: tagged (n << 1) | 1.  + - * / TRAP on overflow (docs/
       -- 2026-10-12-INT-OVERFLOW.md): the guard detects it and takes the
       -- slow path, the C primitive, which panics naming the operands.
-      -- +: (a0 - 1) + a1 is exactly 2(x+y)+1, so its 64-bit signed
-      -- overflow is exactly the 63-bit overflow of x+y.
+      -- +: (a0 - 1) + a1 is exactly 2(x+y)+1, so target-word signed
+      -- overflow is exactly the tagged-payload overflow of x+y.
       ("$arc.add", Guarded (\slow -> [ "    addi t1, a0, -1", "    add t0, t1, a1", "    xor t1, t1, t0", "    xor t0, t0, a1",
-                                      "    and t1, t1, t0", "    srai t1, t1, 63", "    bnez t1, " ++ slow ])
+                                      "    and t1, t1, t0", "    srai t1, t1, " ++ signShift, "    bnez t1, " ++ slow ])
                            ["    addi t0, a0, -1", "    add a0, t0, a1"]),
       -- -: a0 - a1 is exactly 2(x-y); same argument
       ("$arc.sub", Guarded (\slow -> [ "    sub t0, a0, a1", "    xor t1, a0, a1", "    xor t0, t0, a0",
-                                      "    and t1, t1, t0", "    srai t1, t1, 63", "    bnez t1, " ++ slow ])
+                                      "    and t1, t1, t0", "    srai t1, t1, " ++ signShift, "    bnez t1, " ++ slow ])
                            ["    sub t0, a0, a1", "    addi a0, t0, 1"]),
-      -- *: inline only when both operands fit 31 bits (the product then
-      -- fits 61); anything wider takes the exact check in C
-      ("$arc.mul", Guarded (\slow -> [ "    srai t0, a0, 1", "    slli t1, t0, 33", "    srai t1, t1, 33", "    bne t1, t0, " ++ slow,
-                                      "    srai t0, a1, 1", "    slli t1, t0, 33", "    srai t1, t1, 33", "    bne t1, t0, " ++ slow ])
+      -- *: inline when operands fit 15/31 bits (product fits 29/61);
+      -- anything wider takes the exact check in C.
+      ("$arc.mul", Guarded (\slow -> [ "    srai t0, a0, 1", "    slli t1, t0, " ++ mulShift, "    srai t1, t1, " ++ mulShift, "    bne t1, t0, " ++ slow,
+                                      "    srai t0, a1, 1", "    slli t1, t0, " ++ mulShift, "    srai t1, t1, " ++ mulShift, "    bne t1, t0, " ++ slow ])
                            ["    srai t0, a0, 1", "    srai t1, a1, 1", "    mul t0, t0, t1", "    slli t0, t0, 1", "    ori a0, t0, 1"]),
       -- /: a zero divisor and -1 (the most negative Int / -1 overflows) go to C
       ("$arc.div", Guarded (\slow -> ["    srai t1, a1, 1", "    beqz t1, " ++ slow, "    addi t0, t1, 1", "    beqz t0, " ++ slow])
@@ -1044,15 +1108,15 @@ inlineTable =
       -- base-profile primitives with an inline fast path; the slow path is
       -- the primitive's direct entry (FPR_FN _callN), which panics by name.
       -- Each is exact against runtime.c / bits.c: str_t is {tid, var, len,
-      -- bytes} (len at 8, bytes at 16), T_STR = 9000; band/bor/bxor on two
+      -- bytes} (len at 8, bytes at 8+W), T_STR = 9000; band/bor/bxor on two
       -- tagged words then `ori 1` equal TAG(UNTAG a op UNTAG b) bit for bit.
       ("charAt", Guarded isStr
                    [ "    srai t1, a1, 1", -- k (0-based)
-                     "    ld t0, 8(a0)" ]
+                     "    " ++ tgtLd tgt ++ " t0, 8(a0)" ]
                  `andThen` \slow ->
                    [ "    bgeu t1, t0, " ++ slow, -- k < 0 or k >= len (unsigned)
-                     "    add t0, a0, t1", "    lbu a0, 16(t0)" ] ++ tag "a0"),
-      ("strlen", Guarded isStr ("    ld a0, 8(a0)" : tag "a0")),
+                     "    add t0, a0, t1", "    lbu a0, " ++ show (8 + tgtW tgt) ++ "(t0)" ] ++ tag "a0"),
+      ("strlen", Guarded isStr (("    " ++ tgtLd tgt ++ " a0, 8(a0)") : tag "a0")),
       ("band", Plain ["    and a0, a0, a1", "    ori a0, a0, 1"]),
       ("bor", Plain ["    or a0, a0, a1", "    ori a0, a0, 1"]),
       ("bxor", Plain ["    xor a0, a0, a1", "    ori a0, a0, 1"]),
@@ -1069,6 +1133,9 @@ inlineTable =
       ("F64.!=", floatCmp "feq" "ft0" "ft1" True)
     ]
   where
+    bits = tgtW tgt * 8
+    signShift = show (bits - 1)
+    mulShift = show (bits `div` 2 + 1)
     -- Raw IEEE bits remain in the integer ABI and frame slots. Only the
     -- operation uses caller-saved FP temporaries; nothing lives there over
     -- a call or safepoint. Separate operations never fuse into an FMA.
@@ -1078,9 +1145,9 @@ inlineTable =
                                      ++ ["    xori t0, t0, 1" | invert])
     tag r = ["    slli " ++ r ++ ", " ++ r ++ ", 1", "    ori " ++ r ++ ", " ++ r ++ ", 1"]
     unit = "    la a0, fpr_unit"
-    -- the untagged shift count lands in t1; anything outside 0..63
+    -- the untagged shift count lands in t1; anything outside XLEN
     -- (negatives included, as unsigned) takes the slow path
-    shiftOk slow = ["    srai t1, a1, 1", "    li t0, 64", "    bgeu t1, t0, " ++ slow]
+    shiftOk slow = ["    srai t1, a1, 1", "    li t0, " ++ show bits, "    bgeu t1, t0, " ++ slow]
     alignedTo m slow = ["    andi t0, a0, " ++ show (m :: Int), "    bnez t0, " ++ slow]
     bothInts slow = ["    and t0, a0, a1", "    andi t0, t0, 1", "    beqz t0, " ++ slow]
     -- a0 is a String (not a tagged Int, tid T_STR)
@@ -1108,8 +1175,9 @@ inlineKey h = M.findWithDefault h h baseOps
 -- the expansion as a value in a0 (the adapter's result)
 inlineArc :: Target -> String -> Maybe (String -> G [String])
 inlineArc tgt h0
-  | not (tgtFloatInline tgt), "F64." `isPrefixOf` h0 = Nothing
-  | otherwise = emit <$> M.lookup (inlineKey h0) inlineTable
+  | not (tgtScalarFast tgt) = Nothing
+  | not (tgtFloatInline tgt) || tgtW tgt /= 8, "F64." `isPrefixOf` h0 = Nothing
+  | otherwise = emit <$> M.lookup (inlineKey h0) (inlineTable tgt)
   where
     emit = \case
       Plain ls -> const (pure ls)
@@ -1131,8 +1199,9 @@ inlineArc tgt h0
 -- materializes the Bool (the slow path reads the adapter's answer)
 inlineCond :: Target -> String -> Maybe (String -> G [String])
 inlineCond tgt h
+  | not (tgtScalarFast tgt) = Nothing
   | not (tgtFloatInline tgt) || tgtW tgt /= 8, "F64." `isPrefixOf` h = Nothing
-  | otherwise = case M.lookup (inlineKey h) inlineTable of
+  | otherwise = case M.lookup (inlineKey h) (inlineTable tgt) of
     Just (Cond c) -> Just (const (pure c))
     Just (GuardedCond checks c) -> Just $ \t -> do
       ls <- freshL "slow"
@@ -1180,8 +1249,7 @@ genT tgt spec prog ext = go
     -- the call.  Never a tail jump -- the value lands in a0 and the
     -- enclosing epilogue returns it, as for any base expression.
     go env nxt _pos e
-      | w == 8,
-        (CVar h, args@(_ : _)) <- spineOf e,
+      | (CVar h, args@(_ : _)) <- spineOf e,
         Just target <- known env h (length args),
         Just emit <- inlineArc tgt h = do
           argLines <- stageArgs env nxt args
@@ -1218,8 +1286,8 @@ genT tgt spec prog ext = go
         not (M.member h env), not (M.member h prog), not (M.member h ext),
         Just a <- M.lookup h (tgtHal tgt), a == length args, a <= 6 =
           let target = "fpr_g_" ++ mangle h ++ "_call" ++ show a
-           in case (w == 8, inlineArc tgt h) of
-                (True, Just emit) -> do
+           in case inlineArc tgt h of
+                Just emit -> do
                   argLines <- stageArgs env nxt args
                   body <- emit target
                   pure (argLines ++ argLoads env nxt args ++ body)
@@ -1236,7 +1304,7 @@ genT tgt spec prog ext = go
     -- a comparison, a nested if, a nullary Bool or a tag test each
     -- branch directly and no Bool object is built
     go env nxt pos (CIf c t e)
-      | w == 8 = do
+      | tgtScalarFast tgt = do
           lc <- jumpIf False env nxt c
           lt <- go env nxt pos t
           le <- go env nxt pos e
@@ -1311,7 +1379,7 @@ genT tgt spec prog ext = go
       | (CVar h, args@(_ : _)) <- spineOf e,
         h /= "f64frombits",
         Just target <- known env h (length args),
-        not (w == 8 && isJust (inlineArc tgt h)) =
+        not (isJust (inlineArc tgt h)) =
           knownCallThen env nxt pos target args rest
       | CMk tid var fs@(_ : _) <- e = do
           pre <- concat <$> mapM (\f -> (++ push tgt) <$> go env nxt NonTail f) (init fs)

@@ -9,6 +9,11 @@ from run_tangnano20k_base import Device,frame,parse,MAX_PAYLOAD
 from check_tangnano20k_isa import check
 report='ELF64 little endian\nFlags: 0x0\nTag_RISCV_arch: "rv64i2p1_m2p0_zicsr2p0_zifencei2p0_zmmul1p0"'
 check(report)
+compressed_report=report.replace('0x0','0x1').replace('_m2p0','_m2p0_c2p0')
+check(compressed_report, compressed=True)
+try:check(compressed_report)
+except ValueError:pass
+else:raise AssertionError('compressed image accepted without explicit target selection')
 for invalid in [report.replace('0x0','0x1'), report.replace('_m2p0','_m2p0_a2p1'), report.replace('_m2p0','_m2p0_f2p2_d2p2'), report.replace('ELF64','ELF32')]:
     try:check(invalid)
     except ValueError:pass

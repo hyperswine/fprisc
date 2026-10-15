@@ -1,0 +1,13 @@
+profile base.
+check ok = case ok of True -> Unit | False -> error "local monotonic clock failed".
+main =
+  before = Sys.mtime Unit;
+  _ = Sys.sleepUs 100;
+  after = Sys.mtime Unit;
+  _ = check (after >= before + 1000);
+  _ = print "RV64 CLOCK HOLDS";
+  _ = check (F64.toInt (F64.sqrt 81.0) == 9);
+  _ = print "RV64 SOFTFLOAT HOLDS";
+  case receiveFromNow 0 0 of
+    Err message -> print message
+    | Ok _ -> error "selective receive unexpectedly available".

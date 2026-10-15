@@ -29,7 +29,8 @@ int main(int argc,char **argv) {
     if(iteration%3==0){fpr_free(p);slots[i]=0;lengths[i]=0;}
   }
   for(unsigned i=0;i<96;i++)fpr_free(slots[i]);
-  V large=fpr_alloc(sizeof arena-128); fpr_free(large); /* coalesced */
+  /* The authenticated-payload bitmap reserves less than 1% of the arena. */
+  V large=fpr_alloc(sizeof arena*99/100-128); fpr_free(large); /* coalesced */
   for(int i=0;i<20000;i++) {
     V child=fpr_alloc(16); ((hdr_t *)child)->tid=100;
     ((V *)(child+8))[0]=TAG(-5);
@@ -41,6 +42,6 @@ int main(int argc,char **argv) {
     assert(((V *)(child+8))[0]==TAG(-5));
     fpr_builtin_release(alias); /* both edges release; child freed once */
   }
-  large=fpr_alloc(sizeof arena-128);fpr_free(large);
+  large=fpr_alloc(sizeof arena*99/100-128);fpr_free(large);
   puts("BUILTIN HEAP HOLDS");
 }

@@ -49,18 +49,31 @@ def references():
         'sort': (f'SORT n=8192 hash={digest(sorted(values))}', 32768),
         'matrix': (f'MATRIX n=64 hash={digest(matrix)} sum={sum(matrix)}', 24576),
         'tree': (f'TREE nodes=447 rounds=8 sum={447*448//2}', 447*80),
-        'tree_near': (f'TREE nodes=540 rounds=8 sum={540*541//2}', 540*80),
-        'tree_limit': ('Builtin panic: Builtin: out of memory', 550*80),
+        'tree_near': (f'TREE nodes=500 rounds=8 sum={500*501//2}', 500*80),
+        'tree_limit': ('Builtin panic: Builtin: out of memory', 600*80),
         'compute': (f'COMPUTE iterations=1000000 checksum={checksum}', 0),
     }
 
 
-def compile_program(name, directory):
+def compile_program(name, directory, ram='bram', compressed=False, legacy=False, baseline_heap=None):
     image = directory / name / 'program.elf'
+    environment = dict(os.environ)
+    environment.update(FPR_NO_RV32_FAST=str(int(legacy)),
+                       FPR_NO_INDEXED_MEMORY=str(int(legacy)))
+    extra = []
+    if baseline_heap:
+        image.parent.mkdir(parents=True, exist_ok=True)
+        old_heap = image.parent / 'baseline-heap.c'
+        old_heap.write_text(subprocess.check_output(['git', 'show', baseline_heap+':machine/builtin/heap.c'], cwd=ROOT, text=True))
+        runtime = ['machine/builtin/tangnano20k/crt0.S','machine/builtin/tangnano20k/board.c',
+                   'machine/builtin/tangnano20k/machine.c',str(old_heap),'machine/builtin/unsafe.c',
+                   'runtime/runtime.c','runtime/bits.c','machine/virt/memshim.c']
+        extra = ['BUILTIN_RT='+' '.join(runtime)]
     p = subprocess.run(['make', 'bare-metal-builtin', 'BUILTIN_BOARD=tangnano20k',
+                        'BUILTIN_RAM='+ram, 'BUILTIN_RVC='+str(int(compressed)), *extra,
                         f'PROG=tests/tangnano20k_stress/{name}.fpr',
                         f'BUILD={image.parent}', f'IMAGE={image}'], cwd=ROOT,
-                       capture_output=True, text=True, timeout=180)
+                       capture_output=True, text=True, timeout=180, env=environment)
     if p.returncode:
         raise RuntimeError(p.stdout+p.stderr)
     symbols = subprocess.check_output(['riscv64-unknown-elf-nm', str(image)], text=True)
@@ -107,6 +120,10 @@ def main():
     parser.add_argument('--freq-mhz', type=float, default=96)
     parser.add_argument('--timeout', type=float, default=180)
     parser.add_argument('--repeat', type=int, default=1)
+    parser.add_argument('--ram', choices=['bram','sdram'], default='bram')
+    parser.add_argument('--compressed', action='store_true', help='requires a compressed-capable FPGA image')
+    parser.add_argument('--legacy-codegen', action='store_true', help='same compiler with RV32 fast paths and indexed fusion disabled')
+    parser.add_argument('--baseline-heap-ref', help='compare against the C heap at this local git revision')
     parser.add_argument('--only', choices=['sieve','sort','matrix','tree','tree_near','tree_limit','compute'])
     parser.add_argument('--report', type=Path, default=ROOT / 'build/tangnano20k-stress/results.json')
     args = parser.parse_args()
@@ -114,9 +131,16 @@ def main():
         parser.error('frequency, timeout and repeat must be positive')
     refs = references()
     names = [args.only] if args.only else list(refs)
+    if args.ram == 'sdram' and not args.only:
+        # The original BRAM exhaustion sizes are deliberately not OOM in 8 MiB.
+        names = [name for name in names if name not in ('tree_near','tree_limit')]
+    if args.ram == 'sdram' and args.only == 'tree_limit':
+        parser.error('tree_limit is a 64 KiB BRAM exhaustion fixture')
     programs = {}
     for name in names:
-        image, heap = compile_program(name, ROOT / 'build/tangnano20k-stress')
+        mode = args.ram + ('-c' if args.compressed else '-im') + ('-legacy' if args.legacy_codegen else '-fast')
+        image, heap = compile_program(name, ROOT / 'build/tangnano20k-stress' / mode,
+                                      args.ram, args.compressed, args.legacy_codegen, args.baseline_heap_ref)
         programs[name] = (image, heap)
         print(f'Built {name}: image {len(image)} B; heap {heap} B; workload {refs[name][1]} B', flush=True)
     baud = round(args.freq_mhz*1e6/868)
@@ -144,6 +168,8 @@ def main():
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps({'finished_at':datetime.now(timezone.utc).isoformat(),
                                           'frequency_mhz':args.freq_mhz, 'complete':complete,
+                                          'ram':args.ram, 'compressed':args.compressed,
+                                          'legacy_codegen':args.legacy_codegen, 'baseline_heap_ref':args.baseline_heap_ref,
                                           'requested_runs':len(names)*args.repeat, 'passed_runs':rows}, indent=2)+'\n')
     print(f'PASS: {len(rows)} physical FP-RISC workload runs at {args.freq_mhz:g} MHz')
 

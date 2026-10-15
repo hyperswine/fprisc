@@ -39,14 +39,14 @@ Host references matched:
 
 ## Near-full heap and explicit exhaustion
 
-`tree_near.fpr` raises the live tree to 540 nodes: **43,200 / 43,760 bytes,
+The then-current `tree_near.fpr` raised the live tree to 540 nodes: **43,200 / 43,760 bytes,
 98.72% of its available heap**, leaving 560 bytes. Three hardware runs passed;
 each run builds and releases the tree eight times and takes about 1.032 seconds.
 The tree sum is 146,070, the peak live-allocation count is exactly 540, and every
 round returns to the initial allocation count. This exercised 12,960 node
 allocations and releases across the three runs at that occupancy.
 
-`tree_limit.fpr` requests 550 nodes, needing 44,000 bytes of node blocks against
+The then-current `tree_limit.fpr` requested 550 nodes, needing 44,000 bytes of node blocks against
 the same 43,760-byte heap. The board returned the expected result:
 
 ```text
@@ -59,6 +59,36 @@ DONE
 The ordinary `builtin_tangnano20k.fpr` image was then loaded and passed again.
 The exhaustion test is an expected refusal, not a successful completion of the
 oversized tree. No new FPGA build or power cycle was needed for recovery.
+
+### Current BRAM fixture calibration (2026-10-16)
+
+The historical 540/550-node thresholds above no longer serve both current
+IM and IMC builds. Compiler code size, the heap index's BSS and the live-pointer
+bitmap change usable BRAM capacity. The current fixtures use **500 nodes**
+for near-capacity success (sum 125,250) and **600 nodes** for explicit OOM.
+Each RV32 Node still occupies 80 whole-block bytes: 20 requested payload
+bytes round to 32, plus the preserved 48-byte allocator prefix.
+
+| Current linked mode | Heap arena | Bitmap | Usable whole-block bytes | 500-node margin | 600-node excess |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| RV32IM | 41,520 B | 336 B | 41,184 B | 1,184 B | 6,816 B |
+| RV32IMC | 44,336 B | 352 B | 43,984 B | 3,984 B | 4,016 B |
+
+The 500-node tree uses 40,000 bytes, about 97.1% of the IM build's usable
+span. Its extra headroom makes the check less sensitive to small code changes;
+compression naturally leaves more space. The 600-node request needs 48,000
+bytes and exceeds either current span by several KiB. Source counts, printed
+checksums and the independent Python references are updated together.
+
+`python3 tests/check_tangnano20k_bram.py` links the real board IM/IMC images,
+derives their actual heap bounds and bitmap reservation, then executes their
+generated FP-RISC on a QEMU UART/finisher adapter with exactly those heap bounds
+and the 8 KiB stack reservation. Test code/BSS resides outside the BRAM window
+so adapter size cannot change admission. All eight 500-node build/sum/release
+rounds recover the allocation count in both modes; both 600-node programs
+return the expected allocator failure. The gate also requires at least 512
+bytes of fit margin and 1,024 bytes of excess. These are current executable
+resource checks, not new physical FPGA timings or an updated 98.72% claim.
 
 ## Ownership and performance boundaries
 

@@ -96,8 +96,12 @@ requires explicit lifetime management.
 `fpr_free`, plus `fpr_builtin_retain` / `fpr_builtin_release`. The caller supplies
 a RAM interval with `fpr_builtin_heap_init(start,end)`. Blocks split and coalesce;
 there are no fixed allocation-slot or reference-table capacities. The available
-RAM is the limit. Allocation is first-fit, validation searches the block list,
-and operations are single-threaded. Interrupt/concurrent access requires external
+RAM is the limit. The C heap now indexes free blocks by size and validates an
+exact live payload pointer in constant time using a side bitmap. The bitmap
+reserves one bit per 16 bytes of arena, rounded to 16 bytes. A fragmented final
+size class may require a free-block scan; live allocations are never scanned.
+See [the allocator measurements](2026-10-16-BUILTIN-HEAP.md). Operations remain
+single-threaded. Interrupt/concurrent access requires external
 serialization. The board reserves a 64 KiB main stack, a 64 KiB interrupt stack, and a 4 KiB
 fatal-trap stack. Manual RC reclamation recurses
 through the graph; automatic ARC uses an iterative worklist within dead blocks.
@@ -293,9 +297,11 @@ by construction and are simply not emitted.  A raw unit may touch CSRs
 and interrupt control: this is where drivers live.
 
 The first raw unit is the allocator itself.  `machine/builtin/heap.fpr` is
-`heap.c` written over `Word`/`Addr` and raw memory: the same block
+the original first-fit C allocator written over `Word`/`Addr` and raw memory: the same block
 header, the same 16-byte meta pair before every payload, first fit,
 coalescing, the ARC release worklist threaded through the dead blocks.
+The C heap's size-class/bitmap optimization from 2026-10-16 has not yet been
+ported to this FP-RISC implementation; the exported runtime ABI remains the same.
 Its state (head, low, high) lives at `_heap_state`, a 64-byte cell the
 linker script provides, reached through `Addr.symbol`.  Compiled with
 `--raw --lib`, its exports are the C symbols `heap.c` defined --

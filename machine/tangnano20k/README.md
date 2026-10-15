@@ -21,14 +21,17 @@ FP-RISC semantics. The board C code supplies allocation, UART and ABI mechanisms
 | Whole-file read, exists, replace, append | Rooted host file device over UART |
 | `Sys.env` | Explicit `--env NAME=value` entries; no host environment inheritance |
 | `Sys.timeUs` | Host monotonic microseconds |
+| `Sys.mtime` | Local cycle counter converted to the shared 10 MHz tick contract |
 | `Sys.readLine` | Explicit `--input` lines, then EOF |
 | `Sys.args` | Empty list in this initial host |
 | `Sys.sleepUs` | Local cycle-counter wait |
 | Stream files, directory APIs, watch-open | `Err` with a named unavailable capability |
 | Actors, IRQ routing, polling/watch operations without a Result error channel | Named panic / failing exit |
+| Selective nonblocking `receiveFromNow` | Named unavailable `Err`; no actor or mailbox is fabricated |
 | Unlisted primitives | Link failure; never automatic success stubs |
 
-The allocator is the existing single-threaded coalescing heap. Base's temporary
+The allocator is the single-threaded indexed coalescing C heap described in
+[the heap record](../../docs/2026-10-16-BUILTIN-HEAP.md). Base's temporary
 VM allocations are not automatically reclaimed. The documented desktop WASM
 suite peaks around 100 MB and does not fit this board. Full Base scheduling,
 garbage collection and the full WASM suite are not claimed.
@@ -50,8 +53,15 @@ python3 tools/run_tangnano20k_base.py build/tangnano20k-base/base.bin \
 `FPR_CPU_MHZ` selects the runtime's cycle conversion; it must match the image.
 `FPR_SOFTFLOAT_ROOT` may point at an existing pinned SoftFloat checkout.
 The build disables native F64 instruction emission using `FPR_NO_F64_INLINE=1`
-and compiles **every** C/software-float object for `rv64im`, `lp64`, `medany`.
+and defaults to `rv64im`, `lp64`, `medany`, including the software-float library.
 The installed toolchain's generic hard-float libraries are not linked.
+
+`FPR_RVC=1 machine/tangnano20k/build.sh ...` explicitly selects compressed
+RV64IMC code for a matching RV64 FPGA image with the C decoder enabled.
+The default remains RV64IM. The linked ISA check accepts C only for this
+explicit option and continues to reject A/F/D and incompatible ABI libraries.
+`FPR_CPU_MHZ` must still match the image. Compression reduces code size;
+its effect on board execution time requires measurement.
 
 SoftFloat is pinned to Berkeley SoftFloat revision
 `a0c6494cdc11865811dec815d5c0049fba9d82a8`, RISCV specialization, rounding to
@@ -97,6 +107,7 @@ or reloading SRAM; arbitrary payload bytes cannot also act as reset commands.
 
 ```bash
 python3 tests/check_tangnano20k_virtual.py
+python3 tests/check_tangnano20k_clock.py # RV64 IM/IMC RTL clock, soft-float and selective-receive refusal
 # Optional host software-float check, from the same pinned source:
 make -C /path/to/softfloat/build/Linux-x86_64-GCC -j4 SPECIALIZE_TYPE=RISCV
 clang -O1 -fno-builtin -fsanitize=undefined,address \

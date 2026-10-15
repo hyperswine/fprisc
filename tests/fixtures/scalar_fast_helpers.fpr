@@ -1,0 +1,2 @@
+sum n acc = case n == 0 of True -> acc | False -> sum (n - 1) (acc + n).
+get p i = a = Addr.add p i; v = Mem.read8 a; _ = Rc.release a; v.

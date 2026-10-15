@@ -61,6 +61,24 @@ SMALL(8,uint8_t); SMALL(16,uint16_t);
  static V write##n(V a,V v){fpr_machine_write##n(aligned(a,sizeof(t)),(t)W(v));return (V)&fpr_unit;} \
  EXPORT(Mem_x2eread##n,read##n,1); EXPORT(Mem_x2ewrite##n,write##n,2)
 LARGE(32,uint32_t); LARGE(Word,uw);
+/* Private compiler fusion entries. These keep the same unboxing/alignment,
+ * volatile HAL operation and result representation as Addr.add + Mem.*,
+ * without allocating an address that is immediately Rc.release'd. */
+static uw indexed(V a,V offset,uw alignment) {
+  uw p=A(a)+(uw)UNTAG(offset);
+  if(p%alignment)fpr_cpanic("Builtin: unaligned access");
+  return p;
+}
+#define INDEX_SMALL(n,t) \
+ V fpr_prim_fn__x24mem_x2eread##n##at(V a,V off){return TAG(fpr_machine_read##n(indexed(a,off,sizeof(t))));} \
+ V fpr_prim_fn__x24mem_x2ewrite##n##at(V a,V off,V v){fpr_machine_write##n(indexed(a,off,sizeof(t)),(t)UNTAG(v));return (V)&fpr_unit;}
+INDEX_SMALL(8,uint8_t)
+INDEX_SMALL(16,uint16_t)
+#define INDEX_LARGE(n,t) \
+ V fpr_prim_fn__x24mem_x2eread##n##at(V a,V off){return box(fpr_machine_read##n(indexed(a,off,sizeof(t))),2);} \
+ V fpr_prim_fn__x24mem_x2ewrite##n##at(V a,V off,V v){uw p=indexed(a,off,sizeof(t));uw value=W(v);fpr_machine_write##n(p,(t)value);return (V)&fpr_unit;}
+INDEX_LARGE(32,uint32_t)
+INDEX_LARGE(Word,uw)
 static uw size(V n){sw v=UNTAG(n);if(v<0)fpr_cpanic("Builtin: negative size");return (uw)v;}
 static V alloc(V n){uw k=size(n);return box(k?fpr_alloc(k):0,3);}
 static V resize(V a,V n){return box(fpr_realloc(A(a),size(n)),3);}

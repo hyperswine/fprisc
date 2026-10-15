@@ -230,9 +230,10 @@ $(BUILD)/heap.s: fprc $(MACHINE)/builtin/heap.fpr FORCE
 	@mkdir -p $(BUILD)
 	./fprc --system=bare-metal --profile=builtin --arc --raw --lib --export=$(HEAP_EXPORTS) $(MACHINE)/builtin/heap.fpr $@
 BUILTIN_RT = $(MACHINE)/builtin/crt0.S $(MACHINE)/builtin/virt.c $(BUILTIN_HEAP) \
-             $(MACHINE)/builtin/unsafe.c $(MACHINE)/builtin/arc.c $(MACHINE)/builtin/machine.S $(MACHINE)/builtin/interrupt.S $(RUNTIME)/runtime.c $(MACHINE)/virt/memshim.c
+             $(MACHINE)/builtin/unsafe.c $(MACHINE)/builtin/arc.c $(MACHINE)/builtin/machine.S $(MACHINE)/builtin/interrupt.S $(RUNTIME)/runtime.c $(RUNTIME)/bits.c $(MACHINE)/virt/memshim.c
 BUILTIN_BOARD ?= virt
 BUILTIN_RAM ?= bram
+BUILTIN_RVC ?= 0
 BUILTIN_LINK = $(MACHINE)/builtin/link.ld
 BUILTIN_ARCHFLAGS = $(CFLAGS)
 ifeq ($(BUILTIN_BOARD),tangnano20k)
@@ -247,12 +248,25 @@ $(error unknown Tang Nano memory option BUILTIN_RAM=$(BUILTIN_RAM))
 endif
 BUILTIN_RT = $(MACHINE)/builtin/tangnano20k/crt0.S $(MACHINE)/builtin/tangnano20k/board.c \
              $(MACHINE)/builtin/tangnano20k/machine.c $(MACHINE)/builtin/heap.c \
-             $(MACHINE)/builtin/unsafe.c $(RUNTIME)/runtime.c $(MACHINE)/virt/memshim.c
-BUILTIN_ARCHFLAGS = -march=rv32im_zicsr_zifencei -mabi=ilp32 -mcmodel=medany \
+             $(MACHINE)/builtin/unsafe.c $(RUNTIME)/runtime.c $(RUNTIME)/bits.c $(MACHINE)/virt/memshim.c
+ifeq ($(BUILTIN_RAM),sdram)
+BUILTIN_CFLAGS += -DFPR_BUILTIN_HEAP_MAX_BYTES=8388608
+else
+BUILTIN_CFLAGS += -DFPR_BUILTIN_HEAP_MAX_BYTES=65536
+endif
+BUILTIN_RV32_MARCH = rv32im_zicsr_zifencei
+ifeq ($(BUILTIN_RVC),1)
+BUILTIN_RV32_MARCH = rv32imc_zicsr_zifencei
+else ifneq ($(BUILTIN_RVC),0)
+$(error BUILTIN_RVC must be 0 or 1)
+endif
+BUILTIN_ARCHFLAGS = -march=$(BUILTIN_RV32_MARCH) -mabi=ilp32 -mcmodel=medany \
                    -ffreestanding -nostdlib -nostartfiles -Os -Wall -Wextra \
                    -fno-builtin -fno-stack-protector -DFPR_SIMPLE_RISC
 BUILTIN_COMPILER_FLAGS = --target=rv32
-BUILTIN_LDFLAGS += -lgcc
+# Keep the board's soft IM library even for IMC. The toolchain's IMAC
+# multilib can otherwise declare/use atomic instructions absent here.
+BUILTIN_LDFLAGS += $(shell $(CROSS)gcc -march=rv32im -mabi=ilp32 -print-libgcc-file-name)
 else ifneq ($(BUILTIN_BOARD),virt)
 $(error unknown BUILTIN_BOARD=$(BUILTIN_BOARD))
 endif

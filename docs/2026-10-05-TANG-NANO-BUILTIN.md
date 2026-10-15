@@ -396,3 +396,59 @@ included. That actor-plane branch is now compiled only outside builtin
 keep panicking as before. With it, the QEMU reference program boots
 (`BUILTIN HOLDS`) and `tests/check_builtin.py` passes, as do the board results
 above.
+
+## Scalar, heap and compressed-code options (2026-10-16)
+
+The RV32 board compiler now enables width-correct scalar optimizations and
+eliminates private temporary address boxes around indexed memory operations.
+The manual C heap indexes free blocks and authenticates live allocation
+pointers with a side bitmap. See
+[the scalar implementation](2026-10-16-RV32-SCALAR.md) and
+[the heap implementation](2026-10-16-BUILTIN-HEAP.md) for execution checks,
+ABI boundaries and costs. The new bitmap consumes approximately 0.78% of
+the supplied heap arena. The current 500-node fit/600-node exhaustion fixtures
+are calibrated against both current IM/IMC link maps and checked in QEMU with
+the exact board heap bounds; see [the resource checkpoint](2026-10-05-TANG-NANO-STRESS.md#current-bram-fixture-calibration-2026-10-16).
+The earlier physical near-full occupancy figures remain historical.
+
+`BUILTIN_RVC=1` selects `rv32imc_zicsr_zifencei`. It requires an FPGA image
+with the compressed decoder enabled; the default `BUILTIN_RVC=0` retains
+RV32IM. Both choices retain ILP32, the boot ROM protocol, the 64 KiB image
+limit and the selected BRAM/SDRAM linker map. The board links the toolchain's
+RV32IM soft library even in compressed mode, avoiding the IMAC multilib's
+atomic-instruction requirement. The build sizes the heap index for a maximum
+64 KiB BRAM or 8 MiB SDRAM arena.
+
+```sh
+make bare-metal-builtin BUILTIN_BOARD=tangnano20k BUILTIN_RAM=sdram \
+  BUILTIN_RVC=1 PROG=tests/tangnano20k_stress/matrix.fpr \
+  BUILD=build/matrix-c IMAGE=build/matrix-c/program.elf
+```
+
+The physical stress driver accepts `--ram sdram`, `--compressed`,
+`--legacy-codegen` and `--baseline-heap-ref REF`. The latter two use the
+current compiler with its RV32 scalar/indexed-memory optimizations disabled
+and the C allocator extracted from a local Git revision; they do not revert
+language semantics such as checked Int overflow. To compare the combined
+changes on one compressed-capable FPGA image, keep that image and clock
+unchanged and run both modes:
+
+```sh
+# Set PORT and FREQ_MHZ to the actual interface and loaded image's clock.
+python3 tests/check_tangnano20k_stress.py --port "$PORT" \
+  --freq-mhz "$FREQ_MHZ" --ram sdram --compressed --only matrix \
+  --legacy-codegen --baseline-heap-ref 4bba11b \
+  --report build/tangnano20k-stress/matrix-baseline-results.json
+python3 tests/check_tangnano20k_stress.py --port "$PORT" \
+  --freq-mhz "$FREQ_MHZ" --ram sdram --compressed --only matrix \
+  --report build/tangnano20k-stress/matrix-fast-results.json
+```
+
+Use `--only tree` for the primary allocation workload. The driver puts these
+images in `build/tangnano20k-stress/sdram-c-legacy/` and `sdram-c-fast/` and
+records the options in the result JSON. SDRAM full-suite mode omits the
+original BRAM-specific near-full/exhaustion probes; the 600-node exhaustion
+fixture is explicitly refused as an SDRAM test. Every timed run must still
+match its independent output reference and runtime exit. These options and
+prebuilt images establish build compatibility; they do not themselves
+establish a physical speedup.

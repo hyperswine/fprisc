@@ -1,0 +1,59 @@
+profile builtin.
+Helpers = use "./fixtures/scalar_fast_helpers".
+check ok = case ok of True -> Unit | False -> error "scalar fast-path check failed".
+sum n acc = case n == 0 of True -> acc | False -> sum (n - 1) (acc + n).
+hot a b c d e = a*b + c*d + e*a + b*c + d*e + a*c + b*d + c*e + d*a + e*b + a*b + c*d + e*a + b*c + d*e + a*c + b*d + c*e + d*a + e*b.
+apply f x y = f x y.
+plus x y = x + y.
+effect = _ = print "CAF ONCE"; 7.
+get p i = a = Addr.add p i; v = Mem.read8 a; _ = Rc.release a; v.
+put p i v = a = Addr.add p i; _ = Mem.write8 a v; Rc.release a.
+get16 p i = a = Addr.add p i; v = Mem.read16 a; _ = Rc.release a; v.
+put16 p i v = a = Addr.add p i; _ = Mem.write16 a v; Rc.release a.
+get32 p i = a = Addr.add p i; v = Mem.read32 a; _ = Rc.release a; v.
+put32 p i v = a = Addr.add p i; _ = Mem.write32 a v; Rc.release a.
+getWord p i = a = Addr.add p i; v = Mem.readWord a; _ = Rc.release a; v.
+putWord p i v = a = Addr.add p i; _ = Mem.writeWord a v; Rc.release a.
+escaped p i = Addr.add p i.
+writeEffect p = a = Addr.add p 3; _ = Mem.write8 a (effect + 1); Rc.release a.
+loop p n = case n == 0 of True -> Unit | False ->
+  _ = put p 0 171; _ = check (get p 0 == 171); loop p (n - 1).
+main =
+  _ = check (sum 1000 0 == 500500);
+  _ = check (Helpers.sum 20 0 == 210);
+  _ = check (hot -7 -9 13 -3 6 == -344);
+  _ = check (apply plus 13 17 == 30);
+  _ = check (intMax Unit + 0 == intMax Unit);
+  _ = check (intMin Unit - 0 == intMin Unit);
+  _ = check (intMax Unit + intMin Unit == -1);
+  _ = check (16384 * 16384 == 268435456);
+  _ = check (intMin Unit / 1 == intMin Unit);
+  x = effect; _ = check (x + x == 14);
+  _ = check (strlen "abc" == 3);
+  _ = check (charAt "abc" 2 == 99);
+  text = strcat "ab" "c";
+  _ = check (strlen text == 3); _ = check (charAt text 2 == 99); _ = Rc.release text;
+  _ = check (band 27 13 == 9);
+  _ = check (bor 27 13 == 31);
+  _ = check (bxor 27 13 == 22);
+  _ = check (BITSHIFTL 5 3 == 40);
+  _ = check (BITSHIFTR -1 2 == intMax Unit);
+  p = Mem.alloc 64;
+  before = Mem.liveAllocations Unit;
+  _ = loop p 1000;
+  _ = check (Helpers.get p 0 == 171);
+  _ = check (Mem.liveAllocations Unit == before);
+  _ = put16 p 2 48879; _ = check (get16 p 2 == 48879);
+  zero = Word.fromInt 0; all = Word.not zero; _ = Rc.release zero;
+  _ = put32 p 8 all; got32 = get32 p 8;
+  low32 = Word.mask 32 0;
+  _ = check (Word.eq got32 low32); _ = Rc.release got32;
+  _ = putWord p 16 all; gotWord = getWord p 16;
+  _ = check (Word.eq gotWord all); _ = Rc.release gotWord;
+  a = escaped p 1;
+  _ = check (Mem.liveAllocations Unit == before + 3);
+  _ = Rc.release a;
+  _ = writeEffect p; _ = check (get p 3 == 8);
+  _ = Rc.release all; _ = Rc.release low32;
+  _ = Mem.free p; _ = Rc.release p;
+  print "SCALAR FAST HOLDS".
