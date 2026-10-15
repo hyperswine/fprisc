@@ -1992,6 +1992,11 @@ void fpr_actor_resource_remove(fpr_resource_t *node) {
  * a loaded process ends that actor, not the machine.  The boot actor has
  * no one to fail to: it panics with the same reason. */
 static V a_kill(V av);
+uw fpr_actor_is_program(void) {
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h ? h->current : 0;
+  return !a || a->id == 0;
+}
 /* the reason an actor died, kept on it for its watchers; a long one is cut
  * and marked (FPR_WHY_BYTES: the permanent residue per dead actor) */
 static void why_set(acb_t *a, const char *why) {

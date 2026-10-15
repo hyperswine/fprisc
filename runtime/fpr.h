@@ -671,6 +671,8 @@ void fpr_actor_resource_remove(fpr_resource_t *node);
 __attribute__((noreturn)) void fpr_actor_fail(const char *why);
 /* a death reason is kept on the actor (its watchers read it: "dead actor: why"); longer ones are cut, marked "..." */
 #define FPR_WHY_BYTES 160
+/* 1 when the current actor is the program (actor 0) or there is none: a trap there is a panic */
+uw fpr_actor_is_program(void);
 int fpr_hal_sleep_us(uw us);      /* the host sleep: Sys.sleepUs's fallback (runtime.c weak) */
 extern uw fpr_mem_reqs, fpr_mem_waits, fpr_mem_direct, fpr_mem_frees, fpr_mem_denied,
     fpr_mem_inline; /* takes served on the spot (the lock was free) */

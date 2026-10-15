@@ -2048,6 +2048,7 @@ void fpr_panic(V s) {
  * invariant (fpr_cpanic) always does.  Builtin images have no actor plane. */
 void fpr_trap_n(const char *m, uw n) {
 #ifndef FPR_BUILTIN
+  if (!fpr_plane_actors && fpr_actor_is_program()) fpr_cpanic_n(m, n); /* the whole text, however long */
   char why[FPR_WHY_BYTES + 80];
   uw k = n < sizeof why - 1 ? n : sizeof why - 1;
   for (uw i = 0; i < k; i++) why[i] = m[i];

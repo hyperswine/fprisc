@@ -12,6 +12,7 @@ volatile int fpr_is_process;
 int fpr_mem_own;
 uw fpr_stack_grow(void){fpr_cpanic("Base: 64 KiB stack exhausted");return 0;}
 void fpr_actor_fail(const char *why){fpr_cpanic(why);for(;;){}}
+uw fpr_actor_is_program(void){return 1;}
 void fpr_mem_give(void *p){(void)p;fpr_cpanic("Base: process memory grants unavailable");}
 void buddy_free(void *p){(void)p;fpr_cpanic("Base: buddy allocator unavailable");}
 void fpr_drop_park(fpr_slab_t *p){(void)p;fpr_cpanic("Base: cross-actor drops unavailable");}
