@@ -1,0 +1,17 @@
+statics: 2
+dynamics: 1
+dynamic slot carries the model text: True
+a column: True
+a row between, centred: True
+screen fill: True
+grows: True
+scrolls inside: True
+title role: True
+muted caption: True
+primary button: True
+destructive button: True
+narrow variant: True
+theme scope: True
+no class strings, no raw properties: True
+vstack is the hand-written column: True
+done

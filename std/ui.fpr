@@ -1,0 +1,207 @@
+# std/ui.fpr -- UI: layout and appearance as the application's own words.
+#
+#   UI = use "std/ui".
+#   page model = UI.page True { UI.stack | gap = 4 } [
+#       UI.hstack { UI.stack | justify = Between, align = Center } [
+#           UI.label { UI.txt | size = Title } "Inventory",
+#           UI.button { UI.btn | kind = Primary } [G.send codec Save] "Save" ],
+#       UI.card UI.panel [ UI.text UI.txt model.note ] ].
+#
+# A page is columns and rows (`vstack`, `hstack`), text with a role, buttons
+# with a kind, inputs, cards, and a page root that owns the theme scope.  Each
+# node takes an ATTRIBUTE RECORD and children; a call overrides the fields it
+# cares about by record update (`{ UI.stack | gap = 3 }`) and the defaults
+# (`stack`, `txt`, `btn`, `field`, `panel`) are ordinary values.  Sizes are
+# steps on the spacing scale, never pixels; colours are tones of the theme;
+# the type scale is a role.  An application names no tag, class or CSS
+# property: every node lowers to the typed `std/view` tree (utilities on the
+# element, variants as Narrow/Wide/Hover utilities), so the stylesheet
+# generator, the live diff, keys and inputs are the ones std/view has.
+# The tokens are std/ma's (tx-1, bg-surface, bd-subtle, ac, danger, ...), so a
+# page built here shares a theme scope with Ma components during the move.
+# docs/2026-10-15-DESIGN-GOALS-REVIEW.md is the direction; the record is
+# docs/2026-10-15-STD-UI.md.
+G = use "view".
+Ma = use "ma".
+L = use "list".
+
+# ---- vocabulary ---------------------------------------------------------------
+Align = Type (Start | Center | End | Stretch | Baseline).
+Justify = Type (Lead | Middle | Trail | Between | Around | Evenly).
+# how a stack takes room: its content's, all it can (in its parent's main
+# axis), the full width, or the viewport (and the body stops scrolling)
+Fill = Type (Natural | Grow | Wide | Screen).
+Scale = Type (Hero | Title | Heading | Body | Caption | Tag | Mono).
+Tone = Type (Ink | Muted | Faint | Accent | Danger | Success | Warning | OnAccent).
+Kind = Type (Plain | Primary | Quiet | Destructive).
+# what a variant may change (the same words as the records)
+Tweak = Type (GapOf Int | PadOf Int | Hidden | Shown | WrapOf Bool | AlignOf Align | JustifyOf Justify | FillOf Fill).
+# a variant: on a narrow screen (<= 760px), a wide one, or under the pointer
+Variant = Type (OnNarrow (List Tweak) | OnWide (List Tweak) | OnHover (List Tweak)).
+
+# ---- records and their defaults ----------------------------------------------
+Stack = { gap : Int, pad : Int, align : Align, justify : Justify, fill : Fill, wrap : Bool, scroll : Bool, vary : List Variant }.
+stack : Stack .
+stack = { gap = 0, pad = 0, align = Stretch, justify = Lead, fill = Natural, wrap = False, scroll = False, vary = Nil }.
+Txt = { size : Scale, tone : Tone, align : Align, wrap : Bool, vary : List Variant }.
+txt : Txt .
+txt = { size = Body, tone = Ink, align = Start, wrap = True, vary = Nil }.
+Btn = { kind : Kind, size : Scale, vary : List Variant }.
+btn : Btn .
+btn = { kind = Plain, size = Body, vary = Nil }.
+Field = { size : Scale, fill : Fill, rows : Int, vary : List Variant }.
+field : Field .
+field = { size = Body, fill = Wide, rows = 1, vary = Nil }.
+Panel = { gap : Int, pad : Int, raised : Bool, vary : List Variant }.
+panel : Panel .
+panel = { gap = 3, pad = 4, raised = False, vary = Nil }.
+
+# ---- layout ------------------------------------------------------------------
+vstack : Stack -> List G.Node -> G.Node .
+vstack s kids = box G.Column s Nil kids.
+hstack : Stack -> List G.Node -> G.Node .
+hstack s kids = box G.Row s Nil kids.
+# the same with std/view attributes (a key, locals, showIf, events) on the node
+vstackWith : Stack -> List G.Attr -> List G.Node -> G.Node .
+vstackWith s attrs kids = box G.Column s attrs kids.
+hstackWith : Stack -> List G.Attr -> List G.Node -> G.Node .
+hstackWith s attrs kids = box G.Row s attrs kids.
+# a column whose content scrolls inside it
+scroll : Stack -> List G.Node -> G.Node .
+scroll s kids = box G.Column { s | scroll = True } Nil kids.
+# the filler between siblings
+space : Unit -> G.Node .
+space u = Ma.element "div" [G.utilities [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0)]] Nil.
+# a stable identity among siblings (std/view's key)
+keyed : String -> G.Node -> G.Node .
+keyed k n = G.key k n.
+
+box : G.FlexDirection -> Stack -> List G.Attr -> List G.Node -> G.Node .
+box dir s attrs kids = Ma.element "div" (G.utilities (stackDecls dir s) :: L.append (variants s.vary) attrs) kids.
+
+stackDecls : G.FlexDirection -> Stack -> List G.Decl .
+stackDecls dir s = L.concat [
+  [G.Display G.Flex, G.Direction dir, G.Gap (G.Px (Ma.spacing s.gap))],
+  (if s.pad == 0 then Nil else [G.Padding (G.Px (Ma.spacing s.pad))]),
+  [G.AlignItems (alignOf s.align), G.JustifyContent (justifyOf s.justify)],
+  fillDecls s.fill,
+  (if s.wrap then [G.FlexWrap G.Wrap] else Nil),
+  (if s.scroll then [G.Overflow G.OverflowAuto, G.MinHeight (G.Px 0), G.MinWidth (G.Px 0)] else Nil)].
+
+alignOf : Align -> G.Alignment .
+alignOf a = case a of Start -> G.AlignStart | Center -> G.AlignCenter | End -> G.AlignEnd | Stretch -> G.AlignStretch | Baseline -> G.AlignBaseline.
+justifyOf : Justify -> G.Justification .
+justifyOf j = case j of Lead -> G.JustifyStart | Middle -> G.JustifyCenter | Trail -> G.JustifyEnd | Between -> G.SpaceBetween | Around -> G.SpaceAround | Evenly -> G.SpaceEvenly.
+fillDecls : Fill -> List G.Decl .
+fillDecls f = case f of
+    Natural -> Nil
+  | Grow -> [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.MinHeight (G.Px 0), G.MinWidth (G.Px 0)]
+  | Wide -> [G.Width (G.Pct 100)]
+  | Screen -> [G.Height (G.Vh 100), G.Height (G.Dvh 100), G.Width (G.Vw 100), G.MaxWidth (G.Vw 100), G.Overflow G.OverflowHidden].
+textAlignOf : Align -> G.TextAlignment .
+textAlignOf a = case a of Center -> G.TextCenter | End -> G.TextEnd | _ -> G.TextStart.
+
+# ---- variants ----------------------------------------------------------------
+variants : List Variant -> List G.Attr .
+variants vs = L.map variant vs.
+variant : Variant -> G.Attr .
+variant v = case v of
+    OnNarrow ts -> G.narrow (tweaks ts)
+  | OnWide ts -> G.wide (tweaks ts)
+  | OnHover ts -> G.hover (tweaks ts).
+tweaks : List Tweak -> List G.Decl .
+tweaks ts = L.concat (L.map tweak ts).
+tweak : Tweak -> List G.Decl .
+tweak t = case t of
+    GapOf n -> [G.Gap (G.Px (Ma.spacing n))]
+  | PadOf n -> [G.Padding (G.Px (Ma.spacing n))]
+  | Hidden -> [G.Display G.Hidden]
+  | Shown -> [G.Display G.Flex]
+  | WrapOf w -> [G.FlexWrap (if w then G.Wrap else G.NoWrap)]
+  | AlignOf a -> [G.AlignItems (alignOf a)]
+  | JustifyOf j -> [G.JustifyContent (justifyOf j)]
+  | FillOf f -> fillDecls f.
+
+# ---- text --------------------------------------------------------------------
+# `label`: fixed text, part of the page's statics.  `text`: a value from the
+# model, a dynamic slot that updates by delta.
+label : Txt -> String -> G.Node .
+label t s = Ma.element "div" (G.utilities (textDecls t) :: variants t.vary) [G.Txt s].
+text : Txt -> String -> G.Node .
+text t v = Ma.element "div" (G.utilities (textDecls t) :: variants t.vary) [G.Dyn v].
+textDecls : Txt -> List G.Decl .
+textDecls t = L.concat [scaleDecls t.size, [G.Foreground (tone t.tone), G.TextAlign (textAlignOf t.align)],
+  (if t.wrap then Nil else [G.WhiteSpace G.NoWrapSpace, G.Overflow G.OverflowHidden, G.TextOverflow G.Ellipsis])].
+# the type scale (std/ma's tokens.json roles)
+scaleDecls : Scale -> List G.Decl .
+scaleDecls s = case s of
+    Hero -> [G.FontSize (G.Px 32), G.LineHeightLength (G.Px 40), G.FontWeight 600]
+  | Title -> [G.FontSize (G.Px 22), G.LineHeightLength (G.Px 28), G.FontWeight 600]
+  | Heading -> [G.FontSize (G.Px 17), G.LineHeightLength (G.Px 24), G.FontWeight 600]
+  | Body -> [G.FontSize (G.Px 15), G.LineHeightLength (G.Px 22), G.FontWeight 400]
+  | Caption -> [G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 400]
+  | Tag -> [G.FontSize (G.Px 13), G.LineHeightLength (G.Px 18), G.FontWeight 500]
+  | Mono -> [G.FontFamily G.MonoFont, G.FontSize (G.Px 14), G.LineHeightLength (G.Px 20), G.FontWeight 400].
+tone : Tone -> G.Colour .
+tone t = G.ThemeColour (G.NamedToken (case t of
+    Ink -> "tx-1" | Muted -> "tx-2" | Faint -> "tx-3" | Accent -> "ac"
+  | Danger -> "danger" | Success -> "success" | Warning -> "warning" | OnAccent -> "tx-on")).
+
+# ---- controls ------------------------------------------------------------------
+# the events are std/view's typed ones: `G.send codec Msg`, `G.sendWith codec
+# Msg @Client.field`, `G.setTo @Client.open "1"`; the message VALUE travels
+button : Btn -> List G.Attr -> String -> G.Node .
+button b events s = Ma.element "button" (G.utilities (buttonDecls b) :: L.append (variants b.vary) events) [G.Txt s].
+buttonDecls : Btn -> List G.Decl .
+buttonDecls b = L.concat [
+  [G.Cursor G.PointerCursor, G.Radius (G.Px 10), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12)],
+  scaleDecls b.size,
+  (case b.kind of
+      Plain -> [G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")),
+                G.Background (G.ThemeColour (G.NamedToken "bg-surface")), G.Foreground (G.ThemeColour (G.NamedToken "tx-1"))]
+    | Primary -> [G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "ac")),
+                  G.Background (G.ThemeColour (G.NamedToken "ac")), G.Foreground (G.ThemeColour (G.NamedToken "tx-on"))]
+    | Quiet -> [G.BorderStyle G.NoBorder, G.Background G.Transparent, G.Foreground (G.ThemeColour (G.NamedToken "tx-2"))]
+    | Destructive -> [G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "danger")),
+                      G.Background (G.ThemeColour (G.NamedToken "danger")), G.Foreground (G.ThemeColour (G.NamedToken "tx-on"))])].
+
+# a text input; `rows > 1` is a text area.  The binding and the send are
+# std/view's (`G.bind @Client.q`, `G.enterWith codec Search @Client.q`).
+input : Field -> List G.Attr -> G.Node .
+input f attrs = if f.rows > 1
+  then Ma.element "textarea" (G.utilities (fieldDecls f) :: G.Att "rows" (str f.rows) :: L.append (variants f.vary) attrs) Nil
+  else G.Inp (G.utilities (fieldDecls f) :: L.append (variants f.vary) attrs).
+fieldDecls : Field -> List G.Decl .
+fieldDecls f = L.concat [scaleDecls f.size, fillDecls f.fill,
+  [G.Radius (G.Px 10), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder,
+   G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")), G.Background (G.ThemeColour (G.NamedToken "bg-surface")),
+   G.Foreground (G.ThemeColour (G.NamedToken "tx-1"))]].
+
+# ---- surfaces ----------------------------------------------------------------
+card : Panel -> List G.Node -> G.Node .
+card p kids = cardWith p Nil kids.
+cardWith : Panel -> List G.Attr -> List G.Node -> G.Node .
+cardWith p attrs kids = Ma.element "div" (G.utilities (L.append (stackDecls G.Column { stack | gap = p.gap, pad = p.pad }) (cardDecls p.raised)) :: L.append (variants p.vary) attrs) kids.
+cardDecls : Bool -> List G.Decl .
+cardDecls raised = [G.Background (G.ThemeColour (G.NamedToken (if raised then "bg-raised" else "bg-surface"))),
+  G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")),
+  G.Radius (G.Px 10), G.ShadowToken (G.NamedToken (if raised then "sh-md" else "sh-sm"))].
+rule : Unit -> G.Node .
+rule u = Ma.element "div" [G.utilities [G.BorderTop (G.Px 1) (G.ThemeColour (G.NamedToken "bd-subtle"))]] Nil.
+
+# ---- the page ------------------------------------------------------------------
+# the root owns the theme scope (day or night tokens) and the canvas; it is a
+# column like any other, so `{ stack | gap = 4, pad = 4, fill = Screen }` works
+page : Bool -> Stack -> List G.Node -> G.Node .
+page light s kids = pageWith light s Nil kids.
+pageWith : Bool -> Stack -> List G.Attr -> List G.Node -> G.Node .
+pageWith light s attrs kids = Ma.element "div"
+  (G.utilities (Ma.themeDecls (not light))
+   :: G.utilities (L.append [G.MinHeight (G.Vh 100), G.Background (G.ThemeColour (G.NamedToken "bg-canvas")),
+        G.Foreground (G.ThemeColour (G.NamedToken "tx-1")), G.FontFamily G.SystemFont, G.FontSize (G.Px 15), G.LineHeight 147]
+        (stackDecls G.Column s))
+   :: L.append (variants s.vary) attrs) kids.
+
+# the stylesheet of a page: only what the tree uses (std/view's generator)
+css : G.Node -> String .
+css tree = Ma.maCssFor tree.

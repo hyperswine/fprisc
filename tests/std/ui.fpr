@@ -1,0 +1,46 @@
+unsafe base.
+# std/ui: layout and appearance as records and roles, lowered to std/view.
+#   ./fpr run tests/std/ui.fpr
+UI = use "std/ui".
+G = use "std/view".
+Ma = use "std/ma".
+S = use "std/string".
+L = use "std/list".
+
+has css s = S.contains s css.
+show what b = print "{what}: {b}".
+
+main =
+  tree = UI.page True { UI.stack | gap = 4, pad = 4, fill = UI.Screen } [
+    UI.hstack { UI.stack | justify = UI.Between, align = UI.Center, vary = [UI.OnNarrow [UI.GapOf 1]] } [
+      UI.label { UI.txt | size = UI.Title } "Inventory",
+      UI.space Unit,
+      UI.button { UI.btn | kind = UI.Primary } [G.OnSend "=save" ""] "Save" ],
+    UI.scroll { UI.stack | gap = 3, fill = UI.Grow } [
+      UI.keyed "a" (UI.card UI.panel [ UI.text UI.txt "first note", UI.rule Unit, UI.label { UI.txt | tone = UI.Muted, size = UI.Caption } "yesterday" ]),
+      UI.keyed "b" (UI.card { UI.panel | raised = True } [ UI.input { UI.field | rows = 3 } [G.Input "draft"] ]) ],
+    UI.hstack { UI.stack | gap = 2 } [ UI.button UI.btn Nil "Cancel", UI.button { UI.btn | kind = UI.Destructive } Nil "Delete" ] ];
+  (statics, dynamics) = G.renderStyled tree;
+  css = UI.css tree;
+  _ = show "statics" (L.length statics);
+  _ = show "dynamics" (L.length dynamics);
+  _ = show "dynamic slot carries the model text" (L.member "first note" dynamics);
+  # every declaration is its own atomic class, so the checks are per property
+  _ = show "a column" (has css "flex-direction:column" and has css "row-gap:16px" and has css "padding-top:16px");
+  _ = show "a row between, centred" (has css "flex-direction:row" and has css "align-items:center" and has css "justify-content:space-between");
+  _ = show "screen fill" (has css "height:100dvh" and has css "max-width:100vw" and has css "overflow-x:hidden");
+  _ = show "grows" (has css "flex-grow:1" and has css "flex-basis:0%");
+  _ = show "scrolls inside" (has css "overflow-y:auto" and has css "min-height:0px");
+  _ = show "title role" (has css "font-size:22px" and has css "line-height:28px" and has css "font-weight:600");
+  _ = show "muted caption" (has css "font-size:13px" and has css "color:var(--tx-2)");
+  _ = show "primary button" (has css "background-color:var(--ac)" and has css "color:var(--tx-on)");
+  _ = show "destructive button" (has css "background-color:var(--danger)");
+  _ = show "narrow variant" (has css "@media (max-width:760px)");
+  _ = show "theme scope" (has css "--tx-1:");
+  _ = show "no class strings, no raw properties" (not (has css ".btn") and not (has css ".row") and not (has css ".card"));
+  # the lowering is the hand-written tree, node for node
+  hand = Ma.element "div" [G.utilities [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12), G.Padding (G.Px 16), G.AlignItems G.AlignStretch, G.JustifyContent G.JustifyStart]] [G.Txt "x"];
+  (hs, hd) = G.renderStyled hand;
+  (us, ud) = G.renderStyled (UI.vstack { UI.stack | gap = 3, pad = 4 } [G.Txt "x"]);
+  _ = show "vstack is the hand-written column" (hs == us and hd == ud and G.cssFor hand == G.cssFor (UI.vstack { UI.stack | gap = 3, pad = 4 } [G.Txt "x"]));
+  print "done".
