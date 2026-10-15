@@ -1,0 +1,49 @@
+unsafe base.
+Care = use "examples/printer-dashboard/care".
+J = use "../std/json".
+L = use "../std/list".
+P = use "../std/program".
+check label yes = if yes then Unit else P.fail 1 "FAIL: {label}".
+need result = case result of Ok value -> value | Err why -> P.fail 1 why.
+refused result = case result of Err _ -> True | _ -> False.
+draft title days note file profile category outcome = J.render (J.object [("title",J.Text title),("days",J.Text days),("note",J.Text note),("file",J.Text file),("profile",J.Text profile),("category",J.Text category),("outcome",J.Text outcome)]).
+main =
+  ps = [J.object [("id",J.Text "a1"),("model",J.Text "A1 + AMS Lite")], J.object [("id",J.Text "p1s"),("model",J.Text "P1S")]];
+  init = Care.initial 100000 ps;
+  _ = check "valid defaults" (Care.valid init);
+  _ = check "no invented completion" (L.all (fn t -> t.done == 0) init.tasks);
+  _ = check "configured A1 family has rail schedule" (L.any (fn t -> t.id == "a1-rails") init.tasks);
+  _ = check "calendar reminder boundary" (L.all (fn t -> not (Care.isDue (100000 + 7 * 86400 - 1) t)) init.tasks);
+  raw = draft "Custom check" "1" "Observed squeaking | not confirmed cause <script>" "bracket.3mf" "PLA / 0.4 / upright" "Noise / squeaking" "Failed";
+  s1 = need (Care.apply 200000 ["a1","p1s"] "issue" "a1" "" 0 raw init);
+  _ = check "stale revision refused" (refused (Care.apply 200000 ["a1"] "issue" "a1" "" 0 raw s1));
+  _ = check "unknown printer refused" (refused (Care.apply 200000 ["a1"] "issue" "p1s" "" 1 raw s1));
+  s2 = need (Care.apply 200001 ["a1"] "print" "a1" "" 1 raw s1);
+  _ = check "failed print watched" (L.length (Care.watchlist s2) == 1);
+  passed = draft "" "" "Physically inspected and fits" "bracket.3mf" "PLA / 0.4 / upright" "Other" "Passed";
+  s3 = need (Care.apply 200001 ["a1"] "print" "a1" "" 2 passed s2);
+  _ = check "same-second successful retest clears watchlist" (L.length (Care.watchlist s3) == 0 and L.length s3.attempts == 2);
+  other = draft "" "" "Still fails with this orientation" "bracket.3mf" "PLA / 0.4 / sideways" "Other" "Poor quality";
+  s4 = need (Care.apply 200002 ["a1"] "print" "a1" "" 3 other s3);
+  _ = check "settings remain separate" (L.length (Care.watchlist s4) == 1);
+  s5 = need (Care.apply 200003 ["a1"] "snooze" "a1" "a1-plate" 4 raw s4);
+  _ = check "snooze is not completion" (L.all (fn t -> t.done == 0) s5.tasks);
+  _ = check "postponing a future task actually defers it" (L.any (fn t -> t.id == "a1-plate" and Care.dueAt t == 100000 + 8 * 86400) s5.tasks);
+  s6 = need (Care.apply 200004 ["a1"] "done" "a1" "a1-plate" 5 raw s5);
+  _ = check "completion resets schedule" (L.any (fn t -> t.id == "a1-plate" and t.done == 200004 and t.due == 200004 + 7 * 86400 and t.snooze == 0) s6.tasks);
+  _ = check "invalid days" (not (Care.days "0") and not (Care.days "1.2") and not (Care.days "-1") and not (Care.days "3651") and Care.days "3650");
+  _ = check "wrong task owner refused" (refused (Care.apply 200005 ["a1","p1s"] "done" "p1s" "a1-plate" 6 raw s6));
+  _ = check "oversize text refused" (refused (Care.apply 200005 ["a1"] "issue" "a1" "" 6 (draft "" "" (strJoin "" (L.repeat 2049 "x")) "" "" "Other" "") s6));
+  _ = check "codec round trip" (Care.decode (Care.encoded s6) == Ok s6);
+  _ = check "all changes kept in history" (L.length s6.history == 6);
+  _ = check "reordered attempts rejected" (not (Care.valid {s6 | attempts = L.reverse s6.attempts}));
+  _ = check "lost history rejected" (not (Care.valid {s6 | history = Nil}));
+  s7 = need (Care.apply 200005 ["a1"] "issue-note" "a1" "1" 6 raw s6);
+  _ = check "follow-up keeps issue open" (L.any (fn i -> i.id == "1" and not i.resolved) s7.issues and L.length s7.history == 7);
+  s8 = need (Care.apply 200006 ["a1"] "resolve" "a1" "1" 7 raw s7);
+  s9 = need (Care.apply 200007 ["a1"] "reopen" "a1" "1" 8 raw s8);
+  _ = check "resolve/reopen preserves original observation" (L.any (fn i -> i.id == "1" and not i.resolved and i.note == "Observed squeaking | not confirmed cause <script>") s9.issues);
+  s10 = need (Care.apply 200008 ["a1"] "task" "a1" "a1-plate" 9 (draft "Plate check" "2" "Changed cadence" "" "" "Other" "") s9);
+  _ = check "editing interval does not complete task" (L.any (fn t -> t.id == "a1-plate" and t.done == 200004 and t.due == 200004 + 2 * 86400) s10.tasks);
+  _ = check "final state validates" (Care.valid s10);
+  print "printer care policy: passed".

@@ -1,0 +1,165 @@
+# Human observations are separate from telemetry. One actor owns the log.
+# Acknowledged writes replace a whole, validated snapshot atomically; the prior
+# snapshot remains beside it as .bak. No fsync/power-loss guarantee is implied.
+unsafe base.
+J = use "std/json".
+L = use "std/list".
+S = use "std/string".
+O = use "std/option".
+F = use "std/file".
+A = use "std/actor".
+C = use "std/clock".
+PT = use "std/printertelemetry".
+M = use "std/map".
+CareTask = {id : String, printer : String, title : String, days : Int, created : Int, done : Int, due : Int, snooze : Int, guide : String, advice : String}.
+CareIssue = {id : String, printer : String, category : String, note : String, file : String, profile : String, created : Int, resolved : Bool}.
+CareAttempt = {id : String, printer : String, file : String, profile : String, outcome : String, note : String, created : Int}.
+CareEntry = {id : String, printer : String, kind : String, target : String, note : String, created : Int}.
+CareState = {schema : Int, rev : Int, next : Int, tasks : List CareTask, issues : List CareIssue, attempts : List CareAttempt, history : List CareEntry}.
+CareBox = {states : List CareState}.
+stateCodec = @CareBox.states.
+CareRequest = Type (Read | Change String String String Int String).
+CareReply = {state : CareState, problem : String, notice : String, saved : Bool}.
+empty = {schema = 1, rev = 0, next = 1, tasks = Nil, issues = Nil, attempts = Nil, history = Nil}.
+text key value = O.withDefault "" (O.andThen J.asString (J.field key value)).
+clean limit value = strlen value <= limit and not (S.contains (chr 0) value).
+plain limit value = strlen (S.trim value) > 0 and clean limit value.
+days value = strlen value >= 1 and strlen value <= 4 and L.all (fn i -> charAt value i >= 48 and charAt value i <= 57) (L.range 0 (strlen value - 1)) and parseInt value >= 1 and parseInt value <= 3650.
+family model = if model == "A1" or S.startsWith "A1 +" model then "A1" else model.
+guide model = if family model == "A1" then "https://wiki.bambulab.com/en/a1/maintenance/basic-maintenance" else if model == "P1S" then "https://wiki.bambulab.com/en/p1/maintenance/p1p-maintenance" else "".
+task id printer title days now url advice = {id = id, printer = printer, title = title, days = days, created = now, done = 0, due = now + days * 86400, snooze = 0, guide = url, advice = advice}.
+defaults now printers = L.concatMap (fn p ->
+  id = text "id" p; model = family (text "model" p); url = guide model;
+  common = [task "{id}-plate" id "Inspect / clean build plate" 7 now url "Workshop reminder; clean as needed and before retrying adhesion problems.",
+    task "{id}-fans" id "Inspect fans and clear debris" 7 now url "Follow the model guide; switch the printer off for fan cleaning."];
+  L.append common (if model == "A1" then
+    [task "{id}-rails" id "Clean and oil X / Y rails" 30 now url "A1 rails use lubricant oil. Do not use grease on the X rail.",
+     task "{id}-screws" id "Clean / grease Z lead screws" 90 now url "Use lead-screw grease; follow the A1 procedure."]
+    else if model == "P1S" then
+    [task "{id}-carbon" id "Clean X carbon rods" 30 now url "Clean only: do not lubricate carbon rods.",
+     task "{id}-rods" id "Inspect / clean Y and Z steel rods" 30 now url "Follow the guide for cleaning and rust protection; keep IPA out of bearings.",
+     task "{id}-rust" id "Rust protection: Y / Z steel rods" 90 now url "Follow the guide for a thin protective coating; avoid excess lubricant.",
+     task "{id}-screws" id "Clean / grease Z lead screws" 90 now url "Use lead-screw grease; follow the P1 series procedure."] else Nil)) printers.
+initial now printers = {empty | tasks = defaults now printers}.
+unique xs = L.length (L.unique xs) == L.length xs.
+ordered next rows =
+  result = L.fold (fn acc row ->
+    id = row.id;
+    number = parseInt id;
+    numeric = strlen id > 0 and strlen id <= 8 and L.all (fn i -> charAt id i >= 48 and charAt id i <= 57) (L.range 0 (strlen id - 1));
+    {ok = acc.ok and numeric and number > 0 and number < acc.previous, previous = number}) {ok = True, previous = next} rows;
+  result.ok.
+valid state = state.schema == 1 and state.rev == L.length state.history and state.next == state.rev + 1 and
+  L.length state.tasks <= 256 and L.length state.issues <= 512 and L.length state.attempts <= 1024 and L.length state.history <= 4096 and
+  unique (L.map (fn t -> t.id) state.tasks) and unique (L.map (fn t -> t.id) state.issues) and unique (L.map (fn t -> t.id) state.attempts) and unique (L.map (fn t -> t.id) state.history) and
+  ordered state.next state.issues and ordered state.next state.attempts and ordered state.next state.history and
+  L.all (fn t -> plain 80 t.id and plain 32 t.printer and plain 120 t.title and t.days >= 1 and t.days <= 3650 and t.created > 0 and t.done >= 0 and t.due > 0 and t.snooze >= 0 and clean 240 t.guide and clean 320 t.advice) state.tasks and
+  L.all (fn t -> plain 80 t.id and plain 32 t.printer and L.member t.category ["Noise / squeaking", "Print artifact", "Adhesion", "Feeding / extrusion", "Other"] and plain 2048 t.note and clean 240 t.file and clean 320 t.profile and t.created > 0) state.issues and
+  L.all (fn t -> plain 80 t.id and plain 32 t.printer and plain 240 t.file and clean 320 t.profile and L.member t.outcome ["Failed", "Poor quality", "Passed"] and plain 2048 t.note and t.created > 0) state.attempts and
+  L.all (fn t -> plain 80 t.id and plain 32 t.printer and plain 80 t.kind and clean 240 t.target and clean 2048 t.note and t.created > 0) state.history.
+value state = case stateCodec.enc [state] of WList (v :: Nil) -> J.fromWire v | _ -> J.Null.
+encoded state = J.render (value state).
+decode raw = case J.parse raw of Err why -> Err why | Ok v -> case stateCodec.dec (WList [J.toWire v]) of Ok (state :: Nil) -> Ok state | _ -> Err "Invalid log record.".
+read path = case F.info path of
+    Err _ -> Err "Maintenance log is unreadable. Preserve it and restore a checked backup before enabling writes."
+  | Ok info -> if info.size > 8388608 then Err "Maintenance log exceeds its size limit; preserve and archive it before continuing." else
+      case F.readText path of Err _ -> Err "Could not read maintenance log." | Ok raw ->
+        if not (PT.scan raw 0 0 False False) then Err "Maintenance log has invalid nesting; writes are disabled." else
+        case decode raw of
+          Ok state -> if valid state then Ok state else Err "Maintenance log failed validation; writes are disabled."
+        | Err _ -> Err "Maintenance log has an unsupported or damaged format; writes are disabled.".
+save path state =
+  previous = if F.exists path then case read path of Ok old -> if old.rev + 1 == state.rev then Ok Unit else Err "The on-disk log changed. Restart and review it before saving." | Err why -> Err why
+    else if state.rev == 0 and not (F.exists "{path}.bak") then Ok Unit else Err "The maintenance log disappeared. Restore it before saving.";
+  case previous of Err why -> Err why | Ok _ -> write path state.
+write path state =
+  raw = encoded state;
+  if not (valid state) then Err "The log update failed validation. Your draft has been kept." else
+  if strlen raw > 8388608 then Err "Log is full. Export and archive it before adding more entries." else
+  case F.writeText "{path}.tmp" raw of Err _ -> Err "Could not save maintenance log. Your draft has been kept." | Ok _ ->
+  case (if F.exists path then F.copy path "{path}.bak.tmp" else Ok Unit) of Err _ -> Err "Could not preserve the previous log. Nothing was changed." | Ok _ ->
+  case (if F.exists path then F.rename "{path}.bak.tmp" "{path}.bak" else Ok Unit) of Err _ -> Err "Could not update the log backup. Nothing was changed." | Ok _ ->
+  case F.rename "{path}.tmp" path of Err _ -> Err "Could not replace maintenance log. Your draft has been kept." | Ok _ -> Ok Unit.
+open path now printers = if F.exists path then read path else if F.exists "{path}.bak" then Err "Maintenance log is missing but a backup exists. Restore it before enabling writes." else
+  state = initial now printers;
+  case save path state of Ok _ -> Ok state | Err why -> Err why.
+dueAt t = if t.snooze > t.due then t.snooze else t.due.
+isDue now t = now >= dueAt t.
+watchlist state =
+  result = L.fold (fn acc a ->
+    key = J.render (J.strings [a.printer,a.file,a.profile]);
+    if M.member key acc.seen then acc else {seen = M.insert key True acc.seen, rows = (if a.outcome == "Passed" then acc.rows else a :: acc.rows)}) {seen = M.empty S.compare, rows = Nil} state.attempts;
+  L.reverse result.rows.
+payload raw = if strlen raw > 8192 or not (PT.scan raw 0 0 False False) then Err "Entry is too large or malformed." else
+  case J.parse raw of Ok (J.Object fields) -> Ok (J.Object fields) | _ -> Err "Entry is malformed. Your draft has been kept.".
+record now printer kind target note state =
+  event = {id = str state.next, printer = printer, kind = kind, target = target, note = note, created = now};
+  {state | rev = state.rev + 1, next = state.next + 1, history = event :: state.history}.
+apply now printers action printer target revision raw state =
+  if not (L.member printer printers) then Err "Unknown printer." else
+  if revision != state.rev then Err "The log changed in another tab. Review the latest entries and retry; your draft is still here." else
+  if L.length state.history >= 4096 then Err "Log is full. Export and archive it before continuing." else
+  case payload raw of Err why -> Err why | Ok p ->
+  note = S.trim (text "note" p); title = S.trim (text "title" p); interval = text "days" p;
+  file = S.trim (text "file" p); profile = S.trim (text "profile" p);
+  if not (clean 2048 note) or not (clean 240 file) or not (clean 320 profile) then Err "Note, file name or settings exceed their limits." else
+  if action == "task" then
+    if not (plain 120 title) or not (days interval) then Err "Enter a task name and an interval of 1–3650 whole days." else
+    if target == "" then
+      if L.length state.tasks >= 256 then Err "Task limit reached." else
+      t = task "custom-{state.next}" printer title (parseInt interval) now "" "Custom workshop schedule.";
+      Ok (record now printer "Schedule added" t.title note {state | tasks = t :: state.tasks})
+    else case L.find (fn t -> t.id == target and t.printer == printer) state.tasks of
+      O.None -> Err "Task no longer exists."
+    | O.Some t ->
+      # An interval change is not a completion and never clears a snooze.
+      changed = {t | title = title, days = parseInt interval, due = (if t.done > 0 then t.done else t.created) + parseInt interval * 86400};
+      Ok (record now printer "Schedule changed" title note {state | tasks = L.map (fn old -> if old.id == target then changed else old) state.tasks})
+  else if action == "done" or action == "snooze" then
+    case L.find (fn t -> t.id == target and t.printer == printer) state.tasks of
+      O.None -> Err "Task no longer exists."
+    | O.Some t ->
+      changed = if action == "done" then {t | done = now, due = now + t.days * 86400, snooze = 0} else {t | snooze = (if dueAt t > now then dueAt t else now) + 86400};
+      Ok (record now printer (if action == "done" then "Maintenance completed" else "Reminder postponed by 1 day") t.title note {state | tasks = L.map (fn old -> if old.id == target then changed else old) state.tasks})
+  else if action == "issue" then
+    category = text "category" p;
+    if not (plain 2048 note) or not (L.member category ["Noise / squeaking", "Print artifact", "Adhesion", "Feeding / extrusion", "Other"]) then Err "Choose an issue type and describe what you observed." else
+    if L.length state.issues >= 512 then Err "Issue limit reached." else
+    issue = {id = str state.next, printer = printer, category = category, note = note, file = file, profile = profile, created = now, resolved = False};
+    Ok (record now printer "Issue opened" issue.id note {state | issues = issue :: state.issues})
+  else if action == "resolve" or action == "reopen" or action == "issue-note" then
+    case L.find (fn i -> i.id == target and i.printer == printer) state.issues of
+      O.None -> Err "Issue no longer exists."
+    | O.Some issue -> if action != "issue-note" and issue.resolved == (action == "resolve") then Err "Issue already has that status." else
+      if not (plain 2048 note) then Err "Add a note about the fix or why this issue has returned." else
+      Ok (record now printer (if action == "resolve" then "Issue resolved" else if action == "reopen" then "Issue reopened" else "Issue follow-up") target note {state | issues = L.map (fn i -> if i.id == target and action != "issue-note" then {i | resolved = action == "resolve"} else i) state.issues})
+  else if action == "print" then
+    outcome = text "outcome" p;
+    if not (plain 240 file) or not (plain 2048 note) or not (L.member outcome ["Failed", "Poor quality", "Passed"]) then Err "Enter the file / part, result, and what you physically observed." else
+    if L.length state.attempts >= 1024 then Err "Print-result limit reached." else
+    attempt = {id = str state.next, printer = printer, file = file, profile = profile, outcome = outcome, note = note, created = now};
+    Ok (record now printer "Print result: {outcome}" file note {state | attempts = attempt :: state.attempts})
+  else Err "Unknown log action.".
+start path printers =
+  now = C.now Unit;
+  loaded = open path now printers;
+  state = case loaded of Ok value -> value | Err _ -> initial now printers;
+  problem = case loaded of Ok _ -> "" | Err why -> why;
+  A.spawnWith (A.Static 16) (fn me ->
+    _ = Sys.loop {state = state, problem = problem} (fn current ->
+      message = receive me;
+      (sender, requestId, borrowed) = message;
+      request = keep borrowed;
+      _ = drop message;
+      (next, reply) = case request of
+        Read -> (current, {state = current.state, problem = current.problem, notice = "", saved = False})
+      | Change action printer target revision raw ->
+          result = if current.problem != "" then Err current.problem else apply (C.now Unit) (L.map (text "id") printers) action printer target revision raw current.state;
+          (case result of Err why -> (current, {state = current.state, problem = current.problem, notice = why, saved = False}) | Ok state ->
+            case save path state of Err why -> (current, {state = current.state, problem = current.problem, notice = why, saved = False}) | Ok _ ->
+              ({current | state = state}, {state = state, problem = "", notice = "Saved to the workshop log · entry #{state.rev}.", saved = True}));
+      _ = A.reply (sender, requestId) reply;
+      (True, next)); Unit).
+unavailable = {state = empty, problem = "Maintenance log service is unavailable. Logging is disabled; printer telemetry can continue.", notice = "Could not confirm the save. Review history before retrying.", saved = False}.
+get actor = case A.callWithin 2000 (myself 0) actor Read of Ok reply -> reply | Err _ -> unavailable.
+change actor action printer target revision raw = case A.callWithin 5000 (myself 0) actor (Change action printer target revision raw) of Ok reply -> reply | Err _ -> unavailable.

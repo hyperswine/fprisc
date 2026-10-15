@@ -1,0 +1,74 @@
+# Browser capabilities only: pack form fields without delimiter ambiguity, and
+# opt-in notifications. Log validation, schedules and print policy stay native.
+JS = use "std/javascript".
+L = use "std/list".
+n = JS.Name.
+t = JS.Text.
+f = JS.Field.
+call target args = JS.Call target args.
+method target name args = call (f target name) args.
+doMethod target name args = JS.Do (method target name args).
+eq = JS.Binary JS.Equal.
+neg = JS.Unary JS.Not.
+attr target name = method target "getAttribute" [t name].
+stored key = method (n "localStorage") "getItem" [t key].
+status message = JS.Do (call (n "status") [message]).
+pack u =
+  L.append [JS.Const "button" (method (f (n "event") "target") "closest" [t "[data-care-submit]"]),
+   JS.If (neg (n "button")) [JS.ReturnVoid] Nil,
+   JS.Const "link" (method (n "document") "getElementById" [t "lv-link"]),
+   JS.If (JS.Binary JS.Or (neg (n "link")) (JS.Binary JS.NotEqual (f (n "link") "textContent") (t "live")))
+     [doMethod (n "event") "preventDefault" Nil,doMethod (n "event") "stopImmediatePropagation" Nil,
+      JS.Const "label" (method (n "document") "querySelector" [t "[data-care-client-status]"]),
+      JS.If (n "label") [JS.Assign (f (n "label") "textContent") (t "Disconnected. Your draft is kept in this tab; reconnect and retry saving.")] Nil,JS.ReturnVoid] Nil,
+   JS.If (JS.Binary JS.Greater (f (n "event") "detail") (JS.Number 1)) [doMethod (n "event") "preventDefault" Nil,doMethod (n "event") "stopImmediatePropagation" Nil,JS.ReturnVoid] Nil,
+   JS.Const "out" (JS.Object Nil)] (L.append (L.map (fn pair -> case pair of (key, local) ->
+     JS.Scope [JS.Const "input" (method (n "document") "querySelector" [t "[data-input=\"{local}\"]"]),
+       JS.Assign (JS.Index (n "out") (t key)) (JS.Choose (n "input") (f (n "input") "value") (t ""))])
+      [("title","careTitle"),("days","careDays"),("note","careNote"),("file","careFile"),("profile","careProfile"),("category","careCategory"),("outcome","careOutcome")])
+  [JS.Const "input" (method (n "document") "querySelector" [t "[data-input=\"carePayload\"]"]),
+   JS.If (n "input") [JS.Assign (f (n "input") "value") (method (n "JSON") "stringify" [n "out"]), doMethod (n "input") "dispatchEvent" [JS.New (n "Event") [t "input", JS.Object [("bubbles",JS.Boolean True)]]]] Nil]).
+enable u =
+  [JS.If (neg (method (f (n "event") "target") "closest" [t "[data-care-notify]"])) [JS.ReturnVoid] Nil,
+   JS.Try [JS.If (eq (stored "print-room-reminders") (t "on"))
+       [doMethod (n "localStorage") "setItem" [t "print-room-reminders",t "off"], status (t "Browser reminders off. Due reminders remain visible in the app."), JS.ReturnVoid] Nil,
+     JS.If (JS.Binary JS.Or (eq (JS.Unary JS.TypeOf (n "Notification")) (t "undefined")) (neg (f (n "window") "isSecureContext")))
+       [status (t "This browser cannot show notifications here. Due reminders remain visible in the app."),JS.ReturnVoid] Nil,
+     JS.Const "permission" (JS.Await (method (n "Notification") "requestPermission" Nil)),
+     JS.If (eq (n "permission") (t "granted"))
+       [doMethod (n "localStorage") "setItem" [t "print-room-reminders",t "on"], JS.Do (call (n "notify") Nil)]
+       [status (t "Browser notifications were not enabled. Due reminders remain visible in the app.")]]
+     "error" [status (t "Browser reminders are unavailable. Due reminders remain visible in the app.")] Nil].
+acknowledge u =
+  [JS.Try [JS.Const "saved" (method (n "JSON") "parse" [f (n "event") "detail"]),
+    JS.Const "input" (method (n "document") "querySelector" [t "[data-input=\"careNote\"]"]),
+    JS.If (JS.Binary JS.And (n "input") (eq (f (n "input") "value") (f (n "saved") "note")))
+      [JS.Assign (f (n "input") "value") (t ""),doMethod (n "input") "dispatchEvent" [JS.New (n "Event") [t "input",JS.Object [("bubbles",JS.Boolean True)]]]] Nil] "error" Nil Nil].
+notify u =
+  [JS.If (neg (n "running")) [JS.ReturnVoid] Nil,
+   JS.Try [JS.If (JS.Binary JS.Or (JS.Binary JS.NotEqual (stored "print-room-reminders") (t "on")) (eq (JS.Unary JS.TypeOf (n "Notification")) (t "undefined"))) [JS.ReturnVoid] Nil,
+     JS.If (JS.Binary JS.NotEqual (f (n "Notification") "permission") (t "granted")) [status (t "Browser notification permission is off. Due reminders remain visible here."),JS.ReturnVoid] Nil,
+     status (t "Browser reminders on while this app is open. Closed-app delivery is not enabled."),
+     JS.Const "link" (method (n "document") "getElementById" [t "lv-link"]),
+     JS.If (JS.Binary JS.Or (neg (n "link")) (JS.Binary JS.NotEqual (f (n "link") "textContent") (t "live"))) [JS.ReturnVoid] Nil,
+     JS.ForOf "row" (method (n "document") "querySelectorAll" [t "[data-care-due]"])
+       [JS.Const "token" (attr (n "row") "data-care-due"),
+        JS.Const "task" (JS.Index (method (n "token") "split" [t ":"]) (JS.Number 0)),
+        JS.Const "key" (JS.Binary JS.Add (t "print-room-reminder:") (n "task")),
+        JS.If (JS.Binary JS.NotEqual (method (n "localStorage") "getItem" [n "key"]) (n "token"))
+          [JS.Const "notification" (JS.New (n "Notification") [t "Printer maintenance is due", JS.Object [("body",t "Open Print room to review the scheduled workshop checks."),("tag",n "key")]]),
+           doMethod (n "localStorage") "setItem" [n "key",n "token"],
+           JS.Assign (f (n "notification") "onclick") (JS.Function Nil [doMethod (n "window") "focus" Nil,doMethod (n "notification") "close" Nil])] Nil]]
+     "error" [status (t "Browser reminders could not be delivered. Due reminders remain visible here.")] Nil].
+src u = JS.program [JS.Do (call (JS.Function Nil
+  [JS.Let "running" (JS.Boolean True),
+   JS.Define "status" ["message"] [JS.ForOf "label" (method (n "document") "querySelectorAll" [t "[data-care-notification-status]"]) [JS.If (JS.Binary JS.NotEqual (f (n "label") "textContent") (n "message")) [JS.Assign (f (n "label") "textContent") (n "message")] Nil]],
+   JS.Define "pack" ["event"] (pack Unit), JS.AsyncDefine "enable" ["event"] (enable Unit), JS.Define "notify" Nil (notify Unit),
+   doMethod (n "document") "addEventListener" [t "click", n "pack", JS.Boolean True],
+   doMethod (n "document") "addEventListener" [t "click", n "enable"],
+   doMethod (n "document") "addEventListener" [t "live:frame",n "notify"],
+   doMethod (n "document") "addEventListener" [t "live:care-saved",JS.Function ["event"] (acknowledge Unit)],
+   JS.Const "timer" (call (n "setInterval") [n "notify",JS.Number 60000]),
+   doMethod (n "window") "addEventListener" [t "pagehide",JS.Function Nil [JS.Assign (n "running") (JS.Boolean False)]],
+   doMethod (n "window") "addEventListener" [t "pageshow",JS.Function Nil [JS.Assign (n "running") (JS.Boolean True),JS.Do (call (n "notify") Nil)]],
+   JS.Do (call (n "notify") Nil)]) Nil)].

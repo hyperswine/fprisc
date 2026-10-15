@@ -1,6 +1,6 @@
-# Read-only printer dashboard. std/live owns the model and per-tab controls;
-# the LAN bridge atomically replaces a small, public telemetry snapshot.
-# Run tools/printer_dashboard.py --demo, or see examples/printer-dashboard/README.md.
+# Printer telemetry and a shared workshop log, with per-tab controls.
+# The native printer-host owns authentication, persistence and LAN services.
+# This entry point retains the public-snapshot viewer for compatibility tests.
 unsafe base.
 Live = use "std/live".
 G = use "std/view".
@@ -16,18 +16,21 @@ Json = use "std/json".
 Option = use "std/option".
 Program = use "std/program".
 UI = use "examples/printer-dashboard/presentation".
+Care = use "examples/printer-dashboard/care".
+CareUI = use "examples/printer-dashboard/careview".
+CareProgram = use "examples/printer-dashboard/careprogram".
 El = UI.element.
 Txt = G.Txt.
 Dyn = G.Dyn.
 Att = G.Att.
-Msg = Type (Tick | Expand String | Camera String).
+Msg = Type (Tick | Expand String | Camera String | CarePanel String | CareEdit String String | CareChange String String String Int String).
 codec = @Msg.
-Sess = {sid : Int, expanded : List String, cameras : List String}.
+Sess = {sid : Int, expanded : List String, cameras : List String, carePrinter : String, careEditing : String, careNotice : String}.
 # Public allowlist only. The gateway verifies signatures and gates HTTP/WS/camera;
 # private keys, challenges and bearer sessions never enter the live model.
 Model = {printers : List Json.Value, auth : List Json.Value, generated : Int, now : Int,
-         tickUs : Int, lastTick : Int, ticks : Int, sessions : List Sess, demo : Bool, issue : String}.
-noSess = { sid = 0, expanded = Nil, cameras = Nil }.
+         tickUs : Int, lastTick : Int, ticks : Int, sessions : List Sess, demo : Bool, issue : String, care : CareState, careProblem : String}.
+noSess = { sid = 0, expanded = Nil, cameras = Nil, carePrinter = "", careEditing = "", careNotice = "" }.
 getSess sid m = Option.withDefault { noSess | sid = sid } (List.find (fn s -> s.sid == sid) m.sessions).
 putSess m s = { m | sessions = s :: List.filter (fn old -> old.sid != s.sid) m.sessions }.
 toggle k xs = if List.member k xs then List.filter (fn x -> x != k) xs else k :: xs.
@@ -49,7 +52,7 @@ load path m = case File.readText path of
           else { m | printers = values "printers" v, auth = values "auth" v, generated = integer "generated_at" v, demo = boolean "demo" v, issue = "" })).
 initial : String -> Model.
 seed u = { printers = Nil, auth = Nil, generated = 0, now = Clock.now Unit, tickUs = 0, lastTick = Clock.monotonic Unit,
-                          ticks = 0, sessions = Nil, demo = False, issue = "" }.
+                          ticks = 0, sessions = Nil, demo = False, issue = "", care = Care.empty, careProblem = "Maintenance logging is available through the native printer host." }.
 initial path = load path (seed Unit).
 update path ev m = updateWith (load path) ev m.
 updateWith refresh ev m = case ev of
@@ -64,11 +67,22 @@ updateWith refresh ev m = case ev of
       s = getSess sid m;
       allowed = List.any (fn p -> text "id" p == id and boolean "camera_available" p) m.printers;
       (if allowed then (putSess m { s | cameras = toggle id s.cameras, expanded = (if List.member id s.expanded then s.expanded else id :: s.expanded) }, Nil) else (m, Nil))
+  | Live.Msg sid (CarePanel id) ->
+      s = getSess sid m;
+      (if List.any (fn p -> text "id" p == id) m.printers then (putSess m {s | carePrinter = id, careEditing = "", careNotice = ""}, Nil) else (m, Nil))
+  | Live.Msg sid (CareEdit id target) ->
+      s = getSess sid m;
+      t = List.find (fn t -> t.id == target and t.printer == id) m.care.tasks;
+      (if not (List.any (fn p -> text "id" p == id) m.printers) or (target != "" and t == Option.None) then (m, Nil) else
+        title = Option.withDefault "" (Option.map (fn t -> t.title) t);
+        days = Option.withDefault "30" (Option.map (fn t -> str t.days) t);
+        (putSess m {s | carePrinter = id, careEditing = target, careNotice = ""},
+          [Live.Emit sid "locals" (Json.render (Json.object [("careTitle",Json.Text title),("careDays",Json.Text days),("careTab",Json.Text "tasks")]))]))
   | Live.Left sid -> ({ m | sessions = List.filter (fn s -> s.sid != sid) m.sessions }, Nil)
   | _ -> (m, Nil).
 subs ms m = [Live.Every ms Tick].
 project sid m = { printers = m.printers, now = m.now, generated = m.generated, tickUs = m.tickUs, ticks = m.ticks,
-                   demo = m.demo, issue = m.issue, session = getSess sid m }.
+                   demo = m.demo, issue = m.issue, care = m.care, careProblem = m.careProblem, session = getSess sid m }.
 age now at = if at <= 0 then "No report yet" else "{(if now > at then now - at else 0)}s ago".
 stale v = v.generated == 0 or v.now - v.generated > 5 or strlen v.issue > 0.
 link p v = if stale v then "STALE" else text "connection" p.
@@ -101,6 +115,8 @@ card v p =
         , El "button" (List.append UI.button (List.append (UI.camera camera available)
             [G.send codec (Camera id), Att "type" "button", Att "role" "switch", Att "aria-checked" (if camera then "true" else "false"), Att "aria-disabled" (if available then "false" else "true")]))
             [El "span" (Att "aria-hidden" "true" :: UI.cameraDot camera) Nil, Txt (if camera then "Camera on" else "Camera off")]]
+    , El "div" actionsCare [button "Care & print log" (CarePanel id) UI.quiet,
+        El "span" [UI.muted, UI.text 11] [Dyn "{List.length (List.filter (fn t -> t.printer == id and Care.isDue v.now t) v.care.tasks)} due · {List.length (List.filter (fn i -> i.printer == id and not i.resolved) v.care.issues)} open issues"]]
     , El "section" (Att "id" "details-{id}" :: UI.hidden (not expanded) :: UI.details)
         [El "dl" UI.detailGrid
           [row "Nozzle target" (number "nozzle_target" p), row "Bed target" (number "bed_target" p), row "Print error" (text "error" p), row "Filament" (text "filament" p), row "Reports received" (number "reports" p), row "Last report (UTC)" (text "last_report_iso" p)]
@@ -128,9 +144,12 @@ view ms sid v = G.renderStyled (El "div" frame [El "main" UI.page
       , El "div" (UI.health (stale v)) [Dyn (if stale v then "Bridge stale / unavailable" else "Bridge connected")]
       , El "div" [Att "id" "lv-link", UI.muted] [Txt "live"]]
   , El "p" (Att "role" "status" :: UI.hidden (strlen v.issue == 0) :: UI.banner) [Dyn v.issue]
+  , CareUI.reminders v
   , El "section" (Att "aria-label" "Printers" :: UI.cards) (List.map (card v) v.printers)
+  , CareUI.panel codec CarePanel CareEdit CareChange v
   , El "p" (UI.hidden (List.length v.printers != 0) :: UI.empty) [Txt "No printers yet. Start the bridge in demo mode or configure your local printers."]
-  , El "footer" UI.footer [Txt "FP-RISC · Shared live telemetry, per-tab controls. No print, motion or temperature commands."]]]).
+  , El "footer" UI.footer [Txt "FP-RISC · Printer controls are read only. Workshop notes are shared and saved locally. No print, motion or temperature commands."]]]).
+actionsCare = [UI.flex, UI.between, UI.u [G.Gap (G.Px 10), G.MarginTop (G.Px 12), G.FlexWrap G.Wrap]].
 setting d k v = case Decode.run (Decode.field k d) v of Ok x -> x | Err why -> Program.fail 2 "printers: {why}".
 main = case Config.load { defaults = Json.object [("port", Json.Integer 6732), ("address", Json.Text "127.0.0.1"), ("status", Json.Text "printers-status.json"), ("store", Json.Text "printers.kvlog"), ("poll-ms", Json.Integer 1000)], file = Option.None, envPrefix = "PRINTERS_", args = Program.args Unit } of
     Err why -> Program.fail 2 "printers: {why}"

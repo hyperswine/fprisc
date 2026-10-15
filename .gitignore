@@ -26,3 +26,6 @@ pos1.log
 pos1.log.kvlog
 
 secrets.env
+# Local workshop logs and their recovery files contain user observations.
+*.care.json
+*.care.json.*

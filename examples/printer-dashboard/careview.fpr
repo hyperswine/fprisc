@@ -1,0 +1,95 @@
+G = use "std/view".
+UI = use "presentation".
+Care = use "care".
+L = use "std/list".
+O = use "std/option".
+C = use "std/clock".
+El = UI.element.
+Txt = G.Txt.
+Dyn = G.Dyn.
+Att = G.Att.
+Client = {careTab : String, careTitle : String, careDays : String, careNote : String, careFile : String, careProfile : String, careCategory : String, careOutcome : String, carePayload : String}.
+locals = G.locals @Client {careTab = "tasks", careTitle = "", careDays = "30", careNote = "", careFile = "", careProfile = "", careCategory = "Noise / squeaking", careOutcome = "Failed", carePayload = "\{}"}.
+spaced = [UI.u [G.Display G.Grid, G.Gap (G.Px 12)]].
+actions = [UI.flex, UI.u [G.FlexWrap G.Wrap, G.Gap (G.Px 12)]].
+input = [UI.border, UI.text 14, UI.u [G.FontFamily G.SystemFont, G.Width (G.Pct 100), G.MinWidth (G.Px 0), G.Padding (G.Px 10), G.Radius (G.Px 6), G.Background (G.ThemeColour G.Card), G.Foreground UI.ink], G.focus [G.OutlineWidth (G.Px 2), G.OutlineColour UI.green]].
+block = [UI.border, UI.u [G.Padding (G.Px 16), G.Radius (G.Px 10), G.WordWrap G.WrapAnywhere]].
+smallButton label attrs = El "button" (Att "type" "button" :: L.append UI.button (L.append UI.quiet attrs)) [Txt label].
+field label id attrs = El "label" spaced [El "span" [UI.text 12] [Txt label], G.Inp (Att "id" id :: Att "aria-label" label :: L.append input attrs)].
+select label path values = El "label" spaced [El "span" [UI.text 12] [Txt label], El "select" (Att "aria-label" label :: G.bind path :: input) (L.map (fn value -> El "option" [Att "value" value] [Txt value]) values)].
+note = El "label" spaced [El "span" [UI.text 12] [Txt "Observation / work performed (applies to your next log action)"], El "textarea" (G.bind @Client.careNote :: Att "aria-label" "Observation / work performed" :: Att "rows" "3" :: Att "maxlength" "2048" :: input) Nil].
+submit codec change label action printer target revision = smallButton label [Att "data-care-submit" "true", G.sendWith codec (change action printer target revision "") @Client.carePayload].
+dueLabel now t = if Care.isDue now t then "Due now" else "Due in {(Care.dueAt t - now + 86399) / 86400} days".
+taskRow codec edit change v t = G.key t.id (El "div" block
+  [El "div" actions [El "strong" Nil [Dyn t.title], El "span" [UI.text 12, if Care.isDue v.now t then UI.offline else UI.muted] [Dyn (dueLabel v.now t)]]
+  , El "p" UI.footnote [Dyn "Every {t.days} days · ", Dyn (if t.done == 0 then "No completion logged" else "Last done {C.iso t.done}")]
+  , El "p" UI.footnote [Dyn t.advice]
+  , El "a" (Att "href" t.guide :: Att "target" "_blank" :: Att "rel" "noopener noreferrer" :: UI.hidden (t.guide == "") :: UI.footnote) [Txt "Bambu maintenance guide ↗"]
+  , El "div" actions [submit codec change "Log completed" "done" t.printer t.id v.care.rev,
+      submit codec change "Postpone 1 day" "snooze" t.printer t.id v.care.rev,
+      smallButton "Edit schedule" [G.send codec (edit t.printer t.id)]]]).
+issueRow codec change revision i = G.key i.id (El "div" block
+  [El "strong" Nil [Dyn "{i.category} · #{i.id} · {(if i.resolved then "Resolved" else "Open")}"]
+  , El "p" [UI.text 13, UI.u [G.WhiteSpace G.PreWrapSpace]] [Dyn i.note]
+  , El "p" UI.footnote [Dyn "{C.iso i.created} · {i.file} · {i.profile}"]
+  , El "div" actions [submit codec change "Add follow-up note" "issue-note" i.printer i.id revision,
+      submit codec change (if i.resolved then "Reopen with note" else "Resolve with note") (if i.resolved then "reopen" else "resolve") i.printer i.id revision]]).
+attemptRow a = G.key a.id (El "div" block
+  [El "strong" Nil [Dyn "{a.file} · {a.outcome}"]
+  , El "p" UI.footnote [Dyn "{a.profile} · {C.iso a.created}"]
+  , El "p" [UI.text 13, UI.u [G.WhiteSpace G.PreWrapSpace]] [Dyn a.note]]).
+historyRow e = G.key e.id (El "div" block [El "strong" Nil [Dyn "{e.kind} · {e.target}"], El "p" UI.footnote [Dyn (C.iso e.created)], El "p" [UI.text 13, UI.u [G.WhiteSpace G.PreWrapSpace]] [Dyn e.note]]).
+tab title value = smallButton title [G.setTo @Client.careTab value].
+panel codec choose edit change v =
+  printer = v.session.carePrinter;
+  p = O.withDefault (Care.value Care.empty) (L.find (fn p -> Care.text "id" p == printer) v.printers);
+  tasks = L.filter (fn t -> t.printer == printer) v.care.tasks;
+  issues = L.filter (fn i -> i.printer == printer) v.care.issues;
+  attempts = L.filter (fn a -> a.printer == printer) v.care.attempts;
+  watched = L.filter (fn a -> a.printer == printer) (Care.watchlist v.care);
+  history = L.filter (fn e -> e.printer == printer) v.care.history;
+  El "section" (Att "aria-label" "Workshop log" :: L.append locals (L.append UI.card [UI.u [G.MarginTop (G.Px 24)]]))
+  [El "h2" UI.heading [Txt "Care & print log"]
+  , El "p" UI.footnote [Txt "Keep observations separate from suspected causes. A finished print still needs a physical quality and fit check."]
+  , El "div" actions (L.map (fn p -> smallButton (Care.text "name" p) [G.send codec (choose (Care.text "id" p)), Att "aria-pressed" (if Care.text "id" p == printer then "true" else "false")]) v.printers)
+  , El "p" (Att "role" "alert" :: UI.hidden (v.careProblem == "") :: UI.banner) [Dyn v.careProblem]
+  , El "p" (Att "role" "status" :: UI.hidden (v.session.careNotice == "") :: UI.notice) [Dyn v.session.careNotice]
+  , El "p" (Att "data-care-client-status" "true" :: Att "role" "status" :: UI.notice) Nil
+  , El "div" (if printer == "" then [UI.hidden True] else spaced)
+    [El "h3" [UI.text 18] [Dyn (Care.text "name" p)]
+    , El "div" actions [tab "Maintenance" "tasks", tab "Issues" "issues", tab "Print watchlist" "prints", tab "History" "history",
+        smallButton "Browser reminders" [Att "data-care-notify" "true"], El "a" [Att "href" "/api/status", Att "download" "print-room-log.json", UI.text 12] [Txt "Export log"]]
+    , El "p" [Att "data-care-notification-status" "true", UI.muted, UI.text 11] [Txt "Reminders appear here when due. Optional browser alerts require this app to remain open."]
+    , El "p" UI.footnote [Txt "Schedules start today with no past completion assumed. Monthly / quarterly presets use 30 / 90 days; adjust for use, material and Bambu HMS prompts. Inspect the plate and wiper before printing."]
+    , note
+    , G.Inp [G.bind @Client.carePayload, Att "type" "hidden"]
+    , El "div" (G.showIf @Client.careTab "tasks" :: spaced)
+      [El "div" actions [field "Task name" "care-title" [G.bind @Client.careTitle, Att "maxlength" "120"], field "Every N days" "care-days" [G.bind @Client.careDays, Att "type" "number", Att "min" "1", Att "max" "3650", Att "step" "1"]]
+      , El "div" actions [submit codec change (if v.session.careEditing == "" then "Add schedule" else "Save schedule") "task" printer v.session.careEditing v.care.rev,
+          smallButton "New schedule" [G.send codec (edit printer "")]]
+      , El "div" spaced (L.map (taskRow codec edit change v) tasks)]
+    , El "div" (G.showIf @Client.careTab "issues" :: spaced)
+      [select "Issue type" @Client.careCategory ["Noise / squeaking", "Print artifact", "Adhesion", "Feeding / extrusion", "Other"]
+      , field "Related file / part (optional)" "care-issue-file" [G.bind @Client.careFile, Att "maxlength" "240"]
+      , field "Material / nozzle / profile / orientation (optional)" "care-issue-profile" [G.bind @Client.careProfile, Att "maxlength" "320"]
+      , submit codec change "Log issue" "issue" printer "" v.care.rev
+      , El "p" UI.footnote [Dyn "{L.length issues} issues · showing latest 20; export includes all entries."]
+      , El "div" spaced (L.map (issueRow codec change v.care.rev) (L.take 20 issues))]
+    , El "div" (G.showIf @Client.careTab "prints" :: spaced)
+      [field "File / object / part" "care-file" [G.bind @Client.careFile, Att "maxlength" "240"]
+      , smallButton "Use current job name" [G.setTo @Client.careFile (Care.text "job" p)]
+      , field "Material / nozzle / profile / orientation" "care-profile" [G.bind @Client.careProfile, Att "maxlength" "320"]
+      , select "Physically observed result" @Client.careOutcome ["Failed", "Poor quality", "Passed"]
+      , submit codec change "Record print result" "print" printer "" v.care.rev
+      , El "p" UI.footnote [Txt "A failed or poor result adds this file and settings to the watchlist. A later Passed result for the same printer, file and settings clears it; history remains. File names are labels, not content hashes."]
+      , El "h3" [UI.text 16] [Dyn "Watchlist · {L.length watched}"]
+      , El "div" spaced (L.map attemptRow (L.take 20 watched))
+      , El "h3" [UI.text 16] [Txt "Recent print attempts"]
+      , El "div" spaced (L.map attemptRow (L.take 20 attempts))]
+    , El "div" (G.showIf @Client.careTab "history" :: spaced)
+      [El "p" UI.footnote [Dyn "{L.length history} events · showing latest 20; export includes all entries."]
+      , El "div" spaced (L.map historyRow (L.take 20 history))]]].
+reminders v = El "div" [Att "aria-label" "Maintenance reminders"] (L.filterMap (fn t ->
+  if not (Care.isDue v.now t) or not (L.any (fn p -> Care.text "id" p == t.printer) v.printers) or v.careProblem != "" then O.None else O.Some
+    (G.key t.id (El "p" (Att "role" "status" :: Att "data-care-due" "{t.id}:{Care.dueAt t}" :: Att "data-care-printer" t.printer :: UI.banner)
+      [Dyn "{t.printer}: {t.title} is due."]))) v.care.tasks).

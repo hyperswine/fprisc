@@ -7,6 +7,8 @@ Camera = use "printer-dashboard/cameraservice".
 Frame = use "printer-dashboard/cameraframe".
 Collector = use "examples/printer-telemetry".
 View = use "examples/printers".
+Care = use "printer-dashboard/care".
+CareProgram = use "printer-dashboard/careprogram".
 Login = use "printer-dashboard/loginview".
 LoginProgram = use "printer-dashboard/loginprogram".
 SessionProgram = use "printer-dashboard/sessionprogram".
@@ -92,22 +94,33 @@ cameraStats registry id manager me = _ = Sys.loop Unit (fn u ->
   _ = case Camera.ask me manager Camera.Inspect of Ok (Camera.Snapshot value) -> Registry.put registry (Registry.Camera id value) | _ -> Unit;
   _ = Clock.sleepMs 500;
   (True, Unit)); Unit.
-model registry =
+model registry care =
   value = Registry.get registry;
   m = View.seed Unit;
-  {m | printers = View.values "printers" value, auth = View.values "auth" value, generated = View.integer "generated_at" value, demo = View.boolean "demo" value, issue = ""}.
-update registry event m =
+  notes = Care.get care;
+  {m | printers = View.values "printers" value, auth = View.values "auth" value, generated = View.integer "generated_at" value, demo = View.boolean "demo" value, issue = "", care = notes.state, careProblem = notes.problem}.
+update registry care event m =
   (next, commands) = View.updateWith (fn old -> old) event m;
+  notes = case event of
+    Live.Msg sid (View.CareChange action printer target revision raw) -> if sid > 0 then Care.change care action printer target revision raw else Care.get care
+  | _ -> Care.get care;
+  withCare = {next | care = (if notes.problem == "" then notes.state else next.care), careProblem = notes.problem};
+  changed = case event of
+    Live.Msg sid (View.CareChange _ _ _ _ _) ->
+      s = View.getSess sid withCare;
+      View.putSess withCare {s | careNotice = notes.notice}
+  | _ -> withCare;
   value = Registry.get registry;
-  (if View.validSnapshot value then {next | printers = View.values "printers" value, auth = View.values "auth" value, generated = View.integer "generated_at" value,
-    demo = View.boolean "demo" value, issue = ""} else {next | issue = "Native register unavailable; retaining last values."}, commands).
+  cleared = case event of Live.Msg sid (View.CareChange _ _ _ _ raw) -> if notes.saved then [Live.Emit sid "care-saved" raw] else Nil | _ -> Nil;
+  (if View.validSnapshot value then {changed | printers = View.values "printers" value, auth = View.values "auth" value, generated = View.integer "generated_at" value,
+    demo = View.boolean "demo" value, issue = ""} else {changed | issue = "Native register unavailable; retaining last values."}, L.append commands cleared).
 exportAssets path =
   _ = need (F.writeText "{path}/printer_login.js" ("// Generated from FP-RISC printer-dashboard/loginprogram.\n" + LoginProgram.src Unit));
   _ = need (F.writeText "{path}/printer_session.js" ("// Generated from FP-RISC printer-dashboard/sessionprogram.\n" + SessionProgram.src Unit));
   _ = need (F.writeText "{path}/printer_login.html" (Login.html Unit));
   print "generated printer browser assets".
 main =
-  defaults = J.object [("port", J.Integer 6730), ("address", J.Text "127.0.0.1"), ("origin", J.Text "https://3dprint.cswine.cloud"), ("auth", J.Text "examples/printer-dashboard/auth.json"), ("config", J.Text ""), ("credentials-env-file", J.Text ""), ("store", J.Text "printer-native.kvlog"), ("demo", J.Boolean False), ("export-assets", J.Text "")];
+  defaults = J.object [("port", J.Integer 6730), ("address", J.Text "127.0.0.1"), ("origin", J.Text "https://3dprint.cswine.cloud"), ("auth", J.Text "examples/printer-dashboard/auth.json"), ("config", J.Text ""), ("credentials-env-file", J.Text ""), ("store", J.Text "printer-native.kvlog"), ("maintenance-store", J.Text ""), ("demo", J.Boolean False), ("export-assets", J.Text "")];
   v = need (Config.load {defaults = defaults, file = O.None, envPrefix = "PRINTER_HOST_", args = P.args Unit});
   if text "export-assets" v != "" then exportAssets (text "export-assets" v) else run v.
 run v =
@@ -119,6 +132,7 @@ run v =
   printers = rows (if demo then demoValues else readJson (text "config" v)) demo;
   codes = credentials (text "credentials-env-file" v) (L.map (fn row -> row.codeEnv) printers);
   registry = Registry.start printers demo keyValues;
+  care = Care.start (field (text "store" v + ".care.json") "maintenance-store" v) (L.map (fn row -> row.metadata) printers);
   cameras = L.filterMap (fn row ->
     code = O.withDefault (P.envOr "" row.codeEnv) ((L.find (fn pair -> case pair of (name, _) -> name == row.codeEnv) codes |> O.map (fn pair -> case pair of (_, code) -> code)));
     _ = if not demo and (strlen code < 1 or strlen code > 32) then P.fail 2 "printer host: runtime credential unavailable" else Unit;
@@ -131,12 +145,12 @@ run v =
   parent = myself 0;
   view = A.spawnWith (A.Static 16) (fn me ->
     cfg = {Live.defaults | port = 0, title = "Print room", store = text "store" v, journal = False,
-      script = LJ.src Unit + View.cameraScript + SessionProgram.src Unit};
+      script = LJ.src Unit + View.cameraScript + CareProgram.src Unit + SessionProgram.src Unit};
     _ = Live.serveProjectedNotify (fn port -> _ = send parent port; Unit) UI.document cfg
-      {init = model registry, update = update registry, subs = View.subs 1000, fields = Nil, codec = View.codec, project = View.project,
+      {init = model registry care, update = update registry care, subs = View.subs 1000, fields = Nil, codec = View.codec, project = View.project,
        same = (fn a b -> a == b), cache = Unit, view = (fn sid m cache -> (View.view 1000 sid m, Unit)), css = View.css};
     Unit);
   viewPort = case receiveFromRes parent view of Ok port -> port | Err _ -> P.fail 2 "printer host: view unavailable";
   Gateway.run {address = text "address" v, port = integer 6730 "port" v, origin = text "origin" v, auth = auth, authLimits = Auth.defaults,
     loginHtml = Login.html Unit, loginScript = LoginProgram.src Unit, sessionScript = SessionProgram.src Unit,
-    viewPort = viewPort, cameras = cameras, snapshot = (fn u -> Registry.get registry), peer = "", owner = parent}.
+    viewPort = viewPort, cameras = cameras, snapshot = (fn u -> notes = Care.get care; Registry.merge (Registry.get registry) (J.object [("maintenance",Care.value notes.state),("maintenance_problem",J.Text notes.problem)])), peer = "", owner = parent}.

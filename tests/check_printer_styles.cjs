@@ -71,7 +71,7 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'fpr-printer-styles-'));
    assert.equal(await host.locator('img').evaluate(e=>getComputedStyle(e).objectFit),'contain');
    assert.equal(await host.locator('img').evaluate(e=>e.style.cssText),'');
    // Telemetry morphing the light DOM must preserve the media-owned shadow.
-   await page.locator('h2').evaluate(e=>{e.textContent='Fresh telemetry';});
+   await page.locator('article h2').evaluate(e=>{e.textContent='Fresh telemetry';});
    await page.waitForTimeout(40);
    assert.equal(requests,start+1);
    await page.locator('#lv-link').evaluate(e=>{e.textContent='offline';});

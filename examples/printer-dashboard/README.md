@@ -55,6 +55,119 @@ and checked against both real printers through public HTTPS/WSS; see the
 [production acceptance record](#single-process-native-host-deployed-2026-10-15).
 Simulator checks alone do not establish that deployment boundary.
 
+## Maintenance, issues and print outcomes
+
+The native host includes a shared **Care & print log**. Open it from a printer
+card, then select Maintenance, Issues, Print watchlist or History. All registered
+login keys may record workshop observations; this does not enable printer
+motion, temperature changes or starting prints. These records are human reports,
+not telemetry-derived claims of maintenance or print quality.
+
+The maintenance log is stored separately from the executable, so redeployments
+can preserve its schedules, observations and history.
+
+- Maintenance schedules accept 1–3650 whole days. Log completed work with a
+  note, change its cadence, or postpone its reminder by one day. Postponing
+  never marks work completed. New schedules have no assumed past completion;
+  their first reminder is one interval after creation.
+- Issues cover noise/squeaking, artifacts, adhesion, feeding/extrusion and other
+  observations. Attach a file/part label and settings, add follow-up notes, then
+  resolve or reopen with an explanation. Record suspected causes as hypotheses.
+- Print results record a file/object/part label, settings, observations and a
+  Failed, Poor quality or Passed result. The active watchlist shows the latest
+  unsuccessful result for each exact **printer + file label + settings**.
+  A subsequent Passed result for that same combination clears it while keeping
+  all attempts. Changing settings starts a separate combination. Names are
+  labels rather than content identities; a changed file should use a new label
+  or revision. Passing requires the operator's physical inspection.
+
+Model presets were checked against Bambu's [A1 maintenance guide](https://wiki.bambulab.com/en/a1/maintenance/basic-maintenance)
+and [P1 series guide](https://wiki.bambulab.com/en/p1/maintenance/p1p-maintenance)
+on 2026-10-15. A1 X/Y rails use oil; P1S X carbon rods are cleaned without
+lubrication. Both models include Z lead-screw grease checks. The P1S also has
+Y/Z steel-rod cleaning and rust-protection checks; both have weekly fan checks
+and an adjustable workshop reminder for the plate. Monthly/quarterly schedules
+use 30/90 days. Plate cleaning is condition-dependent, so the weekly reminder
+does not replace inspection before a print. Follow the linked guide and HMS
+prompts for the actual procedure, and perform hands-on work when safely idle.
+Usage, abrasive materials, filament dust and humidity may justify shorter
+intervals. The display label `A1 + AMS Lite` uses the A1 presets.
+
+Due items appear above the cards. **Browser reminders** explicitly requests
+notification permission and toggles that browser's preference; no permission is
+requested on page load. Alerts are deduplicated per due occurrence, including
+after a snooze, and fall back to the visible due list if notifications or local
+storage are unavailable. Delivery is best effort while a signed-in app tab is
+open and connected. There is no service worker, push subscription or closed-app
+delivery in this version.
+
+### Storage and recovery
+
+`--maintenance-store=PATH` selects a persistent JSON snapshot. By default it is
+`<--store value>.care.json`, separate from the Live view store and telemetry.
+Put it in a stable local directory, retain it across binary upgrades, and include
+it in backups. The default-named files are ignored by Git; custom paths should
+be inside an ignored/private data directory too. Demo and acceptance runs must
+use their own path. Run only one host against each path: this is a single-process
+store, without a cross-process lock or database replication.
+
+One actor validates and serializes mutations. A view supplies the current log
+revision, so stale tabs and retries cannot overwrite a more recent edit. The
+actor checks the on-disk revision too. A successful save writes a temporary
+snapshot, preserves the previous complete snapshot as `PATH.bak`, and renames
+the new snapshot over `PATH`. Save acknowledgement follows replacement, and a
+failed save keeps the in-memory log and draft. A later acknowledgement clears a
+note only if it still matches the submitted note, preserving newly typed work.
+Temporary files are never replayed automatically. Atomic replacement protects
+against an interrupted process; the file API does not offer fsync, so this is
+**not a power-loss durability guarantee**.
+
+A damaged/unsupported log or a missing primary with an existing backup disables
+logging and displays the reason. It never silently resets history or rolls back
+to the backup. Printer telemetry and cameras can continue. Stop the host, retain
+the damaged primary and all recovery files, inspect/validate a copy of the
+backup, then deliberately restore that copy to `PATH` and restart. A transient
+write error can be repaired and retried without restarting; review History if a
+save was not confirmed. Old source-built binaries ignore the new log, so retain
+the data file when rolling back the executable.
+
+The store bounds tasks (256), issues (512), print attempts (1024), history events
+(4096), file size (8 MiB), note size and JSON nesting. It refuses new entries at
+capacity rather than deleting old observations. The UI shows the latest 20
+issues, attempts, watched files and history entries; **Export log** downloads the
+authenticated `/api/status` JSON, which includes the complete `maintenance`
+object and a `maintenance_problem` field. Consumers must inspect that field.
+Export and retain a checked archive before rotating a full log while the host is
+stopped; keep both the primary and backup together. Auth sessions are not stored
+with the log. Entries have event IDs and timestamps, but no claimed key-holder
+identity: the existing session service does not expose an authenticated name.
+
+The next useful integrations are content hashes/build-manifest IDs from CoScad,
+structured material/nozzle/profile fields, print-hour/spool-count schedules,
+photo/audio evidence, and closed-app notifications. The present watchlist is
+advisory; it does not automatically block slicing, upload, or a printer job.
+
+### Maintenance acceptance
+
+```sh
+XDG_CACHE_HOME=/tmp/printer-care-cache ./fpr build tests/printer_care.fpr -o build/printer-care-policy
+./build/printer-care-policy
+XDG_CACHE_HOME=/tmp/printer-care-cache ./fpr build tests/printercare_program.fpr -o build/printercare-program
+node tests/check_printer_care_program.cjs build/printercare-program
+python tests/check_printer_care.py --binary build/printer-host
+```
+
+The Python check needs the existing dashboard test environment's `cryptography`
+dependency and creates only disposable synthetic keys/data. It covers two tabs,
+stale revisions, bad inputs, successful/failed results, snooze/completion,
+restart recovery, failed writes and corruption on one/four harts. The generated
+browser-program check covers JSON form packing (including pipes and Unicode),
+late-save draft preservation, disconnected saves, double clicks, notification
+deduplication, permission revocation and unsupported browsers. The browser UI
+was also exercised against a separate native demo, including a 390px phone view.
+These checks do not establish public deployment, OS notification delivery on a
+specific phone, or that any physical maintenance or print actually succeeded.
+
 Additional migration checks:
 
 ```sh
@@ -492,7 +605,7 @@ have not been deployed by this implementation step.
 
 ## Single-process native host deployed (2026-10-15)
 
-The public dashboard now runs `build/printer-host`, built from application commit
+The initial single-process deployment ran `build/printer-host`, built from application commit
 `9782b38420bb24c5b61d095adecfaea93abd3be2`. The previous Python gateway and its
 native helper processes exited. One FP-RISC process owns the public gateway,
 authentication, register, view, telemetry and cameras; it runs with four harts

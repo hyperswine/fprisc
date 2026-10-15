@@ -1,0 +1,2 @@
+Program = use "examples/printer-dashboard/careprogram".
+main = print (Program.src Unit).

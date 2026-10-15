@@ -3,7 +3,7 @@ main =
   p = Json.object [("id", Json.Text "sample"), ("name", Json.Text "Workshop printer"),
     ("model", Json.Text "P1S"), ("location", Json.Text "Workshop"), ("connection", Json.Text "ONLINE"),
     ("state", Json.Text "Printing"), ("progress", Json.Integer 37), ("camera_available", Json.Boolean True)];
-  v = {printers = [p], now = 1, generated = 1, tickUs = 0, ticks = 0, demo = True, issue = "",
+  v = {printers = [p], now = 1, generated = 1, tickUs = 0, ticks = 0, demo = True, issue = "", care = Care.empty, careProblem = "",
     session = {noSess | sid = 1, expanded = ["sample"], cameras = ["sample"]}};
   (ss, ds) = view 1000 1 v;
   _ = print (Json.render (Json.object [("s", Json.strings ss), ("d", Json.strings ds),

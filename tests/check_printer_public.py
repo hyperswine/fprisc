@@ -159,6 +159,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--commit', required=True)
     parser.add_argument('--printers', default='a1,p1s')
+    parser.add_argument('--maintenance', action='store_true', help='also require healthy maintenance storage and printer schedules')
     args = parser.parse_args()
     assert args.origin.startswith('https://') and urlsplit(args.origin).path in ('', '/')
     printers = args.printers.split(',')
@@ -191,6 +192,21 @@ def main():
         ws.send('Camera', printers[0]); ws.until(lambda state: has(state, 'Camera on'))
         ws.send('Camera', printers[0]); ws.until(lambda state: not has(state, 'Camera on'))
         evidence['public_wss_camera_toggle'] = True
+        if args.maintenance:
+            status, _, raw = login.request('/api/status')
+            value = json.loads(raw)
+            assert status == 200 and value.get('maintenance_problem') == '', 'maintenance log unavailable'
+            care = value['maintenance']
+            assert care['schema'] == 1 and all(1 <= task['days'] <= 3650 for task in care['tasks'])
+            expected = {'a1': ['a1-plate', 'a1-fans', 'a1-rails', 'a1-screws'],
+                        'p1s': ['p1s-plate', 'p1s-fans', 'p1s-carbon', 'p1s-rods', 'p1s-rust', 'p1s-screws']}
+            for printer in printers:
+                ids = {task['id'] for task in care['tasks'] if task['printer'] == printer}
+                assert set(expected.get(printer, [])) <= ids, 'printer maintenance presets missing'
+            ws.send('CarePanel', printers[0])
+            ws.until(lambda state: has(state, 'Every N days') and has(state, 'Log completed'))
+            evidence['maintenance'] = {'healthy': True, 'printers': printers, 'tasks': len(care['tasks']),
+                'revision': care['rev'], 'history_entries': len(care['history']), 'public_wss_controls': True}
         evidence['camera_frames'], evidence['shared_camera_upstreams'] = {}, {}
         for printer in printers:
             baseline = login.snapshot()[printer]

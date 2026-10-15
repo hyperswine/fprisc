@@ -19,7 +19,7 @@ BROWSER = ['std/' + name + '.fpr' for name in
            ('livejs', 'browsercalc', 'clientcalc', 'browserautocomplete',
             'browserfeedback', 'browserformfill', 'browserstorage', 'browsermedia')]
 BROWSER += ['examples/printer-dashboard/' + name + '.fpr' for name in
-            ('loginprogram', 'sessionprogram', 'loginview', 'presentation')]
+            ('loginprogram', 'sessionprogram', 'loginview', 'presentation', 'careprogram', 'careview')]
 
 def source(path):
     return re.sub(r'^\s*#.*$', '', (ROOT / path).read_text(), flags=re.M)
