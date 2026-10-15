@@ -51,7 +51,7 @@
 # log.  Signing out forgets that device; "sign out other devices" forgets the rest.
 # ============================================================================
 
-unsafe base.
+profile base.
 
 Live = use "std/live".
 G = use "std/view".
@@ -124,17 +124,20 @@ strEq a b = a == b.
 imax a b | a > b = a.
 imax a b = b.
 num s = numGo s 0 (strlen s) 0.
+numGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int -> Int .
 numGo s i n acc | i >= n = acc.
 numGo s i n acc | isDig (charAt s i) = numGo s (i + 1) n (acc * 10 + charAt s i - 48).
 numGo s i n acc = acc.
 isDig c = c >= 48 and c <= 57.
 # "a|b" -> (a, b) at the first bar; no bar: (s, "")
 splitBar s = sbGo s 0 (strlen s).
+sbGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> (String, String) .
 sbGo s i n | i >= n = (s, "").
 sbGo s i n | charAt s i == 124 = (substr s 0 i, substr s (i + 1) (n - i - 1)).
 sbGo s i n = sbGo s (i + 1) n.
 # a member's name: lower-case letters and digits, 1..16 of them
 wordy s = strlen s >= 1 and strlen s <= 16 and wdGo s 0 (strlen s).
+wdGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Bool .
 wdGo s i n | i >= n = True.
 wdGo s i n =
   c = charAt s i;
@@ -221,7 +224,8 @@ randomHex u = case File.open "/dev/urandom" "r" of
 # a password is stored as sha256 iterated over salt and password: slow enough to
 # make a stolen log a chore, quick enough for a sign-in
 pwHash salt pw = stretch 200 (Digest.sha256 "{salt}:{pw}") salt.
-stretch 0 h salt = h.
+stretch : (n : Int | measure n) -> String -> String -> String .
+stretch n h salt | n <= 0 = h.
 stretch n h salt = stretch (n - 1) (Digest.sha256 "{salt}{h}") salt.
 checkPw members name pw = case List.find (fn mm -> strEq (memName mm) name) members of
     Option.Some mm -> strEq (pwHash (memSalt mm) pw) (memHash mm)
@@ -288,13 +292,9 @@ underUs m s bytes what =
 
 # ---- sessions ----------------------------------------------------------------------------
 
-sGet Nil sid = { noSess | sid = sid }.
-sGet (s :: r) sid | s.sid == sid = s.
-sGet (s :: r) sid = sGet r sid.
+sGet ss sid = case List.find (fn s -> s.sid == sid) ss of Option.Some s -> s | Option.None -> { noSess | sid = sid }.
 sPut m s = { m | sess = s :: sDel m.sess s.sid }.
-sDel Nil sid = Nil.
-sDel (s :: r) sid | s.sid == sid = sDel r sid.
-sDel (s :: r) sid = s :: sDel r sid.
+sDel ss sid = List.filter (fn s -> s.sid != sid) ss.
 forget m sid = { m | sess = sDel m.sess sid }.
 # a toast: text with a role (ok, warn); it clears itself after a while unless
 # a newer one replaced it
@@ -357,9 +357,9 @@ note st us = { n = st.n + 1, sum = st.sum + us, max = imax st.max us, last = us 
 avg st = case st.n == 0 of True -> 0 | False -> st.sum / st.n.
 noProf = { bootUs = 0, bootLines = 0, upd = Nil, flush = noStat, nev = 0 }.
 noteUpd kind us prof = { prof | upd = noteKind prof.upd kind us, nev = prof.nev + 1 }.
-noteKind Nil kind us = (kind, note noStat us) :: Nil.
-noteKind ((k, st) :: r) kind us | strEq k kind = (k, note st us) :: r.
-noteKind (e :: r) kind us = e :: noteKind r kind us.
+noteKind es kind us = case List.any (fn e -> case e of (k, _) -> strEq k kind) es of
+    True -> List.map (fn e -> case e of (k, st) -> (case strEq k kind of True -> (k, note st us) | False -> (k, st))) es
+  | False -> List.append es ((kind, note noStat us) :: Nil).
 kindOf ev = case ev of
     Live.Msg sid msg -> msgKind msg
   | Live.Joined sid -> "join"

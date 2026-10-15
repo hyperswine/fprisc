@@ -20,7 +20,7 @@
 
 # MA SHOULD BE CALLED Design. like the default design
 
-unsafe base.
+profile base.
 
 Live = use "std/live".
 Config = use "std/config".
@@ -159,13 +159,17 @@ project sid m =
 # search, and the counts around it.  A page past the end (the log shrank under
 # it) is the last one.
 Page = {rows : List Entry, count : Int, total : Int, pages : Int, page : Int}.
+# a page past the end is clamped to the last one and fetched again: at most
+# two fetches, no recursion
 load store v =
   q = String.toLower v.q;
-  (rows, n) = (if strlen q == 0 then Store.page (v.page * pageSize) pageSize store
-               else Store.search (matches q) (v.page * pageSize) pageSize store);
+  fetch = fn page -> (if strlen q == 0 then Store.page (page * pageSize) pageSize store
+                      else Store.search (matches q) (page * pageSize) pageSize store);
+  (rows0, n) = fetch v.page;
   pages = (if n == 0 then 1 else (n + pageSize - 1) / pageSize);
-  (if v.page >= pages and v.page > 0 then load store {v | page = pages - 1}
-   else {rows = rows, count = n, total = (if strlen q == 0 then n else Store.count store), pages = pages, page = v.page}).
+  page = (if v.page >= pages and v.page > 0 then pages - 1 else v.page);
+  rows = (if page == v.page then rows0 else (case fetch page of (r, _) -> r));
+  {rows = rows, count = n, total = (if strlen q == 0 then n else Store.count store), pages = pages, page = page}.
 
 # ---- view: Ma primitives only ---------------------------------------------------------------
 # The page is FIVE SECTIONS, each a function of only what it shows, so each can

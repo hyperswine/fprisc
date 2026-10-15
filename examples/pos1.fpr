@@ -46,7 +46,7 @@
 # crash across a checkout, a thousand receipts, delta-not-reshape edits).
 # ============================================================================
 
-unsafe base.
+profile base.
 
 Live = use "std/live".
 Reload = use "std/livereload".
@@ -124,9 +124,9 @@ note st us = { n = st.n + 1, sum = st.sum + us, max = imax st.max us, last = us 
 avg st = case st.n == 0 of True -> 0 | False -> st.sum / st.n.
 noProf = { bootUs = 0, bootLines = 0, upd = Nil, flush = noStat, nev = 0 }.
 noteUpd kind us prof = { prof | upd = noteKind prof.upd kind us, nev = prof.nev + 1 }.
-noteKind Nil kind us = (kind, note noStat us) :: Nil.
-noteKind ((k, st) :: r) kind us | strEq k kind = (k, note st us) :: r.
-noteKind (e :: r) kind us = e :: noteKind r kind us.
+noteKind es kind us = case List.any (fn e -> case e of (k, _) -> strEq k kind) es of
+    True -> List.map (fn e -> case e of (k, st) -> (case strEq k kind of True -> (k, note st us) | False -> (k, st))) es
+  | False -> List.append es ((kind, note noStat us) :: Nil).
 kindOf ev = case ev of
     Live.Msg sid msg -> msgKind msg
   | Live.Joined sid -> "join"
@@ -151,6 +151,7 @@ seed =
 rev l acc = l |> foldE (fn x xs -> x :: xs) acc.
 # the leading digits of s, 0 when there are none (a line's numbers are our own)
 num s = numGo s 0 (strlen s) 0.
+numGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int -> Int .
 numGo s i n acc | i >= n = acc.
 numGo s i n acc | isDig (charAt s i) = numGo s (i + 1) n (acc * 10 + charAt s i - 48).
 numGo s i n acc = acc.
@@ -158,23 +159,24 @@ words s = S.words s.
 unwords ws = S.join " " ws.
 # "a|b" -> (a, b) at the first bar; no bar: (s, "")
 splitBar s = sbGo s 0 (strlen s).
+sbGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> (String, String) .
 sbGo s i n | i >= n = (s, "").
 sbGo s i n | charAt s i == 124 = (substr s 0 i, substr s (i + 1) (n - i - 1)).
 sbGo s i n = sbGo s (i + 1) n.
 # "a=b=c" -> list of parts
 splitEq s = seGo s 0 0 (strlen s) Nil.
+seGo : String -> Int -> (i : Int | measure (n - i)) -> (n : Int) -> List String -> List String .
 seGo s st i n acc | i >= n = rev (substr s st (i - st) :: acc) Nil.
 seGo s st i n acc | charAt s i == 61 = seGo s (i + 1) (i + 1) n (substr s st (i - st) :: acc).
 seGo s st i n acc = seGo s st (i + 1) n acc.
-takeN l 0 = Nil.
-takeN Nil n = Nil.
-takeN (x :: r) n = x :: takeN r (n - 1).
+takeN l n = List.take n l.
 imax a b | a > b = a.
 imax a b = b.
 imin a b | a < b = a.
 imin a b = b.
 # a name for the log: letters and digits only, 1..16 of them
 wordy s = strlen s >= 1 and strlen s <= 16 and wdGo s 0 (strlen s).
+wdGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Bool .
 wdGo s i n | i >= n = True.
 wdGo s i n =
   c = charAt s i;
@@ -185,11 +187,14 @@ pad2 n = "{n}".
 money c = Money.format c.
 # "12.50", "12.5" or "12" -> cents (other characters are skipped)
 cents s = cWhole s 0 (strlen s) 0.
+cWhole : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int -> Int .
 cWhole s i n acc | i >= n = acc * 100.
 cWhole s i n acc | charAt s i == 46 = acc * 100 + cFrac s (i + 1) n 10 0.
 cWhole s i n acc | isDig (charAt s i) = cWhole s (i + 1) n (acc * 10 + charAt s i - 48).
 cWhole s i n acc = cWhole s (i + 1) n acc.
-cFrac s i n mul acc | i >= n or mul == 0 = acc.
+cFrac : String -> (i : Int | measure (n - i)) -> (n : Int) -> Int -> Int -> Int .
+cFrac s i n mul acc | i >= n = acc.
+cFrac s i n mul acc | mul == 0 = acc.
 cFrac s i n mul acc | isDig (charAt s i) = cFrac s (i + 1) n (mul / 10) (acc + (charAt s i - 48) * mul).
 cFrac s i n mul acc = acc.
 isDig c = c >= 48 and c <= 57.
@@ -220,9 +225,7 @@ dayOf t = t / 86400.
 
 # ---- products -------------------------------------------------------------------------
 
-findP Nil sku = mkProduct "" 0 0 "".
-findP (p :: r) sku | strEq p.sku sku = p.
-findP (p :: r) sku = findP r sku.
+findP ps sku = case List.find (fn p -> strEq p.sku sku) ps of Option.Some p -> p | Option.None -> mkProduct "" 0 0 "".
 hasP cat sku =
   p = findP cat sku;
   strlen p.sku > 0.
@@ -230,13 +233,9 @@ priceOf cat sku = p = findP cat sku; p.price.
 stockOf cat sku = p = findP cat sku; p.stock.
 nameOf cat sku = p = findP cat sku; p.name.
 # the product sku changed by f
-mapP Nil sku f = Nil.
-mapP (p :: r) sku f | strEq p.sku sku = f p :: r.
-mapP (p :: r) sku f = p :: mapP r sku f.
+mapP ps sku f = List.map (fn p -> case strEq p.sku sku of True -> f p | False -> p) ps.
 setStock cat sku d = mapP cat sku (fn p -> { p | stock = p.stock + d }).
-live Nil = Nil.
-live (p :: r) | p.retired == 1 = live r.
-live (p :: r) = p :: live r.
+live ps = List.filter (fn p -> p.retired != 1) ps.
 pCount cat = List.length (live cat).
 
 # ---- the interpreter: one line into the model --------------------------------------
@@ -272,9 +271,7 @@ applyW m w r = m.
 addP m sku price stock name | hasP m.cat sku = m.
 addP m sku price stock name = { m | cat = m.cat + (mkProduct sku price stock name :: Nil) }.
 addStock m sku d = { m | cat = setStock m.cat sku d }.
-dropStaff Nil name = Nil.
-dropStaff ((nm, pn) :: r) name | strEq nm name = dropStaff r name.
-dropStaff (e :: r) name = e :: dropStaff r name.
+dropStaff es name = List.filter (fn e -> case e of (nm, _) -> not (strEq nm name)) es.
 
 # sale <n> <cashier> <at> <pay> <tendered> <total> <tax> <items...>
 applySale m r = case r of
@@ -302,9 +299,7 @@ applyVoid m n who at =
 markVoid x n who at | x.n == n = { x | voided = 1, voidBy = who, voidAt = at }.
 markVoid x n who at = x.
 noSale = { n = 0, cashier = "", at = 0, pay = 0, tendered = 0, total = 0, tax = 0, lines = Nil, voided = 0, voidBy = "", voidAt = 0 }.
-findSale Nil n = noSale.
-findSale (s :: r) n | s.n == n = s.
-findSale (s :: r) n = findSale r n.
+findSale ss n = case List.find (fn s -> s.n == n) ss of Option.Some s -> s | Option.None -> noSale.
 
 # a validated change: applied now, queued for the disk
 commit m line = apply { m | pend = line :: m.pend, events = m.events + 1 } line.
@@ -406,13 +401,9 @@ rebuildWith m m2 =
 
 # ---- sessions ----------------------------------------------------------------------------
 
-sGet Nil sid = { noSess | sid = sid }.
-sGet (s :: r) sid | s.sid == sid = s.
-sGet (s :: r) sid = sGet r sid.
+sGet ss sid = case List.find (fn s -> s.sid == sid) ss of Option.Some s -> s | Option.None -> { noSess | sid = sid }.
 sPut m s = { m | sess = s :: sDel m.sess s.sid }.
-sDel Nil sid = Nil.
-sDel (s :: r) sid | s.sid == sid = sDel r sid.
-sDel (s :: r) sid = s :: sDel r sid.
+sDel ss sid = List.filter (fn s -> s.sid != sid) ss.
 forget m sid = { m | sess = sDel m.sess sid }.
 # a toast: text with a role (ok, warn, bad, celebrate)
 toast m sid role text =
@@ -490,9 +481,9 @@ sold m sid s m2 =
   case List.isEmpty s2.cart and not (List.isEmpty s.cart) of
     True -> (m2, Live.Emit sid "locals" (localsJson (("tender", "") :: zeros m s.cart)) :: Nil)
   | False -> (m2, Nil).
-pinOk Nil name pin = False.
-pinOk ((nm, pn) :: r) name pin | strEq nm name = strEq pn pin.
-pinOk (e :: r) name pin = pinOk r name pin.
+pinOk es name pin = case List.find (fn e -> case e of (nm, _) -> strEq nm name) es of
+    Option.Some (_, pn) -> strEq pn pin
+  | Option.None -> False.
 
 withUser path sid msg m s | strEq s.cashier "" = (refuse m sid "sign in first", Nil).
 withUser path sid msg m s = case msg of
@@ -508,9 +499,7 @@ withUser path sid msg m s = case msg of
 
 # ---- the cart ------------------------------------------------------------------------------
 
-qtyOf Nil sku = 0.
-qtyOf ((k, q) :: r) sku | strEq k sku = q.
-qtyOf (l :: r) sku = qtyOf r sku.
+qtyOf ls sku = case List.find (fn l -> case l of (k, _) -> strEq k sku) ls of Option.Some (_, q) -> q | Option.None -> 0.
 subtotal m cart = cart |> foldE (fn l acc -> acc + lineTotal m l) 0.
 lineTotal m (k, q) = q * priceOf m.cat k.
 taxOn m sub = Money.tax sub (activeRate m).
@@ -518,9 +507,9 @@ totalOf m cart = sub = subtotal m cart; sub + taxOn m sub.
 
 # ---- checkout: one line ------------------------------------------------------------------------
 
-covered m Nil = "".
-covered m ((k, q) :: r) | q > stockOf m.cat k = "{nameOf m.cat k}: only {stockOf m.cat k} left".
-covered m (l :: r) = covered m r.
+covered m ls = case List.find (fn l -> case l of (k, q) -> q > stockOf m.cat k) ls of
+    Option.Some (k, _) -> "{nameOf m.cat k}: only {stockOf m.cat k} left"
+  | Option.None -> "".
 
 checkout m sid s pay tendered | List.length s.cart == 0 = refuse m sid "the cart is empty".
 checkout m sid s pay tendered =
@@ -571,10 +560,11 @@ console path m sid s cmd =
   (m2, out) = run path m s (words cmd);
   s2 = sGet m2.sess sid;
   sPut m2 { s2 | con = takeN (("> " + cmd) :: out :: s2.con) 12 }.
+helpText = "help: get tax|lowat|revenue|price SKU|stock SKU; set tax N|lowat N|price SKU N; add SKU PRICE STOCK NAME; retire SKU; staff NAME PIN; rebuild".
 run path m s ws = case ws of
     w :: r -> runW path m s w r
-  | Nil -> (m, "help: get tax|lowat|revenue|price SKU|stock SKU; set tax N|lowat N|price SKU N; add SKU PRICE STOCK NAME; retire SKU; staff NAME PIN; rebuild").
-runW path m s w r | strEq w "help" = run path m s Nil.
+  | Nil -> (m, helpText).
+runW path m s w r | strEq w "help" = (m, helpText).
 runW path m s w r | strEq w "get" = (m, getV m r).
 runW path m s w r | strEq w "set" = setV m s r.
 runW path m s w r | strEq w "add" = addCmd m r.
