@@ -37,6 +37,8 @@ main = case P.args Unit of
   | ["bad-rgb"] -> _ = print (G.attrsOf [G.utilities [G.Foreground (G.Rgb 256 0 0)]]); 0
   | ["bad-opacity"] -> _ = print (G.attrsOf [G.utilities [G.Opacity 101]]); 0
   | ["bad-rgba"] -> _ = print (G.attrsOf [G.utilities [G.Background (G.Rgba 0 0 0 256)]]); 0
+  | ["bad-grid"] -> _ = print (G.attrsOf [G.utilities [G.GridColumns 0]]); 0
+  | ["bad-aspect"] -> _ = print (G.attrsOf [G.utilities [G.AspectRatio 16 0]]); 0
   | ["bad-weight"] -> _ = print (G.attrsOf [G.utilities [G.FontWeight 0]]); 0
   | _ ->
       attrs = case primary of G.El _ as _ -> G.attrsOf as | _ -> "";
@@ -58,5 +60,10 @@ main = case P.args Unit of
       _ = check "empty utilities are empty" (G.render empty == G.render (G.El "div" Nil Nil));
       _ = check "override an earlier shorthand with another shorthand" (G.localAtoms [G.utilities [G.PaddingLeft (G.Px 3)], G.utilities [G.Padding (G.Px 8)]] == G.localAtoms [G.utilities [G.Padding (G.Px 8)]]);
       _ = check "overflow expands before override" (G.localAtoms [G.utilities [G.Overflow G.OverflowAuto, G.OverflowX G.OverflowHidden]] == G.localAtoms [G.utilities [G.OverflowY G.OverflowAuto, G.OverflowX G.OverflowHidden]]);
+      _ = check "gap expands before local override" (G.localAtoms [G.utilities [G.Gap (G.Px 8), G.RowGap (G.Px 3)]] == G.localAtoms [G.utilities [G.ColumnGap (G.Px 8), G.RowGap (G.Px 3)]]);
+      _ = check "border shorthand respects top override" (G.localAtoms [G.utilities [G.BorderWidth (G.Px 3), G.BorderTop (G.Px 1) G.CurrentColour]] ==
+        G.localAtoms [G.utilities [G.BorderWidth (G.Px 3)], G.utilities [G.BorderTop (G.Px 1) G.CurrentColour]]);
+      top = G.attrsOf [G.utilities [G.BorderWidth (G.Px 3), G.BorderTop (G.Px 1) G.CurrentColour]];
+      _ = check "overridden top declaration removed" (not (has top (name 0 "border-top-width:3px")) and has top (name 0 "border-top-width:1px"));
       _ = print "view utilities: local overrides, padding, variants, siblings and cached CSS PASS";
       0.

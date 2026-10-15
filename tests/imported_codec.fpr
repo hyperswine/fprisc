@@ -1,0 +1,11 @@
+unsafe base.
+Shared = use "fixtures/modules/imported_codec".
+check why yes = if yes then Unit else error "imported codec: {why}".
+main =
+  codec = Shared.codec;
+  count = Shared.count;
+  _ = check "sum codec qualifies its own module type" (codec.enc (Shared.Ping "hello") == WCon "Ping" [WStr "hello"]);
+  _ = check "wire labels remain public names" (codec.dec (WCon "Reset" Nil) == Ok Shared.Reset);
+  value = {count = 3, title = "kept"};
+  _ = check "record path qualifies its own module type" (count.get value == 3 and count.set 7 value == {count = 7, title = "kept"});
+  print "imported codec and record path qualification: PASS".

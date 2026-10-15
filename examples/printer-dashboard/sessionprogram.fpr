@@ -1,0 +1,27 @@
+# Structured browser capability program. FP-RISC syntax values are authoritative.
+# No foreign source asset or Raw node is read at runtime.
+JS = use "std/javascript".
+src u = JS.program [
+  JS.Do (JS.Call (JS.Function [] (bodyBody1 Unit)) [])
+].
+
+checkBody2 u = [
+  JS.If (JS.Binary JS.Or (JS.Name "checking") (JS.Field (JS.Name "document") "hidden")) [JS.ReturnVoid] [],
+  JS.Do (JS.AssignValue (JS.Name "checking") (JS.Boolean True)),
+  JS.Try [JS.Const "response" (JS.Await (JS.Call (JS.Name "fetch") [(JS.Text "/auth/session"), (JS.Object [("credentials", JS.Text "same-origin"), ("cache", JS.Text "no-store")])])), JS.If (JS.Binary JS.Equal (JS.Field (JS.Name "response") "status") (JS.Number 401)) [JS.Do (JS.Call (JS.Field (JS.Name "location") "replace") [(JS.Text "/")])] []] "_" [] [JS.Do (JS.AssignValue (JS.Name "checking") (JS.Boolean False))]
+].
+
+bodyBody3 u = [
+  JS.If (JS.Unary JS.Not (JS.Call (JS.Field (JS.Field (JS.Name "event") "target") "closest") [(JS.Text "[data-sign-out]")])) [JS.ReturnVoid] [],
+  JS.Do (JS.Call (JS.Field (JS.Name "event") "preventDefault") []),
+  JS.Try [JS.Const "response" (JS.Await (JS.Call (JS.Name "fetch") [(JS.Text "/auth/logout"), (JS.Object [("method", JS.Text "POST"), ("headers", JS.Object [("Content-Type", JS.Text "application/json")]), ("body", JS.Text "\{}"), ("credentials", JS.Text "same-origin")])])), JS.If (JS.Field (JS.Name "response") "ok") [JS.Do (JS.Call (JS.Field (JS.Name "location") "replace") [(JS.Text "/")])] []] "_" [JS.Do (JS.Call (JS.Name "alert") [(JS.Text "Could not sign out. Please retry when connected.")])] []
+].
+
+bodyBody1 u = [
+  JS.Let "checking" (JS.Boolean False),
+  JS.AsyncDefine "check" [] (checkBody2 Unit),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "click"), (JS.AsyncFunction ["event"] (bodyBody3 Unit))]),
+  JS.Do (JS.Call (JS.Name "setInterval") [(JS.Name "check"), (JS.Number 15000)]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "visibilitychange"), (JS.Name "check")]),
+  JS.Do (JS.Call (JS.Name "check") [])
+].

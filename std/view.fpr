@@ -41,8 +41,9 @@
 
 
 Encoding = use "encoding".
+L = use "list".
 
-Attr = Type (Cls String | Utilities (List Utility) | Att String String | Local String String
+Attr = Type (Cls String | Utilities (List Utility) | LocalStyle String String (List Decl) | Att String String | Local String String
            | OnClick String String | OnSet String String | ShowIf String
            | OnBoth String String String String
            | OnSend String String | Input String | OnEnter String String | OnFile String).
@@ -110,7 +111,16 @@ slot (Ctx cur ss ds) v = Ctx "" (cur :: ss) (v :: ds).
 # `vsA 3 [Cls "bg-surface ..."]`, a Cls from the layout and a Cls from the
 # caller on one element -- and with two class attributes the browser kept the
 # first, so no card ever had its surface.  One attribute, every class.
-attrsOf as = strcat (xdata (localsOf as)) (strcat (classAttr (joinSp (classesOf as) (atomClasses (localAtoms as)))) (others as)).
+attrsOf as = strcat (xdata (localsOf as)) (strcat (classAttr (joinSp (classesOf as) (atomClasses (localAtoms as)))) (strcat (localStyleAttribute as) (others as))).
+localStyle key value declarations = LocalStyle key value declarations.
+localStyleAttribute attrs = case localStyleValues attrs of Nil -> "" | values -> " data-local-style=\"{esc (J.render (J.Sequence values))}\"".
+localStyleValues : unsafe List Attr -> List J.Value .
+localStyleValues attrs = case attrs of
+    Nil -> Nil
+  | LocalStyle key value ds :: rest -> J.object [("key", J.Text key), ("value", J.Text value), ("classes", J.Text (atomClasses (lastAtoms (declarations 6 ds))))] :: localStyleValues rest
+  | _ :: rest -> localStyleValues rest.
+localStyleAtoms : unsafe List Attr -> List Atom .
+localStyleAtoms attrs = case attrs of Nil -> Nil | LocalStyle _ _ ds :: rest -> append (lastAtoms (declarations 6 ds)) (localStyleAtoms rest) | _ :: rest -> localStyleAtoms rest.
 localsOf : unsafe List Attr -> String .
 localsOf Nil = "".
 localsOf (Local n init :: r) = join2 (localsOf r) "{n}={init}".
@@ -148,6 +158,7 @@ attrOf (OnFile msg) = " type=\"file\" data-file=\"{esc msg}\"".
 # how the function stays total rather than depending on that one caller.
 attrOf (Local n init) = "".
 attrOf (Utilities _) = "".
+attrOf (LocalStyle _ _ _) = "".
 
 # ---- CSS: only the classes this tree actually uses -------------------------
 #
@@ -166,7 +177,7 @@ attrOf (Utilities _) = "".
 # so on their screen they win over the plain class they contradict.
 
 # lengths and declarations: what an app style is made of
-Len = Type (Px Int | Pct Int | Vh Int | Vw Int | Less Len Len | Auto).
+Len = Type (Px Int | MilliPx Int | Em Int | Pct Int | Vh Int | Dvh Int | Vw Int | Less Len Len | Auto | Inherit).
 Decl = Type (Width Len | Height Len | MinWidth Len | MinHeight Len
            | MaxWidth Len | MaxHeight Len | Basis Len
            | Display DisplayMode | Direction FlexDirection | Gap Len
@@ -189,6 +200,16 @@ Decl = Type (Width Len | Height Len | MinWidth Len | MinHeight Len
            | FontFamily Typeface | FontWeight Int | LineHeight Int | WordWrap WordWrapMode
            | DefineColour ThemeToken Colour
            | Opacity Int
+           | BoxSizing BoxMode | GridColumns Int | RowGap Len | ColumnGap Len
+           | LetterSpacing Len | TextCase CaseMode | TextAlign TextAlignment
+           | TextOverflow TextOverflowMode | Numerals NumeralMode
+           | AspectRatio Int Int | ObjectFit FitMode
+           | OutlineWidth Len | OutlineColour Colour | OutlineOffset Len
+           | BorderTop Len Colour
+           | TransitionOpacity Int
+           | TransitionAll Int | FlexGrow Int | FlexShrink Int | AlignContent Alignment
+           | LineHeightLength Len | BorderBottom Len Colour | ShadowToken ThemeToken
+           | Resize ResizeMode | TextSecurity SecurityMode
            | Prop String String).   # any other property: the escape hatch
 Style = Type (Style String (List Decl)).
 
@@ -198,11 +219,17 @@ Colour = Type (Rgb Int Int Int | Rgba Int Int Int Int | RgbaPercent Int Int Int 
 ShadowPart = Type (ShadowPart Len Len Len Len Colour).
 GradientStop = Type (Stop Colour Len).
 BackgroundImage = Type (LinearGradient Int (List GradientStop)
-                      | RadialGradient Len Len Len Len (List GradientStop)).
+                      | RadialGradient Len Len Len Len (List GradientStop) | TokenImage ThemeToken).
 Attachment = Type (FixedBackground | ScrollBackground).
 RepeatMode = Type (NoRepeat | Repeat).
 BorderMode = Type (SolidBorder | DashedBorder | NoBorder).
-CursorMode = Type (PointerCursor | DefaultCursor).
+CursorMode = Type (PointerCursor | DefaultCursor | ForbiddenCursor).
+BoxMode = Type (BorderBox | ContentBox).
+CaseMode = Type (NormalCase | UpperCase).
+TextAlignment = Type (TextStart | TextCenter | TextEnd).
+TextOverflowMode = Type (ClipText | Ellipsis).
+NumeralMode = Type (NormalNumerals | TabularNumerals).
+FitMode = Type (Contain | Cover).
 ColourMode = Type (LightScheme | DarkScheme).
 Alignment = Type (AlignStart | AlignCenter | AlignEnd | AlignStretch | AlignBaseline).
 Justification = Type (JustifyStart | JustifyCenter | JustifyEnd | SpaceBetween | SpaceAround | SpaceEvenly).
@@ -212,8 +239,10 @@ WhiteSpaceMode = Type (NormalSpace | NoWrapSpace | PreSpace | PreWrapSpace).
 PointerMode = Type (PointerAuto | PointerNone).
 ScrollbarMode = Type (ScrollbarAuto | ScrollbarThin | ScrollbarNone).
 PositionMode = Type (Static | Relative | Absolute | Fixed | Sticky).
-TransformOp = Type (TranslateX Len | TranslateY Len).
-Typeface = Type (SystemFont | MonoFont | ReadingFont).
+TransformOp = Type (TranslateX Len | TranslateY Len | Scale Int).
+Typeface = Type (SystemFont | MonoFont | ReadingFont | InheritFont).
+ResizeMode = Type (VerticalResize | NoResize).
+SecurityMode = Type (PlainText | MaskedText).
 WordWrapMode = Type (WrapNormal | WrapAnywhere).
 # Explicit inherited colour scopes. Tokens are fixed names, not arbitrary CSS.
 ThemeToken = Type (Bg | Ink | Dim | Card | Panel | Line | NamedToken String).
@@ -268,10 +297,19 @@ declaration scope (Margin l) = declarations scope [MarginTop l, MarginRight l, M
 declaration scope (MarginX l) = declarations scope [MarginLeft l, MarginRight l].
 declaration scope (MarginY l) = declarations scope [MarginTop l, MarginBottom l].
 declaration scope (Overflow mode) = declarations scope [OverflowX mode, OverflowY mode].
+declaration scope (Gap l) = declarations scope [RowGap l, ColumnGap l].
+declaration scope (BorderWidth l) = borderAtoms scope "width" (lenCss l).
+declaration scope (BorderColour colour) = borderAtoms scope "color" (colourCss colour).
+declaration scope (BorderStyle style) = borderAtoms scope "style" (case style of SolidBorder -> "solid" | DashedBorder -> "dashed" | NoBorder -> "none").
+declaration scope (BorderTop l colour) = [Atom scope "border-top-width" "border-top-width:{lenCss l}", Atom scope "border-top-style" "border-top-style:solid", Atom scope "border-top-color" "border-top-color:{colourCss colour}"].
+declaration scope (BorderBottom l colour) = [Atom scope "border-bottom-width" "border-bottom-width:{lenCss l}", Atom scope "border-bottom-style" "border-bottom-style:solid", Atom scope "border-bottom-color" "border-bottom-color:{colourCss colour}"].
+declaration scope (OutlineWidth l) = [Atom scope "outline-width" "outline-width:{lenCss l}", Atom scope "outline-style" "outline-style:solid"].
 declaration scope (Prop _ _) = error "View.utilities: Prop is a legacy escape hatch; use typed declarations".
 declaration scope d =
   css = declCss d;
   [Atom scope (substr css 0 (strIndexOf ":" css)) css].
+borderAtoms scope property value = L.map (fn side ->
+  key = "border-{side}-{property}"; Atom scope key "{key}:{value}") ["top", "right", "bottom", "left"].
 lastAtoms : unsafe List Atom -> List Atom .
 lastAtoms Nil = Nil.
 lastAtoms (Atom scope property css :: rest) =
@@ -294,7 +332,7 @@ atomNames (a :: rest) = atomClass a :: atomNames rest.
 # specificity, so disabled wins even when focus and hover are also active.
 localCss cs = localStages 0 cs.
 localStages : unsafe Int -> List String -> String .
-localStages scope cs = if scope > 5 then "" else strcat (localStage scope cs) (localStages (scope + 1) cs).
+localStages scope cs = if scope > 6 then "" else strcat (localStage scope cs) (localStages (scope + 1) cs).
 localStage : unsafe Int -> List String -> String .
 localStage scope Nil = "".
 localStage scope (c :: rest) = strcat (localRule scope c) (localStage scope rest).
@@ -307,10 +345,11 @@ localRule scope c = if hasPrefix "fpr-u-{scope}-" c then
         | 2 -> wrapMedia "(min-width:761px)" (rule1 ".{c}" css)
         | 3 -> rule1 ".{c}:hover" css
         | 4 -> rule1 ".{c}:focus-visible" css
-        | _ -> rule1 ".{c}:disabled" css)
+        | 5 -> rule1 ".{c}:disabled" css
+        | _ -> rule1 ".{c}" css)
   else "".
 
-cssFor tree = cssWith Nil tree.
+cssFor tree = localCss (nub (allClasses tree Nil)).
 
 cssWith : List Style -> Node -> String .
 cssWith styles tree =
@@ -415,11 +454,47 @@ declCss (BorderStyle DashedBorder) = "border-style:dashed".
 declCss (BorderStyle NoBorder) = "border-style:none".
 declCss (Cursor PointerCursor) = "cursor:pointer".
 declCss (Cursor DefaultCursor) = "cursor:default".
+declCss (Cursor ForbiddenCursor) = "cursor:not-allowed".
+declCss (BoxSizing BorderBox) = "box-sizing:border-box".
+declCss (BoxSizing ContentBox) = "box-sizing:content-box".
+declCss (GridColumns n) = if n >= 1 and n <= 64 then "grid-template-columns:repeat({n},minmax(0,1fr))" else error "View.GridColumns: expected 1..64".
+declCss (RowGap l) = "row-gap:{lenCss l}".
+declCss (ColumnGap l) = "column-gap:{lenCss l}".
+declCss (LetterSpacing l) = "letter-spacing:{lenCss l}".
+declCss (TextCase NormalCase) = "text-transform:none".
+declCss (TextCase UpperCase) = "text-transform:uppercase".
+declCss (TextAlign TextStart) = "text-align:start".
+declCss (TextAlign TextCenter) = "text-align:center".
+declCss (TextAlign TextEnd) = "text-align:end".
+declCss (TextOverflow ClipText) = "text-overflow:clip".
+declCss (TextOverflow Ellipsis) = "text-overflow:ellipsis".
+declCss (Numerals NormalNumerals) = "font-variant-numeric:normal".
+declCss (Numerals TabularNumerals) = "font-variant-numeric:tabular-nums".
+declCss (AspectRatio w h) = if w > 0 and h > 0 then "aspect-ratio:{w}/{h}" else error "View.AspectRatio: expected positive dimensions".
+declCss (ObjectFit Contain) = "object-fit:contain".
+declCss (ObjectFit Cover) = "object-fit:cover".
+declCss (OutlineWidth l) = "outline-width:{lenCss l};outline-style:solid".
+declCss (OutlineColour colour) = "outline-color:{colourCss colour}".
+declCss (OutlineOffset l) = "outline-offset:{lenCss l}".
+declCss (BorderTop l colour) = "border-top:{lenCss l} solid {colourCss colour}".
+declCss (TransitionOpacity ms) = if ms >= 0 and ms <= 60000 then "transition:opacity {ms}ms" else error "View.TransitionOpacity: expected 0..60000 ms".
+declCss (TransitionAll ms) = if ms >= 0 and ms <= 60000 then "transition:all {ms}ms" else error "View.TransitionAll: expected 0..60000 ms".
+declCss (FlexGrow n) = "flex-grow:{n}".
+declCss (FlexShrink n) = "flex-shrink:{n}".
+declCss (AlignContent value) = "align-content:{alignmentCss value}".
+declCss (LineHeightLength l) = "line-height:{lenCss l}".
+declCss (BorderBottom l colour) = "border-bottom:{lenCss l} solid {colourCss colour}".
+declCss (ShadowToken token) = "box-shadow:var(--{themeName token})".
+declCss (Resize VerticalResize) = "resize:vertical".
+declCss (Resize NoResize) = "resize:none".
+declCss (TextSecurity PlainText) = "-webkit-text-security:none".
+declCss (TextSecurity MaskedText) = "-webkit-text-security:disc".
 declCss (ColourScheme LightScheme) = "color-scheme:light".
 declCss (ColourScheme DarkScheme) = "color-scheme:dark".
 declCss (FontFamily SystemFont) = "font-family:system-ui".
 declCss (FontFamily MonoFont) = "font-family:ui-monospace,monospace".
 declCss (FontFamily ReadingFont) = "font-family:'Archivo',system-ui,sans-serif".
+declCss (FontFamily InheritFont) = "font-family:inherit".
 declCss (FontWeight n) = if n >= 1 and n <= 1000 then "font-weight:{n}" else error "View.FontWeight: expected 1..1000".
 declCss (LineHeight n) = if n >= 0 then "line-height:{n}%" else error "View.LineHeight: expected a nonnegative percentage".
 declCss (WordWrap WrapNormal) = "overflow-wrap:normal".
@@ -465,6 +540,7 @@ imageParts Nil = Nil.
 imageParts (image :: rest) = imageCss image :: imageParts rest.
 imageCss (LinearGradient degrees stops) = "linear-gradient({degrees}deg,{stopsCss stops})".
 imageCss (RadialGradient x y atX atY stops) = "radial-gradient({lenCss x} {lenCss y} at {lenCss atX} {lenCss atY},{stopsCss stops})".
+imageCss (TokenImage token) = "var(--{themeName token})".
 stopsCss stops = case stops of
     _ :: _ :: _ -> strJoin "," (stopParts stops)
   | _ -> error "View.gradient: expected at least two stops".
@@ -504,23 +580,30 @@ transformOps : unsafe List TransformOp -> String .
 transformOps Nil = "".
 transformOps (TranslateX l :: rest) = joinSp "translateX({lenCss l})" (transformOps rest).
 transformOps (TranslateY l :: rest) = joinSp "translateY({lenCss l})" (transformOps rest).
+transformOps (Scale percent :: rest) = if percent < 0 or percent > 1000 then error "View.Scale: expected 0..1000 percent" else
+  joinSp "scale({percent / 100}.{(if percent % 100 < 10 then "0" else "") + str (percent % 100)})" (transformOps rest).
 lenCss : unsafe Len -> String .
 lenCss (Px n) = "{n}px".
+lenCss (MilliPx n) = scaledLength n "px".
+lenCss (Em n) = scaledLength n "em".
 lenCss (Pct n) = "{n}%".
 lenCss (Vh n) = "{n}vh".
+lenCss (Dvh n) = "{n}dvh".
 lenCss (Vw n) = "{n}vw".
 lenCss (Less a b) = "calc({lenCss a} - {lenCss b})".
 lenCss Auto = "auto".
+lenCss Inherit = "inherit".
+scaledLength n suffix = if n == intMin Unit then error "View: scaled length exceeds range" else
+  value = if n < 0 then 0 - n else n;
+  "{(if n < 0 then "-" else "")}{value / 1000}.{(if value % 1000 < 100 then "0" else "")}{(if value % 1000 < 10 then "0" else "")}{value % 1000}{suffix}".
 
 # what a utility needs beyond its own rule (the page around it, a state)
-cssExtra "screen" = "body:has(.screen)\{overflow:hidden}\n".
-cssExtra "hide-empty" = ".hide-empty:has(>[data-slot]:empty)\{display:none}\n".
 cssExtra c = "".
 
 allClasses : unsafe Node -> List String -> List String .
-allClasses (El tag attrs kids) acc = allKids kids (append (atomNames (localAtoms attrs)) (attrCls attrs acc)).
+allClasses (El tag attrs kids) acc = allKids kids (append (atomNames (localStyleAtoms attrs)) (append (atomNames (localAtoms attrs)) (attrCls attrs acc))).
 allClasses (Fragment _ _ classes) acc = append classes acc.
-allClasses (Inp attrs) acc = append (atomNames (localAtoms attrs)) (attrCls attrs acc).
+allClasses (Inp attrs) acc = append (atomNames (localStyleAtoms attrs)) (append (atomNames (localAtoms attrs)) (attrCls attrs acc)).
 allClasses n acc = acc.
 allKids : unsafe List Node -> List String -> List String .
 allKids Nil acc = acc.
@@ -532,99 +615,88 @@ attrCls (a :: r) acc = attrCls r acc.
 
 # the utility table. Adding a rule here makes a class available to the
 # whole app; using one anywhere in the tree is what emits it.
-cssRule "row" = "display:flex;flex-direction:row".
-cssRule "col" = "display:flex;flex-direction:column".
-cssRule "wrap" = "flex-wrap:wrap".
-cssRule "center" = "align-items:center".
-cssRule "between" = "justify-content:space-between".
-cssRule "grow" = "flex:1".
-cssRule "gap-1" = "gap:4px".
-cssRule "gap-2" = "gap:8px".
-cssRule "gap-3" = "gap:12px".
-cssRule "gap-4" = "gap:18px".
-cssRule "gap-6" = "gap:28px".
-cssRule "p-2" = "padding:8px".
-cssRule "p-3" = "padding:12px".
-cssRule "p-4" = "padding:18px".
-cssRule "p-6" = "padding:26px".
-cssRule "px-3" = "padding-left:12px;padding-right:12px".
-cssRule "py-2" = "padding-top:8px;padding-bottom:8px".
-cssRule "mt-2" = "margin-top:8px".
-cssRule "mt-4" = "margin-top:18px".
-cssRule "mb-2" = "margin-bottom:8px".
-cssRule "mb-4" = "margin-bottom:18px".
-cssRule "text-xs" = "font-size:11px".
-cssRule "text-sm" = "font-size:13px".
-cssRule "text-lg" = "font-size:18px".
-cssRule "text-2xl" = "font-size:30px".
-cssRule "text-4xl" = "font-size:46px".
-cssRule "bold" = "font-weight:700".
-cssRule "mono" = "font-family:ui-monospace,'SF Mono',Menlo,monospace".
-cssRule "upper" = "text-transform:uppercase;letter-spacing:.18em".
-cssRule "dim" = "color:var(--dim)".
-cssRule "ink" = "color:var(--ink)".
-cssRule "acc" = "color:#57e2d2".
-cssRule "warm" = "color:#ff8a5c".
-cssRule "panel" = "background:var(--panel);border:1px solid var(--line)".
-cssRule "card" = "background:var(--card);border:1px solid var(--line)".
-cssRule "round" = "border-radius:14px".
-cssRule "pill" = "border-radius:999px".
-cssRule "btn" = "cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--dim);transition:.15s".
-cssRule "glow" = "box-shadow:0 0 24px rgba(87,226,210,.22)".
-cssRule "rule" = "border-top:1px solid var(--line)".
-cssRule "big" = "font-size:64px;line-height:1".
-cssRule "tabular" = "font-variant-numeric:tabular-nums".
-cssRule "field" = "background:var(--card);border:1px solid var(--line);color:var(--ink);padding:8px 12px;border-radius:10px;font:inherit;outline:none".
-cssRule "w-full" = "width:100%".
-cssRule "pre" = "white-space:pre-wrap".
+cssRule "row" = declsCss [Display Flex, Direction Row].
+cssRule "col" = declsCss [Display Flex, Direction Column].
+cssRule "wrap" = declsCss [FlexWrap Wrap].
+cssRule "center" = declsCss [AlignItems AlignCenter].
+cssRule "between" = declsCss [JustifyContent SpaceBetween].
+cssRule "grow" = declsCss [FlexGrow 1, FlexShrink 1, Basis (Pct 0)].
+cssRule "gap-1" = declsCss [Gap (Px 4)].
+cssRule "gap-2" = declsCss [Gap (Px 8)].
+cssRule "gap-3" = declsCss [Gap (Px 12)].
+cssRule "gap-4" = declsCss [Gap (Px 18)].
+cssRule "gap-6" = declsCss [Gap (Px 28)].
+cssRule "p-2" = declsCss [Padding (Px 8)].
+cssRule "p-3" = declsCss [Padding (Px 12)].
+cssRule "p-4" = declsCss [Padding (Px 18)].
+cssRule "p-6" = declsCss [Padding (Px 26)].
+cssRule "px-3" = declsCss [PaddingLeft (Px 12), PaddingRight (Px 12)].
+cssRule "py-2" = declsCss [PaddingTop (Px 8), PaddingBottom (Px 8)].
+cssRule "mt-2" = declsCss [MarginTop (Px 8)].
+cssRule "mt-4" = declsCss [MarginTop (Px 18)].
+cssRule "mb-2" = declsCss [MarginBottom (Px 8)].
+cssRule "mb-4" = declsCss [MarginBottom (Px 18)].
+cssRule "text-xs" = declsCss [FontSize (Px 11)].
+cssRule "text-sm" = declsCss [FontSize (Px 13)].
+cssRule "text-lg" = declsCss [FontSize (Px 18)].
+cssRule "text-2xl" = declsCss [FontSize (Px 30)].
+cssRule "text-4xl" = declsCss [FontSize (Px 46)].
+cssRule "bold" = declsCss [FontWeight 700].
+cssRule "mono" = declsCss [FontFamily MonoFont].
+cssRule "upper" = declsCss [TextCase UpperCase, LetterSpacing (Em 180)].
+cssRule "dim" = declsCss [Foreground (ThemeColour (Dim))].
+cssRule "ink" = declsCss [Foreground (ThemeColour (Ink))].
+cssRule "acc" = declsCss [Foreground (Rgb 87 226 210)].
+cssRule "warm" = declsCss [Foreground (Rgb 255 138 92)].
+cssRule "panel" = declsCss [BackgroundImages [TokenImage Panel], BorderWidth (Px 1), BorderStyle SolidBorder, BorderColour (ThemeColour (Line))].
+cssRule "card" = declsCss [Background (ThemeColour (Card)), BorderWidth (Px 1), BorderStyle SolidBorder, BorderColour (ThemeColour (Line))].
+cssRule "round" = declsCss [Radius (Px 14)].
+cssRule "pill" = declsCss [Radius (Px 999)].
+cssRule "btn" = declsCss [Cursor PointerCursor, BorderWidth (Px 1), BorderStyle SolidBorder, BorderColour (ThemeColour (Line)), Background (ThemeColour (Card)), Foreground (ThemeColour (Dim)), TransitionAll 150].
+cssRule "glow" = declsCss [Shadow (Px 0) (Px 0) (Px 24) (Px 0) (RgbaPercent 87 226 210 22)].
+cssRule "rule" = declsCss [BorderTop (Px 1) (ThemeColour (Line))].
+cssRule "big" = declsCss [FontSize (Px 64), LineHeight 100].
+cssRule "tabular" = declsCss [Numerals TabularNumerals].
+cssRule "field" = declsCss [Background (ThemeColour (Card)), BorderWidth (Px 1), BorderStyle SolidBorder, BorderColour (ThemeColour (Line)), Foreground (ThemeColour (Ink)), PaddingY (Px 8), PaddingX (Px 12), Radius (Px 10), FontFamily InheritFont, FontSize Inherit, OutlineWidth (Px 0)].
+cssRule "w-full" = declsCss [Width (Pct 100)].
+cssRule "pre" = declsCss [WhiteSpace PreWrapSpace].
 # roles: a badge takes a role, never a colour (red / amber / green carry
 # meaning only); palette tokens are inherited from an explicit page scope
-cssRule "badge" = "display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);color:var(--dim)".
-cssRule "bad" = "background:#3a1220;border-color:#7a2238;color:#ff7d95".
-cssRule "warn" = "background:#3a2a10;border-color:#7a5a18;color:#ffc65c".
-cssRule "ok" = "background:#0f3328;border-color:#1f6b50;color:#57e2a6".
-cssRule "celebrate" = "background:#2a1a3a;border-color:#6b3f9a;color:#d9a6ff".
-cssRule "toast" = "padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel)".
-cssRule "scroll" = "max-height:52vh;overflow:auto".
-cssRule "w-cart" = "width:400px;flex:none".
-cssRule "w-40" = "width:40px".
-cssRule "w-24" = "width:96px".
-cssRule "right" = "text-align:right".
-cssRule "tr" = "border-bottom:1px solid var(--line);padding:6px 0".
-cssRule "page" = "max-width:1120px;margin:0 auto;width:100%".
-cssRule "mx-auto" = "margin-left:auto;margin-right:auto".
-cssRule "gap-5" = "gap:22px".
-cssRule "p-5" = "padding:22px".
+cssRule "badge" = declsCss [Display InlineBlock, PaddingY (Px 2), PaddingX (Px 9), Radius (Px 999), FontSize (Px 11), FontWeight 700, LetterSpacing (Em 60), TextCase UpperCase, BorderWidth (Px 1), BorderStyle SolidBorder, BorderColour (ThemeColour (Line)), Foreground (ThemeColour (Dim))].
+cssRule "bad" = declsCss [Background (Rgb 58 18 32), BorderColour (Rgb 122 34 56), Foreground (Rgb 255 125 149)].
+cssRule "warn" = declsCss [Background (Rgb 58 42 16), BorderColour (Rgb 122 90 24), Foreground (Rgb 255 198 92)].
+cssRule "ok" = declsCss [Background (Rgb 15 51 40), BorderColour (Rgb 31 107 80), Foreground (Rgb 87 226 166)].
+cssRule "celebrate" = declsCss [Background (Rgb 42 26 58), BorderColour (Rgb 107 63 154), Foreground (Rgb 217 166 255)].
+cssRule "toast" = declsCss [PaddingY (Px 10), PaddingX (Px 14), Radius (Px 12), BorderWidth (Px 1), BorderStyle SolidBorder, BorderColour (ThemeColour (Line)), BackgroundImages [TokenImage Panel]].
+cssRule "scroll" = declsCss [MaxHeight (Vh 52), Overflow OverflowAuto].
+cssRule "w-cart" = declsCss [Width (Px 400), FlexGrow 0, FlexShrink 0, Basis (Auto)].
+cssRule "w-40" = declsCss [Width (Px 40)].
+cssRule "w-24" = declsCss [Width (Px 96)].
+cssRule "right" = declsCss [TextAlign TextEnd].
+cssRule "tr" = declsCss [BorderBottom (Px 1) (ThemeColour (Line)), PaddingY (Px 6), PaddingX (Px 0)].
+cssRule "page" = declsCss [MaxWidth (Px 1120), MarginY (Px 0), MarginX (Auto), Width (Pct 100)].
+cssRule "mx-auto" = declsCss [MarginLeft (Auto), MarginRight (Auto)].
+cssRule "gap-5" = declsCss [Gap (Px 22)].
+cssRule "p-5" = declsCss [Padding (Px 22)].
 # layout: regions sized by the viewport, content scrolling inside them
-cssRule "screen" = "height:100vh;height:100dvh;width:100vw;max-width:100vw;overflow:hidden".
-cssRule "flex-auto" = "flex:1 1 auto".
-cssRule "flex-none" = "flex:none".
-cssRule "min-h-0" = "min-height:0".
-cssRule "min-w-0" = "min-width:0".
-cssRule "overflow-auto" = "overflow:auto".
-cssRule "overflow-hidden" = "overflow:hidden".
-cssRule "content-start" = "align-content:flex-start".
-cssRule "justify-end" = "justify-content:flex-end".
-cssRule "text-center" = "text-align:center".
-cssRule "truncate" = "white-space:nowrap;overflow:hidden;text-overflow:ellipsis".
-# an empty live slot hides its .toast / .pre (cssBase) unless the element
-# says show-empty; hide-empty gives any element that behaviour (cssExtra)
-cssRule "show-empty" = "".
-cssRule "hide-empty" = "".
+cssRule "screen" = declsCss [Height (Vh 100), Height (Dvh 100), Width (Vw 100), MaxWidth (Vw 100), Overflow OverflowHidden].
+cssRule "flex-auto" = declsCss [FlexGrow 1, FlexShrink 1, Basis (Auto)].
+cssRule "flex-none" = declsCss [FlexGrow 0, FlexShrink 0, Basis (Auto)].
+cssRule "min-h-0" = declsCss [MinHeight (Px 0)].
+cssRule "min-w-0" = declsCss [MinWidth (Px 0)].
+cssRule "overflow-auto" = declsCss [Overflow OverflowAuto].
+cssRule "overflow-hidden" = declsCss [Overflow OverflowHidden].
+cssRule "content-start" = declsCss [AlignContent AlignStart].
+cssRule "justify-end" = declsCss [JustifyContent JustifyEnd].
+cssRule "text-center" = declsCss [TextAlign TextCenter].
+cssRule "truncate" = declsCss [WhiteSpace NoWrapSpace, Overflow OverflowHidden, TextOverflow Ellipsis].
+# Legacy class hooks carry no global visibility policy. A node opts into the
+# generated client's local empty-slot behavior with data-hide-empty instead.
+cssRule "show-empty" = declsCss [].
+cssRule "hide-empty" = declsCss [].
 cssRule c = "".
 
-cssBase = "*\{box-sizing:border-box;margin:0}
-html\{min-height:100%}
-body\{min-height:100vh;font:15px/1.55 'Archivo',system-ui,sans-serif}
-a\{color:inherit}
-.btn:hover\{color:var(--ink);border-color:var(--line)}
-.btn.is-on\{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-[data-slot]\{transition:color .2s}
-.lv-flash\{animation:lvf .55s ease-out}
-.toast:not(.show-empty):has(>[data-slot]:empty),.pre:not(.show-empty):has(>[data-slot]:empty)\{display:none}
-button\{font:inherit}
-@keyframes lvf\{from\{color:#57e2d2;text-shadow:0 0 16px rgba(87,226,210,.9)}to\{color:inherit}}
-".
+cssBase = "".
 
 # ---- delta: which dynamic slots changed ------------------------------------
 # The whole point of the split, in five clauses.

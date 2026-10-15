@@ -1,0 +1,20 @@
+# Device-local persistence capability. Storage refusal is non-fatal; values
+# enter Live through the declared input, never by patching its transport.
+JS = use "javascript".
+B = use "browsercalc".
+L = use "list".
+n = JS.Name.
+t = JS.Text.
+f = JS.Field.
+call name args = JS.Call (n name) args.
+method target name args = JS.Call (f target name) args.
+script storageKey local input = JS.program [JS.Do (JS.Call (JS.Function Nil
+  [JS.Let "ready" (JS.Boolean False),
+   JS.Define "stored" Nil [JS.Try [JS.Return (JS.Binary JS.Or (method (n "localStorage") "getItem" [t storageKey]) (t ""))] "error" [JS.Return (t "")] Nil],
+   JS.Define "save" ["value"] [JS.Try [JS.If (n "value") [JS.Do (method (n "localStorage") "setItem" [t storageKey, n "value"])] [JS.Do (method (n "localStorage") "removeItem" [t storageKey])]] "error" Nil Nil],
+   JS.Do (method (n "document") "addEventListener" [t "live:locals", JS.Function ["event"] [JS.If (JS.Unary JS.Not (n "ready")) [JS.ReturnVoid] Nil,
+     JS.Const "value" (JS.Binary JS.Or (JS.Index (f (n "event") "detail") (t local)) (t "")),
+     JS.If (JS.Binary JS.NotEqual (n "value") (call "stored" Nil)) [JS.Do (call "save" [n "value"])] Nil]]),
+   JS.Const "token" (call "stored" Nil), JS.Const "input" (method (n "document") "querySelector" [B.selectorAst input]),
+   JS.If (JS.Binary JS.And (n "token") (n "input")) [JS.Assign (f (n "input") "value") (n "token"), JS.Do (method (n "input") "dispatchEvent" [JS.New (n "Event") [t "input"]])] Nil,
+   JS.Assign (n "ready") (JS.Boolean True)]) Nil)].

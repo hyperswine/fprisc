@@ -1,0 +1,180 @@
+# Structured browser capability program. FP-RISC syntax values are authoritative.
+# No foreign source asset or Raw node is read at runtime.
+JS = use "std/javascript".
+src u = JS.program [
+  JS.Do (JS.Call (JS.Function [] (bodyBody1 Unit)) [])
+].
+
+bodyBody2 u = [
+  JS.Try [JS.Do (JS.AssignValue (JS.Name "lists") (JS.Call (JS.Field (JS.Name "JSON") "parse") [(JS.Field (JS.Name "e") "detail")]))] "x" [] [],
+  JS.Do (JS.Call (JS.Name "refresh") [])
+].
+
+kindBody3 u = [
+  JS.Return (JS.Choose (JS.Binary JS.And (JS.Name "el") (JS.Field (JS.Name "el") "getAttribute")) (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-ac")]) (JS.Null))
+].
+
+valueOfBody4 u = [
+  JS.Var "scope" (JS.Binary JS.And (JS.Name "cur") (JS.Call (JS.Field (JS.Name "cur") "closest") [(JS.Text "[data-ac-scope]")])),
+  JS.Var "e" (JS.Binary JS.And (JS.Name "scope") (JS.Call (JS.Field (JS.Name "scope") "querySelector") [(JS.Binary JS.Add (JS.Binary JS.Add (JS.Text "[data-input=\"") (JS.Name "name")) (JS.Text "\"]"))])),
+  JS.Return (JS.Choose (JS.Name "e") (JS.Field (JS.Name "e") "value") (JS.Text ""))
+].
+
+partBody5 u = [
+  JS.Var "v" (JS.Field (JS.Name "el") "value"),
+  JS.Return (JS.Call (JS.Field (JS.Call (JS.Field (JS.Choose (JS.Binary JS.Equal (JS.Call (JS.Name "kind") [(JS.Name "el")]) (JS.Text "tags")) (JS.Call (JS.Field (JS.Name "v") "slice") [(JS.Binary JS.Add (JS.Call (JS.Field (JS.Name "v") "lastIndexOf") [(JS.Text ",")]) (JS.Number 1))]) (JS.Name "v")) "trim") []) "toLowerCase") [])
+].
+
+bodyBody7 u = [
+  JS.Return (JS.Binary JS.Less (JS.Call (JS.Field (JS.Name "here") "indexOf") [(JS.Name "x")]) (JS.Number 0))
+].
+
+bodyBody8 u = [
+  JS.Return (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "t") "trim") []) "toLowerCase") [])
+].
+
+bodyBody9 u = [
+  JS.Return (JS.Binary JS.Less (JS.Call (JS.Field (JS.Name "have") "indexOf") [(JS.Name "t")]) (JS.Number 0))
+].
+
+poolBody6 u = [
+  JS.Var "k" (JS.Call (JS.Name "kind") [(JS.Name "el")]),
+  JS.Var "sub" (JS.Binary JS.Or (JS.Field (JS.Name "lists") "sub") (JS.Object [])),
+  JS.If (JS.Binary JS.Equal (JS.Name "k") (JS.Text "loc")) [JS.Return (JS.Binary JS.Or (JS.Field (JS.Name "lists") "loc") (JS.Array []))] [],
+  JS.If (JS.Binary JS.Equal (JS.Name "k") (JS.Text "sub")) [JS.Var "here" (JS.Binary JS.Or (JS.Index (JS.Name "sub") (JS.Call (JS.Field (JS.Call (JS.Field (JS.Call (JS.Name "valueOf") [(JS.Text "loc")]) "trim") []) "toLowerCase") [])) (JS.Array [])), JS.Return (JS.Call (JS.Field (JS.Name "here") "concat") [(JS.Call (JS.Field (JS.Binary JS.Or (JS.Index (JS.Name "sub") (JS.Text "*")) (JS.Array [])) "filter") [(JS.Function ["x"] (bodyBody7 Unit))])])] [],
+  JS.If (JS.Binary JS.Equal (JS.Name "k") (JS.Text "tags")) [JS.Var "have" (JS.Call (JS.Field (JS.Call (JS.Field (JS.Call (JS.Field (JS.Field (JS.Name "el") "value") "split") [(JS.Text ",")]) "slice") [(JS.Number 0), (JS.Unary JS.Minus (JS.Number 1))]) "map") [(JS.Function ["t"] (bodyBody8 Unit))]), JS.Return (JS.Call (JS.Field (JS.Binary JS.Or (JS.Field (JS.Name "lists") "tags") (JS.Array [])) "filter") [(JS.Function ["t"] (bodyBody9 Unit))])] [],
+  JS.Return (JS.Array [])
+].
+
+bodyBody11 u = [
+  JS.Var "l" (JS.Call (JS.Field (JS.Name "x") "toLowerCase") []),
+  JS.If (JS.Binary JS.Equal (JS.Name "l") (JS.Name "p")) [JS.ReturnVoid] [],
+  JS.If (JS.Binary JS.Or (JS.Unary JS.Not (JS.Name "p")) (JS.Binary JS.Equal (JS.Call (JS.Field (JS.Name "l") "indexOf") [(JS.Name "p")]) (JS.Number 0))) [JS.Do (JS.Call (JS.Field (JS.Name "a") "push") [(JS.Name "x")])] [JS.If (JS.Binary JS.GreaterEqual (JS.Call (JS.Field (JS.Name "l") "indexOf") [(JS.Binary JS.Add (JS.Text " ") (JS.Name "p"))]) (JS.Number 0)) [JS.Do (JS.Call (JS.Field (JS.Name "b") "push") [(JS.Name "x")])] [JS.If (JS.Binary JS.GreaterEqual (JS.Call (JS.Field (JS.Name "l") "indexOf") [(JS.Name "p")]) (JS.Number 0)) [JS.Do (JS.Call (JS.Field (JS.Name "c") "push") [(JS.Name "x")])] []]]
+].
+
+rankBody10 u = [
+  JS.Var "p" (JS.Call (JS.Name "part") [(JS.Name "el")]),
+  JS.Var "all" (JS.Call (JS.Name "pool") [(JS.Name "el")]),
+  JS.Var "a" (JS.Array []),
+  JS.Var "b" (JS.Array []),
+  JS.Var "c" (JS.Array []),
+  JS.Do (JS.Call (JS.Field (JS.Name "all") "forEach") [(JS.Function ["x"] (bodyBody11 Unit))]),
+  JS.Return (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "a") "concat") [(JS.Name "b"), (JS.Name "c")]) "slice") [(JS.Number 0), (JS.Number 6)])
+].
+
+hideBody12 u = [
+  JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "box") "style") "display") (JS.Text "none")),
+  JS.Do (JS.AssignValue (JS.Name "opts") (JS.Array []))
+].
+
+bodyBody14 u = [
+  JS.If (JS.Binary JS.NotEqual (JS.Field (JS.Name "a") "name") (JS.Text "style")) [JS.Do (JS.Call (JS.Field (JS.Name "box") "removeAttribute") [(JS.Field (JS.Name "a") "name")])] []
+].
+
+bodyBody15 u = [
+  JS.Do (JS.Call (JS.Field (JS.Name "box") "setAttribute") [(JS.Field (JS.Name "a") "name"), (JS.Field (JS.Name "a") "value")])
+].
+
+bodyBody17 u = [
+  JS.Do (JS.Call (JS.Field (JS.Name "e") "preventDefault") []),
+  JS.Do (JS.Call (JS.Name "take") [(JS.Name "i")])
+].
+
+bodyBody16 u = [
+  JS.Var "b" (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "prototypes") "querySelector") [(JS.Binary JS.Add (JS.Binary JS.Add (JS.Text "[data-ac-option=\"") (JS.Choose (JS.Binary JS.Equal (JS.Name "i") (JS.Name "sel")) (JS.Text "selected") (JS.Text "normal"))) (JS.Text "\"]"))]) "cloneNode") [(JS.Boolean True)]),
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "b") "textContent") (JS.Name "o")),
+  JS.Do (JS.Call (JS.Field (JS.Name "b") "addEventListener") [(JS.Text "pointerdown"), (JS.Function ["e"] (bodyBody17 Unit))]),
+  JS.Do (JS.Call (JS.Field (JS.Name "box") "appendChild") [(JS.Name "b")])
+].
+
+refreshBody13 u = [
+  JS.If (JS.Binary JS.Or (JS.Binary JS.Or (JS.Unary JS.Not (JS.Name "cur")) (JS.Unary JS.Not (JS.Call (JS.Field (JS.Name "document") "contains") [(JS.Name "cur")]))) (JS.Binary JS.NotEqual (JS.Field (JS.Name "document") "activeElement") (JS.Name "cur"))) [JS.Do (JS.Call (JS.Name "hide") []), JS.ReturnVoid] [],
+  JS.Var "scope" (JS.Call (JS.Field (JS.Name "cur") "closest") [(JS.Text "[data-ac-scope]")]),
+  JS.Var "prototypes" (JS.Binary JS.And (JS.Name "scope") (JS.Call (JS.Field (JS.Name "scope") "querySelector") [(JS.Text "[data-ac-prototypes]")])),
+  JS.Var "frame" (JS.Binary JS.And (JS.Name "prototypes") (JS.Call (JS.Field (JS.Name "prototypes") "querySelector") [(JS.Text "[data-ac-frame]")])),
+  JS.If (JS.Unary JS.Not (JS.Name "frame")) [JS.Do (JS.Call (JS.Name "hide") []), JS.ReturnVoid] [],
+  JS.Do (JS.AssignValue (JS.Name "opts") (JS.Call (JS.Name "rank") [(JS.Name "cur")])),
+  JS.If (JS.Binary JS.GreaterEqual (JS.Name "sel") (JS.Field (JS.Name "opts") "length")) [JS.Do (JS.AssignValue (JS.Name "sel") (JS.Number 0))] [],
+  JS.If (JS.Unary JS.Not (JS.Field (JS.Name "opts") "length")) [JS.Do (JS.Call (JS.Name "hide") []), JS.ReturnVoid] [],
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "Array") "from") [(JS.Field (JS.Name "box") "attributes")]) "forEach") [(JS.Function ["a"] (bodyBody14 Unit))]),
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "Array") "from") [(JS.Field (JS.Name "frame") "attributes")]) "forEach") [(JS.Function ["a"] (bodyBody15 Unit))]),
+  JS.Do (JS.Call (JS.Field (JS.Name "box") "setAttribute") [(JS.Text "data-ac-popup"), (JS.Text "")]),
+  JS.Do (JS.Call (JS.Field (JS.Name "box") "replaceChildren") []),
+  JS.Do (JS.Call (JS.Field (JS.Name "opts") "forEach") [(JS.Function ["o", "i"] (bodyBody16 Unit))]),
+  JS.Var "hint" (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "prototypes") "querySelector") [(JS.Text "[data-ac-hint]")]) "cloneNode") [(JS.Boolean True)]),
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "hint") "textContent") (JS.Choose (JS.Field (JS.Call (JS.Name "matchMedia") [(JS.Text "(pointer: coarse)")]) "matches") (JS.Text "tap the field again for the first") (JS.Text "tab takes the highlighted one"))),
+  JS.Do (JS.Call (JS.Field (JS.Name "box") "appendChild") [(JS.Name "hint")]),
+  JS.Var "r" (JS.Call (JS.Field (JS.Name "cur") "getBoundingClientRect") []),
+  JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "box") "style") "left") (JS.Binary JS.Add (JS.Binary JS.Add (JS.Field (JS.Name "r") "left") (JS.Name "scrollX")) (JS.Text "px"))),
+  JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "box") "style") "top") (JS.Binary JS.Add (JS.Binary JS.Add (JS.Binary JS.Add (JS.Field (JS.Name "r") "bottom") (JS.Name "scrollY")) (JS.Number 4)) (JS.Text "px"))),
+  JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "box") "style") "width") (JS.Binary JS.Add (JS.Field (JS.Name "r") "width") (JS.Text "px"))),
+  JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "box") "style") "display") (JS.Text "flex"))
+].
+
+takeBody18 u = [
+  JS.Var "o" (JS.Index (JS.Name "opts") (JS.Name "i")),
+  JS.Var "v" (JS.Field (JS.Name "cur") "value"),
+  JS.If (JS.Binary JS.Equal (JS.Name "o") (JS.Name "undefined")) [JS.ReturnVoid] [],
+  JS.If (JS.Binary JS.Equal (JS.Call (JS.Name "kind") [(JS.Name "cur")]) (JS.Text "tags")) [JS.Var "head" (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "v") "slice") [(JS.Number 0), (JS.Binary JS.Add (JS.Call (JS.Field (JS.Name "v") "lastIndexOf") [(JS.Text ",")]) (JS.Number 1))]) "trim") []), JS.Do (JS.AssignValue (JS.Field (JS.Name "cur") "value") (JS.Binary JS.Add (JS.Binary JS.Add (JS.Choose (JS.Name "head") (JS.Binary JS.Add (JS.Name "head") (JS.Text " ")) (JS.Text "")) (JS.Name "o")) (JS.Text ", ")))] [JS.Do (JS.AssignValue (JS.Field (JS.Name "cur") "value") (JS.Name "o"))],
+  JS.Do (JS.AssignValue (JS.Name "sel") (JS.Number 0)),
+  JS.Do (JS.AssignValue (JS.Name "moved") (JS.Boolean False)),
+  JS.Do (JS.Call (JS.Field (JS.Name "cur") "dispatchEvent") [(JS.New (JS.Name "Event") [(JS.Text "input"), (JS.Object [("bubbles", JS.Boolean True)])])]),
+  JS.If (JS.Binary JS.Equal (JS.Call (JS.Name "kind") [(JS.Name "cur")]) (JS.Text "tags")) [JS.Do (JS.Call (JS.Name "refresh") [])] [JS.Do (JS.Call (JS.Name "hide") [])]
+].
+
+bodyBody19 u = [
+  JS.If (JS.Call (JS.Name "kind") [(JS.Field (JS.Name "e") "target")]) [JS.Do (JS.AssignValue (JS.Name "cur") (JS.Field (JS.Name "e") "target")), JS.Do (JS.AssignValue (JS.Name "sel") (JS.Number 0)), JS.Do (JS.AssignValue (JS.Name "moved") (JS.Boolean False)), JS.Do (JS.Call (JS.Name "refresh") [])] [JS.Do (JS.AssignValue (JS.Name "cur") (JS.Null)), JS.Do (JS.Call (JS.Name "hide") [])]
+].
+
+bodyBody20 u = [
+  JS.If (JS.Binary JS.Equal (JS.Field (JS.Name "e") "target") (JS.Name "cur")) [JS.Do (JS.Call (JS.Name "setTimeout") [(JS.Name "refresh"), (JS.Number 0)])] []
+].
+
+bodyBody21 u = [
+  JS.If (JS.Binary JS.Equal (JS.Field (JS.Name "e") "target") (JS.Name "cur")) [JS.Do (JS.AssignValue (JS.Name "sel") (JS.Number 0)), JS.Do (JS.AssignValue (JS.Name "moved") (JS.Boolean False)), JS.Do (JS.Call (JS.Name "refresh") [])] []
+].
+
+bodyBody22 u = [
+  JS.If (JS.Binary JS.Or (JS.Binary JS.Or (JS.Unary JS.Not (JS.Name "cur")) (JS.Binary JS.NotEqual (JS.Field (JS.Name "e") "target") (JS.Name "cur"))) (JS.Unary JS.Not (JS.Field (JS.Name "opts") "length"))) [JS.ReturnVoid] [],
+  JS.If (JS.Binary JS.Or (JS.Binary JS.Equal (JS.Field (JS.Name "e") "key") (JS.Text "ArrowDown")) (JS.Binary JS.Equal (JS.Field (JS.Name "e") "key") (JS.Text "ArrowUp"))) [JS.Do (JS.AssignValue (JS.Name "sel") (JS.Binary JS.Modulo (JS.Binary JS.Add (JS.Name "sel") (JS.Choose (JS.Binary JS.Equal (JS.Field (JS.Name "e") "key") (JS.Text "ArrowDown")) (JS.Number 1) (JS.Binary JS.Subtract (JS.Field (JS.Name "opts") "length") (JS.Number 1)))) (JS.Field (JS.Name "opts") "length"))), JS.Do (JS.AssignValue (JS.Name "moved") (JS.Boolean True)), JS.Do (JS.Call (JS.Field (JS.Name "e") "preventDefault") []), JS.Do (JS.Call (JS.Name "refresh") [])] [JS.If (JS.Binary JS.And (JS.Binary JS.And (JS.Binary JS.Equal (JS.Field (JS.Name "e") "key") (JS.Text "Tab")) (JS.Unary JS.Not (JS.Field (JS.Name "e") "shiftKey"))) (JS.Binary JS.Or (JS.Call (JS.Name "part") [(JS.Name "cur")]) (JS.Name "moved"))) [JS.Do (JS.Call (JS.Field (JS.Name "e") "preventDefault") []), JS.Do (JS.Call (JS.Name "take") [(JS.Name "sel")])] [JS.If (JS.Binary JS.And (JS.Binary JS.Equal (JS.Field (JS.Name "e") "key") (JS.Text "Enter")) (JS.Name "moved")) [JS.Do (JS.Call (JS.Field (JS.Name "e") "preventDefault") []), JS.Do (JS.Call (JS.Name "take") [(JS.Name "sel")])] [JS.If (JS.Binary JS.Equal (JS.Field (JS.Name "e") "key") (JS.Text "Escape")) [JS.Do (JS.Call (JS.Name "hide") [])] []]]]
+].
+
+bodyBody23 u = [
+  JS.Do (JS.AssignValue (JS.Name "touchAgain") (JS.Binary JS.And (JS.Binary JS.And (JS.Binary JS.And (JS.Binary JS.NotEqual (JS.Field (JS.Name "e") "pointerType") (JS.Text "mouse")) (JS.Call (JS.Name "kind") [(JS.Field (JS.Name "e") "target")])) (JS.Binary JS.Equal (JS.Field (JS.Name "e") "target") (JS.Name "cur"))) (JS.Binary JS.Equal (JS.Field (JS.Name "document") "activeElement") (JS.Name "cur"))))
+].
+
+bodyBody24 u = [
+  JS.If (JS.Binary JS.And (JS.Binary JS.And (JS.Name "touchAgain") (JS.Binary JS.Equal (JS.Field (JS.Name "e") "target") (JS.Name "cur"))) (JS.Field (JS.Name "opts") "length")) [JS.Do (JS.Call (JS.Name "take") [(JS.Name "sel")])] [],
+  JS.Do (JS.AssignValue (JS.Name "touchAgain") (JS.Boolean False))
+].
+
+bodyBody1 u = [
+  JS.Var "lists" (JS.Object [("loc", JS.Array []), ("sub", JS.Object []), ("tags", JS.Array [])]),
+  JS.Var "cur" (JS.Null),
+  JS.Var "opts" (JS.Array []),
+  JS.Var "sel" (JS.Number 0),
+  JS.Var "moved" (JS.Boolean False),
+  JS.Var "touchAgain" (JS.Boolean False),
+  JS.Var "box" (JS.Call (JS.Field (JS.Name "document") "createElement") [(JS.Text "div")]),
+  JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "box") "style") "display") (JS.Text "none")),
+  JS.Do (JS.Call (JS.Field (JS.Field (JS.Name "document") "body") "appendChild") [(JS.Name "box")]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "live:suggest"), (JS.Function ["e"] (bodyBody2 Unit))]),
+  JS.Define "kind" ["el"] (kindBody3 Unit),
+  JS.Define "valueOf" ["name"] (valueOfBody4 Unit),
+  JS.Define "part" ["el"] (partBody5 Unit),
+  JS.Define "pool" ["el"] (poolBody6 Unit),
+  JS.Define "rank" ["el"] (rankBody10 Unit),
+  JS.Define "hide" [] (hideBody12 Unit),
+  JS.Define "refresh" [] (refreshBody13 Unit),
+  JS.Define "take" ["i"] (takeBody18 Unit),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "focusin"), (JS.Function ["e"] (bodyBody19 Unit))]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "focusout"), (JS.Function ["e"] (bodyBody20 Unit))]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "input"), (JS.Function ["e"] (bodyBody21 Unit))]),
+  JS.Do (JS.Call (JS.Name "addEventListener") [(JS.Text "resize"), (JS.Name "refresh")]),
+  JS.Do (JS.Call (JS.Name "addEventListener") [(JS.Text "scroll"), (JS.Name "refresh"), (JS.Boolean True)]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "live:frame"), (JS.Name "refresh")]),
+  JS.Do (JS.Call (JS.Name "addEventListener") [(JS.Text "pagehide"), (JS.Name "hide")]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "keydown"), (JS.Function ["e"] (bodyBody22 Unit)), (JS.Boolean True)]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "pointerdown"), (JS.Function ["e"] (bodyBody23 Unit)), (JS.Boolean True)]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "click"), (JS.Function ["e"] (bodyBody24 Unit)), (JS.Boolean True)])
+].

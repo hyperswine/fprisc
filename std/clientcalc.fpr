@@ -123,75 +123,68 @@ trimRightGo : unsafe String -> String .
 trimRightGo s = n = spaceEnd s spaces;
   if n == 0 then s else trimRightGo (S.dropRight n s).
 
-# A JavaScript string literal safe even inside an HTML script element. Keys
-# are quoted data, never identifiers; prototype-looking names stay data too.
-quote : String -> String .
-quote s = J.quote s |> S.replace "<" "\\u003c" |> S.replace ">" "\\u003e"
-  |> S.replace "&" "\\u0026" |> S.replace (chr 226 + chr 128 + chr 168) "\\u2028" |> S.replace (chr 226 + chr 128 + chr 169) "\\u2029".
-
-# Internal backend vocabulary: _int, _number, _string are supplied by the
-# browser effect generator. These emit expressions, not complete programs.
-jsInt : IntExpr -> String .
-jsInt e = emitInt e.
-emitInt : unsafe IntExpr -> String .
-emitInt e = case e of
-    Literal n -> "({n}n)"
-  | Number k -> "_number({quote k})"
-  | Add a b -> binary "+" a b
-  | Sub a b -> binary "-" a b
-  | Mul a b -> binary "*" a b
-  | Quot a b -> binary "/" a b
-  | Rem a b -> binary "%" a b
-  | IfInt p a b -> "({emitBool p}?{emitInt a}:{emitInt b})"
-  | Length xs -> "_int(BigInt(({emitList xs}).length))"
-  | Sum xs -> "({emitList xs}).reduce(function(a,b)\{return _int(a+b);},0n)"
-  | Maximum xs fallback -> "(function(xs)\{return xs.length?xs.reduce(function(a,b)\{return a>b?a:b;}):{emitInt fallback};})({emitList xs})"
-  | At xs index -> "_at({emitList xs},{emitInt index})"
-  | TextLength xs -> "_int(BigInt(({emitTextList xs}).length))".
-binary : unsafe String -> IntExpr -> IntExpr -> String .
-binary op a b = "_int(({emitInt a}{op}{emitInt b}))".
-jsBool : BoolExpr -> String .
-jsBool e = emitBool e.
-emitBool : unsafe BoolExpr -> String .
-emitBool e = case e of
-    Equal a b -> "({emitInt a}==={emitInt b})"
-  | Less a b -> "({emitInt a}<{emitInt b})"
-  | And a b -> "({emitBool a}&&{emitBool b})"
-  | Or a b -> "({emitBool a}||{emitBool b})"
-  | Not a -> "(!{emitBool a})"
-  | TextEqual a b -> "({emitText a}==={emitText b})".
-jsText : TextExpr -> String .
-jsText e = emitText e.
-emitText : unsafe TextExpr -> String .
-emitText e = case e of
-    Text s -> quote s
-  | StringVar k -> "_string({quote k})"
-  | Decimal n -> "String({emitInt n})"
-  | Concat xs -> "[{strJoin "," (emitTexts xs)}].join('')"
-  | PadZero width n -> if width < 0 then error "ClientCalc.PadZero: negative width"
-      else "String({emitInt n}).padStart({width},'0')"
-  | IfText p a b -> "({emitBool p}?{emitText a}:{emitText b})"
-  | Trim t -> "({emitText t}).trim()"
-  | TextAt xs index -> "_textAt({emitTextList xs},{emitInt index})".
-emitTexts : unsafe List TextExpr -> List String .
-emitTexts xs = case xs of Nil -> Nil | x :: r -> emitText x :: emitTexts r.
-jsList : IntListExpr -> String .
-jsList e = emitList e.
-emitList : unsafe IntListExpr -> String .
-emitList e = case e of
-    Values xs -> "[{strJoin "," (L.map emitInt xs)}]"
-  | Sequence k -> "_sequence({quote k})"
-  | Snoc xs n -> "({emitList xs}).concat([{emitInt n}])"
-  | TakeLast n xs -> if n < 0 then error "ClientCalc.TakeLast: negative count"
-      else "({emitList xs}).slice({if n == 0 then "0,0" else "-{n}"})"
-  | Sorted xs -> "({emitList xs}).slice().sort(function(a,b)\{return a<b?-1:a>b?1:0;})".
-jsTexts : TextListExpr -> String .
-jsTexts e = emitTextList e.
-emitTextList : unsafe TextListExpr -> String .
-emitTextList e = case e of
-    Texts xs -> "[{strJoin "," (emitTexts xs)}]"
-  | TextSequence k -> "_textSequence({quote k})"
-  | TextSnoc xs t -> "({emitTextList xs}).concat([{emitText t}])"
-  | TextTakeLast n xs -> if n < 0 then error "ClientCalc.TextTakeLast: negative count"
-      else "({emitTextList xs}).slice({if n == 0 then "0,0" else "-{n}"})"
-  | IfTexts p a b -> "({emitBool p}?{emitTextList a}:{emitTextList b})".
+# Lower the same native expression values to structured browser syntax.
+JS = use "javascript".
+quote = JS.quote.
+n = JS.Name.
+t = JS.Text.
+call name args = JS.Call (n name) args.
+method target name args = JS.Call (JS.Field target name) args.
+checked expr = call "_int" [expr].
+jsInt e = JS.expr (astInt e).
+astInt : unsafe IntExpr -> JS.Expr .
+astInt e = case e of
+    Literal value -> JS.BigInteger value
+  | Number key -> call "_number" [t key]
+  | Add a b -> arithmetic JS.Add a b
+  | Sub a b -> arithmetic JS.Subtract a b
+  | Mul a b -> arithmetic JS.Multiply a b
+  | Quot a b -> arithmetic JS.Divide a b
+  | Rem a b -> arithmetic JS.Modulo a b
+  | IfInt p a b -> JS.Choose (astBool p) (astInt a) (astInt b)
+  | Length xs -> checked (call "BigInt" [JS.Field (astList xs) "length"])
+  | TextLength xs -> checked (call "BigInt" [JS.Field (astTexts xs) "length"])
+  | Sum xs -> method (astList xs) "reduce" [JS.Function ["a", "b"] [JS.Return (checked (JS.Binary JS.Add (n "a") (n "b")))], JS.BigInteger 0]
+  | Maximum xs fallback -> JS.Call (JS.Function ["xs"] [JS.Return (JS.Choose (JS.Field (n "xs") "length")
+      (method (n "xs") "reduce" [JS.Function ["a", "b"] [JS.Return (JS.Choose (JS.Binary JS.Greater (n "a") (n "b")) (n "a") (n "b"))]]) (astInt fallback))]) [astList xs]
+  | At xs index -> call "_at" [astList xs, astInt index].
+arithmetic op a b = checked (JS.Binary op (astInt a) (astInt b)).
+jsBool e = JS.expr (astBool e).
+astBool : unsafe BoolExpr -> JS.Expr .
+astBool e = case e of
+    Equal a b -> JS.Binary JS.Equal (astInt a) (astInt b)
+  | Less a b -> JS.Binary JS.Less (astInt a) (astInt b)
+  | And a b -> JS.Binary JS.And (astBool a) (astBool b)
+  | Or a b -> JS.Binary JS.Or (astBool a) (astBool b)
+  | Not a -> JS.Unary JS.Not (astBool a)
+  | TextEqual a b -> JS.Binary JS.Equal (astText a) (astText b).
+jsText e = JS.expr (astText e).
+astText : unsafe TextExpr -> JS.Expr .
+astText e = case e of
+    Text value -> t value
+  | StringVar key -> call "_string" [t key]
+  | Decimal value -> call "String" [astInt value]
+  | Concat values -> method (JS.Array (L.map astText values)) "join" [t ""]
+  | PadZero width value -> if width < 0 then error "ClientCalc.PadZero: negative width" else method (call "String" [astInt value]) "padStart" [JS.Number width, t "0"]
+  | IfText p a b -> JS.Choose (astBool p) (astText a) (astText b)
+  | Trim value -> method (astText value) "trim" Nil
+  | TextAt xs index -> call "_textAt" [astTexts xs, astInt index].
+jsList e = JS.expr (astList e).
+astList : unsafe IntListExpr -> JS.Expr .
+astList e = case e of
+    Values xs -> JS.Array (L.map astInt xs)
+  | Sequence key -> call "_sequence" [t key]
+  | Snoc xs value -> method (astList xs) "concat" [JS.Array [astInt value]]
+  | TakeLast count xs -> last count (astList xs)
+  | Sorted xs -> method (method (astList xs) "slice" Nil) "sort" [JS.Function ["a", "b"] [JS.Return
+      (JS.Choose (JS.Binary JS.Less (n "a") (n "b")) (JS.Number (0 - 1)) (JS.Choose (JS.Binary JS.Greater (n "a") (n "b")) (JS.Number 1) (JS.Number 0)))]] .
+jsTexts e = JS.expr (astTexts e).
+astTexts : unsafe TextListExpr -> JS.Expr .
+astTexts e = case e of
+    Texts xs -> JS.Array (L.map astText xs)
+  | TextSequence key -> call "_textSequence" [t key]
+  | TextSnoc xs value -> method (astTexts xs) "concat" [JS.Array [astText value]]
+  | TextTakeLast count xs -> last count (astTexts xs)
+  | IfTexts p a b -> JS.Choose (astBool p) (astTexts a) (astTexts b).
+last count xs = if count < 0 then error "ClientCalc.TakeLast: negative count" else
+  method xs "slice" (if count == 0 then [JS.Number 0, JS.Number 0] else [JS.Number (0 - count)]).

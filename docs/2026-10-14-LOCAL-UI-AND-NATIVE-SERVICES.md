@@ -553,3 +553,14 @@ Inventory's pending animations, autocomplete logic and device persistence
 script, plus Live's transport/local-state implementation, remain handwritten.
 Remaining literal styling and native TLS/MQTT/printer-service migrations remain
 on the roadmap.
+
+## Pure application completion follow-through (2026-10-15)
+
+The [completion contract](2026-10-15-PURE-APPLICATIONS.md) supersedes remaining
+checklists with current evidence. The printer's complete presentation and camera
+lifecycle are now typed/generated, and `std/http` uses native bounded TCP/TLS
+instead of curl. The subsequent completion slice also replaces Python
+hosting/authentication, login/session behavior, inventory/logbook adapters and
+the shared browser runtimes. They now use native FP-RISC services and structured
+generation; the former Python implementation is a test fixture. The completion
+record separates passing local checks from the pending production switchover.

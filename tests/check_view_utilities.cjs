@@ -22,7 +22,8 @@ const env = {...process.env, FPR_HOME: root, XDG_CACHE_HOME: path.join(tmp, 'cac
     assert.match(execFileSync(binary, {encoding:'utf8'}), /cached CSS PASS/);
     for (const [arg, why] of [['bad-prop', 'Prop is a legacy escape hatch'],
       ['bad-rgb', 'expected channels 0..255'], ['bad-opacity', 'expected 0..100'],
-      ['bad-rgba', 'expected channels 0..255'], ['bad-weight', 'expected 1..1000']]) {
+      ['bad-rgba', 'expected channels 0..255'], ['bad-weight', 'expected 1..1000'],
+      ['bad-grid', 'expected 1..64'], ['bad-aspect', 'expected positive dimensions']]) {
       const p = spawnSync(binary, [arg], {encoding:'utf8', timeout:10000});
       assert.equal(p.status, 1, arg);
       assert.match(p.stdout+p.stderr, new RegExp(why), arg);
@@ -95,7 +96,7 @@ const env = {...process.env, FPR_HOME: root, XDG_CACHE_HOME: path.join(tmp, 'cac
     const inventoryPage=await browser.newPage();
     for(const [width,height] of [[1200,800],[390,844]]) {
       await inventoryPage.setViewportSize({width,height});
-      await inventoryPage.setContent('<!doctype html><style>'+snapshot.css+'</style>'+markup);
+      await inventoryPage.setContent('<!doctype html><head><style>'+snapshot.css+'</style></head><body'+(snapshot.body||'')+'>'+markup+'</body>');
       await inventoryPage.locator('[data-slot]').evaluateAll((els,ds)=>{
         for(const el of els)el.textContent=ds[Number(el.dataset.slot)];
       },snapshot.d);

@@ -17,8 +17,8 @@ import time
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
-spec = importlib.util.spec_from_file_location('printer_dashboard', ROOT / 'tools/printer_dashboard.py')
+sys.path.insert(0, str(ROOT / 'tests/legacy'))
+spec = importlib.util.spec_from_file_location('printer_dashboard', ROOT / 'tests/legacy/printer_dashboard.py')
 bridge = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bridge)
 FIXTURES = ROOT / 'tests/fixtures/tls'
@@ -99,7 +99,7 @@ class PrinterPeer:
                     client, rest = take_field(rest[4:])
                     user, rest = take_field(rest)
                     password, rest = take_field(rest)
-                    assert client == b'fpr-read-TESTSERIAL' and user == b'bblp' and password == b'test-only' and not rest
+                    assert client in (b'fpr-read-TESTSERIAL', b'fpr-native-TESTSERIAL') and user == b'bblp' and password == b'test-only' and not rest
                     self.connects += 1
                     conn.sendall(frame(32, bytes([0, 4 if self.refuse else 0])))
                     if self.refuse:

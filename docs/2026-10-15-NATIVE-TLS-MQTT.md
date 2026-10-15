@@ -659,3 +659,20 @@ logout revoked the checking session. The [deployment record](../examples/printer
 has the launcher, CA provenance and ignored evidence locations. Public gateway
 login/proxying and supervision still use Python. This acceptance is a real
 read-only printer transport/camera check, not a print completion or memory soak.
+
+## Native HTTP client follow-through (2026-10-15)
+
+The curl replacement is now implemented in `std/httpclient` and used by
+`std/http`. It uses bounded DNS/checked TCP/verified TLS and a shared absolute
+request budget, with strict bounded response framing and deterministic cleanup.
+The [completion record](2026-10-15-PURE-APPLICATIONS.md) describes API limits,
+caller-owned DNS admission and one/four-hart simulator evidence. Python public
+gateway/authentication removal remains separate work.
+
+## Native application host (2026-10-15)
+
+The [pure-application record](2026-10-15-PURE-APPLICATIONS.md) now describes the
+single-process FP-RISC public gateway, authentication, actor supervision and
+generated login/session/client behavior. Python runtime code was retired to
+legacy test fixtures. Local TLS simulator and browser acceptance is distinct
+from the still-required native-host production/real-printer redeployment gate.

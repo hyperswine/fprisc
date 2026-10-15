@@ -1,0 +1,105 @@
+# Structured browser capability program. FP-RISC syntax values are authoritative.
+# No foreign source asset or Raw node is read at runtime.
+JS = use "std/javascript".
+G = use "std/view".
+src u = JS.program [
+  JS.Do (JS.Call (JS.Function [] (bodyBody1 Unit)) [])
+].
+
+themeBody2 u = [
+  JS.Var "p" (JS.Call (JS.Field (JS.Name "root") "querySelector") [(JS.Text "[data-theme]")]),
+  JS.Return (JS.Choose (JS.Name "p") (JS.Call (JS.Field (JS.Call (JS.Name "getComputedStyle") [(JS.Name "p")]) "getPropertyValue") [(JS.Name "v")]) (JS.Text ""))
+].
+
+bodyBody4 u = [
+  JS.Do (JS.Call (JS.Field (JS.Name "a") "cancel") [])
+].
+
+doneBody3 u = [
+  JS.Do (JS.Call (JS.Name "clearTimeout") [(JS.Name "showT")]),
+  JS.Do (JS.AssignValue (JS.Name "showT") (JS.Null)),
+  JS.Do (JS.Call (JS.Name "clearTimeout") [(JS.Name "failT")]),
+  JS.Do (JS.AssignValue (JS.Name "failT") (JS.Null)),
+  JS.If (JS.Name "anim") [JS.Do (JS.Call (JS.Field (JS.Name "anim") "cancel") []), JS.Do (JS.AssignValue (JS.Name "anim") (JS.Null))] [],
+  JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "bar") "style") "display") (JS.Text (G.displayCss G.Hidden))),
+  JS.Do (JS.Call (JS.Field (JS.Name "pulses") "forEach") [(JS.Function ["a"] (bodyBody4 Unit))]),
+  JS.Do (JS.AssignValue (JS.Name "pulses") (JS.Array [])),
+  JS.If (JS.Name "faded") [JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "faded") "style") "opacity") (JS.Text "")), JS.Do (JS.AssignValue (JS.Name "faded") (JS.Null))] []
+].
+
+bodyBody6 u = [
+  JS.Do (JS.AssignValue (JS.Name "showT") (JS.Null)),
+  JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "bar") "style") "background") (JS.Binary JS.Or (JS.Call (JS.Name "theme") [(JS.Text "--ink")]) (JS.Text (G.colourCss (G.Rgb 136 136 136))))),
+  JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "bar") "style") "display") (JS.Text (G.displayCss G.Block))),
+  JS.Do (JS.AssignValue (JS.Name "anim") (JS.Call (JS.Field (JS.Name "bar") "animate") [(JS.Array [(JS.Object [("transform", JS.Text (G.transformCss [G.TranslateX (G.Pct (0 - 100))]))]), (JS.Object [("transform", JS.Text (G.transformCss [G.TranslateX (G.Pct 340)]))])]), (JS.Object [("duration", JS.Number 900), ("iterations", JS.Name "Infinity"), ("easing", JS.Text "ease-in-out")])])),
+  JS.If (JS.Binary JS.And (JS.Name "el") (JS.Call (JS.Field (JS.Name "document") "contains") [(JS.Name "el")])) [JS.Do (JS.Call (JS.Field (JS.Name "pulses") "push") [(JS.Call (JS.Field (JS.Name "el") "animate") [(JS.Array [(JS.Object [("opacity", JS.Number 1)]), (JS.Object [("opacity", JS.Real "0.45")]), (JS.Object [("opacity", JS.Number 1)])]), (JS.Object [("duration", JS.Number 800), ("iterations", JS.Name "Infinity")])])])] [],
+  JS.Do (JS.AssignValue (JS.Name "faded") (JS.Call (JS.Field (JS.Name "root") "querySelector") [(JS.Text "[data-lv-key=\"items\"]")])),
+  JS.If (JS.Name "faded") [JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "faded") "style") "transition") (JS.Text (G.declCss (G.TransitionOpacity 150) |> (fn css -> substr css 11 (strlen css - 11))))), JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "faded") "style") "opacity") (JS.Text ".55"))] []
+].
+
+waitingBody5 u = [
+  JS.If (JS.Name "paused") [JS.ReturnVoid] [],
+  JS.Do (JS.Call (JS.Name "clearTimeout") [(JS.Name "failT")]),
+  JS.Do (JS.AssignValue (JS.Name "failT") (JS.Call (JS.Name "setTimeout") [(JS.Name "done"), (JS.Name "ms")])),
+  JS.If (JS.Binary JS.Or (JS.Name "showT") (JS.Name "anim")) [JS.ReturnVoid] [],
+  JS.Do (JS.AssignValue (JS.Name "showT") (JS.Call (JS.Name "setTimeout") [(JS.Function [] (bodyBody6 Unit)), (JS.Number 100)]))
+].
+
+bodyBody7 u = [
+  JS.If (JS.Name "paused") [JS.ReturnVoid] [],
+  JS.Var "b" (JS.Binary JS.And (JS.Field (JS.Field (JS.Name "e") "target") "closest") (JS.Call (JS.Field (JS.Field (JS.Name "e") "target") "closest") [(JS.Text "#lv-root button")])),
+  JS.If (JS.Name "b") [JS.Do (JS.Call (JS.Field (JS.Name "b") "animate") [(JS.Array [(JS.Object [("transform", JS.Text (G.transformCss [G.Scale 100]))]), (JS.Object [("transform", JS.Text (G.transformCss [G.Scale 94]))]), (JS.Object [("transform", JS.Text (G.transformCss [G.Scale 100]))])]), (JS.Object [("duration", JS.Number 160), ("easing", JS.Text "ease-out")])])] []
+].
+
+bodyBody8 u = [
+  JS.Var "b" (JS.Binary JS.And (JS.Field (JS.Field (JS.Name "e") "target") "closest") (JS.Call (JS.Field (JS.Field (JS.Name "e") "target") "closest") [(JS.Text "#lv-root [data-click], #lv-root button[data-sync-now]")])),
+  JS.If (JS.Name "b") [JS.Do (JS.Call (JS.Name "waiting") [(JS.Name "b"), (JS.Number 2500)])] []
+].
+
+bodyBody9 u = [
+  JS.If (JS.Binary JS.And (JS.Field (JS.Field (JS.Name "e") "target") "hasAttribute") (JS.Call (JS.Field (JS.Field (JS.Name "e") "target") "hasAttribute") [(JS.Text "data-sync-now")])) [JS.Do (JS.Call (JS.Name "waiting") [(JS.Null), (JS.Number 1200)])] []
+].
+
+bodyBody10 u = [
+  JS.If (JS.Binary JS.And (JS.Binary JS.And (JS.Binary JS.Equal (JS.Field (JS.Name "e") "key") (JS.Text "Enter")) (JS.Field (JS.Field (JS.Name "e") "target") "hasAttribute")) (JS.Call (JS.Field (JS.Field (JS.Name "e") "target") "hasAttribute") [(JS.Text "data-enter")])) [JS.Do (JS.Call (JS.Name "waiting") [(JS.Null), (JS.Number 2500)])] []
+].
+
+bodyBody11 u = [
+  JS.Var "up" (JS.Binary JS.Equal (JS.Field (JS.Name "link") "textContent") (JS.Text "live")),
+  JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "link") "style") "display") (JS.Choose (JS.Name "up") (JS.Text (G.displayCss G.Hidden)) (JS.Text (G.displayCss G.Block)))),
+  JS.If (JS.Unary JS.Not (JS.Name "up")) [JS.Do (JS.Binary JS.And (JS.Binary JS.Less (JS.Call (JS.Field (JS.Field (JS.Name "link") "textContent") "indexOf") [(JS.Text "reconnecting")]) (JS.Number 0)) (JS.AssignValue (JS.Field (JS.Name "link") "textContent") (JS.Text "reconnecting")))] []
+].
+
+bodyBody1 u = [
+  JS.Var "root" (JS.Call (JS.Field (JS.Name "document") "getElementById") [(JS.Text "lv-root")]),
+  JS.Var "paused" (JS.Boolean False),
+  JS.Define "theme" ["v"] (themeBody2 Unit),
+  JS.Var "bar" (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelector") [(JS.Text "[data-pending-bar]")]) "cloneNode") [(JS.Boolean True)]),
+  JS.Var "anim" (JS.Null),
+  JS.Var "showT" (JS.Null),
+  JS.Var "failT" (JS.Null),
+  JS.Var "pulses" (JS.Array []),
+  JS.Var "faded" (JS.Null),
+  JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "bar") "style") "display") (JS.Text (G.displayCss G.Hidden))),
+  JS.Do (JS.Call (JS.Field (JS.Field (JS.Name "document") "body") "appendChild") [(JS.Name "bar")]),
+  JS.Define "done" [] (doneBody3 Unit),
+  JS.Define "waiting" ["el", "ms"] (waitingBody5 Unit),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "live:frame"), (JS.Name "done")]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "pointerdown"), (JS.Function ["e"] (bodyBody7 Unit)), (JS.Boolean True)]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "click"), (JS.Function ["e"] (bodyBody8 Unit)), (JS.Boolean True)]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "input"), (JS.Function ["e"] (bodyBody9 Unit)), (JS.Boolean True)]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "keydown"), (JS.Function ["e"] (bodyBody10 Unit)), (JS.Boolean True)]),
+  JS.Var "link" (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelector") [(JS.Text "[data-pending-link]")]) "cloneNode") [(JS.Boolean True)]),
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "link") "id") (JS.Text "lv-link")),
+  JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "link") "style") "display") (JS.Text (G.displayCss G.Hidden))),
+  JS.Do (JS.Call (JS.Field (JS.Field (JS.Name "document") "body") "appendChild") [(JS.Name "link")]),
+  JS.Var "observer" (JS.New (JS.Name "MutationObserver") [(JS.Function [] (bodyBody11 Unit))]),
+  JS.Define "observe" [] [JS.Do (JS.Call (JS.Field (JS.Name "observer") "observe") [(JS.Name "link"), (JS.Object [("childList", JS.Boolean True), ("characterData", JS.Boolean True), ("subtree", JS.Boolean True)])])],
+  JS.Do (JS.Call (JS.Name "observe") []),
+  JS.Do (JS.Call (JS.Field (JS.Name "window") "addEventListener") [(JS.Text "pagehide"), JS.Function [] [JS.Assign (JS.Name "paused") (JS.Boolean True), JS.Do (JS.Call (JS.Name "done") []), JS.Do (JS.Call (JS.Field (JS.Name "observer") "disconnect") [])]]),
+  JS.Do (JS.Call (JS.Field (JS.Name "window") "addEventListener") [(JS.Text "pageshow"), JS.Function [] [JS.Assign (JS.Name "paused") (JS.Boolean False), JS.Do (JS.Call (JS.Name "observe") []), JS.Do (JS.Call (JS.Function [] (bodyBody11 Unit)) [])]])
+].
+
+prototypes palette = G.El "div" [G.utilities [G.Display G.Hidden]]
+  [G.El "div" (G.Att "data-pending-bar" "" :: G.utilities [G.Position G.Fixed, G.Top (G.Px 0), G.Left (G.Px 0), G.Height (G.Px 3), G.Width (G.Pct 30), G.ZIndex 60, G.PointerEvents G.PointerNone, G.Radius (G.Px 3), G.Opacity 60, G.Background (G.ThemeColour G.Ink)] :: palette) Nil,
+   G.El "span" [G.Att "data-pending-link" "", G.utilities [G.Position G.Fixed, G.Top (G.Px 10), G.Left (G.Pct 50), G.Transform [G.TranslateX (G.Pct (0 - 50))], G.ZIndex 61, G.PaddingY (G.Px 4), G.PaddingX (G.Px 12), G.Radius (G.Px 999), G.FontSize (G.Px 12), G.Background (G.Rgb 58 42 16), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.Rgb 122 90 24), G.Foreground (G.Rgb 255 198 92)]] Nil].

@@ -57,6 +57,9 @@ Live = use "std/live".
 G = use "std/view".
 Appearance = use "std/appearance".
 LJ = use "std/livejs".
+Storage = use "std/browserstorage".
+Autocomplete = use "std/browserautocomplete".
+Feedback = use "std/browserfeedback".
 Metrics = use "std/livemetrics".
 B = use "std/browsercalc".
 Console = use "std/browserconsole".
@@ -75,12 +78,13 @@ Option = use "std/option".
 Order = use "std/order".
 Digest = use "std/digest".
 
-El = G.El.
+element tag attrs kids = G.El tag (elementDefaults tag :: attrs) kids.
+elementDefaults tag = G.utilities ([G.BoxSizing G.BorderBox, G.Margin (G.Px 0)] + (if tag == "button" then [G.FontFamily G.InheritFont, G.FontSize G.Inherit] else Nil)).
 Txt = G.Txt.
 Dyn = G.Dyn.
 Cls = G.Cls.
 Att = G.Att.
-Inp = G.Inp.
+input attrs = G.Inp (elementDefaults "input" :: attrs).
 
 Msg = Type (Login String | Logout | ClientState String | New | Edit Int | Save | Cancel | Delete Int
           | AddTag String | AddMember String | Password String | ForgetDevices | Theme | Dismiss | Clear Int Int | Page Int
@@ -738,15 +742,15 @@ touchSize = G.utilities [G.MinHeight (G.Px 44)].
 chipSize = G.utilities [G.MinHeight (G.Px 34)].
 inputSize = G.utilities [G.FontSize (G.Px 16)]. # avoids iOS input zoom
 # the remembered device lives in a hidden input, so the page's script can fill it
-root v kids = El "div" (Att "data-theme" (if v.theme == 1 then "day" else "night") :: Appearance.frame (v.theme == 1))
-  [El "div" (Att "data-ac-scope" "" :: Cls "col gap-4" :: pageSize :: locals)
-    (Inp [G.bind @Client.tok, Att "type" "hidden"] :: autocompletePrototypes v :: kids)].
+root v kids = element "div" (Att "data-theme" (if v.theme == 1 then "day" else "night") :: Appearance.frame (v.theme == 1))
+  [element "div" (Att "data-ac-scope" "" :: G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 18)]] :: Cls "col gap-4" :: pageSize :: locals)
+    (input [G.bind @Client.tok, Att "type" "hidden", Att "data-device-token" ""] :: autocompletePrototypes v :: Feedback.prototypes (Appearance.tokens (v.theme == 1)) :: kids)].
 
 # Browser-owned suggestions clone these ordinary view nodes. The appearance,
 # selected state and explicit palette live here, with all rules retained by
 # renderStyled even while the prototypes themselves are hidden.
-autocompletePrototypes v = El "div" [Att "data-ac-prototypes" "", G.utilities [G.Display G.Hidden]]
-  [El "div" (Att "data-ac-frame" "" :: Att "role" "listbox" :: Att "aria-label" "Suggestions" ::
+autocompletePrototypes v = element "div" [Att "data-ac-prototypes" "", G.utilities [G.Display G.Hidden]]
+  [element "div" (Att "data-ac-frame" "" :: Att "role" "listbox" :: Att "aria-label" "Suggestions" ::
       G.utilities [G.Position G.Absolute, G.ZIndex 50, G.Display G.Flex, G.FlexWrap G.Wrap,
         G.Gap (G.Px 6), G.Padding (G.Px 8), G.Radius (G.Px 12),
         G.Background (G.ThemeColour G.Card), G.Foreground (G.ThemeColour G.Ink),
@@ -754,8 +758,8 @@ autocompletePrototypes v = El "div" [Att "data-ac-prototypes" "", G.utilities [G
         G.Shadow (G.Px 0) (G.Px 8) (G.Px 24) (G.Px 0) (G.RgbaPercent 0 0 0 18),
         G.FontFamily G.ReadingFont, G.FontSize (G.Px 15), G.LineHeight 155] :: Appearance.tokens (v.theme == 1)) Nil,
    autocompleteOption False, autocompleteOption True,
-   El "span" [Att "data-ac-hint" "", G.utilities [G.FontSize (G.Px 11), G.Foreground (G.ThemeColour G.Dim), G.AlignSelf G.AlignCenter]] Nil].
-autocompleteOption selected = El "button"
+   element "span" [Att "data-ac-hint" "", G.utilities [G.FontSize (G.Px 11), G.Foreground (G.ThemeColour G.Dim), G.AlignSelf G.AlignCenter]] Nil].
+autocompleteOption selected = element "button"
   [Att "data-ac-option" (if selected then "selected" else "normal"), Att "type" "button", Att "role" "option",
    Att "tabindex" "-1", Att "aria-selected" (if selected then "true" else "false"), chipSize,
    G.utilities [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder,
@@ -781,24 +785,24 @@ view keep sid v old = case old of (cardsOld, rs) ->
         (out, (kept, { st = note rs.st (Sys.timeUs Unit - t0), hits = rs.hits + h, misses = rs.misses + mi, kept = VC.size kept })))).
 verify = Program.envOr "0" "INV_VIEW_VERIFY" == "1".
 
-btn label attrs = El "button" (Cls "btn round px-3 py-2" :: touchSize :: attrs) [Txt label].
-primary label attrs = El "button" (Cls "btn round px-3 py-2 glow ink bold" :: touchSize :: attrs) [Txt label].
-field attrs = Inp (Cls "field w-full" :: inputSize :: touchSize :: attrs).
-labelled label kid = El "label" [Cls "col gap-1 grow min-w-0"] [El "div" [Cls "text-xs upper dim"] [Txt label], kid].
+btn label attrs = element "button" (G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 14), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]] :: G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)] :: Cls "btn round px-3 py-2" :: touchSize :: attrs) [Txt label].
+primary label attrs = element "button" (G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 14), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8), G.Shadow (G.Px 0) (G.Px 0) (G.Px 24) (G.Px 0) (G.RgbaPercent 87 226 210 22), G.Foreground (G.ThemeColour (G.Ink)), G.FontWeight 700]] :: G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)] :: Cls "btn round px-3 py-2 glow ink bold" :: touchSize :: attrs) [Txt label].
+field attrs = input (G.Utilities [G.Base [G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Ink)), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.Radius (G.Px 10), G.FontFamily G.InheritFont, G.FontSize G.Inherit, G.OutlineWidth (G.Px 0), G.Width (G.Pct 100)]] :: Cls "field w-full" :: inputSize :: touchSize :: attrs).
+labelled label kid = element "label" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 4), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.MinWidth (G.Px 0)]], Cls "col gap-1 grow min-w-0"] [element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.TextCase G.UpperCase, G.LetterSpacing (G.Em 180), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs upper dim"] [Txt label], kid].
 
 loginView v =
-  El "div" [Cls "col gap-3 p-6 panel round mt-4"]
-    [ El "div" [Cls "text-xs upper dim"] [Txt "home inventory"]
-    , El "div" [Cls "text-2xl bold"] [Txt "Sign in"]
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12), G.Padding (G.Px 26), G.BackgroundImages [G.TokenImage G.Panel], G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.MarginTop (G.Px 18)]], Cls "col gap-3 p-6 panel round mt-4"]
+    [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.TextCase G.UpperCase, G.LetterSpacing (G.Em 180), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs upper dim"] [Txt "home inventory"]
+    , element "div" [G.Utilities [G.Base [G.FontSize (G.Px 30), G.FontWeight 700]], Cls "text-2xl bold"] [Txt "Sign in"]
     , field [G.bind @Client.user, Att "placeholder" "name", Att "autocomplete" "username", Att "autocapitalize" "none", Att "maxlength" "16"]
     , field [G.bind @Client.pw, G.OnEnter (G.wireOpen codec (Login "")) "user,pw", Att "type" "password", Att "placeholder" "password", Att "autocomplete" "current-password"]
     , primary "sign in" [G.OnClick (G.wireOpen codec (Login "")) "user,pw"]
-    , El "div" [Cls "warm text-sm"] [Dyn v.toast] ].
+    , element "div" [G.Utilities [G.Base [G.Foreground (G.Rgb 255 138 92), G.FontSize (G.Px 13)]], Cls "warm text-sm"] [Dyn v.toast] ].
 
 signedIn v cards rs =
   [ header v
-  , El "div" [Cls "toast ok"] [Dyn (roleText v "ok")]
-  , El "div" [Cls "toast warn"] [Dyn (roleText v "warn")]
+  , element "div" [G.Att "data-hide-empty" "", G.Utilities [G.Base [G.PaddingY (G.Px 10), G.PaddingX (G.Px 14), G.Radius (G.Px 12), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.Rgb 15 51 40), G.BorderColour (G.Rgb 31 107 80), G.Foreground (G.Rgb 87 226 166)]], Cls "toast ok"] [Dyn (roleText v "ok")]
+  , element "div" [G.Att "data-hide-empty" "", G.Utilities [G.Base [G.PaddingY (G.Px 10), G.PaddingX (G.Px 14), G.Radius (G.Px 12), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.Rgb 58 42 16), G.BorderColour (G.Rgb 122 90 24), G.Foreground (G.Rgb 255 198 92)]], Cls "toast warn"] [Dyn (roleText v "warn")]
   , itemsPane v cards
   , housePane v
   , adminPane v rs ].
@@ -807,39 +811,39 @@ roleText v role = "".
 
 # on a phone the title takes its own line and the pane buttons go below it
 header v =
-  El "div" [Cls "row center gap-2 wrap"]
-    [ El "div" [Cls "col grow min-w-0", G.narrow [G.Basis (G.Pct 100)]]
-        [ El "div" [Cls "text-xs upper dim"] [Txt "home inventory"]
-        , El "div" [Cls "text-2xl bold tabular"] [Dyn (things v.total)] ]
-    , El "button" [Cls "btn pill px-3 py-2", touchSize, G.setTo @Client.pane "items", Att "data-on" "pane:items"] [Txt "items"]
-    , El "button" [Cls "btn pill px-3 py-2", touchSize, G.setTo @Client.pane "house", Att "data-on" "pane:house"] [Txt "household"]
-    , El "button" [Cls "btn pill px-3 py-2", touchSize, G.setTo @Client.pane "admin", Att "data-on" "pane:admin"] [Txt "admin"] ].
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.AlignItems G.AlignCenter, G.Gap (G.Px 8), G.FlexWrap G.Wrap]], Cls "row center gap-2 wrap"]
+    [ element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.MinWidth (G.Px 0)]], Cls "col grow min-w-0", G.narrow [G.Basis (G.Pct 100)]]
+        [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.TextCase G.UpperCase, G.LetterSpacing (G.Em 180), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs upper dim"] [Txt "home inventory"]
+        , element "div" [G.Utilities [G.Base [G.FontSize (G.Px 30), G.FontWeight 700, G.Numerals G.TabularNumerals]], Cls "text-2xl bold tabular"] [Dyn (things v.total)] ]
+    , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 py-2", touchSize, G.setTo @Client.pane "items", G.localStyle "pane" "items" [G.Background (G.ThemeColour G.Ink), G.Foreground (G.ThemeColour G.Bg), G.BorderColour (G.ThemeColour G.Ink)], Att "data-on" "pane:items"] [Txt "items"]
+    , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 py-2", touchSize, G.setTo @Client.pane "house", G.localStyle "pane" "house" [G.Background (G.ThemeColour G.Ink), G.Foreground (G.ThemeColour G.Bg), G.BorderColour (G.ThemeColour G.Ink)], Att "data-on" "pane:house"] [Txt "household"]
+    , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 py-2", touchSize, G.setTo @Client.pane "admin", G.localStyle "pane" "admin" [G.Background (G.ThemeColour G.Ink), G.Foreground (G.ThemeColour G.Bg), G.BorderColour (G.ThemeColour G.Ink)], Att "data-on" "pane:admin"] [Txt "admin"] ].
 things 1 = "1 thing".
 things n = "{n} things".
 
 itemsPane v cards =
-  El "div" [Cls "col gap-3", G.showIf @Client.pane "items"]
-    ( El "div" [Cls "row gap-2 center"]
-        [ Inp [Cls "field grow min-w-0", inputSize, touchSize, G.bind @Client.q, now, Att "type" "search", Att "placeholder" "search names, places, notes, tags",
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12)]], Cls "col gap-3", G.showIf @Client.pane "items"]
+    ( element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.AlignItems G.AlignCenter]], Cls "row gap-2 center"]
+        [ input [G.Utilities [G.Base [G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Ink)), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.Radius (G.Px 10), G.FontFamily G.InheritFont, G.FontSize G.Inherit, G.OutlineWidth (G.Px 0), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.MinWidth (G.Px 0)]], Cls "field grow min-w-0", inputSize, touchSize, G.bind @Client.q, now, Att "type" "search", Att "placeholder" "search names, places, notes, tags",
                Att "autocomplete" "off", Att "autocapitalize" "none"]
         , primary "+ add" [G.send codec New] ]
-    :: El "div" [Cls "row gap-2 wrap center text-sm"]
-        [ El "span" [Cls "dim"] [Txt "sort"], sortBtn "recent" "recent", sortBtn "name" "a-z", sortBtn "place" "by place"
-        , El "button" [Cls "btn pill px-3", chipSize, G.ShowIf "q", G.setTo @Client.q "", now] [Txt "clear search"] ]
-    :: chipRow (List.map (fn p -> El "button" [Cls "btn pill px-3 text-sm flex-none", chipSize, G.setTo @Client.q (lower p), now] [Txt p]) v.places)
-    :: chipRow (List.map (fn t -> El "button" [Cls "btn pill px-3 text-sm dim flex-none", chipSize, G.setTo @Client.q t, now] [Txt "#{t}"]) v.tags)
+    :: element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.FlexWrap G.Wrap, G.AlignItems G.AlignCenter, G.FontSize (G.Px 13)]], Cls "row gap-2 wrap center text-sm"]
+        [ element "span" [G.Utilities [G.Base [G.Foreground (G.ThemeColour (G.Dim))]], Cls "dim"] [Txt "sort"], sortBtn "recent" "recent", sortBtn "name" "a-z", sortBtn "place" "by place"
+        , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3", chipSize, G.ShowIf "q", G.setTo @Client.q "", now] [Txt "clear search"] ]
+    :: chipRow (List.map (fn p -> element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.FontSize (G.Px 13), G.FlexGrow 0, G.FlexShrink 0, G.Basis (G.Auto)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 text-sm flex-none", chipSize, G.setTo @Client.q (lower p), now] [Txt p]) v.places)
+    :: chipRow (List.map (fn t -> element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.FontSize (G.Px 13), G.Foreground (G.ThemeColour (G.Dim)), G.FlexGrow 0, G.FlexShrink 0, G.Basis (G.Auto)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 text-sm dim flex-none", chipSize, G.setTo @Client.q t, now] [Txt "#{t}"]) v.tags)
     :: (case v.editing == 0 of True -> [editor v] | False -> Nil)
-    + [ El "div" [Cls "text-sm dim", Att "id" "inv-list"] [Dyn (countText v)]
-      , G.key "items" (El "div" [Cls "col gap-3"] (case List.isEmpty cards of True -> [empty v] | False -> inPlace v cards))
+    + [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 13), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-sm dim", Att "id" "inv-list"] [Dyn (countText v)]
+      , G.key "items" (element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12)]], Cls "col gap-3"] (case List.isEmpty cards of True -> [empty v] | False -> inPlace v cards))
       , pager v ]).
 # the pager, when there is more than one page
-pager v | v.pages <= 1 = El "span" Nil Nil.
+pager v | v.pages <= 1 = element "span" Nil Nil.
 pager v =
-  El "div" [Cls "row center gap-2"]
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.AlignItems G.AlignCenter, G.Gap (G.Px 8)]], Cls "row center gap-2"]
     [ pageBtn "previous" (v.page - 1) (v.page == 0)
-    , El "div" [Cls "grow text-center text-sm dim tabular"] [Dyn "page {v.page + 1} of {v.pages}"]
+    , element "div" [G.Utilities [G.Base [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.TextAlign G.TextCenter, G.FontSize (G.Px 13), G.Foreground (G.ThemeColour (G.Dim)), G.Numerals G.TabularNumerals]], Cls "grow text-center text-sm dim tabular"] [Dyn "page {v.page + 1} of {v.pages}"]
     , pageBtn "next" (v.page + 1) (v.page + 1 >= v.pages) ].
-pageBtn label n off = El "button" [Cls "btn round px-3 py-2", touchSize,
+pageBtn label n off = element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 14), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn round px-3 py-2", touchSize,
                                    G.utilities (if off then [G.Opacity 35, G.PointerEvents G.PointerNone] else Nil),
                                    G.send codec (Page n), Att "data-pager" ""] [Txt label].
 # the item being edited is its editor, where its card was
@@ -848,92 +852,92 @@ inPlace v cards = List.zipWith (fn it card -> (case it.id == v.editing of True -
 # what changes the search is mirrored at once (std/livejs data-sync-now), not
 # on the next tick: the list is what someone is waiting to see
 now = Att "data-sync-now" "".
-sortBtn key label = El "button" [Cls "btn pill px-3", chipSize, G.setTo @Client.sort key, now, Att "data-on" "sort:{key}"] [Txt label].
+sortBtn key label = element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3", chipSize, G.setTo @Client.sort key, now, G.localStyle "sort" "{key}" [G.Background (G.ThemeColour G.Ink), G.Foreground (G.ThemeColour G.Bg), G.BorderColour (G.ThemeColour G.Ink)], Att "data-on" "sort:{key}"] [Txt label].
 countText v | v.shown == 0 = "".
 countText v =
   range = (case v.pages <= 1 of True -> "" | False -> "{v.first + 1}-{v.first + List.length v.items} of ");
   case strlen v.q == 0 of
     True -> (case v.pages <= 1 of True -> "" | False -> "{range}{v.total}")
   | False -> "{range}{v.shown} matching \"{v.q}\"".
-empty v | v.total == 0 = El "div" [Cls "card round p-6 text-center dim"] [Txt "Nothing here yet. Add the first thing with + add."].
-empty v = El "div" [Cls "card round p-6 text-center dim"] [Txt "Nothing matches."].
+empty v | v.total == 0 = element "div" [G.Utilities [G.Base [G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 26), G.TextAlign G.TextCenter, G.Foreground (G.ThemeColour (G.Dim))]], Cls "card round p-6 text-center dim"] [Txt "Nothing here yet. Add the first thing with + add."].
+empty v = element "div" [G.Utilities [G.Base [G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 26), G.TextAlign G.TextCenter, G.Foreground (G.ThemeColour (G.Dim))]], Cls "card round p-6 text-center dim"] [Txt "Nothing matches."].
 
 # a tap on a place or a tag searches for it; a row scrolls sideways on a phone
-chipRow kids = El "div" [Cls "row gap-2", G.utilities [G.OverflowX G.OverflowAuto,
+chipRow kids = element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8)]], Cls "row gap-2", G.utilities [G.OverflowX G.OverflowAuto,
   G.PaddingBottom (G.Px 4), G.ScrollbarWidth G.ScrollbarThin]] kids.
 
 editor v =
-  El "div" [Cls "col gap-3 panel round p-4"]
-      [ El "div" [Cls "text-lg bold"] [Txt (case v.editing == 0 of True -> "Add an item" | False -> "Edit item")]
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12), G.BackgroundImages [G.TokenImage G.Panel], G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 18)]], Cls "col gap-3 panel round p-4"]
+      [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 18), G.FontWeight 700]], Cls "text-lg bold"] [Txt (case v.editing == 0 of True -> "Add an item" | False -> "Edit item")]
       , labelled "name" (field [G.bind @Client.name, Att "placeholder" "e.g. USB-C cable", Att "maxlength" "120"])
-      , El "div" [Cls "row gap-2 narrow:col"]
+      , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8)], G.Narrow [G.Display G.Flex, G.Direction G.Column]], Cls "row gap-2 narrow:col"]
           [ labelled "room or place" (field [G.bind @Client.loc, Att "data-ac" "loc", Att "placeholder" "e.g. study", Att "maxlength" "60", Att "autocomplete" "off"])
           , labelled "spot" (field [G.bind @Client.sub, Att "data-ac" "sub", Att "placeholder" "e.g. top drawer", Att "maxlength" "60", Att "autocomplete" "off"]) ]
-      , labelled "notes" (El "textarea" [Cls "field w-full", inputSize, G.bind @Client.desc, Att "rows" "3", Att "maxlength" "2000"] Nil)
+      , labelled "notes" (element "textarea" [G.Utilities [G.Base [G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Ink)), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.Radius (G.Px 10), G.FontFamily G.InheritFont, G.FontSize G.Inherit, G.OutlineWidth (G.Px 0), G.Width (G.Pct 100)]], Cls "field w-full", inputSize, G.bind @Client.desc, Att "rows" "3", Att "maxlength" "2000"] Nil)
       , labelled "tags, comma separated" (field [G.bind @Client.tags, Att "data-ac" "tags", Att "placeholder" "e.g. electronics, cables", Att "autocapitalize" "none", Att "autocomplete" "off"])
-      , El "div" [Cls "row gap-2 wrap"] (List.map (fn t -> El "button" [Cls "btn pill px-3 text-sm", chipSize, G.send codec (AddTag t)] [Txt t]) v.quick)
-      , El "div" [Cls "row gap-2"] [ primary (case v.editing == 0 of True -> "add item" | False -> "save") [G.send codec Save, Cls "grow"],
+      , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.FlexWrap G.Wrap]], Cls "row gap-2 wrap"] (List.map (fn t -> element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.FontSize (G.Px 13)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 text-sm", chipSize, G.send codec (AddTag t)] [Txt t]) v.quick)
+      , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8)]], Cls "row gap-2"] [ primary (case v.editing == 0 of True -> "add item" | False -> "save") [G.send codec Save, G.Utilities [G.Base [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0)]], Cls "grow"],
                                      btn "cancel" [G.send codec Cancel] ] ].
 
 itemCard : Item -> G.Node .
 itemCard it =
-  El "div" [Cls "col gap-2 card round p-4"]
-    ( El "div" [Cls "row center gap-2"]
-        [ El "div" [Cls "text-lg bold grow min-w-0"] [Txt it.name]
-        , El "button" [Cls "btn pill px-3 text-sm", chipSize, G.send codec (Edit it.id)] [Txt "edit"]
-        , El "button" [Cls "btn pill px-3 text-sm", chipSize, G.setTo @Client.confirm "{it.id}"] [Txt "delete"] ]
-    :: El "div" [Cls "row gap-2 center wrap"] (El "span" [Cls "badge ok"] [Txt it.loc] :: (case strlen it.sub == 0 of True -> Nil | False -> [El "span" [Cls "badge"] [Txt it.sub]]))
-    :: (case strlen it.desc == 0 of True -> Nil | False -> [El "div" [Cls "text-sm pre"] [Txt it.desc]])
-    + (case List.isEmpty it.tags of True -> Nil | False -> [El "div" [Cls "row gap-1 wrap"] (List.map (fn t -> El "button" [Cls "btn pill px-3 text-xs dim", chipSize, G.setTo @Client.q t, now] [Txt "#{t}"]) it.tags)])
-    + [ El "div" [Cls "text-xs dim"] [Txt (metaText it)]
-      , El "div" [Cls "row gap-2 center wrap", G.showIf @Client.confirm "{it.id}"]
-          [ El "span" [Cls "warm text-sm grow"] [Txt "Delete {it.name}?"]
-          , El "button" [Cls "btn round px-3 py-2 bad", touchSize, G.send codec (Delete it.id)] [Txt "delete"]
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 8), G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 18)]], Cls "col gap-2 card round p-4"]
+    ( element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.AlignItems G.AlignCenter, G.Gap (G.Px 8)]], Cls "row center gap-2"]
+        [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 18), G.FontWeight 700, G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.MinWidth (G.Px 0)]], Cls "text-lg bold grow min-w-0"] [Txt it.name]
+        , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.FontSize (G.Px 13)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 text-sm", chipSize, G.send codec (Edit it.id)] [Txt "edit"]
+        , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.FontSize (G.Px 13)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 text-sm", chipSize, G.setTo @Client.confirm "{it.id}"] [Txt "delete"] ]
+    :: element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.AlignItems G.AlignCenter, G.FlexWrap G.Wrap]], Cls "row gap-2 center wrap"] (element "span" [G.Utilities [G.Base [G.Display G.InlineBlock, G.PaddingY (G.Px 2), G.PaddingX (G.Px 9), G.Radius (G.Px 999), G.FontSize (G.Px 11), G.FontWeight 700, G.LetterSpacing (G.Em 60), G.TextCase G.UpperCase, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Dim)), G.Background (G.Rgb 15 51 40), G.BorderColour (G.Rgb 31 107 80), G.Foreground (G.Rgb 87 226 166)]], Cls "badge ok"] [Txt it.loc] :: (case strlen it.sub == 0 of True -> Nil | False -> [element "span" [G.Utilities [G.Base [G.Display G.InlineBlock, G.PaddingY (G.Px 2), G.PaddingX (G.Px 9), G.Radius (G.Px 999), G.FontSize (G.Px 11), G.FontWeight 700, G.LetterSpacing (G.Em 60), G.TextCase G.UpperCase, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Dim))]], Cls "badge"] [Txt it.sub]]))
+    :: (case strlen it.desc == 0 of True -> Nil | False -> [element "div" [G.Att "data-hide-empty" "", G.Utilities [G.Base [G.FontSize (G.Px 13), G.WhiteSpace G.PreWrapSpace]], Cls "text-sm pre"] [Txt it.desc]])
+    + (case List.isEmpty it.tags of True -> Nil | False -> [element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 4), G.FlexWrap G.Wrap]], Cls "row gap-1 wrap"] (List.map (fn t -> element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.FontSize (G.Px 11), G.Foreground (G.ThemeColour (G.Dim))]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 text-xs dim", chipSize, G.setTo @Client.q t, now] [Txt "#{t}"]) it.tags)])
+    + [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs dim"] [Txt (metaText it)]
+      , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.AlignItems G.AlignCenter, G.FlexWrap G.Wrap]], Cls "row gap-2 center wrap", G.showIf @Client.confirm "{it.id}"]
+          [ element "span" [G.Utilities [G.Base [G.Foreground (G.Rgb 255 138 92), G.FontSize (G.Px 13), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0)]], Cls "warm text-sm grow"] [Txt "Delete {it.name}?"]
+          , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 14), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8), G.Background (G.Rgb 58 18 32), G.BorderColour (G.Rgb 122 34 56), G.Foreground (G.Rgb 255 125 149)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn round px-3 py-2 bad", touchSize, G.send codec (Delete it.id)] [Txt "delete"]
           , btn "keep" [G.setTo @Client.confirm ""] ] ]).
 metaText it =
   moved = (case it.moves of Nil -> "" | mv :: r -> " · moved from {mv.from} on {Clock.date mv.at}");
   "added {Clock.date it.created} · updated {Clock.date it.at} by {it.by}{moved}".
 
 housePane v =
-  El "div" [Cls "col gap-3", G.showIf @Client.pane "house"]
-    [ El "div" [Cls "col gap-3 card round p-4"]
-        [ El "div" [Cls "text-lg bold"] [Txt "Signed in as {v.user}"]
-        , El "div" [Cls "text-sm dim"] [Dyn (devicesText v.devices)]
-        , El "div" [Cls "row gap-2 wrap"]
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12)]], Cls "col gap-3", G.showIf @Client.pane "house"]
+    [ element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12), G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 18)]], Cls "col gap-3 card round p-4"]
+        [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 18), G.FontWeight 700]], Cls "text-lg bold"] [Txt "Signed in as {v.user}"]
+        , element "div" [G.Utilities [G.Base [G.FontSize (G.Px 13), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-sm dim"] [Dyn (devicesText v.devices)]
+        , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.FlexWrap G.Wrap]], Cls "row gap-2 wrap"]
             [ btn "sign out" [G.send codec Logout], btn "sign out my other devices" [G.send codec ForgetDevices]
             , btn "day / night" [G.send codec Theme] ] ]
-    , El "div" [Cls "col gap-3 card round p-4"]
-        [ El "div" [Cls "text-lg bold"] [Txt "Change my password"]
+    , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12), G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 18)]], Cls "col gap-3 card round p-4"]
+        [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 18), G.FontWeight 700]], Cls "text-lg bold"] [Txt "Change my password"]
         , field [G.bind @Client.npw, Att "type" "password", Att "placeholder" "new password, 8 or more characters", Att "autocomplete" "new-password"]
         , btn "change password" [G.OnClick (G.wireOpen codec (Password "")) "npw"] ]
-    , El "div" [Cls "col gap-3 card round p-4"]
-        [ El "div" [Cls "text-lg bold"] [Txt "Members"]
-        , El "div" [Cls "row gap-2 wrap"] (List.map (fn n -> El "span" [Cls "badge"] [Txt n]) v.members)
-        , El "div" [Cls "row gap-2 narrow:col"]
+    , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12), G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 18)]], Cls "col gap-3 card round p-4"]
+        [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 18), G.FontWeight 700]], Cls "text-lg bold"] [Txt "Members"]
+        , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.FlexWrap G.Wrap]], Cls "row gap-2 wrap"] (List.map (fn n -> element "span" [G.Utilities [G.Base [G.Display G.InlineBlock, G.PaddingY (G.Px 2), G.PaddingX (G.Px 9), G.Radius (G.Px 999), G.FontSize (G.Px 11), G.FontWeight 700, G.LetterSpacing (G.Em 60), G.TextCase G.UpperCase, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Dim))]], Cls "badge"] [Txt n]) v.members)
+        , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8)], G.Narrow [G.Display G.Flex, G.Direction G.Column]], Cls "row gap-2 narrow:col"]
             [ field [G.bind @Client.mname, Att "placeholder" "name", Att "autocapitalize" "none", Att "maxlength" "16"]
             , field [G.bind @Client.mpw, Att "type" "password", Att "placeholder" "their password", Att "autocomplete" "new-password"] ]
         , btn "add member" [G.OnClick (G.wireOpen codec (AddMember "")) "mname,mpw"] ]
-    , El "div" [Cls "text-xs dim"] [Dyn "{v.events} changes in the log · {v.online} signed in now · up since {Clock.stamp v.booted}"] ].
+    , element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs dim"] [Dyn "{v.events} changes in the log · {v.online} signed in now · up since {Clock.stamp v.booted}"] ].
 # ---- the admin pane: the numbers, the console, the profile ----------------------------------------
 
 adminPane v rs =
-  El "div" [Cls "col gap-3", G.showIf @Client.pane "admin", Att "data-console-scope" ""]
-    [ El "div" [Cls "row gap-2 wrap"]
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12)]], Cls "col gap-3", G.showIf @Client.pane "admin", Att "data-console-scope" ""]
+    [ element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.FlexWrap G.Wrap]], Cls "row gap-2 wrap"]
         [ watch "items" "{v.total}", watch "places" "{v.nplaces}", watch "tags" "{v.ntags}", watch "members" "{List.length v.members}"
         , watch "devices" "{v.ndevices}", watch "online" "{v.online}", watch "log lines" "{v.events}", watch "since" (Clock.stamp v.booted) ]
-    , El "div" [Cls "row gap-2 center"]
-        [ Inp [Cls "field grow mono min-w-0", inputSize, touchSize, G.bind @Client.cmd, G.enterWith codec (Admin "") @Client.cmd, Att "data-console" "",
+    , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.AlignItems G.AlignCenter]], Cls "row gap-2 center"]
+        [ input [G.Utilities [G.Base [G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Ink)), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.Radius (G.Px 10), G.FontFamily G.InheritFont, G.FontSize G.Inherit, G.OutlineWidth (G.Px 0), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.FontFamily G.MonoFont, G.MinWidth (G.Px 0)]], Cls "field grow mono min-w-0", inputSize, touchSize, G.bind @Client.cmd, G.enterWith codec (Admin "") @Client.cmd, Att "data-console" "",
                Att "placeholder" "help | find usb | move 12 -> Room 2 / desk", Att "autocapitalize" "none", Att "autocomplete" "off", Att "spellcheck" "false"]
         , btn "run" [G.sendWith codec (Admin "") @Client.cmd, Att "data-console-run" ""] ]
-    , El "div" [Cls "mono text-sm pre show-empty card round p-3 console", Att "data-console-output" "",
+    , element "div" [G.Utilities [G.Base [G.FontFamily G.MonoFont, G.FontSize (G.Px 13), G.WhiteSpace G.PreWrapSpace, G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 12)]], Cls "mono text-sm pre show-empty card round p-3 console", Att "data-console-output" "",
         G.utilities [G.MinHeight (G.Px 120), G.MaxHeight (G.Vh 50), G.Overflow G.OverflowAuto]] [Dyn (consoleText v.con)]
-    , El "div" [Cls "text-xs upper dim"] [Txt "profile"]
-    , El "div" [Cls "mono text-xs card round p-3", G.utilities [G.WhiteSpace G.PreSpace, G.OverflowX G.OverflowAuto]] [Dyn (profileText v rs)]
-    , El "div" [Cls "row gap-2 center dim text-xs"] [Txt "browser round trip: ", El "span" [Att "id" "inv-rtt"] [Txt "measuring"]] ].
+    , element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.TextCase G.UpperCase, G.LetterSpacing (G.Em 180), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs upper dim"] [Txt "profile"]
+    , element "div" [G.Utilities [G.Base [G.FontFamily G.MonoFont, G.FontSize (G.Px 11), G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 12)]], Cls "mono text-xs card round p-3", G.utilities [G.WhiteSpace G.PreSpace, G.OverflowX G.OverflowAuto]] [Dyn (profileText v rs)]
+    , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.AlignItems G.AlignCenter, G.Foreground (G.ThemeColour (G.Dim)), G.FontSize (G.Px 11)]], Cls "row gap-2 center dim text-xs"] [Txt "browser round trip: ", element "span" [Att "id" "inv-rtt"] [Txt "measuring"]] ].
 consoleText Nil = "type help and press enter".
 consoleText con = S.join "\n" (List.reverse con).
 watch label v =
-  El "div" [Cls "col card round p-2", G.utilities [G.MinWidth (G.Px 96)]] [El "div" [Cls "text-xs upper dim"] [Txt label], El "div" [Cls "tabular bold"] [Dyn v]].
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 8)]], Cls "col card round p-2", G.utilities [G.MinWidth (G.Px 96)]] [element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.TextCase G.UpperCase, G.LetterSpacing (G.Em 180), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs upper dim"] [Txt label], element "div" [G.Utilities [G.Base [G.Numerals G.TabularNumerals, G.FontWeight 700]], Cls "tabular bold"] [Dyn v]].
 
 profileText v rs =
   S.join "\n"
@@ -965,28 +969,14 @@ sampleItem = { id = 1, name = "USB-C cable", loc = "study", sub = "top drawer", 
 sampleView = { noView | signed = 1, user = "sam", toast = "sample", role = "ok", editing = 0, items = [sampleItem], total = 41, shown = 41,
                page = 1, pages = 3, first = 20, q = "x", places = ["study"], tags = ["cables"], quick = quickTags, members = ["sam"], devices = 2,
                con = ["> help"] }.
-cssAll v = G.cssFor (El "div" Nil [root sampleView (signedIn sampleView [itemCard sampleItem, empty sampleView] noRender), loginView sampleView]).
+cssAll v = G.cssFor (element "div" Nil [root sampleView (signedIn sampleView [itemCard sampleItem, empty sampleView] noRender), loginView sampleView]).
 
 # The page's own script: the remembered device.  Once the client has painted,
 # the token from localStorage goes into the hidden `tok` input (so it is
 # mirrored, and the server signs this page in); afterwards whatever the server
 # puts in `tok` -- a new token at sign-in, "" at sign-out or when it no longer
 # knows the token -- is what localStorage keeps.
-script = strcat rttScript (strcat (LJ.src 0) "
-(function () \{
-  var KEY = 'inventory-device', ready = false;
-  function stored() \{ try \{ return localStorage.getItem(KEY) || ''; } catch (e) \{ return ''; } }
-  function keep(t) \{ try \{ if (t) localStorage.setItem(KEY, t); else localStorage.removeItem(KEY); } catch (e) \{} }
-  document.addEventListener('live:locals', function (e) \{
-    if (!ready) return;
-    var t = e.detail.tok || '';
-    if (t !== stored()) keep(t);
-  });
-  var t = stored(), el = document.querySelector('[data-input=\"tok\"]');
-  if (t && el) \{ el.value = t; el.dispatchEvent(new Event('input')); }
-  ready = true;
-})();
-" + autocomplete + pagerScript + consoleScript + pendingScript).
+script = rttScript + LJ.src Unit + Storage.script "inventory-device" "tok" (B.Attribute "data-device-token") + autocomplete + pagerScript + consoleScript + pendingScript.
 
 # The console behaves like a terminal: the newest output is at the bottom and in
 # view, and the arrow keys walk back through the commands this browser ran.
@@ -1003,64 +993,7 @@ pagerScript = Console.pager (B.Id "lv-root") (B.Attribute "data-pager") (B.Id "i
 # std/livejs writes its link state into #lv-link, which lives here, outside
 # the live root, so no render replaces it.  Animations are the Web Animations
 # API, so the app still has no CSS text.
-pendingScript = "
-(function () \{
-  var root = document.getElementById('lv-root');
-  function theme(v) \{ var p = root.querySelector('[data-theme]'); return p ? getComputedStyle(p).getPropertyValue(v) : ''; }
-  var bar = document.createElement('div'), anim = null, showT = null, failT = null, pulses = [], faded = null;
-  bar.style.cssText = 'position:fixed;top:0;left:0;height:3px;width:30%;z-index:60;pointer-events:none;display:none;border-radius:0 3px 3px 0;opacity:.6';
-  document.body.appendChild(bar);
-  function done() \{
-    clearTimeout(showT); showT = null; clearTimeout(failT); failT = null;
-    if (anim) \{ anim.cancel(); anim = null; }
-    bar.style.display = 'none';
-    pulses.forEach(function (a) \{ a.cancel(); }); pulses = [];
-    if (faded) \{ faded.style.opacity = ''; faded = null; }
-  }
-  function waiting(el, ms) \{
-    clearTimeout(failT); failT = setTimeout(done, ms);
-    if (showT || anim) return;
-    showT = setTimeout(function () \{
-      showT = null;
-      bar.style.background = theme('--ink') || '#888';
-      bar.style.display = 'block';
-      anim = bar.animate([\{ transform: 'translateX(-100%)' }, \{ transform: 'translateX(340%)' }], \{ duration: 900, iterations: Infinity, easing: 'ease-in-out' });
-      if (el && document.contains(el)) pulses.push(el.animate([\{ opacity: 1 }, \{ opacity: .45 }, \{ opacity: 1 }], \{ duration: 800, iterations: Infinity }));
-      /* the list on show is about to change: say so (a render replaces it anyway) */
-      faded = root.querySelector('[data-lv-key=\"items\"]');
-      if (faded) \{ faded.style.transition = 'opacity .15s'; faded.style.opacity = '.55'; }
-    }, 100);
-  }
-  document.addEventListener('live:frame', done);
-  /* every button gives way the moment it is pressed, client-only ones too */
-  document.addEventListener('pointerdown', function (e) \{
-    var b = e.target.closest && e.target.closest('#lv-root button');
-    if (b) b.animate([\{ transform: 'scale(1)' }, \{ transform: 'scale(.94)' }, \{ transform: 'scale(1)' }], \{ duration: 160, easing: 'ease-out' });
-  }, true);
-  /* what goes to the server: a message (data-click), a search (data-sync-now) */
-  document.addEventListener('click', function (e) \{
-    var b = e.target.closest && e.target.closest('#lv-root [data-click], #lv-root button[data-sync-now]');
-    if (b) waiting(b, 2500);
-  }, true);
-  document.addEventListener('input', function (e) \{
-    if (e.target.hasAttribute && e.target.hasAttribute('data-sync-now')) waiting(null, 1200);
-  }, true);
-  document.addEventListener('keydown', function (e) \{
-    if (e.key === 'Enter' && e.target.hasAttribute && e.target.hasAttribute('data-enter')) waiting(null, 2500);
-  }, true);
-  /* the link */
-  var link = document.createElement('span');
-  link.id = 'lv-link';
-  link.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:61;display:none;padding:4px 12px;border-radius:999px;font-size:12px;' +
-    'background:#3a2a10;border:1px solid #7a5a18;color:#ffc65c';
-  document.body.appendChild(link);
-  new MutationObserver(function () \{
-    var up = link.textContent === 'live';
-    link.style.display = up ? 'none' : 'block';
-    if (!up) link.textContent.indexOf('reconnecting') < 0 && (link.textContent = 'reconnecting');
-  }).observe(link, \{ childList: true, characterData: true, subtree: true });
-})();
-".
+pendingScript = Feedback.src Unit.
 # Shared generated monitor, installed before the client opens its socket.
 # Observes successful Live sends and accepted frames through explicit events.
 rttScript = Metrics.script (B.Id "inv-rtt") "".
@@ -1071,119 +1004,7 @@ rttScript = Metrics.script (B.Id "inv-rtt") "".
 # box lives outside the live root and clones FP-RISC-owned appearance
 # prototypes inside its explicit data-ac-scope. Taking a suggestion fires
 # 'input', which is how the client hears the change (and mirrors it).
-autocomplete = "
-(function () \{
-  var lists = \{ loc: [], sub: \{}, tags: [] }, cur = null, opts = [], sel = 0, moved = false, touchAgain = false;
-  var box = document.createElement('div');
-  box.style.display = 'none';
-  document.body.appendChild(box);
-  document.addEventListener('live:suggest', function (e) \{
-    try \{ lists = JSON.parse(e.detail); } catch (x) \{}
-    refresh();
-  });
-  function kind(el) \{ return el && el.getAttribute ? el.getAttribute('data-ac') : null; }
-  function valueOf(name) \{ var scope = cur && cur.closest('[data-ac-scope]'); var e = scope && scope.querySelector('[data-input=\"' + name + '\"]'); return e ? e.value : ''; }
-  function part(el) \{
-    var v = el.value;
-    return (kind(el) === 'tags' ? v.slice(v.lastIndexOf(',') + 1) : v).trim().toLowerCase();
-  }
-  function pool(el) \{
-    var k = kind(el), sub = lists.sub || \{};
-    if (k === 'loc') return lists.loc || [];
-    if (k === 'sub') \{
-      var here = sub[valueOf('loc').trim().toLowerCase()] || [];
-      return here.concat((sub['*'] || []).filter(function (x) \{ return here.indexOf(x) < 0; }));
-    }
-    if (k === 'tags') \{
-      var have = el.value.split(',').slice(0, -1).map(function (t) \{ return t.trim().toLowerCase(); });
-      return (lists.tags || []).filter(function (t) \{ return have.indexOf(t) < 0; });
-    }
-    return [];
-  }
-  /* what starts with the typed text, then what has a word starting with it, then the rest that contains it */
-  function rank(el) \{
-    var p = part(el), all = pool(el), a = [], b = [], c = [];
-    all.forEach(function (x) \{
-      var l = x.toLowerCase();
-      if (l === p) return;
-      if (!p || l.indexOf(p) === 0) a.push(x);
-      else if (l.indexOf(' ' + p) >= 0) b.push(x);
-      else if (l.indexOf(p) >= 0) c.push(x);
-    });
-    return a.concat(b, c).slice(0, 6);
-  }
-  function hide() \{ box.style.display = 'none'; opts = []; }
-  function refresh() \{
-    if (!cur || !document.contains(cur) || document.activeElement !== cur) \{ hide(); return; }
-    var scope = cur.closest('[data-ac-scope]');
-    var prototypes = scope && scope.querySelector('[data-ac-prototypes]');
-    var frame = prototypes && prototypes.querySelector('[data-ac-frame]');
-    if (!frame) \{ hide(); return; }
-    opts = rank(cur);
-    if (sel >= opts.length) sel = 0;
-    if (!opts.length) \{ hide(); return; }
-    Array.from(box.attributes).forEach(function (a) \{ if (a.name !== 'style') box.removeAttribute(a.name); });
-    Array.from(frame.attributes).forEach(function (a) \{ box.setAttribute(a.name, a.value); });
-    box.setAttribute('data-ac-popup', '');
-    box.replaceChildren();
-    opts.forEach(function (o, i) \{
-      var b = prototypes.querySelector('[data-ac-option=\"' + (i === sel ? 'selected' : 'normal') + '\"]').cloneNode(true);
-      b.textContent = o;
-      b.addEventListener('pointerdown', function (e) \{ e.preventDefault(); take(i); });
-      box.appendChild(b);
-    });
-    var hint = prototypes.querySelector('[data-ac-hint]').cloneNode(true);
-    hint.textContent = matchMedia('(pointer: coarse)').matches ? 'tap the field again for the first' : 'tab takes the highlighted one';
-    box.appendChild(hint);
-    var r = cur.getBoundingClientRect();
-    box.style.left = (r.left + scrollX) + 'px';
-    box.style.top = (r.bottom + scrollY + 4) + 'px';
-    box.style.width = r.width + 'px';
-    box.style.display = 'flex';
-  }
-  function take(i) \{
-    var o = opts[i], v = cur.value;
-    if (o === undefined) return;
-    if (kind(cur) === 'tags') \{
-      var head = v.slice(0, v.lastIndexOf(',') + 1).trim();
-      cur.value = (head ? head + ' ' : '') + o + ', ';
-    } else cur.value = o;
-    sel = 0; moved = false;
-    cur.dispatchEvent(new Event('input', \{ bubbles: true }));
-    if (kind(cur) === 'tags') refresh(); else hide();
-  }
-  document.addEventListener('focusin', function (e) \{
-    if (kind(e.target)) \{ cur = e.target; sel = 0; moved = false; refresh(); } else \{ cur = null; hide(); }
-  });
-  document.addEventListener('focusout', function (e) \{ if (e.target === cur) setTimeout(refresh, 0); });
-  document.addEventListener('input', function (e) \{ if (e.target === cur) \{ sel = 0; moved = false; refresh(); } });
-  addEventListener('resize', refresh);
-  addEventListener('scroll', refresh, true);
-  document.addEventListener('live:frame', refresh);
-  addEventListener('pagehide', hide);
-  /* Tab takes a suggestion once you have typed, or chosen one with the arrows;
-     on an empty field Tab moves on as usual */
-  document.addEventListener('keydown', function (e) \{
-    if (!cur || e.target !== cur || !opts.length) return;
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') \{
-      sel = (sel + (e.key === 'ArrowDown' ? 1 : opts.length - 1)) % opts.length; moved = true;
-      e.preventDefault(); refresh();
-    } else if (e.key === 'Tab' && !e.shiftKey && (part(cur) || moved)) \{
-      e.preventDefault(); take(sel);
-    } else if (e.key === 'Enter' && moved) \{
-      e.preventDefault(); take(sel);
-    } else if (e.key === 'Escape') hide();
-  }, true);
-  /* on a touch screen, tapping the field you are already in takes the first */
-  document.addEventListener('pointerdown', function (e) \{
-    touchAgain = e.pointerType !== 'mouse' && kind(e.target) && e.target === cur && document.activeElement === cur;
-  }, true);
-  document.addEventListener('click', function (e) \{
-    if (touchAgain && e.target === cur && opts.length) take(sel);
-    touchAgain = false;
-  }, true);
-})();
-".
+autocomplete = Autocomplete.src Unit.
 
 # ---- the old app's items: a Firestore REST listing ------------------------------------------------
 # GET .../documents/inventory?pageSize=1000 saved to a file.  Items already
@@ -1274,7 +1095,7 @@ main = case Config.load { defaults = Json.object [("port", Json.Integer 6720), (
             # nothing of the model, it is there because the driver wants one
             cfg = { address = address, port = port, title = "Home inventory", store = "{store}.kvlog", journal = False,
                     script = script, watch = Nil, rebuild = Nil, restart = Nil };
-            _ = Live.serveProjected cfg { init = boot store, update = update store, subs = subs, fields = Nil, codec = codec,
+            _ = Live.serveProjectedBody [G.utilities [G.Margin (G.Px 0)]] cfg { init = boot store, update = update store, subs = subs, fields = Nil, codec = codec,
                                           project = project size keep, same = (fn a b -> a == b),
                                           view = view keep, cache = (VC.empty Unit, noRender), css = cssAll };
             0)).

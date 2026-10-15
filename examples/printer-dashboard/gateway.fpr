@@ -1,0 +1,197 @@
+# Public HTTP gateway in FP-RISC. Private Live/camera services are actors in
+# the same process. Checked byte relays preserve protocols and recheck sessions.
+Auth = use "std/sessionauth".
+PT = use "std/printertelemetry".
+A = use "std/actor".
+T = use "std/transport".
+Sock = use "std/sockettransport".
+Connect = use "std/connect".
+DNS = use "std/resolver".
+H = use "std/httpcore".
+HC = use "std/httpclient".
+MJ = use "std/mjpeg".
+J = use "std/json".
+L = use "std/list".
+S = use "std/string".
+O = use "std/option".
+N = use "std/osnet".
+IO = use "std/osio".
+ST = use "std/stream".
+Clock = use "std/clock".
+cookieName = "print_room_session".
+bindingName = "print_room_challenge".
+Request = {method : String, path : String, target : String, headers : List (String, String), body : String}.
+budget ms = case Sock.forMs ms of Ok b -> b | Err _ -> error "gateway: invalid budget".
+now u = Sys.timeUs Unit / 1000.
+header name request = O.withDefault "" (H.header name request).
+cookie name request =
+  pieces = S.split ";" (header "cookie" request);
+  matches = L.filterMap (fn piece -> part = S.trim piece; at = strIndexOf "=" part;
+    if at < 0 or S.left at part != name then O.None else O.Some (S.dropLeft (at + 1) part)) pieces;
+  case matches of [value] -> if HC.controls value 0 or S.contains " " value then "" else value | _ -> "".
+origin configured localPort request =
+  authority = case S.split "://" configured of [_, host] -> host | _ -> "";
+  host = header "host" request;
+  expected = if host == authority then configured else
+    if host == "127.0.0.1:{localPort}" or host == "localhost:{localPort}" then "http://{host}" else "";
+  given = header "origin" request;
+  if expected == "" or (given != "" and given != expected) or header "sec-fetch-site" request == "cross-site" then "" else expected.
+setCookie name value seconds origin = ("set-cookie", "{name}={value}; Path=/; Max-Age={seconds}; HttpOnly; SameSite=Strict{(if S.startsWith "https://" origin then "; Secure" else "")}").
+secureHeaders = [("cache-control", "no-store"), ("x-content-type-options", "nosniff"), ("referrer-policy", "no-referrer"), ("x-frame-options", "DENY")].
+response status content body extra connection =
+  reply = H.response status content body;
+  (answer, next) = T.writeAll (budget 1500) (H.renderResponse {reply | headers = L.append reply.headers (L.append secureHeaders extra)}) connection;
+  next.
+text status body c = response status "text/plain; charset=utf-8" body Nil c.
+json status value hs c = response status "application/json" (J.render value) hs c.
+request limit connection = case HC.line limit 8192 "" connection of
+    (Err why, _, c) -> (Err why, c)
+  | (Ok line, rest, c) -> case HC.headers limit (8192 - strlen line - 2) 0 Nil rest c of
+      (Err why, _, c2) -> (Err why, c2)
+    | (Ok hs, pending, c2) ->
+        unique = L.all (fn key -> L.length (L.filter (fn pair -> case pair of (name, _) -> name == key) hs) <= 1) ["host", "origin", "cookie", "content-length", "transfer-encoding", "content-type", "sec-fetch-site"];
+        size = case H.header "content-length" {headers = hs} of O.None -> Ok 0 | O.Some value -> HC.decimal value;
+        result = case S.split " " line of [method, target, "HTTP/1.1"] ->
+            if not unique or not (HC.token method) or H.header "transfer-encoding" {headers = hs} != O.None or not (S.startsWith "/" target) or HC.controls target 0 then Err (T.Invalid "malformed HTTP request")
+            else Ok (method, target)
+          | _ -> Err (T.Invalid "malformed request line");
+        (case result of Err why -> (Err why, c2) | Ok (method, target) ->
+          case size of Err why -> (Err why, c2) | Ok n ->
+            if n > 1024 or strlen pending > n then (Err (T.Invalid "invalid request body"), c2) else
+            case HC.exact limit n pending c2 of
+              (Err why, _, c3) -> (Err why, c3)
+            | (Ok body, _, c3) ->
+                at = strIndexOf "?" target;
+                (Ok {method = method, target = target, path = if at < 0 then target else S.left at target, headers = hs, body = body}, c3)).
+post cfg expected req conn = if header "origin" req != expected or header "content-type" req != "application/json" then text 403 "Same-origin JSON required\n" conn else
+  if req.path != "/auth/challenge" and req.path != "/auth/verify" and req.path != "/auth/logout" then text 405 "Read-only dashboard\n" conn else
+  parsed = if strlen req.body > 1024 or not (PT.bounded req.body) then Err "body too large/deep" else J.parse req.body;
+  case parsed of Err _ -> text 400 "Invalid JSON\n" conn | Ok value ->
+    if req.path == "/auth/challenge" then
+      if not (J.equal value (J.object Nil)) then text 400 "Empty object required\n" conn else
+      (case Auth.call cfg.auth (Auth.Challenge expected cfg.peer) of
+        Ok (Auth.ChallengeReady id message binding) -> json 200 (J.object [("id", J.Text id), ("message", J.Text message), ("expires_in", J.Integer (cfg.authLimits.challengeMs / 1000))]) [setCookie bindingName binding (cfg.authLimits.challengeMs / 1000) expected] conn
+      | _ -> text 429 "Too many login attempts or unavailable authentication\n" conn)
+    else if req.path == "/auth/logout" then
+      if not (J.equal value (J.object Nil)) then text 400 "Empty object required\n" conn else
+      (case Auth.call cfg.auth (Auth.Logout (cookie cookieName req)) of
+        Ok _ -> json 200 (J.object [("ok", J.Boolean True)]) [setCookie cookieName "" 0 expected, setCookie bindingName "" 0 expected] conn
+      | _ -> text 503 "Authentication unavailable\n" conn)
+    else
+      fields = case J.asObject value of O.Some map -> M.keys map | _ -> Nil;
+      id = Auth.text "id" value;
+      signature = Auth.text "signature" value;
+      if fields != ["id", "signature"] or strlen id > 128 then text 400 "Invalid proof\n" conn else
+      (case Auth.call cfg.auth (Auth.Verify expected id (cookie bindingName req) signature) of
+        Ok (Auth.SessionReady token) -> json 200 (J.object [("ok", J.Boolean True)]) [setCookie cookieName token (cfg.authLimits.sessionMs / 1000) expected, setCookie bindingName "" 0 expected] conn
+      | _ -> json 400 (J.object [("error", J.Text "Sign in failed. Check your key, or request a fresh challenge.")]) [setCookie bindingName "" 0 expected] conn).
+M = use "std/map".
+alive cfg token expected = Auth.authorized cfg.auth token expected.
+# One owning actor alternates both directions. No unbounded byte queue or
+# sibling writer shares a checked connection. Session checks continue while idle.
+relayStep cfg token expected state =
+  (client, upstream) = state;
+  if not (alive cfg token expected) then (False, state) else
+  (result1, source) = T.attemptRead (budget 1000) 16384 upstream;
+  (sent1, target) = case result1 of
+    Ok (T.Data bytes) -> (case T.writeAll (budget 1500) bytes client of (Ok _, c) -> (True, c) | (Err _, c) -> (False, c))
+  | Ok (T.ReadWait _) -> (True, client)
+  | _ -> (False, client);
+  if not sent1 then (False, (target, source)) else
+  (result2, target2) = T.attemptRead (budget 1000) 16384 target;
+  (sent2, source2) = case result2 of
+    Ok (T.Data bytes) -> (case T.writeAll (budget 1500) bytes source of (Ok _, c) -> (True, c) | (Err _, c) -> (False, c))
+  | Ok (T.ReadWait _) -> (True, source)
+  | _ -> (False, source);
+  _ = Clock.sleepMs 10;
+  (sent2, (target2, source2)).
+readProxyHead : unsafe {auth : Int | r} -> String -> String -> Int -> String -> T.Connection state -> (Result (String, String) T.Failure, T.Connection state) .
+readProxyHead cfg token expected until pending conn =
+  at = strIndexOf "\r\n\r\n" pending;
+  if not (alive cfg token expected) then (Err T.Cancelled, conn) else
+  if now Unit >= until then (Err T.TimedOut, conn) else
+  if strlen pending > 16384 then (Err (T.Invalid "native response header exceeds bound"), conn) else
+  if at >= 0 then (Ok (S.left at pending, S.dropLeft (at + 4) pending), conn) else
+  case T.attemptRead (budget 1000) (if 16384 - strlen pending < 4096 then 16384 - strlen pending else 4096) conn of
+    (Ok (T.Data bytes), next) -> readProxyHead cfg token expected until (pending + bytes) next
+  | (Ok (T.ReadWait _), next) -> _ = Clock.sleepMs 10; readProxyHead cfg token expected until pending next
+  | (_, next) -> (Err T.EndOfStream, next).
+proxy cfg token expected port target cameraGate req client = case DNS.create 1 of
+    Err _ -> text 503 "Native service unavailable\n" client
+  | Ok pool ->
+      limit = budget 3000;
+      opened = Connect.connect limit pool "127.0.0.1" port 16384;
+      result = case opened of
+          Err _ -> text 503 "Native service unavailable\n" client
+        | Ok upstream ->
+            websocket = req.path == "/ws";
+            hs = if websocket then L.filter (fn pair -> case pair of (key, _) -> L.member key ["upgrade", "connection", "sec-websocket-key", "sec-websocket-version"]) req.headers
+              else [("connection", "close"), ("x-fpr-camera", cameraGate)];
+            head = "GET {target} HTTP/1.1\r\nhost: 127.0.0.1:{port}\r\n{H.renderHeaders hs}\r\n";
+            (sent, u1) = T.writeAll limit head upstream;
+            (answer, u2) = case sent of Err (why, _) -> (Err why, u1) | Ok _ -> readProxyHead cfg token expected (now Unit + 3000) "" u1;
+            (finalClient, finalUpstream) = case answer of
+              Err _ -> (text 503 "Native service unavailable\n" client, u2)
+            | Ok (header, pending) ->
+                good = if websocket then S.startsWith "HTTP/1.1 101 " header else S.startsWith "HTTP/1.1 200 " header;
+                if not good then (text 503 "Native service refused\n" client, u2) else
+                if not (alive cfg token expected) then (text 401 "Sign in required\n" client, u2) else
+                (written, c1) = T.writeAll (budget 1500) "{header}\r\n\r\n{pending}" client;
+                case written of Err _ -> (c1, u2) | Ok _ ->
+                  Sys.loop (c1, u2) (relayStep cfg token expected);
+            _ = T.close finalUpstream;
+            finalClient;
+      _ = DNS.close pool;
+      result.
+handle cfg raw peer me = case Sock.adopt 16384 (ST.Stream raw) of
+    Err _ -> _ = IO.close raw; Unit
+  | Ok conn ->
+      (parsed, c1) = request (budget 2000) conn;
+      final = case parsed of Err _ -> text 400 "Invalid request\n" c1 | Ok req ->
+        expected = origin cfg.origin cfg.port req;
+        local = {cfg | peer = peer};
+        token = cookie cookieName req;
+        if expected == "" then text 403 "Same-origin requests only\n" c1 else
+        if req.method == "POST" then post local expected req c1 else
+        if req.method != "GET" then text 405 "Read-only dashboard\n" c1 else
+        if req.path == "/health" then text 200 "ok\n" c1 else
+        if req.path == "/auth/login.js" then response 200 "text/javascript; charset=utf-8" cfg.loginScript Nil c1 else
+        if not (alive cfg token expected) then
+          if req.path == "/" then response 200 "text/html; charset=utf-8" cfg.loginHtml [("content-security-policy", "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")] c1
+          else text 401 "Sign in required\n" c1
+        else if req.path == "/auth/session" then json 200 (J.object [("ok", J.Boolean True)]) Nil c1
+        else if req.path == "/auth/session.js" then response 200 "text/javascript; charset=utf-8" cfg.sessionScript Nil c1
+        else if req.path == "/api/status" then
+          value = cfg.snapshot Unit;
+          if J.field "schema" value == O.Some (J.Integer 1) then json 200 value Nil c1 else text 503 "Native register unavailable\n" c1
+        else if req.path == "/" then
+          # The view host is an actor, not an external program. Fetch bounded HTML.
+          q = {method = "GET", url = "http://127.0.0.1:{cfg.viewPort}/", headers = Nil, body = ""};
+          (case HC.request {HC.defaults | bodyBytes = 2097152, timeoutMs = 3000} q of
+            Err _ -> text 503 "View unavailable\n" c1
+          | Ok r -> if not (alive cfg token expected) then text 401 "Sign in required\n" c1 else
+              response 200 "text/html; charset=utf-8" r.body Nil c1)
+        else if req.path == "/ws" then proxy local token expected cfg.viewPort req.target "" req c1
+        else (case L.find (fn camera -> req.path == "/camera/{camera.id}.mjpg") cfg.cameras of
+          O.Some camera -> proxy local token expected camera.port "/stream" camera.gate req c1
+        | _ -> text 404 "No such route\n" c1);
+      _ = T.close final;
+      _ = send cfg.owner (Finished me);
+      Unit.
+Notice = Type (Finished Int).
+acceptStep cfg listener me active =
+  message = receiveNow me;
+  kept = case message of Err _ -> active | Ok m ->
+    id = case m of Finished id -> id;
+    _ = drop m; L.filter (fn who -> who != id) active;
+  if L.length kept >= 32 then _ = Clock.sleepMs 5; (True, kept) else
+  if not (IO.ready listener) then _ = Clock.sleepMs 2; (True, kept) else
+  case N.accept listener of Err _ -> _ = Clock.sleepMs 5; (True, kept) | Ok (fd, peer) ->
+    who = A.spawnWith (A.Static 16) (handle cfg fd peer);
+    (True, who :: kept).
+run cfg =
+  listener = case N.listen cfg.address cfg.port of Ok fd -> fd | Err _ -> error "gateway: cannot listen";
+  port = case N.localPort listener of Ok p -> p | Err _ -> error "gateway: no local port";
+  _ = print "gateway-ready {port}";
+  _ = Sys.loop Nil (acceptStep {cfg | port = port, owner = myself 0} listener (myself 0));
+  Unit.

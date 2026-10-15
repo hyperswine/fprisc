@@ -5,7 +5,7 @@ Ma = use "../std/ma".
 J = use "../std/json".
 P = use "../std/program".
 scope id light = G.El "section" (G.Att "id" id :: A.frame light)
-  [G.El "div" [G.Att "data-panel" "", G.Cls "panel"] [G.Txt id]].
+  [G.El "div" [G.Att "data-panel" "", G.utilities [G.BackgroundImages [G.TokenImage G.Panel], G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour G.Line)], G.Cls "panel"] [G.Txt id]].
 withId id node = case node of G.El tag attrs kids -> G.El tag (G.Att "id" id :: attrs) kids | _ -> node.
 tree = G.El "main" Nil [scope "scope-day" True, scope "scope-night" False,
   withId "ma-day" (Ma.page "day" [Ma.card [G.Txt "Day"]]),

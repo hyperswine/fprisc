@@ -1,0 +1,39 @@
+# Structured browser capability program. FP-RISC syntax values are authoritative.
+# No foreign source asset or Raw node is read at runtime.
+JS = use "std/javascript".
+src u = JS.program [
+  JS.Do (JS.Call (JS.Function [] (bodyBody1 Unit)) [])
+].
+
+bodyBody4 u = [
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "value") (JS.Index (JS.Name "pending") (JS.Name "n"))),
+  JS.Do (JS.Call (JS.Field (JS.Name "el") "dispatchEvent") [(JS.New (JS.Name "Event") [(JS.Text "input")])])
+].
+
+bodyBody3 u = [
+  JS.Var "els" (JS.Call (JS.Field (JS.Name "document") "querySelectorAll") [(JS.Binary JS.Add (JS.Binary JS.Add (JS.Text "[data-input=\"") (JS.Name "n")) (JS.Text "\"]"))]),
+  JS.If (JS.Unary JS.Not (JS.Field (JS.Name "els") "length")) [JS.ReturnVoid] [],
+  JS.Do (JS.Call (JS.Field (JS.Name "els") "forEach") [(JS.Function ["el"] (bodyBody4 Unit))]),
+  JS.Do (JS.Unary JS.Delete (JS.Index (JS.Name "pending") (JS.Name "n")))
+].
+
+fillBody2 u = [
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "Object") "keys") [(JS.Name "pending")]) "forEach") [(JS.Function ["n"] (bodyBody3 Unit))])
+].
+
+bodyBody6 u = [
+  JS.Do (JS.AssignValue (JS.Index (JS.Name "pending") (JS.Name "n")) (JS.Index (JS.Name "vals") (JS.Name "n")))
+].
+
+bodyBody5 u = [
+  JS.Var "vals" (JS.Call (JS.Field (JS.Name "JSON") "parse") [(JS.Field (JS.Name "e") "detail")]),
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "Object") "keys") [(JS.Name "vals")]) "forEach") [(JS.Function ["n"] (bodyBody6 Unit))]),
+  JS.Do (JS.Call (JS.Name "fill") [])
+].
+
+bodyBody1 u = [
+  JS.Var "pending" (JS.Call (JS.Field (JS.Name "Object") "create") [JS.Null]),
+  JS.Define "fill" [] (fillBody2 Unit),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "addEventListener") [(JS.Text "live:set"), (JS.Function ["e"] (bodyBody5 Unit))]),
+  JS.Do (JS.Call (JS.Field (JS.New (JS.Name "MutationObserver") [(JS.Name "fill")]) "observe") [(JS.Call (JS.Field (JS.Name "document") "getElementById") [(JS.Text "lv-root")]), (JS.Object [("childList", JS.Boolean True), ("subtree", JS.Boolean True)])])
+].

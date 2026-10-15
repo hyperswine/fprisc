@@ -2,7 +2,7 @@
 #define FPR_OS_OWNED_H
 #include "os_value.h"
 #include <pthread.h>
-enum { OWN_SOCKET = 1, OWN_TLS, OWN_DNS_POOL, OWN_DNS_JOB };
+enum { OWN_SOCKET = 1, OWN_TLS, OWN_DNS_POOL, OWN_DNS_JOB, OWN_CRYPTO };
 typedef struct fpr_owned {
   fpr_resource_t resource;
   struct fpr_owned *next;

@@ -12,7 +12,7 @@ const build=(source,out)=>execFileSync(path.join(root,'fpr'),['build',source,'-o
   {cwd:root,env,timeout:180000,stdio:'pipe'});
 async function mount(page,snapshot) {
   const markup=snapshot.s.map((s,i)=>s+(i<snapshot.d.length?'<span data-slot="'+i+'"></span>':'')).join('');
-  await page.setContent('<!doctype html><style>'+snapshot.css+'</style>'+markup);
+  await page.setContent('<!doctype html><head><style>'+snapshot.css+'</style></head><body'+(snapshot.body||'')+'>'+markup+'</body>');
   await page.locator('[data-slot]').evaluateAll((els,ds)=>{
     for(const el of els)el.textContent=ds[Number(el.dataset.slot)];
   },snapshot.d);
@@ -79,10 +79,10 @@ async function stop(child) {
     const printerPage=await browser.newPage();
     for(const [width,height] of [[1200,800],[390,844]]) {
       await printerPage.setViewportSize({width,height});await mount(printerPage,printerSnapshot);
-      assert.deepEqual(await printerPage.locator('main.page').evaluate(el=>{
+      assert.deepEqual(await printerPage.locator('main').evaluate(el=>{
         const s=getComputedStyle(el.parentElement);return [s.backgroundColor,s.color,s.colorScheme];
       }),['rgb(246, 245, 240)','rgb(38, 51, 46)','light']);
-      assert.equal(await printerPage.locator('.printer-card').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(255, 254, 250)');
+      assert.equal(await printerPage.locator('article').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(255, 254, 250)');
       assert.equal(await printerPage.evaluate(()=>getComputedStyle(document.body).getPropertyValue('--bg')),'');
       assert.equal(await printerPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     }
@@ -91,7 +91,7 @@ async function stop(child) {
 
     const source=fs.readFileSync(path.join(root,'examples/inventory.fpr'),'utf8');
     assert.doesNotMatch(source,/autocompleteStyles|G\.Style|G\.Prop/);
-    const autocomplete=source.slice(source.indexOf('autocomplete = "'),source.indexOf('# ---- the old app'));
+    const autocomplete=fs.readFileSync(path.join(root,'std/browserautocomplete.fpr'),'utf8');
     assert.doesNotMatch(autocomplete,/cssText|className|setProperty|getComputedStyle|chip text/);
     assert.equal((source.match(/^main =/gm)||[]).length,1);
     const sampleSource=path.join(tmp,'inventory-sample.fpr'), inventory=path.join(tmp,'inventory');

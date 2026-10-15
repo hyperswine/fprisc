@@ -1,0 +1,4 @@
+Msg = Type (Ping String | Reset).
+Model = {count : Int, title : String}.
+codec = @Msg.
+count = @Model.count.

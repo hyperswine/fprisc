@@ -163,12 +163,16 @@ acceptStep cfg manager listener me count = case IO.ready listener of
           Ok Accepted -> _ = A.spawnWith (A.Static 16) (handle cfg manager ticket fd); Unit
         | _ -> _ = IO.close fd; Unit);
         (True, count + 1)).
-run cfg =
+start cfg =
   pool = case DNS.create 1 of Ok p -> p | Err _ -> error "camera: resolver unavailable";
   watcher = R.start Unit;
   service = A.spawnWith (A.Static 64) (manager cfg pool watcher);
   listener = case N.listen "127.0.0.1" 0 of Ok fd -> fd | Err _ -> error "camera: listener unavailable";
   port = case N.localPort listener of Ok p -> p | Err _ -> 0;
-  _ = print "camera-ready {port}";
-  _ = Sys.loop 0 (acceptStep cfg service listener (myself 0));
+  acceptor = A.spawnWith (A.Static 16) (fn me -> _ = Sys.loop 0 (acceptStep cfg service listener me); Unit);
+  {port = port, manager = service, acceptor = acceptor}.
+run cfg =
+  service = start cfg;
+  _ = print "camera-ready {service.port}";
+  _ = receive (myself 0);
   Unit.

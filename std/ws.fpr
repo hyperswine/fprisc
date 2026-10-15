@@ -21,6 +21,7 @@ D = use "digest".
 E = use "encoding".
 O = use "option".
 S = use "string".
+L = use "list".
 
 Message = Type (Text String | Binary String | Ping String | Closed Int | Failed String).
 
@@ -82,9 +83,13 @@ sendPong payload conn = ST.write (frame 10 payload) conn.
 
 # kind: the opcode of the message being assembled (0 = none); parts newest first
 receiveGo : unsafe Bool -> Int -> ST.Reader -> ST.Stream -> Int -> List String -> (Message, ST.Reader) .
-receiveGo auto maxBytes r conn kind parts = case readFrame r of (res, r2) ->
+receiveGo auto maxBytes r conn kind parts =
+  remaining = if maxBytes > 0 then maxBytes - total parts else 0 - 1;
+  if L.length parts >= 65536 then refuse auto 1009 conn r else
+  case readFrameWith remaining r of (res, r2) ->
   (case res of
-      Err why -> ((if why == "closed" then Closed 1006 else Failed why), r2)
+      Err "message too large" -> refuse auto 1009 conn r2
+    | Err why -> ((if why == "closed" then Closed 1006 else Failed why), r2)
     | Ok (fin, opcode, masked, payload) ->
         (if not masked then refuse auto 1002 conn r2
          else if opcode == 8 then _ = (if auto then sendClose 1000 conn else Ok Unit); (Closed (closeCode payload), r2)
@@ -113,25 +118,36 @@ closeCode payload = if strlen payload >= 2 then charAt payload 0 * 256 + charAt 
 
 # one frame: (fin, opcode, masked, payload -- unmasked)
 readFrame : ST.Reader -> (Result (Bool, Int, Bool, String) String, ST.Reader) .
-readFrame r = case ST.readExactly 2 r of (res, r2) ->
+readFrame r = readFrameWith (0 - 1) r.
+# A declared payload is checked before reading or accumulating its bytes.
+readFrameWith limit r = case ST.readExactly 2 r of (res, r2) ->
   (case res of
       Err why -> (Err why, r2)
     | Ok h ->
         b0 = charAt h 0;
         b1 = charAt h 1;
         (if band b0 112 != 0 then (Err "reserved bits set", r2)
-         else lengthThen (band b0 128 != 0) (band b0 15) (band b1 128 != 0) (band b1 127) r2)).
+         else lengthThenWith limit (band b0 128 != 0) (band b0 15) (band b1 128 != 0) (band b1 127) r2)).
 
-lengthThen fin opcode masked len7 r =
-  if len7 < 126 then bodyThen fin opcode masked len7 r
+lengthThen fin opcode masked len7 r = lengthThenWith (0 - 1) fin opcode masked len7 r.
+lengthThenWith limit fin opcode masked len7 r =
+  if len7 < 126 then bodyThenWith limit fin opcode masked len7 r
   else (case ST.readExactly (if len7 == 126 then 2 else 8) r of (res, r2) ->
       (case res of
           Err why -> (Err why, r2)
-        | Ok lb -> bodyThen fin opcode masked (beInt lb 0 0) r2)).
+        | Ok lb -> (case beLength lb 0 0 of
+          Err why -> (Err why, r2)
+        | Ok n -> if (len7 == 126 and n < 126) or (len7 == 127 and n < 65536) then (Err "noncanonical frame length", r2) else bodyThenWith limit fin opcode masked n r2))).
 
 beInt : unsafe String -> Int -> Int -> Int .
 beInt s i acc = if i >= strlen s then acc else beInt s (i + 1) (acc * 256 + charAt s i).
 
+beLength : unsafe String -> Int -> Int -> Result Int String .
+beLength bytes at n = if at >= strlen bytes then Ok n else
+  byte = charAt bytes at;
+  if n > (intMax Unit - byte) / 256 then Err "message too large" else beLength bytes (at + 1) (n * 256 + byte).
+bodyThenWith limit fin opcode masked n r = if (opcode >= 8 and (not fin or n > 125)) or n < 0 then (Err "invalid control frame", r) else
+  if opcode < 8 and limit >= 0 and n > limit then (Err "message too large", r) else bodyThen fin opcode masked n r.
 bodyThen fin opcode masked n r =
   case ST.readExactly ((if masked then 4 else 0) + n) r of (res, r2) ->
     (case res of

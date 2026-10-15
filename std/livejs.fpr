@@ -1,333 +1,353 @@
-# std/livejs.fpr -- the FPRLive client: one websocket, statics + dynamics,
-# locals. Transport/patching is still handwritten; application behaviors can
-# consume the explicit Live events through generated BrowserCalc programs.
+# Structured browser capability program. FP-RISC syntax values are authoritative.
+# No foreign source asset or Raw node is read at runtime.
+JS = use "std/javascript".
+G = use "std/view".
+src u = JS.program [
+  JS.Strict,
+  JS.Do (JS.Call (JS.Function [] (bodyBody1 Unit)) [])
+].
 
-src u = "/* fprlive.js -- the FPRLive client.
- *
- *  1. a page is STATICS interleaved with DYNAMICS:
- *     html = s[0] + d[0] + s[1] + d[1] + ... + s[n]
- *     the statics are markup; every dynamic is TEXT in <span data-slot>
- *     (textContent both on first paint and on delta, so a dynamic that
- *     carries user input can never become markup).
- *  2. the server pushes: \{s,d} = a full render, \{d:\{i:txt}} = a delta,
- *     over ONE websocket at /ws; the client sends \{msg,arg} text frames.
- *  3. LOCALS are client-only state declared in the tree (x-data,
- *     data-set/data-val, data-show, data-text, data-input); they cross
- *     the wire only as the arg of a data-click / data-enter -- or, when the
- *     server asked for it (\{sync:\{every,msg}}: Live.SyncClientState), as a
- *     MIRROR: the whole set, as JSON, every `every` ms when it changed and
- *     just before any other message.  An element marked data-sync-now (a
- *     search box, a button that sets the search) does not wait for the
- *     interval: a click mirrors at once, typing within a short debounce.
- *     The server sets them with the 'locals'
- *     command.  data-set honours data-min / data-max on its element.  After
- *     every paint the page's own script hears 'live:locals' (detail: them).
- *  4. Transport observations carry NO payload: live:sent after this client's
- *     successful send, live:frame after an accepted/applied frame, and
- *     live:disconnected when its socket closes. Other sockets are untouched.
- */
-'use strict';
-(function () \{
-  var S = window.__LV__ || \{ s: [], d: [] };
-  var root = document.getElementById('lv-root');
-  var locals = Object.create(null);
-  var ws = null, wait = 500, sent = 0, t0 = 0;
-  var sync = null, syncTimer = null, dirty = false;
-  var secrets = Object.create(null);   /* locals a password input has held: never mirrored */
+keyOfBody2 u = [
+  JS.Return (JS.Choose (JS.Binary JS.Equal (JS.Field (JS.Name "node") "nodeType") (JS.Number 1)) (JS.Call (JS.Field (JS.Name "node") "getAttribute") [(JS.Text "data-lv-key")]) (JS.Null))
+].
 
-  // Keys identify siblings, never positions. Dynamic slot numbers may change
-  // after an insertion, so patch the detached tree before matching old nodes.
-  function keyOf(node) \{
-    return node.nodeType === 1 ? node.getAttribute('data-lv-key') : null;
-  }
+compatibleBody3 u = [
+  JS.Return (JS.Binary JS.And (JS.Binary JS.Equal (JS.Field (JS.Name "a") "nodeType") (JS.Field (JS.Name "b") "nodeType")) (JS.Binary JS.Equal (JS.Field (JS.Name "a") "nodeName") (JS.Field (JS.Name "b") "nodeName")))
+].
 
-  function compatible(a, b) \{
-    return a.nodeType === b.nodeType && a.nodeName === b.nodeName;
-  }
+bodyBody5 u = [
+  JS.Var "key" (JS.Call (JS.Name "keyOf") [(JS.Name "n")]),
+  JS.If (JS.Binary JS.NotEqual (JS.Name "key") (JS.Null)) [JS.If (JS.Call (JS.Field (JS.Name "keyed") "has") [(JS.Name "key")]) [JS.Throw (JS.New (JS.Name "Error") [(JS.Binary JS.Add (JS.Text "duplicate view key: ") (JS.Name "key"))])] [], JS.Do (JS.Call (JS.Field (JS.Name "keyed") "set") [(JS.Name "key"), (JS.Name "n")])] []
+].
 
-  function reconcile(parent, wanted) \{
-    var keyed = new Map();
-    Array.from(parent.childNodes).forEach(function (n) \{
-      var key = keyOf(n);
-      if (key !== null) \{
-        if (keyed.has(key)) throw new Error('duplicate view key: ' + key);
-        keyed.set(key, n);
-      }
-    });
-    var cursor = parent.firstChild, seen = new Set();
-    Array.from(wanted.childNodes).forEach(function (next) \{
-      var key = keyOf(next), old = null;
-      if (key !== null) \{
-        if (seen.has(key)) throw new Error('duplicate view key: ' + key);
-        seen.add(key);
-        old = keyed.get(key);
-      } else if (cursor && keyOf(cursor) === null && compatible(cursor, next)) \{
-        old = cursor;
-      }
-      if (old && compatible(old, next)) \{
-        if (old !== cursor) parent.insertBefore(old, cursor);
-        if (old.nodeType === 1) \{
-          Array.from(old.attributes).forEach(function (a) \{
-            if (!next.hasAttribute(a.name)) old.removeAttribute(a.name);
-          });
-          Array.from(next.attributes).forEach(function (a) \{
-            if (old.getAttribute(a.name) !== a.value) old.setAttribute(a.name, a.value);
-          });
-          // The browser owns live form values, selection and composition.
-          // Server-controlled values use the existing explicit client ports.
-          if (!old.matches('textarea[data-input],select[data-input]')) reconcile(old, next);
-        } else if (old.nodeValue !== next.nodeValue) old.nodeValue = next.nodeValue;
-        cursor = old.nextSibling;
-      } else \{
-        parent.insertBefore(next, cursor);
-      }
-    });
-    while (cursor) \{
-      var stale = cursor;
-      cursor = cursor.nextSibling;
-      parent.removeChild(stale);
-    }
-  }
+bodyBody7 u = [
+  JS.If (JS.Unary JS.Not (JS.Call (JS.Field (JS.Name "next") "hasAttribute") [(JS.Field (JS.Name "a") "name")])) [JS.Do (JS.Call (JS.Field (JS.Name "old") "removeAttribute") [(JS.Field (JS.Name "a") "name")])] []
+].
 
-  function build() \{
-    var out = '';
-    for (var i = 0; i < S.s.length; i++) \{
-      out += S.s[i];
-      if (i < S.d.length) out += '<span data-slot=\"' + i + '\"></span>';
-    }
-    var wanted = document.createElement('div');
-    wanted.innerHTML = out;
-    wanted.querySelectorAll('[data-slot]').forEach(function (el) \{
-      el.textContent = S.d[Number(el.getAttribute('data-slot'))];
-    });
-    var active = document.activeElement;
-    var start = active && active.selectionStart, end = active && active.selectionEnd;
-    var direction = active && active.selectionDirection;
-    reconcile(root, wanted);
-    // Moving an ancestor can blur an input. Restore only an element that
-    // survived; removing an edit form must not focus its replacement.
-    if (active && root.contains(active) && document.activeElement !== active) \{
-      active.focus(\{preventScroll: true});
-      if (typeof start === 'number') active.setSelectionRange(start, end, direction);
-    }
-    scanLocals();
-    wire();
-    paintLocals();
-  }
+bodyBody8 u = [
+  JS.If (JS.Binary JS.NotEqual (JS.Call (JS.Field (JS.Name "old") "getAttribute") [(JS.Field (JS.Name "a") "name")]) (JS.Field (JS.Name "a") "value")) [JS.Do (JS.Call (JS.Field (JS.Name "old") "setAttribute") [(JS.Field (JS.Name "a") "name"), (JS.Field (JS.Name "a") "value")])] []
+].
 
-  function slot(k, txt, flash) \{
-    var el = root.querySelector('[data-slot=\"' + k + '\"]');
-    if (!el) return;
-    el.textContent = txt;
-    if (flash) \{ el.classList.remove('lv-flash'); void el.offsetWidth; el.classList.add('lv-flash'); }
-  }
+bodyBody6 u = [
+  JS.Var "key" (JS.Call (JS.Name "keyOf") [(JS.Name "next")]),
+  JS.Var "old" (JS.Null),
+  JS.If (JS.Binary JS.NotEqual (JS.Name "key") (JS.Null)) [JS.If (JS.Call (JS.Field (JS.Name "seen") "has") [(JS.Name "key")]) [JS.Throw (JS.New (JS.Name "Error") [(JS.Binary JS.Add (JS.Text "duplicate view key: ") (JS.Name "key"))])] [], JS.Do (JS.Call (JS.Field (JS.Name "seen") "add") [(JS.Name "key")]), JS.Do (JS.AssignValue (JS.Name "old") (JS.Call (JS.Field (JS.Name "keyed") "get") [(JS.Name "key")]))] [JS.If (JS.Binary JS.And (JS.Binary JS.And (JS.Name "cursor") (JS.Binary JS.Equal (JS.Call (JS.Name "keyOf") [(JS.Name "cursor")]) (JS.Null))) (JS.Call (JS.Name "compatible") [(JS.Name "cursor"), (JS.Name "next")])) [JS.Do (JS.AssignValue (JS.Name "old") (JS.Name "cursor"))] []],
+  JS.If (JS.Binary JS.And (JS.Name "old") (JS.Call (JS.Name "compatible") [(JS.Name "old"), (JS.Name "next")])) [JS.If (JS.Binary JS.NotEqual (JS.Name "old") (JS.Name "cursor")) [JS.Do (JS.Call (JS.Field (JS.Name "parent") "insertBefore") [(JS.Name "old"), (JS.Name "cursor")])] [], JS.If (JS.Binary JS.Equal (JS.Field (JS.Name "old") "nodeType") (JS.Number 1)) [JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "Array") "from") [(JS.Field (JS.Name "old") "attributes")]) "forEach") [(JS.Function ["a"] (bodyBody7 Unit))]), JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "Array") "from") [(JS.Field (JS.Name "next") "attributes")]) "forEach") [(JS.Function ["a"] (bodyBody8 Unit))]), JS.If (JS.Unary JS.Not (JS.Call (JS.Field (JS.Name "old") "matches") [(JS.Text "textarea[data-input],select[data-input]")])) [JS.Do (JS.Call (JS.Name "reconcile") [(JS.Name "old"), (JS.Name "next")])] []] [JS.If (JS.Binary JS.NotEqual (JS.Field (JS.Name "old") "nodeValue") (JS.Field (JS.Name "next") "nodeValue")) [JS.Do (JS.AssignValue (JS.Field (JS.Name "old") "nodeValue") (JS.Field (JS.Name "next") "nodeValue"))] []], JS.Do (JS.AssignValue (JS.Name "cursor") (JS.Field (JS.Name "old") "nextSibling"))] [JS.Do (JS.Call (JS.Field (JS.Name "parent") "insertBefore") [(JS.Name "next"), (JS.Name "cursor")])]
+].
 
-  function scanLocals() \{
-    root.querySelectorAll('[x-data]').forEach(function (el) \{
-      el.getAttribute('x-data').split(';').forEach(function (pair) \{
-        if (!pair) return;
-        var eq = pair.indexOf('='), n = pair.slice(0, eq);
-        if (!(n in locals)) locals[n] = pair.slice(eq + 1);
-      });
-    });
-  }
+reconcileBody4 u = [
+  JS.Var "keyed" (JS.New (JS.Name "Map") []),
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "Array") "from") [(JS.Field (JS.Name "parent") "childNodes")]) "forEach") [(JS.Function ["n"] (bodyBody5 Unit))]),
+  JS.Var "cursor" (JS.Field (JS.Name "parent") "firstChild"),
+  JS.Var "seen" (JS.New (JS.Name "Set") []),
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "Array") "from") [(JS.Field (JS.Name "wanted") "childNodes")]) "forEach") [(JS.Function ["next"] (bodyBody6 Unit))]),
+  JS.While (JS.Name "cursor") [JS.Var "stale" (JS.Name "cursor"), JS.Do (JS.AssignValue (JS.Name "cursor") (JS.Field (JS.Name "cursor") "nextSibling")), JS.Do (JS.Call (JS.Field (JS.Name "parent") "removeChild") [(JS.Name "stale")])]
+].
 
-  function paintLocals() \{
-    root.querySelectorAll('[data-text]').forEach(function (el) \{
-      el.textContent = locals[el.getAttribute('data-text')] ?? '';
-    });
-    root.querySelectorAll('[data-show]').forEach(function (el) \{
-      var spec = el.getAttribute('data-show').split(':');
-      var v = locals[spec[0]];
-      var on = spec.length > 1 ? String(v) === spec[1] : (v && v !== '0' && v !== 'false');
-      el.style.display = on ? '' : 'none';
-    });
-    root.querySelectorAll('[data-on]').forEach(function (el) \{
-      var spec = el.getAttribute('data-on').split(':');
-      el.classList.toggle('is-on', String(locals[spec[0]]) === spec[1]);
-    });
-    root.querySelectorAll('[data-input]').forEach(function (el) \{
-      var n = el.getAttribute('data-input');
-      if (el !== document.activeElement) el.value = locals[n] ?? '';
-    });
-    document.dispatchEvent(new CustomEvent('live:locals', \{ detail: locals }));
-  }
+bodyBody10 u = [
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "textContent") (JS.Index (JS.Field (JS.Name "S") "d") (JS.Call (JS.Name "Number") [(JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-slot")])])))
+].
 
-  // +n / -n is arithmetic, kept inside the element's data-min / data-max
-  function applySet(name, val, el) \{
-    var cur = locals[name];
-    if (val === 'toggle') locals[name] = (cur === '1' ? '0' : '1');
-    else if (val[0] === '+' || val[0] === '-') \{
-      var n = (+cur || 0) + (+val);
-      if (el && el.hasAttribute('data-min')) n = Math.max(n, +el.getAttribute('data-min'));
-      if (el && el.hasAttribute('data-max')) n = Math.min(n, +el.getAttribute('data-max'));
-      locals[name] = String(n);
-    }
-    else locals[name] = val;
-    dirty = true;
-  }
+buildBody9 u = [
+  JS.Var "out" (JS.Text ""),
+  JS.For [JS.Var "i" (JS.Number 0)] (JS.Binary JS.Less (JS.Name "i") (JS.Field (JS.Field (JS.Name "S") "s") "length")) (JS.Increment (JS.Name "i")) [JS.Do (JS.AssignValue (JS.Name "out") (JS.Binary JS.Add (JS.Name "out") (JS.Index (JS.Field (JS.Name "S") "s") (JS.Name "i")))), JS.If (JS.Binary JS.Less (JS.Name "i") (JS.Field (JS.Field (JS.Name "S") "d") "length")) [JS.Do (JS.AssignValue (JS.Name "out") (JS.Binary JS.Add (JS.Name "out") (JS.Binary JS.Add (JS.Binary JS.Add (JS.Text "<span data-slot=\"") (JS.Name "i")) (JS.Text "\"></span>"))))] []],
+  JS.Var "wanted" (JS.Call (JS.Field (JS.Name "document") "createElement") [(JS.Text "div")]),
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "wanted") "innerHTML") (JS.Name "out")),
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "wanted") "querySelectorAll") [(JS.Text "[data-slot]")]) "forEach") [(JS.Function ["el"] (bodyBody10 Unit))]),
+  JS.Var "active" (JS.Field (JS.Name "document") "activeElement"),
+  JS.Var "start" (JS.Binary JS.And (JS.Name "active") (JS.Field (JS.Name "active") "selectionStart")),
+  JS.Var "end" (JS.Binary JS.And (JS.Name "active") (JS.Field (JS.Name "active") "selectionEnd")),
+  JS.Var "direction" (JS.Binary JS.And (JS.Name "active") (JS.Field (JS.Name "active") "selectionDirection")),
+  JS.Do (JS.Call (JS.Name "reconcile") [(JS.Name "root"), (JS.Name "wanted")]),
+  JS.If (JS.Binary JS.And (JS.Binary JS.And (JS.Name "active") (JS.Call (JS.Field (JS.Name "root") "contains") [(JS.Name "active")])) (JS.Binary JS.NotEqual (JS.Field (JS.Name "document") "activeElement") (JS.Name "active"))) [JS.Do (JS.Call (JS.Field (JS.Name "active") "focus") [(JS.Object [("preventScroll", JS.Boolean True)])]), JS.If (JS.Binary JS.Equal (JS.Unary JS.TypeOf (JS.Name "start")) (JS.Text "number")) [JS.Do (JS.Call (JS.Field (JS.Name "active") "setSelectionRange") [(JS.Name "start"), (JS.Name "end"), (JS.Name "direction")])] []] [],
+  JS.Do (JS.Call (JS.Name "scanLocals") []),
+  JS.Do (JS.Call (JS.Name "wire") []),
+  JS.Do (JS.Call (JS.Name "paintLocals") [])
+].
 
-  // the mirror: every local but those a password input holds
-  function mirrored() \{
-    var out = \{};
-    for (var n in locals) \{
-      if (secrets[n]) continue;   /* even once its input has left the page */
-      out[n] = String(locals[n]);
-    }
-    return out;
-  }
-  function flush() \{
-    if (!sync || !dirty || !ws || ws.readyState !== 1) return;
-    dirty = false;
-    ws.send(JSON.stringify(\{ msg: sync.msg, arg: JSON.stringify(mirrored()) }));
-    document.dispatchEvent(new Event('live:sent'));
-  }
-  // data-sync-now: a change someone is waiting to see goes now, not on the
-  // next tick; typing is coalesced over a few keystrokes' worth of time
-  var soon = null;
-  function flushSoon() \{
-    if (soon) return;
-    soon = setTimeout(function () \{ soon = null; flush(); }, 60);
-  }
-  function startSync(spec) \{
-    if (syncTimer) clearInterval(syncTimer);
-    sync = spec; dirty = true;
-    syncTimer = setInterval(flush, Math.max(50, +spec.every || 1000));
-  }
+slotBody11 u = [
+  JS.Var "el" (JS.Call (JS.Field (JS.Name "root") "querySelector") [(JS.Binary JS.Add (JS.Binary JS.Add (JS.Text "[data-slot=\"") (JS.Name "k")) (JS.Text "\"]"))]),
+  JS.If (JS.Unary JS.Not (JS.Name "el")) [JS.ReturnVoid] [],
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "textContent") (JS.Name "txt")),
+  JS.If (JS.Name "flash") [JS.Do (JS.Call (JS.Field (JS.Name "el") "animate")
+    [JS.Array [JS.Object [("color", JS.Text (G.colourCss (G.Rgb 87 226 210)))], JS.Object [("color", JS.Text (G.colourCss G.CurrentColour))]], JS.Object [("duration", JS.Number 550), ("easing", JS.Text "ease-out")]])] [],
+  JS.Do (JS.Call (JS.Name "paintOwned") [])
+].
 
-  function argOf(el) \{
-    if (el.hasAttribute('data-lit')) return el.getAttribute('data-lit');
-    var a = el.getAttribute('data-arg');
-    if (!a) return '';
-    return a.split(',').map(function (n) \{ return locals[n] ?? ''; }).join('|');
-  }
+bodyBody14 u = [
+  JS.If (JS.Unary JS.Not (JS.Name "pair")) [JS.ReturnVoid] [],
+  JS.Var "eq" (JS.Call (JS.Field (JS.Name "pair") "indexOf") [(JS.Text "=")]),
+  JS.Var "n" (JS.Call (JS.Field (JS.Name "pair") "slice") [(JS.Number 0), (JS.Name "eq")]),
+  JS.If (JS.Unary JS.Not (JS.Binary JS.In (JS.Name "n") (JS.Name "locals"))) [JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "n")) (JS.Call (JS.Field (JS.Name "pair") "slice") [(JS.Binary JS.Add (JS.Name "eq") (JS.Number 1))]))] []
+].
 
-  function wire() \{
-    // Reused elements must not retain handlers for attributes removed by a patch.
-    root.querySelectorAll('*').forEach(function (el) \{
-      el.onclick = el.onchange = el.oninput = el.onkeydown = null;
-    });
-    root.querySelectorAll('[data-set]').forEach(function (el) \{
-      el.onclick = function () \{
-        applySet(el.getAttribute('data-set'), el.getAttribute('data-val'), el);
-        paintLocals();
-        if (el.hasAttribute('data-sync-now')) flush();
-      };
-    });
-    root.querySelectorAll('[data-click]').forEach(function (el) \{
-      el.onclick = function () \{
-        var set = el.getAttribute('data-set');
-        if (set) applySet(set, el.getAttribute('data-val'), el);
-        send(el.getAttribute('data-click'), argOf(el));
-        paintLocals();
-      };
-    });
-    // a file input: read the chosen file and send it as the message's final
-    // field, as name:base64 (View.uploadWith)
-    root.querySelectorAll('[data-file]').forEach(function (el) \{
-      el.onchange = function () \{
-        var f = el.files && el.files[0];
-        if (!f) return;
-        var rd = new FileReader();
-        rd.onload = function () \{ send(el.getAttribute('data-file'), f.name + ':' + String(rd.result).split(',')[1]); };
-        rd.readAsDataURL(f);
-      };
-    });
-    root.querySelectorAll('[data-input]').forEach(function (el) \{
-      var n = el.getAttribute('data-input');
-      if (el.type === 'password') secrets[n] = true;
-      el.oninput = function () \{ locals[n] = el.value; dirty = true; paintLocals(); if (el.hasAttribute('data-sync-now')) flushSoon(); };
-      el.onkeydown = function (e) \{
-        if (e.key === 'Enter' && el.hasAttribute('data-enter')) send(el.getAttribute('data-enter'), argOf(el));
-      };
-    });
-  }
+bodyBody13 u = [
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "x-data")]) "split") [(JS.Text ";")]) "forEach") [(JS.Function ["pair"] (bodyBody14 Unit))])
+].
 
-  function send(msg, arg) \{
-    if (!ws || ws.readyState !== 1) return;
-    flush();   /* the server's mirror of this page is current BEFORE the event */
-    t0 = performance.now(); sent++;
-    ws.send(JSON.stringify(\{ msg: msg, arg: String(arg) }));
-    document.dispatchEvent(new Event('live:sent'));
-  }
+scanLocalsBody12 u = [
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[x-data]")]) "forEach") [(JS.Function ["el"] (bodyBody13 Unit))])
+].
 
-  function spliced(old, patch) \{
-    if (!Array.isArray(patch) || patch.length !== 3 ||
-        !Number.isInteger(patch[0]) || !Number.isInteger(patch[1]) ||
-        patch[0] < 0 || patch[1] < 0 || patch[0] + patch[1] > old.length ||
-        !Array.isArray(patch[2]) || !patch[2].every(x => typeof x === 'string')) \{
-      throw new Error('invalid structural patch');
-    }
-    return old.slice(0, patch[0]).concat(patch[2], old.slice(patch[0] + patch[1]));
-  }
+bodyBody16 u = [
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "textContent") (JS.Binary JS.Nullish (JS.Index (JS.Name "locals") (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-text")])) (JS.Text "")))
+].
 
-  // v3: a list of splices, applied in order (each start counts in the array
-  // as the ones before it left it); the old array is never modified
-  function splicedAll(old, patches) \{
-    if (!Array.isArray(patches)) throw new Error('invalid structural patch list');
-    var cur = old;
-    for (var i = 0; i < patches.length; i++) cur = spliced(cur, patches[i]);
-    return cur;
-  }
+bodyBody17 u = [
+  JS.Var "spec" (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-show")]) "split") [(JS.Text ":")]),
+  JS.Var "v" (JS.Index (JS.Name "locals") (JS.Index (JS.Name "spec") (JS.Number 0))),
+  JS.Var "on" (JS.Choose (JS.Binary JS.Greater (JS.Field (JS.Name "spec") "length") (JS.Number 1)) (JS.Binary JS.Equal (JS.Call (JS.Name "String") [(JS.Name "v")]) (JS.Index (JS.Name "spec") (JS.Number 1))) (JS.Binary JS.And (JS.Binary JS.And (JS.Name "v") (JS.Binary JS.NotEqual (JS.Name "v") (JS.Text "0"))) (JS.Binary JS.NotEqual (JS.Name "v") (JS.Text "false")))),
+  JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "el") "style") "display") (JS.Choose (JS.Name "on") (JS.Text "") (JS.Text "none")))
+].
 
-  function apply(res) \{
-    // server-to-client COMMANDS (std/live.fpr): go somewhere, or hand a named
-    // event to the page's own script (document.addEventListener('live:name', ...))
-    if (res.nav) \{ location.href = res.nav; return; }
-    if (res.sync) \{ startSync(res.sync); return; }
-    if (res.emit === 'locals') \{
-      var vals = JSON.parse(res.detail);
-      for (var k in vals) locals[k] = String(vals[k]);
-      dirty = true;
-      paintLocals();
-      return;
-    }
-    if (res.emit) \{ document.dispatchEvent(new CustomEvent('live:' + res.emit, \{ detail: res.detail })); return; }
-    if (res.p !== undefined) \{
-      if (res.p !== 2 && res.p !== 3) throw new Error('unsupported live protocol');
-      var next = res.p === 3 ? \{s: splicedAll(S.s, res.s), d: splicedAll(S.d, res.d)}
-                             : \{s: spliced(S.s, res.s), d: spliced(S.d, res.d)};
-      if (next.s.length !== next.d.length + 1) throw new Error('invalid view shape');
-      S = next;
-      build();
-      return;
-    }
-    if (res.s) \{ S = \{ s: res.s, d: res.d }; build(); return; }
-    var n = 0;
-    for (var k in res.d) \{ S.d[k] = res.d[k]; slot(k, res.d[k], true); n++; }
-    var w = document.getElementById('lv-wire');
-    if (w && t0) \{ w.textContent = n + ' slot(s) · ' + (performance.now() - t0).toFixed(1) + ' ms'; t0 = 0; }
-  }
+bodyBody18 u = [
+  JS.Var "spec" (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-on")]) "split") [(JS.Text ":")]),
+  JS.Do (JS.Call (JS.Field (JS.Field (JS.Name "el") "classList") "toggle") [(JS.Text "is-on"), (JS.Binary JS.Equal (JS.Call (JS.Name "String") [(JS.Index (JS.Name "locals") (JS.Index (JS.Name "spec") (JS.Number 0)))]) (JS.Index (JS.Name "spec") (JS.Number 1)))])
+].
 
-  function status(s) \{
-    var el = document.getElementById('lv-link');
-    if (el) el.textContent = s;
-  }
+bodyBody19 u = [
+  JS.Var "n" (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-input")]),
+  JS.If (JS.Binary JS.NotEqual (JS.Name "el") (JS.Field (JS.Name "document") "activeElement")) [JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "value") (JS.Binary JS.Nullish (JS.Index (JS.Name "locals") (JS.Name "n")) (JS.Text "")))] []
+].
 
-  function connect() \{
-    var url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws?lv=3';
-    ws = new WebSocket(url);
-    ws.onopen = function () \{ wait = 500; status('live'); };
-    ws.onmessage = function (ev) \{
-      var res; try \{ res = JSON.parse(ev.data); } catch (e) \{ ws.close(4002, 'resync'); return; }
-      try \{ apply(res); document.dispatchEvent(new Event('live:frame')); } catch (e) \{
-        // Closing with an error reconnects to a fresh full snapshot. Ordered
-        // WebSocket frames need no per-patch ack on a surviving connection.
-        console.error('live patch rejected', e);
-        ws.close(4002, 'resync');
-      }
-    };
-    ws.onclose = function (ev) \{
-      document.dispatchEvent(new Event('live:disconnected'));
-      status('offline (' + ev.code + ')');
-      if (ev.code === 1000 || ev.code === 1001) return;   /* deliberate close: stay down */
-      setTimeout(connect, wait);
-      wait = Math.min(wait * 2, 8000);
-    };
-    ws.onerror = function () \{};
-  }
+paintLocalsBody15 u = [
+  JS.Do (JS.Call (JS.Name "paintOwned") []),
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[data-text]")]) "forEach") [(JS.Function ["el"] (bodyBody16 Unit))]),
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[data-show]")]) "forEach") [(JS.Function ["el"] (bodyBody17 Unit))]),
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[data-on]")]) "forEach") [(JS.Function ["el"] (bodyBody18 Unit))]),
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[data-input]")]) "forEach") [(JS.Function ["el"] (bodyBody19 Unit))]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "dispatchEvent") [(JS.New (JS.Name "CustomEvent") [(JS.Text "live:locals"), (JS.Object [("detail", JS.Name "locals")])])])
+].
 
-  build();
-  connect();
-})();
-".
+applySetBody20 u = [
+  JS.Var "cur" (JS.Index (JS.Name "locals") (JS.Name "name")),
+  JS.If (JS.Binary JS.Equal (JS.Name "val") (JS.Text "toggle")) [JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "name")) (JS.Choose (JS.Binary JS.Equal (JS.Name "cur") (JS.Text "1")) (JS.Text "0") (JS.Text "1")))] [JS.If (JS.Binary JS.Or (JS.Binary JS.Equal (JS.Index (JS.Name "val") (JS.Number 0)) (JS.Text "+")) (JS.Binary JS.Equal (JS.Index (JS.Name "val") (JS.Number 0)) (JS.Text "-"))) [JS.Var "n" (JS.Binary JS.Add (JS.Binary JS.Or (JS.Unary JS.Plus (JS.Name "cur")) (JS.Number 0)) (JS.Unary JS.Plus (JS.Name "val"))), JS.If (JS.Binary JS.And (JS.Name "el") (JS.Call (JS.Field (JS.Name "el") "hasAttribute") [(JS.Text "data-min")])) [JS.Do (JS.AssignValue (JS.Name "n") (JS.Call (JS.Field (JS.Name "Math") "max") [(JS.Name "n"), (JS.Unary JS.Plus (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-min")]))]))] [], JS.If (JS.Binary JS.And (JS.Name "el") (JS.Call (JS.Field (JS.Name "el") "hasAttribute") [(JS.Text "data-max")])) [JS.Do (JS.AssignValue (JS.Name "n") (JS.Call (JS.Field (JS.Name "Math") "min") [(JS.Name "n"), (JS.Unary JS.Plus (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-max")]))]))] [], JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "name")) (JS.Call (JS.Name "String") [(JS.Name "n")]))] [JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "name")) (JS.Name "val"))]],
+  JS.Do (JS.AssignValue (JS.Name "dirty") (JS.Boolean True))
+].
+
+mirroredBody21 u = [
+  JS.Var "out" (JS.Call (JS.Field (JS.Name "Object") "create") [JS.Null]),
+  JS.ForIn "n" (JS.Name "locals") [JS.If (JS.Index (JS.Name "secrets") (JS.Name "n")) [JS.Continue] [], JS.Do (JS.AssignValue (JS.Index (JS.Name "out") (JS.Name "n")) (JS.Call (JS.Name "String") [(JS.Index (JS.Name "locals") (JS.Name "n"))]))],
+  JS.Return (JS.Name "out")
+].
+
+flushBody22 u = [
+  JS.If (JS.Binary JS.Or (JS.Binary JS.Or (JS.Binary JS.Or (JS.Unary JS.Not (JS.Name "sync")) (JS.Unary JS.Not (JS.Name "dirty"))) (JS.Unary JS.Not (JS.Name "ws"))) (JS.Binary JS.NotEqual (JS.Field (JS.Name "ws") "readyState") (JS.Number 1))) [JS.ReturnVoid] [],
+  JS.Do (JS.AssignValue (JS.Name "dirty") (JS.Boolean False)),
+  JS.Do (JS.Call (JS.Field (JS.Name "ws") "send") [(JS.Call (JS.Field (JS.Name "JSON") "stringify") [(JS.Object [("msg", JS.Field (JS.Name "sync") "msg"), ("arg", JS.Call (JS.Field (JS.Name "JSON") "stringify") [(JS.Call (JS.Name "mirrored") [])])])])]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "dispatchEvent") [(JS.New (JS.Name "Event") [(JS.Text "live:sent")])])
+].
+
+bodyBody24 u = [
+  JS.Do (JS.AssignValue (JS.Name "soon") (JS.Null)),
+  JS.Do (JS.Call (JS.Name "flush") [])
+].
+
+flushSoonBody23 u = [
+  JS.If (JS.Name "soon") [JS.ReturnVoid] [],
+  JS.Do (JS.AssignValue (JS.Name "soon") (JS.Call (JS.Name "setTimeout") [(JS.Function [] (bodyBody24 Unit)), (JS.Number 60)]))
+].
+
+startSyncBody25 u = [
+  JS.If (JS.Name "syncTimer") [JS.Do (JS.Call (JS.Name "clearInterval") [(JS.Name "syncTimer")])] [],
+  JS.Do (JS.AssignValue (JS.Name "sync") (JS.Name "spec")),
+  JS.Do (JS.AssignValue (JS.Name "dirty") (JS.Boolean True)),
+  JS.Do (JS.AssignValue (JS.Name "syncTimer") (JS.Call (JS.Name "setInterval") [(JS.Name "flush"), (JS.Call (JS.Field (JS.Name "Math") "max") [(JS.Number 50), (JS.Binary JS.Or (JS.Unary JS.Plus (JS.Field (JS.Name "spec") "every")) (JS.Number 1000))])]))
+].
+
+bodyBody27 u = [
+  JS.Return (JS.Binary JS.Nullish (JS.Index (JS.Name "locals") (JS.Name "n")) (JS.Text ""))
+].
+
+argOfBody26 u = [
+  JS.If (JS.Call (JS.Field (JS.Name "el") "hasAttribute") [(JS.Text "data-lit")]) [JS.Return (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-lit")])] [],
+  JS.Var "a" (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-arg")]),
+  JS.If (JS.Unary JS.Not (JS.Name "a")) [JS.Return (JS.Text "")] [],
+  JS.Return (JS.Call (JS.Field (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "a") "split") [(JS.Text ",")]) "map") [(JS.Function ["n"] (bodyBody27 Unit))]) "join") [(JS.Text "|")])
+].
+
+bodyBody29 u = [
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "onclick") (JS.AssignValue (JS.Field (JS.Name "el") "onchange") (JS.AssignValue (JS.Field (JS.Name "el") "oninput") (JS.AssignValue (JS.Field (JS.Name "el") "onkeydown") (JS.Null)))))
+].
+
+bodyBody31 u = [
+  JS.Do (JS.Call (JS.Name "applySet") [(JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-set")]), (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-val")]), (JS.Name "el")]),
+  JS.Do (JS.Call (JS.Name "paintLocals") []),
+  JS.If (JS.Call (JS.Field (JS.Name "el") "hasAttribute") [(JS.Text "data-sync-now")]) [JS.Do (JS.Call (JS.Name "flush") [])] []
+].
+
+bodyBody30 u = [
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "onclick") (JS.Function [] (bodyBody31 Unit)))
+].
+
+bodyBody33 u = [
+  JS.Var "set" (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-set")]),
+  JS.If (JS.Name "set") [JS.Do (JS.Call (JS.Name "applySet") [(JS.Name "set"), (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-val")]), (JS.Name "el")])] [],
+  JS.Do (JS.Call (JS.Name "send") [(JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-click")]), (JS.Call (JS.Name "argOf") [(JS.Name "el")])]),
+  JS.Do (JS.Call (JS.Name "paintLocals") [])
+].
+
+bodyBody32 u = [
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "onclick") (JS.Function [] (bodyBody33 Unit)))
+].
+
+bodyBody36 u = [
+  JS.Do (JS.Call (JS.Name "send") [(JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-file")]), (JS.Binary JS.Add (JS.Binary JS.Add (JS.Field (JS.Name "f") "name") (JS.Text ":")) (JS.Index (JS.Call (JS.Field (JS.Call (JS.Name "String") [(JS.Field (JS.Name "rd") "result")]) "split") [(JS.Text ",")]) (JS.Number 1)))])
+].
+
+bodyBody35 u = [
+  JS.Var "f" (JS.Binary JS.And (JS.Field (JS.Name "el") "files") (JS.Index (JS.Field (JS.Name "el") "files") (JS.Number 0))),
+  JS.If (JS.Unary JS.Not (JS.Name "f")) [JS.ReturnVoid] [],
+  JS.Var "rd" (JS.New (JS.Name "FileReader") []),
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "rd") "onload") (JS.Function [] (bodyBody36 Unit))),
+  JS.Do (JS.Call (JS.Field (JS.Name "rd") "readAsDataURL") [(JS.Name "f")])
+].
+
+bodyBody34 u = [
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "onchange") (JS.Function [] (bodyBody35 Unit)))
+].
+
+bodyBody38 u = [
+  JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "n")) (JS.Field (JS.Name "el") "value")),
+  JS.Do (JS.AssignValue (JS.Name "dirty") (JS.Boolean True)),
+  JS.Do (JS.Call (JS.Name "paintLocals") []),
+  JS.If (JS.Call (JS.Field (JS.Name "el") "hasAttribute") [(JS.Text "data-sync-now")]) [JS.Do (JS.Call (JS.Name "flushSoon") [])] []
+].
+
+bodyBody39 u = [
+  JS.If (JS.Binary JS.And (JS.Binary JS.Equal (JS.Field (JS.Name "e") "key") (JS.Text "Enter")) (JS.Call (JS.Field (JS.Name "el") "hasAttribute") [(JS.Text "data-enter")])) [JS.Do (JS.Call (JS.Name "send") [(JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-enter")]), (JS.Call (JS.Name "argOf") [(JS.Name "el")])])] []
+].
+
+bodyBody37 u = [
+  JS.Var "n" (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-input")]),
+  JS.If (JS.Binary JS.Equal (JS.Field (JS.Name "el") "type") (JS.Text "password")) [JS.Do (JS.AssignValue (JS.Index (JS.Name "secrets") (JS.Name "n")) (JS.Boolean True))] [],
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "oninput") (JS.Function [] (bodyBody38 Unit))),
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "onkeydown") (JS.Function ["e"] (bodyBody39 Unit)))
+].
+
+wireBody28 u = [
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "*")]) "forEach") [(JS.Function ["el"] (bodyBody29 Unit))]),
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[data-set]")]) "forEach") [(JS.Function ["el"] (bodyBody30 Unit))]),
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[data-click]")]) "forEach") [(JS.Function ["el"] (bodyBody32 Unit))]),
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[data-file]")]) "forEach") [(JS.Function ["el"] (bodyBody34 Unit))]),
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[data-input]")]) "forEach") [(JS.Function ["el"] (bodyBody37 Unit))])
+].
+
+sendBody40 u = [
+  JS.If (JS.Binary JS.Or (JS.Unary JS.Not (JS.Name "ws")) (JS.Binary JS.NotEqual (JS.Field (JS.Name "ws") "readyState") (JS.Number 1))) [JS.ReturnVoid] [],
+  JS.Do (JS.Call (JS.Name "flush") []),
+  JS.Do (JS.AssignValue (JS.Name "t0") (JS.Call (JS.Field (JS.Name "performance") "now") [])),
+  JS.Do (JS.Increment (JS.Name "sent")),
+  JS.Do (JS.Call (JS.Field (JS.Name "ws") "send") [(JS.Call (JS.Field (JS.Name "JSON") "stringify") [(JS.Object [("msg", JS.Name "msg"), ("arg", JS.Call (JS.Name "String") [(JS.Name "arg")])])])]),
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "dispatchEvent") [(JS.New (JS.Name "Event") [(JS.Text "live:sent")])])
+].
+
+splicedBody41 u = [
+  JS.If (JS.Binary JS.Or (JS.Binary JS.Or (JS.Binary JS.Or (JS.Binary JS.Or (JS.Binary JS.Or (JS.Binary JS.Or (JS.Binary JS.Or (JS.Binary JS.Or (JS.Unary JS.Not (JS.Call (JS.Field (JS.Name "Array") "isArray") [(JS.Name "patch")])) (JS.Binary JS.NotEqual (JS.Field (JS.Name "patch") "length") (JS.Number 3))) (JS.Unary JS.Not (JS.Call (JS.Field (JS.Name "Number") "isInteger") [(JS.Index (JS.Name "patch") (JS.Number 0))]))) (JS.Unary JS.Not (JS.Call (JS.Field (JS.Name "Number") "isInteger") [(JS.Index (JS.Name "patch") (JS.Number 1))]))) (JS.Binary JS.Less (JS.Index (JS.Name "patch") (JS.Number 0)) (JS.Number 0))) (JS.Binary JS.Less (JS.Index (JS.Name "patch") (JS.Number 1)) (JS.Number 0))) (JS.Binary JS.Greater (JS.Binary JS.Add (JS.Index (JS.Name "patch") (JS.Number 0)) (JS.Index (JS.Name "patch") (JS.Number 1))) (JS.Field (JS.Name "old") "length"))) (JS.Unary JS.Not (JS.Call (JS.Field (JS.Name "Array") "isArray") [(JS.Index (JS.Name "patch") (JS.Number 2))]))) (JS.Unary JS.Not (JS.Call (JS.Field (JS.Index (JS.Name "patch") (JS.Number 2)) "every") [(JS.Function ["x"] [JS.Return (JS.Binary JS.Equal (JS.Unary JS.TypeOf (JS.Name "x")) (JS.Text "string"))])]))) [JS.Throw (JS.New (JS.Name "Error") [(JS.Text "invalid structural patch")])] [],
+  JS.Return (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "old") "slice") [(JS.Number 0), (JS.Index (JS.Name "patch") (JS.Number 0))]) "concat") [(JS.Index (JS.Name "patch") (JS.Number 2)), (JS.Call (JS.Field (JS.Name "old") "slice") [(JS.Binary JS.Add (JS.Index (JS.Name "patch") (JS.Number 0)) (JS.Index (JS.Name "patch") (JS.Number 1)))])])
+].
+
+splicedAllBody42 u = [
+  JS.If (JS.Unary JS.Not (JS.Call (JS.Field (JS.Name "Array") "isArray") [(JS.Name "patches")])) [JS.Throw (JS.New (JS.Name "Error") [(JS.Text "invalid structural patch list")])] [],
+  JS.Var "cur" (JS.Name "old"),
+  JS.For [JS.Var "i" (JS.Number 0)] (JS.Binary JS.Less (JS.Name "i") (JS.Field (JS.Name "patches") "length")) (JS.Increment (JS.Name "i")) [JS.Do (JS.AssignValue (JS.Name "cur") (JS.Call (JS.Name "spliced") [(JS.Name "cur"), (JS.Index (JS.Name "patches") (JS.Name "i"))]))],
+  JS.Return (JS.Name "cur")
+].
+
+applyBody43 u = [
+  JS.If (JS.Field (JS.Name "res") "nav") [JS.Do (JS.AssignValue (JS.Field (JS.Name "location") "href") (JS.Field (JS.Name "res") "nav")), JS.ReturnVoid] [],
+  JS.If (JS.Field (JS.Name "res") "sync") [JS.Do (JS.Call (JS.Name "startSync") [(JS.Field (JS.Name "res") "sync")]), JS.ReturnVoid] [],
+  JS.If (JS.Binary JS.Equal (JS.Field (JS.Name "res") "emit") (JS.Text "locals")) [JS.Var "vals" (JS.Call (JS.Field (JS.Name "JSON") "parse") [(JS.Field (JS.Name "res") "detail")]), JS.ForIn "k" (JS.Name "vals") [JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "k")) (JS.Call (JS.Name "String") [(JS.Index (JS.Name "vals") (JS.Name "k"))]))], JS.Do (JS.AssignValue (JS.Name "dirty") (JS.Boolean True)), JS.Do (JS.Call (JS.Name "paintLocals") []), JS.ReturnVoid] [],
+  JS.If (JS.Field (JS.Name "res") "emit") [JS.Do (JS.Call (JS.Field (JS.Name "document") "dispatchEvent") [(JS.New (JS.Name "CustomEvent") [(JS.Binary JS.Add (JS.Text "live:") (JS.Field (JS.Name "res") "emit")), (JS.Object [("detail", JS.Field (JS.Name "res") "detail")])])]), JS.ReturnVoid] [],
+  JS.If (JS.Binary JS.NotEqual (JS.Field (JS.Name "res") "p") (JS.Name "undefined")) [JS.If (JS.Binary JS.And (JS.Binary JS.NotEqual (JS.Field (JS.Name "res") "p") (JS.Number 2)) (JS.Binary JS.NotEqual (JS.Field (JS.Name "res") "p") (JS.Number 3))) [JS.Throw (JS.New (JS.Name "Error") [(JS.Text "unsupported live protocol")])] [], JS.Var "next" (JS.Choose (JS.Binary JS.Equal (JS.Field (JS.Name "res") "p") (JS.Number 3)) (JS.Object [("s", JS.Call (JS.Name "splicedAll") [(JS.Field (JS.Name "S") "s"), (JS.Field (JS.Name "res") "s")]), ("d", JS.Call (JS.Name "splicedAll") [(JS.Field (JS.Name "S") "d"), (JS.Field (JS.Name "res") "d")])]) (JS.Object [("s", JS.Call (JS.Name "spliced") [(JS.Field (JS.Name "S") "s"), (JS.Field (JS.Name "res") "s")]), ("d", JS.Call (JS.Name "spliced") [(JS.Field (JS.Name "S") "d"), (JS.Field (JS.Name "res") "d")])])), JS.If (JS.Binary JS.NotEqual (JS.Field (JS.Field (JS.Name "next") "s") "length") (JS.Binary JS.Add (JS.Field (JS.Field (JS.Name "next") "d") "length") (JS.Number 1))) [JS.Throw (JS.New (JS.Name "Error") [(JS.Text "invalid view shape")])] [], JS.Do (JS.AssignValue (JS.Name "S") (JS.Name "next")), JS.Do (JS.Call (JS.Name "build") []), JS.ReturnVoid] [],
+  JS.If (JS.Field (JS.Name "res") "s") [JS.Do (JS.AssignValue (JS.Name "S") (JS.Object [("s", JS.Field (JS.Name "res") "s"), ("d", JS.Field (JS.Name "res") "d")])), JS.Do (JS.Call (JS.Name "build") []), JS.ReturnVoid] [],
+  JS.Var "n" (JS.Number 0),
+  JS.ForIn "k" (JS.Field (JS.Name "res") "d") [JS.Do (JS.AssignValue (JS.Index (JS.Field (JS.Name "S") "d") (JS.Name "k")) (JS.Index (JS.Field (JS.Name "res") "d") (JS.Name "k"))), JS.Do (JS.Call (JS.Name "slot") [(JS.Name "k"), (JS.Index (JS.Field (JS.Name "res") "d") (JS.Name "k")), (JS.Boolean True)]), JS.Do (JS.Increment (JS.Name "n"))],
+  JS.Var "w" (JS.Call (JS.Field (JS.Name "document") "getElementById") [(JS.Text "lv-wire")]),
+  JS.If (JS.Binary JS.And (JS.Name "w") (JS.Name "t0")) [JS.Do (JS.AssignValue (JS.Field (JS.Name "w") "textContent") (JS.Binary JS.Add (JS.Binary JS.Add (JS.Binary JS.Add (JS.Name "n") (JS.Text " slot(s) · ")) (JS.Call (JS.Field (JS.Binary JS.Subtract (JS.Call (JS.Field (JS.Name "performance") "now") []) (JS.Name "t0")) "toFixed") [(JS.Number 1)])) (JS.Text " ms"))), JS.Do (JS.AssignValue (JS.Name "t0") (JS.Number 0))] []
+].
+
+statusBody44 u = [
+  JS.Var "el" (JS.Call (JS.Field (JS.Name "document") "getElementById") [(JS.Text "lv-link")]),
+  JS.If (JS.Name "el") [JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "textContent") (JS.Name "s"))] []
+].
+
+bodyBody46 u = [
+  JS.Do (JS.AssignValue (JS.Name "wait") (JS.Number 500)),
+  JS.Do (JS.Call (JS.Name "status") [(JS.Text "live")])
+].
+
+bodyBody47 u = [
+  JS.Var "res" (JS.Name "undefined"),
+  JS.Try [JS.Do (JS.AssignValue (JS.Name "res") (JS.Call (JS.Field (JS.Name "JSON") "parse") [(JS.Field (JS.Name "ev") "data")]))] "e" [JS.Do (JS.Call (JS.Field (JS.Name "ws") "close") [(JS.Number 4002), (JS.Text "resync")]), JS.ReturnVoid] [],
+  JS.Try [JS.Do (JS.Call (JS.Name "apply") [(JS.Name "res")]), JS.Do (JS.Call (JS.Field (JS.Name "document") "dispatchEvent") [(JS.New (JS.Name "Event") [(JS.Text "live:frame")])])] "e" [JS.Do (JS.Call (JS.Field (JS.Name "console") "error") [(JS.Text "live patch rejected"), (JS.Name "e")]), JS.Do (JS.Call (JS.Field (JS.Name "ws") "close") [(JS.Number 4002), (JS.Text "resync")])] []
+].
+
+bodyBody48 u = [
+  JS.Do (JS.Call (JS.Field (JS.Name "document") "dispatchEvent") [(JS.New (JS.Name "Event") [(JS.Text "live:disconnected")])]),
+  JS.Do (JS.Call (JS.Name "status") [(JS.Binary JS.Add (JS.Binary JS.Add (JS.Text "offline (") (JS.Field (JS.Name "ev") "code")) (JS.Text ")"))]),
+  JS.If (JS.Binary JS.Or (JS.Binary JS.Equal (JS.Field (JS.Name "ev") "code") (JS.Number 1000)) (JS.Binary JS.Equal (JS.Field (JS.Name "ev") "code") (JS.Number 1001))) [JS.ReturnVoid] [],
+  JS.Do (JS.Call (JS.Name "setTimeout") [(JS.Name "connect"), (JS.Name "wait")]),
+  JS.Do (JS.AssignValue (JS.Name "wait") (JS.Call (JS.Field (JS.Name "Math") "min") [(JS.Binary JS.Multiply (JS.Name "wait") (JS.Number 2)), (JS.Number 8000)]))
+].
+
+bodyBody49 u = [
+
+].
+
+connectBody45 u = [
+  JS.Var "url" (JS.Binary JS.Add (JS.Binary JS.Add (JS.Choose (JS.Binary JS.Equal (JS.Field (JS.Name "location") "protocol") (JS.Text "https:")) (JS.Text "wss://") (JS.Text "ws://")) (JS.Field (JS.Name "location") "host")) (JS.Text "/ws?lv=3")),
+  JS.Do (JS.AssignValue (JS.Name "ws") (JS.New (JS.Name "WebSocket") [(JS.Name "url")])),
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "ws") "onopen") (JS.Function [] (bodyBody46 Unit))),
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "ws") "onmessage") (JS.Function ["ev"] (bodyBody47 Unit))),
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "ws") "onclose") (JS.Function ["ev"] (bodyBody48 Unit))),
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "ws") "onerror") (JS.Function [] (bodyBody49 Unit)))
+].
+
+bodyBody1 u = [
+  JS.Define "paintOwned" [] (paintOwnedBody Unit),
+  JS.Var "S" (JS.Binary JS.Or (JS.Field (JS.Name "window") "__LV__") (JS.Object [("s", JS.Array []), ("d", JS.Array [])])),
+  JS.Var "root" (JS.Call (JS.Field (JS.Name "document") "getElementById") [(JS.Text "lv-root")]),
+  JS.Var "locals" (JS.Call (JS.Field (JS.Name "Object") "create") [(JS.Null)]),
+  JS.Var "ws" (JS.Null),
+  JS.Var "wait" (JS.Number 500),
+  JS.Var "sent" (JS.Number 0),
+  JS.Var "t0" (JS.Number 0),
+  JS.Var "sync" (JS.Null),
+  JS.Var "syncTimer" (JS.Null),
+  JS.Var "dirty" (JS.Boolean False),
+  JS.Var "secrets" (JS.Call (JS.Field (JS.Name "Object") "create") [(JS.Null)]),
+  JS.Define "keyOf" ["node"] (keyOfBody2 Unit),
+  JS.Define "compatible" ["a", "b"] (compatibleBody3 Unit),
+  JS.Define "reconcile" ["parent", "wanted"] (reconcileBody4 Unit),
+  JS.Define "build" [] (buildBody9 Unit),
+  JS.Define "slot" ["k", "txt", "flash"] (slotBody11 Unit),
+  JS.Define "scanLocals" [] (scanLocalsBody12 Unit),
+  JS.Define "paintLocals" [] (paintLocalsBody15 Unit),
+  JS.Define "applySet" ["name", "val", "el"] (applySetBody20 Unit),
+  JS.Define "mirrored" [] (mirroredBody21 Unit),
+  JS.Define "flush" [] (flushBody22 Unit),
+  JS.Var "soon" (JS.Null),
+  JS.Define "flushSoon" [] (flushSoonBody23 Unit),
+  JS.Define "startSync" ["spec"] (startSyncBody25 Unit),
+  JS.Define "argOf" ["el"] (argOfBody26 Unit),
+  JS.Define "wire" [] (wireBody28 Unit),
+  JS.Define "send" ["msg", "arg"] (sendBody40 Unit),
+  JS.Define "spliced" ["old", "patch"] (splicedBody41 Unit),
+  JS.Define "splicedAll" ["old", "patches"] (splicedAllBody42 Unit),
+  JS.Define "apply" ["res"] (applyBody43 Unit),
+  JS.Define "status" ["s"] (statusBody44 Unit),
+  JS.Define "connect" [] (connectBody45 Unit),
+  JS.Do (JS.Call (JS.Name "build") []),
+  JS.Do (JS.Call (JS.Name "connect") [])
+].
+
+paintOwnedBody u = [
+  JS.ForOf "node" (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [JS.Text "[data-hide-empty]"])
+    [JS.Const "slot" (JS.Call (JS.Field (JS.Name "node") "querySelector") [JS.Text ":scope > [data-slot]"]),
+     JS.Assign (JS.Field (JS.Field (JS.Name "node") "style") "display") (JS.Choose (JS.Binary JS.And (JS.Name "slot") (JS.Binary JS.Equal (JS.Field (JS.Name "slot") "textContent") (JS.Text ""))) (JS.Text (G.displayCss G.Hidden)) (JS.Text ""))],
+  JS.ForOf "node" (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [JS.Text "[data-local-style]"])
+    [JS.ForOf "style" (JS.Call (JS.Field (JS.Name "JSON") "parse") [JS.Call (JS.Field (JS.Name "node") "getAttribute") [JS.Text "data-local-style"]])
+      [JS.ForOf "name" (JS.Call (JS.Field (JS.Field (JS.Name "style") "classes") "split") [JS.Text " "])
+        [JS.Do (JS.Call (JS.Field (JS.Field (JS.Name "node") "classList") "toggle") [JS.Name "name", JS.Binary JS.Equal (JS.Call (JS.Name "String") [JS.Index (JS.Name "locals") (JS.Field (JS.Name "style") "key")]) (JS.Field (JS.Name "style") "value")])]]]
+].

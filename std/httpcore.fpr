@@ -174,7 +174,7 @@ request : { method : String, url : String, headers : List (String, String), body
 request q = case parseUrl q.url of
     Err why -> Err why
   | Ok u -> (case u.scheme == "https" of
-        True -> Err "https needs a TLS transport, and std/httpcore has none (std/http adds one through curl where the system has it)"
+        True -> Err "https needs a TLS transport; use std/http with a linked native TLS engine"
       | False -> overTcp q u).
 
 # "http://host[:port][/path?query]" -> its parts

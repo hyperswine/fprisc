@@ -1,3 +1,4 @@
+# Legacy compatibility fixture only. Production policy is std/sessionauth.fpr.
 """Ed25519 challenge-response. This server never imports a login private key."""
 import base64
 import hashlib

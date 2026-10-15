@@ -13,25 +13,18 @@
 # HTTP says their case means nothing: `Http.header "content-type" r`.
 # A non-2xx status is an Ok response you inspect; Err means there was none.
 #
-# HTTPS: std has no TLS.  An "https://" URL is fetched by running `curl`, which
-# does certificate validation the way the system is configured to -- said here
-# because a request API that silently fell back to plain text would be worse
-# than none.  Where curl is missing the answer is an Err that says so.
-# One request per connection ("Connection: close"); chunked replies are decoded.
-#
-# Everything but HTTPS is std/httpcore, which this module wraps name for name:
-# a system without processes (a board) uses httpcore directly.
+# HTTP and HTTPS clients use checked native transports, with bounded DNS,
+# absolute deadlines and strict header/body framing. HTTPS requires a linked
+# TLS engine; missing support is an explicit error. Never falls back to tools.
+# Server compatibility APIs and whole-buffer parsing remain in httpcore.
 
 C = use "httpcore".
 TCP = use "tcp".
 ST = use "stream".
 PL = use "poller".
-S = use "string".
 O = use "option".
-P = use "proc".
-
-rev : unsafe List a -> List a -> List a .
-rev xs acc = case xs of Nil -> acc | x :: r -> rev r (x :: acc).
+Native = use "httpclient".
+T = use "transport".
 
 # ---- the portable part: std/httpcore, the same names -------------------------------
 header : String -> { headers : List (String, String) | r } -> O.Option String .
@@ -69,45 +62,16 @@ readRequestWith lim conn = C.readRequestWith lim conn.
 renderResponse : { status : Int, headers : List (String, String), body : String } -> String .
 renderResponse resp = C.renderResponse resp.
 parseUrl : String -> Result { scheme : String, host : String, port : Int, target : String } String .
-parseUrl url = C.parseUrl url.
+parseUrl url = Native.parseUrl url.
 parseResponse : String -> Result { status : Int, headers : List (String, String), body : String } String .
 parseResponse raw = C.parseResponse raw.
 
-# ---- the client: plain HTTP is httpcore's, HTTPS goes through curl -----------------
-get : String -> Result { status : Int, headers : List (String, String), body : String } String .
+# Native client. Reuse HttpClient.requestOn for a caller-owned DNS pool,
+# shared readiness service, cancellation budget and explicit aggregate admission.
+clientDefaults = Native.defaults.
 get url = request { method = "GET", url = url, headers = Nil, body = "" }.
-
-post : String -> String -> String -> Result { status : Int, headers : List (String, String), body : String } String .
-post url contentType body = request { method = "POST", url = url, headers = ("content-type", contentType) :: Nil, body = body }.
-
-request : { method : String, url : String, headers : List (String, String), body : String } -> Result { status : Int, headers : List (String, String), body : String } String .
-request q = case C.parseUrl q.url of
-    Err why -> Err why
-  | Ok u -> (case u.scheme == "https" of
-        True -> viaCurl q
-      | False -> C.request q).
-
-# https: curl does the TLS.  -i puts the reply's head in front of the body, so
-# the same parser reads it; the request body goes in on stdin, never on a
-# command line; 60 s in all.
-viaCurl q =
-  hs = curlHeaders q.headers Nil;
-  argv = "curl" :: "-sS" :: "-i" :: "--max-time" :: "60" :: "-X" :: q.method :: "--data-binary" :: "@-" :: "-H" :: "Expect:" :: rev hs (q.url :: Nil);
-  bare = "curl" :: "-sS" :: "-i" :: "--max-time" :: "60" :: "-X" :: q.method :: rev hs (q.url :: Nil);
-  case P.spawn { argv = (case strlen q.body == 0 of True -> bare | False -> argv), dir = "", input = q.body, env = Nil, limitMs = 70000 } of
-    Err why -> Err "https needs curl on this system (std has no TLS): {why}"
-  | Ok r -> (case r.status == 0 of
-        False -> Err (S.trim r.err)
-      | True -> parseResponse (lastReply r.out)).
-# newest first: "-H" "name: value" pairs, to be reversed onto the URL
-curlHeaders : unsafe List (String, String) -> List String -> List String .
-curlHeaders hs acc = case hs of Nil -> acc | (k, v) :: r -> curlHeaders r (strJoin ": " (k :: v :: Nil) :: "-H" :: acc).
-# curl -i prints a head per hop ("HTTP/1.1 100 Continue", a proxy's 200): the last one is the reply
-lastReply : unsafe String -> String .
-lastReply raw =
-  at = strIndexOf "\r\n\r\n" raw;
-  case at < 0 of
-    True -> raw
-  | False -> (case S.startsWith "HTTP/" (S.dropLeft (at + 4) raw) and S.startsWith "HTTP/1.1 100" raw of
-        True -> lastReply (S.dropLeft (at + 4) raw)
-      | False -> raw).
+post url contentType body = request { method = "POST", url = url, headers = [("content-type", contentType)], body = body }.
+request q = requestWith clientDefaults q.
+requestWith options q = case Native.parseUrl q.url of Err why -> Err why | Ok _ -> (case Native.request options q of
+    Ok response -> Ok response
+  | Err why -> Err (case why of T.Io message -> message | _ -> "{why}")).

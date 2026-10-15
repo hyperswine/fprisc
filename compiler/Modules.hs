@@ -390,6 +390,14 @@ renameTops env qh tops = concatMap top tops
       SInt i -> SInt i
       SAtom a -> SAtom a
       SStrI segs -> SStrI (map seg segs)
+      -- A module's @Msg / @Model.field literal refers to its own type,
+      -- exactly as an ordinary type occurrence does. Qualify the type head
+      -- before expandPathLits looks it up; preserve ordinary path strings.
+      SApp (SVar "Path") (SStrI [SegStr p])
+        | (root, fields) <- break (== '.') p,
+          isUpper (head' root),
+          Just qualified <- reSelf env root ->
+            SApp (SVar "Path") (SStrI [SegStr (qualified ++ fields)])
       SApp f a -> SApp (expr bound f) (expr bound a)
       SLam ps b -> SLam ps (expr (foldr S.insert bound ps) b)
       SBlock ss e ->

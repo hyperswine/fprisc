@@ -1,0 +1,31 @@
+# Public telemetry register. Never receives credentials or TLS configuration.
+A = use "std/actor".
+J = use "std/json".
+L = use "std/list".
+M = use "std/map".
+S = use "std/string".
+O = use "std/option".
+Clock = use "std/clock".
+Command = Type (Telemetry String J.Value | Camera String J.Value | Snapshot).
+Reply = Type (Saved | Value J.Value).
+merge a b = case (a, b) of (J.Object x, J.Object y) -> J.Object (M.fold (fn acc key value -> M.insert key value acc) x y) | _ -> a.
+initial rows demo auth = {rows = L.map (fn row -> {id = row.id, metadata = row.metadata, telemetry = J.object Nil, camera = J.object Nil, seen = 0}) rows, demo = demo, auth = auth}.
+snapshot state = J.object [("schema", J.Integer 1), ("generated_at", J.Integer (Clock.now Unit)), ("demo", J.Boolean state.demo), ("auth", state.auth),
+  ("printers", J.Sequence (L.map (fn row ->
+    now = Sys.timeUs Unit / 1000;
+    telemetry = if now - row.seen > 2000 and not state.demo then merge row.telemetry (J.object [("connection", J.Text "OFFLINE"), ("note", J.Text "Native telemetry unavailable. Last values retained.")]) else row.telemetry;
+    merge (merge row.metadata telemetry) row.camera) state.rows))].
+step me state =
+  message = receive me;
+  (from, id, borrowed) = message;
+  command = keep borrowed;
+  _ = drop message;
+  next = case command of
+      Telemetry who value -> {state | rows = L.map (fn row -> if row.id == who then {row | telemetry = value, seen = Sys.timeUs Unit / 1000} else row) state.rows}
+    | Camera who value -> {state | rows = L.map (fn row -> if row.id == who then {row | camera = value} else row) state.rows}
+    | _ -> state;
+  _ = A.reply (from, id) (case command of Snapshot -> Value (snapshot next) | _ -> Saved);
+  (True, next).
+start rows demo auth = A.spawnWith (A.Static 64) (fn me -> _ = Sys.loop (initial rows demo auth) (step me); Unit).
+get service = case A.callWithin 1000 (myself 0) service Snapshot of Ok (Value value) -> value | _ -> J.object Nil.
+put service command = _ = A.callWithin 500 (myself 0) service command; Unit.

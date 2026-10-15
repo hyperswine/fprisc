@@ -1,0 +1,95 @@
+# Owned browser media. Policy and image presentation are FP-RISC values;
+# JavaScript is generated through a syntax tree with no foreign-source escape.
+JS = use "javascript".
+G = use "view".
+L = use "list".
+Signal = Type (Selected | Visible | Live).
+Rule = Type (Signal Signal | Both Rule Rule | Either Rule Rule | Negate Rule).
+Signals = {selected : Bool, visible : Bool, live : Bool}.
+Phase = Type (Off | Paused | Connecting | Connected | Failed).
+Labels = {off : String, paused : String, connecting : String, connected : String, failed : String}.
+Config = {hostAttribute : String, onAttribute : String, statusAttribute : String, rootId : String,
+  linkId : String, routePrefix : String, routeSuffix : String, image : G.Node, labels : Labels}.
+# The same structured rule is evaluated natively and lowered for the browser.
+active = Both (Signal Selected) (Both (Signal Visible) (Signal Live)).
+evaluate : unsafe Signals -> Rule -> Bool .
+evaluate s rule = case rule of
+    Signal Selected -> s.selected | Signal Visible -> s.visible | Signal Live -> s.live
+  | Both a b -> evaluate s a and evaluate s b
+  | Either a b -> evaluate s a or evaluate s b
+  | Negate a -> not (evaluate s a).
+phase signals hasSource previous = if not (evaluate signals active) then
+  if signals.selected then Paused else Off
+  else if hasSource then previous else Connecting.
+message labels phase = case phase of Off -> labels.off | Paused -> labels.paused | Connecting -> labels.connecting | Connected -> labels.connected | Failed -> labels.failed.
+ruleExpr : unsafe Rule -> JS.Expr .
+ruleExpr rule = case rule of
+    Signal Selected -> JS.Name "selected" | Signal Visible -> JS.Name "visible" | Signal Live -> JS.Name "live"
+  | Both a b -> JS.Binary JS.And (ruleExpr a) (ruleExpr b)
+  | Either a b -> JS.Binary JS.Or (ruleExpr a) (ruleExpr b)
+  | Negate a -> JS.Unary JS.Not (ruleExpr a).
+n = JS.Name.
+t = JS.Text.
+f = JS.Field.
+call target args = JS.Call target args.
+method target name args = call (f target name) args.
+doMethod target name args = JS.Do (method target name args).
+neg = JS.Unary JS.Not.
+equal = JS.Binary JS.Equal.
+attr target name = method target "getAttribute" [t name].
+removeSource state = doMethod (f state "img") "removeAttribute" [t "src"].
+setMessage cfg phase = JS.Assign (f (n "state") "text") (t (message cfg.labels phase)).
+# Hook selectors identify capability targets, never appearance. Escape both
+# hook names and values, even though the application's hooks are constants.
+selector name = JS.Binary JS.Add (JS.Binary JS.Add (t "[") (method (n "CSS") "escape" [t name])) (t "]").
+imageHtml image = case G.renderStyled image of (ss, ds) ->
+  if ds != Nil then error "BrowserMedia.image: expected static presentation" else strJoin "" ss.
+program cfg = JS.program [JS.Do (call (JS.Function Nil (definitions cfg)) Nil)].
+definitions cfg =
+  [JS.Const "media" (JS.New (n "Map") Nil), JS.Let "queued" (JS.Boolean False), JS.Let "running" (JS.Boolean True),
+   JS.Define "stopMedia" Nil [JS.ForOf "state" (method (n "media") "values" Nil) [removeSource (n "state")]],
+   JS.Define "schedule" Nil [JS.If (JS.Binary JS.And (n "running") (neg (n "queued")))
+      [JS.Assign (n "queued") (JS.Boolean True), JS.Do (call (n "queueMicrotask") [n "sync"])] Nil],
+   JS.Define "sync" Nil (sync cfg),
+   JS.Const "root" (method (n "document") "getElementById" [t cfg.rootId]),
+   JS.Const "link" (method (n "document") "getElementById" [t cfg.linkId]),
+   JS.Const "treeObserver" (JS.New (n "MutationObserver") [n "schedule"]),
+   JS.If (n "root") [doMethod (n "treeObserver") "observe" [n "root", JS.Object [("childList",JS.Boolean True),("subtree",JS.Boolean True),("attributes",JS.Boolean True),("attributeFilter",JS.Array [t cfg.onAttribute])]]] Nil,
+   JS.Const "linkObserver" (JS.New (n "MutationObserver") [n "schedule"]),
+   JS.If (n "link") [doMethod (n "linkObserver") "observe" [n "link", JS.Object [("childList",JS.Boolean True),("subtree",JS.Boolean True),("characterData",JS.Boolean True)]]] Nil,
+   doMethod (n "document") "addEventListener" [t "visibilitychange",n "schedule"],
+   doMethod (n "window") "addEventListener" [t "pagehide", JS.Function Nil [JS.Assign (n "running") (JS.Boolean False), JS.Do (call (n "stopMedia") Nil)]],
+   doMethod (n "window") "addEventListener" [t "pageshow", JS.Function ["event"] [JS.If (f (n "event") "persisted") [JS.Assign (n "running") (JS.Boolean True), JS.Do (call (n "schedule") Nil)] Nil]],
+   JS.Do (call (n "schedule") Nil)].
+sync cfg =
+  [JS.Assign (n "queued") (JS.Boolean False), JS.If (neg (n "running")) [JS.Return JS.Null] Nil,
+   JS.Const "link" (method (n "document") "getElementById" [t cfg.linkId]),
+   JS.Const "live" (JS.Binary JS.And (n "link") (equal (f (n "link") "textContent") (t "live"))),
+   JS.Const "visible" (neg (f (n "document") "hidden")),
+   JS.ForOf "entry" (n "media")
+    [JS.Const "host" (JS.Index (n "entry") (JS.Number 0)), JS.Const "state" (JS.Index (n "entry") (JS.Number 1)),
+     JS.If (neg (f (n "host") "isConnected")) [removeSource (n "state"), doMethod (n "media") "delete" [n "host"]] Nil],
+   JS.ForOf "host" (method (n "document") "querySelectorAll" [selector cfg.hostAttribute]) (syncHost cfg)].
+syncHost cfg =
+  [JS.Const "id" (attr (n "host") cfg.hostAttribute), JS.Let "label" JS.Null,
+   JS.ForOf "candidate" (method (n "document") "querySelectorAll" [selector cfg.statusAttribute])
+     [JS.If (equal (attr (n "candidate") cfg.statusAttribute) (n "id")) [JS.Assign (n "label") (n "candidate")] Nil],
+   JS.Let "state" (method (n "media") "get" [n "host"]),
+   JS.If (neg (n "state")) (attach cfg) Nil,
+   JS.Const "selected" (equal (attr (n "host") cfg.onAttribute) (t "true")),
+   JS.If (neg (ruleExpr active))
+     [removeSource (n "state"), JS.Assign (f (n "state") "text") (JS.Choose (n "selected") (t cfg.labels.paused) (t cfg.labels.off))]
+     [JS.If (neg (method (f (n "state") "img") "hasAttribute" [t "src"]))
+       [setMessage cfg Connecting, JS.Assign (f (f (n "state") "img") "src")
+         (JS.Binary JS.Add (JS.Binary JS.Add (t cfg.routePrefix) (call (n "encodeURIComponent") [n "id"])) (t cfg.routeSuffix))] Nil],
+   JS.If (JS.Binary JS.And (n "label") (JS.Binary JS.NotEqual (f (n "label") "textContent") (f (n "state") "text")))
+     [JS.Assign (f (n "label") "textContent") (f (n "state") "text")] Nil].
+attach cfg =
+  [JS.Const "shadow" (method (n "host") "attachShadow" [JS.Object [("mode",t "open")]]),
+   JS.Assign (f (n "shadow") "innerHTML") (t (imageHtml cfg.image)),
+   JS.Const "img" (method (n "shadow") "querySelector" [t "img"]),
+   JS.Assign (f (n "img") "alt") (JS.Binary JS.Or (attr (n "host") "aria-label") (t "Camera")),
+   JS.Assign (n "state") (JS.Object [("img",n "img"),("text",t cfg.labels.off)]),
+   JS.Assign (f (n "img") "onload") (JS.Function Nil [setMessage cfg Connected, JS.Do (call (n "schedule") Nil)]),
+   JS.Assign (f (n "img") "onerror") (JS.Function Nil [setMessage cfg Failed, JS.Do (call (n "schedule") Nil)]),
+   doMethod (n "media") "set" [n "host",n "state"]].

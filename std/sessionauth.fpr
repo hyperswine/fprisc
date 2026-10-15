@@ -1,0 +1,90 @@
+# Ed25519 challenge/session policy. The native engine supplies only entropy and
+# signature verification. No private key is loaded by this service.
+J = use "json".
+M = use "map".
+L = use "list".
+S = use "string".
+O = use "option".
+E = use "encoding".
+D = use "digest".
+A = use "actor".
+C = use "crypto".
+Socket = use "sockettransport".
+Key = {name : String, public : String}.
+Pending = {id : String, binding : String, origin : String, message : String, until : Int}.
+Session = {digest : String, origin : String, until : Int}.
+Attempt = {address : String, count : Int, until : Int}.
+State = {pending : List Pending, sessions : List Session, attempts : List Attempt}.
+Limits = {challengeMs : Int, sessionMs : Int, windowMs : Int, attempts : Int, addresses : Int, pending : Int, sessions : Int}.
+defaults = {challengeMs = 60000, sessionMs = 28800000, windowMs = 60000, attempts = 20, addresses = 4096, pending = 1024, sessions = 1024}.
+initial = {pending = Nil, sessions = Nil, attempts = Nil}.
+Command = Type (Challenge String String | Verify String String String String | Valid String String | Logout String | Inspect).
+Reply = Type (ChallengeReady String String String | SessionReady String | Authorized Bool | Refused | Counts Int Int Int).
+now u = Sys.timeUs Unit / 1000.
+text key value = O.withDefault "" (O.andThen J.asString (J.field key value)).
+loadKeys value = case J.asList value of
+    O.None -> Err "auth must contain 1..32 public keys"
+  | O.Some rows -> if L.length rows < 1 or L.length rows > 32 then Err "auth must contain 1..32 public keys" else keys rows Nil.
+keys : unsafe List J.Value -> List Key -> Result (List Key) String .
+keys rows acc = case rows of Nil -> Ok (L.reverse acc) | value :: rest ->
+  name = text "name" value;
+  public = text "public_key" value;
+  fields = case J.asObject value of O.None -> Nil | O.Some map -> M.keys map;
+  if fields != ["algorithm", "name", "public_key"] or text "algorithm" value != "Ed25519" or strlen name < 1 or strlen name > 80 or strlen public != 64 or S.toLower public != public or L.any (fn key -> E.hex key.public == public) acc then Err "auth requires unique named Ed25519 public keys" else
+  case E.fromHex public of Err _ -> Err "invalid Ed25519 public key" | Ok bytes -> keys rest ({name = name, public = bytes} :: acc).
+prune at state = {pending = L.filter (fn p -> p.until > at) state.pending,
+  sessions = L.filter (fn s -> s.until > at) state.sessions, attempts = L.filter (fn a -> a.until > at) state.attempts}.
+# These pure transitions also power deterministic capacity/replay/expiry tests.
+challenge limits at origin address id binding state =
+  fresh = prune at state;
+  previous = O.withDefault {address = address, count = 0, until = at + limits.windowMs} (L.find (fn a -> a.address == address) fresh.attempts);
+  if previous.count >= limits.attempts or L.length fresh.pending >= limits.pending or
+      (previous.count == 0 and L.length fresh.attempts >= limits.addresses) or
+      L.any (fn p -> p.id == id) fresh.pending then (Refused, fresh) else
+  message = "Print room login v1\n{origin}\n{id}";
+  entry = {id = id, binding = D.sha256 binding, origin = origin, message = message, until = at + limits.challengeMs};
+  (ChallengeReady id message binding, {fresh | pending = entry :: fresh.pending,
+    attempts = {previous | count = previous.count + 1} :: L.filter (fn a -> a.address != address) fresh.attempts}).
+consume at origin id binding state =
+  fresh = prune at state;
+  found = L.find (fn p -> p.id == id) fresh.pending;
+  next = {fresh | pending = L.filter (fn p -> p.id != id) fresh.pending};
+  (case found of O.Some p -> if p.origin == origin and p.binding == D.sha256 binding then O.Some p.message else O.None | _ -> O.None, next).
+issue limits at origin token state = if L.length state.sessions >= limits.sessions then (Refused, state) else
+  digest = D.sha256 token;
+  if L.any (fn s -> s.digest == digest) state.sessions then (Refused, state) else
+  (SessionReady token, {state | sessions = {digest = digest, origin = origin, until = at + limits.sessionMs} :: state.sessions}).
+valid at token origin state = if strlen token < 32 or strlen token > 128 then False else
+  digest = D.sha256 token;
+  L.any (fn session -> session.digest == digest and session.origin == origin and session.until > at) state.sessions.
+logout token state = digest = D.sha256 token; {state | sessions = L.filter (fn s -> s.digest != digest) state.sessions}.
+budget u = case Socket.forMs 2000 of Ok b -> b | Err _ -> error "auth: invalid budget".
+random u = case C.random (budget Unit) 1 32 of Ok bytes -> Ok (E.hex bytes) | Err _ -> Err "auth mechanism unavailable".
+verifyKeys : unsafe List Key -> String -> String -> Bool .
+verifyKeys keys message signature = case keys of Nil -> False | key :: rest ->
+  case C.verify (budget Unit) 1 key.public message signature of Ok True -> True | Ok False -> verifyKeys rest message signature | Err _ -> False.
+dispatch limits keys command state = case command of
+    Challenge origin address -> (case random Unit of Err _ -> (Refused, state) | Ok id ->
+      case random Unit of Err _ -> (Refused, state) | Ok binding -> challenge limits (now Unit) origin address id binding state)
+  | Verify origin id binding signature ->
+      (message, consumed) = consume (now Unit) origin id binding state;
+      # Consume before decoding/verification: even a malformed proof is one-use.
+      (case message of O.None -> (Refused, consumed) | O.Some text ->
+        decoded = if strlen signature != 88 then Err "invalid signature" else E.fromBase64 signature;
+        (case decoded of Err _ -> (Refused, consumed) | Ok bytes ->
+          if strlen bytes != 64 or E.base64 bytes != signature or not (verifyKeys keys text bytes) then (Refused, consumed) else
+          case random Unit of Err _ -> (Refused, consumed) | Ok token -> issue limits (now Unit) origin token consumed))
+  | Valid token origin -> (Authorized (valid (now Unit) token origin state), state)
+  | Logout token -> (Authorized True, logout token state)
+  | Inspect -> (Counts (L.length state.pending) (L.length state.sessions) (L.length state.attempts), state).
+step limits keys me state =
+  message = receive me;
+  (from, id, borrowed) = message;
+  command = keep borrowed;
+  _ = drop message;
+  (reply, next) = dispatch limits keys command (prune (now Unit) state);
+  _ = A.reply (from, id) reply;
+  (True, next).
+start limits keys = A.spawnWith (A.Static 64) (fn me -> _ = Sys.loop initial (step limits keys me); Unit).
+call service command = A.callWithin 2500 (myself 0) service command.
+authorized service token origin = case call service (Valid token origin) of Ok (Authorized yes) -> yes | _ -> False.

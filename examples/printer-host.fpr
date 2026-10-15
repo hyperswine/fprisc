@@ -1,0 +1,142 @@
+# Single-process native printer application: no Python or subprocess services.
+unsafe base.
+Gateway = use "printer-dashboard/gateway".
+Auth = use "std/sessionauth".
+Registry = use "printer-dashboard/registry".
+Camera = use "printer-dashboard/cameraservice".
+Frame = use "printer-dashboard/cameraframe".
+Collector = use "examples/printer-telemetry".
+View = use "examples/printers".
+Login = use "printer-dashboard/loginview".
+LoginProgram = use "printer-dashboard/loginprogram".
+SessionProgram = use "printer-dashboard/sessionprogram".
+Live = use "std/live".
+LJ = use "std/livejs".
+UI = use "printer-dashboard/presentation".
+Config = use "std/config".
+J = use "std/json".
+L = use "std/list".
+S = use "std/string".
+O = use "std/option".
+M = use "std/map".
+F = use "std/file".
+P = use "std/program".
+A = use "std/actor".
+DNS = use "std/resolver".
+R = use "std/readiness".
+SS = use "std/mqttsession".
+Q = use "std/mqtt".
+PT = use "std/printertelemetry".
+Clock = use "std/clock".
+need result = case result of Ok value -> value | Err _ -> P.fail 2 "printer host: invalid configuration or unavailable native service".
+text key value = Auth.text key value.
+integer fallback key value = O.withDefault fallback (O.andThen J.asInt (J.field key value)).
+field fallback key value = valueText = text key value; if valueText == "" then fallback else valueText.
+readJson path =
+  facts = need (F.info path);
+  _ = if facts.size > 262144 then P.fail 2 "printer host: configuration exceeds bound" else Unit;
+  bytes = need (F.readText path);
+  _ = if not (PT.bounded bytes) then P.fail 2 "printer host: configuration exceeds size/depth bound" else Unit;
+  need (J.parse bytes).
+slug value = strlen value >= 1 and strlen value <= 32 and slugGo value 0.
+slugGo : unsafe String -> Int -> Bool .
+slugGo value at = if at >= strlen value then True else
+  c = charAt value at;
+  ((c >= 97 and c <= 122) or (c >= 48 and c <= 57) or c == 45) and slugGo value (at + 1).
+envName value = strlen value > 0 and L.all (fn c -> (c >= 65 and c <= 90) or (c >= 48 and c <= 57) or c == 95) (L.map (fn i -> charAt value i) (L.range 0 (strlen value - 1))).
+credentials path selected = if path == "" then Nil else
+  facts = need (F.info path);
+  _ = if facts.size > 65536 then P.fail 2 "printer host: credential file exceeds bound" else Unit;
+  bytes = need (F.readText path);
+  L.filterMap (fn raw ->
+    line = S.trim raw;
+    clean = if S.startsWith "export " line then S.dropLeft 7 line else line;
+    at = strIndexOf "=" clean;
+    name = if at < 0 then "" else S.trim (S.left at clean);
+    if not (L.member name selected) then O.None else
+    value = S.trim (S.dropLeft (at + 1) clean);
+    quoted = strlen value >= 2 and ((charAt value 0 == 39 and charAt value (strlen value - 1) == 39) or (charAt value 0 == 34 and charAt value (strlen value - 1) == 34));
+    code = if quoted then substr value 1 (strlen value - 2) else value;
+    if code == "" or strlen code > 32 or S.contains "$" code or S.contains "`" code or S.contains "\\" code or S.contains " " code or S.contains ";" code then P.fail 2 "printer host: invalid selected runtime credential" else O.Some (name, code)) (S.lines bytes).
+rows value demo =
+  values = need (case J.asList value of O.Some xs -> Ok xs | _ -> Err "printers must be an array");
+  _ = if L.length values < 1 or L.length values > 24 then P.fail 2 "printer host: configure 1..24 printers" else Unit;
+  loaded = L.map (fn v ->
+    id = text "id" v;
+    name = text "name" v;
+    host = text "host" v;
+    serial = text "serial" v;
+    codeEnv = text "access_code_env" v;
+    peer = text "tls_peer" v;
+    ca = text "tls_ca" v;
+    port = integer 8883 "mqtt_port" v;
+    _ = if not (slug id) or name == "" or strlen name > 80 or (not demo and (host == "" or serial == "" or not (Q.topic serial) or S.contains "/" serial or not (envName codeEnv) or peer == "" or ca == "" or port < 1 or port > 65535)) then P.fail 2 "printer host: invalid public printer configuration" else Unit;
+    camera = not demo and text "camera" v == "bambu-jpeg";
+    {id = id, host = host, serial = serial, port = port, peer = peer, ca = ca, codeEnv = codeEnv,
+      camera = camera, cameraPort = integer 6000 "camera_port" v, cameraPeer = field peer "camera_tls_peer" v, cameraCa = field ca "camera_tls_ca" v,
+      metadata = J.object [("id", J.Text id), ("name", J.Text name), ("model", J.Text (text "model" v)), ("location", J.Text (text "location" v)), ("camera_available", J.Boolean camera)]}) values;
+  _ = if L.length (L.unique (L.map (fn row -> row.id) loaded)) != L.length loaded then P.fail 2 "printer host: duplicate printer id" else Unit;
+  loaded.
+telemetry registry row code me =
+  pool = need (DNS.create 1);
+  watcher = R.start Unit;
+  cfg = {host = row.host, port = row.port, peer = row.peer, ca = row.ca,
+    session = need (SS.configAuth (Q.UserPassword "bblp" code) "fpr-native-{row.serial}" True 30 5000 8), report = "device/{row.serial}/report", request = "device/{row.serial}/request"};
+  _ = Sys.loop {client = O.None, telemetry = PT.initial, retryAt = 0, backoff = 1000, note = "Waiting for a status report."} (fn state ->
+    current = Collector.advance cfg pool watcher state;
+    public = PT.snapshot (Collector.now Unit) (case current.client of O.Some c -> c.session.phase == SS.Online | _ -> False) current.note current.telemetry;
+    _ = Registry.put registry (Registry.Telemetry row.id public);
+    (True, current));
+  Unit.
+cameraStats registry id manager me = _ = Sys.loop Unit (fn u ->
+  _ = case Camera.ask me manager Camera.Inspect of Ok (Camera.Snapshot value) -> Registry.put registry (Registry.Camera id value) | _ -> Unit;
+  _ = Clock.sleepMs 500;
+  (True, Unit)); Unit.
+model registry =
+  value = Registry.get registry;
+  m = View.seed Unit;
+  {m | printers = View.values "printers" value, auth = View.values "auth" value, generated = View.integer "generated_at" value, demo = View.boolean "demo" value, issue = ""}.
+update registry event m =
+  (next, commands) = View.updateWith (fn old -> old) event m;
+  value = Registry.get registry;
+  (if View.validSnapshot value then {next | printers = View.values "printers" value, auth = View.values "auth" value, generated = View.integer "generated_at" value,
+    demo = View.boolean "demo" value, issue = ""} else {next | issue = "Native register unavailable; retaining last values."}, commands).
+exportAssets path =
+  _ = need (F.writeText "{path}/printer_login.js" ("// Generated from FP-RISC printer-dashboard/loginprogram.\n" + LoginProgram.src Unit));
+  _ = need (F.writeText "{path}/printer_session.js" ("// Generated from FP-RISC printer-dashboard/sessionprogram.\n" + SessionProgram.src Unit));
+  _ = need (F.writeText "{path}/printer_login.html" (Login.html Unit));
+  print "generated printer browser assets".
+main =
+  defaults = J.object [("port", J.Integer 6730), ("address", J.Text "127.0.0.1"), ("origin", J.Text "https://3dprint.cswine.cloud"), ("auth", J.Text "examples/printer-dashboard/auth.json"), ("config", J.Text ""), ("credentials-env-file", J.Text ""), ("store", J.Text "printer-native.kvlog"), ("demo", J.Boolean False), ("export-assets", J.Text "")];
+  v = need (Config.load {defaults = defaults, file = O.None, envPrefix = "PRINTER_HOST_", args = P.args Unit});
+  if text "export-assets" v != "" then exportAssets (text "export-assets" v) else run v.
+run v =
+  demo = O.withDefault False (O.andThen J.asBool (J.field "demo" v));
+  keyValues = readJson (text "auth" v);
+  keys = need (Auth.loadKeys keyValues);
+  auth = Auth.start Auth.defaults keys;
+  demoValues = J.Sequence [J.object [("id", J.Text "demo"), ("name", J.Text "Native demo printer"), ("model", J.Text "P1S"), ("location", J.Text "Workshop")]];
+  printers = rows (if demo then demoValues else readJson (text "config" v)) demo;
+  codes = credentials (text "credentials-env-file" v) (L.map (fn row -> row.codeEnv) printers);
+  registry = Registry.start printers demo keyValues;
+  cameras = L.filterMap (fn row ->
+    code = O.withDefault (P.envOr "" row.codeEnv) ((L.find (fn pair -> case pair of (name, _) -> name == row.codeEnv) codes |> O.map (fn pair -> case pair of (_, code) -> code)));
+    _ = if not demo and (strlen code < 1 or strlen code > 32) then P.fail 2 "printer host: runtime credential unavailable" else Unit;
+    _ = if demo then Registry.put registry (Registry.Telemetry row.id (J.object [("connection", J.Text "ONLINE"), ("state", J.Text "IDLE"), ("progress", J.Integer 0)])) else _ = A.spawnWith (A.Static 16) (telemetry registry row code); Unit;
+    if not row.camera then O.None else
+    gate = need (Auth.random Unit);
+    camera = Camera.start {host = row.host, port = row.cameraPort, peer = row.cameraPeer, ca = row.cameraCa, gate = gate, login = need (Frame.login "bblp" code), maxFrame = 4194304};
+    _ = A.spawnWith (A.Static 16) (cameraStats registry row.id camera.manager);
+    O.Some {id = row.id, port = camera.port, gate = gate}) printers;
+  parent = myself 0;
+  view = A.spawnWith (A.Static 16) (fn me ->
+    cfg = {Live.defaults | port = 0, title = "Print room", store = text "store" v, journal = False,
+      script = LJ.src Unit + View.cameraScript + SessionProgram.src Unit};
+    _ = Live.serveProjectedNotify (fn port -> _ = send parent port; Unit) UI.document cfg
+      {init = model registry, update = update registry, subs = View.subs 1000, fields = Nil, codec = View.codec, project = View.project,
+       same = (fn a b -> a == b), cache = Unit, view = (fn sid m cache -> (View.view 1000 sid m, Unit)), css = View.css};
+    Unit);
+  viewPort = case receiveFromRes parent view of Ok port -> port | Err _ -> P.fail 2 "printer host: view unavailable";
+  Gateway.run {address = text "address" v, port = integer 6730 "port" v, origin = text "origin" v, auth = auth, authLimits = Auth.defaults,
+    loginHtml = Login.html Unit, loginScript = LoginProgram.src Unit, sessionScript = SessionProgram.src Unit,
+    viewPort = viewPort, cameras = cameras, snapshot = (fn u -> Registry.get registry), peer = "", owner = parent}.

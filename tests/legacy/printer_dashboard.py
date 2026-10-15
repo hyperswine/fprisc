@@ -1,3 +1,4 @@
+# Legacy compatibility fixture only. Production source is examples/printer-host.fpr.
 #!/usr/bin/env python3
 """LAN transport for examples/printers.fpr. No printer control endpoints.
 
@@ -33,7 +34,7 @@ from http.cookies import SimpleCookie, CookieError
 from urllib.parse import urlsplit
 from printer_auth import Auth, load_keys, COOKIE, BINDING, CHALLENGE_SECONDS, SESSION_SECONDS
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 MAX_FRAME = 4 * 1024 * 1024
 STATUS_FIELDS = {"gcode_state", "mc_percent", "nozzle_temper", "bed_temper", "mc_remaining_time", "layer_num", "total_layer_num", "nozzle_target_temper", "bed_target_temper", "gcode_file", "subtask_name", "wifi_signal", "print_error", "ams", "vt_tray"}
 NATIVE_FIELDS = {"connection", "state", "job", "progress", "remaining", "layers", "nozzle", "bed", "nozzle_target", "bed_target", "wifi", "reports", "report_hz", "last_report", "last_report_iso", "error", "filament", "note"}

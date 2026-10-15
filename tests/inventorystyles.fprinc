@@ -12,7 +12,7 @@ sampleUpdate ev v = case ev of
   | Live.Msg _ Theme -> ({v | theme = 1 - v.theme}, Nil)
   | _ -> (v, Nil).
 main = if Program.args Unit == ["serve"] then
-    _ = Live.serveProjected {Live.defaults | port = 0, script = script, journal = False}
+    _ = Live.serveProjectedBody [G.utilities [G.Margin (G.Px 0)]] {Live.defaults | port = 0, script = script, journal = False}
       {init = {sampleView | page = 0}, update = sampleUpdate, subs = (fn v -> Nil), fields = Nil,
        codec = codec, project = (fn sid v -> v), same = (fn a b -> a == b),
        cache = (VC.empty Unit, noRender), view = view 12, css = cssAll};
@@ -21,5 +21,5 @@ main = if Program.args Unit == ["serve"] then
     v = {sampleView | page = 0};
     node = root v (signedIn v [itemCard sampleItem, empty v] noRender);
     (ss, ds) = G.renderStyled (G.El "div" Nil [node, N.view "Example reload notice"]);
-    _ = print (Json.render (Json.object [("s", Json.strings ss), ("d", Json.strings ds), ("css", Json.Text (cssAll v))]));
+    _ = print (Json.render (Json.object [("s", Json.strings ss), ("d", Json.strings ds), ("body", Json.Text (G.attrsOf [G.utilities [G.Margin (G.Px 0)]])), ("css", Json.Text (G.localCss (G.atomNames (G.localAtoms [G.utilities [G.Margin (G.Px 0)]])) + cssAll v))]));
     0.

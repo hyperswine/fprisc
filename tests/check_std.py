@@ -42,6 +42,9 @@ bad = ROOT / 'tests' / 'std' / 'codec_bad.fpr'
 p2 = subprocess.run([fpr, 'build', str(bad), '-o', os.devnull], capture_output=True, text=True, timeout=300)
 assert p2.returncode != 0 and 'codec literal @Msg' in p2.stdout + p2.stderr, p2.stdout + p2.stderr
 print('@Msg over a type with an unwireable field is a COMPILE error that says which constructor: PASS')
+p3 = subprocess.run([fpr, 'run', str(ROOT / 'tests/imported_codec.fpr')], capture_output=True, text=True, timeout=300)
+assert p3.returncode == 0 and p3.stdout == 'imported codec and record path qualification: PASS\n', p3.stdout + p3.stderr
+print('Imported module codec/path literals qualify their own types and preserve public wire labels: PASS')
 print('Sol runs the same std modules (list, string, map, option, order, json), and prints values as written: PASS')
 p = subprocess.run([fpr, 'sol', str(ROOT / 'tests' / 'std' / 'solcodec.sol')], capture_output=True, text=True, timeout=300)
 got = [l for l in p.stdout.splitlines() if not l.startswith(('[sol]', '[table]', '[jit]'))]
@@ -63,6 +66,9 @@ check('call', env={'FPR_HARTS':'4'}, label='Actor call/reply and legacy ask fail
 check('call', label='std/actor call/reply: a correlated reply; a full mailbox and an ended service are answers, not a stranded caller; an event from another actor stays queued; a stale reply is not read as the answer')
 check('poller', label='receiveNow (an empty mailbox allocates nothing), receiveWithin, and a server whose accepts and reads wait on ONE poller')
 check('term', label='Term.decode: text a UTF-8 character at a time, named and function keys, Ctrl and Alt, sequences split across reads')
+check('javascript', label='JavaScript: typed syntax without Raw, safe literals and validated names')
+check('browsermedia', label='BrowserMedia: shared active-source policy, phases and suspension')
+check('httpclient', label='HttpClient: bounded framing, partial I/O, strict rejection, deadlines, cancellation and native request validation')
 check('http', label='Http: client and server, headers, a 100 KB POST, 404, chunked decoding, URL parsing')
 check('httplimits', label='Http.serveWith limits: a 4 KB header block is 431, a 100 KB body 413, a quiet connection and a short body 408 within readMs, a bad content-length 400')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:

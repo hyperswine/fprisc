@@ -1,0 +1,33 @@
+# Generated login document: local typed appearance and ordinary view nodes.
+G = use "std/view".
+UI = use "presentation".
+L = use "std/list".
+p = G.Px.
+u = G.utilities.
+e = UI.element.
+paragraph = [UI.muted, u [G.LineHeight 160]].
+body = [u [G.Margin (p 0), G.MinHeight (G.Vh 100), G.FontFamily G.SystemFont, G.FontSize (p 15), G.Background (G.Rgb 246 245 240), G.Foreground (G.Rgb 38 51 46)]].
+card = e "main" [UI.border, u [G.MaxWidth (p 500), G.MarginX G.Auto, G.MarginY (G.Vh 12), G.Padding (p 34), G.Background (G.Rgb 255 254 250), G.Radius (p 18)], G.narrow [G.MarginX (p 16), G.MarginY (p 32), G.Padding (p 24)]]
+  [e "div" UI.eyebrow [G.Txt "LOCAL WORKSHOP / PRINTERS"],
+   e "h1" [u [G.FontSize (p 36), G.LetterSpacing (p (0 - 1)), G.MarginTop (p 8), G.MarginBottom (p 16)]] [G.Txt "Sign in to Print room"],
+   e "p" paragraph [G.Txt "Use your authorized Ed25519 key. Your browser signs a temporary challenge; your private key stays on this device."],
+   e "form" [G.Att "id" "login", G.Att "autocomplete" "off"]
+    [e "label" [G.Att "for" "private-key", u [G.Display G.Block, G.MarginTop (p 24), G.MarginBottom (p 10)]] [G.Txt "Private key"],
+     e "textarea" [G.Att "id" "private-key", G.Att "aria-describedby" "key-help", G.Att "autocomplete" "off", G.Att "autocapitalize" "off", G.Att "spellcheck" "false", G.Att "required" "", UI.border,
+       u [G.Width (G.Pct 100), G.Height (p 150), G.Radius (p 8), G.Padding (p 12), G.FontFamily G.MonoFont, G.FontSize (p 12), G.Resize G.VerticalResize, G.TextSecurity G.MaskedText, G.Background (G.Rgb 255 255 255), G.Foreground (G.Rgb 38 51 46)],
+       G.focus [G.OutlineWidth (p 2), G.OutlineColour UI.green]] Nil,
+     e "small" (G.Att "id" "key-help" :: u [G.Display G.Block, G.MarginTop (p 18)] :: paragraph)
+       [G.Txt "Paste a PKCS#8 PEM private key, a 32-byte hex seed, or a 64-byte seed + public key. The field clears when you sign in. Keys are never saved in browser storage."],
+     e "button" [G.Att "type" "submit", u [G.MarginTop (p 16), G.Background UI.green, G.Foreground (G.Rgb 255 255 255), G.BorderWidth (p 0), G.Radius (p 8), G.PaddingY (p 13), G.PaddingX (p 20), G.FontFamily G.SystemFont, G.FontSize (p 15), G.Cursor G.PointerCursor], G.disabled [G.Opacity 60]] [G.Txt "Sign in"],
+     e "p" (G.Att "id" "message" :: G.Att "role" "status" :: G.Att "aria-live" "polite" :: u [G.MinHeight (p 48), G.FontSize (p 13)] :: paragraph) Nil],
+   e "noscript" Nil [G.Txt "JavaScript is needed to sign the challenge on your device."]].
+html u =
+  tree = e "html" [G.Att "lang" "en"]
+    [e "head" Nil [e "meta" [G.Att "charset" "utf-8"] Nil,
+      e "meta" [G.Att "name" "viewport", G.Att "content" "width=device-width,initial-scale=1"] Nil,
+      e "title" Nil [G.Txt "Sign in · Print room"],
+      e "style" Nil [G.Txt (G.localCss (G.allClasses (e "body" body [card]) Nil))],
+      e "script" [G.Att "src" "/auth/login.js", G.Att "defer" ""] Nil], e "body" body [card]];
+  # Stylesheet text is generator output, emitted by its dedicated text encoder.
+  (ss, _) = G.render tree;
+  "<!doctype html>{strJoin "" ss}".

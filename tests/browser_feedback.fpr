@@ -1,0 +1,16 @@
+unsafe base.
+G = use "../std/view".
+B = use "../std/browserfeedback".
+Live = use "../std/live".
+J = use "../std/json".
+tree = G.El "div" Nil [B.prototypes Nil, G.El "button" [G.Att "data-click" "test"] [G.Txt "send"],
+  G.El "div" [G.Att "data-lv-key" "items"] [G.Txt "items"]].
+main =
+  (statics, dynamics) = G.render tree;
+  _ = if dynamics == Nil then Unit else error "static fixture";
+  # Initial dynamics must remain data even before the first WebSocket frame.
+  payload = "</script><script>window.injected=true</script>";
+  page = Live.pageOf {title = payload, body = Nil, script = ""}
+    {view = (fn sid model cache -> ((["<p>", "</p>"], [payload]), Unit)), cache = Unit, css = (fn model -> "")} (Live.Model 0 Unit);
+  print (J.render (J.object [("html", J.Text (strJoin "" statics)), ("css", J.Text (G.cssFor tree)),
+    ("script", J.Text (B.src Unit)), ("page", J.Text page), ("payload", J.Text payload)])).

@@ -1,0 +1,178 @@
+# Bounded HTTP/1.1 over checked native TCP/TLS. No child processes.
+# One absolute budget covers DNS, connect, TLS, request and response. Callers
+# with repeated requests should retain a resolver pool through requestOn, so
+# an abandoned OS lookup still occupies their configured admission slot.
+T = use "transport".
+Socket = use "sockettransport".
+DNS = use "resolver".
+Connect = use "connect".
+TLS = use "tls".
+H = use "httpcore".
+S = use "string".
+L = use "list".
+E = use "encoding".
+Options = { headerBytes : Int, bodyBytes : Int, timeoutMs : Int, trust : TLS.Trust, minimum : TLS.Minimum }.
+defaults = {headerBytes = 16384, bodyBytes = 4194304, timeoutMs = 60000, trust = TLS.DefaultRoots, minimum = TLS.TLS12}.
+invalid why = Err (T.Invalid why).
+controls : unsafe String -> Int -> Bool .
+controls text at = if at >= strlen text then False else
+  c = charAt text at;
+  c < 32 or c == 127 or controls text (at + 1).
+token : String -> Bool .
+token s = strlen s > 0 and tokenGo s 0.
+tokenGo : unsafe String -> Int -> Bool .
+tokenGo s i = if i >= strlen s then True else
+  c = charAt s i;
+  ((c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or
+    strIndexOf (chr c) "!#$%&'*+-.^_`|~" >= 0) and tokenGo s (i + 1).
+fieldValue : unsafe String -> Int -> Bool .
+fieldValue s i = if i >= strlen s then True else
+  c = charAt s i;
+  (c == 9 or (c >= 32 and c != 127)) and fieldValue s (i + 1).
+# Decimal accumulation is checked before multiplication, including on RV32.
+decimal text = if strlen text == 0 then invalid "empty content-length" else digits text 0 0.
+digits : unsafe String -> Int -> Int -> Result Int T.Failure .
+digits text i n = if i >= strlen text then Ok n else
+  d = charAt text i - 48;
+  if d < 0 or d > 9 or n > (intMax Unit - d) / 10 then invalid "invalid content-length" else digits text (i + 1) (n * 10 + d).
+firstDelimiter : unsafe String -> Int -> Int .
+firstDelimiter s i = if i >= strlen s then i else
+  c = charAt s i;
+  if c == 47 or c == 63 or c == 35 then i else firstDelimiter s (i + 1).
+parseUrl url =
+  at = strIndexOf "://" url;
+  if at < 0 then Err "not a URL (no scheme): {url}" else
+  scheme = S.toLower (S.left at url);
+  rest = S.dropLeft (at + 3) url;
+  cut = firstDelimiter rest 0;
+  authority = S.left cut rest;
+  suffix = S.dropLeft cut rest;
+  target = if suffix == "" then "/" else if S.startsWith "?" suffix then "/{suffix}" else suffix;
+  if scheme != "http" and scheme != "https" then Err "unsupported scheme: {scheme}" else
+  if strlen authority == 0 or controls url 0 or strIndexOf " " url >= 0 or strIndexOf "#" url >= 0 or strIndexOf "@" authority >= 0 then Err "invalid HTTP URL" else
+  parts = if S.startsWith "[" authority then
+      end = strIndexOf "]" authority;
+      if end < 2 then Err "invalid bracketed host" else
+      tail = S.dropLeft (end + 1) authority;
+      if tail == ":" or (tail != "" and not (S.startsWith ":" tail)) then Err "invalid host suffix" else
+      Ok (substr authority 1 (end - 1), if tail == "" then "" else S.dropLeft 1 tail)
+    else
+      colon = strIndexOf ":" authority;
+      if colon < 0 then Ok (authority, "") else
+      if colon == strlen authority - 1 then Err "empty port" else Ok (S.left colon authority, S.dropLeft (colon + 1) authority);
+  case parts of Err why -> Err why | Ok (host, portText) ->
+    port = if portText == "" then Ok (if scheme == "https" then 443 else 80) else decimal portText;
+    case port of Err _ -> Err "bad port in the URL" | Ok p ->
+      if host == "" or p < 1 or p > 65535 then Err "invalid host or port" else Ok {scheme = scheme, host = host, port = p, target = target}.
+validHeaders headers = L.all (fn pair -> case pair of (key, value) -> token key and fieldValue value 0 and
+  not (L.member (S.toLower key) ["host", "content-length", "transfer-encoding", "connection", "accept-encoding", "expect"])) headers.
+requestHead q u =
+  host = if strIndexOf ":" u.host >= 0 then "[{u.host}]" else u.host;
+  authority = if (u.scheme == "http" and u.port == 80) or (u.scheme == "https" and u.port == 443) then host else "{host}:{u.port}";
+  "{q.method} {u.target} HTTP/1.1\r\nhost: {authority}\r\n{H.renderHeaders q.headers}content-length: {strlen q.body}\r\nconnection: close\r\naccept-encoding: identity\r\n\r\n".
+request options q = case Socket.forMs options.timeoutMs of Err why -> Err why | Ok budget ->
+  case DNS.create 1 of Err why -> Err why | Ok pool ->
+    result = requestOn Socket.timerWait budget pool options q;
+    cleanup = DNS.close pool;
+    case cleanup of Ok _ -> result | Err why -> case result of Ok _ -> Err why | Err before -> Err (T.CleanupFailed before why).
+requestOn wait budget pool options q = if options.headerBytes < 4 or options.bodyBytes < 0 then invalid "invalid HTTP limits" else
+  if not (token q.method) or not (validHeaders q.headers) then invalid "invalid or reserved HTTP request header/method" else
+  if strlen q.body > options.bodyBytes then invalid "HTTP request body exceeds limit" else
+  case parseUrl q.url of Err why -> invalid why | Ok u ->
+    head = requestHead q u;
+    if strlen head > options.headerBytes then invalid "HTTP request header exceeds limit" else
+    case Connect.connectWith wait budget pool u.host u.port 16384 of
+      Err why -> Err why
+    | Ok tcp -> if u.scheme == "https" then
+        case TLS.upgrade budget u.host options.trust options.minimum tcp of
+          Err why -> Err why
+        | Ok tls -> T.withConnection tls (exchange budget options q.method head q.body)
+      else T.withConnection tcp (exchange budget options q.method head q.body).
+exchange budget options method head body conn = case T.writeAll budget head conn of
+    (Err (why, _), c) -> (Err why, c)
+  | (Ok _, c) -> case T.writeAll budget body c of
+      (Err (why, _), c2) -> (Err why, c2)
+    | (Ok _, c2) -> response budget options method 0 "" c2.
+# Bounded delimiter reads never request more than their remaining capacity.
+line : unsafe T.Budget -> Int -> String -> T.Connection s -> (Result String T.Failure, String, T.Connection s) .
+line budget limit pending conn =
+  at = strIndexOf "\r\n" pending;
+  if at >= 0 then if at + 2 > limit then (invalid "HTTP line exceeds limit", pending, conn)
+    else (Ok (S.left at pending), S.dropLeft (at + 2) pending, conn)
+  else if strlen pending >= limit then (invalid "HTTP line exceeds limit", pending, conn) else
+    room = limit - strlen pending;
+    case T.readSome budget (if room < 4096 then room else 4096) conn of
+      (Err (why, _), c) -> (Err why, pending, c)
+    | (Ok bytes, c) -> if bytes == "" then (Err T.EndOfStream, pending, c) else line budget limit (pending + bytes) c.
+headers : unsafe T.Budget -> Int -> Int -> List (String, String) -> String -> T.Connection s -> (Result (List (String, String)) T.Failure, String, T.Connection s) .
+headers budget left count acc pending conn = if count > 100 then (invalid "too many HTTP headers", pending, conn) else
+  case line budget left pending conn of
+    (Err why, rest, c) -> (Err why, rest, c)
+  | (Ok raw, rest, c) -> if raw == "" then (Ok (L.reverse acc), rest, c) else
+      at = strIndexOf ":" raw;
+      key = if at < 1 then "" else S.left at raw;
+      value = if at < 0 then "" else S.dropLeft (at + 1) raw;
+      if at < 1 or not (token key) or not (fieldValue value 0) then (invalid "malformed HTTP header", rest, c) else
+      headers budget (left - strlen raw - 2) (count + 1) ((S.toLower key, S.trim value) :: acc) rest c.
+response : unsafe T.Budget -> Options -> String -> Int -> String -> T.Connection s -> (Result {status : Int, headers : List (String, String), body : String} T.Failure, T.Connection s) .
+response budget options method interim pending conn = case line budget options.headerBytes pending conn of
+    (Err why, _, c) -> (Err why, c)
+  | (Ok statusLine, rest, c) ->
+      status = case S.split " " statusLine of version :: code :: _ ->
+          if (version != "HTTP/1.1" and version != "HTTP/1.0") or strlen code != 3 then invalid "malformed HTTP status" else decimal code
+        | _ -> invalid "malformed HTTP status";
+      case status of Err why -> (Err why, c) | Ok code ->
+        if code < 100 or code > 599 or controls statusLine 0 then (invalid "malformed HTTP status", c) else
+        case headers budget (options.headerBytes - strlen statusLine - 2) 0 Nil rest c of
+          (Err why, _, c2) -> (Err why, c2)
+        | (Ok hs, body, c2) -> if code >= 100 and code < 200 then
+            if code == 101 or interim >= 8 then (invalid "unsupported HTTP upgrade or excessive interim responses", c2) else
+            response budget options method (interim + 1) body c2
+          else if method == "HEAD" or code == 204 or code == 304 then (Ok {status = code, headers = hs, body = ""}, c2) else
+            (result, c3) = readBody budget options hs body c2;
+            (case result of Err why -> Err why | Ok bytes -> Ok {status = code, headers = hs, body = bytes}, c3).
+readBody budget options hs pending conn =
+  lengths = L.filter (fn pair -> case pair of (k, _) -> k == "content-length") hs;
+  encodings = L.filter (fn pair -> case pair of (k, _) -> k == "transfer-encoding") hs;
+  if L.length lengths > 1 or L.length encodings > 1 or (lengths != Nil and encodings != Nil) then (invalid "ambiguous HTTP body framing", conn) else
+  case encodings of
+    [(_, value)] -> if S.toLower value != "chunked" then (invalid "unsupported HTTP transfer encoding", conn) else chunked budget options 0 0 Nil pending conn
+  | _ -> case lengths of
+      [(_, value)] -> (case decimal value of Err why -> (Err why, conn) | Ok n ->
+        if n > options.bodyBytes then (invalid "HTTP body exceeds limit", conn) else
+        case exact budget n pending conn of (result, _, c) -> (result, c))
+    | _ -> untilEnd budget options.bodyBytes (strlen pending) [pending] conn.
+exact budget n pending conn = if strlen pending >= n then (Ok (S.left n pending), S.dropLeft n pending, conn) else
+  case T.readExactly budget (n - strlen pending) conn of
+    (Err (why, _), c) -> (Err why, "", c)
+  | (Ok bytes, c) -> (Ok (pending + bytes), "", c).
+untilEnd : unsafe T.Budget -> Int -> Int -> List String -> T.Connection s -> (Result String T.Failure, T.Connection s) .
+untilEnd budget limit count acc conn = if count > limit then (invalid "HTTP body exceeds limit", conn) else
+  room = limit - count;
+  case T.readSome budget (if room < 4096 then room + 1 else 4096) conn of
+    (Err (why, _), c) -> (Err why, c)
+  | (Ok bytes, c) -> if bytes == "" then (Ok (strJoin "" (L.reverse acc)), c) else untilEnd budget limit (count + strlen bytes) (bytes :: acc) c.
+chunkSize text =
+  semicolon = strIndexOf ";" text;
+  digits = if semicolon < 0 then text else S.left semicolon text;
+  if strlen digits == 0 or not (fieldValue text 0) then invalid "invalid HTTP chunk size" else hexGo digits 0 0.
+hexGo : unsafe String -> Int -> Int -> Result Int T.Failure .
+hexGo text i n = if i >= strlen text then Ok n else
+  d = E.hexVal (charAt text i);
+  if d < 0 or n > (intMax Unit - d) / 16 then invalid "invalid HTTP chunk size" else hexGo text (i + 1) (n * 16 + d).
+chunked : unsafe T.Budget -> Options -> Int -> Int -> List String -> String -> T.Connection s -> (Result String T.Failure, T.Connection s) .
+chunked budget options count chunks acc pending conn = if chunks >= 65536 then (invalid "too many HTTP chunks", conn) else
+  case line budget options.headerBytes pending conn of
+    (Err why, _, c) -> (Err why, c)
+  | (Ok raw, rest, c) -> case chunkSize raw of Err why -> (Err why, c) | Ok n ->
+      if n > options.bodyBytes - count then (invalid "HTTP body exceeds limit", c) else
+      if n == 0 then case headers budget options.headerBytes 0 Nil rest c of
+          (Err why, _, c2) -> (Err why, c2)
+        | (Ok trailers, _, c2) -> if L.any (fn pair -> case pair of (k, _) -> L.member k ["content-length", "transfer-encoding", "host"]) trailers then (invalid "forbidden HTTP trailer", c2)
+            else (Ok (strJoin "" (L.reverse acc)), c2)
+      else case exact budget n rest c of
+        (Err why, _, c2) -> (Err why, c2)
+      | (Ok bytes, after, c2) -> case exact budget 2 after c2 of
+          (Err why, _, c3) -> (Err why, c3)
+        | (Ok crlf, more, c3) -> if crlf != "\r\n" then (invalid "malformed HTTP chunk terminator", c3) else
+            chunked budget options (count + n) (chunks + 1) (bytes :: acc) more c3.

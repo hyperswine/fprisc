@@ -24,8 +24,8 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
-spec = importlib.util.spec_from_file_location('printer_dashboard', ROOT / 'tools/printer_dashboard.py')
+sys.path.insert(0, str(ROOT / 'tests/legacy'))
+spec = importlib.util.spec_from_file_location('printer_dashboard', ROOT / 'tests/legacy/printer_dashboard.py')
 bridge = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bridge)
 from check_live_wire import Client, has
@@ -365,7 +365,7 @@ def run_gateway(binary):
         pem_path.chmod(0o600)
         log_path = Path(tmp) / 'log'
         with log_path.open('w') as log:
-            proc = subprocess.Popen([sys.executable, str(ROOT / 'tools/printer_dashboard.py'), '--demo', '--port=0', f'--binary={binary}', f'--auth={auth_path}'], stdout=log, stderr=log)
+            proc = subprocess.Popen([sys.executable, str(ROOT / 'tests/legacy/printer_dashboard.py'), '--demo', '--port=0', f'--binary={binary}', f'--auth={auth_path}'], stdout=log, stderr=log)
             client = None
             try:
                 wait_for(lambda: 'Print room:' in log_path.read_text())

@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Source boundary guard; behavioral/native/browser suites provide acceptance.
+
+Optional --binary verifies compatibility exports against the native generator.
+This deliberately audits named source boundaries, not arbitrary string semantics
+or a proof of every dynamically reachable call.
+"""
+import argparse
+from pathlib import Path
+import re
+import subprocess
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[1]
+APPS = ['examples/' + name + '.fpr' for name in
+        ('inventory', 'logbook', 'pos1', 'printers', 'printer-host')]
+BROWSER = ['std/' + name + '.fpr' for name in
+           ('livejs', 'browsercalc', 'clientcalc', 'browserautocomplete',
+            'browserfeedback', 'browserformfill', 'browserstorage', 'browsermedia')]
+BROWSER += ['examples/printer-dashboard/' + name + '.fpr' for name in
+            ('loginprogram', 'sessionprogram', 'loginview', 'presentation')]
+
+def source(path):
+    return re.sub(r'^\s*#.*$', '', (ROOT / path).read_text(), flags=re.M)
+
+def closure(paths):
+    seen = set()
+    def visit(path):
+        path = path.resolve()
+        if path in seen:
+            return
+        seen.add(path)
+        for spec in re.findall(r'\buse\s+"([^"]+)"', source(path.relative_to(ROOT))):
+            spec = spec.split('#')[0]
+            name = spec if spec.endswith('.fpr') else spec + '.fpr'
+            candidate = path.parent / name
+            visit(candidate if candidate.is_file() else ROOT / name)
+    for path in paths:
+        visit(ROOT / path)
+    return seen
+
+for path in APPS + BROWSER:
+    text = source(path)
+    assert not re.search(r'\b(?:Proc|Process)\.|\buse\s+"(?:std/)?proc"|cssText|\bG\.(?:Style|Prop)\b', text), path
+    assert not re.search(r'"[^"\n]*(?:function\s*\(|=>|window\.[A-Za-z_]+\s*=|@media|:hover\s*\\?\{)', text), path
+    assert '<script' not in text and '<style' not in text, path
+for path in BROWSER:
+    assert 'JS.' in source(path) or 'JavaScript.' in source(path) or 'G.' in source(path), path
+assert not re.search(r'\b(?:Raw|Source|Template)\b', source('std/javascript.fpr'))
+assert 'bootstrap s d' in source('std/live.fpr')
+assert 'window.__LV__=' not in source('std/live.fpr')
+assert 'cssFor tree = localCss' in source('std/view.fpr')
+assert 'cssBase = "".' in source('std/view.fpr')
+assert 'cssExtra c = "".' in source('std/view.fpr')
+assert 'maCssFor tree = G.localCss' in source('std/ma.fpr')
+assert 'maBase = "".' in source('std/ma.fpr')
+for name in ('printer_dashboard.py', 'printer_auth.py'):
+    assert not (ROOT / 'tools' / name).exists(), name
+    assert (ROOT / 'tests/legacy' / name).is_file(), name
+host = source('examples/printer-host.fpr')
+assert not re.search(r'\b(?:watch|rebuild|restart)\s*=', host)
+assert not re.search(r'F\.(?:readText|readBytes)\s+"[^"\n]*\.(?:js|css|html)', host)
+
+# Shared Live keeps its explicitly requested development reload capability.
+# Ordinary application configurations disable that watcher. No other module in
+# this closure invokes a process API; std/os and std/proc declare the mechanism.
+modules = closure(APPS)
+process_calls = set()
+for path in modules:
+    text = source(path.relative_to(ROOT))
+    aliases = re.findall(r'(\w+)\s*=\s*use\s+"(?:std/)?proc"', text)
+    if any(re.search(r'\b' + re.escape(alias) + r'\.', text) for alias in aliases):
+        process_calls.add(path.relative_to(ROOT).as_posix())
+assert process_calls == {'std/live.fpr'}, process_calls
+assert 'watch = Nil' in source('examples/inventory.fpr')
+assert 'watch = Nil' in source('examples/pos1.fpr')
+assert 'watch = if dev then src :: Nil else Nil' in source('examples/logbook.fpr')
+assert 'watch = Nil' in source('std/live.fpr')  # printer uses these defaults
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--binary', type=Path)
+args = parser.parse_args()
+if args.binary:
+    with tempfile.TemporaryDirectory(prefix='fpr-pure-exports-') as directory:
+        subprocess.run([str(args.binary.resolve()), '--export-assets=' + directory],
+                       cwd=ROOT, check=True, capture_output=True, timeout=15)
+        for name in ('printer_login.js', 'printer_session.js', 'printer_login.html'):
+            assert (ROOT / 'tools' / name).read_bytes() == (Path(directory) / name).read_bytes(), name
+print(f'PASS pure application source boundaries ({len(modules)} modules); generated browser syntax, local styles, retired Python runtime, explicit development-only reload' +
+      (' and reproducible compatibility exports' if args.binary else ''))

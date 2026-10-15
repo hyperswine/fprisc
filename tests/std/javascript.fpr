@@ -1,0 +1,22 @@
+unsafe base.
+JS = use "std/javascript".
+P = use "std/program".
+S = use "std/string".
+check why yes = if yes then Unit else error "javascript: {why}".
+value = "</script><script>window.injected=true</script>{chr 226}{chr 128}{chr 168}".
+fixture = JS.program [JS.Do (JS.Call (JS.Function Nil
+  [JS.Let "sum" (JS.Number 0), JS.ForOf "n" (JS.Array [JS.Number 1, JS.Number 2, JS.Number 3])
+    [JS.Assign (JS.Name "sum") (JS.Binary JS.Add (JS.Name "sum") (JS.Name "n"))],
+   JS.Assign (JS.Field (JS.Name "window") "generated") (JS.Object [("sum",JS.Name "sum"),("__proto__",JS.Text "data"),("text",JS.Text value)])]) Nil)].
+main = case P.args Unit of
+    ["page"] -> _ = print fixture; 0
+  | ["bad-name"] -> _ = print (JS.expr (JS.Name "x);injected()")); 0
+  | ["reserved"] -> _ = print (JS.expr (JS.Name "return")); 0
+  | ["bad-assignment"] -> _ = print (JS.program [JS.Assign (JS.Call (JS.Name "f") Nil) (JS.Null)]); 0
+  | _ ->
+      _ = check "data cannot close script tags" (not (S.contains "</script>" fixture) and S.contains "\\u003c/script\\u003e" fixture);
+      _ = check "prototype-looking fields are data" (S.contains "[\"__proto__\"]" fixture);
+      _ = check "unicode line separators escaped" (S.contains "\\u2028" fixture);
+      _ = check "valid names" (JS.validName "_event2" and not (JS.validName "return") and not (JS.validName "x.y"));
+      _ = print "javascript: structured syntax, validated names/assignments and script-safe data PASS";
+      0.

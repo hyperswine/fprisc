@@ -1,0 +1,76 @@
+# Printer presentation is local typed data. Names here are FP-RISC functions,
+# never selectors. Every element owns its declarations, including its reset.
+G = use "std/view".
+L = use "std/list".
+p = G.Px.
+ink = G.ThemeColour G.Ink.
+dim = G.ThemeColour G.Dim.
+line = G.ThemeColour G.Line.
+green = G.Rgb 38 108 81.
+u = G.utilities.
+base = u [G.BoxSizing G.BorderBox, G.Margin (p 0)].
+element tag attrs kids = G.El tag (base :: attrs) kids.
+text size = u [G.FontSize (p size)].
+muted = u [G.Foreground dim].
+flex = u [G.Display G.Flex, G.AlignItems G.AlignCenter].
+between = u [G.JustifyContent G.SpaceBetween].
+grid n = u [G.Display G.Grid, G.GridColumns n].
+border = u [G.BorderWidth (p 1), G.BorderStyle G.SolidBorder, G.BorderColour line].
+divider = u [G.BorderTop (p 1) line, G.MarginTop (p 23), G.PaddingTop (p 18)].
+hidden yes = u (if yes then [G.Display G.Hidden] else Nil).
+document = [u [G.Margin (p 0), G.FontFamily G.SystemFont, G.FontSize (p 14), G.LineHeight 150]].
+page = [u [G.MaxWidth (p 1160), G.MarginX G.Auto, G.PaddingTop (p 56), G.PaddingX (p 32), G.PaddingBottom (p 30)],
+  G.narrow [G.PaddingTop (p 30), G.PaddingBottom (p 30), G.PaddingX (p 18)]].
+header = [flex, between, u [G.AlignItems G.AlignStart, G.Gap (p 20), G.MarginBottom (p 32)], G.narrow [G.Direction G.Column]].
+eyebrow = [text 11, u [G.LetterSpacing (p 2), G.Foreground green, G.FontWeight 700, G.MarginBottom (p 12)]].
+title = [text 48, u [G.LetterSpacing (p (0 - 2)), G.FontWeight 600, G.MarginBottom (p 10)], G.narrow [G.FontSize (p 38)]].
+heading = [text 20, u [G.MarginBottom (p 6)]].
+subtitle = [muted, text 15].
+pills = [flex, u [G.Gap (p 8), G.MarginTop (p 8)], G.narrow [G.MarginTop (p 0)]].
+badge = [border, text 10, u [G.FontWeight 700, G.LetterSpacing (p 1), G.PaddingY (p 8), G.PaddingX (p 10), G.Radius (p 6), G.WhiteSpace G.NoWrapSpace]].
+online = u [G.Foreground green, G.Background (G.Rgb 238 246 239), G.BorderColour (G.Rgb 217 232 220)].
+offline = u [G.Background (G.Rgb 248 238 227), G.Foreground (G.Rgb 153 102 56)].
+demo = u [G.Background (G.Rgb 255 240 207), G.BorderColour (G.Rgb 239 221 181), G.Foreground (G.Rgb 138 100 31)].
+overview = [flex, u [G.FlexWrap G.Wrap, G.RowGap (p 16), G.ColumnGap (p 32), G.BorderTop (p 1) line,
+  G.PaddingY (p 17), G.MarginBottom (p 28), G.Foreground dim, G.FontSize (p 12)], G.narrow [G.RowGap (p 12), G.ColumnGap (p 20)]].
+health warning = [u [G.MarginLeft G.Auto, G.Foreground (if warning then G.Rgb 173 103 58 else green)], G.narrow [G.MarginLeft (p 0)]].
+cards = [grid 2, u [G.Gap (p 22), G.AlignItems G.AlignStart], G.narrow [G.GridColumns 1]].
+card = [border, u [G.Radius (p 16), G.Background (G.ThemeColour G.Card), G.Padding (p 26),
+  G.Shadow (p 0) (p 4) (p 16) (p 0) (G.Rgba 34 48 37 3)], G.narrow [G.Padding (p 22)]].
+cardHead = [flex, between, u [G.Gap (p 6)]].
+identity = [flex, u [G.Gap (p 12)]].
+mark = [border, grid 1, text 26, u [G.Width (p 46), G.Height (p 46), G.AlignItems G.AlignCenter, G.TextAlign G.TextCenter,
+  G.Background (G.Rgb 241 242 236), G.Radius (p 12), G.Foreground (G.Rgb 82 104 91)]].
+jobLine = [flex, between, text 12, u [G.Gap (p 10), G.MarginTop (p 27)]].
+jobState = [u [G.TextCase G.UpperCase, G.LetterSpacing (p 1), G.Foreground green]].
+jobName = [text 14, u [G.MarginTop (p 8), G.MarginBottom (p 19), G.Overflow G.OverflowHidden, G.TextOverflow G.Ellipsis, G.WhiteSpace G.NoWrapSpace]].
+progress = [u [G.Display G.Block, G.Width (G.Pct 100), G.Height (p 5), G.Radius (p 10), G.Overflow G.OverflowHidden, G.Background (G.Rgb 233 238 230)]].
+progressFill n = [u [G.Height (G.Pct 100), G.Width (G.Pct (if n < 0 then 0 else if n > 100 then 100 else n)),
+  G.Background (G.Rgb 114 155 121), G.Radius (p 10)]].
+progressLabel = [flex, between, text 11, u [G.MarginTop (p 8), G.Numerals G.TabularNumerals]].
+metrics = [grid 3, u [G.Gap (p 12), G.MarginTop (p 26), G.MarginBottom (p 22)]].
+term = [text 11, muted, u [G.MarginBottom (p 8)]].
+value = [text 25, u [G.Numerals G.TabularNumerals, G.FontWeight 500]].
+unit = [text 11, muted, u [G.MarginLeft (p 4)]].
+freshness = [text 11, muted, flex, u [G.Gap (p 5), G.FlexWrap G.Wrap]].
+pulse = [u [G.Height (p 5), G.Width (p 5), G.Radius (G.Pct 50), G.Background (G.Rgb 162 178 157), G.MarginRight (p 3)]].
+actions = [flex, between, divider, u [G.Gap (p 12)]].
+button = [text 12, u [G.FontFamily G.SystemFont, G.Cursor G.PointerCursor],
+  G.focus [G.OutlineWidth (p 3), G.OutlineColour (G.Rgb 212 157 105), G.OutlineOffset (p 4)]].
+quiet = [u [G.Background G.Transparent, G.BorderWidth (p 0), G.Foreground ink, G.PaddingY (p 6), G.PaddingX (p 0)]].
+camera selected available = [border, u [G.Radius (p 30), G.Background G.Transparent, G.Foreground dim, G.PaddingY (p 7), G.PaddingX (p 12)],
+  u (if selected then [G.Background (G.Rgb 237 245 237), G.BorderColour (G.Rgb 204 220 204), G.Foreground green] else Nil),
+  u (if available then Nil else [G.Opacity 45, G.Cursor G.ForbiddenCursor])].
+cameraDot selected = [u [G.Display G.InlineBlock, G.Width (p 7), G.Height (p 7), G.Radius (G.Pct 50), G.MarginRight (p 7),
+  G.Background (if selected then green else G.Rgb 198 206 195)]].
+details = [u [G.PaddingTop (p 24)]].
+detailGrid = [grid 2, u [G.Gap (p 18)]].
+rowTerm = L.append term [u [G.MarginBottom (p 5)]].
+rowValue = [text 12, u [G.WordWrap G.WrapAnywhere, G.LineHeight 140]].
+notice = [text 12, u [G.Foreground (G.Rgb 148 114 78)]].
+cameraHeading = [flex, between, text 10, u [G.LetterSpacing (p 1), G.MarginBottom (p 13)]].
+cameraHost = [u [G.Display G.Block, G.Width (G.Pct 100), G.AspectRatio 16 9, G.ObjectFit G.Contain, G.Radius (p 8), G.Background (G.Rgb 32 45 39)]].
+footnote = [muted, text 11].
+banner = [border, u [G.Padding (p 14), G.BorderColour (G.Rgb 236 218 191), G.Radius (p 8), G.Foreground (G.Rgb 150 97 49), G.Background (G.Rgb 255 245 232)]].
+empty = [muted, u [G.Padding (p 60), G.TextAlign G.TextCenter]].
+footer = [muted, text 11, u [G.MarginTop (p 32), G.PaddingTop (p 20), G.BorderTop (p 1) line, G.LineHeight 170]].

@@ -1,0 +1,35 @@
+# Structured browser capability program. FP-RISC syntax values are authoritative.
+# No foreign source asset or Raw node is read at runtime.
+JS = use "std/javascript".
+src u = JS.program [
+  JS.AsyncDefine "importLoginKey" ["input", "subtle"] (importLoginKeyBody1 Unit),
+  JS.AsyncDefine "loginWithKey" ["key", "subtle", "request"] (loginWithKeyBody2 Unit),
+  JS.If (JS.Binary JS.NotEqual (JS.Unary JS.TypeOf (JS.Name "module")) (JS.Text "undefined")) [JS.Do (JS.AssignValue (JS.Field (JS.Name "module") "exports") (JS.Object [("importLoginKey", JS.Name "importLoginKey"), ("loginWithKey", JS.Name "loginWithKey")]))] [],
+  JS.If (JS.Binary JS.NotEqual (JS.Unary JS.TypeOf (JS.Name "document")) (JS.Text "undefined")) [JS.Const "form" (JS.Call (JS.Field (JS.Name "document") "getElementById") [(JS.Text "login")]), JS.Const "field" (JS.Call (JS.Field (JS.Name "document") "getElementById") [(JS.Text "private-key")]), JS.Const "message" (JS.Call (JS.Field (JS.Name "document") "getElementById") [(JS.Text "message")]), JS.Const "button" (JS.Call (JS.Field (JS.Name "form") "querySelector") [(JS.Text "button")]), JS.Do (JS.Call (JS.Field (JS.Name "form") "addEventListener") [(JS.Text "submit"), (JS.AsyncFunction ["event"] (bodyBody3 Unit))]), JS.Do (JS.Call (JS.Field (JS.Name "window") "addEventListener") [(JS.Text "pagehide"), (JS.Function [] (bodyBody4 Unit))])] []
+].
+
+importLoginKeyBody1 u = [
+  JS.Let "bytes" (JS.Name "undefined"),
+  JS.If (JS.Call (JS.Field (JS.Pattern "^-----BEGIN PRIVATE KEY-----[\\s\\S]+-----END PRIVATE KEY-----$" "") "test") [(JS.Call (JS.Field (JS.Name "input") "trim") [])]) [JS.Const "raw" (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "input") "trim") []) "replace") [(JS.Pattern "-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\\s" "g"), (JS.Text "")]), JS.Do (JS.AssignValue (JS.Name "bytes") (JS.Call (JS.Field (JS.Name "Uint8Array") "from") [(JS.Call (JS.Name "atob") [(JS.Name "raw")]), (JS.Function ["c"] [JS.Return (JS.Call (JS.Field (JS.Name "c") "charCodeAt") [(JS.Number 0)])])]))] [JS.Const "hex" (JS.Call (JS.Field (JS.Name "input") "trim") []), JS.If (JS.Unary JS.Not (JS.Call (JS.Field (JS.Pattern "^(?:[0-9a-fA-F]\{64}|[0-9a-fA-F]\{128})$" "") "test") [(JS.Name "hex")])) [JS.Throw (JS.New (JS.Name "Error") [(JS.Text "Use an Ed25519 PKCS#8 PEM key or a 32-byte hex seed.")])] [], JS.Do (JS.AssignValue (JS.Name "bytes") (JS.Call (JS.Field (JS.Name "Uint8Array") "from") [(JS.Call (JS.Field (JS.Binary JS.Add (JS.Text "302e020100300506032b657004220420") (JS.Call (JS.Field (JS.Name "hex") "slice") [(JS.Number 0), (JS.Number 64)])) "match") [(JS.Pattern ".." "g")]), (JS.Function ["b"] [JS.Return (JS.Call (JS.Name "parseInt") [(JS.Name "b"), (JS.Number 16)])])]))],
+  JS.Try [JS.Return (JS.Await (JS.Call (JS.Field (JS.Name "subtle") "importKey") [(JS.Text "pkcs8"), (JS.Name "bytes"), (JS.Text "Ed25519"), (JS.Boolean False), (JS.Array [(JS.Text "sign")])]))] "_error" [JS.Throw (JS.Name "_error")] [JS.Do (JS.Call (JS.Field (JS.Name "bytes") "fill") [(JS.Number 0)])]
+].
+
+loginWithKeyBody2 u = [
+  JS.Const "response" (JS.Await (JS.Call (JS.Name "request") [(JS.Text "/auth/challenge"), (JS.Object [("method", JS.Text "POST"), ("headers", JS.Object [("Content-Type", JS.Text "application/json")]), ("body", JS.Text "\{}"), ("credentials", JS.Text "same-origin"), ("cache", JS.Text "no-store")])])),
+  JS.Const "challenge" (JS.Await (JS.Call (JS.Field (JS.Name "response") "json") [])),
+  JS.If (JS.Unary JS.Not (JS.Field (JS.Name "response") "ok")) [JS.Throw (JS.New (JS.Name "Error") [(JS.Binary JS.Or (JS.Field (JS.Name "challenge") "error") (JS.Text "Could not request a challenge."))])] [],
+  JS.Const "signature" (JS.New (JS.Name "Uint8Array") [(JS.Await (JS.Call (JS.Field (JS.Name "subtle") "sign") [(JS.Text "Ed25519"), (JS.Name "key"), (JS.Call (JS.Field (JS.New (JS.Name "TextEncoder") []) "encode") [(JS.Field (JS.Name "challenge") "message")])]))]),
+  JS.Try [JS.Const "encoded" (JS.Call (JS.Name "btoa") [(JS.Call (JS.Field (JS.Name "String") "fromCharCode") [(JS.Spread (JS.Name "signature"))])]), JS.Const "result" (JS.Await (JS.Call (JS.Name "request") [(JS.Text "/auth/verify"), (JS.Object [("method", JS.Text "POST"), ("headers", JS.Object [("Content-Type", JS.Text "application/json")]), ("body", JS.Call (JS.Field (JS.Name "JSON") "stringify") [(JS.Object [("id", JS.Field (JS.Name "challenge") "id"), ("signature", JS.Name "encoded")])]), ("credentials", JS.Text "same-origin"), ("cache", JS.Text "no-store")])])), JS.Const "value" (JS.Await (JS.Call (JS.Field (JS.Name "result") "json") [])), JS.If (JS.Unary JS.Not (JS.Field (JS.Name "result") "ok")) [JS.Throw (JS.New (JS.Name "Error") [(JS.Binary JS.Or (JS.Field (JS.Name "value") "error") (JS.Text "Sign in failed."))])] []] "_error" [JS.Throw (JS.Name "_error")] [JS.Do (JS.Call (JS.Field (JS.Name "signature") "fill") [(JS.Number 0)])]
+].
+
+bodyBody3 u = [
+  JS.Do (JS.Call (JS.Field (JS.Name "event") "preventDefault") []),
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "button") "disabled") (JS.Boolean True)),
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "message") "textContent") (JS.Text "Signing in…")),
+  JS.Let "key" (JS.Name "undefined"),
+  JS.Try [JS.If (JS.Binary JS.Or (JS.Unary JS.Not (JS.Field (JS.Name "globalThis") "isSecureContext")) (JS.Unary JS.Not (JS.OptionalField (JS.Field (JS.Name "globalThis") "crypto") "subtle"))) [JS.Throw (JS.New (JS.Name "Error") [(JS.Text "Open Print room over HTTPS, or on localhost.")])] [], JS.Const "importing" (JS.Call (JS.Name "importLoginKey") [(JS.Field (JS.Name "field") "value"), (JS.Field (JS.Name "crypto") "subtle")]), JS.Do (JS.AssignValue (JS.Field (JS.Name "field") "value") (JS.Text "")), JS.Do (JS.AssignValue (JS.Name "key") (JS.Await (JS.Name "importing"))), JS.Do (JS.Await (JS.Call (JS.Name "loginWithKey") [(JS.Name "key"), (JS.Field (JS.Name "crypto") "subtle"), (JS.Name "fetch")])), JS.Do (JS.Call (JS.Field (JS.Name "location") "replace") [(JS.Text "/")])] "error" [JS.Do (JS.AssignValue (JS.Field (JS.Name "message") "textContent") (JS.Choose (JS.Binary JS.Equal (JS.Field (JS.Name "error") "name") (JS.Text "NotSupportedError")) (JS.Text "This browser does not support Ed25519. Please update your browser.") (JS.Choose (JS.Binary JS.Equal (JS.Field (JS.Name "error") "name") (JS.Text "DataError")) (JS.Text "That is not a valid Ed25519 private key.") (JS.Field (JS.Name "error") "message"))))] [JS.Do (JS.AssignValue (JS.Name "key") (JS.Null)), JS.Do (JS.AssignValue (JS.Field (JS.Name "field") "value") (JS.Text "")), JS.Do (JS.AssignValue (JS.Field (JS.Name "button") "disabled") (JS.Boolean False))]
+].
+
+bodyBody4 u = [
+  JS.Do (JS.AssignValue (JS.Field (JS.Name "field") "value") (JS.Text ""))
+].

@@ -21,10 +21,10 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / 'tests/fixtures/tls'
-sys.path.insert(0, str(ROOT / 'tools'))
+sys.path.insert(0, str(ROOT / 'tests/legacy'))
 sys.path.insert(0, str(ROOT / 'tests'))
 from check_printer_dashboard import test_auth, authenticate
-spec = importlib.util.spec_from_file_location('printer_dashboard_camera', ROOT / 'tools/printer_dashboard.py')
+spec = importlib.util.spec_from_file_location('printer_dashboard_camera', ROOT / 'tests/legacy/printer_dashboard.py')
 bridge = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bridge)
 GATE = 'synthetic-local-camera-capability-for-tests'

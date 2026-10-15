@@ -1,0 +1,68 @@
+unsafe base.
+H = use "std/httpclient".
+T = use "std/transport".
+O = use "std/option".
+S = use "std/string".
+L = use "std/list".
+check why yes = if yes then Unit else error "httpclient: {why}".
+readScript n s =
+  left = strlen s.bytes;
+  count = if n < s.fragment then n else s.fragment;
+  take = if count < left then count else left;
+  (if take == 0 then T.End else T.Data (substr s.bytes 0 take), {s | bytes = S.dropLeft take s.bytes, calls = s.calls + 1, now = s.now + s.tick}).
+writeScript bytes s = (T.Wrote (strlen bytes), s).
+close s = (Ok Unit, {s | closed = s.closed + 1}).
+driver = T.Backend readScript writeScript (fn interest budget s -> (Err T.TimedOut, s)) (fn s -> s.now) close (fn s -> Ok Unit) (fn why s -> (why, s)).
+connection fragment bytes = case T.open 4096 driver {bytes = bytes, fragment = fragment, calls = 0, now = 0, tick = 0, closed = 0} of Ok c -> c | Err _ -> error "fixture".
+options = {H.defaults | headerBytes = 512, bodyBytes = 32}.
+budget = T.Uncancelled 10000.
+reply method fragment raw = T.withConnection (connection fragment raw) (fn c -> H.response budget options method 0 "" c).
+body result = case result of Ok response -> response.body | Err why -> error "httpclient unexpected {why}".
+refuses raw = case reply "GET" 1 raw of Err _ -> True | _ -> False.
+calls conn = state = T.state conn; state.calls.
+main =
+  content = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello";
+  _ = L.each (fn n -> check "fragmented or coalesced fixed body" (body (reply "GET" n content) == "hello")) [1, 2, 31, 4096];
+  _ = check "close-delimited" (body (reply "GET" 3 "HTTP/1.0 404 Missing\r\n\r\nmissing") == "missing");
+  _ = check "HEAD does not wait for a body" (body (reply "HEAD" 1 "HTTP/1.1 200 OK\r\nContent-Length: 10000\r\n\r\n") == "");
+  _ = check "204 does not wait for a body" (body (reply "GET" 1 "HTTP/1.1 204 No Content\r\n\r\n") == "");
+  _ = check "interim response" (body (reply "GET" 2 "HTTP/1.1 100 Continue\r\n\r\n{content}") == "hello");
+  chunked = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5;note=x\r\nhello\r\n6\r\n world\r\n0\r\nX-Trace: test\r\n\r\n";
+  _ = L.each (fn n -> check "chunked with trailers" (body (reply "GET" n chunked) == "hello world")) [1, 2, 31, 4096];
+  _ = L.each (fn raw -> check "strict framing rejection" (refuses raw))
+    ["HTTP/1.1 200 OK\r\nContent-Length: 1\r\nContent-Length: 1\r\n\r\nx",
+     "HTTP/1.1 200 OK\r\nContent-Length: 1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n",
+     "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\n\r\nx",
+     "HTTP/1.1 200 OK\r\nContent-Length: +1\r\n\r\nx",
+     "HTTP/1.1 200 OK\r\nContent-Length: 999999999999999999999999\r\n\r\n",
+     "HTTP/1.1 200 OK\r\nContent-Length: 33\r\n\r\n",
+     "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nabc",
+     "HTTP/1.1 200 OK\r\nMalformed\r\n\r\n",
+     "HTTP/1.1 200 OK\r\n Bad: folded\r\n\r\n",
+     "HTTP/1.1 200 OK\r\nBad Header: x\r\n\r\n",
+     "HTTP/1.1 200 OK\r\nX: {chr 0}\r\n\r\n",
+     "HTTP/1.1 200 OK\r\nX: {S.repeat 512 "x"}\r\n\r\n",
+     "HTTP/1.1 200 OK\r\n\r\n{S.repeat 33 "x"}",
+     "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n21\r\n",
+     "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nx!!0\r\n\r\n",
+     "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nx\r\n0\r\nContent-Length: 0\r\n\r\n",
+     "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nffffffffffffffffffffff\r\n",
+     "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n",
+     "HTTP/1.1 101 Switching\r\n\r\n",
+     "HTTP/2 200 OK\r\n\r\n",
+     "HTTP/1.1 200x OK\r\n\r\n",
+     "{S.repeat 9 "HTTP/1.1 100 Continue\r\n\r\n"}{content}"];
+  c = connection 1 content;
+  slow = case c of T.Open d s n -> T.Open d {s | tick = 10} n | _ -> error "fixture";
+  (expired, next) = H.response (T.Uncancelled 25) options "GET" 0 "" slow;
+  _ = check "progress does not extend deadline" (case expired of Err T.TimedOut -> state = T.state next; state.calls == 3 | _ -> False);
+  (cancelled, idle) = H.response (T.Budget 0 (fn u -> True)) options "GET" 0 "" c;
+  _ = check "cancel before any I/O" (cancelled == Err T.Cancelled and (calls idle) == 0);
+  _ = check "Host includes a nondefault port" (S.contains "host: example.org:8080\r\n" (H.requestHead {method = "GET", body = "", headers = Nil} {host = "example.org", port = 8080, scheme = "http", target = "/"}));
+  _ = check "query-only URL" (H.parseUrl "http://example.org?q=1" == Ok {host = "example.org", port = 80, scheme = "http", target = "/?q=1"});
+  _ = check "IPv6 URL" (H.parseUrl "http://[::1]:8080/" == Ok {host = "::1", port = 8080, scheme = "http", target = "/"});
+  _ = L.each (fn url -> check "bad URL" (case H.parseUrl url of Err _ -> True | _ -> False))
+    ["http://host:0/", "http://host:65536/", "http://user@host/", "http://host/path\r\nx", "http://host/a b", "http://host/#fragment"];
+  _ = check "request injection and framing override refused" (not (H.validHeaders [("X", "a\r\nb")]) and not (H.validHeaders [("Content-Length", "3")]) and not (H.token "GET\r\n"));
+  _ = print "httpclient: fragmented native framing, strict limits, deadlines, cancellation and request validation PASS";
+  0.

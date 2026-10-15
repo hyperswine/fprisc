@@ -53,7 +53,7 @@ effects cfg notes state = case notes of
           | _ -> (Ok Nil, client);
         (result, next) = action;
         case result of Err _ -> offline {current | client = O.Some next} | Ok _ -> effects cfg rest {current | client = O.Some next, backoff = 1000}.
-step cfg pool watcher state =
+advance cfg pool watcher state =
   current = case state.client of
       O.None -> if now Unit < state.retryAt then _ = Clock.sleepMs 250; state else
         (case dial cfg pool watcher of Err _ -> offline state | Ok client -> {state | client = O.Some client, note = "Waiting for a status report."})
@@ -62,6 +62,9 @@ step cfg pool watcher state =
         (retained, drained) = MC.takeNotices next;
         base = reports cfg retained {state | client = O.Some drained};
         (case result of Err _ -> offline base | Ok notes -> effects cfg notes base);
+  current.
+step cfg pool watcher state =
+  current = advance cfg pool watcher state;
   _ = print (J.render (PT.snapshot (now Unit) (case current.client of O.Some c -> c.session.phase == SS.Online | _ -> False) current.note current.telemetry));
   (True, current).
 main = case P.args Unit of

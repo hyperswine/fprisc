@@ -1,0 +1,32 @@
+unsafe base.
+Auth = use "../std/sessionauth".
+O = use "../std/option".
+check why yes = if yes then Unit else error "auth policy: {why}".
+main =
+  limits = {Auth.defaults | pending = 1, sessions = 1, addresses = 1, attempts = 2, challengeMs = 100, sessionMs = 200, windowMs = 1000};
+  (reply, s1) = Auth.challenge limits 0 "https://a.example" "client" "id" "binding" Auth.initial;
+  _ = check "challenge domain separation" (case reply of Auth.ChallengeReady _ message _ -> message == "Print room login v1\nhttps://a.example\nid" | _ -> False);
+  (full, s2) = Auth.challenge limits 1 "https://a.example" "client" "id2" "binding" s1;
+  _ = check "pending capacity" (full == Auth.Refused);
+  (wrong, s3) = Auth.consume 1 "https://a.example" "id" "wrong" s2;
+  (replay, s4) = Auth.consume 2 "https://a.example" "id" "binding" s3;
+  _ = check "wrong browser consumes challenge" (wrong == O.None and replay == O.None);
+  (_, s5) = Auth.challenge limits 3 "https://a.example" "client" "id3" "binding" s4;
+  (cross, s6) = Auth.consume 4 "https://b.example" "id3" "binding" s5;
+  _ = check "wrong origin consumes challenge" (cross == O.None);
+  (rate, _) = Auth.challenge limits 5 "https://a.example" "client" "id4" "binding" s6;
+  (addresses, _) = Auth.challenge limits 5 "https://a.example" "other" "id4" "binding" s6;
+  _ = check "rate and address capacity" (rate == Auth.Refused and addresses == Auth.Refused);
+  (_, renewed) = Auth.challenge limits 1000 "https://a.example" "other" "id4" "binding" s6;
+  (expired, cleared) = Auth.consume 1100 "https://a.example" "id4" "binding" renewed;
+  _ = check "expiry boundary and rate recovery" (expired == O.None and cleared.pending == Nil);
+  token = "synthetic-session-token-with-at-least-32-characters";
+  (session, online) = Auth.issue limits 1100 "https://a.example" token cleared;
+  _ = check "origin-bound session" (session == Auth.SessionReady token and Auth.valid 1101 token "https://a.example" online and not (Auth.valid 1101 token "https://b.example" online));
+  (overfull, _) = Auth.issue limits 1101 "https://a.example" "another-synthetic-session-token-32-chars" online;
+  _ = check "session capacity" (overfull == Auth.Refused);
+  _ = check "session expiry boundary" (not (Auth.valid 1300 token "https://a.example" online));
+  _ = check "logout revokes immediately" (not (Auth.valid 1101 token "https://a.example" (Auth.logout token online)));
+  _ = check "malformed token refusal" (not (Auth.valid 1101 "" "https://a.example" online));
+  _ = print "auth policy: origin/binding, one-use failures, exact expiry, rate/admission recovery and logout PASS";
+  0.

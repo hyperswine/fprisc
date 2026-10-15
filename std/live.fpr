@@ -57,6 +57,7 @@ ST = use "stream".
 H = use "http".
 WS = use "ws".
 J = use "json".
+JS = use "javascript".
 D = use "decode".
 M = use "map".
 O = use "option".
@@ -68,6 +69,7 @@ OS = use "os".
 P = use "proc".
 Ord = use "order".
 L = use "list".
+G = use "view".
 L = use "list".
 
 # ---- the app's vocabulary ------------------------------------------------------------
@@ -262,6 +264,17 @@ serveCached cfg app = serveProjected cfg
 #   css     : p -> String            (given the projection for sid 0)
 #   same    : p -> p -> Bool         usually (fn a b -> a == b)
 serveProjected cfg app =
+  serveProjectedBody Nil cfg app.
+
+# Own document appearance through typed attributes on the actual body. These
+# rules are local to that element; no reset or descendant selectors are added.
+# The original configuration shape remains accepted by serveProjected.
+serveProjectedBody body cfg app = serveProjectedNotify (fn port -> Unit) body cfg app.
+serveProjectedNotify ready body cfg app = serveConfigured
+  { address = cfg.address, port = cfg.port, title = cfg.title, store = cfg.store,
+    journal = cfg.journal, script = cfg.script, watch = cfg.watch,
+    rebuild = cfg.rebuild, restart = cfg.restart, body = body, ready = ready } app.
+serveConfigured cfg app =
   db = (case KV.open cfg.store of Ok d -> d | Err why -> error "live: {why}");
   model = (case restore app.fields db app.init of Ok m -> m | Err why -> error "live: restore failed: {why}");
   saved = start app.fields db model (M.empty S.compare);
@@ -273,6 +286,7 @@ serveProjected cfg app =
     send main (Ok (register self listener (startTickers self (Rs cfg app model (M.empty Ord.int) 1 db saved Nil 1 (M.empty Ord.int))) A.tidy0)));
   _ = Sys.stderr "live: http://{(if strlen cfg.address == 0 then "127.0.0.1" else cfg.address)}:{TCP.port listener}/  (store {cfg.store})\n";
   _ = print "ready {TCP.port listener}";
+  _ = cfg.ready (TCP.port listener);
   # ONE actor waits on every socket (std/poller.fpr): idle sessions sleep in their
   # mailboxes and cost no CPU
   poller = PL.start Unit;
@@ -549,9 +563,13 @@ page reg cfg app =
 pageOf cfg app r = case r of
     Model _ view -> (case app.view 0 view app.cache of ((s, d), _) ->
       strJoin "" ("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>"
-        :: cfg.title :: "</title><style>" :: app.css view :: "</style></head><body><div id=\"lv-root\"></div><script>window.__LV__=\{s:"
-        :: J.render (J.strings s) :: ",d:" :: J.render (J.strings d) :: "};</script><script>" :: cfg.script :: "</script></body></html>" :: Nil))
+        :: G.esc cfg.title :: "</title><style>" :: G.localCss (G.atomNames (G.localAtoms cfg.body)) :: app.css view
+        :: "</style></head><body" :: G.attrsOf cfg.body :: "><div id=\"lv-root\"></div><script>"
+        :: bootstrap s d :: "</script><script>" :: cfg.script :: "</script></body></html>" :: Nil))
   | _ -> "live: no model".
+
+bootstrap statics dynamics = JS.program [JS.Assign (JS.Field (JS.Name "window") "__LV__")
+  (JS.Object [("s", JS.Array (L.map JS.Text statics)), ("d", JS.Array (L.map JS.Text dynamics))])].
 
 # the upgrade, then THIS actor is the session's reader and a new one its writer
 session reg poller app conn req = case WS.accept req of

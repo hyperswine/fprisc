@@ -1,0 +1,17 @@
+unsafe base.
+M = use "std/browsermedia".
+L = use "std/list".
+check why yes = if yes then Unit else error "browsermedia: {why}".
+labels = {off = "off", paused = "paused", connecting = "connecting", connected = "connected", failed = "failed"}.
+main =
+  _ = L.each (fn selected -> L.each (fn visible -> L.each (fn live ->
+    s = {selected = selected, visible = visible, live = live};
+    expected = selected and visible and live;
+    _ = check "shared active rule" (M.evaluate s M.active == expected);
+    _ = check "new source" (M.phase s False M.Connected == (if expected then M.Connecting else if selected then M.Paused else M.Off));
+    _ = check "retained source" (M.phase s True M.Connected == (if expected then M.Connected else if selected then M.Paused else M.Off));
+    check "failure stays failed until source removed" (M.phase s True M.Failed == (if expected then M.Failed else if selected then M.Paused else M.Off))
+  ) [False, True]) [False, True]) [False, True];
+  _ = check "labels are typed phase data" (M.message labels M.Connecting == "connecting" and M.message labels M.Paused == "paused");
+  _ = print "browsermedia: shared source policy, phases, retained failure and suspension PASS";
+  0.

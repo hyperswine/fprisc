@@ -73,12 +73,13 @@ Program = use "std/program".
 Option = use "std/option".
 Result = use "std/result".
 
-El = G.El.
+element tag attrs kids = G.El tag (elementDefaults tag :: attrs) kids.
+elementDefaults tag = G.utilities ([G.BoxSizing G.BorderBox, G.Margin (G.Px 0)] + (if tag == "button" then [G.FontFamily G.InheritFont, G.FontSize G.Inherit] else Nil)).
 Txt = G.Txt.
 Dyn = G.Dyn.
 Cls = G.Cls.
 Att = G.Att.
-Inp = G.Inp.
+input attrs = G.Inp (elementDefaults "input" :: attrs).
 strEq : String -> String -> Bool .
 strEq a b = a == b.
 
@@ -638,7 +639,7 @@ project sid m =
 # and the low-water mark, a row of its receipt, so they render once each and
 # again only when that changes.
 
-pageRoot v kids = El "div" (Cls "col gap-4 p-4 screen" :: Att "data-theme" (if v.theme == 1 then "night" else "day") ::
+pageRoot v kids = element "div" (G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 18), G.Padding (G.Px 18), G.Height (G.Vh 100), G.Height (G.Dvh 100), G.Width (G.Vw 100), G.MaxWidth (G.Vw 100), G.Overflow G.OverflowHidden]] :: Cls "col gap-4 p-4 screen" :: Att "data-theme" (if v.theme == 1 then "night" else "day") ::
   List.append (Appearance.frame (v.theme != 1)) locals) kids.
 locals = G.locals @Client { tab = "1", open = "0", tender = "", delta = "10", rsku = "", cmd = "", name = "", pin = "" }.
 
@@ -674,7 +675,7 @@ viewFresh v = pageRoot v
 # be emitted.  The sheet is therefore built over a SAMPLE tree that
 # shows everything: a signed-in session with a cart, receipts with a
 # void, the console -- every class the app can ever use appears once.
-cssAll v = G.cssWith Notice.styles (El "div" Nil (viewFresh (project 1 sampleModel) :: loginView noSess :: Nil)).
+cssAll v = G.cssWith Notice.styles (element "div" Nil (viewFresh (project 1 sampleModel) :: loginView noSess :: Nil)).
 # The layout rule: the page is the viewport (`screen`), every region has its
 # size from the viewport (flex-auto min-h-0), and what does not fit SCROLLS
 # inside its region (overflow-auto).  Nothing is sized by its contents, so
@@ -691,44 +692,44 @@ sampleModel =
   sPut m2 { noSess | sid = 1, cashier = "ana", cart = ("FW", 2) :: ("BR", 1) :: Nil, toast = "sample", role = "ok", con = "> help" :: Nil }.
 
 loginView s =
-  El "div" [Cls "col gap-3 p-6 panel round mx-auto mt-4 w-full", G.utilities [G.MaxWidth (G.Px 420)]]
-    [ El "div" [Cls "text-xs upper dim"] [Txt "point of sale"]
-    , El "div" [Cls "text-2xl bold"] [Txt "Sign in"]
-    , Inp [Cls "field w-full", G.bind @Client.name, Att "placeholder" "cashier", Att "maxlength" "16"]
-    , Inp [Cls "field w-full", G.bind @Client.pin, G.OnEnter (G.wireOpen codec (Login "")) "name,pin", Att "placeholder" "PIN", Att "type" "password", Att "maxlength" "16"]
-    , El "button" [Cls "btn round px-3 py-2 glow", G.OnClick (G.wireOpen codec (Login "")) "name,pin"] [Txt "open register"]
-    , El "div" [Cls "warm text-sm"] [Dyn s.toast] ].
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12), G.Padding (G.Px 26), G.BackgroundImages [G.TokenImage G.Panel], G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.MarginLeft (G.Auto), G.MarginRight (G.Auto), G.MarginTop (G.Px 18), G.Width (G.Pct 100)]], Cls "col gap-3 p-6 panel round mx-auto mt-4 w-full", G.utilities [G.MaxWidth (G.Px 420)]]
+    [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.TextCase G.UpperCase, G.LetterSpacing (G.Em 180), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs upper dim"] [Txt "point of sale"]
+    , element "div" [G.Utilities [G.Base [G.FontSize (G.Px 30), G.FontWeight 700]], Cls "text-2xl bold"] [Txt "Sign in"]
+    , input [G.Utilities [G.Base [G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Ink)), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.Radius (G.Px 10), G.FontFamily G.InheritFont, G.FontSize G.Inherit, G.OutlineWidth (G.Px 0), G.Width (G.Pct 100)]], Cls "field w-full", G.bind @Client.name, Att "placeholder" "cashier", Att "maxlength" "16"]
+    , input [G.Utilities [G.Base [G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Ink)), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.Radius (G.Px 10), G.FontFamily G.InheritFont, G.FontSize G.Inherit, G.OutlineWidth (G.Px 0), G.Width (G.Pct 100)]], Cls "field w-full", G.bind @Client.pin, G.OnEnter (G.wireOpen codec (Login "")) "name,pin", Att "placeholder" "PIN", Att "type" "password", Att "maxlength" "16"]
+    , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 14), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8), G.Shadow (G.Px 0) (G.Px 0) (G.Px 24) (G.Px 0) (G.RgbaPercent 87 226 210 22)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn round px-3 py-2 glow", G.OnClick (G.wireOpen codec (Login "")) "name,pin"] [Txt "open register"]
+    , element "div" [G.Utilities [G.Base [G.Foreground (G.Rgb 255 138 92), G.FontSize (G.Px 13)]], Cls "warm text-sm"] [Dyn s.toast] ].
 
 nav m s =
-  El "div" [Cls "row between center gap-2 wrap flex-none"]
-    [ El "div" [Cls "row gap-2 center wrap"]
-        [ El "div" [Cls "bold"] [Txt "POS"], El "div" [Cls "dim text-xs"] [Txt "v1"]
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.JustifyContent G.SpaceBetween, G.AlignItems G.AlignCenter, G.Gap (G.Px 8), G.FlexWrap G.Wrap, G.FlexGrow 0, G.FlexShrink 0, G.Basis (G.Auto)]], Cls "row between center gap-2 wrap flex-none"]
+    [ element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.AlignItems G.AlignCenter, G.FlexWrap G.Wrap]], Cls "row gap-2 center wrap"]
+        [ element "div" [G.Utilities [G.Base [G.FontWeight 700]], Cls "bold"] [Txt "POS"], element "div" [G.Utilities [G.Base [G.Foreground (G.ThemeColour (G.Dim)), G.FontSize (G.Px 11)]], Cls "dim text-xs"] [Txt "v1"]
         , tab "1" "Register", tab "2" "Receipts", tab "3" "Inventory", tab "4" "Admin" ]
-    , El "div" [Cls "row gap-2 center dim text-sm wrap"]
-        [ El "span" [Cls (case m.fsOn == 1 of True -> "badge ok" | False -> "badge warn")] [Txt (case m.fsOn == 1 of True -> "disk" | False -> "no disk")]
-        , El "span" [Att "id" "lv-link", Cls "badge"] [Txt "live"]
-        , El "span" [Att "id" "pricing-policy", Cls "badge"] [Dyn m.pricingLabel]
-        , Txt "cashier ", El "b" [Cls "ink"] [Dyn s.cashier]
-        , El "button" [Cls "btn pill px-3 py-2", G.send codec Theme] [Txt (case m.theme == 1 of True -> "day" | False -> "night")]
-        , El "button" [Cls "btn pill px-3 py-2", G.send codec Logout] [Txt "sign out"] ] ].
-tab n label = El "button" [Cls "btn pill px-3 py-2", G.setTo @Client.tab n, Att "data-on" "tab:{n}"] [Txt label].
+    , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.AlignItems G.AlignCenter, G.Foreground (G.ThemeColour (G.Dim)), G.FontSize (G.Px 13), G.FlexWrap G.Wrap]], Cls "row gap-2 center dim text-sm wrap"]
+        [ element "span" [Cls (case m.fsOn == 1 of True -> "badge ok" | False -> "badge warn")] [Txt (case m.fsOn == 1 of True -> "disk" | False -> "no disk")]
+        , element "span" [Att "id" "lv-link", G.Utilities [G.Base [G.Display G.InlineBlock, G.PaddingY (G.Px 2), G.PaddingX (G.Px 9), G.Radius (G.Px 999), G.FontSize (G.Px 11), G.FontWeight 700, G.LetterSpacing (G.Em 60), G.TextCase G.UpperCase, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Dim))]], Cls "badge"] [Txt "live"]
+        , element "span" [Att "id" "pricing-policy", G.Utilities [G.Base [G.Display G.InlineBlock, G.PaddingY (G.Px 2), G.PaddingX (G.Px 9), G.Radius (G.Px 999), G.FontSize (G.Px 11), G.FontWeight 700, G.LetterSpacing (G.Em 60), G.TextCase G.UpperCase, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Dim))]], Cls "badge"] [Dyn m.pricingLabel]
+        , Txt "cashier ", element "b" [G.Utilities [G.Base [G.Foreground (G.ThemeColour (G.Ink))]], Cls "ink"] [Dyn s.cashier]
+        , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 py-2", G.send codec Theme] [Txt (case m.theme == 1 of True -> "day" | False -> "night")]
+        , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 py-2", G.send codec Logout] [Txt "sign out"] ] ].
+tab n label = element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 py-2", G.setTo @Client.tab n, G.localStyle "tab" "{n}" [G.Background (G.ThemeColour G.Ink), G.Foreground (G.ThemeColour G.Bg), G.BorderColour (G.ThemeColour G.Ink)], Att "data-on" "tab:{n}"] [Txt label].
 
 # four toast slots, one role each; only the live one has text (a role
 # change is then a delta, not a reshape); an empty toast is not shown
 toasts s =
-  El "div" [Cls "row gap-2"]
-    [ El "div" [Cls "toast min-h-0 ok"] [Dyn (roleText s "ok")]
-    , El "div" [Cls "toast min-h-0 celebrate"] [Dyn (roleText s "celebrate")]
-    , El "div" [Cls "toast min-h-0 warn"] [Dyn (roleText s "warn")]
-    , El "div" [Cls "toast min-h-0 bad"] [Dyn (roleText s "bad")] ].
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8)]], Cls "row gap-2"]
+    [ element "div" [G.Att "data-hide-empty" "", G.Utilities [G.Base [G.PaddingY (G.Px 10), G.PaddingX (G.Px 14), G.Radius (G.Px 12), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.BackgroundImages [G.TokenImage G.Panel], G.MinHeight (G.Px 0), G.Background (G.Rgb 15 51 40), G.BorderColour (G.Rgb 31 107 80), G.Foreground (G.Rgb 87 226 166)]], Cls "toast min-h-0 ok"] [Dyn (roleText s "ok")]
+    , element "div" [G.Att "data-hide-empty" "", G.Utilities [G.Base [G.PaddingY (G.Px 10), G.PaddingX (G.Px 14), G.Radius (G.Px 12), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.BackgroundImages [G.TokenImage G.Panel], G.MinHeight (G.Px 0), G.Background (G.Rgb 42 26 58), G.BorderColour (G.Rgb 107 63 154), G.Foreground (G.Rgb 217 166 255)]], Cls "toast min-h-0 celebrate"] [Dyn (roleText s "celebrate")]
+    , element "div" [G.Att "data-hide-empty" "", G.Utilities [G.Base [G.PaddingY (G.Px 10), G.PaddingX (G.Px 14), G.Radius (G.Px 12), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.BackgroundImages [G.TokenImage G.Panel], G.MinHeight (G.Px 0), G.Background (G.Rgb 58 42 16), G.BorderColour (G.Rgb 122 90 24), G.Foreground (G.Rgb 255 198 92)]], Cls "toast min-h-0 warn"] [Dyn (roleText s "warn")]
+    , element "div" [G.Att "data-hide-empty" "", G.Utilities [G.Base [G.PaddingY (G.Px 10), G.PaddingX (G.Px 14), G.Radius (G.Px 12), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.BackgroundImages [G.TokenImage G.Panel], G.MinHeight (G.Px 0), G.Background (G.Rgb 58 18 32), G.BorderColour (G.Rgb 122 34 56), G.Foreground (G.Rgb 255 125 149)]], Cls "toast min-h-0 bad"] [Dyn (roleText s "bad")] ].
 roleText s role | strEq s.role role = s.toast.
 roleText s role = "".
 
 body v s cards rows rs =
-  El "div" [Cls "col flex-auto min-h-0", G.showIf @Client.tab "1"] [register v cards] ::
-  El "div" [Cls "col flex-auto min-h-0", G.showIf @Client.tab "2"] [receipts v rows] ::
-  El "div" [Cls "col flex-auto min-h-0", G.showIf @Client.tab "3"] [inventory v] ::
-  El "div" [Cls "col flex-auto min-h-0", G.showIf @Client.tab "4"] [admin v s rs] :: Nil.
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Auto), G.MinHeight (G.Px 0)]], Cls "col flex-auto min-h-0", G.showIf @Client.tab "1"] [register v cards] ::
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Auto), G.MinHeight (G.Px 0)]], Cls "col flex-auto min-h-0", G.showIf @Client.tab "2"] [receipts v rows] ::
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Auto), G.MinHeight (G.Px 0)]], Cls "col flex-auto min-h-0", G.showIf @Client.tab "3"] [inventory v] ::
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Auto), G.MinHeight (G.Px 0)]], Cls "col flex-auto min-h-0", G.showIf @Client.tab "4"] [admin v s rs] :: Nil.
 
 # ---- register ------------------------------------------------------------------------------------
 
@@ -739,115 +740,115 @@ body v s cards rows rs =
 # from those quantities (cartScript below).  None of it depends on a session,
 # so nothing here is rendered again until the catalogue or the tax changes.
 register v cards =
-  El "div" [Cls "row gap-4 flex-auto min-h-0 narrow:col"]
-    [ El "div" [Cls "row wrap gap-2 grow content-start overflow-auto min-h-0 narrow:flex-auto"] cards
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 18), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Auto), G.MinHeight (G.Px 0)], G.Narrow [G.Display G.Flex, G.Direction G.Column]], Cls "row gap-4 flex-auto min-h-0 narrow:col"]
+    [ element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.FlexWrap G.Wrap, G.Gap (G.Px 8), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.AlignContent G.AlignStart, G.Overflow G.OverflowAuto, G.MinHeight (G.Px 0)], G.Narrow [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Auto)]], Cls "row wrap gap-2 grow content-start overflow-auto min-h-0 narrow:flex-auto"] cards
     , cartPanel v ].
 qLocal p = "q_{p.sku}".
 productCard lowAt p =
-  El "div" [Cls "col gap-2 card round p-3 flex-none between",
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 8), G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 12), G.FlexGrow 0, G.FlexShrink 0, G.Basis (G.Auto), G.JustifyContent G.SpaceBetween]], Cls "col gap-2 card round p-3 flex-none between",
     G.utilities [G.Width (G.Px 180), G.Height (G.Px 140)],
     G.narrow [G.Width (G.Less (G.Pct 50) (G.Px 4))]]
-    [ El "div" [Cls "bold"] [Txt p.name]
-    , El "div" [Cls "row between center"]
-        [ El "div" [Cls "tabular"] [Txt "$", Dyn (money p.price)]
+    [ element "div" [G.Utilities [G.Base [G.FontWeight 700]], Cls "bold"] [Txt p.name]
+    , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.JustifyContent G.SpaceBetween, G.AlignItems G.AlignCenter]], Cls "row between center"]
+        [ element "div" [G.Utilities [G.Base [G.Numerals G.TabularNumerals]], Cls "tabular"] [Txt "$", Dyn (money p.price)]
         , stockBadge lowAt p ]
-    , El "button" [Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "+1", Att "data-min" "0", Att "data-max" "{imin 999 p.stock}"] [Txt "add"] ].
+    , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "+1", Att "data-min" "0", Att "data-max" "{imin 999 p.stock}"] [Txt "add"] ].
 # the badge takes a role: sold out is danger, at or under the threshold warning
 stockBadge lowAt p =
-  El "span" [Cls "badge", Att "data-role" "stock"] [Dyn (stockText lowAt p)].
+  element "span" [G.Utilities [G.Base [G.Display G.InlineBlock, G.PaddingY (G.Px 2), G.PaddingX (G.Px 9), G.Radius (G.Px 999), G.FontSize (G.Px 11), G.FontWeight 700, G.LetterSpacing (G.Em 60), G.TextCase G.UpperCase, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Dim))]], Cls "badge", Att "data-role" "stock"] [Dyn (stockText lowAt p)].
 stockText lowAt p | p.stock == 0 = "sold out".
 stockText lowAt p | p.stock <= lowAt = "low: {p.stock}".
 stockText lowAt p = "{p.stock} in stock".
 
 cartPanel m =
   ps = live m.cat;
-  El "div" (Cls "col gap-2 panel round p-4 w-cart min-h-0 narrow:w-full" :: G.narrow [G.Basis (G.Vh 46)] :: Att "data-tax" "{m.tax}" :: (ps |> List.map (fn p -> G.Local (qLocal p) "0")))
-    [ El "div" [Cls "text-xs upper dim"] [Txt "cart"]
-    , El "div" [Cls "col gap-1 flex-auto min-h-0 overflow-auto"] (El "div" [Cls "dim text-sm", Att "id" "cart-empty"] [Txt "nothing yet"] :: (ps |> List.map (fn p -> cartLine p)))
-    , El "div" [Cls "rule"] []
+  element "div" (G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 8), G.BackgroundImages [G.TokenImage G.Panel], G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 18), G.Width (G.Px 400), G.FlexGrow 0, G.FlexShrink 0, G.Basis (G.Auto), G.MinHeight (G.Px 0)], G.Narrow [G.Width (G.Pct 100)]] :: Cls "col gap-2 panel round p-4 w-cart min-h-0 narrow:w-full" :: G.narrow [G.Basis (G.Vh 46)] :: Att "data-tax" "{m.tax}" :: (ps |> List.map (fn p -> G.Local (qLocal p) "0")))
+    [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.TextCase G.UpperCase, G.LetterSpacing (G.Em 180), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs upper dim"] [Txt "cart"]
+    , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 4), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Auto), G.MinHeight (G.Px 0), G.Overflow G.OverflowAuto]], Cls "col gap-1 flex-auto min-h-0 overflow-auto"] (element "div" [G.Utilities [G.Base [G.Foreground (G.ThemeColour (G.Dim)), G.FontSize (G.Px 13)]], Cls "dim text-sm", Att "id" "cart-empty"] [Txt "nothing yet"] :: (ps |> List.map (fn p -> cartLine p)))
+    , element "div" [G.Utilities [G.Base [G.BorderTop (G.Px 1) (G.ThemeColour (G.Line))]], Cls "rule"] []
     , totalRow "subtotal" "cart-sub"
     , totalRow "tax {m.tax / 100}.{pad2 (m.tax % 100)}%" "cart-tax"
-    , El "div" [Cls "row between center"]
-        [ El "div" [Cls "text-xs upper dim"] [Txt "total"]
-        , El "div" [Cls "text-2xl bold tabular", Att "id" "cart-total"] [Txt "$0.00"] ]
-    , El "div" [Cls "row gap-2 center"]
-        [ Inp [Cls "field grow", G.bind @Client.tender, G.enterWith codec (Cash "") @Client.tender, Att "placeholder" "cash tendered"]
-        , El "button" [Cls "btn round px-3 py-2 glow", G.sendWith codec (Cash "") @Client.tender] [Txt "cash"]
-        , El "button" [Cls "btn round px-3 py-2", G.send codec Card] [Txt "card"] ] ].
+    , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.JustifyContent G.SpaceBetween, G.AlignItems G.AlignCenter]], Cls "row between center"]
+        [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.TextCase G.UpperCase, G.LetterSpacing (G.Em 180), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs upper dim"] [Txt "total"]
+        , element "div" [G.Utilities [G.Base [G.FontSize (G.Px 30), G.FontWeight 700, G.Numerals G.TabularNumerals]], Cls "text-2xl bold tabular", Att "id" "cart-total"] [Txt "$0.00"] ]
+    , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.AlignItems G.AlignCenter]], Cls "row gap-2 center"]
+        [ input [G.Utilities [G.Base [G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Ink)), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.Radius (G.Px 10), G.FontFamily G.InheritFont, G.FontSize G.Inherit, G.OutlineWidth (G.Px 0), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0)]], Cls "field grow", G.bind @Client.tender, G.enterWith codec (Cash "") @Client.tender, Att "placeholder" "cash tendered"]
+        , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 14), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8), G.Shadow (G.Px 0) (G.Px 0) (G.Px 24) (G.Px 0) (G.RgbaPercent 87 226 210 22)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn round px-3 py-2 glow", G.sendWith codec (Cash "") @Client.tender] [Txt "cash"]
+        , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 14), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn round px-3 py-2", G.send codec Card] [Txt "card"] ] ].
 totalRow label slot =
-  El "div" [Cls "row between center dim text-sm"] [ Txt label, El "div" [Cls "tabular", Att "id" slot] [Txt "$0.00"] ].
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.JustifyContent G.SpaceBetween, G.AlignItems G.AlignCenter, G.Foreground (G.ThemeColour (G.Dim)), G.FontSize (G.Px 13)]], Cls "row between center dim text-sm"] [ Txt label, element "div" [G.Utilities [G.Base [G.Numerals G.TabularNumerals]], Cls "tabular", Att "id" slot] [Txt "$0.00"] ].
 cartLine p =
-  El "div" [Cls "row between center gap-2 tr flex-none", rowHeight, G.ShowIf (qLocal p), Att "data-line" p.sku, Att "data-price" "{p.price}"]
-    [ El "div" [Cls "grow truncate min-w-0"] [Txt p.name]
-    , El "button" [Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "-1", Att "data-min" "0"] [Txt "-"]
-    , El "div" [Cls "tabular w-40 right"] [G.LTxt (qLocal p)]
-    , El "button" [Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "+1", Att "data-min" "0", Att "data-max" "{imin 999 p.stock}"] [Txt "+"]
-    , El "div" [Cls "tabular w-24 right", Att "data-line-total" p.sku] [Txt "$0.00"]
-    , El "button" [Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "0"] [Txt "x"] ].
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.JustifyContent G.SpaceBetween, G.AlignItems G.AlignCenter, G.Gap (G.Px 8), G.BorderBottom (G.Px 1) (G.ThemeColour (G.Line)), G.PaddingY (G.Px 6), G.PaddingX (G.Px 0), G.FlexGrow 0, G.FlexShrink 0, G.Basis (G.Auto)]], Cls "row between center gap-2 tr flex-none", rowHeight, G.ShowIf (qLocal p), Att "data-line" p.sku, Att "data-price" "{p.price}"]
+    [ element "div" [G.Utilities [G.Base [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.WhiteSpace G.NoWrapSpace, G.Overflow G.OverflowHidden, G.TextOverflow G.Ellipsis, G.MinWidth (G.Px 0)]], Cls "grow truncate min-w-0"] [Txt p.name]
+    , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "-1", Att "data-min" "0"] [Txt "-"]
+    , element "div" [G.Utilities [G.Base [G.Numerals G.TabularNumerals, G.Width (G.Px 40), G.TextAlign G.TextEnd]], Cls "tabular w-40 right"] [G.LTxt (qLocal p)]
+    , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "+1", Att "data-min" "0", Att "data-max" "{imin 999 p.stock}"] [Txt "+"]
+    , element "div" [G.Utilities [G.Base [G.Numerals G.TabularNumerals, G.Width (G.Px 96), G.TextAlign G.TextEnd]], Cls "tabular w-24 right", Att "data-line-total" p.sku] [Txt "$0.00"]
+    , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 py-2", G.OnSet (qLocal p) "0"] [Txt "x"] ].
 
 # ---- receipts ---------------------------------------------------------------------------------------
 
 receipts v rows =
-  El "div" [Cls "col gap-3 flex-auto min-h-0"]
-    [ El "div" [Cls "row gap-4 center"]
-        [ El "div" [Cls "col"] [ El "div" [Cls "text-xs upper dim"] [Txt "receipts"], El "div" [Cls "text-2xl bold tabular"] [Dyn "{v.nsales}"] ]
-        , El "div" [Cls "col"] [ El "div" [Cls "text-xs upper dim"] [Txt "revenue"], El "div" [Cls "text-2xl bold tabular"] [Txt "$", Dyn (money v.revenue)] ]
-        , El "div" [Cls "dim text-sm"] [Txt "newest 50 shown"] ]
-    , El "div" [Cls "col flex-auto min-h-0 overflow-auto"] rows ].
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Auto), G.MinHeight (G.Px 0)]], Cls "col gap-3 flex-auto min-h-0"]
+    [ element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 18), G.AlignItems G.AlignCenter]], Cls "row gap-4 center"]
+        [ element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column]], Cls "col"] [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.TextCase G.UpperCase, G.LetterSpacing (G.Em 180), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs upper dim"] [Txt "receipts"], element "div" [G.Utilities [G.Base [G.FontSize (G.Px 30), G.FontWeight 700, G.Numerals G.TabularNumerals]], Cls "text-2xl bold tabular"] [Dyn "{v.nsales}"] ]
+        , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column]], Cls "col"] [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.TextCase G.UpperCase, G.LetterSpacing (G.Em 180), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs upper dim"] [Txt "revenue"], element "div" [G.Utilities [G.Base [G.FontSize (G.Px 30), G.FontWeight 700, G.Numerals G.TabularNumerals]], Cls "text-2xl bold tabular"] [Txt "$", Dyn (money v.revenue)] ]
+        , element "div" [G.Utilities [G.Base [G.Foreground (G.ThemeColour (G.Dim)), G.FontSize (G.Px 13)]], Cls "dim text-sm"] [Txt "newest 50 shown"] ]
+    , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Auto), G.MinHeight (G.Px 0), G.Overflow G.OverflowAuto]], Cls "col flex-auto min-h-0 overflow-auto"] rows ].
 receiptRow x =
-  El "div" [Cls "col tr flex-none", rowHeight]
-    [ El "div" [Cls "row gap-3 center"]
-        [ El "div" [Cls "bold tabular w-24"] [Txt "#{x.n}"]
-        , El "div" [Cls "dim text-sm w-24"] [Txt x.cashier]
-        , El "div" [Cls "grow text-sm truncate min-w-0"] [Txt (summary x.lines)]
-        , El "div" [Cls "tabular w-24 right"] [Txt "$", Txt (money x.total)]
-        , El "div" [Cls "dim text-xs"] [Txt (fmtTime x.at)]
-        , El "span" [Cls "badge text-center flex-none", badgeWidth] [Txt (case x.pay == 0 of True -> "cash" | False -> "card")]
-        , El "span" [Cls (case x.voided == 1 of True -> "badge bad text-center flex-none" | False -> "badge ok text-center flex-none"), badgeWidth] [Txt (case x.voided == 1 of True -> "void" | False -> "paid")]
-        , El "button" [Cls "btn pill px-3 py-2", G.setTo @Client.open "{x.n}", Att "data-on" "open:{x.n}"] [Txt "lines"]
-        , El "div" [Cls "row justify-end flex-none", G.utilities [G.Width (G.Px 72)]] [voidButton x] ]
-    , El "div" [G.showIf @Client.open "{x.n}", Cls "col text-sm dim p-2 overflow-auto flex-none", G.utilities [G.MaxHeight (G.Px 180)]] (x.lines |> List.map (fn l -> lineRow l) |> withVoid x) ].
-voidButton x | x.voided == 1 = El "div" [Cls "dim text-xs truncate min-w-0"] [Txt "by {x.voidBy}"].
-voidButton x = El "button" [Cls "btn pill px-3 py-2", G.send codec (Void x.n)] [Txt "void"].
-lineRow (sku, q, pr, nm) = El "div" [Cls "row between"] [ Txt "{q} x {nm}", El "div" [Cls "tabular"] [Txt (money (q * pr))] ].
-withVoid x rows | x.voided == 1 = rows + (El "div" [Cls "warm"] [Txt "void by {x.voidBy} at {fmtTime x.voidAt}"] :: Nil).
-withVoid x rows = rows + (El "div" [Cls "row between"] [ Txt "tax", El "div" [Cls "tabular"] [Txt (money x.tax)] ] :: Nil).
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.BorderBottom (G.Px 1) (G.ThemeColour (G.Line)), G.PaddingY (G.Px 6), G.PaddingX (G.Px 0), G.FlexGrow 0, G.FlexShrink 0, G.Basis (G.Auto)]], Cls "col tr flex-none", rowHeight]
+    [ element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 12), G.AlignItems G.AlignCenter]], Cls "row gap-3 center"]
+        [ element "div" [G.Utilities [G.Base [G.FontWeight 700, G.Numerals G.TabularNumerals, G.Width (G.Px 96)]], Cls "bold tabular w-24"] [Txt "#{x.n}"]
+        , element "div" [G.Utilities [G.Base [G.Foreground (G.ThemeColour (G.Dim)), G.FontSize (G.Px 13), G.Width (G.Px 96)]], Cls "dim text-sm w-24"] [Txt x.cashier]
+        , element "div" [G.Utilities [G.Base [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.FontSize (G.Px 13), G.WhiteSpace G.NoWrapSpace, G.Overflow G.OverflowHidden, G.TextOverflow G.Ellipsis, G.MinWidth (G.Px 0)]], Cls "grow text-sm truncate min-w-0"] [Txt (summary x.lines)]
+        , element "div" [G.Utilities [G.Base [G.Numerals G.TabularNumerals, G.Width (G.Px 96), G.TextAlign G.TextEnd]], Cls "tabular w-24 right"] [Txt "$", Txt (money x.total)]
+        , element "div" [G.Utilities [G.Base [G.Foreground (G.ThemeColour (G.Dim)), G.FontSize (G.Px 11)]], Cls "dim text-xs"] [Txt (fmtTime x.at)]
+        , element "span" [G.Utilities [G.Base [G.Display G.InlineBlock, G.PaddingY (G.Px 2), G.PaddingX (G.Px 9), G.Radius (G.Px 999), G.FontSize (G.Px 11), G.FontWeight 700, G.LetterSpacing (G.Em 60), G.TextCase G.UpperCase, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Dim)), G.TextAlign G.TextCenter, G.FlexGrow 0, G.FlexShrink 0, G.Basis (G.Auto)]], Cls "badge text-center flex-none", badgeWidth] [Txt (case x.pay == 0 of True -> "cash" | False -> "card")]
+        , element "span" [Cls (case x.voided == 1 of True -> "badge bad text-center flex-none" | False -> "badge ok text-center flex-none"), badgeWidth] [Txt (case x.voided == 1 of True -> "void" | False -> "paid")]
+        , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 py-2", G.setTo @Client.open "{x.n}", G.localStyle "open" "{x.n}" [G.Background (G.ThemeColour G.Ink), G.Foreground (G.ThemeColour G.Bg), G.BorderColour (G.ThemeColour G.Ink)], Att "data-on" "open:{x.n}"] [Txt "lines"]
+        , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.JustifyContent G.JustifyEnd, G.FlexGrow 0, G.FlexShrink 0, G.Basis (G.Auto)]], Cls "row justify-end flex-none", G.utilities [G.Width (G.Px 72)]] [voidButton x] ]
+    , element "div" [G.showIf @Client.open "{x.n}", G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.FontSize (G.Px 13), G.Foreground (G.ThemeColour (G.Dim)), G.Padding (G.Px 8), G.Overflow G.OverflowAuto, G.FlexGrow 0, G.FlexShrink 0, G.Basis (G.Auto)]], Cls "col text-sm dim p-2 overflow-auto flex-none", G.utilities [G.MaxHeight (G.Px 180)]] (x.lines |> List.map (fn l -> lineRow l) |> withVoid x) ].
+voidButton x | x.voided == 1 = element "div" [G.Utilities [G.Base [G.Foreground (G.ThemeColour (G.Dim)), G.FontSize (G.Px 11), G.WhiteSpace G.NoWrapSpace, G.Overflow G.OverflowHidden, G.TextOverflow G.Ellipsis, G.MinWidth (G.Px 0)]], Cls "dim text-xs truncate min-w-0"] [Txt "by {x.voidBy}"].
+voidButton x = element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 py-2", G.send codec (Void x.n)] [Txt "void"].
+lineRow (sku, q, pr, nm) = element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.JustifyContent G.SpaceBetween]], Cls "row between"] [ Txt "{q} x {nm}", element "div" [G.Utilities [G.Base [G.Numerals G.TabularNumerals]], Cls "tabular"] [Txt (money (q * pr))] ].
+withVoid x rows | x.voided == 1 = rows + (element "div" [G.Utilities [G.Base [G.Foreground (G.Rgb 255 138 92)]], Cls "warm"] [Txt "void by {x.voidBy} at {fmtTime x.voidAt}"] :: Nil).
+withVoid x rows = rows + (element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.JustifyContent G.SpaceBetween]], Cls "row between"] [ Txt "tax", element "div" [G.Utilities [G.Base [G.Numerals G.TabularNumerals]], Cls "tabular"] [Txt (money x.tax)] ] :: Nil).
 summary ls = S.join ", " (ls |> List.map (fn l -> lineWord l)).
 lineWord (sku, q, pr, nm) = "{q}x {nm}".
 
 # ---- inventory --------------------------------------------------------------------------------------
 
 inventory m =
-  El "div" [Cls "col gap-3 flex-auto min-h-0"]
-    [ El "div" [Cls "row gap-2 center"]
-        [ El "div" [Cls "text-xs upper dim"] [Txt "restock by"]
-        , Inp [Cls "field w-24", G.bind @Client.delta, Att "placeholder" "10"] ]
-    , El "div" [Cls "col flex-auto min-h-0 overflow-auto"] (live m.cat |> List.map (fn p -> invRow m p)) ].
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Auto), G.MinHeight (G.Px 0)]], Cls "col gap-3 flex-auto min-h-0"]
+    [ element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.AlignItems G.AlignCenter]], Cls "row gap-2 center"]
+        [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.TextCase G.UpperCase, G.LetterSpacing (G.Em 180), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs upper dim"] [Txt "restock by"]
+        , input [G.Utilities [G.Base [G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Ink)), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.Radius (G.Px 10), G.FontFamily G.InheritFont, G.FontSize G.Inherit, G.OutlineWidth (G.Px 0), G.Width (G.Px 96)]], Cls "field w-24", G.bind @Client.delta, Att "placeholder" "10"] ]
+    , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Auto), G.MinHeight (G.Px 0), G.Overflow G.OverflowAuto]], Cls "col flex-auto min-h-0 overflow-auto"] (live m.cat |> List.map (fn p -> invRow m p)) ].
 invRow m p =
-  El "div" [Cls "row gap-3 center tr flex-none", rowHeight]
-    [ El "div" [Cls "grow"] [Txt p.name]
-    , El "div" [Cls "dim text-xs mono w-24"] [Txt p.sku]
-    , El "div" [Cls "tabular w-24 right"] [Txt "$", Dyn (money p.price)]
-    , El "div" [Cls "tabular w-24 right"] [Dyn "{p.stock}"]
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 12), G.AlignItems G.AlignCenter, G.BorderBottom (G.Px 1) (G.ThemeColour (G.Line)), G.PaddingY (G.Px 6), G.PaddingX (G.Px 0), G.FlexGrow 0, G.FlexShrink 0, G.Basis (G.Auto)]], Cls "row gap-3 center tr flex-none", rowHeight]
+    [ element "div" [G.Utilities [G.Base [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0)]], Cls "grow"] [Txt p.name]
+    , element "div" [G.Utilities [G.Base [G.Foreground (G.ThemeColour (G.Dim)), G.FontSize (G.Px 11), G.FontFamily G.MonoFont, G.Width (G.Px 96)]], Cls "dim text-xs mono w-24"] [Txt p.sku]
+    , element "div" [G.Utilities [G.Base [G.Numerals G.TabularNumerals, G.Width (G.Px 96), G.TextAlign G.TextEnd]], Cls "tabular w-24 right"] [Txt "$", Dyn (money p.price)]
+    , element "div" [G.Utilities [G.Base [G.Numerals G.TabularNumerals, G.Width (G.Px 96), G.TextAlign G.TextEnd]], Cls "tabular w-24 right"] [Dyn "{p.stock}"]
     , stockBadge m.lowAt p
-    , El "button" [Cls "btn pill px-3 py-2", G.OnBoth (G.wireOpen codec (Restock "")) "rsku,delta" "rsku" p.sku] [Txt "restock"] ].
+    , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 999), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn pill px-3 py-2", G.OnBoth (G.wireOpen codec (Restock "")) "rsku,delta" "rsku" p.sku] [Txt "restock"] ].
 
 # ---- admin: the data console ---------------------------------------------------------------------------
 
 admin m s rs =
-  El "div" [Cls "col gap-3 flex-auto min-h-0"]
-    [ El "div" [Cls "row gap-2 wrap"]
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 12), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Auto), G.MinHeight (G.Px 0)]], Cls "col gap-3 flex-auto min-h-0"]
+    [ element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.FlexWrap G.Wrap]], Cls "row gap-2 wrap"]
         [ watch "tax" "{m.tax / 100}.{pad2 (m.tax % 100)}%", watch "low at" "{m.lowAt}", watch "products" "{pCount m.cat}"
         , watch "sales" "{m.nsales}", watch "revenue" (money m.revenue), watch "log lines" "{m.events}"
         , watch "since" (fmtTime m.booted), watch "online" "{m.online}" ]
-    , El "div" [Cls "row gap-2 center"]
-        [ Inp [Cls "field grow mono", G.bind @Client.cmd, G.enterWith codec (Admin "") @Client.cmd, Att "placeholder" "get tax | set price FW 550 | add SKU 450 10 name | rebuild | help"]
-        , El "button" [Cls "btn round px-3 py-2", G.sendWith codec (Admin "") @Client.cmd] [Txt "run"]
-        , El "button" [Cls "btn round px-3 py-2", G.send codec Rebuild] [Txt "rebuild stock"] ]
-    , El "div" [Cls "mono text-sm pre show-empty card round p-3 flex-auto min-h-0 overflow-auto"] [Dyn (S.join "\n" (rev s.con Nil))]
-    , El "div" [Cls "text-xs upper dim"] [Txt "profile"]
-    , El "div" [Cls "mono text-xs pre card round p-3 flex-none overflow-auto", G.utilities [G.MaxHeight (G.Vh 38)]] [Dyn (profileText m rs)]
-    , El "div" [Cls "row gap-2 center dim text-xs"] [ Txt "browser round trip: ", El "span" [Att "id" "pos-rtt"] [Txt "measuring"] ] ].
+    , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.AlignItems G.AlignCenter]], Cls "row gap-2 center"]
+        [ input [G.Utilities [G.Base [G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Foreground (G.ThemeColour (G.Ink)), G.PaddingY (G.Px 8), G.PaddingX (G.Px 12), G.Radius (G.Px 10), G.FontFamily G.InheritFont, G.FontSize G.Inherit, G.OutlineWidth (G.Px 0), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.FontFamily G.MonoFont]], Cls "field grow mono", G.bind @Client.cmd, G.enterWith codec (Admin "") @Client.cmd, Att "placeholder" "get tax | set price FW 550 | add SKU 450 10 name | rebuild | help"]
+        , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 14), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn round px-3 py-2", G.sendWith codec (Admin "") @Client.cmd] [Txt "run"]
+        , element "button" [G.Utilities [G.Base [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Background (G.ThemeColour (G.Card)), G.Foreground (G.ThemeColour (G.Dim)), G.TransitionAll 150, G.Radius (G.Px 14), G.PaddingLeft (G.Px 12), G.PaddingRight (G.Px 12), G.PaddingTop (G.Px 8), G.PaddingBottom (G.Px 8)]], G.hover [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)], Cls "btn round px-3 py-2", G.send codec Rebuild] [Txt "rebuild stock"] ]
+    , element "div" [G.Utilities [G.Base [G.FontFamily G.MonoFont, G.FontSize (G.Px 13), G.WhiteSpace G.PreWrapSpace, G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 12), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Auto), G.MinHeight (G.Px 0), G.Overflow G.OverflowAuto]], Cls "mono text-sm pre show-empty card round p-3 flex-auto min-h-0 overflow-auto"] [Dyn (S.join "\n" (rev s.con Nil))]
+    , element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.TextCase G.UpperCase, G.LetterSpacing (G.Em 180), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs upper dim"] [Txt "profile"]
+    , element "div" [G.Att "data-hide-empty" "", G.Utilities [G.Base [G.FontFamily G.MonoFont, G.FontSize (G.Px 11), G.WhiteSpace G.PreWrapSpace, G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 12), G.FlexGrow 0, G.FlexShrink 0, G.Basis (G.Auto), G.Overflow G.OverflowAuto]], Cls "mono text-xs pre card round p-3 flex-none overflow-auto", G.utilities [G.MaxHeight (G.Vh 38)]] [Dyn (profileText m rs)]
+    , element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Row, G.Gap (G.Px 8), G.AlignItems G.AlignCenter, G.Foreground (G.ThemeColour (G.Dim)), G.FontSize (G.Px 11)]], Cls "row gap-2 center dim text-xs"] [ Txt "browser round trip: ", element "span" [Att "id" "pos-rtt"] [Txt "measuring"] ] ].
 
 profileText v rs =
   S.join "\n"
@@ -868,8 +869,8 @@ memLines mem (grows, mib) = case mem of
       :: "  memory actor: {reqs} requests, {waits} waits, {direct} direct, {inl} inline, {frees} frees, {denied} denied" :: Nil
   | x -> "  memory: not sampled" :: Nil.
 watch label v =
-  El "div" [Cls "col card round p-2", G.utilities [G.MinWidth (G.Px 120)]]
-    [ El "div" [Cls "text-xs upper dim"] [Txt label], El "div" [Cls "tabular bold"] [Dyn v] ].
+  element "div" [G.Utilities [G.Base [G.Display G.Flex, G.Direction G.Column, G.Background (G.ThemeColour (G.Card)), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour (G.Line)), G.Radius (G.Px 14), G.Padding (G.Px 8)]], Cls "col card round p-2", G.utilities [G.MinWidth (G.Px 120)]]
+    [ element "div" [G.Utilities [G.Base [G.FontSize (G.Px 11), G.TextCase G.UpperCase, G.LetterSpacing (G.Em 180), G.Foreground (G.ThemeColour (G.Dim))]], Cls "text-xs upper dim"] [Txt label], element "div" [G.Utilities [G.Base [G.Numerals G.TabularNumerals, G.FontWeight 700]], Cls "tabular bold"] [Dyn v] ].
 
 # the page's script: the client, plus the round trip it sees -- from a send to
 # the next frame that arrives -- written into the Admin tab's slot when there is one
@@ -953,7 +954,7 @@ main = case Config.load { defaults = Json.object (("port", Json.Integer 6710) ::
       # wants one
       cfg = { address = address, port = port, title = "POS v1", store = "{store}.kvlog", journal = False,
               script = script, watch = Nil, rebuild = Nil, restart = Nil };
-      _ = Live.serveProjected cfg { init = bootPricing store metrics reloadNotice, update = update store, subs = subs, fields = Nil, codec = codec,
+      _ = Live.serveProjectedBody [G.utilities [G.Margin (G.Px 0), G.Overflow G.OverflowHidden]] cfg { init = bootPricing store metrics reloadNotice, update = update store, subs = subs, fields = Nil, codec = codec,
                                     project = project, same = (fn a b -> a == b),
                                     view = view, cache = (VC.empty Unit, VC.empty Unit, noRender), css = cssAll };
       0.
