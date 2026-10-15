@@ -79,3 +79,22 @@ The previous bootstrap config and the staged access snippet were backed up
 under `/root/nginx-backups/` on the Linode. No other site was edited. Tailscale
 Serve persists the private TCP route, but the dashboard itself must still be
 running on macm4; no macOS boot job was installed by this proxy deployment.
+
+
+## Native services deployed 2026-10-15
+
+The dashboard is running with both `--native-telemetry` and `--native-camera`.
+FP-RISC now owns each printer's MQTT, verified camera TLS, camera framing,
+shared viewers and MJPEG output. Python retains public authentication, HTTP/
+WebSocket proxying, snapshot aggregation and process supervision. Public
+origin, nginx and Tailscale routing were preserved.
+
+The launcher now uses ignored `build/printer-native-runtime/printers.json` for
+public identities/trust and `--credentials-env-file=../3d-models/.env` for only
+the selected runtime access-code bindings. Both printers' MQTT/camera chains
+and serial identities validate against Bambu Studio's installed printer CA
+bundle. See [the exact launcher and acceptance record](../../examples/printer-dashboard/README.md#production-native-deployment-2026-10-15).
+Native telemetry and two consecutive native-camera JPEGs per printer were
+verified through authenticated public HTTPS, followed by final-viewer cleanup
+and logout revocation. Anonymous status still returns 401. The PID/log/evidence
+live under ignored `build/printer-native-runtime/`; no boot job was installed.

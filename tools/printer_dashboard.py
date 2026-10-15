@@ -907,6 +907,20 @@ def atomic_snapshot(path, value):
         temp.unlink(missing_ok=True)
 
 
+def credential_environment(path, printers):
+    """Select configured code bindings from the existing non-executable file.
+
+    Hosts/serials/trust remain in --config; no file values are logged or passed
+    in process arguments. This parser accepts only the known A1/P1S fields.
+    """
+    values = printer_env(path)
+    names = {p['access_code_env'] for p in printers}
+    allowed = {f'BAMBU_{tag}_ACCESS_CODE' for _, tag, _ in ENV_PRINTERS}
+    if not names or not names.issubset(allowed) or any(not values.get(name) for name in names):
+        raise ValueError('configured printer code is missing from the credential file')
+    return {name: values[name] for name in names}
+
+
 def view_environment(printers, environment):
     private = {p.config.get("access_code_env") for p in printers.values()}
     return {k: v for k, v in environment.items() if k not in private and k not in ("FPR_PRINTER_CODE", "FPR_CAMERA_GATE") and not k.startswith("BAMBU_")}
@@ -926,6 +940,7 @@ def main():
     parser.add_argument("--binary", default=str(ROOT / "build/printers"))
     parser.add_argument("--native-telemetry", help="Native collector executable; live --config entries require tls_ca and tls_peer")
     parser.add_argument("--native-camera", help="Native shared-camera executable; live --config entries require verified TLS trust")
+    parser.add_argument("--credentials-env-file", help="With --config: load only configured A1/P1S code bindings from the existing environment file")
     parser.add_argument("--auth", default=str(ROOT / "examples/printer-dashboard/auth.json"), help="Public Ed25519 key allowlist (required in all modes)")
     parser.add_argument("--origin", help="Public origin, e.g. https://3dprint.cswine.cloud; defaults to local listener")
     args = parser.parse_args()
@@ -946,6 +961,10 @@ def main():
         parser.error("build the view first: ./fpr build examples/printers.fpr -o build/printers")
     try:
         loaded = env_configs(args.env_file, args.discovery_seconds, tuple(args.printers.split(","))) if args.env_file else configs(args.config, args.demo)
+        if args.credentials_env_file:
+            if not args.config:
+                raise ValueError('credentials-env-file requires --config')
+            os.environ.update(credential_environment(args.credentials_env_file, loaded))
         if args.native_telemetry or args.native_camera:
             if args.demo or args.env_file or any(path and not Path(path).is_file() for path in (args.native_telemetry, args.native_camera)):
                 raise ValueError("native services require --config and existing executables")

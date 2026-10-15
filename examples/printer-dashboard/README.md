@@ -299,7 +299,8 @@ handoff on one/four harts. It covers authenticated subscription/status requests,
 fragmented/coalesced delta reports, reconnect/resubscribe, private-field
 exclusion, bad-password refusal and verified-peer rejection. The second also
 uses pinned Mosquitto for authenticated QoS 1 and keepalive. Real printer trust,
-telemetry and camera acceptance are still separate tasks.
+telemetry and camera acceptance were subsequently verified on both devices;
+see the production native deployment record below.
 
 
 ## Native camera (opt-in)
@@ -346,5 +347,51 @@ The TLS simulator covers fragmented/consecutive frames, the exact 80-byte login,
 shared viewers and capacity, final-viewer cleanup, new generations, malformed,
 truncated, oversized and stalled records, identity rejection and slow clients.
 It also exercises native multipart streaming through the authenticated gateway
-and verifies that logout releases the upstream connection. This does not yet
-establish real A1/P1S camera certificate/protocol compatibility.
+and verifies that logout releases the upstream connection. Real-device
+acceptance is recorded separately below.
+
+
+## Production native deployment (2026-10-15)
+
+The dashboard now runs native telemetry and cameras for both A1 and P1S. The
+public origin and Ed25519 allowlist are unchanged. The native TLS peer identity
+is each printer's recorded serial (its certificate CN); both MQTT and camera
+certificates validate against the public printer CA bundle from the installed
+Bambu Studio app, including identity and validity checks. The copied bundle's
+SHA-256 is `36f2bcee347ec7adce719b5fd350099591a4d3d0ec4e039c7019890d78e152a0`.
+No peer certificate was silently trusted in place of a verified CA chain.
+
+The public deployment configuration is ignored by Git at
+`build/printer-native-runtime/printers.json`. Its `tls_ca` points to the copied
+vendor bundle in the same directory. Access codes remain in the existing
+`../3d-models/.env` file. The new `--credentials-env-file=PATH` option, used with
+`--config`, loads only the selected A1/P1S `*_ACCESS_CODE` bindings through the
+existing non-executable parser. It does not copy hosts/serials or arbitrary
+variables into the child environment. Code values never belong in that JSON,
+command-line arguments, logs or Git.
+
+From the repository root, with the binaries built as above:
+
+```sh
+/private/tmp/printer-dashboard-venv/bin/python -u tools/printer_dashboard.py \
+  --config="$PWD/build/printer-native-runtime/printers.json" \
+  --credentials-env-file="$PWD/../3d-models/.env" \
+  --native-telemetry="$PWD/build/printer-telemetry" \
+  --native-camera="$PWD/build/printer-camera" \
+  --binary="$PWD/build/printers" --port=6730 \
+  --origin=https://3dprint.cswine.cloud
+```
+
+The current background process PID and output are in
+`build/printer-native-runtime/gateway.pid` and `gateway.log`. Previous binaries
+were retained as `build/*.previous`. No boot service was installed and no
+reverse-proxy configuration changed. A restart expires existing browser
+sessions, so sign in again afterward.
+
+Authenticated HTTPS checks observed fresh native telemetry from both printers,
+two consecutive valid JPEGs from each native camera, and `OFF`/zero viewers on
+both cameras after the requests closed. Anonymous status remained 401 and
+logout revoked the validation session. Sanitized evidence is in the ignored
+`build/printer-native-runtime/deployment-check.json`. This proves the real
+read-only transport/camera path at deployment time; it is not a long-duration
+soak or a physical-print verdict.

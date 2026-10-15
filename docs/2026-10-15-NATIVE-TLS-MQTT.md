@@ -638,5 +638,24 @@ and synthetic codes:
 
 Run `tests/check_native_camera.py --binary=build/printer-camera` with the same
 Python test environment as the dashboard tests. See the [camera setup](../examples/printer-dashboard/README.md#native-camera-opt-in).
-This is simulator evidence; actual A1/P1S trust, camera compatibility and longer
-lifecycle/soak validation remain separate acceptance tasks.
+Initial evidence was simulator-based. The subsequent deployment below covers
+actual A1/P1S trust and camera compatibility; longer lifecycle/soak validation
+remains separate.
+
+
+### Production acceptance (2026-10-15)
+
+Both physical printers now run through native telemetry and cameras on the
+public dashboard. Bambu Studio's installed public printer CA bundle validates
+both MQTT and camera certificate chains; each configured peer is the recorded
+printer serial, matching the certificate CN. No verification bypass or trust
+on first use was added. A runtime-only public config and selected-code
+`--credentials-env-file` loader keep code values out of the source/arguments.
+
+Authenticated public HTTPS checks observed both printers ONLINE with fresh
+reports, two consecutive valid camera JPEGs per printer, and native camera
+OFF/zero-viewer state after closing the feeds. Anonymous status remained 401;
+logout revoked the checking session. The [deployment record](../examples/printer-dashboard/README.md#production-native-deployment-2026-10-15)
+has the launcher, CA provenance and ignored evidence locations. Public gateway
+login/proxying and supervision still use Python. This acceptance is a real
+read-only printer transport/camera check, not a print completion or memory soak.

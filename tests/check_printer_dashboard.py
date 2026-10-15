@@ -206,6 +206,19 @@ class Transport(unittest.TestCase):
             path.write_text('[]')
             with self.assertRaises(ValueError): bridge.configs(path, False)
 
+    def test_native_config_selects_only_named_code_bindings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'printer.env'
+            path.write_text('BAMBU_A1_HOST=192.0.2.1\nBAMBU_A1_ACCESS_CODE=test-only-a1\nBAMBU_P1S_ACCESS_CODE=test-only-p1s\nUNRELATED_SECRET=ignore-me\n')
+            rows = [{'access_code_env': 'BAMBU_A1_ACCESS_CODE'}]
+            self.assertEqual(bridge.credential_environment(path, rows), {'BAMBU_A1_ACCESS_CODE': 'test-only-a1'})
+            with self.assertRaises(ValueError):
+                bridge.credential_environment(path, [{'access_code_env': 'UNRELATED_SECRET'}])
+            with self.assertRaises(ValueError):
+                bridge.credential_environment(path, [{'access_code_env': 'BAMBU_A1_HOST'}])
+            with self.assertRaises(ValueError):
+                bridge.credential_environment(path, [{'access_code_env': 'BAMBU_UNKNOWN_ACCESS_CODE'}])
+
     def test_http_read_only_and_camera_teardown(self):
         p = self.printer()
         server = bridge.Gateway(('127.0.0.1', 0), bridge.Handler)
