@@ -320,7 +320,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     run(['./fpr', 'build', 'tests/base/images.fpr', '--with', 'tests/base/images_probe.c', '-o', exe])
     for harts in ('1', '2'):
         p = run([exe], env={'FPR_HARTS': harts})
-        assert p.stdout.strip().endswith('kept: from the image; a function of the image: refused (dead actor)'), p.stdout
+        assert p.stdout.strip().endswith('kept: from the image; a function of the image: refused (dead actor: send: a function of another process cannot leave it (its code goes when that process ends))'), p.stdout
         assert 'send: a function of another process cannot leave it' in p.stdout + p.stderr, p.stdout + p.stderr
     print('Process images: a static crossing to another process is copied and outlives the image; a function into it is refused: PASS')
     # 4n. pair-free vector reads: `(x, v2) = Vec.at i v` builds no pair
