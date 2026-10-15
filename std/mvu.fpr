@@ -103,6 +103,7 @@
 # ============================================================================
 
 AC = use "actor".
+Sys.alive : Int -> Bool .
 
 MC   = Type (MQuit | MLog s).
 Reload = {name : String, from : String, to : String, version : String}.
@@ -517,6 +518,12 @@ frame me cfg app rw vp cache ms t0 =
   (oldKey, oldSt, changed) = cache;
   (cache2, rebuilt) = liveEnsure app vp (oldKey, oldSt) key m2 changed;
   (k2, st2) = cache2;
+  if cfg.retain == 1 and cfg.drawn == 1 and rebuilt == 0 then
+    retainedFrame me cfg app rw vp cache2 ms t0
+  else drawFrame me cfg app rw vp cache2 ms t0 rebuilt st2.
+drawFrame me cfg app rw vp cache2 ms t0 rebuilt st2 =
+  Ms m2 fr sc lastR ltt = ms;
+  (vw, vh) = vp;
   result = case AC.deadlineAfter cfg.serviceMs of
       Err why -> Err why
     | Ok deadline -> frameReply (AC.callUntil deadline me rw (Rq st2 m2 cfg.env vw vh (sc + rebuilt) fr deadline));
@@ -524,8 +531,16 @@ frame me cfg app rw vp cache ms t0 =
       Err why -> failedLoop rw cfg cache2 ms why
     | Ok r ->
         _ = drop lastR;
-        _ = tickWait mt t0 tick;
-        (True, (cfg, cache2, Ms m2 (fr + 1) (sc + rebuilt) (0, 0) ltt, Ok "")).
+        _ = tickWait cfg.mt t0 cfg.tick;
+        (True, ({cfg | drawn = 1}, cache2, Ms m2 (fr + 1) (sc + rebuilt) (0, 0) ltt, Ok "")).
+# Retention is opt-in: the app promises its key describes the ENTIRE visible
+# frame, including dynamic values and snapshot requests. Input/ports/ticks
+# still run at cfg.tick. Check owners even while no render call is needed.
+retainedFrame me cfg app rw vp cache ms t0 =
+  if not (Sys.alive rw) then failedLoop rw cfg cache ms "render worker: dead actor" else
+  if not (Sys.alive cfg.render) then failedLoop rw cfg cache ms "render: dead actor" else
+    _ = tickWait cfg.mt t0 cfg.tick;
+    (True, (cfg, cache, ms, Ok "")).
 frameReply result = case result of
     Err why -> Err "render worker: {why}"
   | Ok reply -> case reply of Ok r -> Ok r | Err why -> Err "render: {why}".
@@ -558,6 +573,12 @@ runResult me cfg app = runResultWithin 5000 me cfg app.
 # A configurable bound for each event collection and render turn (ms).
 # App update/reload callbacks are synchronous; the driver cannot preempt them.
 runResultWithin ms me cfg app = runLiveResultWithin ms me cfg app noReload.
+# Retained UI driver: skey must change whenever ANY visible value changes.
+# vals must be a pure view of model/env; external facts arrive as messages.
+# Existing run/game paths keep drawing every turn for animation and effects.
+runRetainedResultWithin ms me cfg app =
+  runWithModeWithin ms 1 me {env = cfg.env, mt = cfg.mt, tick = cfg.tick,
+    input = cfg.input, render = cfg.render, reload = noReload} app.
 
 # All drivers reclaim every frame's scratch allocations. Configuration,
 # model, cache and reload callbacks have value semantics: a Vector in this
@@ -600,12 +621,13 @@ gameWatched me cfg app reload start = runWatched me cfg (gameApp app) reload sta
 
 runWith me cfg app = serviceValue "run" (runWithResult me cfg app).
 runWithResult me cfg app = runWithResultWithin 5000 me cfg app.
-runWithResultWithin ms me cfg app = case AC.deadlineAfter ms of
+runWithResultWithin ms me cfg app = runWithModeWithin ms 0 me cfg app.
+runWithModeWithin ms retain me cfg app = case AC.deadlineAfter ms of
     Err why -> Err "mvu: {why}"
   | Ok deadline ->
       calls = spawn (AC.session me);
       owned = {env = cfg.env, mt = cfg.mt, tick = cfg.tick, input = cfg.input,
-               render = cfg.render, reload = cfg.reload, calls = calls, serviceMs = ms};
+               render = cfg.render, reload = cfg.reload, calls = calls, serviceMs = ms, retain = retain, drawn = 0};
       result = runStartedResult deadline me owned app;
       _ = kill calls;
       result.

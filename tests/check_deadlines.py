@@ -10,7 +10,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-deadlines-') as directory:
     for name, marker in (
         ('deadlines', 'deadlines: selective/FIFO/overflow/death/admission/stale/late-reply contracts HOLDS'),
         ('taskfailure', 'taskfailure: death/sibling cancellation/deadline/order/limit/inbox/cleanup contracts HOLDS'),
-        ('mvudeadlines', 'mvudeadlines: live dimensions/input/ports/render/worker deadlines and watcher cleanup HOLDS')):
+        ('mvudeadlines', 'mvudeadlines: live dimensions/input/ports/render/worker deadlines and watcher cleanup HOLDS'),
+        ('mvuretained', 'mvuretained: HOLDS')):
         exe = tmp / name
         args = [str(ROOT/'fpr'), 'build', str(ROOT/'tests/base'/f'{name}.fpr'), '--harts', '4', '-o', str(exe)]
         if name == 'taskfailure':
