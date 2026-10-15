@@ -284,9 +284,9 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     run(['./fpr', 'build', 'tests/base/actorfail.fpr', '--with', 'tests/base/actorfail_probe.c', '-o', exe])
     for harts in ('1', '2'):
         p = run([exe], env={'FPR_HARTS': harts})
-        assert p.stdout.strip().endswith('after the child failed: Err dead actor; the machine runs on'), p.stdout
+        assert p.stdout.strip().endswith('after the child failed: Err dead actor: probe: deliberate failure; the machine runs on'), p.stdout
         assert 'actor failed: probe: deliberate failure' in p.stdout + p.stderr, p.stdout + p.stderr
-    print('fpr_actor_fail: the failing actor ends alone with a logged reason, its caller hears Err dead actor: PASS')
+    print('fpr_actor_fail: the failing actor ends alone with a logged reason, its caller hears Err dead actor and the reason: PASS')
     # 4l. Sys.loopWith: every step an arena, one linear Vector threaded by
     # identity -- the caller's pool does not grow with the step count, and a
     # vector whose storage moved, or a Vector in the state, is refused
