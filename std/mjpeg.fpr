@@ -1,0 +1,25 @@
+# HTTP multipart JPEG output over checked Transport. No accumulated response
+# body: each part is written as header, bytes and CRLF under ONE budget.
+T = use "transport".
+L = use "list".
+head = "HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=frame\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n".
+partHeader bytes = "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: {strlen bytes}\r\n\r\n".
+parts budget pieces connection = case pieces of
+    Nil -> (Ok Unit, connection)
+  | bytes :: rest -> (case T.writeAll budget bytes connection of
+      (Err (why, _), next) -> (Err why, next)
+    | (Ok _, next) -> parts budget rest next).
+write budget limit bytes connection = if limit < 1 or strlen bytes > limit then (Err (T.Invalid "MJPEG part exceeds limit"), connection) else
+  parts budget [partHeader bytes, bytes, "\r\n"] connection.
+# Header-only GET services use a bounded read without an unbounded Reader.
+# Bytes after the header are returned so applications can reject pipelining.
+readHead budget limit connection = headerGo budget limit "" connection.
+headerGo : unsafe T.Budget -> Int -> String -> T.Connection s -> (Result (String, String) T.Failure, T.Connection s) .
+headerGo budget limit pending connection =
+  at = strIndexOf "\r\n\r\n" pending;
+  if limit < 4 or strlen pending > limit then (Err (T.Invalid "HTTP header exceeds limit"), connection) else
+  if at >= 0 then (Ok (substr pending 0 at, substr pending (at + 4) (strlen pending - at - 4)), connection) else
+  if strlen pending == limit then (Err (T.Invalid "HTTP header exceeds limit"), connection) else
+  case T.readSome budget (if limit - strlen pending < 4096 then limit - strlen pending else 4096) connection of
+    (Err (why, _), next) -> (Err why, next)
+  | (Ok bytes, next) -> if bytes == "" then (Err T.EndOfStream, next) else headerGo budget limit (strcat pending bytes) next.

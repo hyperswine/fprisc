@@ -134,7 +134,7 @@ class Transport(unittest.TestCase):
     def test_view_process_gets_no_transport_environment(self):
         p = self.printer()
         p.config["access_code_env"] = "LOCAL_PRINTER_CODE"
-        public = bridge.view_environment({"a1": p}, {"PATH": "/bin", "FPR_HARTS": "4", "LOCAL_PRINTER_CODE": "test-only", "BAMBU_ACCESS_CODE": "test-only", "FPR_PRINTER_CODE": "test-only"})
+        public = bridge.view_environment({"a1": p}, {"PATH": "/bin", "FPR_HARTS": "4", "LOCAL_PRINTER_CODE": "test-only", "BAMBU_ACCESS_CODE": "test-only", "FPR_PRINTER_CODE": "test-only", "FPR_CAMERA_GATE": "synthetic-capability"})
         self.assertEqual(public, {"PATH": "/bin", "FPR_HARTS": "4"})
         other = self.printer()
         other.config["access_code_env"] = "OTHER_PRINTER_CODE"

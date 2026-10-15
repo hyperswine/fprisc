@@ -6,7 +6,8 @@ messages, per-browser expanded cards and camera switches, `std/view` trees,
 and incremental WebSocket updates. It follows `pos1.fpr` and `inventory.fpr`.
 The default Python transport handles Bambu MQTT/TLS and framed-JPEG cameras.
 An opt-in FP-RISC collector now handles authenticated native TLS/MQTT and
-telemetry projection; Python still serves login, cameras and the gateway.
+telemetry projection. A separate opt-in native camera service handles framing,
+sharing and MJPEG streaming; Python still serves login and gateway supervision.
 JavaScript manages browser media lifecycle and local challenge signing; it does
 not fetch/render printer status or own the dashboard model.
 
@@ -299,3 +300,51 @@ fragmented/coalesced delta reports, reconnect/resubscribe, private-field
 exclusion, bad-password refusal and verified-peer rejection. The second also
 uses pinned Mosquitto for authenticated QoS 1 and keepalive. Real printer trust,
 telemetry and camera acceptance are still separate tasks.
+
+
+## Native camera (opt-in)
+
+Build the verified native camera service with the same OpenSSL 3 flags as the
+telemetry collector:
+
+```sh
+./fpr build examples/printer-camera.fpr -o build/printer-camera \
+  --with machine/unix/tls_openssl.c \
+  --cflag -I/opt/homebrew/opt/openssl@3/include \
+  --link -L/opt/homebrew/opt/openssl@3/lib --link -lssl --link -lcrypto
+```
+
+Add `--native-camera="$PWD/build/printer-camera"` to the `--config` gateway
+launcher above. It can be selected independently of `--native-telemetry`.
+Every printer requires explicit verified `tls_ca`/`tls_peer`. If camera and MQTT
+certificates differ, add `camera_tls_ca` and `camera_tls_peer` overrides.
+`camera_port` is optional, default 6000. Access-code values stay in the named
+runtime environment variable. The camera protocol accepts at most 32 bytes;
+it refuses empty, longer or embedded-NUL values. Native mode does not disable
+TLS verification. Configure the actual device's trust before using this mode.
+
+The first authenticated camera request starts a private local native service;
+its first viewer starts one upstream TLS connection. FP-RISC owns camera login,
+bounded JPEG records, one latest-frame cache, up to eight shared viewers,
+MJPEG framing and per-viewer write deadlines. Final-viewer cleanup drops the
+frame and closes upstream I/O, even during a stalled frame read. A retired
+source cannot publish into the next viewing generation. The idle local service
+remains available for later requests and stops with the gateway. Python retains
+public login/session checks and process supervision, and relays the native HTTP
+body without interpreting camera/JPEG/multipart framing. Logout and session
+expiry continue to close active streams; browser hide/collapse behavior is
+unchanged.
+
+Test without a real camera or private code:
+
+```sh
+/path/to/dashboard-venv/bin/python tests/check_native_camera.py \
+  --binary=build/printer-camera
+```
+
+The TLS simulator covers fragmented/consecutive frames, the exact 80-byte login,
+shared viewers and capacity, final-viewer cleanup, new generations, malformed,
+truncated, oversized and stalled records, identity rejection and slow clients.
+It also exercises native multipart streaming through the authenticated gateway
+and verifies that logout releases the upstream connection. This does not yet
+establish real A1/P1S camera certificate/protocol compatibility.

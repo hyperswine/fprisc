@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 import re
 import select
+import secrets
 import shlex
 import signal
 import socket
@@ -55,7 +56,7 @@ def short(value, default="—"):
 
 
 class Printer:
-    def __init__(self, config, demo=False, native_binary=None):
+    def __init__(self, config, demo=False, native_binary=None, native_camera_binary=None):
         self.config = config
         self.demo = demo
         self.lock = threading.RLock()
@@ -72,7 +73,7 @@ class Printer:
         self.native_received = 0.0
         self.native_environment = None
         self.native = None
-        self.camera = Camera(self)
+        self.camera = NativeCamera(self, native_camera_binary) if native_camera_binary else Camera(self)
 
     def report(self, data):
         # Command acknowledgements are not a fresh telemetry sample.
@@ -443,6 +444,152 @@ class Camera:
             return self.seq, self.frame
 
 
+class NativeCamera:
+    """Supervise a private native HTTP service; relay its body without framing.
+
+    FP-RISC owns camera TLS, login, JPEG records, viewer sharing and MJPEG.
+    The public gateway still owns browser authentication and revocation.
+    """
+    def __init__(self, printer, binary):
+        self.printer, self.binary = printer, binary
+        self.lock = threading.RLock()
+        self.process = None
+        self.port = None
+        self.gate = None
+        self.closed = False
+        self.cached = None
+        self.cache_time = 0
+
+    def stop(self):
+        with self.lock:
+            self.closed = True
+            self.retire()
+
+    def retire(self):
+        if self.process:
+            if self.process.poll() is None:
+                self.process.terminate()
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=5)
+            self.process.stdout.close()
+        self.process, self.port, self.gate = None, None, None
+        self.cached = None
+
+    def ensure(self):
+        with self.lock:
+            if self.closed:
+                raise RuntimeError('camera stopped')
+            if self.process and self.process.poll() is None:
+                return self.port, self.gate
+            self.retire()
+            p, c = self.printer, self.printer.config
+            code = os.environ.get(c['access_code_env'], '')
+            if not code:
+                raise RuntimeError('camera configuration')
+            environment = dict(p.native_environment if p.native_environment is not None else view_environment({c['id']: p}, os.environ))
+            environment['FPR_PRINTER_CODE'] = code
+            self.gate = secrets.token_urlsafe(32)
+            environment['FPR_CAMERA_GATE'] = self.gate
+            try:
+                self.process = subprocess.Popen(
+                    [self.binary, c['host'], str(c.get('camera_port', 6000)), c.get('camera_tls_peer', c['tls_peer']), c.get('camera_tls_ca', c['tls_ca'])],
+                    env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                if not select.select([self.process.stdout], [], [], 5)[0]:
+                    raise RuntimeError('camera startup')
+                line = self.process.stdout.readline(128)
+                match = re.fullmatch(rb'camera-ready ([0-9]{1,5})\n', line)
+                if not match or not 1 <= int(match[1]) <= 65535:
+                    raise RuntimeError('camera startup')
+                self.port = int(match[1])
+                return self.port, self.gate
+            except (OSError, ValueError, RuntimeError):
+                self.retire()
+                raise RuntimeError('native camera unavailable') from None
+
+    def stats(self):
+        with self.lock:
+            empty = {'camera_state': 'OFF', 'camera_hz': 0, 'camera_last_frame': 0, 'camera_connections': 0, 'camera_viewers': 0}
+            if not self.process:
+                return empty
+            if self.process.poll() is not None:
+                return {**empty, 'camera_state': 'UNAVAILABLE'}
+            if self.cached and time.monotonic() - self.cache_time < .5:
+                return dict(self.cached)
+            connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=1)
+            try:
+                connection.request('GET', '/stats', headers={'X-Fpr-Camera': self.gate})
+                response = connection.getresponse()
+                value = json.loads(response.read(2049))
+                if response.status != 200 or not isinstance(value, dict) or set(value) != set(empty):
+                    raise ValueError('camera metadata')
+                if any(isinstance(v, (dict, list)) or (isinstance(v, float) and not math.isfinite(v)) for v in value.values()):
+                    raise ValueError('camera metadata')
+                self.cached, self.cache_time = value, time.monotonic()
+                return dict(value)
+            except (OSError, ValueError, http.client.HTTPException):
+                return {**empty, 'camera_state': 'UNAVAILABLE'}
+            finally:
+                connection.close()
+
+    def relay(self, handler):
+        upstream = None
+        started = False
+        try:
+            port, gate = self.ensure()
+            upstream = socket.create_connection(('127.0.0.1', port), timeout=5)
+            upstream.sendall(f'GET /stream HTTP/1.1\r\nHost: localhost\r\nX-Fpr-Camera: {gate}\r\nConnection: close\r\n\r\n'.encode())
+            # This is an ordinary bounded HTTP header. Camera record/JPEG and
+            # multipart boundaries are never parsed or rebuilt in Python.
+            deadline = time.monotonic() + 13
+            data = bytearray()
+            while b'\r\n\r\n' not in data:
+                left = deadline - time.monotonic()
+                if left <= 0 or len(data) >= 8192 or not handler.authenticated() or handler.server.stopping.is_set():
+                    raise RuntimeError('camera unavailable')
+                upstream.settimeout(min(left, .25))
+                try:
+                    part = upstream.recv(4096)
+                except socket.timeout:
+                    continue
+                if not part:
+                    raise RuntimeError('camera unavailable')
+                data.extend(part)
+            head, body = bytes(data).split(b'\r\n\r\n', 1)
+            if not head.startswith(b'HTTP/1.1 200 '):
+                raise RuntimeError('camera unavailable')
+            if not handler.authenticated():
+                return handler.response(401, b'Sign in required\n')
+            handler.send_response(200)
+            handler.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
+            handler.send_header('Cache-Control', 'no-store')
+            handler.send_header('Connection', 'close')
+            handler.end_headers()
+            started = True
+            upstream.settimeout(1)
+            while handler.authenticated() and not handler.server.stopping.is_set():
+                if body:
+                    handler.wfile.write(body)
+                    handler.wfile.flush()
+                    body = b''
+                ready, _, _ = select.select([upstream, handler.connection], [], [], .25)
+                if handler.connection in ready:
+                    return
+                if upstream in ready:
+                    body = upstream.recv(65536)
+                    if not body:
+                        return
+        except (OSError, RuntimeError):
+            if not started:
+                with contextlib.suppress(OSError):
+                    handler.response(503, b'Camera unavailable\n')
+        finally:
+            if upstream:
+                upstream.close()
+
+
 class Gateway(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -567,6 +714,8 @@ class Handler(BaseHTTPRequestHandler):
             if not printer.snapshot()["camera_available"]:
                 return self.response(404, b"No supported camera\n")
             camera = printer.camera
+            if isinstance(camera, NativeCamera):
+                return camera.relay(self)
             try:
                 seq = camera.acquire()
             except RuntimeError:
@@ -760,7 +909,7 @@ def atomic_snapshot(path, value):
 
 def view_environment(printers, environment):
     private = {p.config.get("access_code_env") for p in printers.values()}
-    return {k: v for k, v in environment.items() if k not in private and k != "FPR_PRINTER_CODE" and not k.startswith("BAMBU_")}
+    return {k: v for k, v in environment.items() if k not in private and k not in ("FPR_PRINTER_CODE", "FPR_CAMERA_GATE") and not k.startswith("BAMBU_")}
 
 
 def main():
@@ -776,6 +925,7 @@ def main():
     parser.add_argument("--poll-ms", type=int, default=1000)
     parser.add_argument("--binary", default=str(ROOT / "build/printers"))
     parser.add_argument("--native-telemetry", help="Native collector executable; live --config entries require tls_ca and tls_peer")
+    parser.add_argument("--native-camera", help="Native shared-camera executable; live --config entries require verified TLS trust")
     parser.add_argument("--auth", default=str(ROOT / "examples/printer-dashboard/auth.json"), help="Public Ed25519 key allowlist (required in all modes)")
     parser.add_argument("--origin", help="Public origin, e.g. https://3dprint.cswine.cloud; defaults to local listener")
     args = parser.parse_args()
@@ -796,15 +946,20 @@ def main():
         parser.error("build the view first: ./fpr build examples/printers.fpr -o build/printers")
     try:
         loaded = env_configs(args.env_file, args.discovery_seconds, tuple(args.printers.split(","))) if args.env_file else configs(args.config, args.demo)
-        if args.native_telemetry:
-            if args.demo or args.env_file or not Path(args.native_telemetry).is_file():
-                raise ValueError("native telemetry requires --config and an existing collector executable")
+        if args.native_telemetry or args.native_camera:
+            if args.demo or args.env_file or any(path and not Path(path).is_file() for path in (args.native_telemetry, args.native_camera)):
+                raise ValueError("native services require --config and existing executables")
             for c in loaded:
                 if not all(isinstance(c.get(k), str) and c[k] for k in ("tls_ca", "tls_peer")) or not Path(c["tls_ca"]).is_file():
                     raise ValueError("native telemetry requires a CA file and verified peer for each printer")
                 if type(c.get("mqtt_port", 8883)) is not int or not 1 <= c.get("mqtt_port", 8883) <= 65535:
                     raise ValueError("invalid native MQTT port")
-        printers = {c["id"]: Printer(c, args.demo, args.native_telemetry) for c in loaded}
+                if args.native_camera:
+                    if type(c.get("camera_port", 6000)) is not int or not 1 <= c.get("camera_port", 6000) <= 65535:
+                        raise ValueError("invalid native camera port")
+                    if not all(isinstance(c.get('camera_' + k, c[k]), str) and c.get('camera_' + k, c[k]) for k in ('tls_peer', 'tls_ca')) or not Path(c.get('camera_tls_ca', c['tls_ca'])).is_file():
+                        raise ValueError("native camera requires a CA file and verified peer")
+        printers = {c["id"]: Printer(c, args.demo, args.native_telemetry, args.native_camera) for c in loaded}
         public_environment = view_environment(printers, os.environ)
         for printer in printers.values():
             printer.native_environment = public_environment

@@ -1,0 +1,174 @@
+# Native shared camera service. The gateway owns public HTTP authentication;
+# this private loopback listener additionally requires a runtime capability.
+T = use "std/transport".
+Sock = use "std/sockettransport".
+ST = use "std/stream".
+TLS = use "std/tls".
+DNS = use "std/resolver".
+C = use "std/connect".
+R = use "std/readiness".
+W = use "std/watchedtransport".
+A = use "std/actor".
+N = use "std/osnet".
+IO = use "std/osio".
+MJ = use "std/mjpeg".
+H = use "std/httpcore".
+J = use "std/json".
+L = use "std/list".
+S = use "std/string".
+O = use "std/option".
+Clock = use "std/clock".
+F = use "cameraframe".
+Command = Type (Reserve Int | Join Int | Next Int Int | Leave Int | Observe Int String | Fault Int | Inspect).
+Reply = Type (Accepted | Refused | Waiting | Broken | Picture Int String | Snapshot J.Value).
+now u = Sys.timeUs Unit / 1000.
+budget ms = case Sock.forMs ms of Ok b -> b | Err _ -> error "camera: invalid duration".
+ask me manager command = A.callWithin 500 me manager command.
+initial = {tickets = Nil, viewers = Nil, source = 0, epoch = 0, seq = 0, frame = "", error = False, last = 0, wall = 0, buckets = Nil, starts = 0}.
+stopSource state =
+  _ = if state.source == 0 then Unit else _ = kill state.source; Unit;
+  {state | source = 0, epoch = state.epoch + 1, frame = "", error = False, last = 0, wall = 0, buckets = Nil}.
+expire state =
+  tickets = L.filter (fn pair -> case pair of (_, until) -> until > now Unit) state.tickets;
+  viewers = L.filter (fn ticket -> L.any (fn pair -> case pair of (id, _) -> id == ticket) tickets) state.viewers;
+  fresh = {state | tickets = tickets, viewers = viewers};
+  if viewers == Nil and (state.source != 0 or state.frame != "" or state.error) then stopSource fresh else fresh.
+renew ticket state = {state | tickets = (ticket, now Unit + 3000) :: L.filter (fn pair -> case pair of (id, _) -> id != ticket) state.tickets}.
+stats state =
+  recent = L.filter (fn pair -> case pair of (second, _) -> second > now Unit / 1000 - 30) state.buckets;
+  count = L.fold (fn n pair -> case pair of (_, c) -> n + c) 0 recent;
+  rate = count * 100 / 30;
+  J.object [("camera_state", J.Text (if state.viewers == Nil then "OFF" else if state.error then "UNAVAILABLE" else if state.last == 0 then "CONNECTING" else if now Unit - state.last > 10000 then "STALE" else "LIVE")),
+    ("camera_viewers", J.Integer (L.length state.viewers)), ("camera_connections", J.Integer state.starts),
+    ("camera_last_frame", J.Integer state.wall), ("camera_hz", J.Real "{rate / 100}.{S.padLeft 2 "0" (str (rate % 100))}")].
+observed bytes state =
+  second = now Unit / 1000;
+  recent = L.filter (fn pair -> case pair of (at, _) -> at > second - 30 and at != second) state.buckets;
+  old = O.withDefault (second, 0) (L.find (fn pair -> case pair of (at, _) -> at == second) state.buckets);
+  count = case old of (_, n) -> n + 1;
+  {state | seq = state.seq + 1, frame = bytes, last = now Unit, wall = Clock.now Unit, buckets = (second, count) :: recent}.
+dispatch cfg pool watcher manager from command state = case command of
+    Reserve ticket -> if L.length state.tickets >= 16 then (Refused, state) else
+      # Header (2s), bounded error write (1s) and reply/release fit this lease.
+      (Accepted, {state | tickets = (ticket, now Unit + 5000) :: state.tickets})
+  | Join ticket -> if not (L.any (fn pair -> case pair of (id, _) -> id == ticket) state.tickets) or L.length state.viewers >= 8 then (Refused, state) else
+      fresh = if state.source == 0 or state.viewers == Nil then stopSource state else state;
+      epoch = fresh.epoch;
+      source = if fresh.source != 0 then fresh.source else A.spawnWith (A.Static 16) (worker cfg pool watcher manager epoch);
+      (Accepted, renew ticket {fresh | viewers = ticket :: fresh.viewers, source = source, error = False, starts = fresh.starts + (if fresh.source == 0 then 1 else 0)})
+  | Next ticket seq -> if not (L.member ticket state.viewers) then (Refused, state) else
+      (if state.error then Broken else if state.seq > seq and state.frame != "" then Picture state.seq state.frame else Waiting, renew ticket state)
+  | Leave ticket ->
+      fresh = {state | viewers = L.filter (fn id -> id != ticket) state.viewers, tickets = L.filter (fn pair -> case pair of (id, _) -> id != ticket) state.tickets};
+      (Accepted, if fresh.viewers == Nil then stopSource fresh else fresh)
+  | Observe epoch bytes -> if epoch != state.epoch or from != state.source or state.viewers == Nil then (Refused, state) else (Accepted, observed bytes state)
+  | Fault epoch -> if epoch != state.epoch or from != state.source then (Refused, state) else (Accepted, {state | error = True, source = 0, frame = ""})
+  | Inspect -> (Snapshot (stats state), state).
+managerStep cfg pool watcher me state =
+  fresh = expire state;
+  case receiveNow me of
+    Err _ -> _ = Clock.sleepMs 10; (True, fresh)
+  | Ok message ->
+      (from, id, borrowed) = message;
+      command = keep borrowed;
+      _ = drop message;
+      (reply, next) = dispatch cfg pool watcher me from command fresh;
+      _ = A.reply (from, id) reply;
+      (True, next).
+manager cfg pool watcher me = _ = Sys.loop initial (managerStep cfg pool watcher me); Unit.
+worker cfg pool watcher manager epoch me =
+  limit = budget 5000;
+  result = case C.connectWith (W.wait watcher) limit pool cfg.host cfg.port 16384 of
+      Err why -> Err why
+    | Ok tcp -> (case TLS.upgrade limit cfg.peer (TLS.CaFile cfg.ca) TLS.TLS12 tcp of
+        Err why -> Err why
+      | Ok secure ->
+          (sent, next) = T.writeAll limit cfg.login secure;
+          (case sent of
+              Err (why, _) -> _ = T.close next; Err why
+            | Ok _ ->
+                _ = Sys.loop (True, next) (sourceStep manager epoch me cfg.maxFrame);
+                Ok Unit));
+  _ = ask me manager (Fault epoch);
+  Unit.
+sourceStep manager epoch me maximum state =
+  (_, conn) = state;
+  (result, next) = F.read (budget 10000) maximum conn;
+  case result of
+    Err _ -> _ = T.close next; (False, (False, next))
+  | Ok bytes -> (case ask me manager (Observe epoch bytes) of
+      Ok Accepted -> (True, (True, next))
+    | _ -> _ = T.close next; (False, (False, next))).
+respond status body connection =
+  (_, next) = MJ.parts (budget 1000) [H.renderResponse (H.text status body)] connection; next.
+respondStats value connection =
+  (_, next) = MJ.parts (budget 1000) [H.renderResponse (H.json 200 (J.render value))] connection; next.
+request gate head extra = case S.split "\r\n" head of
+    Nil -> Err 400
+  | line :: lines ->
+      headers = H.parseHeaders lines;
+      keys = L.filter (fn pair -> case pair of (key, _) -> key == "x-fpr-camera") headers;
+      lengths = L.filter (fn pair -> case pair of (key, _) -> key == "content-length") headers;
+      if L.length lines > 64 or not (L.all (fn line -> strIndexOf ":" line > 0) lines) or L.length lengths > 1 or extra != "" or H.header "transfer-encoding" {headers = headers} != O.None or
+         (case H.header "content-length" {headers = headers} of O.None -> False | O.Some n -> n != "0") then Err 400 else
+      if keys != [("x-fpr-camera", gate)] then Err 403 else
+      (case S.split " " line of ["GET", path, "HTTP/1.1"] -> if path == "/stream" or path == "/stats" then Ok path else Err 404 | _ -> Err 405).
+connected connection = case Sock.descriptor (T.state connection) of
+    Err _ -> (False, connection)
+  | Ok fd -> (case IO.readyFor fd 1 of
+      Err _ -> (False, connection)
+    | Ok False -> (True, connection)
+    | Ok True -> (case T.attemptRead (budget 100) 1 connection of
+        (Ok (T.ReadWait _), next) -> (True, next)
+      | (_, next) -> (False, next))).
+viewerStep me manager ticket maximum state =
+  (conn, seq, begun, until) = state;
+  (alive, checked) = connected conn;
+  if not alive or now Unit >= until then (False, (checked, seq, begun, until)) else
+  case ask me manager (Next ticket seq) of
+    Ok (Picture id bytes) ->
+      limit = budget 1500;
+      (header, started) = if begun then (Ok Unit, checked) else MJ.parts limit [MJ.head] checked;
+      (sent, next) = case header of Err why -> (Err why, started) | Ok _ -> MJ.write limit maximum bytes started;
+      (case sent of Ok _ -> True | Err _ -> False, (next, id, True, now Unit + 12000))
+  | Ok Waiting -> _ = Clock.sleepMs 25; (True, (checked, seq, begun, until))
+  | _ -> (False, (checked, seq, begun, until)).
+handle cfg manager ticket raw me =
+  case Sock.adopt 16384 (ST.Stream raw) of
+    Err _ -> _ = IO.close raw; _ = ask me manager (Leave ticket); Unit
+  | Ok conn ->
+      (header, next) = MJ.readHead (budget 2000) 8192 conn;
+      final = case header of
+          Err _ -> respond 400 "Invalid request\n" next
+        | Ok (head, extra) -> (case request cfg.gate head extra of
+            Err status -> respond status "Camera request refused\n" next
+          | Ok "/stats" -> (case ask me manager Inspect of
+              Ok (Snapshot value) -> respondStats value next
+            | _ -> respond 503 "Camera unavailable\n" next)
+          | Ok _ -> (case ask me manager (Join ticket) of
+              Ok Accepted ->
+                (last, _, begun, _) = Sys.loop (next, 0, False, now Unit + 12000) (viewerStep me manager ticket cfg.maxFrame);
+                if begun then last else respond 503 "Camera unavailable\n" last
+            | _ -> respond 503 "Camera busy\n" next));
+      _ = T.close final;
+      _ = ask me manager (Leave ticket);
+      Unit.
+acceptStep cfg manager listener me count = case IO.ready listener of
+    False -> _ = Clock.sleepMs 1; (True, count)
+  | True -> (case N.accept listener of
+      Err _ -> _ = Clock.sleepMs 5; (True, count)
+    | Ok (fd, _) ->
+        ticket = Sys.nextId Unit;
+        _ = (case ask me manager (Reserve ticket) of
+          Ok Accepted -> _ = A.spawnWith (A.Static 16) (handle cfg manager ticket fd); Unit
+        | _ -> _ = IO.close fd; Unit);
+        (True, count + 1)).
+run cfg =
+  pool = case DNS.create 1 of Ok p -> p | Err _ -> error "camera: resolver unavailable";
+  watcher = R.start Unit;
+  service = A.spawnWith (A.Static 64) (manager cfg pool watcher);
+  listener = case N.listen "127.0.0.1" 0 of Ok fd -> fd | Err _ -> error "camera: listener unavailable";
+  port = case N.localPort listener of Ok p -> p | Err _ -> 0;
+  _ = print "camera-ready {port}";
+  _ = Sys.loop 0 (acceptStep cfg service listener (myself 0));
+  Unit.

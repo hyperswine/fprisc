@@ -1,0 +1,22 @@
+# Bambu LAN framed-JPEG application protocol, not a general TLS policy.
+B = use "std/binary".
+S = use "std/string".
+T = use "std/transport".
+O = use "std/option".
+field text = strlen text > 0 and strlen text <= 32 and not (S.contains (chr 0) text).
+login user code = if not (field user and field code) then Err "invalid camera login fields" else
+  Ok (strJoin "" [B.putU32le 64, B.putU32le 12288, B.putU32le 0, B.putU32le 0, S.padRight 32 (chr 0) user, S.padRight 32 (chr 0) code]).
+# Only the first word is the payload length; the remaining 12 header bytes
+# are opaque, matching the existing A1/P1 bridge protocol.
+size limit header = if limit < 4 or limit > 4194304 or strlen header != 16 then Err "invalid camera header/limit" else
+  n = O.withDefault 0 (B.u32le 0 header);
+  if n < 4 or n > limit then Err "camera frame exceeds limit" else Ok n.
+jpeg bytes = strlen bytes >= 4 and charAt bytes 0 == 255 and charAt bytes 1 == 216 and
+  charAt bytes (strlen bytes - 2) == 255 and charAt bytes (strlen bytes - 1) == 217.
+read budget limit connection = case T.readExactly budget 16 connection of
+    (Err (why, _), next) -> (Err why, next)
+  | (Ok header, next) -> (case size limit header of
+      Err why -> (Err (T.Invalid why), next)
+    | Ok n -> (case T.readExactly budget n next of
+        (Err (why, _), final) -> (Err why, final)
+      | (Ok bytes, final) -> (if jpeg bytes then Ok bytes else Err (T.Invalid "invalid camera JPEG markers"), final))).

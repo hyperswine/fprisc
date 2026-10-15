@@ -109,7 +109,8 @@ and BareMetal implementation, see the [project progress summary](docs/2026-09-18
 expandable printer cards, live telemetry/freshness, measured report and refresh
 rates, and cameras that connect only on demand. It uses a narrow Python LAN
 transport for Bambu MQTT/TLS and camera framing; an opt-in native TLS/MQTT
-collector now owns authenticated telemetry. The UI and per-session state are
+collector owns authenticated telemetry, and an opt-in native camera service
+owns shared JPEG framing and MJPEG streaming. The UI and per-session state are
 FP-RISC. Try it without any printer or credentials:
 
 ```sh

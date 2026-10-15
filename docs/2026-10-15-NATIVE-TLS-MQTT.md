@@ -6,7 +6,8 @@ inventory-console work in [the local UI record](2026-10-14-LOCAL-UI-AND-NATIVE-S
 Status: bounded DNS/TCP setup, checked native lifetime, shared directional
 readiness, a Unix OpenSSL 3 TLS client and an initial MQTT 3.1.1 QoS 0/1 client
 are implemented. MQTT username/password authentication and an opt-in native
-printer telemetry collector are now available; camera/gateway and HTTPS
+printer telemetry collector are available. Native shared camera framing and
+MJPEG streaming now have an opt-in gateway path; public gateway/login and HTTPS
 migrations remain.
 
 ## Architecture and ownership
@@ -471,7 +472,7 @@ and host-compiled ESP-IDF refusal branches compile; those are not physical-board
 or ESP-IDF runtime validation.
 
 Remaining integration: replace HTTPS's curl path, validate native telemetry
-against real printer certificate/device policies, and migrate camera framing,
+and cameras against real printer certificate/device policies, and migrate
 gateway authentication and process supervision. Existing application helpers
 remain until those migrations have acceptance evidence.
 
@@ -550,3 +551,92 @@ Acceptance executed on macOS AArch64:
 
 This is local/simulator evidence, not real A1/P1S validation, a completed
 Python removal, or a long-duration process memory bound.
+
+
+## Implementation slice 5: native shared camera framing and streaming (2026-10-15)
+
+`examples/printer-camera.fpr` runs a private, loopback HTTP camera service.
+`examples/printer-dashboard/cameraframe.fpr` owns the Bambu application framing:
+80-byte login (four little-endian words plus two NUL-padded 32-byte UTF-8/byte
+fields), then a 16-byte record header whose first little-endian word is the
+JPEG payload length. The other twelve bytes are opaque, preserving the legacy
+bridge behavior. Empty, overlong or embedded-NUL login fields are refused.
+A payload length outside 4..4194304 is rejected before any body read/allocation.
+JPEG SOI/EOI markers are checked; this is not a full JPEG decoder or integrity
+check. Fragmented headers/bodies are read exactly; a truncated/invalid record
+ends that upstream connection. Partial prefixes are never replayed as a new
+record.
+
+The camera worker owns bounded DNS/TCP, verified native TLS and the login/frame
+connection. A single 5-second setup/login budget and a single 10-second budget
+per complete header/body prevent indefinite handshake or drip-feed reads.
+Camera trust defaults to the configured telemetry CA/peer, with explicit
+`camera_tls_ca`/`camera_tls_peer` overrides. No verification-disabled fallback
+exists. `camera_port` defaults to 6000. Real Bambu camera certificates may need
+independent trust/identity configuration; no device certificate is guessed.
+
+A native manager owns one upstream worker and latest frame for up to eight
+viewers. First-viewer admission starts the worker; final-viewer departure kills
+it, triggering native resource cleanup, and drops the cached frame/rate state.
+Three-second renewable viewer leases cover abandoned/killed handlers. Generation
+IDs and source identity reject late publications/failures from a retired worker.
+At most sixteen HTTP handlers are admitted before spawning, including bounded
+header/stats requests. Mailbox admission/calls are bounded. A source publishes
+one frame then waits for its acknowledgment, so there is no unbounded frame
+queue; each viewer polls for the latest sequence and can skip frames.
+
+`std/mjpeg` provides reusable checked-Transport multipart output. Header,
+payload and CRLF share one absolute budget without accumulating an entire
+response. Slow viewers get a 1.5-second whole-part write budget and are detached
+on failure. Their partially written parts are never retried from byte zero.
+The native HTTP adapter accepts bounded header-only GETs (8192 bytes, two seconds,
+at most 64 headers), refuses bodies/transfer coding, and closes after streaming.
+Clients disconnected while waiting for a frame are detected without waiting for
+the upstream 10-second record deadline. The manager and worker/viewer/accept
+turns use `Sys.loop` to reclaim scratch. There is no hard whole-process memory
+bound or long-duration soak claim; a latest frame plus in-flight viewer copies,
+transport buffers and runtime bookkeeping still occupy memory.
+
+The gateway's `--native-camera=EXECUTABLE` option supervises one private native
+service per configured printer, starting it only on the first authenticated
+camera request. The idle service can retain its local listener, but no upstream
+TLS connection or frame is retained without viewers. A randomly generated
+runtime capability (`FPR_CAMERA_GATE`) protects the private `/stream` and
+`/stats` endpoints; only the gateway supplies it. Printer code and capability
+are sent through the native process environment, not command-line arguments,
+public JSON or the UI environment. Native `/stats` contains only public camera
+metadata. Python reads those metadata and relays the native multipart HTTP body
+as opaque bytes: it no longer parses camera records, validates JPEGs, creates
+multipart parts or owns upstream viewer sharing in native-camera mode.
+
+Public gateway login, origin checks, camera availability checks, browser media
+lifecycle and logout/expiry remain enforced. Stream relay rechecks authorization
+at most every 250 ms while waiting, with the existing bounded client-write timeout
+when a browser is slow. Revocation closes the private stream and removes its
+viewer. A source error before the first frame returns camera-unavailable; after
+HTTP output begins it closes the stream. The default legacy/demo camera path is
+unchanged. Public gateway/authentication and supervision still use Python.
+No running dashboard was restarted or actual printer contacted by these checks.
+
+Acceptance on one and four macOS AArch64 harts uses public OpenSSL test identities
+and synthetic codes:
+
+- Byte-fragmented 16-byte headers/JPEG bodies, multiple consecutive valid multipart
+  parts, exact binary lengths and redacted public metadata.
+- One source shared by two/eight viewers, refused ninth viewer, one-viewer departure
+  preserving the others, final-viewer socket/frame release, and fresh generation
+  after reconnect. A missing/wrong private capability never starts upstream TLS.
+- Oversized lengths rejected before body reads, malformed JPEG markers, truncated
+  bodies, stalled header deadline, and wrong verified TLS identity.
+- A non-reading viewer with a 4-MiB part is retired by the write deadline and releases
+  the upstream source. Cancellation during a partial/stalled record releases the
+  upstream within two seconds instead of waiting for its 10-second read budget.
+- The real authenticated gateway relays consecutive native multipart JPEGs; anonymous
+  access does not start the service, and logout closes an active stream/upstream.
+- Pure login/record/multipart checks run on the host and two-hart RV64 QEMU. Existing
+  dashboard/login/camera/WebSocket and native telemetry regressions pass.
+
+Run `tests/check_native_camera.py --binary=build/printer-camera` with the same
+Python test environment as the dashboard tests. See the [camera setup](../examples/printer-dashboard/README.md#native-camera-opt-in).
+This is simulator evidence; actual A1/P1S trust, camera compatibility and longer
+lifecycle/soak validation remain separate acceptance tasks.

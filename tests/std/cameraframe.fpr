@@ -1,0 +1,36 @@
+unsafe base.
+F = use "examples/printer-dashboard/cameraframe".
+MJ = use "std/mjpeg".
+T = use "std/transport".
+B = use "std/binary".
+S = use "std/string".
+check name yes = if yes then Unit else error "camera framing: {name}".
+need r = case r of Ok x -> x | Err _ -> error "camera framing fixture".
+jpeg = strJoin "" [chr 255, chr 216, "binary", chr 0, chr 255, chr 217].
+header n = strcat (B.putU32le n) (S.repeat 12 (chr 7)).
+readNow n state = if state == "" then (T.End, state) else (T.Data (substr state 0 1), substr state 1 (strlen state - 1)).
+writeNow bytes state = (T.Wrote (strlen bytes), strcat state bytes).
+driver = T.Backend readNow writeNow (fn interest limit state -> (Ok Unit, state)) (fn unused -> 0) (fn state -> (Ok Unit, state)) (fn unused -> Ok Unit) (fn why state -> (why, state)).
+conn bytes = need (T.open 4 driver bytes).
+main =
+  auth = need (F.login "bblp" "test-only");
+  _ = check "80-byte login and little-endian fixed words" (strlen auth == 80 and substr auth 0 16 == strJoin "" [B.putU32le 64, B.putU32le 12288, B.putU32le 0, B.putU32le 0] and substr auth 16 32 == S.padRight 32 (chr 0) "bblp" and substr auth 48 32 == S.padRight 32 (chr 0) "test-only");
+  _ = check "login field bounds and embedded NUL rejection" (case F.login "bblp" (S.repeat 33 "x") of Err _ -> True | _ -> False);
+  _ = check "empty login refused" (case F.login "bblp" "" of Err _ -> True | _ -> False);
+  _ = check "NUL login refused" (case F.login "bblp" (strcat "x" (chr 0)) of Err _ -> True | _ -> False);
+  _ = check "32 byte field accepted" (strlen (need (F.login "bblp" (S.repeat 32 "x"))) == 80);
+  _ = check "16-byte header and unsigned bounded length" (F.size 4194304 (header 4194304) == Ok 4194304 and F.size 4096 (header 4) == Ok 4);
+  _ = check "zero/short/oversize lengths refused before body read" (case F.size 4096 (header 4294967295) of Err _ -> True | _ -> False);
+  (result, next) = F.read (T.Uncancelled 100) 4096 (conn (strJoin "" [header (strlen jpeg), jpeg, "tail"]));
+  _ = check "byte-fragmented header/body and coalesced tail preserved" (result == Ok jpeg and T.state next == "tail");
+  (large, after) = F.read (T.Uncancelled 100) 4096 (conn (strcat (header 4097) "body-not-read"));
+  _ = check "body untouched after oversized header" (case large of Err (T.Invalid _) -> T.state after == "body-not-read" | _ -> False);
+  (short, _) = F.read (T.Uncancelled 100) 4096 (conn (strcat (header 8) "four"));
+  _ = check "truncated body fails" (short == Err T.EndOfStream);
+  (bad, _) = F.read (T.Uncancelled 100) 4096 (conn (strcat (header 4) "bad!"));
+  _ = check "JPEG markers required" (case bad of Err (T.Invalid _) -> True | _ -> False);
+  (written, output) = MJ.write (T.Uncancelled 100) 4096 jpeg (conn "");
+  _ = check "multipart bytes and exact binary length" (written == Ok Unit and T.state output == strJoin "" ["--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ", str (strlen jpeg), "\r\n\r\n", jpeg, "\r\n"]);
+  (tooBig, empty) = MJ.write (T.Uncancelled 100) 4 jpeg (conn "");
+  _ = check "multipart bound prevents output" (case tooBig of Err (T.Invalid _) -> T.state empty == "" | _ -> False);
+  print "Camera framing: login bounds, LE lengths, fragmented/truncated JPEG, allocation bound and binary multipart output PASS".

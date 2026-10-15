@@ -216,11 +216,15 @@ updates the theme/autocomplete boundaries that were still open after slice two.
    username/password authentication and pass Mosquitto TCP/TLS acceptance,
    including refusal and idle keepalive. An opt-in native printer telemetry
    collector is tested through the gateway against a TLS simulator; real device
-   trust and camera/gateway migrations remain in the native record.
+   trust and public gateway migration remain in the native record.
 5. Move printer telemetry merging, native camera framing and camera sharing
    into FP-RISC. Add reusable HTTP streaming and serve the dashboard directly.
    Keep Bambu-specific details in an application library. Preserve read-only
    behaviour, stale/offline visibility, per-tab controls and final-viewer cleanup.
+   Native telemetry projection and opt-in shared camera framing/MJPEG now have
+   simulator acceptance, including capacity, slow viewers, cancellation and
+   logout. Direct public serving/authentication and physical-device validation
+   remain; see the native record for the current boundary.
 
 The final acceptance applications build and run without handwritten JS/CSS
 fragments or Python/curl runtime helpers. Generated outputs, native integration

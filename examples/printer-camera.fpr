@@ -1,0 +1,15 @@
+# Private native camera server. All credentials are runtime environment values.
+unsafe base.
+Service = use "printer-dashboard/cameraservice".
+F = use "printer-dashboard/cameraframe".
+P = use "std/program".
+S = use "std/string".
+main = case P.args Unit of
+    [host, portText, peer, ca] ->
+      port = case S.toInt portText of Ok p -> p | Err _ -> 0;
+      gate = P.envOr "" "FPR_CAMERA_GATE";
+      code = P.envOr "" "FPR_PRINTER_CODE";
+      login = case F.login "bblp" code of Ok bytes -> bytes | Err _ -> P.fail 2 "camera: invalid runtime login fields";
+      _ = if port < 1 or port > 65535 or host == "" or peer == "" or ca == "" or strlen gate < 24 then P.fail 2 "camera: invalid configuration" else Unit;
+      Service.run {host = host, port = port, peer = peer, ca = ca, gate = gate, login = login, maxFrame = 4194304}
+  | _ -> P.fail 2 "usage: printer-camera HOST CAMERA_PORT TLS_PEER CA_FILE".
