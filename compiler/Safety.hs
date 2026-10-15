@@ -100,6 +100,7 @@ approvedLibraries =
     "std/decode.fpr",
     "std/digest.fpr",
     "std/dir.fpr",
+    "std/durable.fpr",
     "std/encoding.fpr",
     "std/esp.fpr",
     "std/file.fpr",

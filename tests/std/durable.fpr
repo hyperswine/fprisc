@@ -1,0 +1,28 @@
+unsafe base.
+# std/durable: a model's durable fields as one value, opened, saved, reopened.
+#   ./fpr run tests/std/durable.fpr PATH
+D = use "std/durable".
+Live = use "std/live".
+KV = use "std/kvlog".
+Program = use "std/program".
+List = use "std/list".
+
+Model = { count : Int, names : List String, note : String }.
+init = { count = 0, names = Nil, note = "fresh" }.
+fields = [Live.field Live.Always @Model.count, Live.field Live.Always @Model.names].
+
+main =
+  path = case Program.args Unit of p :: _ -> p | Nil -> error "durable test: a path";
+  (m0, st) = (case D.open fields path init of Ok pair -> pair | Err why -> error why);
+  _ = print "fresh: {m0.count} {List.length m0.names} {m0.note}";
+  m1 = { m0 | count = 3, names = ["ann", "bo"], note = "changed in memory only" };
+  _ = D.save st m1;
+  n1 = KV.size (D.log st);
+  _ = D.save st m1;
+  n2 = KV.size (D.log st);
+  _ = print "a second save of the same model writes nothing: {n1 == n2}";
+  _ = D.close st { m1 | count = 4 };
+  (m2, st2) = (case D.open fields path init of Ok pair -> pair | Err why -> error why);
+  _ = print "reopened: {m2.count} {m2.names} note={m2.note}";
+  _ = print "the undeclared field came from init: {m2.note == init.note}";
+  0.

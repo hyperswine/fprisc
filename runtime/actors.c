@@ -239,6 +239,7 @@ typedef struct fpr_acb {
   fpr_resource_t *resources;
   struct fpr_acb *watch;
   uw watchers;
+  char why[FPR_WHY_BYTES]; /* why it died: a trap's text, "killed"; empty = it returned */
 #ifdef FPR_COST_PROBE
   uint64_t probe_shipped, probe_drained; /* cross-hart latency stamps (XHART.md) */
 #endif
@@ -1991,6 +1992,14 @@ void fpr_actor_resource_remove(fpr_resource_t *node) {
  * a loaded process ends that actor, not the machine.  The boot actor has
  * no one to fail to: it panics with the same reason. */
 static V a_kill(V av);
+/* the reason an actor died, kept on it for its watchers; a long one is cut
+ * and marked (FPR_WHY_BYTES: the permanent residue per dead actor) */
+static void why_set(acb_t *a, const char *why) {
+  uw n = 0;
+  while (why[n] && n < FPR_WHY_BYTES - 1) { a->why[n] = why[n]; n++; }
+  if (why[n] && n >= 4) { a->why[n - 3] = a->why[n - 2] = a->why[n - 1] = '.'; }
+  a->why[n] = 0;
+}
 void fpr_actor_fail(const char *why) {
   if (fpr_plane_actors) { fpr_plane_actors->fail(why); for (;;) FPR_PARK(); }
   fpr_hart_t *h = fpr_hart();
@@ -2002,6 +2011,7 @@ void fpr_actor_fail(const char *why) {
   for (const char *c = pre; *c && n < sizeof msg - 1; c++) msg[n++] = *c;
   for (const char *c = why; *c && n < sizeof msg - 1; c++) msg[n++] = *c;
   fpr_logput(2, msg, n);
+  why_set(a, why); /* before DEAD is published: a watcher that reads DEAD reads this */
   (void)a_kill((V)a);
   fpr_cpanic("actors: a failed actor resumed");
   for (;;) FPR_PARK();
@@ -2159,6 +2169,7 @@ void fpr_actors_init(void) { /* hart 0, before fpr_smp_go */
   main_acb.parent = 0;
   main_acb.pid = 0;
   main_acb.external_cleanup = 0; main_acb.external_arg = 0;
+  main_acb.why[0] = 0;
   main_acb.resources = 0;
   main_acb.scopes = 0;
   ledger_push(&main_acb);
@@ -2288,6 +2299,7 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
   a->stack = stk;
   a->stack_sz = stk_sz;
   a->external_cleanup = 0; a->external_arg = 0;
+  a->why[0] = 0;
   a->resources = 0;
   a->wait_kind = a->wait_arg = 0;
   a->slp_on = 0;
@@ -2912,6 +2924,18 @@ static V a_receive_from(V me, V fromv) {
 static const struct { uint32_t tid, var; uw len; uint8_t bytes[16]; } __attribute__((aligned(8))) recv_dead_s = {T_STR, 0, 10, "dead actor"};
 static const struct { uint32_t tid, var; V f; } __attribute__((aligned(8))) recv_dead = {T_RESULT, 1, (V)&recv_dead_s};
 
+/* the answer for a dead sender: the static Err "dead actor" when it returned,
+ * Err "dead actor: <why>" (built on the caller) when it failed or was killed */
+static V dead_of(acb_t *s) {
+  if (!s->why[0]) return (V)&recv_dead;
+  char buf[FPR_WHY_BYTES + 16];
+  uw n = 0;
+  const char *pre = "dead actor: ";
+  for (const char *c = pre; *c; c++) buf[n++] = *c;
+  for (const char *c = s->why; *c && n < sizeof buf - 1; c++) buf[n++] = *c;
+  return fpr_mkresultn(1, buf, n);
+}
+
 static void wake_watchers(acb_t *s) {
   if (__atomic_load_n(&s->watchers, __ATOMIC_SEQ_CST) == 0) return;
   for (acb_t *a = __atomic_load_n(&g_all, __ATOMIC_ACQUIRE); a; a = a->all_nx)
@@ -2944,7 +2968,7 @@ static V a_receive_from_now(V me, V fromv) {
   if (c && ch_avail(c)) return ok_of(take_at(a, c, c->rh));
   uint32_t k;
   if (sh_has_from(a, (uw)fromv, &k)) return ok_of(take_at(a, sh_chan(a), k));
-  return dead ? (V)&recv_dead : (V)&recv_empty;
+  return dead ? dead_of((acb_t *)fromv) : (V)&recv_empty;
 }
 
 static V a_receive_from_res(V me, V fromv) {
@@ -2966,7 +2990,7 @@ static V a_receive_from_res(V me, V fromv) {
     if (c && ch_avail(c)) return ok_of(take_at(a, c, c->rh));
     uint32_t k;
     if (sh_has_from(a, sid, &k)) return ok_of(take_at(a, sh_chan(a), k));
-    if (dead) return (V)&recv_dead;
+    if (dead) return dead_of(s);
     __atomic_store_n(&a->watch, s, __ATOMIC_SEQ_CST);
     __atomic_fetch_add(&s->watchers, 1, __ATOMIC_SEQ_CST);
     block_unless(a, p_from_dead, sid);
@@ -3031,6 +3055,7 @@ static V a_kill(V av) {
   if (a == mem_act) fpr_cpanic("kill: the memory actor cannot be killed");
   if (a == __atomic_load_n(&irq_router, __ATOMIC_ACQUIRE)) fpr_cpanic("kill: the interrupt router cannot be killed");
   if (a == tmr_act) fpr_cpanic("kill: the timer actor cannot be killed");
+  if (a != fpr_hart()->current && !a->why[0]) why_set(a, "killed"); /* its own failure, if racing, says more */
   uint32_t st = __atomic_load_n(&a->var, __ATOMIC_ACQUIRE);
   while (st != ST_DEAD &&
          !__atomic_compare_exchange_n(&a->var, &st, ST_DEAD, 0, __ATOMIC_SEQ_CST, __ATOMIC_ACQUIRE)) {}

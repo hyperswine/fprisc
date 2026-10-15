@@ -360,6 +360,18 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         assert 'reply=Ok 42 dead=Err dead actor died-while-waiting=Err dead actor' in out, out
         assert 'rounds: oks=3000 errs=3000' in out, out
     print('receiveFromRes: a dead sender is an answer; 3,000 reply-then-exit and exit-silently rounds on 1, 4 and 8 harts: PASS')
+    # 4i. a trap (error, Int overflow, division by zero) ends the actor, not the
+    # machine, and the reason reaches its watchers; a kill says "killed"
+    dw = build('tests/base/deathwhy.fpr', 'deathwhy')
+    for harts in ('1', '4'):
+        out = run([dw], env={'FPR_HARTS': harts}, timeout=60).stdout
+        assert 'error: Err dead actor: boom\n' in out, out
+        assert 'overflow: Err dead actor: Int overflow: 1 + 4611686018427387903 does not fit an Int' in out, out
+        assert 'division: Err dead actor: division by zero\n' in out, out
+        assert 'killed: Err dead actor: killed\n' in out, out
+        assert 'returned: Err dead actor\n' in out, out
+        assert out.endswith('the program is still running\n'), out
+    print('a trap ends the actor, not the machine: error, Int overflow and division by zero on a worker are its death with the reason for its watchers; a kill says killed; the program goes on (1 and 4 harts): PASS')
     # Force the original first-sender race, then exercise real scheduler/wakes,
     # dead-sender channel reuse and overflow under parallel host load.
     run(['python3', 'tests/check_actor_claim.py'])

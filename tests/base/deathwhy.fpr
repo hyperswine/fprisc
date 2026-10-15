@@ -1,0 +1,33 @@
+unsafe base.
+# A trap ends the actor, not the machine, and its watchers hear why:
+# `error`, an Int overflow, a division by zero, a kill; an actor that
+# returned is plain "dead actor".  The program is still running afterwards.
+boom self = case receive self of who -> error "boom".
+over self = case receive self of (who, n) -> _ = send who (n + intMax Unit); Unit.
+divz self = case receive self of (who, n) -> _ = send who (n / (n - 1)); Unit.
+calm self = case receive self of who -> Unit.
+sleeper self = _ = Sys.sleepUs 2000000; Unit.
+main =
+  me = myself 0;
+  a = spawn boom;
+  _ = send a me;
+  ra = receiveFromRes me a;
+  b = spawn over;
+  _ = send b (me, 1);
+  rb = receiveFromRes me b;
+  d = spawn divz;
+  _ = send d (me, 1);
+  rd = receiveFromRes me d;
+  k = spawn sleeper;
+  _ = Sys.sleepUs 20000;
+  _ = kill k;
+  rk = receiveFromRes me k;
+  c = spawn calm;
+  _ = send c me;
+  rc = receiveFromRes me c;
+  _ = print "error: {ra}";
+  _ = print "overflow: {rb}";
+  _ = print "division: {rd}";
+  _ = print "killed: {rk}";
+  _ = print "returned: {rc}";
+  print "the program is still running".

@@ -70,6 +70,8 @@ check('javascript', label='JavaScript: typed syntax without Raw, safe literals a
 check('browsermedia', label='BrowserMedia: shared active-source policy, phases and suspension')
 check('httpclient', label='HttpClient: bounded framing, partial I/O, strict rejection, deadlines, cancellation and native request validation')
 check('http', label='Http: client and server, headers, a 100 KB POST, 404, chunked decoding, URL parsing')
+with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
+    check('durable', args=(str(Path(t) / 'durable.kvlog'),), label='std/durable: a model\'s durable fields as one value: open lays the log over init, save writes only what differs, close syncs, a reopen restores')
 check('ui', label='std/ui: vstack/hstack/scroll/card/button/input/page as attribute records and roles, variants, lowered to the std/view tree the hand-written utilities give')
 check('httplimits', label='Http.serveWith limits: a 4 KB header block is 431, a 100 KB body 413, a quiet connection and a short body 408 within readMs, a bad content-length 400')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:

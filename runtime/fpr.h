@@ -669,6 +669,8 @@ void fpr_actor_resource_remove(fpr_resource_t *node);
 /* end the current actor with a logged reason (fail-stop; never returns);
  * the boot actor panics; routed processes fail through the shared plane */
 __attribute__((noreturn)) void fpr_actor_fail(const char *why);
+/* a death reason is kept on the actor (its watchers read it: "dead actor: why"); longer ones are cut, marked "..." */
+#define FPR_WHY_BYTES 160
 int fpr_hal_sleep_us(uw us);      /* the host sleep: Sys.sleepUs's fallback (runtime.c weak) */
 extern uw fpr_mem_reqs, fpr_mem_waits, fpr_mem_direct, fpr_mem_frees, fpr_mem_denied,
     fpr_mem_inline; /* takes served on the spot (the lock was free) */
@@ -758,6 +760,11 @@ V fpr_mkresult(uw variant, const char *s);
 V fpr_mkresultn(uw variant, const char *s, uw n);
 void fpr_panic(V str_obj) __attribute__((noreturn));
 void fpr_cpanic_n(const char *msg, uw n) __attribute__((noreturn));
+/* a TRAP: a failure the program caused (`error`, an Int overflow, a division
+ * by zero).  On an actor other than 0 it ends that actor with the reason and
+ * the machine keeps running; actor 0 is the program, and panics as before */
+void fpr_trap_n(const char *msg, uw n) __attribute__((noreturn));
+void fpr_trap(const char *msg) __attribute__((noreturn));
 void fpr_cpanic_num(const char *pre, sw n, const char *post) __attribute__((noreturn)); /* pre, the number, post */
 void fpr_int_overflow_kernel(void) __attribute__((noreturn)); /* a vector kernel's Int overflow trap */
 void fpr_div_zero_kernel(void) __attribute__((noreturn));

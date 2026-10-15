@@ -92,3 +92,18 @@ Death reasons; actor-level trap isolation on posix; `std/supervisor`; the
 `Within` sweep. Then 3 to 7 as the registers' open items are closed. Each
 step gets its states-register entry before its code, as the actor and
 mailbox entries did.
+
+## Progress (2026-10-15)
+
+Item 1, the first two parts, are done (fprisc main): **death carries a
+reason** (`acb.why`, written before DEAD; `receiveFromRes` answers `Err
+"dead actor: <why>"`; a kill says `killed`; a return stays `dead actor`),
+and **a trap ends the actor, not the machine** on every machine with the
+actor runtime: `error`, the Int overflow traps (the C primitives, the
+inline guards, the vector kernels) and division by zero go through
+`fpr_trap`, which is `fpr_actor_fail` for any actor but 0. The states
+register has the **Failed** entry; `tests/base/deathwhy.fpr` is the test.
+Not done: the plane's copy of the actor API (qos) still answers the bare
+reason; other primitive refusals (`charAt` out of range, `chr`) are still
+machine panics, pending item 3's input-vs-programmer-error audit. Next:
+`std/supervisor`, then the `Within` sweep.

@@ -1,0 +1,4 @@
+fresh: 0 0 fresh
+a second save of the same model writes nothing: True
+reopened: 4 [ann, bo] note=fresh
+the undeclared field came from init: True

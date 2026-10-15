@@ -139,5 +139,8 @@ Steps 1 and 2 are done ([2026-10-15-SAFETY-ALLOW-LIST-REVIEW.md](2026-10-15-SAFE
 logbook, inventory and pos1 are rewritten onto std/ui, inventory and pos1
 keep their logs through std/journal, and what each taught is on the std/ui
 page (the named gaps: the two-field send, browser hooks as values,
-prototypes as typed nodes, sizes). Step 4 is the lessons and the std/ma
-retirement.
+prototypes as typed nodes, sizes). Step 4 (2026-10-15): std/ma is retired
+(its element reset, spacing scale and stylesheet are std/ui's); std/durable
+holds a model's durable fields as one value for a program with its own
+loop, and todo is on it; the hardening page's item 1 has begun (death
+reasons, trap isolation).

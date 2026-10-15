@@ -1,0 +1,44 @@
+# std/durable.fpr -- Durable: the durable fields of a model, as ONE value.
+#
+#   D = use "std/durable".
+#   fields = [Live.field Live.Always @Model.items].
+#   case D.open fields "todo.kvlog" init of
+#       Err why -> Program.fail 1 why
+#     | Ok (model, store) -> ... D.save store model ...    # after a change
+#
+# A program whose model is held by std/live declares `fields` and the server
+# keeps them; a program that runs its own loop (a terminal app over
+# std/term, a job) had to open the log, lay the fields over its init and
+# take the first snapshots itself, three calls in the right order.  Here
+# that is `open`, and `save store model` writes what differs from the log
+# (one lookup per field: a save with nothing changed writes nothing).  The
+# fields are std/live's (`Live.field`, `Live.each`, `Live.custom`): the
+# path literal is checked against the model's declaration and brings its
+# codec, so a field here and a field the server keeps are the same thing.
+# `close` is a last save and the log synced before the program stops.
+Live = use "live".
+KV = use "kvlog".
+M = use "map".
+S = use "string".
+
+Store m = Type (Store (List (Live.Field m)) KV.KvLog).
+
+# the log opened, every field's last value laid over `init`
+open : List (Live.Field m) -> String -> m -> Result (m, Store m) String .
+open fields path init = case KV.open path of
+    Err why -> Err "durable: {path}: {why}"
+  | Ok db -> (case Live.restore fields db init of
+      Err why -> Err "durable: {path}: restore failed: {why}"
+    | Ok model -> _ = Live.start fields db model (M.empty S.compare); Ok (model, Store fields db)).
+
+# every field whose value differs from the log's is written, the others not
+save : Store m -> m -> Unit .
+save store model = case store of Store fields db -> _ = Live.start fields db model (M.empty S.compare); Unit.
+
+# the last save, and the log on disk, before the program stops
+close : Store m -> m -> Unit .
+close store model = _ = save store model; (case store of Store _ db -> KV.sync db).
+
+# the log itself, for a program that keeps other keys in it
+log : Store m -> KV.KvLog .
+log store = case store of Store _ db -> db.

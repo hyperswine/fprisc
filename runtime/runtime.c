@@ -2032,24 +2032,35 @@ void fpr_cpanic(const char *m) {
 void fpr_panic(V s) {
   if (!ISINT(s) && TID(s) == T_STR) {
     str_t *t = (str_t *)s;
-#ifndef FPR_BUILTIN /* builtin images have no actor plane to fail-stop through */
-    if (fpr_plane_actors) {
-      /* a LOADED PROCESS on the shared plane: the language's `error` ends
-       * this actor with its reason (the plane's fail-stop; its watchers
-       * hear "dead actor", the launcher reports the root), not the
-       * machine -- which is what this image's own panic path would do,
-       * and did until 2026-10-10 (QOS tools/error-process-check.sh).
-       * The plane's own actors keep `error` as a panic (SUPERVISION S1). */
-      char why[200];
-      uw n = t->len < sizeof why - 1 ? t->len : sizeof why - 1;
-      for (uw i = 0; i < n; i++) why[i] = (char)t->bytes[i];
-      why[n] = 0;
-      fpr_actor_fail(why);
-    }
-#endif
-    fpr_cpanic_n((const char *)t->bytes, t->len);
+    fpr_trap_n((const char *)t->bytes, t->len);
   }
   fpr_cpanic("panic (non-string value)");
+}
+
+/* A trap is the program's own failure: `error`, an Int overflow, a division
+ * by zero (docs/2026-10-15-HARDENING-DIRECTION.md, 1).  On an actor other
+ * than 0 it is that actor's failure, not the machine's: the reason is logged
+ * and kept on the actor, the actor dies and its watchers hear "dead actor:
+ * <reason>" (receiveFromRes, std/actor's askSure), and everything else keeps
+ * running.  A LOADED PROCESS on the shared plane fails through the plane's
+ * fail-stop (the launcher reports the root; QOS tools/error-process-check.sh).
+ * Actor 0 is the program: a trap there panics as before, and a machine
+ * invariant (fpr_cpanic) always does.  Builtin images have no actor plane. */
+void fpr_trap_n(const char *m, uw n) {
+#ifndef FPR_BUILTIN
+  char why[FPR_WHY_BYTES + 80];
+  uw k = n < sizeof why - 1 ? n : sizeof why - 1;
+  for (uw i = 0; i < k; i++) why[i] = m[i];
+  why[k] = 0;
+  fpr_actor_fail(why);
+#else
+  fpr_cpanic_n(m, n);
+#endif
+}
+void fpr_trap(const char *m) {
+  uw n = 0;
+  while (m[n]) n++;
+  fpr_trap_n(m, n);
 }
 
 volatile uint32_t fpr_shutdown; /* hart loops park when set */
@@ -2272,7 +2283,7 @@ static void int_overflow(const char *op, sw a, sw b) {
   p = put_str(p, " "); p = put_dec(p, b); p = put_str(p, " does not fit an Int (");
   p = put_dec(p, INT_MIN_TAGGED); p = put_str(p, ".."); p = put_dec(p, INT_MAX_TAGGED);
   p = put_str(p, "); I64 is the type that wraps");
-  fpr_cpanic_n(buf, (uw)(p - buf));
+  fpr_trap_n(buf, (uw)(p - buf));
 }
 /* the traps of the unboxed vector kernels (Codegen genU, the NEON lanes):
  * entries, not strings, so a kernel links alone against a probe */
@@ -2281,9 +2292,9 @@ void fpr_int_overflow_kernel(void) {
   p = put_str(p, "Int overflow in a vector kernel: the result does not fit an Int (");
   p = put_dec(p, INT_MIN_TAGGED); p = put_str(p, ".."); p = put_dec(p, INT_MAX_TAGGED);
   p = put_str(p, "); I64 is the type that wraps");
-  fpr_cpanic_n(buf, (uw)(p - buf));
+  fpr_trap_n(buf, (uw)(p - buf));
 }
-void fpr_div_zero_kernel(void) { fpr_cpanic("division by zero"); }
+void fpr_div_zero_kernel(void) { fpr_trap("division by zero"); }
 V fpr_prim_fn__x2b(V a, V b) {
   sw x = UNTAG(a), y = UNTAG(b), r;
   if (__builtin_add_overflow(x, y, &r) || !fits_int(r)) int_overflow("+", x, y);
@@ -2301,7 +2312,7 @@ V fpr_prim_fn__x2a(V a, V b) {
 }
 V fpr_prim_fn__x2f(V a, V b) {
   sw x = UNTAG(a), y = UNTAG(b);
-  if (y == 0) fpr_cpanic("division by zero");
+  if (y == 0) fpr_trap("division by zero");
   sw r = x / y; /* the one overflow: the most negative Int / -1 */
   if (!fits_int(r)) int_overflow("/", x, y);
   return TAG(r);
