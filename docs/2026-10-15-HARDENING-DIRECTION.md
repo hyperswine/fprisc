@@ -105,5 +105,24 @@ inline guards, the vector kernels) and division by zero go through
 register has the **Failed** entry; `tests/base/deathwhy.fpr` is the test.
 Not done: the plane's copy of the actor API (qos) still answers the bare
 reason; other primitive refusals (`charAt` out of range, `chr`) are still
-machine panics, pending item 3's input-vs-programmer-error audit. Next:
-`std/supervisor`, then the `Within` sweep.
+machine panics, pending item 3's input-vs-programmer-error audit.
+
+Item 1's third part, **`std/supervisor`**, is done the same day: a monitor
+per child (an actor parked on `receiveFromRes`, so the reason above is
+what it reports), the three restart strategies, a restart budget per
+window, and past it the supervisor kills its children and fails by name,
+so the program or a supervisor above hears `dead actor: supervisor: ...`
+and decides; `lookup` finds a child's current handle within a budget.
+`tests/std/supervisor.fpr` drives all of it. State that survives a
+restart is the child's own business (its journal, its durable fields).
+
+Item 2, the **`Within` sweep** (same day): `std/actor` gained
+`askSureWithin`; the waits a std client makes on a std owner now carry a
+stated budget, past which the caller fails by name instead of waiting for
+ever (the outcome of the request is unknown, as the deadlines page says):
+std/journal's `append` (10 s, `appendWithin`), std/kvlog's `put get keys
+size` (10 s) and `compact` (60 s), std/store's requests to its front and
+shards (10 s), std/live's register requests (10 s). Not swept: the owners'
+own `receive` (a server waits for mail by design), the poller's wait on
+its host thread (the idle wait itself), and MVU, readiness and task, which
+had their `Until` forms already.

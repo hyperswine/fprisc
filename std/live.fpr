@@ -540,10 +540,16 @@ has ms name xs = case xs of Nil -> False | (m, n) :: r -> (if m == ms and n == n
 without : unsafe Int -> String -> List (Int, String) -> List (Int, String) .
 without ms name xs = case xs of Nil -> Nil | (m, n) :: r -> (if m == ms and n == name then r else (m, n) :: without ms name r).
 
+# a request to the register, answered within 10 s: a register that does not
+# answer in time is a named failure of the asker, not an actor held for ever
+ask : unsafe Int -> Int -> q -> r .
+ask me reg q = case A.askSureWithin 10000 me reg q of
+    Ok r -> r
+  | Err why -> error "live: the register did not answer: {why}".
 ticker : unsafe Int -> Int -> String -> Int -> Unit .
 ticker reg ms key self =
   _ = Sys.sleepUs (ms * 1000);
-  r = A.askSure self reg (TickDue ms key);
+  r = ask self reg (TickDue ms key);
   again = (case r of Wanted True -> True | _ -> False);
   _ = drop r;
   (if again then ticker reg ms key self else Unit).
@@ -556,7 +562,7 @@ connection reg poller cfg app conn peer = case H.readRequest conn of
       else _ = ST.write (H.renderResponse (H.text 404 "no such page\n")) conn; Unit).
 
 page reg cfg app =
-  r = A.askSure (myself 0) reg Snapshot;
+  r = ask (myself 0) reg Snapshot;
   html = pageOf cfg app r;
   _ = drop r;
   html.
@@ -578,7 +584,7 @@ session reg poller app conn req = case WS.accept req of
       _ = ST.write head conn;
       me = myself 0;
       writer = A.spawnWith (A.Dynamic 64) (fn self -> writerStart (protocolOf req.query) reg app conn self);
-      r = A.askSure me reg (Join writer);
+      r = ask me reg (Join writer);
       sid = (case r of Welcome n _ -> n | _ -> 0);
       _ = drop r; # a reply is a message: undropped, it pins the register's slab for this session's life
       (if sid == 0 then Unit else reading reg app.codec writer sid (ST.readerOn poller conn) conn A.tidySmall).

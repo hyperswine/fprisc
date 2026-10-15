@@ -1,0 +1,134 @@
+# std/supervisor.fpr -- Supervisor: children that are started again when they
+# die, within a budget; and `monitor`, the watcher a death is reported to.
+#
+#   Sup = use "std/supervisor".
+#   sup = Sup.start { children = [ { Sup.child | name = "store", run = Store.serve },
+#                                  { Sup.child | name = "web", run = Web.serve } ],
+#                     strategy = Sup.OneForOne, restarts = 3, windowMs = 5000 };
+#   case Sup.lookup me sup "store" of Ok a -> ... | Err why -> ...
+#
+# A child is a name and a body; the supervisor spawns it (with its mailbox
+# capacity), and a MONITOR -- one small actor per child, parked on
+# `receiveFromRes` -- tells the supervisor when it ends and why (the reason
+# a death carries since 2026-10-15: the trap's text, "killed", or "returned").
+# The strategy says what a death restarts: the one child (`OneForOne`), every
+# child in order (`OneForAll`), or it and the ones started after it
+# (`RestForOne`).  A budget bounds the loop: more than `restarts` restarts
+# inside `windowMs` and the supervisor gives up -- it kills its children and
+# fails with the last reason, so ITS watcher (the program, or a supervisor
+# above) hears "dead actor: supervisor: ..." and decides.  Nothing is replayed:
+# a restarted child starts from its own init (its journal, if it keeps one).
+# Other actors reach a child through `lookup`, since a restart is a new
+# handle; `lookup` waits at most 5 s (`lookupWithin` for another budget).
+#
+# docs/2026-10-15-HARDENING-DIRECTION.md (1); the rule it makes concrete is
+# docs/2026-10-05-SUPERVISION-AND-ADMISSION.md's: fail-stop, tell whoever
+# waits, never replay, restart within a budget, then give up by name.
+A = use "actor".
+L = use "list".
+
+Strategy = Type (OneForOne | OneForAll | RestForOne).
+Child = { name : String, run : Int -> Unit, cap : A.Cap }.
+child : Child .
+child = { name = "", run = (fn self -> Unit), cap = A.Dynamic 64 }.
+Spec = { children : List Child, strategy : Strategy, restarts : Int, windowMs : Int }.
+spec : Spec .
+spec = { children = Nil, strategy = OneForOne, restarts = 3, windowMs = 5000 }.
+
+# what a monitor sends its owner: (monitor, 0, Exited actor reason)
+Req = Type (Exited Int String | Lookup String | Stop).
+
+# ---- the monitor -----------------------------------------------------------------
+# one actor, parked on the watched one; a message the watched actor sends it
+# (it would have to know the monitor) is dropped and the wait goes on
+monitor : Int -> Int -> Int .
+monitor owner a = spawn (fn self -> watch self owner a).
+watch : unsafe Int -> Int -> Int -> Unit .
+watch self owner a = case receiveFromRes self a of
+    Ok m -> _ = drop m; watch self owner a
+  | Err why -> _ = A.sendSure self owner (self, 0, Exited a (reasonOf why)); Unit.
+# "dead actor: <why>" is why; a bare "dead actor" is a return
+reasonOf : String -> String .
+reasonOf why = if why == "dead actor" then "returned"
+  else if strlen why > 12 and substr why 0 12 == "dead actor: " then substr why 12 (strlen why - 12)
+  else why.
+
+# ---- the supervisor ---------------------------------------------------------------
+State = { spec : Spec, live : List (Child, Int), history : List Int }.
+
+start : Spec -> Int .
+start sp = A.spawnWith (A.Dynamic 64) (fn self -> run self sp).
+run : unsafe Int -> Spec -> Unit .
+run self sp =
+  (st, t) = A.tidied self 65536 { spec = sp, live = startAll self sp.children, history = Nil };
+  loop self st t.
+startAll : Int -> List Child -> List (Child, Int) .
+startAll self kids = L.map (fn c -> (c, startOne self c)) kids.
+startOne : Int -> Child -> Int .
+startOne self c = a = A.spawnWith c.cap c.run; _ = monitor self a; a.
+
+loop : unsafe Int -> State -> A.Tidy -> Unit .
+loop self st0 t0 = case A.tidy self (st0, t0) of (st, t) ->
+  m = receive self;
+  (from, id, q) = m;
+  req = keep q;
+  _ = drop m;
+  (case req of
+      Lookup name -> _ = A.reply (from, id) (lookupIn st.live name); loop self st t
+    | Stop -> _ = killAll st.live; _ = A.reply (from, id) (Ok Unit); Unit
+    | Exited a why -> (case nameOf st.live a of
+          "" -> loop self st t   # a child this supervisor replaced already: its kill, reported
+        | name -> loop self (restart self st name why) t)).
+
+lookupIn : List (Child, Int) -> String -> Result Int String .
+lookupIn live name = case L.filter (fn pair -> case pair of (c, _) -> c.name == name) live of
+    (_, a) :: _ -> Ok a
+  | Nil -> Err "supervisor: no child named {name}".
+nameOf : List (Child, Int) -> Int -> String .
+nameOf live a = case L.filter (fn pair -> case pair of (_, x) -> x == a) live of
+    (c, _) :: _ -> c.name
+  | Nil -> "".
+killAll : List (Child, Int) -> Unit .
+killAll live = L.fold (fn u pair -> case pair of (_, a) -> _ = kill a; Unit) Unit live.
+
+# a child died: inside the budget it (and what the strategy says) starts
+# again; past it the supervisor gives up, by name
+restart : Int -> State -> String -> String -> State .
+restart self st name why =
+  now = Sys.mtime Unit / 10;
+  recent = L.filter (fn at -> at > now - st.spec.windowMs * 1000) st.history;
+  n = L.length recent;
+  if n >= st.spec.restarts then
+    _ = killAll st.live;
+    error "supervisor: {name} died ({why}); {n} restarts in {st.spec.windowMs} ms: giving up"
+  else
+    _ = Sys.stderr "[supervisor] {name} died: {why}; restarted ({n + 1} of {st.spec.restarts} in {st.spec.windowMs} ms)\n";
+    { st | live = again self st.spec.strategy st.live name, history = now :: recent }.
+again : Int -> Strategy -> List (Child, Int) -> String -> List (Child, Int) .
+again self strategy live name = case strategy of
+    OneForOne -> L.map (fn pair -> case pair of (c, a) -> (if c.name == name then (c, startOne self c) else (c, a))) live
+  | OneForAll -> _ = killAll (L.filter (fn pair -> case pair of (c, _) -> c.name != name) live);
+                 L.map (fn pair -> case pair of (c, _) -> (c, startOne self c)) live
+  | RestForOne -> rest self live name False.
+# RestForOne: from the dead child on, every child is killed (the dead one is
+# dead already) and started again, in order
+rest : Int -> List (Child, Int) -> String -> Bool -> List (Child, Int) .
+rest self live name from = case live of
+    Nil -> Nil
+  | (c, a) :: more ->
+      here = from or c.name == name;
+      _ = (if here and c.name != name then kill a else Unit);
+      (if here then (c, startOne self c) else (c, a)) :: rest self more name here.
+
+# ---- the callers' side -----------------------------------------------------------
+lookup : Int -> Int -> String -> Result Int String .
+lookup me sup name = lookupWithin 5000 me sup name.
+lookupWithin : Int -> Int -> Int -> String -> Result Int String .
+lookupWithin ms me sup name = case A.callWithin ms me sup (Lookup name) of
+    Ok r -> r
+  | Err why -> Err "supervisor: {why}".
+# the children killed, the supervisor gone
+stop : Int -> Int -> Result Unit String .
+stop me sup = case A.callWithin 5000 me sup Stop of
+    Ok r -> r
+  | Err why -> Err "supervisor: {why}".

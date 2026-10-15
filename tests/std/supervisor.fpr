@@ -1,0 +1,67 @@
+unsafe base.
+# std/supervisor: children restarted when they die, three strategies, a budget.
+#   ./fpr run tests/std/supervisor.fpr
+Sup = use "std/supervisor".
+A = use "std/actor".
+
+Q = Type (Get | Bump | Crash).
+# a counter service: a child that keeps state, so a restart is visible
+counter self = count self 0.
+count : unsafe Int -> Int -> Unit .
+count self n =
+  m = receive self;
+  (from, id, q) = m;
+  req = keep q;
+  _ = drop m;
+  (case req of
+      Get -> _ = A.reply (from, id) n; count self n
+    | Bump -> count self (n + 1)
+    | Crash -> error "asked to crash").
+get me a = case A.callWithin 2000 me a Get of Ok n -> n | Err why -> error "get: {why}".
+bump a = case send a (0, 0, Bump) of Ok _ -> Unit | Err why -> error "bump: {why}".
+crash me a = case A.callWithin 2000 me a Crash of Ok _ -> "replied" | Err why -> why.
+# the handle of `name` once it is not `old` any more (a restart is a new handle)
+fresh : unsafe Int -> Int -> String -> Int -> Int -> Int .
+fresh me sup name old tries = case Sup.lookup me sup name of
+    Ok a -> if a != old then a else (if tries == 0 then error "no restart of {name}" else _ = Sys.sleepUs 5000; fresh me sup name old (tries - 1))
+  | Err why -> error "lookup {name}: {why}".
+kids = [ { Sup.child | name = "a", run = counter }, { Sup.child | name = "b", run = counter }, { Sup.child | name = "c", run = counter } ].
+handles me sup = (case Sup.lookup me sup "a" of Ok a -> a | Err w -> error w,
+                  case Sup.lookup me sup "b" of Ok b -> b | Err w -> error w,
+                  case Sup.lookup me sup "c" of Ok c -> c | Err w -> error w).
+seed me sup =
+  (a, b, c) = handles me sup;
+  _ = bump a; _ = bump a; _ = bump b; _ = bump c; _ = bump c; _ = bump c;
+  (a, b, c).
+counts me sup = (a, b, c) = handles me sup; "a={get me a} b={get me b} c={get me c}".
+
+main =
+  me = myself 0;
+  one = Sup.start { Sup.spec | children = kids, strategy = Sup.OneForOne, restarts = 3, windowMs = 2000 };
+  (a, b, c) = seed me one;
+  _ = print "one-for-one before: {counts me one}";
+  _ = print "the crash as its caller saw it: {crash me a}";
+  a2 = fresh me one "a" a 400;
+  _ = print "one-for-one after a's death: {counts me one} (a is new: {a2 != a}, b and c kept: {get me b == 1 and get me c == 3})";
+  _ = Sup.stop me one;
+  all = Sup.start { Sup.spec | children = kids, strategy = Sup.OneForAll, restarts = 3, windowMs = 2000 };
+  (a, b, c) = seed me all;
+  _ = crash me b;
+  b2 = fresh me all "b" b 400;
+  _ = print "one-for-all after b's death: {counts me all}";
+  _ = Sup.stop me all;
+  some = Sup.start { Sup.spec | children = kids, strategy = Sup.RestForOne, restarts = 3, windowMs = 2000 };
+  (a, b, c) = seed me some;
+  _ = crash me b;
+  b3 = fresh me some "b" b 400;
+  _ = print "rest-for-one after b's death: {counts me some}";
+  _ = Sup.stop me some;
+  tight = Sup.start { Sup.spec | children = kids, strategy = Sup.OneForOne, restarts = 2, windowMs = 60000 };
+  (a, b, c) = seed me tight;
+  _ = crash me a; a = fresh me tight "a" a 400;
+  _ = crash me a; a = fresh me tight "a" a 400;
+  _ = crash me a;
+  gone = receiveFromRes me tight;
+  _ = print "past the budget the supervisor gives up: {gone}";
+  _ = print "and its children are gone: {crash me b}";
+  print "stop answers: {Sup.stop me one}".

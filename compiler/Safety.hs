@@ -158,6 +158,7 @@ approvedLibraries =
     "std/store.fpr",
     "std/stream.fpr",
     "std/string.fpr",
+    "std/supervisor.fpr",
     "std/task.fpr",
     "std/tcp.fpr",
     "std/term.fpr",

@@ -1,0 +1,15 @@
+one-for-one before: a=2 b=1 c=3
+[ERR] actor failed: asked to crash
+the crash as its caller saw it: dead actor: asked to crash
+one-for-one after a's death: a=0 b=1 c=3 (a is new: True, b and c kept: True)
+[ERR] actor failed: asked to crash
+one-for-all after b's death: a=0 b=0 c=0
+[ERR] actor failed: asked to crash
+rest-for-one after b's death: a=2 b=0 c=0
+[ERR] actor failed: asked to crash
+[ERR] actor failed: asked to crash
+[ERR] actor failed: asked to crash
+[ERR] actor failed: supervisor: a died (asked to crash); 2 restarts in 60000 ms: giving up
+past the budget the supervisor gives up: Err dead actor: supervisor: a died (asked to crash); 2 restarts in 60000 ms: giving up
+and its children are gone: dead actor
+stop answers: Err supervisor: dead actor

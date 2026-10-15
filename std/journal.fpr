@@ -59,15 +59,20 @@ create path = case F.writeText path "" of
     Ok _ -> Ok ""
   | Err why -> Err "journal: cannot create {path}: {why}".
 
-# the lines, oldest first, as one write
+# the lines, oldest first, as one write; the owner answers within 10 s or the
+# write's outcome is unknown (a disk that hangs is Err, not a caller held for ever)
 append : List String -> Journal -> Result Unit String .
-append lines j = case lines of
+append lines j = appendWithin 10000 lines j.
+appendWithin : Int -> List String -> Journal -> Result Unit String .
+appendWithin ms lines j = case lines of
     Nil -> Ok Unit
   | _ -> (case j of Journal a _ ->
-      r = A.askSure (myself 0) a (Append (S.concat (L.map (fn l -> "{l}\n") lines)));
-      out = (case r of Done -> Ok Unit | Failed why -> Err (keep why) | _ -> Err "journal: unexpected reply");
-      _ = drop r;
-      out).
+      (case A.askSureWithin ms (myself 0) a (Append (S.concat (L.map (fn l -> "{l}\n") lines))) of
+          Err why -> Err "journal: {why}"
+        | Ok r ->
+            out = (case r of Done -> Ok Unit | Failed why -> Err (keep why) | _ -> Err "journal: unexpected reply");
+            _ = drop r;
+            out)).
 
 path : Journal -> String .
 path j = case j of Journal _ p -> p.

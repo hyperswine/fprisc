@@ -388,11 +388,20 @@ put key value db = case tryPut key value db of
 # On failure the in-memory value is unchanged. An I/O error may still have
 # partially appended bytes; this is not a transactional or fsync guarantee.
 tryPut : String -> J.Value -> KvLog -> Result Unit String .
-tryPut key value db = case db of KvLog a _ ->
-  r = A.askSure (myself 0) a (Put key value);
-  out = (case r of Done -> Ok Unit | Failed why -> Err (keep why) | _ -> Err "put: unexpected reply");
-  _ = drop r;
-  out.
+tryPut key value db = case db of KvLog a _ -> (case A.askSureWithin 10000 (myself 0) a (Put key value) of
+    Err why -> Err why
+  | Ok r ->
+      out = (case r of Done -> Ok Unit | Failed why -> Err (keep why) | _ -> Err "put: unexpected reply");
+      _ = drop r;
+      out).
+
+# a request the owner answers within a budget (10 s; a compaction 60 s): an
+# owner that does not answer in time -- a disk that hangs -- is a named
+# failure of the caller, not a caller held for ever (HARDENING-DIRECTION 2)
+ask : unsafe Int -> Int -> q -> r .
+ask ms a q = case A.askSureWithin ms (myself 0) a q of
+    Ok r -> r
+  | Err why -> error "kvlog: the store did not answer: {why}".
 
 # A put WITHOUT waiting: the store appends it in order -- a later get, put or
 # sync from the same actor sees it -- and the caller carries on.  For a caller
@@ -406,21 +415,21 @@ sync db = _ = size db; Unit.
 
 get : String -> KvLog -> O.Option J.Value .
 get key db = case db of KvLog a _ ->
-  r = A.askSure (myself 0) a (Get key);
+  r = ask 10000 a (Get key);
   out = (case r of Value v -> O.Some (keep v) | _ -> O.None);
   _ = drop r;
   out.
 
 keys : KvLog -> List String .
 keys db = case db of KvLog a _ ->
-  r = A.askSure (myself 0) a Keys;
+  r = ask 10000 a Keys;
   out = (case r of Listing ks -> keep ks | _ -> Nil);
   _ = drop r;
   out.
 
 size : KvLog -> Int .
 size db = case db of KvLog a _ ->
-  r = A.askSure (myself 0) a Size;
+  r = ask 10000 a Size;
   out = (case r of Count n -> n | _ -> 0);
   _ = drop r;
   out.
@@ -428,11 +437,12 @@ size db = case db of KvLog a _ ->
 # rewrite the log keeping the latest record of every key and ALL records of the
 # keys in `keepAll`; answers how many records were dropped
 compact : List String -> KvLog -> Result Int String .
-compact keepAll db = case db of KvLog a _ ->
-  r = A.askSure (myself 0) a (Rewrite keepAll);
-  out = (case r of Count n -> Ok n | Failed why -> Err (keep why) | _ -> Err "compact: no answer");
-  _ = drop r;
-  out.
+compact keepAll db = case db of KvLog a _ -> (case A.askSureWithin 60000 (myself 0) a (Rewrite keepAll) of
+    Err why -> Err why
+  | Ok r ->
+      out = (case r of Count n -> Ok n | Failed why -> Err (keep why) | _ -> Err "compact: no answer");
+      _ = drop r;
+      out).
 
 path : KvLog -> String .
 path db = case db of KvLog _ p -> p.

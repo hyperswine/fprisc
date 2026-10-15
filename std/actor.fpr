@@ -78,6 +78,15 @@ askSureRes me a q = case sendSureResult me a (me, q) of
     Err why -> Err why
   | Ok u -> awaitFrom me a.
 
+# the same within a budget (milliseconds): a service that does not answer in
+# time is Err "deadline exceeded (outcome unknown)", never a caller held for ever
+askSureWithin : unsafe Int -> Int -> Int -> q -> Result r String .
+askSureWithin ms me a q = case deadlineAfter ms of
+    Err why -> Err why
+  | Ok deadline -> (case sendSureUntil deadline me a (me, q) of
+      Err why -> Err why
+    | Ok u -> awaitFromUntil deadline me a).
+
 # ---- request / reply that ANSWERS ---------------------------------------------------
 # The prelude's `ask` sends (me, q) without looking at the answer and then waits
 # for the next message from the service -- for ever, if the service is gone.

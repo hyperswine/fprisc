@@ -346,3 +346,22 @@ only takes a Result already in the mailbox, and a death posts nothing
 which the deadlock detector halts the machine). Only `receiveFromRes` and the
 `std/actor` calls built on it answer a death. See `2026-10-07-STATES.md`
 section 5.1.
+
+## Decided by doing (2026-10-15)
+
+Part 1's S1 and S2 are answered in code, not by this page
+([2026-10-15-HARDENING-DIRECTION.md](2026-10-15-HARDENING-DIRECTION.md)):
+
+- **S1**: the language's `error`, an Int overflow and a division by zero
+  end the actor, not the machine, on every machine with the actor runtime
+  (`fpr_trap`); actor 0 and a machine invariant still panic. Stack overflow,
+  heap exhaustion and a failed `spawn` are unchanged.
+- **S2**: a death carries its reason (`acb.why`); `receiveFromRes` and
+  `receiveFromNow` answer `Err "dead actor: <why>"`; a kill says `killed`.
+- **S4-S6** have a first answer as a library, `std/supervisor`: fail-stop,
+  a monitor per child reports the death and the reason, one-for-one /
+  one-for-all / rest-for-one restarts from the child's own init (never a
+  replay), a restart budget per window, and past it the supervisor gives
+  up by name, so its watcher decides. The QOS services keep their own
+  owner-and-child shapes; the Files owner's "once, then offline" is a
+  supervisor with `restarts = 1`.

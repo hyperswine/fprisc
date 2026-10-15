@@ -100,8 +100,14 @@ frontStart self cfg want idxs =
 
 spawnShard cfg want idx = A.spawnWith (A.Dynamic 64) (fn self -> shardStart self cfg want idx).
 
+# a request to the front or a shard, answered within 10 s: one that does not
+# answer in time is a named failure of the caller, not a caller held for ever
+ask : unsafe Int -> Int -> q -> r .
+ask me a q = case A.askSureWithin 10000 me a q of
+    Ok r -> r
+  | Err why -> error "store: no answer: {why}".
 countOf me sh =
-  r = A.askSure me sh SCount;
+  r = ask me sh SCount;
   n = (case r of SCountIs c -> c | _ -> 0);
   _ = drop r;
   n.
@@ -339,7 +345,7 @@ framesGo cfg fs d m = case fs of
 put : a -> Store a -> Int .
 put x store = case store of Store front key ->
   me = myself 0;
-  r = A.askSure me front (FRouteW (key x));
+  r = ask me front (FRouteW (key x));
   (sh, idx) = (case r of FRoutedTo s i -> (s, i) | _ -> (0, 0));
   _ = drop r;
   wrote me front idx (SPut x) sh.
@@ -347,26 +353,26 @@ put x store = case store of Store front key ->
 remove : Int -> Store a -> Int .
 remove k store = case store of Store front _ ->
   me = myself 0;
-  r = A.askSure me front (FRouteRm k);
+  r = ask me front (FRouteRm k);
   (sh, idx) = (case r of FRoutedTo s i -> (s, i) | _ -> (0, 0));
   _ = drop r;
   (if sh == 0 then count store else wrote me front idx (SRemove k) sh).
 
 # ask the shard, then report its count to the front; answers the store's total
 wrote me front idx q sh =
-  r = A.askSure me sh q;
+  r = ask me sh q;
   (n, ver) = (case r of SWrote c v -> (c, v) | _ -> (0, 0));
   _ = drop r;
   report me front idx n ver.
 report me front idx n ver =
-  r = A.askSure me front (FCounted idx n ver);
+  r = ask me front (FCounted idx n ver);
   total = (case r of FDone c -> c | _ -> 0);
   _ = drop r;
   total.
 
 count : Store a -> Int .
 count store = case store of Store front _ ->
-  r = A.askSure (myself 0) front FCount;
+  r = ask (myself 0) front FCount;
   n = (case r of FDone c -> c | _ -> 0);
   _ = drop r;
   n.
@@ -374,11 +380,11 @@ count store = case store of Store front _ ->
 get : Int -> Store a -> O.Option a .
 get k store = case store of Store front _ ->
   me = myself 0;
-  r = A.askSure me front (FRoute k);
+  r = ask me front (FRoute k);
   sh = (case r of FRouteIs s -> s | _ -> 0);
   _ = drop r;
   (if sh == 0 then O.None
-   else r2 = A.askSure me sh (SGet k);
+   else r2 = ask me sh (SGet k);
         found = (case r2 of SOne o -> keep o | _ -> O.None);
         _ = drop r2;
         found).
@@ -387,13 +393,13 @@ get k store = case store of Store front _ ->
 page : Int -> Int -> Store a -> (List a, Int) .
 page skip take store = case store of Store front _ ->
   me = myself 0;
-  r = A.askSure me front (FPlan skip take);
+  r = ask me front (FPlan skip take);
   (n, parts) = (case r of FPlanIs c ps -> (c, keep ps) | _ -> (0, Nil));
   _ = drop r;
   (L.concatMap (fn part -> (case part of (sh, s, t) -> rowsFrom me sh (SPage s t))) parts, n).
 
 rowsFrom me sh q =
-  r = A.askSure me sh q;
+  r = ask me sh q;
   rows = (case r of SRows xs -> keep xs | _ -> Nil);
   _ = drop r;
   rows.
@@ -403,9 +409,12 @@ rowsFrom me sh q =
 search : (a -> Bool) -> Int -> Int -> Store a -> (List a, Int) .
 search pred skip take store = case store of Store front _ ->
   me = myself 0;
-  r = A.askSure me front FShards;
+  r = ask me front FShards;
   shards = (case r of FShardsAre xs -> keep xs | _ -> Nil);
   _ = drop r;
   _ = L.each (fn sh -> A.sendSure me sh (me, SFilter pred)) shards;
-  found = L.concatMap (fn sh -> m = receiveFrom me sh; xs = (case m of SRows ys -> keep ys | _ -> Nil); _ = drop m; xs) shards;
+  deadline = (case A.deadlineAfter 10000 of Ok d -> d | Err why -> error "store: {why}");
+  found = L.concatMap (fn sh -> (case A.awaitFromUntil deadline me sh of
+      Ok m -> (case m of SRows ys -> ys | _ -> Nil)
+    | Err why -> error "store: a shard did not answer: {why}")) shards;
   (L.take take (L.drop skip found), L.length found).

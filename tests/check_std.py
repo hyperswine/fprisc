@@ -72,6 +72,7 @@ check('httpclient', label='HttpClient: bounded framing, partial I/O, strict reje
 check('http', label='Http: client and server, headers, a 100 KB POST, 404, chunked decoding, URL parsing')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
     check('durable', args=(str(Path(t) / 'durable.kvlog'),), label='std/durable: a model\'s durable fields as one value: open lays the log over init, save writes only what differs, close syncs, a reopen restores')
+check('supervisor', label='std/supervisor: children restarted when they die with the reason reported by a monitor; one-for-one, one-for-all and rest-for-one; past the restart budget the supervisor gives up by name and its watcher hears why')
 check('ui', label='std/ui: vstack/hstack/scroll/card/button/input/page as attribute records and roles, variants, lowered to the std/view tree the hand-written utilities give')
 check('httplimits', label='Http.serveWith limits: a 4 KB header block is 431, a 100 KB body 413, a quiet connection and a short body 408 within readMs, a bad content-length 400')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
