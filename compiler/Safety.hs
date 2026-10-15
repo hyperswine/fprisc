@@ -110,6 +110,7 @@ approvedLibraries =
     "std/httpcore.fpr",
     "std/javascript.fpr",
     "std/job.fpr",
+    "std/journal.fpr",
     "std/json.fpr",
     "std/kvlog.fpr",
     "std/lens.fpr",

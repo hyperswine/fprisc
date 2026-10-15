@@ -1,0 +1,94 @@
+# std/journal.fpr -- Journal: an append-only text EVENT JOURNAL, one line per
+# change, owned by one actor (ExtBase, posix).
+#
+#   Journal = use "std/journal".
+#   case Journal.open "inventory.log" of
+#       Ok o -> model = List.fold apply init o.lines;      # fold the history
+#               ... Journal.append [line] o.journal ...     # one write, oldest first
+#     | Err why -> ...
+#
+# The application's model IS the fold of the journal (the event-sourced shape
+# of pos1 and inventory, docs/2026-10-15-DESIGN-GOALS-AUDIT.md): `open` reads
+# the file once, cuts a torn last line (a process that died mid-write; left in
+# place, the next line would be glued to it and lost as well) and hands back
+# the whole lines and the journal.  `append` writes a run of lines as ONE write
+# to the file the owner keeps open (std/logfile), after checking the path still
+# names the file it left: when a backup was restored over it or the file was
+# emptied, the lines still go in -- every line stands alone -- and the answer
+# is Err, naming the case, so the program stops and the next start folds what
+# the file holds now.  A write that fails is Err too: a page must never show a
+# change the disk does not have, and the caller decides what that means.
+#
+# One actor owns the file (the MVU rule: a single writer; everyone else asks);
+# the application keeps no descriptor and no size in its model, only the
+# lines it has yet to write.  `lines` re-reads the file, for a rebuild that
+# compares the fold with the model.
+
+A = use "actor".
+LF = use "logfile".
+F = use "file".
+S = use "string".
+L = use "list".
+
+Journal = Type (Journal Int String).
+# what `open` answers: the whole lines, the torn bytes cut (0 when none), the journal
+Opened = { lines : List String, cut : Int, journal : Journal }.
+
+Req = Type (Append String | Close).
+Rep = Type (Done | Failed String | Closed).
+
+open : String -> Result Opened String .
+open path = case (if F.exists path then F.readBytes path else Ok "") of
+    Err why -> Err "journal: cannot read {path}: {why}"
+  | Ok bytes ->
+      keep = LF.wholeLines bytes;
+      (case (if keep < strlen bytes then LF.truncate path keep else Ok Unit) of
+          Err why -> Err "journal: cannot cut the torn end off {path}: {why}"
+        | Ok _ ->
+            owner = spawn (fn self -> serve self path (LF.sink path keep));
+            Ok { lines = L.filter (fn l -> strlen l > 0) (S.lines (substr bytes 0 keep)), cut = strlen bytes - keep, journal = Journal owner path }).
+
+# the lines, oldest first, as one write
+append : List String -> Journal -> Result Unit String .
+append lines j = case lines of
+    Nil -> Ok Unit
+  | _ -> (case j of Journal a _ ->
+      r = A.askSure (myself 0) a (Append (S.concat (L.map (fn l -> "{l}\n") lines)));
+      out = (case r of Done -> Ok Unit | Failed why -> Err (keep why) | _ -> Err "journal: unexpected reply");
+      _ = drop r;
+      out).
+
+path : Journal -> String .
+path j = case j of Journal _ p -> p.
+
+# the file as it is now (a rebuild compares its fold with the model)
+lines : Journal -> Result (List String) String .
+lines j = case F.lines (path j) of
+    Ok ls -> Ok (L.filter (fn l -> strlen l > 0) ls)
+  | Err why -> Err "journal: cannot read {path j}: {why}".
+
+close : Journal -> Unit .
+close j = case j of Journal a _ -> r = A.askSure (myself 0) a Close; _ = drop r; Unit.
+
+# ---- the owner ----------------------------------------------------------------------
+serve : unsafe Int -> String -> LF.Sink -> Unit .
+serve self p sink =
+  m = receive self;
+  (rt, q) = m;
+  req = keep q;
+  _ = drop m;
+  (case req of
+      Close -> _ = A.sendSure self rt Closed; _ = LF.close sink; Unit
+    | Append bytes -> (case LF.ready sink of
+          LF.Same s -> (case LF.write s bytes of
+              Ok s2 -> _ = A.sendSure self rt Done; serve self p s2
+            | Err why -> _ = A.sendSure self rt (Failed "journal: cannot write {p}: {why}"); serve self p s)
+        | LF.Fresh s -> serve self p (underUs self rt p s bytes "is empty now")
+        | LF.Other s -> serve self p (underUs self rt p s bytes "is not the file this writer left")
+        | LF.Failed s why -> _ = A.sendSure self rt (Failed "journal: cannot write {p}: {why}"); serve self p s)).
+# the file under the writer changed: the lines still go in, and the caller is told
+underUs : Int -> Int -> String -> LF.Sink -> String -> String -> LF.Sink .
+underUs self rt p s bytes what =
+  (s2, note) = (case LF.write s bytes of Ok s2 -> (s2, "") | Err why -> (s, " (and the write failed: {why})"));
+  _ = A.sendSure self rt (Failed "journal: {p} {what}: wrote this change to it{note}; fold the file again");
+  s2.

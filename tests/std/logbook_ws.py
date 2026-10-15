@@ -42,6 +42,8 @@ class Ws:
         n, off = self.buf[1] & 127, 2
         if n == 126:
             self.need(4); n = struct.unpack('>H', self.buf[2:4])[0]; off = 4
+        elif n == 127:  # a page past 64 KB: the eight-byte length
+            self.need(10); n = struct.unpack('>Q', self.buf[2:10])[0]; off = 10
         self.need(off + n)
         p, self.buf = self.buf[off:off + n], self.buf[off + n:]
         self.raw = p.decode()

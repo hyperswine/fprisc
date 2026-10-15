@@ -68,7 +68,7 @@ List = use "std/list".
 S = use "std/string".
 File = use "std/file".
 Stream = use "std/stream".
-LF = use "std/logfile".
+Journal = use "std/journal".
 Clock = use "std/clock".
 Config = use "std/config".
 Decode = use "std/decode".
@@ -108,7 +108,7 @@ Item = { id : Int, name : String, loc : String, sub : String, desc : String, tag
 # members are (name, salt, hash); devices are (token hash, name)
 
 initModel = { items = Nil, nextId = 1, members = Nil, devices = Nil, pend = Nil, events = 0, skipped = 0,
-              fails = Nil, sess = Nil, booted = 0, path = "", prof = noProf, sink = LF.sink "" 0 }.
+              fails = Nil, sess = Nil, booted = 0, path = "", prof = noProf }.
 noDraft = { name = "", loc = "", sub = "", desc = "", tags = "" }.
 noSess = { sid = 0, user = "", toast = "", role = "", tn = 0, editing = 0 - 1, q = "", sort = "recent", page = 0, pane = "items", con = Nil,
            tried = "", theme = 1, d = noDraft }.
@@ -237,58 +237,34 @@ deviceUser devices h = case List.find (fn d -> strEq (devHash d) h) devices of
 
 # ---- the disk ----------------------------------------------------------------------------
 
-# The log is read once.  A last line without its newline is a torn append (the
-# process died mid-write): it is cut off before anything is appended after it,
-# or the next line would be glued to it and lost as well.  The sink starts at
-# the size that is left, so the first write knows it is still that file.
-boot path =
+# The log is an event JOURNAL (std/journal): opened once, a torn last line cut,
+# its lines folded into the model.  The journal's owner keeps the file open;
+# the model holds the path and the lines it has yet to write, never a handle.
+openLog path = case Journal.open path of
+    Ok o -> o
+  | Err why -> Program.fail 1 "inventory: {why}".
+boot o path =
   m0 = { initModel | booted = Clock.now Unit };
   t0 = Sys.timeUs Unit;
-  bytes = logBytes path;
-  keep = LF.wholeLines bytes;
-  _ = (case keep < strlen bytes of
-         True -> (case LF.truncate path keep of
-             Ok _ -> Sys.stderr "[inventory] cut a torn last line ({strlen bytes - keep} bytes) off {path}\n"
-           | Err why -> error "inventory: cannot cut the torn end off {path}: {why}")
-       | False -> Unit);
-  m2 = replayed m0 (Ok (S.lines (substr bytes 0 keep)));
+  _ = (case o.cut > 0 of True -> Sys.stderr "[inventory] cut a torn last line ({o.cut} bytes) off {path}\n" | False -> Unit);
+  m2 = replayed m0 o.lines;
   t1 = Sys.timeUs Unit;
   _ = print "[inventory] log {path}: {m2.events} lines in {t1 - t0} us, {List.length m2.items} items, {List.length m2.members} members, {List.length m2.devices} devices";
   _ = (case m2.skipped > 0 of True -> Sys.stderr "[inventory] {m2.skipped} unreadable lines skipped\n" | False -> Unit);
   _ = (case List.isEmpty m2.members of True -> Sys.stderr "[inventory] no members yet: add one with --member=NAME and INV_PASSWORD\n" | False -> Unit);
-  { m2 | path = path, sink = LF.sink path keep, prof = { noProf | bootUs = t1 - t0, bootLines = m2.events } }.
-# no log yet is an empty one; a log that is there and cannot be read stops the start
-logBytes path | not (File.exists path) = "".
-logBytes path = case File.readBytes path of
-    Ok bytes -> bytes
-  | Err why -> error "inventory: cannot read {path}: {why}".
-replayed m (Ok ls) = List.fold (fn mm l -> apply { mm | events = mm.events + 1 } l) m ls.
-replayed m (Err e) = m.
+  { m2 | path = path, prof = { noProf | bootUs = t1 - t0, bootLines = m2.events } }.
+replayed m ls = List.fold (fn mm l -> apply { mm | events = mm.events + 1 } l) m ls.
 
-# The pending lines, oldest first, in ONE write to the log the server keeps
-# open (std/logfile; opening the file for every append was most of an append's
-# cost).  A write that fails stops the server: the page must never show a
-# change the disk does not have.
-#
-# Before each write the sink checks the path still names the file it left.
-# When it does not -- a backup restored over it, a member added from the
-# command line while the server runs -- the change still goes in (every line
-# stands alone), and then the server stops; launchd starts it again, and the
-# model is folded from what the file holds now.
-flush path m = case m.pend of
+# The pending lines, oldest first, in ONE write.  A write that fails, or a
+# file that is no longer the one the journal left (a backup restored over it,
+# a member added from the command line while the server runs), stops the
+# server: the page must never show a change the disk does not have; launchd
+# starts it again, and the model is folded from what the file holds now.
+flush j m = case m.pend of
     Nil -> m
-  | ls ->
-      bytes = S.concat (List.map (fn l -> "{l}\n") (List.reverse ls));
-      (case LF.ready m.sink of
-        LF.Same s -> wrote m (LF.write s bytes)
-      | LF.Fresh s -> underUs m s bytes "is empty now"
-      | LF.Other s -> underUs m s bytes "is not the file this server wrote"
-      | LF.Failed s why -> error "inventory: cannot write {path}: {why}").
-wrote m (Ok s) = { m | pend = Nil, sink = s }.
-wrote m (Err why) = error "inventory: cannot write {m.path}: {why}".
-underUs m s bytes what =
-  _ = (case LF.write s bytes of Ok _ -> Unit | Err why -> Sys.stderr "[inventory] cannot write {m.path}: {why}\n");
-  error "inventory: {m.path} {what}: wrote this change to it and stopped, to fold the file again".
+  | ls -> (case Journal.append (List.reverse ls) j of
+      Ok _ -> { m | pend = Nil }
+    | Err why -> error "inventory: {why}").
 
 # ---- sessions ----------------------------------------------------------------------------
 
@@ -313,12 +289,12 @@ draftLocals d = [("name", d.name), ("loc", d.loc), ("sub", d.sub), ("desc", d.de
 # ---- update ------------------------------------------------------------------------------
 
 # every event is timed: the app's own work, and the disk append when it wrote
-update path ev m =
+update j ev m =
   t0 = Sys.timeUs Unit;
   (m2, cs) = step ev m;
   t1 = Sys.timeUs Unit;
   wrote = not (List.isEmpty m2.pend);
-  m3 = flush path m2;
+  m3 = flush j m2;
   t2 = Sys.timeUs Unit;
   prof = noteUpd (kindOf ev) (t1 - t0) m3.prof;
   ({ m3 | prof = (case wrote of True -> { prof | flush = note prof.flush (t2 - t1) } | False -> prof) }, cs).
@@ -635,7 +611,7 @@ deleteCmd m s id = case findItem m.items id of
 rebuildCmd m = case File.lines m.path of
     Err why -> (m, "cannot read the log: {why}")
   | Ok ls ->
-      d = replayed initModel (Ok ls);
+      d = replayed initModel (List.filter (fn l -> strlen l > 0) ls);
       wrong = List.length (List.filter (fn it -> findItem m.items it.id != Option.Some it) d.items)
             + List.length (List.filter (fn it -> findItem d.items it.id == Option.None) m.items);
       case wrong == 0 of
@@ -1015,12 +991,13 @@ importFirestore path store = case File.readText path of
   | Ok text -> (case Json.parse text of
       Err why -> Program.fail 1 "inventory: {path}: {why}"
     | Ok v ->
-        m = boot store;
+        o = openLog store;
+        m = boot o store;
         docs = Option.withDefault Nil (Option.andThen Json.asList (Json.field "documents" v));
         its = List.filterMap fsItem docs;
         fresh = List.filter (fn it -> not (List.any (fn x -> strEq (lower x.name) (lower it.name) and strEq (lower (place x)) (lower (place it))) m.items)) its;
         numbered = List.indexedMap (fn i it -> { it | id = m.nextId + i }) fresh;
-        _ = (case File.appendText store (S.concat (List.map (fn it -> "{itemLine it "import" it.at}\n") numbered)) of
+        _ = (case Journal.append (List.map (fn it -> itemLine it "import" it.at) numbered) o.journal of
                Ok _ -> Unit | Err why -> Program.fail 1 "inventory: {why}");
         _ = print "[inventory] imported {List.length numbered} items ({List.length its - List.length fresh} already here)";
         0).
@@ -1054,14 +1031,15 @@ days y0 mo d =
 
 addMemberCli store name0 pw =
   name = lower (S.trim name0);
-  m = boot store;
+  o = openLog store;
+  m = boot o store;
   case not (wordy name) of
     True -> Program.fail 2 "inventory: a member's name is 1 to 16 letters or digits"
   | False -> (case strlen pw < 8 of
       True -> Program.fail 2 "inventory: give a password of 8 or more characters (--password or INV_PASSWORD)"
     | False ->
         salt = randomHex Unit;
-        _ = (case File.appendText store "{memberLine name salt (pwHash salt pw) (Clock.now Unit)}\n" of
+        _ = (case Journal.append [memberLine name salt (pwHash salt pw) (Clock.now Unit)] o.journal of
                Ok _ -> Unit | Err why -> Program.fail 1 "inventory: {why}");
         _ = print "[inventory] {name} {case hasMember m name of True -> "has a new password" | False -> "is a member"}";
         0).
@@ -1095,7 +1073,8 @@ main = case Config.load { defaults = Json.object [("port", Json.Integer 6720), (
             # nothing of the model, it is there because the driver wants one
             cfg = { address = address, port = port, title = "Home inventory", store = "{store}.kvlog", journal = False,
                     script = script, watch = Nil, rebuild = Nil, restart = Nil };
-            _ = Live.serveProjectedBody [G.utilities [G.Margin (G.Px 0)]] cfg { init = boot store, update = update store, subs = subs, fields = Nil, codec = codec,
+            o = openLog store;
+            _ = Live.serveProjectedBody [G.utilities [G.Margin (G.Px 0)]] cfg { init = boot o store, update = update o.journal, subs = subs, fields = Nil, codec = codec,
                                           project = project size keep, same = (fn a b -> a == b),
                                           view = view keep, cache = (VC.empty Unit, noRender), css = cssAll };
             0)).
