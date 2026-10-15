@@ -160,6 +160,7 @@ approvedLibraries =
     "std/task.fpr",
     "std/tcp.fpr",
     "std/term.fpr",
+    "std/ui.fpr",
     "std/tls.fpr",
     "std/transport.fpr",
     "std/view.fpr",

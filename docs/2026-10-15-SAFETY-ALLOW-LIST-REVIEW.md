@@ -35,6 +35,8 @@ mqttclient, mqttsession, native, osconnection, reload, sockettransport,
 watchedtransport); they were refused only through the modules they call.
 `checkdemo` is a demonstration of the cost checker with an intentionally
 unsafe `main`.
+`std/ui` (added the same day, [2026-10-15-STD-UI.md](2026-10-15-STD-UI.md)) has no
+`unsafe` function: it is records, cases and List functions over std/view.
 
 Nothing found asks for more than the list already trusts, so all 36 are
 admitted. The list now holds every std module, and `tests/check_trust.py`
