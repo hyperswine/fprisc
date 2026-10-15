@@ -51,7 +51,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 42 -- width-correct RV32 scalar fast paths and checked indexed memory
+codegenRev = 43 -- inline only canonical primitives, never shadowing definitions
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -1224,6 +1224,15 @@ genT tgt spec prog ext = go
       | Just a <- lookup h primArities, a == n = Just ("fpr_prim_fn_" ++ mangle h)
       | otherwise = Nothing
 
+    -- A known user function may have the same source name as an inline
+    -- primitive. Only the primitive's own identity licenses expansion.
+    -- ARC's reserved adapters live in ext; other imported definitions are
+    -- user functions too. HAL primitives have their own unshadowed clause.
+    primitiveKnown env h n
+      | M.member h env || M.member h prog = Nothing
+      | M.member h ext, not (tgtArc tgt && "$arc." `isPrefixOf` h) = Nothing
+      | otherwise = known env h n
+
     -- a link-time symbol address: `Addr.symbol "name"` became CVar
     -- "$sym.name" in Compile; the value is the address itself (kind 'a')
     go _ _ _ (CVar h)
@@ -1250,7 +1259,7 @@ genT tgt spec prog ext = go
     -- enclosing epilogue returns it, as for any base expression.
     go env nxt _pos e
       | (CVar h, args@(_ : _)) <- spineOf e,
-        Just target <- known env h (length args),
+        Just target <- primitiveKnown env h (length args),
         Just emit <- inlineArc tgt h = do
           argLines <- stageArgs env nxt args
           body <- emit target
@@ -1379,7 +1388,7 @@ genT tgt spec prog ext = go
       | (CVar h, args@(_ : _)) <- spineOf e,
         h /= "f64frombits",
         Just target <- known env h (length args),
-        not (isJust (inlineArc tgt h)) =
+        not (isJust (primitiveKnown env h (length args)) && isJust (inlineArc tgt h)) =
           knownCallThen env nxt pos target args rest
       | CMk tid var fs@(_ : _) <- e = do
           pre <- concat <$> mapM (\f -> (++ push tgt) <$> go env nxt NonTail f) (init fs)
@@ -1466,7 +1475,7 @@ genT tgt spec prog ext = go
       c
         | Just v <- nullaryBool env c -> pure $ \l -> ["    j " ++ l | v == sense]
         | (CVar h, args@(_ : _)) <- spineOf c,
-          Just target <- known env h (length args),
+          Just target <- primitiveKnown env h (length args),
           Just cond <- inlineCond tgt h -> do
             argLines <- stageArgs env nxt args
             test <- cond target

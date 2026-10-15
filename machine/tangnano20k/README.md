@@ -153,8 +153,9 @@ The core's 1,628 independent RV64 reference cases and its trap/recovery checks
 also passed physically. Focused host software-float checks cover fixed IEEE
 bit patterns, conversions, NaNs and sqrt; they are not full TestFloat testing.
 
-The build checks the linked ELF's ISA attributes and flags, refusing libraries
-that declare compressed, atomic or hardware floating-point extensions. The
+The build checks the linked ELF's ISA attributes and flags. Its default IM mode
+refuses C; the explicit `FPR_RVC=1` mode permits C. Both refuse atomic and
+hardware floating-point extensions and incompatible ABI libraries. The
 host driver validates frame bounds, checksum and sequence; local negative
 checks cover unavailable services, missing files and escaping paths/symlinks.
 

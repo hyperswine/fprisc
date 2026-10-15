@@ -43,13 +43,20 @@ rounding every large request up to a size-class boundary. Thus checked-pointer
 lookup, live counting and coalescing are constant time; allocation has a
 free-class-dependent worst case, plus the required payload zeroing work.
 
+Requests whose complete block exceeds the usable arena are refused before
+looking up a size class. This also prevents an oversized request from indexing
+past a board's bounded free-list table. A refused reallocation preserves the
+original allocation, capacity, contents and exclusive ownership.
+
 The implementation remains single-threaded and is not reentrant. Interrupt
 handlers must not mutate the heap concurrently with an interrupted allocation.
 It has no fixed number of allocation slots and no fixed arena-size cap beyond
 the machine address space. The C free-list state uses 1,076 static bytes on
 RV32 and 4,200 on RV64, versus 12/24 before. At `-Os`, the complete manual-Rc
-allocator object is 3,546/3,726 code bytes, versus 2,062/2,082 before; final
+allocator object is 3,558/3,742 code bytes, versus 2,062/2,082 before; final
 linked images can discard unused functions. The bitmap reservation is additional.
+These object sizes use `-ffreestanding -fno-builtin` and the default object
+section layout; function/data section flags can change complete-object sizes.
 
 For a board with a known maximum arena, define
 `FPR_BUILTIN_HEAP_MAX_BYTES=65536` or `8388608`. The compiler sizes the free-list
@@ -62,11 +69,11 @@ payload ABI:
 
 | Configuration | Static allocator bytes | Complete manual-Rc object code bytes |
 | --- | ---: | ---: |
-| RV32, generic | 1,076 | 3,546 |
-| RV32, 64 KiB maximum | 383 | 3,614 |
-| RV32, 8 MiB maximum | 614 | 3,614 |
-| RV64, generic | 4,200 | 3,726 |
-| RV64, 8 MiB maximum | 1,210 | 3,766 |
+| RV32, generic | 1,076 | 3,558 |
+| RV32, 64 KiB maximum | 383 | 3,626 |
+| RV32, 8 MiB maximum | 614 | 3,626 |
+| RV64, generic | 4,200 | 3,742 |
+| RV64, 8 MiB maximum | 1,210 | 3,778 |
 
 The bounded RV64 board index therefore saves 2,990 static bytes. Object symbol
 checks show no added bit-count/libgcc dependency; only the panic callback remains
@@ -89,7 +96,7 @@ The new fixture executes under native AddressSanitizer/UndefinedBehaviorSanitize
 and as freestanding RV32IM/RV64IM programs in QEMU. It checks rounded-capacity
 zeroing, pointer alignment, guarded and in-place reallocation, preservation of
 bytes and exact ARC descriptors, random size/reuse/coalescing behavior, sharing,
-raw pointer fields and iterative release of 8,192-node lists. Nineteen refusal
+raw pointer fields and iterative release of 8,192-node lists. Twenty-one refusal
 cases execute independently at each XLEN, including a forged interior header,
 invalid/interior pointers, coalesced double free, shared free/reallocation,
 overflow, invalid layouts and exhausted/tiny heaps. The native harness also
@@ -100,8 +107,11 @@ The existing manual-Rc sanitizer fixture and 12,000-deep exact-layout ARC fixtur
 also pass.
 
 Both XLEN fixtures additionally run with actual 64 KiB and 8 MiB bounded arenas,
-exercise refusal of oversized arenas, and repeat the complete contracts with
-the 8 MiB bound. Native sanitizers run both bounded arena sizes; invalid
+exercise refusal of oversized arenas and allocation/reallocation requests that
+exceed the size-class table, and repeat the complete contracts with the 8 MiB
+bound. Each refused oversized reallocation checks the original capacity and
+contents, then successfully frees the still-owned allocation. Native sanitizers
+run both bounded arena sizes; invalid
 configuration compile checks include negative/zero/tiny limits and a limit
 larger than the RV32 address space.
 
@@ -128,12 +138,12 @@ linearly with node count after the change, instead of quadratically:
 
 | XLEN / nodes | Original C heap | Indexed C heap |
 | --- | ---: | ---: |
-| RV32 / 512 | 2,869,932 | 416,530 |
-| RV32 / 2,048 | 42,936,492 | 1,665,298 |
-| RV32 / 8,192 | 675,061,932 | 6,651,668 |
-| RV64 / 512 | 2,993,840 | 446,227 |
-| RV64 / 2,048 | 43,432,112 | 1,784,083 |
-| RV64 / 8,192 | 677,044,400 | 7,120,881 |
+| RV32 / 512 | 2,869,932 | 419,602 |
+| RV32 / 2,048 | 42,936,492 | 1,677,586 |
+| RV32 / 8,192 | 675,061,932 | 6,700,820 |
+| RV64 / 512 | 2,993,840 | 449,299 |
+| RV64 / 2,048 | 43,432,112 | 1,796,371 |
+| RV64 / 8,192 | 677,044,400 | 7,170,033 |
 
 Small allocations still carry the original private header: 32 bytes on RV32 or
 64 bytes on RV64, followed by 16 metadata bytes. Specialized slabs/arenas could

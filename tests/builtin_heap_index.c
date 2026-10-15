@@ -32,6 +32,9 @@ static __attribute__((noreturn)) void heap_test_exit(int code) { exit(code); }
 #endif
 static void put_text(const char *s) { while (*s) put_character(*s++); }
 static int same(const char *a, const char *b);
+static V preserved_allocation;
+static uw preserved_capacity;
+static void check_refused_reallocation(void);
 static void put_number(uw n) {
   char digits[32]; unsigned count = 0;
   do { digits[count++] = (char)('0' + n % 10); n /= 10; } while (n);
@@ -41,6 +44,8 @@ void fpr_cpanic(const char *s) {
 #ifndef HEAP_FREESTANDING
   if (expected_oom && same(s,"Builtin: out of memory")) longjmp(oom_target,1);
 #endif
+  if (preserved_allocation && same(s,"Builtin: out of memory"))
+    check_refused_reallocation();
   put_text(s); put_character('\n'); heap_test_exit(3);
 }
 static void check(int ok, const char *s) {
@@ -52,6 +57,15 @@ static void expect(V p, uw n, unsigned char value) {
   for (uw i=0;i<n;i++) check(((unsigned char *)p)[i]==value,"payload contents");
 }
 static uw capacity(V p) { return *(uw *)(p-16)-16; }
+static void check_refused_reallocation(void) {
+  V p=preserved_allocation; preserved_allocation=0;
+  check(fpr_builtin_live_allocations()==1,"refused realloc keeps live count");
+  check(capacity(p)==preserved_capacity,"refused realloc keeps capacity");
+  expect(p,preserved_capacity,0x75);
+  fpr_free(p);
+  check(fpr_builtin_live_allocations()==0,"refused realloc keeps valid ownership");
+  put_text("REFUSED REALLOC PRESERVES ORIGINAL\n");
+}
 static uw cycles(void) {
 #ifdef HEAP_FREESTANDING
   uw value; __asm__ volatile("csrr %0,mcycle" : "=r"(value) :: "memory"); return value;
@@ -72,7 +86,13 @@ static void negative(const char *which) {
   if (same(which,"init-overflow")) fpr_builtin_heap_init((void *)(UINTPTR_MAX-7),(void *)UINTPTR_MAX);
   if (same(which,"small-heap")) fpr_builtin_heap_init(arena,arena+64);
   if (same(which,"out-of-memory")) fpr_alloc(sizeof arena);
+  if (same(which,"oversized-alloc")) fpr_alloc(2*sizeof arena);
   V p=fpr_alloc(512);
+  if (same(which,"oversized-realloc")) {
+    preserved_allocation=p; preserved_capacity=capacity(p);
+    fill(p,preserved_capacity,0x75);
+    fpr_realloc(p,2*sizeof arena);
+  }
   if (same(which,"double-free")) { fpr_free(p); fpr_free(p); }
   if (same(which,"coalesced-double-free")) {
     V q=fpr_alloc(16); fpr_free(p); fpr_free(q); fpr_free(q);

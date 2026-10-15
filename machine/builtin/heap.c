@@ -163,6 +163,9 @@ static void split(block *b, uw size) {
   insert_free(n);
 }
 static block *available(uw size) {
+  /* Reject impossible requests before a bounded index's row is addressed.
+   * Reallocation also reaches this path before changing the original block. */
+  if (size > high - low) fpr_cpanic("Builtin: out of memory");
   unsigned f, s; size_class(size, &f, &s);
   block *same = bins[f][s];
   ALLOCATION_STEP();

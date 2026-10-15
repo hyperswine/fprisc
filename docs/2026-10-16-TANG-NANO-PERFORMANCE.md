@@ -8,7 +8,7 @@ fprisc and HaskPlayground checkouts:
 | RV32 compiler | Width-correct normalization, preserved-register locals, frame cleanup, direct conditions and checked primitive expansions | RV32/RV64 QEMU differential and independent-reference execution |
 | Allocation and indexed memory | Indexed C heap with authenticated constant-time pointer lookup; removal of private `Addr.add` boxes around one memory operation and release | Sanitizer/ownership tests and the physical FP-RISC comparison below |
 | SDRAM processor | RV32 pipeline with a 2 KiB cache, ordered masked writes and four-word burst refill | Physical RV32IM at 54 MHz; cache benchmark and 1 MiB/all-bank checks |
-| Compressed instructions | Integer C decoding on both widths, mixed-length fetch, links and traps; explicit IMC compiler/build modes | QEMU/RTL on both widths; RV64 candidate physical checks; RV32 physical deployment pending |
+| Compressed instructions | Integer C decoding on both widths, mixed-length fetch, links and traps; explicit IMC compiler/build modes | QEMU/RTL on both widths; physical RV64 at 27 MHz and RV32 at 27/48 MHz, including six RV32 FP-RISC stress programs |
 
 Implementation details: [scalar compiler and address fusion](2026-10-16-RV32-SCALAR.md),
 [indexed heap](2026-10-16-BUILTIN-HEAP.md),
@@ -39,10 +39,12 @@ component or compare processor frequencies. The matrix evidence is one pair,
 not a broad benchmark distribution.
 
 The matrix/small-tree pairs used the original pipeline route; the large-tree
-pair used the final SDRAM bank-initialization route, SHA-256
+pair used the later SDRAM bank-initialization route, SHA-256
 `6344f120881e8f4dcad6f16d60106358446f55fffc29a72f6250c36ecf365fab`.
-Each pair used the same image in both modes. The large tree exceeds BRAM
-capacity, checks every node's sum and verifies allocation recovery after both
+Each pair used the same image in both modes. These are historical measurements
+from before the subsequent SDRAM burst-capture correction; they do not validate
+the final corrected routes. The large tree exceeds BRAM capacity, checks the
+aggregate sum over all nodes and verifies allocation recovery after both
 rounds. Raw local reports are
 `build/tangnano20k-stress/pipeline54-{matrix,tree,tree-large}-{legacy,fast}.json`.
 To reproduce on the matching 54 MHz RV32IM SDRAM image, from fprisc:
@@ -93,12 +95,16 @@ python3 boards/tangnano20k/sdram/check_burst.py --freq-mhz 27 48 54 66
 
 The standalone physical burst tester also passed all 8 MiB at 48 and 54 MHz,
 with 12,582,912 comparisons per run, including byte masks and refresh retention.
+Those runs precede the burst-capture correction and are retained as historical
+evidence. The corrected four-beat controller also passes all 12,582,912
+comparisons at 54 MHz with a 135-degree SDRAM clock. The previous 225-degree
+phase failed one beat per line, despite passing internal timing checks.
 The burst check command above uses the controller's functional pin model; it is not an
 electrical timing test. Pipeline cache/CPU RTL checks also cover masked-write
 ordering, coherence, physical clocks during memory holds and Ctrl-C recovery.
 
 The checked scalar QEMU fixture's linked text shrinks **20.7% on RV32**
-(24,000→19,022 bytes) and **19.2% on RV64** (24,828→20,054 bytes) with C.
+(23,972→18,998 bytes) and **19.2% on RV64** (24,804→20,050 bytes) with C.
 Both compressed fixtures execute the same checked results. This establishes
 code density, not those percentages as execution-speed improvements:
 
@@ -119,12 +125,41 @@ candidate. The final candidate passed the local-clock/software-float/selective
 receive refusal probe; the full Base/WASM probes have not been repeated on
 that final candidate. [Base host instructions](../machine/tangnano20k/README.md).
 
-**RV32 compressed physical acceptance remains pending** while its board
-deployment is debugged. Decoder, QEMU and RTL success do not establish a
-working compressed FPGA system; the performance table above uses RV32IM.
+The corrected RV32 compressed production images pass compressed/trap,
+1 MiB/all-bank, cache and all six FP-RISC stress programs at 27 and 48 MHz.
+The 48 MHz route uses a 135-degree SDRAM clock, reports 50.987 MHz internal
+Fmax/+1.221 ns setup slack and zero setup/hold violations, and has SHA-256
+`42d33b0108a73d434218c37d994bad92e297cc590bb926fa2eef9724e086adb4`.
+Its final run uses codegen revision 43 and the guarded bounded heap:
+
+| Program | 48 MHz RV32IMC elapsed seconds |
+| --- | ---: |
+| sieve | 1.938 |
+| sort | 4.103 |
+| matrix | 8.945 |
+| tree | 0.360 |
+| tree_large | 1.566 |
+| compute | 18.322 |
+
+Each program matches the independent reference and exits successfully; one
+UART session covers all six uploads/runs. These are acceptance timings,
+not an IM-versus-IMC speed comparison. The earlier comparison table uses
+RV32IM. Raw current results are in
+`build/tangnano20k-stress/pipeline-c48-cas2-p135-full.json`; durable hashes,
+coverage and results are in the adjacent HaskPlayground pipeline evidence.
+
+The corrected RV32IM image also passes all six programs at 54 MHz: sieve
+1.566 s, sort 4.181 s, matrix 8.123 s, tree 0.306 s, tree_large 1.434 s and
+compute 15.700 s. It passes the 1 MiB/all-bank, coherence, counter and trap
+checks. Its SHA-256 is
+`3aee29e7fd72d3239cb19829a6bd833ac7e60447c1916ec7a34333b90d7830b0`;
+Gowin reports 54.006 MHz Fmax and only **+0.002 ns setup slack**, with zero
+setup/hold violations, using placement mode 2. These current acceptance
+times do not replace the historical same-image baseline/new pairs above.
 
 RV64 remains a serial processor at 27 MHz, not the new RV32 SDRAM pipeline.
-Both hosts have 8 MiB RAM; RV32 Builtin retains manual ownership and its
+The SDRAM variants have 8 MiB RAM; the RV32 Builtin default remains the
+64 KiB BRAM map. RV32 Builtin retains manual ownership and its
 31-bit Int/absent F64 and I64 limits. RV64 Base is single-threaded, uses software
 floating point, and does not automatically reclaim arbitrary temporary
 allocations. The small WASM guest does not establish the full desktop suite.

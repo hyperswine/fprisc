@@ -17,6 +17,8 @@ CASES = {
     'init-overflow': 'heap too small',
     'small-heap': 'heap too small',
     'out-of-memory': 'out of memory',
+    'oversized-alloc': 'out of memory',
+    'oversized-realloc': 'REFUSED REALLOC PRESERVES ORIGINAL\nBuiltin: out of memory',
     'double-free': 'invalid allocation pointer',
     'coalesced-double-free': 'invalid allocation pointer',
     'interior': 'invalid allocation pointer',
@@ -123,6 +125,8 @@ def main():
                  fixture, heap, '-o', host])
             assert 'CONFIGURED BUILTIN HEAP HOLDS' in run([host])
             assert 'configured heap exceeds maximum' in run([host, 'configured-max'], 3)
+            for case in ('oversized-alloc', 'oversized-realloc'):
+                assert CASES[case] in run([host, case], 3)
         for limit, message in [('0', 'must be positive'), ('-1', 'must be positive'), ('64', 'is too small')]:
             output = run(['clang', *common, '-DFPR_POSIX', f'-DFPR_BUILTIN_HEAP_MAX_BYTES={limit}',
                           '-c', heap, '-o', tmp/'bad-limit.o'], 1)
@@ -172,6 +176,9 @@ def main():
                 assert 'CONFIGURED BUILTIN HEAP HOLDS' in boot(width, image)
                 image = build(width, f'over-limit-{limit}', extra=[*flags, '-DHEAP_CASE="configured-max"'])
                 assert 'configured heap exceeds maximum' in boot(width, image, 3)
+                for case in ('oversized-alloc', 'oversized-realloc'):
+                    image = build(width, f'{case}-{limit}', extra=[*flags, f'-DHEAP_CASE="{case}"'])
+                    assert CASES[case] in boot(width, image, 3)
             image = build(width, 'bounded-contracts', extra=['-DFPR_BUILTIN_HEAP_TEST',
                                                            '-DFPR_BUILTIN_HEAP_MAX_BYTES=8388608'])
             assert 'INDEXED BUILTIN HEAP HOLDS' in boot(width, image)

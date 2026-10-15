@@ -155,6 +155,21 @@ def main():
             disassembly = run(['riscv64-unknown-elf-objdump', '-d', image])
             assert re.search(r'^\s*[0-9a-f]+:\s+[0-9a-f]{4}\s', disassembly, re.M), 'compressed image contains no 16-bit instructions'
             metrics[f'rv{bits}-compressed'] = info
+            # Both expression and jumping-condition dispatch must resolve the
+            # primitive identity, not merely recognize its source name. Keep
+            # inlining disabled in one leg so the call dispatch is exercised.
+            shadow_expected = ('7\n7\nUSER ADD\n55\nUSER LT\nVALUE FALSE\n'
+                               'USER LT\nCONDITION FALSE\n11\n')
+            for no_inline in (False, True):
+                for slow in (False, True):
+                    env = {**ENV, 'FPR_NO_INLINE': str(int(no_inline)),
+                           'FPR_NO_RV32_FAST': str(int(slow)), 'FPR_NO_INDEXED_MEMORY': '0'}
+                    image, _ = compile_image(out, bits, 'tests/builtin_scalar_shadow.fpr', env)
+                    assert execute(bits, image) == shadow_expected, (bits, no_inline, slow)
+                    if no_inline:
+                        asm = (out / 'program.s').read_text()
+                        for symbol in ('charAt', '_x2b', '_x3c'):
+                            assert re.search(r'\b(?:call|j) fpr_fn_' + symbol + r'\b', asm), ('shadowed call vanished', bits, symbol)
             for name, expr, message in (
                 ('add', 'intMax Unit + 1', 'Int overflow'),
                 ('sub', 'intMin Unit - 1', 'Int overflow'),
@@ -178,7 +193,7 @@ def main():
                     _, info = compile_image(out, bits, f'tests/tangnano20k_stress/{bench}.fpr', env)
                     metrics[f'rv{bits}-{bench}-slow{int(slow)}'] = info
         print(json.dumps(metrics, indent=2))
-    print('RV32/RV64 scalar semantics, overflow/refusals, cache isolation and indexed memory: PASS')
+    print('RV32/RV64 scalar semantics, primitive shadowing, overflow/refusals, cache isolation and indexed memory: PASS')
 
 
 if __name__ == '__main__':

@@ -1,0 +1,14 @@
+profile builtin.
+# A recursive definition stays a call even with ordinary inlining enabled.
+charAt s i = case i == 0 of True -> 7 | False -> charAt s (i - 1).
+(+) a b = _ = print "USER ADD"; 55.
+(<) a b = _ = print "USER LT"; False.
+accept b = case b of False -> print "VALUE FALSE" | True -> error "shadowed comparison became builtin".
+useChar charAt = charAt "abc" 0.
+main =
+  _ = print (charAt "abc" 0);
+  _ = print (charAt "abc" 2);
+  _ = print (1 + 2);
+  _ = accept (1 < 2);
+  _ = case 1 < 2 of False -> print "CONDITION FALSE" | True -> error "shadowed condition became builtin";
+  print (useChar (fn s i -> 11)).

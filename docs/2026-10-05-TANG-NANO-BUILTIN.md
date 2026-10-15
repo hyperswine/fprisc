@@ -444,11 +444,15 @@ python3 tests/check_tangnano20k_stress.py --port "$PORT" \
   --report build/tangnano20k-stress/matrix-fast-results.json
 ```
 
-Use `--only tree` for the primary allocation workload. The driver puts these
+Use `--only tree` for the primary allocation workload, or
+`--only tree_large --timeout 240` for the SDRAM-only 8,191-node workload.
+The default BRAM suite excludes `tree_large`; an explicit BRAM request is
+refused before opening the UART. The driver puts these
 images in `build/tangnano20k-stress/sdram-c-legacy/` and `sdram-c-fast/` and
 records the options in the result JSON. SDRAM full-suite mode omits the
 original BRAM-specific near-full/exhaustion probes; the 600-node exhaustion
-fixture is explicitly refused as an SDRAM test. Every timed run must still
+fixture is explicitly refused as an SDRAM test and the SDRAM suite includes
+`tree_large`. Every timed run must still
 match its independent output reference and runtime exit. These options and
 prebuilt images establish build compatibility; they do not themselves
 establish a physical speedup.

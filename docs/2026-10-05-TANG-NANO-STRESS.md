@@ -1,11 +1,16 @@
 # Larger FP-RISC workloads on the Tang Nano 20K
 
-All measurements below were executed on the connected Tang Nano 20K's
+The original measurements below were executed on the connected Tang Nano 20K's
 SimpleRisc RV32IM core at 96 MHz on 2026-10-05. These are compiled FP-RISC
 builtin programs, not C substitutions or simulations. Sources live in
 `tests/tangnano20k_stress/`; `tests/check_tangnano20k_stress.py` compiles them,
 builds independent Python references, and requires exact UART output including
 an explicit runtime exit status.
+
+These measurements describe the October 5 compiler, heap and BRAM processor.
+For the later compiler/heap changes and SDRAM pipeline measurements, see the
+[October 16 checkpoint](2026-10-16-TANG-NANO-PERFORMANCE.md). Current fixture
+calibration is documented separately below.
 
 The five primary workloads each passed twice in one exclusive UART session.
 The time starts when the host receives the program's `BEGIN` line and ends at
@@ -71,10 +76,10 @@ bytes round to 32, plus the preserved 48-byte allocator prefix.
 
 | Current linked mode | Heap arena | Bitmap | Usable whole-block bytes | 500-node margin | 600-node excess |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| RV32IM | 41,520 B | 336 B | 41,184 B | 1,184 B | 6,816 B |
-| RV32IMC | 44,336 B | 352 B | 43,984 B | 3,984 B | 4,016 B |
+| RV32IM | 41,488 B | 336 B | 41,152 B | 1,152 B | 6,848 B |
+| RV32IMC | 44,320 B | 352 B | 43,968 B | 3,968 B | 4,032 B |
 
-The 500-node tree uses 40,000 bytes, about 97.1% of the IM build's usable
+The 500-node tree uses 40,000 bytes, about 97.2% of the IM build's usable
 span. Its extra headroom makes the check less sensitive to small code changes;
 compression naturally leaves more space. The 600-node request needs 48,000
 bytes and exceeds either current span by several KiB. Source counts, printed
@@ -104,19 +109,24 @@ for nonnegative operands and positive divisors. All intermediates stay within
 the RV32 signed Int payload range. These tests do not add general Int.mod, F64,
 OS services or actor support.
 
-Memory workloads perform substantial runtime work: each indexed access goes
-through a boxed address allocation and explicit release. The matrix timing
-therefore includes more than just its 262,144 multiply-accumulate operations.
+In the original measurements, each indexed access allocated and explicitly
+released a boxed address. The current compiler can eliminate the private
+single-access patterns used by these workloads; see the
+[address-fusion contract](2026-10-16-RV32-SCALAR.md#indexed-manual-memory-operations).
+The original matrix timing therefore includes more than just its 262,144
+multiply-accumulate operations.
 These results establish correctness and bounded memory use for the tested
 sizes; they do not establish a stack-overflow guard or desktop-class throughput.
 
 ## Reproduce
 
-Load the verified 96 MHz FPGA SRAM image, then run from `fprisc`:
+To run the current BRAM suite, load a matching RV32IM FPGA image and explicitly
+select its clock, then run from `fprisc`. Current software will not reproduce
+the historical timing or allocation thresholds exactly:
 
 ```sh
 python3 tests/check_tangnano20k_stress.py \
-  --port /dev/cu.usbserial-20250303171 --repeat 2
+  --port "$PORT" --freq-mhz "$FREQ_MHZ" --ram bram --repeat 2
 ```
 
 The current suite includes the near-full tree and expected exhaustion probe
@@ -130,7 +140,7 @@ The measured reports are generated locally at:
 - `build/tangnano20k-stress/near-limit-results.json`: three near-full tree runs.
 - `build/tangnano20k-stress/exhaustion-results.json`: expected out-of-memory result.
 
-The verified FPGA image is
+The historical FPGA image was
 `../HaskPlayground/output/tangnano20k/simple_risc.fs`, SHA-256
 `2563be842bfbabcaf77c6a0e784feff27fc3077d2a28d2b01a4f423ecf51211e`.
 See [the builtin port](2026-10-05-TANG-NANO-BUILTIN.md) for startup, ABI and
@@ -138,7 +148,7 @@ unsupported services.
 
 ## Later clock sweep
 
-The processor now passes the expanded CPU and workload tests at 114 MHz after
+The later BRAM clock sweep passed the expanded CPU and workload tests at 114 MHz after
 registering the barrel shifter. 117 MHz produced incorrect sieve results and
 120 MHz failed an ALU check. The earlier 96 MHz results above describe their
 original coverage; the expanded ALU test subsequently exposed shift errors
