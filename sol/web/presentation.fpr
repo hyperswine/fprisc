@@ -1,0 +1,87 @@
+# Authoritative hosted UI presentation. Presets are typed local atoms, not
+# names looked up in a browser stylesheet. The build exports their values to Sol.
+G = use "std/view".
+L = use "std/list".
+append = L.append.
+p = G.Px.
+c = G.Rgb.
+u ds = [G.utilities ds].
+ink = c 15 23 42.
+muted = c 100 116 139.
+line = c 226 232 240.
+primary = c 79 70 229.
+green = c 5 150 105.
+red = c 220 38 38.
+shadow y blur colour = G.Shadow (p 0) (p y) (p blur) (p 0) colour.
+border colour = [G.BorderWidth (p 1), G.BorderStyle G.SolidBorder, G.BorderColour colour].
+reset = u [G.BoxSizing G.BorderBox, G.Margin (p 0), G.MinWidth (p 0), G.FontFamily G.InheritFont].
+body = u [G.BoxSizing G.BorderBox, G.Margin (p 0), G.FontFamily G.SystemFont,
+  G.Background (c 246 247 249), G.Foreground (c 26 32 44), G.LineHeight 150].
+headCell = u [G.TextAlign G.TextStart, G.FontSize (p 12), G.TextCase G.UpperCase,
+  G.LetterSpacing (G.Em 50), G.Foreground muted, G.PaddingY (p 8), G.PaddingX (p 10), G.BorderBottom (p 1) line].
+cell = u [G.PaddingY (p 9), G.PaddingX (p 10), G.BorderBottom (p 1) (c 241 245 249), G.FontSize (p 15)].
+tableRow = [G.hover [G.Background (c 248 250 252)]].
+field = u (border (c 203 213 225) `append` [G.PaddingY (p 7), G.PaddingX (p 11), G.Radius (p 8), G.FontSize (p 15),
+  G.Background (c 255 255 255), G.Foreground ink]) `append` [G.focus [G.OutlineWidth (p 2), G.OutlineColour primary, G.OutlineOffset (p 2)]].
+button = u [G.PaddingY (p 7), G.PaddingX (p 14), G.BorderWidth (p 0), G.Radius (p 8),
+  G.Background (c 36 86 196), G.Foreground (c 255 255 255), G.Cursor G.PointerCursor, G.FontSize (p 15)] +
+  [G.hover [G.Brightness 108], G.focus [G.OutlineWidth (p 2), G.OutlineColour primary, G.OutlineOffset (p 2)]].
+clickable = u [G.Cursor G.PointerCursor, G.UserSelect G.SelectNone].
+form = u [G.Display G.Flex, G.Direction G.Column, G.Gap (p 8)].
+inputRow = u [G.Display G.Flex, G.Direction G.Row, G.Gap (p 8)] `append` [G.narrow [G.FlexWrap G.Wrap]].
+presets =
+  [("reset", reset), ("headcell", headCell), ("cell", cell), ("tablerow", tableRow),
+   ("container", u [G.MaxWidth (p 760)]), ("mxauto", u [G.MarginX G.Auto]),
+   ("flex", u [G.Display G.Flex]), ("flexcol", u [G.Direction G.Column]),
+   ("flexrow", u [G.Direction G.Row] `append` [G.narrow [G.FlexWrap G.Wrap]]),
+   ("flexwrap", u [G.FlexWrap G.Wrap]), ("flex1", u [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0)]),
+   ("itemscenter", u [G.AlignItems G.AlignCenter]), ("grid", u [G.Display G.Grid]),
+   ("gridcols2", u [G.GridColumns 2] `append` [G.narrow [G.GridColumns 1]]),
+   ("gridcols3", u [G.GridColumns 3] `append` [G.narrow [G.GridColumns 2]]),
+   ("gap1", u [G.Gap (p 4)]), ("gap2", u [G.Gap (p 8)]),
+   ("gap3", u [G.Gap (p 12)]), ("gap4", u [G.Gap (p 16)]),
+   ("p2", u [G.Padding (p 8)]), ("p4", u [G.Padding (p 16)]),
+   ("px3", u [G.PaddingX (p 12)]), ("py1", u [G.PaddingY (p 4)]),
+   ("rounded", u [G.Radius (p 8)]), ("border", u (border line)),
+   ("shadow", u [shadow 1 3 (G.RgbaPercent 0 0 0 8)]),
+   ("card", u (border line `append` [G.Background (c 255 255 255), G.Radius (p 8), G.Padding (p 16), shadow 1 3 (G.RgbaPercent 0 0 0 6)])),
+   ("textsm", u [G.FontSize (p 14)]), ("textxl", u [G.FontSize (p 21)]),
+   ("text2xl", u [G.FontSize (p 27)]), ("text3xl", u [G.FontSize (p 34)]),
+   ("textxs", u [G.FontSize (p 12)]), ("fontbold", u [G.FontWeight 700]),
+   ("fontsemi", u [G.FontWeight 600]), ("tracking", u [G.LetterSpacing (G.Em 20)]),
+   ("textmuted", u [G.Foreground (c 90 100 114), G.LineHeight 155]),
+   ("badge", u [G.Background (c 230 240 255), G.Foreground (c 36 86 196), G.Radius (p 999), G.PaddingY (p 3), G.PaddingX (p 10), G.FontSize (p 12), G.FontWeight 600]),
+   ("tab", u (border line `append` [G.PaddingY (p 6), G.PaddingX (p 14), G.Radius (p 8), G.Background (c 255 255 255), G.Cursor G.PointerCursor, G.FontSize (p 14)])),
+   ("tabactive", u [G.Background (c 36 86 196), G.Foreground (c 255 255 255), G.BorderColour (c 36 86 196)]),
+   ("clickable", clickable),
+   ("comment", u [G.Background (c 241 245 249), G.Radius (p 6), G.PaddingY (p 7), G.PaddingX (p 11), G.FontSize (p 15)]),
+   ("input", field), ("btn", button),
+   ("appbg", u [G.MinHeight (G.Vh 100), G.BackgroundImages [G.LinearGradient 180 [G.Stop (c 248 250 252) (G.Pct 0), G.Stop (c 238 242 255) (G.Pct 100)]]]),
+   ("hero", u [G.MinHeight (G.Vh 100), G.Display G.Flex, G.AlignItems G.AlignCenter, G.JustifyContent G.JustifyCenter,
+     G.Background (c 248 250 252), G.BackgroundImages [G.RadialGradient (p 1000) (p 500) (G.Pct 20) (G.Pct (0 - 10)) [G.Stop (c 224 231 255) (G.Pct 0), G.Stop G.Transparent (G.Pct 60)], G.RadialGradient (p 900) (p 500) (G.Pct 110) (G.Pct 110) [G.Stop (c 237 233 254) (G.Pct 0), G.Stop G.Transparent (G.Pct 55)]]]),
+   ("herocard", u (border line `append` [G.Background (G.RgbaPercent 255 255 255 85), G.Radius (p 16), G.Padding (p 32),
+     shadow 20 50 (G.RgbaPercent 79 70 229 12), G.Width (G.Pct 100), G.MaxWidth (p 420), G.BackdropBlur (p 8)]) `append` [G.narrow [G.Margin (p 16)]]),
+   ("brandgrad", u [G.BackgroundImages [G.LinearGradient 90 [G.Stop primary (G.Pct 0), G.Stop (c 124 58 237) (G.Pct 100)]], G.BackgroundClipText, G.Foreground G.Transparent]),
+   ("nav", u [G.Position G.Sticky, G.Top (p 0), G.ZIndex 10, G.Background ink, G.Foreground line,
+     G.Display G.Flex, G.AlignItems G.AlignCenter, G.Gap (p 12), G.PaddingY (p 10), G.PaddingX (p 16), shadow 2 10 (G.RgbaPercent 15 23 42 25)]),
+   ("navtab", u [G.PaddingY (p 6), G.PaddingX (p 14), G.Radius (p 8), G.Foreground (c 203 213 225), G.Cursor G.PointerCursor, G.FontSize (p 14)] `append` [G.hover [G.Background (c 30 41 59), G.Foreground (c 255 255 255)]]),
+   ("navtabactive", u [G.Background primary, G.Foreground (c 255 255 255)]),
+   ("wfull", u [G.Width (G.Pct 100)]), ("justifybetween", u [G.JustifyContent G.SpaceBetween]),
+   ("textright", u [G.TextAlign G.TextEnd]), ("textcenter", u [G.TextAlign G.TextCenter]),
+   ("mt2", u [G.MarginTop (p 8)]), ("mb2", u [G.MarginBottom (p 8)]),
+   ("cardlg", u (border line `append` [G.Background (c 255 255 255), G.Radius (p 14), G.Padding (p 20), shadow 4 16 (G.RgbaPercent 15 23 42 5)])),
+   ("hoverlift", [G.utilities [G.TransitionAll 120], G.hover [G.Transform [G.TranslateY (p (0 - 2))], shadow 10 24 (G.RgbaPercent 79 70 229 14)]]),
+   ("badgegreen", u [G.Background (c 236 253 245), G.Foreground green, G.Radius (p 999), G.PaddingY (p 3), G.PaddingX (p 10), G.FontSize (p 12), G.FontWeight 600]),
+   ("badgered", u [G.Background (c 254 242 242), G.Foreground red, G.Radius (p 999), G.PaddingY (p 3), G.PaddingX (p 10), G.FontSize (p 12), G.FontWeight 600]),
+   ("badgeamber", u [G.Background (c 255 251 235), G.Foreground (c 217 119 6), G.Radius (p 999), G.PaddingY (p 3), G.PaddingX (p 10), G.FontSize (p 12), G.FontWeight 600]),
+   ("btnghost", u (border line `append` [G.PaddingY (p 7), G.PaddingX (p 14), G.Radius (p 8), G.Background (c 255 255 255), G.Foreground ink, G.Cursor G.PointerCursor, G.FontSize (p 15)]) `append` [G.hover [G.BorderColour (c 148 163 184)]]),
+   ("btndanger", u [G.PaddingY (p 7), G.PaddingX (p 14), G.BorderWidth (p 0), G.Radius (p 8), G.Background red, G.Foreground (c 255 255 255), G.Cursor G.PointerCursor, G.FontSize (p 15)]),
+   ("price", u [G.Numerals G.TabularNumerals, G.FontWeight 700, G.Foreground primary]),
+   ("divider", u [G.Height (p 1), G.Background line]),
+   ("tbl", u [G.Width (G.Pct 100), G.BorderCollapse G.CollapseBorders]),
+   ("stockout", u [G.Opacity 45, G.PointerEvents G.PointerNone]),
+   ("empty", u [G.Foreground muted, G.TextAlign G.TextCenter, G.Padding (p 24), G.FontSize (p 15)])].
+classes attrs = G.atomNames (G.localAtoms attrs).
+combined attrs = strJoin " " (classes attrs).
+groups = L.map (fn pair -> case pair of (_, attrs) -> attrs) presets `append` [body, form, inputRow, reset, field, button].
+css = G.localCss (G.nub (L.concat (L.map classes groups))).

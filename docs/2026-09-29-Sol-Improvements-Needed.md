@@ -843,7 +843,7 @@ and fresh probes, not old performance claims.
 | Fixed point / random | `sol/lib/fix.sol`, `rand.sol` | Both import. Fixed-point helpers and deterministic LCG are useful specialized tools; no fresh numerical-accuracy or randomness tests here. |
 | Matrices / plots | `sol/lib/matrix.sol`, `plot.sol` | Both blocked at import by `base.removeAt`. Matrix uses Vec; plotting emits SVG/SMIL. Matrix CSV helpers split lines/commas independently of the actual CSV parser. |
 | Logic / parser | `sol/lib/logic.sol`, `plparse.sol` | Both fail checking, including nonexhaustive cases. Specialized libraries rather than shell essentials. |
-| UI / web | `sol/lib/ui.sol`, `web.sol`, `auth.sol` | UI and explicitly legacy web vocabulary import. Auth fails nested `ui.Style.*` resolution. Its source is a demonstration account flow, not a supported authentication contract. Keep separate from shell core. |
+| UI / web | `sol/lib/ui.sol`, `web.sol`, `auth.sol` | Historical stage-1 snapshot; the 2026-10-15 structured web migration and current checks below supersede the UI/import failure. The account flow remains a demonstration, separate from shell core. |
 | Collections | Prelude List plus `std/map.fpr`, `std/set.fpr`, `std/list.fpr` | Shared Map/Set import and basic insert/ordered entries/membership work. Reuse these implementations. Scaling and full behavioral coverage remain to establish. |
 | Paths | `std/path.fpr` | Imports; `/a/../b` normalizes to `/b`. Reuse pure lexical path functions, distinguishing normalization from filesystem canonicalization and symlink resolution. |
 | Directories | Sol `ls`/`exists`/`isDir`/`stat`; shared `std/dir.fpr` | Sol has transactional primitives. Shared Dir imports but `Dir.list` panics on missing `Os.listDir`. An adapter is required, not a duplicate traversal implementation by default. |
@@ -1206,3 +1206,27 @@ foundation for pipelines, hashing and network clients.
 Reproduce acceptance with `make fpr`, `python3 tools/sol-library-check.py`, and
 `sh tools/sol-scripts-check.sh`; use the existing focused runtime suites when
 changing the VM or module pipeline.
+
+## 2026-10-15: structured hosted browser generation and local presentation
+
+Sol's hosted web client now comes from `sol/web/client.fpr`, using the same
+`std/javascript` syntax nodes and DOM reconciler as native Live. Presentation
+comes from typed `std/view` declarations in `sol/web/presentation.fpr`. The
+compiler links generated HTML/JS/CSS exports, and Sol imports generated local
+appearance atoms. No handwritten browser template or global stylesheet registry
+remains in `Sol.Web`.
+
+`ui.el` and the legacy web record helpers take appearance lists rather than class
+strings. Each node composes its own stage/property atoms; later local values win.
+POS2 is migrated and todo2's UI pin refreshed. Old pins/calls must be upgraded;
+there is no class-string fallback. `make sol-web-assets` regenerates and rebuilds;
+`make sol-web-assets-check` rejects stale exports. Neither runs in `View.serve`.
+
+All seven real MVU examples pass isolated Chromium checks, including registration,
+POS2 checkout/receipts, todo edits, Unicode/text safety, reload persistence and
+responsive layout. Controlled checks cover storage refusal, keyed draft/focus
+preservation, changed handlers, malformed style refusal, reconnect and BFCache.
+The 112 library contracts and 21 application/measure checks pass; non-view
+model/command traces are unchanged. Source boundaries and one/four-hart native
+utility/generation checks pass. See [the completion record](2026-10-15-PURE-APPLICATIONS.md)
+for the authoring/build boundary and remaining host-policy scope.

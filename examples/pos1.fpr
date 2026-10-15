@@ -675,7 +675,7 @@ viewFresh v = pageRoot v
 # be emitted.  The sheet is therefore built over a SAMPLE tree that
 # shows everything: a signed-in session with a cart, receipts with a
 # void, the console -- every class the app can ever use appears once.
-cssAll v = G.cssWith Notice.styles (element "div" Nil (viewFresh (project 1 sampleModel) :: loginView noSess :: Nil)).
+cssAll v = G.cssFor (element "div" Nil (viewFresh (project 1 sampleModel) :: loginView noSess :: Nil)).
 # The layout rule: the page is the viewport (`screen`), every region has its
 # size from the viewport (flex-auto min-h-0), and what does not fit SCROLLS
 # inside its region (overflow-auto).  Nothing is sized by its contents, so

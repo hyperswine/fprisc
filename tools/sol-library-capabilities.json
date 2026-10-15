@@ -76,6 +76,12 @@
       "note": "Deterministic LCG, not a cryptographic random source."
     },
     {
+      "module": "sol/lib/webstyles.sol",
+      "status": "hosted",
+      "gate": "import-and-call",
+      "note": "Generated local appearance atoms; per-node stage/property composition. Authoring is in sol/web/presentation.fpr."
+    },
+    {
       "module": "sol/lib/ui.sol",
       "status": "hosted",
       "gate": "import-and-call",

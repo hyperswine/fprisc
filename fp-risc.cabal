@@ -75,6 +75,7 @@ executable fpr
       Sol.VM
       Sol.Val
       Sol.Web
+      Sol.WebAssets
       Sol.Width
   c-sources:
       compiler/cbits/fsx.c

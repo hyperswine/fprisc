@@ -1,6 +1,6 @@
 # pos2.sol — point of sale, second edition: modern login screen + a
 # three-tab dashboard (Register / Receipts / Inventory). Auth is reused
-# from lib/auth (pinned); the view rides the theme layer classes plus the
+# from lib/auth (pinned); the view composes node-local appearance values through the
 # typed ui DSL. Written to 2026-09-01-STYLE.md throughout: head-clause tuple
 # patterns for update, `|` guards over case-of-Bool, and |> pipelines.
 #
@@ -122,57 +122,57 @@ record old m =
 # ---- view: login hero ------------------------------------------------------
 
 loginView m =
-  ui.el "div" ["hero"] [
-    ui.el "div" ["hero-card", "flex", "flex-col", "gap-3"] [
-      ui.el "div" ["text-3xl", "font-bold", "brand-grad"] [ui.text "Sol POS"],
-      ui.el "div" ["text-muted", "mb-2"] [ui.text "Sign in to open the register"],
+  ui.el "div" [ui.Style.hero] [
+    ui.el "div" [ui.Style.herocard, ui.Style.flex, ui.Style.flexcol, ui.Style.gap3] [
+      ui.el "div" [ui.Style.text3xl, ui.Style.fontbold, ui.Style.brandgrad] [ui.text "Sol POS"],
+      ui.el "div" [ui.Style.textmuted, ui.Style.mb2] [ui.text "Sign in to open the register"],
       ui.form "login" ["username", "password"] "Sign in",
-      ui.el "div" ["divider", "mt-2", "mb-2"] [],
-      ui.el "div" ["font-semi", "text-sm"] [ui.text "New here?"],
+      ui.el "div" [ui.Style.divider, ui.Style.mt2, ui.Style.mb2] [],
+      ui.el "div" [ui.Style.fontsemi, ui.Style.textsm] [ui.text "New here?"],
       ui.form "register" ["username", "password"] "Create account",
       noteLine m.note
     ]
   ].
 
 noteLine "" = ui.text "".
-noteLine s = ui.el "span" ["badge-red"] [ui.text s].
+noteLine s = ui.el "span" [ui.Style.badgered] [ui.text s].
 
 # ---- view: chrome ----------------------------------------------------------
 
-navTab cur id label | cur == id = ui.onClick "tab" id (ui.el "span" ["navtab", "navtab-active"] [ui.text label]).
-navTab cur id label = ui.onClick "tab" id (ui.el "span" ["navtab"] [ui.text label]).
+navTab cur id label | cur == id = ui.onClick "tab" id (ui.el "span" [ui.Style.navtab, ui.Style.navtabactive] [ui.text label]).
+navTab cur id label = ui.onClick "tab" id (ui.el "span" [ui.Style.navtab] [ui.text label]).
 
 nav m =
-  ui.el "div" ["nav"] [
-    ui.el "span" ["font-bold", "tracking"] [ui.text "Sol POS"],
+  ui.el "div" [ui.Style.nav] [
+    ui.el "span" [ui.Style.fontbold, ui.Style.tracking] [ui.text "Sol POS"],
     navTab m.tab "register" "Register",
     navTab m.tab "receipts" "Receipts",
     navTab m.tab "inventory" "Inventory",
-    ui.el "span" ["flex-1"] [],
-    ui.el "span" ["badge-green"] [ui.text "revenue ${m.revenue}"],
-    ui.el "span" ["badge"] [ui.text (auth.unwrapU m)],
-    ui.onClick "logout" "" (ui.el "span" ["navtab"] [ui.text "sign out"])
+    ui.el "span" [ui.Style.flex1] [],
+    ui.el "span" [ui.Style.badgegreen] [ui.text "revenue ${m.revenue}"],
+    ui.el "span" [ui.Style.badge] [ui.text (auth.unwrapU m)],
+    ui.onClick "logout" "" (ui.el "span" [ui.Style.navtab] [ui.text "sign out"])
   ].
 
 # ---- view: register tab ----------------------------------------------------
 
-stockBadge n | n == 0 = ui.el "span" ["badge-red"] [ui.text "sold out"].
-stockBadge n | n <= 3 = ui.el "span" ["badge-amber"] [ui.text "{n} left"].
-stockBadge n = ui.el "span" ["badge-green"] [ui.text "{n} in stock"].
+stockBadge n | n == 0 = ui.el "span" [ui.Style.badgered] [ui.text "sold out"].
+stockBadge n | n <= 3 = ui.el "span" [ui.Style.badgeamber] [ui.text "{n} left"].
+stockBadge n = ui.el "span" [ui.Style.badgegreen] [ui.text "{n} in stock"].
 
-productCard ns k t | inStock k ns = productBody ns k t ["card-lg", "hover-lift", "flex", "flex-col", "gap-1"].
-productCard ns k t = productBody ns k t ["card-lg", "stock-out", "flex", "flex-col", "gap-1"].
+productCard ns k t | inStock k ns = productBody ns k t [ui.Style.cardlg, ui.Style.hoverlift, ui.Style.flex, ui.Style.flexcol, ui.Style.gap1].
+productCard ns k t = productBody ns k t [ui.Style.cardlg, ui.Style.stockout, ui.Style.flex, ui.Style.flexcol, ui.Style.gap1].
 productBody ns k t cs =
   ui.onClick "buy" (str k) (ui.el "div" cs [
-    ui.el "div" ["font-semi"] [ui.text (nameOf t)],
-    ui.el "div" ["flex", "flex-row", "items-center", "justify-between"] [
-      ui.el "span" ["price"] [ui.text "${priceOf t}"],
+    ui.el "div" [ui.Style.fontsemi] [ui.text (nameOf t)],
+    ui.el "div" [ui.Style.flex, ui.Style.flexrow, ui.Style.itemscenter, ui.Style.justifybetween] [
+      ui.el "span" [ui.Style.price] [ui.text "${priceOf t}"],
       stockBadge (stockAt k ns)
     ]
   ]).
 
 productGrid : unsafe _ -> ui.Html .
-productGrid m = ui.el "div" ["grid", "grid-cols-3", "gap-3"] (mapIdx (productCard m.stock) 0 catalog).
+productGrid m = ui.el "div" [ui.Style.grid, ui.Style.gridcols3, ui.Style.gap3] (mapIdx (productCard m.stock) 0 catalog).
 
 # cart lines grouped: (name, qty, subtotal), via the prelude's groupby
 cartLines cart =
@@ -181,52 +181,52 @@ cartLines cart =
 lineOf (k, ks) = (nameAt k, List.len ks, priceAt k * List.len ks).
 
 cartRow (n, q, sub) =
-  ui.el "div" ["flex", "flex-row", "gap-2", "comment"] [
-    ui.el "span" ["flex-1"] [ui.text n],
-    ui.el "span" ["text-muted"] [ui.text "x{q}"],
-    ui.el "span" ["price"] [ui.text "${sub}"]
+  ui.el "div" [ui.Style.flex, ui.Style.flexrow, ui.Style.gap2, ui.Style.comment] [
+    ui.el "span" [ui.Style.flex1] [ui.text n],
+    ui.el "span" [ui.Style.textmuted] [ui.text "x{q}"],
+    ui.el "span" [ui.Style.price] [ui.text "${sub}"]
   ].
 
-cartBody [] = [ui.el "div" ["empty"] [ui.text "Cart is empty — tap a product"]].
+cartBody [] = [ui.el "div" [ui.Style.empty] [ui.text "Cart is empty — tap a product"]].
 cartBody cart = cartLines cart |> List.map cartRow.
 
 cartCard m =
-  ui.el "div" ["card-lg", "flex", "flex-col", "gap-2"] [
-    ui.el "div" ["flex", "flex-row", "items-center", "justify-between"] [
-      ui.el "h3" ["font-bold"] [ui.text "Current sale"],
-      ui.el "span" ["price", "text-xl"] [ui.text "${cartTotal m.cart}"]
+  ui.el "div" [ui.Style.cardlg, ui.Style.flex, ui.Style.flexcol, ui.Style.gap2] [
+    ui.el "div" [ui.Style.flex, ui.Style.flexrow, ui.Style.itemscenter, ui.Style.justifybetween] [
+      ui.el "h3" [ui.Style.fontbold] [ui.text "Current sale"],
+      ui.el "span" [ui.Style.price, ui.Style.textxl] [ui.text "${cartTotal m.cart}"]
     ],
-    ui.el "div" ["flex", "flex-col", "gap-1"] (cartBody m.cart),
-    ui.el "div" ["flex", "flex-row", "gap-2", "mt-2"] [
-      ui.onClick "checkout" "" (ui.el "span" ["btn"] [ui.text "Charge ${cartTotal m.cart}"]),
-      ui.onClick "void" "" (ui.el "span" ["btn-ghost"] [ui.text "Void"])
+    ui.el "div" [ui.Style.flex, ui.Style.flexcol, ui.Style.gap1] (cartBody m.cart),
+    ui.el "div" [ui.Style.flex, ui.Style.flexrow, ui.Style.gap2, ui.Style.mt2] [
+      ui.onClick "checkout" "" (ui.el "span" [ui.Style.btn] [ui.text "Charge ${cartTotal m.cart}"]),
+      ui.onClick "void" "" (ui.el "span" [ui.Style.btnghost] [ui.text "Void"])
     ]
   ].
 
 registerTab : unsafe _ -> ui.Html .
-registerTab m = ui.el "div" ["flex", "flex-col", "gap-3"] [productGrid m, cartCard m].
+registerTab m = ui.el "div" [ui.Style.flex, ui.Style.flexcol, ui.Style.gap3] [productGrid m, cartCard m].
 
 # ---- view: receipts tab ----------------------------------------------------
 
 rcpCell cs s = ui.el "td" cs [ui.text s].
 rcpRow [n, who, total, items] =
-  ui.el "tr" [] [rcpCell ["font-semi"] "#{n}", rcpCell [] who,
-                 rcpCell [] items, rcpCell ["price", "text-right"] "${total}"].
+  ui.el "tr" [] [rcpCell [ui.Style.fontsemi] "#{n}", rcpCell [] who,
+                 rcpCell [] items, rcpCell [ui.Style.price, ui.Style.textright] "${total}"].
 rcpRow _ = ui.el "tr" [] [].
 
 receiptsTable m =
-  ui.el "table" ["tbl"] (
+  ui.el "table" [ui.Style.tbl] (
     ui.el "tr" [] [ui.el "th" [] [ui.text "receipt"], ui.el "th" [] [ui.text "cashier"],
-                   ui.el "th" [] [ui.text "items"], ui.el "th" ["text-right"] [ui.text "total"]]
+                   ui.el "th" [] [ui.text "items"], ui.el "th" [ui.Style.textright] [ui.text "total"]]
     :: (parseReceipts m.receipts |> List.map rcpRow)).
 
-receiptsBody m | m.receipts == "" = ui.el "div" ["empty"] [ui.text "No sales yet"].
+receiptsBody m | m.receipts == "" = ui.el "div" [ui.Style.empty] [ui.text "No sales yet"].
 receiptsBody m = receiptsTable m.
 
 receiptsTab m =
-  ui.el "div" ["card-lg", "flex", "flex-col", "gap-2"] [
-    ui.el "h3" ["font-bold"] [ui.text "Receipts"],
-    ui.el "div" ["text-muted", "text-sm"] [ui.text "{receiptCount m.receipts} sales, ${m.revenue} all-time"],
+  ui.el "div" [ui.Style.cardlg, ui.Style.flex, ui.Style.flexcol, ui.Style.gap2] [
+    ui.el "h3" [ui.Style.fontbold] [ui.text "Receipts"],
+    ui.el "div" [ui.Style.textmuted, ui.Style.textsm] [ui.text "{receiptCount m.receipts} sales, ${m.revenue} all-time"],
     receiptsBody m
   ].
 
@@ -234,19 +234,19 @@ receiptsTab m =
 
 invRow ns k t =
   ui.el "tr" [] [
-    ui.el "td" ["font-semi"] [ui.text (nameOf t)],
-    ui.el "td" ["price"] [ui.text "${priceOf t}"],
+    ui.el "td" [ui.Style.fontsemi] [ui.text (nameOf t)],
+    ui.el "td" [ui.Style.price] [ui.text "${priceOf t}"],
     ui.el "td" [] [stockBadge (stockAt k ns)],
-    ui.el "td" ["text-right"] [ui.onClick "restock" (str k) (ui.el "span" ["btn-ghost"] [ui.text "+10"])]
+    ui.el "td" [ui.Style.textright] [ui.onClick "restock" (str k) (ui.el "span" [ui.Style.btnghost] [ui.text "+10"])]
   ].
 
 inventoryTab : unsafe _ -> ui.Html .
 inventoryTab m =
-  ui.el "div" ["card-lg", "flex", "flex-col", "gap-2"] [
-    ui.el "h3" ["font-bold"] [ui.text "Inventory"],
-    ui.el "table" ["tbl"] (
+  ui.el "div" [ui.Style.cardlg, ui.Style.flex, ui.Style.flexcol, ui.Style.gap2] [
+    ui.el "h3" [ui.Style.fontbold] [ui.text "Inventory"],
+    ui.el "table" [ui.Style.tbl] (
       ui.el "tr" [] [ui.el "th" [] [ui.text "product"], ui.el "th" [] [ui.text "price"],
-                     ui.el "th" [] [ui.text "stock"], ui.el "th" ["text-right"] [ui.text "restock"]]
+                     ui.el "th" [] [ui.text "stock"], ui.el "th" [ui.Style.textright] [ui.text "restock"]]
       :: mapIdx (invRow m.stock) 0 catalog)
   ].
 
@@ -261,7 +261,7 @@ dashboard : unsafe _ -> ui.Html .
 dashboard m =
   ui.el "div" [] [
     nav m,
-    ui.el "div" ["container", "mx-auto", "p-4", "flex", "flex-col", "gap-4"] [tabView m]
+    ui.el "div" [ui.Style.container, ui.Style.mxauto, ui.Style.p4, ui.Style.flex, ui.Style.flexcol, ui.Style.gap4] [tabView m]
   ].
 
 body : unsafe _ -> ui.Html .
@@ -269,6 +269,6 @@ body m | auth.unwrapU m == "" = loginView m.
 body m = dashboard m.
 
 view : unsafe _ -> ui.Html .
-view m = ui.el "div" ["app-bg"] [ui.dyn "main" (body m)].
+view m = ui.el "div" [ui.Style.appbg] [ui.dyn "main" (body m)].
 
 > View.serve 8084 init update view [].

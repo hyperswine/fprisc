@@ -3,7 +3,7 @@
 # the app is now ONLY its own logic.
 
 base = use "../lib/base#f9616700c2a16d11".
-ui = use "../lib/ui#24f48582c24bf402".
+ui = use "../lib/ui#988049e34e798b84".
 auth = use "../lib/auth#668a459dce40f198".
 
 # ---- todos: one per line as "<done> <text>" in KV --------------------------

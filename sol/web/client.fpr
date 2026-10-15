@@ -1,0 +1,130 @@
+# Sol's hosted protocol over the same structured syntax and reconciliation
+# backend as native Live. Every string below is data, never executable source.
+JS = use "std/javascript".
+G = use "std/view".
+L = use "std/list".
+append = L.append.
+Live = use "std/livejs".
+P = use "presentation".
+n = JS.Name.
+t = JS.Text.
+f = JS.Field.
+call name args = JS.Call (n name) args.
+m target name args = JS.Call (f target name) args.
+do target name args = JS.Do (m target name args).
+eq = JS.Binary JS.Equal.
+neq = JS.Binary JS.NotEqual.
+both = JS.Binary JS.And.
+either = JS.Binary JS.Or.
+not = JS.Unary JS.Not.
+has target key = neq (f target key) (n "undefined").
+attr node key = m node "getAttribute" [t key].
+set node key value = do node "setAttribute" [t key, value].
+names attrs = JS.Array (L.map t (P.classes attrs)).
+make tag attrs = call "element" [t tag, names (P.reset `append` attrs)].
+asText value = call "String" [JS.Binary JS.Nullish value (t "")].
+textNode value = m (n "document") "createTextNode" [value].
+styleBody = [JS.If (not (m (n "Array") "isArray" [n "values"])) [JS.Throw (JS.New (n "Error") [t "Sol styles must be local utility values"])] Nil,
+  JS.ForOf "value" (n "values") [JS.If (not (m (JS.Pattern "^fpr-u-[0-6]-[0-9a-f]+$" "") "test" [n "value"]))
+    [JS.Throw (JS.New (n "Error") [t "Sol styles must be generated local utilities"])] Nil,
+    do (f (n "el") "classList") "add" [n "value"]]].
+elementBody = [JS.If (either (not (m (JS.Pattern "^[a-z][a-z0-9-]*$" "") "test" [n "tag"]))
+  (m (JS.Array (L.map t ["script", "style", "link", "iframe", "object", "embed", "base"])) "includes" [n "tag"]))
+  [JS.Throw (JS.New (n "Error") [t "Sol view: unsupported element"])] Nil,
+  JS.Const "el" (m (n "document") "createElement" [n "tag"]), JS.Do (call "styles" [n "el", n "values"]), JS.Return (n "el")].
+sendBody = [JS.If (either (not (n "running")) (either (not (n "ws")) (neq (f (n "ws") "readyState") (JS.Number 1)))) [JS.Return (JS.Boolean False)] Nil,
+  do (n "ws") "send" [m (n "JSON") "stringify" [JS.Object [("ev", n "ev"), ("val", asText (n "value"))]]], JS.Return (JS.Boolean True)].
+ensureBody = [JS.If (eq (f (n "node") "nodeType") (JS.Number 1)) [JS.Return (n "node")] Nil,
+  JS.Const "span" (make "span" Nil), do (n "span") "appendChild" [n "node"], JS.Return (n "span")].
+formBody = [JS.Const "col" (make "form" P.form), set (n "col") "data-sol-form" (n "event"),
+  JS.ForOf "field" (n "fields") [JS.Const "input" (make "input" P.field), set (n "input") "data-sol-field" (n "field"),
+    JS.Assign (f (n "input") "placeholder") (n "field"),
+    JS.Assign (f (n "input") "type") (JS.Choose (m (m (n "field") "toLowerCase" Nil) "includes" [t "pass"]) (t "password") (t "text")),
+    do (n "col") "appendChild" [n "input"]],
+  JS.Const "button" (make "button" P.button), JS.Assign (f (n "button") "type") (t "submit"),
+  JS.Assign (f (n "button") "textContent") (n "label"), do (n "col") "appendChild" [n "button"], JS.Return (n "col")].
+buildBody =
+  [JS.If (eq (n "node") JS.Null) [JS.Return (textNode (t ""))] Nil,
+   JS.If (either (eq (JS.Unary JS.TypeOf (n "node")) (t "string")) (eq (JS.Unary JS.TypeOf (n "node")) (t "number")))
+     [JS.Return (textNode (asText (n "node")))] Nil,
+   JS.If (m (n "Array") "isArray" [n "node"])
+     [JS.Const "fragment" (m (n "document") "createDocumentFragment" Nil), JS.ForOf "kid" (n "node") [do (n "fragment") "appendChild" [call "build" [n "kid"]]], JS.Return (n "fragment")] Nil,
+   JS.If (has (n "node") "text") [JS.Return (textNode (asText (f (n "node") "text")))] Nil,
+   JS.If (has (n "node") "dyn") [JS.Const "span" (make "span" Nil), set (n "span") "data-dyn" (f (n "node") "dyn"),
+     do (n "span") "appendChild" [call "build" [f (n "node") "node"]], JS.Return (n "span")] Nil,
+   JS.If (has (n "node") "key") [JS.Const "el" (call "ensureElement" [call "build" [f (n "node") "node"]]),
+     set (n "el") "data-lv-key" (f (n "node") "key"), JS.Return (n "el")] Nil,
+   JS.If (has (n "node") "ev") [JS.Const "el" (call "ensureElement" [call "build" [f (n "node") "node"]]),
+     JS.Do (call "styles" [n "el", names P.clickable]), set (n "el") "data-sol-event" (f (n "node") "ev"),
+     set (n "el") "data-sol-value" (asText (f (n "node") "val")), set (n "el") "role" (t "button"), set (n "el") "tabindex" (t "0"), JS.Return (n "el")] Nil,
+   JS.If (has (n "node") "form") [JS.Return (call "form" [f (n "node") "form", JS.Binary JS.Or (f (n "node") "fields") (JS.Array Nil), JS.Binary JS.Or (f (n "node") "btn") (t "Go")])] Nil,
+   JS.If (has (n "node") "inp") [JS.Const "row" (make "form" P.inputRow), set (n "row") "data-sol-form" (f (n "node") "inp"),
+     JS.Const "input" (make "input" (P.field `append` P.u [G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0)])),
+     set (n "input") "data-sol-field" (t "value"), JS.Assign (f (n "input") "placeholder") (JS.Binary JS.Or (f (n "node") "ph") (t "")),
+     JS.Const "button" (make "button" P.button), JS.Assign (f (n "button") "type") (t "submit"),
+     JS.Assign (f (n "button") "textContent") (JS.Binary JS.Or (f (n "node") "btn") (t "Send")),
+     do (n "row") "append" [n "input", n "button"], JS.Return (n "row")] Nil,
+   JS.If (f (n "node") "cls") [JS.Throw (JS.New (n "Error") [t "Sol view: migrate class strings to local Style values"])] Nil,
+   JS.Const "el" (call "element" [JS.Binary JS.Or (f (n "node") "tag") (t "div"), JS.Binary JS.Or (f (n "node") "classes") (JS.Array Nil)]),
+   JS.ForOf "kid" (JS.Binary JS.Or (f (n "node") "kids") (JS.Array Nil)) [do (n "el") "appendChild" [call "build" [n "kid"]]], JS.Return (n "el")].
+patchBody = [JS.Const "next" (m (n "document") "createElement" [t "div"]),
+  do (n "next") "appendChild" [call "build" [n "view"]],
+  JS.Const "active" (f (n "document") "activeElement"),
+  JS.Const "start" (JS.OptionalField (n "active") "selectionStart"),
+  JS.Const "end" (JS.OptionalField (n "active") "selectionEnd"),
+  JS.Const "direction" (JS.OptionalField (n "active") "selectionDirection"),
+  JS.Do (call "reconcile" [n "target", n "next"]),
+  JS.If (both (both (n "active") (m (n "target") "contains" [n "active"])) (neq (n "active") (f (n "document") "activeElement")))
+    [do (n "active") "focus" [JS.Object [("preventScroll",JS.Boolean True)]],
+     JS.If (eq (JS.Unary JS.TypeOf (n "start")) (t "number")) [do (n "active") "setSelectionRange" [n "start", n "end", n "direction"]] Nil] Nil].
+messageBody = [JS.If (either (not (n "running")) (neq (n "ws") (n "socket"))) [JS.ReturnVoid] Nil,
+  JS.Try [JS.Const "message" (m (n "JSON") "parse" [f (n "event") "data"]),
+  JS.If (has (n "message") "token") [JS.Assign (n "token") (f (n "message") "token"),
+    JS.Try [do (n "localStorage") "setItem" [t "sol-token", n "token"]] "storageError" Nil Nil,
+    JS.Do (call "patch" [n "root", f (n "message") "view"])] Nil,
+  JS.If (f (n "message") "patch") [JS.ForOf "key" (m (n "Object") "keys" [f (n "message") "patch"])
+    [JS.ForOf "target" (m (n "root") "querySelectorAll" [t "[data-dyn]"])
+      [JS.If (eq (attr (n "target") "data-dyn") (n "key")) [JS.Do (call "patch" [n "target", JS.Index (f (n "message") "patch") (n "key")])] Nil]]] Nil]
+  "error" [do (n "console") "error" [t "Sol view update refused"], do (n "ws") "close" [JS.Number 4002, t "resync"]] Nil].
+clickBody = [JS.Const "target" (JS.OptionalField (f (n "event") "target") "closest"),
+  JS.If (not (n "target")) [JS.ReturnVoid] Nil,
+  JS.Const "el" (m (f (n "event") "target") "closest" [t "[data-sol-event]"]),
+  JS.If (both (n "el") (m (n "root") "contains" [n "el"])) [JS.Do (call "send" [attr (n "el") "data-sol-event", attr (n "el") "data-sol-value"])] Nil].
+keyBody = [JS.If (either (f (n "event") "repeat") (both (neq (f (n "event") "key") (t "Enter")) (neq (f (n "event") "key") (t " ")))) [JS.ReturnVoid] Nil,
+  JS.If (m (f (n "event") "target") "matches" [t "[data-sol-event]"]) [do (n "event") "preventDefault" Nil,
+    JS.Do (call "send" [attr (f (n "event") "target") "data-sol-event", attr (f (n "event") "target") "data-sol-value"])] Nil].
+submitBody = [JS.Const "form" (f (n "event") "target"),
+  JS.If (not (m (n "form") "matches" [t "form[data-sol-form]"])) [JS.ReturnVoid] Nil, do (n "event") "preventDefault" Nil,
+  JS.Const "inputs" (m (n "Array") "from" [m (n "form") "querySelectorAll" [t "[data-sol-field]"]]),
+  JS.Const "values" (m (n "inputs") "map" [JS.Function ["input"] [JS.Return (m (f (n "input") "value") "trim" Nil)]]),
+  JS.If (both (m (n "values") "every" [JS.Function ["value"] [JS.Return (n "value")]])
+    (call "send" [attr (n "form") "data-sol-form", m (n "values") "join" [t " "]]))
+    [JS.ForOf "input" (n "inputs") [JS.Assign (f (n "input") "value") (t "")]] Nil].
+closeBody = [JS.If (neq (n "ws") (n "socket")) [JS.ReturnVoid] Nil, JS.Assign (n "ws") JS.Null,
+  JS.If (n "running") [JS.Assign (n "retry") (call "setTimeout" [n "connect", n "delay"]),
+    JS.Assign (n "delay") (m (n "Math") "min" [JS.Number 8000, JS.Binary JS.Multiply (n "delay") (JS.Number 2)])] Nil].
+connectBody = [JS.If (either (not (n "running")) (n "ws")) [JS.ReturnVoid] Nil,
+  JS.Const "socket" (JS.New (n "WebSocket") [JS.Binary JS.Add
+    (JS.Binary JS.Add (JS.Choose (eq (f (n "location") "protocol") (t "https:")) (t "wss://") (t "ws://")) (f (n "location") "host")) (t "/ws")]),
+  JS.Assign (n "ws") (n "socket"),
+  JS.Assign (f (n "socket") "onopen") (JS.Function Nil [JS.Assign (n "delay") (JS.Number 500),
+    do (n "socket") "send" [m (n "JSON") "stringify" [JS.Object [("hello", n "token")]]]]),
+  JS.Assign (f (n "socket") "onmessage") (JS.Function ["event"] messageBody),
+  JS.Assign (f (n "socket") "onclose") (JS.Function Nil closeBody)].
+program u = JS.program [JS.Strict, JS.Do (JS.Call (JS.Function Nil
+  [JS.Let "token" JS.Null, JS.Try [JS.Assign (n "token") (m (n "localStorage") "getItem" [t "sol-token"])] "storageError" Nil Nil,
+   JS.Let "ws" JS.Null, JS.Let "running" (JS.Boolean True), JS.Let "retry" JS.Null, JS.Let "delay" (JS.Number 500),
+   JS.Const "root" (m (n "document") "getElementById" [t "root"]),
+   JS.Define "styles" ["el", "values"] styleBody, JS.Define "element" ["tag", "values"] elementBody,
+   JS.Define "send" ["ev", "value"] sendBody, JS.Define "ensureElement" ["node"] ensureBody,
+   JS.Define "form" ["event", "fields", "label"] formBody, JS.Define "build" ["node"] buildBody,
+   JS.Define "keyOf" ["node"] (Live.keyOfBody2 Unit), JS.Define "compatible" ["a", "b"] (Live.compatibleBody3 Unit),
+   JS.Define "reconcile" ["parent", "wanted"] (Live.reconcileBody4 Unit), JS.Define "patch" ["target", "view"] patchBody,
+   JS.Define "connect" Nil connectBody,
+   do (n "root") "addEventListener" [t "click", JS.Function ["event"] clickBody],
+   do (n "root") "addEventListener" [t "keydown", JS.Function ["event"] keyBody],
+   do (n "root") "addEventListener" [t "submit", JS.Function ["event"] submitBody],
+   do (n "window") "addEventListener" [t "pagehide", JS.Function Nil [JS.Assign (n "running") (JS.Boolean False),
+     JS.Do (call "clearTimeout" [n "retry"]), JS.If (n "ws") [JS.Const "socket" (n "ws"), JS.Assign (n "ws") JS.Null, do (n "socket") "close" [JS.Number 1000]] Nil]],
+   do (n "window") "addEventListener" [t "pageshow", JS.Function ["event"] [JS.If (f (n "event") "persisted") [JS.Assign (n "running") (JS.Boolean True), JS.Do (call "connect" Nil)] Nil]],
+   JS.Do (call "connect" Nil)]) Nil)].

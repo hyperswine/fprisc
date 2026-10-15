@@ -37,6 +37,7 @@ def main():
           'plparse':('> (db,qs,syms) = L.loadProgram ["likes alice bob.", "> likes alice bob ?"]; print (List.len db, List.len qs).', b'(1, 1)\n'),
           'proc':('> print (L.output (Ok (ProcessResult 0 "done" ""))).', b'Ok done\n'),
           'rand':('> print (L.Rand.next 1).', b'1103527590\n'),
+          'webstyles':('> print (List.len (L.classes [L.p2, L.p4])).', b'4\n'),
           'ui':('> print (L.text "ok" == L.Txt "ok").', b'True\n'),
           'web':('> v = L.text "ok"; print v.text.', b'ok\n'),
         }

@@ -210,10 +210,14 @@ Decl = Type (Width Len | Height Len | MinWidth Len | MinHeight Len
            | TransitionAll Int | FlexGrow Int | FlexShrink Int | AlignContent Alignment
            | LineHeightLength Len | BorderBottom Len Colour | ShadowToken ThemeToken
            | Resize ResizeMode | TextSecurity SecurityMode
+           | BorderCollapse CollapseMode | UserSelect SelectMode | BackgroundClipText
+           | BackdropBlur Len | Brightness Int
            | Prop String String).   # any other property: the escape hatch
 Style = Type (Style String (List Decl)).
 
 DisplayMode = Type (Block | InlineBlock | Flex | Grid | Hidden).
+CollapseMode = Type (CollapseBorders | SeparateBorders).
+SelectMode = Type (SelectText | SelectNone).
 FlexDirection = Type (Row | Column).
 Colour = Type (Rgb Int Int Int | Rgba Int Int Int Int | RgbaPercent Int Int Int Int | Transparent | CurrentColour | ThemeColour ThemeToken).
 ShadowPart = Type (ShadowPart Len Len Len Len Colour).
@@ -391,6 +395,11 @@ declsCss (d :: Nil) = declCss d.
 declsCss (d :: r) = "{declCss d};{declsCss r}".
 declCss : unsafe Decl -> String .
 declCss (Width l) = "width:{lenCss l}".
+declCss (BorderCollapse mode) = "border-collapse:{(case mode of CollapseBorders -> "collapse" | SeparateBorders -> "separate")}".
+declCss (UserSelect mode) = "user-select:{(case mode of SelectText -> "text" | SelectNone -> "none")}".
+declCss BackgroundClipText = "background-clip:text".
+declCss (BackdropBlur amount) = "backdrop-filter:blur({lenCss amount})".
+declCss (Brightness amount) = if amount < 0 then error "View.brightness: negative percentage" else "filter:brightness({amount}%)".
 declCss (Height l) = "height:{lenCss l}".
 declCss (MinWidth l) = "min-width:{lenCss l}".
 declCss (MinHeight l) = "min-height:{lenCss l}".

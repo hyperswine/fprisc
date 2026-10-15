@@ -55,6 +55,7 @@ import Network.Socket.ByteString (recv, sendAll)
 import System.Directory (doesFileExist)
 import System.IO (BufferMode (LineBuffering), Handle, IOMode (AppendMode), hFlush, hPutStrLn, hSetBuffering, openFile, readFile', stdout)
 import Sol.Val
+import Sol.WebAssets (clientPage, clientScript, clientStyles)
 
 type Shapes = M.Map Int [String]
 
@@ -129,7 +130,9 @@ serveWeb port dataFile shapes cons subs cbs = do
   setSocketOption sock ReuseAddr 1
   bind sock (addrAddress addr)
   listen sock 16
-  verbose ("[view] serving MVU app on http://localhost:" ++ show port ++ " (log: " ++ dataFile ++ (if null subs then "" else ", " ++ show (length subs) ++ " sub(s)") ++ ")")
+  bound <- getSocketName sock
+  let actualPort = case bound of SockAddrInet p _ -> fromIntegral p; SockAddrInet6 p _ _ _ -> fromIntegral p; _ -> port
+  verbose ("[view] serving MVU app on http://localhost:" ++ show actualPort ++ " (log: " ++ dataFile ++ (if null subs then "" else ", " ++ show (length subs) ++ " sub(s)") ++ ")")
   forever $ do
     (conn, _) <- accept sock
     _ <- forkIO $ do
@@ -276,14 +279,18 @@ handleConn rt conn = do
             )
         wsSession rt conn
     else do
-      let body = clientPage
-      sendAll conn $
-        BC.pack
-          ( "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: "
-              ++ show (length body)
-              ++ "\r\nConnection: close\r\n\r\n"
-              ++ body
-          )
+      -- Build-generated exports are linked into the host. Serving never reads
+      -- source/assets from disk or runs a compiler, shell, or generator.
+      let (status, mime, body) = case path of
+            "/" -> ("200 OK", "text/html; charset=utf-8", clientPage)
+            "/_sol/client.js" -> ("200 OK", "text/javascript; charset=utf-8", clientScript)
+            "/_sol/style.css" -> ("200 OK", "text/css; charset=utf-8", clientStyles)
+            _ -> ("404 Not Found", "text/plain; charset=utf-8", "No such route\n")
+          bytes = utf8Enc body
+      sendAll conn $ BC.pack
+        ("HTTP/1.1 " ++ status ++ "\r\nContent-Type: " ++ mime ++
+         "\r\nContent-Length: " ++ show (BS.length bytes) ++
+         "\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n") <> bytes
 
 wsGUID :: String
 wsGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -374,8 +381,8 @@ jsonV :: Shapes -> Value -> String
 jsonV shapes = jsonVC shapes M.empty
 
 -- with the constructor table: the typed view DSL's Html ADT (lib/ui.sol)
--- serializes to the SAME wire JSON the untyped record nodes use, so the
--- client JS is unchanged. Constructors are matched by their name's last
+-- serializes to the generated client protocol; element classes are local atom
+-- values rather than global style names. Constructors match by their name's last
 -- segment (file-module splicing prefixes them: ui.El, ui.Txt, ...).
 jsonVC :: Shapes -> M.Map (Int, Int) String -> Value -> String
 jsonVC shapes conNames = go
@@ -387,7 +394,8 @@ jsonVC shapes conNames = go
     go v@(VData t c fs)
       | Just nm <- M.lookup (t, c) conNames = case (lastSeg nm, fs) of
           ("Txt", [x]) -> obj [("text", go x)]
-          ("El", [tg, cl, ks]) -> obj [("tag", go tg), ("cls", go cl), ("kids", go ks)]
+          ("El", [tg, cl, ks]) -> obj [("tag", go tg), ("classes", go cl), ("kids", go ks)]
+          ("KeyN", [key, nd]) -> obj [("key", go key), ("node", go nd)]
           ("EvN", [ev, val, nd]) -> obj [("ev", go ev), ("val", go val), ("node", go nd)]
           ("DynN", [d, nd]) -> obj [("dyn", go d), ("node", go nd)]
           ("FormN", [f, flds, b]) -> obj [("form", go f), ("fields", go flds), ("btn", go b)]
@@ -585,96 +593,3 @@ b64encode = go
       let n = fromIntegral x `shiftL` 16 :: Int
        in [alpha !! (n `shiftR` 18), alpha !! ((n `shiftR` 12) .&. 63), '=', '=']
     go [] = []
-
--- ---- the companion client ---------------------------------------------------
-
-clientPage :: String
-clientPage =
-  unlines
-    [ "<!doctype html><html><head><meta charset='utf-8'>",
-      "<meta name='viewport' content='width=device-width, initial-scale=1'>",
-      "<title>sol view</title><style>",
-      "*{box-sizing:border-box;margin:0} body{font-family:system-ui,sans-serif;background:#f6f7f9;color:#1a202c}",
-      ".container{max-width:760px} .mx-auto{margin-left:auto;margin-right:auto}",
-      ".flex{display:flex} .flex-col{flex-direction:column} .flex-row{flex-direction:row} .flex-wrap{flex-wrap:wrap} .flex-1{flex:1} .items-center{align-items:center}",
-      ".grid{display:grid} .grid-cols-2{grid-template-columns:1fr 1fr}",
-      ".gap-1{gap:.25rem} .gap-2{gap:.5rem} .gap-3{gap:.75rem} .gap-4{gap:1rem}",
-      ".p-2{padding:.5rem} .p-4{padding:1rem} .px-3{padding-left:.75rem;padding-right:.75rem} .py-1{padding-top:.25rem;padding-bottom:.25rem}",
-      ".rounded{border-radius:.5rem} .border{border:1px solid #e2e8f0} .shadow{box-shadow:0 1px 3px rgba(0,0,0,.08)}",
-      ".card{background:#fff;border:1px solid #e2e8f0;border-radius:.5rem;padding:1rem;box-shadow:0 1px 3px rgba(0,0,0,.06)}",
-      ".text-sm{font-size:.85rem} .text-xl{font-size:1.3rem} .text-2xl{font-size:1.7rem} .font-bold{font-weight:700} .text-muted{color:#5a6472;line-height:1.55}",
-      ".badge{background:#e6f0ff;color:#2456c4;border-radius:999px;padding:.15rem .6rem;font-size:.75rem;font-weight:600}",
-      ".tab{padding:.4rem .9rem;border-radius:.5rem;border:1px solid #e2e8f0;background:#fff;cursor:pointer;font-size:.9rem}",
-      ".tab-active{background:#2456c4;color:#fff;border-color:#2456c4}",
-      ".clickable{cursor:pointer;user-select:none}",
-      ".comment{background:#f1f5f9;border-radius:.4rem;padding:.45rem .7rem;font-size:.92rem}",
-      ".input{padding:.45rem .7rem;border:1px solid #cbd5e1;border-radius:.5rem;font-size:.92rem;min-width:0}",
-      ".btn{padding:.45rem .9rem;border:0;border-radius:.5rem;background:#2456c4;color:#fff;cursor:pointer;font-size:.92rem}",
-      -- ---- pos2 theme layer (additive; nothing above changes) ----
-      ":root{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--pri:#4f46e5;--pri2:#7c3aed;--ok:#059669;--bad:#dc2626;--warn:#d97706}",
-      ".app-bg{min-height:100vh;background:linear-gradient(180deg,#f8fafc 0%,#eef2ff 100%)}",
-      ".hero{min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(1000px 500px at 20% -10%,#e0e7ff 0%,transparent 60%),radial-gradient(900px 500px at 110% 110%,#ede9fe 0%,transparent 55%),#f8fafc}",
-      ".hero-card{background:rgba(255,255,255,.85);backdrop-filter:blur(8px);border:1px solid #e2e8f0;border-radius:1rem;padding:2rem;box-shadow:0 20px 50px rgba(79,70,229,.12);width:100%;max-width:420px}",
-      ".brand-grad{background:linear-gradient(90deg,var(--pri),var(--pri2));-webkit-background-clip:text;background-clip:text;color:transparent}",
-      ".nav{position:sticky;top:0;z-index:10;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;gap:.75rem;padding:.6rem 1rem;box-shadow:0 2px 10px rgba(15,23,42,.25)}",
-      ".navtab{padding:.35rem .85rem;border-radius:.5rem;color:#cbd5e1;cursor:pointer;font-size:.9rem;user-select:none}",
-      ".navtab:hover{background:#1e293b;color:#fff}",
-      ".navtab-active{background:#4f46e5;color:#fff}",
-      ".text-3xl{font-size:2.1rem} .text-xs{font-size:.72rem} .font-semi{font-weight:600} .tracking{letter-spacing:.02em}",
-      ".grid-cols-3{grid-template-columns:1fr 1fr 1fr} .w-full{width:100%} .justify-between{justify-content:space-between} .text-right{text-align:right} .text-center{text-align:center}",
-      ".mt-2{margin-top:.5rem} .mb-2{margin-bottom:.5rem}",
-      ".card-lg{background:#fff;border:1px solid var(--line);border-radius:.9rem;padding:1.25rem;box-shadow:0 4px 16px rgba(15,23,42,.05)}",
-      ".hover-lift{transition:transform .12s ease,box-shadow .12s ease}",
-      ".hover-lift:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(79,70,229,.14)}",
-      ".badge-green{background:#ecfdf5;color:var(--ok);border-radius:999px;padding:.15rem .6rem;font-size:.75rem;font-weight:600}",
-      ".badge-red{background:#fef2f2;color:var(--bad);border-radius:999px;padding:.15rem .6rem;font-size:.75rem;font-weight:600}",
-      ".badge-amber{background:#fffbeb;color:var(--warn);border-radius:999px;padding:.15rem .6rem;font-size:.75rem;font-weight:600}",
-      ".btn-ghost{padding:.45rem .9rem;border:1px solid var(--line);border-radius:.5rem;background:#fff;color:var(--ink);cursor:pointer;font-size:.92rem}",
-      ".btn-ghost:hover{border-color:#94a3b8}",
-      ".btn-danger{padding:.45rem .9rem;border:0;border-radius:.5rem;background:var(--bad);color:#fff;cursor:pointer;font-size:.92rem}",
-      ".btn:hover{filter:brightness(1.08)}",
-      ".price{font-variant-numeric:tabular-nums;font-weight:700;color:var(--pri)}",
-      ".divider{height:1px;background:var(--line)}",
-      ".tbl{width:100%;border-collapse:collapse} .tbl th{text-align:left;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);padding:.5rem .6rem;border-bottom:1px solid var(--line)}",
-      ".tbl td{padding:.55rem .6rem;border-bottom:1px solid #f1f5f9;font-size:.92rem}",
-      ".tbl tr:hover td{background:#f8fafc}",
-      ".stock-out{opacity:.45;pointer-events:none}",
-      ".empty{color:var(--mut);text-align:center;padding:1.5rem;font-size:.92rem}",
-      "@media (max-width:640px){ .grid-cols-3{grid-template-columns:1fr 1fr} .hero-card{margin:1rem} }",
-      "@media (max-width:640px){ .grid-cols-2{grid-template-columns:1fr} .flex-row{flex-wrap:wrap} .container{padding:.5rem} }",
-      "</style></head><body><div id='root'></div><script>",
-      "let tok = localStorage.getItem('sol-token');",
-      "const ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');",
-      "ws.onopen = () => ws.send(JSON.stringify({hello: tok}));",
-      "ws.onmessage = (e) => { const m = JSON.parse(e.data);",
-      "  if (m.token !== undefined) { tok = m.token; localStorage.setItem('sol-token', tok);",
-      "    const r = document.getElementById('root'); r.replaceChildren(build(m.view)); }",
-      "  if (m.patch) { for (const k of Object.keys(m.patch)) {",
-      "    const el = document.querySelector('[data-dyn=\"'+k+'\"]');",
-      "    if (el) el.replaceChildren(build(m.patch[k])); } } };",
-      "function send(ev, val){ ws.send(JSON.stringify({ev: ev, val: String(val==null?'':val)})); }",
-      "function build(n){",
-      "  if (n == null) return document.createTextNode('');",
-      "  if (typeof n === 'string' || typeof n === 'number') return document.createTextNode(String(n));",
-      "  if (Array.isArray(n)) { const f = document.createDocumentFragment(); n.forEach(k=>f.appendChild(build(k))); return f; }",
-      "  if (n.text !== undefined) return document.createTextNode(n.text);",
-      "  if (n.dyn !== undefined) { const s = document.createElement('span'); s.dataset.dyn = n.dyn; s.appendChild(build(n.node)); return s; }",
-      "  if (n.ev !== undefined) { const w = build(n.node);",
-      "    if (w.classList) w.classList.add('clickable');",
-      "    w.addEventListener('click', () => send(n.ev, n.val)); return w; }",
-      "  if (n.form !== undefined) { const col = document.createElement('div'); col.className = 'flex flex-col gap-2';",
-      "    const ins = (n.fields||[]).map(f => { const i = document.createElement('input'); i.className='input';",
-      "      i.placeholder = f; if (f.indexOf('pass') >= 0) i.type = 'password'; col.appendChild(i); return i; });",
-      "    const b = document.createElement('button'); b.className = 'btn'; b.textContent = n.btn || 'Go';",
-      "    b.onclick = () => { const vs = ins.map(i => i.value.trim()); if (vs.every(v => v)) { send(n.form, vs.join(' ')); ins.forEach(i => i.value=''); } };",
-      "    col.appendChild(b); return col; }",
-      "  if (n.inp !== undefined) { const row = document.createElement('div'); row.className = 'flex flex-row gap-2';",
-      "    const i = document.createElement('input'); i.className = 'input flex-1'; i.placeholder = n.ph || '';",
-      "    const b = document.createElement('button'); b.className = 'btn'; b.textContent = n.btn || 'Send';",
-      "    const go = () => { const v = i.value.trim(); if (v) { send(n.inp, v); i.value = ''; } };",
-      "    b.onclick = go; i.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });",
-      "    row.append(i, b); return row; }",
-      "  const el = document.createElement(n.tag || 'div'); if (n.cls) el.className = n.cls;",
-      "  (n.kids || []).forEach(k => el.appendChild(build(k))); return el; }",
-      "</script></body></html>"
-    ]

@@ -194,3 +194,80 @@ See the [launcher and acceptance record](../examples/printer-dashboard/README.md
 
 The deployment gate for these read-only paths has passed. This does not establish
 a long-duration memory/stress bound, every-target acceptance or a physical print.
+
+## Broader repository audit (2026-10-15)
+
+The completed runtime migration above covers the native Base/ExtBase POS,
+inventory, logbook and printer applications. A broader source audit found these
+remaining boundaries outside that scope:
+
+- The audit originally found `compiler/Sol/Web.hs:clientPage` embedding the HostedBytecode profile's
+  browser runtime and global stylesheet. This is used by the Sol blog, dashboard,
+  POS/POS2, todo/todo2 and terra examples via `View.serve`. `sol/lib/ui.sol` names
+  global CSS classes rather than typed node-local declarations. This backend
+  needed structured browser generation and local presentation. The completion
+  below supersedes this remaining item.
+- `examples/report.fpr` and `examples/ideal/report.fpr` invoke Git for revision
+  metadata. Sol's system-report/archive scripts and Git library use external
+  commands as well. These are actual tool integrations, even though they are
+  structured rather than shell-interpolated; a repository-wide no-tools goal
+  would require native APIs/libraries for those operations.
+- Live's explicitly selected development reload still invokes the compiler;
+  process demonstrations deliberately exercise subprocesses. Python remains in
+  test/build/benchmark/device-development drivers and the legacy test fixtures.
+  No Python runtime integration was found in the native application paths.
+
+This audit also caught `pos1.cssAll` calling the compatibility `cssWith` path,
+which emitted class-based rules despite the nodes already owning typed utilities.
+It now uses `cssFor`, and the application source guard rejects compatibility
+stylesheet calls. View/Ma retain explicit legacy stylesheet APIs for other
+callers; the migrated applications no longer call those APIs.
+The tightened source guard and native/browser POS checks pass, including 1,031
+calculation comparisons and independent carts/checkout/focus on one/four harts.
+
+## Sol hosted web generation completed (2026-10-15)
+
+`sol/web/client.fpr` is the authoritative browser runtime, built entirely from
+`std/javascript` syntax nodes and the same DOM reconciler as native Live.
+`sol/web/presentation.fpr` owns typed `std/view` declarations for the document,
+controls, components, table cells/rows, focus/hover and responsive variants.
+No Raw/source node, handwritten browser program or stylesheet is used.
+
+`tools/generate_sol_web.fpr` produces the checked-in `Sol.WebAssets` module and
+`sol/lib/webstyles.sol`. The host links these build exports and serves separate
+HTML/JS/CSS resources; `View.serve` never launches a generator/compiler or reads
+browser source from disk. A clean checkout can build the compiler from the
+checked-in exports. Run `make sol-web-assets` after changing their source and
+`make sol-web-assets-check` to refuse stale exports. Generated exports are not
+authoring sources.
+
+Sol's appearance values carry `(stage, property, utility)` atoms. Composition
+deduplicates by stage/property on each node before emitting utility class values,
+so overrides depend on local composition rather than stylesheet ordering.
+The stylesheet contains only generated utility selectors and their local state /
+viewport variants: no resets, `:root`, named class registry or table descendants.
+Table appearance is attached directly to the table, rows and cells. The common
+View breakpoint is 760px. New typed declarations preserve border collapse,
+selection policy, gradient text, brightness and backdrop blur.
+
+`sol/lib/ui.sol` now takes typed appearance lists; POS2's string lists were
+migrated, and todo2's UI pin was refreshed. The legacy record vocabulary in
+`sol/lib/web.sol` also takes local appearance lists. Old pinned libraries/apps
+using arbitrary class strings must update their pin and calls; there is no global
+CSS fallback. The host serializes typed elements with `classes` arrays, and the
+client refuses legacy `cls` or non-utility class values and executable elements.
+
+The generated client preserves session tokens and the existing event/patch
+protocol, with nonfatal storage refusal, delegated form/event handlers, keyed
+reconciliation, draft/focus/selection preservation, reconnect backoff and
+pagehide/BFCache cleanup. Old socket callbacks cannot overwrite a resumed page.
+These changes do not replace Sol's HTTP/session/persistence host with FP-RISC
+policy or alter its existing authentication model.
+
+Acceptance: `node tests/check_sol_web.cjs` checks all seven real hosted examples
+on isolated servers with no tools on PATH, plus controlled malformed style/text,
+storage, draft/handler, reconnect and suspension cases. The library contract and
+application trace suites pass; non-view model/command trace lines are unchanged.
+Native View utility checks cover the added declaration types, and the source
+boundary guard now includes the Sol renderer. These are hosted macOS/Chromium
+checks, not deployment or every-target certification.

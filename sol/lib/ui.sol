@@ -1,11 +1,11 @@
 # ui.sol — the typed view DSL: an Html ADT (Elm-style) + first-class
-# Style symbols, replacing ad-hoc heterogeneous node records.
+# node-local style values exported from typed std/view generation.
 #
 # Views built with these helpers TYPECHECK (no # sol:notypes needed):
 # Html is nominal and recursive, which structural rows can't express —
 # this is the Node-ADT decision from the README's gradual-boundary note.
-# Web.hs serializes the constructors to the same wire JSON the client
-# already speaks, so the browser side is unchanged.
+# Web.hs serializes the constructors to the generated hosted client protocol.
+# Appearance values compose by stage/property on each individual node.
 #
 #   view model = ui.div [ui.Style.card] [
 #     ui.h2 [ui.Style.textxl] [ui.text "hello"],
@@ -14,60 +14,100 @@
 #
 # A typo'd style (ui.Style.crd) or element helper is a COMPILE error.
 
+S = use "webstyles".
+
 Html = Type (
-    El String String (List Html)
+    El String (List String) (List Html)
   | Txt String
   | EvN String String Html
   | DynN String Html
+  | KeyN String Html
   | FormN String (List String) String
   | InpN String String String
 ).
 
-# ---- styles: one symbol per served CSS class --------------------------------
-
+# Named values carry local atoms, never browser class-registry keys.
 Style = Struct {
-  container = "container",
-  mxauto = "mx-auto",
-  flex = "flex",
-  flexcol = "flex-col",
-  flexrow = "flex-row",
-  flexwrap = "flex-wrap",
-  flex1 = "flex-1",
-  itemscenter = "items-center",
-  grid = "grid",
-  gridcols2 = "grid-cols-2",
-  gap1 = "gap-1",
-  gap2 = "gap-2",
-  gap3 = "gap-3",
-  gap4 = "gap-4",
-  p2 = "p-2",
-  p4 = "p-4",
-  px3 = "px-3",
-  py1 = "py-1",
-  rounded = "rounded",
-  border = "border",
-  shadow = "shadow",
-  card = "card",
-  textsm = "text-sm",
-  textxl = "text-xl",
-  text2xl = "text-2xl",
-  fontbold = "font-bold",
-  textmuted = "text-muted",
-  badge = "badge",
-  tab = "tab",
-  tabactive = "tab-active",
-  clickable = "clickable",
-  comment = "comment",
-  input = "input",
-  btn = "btn"
+  reset = S.reset,
+  headcell = S.headcell,
+  cell = S.cell,
+  tablerow = S.tablerow,
+  container = S.container,
+  mxauto = S.mxauto,
+  flex = S.flex,
+  flexcol = S.flexcol,
+  flexrow = S.flexrow,
+  flexwrap = S.flexwrap,
+  flex1 = S.flex1,
+  itemscenter = S.itemscenter,
+  grid = S.grid,
+  gridcols2 = S.gridcols2,
+  gridcols3 = S.gridcols3,
+  gap1 = S.gap1,
+  gap2 = S.gap2,
+  gap3 = S.gap3,
+  gap4 = S.gap4,
+  p2 = S.p2,
+  p4 = S.p4,
+  px3 = S.px3,
+  py1 = S.py1,
+  rounded = S.rounded,
+  border = S.border,
+  shadow = S.shadow,
+  card = S.card,
+  textsm = S.textsm,
+  textxl = S.textxl,
+  text2xl = S.text2xl,
+  text3xl = S.text3xl,
+  textxs = S.textxs,
+  fontbold = S.fontbold,
+  fontsemi = S.fontsemi,
+  tracking = S.tracking,
+  textmuted = S.textmuted,
+  badge = S.badge,
+  tab = S.tab,
+  tabactive = S.tabactive,
+  clickable = S.clickable,
+  comment = S.comment,
+  input = S.input,
+  btn = S.btn,
+  appbg = S.appbg,
+  hero = S.hero,
+  herocard = S.herocard,
+  brandgrad = S.brandgrad,
+  nav = S.nav,
+  navtab = S.navtab,
+  navtabactive = S.navtabactive,
+  wfull = S.wfull,
+  justifybetween = S.justifybetween,
+  textright = S.textright,
+  textcenter = S.textcenter,
+  mt2 = S.mt2,
+  mb2 = S.mb2,
+  cardlg = S.cardlg,
+  hoverlift = S.hoverlift,
+  badgegreen = S.badgegreen,
+  badgered = S.badgered,
+  badgeamber = S.badgeamber,
+  btnghost = S.btnghost,
+  btndanger = S.btndanger,
+  price = S.price,
+  divider = S.divider,
+  tbl = S.tbl,
+  stockout = S.stockout,
+  empty = S.empty
 }.
 
 # ---- element helpers --------------------------------------------------------
 
-cls ss = List.fold clsJoin "" ss.
-clsJoin a s = case a == "" of True -> s | False -> "{a} {s}".
+tagStyles "th" = [S.headcell].
+tagStyles "td" = [S.cell].
+tagStyles "tr" = [S.tablerow].
+tagStyles _ = [].
 
-el tag ss ks = El tag (cls ss) ks.
+cls styles = S.classes styles.
+el tag styles kids = El tag (S.classes ([S.reset] + tagStyles tag + styles)) kids.
+key identity node = KeyN identity node.
 
 div ss ks = el "div" ss ks.
 span ss ks = el "span" ss ks.

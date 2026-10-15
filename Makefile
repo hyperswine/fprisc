@@ -55,6 +55,17 @@ TIMEOUT := $(shell command -v timeout 2>/dev/null || echo "")
 
 all: fpr
 
+# Explicit development step: generated exports are checked in so fresh Cabal /
+# installed builds need no running FP-RISC generator. CI checks reproducibility.
+.PHONY: sol-web-assets sol-web-assets-check
+sol-web-assets: fpr
+	./fpr build tools/generate_sol_web.fpr -o build/generate-sol-web
+	./build/generate-sol-web
+	$(MAKE) fpr
+sol-web-assets-check: fpr
+	./fpr build tools/generate_sol_web.fpr -o build/generate-sol-web
+	./build/generate-sol-web --check
+
 # ---- THE tool: one binary, profiles as subcommands ---------------------
 # fpr compile|sol|stdcheck|commit|versions.  The sol pipeline is linked
 # in as Sol.* modules — sol is a profile of this binary, not a second
