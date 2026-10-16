@@ -25,7 +25,11 @@ ck() { # ck <file> <ceiling>
 # machinery. Keep that reviewed surface as the ceiling; growth still fails.
 # +1 (2026-10-03): spawnHeap's declaration, so std/actor's spawnWithHeap runs
 # under Sol (a primitive, not inference machinery).
-ck compiler/Sol/Infer.hs 127   # primitive table + flags; +1 for native vector layouts, +1 spawnHeap; no inference fork
+# +5 (2026-10-16): primitive declarations again, none of them inference --
+# Sys.mtime (production MVU clock), receiveFromNow (failure honesty),
+# intMax/intMin (the Int overflow traps), and Sys.loop (std/mvu's turn loop,
+# which sketch-mvutick.sol runs under Sol).
+ck compiler/Sol/Infer.hs 132   # primitive table + flags; +1 for native vector layouts, +1 spawnHeap, +5 primitives; no inference fork
 # Qualified nested struct references were repaired in cb71302; this is
 # profile module-splicing policy, not a restored parser/desugar/lift fork.
 ck compiler/Sol/Lang.hs  244   # profile-only: tids, decode, splicing

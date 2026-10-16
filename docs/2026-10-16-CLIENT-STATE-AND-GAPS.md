@@ -154,8 +154,34 @@ forms: `check_client_calculations.cjs` (pos1's carts), `check_pos_reload.py`
 - QOS `liveboard-check.py` looked for the page's old text (`.col`,
   `window.__LV__`, `new WebSocket`).
 
+## QOS's red legs, the same day
+
+Once QOS built again its check-all showed five legs that were red at the
+previous pin too. All five are green:
+
+- **dedup ratchet**: `compiler/Sol/Infer.hs` had grown to 131 lines, all
+  primitive declarations (`Sys.mtime`, `receiveFromNow`, `intMax`,
+  `intMin`), which the ratchet's own comment admits; with `Sys.loop` below
+  it is 132, and `tools/dedup-ratchet.sh` says so with the reason.
+- **sketch tier**: std/mvu runs its turns on `Sys.loop`, which `fpr sol`
+  did not have. The Sol profile has it now (its type in Sol/Infer.hs, the
+  VM applies the step until it answers `False`), and QOS's
+  `tests/sketch-mvutick.sol` runs again.
+- **Vec record folds**: the leg expected x64 to say its specialization tier
+  is off; it has been on since `28dcacc` (2026-10-03). It expects the same
+  dualized fold and the same named decline as on RISC-V now.
+- **Timer.qa**: QOS's timer tests killed the timer service at the end, and
+  since `285d35e` (2026-10-11) the runtime refuses to kill the bound timer
+  actor (SUPERVISION S7). The tests end without the kill.
+- **sysdisk**: the live-reload gate compares each export's checked type;
+  `sysed1`'s `editLine s = s` checked as `a -> a`, so its real successor
+  (`String -> String`) was refused. Both modules declare `editLine : String
+  -> String`; the impostor is still refused, for its arity.
+
 ## Not done
 
-- `Persistent a`: a decision, not a defect; `Live.field` and std/durable
-  remain the declarative persistence.
+- `Persistent a`: not a top priority. Eventually the design should choose
+  whatever form of it makes the most sense -- a declared persistent field
+  type, or `Live.field` and std/durable growing into one -- and until then
+  those two remain the declarative persistence.
 - The string tier of std/view stays for QOS's own pos1 and liveview.

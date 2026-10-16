@@ -405,7 +405,7 @@ builtinArities =
         ("spawnCap", 3), ("spawnCapOn", 4), ("spawnOn", 2), ("spawnHeap", 2), ("Sys.spawnApp", 1), ("timeNow", 1),
         ("kill", 1), ("yield", 1), ("drop", 1), ("keep", 1), ("device", 1), ("reg32", 2),
         ("heapUsed", 1),
-        ("Sys.poolReset", 1), ("Sys.mtime", 1), ("Sys.sleepUs", 1), ("Sys.logAt", 2), ("Sys.memStats", 1), ("Sys.memInfo", 1),
+        ("Sys.poolReset", 1), ("Sys.mtime", 1), ("Sys.sleepUs", 1), ("Sys.logAt", 2), ("Sys.memStats", 1), ("Sys.memInfo", 1), ("Sys.loop", 2),
         ("use", 1), ("run", 2), ("View.serve", 5),
         ("Vec.new", 1), ("Vec.range", 2), ("Vec.mmul", 5), ("Vec.push", 2), ("Vec.len", 1), ("Vec.get", 2),
         ("Vec.set", 3), ("Vec.map", 2), ("Vec.filter", 2), ("Vec.fold", 3),
@@ -565,7 +565,7 @@ actorNames =
     [ "myself", "spawn", "send", "sendLinear", "sendArc", "receive", "receiveFrom", "receiveFromRes", "receiveFromNow", "Sys.nextId", "kill", "yield",
       "spawnCap", "spawnCapOn", "spawnOn", "spawnHeap", "Sys.spawnApp", "timeNow",
       "drop", "keep", "device", "reg32", "heapUsed",
-      "Sys.poolReset", "Sys.mtime", "Sys.sleepUs", "Sys.logAt", "Sys.memStats", "Sys.memInfo"
+      "Sys.poolReset", "Sys.mtime", "Sys.sleepUs", "Sys.logAt", "Sys.memStats", "Sys.memInfo", "Sys.loop"
     ]
 
 actorCall :: VMEnv -> Name -> [Value] -> IO Value
@@ -693,6 +693,17 @@ actorCall _ "Sys.logAt" [VInt h, s] = do
   putStrLn ("[log@" ++ show h ++ "] " ++ str)
   pure vUnit
 actorCall _ "Sys.memStats" [_] = pure (VData 4 0 [VInt 0, VInt 0])
+-- Sys.loop state step: the step again while it answers (True, next), and the
+-- state it ends with.  A native build gives each turn its own arena; here the
+-- heap is Haskell's, so only the iteration remains.
+actorCall env "Sys.loop" [s0, step] = go s0
+  where
+    go st = do
+      r <- apply env step st
+      case r of
+        VData 4 0 [VData b 1 [], next] | b == boolT -> go next
+        VData 4 0 [VData b 0 [], final] | b == boolT -> pure final
+        _ -> vmPanic "Sys.loop: a step must return (continue, state)"
 actorCall _ g as = vmPanic ("actor shim " ++ g ++ ": bad arguments " ++ show (map render as))
 
 -- ---- content-addressed file modules (Mod.hs does the work) -----------------

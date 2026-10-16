@@ -117,6 +117,7 @@ solBuiltins =
       ("Sys.sleepUs", mono (TFn tInt tUnit)),
       ("Sys.logAt", scheme [0] (TFn tInt (TFn tStr tUnit))),
       ("Sys.memStats", scheme [0] (TFn tInt (sv 0))),
+      ("Sys.loop", scheme [0] (TFn (sv 0) (TFn (TFn (sv 0) (TTupT [tBool, sv 0])) (sv 0)))),
       ("Num.div", mono (TFn tInt (TFn tInt tInt))), -- tInt IS the Numeric type
       ("Num.sqrt", mono (TFn tInt tInt)),
       ("Num.floor", mono (TFn tInt tInt)),
