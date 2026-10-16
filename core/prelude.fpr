@@ -96,8 +96,8 @@ wireDigits s i acc neg = case i >= strlen s of
 # `@Msg` and `@Model.field` literals carry `enc : a -> Wire` and
 # `dec : Wire -> Result a String`, generated from the type's declaration out of
 # these names.  std/json turns a Wire into text and back.  A decoder is LENIENT
-# about text where a number or a boolean is wanted ("10", "true"): what comes
-# from a page's client state is always text.
+# about text where a number, a boolean or a bare constructor is wanted ("10",
+# "true", "Receipts"): what a page holds for its client state is text.
 Wire = Type (WInt Int | WStr String | WBool Bool | WList (List Wire) | WRec (List (String, Wire)) | WCon String (List Wire)).
 
 wireMap : unsafe (a -> Wire) -> List a -> List Wire .
@@ -138,11 +138,13 @@ wireField name fs = case fs of
     Nil -> Err "missing"
   | (k, v) :: r -> (case k == name of True -> Ok v | False -> wireField name r).
 
-# a constructor: WCon name fields, or the list [name, field, ...] text gives
+# a constructor: WCon name fields, the list [name, field, ...] text gives, or a
+# bare constructor's NAME as text ("Receipts": what a page holds for one)
 wireCon : Wire -> Result (String, List Wire) String .
 wireCon w = case w of
     WCon n as -> Ok (n, as)
   | WList (WStr n :: as) -> Ok (n, as)
+  | WStr n -> Ok (n, Nil)
   | _ -> Err "expected a message: [name, field, ...]".
 
 # ---- Str: (+) concatenates; (-) is DEconcatenation --------------------------

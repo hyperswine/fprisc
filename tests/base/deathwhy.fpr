@@ -1,11 +1,16 @@
 unsafe base.
 # A trap ends the actor, not the machine, and its watchers hear why:
-# `error`, an Int overflow, a division by zero, a kill; an actor that
+# `error`, an Int overflow, a division by zero, a value a primitive refuses
+# (an index past the end, a code that is not a byte), a kill; an actor that
 # returned is plain "dead actor".  The program is still running afterwards.
 boom self = case receive self of who -> error "boom".
 over self = case receive self of (who, n) -> _ = send who (n + intMax Unit); Unit.
 divz self = case receive self of (who, n) -> _ = send who (n / (n - 1)); Unit.
 calm self = case receive self of who -> Unit.
+oob self = case receive self of (who, n) -> _ = send who (charAt "abc" n); Unit.
+notByte self = case receive self of (who, n) -> _ = send who (chr n); Unit.
+nth self = case receive self of (who, n) -> _ = send who ((1 :: 2 :: Nil) ! n); Unit.
+asked me f n = a = spawn f; _ = send a (me, n); receiveFromRes me a.
 sleeper self = _ = Sys.sleepUs 2000000; Unit.
 main =
   me = myself 0;
@@ -30,4 +35,7 @@ main =
   _ = print "division: {rd}";
   _ = print "killed: {rk}";
   _ = print "returned: {rc}";
+  _ = print "charAt: {asked me oob 3}";
+  _ = print "chr: {asked me notByte 256}";
+  _ = print "nth: {asked me nth 5}";
   print "the program is still running".

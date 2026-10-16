@@ -1,7 +1,7 @@
 # Presentation-only inventory server. No account, device or persistence update
 # is called. Observed command text proves delivery precedes deferred clearing.
 consoleSampleUpdate ev v = case ev of
-    Live.Msg sid (Admin cmd) ->
+    Live.Msg sid (Command cmd) ->
       ({v | con = ["received: {cmd}", S.join "\n" (List.map (fn n -> "fixture output {n}") (List.range 1 40))], events = v.events + 1},
        [Live.Emit sid "console-observed" cmd])
   | Live.Msg _ (Page n) -> ({v | page = n, first = n * 20}, Nil)

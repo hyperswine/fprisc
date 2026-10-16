@@ -100,6 +100,9 @@ bodyBody1 u = [
   JS.Do (JS.Call (JS.Field (JS.Name "window") "addEventListener") [(JS.Text "pageshow"), JS.Function [] [JS.Assign (JS.Name "paused") (JS.Boolean False), JS.Do (JS.Call (JS.Name "observe") []), JS.Do (JS.Call (JS.Function [] (bodyBody11 Unit)) [])]])
 ].
 
+# the page's day or night, which the feedback it draws follows
+theme : Bool -> G.Attr .
+theme light = G.Att "data-theme" (if light then "day" else "night").
 prototypes palette = G.El "div" [G.utilities [G.Display G.Hidden]]
   [G.El "div" (G.Att "data-pending-bar" "" :: G.utilities [G.Position G.Fixed, G.Top (G.Px 0), G.Left (G.Px 0), G.Height (G.Px 3), G.Width (G.Pct 30), G.ZIndex 60, G.PointerEvents G.PointerNone, G.Radius (G.Px 3), G.Opacity 60, G.Background (G.ThemeColour G.Ink)] :: palette) Nil,
    G.El "span" [G.Att "data-pending-link" "", G.utilities [G.Position G.Fixed, G.Top (G.Px 10), G.Left (G.Pct 50), G.Transform [G.TranslateX (G.Pct (0 - 50))], G.ZIndex 61, G.PaddingY (G.Px 4), G.PaddingX (G.Px 12), G.Radius (G.Px 999), G.FontSize (G.Px 12), G.Background (G.Rgb 58 42 16), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.Rgb 122 90 24), G.Foreground (G.Rgb 255 198 92)]] Nil].

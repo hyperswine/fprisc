@@ -6,17 +6,19 @@
 #
 #   { get : s -> a, set : a -> s -> s, segs : List String }
 #
-# and a SCHEMA (@Shape, bare) is the flattened list of every string-
-# addressable leaf:
+# and a SCHEMA (@Shape, bare) is the flattened list of every leaf with a
+# codec:
 #
-#   { path : String, tag : "int"|"str",
-#     get : s -> String, set : String -> s -> s }
+#   { path : String, tag : "int"|"str"|"bool"|"enum"|"wire",
+#     wire : s -> Wire, unwire : Wire -> s -> Result s String }
 #
 # This module supplies what the literal rule deliberately does not:
-# composition, and the STRING tier -- resolving a dotted path at
-# runtime against the schema and applying it, leaf values parsed and
-# rendered by tag.  Both tiers apply the SAME compiler-built closures,
-# so a parsed path and a literal path are indistinguishable downstream.
+# composition, and the STRING tier -- resolving a dotted path at runtime
+# against the schema and applying it.  Text goes through the leaf's own
+# codec: a value is handed over as text (a WStr), which the decoders read
+# as a number, a boolean or a bare constructor where one is wanted, and
+# a leaf is read back as Json.wireText.  So the string tier cannot
+# disagree with the typed one, and a value the codec refuses is an Err.
 #
 #   L = use "../std/lens".
 #
@@ -33,6 +35,8 @@
 # writer -- a bad path or unparsable value refuses transactionally
 # (Err, model unchanged), no backdoor into the model.
 # ============================================================================
+
+J = use "json".
 
 # ---- composition -----------------------------------------------------------
 
@@ -69,13 +73,13 @@ find es p = case es of
 set : unsafe List _ -> String -> String -> _ -> Result _ String .
 set es p v m = case find es p of
     Err e -> Err e
-  | Ok en -> Ok (en.set v m).
+  | Ok en -> wireAt p (en.unwire (WStr v) m).
 
 # read a leaf, rendered to its string form
 get : unsafe List _ -> String -> _ -> Result String String .
 get es p m = case find es p of
     Err e -> Err e
-  | Ok en -> Ok (en.get m).
+  | Ok en -> Ok (J.wireText (en.wire m)).
 
 # the wire form: "path value..." -- value is everything after the
 # FIRST space (values may contain spaces; "path" alone -> Err)
@@ -98,4 +102,4 @@ spaceAt s i = case i >= strlen s of
 dump : unsafe List _ -> _ -> String -> String .
 dump es m acc = case es of
     Nil -> acc
-  | e :: r -> dump r m "{acc}{e.path}={e.get m}\n".
+  | e :: r -> dump r m "{acc}{e.path}={J.wireText (e.wire m)}\n".

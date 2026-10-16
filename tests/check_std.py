@@ -52,6 +52,10 @@ assert got == ['["Move",[3,"x"],[1,2]]', 'Ok Bump 41', 'Err Msg: no such message
 print('a codec literal in a Sol script: the same @Msg, the same JSON, the same refusal: PASS')
 check('extbase', label='Math, Encoding (hex, Base64, URL), Binary, Digest: SHA-256 against the published vectors, incremental equals whole')
 check('viewutilities', label='View: local typed utilities, overrides, shorthand expansion, state/viewport variants and cached fragments')
+check('clientstate', label='Client state: a path\'s zero, a record\'s schema through its codec, typed page attributes, and the page\'s sends and mirror decoded to their types or refused by name')
+p = subprocess.run([fpr, 'run', str(ROOT / 'tests' / 'std' / 'clientstate.fpr'), 'twice'], capture_output=True, text=True, timeout=300)
+assert p.returncode != 0 and 'two data-when attributes' in p.stdout + p.stderr, p.stdout + p.stderr
+print('Client state: an element with two conditions (or two settings, two clicks) is refused by name, not silently halved: PASS')
 check('clientcalc', label='ClientCalc/Money: shared native/browser cents and tax, exact checked integers, lazy branches and script-safe text')
 check('livemetrics', label='LiveMetrics: exact formatting, immutable recent-sample sequences, checked reductions and timer bounds')
 check('browserconsole', label='BrowserConsole: text history bounds, blank/duplicate behavior, recall cursors, Unicode trimming and lazy text-list branches')
@@ -71,7 +75,7 @@ check('browsermedia', label='BrowserMedia: shared active-source policy, phases a
 check('httpclient', label='HttpClient: bounded framing, partial I/O, strict rejection, deadlines, cancellation and native request validation')
 check('http', label='Http: client and server, headers, a 100 KB POST, 404, chunked decoding, URL parsing')
 with tempfile.TemporaryDirectory(prefix='fpr-std-') as t:
-    check('durable', args=(str(Path(t) / 'durable.kvlog'),), label='std/durable: a model\'s durable fields as one value: open lays the log over init, save writes only what differs, close syncs, a reopen restores')
+    check('durable', args=(str(Path(t) / 'durable.kvlog'),), label='std/durable: a model\'s durable fields as one value: open lays the log over init, save writes only what differs (one element of a list kept per element), a refused save is an Err and the program goes on, a reopen restores')
 check('supervisor', label='std/supervisor: children restarted when they die with the reason reported by a monitor; one-for-one, one-for-all and rest-for-one; past the restart budget the supervisor gives up by name and its watcher hears why')
 check('ui', label='std/ui: vstack/hstack/scroll/card/button/input/page as attribute records and roles, variants, lowered to the std/view tree the hand-written utilities give')
 check('httplimits', label='Http.serveWith limits: a 4 KB header block is 431, a 100 KB body 413, a quiet connection and a short body 408 within readMs, a bad content-length 400')
@@ -139,6 +143,6 @@ with tempfile.TemporaryDirectory(prefix='fpr-live-') as t:
     p = subprocess.run([sys.executable, str(ROOT / 'tests' / 'std' / 'logbook_ws.py'), fpr, str(ROOT / 'examples' / 'logbook.fpr'), str(Path(t) / 'log.kvlog')],
                        capture_output=True, text=True, timeout=600)
     assert p.returncode == 0 and p.stdout.strip() == 'ok', p.stdout + p.stderr
-    print('examples/logbook.fpr, a live web app: two tabs on one model, each with its own search and page; add/edit/delete stamped by the clock; the edit form filled through the JS port; killed, replayed from the journal, restarted from the fields: PASS')
+    print('examples/logbook.fpr, a live web app: two tabs on one model, each with its own search and page; add/edit/delete stamped by the clock, two typed fields from the page; the edit form filled by an assignment from the server; killed, replayed from the journal, restarted from the fields: PASS')
 
 check("poller_stop", label="Poller shutdown: repeated reuse, duplicate waiters and fallback cancellation")

@@ -33,8 +33,10 @@ def html(client):
                    for i, s in enumerate(client.state['s']))
 
 
+# the page's Client, as the page holds it (text), with a cart of {sku: quantity}
 def mirror(client, quantities):
-    client.send('ClientState', json.dumps({'tab': '1', **quantities}))
+    client.send_value('ClientState', {'tab': 'Register', 'open': '0', 'tender': '', 'delta': '10', 'cmd': '',
+                                      'name': '', 'pin': '', 'cart': [[k, v] for k, v in quantities.items()]})
 
 
 with tempfile.TemporaryDirectory(prefix='reload notice-') as tmp:
@@ -67,13 +69,13 @@ for harts in ('1', '4'):
                 port = int(re.search(r'ready (\d+)', log.read_text())[1])
                 a = Client(port, 3); b = Client(port, False); clients = [a, b]
                 assert not any(has(c.state, 'Live Reload new') for c in clients), 'startup is not adoption'
-                a.send('Login', 'ana|1234'); a.until(lambda st: has(st, 'standard pricing'))
-                b.send('Login', 'ben|2222'); b.until(lambda st: has(st, 'standard pricing'))
-                mirror(a, {'q_FW': '1'})
+                a.send('Login', 'ana', '1234'); a.until(lambda st: has(st, 'standard pricing'))
+                b.send('Login', 'ben', '2222'); b.until(lambda st: has(st, 'standard pricing'))
+                mirror(a, {'FW': '1'})
                 a.send('Card')
                 a.until(lambda st: has(st, 'receipt #1 for 5.50'))
                 # Keep both cashiers logged in with their own mirrored carts.
-                mirror(a, {'q_FW': '2'}); mirror(b, {'q_BR': '1'})
+                mirror(a, {'FW': '2'}); mirror(b, {'BR': '1'})
                 assert len(re.findall(r'^sale ', receipt_log.read_text(), re.M)) == 1
                 initial = receipt_log.read_bytes()
                 original_sockets = (a.s.fileno(), b.s.fileno())
@@ -129,7 +131,7 @@ for harts in ('1', '4'):
                 for c in clients:
                     c.until(lambda st: has(st, 'triple pricing'))
                     assert has(c.state, 'Live Reload new') == notices
-                mirror(a, {'q_LB': '1'})
+                mirror(a, {'LB': '1'})
                 a.send('Card'); a.until(lambda st: has(st, 'receipt #4 for 5.20'))
                 assert (a.s.fileno(), b.s.fileno()) == original_sockets
                 assert len(re.findall(r'watch: app pid=', log.read_text())) == 1
@@ -166,9 +168,9 @@ with tempfile.TemporaryDirectory(prefix='static POS-') as tmp:
             wait_for(lambda: re.search(r'ready (\d+)', log.read_text()), proc, log)
             port = int(re.search(r'ready (\d+)', log.read_text())[1])
             client = Client(port, 3)
-            client.send('Login', 'ana|1234')
+            client.send('Login', 'ana', '1234')
             client.until(lambda st: has(st, 'standard pricing'))
-            mirror(client, {'q_FW': '1'})
+            mirror(client, {'FW': '1'})
             client.send('Card')
             client.until(lambda st: has(st, 'receipt #1 for 5.50'))
             client.send('Quit')

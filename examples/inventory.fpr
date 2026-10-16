@@ -79,17 +79,16 @@ Option = use "std/option".
 Order = use "std/order".
 Digest = use "std/digest".
 
-element tag attrs kids = G.El tag (elementDefaults tag :: attrs) kids.
-elementDefaults tag = G.utilities ([G.BoxSizing G.BorderBox, G.Margin (G.Px 0)] + (if tag == "button" then [G.FontFamily G.InheritFont, G.FontSize G.Inherit] else Nil)).
 Txt = G.Txt.
 Dyn = G.Dyn.
 Cls = G.Cls.
 Att = G.Att.
-input attrs = G.Inp (elementDefaults "input" :: attrs).
 
-Msg = Type (Login String | Logout | ClientState String | New | Edit Int | Save | Cancel | Delete Int
-          | AddTag String | AddMember String | Password String | ForgetDevices | Theme | Dismiss | Clear Int Int | Page Int
-          | Admin String).
+# The fields the page fills when a button is pressed are the LAST ones
+# (G.sendWith): `Login` its name and password, `AddMember` theirs.
+Msg = Type (Login String String | Logout | ClientState Client | New | Edit Int | Save | Cancel | Delete Int
+          | AddTag String | AddMember String String | Password String | ForgetDevices | Theme | Dismiss | Clear Int Int | Page Int
+          | Command String).
 codec = @Msg.
 
 # What the page holds.  The search, the sort and the editor's drafts are
@@ -97,9 +96,14 @@ codec = @Msg.
 # person saw; password inputs never are -- they travel only as a sign-in's or
 # a member form's argument.  `tok` is the remembered device, put there by the
 # page's script from localStorage.
-Client = { pane : String, q : String, sort : String, confirm : String,
+# `confirm` is the item whose delete is being confirmed (0: none).
+Pane = Type (Items | House | Admin).
+Sort = Type (Recent | ByName | ByPlace).
+Client = { pane : Pane, q : String, sort : Sort, confirm : Int,
            name : String, loc : String, sub : String, desc : String, tags : String,
            user : String, pw : String, tok : String, mname : String, mpw : String, npw : String, cmd : String }.
+client = { pane = Items, q = "", sort = Recent, confirm = 0, name = "", loc = "", sub = "", desc = "", tags = "",
+           user = "", pw = "", tok = "", mname = "", mpw = "", npw = "", cmd = "" }.
 
 Move = { at : Int, from : String }.
 Item = { id : Int, name : String, loc : String, sub : String, desc : String, tags : List String,
@@ -111,7 +115,7 @@ Item = { id : Int, name : String, loc : String, sub : String, desc : String, tag
 initModel = { items = Nil, nextId = 1, members = Nil, devices = Nil, pend = Nil, events = 0, skipped = 0,
               fails = Nil, sess = Nil, booted = 0, path = "", prof = noProf }.
 noDraft = { name = "", loc = "", sub = "", desc = "", tags = "" }.
-noSess = { sid = 0, user = "", toast = "", role = "", tn = 0, editing = 0 - 1, q = "", sort = "recent", page = 0, pane = "items", con = Nil,
+noSess = { sid = 0, user = "", toast = "", role = "", tn = 0, editing = 0 - 1, q = "", sort = Recent, page = 0, pane = Items, con = Nil,
            tried = "", theme = 1, d = noDraft }.
 
 # the tags offered while editing, before the household has its own
@@ -130,12 +134,6 @@ numGo s i n acc | i >= n = acc.
 numGo s i n acc | isDig (charAt s i) = numGo s (i + 1) n (acc * 10 + charAt s i - 48).
 numGo s i n acc = acc.
 isDig c = c >= 48 and c <= 57.
-# "a|b" -> (a, b) at the first bar; no bar: (s, "")
-splitBar s = sbGo s 0 (strlen s).
-sbGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> (String, String) .
-sbGo s i n | i >= n = (s, "").
-sbGo s i n | charAt s i == 124 = (substr s 0 i, substr s (i + 1) (n - i - 1)).
-sbGo s i n = sbGo s (i + 1) n.
 # a member's name: lower-case letters and digits, 1..16 of them
 wordy s = strlen s >= 1 and strlen s <= 16 and wdGo s 0 (strlen s).
 wdGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> Bool .
@@ -282,10 +280,8 @@ say m sid text = toast m sid "ok" text.
 refuse m sid text = toast m sid "warn" text.
 also (m, cs) more = (m, List.append cs more).
 
-localOf v name = Option.withDefault "" (Option.andThen Json.asString (Json.field name v)).
-localsJson kvs = Json.render (Json.object (List.map (fn kv -> (case kv of (k, x) -> (k, Json.Text x))) kvs)).
-setLocals sid kvs = Live.Emit sid "locals" (localsJson kvs).
-draftLocals d = [("name", d.name), ("loc", d.loc), ("sub", d.sub), ("desc", d.desc), ("tags", d.tags)].
+setLocals sid kvs = Live.setClient sid kvs.
+draftLocals d = [G.assign @Client.name d.name, G.assign @Client.loc d.loc, G.assign @Client.sub d.sub, G.assign @Client.desc d.desc, G.assign @Client.tags d.tags].
 
 # ---- update ------------------------------------------------------------------------------
 
@@ -306,8 +302,8 @@ step ev m = case ev of
   | Live.Refused sid why -> refuse m sid "refused: {why}".
 
 pMsg sid msg m = case msg of
-    Login arg -> login m sid arg
-  | ClientState json -> mirror m sid json
+    Login name pw -> login m sid name pw
+  | ClientState c -> mirror m sid c
   | Clear who n -> (case sid == 0 of True -> (clearToast m who n, Nil) | False -> (m, Nil))
   | Dismiss -> (dismiss m (sGet m.sess sid), Nil)
   | Theme -> (flipTheme m (sGet m.sess sid), Nil)
@@ -343,16 +339,15 @@ kindOf ev = case ev of
   | Live.Left sid -> "leave"
   | Live.Refused sid why -> "refused".
 msgKind msg = case msg of
-    Login a -> "login" | Logout -> "logout" | ClientState a -> "sync" | New -> "new" | Edit a -> "edit" | Save -> "save"
-  | Cancel -> "cancel" | Delete a -> "delete" | AddTag a -> "tag" | AddMember a -> "member" | Password a -> "password"
-  | ForgetDevices -> "forget" | Theme -> "theme" | Dismiss -> "dismiss" | Clear a b -> "toast" | Page a -> "page" | Admin a -> "admin".
+    Login _ _ -> "login" | Logout -> "logout" | ClientState _ -> "sync" | New -> "new" | Edit a -> "edit" | Save -> "save"
+  | Cancel -> "cancel" | Delete a -> "delete" | AddTag a -> "tag" | AddMember _ _ -> "member" | Password a -> "password"
+  | ForgetDevices -> "forget" | Theme -> "theme" | Dismiss -> "dismiss" | Clear a b -> "toast" | Page a -> "page" | Command a -> "admin".
 statLine label st = "{S.padRight 9 " " label} n {S.padLeft 6 " " "{st.n}"}  avg {S.padLeft 7 " " "{avg st}"} us  max {S.padLeft 7 " " "{st.max}"} us  last {st.last} us".
 
 # ---- signing in ---------------------------------------------------------------------------
 # at most 8 wrong passwords in five minutes, for the whole house: a guesser
 # gains nothing by opening more tabs
-login m sid arg =
-  (name0, pw) = splitBar arg;
+login m sid name0 pw =
   name = lower (S.trim name0);
   now = Clock.now Unit;
   recent = List.filter (fn t -> t > now - 300) m.fails;
@@ -364,25 +359,22 @@ login m sid arg =
         tok = randomHex Unit;
         m2 = commit m (deviceLine name (Digest.sha256 tok) now);
         s = sGet m2.sess sid;
-        (sPut m2 { s | user = name, tried = tok, toast = "", role = "" }, setLocals sid [("pw", ""), ("tok", tok)] :: Nil)).
+        (sPut m2 { s | user = name, tried = tok, toast = "", role = "" }, setLocals sid [G.assign @Client.pw "", G.assign @Client.tok tok] :: Nil)).
 
-# The mirror: the page's locals, as the server knows them.  A page that is not
+# The mirror: the page's Client, as the server knows it.  A page that is not
 # signed in but holds a token is signed in by it, once per token.
-mirror m sid json = case Json.parse json of
-    Err why -> (m, Nil)
-  | Ok v ->
-    s0 = sGet m.sess sid;
-    q = clip 100 (S.trim (localOf v "q"));
-    sort = localOf v "sort";
-    # a new search or a new order starts at the first page
-    page = (case strEq q s0.q and strEq sort s0.sort of True -> s0.page | False -> 0);
-    s = { s0 | q = q, sort = sort, page = page, pane = localOf v "pane",
-               d = { name = localOf v "name", loc = localOf v "loc", sub = localOf v "sub", desc = localOf v "desc", tags = localOf v "tags" } };
-    resume m sid s (localOf v "tok").
+mirror m sid c =
+  s0 = sGet m.sess sid;
+  q = clip 100 (S.trim c.q);
+  # a new search or a new order starts at the first page
+  page = (case strEq q s0.q and c.sort == s0.sort of True -> s0.page | False -> 0);
+  s = { s0 | q = q, sort = c.sort, page = page, pane = c.pane,
+             d = { name = c.name, loc = c.loc, sub = c.sub, desc = c.desc, tags = c.tags } };
+  resume m sid s c.tok.
 resume m sid s tok | strlen s.user > 0 or strlen tok == 0 or strEq tok s.tried = (sPut m s, Nil).
 resume m sid s tok = case deviceUser m.devices (Digest.sha256 tok) of
     Option.Some name -> (sPut m { s | user = name, tried = tok }, Nil)
-  | Option.None -> (sPut m { s | tried = tok }, setLocals sid [("tok", "")] :: Nil).
+  | Option.None -> (sPut m { s | tried = tok }, setLocals sid [G.assign @Client.tok ""] :: Nil).
 
 withUser sid msg m s | strEq s.user "" = refuse m sid "sign in first".
 withUser sid msg m s = case msg of
@@ -394,15 +386,15 @@ withUser sid msg m s = case msg of
   | Save -> save m sid s
   | Delete id -> delete m sid s id
   | AddTag t -> addTag m sid s t
-  | AddMember arg -> addMember m sid s (splitBar arg)
+  | AddMember name pw -> addMember m sid s (name, pw)
   | Password pw -> password m sid s pw
   | ForgetDevices -> forgetDevices m sid s
-  | Admin cmd -> console m sid s cmd
+  | Command cmd -> console m sid s cmd
   | other -> refuse m sid "no such action".
 
 signOut m sid s =
   m2 = (case strlen s.tried > 0 of True -> commit m (undeviceLine (Digest.sha256 s.tried) (Clock.now Unit)) | False -> m);
-  (forget m2 sid, setLocals sid [("tok", ""), ("pane", "items")] :: Nil).
+  (forget m2 sid, setLocals sid [G.assign @Client.tok "", G.assign @Client.pane Items] :: Nil).
 
 # ---- items ---------------------------------------------------------------------------------
 
@@ -439,7 +431,7 @@ delete m sid s id = case findItem m.items id of
       m2 = commit m (delLine id s.user (Clock.now Unit));
       s2 = sGet m2.sess sid;
       m3 = sPut m2 { s2 | editing = (case s2.editing == id of True -> 0 - 1 | False -> s2.editing) };
-      also (say m3 sid "deleted {it.name}") (setLocals sid [("confirm", "")] :: Nil).
+      also (say m3 sid "deleted {it.name}") (setLocals sid [G.assign @Client.confirm 0] :: Nil).
 
 addTag m sid s t =
   have = tagsOf s.d.tags;
@@ -447,7 +439,7 @@ addTag m sid s t =
     True -> (m, Nil)
   | False ->
       tags = S.join ", " (have + [t]);
-      (sPut m { s | d = { s.d | tags = tags } }, setLocals sid [("tags", tags)] :: Nil).
+      (sPut m { s | d = { s.d | tags = tags } }, setLocals sid [G.assign @Client.tags tags] :: Nil).
 
 # ---- autocomplete: what the editor's script suggests from ----------------------------------------
 # Rooms, spots and tags in the order they were last used, a member's own edits
@@ -475,7 +467,7 @@ console m sid s cmd =
   (m2, out) = run m s line;
   s2 = sGet m2.sess sid;
   con = (case strEq line "clear" of True -> Nil | False -> List.take 40 (out :: "> {line}" :: s2.con));
-  (sPut m2 { s2 | con = con }, setLocals sid [("cmd", "")] :: Nil).
+  (sPut m2 { s2 | con = con }, setLocals sid [G.assign @Client.cmd ""] :: Nil).
 
 run m s line = case S.words line of
     Nil -> (m, helpText)
@@ -632,13 +624,13 @@ addMember m sid s (name0, pw) =
       | False ->
           salt = randomHex Unit;
           m2 = commit m (memberLine name salt (pwHash salt pw) (Clock.now Unit));
-          also (say m2 sid "{name} can sign in now") (setLocals sid [("mname", ""), ("mpw", "")] :: Nil))).
+          also (say m2 sid "{name} can sign in now") (setLocals sid [G.assign @Client.mname "", G.assign @Client.mpw ""] :: Nil))).
 
 password m sid s pw | strlen pw < 8 = refuse m sid "a password is at least 8 characters".
 password m sid s pw =
   salt = randomHex Unit;
   m2 = commit m (memberLine s.user salt (pwHash salt pw) (Clock.now Unit));
-  also (say m2 sid "password changed") (setLocals sid [("npw", "")] :: Nil).
+  also (say m2 sid "password changed") (setLocals sid [G.assign @Client.npw ""] :: Nil).
 
 # every device of this member is forgotten, then this one is remembered again
 forgetDevices m sid s =
@@ -649,7 +641,7 @@ forgetDevices m sid s =
   say m3 sid "signed out {imax 0 (n - 1)} other devices".
 
 # every page mirrors its locals, a third of a second after they change
-subs m = Live.SyncClientState 300 (ClientState "") :: Nil.
+subs m = Live.SyncClientState 300 (ClientState client) :: Nil.
 
 # ---- what a session sees (Live.serveProjected) -------------------------------------------------
 # Its own search, sorted and filtered here; the counts; the chips.  A session
@@ -659,9 +651,10 @@ matches q it = List.all (fn w -> hit w it) (S.words q).
 hit w it = S.contains w (lower it.name) or S.contains w (lower it.loc) or S.contains w (lower it.sub)
         or S.contains w (lower it.desc) or List.any (fn t -> S.contains w t) it.tags.
 
-sorted key items | strEq key "name" = List.sortBy Order.string (fn it -> lower it.name) items.
-sorted key items | strEq key "place" = List.sortBy Order.string (fn it -> lower "{place it} {it.name}") items.
-sorted key items = List.sortBy (Order.reverse Order.int) (fn it -> it.at) items.
+sorted key items = case key of
+    ByName -> List.sortBy Order.string (fn it -> lower it.name) items
+  | ByPlace -> List.sortBy Order.string (fn it -> lower "{place it} {it.name}") items
+  | Recent -> List.sortBy (Order.reverse Order.int) (fn it -> it.at) items.
 
 # the most used values first: (value, count).  groupBy groups RUNS of equal
 # values, hence the sort first
@@ -686,7 +679,7 @@ project size keep sid m =
       n = List.length hits;
       pages = imax 1 ((n + size - 1) / size);
       page = (case s.page >= pages of True -> pages - 1 | False -> s.page);
-      onAdmin = strEq s.pane "admin";
+      onAdmin = s.pane == Admin;
       places = firsts (ranked (List.map (fn it -> it.loc) m.items));
       tags = firsts (ranked (List.concatMap (fn it -> it.tags) m.items));
       { signed = 1, user = s.user, toast = s.toast, role = s.role, theme = s.theme, editing = s.editing,
@@ -711,8 +704,7 @@ project size keep sid m =
 # card is a function of its item alone, so it renders once and again only when
 # that item changes.
 
-locals = G.locals @Client { pane = "items", q = "", sort = "recent", confirm = "", name = "", loc = "", sub = "", desc = "",
-                            tags = "", user = "", pw = "", tok = "", mname = "", mpw = "", npw = "", cmd = "" }.
+locals = G.locals @Client client.
 
 
 
@@ -723,32 +715,9 @@ locals = G.locals @Client { pane = "items", q = "", sort = "recent", confirm = "
 # lives in a hidden input so the page's script can fill it
 root v kids =
   light = v.theme == 1;
-  UI.pageWith (Appearance.look light) { UI.stack | pad = 3 } [Att "data-theme" (if light then "day" else "night")]
-    [UI.vstackWith { UI.stack | gap = 4, fill = UI.Broad } (Att "data-ac-scope" "" :: locals + Appearance.tokens light)
-      (UI.input { UI.field | kind = UI.HiddenField } [G.bind @Client.tok, Att "data-device-token" ""] :: autocompletePrototypes v :: Feedback.prototypes (Appearance.tokens light) :: kids)].
-
-# Browser-owned suggestions clone these ordinary view nodes. The appearance,
-# selected state and explicit palette live here, with all rules retained by
-# renderStyled even while the prototypes themselves are hidden.
-autocompletePrototypes v = element "div" [Att "data-ac-prototypes" "", G.utilities [G.Display G.Hidden]]
-  [element "div" (Att "data-ac-frame" "" :: Att "role" "listbox" :: Att "aria-label" "Suggestions" ::
-      G.utilities [G.Position G.Absolute, G.ZIndex 50, G.Display G.Flex, G.FlexWrap G.Wrap,
-        G.Gap (G.Px 6), G.Padding (G.Px 8), G.Radius (G.Px 12),
-        G.Background (G.ThemeColour G.Card), G.Foreground (G.ThemeColour G.Ink),
-        G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour G.Line),
-        G.Shadow (G.Px 0) (G.Px 8) (G.Px 24) (G.Px 0) (G.RgbaPercent 0 0 0 18),
-        G.FontFamily G.ReadingFont, G.FontSize (G.Px 15), G.LineHeight 155] :: Appearance.tokens (v.theme == 1)) Nil,
-   autocompleteOption False, autocompleteOption True,
-   element "span" [Att "data-ac-hint" "", G.utilities [G.FontSize (G.Px 11), G.Foreground (G.ThemeColour G.Dim), G.AlignSelf G.AlignCenter]] Nil].
-autocompleteOption selected = element "button"
-  [Att "data-ac-option" (if selected then "selected" else "normal"), Att "type" "button", Att "role" "option",
-   Att "tabindex" "-1", Att "aria-selected" (if selected then "true" else "false"), G.utilities [G.MinHeight (G.Px 34)],
-   G.utilities [G.Cursor G.PointerCursor, G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder,
-     G.BorderColour (G.ThemeColour (if selected then G.Ink else G.Line)), G.Radius (G.Px 999),
-     G.PaddingX (G.Px 12), G.PaddingY (G.Px 2), G.FontSize (G.Px 13),
-     G.Background (G.ThemeColour (if selected then G.Ink else G.Card)),
-     G.Foreground (G.ThemeColour (if selected then G.Bg else G.Dim))],
-   G.hover (if selected then Nil else [G.Foreground (G.ThemeColour G.Ink), G.BorderColour (G.ThemeColour G.Line)])] Nil.
+  UI.pageWith (Appearance.look light) { UI.stack | pad = 3 } [Feedback.theme light]
+    [UI.vstackWith { UI.stack | gap = 4, fill = UI.Broad } (Autocomplete.scope :: locals + Appearance.tokens light)
+      (UI.input { UI.field | kind = UI.HiddenField } [G.bind @Client.tok, B.mark tokenHook ""] :: Autocomplete.prototypes (Appearance.tokens light) :: Feedback.prototypes (Appearance.tokens light) :: kids)].
 
 # `keep`: how many cards this tab's writer remembers, this page's and then the
 # ones it drew most recently.  The writer's cache also holds its own render
@@ -781,8 +750,8 @@ loginView v =
     [ UI.label overline "home inventory"
     , UI.label { UI.txt | size = UI.Hero } "Sign in"
     , UI.input { UI.field | placeholder = "name", suggest = "username", caps = False, maxLength = 16 } [G.bind @Client.user]
-    , UI.input { UI.field | kind = UI.Password, placeholder = "password", suggest = "current-password" } [G.bind @Client.pw, G.OnEnter (G.wireOpen codec (Login "")) "user,pw"]
-    , primary "sign in" [G.OnClick (G.wireOpen codec (Login "")) "user,pw"]
+    , UI.input { UI.field | kind = UI.Password, placeholder = "password", suggest = "current-password" } [G.bind @Client.pw, G.enterWith2 codec Login @Client.user @Client.pw]
+    , primary "sign in" [G.sendWith2 codec Login @Client.user @Client.pw]
     , UI.text { caption | tone = UI.Warning } v.toast ].
 
 signedIn v cards rs =
@@ -797,27 +766,27 @@ roleText v role = "".
 
 # on a phone the title takes its own line and the pane buttons go below it
 # a tab: a pill that shows which pane is open (a client local, no server round trip)
-tab name label = UI.button { pill | vary = [UI.OnState "pane" name [UI.Inverted]] } [G.setTo @Client.pane name, Att "data-on" "pane:{name}"] label.
+tab p label = UI.button { pill | vary = [UI.onState @Client.pane p [UI.Inverted]] } [G.setTo @Client.pane p] label.
 header v =
-  UI.hstack { UI.stack | gap = 2, align = UI.Center, wrap = True }
-    [ UI.vstack { UI.stack | fill = UI.Grow, vary = [UI.OnNarrow [UI.FillOf UI.Wide]] }
+  UI.hstack { UI.stack | gap = 2, align = UI.Center, vary = [UI.OnNarrow [UI.Stacked, UI.AlignOf UI.Start]] }
+    [ UI.vstack { UI.stack | fill = UI.Grow }
         [ UI.label overline "home inventory", UI.text { UI.txt | size = UI.Hero, tabular = True } (things v.total) ]
-    , tab "items" "items", tab "house" "household", tab "admin" "admin" ].
+    , UI.hstack { UI.stack | gap = 2, wrap = True } [tab Items "items", tab House "household", tab Admin "admin"] ].
 things 1 = "1 thing".
 things n = "{n} things".
 
 itemsPane v cards =
-  UI.vstackWith { UI.stack | gap = 3 } [G.showIf @Client.pane "items"]
+  UI.vstackWith { UI.stack | gap = 3 } [G.showIf @Client.pane Items]
     ( UI.hstack { UI.stack | gap = 2, align = UI.Center }
         [ UI.input { UI.field | kind = UI.Search, fill = UI.Grow, placeholder = "search names, places, notes, tags", suggest = "off", caps = False } [G.bind @Client.q, now]
         , primary "+ add" [G.send codec New] ]
     :: UI.hstack { UI.stack | gap = 2, wrap = True, align = UI.Center }
-        [ UI.label caption "sort", sortBtn "recent" "recent", sortBtn "name" "a-z", sortBtn "place" "by place"
-        , UI.button chip [G.ShowIf "q", G.setTo @Client.q "", now] "clear search" ]
+        [ UI.label caption "sort", sortBtn Recent "recent", sortBtn ByName "a-z", sortBtn ByPlace "by place"
+        , UI.button chip [G.hideIf @Client.q "", G.setTo @Client.q "", now] "clear search" ]
     :: chipRow (List.map (fn p -> UI.button { chip | vary = [UI.Always [UI.Rigid]] } [G.setTo @Client.q (lower p), now] p) v.places)
     :: chipRow (List.map (fn t -> UI.button { chip | vary = [UI.Always [UI.Rigid]] } [G.setTo @Client.q t, now] "#{t}") v.tags)
     :: (case v.editing == 0 of True -> [editor v] | False -> Nil)
-    + [ UI.textWith caption [Att "id" "inv-list"] (countText v)
+    + [ UI.textWith caption [B.mark listHook ""] (countText v)
       , UI.keyed "items" (UI.vstack { UI.stack | gap = 3 } (case List.isEmpty cards of True -> [empty v] | False -> inPlace v cards))
       , pager v ]).
 # the pager, when there is more than one page
@@ -828,14 +797,14 @@ pager v =
     [ pageBtn "previous" (v.page - 1) (v.page == 0)
     , UI.text { caption | align = UI.Center, tabular = True, fill = UI.Grow } "page {v.page + 1} of {v.pages}"
     , pageBtn "next" (v.page + 1) (v.page + 1 >= v.pages) ].
-pageBtn label n off = UI.button { pill | vary = (if off then [UI.Always [UI.Dimmed]] else Nil) } [G.send codec (Page n), Att "data-pager" ""] label.
+pageBtn label n off = UI.button { pill | vary = (if off then [UI.Always [UI.Dimmed]] else Nil) } [G.send codec (Page n), B.mark pagerHook ""] label.
 # the item being edited is its editor, where its card was
 inPlace v cards | v.editing <= 0 = cards.
 inPlace v cards = List.zipWith (fn it card -> (case it.id == v.editing of True -> G.key "edit-{it.id}" (editor v) | False -> card)) v.items cards.
 # what changes the search is mirrored at once (std/livejs data-sync-now), not
 # on the next tick: the list is what someone is waiting to see
-now = Att "data-sync-now" "".
-sortBtn key label = UI.button { chip | vary = [UI.OnState "sort" key [UI.Inverted]] } [G.setTo @Client.sort key, now, Att "data-on" "sort:{key}"] label.
+now = G.syncNow.
+sortBtn key label = UI.button { chip | vary = [UI.onState @Client.sort key [UI.Inverted]] } [G.setTo @Client.sort key, now] label.
 countText v | v.shown == 0 = "".
 countText v =
   range = (case v.pages <= 1 of True -> "" | False -> "{v.first + 1}-{v.first + List.length v.items} of ");
@@ -854,10 +823,10 @@ editor v =
       [ UI.label { UI.txt | size = UI.Heading } (case v.editing == 0 of True -> "Add an item" | False -> "Edit item")
       , UI.labelled "name" (UI.input { UI.field | placeholder = "e.g. USB-C cable", maxLength = 120 } [G.bind @Client.name])
       , UI.hstack { UI.stack | gap = 2, vary = [UI.OnNarrow [UI.Stacked]] }
-          [ UI.labelled "room or place" (UI.input { UI.field | placeholder = "e.g. study", maxLength = 60, suggest = "off" } [G.bind @Client.loc, Att "data-ac" "loc"])
-          , UI.labelled "spot" (UI.input { UI.field | placeholder = "e.g. top drawer", maxLength = 60, suggest = "off" } [G.bind @Client.sub, Att "data-ac" "sub"]) ]
+          [ UI.labelled "room or place" (UI.input { UI.field | placeholder = "e.g. study", maxLength = 60, suggest = "off" } [G.bind @Client.loc, Autocomplete.from "loc"])
+          , UI.labelled "spot" (UI.input { UI.field | placeholder = "e.g. top drawer", maxLength = 60, suggest = "off" } [G.bind @Client.sub, Autocomplete.from "sub"]) ]
       , UI.labelled "notes" (UI.input { UI.field | rows = 3, maxLength = 2000 } [G.bind @Client.desc])
-      , UI.labelled "tags, comma separated" (UI.input { UI.field | placeholder = "e.g. electronics, cables", caps = False, suggest = "off" } [G.bind @Client.tags, Att "data-ac" "tags"])
+      , UI.labelled "tags, comma separated" (UI.input { UI.field | placeholder = "e.g. electronics, cables", caps = False, suggest = "off" } [G.bind @Client.tags, Autocomplete.from "tags"])
       , UI.hstack { UI.stack | gap = 2, wrap = True } (List.map (fn t -> UI.button chip [G.send codec (AddTag t)] t) v.quick)
       , UI.hstack { UI.stack | gap = 2 }
           [ UI.button { pill | kind = UI.Primary, vary = [UI.Always [UI.FillOf UI.Grow]] } [G.send codec Save] (case v.editing == 0 of True -> "add item" | False -> "save")
@@ -869,21 +838,21 @@ itemCard it =
     ( UI.hstack { UI.stack | gap = 2, align = UI.Center }
         [ UI.label { UI.txt | size = UI.Heading, fill = UI.Grow } it.name
         , UI.button chip [G.send codec (Edit it.id)] "edit"
-        , UI.button chip [G.setTo @Client.confirm "{it.id}"] "delete" ]
+        , UI.button chip [G.setTo @Client.confirm it.id] "delete" ]
     :: UI.hstack { UI.stack | gap = 2, align = UI.Center, wrap = True } (UI.badge UI.Success it.loc :: (case strlen it.sub == 0 of True -> Nil | False -> [UI.badge UI.Muted it.sub]))
     :: (case strlen it.desc == 0 of True -> Nil | False -> [UI.label { UI.txt | size = UI.Caption, pre = True } it.desc])
     + (case List.isEmpty it.tags of True -> Nil | False -> [UI.hstack { UI.stack | gap = 1, wrap = True } (List.map (fn t -> UI.button chip [G.setTo @Client.q t, now] "#{t}") it.tags)])
     + [ UI.label caption (metaText it)
-      , UI.hstackWith { UI.stack | gap = 2, align = UI.Center, wrap = True } [G.showIf @Client.confirm "{it.id}"]
+      , UI.hstackWith { UI.stack | gap = 2, align = UI.Center, wrap = True } [G.showIf @Client.confirm it.id]
           [ UI.label { caption | tone = UI.Warning, fill = UI.Grow } "Delete {it.name}?"
           , UI.button { pill | kind = UI.Destructive } [G.send codec (Delete it.id)] "delete"
-          , btn "keep" [G.setTo @Client.confirm ""] ] ]).
+          , btn "keep" [G.setTo @Client.confirm 0] ] ]).
 metaText it =
   moved = (case it.moves of Nil -> "" | mv :: r -> " · moved from {mv.from} on {Clock.date mv.at}");
   "added {Clock.date it.created} · updated {Clock.date it.at} by {it.by}{moved}".
 
 housePane v =
-  UI.vstackWith { UI.stack | gap = 3 } [G.showIf @Client.pane "house"]
+  UI.vstackWith { UI.stack | gap = 3 } [G.showIf @Client.pane House]
     [ UI.card UI.panel
         [ UI.label { UI.txt | size = UI.Heading } "Signed in as {v.user}"
         , UI.text caption (devicesText v.devices)
@@ -893,33 +862,33 @@ housePane v =
     , UI.card UI.panel
         [ UI.label { UI.txt | size = UI.Heading } "Change my password"
         , UI.input { UI.field | kind = UI.Password, placeholder = "new password, 8 or more characters", suggest = "new-password" } [G.bind @Client.npw]
-        , btn "change password" [G.OnClick (G.wireOpen codec (Password "")) "npw"] ]
+        , btn "change password" [G.sendWith codec Password @Client.npw] ]
     , UI.card UI.panel
         [ UI.label { UI.txt | size = UI.Heading } "Members"
         , UI.hstack { UI.stack | gap = 2, wrap = True } (List.map (fn n -> UI.badge UI.Muted n) v.members)
         , UI.hstack { UI.stack | gap = 2, vary = [UI.OnNarrow [UI.Stacked]] }
             [ UI.input { UI.field | placeholder = "name", caps = False, maxLength = 16 } [G.bind @Client.mname]
             , UI.input { UI.field | kind = UI.Password, placeholder = "their password", suggest = "new-password" } [G.bind @Client.mpw] ]
-        , btn "add member" [G.OnClick (G.wireOpen codec (AddMember "")) "mname,mpw"] ]
+        , btn "add member" [G.sendWith2 codec AddMember @Client.mname @Client.mpw] ]
     , UI.text caption "{v.events} changes in the log · {v.online} signed in now · up since {Clock.stamp v.booted}" ].
 # ---- the admin pane: the numbers, the console, the profile ----------------------------------------
 
 adminPane v rs =
-  UI.vstackWith { UI.stack | gap = 3 } [G.showIf @Client.pane "admin", Att "data-console-scope" ""]
+  UI.vstackWith { UI.stack | gap = 3 } [G.showIf @Client.pane Admin, B.mark consoleScope ""]
     [ UI.hstack { UI.stack | gap = 2, wrap = True }
         [ watch "items" "{v.total}", watch "places" "{v.nplaces}", watch "tags" "{v.ntags}", watch "members" "{List.length v.members}"
         , watch "devices" "{v.ndevices}", watch "online" "{v.online}", watch "log lines" "{v.events}", watch "since" (Clock.stamp v.booted) ]
     , UI.hstack { UI.stack | gap = 2, align = UI.Center }
         [ UI.input { UI.field | size = UI.Mono, fill = UI.Grow, placeholder = "help | find usb | move 12 -> Room 2 / desk", caps = False, suggest = "off", spell = False }
-            [G.bind @Client.cmd, G.enterWith codec (Admin "") @Client.cmd, Att "data-console" ""]
-        , btn "run" [G.sendWith codec (Admin "") @Client.cmd, Att "data-console-run" ""] ]
+            [G.bind @Client.cmd, G.enterWith codec Command @Client.cmd, B.mark consoleInput ""]
+        , btn "run" [G.sendWith codec Command @Client.cmd, B.mark consoleRun ""] ]
     # a bounded box the console scrolls in: its bounds are the one raw declaration left on this page
-    , UI.cardWith { UI.panel | pad = 3 } [Att "data-console-output" "", G.utilities [G.MinHeight (G.Px 120), G.MaxHeight (G.Vh 50), G.Overflow G.OverflowAuto]]
+    , UI.cardWith { UI.panel | pad = 3 } [B.mark consoleOutput "", UI.console]
         [ UI.text { UI.txt | size = UI.Mono, pre = True } (consoleText v.con) ]
     , UI.label overline "profile"
     , UI.cardWith { UI.panel | pad = 3 } [G.utilities [G.OverflowX G.OverflowAuto]]
         [ UI.text { UI.txt | size = UI.Mono, pre = True } (profileText v rs) ]
-    , UI.hstack { UI.stack | gap = 2, align = UI.Center } [ UI.label caption "browser round trip: ", UI.labelWith caption [Att "id" "inv-rtt"] "measuring" ] ].
+    , UI.hstack { UI.stack | gap = 2, align = UI.Center } [ UI.label caption "browser round trip: ", UI.labelWith caption [B.mark rttHook ""] "measuring" ] ].
 consoleText Nil = "type help and press enter".
 consoleText con = S.join "\n" (List.reverse con).
 watch label v = UI.card { UI.panel | gap = 0, pad = 2, tile = True } [ UI.label overline label, UI.text { UI.txt | size = UI.Heading, tabular = True } v ].
@@ -961,14 +930,24 @@ cssAll v = UI.css (G.El "div" Nil [root sampleView (signedIn sampleView [itemCar
 # mirrored, and the server signs this page in); afterwards whatever the server
 # puts in `tok` -- a new token at sign-in, "" at sign-out or when it no longer
 # knows the token -- is what localStorage keeps.
-script = rttScript + LJ.src Unit + Storage.script "inventory-device" "tok" (B.Attribute "data-device-token") + autocomplete + pagerScript + consoleScript + pendingScript.
+script = rttScript + LJ.src Unit + Storage.script "inventory-device" "tok" tokenHook + autocomplete + pagerScript + consoleScript + pendingScript.
+# the page's hooks: one value each, placed by the view (`B.mark`) and read by
+# the scripts, so a name is written once
+consoleScope = B.Attribute "data-console-scope".
+consoleInput = B.Attribute "data-console".
+consoleRun = B.Attribute "data-console-run".
+consoleOutput = B.Attribute "data-console-output".
+pagerHook = B.Attribute "data-pager".
+listHook = B.Id "inv-list".
+tokenHook = B.Attribute "data-device-token".
+rttHook = B.Id "inv-rtt".
 
 # The console behaves like a terminal: the newest output is at the bottom and in
 # view, and the arrow keys walk back through the commands this browser ran.
-consoleScript = Console.script {scope = B.Attribute "data-console-scope", input = B.Attribute "data-console",
-  run = B.Attribute "data-console-run", output = B.Attribute "data-console-output",
+consoleScript = Console.script {scope = consoleScope, input = consoleInput,
+  run = consoleRun, output = consoleOutput,
   storageKey = "inventory-console", limit = 50}.
-pagerScript = Console.pager (B.Id "lv-root") (B.Attribute "data-pager") (B.Id "inv-list").
+pagerScript = Console.pager (B.Id "lv-root") pagerHook listHook.
 # Never frozen.  A button pressed gives way at once.  Anything that waits on
 # the server -- a message, a search -- shows a thin bar at the top, pulses the
 # button and fades the list if nothing has come back after 100 ms, until the
@@ -981,7 +960,7 @@ pagerScript = Console.pager (B.Id "lv-root") (B.Attribute "data-pager") (B.Id "i
 pendingScript = Feedback.src Unit.
 # Shared generated monitor, installed before the client opens its socket.
 # Observes successful Live sends and accepted frames through explicit events.
-rttScript = Metrics.script (B.Id "inv-rtt") "".
+rttScript = Metrics.script rttHook "".
 
 # The editor's autocomplete, in the page so it answers each keystroke at once.
 # An input with data-ac=loc|sub|tags is completed from the lists the server
@@ -1083,7 +1062,7 @@ main = case Config.load { defaults = Json.object [("port", Json.Integer 6720), (
             cfg = { address = address, port = port, title = "Home inventory", store = "{store}.kvlog", journal = False,
                     script = script, watch = Nil, rebuild = Nil, restart = Nil };
             o = openLog store;
-            _ = Live.serveProjectedBody [G.utilities [G.Margin (G.Px 0)]] cfg { init = boot o store, update = update o.journal, subs = subs, fields = Nil, codec = codec,
+            _ = Live.serveProjectedBody UI.body cfg { init = boot o store, update = update o.journal, subs = subs, fields = Nil, codec = codec,
                                           project = project size keep, same = (fn a b -> a == b),
                                           view = view keep, cache = (VC.empty Unit, noRender), css = cssAll };
             0)).

@@ -2274,6 +2274,24 @@ void fpr_cpanic_num(const char *pre, sw n, const char *post) {
   p = put_str(p, pre); p = put_dec(p, n); p = put_str(p, post);
   fpr_cpanic_n(buf, (uw)(p - buf));
 }
+/* A refusal of a VALUE -- an index past the end, a code that is not a byte, a
+ * divisor of zero, a full buffer -- is the program's own failure, so it is a
+ * trap: it ends the actor that asked, with the reason, and not the machine
+ * (fpr_trap_n; on actor 0 it is the panic it always was).  A value of the
+ * wrong TYPE cannot reach a primitive from a typed program: that stays a
+ * machine invariant (fpr_cpanic). */
+void fpr_trap_num(const char *pre, sw n, const char *post) {
+  char buf[192]; char *p = buf;
+  p = put_str(p, pre); p = put_dec(p, n); p = put_str(p, post);
+  fpr_trap_n(buf, (uw)(p - buf));
+}
+/* "<what> (<index>, length <len>)": which index, against what */
+void fpr_trap_range(const char *what, sw k, uw len) {
+  char buf[192]; char *p = buf;
+  p = put_str(p, what); p = put_str(p, " ("); p = put_dec(p, k);
+  p = put_str(p, ", length "); p = put_dec(p, (sw)len); p = put_str(p, ")");
+  fpr_trap_n(buf, (uw)(p - buf));
+}
 #define INT_MIN_TAGGED (-((sw)1 << (sizeof(sw) * 8 - 2)))
 #define INT_MAX_TAGGED (((sw)1 << (sizeof(sw) * 8 - 2)) - 1)
 static int fits_int(sw n) { return ((sw)((uw)n << 1) >> 1) == n; }
@@ -2469,8 +2487,8 @@ V fpr_prim_fn__x21_x3d(V a, V b) { return BOOL(!veq(a, b)); }
  * through the buffer at all; see fpr_prim_fn_str. */
 static void remit(char c) {
   if (rpos >= FPR_RBUF_SZ - 1)
-    fpr_cpanic("str/print: render buffer full (4096B) -- build large "
-               "strings with strcat, not interpolation");
+    fpr_trap("str/print: render buffer full (4096B) -- build large "
+             "strings with strcat, not interpolation");
   rbuf[rpos++] = c;
 }
 static void remits(const char *s) { while (*s) remit(*s++); }
@@ -2907,8 +2925,8 @@ V fpr_prim_fn__x21(V xs, V iv) {
   sw i = UNTAG(iv);
   V c = xs;
   for (;;) {
-    if (ISINT(c) || TID(c) != T_LIST || ((hdr_t *)c)->var != 1)
-      fpr_cpanic("!: index out of range");
+    if (i < 0 || ISINT(c) || TID(c) != T_LIST || ((hdr_t *)c)->var != 1)
+      fpr_trap_num("!: index out of range (", UNTAG(iv), ")");
     V *f = (V *)((char *)c + 8);
     if (i == 0) return f[0];
     c = f[1];
@@ -2942,7 +2960,7 @@ static V g_charAt(V s, V i) {
   str_t *t = (str_t *)s;
   if (ISINT(s) || t->tid != T_STR) fpr_cpanic("charAt: not a string");
   sw k = UNTAG(i);
-  if (k < 0 || (uw)k >= t->len) fpr_cpanic("charAt: index out of range");
+  if (k < 0 || (uw)k >= t->len) fpr_trap_range("charAt: index out of range", k, t->len);
   return TAG(t->bytes[k]);
 }
 static V g_strlen(V s) {
@@ -2962,7 +2980,7 @@ static V g_chr(V c) {
   /* chr makes ONE BYTE; a value outside 0..255 used to be truncated
    * silently (chr 1114112 was a replacement character) */
   if (UNTAG(c) < 0 || UNTAG(c) > 255)
-    fpr_cpanic_num("chr: ", UNTAG(c), " is not a byte (0..255); chr makes one byte, String.fromCodes makes UTF-8");
+    fpr_trap_num("chr: ", UNTAG(c), " is not a byte (0..255); chr makes one byte, String.fromCodes makes UTF-8");
   uint8_t b = (uint8_t)UNTAG(c);
   return (V)fpr_mkstr(&b, 1);
 }
@@ -3304,22 +3322,22 @@ static V i64_add(V a, V b) { return vu64(u64(a) + u64(b)); }
 static V i64_sub(V a, V b) { return vu64(u64(a) - u64(b)); }
 static V i64_mul(V a, V b) { return vu64(u64(a) * u64(b)); }
 static V i64_div(V a, V b) {
-  if (i64(b) == 0) fpr_cpanic("I64: division by zero");
-  if (i64(a) == INT64_MIN && i64(b) == -1) fpr_cpanic("I64: division overflow (INT64_MIN / -1)");
+  if (i64(b) == 0) fpr_trap("I64: division by zero");
+  if (i64(a) == INT64_MIN && i64(b) == -1) fpr_trap("I64: division overflow (INT64_MIN / -1)");
   return vi64(i64(a) / i64(b));
 }
 /* the C remainder: its sign is the dividend's; INT64_MIN rem -1 is 0 */
 static V i64_rem(V a, V b) {
-  if (i64(b) == 0) fpr_cpanic("I64: division by zero");
+  if (i64(b) == 0) fpr_trap("I64: division by zero");
   if (i64(b) == -1) return vi64(0);
   return vi64(i64(a) % i64(b));
 }
 static V i64_divU(V a, V b) {
-  if (u64(b) == 0) fpr_cpanic("I64: division by zero");
+  if (u64(b) == 0) fpr_trap("I64: division by zero");
   return vu64(u64(a) / u64(b));
 }
 static V i64_remU(V a, V b) {
-  if (u64(b) == 0) fpr_cpanic("I64: division by zero");
+  if (u64(b) == 0) fpr_trap("I64: division by zero");
   return vu64(u64(a) % u64(b));
 }
 static V i64_lt(V a, V b) { return BOOL(i64(a) < i64(b)); }

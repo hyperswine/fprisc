@@ -166,7 +166,7 @@ static V h_modfn(V hash, V name) {
       if (str_eq((const str_t *)p[0], h) && str_eq((const str_t *)p[1], n))
         return (V)p[2];
   }
-  fpr_cpanic("Mod.fn: no such (hash, name) in the module table");
+  fpr_trap("Mod.fn: no such (hash, name) in the module table");
 }
 
 /* Mod.detachLast: pop the NEWEST attachment out of the registry --

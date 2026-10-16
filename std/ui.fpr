@@ -56,9 +56,13 @@ Kind = Type (Plain | Primary | Quiet | Destructive | Chip | Pill).
 # `Stacked`: a row becomes a column (on a narrow screen)
 Tweak = Type (GapOf Int | PadOf Int | Hidden | Shown | WrapOf Bool | AlignOf Align | JustifyOf Justify | FillOf Fill | Inverted | Dimmed | Rigid | Stacked).
 # a variant: on a narrow screen (<= 760px), a wide one, or under the pointer
-# `Always`: no condition; `OnState name value`: while the client local `name`
-# holds `value` (std/view's localStyle: a selected tab, the current sort)
+# `Always`: no condition; `onState @Client.tab Receipts`: while the page holds
+# that value in that client field (std/view's localStyle: a selected tab, the
+# current sort).  OnState carries the field's name and the value's text, as
+# std/view's client state holds them.
 Variant = Type (Always (List Tweak) | OnNarrow (List Tweak) | OnWide (List Tweak) | OnHover (List Tweak) | OnState String String (List Tweak)).
+onState : { segs : List String, enc : a -> Wire | r } -> a -> List Tweak -> Variant .
+onState path value ts = OnState (G.localName path) (G.textOf path value) ts.
 
 # ---- the theme -------------------------------------------------------------------
 # A LOOK (the theme as a value; `Theme` is std/view's token record): the colours
@@ -220,13 +224,13 @@ labelWith : Txt -> List G.Attr -> String -> G.Node .
 labelWith t attrs s = element "div" (L.append (textAttrs t) attrs) [G.Txt s].
 textWith : Txt -> List G.Attr -> String -> G.Node .
 textWith t attrs v = element "div" (L.append (textAttrs t) attrs) [G.Dyn v].
-# the page's own value (a local the page holds, std/view's LTxt), shown where it is
-local : Txt -> String -> G.Node .
-local t name = localWith t Nil name.
-localWith : Txt -> List G.Attr -> String -> G.Node .
-localWith t attrs name = element "div" (L.append (textAttrs t) attrs) [G.LTxt name].
+# the page's own value of a client field (`@Client.open`, an entry), shown where it is
+local : Txt -> { segs : List String | r } -> G.Node .
+local t path = localWith t Nil path.
+localWith : Txt -> List G.Attr -> { segs : List String | r } -> G.Node .
+localWith t attrs path = element "div" (L.append (textAttrs t) attrs) [G.text path].
 textAttrs : Txt -> List G.Attr .
-textAttrs t = L.append (if t.hideEmpty then [G.Att "data-hide-empty" ""] else Nil) (G.utilities (textDecls t) :: variants t.vary).
+textAttrs t = L.append (if t.hideEmpty then [G.hideEmpty] else Nil) (G.utilities (textDecls t) :: variants t.vary).
 textDecls : Txt -> List G.Decl .
 textDecls t = L.concat [scaleDecls t.size, [G.Foreground (tone t.tone), G.TextAlign (textAlignOf t.align)], fillDecls t.fill,
   (if t.tabular then [G.Numerals G.TabularNumerals] else Nil),
@@ -295,11 +299,12 @@ labelled : String -> G.Node -> G.Node .
 labelled name kid = G.El "label" [G.utilities [G.Display G.Flex, G.Direction G.Column, G.Gap (G.Px 4), G.FlexGrow 1, G.FlexShrink 1, G.Basis (G.Pct 0), G.MinWidth (G.Px 0)]]
   [label { txt | size = Overline, tone = Muted } name, kid].
 fieldDecls : Field -> List G.Decl .
-# an input's text is never under 16px: a phone zooms into a smaller one
+# an input's text is never under 16px (a phone zooms into a smaller one), and
+# an input is never shorter than the 44px a finger needs
 fieldDecls f = L.concat [scaleDecls f.size,
   (case f.size of Body -> [G.FontSize (G.Px 16)] | Strong -> [G.FontSize (G.Px 16)] | Caption -> [G.FontSize (G.Px 16)] | Tag -> [G.FontSize (G.Px 16)] | Mono -> [G.FontSize (G.Px 16)] | _ -> Nil),
   (case f.size of Mono -> Nil | _ -> [G.FontFamily G.SystemFont]), fillDecls f.fill,
-  [G.Radius (G.Px 8), G.PaddingY (G.Px 10), G.PaddingX (G.Px 12), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder,
+  [G.MinHeight (G.Px 44), G.Radius (G.Px 8), G.PaddingY (G.Px 10), G.PaddingX (G.Px 12), G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder,
    G.BorderColour (G.ThemeColour (G.NamedToken "bd-subtle")), G.Background (G.ThemeColour (G.NamedToken "bg-surface")),
    G.Foreground (G.ThemeColour (G.NamedToken "tx-1")), G.Resize G.VerticalResize, G.OutlineWidth (G.Px 0)]].
 
@@ -317,8 +322,43 @@ badgeAttrs t attrs = G.utilities [G.Display G.InlineBlock, G.PaddingY (G.Px 2), 
   G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (tone t), G.Foreground (tone t)] :: attrs.
 # a notice from the server in a tone, hidden while it has nothing to say
 toast : Tone -> String -> G.Node .
-toast t v = element "div" [G.Att "data-hide-empty" "", G.utilities [G.PaddingY (G.Px 10), G.PaddingX (G.Px 14), G.Radius (G.Px 12),
+toast t v = element "div" [G.hideEmpty, G.utilities [G.PaddingY (G.Px 10), G.PaddingX (G.Px 14), G.Radius (G.Px 12),
   G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (tone t), G.Background (G.ThemeColour (G.NamedToken "bg-surface")), G.Foreground (tone t)]] [G.Dyn v].
+
+# ---- fixed sizes, by what they hold ---------------------------------------------
+# A page says what a fixed size is FOR; the numbers are std/ui's, on its 4px grid
+# like the spacing scale, and in this one place.
+# a column of a list row, so the rows line up: a count, a badge (centred), a
+# button, a figure (an amount, an id, a short name)
+Column = Type (Count | Mark | Act | Figure).
+column : Column -> G.Attr .
+column c = G.utilities (case c of
+    Count -> [G.Width (G.Px 40)]
+  | Mark -> [G.Width (G.Px 56), G.TextAlign G.TextCenter]
+  | Act -> [G.Width (G.Px 72)]
+  | Figure -> [G.Width (G.Px 96)]).
+# a card in a wrapping grid of cards (a product): a fixed tile, two to a row on a
+# phone, the grid's gap (a step of the spacing scale) shared between them
+tile : Int -> List G.Attr .
+tile gap = [G.utilities [G.Width (G.Px 180), G.Height (G.Px 140)], G.narrow [G.Width (G.Less (G.Pct 50) (G.Px (spacing gap / 2)))]].
+# a panel beside the main region (a cart, an inspector); on a phone, docked
+# below it at a share of the screen's height
+side : List G.Attr .
+side = [G.utilities [G.Width (G.Px 400), G.MinHeight (G.Px 0)], G.narrow [G.Basis (G.Vh 46)]].
+# a short list opened in place (a receipt's lines): it scrolls past a few rows
+peek : G.Attr .
+peek = G.utilities [G.MaxHeight (G.Px 180)].
+# a box of output (a console, a profile): a few lines at least, half the screen
+# at most, scrolling inside
+console : G.Attr .
+console = G.utilities [G.MinHeight (G.Px 120), G.MaxHeight (G.Vh 50), G.Overflow G.OverflowAuto].
+# the document's body under a std/ui page (std/live's serve...Body): no margin,
+# the page has its own padding; `screenBody` for a page that is the screen
+# (`fill = Screen`), whose regions scroll and which never does
+body : List G.Attr .
+body = [G.utilities [G.Margin (G.Px 0)]].
+screenBody : List G.Attr .
+screenBody = [G.utilities [G.Margin (G.Px 0), G.Overflow G.OverflowHidden]].
 
 # ---- surfaces ----------------------------------------------------------------
 card : Panel -> List G.Node -> G.Node .

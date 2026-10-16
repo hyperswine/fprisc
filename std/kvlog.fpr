@@ -65,7 +65,7 @@ KvLog = Type (KvLog Int String).
 # how a log is written: JSON lines, or Wire frames at a level of the dial
 Format = Type (Lines | Fast | Compact | Small).
 
-Req = Type (Put key value | Get key | Keys | Size | Rewrite keepAll).
+Req = Type (Put key value | Get key | Keys | Size | Rewrite keepAll | Check).
 Rep = Type (Done | Value v | Listing ks | Count n | Failed why).
 
 # the most requests one wake takes before it answers: a bound on how long a
@@ -222,18 +222,20 @@ existing want path recs bad fmt d size =
 # the descriptor is opened by the first write (`ready`), as the old per-put
 # append did: a log whose directory is missing opens, and its put says why not
 start : String -> M.Map String J.Value -> Format -> Format -> W.Enc -> Result KvLog String .
-start path m fmt want e = Ok (KvLog (spawn (fn self -> serveLog self (St path m fmt want e (LF.sink path 0) ""))) path).
+start path m fmt want e = Ok (KvLog (spawn (fn self -> serveLog self (St path m fmt want e (LF.sink path 0) "") "")) path).
 # an existing file of `size` bytes this store has read: the first write opens it
 # and checks it is still that file
 startAt : String -> M.Map String J.Value -> Format -> Format -> W.Enc -> Int -> Result KvLog String .
-startAt path m fmt want e size = Ok (KvLog (spawn (fn self -> serveLog self (St path m fmt want e (LF.sink path size) ""))) path).
+startAt path m fmt want e size = Ok (KvLog (spawn (fn self -> serveLog self (St path m fmt want e (LF.sink path size) "") "")) path).
 
-# the loop: take what is waiting, write each run of puts once, answer
-serveLog : unsafe Int -> St -> a .
-serveLog self st =
+# the loop: take what is waiting, write each run of puts once, answer.  `lost`
+# is the first failure of a POSTED write since the last Check: nobody waits on
+# a post, so a writer that must know asks (trySync)
+serveLog : unsafe Int -> St -> String -> a .
+serveLog self st lost =
   first = receive self;
   items = drain self (batch - 1) (item first :: Nil);
-  serveLog self (runBatch self st items Nil).
+  (case runBatch self st lost items Nil of (st2, lost2) -> serveLog self st2 lost2).
 
 # a request, copied out of its message (which is then let go)
 item : (Int, Req) -> (Int, Req) .
@@ -249,15 +251,21 @@ drain self more acc = case more <= 0 of
       Ok m -> drain self (more - 1) (item m :: acc)
     | Err _ -> rev acc Nil).
 
-runBatch : unsafe Int -> St -> List (Int, Req) -> List (Int, String, J.Value) -> St .
-runBatch self st items pending = case items of
-    Nil -> flush self st pending
+runBatch : unsafe Int -> St -> String -> List (Int, Req) -> List (Int, String, J.Value) -> (St, String) .
+runBatch self st lost items pending = case items of
+    Nil -> flushed lost (flush self st pending)
   | (rt, q) :: r -> (case q of
-      Put k v -> runBatch self st r ((rt, k, v) :: pending)
-    | _ -> runOther self (flush self st pending) rt q r).
-runOther : unsafe Int -> St -> Int -> Req -> List (Int, Req) -> St .
-runOther self st rt q r = case other st q of
-  (st2, rep) -> _ = answer self st2 rt rep; runBatch self st2 r Nil.
+      Put k v -> runBatch self st lost r ((rt, k, v) :: pending)
+    | Check -> (case flushed lost (flush self st pending) of (st2, lost2) ->
+        _ = answer self st2 rt (if lost2 == "" then Done else Failed lost2);
+        runBatch self st2 "" r Nil)
+    | _ -> (case flushed lost (flush self st pending) of (st2, lost2) -> runOther self st2 lost2 rt q r)).
+runOther : unsafe Int -> St -> String -> Int -> Req -> List (Int, Req) -> (St, String) .
+runOther self st lost rt q r = case other st q of
+  (st2, rep) -> _ = answer self st2 rt rep; runBatch self st2 lost r Nil.
+# the first lost post is the one a Check reports
+flushed : String -> (St, String) -> (St, String) .
+flushed lost r = case r of (st, why) -> (st, if lost == "" then why else lost).
 
 answer : Int -> St -> Int -> Rep -> Unit .
 answer self st rt rep = case rt == 0 of
@@ -275,12 +283,14 @@ other st q = case st of St path m fmt want e sk dead -> (case q of
   | Keys -> (st, Listing (M.keys m))
   | Size -> (st, Count (M.size m))
   | Rewrite keepAll -> rewrite st keepAll
+  | Check -> (st, Done)
   | Put _ _ -> (st, Failed "kvlog: a put reached the wrong path")).
 
 # ---- one write for a run of puts ----------------------------------------------------------
-flush : unsafe Int -> St -> List (Int, String, J.Value) -> St .
+# the store after it, and why a POSTED put in it failed ("" when none did)
+flush : unsafe Int -> St -> List (Int, String, J.Value) -> (St, String) .
 flush self st pending = case pending of
-    Nil -> st
+    Nil -> (st, "")
   | _ -> written self st (rev pending Nil) (ready st).
 
 # the file at `path` is still the one this store writes -- or what to do instead
@@ -306,9 +316,9 @@ freshHeader st s = case st of St path m fmt want e _ dead -> (case LF.write s (W
     Err why -> Stop (St path m fmt want e (LF.unknown s) dead) why
   | Ok s2 -> Go (St path m fmt want (W.encoder (levelOf fmt)) s2 dead)).
 
-written : unsafe Int -> St -> List (Int, String, J.Value) -> Prep -> St .
+written : unsafe Int -> St -> List (Int, String, J.Value) -> Prep -> (St, String) .
 written self st items r = case r of
-    Stop st2 why -> failAll self st2 items why
+    Stop st2 why -> (failAll self st2 items why, postedIn items why)
   | Go st2 -> (case st2 of St path m fmt want e sk dead ->
       (case encodeAll fmt e (C.now Unit) items Nil of
         (pieces, e2) -> wrote self st2 items e2 (strJoin "" pieces))).
@@ -317,12 +327,15 @@ encodeAll fmt e t items acc = case items of
     Nil -> (rev acc Nil, e)
   | (_, k, v) :: r -> (case encodeRec fmt e t k v of (b, e2) -> encodeAll fmt e2 t r (b :: acc)).
 
-wrote : unsafe Int -> St -> List (Int, String, J.Value) -> W.Enc -> String -> St .
+wrote : unsafe Int -> St -> List (Int, String, J.Value) -> W.Enc -> String -> (St, String) .
 wrote self st items e2 bytes = case st of St path m fmt want e sk dead -> (case LF.write sk bytes of
-    Ok sk2 -> answerAll self (St path (insertAll items m) fmt want e2 sk2 dead) items Done
-  | Err why -> failAll self (St path m fmt want e (LF.unknown sk) (case fmt of
+    Ok sk2 -> (answerAll self (St path (insertAll items m) fmt want e2 sk2 dead) items Done, "")
+  | Err why -> (failAll self (St path m fmt want e (LF.unknown sk) (case fmt of
       Lines -> dead
-    | _ -> "kvlog: an earlier write failed ({why}); reopen the store to recover what was answered")) items why).
+    | _ -> "kvlog: an earlier write failed ({why}); reopen the store to recover what was answered")) items why, postedIn items why)).
+# why, when a posted put (nobody waiting: rt 0) was among the failed ones
+postedIn : List (Int, String, J.Value) -> String -> String .
+postedIn items why = if L.any (fn it -> case it of (rt, _, _) -> rt == 0) items then why else "".
 
 insertAll : unsafe List (Int, String, J.Value) -> M.Map String J.Value -> M.Map String J.Value .
 insertAll items m = case items of
@@ -412,6 +425,18 @@ post : String -> J.Value -> KvLog -> Unit .
 post key value db = case db of KvLog a _ -> _ = A.sendSure (myself 0) a (0, Put key value); Unit.
 sync : KvLog -> Unit .
 sync db = _ = size db; Unit.
+
+# `sync`, and whether a post failed: every post this actor made is appended
+# (or refused) when it answers, and it answers the first failure of a POSTED
+# write -- by any writer -- since the last trySync.  For a writer that posts
+# and must still know (std/durable's save).
+trySync : KvLog -> Result Unit String .
+trySync db = case db of KvLog a _ -> (case A.askSureWithin 10000 (myself 0) a Check of
+    Err why -> Err why
+  | Ok r ->
+      out = (case r of Done -> Ok Unit | Failed why -> Err (keep why) | _ -> Err "trySync: unexpected reply");
+      _ = drop r;
+      out).
 
 get : String -> KvLog -> O.Option J.Value .
 get key db = case db of KvLog a _ ->

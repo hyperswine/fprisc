@@ -1,11 +1,18 @@
 #!/usr/bin/env node
-// Exercise the shipped pure patch decoder without a browser dependency.
+// Exercise the shipped pure patch decoder without a browser dependency: the
+// client as std/livejs renders it (a structured program, not a text asset).
 const fs = require('node:fs');
+const os = require('node:os');
 const vm = require('node:vm');
 const path = require('node:path');
 const assert = require('node:assert/strict');
-const src = fs.readFileSync(path.join(__dirname,'../std/livejs.fpr'),'utf8');
-const code = src.slice(src.indexOf('  function spliced('),src.indexOf('  function apply(res)')).replace(/\\\{/g,'{');
+const {execFileSync} = require('node:child_process');
+const root = path.join(__dirname,'..');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(),'fpr-live-patch-'));
+fs.writeFileSync(path.join(tmp,'client.fpr'),'LJ = use "std/livejs".\nmain = _ = print (LJ.src 0); 0.\n');
+const src = execFileSync(path.join(root,'fpr'),['run',path.join(tmp,'client.fpr')],{cwd:root,encoding:'utf8',env:{...process.env,FPR_HOME:root},timeout:180000});
+fs.rmSync(tmp,{recursive:true,force:true});
+const code = src.slice(src.indexOf('function spliced('),src.indexOf('function apply('));
 const ctx = vm.createContext({});
 vm.runInContext(code,ctx);
 const apply = (old,p) => JSON.parse(JSON.stringify(ctx.spliced(old,p)));
@@ -34,7 +41,7 @@ console.log('Client v3 splice lists: in-order application, empty lists, invalid 
 
 // Browser close() permits 1000 or application codes 3000..4999. A protocol
 // error code such as 1002 cannot be sent directly by browser JavaScript.
-const handler = src.slice(src.indexOf('    ws.onmessage ='),src.indexOf('    ws.onclose =')).replace(/\\\{/g,'{');
+const handler = src.slice(src.indexOf('((ws)["onmessage"]='),src.indexOf('((ws)["onclose"]='));
 let closed;
 const events = vm.createContext({ws:{close:(code)=>{closed=code;}}, console:{error:()=>{}}, apply:()=>{throw new Error('bad patch');}});
 vm.runInContext(handler,events);

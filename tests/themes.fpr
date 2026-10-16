@@ -1,20 +1,20 @@
 unsafe base.
 G = use "../std/view".
 A = use "../std/appearance".
-Ma = use "../std/ma".
+UI = use "../std/ui".
 J = use "../std/json".
 P = use "../std/program".
 scope id light = G.El "section" (G.Att "id" id :: A.frame light)
   [G.El "div" [G.Att "data-panel" "", G.utilities [G.BackgroundImages [G.TokenImage G.Panel], G.BorderWidth (G.Px 1), G.BorderStyle G.SolidBorder, G.BorderColour (G.ThemeColour G.Line)], G.Cls "panel"] [G.Txt id]].
 withId id node = case node of G.El tag attrs kids -> G.El tag (G.Att "id" id :: attrs) kids | _ -> node.
 tree = G.El "main" Nil [scope "scope-day" True, scope "scope-night" False,
-  withId "ma-day" (Ma.page "day" [Ma.card [G.Txt "Day"]]),
-  withId "ma-night" (Ma.page "night" [Ma.card [G.Txt "Night"]])].
+  withId "ui-day" (UI.page UI.day UI.stack [UI.card UI.panel [G.Txt "Day"]]),
+  withId "ui-night" (UI.page UI.night UI.stack [UI.card UI.panel [G.Txt "Night"]])].
 main = case P.args Unit of
     ["bad-token"] -> _ = print (G.attrsOf [G.utilities [G.DefineColour (G.NamedToken "ink;bad") (G.Rgb 0 0 0)]]); 0
   | ["bad-gradient"] -> _ = print (G.attrsOf [G.utilities [G.BackgroundImages [G.LinearGradient 180 [G.Stop G.Transparent (G.Pct 0)]]]]); 0
   | ["bad-alpha"] -> _ = print (G.attrsOf [G.utilities [G.Foreground (G.RgbaPercent 0 0 0 101)]]); 0
   | _ ->
       (ss, ds) = G.renderStyled tree;
-      _ = print (J.render (J.object [("s", J.strings ss), ("d", J.strings ds), ("css", J.Text (G.cssFor tree + Ma.maCssFor tree))]));
+      _ = print (J.render (J.object [("s", J.strings ss), ("d", J.strings ds), ("css", J.Text (G.cssFor tree))]));
       0.

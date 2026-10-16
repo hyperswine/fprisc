@@ -3,10 +3,22 @@
 # browser backend, not a compiler for arbitrary FP-RISC functions.
 C = use "clientcalc".
 L = use "list".
+G = use "view".
 
 # Targets are DOM hooks, not application CSS selectors. Each nests a scope;
 # output hooks and inner loops only search descendants of the current scope.
 Target = Type (Attribute String | Id String).
+# A hook is ONE value: the page's view places it (`B.mark tax "{m.tax}"`) and
+# the script selects by it (`B.Each tax [...]`), so the name is written once.
+mark : Target -> String -> G.Attr .
+mark target value = case target of
+    Attribute name -> G.Att name value
+  | Id name -> G.Att "id" name.
+# the attribute a target names, for an effect that reads it (ReadAttribute)
+attributeOf : Target -> String .
+attributeOf target = case target of
+    Attribute name -> name
+  | Id name -> "id".
 Effect = Type (SetNumber String C.IntExpr | SetText String C.TextExpr |
   ReadAttribute String String | ReadLocal String C.TextExpr |
   ReadTextAttribute String String | Each Target (List Effect) |

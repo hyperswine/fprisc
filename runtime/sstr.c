@@ -52,7 +52,7 @@ static V g_sstrLen(V sv) {
 static V g_sstrAt(V sv, V iv) {
   sstr_t *s = as_sstr(sv, "SStr.at: not an SString");
   sw k = UNTAG(iv);
-  if (k < 0 || (uw)k >= s->len) fpr_cpanic("SStr.at: index out of range");
+  if (k < 0 || (uw)k >= s->len) fpr_trap_range("SStr.at: index out of range", k, s->len);
   return sstr_pair(TAG(s->bytes[k]), sv);
 }
 
@@ -60,7 +60,7 @@ static V g_sstrAt(V sv, V iv) {
 static V g_sstrPut(V sv, V iv, V cv) {
   sstr_t *s = as_sstr(sv, "SStr.put: not an SString");
   sw k = UNTAG(iv);
-  if (k < 0 || (uw)k >= SSTR_CAP) fpr_cpanic("SStr.put: index out of range");
+  if (k < 0 || (uw)k >= SSTR_CAP) fpr_trap_range("SStr.put: index out of range", k, SSTR_CAP);
   s->bytes[k] = (uint8_t)UNTAG(cv);
   if ((uw)k + 1 > s->len) s->len = (uw)k + 1;
   return sv; /* linear: same reference back */
@@ -69,7 +69,7 @@ static V g_sstrPut(V sv, V iv, V cv) {
 /* push : SString -> Int -> SString   (append one byte code) */
 static V g_sstrPush(V sv, V cv) {
   sstr_t *s = as_sstr(sv, "SStr.push: not an SString");
-  if (s->len >= SSTR_CAP) fpr_cpanic("SStr.push: SString full (128B)");
+  if (s->len >= SSTR_CAP) fpr_trap("SStr.push: SString full (128B)");
   s->bytes[s->len] = (uint8_t)UNTAG(cv);
   s->len++;
   return sv;

@@ -370,8 +370,11 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
         assert 'division: Err dead actor: division by zero\n' in out, out
         assert 'killed: Err dead actor: killed\n' in out, out
         assert 'returned: Err dead actor\n' in out, out
+        assert 'charAt: Err dead actor: charAt: index out of range (3, length 3)\n' in out, out
+        assert 'chr: Err dead actor: chr: 256 is not a byte (0..255)' in out, out
+        assert 'nth: Err dead actor: !: index out of range (5)\n' in out, out
         assert out.endswith('the program is still running\n'), out
-    print('a trap ends the actor, not the machine: error, Int overflow and division by zero on a worker are its death with the reason for its watchers; a kill says killed; the program goes on (1 and 4 harts): PASS')
+    print('a trap ends the actor, not the machine: error, Int overflow, division by zero and a refused value (charAt past the end, chr of a non-byte, ! past the end) on a worker are its death with the reason for its watchers; a kill says killed; the program goes on (1 and 4 harts): PASS')
     # Force the original first-sender race, then exercise real scheduler/wakes,
     # dead-sender channel reuse and overflow under parallel host load.
     run(['python3', 'tests/check_actor_claim.py'])

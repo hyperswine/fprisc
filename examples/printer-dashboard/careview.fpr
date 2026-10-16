@@ -18,7 +18,7 @@ smallButton label attrs = El "button" (Att "type" "button" :: L.append UI.button
 field label id attrs = El "label" spaced [El "span" [UI.text 12] [Txt label], G.Inp (Att "id" id :: Att "aria-label" label :: L.append input attrs)].
 select label path values = El "label" spaced [El "span" [UI.text 12] [Txt label], El "select" (Att "aria-label" label :: G.bind path :: input) (L.map (fn value -> El "option" [Att "value" value] [Txt value]) values)].
 note = El "label" spaced [El "span" [UI.text 12] [Txt "Observation / work performed (applies to your next log action)"], El "textarea" (G.bind @Client.careNote :: Att "aria-label" "Observation / work performed" :: Att "rows" "3" :: Att "maxlength" "2048" :: input) Nil].
-submit codec change label action printer target revision = smallButton label [Att "data-care-submit" "true", G.sendWith codec (change action printer target revision "") @Client.carePayload].
+submit codec change label action printer target revision = smallButton label [Att "data-care-submit" "true", G.sendWith codec (change action printer target revision) @Client.carePayload].
 dueLabel now t = if Care.isDue now t then "Due now" else "Due in {(Care.dueAt t - now + 86399) / 86400} days".
 taskRow codec edit change v t = G.key t.id (El "div" block
   [El "div" actions [El "strong" Nil [Dyn t.title], El "span" [UI.text 12, if Care.isDue v.now t then UI.offline else UI.muted] [Dyn (dueLabel v.now t)]]

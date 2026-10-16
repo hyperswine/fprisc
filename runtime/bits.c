@@ -17,7 +17,7 @@
 
 static uw bit_index(V i, const char *who) {
   sw k = UNTAG(i);
-  if (k < 0 || (uw)k >= sizeof(uw) * 8) fpr_cpanic(who);
+  if (k < 0 || (uw)k >= sizeof(uw) * 8) fpr_trap(who);
   return (uw)k;
 }
 
@@ -38,7 +38,7 @@ static V h_bitclear(V b, V i) {
 }
 static V h_bitmask(V w, V o) {
   sw width = UNTAG(w), off = UNTAG(o);
-  if (width < 0 || width > (sw)(sizeof(uw) * 8 - 1) || off < 0 || (uw)off >= sizeof(uw) * 8) fpr_cpanic("BITMASK: bad width/offset");
+  if (width < 0 || width > (sw)(sizeof(uw) * 8 - 1) || off < 0 || (uw)off >= sizeof(uw) * 8) fpr_trap("BITMASK: bad width/offset");
   return TAG((sw)(((width == (sw)(sizeof(uw) * 8 - 1) ? ~(uw)0 >> 1 : ((uw)1 << width) - 1)) << off));
 }
 static V h_shiftl(V v, V k) {

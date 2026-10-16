@@ -24,9 +24,12 @@ class Ws:
         head, self.buf = self.buf.split(b'\r\n\r\n', 1)
         assert b' 101 ' in head.split(b'\r\n')[0], head
 
-    def send(self, name, *fields, arg=None):
-        wire = ('+' if arg is not None else '=') + json.dumps([name, *fields])
-        p = json.dumps({'msg': wire, 'arg': arg or ''}).encode()
+    # `arg`: the event's one argument ("+", an old journal's form); `values`:
+    # the page's values for the message's last fields ("*", View.sendWith)
+    def send(self, name, *fields, arg=None, values=None):
+        kind = '*' if values is not None else '+' if arg is not None else '='
+        wire = kind + json.dumps([name, *fields])
+        p = json.dumps({'msg': wire, 'arg': json.dumps(values) if values is not None else arg or ''}).encode()
         mask = os.urandom(4)
         hdr = bytes([0x81, 0x80 | len(p)]) if len(p) < 126 else bytes([0x81, 0x80 | 126]) + struct.pack('>H', len(p))
         self.s.sendall(hdr + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(p)))
@@ -74,17 +77,18 @@ try:
     a = Ws(port); a.page = a.recv()
     assert '0 entries' in json.dumps(a.page), a.page
     # add: the clock stamps it, the toast names it, the page shows it
-    a.send('Add', arg='INTERNET ISSUE|internet drop out')
+    a.send('Post', values=['INTERNET ISSUE', 'internet drop out'])
     a.until('added #1')
     assert 'internet drop out' in json.dumps(a.page)
     for i in range(24):
-        a.send('Add', arg=f'{"power" if i % 2 else ""}|observation {i + 1}')
+        if i < 23: a.send('Post', values=['power' if i % 2 else '', f'observation {i + 1}'])
+        else: a.send('Add', arg=f'|observation {i + 1}')     # the form an old journal holds
     a.until('25 entries')
     # a second tab sees the same log, on its own page and with its own search
     b = Ws(port); b.page = b.recv()
     b.until('25 entries, 2 online')                  # the welcome renders before the join lands
     b.send('Search', arg='drop out')
-    b.until('{\\"q\\":\\"drop out\\"}')             # the port to the page: the box is filled
+    b.until('{\\"q\\":\\"drop out\\"}')             # the server's assignment: the box is filled
     b.until('clear')                                # a full render: the clear button appeared
     assert b.shown() == 1 and 'internet drop out' in json.dumps(b.page), b.page
     # the first tab is unaffected by the second's search: it pages instead
@@ -94,7 +98,7 @@ try:
     # edit through the second tab: the form is filled from the server, then saved
     b.send('Edit', 1)
     b.until('{\\"edit\\":\\"internet drop out\\"')
-    b.send('Save', 1, arg='INTERNET ISSUE, outage|internet drop out, back after 10 min')
+    b.send('Change', 1, values=['INTERNET ISSUE, outage', 'internet drop out, back after 10 min'])
     b.until('saved #1')
     assert 'back after 10 min' in json.dumps(b.page) and 'outage' in json.dumps(b.page), b.page
     # the first tab, on page 2 where #1 lives, sees the edit without asking

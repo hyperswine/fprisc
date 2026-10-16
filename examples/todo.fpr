@@ -31,7 +31,8 @@ Msg = Type (Saved String | Second).
 fields = Live.field Live.Always @Model.items :: Nil.
 init = {items = Nil, at = 0, draft = "", note = "", seconds = 0}.
 
-save store m = Term.Run (fn u -> _ = Durable.save store m; Saved "saved").
+# a save is answered: the note says which
+save store m = Term.Run (fn u -> case Durable.save store m of Ok _ -> Saved "saved" | Err why -> Saved "NOT saved: {why}").
 
 count m = List.length m.items.
 clampAt m = {m | at = (if m.at < 0 then 0 else if m.at >= count m then (if count m == 0 then 0 else count m - 1) else m.at)}.

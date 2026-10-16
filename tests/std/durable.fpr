@@ -1,28 +1,50 @@
-unsafe base.
-# std/durable: a model's durable fields as one value, opened, saved, reopened.
+profile base.
+# std/durable: a model's durable fields as one value, opened, saved, reopened;
+# a save is ANSWERED, and a refused one leaves the program running.
 #   ./fpr run tests/std/durable.fpr PATH
 D = use "std/durable".
 Live = use "std/live".
 KV = use "std/kvlog".
 Program = use "std/program".
 List = use "std/list".
+S = use "std/string".
+Dir = use "std/dir".
+File = use "std/file".
+Ord = use "std/order".
 
-Model = { count : Int, names : List String, note : String }.
-init = { count = 0, names = Nil, note = "fresh" }.
-fields = [Live.field Live.Always @Model.count, Live.field Live.Always @Model.names].
+Item = { id : Int, text : String }.
+Model = { count : Int, names : List String, items : List Item, note : String }.
+init = { count = 0, names = Nil, items = Nil, note = "fresh" }.
+fields = [Live.field Live.Always @Model.count, Live.field Live.Always @Model.names,
+          Live.each Live.Always @Model.items (fn it -> "{it.id}") (fn a b -> Ord.int a.id b.id)].
+
+said r = case r of Ok _ -> "Ok" | Err why -> (if S.endsWith "is no longer a regular file" why then "Err (not a regular file)" else "Err {why}").
+records path = case KV.records path of Ok (rs, _) -> List.length rs | Err why -> 0 - 1.
+opened path = case D.open fields path init of Ok pair -> pair | Err why -> error why.
 
 main =
   path = case Program.args Unit of p :: _ -> p | Nil -> error "durable test: a path";
-  (m0, st) = (case D.open fields path init of Ok pair -> pair | Err why -> error why);
+  (m0, st) = opened path;
   _ = print "fresh: {m0.count} {List.length m0.names} {m0.note}";
-  m1 = { m0 | count = 3, names = ["ann", "bo"], note = "changed in memory only" };
-  _ = D.save st m1;
-  n1 = KV.size (D.log st);
-  _ = D.save st m1;
-  n2 = KV.size (D.log st);
-  _ = print "a second save of the same model writes nothing: {n1 == n2}";
-  _ = D.close st { m1 | count = 4 };
-  (m2, st2) = (case D.open fields path init of Ok pair -> pair | Err why -> error why);
-  _ = print "reopened: {m2.count} {m2.names} note={m2.note}";
-  _ = print "the undeclared field came from init: {m2.note == init.note}";
+  m1 = { m0 | count = 3, names = ["ann", "bo"], items = [{ id = 1, text = "one" }, { id = 2, text = "two" }], note = "changed in memory only" };
+  _ = print "save: {said (D.save st m1)}";
+  n1 = records path;
+  _ = print "a second save of the same model writes nothing: {said (D.save st m1)} {records path == n1}";
+  # one element of a list kept per element changes: that record is written
+  m2 = { m1 | items = [{ id = 1, text = "one" }, { id = 2, text = "TWO" }] };
+  _ = print "one element changed: {said (D.save st m2)}, {records path - n1} record written";
+  # the log's file is moved aside and a directory put in its place: the save is
+  # refused and the program goes on; with the file back, the next save writes
+  # what still differs
+  _ = File.rename path "{path}.aside";
+  _ = Dir.create path;
+  m3 = { m2 | count = 7 };
+  _ = print "refused: {said (D.save st m3)}";
+  _ = Dir.remove path;
+  _ = File.rename "{path}.aside" path;
+  _ = print "and again with the file back: {said (D.save st m3)}";
+  _ = print "close: {said (D.close st { m3 | count = 8 })}";
+  (m4, st2) = opened path;
+  _ = print "reopened: {m4.count} {m4.names} {List.map (fn it -> it.text) m4.items} note={m4.note}";
+  _ = print "the undeclared field came from init: {m4.note == init.note}";
   0.

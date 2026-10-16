@@ -54,19 +54,19 @@ async function stop(child) {
     });
     assert.deepEqual(await colours('#scope-day'),['rgb(243, 245, 249)','rgb(13, 21, 38)']);
     assert.deepEqual(await colours('#scope-night'),['rgb(6, 10, 18)','rgb(233, 239, 247)']);
-    assert.deepEqual(await colours('#ma-day'),['rgb(247, 248, 250)','rgb(26, 29, 35)']);
-    assert.deepEqual(await colours('#ma-night'),['rgb(21, 23, 28)','rgb(237, 239, 243)']);
-    assert.deepEqual(await colours('#ma-day > div'),['rgb(255, 255, 255)','rgb(26, 29, 35)']);
-    assert.deepEqual(await colours('#ma-night > div'),['rgb(29, 32, 39)','rgb(237, 239, 243)']);
+    assert.deepEqual(await colours('#ui-day'),['rgb(247, 248, 250)','rgb(26, 29, 35)']);
+    assert.deepEqual(await colours('#ui-night'),['rgb(21, 23, 28)','rgb(237, 239, 243)']);
+    assert.deepEqual(await colours('#ui-day > div'),['rgb(255, 255, 255)','rgb(26, 29, 35)']);
+    assert.deepEqual(await colours('#ui-night > div'),['rgb(29, 32, 39)','rgb(237, 239, 243)']);
     assert.match(await page.locator('#scope-day [data-panel]').evaluate(el=>getComputedStyle(el).backgroundImage),/linear-gradient.*rgb\(255, 255, 255\).*rgb\(238, 242, 248\)/);
     assert.equal((await page.locator('#scope-night').evaluate(el=>getComputedStyle(el).backgroundImage)).match(/radial-gradient/g).length,2);
-    assert.match(await page.locator('#ma-day > div').evaluate(el=>getComputedStyle(el).boxShadow),/rgba\(30, 41, 59, 0\.06\).*rgba\(30, 41, 59, 0\.04\)/);
+    assert.match(await page.locator('#ui-day > div').evaluate(el=>getComputedStyle(el).boxShadow),/rgba\(30, 41, 59, 0\.06\).*rgba\(30, 41, 59, 0\.04\)/);
     assert.deepEqual(await page.evaluate(()=>{const s=getComputedStyle(document.body);
       return [s.getPropertyValue('--bg'),s.getPropertyValue('--bg-canvas'),s.backgroundColor];}),['','','rgba(0, 0, 0, 0)']);
     await page.locator('#scope-night').evaluate(el=>el.classList.add('day'));
     assert.deepEqual(await colours('#scope-night'),['rgb(6, 10, 18)','rgb(233, 239, 247)']);
     await page.close();
-    console.log('PASS: View/Ma theme scopes coexist, gradients/shadows are generated, body has no palette, legacy theme classes have no effect; invalid token/gradient/alpha refused');
+    console.log('PASS: View/UI theme scopes coexist, gradients/shadows are generated, body has no palette, legacy theme classes have no effect; invalid token/gradient/alpha refused');
 
     const printerSource=fs.readFileSync(path.join(root,'examples/printers.fpr'),'utf8');
     assert.equal((printerSource.match(/^main =/gm)||[]).length,1);

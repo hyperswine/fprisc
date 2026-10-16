@@ -768,6 +768,8 @@ void fpr_cpanic_n(const char *msg, uw n) __attribute__((noreturn));
 void fpr_trap_n(const char *msg, uw n) __attribute__((noreturn));
 void fpr_trap(const char *msg) __attribute__((noreturn));
 void fpr_cpanic_num(const char *pre, sw n, const char *post) __attribute__((noreturn)); /* pre, the number, post */
+void fpr_trap_num(const char *pre, sw n, const char *post) __attribute__((noreturn));  /* the same, as a trap */
+void fpr_trap_range(const char *what, sw k, uw len) __attribute__((noreturn));        /* an index past the end */
 void fpr_int_overflow_kernel(void) __attribute__((noreturn)); /* a vector kernel's Int overflow trap */
 void fpr_div_zero_kernel(void) __attribute__((noreturn));
 /* the /logs rings (runtime.c): sev 0 normal / 1 warn / 2 error / 3 host */

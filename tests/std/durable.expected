@@ -1,4 +1,9 @@
 fresh: 0 0 fresh
-a second save of the same model writes nothing: True
-reopened: 4 [ann, bo] note=fresh
+save: Ok
+a second save of the same model writes nothing: Ok True
+one element changed: Ok, 1 record written
+refused: Err (not a regular file)
+and again with the file back: Ok
+close: Ok
+reopened: 8 [ann, bo] [one, TWO] note=fresh
 the undeclared field came from init: True

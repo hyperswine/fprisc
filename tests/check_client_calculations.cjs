@@ -86,30 +86,30 @@ async function login(page,url,name,pin) {
       const outside=document.createElement('div');outside.dataset.line='FW';outside.dataset.price='999';document.body.append(outside);
     });
     const paint=quantities=>page.evaluate(detail=>document.dispatchEvent(new CustomEvent('live:locals',{detail})),quantities);
-    await paint({q_FW:'2',q_BR:'1'});await total(page,'$17.60');
+    await paint({'cart[FW]':'2','cart[BR]':'1'});await total(page,'$17.60');
     assert.equal(await page.locator('[data-line="FW"] [data-line-total]').textContent(),'$10.00');
     await page.locator('[data-tax]').evaluate(el=>{
       const clone=el.cloneNode(true);clone.setAttribute('data-copy','');clone.querySelector('[data-line="FW"]').dataset.price='700';el.after(clone);
     });
-    await paint({q_FW:'2'});
+    await paint({'cart[FW]':'2'});
     assert.equal(await page.locator('[data-tax]:not([data-copy]) #cart-total').textContent(),'$11.00');
     assert.equal(await page.locator('[data-copy] #cart-total').textContent(),'$15.40');
     await page.locator('[data-copy]').evaluate(el=>el.remove());
     await page.locator('[data-tax] [data-line="FW"][data-price]').evaluate(el=>el.dataset.price='5');
-    await paint({q_FW:'1'});await total(page,'$0.06');
-    await paint({q_FW:'0'});await total(page,'$0.00');assert.equal(await page.locator('#cart-empty').isVisible(),true);
-    await paint({q_FW:'1.5'});await total(page,'$0.00');
-    await paint({q_FW:'1\n'});await total(page,'$0.00');
+    await paint({'cart[FW]':'1'});await total(page,'$0.06');
+    await paint({'cart[FW]':'0'});await total(page,'$0.00');assert.equal(await page.locator('#cart-empty').isVisible(),true);
+    await paint({'cart[FW]':'1.5'});await total(page,'$0.00');
+    await paint({'cart[FW]':'1\n'});await total(page,'$0.00');
     await page.locator('[data-tax]').evaluate(el=>{el.dataset.tax='0';el.querySelector('[data-line="FW"]').dataset.price='9007199254740993';});
-    await paint({q_FW:'1'});await total(page,'$90071992547409.93');
+    await paint({'cart[FW]':'1'});await total(page,'$90071992547409.93');
     const before=await page.locator('[data-tax]').textContent();
-    await paint({q_FW:'4611686018427387903'});
+    await paint({'cart[FW]':'4611686018427387903'});
     assert.equal(await page.locator('[data-tax]').textContent(),before,'overflow partially painted the cart');
-    await paint({q_FW:'4611686018427387904'});
-    await page.locator('[data-tax]').evaluate(el=>el.dataset.tax='bad');await paint({q_FW:'0'});
+    await paint({'cart[FW]':'4611686018427387904'});
+    await page.locator('[data-tax]').evaluate(el=>el.dataset.tax='bad');await paint({'cart[FW]':'0'});
     assert.equal(await page.locator('[data-tax]').textContent(),before,'invalid input partially painted the cart');
     assert.equal((await page.evaluate(()=>projectionErrors)).length,3);
-    await page.locator('[data-tax]').evaluate(el=>el.dataset.tax='0');await paint({q_FW:'0'});await total(page,'$0.00');
+    await page.locator('[data-tax]').evaluate(el=>el.dataset.tax='0');await paint({'cart[FW]':'0'});await total(page,'$0.00');
     assert.deepEqual(errors,[]);await page.close();
     console.log('PASS: real POS projection, scoped repeated panels, half-cent rounding, large exact cents, empty state, malformed locals, atomic refusal and recovery; text stays text');
 
@@ -121,8 +121,8 @@ async function login(page,url,name,pin) {
       for(const p of [a,b])await p.addInitScript(()=>{window.originalSocketSend=WebSocket.prototype.send;});
       try {
         await login(a,server.url,'ana','1234');await login(b,server.url,'ben','2222');
-        await a.locator('[data-set="q_FW"][data-val="+1"]').first().click({clickCount:2});await total(a,'$11.00');
-        await b.locator('[data-set="q_BR"][data-val="+1"]').first().click();await total(b,'$6.60');
+        await a.locator('[data-set="cart[FW]"][data-add="1"]').first().click({clickCount:2});await total(a,'$11.00');
+        await b.locator('[data-set="cart[BR]"][data-add="1"]').first().click();await total(b,'$6.60');
         const tender=a.getByPlaceholder('cash tendered');await tender.fill('20.00');
         await tender.evaluate(el=>{window.savedTender=el;el.focus();el.setSelectionRange(0,2);});
         await b.getByRole('button',{name:'Admin',exact:true}).click();

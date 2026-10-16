@@ -100,23 +100,25 @@ const env = {...process.env, FPR_HOME: root, XDG_CACHE_HOME: path.join(tmp, 'cac
       await inventoryPage.locator('[data-slot]').evaluateAll((els,ds)=>{
         for(const el of els)el.textContent=ds[Number(el.dataset.slot)];
       },snapshot.d);
-      assert.deepEqual(await inventoryPage.locator('[x-data]').evaluate(el=>{
-        const s=getComputedStyle(el);return [s.width,s.paddingTop,s.paddingBottom];
-      }),[Math.min(width,760)+'px','14px','48px']);
+      // the reading column: the page's own padding (12px a side), capped at 760px
+      assert.deepEqual(await inventoryPage.locator('[x-json]').evaluate(el=>getComputedStyle(el).width),Math.min(width-24,760)+'px');
+      // inputs: 16px text (a phone does not zoom) and a 44px target
       for(const selector of ['[data-console]','[data-ac="loc"]']) {
         assert.deepEqual(await inventoryPage.locator(selector).evaluate(el=>{
-          const s=getComputedStyle(el);return [s.fontSize,s.minHeight];
-        }),['16px','44px']);
+          const s=getComputedStyle(el);return [s.fontSize,s.minHeight,el.getBoundingClientRect().height>=44];
+        }),['16px','44px',true]);
       }
-      assert.deepEqual(await inventoryPage.locator('.console').evaluate(el=>{
+      assert.deepEqual(await inventoryPage.locator('[data-console-output]').evaluate(el=>{
         const s=getComputedStyle(el);return [s.minHeight,s.maxHeight,s.overflowX,s.overflowY];
       }),['120px',height/2+'px','auto','auto']);
       assert.deepEqual(await inventoryPage.locator('[data-pager]').first().evaluate(el=>{
         const s=getComputedStyle(el);return [s.opacity,s.pointerEvents,s.minHeight];
       }),['0.35','none','44px']);
-      assert.deepEqual(await inventoryPage.locator('[data-on="pane:items"]').evaluate(el=>{
-        const s=getComputedStyle(el.parentElement.firstElementChild);return [s.flexBasis];
-      }),[width<761?'100%':'0%']);
+      // the header: on a phone the pane buttons go below the title, beside it on a desktop
+      assert.equal(await inventoryPage.locator('[data-set="pane"][data-to="Items"]').evaluate(el=>{
+        const title=el.parentElement.parentElement.firstElementChild.getBoundingClientRect();
+        return el.getBoundingClientRect().top>=title.bottom;
+      }),width<761);
       assert.deepEqual(await inventoryPage.locator('.fpr-reload-notice').evaluate(el=>{
         const s=getComputedStyle(el);return [s.position,s.bottom,s.zIndex,s.backgroundColor,s.color,
           s.fontSize,s.lineHeight,s.paddingTop,s.paddingLeft,s.pointerEvents];

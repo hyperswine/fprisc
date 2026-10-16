@@ -442,7 +442,7 @@ static V h_get(V iv, V vec) {
   vec_t *x = vchk(vec, "Vec.get: not a Vector");
   if (!ISINT(iv)) fpr_cpanic("Vec.get: index not an Int");
   sw i = UNTAG(iv);
-  if (i < 0 || (uw)i >= x->len) fpr_cpanic("Vec.get: index out of range");
+  if (i < 0 || (uw)i >= x->len) fpr_trap_range("Vec.get: index out of range", i, x->len);
   return mktup2(row_at(x, (uw)i), (V)x);
 }
 
@@ -450,7 +450,7 @@ static V h_set(V iv, V v, V vec) {
   vec_t *x = vchk(vec, "Vec.set: not a Vector");
   if (!ISINT(iv)) fpr_cpanic("Vec.set: index not an Int");
   sw i = UNTAG(iv);
-  if (i < 0 || (uw)i >= x->len) fpr_cpanic("Vec.set: index out of range");
+  if (i < 0 || (uw)i >= x->len) fpr_trap_range("Vec.set: index out of range", i, x->len);
   switch (VREP(x)) {
     case VR_TREE: { uw cursor=0; tree_put(x,&cursor,(uw)i,v); break; }
     case VR_INT:
@@ -629,7 +629,7 @@ static V h_peek_get(V iv, V vec) {
   vec_t *x = vchk(vec, "Vec.get: not a Vector");
   if (!ISINT(iv)) fpr_cpanic("Vec.get: index not an Int");
   sw i = UNTAG(iv);
-  if (i < 0 || (uw)i >= x->len) fpr_cpanic("Vec.get: index out of range");
+  if (i < 0 || (uw)i >= x->len) fpr_trap_range("Vec.get: index out of range", i, x->len);
   return row_at(x, (uw)i);
 }
 static V h_peek_at(V iv, V vec) {
@@ -794,7 +794,7 @@ static V h_ges(V kv, V vec) {
 /* zips: dst op= src, one contiguous run each */
 static vec_t *vzip2(V dv, V sv, const char *who) {
   vec_t *d = vnum(dv, who), *s = vnum(sv, who);
-  if (d->len != s->len) fpr_cpanic("SIMD tier: zip length mismatch");
+  if (d->len != s->len) fpr_trap("SIMD tier: zip length mismatch");
   return s;
 }
 #define VS_ZIP(dv, sv, WHO, EXPR)                                            \
@@ -831,7 +831,7 @@ static V h_blend(V mv, V sv, V dv) {
   vec_t *m = vnum(mv, "Vec.blend: not a Vector");
   vec_t *s = vnum(sv, "Vec.blend: not a Vector");
   vec_t *d = vnum(dv, "Vec.blend: not a Vector");
-  if (m->len != d->len || s->len != d->len) fpr_cpanic("Vec.blend: length mismatch");
+  if (m->len != d->len || s->len != d->len) fpr_trap("Vec.blend: length mismatch");
   {
     uw n = d->len;
     sw *pd = (sw *)d->cols[0]->base, *pm = (sw *)m->cols[0]->base,

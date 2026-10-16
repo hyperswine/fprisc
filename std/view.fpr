@@ -16,9 +16,21 @@
 #
 #   Dyn v            server state. Comes from the model, arrives as a
 #                    dynamic slot, updates by delta.
-#   Local n init     client state (Alpine-style). Declared on an
-#                    element; lives only in the browser; never
-#                    round-trips on its own.
+#   client state     a declared record whose fields the PAGE holds, named
+#                    by path literals and typed (`locals @Client init`,
+#                    `setTo @Client.tab Receipts`, `showIf`, `step`,
+#                    `toggle`, `bind`, `text`; the section at the end of
+#                    this file).  It never round-trips on its own; a click
+#                    sends a message with the page's values as its last
+#                    fields (`sendWith codec Cash @Client.tender`), and a
+#                    mirror (std/live's SyncClientState) hands the whole
+#                    record to the server as a value of its type.
+#
+# The constructors below the typed functions are the string tier they are
+# made of, still used where a page names its own locals by text (QOS's pos1
+# over mods/fprlive):
+#
+#   Local n init     a local, declared on an element (Alpine-style).
 #   LTxt n           print a local.
 #   ShowIf n         show/hide by a local -- zero server involvement.
 #   OnSet n v        click mutates a local ("+1" / "-1" / "toggle" / lit).
@@ -46,7 +58,9 @@ L = use "list".
 Attr = Type (Cls String | Utilities (List Utility) | LocalStyle String String (List Decl) | Att String String | Local String String
            | OnClick String String | OnSet String String | ShowIf String
            | OnBoth String String String String
-           | OnSend String String | Input String | OnEnter String String | OnFile String).
+           | OnSend String String | Input String | OnEnter String String | OnFile String
+           | ClientInit String String | ClientSet String String | ClientStep String Int Int Int | ClientToggle String
+           | ClientWhen String Bool (List String) | ClientBind String String | ClientSend String String | ClientEnter String String).
 Node = Type (El String (List Attr) (List Node) | Txt String | Dyn String | LTxt String
            | Inp (List Attr) | Fragment (List String) (List String) (List String)).
 
@@ -111,7 +125,26 @@ slot (Ctx cur ss ds) v = Ctx "" (cur :: ss) (v :: ds).
 # `vsA 3 [Cls "bg-surface ..."]`, a Cls from the layout and a Cls from the
 # caller on one element -- and with two class attributes the browser kept the
 # first, so no card ever had its surface.  One attribute, every class.
-attrsOf as = strcat (xdata (localsOf as)) (strcat (classAttr (joinSp (classesOf as) (atomClasses (localAtoms as)))) (strcat (localStyleAttribute as) (others as))).
+attrsOf as = _ = once as; strcat (xdata (localsOf as)) (strcat (xjson (clientOf as)) (strcat (classAttr (joinSp (classesOf as) (atomClasses (localAtoms as)))) (strcat (localStyleAttribute as) (others as)))).
+# An element carries each event and each condition once: of two `data-set`s
+# (two clicks' settings) or two `data-when`s (two conditions) the browser keeps
+# the first, and the second would be a silent no-op.  Say so instead.
+once : List Attr -> Unit .
+once as = onceGo (L.concatMap eventsOf as) Nil.
+onceGo : unsafe List String -> List String -> Unit .
+onceGo names seen = case names of
+    Nil -> Unit
+  | n :: r -> (case memS n seen of
+      True -> error "View: an element carries two {n} attributes; the browser would keep only the first"
+    | False -> onceGo r (n :: seen)).
+eventsOf a = case a of
+    OnSet _ _ -> ["data-set"] | ClientSet _ _ -> ["data-set"] | ClientStep _ _ _ _ -> ["data-set"] | ClientToggle _ -> ["data-set"]
+  | OnBoth _ _ _ _ -> ["data-set", "data-click"]
+  | ShowIf _ -> ["data-show"] | ClientWhen _ _ _ -> ["data-when"]
+  | OnClick _ _ -> ["data-click"] | OnSend _ _ -> ["data-click"] | ClientSend _ _ -> ["data-click"]
+  | OnEnter _ _ -> ["data-enter"] | ClientEnter _ _ -> ["data-enter"]
+  | Input _ -> ["data-input"] | ClientBind _ _ -> ["data-input"]
+  | _ -> Nil.
 localStyle key value declarations = LocalStyle key value declarations.
 localStyleAttribute attrs = case localStyleValues attrs of Nil -> "" | values -> " data-local-style=\"{esc (J.render (J.Sequence values))}\"".
 localStyleValues : unsafe List Attr -> List J.Value .
@@ -127,6 +160,16 @@ localsOf (Local n init :: r) = join2 (localsOf r) "{n}={init}".
 localsOf (a :: r) = localsOf r.
 xdata "" = "".
 xdata s = " x-data=\"{s}\"".
+# typed client state (ClientInit, from `locals` and `hold`) merges into one
+# x-json object the same way: name -> the JSON the page starts with
+clientOf : unsafe List Attr -> String .
+clientOf Nil = "".
+clientOf (ClientInit n v :: r) = joinComma "{J.quote n}:{v}" (clientOf r).
+clientOf (a :: r) = clientOf r.
+joinComma a "" = a.
+joinComma a b = strcat a (strcat "," b).
+xjson "" = "".
+xjson s = " x-json=\"{esc "\{{s}}"}\"".
 classesOf : unsafe List Attr -> String .
 classesOf Nil = "".
 classesOf (Cls s :: r) = joinSp s (classesOf r).
@@ -139,6 +182,7 @@ classAttr s = " class=\"{s}\"".
 others : unsafe List Attr -> String .
 others Nil = "".
 others (Local n init :: r) = others r.
+others (ClientInit n v :: r) = others r.
 others (Cls s :: r) = others r.
 others (Utilities _ :: r) = others r.
 others (a :: r) = strcat (attrOf a) (others r).
@@ -153,10 +197,19 @@ attrOf (OnSend msg lit) = " data-click=\"{esc msg}\" data-lit=\"{esc lit}\"".
 attrOf (Input n) = " data-input=\"{n}\"".
 attrOf (OnEnter msg arg) = " data-enter=\"{esc msg}\" data-arg=\"{arg}\"".
 attrOf (OnFile msg) = " type=\"file\" data-file=\"{esc msg}\"".
+attrOf (ClientSet n v) = " data-set=\"{esc n}\" data-to=\"{esc v}\"".
+attrOf (ClientStep n by lo hi) = " data-set=\"{esc n}\" data-add=\"{by}\" data-min=\"{lo}\" data-max=\"{hi}\"".
+attrOf (ClientToggle n) = " data-set=\"{esc n}\" data-flip=\"\"".
+attrOf (ClientWhen n True vs) = " data-when=\"{esc n}\" data-is=\"{esc (texts vs)}\"".
+attrOf (ClientWhen n False vs) = " data-when=\"{esc n}\" data-is-not=\"{esc (texts vs)}\"".
+attrOf (ClientBind n kind) = " data-input=\"{esc n}\" data-kind=\"{kind}\"".
+attrOf (ClientSend msg names) = " data-click=\"{esc msg}\" data-args=\"{esc names}\"".
+attrOf (ClientEnter msg names) = " data-enter=\"{esc msg}\" data-args=\"{esc names}\"".
 # client state is not an attribute: it is collected into the element's
 # x-data (`xdata`) instead.  `others` already skips it, so this clause is
 # how the function stays total rather than depending on that one caller.
 attrOf (Local n init) = "".
+attrOf (ClientInit _ _) = "".
 attrOf (Utilities _) = "".
 attrOf (LocalStyle _ _ _) = "".
 
@@ -798,79 +851,175 @@ rvGo (x :: r) acc = rvGo r (x :: acc).
 
 # ---- TYPED events and client state: no names in strings ----------------------------------------
 # The attributes above take a message NAME and a local's NAME, as text; a typo
-# in either is a silent no-op.  These take the app's own values instead:
+# in either is a silent no-op.  These take the app's own values instead.
 #
-#   a MESSAGE is a value of the app's Msg type, put on the wire by the codec the
-#   compiler mints from the type's declaration (`@Msg`: FPRISC.hs codecFor):
+# A MESSAGE is a value of the app's Msg type, put on the wire by the codec the
+# compiler mints from the type's declaration (`@Msg`: FPRISC.hs codecFor):
 #
-#       V.send codec (Bump 10)                  a complete message
-#       V.sendWith codec (Add "") @Client.draft  its LAST field comes from client
-#                                                state when the event fires
+#     V.send codec (Bump 10)                       a complete message
+#     V.sendWith codec Cash @Client.tender          its LAST field is the page's
+#     V.sendWith codec (Restock p.sku) @Client.delta    value of that field when
+#     V.sendWith2 codec Login @Client.name @Client.pin  the event fires (two: the
+#                                                   last two, in order)
 #
-#   CLIENT STATE is a field of a declared record, named by a path literal
-#   (`@Client.tab`), so a field that does not exist is a COMPILE error:
+# The message is built by the constructor itself, so a field of the wrong type
+# is a COMPILE error: `Restock p.sku` wants an Int and @Client.delta must be one.
 #
-#       V.locals @Client { tab = "1", draft = "" }     declare them, with initial values
-#       V.showIf @Client.tab "2"   V.setTo @Client.tab "2"   V.bind @Client.draft
+# CLIENT STATE is a declared record whose fields the PAGE holds, each named by a
+# path literal (`@Client.tab`), so a field that does not exist is a compile
+# error and a value of the wrong type is one too:
 #
-# On the wire a typed message is "=" or "+" and the JSON of its Wire form, the
-# array [name, field, ...] (fields may be records and lists):
-# "=" is complete, "+" takes the event's argument as its final field.
-# (std/live.fpr decodes it with the same codec; anything else is refused.)
+#     Client = { tab : Tab, open : Int, draft : String, cart : List (String, Int) }.
+#     V.locals @Client { tab = Register, open = 0, draft = "", cart = Nil }
+#     V.showIf @Client.tab Receipts     V.setTo @Client.tab Receipts
+#     V.step @Client.open 1 0 99        V.toggle @Client.on (a Bool)
+#     V.bind @Client.draft (String)     V.bindInt @Client.qty (Int)
+#     V.text @Client.open               UI.onState @Client.tab Receipts [...]
+#
+# The page holds each value as TEXT -- a number, true or false, a string, a
+# bare constructor's name (Json.wireText) -- and the codec's decoders read that
+# text back (the prelude's are lenient about exactly these), so client state
+# reaches the server as a value of its declared type.  A FAMILY is a field of
+# type List (String, a): one value per key, each held under its own name
+# (`V.entry @Client.cart "FW"` is `cart[FW]`), declared where it is drawn
+# (`V.hold (V.entry @Client.cart p.sku) 0`), and handed back as the list of
+# (key, value) pairs.  A leaf of any other type (a List Int, a sum with
+# fields) is held as its JSON, unchanged by the page.
+#
+# On the wire a typed message is "=", "+" or "*" and the JSON of its Wire form,
+# the array [name, field, ...] (fields may be records and lists): "=" is
+# complete, "+" takes the event's argument as its final field (an upload), "*"
+# takes a JSON array of the page's values as its final fields.  std/live.fpr
+# decodes all three with the same codec; anything else is refused.
 
 J = use "json".
 
 wire : { enc : m -> Wire | r } -> m -> String .
 wire codec msg = strcat "=" (J.render (J.fromWire (codec.enc msg))).
 
-# the message without its LAST field, which the event will supply
-wireOpen : { enc : m -> Wire | r } -> m -> String .
-wireOpen codec msg = strcat "+" (J.render (J.fromWire (case codec.enc msg of WCon n as -> WCon n (dropLast as) | w -> w))).
+# the message without its last k fields, which the page will supply
+openWire : Int -> String -> { enc : m -> Wire | r } -> m -> String .
+openWire k kind codec msg = strcat kind (J.render (J.fromWire (case codec.enc msg of WCon n as -> WCon n (dropLast k as) | w -> w))).
 
-dropLast : unsafe List a -> List a .
-dropLast xs = case xs of Nil -> Nil | x :: Nil -> Nil | x :: r -> x :: dropLast r.
+dropLast : Int -> List a -> List a .
+dropLast k xs = L.take (L.length xs - k) xs.
 
 # the local's name a path stands for: @Client.ui.tab -> "ui_tab"
 localName : { segs : List String | r } -> String .
 localName path = strJoin "_" path.segs.
 
+# the text the page holds for a value of a client field
+textOf : { enc : a -> Wire | r } -> a -> String .
+textOf path value = J.wireText (path.enc value).
+
+texts : List String -> String .
+texts vs = J.render (J.Sequence (L.map J.Text vs)).
+
 send : { enc : m -> Wire | r } -> m -> Attr .
 send codec msg = OnSend (wire codec msg) "".
 
-sendWith : { enc : m -> Wire | r } -> m -> { segs : List String | q } -> Attr .
-sendWith codec msg path = OnClick (wireOpen codec msg) (localName path).
+sendWith : { enc : m -> Wire | r } -> (a -> m) -> { segs : List String, zero : a | q } -> Attr .
+sendWith codec f path = ClientSend (openWire 1 "*" codec (f path.zero)) (localName path).
 
-enterWith : { enc : m -> Wire | r } -> m -> { segs : List String | q } -> Attr .
-enterWith codec msg path = OnEnter (wireOpen codec msg) (localName path).
+sendWith2 : { enc : m -> Wire | r } -> (a -> b -> m) -> { segs : List String, zero : a | q } -> { segs : List String, zero : b | p } -> Attr .
+sendWith2 codec f pa pb = ClientSend (openWire 2 "*" codec (f pa.zero pb.zero)) "{localName pa},{localName pb}".
+
+# the same, sent when Enter is pressed in the input that carries it
+enterWith : { enc : m -> Wire | r } -> (a -> m) -> { segs : List String, zero : a | q } -> Attr .
+enterWith codec f path = ClientEnter (openWire 1 "*" codec (f path.zero)) (localName path).
+
+enterWith2 : { enc : m -> Wire | r } -> (a -> b -> m) -> { segs : List String, zero : a | q } -> { segs : List String, zero : b | p } -> Attr .
+enterWith2 codec f pa pb = ClientEnter (openWire 2 "*" codec (f pa.zero pb.zero)) "{localName pa},{localName pb}".
 
 # on an `Inp`: a file picker.  The chosen file arrives as the message's LAST
 # field, "name:base64" -- `View.uploadWith codec (Uploaded "")`, and
 # `Encoding.fromBase64` on the part after the first ":".
 uploadWith : { enc : m -> Wire | r } -> m -> Attr .
-uploadWith codec msg = OnFile (wireOpen codec msg).
+uploadWith codec msg = OnFile (openWire 1 "+" codec msg).
 
-showIf : { segs : List String | r } -> String -> Attr .
-showIf path value = ShowIf "{localName path}:{value}".
+# shown while the page holds `value` in the field (or one of `values`); hidden
+# while it holds `value` (a quantity of 0)
+showIf : { segs : List String, enc : a -> Wire | r } -> a -> Attr .
+showIf path value = ClientWhen (localName path) True [textOf path value].
+showIn : { segs : List String, enc : a -> Wire | r } -> List a -> Attr .
+showIn path values = ClientWhen (localName path) True (L.map (textOf path) values).
+hideIf : { segs : List String, enc : a -> Wire | r } -> a -> Attr .
+hideIf path value = ClientWhen (localName path) False [textOf path value].
 
-setTo : { segs : List String | r } -> String -> Attr .
-setTo path value = OnSet (localName path) value.
+# a click puts `value` in the field
+setTo : { segs : List String, enc : a -> Wire | r } -> a -> Attr .
+setTo path value = ClientSet (localName path) (textOf path value).
 
-bind : { segs : List String | r } -> Attr .
+# a click adds `by` to an Int field, kept within [lo, hi]
+step : { segs : List String, enc : Int -> Wire | r } -> Int -> Int -> Int -> Attr .
+step path by lo hi = ClientStep (localName path) by lo hi.
+
+# a click turns a Bool field over
+toggle : { segs : List String, enc : Bool -> Wire | r } -> Attr .
+toggle path = ClientToggle (localName path).
+
+# an input edits a String field; `bindInt` an Int field, which takes only
+# whole numbers (other text is marked invalid and the field keeps its value)
+bind : { segs : List String, get : c -> String | r } -> Attr .
 bind path = Input (localName path).
+bindInt : { segs : List String, get : c -> Int | r } -> Attr .
+bindInt path = ClientBind (localName path) "int".
 
+# the field's value, as the page holds it
 text : { segs : List String | r } -> Node .
 text path = LTxt (localName path).
 
 # every leaf of the client-state record, declared with its initial value: the
 # bare literal `@Client` is its schema (docs/2026-08-27-PATHS.md)
-locals : List { path : String, get : c -> String | r } -> c -> List Attr .
+locals : List { path : String, wire : c -> Wire | r } -> c -> List Attr .
 locals schema init = localsGo schema init.
-localsGo : unsafe List { path : String, get : c -> String | r } -> c -> List Attr .
+localsGo : unsafe List { path : String, wire : c -> Wire | r } -> c -> List Attr .
 localsGo schema init = case schema of
     Nil -> Nil
-  | e :: rest -> Local (dots e.path 0 Nil) (e.get init) :: localsGo rest init.
+  | e :: rest -> ClientInit (dots e.path 0 Nil) (held (e.wire init)) :: localsGo rest init.
+# a value as the page starts with it: a scalar as its text, a family as the list
+# of [key, text] pairs, anything else as its JSON
+held : Wire -> String .
+held w = case w of
+    WList xs -> (case L.all pairLike xs of True -> J.render (J.Sequence (L.map pairText xs)) | False -> J.render (J.fromWire w))
+  | WRec _ -> J.render (J.fromWire w)
+  | WCon _ (x :: r) -> J.render (J.fromWire w)
+  | other -> J.quote (J.wireText other).
+pairLike w = case w of WList (WStr _ :: v :: Nil) -> scalar v | _ -> False.
+scalar w = case w of WList _ -> False | WRec _ -> False | WCon _ (x :: r) -> False | _ -> True.
+pairText w = case w of
+    WList (WStr k :: v :: Nil) -> J.Sequence [J.Text k, J.Text (J.wireText v)]
+  | other -> J.fromWire other.
 # "ui.tab" -> "ui_tab", the spelling localName gives
 dots : unsafe String -> Int -> List String -> String .
 dots p i acc = case i >= strlen p of
     True -> strJoin "" (rev acc)
   | False -> dots p (i + 1) ((case charAt p i == 46 of True -> "_" | False -> chr (charAt p i)) :: acc).
+
+# one value of a family: the page holds it as `cart[FW]`
+entry : { segs : List String, enc : List (String, a) -> Wire | r } -> String -> { segs : List String, enc : a -> Wire } .
+entry path key = { segs = ["{localName path}[{key}]"], enc = fn v -> entryWire (path.enc ((key, v) :: Nil)) }.
+entryWire w = case w of WList (WList (_ :: x :: Nil) :: Nil) -> x | other -> other.
+
+# a family's entry as a page script names it from a key it computes: the text
+# before the key and after it (`cart[` and `]`)
+entryAround : { segs : List String | r } -> (String, String) .
+entryAround path = ("{localName path}[", "]").
+
+# declare a value where it is drawn (a family's entry, one per product)
+hold : { segs : List String, enc : a -> Wire | r } -> a -> Attr .
+hold path value = ClientInit (localName path) (J.quote (textOf path value)).
+
+# HOOKS the client (std/livejs) reads by name, as values a page places: a node
+# whose dynamic text is empty is hidden (a toast with nothing to say); a
+# control whose change reaches the server at once, not with the next mirror
+# (a search box)
+hideEmpty : Attr .
+hideEmpty = Att "data-hide-empty" "".
+syncNow : Attr .
+syncNow = Att "data-sync-now" "".
+
+# what the server puts in a page's client state (std/live's setClient): a field
+# and its new value, as the page will hold it
+assign : { segs : List String, enc : a -> Wire | r } -> a -> (String, String) .
+assign path value = (localName path, textOf path value).

@@ -78,19 +78,24 @@ Att = G.Att.
 strEq : String -> String -> Bool .
 strEq a b = a == b.
 
-# every message a register can send, and its wire: the arguments that come
-# from the page's own inputs arrive as the LAST field (G.wireOpen), "a|b" when
-# there are two
-# What happens IN the page stays in the page: the tab, the cart's quantities,
-# the inputs are client state (Client, and one quantity per product), and
-# changing them sends nothing.  `ClientState` is the mirror: the page's
-# locals as JSON, sent every half second when they changed and just before
-# any other message (Live.SyncClientState), so a checkout sees the cart the
-# cashier saw.  The server still decides: it clamps to stock, prices, sells.
-Msg = Type (Login String | Logout | Quit | ClientState String
-          | Cash String | Card | Void Int | Restock String | Admin String | Rebuild | Dismiss | Theme | PricingPoll | NoticeTick).
+# every message a register can send.  The fields that come from the page's own
+# inputs are the LAST ones, filled when the button is pressed (G.sendWith:
+# `Restock p.sku` and the page's restock delta, `Login` and its name and PIN).
+# What happens IN the page stays in the page: the tab, the open receipt, the
+# cart's quantities and the inputs are client state (Client), and changing
+# them sends nothing.  `ClientState` is the mirror: the page's Client, sent
+# every half second when it changed and just before any other message
+# (Live.SyncClientState), so a checkout sees the cart the cashier saw.  The
+# server still decides: it clamps to stock, prices, sells.
+Msg = Type (Login String String | Logout | Quit | ClientState Client
+          | Cash String | Card | Void Int | Restock String Int | Command String | Rebuild | Dismiss | Theme | PricingPoll | NoticeTick).
 codec = @Msg.
-Client = { tab : String, open : String, tender : String, delta : String, rsku : String, cmd : String, name : String, pin : String }.
+# the four panes, one shown at a time by the page
+Tab = Type (Register | Receipts | Stock | Admin).
+# `open` is the receipt whose lines are open (0: none); `cart` holds one
+# quantity per product, `cart[FW]` in the page (G.entry)
+Client = { tab : Tab, open : Int, tender : String, delta : Int, cmd : String, name : String, pin : String, cart : List (String, Int) }.
+client = { tab = Register, open = 0, tender = "", delta = 10, cmd = "", name = "", pin = "", cart = Nil }.
 
 # the QOS fold took the element first; the app is written that way
 foldE f z l = List.fold (fn acc x -> f x acc) z l.
@@ -128,11 +133,11 @@ kindOf ev = case ev of
   | Live.Left sid -> "leave"
   | Live.Refused sid why -> "refused".
 msgKind msg = case msg of
-    Login a -> "login" | Logout -> "logout" | Quit -> "quit" | ClientState a -> "sync"
-  | Cash a -> "cash" | Card -> "card" | Void a -> "void" | Restock a -> "restock" | Admin a -> "admin" | Rebuild -> "rebuild"
+    Login _ _ -> "login" | Logout -> "logout" | Quit -> "quit" | ClientState _ -> "sync"
+  | Cash a -> "cash" | Card -> "card" | Void a -> "void" | Restock _ _ -> "restock" | Command a -> "admin" | Rebuild -> "rebuild"
   | Dismiss -> "dismiss" | Theme -> "theme" | PricingPoll -> "pricing" | NoticeTick -> "reload-notice".
 statLine label st = "{S.padRight 9 " " label} n {S.padLeft 6 " " "{st.n}"}  avg {S.padLeft 7 " " "{avg st}"} us  max {S.padLeft 7 " " "{st.max}"} us  last {st.last} us".
-noSess = { sid = 0, cashier = "", cart = Nil, toast = "", role = "", con = Nil, tab = 1 }.
+noSess = { sid = 0, cashier = "", cart = Nil, toast = "", role = "", con = Nil, tab = Register }.
 mkProduct sku price stock name = { sku = sku, name = name, price = price, stock = stock, retired = 0 }.
 
 # the seed: a shop that has never been opened gets this, on the disk
@@ -152,12 +157,6 @@ numGo s i n acc | isDig (charAt s i) = numGo s (i + 1) n (acc * 10 + charAt s i 
 numGo s i n acc = acc.
 words s = S.words s.
 unwords ws = S.join " " ws.
-# "a|b" -> (a, b) at the first bar; no bar: (s, "")
-splitBar s = sbGo s 0 (strlen s).
-sbGo : String -> (i : Int | measure (n - i)) -> (n : Int) -> (String, String) .
-sbGo s i n | i >= n = (s, "").
-sbGo s i n | charAt s i == 124 = (substr s 0 i, substr s (i + 1) (n - i - 1)).
-sbGo s i n = sbGo s (i + 1) n.
 # "a=b=c" -> list of parts
 splitEq s = seGo s 0 0 (strlen s) Nil.
 seGo : String -> Int -> (i : Int | measure (n - i)) -> (n : Int) -> List String -> List String .
@@ -405,51 +404,49 @@ step j ev m = case ev of
   | Live.Refused sid why -> (refuse m sid "refused: {why}", Nil).
 
 pMsg j sid msg m = case msg of
-    Login arg -> signIn m sid (login m sid arg)
+    Login name pin -> signIn m sid (login m sid name pin)
   # signing out empties the page's cart too, so the next cashier starts clean
   | Logout -> signOut m sid (sGet m.sess sid)
   | PricingPoll -> (case sid == 0 of True -> (pollPricing m, Nil) | False -> (m, Nil))
   | NoticeTick -> (case sid == 0 of True -> ({m | reloadNotice = Notice.tick m.reloadNotice}, Nil) | False -> (m, Nil))
   | Quit -> (m, Live.Quit :: Nil)
-  | ClientState json -> mirror m sid json
+  | ClientState c -> mirror m sid c
   | other -> withUser j sid other m (sGet m.sess sid).
 
 # a PIN has done its work once it is checked: the page forgets it
-signIn m sid m2 = s = sGet m2.sess sid; (m2, case strEq s.cashier "" of True -> Nil | False -> Live.Emit sid "locals" (localsJson (("pin", "") :: Nil)) :: Nil).
-signOut m sid s = (forget m sid, Live.Emit sid "locals" (localsJson (("tender", "") :: ("tab", "1") :: zeros m s.cart)) :: Nil).
+signIn m sid m2 = s = sGet m2.sess sid; (m2, case strEq s.cashier "" of True -> Nil | False -> Live.setClient sid [G.assign @Client.pin ""] :: Nil).
+signOut m sid s = (forget m sid, Live.setClient sid (G.assign @Client.tender "" :: G.assign @Client.tab Register :: zeros s.cart) :: Nil).
 
 # signing in keeps what the page already mirrored (its tab, its cart)
-login m sid arg =
-  (name, pin) = splitBar arg;
+login m sid name pin =
   s0 = sGet m.sess sid;
   case wordy name and wordy pin and pinOk m.staff name pin of
     True -> sPut m { s0 | cashier = name, toast = "", role = "", con = Nil }
   | False -> refuse m sid "unknown cashier or PIN".
 
 # ---- the mirror: the page's client state, as the server knows it --------------------
-# {"tab":"2","q_FW":"3","tender":"20",...}: every local is text.  The cart is
-# the quantities of the products that exist, each inside [0, stock]; a
-# quantity the page holds past that is put right in the page.
-mirror m sid json = case Json.parse json of
-    Err why -> (m, Nil)
-  | Ok v ->
-    s = sGet m.sess sid;
-    asked = live m.cat |> List.map (fn p -> (p, num (localOf v "q_{p.sku}")));
-    cart = rev (asked |> foldE (fn pq acc -> keepLine pq acc) Nil) Nil;
-    fixes = asked |> foldE (fn pq acc -> fixLine pq acc) Nil;
-    (sPut m { s | tab = num (localOf v "tab"), cart = cart },
-     case fixes of Nil -> Nil | fs -> Live.Emit sid "locals" (localsJson fs) :: Nil).
+# The page's Client, decoded by the codec: its tab and its cart, a quantity per
+# product (`cart[FW]` in the page).  The cart is the quantities of the products
+# that exist, each inside [0, stock]; a quantity the page holds past that is
+# put right in the page.
+mirror m sid c =
+  s = sGet m.sess sid;
+  asked = live m.cat |> List.map (fn p -> (p, qtyOf c.cart p.sku));
+  cart = rev (asked |> foldE (fn pq acc -> keepLine pq acc) Nil) Nil;
+  fixes = asked |> foldE (fn pq acc -> fixLine pq acc) Nil;
+  (sPut m { s | tab = c.tab, cart = cart },
+   case fixes of Nil -> Nil | fs -> Live.setClient sid fs :: Nil).
 clampQ p q = imax 0 (imin q (imin 999 p.stock)).
 keepLine (p, q) acc = case clampQ p q > 0 of True -> (p.sku, clampQ p q) :: acc | False -> acc.
-fixLine (p, q) acc = case clampQ p q == q of True -> acc | False -> ("q_{p.sku}", "{clampQ p q}") :: acc.
-localOf v name = Option.withDefault "" (Option.andThen Json.asString (Json.field name v)).
-localsJson kvs = Json.render (Json.object (kvs |> List.map (fn kv -> (case kv of (k, x) -> (k, Json.Text x))))).
-zeros m cart = cart |> List.map (fn l -> (case l of (k, q) -> ("q_{k}", "0"))).
+fixLine (p, q) acc = case clampQ p q == q of True -> acc | False -> G.assign (line p.sku) (clampQ p q) :: acc.
+# a product's quantity in the page's cart
+line sku = G.entry @Client.cart sku.
+zeros cart = cart |> List.map (fn l -> (case l of (k, q) -> G.assign (line k) 0)).
 # a sale empties the cart: the page's copy of it as well
 sold m sid s m2 =
   s2 = sGet m2.sess sid;
   case List.isEmpty s2.cart and not (List.isEmpty s.cart) of
-    True -> (m2, Live.Emit sid "locals" (localsJson (("tender", "") :: zeros m s.cart)) :: Nil)
+    True -> (m2, Live.setClient sid (G.assign @Client.tender "" :: zeros s.cart) :: Nil)
   | False -> (m2, Nil).
 pinOk es name pin = case List.find (fn e -> case e of (nm, _) -> strEq nm name) es of
     Option.Some (_, pn) -> strEq pn pin
@@ -460,8 +457,8 @@ withUser j sid msg m s = case msg of
     Cash arg -> sold m sid s (checkout m sid s 0 (cents arg))
   | Card -> sold m sid s (checkout m sid s 1 0)
   | Void n -> (voidSale m sid s n, Nil)
-  | Restock arg -> (restock m sid s (splitBar arg), Nil)
-  | Admin cmd -> (console j m sid s cmd, Nil)
+  | Restock sku d -> (restock m sid s sku d, Nil)
+  | Command cmd -> (console j m sid s cmd, Nil)
   | Rebuild -> (console j m sid s "rebuild", Nil)
   | Dismiss -> (toast m sid "" "", Nil)
   | Theme -> ({ m | theme = 1 - m.theme }, Nil)
@@ -513,9 +510,8 @@ voidSale m sid s n =
       True -> refuse m sid "receipt #{n} is already void"
     | False -> say (commit m "void {n} {s.cashier} {Clock.now Unit}") sid "receipt #{n} void: stock returned").
 
-restock m sid s (sku, ds) =
+restock m sid s sku d =
   p = findP m.cat sku;
-  d = num ds;
   case strlen p.sku == 0 of
     True -> refuse m sid "no such product"
   | False -> (case d < 1 or d > 999 of
@@ -566,7 +562,7 @@ setV m s (k :: sku :: c :: x) | strEq k "price" = (m, "no such SKU").
 setV m s r = (m, "set tax N|lowat N|price SKU CENTS").
 
 # every page mirrors its client state, twice a second when it changed
-subs m = Live.SyncClientState 500 (ClientState "") ::
+subs m = Live.SyncClientState 500 (ClientState client) ::
   List.append (case m.pricing.journal == "" of True -> Nil | False -> Live.Every 300 PricingPoll :: Nil)
   (case Notice.pending m.reloadNotice of True -> Live.Every 100 NoticeTick :: Nil | False -> Nil).
 
@@ -580,7 +576,7 @@ subs m = Live.SyncClientState 500 (ClientState "") ::
 
 project sid m =
   s0 = sGet m.sess sid;
-  onAdmin = s0.tab == 4;
+  onAdmin = s0.tab == Admin;
   # of the session, only what is DRAWN: its cart and its tab are the page's own,
   # so a mirror arriving changes nothing here and the writer stays quiet
   { s = { cashier = s0.cashier, toast = s0.toast, role = s0.role, con = s0.con }, cat = m.cat, tax = activeRate m, pricingLabel = m.pricing.value.label Unit, reloadNotice = m.reloadNotice.text, lowAt = m.lowAt, revenue = m.revenue,
@@ -607,13 +603,14 @@ project sid m =
 # Nothing is sized by its contents, so adding to the cart, opening a
 # receipt's lines or a long product name moves nothing else.  On a narrow
 # screen the register stacks: the products above, the cart docked below at a
-# fixed share of the height.  The widths of a row's columns and of the cart
-# are the one thing still said in pixels (`cell`).
+# fixed share of the height (`UI.side`).  The fixed sizes -- a row's columns,
+# a product's tile, the cart -- are named for what they hold (`UI.column`,
+# `UI.tile`); the numbers are std/ui's.
 
 pageRoot v kids =
   light = v.theme == 1;
   UI.pageWith (Appearance.look light) { UI.stack | gap = 4, pad = 3, fill = UI.Screen } (locals + Appearance.tokens light) kids.
-locals = G.locals @Client { tab = "1", open = "0", tender = "", delta = "10", rsku = "", cmd = "", name = "", pin = "" }.
+locals = G.locals @Client client.
 
 # the text roles, the kinds of button and the column widths this page uses
 overline = { UI.txt | size = UI.Overline, tone = UI.Muted }.
@@ -624,8 +621,9 @@ tabular = { UI.txt | tabular = True }.
 pill = { UI.btn | kind = UI.Pill, size = UI.Body }.
 action = { UI.btn | kind = UI.Primary, size = UI.Body }.
 plain = { UI.btn | kind = UI.Plain, size = UI.Body }.
-cell w = G.utilities [G.Width (G.Px w)].
-badgeCell = G.utilities [G.Width (G.Px 56), G.TextAlign G.TextCenter].
+count = UI.column UI.Count.
+figure = UI.column UI.Figure.
+badgeCell = UI.column UI.Mark.
 
 Product = { sku : String, name : String, price : Int, stock : Int, retired : Int }.
 CardIn = { p : Product, lowAt : Int }.
@@ -671,23 +669,23 @@ loginView s =
     [ UI.label overline "point of sale"
     , UI.label hero "Sign in"
     , UI.input { UI.field | placeholder = "cashier", maxLength = 16 } [G.bind @Client.name]
-    , UI.input { UI.field | kind = UI.Password, placeholder = "PIN", maxLength = 16 } [G.bind @Client.pin, G.OnEnter (G.wireOpen codec (Login "")) "name,pin"]
-    , UI.button action [G.OnClick (G.wireOpen codec (Login "")) "name,pin"] "open register"
+    , UI.input { UI.field | kind = UI.Password, placeholder = "PIN", maxLength = 16 } [G.bind @Client.pin, G.enterWith2 codec Login @Client.name @Client.pin]
+    , UI.button action [G.sendWith2 codec Login @Client.name @Client.pin] "open register"
     , UI.text { caption | tone = UI.Warning } s.toast ].
 
 nav m s =
   UI.hstack { UI.stack | gap = 2, align = UI.Center, justify = UI.Between, wrap = True, vary = [UI.Always [UI.Rigid]] }
     [ UI.hstack { UI.stack | gap = 2, align = UI.Center, wrap = True }
         [ UI.label strong "POS", UI.label caption "v1"
-        , tab "1" "Register", tab "2" "Receipts", tab "3" "Inventory", tab "4" "Admin" ]
+        , tab Register "Register", tab Receipts "Receipts", tab Stock "Inventory", tab Admin "Admin" ]
     , UI.hstack { UI.stack | gap = 2, align = UI.Center, wrap = True }
         [ (case m.fsOn == 1 of True -> UI.badge UI.Success "disk" | False -> UI.badge UI.Warning "no disk")
-        , UI.badgeWith UI.Muted [Att "id" "lv-link"] "live"
+        , UI.badgeWith UI.Muted [LJ.link] "live"
         , UI.status UI.Muted [Att "id" "pricing-policy"] m.pricingLabel
         , UI.label caption "cashier", UI.text strong s.cashier
         , UI.button pill [G.send codec Theme] (case m.theme == 1 of True -> "day" | False -> "night")
         , UI.button pill [G.send codec Logout] "sign out" ] ].
-tab n label = UI.button { pill | vary = [UI.OnState "tab" n [UI.Inverted]] } [G.setTo @Client.tab n, Att "data-on" "tab:{n}"] label.
+tab t label = UI.button { pill | vary = [UI.onState @Client.tab t [UI.Inverted]] } [G.setTo @Client.tab t] label.
 
 # four toast slots, one tone each; only the live one has text (a role
 # change is then a delta, not a reshape); an empty toast is not shown
@@ -699,13 +697,14 @@ roleText s role | strEq s.role role = s.toast.
 roleText s role = "".
 
 body v s cards rows rs =
-  pane "1" [register v cards] :: pane "2" [receipts v rows] :: pane "3" [inventory v] :: pane "4" [admin v s rs] :: Nil.
-pane n kids = UI.vstackWith { UI.stack | fill = UI.Grow } [G.showIf @Client.tab n] kids.
+  pane Register [register v cards] :: pane Receipts [receipts v rows] :: pane Stock [inventory v] :: pane Admin [admin v s rs] :: Nil.
+pane t kids = UI.vstackWith { UI.stack | fill = UI.Grow } [G.showIf @Client.tab t] kids.
 
 # ---- register ------------------------------------------------------------------------------------
 
 # The register is the PAGE's: adding a flat white changes a quantity the page
-# holds (one local per product, q_<sku>), inside [0, stock] as the button says.
+# holds (the cart's entry for the product, `cart[FW]`), inside [0, stock] as
+# the button says.
 # The cart panel has a line per product, shown while its quantity is not 0; the
 # line totals, the subtotal, the tax and the total are computed in the page
 # from those quantities (cartScript below).  None of it depends on a session,
@@ -714,14 +713,13 @@ register v cards =
   UI.hstack { UI.stack | gap = 4, fill = UI.Grow, vary = [UI.OnNarrow [UI.Stacked]] }
     [ UI.hstack { UI.stack | gap = 2, wrap = True, fill = UI.Grow, scroll = True } cards
     , cartPanel v ].
-qLocal p = "q_{p.sku}".
 productCard lowAt p =
   UI.cardWith { UI.panel | gap = 2, pad = 3, vary = [UI.Always [UI.Rigid, UI.JustifyOf UI.Between]] }
-    [G.utilities [G.Width (G.Px 180), G.Height (G.Px 140)], G.narrow [G.Width (G.Less (G.Pct 50) (G.Px 4))]]
+    (UI.tile 2)
     [ UI.label strong p.name
     , UI.hstack { UI.stack | justify = UI.Between, align = UI.Center }
         [ UI.text tabular "${money p.price}", stockBadge lowAt p ]
-    , UI.button pill [G.OnSet (qLocal p) "+1", Att "data-min" "0", Att "data-max" "{imin 999 p.stock}"] "add" ].
+    , UI.button pill [G.step (line p.sku) 1 0 (imin 999 p.stock)] "add" ].
 # the badge takes a tone: sold out is danger, at or under the threshold warning
 stockBadge lowAt p = UI.status (stockTone lowAt p) [Att "data-role" "stock"] (stockText lowAt p).
 stockTone lowAt p | p.stock == 0 = UI.Danger.
@@ -734,28 +732,28 @@ stockText lowAt p = "{p.stock} in stock".
 cartPanel m =
   ps = live m.cat;
   UI.cardWith { UI.panel | gap = 2, pad = 4, vary = [UI.Always [UI.Rigid], UI.OnNarrow [UI.FillOf UI.Wide]] }
-    (G.utilities [G.Width (G.Px 400), G.MinHeight (G.Px 0)] :: G.narrow [G.Basis (G.Vh 46)] :: Att "data-tax" "{m.tax}" :: (ps |> List.map (fn p -> G.Local (qLocal p) "0")))
+    (UI.side + (B.mark taxHook "{m.tax}" :: (ps |> List.map (fn p -> G.hold (line p.sku) 0))))
     [ UI.label overline "cart"
-    , UI.scroll { UI.stack | gap = 1, fill = UI.Grow } (UI.labelWith caption [Att "id" "cart-empty"] "nothing yet" :: (ps |> List.map (fn p -> cartLine p)))
+    , UI.scroll { UI.stack | gap = 1, fill = UI.Grow } (UI.labelWith caption [B.mark cartEmpty ""] "nothing yet" :: (ps |> List.map (fn p -> cartLine p)))
     , UI.rule Unit
-    , totalRow "subtotal" "cart-sub"
-    , totalRow "tax {m.tax / 100}.{pad2 (m.tax % 100)}%" "cart-tax"
+    , totalRow "subtotal" cartSub
+    , totalRow "tax {m.tax / 100}.{pad2 (m.tax % 100)}%" cartTax
     , UI.hstack { UI.stack | justify = UI.Between, align = UI.Center }
-        [ UI.label overline "total", UI.labelWith hero [Att "id" "cart-total"] "$0.00" ]
+        [ UI.label overline "total", UI.labelWith hero [B.mark cartTotal ""] "$0.00" ]
     , UI.hstack { UI.stack | gap = 2, align = UI.Center }
-        [ UI.input { UI.field | fill = UI.Grow, placeholder = "cash tendered" } [G.bind @Client.tender, G.enterWith codec (Cash "") @Client.tender]
-        , UI.button action [G.sendWith codec (Cash "") @Client.tender] "cash"
+        [ UI.input { UI.field | fill = UI.Grow, placeholder = "cash tendered" } [G.bind @Client.tender, G.enterWith codec Cash @Client.tender]
+        , UI.button action [G.sendWith codec Cash @Client.tender] "cash"
         , UI.button plain [G.send codec Card] "card" ] ].
-totalRow label slot =
-  UI.hstack { UI.stack | justify = UI.Between, align = UI.Center } [ UI.label caption label, UI.labelWith { caption | tabular = True } [Att "id" slot] "$0.00" ].
+totalRow label hook =
+  UI.hstack { UI.stack | justify = UI.Between, align = UI.Center } [ UI.label caption label, UI.labelWith { caption | tabular = True } [B.mark hook ""] "$0.00" ].
 cartLine p =
-  UI.listRow { UI.stack | gap = 2, align = UI.Center, justify = UI.Between } [G.ShowIf (qLocal p), Att "data-line" p.sku, Att "data-price" "{p.price}"]
+  UI.listRow { UI.stack | gap = 2, align = UI.Center, justify = UI.Between } [G.hideIf (line p.sku) 0, B.mark lineHook p.sku, B.mark priceHook "{p.price}"]
     [ UI.label { UI.txt | wrap = False, fill = UI.Grow } p.name
-    , UI.button pill [G.OnSet (qLocal p) "-1", Att "data-min" "0"] "-"
-    , UI.localWith { tabular | align = UI.End } [cell 40] (qLocal p)
-    , UI.button pill [G.OnSet (qLocal p) "+1", Att "data-min" "0", Att "data-max" "{imin 999 p.stock}"] "+"
-    , UI.labelWith { tabular | align = UI.End } [cell 96, Att "data-line-total" p.sku] "$0.00"
-    , UI.button pill [G.OnSet (qLocal p) "0"] "x" ].
+    , UI.button pill [G.step (line p.sku) (0 - 1) 0 (imin 999 p.stock)] "-"
+    , UI.localWith { tabular | align = UI.End } [count] (line p.sku)
+    , UI.button pill [G.step (line p.sku) 1 0 (imin 999 p.stock)] "+"
+    , UI.labelWith { tabular | align = UI.End } [figure, B.mark lineTotalHook p.sku] "$0.00"
+    , UI.button pill [G.setTo (line p.sku) 0] "x" ].
 
 # ---- receipts ---------------------------------------------------------------------------------------
 
@@ -769,16 +767,16 @@ receipts v rows =
 receiptRow x =
   UI.listItem UI.stack Nil
     [ UI.hstack { UI.stack | gap = 3, align = UI.Center }
-        [ UI.labelWith { strong | tabular = True } [cell 96] "#{x.n}"
-        , UI.labelWith caption [cell 96] x.cashier
+        [ UI.labelWith { strong | tabular = True } [figure] "#{x.n}"
+        , UI.labelWith caption [figure] x.cashier
         , UI.label { caption | tone = UI.Ink, wrap = False, fill = UI.Grow } (summary x.lines)
-        , UI.labelWith { tabular | align = UI.End } [cell 96] "${money x.total}"
+        , UI.labelWith { tabular | align = UI.End } [figure] "${money x.total}"
         , UI.label caption (fmtTime x.at)
         , UI.badgeWith UI.Muted [badgeCell] (case x.pay == 0 of True -> "cash" | False -> "card")
         , (case x.voided == 1 of True -> UI.badgeWith UI.Danger [badgeCell] "void" | False -> UI.badgeWith UI.Success [badgeCell] "paid")
-        , UI.button { pill | vary = [UI.OnState "open" "{x.n}" [UI.Inverted]] } [G.setTo @Client.open "{x.n}", Att "data-on" "open:{x.n}"] "lines"
-        , UI.hstackWith { UI.stack | justify = UI.Trail, vary = [UI.Always [UI.Rigid]] } [cell 72] [voidButton x] ]
-    , UI.vstackWith { UI.stack | pad = 2, scroll = True, vary = [UI.Always [UI.Rigid]] } [G.showIf @Client.open "{x.n}", G.utilities [G.MaxHeight (G.Px 180)]]
+        , UI.button { pill | vary = [UI.onState @Client.open x.n [UI.Inverted]] } [G.setTo @Client.open x.n] "lines"
+        , UI.hstackWith { UI.stack | justify = UI.Trail, vary = [UI.Always [UI.Rigid]] } [UI.column UI.Act] [voidButton x] ]
+    , UI.vstackWith { UI.stack | pad = 2, scroll = True, vary = [UI.Always [UI.Rigid]] } [G.showIf @Client.open x.n, UI.peek]
         (x.lines |> List.map (fn l -> lineRow l) |> withVoid x) ].
 voidButton x | x.voided == 1 = UI.label { caption | wrap = False } "by {x.voidBy}".
 voidButton x = UI.button pill [G.send codec (Void x.n)] "void".
@@ -794,16 +792,16 @@ inventory m =
   UI.vstack { UI.stack | gap = 3, fill = UI.Grow }
     [ UI.hstack { UI.stack | gap = 2, align = UI.Center }
         [ UI.label overline "restock by"
-        , UI.input { UI.field | fill = UI.Natural, placeholder = "10" } [G.bind @Client.delta, cell 96] ]
+        , UI.input { UI.field | fill = UI.Natural, placeholder = "10" } [G.bindInt @Client.delta, figure] ]
     , UI.scroll { UI.stack | fill = UI.Grow } (live m.cat |> List.map (fn p -> invRow m p)) ].
 invRow m p =
   UI.listRow { UI.stack | gap = 3, align = UI.Center } Nil
     [ UI.label { UI.txt | fill = UI.Grow } p.name
-    , UI.labelWith { caption | size = UI.Mono } [cell 96] p.sku
-    , UI.textWith { tabular | align = UI.End } [cell 96] "${money p.price}"
-    , UI.textWith { tabular | align = UI.End } [cell 96] "{p.stock}"
+    , UI.labelWith { caption | size = UI.Mono } [figure] p.sku
+    , UI.textWith { tabular | align = UI.End } [figure] "${money p.price}"
+    , UI.textWith { tabular | align = UI.End } [figure] "{p.stock}"
     , stockBadge m.lowAt p
-    , UI.button pill [G.OnBoth (G.wireOpen codec (Restock "")) "rsku,delta" "rsku" p.sku] "restock" ].
+    , UI.button pill [G.sendWith codec (Restock p.sku) @Client.delta] "restock" ].
 
 # ---- admin: the data console ---------------------------------------------------------------------------
 
@@ -814,15 +812,15 @@ admin m s rs =
         , watch "sales" "{m.nsales}", watch "revenue" (money m.revenue), watch "log lines" "{m.events}"
         , watch "since" (fmtTime m.booted), watch "online" "{m.online}" ]
     , UI.hstack { UI.stack | gap = 2, align = UI.Center }
-        [ UI.input { UI.field | size = UI.Mono, fill = UI.Grow, placeholder = "get tax | set price FW 550 | add SKU 450 10 name | rebuild | help" } [G.bind @Client.cmd, G.enterWith codec (Admin "") @Client.cmd]
-        , UI.button plain [G.sendWith codec (Admin "") @Client.cmd] "run"
+        [ UI.input { UI.field | size = UI.Mono, fill = UI.Grow, placeholder = "get tax | set price FW 550 | add SKU 450 10 name | rebuild | help" } [G.bind @Client.cmd, G.enterWith codec Command @Client.cmd]
+        , UI.button plain [G.sendWith codec Command @Client.cmd] "run"
         , UI.button plain [G.send codec Rebuild] "rebuild stock" ]
     , UI.cardWith { UI.panel | gap = 0, pad = 3, vary = [UI.Always [UI.FillOf UI.Grow]] } [G.utilities [G.Overflow G.OverflowAuto]]
         [ UI.text { UI.txt | size = UI.Mono, pre = True } (S.join "\n" (rev s.con Nil)) ]
     , UI.label overline "profile"
-    , UI.cardWith { UI.panel | gap = 0, pad = 3, vary = [UI.Always [UI.Rigid]] } [Att "data-hide-empty" "", G.utilities [G.MaxHeight (G.Vh 38), G.Overflow G.OverflowAuto]]
+    , UI.cardWith { UI.panel | gap = 0, pad = 3, vary = [UI.Always [UI.Rigid]] } [G.hideEmpty, UI.console]
         [ UI.text { UI.txt | size = UI.Mono, pre = True } (profileText m rs) ]
-    , UI.hstack { UI.stack | gap = 2, align = UI.Center } [ UI.label { caption | wrap = False } "browser round trip:", UI.labelWith caption [Att "id" "pos-rtt"] "measuring" ] ].
+    , UI.hstack { UI.stack | gap = 2, align = UI.Center } [ UI.label { caption | wrap = False } "browser round trip:", UI.labelWith caption [B.mark rttHook ""] "measuring" ] ].
 
 profileText v rs =
   S.join "\n"
@@ -853,24 +851,37 @@ script = strcat rttScript (strcat cartScript (LJ.src 0)).
 # expressions and scoped DOM effects, with no embedded JavaScript. Money.amount
 # and Money.taxExpr are also the definitions used by native checkout above.
 dollars n = C.Concat [C.Text "$", Money.amount n].
+# the page's hooks: one value each, placed by the view (`B.mark`) and read by
+# the scripts, so a name is written once
+taxHook = B.Attribute "data-tax".
+lineHook = B.Attribute "data-line".
+priceHook = B.Attribute "data-price".
+lineTotalHook = B.Attribute "data-line-total".
+cartSub = B.Id "cart-sub".
+cartTax = B.Id "cart-tax".
+cartTotal = B.Id "cart-total".
+cartEmpty = B.Id "cart-empty".
+rttHook = B.Id "pos-rtt".
+# the quantity the page holds for the line's sku: the cart's entry
+lineQty = case G.entryAround @Client.cart of (pre, post) -> C.Concat [C.Text pre, C.StringVar "sku", C.Text post].
 cartScript = B.onLocals
-  [B.Each (B.Attribute "data-tax")
-    [B.ReadAttribute "rate" "data-tax", B.SetNumber "sub" (C.Literal 0), B.SetNumber "count" (C.Literal 0),
-     B.Each (B.Attribute "data-line")
-       [B.ReadTextAttribute "sku" "data-line", B.ReadAttribute "price" "data-price",
-        B.ReadLocal "qty" (C.Concat [C.Text "q_", C.StringVar "sku"]),
+  [B.Each taxHook
+    [B.ReadAttribute "rate" (B.attributeOf taxHook), B.SetNumber "sub" (C.Literal 0), B.SetNumber "count" (C.Literal 0),
+     B.Each lineHook
+       [B.ReadTextAttribute "sku" (B.attributeOf lineHook), B.ReadAttribute "price" (B.attributeOf priceHook),
+        B.ReadLocal "qty" lineQty,
         B.SetNumber "line" (C.Mul (C.Number "qty") (C.Number "price")),
-        B.PutText (B.Attribute "data-line-total") (dollars (C.Number "line")),
+        B.PutText lineTotalHook (dollars (C.Number "line")),
         B.SetNumber "sub" (C.Add (C.Number "sub") (C.Number "line")),
         B.SetNumber "count" (C.Add (C.Number "count")
           (C.IfInt (C.Less (C.Literal 0) (C.Number "qty")) (C.Literal 1) (C.Literal 0)))],
      B.SetNumber "tax" (Money.taxExpr (C.Number "sub") (C.Number "rate")),
-     B.PutText (B.Id "cart-sub") (dollars (C.Number "sub")),
-     B.PutText (B.Id "cart-tax") (dollars (C.Number "tax")),
-     B.PutText (B.Id "cart-total") (dollars (C.Add (C.Number "sub") (C.Number "tax"))),
-     B.Show (B.Id "cart-empty") (C.Equal (C.Number "count") (C.Literal 0))]].
+     B.PutText cartSub (dollars (C.Number "sub")),
+     B.PutText cartTax (dollars (C.Number "tax")),
+     B.PutText cartTotal (dollars (C.Add (C.Number "sub") (C.Number "tax"))),
+     B.Show cartEmpty (C.Equal (C.Number "count") (C.Literal 0))]].
 # installed BEFORE the client, which opens its socket as soon as it runs
-rttScript = Metrics.script (B.Id "pos-rtt") " (a tab the browser pauses or throttles inflates this; the server side is above)".
+rttScript = Metrics.script rttHook " (a tab the browser pauses or throttles inflates this; the server side is above)".
 
 # ---- dynamic pricing: only the register's internal subscription can adopt ----
 # Runtime session/function values never enter disk receipts or browser projections.
@@ -927,7 +938,7 @@ main = case Config.load { defaults = Json.object (("port", Json.Integer 6710) ::
       o = openLog store;
       cfg = { address = address, port = port, title = "POS v1", store = "{store}.kvlog", journal = False,
               script = script, watch = Nil, rebuild = Nil, restart = Nil };
-      _ = Live.serveProjectedBody [G.utilities [G.Margin (G.Px 0), G.Overflow G.OverflowHidden]] cfg { init = bootPricing o store metrics reloadNotice, update = update o.journal, subs = subs, fields = Nil, codec = codec,
+      _ = Live.serveProjectedBody UI.screenBody cfg { init = bootPricing o store metrics reloadNotice, update = update o.journal, subs = subs, fields = Nil, codec = codec,
                                     project = project, same = (fn a b -> a == b),
                                     view = view, cache = (VC.empty Unit, VC.empty Unit, noRender), css = cssAll };
       0.

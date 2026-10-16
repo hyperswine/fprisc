@@ -16,7 +16,7 @@
 # THE VIEW.  Mobile first: one column, inputs the width of the screen, buttons
 # a thumb can hit.  A page renders ONE page of entries (`pageSize`), so a tab
 # costs its page, not the log.  Drafts live in the browser (client state); the
-# server fills them for an edit through the one JavaScript port the page has.
+# server fills them for an edit (Live.setClient).
 
 profile base.
 
@@ -37,7 +37,6 @@ VC = use "std/viewcache".
 Store = use "std/store".
 UI = use "std/ui".
 LJ = use "std/livejs".
-FormFill = use "std/browserformfill".
 
 pageSize = 20.
 
@@ -64,16 +63,18 @@ newSess sid = {sid = sid, q = "", page = 0, editing = 0, toast = ""}.
 Rows = {rows : List Entry}.
 rowsCodec = @Rows.rows.
 
-# every message; `Add` and `Save` carry "tags|text" as ONE string because a click
-# sends one argument (the tags first: a tag never contains a bar, a text may)
+# every message.  `Post tags text` and `Change id tags text` take their last two
+# fields from the page's drafts (View.sendWith2).
 # The log is changed by COMMANDS (a store write is an effect); each answers with
 # the message that says it is done: Stored, Saved, Deleted -- and Filled, which
 # brings an entry's text for an edit form.  (`Stamped`, `StampedBy` and
-# `ClearToast` are what journals from before the store hold: kept, so an old log
-# still replays.)
-Msg = Type (Add String | Edit Int | Save Int String | Delete Int | Search String | Page Int | Stamped Int String | ClearToast
+# `ClearToast` are what journals from before the store hold, and `Add` and `Save`
+# -- "tags|text" in one field -- what they hold from before a click could send
+# two: kept, so an old log still replays.)
+Msg = Type (Post String String | Edit Int | Change Int String String | Delete Int | Search String | Page Int | Stamped Int String | ClearToast
            | StampedBy Int Int String | ClearToastFor Int
-           | Stored Int Int | Saved Int Int | Deleted Int Int | Filled Int String String).
+           | Stored Int Int | Saved Int Int | Deleted Int Int | Filled Int String String
+           | Add String | Save Int String).
 codec = @Msg.
 
 # the browser's own state: the drafts of a new entry, of an edit, and the search box
@@ -89,35 +90,42 @@ updateWith store ev m = case ev of
   | Live.Left sid -> ({m | sessions = List.filter (fn s -> s.sid != sid) m.sessions}, Nil)
   | Live.Refused _ _ -> (m, Nil)
   | Live.Msg sid msg -> (case msg of
-        # the id is taken NOW, in update; the clock and the write are the command's
-        Add raw -> (if strlen (textOf raw) == 0 then (m, Nil)
-                    else
-                      id = m.nextId;
-                      ({m | nextId = id + 1},
-                       Live.Run (fn u -> _ = Store.put {id = id, at = Clock.now Unit, text = textOf raw, tags = tagsOf raw} store; Stored sid id)
-                       :: Live.Emit sid "set" (setJson (("draft", "") :: ("tags", "") :: Nil)) :: Nil))
+        Post tags text -> post store sid (tagList tags) (String.trim text) m
+      | Add raw -> post store sid (tagsOf raw) (textOf raw) m
       | Stored by id -> (changed (told by "added #{id}" m), toastLater by)
       | Edit id -> (withSess sid (fn s -> {s | editing = id}) m,
                     (if id == 0 then Nil
                      else Live.Run (fn u -> (case Store.get id store of
                          Option.Some e -> Filled sid e.text (String.join ", " e.tags)
                        | Option.None -> Filled sid "" "")) :: Nil))
-      | Filled who text tags -> (m, Live.Emit who "set" (setJson (("edit", text) :: ("etags", tags) :: Nil)) :: Nil)
-      | Save id raw -> (if strlen (textOf raw) == 0 then (m, Nil)
-                        else (m, Live.Run (fn u -> (case Store.get id store of
-                                  Option.Some e -> _ = Store.put {e | text = textOf raw, tags = tagsOf raw} store; Saved sid id
-                                | Option.None -> Saved sid id)) :: Nil))
+      | Filled who text tags -> (m, Live.setClient who [G.assign @Client.edit text, G.assign @Client.etags tags] :: Nil)
+      | Change id tags text -> change store sid id (tagList tags) (String.trim text) m
+      | Save id raw -> change store sid id (tagsOf raw) (textOf raw) m
       | Saved who id -> (changed (told who "saved #{id}" (withSess who (fn s -> {s | editing = 0}) m)), toastLater who)
       | Delete id -> (m, Live.Run (fn u -> _ = Store.remove id store; Deleted sid id) :: Nil)
       | Deleted who id -> (changed (told who "deleted #{id}" (withSess who (fn s -> {s | editing = 0}) m)), toastLater who)
       | Search q -> (withSess sid (fn s -> {s | q = String.trim q, page = 0}) m,
-                     Live.Emit sid "set" (setJson (("q", String.trim q) :: Nil)) :: Nil)
+                     Live.setClient sid [G.assign @Client.q (String.trim q)] :: Nil)
       | Page n -> (withSess sid (fn s -> {s | page = (if n < 0 then 0 else n)}) m, Nil)
       | ClearToastFor who -> (withSess who (fn s -> {s | toast = ""}) m, Nil)
       | ClearToast -> ({m | sessions = List.map (fn s -> {s | toast = ""}) m.sessions}, Nil)
       # journals from before the store: the entry was written then, by that program
       | Stamped _ _ -> (m, Nil)
       | StampedBy _ _ _ -> (m, Nil)).
+
+# the id is taken NOW, in update; the clock and the write are the command's
+post store sid tags text m =
+  if strlen text == 0 then (m, Nil)
+  else
+    id = m.nextId;
+    ({m | nextId = id + 1},
+     Live.Run (fn u -> _ = Store.put {id = id, at = Clock.now Unit, text = text, tags = tags} store; Stored sid id)
+     :: Live.setClient sid [G.assign @Client.draft "", G.assign @Client.tags ""] :: Nil).
+change store sid id tags text m =
+  if strlen text == 0 then (m, Nil)
+  else (m, Live.Run (fn u -> (case Store.get id store of
+            Option.Some e -> _ = Store.put {e | text = text, tags = tags} store; Saved sid id
+          | Option.None -> Saved sid id)) :: Nil).
 
 changed m = {m | rev = m.rev + 1}.
 told sid text m = withSess sid (fn s -> {s | toast = text}) m.
@@ -128,14 +136,13 @@ sessOf sid m = case List.find (fn s -> s.sid == sid) m.sessions of
     Option.Some s -> s
   | Option.None -> newSess sid.
 
-# "tags|text": the part before the first bar is the tags, comma separated
+# tags as typed: comma separated, blanks dropped
+tagList tags = List.filter (fn t -> strlen t > 0) (List.map String.trim (String.split "," tags)).
+# an old journal's "tags|text": the part before the first bar is the tags
 textOf raw = case String.indexOf "|" raw of Option.Some i -> String.trim (String.dropLeft (i + 1) raw) | Option.None -> String.trim raw.
 tagsOf raw = case String.indexOf "|" raw of
-    Option.Some i -> List.filter (fn t -> strlen t > 0) (List.map String.trim (String.split "," (String.left i raw)))
+    Option.Some i -> tagList (String.left i raw)
   | Option.None -> Nil.
-
-# the port to the page's script: {"name": "value", ...} for the inputs to take
-setJson kvs = Json.render (Json.object (List.map (fn kv -> (case kv of (k, v) -> (k, Json.Text v))) kvs)).
 
 subs m = Nil.
 
@@ -191,12 +198,12 @@ renderSection sec = case sec of
       UI.card UI.panel [
         UI.label { UI.txt | size = UI.Heading } "New observation",
         UI.input { UI.field | rows = 3, placeholder = "what happened" } [G.bind @Client.draft],
-        UI.input { UI.field | placeholder = "tags, comma separated" } [G.bind @Client.tags, G.OnEnter (G.wireOpen codec (Add "")) "tags,draft"],
-        UI.button { tall | kind = UI.Primary } [G.OnClick (G.wireOpen codec (Add "")) "tags,draft"] "add entry" ]
+        UI.input { UI.field | placeholder = "tags, comma separated" } [G.bind @Client.tags, G.enterWith2 codec Post @Client.tags @Client.draft],
+        UI.button { tall | kind = UI.Primary } [G.sendWith2 codec Post @Client.tags @Client.draft] "add entry" ]
   | Bar q ->
       UI.hstack { UI.stack | gap = 2 } [
-        UI.input { UI.field | fill = UI.Grow, placeholder = "search text or tag" } [G.bind @Client.q, G.enterWith codec (Search "") @Client.q],
-        UI.button tall [G.sendWith codec (Search "") @Client.q] "search",
+        UI.input { UI.field | fill = UI.Grow, placeholder = "search text or tag" } [G.bind @Client.q, G.enterWith codec Search @Client.q],
+        UI.button tall [G.sendWith codec Search @Client.q] "search",
         (if strlen q == 0 then UI.none Unit else btn "clear" (Search "")) ]
   | Foot page pages ->
       (if pages <= 1 then UI.none Unit
@@ -228,7 +235,7 @@ entryCard editing e =
       UI.input { UI.field | rows = 4 } [G.bind @Client.edit],
       UI.input { UI.field | placeholder = "tags, comma separated" } [G.bind @Client.etags],
       UI.hstack { UI.stack | gap = 2 } [
-        UI.button { tall | kind = UI.Primary } [G.OnClick (G.wireOpen codec (Save e.id "")) "etags,edit"] "save",
+        UI.button { tall | kind = UI.Primary } [G.sendWith2 codec (Change e.id) @Client.etags @Client.edit] "save",
         btn "cancel" (Edit 0), UI.space Unit,
         UI.button { tall | kind = UI.Destructive } [G.send codec (Delete e.id)] "delete" ] ]
   else
@@ -242,11 +249,10 @@ entryCard editing e =
 btn : String -> Msg -> G.Node .
 btn label msg = UI.button tall [G.send codec msg] label.
 
-# the page's own script: the one port -- the server fills or clears inputs by
-# name (Live.Emit sid "set" json), which is how an edit form gets its text.  The
-# event can arrive BEFORE the render that creates the input (a command is pushed
-# as soon as update answers it), so a value waits until its input exists.
-script = LJ.src Unit + FormFill.src Unit.
+# the page's script is the client alone: the server fills or clears the drafts
+# with Live.setClient, which the page holds even before the input that shows it
+# exists (a command is pushed as soon as update answers it)
+script = LJ.src Unit.
 
 # mobile first: the canvas padding is a phone's, the column is capped on a desktop.
 # The stylesheet is made from a page that has every kind of card on it (an entry
@@ -343,5 +349,5 @@ main = case Config.load { defaults = Json.object (("port", Json.Integer 6700) ::
         _ = if moved > 0 then Sys.stderr "logbook: moved {moved} entries into {store}.store\n" else Unit;
         cachedApp = cachedAppOf shards;
         app = appOf shards;
-        _ = Live.serveProjectedBody [G.utilities [G.Margin (G.Px 0)]] cfg (cachedApp (Program.envOr "0" "FPR_VIEW_VERIFY" == "1"));
+        _ = Live.serveProjectedBody UI.body cfg (cachedApp (Program.envOr "0" "FPR_VIEW_VERIFY" == "1"));
         0.

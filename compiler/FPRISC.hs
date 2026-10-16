@@ -1544,6 +1544,9 @@ collectShapes tops = M.fromList [(fs, shapeIdFor fs) | fs <- allShapes]
 --     set  = fn v s -> {s | field.sub = v},
 --     segs = ["field", "sub"] }
 --
+-- and, when the field's type can go on the wire, its codec and its zero
+-- (`enc`, `dec`, `zero`: see `wireable` below).
+--
 -- at plain type Path s a: no new type-system machinery, all the magic
 -- lives in this one rewrite (composition is a normal function, in
 -- std/lens).  The parser already turns every `@...` into
@@ -1553,18 +1556,16 @@ collectShapes tops = M.fromList [(fs, shapeIdFor fs) | fs <- allShapes]
 -- (file paths start lowercase or '/', so the split is honest).
 --
 -- The BARE root `@Model` is the SCHEMA: the flattened list of every
--- string-addressable leaf, each entry
+-- leaf that can go on the wire, each entry
 --
---   { path = "a.b", tag = "int"|"str",
---     get  = fn s -> <leaf rendered as String>,
---     set  = fn v s -> <s with leaf := v parsed by tag> }
+--   { path = "a.b", tag = "int"|"str"|"bool"|"enum"|"wire",
+--     wire   = fn s -> <the leaf through its codec>,
+--     unwire = fn w s -> <s with the leaf decoded from w, or Err> }
 --
 -- -- the string tier for wires, shells and inspectors (std/lens walks
--- it).  Both tiers construct the SAME {get,set} closures, so a parsed
--- path and a literal path are indistinguishable downstream.  Leaves
--- are Int/String fields plus nested record aliases (flattened);
--- fields of any other type are typed-tier-only (a List index is a
--- traversal, not a total path) and are skipped by the schema.
+-- it, handing text over as a WStr) and the page's client state
+-- (std/view's `locals`).  Nested record aliases are flattened; a leaf
+-- with no codec (a function) is typed-tier-only and skipped.
 --
 -- Runs on the SURFACE tree right after module load (Compile.hs), so
 -- collectShapes sees the generated records like any user record and
@@ -1641,9 +1642,11 @@ expandPathLits tbl ttbl tops = (nub (concatMap errsTop tops), map top tops)
     rewriteLit p root fields fs = do
       validate p root fields fs
       -- a field whose type can go on the wire also carries its codec, so a
-      -- durable field needs nothing but its path (std/live.fpr `field`)
+      -- durable field needs nothing but its path (std/live.fpr `field`), and
+      -- the ZERO of its type, a value to build a message around when the
+      -- page supplies the field (std/view.fpr `sendWith codec Cash @Client.tender`)
       let codec = case fieldTy root fields of
-            Just t | Right () <- wireable [] t -> [("enc", encE t), ("dec", decE t)]
+            Just t | Right () <- wireable [] t -> [("enc", encE t), ("dec", decE t), ("zero", zeroE t)]
             _ -> []
       pure $
         SRec
@@ -1743,6 +1746,20 @@ expandPathLits tbl ttbl tops = (nub (concatMap errsTop tops), map top tops)
     zip4' (a : as) (b : bs) (c : cs) (d : ds) = (a, b, c, d) : zip4' as bs cs ds
     zip4' _ _ _ _ = []
 
+    -- the zero of a wireable type: 0, "", False, Nil, tuples and records of
+    -- zeros, a sum type's FIRST constructor over zeros.  `wireable` has
+    -- refused recursive types, so this ends.
+    zeroE t = case t of
+      TCon "Int" [] -> SInt 0
+      TCon "String" [] -> lit ""
+      TCon "Bool" [] -> SVar "False"
+      TCon "List" [_] -> SList []
+      TTup ts -> STup (map zeroE ts)
+      TCon n []
+        | Just fs <- M.lookup n tbl -> SRec [(f, zeroE ft) | (f, ft) <- fs]
+        | Just ((c, tys) : _) <- M.lookup n ttbl -> foldl SApp (SVar c) (map zeroE tys)
+      _ -> lit ""
+
     validate _ _ [] _ = Right ()
     validate p shape (f : rest) fs = case lookup f fs of
       Nothing ->
@@ -1759,13 +1776,25 @@ expandPathLits tbl ttbl tops = (nub (concatMap errsTop tops), map top tops)
                   ++ "' is not a declared record shape -- cannot descend into it"
               )
 
-    -- the schema: flatten every addressable leaf under the root alias.
-    -- visited guards against a (declared) recursive shape cycle.
+    -- the schema: flatten every leaf under the root alias that can go on
+    -- the wire, each entry
+    --
+    --   { path   = "a.b",
+    --     tag    = "int" | "str" | "bool" | "enum" | "wire",
+    --     wire   = fn s -> <the leaf, through its codec>,
+    --     unwire = fn w s -> <s with the leaf decoded from w> or the Err }
+    --
+    -- "enum" is a declared sum type of bare constructors, "wire" any other
+    -- leaf with a codec (a list, a tuple, a sum with fields).  Text reaches a
+    -- leaf through the SAME codec (std/lens hands `unwire` the text as a
+    -- WStr, and the decoders read numbers, booleans and bare constructors
+    -- from text), so the string tier cannot disagree with the typed one and
+    -- a bad value is an Err, never a guess.  A leaf with no codec (a
+    -- function) is typed-tier-only.  visited guards against a (declared)
+    -- recursive shape cycle.
     schemaFor p root = SList . map entry <$> leaves p [root] [] (tbl M.! root)
     leaves p visited pre fs = concat <$> mapM leaf fs
       where
-        leaf (f, TCon "Int" []) = pure [(pre ++ [f], "int")]
-        leaf (f, TCon "String" []) = pure [(pre ++ [f], "str")]
         leaf (f, TCon sub [])
           | Just fs' <- M.lookup sub tbl =
               if sub `elem` visited
@@ -1775,18 +1804,22 @@ expandPathLits tbl ttbl tops = (nub (concatMap errsTop tops), map top tops)
                         ++ " recursively contains itself -- cannot flatten"
                     )
                 else leaves p (sub : visited) (pre ++ [f]) fs'
-        leaf _ = pure [] -- typed-tier-only leaf: not string-addressable
-    entry (segs, tag) =
+        leaf (f, t) = case wireable [] t of
+          Right () -> pure [(pre ++ [f], leafTag t, t)]
+          Left _ -> pure []
+    leafTag t = case t of
+      TCon "Int" [] -> "int"
+      TCon "String" [] -> "str"
+      TCon "Bool" [] -> "bool"
+      TCon n [] | Just cs <- M.lookup n ttbl, all (null . snd) cs -> "enum"
+      _ -> "wire"
+    entry (segs, tag, t) =
       SRec
-        [ ("path", SStrI [SegStr (intercalate "." segs)]),
-          ("tag", SStrI [SegStr tag]),
-          ("get", SLam ["s"] (renderLeaf tag (SProj (SVar "s") segs))),
-          ("set", SLam ["v", "s"] (SUpd (SVar "s") [(segs, parseLeaf tag (SVar "v"))]))
+        [ ("path", lit (intercalate "." segs)),
+          ("tag", lit tag),
+          ("wire", SLam ["s"] (SApp (encE t) (SProj (SVar "s") segs))),
+          ("unwire", SLam ["w", "s"] (app "wireAnd" [SApp (decE t) (SVar "w"), SLam ["x"] (SApp (SVar "Ok") (SUpd (SVar "s") [(segs, SVar "x")]))]))
         ]
-    renderLeaf "int" e = SApp (SVar "str") e
-    renderLeaf _ e = e
-    parseLeaf "int" v = SApp (SVar "parseInt") v
-    parseLeaf _ v = v
 
     children e = case e of
       SMark _ a -> [a]

@@ -1,0 +1,48 @@
+profile base.
+# typed client state in a live page (tests/check_client_state.cjs drives it in a
+# browser): a tab, a whole number bound to an input, a toggle, a password, a
+# family of quantities, a two-field send and the server's own assignment.  The
+# server shows what it decoded, so the driver can read it back.
+G = use "std/view".
+Live = use "std/live".
+LJ = use "std/livejs".
+
+Tab = Type (Front | Back).
+Client = { tab : Tab, n : Int, on : Bool, note : String, pin : String, cart : List (String, Int) }.
+client = { tab = Front, n = 0, on = False, note = "", pin = "", cart = Nil }.
+Msg = Type (ClientState Client | Got Int String | Note String).
+codec = @Msg.
+
+update ev m = case ev of
+    Live.Msg sid (ClientState c) -> ({ m | seen = "{c}" }, Nil)
+  | Live.Msg sid (Got n note) -> ({ m | got = "{n} {note}" }, Nil)
+  | Live.Msg sid (Note text) -> ({ m | got = "note {text}" }, Live.setClient sid [G.assign @Client.note "", G.assign (item "B") 3] :: Nil)
+  | Live.Refused sid why -> ({ m | refused = why }, Nil)
+  | _ -> (m, Nil).
+subs m = Live.SyncClientState 100 (ClientState client) :: Nil.
+item k = G.entry @Client.cart k.
+
+view sid m old = (G.renderStyled (G.El "main" (G.locals @Client client)
+  [ G.El "button" [G.Att "id" "to-back", G.setTo @Client.tab Back] [G.Txt "back"]
+  , G.El "div" [G.Att "id" "front", G.showIf @Client.tab Front] [G.Txt "front pane"]
+  , G.El "div" [G.Att "id" "back", G.showIf @Client.tab Back] [G.Txt "back pane"]
+  , G.Inp [G.Att "id" "n", G.bindInt @Client.n]
+  , G.El "button" [G.Att "id" "flip", G.toggle @Client.on] [G.Txt "flip"]
+  , G.El "div" [G.Att "id" "lit", G.showIf @Client.on True] [G.Txt "on"]
+  , G.Inp [G.Att "id" "note", G.bind @Client.note, G.enterWith codec Note @Client.note]
+  , G.Inp [G.Att "id" "pin", G.Att "type" "password", G.bind @Client.pin]
+  , G.El "div" [G.hold (item "A") 0, G.hold (item "B") 1]
+      [ G.El "button" [G.Att "id" "a-plus", G.step (item "A") 1 0 2] [G.Txt "+"]
+      , G.El "span" [G.Att "id" "a-line", G.hideIf (item "A") 0] [G.text (item "A")]
+      , G.El "span" [G.Att "id" "b-line", G.showIn (item "B") [1, 3]] [G.text (item "B")] ]
+  , G.El "button" [G.Att "id" "send", G.sendWith2 codec Got @Client.n @Client.note] [G.Txt "send"]
+  , G.El "div" [G.Att "id" "seen"] [G.Dyn m.seen]
+  , G.El "div" [G.Att "id" "got"] [G.Dyn m.got]
+  , G.El "div" [G.Att "id" "refused"] [G.Dyn m.refused] ]), old).
+
+main =
+  _ = Live.serveProjected {Live.defaults | port = 0, script = LJ.src Unit, journal = False}
+    {init = {seen = "", got = "", refused = ""}, update = update, subs = subs, fields = Nil,
+     codec = codec, project = (fn sid m -> m), same = (fn a b -> a == b),
+     cache = Unit, view = view, css = (fn m -> "")};
+  0.

@@ -29,7 +29,7 @@ expireAt mono notice = case pending notice and mono >= notice.untilUs of
 
 # Fixed shape: only the escaped text slot changes on adoption/expiry.
 view : String -> G.Node .
-view text = G.El "div" [G.Cls "fpr-reload-notice", G.Att "data-hide-empty" "", appearance, G.Att "role" "status",
+view text = G.El "div" [G.Cls "fpr-reload-notice", G.hideEmpty, appearance, G.Att "role" "status",
   G.Att "aria-live" "polite", G.Att "aria-atomic" "true"] [G.Dyn text].
 # The notice owns its appearance; the data hook gives the generated client
 # local empty-slot visibility without a stylesheet selector.

@@ -68,7 +68,10 @@ class Client:
             if time.monotonic()>end: raise TimeoutError('view never arrived')
             self.recv()
     def send(self, name, *fields):
-        p=json.dumps({'msg':'='+json.dumps([name,*map(str,fields)]),'arg':''}).encode()
+        self.send_value(name, *map(str,fields))
+    # fields as JSON values: a record as an object (a typed client-state mirror)
+    def send_value(self, name, *fields):
+        p=json.dumps({'msg':'='+json.dumps([name,*fields]),'arg':''}).encode()
         mask=os.urandom(4)
         head=bytes([0x81,0x80|len(p)]) if len(p)<126 else bytes([0x81,0xfe])+struct.pack('>H',len(p))
         self.s.sendall(head+mask+bytes(c^mask[i%4] for i,c in enumerate(p)))
@@ -95,12 +98,12 @@ def main():
                 else: raise TimeoutError('startup')
                 port=int(m[1]);a=Client(port,True);clients.append(a);b=Client(port,False);clients.append(b);v3=Client(port,3);clients.append(v3)
                 for i in range(1,4):
-                    a.send('Add',f'tag|wire entry {i}')
+                    a.send('Post','tag',f'wire entry {i}')
                     for c in (a,b,v3): c.until(lambda st:has(st,f'wire entry {i}') and settled(st))
                     assert a.state==b.state==v3.state, 'patch and full snapshot disagree'
                 a.send('Edit',2)
                 a.until(lambda st:has(st,'editing'))
-                a.send('Save',2,'tag|changed entry')
+                a.send('Change',2,'tag','changed entry')
                 for c in (a,b,v3): c.until(lambda st:has(st,'changed entry') and not has(st,'editing') and settled(st))
                 assert a.state==b.state==v3.state
                 a.send('Delete',1)

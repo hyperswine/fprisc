@@ -15,7 +15,8 @@ Msg = Type (Saved String | Second).
 fields = [Live.field Live.Always @Model.items].
 init = {items = Nil, at = 0, draft = "", note = "", seconds = 0}.
 
-save store m = Term.Run (fn u -> _ = Durable.save store m; Saved "saved").
+# a save is answered: the note says which
+save store m = Term.Run (fn u -> case Durable.save store m of Ok _ -> Saved "saved" | Err why -> Saved "NOT saved: {why}").
 changed store m = (m, save store m :: Nil).
 unchanged m = (m, Nil).
 quit m = (m, Term.Quit :: Nil).

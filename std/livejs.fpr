@@ -2,6 +2,10 @@
 # No foreign source asset or Raw node is read at runtime.
 JS = use "std/javascript".
 G = use "std/view".
+# the node the client writes its connection state into ("live", "offline (1006)")
+link : G.Attr .
+link = G.Att "id" linkId.
+linkId = "lv-link".
 src u = JS.program [
   JS.Strict,
   JS.Do (JS.Call (JS.Function [] (bodyBody1 Unit)) [])
@@ -78,7 +82,7 @@ bodyBody14 u = [
   JS.If (JS.Unary JS.Not (JS.Name "pair")) [JS.ReturnVoid] [],
   JS.Var "eq" (JS.Call (JS.Field (JS.Name "pair") "indexOf") [(JS.Text "=")]),
   JS.Var "n" (JS.Call (JS.Field (JS.Name "pair") "slice") [(JS.Number 0), (JS.Name "eq")]),
-  JS.If (JS.Unary JS.Not (JS.Binary JS.In (JS.Name "n") (JS.Name "locals"))) [JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "n")) (JS.Call (JS.Field (JS.Name "pair") "slice") [(JS.Binary JS.Add (JS.Name "eq") (JS.Number 1))]))] []
+  JS.Do (JS.Call (JS.Name "declare") [JS.Name "n", JS.Call (JS.Field (JS.Name "pair") "slice") [JS.Binary JS.Add (JS.Name "eq") (JS.Number 1)]])
 ].
 
 bodyBody13 u = [
@@ -86,7 +90,45 @@ bodyBody13 u = [
 ].
 
 scanLocalsBody12 u = [
-  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[x-data]")]) "forEach") [(JS.Function ["el"] (bodyBody13 Unit))])
+  JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[x-data]")]) "forEach") [(JS.Function ["el"] (bodyBody13 Unit))]),
+  JS.ForOf "el" (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [JS.Text "[x-json]"])
+    [JS.Const "held" (JS.Call (JS.Field (JS.Name "JSON") "parse") [attrOf "el" "x-json"]),
+     JS.ForIn "k" (JS.Name "held") [JS.Do (JS.Call (JS.Name "declare") [JS.Name "k", JS.Index (JS.Name "held") (JS.Name "k")])]]
+].
+
+# ---- typed client state (std/view: locals, hold, setTo, step, toggle, showIf, bindInt,
+# sendWith).  The page holds every value as TEXT.  A FAMILY (a client field of type
+# List (String, a)) arrives as an array of [key, text] pairs and is held one entry
+# per key, under `name[key]`; the mirror hands it back as the pairs.  The first
+# declaration of a name wins, and is what a password field mirrors as.
+attrOf el name = JS.Call (JS.Field (JS.Name el) "getAttribute") [JS.Text name].
+hasAttr el name = JS.Call (JS.Field (JS.Name el) "hasAttribute") [JS.Text name].
+localAt k = JS.Index (JS.Name "locals") k.
+isArray x = JS.Call (JS.Field (JS.Name "Array") "isArray") [x].
+fresh k table = JS.Unary JS.Not (JS.Binary JS.In k (JS.Name table)).
+
+declareBody u = [
+  JS.If (isArray (JS.Name "v"))
+    [JS.Do (JS.AssignValue (JS.Index (JS.Name "families") (JS.Name "k")) (JS.Boolean True)),
+     JS.If (fresh (JS.Name "k") "locals") [JS.Do (JS.AssignValue (localAt (JS.Name "k")) (JS.Name "v"))] [],
+     JS.ForOf "p" (JS.Name "v")
+       [JS.If (JS.Binary JS.And (JS.Binary JS.And (isArray (JS.Name "p")) (JS.Binary JS.Equal (JS.Field (JS.Name "p") "length") (JS.Number 2)))
+                 (JS.Binary JS.Equal (JS.Unary JS.TypeOf (JS.Index (JS.Name "p") (JS.Number 0))) (JS.Text "string")))
+          [JS.Do (JS.Call (JS.Name "declare") [JS.Binary JS.Add (JS.Binary JS.Add (JS.Binary JS.Add (JS.Name "k") (JS.Text "[")) (JS.Index (JS.Name "p") (JS.Number 0))) (JS.Text "]"),
+                                               JS.Call (JS.Name "String") [JS.Index (JS.Name "p") (JS.Number 1)]])] []],
+     JS.ReturnVoid] [],
+  JS.If (fresh (JS.Name "k") "locals") [JS.Do (JS.AssignValue (localAt (JS.Name "k")) (JS.Name "v"))] [],
+  JS.If (fresh (JS.Name "k") "initial") [JS.Do (JS.AssignValue (JS.Index (JS.Name "initial") (JS.Name "k")) (JS.Name "v"))] []
+].
+
+# shown while the local's text is (data-is) or is not (data-is-not) one of a list
+whenBody u = [
+  JS.Const "t" (JS.Call (JS.Name "String") [JS.Binary JS.Nullish (localAt (attrOf "el" "data-when")) (JS.Text "")]),
+  JS.Const "is" (attrOf "el" "data-is"),
+  JS.Const "on" (JS.Choose (JS.Binary JS.NotEqual (JS.Name "is") JS.Null)
+    (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "JSON") "parse") [JS.Name "is"]) "includes") [JS.Name "t"])
+    (JS.Unary JS.Not (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "JSON") "parse") [JS.Binary JS.Nullish (attrOf "el" "data-is-not") (JS.Text "[]")]) "includes") [JS.Name "t"]))),
+  JS.Do (JS.AssignValue (JS.Field (JS.Field (JS.Name "el") "style") "display") (JS.Choose (JS.Name "on") (JS.Text "") (JS.Text "none")))
 ].
 
 bodyBody16 u = [
@@ -107,13 +149,15 @@ bodyBody18 u = [
 
 bodyBody19 u = [
   JS.Var "n" (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-input")]),
-  JS.If (JS.Binary JS.NotEqual (JS.Name "el") (JS.Field (JS.Name "document") "activeElement")) [JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "value") (JS.Binary JS.Nullish (JS.Index (JS.Name "locals") (JS.Name "n")) (JS.Text "")))] []
+  JS.If (JS.Binary JS.NotEqual (JS.Name "el") (JS.Field (JS.Name "document") "activeElement")) [JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "value") (JS.Binary JS.Nullish (JS.Index (JS.Name "locals") (JS.Name "n")) (JS.Text ""))),
+    JS.If (JS.Binary JS.Equal (attrOf "el" "data-kind") (JS.Text "int")) [JS.Do (JS.Call (JS.Field (JS.Name "el") "removeAttribute") [JS.Text "aria-invalid"])] []] []
 ].
 
 paintLocalsBody15 u = [
   JS.Do (JS.Call (JS.Name "paintOwned") []),
   JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[data-text]")]) "forEach") [(JS.Function ["el"] (bodyBody16 Unit))]),
   JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[data-show]")]) "forEach") [(JS.Function ["el"] (bodyBody17 Unit))]),
+  JS.ForOf "el" (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [JS.Text "[data-when]"]) (whenBody Unit),
   JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[data-on]")]) "forEach") [(JS.Function ["el"] (bodyBody18 Unit))]),
   JS.Do (JS.Call (JS.Field (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [(JS.Text "[data-input]")]) "forEach") [(JS.Function ["el"] (bodyBody19 Unit))]),
   JS.Do (JS.Call (JS.Field (JS.Name "document") "dispatchEvent") [(JS.New (JS.Name "CustomEvent") [(JS.Text "live:locals"), (JS.Object [("detail", JS.Name "locals")])])])
@@ -121,20 +165,36 @@ paintLocalsBody15 u = [
 
 applySetBody20 u = [
   JS.Var "cur" (JS.Index (JS.Name "locals") (JS.Name "name")),
-  JS.If (JS.Binary JS.Equal (JS.Name "val") (JS.Text "toggle")) [JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "name")) (JS.Choose (JS.Binary JS.Equal (JS.Name "cur") (JS.Text "1")) (JS.Text "0") (JS.Text "1")))] [JS.If (JS.Binary JS.Or (JS.Binary JS.Equal (JS.Index (JS.Name "val") (JS.Number 0)) (JS.Text "+")) (JS.Binary JS.Equal (JS.Index (JS.Name "val") (JS.Number 0)) (JS.Text "-"))) [JS.Var "n" (JS.Binary JS.Add (JS.Binary JS.Or (JS.Unary JS.Plus (JS.Name "cur")) (JS.Number 0)) (JS.Unary JS.Plus (JS.Name "val"))), JS.If (JS.Binary JS.And (JS.Name "el") (JS.Call (JS.Field (JS.Name "el") "hasAttribute") [(JS.Text "data-min")])) [JS.Do (JS.AssignValue (JS.Name "n") (JS.Call (JS.Field (JS.Name "Math") "max") [(JS.Name "n"), (JS.Unary JS.Plus (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-min")]))]))] [], JS.If (JS.Binary JS.And (JS.Name "el") (JS.Call (JS.Field (JS.Name "el") "hasAttribute") [(JS.Text "data-max")])) [JS.Do (JS.AssignValue (JS.Name "n") (JS.Call (JS.Field (JS.Name "Math") "min") [(JS.Name "n"), (JS.Unary JS.Plus (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-max")]))]))] [], JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "name")) (JS.Call (JS.Name "String") [(JS.Name "n")]))] [JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "name")) (JS.Name "val"))]],
+  JS.If (JS.Binary JS.And (JS.Name "el") (hasAttr "el" "data-to")) [JS.Do (JS.AssignValue (localAt (JS.Name "name")) (attrOf "el" "data-to"))]
+  [JS.If (JS.Binary JS.And (JS.Name "el") (hasAttr "el" "data-add"))
+    [JS.Var "n" (JS.Binary JS.Add (JS.Binary JS.Or (JS.Unary JS.Plus (JS.Name "cur")) (JS.Number 0)) (JS.Unary JS.Plus (attrOf "el" "data-add"))),
+     JS.If (hasAttr "el" "data-min") [JS.Do (JS.AssignValue (JS.Name "n") (JS.Call (JS.Field (JS.Name "Math") "max") [JS.Name "n", JS.Unary JS.Plus (attrOf "el" "data-min")]))] [],
+     JS.If (hasAttr "el" "data-max") [JS.Do (JS.AssignValue (JS.Name "n") (JS.Call (JS.Field (JS.Name "Math") "min") [JS.Name "n", JS.Unary JS.Plus (attrOf "el" "data-max")]))] [],
+     JS.Do (JS.AssignValue (localAt (JS.Name "name")) (JS.Call (JS.Name "String") [JS.Name "n"]))]
+  [JS.If (JS.Binary JS.And (JS.Name "el") (hasAttr "el" "data-flip"))
+    [JS.Do (JS.AssignValue (localAt (JS.Name "name")) (JS.Choose (JS.Binary JS.Equal (JS.Name "cur") (JS.Text "true")) (JS.Text "false") (JS.Text "true")))]
+  [JS.If (JS.Binary JS.Equal (JS.Name "val") (JS.Text "toggle")) [JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "name")) (JS.Choose (JS.Binary JS.Equal (JS.Name "cur") (JS.Text "1")) (JS.Text "0") (JS.Text "1")))] [JS.If (JS.Binary JS.Or (JS.Binary JS.Equal (JS.Index (JS.Name "val") (JS.Number 0)) (JS.Text "+")) (JS.Binary JS.Equal (JS.Index (JS.Name "val") (JS.Number 0)) (JS.Text "-"))) [JS.Var "n" (JS.Binary JS.Add (JS.Binary JS.Or (JS.Unary JS.Plus (JS.Name "cur")) (JS.Number 0)) (JS.Unary JS.Plus (JS.Name "val"))), JS.If (JS.Binary JS.And (JS.Name "el") (JS.Call (JS.Field (JS.Name "el") "hasAttribute") [(JS.Text "data-min")])) [JS.Do (JS.AssignValue (JS.Name "n") (JS.Call (JS.Field (JS.Name "Math") "max") [(JS.Name "n"), (JS.Unary JS.Plus (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-min")]))]))] [], JS.If (JS.Binary JS.And (JS.Name "el") (JS.Call (JS.Field (JS.Name "el") "hasAttribute") [(JS.Text "data-max")])) [JS.Do (JS.AssignValue (JS.Name "n") (JS.Call (JS.Field (JS.Name "Math") "min") [(JS.Name "n"), (JS.Unary JS.Plus (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-max")]))]))] [], JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "name")) (JS.Call (JS.Name "String") [(JS.Name "n")]))] [JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "name")) (JS.Name "val"))]]]]],
   JS.Do (JS.AssignValue (JS.Name "dirty") (JS.Boolean True))
 ].
 
 mirroredBody21 u = [
   JS.Var "out" (JS.Call (JS.Field (JS.Name "Object") "create") [JS.Null]),
-  JS.ForIn "n" (JS.Name "locals") [JS.If (JS.Index (JS.Name "secrets") (JS.Name "n")) [JS.Continue] [], JS.Do (JS.AssignValue (JS.Index (JS.Name "out") (JS.Name "n")) (JS.Call (JS.Name "String") [(JS.Index (JS.Name "locals") (JS.Name "n"))]))],
+  JS.Var "grouped" (JS.Call (JS.Field (JS.Name "Object") "create") [JS.Null]),
+  JS.ForIn "n" (JS.Name "locals")
+    [JS.Var "v" (JS.Choose (JS.Index (JS.Name "secrets") (JS.Name "n")) (JS.Binary JS.Nullish (JS.Index (JS.Name "initial") (JS.Name "n")) (JS.Text "")) (localAt (JS.Name "n"))),
+     JS.Var "m" (JS.Call (JS.Field (JS.Pattern "^([^\\[]*)\\[(.*)\\]$" "") "exec") [JS.Name "n"]),
+     JS.Var "base" (JS.Choose (JS.Binary JS.And (JS.Name "m") (JS.Index (JS.Name "families") (JS.Index (JS.Name "m") (JS.Number 1)))) (JS.Index (JS.Name "m") (JS.Number 1))
+                     (JS.Choose (JS.Index (JS.Name "families") (JS.Name "n")) (JS.Name "n") JS.Null)),
+     JS.If (JS.Binary JS.Equal (JS.Name "base") JS.Null) [JS.Do (JS.AssignValue (JS.Index (JS.Name "out") (JS.Name "n")) (JS.Name "v")), JS.Continue] [],
+     JS.If (JS.Unary JS.Not (JS.Index (JS.Name "grouped") (JS.Name "base"))) [JS.Do (JS.AssignValue (JS.Index (JS.Name "grouped") (JS.Name "base")) (JS.Boolean True)), JS.Do (JS.AssignValue (JS.Index (JS.Name "out") (JS.Name "base")) (JS.Array []))] [],
+     JS.If (JS.Binary JS.NotEqual (JS.Name "base") (JS.Name "n")) [JS.Do (JS.Call (JS.Field (JS.Index (JS.Name "out") (JS.Name "base")) "push") [JS.Array [JS.Index (JS.Name "m") (JS.Number 2), JS.Call (JS.Name "String") [JS.Name "v"]]])] []],
   JS.Return (JS.Name "out")
 ].
 
 flushBody22 u = [
   JS.If (JS.Binary JS.Or (JS.Binary JS.Or (JS.Binary JS.Or (JS.Unary JS.Not (JS.Name "sync")) (JS.Unary JS.Not (JS.Name "dirty"))) (JS.Unary JS.Not (JS.Name "ws"))) (JS.Binary JS.NotEqual (JS.Field (JS.Name "ws") "readyState") (JS.Number 1))) [JS.ReturnVoid] [],
   JS.Do (JS.AssignValue (JS.Name "dirty") (JS.Boolean False)),
-  JS.Do (JS.Call (JS.Field (JS.Name "ws") "send") [(JS.Call (JS.Field (JS.Name "JSON") "stringify") [(JS.Object [("msg", JS.Field (JS.Name "sync") "msg"), ("arg", JS.Call (JS.Field (JS.Name "JSON") "stringify") [(JS.Call (JS.Name "mirrored") [])])])])]),
+  JS.Do (JS.Call (JS.Field (JS.Name "ws") "send") [(JS.Call (JS.Field (JS.Name "JSON") "stringify") [(JS.Object [("msg", JS.Field (JS.Name "sync") "msg"), ("arg", JS.Call (JS.Field (JS.Name "JSON") "stringify") [JS.Choose (JS.Binary JS.Equal (JS.Index (JS.Field (JS.Name "sync") "msg") (JS.Number 0)) (JS.Text "*")) (JS.Array [JS.Call (JS.Name "mirrored") []]) (JS.Call (JS.Name "mirrored") [])])])])]),
   JS.Do (JS.Call (JS.Field (JS.Name "document") "dispatchEvent") [(JS.New (JS.Name "Event") [(JS.Text "live:sent")])])
 ].
 
@@ -160,6 +220,7 @@ bodyBody27 u = [
 ].
 
 argOfBody26 u = [
+  JS.If (hasAttr "el" "data-args") [JS.Return (JS.Call (JS.Field (JS.Name "JSON") "stringify") [JS.Call (JS.Field (JS.Call (JS.Field (attrOf "el" "data-args") "split") [JS.Text ","]) "map") [JS.Function ["n"] (bodyBody27 Unit)]])] [],
   JS.If (JS.Call (JS.Field (JS.Name "el") "hasAttribute") [(JS.Text "data-lit")]) [JS.Return (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-lit")])] [],
   JS.Var "a" (JS.Call (JS.Field (JS.Name "el") "getAttribute") [(JS.Text "data-arg")]),
   JS.If (JS.Unary JS.Not (JS.Name "a")) [JS.Return (JS.Text "")] [],
@@ -208,7 +269,13 @@ bodyBody34 u = [
 ].
 
 bodyBody38 u = [
-  JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "n")) (JS.Field (JS.Name "el") "value")),
+  JS.If (JS.Binary JS.Equal (attrOf "el" "data-kind") (JS.Text "int"))
+    [JS.Const "t" (JS.Call (JS.Field (JS.Field (JS.Name "el") "value") "trim") []),
+     JS.If (JS.Unary JS.Not (JS.Call (JS.Field (JS.Pattern "^-?[0-9]+$" "") "test") [JS.Name "t"]))
+       [JS.Do (JS.Call (JS.Field (JS.Name "el") "setAttribute") [JS.Text "aria-invalid", JS.Text "true"]), JS.ReturnVoid] [],
+     JS.Do (JS.Call (JS.Field (JS.Name "el") "removeAttribute") [JS.Text "aria-invalid"]),
+     JS.Do (JS.AssignValue (localAt (JS.Name "n")) (JS.Call (JS.Name "String") [JS.Call (JS.Name "BigInt") [JS.Name "t"]]))]
+    [JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "n")) (JS.Field (JS.Name "el") "value"))],
   JS.Do (JS.AssignValue (JS.Name "dirty") (JS.Boolean True)),
   JS.Do (JS.Call (JS.Name "paintLocals") []),
   JS.If (JS.Call (JS.Field (JS.Name "el") "hasAttribute") [(JS.Text "data-sync-now")]) [JS.Do (JS.Call (JS.Name "flushSoon") [])] []
@@ -257,7 +324,12 @@ splicedAllBody42 u = [
 applyBody43 u = [
   JS.If (JS.Field (JS.Name "res") "nav") [JS.Do (JS.AssignValue (JS.Field (JS.Name "location") "href") (JS.Field (JS.Name "res") "nav")), JS.ReturnVoid] [],
   JS.If (JS.Field (JS.Name "res") "sync") [JS.Do (JS.Call (JS.Name "startSync") [(JS.Field (JS.Name "res") "sync")]), JS.ReturnVoid] [],
-  JS.If (JS.Binary JS.Equal (JS.Field (JS.Name "res") "emit") (JS.Text "locals")) [JS.Var "vals" (JS.Call (JS.Field (JS.Name "JSON") "parse") [(JS.Field (JS.Name "res") "detail")]), JS.ForIn "k" (JS.Name "vals") [JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "k")) (JS.Call (JS.Name "String") [(JS.Index (JS.Name "vals") (JS.Name "k"))]))], JS.Do (JS.AssignValue (JS.Name "dirty") (JS.Boolean True)), JS.Do (JS.Call (JS.Name "paintLocals") []), JS.ReturnVoid] [],
+  # the server's assignment (Live.setClient): an input bound to the field shows it
+  # even while it has the focus -- a cleared draft is cleared where it is typed
+  JS.If (JS.Binary JS.Equal (JS.Field (JS.Name "res") "emit") (JS.Text "locals")) [JS.Var "vals" (JS.Call (JS.Field (JS.Name "JSON") "parse") [(JS.Field (JS.Name "res") "detail")]), JS.ForIn "k" (JS.Name "vals") [JS.Do (JS.AssignValue (JS.Index (JS.Name "locals") (JS.Name "k")) (JS.Call (JS.Name "String") [(JS.Index (JS.Name "vals") (JS.Name "k"))]))], JS.Do (JS.AssignValue (JS.Name "dirty") (JS.Boolean True)), JS.Do (JS.Call (JS.Name "paintLocals") []),
+    JS.ForOf "el" (JS.Call (JS.Field (JS.Name "root") "querySelectorAll") [JS.Text "[data-input]"])
+      [JS.If (JS.Binary JS.In (attrOf "el" "data-input") (JS.Name "vals")) [JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "value") (localAt (attrOf "el" "data-input")))] []],
+    JS.ReturnVoid] [],
   JS.If (JS.Field (JS.Name "res") "emit") [JS.Do (JS.Call (JS.Field (JS.Name "document") "dispatchEvent") [(JS.New (JS.Name "CustomEvent") [(JS.Binary JS.Add (JS.Text "live:") (JS.Field (JS.Name "res") "emit")), (JS.Object [("detail", JS.Field (JS.Name "res") "detail")])])]), JS.ReturnVoid] [],
   JS.If (JS.Binary JS.NotEqual (JS.Field (JS.Name "res") "p") (JS.Name "undefined")) [JS.If (JS.Binary JS.And (JS.Binary JS.NotEqual (JS.Field (JS.Name "res") "p") (JS.Number 2)) (JS.Binary JS.NotEqual (JS.Field (JS.Name "res") "p") (JS.Number 3))) [JS.Throw (JS.New (JS.Name "Error") [(JS.Text "unsupported live protocol")])] [], JS.Var "next" (JS.Choose (JS.Binary JS.Equal (JS.Field (JS.Name "res") "p") (JS.Number 3)) (JS.Object [("s", JS.Call (JS.Name "splicedAll") [(JS.Field (JS.Name "S") "s"), (JS.Field (JS.Name "res") "s")]), ("d", JS.Call (JS.Name "splicedAll") [(JS.Field (JS.Name "S") "d"), (JS.Field (JS.Name "res") "d")])]) (JS.Object [("s", JS.Call (JS.Name "spliced") [(JS.Field (JS.Name "S") "s"), (JS.Field (JS.Name "res") "s")]), ("d", JS.Call (JS.Name "spliced") [(JS.Field (JS.Name "S") "d"), (JS.Field (JS.Name "res") "d")])])), JS.If (JS.Binary JS.NotEqual (JS.Field (JS.Field (JS.Name "next") "s") "length") (JS.Binary JS.Add (JS.Field (JS.Field (JS.Name "next") "d") "length") (JS.Number 1))) [JS.Throw (JS.New (JS.Name "Error") [(JS.Text "invalid view shape")])] [], JS.Do (JS.AssignValue (JS.Name "S") (JS.Name "next")), JS.Do (JS.Call (JS.Name "build") []), JS.ReturnVoid] [],
   JS.If (JS.Field (JS.Name "res") "s") [JS.Do (JS.AssignValue (JS.Name "S") (JS.Object [("s", JS.Field (JS.Name "res") "s"), ("d", JS.Field (JS.Name "res") "d")])), JS.Do (JS.Call (JS.Name "build") []), JS.ReturnVoid] [],
@@ -268,7 +340,7 @@ applyBody43 u = [
 ].
 
 statusBody44 u = [
-  JS.Var "el" (JS.Call (JS.Field (JS.Name "document") "getElementById") [(JS.Text "lv-link")]),
+  JS.Var "el" (JS.Call (JS.Field (JS.Name "document") "getElementById") [(JS.Text linkId)]),
   JS.If (JS.Name "el") [JS.Do (JS.AssignValue (JS.Field (JS.Name "el") "textContent") (JS.Name "s"))] []
 ].
 
@@ -317,11 +389,14 @@ bodyBody1 u = [
   JS.Var "syncTimer" (JS.Null),
   JS.Var "dirty" (JS.Boolean False),
   JS.Var "secrets" (JS.Call (JS.Field (JS.Name "Object") "create") [(JS.Null)]),
+  JS.Var "initial" (JS.Call (JS.Field (JS.Name "Object") "create") [JS.Null]),
+  JS.Var "families" (JS.Call (JS.Field (JS.Name "Object") "create") [JS.Null]),
   JS.Define "keyOf" ["node"] (keyOfBody2 Unit),
   JS.Define "compatible" ["a", "b"] (compatibleBody3 Unit),
   JS.Define "reconcile" ["parent", "wanted"] (reconcileBody4 Unit),
   JS.Define "build" [] (buildBody9 Unit),
   JS.Define "slot" ["k", "txt", "flash"] (slotBody11 Unit),
+  JS.Define "declare" ["k", "v"] (declareBody Unit),
   JS.Define "scanLocals" [] (scanLocalsBody12 Unit),
   JS.Define "paintLocals" [] (paintLocalsBody15 Unit),
   JS.Define "applySet" ["name", "val", "el"] (applySetBody20 Unit),

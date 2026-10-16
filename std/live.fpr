@@ -88,18 +88,25 @@ Cmd msg = Type (After Int msg | Run (Unit -> msg) | Navigate Int String | Emit I
 http : { method : String, url : String, headers : List (String, String), body : String } -> (Result { status : Int, headers : List (String, String), body : String } String -> msg) -> Cmd msg .
 http req toMsg = Run (fn u -> toMsg (H.request req)).
 # Every ms msg             deliver msg every ms, while the model asks for it
-# SyncClientState ms msg   MIRROR each session's client state (its locals: View.locals,
-#                          View.Local) to the server.  The page sends `msg` with its
-#                          LAST field filled by the JSON object of its locals -- every
-#                          ms when they changed, and just before any other message it
-#                          sends, so by the time an event reaches `update` the mirror
-#                          the app keeps is what the page showed.  Nothing is drawn and
-#                          nothing waits on it: what happens in the page (a tab, a
-#                          quantity) stays in the page, and the server still knows.
-#                          A local bound to a password input is never mirrored.  Read
-#                          when a session joins.  The server sets locals with
-#                          `Emit sid "locals" json`.
+# SyncClientState ms msg   MIRROR each session's client state to the server.  `msg`
+#                          is a message whose LAST field is the client-state record
+#                          (`ClientState Client`, given here with any value of it,
+#                          `ClientState init`); the page sends it with that field
+#                          filled by what it holds (View.locals) -- every ms when it
+#                          changed, and just before any other message it sends, so by
+#                          the time an event reaches `update` the mirror the app keeps
+#                          is what the page showed.  The codec decodes it into the
+#                          record's own types (an Int, a Bool, a Tab, a family of
+#                          (key, value) pairs), or refuses it by name.  Nothing is
+#                          drawn and nothing waits on it.  A password field is
+#                          mirrored as it was declared, never as typed.  The server
+#                          puts values in the page with `setClient`.
 Sub msg = Type (Every Int msg | SyncClientState Int msg).
+
+# the server puts values in a page's client state, as the page will hold them:
+# `Live.setClient sid [View.assign @Client.tender "", View.assign (View.entry @Client.cart sku) 0]`
+setClient : Int -> List (String, String) -> Cmd msg .
+setClient sid kvs = Emit sid "locals" (J.render (J.object (L.map (fn kv -> case kv of (k, v) -> (k, J.Text v)) kvs))).
 
 Policy = Type (Always | AtMostEvery Int).
 
@@ -130,7 +137,7 @@ custom policy path enc dec = whole (strcat "model." (strJoin "." path.segs)) pol
 
 whole : String -> Policy -> (m -> a) -> (a -> m -> m) -> (a -> J.Value) -> (J.Value -> Result a String) -> Field m .
 whole key policy get set enc dec = Field key policy
-  (fn db m -> x = get m; v = enc x; _ = (if KV.get key db == O.Some v then Unit else KV.put key v db); wholeSnap key get enc x)
+  (fn db m -> x = get m; v = enc x; _ = (if KV.get key db == O.Some v then Unit else KV.post key v db); wholeSnap key get enc x)
   (fn db m -> case KV.get key db of
       O.None -> Ok m
     | O.Some v -> (case dec v of Ok x -> Ok (set x m) | Err why -> Err "{key}: {why}")).
@@ -156,9 +163,14 @@ each policy path keyOf order =
   Field base policy
     (fn db m ->
         xs = path.get m;
-        # restored from records already: they ARE this list.  Otherwise (a new
-        # store, or one record from before) write every element, then the marker.
-        _ = (if KV.get base db == O.Some (J.Text "each") then Unit
+        # kept as records already: write the elements that differ from them
+        # (none, right after a restore; what changed, for std/durable's save).
+        # Otherwise (a new store, or one record from before) write every
+        # element, then the marker.
+        _ = (if KV.get base db == O.Some (J.Text "each") then
+               (case elements db (strcat base "/") path.dec (KV.keys db) Nil of
+                   Ok stored -> byKey db keyOf one ek stored xs
+                 | Err _ -> putAll db keyOf one ek xs)
              else _ = putAll db keyOf one ek xs; KV.post base (J.Text "each") db);
         eachSnap path.get keyOf one ek xs)
     (fn db m -> case KV.get base db of
@@ -278,6 +290,8 @@ serveConfigured cfg app =
   db = (case KV.open cfg.store of Ok d -> d | Err why -> error "live: {why}");
   model = (case restore app.fields db app.init of Ok m -> m | Err why -> error "live: restore failed: {why}");
   saved = start app.fields db model (M.empty S.compare);
+  # the first save is posted: a store that refuses it is said now, not later
+  _ = (case KV.trySync db of Ok _ -> Unit | Err why -> error "live: the store refused the first save: {why}");
   listener = (case TCP.listen cfg.address cfg.port of Ok l -> l | Err why -> error "live: cannot listen on {cfg.address}:{cfg.port}: {why}");
   main = myself 0;
   # `send` never waits for room, so everything many actors send to has a mailbox
@@ -307,7 +321,8 @@ restoreGo fields db model = case fields of
     | Err why -> Err why).
 
 # each field's first snapshot, taken against the store: written = 0, so a field's
-# first change is due at once whatever its policy
+# first change is due at once whatever its policy.  What differs from the store
+# is POSTED; `KV.trySync` says whether it was written.
 start : unsafe List (Field m) -> KV.KvLog -> m -> M.Map String (Int, Snap m, Bool) -> M.Map String (Int, Snap m, Bool) .
 start fields db model saved = case fields of
     Nil -> saved
@@ -447,15 +462,28 @@ evOf codec v = case D.run (D.field "e" D.string) v of
           | _ -> Err "unknown event kind: {kind}")).
 
 # what a session sent, as a message of this app.  "=" and the JSON of the
-# message is complete; "+" takes the event's argument as its final field
-# (View.sendWith).  The codec decides: anything it refuses never reaches update.
+# message is complete; "+" takes the event's argument as its final field (an
+# upload); "*" takes the event's argument, a JSON array of the page's values, as
+# its final fields (View.sendWith, the client-state mirror).  The codec decides:
+# anything it refuses never reaches update.
 decodeWire codec wire arg =
   kind = substr wire 0 1;
-  case kind == "=" or kind == "+" of
+  case kind == "=" or kind == "+" or kind == "*" of
     False -> Err "not a typed message: {wire}"
   | True -> (case J.parse (substr wire 1 (strlen wire)) of
         Err why -> Err why
-      | Ok v -> codec.dec (if kind == "+" then withLast arg (J.toWire v) else J.toWire v)).
+      | Ok v -> (case kind of
+          "=" -> codec.dec (J.toWire v)
+        | "+" -> codec.dec (withLast arg (J.toWire v))
+        | _ -> (case J.parse arg of
+              Ok (J.Sequence vs) -> codec.dec (withArgs (L.map J.toWire vs) (J.toWire v))
+            | Ok _ -> Err "the page's values: expected an array"
+            | Err why -> Err "the page's values: {why}"))).
+withArgs : List Wire -> Wire -> Wire .
+withArgs args w = case w of
+    WList xs -> WList (appendW xs args)
+  | WCon n as -> WCon n (appendW as args)
+  | other -> other.
 
 withLast : String -> Wire -> Wire .
 withLast arg w = case w of
@@ -517,15 +545,14 @@ wanted codec ms key subs = case subs of
   | SyncClientState _ _ :: r -> wanted codec ms key r.
 
 # the frame that tells a page to mirror its client state: how often, and the
-# message to send (without its last field, which the page fills)
+# message to send (without its last field, which the page fills with the record
+# of its client state, as the page holds it)
 syncFrame codec subs = case subs of
     Nil -> O.None
   | SyncClientState ms msg :: _ ->
       O.Some (J.render (J.object (("sync", J.object (("every", J.Integer ms) :: ("msg", J.Text (openWire codec msg)) :: Nil)) :: Nil)))
   | _ :: r -> syncFrame codec r.
-openWire codec msg = strcat "+" (J.render (J.fromWire (case codec.enc msg of WCon n as -> WCon n (butLast as) | w -> w))).
-butLast : unsafe List a -> List a .
-butLast xs = case xs of Nil -> Nil | x :: Nil -> Nil | x :: r -> x :: butLast r.
+openWire codec msg = G.openWire 1 "*" codec msg.
 
 startTickers : Int -> Rs -> Rs .
 startTickers me st = case st of Rs cfg app model sessions nextSid db saved tickers version told ->

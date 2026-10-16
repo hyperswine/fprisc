@@ -1,0 +1,68 @@
+profile base.
+# typed client state (std/view, std/live, std/lens): a field path's zero, the
+# schema of a client record, the string tier through the codec, the attributes
+# a page carries, and what the server decodes from what the page sends.
+#   ./fpr run tests/std/clientstate.fpr
+G = use "std/view".
+UI = use "std/ui".
+Live = use "std/live".
+L = use "std/lens".
+List = use "std/list".
+S = use "std/string".
+Program = use "std/program".
+
+Tab = Type (Register | Receipts | Admin).
+Client = { tab : Tab, open : Int, on : Bool, draft : String, cart : List (String, Int) }.
+init = { tab = Register, open = 0, on = False, draft = "", cart = [("FW", 2)] }.
+Msg = Type (Login String String | Restock String Int | Cash String | ClientState Client | Quit).
+codec = @Msg.
+
+page attrs = case G.render (G.El "b" attrs Nil) of (s :: Nil, Nil) -> s | _ -> "?".
+tags es = List.map (fn e -> "{e.path}:{e.tag}") es.
+said r = case r of Ok m -> "Ok {m}" | Err why -> "Err {why}".
+
+main = case Program.args Unit of
+    ["twice"] -> _ = print (page [G.showIf @Client.tab Admin, G.hideIf @Client.open 0]); 1
+  | _ -> checks.
+checks =
+  tab = @Client.tab;
+  open = @Client.open;
+  on = @Client.on;
+  draft = @Client.draft;
+  cart = @Client.cart;
+  _ = print "zeros: {tab.zero} {open.zero} {on.zero} [{draft.zero}] {cart.zero}";
+  sch = @Client;
+  _ = print "schema: {tags sch}";
+  _ = print "lens tab=Receipts: {said (L.set sch "tab" "Receipts" init)}";
+  _ = print "lens tab=Nope: {said (L.set sch "tab" "Nope" init)}";
+  _ = print "lens open=x: {said (L.set sch "open" "x" init)}";
+  _ = print "lens on=true: {said (L.set sch "on" "true" init)}";
+  _ = print "lens cart: {said (L.get sch "cart" init)}, set: {said (L.set sch "cart" "x" init)}";
+  _ = print "locals: {page (G.locals @Client init)}";
+  _ = print "set/show: {page [G.setTo @Client.tab Receipts, G.showIf @Client.tab Admin]}";
+  _ = print "show in/hide: {page [G.showIn @Client.tab [Register, Receipts]]} {page [G.hideIf @Client.open 0]}";
+  _ = print "step/toggle: {page [G.step @Client.open 1 0 9]} {page [G.toggle @Client.on]}";
+  _ = print "bind: {page [G.bind @Client.draft]} {page [G.bindInt @Client.open]}";
+  fw = G.entry @Client.cart "FW";
+  _ = print "entry: {page [G.hold fw 0, G.step fw (0 - 1) 0 12, G.hideIf fw 0]} {G.assign fw 5}";
+  _ = print "sends: {page [G.sendWith codec (Restock "FW") @Client.open]} {page [G.sendWith2 codec Login @Client.draft @Client.draft]} {page [G.enterWith codec Cash @Client.draft]}";
+  styled = page (attrsOfNode (UI.vstackWith { UI.stack | vary = [UI.onState @Client.tab Receipts [UI.Inverted]] } Nil Nil));
+  _ = print "onState: {S.contains "&quot;key&quot;:&quot;tab&quot;,&quot;value&quot;:&quot;Receipts&quot;" styled}";
+  restock = G.openWire 1 "*" codec (Restock "FW" 0);
+  _ = print "restock 12: {said (Live.decodeWire codec restock "[\"12\"]")}";
+  _ = print "restock x: {said (Live.decodeWire codec restock "[\"x\"]")}";
+  _ = print "restock none: {said (Live.decodeWire codec restock "[]")}";
+  _ = print "restock not a list: {said (Live.decodeWire codec restock "12")}";
+  login = G.openWire 2 "*" codec (Login "" "");
+  _ = print "login: {said (Live.decodeWire codec login "[\"ana\",\"1234\"]")}";
+  mirror = Live.openWire codec (ClientState init);
+  _ = print "mirror wire: {mirror}";
+  _ = print "mirror: {said (Live.decodeWire codec mirror "[\{\"tab\":\"Receipts\",\"open\":\"3\",\"on\":\"true\",\"draft\":\"a|b\",\"cart\":[[\"FW\",\"2\"],[\"LB\",\"0\"]],\"q_x\":\"9\"}]")}";
+  _ = print "mirror bad: {said (Live.decodeWire codec mirror "[\{\"tab\":\"Receipts\",\"open\":\"x\",\"on\":\"true\",\"draft\":\"\",\"cart\":[]}]")}";
+  _ = print "mirror missing: {said (Live.decodeWire codec mirror "[\{\"tab\":\"Receipts\"}]")}";
+  _ = print "complete: {said (Live.decodeWire codec (G.wire codec Quit) "")}";
+  _ = print "setClient: {Live.setClient 3 [G.assign @Client.tab Admin, G.assign fw 0]}";
+  0.
+
+# the element's opening tag, the way a page receives it
+attrsOfNode n = case n of G.El tag attrs kids -> attrs | _ -> Nil.

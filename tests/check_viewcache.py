@@ -49,7 +49,9 @@ with tempfile.TemporaryDirectory(prefix='viewcache-') as directory:
             port=int(match[1]);a=Client(port,True);clients.append(a);b=Client(port,True);clients.append(b)
             for i in range(25):
                 text=f'cache-entry-{i:02}'
-                a.send('Add','test|'+text)
+                # the last one in the one-field form an old journal holds
+                if i<24:a.send('Post','test',text)
+                else:a.send('Add','test|'+text)
                 for c in (a,b):c.until(lambda st:has(st,text))
             a.send('Page',1)
             a.until(lambda st:has(st,'page 2 of 2') and has(st,'cache-entry-00'))
@@ -57,7 +59,7 @@ with tempfile.TemporaryDirectory(prefix='viewcache-') as directory:
             a.until(lambda st:has(st,'cache-entry-07') and not has(st,'cache-entry-00') and not has(st,'cache-entry-24'))
             b.send('Edit',25)
             b.until(lambda st:has(st,'editing'))
-            b.send('Save',25,'changed|edited while another session searched')
+            b.send('Change',25,'changed','edited while another session searched')
             b.until(lambda st:has(st,'edited while another session searched') and not has(st,'editing'))
             a.send('Search','')
             a.until(lambda st:has(st,'edited while another session searched') and has(st,'page 1 of 2'))

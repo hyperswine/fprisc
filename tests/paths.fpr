@@ -4,18 +4,18 @@
 #                   validated at elaboration against the declared
 #                   shapes; a bad field is a COMPILE error
 #   STRING schema   @Model -> the flattened leaf list; sets/gets by
-#                   dotted string via std.lens, leaf values parsed and
-#                   rendered by tag; a bad path is a transactional Err
+#                   dotted string via std.lens, leaf values read and
+#                   rendered by the leaf's own codec; a bad path or value
+#                   is a transactional Err
 #   COMPOSE         L.comp of two literals = the same nested path
 #
-#   make qos-app PROG=tests/paths.fpr
-#   (cd ../qos && ./qosp --yes ../fp-risc/app.qa)
+#   ./fpr run tests/paths.fpr
 #
 # Expected:
 #   paths: OK hp=99 name=zed fg=7 comp-fg=8 via-str hp=250 tag=live
-#   segs=ui.fg leaves=4 bad=no schema leaf 'ui.nope'
-#   (leaves=4: hp, name, ui.fg, ui.tag -- ks : List Int is typed-tier-
-#   only, the schema skips it)
+#   segs=ui.fg leaves=5 bad=no schema leaf 'ui.nope' badhp=hp: not a number
+#   (leaves=5: hp, name, ui.fg, ui.tag and ks, a List Int: a "wire" leaf
+#   with a codec and no one-line text form)
 
 L = use "../std/lens".
 
@@ -57,5 +57,9 @@ main =
   bad = case L.set sch "ui.nope" "1" m5 of
       Ok m -> "ACCEPTED?!"
     | Err e -> e;                     # refused, model untouched
+  badHp = case L.set sch "hp" "lots" m5 of
+      Ok m -> "ACCEPTED?!"
+    | Err e -> e;                     # the codec refuses the value
 
-  "paths: OK hp={hpP.get m3} name={nameP.get m5} fg={fgP.get m5} comp-fg={compFg} via-str hp={gotHp} tag={tagP.get m5} segs={joinSegs fgP.segs ""} leaves={List.len sch} bad={bad}".
+  _ = print "paths: OK hp={hpP.get m3} name={nameP.get m5} fg={fgP.get m5} comp-fg={compFg} via-str hp={gotHp} tag={tagP.get m5} segs={joinSegs fgP.segs ""} leaves={List.len sch} bad={bad} badhp={badHp}";
+  0.

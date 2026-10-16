@@ -1,0 +1,26 @@
+zeros: Register 0 False [] []
+schema: [tab:enum, open:int, on:bool, draft:str, cart:wire]
+lens tab=Receipts: Ok {cart = [(FW, 2)], draft = , on = False, open = 0, tab = Receipts}
+lens tab=Nope: Err tab: Tab: no such message: Nope
+lens open=x: Err open: not a number
+lens on=true: Ok {cart = [(FW, 2)], draft = , on = True, open = 0, tab = Register}
+lens cart: Ok [["FW",2]], set: Err cart: expected a list
+locals: <b x-json="{&quot;tab&quot;:&quot;Register&quot;,&quot;open&quot;:&quot;0&quot;,&quot;on&quot;:&quot;false&quot;,&quot;draft&quot;:&quot;&quot;,&quot;cart&quot;:[[&quot;FW&quot;,&quot;2&quot;]]}"></b>
+set/show: <b data-set="tab" data-to="Receipts" data-when="tab" data-is="[&quot;Admin&quot;]"></b>
+show in/hide: <b data-when="tab" data-is="[&quot;Register&quot;,&quot;Receipts&quot;]"></b> <b data-when="open" data-is-not="[&quot;0&quot;]"></b>
+step/toggle: <b data-set="open" data-add="1" data-min="0" data-max="9"></b> <b data-set="on" data-flip=""></b>
+bind: <b data-input="draft"></b> <b data-input="open" data-kind="int"></b>
+entry: <b x-json="{&quot;cart[FW]&quot;:&quot;0&quot;}" data-set="cart[FW]" data-add="-1" data-min="0" data-max="12" data-when="cart[FW]" data-is-not="[&quot;0&quot;]"></b> (cart[FW], 5)
+sends: <b data-click="*[&quot;Restock&quot;,&quot;FW&quot;]" data-args="open"></b> <b data-click="*[&quot;Login&quot;]" data-args="draft,draft"></b> <b data-enter="*[&quot;Cash&quot;]" data-args="draft"></b>
+onState: True
+restock 12: Ok Restock FW 12
+restock x: Err Restock field 2: not a number
+restock none: Err Restock: expected 2 field(s)
+restock not a list: Err the page's values: expected an array
+login: Ok Login ana 1234
+mirror wire: *["ClientState"]
+mirror: Ok ClientState {cart = [(FW, 2), (LB, 0)], draft = a|b, on = True, open = 3, tab = Receipts}
+mirror bad: Err ClientState field 1: open: not a number
+mirror missing: Err ClientState field 1: open: missing
+complete: Ok Quit
+setClient: Emit 3 locals {"cart[FW]":"0","tab":"Admin"}

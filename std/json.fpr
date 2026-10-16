@@ -365,6 +365,17 @@ valuesGo xs acc = case xs of Nil -> rev acc Nil | x :: r -> valuesGo r (toWireGo
 pairsGo : unsafe List (String, Value) -> List (String, Wire) -> List (String, Wire) .
 pairsGo kvs acc = case kvs of Nil -> rev acc Nil | (k, x) :: r -> pairsGo r ((k, toWireGo x) :: acc).
 
+# the TEXT a page holds for a value (std/view's client state): a number, true or
+# false, a string as itself, a bare constructor by its name -- what the prelude's
+# decoders read back -- and anything else as its JSON
+wireText : Wire -> String .
+wireText w = case w of
+    WInt n -> str n
+  | WStr t -> t
+  | WBool b -> (case b of True -> "true" | False -> "false")
+  | WCon n Nil -> n
+  | other -> render (fromWire other).
+
 # text <-> any type with a codec: Json.encode codec value, Json.decode codec text
 encode : { enc : a -> Wire | r } -> a -> String .
 encode codec x = render (fromWire (codec.enc x)).
