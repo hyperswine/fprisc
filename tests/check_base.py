@@ -50,6 +50,17 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([build('tests/base/strprims.fpr', 'strprims')])
     assert p.stdout == Path('tests/base/strprims.expected').read_text(), p.stdout
     print('String order, search and parse in FP-RISC: the C primitives\' answers, edge cases and overflow included: PASS')
+    # confined processes (docs/2026-10-17-CONFINED-PROCESSES.md): a program
+    # that runs out of its budget by heap or stack, or reaches for what it
+    # was not granted, ends whole with the reason and the machine runs on;
+    # Sys.killPid ends a process of several actors at once
+    p = run([build('tests/confine.fpr', 'confine')], timeout=120)
+    assert 'confine: HOLDS' in p.stdout, p.stdout + p.stderr
+    print('Confined processes: a budget ends a runaway heap and stack, a refused capability is named, killPid ends a process whole: PASS')
+    # a Sys.loop whose state holds a list ending in a heap nil turns and ends
+    p = run([build('tests/heapnil.fpr', 'heapnil')], timeout=60)
+    assert 'heapnil: HOLDS' in p.stdout, p.stdout + p.stderr
+    print('A loop state holding a list that ends in a heap nil (a primitive\'s, another process\'s) turns and ends: PASS')
     # a shift or bit index outside 0..63 is a named panic inline and through a
     # function value (runtime/bits.c used to compute C's undefined shift)
     bits = build('tests/base/bitrange.fpr', 'bitrange')

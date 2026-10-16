@@ -240,6 +240,9 @@ typedef struct fpr_acb {
   struct fpr_acb *watch;
   uw watchers;
   char why[FPR_WHY_BYTES]; /* why it died: a trap's text, "killed"; empty = it returned */
+  struct pidpol *pol;      /* its process's confinement or ending, if any (Sys.confine, Sys.killPid);
+                            * what it spawns into the same process inherits it */
+  uint8_t budget_refused;  /* its last take was refused by that budget, not by the machine */
 #ifdef FPR_COST_PROBE
   uint64_t probe_shipped, probe_drained; /* cross-hart latency stamps (XHART.md) */
 #endif
@@ -248,6 +251,8 @@ typedef struct fpr_acb {
 #define TR(a, code) do { (a)->tr[(a)->tr_i++ % 16] = (uint8_t)((code) * 8 + (fpr_hart() ? fpr_hart()->id : 7)); } while (0)
 
 fpr_plane_actors_t *fpr_plane_actors = 0; /* see fpr.h: NULL = this image is the plane */
+static void spawn_gate(void);     /* confined processes, at the end of this file */
+static void pol_quiet(acb_t *a);
 fpr_plane_memory_t *fpr_plane_memory = 0; /* NULL = this image owns its heap */
 static void dl_put(char **p, const char *e, const char *str);
 static void dl_num(char **p, const char *e, uw u);
@@ -367,7 +372,7 @@ static void *stack_guarded(void *p, uw *size) {
   return p;
 }
 static void *stack_block(uw *size) {
-  if (fpr_mem_own) return stack_guarded(fpr_mem_take(STACK_SZ), size);
+  if (fpr_mem_own) return stack_guarded(fpr_charge(fpr_mem_take(STACK_SZ)), size);
   void *p = fpr_fl_take(&stack_fl, STACK_SZ);
   if (p) return stack_guarded(p, size);
   __atomic_add_fetch(&fpr_stk_misses, 1, __ATOMIC_RELAXED);
@@ -431,9 +436,14 @@ _Static_assert(FPR_STACK_HEADROOM < STACK_SZ,
                "the stack check subtracts it from the segment size");
 uw fpr_stack_max = (uw)1 << 30;
 
+/* A stack that cannot grow is the ACTOR's failure, not the machine's
+ * (docs/2026-10-17-CONFINED-PROCESSES.md): it runs on what is left of the
+ * headroom -- the message is built on this stack, fpr_exhausted takes no
+ * lock and allocates nothing -- and the actor ends with the reason (its
+ * whole process, when that is confined); actor 0 still panics. */
 static void fpr_panic_stack(const char *what, uw kib) __attribute__((noreturn));
 static void fpr_panic_stack(const char *what, uw kib) { /* "<what><kib> KiB" */
-  static char msg[128];
+  char msg[128];
   char *p = msg;
   for (; *what && p < msg + 96; what++) *p++ = *what;
   char d[24];
@@ -442,7 +452,7 @@ static void fpr_panic_stack(const char *what, uw kib) { /* "<what><kib> KiB" */
   while (n) *p++ = d[--n];
   for (const char *t = " KiB"; *t; t++) *p++ = *t;
   *p = 0;
-  fpr_cpanic(msg);
+  fpr_exhausted(msg);
 }
 
 typedef struct stkseg { struct stkseg *prev; char *lo; uw size; } stkseg_t; /* at the segment's TOP */
@@ -517,7 +527,7 @@ static uw stack_grow_at(uw sp) {
   if (a->spare && a->spare->size >= 2 * size) {
     nlo = a->spare->lo; nsz = a->spare->size; a->spare = 0;
   } else {
-    nlo = (char *)big_block_d(want, 1);
+    nlo = (char *)fpr_charge(big_block_d(want, 1));
     if (!nlo) {
       h->stk_lo = 0; h->stk_span = ~(uw)0;
       fpr_panic_stack("stack overflow -- no memory to grow the actor's stack by ", want >> 10);
@@ -862,6 +872,7 @@ static void reap(acb_t *a) {
   /* a process's actor reclaimed: its loader may end the image once none
    * is left (fpr_pid_live is 0 only when no hart runs that code) */
   if (a->pid && fpr_pid_quiet) fpr_pid_quiet(a->pid);
+  if (a->pol) pol_quiet(a);
   /* the acb itself stays: it IS the actor value other actors hold
    * (send-to-dead reads a->var).  ~sizeof(acb_t) per actor, stated. */
 }
@@ -1198,11 +1209,12 @@ static volatile int irq_bound; /* gate: keep the hot loop MMIO-free until a rout
 static uw irq_src_key;         /* the deliveries' stable channel key */
 
 static acb_t *want_actor(V av, const char *who) {
-  if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic(who);
+  if (ISINT(av) || TID(av) != T_ACTOR) fpr_trap(who);
   return (acb_t *)av;
 }
 /* Sys.irqInstall a -> Bool: make a THE router; False if one already is */
 static V a_irq_install(V av) {
+  fpr_confined_refuse("Sys.irqInstall (the interrupt router)");
   acb_t *a = want_actor(av, "Sys.irqInstall: not an actor");
   acb_t *none = 0;
   if (!__atomic_compare_exchange_n(&irq_router, &none, a, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
@@ -1218,6 +1230,7 @@ static V a_irq_router(V u) {
 }
 /* Sys.irqOpen src: let the device raise it (the router, at bind) */
 static V a_irq_open(V srcv) {
+  fpr_confined_refuse("Sys.irqOpen (a hardware interrupt)");
   if (!ISINT(srcv) || UNTAG(srcv) < 1) fpr_cpanic("Sys.irqOpen: a source is an Int >= 1");
   hal_irq_open((uw)UNTAG(srcv));
   return (V)&fpr_unit;
@@ -1226,6 +1239,7 @@ static V a_irq_open(V srcv) {
  * source to its actor on the deliveries' channel; a full mailbox refuses
  * (the router retries), a dead actor is "dead actor", as `send` says */
 static V a_irq_deliver(V av, V srcv) {
+  fpr_confined_refuse("Sys.irqDeliver (a hardware interrupt)");
   want_actor(av, "Sys.irqDeliver: not an actor");
   return fpr_send_as((uw)&irq_src_key, av, srcv);
 }
@@ -1305,7 +1319,8 @@ static volatile int tmr_bound;
 static uw tmr_src_key;
 
 static V a_timer_bind(V av) {
-  if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("Sys.timerBind: target is not an actor");
+  fpr_confined_refuse("Sys.timerBind (the timer service)");
+  if (ISINT(av) || TID(av) != T_ACTOR) fpr_trap("Sys.timerBind: target is not an actor");
   tmr_act = (acb_t *)av;
   __atomic_store_n(&tmr_bound, 1, __ATOMIC_RELEASE);
   return TAG((sw)hal_timer_native());
@@ -2018,6 +2033,10 @@ void fpr_actor_fail(const char *why) {
   fpr_logput(2, msg, n);
   why_set(a, why); /* before DEAD is published: a watcher that reads DEAD reads this */
   (void)a_kill((V)a);
+  /* a_kill returns only when the actor was ALREADY dead: another actor
+   * killed it while it ran here (a kill is advisory until a safepoint).
+   * This failure is that safepoint: switch away, never to run again. */
+  to_sched();
   fpr_cpanic("actors: a failed actor resumed");
   for (;;) FPR_PARK();
 }
@@ -2240,10 +2259,11 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
   fpr_spawns++;
   if (hart >= fpr_live_harts) fpr_cpanic("spawnOn: no such hart (Sys.harts is the live count)");
   if (ISINT(f) || TID(f) != T_PAP) fpr_cpanic("spawn: argument must be a function");
+  if (!admitted && pid == (uw)-1) spawn_gate();
   acb_t *a = admitted ? admitted->acb : (acb_t *)acb_block();
   uw stk_sz = admitted ? admitted->stack_size : 0;
   char *stk = admitted ? admitted->stack : (char *)stack_block(&stk_sz);
-  if (!a || !stk) fpr_cpanic("spawn: buddy has no free block");
+  if (!a || !stk) fpr_exhausted("spawn: no memory for the actor's stack");
   fpr_pool_init(&a->pool, admitted ? admitted->buckets : fpr_bkt_take()); /* zeroed; teardown returns it */
   if (grant) {
     grant->next = 0; grant->owner = &a->pool;
@@ -2318,6 +2338,8 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
     acb_t *cur = fpr_hart()->current;
     a->parent = cur ? cur->id : 0;
     a->pid = pid != (uw)-1 ? pid : (cur ? cur->pid : 0);
+    a->pol = pid != (uw)-1 ? 0 : (cur ? cur->pol : 0); /* a new process starts unconfined */
+    a->budget_refused = 0;
   }
   ledger_push(a);
   for (int i = 0; i < FPR_CTX_WORDS; i++) a->ctx[i] = 0;
@@ -2399,6 +2421,7 @@ static V a_spawn_heap(V bytesv, V f) {
   if (bytes > ((uw)-1 >> 2)) return (V)&heap_large;
   /* Allocating the response belongs to the spawner, before any reservation.
    * It is freed on refusal. No child is registered or scheduled until commit. */
+  spawn_gate();
   hdr_t *r = (hdr_t *)fpr_alloc(8 + sizeof(V));
   admission_t ad = {0};
   if (!fpr_actor_cleanup_set(admission_rollback, &ad)) { fpr_free((V)r); return (V)&heap_denied; }
@@ -2436,6 +2459,7 @@ static V a_spawn_inbox(V hv, V countv, V bytesv, V f) {
   if (!ISINT(hv) || !ISINT(countv) || !ISINT(bytesv) || UNTAG(hv) < -1 ||
       UNTAG(hv) >= (sw)fpr_live_harts || UNTAG(countv) < 1 || UNTAG(countv) > RING_MAX ||
       UNTAG(bytesv) < 1 || ISINT(f) || TID(f) != T_PAP) return (V)&inbox_bad;
+  spawn_gate();
   hdr_t *r = (hdr_t *)fpr_alloc(8 + sizeof(V));
   admission_t ad = {0};
   ad.inbox_max_messages = (uw)UNTAG(countv);
@@ -2486,6 +2510,7 @@ static V a_spawn_at(V hv, V f) {
 static uw next_pid; /* 0 = the boot image; apps count up from 1 */
 static V a_spawn_app(V f) {
   if (fpr_plane_actors) fpr_cpanic("Sys.spawnApp: only the plane's own image launches apps");
+  fpr_confined_refuse("Sys.spawnApp (starting a program)");
   if (ISINT(f) || TID(f) != T_PAP) fpr_cpanic("Sys.spawnApp: argument must be a function");
   uw pid = __atomic_add_fetch(&next_pid, 1, __ATOMIC_RELAXED);
   /* the image the root's code lives in (an attached, not yet launched
@@ -2501,7 +2526,7 @@ FPR_FN(fpr_g_Sys_x2espawnApp, a_spawn_app, 1);
  * CALLER's pid: the grants a process was launched with, looked up by
  * the sender of the request, never by anything the request says. */
 static V a_pid_of(V av) {
-  if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("Sys.pidOf: argument is not an actor");
+  if (ISINT(av) || TID(av) != T_ACTOR) fpr_trap("Sys.pidOf: argument is not an actor");
   return TAG((sw)((acb_t *)av)->pid);
 }
 FPR_FN(fpr_g_Sys_x2epidOf, a_pid_of, 1);
@@ -2510,7 +2535,7 @@ FPR_FN(fpr_g_Sys_x2epidOf, a_pid_of, 1);
  * client's session (the graphics service's focus) asks before keeping it;
  * a reply's refusal is the other way a dead client is learned of. */
 static V a_alive(V av) {
-  if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("Sys.alive: argument is not an actor");
+  if (ISINT(av) || TID(av) != T_ACTOR) fpr_trap("Sys.alive: argument is not an actor");
   return BOOL(__atomic_load_n(&((acb_t *)av)->var, __ATOMIC_ACQUIRE) != ST_DEAD);
 }
 FPR_FN(fpr_g_Sys_x2ealive, a_alive, 1);
@@ -2623,7 +2648,7 @@ static int ring_push(acb_t *a, chan_t *c, uw key, V m, uw charge) {
 }
 V fpr_send_as(uw sender_key, V av, V m) {
   if (fpr_plane_actors) return fpr_plane_actors->send_as(sender_key, av, m);
-  if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("send: target is not an actor");
+  if (ISINT(av) || TID(av) != T_ACTOR) fpr_trap("send: target is not an actor");
   acb_t *a = (acb_t *)av;
   if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD)
     return send_err("dead actor");
@@ -2724,7 +2749,7 @@ static V a_send(V av, V m) {
  * be, never silently retained. */
 static V a_send_linear(V av, V m) {
   if (fpr_plane_actors) return fpr_plane_actors->send_linear(av, m);
-  if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("sendLinear: target is not an actor");
+  if (ISINT(av) || TID(av) != T_ACTOR) fpr_trap("sendLinear: target is not an actor");
   acb_t *a = (acb_t *)av;
   /* a move shares the value's statics too: across processes it copies,
    * so nothing it holds can outlive a process image (runtime.c) */
@@ -2888,7 +2913,7 @@ static V a_receive_from(V me, V fromv) {
   if (ISINT(me) || (acb_t *)me != h->current)
     fpr_cpanic("receiveFrom: not the current actor's handle");
   if (ISINT(fromv) || TID(fromv) != T_ACTOR)
-    fpr_cpanic("receiveFrom: sender is not an actor");
+    fpr_trap("receiveFrom: sender is not an actor");
   acb_t *a = h->current;
   drop_drain(a); /* the previous activation's borrows are dead here */
   uw sid = (uw)fromv; /* the key IS the sender's acb */
@@ -2965,7 +2990,7 @@ static V a_receive_from_now(V me, V fromv) {
   if (ISINT(me) || (acb_t *)me != h->current)
     fpr_cpanic("receiveFromNow: not the current actor's handle");
   if (ISINT(fromv) || TID(fromv) != T_ACTOR)
-    fpr_cpanic("receiveFromNow: sender is not an actor");
+    fpr_trap("receiveFromNow: sender is not an actor");
   acb_t *a = h->current;
   drop_drain(a);
   int dead = __atomic_load_n(&((acb_t *)fromv)->var, __ATOMIC_SEQ_CST) == ST_DEAD;
@@ -2982,7 +3007,7 @@ static V a_receive_from_res(V me, V fromv) {
   if (ISINT(me) || (acb_t *)me != h->current)
     fpr_cpanic("receiveFromRes: not the current actor's handle");
   if (ISINT(fromv) || TID(fromv) != T_ACTOR)
-    fpr_cpanic("receiveFromRes: sender is not an actor");
+    fpr_trap("receiveFromRes: sender is not an actor");
   acb_t *a = h->current;
   acb_t *s = (acb_t *)fromv;
   drop_drain(a); /* the previous activation's borrows are dead here */
@@ -3049,7 +3074,7 @@ static V a_yield(V me) {
 }
 
 static V a_kill(V av) {
-  if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("kill: target is not an actor");
+  if (ISINT(av) || TID(av) != T_ACTOR) fpr_trap("kill: target is not an actor");
   acb_t *a = (acb_t *)av;
   /* the machine's own actors are not anyone's to kill (SUPERVISION S7):
    * killing actor 0 used to end in the deadlock detector two seconds
@@ -3060,6 +3085,10 @@ static V a_kill(V av) {
   if (a == mem_act) fpr_cpanic("kill: the memory actor cannot be killed");
   if (a == __atomic_load_n(&irq_router, __ATOMIC_ACQUIRE)) fpr_cpanic("kill: the interrupt router cannot be killed");
   if (a == tmr_act) fpr_cpanic("kill: the timer actor cannot be killed");
+  /* a confined program ends only its own actors (its launcher's, the
+   * system's, another program's are not its to end) */
+  if (fpr_hart()->current && a->pid != fpr_hart()->current->pid)
+    fpr_confined_refuse("kill (an actor outside the program)");
   if (a != fpr_hart()->current && !a->why[0]) why_set(a, "killed"); /* its own failure, if racing, says more */
   uint32_t st = __atomic_load_n(&a->var, __ATOMIC_ACQUIRE);
   while (st != ST_DEAD &&
@@ -3124,7 +3153,7 @@ FPR_FN(fpr_g_spawnOn, a_spawn_at, 2);
  * share flat records/tuples, or accept pool lifetime for the rest. */
 static V a_send_arc(V av, V m) {
   if (fpr_plane_actors) return fpr_plane_actors->send_arc(av, m);
-  if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("sendArc: target is not an actor");
+  if (ISINT(av) || TID(av) != T_ACTOR) fpr_trap("sendArc: target is not an actor");
   if (!ISINT(m) && fpr_in_heap(m) && TID(m) == T_VEC)
     fpr_cpanic("sendArc: a Vector is linear bulk -- sendLinear moves it, send copies it");
   acb_t *a = (acb_t *)av;
@@ -3483,3 +3512,297 @@ void fpr_plane_export(fpr_plane_actors_t *actors, fpr_plane_memory_t *memory) {
   memory->heap_hi = fpr_heap_hi;
   fpr_memory_scopes_export(memory);
 }
+
+/* ---- confined processes ---------------------------------------------------------
+ * (docs/2026-10-17-CONFINED-PROCESSES.md)  QOS's Run starts a program a user
+ * has just typed as a process of its own (Sys.spawnApp) and CONFINES it
+ * before it runs a line (Sys.confine pid budget):
+ *
+ *   - every heap slab, stack and message slab its actors take is charged to
+ *     the process -- the block's buddy tag names its record (buddy.c) -- and
+ *     handed back when the block goes home, by whoever frees it;
+ *   - a take past the budget is refused, and the process ENDS WHOLE: every
+ *     actor of it dies with one reason ("memory: ..."), which its launcher
+ *     reads off the root, and the machine runs on.  On a host the arena is
+ *     address space, not memory: without a budget a runaway program does not
+ *     meet the buddy's end, it meets the host's OOM killer;
+ *   - it may not start processes, install or bind the machine's singletons,
+ *     or (the platform's word, fpr_actor_confined) use its devices: using one
+ *     ends it whole, the capability named.
+ *
+ * Sys.killPid pid why ends any process whole, confined or not: every actor,
+ * with that reason, and nothing spawned into it after (spawn_gate).  A stack
+ * or heap exhaustion of any actor but the program (actor 0) now fails that
+ * actor -- and a confined process whole -- instead of the machine.
+ *
+ * Records are immortal, like acbs: a block freed at any later time may name
+ * one.  A record is reused once its process has no actor left (PID_DONE) and
+ * every block charged to it is home. */
+#define PID_CONFINED 1u
+#define PID_ENDING 2u
+#define PID_DONE 4u
+typedef struct pidpol {
+  struct pidpol *next;     /* every record, under pols_lock */
+  uw pid;
+  uw budget;               /* bytes; 0 = charges nothing (a record only to end it) */
+  uw charged;              /* bytes of blocks charged and not yet home (atomic) */
+  uw flags;                /* PID_* (atomic) */
+  char why[FPR_WHY_BYTES]; /* why it ended (PID_ENDING); the first reason stands */
+} pidpol_t;
+static pidpol_t *g_pols;
+static fpr_lock_t pols_lock;
+
+static void why_copy(char *dst, const char *src) {
+  uw n = 0;
+  while (src[n] && n < FPR_WHY_BYTES - 1) { dst[n] = src[n]; n++; }
+  dst[n] = 0;
+}
+static void put_str(char **p, char *end, const char *s) { while (*s && *p < end) *(*p)++ = *s++; }
+static void put_dec(char **p, char *end, uw v) {
+  char d[24];
+  int n = 0;
+  do { d[n++] = (char)('0' + v % 10); v /= 10; } while (v);
+  while (n && *p < end) *(*p)++ = d[--n];
+}
+
+/* a record for a new confinement, or an ending: a spent one, else a block's
+ * worth more, carved */
+static pidpol_t *pol_new(uw pid) {
+  for (;;) {
+    fpr_lock(&pols_lock);
+    for (pidpol_t *p = g_pols; p; p = p->next)
+      if ((__atomic_load_n(&p->flags, __ATOMIC_ACQUIRE) & PID_DONE) && __atomic_load_n(&p->charged, __ATOMIC_ACQUIRE) == 0) {
+        p->pid = pid;
+        p->budget = 0;
+        p->why[0] = 0;
+        __atomic_store_n(&p->flags, 0, __ATOMIC_RELEASE);
+        fpr_unlock(&pols_lock);
+        return p;
+      }
+    fpr_unlock(&pols_lock);
+    uw want = 64 * sizeof(pidpol_t);
+    char *blk = (char *)big_block_d(want, 1);
+    if (!blk) return 0;
+    uw got = big_block_size(blk, want);
+    fpr_lock(&pols_lock);
+    for (uw o = 0; o + sizeof(pidpol_t) <= got; o += sizeof(pidpol_t)) {
+      pidpol_t *p = (pidpol_t *)(blk + o);
+      p->pid = 0; p->budget = 0; p->charged = 0; p->why[0] = 0;
+      p->flags = PID_DONE;
+      p->next = g_pols;
+      g_pols = p;
+    }
+    fpr_unlock(&pols_lock);
+  }
+}
+
+/* a charged block went home (buddy.c, any context, any lock: atomics only) */
+static void pol_uncharge(uw tag, uw bytes) {
+  pidpol_t *p = (pidpol_t *)tag;
+  uw c = __atomic_load_n(&p->charged, __ATOMIC_RELAXED);
+  while (!__atomic_compare_exchange_n(&p->charged, &c, c >= bytes ? c - bytes : 0, 0,
+                                      __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {}
+}
+
+void *fpr_charge(void *blk) {
+  if (!blk || !fpr_mem_own) return blk; /* only this image's own buddy blocks carry tags */
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h ? h->current : 0;
+  pidpol_t *p = a ? a->pol : 0;
+  if (!p || !p->budget || ((uw)p >> 56)) return blk;
+  if (!fpr_buddy_uncharge) fpr_buddy_uncharge = pol_uncharge;
+  uw bytes = buddy_block_usable_size(blk) + sizeof(uw); /* the whole block, as it goes home */
+  if (__atomic_add_fetch(&p->charged, bytes, __ATOMIC_ACQ_REL) > p->budget) {
+    __atomic_sub_fetch(&p->charged, bytes, __ATOMIC_ACQ_REL);
+    a->budget_refused = 1;
+    fpr_mem_give(blk); /* home untagged: it was never this process's */
+    return 0;
+  }
+  buddy_tag(blk, (uw)p);
+  return blk;
+}
+
+static int system_actor(acb_t *a) {
+  return a == &main_acb || a == mem_act || a == __atomic_load_n(&irq_router, __ATOMIC_ACQUIRE) || a == tmr_act;
+}
+/* every live actor of `pid` but `self`, ended with `why` (a reason of its
+ * own stands): how many */
+static uw sweep(uw pid, const char *why, acb_t *self) {
+  uw n = 0;
+  for (acb_t *a = __atomic_load_n(&g_all, __ATOMIC_ACQUIRE); a; a = a->all_nx) {
+    if (a->pid != pid || a == self || system_actor(a)) continue;
+    if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD) continue;
+    if (!a->why[0]) why_set(a, why);
+    (void)a_kill((V)a);
+    n++;
+  }
+  return n;
+}
+static void pol_mark_ending(pidpol_t *p, const char *why) {
+  fpr_lock(&pols_lock);
+  if (!(__atomic_load_n(&p->flags, __ATOMIC_ACQUIRE) & PID_ENDING)) {
+    why_copy(p->why, why);
+    __atomic_or_fetch(&p->flags, PID_ENDING, __ATOMIC_ACQ_REL);
+  }
+  fpr_unlock(&pols_lock);
+}
+/* the current actor's process ends whole, and so does the current actor */
+static void pol_end(pidpol_t *p, const char *why) __attribute__((noreturn));
+static void pol_end(pidpol_t *p, const char *why) {
+  pol_mark_ending(p, why);
+  fpr_hart_t *h = fpr_hart();
+  (void)sweep(p->pid, p->why, h ? h->current : 0);
+  fpr_actor_fail(p->why);
+}
+
+void fpr_exhausted(const char *what) {
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h ? h->current : 0;
+  pidpol_t *p = a ? a->pol : 0;
+  if (p && (__atomic_load_n(&p->flags, __ATOMIC_ACQUIRE) & PID_CONFINED)) {
+    char why[FPR_WHY_BYTES];
+    char *w = why, *end = why + sizeof why - 1;
+    if (a->budget_refused) {
+      a->budget_refused = 0;
+      put_str(&w, end, "memory: this program's budget of ");
+      put_dec(&w, end, p->budget >> 20);
+      put_str(&w, end, " MiB is used up (");
+      put_str(&w, end, what);
+      put_str(&w, end, ")");
+    } else
+      put_str(&w, end, what);
+    *w = 0;
+    pol_end(p, why);
+  }
+  if (!a || a->id == 0) fpr_cpanic(what); /* the program itself: as it always was */
+  fpr_actor_fail(what);
+}
+
+int fpr_budget_refused(void) {
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h ? h->current : 0;
+  return a && a->budget_refused;
+}
+int fpr_actor_confined(void) {
+  fpr_hart_t *h = fpr_hart();
+  acb_t *a = h ? h->current : 0;
+  return a && a->pol && (__atomic_load_n(&a->pol->flags, __ATOMIC_ACQUIRE) & PID_CONFINED);
+}
+void fpr_confined_refuse(const char *what) {
+  if (!fpr_actor_confined()) return;
+  char why[FPR_WHY_BYTES];
+  char *w = why, *end = why + sizeof why - 1;
+  put_str(&w, end, what);
+  put_str(&w, end, " is not granted to a confined program");
+  *w = 0;
+  pol_end(fpr_hart()->current->pol, why);
+}
+
+/* an actor of a confined or ending process spawns nothing once it is ending,
+ * and nothing its budget cannot hold -- checked BEFORE anything is taken: a
+ * refusal half-way through a spawn would strand what it had */
+static void spawn_gate(void) {
+  fpr_hart_t *h = fpr_hart();
+  acb_t *cur = h ? h->current : 0;
+  pidpol_t *p = cur ? cur->pol : 0;
+  if (!p) return;
+  if (__atomic_load_n(&p->flags, __ATOMIC_ACQUIRE) & PID_ENDING) fpr_actor_fail(p->why);
+  if (p->budget && __atomic_load_n(&p->charged, __ATOMIC_ACQUIRE) + 2 * (uw)STACK_SZ > p->budget) {
+    cur->budget_refused = 1;
+    fpr_exhausted("spawning an actor");
+  }
+}
+
+/* a process with no actor left: its record may serve another, once every
+ * block charged to it is home (reap, after the platform's own quiet hook) */
+static void pol_quiet(acb_t *a) {
+  pidpol_t *p = a->pol;
+  if (p->pid != a->pid || fpr_pid_live(a->pid)) return;
+  __atomic_or_fetch(&p->flags, PID_DONE, __ATOMIC_ACQ_REL);
+}
+
+/* the record of a live process, made (and given to its live actors) if it has none */
+static pidpol_t *pol_of_pid(uw pid) {
+  for (acb_t *a = __atomic_load_n(&g_all, __ATOMIC_ACQUIRE); a; a = a->all_nx)
+    if (a->pid == pid && a->pol && __atomic_load_n(&a->var, __ATOMIC_ACQUIRE) != ST_DEAD) return a->pol;
+  pidpol_t *p = pol_new(pid);
+  if (!p) return 0;
+  uw n = 0;
+  for (acb_t *a = __atomic_load_n(&g_all, __ATOMIC_ACQUIRE); a; a = a->all_nx)
+    if (a->pid == pid && !a->pol && __atomic_load_n(&a->var, __ATOMIC_ACQUIRE) != ST_DEAD) { a->pol = p; n++; }
+  if (!n) { __atomic_store_n(&p->flags, PID_DONE, __ATOMIC_RELEASE); return 0; } /* nothing left to end */
+  return p;
+}
+
+static const char *str_arg(V v, char *buf, uw cap) {
+  str_t *s = (str_t *)v;
+  uw n = s->len < cap - 1 ? s->len : cap - 1;
+  for (uw i = 0; i < n; i++) buf[i] = (char)s->bytes[i];
+  buf[n] = 0;
+  return buf;
+}
+
+/* Sys.killPid pid why -> Int: end process `pid` whole -- every actor of it,
+ * each with `why` (a reason of its own stands), and nothing spawned into it
+ * after; how many it ended.  pid 0 is the system: a trap.  Sweeps until one
+ * finds nothing left, yielding between so an actor killed while it ran
+ * reaches its safepoint; an actor of the caller's own process goes last
+ * (the caller itself, after everything else). */
+static V a_kill_pid(V pidv, V whyv) {
+  if (!ISINT(pidv)) fpr_trap("Sys.killPid: pid must be an Int");
+  if (ISINT(whyv) || TID(whyv) != T_STR) fpr_trap("Sys.killPid: the reason must be a String");
+  fpr_confined_refuse("Sys.killPid (ending a program)");
+  sw pid = UNTAG(pidv);
+  if (pid <= 0) fpr_trap("Sys.killPid: pid 0 is the system, not a program");
+  char why[FPR_WHY_BYTES];
+  str_arg(whyv, why, sizeof why);
+  if (!why[0]) why_copy(why, "killed");
+  fpr_hart_t *h = fpr_hart();
+  acb_t *self = h ? h->current : 0;
+  pidpol_t *p = pol_of_pid((uw)pid);
+  if (p) pol_mark_ending(p, why);
+  const char *reason = p ? p->why : why;
+  uw total = 0;
+  for (;;) {
+    uw n = sweep((uw)pid, reason, self);
+    total += n;
+    if (!n) break;
+    if (self) { enq(h, self); to_sched(); h = fpr_hart(); } /* the killed reach their safepoints */
+  }
+  if (self && self->pid == (uw)pid) fpr_actor_fail(reason);
+  return TAG((sw)total);
+}
+FPR_FN(fpr_g_Sys_x2ekillPid, a_kill_pid, 2);
+
+/* Sys.confine pid budget -> Ok "" | Err why: confine a process the caller
+ * started, before it runs (see above): its blocks charged to `budget` bytes,
+ * its devices and the machine's singletons refused.  Its live actors take
+ * the record; what they spawn inherits it. */
+static V a_confine(V pidv, V budgetv) {
+  if (!ISINT(pidv) || !ISINT(budgetv)) fpr_trap("Sys.confine: pid and budget must be Ints");
+  fpr_confined_refuse("Sys.confine (confining a program)");
+  sw pid = UNTAG(pidv), budget = UNTAG(budgetv);
+  if (pid <= 0) return fpr_mkresult(1, "pid 0 is the system, not a program");
+  if (budget <= 0) return fpr_mkresult(1, "a budget is a number of bytes above 0");
+  if (!fpr_mem_own) return fpr_mkresult(1, "this image does not own its memory: it cannot charge a budget");
+  pidpol_t *p = pol_new((uw)pid);
+  if (!p) return fpr_mkresult(1, "no memory for a confinement record");
+  p->budget = (uw)budget;
+  __atomic_store_n(&p->flags, PID_CONFINED, __ATOMIC_RELEASE);
+  uw n = 0, taken = 0;
+  for (acb_t *a = __atomic_load_n(&g_all, __ATOMIC_ACQUIRE); a; a = a->all_nx) {
+    if (a->pid != (uw)pid || __atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD) continue;
+    if (a->pol) { taken++; continue; }
+    a->pol = p;
+    n++;
+  }
+  if (taken || !n) {
+    for (acb_t *a = __atomic_load_n(&g_all, __ATOMIC_ACQUIRE); a; a = a->all_nx)
+      if (a->pol == p) a->pol = 0;
+    __atomic_store_n(&p->flags, PID_DONE, __ATOMIC_RELEASE);
+    return fpr_mkresult(1, taken ? "that process is already confined or ending" : "no such process");
+  }
+  if (!fpr_buddy_uncharge) fpr_buddy_uncharge = pol_uncharge;
+  return fpr_mkresult(0, "");
+}
+FPR_FN(fpr_g_Sys_x2econfine, a_confine, 2);

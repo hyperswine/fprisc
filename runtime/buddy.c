@@ -8,8 +8,13 @@
  * remember the size -- callers still pass a size to buddy_alloc (they
  * know what they need), but never to buddy_free.
  *
- *   [ order:uw ][ ...block... ]
- *   ^header      ^returned pointer
+ *   [ tag:56 | order:8 ][ ...block... ]
+ *   ^header              ^returned pointer
+ *
+ * The TAG is whom the block is charged to (0: no one): a confined
+ * process's heap, stack and message blocks carry its budget record
+ * (actors.c, Sys.confine), and freeing one hands the bytes back through
+ * fpr_buddy_uncharge -- outside the lock, from any context.
  *
  * Free lists are singly-linked through the first word of each free
  * block's PAYLOAD (blocks are always >= BUDDY_MIN_BLOCK >= sizeof(uw),
@@ -21,6 +26,10 @@
 #include "fpr.h"
 
 static void buddy_free_locked(void *p); /* the coalescing free, under buddy_lock */
+#define BUDDY_ORDER(w) ((int)((w) & 0xff))
+#define BUDDY_TAG(w) ((uw)(w) >> 8)
+/* a charged block's bytes going home (actors.c installs it) */
+void (*fpr_buddy_uncharge)(uw tag, uw bytes);
 
 #ifndef BUDDY_MIN_BLOCK
 #ifdef FPR_BUDDY_MIN
@@ -202,11 +211,22 @@ void buddy_release_range(void *addr, uw bytes) {
   }
 }
 
+/* charge a block to `tag` (a budget record; 0 clears) */
+void buddy_tag(void *p, uw tag) {
+  uw *h = (uw *)((char *)p - sizeof(uw));
+  *h = (uw)BUDDY_ORDER(*h) | (tag << 8);
+}
+uw buddy_tag_of(void *p) { return BUDDY_TAG(*(uw *)((char *)p - sizeof(uw))); }
+static void uncharge(uw w) {
+  if (BUDDY_TAG(w) && fpr_buddy_uncharge) fpr_buddy_uncharge(BUDDY_TAG(w), block_size(BUDDY_ORDER(w)));
+}
 void buddy_free(void *p) {
   if (!p) return;
+  uw w = *(uw *)((char *)p - sizeof(uw)); /* the tag, before the block is anyone's */
   fpr_lock(&buddy_lock);
   buddy_free_locked(p);
   fpr_unlock(&buddy_lock);
+  uncharge(w);
 }
 /* A freed block this big gives its pages back to whoever backs the heap
  * (hal_heap_release; a no-op on a board).  Only the block being freed, not
@@ -218,7 +238,7 @@ __attribute__((weak)) void hal_heap_release(void *p, uw bytes) { (void)p; (void)
 
 static void buddy_free_locked(void *p) { /* under buddy_lock */
   char *hdr = (char *)p - sizeof(uw);
-  int order = (int)*(uw *)hdr;
+  int order = BUDDY_ORDER(*(uw *)hdr);
   uw off = offset_of(hdr);
   if (order >= BUDDY_RELEASE_ORDER)
     hal_heap_release(hdr + sizeof(free_node_t), block_size(order) - sizeof(free_node_t));
@@ -262,10 +282,14 @@ static void buddy_free_locked(void *p) { /* under buddy_lock */
  *           BLOCK INTACT (partial in-place growth is kept -- the
  *           header records it, so a later free releases all of it).
  */
+/* A charged block keeps its tag when resized in place; its charge is not
+ * resized with it (no pool reallocates a charged block: they grow by
+ * copying through fpr_realloc), and an uncharge never goes below zero. */
 void *buddy_realloc(void *p, uw bytes) {
   if (!p) return buddy_alloc(bytes);
   char *hdr = (char *)p - sizeof(uw);
-  int have = (int)*(uw *)hdr;
+  int have = BUDDY_ORDER(*(uw *)hdr);
+  uw tag = BUDDY_TAG(*(uw *)hdr);
   int want = order_of(bytes);
   if (want == have) return p;
   if (want > max_order) return 0;
@@ -278,7 +302,7 @@ void *buddy_realloc(void *p, uw bytes) {
       free_lists[have] = upper;
     }
     fpr_unlock(&buddy_lock);
-    *(uw *)hdr = (uw)want;
+    *(uw *)hdr = (uw)want | (tag << 8);
     return p;
   }
   /* grow: absorb the free buddy above while we are the low half */
@@ -297,7 +321,7 @@ void *buddy_realloc(void *p, uw bytes) {
     order++;
   }
   fpr_unlock(&buddy_lock);
-  *(uw *)hdr = (uw)order; /* record any partial growth for free() */
+  *(uw *)hdr = (uw)order | (tag << 8); /* record any partial growth for free() */
   if (order == want) return p;
   void *n = buddy_alloc(bytes);
   if (!n) return 0; /* exhausted; original (possibly grown) intact */
@@ -313,7 +337,7 @@ void *buddy_realloc(void *p, uw bytes) {
  * more, without needing to remember what it asked for. */
 uw buddy_block_usable_size(void *p) {
   char *hdr = (char *)p - sizeof(uw);
-  int order = (int)*(uw *)hdr;
+  int order = BUDDY_ORDER(*(uw *)hdr);
   return block_size(order) - sizeof(uw);
 }
 
@@ -349,9 +373,11 @@ void *buddy_alloc_try(uw bytes, int *busy) {
 /* the same for a free: 1 done, 0 the lock was held (queue it) */
 int buddy_free_try(void *p) {
   if (!p) return 1;
+  uw w = *(uw *)((char *)p - sizeof(uw));
   if (!buddy_trylock()) return 0;
   buddy_free_locked(p);
   fpr_unlock(&buddy_lock);
+  uncharge(w);
   return 1;
 }
 

@@ -1,0 +1,58 @@
+unsafe program.
+# confine.fpr -- confined processes (docs/2026-10-17-CONFINED-PROCESSES.md): a
+# program that allocates without end, or recurses without end, or tries to
+# start a program, ENDS WHOLE with its reason -- and this one runs on to say
+# so.  Sys.killPid ends a process of several actors at once, and nothing is
+# spawned into it after.
+#: expect confine: HOLDS
+
+Sys.spawnApp : (Int -> Unit) -> Int .
+Sys.pidOf : Int -> Int .
+Sys.alive : Int -> Bool .
+Sys.confine : (pid : Int | pid > 0) -> (budget : Int | budget > 0) -> Result String String .
+Sys.killPid : (pid : Int | pid > 0) -> String -> Int .
+
+check what ok = if ok then Unit else error "confine: {what}".
+has part s = strIndexOf part s >= 0.
+
+# the heap, without end: every cell stays reachable
+hog : unsafe Int -> List Int -> Unit .
+hog n acc = hog (n + 1) (n :: acc).
+# the stack, without end
+deep : unsafe Int -> Int .
+deep n = 1 + deep (n + 1).
+# a few actors that wait for ever
+sleeper : unsafe Int -> Unit .
+sleeper me = _ = receive me; sleeper me.
+crowd : unsafe Int -> Int -> Unit .
+crowd me n = if n <= 0 then sleeper me else _ = spawn sleeper; crowd me (n - 1).
+
+# start `body` as a confined process of its own, let it go, and hear how it ended
+confined budget body =
+  me = myself 0;
+  a = Sys.spawnApp (fn s -> go = receive s; _ = drop go; body s);
+  pid = Sys.pidOf a;
+  _ = (if pid > 0 then (case Sys.confine pid budget of Ok u -> Unit | Err why -> error "confine: {why}") else error "confine: no pid");
+  _ = send a 1;
+  (case receiveFromRes me a of Ok m -> "sent something?!" | Err why -> why).
+
+main =
+  me = myself 0;
+  heap = confined (8 * 1024 * 1024) (fn s -> hog 0 Nil);
+  _ = check "the heap ends the program with its budget: {heap}" (has "budget of 8 MiB is used up" heap);
+  stack = confined (8 * 1024 * 1024) (fn s -> _ = deep 0; Unit);
+  _ = check "the stack ends the program with its budget: {stack}" (has "budget of 8 MiB is used up" stack and has "stack" stack);
+  launch = confined (8 * 1024 * 1024) (fn s -> _ = Sys.spawnApp (fn t -> Unit); Unit);
+  _ = check "a confined program starts no program: {launch}" (has "Sys.spawnApp" launch and has "not granted" launch);
+  # a process of five actors, ended whole
+  root = Sys.spawnApp (fn s -> crowd s 4);
+  _ = Sys.sleepUs 50000;
+  pid = Sys.pidOf root;
+  ended = (if pid > 0 then Sys.killPid pid "stopped by its launcher" else 0);
+  _ = check "killPid ends every actor of the process ({ended})" (ended == 5);
+  _ = Sys.sleepUs 20000;
+  _ = check "the root heard why" (case receiveFromRes me root of Ok m -> False | Err why -> has "stopped by its launcher" why);
+  again = (if pid > 0 then Sys.killPid pid "again" else 0);
+  _ = check "nothing is left to end ({again})" (again == 0);
+  _ = print "confine: HOLDS";
+  "confine: HOLDS".

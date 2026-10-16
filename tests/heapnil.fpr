@@ -1,0 +1,15 @@
+unsafe program.
+# heapnil.fpr -- a Sys.loop whose state holds a list that ends in a nil ON
+# the heap (a primitive's: Sys.actInfo builds one; another process's nil,
+# copied with its message, is another) turns and ends.  The loop's escape
+# check (has_vec) used to follow that nil as a list again, onto itself, and
+# spin for ever.
+#: expect heapnil: HOLDS
+count xs = case xs of Nil -> 0 | x :: r -> 1 + count r.
+turn s = case s of (n, info) -> (n < 3, (n + 1, info)).
+main =
+  info = Sys.actInfo 0;
+  _ = Sys.loop (0, info) turn;
+  _ = Sys.loop (0, Nil) turn;
+  _ = print "heapnil: HOLDS";
+  "heapnil: HOLDS".

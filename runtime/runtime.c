@@ -357,6 +357,10 @@ fpr_grant_t fpr_grow_counted(uw want, uw site) {
   fpr_grant_t g = {0, 0};
   if (fpr_mem_own) { /* the memory actor's buddy (fpr.h) */
     g.ptr = fpr_mem_take(want);
+    /* an actor's own blocks are its process's to pay for (a confined one has
+     * a budget: actors.c); the ARC table (5) and the shared spare (2) are
+     * the machine's, whoever happened to grow them */
+    if (site != 5 && site != 2) g.ptr = fpr_charge(g.ptr);
     if (g.ptr) g.size = buddy_block_usable_size(g.ptr);
   } else if (fpr_grow_memory)
     g = fpr_grow_memory(want); /* a loaded process: the loader's grant */
@@ -539,7 +543,7 @@ V fpr_alloc(V raw_bytes) {
        * value this process builds lives in the one heap span and the
        * kernel reaps its acbs like any other */
       sl = fpr_plane_memory->slab_new(want);
-      if (!sl) fpr_cpanic("heap exhausted (shared buddy has no free block)");
+      if (!sl) fpr_exhausted("heap exhausted (shared buddy has no free block)");
     } else {
       sl = 0;
       if (!fpr_mem_own && fpr_is_process && fpr_grow_memory) {
@@ -578,15 +582,18 @@ V fpr_alloc(V raw_bytes) {
 #endif
         if (!g.ptr || g.size < total + sizeof(fpr_slab_t)) {
           /* the post-mortem journal should carry the numbers: how much
-           * had been taken and what was being asked when it died */
-          praw("[mem] exhausted: want ");
-          pdec(want);
-          praw(" after ");
-          pdec(fpr_grow_count);
-          praw(" blocks / ");
-          pdec(fpr_grow_bytes >> 20);
-          praw(" MiB taken\n");
-          fpr_cpanic("heap exhausted (no block for a slab)");
+           * had been taken and what was being asked when it died (a
+           * process's budget says its own: fpr_exhausted) */
+          if (!fpr_budget_refused()) {
+            praw("[mem] exhausted: want ");
+            pdec(want);
+            praw(" after ");
+            pdec(fpr_grow_count);
+            praw(" blocks / ");
+            pdec(fpr_grow_bytes >> 20);
+            praw(" MiB taken\n");
+          }
+          fpr_exhausted("heap exhausted (no block for a slab)");
         }
         sl = (fpr_slab_t *)g.ptr;
         sl->end = (char *)g.ptr + g.size;
@@ -1082,7 +1089,7 @@ static fpr_slab_t *msg_slab_new(uw need) {
   if (!sl) {
     fpr_grant_t g = fpr_grow_counted(want, 6); /* msg */
     if (!g.ptr || g.size < need + sizeof(fpr_slab_t))
-      fpr_cpanic("send: no block for the message slab");
+      fpr_exhausted("send: no block for the message slab");
     sl = (fpr_slab_t *)g.ptr;
     sl->end = (char *)g.ptr + g.size;
   }
@@ -1314,6 +1321,13 @@ static int has_vec(V v) {
         if (has_vec(*(V *)((char *)c + 8))) return 1;
         c = *(V *)((char *)c + 8 + sizeof(uw));
       }
+      /* the tail: the static nil (not in the heap), a nil ON the heap -- a
+       * primitive's, or another process's nil, copied with the message it
+       * ended (its image's statics are foreign there) -- whose cell holds
+       * nothing, or an improper tail.  The heap nil used to be followed as
+       * a list again, onto itself: a Sys.loop whose state held a list a
+       * program had sent spun for ever (dc_size had the same fix). */
+      if (!ISINT(c) && c && fpr_in_heap(c) && TID(c) == T_LIST) return 0;
       return has_vec(c);
     }
     default: {
@@ -1333,7 +1347,7 @@ static void arena_open(struct fpr_pool **slot, fpr_pool_t *ap) {
   fpr_pool_init(ap, fpr_bkt_take()); /* bigfree=0 matters: a stack pool
                                       * with garbage there walked it as
                                       * a freelist on any >ceiling alloc */
-  if (!ap->buckets) fpr_cpanic("Sys.arena: no memory for a bucket array");
+  if (!ap->buckets) fpr_exhausted("Sys.arena: no memory for a bucket array");
   *slot = (struct fpr_pool *)ap;
 }
 /* teardown, poolReset-style, under arc_lock (owner/escaped race) */
@@ -2778,6 +2792,7 @@ static V g_logStaged(V u) {
 /* the log actor: installed once, like the interrupt router */
 static V log_actor; /* an actor value; 0 until installed */
 static V g_logInstall(V av) {
+  fpr_confined_refuse("Sys.logInstall (the system logger)");
   if (ISINT(av) || TID(av) != T_ACTOR) fpr_cpanic("Sys.logInstall: not an actor");
   V none = 0;
   return __atomic_compare_exchange_n(&log_actor, &none, av, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)

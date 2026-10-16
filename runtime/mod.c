@@ -176,6 +176,7 @@ static V h_modfn(V hash, V name) {
  * matters: a refused swap leaves every binding exactly as it was. */
 static V h_moddetachlast(V u) {
   (void)u;
+  fpr_confined_refuse("Mod.detachLast (the module registry)");
   fpr_lock(&xlock);
   if (nxtabs > 0) __atomic_store_n(&nxtabs, nxtabs - 1, __ATOMIC_RELEASE);
   fpr_unlock(&xlock);

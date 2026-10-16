@@ -288,6 +288,9 @@ int buddy_free_try(void *p);                /* 1 done, 0 the lock was held */
 void *buddy_reserve_range(void *addr, uw bytes);
 void buddy_release_range(void *addr, uw bytes);
 void buddy_init(void *base, uw size);
+void buddy_tag(void *p, uw tag);            /* charge a block to tag (0: no one) */
+uw buddy_tag_of(void *p);
+extern void (*fpr_buddy_uncharge)(uw tag, uw bytes); /* a charged block went home */
 
 /* Saved actor context: integer slots, then callee-saved FP state where
  * required. Linux RV64 adds fs0..fs11 and fcsr; libc's gp/tp never migrate.
@@ -671,6 +674,21 @@ void fpr_actor_resource_remove(fpr_resource_t *node);
 __attribute__((noreturn)) void fpr_actor_fail(const char *why);
 /* a death reason is kept on the actor (its watchers read it: "dead actor: why"); longer ones are cut, marked "..." */
 #define FPR_WHY_BYTES 160
+/* ---- confined processes (actors.c; docs/2026-10-17-CONFINED-PROCESSES.md) ----
+ * A launcher may confine a process it started: its heap, stack and message
+ * blocks are charged to a budget, it may not use the machine's devices or
+ * start processes, and it ends WHOLE -- every actor, with one reason -- when
+ * its budget refuses a block.  Sys.killPid ends any process whole. */
+void *fpr_charge(void *blk);      /* a block just taken, charged to the current actor's process when it has a
+                                   * budget: the block, or 0 when the budget refuses it (the block went home) */
+/* a take failed (a heap slab, a stack segment, a message slab): a budgeted
+ * process ends whole with the reason, any other actor fails alone, the
+ * program (actor 0) panics.  No lock may be held. */
+__attribute__((noreturn)) void fpr_exhausted(const char *what);
+int fpr_actor_confined(void);     /* 1 when the current actor's process is confined */
+int fpr_budget_refused(void);     /* 1 when the current actor's last take was refused by its budget */
+/* the start of a primitive a confined process may not use: it fails, named */
+void fpr_confined_refuse(const char *what);
 /* 1 when the current actor is the program (actor 0) or there is none: a trap there is a panic */
 uw fpr_actor_is_program(void);
 int fpr_hal_sleep_us(uw us);      /* the host sleep: Sys.sleepUs's fallback (runtime.c weak) */
