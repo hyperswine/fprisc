@@ -689,6 +689,9 @@ int fpr_actor_confined(void);     /* 1 when the current actor's process is confi
 int fpr_budget_refused(void);     /* 1 when the current actor's last take was refused by its budget */
 /* the start of a primitive a confined process may not use: it fails, named */
 void fpr_confined_refuse(const char *what);
+/* an actor that has ended, never scheduled: what a confined process is
+ * shown in place of a system actor it may not hold (Sys.logger) */
+V fpr_ended_actor(void);
 /* 1 when the current actor is the program (actor 0) or there is none: a trap there is a panic */
 uw fpr_actor_is_program(void);
 int fpr_hal_sleep_us(uw us);      /* the host sleep: Sys.sleepUs's fallback (runtime.c weak) */

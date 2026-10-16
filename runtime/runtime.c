@@ -1942,7 +1942,7 @@ static V g_drop(V v) {
  * prefix of a page (read) with this; doing it via chr+strcat would be
  * one allocation PER BYTE of every page moved. */
 static V g_substr(V sv, V off, V len) {
-  if (ISINT(sv) || TID(sv) != T_STR) fpr_cpanic("substr: not a String");
+  if (ISINT(sv) || TID(sv) != T_STR) fpr_trap("substr: not a String");
   str_t *s = (str_t *)sv;
   sw o = UNTAG(off), l = UNTAG(len);
   if (o < 0) { l += o; o = 0; } /* [off, off+len) cut to the string, both ends */
@@ -1957,7 +1957,7 @@ static V g_substr(V sv, V off, V len) {
  * strCmp, strIndexOf, strIndexFrom and parseInt are FP-RISC in
  * core/prelude.fpr, with Sol's names and contracts. */
 static str_t *want_str(V v, const char *who) {
-  if (ISINT(v) || TID(v) != T_STR) fpr_cpanic(who);
+  if (ISINT(v) || TID(v) != T_STR) fpr_trap(who);
   return (str_t *)v;
 }
 static int is_cons(V v) { return !ISINT(v) && TID(v) == T_LIST && ((hdr_t *)v)->var == 1; }
@@ -2048,7 +2048,7 @@ void fpr_panic(V s) {
     str_t *t = (str_t *)s;
     fpr_trap_n((const char *)t->bytes, t->len);
   }
-  fpr_cpanic("panic (non-string value)");
+  fpr_trap("error: its reason is not a String");
 }
 
 /* A trap is the program's own failure: `error`, an Int overflow, a division
@@ -2169,9 +2169,9 @@ static V callf(uw fn, uw ar, V *a) {
 }
 
 V fpr_apply(V f, V a) {
-  if (ISINT(f)) fpr_cpanic("apply: applied an integer");
+  if (ISINT(f)) fpr_trap("apply: applied an integer");
   pap_t *p = (pap_t *)f;
-  if (p->tid != T_PAP) fpr_cpanic("apply: not a function value");
+  if (p->tid != T_PAP) fpr_trap("apply: not a function value");
   uw n = p->nargs;
   if (n + 1 == p->arity) {
     V args[8 + FPR_ARGSPILL];
@@ -2199,9 +2199,9 @@ V fpr_apply(V f, V a) {
 V fpr_applyN(V f, uw n, V *rargs) {
 #define RARG(i) (rargs[(16 / sizeof(uw)) * (n - 1 - (i))]) /* 16-byte push stride */
   for (;;) {
-    if (ISINT(f)) fpr_cpanic("apply: applied an integer");
+    if (ISINT(f)) fpr_trap("apply: applied an integer");
     pap_t *p = (pap_t *)f;
-    if (p->tid != T_PAP) fpr_cpanic("apply: not a function value");
+    if (p->tid != T_PAP) fpr_trap("apply: not a function value");
     uw have = p->nargs, need = p->arity - have;
     if (n < need) { /* still partial: ONE pap with everything so far */
       pap_t *q = (pap_t *)fpr_alloc(sizeof(pap_t) + p->arity * sizeof(V));
@@ -2730,8 +2730,8 @@ void fpr_logput(int sev, const char *b, uw n) {
 /* Sys.logStage sev line: an FP-RISC line by C's path -- what `log` falls
  * back to when the log actor has ended */
 static V g_logStage(V sevv, V sv) {
-  if (!ISINT(sevv)) fpr_cpanic("Sys.logStage: severity must be an Int");
-  if (ISINT(sv) || TID(sv) != T_STR) fpr_cpanic("Sys.logStage: not a String");
+  if (!ISINT(sevv)) fpr_trap("Sys.logStage: severity must be an Int");
+  if (ISINT(sv) || TID(sv) != T_STR) fpr_trap("Sys.logStage: not a String");
   str_t *t = (str_t *)sv;
   fpr_logput((int)UNTAG(sevv), (const char *)t->bytes, t->len);
   return (V)&fpr_unit;
@@ -2751,6 +2751,7 @@ static V log_tup2(V a, V b) {
  * the memory actor, and a writer on this hart would spin on the lock. */
 static V g_logStaged(V u) {
   (void)u;
+  fpr_confined_refuse("Sys.logStaged (the system log)");
   unsigned char *buf = 0;
   uw n, dropped, cap = 0;
   for (;;) {
@@ -2798,8 +2799,12 @@ static V g_logInstall(V av) {
   return __atomic_compare_exchange_n(&log_actor, &none, av, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
              ? (V)&fpr_true : (V)&fpr_false;
 }
+/* a confined process holds no system actor: it is shown a log actor that
+ * has ended, and the prelude's `log` then takes C's way -- the line is
+ * staged for the system log and echoed on the program's own console */
 static V g_logger(V u) {
   (void)u;
+  if (fpr_actor_confined()) return fpr_ended_actor();
   V a = __atomic_load_n(&log_actor, __ATOMIC_ACQUIRE);
   return a ? a : TAG(0);
 }
@@ -2931,7 +2936,7 @@ V fpr_prim_fn_print(V v) {
 /* String.len -- mangled: '.' = _x2e */
 V fpr_prim_fn_String_x2elen(V s) {
   str_t *t = (str_t *)s;
-  if (ISINT(s) || t->tid != T_STR) fpr_cpanic("String.len: not a string");
+  if (ISINT(s) || t->tid != T_STR) fpr_trap("String.len: not a string");
   return TAG(t->len);
 }
 
@@ -2952,7 +2957,7 @@ V fpr_prim_fn__x21(V xs, V iv) {
 V fpr_prim_fn_strcat(V a, V b) {
   str_t *x = (str_t *)a, *y = (str_t *)b;
   if (ISINT(a) || ISINT(b) || x->tid != T_STR || y->tid != T_STR)
-    fpr_cpanic("strcat: not strings");
+    fpr_trap("strcat: not strings");
   str_t *s = (str_t *)fpr_alloc(sizeof(str_t) + x->len + y->len);
   s->tid = T_STR;
   s->var = 0;
@@ -2973,14 +2978,14 @@ void fpr_render_to_uart(V v) {
 /* string helpers exposed through the fpr_g_ contract (0-based) */
 static V g_charAt(V s, V i) {
   str_t *t = (str_t *)s;
-  if (ISINT(s) || t->tid != T_STR) fpr_cpanic("charAt: not a string");
+  if (ISINT(s) || t->tid != T_STR) fpr_trap("charAt: not a string");
   sw k = UNTAG(i);
   if (k < 0 || (uw)k >= t->len) fpr_trap_range("charAt: index out of range", k, t->len);
   return TAG(t->bytes[k]);
 }
 static V g_strlen(V s) {
   str_t *t = (str_t *)s;
-  if (ISINT(s) || t->tid != T_STR) fpr_cpanic("strlen: not a string");
+  if (ISINT(s) || t->tid != T_STR) fpr_trap("strlen: not a string");
   return TAG(t->len);
 }
 
@@ -2991,7 +2996,7 @@ static V g_strlen(V s) {
 static V g_intMax(V u) { (void)u; return TAG(INT_MAX_TAGGED); }
 static V g_intMin(V u) { (void)u; return TAG(INT_MIN_TAGGED); }
 static V g_chr(V c) {
-  if (!ISINT(c)) fpr_cpanic("chr: not an Int");
+  if (!ISINT(c)) fpr_trap("chr: not an Int");
   /* chr makes ONE BYTE; a value outside 0..255 used to be truncated
    * silently (chr 1114112 was a replacement character) */
   if (UNTAG(c) < 0 || UNTAG(c) > 255)

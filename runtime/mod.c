@@ -116,7 +116,7 @@ static V empty_str(void) { return (V)fpr_mkstr((const unsigned char *)"", 0); }
 static V h_modplugs(V u) { (void)u; return TAG(ntabs()); }
 /* Mod.rows t -> the number of rows in table t (0 for no such table) */
 static V h_modrows(V tv) {
-  if (!ISINT(tv)) fpr_cpanic("Mod.rows: table not an Int");
+  if (!ISINT(tv)) fpr_trap("Mod.rows: table not an Int");
   uw n;
   tab_rows(UNTAG(tv), &n);
   return TAG((sw)n);
@@ -139,7 +139,7 @@ static V h_modrowarity(V t, V i) {
 
 /* Root source identity from a trusted compiled image. Empty means invalid index. */
 static V h_modhashat(V iv) {
-  if (!ISINT(iv)) fpr_cpanic("Mod.hashAt: index not an Int");
+  if (!ISINT(iv)) fpr_trap("Mod.hashAt: index not an Int");
   sw i = UNTAG(iv);
   if (i < 0 || i >= ntabs()) return empty_str();
   return (V)__atomic_load_n(&xtabs, __ATOMIC_ACQUIRE)[i][2];
@@ -156,8 +156,8 @@ static int str_eq(const str_t *a, const str_t *b) {
   return 1;
 }
 static V h_modfn(V hash, V name) {
-  if (ISINT(hash) || TID(hash) != T_STR) fpr_cpanic("Mod.fn: hash not a String");
-  if (ISINT(name) || TID(name) != T_STR) fpr_cpanic("Mod.fn: name not a String");
+  if (ISINT(hash) || TID(hash) != T_STR) fpr_trap("Mod.fn: hash not a String");
+  if (ISINT(name) || TID(name) != T_STR) fpr_trap("Mod.fn: name not a String");
   const str_t *h = (const str_t *)hash, *n = (const str_t *)name;
   for (sw t = -1; t < ntabs(); t++) {
     uw c;

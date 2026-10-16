@@ -1,9 +1,11 @@
 unsafe program.
 # confine.fpr -- confined processes (docs/2026-10-17-CONFINED-PROCESSES.md): a
 # program that allocates without end, or recurses without end, or tries to
-# start a program, ENDS WHOLE with its reason -- and this one runs on to say
-# so.  Sys.killPid ends a process of several actors at once, and nothing is
-# spawned into it after.
+# start a program or reach the interrupt router, ENDS WHOLE with its reason
+# -- and this one runs on to say so.  A confined program's `log` works (C's
+# way).  A value of the wrong type at a primitive ends the actor, not the
+# machine.  Sys.killPid ends a process of several actors at once, and
+# nothing is spawned into it after.
 #: expect confine: HOLDS
 
 Sys.spawnApp : (Int -> Unit) -> Int .
@@ -27,6 +29,11 @@ sleeper me = _ = receive me; sleeper me.
 crowd : unsafe Int -> Int -> Unit .
 crowd me n = if n <= 0 then sleeper me else _ = spawn sleeper; crowd me (n - 1).
 
+# a value of the wrong type reaching a primitive (only `receive`, which is
+# unsafe by design, can make one): the actor's failure, not the machine's
+confused : unsafe Int -> Unit .
+confused me = x = receive me; n = strlen x; _ = drop x; _ = print "{n}"; Unit.
+
 # start `body` as a confined process of its own, let it go, and hear how it ended
 confined budget body =
   me = myself 0;
@@ -44,6 +51,16 @@ main =
   _ = check "the stack ends the program with its budget: {stack}" (has "budget of 8 MiB is used up" stack and has "stack" stack);
   launch = confined (8 * 1024 * 1024) (fn s -> _ = Sys.spawnApp (fn t -> Unit); Unit);
   _ = check "a confined program starts no program: {launch}" (has "Sys.spawnApp" launch and has "not granted" launch);
+  # it holds no system actor: the interrupt router is refused, and its `log`
+  # takes C's way (the system's logger shown to it as ended) and it finishes
+  router = confined (8 * 1024 * 1024) (fn s -> _ = Sys.irqRouter Unit; Unit);
+  _ = check "a confined program gets no interrupt router: {router}" (has "Sys.irqRouter" router and has "not granted" router);
+  logged = confined (8 * 1024 * 1024) (fn s -> _ = log "confine: a confined program's log line"; Unit);
+  _ = check "a confined program logs and finishes: {logged}" (logged == "dead actor");
+  victim = spawn confused;
+  _ = send victim 42;
+  confusion = (case receiveFromRes me victim of Ok m -> "sent something?!" | Err why -> why);
+  _ = check "a type confusion ends the actor: {confusion}" (has "strlen: not a string" confusion);
   # a process of five actors, ended whole
   root = Sys.spawnApp (fn s -> crowd s 4);
   _ = Sys.sleepUs 50000;

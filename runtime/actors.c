@@ -1225,6 +1225,7 @@ static V a_irq_install(V av) {
 /* Sys.irqRouter () -> the router, or 0 before one is installed */
 static V a_irq_router(V u) {
   (void)u;
+  fpr_confined_refuse("Sys.irqRouter (the interrupt router)");
   acb_t *r = __atomic_load_n(&irq_router, __ATOMIC_ACQUIRE);
   return r ? (V)r : TAG(0);
 }
@@ -1248,11 +1249,12 @@ static V a_irq_deliver(V av, V srcv) {
  * the running actor changes its own flag: the blocking path counts it
  * around a block. */
 static V a_irq_target(V n) {
-  if (!ISINT(n)) fpr_cpanic("Sys.irqTarget: not an Int");
+  if (!ISINT(n)) fpr_trap("Sys.irqTarget: not an Int");
   fpr_hart()->current->irq_target = UNTAG(n) != 0;
   return (V)&fpr_unit;
 }
 static V a_irq_ack(V irqv) {
+  fpr_confined_refuse("Sys.irqAck (a hardware interrupt)");
   if (!ISINT(irqv)) fpr_cpanic("Sys.irqAck: irq must be an Int");
   hal_irq_ack((uw)UNTAG(irqv));
   return (V)&fpr_unit;
@@ -1326,6 +1328,7 @@ static V a_timer_bind(V av) {
   return TAG((sw)hal_timer_native());
 }
 static V a_timer_arm(V dv) {
+  fpr_confined_refuse("Sys.timerArm (the machine's timer)");
   if (!ISINT(dv)) fpr_cpanic("Sys.timerArm: delta must be an Int (CLINT ticks)");
   sw d = UNTAG(dv);
   if (d < 1) d = 1; /* already due: fire on the next drain pass */
@@ -1908,7 +1911,7 @@ static int p_sleep(acb_t *a, uw unused) {
   return hal_mtime() >= a->wake_at;
 }
 static V a_sleep_us(V usv) {
-  if (!ISINT(usv)) fpr_cpanic("Sys.sleepUs: microseconds must be an Int");
+  if (!ISINT(usv)) fpr_trap("Sys.sleepUs: microseconds must be an Int");
   sw us = UNTAG(usv);
   if (us <= 0) return (V)&fpr_unit;
   if (fpr_plane_actors) {
@@ -2166,12 +2169,21 @@ static V take_at(acb_t *a, chan_t *c, uint32_t k) {
 /* ---- boot: hart entry points (called from crt0) ----------------------- */
 
 static acb_t main_acb; /* actor 0 */
+/* an actor that has ended before it began: never in the ledger, never
+ * scheduled.  A send to it answers "dead actor", a receive from it the
+ * same; a confined process is shown it in place of the system's logger,
+ * so its `log` lines go C's way, echoed on its own console (runtime.c
+ * g_logger) */
+static acb_t ended_acb;
+V fpr_ended_actor(void) { return (V)&ended_acb; }
 
 void fpr_actors_init(void) { /* hart 0, before fpr_smp_go */
   fpr_irq_hart = fpr_live_harts - 1; /* interrupts belong to the last hart */
   for (uw i = 0; i < fpr_live_harts; i++) hal_timer_park(i);
   main_acb.tid = T_ACTOR;
   main_acb.var = ST_READY;
+  ended_acb.tid = T_ACTOR;
+  ended_acb.var = ST_DEAD;
   main_acb.ch = chb_take();
   if (!main_acb.ch) fpr_cpanic("boot: no memory for actor 0's channels");
   main_acb.scan = 0;
@@ -2257,8 +2269,8 @@ static V spawn_on_pid_cap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t d
 static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint32_t dyn,
                               fpr_slab_t *grant, uw heap_bytes, admission_t *admitted) {
   fpr_spawns++;
-  if (hart >= fpr_live_harts) fpr_cpanic("spawnOn: no such hart (Sys.harts is the live count)");
-  if (ISINT(f) || TID(f) != T_PAP) fpr_cpanic("spawn: argument must be a function");
+  if (hart >= fpr_live_harts) fpr_trap("spawnOn: no such hart (Sys.harts is the live count)");
+  if (ISINT(f) || TID(f) != T_PAP) fpr_trap("spawn: argument must be a function");
   if (!admitted && pid == (uw)-1) spawn_gate();
   acb_t *a = admitted ? admitted->acb : (acb_t *)acb_block();
   uw stk_sz = admitted ? admitted->stack_size : 0;
@@ -2364,19 +2376,19 @@ static V a_spawn(V f) {
  * actors table (spawn_cap), so a process's Static ring refuses and says
  * so exactly as the plane's own would. */
 static uint32_t cap_of(V nv) {
-  if (!ISINT(nv)) fpr_cpanic("spawnCap: n must be an Int");
+  if (!ISINT(nv)) fpr_trap("spawnCap: n must be an Int");
   sw n = UNTAG(nv);
   /* rounded UP to a power of two of at least 8 (the inline ring); a size
    * below 1 or above RING_MAX is refused by name, not clamped */
-  if (n < 1) fpr_cpanic("spawnCap: a ring holds at least 1 message (n < 1)");
-  if (n > (sw)RING_MAX) fpr_cpanic("spawnCap: n exceeds the ring maximum of 1048576 messages");
+  if (n < 1) fpr_trap("spawnCap: a ring holds at least 1 message (n < 1)");
+  if (n > (sw)RING_MAX) fpr_trap("spawnCap: n exceeds the ring maximum of 1048576 messages");
   uint32_t c = 8;
   while ((sw)c < n) c <<= 1;
   return c;
 }
 static V a_spawn_cap(V modev, V nv, V f) {
   if (fpr_plane_actors) return fpr_plane_actors->spawn_cap(TAG(0), 0, modev, nv, f);
-  if (!ISINT(modev)) fpr_cpanic("spawnCap: mode must be an Int");
+  if (!ISINT(modev)) fpr_trap("spawnCap: mode must be an Int");
   return spawn_on_pid_cap(fpr_hart()->id, f, 0, (uw)-1, cap_of(nv), UNTAG(modev) != 0);
 }
 /* First admission slice: one pre-granted local HEAP, not a total actor
@@ -2493,12 +2505,12 @@ FPR_FN(fpr_g_Sys_x2espawnInbox, a_spawn_inbox, 4);
 #undef ADMISSION_FAIL
 static V a_spawn_cap_on(V hv, V modev, V nv, V f) {
   if (fpr_plane_actors) return fpr_plane_actors->spawn_cap(hv, 1, modev, nv, f);
-  if (!ISINT(hv) || !ISINT(modev)) fpr_cpanic("spawnCapOn: hart and mode must be Ints");
+  if (!ISINT(hv) || !ISINT(modev)) fpr_trap("spawnCapOn: hart and mode must be Ints");
   return spawn_on_pid_cap((uw)UNTAG(hv), f, 1, (uw)-1, cap_of(nv), UNTAG(modev) != 0);
 }
 static V a_spawn_at(V hv, V f) {
   if (fpr_plane_actors) return fpr_plane_actors->spawn_at(hv, f);
-  if (ISINT(hv) == 0) fpr_cpanic("spawnOn: hart must be an Int");
+  if (ISINT(hv) == 0) fpr_trap("spawnOn: hart must be an Int");
   return spawn_on((uw)UNTAG(hv), f, 1); /* explicit placement pins */
 }
 
@@ -2511,7 +2523,7 @@ static uw next_pid; /* 0 = the boot image; apps count up from 1 */
 static V a_spawn_app(V f) {
   if (fpr_plane_actors) fpr_cpanic("Sys.spawnApp: only the plane's own image launches apps");
   fpr_confined_refuse("Sys.spawnApp (starting a program)");
-  if (ISINT(f) || TID(f) != T_PAP) fpr_cpanic("Sys.spawnApp: argument must be a function");
+  if (ISINT(f) || TID(f) != T_PAP) fpr_trap("Sys.spawnApp: argument must be a function");
   uw pid = __atomic_add_fetch(&next_pid, 1, __ATOMIC_RELAXED);
   /* the image the root's code lives in (an attached, not yet launched
    * image is pid 0) becomes this process's: it is freed with the pid
@@ -3455,14 +3467,14 @@ void fpr_mem_spawn(void) {
 /* ---- the exported plane (fpr.h: fpr_plane_actors_t, fpr_plane_memory_t) --- */
 static V sched_spawn(V f) { return spawn_on(fpr_hart()->id, f, 0); }
 static V sched_spawn_at(V hv, V f) {
-  if (ISINT(hv) == 0) fpr_cpanic("spawnOn: hart must be an Int");
+  if (ISINT(hv) == 0) fpr_trap("spawnOn: hart must be an Int");
   return spawn_on((uw)UNTAG(hv), f, 1);
 }
 /* a process's spawnCap / spawnCapOn: the same rounding and the same pin
  * rule as the plane's own, the pid inherited from the spawner */
 static V sched_spawn_cap(V hv, uw pinned, V modev, V nv, V f) {
-  if (!ISINT(modev)) fpr_cpanic("spawnCap: mode must be an Int");
-  if (pinned && !ISINT(hv)) fpr_cpanic("spawnCapOn: hart must be an Int");
+  if (!ISINT(modev)) fpr_trap("spawnCap: mode must be an Int");
+  if (pinned && !ISINT(hv)) fpr_trap("spawnCapOn: hart must be an Int");
   uw hart = pinned ? (uw)UNTAG(hv) : fpr_hart()->id;
   return spawn_on_pid_cap(hart, f, pinned ? 1 : 0, (uw)-1, cap_of(nv), UNTAG(modev) != 0);
 }

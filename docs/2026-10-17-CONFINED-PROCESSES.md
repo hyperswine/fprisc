@@ -38,8 +38,9 @@ process runs a line:
   8191 KiB)". The launcher reads that reason off the root. The machine runs on.
 - **Capabilities are refused.** A confined process may not:
   - start processes (`Sys.spawnApp`);
-  - install or bind the machine's singletons (`Sys.irqInstall`, `irqOpen`,
-    `irqDeliver`, `timerBind`, `logInstall`);
+  - install, bind or reach the machine's singletons (`Sys.irqInstall`,
+    `irqRouter`, `irqOpen`, `irqDeliver`, `irqAck`, `timerBind`, `timerArm`,
+    `logInstall`, `logStaged`);
   - change the module registry (`Mod.detachLast`);
   - kill an actor outside itself;
   - confine or end others.
@@ -48,6 +49,14 @@ process runs a line:
   `fpr_actor_confined()` (QOS: `qos/appside/hal.c`). Using any of these ends
   the program whole, with the capability named: "Sys.spawnApp (starting a
   program) is not granted to a confined program".
+- **It holds no system actor.** An actor handle cannot be forged (it is a
+  pointer, and an Int is never taken for one), so a process reaches only the
+  actors it was given, and the ones a primitive hands out. `Sys.irqRouter` is
+  refused. `Sys.logger` shows it a log actor that has ended (`ended_acb`, never
+  scheduled), so the prelude's `log` takes C's way: the line is staged for the
+  system log and echoed on the program's own console. Until now a program
+  that logged before any logger existed was ended at the refused
+  `Sys.logInstall`.
 
 `Sys.killPid pid why` ends any process whole, confined or not:
 
@@ -78,6 +87,22 @@ hold any spinlock. So does a full ARC table, which is reached under
 An actor handle that is not an actor (`kill 5`, `send 5 x`, `Sys.pidOf 7`, a
 receive from a non-actor) is now a trap: the program's mistake, not the
 machine's.
+
+So is a primitive given a value of the wrong type:
+
+- a string primitive given something that is not a String (`strlen`,
+  `charAt`, `substr`, `strcat`, `strJoin`, `String.len`, `Sys.logStage`), or
+  `chr` something that is not an Int;
+- an Int applied as a function;
+- a spawn of something that is not a function, or a ring size out of range;
+- `Sys.sleepUs` and the `Mod` lookups given the wrong type;
+- `error` with a reason that is not a String.
+
+Only a receive (`receive`, `receiveFrom` and the rest of the family), whose
+result has any type, can make such a value, and a message of the wrong shape
+is how. Each of these was a machine panic; it now
+ends the actor. A wrong-typed value that reaches compiled code (a `case` on an
+Int, a field of the wrong kind) is not checked and can still fault.
 
 ## Two fixes found on the way
 
@@ -112,7 +137,9 @@ machine's.
 
 - `tests/confine.fpr` (`check_base`):
   - a heap hog and a runaway recursion each end with their budget reason;
-  - a confined `Sys.spawnApp` is refused, named;
+  - a confined `Sys.spawnApp` is refused, named, and so is `Sys.irqRouter`;
+  - a confined program's `log` line is echoed, and the program finishes;
+  - `strlen` of an Int, received as a message, ends that actor only;
   - `Sys.killPid` ends five actors at once, the root hears the reason, and a
     second kill finds nothing.
 - `tests/heapnil.fpr` (`check_base`): a loop state holding a heap-nil list
@@ -133,3 +160,6 @@ machine's.
   `fpr_actor_fail` as before; budgets there need the kernel's accounting.
 - **Handles are still `Int`.** Every primitive refuses a non-actor now, but a
   typed `Actor` would let the compiler do it.
+- **Messages are untyped.** A receiver trusts the shape of what it is sent.
+  Across a trust boundary (a launcher and its program), only a typed or
+  text-only channel would make that safe.
