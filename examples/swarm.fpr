@@ -1,0 +1,257 @@
+#!/usr/bin/env -S fpr run
+# swarm.fpr -- Swarm: a terminal game of thousands of motes that hunt the
+# player (Base profile on the posix system; std/term is the screen).
+#
+#   fpr run examples/swarm.fpr [--motes=4000] [--mode=records|captured|columns] [--bench=0]
+#
+# Arrows move you, Space pulses (every mote near you is thrown back; it
+# costs energy), q or Esc quits.  Every mote that reaches your cell bites;
+# the game ends when your health is gone, and the score is the ticks you
+# lasted.  Thirty ticks a second.
+#
+# WHY IT EXISTS: a workload for `Vector a` the way docs/2026-08-25-VEC.md
+# means it, written three ways so the tiers can be compared on one game:
+#
+#   records   ONE `Vector Mote` of four-field records (a column per field by
+#             construction) and ordinary element functions: `Vec.map step`
+#             with five scalars captured, `Vec.fold bite`, a fold whose
+#             accumulator is the screen.  The naive spelling: the record
+#             kernel takes one capture, so this map runs on rows.
+#   captured  the same, with the five scalars as ONE captured record whose
+#             fields `stepK` projects: the shape the record kernel takes, so
+#             the map is one in-place pass over the columns.
+#   columns   four `Vector Int` columns and the fixed kernels (axpb, sar,
+#             zipAdd, minS/maxS, ges, blend, eqS): what QOS's renderers do.
+#
+# `--bench=N` runs N ticks with no terminal and prints the cost per tick and
+# per phase; `fpr build -v` prints the vec notes that say which tier each
+# site took.  The element functions spell 256 and 192 as literals: the
+# column dualizer (compiler/Codegen.hs bodyOK) takes literals, the ten
+# arithmetic and comparison operators, if, let and calls into the same
+# fragment, and a top-level constant is a call it declines.
+profile base.
+Term = use "std/term".
+List = use "std/list".
+S = use "std/string".
+Config = use "std/config".
+Decode = use "std/decode".
+Json = use "std/json".
+Program = use "std/program".
+Option = use "std/option".
+Result = use "std/result".
+
+# positions and speeds in 1/256 of a cell
+sc = 256.
+maxV = 192.
+pulseR2 = 2359296.   # (6 cells)^2, in 1/256 units
+Mote = { x : Int, y : Int, vx : Int, vy : Int }.
+Cols = { xs : Vector Int, ys : Vector Int, vxs : Vector Int, vys : Vector Int }.
+Model = { motes : Vector Mote, cols : Cols, mode : Int, n : Int, w : Int, h : Int, px : Int, py : Int,
+          health : Int, energy : Int, ticks : Int, pulse : Int, frame : List String,
+          stepUs : Int, biteUs : Int, picUs : Int, over : Bool }.
+Msg = Type (Tick).
+
+# ---- the swarm -----------------------------------------------------------------
+# a pseudo-random spread: a quadratic residue of the index, no product past
+# 2^40 (an Int traps past 63 bits)
+spread : Int -> Int -> Int -> Int .
+spread i a m = r = (i * a + 12345) % 1000003; (r * r) % m.
+mote : Int -> Int -> Int -> Mote .
+mote w h i = { x = spread i 7919 (w * sc), y = spread i 104729 (h * sc),
+               vx = spread i 31 (2 * maxV) - maxV, vy = spread i 37 (2 * maxV) - maxV }.
+records : Int -> Int -> Int -> Vector Mote .
+records n w h = Vec.map (mote w h) (Vec.iota n).
+columns : Int -> Int -> Int -> Cols .
+columns n w h = { xs = Vec.map (fn i -> spread i 7919 (w * sc)) (Vec.iota n), ys = Vec.map (fn i -> spread i 104729 (h * sc)) (Vec.iota n),
+                  vxs = Vec.map (fn i -> spread i 31 (2 * maxV) - maxV) (Vec.iota n), vys = Vec.map (fn i -> spread i 37 (2 * maxV) - maxV) (Vec.iota n) }.
+noCols : Unit -> Cols .
+noCols u = { xs = Vec.new Unit, ys = Vec.new Unit, vxs = Vec.new Unit, vys = Vec.new Unit }.
+freeCols c = _ = Vec.free c.xs; _ = Vec.free c.ys; _ = Vec.free c.vxs; Vec.free c.vys.
+
+clamp lo hi v = if v < lo then lo else if v > hi then hi else v.
+
+# ---- records: one mote's tick ---------------------------------------------------
+# it steers toward the player (away, inside a pulse), its speed is capped,
+# and it stays on the field
+step : Int -> Int -> Int -> Int -> Int -> Mote -> Mote .
+step px py pulse w h m =
+  dx = px - m.x;
+  dy = py - m.y;
+  near = dx * dx + dy * dy < pulse;
+  vx = clamp (0 - 192) 192 (m.vx + (if near then 0 - dx / 4 else dx / 128));
+  vy = clamp (0 - 192) 192 (m.vy + (if near then 0 - dy / 4 else dy / 128));
+  { x = clamp 0 (w * 256 - 1) (m.x + vx), y = clamp 0 (h * 256 - 1) (m.y + vy), vx = vx, vy = vy }.
+# a mote in the player's cell bites
+bite : Int -> Int -> Int -> Mote -> Int .
+bite px py n m = if m.x / 256 == px / 256 then (if m.y / 256 == py / 256 then n + 1 else n) else n.
+
+# ---- captured: the same step with ONE captured record -----------------------------
+# the kernel reads the record's fields as raw scalars alongside the columns;
+# clamp is spelled inline (a call the dualizer cannot inline declines)
+Player = { px : Int, py : Int, pulse : Int, w : Int, h : Int }.
+stepK : Player -> Mote -> Mote .
+stepK k m =
+  dx = k.px - m.x;
+  dy = k.py - m.y;
+  near = dx * dx + dy * dy < k.pulse;
+  vx0 = m.vx + (if near then 0 - dx / 4 else dx / 128);
+  vy0 = m.vy + (if near then 0 - dy / 4 else dy / 128);
+  vx = if vx0 < 0 - 192 then 0 - 192 else if vx0 > 192 then 192 else vx0;
+  vy = if vy0 < 0 - 192 then 0 - 192 else if vy0 > 192 then 192 else vy0;
+  x0 = m.x + vx;
+  y0 = m.y + vy;
+  { x = (if x0 < 0 then 0 else if x0 > k.w * 256 - 1 then k.w * 256 - 1 else x0),
+    y = (if y0 < 0 then 0 else if y0 > k.h * 256 - 1 then k.h * 256 - 1 else y0), vx = vx, vy = vy }.
+
+# ---- columns: the tick as fixed kernels -----------------------------------------
+# every zip consumes its right operand and blend its mask and source, so a
+# column read twice is dup'd first (an honest copy, VEC.md section 7)
+stepCols : Int -> Int -> Int -> Int -> Int -> Cols -> Cols .
+stepCols px py pulse w h c =
+  (xa, xb) = Vec.dup c.xs;
+  (ya, yb) = Vec.dup c.ys;
+  dx = Vec.axpb (0 - 1) px xa;                  # px - x
+  dy = Vec.axpb (0 - 1) py ya;
+  (dx1, dx2) = Vec.dup dx;
+  (dx3, dx4) = Vec.dup dx2;
+  (dx5, dx6) = Vec.dup dx4;
+  (dy1, dy2) = Vec.dup dy;
+  (dy3, dy4) = Vec.dup dy2;
+  (dy5, dy6) = Vec.dup dy4;
+  far = Vec.ges pulse (Vec.zipAdd (Vec.zipMul dx1 dx3) (Vec.zipMul dy1 dy3));   # dx*dx + dy*dy >= pulse
+  (farX, farY) = Vec.dup far;
+  ax = Vec.blend farX (Vec.sar 7 dx5) (Vec.axpb (0 - 1) 0 (Vec.sar 2 dx6));      # far ? dx/128 : -(dx/4)
+  ay = Vec.blend farY (Vec.sar 7 dy5) (Vec.axpb (0 - 1) 0 (Vec.sar 2 dy6));
+  (vx1, vx2) = Vec.dup (Vec.maxS (0 - 192) (Vec.minS 192 (Vec.zipAdd c.vxs ax)));
+  (vy1, vy2) = Vec.dup (Vec.maxS (0 - 192) (Vec.minS 192 (Vec.zipAdd c.vys ay)));
+  { xs = Vec.maxS 0 (Vec.minS (w * 256 - 1) (Vec.zipAdd xb vx1)), ys = Vec.maxS 0 (Vec.minS (h * 256 - 1) (Vec.zipAdd yb vy1)),
+    vxs = vx2, vys = vy2 }.
+# the cell of every mote, as one Int column; the columns thread back
+cellsOf : Int -> Cols -> (Vector Int, Cols) .
+cellsOf w c =
+  (xa, xb) = Vec.dup c.xs;
+  (ya, yb) = Vec.dup c.ys;
+  (Vec.zipAdd (Vec.axpb w 0 (Vec.sar 8 ya)) (Vec.sar 8 xa), { c | xs = xb, ys = yb }).
+# how many lanes equal the player's cell: a 0/1 mask summed
+bitesIn : Int -> Vector Int -> Int .
+bitesIn pc idx =
+  (n, mask) = Vec.fold (fn a b -> a + b) 0 (Vec.eqS pc idx);
+  _ = Vec.free mask;
+  n.
+
+# ---- the picture: how many motes in each cell ------------------------------------
+bump : Int -> Vector Int -> Vector Int .
+bump i s = (c, s2) = Vec.at i s; Vec.put i (c + 1) s2.
+blankScreen w h = Vec.axpb 0 0 (Vec.iota (w * h)).
+pictureRecords : Vector Mote -> Int -> Int -> Int -> Int -> (List String, Vector Mote) .
+pictureRecords v w h px py =
+  (screen, v2) = Vec.fold (fn s m -> bump ((m.y / 256) * w + m.x / 256) s) (blankScreen w h) v;
+  (rows (Vec.toList screen) w h 0 (py / 256) (px / 256), v2).
+pictureCells : Vector Int -> Int -> Int -> Int -> Int -> List String .
+pictureCells idx w h px py =
+  (screen, idx2) = Vec.fold (fn s i -> bump i s) (blankScreen w h) idx;
+  _ = Vec.free idx2;
+  rows (Vec.toList screen) w h 0 (py / 256) (px / 256).
+rows : List Int -> Int -> (k : Int | measure k) -> Int -> Int -> Int -> List String .
+rows cells w k r prow pcol = if k <= 0 then Nil else
+  S.concat (List.indexedMap (fn c d -> if r == prow and c == pcol then "@" else glyph d) (List.take w cells))
+    :: rows (List.drop w cells) w (k - 1) (r + 1) prow pcol.
+glyph d = if d == 0 then " " else if d == 1 then "." else if d == 2 then ":" else if d == 3 then "+"
+  else if d == 4 then "*" else if d < 8 then "%" else "#".
+
+# ---- a tick, three ways -----------------------------------------------------------
+advance : Model -> Model .
+advance m = case m.mode of 1 -> advanceCols m | 2 -> advanceCaptured m | _ -> advanceRecords m.
+advanceRecords m =
+  t0 = Sys.timeUs Unit;
+  fieldH = m.h - 1;
+  v1 = Vec.map (step m.px m.py m.pulse m.w fieldH) m.motes;
+  t1 = Sys.timeUs Unit;
+  (bites, v2) = Vec.fold (bite m.px m.py) 0 v1;
+  t2 = Sys.timeUs Unit;
+  (pic, v3) = pictureRecords v2 m.w fieldH m.px m.py;
+  t3 = Sys.timeUs Unit;
+  settle { m | motes = v3 } bites pic (t1 - t0) (t2 - t1) (t3 - t2).
+advanceCaptured m =
+  t0 = Sys.timeUs Unit;
+  fieldH = m.h - 1;
+  v1 = Vec.map (stepK { px = m.px, py = m.py, pulse = m.pulse, w = m.w, h = fieldH }) m.motes;
+  t1 = Sys.timeUs Unit;
+  (bites, v2) = Vec.fold (bite m.px m.py) 0 v1;
+  t2 = Sys.timeUs Unit;
+  (pic, v3) = pictureRecords v2 m.w fieldH m.px m.py;
+  t3 = Sys.timeUs Unit;
+  settle { m | motes = v3 } bites pic (t1 - t0) (t2 - t1) (t3 - t2).
+advanceCols m =
+  t0 = Sys.timeUs Unit;
+  fieldH = m.h - 1;
+  c1 = stepCols m.px m.py m.pulse m.w fieldH m.cols;
+  t1 = Sys.timeUs Unit;
+  (idx, c2) = cellsOf m.w c1;
+  (idxA, idxB) = Vec.dup idx;
+  bites = bitesIn ((m.py / 256) * m.w + m.px / 256) idxA;
+  t2 = Sys.timeUs Unit;
+  pic = pictureCells idxB m.w fieldH m.px m.py;
+  t3 = Sys.timeUs Unit;
+  settle { m | cols = c2 } bites pic (t1 - t0) (t2 - t1) (t3 - t2).
+settle m bites pic stepUs biteUs picUs =
+  health = m.health - bites;
+  m2 = { m | health = health, over = health <= 0, ticks = m.ticks + 1,
+            energy = (if m.energy >= 100 then 100 else m.energy + 1), pulse = 0,
+            stepUs = stepUs, biteUs = biteUs, picUs = picUs };
+  { m2 | frame = status m2 :: pic }.
+modeName mode = if mode == 1 then "columns" else if mode == 2 then "captured" else "records".
+status m =
+  Term.bold "Swarm" |> (fn t -> "{t}  {modeName m.mode}  motes {m.n}  health {m.health}  energy {m.energy}  score {m.ticks}  step {m.stepUs} bites {m.biteUs} picture {m.picUs} us   {(if m.over then Term.inverse " you were eaten -- q quits " else "arrows move, space pulses, q quits")}").
+
+moveBy dx dy m = { m | px = clamp 0 (m.w * sc - 1) (m.px + dx), py = clamp 0 ((m.h - 1) * sc - 1) (m.py + dy) }.
+quit m = (m, Term.Quit :: Nil).
+update ev m = case ev of
+    Term.Resized w h -> ({ m | w = w, h = h }, Nil)
+  | Term.Msg Tick -> (if m.over then (m, Nil) else (advance m, Nil))
+  | Term.Key k -> (case k of
+        Term.Left -> (moveBy (0 - sc) 0 m, Nil)
+      | Term.Right -> (moveBy sc 0 m, Nil)
+      | Term.Up -> (moveBy 0 (0 - sc) m, Nil)
+      | Term.Down -> (moveBy 0 sc m, Nil)
+      | Term.Char " " -> ((if m.energy >= 30 then { m | energy = m.energy - 30, pulse = pulseR2 } else m), Nil)
+      | Term.Char "q" -> quit m
+      | Term.Escape -> quit m
+      | Term.Ctrl "c" -> quit m
+      | _ -> (m, Nil)).
+view size m = m.frame.
+subs m = Term.Every 33 Tick :: Nil.
+
+fresh : Int -> Int -> Int -> Int -> Model .
+fresh mode n w h =
+  { motes = (if mode == 1 then Vec.new Unit else records n w (h - 1)), cols = (if mode == 1 then columns n w (h - 1) else noCols Unit),
+    mode = mode, n = n, w = w, h = h, px = (w / 2) * sc, py = ((h - 1) / 2) * sc,
+    health = 300, energy = 100, ticks = 0, pulse = 0, frame = Nil, stepUs = 0, biteUs = 0, picUs = 0, over = False }.
+release m = _ = Vec.free m.motes; freeCols m.cols.
+
+# ---- the bench: ticks with no terminal -------------------------------------------
+loopN : (k : Int | measure k) -> Model -> Model .
+loopN k m = if k <= 0 then m else loopN (k - 1) (advance m).
+benchRun : Int -> Int -> Int -> Int .
+benchRun mode n ticks =
+  m0 = fresh mode n 80 24;
+  t0 = Sys.timeUs Unit;
+  m = loopN ticks m0;
+  t1 = Sys.timeUs Unit;
+  perTick = (t1 - t0) / ticks;
+  _ = print "swarm {modeName mode}: {n} motes, {ticks} ticks on 80x24: {perTick} us per tick, {perTick * 1000 / n} ns per mote; last tick: step {m.stepUs} us, bites {m.biteUs} us, picture {m.picUs} us; health left {m.health}";
+  _ = release m;
+  0.
+
+Settings = Type (Settings motes mode bench).
+settings = Decode.map3 Settings (Decode.field "motes" Decode.int) (Decode.field "mode" Decode.string) (Decode.field "bench" Decode.int).
+modeOf name = if name == "columns" then Option.Some 1 else if name == "captured" then Option.Some 2 else if name == "records" then Option.Some 0 else Option.None.
+main = case Config.load { defaults = Json.object (("motes", Json.Integer 4000) :: ("mode", Json.Text "records") :: ("bench", Json.Integer 0) :: Nil),
+                          file = Option.None, envPrefix = "SWARM_", args = Program.args Unit } |> Result.andThen (Decode.run settings) of
+    Err why -> Program.fail 2 "swarm: {why}"
+  | Ok (Settings motes modeText bench) -> (case modeOf modeText of
+      Option.None -> Program.fail 2 "swarm: mode must be records, captured or columns"
+    | Option.Some mode ->
+        if motes < 1 then Program.fail 2 "swarm: motes must be at least 1"
+        else if bench > 0 then benchRun mode motes bench
+        else Term.run { init = fresh mode motes 80 24, update = update, view = view, subs = subs }).

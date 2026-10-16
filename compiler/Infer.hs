@@ -1370,8 +1370,18 @@ resolveSites sigs env = do
         then case (drop (length "vec-value:") op, t) of
           ("Vec.new", TFn _ (TAp (TC "Vector") el)) -> siteLayout k "Vec.new" el
           ("Vec.fromList", TFn _ (TAp (TC "Vector") el)) -> siteLayout k "Vec.fromList" el
-          ("Vec.map", TFn (TFn a b) _) | a == b -> pure (OpPrim "")
-                                     | otherwise -> siteLayout k "Vec.map" b
+          -- the same element type in and out keeps the plain map (and its
+          -- in-place record kernel); compared in canonical form, since a
+          -- record's row is a chain in whatever order its fields were met,
+          -- and `{ x = p.x + p.vx, y = .. }` built a row in another order
+          -- than the declared type -- read as type-changing, it went to
+          -- Vec.mapAs and no kernel ever saw it (found 2026-10-16).  The
+          -- two are canonicalized TOGETHER: each alone, two distinct type
+          -- variables both become t0, and a generic `convert f v` read as
+          -- unchanged (tests/base/veclimits.fpr caught that)
+          ("Vec.map", TFn (TFn a b) _)
+            | canonicalType (TTupT [a, b]) == canonicalType (TTupT [b, b]) -> pure (OpPrim "")
+            | otherwise -> siteLayout k "Vec.map" b
           _ -> OpPrim "" <$ report "Vector: cannot determine the element layout"
       else if op `elem` ["==", "!="]
         then pure $ case t of

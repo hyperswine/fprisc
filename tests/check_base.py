@@ -166,6 +166,12 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     p = run([build('tests/base/vecwide.fpr', 'vecwide')])
     assert p.stdout == 'w2: at3=9 kept=8 sum=8147 echoed=8147\nw4: at3=30 kept=8 sum=8490 echoed=8490\nw8: at3=108 kept=8 sum=9764 echoed=9764\nw9: at3=135 kept=8 sum=10205 echoed=10205\nw32: at3=1584 kept=8 sum=33872 echoed=33872\nw65: at3=6435 kept=8 sum=113105 echoed=113105\nw128: at3=24768 kept=8 sum=412544 echoed=412544\nfloat record: n=4 x=1.5 y=2.25 k=2\none: 3\n', p.stdout
     print('Vector descriptors: record widths 2, 4, 8, 9, 32, 65 and 128 through the whole surface and the deep copier, an inferred float-record layout, singleton rows: PASS')
+    # two record shapes sharing field names: each record map reads its own
+    # shape's columns (the projection dispatch inside a field takes the
+    # element's arm), and both run in place (found 2026-10-16)
+    p = run([build('tests/base/vecshape.fpr', 'vecshape')])
+    assert p.stdout == 'captured dispatch: literal=1160045 variable=1160045\nvecshape: two=1149000 four=2498000 in place=True\n', p.stdout
+    print('Record maps over two shapes that share field names read their own columns, in place: PASS')
     # column kernels: scalar captures in map and filter (zero pool growth, a
     # non-Int capture falls back), a nine-field record map through the spill
     # cell, a record filter that compacts columns in place; none of these

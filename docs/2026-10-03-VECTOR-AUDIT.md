@@ -216,3 +216,13 @@ Each compute example should have a readable vector version, a trusted result/ref
 ## Relationship to earlier documents
 
 [TYPED-VECTORS](2026-10-01-TYPED-VECTORS.md) establishes the element-type migration; this audit identifies remaining layout and operation gaps. [VEC](2026-08-25-VEC.md) describes early storage/fusion work; its ownership-only fusion argument is superseded by the effect-order finding here. [SPECIALIZATION](2026-10-03-SPECIALIZATION.md) and [SPECIALIZATION-IMPLEMENTED](2026-10-03-SPECIALIZATION-IMPLEMENTED.md) cover higher-order Core dispatch; vector primitive/kernel specialization remains a separate required layer.
+
+## Follow-up (2026-10-16)
+
+A game written as a workload ([2026-10-16-SWARM-VECTOR-GAME.md](2026-10-16-SWARM-VECTOR-GAME.md))
+found two record-map kernel defects and measured the tiers: the field
+dualizer took the first shape-dispatch arm (a crash when two record types
+share a field name) and same-type maps were classified type-changing by an
+order-sensitive equality (P1's "type-changing lowering" was mostly this).
+Both fixed. Open from that page: per-field clones are called and spill, so a
+heavy record map is slower than the generic tier; no scatter-add kernel.

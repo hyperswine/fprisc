@@ -1,0 +1,47 @@
+profile base.
+# Two record shapes share field names.  A record map over the two-field
+# vector must read ITS columns: the dualizer's projection walk took the
+# first dispatch arm (the four-field shape's column index) and the kernel
+# read a frame slot as a cursor (found 2026-10-16 by examples/swarm.fpr's
+# probes).  Both maps run in place: the heap does not grow with the passes.
+# A CAPTURED record's field can be such a dispatch too (K.w and Other.w):
+# with the record built at the call site the kernel takes the capture's arm;
+# through a variable the shape is unknown and the site declines to the
+# generic tier -- either way the answer is the scalar function's.
+P2 = { x : Int, y : Int }.
+P4 = { x : Int, y : Int, vx : Int, vy : Int }.
+K = { w : Int, px : Int }.
+Other = { w : Int, a : Int, b : Int }.
+shift k p = { x = p.x + k.w, y = p.y + k.px }.
+two p = { x = p.x + 1, y = p.y + 2 }.
+four p = { x = p.x + 1, y = p.y + 2, vx = p.vx + 3, vy = p.vy + 4 }.
+fill2 : (Vector P2) -> (i : Int | measure (n - i)) -> (n : Int) -> (Vector P2) .
+fill2 v i n = if i >= n then v else fill2 (Vec.push { x = i, y = i } v) (i + 1) n.
+fill4 : (Vector P4) -> (i : Int | measure (n - i)) -> (n : Int) -> (Vector P4) .
+fill4 v i n = if i >= n then v else fill4 (Vec.push { x = i, y = i, vx = i, vy = i } v) (i + 1) n.
+reps2 : (k : Int | measure k) -> (Vector P2) -> (Vector P2) .
+reps2 k v = if k <= 0 then v else reps2 (k - 1) (Vec.map two v).
+reps4 : (k : Int | measure k) -> (Vector P4) -> (Vector P4) .
+reps4 k v = if k <= 0 then v else reps4 (k - 1) (Vec.map four v).
+main =
+  a0 = fill2 (Vec.new Unit) 0 1000;
+  b0 = fill4 (Vec.new Unit) 0 1000;
+  h0 = heapUsed Unit;
+  a = reps2 50 a0;
+  b = reps4 50 b0;
+  grew = heapUsed Unit - h0;
+  (sa, a2) = Vec.fold (fn s p -> s + p.x + p.y) 0 a;
+  (sb, b2) = Vec.fold (fn s p -> s + p.x + p.y + p.vx + p.vy) 0 b;
+  _ = Vec.free a2;
+  _ = Vec.free b2;
+  byLiteral = Vec.map (shift { w = 7, px = 1000 }) (fill2 (Vec.new Unit) 0 10);
+  k = { w = 7, px = 1000 };
+  byVariable = Vec.map (shift k) (fill2 (Vec.new Unit) 0 10);
+  (sl, l2) = Vec.fold (fn s p -> s + p.x * 10000 + p.y) 0 byLiteral;
+  (sv, v2) = Vec.fold (fn s p -> s + p.x * 10000 + p.y) 0 byVariable;
+  _ = Vec.free l2;
+  _ = Vec.free v2;
+  # sum over i<10 of (i+7)*10000 + (i+1000) = 10000*(45+70) + 45 + 10000 = 1160045
+  _ = print "captured dispatch: literal={sl} variable={sv}";
+  # sum over i of (i+50)+(i+100) = 2*sum(i) + 150*1000; four: 4*sum(i) + (50+100+150+200)*1000
+  print "vecshape: two={sa} four={sb} in place={grew < 4096}".

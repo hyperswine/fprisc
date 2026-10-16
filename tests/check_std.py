@@ -132,6 +132,16 @@ with tempfile.TemporaryDirectory(prefix='fpr-svc-') as t:
     p = subprocess.run([fpr, 'run', str(ROOT / 'examples' / 'service.fpr'), '--port=99999'], capture_output=True, text=True, timeout=300, cwd=t)
     assert p.returncode == 2 and 'port: must be 0..65535' in p.stderr, p.stderr
     print('examples/service.fpr, the concurrent-service acceptance program: typed config, one actor owns the store, 40 parallel writes, parallel digests, logged failures, clean shutdown: PASS')
+# examples/swarm.fpr: the three spellings of one tick agree (records and
+# captured exactly; columns floors where they truncate) and the bench
+# prints its phases; the game itself is a terminal app (std/term)
+sw = {}
+for mode in ('records', 'captured', 'columns'):
+    p = subprocess.run([fpr, 'run', str(ROOT / 'examples' / 'swarm.fpr'), '--motes=2000', f'--mode={mode}', '--bench=20'], capture_output=True, text=True, timeout=600)
+    assert p.returncode == 0 and f'swarm {mode}: 2000 motes, 20 ticks' in p.stdout and 'picture' in p.stdout, p.stdout + p.stderr
+    sw[mode] = p.stdout.rsplit('health left', 1)[1].strip()
+assert sw['records'] == sw['captured'], sw
+print('examples/swarm.fpr: three spellings of a 2,000-mote tick (records, a captured record, columns) run headless; records and captured agree exactly: PASS')
 # a terminal application, through a real pseudo-terminal
 with tempfile.TemporaryDirectory(prefix='fpr-tui-') as t:
     p = subprocess.run([sys.executable, str(ROOT / 'tests' / 'std' / 'todo_pty.py'), fpr, str(ROOT / 'examples' / 'todo.fpr'), str(Path(t) / 'todo.json')],

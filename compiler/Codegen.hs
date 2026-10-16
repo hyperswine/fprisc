@@ -51,7 +51,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 43 -- inline only canonical primitives, never shadowing definitions
+codegenRev = 44 -- a record map's projection dispatch takes the element's own shape
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -1693,9 +1693,21 @@ declines spec prog owner = goD S.empty
                         ]
                     | otherwise -> []
           _ -> []
+        returnsRecord g = case M.lookup g prog of
+          Just (_, b) -> endsInRecord b
+          Nothing -> False
+        endsInRecord = \case
+          CLet _ _ b -> endsInRecord b
+          CIf _ t f -> endsInRecord t || endsInRecord f
+          CMk _ _ (_ : _) -> True
+          _ -> False
         capsNote [] = ""
         capsNote cs = " with " ++ show (length cs) ++ " capture" ++ (if length cs == 1 then "" else "s")
         why op f caps
+          | op == "Vec.map", returnsRecord f, length caps > 1 =
+              "a record map's column kernel takes ONE capture: a record of the scalars it needs, whose fields the element fn projects"
+          | op == "Vec.map", returnsRecord f =
+              "a record map's fields did not dualize: they may use literals, + - * / and comparisons, if and let over the element's fields and a captured record's fields (a capture used whole escapes); a call the dualizer could not inline, a top-level constant or a nested record declines"
           | arithClosure prog [f] == Nothing =
               "the element fn is not a closed arithmetic/record dual, so no column loop specializes this site"
           | not (null caps), length caps + 1 > 8 = "the element fn takes " ++ show (length caps) ++ " captures; the kernels pass at most 7 ahead of the element"
@@ -1913,7 +1925,7 @@ vecSpecRaw prog isLocal e = case spineOf e of
     | (CVar f, [capE]) <- spineOf fe,
       okOp "Vec.map",
       okFn f 2,
-      Just mp <- soaDualMap prog f -> do
+      Just mp <- soaDualMap prog f (capShapeOf capE) -> do
         cl <- arithClosure prog [fn | (_, (_, b)) <- mvFields mp, fn <- S.toList (calleesOf prog b)]
         Just (SpecPlan "mvmap" f False cl Nothing Nothing (Just mp) Nothing 0 Nothing, [capE, v])
   (CVar "Vec.map", [CVar f, v])
@@ -2333,6 +2345,14 @@ soaDualPred prog f = do
 -- SAME dual with a phantom capture name nothing can reference (the
 -- desugarer never emits "$"-prefixed user names), so ms comes back
 -- empty for every field and the emitter's capture loads vanish.
+-- a captured record's shape, when the call site constructs it: the element
+-- fn's projections of the capture may be shape dispatches (another record
+-- type carries the same field name), and only the capture's own arm is right
+capShapeOf :: Core -> Maybe (Int, Int)
+capShapeOf = \case
+  CMk t v (_ : _) -> Just (t, v)
+  _ -> Nothing
+
 soaDualMap0 :: Prog -> String -> Maybe MvPlan
 soaDualMap0 prog h = do
   ([el], body0) <- M.lookup h prog
@@ -2344,22 +2364,22 @@ soaDualMap0 prog h = do
     -- normalization of the inlined mess, no emitter change.
     CApp (CVar f) (CApp (CVar g) (CVar e')) | e' == el ->
       composePlans <$> soaDualMap0 prog g <*> soaDualMap0 prog f
-    _ -> soaDualMapOn prog h "$nocap" el body0
+    _ -> soaDualMapOn prog h "$nocap" el Nothing body0
 
-soaDualMap :: Prog -> String -> Maybe MvPlan
-soaDualMap prog h = do
+soaDualMap :: Prog -> String -> Maybe (Int, Int) -> Maybe MvPlan
+soaDualMap prog h capShape = do
   ([cap, el], body0) <- M.lookup h prog
   case body0 of
     -- captured composites (one side only, by fuseVec construction):
     -- outer-captured  h c el = f c (g el)
     CApp (CApp (CVar f) (CVar c')) (CApp (CVar g) (CVar e'))
       | c' == cap, e' == el ->
-          composePlans <$> soaDualMap0 prog g <*> soaDualMap prog f
+          composePlans <$> soaDualMap0 prog g <*> soaDualMap prog f capShape
     -- inner-captured  h c el = f (g c el)
     CApp (CVar f) (CApp (CApp (CVar g) (CVar c')) (CVar e'))
       | c' == cap, e' == el ->
-          composePlans <$> soaDualMap prog g <*> soaDualMap0 prog f
-    _ -> soaDualMapOn prog h cap el body0
+          composePlans <$> soaDualMap prog g capShape <*> soaDualMap0 prog f
+    _ -> soaDualMapOn prog h cap el capShape body0
 
 -- compose per-field duals: for each of f's output fields, replace its
 -- element-column reads ($c_k) with g's field-k body.  Placeholder
@@ -2385,8 +2405,8 @@ composePlans gp fp =
             composed = ((ms', ks'), (ps', plugged))
       ]
 
-soaDualMapOn :: Prog -> String -> String -> String -> Core -> Maybe MvPlan
-soaDualMapOn prog f cap el body0 = do
+soaDualMapOn :: Prog -> String -> String -> String -> Maybe (Int, Int) -> Core -> Maybe MvPlan
+soaDualMapOn prog f cap el capShape body0 = do
   -- peel alias lets again AFTER inlining: a helper taking the whole
   -- element (`total r`) inlines to `let r' = el in ..`, and an unpeeled
   -- alias reads as the element escaping
@@ -2394,7 +2414,7 @@ soaDualMapOn prog f cap el body0 = do
   (tv, fs) <- strip cap el Nothing body1
   let n = length fs
   if n == 0 then Nothing else Just () -- any width: cursors and results are frame slots
-  duals <- mapM (dualField cap el) fs
+  duals <- mapM (dualField tv cap el) fs
   Just (MvPlan tv n Nothing duals)
   where
     inlineSat 0 e = e
@@ -2426,7 +2446,11 @@ soaDualMapOn prog f cap el body0 = do
       CIf (CTagEq t v (CVar x)) th rest
         | x == el, soleCandidate rest -> strip cap el (tv `orKeep` Just (t, v)) th
         | x == el -> Nothing
-        | x == cap -> strip cap el tv th -- statically true: typed Mat4
+        -- a dispatch on the CAPTURE: its arm when the call site built the
+        -- record (capShapeOf), the sole arm otherwise, else decline
+        | x == cap, Just sh <- capShape -> strip cap el tv (if (t, v) == sh then th else rest)
+        | x == cap, soleCandidate rest -> strip cap el tv th
+        | x == cap -> Nothing
       CLet x a b -> strip cap el tv (substE x a b)
       CMk t v fs' -> do
         (et, ev) <- tv `orKeep` Just (t, v) -- untested el: require Mk matches nothing... use Mk's own only if tested
@@ -2437,7 +2461,7 @@ soaDualMapOn prog f cap el body0 = do
     soleCandidate = \case
       CErr _ -> True
       _ -> False
-    dualField cap el e0 = do
+    dualField tv cap el e0 = do
       (e1, (ms, ks)) <- go e0
       let ms' = S.toAscList (S.fromList ms)
           ks' = S.toAscList (S.fromList ks)
@@ -2451,7 +2475,22 @@ soaDualMapOn prog f cap el body0 = do
             | v == el -> Just (CVar ("$c" ++ show k), ([], [k]))
             | v == cap -> Just (CVar ("$m" ++ show k), ([k], []))
           CVar v | v == el || v == cap -> Nothing -- escapes
-          CTagEq t v (CVar x) | x == el || x == cap -> Just (CMk 1 1 [], ([], []))
+          -- a shape DISPATCH on the element inside a field (`p.x` when
+          -- several record shapes carry x): only the arm of the element's
+          -- own shape is this kernel's; the other arms project another
+          -- record's columns.  Taking the first arm regardless read a
+          -- four-field record's column index on a two-field vector
+          -- (found 2026-10-16: a second record type declared in the
+          -- module, and the kernel read a frame slot as a cursor).
+          CIf (CTagEq t v (CVar x)) th rest
+            | x == el -> go (if (t, v) == tv then th else rest)
+            | x == cap, Just sh <- capShape -> go (if (t, v) == sh then th else rest)
+            | x == cap, soleCandidate rest -> go th
+            | x == cap -> Nothing -- another record carries this field: the arm is unknown
+          CTagEq t v (CVar x)
+            | x == el -> Just (CMk 1 (if (t, v) == tv then 1 else 0) [], ([], []))
+            | x == cap, Just sh <- capShape -> Just (CMk 1 (if (t, v) == sh then 1 else 0) [], ([], []))
+            | x == cap -> Nothing
           CApp a b -> ap2 CApp a b
           CLet x a b | x /= el, x /= cap -> ap2 (CLet x) a b
           CIf c t e' -> do (c', k1) <- go c; (t', k2) <- go t; (e'', k3) <- go e'; Just (CIf c' t' e'', k1 <> k2 <> k3)
