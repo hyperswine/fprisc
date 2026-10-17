@@ -108,10 +108,12 @@ t0 = time.time()
 r = cost(ROOT / 'examples' / 'todo.fpr', timeout=120)
 dt = time.time() - t0
 assert dt < 60, f'todo cost report took {dt:.0f}s'
-assert re.search(r'^  update\s+work  <= max\(', r, re.M), r
+assert re.search(r'^  updateWith\s+work  <= max\(', r, re.M), r
 # std/list's loops carry measures: view's per-item cost is (len items + 1) x the row
 assert re.search(r'^  view\s+work  <= .*\(len m\.#2 \+ 1\)·\(', r, re.M), r
-# the program's own unmeasured helper, and the length of a rendered string, stay opaque and are named
-assert 'dropLastChar  work  <= ω(dropGo) + 3' in r, r
+# Todo's UTF-8 helper now declares measure k; preserve that recurrence rather
+# than the older opaque-helper expectation. Rendered string lengths stay opaque.
+assert line(r, 'dropGo', 'work') == '(k + 1)·(len s + 15)', r
+assert line(r, 'dropLastChar', 'work') == '(ω(?) + 1)·(len s + 15) + 2', r
 assert 'ω(?len)' in r and 'ω(str)' in r, r
 print(f'Cost: measured, structural and mutual recursion close to (measure/step + 1)·body; `work f` is a variable until the argument is supplied; an unmeasured helper is ω(name) under `opaque`; a declared bound is PROVEN, OVER naming the coefficient, or UNPROVED naming the ω, callers compose on the declaration; a manifest prices ops and print, binds omega, and judges main against its budget (PROVEN 2.98 µs ≤ 5 µs, OVER against 1 µs); live is alloc, credited inside an arena, and a loopWith reports one step; todo.fpr reports in {dt:.1f}s: PASS')

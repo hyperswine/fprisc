@@ -1,0 +1,48 @@
+profile base.
+
+# Reuse the existing classifier, including its 48-step entropy calculation.
+# Reduced histograms bound temporary allocation on the 8 MiB Base host.
+D = use "dtree".
+
+checkRows : unsafe D.Tree -> (Vector _) -> (Vector _) -> (Vector _) -> Int -> Int -> Int -> Int -> _ .
+checkRows tree xs zs ys i n hits digest = case i >= n of
+  True -> (hits, digest, xs, zs, ys)
+  | False -> checkOne tree xs zs ys i n hits digest.
+checkOne : unsafe D.Tree -> (Vector _) -> (Vector _) -> (Vector _) -> Int -> Int -> Int -> Int -> _ .
+checkOne tree xs zs ys i n hits digest =
+  (p, xs2, zs2) = D.predAt tree xs zs i;
+  (y, ys2) = Vec.get i ys;
+  checkRows tree xs2 zs2 ys2 (i + 1) n
+    (hits + (case p == y of True -> 1 | False -> 0))
+    ((digest * 257 + p + 1) % 1000003).
+
+run : unsafe Int -> Int -> Int -> Int -> Int -> Unit .
+run trainRows testRows bins maxDepth minLeaf =
+  _ = print "DTREE BEGIN train={trainRows} test={testRows} bins={bins} depth={maxDepth} minLeaf={minLeaf}";
+  started = Sys.mtime Unit;
+  ps = D.P bins maxDepth 0.001 minLeaf 2;
+  (txs, tzs, tys) = D.gen 42 trainRows;
+  (exs, ezs, eys) = D.gen 7 testRows;
+  (c0, lo0, w0, txs2) = D.binCol txs bins;
+  (c1, lo1, w1, tzs2) = D.binCol tzs bins;
+  _ = print "DTREE DATA READY";
+  (tree, c0b, c1b, tys2) = D.build ps (D.B lo0 w0 lo1 w1) c0 c1 tys 0 (D.iotaL 0 trainRows);
+  _ = Vec.free c0b;
+  _ = Vec.free c1b;
+  _ = print "DTREE nodes={D.sizeT tree} depth={D.depthT tree}";
+  (thits, tdigest, txs3, tzs3, tys3) = checkRows tree txs2 tzs2 tys2 0 trainRows 0 0;
+  (ehits, edigest, exs2, ezs2, eys2) = checkRows tree exs ezs eys 0 testRows 0 0;
+  _ = print "DTREE train hits={thits}/{trainRows} digest={tdigest}";
+  _ = print "DTREE test hits={ehits}/{testRows} digest={edigest}";
+  _ = print (D.rootLine tree);
+  _ = Vec.free txs3;
+  _ = Vec.free tzs3;
+  _ = Vec.free tys3;
+  _ = Vec.free exs2;
+  _ = Vec.free ezs2;
+  _ = Vec.free eys2;
+  elapsed = Sys.mtime Unit - started;
+  print "DTREE elapsed_us={elapsed / 10}".
+
+main : Unit .
+main = run 512 128 16 6 5.

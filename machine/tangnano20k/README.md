@@ -153,6 +153,13 @@ The core's 1,628 independent RV64 reference cases and its trap/recovery checks
 also passed physically. Focused host software-float checks cover fixed IEEE
 bit patterns, conversions, NaNs and sqrt; they are not full TestFloat testing.
 
+The [decision-tree board experiment](../../docs/2026-10-17-TANG-NANO-DTREE.md)
+reuses the existing FP-RISC classifier with reduced histogram sizes. Physical
+32-, 128- and 512-row training runs pass on the RV64IMC 27 MHz image, including
+independent prediction digests and held-out accuracy checks. Its runner and
+software-float vector regression are in `tests/check_tangnano20k_dtree.py` and
+`tests/check_tangnano20k_softfloat_vectors.py`.
+
 The build checks the linked ELF's ISA attributes and flags. Its default IM mode
 refuses C; the explicit `FPR_RVC=1` mode permits C. Both refuse atomic and
 hardware floating-point extensions and incompatible ABI libraries. The

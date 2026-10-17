@@ -51,7 +51,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 44 -- a record map's projection dispatch takes the element's own shape
+codegenRev = 45 -- software-float targets also decline native floating vector kernels
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -375,7 +375,7 @@ emitProgram tgt rvv spec exports ext exps prog0 =
       -- (x64): a target that runs EVERY site generic owes the loudest
       -- notes of all, not silence -- there the note names the target
       -- gate, and distinguishes sites that would specialize elsewhere.
-      modify (\st -> st {cgVNotes = concat [declines spec prog fn b | (fn, (_, b)) <- M.toList prog] ++ cgVNotes st})
+      modify (\st -> st {cgVNotes = concat [declines tgt spec prog fn b | (fn, (_, b)) <- M.toList prog] ++ cgVNotes st})
       fns <- concat <$> mapM (uncurry (compileFn prog)) (M.toList prog)
       specs <- emitSpecs prog
       -- the builtin target links no module registry (runtime/mod.c is not
@@ -407,7 +407,10 @@ emitProgram tgt rvv spec exports ext exps prog0 =
     -- function name, never by position or link order.
     modTable = do
       rows <- concat <$> mapM row [me | me <- exports, meArity me >= 1]
-      rootLabel <- strLabel (case [meHash e | e <- exports, meQual e == meName e] of h : _ -> h; [] -> "")
+      -- Checked entries change the callable pointer, not the root module's
+      -- source identity. Imported entries still carry their qualified hash.
+      rootLabel <- strLabel (case [meHash e | e <- exports,
+        meQual e == meName e || meQual e == "$precond0." ++ meName e] of h : _ -> h; [] -> "")
       pure $
         -- a section of its own on the builtin target: that profile links no
         -- module registry, so nothing refers to the table -- but in the
@@ -1273,7 +1276,8 @@ genT tgt spec prog ext = go
     -- (op, fn); see emitSpecs).  The spec symbol behaves exactly like a
     -- supercombinator, so knownCall staging + TCO apply unchanged.
     go env nxt pos e
-      | spec, Just (plan, callArgs) <- vecSpec prog (`M.member` env) e = do
+      | spec, Just (plan, callArgs) <- vecSpec prog (`M.member` env) e,
+        tgtFloatInline tgt || not (specUsesFloat prog plan) = do
           sym <- requestSpec plan
           knownCall env nxt pos sym callArgs
 
@@ -1656,8 +1660,8 @@ logW t = if tgtW t == 8 then 3 else 2
 -- it -- that one needs a write-back fold variant, not a rewrite.
 -- Vec.x sites that LOOK like specialization candidates (named global
 -- element fn) but no plan accepts -- reported per enclosing function
-declines :: Bool -> Prog -> String -> Core -> [String]
-declines spec prog owner = goD S.empty
+declines :: Target -> Bool -> Prog -> String -> Core -> [String]
+declines tgt spec prog owner = goD S.empty
   where
     goD bound e =
       here ++ case e of
@@ -1684,7 +1688,11 @@ declines spec prog owner = goD S.empty
                     [ "vec note: " ++ op ++ " over `" ++ f ++ "`" ++ capsNote caps ++ " (in " ++ owner
                         ++ ") runs in the GENERIC apply tier -- " ++ why op f caps
                     ]
-                  Just _
+                  Just (plan,_)
+                    | not (tgtFloatInline tgt), specUsesFloat prog plan ->
+                        [ "vec note: " ++ op ++ " over `" ++ f ++ "` (in " ++ owner
+                            ++ ") uses generic C callbacks in software-float mode"
+                        ]
                     | not spec ->
                         [ "vec note: " ++ op ++ " over `" ++ f ++ "` (in " ++ owner
                             ++ ") runs in the GENERIC apply tier -- a column loop"
@@ -1884,6 +1892,18 @@ vecSpec prog isLocal e = do
   (p,args) <- vecSpecRaw prog isLocal e
   typed <- typePlan prog p
   pure (typed,args)
+
+-- The soft-float switch covers column kernels as well as scalar primitives.
+-- A comparison can return Bool/Int while still consuming floats; record maps
+-- can mix integer and floating fields. Inspect inputs and the whole closure,
+-- not just the result representation, before requesting an unboxed clone.
+specUsesFloat :: Prog -> SpecPlan -> Bool
+specUsesFloat prog p =
+  isJust (spFloat p) || isJust (floatWidthOf prog (spClosure p))
+    || any floating (maybe [] (:[]) (spKinds p)
+                    ++ maybe [] (maybe [] id . mvKinds) (spMv p))
+  where
+    floating (ks,k) = any (\t -> t == KD || t == KS) (k:ks)
 
 -- Each raw argument has its own kind. Record maps retain their field plans;
 -- mapAs retains the ordinary tagged callback ABI, rather than guessing kinds.

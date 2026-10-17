@@ -66,6 +66,7 @@ B = use "std/browsercalc".
 Console = use "std/browserconsole".
 VC = use "std/viewcache".
 List = use "std/list".
+Pagination = use "std/pagination".
 S = use "std/string".
 File = use "std/file".
 Stream = use "std/stream".
@@ -677,14 +678,13 @@ project size keep sid m =
   | False ->
       hits = sorted s.sort (List.filter (matches (lower s.q)) m.items);
       n = List.length hits;
-      pages = imax 1 ((n + size - 1) / size);
-      page = (case s.page >= pages of True -> pages - 1 | False -> s.page);
+      page = Pagination.plan size n s.page;
       onAdmin = s.pane == Admin;
       places = firsts (ranked (List.map (fn it -> it.loc) m.items));
       tags = firsts (ranked (List.concatMap (fn it -> it.tags) m.items));
       { signed = 1, user = s.user, toast = s.toast, role = s.role, theme = s.theme, editing = s.editing,
-        items = List.take size (List.drop (page * size) hits), total = List.length m.items, shown = n,
-        page = page, pages = pages, first = page * size, q = s.q,
+        items = List.take size (List.drop page.first hits), total = List.length m.items, shown = n,
+        page = page.index, pages = page.pages, first = page.first, q = s.q,
         places = List.take 8 places, tags = List.take 12 tags,
         quick = List.take 18 (List.unique (tags + quickTags)),
         members = List.map memName m.members,
@@ -1054,6 +1054,8 @@ main = case Config.load { defaults = Json.object [("port", Json.Integer 6720), (
         | False ->
             port = setting Decode.int "port" v;
             address = setting Decode.string "address" v;
+            # Config decoding remains fallible; historical nonpositive values
+            # normalize to one before entering the contracted arithmetic core.
             size = imax 1 (setting Decode.int "page-size" v);
             # at least a page: the cards on show are always kept
             keep = imax size (setting Decode.int "cache-items" v);

@@ -53,6 +53,7 @@ for harts in ('1', '4'):
         d = Path(tmp)
         module = d / 'pos1_pricing.fpr'
         module.write_text((ROOT / 'examples/pos1_pricing.fpr').read_text())
+        (d / 'pos1_core.fpr').write_text((ROOT / 'examples/pos1_core.fpr').read_text())
         (d / 'pos1.fpr').write_text((ROOT / 'examples/pos1.fpr').read_text())
         command(['commit', str(module)], d)
         log = d / 'server.log'

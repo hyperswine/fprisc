@@ -74,6 +74,7 @@ async function login(page,url,name,pin) {
     assert.match(cart,/cartScript = B.onLocals/);assert.doesNotMatch(cart,/Math\.floor|function\s*\(|document\./);
     const sample=path.join(tmp,'pos-sample.fpr'),snapshotBinary=path.join(tmp,'snapshot');
     fs.copyFileSync(path.join(root,'examples/pos1_pricing.fpr'),path.join(tmp,'pos1_pricing.fpr'));
+    fs.copyFileSync(path.join(root,'examples/pos1_core.fpr'),path.join(tmp,'pos1_core.fpr'));
     fs.writeFileSync(sample,source.replace(/^main =/m,'applicationMain =')+'\n'+fs.readFileSync(path.join(root,'tests/poscalculations.fprinc'),'utf8'));
     build(sample,snapshotBinary);
     const snapshot=JSON.parse(execFileSync(snapshotBinary,{encoding:'utf8'}));

@@ -414,6 +414,12 @@ on 64-bit targets; and the same suite under builtin RV32.
 - Measures (`Safety.hs`) and cost (`Cost.hs`) are separate passes again;
   `Cost.hs` does compose bounds up the call graph automatically.
 
+2026-10-17 update: the [contracted application cores record](2026-10-17-CONTRACTED-APPLICATION-CORES.md)
+supersedes the function-value bypass above. Checked entries preserve contracts
+through callbacks, aliases, stored/returned functions and partial applications;
+ordinary saturated named calls keep static discharge. This is enforcement at
+function boundaries, not the general refinement propagation proposed below.
+
 ### The direction: Liquid-style refinements over HM
 
 A refinement becomes part of a type: `x : {v : Int | v < 5}`. Inference stays

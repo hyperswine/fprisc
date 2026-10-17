@@ -48,7 +48,15 @@ fmaxf : F64 -> F64 -> F64 .
 fmaxf a b = case b > a of True -> b | False -> a.
 
 iotaL : unsafe Int -> Int -> List Int .
-iotaL i n = case i >= n of True -> Nil | False -> i :: iotaL (i + 1) n.
+iotaL i n = iotaGo i n Nil.
+# Build from the upper end to preserve ascending order with constant stack.
+# The board has a fixed 64 KiB stack; cons after recursion exhausted it on
+# the original 4,000-row dataset before tree building began.
+iotaGo : unsafe Int -> Int -> List Int -> List Int .
+iotaGo i n acc = case n <= i of True -> acc | False -> iotaGo i (n - 1) ((n - 1) :: acc).
+countL : unsafe List Int -> Int -> Int .
+countL Nil n = n.
+countL (_ :: rest) n = countL rest (n + 1).
 
 # class-count vectors as small lists (k entries)
 zerosL : unsafe Int -> List Int .
@@ -199,7 +207,7 @@ B = Type (B lo0 w0 lo1 w1).
 build : unsafe P -> B -> (Vector _) -> (Vector _) -> (Vector _) -> Int -> List Int -> _ .
 build ps bn c0 c1 ys depth idxs =
   P bins md mg ml k = ps;
-  n = List.len idxs;
+  n = countL idxs 0;
   (counts, ys2) = ccounts ys idxs k;
   case depth >= md of
     True -> (Leaf (argmaxL counts), c0, c1, ys2)
@@ -352,6 +360,7 @@ gen seed n =
 
 # ---- main -------------------------------------------------------------------
 
+main : unsafe String .
 main =
   ps = P 256 8 0.001 5 2;
   (txs, tzs, tys) = gen 42 4000;

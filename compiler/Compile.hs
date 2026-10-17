@@ -32,7 +32,7 @@ import Manifest (Manifest (..), readManifest, renderNs)
 import System.Environment (lookupEnv)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
 import Modules (LoadResult (..), ModExport (..), hashAST, loadProgram)
-import Precond (PreNote (..), PreStatus (..), applyPreconds, preTable, renderNote, validatePre)
+import Precond (PreNote (..), PreStatus (..), applyPreconds, checkedName, preTable, renderNote, validatePre, validatePreUses)
 import Home (underHome)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Environment (getArgs)
@@ -582,15 +582,37 @@ compileWithInterface accepted = do
       -- like any user code; the merged table spans units, and the pass
       -- is deterministic per-bind so unit and root rewrites agree.
       let preTab = preTable tops
-          preFragErrs = validatePre preTab
+          preFragErrs = validatePre preTab ++ validatePreUses preTab tops
       unless (null preFragErrs) $ do
         putStrLn "=== PRECONDITION: ERRORS ==="
         mapM_ (putStrLn . ("  * " ++)) (anchored preFragErrs)
         exitFailure
       let (pnAll, tops') = applyPreconds preTab tops
-          preludeE' = snd (applyPreconds preTab preludeE)
-          root'' = snd (applyPreconds preTab root')
-          units' = [(h, snd (applyPreconds preTab uts)) | (h, uts) <- units]
+          -- Bodyless foreign signatures keep a global name across imports.
+          -- Their checked entries must have one owner, even when multiple
+          -- units declare the same primitive. Keep signatures in each unit
+          -- for inference, but emit the shared entry once with the root.
+          foreignContracts = M.keysSet preTab `S.difference` bindNames tops
+          sharedEntryNames = S.fromList
+            [checkedName n k | n <- S.toList foreignContracts,
+              Just ps <- [M.lookup n preTab], k <- [0 .. length ps - 1],
+              any (/= Nothing) (map (fmap (const ())) (drop k ps))]
+          sharedEntryTops = [t | t <- tops', case t of
+            TBind n _ _ _ -> n `S.member` sharedEntryNames
+            TSig n _ _ -> n `S.member` sharedEntryNames
+            _ -> False]
+          -- A root may also add a contract to an existing prelude function.
+          -- Every unit must see the resulting checked callable's signature,
+          -- even if its implementation belongs to a different home unit.
+          checkedSignatures = [t | t@(TSig n _ _) <- tops', "$precond" `isPrefixOf` n]
+          sharedContext = [t | t@(TSig n _ _) <- tops, n `S.member` foreignContracts]
+                            ++ sharedEntryTops ++ checkedSignatures
+          removeShared = filter (\t -> case t of
+            TBind n _ _ _ -> n `S.notMember` sharedEntryNames
+            _ -> True)
+          preludeE' = removeShared (snd (applyPreconds preTab preludeE))
+          root'' = removeShared (snd (applyPreconds preTab root')) ++ sharedEntryTops
+          units' = [(h, removeShared (snd (applyPreconds preTab uts))) | (h, uts) <- units]
           rootBinds = S.fromList [fst3 b | b@TBind {} <- root']
           pnRoot = [n | n <- pnAll, S.member (pnCaller n) rootBinds]
           nDis = length [() | n <- pnAll, pnStatus n == Discharged]
@@ -832,7 +854,7 @@ compileWithInterface accepted = do
       -- (specialize ran on the whole program above); finalTops' root
       -- portion carries them.
       let resolveUnit uts =
-            let (_, _, _, _, rw) = inferTops sigs structs (preludeE' ++ uts)
+            let (_, _, _, _, rw) = inferTops sigs structs (preludeE' ++ sharedContext ++ uts)
                 bn = S.fromList ([fst3 b | b@(TBind {}) <- uts])
              in [t | t@(TBind n _ _ _) <- rw, S.member n bn]
                   ++ [t | t <- rw, not (isTBind t)]
@@ -844,7 +866,11 @@ compileWithInterface accepted = do
             exitFailure
           preludeExt = arities (resolveUnit preludeE')
           unitExt = M.unions [arities (resolveUnit uts) | (_, uts) <- units']
-          sourceExt = M.union preludeExt unitExt
+          -- Checked entries can be owned by the root (including contracts
+          -- added to prelude functions), but every unit needs their physical
+          -- callable arity for direct calls/PAPs.
+          checkedExt = arities [t | t@(TBind n _ _ _) <- finalTops, "$precond" `isPrefixOf` n]
+          sourceExt = M.unions [checkedExt, preludeExt, unitExt]
           extFor = M.union (if oArc opts then arcExterns else M.empty) sourceExt -- own names win via prog-first lookup
           -- primitive arities for direct calls: the compiler's builtin
           -- schemes, and every bare signature (foreign declarations --
@@ -894,7 +920,11 @@ compileWithInterface accepted = do
                   else if oBase opts then "rv64posixr" ++ show rv64HostRev
                   else tgtName tgt
           tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0
-          tag = "g" ++ show codegenRev ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc1-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
+          -- A root can constrain a global foreign primitive used inside an
+          -- unchanged imported unit. Cache that contract context as well as
+          -- source/prelude/shape identity so another root cannot reuse raw calls.
+          contractHash = hashAST [t | t@(TSig n _ _) <- tops, M.member n preTab]
+          tag = "g" ++ show codegenRev ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit
@@ -917,7 +947,7 @@ compileWithInterface accepted = do
           pureOutside g = maybe False (> 0) (M.lookup g extFor) || maybe False (> 0) (M.lookup g halAr) || g `elem` corePrimNames
           corePrimNames = ["+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "strcat", "str", "String.len"]
           mono ns ext p = if envNoSpec || oArc opts then p else specializeFunctions ns halAr ext p
-          preludeResolved = let (_, _, _, _, rw) = inferTops sigs structs preludeE' in rw
+          preludeResolved = resolveUnit preludeE'
           importedCore = M.unions
             (qualifyAux ("$specaux.p" ++ take 12 preludeHash ++ ".") (bindNames preludeE') (compileUnit preludeResolved)
              : [qualifyAux ("$specaux.u" ++ take 12 h ++ ".") (bindNames uts) (compileUnit (resolveUnit uts)) | (h,uts) <- units'])
@@ -954,7 +984,7 @@ compileWithInterface accepted = do
           then pure []
           else do
             r <- emitUnit (unitDir </> ("prelude-" ++ take 12 preludeHash ++ "-" ++ tag ++ ".s"))
-                          (bindNames preludeE') M.empty preludeResolved
+                          (bindNames preludeE') checkedExt preludeResolved
             pure [r]
       -- dep module units (hash-qualified; filename carries the prelude
       -- hash too -- unit code depends on prelude arities -- AND a hash of
@@ -972,11 +1002,12 @@ compileWithInterface accepted = do
       -- (finalTops), filtered to root's own names + any monomorphized
       -- clones (clones have no home unit; they ride with the root).
       let rootNames = S.fromList ([fst3 b | b@(TBind {}) <- root'])
-          unitNames = S.fromList (concat [[fst3 b | b@(TBind {}) <- uts] | (_, uts) <- units])
-          preludeNames = S.fromList (map fst3 [b | b@(TBind {}) <- preludeE, True])
+          rootLoweredNames = bindNames root''
+          unitNames = S.fromList (concat [[fst3 b | b@(TBind {}) <- uts] | (_, uts) <- units'])
+          preludeNames = bindNames preludeE'
           rootProgTops =
             [ t | t@(TBind n _ _ _) <- finalTops,
-                  S.member n rootNames
+                  S.member n rootLoweredNames
                     || (not (S.member n unitNames) && not (S.member n preludeNames))
             ]
           -- The raw ARC ABI needs one representation solution across imports.
@@ -1006,9 +1037,22 @@ compileWithInterface accepted = do
                         ++ "/" ++ preludeHash ++ "/" ++ hashAST foreignTops
                         ++ "/" ++ tname ++ "/hardfloat=" ++ show (oHardFloat opts)
                         ++ "/" ++ canonicalTypeWith interfaceName ty
+                        ++ "/precond=2"
                         ++ "/contracts=" ++ show (contractFor (meQual e))
                         ++ "/arity=" ++ show (meArity e)
-          imageExports = [e {meInterface = stamp e} | e <- rawExports]
+          checkedTarget n = if M.member n preTab then checkedName n 0 else n
+          imageExports = [e {meInterface = stamp e, meQual = checkedTarget (meQual e)} | e <- rawExports]
+      -- Dynamic module lookup is a function-value boundary too. Its public
+      -- identity/stamp stays the source API; the code pointer checks inputs.
+      -- A curried implementation with fewer physical arguments cannot be
+      -- flattened without delaying body effects, so refuse that export shape.
+      let sourceArities = arities tops
+          badContractExports = [meName e | e <- rawExports, M.member (meQual e) preTab,
+            Just ps <- [M.lookup (meQual e) preTab],
+            Just a <- [M.lookup (meQual e) sourceArities], a /= length ps]
+      unless (null badContractExports) $ do
+        hPutStrLn stderr ("precondition: dynamic exports require matching signature and implementation arity: " ++ unwords badContractExports)
+        exitFailure
       when (oBuiltin opts && not (oArc opts) && M.member "machineInterrupt" rootProgRaw) $ do
         hPutStrLn stderr "machineInterrupt requires --arc (raw, allocation-free handler ABI)"
         exitFailure
@@ -1022,7 +1066,7 @@ compileWithInterface accepted = do
         Left e -> hPutStrLn stderr ("error: " ++ e) >> exitFailure
         Right p -> pure p
       rootProg <- own (mono ("root" ++ take 12 rootHash) importedSym rootProgSym)
-      let (rootAsm0, rootVNotes) = emitProgram tgt rvv spec imageExports extFor (if oArc opts then M.keysSet rootProg else bindNames root') rootProg
+      let (rootAsm0, rootVNotes) = emitProgram tgt rvv spec imageExports extFor (if oArc opts then M.keysSet rootProg else bindNames root'') rootProg
       -- the C-callable entries: each export needs a declared signature
       -- over C-representable types, a function of that arity, <= 8 params
       let baseName = takeWhile (/= '@')
@@ -1045,7 +1089,7 @@ compileWithInterface accepted = do
         ks <- either bad pure (traverse ckindOf as)
         rk <- either bad pure (ckindOf r)
         putStrLn ("export " ++ csym ++ " : " ++ unwords (map show ks) ++ " -> " ++ show rk ++ "  (" ++ q ++ ")")
-        pure (trampoline (oHardFloat opts) csym ("fpr_fn_" ++ mangleName q) ks rk)
+        pure (trampoline (oHardFloat opts) csym ("fpr_fn_" ++ mangleName (checkedTarget q)) ks rk)
       -- the constructor-name table: what lets `print` say `Some 42` instead of
       -- `<613153155.1 42>`.  The root unit sees every unit's constructors
       -- (consAll), so it carries one table for the whole image; the runtime

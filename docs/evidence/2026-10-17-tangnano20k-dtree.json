@@ -1,0 +1,402 @@
+{
+  "local_date": "2026-10-17",
+  "board": "Tang Nano 20K",
+  "runtime_snapshot": {
+    "revision": "4c57c0f17e2566e2f7b65cf7c77b7edd6223dfbf",
+    "runtime": "committed HEAD snapshot; unrelated working-tree edits excluded",
+    "compiler_sha256": "eba07e19d25c9895fdf481c538744fe1071b2034a0184eff6db4d671b3b172ff",
+    "compiler_revision": 45,
+    "compiler_fix": "Floating vector kernels respect software-float mode",
+    "classifier_sha256": "21f82569eff76189361edcec30f83ddfd63a0ceae971affa8d6514ccce179e5f",
+    "classifier_changes": [
+      "explicit unsafe main signature",
+      "constant-stack ascending index list",
+      "constant-stack row count"
+    ]
+  },
+  "runtime_source_sha256": {
+    "machine/builtin/heap.c": "1b08f311cbe4dfb1db8c83121622a6ab0dd22abe07a3c8722adc44d7b3ed6957",
+    "machine/tangnano20k/base.c": "4bcda9664b7525ee2ffc816cc0f409ac18fb0087c13d4956674dd45cadac120c",
+    "runtime/runtime.c": "149a8b2db476c19c597aa97e22234b68baf1f140d92d0c70151acbe770d66c84",
+    "runtime/fpr.h": "0666defadeda34375eb0efe4d380e51d1872e5827b99d961ed952fdc15905a32",
+    "runtime/vec.c": "293752e958ab4d77786c638bd8d4606ae4d6f374561758d03668b38ac0cfb7dd",
+    "runtime/bits.c": "70b29db5f31d7f92c6c418c9470ef6e622a88f9108a16359b89aef771bb68111"
+  },
+  "method": "Physical RV64IMC at 27 MHz, SRAM programming only; checked UART upload/readback and runtime exit. Training and inference execute on the FPGA. Python math.log2 reference and native FP-RISC execution are independent checks.",
+  "boundary": "Finite hardware functionality. Full 4k/1k rows at 32 bins stopped with explicit heap refusal after stack fixes. No successful 256-bin board claim; no peak-heap instrumentation or full I/O/PVT signoff.",
+  "software_float_regression": {
+    "cold_warm_rv64im": true,
+    "cold_warm_rv64imc": true,
+    "native_float_on_off_outputs_equal": true,
+    "integer_specialization_retained": true
+  },
+  "runs": {
+    "small": {
+      "reference": {
+        "train_rows": 32,
+        "test_rows": 16,
+        "bins": 4,
+        "max_depth": 3,
+        "min_leaf": 2,
+        "nodes": 11,
+        "depth": 3,
+        "train": {
+          "hits": 27,
+          "rows": 32,
+          "digest": 654425,
+          "predictions_sha256": "847ba265a9e889da0de7903332db984cb885ee3652b12a75d6c01a6a561808a8"
+        },
+        "test": {
+          "hits": 15,
+          "rows": 16,
+          "digest": 889067,
+          "predictions_sha256": "b1ab3b84dc976d8b71d9b7c7dd0e58436d0330b42e92e65c8bd8fdb1be3da24a"
+        },
+        "root": {
+          "column": 0,
+          "threshold": -0.49114975216798484
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "27e54a1e3b5e9d2249935ef73475c69ca87a76b931a3da5b6991d6231ea3e497",
+      "classifier_sha256": "a25f28d015bcf26487a5ff1ac233d1b49be4714c52e5958cbba3ccb8e539ec49",
+      "compiler_sha256": "1354243aa2d8c3af6306afbb35e32f6212e2a8ed9a23bfefa62dfa790f62e42d",
+      "executions": {
+        "native": {
+          "elapsed_us": 236,
+          "wall_seconds": 0.2515809580218047,
+          "passed": true
+        },
+        "board": {
+          "elapsed_us": 2568387,
+          "wall_seconds_with_upload": 61.560452541918494,
+          "frequency_mhz": 27,
+          "isa": "RV64IMC",
+          "image_sha256": "d87f5c14debefbd7d5ce94101f83e1bddc4fd4b5a867f0551f79690851245bf9",
+          "image_bytes": 151788,
+          "passed": true,
+          "bitstream_sha256": "17f72a2ff8c33cfb8f69d23ce51232048e7961ecdbe6b9828638bde109a15a56",
+          "heap_arena_bytes": 8114304,
+          "heap_bitmap_bytes": 63408,
+          "usable_heap_block_bytes": 8050896,
+          "stack_bytes": 65536
+        }
+      },
+      "physical_output": "DTREE BEGIN train=32 test=16 bins=4 depth=3 minLeaf=2\nDTREE DATA READY\nDTREE nodes=11 depth=3\nDTREE train hits=27/32 digest=654425\nDTREE test hits=15/16 digest=889067\nroot split: col 0 @ -0.491149752167984\nDTREE elapsed_us=2568387\nFPR EXIT 0\nDONE\n"
+    },
+    "n128-t64-b8-d5": {
+      "reference": {
+        "train_rows": 128,
+        "test_rows": 64,
+        "bins": 8,
+        "max_depth": 5,
+        "min_leaf": 2,
+        "nodes": 23,
+        "depth": 5,
+        "train": {
+          "hits": 124,
+          "rows": 128,
+          "digest": 21562,
+          "predictions_sha256": "888ded6dbd04c33e23d17c8ca7f8899a5ee30b08afa5e7bafb17e3fe3f672877"
+        },
+        "test": {
+          "hits": 61,
+          "rows": 64,
+          "digest": 909572,
+          "predictions_sha256": "f8bad44ad21890cd6a00359c8fee71a036eeb5cb10f3eeef5beafed31bd3c958"
+        },
+        "root": {
+          "column": 1,
+          "threshold": 0.7506353431381285
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "c8bbdf2e33c43eca1cb2a58206aed17cd8ecf639a5695373d7b7e9f449ae20d5",
+      "classifier_sha256": "a25f28d015bcf26487a5ff1ac233d1b49be4714c52e5958cbba3ccb8e539ec49",
+      "compiler_sha256": "1354243aa2d8c3af6306afbb35e32f6212e2a8ed9a23bfefa62dfa790f62e42d",
+      "executions": {
+        "native": {
+          "elapsed_us": 297,
+          "wall_seconds": 0.3214972090208903,
+          "passed": true
+        },
+        "board": {
+          "elapsed_us": 10337184,
+          "wall_seconds_with_upload": 69.32140929205343,
+          "frequency_mhz": 27,
+          "isa": "RV64IMC",
+          "image_sha256": "7fb1ef268787f234f1f37694474029e37943f2d262549d6dcaf40a1a8205073f",
+          "image_bytes": 151788,
+          "passed": true,
+          "bitstream_sha256": "17f72a2ff8c33cfb8f69d23ce51232048e7961ecdbe6b9828638bde109a15a56",
+          "heap_arena_bytes": 8114304,
+          "heap_bitmap_bytes": 63408,
+          "usable_heap_block_bytes": 8050896,
+          "stack_bytes": 65536
+        }
+      },
+      "physical_output": "DTREE BEGIN train=128 test=64 bins=8 depth=5 minLeaf=2\nDTREE DATA READY\nDTREE nodes=23 depth=5\nDTREE train hits=124/128 digest=21562\nDTREE test hits=61/64 digest=909572\nroot split: col 1 @ 0.750635343138128\nDTREE elapsed_us=10337184\nFPR EXIT 0\nDONE\n"
+    },
+    "n512-t128-b16-d6": {
+      "reference": {
+        "train_rows": 512,
+        "test_rows": 128,
+        "bins": 16,
+        "max_depth": 6,
+        "min_leaf": 5,
+        "nodes": 55,
+        "depth": 6,
+        "train": {
+          "hits": 481,
+          "rows": 512,
+          "digest": 354774,
+          "predictions_sha256": "dbc85e3a7188d43555e0876fc50dd901b15fa11c6da8ebda539e8580266f37a1"
+        },
+        "test": {
+          "hits": 116,
+          "rows": 128,
+          "digest": 434626,
+          "predictions_sha256": "9bc880f50defb44919cec07bff13fdfb9442287d88fa9e8b09300cc8100ef5c8"
+        },
+        "root": {
+          "column": 0,
+          "threshold": -0.12101956852711737
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "376c34b334e2d66584a2f6086b47f125315b0f34c97adc14d449b1625b5a7d12",
+      "classifier_sha256": "a25f28d015bcf26487a5ff1ac233d1b49be4714c52e5958cbba3ccb8e539ec49",
+      "compiler_sha256": "1354243aa2d8c3af6306afbb35e32f6212e2a8ed9a23bfefa62dfa790f62e42d",
+      "executions": {
+        "native": {
+          "elapsed_us": 964,
+          "wall_seconds": 0.29826920898631215,
+          "passed": true
+        },
+        "board": {
+          "elapsed_us": 40227441,
+          "wall_seconds_with_upload": 99.2066387499217,
+          "frequency_mhz": 27,
+          "isa": "RV64IMC",
+          "image_sha256": "ae3c65827abb819383b9e1db8722fa0e0abc05a4ce1720ddd556fb185e6c98e1",
+          "image_bytes": 151788,
+          "passed": true,
+          "bitstream_sha256": "17f72a2ff8c33cfb8f69d23ce51232048e7961ecdbe6b9828638bde109a15a56",
+          "heap_arena_bytes": 8114304,
+          "heap_bitmap_bytes": 63408,
+          "usable_heap_block_bytes": 8050896,
+          "stack_bytes": 65536
+        }
+      },
+      "physical_output": "DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5\nDTREE DATA READY\nDTREE nodes=55 depth=6\nDTREE train hits=481/512 digest=354774\nDTREE test hits=116/128 digest=434626\nroot split: col 0 @ -0.121019568527117\nDTREE elapsed_us=40227441\nFPR EXIT 0\nDONE\n"
+    },
+    "n4000-t1000-b16-d8": {
+      "reference": {
+        "train_rows": 4000,
+        "test_rows": 1000,
+        "bins": 16,
+        "max_depth": 8,
+        "min_leaf": 5,
+        "nodes": 1,
+        "depth": 0,
+        "train": {
+          "hits": 2034,
+          "rows": 4000,
+          "digest": 547243,
+          "predictions_sha256": "0d206c94e5ba5046f7e6952c38c6b2d2d7191b3de532bc8e2ec6e78d36cee936"
+        },
+        "test": {
+          "hits": 498,
+          "rows": 1000,
+          "digest": 407157,
+          "predictions_sha256": "353c38352a855c80f4ecb0793a76493228541b5fab5ef7af26effac91e77ec46"
+        },
+        "root": {
+          "leaf": 1
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "1dcee7c896674e95a4915d64ded73301212122e215988e81581f1f79bee4c298",
+      "classifier_sha256": "a25f28d015bcf26487a5ff1ac233d1b49be4714c52e5958cbba3ccb8e539ec49",
+      "compiler_sha256": "eba07e19d25c9895fdf481c538744fe1071b2034a0184eff6db4d671b3b172ff",
+      "executions": {
+        "native": {
+          "elapsed_us": 976,
+          "wall_seconds": 0.24929462501313537,
+          "passed": true
+        },
+        "board": {
+          "frequency_mhz": 27,
+          "isa": "RV64IMC",
+          "passed": false,
+          "bitstream_sha256": "17f72a2ff8c33cfb8f69d23ce51232048e7961ecdbe6b9828638bde109a15a56",
+          "image_sha256": "f3fb633fccb7db77bbc4293cba73e3119f931858cf81ec29fd4c2eedb1786e79",
+          "image_bytes": 151788,
+          "heap_arena_bytes": 8114304,
+          "heap_bitmap_bytes": 63408,
+          "usable_heap_block_bytes": 8050896,
+          "stack_bytes": 65536
+        }
+      },
+      "error": "DTREE BEGIN train=4000 test=1000 bins=16 depth=8 minLeaf=5\nDTREE DATA READY\nBase panic: Base: 64 KiB stack exhausted\nFPR EXIT 1\nDONE\nTraceback (most recent call last):\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 128, in <module>\n    if __name__=='__main__':main()\n                            ~~~~^^\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 120, in main\n    if b'FPR EXIT 0\\n' not in output:raise ValueError('CPU halted without successful runtime exit')\n                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nValueError: CPU halted without successful runtime exit\n",
+      "physical_output": "DTREE BEGIN train=4000 test=1000 bins=16 depth=8 minLeaf=5\nDTREE DATA READY\nBase panic: Base: 64 KiB stack exhausted\nFPR EXIT 1\nDONE\n"
+    },
+    "n4000-t1000-b32-d8": {
+      "reference": {
+        "train_rows": 4000,
+        "test_rows": 1000,
+        "bins": 32,
+        "max_depth": 8,
+        "min_leaf": 5,
+        "nodes": 169,
+        "depth": 8,
+        "train": {
+          "hits": 3785,
+          "rows": 4000,
+          "digest": 654013,
+          "predictions_sha256": "8c8235265869aa78af91d4b8ce75c30f527d327477348322e3257e5fa55643e5"
+        },
+        "test": {
+          "hits": 958,
+          "rows": 1000,
+          "digest": 631588,
+          "predictions_sha256": "6ccb3e8b9b059477c63bb40188c11fb1efa24db83f4b347846612d14cf9dd460"
+        },
+        "root": {
+          "column": 1,
+          "threshold": -0.9374044427531771
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "f7ab4568909e3192d7909b887212a0003a331dd4c120c9f5c9ef36ff20a133da",
+      "classifier_sha256": "01565baaa9d768b417d34dae977fe35d840bcdc2760dba111451b0777daee7ea",
+      "compiler_sha256": "eba07e19d25c9895fdf481c538744fe1071b2034a0184eff6db4d671b3b172ff",
+      "executions": {
+        "native": {
+          "elapsed_us": 14441,
+          "wall_seconds": 0.35732729209121317,
+          "passed": true
+        },
+        "board": {
+          "frequency_mhz": 27,
+          "isa": "RV64IMC",
+          "passed": false,
+          "bitstream_sha256": "17f72a2ff8c33cfb8f69d23ce51232048e7961ecdbe6b9828638bde109a15a56",
+          "image_sha256": "5bfea192fa5147c925d592b54682e9e55197582c05dcf31cd4530c33afb70dcb",
+          "image_bytes": 152060,
+          "heap_arena_bytes": 8114032,
+          "heap_bitmap_bytes": 63392,
+          "usable_heap_block_bytes": 8050640,
+          "stack_bytes": 65536
+        }
+      },
+      "error": "DTREE BEGIN train=4000 test=1000 bins=32 depth=8 minLeaf=5\nDTREE DATA READY\nBase panic: Base: 64 KiB stack exhausted\nFPR EXIT 1\nDONE\nTraceback (most recent call last):\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 128, in <module>\n    if __name__=='__main__':main()\n                            ~~~~^^\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 120, in main\n    if b'FPR EXIT 0\\n' not in output:raise ValueError('CPU halted without successful runtime exit')\n                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nValueError: CPU halted without successful runtime exit\n",
+      "physical_output": "DTREE BEGIN train=4000 test=1000 bins=32 depth=8 minLeaf=5\nDTREE DATA READY\nBase panic: Base: 64 KiB stack exhausted\nFPR EXIT 1\nDONE\n"
+    },
+    "full-stack-safe": {
+      "reference": {
+        "train_rows": 4000,
+        "test_rows": 1000,
+        "bins": 32,
+        "max_depth": 8,
+        "min_leaf": 5,
+        "nodes": 169,
+        "depth": 8,
+        "train": {
+          "hits": 3785,
+          "rows": 4000,
+          "digest": 654013,
+          "predictions_sha256": "8c8235265869aa78af91d4b8ce75c30f527d327477348322e3257e5fa55643e5"
+        },
+        "test": {
+          "hits": 958,
+          "rows": 1000,
+          "digest": 631588,
+          "predictions_sha256": "6ccb3e8b9b059477c63bb40188c11fb1efa24db83f4b347846612d14cf9dd460"
+        },
+        "root": {
+          "column": 1,
+          "threshold": -0.9374044427531771
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "f7ab4568909e3192d7909b887212a0003a331dd4c120c9f5c9ef36ff20a133da",
+      "classifier_sha256": "21f82569eff76189361edcec30f83ddfd63a0ceae971affa8d6514ccce179e5f",
+      "compiler_sha256": "eba07e19d25c9895fdf481c538744fe1071b2034a0184eff6db4d671b3b172ff",
+      "executions": {
+        "native": {
+          "elapsed_us": 14603,
+          "wall_seconds": 0.2933753749821335,
+          "passed": true
+        },
+        "board": {
+          "frequency_mhz": 27,
+          "isa": "RV64IMC",
+          "passed": false,
+          "bitstream_sha256": "17f72a2ff8c33cfb8f69d23ce51232048e7961ecdbe6b9828638bde109a15a56",
+          "image_sha256": "1225131bf3c68a6b82dae837d79beef738ad5716cded2bad7c87b4dd8a09aed2",
+          "image_bytes": 152460,
+          "heap_arena_bytes": 8113632,
+          "heap_bitmap_bytes": 63392,
+          "usable_heap_block_bytes": 8050240,
+          "stack_bytes": 65536
+        }
+      },
+      "error": "DTREE BEGIN train=4000 test=1000 bins=32 depth=8 minLeaf=5\nDTREE DATA READY\nBase panic: Builtin: out of memory\nFPR EXIT 1\nDONE\nTraceback (most recent call last):\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 128, in <module>\n    if __name__=='__main__':main()\n                            ~~~~^^\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 120, in main\n    if b'FPR EXIT 0\\n' not in output:raise ValueError('CPU halted without successful runtime exit')\n                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nValueError: CPU halted without successful runtime exit\n",
+      "physical_output": "DTREE BEGIN train=4000 test=1000 bins=32 depth=8 minLeaf=5\nDTREE DATA READY\nBase panic: Builtin: out of memory\nFPR EXIT 1\nDONE\n"
+    },
+    "default-stack-safe": {
+      "reference": {
+        "train_rows": 512,
+        "test_rows": 128,
+        "bins": 16,
+        "max_depth": 6,
+        "min_leaf": 5,
+        "nodes": 55,
+        "depth": 6,
+        "train": {
+          "hits": 481,
+          "rows": 512,
+          "digest": 354774,
+          "predictions_sha256": "dbc85e3a7188d43555e0876fc50dd901b15fa11c6da8ebda539e8580266f37a1"
+        },
+        "test": {
+          "hits": 116,
+          "rows": 128,
+          "digest": 434626,
+          "predictions_sha256": "9bc880f50defb44919cec07bff13fdfb9442287d88fa9e8b09300cc8100ef5c8"
+        },
+        "root": {
+          "column": 0,
+          "threshold": -0.12101956852711737
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "376c34b334e2d66584a2f6086b47f125315b0f34c97adc14d449b1625b5a7d12",
+      "classifier_sha256": "21f82569eff76189361edcec30f83ddfd63a0ceae971affa8d6514ccce179e5f",
+      "compiler_sha256": "eba07e19d25c9895fdf481c538744fe1071b2034a0184eff6db4d671b3b172ff",
+      "executions": {
+        "native": {
+          "elapsed_us": 1862,
+          "wall_seconds": 0.3239542079390958,
+          "passed": true
+        },
+        "board": {
+          "elapsed_us": 40614173,
+          "wall_seconds_with_upload": 99.86461825005244,
+          "frequency_mhz": 27,
+          "isa": "RV64IMC",
+          "image_sha256": "a6f27036fb3b694dd5615b6df2da6d3db2ebc38fc63d33ecd9447eff77c69ab3",
+          "image_bytes": 152460,
+          "passed": true,
+          "bitstream_sha256": "17f72a2ff8c33cfb8f69d23ce51232048e7961ecdbe6b9828638bde109a15a56",
+          "heap_arena_bytes": 8113632,
+          "heap_bitmap_bytes": 63392,
+          "usable_heap_block_bytes": 8050240,
+          "stack_bytes": 65536
+        }
+      },
+      "physical_output": "DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5\nDTREE DATA READY\nDTREE nodes=55 depth=6\nDTREE train hits=481/512 digest=354774\nDTREE test hits=116/128 digest=434626\nroot split: col 0 @ -0.121019568527117\nDTREE elapsed_us=40614173\nFPR EXIT 0\nDONE\n"
+    }
+  }
+}

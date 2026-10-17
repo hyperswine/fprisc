@@ -1230,3 +1230,28 @@ The 112 library contracts and 21 application/measure checks pass; non-view
 model/command traces are unchanged. Source boundaries and one/four-hart native
 utility/generation checks pass. See [the completion record](2026-10-15-PURE-APPLICATIONS.md)
 for the authoring/build boundary and remaining host-policy scope.
+
+## 2026-10-17: shared higher-order contract enforcement
+
+The shared precondition pass now supplies typed checked function entries for
+contracted values used through callbacks, aliases, records, returns and partial
+applications. Sol uses the same rewrite as native compilation. Checks fail with
+named blame before an invalid argument reaches the contracted body; a script
+panic still rolls back buffered file effects. Direct named calls keep static
+proof discharge. Lexical shadowing, guard calls and generated-name hygiene are
+covered explicitly. Type-directed operators and Sig/Struct specialization retain
+checked entries too. Predicate `and2`/`or2` syntax cannot be captured by a user's
+helper; source helper calls do not supply logical facts by name alone.
+
+This is a function-boundary enforcement improvement. Sol still does not enforce
+native resource declarations, and this work does not implement result refinements
+or general dependent lengths. Direct named partial calls retain their existing
+checks on supplied arguments; unknown function values check on saturation.
+Definitions whose signatures describe more arguments than their bodies accept
+are refused when escaped/partially applied, preserving body-effect timing until
+a staged checked-call implementation exists. Value predicates referencing a
+global or another parameter are rejected until their binding/relational semantics
+are implemented. Typed entries preserve the existing direct linear-PAP check;
+this is not a general fix for linear closure capture through aliases. See the
+[application-core record](2026-10-17-CONTRACTED-APPLICATION-CORES.md) and
+`tests/check_higher_order_contracts.py` for the acceptance and remaining scope.

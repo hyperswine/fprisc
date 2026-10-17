@@ -53,6 +53,7 @@ Reload = use "std/livereload".
 Notice = use "std/livenotice".
 Watch = use "std/watch".
 Pricing = use "pos1_pricing".
+Core = use "pos1_core".
 G = use "std/view".
 UI = use "std/ui".
 Appearance = use "std/appearance".
@@ -436,7 +437,7 @@ mirror m sid c =
   fixes = asked |> foldE (fn pq acc -> fixLine pq acc) Nil;
   (sPut m { s | tab = c.tab, cart = cart },
    case fixes of Nil -> Nil | fs -> Live.setClient sid fs :: Nil).
-clampQ p q = imax 0 (imin q (imin 999 p.stock)).
+clampQ p q = Core.quantity p.stock q.
 keepLine (p, q) acc = case clampQ p q > 0 of True -> (p.sku, clampQ p q) :: acc | False -> acc.
 fixLine (p, q) acc = case clampQ p q == q of True -> acc | False -> G.assign (line p.sku) (clampQ p q) :: acc.
 # a product's quantity in the page's cart
@@ -486,9 +487,12 @@ checkout m sid s pay tendered =
   total = sub + tax;
   case strlen short > 0 of
     True -> refuse m sid short
-  | False -> (case pay == 0 and tendered < total of
-      True -> refuse m sid "cash short by {money (total - tendered)}"
-    | False -> sell m sid s pay tendered total tax).
+  | False -> (case pay == 0 of
+      False -> sell m sid s pay tendered total tax
+    | True -> (case Core.cash total tendered of
+        Core.Short shortfall -> refuse m sid "cash short by {money shortfall}"
+      | Core.InvalidCash -> refuse m sid "invalid cash amount"
+      | Core.Change _ -> sell m sid s pay tendered total tax)).
 sell m sid s pay tendered total tax =
   n = m.nsale + 1;
   at = Clock.now Unit;
@@ -496,7 +500,9 @@ sell m sid s pay tendered total tax =
   items = s.cart |> List.map (fn l -> itemWord m l);
   line = "sale {n} {s.cashier} {at} {pay} {case pay == 0 of True -> tendered | False -> total} {total} {tax} " + unwords items;
   m2 = withCart (commit m line) sid Nil;
-  change = case pay == 0 of True -> "   change {money (tendered - total)}" | False -> "";
+  change = case pay == 0 of
+    True -> (case Core.cash total tendered of Core.Change amount -> "   change {money amount}" | _ -> "")
+  | False -> "";
   toast m2 sid (case first of True -> "celebrate" | False -> "ok")
         (case first of True -> "first sale of the day: receipt #{n} for {money total}{change}" | False -> "receipt #{n} for {money total}{change}").
 
@@ -514,11 +520,10 @@ restock m sid s sku d =
   p = findP m.cat sku;
   case strlen p.sku == 0 of
     True -> refuse m sid "no such product"
-  | False -> (case d < 1 or d > 999 of
-      True -> refuse m sid "restock by 1 to 999"
-    | False -> (case p.stock + d > 9999 of
-        True -> refuse m sid "{p.name}: the shelf holds 9999"
-      | False -> say (commit m "restock {sku} {d} {s.cashier} {Clock.now Unit}") sid "{p.name}: +{d}, now {p.stock + d}")).
+  | False -> (case Core.restock p.stock d of
+      Core.BadDelta -> refuse m sid "restock by 1 to 999"
+    | Core.FullShelf -> refuse m sid "{p.name}: the shelf holds 9999"
+    | Core.Added stock -> say (commit m "restock {sku} {d} {s.cashier} {Clock.now Unit}") sid "{p.name}: +{d}, now {stock}").
 
 # ---- the admin console: the data model, live ---------------------------------------------------
 

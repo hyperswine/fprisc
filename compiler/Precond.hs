@@ -37,12 +37,17 @@
 -- the runtime's existing division-by-zero trap instead of a wrapper:
 -- `/` is operator-dispatched by operand TYPE after this pass runs, so
 -- an inserted Int comparison could mistype a non-Int division site.
+-- Escaping function values use typed checked entries instead: aliases,
+-- fields and higher-order calls cannot discard the contract. Direct named
+-- partial applications check supplied arguments immediately and retain an
+-- entry for the rest. Escaped function values check their full boundary
+-- when saturated; their PAP arguments are still evaluated/captured once.
 
 module Precond where
 
 import Control.Monad (forM)
 import Control.Monad.State.Strict
-import Data.List (foldl')
+import Data.List (foldl', isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import FPRISC
@@ -59,10 +64,21 @@ preTable tops =
     [ (n, pres')
       | TSig n _ pres <- tops,
         -- reserved entries ($unsafe, $work, $alloc) are not value predicates
-        let pres' = [ p >>= \(v, q) -> (,) v <$> snd (splitMeasure q)
+        let pres' = [ p >>= \(v, q) -> (,) v . logicalPred <$> snd (splitMeasure q)
                     | p <- pres, not (reservedEntry p) ],
         any (/= Nothing) (map (fmap (const ())) pres')
     ]
+
+-- and2/or2 are predicate grammar, not calls to a caller's (possibly
+-- shadowed) helper. Lower them to the unshadowable Boolean syntax before
+-- checks or own facts are generated. Source guards keep ordinary call
+-- semantics and cannot acquire facts merely from a helper's spelling.
+logicalPred :: SExpr -> SExpr
+logicalPred = \case
+  SApp (SApp (SVar "and2") a) b -> SBin "and" (logicalPred a) (logicalPred b)
+  SApp (SApp (SVar "or2") a) b -> SBin "or" (logicalPred a) (logicalPred b)
+  SBin op a b -> SBin op (logicalPred a) (logicalPred b)
+  e -> e
 
 -- the signature list also carries the $unsafe marker and the $work/$alloc
 -- resource bounds (FPRISC.fullSig): never a value predicate
@@ -107,6 +123,16 @@ validatePre tab =
       Just (v, p) <- pres,
       not (okPred p)
   ]
+  ++
+  [ "precondition on " ++ f ++ " (" ++ v ++ "): free predicate names are not supported: "
+      ++ unwords (S.toList free) ++ "; only its own parameter " ++ v
+      ++ " is in scope (relational/global predicates require explicit support)"
+    | (f, pres) <- M.toList tab,
+      Just (v, p) <- pres,
+      okPred p,
+      let free = predVars p `S.difference` S.singleton v,
+      not (S.null free)
+  ]
   where
     okPred e = case e of
       SApp (SApp (SVar c) a) b | c `elem` ["and2", "or2"] -> okPred a && okPred b
@@ -118,6 +144,15 @@ validatePre tab =
       SInt _ -> True
       SBin op a b | op `elem` ["+", "-", "*"] -> okA a && okA b
       _ -> False
+    -- Do not capture a global or another parameter by spelling its name
+    -- into a caller's scope. This pass currently substitutes one binder,
+    -- so only that binder can be a sound value-predicate variable. A
+    -- separate measure expression was already removed by splitMeasure.
+    predVars = \case
+      SApp (SApp (SVar c) a) b | c `elem` ["and2", "or2"] -> predVars a `S.union` predVars b
+      SBin _ a b -> predVars a `S.union` predVars b
+      SVar n -> S.singleton n
+      _ -> S.empty
 
 cmpOps :: [Name]
 cmpOps = ["==", "!=", "<", "<=", ">", ">="]
@@ -166,7 +201,6 @@ type Atom = (SExpr, Name, SExpr)
 -- fewer facts only means fewer discharges)
 conjuncts :: SExpr -> [Atom]
 conjuncts e = case e of
-  SApp (SApp (SVar "and2") a) b -> conjuncts a ++ conjuncts b
   SBin "and" a b -> conjuncts a ++ conjuncts b
   SBin op a b | op `elem` cmpOps -> [(a, op, b)]
   _ -> []
@@ -289,7 +323,9 @@ freshV :: PM Name
 freshV = do
   s <- get
   put s {pFresh = pFresh s + 1}
-  pure ("pcv" ++ show (pFresh s))
+  -- '$' cannot occur in a source identifier. A user binding named pcv0
+  -- must not capture a generated check (or be captured by its let).
+  pure ("$pcv" ++ show (pFresh s))
 
 note :: PreNote -> PM ()
 note n = modify (\s -> s {pNotes = n : pNotes s})
@@ -298,14 +334,17 @@ note n = modify (\s -> s {pNotes = n : pNotes s})
 -- rewrites identically whether it is visited in the merged program or
 -- in its own unit's list (unit codegen is cached + separate)
 applyPreconds :: PreTable -> [STop] -> ([PreNote], [STop])
-applyPreconds tab tops = (concat notes, tops')
+applyPreconds tab tops = (concat notes ++ concat entryNotes, tops' ++ concat entries)
   where
     (tops', notes) = unzip (map top tops)
     top (TBind n pats g body) =
-      let facts = ownFacts n pats ++ concatMap conjuncts (guardBools g)
-          shadow = S.empty
-          (body', PEnv _ ns) = runState (goE tab n shadow facts body) (PEnv 0 [])
-       in (TBind n pats g body', reverse ns)
+      let shadow = S.unions (map pvars pats)
+          rewrite = do
+            (g', sh, facts) <- guards n shadow (ownFacts n pats) g
+            body' <- goE tab n sh facts body
+            pure (g', body')
+          ((g', body'), PEnv _ ns) = runState rewrite (PEnv 0 [])
+       in (TBind n pats g' body', reverse ns)
     top (TEval body) =
       let (body', PEnv _ ns) = runState (goE tab "<eval>" S.empty [] body) (PEnv 0 [])
        in (TEval body', reverse ns)
@@ -316,6 +355,44 @@ applyPreconds tab tops = (concat notes, tops')
           (fs', ns) = unzip (map field fs)
        in (TStruct n sigs fs', concat ns)
     top t = (t, [])
+    -- Guards have sequential scope, including pattern-bound names. A
+    -- Boolean guard becomes a fact only AFTER its own calls are checked.
+    guards _ sh facts [] = pure ([], sh, facts)
+    guards n sh facts (g : gs) = do
+      (g', sh', facts') <- case g of
+        GBool e -> do
+          e' <- goE tab n sh facts e
+          pure (GBool e', sh, facts ++ conjuncts e)
+        GPat p e -> do
+          e' <- goE tab n sh facts e
+          let vs = pvars p
+          pure (GPat p e', S.union sh vs, dropFacts vs facts)
+      (gs', sh'', facts'') <- guards n sh' facts' gs
+      pure (g' : gs', sh'', facts'')
+    -- Keep the original arrow signature on each checked entry. An
+    -- anonymous eta lambda loses parameter/return ownership information
+    -- in the surface linearity checker, allowing a captured Vector PAP
+    -- to be reused. Typed globals retain that existing linear discipline.
+    -- Entry k receives all arguments but checks only slots k..arity-1:
+    -- slots before k were checked when the partial application was made.
+    localSigs = M.fromList [(n, (ty, ps)) | TSig n ty ps <- tops]
+    (entries, entryNotes) = unzip
+      [ let args = ["$pcarg" ++ show i | i <- [0 .. length pres - 1]]
+            obs = [(i, SVar a, if i < supplied then Nothing else p)
+                  | (i, a, p) <- zip3 [0 ..] args pres]
+            entry = checkedName n supplied
+            (body, PEnv _ ns) = runState (buildChecked n "higher-order call" n obs) (PEnv 0 [])
+            -- Resource declarations belong to the original body. The
+            -- added checks have a real cost, derived normally; never
+            -- copy a budget or invent an unsafe escape to hide that cost.
+            markers = filter (maybe False ((== "$unsafe") . fst)) sigPres
+         in ([TSig entry ty (replicate (length pres) Nothing ++ markers),
+              TBind entry (map PVar args) [] body], reverse ns)
+      | (n, (ty, sigPres)) <- M.toList localSigs,
+        Just pres <- [M.lookup n tab],
+        supplied <- [0 .. length pres - 1],
+        any hasPre (drop supplied pres)
+      ]
     ownFacts n pats = case M.lookup n tab of
       Nothing -> []
       Just pres ->
@@ -324,6 +401,54 @@ applyPreconds tab tops = (concat notes, tops')
             | (pat, Just (pn, p)) <- zip pats pres,
               PVar v <- [pat]
           ]
+
+hasPre :: Maybe a -> Bool
+hasPre Nothing = False
+hasPre (Just _) = True
+
+checkedName :: Name -> Int -> Name
+checkedName n supplied = "$precond" ++ show supplied ++ "." ++ n
+
+-- A signature may describe more arrows than the definition accepts
+-- syntactically (the body returns a function). A full-arity checked entry
+-- would defer that body's effects until the remaining arrows arrive.
+-- Refuse such escaping uses until staged entries can preserve the real
+-- application boundaries. Ordinary saturated calls retain their existing
+-- checks and are unaffected. Bodyless foreign signatures use their stated
+-- arity. The scan reads the same deterministic rewrite codegen consumes.
+validatePreUses :: PreTable -> [STop] -> [String]
+validatePreUses tab tops =
+  [ "precondition on " ++ n ++ ": a contracted function value/partial application requires its definition to accept all "
+      ++ show (length pres) ++ " declared parameters (definition accepts " ++ show arity
+      ++ "); move returned-function arguments into the definition to preserve application timing"
+    | (n, pres) <- M.toList tab,
+      Just arity <- [M.lookup n arities], arity /= length pres,
+      any (`S.member` used) [checkedName n k | k <- [0 .. length pres - 1]]
+  ]
+  where
+    arities = M.fromList [(n, length ps) | TBind n ps _ _ <- tops]
+    transformed = snd (applyPreconds tab tops)
+    used = S.unions (map topNames transformed)
+    topNames (TBind n _ gs e) | not ("$precond" `isPrefixOf` n) =
+      names e `S.union` S.unions [names x | g <- gs, x <- case g of GBool q -> [q]; GPat _ q -> [q]]
+    topNames (TEval e) = names e
+    topNames (TStruct _ _ fs) = S.unions (map (names . snd) fs)
+    topNames _ = S.empty
+    names = \case
+      SVar n -> S.singleton n
+      SMark _ e -> names e
+      SApp f x -> names f `S.union` names x
+      SLam _ e -> names e
+      SBlock ss e -> names e `S.union` S.unions [names x | s <- ss, x <- case s of SBind _ _ q -> [q]; SBindPat _ q -> [q]]
+      SCase s arms -> names s `S.union` S.unions (map (names . snd) arms)
+      SBin _ a b -> names a `S.union` names b
+      SProj e _ -> names e
+      SRec fs -> S.unions (map (names . snd) fs)
+      SUpd e fs -> names e `S.union` S.unions (map (names . snd) fs)
+      STup es -> S.unions (map names es)
+      SList es -> S.unions (map names es)
+      SStrI ss -> S.unions [names e | SegExpr e <- ss]
+      _ -> S.empty
 
 substV :: Name -> SExpr -> SExpr -> SExpr
 substV x e = go
@@ -355,6 +480,9 @@ goE tab caller = go
   where
     go :: S.Set Name -> [Atom] -> SExpr -> PM SExpr
     go sh facts e = case e of
+      SVar f | not (S.member f sh), M.member f tab ->
+        do checkedValueNotes f (tab M.! f)
+           pure (SVar (checkedName f 0))
       -- builtin axiom: the divisor of / must be nonzero.  Analyzed and
       -- reported; the dynamic tier is the runtime's existing trap (no
       -- wrapper: / is TYPE-dispatched after this pass).
@@ -393,8 +521,11 @@ goE tab caller = go
 
     goStmts sh facts [] = pure ([], sh, facts)
     goStmts sh facts (SBind x ps rhs : rest) = do
-      let shR = S.union sh (S.fromList ps)
-      rhs' <- go shR (dropFacts (S.fromList ps) facts) rhs
+      -- Local bindings are recursive, as in Infer.goBlock. Both their
+      -- own name and their parameters shadow contracted global names.
+      let rhsNames = S.fromList (x : ps)
+          shR = S.union sh rhsNames
+      rhs' <- go shR (dropFacts rhsNames facts) rhs
       let facts1 = dropFacts (S.singleton x) facts
           facts2 = case (ps, rhs') of
             ([], SInt k) -> (SVar x, "==", SInt k) : facts1
@@ -437,11 +568,15 @@ goE tab caller = go
     goSpine sh facts e = do
       let (h, args) = spine e
       args' <- mapM (go sh facts) args
-      case h of
+      case unmark h of
         SVar f
           | not (S.member f sh),
             Just pres <- M.lookup f tab -> do
-              obs <- forM (zip3 [0 :: Int ..] args' (pres ++ repeat Nothing)) $ \(i, arg, mpre) ->
+              -- The result itself may be a function. Its overapplied
+              -- arguments belong to a later boundary: evaluate them only
+              -- after the checked declared prefix has called f.
+              let (given, trailing) = splitAt (length pres) args'
+              obs <- forM (zip3 [0 :: Int ..] given pres) $ \(i, arg, mpre) ->
                 case mpre of
                   Nothing -> pure (i, arg, Nothing)
                   Just (pn, p0) -> do
@@ -453,40 +588,48 @@ goE tab caller = go
                       else do
                         note (PreNote caller f (renderP (substV pn (SVar pn) p0)) RuntimeCheck)
                         pure (i, arg, Just (pn, p0))
-              buildChecked f obs
+              let supplied = length given
+                  target = if any hasPre (drop supplied pres)
+                             then checkedName f supplied else f
+              checkedValueNotes f (drop supplied pres)
+              checked <- buildChecked f caller target obs
+              pure (foldl' SApp checked trailing)
         _ -> do
           h' <- go sh facts h
           pure (foldl' SApp h' args')
 
-    -- rebuild `f a1 .. an`: every checked arg is let-bound to a fresh
-    -- var; checks nest as True/_ cases around the call, blame + value
-    -- interpolated into the error string
-    buildChecked f obs = do
-      bound <- forM obs $ \(_, arg, mchk) -> case mchk of
-        Nothing -> pure (arg, Nothing)
-        Just (pn, p0) -> do
-          t <- freshV
-          pure (SVar t, Just (t, arg, pn, p0))
-      let call = foldl' SApp (SVar f) (map fst bound)
-          checks = [c | (_, Just c) <- bound]
-          wrap body (t, _, pn, p0) =
+    checkedValueNotes f pres = mapM_ report [p | Just (_, p) <- pres]
+      where report p = note (PreNote caller f (renderP p) RuntimeCheck)
+
+-- Bind arguments once, in source order, before checking them in parameter
+-- order. This matters for effectful expressions and for partial calls:
+-- creating a direct named PAP evaluates/checks its supplied arguments
+-- immediately; its eventual invocation must neither repeat nor reorder
+-- them. Escaped values enter their checked function only at saturation.
+buildChecked :: Name -> Name -> Name -> [(Int, SExpr, Maybe (Name, SExpr))] -> PM SExpr
+buildChecked f caller target obs
+  | not (any (hasPre . third) obs) = pure (foldl' SApp (SVar target) [a | (_, a, _) <- obs])
+  | otherwise = do
+      bound <- forM obs $ \(_, arg, mchk) -> do
+        t <- freshV
+        pure (t, arg, mchk)
+      let call = foldl' SApp (SVar target) [SVar t | (t, _, _) <- bound]
+          checks = [(t, pn, p0) | (t, _, Just (pn, p0)) <- bound]
+          wrap (t, pn, p0) body =
             SCase
               (substV pn (SVar t) p0)
               [ (PCon "True" [], body),
                 ( PWild,
-                  SApp
-                    (SVar "error")
-                    ( SStrI
-                        [ SegStr ("precondition violated: " ++ f ++ " requires (" ++ renderP p0 ++ "), got " ++ pn ++ "="),
-                          SegExpr (SVar t),
-                          SegStr (" (in " ++ caller ++ ")")
-                        ]
-                    )
+                  SApp (SVar "error")
+                    (SStrI
+                      [ SegStr ("precondition violated: " ++ f ++ " requires (" ++ renderP p0 ++ "), got " ++ pn ++ "="),
+                        SegExpr (SVar t),
+                        SegStr (" (in " ++ caller ++ ")")
+                      ])
                 )
               ]
-          body0 = foldl' wrap call checks
-          stmts = [SBind t [] arg | (t, arg, _, _) <- checks]
-      pure $ if null stmts then call else SBlock stmts body0
+      pure (SBlock [SBind t [] arg | (t, arg, _) <- bound] (foldr wrap call checks))
+  where third (_, _, x) = x
 
 -- is an arg expression inside the arithmetic fragment (so substituting
 -- it into a predicate keeps the predicate decidable)?

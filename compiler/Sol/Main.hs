@@ -30,7 +30,7 @@ import Sol.Mod (resolveModuleParsed, parseCachedSource)
 import Sol.Preamble (halArities, prelude)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
 import Safety (safetyCheck, trustedLibraryPaths)
-import Precond (applyPreconds, preTable, validatePre)
+import Precond (applyPreconds, preTable, validatePre, validatePreUses)
 import Sol.Infer (inferTops)
 import Sol.Width (widthReport)
 import Sol.HandJIT (JitCtx, initJIT)
@@ -170,7 +170,7 @@ compileScript path src ptops utops utopsX0' trusted = do
     exitFailure
 
   let contracts = preTable (ptopsExp ++ topsExp)
-      contractErrors = validatePre contracts
+      contractErrors = validatePre contracts ++ validatePreUses contracts (ptopsExp ++ topsExp)
   unless (null contractErrors) $ do
     diagnostic "=== PRECONDITION: ERRORS ==="
     mapM_ (diagnostic . ("  * " ++)) (anchored contractErrors)

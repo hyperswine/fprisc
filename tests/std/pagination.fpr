@@ -1,0 +1,15 @@
+profile base.
+P = use "std/pagination".
+
+show size count request =
+  p = P.plan size count request;
+  print "{size},{count},{request}: {p.index},{p.pages},{p.first}".
+
+main =
+  _ = show 20 0 100;
+  _ = show 20 1 (0 - 1);
+  _ = show 20 20 100;
+  _ = show 20 21 100;
+  _ = show 20 41 1;
+  _ = print (P.validSize 0);
+  print (P.validSize 20).

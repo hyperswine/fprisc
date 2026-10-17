@@ -1,0 +1,48 @@
+# Pure register arithmetic. Boundary helpers accept untrusted quantities;
+# scalar contracts describe the validated operations they call. Work is
+# abstract FP-RISC work, not a wall-clock checkout or network deadline.
+profile base.
+
+# Keep the page's quantity in [0, min(stock, 999)], including a stale page
+# or a negative/oversized request. Normalisation itself never subtracts or
+# multiplies untrusted integers.
+quantity : Int -> Int -> Int .
+quantity stock requested | stock <= 0 or requested <= 0 = 0.
+quantity stock requested =
+  available = if stock > 999 then 999 else stock;
+  wanted = if requested > 999 then 999 else requested;
+  boundedQuantity available wanted.
+
+boundedQuantity : (available : Int | available >= 0 and available <= 999)
+  -> (wanted : Int | wanted >= 0 and wanted <= 999) -> Int
+  | work boundedQuantity <= 3 | alloc boundedQuantity <= 0 .
+boundedQuantity available wanted = if wanted > available then available else wanted.
+
+# Subtracting two nonnegative Ints always stays in the Int range. The
+# boundary checks which amount is larger before using the signed result as
+# change or shortfall. No cross-parameter refinement is assumed here.
+difference : (left : Int | left >= 0) -> (right : Int | right >= 0) -> Int
+  | work difference <= 1 | alloc difference <= 0 .
+difference left right = left - right.
+
+Cash = Type (Change Int | Short Int | InvalidCash).
+cash : Int -> Int -> Cash .
+cash total tendered | total < 0 or tendered < 0 = InvalidCash.
+cash total tendered | tendered < total = Short (difference total tendered).
+cash total tendered = Change (difference tendered total).
+
+# The shelf bound is a business rule already enforced by the register.
+# Bad input returns a refusal; callers of the validated operation carry its
+# scalar contract. Check capacity before addition rather than overflowing a
+# large stock count received from an imported journal or configuration.
+Restock = Type (Added Int | BadDelta | FullShelf).
+restock : Int -> Int -> Restock .
+restock stock delta | delta < 1 or delta > 999 = BadDelta.
+restock stock delta | stock < 0 or stock > 9999 = FullShelf.
+restock stock delta = addStock stock delta.
+
+addStock : (stock : Int | stock >= 0 and stock <= 9999)
+  -> (delta : Int | delta >= 1 and delta <= 999) -> Restock
+  | work addStock <= 7 | alloc addStock <= 16 .
+addStock stock delta =
+  if delta > 9999 - stock then FullShelf else Added (stock + delta).

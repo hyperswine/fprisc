@@ -42,6 +42,7 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import Exhaust (checkArms, checkClauses, siblingsOf)
 import FPRISC
+import Precond (checkedName)
 import Struct (Sigs, Structs)
 
 -- ---- types ------------------------------------------------------------------
@@ -1593,9 +1594,16 @@ prepareVectorEvidence binds = do
     stmt (SBindPat _ a) = markerIds a
 
 -- rewrite the markers by the decided targets
-applySites :: IM.IntMap OpTarget -> SExpr -> SExpr
-applySites tgts = go
+applySites :: S.Set Name -> IM.IntMap OpTarget -> SExpr -> SExpr
+applySites globals tgts = go
   where
+    -- Operator/layout resolution happens after the precondition pass.
+    -- A newly selected global therefore needs its checked function entry,
+    -- just as a source function value does. Inspect the actual inference
+    -- inputs so standalone unit resolution selects only available entries.
+    checked g = let entry = checkedName g 0
+                 in if entry `S.member` globals then entry else g
+    call g = SApp (SVar (checked g))
     go = \case
       -- str! sites wrap an ARGUMENT: op#N#str! applied to e.  OpPrim ""
       -- strips the wrapper; OpPrim "F64.str" wraps the rendering prim.
@@ -1605,21 +1613,21 @@ applySites tgts = go
           Just tgt <- IM.lookup (read num) tgts ->
             case tgt of
               OpPrim "" -> go a
-              OpPrim o -> SApp (SVar o) (go a)
+              OpPrim o -> call o (go a)
               OpDictionary es -> foldl SApp (go a) es
               OpVecDynamic name desc -> case name of
-                "Vec.new" -> SLam ["?vecUnit"] (SApp (SVar "Vec.newAs") desc)
-                "Vec.fromList" -> SApp (SVar "Vec.fromListAs") desc
-                "Vec.map" -> SApp (SVar "Vec.mapAs") desc
+                "Vec.new" -> SLam ["?vecUnit"] (call "Vec.newAs" desc)
+                "Vec.fromList" -> call "Vec.fromListAs" desc
+                "Vec.map" -> call "Vec.mapAs" desc
                 _ -> go a
               OpVecLayout name spec ->
                 let desc = SStrI [SegStr spec]
                  in case name of
                       "Vec.new" | null spec -> go a
-                                | otherwise -> SLam ["?vecUnit"] (SApp (SVar "Vec.newAs") desc)
+                                | otherwise -> SLam ["?vecUnit"] (call "Vec.newAs" desc)
                       "Vec.fromList" | null spec -> go a
-                                     | otherwise -> SApp (SVar "Vec.fromListAs") desc
-                      "Vec.map" -> SApp (SVar "Vec.mapAs") desc
+                                     | otherwise -> call "Vec.fromListAs" desc
+                      "Vec.map" -> call "Vec.mapAs" desc
                       _ -> go a
               _ -> go a
       SBin op a b
@@ -1628,7 +1636,7 @@ applySites tgts = go
           Just tgt <- IM.lookup (read num) tgts ->
             case tgt of
               OpPrim o -> SBin o (go a) (go b)
-              OpGlobal g -> SApp (SApp (SVar g) (go a)) (go b)
+              OpGlobal g -> SApp (call g (go a)) (go b)
               OpProj s o -> SApp (SApp (SProj (SVar s) [o]) (go a)) (go b)
         | otherwise -> SBin op (go a) (go b)
       SMark o e -> SMark o (go e)
@@ -1724,6 +1732,7 @@ inferTopsInterfaces prof sigs structs tops =
           -- (empty list = rebuild leaves every TEval untouched)
           evals = if ipTopEvals prof then [e | TEval e <- tops] else []
           topSet = S.fromList bindNames
+          availableGlobals = topSet `S.union` S.fromList [n | TSig n _ _ <- tops]
           nodes =
             [ (n, n, nub (concatMap refs (clausesOf n)))
               | n <- bindNames
@@ -1798,7 +1807,7 @@ inferTopsInterfaces prof sigs structs tops =
       let hidden n = [PVar (layoutParam n i) | i <- [0 .. length (M.findWithDefault [] n layoutPlans) - 1]]
       modify (\st -> st { iLinSigs = [(n, (replicate (length (hidden n)) LU ++ ps, r)) | (n,(ps,r)) <- iLinSigs st] })
       let rwMap = M.fromListWith (++) [(n, [(ps, g, b)]) | (n, ps, g, b) <- rwBinds]
-          apE0 = applySites tgts
+          apE0 = applySites availableGlobals tgts
           apE = everyE fixT . apE0
           everyE f = go'
             where

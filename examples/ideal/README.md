@@ -138,6 +138,13 @@ The larger live-browser examples (logbook and POS) remain future comparisons.
 These eight establish the style on complete smaller programs and expose the
 places where the compiler or libraries still make it awkward.
 
+The [2026-10-17 application-core work](../../docs/2026-10-17-CONTRACTED-APPLICATION-CORES.md)
+now applies this approach inside the real POS and inventory applications:
+`examples/pos1_core.fpr` contracts quantity/cash/restocking arithmetic, and
+`std/pagination.fpr` contracts inventory's page calculations. Their focused
+suites exercise behavior, invalid calls and resource declarations. These are
+domain-core integrations, not whole-application resource certifications.
+
 ## Ownership and contracts together (2026-10-04)
 
 `buffer.fpr` uses an application-specific linear type:

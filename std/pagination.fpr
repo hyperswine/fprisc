@@ -1,0 +1,28 @@
+# std/pagination.fpr -- a pure, bounded page calculation.
+#
+# Validate a configured page size with validSize before using plan. Internal
+# calls require a positive size and a nonnegative result count. Requests are
+# deliberately unrestricted: negative requests select the first page, and
+# requests past the end select the last page (including after deletion).
+# Empty results have one empty page, with index and first both zero.
+#
+# The ceiling division subtracts before dividing, rather than adding size - 1
+# to count: every intermediate fits whenever size and count fit in Int. For
+# a nonempty result, index <= (count - 1) / size, so index * size <= count - 1.
+# These mathematical postconditions are documented; the current checker proves
+# the parameter checks and constant work/allocation budgets, not that theorem.
+# The bounds cover this arithmetic only, not finding, sorting or slicing hits.
+
+validSize : Int -> Result Int String.
+validSize size = if size > 0 then Ok size else Err "page size must be positive".
+
+pages : (size : Int | size > 0) -> (count : Int | count >= 0) -> Int
+  | work pages <= 8 | alloc pages <= 0.
+pages size count = if count == 0 then 1 else ((count - 1) / size) + 1.
+
+plan : (size : Int | size > 0) -> (count : Int | count >= 0) -> Int -> { index : Int, pages : Int, first : Int }
+  | work plan <= 25 | alloc plan <= 32.
+plan size count requested =
+  total = pages size count;
+  index = if requested < 0 then 0 else if requested >= total then total - 1 else requested;
+  { index = index, pages = total, first = index * size }.

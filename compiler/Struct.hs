@@ -37,6 +37,7 @@ import Data.List (foldl', intercalate, (\\))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import FPRISC
+import Precond (checkedName)
 
 -- ---- tables -----------------------------------------------------------------
 
@@ -115,7 +116,10 @@ specName f chosen = f ++ concat ["#" ++ s | (_, s) <- chosen]
 --   s.f ...rest  ->  (N.f) ...rest      (direct flat global)
 --   s            ->  N                  (the record, for pass-through)
 substStruct :: M.Map Name Name -> SExpr -> SExpr
-substStruct sub = transformE step S.empty
+substStruct = substStructWith id
+
+substStructWith :: (Name -> Name) -> M.Map Name Name -> SExpr -> SExpr
+substStructWith entry sub = transformE step S.empty
   where
     -- transformE rewrites BOTTOM-UP: by the time the SProj node is seen,
     -- its head `s` has already become the struct name. So: rewrite vars
@@ -127,7 +131,7 @@ substStruct sub = transformE step S.empty
     step bs e = case e of
       SProj (SVar n) (f : rest)
         | S.member n targets ->
-            let base = SVar (n ++ "." ++ f)
+            let base = SVar (entry (n ++ "." ++ f))
              in if null rest then base else SProj base rest
       SVar s | Just n <- M.lookup s sub, not (S.member s bs) -> SVar n
       _ -> e
@@ -141,6 +145,15 @@ data SpecSt = SpecSt
 specialize :: Sigs -> Structs -> [STop] -> ([String], [STop])
 specialize sigs structs tops0 = go 0 tops0 (SpecSt S.empty [] [])
   where
+    -- Preconditions have already been inserted before inference. Cloning
+    -- a generic record projection must select the same checked function
+    -- value held by the record, rather than synthesize a fresh unchecked
+    -- call to its original global. Existing direct calls retain their
+    -- statically discharged checks. Plain structPass callers that have
+    -- not run Precond keep their original entry names.
+    entries = S.fromList [n | TBind n _ _ _ <- tops0]
+    checkedEntry n = let checked = checkedName n 0
+                     in if S.member checked entries then checked else n
     generics0 = genericTable tops0
     -- bodies of generic functions, for cloning
     genBodies =
@@ -283,7 +296,7 @@ specialize sigs structs tops0 = go 0 tops0 (SpecSt S.empty [] [])
                   Just sn <- [M.lookup i pickM]
               ]
           ps' = [p | (i, p) <- zip [0 ..] ps, not (M.member i pickM)]
-          rep = substStruct sub
+          rep = substStructWith checkedEntry sub
       pure (TBind nm ps' (map (mapGuardE rep) g) (rep b))
 
 spineS :: SExpr -> (SExpr, [SExpr])

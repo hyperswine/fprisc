@@ -22,6 +22,7 @@ def check(name, args=(), cwd=None, label='', env=None):
 check('ifelse', label='if/then/else: sugar for the two-armed case -- else-if chains, block branches, names that merely start with if')
 check('codec', label='@Msg and @Model.field carry enc/dec minted from the declarations: records, lists, tuples and sum types through Wire and back; bad input refused with its path')
 check('foundation', label='Option, Order, Result; values print as they are written')
+check('pagination', label='Pagination: contracted positive page sizes, nonnegative counts, clamped pages and overflow-safe offsets')
 check('list', label='List: map/filter/fold/find/zip/group, a stable merge sort of 300,000')
 check('string', label='String: split/join/trim/replace/search/slices/toInt, 1.3 MB through join and split')
 check('map', label='Map and Set: a persistent AVL tree, 100,000 keys in and half out, ascending iteration')
