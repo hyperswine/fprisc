@@ -95,8 +95,11 @@ mechanism seams, not opaque capabilities. Raw transport/native IDs, generic
 `keep`/`drop`, and deliberate owner reconstruction are low-level escapes rather
 than automatic native-resource disposers. Application paths use explicit
 `close`/`finish`; native quotas and actor-death cleanup remain the backstop.
-General ownership propagation through polymorphic containers/record projections
-and arbitrary higher-order captures remains separate compiler work.
+The [compiler ownership corrections](2026-10-17-OWNERSHIP-CORRECTIONS.md) now
+preserve known record fields and control-flow results. General propagation
+through polymorphic containers, unknown row tails and arbitrary higher-order
+captures remains separate compiler work; the linked audit records accepted
+bypasses even through normal owner APIs.
 
 The two std facades have no new recursive/unsafe-marked helpers and join the
 [reviewed safety allow-list](2026-10-15-SAFETY-ALLOW-LIST-REVIEW.md).

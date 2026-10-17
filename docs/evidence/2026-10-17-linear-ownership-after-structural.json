@@ -1,0 +1,473 @@
+{
+  "findings": [
+    "generic_duplicate",
+    "generic_identity",
+    "box_pattern",
+    "box_wildcard",
+    "higher_order_twice",
+    "closure_return",
+    "closure_identity",
+    "aliased_pap",
+    "dynamic_pap",
+    "result_pattern",
+    "list_pattern"
+  ],
+  "cases": [
+    {
+      "case": "direct_control",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nmain = t = Token 7; print (consume t, consume t).\n",
+      "native": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n=== LINEARITY: ERRORS ===\n  * $TMP/direct_control.fpr:5:8: in main: linear variable 't' used 2 time(s), expected exactly 1\n"
+      },
+      "sol": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "=== LINEARITY: ERRORS ===\n  * $TMP/direct_control.fpr:5:8: in main: linear variable 't' used 2 time(s), expected exactly 1\n"
+      }
+    },
+    {
+      "case": "lambda_control",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nmain = t = Token 7; f = fn u -> consume t; print (f 0, f 1).\n",
+      "native": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n=== LINEARITY: ERRORS ===\n  * $TMP/lambda_control.fpr:5:21: in main: linear variable 'f' used 2 time(s), expected exactly 1\n"
+      },
+      "sol": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "=== LINEARITY: ERRORS ===\n  * $TMP/lambda_control.fpr:5:21: in main: linear variable 'f' used 2 time(s), expected exactly 1\n"
+      }
+    },
+    {
+      "case": "tuple_control",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nmain = t = Token 7; pair = (t, 0); (owned, n) = pair; print (consume owned, consume owned).\n",
+      "native": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n=== LINEARITY: ERRORS ===\n  * $TMP/tuple_control.fpr:5:37: in main: linear variable 'owned' used 2 time(s), expected exactly 1\n"
+      },
+      "sol": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "=== LINEARITY: ERRORS ===\n  * $TMP/tuple_control.fpr:5:37: in main: linear variable 'owned' used 2 time(s), expected exactly 1\n"
+      }
+    },
+    {
+      "case": "direct_pap_control",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nat : Token -> Int -> Int.\nat t n = consume t + n.\nmain = t = Token 7; f = at t; print (f 0, f 1).\n",
+      "native": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n=== LINEARITY: ERRORS ===\n  * $TMP/direct_pap_control.fpr:7:21: in main: linear variable 'f' used 2 time(s), expected exactly 1\n"
+      },
+      "sol": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "=== LINEARITY: ERRORS ===\n  * $TMP/direct_pap_control.fpr:7:21: in main: linear variable 'f' used 2 time(s), expected exactly 1\n"
+      }
+    },
+    {
+      "case": "generic_duplicate",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nduplicate : a -> (a, a).\nduplicate x = (x, x).\nmain = t = Token 7; (a, b) = duplicate t; print (consume a, consume b).\n",
+      "native": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n"
+      },
+      "sol": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 2,
+        "output": "consume 7\nconsume 7\n(7, 7)\n"
+      }
+    },
+    {
+      "case": "generic_identity",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nidentity : a -> a.\nidentity x = x.\nmain = t = Token 7; moved = identity t; print (consume moved, consume moved).\n",
+      "native": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n"
+      },
+      "sol": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 2,
+        "output": "consume 7\nconsume 7\n(7, 7)\n"
+      }
+    },
+    {
+      "case": "box_pattern",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nBox a = Type (Box a).\nuseBox : Box Token -> (Int, Int).\nuseBox box = case box of Box x -> (consume x, consume x).\nmain = print (useBox (Box (Token 7))).\n",
+      "native": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n"
+      },
+      "sol": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 2,
+        "output": "consume 7\nconsume 7\n(7, 7)\n"
+      }
+    },
+    {
+      "case": "box_wildcard",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nBox a = Type (Box a).\nforget : Box Token -> Unit.\nforget box = case box of Box _ -> Unit.\nmain = u = forget (Box (Token 7)); print \"owner lost\".\n",
+      "native": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n"
+      },
+      "sol": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 0,
+        "output": "owner lost\n"
+      }
+    },
+    {
+      "case": "record_literal",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nmain = record = {owner = Token 7, tag = 0}; print (consume record.owner, consume record.owner).\n",
+      "native": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n=== LINEARITY: ERRORS ===\n  * $TMP/record_literal.fpr:5:8: in main: linear variable 'record' used 2 time(s), expected exactly 1\n"
+      },
+      "sol": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "=== LINEARITY: ERRORS ===\n  * $TMP/record_literal.fpr:5:8: in main: linear variable 'record' used 2 time(s), expected exactly 1\n"
+      }
+    },
+    {
+      "case": "record_projection",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nunpack : {owner : Token, tag : Int} -> (Int, Int).\nunpack record = owner = record.owner; (consume owner, consume owner).\nmain = print (unpack {owner = Token 7, tag = 0}).\n",
+      "native": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n=== LINEARITY: ERRORS ===\n  * $TMP/record_projection.fpr:5:11: in unpack: linear variable 'owner' used 2 time(s), expected exactly 1\n"
+      },
+      "sol": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "=== LINEARITY: ERRORS ===\n  * $TMP/record_projection.fpr:5:11: in unpack: linear variable 'owner' used 2 time(s), expected exactly 1\n"
+      }
+    },
+    {
+      "case": "record_update",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nmain = t = Token 7; old = {owner = t, tag = 0}; fresh = {old | tag = 1}; print (consume old.owner, consume fresh.owner).\n",
+      "native": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n=== LINEARITY: ERRORS ===\n  * $TMP/record_update.fpr:5:21: in main: linear variable 'old' used 2 time(s), expected exactly 1\n"
+      },
+      "sol": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "=== LINEARITY: ERRORS ===\n  * $TMP/record_update.fpr:5:21: in main: linear variable 'old' used 2 time(s), expected exactly 1\n"
+      }
+    },
+    {
+      "case": "higher_order_twice",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\ntwice : (Int -> Int) -> (Int, Int).\ntwice f = (f 0, f 1).\nmain = t = Token 7; f = fn n -> consume t + n; print (twice f).\n",
+      "native": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n"
+      },
+      "sol": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 2,
+        "output": "consume 7\nconsume 7\n(7, 8)\n"
+      }
+    },
+    {
+      "case": "closure_return",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nmake : Token -> (Int -> Int).\nmake t = fn n -> consume t + n.\nmain = f = make (Token 7); print (f 0, f 1).\n",
+      "native": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n"
+      },
+      "sol": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 2,
+        "output": "consume 7\nconsume 7\n(7, 8)\n"
+      }
+    },
+    {
+      "case": "closure_identity",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nidentity : a -> a.\nidentity x = x.\nmain = t = Token 7; f = fn n -> consume t + n; g = identity f; print (g 0, g 1).\n",
+      "native": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n"
+      },
+      "sol": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 2,
+        "output": "consume 7\nconsume 7\n(7, 8)\n"
+      }
+    },
+    {
+      "case": "aliased_pap",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nat : Token -> Int -> Int.\nat t n = consume t + n.\nalias = at.\nmain = t = Token 7; f = alias t; print (f 0, f 1).\n",
+      "native": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n"
+      },
+      "sol": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 2,
+        "output": "consume 7\nconsume 7\n(7, 8)\n"
+      }
+    },
+    {
+      "case": "dynamic_pap",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nat : Token -> Int -> Int.\nat t n = consume t + n.\nmain = t = Token 7; f = (case True of True -> at | False -> at) t; print (f 0, f 1).\n",
+      "native": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n"
+      },
+      "sol": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 2,
+        "output": "consume 7\nconsume 7\n(7, 8)\n"
+      }
+    },
+    {
+      "case": "case_join",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nmain = t = Token 7; f = (case False of True -> u = consume t; fn n -> n | False -> fn n -> consume t + n); print (f 0, f 1).\n",
+      "native": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n=== LINEARITY: ERRORS ===\n  * $TMP/case_join.fpr:5:21: in main: linear variable 'f' used 2 time(s), expected exactly 1\n"
+      },
+      "sol": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "=== LINEARITY: ERRORS ===\n  * $TMP/case_join.fpr:5:21: in main: linear variable 'f' used 2 time(s), expected exactly 1\n"
+      }
+    },
+    {
+      "case": "guard_binding",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nguardedToken u | t <- Token 7 = (consume t, consume t).\nguardedToken _ = (0, 0).\nmain = print (guardedToken 0).\n",
+      "native": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n=== LINEARITY: ERRORS ===\n  * $TMP/guard_binding.fpr:5:18: in guardedToken: linear variable 't' used 2 time(s), expected exactly 1\n"
+      },
+      "sol": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "=== LINEARITY: ERRORS ===\n  * $TMP/guard_binding.fpr:5:18: in guardedToken: linear variable 't' used 2 time(s), expected exactly 1\n"
+      }
+    },
+    {
+      "case": "keep_escape",
+      "intentional_escape": true,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nmain = t = Token 7; moved = keep t; print (consume moved, consume moved).\n",
+      "native": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n"
+      },
+      "sol": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 2,
+        "output": "consume 7\nconsume 7\n(7, 7)\n"
+      }
+    },
+    {
+      "case": "result_pattern",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\ntakeResult : Result Token String -> (Int, Int).\ntakeResult result = case result of Ok owner -> (consume owner, consume owner) | Err _ -> (0, 0).\nmain = print (takeResult (Ok (Token 7))).\n",
+      "native": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n"
+      },
+      "sol": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 2,
+        "output": "consume 7\nconsume 7\n(7, 7)\n"
+      }
+    },
+    {
+      "case": "list_pattern",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\ntakeTokens : List Token -> (Int, Int).\ntakeTokens tokens = case tokens of Nil -> (0, 0) | owner :: rest -> (consume owner, consume owner).\nmain = print (takeTokens [Token 7]).\n",
+      "native": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n"
+      },
+      "sol": {
+        "accepted": true,
+        "exit": 0,
+        "linearity_refused": false,
+        "consumptions": 2,
+        "output": "consume 7\nconsume 7\n(7, 7)\n"
+      }
+    },
+    {
+      "case": "record_pattern",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\ntakeRecord : {owner : Token, tag : Int} -> (Int, Int).\ntakeRecord record = {owner} = record; (consume owner, consume owner).\nmain = print (takeRecord {owner = Token 7, tag = 0}).\n",
+      "native": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n=== LINEARITY: ERRORS ===\n  * $TMP/record_pattern.fpr:5:15: in takeRecord: linear variable 'owner' used 2 time(s), expected exactly 1\n"
+      },
+      "sol": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "=== LINEARITY: ERRORS ===\n  * $TMP/record_pattern.fpr:5:15: in takeRecord: linear variable 'owner' used 2 time(s), expected exactly 1\n"
+      }
+    },
+    {
+      "case": "inferred_return",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nmakeUnannotated u = Token 7.\nmain = t = makeUnannotated 0; print (consume t, consume t).\n",
+      "native": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n=== LINEARITY: ERRORS ===\n  * $TMP/inferred_return.fpr:6:8: in main: linear variable 't' used 2 time(s), expected exactly 1\n"
+      },
+      "sol": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "=== LINEARITY: ERRORS ===\n  * $TMP/inferred_return.fpr:6:8: in main: linear variable 't' used 2 time(s), expected exactly 1\n"
+      }
+    },
+    {
+      "case": "inferred_parameter",
+      "intentional_escape": false,
+      "source": "profile base.\nToken 1 = Type (Token Int).\nconsume : Token -> Int.\nconsume owner = Token n = owner; u = print \"consume {n}\"; n.\nhandleUnannotated t = (consume t, consume t).\nmain = print (handleUnannotated (Token 7)).\n",
+      "native": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\nlinear types: Handle Vector SString Token\n=== LINEARITY: ERRORS ===\n  * $TMP/inferred_parameter.fpr:5:19: in handleUnannotated: linear variable 't' used 2 time(s), expected exactly 1\n"
+      },
+      "sol": {
+        "accepted": false,
+        "exit": 1,
+        "linearity_refused": true,
+        "consumptions": 0,
+        "output": "=== LINEARITY: ERRORS ===\n  * $TMP/inferred_parameter.fpr:5:19: in handleUnannotated: linear variable 't' used 2 time(s), expected exactly 1\n"
+      }
+    }
+  ]
+}

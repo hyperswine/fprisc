@@ -23,7 +23,7 @@ module Sol.Infer (inferTops) where
 
 import Infer (IProf (..), TEnv, Type (..), inferTopsWith, mono, scheme, sv, tBool, tInt, tList, tStr, tUnit, tcon)
 import qualified Data.Map.Strict as M
-import FPRISC (Name, STop)
+import FPRISC (LShape, Name, STop)
 import Struct (Sigs, Structs)
 
 solProf :: IProf
@@ -36,12 +36,10 @@ solProf =
       ipMat4 = False
     }
 
--- the profile API Sol/Main.hs consumes: the engine's result minus the
--- inferred linearity shapes (sol's checker takes the declared-sig path)
-inferTops :: Sigs -> Structs -> [STop] -> ([String], [(Name, String)], [(String, String)], [STop])
-inferTops sigs structs tops =
-  let (errs, notes, holes, _linsigs, tops') = inferTopsWith solProf sigs structs tops
-   in (errs, notes, holes, tops')
+-- Keep inferred ownership alongside the rewritten program. Unannotated
+-- bindings need the same ownership checks as explicitly signed bindings.
+inferTops :: Sigs -> Structs -> [STop] -> ([String], [(Name, String)], [(String, String)], [(Name, ([LShape], LShape))], [STop])
+inferTops = inferTopsWith solProf
 
 solBuiltins :: TEnv
 solBuiltins =

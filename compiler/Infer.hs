@@ -1663,41 +1663,50 @@ typecheck :: Sigs -> Structs -> [STop] -> [String]
 typecheck sigs structs tops = let (e, _, _, _, _) = inferTops sigs structs tops in e
 
 -- Infer.Type -> LShape, mirroring FPRISC.shapeOfTy's rules on the
--- inference-side type language: a linear-named TC is LL, a type
--- applied to a linear argument (List Vector, ...) is LL wholesale,
--- tuples distribute, and everything unresolved/polymorphic/functional
--- is LU (a quantified var can never BE the linear carrier itself --
--- prims that consume one say so with a concrete Vector in their type).
+-- inference-side type language: a linear-named TC is LL, a type variable
+-- is symbolic (LVar: instantiated at each call, constrained by the body),
+-- a generic type keeps its arguments' shapes (LCon), tuples/records
+-- preserve their fields.  Functional types are LU: callable capture and
+-- call multiplicity remain required compiler work (see the ownership audit).
 linShapeT :: [Name] -> Type -> LShape
 linShapeT linNs = go
   where
     go t = case t of
       TTupT ts -> LTupS (map go ts)
+      TRec row -> let (fs, open) = fields row in LRecS fs open
       TC n | n `elem` linNs -> LL
+      TV v -> LVar ('?' : show v)
       TAp _ _ ->
         let (h, as) = unroll t []
          in case h of
-              TC n | n `elem` linNs -> LL
+              TC n | n `elem` linNs -> lown n (map go as)
+              TC n -> lcon n (map go as)
               _ -> if any (isLin . go) as then LL else LU
       _ -> LU
     unroll (TAp f a) acc = unroll f (a : acc)
     unroll h acc = (h, acc)
+    fields (RExt f t r) = let (fs, open) = fields r in ((f, go t) : fs, open)
+    fields RNil = ([], False)
+    fields (RV _) = ([], True)
 
 -- the BUILTIN prims' linearity shapes, derived from builtinEnv itself
 -- so this table can never drift from the types: Vec.push consumes and
 -- returns a Vector because its type says so, and any prim added later
 -- participates automatically.  Full-spine peel: prims are first-order
--- at the top level (higher-order ARGUMENTS like Vec.map's element fn
--- are TFn and shape LU, exactly right).
+-- at the top level. Higher-order arguments remain TFn/shape LU; this does
+-- not yet express whether a callback carries a single-use capture.
 builtinLinShapes :: [Name] -> M.Map Name ([LShape], LShape)
 builtinLinShapes linNs =
   -- sendLinear MOVES its payload: the polymorphic type would derive LU
-  -- (a quantified var is never the carrier), but move semantics is the
+  -- under the current coarse treatment of quantified vars, but move semantics is the
   -- verb's whole meaning, so the consume is declared here explicitly --
   -- passing a linear value consumes it exactly like Vec.free does.
+  -- A primitive has no body to derive constraints from, so its type
+  -- variables stay unrestricted (eraseVars): `print t` consumes the owner
+  -- as before, and `keep` keeps its deliberate-escape meaning.
   M.insert "sendLinear" ([LU, LL], LU) $
   M.fromList
-    [ (n, (map (linShapeT linNs) ps, linShapeT linNs r))
+    [ (n, (map (eraseVars . linShapeT linNs) ps, eraseVars (linShapeT linNs r)))
       | (n, Forall _ _ t) <- M.toList builtinEnv,
         let (ps, r) = peelFn t
     ]

@@ -718,16 +718,16 @@ SStr = Struct {
 # Vector a is a linear carrier with an explicit element type. VList groups
 # its operations; reads/length thread the consumed handle through the result.
 
-foldRes r = (x, _) = r; x.
-lenRes r = (n, _) = r; n.
-
 vListFromList : List Int -> Vector Int .
 vListFromList xs = Vec.fromList xs.
 
 VList = Struct {
   map = fn f v -> Vec.mapSame f v,
-  fold = fn f z v -> foldRes (Vec.fold f z v),
-  len = fn v -> lenRes (Vec.len v),
+  # a fold or a length answers (result, the vector): the handle comes back,
+  # it is not dropped (the ownership checker refuses the drop now that it
+  # sees through the tuple's type variables)
+  fold = fn f z v -> Vec.fold f z v,
+  len = fn v -> Vec.len v,
   new = fn u -> Vec.newAs "i",
   push = fn x v -> Vec.push x v,
   get = fn i v -> Vec.get i v,

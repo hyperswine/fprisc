@@ -50,6 +50,18 @@ def main():
         for name,(body,expected) in calls.items():
             run(lib(name,'> print "loaded".'), b'loaded\n')
             run(lib(name,body), expected)
+        # Heap/trail marks borrow no aliases: each observation returns the
+        # successor machine, and undo restores counters and reference cells.
+        run(lib('logic', '''> hp = Vec.new Unit; tr = Vec.new Unit;
+  (m1, addr) = L.freshVar (hp, 0, 0, tr, 0, 0);
+  (hm, tm, marked) = L.marks m1;
+  bound = L.bind addr 2 9 marked;
+  restored = L.undoTo hm tm bound;
+  (m2, tag, value) = L.cellAt addr restored;
+  m3 = L.undoTo hm tm m2;
+  (hp2, ht, hl, tr2, tt, tl) = m3;
+  u1 = Vec.free hp2; u2 = Vec.free tr2;
+  print (addr, hm, tm, tag, value, ht, tt).'''), b'(0, 1, 0, 0, 0, 1, 0)\n')
         # auth is an app helper: generic record updates require the app's shape.
         run(lib('auth','model = {user = Persistent "demo", pendu = "", pendp = "", note = ""}.\n> print (L.unwrapU model).'), b'demo\n')
         run(lib('auth','> print "loaded".'), code=1, error=b'no record shape has fields')

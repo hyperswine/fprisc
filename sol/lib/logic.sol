@@ -78,7 +78,9 @@ hallocPush t v hp ht hl tr tt tl =
   hp2 = Vec.push (cellRec t v) hp;
   ((hp2, ht + 1, hl + 1, tr, tt, tl), ht).
 
-freshVar m = (hp, ht, hl, tr, tt, tl) = m; halloc 0 ht m.
+freshVar m =
+  (hp, ht, hl, tr, tt, tl) = m;
+  halloc 0 ht (hp, ht, hl, tr, tt, tl).
 
 cellAt a m =
   (hp, ht, hl, tr, tt, tl) = m;
@@ -101,7 +103,9 @@ trPush a hp ht hl tr tt tl = tr2 = Vec.push a tr; (hp, ht, hl, tr2, tt + 1, tl +
 
 bind a t v m = trailPush a (setCell a t v m).
 
-marks m = (hp, ht, hl, tr, tt, tl) = m; (ht, tt).
+# Reading marks threads both owned vectors along with the counters.
+marks : (Vector a, Int, Int, Vector b, Int, Int) -> (Int, Int, (Vector a, Int, Int, Vector b, Int, Int)).
+marks m = (hp, ht, hl, tr, tt, tl) = m; (ht, tt, (hp, ht, hl, tr, tt, tl)).
 
 # backtrack: unbind everything trailed since tmark, reset heap top
 undoTo hmark tmark m =
@@ -111,7 +115,7 @@ undoTo hmark tmark m =
 unwind tmark m =
   (hp, ht, hl, tr, tt, tl) = m;
   case tt <= tmark of
-    True -> m
+    True -> (hp, ht, hl, tr, tt, tl)
   | False -> unwind1 tmark hp ht hl tr tt tl.
 unwind1 tmark hp ht hl tr tt tl =
   (a, tr2) = Vec.get (tt - 1) tr;
@@ -316,16 +320,16 @@ cmpOp s x y =
   case s == 9 of True -> x >= y | False -> x <= y.
 
 doUnify db syms m f gs fuel qvars sols =
-  (hm, tm) = marks m;
-  (m1, ok) = unify (f + 1) (f + 2) m;
+  (hm, tm, marked) = marks m;
+  (m1, ok) = unify (f + 1) (f + 2) marked;
   case ok of
     True -> solveG db syms m1 gs fuel qvars sols
   | False -> (undoTo hm tm m1, fuel, sols).
 
 # != at call time: succeed iff NOT unifiable right now (bindings undone)
 doNeq db syms m f gs fuel qvars sols =
-  (hm, tm) = marks m;
-  (m1, ok) = unify (f + 1) (f + 2) m;
+  (hm, tm, marked) = marks m;
+  (m1, ok) = unify (f + 1) (f + 2) marked;
   m2 = undoTo hm tm m1;
   case ok of
     True -> (m2, fuel, sols)
@@ -352,9 +356,9 @@ tryClauses db syms m cs g gs fuel qvars sols =
 
 tcStep db syms m c rest g gs fuel qvars sols =
   (hd, body, nv) = c;
-  (hm, tm) = marks m;
-  (hp0, vbase0, hl0, tr0, tt0, tl0) = m;
-  m1 = allocVars nv m;
+  (hm, tm, marked) = marks m;
+  vbase0 = hm;
+  m1 = allocVars nv marked;
   (m2, haddr) = inst hd vbase0 m1;
   (m3, ok) = unify haddr g m2;
   (m4, fuel2, sols2) = tcBody db syms m3 ok body vbase0 gs (fuel - 1) qvars sols;

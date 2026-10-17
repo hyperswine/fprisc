@@ -32,6 +32,7 @@ import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
 import Safety (safetyCheck, trustedLibraryPaths)
 import Precond (applyPreconds, preTable, validatePre, validatePreUses)
 import Sol.Infer (inferTops)
+import Infer (builtinLinShapes)
 import Sol.Width (widthReport)
 import Sol.HandJIT (JitCtx, initJIT)
 import System.Environment (getArgs, lookupEnv)
@@ -185,11 +186,12 @@ compileScript path src ptops utops utopsX0' trusted = do
       noTypes = envNoTypes || pragmaNoTypes
   when pragmaNoTypes $ note "[sol] types: skipped (# sol:notypes pragma)"
   showTypes <- (== Just "1") <$> lookupEnv "SOL_TYPES"
-  combined <-
+  (combined, linsigs) <-
     if noTypes
-      then pure checkedTops -- ops stay Int prims; debugging only
+      then pure (checkedTops, []) -- ops stay Int prims; debugging only
       else do
-        (terrs, notes, holes, rewritten) <- phase "typecheck" $ pure (inferTops sigs structs checkedTops)
+        let (terrs0, notes0, holes0, inferredLinSigs, rewritten0) = inferTops sigs structs checkedTops
+        (terrs, notes, holes, rewritten) <- phase "typecheck" $ pure (terrs0, notes0, holes0, rewritten0)
         let preludeNames = trusted <> S.fromList [n | TBind n _ _ _ <- ptopsExp]
             (serrs, ssug) = safetyCheck preludeNames (map evalForSafety (ptopsExp ++ topsExp)) notes
             userNames = S.fromList [n | TBind n _ _ _ <- topsExp]
@@ -216,7 +218,7 @@ compileScript path src ptops utops utopsX0' trusted = do
           diagnostic "=== INFERRED TYPES ==="
           forM_ [nt | nt@(n, _) <- notes, S.member n userNames] $ \(n, t) ->
             diagnostic ("  " ++ n ++ " : " ++ t)
-        pure rewritten
+        pure (rewritten, inferredLinSigs)
 
   (structErrs2, topsSpec) <- phase "specialize" $ pure (specialize sigs structs combined)
   let allX = erasePSig topsSpec
@@ -244,9 +246,11 @@ compileScript path src ptops utops utopsX0' trusted = do
   -- (prelude has no evals, so numbering over the combined list is identical)
   let (tops, evalNames) = numberEvals allX
 
-  -- linearity: unchanged from the FPRISC front-end — this is what makes
-  -- leaked / double-used handles a COMPILE error, not a runtime one
-  let li = buildLinInfo tops
+  -- Use the shared checker's explicit, inferred and primitive ownership
+  -- signatures in the same priority order as the native frontend.
+  let li0 = buildLinInfo tops
+      li = li0 {liSigs = liSigs li0 `M.union` M.fromList linsigs
+                          `M.union` builtinLinShapes (liLinTys li0)}
       lerrs = lcheck li tops
   unless (null lerrs) $ do
     diagnostic "=== LINEARITY: ERRORS ==="

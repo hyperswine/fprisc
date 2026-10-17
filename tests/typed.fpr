@@ -41,7 +41,9 @@ main =
   # -- 5. VList over the SoA vector --
   v0 = Vec.fromList [1, 2, 3];
   v1 = VList.map (fn x -> x * 10) v0;
-  sm = VList.fold (fn acc x -> acc + x) 0 v1;
+  # the fold answers (sum, the vector): the handle is ours to free
+  (sm, v2) = VList.fold (fn acc x -> acc + x) 0 v1;
+  _ = VList.free v2;
 
   _ = print "ops: {a} {b}";
   _ = print "methods: max={m} mod={d} len={n}";
