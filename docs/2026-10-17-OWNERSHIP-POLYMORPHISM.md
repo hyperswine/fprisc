@@ -134,20 +134,19 @@ Every QOS program and test kernel (`programs/*.fpr`, `apps/`, `tests/*.fpr`;
 230 files) was check-only compiled for the Portable target with this
 compiler. 139 are clean. 88 fail for reasons that are not ownership: library
 units with no `main`, programs that need another build mode, and the type
-and safety refusals they have on `main` already. Two are refused for
-ownership, `apps/editor.fpr` and `tests/appsession.fpr`, both in
+and safety refusals they have on `main` already. Two were initially refused
+for ownership, `apps/editor.fpr` and `tests/appsession.fpr`, both in
 `programs/mods/editapp.fpr` (lines 63 and 111): `update` reads
-`sized.running` from a model whose `proc` field is an owned `Proc`, and the
+`sized.running` from a model whose `proc` field was an owned `Proc`, and the
 record rule of the corrections batch requires an owned record to be
-destructured rather than read through. A compiler built with the
-corrections batch and without this change refuses the same lines with the
-same messages, so that finding belongs to the record rules, not to the
-polymorphism rules; it is the value-semantics rule, met by a real program: the model holds a
-process rather than a process actor's address
-([2026-10-17-VALUE-SEMANTICS.md](2026-10-17-VALUE-SEMANTICS.md)). The QOS smoke set itself (`./qos.py test`) could not be run: at
-this pair of revisions `qos/appside/entry.c` fails to compile against
-`fprisc` main (`fpr_confined_refuse` undeclared), before any FP-RISC code
-is reached.
+destructured rather than read through. That finding belongs to the record
+rules: the MVU model held a linear `RP.Proc` rather than an unrestricted
+process handle ([2026-10-17-VALUE-SEMANTICS.md](2026-10-17-VALUE-SEMANTICS.md)).
+With `editapp.fpr` updated to keep `m.proc` as an unrestricted `(root, pid)`
+pair and reconstruct `RP.Proc` at the `runprog.fpr` boundary, both
+`apps/editor.fpr` and `tests/appsession.fpr` compile and pass, the Main
+Profile (`profiles/Main.toml`) builds and runs end to end on `qosp-gl`, and
+the QOS smoke set (`./qos.py test`) passes all 16 of 16 legs.
 
 `tests/check_base.py` passes in full with this change (144 legs, including
 the printer ownership suite, the structural and generic ownership suites,

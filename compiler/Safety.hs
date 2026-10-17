@@ -236,6 +236,7 @@ safetyCheck preludeNames tops notes = (errs, suggests)
              | not blanket,
                n <- S.toList marked,
                not (S.member n required),
+               not (n == "main" && taints n),
                S.member n topSet,
                not (blessed n),
                not (moduleUnsafe n)
