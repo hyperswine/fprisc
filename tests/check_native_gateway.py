@@ -31,7 +31,9 @@ def run(binary,harts,directory,lan=False):
     if lan:
         from check_printer_native import PrinterPeer
         from check_native_camera import Peer
-        telemetry,camera=PrinterPeer(),Peer()
+        # The camera service permits a first frame later than the WebSocket
+        # upgrade timeout. Exercise that contract through the public proxy.
+        telemetry,camera=PrinterPeer(),Peer(first_frame_delay=3.5)
         config=directory/'printers.json'
         config.write_text(json.dumps([{'id':'test','name':'Synthetic native printer','model':'P1S','location':'test','host':'127.0.0.1','mqtt_port':telemetry.port,'serial':'TESTSERIAL','access_code_env':'SYNTHETIC_PRINTER_CODE','tls_peer':'server.example','tls_ca':str(ROOT/'tests/fixtures/tls/rootcert.pem'),'camera':'bambu-jpeg','camera_port':camera.port}]))
         arguments=['--config='+str(config)]
@@ -149,7 +151,12 @@ def run(binary,harts,directory,lan=False):
         if telemetry:telemetry.close()
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--binary',type=Path,required=True);args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--binary',type=Path,required=True)
+    parser.add_argument('--lifetime-binary',type=Path,help='compiled tests/gateway_lifetime.fpr regression')
+    args=parser.parse_args()
+    if args.lifetime_binary:
+        for harts in (1,4):
+            subprocess.run([str(args.lifetime_binary.resolve())],check=True,env={**os.environ,'FPR_HARTS':str(harts),'PATH':'/nonexistent'},timeout=15)
     with tempfile.TemporaryDirectory(prefix='fpr-native-gateway-') as temp:
         for harts in (1,4):
             for lan in (False,True):

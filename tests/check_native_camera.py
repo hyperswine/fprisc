@@ -51,8 +51,9 @@ def wait(predicate, seconds=8):
 
 
 class Peer:
-    def __init__(self, mode='normal'):
+    def __init__(self, mode='normal', first_frame_delay=0):
         self.mode = mode
+        self.first_frame_delay = first_frame_delay
         self.listener = socket.socket()
         self.listener.bind(('127.0.0.1', 0))
         self.listener.listen()
@@ -111,6 +112,8 @@ class Peer:
                 if self.mode == 'large':
                     image = b'\xff\xd8' + b'x' * (4194304 - 4) + b'\xff\xd9'
                 wire = struct.pack('<IIII', len(image), 7, 9, 11) + image
+                if self.stopping.wait(self.first_frame_delay):
+                    return
                 while not self.stopping.is_set():
                     if self.mode == 'normal':
                         for byte in wire[:16]:

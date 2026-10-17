@@ -23,6 +23,9 @@ F = use "cameraframe".
 Command = Type (Reserve Int | Join Int | Next Int Int | Leave Int | Observe Int String | Fault Int | Inspect).
 Reply = Type (Accepted | Refused | Waiting | Broken | Picture Int String | Snapshot J.Value).
 now u = Sys.timeUs Unit / 1000.
+firstFrameMs = 12000.
+# Include the bounded error response and loopback relay scheduling margin.
+headerBudgetMs = firstFrameMs + 2000.
 budget ms = case Sock.forMs ms of Ok b -> b | Err _ -> error "camera: invalid duration".
 ask me manager command = A.callWithin 500 me manager command.
 initial = {tickets = Nil, viewers = Nil, source = 0, epoch = 0, seq = 0, frame = "", error = False, last = 0, wall = 0, buckets = Nil, starts = 0}.
@@ -142,7 +145,7 @@ handle cfg manager ticket raw me =
             | _ -> respond 503 "Camera unavailable\n" next)
           | Ok _ -> (case ask me manager (Join ticket) of
               Ok Accepted ->
-                (last, _, begun, _) = Sys.loop (next, 0, False, now Unit + 12000) (viewerStep me manager ticket cfg.maxFrame);
+                (last, _, begun, _) = Sys.loop (next, 0, False, now Unit + firstFrameMs) (viewerStep me manager ticket cfg.maxFrame);
                 if begun then last else respond 503 "Camera unavailable\n" last
             | _ -> respond 503 "Camera busy\n" next));
       _ = OT.close final;

@@ -18,8 +18,10 @@ N = use "std/osnet".
 IO = use "std/osio".
 ST = use "std/stream".
 Clock = use "std/clock".
+Camera = use "cameraservice".
 cookieName = "print_room_session".
 bindingName = "print_room_challenge".
+Sys.alive : Int -> Bool .
 Request = {method : String, path : String, target : String, headers : List (String, String), body : String}.
 budget ms = case Sock.forMs ms of Ok b -> b | Err _ -> error "gateway: invalid budget".
 now u = Sys.timeUs Unit / 1000.
@@ -116,6 +118,7 @@ readProxyHead cfg token expected until pending conn =
     (Ok (T.Data bytes), next) -> readProxyHead cfg token expected until (pending + bytes) next
   | (Ok (T.ReadWait _), next) -> _ = Clock.sleepMs 10; readProxyHead cfg token expected until pending next
   | (_, next) -> (Err T.EndOfStream, next).
+proxyHeaderMs websocket = if websocket then 3000 else Camera.headerBudgetMs.
 proxy cfg token expected port target cameraGate req client = case DNS.create 1 of
     Err _ -> text 503 "Native service unavailable\n" client
   | Ok pool ->
@@ -129,7 +132,7 @@ proxy cfg token expected port target cameraGate req client = case DNS.create 1 o
               else [("connection", "close"), ("x-fpr-camera", cameraGate)];
             head = "GET {target} HTTP/1.1\r\nhost: 127.0.0.1:{port}\r\n{H.renderHeaders hs}\r\n";
             (sent, u1) = T.writeAll limit head upstream;
-            (answer, u2) = case sent of Err (why, _) -> (Err why, u1) | Ok _ -> readProxyHead cfg token expected (now Unit + 3000) "" u1;
+            (answer, u2) = case sent of Err (why, _) -> (Err why, u1) | Ok _ -> readProxyHead cfg token expected (now Unit + proxyHeaderMs websocket) "" u1;
             (finalClient, finalUpstream) = case answer of
               Err _ -> (text 503 "Native service unavailable\n" client, u2)
             | Ok (header, pending) ->
@@ -144,7 +147,7 @@ proxy cfg token expected port target cameraGate req client = case DNS.create 1 o
       _ = DNS.close pool;
       result.
 handle cfg raw peer me = case Sock.adopt 16384 (ST.Stream raw) of
-    Err _ -> _ = IO.close raw; Unit
+    Err _ -> _ = IO.close raw; _ = send cfg.owner (Finished me); Unit
   | Ok conn ->
       (parsed, c1) = request (budget 2000) conn;
       final = case parsed of Err _ -> text 400 "Invalid request\n" c1 | Ok req ->
@@ -179,11 +182,16 @@ handle cfg raw peer me = case Sock.adopt 16384 (ST.Stream raw) of
       _ = send cfg.owner (Finished me);
       Unit.
 Notice = Type (Finished Int).
+# Completion notices are an optimization, not a liveness authority. A
+# handler can fail before notifying us, or its final send can be refused.
+# Dead actors must never permanently consume the public connection budget.
+liveHandlers active = L.filter (fn who -> Sys.alive who) active.
 acceptStep cfg listener me active =
   message = receiveNow me;
-  kept = case message of Err _ -> active | Ok m ->
+  reported = case message of Err _ -> active | Ok m ->
     id = case m of Finished id -> id;
     _ = drop m; L.filter (fn who -> who != id) active;
+  kept = liveHandlers reported;
   if L.length kept >= 32 then _ = Clock.sleepMs 5; (True, kept) else
   if not (IO.ready listener) then _ = Clock.sleepMs 2; (True, kept) else
   case N.accept listener of Err _ -> _ = Clock.sleepMs 5; (True, kept) | Ok (fd, peer) ->

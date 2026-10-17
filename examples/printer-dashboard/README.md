@@ -690,3 +690,22 @@ Sanitized wire/browser evidence and the executable receipt remain in the ignored
 runtime directory. These checks did not add production maintenance or print
 records, and do not establish closed-app notification delivery or physical print
 quality.
+
+## Gateway recovery (2026-10-17)
+
+The public host was restarted and hardened against dead handlers retaining its
+32 connection slots. Camera response-header deadlines now follow the camera
+service's first-frame budget, rather than the shorter WebSocket upgrade budget.
+See [incident and validation evidence](../../docs/2026-10-17-PRINTER-GATEWAY-RECOVERY.md).
+
+Build `tests/gateway_lifetime.fpr` with the same OpenSSL adapters/link flags as
+`printer-host`, then include it in isolated acceptance:
+
+```sh
+python3 tests/check_native_gateway.py --binary=build/printer-host \
+  --lifetime-binary=build/gateway-lifetime
+```
+
+Live acceptance may select reachable devices explicitly with `--printers=a1`.
+An unavailable printer should be displayed offline; it does not justify
+weakening TLS trust or changing the configured identity.

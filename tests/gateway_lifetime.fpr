@@ -1,0 +1,22 @@
+# A dead handler must not need a completion message to release admission.
+unsafe base.
+G = use "examples/printer-dashboard/gateway".
+A = use "../std/actor".
+L = use "../std/list".
+Auth = use "../std/sessionauth".
+J = use "../std/json".
+idle me = _ = receive me; Unit.
+main =
+  me = myself 0;
+  survivor = A.spawnWith (A.Static 2) idle;
+  dead = L.map (fn n -> worker = A.spawnWith (A.Static 2) idle; _ = kill worker; worker) (L.range 1 32);
+  _ = if G.liveHandlers dead != Nil then error "dead handlers exhausted admission" else Unit;
+  _ = if G.liveHandlers (survivor :: dead) != [survivor] then error "live handler lost" else Unit;
+  cfg = {owner = me, origin = "http://localhost:1", port = 1, peer = "", auth = me,
+    authLimits = Auth.defaults, loginScript = "", loginHtml = "", sessionScript = "",
+    cameras = Nil, viewPort = 1, snapshot = (fn u -> J.object Nil)};
+  child = A.spawnWith (A.Static 2) (G.handle cfg -1 "synthetic" );
+  done = receiveFromRes me child;
+  _ = case done of Ok (G.Finished who) -> if who == child then Unit else error "wrong handler completion" | Err _ -> error "adoption refusal lost completion";
+  _ = kill survivor;
+  print "PASS gateway lifetime: 32 dead slots reclaimed, live handler retained, adoption refusal completes".
