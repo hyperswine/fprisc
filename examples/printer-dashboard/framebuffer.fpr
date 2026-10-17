@@ -1,0 +1,19 @@
+# Actor-owned native byte storage, never a vector of word-sized bytes or a
+# growing immutable string. Native registry cleanup also handles actor death.
+R = use "resourcecore".
+FrameHost.create : Int -> Result Int String.
+FrameHost.append : Int -> String -> Result Unit String.
+FrameHost.finish : Int -> Result String String.
+FrameHost.close : Int -> Result Unit String.
+FrameHost.usage : Unit -> (Int, Int, Int).
+Buffer 1 = Type (Buffer Int).
+Opened 1 = Type (Opened Buffer | Refused String).
+open size = if not (R.validFrame size) then Refused "invalid frame capacity" else
+  case FrameHost.create size of Err why -> Refused why | Ok id -> Opened (Buffer id).
+append bytes owner = Buffer id = owner; (FrameHost.append id bytes, Buffer id).
+# finish consumes on success AND failure; its only output is an immutable
+# published snapshot, which may be copied/shared with viewers deliberately.
+finish owner = Buffer id = owner; FrameHost.finish id.
+close : Buffer -> Result Unit String.
+close owner = Buffer id = owner; FrameHost.close id.
+usage u = FrameHost.usage u.

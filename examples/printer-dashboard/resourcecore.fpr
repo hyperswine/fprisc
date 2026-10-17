@@ -1,0 +1,16 @@
+# Pure admission arithmetic: native payload bounds are separate from the
+# compiler's requested-cell allocation model. No native I/O cost is assumed.
+validFrame n = n >= 4 and n <= 4194304.
+remaining : (capacity : Int | capacity >= 4 and capacity <= 4194304)
+  -> (used : Int | used >= 0 and used <= 4194304) -> Int
+  | work remaining <= 4 | alloc remaining <= 0.
+remaining capacity used = if used >= capacity then 0 else capacity - used.
+readSize : (left : Int | left >= 1 and left <= 4194304) -> Int
+  | work readSize <= 3 | alloc readSize <= 0.
+readSize left = if left > 16384 then 16384 else left.
+chunks : (size : Int | size >= 4 and size <= 4194304) -> Int
+  | work chunks <= 3 | alloc chunks <= 0.
+chunks size = ((size - 1) / 16384) + 1.
+backoff : (ms : Int | ms >= 1000 and ms <= 30000) -> Int
+  | work backoff <= 4 | alloc backoff <= 0.
+backoff ms = if ms < 15000 then ms * 2 else 30000.

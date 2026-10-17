@@ -3,6 +3,9 @@ B = use "std/binary".
 S = use "std/string".
 T = use "std/transport".
 O = use "std/option".
+OT = use "std/ownedtransport".
+FB = use "framebuffer".
+RC = use "resourcecore".
 field text = strlen text > 0 and strlen text <= 32 and not (S.contains (chr 0) text).
 login user code = if not (field user and field code) then Err "invalid camera login fields" else
   Ok (strJoin "" [B.putU32le 64, B.putU32le 12288, B.putU32le 0, B.putU32le 0, S.padRight 32 (chr 0) user, S.padRight 32 (chr 0) code]).
@@ -20,3 +23,29 @@ read budget limit connection = case T.readExactly budget 16 connection of
     | Ok n -> (case T.readExactly budget n next of
         (Err (why, _), final) -> (Err why, final)
       | (Ok bytes, final) -> (if jpeg bytes then Ok bytes else Err (T.Invalid "invalid camera JPEG markers"), final))).
+
+# One owned native buffer per source. Each read step has its own scratch arena;
+# fragmented network reads do not accumulate strings/list cells for a whole JPEG.
+readOwned budget limit owner = case OT.readExactly budget 16 owner of
+    (Err (why, _), next) -> (Err why, next)
+  | (Ok header, next) -> (case size limit header of
+      Err why -> (Err (T.Invalid why), next)
+    | Ok n -> (case FB.open n of
+        FB.Refused why -> (Err (T.Invalid why), next)
+      | FB.Opened buffer ->
+          (left, final, owned, problem) = Sys.loop (n, next, buffer, O.None) (bodyStep budget);
+          case problem of
+            O.Some why -> _ = FB.close owned; (Err why, final)
+          | O.None -> (case FB.finish owned of Err why -> (Err (T.Invalid why), final) | Ok bytes ->
+              (if jpeg bytes then Ok bytes else Err (T.Invalid "invalid camera JPEG markers"), final)))).
+bodyStep budget state =
+  (left, connection, buffer, problem) = state;
+  if left == 0 then (False, (left, connection, buffer, problem)) else
+  (result, next) = OT.readSome budget (RC.readSize left) connection;
+  case result of
+    Err (why, _) -> (False, (left, next, buffer, O.Some why))
+  | Ok bytes -> if strlen bytes == 0 then (False, (left, next, buffer, O.Some T.EndOfStream)) else
+      (appended, updated) = FB.append bytes buffer;
+      (case appended of
+        Err why -> (False, (left, next, updated, O.Some (T.Invalid why)))
+      | Ok _ -> (True, (left - strlen bytes, next, updated, O.None))).

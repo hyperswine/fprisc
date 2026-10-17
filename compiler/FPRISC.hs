@@ -2586,7 +2586,7 @@ lcheck li tops = concatMap checkGroup groups
             Just (ps, _) | length ps == length pats -> ps
             _ -> replicate (length pats) LU
           binds = concat (zipWith (bindPat li) pats paramShapes)
-          wildErrs = ["in " ++ n ++ ": " ++ w | w <- concat (zipWith wildLinErrs pats paramShapes)]
+          wildErrs = ["in " ++ n ++ ": " ++ w | w <- concat (zipWith (wildLinErrs li) pats paramShapes)]
           env = M.fromList binds
           linear = [v | (v, s) <- binds, isLin s]
           (genv, ge, gc) =
@@ -2620,11 +2620,16 @@ lcheck li tops = concatMap checkGroup groups
 -- a name and consume it (or `drop` it) instead.  Distributes through
 -- tuple patterns so `(x, _) = Vec.get i v` (discarding the returned
 -- HANDLE) is caught too.
-wildLinErrs :: SPat -> LShape -> [String]
-wildLinErrs p s = case p of
+wildLinErrs :: LinInfo -> SPat -> LShape -> [String]
+wildLinErrs li p s = case p of
   PWild | isLin s -> ["a linear value is DISCARDED by `_` -- bind it and consume it (or drop it explicitly)"]
   PTup ps -> case s of
-    LTupS ss | length ss == length ps -> concat (zipWith wildLinErrs ps ss)
+    LTupS ss | length ss == length ps -> concat (zipWith (wildLinErrs li) ps ss)
+    _ -> []
+  -- A successful resource-opening constructor can hide a linear field.
+  -- Checking only the outer pattern misses `Opened _` and nested forms.
+  PCon c ps -> case M.lookup c (liConSh li) of
+    Just (_, ss) | length ss == length ps -> concat (zipWith (wildLinErrs li) ps ss)
     _ -> []
   _ -> []
 
@@ -2734,7 +2739,7 @@ linExpr li env0 = go env0
             Nothing -> []
             Just cc -> ["linear variable '" ++ v ++ "' bound in pattern used " ++ show (M.findWithDefault 0 v cc) ++ " time(s), expected 1" | v <- linear, M.findWithDefault 0 v cc /= 1]
           c' = fmap (\cc -> foldr M.delete cc (map fst binds)) c
-       in (wildLinErrs p sshape ++ es ++ errs, c', s)
+       in (wildLinErrs li p sshape ++ es ++ errs, c', s)
 
     goBlock env [] final = go env final
     goBlock env (SBind n [] rhs : rest) final =
@@ -2754,7 +2759,7 @@ linExpr li env0 = go env0
        in (errs ++ e2, c2, shf)
     goBlock env (SBindPat p rhs : rest) final =
       let (e1, c1, sh) = go env rhs
-          e1w = e1 ++ wildLinErrs p sh
+          e1w = e1 ++ wildLinErrs li p sh
           binds = bindPat li p sh
           env' = M.union (M.fromList binds) env
           (e2, c2, shf) = goBlock env' rest final

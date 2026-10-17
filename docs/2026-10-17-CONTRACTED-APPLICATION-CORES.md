@@ -77,6 +77,8 @@ preserved, and no deployment or publication is part of this request.
 
 ## Follow-up applications
 
+2026-10-17 implementation: [linear printer connection and frame ownership](2026-10-17-PRINTER-OWNERSHIP.md), with local-only acceptance and explicit native/scalar resource boundaries.
+
 After these cores, introduce a genuinely linear owner for printer connections
 and frame buffers; current `std/transport` explicitly documents state threading
 without static alias checking. For a combined numerical/ownership/resource

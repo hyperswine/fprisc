@@ -142,7 +142,8 @@ writeGo budget bytes sent conn = case gate budget conn of
           | (Ok _, c2) -> writeGo budget bytes sent c2))).
 
 # Single-owner, state-threaded lifetime. Always discard the previous handle
-# and continue with the returned one. Aliasing is not yet linearly checked.
+# and continue with the returned one. This low-level API does not check aliases
+# statically; std/ownedtransport supplies the linear application-facing owner.
 close : Connection s -> (Result Unit Failure, Connection s) .
 close conn = case conn of
     Shut _ -> (Ok Unit, conn)

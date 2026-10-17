@@ -1,0 +1,25 @@
+# The raw protocol pump stays a mechanism; this facade owns it linearly.
+# Explicit sum types keep ownership visible in constructor patterns without
+# relying on generic Option/Result's currently shallow linearity shapes.
+MC = use "mqttclient".
+T = use "transport".
+OT = use "ownedtransport".
+Client 1 s = Type (Client s).
+Slot 1 s = Type (Empty | Active (Client s)).
+Created 1 s = Type (Created (Client s) | CreateFailed T.Failure).
+create config packetLimit chunkLimit owner =
+  OT.Connection raw = owner;
+  case MC.create config packetLimit chunkLimit raw of
+    Err why -> (case T.close raw of
+        (Ok _, terminal) -> CreateFailed why
+      | (Err cleanup, terminal) -> CreateFailed (T.CleanupFailed why cleanup))
+  | Ok client -> Created (Client client).
+begin budget owner = Client raw = owner; (r, next) = MC.begin budget raw; (r, Client next).
+next budget owner = Client raw = owner; (r, next) = MC.next budget raw; (r, Client next).
+subscribe budget topics owner = Client raw = owner; (r, next) = MC.subscribe budget topics raw; (r, Client next).
+publish budget topic payload qos retain owner = Client raw = owner; (r, next) = MC.publish budget topic payload qos retain raw; (r, Client next).
+takeNotices owner = Client raw = owner; (notes, next) = MC.takeNotices raw; (notes, Client next).
+phase owner = Client raw = owner; (raw.session.phase, Client raw).
+close owner = Client raw = owner; (r, terminal) = T.close raw.connection; r.
+stop budget owner = Client raw = owner; (r, terminal) = MC.stop budget raw; r.
+closeSlot slot = case slot of Empty -> Ok Unit | Active client -> close client.

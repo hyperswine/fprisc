@@ -1,0 +1,112 @@
+unsafe base.
+FB = use "../examples/printer-dashboard/framebuffer".
+F = use "../examples/printer-dashboard/cameraframe".
+RC = use "../examples/printer-dashboard/resourcecore".
+OT = use "../std/ownedtransport".
+MQ = use "../std/ownedmqtt".
+SS = use "../std/mqttsession".
+T = use "../std/transport".
+B = use "../std/binary".
+S = use "../std/string".
+L = use "../std/list".
+A = use "../std/actor".
+FrameHost.create : Int -> Result Int String.
+FrameHost.append : Int -> String -> Result Unit String.
+FrameHost.close : Int -> Result Unit String.
+need r = case r of Ok v -> v | Err why -> error "{why}".
+check why yes = if yes then Unit else error why.
+buffer n = case FB.open n of FB.Opened b -> b | FB.Refused why -> error why.
+readNow n s = if s == "" then (T.End, s) else (T.Data (substr s 0 1), substr s 1 (strlen s - 1)).
+driver = T.Backend readNow (fn bytes s -> (T.Wrote (strlen bytes), s))
+  (fn interest budget s -> (Ok Unit, s)) (fn s -> 0)
+  (fn s -> _ = print "release"; (Ok Unit, s)) (fn s -> Ok Unit) (fn why s -> (why, s)).
+failedDriver = T.Backend readNow (fn bytes s -> (T.Wrote (strlen bytes), s))
+  (fn interest budget s -> (Ok Unit, s)) (fn s -> 0)
+  (fn s -> (Err (T.Io "release refused"), s)) (fn s -> Ok Unit) (fn why s -> (why, s)).
+connection bytes = case OT.open 16384 driver bytes of OT.Opened c -> c | OT.OpenFailed why -> error "{why}".
+jpeg = strJoin "" [chr 255, chr 216, "payload", chr 0, chr 255, chr 217].
+header n = strcat (B.putU32le n) (S.repeat 12 (chr 0)).
+assertEmpty label = (count, bytes, peak) = FB.usage Unit; check label (count == 0 and bytes == 0 and peak <= 33554432).
+fill chunk state = (left, owner) = state;
+  if left == 0 then (False, (left, owner)) else
+  (r, next) = FB.append chunk owner; _ = need r;
+  (True, (left - 1, next)).
+cycle n =
+  chunk = S.repeat 16384 "x";
+  (_, owner) = Sys.loop (256, buffer 4194304) (fill chunk);
+  bytes = need (FB.finish owner);
+  _ = check "exact maximum snapshot length" (strlen bytes == 4194304);
+  _ = assertEmpty "snapshot releases native storage";
+  n + 1.
+rawOpen n = need (FrameHost.create n).
+rawClose id = need (FrameHost.close id).
+rawSlots count size = L.map (fn n -> rawOpen size) (L.range 1 count).
+main =
+  _ = assertEmpty "initial usage";
+  (a, b) = FB.append "ab" (buffer 4); _ = need a;
+  (overflow, c) = FB.append "xyz" b;
+  _ = check "overflow retains owner and leaves contents unchanged" (case overflow of Err _ -> True | _ -> False);
+  (ok, d) = FB.append "cd" c; _ = need ok;
+  _ = check "snapshot exact bytes" (need (FB.finish d) == "abcd");
+  partial = FB.finish (buffer 4);
+  _ = check "incomplete finish releases" (case partial of Err _ -> True | _ -> False);
+  _ = assertEmpty "finish failure cleanup";
+  (good, after) = F.readOwned (T.Uncancelled 100) 4096 (connection (strcat (header (strlen jpeg)) jpeg));
+  _ = check "fragmented owned read" (good == Ok jpeg); _ = need (OT.close after);
+  (short, final) = F.readOwned (T.Uncancelled 100) 4096 (connection (strcat (header 10) "short"));
+  _ = check "truncation" (short == Err T.EndOfStream); _ = need (OT.close final);
+  (bad, last) = F.readOwned (T.Uncancelled 100) 4096 (connection (strcat (header 4) "bad!"));
+  _ = check "JPEG validation remains FP-RISC" (case bad of Err (T.Invalid _) -> True | _ -> False); _ = need (OT.close last);
+  (oversized, unconsumed) = F.readOwned (T.Uncancelled 100) 4096 (connection (header 4097));
+  _ = check "oversize refused before buffer allocation" (case oversized of Err (T.Invalid _) -> True | _ -> False); _ = need (OT.close unconsumed);
+  _ = assertEmpty "all error paths release";
+  config = need (SS.config "local-owner-test" True 30 1000 8);
+  failed = MQ.create config 0 16384 (connection "");
+  _ = (case failed of MQ.CreateFailed _ -> Unit | MQ.Created client -> _ = MQ.close client; error "bad client accepted");
+  owned = case OT.open 16384 failedDriver "" of OT.Opened c -> c | OT.OpenFailed why -> error "{why}";
+  failure = MQ.create config 0 16384 owned;
+  _ = (case failure of
+      MQ.CreateFailed (T.CleanupFailed _ (T.Io "release refused")) -> Unit
+    | MQ.CreateFailed _ -> error "creation hid cleanup failure"
+    | MQ.Created client -> _ = MQ.close client; error "invalid decoder accepted");
+  created = MQ.create config 4096 16384 (connection "");
+  _ = (case created of
+      MQ.CreateFailed why -> error "{why}"
+    | MQ.Created client ->
+        (started, next) = MQ.begin (T.Uncancelled 100) client;
+        _ = check "MQTT begins through owned connection" (case started of Ok _ -> True | _ -> False);
+        (phase, queried) = MQ.phase next;
+        _ = check "metadata query returns successor" (phase == SS.Connecting);
+        stopped = MQ.stop (T.Uncancelled 100) queried;
+        check "graceful stop consumes client" (case stopped of Ok _ -> True | _ -> False));
+  before = heapUsed Unit;
+  _ = Sys.loop 0 (fn n -> if n >= 20 then (False, n) else (True, cycle n));
+  after = heapUsed Unit;
+  _ = check "frame snapshots do not accumulate in actor heap" (after - before < 1048576);
+  _ = assertEmpty "repeated 4MiB allocations plateau";
+  # Raw identifiers here deliberately exercise native backstops underneath
+  # the linear facade: stale use, wrong actor, slot/payload quotas and death.
+  ids = rawSlots 8 4194304;
+  _ = check "32MiB quota" (case FrameHost.create 4 of Err _ -> True | _ -> False);
+  _ = L.fold (fn u id -> rawClose id) Unit ids;
+  slots = rawSlots 16 4;
+  _ = check "16-buffer quota" (case FrameHost.create 4 of Err _ -> True | _ -> False);
+  _ = L.fold (fn u id -> rawClose id) Unit slots;
+  id = rawOpen 4; _ = rawClose id;
+  _ = check "stale append" (FrameHost.append id "x" == Err "closed");
+  _ = check "stale close" (FrameHost.close id == Err "closed");
+  alive = rawOpen 4;
+  me = myself 0;
+  peer = spawn (fn self -> _ = send me (FrameHost.append alive "x", FrameHost.close alive); Unit);
+  message = receiveFrom me peer;
+  _ = check "wrong owner denied" (keep message == (Err "wrong owner", Err "wrong owner")); _ = drop message;
+  _ = rawClose alive;
+  worker = spawn (fn self -> id = rawOpen 4194304; _ = send me id; _ = receive self; Unit);
+  ready = receiveFrom me worker; _ = drop ready;
+  _ = check "death fixture allocated" (case FB.usage Unit of (count, _, _) -> count == 1);
+  _ = kill worker;
+  _ = waitReleased 200;
+  _ = assertEmpty "actor cancellation reclaims frame";
+  print "printer ownership: fragmented frames, failure cleanup, bounded snapshots, quotas, stale/wrong owner and actor death PASS".
+waitReleased n = if n == 0 then error "frame cleanup did not complete" else
+  case FB.usage Unit of (0, 0, _) -> Unit | _ -> _ = Sys.sleepUs 1000; waitReleased (n - 1).

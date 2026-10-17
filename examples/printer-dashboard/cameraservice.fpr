@@ -1,6 +1,7 @@
 # Native shared camera service. The gateway owns public HTTP authentication;
 # this private loopback listener additionally requires a runtime capability.
 T = use "std/transport".
+OT = use "std/ownedtransport".
 Sock = use "std/sockettransport".
 ST = use "std/stream".
 TLS = use "std/tls".
@@ -78,31 +79,32 @@ managerStep cfg pool watcher me state =
 manager cfg pool watcher me = _ = Sys.loop initial (managerStep cfg pool watcher me); Unit.
 worker cfg pool watcher manager epoch me =
   limit = budget 5000;
-  result = case C.connectWith (W.wait watcher) limit pool cfg.host cfg.port 16384 of
-      Err why -> Err why
-    | Ok tcp -> (case TLS.upgrade limit cfg.peer (TLS.CaFile cfg.ca) TLS.TLS12 tcp of
-        Err why -> Err why
-      | Ok secure ->
-          (sent, next) = T.writeAll limit cfg.login secure;
+  result = case OT.connectWith (W.wait watcher) limit pool cfg.host cfg.port 16384 of
+      OT.OpenFailed why -> Err why
+    | OT.Opened tcp -> (case OT.upgrade limit cfg.peer (TLS.CaFile cfg.ca) TLS.TLS12 tcp of
+        OT.OpenFailed why -> Err why
+      | OT.Opened secure ->
+          (sent, next) = OT.writeAll limit cfg.login secure;
           (case sent of
-              Err (why, _) -> _ = T.close next; Err why
+              Err (why, _) -> _ = OT.close next; Err why
             | Ok _ ->
-                _ = Sys.loop (True, next) (sourceStep manager epoch me cfg.maxFrame);
+                (_, terminal) = Sys.loop (True, next) (sourceStep manager epoch me cfg.maxFrame);
+                _ = OT.close terminal;
                 Ok Unit));
   _ = ask me manager (Fault epoch);
   Unit.
 sourceStep manager epoch me maximum state =
   (_, conn) = state;
-  (result, next) = F.read (budget 10000) maximum conn;
+  (result, next) = F.readOwned (budget 10000) maximum conn;
   case result of
-    Err _ -> _ = T.close next; (False, (False, next))
+    Err _ -> (False, (False, next))
   | Ok bytes -> (case ask me manager (Observe epoch bytes) of
       Ok Accepted -> (True, (True, next))
-    | _ -> _ = T.close next; (False, (False, next))).
+    | _ -> (False, (False, next))).
 respond status body connection =
-  (_, next) = MJ.parts (budget 1000) [H.renderResponse (H.text status body)] connection; next.
+  (_, next) = ownedParts (budget 1000) [H.renderResponse (H.text status body)] connection; next.
 respondStats value connection =
-  (_, next) = MJ.parts (budget 1000) [H.renderResponse (H.json 200 (J.render value))] connection; next.
+  (_, next) = ownedParts (budget 1000) [H.renderResponse (H.json 200 (J.render value))] connection; next.
 request gate head extra = case S.split "\r\n" head of
     Nil -> Err 400
   | line :: lines ->
@@ -113,14 +115,7 @@ request gate head extra = case S.split "\r\n" head of
          (case H.header "content-length" {headers = headers} of O.None -> False | O.Some n -> n != "0") then Err 400 else
       if keys != [("x-fpr-camera", gate)] then Err 403 else
       (case S.split " " line of ["GET", path, "HTTP/1.1"] -> if path == "/stream" or path == "/stats" then Ok path else Err 404 | _ -> Err 405).
-connected connection = case Sock.descriptor (T.state connection) of
-    Err _ -> (False, connection)
-  | Ok fd -> (case IO.readyFor fd 1 of
-      Err _ -> (False, connection)
-    | Ok False -> (True, connection)
-    | Ok True -> (case T.attemptRead (budget 100) 1 connection of
-        (Ok (T.ReadWait _), next) -> (True, next)
-      | (_, next) -> (False, next))).
+connected connection = OT.connected (budget 100) connection.
 viewerStep me manager ticket maximum state =
   (conn, seq, begun, until) = state;
   (alive, checked) = connected conn;
@@ -128,16 +123,16 @@ viewerStep me manager ticket maximum state =
   case ask me manager (Next ticket seq) of
     Ok (Picture id bytes) ->
       limit = budget 1500;
-      (header, started) = if begun then (Ok Unit, checked) else MJ.parts limit [MJ.head] checked;
-      (sent, next) = case header of Err why -> (Err why, started) | Ok _ -> MJ.write limit maximum bytes started;
+      (header, started) = if begun then (Ok Unit, checked) else ownedParts limit [MJ.head] checked;
+      (sent, next) = case header of Err why -> (Err why, started) | Ok _ -> ownedWrite limit maximum bytes started;
       (case sent of Ok _ -> True | Err _ -> False, (next, id, True, now Unit + 12000))
   | Ok Waiting -> _ = Clock.sleepMs 25; (True, (checked, seq, begun, until))
   | _ -> (False, (checked, seq, begun, until)).
 handle cfg manager ticket raw me =
-  case Sock.adopt 16384 (ST.Stream raw) of
-    Err _ -> _ = IO.close raw; _ = ask me manager (Leave ticket); Unit
-  | Ok conn ->
-      (header, next) = MJ.readHead (budget 2000) 8192 conn;
+  case OT.adopt 16384 (ST.Stream raw) of
+    OT.OpenFailed _ -> _ = IO.close raw; _ = ask me manager (Leave ticket); Unit
+  | OT.Opened conn ->
+      (header, next) = ownedHead (budget 2000) 8192 conn;
       final = case header of
           Err _ -> respond 400 "Invalid request\n" next
         | Ok (head, extra) -> (case request cfg.gate head extra of
@@ -150,7 +145,7 @@ handle cfg manager ticket raw me =
                 (last, _, begun, _) = Sys.loop (next, 0, False, now Unit + 12000) (viewerStep me manager ticket cfg.maxFrame);
                 if begun then last else respond 503 "Camera unavailable\n" last
             | _ -> respond 503 "Camera busy\n" next));
-      _ = T.close final;
+      _ = OT.close final;
       _ = ask me manager (Leave ticket);
       Unit.
 acceptStep cfg manager listener me count = case IO.ready listener of
@@ -176,3 +171,7 @@ run cfg =
   _ = print "camera-ready {service.port}";
   _ = receive (myself 0);
   Unit.
+
+ownedParts budget pieces owner = OT.Connection raw = owner; (r, next) = MJ.parts budget pieces raw; (r, OT.Connection next).
+ownedWrite budget limit bytes owner = OT.Connection raw = owner; (r, next) = MJ.write budget limit bytes raw; (r, OT.Connection next).
+ownedHead budget limit owner = OT.Connection raw = owner; (r, next) = MJ.readHead budget limit raw; (r, OT.Connection next).

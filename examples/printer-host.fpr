@@ -6,6 +6,7 @@ Registry = use "printer-dashboard/registry".
 Camera = use "printer-dashboard/cameraservice".
 Frame = use "printer-dashboard/cameraframe".
 Collector = use "examples/printer-telemetry".
+OwnedMQTT = use "std/ownedmqtt".
 View = use "examples/printers".
 Care = use "printer-dashboard/care".
 CareProgram = use "printer-dashboard/careprogram".
@@ -84,11 +85,14 @@ telemetry registry row code me =
   watcher = R.start Unit;
   cfg = {host = row.host, port = row.port, peer = row.peer, ca = row.ca,
     session = need (SS.configAuth (Q.UserPassword "bblp" code) "fpr-native-{row.serial}" True 30 5000 8), report = "device/{row.serial}/report", request = "device/{row.serial}/request"};
-  _ = Sys.loop {client = O.None, telemetry = PT.initial, retryAt = 0, backoff = 1000, note = "Waiting for a status report."} (fn state ->
-    current = Collector.advance cfg pool watcher state;
-    public = PT.snapshot (Collector.now Unit) (case current.client of O.Some c -> c.session.phase == SS.Online | _ -> False) current.note current.telemetry;
+  (_, terminal) = Sys.loop (Collector.initial, OwnedMQTT.Empty) (fn pair ->
+    (state, slot) = pair;
+    (current, fresh) = Collector.advance cfg pool watcher state slot;
+    (online, next) = Collector.connected fresh;
+    public = PT.snapshot (Collector.now Unit) online current.note current.telemetry;
     _ = Registry.put registry (Registry.Telemetry row.id public);
-    (True, current));
+    (True, (current, next)));
+  _ = OwnedMQTT.closeSlot terminal;
   Unit.
 cameraStats registry id manager me = _ = Sys.loop Unit (fn u ->
   _ = case Camera.ask me manager Camera.Inspect of Ok (Camera.Snapshot value) -> Registry.put registry (Registry.Camera id value) | _ -> Unit;

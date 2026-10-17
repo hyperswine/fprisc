@@ -3,7 +3,9 @@
 unsafe base.
 Q = use "std/mqtt".
 SS = use "std/mqttsession".
-MC = use "std/mqttclient".
+MC = use "std/ownedmqtt".
+OT = use "std/ownedtransport".
+RC = use "printer-dashboard/resourcecore".
 PT = use "std/printertelemetry".
 T = use "std/transport".
 TLS = use "std/tls".
@@ -24,27 +26,29 @@ now u = Sys.timeUs Unit / 1000.
 request = J.render (J.object [("pushing", J.object [("sequence_id", J.Text "1"), ("command", J.Text "pushall"), ("version", J.Integer 1), ("push_target", J.Integer 1)])]).
 dial cfg pool watcher =
   limit = budget 5000;
-  case Connect.connectWith (Watch.wait watcher) limit pool cfg.host cfg.port 16384 of
-    Err why -> Err why
-  | Ok tcp -> case TLS.upgrade limit cfg.peer (TLS.CaFile cfg.ca) TLS.TLS12 tcp of
-      Err why -> Err why
-    | Ok secure -> case MC.create cfg.session 262144 16384 secure of
-        Err why -> _ = T.close secure; Err why
-      | Ok client -> case MC.begin limit client of (result, next) -> case result of Err why -> _ = T.close next.connection; Err why | Ok _ -> Ok next.
-closeClient client = _ = T.close client.connection; Unit.
-offline state =
-  _ = (case state.client of O.Some client -> closeClient client | O.None -> Unit);
-  {state | client = O.None, retryAt = now Unit + state.backoff, backoff = if state.backoff < 16000 then state.backoff * 2 else 30000,
-    note = "Disconnected; retrying. Last known values are retained."}.
+  case OT.connectWith (Watch.wait watcher) limit pool cfg.host cfg.port 16384 of
+    OT.OpenFailed why -> MC.CreateFailed why
+  | OT.Opened tcp -> (case OT.upgrade limit cfg.peer (TLS.CaFile cfg.ca) TLS.TLS12 tcp of
+      OT.OpenFailed why -> MC.CreateFailed why
+    | OT.Opened secure -> (case MC.create cfg.session 262144 16384 secure of
+        MC.CreateFailed why -> MC.CreateFailed why
+      | MC.Created client -> (case MC.begin limit client of
+          (Err why, next) -> _ = MC.close next; MC.CreateFailed why
+        | (Ok _, next) -> MC.Created next))).
+initial = {telemetry = PT.initial, retryAt = 0, backoff = 1000, note = "Waiting for a status report."}.
+offline state slot =
+  _ = MC.closeSlot slot;
+  ({state | retryAt = now Unit + state.backoff, backoff = RC.backoff state.backoff,
+    note = "Disconnected; retrying. Last known values are retained."}, MC.Empty).
 reports cfg notes state = L.fold (fn acc effect -> case effect of
     SS.Delivered topic payload _ _ _ -> if topic != cfg.report then acc else
       (case PT.accept (now Unit) (Clock.now Unit) payload acc.telemetry of Err why -> {acc | note = why} | Ok telemetry -> {acc | telemetry = telemetry, note = ""})
   | _ -> acc) state notes.
-effects cfg notes state = case notes of
-    Nil -> state
+effects cfg notes state slot = case notes of
+    Nil -> (state, slot)
   | effect :: rest ->
       current = reports cfg [effect] state;
-      case current.client of O.None -> current | O.Some client ->
+      case slot of MC.Empty -> (current, MC.Empty) | MC.Active client ->
         action = case effect of
             SS.Up _ _ -> MC.subscribe (budget 2000) [(cfg.report, 0)] client
           | SS.Subscribed _ grants -> if L.any (fn n -> n == 128) grants then (Err (T.Invalid "subscription refused"), client) else MC.publish (budget 2000) cfg.request request 0 False client
@@ -52,21 +56,24 @@ effects cfg notes state = case notes of
           | SS.Rejected _ -> (Err (T.Invalid "MQTT operation refused"), client)
           | _ -> (Ok Nil, client);
         (result, next) = action;
-        case result of Err _ -> offline {current | client = O.Some next} | Ok _ -> effects cfg rest {current | client = O.Some next, backoff = 1000}.
-advance cfg pool watcher state =
-  current = case state.client of
-      O.None -> if now Unit < state.retryAt then _ = Clock.sleepMs 250; state else
-        (case dial cfg pool watcher of Err _ -> offline state | Ok client -> {state | client = O.Some client, note = "Waiting for a status report."})
-    | O.Some client ->
-        (result, next) = MC.next (budget 250) client;
-        (retained, drained) = MC.takeNotices next;
-        base = reports cfg retained {state | client = O.Some drained};
-        (case result of Err _ -> offline base | Ok notes -> effects cfg notes base);
-  current.
-step cfg pool watcher state =
-  current = advance cfg pool watcher state;
-  _ = print (J.render (PT.snapshot (now Unit) (case current.client of O.Some c -> c.session.phase == SS.Online | _ -> False) current.note current.telemetry));
-  (True, current).
+        case result of Err _ -> offline current (MC.Active next) | Ok _ -> effects cfg rest {current | backoff = 1000} (MC.Active next).
+advance cfg pool watcher state slot = case slot of
+    MC.Empty -> if now Unit < state.retryAt then _ = Clock.sleepMs 250; (state, MC.Empty) else
+      (case dial cfg pool watcher of MC.CreateFailed _ -> offline state MC.Empty | MC.Created client -> ({state | note = "Waiting for a status report."}, MC.Active client))
+  | MC.Active client ->
+      (result, next) = MC.next (budget 250) client;
+      (retained, drained) = MC.takeNotices next;
+      base = reports cfg retained state;
+      (case result of Err _ -> offline base (MC.Active drained) | Ok notes -> effects cfg notes base (MC.Active drained)).
+connected slot = case slot of
+    MC.Empty -> (False, MC.Empty)
+  | MC.Active client -> (phase, next) = MC.phase client; (phase == SS.Online, MC.Active next).
+step cfg pool watcher pair =
+  (state, slot) = pair;
+  (current, fresh) = advance cfg pool watcher state slot;
+  (online, next) = connected fresh;
+  _ = print (J.render (PT.snapshot (now Unit) online current.note current.telemetry));
+  (True, (current, next)).
 main = case P.args Unit of
     [host, portText, serial, peer, ca, codeEnv] ->
       port = need (S.toInt portText);
@@ -77,7 +84,8 @@ main = case P.args Unit of
       pool = need (DNS.create 1);
       watcher = Ready.start Unit;
       cfg = {host = host, port = port, peer = peer, ca = ca, session = session, report = "device/{serial}/report", request = "device/{serial}/request"};
-      _ = Sys.loop {client = O.None, telemetry = PT.initial, retryAt = 0, backoff = 1000, note = "Waiting for a status report."} (step cfg pool watcher);
+      (_, terminal) = Sys.loop (initial, MC.Empty) (step cfg pool watcher);
+      _ = MC.closeSlot terminal;
       _ = Ready.stop watcher;
       _ = need (DNS.close pool);
       Unit

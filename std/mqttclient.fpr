@@ -1,6 +1,7 @@
 # A single-owner MQTT pump over any Transport, including native TLS. next uses
 # one-attempt reads and shorter readiness wakes for keepalive; an idle deadline
 # returns Ok Nil and retains the pending read instead of abandoning it.
+# std/ownedmqtt supplies the linear application-facing owner of this pump.
 T = use "transport".
 Q = use "mqtt".
 SS = use "mqttsession".

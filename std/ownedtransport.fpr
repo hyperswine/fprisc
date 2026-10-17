@@ -1,0 +1,38 @@
+# Linear facade over the state-threaded transport mechanisms. close consumes
+# the last owner, including after an I/O failure. Constructors/raw adapters
+# are the trusted implementation seam; application code uses these operations.
+T = use "transport".
+S = use "sockettransport".
+C = use "connect".
+TLS = use "tls".
+IO = use "osio".
+Connection 1 s = Type (Connection (T.Connection s)).
+Opened 1 s = Type (Opened (Connection s) | OpenFailed T.Failure).
+open chunk backend state = case T.open chunk backend state of
+    Err why -> OpenFailed why | Ok raw -> Opened (Connection raw).
+connectWith wait budget pool host port chunk = case C.connectWith wait budget pool host port chunk of
+    Err why -> OpenFailed why | Ok raw -> Opened (Connection raw).
+adopt chunk stream = case S.adopt chunk stream of
+    Err why -> OpenFailed why | Ok raw -> Opened (Connection raw).
+upgrade budget peer trust minimum owner =
+  Connection raw = owner;
+  case TLS.upgrade budget peer trust minimum raw of
+    Err why -> OpenFailed why | Ok secure -> Opened (Connection secure).
+readSome budget n owner = Connection raw = owner; (r, next) = T.readSome budget n raw; (r, Connection next).
+readExactly budget n owner = Connection raw = owner; (r, next) = T.readExactly budget n raw; (r, Connection next).
+attemptRead budget n owner = Connection raw = owner; (r, next) = T.attemptRead budget n raw; (r, Connection next).
+writeAll budget bytes owner = Connection raw = owner; (r, next) = T.writeAll budget bytes raw; (r, Connection next).
+pause budget interest owner = Connection raw = owner; (r, next) = T.pause budget interest raw; (r, Connection next).
+close : Connection s -> Result Unit T.Failure.
+close owner = Connection raw = owner; (result, terminal) = T.close raw; result.
+# No descriptor or raw state escapes the owner-preserving readiness query.
+connected budget owner =
+  Connection raw = owner;
+  ready = case S.descriptor (T.state raw) of Err _ -> Err T.Closed | Ok fd ->
+    (case IO.readyFor fd 1 of Err why -> Err (T.Io why) | Ok value -> Ok value);
+  case ready of
+    Err _ -> (False, Connection raw)
+  | Ok False -> (True, Connection raw)
+  | Ok True -> (case T.attemptRead budget 1 raw of
+      (Ok (T.ReadWait _), next) -> (True, Connection next)
+    | (_, next) -> (False, Connection next)).
