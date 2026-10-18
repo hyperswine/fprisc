@@ -1,0 +1,578 @@
+{
+  "date": "2026-10-18",
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "fprisc_head": "d398f63",
+  "baseline": "previous immutable-byte-string runtime with std/view.fpr from d398f63",
+  "candidate": "same runtime plus CSS construction changes",
+  "baseline_view_sha256": "7ddf7f6ec088714e0a558a35ef22f0c46ec472542118df02af013de383b810b1",
+  "css_view_sha256": "7d33f55946a99a439d0fa37522cd4eff0fb3f155eb4396510500e66b5f9992b4",
+  "runtime_sha256": "9c094bd7d2560c2e0530e7fdfbc40132a9ac05a0bff8b4286933c2725583eb70",
+  "qos_head": "796198d6396a61ca5b1966857f294744b8821ce3",
+  "probe_source_sha256": "f3830536dd5466198a0c17a9c209c248c620ef2419c01887cfe0476a8b6a3903",
+  "harts": 4,
+  "heap_mb": 2048,
+  "profiling": "FPR_COST_PROBE=1; timing is instrumented and excludes settling waits and final fanout; RSS is peak through each snapshot",
+  "client_acceptance": "All 100 clients received shared Bump 989789 in all six runs",
+  "runs": [
+    {
+      "byte-pool": {
+        "binary_sha256": "45804d9d161abecfc1e06762f947f878f8b2652cb1534c2ff774cc835b0df9d5",
+        "checkpoints": [
+          {
+            "alloc_requests": 337498,
+            "alloc_bytes": 24646544,
+            "copies": 64,
+            "copy_bytes": 199632,
+            "message_slabs": 19,
+            "arena_reserved_kib": 8576,
+            "grow_bytes": 29621480,
+            "spawns": 10,
+            "stack_misses": 0,
+            "channel_carves": 2,
+            "peak_rss_kib": 21472,
+            "sessions": 1,
+            "admission_seconds": 0.007564
+          },
+          {
+            "alloc_requests": 9249775,
+            "alloc_bytes": 709155136,
+            "copies": 472,
+            "copy_bytes": 4610224,
+            "message_slabs": 108,
+            "arena_reserved_kib": 16768,
+            "grow_bytes": 759547952,
+            "spawns": 29,
+            "stack_misses": 0,
+            "channel_carves": 4,
+            "peak_rss_kib": 82752,
+            "sessions": 10,
+            "admission_seconds": 0.204462
+          },
+          {
+            "alloc_requests": 168471095,
+            "alloc_bytes": 12912296720,
+            "copies": 5711,
+            "copy_bytes": 80264160,
+            "message_slabs": 918,
+            "arena_reserved_kib": 55552,
+            "grow_bytes": 13636623528,
+            "spawns": 110,
+            "stack_misses": 0,
+            "channel_carves": 14,
+            "peak_rss_kib": 368304,
+            "sessions": 50,
+            "admission_seconds": 2.181609
+          },
+          {
+            "alloc_requests": 640743528,
+            "alloc_bytes": 49093599392,
+            "copies": 20262,
+            "copy_bytes": 303157088,
+            "message_slabs": 2941,
+            "arena_reserved_kib": 102656,
+            "grow_bytes": 51749280080,
+            "spawns": 211,
+            "stack_misses": 0,
+            "channel_carves": 27,
+            "peak_rss_kib": 646416,
+            "sessions": 100,
+            "admission_seconds": 8.179062
+          }
+        ]
+      },
+      "css": {
+        "binary_sha256": "03b323ccd6694a32dfb1783a41a82e26e49ba6fdf4997a9f26767d0d6ea54a0d",
+        "checkpoints": [
+          {
+            "alloc_requests": 314632,
+            "alloc_bytes": 19251520,
+            "copies": 64,
+            "copy_bytes": 199632,
+            "message_slabs": 19,
+            "arena_reserved_kib": 8576,
+            "grow_bytes": 23854400,
+            "spawns": 10,
+            "stack_misses": 0,
+            "channel_carves": 2,
+            "peak_rss_kib": 21264,
+            "sessions": 1,
+            "admission_seconds": 0.007457
+          },
+          {
+            "alloc_requests": 8233422,
+            "alloc_bytes": 512889040,
+            "copies": 474,
+            "copy_bytes": 4482768,
+            "message_slabs": 107,
+            "arena_reserved_kib": 16768,
+            "grow_bytes": 538301832,
+            "spawns": 29,
+            "stack_misses": 0,
+            "channel_carves": 4,
+            "peak_rss_kib": 72464,
+            "sessions": 10,
+            "admission_seconds": 0.136283
+          },
+          {
+            "alloc_requests": 161159333,
+            "alloc_bytes": 10011228080,
+            "copies": 5944,
+            "copy_bytes": 83722720,
+            "message_slabs": 946,
+            "arena_reserved_kib": 56064,
+            "grow_bytes": 10215826512,
+            "spawns": 110,
+            "stack_misses": 0,
+            "channel_carves": 14,
+            "peak_rss_kib": 289856,
+            "sessions": 50,
+            "admission_seconds": 1.31239
+          },
+          {
+            "alloc_requests": 581166283,
+            "alloc_bytes": 36082692224,
+            "copies": 20064,
+            "copy_bytes": 300074016,
+            "message_slabs": 2910,
+            "arena_reserved_kib": 102016,
+            "grow_bytes": 36685274912,
+            "spawns": 211,
+            "stack_misses": 0,
+            "channel_carves": 27,
+            "peak_rss_kib": 655904,
+            "sessions": 100,
+            "admission_seconds": 4.353476
+          }
+        ]
+      }
+    },
+    {
+      "byte-pool": {
+        "binary_sha256": "45804d9d161abecfc1e06762f947f878f8b2652cb1534c2ff774cc835b0df9d5",
+        "checkpoints": [
+          {
+            "alloc_requests": 337498,
+            "alloc_bytes": 24646544,
+            "copies": 64,
+            "copy_bytes": 199632,
+            "message_slabs": 19,
+            "arena_reserved_kib": 8576,
+            "grow_bytes": 29621480,
+            "spawns": 10,
+            "stack_misses": 0,
+            "channel_carves": 2,
+            "peak_rss_kib": 21472,
+            "sessions": 1,
+            "admission_seconds": 0.008045
+          },
+          {
+            "alloc_requests": 9113316,
+            "alloc_bytes": 698698752,
+            "copies": 486,
+            "copy_bytes": 4549680,
+            "message_slabs": 108,
+            "arena_reserved_kib": 16896,
+            "grow_bytes": 748734688,
+            "spawns": 29,
+            "stack_misses": 0,
+            "channel_carves": 4,
+            "peak_rss_kib": 89312,
+            "sessions": 10,
+            "admission_seconds": 0.168391
+          },
+          {
+            "alloc_requests": 171477440,
+            "alloc_bytes": 13142564464,
+            "copies": 5802,
+            "copy_bytes": 81672960,
+            "message_slabs": 931,
+            "arena_reserved_kib": 56064,
+            "grow_bytes": 13879626856,
+            "spawns": 110,
+            "stack_misses": 0,
+            "channel_carves": 14,
+            "peak_rss_kib": 341312,
+            "sessions": 50,
+            "admission_seconds": 1.33708
+          },
+          {
+            "alloc_requests": 648532384,
+            "alloc_bytes": 49690187632,
+            "copies": 20493,
+            "copy_bytes": 306809024,
+            "message_slabs": 2967,
+            "arena_reserved_kib": 102656,
+            "grow_bytes": 52376514440,
+            "spawns": 211,
+            "stack_misses": 0,
+            "channel_carves": 27,
+            "peak_rss_kib": 770624,
+            "sessions": 100,
+            "admission_seconds": 5.127361
+          }
+        ]
+      },
+      "css": {
+        "binary_sha256": "03b323ccd6694a32dfb1783a41a82e26e49ba6fdf4997a9f26767d0d6ea54a0d",
+        "checkpoints": [
+          {
+            "alloc_requests": 314627,
+            "alloc_bytes": 19251280,
+            "copies": 63,
+            "copy_bytes": 199552,
+            "message_slabs": 19,
+            "arena_reserved_kib": 8576,
+            "grow_bytes": 23854400,
+            "spawns": 10,
+            "stack_misses": 0,
+            "channel_carves": 2,
+            "peak_rss_kib": 21248,
+            "sessions": 1,
+            "admission_seconds": 0.006252
+          },
+          {
+            "alloc_requests": 8483831,
+            "alloc_bytes": 528425968,
+            "copies": 476,
+            "copy_bytes": 4610352,
+            "message_slabs": 108,
+            "arena_reserved_kib": 16768,
+            "grow_bytes": 554030192,
+            "spawns": 29,
+            "stack_misses": 0,
+            "channel_carves": 4,
+            "peak_rss_kib": 70912,
+            "sessions": 10,
+            "admission_seconds": 0.146139
+          },
+          {
+            "alloc_requests": 157778366,
+            "alloc_bytes": 9801458576,
+            "copies": 5825,
+            "copy_bytes": 81993312,
+            "message_slabs": 935,
+            "arena_reserved_kib": 56064,
+            "grow_bytes": 10003821312,
+            "spawns": 110,
+            "stack_misses": 0,
+            "channel_carves": 14,
+            "peak_rss_kib": 286992,
+            "sessions": 50,
+            "admission_seconds": 1.292659
+          },
+          {
+            "alloc_requests": 596320633,
+            "alloc_bytes": 37022928544,
+            "copies": 20549,
+            "copy_bytes": 307829936,
+            "message_slabs": 2976,
+            "arena_reserved_kib": 102656,
+            "grow_bytes": 37638085824,
+            "spawns": 211,
+            "stack_misses": 0,
+            "channel_carves": 27,
+            "peak_rss_kib": 621312,
+            "sessions": 100,
+            "admission_seconds": 4.372963
+          }
+        ]
+      }
+    },
+    {
+      "byte-pool": {
+        "binary_sha256": "45804d9d161abecfc1e06762f947f878f8b2652cb1534c2ff774cc835b0df9d5",
+        "checkpoints": [
+          {
+            "alloc_requests": 337493,
+            "alloc_bytes": 24646304,
+            "copies": 63,
+            "copy_bytes": 199552,
+            "message_slabs": 19,
+            "arena_reserved_kib": 8576,
+            "grow_bytes": 29621480,
+            "spawns": 10,
+            "stack_misses": 0,
+            "channel_carves": 2,
+            "peak_rss_kib": 21472,
+            "sessions": 1,
+            "admission_seconds": 0.007694
+          },
+          {
+            "alloc_requests": 8976592,
+            "alloc_bytes": 688228128,
+            "copies": 478,
+            "copy_bytes": 4484048,
+            "message_slabs": 107,
+            "arena_reserved_kib": 16768,
+            "grow_bytes": 737528232,
+            "spawns": 29,
+            "stack_misses": 0,
+            "channel_carves": 4,
+            "peak_rss_kib": 91392,
+            "sessions": 10,
+            "admission_seconds": 0.145125
+          },
+          {
+            "alloc_requests": 172160772,
+            "alloc_bytes": 13194902848,
+            "copies": 5832,
+            "copy_bytes": 81993776,
+            "message_slabs": 934,
+            "arena_reserved_kib": 56064,
+            "grow_bytes": 13934807216,
+            "spawns": 110,
+            "stack_misses": 0,
+            "channel_carves": 14,
+            "peak_rss_kib": 325504,
+            "sessions": 50,
+            "admission_seconds": 1.44957
+          },
+          {
+            "alloc_requests": 645661837,
+            "alloc_bytes": 49470337072,
+            "copies": 20412,
+            "copy_bytes": 305463392,
+            "message_slabs": 2957,
+            "arena_reserved_kib": 102144,
+            "grow_bytes": 52144914160,
+            "spawns": 211,
+            "stack_misses": 0,
+            "channel_carves": 27,
+            "peak_rss_kib": 748432,
+            "sessions": 100,
+            "admission_seconds": 5.633756
+          }
+        ]
+      },
+      "css": {
+        "binary_sha256": "03b323ccd6694a32dfb1783a41a82e26e49ba6fdf4997a9f26767d0d6ea54a0d",
+        "checkpoints": [
+          {
+            "alloc_requests": 314632,
+            "alloc_bytes": 19251520,
+            "copies": 64,
+            "copy_bytes": 199632,
+            "message_slabs": 19,
+            "arena_reserved_kib": 8576,
+            "grow_bytes": 23854400,
+            "spawns": 10,
+            "stack_misses": 0,
+            "channel_carves": 2,
+            "peak_rss_kib": 21264,
+            "sessions": 1,
+            "admission_seconds": 0.006976
+          },
+          {
+            "alloc_requests": 8233433,
+            "alloc_bytes": 512889616,
+            "copies": 475,
+            "copy_bytes": 4483808,
+            "message_slabs": 108,
+            "arena_reserved_kib": 16768,
+            "grow_bytes": 538432896,
+            "spawns": 29,
+            "stack_misses": 0,
+            "channel_carves": 4,
+            "peak_rss_kib": 72896,
+            "sessions": 10,
+            "admission_seconds": 0.108536
+          },
+          {
+            "alloc_requests": 156525744,
+            "alloc_bytes": 9723743600,
+            "copies": 5781,
+            "copy_bytes": 81351360,
+            "message_slabs": 928,
+            "arena_reserved_kib": 56064,
+            "grow_bytes": 9924917384,
+            "spawns": 110,
+            "stack_misses": 0,
+            "channel_carves": 14,
+            "peak_rss_kib": 278800,
+            "sessions": 50,
+            "admission_seconds": 1.089551
+          },
+          {
+            "alloc_requests": 571023288,
+            "alloc_bytes": 35453370000,
+            "copies": 19743,
+            "copy_bytes": 294883968,
+            "message_slabs": 2873,
+            "arena_reserved_kib": 102016,
+            "grow_bytes": 36048735056,
+            "spawns": 211,
+            "stack_misses": 0,
+            "channel_carves": 27,
+            "peak_rss_kib": 570016,
+            "sessions": 100,
+            "admission_seconds": 4.177275
+          }
+        ]
+      }
+    }
+  ],
+  "summary_at_100_sessions": {
+    "alloc_requests": {
+      "baseline_median": 645661837,
+      "css_median": 581166283,
+      "reduction_percent": 9.99,
+      "baseline_range": [
+        640743528,
+        648532384
+      ],
+      "css_range": [
+        571023288,
+        596320633
+      ]
+    },
+    "alloc_bytes": {
+      "baseline_median": 49470337072,
+      "css_median": 36082692224,
+      "reduction_percent": 27.06,
+      "baseline_range": [
+        49093599392,
+        49690187632
+      ],
+      "css_range": [
+        35453370000,
+        37022928544
+      ]
+    },
+    "peak_rss_kib": {
+      "baseline_median": 748432,
+      "css_median": 621312,
+      "reduction_percent": 16.98,
+      "baseline_range": [
+        646416,
+        770624
+      ],
+      "css_range": [
+        570016,
+        655904
+      ]
+    },
+    "arena_reserved_kib": {
+      "baseline_median": 102656,
+      "css_median": 102016,
+      "reduction_percent": 0.62,
+      "baseline_range": [
+        102144,
+        102656
+      ],
+      "css_range": [
+        102016,
+        102656
+      ]
+    },
+    "admission_seconds": {
+      "baseline_median": 5.633756,
+      "css_median": 4.353476,
+      "reduction_percent": 22.73,
+      "baseline_range": [
+        5.127361,
+        8.179062
+      ],
+      "css_range": [
+        4.177275,
+        4.372963
+      ]
+    }
+  },
+  "focused_allocations": {
+    "prefix-cost": {
+      "baseline": {
+        "alloc_bytes": 48000,
+        "alloc_requests": 1000,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "candidate": {
+        "alloc_bytes": 0,
+        "alloc_requests": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      }
+    },
+    "stage-cost": {
+      "baseline": {
+        "alloc_bytes": 1841904,
+        "alloc_requests": 8488,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "candidate": {
+        "alloc_bytes": 394224,
+        "alloc_requests": 7468,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      }
+    },
+    "class-cost": {
+      "baseline": {
+        "alloc_bytes": 2290240,
+        "alloc_requests": 7206,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "candidate": {
+        "alloc_bytes": 349648,
+        "alloc_requests": 6953,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      }
+    },
+    "tree-cost": {
+      "baseline": {
+        "alloc_bytes": 2470064,
+        "alloc_requests": 39834,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "candidate": {
+        "alloc_bytes": 1581488,
+        "alloc_requests": 31607,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      }
+    }
+  },
+  "equivalence_output": {
+    "bytes": 125308,
+    "sha256": "9119d98d67cab660377e5ac554473a30a10620a7866d326b907a600958e799cd",
+    "workers": [
+      1,
+      4
+    ]
+  },
+  "regression_fixtures_sha256": {
+    "tests/base/viewconstruction.fpr": "9e17a3a01862c2037398614f845db0ff5af810b15e045966103d77ea0b50fc9c",
+    "tests/base/viewconstruction_reference.fpr": "a2a60a94741c6d1f8957c3a42f15a99a26449a638005115f28b427cf9944ea55"
+  },
+  "validation": {
+    "exact_output_workers": [
+      1,
+      4
+    ],
+    "browser_checks": 4,
+    "viewcache_suite": "PASS",
+    "serial_corrected_stateless_wire_runs": 3,
+    "old_renderer_original_predicate_control_runs": 3,
+    "portable_macos_workers": [
+      1,
+      4
+    ],
+    "qos_native_qemu_rv64_harts": [
+      1,
+      2
+    ],
+    "physical_deployment": false
+  }
+}

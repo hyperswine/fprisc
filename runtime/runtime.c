@@ -3040,14 +3040,38 @@ static V g_strlen(V s) {
  * where the Int is narrower, and a module cannot name a prelude constant */
 static V g_intMax(V u) { (void)u; return TAG(INT_MAX_TAGGED); }
 static V g_intMin(V u) { (void)u; return TAG(INT_MIN_TAGGED); }
+/* There are exactly 256 one-byte Strings. Like a string literal, each is an
+ * immutable static: chr needs no actor allocation, even inside a tight text
+ * encoder. A table in a mortal process image follows the existing static-data
+ * copy rule when sent outside that image; it is not a global heap cache. */
+typedef struct {
+  uint32_t tid, var;
+  uw len;
+  uint8_t bytes[1];
+} __attribute__((aligned(8))) byte_str_t;
+_Static_assert(__builtin_offsetof(byte_str_t, bytes) == __builtin_offsetof(str_t, bytes),
+               "byte String layout");
+#define BYTE_STR(n) { T_STR, 0, 1, { (n) } }
+#define BYTE_STR_16(n) \
+  BYTE_STR((n)+0), BYTE_STR((n)+1), BYTE_STR((n)+2), BYTE_STR((n)+3), \
+  BYTE_STR((n)+4), BYTE_STR((n)+5), BYTE_STR((n)+6), BYTE_STR((n)+7), \
+  BYTE_STR((n)+8), BYTE_STR((n)+9), BYTE_STR((n)+10), BYTE_STR((n)+11), \
+  BYTE_STR((n)+12), BYTE_STR((n)+13), BYTE_STR((n)+14), BYTE_STR((n)+15)
+static const byte_str_t byte_strings[256] = {
+  BYTE_STR_16(0), BYTE_STR_16(16), BYTE_STR_16(32), BYTE_STR_16(48),
+  BYTE_STR_16(64), BYTE_STR_16(80), BYTE_STR_16(96), BYTE_STR_16(112),
+  BYTE_STR_16(128), BYTE_STR_16(144), BYTE_STR_16(160), BYTE_STR_16(176),
+  BYTE_STR_16(192), BYTE_STR_16(208), BYTE_STR_16(224), BYTE_STR_16(240)
+};
+#undef BYTE_STR_16
+#undef BYTE_STR
 static V g_chr(V c) {
   if (!ISINT(c)) fpr_trap("chr: not an Int");
   /* chr makes ONE BYTE; a value outside 0..255 used to be truncated
    * silently (chr 1114112 was a replacement character) */
   if (UNTAG(c) < 0 || UNTAG(c) > 255)
     fpr_trap_num("chr: ", UNTAG(c), " is not a byte (0..255); chr makes one byte, String.fromCodes makes UTF-8");
-  uint8_t b = (uint8_t)UNTAG(c);
-  return (V)fpr_mkstr(&b, 1);
+  return (V)&byte_strings[(uw)UNTAG(c)];
 }
 
 /* ---- floats: raw bits on RV64, boxed numeric leaves on RV32 ----------

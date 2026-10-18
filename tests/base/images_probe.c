@@ -6,6 +6,7 @@
 #include "fpr.h"
 static fpr_image_t g_im;
 static char *g_blk;
+extern V fpr_g_chr_call1(V);
 static V probe_make(V u) {
   (void)u;
   g_blk = (char *)buddy_alloc(4096);
@@ -18,6 +19,14 @@ static V probe_make(V u) {
   p->tid = T_PAP; p->var = 0;
   p->fn = (uw)(g_blk + 1024); /* "code" in the image: never called */
   p->arity = 1; p->nargs = 0;
+  /* The layout of chr's byte table when linked into a mortal image. No
+   * allocation preheader: these must use the foreign-static copy path. */
+  for (int i = 0; i < 2; i++) {
+    str_t *byte = (str_t *)(g_blk + 640 + i * 32);
+    str_t *original = (str_t *)fpr_g_chr_call1(TAG(i ? 255 : 0));
+    byte->tid = original->tid; byte->var = original->var;
+    byte->len = original->len; byte->bytes[0] = original->bytes[0];
+  }
   g_im.lo = g_blk - sizeof(uw);
   g_im.hi = g_blk + buddy_block_usable_size(g_blk);
   g_im.pid = 7;
@@ -27,6 +36,7 @@ static V probe_make(V u) {
 }
 static V probe_str(V u) { (void)u; return (V)(g_blk + 64); }
 static V probe_fn(V u) { (void)u; return (V)(g_blk + 256); }
+static V probe_byte(V n) { return (V)(g_blk + 640 + (UNTAG(n) ? 32 : 0)); }
 /* Force dirty packed-slab memory under the padding of a copied nullary
  * constructor. Generic walkers must see a zero field, never old bytes. */
 static V probe_padding(V u) {
@@ -51,5 +61,6 @@ static V probe_end(V u) {
 FPR_FN(fpr_g_Probe_x2emakeImage, probe_make, 1);
 FPR_FN(fpr_g_Probe_x2estr, probe_str, 1);
 FPR_FN(fpr_g_Probe_x2efn, probe_fn, 1);
+FPR_FN(fpr_g_Probe_x2ebyte, probe_byte, 1);
 FPR_FN(fpr_g_Probe_x2eendImage, probe_end, 1);
 FPR_FN(fpr_g_Probe_x2epadding, probe_padding, 1);

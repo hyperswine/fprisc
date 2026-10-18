@@ -1,0 +1,55 @@
+# Frozen pre-optimization construction from d398f63, restricted to the
+# functions this change replaces. No Git history or second std tree needed.
+unsafe module.
+G = use "std/view".
+E = use "std/encoding".
+hasPrefix pre s = G.and2 (strlen s > strlen pre) (G.strEq (substr s 0 (strlen pre)) pre).
+atomClasses Nil = "".
+atomClasses (a :: rest) = G.joinSp (G.atomClass a) (atomClasses rest).
+localCss cs = localStages 0 cs.
+localStages scope cs = if scope > 6 then "" else strcat (localStage scope cs) (localStages (scope + 1) cs).
+localStage scope Nil = "".
+localStage scope (c :: rest) = strcat (localRule scope c) (localStage scope rest).
+localRule scope c = if hasPrefix "fpr-u-{scope}-" c then
+    case E.fromHex (substr c 8 (strlen c)) of
+        Err _ -> ""
+      | Ok css -> (case scope of
+          0 -> G.rule1 ".{c}" css
+        | 1 -> G.wrapMedia "(max-width:760px)" (G.rule1 ".{c}" css)
+        | 2 -> G.wrapMedia "(min-width:761px)" (G.rule1 ".{c}" css)
+        | 3 -> G.rule1 ".{c}:hover" css
+        | 4 -> G.rule1 ".{c}:focus-visible" css
+        | 5 -> G.rule1 ".{c}:disabled" css
+        | _ -> G.rule1 ".{c}" css)
+  else "".
+cssFor tree = localCss (G.nub (G.allClasses tree Nil)).
+cssWith styles tree =
+  cs = G.nub (G.allClasses tree Nil);
+  strcat G.cssBase (strcat (G.rules styles cs)
+    (strcat (media styles "narrow" "(max-width:760px)" cs)
+      (strcat (media styles "wide" "(min-width:761px)" cs) (localCss cs)))).
+media styles name query cs = G.wrapMedia query (mediaGo styles name cs "").
+mediaGo styles name Nil acc = acc.
+mediaGo styles name (c :: rest) acc = if hasPrefix "{name}:" c
+  then mediaGo styles name rest (strcat acc (G.mediaRule styles name (G.dropPrefix (strlen name + 1) c)))
+  else mediaGo styles name rest acc.
+attrsOf as = _ = G.once as;
+  strcat (G.xdata (G.localsOf as)) (strcat (G.xjson (G.clientOf as))
+    (strcat (G.classAttr (G.joinSp (G.classesOf as) (atomClasses (G.localAtoms as))))
+      (strcat (G.localStyleAttribute as) (G.others as)))).
+render n = G.fin (goN (G.Ctx "" Nil Nil) n).
+renderStyled n =
+  css = cssFor n;
+  start = "<style data-lv-local-css=\"\">{css}</style>";
+  G.fin (goN (G.Ctx start Nil Nil) n).
+goN c (G.Fragment ss ds _) = G.appendFragment c ss ds.
+goN c (G.Txt s) = G.emit c (G.esc s).
+goN c (G.Dyn v) = G.slot c v.
+goN c (G.LTxt n) = G.emit c "<span data-text=\"{n}\"></span>".
+goN c (G.Inp attrs) = G.emit c "<input{attrsOf attrs}>".
+goN c (G.El tag attrs kids) =
+  c1 = G.emit c "<{tag}{attrsOf attrs}>";
+  c2 = goKids c1 kids;
+  G.emit c2 "</{tag}>".
+goKids c Nil = c.
+goKids c (kid :: rest) = goKids (goN c kid) rest.

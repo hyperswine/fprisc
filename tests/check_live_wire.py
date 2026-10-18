@@ -82,6 +82,11 @@ def has(state, text): return text in ''.join(state['s']+state['d'])
 # The logbook's toast ("added #3") is the acting tab's own, so the two tabs
 # agree only once it has cleared: compare them then.
 def settled(state): return not any(has(state, t) for t in ('added #', 'saved #', 'deleted #'))
+# A store read gets its count/plan before fetching rows from the shards. A
+# render overlapping a write can already show the new rows with the previous
+# count, before the command's completion event renders the coherent page.
+# Compare protocols only after both the content and expected total arrive.
+def at_total(state, entries): return settled(state) and has(state, f'{entries} entries, 3 online')
 
 def main():
     with tempfile.TemporaryDirectory(prefix='live-wire-') as d:
@@ -99,15 +104,15 @@ def main():
                 port=int(m[1]);a=Client(port,True);clients.append(a);b=Client(port,False);clients.append(b);v3=Client(port,3);clients.append(v3)
                 for i in range(1,4):
                     a.send('Post','tag',f'wire entry {i}')
-                    for c in (a,b,v3): c.until(lambda st:has(st,f'wire entry {i}') and settled(st))
+                    for c in (a,b,v3): c.until(lambda st:has(st,f'wire entry {i}') and at_total(st,i))
                     assert a.state==b.state==v3.state, 'patch and full snapshot disagree'
                 a.send('Edit',2)
                 a.until(lambda st:has(st,'editing'))
                 a.send('Change',2,'tag','changed entry')
-                for c in (a,b,v3): c.until(lambda st:has(st,'changed entry') and not has(st,'editing') and settled(st))
+                for c in (a,b,v3): c.until(lambda st:has(st,'changed entry') and not has(st,'editing') and at_total(st,3))
                 assert a.state==b.state==v3.state
                 a.send('Delete',1)
-                for c in (a,b,v3): c.until(lambda st:not has(st,'wire entry 1') and settled(st))
+                for c in (a,b,v3): c.until(lambda st:not has(st,'wire entry 1') and at_total(st,2))
                 assert a.state==b.state==v3.state
                 patches=[n for msg,n in a.frames if msg.get('p')==2]
                 assert patches, 'modern connection never got patches'

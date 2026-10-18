@@ -83,7 +83,7 @@ render n = fin (goN (Ctx "" Nil Nil) n).
 # caches still use render; their class lists retain these rule definitions.
 renderStyled : Node -> (List String, List String) .
 renderStyled n =
-  css = localCss (nub (allClasses n Nil));
+  css = cssFor n;
   # Keep the style node even when empty: adding/removing the final utility
   # must not replace an unkeyed page root and lose its form state.
   start = "<style data-lv-local-css=\"\">{css}</style>";
@@ -380,7 +380,7 @@ hasAtom scope property (Atom s p _ :: rest) = (scope == s and property == p) or 
 atomClass (Atom scope _ css) = "fpr-u-{scope}-{Encoding.hex css}".
 atomClasses : unsafe List Atom -> String .
 atomClasses Nil = "".
-atomClasses (a :: rest) = joinSp (atomClass a) (atomClasses rest).
+atomClasses atoms = strJoin " " (atomNames atoms).
 atomNames : unsafe List Atom -> List String .
 atomNames Nil = Nil.
 atomNames (a :: rest) = atomClass a :: atomNames rest.
@@ -391,22 +391,82 @@ localCss cs = localStages 0 cs.
 localStages : unsafe Int -> List String -> String .
 localStages scope cs = if scope > 6 then "" else strcat (localStage scope cs) (localStages (scope + 1) cs).
 localStage : unsafe Int -> List String -> String .
+# Join once: concatenating each rule with the remaining stylesheet copies
+# that suffix again, even for a class belonging to another scope.
 localStage scope Nil = "".
-localStage scope (c :: rest) = strcat (localRule scope c) (localStage scope rest).
-localRule scope c = if hasPrefix "fpr-u-{scope}-" c then
+localStage scope cs = strJoin "" (localRules scope "fpr-u-{scope}-" cs).
+localRules : unsafe Int -> String -> List String -> List String .
+localRules scope prefix Nil = Nil.
+localRules scope prefix (c :: rest) =
+  rule = localRuleFor scope prefix c;
+  if rule == "" then localRules scope prefix rest else rule :: localRules scope prefix rest.
+localRule scope c = localRuleFor scope "fpr-u-{scope}-" c.
+# A normal scope occupies byte 6. Reject other scopes before comparing the
+# prefix, and construct that prefix once per stage instead of once per class.
+# Preserve the general localRule behavior for callers with wider scope names.
+localMatches scope prefix c = if scope >= 0 and scope <= 9 then
+    if strlen c > 8 then charAt c 6 == scope + 48 and hasPrefix prefix c else False
+  else hasPrefix prefix c.
+localRuleFor scope prefix c = if localMatches scope prefix c then
     case Encoding.fromHex (substr c 8 (strlen c)) of
         Err _ -> ""
-      | Ok css -> (case scope of
+      | Ok css -> localDeclRule scope c css
+  else "".
+localDeclRule scope c css = case scope of
           0 -> rule1 ".{c}" css
         | 1 -> wrapMedia "(max-width:760px)" (rule1 ".{c}" css)
         | 2 -> wrapMedia "(min-width:761px)" (rule1 ".{c}" css)
         | 3 -> rule1 ".{c}:hover" css
         | 4 -> rule1 ".{c}:focus-visible" css
         | 5 -> rule1 ".{c}:disabled" css
-        | _ -> rule1 ".{c}" css)
-  else "".
+        | _ -> rule1 ".{c}" css.
 
-cssFor tree = localCss (nub (allClasses tree Nil)).
+# A typed declaration already carries its CSS. Retain it until stylesheet
+# emission instead of recovering it from the hexadecimal class name through
+# per-byte decoding lists. Names remain the deduplication identity, including
+# explicit Cls values and the encoded classes carried by cached Fragments.
+CssEntry = Type (CssAtom String Int String | CssName String).
+cssFor tree = entryStages 0 (nubEntries (allCssEntries tree Nil)).
+entryStages : unsafe Int -> List CssEntry -> String .
+entryStages scope Nil = "".
+entryStages scope entries = if scope > 6 then "" else
+  strcat (strJoin "" (entryRules scope "fpr-u-{scope}-" entries)) (entryStages (scope + 1) entries).
+entryRules : unsafe Int -> String -> List CssEntry -> List String .
+entryRules scope prefix Nil = Nil.
+entryRules scope prefix (entry :: rest) =
+  rule = entryRule scope prefix entry;
+  if rule == "" then entryRules scope prefix rest else rule :: entryRules scope prefix rest.
+entryRule scope prefix (CssAtom name own css) = if scope == own then localDeclRule scope name css else "".
+entryRule scope prefix (CssName name) = localRuleFor scope prefix name.
+entryName (CssAtom name _ _) = name.
+entryName (CssName name) = name.
+nubEntries : unsafe List CssEntry -> List CssEntry .
+nubEntries Nil = Nil.
+nubEntries (entry :: rest) = if entryMember (entryName entry) rest then nubEntries rest else entry :: nubEntries rest.
+entryMember : unsafe String -> List CssEntry -> Bool .
+entryMember name Nil = False.
+entryMember name (CssAtom other _ _ :: rest) = name == other or entryMember name rest.
+entryMember name (CssName other :: rest) = name == other or entryMember name rest.
+atomEntries : unsafe List Atom -> List CssEntry .
+atomEntries Nil = Nil.
+atomEntries (a :: rest) = case a of Atom scope _ css -> CssAtom (atomClass a) scope css :: atomEntries rest.
+namedEntries : unsafe List String -> List CssEntry .
+namedEntries Nil = Nil.
+namedEntries (name :: rest) = CssName name :: namedEntries rest.
+allCssEntries : unsafe Node -> List CssEntry -> List CssEntry .
+allCssEntries (El _ attrs kids) acc = cssKids kids (cssAttrs attrs acc).
+allCssEntries (Inp attrs) acc = cssAttrs attrs acc.
+allCssEntries (Fragment _ _ classes) acc = append (namedEntries classes) acc.
+allCssEntries _ acc = acc.
+cssKids : unsafe List Node -> List CssEntry -> List CssEntry .
+cssKids Nil acc = acc.
+cssKids (kid :: rest) acc = cssKids rest (allCssEntries kid acc).
+cssAttrs attrs acc = append (atomEntries (localStyleAtoms attrs))
+  (append (atomEntries (localAtoms attrs)) (classEntries attrs acc)).
+classEntries : unsafe List Attr -> List CssEntry -> List CssEntry .
+classEntries Nil acc = acc.
+classEntries (Cls names :: rest) acc = classEntries rest (append (namedEntries (splitSp names)) acc).
+classEntries (_ :: rest) acc = classEntries rest acc.
 
 cssWith : List Style -> Node -> String .
 cssWith styles tree =
@@ -432,7 +492,12 @@ mediaGo styles name (c :: r) acc | hasPrefix "{name}:" c = mediaGo styles name r
 mediaGo styles name (c :: r) acc = mediaGo styles name r acc.
 mediaRule styles name base = rule1 ".{name}\\:{base}" (declsOf styles base).
 hasPrefix : unsafe String -> String -> Bool .
-hasPrefix pre s = and2 (strlen s > strlen pre) (strEq (substr s 0 (strlen pre)) pre).
+# Keep the strict-length convention (an exact match is not a prefix here),
+# but compare bytes without allocating a temporary substring.
+hasPrefix pre s = if strlen s > strlen pre then prefixAt pre s 0 (strlen pre) else False.
+prefixAt : unsafe String -> String -> Int -> Int -> Bool .
+prefixAt pre s i n = if i >= n then True else
+  if charAt pre i == charAt s i then prefixAt pre s (i + 1) n else False.
 dropPrefix : unsafe Int -> String -> String .
 dropPrefix n s = substr s n (strlen s - n).
 

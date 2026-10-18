@@ -1,0 +1,160 @@
+{
+  "date": "2026-10-18",
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "fprisc_baseline": "d398f63",
+  "qos_source": "796198d",
+  "runtime": "baseline vs immutable byte table in runtime/runtime.c",
+  "profiling": "FPR_COST_PROBE=1; admission times instrumented, not production throughput",
+  "sessions": [
+    1,
+    10,
+    50,
+    100
+  ],
+  "harts": 4,
+  "heap_mb": 2048,
+  "client_acceptance": "All 100 sessions received Bump 989789 in every run",
+  "runs": [
+    {
+      "baseline": {
+        "binary_sha256": "eaa12d91af7abf906e39f5c5a286034e548ce1b883a066c2c968201f6ca127eb",
+        "snapshot": {
+          "alloc_requests": 1016465256,
+          "alloc_bytes": 66807821536,
+          "copies": 19918,
+          "copy_bytes": 297900880,
+          "message_slabs": 2895,
+          "arena_reserved_kib": 101888,
+          "grow_bytes": 67790283704,
+          "spawns": 211,
+          "stack_misses": 0,
+          "channel_carves": 27,
+          "peak_rss_kib": 939392,
+          "sessions": 100,
+          "admission_seconds": 5.17661
+        }
+      },
+      "pool": {
+        "binary_sha256": "45804d9d161abecfc1e06762f947f878f8b2652cb1534c2ff774cc835b0df9d5",
+        "snapshot": {
+          "alloc_requests": 672176371,
+          "alloc_bytes": 51501126512,
+          "copies": 21178,
+          "copy_bytes": 317927456,
+          "message_slabs": 3049,
+          "arena_reserved_kib": 101504,
+          "grow_bytes": 54280958088,
+          "spawns": 211,
+          "stack_misses": 0,
+          "channel_carves": 27,
+          "peak_rss_kib": 765792,
+          "sessions": 100,
+          "admission_seconds": 4.873997
+        }
+      }
+    },
+    {
+      "baseline": {
+        "binary_sha256": "eaa12d91af7abf906e39f5c5a286034e548ce1b883a066c2c968201f6ca127eb",
+        "snapshot": {
+          "alloc_requests": 993066515,
+          "alloc_bytes": 65270454832,
+          "copies": 19500,
+          "copy_bytes": 291098368,
+          "message_slabs": 2851,
+          "arena_reserved_kib": 101888,
+          "grow_bytes": 66235402360,
+          "spawns": 211,
+          "stack_misses": 0,
+          "channel_carves": 27,
+          "peak_rss_kib": 999312,
+          "sessions": 100,
+          "admission_seconds": 5.207528
+        }
+      },
+      "pool": {
+        "binary_sha256": "45804d9d161abecfc1e06762f947f878f8b2652cb1534c2ff774cc835b0df9d5",
+        "snapshot": {
+          "alloc_requests": 659329588,
+          "alloc_bytes": 50517177056,
+          "copies": 20796,
+          "copy_bytes": 311896960,
+          "message_slabs": 3008,
+          "arena_reserved_kib": 101376,
+          "grow_bytes": 53246686568,
+          "spawns": 211,
+          "stack_misses": 0,
+          "channel_carves": 27,
+          "peak_rss_kib": 735968,
+          "sessions": 100,
+          "admission_seconds": 4.806471
+        }
+      }
+    },
+    {
+      "baseline": {
+        "binary_sha256": "eaa12d91af7abf906e39f5c5a286034e548ce1b883a066c2c968201f6ca127eb",
+        "snapshot": {
+          "alloc_requests": 1043392318,
+          "alloc_bytes": 68577028976,
+          "copies": 20414,
+          "copy_bytes": 305716880,
+          "message_slabs": 2957,
+          "arena_reserved_kib": 102528,
+          "grow_bytes": 69581877088,
+          "spawns": 211,
+          "stack_misses": 0,
+          "channel_carves": 27,
+          "peak_rss_kib": 1029792,
+          "sessions": 100,
+          "admission_seconds": 5.55144
+        }
+      },
+      "pool": {
+        "binary_sha256": "45804d9d161abecfc1e06762f947f878f8b2652cb1534c2ff774cc835b0df9d5",
+        "snapshot": {
+          "alloc_requests": 626937940,
+          "alloc_bytes": 48036256496,
+          "copies": 19844,
+          "copy_bytes": 296682256,
+          "message_slabs": 2887,
+          "arena_reserved_kib": 102016,
+          "grow_bytes": 50636301216,
+          "spawns": 211,
+          "stack_misses": 0,
+          "channel_carves": 27,
+          "peak_rss_kib": 711392,
+          "sessions": 100,
+          "admission_seconds": 4.619989
+        }
+      }
+    }
+  ],
+  "summary": {
+    "alloc_requests": {
+      "baseline_median": 1016465256,
+      "pooled_median": 659329588,
+      "reduction_percent": 35.14
+    },
+    "alloc_bytes": {
+      "baseline_median": 66807821536,
+      "pooled_median": 50517177056,
+      "reduction_percent": 24.38
+    },
+    "peak_rss_kib": {
+      "baseline_median": 999312,
+      "pooled_median": 735968,
+      "reduction_percent": 26.35
+    },
+    "arena_reserved_kib": {
+      "baseline_median": 101888,
+      "pooled_median": 101504,
+      "reduction_percent": 0.38
+    },
+    "admission_seconds": {
+      "baseline_median": 5.207528,
+      "pooled_median": 4.806471,
+      "reduction_percent": 7.7
+    }
+  }
+}

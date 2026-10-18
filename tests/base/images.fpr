@@ -7,6 +7,7 @@
 Probe.makeImage : Int -> Int .
 Probe.str : Int -> String .
 Probe.fn : Int -> (Int -> Int) .
+Probe.byte : Int -> String .
 Probe.endImage : Int -> Int .
 Probe.padding : Int -> Int .
 
@@ -17,18 +18,27 @@ keeper self = case receive self of
 leaker self = case receive self of
   who -> send who (Probe.fn 0).
 
+byteKeeper self = case receive self of
+  (who, zero, last) ->
+    (case receive self of go -> send who
+      (strlen zero == 1 and charAt zero 0 == 0 and strlen last == 1 and charAt last 0 == 255)).
+
 main =
   me = myself 0;
   _ = Probe.makeImage 0;
   _ = if Probe.padding 0 == 1 then Unit else error "foreign constructor padding was not cleared";
   k = spawn keeper;
   _ = send k (me, Probe.str 0);
+  b = spawn byteKeeper;
+  _ = send b (me, Probe.byte 0, Probe.byte 1);
   l = spawn leaker;
   _ = send l me;
   r = receiveFromRes me l;
   _ = Probe.endImage 0;
   _ = send k 1;
   kept = receive me;
+  _ = send b 1;
+  _ = if receive me then Unit else error "foreign byte String did not outlive its image";
   verdict = case r of
       Err e -> "refused ({e})"
     | Ok f -> "NOT REFUSED";

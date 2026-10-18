@@ -1,0 +1,7 @@
+# QOS process-image fixture: the result points directly into chr's static
+# table. The receiving kernel must retain byte 255 after this image ends.
+unsafe program.
+verify n = if n == 256 then Unit else
+  if strlen (chr n) == 1 and charAt (chr n) 0 == n
+  then verify (n + 1) else error "byteproc: invalid byte".
+main = _ = verify 0; chr 255.

@@ -163,3 +163,5 @@ they began.
 - [Ownership through polymorphism and generic containers](2026-10-17-OWNERSHIP-POLYMORPHISM.md): type variables instantiated with the ownership they receive, body-derived "must be unrestricted" constraints to a fixpoint, generic constructors and patterns; VList.fold dropped its vector.
 
 - [Value semantics all the way through](2026-10-17-VALUE-SEMANTICS.md): there is no borrowing and will be none; owned values hand themselves back, services own resources, and sharing, Rc and in-place mutation are implementation that no program can observe.
+- [Runtime allocation: first measured reduction](2026-10-18-RUNTIME-ALLOCATION.md): session profiling, immutable byte Strings, paired allocation/RSS results, actor and process-image lifetime checks, and the remaining optimization priorities.
+- [CSS construction](2026-10-18-CSS-CONSTRUCTION.md): linear joins, prefix reuse, typed CSS without decoding lists, exact-output and browser checks, QOS Portable/RV64 validation and additional session allocation reductions.

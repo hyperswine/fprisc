@@ -1,0 +1,74 @@
+unsafe base.
+G = use "std/view".
+P = use "std/program".
+Cost.begin : Unit -> Unit .
+Cost.report : Unit -> String .
+name scope css = G.atomClass (G.Atom scope "test" css).
+classes n = if n == 0 then Nil else name 0 "width:{n}px" :: classes (n - 1).
+atoms n = if n == 0 then Nil else G.Atom 0 "width" "width:{n}px" :: atoms (n - 1).
+nodes n = if n == 0 then Nil else
+  G.El "button" [G.Att "id" "item-{n}",
+    G.utilities [G.Padding (G.Px 4), G.PaddingLeft (G.Px n), G.Width (G.Px n)],
+    G.narrow [G.Width (G.Px 40)], G.hover [G.Foreground (G.Rgb 12 34 56)],
+    G.focus [G.Foreground (G.Rgb 56 34 12)], G.disabled [G.Opacity 50]]
+    [G.Txt "item", G.Dyn (str n)] :: nodes (n - 1).
+tree = G.El "main" [G.Cls "card narrow:col bespoke {name 0 "width:99px"}", G.utilities [G.Width (G.Px 99)]]
+  (G.El "span" [G.LocalStyle "role" "" [G.Foreground (G.Rgb 1 2 3)]] [G.Txt "role"] :: nodes 64).
+fragment node = case G.render node of (ss, ds) -> G.Fragment ss ds (G.allClasses node Nil).
+parts Nil = Unit.
+parts (text :: rest) = _ = print "part {strlen text}"; _ = print text; parts rest.
+frame (ss, ds) = _ = print "statics"; _ = parts ss; _ = print "dynamics"; parts ds.
+prefixLoop n bad = if n == 0 then bad else
+  prefixLoop (n - 1) (bad + (if G.hasPrefix "fpr-u-0-" "fpr-u-0-6162" then 0 else 1)).
+main = case P.args Unit of
+    ["prefix-cost"] ->
+      _ = Cost.begin Unit;
+      bad = prefixLoop 1000 0;
+      stats = Cost.report Unit;
+      _ = print "prefix mismatches={bad}";
+      print stats
+  | ["stage-cost"] ->
+      cs = classes 256;
+      _ = Cost.begin Unit;
+      css = G.localStage 0 cs;
+      stats = Cost.report Unit;
+      _ = print "stage length={strlen css}";
+      print stats
+  | ["tree-cost"] ->
+      node = tree;
+      _ = Cost.begin Unit;
+      css = G.cssFor node;
+      stats = Cost.report Unit;
+      _ = print "tree CSS length={strlen css}";
+      print stats
+  | ["class-cost"] ->
+      input = atoms 256;
+      _ = Cost.begin Unit;
+      names = G.atomClasses input;
+      stats = Cost.report Unit;
+      _ = print "class names length={strlen names}";
+      print stats
+  | _ ->
+      _ = print (G.hasPrefix "" "", G.hasPrefix "" "a", G.hasPrefix "a" "a",
+        G.hasPrefix "ab" "a", G.hasPrefix "a" "ab", G.hasPrefix "ab" "acb",
+        G.hasPrefix (chr 0) (strcat (chr 0) (chr 255)));
+      cs = [name 0 "width:1px", "fpr-u-0-", "fpr-u-0-0", "fpr-u-0-gg", "fpr-u-7-6162",
+        name 2 "width:2px", name 1 "width:3px", name 3 "color:red", name 4 "color:blue",
+        name 5 "color:green", name 6 "height:4px", "fpr-u-0-636F6C6F723A726564",
+        name 0 "width:1px", "row", name 0 (strcat "byte:" (strcat (chr 0) (chr 255)))];
+      _ = print (G.localCss cs);
+      _ = print (G.cssFor (G.Fragment [""] Nil cs));
+      _ = print (G.localStage 0 Nil);
+      _ = print (G.atomClasses Nil);
+      _ = print (G.atomClasses [G.Atom 0 "x" "width:2px", G.Atom 5 "x" "opacity:0.5"]);
+      _ = print (G.localRule 12 "fpr-u-12-6162");
+      _ = frame (G.render tree);
+      _ = frame (G.renderStyled tree);
+      _ = print (G.cssFor tree);
+      _ = print (G.cssWith [G.Style "bespoke" [G.Height (G.Px 71)]] tree);
+      _ = frame (G.renderStyled (fragment tree));
+      _ = print (G.cssFor (G.El "section" Nil [fragment tree, tree]));
+      _ = print (G.cssFor (G.El "section" Nil [tree, fragment tree]));
+      _ = print (G.cssFor (G.Inp [G.utilities [G.Width (G.Px 9)], G.Cls (name 0 "width:9px")]));
+      _ = frame (G.renderStyled (G.El "section" Nil Nil));
+      print "view construction: complete".

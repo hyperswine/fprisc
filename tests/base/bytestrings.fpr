@@ -1,0 +1,31 @@
+# All bytes, including NUL and 255, through direct and generic calls, ordinary
+# string operations, encoders, and actor transfer/retention after sender death.
+Encoding = use "std/encoding".
+ByteProbe.validate : Unit -> Bool .
+ByteProbe.invalid : Unit -> String .
+via : (Int -> String) -> Int -> String .
+via f n = f n.
+bytes : unsafe Int -> String -> String .
+bytes n acc = if n < 0 then acc else bytes (n - 1) (strcat (chr n) acc).
+check : unsafe String -> Int -> Bool .
+check s n = if n == 256 then True else
+  charAt s n == n and substr s n 1 == via chr n and check s (n + 1).
+worker : unsafe Int -> Int -> Unit .
+worker me self = _ = send me (bytes 255 "", chr 0, chr 255); Unit.
+main = case Sys.args Unit of
+    "negative" :: _ -> print (chr (0 - 1))
+  | "overflow" :: _ -> print (chr 256)
+  | "type" :: _ -> print (ByteProbe.invalid Unit)
+  | _ ->
+    _ = if ByteProbe.validate Unit then Unit else error "chr allocated";
+    me = myself 0;
+    child = spawn (worker me);
+    message = receiveFrom me child;
+    (saved, zero, last) = keep message;
+    _ = receiveFromRes me child;
+    hexOK = case Encoding.fromHex (Encoding.hex saved) of Ok s -> s == saved | _ -> False;
+    b64OK = case Encoding.fromBase64 (Encoding.base64 saved) of Ok s -> s == saved | _ -> False;
+    if strlen saved == 256 and check saved 0 and hexOK and b64OK
+       and strlen zero == 1 and charAt zero 0 == 0 and charAt last 0 == 255
+    then print "byte Strings: 256 values, zero chr allocations, encodings and actor lifetime PASS"
+    else error "byte String mismatch".

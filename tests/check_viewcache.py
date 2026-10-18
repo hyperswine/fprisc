@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix='viewcache-') as directory:
     # Existing applications keep the original stateless Live.serve interface.
     stateless_source=tmp/'stateless.fpr'
     source=(ROOT/'examples/logbook.fpr').read_text()
-    call='Live.serveProjectedBody [G.utilities [G.Margin (G.Px 0)]] cfg (cachedApp (Program.envOr "0" "FPR_VIEW_VERIFY" == "1"))'
+    call='Live.serveProjectedBody UI.body cfg (cachedApp (Program.envOr "0" "FPR_VIEW_VERIFY" == "1"))'
     assert call in source
     stateless_source.write_text(source.replace(call,'Live.serve cfg app'))
     stateless=tmp/'stateless'
