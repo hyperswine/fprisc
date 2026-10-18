@@ -1,6 +1,6 @@
 -- Kinds of the raw-word callback ABI, solved independently for every argument
 -- and result. Conflicts/unsupported Core decline to the ordinary tagged path.
-module KernelKinds (Kind(..), signature) where
+module KernelKinds (Kind(..), signature, signatureStrict) where
 import FPRISC (Core(..), Prog)
 import Control.Monad.State.Strict
 import Control.Monad (guard, zipWithM_)
@@ -25,8 +25,8 @@ unify a b = do
     _ -> lift Nothing
 spine :: Core -> (Core,[Core])
 spine = go [] where go as (CApp f x) = go (x:as) f; go as f = (f,as)
-function :: Prog -> String -> K ([Term],Term)
-function prog f = do
+function :: Bool -> Prog -> String -> K ([Term],Term)
+function strict prog f = do
   Solve _ _ fs <- get
   case M.lookup f fs of
     Just sig -> pure sig
@@ -34,29 +34,30 @@ function prog f = do
       (ps,b) <- lift (M.lookup f prog)
       args <- mapM (const fresh) ps; result <- fresh
       modify (\(Solve i s tab) -> Solve i s (M.insert f (args,result) tab))
-      actual <- expr prog (M.fromList (zip ps args)) b
+      actual <- expr strict prog (M.fromList (zip ps args)) b
       unify result actual
       pure (args,result)
-expr :: Prog -> M.Map String Term -> Core -> K Term
-expr prog env e = case spine e of
+expr :: Bool -> Prog -> M.Map String Term -> Core -> K Term
+expr strict prog env e = case spine e of
   (CVar "f64frombits",[CInt _,CInt _]) -> pure (Known KD)
   (CVar "f32frombits",[CInt _]) -> pure (Known KS)
-  (CVar op,[a,b]) | Just (input,output) <- primitive op -> do
-    x <- expr prog env a; y <- expr prog env b
-    unify x (Known input); unify y (Known input); pure (Known output)
+  (CVar op,[a,b]) | M.notMember op prog, Just (input,output) <- primitive op -> do
+    x <- expr strict prog env a; y <- expr strict prog env b
+    if strict && op `elem` ["==","!="] then unify x y else unify x (Known input) >> unify y (Known input)
+    pure (Known output)
   (CVar f,as@(_:_)) | M.member f prog, M.notMember f env -> do
-    (ps,r) <- function prog f
+    (ps,r) <- function strict prog f
     guard (length ps == length as)
-    xs <- mapM (expr prog env) as; zipWithM_ unify ps xs; pure r
+    xs <- mapM (expr strict prog env) as; zipWithM_ unify ps xs; pure r
   _ -> case e of
     CVar n -> lift (M.lookup n env)
     CInt _ -> pure (Known KI)
     CMk 1 _ [] -> pure (Known KB)
-    CTagEq 1 _ x -> do t <- expr prog env x; unify t (Known KB); pure (Known KB)
-    CLet n a b -> do t <- expr prog env a; expr prog (M.insert n t env) b
+    CTagEq 1 _ x -> do t <- expr strict prog env x; unify t (Known KB); pure (Known KB)
+    CLet n a b -> do t <- expr strict prog env a; expr strict prog (M.insert n t env) b
     CIf c a b -> do
-      t <- expr prog env c; unify t (Known KB)
-      x <- expr prog env a; y <- expr prog env b; unify x y; pure x
+      t <- expr strict prog env c; unify t (Known KB)
+      x <- expr strict prog env a; y <- expr strict prog env b; unify x y; pure x
     CErr _ -> fresh
     _ -> lift Nothing
 primitive :: String -> Maybe (Kind,Kind)
@@ -72,6 +73,17 @@ signature prog ps body = evalStateT solve (Solve 0 M.empty M.empty)
   where
     solve = do
       args <- mapM (const fresh) ps
-      result <- expr prog (M.fromList (zip ps args)) body
+      result <- expr False prog (M.fromList (zip ps args)) body
       let kind t = do r <- resolve t; pure (case r of Known k -> k; Var _ -> KI)
+      ks <- mapM kind args; k <- kind result; pure (ks,k)
+
+-- Ordinary functions can be representation-polymorphic. Unlike a guarded
+-- vector column, an unconstrained parameter supplies no integer evidence.
+signatureStrict :: Prog -> [String] -> Core -> Maybe ([Kind],Kind)
+signatureStrict prog ps body = evalStateT solve (Solve 0 M.empty M.empty)
+  where
+    solve = do
+      args <- mapM (const fresh) ps
+      result <- expr True prog (M.fromList (zip ps args)) body
+      let kind t = resolve t >>= \r -> case r of Known k -> pure k; _ -> lift Nothing
       ks <- mapM kind args; k <- kind result; pure (ks,k)

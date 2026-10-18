@@ -8,7 +8,7 @@ import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Mono (specializeFunctions, qualifyAux)
 import Inline (inlineSmall, inlineWith, vecPeek)
 import ReceiveTurns (receiveTurns)
-import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, normArc)
+import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, normArc)
 import Data.Char (isAlphaNum, isAscii, ord)
 import Numeric (showHex)
 import qualified Data.ByteString as BS
@@ -417,6 +417,8 @@ compileWithInterface accepted = do
   envNoSimd <- (== Just "1") <$> lookupEnv "FPR_NO_VEC_SIMD"
   envNoFusion <- (== Just "1") <$> lookupEnv "FPR_NO_VEC_FUSE"
   envNoVecPeek <- (== Just "1") <$> lookupEnv "FPR_NO_VEC_PEEK"
+  envNoScalarWorkers <- (== Just "1") <$> lookupEnv "FPR_NO_SCALAR_WORKERS"
+  envNoFieldWorkers <- (== Just "1") <$> lookupEnv "FPR_NO_FIELD_WORKERS"
   envNoSpec <- (== Just "1") <$> lookupEnv "FPR_NO_SPEC"
   envNoReceiveTurns <- (== Just "1") <$> lookupEnv "FPR_NO_RECEIVE_TURNS"
   envReceiveNotes <- (== Just "1") <$> lookupEnv "FPR_RECEIVE_NOTES"
@@ -900,7 +902,7 @@ compileWithInterface accepted = do
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
           tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = not envNoFloatInline, tgtRegisters = not envNoRegisters, tgtSimd=oA64 opts && not envNoSimd, tgtFusion=not envNoFusion,
-                               tgtScalarFast = tgtName (oTarget opts) /= "rv32" || not envNoRv32Fast, tgtIndexedMemory = not envNoIndexed}
+                               tgtScalarFast = tgtName (oTarget opts) /= "rv32" || not envNoRv32Fast, tgtIndexedMemory = not envNoIndexed, tgtScalarWorkers = not envNoScalarWorkers, tgtFieldWorkers = not envNoFieldWorkers}
           a64 = oA64 opts
           a64mac = oA64Mac opts
           x64 = oX64 opts
@@ -939,7 +941,7 @@ compileWithInterface accepted = do
           -- unchanged imported unit. Cache that contract context as well as
           -- source/prelude/shape identity so another root cannot reuse raw calls.
           contractHash = hashAST [t | t@(TSig n _ _) <- tops, M.member n preTab]
-          tag = "g" ++ show codegenRev ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
+          tag = "g" ++ show codegenRev ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit

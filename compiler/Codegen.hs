@@ -45,13 +45,14 @@ import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, isJust)
 import Peephole (peepholeFor)
 import KernelKinds (Kind(..), signature)
+import Workers (workerize, internalWorker, scalarPrimitives)
 
 import FPRISC (Core (..), Prog, freeVars, occurs)
 
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 48 -- distinct I32 wrapping operators and portable numeric ABI
+codegenRev = 49 -- private scalar and two-field Base workers
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -74,14 +75,16 @@ data Target = Target
     tgtFloatInline :: Bool, -- F64 fast paths; false keeps the C primitives for differential checks
     tgtScalarFast :: Bool, -- differential old RV32 slot/primitive path
     tgtIndexedMemory :: Bool, -- fuse private manual Addr.add/access/release
+    tgtScalarWorkers :: Bool,
+    tgtFieldWorkers :: Bool,
     tgtHal :: M.Map String Int -- primitive name -> arity (builtin schemes and
                         -- foreign declarations): a saturated call to one is
                         -- a direct `call fpr_g_<name>_call<n>` (fpr.h FPR_FN)
   }
 
 rv64, rv32 :: Target
-rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True M.empty
-rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True M.empty
+rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True M.empty
+rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True M.empty
 
 -- the visibility directive for a unit-visible global: a library unit
 -- shares every name it did not qualify with '@hash' with the program it
@@ -267,7 +270,7 @@ externals ext prog = S.toList (S.fromList (concat [go (S.fromList ps) b [] | (_,
     -- `env` is a Set and the result an accumulator: a list env made every
     -- variable test cost the number of lets above it (a 16000-let body
     -- spent a quarter of its compile here)
-    prims = S.fromList corePrims
+    prims = S.fromList (corePrims ++ map fst scalarPrimitives)
     go env e acc = case e of
       CVar n
         | S.member n env || M.member n prog || M.member n ext || S.member n prims -> acc
@@ -368,12 +371,12 @@ floatLabel width bits = do
 
 emitProgram :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> Prog -> (String, [String])
 emitProgram tgt rvv spec exports ext exps prog0 =
-  let (prog, fnotes) = if tgtFusion tgt then fuseVecFix prog0 else (prog0,[]) -- fusion is tier-independent: fewer passes
-      -- win in the generic apply tier too; linearity makes the single
-      -- pass unobservable through the vector, and fusionSafe (below) makes
-      -- it unobservable through effects and failures
+  let -- Fusion precedes workers so callback analysis sees original bodies.
+      (fused, fnotes) = if tgtFusion tgt then fuseVecFix prog0 else (prog0,[])
+      enable = tgtW tgt == 8 && tgtFuel tgt && tgtScalarFast tgt && not (tgtArc tgt)
+      (prog,wnotes) = workerize (enable && tgtFieldWorkers tgt) (enable && tgtScalarWorkers tgt) fused
       (body, st) = runState (top prog) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes))
-   in (unlines body, reverse (cgVNotes st))
+   in (unlines (wnotes ++ body), reverse (cgVNotes st))
   where
     top prog = do
       -- specialization-decline scan: a Vec.map/filter/fold site whose
@@ -478,7 +481,7 @@ emitProgram tgt rvv spec exports ext exps prog0 =
     -- static PAP object per global with arity > 0: a "function value"
     -- is just this object's address (code ptr + arity + no args yet)
     objFor (n, (ps, _))
-      | null ps = []
+      | null ps || internalWorker n = []
       | otherwise =
           let m = mangle n
            in (if tgtArc tgt then ["    .section .rodata.fpr_obj_" ++ m ++ ",\"a\",@progbits"] else [])
@@ -1006,7 +1009,7 @@ data Pos = Tail | NonTail deriving (Eq)
 -- core prims the desugarer can emit, with their arities (the C symbols
 -- fpr_prim_fn_* are exported by runtime.c precisely for direct calls)
 primArities :: [(String, Int)]
-primArities =
+primArities = scalarPrimitives ++
   [ ("+", 2), ("-", 2), ("*", 2), ("/", 2),
     ("==", 2), ("!=", 2), ("<", 2), (">", 2), ("<=", 2), (">=", 2),
     ("strcat", 2), ("str", 1), ("error", 1),
@@ -1068,11 +1071,12 @@ data Inl
   | Guarded (String -> [String]) [String] -- checks (branch to the slow label) then the fast body
   | Cond [String] -- leaves t0 = 0/1
   | GuardedCond (String -> [String]) [String]
+  | ScalarChecked String (String -> [String]) [String]
 
 inlineTable :: Target -> M.Map String Inl
 inlineTable tgt =
   M.fromList $
-    [ -- Word: bare bits
+    scalarTable ++ [ -- Word: bare bits
       ("$arc.wordadd", Plain ["    add a0, a0, a1"]),
       ("$arc.wordsub", Plain ["    sub a0, a0, a1"]),
       ("$arc.wordand", Plain ["    and a0, a0, a1"]),
@@ -1161,6 +1165,29 @@ inlineTable tgt =
       ("F64.!=", floatCmp "feq" "ft0" "ft1" True)
     ]
   where
+    scalarTable =
+      [("$scalar.unbox",Plain ["    srai a0, a0, 1"]),
+       ("$scalar.box",Plain ["    slli a0, a0, 1", "    ori a0, a0, 1"]),
+       ("$scalar.isInt",Cond ["    andi t0, a0, 1"])] ++
+      [("$scalar."++op,Cond ls) | (op,ls)<-
+        [("==",["    xor t0, a0, a1","    seqz t0, t0"]),
+         ("!=",["    xor t0, a0, a1","    snez t0, t0"]),
+         ("<",["    slt t0, a0, a1"]),(">",["    slt t0, a1, a0"]),
+         ("<=",["    slt t0, a1, a0","    xori t0, t0, 1"]),
+         (">=",["    slt t0, a0, a1","    xori t0, t0, 1"])]] ++
+      [("$scalar."++op,ScalarChecked op (checks op) ["    mv a0, t0"]) | op<-["+","-","*","/"]]
+    fit slow = ["    slli t1, t0, 1", "    srai t1, t1, 1", "    bne t1, t0, "++slow]
+    checks "+" slow = ["    add t0, a0, a1"] ++ fit slow
+    checks "-" slow = ["    sub t0, a0, a1"] ++ fit slow
+    -- No host-word wrap is possible for +/-. Multiplication needs both
+    -- a product/divisor consistency check and the signed 63-bit bound.
+    checks "*" slow =
+      ["    mul t0, a0, a1", "    slli t1, a0, 33", "    srai t1, t1, 33", "    bne t1, a0, "++slow++"_wide",
+       "    slli t1, a1, 33", "    srai t1, t1, 33", "    bne t1, a1, "++slow++"_wide", "    j "++slow++"_fit",
+       slow++"_wide:", "    beqz a1, "++slow++"_fit", "    div t2, t0, a1", "    bne t2, a0, "++slow,
+       slow++"_fit:"] ++ fit slow
+    checks "/" slow = ["    beqz a1, "++slow, "    div t0, a0, a1"] ++ fit slow
+    checks _ _ = error "internal scalar operator"
     bits = tgtW tgt * 8
     signShift = show (bits - 1)
     mulShift = show (bits `div` 2 + 1)
@@ -1212,6 +1239,14 @@ inlineArc tgt h0
       Guarded checks fast -> \t -> guarded t checks fast
       Cond c -> const (bool c)
       GuardedCond checks c -> \t -> guarded t checks =<< bool c
+      ScalarChecked op checks fast -> const $ do
+        slow <- freshL "scalarSlow"; done <- freshL "scalarDone"
+        -- Re-enter the original primitive with original operands so overflow
+        -- and zero-division diagnostics and failure order stay identical.
+        pure (checks slow ++ fast ++ ["    j "++done, slow++":",
+          "    slli a0, a0, 1", "    ori a0, a0, 1",
+          "    slli a1, a1, 1", "    ori a1, a1, 1",
+          "    call fpr_prim_fn_"++mangle op, "    srai a0, a0, 1", done++":"])
     -- t0 nonzero -> fpr_true, else fpr_false
     bool cond = do
       lt <- freshL "true"
@@ -1297,6 +1332,9 @@ genT tgt spec prog ext = go
         (CVar "f64frombits", args) <- spineOf e,
         Just "fpr_prim_fn_f64frombits" <- known env "f64frombits" (length args),
         Just bits <- floatLitBits e = pure ["    li a0, " ++ show bits]
+    -- Raw worker literals need no tagged temporary or runtime conversion.
+    go _ _ _ (CApp (CVar "$scalar.unbox") (CInt n))
+      | w == 8, tgtScalarFast tgt = pure ["    li a0, " ++ show n]
     -- a raw primitive adapter ($arc.wordadd, $arc.memreadWord, tagged
     -- Int arithmetic ...) with an inline expansion: stage the args
     -- exactly as a call would, then emit the instructions in place of

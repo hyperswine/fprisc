@@ -1,0 +1,80 @@
+unsafe base.
+Cost.begin : Unit -> Unit .
+Cost.report : Unit -> String .
+WorkerProbe.badInt : Unit -> Bool .
+WorkerProbe.badPair : Unit -> Int .
+WorkerProbe.arithmetic : Unit -> Bool .
+WorkerProbe.boolean : Unit -> Bool .
+scalar : unsafe Int -> Int -> Int .
+scalar n acc = if n == 0 then acc else scalar (n - 1) (acc + n).
+pairLoop : unsafe Int -> (Int, Int) -> (Int, Int) .
+pairLoop n (a,b) = if n == 0 then (a,b) else pairLoop (n - 1) (a + n,b + 1).
+pairSum : unsafe Int -> (Int, Int) -> Int .
+pairSum n (a,b) = if n == 0 then a + b else pairSum (n - 1) (a + n,b + 1).
+managedLoop : unsafe Int -> (String, String) -> (String, String) .
+managedLoop n (a,b) = if n == 0 then (a,b) else managedLoop (n - 1) (b,a).
+nonTail : unsafe Int -> Int .
+nonTail n = if n == 0 then 0 else 1 + nonTail (n - 1).
+boolEq : unsafe Int -> Bool -> Bool -> Bool .
+boolEq n a b = if n == 0 then (if a then a == b else False) else boolEq (n - 1) a b.
+recordLoop : unsafe Int -> {sum : Int, count : Int} -> {sum : Int, count : Int} .
+recordLoop n {sum, count} = if n == 0 then {sum = sum, count = count}
+  else recordLoop (n - 1) {sum = sum + n, count = count + 1}.
+# Retaining a whole accumulator at return stays on the general path.
+escapeLoop : unsafe Int -> (Int, Int) -> (Int, Int) .
+escapeLoop n pair = if n == 0 then pair else case pair of
+  (a,b) -> escapeLoop (n - 1) (a + n,b + 1).
+poly x = x.
+polyEq : unsafe Int -> a -> a -> Bool .
+polyEq n a b = if n == 0 then a == b else polyEq (n - 1) a b.
+apply2 f x y = f x y.
+evenN : unsafe Int -> Bool .
+evenN n = if n == 0 then True else oddN (n - 1).
+oddN : unsafe Int -> Bool .
+oddN n = if n == 0 then False else evenN (n - 1).
+calc : unsafe Int -> Int -> Int -> Int .
+calc mode a b = if mode == 4 then calc 3 a b else
+  if mode == 0 then a + b else if mode == 1 then a - b else if mode == 2 then a * b else a / b.
+calcRef mode a b = if mode == 0 then a + b else if mode == 1 then a - b else if mode == 2 then a * b else a / b.
+effects : unsafe Int -> (Int, Int) -> Int -> Int .
+effects n (a,b) later = if n == 0 then a + b + later else effects (n - 1) (a + 1,b + 1) later.
+first = _ = print "first"; 10.
+second = _ = print "second"; 20.
+later = _ = print "later"; 30.
+latePanic = _ = print "WRONG"; 0.
+actor parent self = _ = send parent (scalar 100 0, pairSum 100 (0,0)); Unit.
+main = case Sys.args Unit of
+    ["stack"] -> print (nonTail 10000)
+  | ["managed"] ->
+      (a,b) = apply2 managedLoop 10001 ("alpha" + "beta","gamma" + "delta");
+      print "{a} {b}"
+  | ["scalar-cost"] ->
+      _ = Cost.begin Unit; value = scalar 10000 0; stats = Cost.report Unit;
+      _ = print "scalar {value}"; print stats
+  | ["pair-cost"] ->
+      _ = Cost.begin Unit; pair = pairLoop 10000 (0,0); stats = Cost.report Unit;
+      (a,b) = pair; _ = print "pair {a} {b}"; print stats
+  | ["combined-cost"] ->
+      _ = Cost.begin Unit; value = pairSum 10000 (0,0); stats = Cost.report Unit;
+      _ = print "combined {value}"; print stats
+  | ["record-cost"] ->
+      _ = Cost.begin Unit; r = recordLoop 10000 {sum = 0, count = 0}; stats = Cost.report Unit;
+      _ = print "record {r.sum} {r.count}"; print stats
+  | ["add-overflow"] -> print (calc 0 4611686018427387903 1)
+  | ["sub-overflow"] -> print (calc 1 (0 - 4611686018427387903 - 1) 1)
+  | ["mul-overflow"] -> print (calc 2 1099511627776 1099511627776)
+  | ["div-overflow"] -> print (calc 3 (0 - 4611686018427387903 - 1) (0 - 1))
+  | ["division-zero"] -> print (calc 3 7 0)
+  | ["field-panic"] -> print (effects 10 (error "field panic",second) latePanic)
+  | ["bad-int"] -> print (WorkerProbe.badInt Unit)
+  | ["arithmetic"] -> print (WorkerProbe.arithmetic Unit)
+  | ["boolean"] -> print (WorkerProbe.boolean Unit)
+  | ["bad-pair"] -> print (WorkerProbe.badPair Unit)
+  | _ ->
+      (a,b) = apply2 pairLoop 10 (0,0);
+      (c,d) = escapeLoop 10 (0,0);
+      me = myself 0; child = spawn (actor me); msg = receiveFrom me child; saved = keep msg;
+      _ = print "scalar {apply2 scalar 100 0}; pair {a} {b}; escaped {c} {d}; actor {saved}";
+      _ = print "poly {poly "kept"} {poly 7} {polyEq 3 "same" "same"}; parity {evenN 100} {oddN 100}";
+      _ = print "bounds {calc 2 4611686018427387903 1} {calc 2 0 (0 - 4611686018427387903 - 1)} {calc 3 (0 - 7) 2}";
+      print (effects 3 (first,second) later).

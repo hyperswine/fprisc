@@ -1,0 +1,723 @@
+{
+  "date": "2026-10-18",
+  "base_commit": "66b79999328387c66f253a5be522ba748bd48ebe",
+  "codegen": 49,
+  "status": "uncommitted isolated worktree; no QOS repin/deployment",
+  "source_sha256": {
+    "compiler/Workers.hs": "998e9349b7c9e527612b59fda42143048ff1cfba6158b31af83863cfc9a6221c",
+    "compiler/KernelKinds.hs": "4ebf7aa1ae3f0cecfc97fdd865769f9f751f068b97cdef186c4d5c673a0cb48f",
+    "compiler/Codegen.hs": "1e52a5afc1181908e6b7294da359e1139dd8d51af33292cbe39700a81d85b521",
+    "compiler/Compile.hs": "21d74d9cad64d45c14408e908abe42fa9ac956df95ed57b5158b08b334163e48",
+    "compiler/Build.hs": "91dc59970c4955d157f74352ff0380674f29ca7297d9e4d980842fe058a4b2f3",
+    "fp-risc.cabal": "6078790d32574750cf2bfd9bc5395dbd75970774b9d2b0993a7e09ccf84ced23",
+    "tests/check_workers.py": "19e84328779fe537389ee98940851c93ef6a4a5ca28331cf3202fa937215a190",
+    "tests/Workers.hs": "2d143e4968fbac33fe186bb31dc6b7776101c34b40b056426be89bfccebd4b16",
+    "tests/base/workers.fpr": "61f74c8c23251cb2f22b24d639dd536d509c517c99ab5e8a238d9004a4d7e02d",
+    "tests/base/workers_probe.c": "b4aff38e3ace6a1b4b3ea0be79883848a36e5a9aa2095e4778b5038c42c3099e",
+    "tests/bench/workers.fpr": "5849beb7c7c223048b703bc3c189d759fbf380626ca38c9e277a3e79a14b60df",
+    "tests/bench/workers_clock.c": "3957ea26e997275bb80ab8550ed9a9c8cdfc1d76b8e65bacafdfa450d76bde5b",
+    "tests/bench/measure_workers.py": "cd428aeeae4bf560387a75d0fd4384f3df2c680c4085078c6970add58deb2762"
+  },
+  "native_acceptance": {
+    "allocations": {
+      "0:0:0:combined-cost": {
+        "alloc_bytes": 0,
+        "alloc_requests": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:0:0:pair-cost": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:0:0:record-cost": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:0:0:scalar-cost": {
+        "alloc_bytes": 0,
+        "alloc_requests": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:0:1:combined-cost": {
+        "alloc_bytes": 0,
+        "alloc_requests": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:0:1:pair-cost": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:0:1:record-cost": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:0:1:scalar-cost": {
+        "alloc_bytes": 0,
+        "alloc_requests": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:1:0:combined-cost": {
+        "alloc_bytes": 480048,
+        "alloc_requests": 10001,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:1:0:pair-cost": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:1:0:record-cost": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:1:0:scalar-cost": {
+        "alloc_bytes": 0,
+        "alloc_requests": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:1:1:combined-cost": {
+        "alloc_bytes": 480048,
+        "alloc_requests": 10001,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:1:1:pair-cost": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:1:1:record-cost": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "0:1:1:scalar-cost": {
+        "alloc_bytes": 0,
+        "alloc_requests": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:0:0:combined-cost": {
+        "alloc_bytes": 0,
+        "alloc_requests": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:0:0:pair-cost": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:0:0:record-cost": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:0:0:scalar-cost": {
+        "alloc_bytes": 0,
+        "alloc_requests": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:0:1:combined-cost": {
+        "alloc_bytes": 0,
+        "alloc_requests": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:0:1:pair-cost": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:0:1:record-cost": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:0:1:scalar-cost": {
+        "alloc_bytes": 0,
+        "alloc_requests": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:1:0:combined-cost": {
+        "alloc_bytes": 480048,
+        "alloc_requests": 10001,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:1:0:pair-cost": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:1:0:record-cost": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:1:0:scalar-cost": {
+        "alloc_bytes": 0,
+        "alloc_requests": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:1:1:combined-cost": {
+        "alloc_bytes": 480048,
+        "alloc_requests": 10001,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:1:1:pair-cost": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:1:1:record-cost": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      },
+      "1:1:1:scalar-cost": {
+        "alloc_bytes": 0,
+        "alloc_requests": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0
+      }
+    },
+    "panic_reasons": {
+      "add-overflow": "Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+      "bad-pair": "no matching clause for pairSum",
+      "div-overflow": "Int overflow: -4611686018427387904 / -1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+      "division-zero": "division by zero",
+      "field-panic": "field panic",
+      "mul-overflow": "Int overflow: 1099511627776 * 1099511627776 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+      "sub-overflow": "Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps"
+    }
+  },
+  "native_benchmark": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "iterations": 1000000,
+    "samples_ns": {
+      "scalar:off": [
+        4313000,
+        4884000,
+        3711000,
+        3178000,
+        2816000,
+        2725000,
+        2608000
+      ],
+      "scalar:on": [
+        5146000,
+        3631000,
+        2925000,
+        2569000,
+        2370000,
+        2290000,
+        2139000
+      ],
+      "pair:off": [
+        6990000,
+        7009000,
+        7124000,
+        7058000,
+        7044000,
+        7013000,
+        7112000
+      ],
+      "pair:on": [
+        2336000,
+        2302000,
+        2355000,
+        2313000,
+        2313000,
+        2297000,
+        2346000
+      ],
+      "combined:off": [
+        7102000,
+        7071000,
+        7439000,
+        7025000,
+        7041000,
+        7030000,
+        7289000
+      ],
+      "combined:on": [
+        2247000,
+        2341000,
+        2489000,
+        2318000,
+        2242000,
+        2247000,
+        2312000
+      ],
+      "record:off": [
+        6962000,
+        7140000,
+        7041000,
+        7467000,
+        7017000,
+        6991000,
+        7182000
+      ],
+      "record:on": [
+        2378000,
+        2431000,
+        2317000,
+        2338000,
+        2349000,
+        2332000,
+        2317000
+      ]
+    },
+    "medians_ns": {
+      "scalar:off": 3178000,
+      "scalar:on": 2569000,
+      "pair:off": 7044000,
+      "pair:on": 2313000,
+      "combined:off": 7071000,
+      "combined:on": 2312000,
+      "record:off": 7041000,
+      "record:on": 2338000
+    },
+    "binary_bytes": {
+      "off": 447352,
+      "on": 464216
+    },
+    "assembly": {
+      "off": {
+        "root_bytes": 49407,
+        "linked_bytes": 486548,
+        "workers": [
+          "# private workers: fields=0 scalar=0"
+        ]
+      },
+      "on": {
+        "root_bytes": 60903,
+        "linked_bytes": 498044,
+        "workers": [
+          "# private workers: fields=3 scalar=2"
+        ]
+      }
+    }
+  },
+  "physical_boards": {
+    "pi": {
+      "before": "aarch64\n337285.21 1197324.44\n",
+      "after": "337317.31 1197429.39\n",
+      "sha256": {
+        "probe-off": "d25985ab81595440c67e50c4c9f8660c7943727f13d9c6a1506c6af1731adedc",
+        "probe-on": "81da57786248461e81d5c72936e0efb804ad089a27c8b365efb36f4e77e0aad7",
+        "bench-off": "abb42e4ba704277c8437051dd62451c33907b237cd5e0885d59d6032487e3bac",
+        "bench-on": "6330213d570d32ca8f8eac8d70dd521cb33e02703ca716d9f67b137974f570fb"
+      },
+      "costs": {
+        "off:scalar-cost": {
+          "alloc_requests": 0,
+          "alloc_bytes": 0,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        },
+        "off:pair-cost": {
+          "alloc_requests": 10002,
+          "alloc_bytes": 480096,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        },
+        "off:combined-cost": {
+          "alloc_requests": 10001,
+          "alloc_bytes": 480048,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        },
+        "off:record-cost": {
+          "alloc_requests": 10002,
+          "alloc_bytes": 480096,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        },
+        "on:scalar-cost": {
+          "alloc_requests": 0,
+          "alloc_bytes": 0,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        },
+        "on:pair-cost": {
+          "alloc_requests": 1,
+          "alloc_bytes": 48,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        },
+        "on:combined-cost": {
+          "alloc_requests": 0,
+          "alloc_bytes": 0,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        },
+        "on:record-cost": {
+          "alloc_requests": 1,
+          "alloc_bytes": 48,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        }
+      },
+      "panic_reasons": {
+        "add-overflow": "Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "sub-overflow": "Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "mul-overflow": "Int overflow: 1099511627776 * 1099511627776 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "div-overflow": "Int overflow: -4611686018427387904 / -1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "division-zero": "division by zero",
+        "field-panic": "field panic",
+        "bad-pair": "no matching clause for pairSum"
+      },
+      "timings_ns": {
+        "scalar:off": [
+          37760055,
+          37393241,
+          37402111,
+          38292555,
+          37391870
+        ],
+        "scalar:on": [
+          32501481,
+          32359667,
+          32588204,
+          32621203,
+          32393834
+        ],
+        "pair:off": [
+          262678759,
+          262127111,
+          261031056,
+          261575314,
+          261318408
+        ],
+        "pair:on": [
+          48824666,
+          48266833,
+          48633352,
+          48420537,
+          48521296
+        ],
+        "combined:off": [
+          263143944,
+          262090425,
+          259778037,
+          260206240,
+          259747297
+        ],
+        "combined:on": [
+          43661833,
+          42913166,
+          42176130,
+          42039389,
+          42216574
+        ],
+        "record:off": [
+          255492963,
+          255140537,
+          255264982,
+          254728667,
+          255048963
+        ],
+        "record:on": [
+          49029129,
+          49152593,
+          49163871,
+          49389703,
+          49048296
+        ]
+      },
+      "medians_ns": {
+        "scalar:off": 37402111,
+        "scalar:on": 32501481,
+        "pair:off": 261575314,
+        "pair:on": 48521296,
+        "combined:off": 260206240,
+        "combined:on": 42216574,
+        "record:off": 255140537,
+        "record:on": 49152593
+      }
+    },
+    "star64": {
+      "before": "riscv64\n221399.24 821636.65\n",
+      "after": "221429.64 821735.78\n",
+      "sha256": {
+        "probe-off": "17b76a0716fbbdfd4dfb904b428e52f713e86cd490ef31c970338907f15e434a",
+        "probe-on": "0b7a79c1efd76075dd71c85c8f2fe93ec02c611c2ceeaa3f2c715548028c92bd",
+        "bench-off": "3c9a7a8cda94b5ffe7405409ba836d76e51cce32f0f99492e20e3d64640d75d6",
+        "bench-on": "27432b845f8118752fc33e72f46ecaa0bfb1453c77aea01d5701717837fbb94f"
+      },
+      "costs": {
+        "off:scalar-cost": {
+          "alloc_requests": 0,
+          "alloc_bytes": 0,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        },
+        "off:pair-cost": {
+          "alloc_requests": 10002,
+          "alloc_bytes": 480096,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        },
+        "off:combined-cost": {
+          "alloc_requests": 10001,
+          "alloc_bytes": 480048,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        },
+        "off:record-cost": {
+          "alloc_requests": 10002,
+          "alloc_bytes": 480096,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        },
+        "on:scalar-cost": {
+          "alloc_requests": 0,
+          "alloc_bytes": 0,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        },
+        "on:pair-cost": {
+          "alloc_requests": 1,
+          "alloc_bytes": 48,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        },
+        "on:combined-cost": {
+          "alloc_requests": 0,
+          "alloc_bytes": 0,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        },
+        "on:record-cost": {
+          "alloc_requests": 1,
+          "alloc_bytes": 48,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0
+        }
+      },
+      "panic_reasons": {
+        "add-overflow": "Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "sub-overflow": "Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "mul-overflow": "Int overflow: 1099511627776 * 1099511627776 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "div-overflow": "Int overflow: -4611686018427387904 / -1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps",
+        "division-zero": "division by zero",
+        "field-panic": "field panic",
+        "bad-pair": "no matching clause for pairSum"
+      },
+      "timings_ns": {
+        "scalar:off": [
+          39070250,
+          26741500,
+          26837500,
+          26497750,
+          27013000
+        ],
+        "scalar:on": [
+          27911250,
+          27535500,
+          27586000,
+          27140250,
+          40771000
+        ],
+        "pair:off": [
+          190550750,
+          180175250,
+          179392250,
+          177775500,
+          177820250
+        ],
+        "pair:on": [
+          33825750,
+          33872750,
+          33722000,
+          33752000,
+          33734500
+        ],
+        "combined:off": [
+          178362500,
+          177527750,
+          176331500,
+          178202000,
+          176517750
+        ],
+        "combined:on": [
+          35101250,
+          35082750,
+          35070000,
+          35086500,
+          35076250
+        ],
+        "record:off": [
+          177431000,
+          177317750,
+          205889750,
+          182118750,
+          182275250
+        ],
+        "record:on": [
+          33693250,
+          45839250,
+          34615750,
+          34565750,
+          34322500
+        ]
+      },
+      "medians_ns": {
+        "scalar:off": 26837500,
+        "scalar:on": 27586000,
+        "pair:off": 179392250,
+        "pair:on": 33752000,
+        "combined:off": 177527750,
+        "combined:on": 35082750,
+        "record:off": 182118750,
+        "record:on": 34565750
+      }
+    }
+  },
+  "focused_regressions": {
+    "check_specialization": {
+      "status": "PASS",
+      "output": "Specialization Core: recursive groups, shadowing, dynamic callbacks, imported lifts, bounded growth: PASS\nSpecialization: native/Sol differential + warm mode caches, effects/panics, 64,000 -> 0 callback bytes, RV64/RV32/A64/x64 emission: PASS"
+    },
+    "check_registers": {
+      "status": "PASS",
+      "output": "x64 register-heavy body: 285 independent C-reference cases: PASS\nRegisters: differential fixtures, warm-cache mode separation and three-backend emission: PASS"
+    },
+    "check_float_inline": {
+      "status": "PASS",
+      "output": "F64: C-reference agreement on 400 edge-case pairs, fast paths and inliner independently on/off: PASS\nx64 F64: 0 mismatches over 1280 pairs: PASS"
+    },
+    "check_vector_kinds": {
+      "status": "PASS",
+      "output": "Vector kinds: float captures, mixed record fold, captured map/map and filter/filter, strict order and 100 SIMD tails PASS\nA64 NEON execution: native host and C IEEE reference PASS"
+    },
+    "check_vector_limits": {
+      "status": "PASS",
+      "output": "Vector limits: generic/imported/recursive layouts, nested float records and copies, captured/wide folds, direct type-changing map and ordered failure; 64-bit layouts and RV32 integer fold emission PASS"
+    },
+    "check_x64_vectors": {
+      "status": "PASS",
+      "output": "x64 kernels: 100 scalar map/filter/fold lengths, nine-column map/filter, captured wide fold and clobbering calls PASS"
+    },
+    "check_byte_strings": {
+      "status": "PASS",
+      "output": "Byte Strings: all values, zero allocations, actor lifetime and refusals (1 workers) PASS\nForeign image: byte Strings survive poisoning/unload (1 workers) PASS\nByte Strings: all values, zero allocations, actor lifetime and refusals (4 workers) PASS\nForeign image: byte Strings survive poisoning/unload (4 workers) PASS"
+    },
+    "check_view_construction": {
+      "status": "PASS",
+      "output": "View construction: byte-identical CSS, classes, render frames and cached fragments (1 workers) PASS; bytes=125308 sha256=9119d98d67cab660377e5ac554473a30a10620a7866d326b907a600958e799cd\nView construction: byte-identical CSS, classes, render frames and cached fragments (4 workers) PASS; bytes=125308 sha256=9119d98d67cab660377e5ac554473a30a10620a7866d326b907a600958e799cd\nprefix-cost: {\"baseline\": {\"alloc_bytes\": 48000, \"alloc_requests\": 1000, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0}, \"candidate\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0}}\nstage-cost: {\"baseline\": {\"alloc_bytes\": 1841904, \"alloc_requests\": 8488, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0}, \"candidate\": {\"alloc_bytes\": 394224, \"alloc_requests\": 7468, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0}}\nclass-cost: {\"baseline\": {\"alloc_bytes\": 2290240, \"alloc_requests\": 7206, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0}, \"candidate\": {\"alloc_bytes\": 349648, \"alloc_requests\": 6953, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0}}\ntree-cost: {\"baseline\": {\"alloc_bytes\": 2470064, \"alloc_requests\": 39834, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0}, \"candidate\": {\"alloc_bytes\": 1581488, \"alloc_requests\": 31607, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0}}"
+    },
+    "check_posix_modules": {
+      "status": "PASS",
+      "output": "POSIX real modules: one/four harts, scoped swap/refusals/old functions/clock PASS\nPOSIX live MVU: real module replacement/refusal/state/render/pacing on one/four harts PASS"
+    },
+    "check_higher_order_contracts": {
+      "status": "PASS",
+      "output": "Higher-order contracts: native + Sol aliases, callbacks, records, returns, partials, guards, imports, order, rollback and linear ownership HOLD; direct budgets prove and checked costs remain visible"
+    },
+    "check_contract_rewrites": {
+      "status": "PASS",
+      "output": "Contract rewrites: selected operators, guards and imported unit calls retain contracts in native/Sol; native cache context is isolated; direct budgets still prove"
+    },
+    "check_structural_ownership": {
+      "status": "PASS",
+      "output": "record-duplicate-owned-field: refused by native and Sol\nrecord-literal-double: refused by native and Sol\nrecord-projection-double: refused by native and Sol\nrecord-pattern-double: refused by native and Sol\nrecord-update-stale: refused by native and Sol\nrecord-alias-double: refused by native and Sol\nrecord-projection-residual: refused by native and Sol\nrecord-nested-projection-residual: refused by native and Sol\nrecord-pattern-residual: refused by native and Sol\nrecord-update-overwrite-owner: refused by native and Sol\nrecord-nested-update-overwrite-owner: refused by native and Sol\nrecord-metadata-loses-owner: refused by native and Sol\nrecord-open-row-residual: refused by native and Sol\nrecord-inferred-return-double: refused by native and Sol\ncase-result-closure-double: refused by native and Sol\nguard-created-owner-double: refused by native and Sol\nguard-created-owner-lost: refused by native and Sol\nguard-created-owner-fallthrough: refused by native and Sol\nrecord-one-owner-projection: single-use result agrees in native and Sol\nrecord-complete-two-owner-pattern: single-use result agrees in native and Sol\nrecord-metadata-update-transfer: single-use result agrees in native and Sol\nrecord-alias-once: single-use result agrees in native and Sol\nrecord-pattern-ignores-metadata: single-use result agrees in native and Sol\nrecord-nested-single-owner: single-use result agrees in native and Sol\nrecord-nested-projection-path: single-use result agrees in native and Sol\nrecord-nested-metadata-update: single-use result agrees in native and Sol\nrecord-inferred-return-once: single-use result agrees in native and Sol\nguard-created-owner-once: single-use result agrees in native and Sol\ncase-result-linear-closure-once: single-use result agrees in native and Sol\n29 structural/control-flow ownership cases PASS"
+    },
+    "check_cost": {
+      "status": "PASS",
+      "output": "Cost: measured, structural and mutual recursion close to (measure/step + 1)\u00b7body; `work f` is a variable until the argument is supplied; an unmeasured helper is \u03c9(name) under `opaque`; a declared bound is PROVEN, OVER naming the coefficient, or UNPROVED naming the \u03c9, callers compose on the declaration; a manifest prices ops and print, binds omega, and judges main against its budget (PROVEN 2.98 \u00b5s \u2264 5 \u00b5s, OVER against 1 \u00b5s); live is alloc, credited inside an arena, and a loopWith reports one step; todo.fpr reports in 34.3s: PASS"
+    }
+  },
+  "scope_notes": [
+    "Focused regression suites ran before the final Bool-entry normalization; the complete worker matrix and physical checks ran again after it.",
+    "x64 worker emission only; existing x64 vector/register paths executed separately.",
+    "Complete Base suite and end-to-end QOS performance not run.",
+    "Board benchmarks include ordinary background workloads.",
+    "A final Builtin-profile exclusion was added after physical testing; native Base emission used by the board probes is unchanged. The local complete worker suite was rerun including the Builtin exclusion."
+  ],
+  "final_qos_executables": {
+    "pi": "",
+    "star64": ""
+  }
+}

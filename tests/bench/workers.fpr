@@ -1,0 +1,26 @@
+unsafe base.
+Bench.start : Unit -> Unit .
+Bench.elapsed : Unit -> Int .
+scalar : unsafe Int -> Int -> Int .
+scalar n acc = if n == 0 then acc else scalar (n - 1) (acc + n).
+pairLoop : unsafe Int -> (Int, Int) -> (Int, Int) .
+pairLoop n (a,b) = if n == 0 then (a,b) else pairLoop (n - 1) (a + n,b + 1).
+pairSum : unsafe Int -> (Int, Int) -> Int .
+pairSum n (a,b) = if n == 0 then a + b else pairSum (n - 1) (a + n,b + 1).
+recordLoop : unsafe Int -> {sum : Int, count : Int} -> {sum : Int, count : Int} .
+recordLoop n {sum, count} = if n == 0 then {sum = sum, count = count}
+  else recordLoop (n - 1) {sum = sum + n, count = count + 1}.
+main = case Sys.args Unit of
+    ["scalar"] ->
+      _ = Bench.start Unit; v = scalar 1000000 0; ns = Bench.elapsed Unit;
+      print "{v} {ns}"
+  | ["pair"] ->
+      _ = Bench.start Unit; (a,b) = pairLoop 1000000 (0,0); ns = Bench.elapsed Unit;
+      print "{a + b} {ns}"
+  | ["combined"] ->
+      _ = Bench.start Unit; v = pairSum 1000000 (0,0); ns = Bench.elapsed Unit;
+      print "{v} {ns}"
+  | ["record"] ->
+      _ = Bench.start Unit; r = recordLoop 1000000 {sum = 0, count = 0}; ns = Bench.elapsed Unit;
+      print "{r.sum + r.count} {ns}"
+  | _ -> print "choose scalar, pair, combined or record".

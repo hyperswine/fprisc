@@ -36,6 +36,7 @@ executable fpr
       Interrupt
       Codegen
       KernelKinds
+      Workers
       Commit
       Compile
       FPRISC

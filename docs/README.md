@@ -165,3 +165,5 @@ they began.
 - [Value semantics all the way through](2026-10-17-VALUE-SEMANTICS.md): there is no borrowing and will be none; owned values hand themselves back, services own resources, and sharing, Rc and in-place mutation are implementation that no program can observe.
 - [Runtime allocation: first measured reduction](2026-10-18-RUNTIME-ALLOCATION.md): session profiling, immutable byte Strings, paired allocation/RSS results, actor and process-image lifetime checks, and the remaining optimization priorities.
 - [CSS construction](2026-10-18-CSS-CONSTRUCTION.md): linear joins, prefix reuse, typed CSS without decoding lists, exact-output and browser checks, QOS Portable/RV64 validation and additional session allocation reductions.
+
+- [Private workers](2026-10-18-PRIVATE-WORKERS.md): checked raw Int call chains and split two-field accumulators, stable public entries, allocation ratchets, physical Pi/STAR64 timings and remaining convention limits.
