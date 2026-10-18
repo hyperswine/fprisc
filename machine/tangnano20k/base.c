@@ -1,4 +1,4 @@
-/* Single-core Base host for SimpleRisc RV64IM. UART services are explicit RPCs.
+/* Single-core Base host for SimpleRisc RV32IM/RV64IM. UART services are explicit RPCs.
  * Supported services return values/errors; unavailable actor/device facilities
  * trap through named stubs. The host driver supplies a rooted file device.
  */
@@ -12,7 +12,17 @@ extern V fpr_fn_main(void);
 #define UART ((volatile uint32_t *)0x10000000)
 #define MAX_REPLY (1024*1024)
 static uint32_t sequence;
+#ifdef FPR_TANGNANO_QEMU
+/* QEMU's virt UART is a 16550; the FPGA has a word-register UART. The
+ * transport protocol, heap, startup and runtime are identical in this probe. */
+static int rx_ready(void){return ((volatile uint8_t *)UART)[5]&1;}
+static unsigned rx_byte(void){return ((volatile uint8_t *)UART)[0];}
+void hal_putc(char c){while(!(((volatile uint8_t *)UART)[5]&0x20)){}((volatile uint8_t *)UART)[0]=(uint8_t)c;}
+#else
+static int rx_ready(void){return UART[1]&2;}
+static unsigned rx_byte(void){return UART[2]&255;}
 void hal_putc(char c){while(!(UART[1]&1)){}UART[0]=(uint8_t)c;}
+#endif
 static void raw(const char *s){while(*s)hal_putc(*s++);}
 __attribute__((noreturn)) void hal_poweroff(int code){raw(code?"FPR EXIT 1\n":"FPR EXIT 0\n");*(volatile uint32_t *)0x100000=code?0x13333:0x5555;for(;;){}}
 void fpr_cpanic_n(const char *s,uw n){raw("Base panic: ");for(uw i=0;i<n;i++)hal_putc(s[i]);hal_putc('\n');hal_poweroff(1);}
@@ -22,22 +32,37 @@ void fpr_builtin_main(void){
  fpr_builtin_heap_init(_heap_start,_heap_end);(void)fpr_fn_main();hal_poweroff(0);
 }
 void fpr_fuel_exhausted(void){fpr_harts[0].fuel=1000000;}
-static uint64_t cycles(void){uint64_t v;__asm__ volatile("csrr %0,mcycle":"=r"(v));return v;}
+static uint64_t cycles(void){
+#if __riscv_xlen == 32
+ uint32_t hi,lo,end;
+ do{__asm__ volatile("csrr %0,mcycleh":"=r"(hi));__asm__ volatile("csrr %0,mcycle":"=r"(lo));__asm__ volatile("csrr %0,mcycleh":"=r"(end));}while(hi!=end);
+ return ((uint64_t)hi<<32)|lo;
+#else
+ uint64_t v;__asm__ volatile("csrr %0,mcycle":"=r"(v));return v;
+#endif
+}
 /* Sys.mtime's shared contract is 10 MHz ticks, not microseconds. Divide
  * before multiplying so a long-running cycle counter cannot wrap silently. */
 static V h_mtime(V u){
  (void)u;uint64_t c=cycles(),whole=c/FPR_CPU_MHZ,limit=UINTPTR_MAX>>2;
+#if UINTPTR_MAX > UINT32_MAX
  if(whole>limit/10)fpr_cpanic("Sys.mtime exceeds Int range");
+#endif
  uint64_t ticks=whole*10+(c%FPR_CPU_MHZ)*10/FPR_CPU_MHZ;
+#if UINTPTR_MAX == UINT32_MAX
+ /* Match the RV32 host contract: positive ticks modulo 2^30. */
+ return TAG((uw)ticks & (uw)limit);
+#else
  if(ticks>limit)fpr_cpanic("Sys.mtime exceeds Int range");
  return TAG(ticks);
+#endif
 }
 FPR_FN(fpr_g_Sys_x2emtime,h_mtime,1);
 static uint64_t deadline;
 static unsigned byte(void){
  deadline=cycles()+(uint64_t)FPR_CPU_MHZ*1000000*5;
- while(!(UART[1]&2)){if(cycles()>deadline)fpr_cpanic("virtual device response timeout");}
- unsigned v=UART[2]&255;hal_putc('+');return v;
+ while(!rx_ready()){if(cycles()>deadline)fpr_cpanic("virtual device response timeout");}
+ unsigned v=rx_byte();hal_putc('+');return v;
 }
 static void hex(uint32_t x,unsigned n){static const char digits[]="0123456789abcdef";while(n){n--;hal_putc(digits[(x>>(4*n))&15]);}}
 static unsigned nibble(void){unsigned c=byte();if(c>='0' && c<='9')return c-'0';if(c>='a' && c<='f')return c-'a'+10;fpr_cpanic("virtual device invalid hex");return 0;}
@@ -73,7 +98,21 @@ static V file_put(V p,V d,unsigned op){
 static V h_write(V p,V d){return file_put(p,d,3);}
 static V h_append(V p,V d){return file_put(p,d,4);}
 static V h_env(V p){const str_t *s=string(p);unsigned e;V v=rpc(5,s->bytes,s->len,0,0,&e);return result(e,v);}
-static V h_time(V u){(void)u;unsigned e;V v=rpc(6,0,0,0,0,&e);if(e)fpr_panic(v);const str_t *s=string(v);uw n=0;for(uw i=0;i<s->len;i++){if(s->bytes[i]<'0'||s->bytes[i]>'9')fpr_cpanic("virtual clock invalid");n=n*10+s->bytes[i]-'0';}return TAG(n);}
+static V h_time(V u){
+ (void)u;unsigned e;V v=rpc(6,0,0,0,0,&e);if(e)fpr_panic(v);const str_t *s=string(v);uint64_t n=0;
+ if(!s->len)fpr_cpanic("virtual clock invalid");
+ for(uw i=0;i<s->len;i++){
+  unsigned d=s->bytes[i]-'0';
+  if(d>9 || n>(UINT64_MAX-d)/10)fpr_cpanic("virtual clock invalid");
+  n=n*10+d;
+ }
+#if UINTPTR_MAX == UINT32_MAX
+ return TAG((uw)n & (UINTPTR_MAX>>2));
+#else
+ if(n>(UINTPTR_MAX>>2))fpr_cpanic("Sys.timeUs exceeds Int range");
+ return TAG(n);
+#endif
+}
 static V h_args(V u){(void)u;static const hdr_t nil={T_LIST,0};return (V)&nil;}
 static V h_exit(V code){if(!ISINT(code))fpr_cpanic("Sys.exit expected Int");hal_poweroff(UNTAG(code));return (V)&fpr_unit;}
 static V h_stderr(V text){const str_t *s=string(text);for(uw i=0;i<s->len;i++)hal_putc(s->bytes[i]);return (V)&fpr_unit;}

@@ -1,0 +1,396 @@
+{
+  "date": "2026-10-18",
+  "scope": "I32 native AOT/Base, manual Builtin RV32 integer core, ARC64 integer core; physical RV32IMC48 functional validation",
+  "parents": {
+    "fprisc": "b4158705155c9fc901d9b2bd3e07e968636d99cc",
+    "HaskPlayground": "c799495b88ba527582d740883146ca55f666e764",
+    "qos": "cc0334ad6eb45c7e32ac7c6eb9f9851705a273eb"
+  },
+  "compiler_codegen_revision": 48,
+  "compiler_arc_revision": 5,
+  "compiler_sha256": "217b2261382cd41ca553d39b5937a857c77c8e23865147d06e4bfd2253838843",
+  "source_sha256": {
+    "runtime/i32.h": "1aebe94f294c233df1c6b376a48d0c2189b1a1f9842d09c43315162f527be6e6",
+    "runtime/i32.c": "a9d59f4c8c7713e61e275410c234c519aae5b2e2fb9498dfcf56bfe27aeceee4",
+    "runtime/fpr.h": "c540bd88917444806e2eeeedc722dce7b915e8308202da24d310eb114b4b5d26",
+    "runtime/runtime.c": "983fcaebe71fbd1fa8e39789cbf718e9cc0eba73e19aa78bf57ae7228ffd6e4f",
+    "machine/builtin/arc.c": "f3faafa41cfb6177fe5e249e29801e23c40bcea660a202caeb55b1edab84fefb",
+    "compiler/Infer.hs": "f6601c3c80dd634afda8d1089b13c5f98f444880e04c50ca02a0dbb622b3f0a8",
+    "compiler/Arc.hs": "281369aadb300958f3d86f6bb52f4426a964d6047962ff17e1cd2d92ee5cb520",
+    "compiler/Representation.hs": "2db0e35947a2af43949f053e216a4432bf472c0fe5bd4b29021853b8c95c2152",
+    "compiler/Codegen.hs": "f95eca71e773c5784aa1c3b8abc24c6a1aea89130b067e5137105055b358663f",
+    "compiler/Compile.hs": "c65bb748c104d138f20fcf900192a3a22d00133cd840164cf6a40bc1379ec968",
+    "compiler/Interrupt.hs": "3705c4337a2d6c18d96ebe96f56572f9331582d97de27cde612a60df28fbbbc0",
+    "compiler/Build.hs": "e95d4d7da6c0d3a04ed7def7321dd32cf5bd2ffdb6578066f302f8634ce0fa81",
+    "Makefile": "dba8892fdef2137de28e23e1fa2304a6aa06b62e169c1c60d8ea79265aaff22d",
+    "machine/tangnano20k/build.sh": "331baf25af2156293545ed35b4caf23047eabdf00374ac33d12185ecb46f0fbd",
+    "machine/esp-idf/project/main/CMakeLists.txt": "91cdf7a1a3a2e45d6568a96e7e36edaacef25a8b2d1525d2abfbf09a9c593970",
+    "tests/i32.fpr": "6495a6070e057600b1f97eca622f5a3e6cf763299788de58f91c6c662b29348d",
+    "tests/tangnano20k_i32_core.fpr": "c55d296eecab889fcd8d7b77c2a1737dd4bd3ff9c5950b3c645dc67ef3c85f77",
+    "tests/tangnano20k_i32.fpr": "a35a322dafa14aedab99de36d80276a25b4347181293b5113127d781cd3ea141",
+    "tests/tangnano20k_i32_builtin.fpr": "163e7793b09c9d9d1ebcf966c081775a3702a636be8f998db105f909c9ff6b9c",
+    "tests/tangnano20k_i32_alloc.fpr": "3408c2bdbda81d167c8aa3827f13c0d2a49d0bca374e725106c0a13804575983",
+    "tests/i32_builtin_arc.fpr": "46d84a2695b37a6935734a0ea9eb5e8a0cfc454caabbd7b6e4040722bda0578f",
+    "tests/check_i32.py": "864a9f4e9ece7010435385bc1089183678b0c5fadd4c872b268f22dc39a51411",
+    "tests/base/i32arc_runtime.c": "59a878932fd14338548e47497190aa9a2e7f080e4aa89c2f55f6a945cd3c1d82",
+    "tests/base/rv32numeric_runtime.c": "268102c01411a7e14746b7ab950a3d2d5cd9eb861f8005c02f9e35ac799361e8",
+    "tests/check_rv32_numeric_runtime.py": "923218a64ffe408a553047b4940369e5980f5e69e9489f79d165cfe64c70a9dd"
+  },
+  "contract": {
+    "integer_bits": 32,
+    "signed_range": [
+      -2147483648,
+      2147483647
+    ],
+    "arithmetic": "modulo2^32; signed division/remainder with explicitzero and signeddivisionoverflowtraps",
+    "shift_rotate_counts": "Int modulo32",
+    "toInt_and_toIntU": "Result Int String uniformly acrossXLEN; RV32checks31bitInt",
+    "representations": {
+      "64": "tagged signextended int32, no arithmetic allocation",
+      "32manual": "opaque T_BITSvariant7 box with32bitpayload"
+    },
+    "float_to_i32": "truncate towardzero thencheck signed/unsigned32bitbounds; NaN/Inf Err"
+  },
+  "native": {
+    "cases": [
+      {
+        "name": "base",
+        "platform": "native64",
+        "image": "build/i32/native-base",
+        "sha256": "742b645580a30d7e9f805b395211c2cf956dba75ac8d9cbef87d707cee78d9a0",
+        "image_bytes": 621656,
+        "returncode": 0,
+        "output": "I32 INTEGER HOLDS\nI32 WIDE BRIDGES HOLD\nI32 BASE HOLDS\n",
+        "passed": true
+      },
+      {
+        "name": "allocation",
+        "platform": "native64",
+        "image": "build/i32/native-allocation",
+        "sha256": "9c74cc15dd669e576e2731f0738a2386ba26f3a4c822e5ba27949d0ebe0ffe26",
+        "image_bytes": 450224,
+        "returncode": 0,
+        "output": "I32 ALLOC HOLDS steps=10000000 delta=0 hex=586b8080\n",
+        "passed": true
+      },
+      {
+        "name": "div-zero",
+        "platform": "native64 expected panic",
+        "image": "build/i32/native-div-zero",
+        "sha256": "f84c289d45fc4e9bb9819b113a785454ca64bf379d2e964ac226af4ca0e97780",
+        "image_bytes": 450128,
+        "returncode": 1,
+        "output": "[ERR] I32: division by zero\n\n*** FPRISC PANIC [actor 0]: I32: division by zero ***\n",
+        "passed": true
+      },
+      {
+        "name": "rem-zero",
+        "platform": "native64 expected panic",
+        "image": "build/i32/native-rem-zero",
+        "sha256": "037fca1e6d5b66c171996535afb96a63c5256f5169f3cbefb9445d612fe20e0e",
+        "image_bytes": 450128,
+        "returncode": 1,
+        "output": "[ERR] I32: division by zero\n\n*** FPRISC PANIC [actor 0]: I32: division by zero ***\n",
+        "passed": true
+      },
+      {
+        "name": "divU-zero",
+        "platform": "native64 expected panic",
+        "image": "build/i32/native-divU-zero",
+        "sha256": "598ede5a99e88ca4e5326b54950329ca53ca422fb63ee230fd984f9baf7ea6c2",
+        "image_bytes": 450128,
+        "returncode": 1,
+        "output": "[ERR] I32: division by zero\n\n*** FPRISC PANIC [actor 0]: I32: division by zero ***\n",
+        "passed": true
+      },
+      {
+        "name": "remU-zero",
+        "platform": "native64 expected panic",
+        "image": "build/i32/native-remU-zero",
+        "sha256": "d08769c7c29339cec7cd076a43585751032ff7b8ec0b885aae585ef6b0c2c2a1",
+        "image_bytes": 450128,
+        "returncode": 1,
+        "output": "[ERR] I32: division by zero\n\n*** FPRISC PANIC [actor 0]: I32: division by zero ***\n",
+        "passed": true
+      },
+      {
+        "name": "div-overflow",
+        "platform": "native64 expected panic",
+        "image": "build/i32/native-div-overflow",
+        "sha256": "b38b02dec8303c6569e6e82282ca46eb4430d8747db85c92c8c799a620672558",
+        "image_bytes": 450128,
+        "returncode": 1,
+        "output": "[ERR] I32: division overflow (INT32_MIN / -1)\n\n*** FPRISC PANIC [actor 0]: I32: division overflow (INT32_MIN / -1) ***\n",
+        "passed": true
+      }
+    ],
+    "sources": {
+      "tests/i32.fpr": "6495a6070e057600b1f97eca622f5a3e6cf763299788de58f91c6c662b29348d",
+      "tests/tangnano20k_i32_core.fpr": "c55d296eecab889fcd8d7b77c2a1737dd4bd3ff9c5950b3c645dc67ef3c85f77",
+      "tests/tangnano20k_i32_alloc.fpr": "3408c2bdbda81d167c8aa3827f13c0d2a49d0bca374e725106c0a13804575983",
+      "tests/i32_builtin_arc.fpr": "46d84a2695b37a6935734a0ea9eb5e8a0cfc454caabbd7b6e4040722bda0578f"
+    }
+  },
+  "target_qemu_and_asan": {
+    "complete": true,
+    "cases": [
+      {
+        "name": "base",
+        "platform": "QEMU RV32IM",
+        "image": "build/i32/qemu-matrix/base-im/base.elf",
+        "sha256": "38a2361054bf6bca4c55c85c87de9926cf7aecae25083a45495c76db3b7a97e9",
+        "image_bytes": 356864,
+        "returncode": 0,
+        "output": "I32 INTEGER HOLDS\nI32 WIDE BRIDGES HOLD\nI32 BASE HOLDS\nTANG NANO I32 HOLDS\nFPR EXIT 0\n",
+        "passed": true
+      },
+      {
+        "name": "base",
+        "platform": "QEMU RV32IMC",
+        "image": "build/i32/qemu-matrix/base-imc/base.elf",
+        "sha256": "209b6e09f1842466695b7aac5de322ab0a0d8ea911af2a160119c0b283ad61f5",
+        "image_bytes": 312224,
+        "returncode": 0,
+        "output": "I32 INTEGER HOLDS\nI32 WIDE BRIDGES HOLD\nI32 BASE HOLDS\nTANG NANO I32 HOLDS\nFPR EXIT 0\n",
+        "passed": true
+      },
+      {
+        "name": "div-zero",
+        "platform": "QEMU RV32IM expected panic",
+        "image": "build/i32/qemu-matrix/div-zero-im/base.elf",
+        "sha256": "214e328ecc6299e79ba9ebb537cb53f4e2f04b5829094aec207bc3d2449958e7",
+        "image_bytes": 47268,
+        "returncode": 1,
+        "output": "Base panic: I32: division by zero\nFPR EXIT 1\n",
+        "passed": true
+      },
+      {
+        "name": "rem-zero",
+        "platform": "QEMU RV32IM expected panic",
+        "image": "build/i32/qemu-matrix/rem-zero-im/base.elf",
+        "sha256": "051dbb33dc9e39f44aeb183fe1bb9c14f1b549f0a73c5dc292c64e69f7323910",
+        "image_bytes": 47252,
+        "returncode": 1,
+        "output": "Base panic: I32: division by zero\nFPR EXIT 1\n",
+        "passed": true
+      },
+      {
+        "name": "divU-zero",
+        "platform": "QEMU RV32IM expected panic",
+        "image": "build/i32/qemu-matrix/divU-zero-im/base.elf",
+        "sha256": "4cc46f02d45ed10bcc423ed6db75b10090152087614c6c814eb092ab4dd121b0",
+        "image_bytes": 47228,
+        "returncode": 1,
+        "output": "Base panic: I32: division by zero\nFPR EXIT 1\n",
+        "passed": true
+      },
+      {
+        "name": "remU-zero",
+        "platform": "QEMU RV32IM expected panic",
+        "image": "build/i32/qemu-matrix/remU-zero-im/base.elf",
+        "sha256": "ae14bb23717aa7ebd9e353f16e5248f4ef798a8725ace6c610d61f740439b321",
+        "image_bytes": 47228,
+        "returncode": 1,
+        "output": "Base panic: I32: division by zero\nFPR EXIT 1\n",
+        "passed": true
+      },
+      {
+        "name": "div-overflow",
+        "platform": "QEMU RV32IM expected panic",
+        "image": "build/i32/qemu-matrix/div-overflow-im/base.elf",
+        "sha256": "d36c1aad8ee7324a3df53835f839234236085e1702f6da72f78a7ce9d8924229",
+        "image_bytes": 47400,
+        "returncode": 1,
+        "output": "Base panic: I32: division overflow (INT32_MIN / -1)\nFPR EXIT 1\n",
+        "passed": true
+      },
+      {
+        "name": "integer core",
+        "platform": "QEMU RV32IM manual Builtin (16550 adapter)",
+        "image": "build/i32/qemu-matrix/builtin-im/builtin.elf",
+        "sha256": "c1fcebdea514036f807fe27bbb0c30a383ecda6d96a875bcd43d88f680708663",
+        "image_bytes": 125528,
+        "returncode": 0,
+        "output": "I32 INTEGER HOLDS\nBUILTIN I32 HOLDS\nFPR EXIT 0\n",
+        "passed": true
+      },
+      {
+        "name": "consuming adapters, ASan/UBSan",
+        "platform": "native64 ARC C",
+        "image": "build/i32/qemu-matrix/builtin-arc64/arc-adapters-native",
+        "sha256": "2eec175c69c395ae8e4c94ad55cc95ad2df1b7366b5efd2190e1347fa7090ea2",
+        "image_bytes": 97312,
+        "returncode": 0,
+        "output": "I32 ARC: 10000 rounds, Result layouts and consuming adapters, zero live allocations\n",
+        "passed": true
+      },
+      {
+        "name": "integer core, zero live allocations",
+        "platform": "QEMU RV64 ARC Builtin",
+        "image": "build/i32/qemu-matrix/builtin-arc64/builtin.elf",
+        "sha256": "cbef476dd893b66f3aac91841e42dbe308455d150cacfb85ee67502884b70d71",
+        "image_bytes": 57112,
+        "returncode": 0,
+        "output": "I32 INTEGER HOLDS\nI32 ARC HOLDS\n",
+        "passed": true
+      }
+    ],
+    "sources": {
+      "tests/i32.fpr": "6495a6070e057600b1f97eca622f5a3e6cf763299788de58f91c6c662b29348d",
+      "tests/tangnano20k_i32_core.fpr": "c55d296eecab889fcd8d7b77c2a1737dd4bd3ff9c5950b3c645dc67ef3c85f77",
+      "tests/tangnano20k_i32_alloc.fpr": "3408c2bdbda81d167c8aa3827f13c0d2a49d0bca374e725106c0a13804575983",
+      "tests/i32_builtin_arc.fpr": "46d84a2695b37a6935734a0ea9eb5e8a0cfc454caabbd7b6e4040722bda0578f"
+    }
+  },
+  "physical": [
+    {
+      "case": "div-zero",
+      "frequency_mhz": 48,
+      "isa": "RV32IMC",
+      "sha256": "0e79b94b2dbf87fdaaebfcc8eb1d1279516c66832e33a1ac40177b2f7dee565c",
+      "image_bytes": 18100,
+      "runner_exit": 1,
+      "expected_success": false,
+      "passed_expected_outcome": true,
+      "stdout": "Base panic: I32: division by zero\nFPR EXIT 1\nDONE\n",
+      "stderr": "Traceback (most recent call last):\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 131, in <module>\n    if __name__=='__main__':main()\n                            ~~~~^^\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 123, in main\n    if b'FPR EXIT 0\\n' not in output:raise ValueError('CPU halted without successful runtime exit')\n                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nValueError: CPU halted without successful runtime exit\n"
+    },
+    {
+      "case": "div-overflow",
+      "frequency_mhz": 48,
+      "isa": "RV32IMC",
+      "sha256": "077e33ed072ee0440649d0186be4c7441bf06e07c53ba81e4e9c8309313734a8",
+      "image_bytes": 18156,
+      "runner_exit": 1,
+      "expected_success": false,
+      "passed_expected_outcome": true,
+      "stdout": "Base panic: I32: division overflow (INT32_MIN / -1)\nFPR EXIT 1\nDONE\n",
+      "stderr": "Traceback (most recent call last):\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 131, in <module>\n    if __name__=='__main__':main()\n                            ~~~~^^\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 123, in main\n    if b'FPR EXIT 0\\n' not in output:raise ValueError('CPU halted without successful runtime exit')\n                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nValueError: CPU halted without successful runtime exit\n"
+    },
+    {
+      "case": "final",
+      "frequency_mhz": 48,
+      "isa": "RV32IMC",
+      "sha256": "d890f4014df31225b99d58980375eefd65588b8b760e5ffeb0bd4b215a4f62e2",
+      "image_bytes": 219648,
+      "runner_exit": 0,
+      "expected_success": true,
+      "passed_expected_outcome": true,
+      "stdout": "I32 INTEGER HOLDS\nI32 WIDE BRIDGES HOLD\nI32 BASE HOLDS\nTANG NANO I32 HOLDS\nFPR EXIT 0\nDONE\n",
+      "stderr": ""
+    }
+  ],
+  "allocation_loop": {
+    "steps": 10000000,
+    "heap_delta_bytes": 0,
+    "expected_final_hex": "586b8080",
+    "reference": "independent affine exponentiation modulo2^32 in tests/check_i32.py"
+  },
+  "typing": {
+    "targets": [
+      "a64",
+      "rv32"
+    ],
+    "cases": [
+      "mix-int",
+      "mix-i64",
+      "mix-word",
+      "mix-f32",
+      "mixed-list",
+      "power"
+    ],
+    "executed_refusals": 12
+  },
+  "board": {
+    "isa": "RV32IMC",
+    "frequency_mhz": 48,
+    "bitstream": "HaskPlayground/output/tangnano20k/sdram-pipeline-c48-base-rv32/impl/pnr/sdram_test.fs",
+    "sha256": "c0008784680cb6a0cd6cdba59d0d6541304d72ae42e74ccaf232a982510d82cf",
+    "programming": "no FPGA changes this turn; existingvolatileSRAMimage retained",
+    "last_guest": "build/i32-board/final/base.bin",
+    "uart_loader": "Q upload, V RAM XORcheck, H entry; successrequiresFPR EXIT0andDONE"
+  },
+  "regressions": {
+    "existing_arc": "10,000 sharing/escape cycles in 16 KiB; zero live allocations; tail calls: PASS\nReturned 6,000-node graph released without recursive destruction: PASS\nNullary tail recursion with effectful termination: PASS\nCross-unit ownership and separate ARC compilation, including rebuild: PASS\nFunction values, indirect/partial calls and explicit RC rejected: PASS\nExact layouts, shared edges and 12,000-node drops under ASan/UBSan: PASS\n",
+    "rv32_codegen": "PASS: RV32 static float literal boxes and generic float callbacks, integer kernels retained, cold/warm\nPASS: Int31, Word32 and wrapping I32 compile; mixed I32/Int, oversized Int and Builtin F32 refused\n",
+    "uart_virtual": "PASS: framing, checksum/length refusal, file read/write/append, rooted paths/symlinks, environment, input, unavailable service\n"
+  },
+  "independent_c_rv32": {
+    "platform": "QEMU RV32IM",
+    "cases": [
+      {
+        "name": "probe",
+        "returncode": 0,
+        "output": "RV32 numeric runtime: all ok\nFPR EXIT 0\n",
+        "passed": true
+      },
+      {
+        "name": "half-trap",
+        "returncode": 1,
+        "output": "Base panic: I64.hi/lo: unsigned half does not fit an Int; use hiWord/loWord\nFPR EXIT 1\n",
+        "passed": true
+      },
+      {
+        "name": "float-int-trap",
+        "returncode": 1,
+        "output": "Base panic: float.toInt: does not fit an Int\nFPR EXIT 1\n",
+        "passed": true
+      },
+      {
+        "name": "i32-div-trap",
+        "returncode": 1,
+        "output": "Base panic: I32: division overflow (INT32_MIN / -1)\nFPR EXIT 1\n",
+        "passed": true
+      },
+      {
+        "name": "float-int-min-trap",
+        "returncode": 1,
+        "output": "Base panic: float.toInt: does not fit an Int\nFPR EXIT 1\n",
+        "passed": true
+      },
+      {
+        "name": "float-int-nan-trap",
+        "returncode": 1,
+        "output": "Base panic: float.toInt: does not fit an Int\nFPR EXIT 1\n",
+        "passed": true
+      }
+    ]
+  },
+  "build_integration": {
+    "fprisc": [
+      "nativeBuild",
+      "bare-metal",
+      "manualBuiltin",
+      "ARC_Builtin",
+      "TangNanoBase",
+      "ESP-IDFsource list"
+    ],
+    "qos": {
+      "files": {
+        "qos-app.mk": "ba3710e4aa7eb2dec3d17457743cca2beca22aef738c1b6735eadfb2ff7a3a7d",
+        "tools/build-process-app.sh": "15cbadc24798d297bb75990f9c76e14b078886601d030269e690807eff66a881"
+      },
+      "execution_validated": false
+    }
+  },
+  "limits": [
+    "I32wideI64/F32/F64bridgesrequiremanualBaseABI; ARC/RAWrejectthosebridgesexplicitly",
+    "RV32ARCunsupported; I32boxedoperationsallocate onRV32",
+    "SolI32notimplementedandexplicitlyrefused",
+    "No FPGAfrequencychange; noESP-IDF/QOSphysicalexecutionclaimed"
+  ],
+  "unrelated_work_preserved": [
+    "printer-dashboarddocumentation",
+    "POSIXconnection/resolveredits",
+    "otherQOSworkingtreechanges"
+  ],
+  "profile_checks": {
+    "log": "/tmp/fpr-i32-driver-typing-final.log",
+    "text": "type mix-int: refused on a64 and RV32\ntype mix-i64: refused on a64 and RV32\ntype mix-word: refused on a64 and RV32\ntype mix-f32: refused on a64 and RV32\ntype mixed-list: refused on a64 and RV32\ntype power: refused on a64 and RV32\nprofile arc-wide: explicit refusal\nprofile builtin32-wide: explicit refusal\nprofile sol: explicit refusal\nprofile raw64: integer arithmetic compiles\n",
+    "source_directory": "build/i32/profile-refusals"
+  },
+  "documentation_sha256": {
+    "docs/2026-10-18-I32.md": "c1b427a518390a3fe19ae699b5de3faf1bf87265341abe2b3a5c58b29bc9eec6",
+    "docs/2026-10-12-MEMORY-I32-REFINEMENTS.md": "087fcb5876ce0916fed53be479da2af5433173a9117b31e9fb8ee56e5df1bb6e"
+  }
+}

@@ -26,6 +26,10 @@ unify a b = do
   x <- resolve a; y <- resolve b
   case (x,y) of
     _ | x == y -> pure ()
+    -- Strings and tagged/managed values share the same one-word ARC
+    -- representation. Result Ok/Err projections may meet both variants;
+    -- the source type checker already enforces their semantic types.
+    (Scalar k, Scalar l) | k `elem` "st", l `elem` "st" -> pure ()
     (Var n,t) -> modify (\s -> s{subs=M.insert n t (subs s)})
     (t,Var n) -> modify (\s -> s{subs=M.insert n t (subs s)})
     _ -> err ("incompatible representations " ++ show x ++ " and " ++ show y ++
@@ -47,7 +51,7 @@ primitiveShape n = M.lookup n shapes
     shapes = M.fromList $ [(x,"ttt") | x <- ["+","-","*","/"]] ++
       [(x,"ttb") | x <- ["<",">","<=",">="]] ++
       [("==","??b"),("!=","??b"),("str","?s"),("print","?u"),
-       ("strcat","sss"),("String.len","st"),("error","s?")] ++
+       ("strcat","sss"),("String.len","st"),("error","s?"),("intMax","ut"),("intMin","ut")] ++
       [("Word."++x,y) | (x,y) <- [("fromInt","tw"),("toInt","wt"),("bits","ut"),
        ("and","www"),("or","www"),("xor","www"),("add","www"),("sub","www"),
        ("not","ww"),("shl","wtw"),("shr","wtw"),("mask","ttw"),("eq","wwb"),
@@ -65,7 +69,13 @@ primitiveShape n = M.lookup n shapes
               [(p++x,[k,k,'b']) | x <- ["<",">","<=",">=","==","!="]] ++
               [(p++x,[k,k]) | x <- ["sqrt","log","log2","exp","sin","cos"]] ++
               [(p++"ofInt",['t',k]),(p++"toInt",[k,'t']),(p++"str",[k,'s'])]
-             | (p,k) <- [("F64.",'d'),("F32.",'f')]]
+             | (p,k) <- [("F64.",'d'),("F32.",'f')]] ++
+      [("I32."++x,"ttt") | x <- ["+","-","*","/","rem","divU","remU","and","or","xor",
+                                  "shl","shr","sar","rotl","rotr"]] ++
+      [("I32."++x,"ttb") | x <- ["<",">","<=",">=","==","!=","ltU","gtU","leU","geU"]] ++
+      [("I32."++x,"tt") | x <- ["not","neg","clz","ctz","popcnt","ofInt"]] ++
+      [("I32."++x,"ts") | x <- ["str","strU","hex"]] ++
+      [("I32.toInt","tr"),("I32.toIntU","tr"),("I32.parse","sr")]
 
 represent :: Prog -> Either String (Prog, M.Map Core Kind, M.Map String [Kind])
 represent input = evalStateT work (St 0 M.empty M.empty M.empty [])
@@ -148,7 +158,7 @@ represent input = evalStateT work (St 0 M.empty M.empty M.empty [])
           Nothing -> err ("unsupported primitive or function value: " ++ n)
           Just shape -> do
             anyT <- fresh
-            let ty '?' = anyT; ty 'b' = Data 1; ty 'u' = Data 0; ty k = Scalar k
+            let ty '?' = anyT; ty 'b' = Data 1; ty 'u' = Data 0; ty 'r' = Data 3; ty k = Scalar k
             pure (map ty (init shape),ty (last shape))
       unless (length actual == length expected) $ err ("partial/over-application of " ++ n ++ " is not supported yet")
       zipWithM_ unify actual expected

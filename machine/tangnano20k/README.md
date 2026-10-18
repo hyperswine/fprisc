@@ -1,9 +1,9 @@
 # Tang Nano 20K: single-core Base host and UART virtual device
 
-This is an experimental RV64IM Base host, separate from the established RV32
-Builtin target. It uses HaskPlayground's `boards/tangnano20k/rv64` image, cached
-8 MiB SDRAM, a 64 KiB stack and the usual tagged 63-bit FP-RISC Int representation.
-The initial CPU clock is 27 MHz. This is a single execution thread; the Base
+This is an experimental RV32IM/IMC and RV64IM/IMC Base host, alongside the
+established RV32 Builtin target. Both Base variants use cached 8 MiB SDRAM and
+a 64 KiB stack. RV64 uses HaskPlayground's `boards/tangnano20k/rv64` image at
+27 MHz; RV32 uses its SDRAM pipeline image at 48 MHz. This is a single execution thread; the Base
 actor scheduler, interrupts, processes and dynamic stack growth are unavailable.
 
 The program keeps `profile base.` and uses the ordinary `core/prelude.fpr` and
@@ -16,8 +16,11 @@ FP-RISC semantics. The board C code supplies allocation, UART and ABI mechanisms
 | Facility | Implementation |
 | --- | --- |
 | Console / successful or failing exit | Local UART / finisher |
-| Int, Word, Addr, I64 | Native 64-bit values / existing runtime |
-| F32 / F64 arithmetic | Software floating point; no hardware FPU |
+| Int | Tagged signed payload: 63 bits on RV64, 31 bits on RV32; checked arithmetic |
+| Word, Addr | Full machine-width boxed values; 64 or 32 bits |
+| I64 | Boxed full 64-bit values on both targets |
+| I32 | Exact wrapping 32-bit values; boxed on RV32, tagged without allocation on RV64 |
+| F32 / F64 arithmetic | Software floating point; raw bits on RV64, boxed values on RV32 |
 | Whole-file read, exists, replace, append | Rooted host file device over UART |
 | `Sys.env` | Explicit `--env NAME=value` entries; no host environment inheritance |
 | `Sys.timeUs` | Host monotonic microseconds |
@@ -56,6 +59,46 @@ The build disables native F64 instruction emission using `FPR_NO_F64_INLINE=1`
 and defaults to `rv64im`, `lp64`, `medany`, including the software-float library.
 The installed toolchain's generic hard-float libraries are not linked.
 
+### RV32 Base
+
+Build HaskPlayground's SDRAM pipeline with its extended SDRAM boot ROM, then
+load the matching image into SRAM. The old RV32 `P/R` loader is insufficient
+for large Base programs. From fprisc:
+
+```bash
+FPR_XLEN=32 machine/tangnano20k/build-softfloat.sh
+FPR_XLEN=32 FPR_RVC=1 FPR_CPU_MHZ=48 machine/tangnano20k/build.sh \
+  tests/tangnano20k_rv32_host.fpr "$PWD/build/tangnano20k-rv32-host"
+python3 tools/run_tangnano20k_base.py build/tangnano20k-rv32-host/base.bin \
+  --root build/tangnano20k-rv32-host --freq-mhz 48 \
+  --env TEST_UART=connected --input 'hello RV32'
+```
+
+`FPR_XLEN` defaults to 64. RV32 selects `ilp32`, a separate SoftFloat archive,
+RV32 libgcc helpers and an ELF32 ISA check. IMC requires `FPR_RVC=1` on both
+the guest build and FPGA. The shared startup and counter reader select the
+word size at compilation. `FPR_QEMU=1` selects a 16550 UART adapter for QEMU
+`virt`; use the default zero for physical FPGA images.
+
+RV32 `Int` spans -1073741824 through 1073741823. I64 arithmetic retains all
+64 bits; `I64.toInt` returns `Err` when the result does not fit. Use
+`I64.hiWord`, `loWord` and `fromWords` for arbitrary 32-bit halves. Legacy
+`hi`/`lo` trap if an unsigned half cannot fit an Int. `I32` is implemented
+as a distinct type with wrapping arithmetic, signed/unsigned operations,
+bit operations and checked numeric conversions. `I32.toInt`/`toIntU` return
+`Result Int String` on both word sizes. See [the I32 implementation and checks](../../docs/2026-10-18-I32.md).
+
+RV32 floating literals are immutable static boxes, and floating arithmetic
+uses runtime boxes and generic vector callbacks. Integer vector kernels remain
+enabled. This changes allocation costs: the 128/64-row classifier passes,
+while 512/128 rows with 16 bins exhaust the current 8 MiB heap. Automatic
+temporary reclamation remains unavailable. See [the RV32 port record](../../docs/2026-10-18-RV32-BASE.md).
+
+On RV32, `Sys.mtime` returns 10 MHz ticks modulo 2^30 (about 107.37 seconds),
+and `Sys.timeUs` returns host microseconds modulo 2^30 (about 17.90 minutes),
+matching the positive tagged-Int range. Short elapsed-time calculations must
+account for wrap. RPC timeouts and sleeps use the full local 64-bit counter.
+
 `FPR_RVC=1 machine/tangnano20k/build.sh ...` explicitly selects compressed
 RV64IMC code for a matching RV64 FPGA image with the C decoder enabled.
 The default remains RV64IM. The linked ISA check accepts C only for this
@@ -72,7 +115,7 @@ internal to the software library; RV64IM has no floating-point CSR state.
 
 ## UART protocol
 
-The RV64 loader adds `Q`, a little-endian 32-bit count of 32-bit words, image
+The RV64 loader and extended RV32 SDRAM ROM support `Q`, a little-endian 32-bit count of 32-bit words, image
 bytes, then a command. The current image limit is 2 MiB. `P` retains its legacy
 16-bit count/64 KiB limit. `H` starts at `0x80000000`; `R` starts at zero.
 `V` returns eight lowercase hex digits plus newline: XOR of every uploaded

@@ -17,6 +17,7 @@ checkInterrupt prog
     -- a handler may not touch the allocator or interrupt control
     handlerPrim n = n `notElem`
       ["str","print","strcat","String.len","error","F64.str","F32.str",
+       "I32.str","I32.strU","I32.hex","I32.parse","I32.toInt","I32.toIntU",
        "Mem.alloc","Mem.realloc","Mem.free","Mem.liveAllocations",
        "CPU.csrWrite","CPU.irqEnable","CPU.irqRestore","CPU.wait"]
 
@@ -39,6 +40,7 @@ checkRawUnit prog = checkFrom "raw unit" rawPrim prog [n | (n,(ps,b)) <- M.toLis
     isStub _ _ = False
     rawPrim n = n `notElem`
       ["str","print","strcat","String.len","error","F64.str","F32.str",
+       "I32.str","I32.strU","I32.hex","I32.parse","I32.toInt","I32.toIntU",
        "Mem.alloc","Mem.realloc","Mem.free","Mem.liveAllocations"]
 
 checkFrom :: String -> (String -> Bool) -> Prog -> [String] -> Either String ()

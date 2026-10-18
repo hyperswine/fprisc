@@ -1,0 +1,11 @@
+profile base.
+
+# RV32's existing Int is a signed 31-bit payload. This is deliberately
+# distinct from the proposed, currently unimplemented, full-width I32 type.
+main : Unit .
+main =
+  hi = 1073741823;
+  lo = -1073741824;
+  _ = if hi + lo == -1 then Unit else error "RV32 Int edge sum";
+  _ = if lo / 2 == -536870912 then Unit else error "RV32 Int edge divide";
+  print "RV32 INT HOLDS max={hi} min={lo}".

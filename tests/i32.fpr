@@ -1,0 +1,75 @@
+# Portable Base suite: exact I32 arithmetic plus wide bridges and generic
+# object paths. All large values originate from strings, so the source also
+# compiles with RV32's 31-bit tagged Int range.
+profile base.
+Core = use "tangnano20k_i32_core".
+List = use "../std/list".
+
+expect name yes = Core.expect name yes.
+parsed text = Core.parsed text.
+rejected result = Core.isErr result.
+said (Ok x) = I32.str x.
+said (Err _) = "Err".
+rowBump : {n:I32,i:Int} -> {n:I32,i:Int} .
+rowBump row = {n=row.n + I32.ofInt row.i,i=row.i}.
+sum32 : I32 -> I32 -> I32 .
+sum32 a b = a + b.
+identity x = x.
+
+run : Unit -> Unit .
+run u =
+  _ = Core.run Unit;
+  zero = I32.ofInt 0;
+  one = I32.ofInt 1;
+  minus1 = I32.ofInt -1;
+  min32 = parsed "-2147483648";
+  max32 = parsed "2147483647";
+  _ = expect "I64 truncate" (I32.hex (I32.ofI64 (case I64.parse "0x12345678deadbeef" of Ok x -> x | Err why -> error why)) == "deadbeef");
+  _ = expect "I64 sign extend" (I64.str (I32.toI64 min32) == "-2147483648");
+  _ = expect "I64 zero extend" (I64.str (I32.toI64U min32) == "2147483648" and I64.str (I32.toI64U minus1) == "4294967295");
+  _ = expect "F64 signed extend" (I32.toF64 min32 == -2147483648.0 and I32.toF64 max32 == 2147483647.0);
+  _ = expect "F64 unsigned extend" (I32.toF64U minus1 == 4294967295.0);
+  _ = expect "F32 signed extend" (I32.toF32 (I32.ofInt -3) == -3f and I32.toF32 min32 == -2147483648f);
+  _ = expect "F32 unsigned rounding" (I32.toF32U minus1 == 4294967296f);
+  _ = expect "F64 truncate negative" (said (I32.ofF64 -7.9) == "-7");
+  _ = expect "F64 signed low fractional boundary" (said (I32.ofF64 -2147483648.75) == "-2147483648");
+  _ = expect "F64 signed high fractional boundary" (said (I32.ofF64 2147483647.9) == "2147483647");
+  _ = expect "F64 signed bounds refuse" (rejected (I32.ofF64 2147483648.0) and rejected (I32.ofF64 -2147483649.0));
+  _ = expect "F64 unsigned truncate" (said (I32.ofF64U 4294967295.9) == "-1" and said (I32.ofF64U -0.9) == "0");
+  _ = expect "F64 unsigned bounds refuse" (rejected (I32.ofF64U -1.0) and rejected (I32.ofF64U 4294967296.0));
+  _ = expect "F32 truncate" (said (I32.ofF32 -7.9f) == "-7");
+  _ = expect "F32 signed min" (said (I32.ofF32 -2147483648f) == "-2147483648");
+  _ = expect "F32 unsigned truncate" (said (I32.ofF32U -0.9f) == "0" and said (I32.ofF32U 2147483648f) == "-2147483648");
+  _ = expect "F32 bounds refuse" (rejected (I32.ofF32 2147483648f) and rejected (I32.ofF32U 4294967296f) and rejected (I32.ofF32U -1f));
+  nan64 = 0.0 / 0.0;
+  nan32 = 0f / 0f;
+  _ = expect "F64 NaN/infinity refuse" (rejected (I32.ofF64 nan64) and rejected (I32.ofF64U nan64) and rejected (I32.ofF64 (1.0 / 0.0)) and rejected (I32.ofF64U (0.0 - 1.0 / 0.0)));
+  _ = expect "F32 NaN/infinity refuse" (rejected (I32.ofF32 nan32) and rejected (I32.ofF32U nan32) and rejected (I32.ofF32 (1f / 0f)) and rejected (I32.ofF32U (0f - 1f / 0f)));
+  _ = expect "F32 bitcast one" (I32.hex (I32.ofF32Bits 1f) == "3f800000");
+  _ = expect "F32 bitcast negative zero" (I32.ofF32Bits -0f == min32);
+  _ = expect "F32 bitcast back" (I32.toF32Bits (parsed "0x40200000") == 2.5f);
+  _ = expect "F32 NaN payload bitcast" (I32.ofF32Bits (I32.toF32Bits (parsed "0x7fc01234")) == parsed "0x7fc01234");
+  _ = print "I32 WIDE BRIDGES HOLD";
+  pointerlike = parsed "0x80000000";
+  values = [pointerlike,max32,minus1,zero,one];
+  kept = keep values;
+  _ = expect "generic keep/deepEq" (kept == values and identity pointerlike == pointerlike);
+  _ = expect "generic render" (str kept == "[-2147483648, 2147483647, -1, 0, 1]");
+  _ = expect "tuple equality" ((pointerlike,max32,minus1) == (min32,parsed "2147483647",I32.ofInt -1));
+  _ = expect "mixed record equality" ({n=pointerlike,i=7,label="x"} == {n=min32,i=7,label="x"});
+  _ = expect "typed interpolation" ("{max32}/{pointerlike}" == "2147483647/-2147483648");
+  _ = expect "first-class str callback" ((List.map I32.str values |> strJoin ",") == "-2147483648,2147483647,-1,0,1");
+  _ = expect "generic arithmetic fold" (List.fold sum32 zero values == I32.ofInt -1);
+  vector = Vec.fromList [pointerlike,max32,minus1];
+  (total,vector2) = Vec.fold sum32 zero (Vec.map (fn x -> x + one) vector);
+  _ = Vec.free vector2;
+  _ = expect "generic vector callback" (total == one);
+  rows = Vec.fromList [{n=pointerlike,i=1},{n=max32,i=2},{n=minus1,i=3}];
+  (sumRows,rows2) = Vec.fold (fn acc row -> acc + row.n) zero (Vec.map rowBump rows);
+  _ = Vec.free rows2;
+  _ = expect "mixed record vector" (sumRows == I32.ofInt 4);
+  _ = expect "Result generic render" (str (Ok pointerlike) == "Ok (-2147483648)");
+  print "I32 BASE HOLDS".
+
+main : Unit .
+main = run Unit.

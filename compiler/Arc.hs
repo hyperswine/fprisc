@@ -19,7 +19,8 @@ primitiveContracts =
   [("+",2,"add"),("-",2,"sub"),("*",2,"mul"),("/",2,"div"),
    ("==",2,"eq"),("!=",2,"ne"),("<",2,"lt"),(">",2,"gt"),
    ("<=",2,"le"),(">=",2,"ge"),("print",1,"print"),("str",1,"str"),
-   ("strcat",2,"strcat"),("String.len",1,"strlen"),("error",1,"error")]
+   ("strcat",2,"strcat"),("String.len",1,"strlen"),("error",1,"error"),
+   ("intMax",1,"intMax"),("intMin",1,"intMin")]
   ++ [("Word." ++ n,a,"word" ++ n) | (n,a) <-
        [("fromInt",1),("toInt",1),("bits",1),("and",2),("or",2),("xor",2),
         ("add",2),("sub",2),("not",1),("shl",2),("shr",2),("mask",2),("eq",2),("bitSet",2),("bitClear",2),("bitTest",2)]]
@@ -78,6 +79,16 @@ primitiveContracts =
       ("f32frombits",1,"f32frombits"),
       ("F64.ofF32",1,"F64ofF32"),
       ("F32.ofF64",1,"F32ofF64")]
+  ++ [("I32." ++ n,a,"I32" ++ adapter) | (n,a,adapter) <-
+       [("+",2,"add"),("-",2,"sub"),("*",2,"mul"),("/",2,"div"),
+        ("<",2,"lt"),(">",2,"gt"),("<=",2,"le"),(">=",2,"ge"),("==",2,"eq"),("!=",2,"ne"),
+        ("rem",2,"rem"),("divU",2,"divU"),("remU",2,"remU"),
+        ("ltU",2,"ltU"),("gtU",2,"gtU"),("leU",2,"leU"),("geU",2,"geU"),
+        ("and",2,"and"),("or",2,"or"),("xor",2,"xor"),("not",1,"not"),("neg",1,"neg"),
+        ("shl",2,"shl"),("shr",2,"shr"),("sar",2,"sar"),("rotl",2,"rotl"),("rotr",2,"rotr"),
+        ("clz",1,"clz"),("ctz",1,"ctz"),("popcnt",1,"popcnt"),
+        ("ofInt",1,"ofInt"),("toInt",1,"toInt"),("toIntU",1,"toIntU"),
+        ("str",1,"str"),("strU",1,"strU"),("hex",1,"hex"),("parse",1,"parse")]]
 
 arcExterns :: M.Map String Int
 arcExterns = M.fromList $ [("$arc.retain",1),("$arc.release",1),("$arc.setLayout",2),("$arc.rawEq",2),("$arc.rawNe",2),("$arc.wordStr",1),("$arc.wordPrint",1)] ++
@@ -85,7 +96,7 @@ arcExterns = M.fromList $ [("$arc.retain",1),("$arc.release",1),("$arc.setLayout
 
 -- Bump when ownership lowering or its runtime ABI changes: keys unit caches.
 arcRev :: Int
-arcRev = 4
+arcRev = 5
 
 type G = StateT Int (Either String)
 type Env = M.Map String String

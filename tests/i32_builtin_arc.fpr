@@ -1,0 +1,8 @@
+# ARC64 exercises only the audited I32 integer/Result/string API.
+# Wide bridges are deliberately covered by the separate Base fixture.
+profile builtin.
+Test = use "tangnano20k_i32_core".
+main =
+  _ = Test.run Unit;
+  _ = if Mem.liveAllocations Unit == 0 then Unit else error "I32 ARC retained allocations";
+  print "I32 ARC HOLDS".

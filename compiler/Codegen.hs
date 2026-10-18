@@ -51,7 +51,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 45 -- software-float targets also decline native floating vector kernels
+codegenRev = 48 -- distinct I32 wrapping operators and portable numeric ABI
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -287,6 +287,7 @@ data CG = CG
   { cgProg :: Prog,
     cgN :: Int,
     cgStrs :: M.Map String String,
+    cgFloats :: M.Map (Int, Integer) String, -- RV32 immutable boxed literals: IEEE width/bits -> label
     cgTgt :: Target,
     cgRvv :: Bool,
     cgSpec :: Bool, -- vec loop specialization enabled for this target?
@@ -354,13 +355,24 @@ strLabel s = do
       modify (\c -> c {cgStrs = M.insert s l (cgStrs c)})
       pure l
 
+floatLabel :: Int -> Integer -> G String
+floatLabel width bits = do
+  let key = (width, bits `mod` (2 ^ width))
+  literals <- gets cgFloats
+  case M.lookup key literals of
+    Just label -> pure label
+    Nothing -> do
+      label <- freshL "float"
+      modify (\c -> c {cgFloats = M.insert key label (cgFloats c)})
+      pure label
+
 emitProgram :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> Prog -> (String, [String])
 emitProgram tgt rvv spec exports ext exps prog0 =
   let (prog, fnotes) = if tgtFusion tgt then fuseVecFix prog0 else (prog0,[]) -- fusion is tier-independent: fewer passes
       -- win in the generic apply tier too; linearity makes the single
       -- pass unobservable through the vector, and fusionSafe (below) makes
       -- it unobservable through effects and failures
-      (body, st) = runState (top prog) (CG prog 0 M.empty tgt rvv spec M.empty ext exps (reverse fnotes))
+      (body, st) = runState (top prog) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes))
    in (unlines body, reverse (cgVNotes st))
   where
     top prog = do
@@ -384,6 +396,7 @@ emitProgram tgt rvv spec exports ext exps prog0 =
       -- program's library beside the FP-RISC allocator)
       modtab <- if null exports || tgtArc tgt then pure [] else modTable
       strs <- gets cgStrs
+      floats <- gets cgFloats
       pure $
         ( ["# target: " ++ tgtName tgt]
             ++ ["    .option arch, +v" | rvv] -- let gas accept vector mnemonics
@@ -398,6 +411,8 @@ emitProgram tgt rvv spec exports ext exps prog0 =
           ++ modtab
           ++ ["    .section .rodata" | tgtArc tgt, not (null modtab)]
           ++ concatMap strFor (M.toList strs)
+          ++ ["    .section .rodata" | not (M.null floats)]
+          ++ concatMap floatFor (M.toList floats)
           ++ ["    .section .rodata" | tgtArc tgt]
           ++ concatMap nulFor (S.toList (nullaries prog))
     -- Versioned module table: magic/schema/root hash, then four-word rows
@@ -515,6 +530,16 @@ emitProgram tgt rvv spec exports ext exps prog0 =
           ]
             ++ byteLines bs
             ++ [""]
+    -- RV32 Base floats are immutable numeric leaves. Pooling literal
+    -- boxes avoids allocating every constant on each loop iteration.
+    -- F64 uses fpr_num64_t (fixed uint64 fields); F32 uses bits_t
+    -- (RV32 word fields). Their T_BITS payload is opaque to walkers.
+    floatFor ((width, bits), label) =
+      [ "    .balign 8", label ++ ":", "    .long 9004",
+        "    .long " ++ (if width == 64 then "5" else "6"),
+        "    " ++ directive ++ " " ++ show width,
+        "    " ++ directive ++ " " ++ show bits, "" ]
+      where directive = if width == 64 then ".quad" else ".word"
     utf8 c
       -- 0x00-0xFF pass through as RAW single bytes: \xNN escapes are
       -- wire data (SPI/OLED byte strings) and must stay bytes.
@@ -1247,6 +1272,23 @@ genT tgt spec prog ext = go
     go env nxt pos (CVar h)
       | tgtArc tgt, Just target <- known env h 0 =
           knownCall env nxt pos target []
+    -- RV32 cannot tag every IEEE binary32 word (or a binary64 half) as
+    -- an Int. Its float values are pointers to immutable T_BITS leaves,
+    -- so constants refer to a pooled static box without runtime allocation.
+    go env _ _ e
+      | w == 4,
+        (CVar "f64frombits", args) <- spineOf e,
+        Just "fpr_prim_fn_f64frombits" <- known env "f64frombits" (length args),
+        [CInt hi, CInt lo] <- args = do
+          label <- floatLabel 64 (hi * 4294967296 + lo `mod` 4294967296)
+          pure ["    la a0, " ++ label]
+    go env _ _ e
+      | w == 4,
+        (CVar "f32frombits", args) <- spineOf e,
+        Just "fpr_prim_fn_f32frombits" <- known env "f32frombits" (length args),
+        [CInt bits] <- args = do
+          label <- floatLabel 32 bits
+          pure ["    la a0, " ++ label]
     -- A literal's two tagged halves are compile-time constants. Splice
     -- their raw IEEE bits directly instead of calling C on every loop turn.
     -- Respect local/global shadowing, just like other primitive fast paths.
@@ -1277,7 +1319,7 @@ genT tgt spec prog ext = go
     -- supercombinator, so knownCall staging + TCO apply unchanged.
     go env nxt pos e
       | spec, Just (plan, callArgs) <- vecSpec prog (`M.member` env) e,
-        tgtFloatInline tgt || not (specUsesFloat prog plan) = do
+        (w == 8 && tgtFloatInline tgt) || not (specUsesFloat prog plan) = do
           sym <- requestSpec plan
           knownCall env nxt pos sym callArgs
 
@@ -1390,7 +1432,7 @@ genT tgt spec prog ext = go
     -- quadratic, 24 s for an 8000-element list literal.
     goThen env nxt pos e rest
       | (CVar h, args@(_ : _)) <- spineOf e,
-        h /= "f64frombits",
+        h `notElem` ["f64frombits", "f32frombits"],
         Just target <- known env h (length args),
         not (isJust (primitiveKnown env h (length args)) && isJust (inlineArc tgt h)) =
           knownCallThen env nxt pos target args rest
@@ -1689,7 +1731,7 @@ declines tgt spec prog owner = goD S.empty
                         ++ ") runs in the GENERIC apply tier -- " ++ why op f caps
                     ]
                   Just (plan,_)
-                    | not (tgtFloatInline tgt), specUsesFloat prog plan ->
+                    | (tgtW tgt /= 8 || not (tgtFloatInline tgt)), specUsesFloat prog plan ->
                         [ "vec note: " ++ op ++ " over `" ++ f ++ "` (in " ++ owner
                             ++ ") uses generic C callbacks in software-float mode"
                         ]

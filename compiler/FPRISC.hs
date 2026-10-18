@@ -239,8 +239,9 @@ integerN neg = lexeme $ do
 -- literal.  `1.` still lexes as Int 1 + the clause terminator: the
 -- fraction is inside `try` and needs a digit after the dot.
 --
--- F64 splices as f64frombits hi lo (a tagged V carries 62 payload
--- bits, not 64); F32 fits one tagged Int, so it takes f32frombits.
+-- F64 splices as f64frombits hi lo; F32 takes f32frombits. On RV32
+-- code generation pools immutable boxes for these raw literal words,
+-- because a tagged Int cannot carry every binary32 bit pattern.
 floatLit :: P SExpr
 floatLit = try $ do
   ipart <- some digitChar

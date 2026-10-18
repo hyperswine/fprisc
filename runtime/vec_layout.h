@@ -18,8 +18,9 @@
  *
  * kind byte: bit 0 RAW (an untagged machine word, not a V); bit 1 FLOAT
  * (the raw word is IEEE bits); bit 2 NARROW (32-bit float in the word).
- * Physical width is the machine word for every column today; the kind
- * byte is where a narrower column will be described.
+ * Physical width is the machine word for every column. On RV32 float
+ * cells hold boxed V pointers, so VK_RAW below clears their raw property
+ * for copying/ownership without changing the declared kind bytes.
  */
 #ifndef FPR_VEC_LAYOUT_H
 #define FPR_VEC_LAYOUT_H
@@ -27,8 +28,15 @@
 enum { VR_UNSET = 0, VR_INT = 1, VR_BOX = 2, VR_SOA = 3, VR_FLT = 4, VR_TREE = 5 };
 
 enum { VK_BOX = 0, VK_INT = 1, VK_F64 = 3, VK_F32 = 7 };
-#define VK_RAW(k) ((k) & 1u)
 #define VK_FLOAT(k) ((k) & 2u)
+#if UINTPTR_MAX > 0xFFFFFFFFu
+#define VK_RAW(k) ((k) & 1u)
+#else
+/* RV32 float columns hold one-word pointers to immutable numeric boxes.
+ * Keep the descriptor kind bytes stable, but teach every generic copier
+ * that their cells are values which must be followed and copied. */
+#define VK_RAW(k) (((k) & 1u) && !VK_FLOAT(k))
+#endif
 #define VK_PAD 8 /* kinds is allocated to at least this many bytes, zero padded */
 
 typedef struct {

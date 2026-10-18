@@ -1,0 +1,7 @@
+profile base.
+
+# This must finish with the named checked-Int overflow rather than wrap.
+limit : Unit -> Int .
+limit u = 1073741823.
+main : Unit .
+main = print "{limit Unit + 1}".

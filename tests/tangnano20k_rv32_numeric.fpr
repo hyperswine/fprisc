@@ -1,0 +1,72 @@
+profile base.
+
+# Run unchanged on RV32 Base, RV64 Base and the native host. Float literal
+# words deliberately exceed RV32's tagged Int range, including the sign bit.
+expect name yes = if yes then Unit else error "numeric FAIL {name}".
+parsed text = case I64.parse text of Ok n -> n | Err why -> error why.
+rejected (Ok n) = False.
+rejected (Err why) = True.
+sum64 : F64 -> F64 -> F64.
+sum64 a b = a + b.
+scale64 : F64 -> F64.
+scale64 x = x * 1.5.
+sum32 : F32 -> F32 -> F32.
+sum32 a b = a + b.
+scale32 : F32 -> F32.
+scale32 x = x * 2f.
+Row = {i:Int, x:F64}.
+sumRow : F64 -> Row -> F64.
+sumRow a row = a + row.x * F64.ofInt row.i.
+
+main : Unit .
+main =
+  one = I64.ofInt 1;
+  minus1 = I64.ofInt -1;
+  max64 = parsed "9223372036854775807";
+  min64 = parsed "-9223372036854775808";
+  _ = expect "i64 wrap" (I64.str (max64 + one) == "-9223372036854775808");
+  _ = expect "i64 unsigned" (I64.strU (I64.divU minus1 (I64.ofInt 2)) == "9223372036854775807");
+  _ = expect "i64 multiply" (I64.str (parsed "4294967296" * I64.ofInt 3) == "12884901888");
+  _ = expect "i64 signed" (I64.str (I64.ofInt -7 / I64.ofInt 2) == "-3");
+  _ = expect "i64 shifts" (I64.hex (I64.rotr one 1) == "8000000000000000");
+  _ = expect "i64 counts" (I64.popcnt minus1 == 64);
+  _ = expect "i64 toInt refuses" (rejected (I64.toInt max64));
+  _ = expect "i64 parse refuses" (rejected (I64.parse "18446744073709551616"));
+  _ = expect "i64 full-word halves" (I64.hex (I64.fromWords (I64.hiWord minus1) (I64.loWord minus1)) == "ffffffffffffffff");
+  parts = parsed "0x12345678fedcba98";
+  _ = expect "i64 mixed-word halves" (I64.hex (I64.fromWords (I64.hiWord parts) (I64.loWord parts)) == "12345678fedcba98");
+  _ = print "NUMERIC I64 HOLDS";
+  _ = expect "f64 finite literal" (I64.hex (I64.ofF64Bits 1.23456789012345) == "3ff3c0ca428c59dd");
+  _ = expect "f64 literal bits" (I64.hex (I64.ofF64Bits -0.0) == "8000000000000000");
+  _ = expect "f64 negative literal" (-1.5 + 2.5 == 1.0);
+  _ = expect "f64 sqrt" (F64.sqrt 81.0 == 9.0);
+  _ = expect "f64 log2" (F64.log2 8.0 == 3.0);
+  _ = expect "f64 infinity" (1.0 / 0.0 > 1.0e30);
+  nan64 = 0.0 / 0.0;
+  _ = expect "f64 NaN" (nan64 != nan64);
+  _ = expect "f64 bitcast" (I64.toF64Bits (parsed "0x4004000000000000") == 2.5);
+  _ = expect "f64 truncate minimum" (F64.toInt -1073741824.5 == -1073741824);
+  _ = expect "f32 finite literal" (F32.str -2.5f == "-2.5");
+  _ = expect "f32 negative zero" (I64.hex (I64.ofF64Bits (F64.ofF32 -0f)) == "8000000000000000");
+  _ = expect "f32 infinity" (1f / 0f > 1.0e30f);
+  nan32 = 0f / 0f;
+  _ = expect "f32 NaN" (nan32 != nan32);
+  _ = expect "f32 widen" (F64.ofF32 (1.5f + 2.5f) == 4.0);
+  _ = print "NUMERIC FLOAT HOLDS";
+  floats = Vec.push 3.0 (Vec.push 2.0 (Vec.push 1.0 (Vec.new Unit)));
+  (total64, floats2) = Vec.fold sum64 0.0 (Vec.map scale64 floats);
+  _ = Vec.free floats2;
+  _ = expect "f64 vector" (total64 == 9.0);
+  floats32 = Vec.push -2.5f (Vec.push 1.5f (Vec.new Unit));
+  (total32, floats32b) = Vec.fold sum32 0f (Vec.map scale32 floats32);
+  _ = Vec.free floats32b;
+  _ = expect "f32 vector" (total32 == -2f);
+  rows = Vec.push {i=2,x=3.5} (Vec.push {i=1,x=1.5} (Vec.new Unit));
+  (rowTotal, rows2) = Vec.fold sumRow 0.0 rows;
+  _ = Vec.free rows2;
+  _ = expect "mixed vector" (rowTotal == 8.5);
+  ints = Vec.iota 16 |> Vec.map (fn x -> x + 1);
+  (intTotal, ints2) = Vec.fold (fn a b -> a + b) 0 ints;
+  _ = Vec.free ints2;
+  _ = expect "integer vector" (intTotal == 136);
+  print "RV32 BASE NUMERIC HOLDS".

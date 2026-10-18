@@ -1,0 +1,3 @@
+profile builtin.
+Test = use "tangnano20k_i32_core".
+main = _ = Test.run Unit; print "BUILTIN I32 HOLDS".

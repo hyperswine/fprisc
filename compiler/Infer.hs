@@ -70,7 +70,7 @@ tcon n = foldl' TAp (TC n)
 tInt, tStr, tBool, tUnit, tAtom :: Type
 tInt = TC "Int"
 
-tF64, tF32, tI64 :: Type
+tF64, tF32, tI64, tI32 :: Type
 tF64 = TC "F64"
 tF32 = TC "F32"
 -- I64: a 64-bit two's-complement integer (Int is tagged and 63 bits).
@@ -78,6 +78,7 @@ tF32 = TC "F32"
 -- unlike the raw-bits floats it may sit inside any structure and render:
 -- only its operators, == and str/print route to its own prims.
 tI64 = TC "I64"
+tI32 = TC "I32"
 
 -- does a type MENTION a float anywhere?  Bare floats str/render via
 -- their prims; floats inside containers may not reach the tid-directed
@@ -647,12 +648,67 @@ builtinEnv =
       ("F32.toInt", mono (TFn tF32 tInt)),
       ("F32.ofF64", mono (TFn tF64 tF32)),
       ("F32.str", mono (TFn tF32 tStr)),
+      -- I32: exact wrapping 32-bit arithmetic. Distinct from Int even
+      -- where its runtime representation is a tagged integer (RV64).
+      ("I32.+", mono (TFn tI32 (TFn tI32 tI32))),
+      ("I32.-", mono (TFn tI32 (TFn tI32 tI32))),
+      ("I32.*", mono (TFn tI32 (TFn tI32 tI32))),
+      ("I32./", mono (TFn tI32 (TFn tI32 tI32))),
+      ("I32.<", mono (TFn tI32 (TFn tI32 tBool))),
+      ("I32.>", mono (TFn tI32 (TFn tI32 tBool))),
+      ("I32.<=", mono (TFn tI32 (TFn tI32 tBool))),
+      ("I32.>=", mono (TFn tI32 (TFn tI32 tBool))),
+      ("I32.==", mono (TFn tI32 (TFn tI32 tBool))),
+      ("I32.!=", mono (TFn tI32 (TFn tI32 tBool))),
+      ("I32.ofInt", mono (TFn tInt tI32)),
+      ("I32.toInt", mono (TFn tI32 (tcon "Result" [tInt, tStr]))),
+      ("I32.toIntU", mono (TFn tI32 (tcon "Result" [tInt, tStr]))),
+      ("I32.ofI64", mono (TFn tI64 tI32)),
+      ("I32.toI64", mono (TFn tI32 tI64)),
+      ("I32.toI64U", mono (TFn tI32 tI64)),
+      ("I32.toF32", mono (TFn tI32 tF32)),
+      ("I32.toF32U", mono (TFn tI32 tF32)),
+      ("I32.toF64", mono (TFn tI32 tF64)),
+      ("I32.toF64U", mono (TFn tI32 tF64)),
+      ("I32.ofF32", mono (TFn tF32 (tcon "Result" [tI32, tStr]))),
+      ("I32.ofF32U", mono (TFn tF32 (tcon "Result" [tI32, tStr]))),
+      ("I32.ofF64", mono (TFn tF64 (tcon "Result" [tI32, tStr]))),
+      ("I32.ofF64U", mono (TFn tF64 (tcon "Result" [tI32, tStr]))),
+      ("I32.ofF32Bits", mono (TFn tF32 tI32)),
+      ("I32.toF32Bits", mono (TFn tI32 tF32)),
+      ("I32.str", mono (TFn tI32 tStr)),
+      ("I32.strU", mono (TFn tI32 tStr)),
+      ("I32.hex", mono (TFn tI32 tStr)),
+      ("I32.parse", mono (TFn tStr (tcon "Result" [tI32, tStr]))),
+      ("I32.rem", mono (TFn tI32 (TFn tI32 tI32))),
+      ("I32.divU", mono (TFn tI32 (TFn tI32 tI32))),
+      ("I32.remU", mono (TFn tI32 (TFn tI32 tI32))),
+      ("I32.ltU", mono (TFn tI32 (TFn tI32 tBool))),
+      ("I32.gtU", mono (TFn tI32 (TFn tI32 tBool))),
+      ("I32.leU", mono (TFn tI32 (TFn tI32 tBool))),
+      ("I32.geU", mono (TFn tI32 (TFn tI32 tBool))),
+      ("I32.and", mono (TFn tI32 (TFn tI32 tI32))),
+      ("I32.or", mono (TFn tI32 (TFn tI32 tI32))),
+      ("I32.xor", mono (TFn tI32 (TFn tI32 tI32))),
+      ("I32.not", mono (TFn tI32 tI32)),
+      ("I32.neg", mono (TFn tI32 tI32)),
+      ("I32.shl", mono (TFn tI32 (TFn tInt tI32))),
+      ("I32.shr", mono (TFn tI32 (TFn tInt tI32))),
+      ("I32.sar", mono (TFn tI32 (TFn tInt tI32))),
+      ("I32.rotl", mono (TFn tI32 (TFn tInt tI32))),
+      ("I32.rotr", mono (TFn tI32 (TFn tInt tI32))),
+      ("I32.clz", mono (TFn tI32 tInt)),
+      ("I32.ctz", mono (TFn tI32 tInt)),
+      ("I32.popcnt", mono (TFn tI32 tInt)),
       -- I64 (raw 64-bit; wraps).  Operators come from the site resolution.
       ("I64.ofInt", mono (TFn tInt tI64)),
       ("I64.toInt", mono (TFn tI64 (tcon "Result" [tInt, tStr]))),
       ("I64.fromParts", mono (TFn tInt (TFn tInt tI64))),
       ("I64.hi", mono (TFn tI64 tInt)),
       ("I64.lo", mono (TFn tI64 tInt)),
+      ("I64.fromWords", mono (TFn (TC "Word") (TFn (TC "Word") tI64))),
+      ("I64.hiWord", mono (TFn tI64 (TC "Word"))),
+      ("I64.loWord", mono (TFn tI64 (TC "Word"))),
       ("I64.toF64", mono (TFn tI64 tF64)),
       ("I64.toF64U", mono (TFn tI64 tF64)),
       ("I64.ofF64", mono (TFn tF64 (tcon "Result" [tI64, tStr]))),
@@ -1233,7 +1289,7 @@ inferBin ctx op a b = case op of
             -- may be a two-typed global (`Matrix * Vector`, `Int * Vector`),
             -- so unification with the site type is deferred to resolution;
             -- every other site unifies eagerly exactly as before
-            let builtinTy c = c `elem` ["Int", "I64", "F64", "F32", "String", "List", "Bool", "Unit"]
+            let builtinTy c = c `elem` ["Int", "I32", "I64", "F64", "F32", "String", "List", "Bool", "Unit"]
                 userTy ty = maybe False (not . builtinTy) (headCon ty)
                 concreteTy ty = headCon ty /= Nothing
             site <- newSite op t
@@ -1319,8 +1375,8 @@ ambiguousOp op at gs =
     ++ " all implement it -- keep one in scope or call the one you mean by name"
 
 -- decide every site once the substitution is final
-resolveSites :: Sigs -> TEnv -> I (IM.IntMap OpTarget)
-resolveSites sigs env = do
+resolveSites :: IProf -> Sigs -> TEnv -> I (IM.IntMap OpTarget)
+resolveSites prof sigs env = do
   sites <- gets iSites
   numeric <- IM.traverseWithKey one (IM.filter (\(op, _) -> not ("vec-" `Data.List.isPrefixOf` op)) sites)
   layouts <- IM.traverseWithKey one (IM.filter (\(op, _) -> "vec-" `Data.List.isPrefixOf` op) sites)
@@ -1355,6 +1411,8 @@ resolveSites sigs env = do
               one' k op t0
     one' k op t0 = do
       t <- zonk t0
+      when (t == tI32 && M.notMember "I32.ofInt" (ipBuiltins prof)) $
+        report "I32 requires a native Base or Builtin target; this profile has no I32 runtime"
       if "vec-reference:" `Data.List.isPrefixOf` op
         then do
           requirements <- gets (IM.findWithDefault [] k . iVecRefs)
@@ -1395,6 +1453,7 @@ resolveSites sigs env = do
           TC "F64" -> OpPrim ("F64." ++ op)
           TC "F32" -> OpPrim ("F32." ++ op)
           TC "I64" -> OpPrim ("I64." ++ op)
+          TC "I32" -> OpPrim ("I32." ++ op)
           _ -> OpPrim op
       else if op == "str!"
         then case t of
@@ -1406,6 +1465,7 @@ resolveSites sigs env = do
           TC "F64" -> pure (OpPrim "F64.str")
           TC "F32" -> pure (OpPrim "F32.str")
           TC "I64" -> pure (OpPrim "I64.str")
+          TC "I32" -> pure (OpPrim "I32.str")
           _ | mentionsFloat t -> do
                 p <- prettyT t
                 OpPrim "" <$ report ("str/print of " ++ p ++ ": render is tid-directed and floats are raw bits -- format float fields individually with F64.str/F32.str (v1)")
@@ -1425,6 +1485,9 @@ resolveSites sigs env = do
         TC "I64" | op == "%" -> pure (OpPrim "I64.rem")
                  | op == "^" -> OpPrim op <$ report "(^) is not defined for I64"
                  | otherwise -> pure (OpPrim ("I64." ++ op))
+        TC "I32" | op == "%" -> pure (OpPrim "I32.rem")
+                 | op == "^" -> OpPrim op <$ report "(^) is not defined for I32"
+                 | otherwise -> pure (OpPrim ("I32." ++ op))
         TC "String"
           | op == "+" -> pure (OpGlobal "Str.+")
           | op == "-" -> pure (OpGlobal "Str.-") -- deconcatenation: suffix removal
@@ -1811,7 +1874,7 @@ inferTopsInterfaces prof sigs structs tops =
       when (ipVectorLayouts prof) (prepareVectorEvidence rwBinds)
       -- resolve operator sites against the final substitution, then
       -- rebuild the top list with markers rewritten, in original order
-      tgts <- resolveSites sigs env
+      tgts <- resolveSites prof sigs env
       layoutPlans <- gets iVecPlans
       let hidden n = [PVar (layoutParam n i) | i <- [0 .. length (M.findWithDefault [] n layoutPlans) - 1]]
       modify (\st -> st { iLinSigs = [(n, (replicate (length (hidden n)) LU ++ ps, r)) | (n,(ps,r)) <- iLinSigs st] })

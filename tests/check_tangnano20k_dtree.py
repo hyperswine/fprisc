@@ -2,8 +2,9 @@
 """Check the existing decision-tree classifier against an independent reference.
 
 Without execution flags this computes only the Python reference. --hardware
-builds RV64IMC and uses the existing UART uploader/readback/exit checks; load
-the matching RV64 FPGA image first. --source-root permits an isolated committed
+builds the selected RV32IMC/RV64IMC image and uses UART readback/exit checks;
+load the matching FPGA image first. --qemu uses the QEMU UART adapter instead.
+--source-root permits an isolated committed
 runtime snapshot when the primary checkout contains unrelated runtime edits.
 """
 import argparse
@@ -178,6 +179,8 @@ def main():
     parser.add_argument('--depth', type=int, default=3)
     parser.add_argument('--min-leaf', type=int, default=2)
     parser.add_argument('--hardware', action='store_true')
+    parser.add_argument('--qemu', action='store_true')
+    parser.add_argument('--xlen', type=int, choices=(32, 64), default=64)
     parser.add_argument('--native', action='store_true')
     parser.add_argument('--source-root', type=Path, default=ROOT)
     parser.add_argument('--output', type=Path)
@@ -186,11 +189,13 @@ def main():
     parser.add_argument('--timeout', type=float, default=240)
     parser.add_argument('--bitstream', type=Path)
     args = parser.parse_args()
+    if args.qemu and (args.hardware or args.xlen != 32):
+        parser.error('--qemu currently requires --xlen 32 and excludes --hardware')
     if min(args.train, args.test, args.min_leaf, args.freq_mhz) < 1 or args.bins < 2 or not 1 <= args.depth <= 12 or not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error('positive sizes/clock/timeout, bins >= 2 and depth 1..12 required')
     expected = reference(args.train, args.test, args.bins, args.depth, args.min_leaf)
     print(json.dumps(expected, indent=2), flush=True)
-    if not (args.hardware or args.native):
+    if not (args.hardware or args.native or args.qemu):
         return
     source_root = args.source_root.resolve()
     out = (args.output or ROOT / 'build/tangnano20k-dtree' /
@@ -207,7 +212,7 @@ def main():
     report = {'reference': expected, 'source_sha256': sha(fixture),
               'classifier_sha256': sha(source_root / 'tests/dtree.fpr'),
               'compiler_sha256': sha(source_root / 'fpr'), 'executions': {}}
-    environment = {**os.environ, 'FPR_RVC': '1', 'FPR_CPU_MHZ': str(args.freq_mhz),
+    environment = {**os.environ, 'FPR_RVC': '1', 'FPR_XLEN': str(args.xlen), 'FPR_QEMU': str(int(args.qemu)), 'FPR_CPU_MHZ': str(args.freq_mhz),
                    'FPR_SOFTFLOAT_ROOT': os.environ.get('FPR_SOFTFLOAT_ROOT', str(ROOT / 'build/tangnano20k-softfloat'))}
     try:
         if args.native:
@@ -217,12 +222,20 @@ def main():
             (out / 'native.log').write_text(output)
             report['executions']['native'] = {'elapsed_us': validate(output, expected), 'wall_seconds': wall, 'passed': True}
             print(output, flush=True)
-        if args.hardware:
+        if args.hardware or args.qemu:
             output, _ = execute([source_root / 'machine/tangnano20k/build.sh', fixture, out], source_root, environment, 180)
             (out / 'board-build.log').write_text(output)
             image = out / 'base.bin'
             board = {**board_artifact(out), 'frequency_mhz': args.freq_mhz,
-                     'isa': 'RV64IMC', 'passed': False}
+                     'isa': f'RV{args.xlen}IMC', 'passed': False}
+            if args.qemu:
+                from check_tangnano20k_rv32_base import run_image
+                output = run_image(out / 'base.elf', out, args.timeout)
+                (out / 'qemu.log').write_text(output)
+                board.update(elapsed_us=validate(output, expected), passed=True)
+                report['executions']['qemu'] = board
+                print(output, flush=True)
+                return
             if args.bitstream:
                 board['bitstream_sha256'] = sha(args.bitstream)
             report['executions']['board'] = board

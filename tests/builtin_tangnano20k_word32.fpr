@@ -1,0 +1,17 @@
+profile builtin.
+
+# Full-width machine Word is available already. It is an unsigned bit
+# container, distinct from tagged Int and from the proposed I32 API.
+check yes = if yes then Unit else error "RV32 Word check failed".
+main =
+  zero = Word.fromInt 0;
+  one = Word.fromInt 1;
+  hi = Word.shl one 31;
+  all = Word.not zero;
+  _ = check (Word.bits Unit == 32);
+  _ = check (Word.bitTest hi 31);
+  _ = check (Word.eq (Word.shr hi 31) one);
+  _ = check (Word.eq (Word.add all one) zero);
+  _ = check (Word.eq (Word.sub zero one) all);
+  _ = check (Word.eq (Word.or hi (Word.fromInt 1)) (Word.bitSet hi 0));
+  print "RV32 WORD32 HOLDS".

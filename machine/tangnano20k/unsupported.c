@@ -16,6 +16,13 @@ uw fpr_actor_is_program(void){return 1;}
 /* Same identities as the shared runtime's bootstrap thread, not actors. */
 uw fpr_current_pid(void){return 0;}
 uw fpr_current_id(void){return 900;}
+/* These shared-runtime entries can be retained by a module's export table.
+ * This host has no process budget, scheduler or system logger to operate. */
+void *fpr_charge(void *p){(void)p;fpr_cpanic("Base: process budgets unavailable");return 0;}
+void fpr_exhausted(const char *why){fpr_cpanic(why);for(;;){}}
+int fpr_actor_confined(void){fpr_cpanic("Base: actor confinement unavailable");return 0;}
+void fpr_confined_refuse(const char *what){(void)what;fpr_cpanic("Base: system service unavailable");}
+V fpr_ended_actor(void){fpr_cpanic("Base: actor handles unavailable");return 0;}
 void fpr_mem_give(void *p){(void)p;fpr_cpanic("Base: process memory grants unavailable");}
 void *fpr_mem_take(uw bytes){(void)bytes;fpr_cpanic("Base: process memory grants unavailable");return 0;}
 void buddy_free(void *p){(void)p;fpr_cpanic("Base: buddy allocator unavailable");}
@@ -36,6 +43,15 @@ int single_cas(volatile void *p,void *expected,unsigned long long value,int succ
 unsigned long long single_fetch_add(volatile void *p,unsigned long long value,int order) __asm__("__atomic_fetch_add_8");
 unsigned long long single_fetch_add(volatile void *p,unsigned long long value,int order){
  (void)order;volatile unsigned long long *v=p;unsigned long long old=*v;*v=old+value;return old;
+}
+int single_cas32(volatile void *p,void *expected,uint32_t value,int success,int failure) __asm__("__atomic_compare_exchange_4");
+int single_cas32(volatile void *p,void *expected,uint32_t value,int success,int failure){
+ (void)success;(void)failure;volatile uint32_t *v=p;uint32_t *e=expected;
+ if(*v==*e){*v=value;return 1;}*e=*v;return 0;
+}
+uint32_t single_fetch_add32(volatile void *p,uint32_t value,int order) __asm__("__atomic_fetch_add_4");
+uint32_t single_fetch_add32(volatile void *p,uint32_t value,int order){
+ (void)order;volatile uint32_t *v=p;uint32_t old=*v;*v=old+value;return old;
 }
 static V h_fpr_g_Os_x2eclose(V a0){(void)a0;return unavailable("Base: Os.close unavailable");}
 FPR_FN(fpr_g_Os_x2eclose,h_fpr_g_Os_x2eclose,1);

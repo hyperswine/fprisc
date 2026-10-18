@@ -9,8 +9,10 @@ checkpoint below records the subsequent executable checks.
 
 Status: Proposal A has a first implementation: value-state turn regions,
 bounded-by-default MVU library loops and automatic regions for recognized
-value-state recursive receive loops. General mutable/higher-order recursion,
-precise Base ARC, I32 and refinement types remain proposals.
+value-state recursive receive loops. [I32 is implemented](2026-10-18-I32.md)
+in Base and the supported Builtin integer profiles. General
+mutable/higher-order recursion, precise Base ARC and refinement types
+remain proposals.
 
 Three topics, independent of each other:
 

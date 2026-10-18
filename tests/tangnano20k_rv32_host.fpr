@@ -1,0 +1,23 @@
+profile base.
+File = use "std/file".
+Program = use "std/program".
+check yes = if yes then Unit else error "RV32 host check failed".
+require r = case r of Ok value -> value | Err why -> error why.
+main : Unit .
+main =
+  _ = check (Program.envOr "unset" "TEST_UART" == "connected");
+  _ = require (File.writeText "output.txt" "RV32 UART");
+  _ = require (File.appendText "output.txt" " + append");
+  _ = check (File.exists "output.txt");
+  _ = check (require (File.readText "output.txt") == "RV32 UART + append");
+  _ = case File.open "output.txt" "r" of Err _ -> Unit | Ok _ -> error "stream unexpectedly available";
+  _ = check (require (Sys.readLine Unit) == "hello RV32");
+  _ = case Sys.readLine Unit of Err _ -> Unit | Ok _ -> error "EOF unexpectedly available";
+  hostTime = Sys.timeUs Unit;
+  _ = check (hostTime >= 0 and hostTime <= 1073741823);
+  before = Sys.mtime Unit;
+  _ = Sys.sleepUs 100;
+  after = Sys.mtime Unit;
+  _ = check (after - before >= 1000);
+  _ = case receiveFromNow 0 0 of Err _ -> Unit | Ok _ -> error "actor unexpectedly available";
+  print "RV32 BASE HOST HOLDS".

@@ -1,0 +1,4 @@
+profile base.
+Test = use "i32".
+main : Unit .
+main = _ = Test.run Unit; print "TANG NANO I32 HOLDS".

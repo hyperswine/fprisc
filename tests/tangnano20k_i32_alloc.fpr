@@ -1,0 +1,19 @@
+# Native 64-bit acceptance: I32 primitive calls must not allocate per step.
+# No printing, strings, containers or Results occur inside the measured loop.
+profile base.
+spin : unsafe Int -> I32 -> I32 -> I32 -> I32 .
+spin n multiplier increment value | n <= 0 = value.
+spin n multiplier increment value = spin (n - 1) multiplier increment (value * multiplier + increment).
+main : unsafe Unit .
+main =
+  _ = if intMax Unit > 1073741823 then Unit else error "allocation fixture requires 64-bit values";
+  seed = I32.ofInt 0;
+  multiplier = I32.ofInt 1664525;
+  increment = I32.ofInt 1013904223;
+  # On a 64-bit host, ofInt takes the low 32 bits even beyond UINT32_MAX.
+  _ = if I32.ofInt 4294967297 == I32.ofInt 1 then Unit else error "ofInt did not wrap";
+  before = heapUsed Unit;
+  answer = spin 10000000 multiplier increment seed;
+  after = heapUsed Unit;
+  _ = if after == before then Unit else error "I32 loop allocated {after - before} bytes";
+  print "I32 ALLOC HOLDS steps=10000000 delta={after-before} hex={I32.hex answer}".

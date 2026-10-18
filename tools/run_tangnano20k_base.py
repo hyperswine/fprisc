@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Run a Base RV64 image and serve an explicit rooted UART virtual device."""
+"""Run a Base RV32/RV64 image and serve an explicit rooted UART virtual device.
+
+Requires the extended Q/V/H/T boot loader, including the RV32 SDRAM ROM.
+"""
 import argparse, math, re, functools, operator, os, select, struct, sys, termios, time
 from pathlib import Path
 from run_simple_risc import open_port
@@ -91,7 +94,7 @@ def main():
             while time.monotonic()<end and not data.endswith(b'DONE'):
                 if select.select([fd],[],[],.05)[0]:data+=os.read(fd,4096)
             if data!=b'DONE':raise TimeoutError(f'board diagnostic failed: {data!r}')
-            print('PASS: RV64 board UART diagnostic');return
+            print('PASS: board UART diagnostic');return
         image+=b'\0'*(-len(image)%4)
         send(fd,b'Q'+struct.pack('<I',len(image)//4)+image+b'V')
         expected=0

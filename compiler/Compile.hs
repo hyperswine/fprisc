@@ -338,18 +338,29 @@ bindNames = M.keysSet . arities
 compileMain :: IO ()
 compileMain = compileWithInterface (const (pure ()))
 
--- RV32's one-word manual ABI cannot carry a 64-bit float. Refuse before
--- code generation, including imported definitions and unsaturated primitives.
+-- The manual Builtin RV32 runtime does not provide Base's boxed numeric
+-- ABI. Refuse before code generation, including imported definitions and
+-- unsaturated primitives. Base RV32 supports these through runtime boxes.
 builtinWideFloat :: Core -> Bool
-builtinWideFloat e = case e of
-  CVar n -> "F64." `isPrefixOf` n || "I64." `isPrefixOf` n || n == "f64frombits"
-  CApp f a -> builtinWideFloat f || builtinWideFloat a
-  CLam _ b -> builtinWideFloat b
-  CLet _ a b -> builtinWideFloat a || builtinWideFloat b
-  CIf c a b -> any builtinWideFloat [c,a,b]
-  CMk _ _ xs -> any builtinWideFloat xs
-  CTagEq _ _ a -> builtinWideFloat a
-  CProj _ a -> builtinWideFloat a
+builtinWideFloat = coreHasName $ \n ->
+  any (`isPrefixOf` n) ["F64.", "F32.", "I64."]
+    || n `elem` ["f64frombits", "f32frombits"] || i32WidePrimitive n
+
+i32WidePrimitive :: String -> Bool
+i32WidePrimitive n = n `elem` map ("I32." ++)
+  ["ofI64", "toI64", "toI64U", "ofF32", "ofF32U", "ofF64", "ofF64U",
+   "toF32", "toF32U", "toF64", "toF64U", "ofF32Bits", "toF32Bits"]
+
+coreHasName :: (String -> Bool) -> Core -> Bool
+coreHasName test e = case e of
+  CVar n -> test n
+  CApp f a -> coreHasName test f || coreHasName test a
+  CLam _ b -> coreHasName test b
+  CLet _ a b -> coreHasName test a || coreHasName test b
+  CIf c a b -> any (coreHasName test) [c,a,b]
+  CMk _ _ xs -> any (coreHasName test) xs
+  CTagEq _ _ a -> coreHasName test a
+  CProj _ a -> coreHasName test a
   _ -> False
 
 -- Return interfaces only after the SAME normal checker has accepted the unit.
@@ -860,10 +871,14 @@ compileWithInterface accepted = do
                   ++ [t | t <- rw, not (isTBind t)]
           reportTurns uts = when (envReceiveNotes || oCost opts) $
             mapM_ (hPutStrLn stderr) (snd (turnPass (compileRaw uts)))
-          checkBuiltinWidth p = when (oBuiltin opts && tgtName (oTarget opts) == "rv32"
-                                      && any (builtinWideFloat . snd) (M.elems p)) $ do
-            hPutStrLn stderr "profile builtin RV32: F64 and I64 require a 64-bit value ABI"
-            exitFailure
+          checkBuiltinWidth p = do
+            when (oArc opts && any (coreHasName i32WidePrimitive . snd) (M.elems p)) $ do
+              hPutStrLn stderr "I32 conversions with I64/F32/F64 currently require the manual ABI; --arc/--raw bridge ownership adapters are not implemented"
+              exitFailure
+            when (oBuiltin opts && tgtName (oTarget opts) == "rv32"
+                   && any (builtinWideFloat . snd) (M.elems p)) $ do
+              hPutStrLn stderr "profile builtin RV32: F64 and I64 require a 64-bit value ABI; F32 also requires the boxed Base runtime; I32 wide conversions require Base"
+              exitFailure
           preludeExt = arities (resolveUnit preludeE')
           unitExt = M.unions [arities (resolveUnit uts) | (_, uts) <- units']
           -- Checked entries can be owned by the root (including contracts

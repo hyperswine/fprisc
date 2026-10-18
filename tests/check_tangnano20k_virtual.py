@@ -11,6 +11,13 @@ report='ELF64 little endian\nFlags: 0x0\nTag_RISCV_arch: "rv64i2p1_m2p0_zicsr2p0
 check(report)
 compressed_report=report.replace('0x0','0x1').replace('_m2p0','_m2p0_c2p0')
 check(compressed_report, compressed=True)
+report32=report.replace('ELF64','ELF32').replace('rv64i','rv32i')
+check(report32, xlen=32)
+check(report32.replace('0x0','0x1').replace('_m2p0','_m2p0_c2p0'), compressed=True, xlen=32)
+for invalid32 in [report,report32.replace('0x0','0x4'),report32.replace('_m2p0','_m2p0_a2p1'),report32.replace('_m2p0','_m2p0_f2p2_d2p2')]:
+    try:check(invalid32, xlen=32)
+    except ValueError:pass
+    else:raise AssertionError(invalid32)
 try:check(compressed_report)
 except ValueError:pass
 else:raise AssertionError('compressed image accepted without explicit target selection')

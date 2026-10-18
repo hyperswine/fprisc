@@ -6,6 +6,7 @@
  * extern that hal.c (or any other module) satisfies at link time.
  */
 #include "fpr.h"
+#include "i32.h"
 #include "vec_layout.h" /* the deep copier lays vectors into slabs */
 #ifdef FPR_QOSAPP
 #include "qos_abi.h"
@@ -2392,6 +2393,11 @@ V fpr_prim_fn__x3e_x3d(V a, V b) { return BOOL(UNTAG(a) >= UNTAG(b)); }
  * that changes, the guard belongs here as a panic, not as a `True`.) */
 #define VEQ_INLINE 32 /* pending pairs on the C stack before the heap block */
 typedef struct { V a, b; } veq_pair_t;
+static uint64_t u64(V);
+#if UINTPTR_MAX <= 0xFFFFFFFFu
+static double dbits(V);
+static float fbits(V);
+#endif
 #ifdef FPR_BUILTIN_RAW
 extern uw fpr_builtin_field_count(V);
 extern char fpr_builtin_field_kind(V,uw);
@@ -2399,10 +2405,28 @@ extern char fpr_builtin_field_kind(V,uw);
 /* one pair, without descending: 0 differ, 1 equal, 2 compare the fields */
 static int veq_shallow(V a, V b) {
   if (ISINT(a) || ISINT(b)) return a == b;
+#if UINTPTR_MAX <= 0xFFFFFFFFu
+  /* IEEE equality also applies when both references name the same NaN. */
+  if (a && b && TID(a) == T_BITS && TID(b) == T_BITS &&
+      ((hdr_t *)a)->var == ((hdr_t *)b)->var) {
+    if (((hdr_t *)a)->var == 5) return dbits(a) == dbits(b);
+    if (((hdr_t *)a)->var == 6) return fbits(a) == fbits(b);
+  }
+#endif
   if (a == b) {
 #ifdef FPR_BUILTIN_RAW
     /* A shared ADT may contain NaN, so identity cannot skip numeric equality. */
     if (!fpr_in_heap(a) || !fpr_builtin_field_count(a)) return 1;
+#elif UINTPTR_MAX <= 0xFFFFFFFFu
+    /* RV32 aggregates contain boxed numeric leaves. Even a value compared
+     * with itself must visit those leaves: NaN remains unequal to itself.
+     * Opaque handles, vectors and scalar leaves keep identity equality. */
+    if (!fpr_in_heap(a)) return 1;
+    switch (TID(a)) {
+      case T_STR: case T_BITS: case T_VEC: case T_ACTOR: case T_PAP:
+      case T_DEVICE: case T_REGISTER: case T_SSTR: return 1;
+      default: break;
+    }
 #else
     return 1;
 #endif
@@ -2417,7 +2441,10 @@ static int veq_shallow(V a, V b) {
       if (s->bytes[i] != t->bytes[i]) return 0;
     return 1;
   }
-  if (x->tid == T_BITS && (x->var == 2 || x->var == 3 || x->var == 4)) /* Word, Addr, I64 */
+  if (x->tid == T_BITS && x->var == 4) return u64(a) == u64(b);
+  if (x->tid == T_BITS && x->var == 7)
+    return (uint32_t)((bits_t *)a)->val == (uint32_t)((bits_t *)b)->val;
+  if (x->tid == T_BITS && (x->var == 2 || x->var == 3)) /* Word, Addr */
     return ((bits_t *)a)->val == ((bits_t *)b)->val;
   switch (x->tid) {
     case T_VEC: case T_ACTOR: case T_PAP:
@@ -2516,10 +2543,15 @@ static void rdec(sw n) {
   if (neg) b[i--] = '-';
   for (int j = i + 1; j <= 23; j++) remit(b[j]);
 }
+static void rdec64(int64_t n) {
+  char b[24]; int i = 24;
+  uint64_t m = n < 0 ? (uint64_t)0 - (uint64_t)n : (uint64_t)n;
+  do { b[--i] = (char)('0' + m % 10u); m /= 10u; } while (m);
+  if (n < 0) b[--i] = '-';
+  while (i < 24) remit(b[i++]);
+}
 static void render(V v);
-#ifdef FPR_BUILTIN_RAW
 static uw dtoa(char *,double,int);
-#endif
 static void renderField(V obj,uw i) {
   V v=((V *)(obj+8))[i];
 #ifdef FPR_BUILTIN_RAW
@@ -2558,7 +2590,9 @@ static void renderArg(V obj, int i) {
   else {
     hdr_t *fh = (hdr_t *)f;
     const fpr_con_t *c = fh->tid >= 0x20000000u ? con_find(fh->tid, fh->var) : 0;
-    paren = fh->tid == T_RESULT || (c && c->arity > 0);
+    paren = fh->tid == T_RESULT || (c && c->arity > 0) ||
+            (fh->tid == T_BITS && fh->var == 7 &&
+             (int32_t)(uint32_t)((bits_t *)f)->val < 0);
   }
   if (paren) remit('(');
   renderField(obj, i);
@@ -2606,7 +2640,18 @@ static void render(V v) {
       remit(')');
       break;
     }
-    case T_BITS: rdec((sw)((bits_t *)v)->val); break;
+    case T_BITS:
+      if (h->var == 4) rdec64((int64_t)u64(v));
+      else if (h->var == 7) rdec64((int32_t)(uint32_t)((bits_t *)v)->val);
+#if UINTPTR_MAX <= 0xFFFFFFFFu
+      else if (h->var == 5 || h->var == 6) {
+        char b[40];
+        uw n = dtoa(b, h->var == 5 ? dbits(v) : (double)fbits(v), h->var == 5 ? 15 : 7);
+        for (uw i = 0; i < n; i++) remit(b[i]);
+      }
+#endif
+      else rdec((sw)((bits_t *)v)->val);
+      break;
     case T_PAP: remits("<fn>"); break;
     default:
       if (h->tid > T_TUPN && h->tid < T_TUPN_END) { /* a wide tuple: its arity is in its typeid */
@@ -3005,7 +3050,7 @@ static V g_chr(V c) {
   return (V)fpr_mkstr(&b, 1);
 }
 
-/* ---- floats: F64 / F32 as RAW-BITS payloads --------------------------
+/* ---- floats: raw bits on RV64, boxed numeric leaves on RV32 ----------
  * A float is its IEEE bit pattern carried in an ordinary V -- moved by
  * the same ld/sd/mv, slots, argspill, PAP and constructor paths as any
  * word (nothing there interprets values). Type-directed elaboration routes
@@ -3021,23 +3066,61 @@ static V g_chr(V c) {
  * whose bits alias a heap address could fool fpr_in_heap on an
  * explicit send/drop of a bare float -- the same shallow-honesty class
  * as veq's "deep equality needs field counts".  NaN-boxing or typed
- * drops are the real fix, with the Sol JTy lattice as the reference. */
-#if UINTPTR_MAX > 0xFFFFFFFFu /* raw-bits floats assume a 64-bit V;
-  on a 32-bit target the prims are simply absent, so any float use is
-  an honest LINK error instead of silent truncation */
+ * drops are the real fix, with the Sol JTy lattice as the reference.
+ * RV32 uses aligned T_BITS numeric leaves instead: F64 needs all 64 bits,
+ * and boxed F32 avoids interpreting an arbitrary float bit pattern as a
+ * tagged Int or pointer. The generated ordinary-V call ABI is unchanged. */
+#if UINTPTR_MAX > 0xFFFFFFFFu
 static double dbits(V v) { union { uw u; double d; } c; c.u = (uw)v; return c.d; }
 static V bitsd(double d) { union { uw u; double d; } c; c.d = d; return (V)c.u; }
 static float fbits(V v) { union { uint32_t u; float f; } c; c.u = (uint32_t)(uw)v; return c.f; }
 static V bitsf(float f) { union { uint32_t u; float f; } c; c.f = f; return (V)(uw)c.u; }
+#else
+static double dbits(V v) {
+  if (ISINT(v) || !v || TID(v) != T_BITS || ((hdr_t *)v)->var != 5)
+    fpr_cpanic("F64: invalid boxed value");
+  union { uint64_t u; double d; } c = {((fpr_num64_t *)v)->val};
+  return c.d;
+}
+static V bitsd(double d) {
+  union { uint64_t u; double d; } c; c.d = d;
+  fpr_num64_t *b = (fpr_num64_t *)fpr_alloc(sizeof(fpr_num64_t));
+  *b = (fpr_num64_t){T_BITS, 5, 64, c.u};
+  return (V)b;
+}
+static float fbits(V v) {
+  if (ISINT(v) || !v || TID(v) != T_BITS || ((hdr_t *)v)->var != 6)
+    fpr_cpanic("F32: invalid boxed value");
+  union { uint32_t u; float f; } c = {(uint32_t)((bits_t *)v)->val};
+  return c.f;
+}
+static V bitsf(float f) {
+  union { uint32_t u; float f; } c; c.f = f;
+  bits_t *b = (bits_t *)fpr_alloc(sizeof(bits_t));
+  *b = (bits_t){T_BITS, 6, 32, c.u};
+  return (V)b;
+}
+#endif
+
+/* The compiler splices literal bits with the C integer ABI, before tagging.
+ * A tagged RV32 Int cannot carry an arbitrary unsigned 32-bit half. */
+V fpr_f64_from_bits32(uint32_t hi, uint32_t lo) {
+  union { uint64_t u; double d; } c = {((uint64_t)hi << 32) | lo};
+  return bitsd(c.d);
+}
+V fpr_f32_from_bits32(uint32_t bits) {
+  union { uint32_t u; float f; } c = {bits};
+  return bitsf(c.f);
+}
 
 /* literal splicing: the parser encodes 1.5 as f64frombits hi lo (two
  * tagged 32-bit halves -- a tagged V cannot carry 64 raw bits) */
 V fpr_prim_fn_f64frombits(V hi, V lo) {
-  return (V)(((uw)UNTAG(hi) << 32) | ((uw)UNTAG(lo) & 0xFFFFFFFFu));
+  return fpr_f64_from_bits32((uint32_t)UNTAG(hi), (uint32_t)UNTAG(lo));
 }
 
 /* F32 literals fit one tagged Int (32 bits < 62), so one arg */
-V fpr_prim_fn_f32frombits(V b) { return (V)((uw)UNTAG(b) & 0xFFFFFFFFu); }
+V fpr_prim_fn_f32frombits(V b) { return fpr_f32_from_bits32((uint32_t)UNTAG(b)); }
 
 V fpr_prim_fn_F64_x2e_x2b(V a, V b) { return bitsd(dbits(a) + dbits(b)); }
 V fpr_prim_fn_F64_x2e_x2d(V a, V b) { return bitsd(dbits(a) - dbits(b)); }
@@ -3060,7 +3143,7 @@ V fpr_prim_fn_F64_x2e_x21_x3d(V a, V b) { return BOOL(dbits(a) != dbits(b)); }
  * hosted link.  Exact and correctly rounded everywhere; no
  * -ffast-math, no errno, no libm dependency introduced. */
 static double fsqrt_(double x) {
-#if defined(__riscv) && defined(__riscv_flen)
+#if defined(__riscv) && defined(__riscv_flen) && __riscv_flen >= 64
   double r;
   __asm__("fsqrt.d %0, %1" : "=f"(r) : "f"(x));
   return r;
@@ -3078,7 +3161,19 @@ static double fsqrt_(double x) {
 }
 V fpr_prim_fn_F64_x2esqrt(V a) { return bitsd(fsqrt_(dbits(a))); }
 V fpr_prim_fn_F64_x2eofInt(V a) { return bitsd((double)UNTAG(a)); }
-V fpr_prim_fn_F64_x2etoInt(V a) { return TAG((sw)dbits(a)); } /* truncates */
+static V float_toInt(double d) {
+  /* Check the full signed machine range before C's float-to-int cast,
+   * then check the truncated integer's tagged range. On RV32, a value
+   * such as -1073741824.5 truncates to the valid minimum Int. Checking
+   * the original double against that minimum rejected it too early. */
+  double machine_limit = (double)((uw)1 << (sizeof(uw) * 8 - 1));
+  if (!(d >= -machine_limit && d < machine_limit))
+    fpr_trap("float.toInt: does not fit an Int");
+  sw n = (sw)d;
+  if (!fits_int(n)) fpr_trap("float.toInt: does not fit an Int");
+  return TAG(n); /* truncates toward zero */
+}
+V fpr_prim_fn_F64_x2etoInt(V a) { return float_toInt(dbits(a)); }
 V fpr_prim_fn_F64_x2eofF32(V a) { return bitsd((double)fbits(a)); }
 
 V fpr_prim_fn_F32_x2e_x2b(V a, V b) { return bitsf(fbits(a) + fbits(b)); }
@@ -3232,7 +3327,7 @@ V fpr_prim_fn_F32_x2eexp(V a) { return bitsf((float)fexp_((double)fbits(a))); }
 V fpr_prim_fn_F32_x2epow(V a, V b) { return bitsf((float)fpow_((double)fbits(a), (double)fbits(b))); }
 V fpr_prim_fn_F32_x2esin(V a) { return bitsf((float)fsin_((double)fbits(a))); }
 V fpr_prim_fn_F32_x2ecos(V a) { return bitsf((float)fcos_((double)fbits(a))); }
-V fpr_prim_fn_F32_x2etoInt(V a) { return TAG((sw)fbits(a)); }
+V fpr_prim_fn_F32_x2etoInt(V a) { return float_toInt((double)fbits(a)); }
 V fpr_prim_fn_F32_x2eofF64(V a) { return bitsf((float)dbits(a)); }
 
 /* dtoa, freestanding and deliberately simple (v1): sign/NaN/Inf/0,
@@ -3252,10 +3347,12 @@ static uw dtoa(char *out, double x, int sig) {
     while (x >= 10.0) { x /= 10.0; e10++; }
     while (x < 1.0) { x *= 10.0; e10--; }
   }
-  sw ip = (sw)x;
+  /* Display precision belongs to F64, not the target's pointer width.
+   * RV32 still prints the full integer part up to the exponent cutoff. */
+  uint64_t ip = (uint64_t)x;
   double fr = x - (double)ip;
   { /* integer part */
-    char b[24]; int i = 23; uw u = (uw)ip; int digs = 0;
+    char b[24]; int i = 23; uint64_t u = ip; int digs = 0;
     if (u == 0) { b[i--] = '0'; }
     while (u) { b[i--] = (char)('0' + u % 10); u /= 10; digs++; }
     for (int j = i + 1; j <= 23; j++) *p++ = b[j];
@@ -3298,7 +3395,7 @@ V fpr_prim_fn_F32_x2estr(V a) {
 }
 
 /* ---- I64: a 64-bit two's-complement integer, BOXED ---------------------
- * Int is tagged and has 63 bits.  I64 is the whole 64-bit word, for code
+ * Int is tagged and has XLEN-1 bits. I64 is the whole 64-bit word, for code
  * that needs exact 64-bit arithmetic (wasm i64, C interop, hashes, wire
  * formats).  It WRAPS on overflow, like C's uint64_t and wasm's i64; that
  * is its contract, not an accident, and why it is a separate type from Int.
@@ -3309,16 +3406,16 @@ V fpr_prim_fn_F32_x2estr(V a) {
  * address is followed as a pointer by the copier on send (a value near
  * 2^40 hung a program on this Mac), and integers -- timestamps in
  * milliseconds are about 2^40 -- land there far more often than floats.
- * The box is a bits_t of variant 4 (fpr.h), which every walker already
+ * The box is a fpr_num64_t of variant 4 (fpr.h), which every walker already
  * treats as a leaf: send, drop, keep and arena copy-out copy it by size,
  * veq compares its value, and render prints it as a signed decimal.  So
  * an I64 can sit in lists, records, vectors and polymorphic code.  The
  * price is one 24-byte cell per result (docs/2026-10-05-I64.md). */
-static uint64_t u64(V v) { return (uint64_t)((bits_t *)v)->val; }
+static uint64_t u64(V v) { return ((fpr_num64_t *)v)->val; }
 static int64_t i64(V v) { return (int64_t)u64(v); }
 static V vu64(uint64_t x) {
-  bits_t *b = (bits_t *)fpr_alloc(sizeof(bits_t));
-  *b = (bits_t){T_BITS, 4, 64, (uw)x};
+  fpr_num64_t *b = (fpr_num64_t *)fpr_alloc(sizeof(fpr_num64_t));
+  *b = (fpr_num64_t){T_BITS, 4, 64, x};
   return (V)b;
 }
 static V vi64(int64_t x) { return vu64((uint64_t)x); }
@@ -3417,19 +3514,52 @@ static V i64_ctz(V a) { return TAG(ctz64(u64(a))); }
 static V i64_popcnt(V a) { return TAG(popcnt64(u64(a))); }
 
 /* conversions with Int: every Int fits; the reverse is checked */
-#define INT_MAX63 ((int64_t)(((uint64_t)1 << 62) - 1))
-#define INT_MIN63 (-INT_MAX63 - 1)
 static V i64_ofInt(V a) { return vi64((int64_t)UNTAG(a)); }
 static V i64_toInt(V a) {
   int64_t x = i64(a);
-  if (x > INT_MAX63 || x < INT_MIN63) return err_c("I64.toInt: does not fit an Int (63 bits)");
+  if (x > INT_MAX_TAGGED || x < INT_MIN_TAGGED)
+#if UINTPTR_MAX > 0xFFFFFFFFu
+    return err_c("I64.toInt: does not fit an Int (63 bits)");
+#else
+    return err_c("I64.toInt: does not fit an Int (31 bits)");
+#endif
   return ok_v(TAG((sw)x));
 }
 /* the halves as unsigned 32-bit Ints, and back (each half masked to 32 bits) */
-static V i64_hi(V a) { return TAG((sw)(u64(a) >> 32)); }
-static V i64_lo(V a) { return TAG((sw)(u64(a) & 0xFFFFFFFFu)); }
+static V i64_half(uint32_t x) {
+#if UINTPTR_MAX <= 0xFFFFFFFFu
+  if ((uint64_t)x > (uint64_t)INT_MAX_TAGGED)
+    fpr_trap("I64.hi/lo: unsigned half does not fit an Int; use hiWord/loWord");
+#endif
+  return TAG((sw)x);
+}
+static V i64_hi(V a) { return i64_half((uint32_t)(u64(a) >> 32)); }
+static V i64_lo(V a) { return i64_half((uint32_t)u64(a)); }
 static V i64_fromParts(V hi, V lo) {
   return vu64(((uint64_t)UNTAG(hi) & 0xFFFFFFFFu) << 32 | ((uint64_t)UNTAG(lo) & 0xFFFFFFFFu));
+}
+static V i64_halfWord(uint32_t x) {
+#ifdef FPR_BUILTIN_RAW
+  return (V)x;
+#else
+  bits_t *b = (bits_t *)fpr_alloc(sizeof(bits_t));
+  *b = (bits_t){T_BITS, 2, sizeof(uw) * 8, (uw)x};
+  return (V)b;
+#endif
+}
+static V i64_hiWord(V a) { return i64_halfWord((uint32_t)(u64(a) >> 32)); }
+static V i64_loWord(V a) { return i64_halfWord((uint32_t)u64(a)); }
+static uw i64_wordBits(V v) {
+#ifdef FPR_BUILTIN_RAW
+  return (uw)v;
+#else
+  if (ISINT(v) || !v || TID(v) != T_BITS || ((hdr_t *)v)->var != 2)
+    fpr_cpanic("I64.fromWords: not a Word");
+  return ((bits_t *)v)->val;
+#endif
+}
+static V i64_fromWords(V hi, V lo) {
+  return vu64(((uint64_t)(uint32_t)i64_wordBits(hi) << 32) | (uint32_t)i64_wordBits(lo));
 }
 
 /* floats: to a double rounds to nearest; from one truncates toward zero
@@ -3449,8 +3579,14 @@ static V i64_ofF64U(V a) {
   return ok_v(vu64((uint64_t)d));
 }
 /* the IEEE bits of a double, and back: what reinterpret means in wasm */
-static V i64_ofF64Bits(V a) { return vu64((uint64_t)(uw)a); }
-static V i64_toF64Bits(V a) { return (V)(uw)u64(a); }
+static V i64_ofF64Bits(V a) {
+  union { uint64_t u; double d; } c; c.d = dbits(a);
+  return vu64(c.u);
+}
+static V i64_toF64Bits(V a) {
+  uint64_t u = u64(a);
+  return fpr_f64_from_bits32((uint32_t)(u >> 32), (uint32_t)u);
+}
 
 /* text */
 static V i64_digits(uint64_t m, int neg) {
@@ -3525,6 +3661,9 @@ FPR_FN(fpr_g_I64_x2etoInt, i64_toInt, 1);
 FPR_FN(fpr_g_I64_x2ehi, i64_hi, 1);
 FPR_FN(fpr_g_I64_x2elo, i64_lo, 1);
 FPR_FN(fpr_g_I64_x2efromParts, i64_fromParts, 2);
+FPR_FN(fpr_g_I64_x2ehiWord, i64_hiWord, 1);
+FPR_FN(fpr_g_I64_x2eloWord, i64_loWord, 1);
+FPR_FN(fpr_g_I64_x2efromWords, i64_fromWords, 2);
 FPR_FN(fpr_g_I64_x2etoF64, i64_toF64, 1);
 FPR_FN(fpr_g_I64_x2etoF64U, i64_toF64U, 1);
 FPR_FN(fpr_g_I64_x2eofF64, i64_ofF64, 1);
@@ -3536,7 +3675,48 @@ FPR_FN(fpr_g_I64_x2estrU, i64_strU, 1);
 FPR_FN(fpr_g_I64_x2ehex, i64_hex, 1);
 FPR_FN(fpr_g_I64_x2eparse, i64_parse, 1);
 
-#endif /* 64-bit V */
+/* I32 bridges belong to Base's wide numeric runtime. The integer-only
+ * implementation lives in i32.c and also links into manual Builtin. */
+static V i32_ofI64(V a) { return fpr_i32_pack((uint32_t)u64(a)); }
+static V i32_toI64(V a) { return vi64((int32_t)fpr_i32_bits(a)); }
+static V i32_toI64U(V a) { return vu64(fpr_i32_bits(a)); }
+static V i32_toF64(V a) { return bitsd((double)(int32_t)fpr_i32_bits(a)); }
+static V i32_toF64U(V a) { return bitsd((double)fpr_i32_bits(a)); }
+static V i32_toF32(V a) { return bitsf((float)(int32_t)fpr_i32_bits(a)); }
+static V i32_toF32U(V a) { return bitsf((float)fpr_i32_bits(a)); }
+static V i32_ofFloat(double d,int unsign,const char *nan,const char *range) {
+  if (d!=d) return err_c(nan);
+  /* Bounds apply to the integer after truncation toward zero. Both
+   * endpoint+fraction cases have defined int64_t casts and preserve wasm
+   * truncation semantics: -0.5 -> 0 unsigned, -2147483648.5 -> INT32_MIN. */
+  if (unsign ? !(d>-1.0 && d<4294967296.0)
+             : !(d>-2147483649.0 && d<2147483648.0)) return err_c(range);
+  return ok_v(fpr_i32_pack((uint32_t)(int64_t)d));
+}
+static V i32_ofF64(V a) {
+  return i32_ofFloat(dbits(a),0,"I32.ofF64: NaN","I32.ofF64: out of range");
+}
+static V i32_ofF64U(V a) {
+  return i32_ofFloat(dbits(a),1,"I32.ofF64U: NaN","I32.ofF64U: out of range");
+}
+static V i32_ofF32(V a) {
+  return i32_ofFloat((double)fbits(a),0,"I32.ofF32: NaN","I32.ofF32: out of range");
+}
+static V i32_ofF32U(V a) {
+  return i32_ofFloat((double)fbits(a),1,"I32.ofF32U: NaN","I32.ofF32U: out of range");
+}
+static V i32_ofF32Bits(V a) {
+  union { float f;uint32_t u; } c;c.f=fbits(a);
+  return fpr_i32_pack(c.u);
+}
+static V i32_toF32Bits(V a) { return fpr_f32_from_bits32(fpr_i32_bits(a)); }
+FPR_FN(fpr_g_I32_x2eofI64,i32_ofI64,1);
+FPR_FN(fpr_g_I32_x2etoI64,i32_toI64,1); FPR_FN(fpr_g_I32_x2etoI64U,i32_toI64U,1);
+FPR_FN(fpr_g_I32_x2etoF64,i32_toF64,1); FPR_FN(fpr_g_I32_x2etoF64U,i32_toF64U,1);
+FPR_FN(fpr_g_I32_x2etoF32,i32_toF32,1); FPR_FN(fpr_g_I32_x2etoF32U,i32_toF32U,1);
+FPR_FN(fpr_g_I32_x2eofF64,i32_ofF64,1); FPR_FN(fpr_g_I32_x2eofF64U,i32_ofF64U,1);
+FPR_FN(fpr_g_I32_x2eofF32,i32_ofF32,1); FPR_FN(fpr_g_I32_x2eofF32U,i32_ofF32U,1);
+FPR_FN(fpr_g_I32_x2eofF32Bits,i32_ofF32Bits,1); FPR_FN(fpr_g_I32_x2etoF32Bits,i32_toF32Bits,1);
 
 /* ---- static PAP objects (symbol names = mangled FPRISC names) ---------- */
 FPR_FN(fpr_prim_obj__x2b, fpr_prim_fn__x2b, 2);       /* +  */

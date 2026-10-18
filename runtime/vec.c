@@ -37,7 +37,7 @@
 /* The layout lives in vec_layout.h (single source, shared with the
  * runtime's deep copier and the host-side gfx walker; Codegen.hs
  * mirrors the offsets).  VR_FLT there is a DECLARED rep, never
- * inferred: a float V is its bit pattern, so the runtime cannot tell
+ * inferred on RV64: a float V is its bit pattern, so the runtime cannot tell
  * one from a pointer -- fix_layout's first-push rule is undecidable
  * for floats (the documented v1 hazard, turned into an API instead of
  * a guess).  Vec.newAs declares the layout up front. */
@@ -247,9 +247,8 @@ static void fix_layout(vec_t *x, V v) {
 
 static void put_cell(vec_t *x, uw k, uw i, V f) {
   int raw = VK_RAW(x->kinds[k]) != 0, flt = VK_FLOAT(x->kinds[k]) != 0;
-  /* a float column stores the V verbatim -- it ALREADY is the bit
-   * pattern.  No ISINT check is possible (nor meaningful): the width
-   * came from the declaration, not from the value. */
+  /* Float columns store the V verbatim: IEEE bits on RV64, a pointer to
+   * a numeric leaf on RV32. Width comes from the declaration. */
   if (raw && !flt && !ISINT(f))
     fpr_cpanic("Vec: Int column got a non-Int (layout is fixed by the first push or by Vec.newAs)");
   *vl_slot(x->cols[k], i) = (raw && !flt) ? (uw)UNTAG(f) : (uw)f;

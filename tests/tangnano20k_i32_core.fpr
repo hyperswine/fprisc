@@ -1,0 +1,80 @@
+# Shared integer-only I32 acceptance. No I64 or floating-point bridges:
+# imported unchanged by Base and the manual-ownership Builtin RV32 fixture.
+expect name yes = if yes then Unit else error "I32 FAIL {name}".
+parsed text = case I32.parse text of Ok x -> x | Err why -> error why.
+isErr (Ok _) = False.
+isErr (Err _) = True.
+intSaid (Ok x) = str x.
+intSaid (Err _) = "Err".
+
+run : Unit -> Unit .
+run u =
+  zero = I32.ofInt 0;
+  one = I32.ofInt 1;
+  minus1 = I32.ofInt -1;
+  min32 = parsed "-2147483648";
+  max32 = parsed "2147483647";
+  hi = parsed "0x80000000";
+  pattern = parsed "0x12345678";
+  _ = expect "signed str min/max" (I32.str min32 == "-2147483648" and I32.str max32 == "2147483647");
+  _ = expect "unsigned str" (I32.strU minus1 == "4294967295" and I32.strU hi == "2147483648");
+  _ = expect "hex" (I32.hex minus1 == "ffffffff" and I32.hex zero == "0");
+  _ = expect "add upper wrap" (max32 + one == min32);
+  _ = expect "sub lower wrap" (min32 - one == max32);
+  _ = expect "multiply wrap" (max32 * I32.ofInt 2 == I32.ofInt -2);
+  _ = expect "multiply modulo32" (parsed "1073741824" * I32.ofInt 4 == zero);
+  _ = expect "ordinary sub" (I32.ofInt 5 - I32.ofInt 7 == I32.ofInt -2);
+  _ = expect "negative div/rem" (I32.ofInt -7 / I32.ofInt 2 == I32.ofInt -3 and I32.ofInt -7 % I32.ofInt 2 == minus1);
+  _ = expect "negative divisor" (I32.ofInt 7 / I32.ofInt -2 == I32.ofInt -3 and I32.ofInt 7 % I32.ofInt -2 == one);
+  _ = expect "both negative" (I32.ofInt -7 / I32.ofInt -2 == I32.ofInt 3 and I32.ofInt -7 % I32.ofInt -2 == minus1);
+  _ = expect "minimum divided" (I32.str (min32 / I32.ofInt 2) == "-1073741824");
+  _ = expect "minimum rem -1" (I32.rem min32 minus1 == zero);
+  _ = expect "unsigned divide" (I32.divU minus1 (I32.ofInt 2) == max32);
+  _ = expect "unsigned remainder" (I32.remU minus1 (I32.ofInt 10) == I32.ofInt 5);
+  _ = expect "signed comparisons" (min32 < minus1 and minus1 < zero and max32 > one and min32 <= min32 and max32 >= max32);
+  _ = expect "unsigned comparisons" (I32.ltU one hi and I32.gtU minus1 hi and I32.leU hi hi and I32.geU minus1 minus1);
+  _ = expect "comparison disagreement" (hi < one and I32.ltU hi one == False and I32.gtU one hi == False);
+  _ = expect "equality" (hi == min32 and hi != max32);
+  _ = expect "and/or/xor" (I32.hex (I32.xor (I32.or (I32.and minus1 (I32.ofInt 240)) one) (I32.ofInt 3)) == "f2");
+  _ = expect "not" (I32.not zero == minus1 and I32.not min32 == max32);
+  _ = expect "neg minimum" (I32.neg min32 == min32 and I32.neg one == minus1);
+  _ = expect "shl counts0/31" (I32.shl one 0 == one and I32.shl one 31 == min32);
+  _ = expect "shl counts32/63/-1" (I32.shl one 32 == one and I32.shl one 63 == min32 and I32.shl one -1 == min32);
+  _ = expect "shr counts0/31" (I32.shr minus1 0 == minus1 and I32.shr minus1 31 == one);
+  _ = expect "shr counts32/63/-1" (I32.shr minus1 32 == minus1 and I32.shr minus1 63 == one and I32.shr minus1 -1 == one);
+  _ = expect "sar counts0/31" (I32.sar min32 0 == min32 and I32.sar min32 31 == minus1);
+  _ = expect "sar counts32/63/-1" (I32.sar min32 32 == min32 and I32.sar min32 63 == minus1 and I32.sar min32 -1 == minus1);
+  _ = expect "rotl counts0/31" (I32.rotl pattern 0 == pattern and I32.hex (I32.rotl pattern 31) == "91a2b3c");
+  _ = expect "rotl counts32/63/-1" (I32.rotl pattern 32 == pattern and I32.rotl pattern 63 == I32.rotl pattern 31 and I32.rotl pattern -1 == I32.rotl pattern 31);
+  _ = expect "rotr counts0/31" (I32.rotr pattern 0 == pattern and I32.hex (I32.rotr pattern 31) == "2468acf0");
+  _ = expect "rotr counts32/63/-1" (I32.rotr pattern 32 == pattern and I32.rotr pattern 63 == I32.rotr pattern 31 and I32.rotr pattern -1 == I32.rotr pattern 31);
+  _ = expect "rotates sign bit" (I32.rotl hi 1 == one and I32.rotr one 1 == hi);
+  _ = expect "clz" (I32.clz zero == 32 and I32.clz minus1 == 0 and I32.clz one == 31 and I32.clz min32 == 0);
+  _ = expect "ctz" (I32.ctz zero == 32 and I32.ctz minus1 == 0 and I32.ctz one == 0 and I32.ctz min32 == 31);
+  _ = expect "popcnt" (I32.popcnt zero == 0 and I32.popcnt minus1 == 32 and I32.popcnt min32 == 1 and I32.popcnt pattern == 13);
+  _ = expect "ofInt signed" (I32.ofInt -42 == parsed "-42");
+  _ = expect "toInt small" (intSaid (I32.toInt (I32.ofInt -42)) == "-42");
+  _ = expect "toIntU small" (intSaid (I32.toIntU (I32.ofInt 42)) == "42");
+  _ = expect "toInt tagged max" (intSaid (I32.toInt (parsed "1073741823")) == "1073741823");
+  _ = expect "toInt tagged min" (intSaid (I32.toInt (parsed "-1073741824")) == "-1073741824");
+  _ = expect "toInt unsigned tagged max" (intSaid (I32.toIntU (parsed "1073741823")) == "1073741823");
+  _ = if intMax Unit == 1073741823 then
+    _ = expect "toInt full min refuses RV32" (isErr (I32.toInt min32));
+    _ = expect "toInt full max refuses RV32" (isErr (I32.toInt max32));
+    _ = expect "toInt lower edge refuses RV32" (isErr (I32.toInt (parsed "-1073741825")));
+    _ = expect "toIntU upper edge refuses RV32" (isErr (I32.toIntU (parsed "1073741824")));
+    expect "toIntU full width refuses RV32" (isErr (I32.toIntU minus1))
+  else
+    _ = expect "toInt min fits64" (intSaid (I32.toInt min32) == "-2147483648");
+    _ = expect "toInt max fits64" (intSaid (I32.toInt max32) == "2147483647");
+    expect "toIntU full width fits64" (intSaid (I32.toIntU minus1) == "4294967295");
+  _ = expect "parse unsigned magnitude wraps" (parsed "4294967295" == minus1 and parsed "-4294967295" == one);
+  _ = expect "parse hex separators" (parsed "0xffff_ffff" == minus1 and parsed "+0x8000_0000" == min32);
+  _ = expect "parse decimal separators" (parsed "2_147_483_647" == max32);
+  _ = expect "parse oversized unsigned" (isErr (I32.parse "4294967296"));
+  _ = expect "parse oversized negative" (isErr (I32.parse "-4294967296"));
+  _ = expect "parse oversized hex" (isErr (I32.parse "0x100000000"));
+  _ = expect "parse junk" (isErr (I32.parse "12a") and isErr (I32.parse "--1"));
+  _ = expect "parse no digits" (isErr (I32.parse "") and isErr (I32.parse "0x") and isErr (I32.parse "+"));
+  _ = expect "parse misplaced separators" (isErr (I32.parse "_1") and isErr (I32.parse "1_") and isErr (I32.parse "1__0") and isErr (I32.parse "0x_ff"));
+  print "I32 INTEGER HOLDS".

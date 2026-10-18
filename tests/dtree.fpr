@@ -318,23 +318,29 @@ depthT (Split col thr l r) = 1 + Int.max (depthT l) (depthT r).
 # us = tail (iterate (\s -> (1103515245*s + 12345) mod 2^31) seed):
 # first n are x, next n are z (both mapped to [-1,1)), next n the
 # label-noise draws.  5% of labels flip.
+# I64 preserves that exact sequence on RV32, whose tagged Int cannot
+# hold every state or the modulus. Small pieces keep constants portable.
 
-lcgN s = (1103515245 * s + 12345) % 2147483648.
+lcgN : I64 -> I64 .
+lcgN s =
+  multiplier = I64.shl (I64.ofInt 33676) 15 + I64.ofInt 20077;
+  modulus = I64.shl (I64.ofInt 1) 31;
+  (multiplier * s + I64.ofInt 12345) % modulus.
 
-fillM : unsafe Int -> Int -> (Vector _) -> _ .
+fillM : unsafe Int -> I64 -> (Vector _) -> _ .
 fillM cnt s v = case cnt == 0 of
     True -> (v, s)
   | False -> fillM2 cnt (lcgN s) v.
-fillM2 : unsafe Int -> Int -> (Vector _) -> _ .
+fillM2 : unsafe Int -> I64 -> (Vector _) -> _ .
 fillM2 cnt s2 v =
-  fillM (cnt - 1) s2 (Vec.push (F64.ofInt s2 / 2147483648.0 * 2.0 - 1.0) v).
-fillU : unsafe Int -> Int -> (Vector _) -> _ .
+  fillM (cnt - 1) s2 (Vec.push (I64.toF64U s2 / 2147483648.0 * 2.0 - 1.0) v).
+fillU : unsafe Int -> I64 -> (Vector _) -> _ .
 fillU cnt s v = case cnt == 0 of
     True -> (v, s)
   | False -> fillU2 cnt (lcgN s) v.
-fillU2 : unsafe Int -> Int -> (Vector _) -> _ .
+fillU2 : unsafe Int -> I64 -> (Vector _) -> _ .
 fillU2 cnt s2 v =
-  fillU (cnt - 1) s2 (Vec.push (F64.ofInt s2 / 2147483648.0) v).
+  fillU (cnt - 1) s2 (Vec.push (I64.toF64U s2 / 2147483648.0) v).
 
 lbl : unsafe Int -> Int -> (Vector _) -> (Vector _) -> (Vector _) -> (Vector _) -> _ .
 lbl i n xs zs ns ys = case i >= n of
@@ -351,7 +357,7 @@ lblOne i n xs zs ns ys =
 
 gen : unsafe Int -> Int -> _ .
 gen seed n =
-  (xs, s1) = fillM n seed (Vec.newAs "d");
+  (xs, s1) = fillM n (I64.ofInt seed) (Vec.newAs "d");
   (zs, s2) = fillM n s1 (Vec.newAs "d");
   (ns, s3) = fillU n s2 (Vec.newAs "d");
   (ys, xs2, zs2, ns2) = lbl 0 n xs zs ns (Vec.newAs "i");

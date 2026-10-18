@@ -16,7 +16,7 @@ QA_OUT  ?= app.qa
 BUILD   ?= build
 IMAGE   ?= image.elf
 
-RT_CORE = $(RUNTIME)/runtime.c $(RUNTIME)/actors.c $(RUNTIME)/bits.c \
+RT_CORE = $(RUNTIME)/runtime.c $(RUNTIME)/i32.c $(RUNTIME)/actors.c $(RUNTIME)/bits.c \
           $(RUNTIME)/vec.c $(RUNTIME)/sstr.c $(RUNTIME)/mod.c $(RUNTIME)/buddy.c
 RT_VIRT = $(MACHINE)/virt/crt0.S $(MACHINE)/virt/ctx.S $(MACHINE)/virt/ctx_fab.c \
           $(MACHINE)/virt/hal.c $(MACHINE)/virt/memshim.c
@@ -230,7 +230,7 @@ $(BUILD)/heap.s: fprc $(MACHINE)/builtin/heap.fpr FORCE
 	@mkdir -p $(BUILD)
 	./fprc --system=bare-metal --profile=builtin --arc --raw --lib --export=$(HEAP_EXPORTS) $(MACHINE)/builtin/heap.fpr $@
 BUILTIN_RT = $(MACHINE)/builtin/crt0.S $(MACHINE)/builtin/virt.c $(BUILTIN_HEAP) \
-             $(MACHINE)/builtin/unsafe.c $(MACHINE)/builtin/arc.c $(MACHINE)/builtin/machine.S $(MACHINE)/builtin/interrupt.S $(RUNTIME)/runtime.c $(RUNTIME)/bits.c $(MACHINE)/virt/memshim.c
+             $(MACHINE)/builtin/unsafe.c $(MACHINE)/builtin/arc.c $(MACHINE)/builtin/machine.S $(MACHINE)/builtin/interrupt.S $(RUNTIME)/runtime.c $(RUNTIME)/i32.c $(RUNTIME)/bits.c $(MACHINE)/virt/memshim.c
 BUILTIN_BOARD ?= virt
 BUILTIN_RAM ?= bram
 BUILTIN_RVC ?= 0
@@ -248,7 +248,7 @@ $(error unknown Tang Nano memory option BUILTIN_RAM=$(BUILTIN_RAM))
 endif
 BUILTIN_RT = $(MACHINE)/builtin/tangnano20k/crt0.S $(MACHINE)/builtin/tangnano20k/board.c \
              $(MACHINE)/builtin/tangnano20k/machine.c $(MACHINE)/builtin/heap.c \
-             $(MACHINE)/builtin/unsafe.c $(RUNTIME)/runtime.c $(RUNTIME)/bits.c $(MACHINE)/virt/memshim.c
+             $(MACHINE)/builtin/unsafe.c $(RUNTIME)/runtime.c $(RUNTIME)/i32.c $(RUNTIME)/bits.c $(MACHINE)/virt/memshim.c
 ifeq ($(BUILTIN_RAM),sdram)
 BUILTIN_CFLAGS += -DFPR_BUILTIN_HEAP_MAX_BYTES=8388608
 else

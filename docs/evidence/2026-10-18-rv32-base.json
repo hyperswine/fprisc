@@ -1,0 +1,566 @@
+{
+  "date": "2026-10-18",
+  "scope": "Single-threaded RV32IM/IMC Base host; full I64 and boxed F32/F64; I32 remains unimplemented",
+  "parents": {
+    "fprisc": "b4158705155c9fc901d9b2bd3e07e968636d99cc",
+    "HaskPlayground": "c799495b88ba527582d740883146ca55f666e764"
+  },
+  "source_sha256": {
+    "compiler/Codegen.hs": "e04f9387394efe6555fed039a2fb3c075d277aad223aa887c0a5534fbc53a351",
+    "compiler/Compile.hs": "d26d3e17e91e4d2542d64db316cdd2235db69b7b23a61f7bd4e6f0c334a0705b",
+    "compiler/FPRISC.hs": "271c4979d811cd23aa81f9c67a2a1ff64ae901bc9895e349f88f591e925898b2",
+    "compiler/Infer.hs": "d50566528b63918eebbca0a264fbd9cee815cac9e233e44edd8bc2ee0ecaa469",
+    "runtime/fpr.h": "0e57c82bd5bd955e9ab29f178370f56f88d19195a47c3ef1b2c1dab834e5a1da",
+    "runtime/runtime.c": "c8511c6ee1f5b913a70f2056d4802dbde8018c901d9d487aaa9e1c1f0e277dcf",
+    "runtime/vec.c": "08ef632c2efd80547737182ef1fa385fff9662c8fce53a8305b82675cf8bcabb",
+    "runtime/vec_layout.h": "5f7a646ba936d8e1253f98c6645dfe1fcffb3a181e99141e00b4b1c85a4ba593",
+    "machine/builtin/heap.c": "1b08f311cbe4dfb1db8c83121622a6ab0dd22abe07a3c8722adc44d7b3ed6957",
+    "machine/builtin/unsafe.c": "8f0453ff13a1a37b46b9cb93d83f0dababc365befeb3f896564fc88779223893",
+    "machine/builtin/tangnano20k/machine.c": "441a519ae9e8eb8affe81d3424ad44b97a8de27baeb2ed6ef0910ea47428919f",
+    "machine/tangnano20k/base.c": "fbb47afef2a3c7e8f94f643a3e416a1d3424beca56b1705237d60a38996e44c5",
+    "machine/tangnano20k/unsupported.c": "7c97f55e505f93e1cd5ee87cc00b42b62defb8c57199cf054e0a9439c890e55e",
+    "machine/tangnano20k/crt0.S": "d8770688ef19918172b41e01445f3fe79c00ea668669e5a363816702e4376f2b",
+    "machine/tangnano20k/build.sh": "06011863892c9c72fe291cf79d31168b6747ee3a17d9d0b727f83f8b48c1f64e",
+    "machine/tangnano20k/build-softfloat.sh": "111881eda1e6e78168ebb2a098723a8770527aad8a1784aca33daa8e928c57eb",
+    "machine/tangnano20k/softfloat.c": "20ea71524c86d8aac72fbff4f903f6473b13f60bd66760d77c550ece4cce0c18",
+    "tests/dtree.fpr": "486a4abbd0876014555862a5bb70db6d4c0402e6e3f7f6193fbacb576750c791",
+    "tests/tangnano20k_dtree.fpr": "c938b3af5128219947ec3e06f32d5e3511a803ce4cb6a8647bdc56f3f222ddf5",
+    "tests/check_tangnano20k_dtree.py": "3dddd33bb20788365f2701914572d531a67cfe93d1be4fe03f99b9174790035d",
+    "tests/check_rv32_base_codegen.py": "189e4352c9d4babc1a46b2ae6f422dc444256b476bb7097d45dac4e76cdc6006",
+    "tests/check_rv32_numeric_runtime.py": "cb0a0c7af53bae06d9fd2e71e0f4aedfb0e13a08f6f3864a7ab17c0860996d71",
+    "tests/check_tangnano20k_rv32_base.py": "77aa5746bf1213d3f39433ff81b86ce34d8a39dce1b3ea9915720f2280d3cf27",
+    "tests/base/rv32numeric_runtime.c": "ade220c15a83a7bf30993497dab84ebd112f46e4a417be5801285455ae928ded",
+    "tests/tangnano20k_rv32_numeric.fpr": "41924634d9e716a42c27d4bc25ad424015ee63c1623a08dbc77008b42152cbda",
+    "tests/tangnano20k_rv32_int.fpr": "548081509f6a2acc813069db02aa1435afdf957fcc6cd4da540f78ca54e16c74",
+    "tests/tangnano20k_rv32_word.fpr": "9180c9fa83bc5e01bce7c9f395023c8b8565c3d2af4674dfbed7ff952225ed71",
+    "tests/tangnano20k_rv32_host.fpr": "61df9f1f30ad89dd8b8fac51048b420997750fad4b2f0e2ff5c804a823f82d7d",
+    "tests/tangnano20k_rv32_int_overflow.fpr": "2cae967a742c7819c999ce633171890946e0b0c3b7119d720a68deab21c9b3ae",
+    "tools/run_tangnano20k_base.py": "c543c9afcabff4fe75bda79650bb82f0811c0f4c6c37637808f57df9ded53824",
+    "tools/check_tangnano20k_isa.py": "1d26fa5547dbac35ab5224f9f976577a4a79794c0bddeff82ce80fd1dab9b2eb"
+  },
+  "compiler_sha256": "ad8f49004f90f0e5a23269948e08b6dadd57ba3ee58876860244c65bc43fe83a",
+  "compiler_codegen_revision": 47,
+  "board": {
+    "bitstream": "HaskPlayground/output/tangnano20k/sdram-pipeline-c48-base-rv32/impl/pnr/sdram_test.fs",
+    "sha256": "c0008784680cb6a0cd6cdba59d0d6541304d72ae42e74ccaf232a982510d82cf",
+    "frequency_mhz": 48,
+    "isa": "RV32IMC",
+    "programming": "volatile SRAM only",
+    "gowin_internal_timing": {
+      "fmax_mhz": 50.987,
+      "worst_setup_slack_ns": 1.221,
+      "setup_violations": 0,
+      "hold_violations": 0
+    },
+    "sdram_io_pvt_signoff": false,
+    "current_program": "word"
+  },
+  "softfloat": {
+    "revision": "a0c6494cdc11865811dec815d5c0049fba9d82a8",
+    "rv32_archive_sha256": "f69819701432f08324fc525acba5c5e6515547fe641e72d0dae7230a53204ac8"
+  },
+  "physical_checks": [
+    {
+      "case": "int",
+      "expected_success": true,
+      "passed_expected_outcome": true,
+      "output": "RV32 INT HOLDS max=1073741823 min=-1073741824\nFPR EXIT 0\nDONE\n",
+      "image_sha256": "6fc28a2d4bf059c9fcac7ca6865828cc226cfd30d611edaf502a8cccebf9c6ee",
+      "image_bytes": 20660,
+      "heap_arena_bytes": 8297088,
+      "heap_bitmap_bytes": 64832,
+      "usable_heap_block_bytes": 8232256,
+      "stack_bytes": 65536,
+      "artifact_directory": "build/tangnano20k-rv32-board/int"
+    },
+    {
+      "case": "numeric-final",
+      "isa": "RV32IMC",
+      "frequency_mhz": 48,
+      "image_bytes": 44452,
+      "sha256": "32106d6b0a367bfeba2973ffbd1ac3261b8402ac8aeb1c04b1a5b0a17e016a02",
+      "expected_success": true,
+      "runner_exit": 0,
+      "passed_expected_outcome": true,
+      "output": "NUMERIC I64 HOLDS\nNUMERIC FLOAT HOLDS\nRV32 BASE NUMERIC HOLDS\nFPR EXIT 0\nDONE\n",
+      "image_sha256": "32106d6b0a367bfeba2973ffbd1ac3261b8402ac8aeb1c04b1a5b0a17e016a02",
+      "heap_arena_bytes": 8273136,
+      "heap_bitmap_bytes": 64640,
+      "usable_heap_block_bytes": 8208496,
+      "stack_bytes": 65536,
+      "artifact_directory": "build/tangnano20k-rv32-board/numeric-final"
+    },
+    {
+      "case": "host",
+      "expected_success": true,
+      "passed_expected_outcome": true,
+      "output": "RV32 BASE HOST HOLDS\nFPR EXIT 0\nDONE\n",
+      "image_sha256": "495837442c7fb750499627894033e95eef5e7a079895f514aedc58c54674bbeb",
+      "image_bytes": 315928,
+      "heap_arena_bytes": 7960096,
+      "heap_bitmap_bytes": 62192,
+      "usable_heap_block_bytes": 7897904,
+      "stack_bytes": 65536,
+      "artifact_directory": "build/tangnano20k-rv32-board/host"
+    },
+    {
+      "case": "word",
+      "isa": "RV32IMC",
+      "frequency_mhz": 48,
+      "image_bytes": 20900,
+      "sha256": "b0990cadcd1fe7b3726f8b6453da8ba42b82924984fd82d652c3ff31e3064ed5",
+      "expected_success": true,
+      "runner_exit": 0,
+      "passed_expected_outcome": true,
+      "stdout": "RV32 WORD32 HOLDS\nFPR EXIT 0\nDONE\n",
+      "stderr": "",
+      "image_sha256": "b0990cadcd1fe7b3726f8b6453da8ba42b82924984fd82d652c3ff31e3064ed5",
+      "heap_arena_bytes": 8297040,
+      "heap_bitmap_bytes": 64832,
+      "usable_heap_block_bytes": 8232208,
+      "stack_bytes": 65536,
+      "artifact_directory": "build/tangnano20k-rv32-board/word"
+    },
+    {
+      "case": "overflow",
+      "isa": "RV32IMC",
+      "frequency_mhz": 48,
+      "image_bytes": 18332,
+      "sha256": "c649b999f9330563079ac22a0ec6444f7afff1348df1a70a63b7b8db1e340a9c",
+      "expected_success": false,
+      "runner_exit": 1,
+      "passed_expected_outcome": true,
+      "stdout": "Base panic: Int overflow: 1073741823 + 1 does not fit an Int (-1073741824..1073741823); I64 is the type that wraps\nFPR EXIT 1\nDONE\n",
+      "stderr": "Traceback (most recent call last):\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 131, in <module>\n    if __name__=='__main__':main()\n                            ~~~~^^\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 123, in main\n    if b'FPR EXIT 0\\n' not in output:raise ValueError('CPU halted without successful runtime exit')\n                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nValueError: CPU halted without successful runtime exit\n",
+      "image_sha256": "c649b999f9330563079ac22a0ec6444f7afff1348df1a70a63b7b8db1e340a9c",
+      "heap_arena_bytes": 8299424,
+      "heap_bitmap_bytes": 64848,
+      "usable_heap_block_bytes": 8234576,
+      "stack_bytes": 65536,
+      "artifact_directory": "build/tangnano20k-rv32-board/overflow"
+    }
+  ],
+  "qemu_fp_checks": [
+    {
+      "case": "numeric",
+      "isa": "RV32IM",
+      "sha256": "ca19e0e10e1776a89211402adfbe48c79c56d9aee2083a6e6d1d070b5664f310",
+      "image_bytes": 53268,
+      "output": "NUMERIC I64 HOLDS\nNUMERIC FLOAT HOLDS\nRV32 BASE NUMERIC HOLDS\nFPR EXIT 0\n",
+      "passed": true
+    },
+    {
+      "case": "int",
+      "isa": "RV32IM",
+      "sha256": "8a4a8f0e994370828bc74ac18b1fbb9d1b76cf2566833b27390a070f9e6ee0a1",
+      "image_bytes": 24652,
+      "output": "RV32 INT HOLDS max=1073741823 min=-1073741824\nFPR EXIT 0\n",
+      "passed": true
+    },
+    {
+      "case": "word",
+      "isa": "RV32IM",
+      "sha256": "b63bd7ffb085d9c1b15fccc2eb786f433f76bbd887ed6c47d99be8f37d8b41f5",
+      "image_bytes": 25108,
+      "output": "RV32 WORD32 HOLDS\nFPR EXIT 0\n",
+      "passed": true
+    },
+    {
+      "case": "host",
+      "isa": "RV32IM",
+      "sha256": "39ecff008f96f5d2a6858195768976b0ee2259f6d59e436fadce4895c3927e57",
+      "image_bytes": 382952,
+      "output": "RV32 BASE HOST HOLDS\nFPR EXIT 0\n",
+      "passed": true
+    },
+    {
+      "case": "records",
+      "isa": "RV32IM",
+      "sha256": "4a81de1f7db33ca79e116b3e82e41a50b87246fae434ab75fdc70828d35a1d9b",
+      "image_bytes": 37068,
+      "output": "captured dispatch: literal=1160045 variable=1160045\nvecshape: two=1149000 four=2498000 in place=True\nFPR EXIT 0\n",
+      "passed": true
+    },
+    {
+      "case": "numeric",
+      "isa": "RV32IMC",
+      "sha256": "7ac1e33b49c7e2f3b5ade6349cf5bcf56f62f11fad62e91bf0ede9ec48c42bea",
+      "image_bytes": 44460,
+      "output": "NUMERIC I64 HOLDS\nNUMERIC FLOAT HOLDS\nRV32 BASE NUMERIC HOLDS\nFPR EXIT 0\n",
+      "passed": true
+    },
+    {
+      "case": "int",
+      "isa": "RV32IMC",
+      "sha256": "3a5897d21b9b08bff09125cb6edddd7d172d3dfbcd6b3170761357d7db22f6bd",
+      "image_bytes": 20700,
+      "output": "RV32 INT HOLDS max=1073741823 min=-1073741824\nFPR EXIT 0\n",
+      "passed": true
+    },
+    {
+      "case": "word",
+      "isa": "RV32IMC",
+      "sha256": "0c07c41036aff729e922a7af20a225f1c7ea91ce9c55d15043009712f414168d",
+      "image_bytes": 20908,
+      "output": "RV32 WORD32 HOLDS\nFPR EXIT 0\n",
+      "passed": true
+    },
+    {
+      "case": "host",
+      "isa": "RV32IMC",
+      "sha256": "6ea9b5d11ef4f1796192d9019ea751acc5adc62cca805d18799abc264a9d2aa4",
+      "image_bytes": 315960,
+      "output": "RV32 BASE HOST HOLDS\nFPR EXIT 0\n",
+      "passed": true
+    },
+    {
+      "case": "records",
+      "isa": "RV32IMC",
+      "sha256": "996907ed7036e9b72b50cc05d5cc76e85b5b0b1346d8026dc27e6058d0fe7610",
+      "image_bytes": 30452,
+      "output": "captured dispatch: literal=1160045 variable=1160045\nvecshape: two=1149000 four=2498000 in place=True\nFPR EXIT 0\n",
+      "passed": true
+    }
+  ],
+  "qemu_c_abi_checks": {
+    "platform": "QEMU RV32IM",
+    "cases": [
+      {
+        "name": "probe",
+        "returncode": 0,
+        "output": "RV32 numeric runtime: all ok\nFPR EXIT 0\n",
+        "passed": true
+      },
+      {
+        "name": "half-trap",
+        "returncode": 1,
+        "output": "Base panic: I64.hi/lo: unsigned half does not fit an Int; use hiWord/loWord\nFPR EXIT 1\n",
+        "passed": true
+      },
+      {
+        "name": "float-int-trap",
+        "returncode": 1,
+        "output": "Base panic: float.toInt: does not fit an Int\nFPR EXIT 1\n",
+        "passed": true
+      },
+      {
+        "name": "float-int-min-trap",
+        "returncode": 1,
+        "output": "Base panic: float.toInt: does not fit an Int\nFPR EXIT 1\n",
+        "passed": true
+      },
+      {
+        "name": "float-int-nan-trap",
+        "returncode": 1,
+        "output": "Base panic: float.toInt: does not fit an Int\nFPR EXIT 1\n",
+        "passed": true
+      }
+    ]
+  },
+  "classifier_experiments": {
+    "small-qemu": {
+      "reference": {
+        "train_rows": 32,
+        "test_rows": 16,
+        "bins": 4,
+        "max_depth": 3,
+        "min_leaf": 2,
+        "nodes": 11,
+        "depth": 3,
+        "train": {
+          "hits": 27,
+          "rows": 32,
+          "digest": 654425,
+          "predictions_sha256": "847ba265a9e889da0de7903332db984cb885ee3652b12a75d6c01a6a561808a8"
+        },
+        "test": {
+          "hits": 15,
+          "rows": 16,
+          "digest": 889067,
+          "predictions_sha256": "b1ab3b84dc976d8b71d9b7c7dd0e58436d0330b42e92e65c8bd8fdb1be3da24a"
+        },
+        "root": {
+          "column": 0,
+          "threshold": -0.49114975216798484
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "653bf51cf500893cb13fcde4f7317530c3448b454084fb6376a549eb529e80f0",
+      "classifier_sha256": "486a4abbd0876014555862a5bb70db6d4c0402e6e3f7f6193fbacb576750c791",
+      "compiler_sha256": "ad8f49004f90f0e5a23269948e08b6dadd57ba3ee58876860244c65bc43fe83a",
+      "executions": {
+        "qemu": {
+          "image_sha256": "a8c344e555c821c6ee9bba0d133887c0b2d8bab085c615ed09171c9956063dcf",
+          "image_bytes": 153120,
+          "heap_arena_bytes": 8122912,
+          "heap_bitmap_bytes": 63472,
+          "usable_heap_block_bytes": 8059440,
+          "stack_bytes": 65536,
+          "frequency_mhz": 27,
+          "isa": "RV32IMC",
+          "passed": true,
+          "elapsed_us": 759481
+        }
+      }
+    },
+    "medium-qemu": {
+      "reference": {
+        "train_rows": 128,
+        "test_rows": 64,
+        "bins": 8,
+        "max_depth": 5,
+        "min_leaf": 2,
+        "nodes": 23,
+        "depth": 5,
+        "train": {
+          "hits": 124,
+          "rows": 128,
+          "digest": 21562,
+          "predictions_sha256": "888ded6dbd04c33e23d17c8ca7f8899a5ee30b08afa5e7bafb17e3fe3f672877"
+        },
+        "test": {
+          "hits": 61,
+          "rows": 64,
+          "digest": 909572,
+          "predictions_sha256": "f8bad44ad21890cd6a00359c8fee71a036eeb5cb10f3eeef5beafed31bd3c958"
+        },
+        "root": {
+          "column": 1,
+          "threshold": 0.7506353431381285
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "b8f672d2936b9d05c204d5cf970e14fbf2fd4e927a73262616d74b162e4a68bb",
+      "classifier_sha256": "486a4abbd0876014555862a5bb70db6d4c0402e6e3f7f6193fbacb576750c791",
+      "compiler_sha256": "ad8f49004f90f0e5a23269948e08b6dadd57ba3ee58876860244c65bc43fe83a",
+      "executions": {
+        "qemu": {
+          "image_sha256": "9c39819cd832b347e1391959cb75d6ac9cfb0165570f8ca52c0cd1b50995c763",
+          "image_bytes": 153184,
+          "heap_arena_bytes": 8122848,
+          "heap_bitmap_bytes": 63472,
+          "usable_heap_block_bytes": 8059376,
+          "stack_bytes": 65536,
+          "frequency_mhz": 27,
+          "isa": "RV32IMC",
+          "passed": true,
+          "elapsed_us": 1803740
+        }
+      }
+    },
+    "small-board": {
+      "reference": {
+        "train_rows": 32,
+        "test_rows": 16,
+        "bins": 4,
+        "max_depth": 3,
+        "min_leaf": 2,
+        "nodes": 11,
+        "depth": 3,
+        "train": {
+          "hits": 27,
+          "rows": 32,
+          "digest": 654425,
+          "predictions_sha256": "847ba265a9e889da0de7903332db984cb885ee3652b12a75d6c01a6a561808a8"
+        },
+        "test": {
+          "hits": 15,
+          "rows": 16,
+          "digest": 889067,
+          "predictions_sha256": "b1ab3b84dc976d8b71d9b7c7dd0e58436d0330b42e92e65c8bd8fdb1be3da24a"
+        },
+        "root": {
+          "column": 0,
+          "threshold": -0.49114975216798484
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "653bf51cf500893cb13fcde4f7317530c3448b454084fb6376a549eb529e80f0",
+      "classifier_sha256": "486a4abbd0876014555862a5bb70db6d4c0402e6e3f7f6193fbacb576750c791",
+      "compiler_sha256": "ad8f49004f90f0e5a23269948e08b6dadd57ba3ee58876860244c65bc43fe83a",
+      "executions": {
+        "board": {
+          "image_sha256": "00ef3ab09e428c6e6f520753659d1c79242cfe2ae27aefe363cf35d2828292b9",
+          "image_bytes": 153184,
+          "heap_arena_bytes": 8122848,
+          "heap_bitmap_bytes": 63472,
+          "usable_heap_block_bytes": 8059376,
+          "stack_bytes": 65536,
+          "frequency_mhz": 48,
+          "isa": "RV32IMC",
+          "passed": true,
+          "bitstream_sha256": "c0008784680cb6a0cd6cdba59d0d6541304d72ae42e74ccaf232a982510d82cf",
+          "elapsed_us": 1188413,
+          "wall_seconds_with_upload": 34.771880083950236
+        }
+      }
+    },
+    "medium-board": {
+      "reference": {
+        "train_rows": 128,
+        "test_rows": 64,
+        "bins": 8,
+        "max_depth": 5,
+        "min_leaf": 2,
+        "nodes": 23,
+        "depth": 5,
+        "train": {
+          "hits": 124,
+          "rows": 128,
+          "digest": 21562,
+          "predictions_sha256": "888ded6dbd04c33e23d17c8ca7f8899a5ee30b08afa5e7bafb17e3fe3f672877"
+        },
+        "test": {
+          "hits": 61,
+          "rows": 64,
+          "digest": 909572,
+          "predictions_sha256": "f8bad44ad21890cd6a00359c8fee71a036eeb5cb10f3eeef5beafed31bd3c958"
+        },
+        "root": {
+          "column": 1,
+          "threshold": 0.7506353431381285
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "b8f672d2936b9d05c204d5cf970e14fbf2fd4e927a73262616d74b162e4a68bb",
+      "classifier_sha256": "486a4abbd0876014555862a5bb70db6d4c0402e6e3f7f6193fbacb576750c791",
+      "compiler_sha256": "ad8f49004f90f0e5a23269948e08b6dadd57ba3ee58876860244c65bc43fe83a",
+      "executions": {
+        "board": {
+          "image_sha256": "9c1b9984857ecda6da1d2ecb80d84a25781ea639ed72bea281ab8600066ae65d",
+          "image_bytes": 153184,
+          "heap_arena_bytes": 8122848,
+          "heap_bitmap_bytes": 63472,
+          "usable_heap_block_bytes": 8059376,
+          "stack_bytes": 65536,
+          "frequency_mhz": 48,
+          "isa": "RV32IMC",
+          "passed": true,
+          "bitstream_sha256": "c0008784680cb6a0cd6cdba59d0d6541304d72ae42e74ccaf232a982510d82cf",
+          "elapsed_us": 4760035,
+          "wall_seconds_with_upload": 38.35330287495162
+        }
+      }
+    },
+    "default-qemu": {
+      "reference": {
+        "train_rows": 512,
+        "test_rows": 128,
+        "bins": 16,
+        "max_depth": 6,
+        "min_leaf": 5,
+        "nodes": 55,
+        "depth": 6,
+        "train": {
+          "hits": 481,
+          "rows": 512,
+          "digest": 354774,
+          "predictions_sha256": "dbc85e3a7188d43555e0876fc50dd901b15fa11c6da8ebda539e8580266f37a1"
+        },
+        "test": {
+          "hits": 116,
+          "rows": 128,
+          "digest": 434626,
+          "predictions_sha256": "9bc880f50defb44919cec07bff13fdfb9442287d88fa9e8b09300cc8100ef5c8"
+        },
+        "root": {
+          "column": 0,
+          "threshold": -0.12101956852711737
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "4a5b9324a01062ee7f21e260f8d3894e3577aa9763df9f6625e5c754078b820e",
+      "classifier_sha256": "486a4abbd0876014555862a5bb70db6d4c0402e6e3f7f6193fbacb576750c791",
+      "compiler_sha256": "ad8f49004f90f0e5a23269948e08b6dadd57ba3ee58876860244c65bc43fe83a",
+      "executions": {},
+      "error": "(1, 'DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5\\nDTREE DATA READY\\nBase panic: Builtin: out of memory\\nFPR EXIT 1\\n', '')"
+    },
+    "default-board": {
+      "reference": {
+        "train_rows": 512,
+        "test_rows": 128,
+        "bins": 16,
+        "max_depth": 6,
+        "min_leaf": 5,
+        "nodes": 55,
+        "depth": 6,
+        "train": {
+          "hits": 481,
+          "rows": 512,
+          "digest": 354774,
+          "predictions_sha256": "dbc85e3a7188d43555e0876fc50dd901b15fa11c6da8ebda539e8580266f37a1"
+        },
+        "test": {
+          "hits": 116,
+          "rows": 128,
+          "digest": 434626,
+          "predictions_sha256": "9bc880f50defb44919cec07bff13fdfb9442287d88fa9e8b09300cc8100ef5c8"
+        },
+        "root": {
+          "column": 0,
+          "threshold": -0.12101956852711737
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "4a5b9324a01062ee7f21e260f8d3894e3577aa9763df9f6625e5c754078b820e",
+      "classifier_sha256": "486a4abbd0876014555862a5bb70db6d4c0402e6e3f7f6193fbacb576750c791",
+      "compiler_sha256": "ad8f49004f90f0e5a23269948e08b6dadd57ba3ee58876860244c65bc43fe83a",
+      "executions": {
+        "board": {
+          "image_sha256": "19d98353de995dbccdeb49844ce52f1e806e558540142192990bee6f1466c758",
+          "image_bytes": 153192,
+          "heap_arena_bytes": 8122832,
+          "heap_bitmap_bytes": 63472,
+          "usable_heap_block_bytes": 8059360,
+          "stack_bytes": 65536,
+          "frequency_mhz": 48,
+          "isa": "RV32IMC",
+          "passed": false,
+          "bitstream_sha256": "c0008784680cb6a0cd6cdba59d0d6541304d72ae42e74ccaf232a982510d82cf"
+        }
+      },
+      "error": "DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5\nDTREE DATA READY\nBase panic: Builtin: out of memory\nFPR EXIT 1\nDONE\nTraceback (most recent call last):\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 131, in <module>\n    if __name__=='__main__':main()\n                            ~~~~^^\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 123, in main\n    if b'FPR EXIT 0\\n' not in output:raise ValueError('CPU halted without successful runtime exit')\n                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nValueError: CPU halted without successful runtime exit\n"
+    }
+  },
+  "verification_logs": {
+    "compiler_refusals": {
+      "path": "/tmp/fpr-rv32-codegen.log",
+      "text": "PASS: RV32 static float literal boxes and generic float callbacks, integer kernels retained, cold/warm\nPASS: Int31 and Word32 fixtures compile; I32 is unimplemented; oversized Int and Builtin F32 refused\n"
+    },
+    "rv64_softfloat_and_native_vectors": {
+      "path": "/tmp/fpr-rv64-vector-regression.log",
+      "text": "PASS: RV64IM soft-float vectors, cold/warm ISA and integer specialization\nPASS: RV64IMC soft-float vectors, cold/warm ISA and integer specialization\nPASS: native floating kernels and generic C callbacks return identical mixed-kind results\n"
+    },
+    "rv64_clock_and_refusal_rtl": {
+      "path": "/tmp/fpr-rv64-clock-regression.log",
+      "text": "  16476\t      4\t   6312\t  22792\t   5908\t/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock-im/base.elf\nRV64IM: local 10MHz clock, software float, selective receive Err and successful exit: PASS\n  13428\t      4\t   6304\t  19736\t   4d18\t/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock-c/base.elf\nRV64IMC: local 10MHz clock, software float, selective receive Err and successful exit: PASS\n"
+    },
+    "loader_haskell": {
+      "path": "/tmp/fpr-rv32-loader-haskell.log",
+      "text": "Build profile: -w ghc-9.8.2 -O1\nIn order, the following will be built (use -v for more details):\n - haskplayground-0.1.0.0 (lib) (file src/SdramSimpleRisc.hs changed)\n - haskplayground-0.1.0.0 (interactive) (test:haskplayground-test) (dependency rebuilt)\nPreprocessing library for haskplayground-0.1.0.0...\nBuilding library for haskplayground-0.1.0.0...\n[19 of 25] Compiling SdramSimpleRisc  ( src/SdramSimpleRisc.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/haskplayground-0.1.0.0/build/SdramSimpleRisc.o, dist-newstyle/build/aarch64-osx/ghc-9.8.2/haskplayground-0.1.0.0/build/SdramSimpleRisc.dyn_o ) [Source file changed]\nPreprocessing test suite 'haskplayground-test' for haskplayground-0.1.0.0...\nGHCi, version 9.8.2: https://www.haskell.org/ghc/  :? for help\n[1 of 7] Compiling NeoMusicScoreTests ( test/NeoMusicScoreTests.hs, interpreted )\n\ntest/NeoMusicScoreTests.hs:230:11: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018times\u2019 shadows the existing binding\n      imported from \u2018NeoMusic.Score\u2019 at test/NeoMusicScoreTests.hs:19:1-21\n      (and originally defined in \u2018NeoMusic.Signal\u2019)\n    |\n230 |           times sc = do\n    |           ^^^^^\n\ntest/NeoMusicScoreTests.hs:235:7: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018plain\u2019 shadows the existing binding\n      imported from \u2018NeoMusic.Numeric\u2019 at test/NeoMusicScoreTests.hs:22:1-23\n    |\n235 |       plain <- times line\n    |       ^^^^^\n\ntest/NeoMusicScoreTests.hs:316:7: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018plain\u2019 shadows the existing binding\n      imported from \u2018NeoMusic.Numeric\u2019 at test/NeoMusicScoreTests.hs:22:1-23\n    |\n316 |       plain <- evalEither (numeric plain (Line \"right\" (n 0)))\n    |       ^^^^^\n\ntest/NeoMusicScoreTests.hs:321:11: warning: [GHC-62161] [-Wincomplete-uni-patterns]\n    Pattern match(es) are non-exhaustive\n    In a pattern binding:\n        Patterns of type \u2018[Event]\u2019 not matched:\n            []\n            (_:_:_)\n    |\n321 |           [single] = bendBy up (bendBy scoop (n 0))\n    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\ntest/NeoMusicScoreTests.hs:326:11: warning: [GHC-62161] [-Wincomplete-uni-patterns]\n    Pattern match(es) are non-exhaustive\n    In a pattern binding:\n        Patterns of type \u2018[A.Note]\u2019 not matched:\n            []\n            (_:_:_)\n    |\n326 |           [bent] = A.notes merged\n    |           ^^^^^^^^^^^^^^^^^^^^^^^\n\ntest/NeoMusicScoreTests.hs:358:7: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018plain\u2019 shadows the existing binding\n      imported from \u2018NeoMusic.Numeric\u2019 at test/NeoMusicScoreTests.hs:22:1-23\n    |\n358 |       plain <- evalEither (A.renderTimelineMix (A.defaultMix 8000) =<< render sinePerf (Line \"right\" (n 0)))\n    |       ^^^^^\n\ntest/NeoMusicScoreTests.hs:365:17: warning: [GHC-62161] [-Wincomplete-uni-patterns]\n    Pattern match(es) are non-exhaustive\n    In a pattern binding:\n        Patterns of type \u2018[A.Note]\u2019 not matched:\n            []\n            (_:_:_)\n    |\n365 |             let [v] = A.notes t\n    |                 ^^^^^^^^^^^^^^^\n\ntest/NeoMusicScoreTests.hs:459:7: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018plain\u2019 shadows the existing binding\n      imported from \u2018NeoMusic.Numeric\u2019 at test/NeoMusicScoreTests.hs:22:1-23\n    |\n459 |       plain <- evalEither (engrave perf view music)\n    |       ^^^^^\n[2 of 7] Compiling NeoMusicTests    ( test/NeoMusicTests.hs, interpreted )\n\ntest/NeoMusicTests.hs:199:11: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018notes\u2019 shadows the existing binding\n      imported from \u2018NeoMusic.Audio\u2019 at test/NeoMusicTests.hs:15:66-77\n    |\n199 |           notes v = [voiceNote v 0 220 0.25 0.8, curved v]\n    |           ^^^^^\n\ntest/NeoMusicTests.hs:213:56: warning: [GHC-18042] [-Wtype-defaults]\n    \u2022 Defaulting the type variable \u2018a0\u2019 to type \u2018Double\u2019 in the following constraints\n        (Ord a0) arising from a use of \u2018<\u2019 at test/NeoMusicTests.hs:213:56\n        (Num a0)\n          arising from a use of \u2018abs\u2019 at test/NeoMusicTests.hs:213:15-17\n        (Fractional a0)\n          arising from a use of \u2018/\u2019 at test/NeoMusicTests.hs:213:26\n    \u2022 In the first argument of \u2018assert\u2019, namely\n        \u2018(abs (44100 / fromIntegral lag / 220 - 1) < 0.005)\u2019\n      In a stmt of a 'do' block:\n        assert (abs (44100 / fromIntegral lag / 220 - 1) < 0.005)\n      In the second argument of \u2018($)\u2019, namely\n        \u2018do let presets = ...\n                curved v = ...\n                ....\n            differences <- evalEither\n                             (mapM\n                                (\\ p\n                                   -> do (l1, r1) <- voiceRender 22050 1 (notes (Classic p))\n                                         ....)\n                                presets)\n            annotateShow differences\n            assert (all (< 1e-9) differences)\n            ....\u2019\n    |\n213 |       assert (abs (44100 / fromIntegral lag / 220 - 1) < 0.005)\n    |                                                        ^\n\ntest/NeoMusicTests.hs:219:81: warning: [GHC-18042] [-Wtype-defaults]\n    \u2022 Defaulting the type variable \u2018a0\u2019 to type \u2018Double\u2019 in the following constraints\n        (Ord a0) arising from a use of \u2018<\u2019 at test/NeoMusicTests.hs:219:81\n        (Num a0)\n          arising from a use of \u2018abs\u2019 at test/NeoMusicTests.hs:219:15-17\n        (Fractional a0)\n          arising from a use of \u2018/\u2019 at test/NeoMusicTests.hs:219:26\n    \u2022 In the first argument of \u2018assert\u2019, namely\n        \u2018(abs (44100 / fromIntegral (period up 8820 2000 85 120) / 440 - 1)\n            < 0.01)\u2019\n      In a stmt of a 'do' block:\n        assert\n          (abs (44100 / fromIntegral (period up 8820 2000 85 120) / 440 - 1)\n             < 0.01)\n      In the second argument of \u2018($)\u2019, namely\n        \u2018do let presets = ...\n                curved v = ...\n                ....\n            differences <- evalEither\n                             (mapM\n                                (\\ p\n                                   -> do (l1, r1) <- voiceRender 22050 1 (notes (Classic p))\n                                         ....)\n                                presets)\n            annotateShow differences\n            assert (all (< 1e-9) differences)\n            ....\u2019\n    |\n219 |       assert (abs (44100 / fromIntegral (period up 8820 2000 85 120) / 440 - 1) < 0.01)\n    |                                                                                 ^\n\ntest/NeoMusicTests.hs:245:16: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018amp\u2019 shadows the existing binding\n      imported from \u2018NeoMusic.Audio\u2019 at test/NeoMusicTests.hs:15:45-53\n    |\n245 |       let tone amp f = VU.generate 11025 (\\i -> amp * sin (2 * pi * f * fromIntegral i / 22050))\n    |                ^^^\n\ntest/NeoMusicTests.hs:292:85: warning: [GHC-18042] [-Wtype-defaults]\n    \u2022 Defaulting the type variable \u2018a0\u2019 to type \u2018Double\u2019 in the following constraints\n        (Ord a0) arising from a use of \u2018<\u2019 at test/NeoMusicTests.hs:292:85\n        (Num a0)\n          arising from a use of \u2018abs\u2019 at test/NeoMusicTests.hs:292:15-17\n        (Fractional a0)\n          arising from a use of \u2018/\u2019 at test/NeoMusicTests.hs:292:26\n    \u2022 In the first argument of \u2018assert\u2019, namely\n        \u2018(abs\n            (44100 / fromIntegral (period b3 2000 4000 150 210) / 246.94 - 1)\n            < 0.005)\u2019\n      In a stmt of a 'do' block:\n        assert\n          (abs\n             (44100 / fromIntegral (period b3 2000 4000 150 210) / 246.94 - 1)\n             < 0.005)\n      In the second argument of \u2018($)\u2019, namely\n        \u2018do let tone amp f = VU.generate 11025 (\\ i -> ...)\n                original = tone 0.8 220\n            back <- evalIO\n                      $ withSystemTempDirectory \"neomusic\" $ \\ dir -> do ...\n            (r16, r24) <- evalEither\n                            (either Left (\\ a -> (,) a <$> snd back) (fst back))\n            (recordingRate r16, recordingFrames r16, \n             length (recordingAudio r16), recordingFrames r24)\n              === (22050, 11025, 2, 11025)\n            ....\u2019\n    |\n292 |       assert (abs (44100 / fromIntegral (period b3 2000 4000 150 210) / 246.94 - 1) < 0.005)\n    |                                                                                     ^\n[3 of 7] Compiling PsramRegs        ( test/PsramRegs.hs, interpreted )\n[4 of 7] Compiling Rv32Model        ( test/Rv32Model.hs, interpreted )\n\ntest/Rv32Model.hs:209:25: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018shift\u2019 shadows the existing binding\n      imported from \u2018Data.Bits\u2019 at test/Rv32Model.hs:29:1-16\n      (and originally defined in \u2018GHC.Bits\u2019)\n    |\n209 |                         shift = fromIntegral (8 * (address .&. 3))\n    |                         ^^^^^\n\ntest/Rv32Model.hs:232:25: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018shift\u2019 shadows the existing binding\n      imported from \u2018Data.Bits\u2019 at test/Rv32Model.hs:29:1-16\n      (and originally defined in \u2018GHC.Bits\u2019)\n    |\n232 |                     let shift = fromIntegral (8 * (address .&. 3))\n    |                         ^^^^^\n[5 of 7] Compiling SimpleRisc       ( test/SimpleRisc.hs, interpreted )\n\ntest/SimpleRisc.hs:951:7: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018settled\u2019 shadows the existing binding\n      defined at test/SimpleRisc.hs:105:1\n    |\n951 |       settled = stepDevices False False NoEffect (stepDevices False False NoEffect devices)\n    |       ^^^^^^^\n\ntest/SimpleRisc.hs:985:3: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018delay\u2019 shadows the existing binding\n      imported from \u2018Clash.Prelude\u2019 at test/SimpleRisc.hs:17:1-38\n      (and originally defined in \u2018Clash.Signal\u2019)\n    |\n985 |   delay <- forAll (Gen.integral (Range.linear 200 400))\n    |   ^^^^^\n\ntest/SimpleRisc.hs:1031:18: warning: [GHC-63394] [-Wx-partial]\n    In the use of \u2018head\u2019\n    (imported from Prelude, but defined in GHC.List):\n    \"This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty.\"\n     |\n1031 |       fetching = P.head (P.dropWhile ((/= Fetch) . cpuPhase) (P.iterate step m))\n     |                  ^^^^^^\n\ntest/SimpleRisc.hs:1037:21: warning: [GHC-63394] [-Wx-partial]\n    In the use of \u2018head\u2019\n    (imported from Prelude, but defined in GHC.List):\n    \"This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty.\"\n     |\n1037 |       let entered = P.head (P.dropWhile ((== Trap) . cpuPhase) (P.iterate step next))\n     |                     ^^^^^^\n\ntest/SimpleRisc.hs:1074:15: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018rises\u2019 shadows the existing binding\n      bound at test/SimpleRisc.hs:1084:20\n     |\n1074 |       run spi rises sent fuel\n     |               ^^^^^\n\ntest/SimpleRisc.hs:1074:21: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018sent\u2019 shadows the existing binding\n      bound at test/SimpleRisc.hs:1084:14\n     |\n1074 |       run spi rises sent fuel\n     |                     ^^^^\n\ntest/SimpleRisc.hs:1135:23: warning: [GHC-40910] [-Wunused-local-binds]\n    Defined but not used: \u2018sck\u2019\n     |\n1135 |       (io', (answer, (sck, mosi, _), ramCommand)) = ioStep io (request, False, misoBit, rigRamOut rig)\n     |                       ^^^\n\ntest/SimpleRisc.hs:1190:16: warning: [GHC-63394] [-Wx-partial]\n    In the use of \u2018head\u2019\n    (imported from Prelude, but defined in GHC.List):\n    \"This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty.\"\n     |\n1190 |       status = P.head (rigAnswers (rigAccess ioDmaStatus False 0 received))\n     |                ^^^^^^\n\ntest/SimpleRisc.hs:1200:17: warning: [GHC-63394] [-Wx-partial]\n    In the use of \u2018head\u2019\n    (imported from Prelude, but defined in GHC.List):\n    \"This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty.\"\n     |\n1200 |       refusal = P.head (rigAnswers (rigAccess ioDmaStatus False 0 refused))\n     |                 ^^^^^^\n\ntest/SimpleRisc.hs:1214:19: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018io\u2019 shadows the existing binding\n      bound at test/SimpleRisc.hs:1221:17\n     |\n1214 |       go fuel sim io\n     |                   ^^\n\ntest/SimpleRisc.hs:1275:16: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018odd\u2019 shadows the existing binding\n      imported from \u2018Clash.Prelude\u2019 at test/SimpleRisc.hs:17:1-38\n      (and originally defined in \u2018Clash.Class.Parity\u2019)\n     |\n1275 |     (8, (\\f3 k odd rs1 rs2 -> [bType (4 * k + (if odd then 2 else 0)) rs2 rs1 f3 0])\n     |                ^^^\n\ntest/SimpleRisc.hs:1281:13: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018odd\u2019 shadows the existing binding\n      imported from \u2018Clash.Prelude\u2019 at test/SimpleRisc.hs:17:1-38\n      (and originally defined in \u2018Clash.Class.Parity\u2019)\n     |\n1281 |     (3, (\\k odd rd -> [(9 `shiftL` 7) .|. 0x17, iType (4 * (k + 1) + (if odd then 2 else 0)) 9 0 rd 0x67])\n     |             ^^^\n\ntest/SimpleRisc.hs:1297:5: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018forward\u2019 shadows the existing binding\n      imported from \u2018Clash.Prelude\u2019 at test/SimpleRisc.hs:17:1-38\n      (and originally defined in \u2018Clash.Signal.Delayed.Internal\u2019)\n     |\n1297 |     forward = Gen.integral (Range.linear 1 remaining)\n     |     ^^^^^^^\n\ntest/SimpleRisc.hs:1316:18: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018at\u2019 shadows the existing binding\n      imported from \u2018Clash.Prelude\u2019 at test/SimpleRisc.hs:17:1-38\n      (and originally defined in \u2018Clash.Sized.Vector\u2019)\n     |\n1316 |             from at c = do\n     |                  ^^\n\ntest/SimpleRisc.hs:1372:21: warning: [GHC-18042] [-Wtype-defaults]\n    \u2022 Defaulting the type variable \u2018a0\u2019 to type \u2018Integer\u2019 in the following constraints\n        (Num a0) arising from the literal \u20181\u2019 at test/SimpleRisc.hs:1372:21\n        (Enum a0)\n          arising from the arithmetic sequence \u20181 .. 8\u2019\n          at test/SimpleRisc.hs:1372:20-27\n        (Integral a0)\n          arising from a use of \u2018fromIntegral\u2019\n          at test/SimpleRisc.hs:1375:58-69\n        (Integral a0)\n          arising from a use of \u2018fromIntegral\u2019\n          at test/SimpleRisc.hs:1380:80-91\n    \u2022 In the expression: 1\n      In the first argument of \u2018P.zip\u2019, namely \u2018[1 .. 8]\u2019\n      In the first argument of \u2018(P.++)\u2019, namely \u2018P.zip [1 .. 8] values\u2019\n     |\n1372 |   let regs = P.zip [1 .. 8] values P.++ [(31, dataPointer)]\n     |                     ^\n\ntest/SimpleRisc.hs:1433:21: warning: [GHC-18042] [-Wtype-defaults]\n    \u2022 Defaulting the type variable \u2018a0\u2019 to type \u2018Integer\u2019 in the following constraints\n        (Num a0) arising from the literal \u20181\u2019 at test/SimpleRisc.hs:1433:21\n        (Enum a0)\n          arising from the arithmetic sequence \u20181 .. 8\u2019\n          at test/SimpleRisc.hs:1433:20-27\n        (Integral a0)\n          arising from a use of \u2018fromIntegral\u2019\n          at test/SimpleRisc.hs:1435:53-64\n    \u2022 In the expression: 1\n      In the first argument of \u2018P.zip\u2019, namely \u2018[1 .. 8]\u2019\n      In the first argument of \u2018(P.++)\u2019, namely \u2018P.zip [1 .. 8] values\u2019\n     |\n1433 |       regs = P.zip [1 .. 8] values P.++ [(31, dataPointer)]\n     |                     ^\n\ntest/SimpleRisc.hs:1437:15: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018cycle\u2019 shadows the existing binding\n      imported from \u2018Clash.Prelude\u2019 at test/SimpleRisc.hs:17:1-38\n      (and originally defined in \u2018GHC.List\u2019)\n     |\n1437 |       run sim cycle pending\n     |               ^^^^^\n\ntest/SimpleRisc.hs:1446:7: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018quiet\u2019 shadows the existing binding\n      defined at test/SimpleRisc.hs:163:1\n     |\n1446 |       quiet = finish (run start (0 :: Int) [])\n     |       ^^^^^\n\ntest/SimpleRisc.hs:1800:13: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018pipelined\u2019 shadows the existing binding\n      defined at test/SimpleRisc.hs:1365:1\n     |\n1800 |   P.mapM_ (\\pipelined -> do\n     |             ^^^^^^^^^\n\ntest/SimpleRisc.hs:1819:13: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018pipelined\u2019 shadows the existing binding\n      defined at test/SimpleRisc.hs:1365:1\n     |\n1819 |   P.mapM_ (\\pipelined -> do\n     |             ^^^^^^^^^\n\ntest/SimpleRisc.hs:1834:13: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018pipelined\u2019 shadows the existing binding\n      defined at test/SimpleRisc.hs:1365:1\n     |\n1834 |   P.mapM_ (\\pipelined -> do\n     |             ^^^^^^^^^\n\ntest/SimpleRisc.hs:1855:13: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018pipelined\u2019 shadows the existing binding\n      defined at test/SimpleRisc.hs:1365:1\n     |\n1855 |   P.mapM_ (\\pipelined -> do\n     |             ^^^^^^^^^\n\ntest/SimpleRisc.hs:1877:13: warning: [GHC-63397] [-Wname-shadowing]\n    This binding for \u2018pipelined\u2019 shadows the existing binding\n      defined at test/SimpleRisc.hs:1365:1\n     |\n1877 |   P.mapM_ (\\pipelined -> do\n     |             ^^^^^^^^^\n[6 of 7] Compiling Main             ( test/Spec.hs, interpreted )\nOk, six modules loaded.\nghci> ghci> ghci> ghci> \u2501\u2501\u2501 Boot ROM \u2501\u2501\u2501\n  \u2713 legacy P load passed 20 tests.\n  \u2713 Base commands passed 1 test.\n  \u2713 clear RAM passed 1 test.\n  \u2713 quiet devices passed 1 test.\n  \u2713 serial UART legacy loader passed 1 test.\n  \u2713 5 succeeded.\nTrue\nghci> Leaving GHCi.\n"
+    }
+  },
+  "rv32_f_only_c_compile": "runtime/runtime.c compiled with rv32imafc_zicsr_zifencei / ilp32f; double sqrt uses software fallback",
+  "loader_normal_uart_rtl": "Cancelled optional 868-cycle RTL run; accelerated generated RTL and real 868-cycle physical UART tests passed",
+  "i32": {
+    "implemented": false,
+    "check": "tests/check_rv32_base_codegen.py requires unbound name: I32.ofInt",
+    "available_alternatives": [
+      "tagged Int31 with checked arithmetic",
+      "machine Word32 bit operations",
+      "boxed I64 full-width arithmetic"
+    ]
+  },
+  "limits": [
+    "No actor scheduler, processes, IRQ services, dynamic stack growth or automatic temporary reclamation on the board host",
+    "512/128 classifier with16bins exhausts8MiBheap; successful physical classifier maximum tested here128/64",
+    "Int-returning clocks wrap modulo2^30 onRV32; timeouts/sleeps use full64bit counter",
+    "Legacy P exact64KiB BRAM stack overlap unchanged; new Q reserves256bytes"
+  ],
+  "excluded_unrelated_work": [
+    "examples/printer-dashboard/README.md",
+    "docs/2026-10-17-PRINTER-MAC-MINI-MIGRATION.md",
+    "machine/posix/os_connection.c",
+    "machine/posix/os_resolver.c"
+  ]
+}

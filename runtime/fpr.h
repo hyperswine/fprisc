@@ -39,7 +39,17 @@ typedef struct { uint32_t tid, var; uw fn, arity, nargs; } __attribute__((aligne
 typedef struct { uint32_t tid, var; uw len; uint8_t bytes[]; } __attribute__((aligned(8))) str_t;
 typedef struct { uint32_t tid, var; uw base; } __attribute__((aligned(8))) fpr_dev_t;
 typedef struct { uint32_t tid, var /* = width in bytes */; uw addr; } __attribute__((aligned(8))) reg_t;
-typedef struct { uint32_t tid, var /* 0 LE, 1 BE; Builtin: 2 Word, 3 Addr; 4 I64 (runtime.c) */; uw len, val; } __attribute__((aligned(8))) bits_t;
+typedef struct { uint32_t tid, var /* 0 LE, 1 BE; Builtin: 2 Word, 3 Addr; 6 boxed F32; 7 boxed I32 */; uw len, val; } __attribute__((aligned(8))) bits_t;
+/* Wide numeric leaves keep the complete payload on both word sizes. On
+ * RV64 this is exactly the historical I64 bits_t layout (24 bytes, value
+ * at 16). RV32 must not put a uint64_t into bits_t.val: it is one word.
+ * T_BITS variants 4/5 are I64/boxed F64; variant 6 is boxed F32 in bits_t.
+ * Generic walkers copy T_BITS as opaque bytes, never as pointer fields. */
+typedef struct { uint32_t tid, var; uint64_t len, val; } __attribute__((aligned(8))) fpr_num64_t;
+V fpr_f64_from_bits32(uint32_t hi, uint32_t lo);
+V fpr_f32_from_bits32(uint32_t bits);
+/* I32 representation helpers live in i32.h; they are inline so a runtime.c
+ * link which does not use the I32 integer library gains no dependency. */
 
 #define TAG(n) ((V)((((uw)(n)) << 1) | 1))
 #define UNTAG(v) (((sw)(v)) >> 1)
