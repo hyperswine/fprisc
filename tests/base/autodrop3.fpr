@@ -1,0 +1,31 @@
+# the drop law for a function whose WHOLE BODY is the bare `case <receive> of`
+# (no enclosing block).  Until 2026-10-19 autodrop's shapes 5 and 5b matched
+# the case only as a statement or as a block's final expression; a body that
+# IS the case (the bench ponger, the prelude's parWorker) was never visited,
+# and every message it received stayed a live Arc entry: 1,000,000 of them,
+# 101 MB resident, for tests/bench/pingpong.fpr.  Measured through the ARC
+# gauges of tests/arc_churn/arcprobe.c (`fpr build --with`).
+# docs/2026-10-19-AUTODROP-BARE-CASE.md
+Arc.live : Unit -> Int .
+# shape 5, bare: the bench ponger, verbatim
+ponger : unsafe Int -> a .
+ponger self = case receive self of (who, n) -> send who (n + 1) >> ponger self.
+ping : unsafe Int -> Int -> Int -> Int -> Int .
+ping me p k acc = if k == 0 then acc else
+  _ = send p (me, k);
+  r = receiveFrom me p;
+  ping me p (k - 1) (acc + r).
+# shape 5b, bare: the Result-wrapped receive as the whole body, root read in the arm
+worker : Int -> Int -> Unit .
+worker boss self = _ = send boss (True, 7); Unit.
+takeRes : Int -> Int -> Int .
+takeRes me w = case receiveFromRes me w of Ok m -> (case m of (a, b) -> b) | Err e -> 0.
+roundRes : unsafe Int -> Int -> Int .
+roundRes 0 acc = acc.
+roundRes n acc = me = myself 0; w = spawn (worker me); k = takeRes me w; _ = receiveFromRes me w; roundRes (n - 1) (acc + k).
+main =
+  me = myself 0;
+  p = spawn ponger;
+  s = ping me p 100000 0;
+  r = roundRes 1000 0;
+  print "autodrop3: pingpong {s} and {r} Result-wrapped: arc_live = {Arc.live Unit}".

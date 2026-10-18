@@ -878,7 +878,13 @@ autoDrop tops = (tops', concat notess)
     top t = (t, [])
     goE n e = case e of
       SBlock ss fin -> let (ss', fin', ns) = goStmts n ss fin in (SBlock ss' fin', ns)
-      _ -> (e, [])
+      -- a body that IS the bare expression (no block): the same shape 5 /
+      -- 5b treatment as a block's final expression.  Until 2026-10-19 this
+      -- arm was `_ -> (e, [])`, so `ponger self = case receive self of ...`
+      -- (tests/bench/pingpong.fpr) never got its drop and leaked one Arc
+      -- entry per message (docs/2026-10-19-AUTODROP-BARE-CASE.md)
+      _ -> let (ss', fin', ns) = goStmts n [] e
+            in (if null ss' then fin' else SBlock ss' fin', ns)
     -- shape 1: destructure-next-statement.  The inserted drop precedes
     -- later uses of the pattern's children -- SOUND because the runtime
     -- defers the slab's release to this actor's next receive
