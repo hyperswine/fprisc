@@ -111,7 +111,18 @@ typedef struct fpr_slab {
                            * still open.  Released when escaped and
                            * holds are both 0 -- see fpr_msg_copy. */
   char *hp, *end;
+  uw promoted;            /* sticky: an object of this slab has been in the
+                           * ARC table at some point in the slab's current
+                           * life.  Set under arc_lock on first promotion,
+                           * read with acquire BEFORE the lock by
+                           * fpr_arc_decref: a drop of a value whose slab
+                           * never held a promoted object has no entry to
+                           * find and takes no lock (runtime.c, the
+                           * soundness argument sits on the decref). */
+  uw slab_pad_;           /* keeps sizeof a multiple of 16: the first block
+                           * header sits at sl + 1 and objects stay 16-aligned */
 } fpr_slab_t;
+_Static_assert(sizeof(fpr_slab_t) % 16 == 0, "fpr_slab_t: objects start at sl + 1, keep it 16-aligned");
 
 typedef struct fpr_pool {
   fpr_slab_t *cur;  /* bump target; also the chain head */
@@ -372,6 +383,8 @@ typedef struct {
   uint64_t xs_send_n, xs_send_ns, xs_copy_ns, xs_arc_ns, xs_push_ns, xs_wake_ns;
   uint64_t xs_xship_n, xs_xpush_ns, xs_ipi_ns, xs_lship_n;
   uint64_t xr_recv_n, xr_scan_ns, xr_block_n, xr_drop_ns;
+  uint64_t xr_drop_hit_n, xr_drop_miss_n; /* decrefs that found an entry / had none
+                                           * (docs/2026-10-18-ARC-TABLE-CHURN.md) */
   uint64_t xl_drain_n, xl_drain_ns, xl_run_n, xl_run_ns;
   uint64_t xp_park_n, xp_park_ns, xp_bell_n, xp_bell_ns;
 #endif

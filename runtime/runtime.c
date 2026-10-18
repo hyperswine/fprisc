@@ -603,6 +603,7 @@ V fpr_alloc(V raw_bytes) {
     sl->owner = pool;
     sl->escaped = 0;
     sl->holds = 0;
+    sl->promoted = 0;
     sl->hp = (char *)(sl + 1);
     sl->next = pool->cur;
     pool->cur = sl;
@@ -1097,6 +1098,7 @@ static fpr_slab_t *msg_slab_new(uw need) {
   sl->owner = 0; /* ownerless from birth: freed wholesale on last drop */
   sl->escaped = 0;
   sl->holds = 0;
+  sl->promoted = 0;
   sl->hp = (char *)(sl + 1);
   sl->next = 0;
   return sl;
@@ -1175,7 +1177,7 @@ int fpr_entry_copy_try(V v, uw pid, V *out, fpr_slab_t **hold) {
   if (need > (uw)-1 - sizeof(fpr_slab_t)) return 0;
   fpr_slab_t *sl = fpr_slab_new(need + sizeof(fpr_slab_t));
   if (!sl) return 0;
-  sl->owner = 0; sl->escaped = 0; sl->holds = 1;
+  sl->owner = 0; sl->escaped = 0; sl->holds = 1; sl->promoted = 0;
   sl->hp = (char *)(sl + 1); sl->next = 0;
   dctx_t c = {sl->hp, sl};
   *out = dc_dup(v, &c);
@@ -1614,9 +1616,11 @@ void fpr_pool_reclaim(struct fpr_acb *a) {
  * protocol working. */
 /* THE TABLE GROWS.  It starts as a static 1024-slot array and rehashes
  * into a buddy block of twice the size whenever live + tombstone slots
- * pass 70% -- so a long-running hub with ten thousand shared values in
- * flight costs a bigger table, not a panic (the old fixed table died
- * at 1024).  Growth happens under arc_lock on the insert path, before
+ * pass 70% and at least a quarter of the slots are live -- so a
+ * long-running hub with ten thousand shared values in flight costs a
+ * bigger table, not a panic (the old fixed table died at 1024) -- and
+ * rehashes at the SAME size when they are not (arc_grow: tombstones
+ * alone never double it).  Growth happens under arc_lock on the insert path, before
  * the probe, so a probe never runs on a table it could overrun; the
  * panic below is unreachable and kept as the last word if allocation
  * itself fails.  arc_hwm is the most live entries ever held. */
@@ -1660,25 +1664,61 @@ static void *arc_block(uw bytes, int direct) {
  * turns out unneeded (a racer grew first) goes back. */
 static arcent_t *arc_spare;
 static uw arc_spare_cap;
+/* the next table's size (docs/2026-10-18-ARC-TABLE-CHURN.md): the 70%
+ * rule counts tombstones, so a table can fill with the remains of
+ * dropped messages while almost nothing is live.  Doubling then buys
+ * nothing -- the rehash drops the tombstones anyway -- so when fewer
+ * than a quarter of the slots are LIVE the rehash keeps the size
+ * (compaction); the table doubles only when live entries need the
+ * room.  Live below a quarter leaves at least 45% of the slots free
+ * after a compaction, so the next rehash is at least that many new
+ * keys away; 25% live after a doubling leaves the same. */
+static uw arc_next_cap(uw cap, uw live) { return live * 4 < cap ? cap : cap * 2; }
+/* a table block goes back where arc_block got it */
+static void arc_block_free(arcent_t *t) {
+  if (t == arct0) return; /* the static first table is never freed */
+  if (fpr_mem_own) fpr_mem_give(t); else if (!fpr_is_process) buddy_free(t);
+}
 static void arc_reserve(void) {
   uw cap = __atomic_load_n(&arc_cap, __ATOMIC_RELAXED);
   if ((__atomic_load_n(&arc_used, __ATOMIC_RELAXED) + 1) * 10 <= cap * 7) return;
-  if (__atomic_load_n(&arc_spare, __ATOMIC_ACQUIRE)) return;
-  uw ncap = cap * 2;
+  uw ncap = arc_next_cap(cap, __atomic_load_n(&arc_live, __ATOMIC_RELAXED));
+  arcent_t *sp = __atomic_load_n(&arc_spare, __ATOMIC_ACQUIRE);
+  if (sp) {
+    if (__atomic_load_n(&arc_spare_cap, __ATOMIC_RELAXED) == ncap) return;
+    /* a spare of the wrong size (the last compaction's old table, and
+     * now live wants a doubling, or the reverse): retire it here, off
+     * the lock, so the right one can be taken below */
+    fpr_lock(&arc_lock);
+    if (arc_spare == sp && arc_spare_cap != ncap) arc_spare = 0; else sp = 0;
+    fpr_unlock(&arc_lock);
+    if (sp) arc_block_free(sp);
+  }
   arcent_t *nt = (arcent_t *)arc_block(ncap * sizeof(arcent_t), 0);
   if (!nt) return; /* the direct fallback under the lock has the last word */
   fpr_lock(&arc_lock);
   if (!arc_spare && arc_cap == cap) { arc_spare = nt; arc_spare_cap = ncap; nt = 0; }
   fpr_unlock(&arc_lock);
-  if (nt) { if (fpr_mem_own) fpr_mem_give(nt); }
+  if (nt) arc_block_free(nt);
 }
-/* under arc_lock: double the table and reinsert the live entries
- * (tombstones are left behind, which is what makes the rehash also the
- * table's compaction) */
+/* under arc_lock: rehash the live entries into a table of arc_next_cap
+ * slots -- the same size when little is live (a compaction, counted in
+ * arc_compactions), twice the size otherwise (counted in arc_grows).
+ * Tombstones are left behind either way.  A spare of the right size
+ * (arc_reserve, taken before the lock) is used; one of the wrong size
+ * -- live moved between the reservation and now -- goes back (the
+ * reservation retires a wrong-sized spare too).  After a compaction the OLD
+ * table becomes the spare for the next one: same-size rehashing in
+ * steady churn then allocates nothing. */
+static uw arc_compactions;
 static void arc_grow(void) {
-  uw ncap = arc_cap * 2;
+  uw ncap = arc_next_cap(arc_cap, arc_live);
   arcent_t *nt = 0;
-  if (arc_spare && arc_spare_cap == ncap) { nt = arc_spare; arc_spare = 0; }
+  if (arc_spare) {
+    if (arc_spare_cap == ncap) nt = arc_spare;
+    else arc_block_free(arc_spare);
+    arc_spare = 0;
+  }
   if (!nt) nt = (arcent_t *)arc_block(ncap * sizeof(arcent_t), 1);
   if (!nt) return; /* out of memory: the probe's panic stays the last word */
   __builtin_memset(nt, 0, ncap * sizeof(arcent_t));
@@ -1695,8 +1735,8 @@ static void arc_grow(void) {
       arc_used++;
     }
   }
-  if (ot != arct0) { if (fpr_mem_own) fpr_mem_give(ot); else if (!fpr_is_process) buddy_free(ot); }
-  arc_grows++;
+  if (ncap == ocap) { arc_spare = ot; arc_spare_cap = ocap; arc_compactions++; }
+  else { arc_block_free(ot); arc_grows++; }
 }
 /* an insert is coming: make room first (the 70% rule) and account for it */
 static uw arc_slot_for(V v, int *found) {
@@ -1711,6 +1751,8 @@ static uw arc_slot_for(V v, int *found) {
 uw fpr_arc_cap(void) { return arc_cap; }
 uw fpr_arc_hwm(void) { return arc_hwm; }
 uw fpr_arc_grows_count(void) { return arc_grows; }
+uw fpr_arc_compactions_count(void) { return arc_compactions; }
+uw fpr_arc_used(void) { return arc_used; }
 
 /* one lock for the whole table: promotion happens on SEND, which is
  * rare next to computation -- contention is negligible and the SPSC
@@ -1726,6 +1768,11 @@ static fpr_slab_t *slab_of(V v) { return *(fpr_slab_t **)((char *)v - 8); }
 static int arc_by_value(V v) {
   return !fpr_in_heap(v) || TID(v) == T_ACTOR;
 }
+/* under arc_lock, at an insertion: the slab now has (had) a promoted
+ * object -- fpr_arc_decref's pre-check reads this before the lock */
+static void arc_mark_promoted(fpr_slab_t *sl) {
+  if (!sl->promoted) __atomic_store_n(&sl->promoted, 1, __ATOMIC_RELEASE);
+}
 void fpr_arc_incref(V v) {
   if (fpr_plane_memory) { fpr_plane_memory->arc_incref(v); return; }
   if (arc_by_value(v)) return; /* ints, immortal statics, handles: by value */
@@ -1739,7 +1786,7 @@ void fpr_arc_incref(V v) {
     arc_live++;
     /* first promotion: this object now pins its slab (escape count) */
     fpr_slab_t *sl = slab_of(v);
-    if (sl) sl->escaped++;
+    if (sl) { sl->escaped++; arc_mark_promoted(sl); }
   }
   arct[i].cnt++;
   fpr_unlock(&arc_lock);
@@ -1748,10 +1795,26 @@ void fpr_arc_incref(V v) {
 void fpr_arc_decref(V v) {
   if (fpr_plane_memory) { fpr_plane_memory->arc_decref(v); return; }
   if (arc_by_value(v)) return;
+  /* THE LOCK-FREE PRE-CHECK.  A value whose slab has never held a
+   * promoted object has no entry: the lock would be taken only to find
+   * nothing.  Sound because (1) only a holder of v drops it; (2) a
+   * second holder exists only after a send or share, which inserts the
+   * handed-over pointer under arc_lock -- setting the flag -- before the
+   * mailbox push that publishes it (a release), and the receiver's pop
+   * acquires: the flag's store happens-before every decref that has an
+   * entry to find; (3) the flag is set for every insertion (the two
+   * `arc_live++` sites) and cleared only when the slab is reissued, when
+   * nothing in it is referenced.  A flag seen set takes the old path. */
+  fpr_slab_t *psl = slab_of(v);
+  if (psl && !__atomic_load_n(&psl->promoted, __ATOMIC_ACQUIRE)) {
+    FPR_COST_ADD(fpr_hart(), xr_drop_miss_n, 1);
+    return;
+  }
   fpr_lock(&arc_lock);
   int found;
   uw i = arc_probe(v, &found);
-  if (!found) { fpr_unlock(&arc_lock); return; } /* never shared: no-op */
+  if (!found) { fpr_unlock(&arc_lock); FPR_COST_ADD(fpr_hart(), xr_drop_miss_n, 1); return; } /* never shared: no-op */
+  FPR_COST_ADD(fpr_hart(), xr_drop_hit_n, 1);
   /* Every holder's post-drop borrow counts, including a non-final drop.
    * Otherwise the final holder could reset a fixed grant underneath an
    * earlier reader whose borrow window has not closed. */
@@ -1881,7 +1944,7 @@ void fpr_arc_promote_share(V v) {
     arct[i].cnt = 1; /* the sender's standing share */
     arc_live++;
     fpr_slab_t *sl = slab_of(v);
-    if (sl) sl->escaped++;
+    if (sl) { sl->escaped++; arc_mark_promoted(sl); }
   }
   arct[i].cnt++; /* the receiver's share */
   fpr_unlock(&arc_lock);

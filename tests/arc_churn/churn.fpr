@@ -1,0 +1,30 @@
+# ARC table churn: one actor sends N messages of pseudo-random size (a list
+# of 0..299 cells, LCG-driven so the sequence has no short period) to a sink
+# that drops each on receipt.  At most two table entries are live at once,
+# but every root lands at a new offset of a recycled packing slab, so almost
+# every send inserts a new key and every drop leaves a tombstone.
+# docs/2026-10-18-ARC-TABLE-CHURN.md
+Arc.cap : Unit -> Int .
+Arc.grows : Unit -> Int .
+Arc.compactions : Unit -> Int .
+Arc.hwm : Unit -> Int .
+Arc.live : Unit -> Int .
+Arc.used : Unit -> Int .
+Arc.dropHits : Unit -> Int .
+Arc.dropMisses : Unit -> Int .
+mk : unsafe Int -> List Int -> List Int .
+mk n acc = if n == 0 then acc else mk (n - 1) (n :: acc).
+sink : unsafe Int -> Int -> a .
+sink boss self = m = receive self; n = case m of x :: _ -> x | Nil -> 0; _ = drop m; _ = send boss n; sink boss self.
+churn : unsafe Int -> Int -> Int -> Int -> Int -> Int .
+churn me s k x acc = if k == 0 then acc else
+  x2 = (x * 1103515245 + 12345) % 2147483648;
+  _ = send s (mk ((x2 / 65536) % 300) Nil);
+  r = receiveFrom me s;
+  churn me s (k - 1) x2 (acc + r).
+main =
+  me = myself 0;
+  s = spawn (sink me);
+  total = churn me s 200000 1 0;
+  _ = print "total = {total}";
+  print "arc_cap = {Arc.cap Unit} arc_grows = {Arc.grows Unit} arc_compactions = {Arc.compactions Unit} arc_hwm = {Arc.hwm Unit} arc_live = {Arc.live Unit} arc_used = {Arc.used Unit} drop_hits = {Arc.dropHits Unit} drop_misses = {Arc.dropMisses Unit}".
