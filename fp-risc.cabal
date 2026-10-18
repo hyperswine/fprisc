@@ -17,6 +17,15 @@ license:            NONE
 author:             Jasen
 build-type:         Simple
 
+-- `make fpr-opt` (docs/2026-10-18-COMPILER-BUILD-OPT.md): the same
+-- compiler built with -O2.  Off by default so `make fpr` keeps its
+-- fast -O0 rebuild loop; the optimised build lives in its own cabal
+-- build dir (dist-opt-*) and never clobbers the -O0 objects.
+flag optimised
+  description:        Build the compiler with -O2 (make fpr-opt)
+  default:            False
+  manual:             True
+
 executable fpr
   main-is:            Main.hs
   hs-source-dirs:     compiler
@@ -26,6 +35,8 @@ executable fpr
   -- Keep the threaded RTS for subprocess I/O; a 1 ms tick reduces macOS
   -- timer-thread shutdown latency. Override with +RTS -V0.01 -RTS.
   ghc-options:        -O0 -rtsopts -threaded -with-rtsopts=-V0.001
+  if flag(optimised)
+    ghc-options:      -O2
   other-modules:
       A64
       Arc

@@ -1,6 +1,7 @@
 *.o
 *.hi
 dist-newstyle/
+dist-opt-O*/
 fpr
 fprc
 *.s.units

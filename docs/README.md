@@ -167,3 +167,4 @@ they began.
 - [CSS construction](2026-10-18-CSS-CONSTRUCTION.md): linear joins, prefix reuse, typed CSS without decoding lists, exact-output and browser checks, QOS Portable/RV64 validation and additional session allocation reductions.
 
 - [Private workers](2026-10-18-PRIVATE-WORKERS.md): checked raw Int call chains and split two-field accumulators, stable public entries, allocation ratchets, physical Pi/STAR64 timings and remaining convention limits.
+- [Compiler build optimisation](2026-10-18-COMPILER-BUILD-OPT.md): `make fpr-opt` (-O2, own build dir, build/fpr-opt), cold/warm compile and build timings for logbook and pos1 at -O0/-O1/-O2 with and without a 64 MiB nursery, identical assembly, what was not verified.
