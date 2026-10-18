@@ -73,11 +73,16 @@ key k n = case n of
   | Inp attrs -> Inp (Att "data-lv-key" k :: attrs)
   | _ -> error "View.key needs an element".
 
+# `cur` is the static run in progress, NEWEST PIECE FIRST; it is joined once,
+# when a Dyn ends it or the render does.  Appending each piece by strcat copied
+# the run per piece, and renderStyled seeds the run with the whole <style>
+# block, so every element before the first Dyn re-copied the stylesheet
+# (docs/2026-10-18-LINEAR-STRING-BUILDERS.md).
 Ctx = Type (Ctx cur statics dyns).
 
 # ---- rendering: tree -> (statics, dynamics) --------------------------------
 
-render n = fin (goN (Ctx "" Nil Nil) n).
+render n = fin (goN (Ctx Nil Nil Nil) n).
 # At the FINAL page render, carry the current local rules in the normal view
 # protocol. New conditional styles then travel with their elements. Component
 # caches still use render; their class lists retain these rule definitions.
@@ -87,8 +92,8 @@ renderStyled n =
   # Keep the style node even when empty: adding/removing the final utility
   # must not replace an unkeyed page root and lose its form state.
   start = "<style data-lv-local-css=\"\">{css}</style>";
-  fin (goN (Ctx start Nil Nil) n).
-fin (Ctx cur ss ds) = (rev (cur :: ss), rev ds).
+  fin (goN (Ctx (start :: Nil) Nil Nil) n).
+fin (Ctx cur ss ds) = (rev (static cur :: ss), rev ds).
 
 goN : unsafe Ctx -> Node -> Ctx .
 goN c (Fragment ss ds _) = appendFragment c ss ds.
@@ -113,8 +118,10 @@ goKids : unsafe Ctx -> List Node -> Ctx .
 goKids c Nil = c.
 goKids c (k :: r) = goKids (goN c k) r.
 
-emit (Ctx cur ss ds) s = Ctx (strcat cur s) ss ds.
-slot (Ctx cur ss ds) v = Ctx "" (cur :: ss) (v :: ds).
+emit (Ctx cur ss ds) s = Ctx (s :: cur) ss ds.
+slot (Ctx cur ss ds) v = Ctx Nil (static cur :: ss) (v :: ds).
+static (s :: Nil) = s.
+static pieces = strJoin "" (rev pieces).
 
 # ---- attributes ------------------------------------------------------------
 
@@ -476,19 +483,21 @@ cssWith styles tree =
       (strcat (media styles "wide" "(min-width:761px)" cs) (localCss cs)))).
 
 rules : unsafe List Style -> List String -> String .
-rules styles Nil = "".
-rules styles (c :: r) = strcat (strcat (rule1 ".{c}" (declsOf styles c)) (cssExtra c)) (rules styles r).
+rules styles cs = strJoin "" (rev (rulesGo styles cs Nil)).
+rulesGo : unsafe List Style -> List String -> List String -> List String .
+rulesGo styles Nil acc = acc.
+rulesGo styles (c :: r) acc = rulesGo styles r (cssExtra c :: rule1 ".{c}" (declsOf styles c) :: acc).
 rule1 sel "" = "".
 rule1 sel d = "{sel}\{{d}}\n".
 
 # the breakpoint's rules: every `name:` class in the tree, as its base class
 media : unsafe List Style -> String -> String -> List String -> String .
-media styles name query cs = wrapMedia query (mediaGo styles name cs "").
+media styles name query cs = wrapMedia query (strJoin "" (rev (mediaGo styles name cs Nil))).
 wrapMedia q "" = "".
 wrapMedia q body = "@media {q}\{\n{body}}\n".
-mediaGo : unsafe List Style -> String -> List String -> String -> String .
+mediaGo : unsafe List Style -> String -> List String -> List String -> List String .
 mediaGo styles name Nil acc = acc.
-mediaGo styles name (c :: r) acc | hasPrefix "{name}:" c = mediaGo styles name r (strcat acc (mediaRule styles name (dropPrefix (strlen name + 1) c))).
+mediaGo styles name (c :: r) acc | hasPrefix "{name}:" c = mediaGo styles name r (mediaRule styles name (dropPrefix (strlen name + 1) c) :: acc).
 mediaGo styles name (c :: r) acc = mediaGo styles name r acc.
 mediaRule styles name base = rule1 ".{name}\\:{base}" (declsOf styles base).
 hasPrefix : unsafe String -> String -> Bool .
@@ -857,11 +866,23 @@ join2 acc x = strcat acc (strcat ";" x).
 
 # ---- string helpers --------------------------------------------------------
 
+# runs of plain bytes are copied whole (substr) and the pieces joined once, as
+# jesc does below; a text with nothing to escape is answered as it is
 esc : unsafe String -> String .
-esc s = escGo s 0 (strlen s) "".
-escGo : unsafe String -> Int -> Int -> String -> String .
-escGo s i n acc | i >= n = acc.
-escGo s i n acc = escGo s (i + 1) n (strcat acc (escCh (charAt s i))).
+esc s = escGo s 0 0 (strlen s) Nil.
+escGo : unsafe String -> Int -> Int -> Int -> List String -> String .
+escGo s st i n acc | i >= n = escDone s st i acc.
+escGo s st i n acc | escPlain (charAt s i) = escGo s st (i + 1) n acc.
+escGo s st i n acc = escGo s (i + 1) (i + 1) n (escCh (charAt s i) :: escRun s st i acc).
+escDone s st i Nil = s.
+escDone s st i acc = strJoin "" (rev (escRun s st i acc)).
+escRun s st i acc | i > st = substr s st (i - st) :: acc.
+escRun s st i acc = acc.
+escPlain 38 = False.
+escPlain 60 = False.
+escPlain 62 = False.
+escPlain 34 = False.
+escPlain c = True.
 escCh 38 = "&amp;".
 escCh 60 = "&lt;".
 escCh 62 = "&gt;".
@@ -888,14 +909,15 @@ jCh c = " ".
 strEq a b = a == b.
 and2 a b = a and b.
 
+# the words of s, LAST FIRST; each word is one substr of its run
 splitSp : unsafe String -> List String .
-splitSp s = spGo s 0 (strlen s) "" Nil.
-spGo : unsafe String -> Int -> Int -> String -> List String -> List String .
-spGo s i n cur acc | i >= n = revAdd cur acc.
-spGo s i n cur acc | charAt s i == 32 = spGo s (i + 1) n "" (revAdd cur acc).
-spGo s i n cur acc = spGo s (i + 1) n (strcat cur (chr (charAt s i))) acc.
-revAdd "" acc = acc.
-revAdd cur acc = cur :: acc.
+splitSp s = spGo s 0 0 (strlen s) Nil.
+spGo : unsafe String -> Int -> Int -> Int -> List String -> List String .
+spGo s st i n acc | i >= n = spAdd s st i acc.
+spGo s st i n acc | charAt s i == 32 = spGo s (i + 1) (i + 1) n (spAdd s st i acc).
+spGo s st i n acc = spGo s st (i + 1) n acc.
+spAdd s st i acc | i > st = substr s st (i - st) :: acc.
+spAdd s st i acc = acc.
 
 nub : unsafe List String -> List String .
 nub Nil = Nil.

@@ -82,12 +82,21 @@ close s = OS.close (fd s).
 # Protocols are framed by text (a line, a blank line, a length), and a read
 # returns whatever arrived.  A Reader keeps the rest, and every operation
 # hands back the Reader to go on with.
-# (the third part is HOW it waits: None = poll its own descriptor on a timer;
+# (the last part is HOW it waits: None = poll its own descriptor on a timer;
 # Some poller = sleep in the mailbox until the poller says so -- see readerOn)
-Reader = Type (Reader Stream String (O.Option PL.Poller)).
+#
+# The bytes read past what was asked for are kept as the PIECES the reads
+# delivered them in: a head piece with the offset of its first unconsumed
+# byte, then the later pieces NEWEST FIRST.  A fill is a cons, and the bytes
+# are copied once, into the message they belong to, when it is delivered.
+# Concatenating each fill onto one buffer copied the buffer per fill (quadratic
+# in the message), and a substr of the remainder per read copied the rest again
+# (docs/2026-10-18-LINEAR-STRING-BUILDERS.md).  What is buffered is at most
+# one fill past the message, kept whole until the next read moves on.
+Reader = Type (Reader Stream String Int (List String) (O.Option PL.Poller)).
 
 reader : Stream -> Reader .
-reader s = Reader s "" O.None.
+reader s = Reader s "" 0 Nil O.None.
 
 # one read for a Reader, waiting its way.  `deadline` (Sys.timeUs, 0 = none)
 # bounds the wait on a plain Reader: Err "timed out".  A Reader on a Poller
@@ -101,28 +110,121 @@ fillBy deadline w s = case w of O.None -> readGo 65536 (fd s) 100 deadline | O.S
 # up to and excluding `sep`; the Reader continues after it.
 # Err "closed" when the stream ends first (what was buffered is lost with it).
 readUntil : String -> Reader -> (Result String String, Reader) .
-readUntil sep r = untilGo sep r 0 0 0.
+readUntil sep r = untilGo sep r (buffered r) 0 0 0.
 # the same, within `ms` milliseconds and with the separator inside the first
 # `max` bytes: Err "timed out", or Err "no separator within N bytes" (also
 # when the separator is there but what precedes it is longer than `max`).
 # Without a bound the buffer grows with whatever the peer sends and never ends.
 readUntilWithin : Int -> Int -> String -> Reader -> (Result String String, Reader) .
-readUntilWithin ms max sep r = untilGo sep r 0 max (Sys.timeUs Unit + ms * 1000).
-# `from`: where an occurrence could still start (no rescanning what was searched)
-untilGo : unsafe String -> Reader -> Int -> Int -> Int -> (Result String String, Reader) .
-untilGo sep r from max deadline = case r of Reader s buf w ->
-  at = strIndexFrom sep buf from;
+readUntilWithin ms max sep r = untilGo sep r (buffered r) 0 max (Sys.timeUs Unit + ms * 1000).
+# `have`: the bytes buffered; `from`: where an occurrence could still start
+# (no rescanning what was searched)
+untilGo : unsafe String -> Reader -> Int -> Int -> Int -> Int -> (Result String String, Reader) .
+untilGo sep r have from max deadline = case r of Reader s head off pieces w ->
+  at = findSep sep head off pieces have from;
   (case at < 0 or (max > 0 and at > max) of
-      True -> (case max > 0 and (at > max or strlen buf >= max) of
+      True -> (case max > 0 and (at > max or have >= max) of
           True -> (Err "no separator within {max} bytes", r)
         | False -> (case fillBy deadline w s of
               Err why -> (Err why, r)
             | Ok more -> (case strlen more == 0 of
                   True -> (Err "closed", r)
-                | False -> untilGo sep (Reader s (strcat buf more) w) (keep (strlen buf - strlen sep + 1)) max deadline)))
-    | False -> (Ok (substr buf 0 at), Reader s (substr buf (at + strlen sep) (strlen buf)) w)).
+                | False -> untilGo sep (Reader s head off (more :: pieces) w) (have + strlen more) (keep (have - strlen sep + 1)) max deadline)))
+    | False -> (case bufTake at head off pieces of (msg, head2, off2, pieces2) ->
+        (case tidy (bufDrop (strlen sep) head2 off2 pieces2) of (head3, off3, pieces3) ->
+          (Ok msg, Reader s head3 off3 pieces3 w)))).
 keep : Int -> Int .
 keep n = case n < 0 of True -> 0 | False -> n.
+
+# ---- the buffered pieces ---------------------------------------------------------
+buffered : Reader -> Int .
+buffered r = case r of Reader s head off pieces w -> strlen head - off + lensOf pieces 0.
+lensOf : unsafe List String -> Int -> Int .
+lensOf pieces n = case pieces of Nil -> n | p :: r -> lensOf r (n + strlen p).
+
+# the first n buffered bytes as ONE string (n <= buffered), and what is left:
+# the piece the cut falls in stays whole behind its offset
+bufTake : unsafe Int -> String -> Int -> List String -> (String, String, Int, List String) .
+bufTake n head off pieces = case strlen head - off >= n of
+    True -> (slice head off n, head, off + n, pieces)
+  | False -> takeGo (n - (strlen head - off)) (rev pieces Nil) (runOf head off Nil).
+takeGo : unsafe Int -> List String -> List String -> (String, String, Int, List String) .
+takeGo need ps parts = case ps of
+    Nil -> (strJoin "" (rev parts Nil), "", 0, Nil)
+  | p :: more -> (case strlen p >= need of
+        True -> (strJoin "" (rev (slice p 0 need :: parts) Nil), p, need, rev more Nil)
+      | False -> takeGo (need - strlen p) more (p :: parts)).
+bufDrop : unsafe Int -> String -> Int -> List String -> (String, Int, List String) .
+bufDrop n head off pieces = case strlen head - off >= n of
+    True -> (head, off + n, pieces)
+  | False -> dropGo (n - (strlen head - off)) (rev pieces Nil).
+dropGo : unsafe Int -> List String -> (String, Int, List String) .
+dropGo need ps = case ps of
+    Nil -> ("", 0, Nil)
+  | p :: more -> (case strlen p >= need of True -> (p, need, rev more Nil) | False -> dropGo (need - strlen p) more).
+# a head consumed to its end, with nothing behind it, is let go
+tidy : (String, Int, List String) -> (String, Int, List String) .
+tidy b = case b of (head, off, pieces) -> (case off >= strlen head of
+    True -> (case pieces of Nil -> ("", 0, Nil) | _ -> b)
+  | False -> b).
+slice : String -> Int -> Int -> String .
+slice s o n = case o == 0 and n == strlen s of True -> s | False -> substr s o n.
+runOf : String -> Int -> List String -> List String .
+runOf head off acc = case off >= strlen head of True -> acc | False -> substr head off (strlen head - off) :: acc.
+
+# the index in the buffered bytes of the first `sep` starting at or after
+# `from`, or -1.  A piece is searched whole; an occurrence that straddles the
+# end of a piece is found in a window of its last strlen sep - 1 bytes and the
+# first strlen sep - 1 bytes after it.  Only the pieces that end past `from`
+# are visited: after a fill that is the fill and the tail of what preceded it.
+findSep : unsafe String -> String -> Int -> List String -> Int -> Int -> Int .
+findSep sep head off pieces have from = case strlen sep == 0 of
+    True -> from
+  | False -> scanFrom sep (strlen sep) head off pieces have from Nil.
+# newest first through `pieces` collecting (oldest first) those that end past
+# `from`; `end` is the index past the piece at hand
+scanFrom : unsafe String -> Int -> String -> Int -> List String -> Int -> Int -> List String -> Int .
+scanFrom sep lp head off pieces end from acc = case pieces of
+    p :: more -> (case end <= from of
+        True -> findNext sep lp acc end from
+      | False -> scanFrom sep lp head off more (end - strlen p) from (p :: acc))
+  | Nil -> (case end <= from of
+        True -> findNext sep lp acc end from
+      | False -> findIn sep lp head off acc 0 from).
+findNext : unsafe String -> Int -> List String -> Int -> Int -> Int .
+findNext sep lp rest base from = case rest of Nil -> 0 - 1 | q :: more -> findIn sep lp q 0 more base from.
+# `p` from its byte `start` lies at buffered index `base`; `rest` follows, oldest first
+findIn : unsafe String -> Int -> String -> Int -> List String -> Int -> Int -> Int .
+findIn sep lp p start rest base from =
+  end = base + strlen p - start;
+  lo = start + (case from > base of True -> from - base | False -> 0);
+  i = strIndexFrom sep p lo;
+  (case i >= 0 of
+      True -> base + i - start
+    | False -> (case rest of
+        Nil -> 0 - 1
+      | _ -> found (straddle sep lp p lo rest) sep lp p start rest base end from)).
+found : unsafe Int -> String -> Int -> String -> Int -> List String -> Int -> Int -> Int -> Int .
+found at sep lp p start rest base end from | at >= 0 = base + at - start.
+found at sep lp p start rest base end from = findNext sep lp rest end from.
+# an occurrence starting in p's last lp - 1 bytes (at or after `lo`) and
+# continuing into `rest`: its index in p, or -1
+straddle : unsafe String -> Int -> String -> Int -> List String -> Int .
+straddle sep lp p lo rest =
+  g0 = (case lo > strlen p - lp + 1 of True -> lo | False -> strlen p - lp + 1);
+  tail = strlen p - g0;
+  (case tail <= 0 of
+      True -> 0 - 1
+    | False ->
+        j = strIndexOf sep (strcat (substr p g0 tail) (prefixOf (lp - 1) rest Nil));
+        (case j >= 0 and j < tail of True -> g0 + j | False -> 0 - 1)).
+# the first n bytes of the pieces (oldest first), or all of them
+prefixOf : unsafe Int -> List String -> List String -> String .
+prefixOf n ps acc = case ps of
+    Nil -> strJoin "" (rev acc Nil)
+  | q :: more -> (case strlen q >= n of
+        True -> strJoin "" (rev (substr q 0 n :: acc) Nil)
+      | False -> prefixOf (n - strlen q) more (q :: acc)).
 
 # one line without its "\n" (or "\r\n")
 readLine : Reader -> (Result String String, Reader) .
@@ -133,23 +235,25 @@ readLine r = case readUntil "\n" r of (res, r2) ->
 
 # exactly `n` bytes
 readExactly : Int -> Reader -> (Result String String, Reader) .
-readExactly n r = exactGo n r 0.
+readExactly n r = exactGo (keep n) r (buffered r) 0.
 # the same within `ms` milliseconds (Err "timed out"; see fill for a Poller)
 readExactlyWithin : Int -> Int -> Reader -> (Result String String, Reader) .
-readExactlyWithin ms n r = exactGo n r (Sys.timeUs Unit + ms * 1000).
-exactGo : unsafe Int -> Reader -> Int -> (Result String String, Reader) .
-exactGo n r deadline = case r of Reader s buf w ->
-  (case strlen buf >= n of
-      True -> (Ok (substr buf 0 n), Reader s (substr buf n (strlen buf)) w)
+readExactlyWithin ms n r = exactGo (keep n) r (buffered r) (Sys.timeUs Unit + ms * 1000).
+exactGo : unsafe Int -> Reader -> Int -> Int -> (Result String String, Reader) .
+exactGo n r have deadline = case r of Reader s head off pieces w ->
+  (case have >= n of
+      True -> (case bufTake n head off pieces of (msg, head2, off2, pieces2) ->
+          (case tidy (head2, off2, pieces2) of (head3, off3, pieces3) -> (Ok msg, Reader s head3 off3 pieces3 w)))
     | False -> (case fillBy deadline w s of
           Err why -> (Err why, r)
         | Ok more -> (case strlen more == 0 of
               True -> (Err "closed", r)
-            | False -> exactGo n (Reader s (strcat buf more) w) deadline))).
+            | False -> exactGo n (Reader s head off (more :: pieces) w) (have + strlen more) deadline))).
 
 # what is buffered plus everything until the end
 readRest : Reader -> Result String String .
-readRest r = case r of Reader s buf _ -> (case readAll s of Ok more -> Ok (strcat buf more) | Err e -> Err e).
+readRest r = case r of Reader s head off pieces _ ->
+  (case readAll s of Ok more -> Ok (strJoin "" (runOf head off (rev (more :: pieces) Nil))) | Err e -> Err e).
 
 # ---- waiting on a Poller instead of polling -----------------------------------------------------
 # The functions above wait by polling their own descriptor on a timer, which is
@@ -170,4 +274,4 @@ readOnGo p n f =
 # a Reader whose waits go through a Poller: `readUntil`, `readLine`,
 # `readExactly` and `readRest` work on it unchanged
 readerOn : PL.Poller -> Stream -> Reader .
-readerOn p s = Reader s "" (O.Some p).
+readerOn p s = Reader s "" 0 Nil (O.Some p).
