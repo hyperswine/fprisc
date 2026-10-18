@@ -1,0 +1,31 @@
+profile base.
+# Read-only backup of the precise metadata locations proposed for the test
+# partition. No write operation is called. The host saves each tagged sector.
+Sd = use "std/tangnano20k/sd".
+need r = case r of Ok value -> value | Err why -> error why.
+fill : (at : Int | measure (end - at)) -> (end : Int) -> String -> SString -> SString .
+fill at end text buffer = if at >= end then buffer else
+  byte = charAt text at;
+  digits = "0123456789abcdef";
+  high = SStr.push buffer (charAt digits (byte / 16));
+  both = SStr.push high (charAt digits (byte % 16));
+  fill (at + 1) end text both.
+chunk at text =
+  buffer = fill at (at + 64) text (SStr.new Unit);
+  (part, done) = SStr.toStr buffer;
+  _ = drop done;
+  part.
+hex text = strJoin "" [chunk 0 text, chunk 64 text, chunk 128 text,
+  chunk 192 text, chunk 256 text, chunk 320 text, chunk 384 text, chunk 448 text].
+dump card block = print "SD BACKUP {block} {hex (need (Sd.read card block))}".
+backup : Sd.Card -> Int -> (remaining : Int | measure remaining) -> Unit .
+backup card block remaining = if remaining <= 0 then Unit else
+  _ = dump card block;
+  backup card (block + 1) (remaining - 1).
+main : Unit .
+main =
+  card = need (Sd.open 7);
+  _ = if Sd.blocks card == 122152960 and Sd.product card == "SDABC" then Unit else error "SD backup card differs";
+  _ = dump card 0;
+  _ = backup card 120913920 289;
+  print "FP SD METADATA BACKUP HOLDS".

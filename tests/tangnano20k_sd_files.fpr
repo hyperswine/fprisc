@@ -1,0 +1,26 @@
+profile base.
+# Run only on a FAT16/FAT32 card. There is no format or partition operation.
+# The unique root 8.3 name is created once; reruns verify its durable contents.
+Sd = use "std/tangnano20k/sd".
+Fat = use "std/tangnano20k/fat".
+need r = case r of Ok value -> value | Err why -> error why.
+expect yes why = if yes then Unit else error why.
+payload = strJoin "" ["FP-RISC Tang Nano 20K SD file\n", "I32 + SPI + FAT in FP-RISC\n", chr 0, chr 255, "\n"] .
+main : Unit .
+main =
+  card = need (Sd.open 7);
+  _ = print "SD CARD {Sd.product card} BLOCKS {Sd.blocks card}";
+  volume = need (Fat.mount card);
+  _ = case Fat.read volume "FPRTEST.TXT" of
+    Ok text ->
+      _ = expect (text == payload) "FPRTEST.TXT already exists with other contents; overwrite refused";
+      print "SD EXISTING FILE VERIFIED"
+  | Err _ ->
+      _ = need (Fat.create volume "FPRTEST.TXT" payload);
+      print "SD NEW FILE STORED";
+  readback = need (Fat.read volume "FPRTEST.TXT");
+  _ = expect (readback == payload) "SD file readback differs";
+  _ = case Fat.create volume "FPRTEST.TXT" "must not overwrite" of
+    Err _ -> Unit | Ok _ -> error "SD existing file overwritten";
+  _ = expect (need (Fat.read volume "FPRTEST.TXT") == payload) "SD file changed after overwrite refusal";
+  print "FP SD FILE ROUNDTRIP HOLDS {strlen readback} BYTES".

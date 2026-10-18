@@ -1,0 +1,43 @@
+profile base.
+# Read-only physical inspection. It never calls Sd.write.
+Sd = use "std/tangnano20k/sd".
+need r = case r of Ok value -> value | Err why -> error why.
+hexGo : (at : Int | measure at) -> String -> List String -> List String .
+hexGo at text acc = if at < 0 then acc else
+  byte = charAt text at;
+  digits = "0123456789abcdef";
+  part = strcat (chr (charAt digits (byte / 16))) (chr (charAt digits (byte % 16)));
+  hexGo (at - 1) text (part :: acc).
+hex text = strJoin "" (hexGo (strlen text - 1) text Nil).
+dump card block =
+  text = need (Sd.read card block);
+  _ = print "SD SECTOR {block} {hex text}";
+  text.
+partition : (index : Int | measure (4 - index)) -> Sd.Card -> String -> Unit .
+partition index card mbr = if index >= 4 then Unit else
+  at = 446 + index * 16;
+  kind = charAt mbr (at + 4);
+  start32 = Sd.u32 (at + 8) mbr;
+  count32 = Sd.u32 (at + 12) mbr;
+  _ = print "SD PARTITION {index} TYPE {kind} LBA {I32.strU start32} BLOCKS {I32.strU count32}";
+  _ = if kind == 0 then Unit else
+    case (I32.toIntU start32, I32.toIntU count32) of
+      (Ok start, Ok count) ->
+        if start <= 0 or count <= 0 or start >= Sd.blocks card or count > Sd.blocks card - start then print "SD PARTITION REFUSED: invalid bounds" else
+        _ = dump card start;
+        _ = if kind == 131 and count >= 4 then
+          first = dump card (start + 2);
+          _ = dump card (start + 3);
+          print "SD EXT MAGIC {charAt first 56} {charAt first 57} (expected 83 239)"
+        else Unit;
+        if kind == 4 or kind == 6 or kind == 14 or kind == 11 or kind == 12 then print "SD FAT PARTITION CANDIDATE" else print "SD FILESYSTEM UNSUPPORTED: type {kind}; writes refused"
+    | _ -> print "SD PARTITION REFUSED: bounds exceed target Int range";
+  partition (index + 1) card mbr.
+main : Unit .
+main =
+  card = need (Sd.open 7);
+  _ = print "SD CARD {Sd.product card} BLOCKS {Sd.blocks card} HIGH_CAPACITY {Sd.highCapacity card} OCR {I32.hex (Sd.ocr card)}";
+  _ = print "SD CID {hex (Sd.cid card)} CSD {hex (Sd.csd card)}";
+  mbr = dump card 0;
+  _ = if charAt mbr 510 == 85 and charAt mbr 511 == 170 then partition 0 card mbr else print "SD PARTITION TABLE REFUSED: no 55aa signature";
+  print "FP SD READ ONLY PROBE HOLDS".

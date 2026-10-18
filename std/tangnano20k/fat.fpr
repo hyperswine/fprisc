@@ -1,0 +1,211 @@
+# Small FAT16/FAT32 root-directory file driver, entirely FP-RISC.
+# Create only: existing names are refused, never truncated or overwritten.
+# This first version stores files of 1..512 bytes in a fresh cluster and
+# reads files of 0..512 bytes. No formatting, deletion, long names, or growth.
+# Only an existing end-marker slot before the last entry of a sector is
+# used; deleted slots and directory extension are deliberately refused.
+# MBR primary entries must be disjoint and in bounds. Superfloppies require
+# all 64 partition-table bytes to be zero; boot code in that area is refused.
+# Data -> FAT copies -> directory publication. An interrupted create can leak
+# a cluster; this is not a journaled filesystem or a power-loss guarantee.
+
+Sd = use "sd".
+S = use "std/string".
+Volume = {card : Sd.Card, wide : Bool, start : Int, total : Int, fat : Int, fatSectors : Int,
+  copies : Int, root : Int, rootSectors : Int, data : Int, spc : Int, clusters : Int,
+  fsInfo : Int, backupInfo : Int}.
+Location = Type (Existing Int Int Int Int Int | Vacant Int Int).
+Scan = Type (Hit Location | Next Int Int).
+bind f r = case r of Ok value -> f value | Err why -> Err why.
+minimum a b = if a < b then a else b.
+signature text = strlen text == 512 and charAt text 510 == 85 and charAt text 511 == 170.
+fatType kind = kind == 4 or kind == 6 or kind == 14 or kind == 11 or kind == 12.
+isPower2 n = n >= 1 and n <= 128 and band n (n - 1) == 0.
+
+bootTotal text = if Sd.u16 19 text != 0 then Ok (Sd.u16 19 text) else Sd.int32 32 text.
+bootFat text = if Sd.u16 22 text != 0 then Ok (Sd.u16 22 text) else Sd.int32 36 text.
+geometry card start limit text total fatSectors =
+  spc = charAt text 13; reserved = Sd.u16 14 text; copies = charAt text 16;
+  rootEntries = Sd.u16 17 text;
+  if signature text == False or Sd.u16 11 text != 512 or isPower2 spc == False or reserved <= 0 or copies < 1 or copies > 2 or fatSectors <= 0 or total <= 0 or total > limit then Err "FAT invalid or unsupported BPB" else
+  if reserved >= total or fatSectors > (total - reserved) / copies then Err "FAT metadata exceeds partition" else
+  rootSectors = (rootEntries * 32 + 511) / 512;
+  overhead = reserved + copies * fatSectors;
+  if rootSectors >= total - overhead then Err "FAT volume has no data area" else
+  data = overhead + rootSectors;
+  clusters = (total - data) / spc;
+  if clusters < 4085 then Err "FAT12 is not supported" else
+  if clusters > 268435438 then Err "FAT32 cluster count reaches reserved values" else
+  wide = clusters >= 65525;
+  if wide and (Sd.u16 22 text != 0 or rootEntries != 0 or Sd.u16 42 text != 0 or band (Sd.u16 40 text) 128 != 0) then Err "FAT32 layout/version or disabled mirroring unsupported" else
+  if wide == False and (Sd.u16 22 text == 0 or rootEntries == 0 or rootEntries % 16 != 0) then Err "FAT16 root directory layout unsupported" else
+  if (clusters + 1) / (if wide then 128 else 256) + 1 > fatSectors then Err "FAT table too short for data clusters" else
+  rootResult = if wide then Sd.int32 44 text else Ok (start + overhead);
+  bind (fn root ->
+    if wide and (root < 2 or root >= clusters + 2) then Err "FAT32 root cluster out of range" else
+    info = if wide then Sd.u16 48 text else 0;
+    backup = if wide then Sd.u16 50 text else 0;
+    infoSector = if info > 0 and info < reserved then start + info else -1;
+    backupSector = if infoSector >= 0 and backup > 0 and backup < reserved and info < reserved - backup then start + backup + info else -1;
+    Ok {card = card, wide = wide, start = start, total = total, fat = start + reserved,
+      fatSectors = fatSectors, copies = copies, root = root, rootSectors = rootSectors,
+      data = start + data, spc = spc, clusters = clusters, fsInfo = infoSector, backupInfo = backupSector}) rootResult.
+boot card start limit = bind (fn text -> bind (fn total -> bind (geometry card start limit text total) (bootFat text)) (bootTotal text)) (Sd.read card start).
+partitionBounds card text index =
+  at = 446 + index * 16;
+  kind = charAt text (at + 4);
+  bind (fn start -> bind (fn count ->
+    if kind == 0 and start == 0 and count == 0 then Ok (0, 0) else
+    if kind == 0 or start <= 0 or start >= Sd.blocks card or count <= 0 or count > Sd.blocks card - start then Err "MBR partition bounds invalid; writes refused" else Ok (start, count)) (Sd.int32 (at + 12) text)) (Sd.int32 (at + 8) text).
+disjoint : Sd.Card -> String -> Int -> Int -> (index : Int | measure (4 - index)) -> Result Unit String .
+disjoint card text start count index = if index >= 4 then Ok Unit else
+  bind (fn pair ->
+    (other, span) = pair;
+    overlap = count > 0 and span > 0 and (if start <= other then count > other - start else span > start - other);
+    if overlap then Err "MBR partitions overlap; writes refused" else disjoint card text start count (index + 1)) (partitionBounds card text index).
+checkTable : Sd.Card -> String -> (index : Int | measure (4 - index)) -> Result Unit String .
+checkTable card text index = if index >= 4 then Ok Unit else
+  bind (fn pair -> (start, count) = pair; bind (fn checked -> checkTable card text (index + 1)) (disjoint card text start count (index + 1))) (partitionBounds card text index).
+emptyTable : String -> (at : Int | measure (510 - at)) -> Bool .
+emptyTable text at = if at >= 510 then True else charAt text at == 0 and emptyTable text (at + 1).
+partition : (index : Int | measure (4 - index)) -> Sd.Card -> String -> Result Volume String .
+partition index card text = if index >= 4 then Err "SD filesystem unsupported: no FAT16/FAT32 partition; writes refused" else
+  at = 446 + index * 16;
+  kind = charAt text (at + 4);
+  if fatType kind == False then partition (index + 1) card text else
+  bind (fn start -> bind (fn count ->
+    if start <= 0 or start >= Sd.blocks card or count <= 0 or count > Sd.blocks card - start then Err "FAT partition bounds invalid" else boot card start count) (Sd.int32 (at + 12) text)) (Sd.int32 (at + 8) text).
+mount : Sd.Card -> Result Volume String .
+mount card = bind (fn text ->
+  if signature text == False then Err "SD filesystem unsupported: no boot signature; writes refused" else
+  if Sd.u16 11 text == 512 and isPower2 (charAt text 13) and emptyTable text 446 then boot card 0 (Sd.blocks card)
+  else bind (fn checked -> partition 0 card text) (checkTable card text 0)) (Sd.read card 0).
+
+validCluster volume cluster = cluster >= 2 and cluster < volume.clusters + 2.
+eoc volume value = value >= (if volume.wide then 268435448 else 65528).
+entryWidth volume = if volume.wide then 4 else 2.
+entrySector volume cluster = volume.fat + cluster / (512 / entryWidth volume).
+entryOffset volume cluster = cluster % (512 / entryWidth volume) * entryWidth volume.
+entryValue volume at text = if volume.wide then
+  case I32.toIntU (I32.and (Sd.u32 at text) (I32.ofInt 268435455)) of Ok n -> n | Err _ -> -1
+else Sd.u16 at text.
+fatGet volume cluster = if validCluster volume cluster == False then Err "FAT cluster out of range" else
+  bind (fn text -> Ok (entryValue volume (entryOffset volume cluster) text)) (Sd.read volume.card (entrySector volume cluster)).
+clusterSector volume cluster = volume.data + (cluster - 2) * volume.spc.
+seenCluster : Int -> (visited : List Int | measure visited) -> Bool .
+seenCluster cluster visited = case visited of Nil -> False | first :: rest -> first == cluster or seenCluster cluster rest.
+rootCopies : Volume -> Int -> Int -> (copy : Int | measure (2 - copy)) -> Result Unit String .
+rootCopies volume cluster wanted copy = if copy >= 2 then Ok Unit else if copy >= volume.copies then Ok Unit else
+  bind (fn text -> if entryValue volume (entryOffset volume cluster) text != wanted then Err "FAT root-chain mirrors disagree; writes refused" else rootCopies volume cluster wanted (copy + 1)) (Sd.read volume.card (entrySector volume cluster + copy * volume.fatSectors)).
+rootChain : Volume -> Int -> List Int -> (fuel : Int | measure fuel) -> Result Unit String .
+rootChain volume cluster visited fuel = if fuel <= 0 then Err "FAT root chain exceeds 4096 clusters; writes refused" else
+  if validCluster volume cluster == False then Err "FAT root chain points outside data clusters; writes refused" else
+  if seenCluster cluster visited then Err "FAT root chain has a cycle; writes refused" else
+  bind (fn next ->
+    if eoc volume next == False and validCluster volume next == False then Err "FAT root chain is free, bad, or reserved; writes refused" else
+    bind (fn mirrored -> if eoc volume next then Ok Unit else rootChain volume next (cluster :: visited) (fuel - 1)) (rootCopies volume cluster next 1)) (fatGet volume cluster).
+checkRoot volume = if volume.wide then rootChain volume volume.root Nil 4096 else Ok Unit.
+
+# An intentionally narrow, portable 8.3 alphabet; no path separators or LFN.
+nameChars : String -> (at : Int | measure (11 - at)) -> Bool .
+nameChars text at = if at >= 11 then at == strlen text else if at >= strlen text then True else
+  c = charAt text at;
+  good = (c >= 65 and c <= 90) or (c >= 48 and c <= 57) or c == 95 or c == 45;
+  good and nameChars text (at + 1).
+shortName name =
+  parts = S.split "." name;
+  case parts of
+    stem :: Nil -> if strlen stem < 1 or strlen stem > 8 or nameChars stem 0 == False then Err "FAT requires an uppercase 8.3 name" else Ok (strcat (S.padRight 8 " " stem) "   ")
+  | stem :: extension :: Nil -> if strlen stem < 1 or strlen stem > 8 or strlen extension < 1 or strlen extension > 3 or nameChars stem 0 == False or nameChars extension 0 == False then Err "FAT requires an uppercase 8.3 name" else Ok (strcat (S.padRight 8 " " stem) (S.padRight 3 " " extension))
+  | _ -> Err "FAT requires one root-directory 8.3 name".
+
+existing volume sector at text =
+  low = Sd.u16 (at + 26) text;
+  upper = Sd.u16 (at + 20) text;
+  if volume.wide and upper >= 4096 then Err "FAT file cluster has reserved high bits" else
+  cluster = if volume.wide then upper * 65536 + low else low;
+  bind (fn size -> Ok (Existing sector at cluster size (charAt text (at + 11)))) (Sd.int32 (at + 28) text).
+scan : Volume -> String -> Int -> String -> (at : Int | measure (512 - at)) -> Int -> Int -> Result Scan String .
+scan volume name sector text at freeSector freeAt = if at >= 512 then Ok (Next freeSector freeAt) else
+  first = charAt text at;
+  if first == 0 then Ok (Hit (if freeSector >= 0 then Vacant freeSector freeAt else Vacant sector at)) else
+  attr = charAt text (at + 11);
+  if first != 229 and attr == 15 then Err "FAT long-filename directory entries unsupported by this small driver" else
+  if first != 229 and attr != 15 and substr text at 11 == name then bind (fn found -> Ok (Hit found)) (existing volume sector at text) else
+  scan volume name sector text (at + 32) freeSector freeAt.
+noMore freeSector freeAt = if freeSector >= 0 then Ok (Vacant freeSector freeAt) else Err "FAT root directory full; growth unsupported".
+walk : Volume -> String -> Int -> Int -> (fuel : Int | measure fuel) -> Int -> Int -> Result Location String .
+walk volume name cluster within fuel freeSector freeAt = if fuel <= 0 then Err "FAT root scan limit/cycle reached" else
+  span = if volume.wide then volume.spc else volume.rootSectors;
+  if within >= span then
+    if volume.wide == False then noMore freeSector freeAt else
+    bind (fn next -> if eoc volume next then noMore freeSector freeAt else if validCluster volume next == False then Err "FAT root chain invalid" else walk volume name next 0 (fuel - 1) freeSector freeAt) (fatGet volume cluster)
+  else
+    sector = (if volume.wide then clusterSector volume cluster else volume.root) + within;
+    bind (fn text -> bind (fn found -> case found of
+      Hit location -> Ok location
+    | Next fs fa -> walk volume name cluster (within + 1) (fuel - 1) fs fa) (scan volume name sector text 0 freeSector freeAt)) (Sd.read volume.card sector).
+locate volume name = walk volume name volume.root 0 4096 -1 -1.
+read : Volume -> String -> Result String String .
+read volume name = bind (fn encoded -> bind (fn found -> case found of
+    Vacant _ _ -> Err "FAT file does not exist"
+  | Existing _ _ cluster size attr ->
+      if band attr 24 != 0 then Err "FAT entry is not a regular file" else
+      if size > 512 then Err "FAT first-version read limit is 512 bytes" else
+      if size == 0 then Ok "" else
+      if validCluster volume cluster == False then Err "FAT file cluster invalid" else
+      bind (fn text -> Ok (substr text 0 size)) (Sd.read volume.card (clusterSector volume cluster))) (locate volume encoded)) (shortName name).
+
+put16 value = strcat (chr (band value 255)) (chr (band (value / 256) 255)).
+put32 value = strcat (put16 (value % 65536)) (put16 (value / 65536)).
+replace at bytes text = strJoin "" [substr text 0 at, bytes, substr text (at + strlen bytes) (strlen text - at - strlen bytes)].
+
+freeIn : Volume -> String -> (cluster : Int | measure (limit - cluster)) -> (limit : Int) -> Result Int String .
+freeIn volume text cluster limit = if cluster >= limit then Ok -1 else
+  if entryValue volume (entryOffset volume cluster) text == 0 then Ok cluster else freeIn volume text (cluster + 1) limit.
+findFree : Volume -> Int -> Int -> (fuel : Int | measure fuel) -> Result Int String .
+findFree volume cluster limit fuel = if fuel <= 0 then Err "FAT free-cluster scan limit reached" else if cluster >= limit then Err "FAT no free cluster in bounded 4096-cluster scan" else
+  per = 512 / entryWidth volume;
+  end = minimum limit ((cluster / per + 1) * per);
+  bind (fn text -> bind (fn found -> if found >= 0 then Ok found else findFree volume end limit (fuel - 1)) (freeIn volume text cluster end)) (Sd.read volume.card (entrySector volume cluster)).
+checkCopies : Volume -> Int -> (copy : Int | measure (2 - copy)) -> Result Unit String .
+checkCopies volume cluster copy = if copy >= 2 then Ok Unit else if copy >= volume.copies then Ok Unit else
+  bind (fn text -> if entryValue volume (entryOffset volume cluster) text != 0 then Err "FAT mirrors disagree about free cluster" else checkCopies volume cluster (copy + 1)) (Sd.read volume.card (entrySector volume cluster + copy * volume.fatSectors)).
+checkClean : Volume -> (copy : Int | measure (2 - copy)) -> Result Unit String .
+checkClean volume copy = if copy >= 2 then Ok Unit else if copy >= volume.copies then Ok Unit else
+  bind (fn text ->
+    flags = entryValue volume (entryWidth volume) text;
+    mask = if volume.wide then 201326592 else 49152;
+    if band flags mask != mask then Err "FAT volume is unclean or reports an I/O error; writes refused" else checkClean volume (copy + 1)) (Sd.read volume.card (volume.fat + copy * volume.fatSectors)).
+metadata r = case r of Ok unit -> Ok unit | Err why -> Err "FAT metadata update failed; file/allocation outcome uncertain: {why}".
+markCopies : Volume -> Int -> (copy : Int | measure (2 - copy)) -> Result Unit String .
+markCopies volume cluster copy = if copy >= 2 then Ok Unit else if copy >= volume.copies then Ok Unit else
+  sector = entrySector volume cluster + copy * volume.fatSectors;
+  at = entryOffset volume cluster;
+  bind (fn text ->
+    if entryValue volume at text != 0 then Err "FAT allocation changed during create" else
+    bytes = if volume.wide then strcat (put16 65535) (strcat (chr 255) (chr (bor (band (charAt text (at + 3)) 240) 15))) else put16 65535;
+    bind (fn unit -> markCopies volume cluster (copy + 1)) (Sd.write volume.card sector (replace at bytes text))) (Sd.read volume.card sector).
+infoValid text = Sd.u32 0 text == I32.or (I32.ofInt 21074) (I32.shl (I32.ofInt 16737) 16) and Sd.u32 484 text == I32.or (I32.ofInt 29298) (I32.shl (I32.ofInt 24897) 16) and Sd.u32 508 text == I32.shl (I32.ofInt 43605) 16.
+invalidateInfo volume sector = if sector < 0 then Ok Unit else
+  bind (fn text -> if infoValid text == False then Ok Unit else
+    unknown = S.repeat 4 (chr 255);
+    Sd.write volume.card sector (replace 492 unknown (replace 488 unknown text))) (Sd.read volume.card sector).
+publish volume name sector at cluster size =
+  bind (fn text ->
+    first = charAt text at;
+    if first != 0 then Err "FAT directory slot changed during create" else
+    stamp = strJoin "" [name, chr 32, S.repeat 8 (chr 0), put16 (if volume.wide then cluster / 65536 else 0), S.repeat 4 (chr 0), put16 (cluster % 65536), put32 size];
+    Sd.write volume.card sector (replace (at + 32) (chr 0) (replace at stamp text))) (Sd.read volume.card sector).
+create : Volume -> String -> String -> Result Unit String .
+create volume name text = if strlen text < 1 or strlen text > 512 then Err "FAT create accepts 1..512 bytes" else
+  bind (fn encoded -> bind (fn rootChecked -> bind (fn found -> case found of
+    Existing _ _ _ _ _ -> Err "FAT file already exists; overwrite refused"
+  | Vacant sector at ->
+      if at >= 480 then Err "FAT create would need a directory end marker in the next sector; unsupported" else
+      bind (fn clean -> bind (fn cluster -> bind (fn checked ->
+        padded = S.padRight 512 (chr 0) text;
+        bind (fn dataWritten -> bind (fn allocated ->
+          bind (fn primaryInfo -> bind (fn backupInfo -> metadata (publish volume encoded sector at cluster (strlen text))) (metadata (invalidateInfo volume volume.backupInfo))) (metadata (invalidateInfo volume volume.fsInfo))) (metadata (markCopies volume cluster 0)))
+          (Sd.write volume.card (clusterSector volume cluster) padded)) (checkCopies volume cluster 0))
+        (findFree volume 2 (minimum (volume.clusters + 2) 4098) 64)) (checkClean volume 0)) (locate volume encoded)) (checkRoot volume)) (shortName name).

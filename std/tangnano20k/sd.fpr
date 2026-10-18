@@ -1,0 +1,164 @@
+# Tang Nano 20K microSD in SPI mode. SD protocol and bounds live here;
+# SdSpi exposes only the MMIO byte shifter and one 512-byte scratch buffer.
+# One caller at a time. A successful write waits for programming completion.
+# Block access is deliberately separate from a filesystem's write policy.
+
+SdSpi.select : Bool -> Unit .
+SdSpi.divider : Int -> Unit .
+SdSpi.transfer : Int -> Int .
+SdSpi.bufferGet : Int -> Int .
+SdSpi.bufferSet : Int -> Int -> Unit .
+SdSpi.bufferText : Int -> String .
+SdSpi.bufferLoad : String -> Bool .
+
+Card = Type (Card Bool Int I32 String String).
+highCapacity (Card high _ _ _ _) = high.
+blocks (Card _ count _ _ _) = count.
+ocr (Card _ _ value _ _) = value.
+csd (Card _ _ _ text _) = text.
+cid (Card _ _ _ _ text) = text.
+product card = substr (cid card) 3 5.
+
+bind f r = case r of Ok value -> f value | Err why -> Err why.
+finish r = _ = SdSpi.select False; _ = SdSpi.transfer 255; r.
+send byte = SdSpi.transfer byte >= 0.
+
+clocks : (count : Int | measure count) -> Bool .
+clocks count = if count <= 0 then True else if send 255 then clocks (count - 1) else False.
+ready : (tries : Int | measure tries) -> Bool .
+ready tries = if tries <= 0 then False else
+  byte = SdSpi.transfer 255;
+  if byte < 0 then False else if byte == 255 then True else ready (tries - 1).
+response : (tries : Int | measure tries) -> Result Int String .
+response tries = if tries <= 0 then Err "SD command response timeout" else
+  byte = SdSpi.transfer 255;
+  if byte < 0 then Err "SD SPI timeout" else if byte < 128 then Ok byte else response (tries - 1).
+octet value shift = case I32.toIntU (I32.and (I32.shr value shift) (I32.ofInt 255)) of Ok n -> n | Err _ -> 0.
+crc7Bits : Int -> Int -> (count : Int | measure count) -> Int .
+crc7Bits crc byte count = if count <= 0 then crc else
+  feedback = band (bxor (crc / 64) (byte / 128)) 1;
+  shifted = band (crc * 2) 127;
+  crc7Bits (if feedback == 0 then shifted else bxor shifted 9) (band (byte * 2) 255) (count - 1).
+commandCrc index arg =
+  a = crc7Bits 0 (64 + index) 8;
+  b = crc7Bits a (octet arg 24) 8;
+  c = crc7Bits b (octet arg 16) 8;
+  d = crc7Bits c (octet arg 8) 8;
+  crc7Bits d (octet arg 0) 8 * 2 + 1.
+command : Int -> I32 -> Int -> Result Int String .
+command index arg ignoredCrc =
+  if index != 0 and ready 100000 == False then Err "SD card busy before command" else
+  if send (64 + index) and send (octet arg 24) and send (octet arg 16) and send (octet arg 8) and send (octet arg 0) and send (commandCrc index arg) then response 10
+  else Err "SD SPI timeout sending command".
+expect commandIndex argument crc wanted = bind (fn got -> if got == wanted then Ok Unit else Err "SD CMD{commandIndex} response {got}, expected {wanted}") (command commandIndex argument crc).
+
+read32 : Unit -> Result I32 String .
+read32 unit =
+  a = SdSpi.transfer 255; b = SdSpi.transfer 255; c = SdSpi.transfer 255; d = SdSpi.transfer 255;
+  if a < 0 or b < 0 or c < 0 or d < 0 then Err "SD SPI timeout reading response" else
+  Ok (I32.or (I32.or (I32.shl (I32.ofInt a) 24) (I32.shl (I32.ofInt b) 16)) (I32.or (I32.shl (I32.ofInt c) 8) (I32.ofInt d))).
+
+token : (tries : Int | measure tries) -> Result Unit String .
+token tries = if tries <= 0 then Err "SD data token timeout" else
+  byte = SdSpi.transfer 255;
+  if byte < 0 then Err "SD SPI timeout waiting for data" else
+  if byte == 254 then Ok Unit else if byte == 255 then token (tries - 1) else Err "SD data token {byte}".
+crcBits : Int -> (count : Int | measure count) -> Int .
+crcBits crc count = if count <= 0 then crc else
+  crcBits (band (if band crc 32768 == 0 then crc * 2 else bxor (crc * 2) 4129) 65535) (count - 1).
+crcByte crc byte = crcBits (bxor crc (byte * 256)) 8.
+receive : (at : Int | measure (count - at)) -> (count : Int) -> Int -> Result Unit String .
+receive at count crc = if at >= count then
+  hi = SdSpi.transfer 255; lo = SdSpi.transfer 255;
+  if hi < 0 or lo < 0 then Err "SD SPI timeout reading CRC" else
+  if hi * 256 + lo == crc then Ok Unit else Err "SD data CRC16 mismatch"
+else
+  byte = SdSpi.transfer 255;
+  if byte < 0 then Err "SD SPI timeout reading block" else
+  _ = SdSpi.bufferSet at byte;
+  receive (at + 1) count (crcByte crc byte).
+dataBlock count = bind (fn unit -> bind (fn done -> Ok (SdSpi.bufferText count)) (receive 0 count 0)) (token 200000).
+
+idle : (tries : Int | measure tries) -> Result Unit String .
+idle tries = if tries <= 0 then Err "SD CMD0 did not enter idle" else
+  case command 0 (I32.ofInt 0) 149 of
+    Ok 1 -> Ok Unit
+  | _ -> idle (tries - 1).
+# CMD55's R1 becomes 0 once ready; allow both valid states.
+start : Bool -> (tries : Int | measure tries) -> Result Unit String .
+start version2 tries = if tries <= 0 then Err "SD ACMD41 initialization timeout" else
+  bind (fn prefix -> if prefix > 1 then Err "SD CMD55 response {prefix}" else
+    bind (fn r -> if r == 0 then Ok Unit else if r == 1 then start version2 (tries - 1) else Err "SD ACMD41 response {r}")
+      (command 41 (if version2 then I32.shl (I32.ofInt 1) 30 else I32.ofInt 0) 1)) (command 55 (I32.ofInt 0) 1).
+
+capacity text =
+  first = charAt text 0 / 64;
+  if first == 1 then
+    size = band (charAt text 7) 63 * 65536 + charAt text 8 * 256 + charAt text 9 + 1;
+    if size > intMax Unit / 1024 then Err "SD capacity exceeds this target's Int block range" else Ok (size * 1024)
+  else if first == 0 then
+    size = band (charAt text 6) 3 * 1024 + charAt text 7 * 4 + charAt text 8 / 64 + 1;
+    exponent = band (charAt text 9) 3 * 2 + charAt text 10 / 128 + 2 + band (charAt text 5) 15 - 9;
+    if exponent < 0 or exponent > 29 then Err "SD unsupported CSD v1 block size" else
+    multiplier = BITSHIFTL 1 exponent;
+    if size > intMax Unit / multiplier then Err "SD capacity exceeds this target's Int block range" else Ok (size * multiplier)
+  else Err "SD unsupported CSD version".
+
+register index = bind (fn unit -> dataBlock 16) (expect index (I32.ofInt 0) 1 0).
+identified high value divider =
+  bind (fn csdText -> if (charAt csdText 0 / 64 == 1) != high then Err "SD OCR/CSD addressing mode mismatch" else bind (fn count ->
+    if high == False and count > 8388608 then Err "SD byte-addressed card capacity exceeds 32-bit address range" else bind (fn cidText ->
+    _ = SdSpi.divider divider;
+    Ok (Card high count value csdText cidText)) (register 10)) (capacity csdText)) (register 9).
+afterOcr divider value =
+  high = I32.and value (I32.shl (I32.ofInt 1) 30) != I32.ofInt 0;
+  if high then identified True value divider else bind (fn unit -> identified False value divider) (expect 16 (I32.ofInt 512) 1 0).
+afterVersion divider version2 = bind (fn unit -> bind (fn enabled ->
+  if version2 then bind (fn ignored -> bind (afterOcr divider) (read32 Unit)) (expect 58 (I32.ofInt 0) 1 0)
+  else bind (fn ignored -> identified False (I32.ofInt 0) divider) (expect 16 (I32.ofInt 512) 1 0)) (expect 59 (I32.ofInt 1) 1 0)) (start version2 20000).
+interface divider = bind (fn r ->
+  if r == 1 then bind (fn echo -> if I32.and echo (I32.ofInt 4095) == I32.ofInt 426 then afterVersion divider True else Err "SD CMD8 voltage/check pattern mismatch") (read32 Unit)
+  else if band r 4 == 4 then afterVersion divider False else Err "SD CMD8 response {r}") (command 8 (I32.ofInt 426) 135).
+
+# Divider 255 keeps identification below 400 kHz even at 96 MHz.
+# Divider 7 is a conservative 3 MHz transfer clock at 48 MHz.
+open : Int -> Result Card String .
+open divider = if divider < 0 or divider > 255 then Err "SD divider must be 0..255" else
+  _ = SdSpi.divider 255;
+  _ = SdSpi.select False;
+  if clocks 10 == False then finish (Err "SD SPI startup timeout") else
+  _ = SdSpi.select True;
+  finish (bind (fn unit -> interface divider) (idle 20)).
+
+address card block = if highCapacity card then I32.ofInt block else I32.shl (I32.ofInt block) 9.
+inRange card block = block >= 0 and block < blocks card.
+read : Card -> Int -> Result String String .
+read card block = if inRange card block == False then Err "SD block out of range" else
+  _ = SdSpi.select True;
+  finish (bind (fn unit -> dataBlock 512) (expect 17 (address card block) 1 0)).
+
+transmit : (at : Int | measure (512 - at)) -> Int -> Result Int String .
+transmit at crc = if at >= 512 then Ok crc else
+  byte = SdSpi.bufferGet at;
+  if send byte then transmit (at + 1) (crcByte crc byte) else Err "SD SPI timeout writing block".
+programmed crc =
+  if send (crc / 256) == False or send (band crc 255) == False then Err "SD SPI timeout writing CRC" else
+  responseByte = SdSpi.transfer 255;
+  if responseByte < 0 then Err "SD SPI timeout reading write response" else
+  accepted = band responseByte 31 == 5;
+  if ready 2000000 == False then Err "SD programming timeout; write outcome uncertain" else
+  if accepted == False then Err "SD card rejected data {responseByte}" else
+  bind (fn first -> if first != 0 then Err "SD CMD13 response {first}" else
+    status = SdSpi.transfer 255;
+    if status == 0 then Ok Unit else Err "SD write status {status}; write outcome uncertain") (command 13 (I32.ofInt 0) 1).
+write : Card -> Int -> String -> Result Unit String .
+write card block text = if inRange card block == False then Err "SD block out of range" else
+  if strlen text != 512 then Err "SD write requires exactly 512 bytes" else
+  if SdSpi.bufferLoad text == False then Err "SD scratch buffer unavailable" else
+  _ = SdSpi.select True;
+  finish (bind (fn unit -> if send 255 and send 254 then bind programmed (transmit 0 0) else Err "SD SPI timeout starting write") (expect 24 (address card block) 1 0)).
+
+# Little-endian sector fields stay full width until checked for target Int fit.
+u16 at text = charAt text at + charAt text (at + 1) * 256.
+u32 at text = I32.or (I32.or (I32.ofInt (u16 at text)) (I32.shl (I32.ofInt (u16 (at + 2) text)) 16)) (I32.ofInt 0).
+int32 at text = case I32.toIntU (u32 at text) of Ok n -> Ok n | Err _ -> Err "SD sector field exceeds this target's Int range".

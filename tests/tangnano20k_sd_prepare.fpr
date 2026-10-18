@@ -1,0 +1,86 @@
+profile base.
+# DESTRUCTIVE PREPARATION TOOL: build/inspect only until the user explicitly
+# approves creating this new partition. Do not invoke as a normal SD test.
+# It is tied to one observed card and one exact 512-byte original MBR.
+# It writes 289 metadata sectors in the previously unallocated tail, then
+# publishes only partition entry 1. Existing Linux partition data is untouched.
+# No generic format operation is exposed by the production SD/FAT modules.
+
+Sd = use "std/tangnano20k/sd".
+repeatGo : (remaining : Int | measure remaining) -> String -> List String -> List String .
+repeatGo remaining text acc = if remaining <= 0 then acc else repeatGo (remaining - 1) text (text :: acc).
+repeat count text = strJoin "" (repeatGo count text Nil).
+need r = case r of Ok value -> value | Err why -> error why.
+require yes why = if yes then Unit else error "SD PREPARE REFUSED: {why}".
+start = 120913920.
+count = 32768.
+cardBlocks = 122152960.
+hexNibble c = if c >= 48 and c <= 57 then c - 48 else if c >= 97 and c <= 102 then c - 87 else error "bad embedded hexadecimal".
+unhexGo : String -> (at : Int | measure at) -> List String -> List String .
+unhexGo text at acc = if at < 0 then acc else
+  byte = hexNibble (charAt text at) * 16 + hexNibble (charAt text (at + 1));
+  unhexGo text (at - 2) (chr byte :: acc).
+unhex text = strJoin "" (unhexGo text (strlen text - 2) Nil).
+expectedCid = unhex "6f0303534441424310aa0001a1018101".
+expectedCsd = unhex "400e00325b590001d1f97f800a404001".
+# 440 zero boot-code bytes, the exact 6-byte disk identity and 16-byte Linux
+# entry captured by the read-only probe, three zero entries, and 55 aa.
+originalMbr = strJoin "" [repeat 440 (chr 0), unhex "333dd4a3000000861300837319c00020000000e03407", repeat 48 (chr 0), unhex "55aa"].
+put16 value = strcat (chr (value % 256)) (chr (value / 256 % 256)).
+put32 value = strcat (put16 (value % 65536)) (put16 (value / 65536)).
+replace at bytes text = strJoin "" [substr text 0 at, bytes, substr text (at + strlen bytes) (strlen text - at - strlen bytes)].
+
+bootSector zero =
+  header = strJoin "" [unhex "eb3c90", "FPRISC  ", put16 512, chr 1, put16 1,
+    chr 2, put16 512, put16 count, chr 248, put16 128, put16 63, put16 255,
+    put32 start, put32 0, unhex "80002932525046", "FPRISC SD  ", "FAT16   "];
+  _ = require (strlen header == 62) "internal BPB header length";
+  strJoin "" [header, substr zero 0 448, unhex "55aa"].
+newEntry = strJoin "" [unhex "00feffff06feffff", put32 start, put32 count].
+
+inNewPartition block = block >= start and block < start + count.
+writeVerified card block bytes =
+  _ = require (inNewPartition block) "internal metadata write outside new partition";
+  _ = require (strlen bytes == 512) "internal metadata sector length";
+  _ = need (Sd.write card block bytes);
+  actual = need (Sd.read card block);
+  require (actual == bytes) "metadata read-back mismatch; MBR has not been published".
+zeroSectors : Sd.Card -> Int -> (remaining : Int | measure remaining) -> String -> Unit .
+zeroSectors card block remaining zero = if remaining <= 0 then Unit else
+  _ = writeVerified card block zero;
+  zeroSectors card (block + 1) (remaining - 1) zero.
+
+main : Unit .
+main =
+  # This explicit runtime gate is separate from host-side approval. Keeping
+  # it unset prevents an accidental run of a successfully built executable.
+  approval = case Sys.env "FPR_SD_PREPARE" of Ok value -> value | Err _ -> "";
+  _ = require (approval == "APPROVED_NEW_16MIB_PARTITION") "explicit preparation gate is unset";
+  card = need (Sd.open 7);
+  _ = require (Sd.blocks card == cardBlocks and Sd.highCapacity card) "card capacity/addressing differs from inspected card";
+  _ = require (Sd.cid card == expectedCid and Sd.csd card == expectedCsd) "card CID/CSD differs from inspected card";
+  expected = originalMbr;
+  before = need (Sd.read card 0);
+  _ = require (strlen expected == 512 and before == expected) "all 512 MBR bytes must match the preserved original";
+  _ = require (charAt before 450 == 131 and need (Sd.int32 454 before) == 8192 and need (Sd.int32 458 before) == 120905728) "Linux partition geometry differs";
+  _ = require (substr before 462 48 == repeat 48 (chr 0)) "additional MBR entries are already in use";
+  _ = require (8192 + 120905728 == start and start > 8192 and count > 289 and count <= Sd.blocks card - start) "new partition bounds overlap or exceed the card";
+  _ = print "SD PREPARE WRITING 289 METADATA SECTORS START {start}; LINUX PARTITION PRESERVED";
+  zero = repeat 512 (chr 0);
+  firstFat = replace 0 (unhex "f8ffffff") zero;
+  _ = writeVerified card (start + 1) firstFat;
+  _ = zeroSectors card (start + 2) 127 zero;
+  _ = writeVerified card (start + 129) firstFat;
+  _ = zeroSectors card (start + 130) 127 zero;
+  _ = zeroSectors card (start + 257) 32 zero;
+  _ = writeVerified card start (bootSector zero);
+  # Publish only after every metadata write has been read back and the
+  # original MBR has been revalidated. A metadata error cannot reach here.
+  latest = need (Sd.read card 0);
+  _ = require (latest == expected) "original MBR changed during preparation; publication refused";
+  updated = replace 462 newEntry expected;
+  _ = require (strlen newEntry == 16 and substr updated 0 462 == substr expected 0 462 and substr updated 478 34 == substr expected 478 34) "internal MBR publication scope";
+  _ = need (Sd.write card 0 updated);
+  after = need (Sd.read card 0);
+  _ = require (after == updated) "MBR publication outcome uncertain; stop and inspect preserved backup";
+  print "FP SD PREPARE HOLDS: NEW FAT16 PARTITION {start} + {count}; 289 METADATA SECTORS VERIFIED".

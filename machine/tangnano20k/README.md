@@ -1,4 +1,4 @@
-# Tang Nano 20K: single-core Base host and UART virtual device
+# Tang Nano 20K: Base host, UART virtual device and microSD
 
 This is an experimental RV32IM/IMC and RV64IM/IMC Base host, alongside the
 established RV32 Builtin target. Both Base variants use cached 8 MiB SDRAM and
@@ -22,6 +22,7 @@ FP-RISC semantics. The board C code supplies allocation, UART and ABI mechanisms
 | I32 | Exact wrapping 32-bit values; boxed on RV32, tagged without allocation on RV64 |
 | F32 / F64 arithmetic | Software floating point; raw bits on RV64, boxed values on RV32 |
 | Whole-file read, exists, replace, append | Rooted host file device over UART |
+| On-card sector I/O and small FAT16/FAT32 root files | Explicit `std/tangnano20k/sd` and `fat` modules on the SPI-enabled RV32 SDRAM image; new 8.3 files up to 512 bytes |
 | `Sys.env` | Explicit `--env NAME=value` entries; no host environment inheritance |
 | `Sys.timeUs` | Host monotonic microseconds |
 | `Sys.mtime` | Local cycle counter converted to the shared 10 MHz tick contract |
@@ -112,6 +113,23 @@ nearest-even. [Upstream](https://github.com/ucb-bar/berkeley-softfloat-3).
 `SOFTFLOAT-LICENSE` retains its license. The `softfloat.c` bridge supplies GCC's
 soft-float ABI and uses the same package for sqrt. Exception flags remain
 internal to the software library; RV64IM has no floating-point CSR state.
+
+## On-board microSD
+
+The SPI-enabled RV32IMC SDRAM image exposes the board slot to an FP-RISC
+SD protocol driver and a small FAT16/FAT32 file layer. The C HAL is 84 lines
+of register and buffer access. The physical 48 MHz CPU / 3 MHz SPI test
+created and read `FPRTEST.TXT` on an approved 16 MiB test partition, including
+binary bytes and overwrite refusal. The existing Linux partition was retained.
+
+Use `tests/tangnano20k_sd_probe.fpr` for read-only inspection and
+`tests/tangnano20k_sd_files.fpr` for a new-file/readback test on a compatible
+card. The latter refuses a conflicting existing file. The dedicated
+card-specific preparation tool requires explicit approval and a runtime gate;
+ordinary tests never format the card.
+
+See the [driver, hardware and validation report](../../docs/2026-10-18-TANGNANO20K-SD.md)
+for the required FPGA image, build commands and the initial 512-byte file limit.
 
 ## UART protocol
 

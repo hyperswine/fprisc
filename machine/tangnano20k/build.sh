@@ -26,6 +26,7 @@ riscv64-unknown-elf-gcc -march="$march" -mabi="$abi" -mcmodel=medany -Os \
  -DFPR_SIMPLE_RISC -DFPR_CPU_MHZ="$freq" -DFPR_BUILTIN_HEAP_MAX_BYTES=8388608 -ffunction-sections -fdata-sections \
  -Wl,--gc-sections -Wl,--no-warn-rwx-segments -I runtime -I machine/builtin \
  -T machine/tangnano20k/link.ld machine/tangnano20k/crt0.S machine/tangnano20k/base.c \
+ machine/tangnano20k/sd_hal.c \
  machine/tangnano20k/unsupported.c machine/builtin/heap.c runtime/runtime.c \
  machine/builtin/unsafe.c machine/builtin/tangnano20k/machine.c \
  runtime/i32.c runtime/bits.c runtime/vec.c runtime/sstr.c runtime/mod.c machine/virt/memshim.c \

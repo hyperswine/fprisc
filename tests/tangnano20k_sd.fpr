@@ -1,0 +1,13 @@
+profile base.
+Sd = use "std/tangnano20k/sd".
+need r = case r of Ok value -> value | Err why -> error why.
+main : Unit .
+main =
+  card = need (Sd.open 7);
+  _ = print "SD CARD {Sd.product card} BLOCKS {Sd.blocks card} HIGH_CAPACITY {Sd.highCapacity card}";
+  sector = need (Sd.read card 0);
+  _ = print "SD MBR SIGNATURE {charAt sector 510} {charAt sector 511}";
+  _ = print "SD PARTITION TYPE {charAt sector 450}";
+  _ = case Sd.read card -1 of Err _ -> Unit | Ok _ -> error "SD negative block accepted";
+  _ = case Sd.read card (Sd.blocks card) of Err _ -> Unit | Ok _ -> error "SD block past end accepted";
+  print "FP SD READ HOLDS".

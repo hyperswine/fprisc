@@ -1,0 +1,44 @@
+# Host-only acceptance fixture. C supplies SPI registers backed by a
+# disposable image; the production FP-RISC SD and FAT code handles it.
+profile base.
+Sd = use "../std/tangnano20k/sd".
+Fat = use "../std/tangnano20k/fat".
+
+need result = case result of Ok value -> value | Err why -> error "SD model fixture: {why}".
+check name yes = if yes then Unit else error "SD model fixture: {name}".
+refused name result = case result of Err _ -> Unit | Ok _ -> error "SD model fixture accepted {name}".
+payload = "FP-RISC on-card file roundtrip\n0123456789abcdefghijklmnopqrstuvwxyz\n".
+
+main =
+  mode = case Sys.env "FPR_SD_CASE" of Ok text -> text | Err _ -> "roundtrip";
+  opened = Sd.open 7;
+  _ = if mode == "open-error" then refused "bad card initialization" opened else
+    card = need opened;
+    _ = check "SDHC identified" (Sd.highCapacity card);
+    _ = check "card capacity" (Sd.blocks card > 0);
+    if mode == "bounds" then
+      _ = refused "negative block read" (Sd.read card -1);
+      _ = refused "past-end block read" (Sd.read card (Sd.blocks card));
+      _ = refused "negative block write" (Sd.write card -1 "");
+      _ = refused "past-end block write" (Sd.write card (Sd.blocks card) "");
+      refused "short block write" (Sd.write card 0 "x")
+    else if mode == "read-error" then refused "damaged sector" (Sd.read card 0)
+    else if mode == "write-error" then
+      original = need (Sd.read card 0);
+      refused "failed write protocol" (Sd.write card 0 original)
+    else
+      mounted = Fat.mount card;
+      if mode == "mount-error" then refused "unsupported filesystem" mounted else
+        volume = need mounted;
+        if mode == "collision" then refused "existing file" (Fat.create volume "FPRTEST.TXT" payload)
+        else if mode == "create-error" then refused "exhausted filesystem" (Fat.create volume "FPRTEST.TXT" payload)
+        else if mode == "names" then
+          _ = refused "long filename" (Fat.create volume "TOOLONGNAME.TXT" payload);
+          _ = refused "path traversal" (Fat.create volume "../BAD.TXT" payload);
+          _ = refused "existing user file" (Fat.create volume "KEEP.TXT" payload);
+          refused "unsupported read path" (Fat.read volume "../KEEP.TXT")
+        else if mode == "verify" then check "persistent file contents" (need (Fat.read volume "FPRTEST.TXT") == payload)
+        else
+          _ = need (Fat.create volume "FPRTEST.TXT" payload);
+          check "new file contents" (need (Fat.read volume "FPRTEST.TXT") == payload);
+  print "SD MODEL HOLDS {mode}".
