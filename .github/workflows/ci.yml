@@ -1,0 +1,70 @@
+# CI for FP-RISC on a stock x86-64 runner.
+#
+# Debian trixie container: fp-risc.cabal needs libgit2 >= 1.9
+# (pkgconfig-depends), which Ubuntu 24.04 does not ship; trixie's GHC
+# 9.6 and its libghc-* packages cover every build-depend, so no Hackage
+# downloads.  One job: building the compiler dominates, and the checks
+# all need the same tree.
+#
+# Covered: tests/check_base.py (the umbrella: hosted x86-64 builds and
+# runs, the x64 lowering checks, typed vectors, POSIX modules, clang
+# vector limits and POSIX PIC, the RV64 Unix lowering), check_i32 and
+# check_raw, and the RV64 Linux suite cross-built with
+# riscv64-linux-gnu-gcc and run under qemu-user.
+# Not covered: bare-metal RISC-V/RV32 legs (riscv64-unknown-elf multilib,
+# qemu-system), boards, macOS/AArch64 hosts.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  LC_ALL: C.UTF-8
+
+jobs:
+  x86-64:
+    name: x86-64 (debian trixie)
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    timeout-minutes: 150
+    steps:
+      - name: tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates python3 zstd \
+            make gcc libc6-dev pkg-config ghc cabal-install libghc-megaparsec-dev \
+            libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev \
+            libegl-dev libgl-dev clang lld \
+            gcc-riscv64-linux-gnu libc6-dev-riscv64-cross qemu-user \
+            gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf qemu-system-misc
+      - uses: actions/checkout@v4
+      - name: make fpr
+        run: |
+          cabal update
+          make fpr
+          ./fpr --version || test -x ./fpr
+      # in a container job ${{ github.workspace }} is the HOST's path;
+      # $GITHUB_WORKSPACE is the one the container sees
+      - run: echo "FPR_HOME=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: check_base
+        run: python3 -u tests/check_base.py
+      # check_raw also boots builtin/raw images on qemu-system-riscv64
+      - name: check_i32, check_raw
+        run: |
+          python3 -u tests/check_i32.py
+          python3 -u tests/check_raw.py
+      - name: RV64 Linux (cross-built, qemu-user)
+        run: |
+          python3 -u tests/check_rv64_linux.py --cc riscv64-linux-gnu-gcc \
+            --output "$RUNNER_TEMP/rv64" --runner 'qemu-riscv64 -L /usr/riscv64-linux-gnu'

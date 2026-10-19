@@ -18,8 +18,14 @@ def command(args, cwd, ok=True):
     assert (p.returncode == 0) == ok, p.stdout + p.stderr
 
 
-def wait_for(predicate, proc, log):
-    deadline = time.monotonic() + 120
+# `ready` comes after `fpr watch` has built the whole POS app (~40 s on
+# an 8-core box, past 120 s on a 4-core CI runner), and a refusal after a
+# module rebuild: those waits are build-bound, so they get longer deadlines
+BUILD_WAIT = 600
+
+
+def wait_for(predicate, proc, log, seconds=120):
+    deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         if predicate():
             return
@@ -66,7 +72,7 @@ for harts in ('1', '4'):
                                          **({'POS1_RELOAD_NOTICE': 'true'} if notices else {})},
                                     stdout=output, stderr=output)
             try:
-                wait_for(lambda: re.search(r'ready (\d+)', log.read_text()), proc, log)
+                wait_for(lambda: re.search(r'ready (\d+)', log.read_text()), proc, log, BUILD_WAIT)
                 port = int(re.search(r'ready (\d+)', log.read_text())[1])
                 a = Client(port, 3); b = Client(port, False); clients = [a, b]
                 assert not any(has(c.state, 'Live Reload new') for c in clients), 'startup is not adoption'
@@ -119,7 +125,7 @@ for harts in ('1', '4'):
                 # Explicit incompatible major version is refused while sockets live.
                 module.write_text('rate : String -> Int .\nrate configured = strlen configured.\nlabel : Unit -> String .\nlabel unit = "incompatible pricing".\n')
                 command(['commit', str(module), '--major'], d)
-                wait_for(lambda: 'pricing refused: reload: incompatible' in log.read_text(), proc, log)
+                wait_for(lambda: 'pricing refused: reload: incompatible' in log.read_text(), proc, log, BUILD_WAIT)
                 # Force a projection update so both sockets observe the refused state.
                 a.send('Theme')
                 for c in clients:
@@ -166,7 +172,7 @@ with tempfile.TemporaryDirectory(prefix='static POS-') as tmp:
     with log.open('w') as output:
         proc = subprocess.Popen([exe], cwd=d, env=env, stdout=output, stderr=output)
         try:
-            wait_for(lambda: re.search(r'ready (\d+)', log.read_text()), proc, log)
+            wait_for(lambda: re.search(r'ready (\d+)', log.read_text()), proc, log, BUILD_WAIT)
             port = int(re.search(r'ready (\d+)', log.read_text())[1])
             client = Client(port, 3)
             client.send('Login', 'ana', '1234')
