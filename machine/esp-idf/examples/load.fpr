@@ -6,6 +6,10 @@
 # of the round has answered, so all N are open together.  A loopback
 # connection is two sockets (both ends), plus the listener.  A round that
 # cannot open them all says why (the host's words), and the rounds stop.
+# A client reads its echo with a deadline: when the server is out of
+# descriptors, the kernel still completes a client's connect into the
+# listen backlog, and an unbounded read would wait for an accept that
+# cannot happen until the round ends -- the round would never end.
 # Nothing here is board-specific: `fpr run` runs it on posix too.
 unsafe base.
 TCP = use "std/tcp".
@@ -30,7 +34,7 @@ client port poll i boss me = case TCP.connect "127.0.0.1" port of
       sent = "ping {i}";
       _ = (case ST.write sent conn of
           Err why -> send boss (Failed "write: {why}")
-        | Ok _ -> (case ST.readOn poll 64 conn of
+        | Ok _ -> (case ST.readWithin 5000 64 conn of
               Err why -> send boss (Failed "read: {why}")
             | Ok back -> if back == sent then send boss (Up i) else send boss (Failed "echo: got {back}")));
       _ = receiveFrom me boss;
