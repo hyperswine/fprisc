@@ -1,5 +1,13 @@
 # Native printer dashboard
 
+Production now runs on the M1 Mac mini (`jq@100.107.153.43`) behind the Linode
+proxy for `https://3dprint.cswine.cloud`. The approved Printer Host app runs as
+`jq` under a system LaunchDaemon; persistent maintenance data is separate from
+the executable. See the [migration and acceptance record](../../docs/2026-10-17-PRINTER-MAC-MINI-MIGRATION.md)
+for runtime paths, verification and rollback. The original workstation host is
+stopped. Both printers are verified: A1 at `192.168.0.63` and P1S at
+`192.168.0.27` (rediscovered and certificate-verified on 2026-10-17).
+
 The current application is `examples/printer-host.fpr`: one FP-RISC process
 owns configuration, Ed25519 authentication, the public HTTP gateway, Live UI,
 MQTT/TLS telemetry and shared camera/TLS services. It launches no Python, curl
