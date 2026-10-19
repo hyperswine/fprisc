@@ -1,0 +1,774 @@
+{
+ "date": "2026-10-19",
+ "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+ "fprisc_head": "3e44148e6fc63d281560ba9240c50e19d19e19db",
+ "qos_head": "60b4bdd483ebc813ddf8c7b674097ecd2c9a306e",
+ "baseline": "std/view.fpr and std/stream.fpr at HEAD (strcat per emitted piece, per escaped byte, per word, per media rule; one buffer concatenated per fill)",
+ "candidate": "the same checkout with the linear builders (reversed piece lists joined once; a Reader of pieces with a head offset)",
+ "before_view_sha256": "62715e0c000ba1746e98ec0fa88066e71802c254838f4debb435b2c9b0f377e0",
+ "after_view_sha256": "0bdc31fca08b1298a9fa5fb0754b3103773b6274900e53f1ca105ed49a23de3b",
+ "before_stream_sha256": "5dfa336b6289fbfa0dcb9363aa05cbc8904dc4c7f9c0d46a619a38a0d05a5fd8",
+ "after_stream_sha256": "387446be82a3a690f7dd15002f407fa864bf56877bc0f8b996641d591a82e4c7",
+ "runtime_sha256": "9c094bd7d2560c2e0530e7fdfbc40132a9ac05a0bff8b4286933c2725583eb70",
+ "probe_source_sha256": "f3830536dd5466198a0c17a9c209c248c620ef2419c01887cfe0476a8b6a3903",
+ "harts": 4,
+ "heap_mb": 2048,
+ "profiling": "FPR_COST_PROBE=1; timing is instrumented and excludes settling waits and the final fanout; RSS is peak through each snapshot; runs alternated before/after, after/before",
+ "client_acceptance": "All 100 clients received the shared update in all six runs",
+ "session_runs": {
+  "before": [
+   {
+    "directory": "session-before",
+    "binary_sha256": "32ac5c4ffcdbb90b1252f33d79614e9f6b22348a1fbd1c3fae8570ff468fcb85",
+    "checkpoints": [
+     {
+      "alloc_requests": 314632,
+      "alloc_bytes": 19251520,
+      "copies": 64,
+      "copy_bytes": 199632,
+      "message_slabs": 19,
+      "arena_reserved_kib": 8576,
+      "grow_bytes": 23854400,
+      "spawns": 10,
+      "stack_misses": 0,
+      "channel_carves": 2,
+      "peak_rss_kib": 21248,
+      "sessions": 1,
+      "admission_seconds": 0.012629
+     },
+     {
+      "alloc_requests": 8358586,
+      "alloc_bytes": 520655568,
+      "copies": 471,
+      "copy_bytes": 4546240,
+      "message_slabs": 108,
+      "arena_reserved_kib": 16768,
+      "grow_bytes": 546231544,
+      "spawns": 29,
+      "stack_misses": 0,
+      "channel_carves": 4,
+      "peak_rss_kib": 67360,
+      "sessions": 10,
+      "admission_seconds": 0.157386
+     },
+     {
+      "alloc_requests": 157903227,
+      "alloc_bytes": 9809205568,
+      "copies": 5838,
+      "copy_bytes": 82056576,
+      "message_slabs": 933,
+      "arena_reserved_kib": 56064,
+      "grow_bytes": 10011357832,
+      "spawns": 110,
+      "stack_misses": 0,
+      "channel_carves": 14,
+      "peak_rss_kib": 306928,
+      "sessions": 50,
+      "admission_seconds": 2.451362
+     },
+     {
+      "alloc_requests": 558373747,
+      "alloc_bytes": 34668542528,
+      "copies": 19339,
+      "copy_bytes": 288407232,
+      "message_slabs": 2821,
+      "arena_reserved_kib": 102016,
+      "grow_bytes": 35254256280,
+      "spawns": 211,
+      "stack_misses": 0,
+      "channel_carves": 27,
+      "peak_rss_kib": 592160,
+      "sessions": 100,
+      "admission_seconds": 6.654268
+     }
+    ]
+   },
+   {
+    "directory": "session-before2",
+    "binary_sha256": "32ac5c4ffcdbb90b1252f33d79614e9f6b22348a1fbd1c3fae8570ff468fcb85",
+    "checkpoints": [
+     {
+      "alloc_requests": 314632,
+      "alloc_bytes": 19251536,
+      "copies": 64,
+      "copy_bytes": 199632,
+      "message_slabs": 19,
+      "arena_reserved_kib": 8576,
+      "grow_bytes": 23854400,
+      "spawns": 10,
+      "stack_misses": 0,
+      "channel_carves": 2,
+      "peak_rss_kib": 21264,
+      "sessions": 1,
+      "admission_seconds": 0.006539
+     },
+     {
+      "alloc_requests": 8108184,
+      "alloc_bytes": 505118976,
+      "copies": 465,
+      "copy_bytes": 4418656,
+      "message_slabs": 106,
+      "arena_reserved_kib": 16768,
+      "grow_bytes": 530372120,
+      "spawns": 29,
+      "stack_misses": 0,
+      "channel_carves": 4,
+      "peak_rss_kib": 80096,
+      "sessions": 10,
+      "admission_seconds": 0.113114
+     },
+     {
+      "alloc_requests": 151767593,
+      "alloc_bytes": 9428522320,
+      "copies": 5653,
+      "copy_bytes": 78920400,
+      "message_slabs": 909,
+      "arena_reserved_kib": 55552,
+      "grow_bytes": 9625554264,
+      "spawns": 110,
+      "stack_misses": 0,
+      "channel_carves": 14,
+      "peak_rss_kib": 294176,
+      "sessions": 50,
+      "admission_seconds": 1.109948
+     },
+     {
+      "alloc_requests": 570397292,
+      "alloc_bytes": 35414534432,
+      "copies": 19715,
+      "copy_bytes": 294569184,
+      "message_slabs": 2870,
+      "arena_reserved_kib": 102016,
+      "grow_bytes": 36009348624,
+      "spawns": 211,
+      "stack_misses": 0,
+      "channel_carves": 27,
+      "peak_rss_kib": 719824,
+      "sessions": 100,
+      "admission_seconds": 4.019502
+     }
+    ]
+   },
+   {
+    "directory": "session-before3",
+    "binary_sha256": "32ac5c4ffcdbb90b1252f33d79614e9f6b22348a1fbd1c3fae8570ff468fcb85",
+    "checkpoints": [
+     {
+      "alloc_requests": 314627,
+      "alloc_bytes": 19251296,
+      "copies": 63,
+      "copy_bytes": 199552,
+      "message_slabs": 19,
+      "arena_reserved_kib": 8576,
+      "grow_bytes": 23854400,
+      "spawns": 10,
+      "stack_misses": 0,
+      "channel_carves": 2,
+      "peak_rss_kib": 21264,
+      "sessions": 1,
+      "admission_seconds": 0.006101
+     },
+     {
+      "alloc_requests": 8483824,
+      "alloc_bytes": 528425600,
+      "copies": 476,
+      "copy_bytes": 4610352,
+      "message_slabs": 108,
+      "arena_reserved_kib": 16768,
+      "grow_bytes": 554030192,
+      "spawns": 29,
+      "stack_misses": 0,
+      "channel_carves": 4,
+      "peak_rss_kib": 72848,
+      "sessions": 10,
+      "admission_seconds": 0.13486
+     },
+     {
+      "alloc_requests": 158279331,
+      "alloc_bytes": 9832539120,
+      "copies": 5840,
+      "copy_bytes": 82249504,
+      "message_slabs": 931,
+      "arena_reserved_kib": 56064,
+      "grow_bytes": 10034491648,
+      "spawns": 110,
+      "stack_misses": 0,
+      "channel_carves": 14,
+      "peak_rss_kib": 301856,
+      "sessions": 50,
+      "admission_seconds": 1.210361
+     },
+     {
+      "alloc_requests": 561755500,
+      "alloc_bytes": 34878364352,
+      "copies": 19435,
+      "copy_bytes": 290145296,
+      "message_slabs": 2833,
+      "arena_reserved_kib": 102016,
+      "grow_bytes": 35466392544,
+      "spawns": 211,
+      "stack_misses": 0,
+      "channel_carves": 27,
+      "peak_rss_kib": 653696,
+      "sessions": 100,
+      "admission_seconds": 3.957959
+     }
+    ]
+   }
+  ],
+  "after": [
+   {
+    "directory": "session-after1",
+    "binary_sha256": "48bc6a44dc49b37b8279c8423a7e256f2d427893388ab034ea587ae8ffef21bf",
+    "checkpoints": [
+     {
+      "alloc_requests": 312033,
+      "alloc_bytes": 17272368,
+      "copies": 63,
+      "copy_bytes": 200032,
+      "message_slabs": 19,
+      "arena_reserved_kib": 8576,
+      "grow_bytes": 22281560,
+      "spawns": 10,
+      "stack_misses": 0,
+      "channel_carves": 2,
+      "peak_rss_kib": 17408,
+      "sessions": 1,
+      "admission_seconds": 0.007167
+     },
+     {
+      "alloc_requests": 8148895,
+      "alloc_bytes": 448550016,
+      "copies": 476,
+      "copy_bytes": 4486976,
+      "message_slabs": 107,
+      "arena_reserved_kib": 16896,
+      "grow_bytes": 499111896,
+      "spawns": 29,
+      "stack_misses": 0,
+      "channel_carves": 4,
+      "peak_rss_kib": 60240,
+      "sessions": 10,
+      "admission_seconds": 0.107592
+     },
+     {
+      "alloc_requests": 154280938,
+      "alloc_bytes": 8454369360,
+      "copies": 5754,
+      "copy_bytes": 81045904,
+      "message_slabs": 923,
+      "arena_reserved_kib": 56064,
+      "grow_bytes": 9207374784,
+      "spawns": 110,
+      "stack_misses": 0,
+      "channel_carves": 14,
+      "peak_rss_kib": 254224,
+      "sessions": 50,
+      "admission_seconds": 0.999595
+     },
+     {
+      "alloc_requests": 579836738,
+      "alloc_bytes": 31749832800,
+      "copies": 20204,
+      "copy_bytes": 302543328,
+      "message_slabs": 2932,
+      "arena_reserved_kib": 102144,
+      "grow_bytes": 34481069944,
+      "spawns": 211,
+      "stack_misses": 0,
+      "channel_carves": 27,
+      "peak_rss_kib": 569248,
+      "sessions": 100,
+      "admission_seconds": 3.678506
+     }
+    ]
+   },
+   {
+    "directory": "session-after2",
+    "binary_sha256": "48bc6a44dc49b37b8279c8423a7e256f2d427893388ab034ea587ae8ffef21bf",
+    "checkpoints": [
+     {
+      "alloc_requests": 311837,
+      "alloc_bytes": 17262768,
+      "copies": 64,
+      "copy_bytes": 200112,
+      "message_slabs": 19,
+      "arena_reserved_kib": 8576,
+      "grow_bytes": 22281560,
+      "spawns": 10,
+      "stack_misses": 0,
+      "channel_carves": 2,
+      "peak_rss_kib": 17408,
+      "sessions": 1,
+      "admission_seconds": 0.005466
+     },
+     {
+      "alloc_requests": 8396678,
+      "alloc_bytes": 462105600,
+      "copies": 479,
+      "copy_bytes": 4613680,
+      "message_slabs": 108,
+      "arena_reserved_kib": 16768,
+      "grow_bytes": 513660632,
+      "spawns": 29,
+      "stack_misses": 0,
+      "channel_carves": 4,
+      "peak_rss_kib": 69952,
+      "sessions": 10,
+      "admission_seconds": 0.108685
+     },
+     {
+      "alloc_requests": 157998664,
+      "alloc_bytes": 8657757536,
+      "copies": 5885,
+      "copy_bytes": 82965952,
+      "message_slabs": 938,
+      "arena_reserved_kib": 56064,
+      "grow_bytes": 9427571784,
+      "spawns": 110,
+      "stack_misses": 0,
+      "channel_carves": 14,
+      "peak_rss_kib": 265632,
+      "sessions": 50,
+      "admission_seconds": 1.048864
+     },
+     {
+      "alloc_requests": 557651238,
+      "alloc_bytes": 30536096992,
+      "copies": 19496,
+      "copy_bytes": 291072368,
+      "message_slabs": 2844,
+      "arena_reserved_kib": 102016,
+      "grow_bytes": 33167424440,
+      "spawns": 211,
+      "stack_misses": 0,
+      "channel_carves": 27,
+      "peak_rss_kib": 580480,
+      "sessions": 100,
+      "admission_seconds": 3.598648
+     }
+    ]
+   },
+   {
+    "directory": "session-after3",
+    "binary_sha256": "48bc6a44dc49b37b8279c8423a7e256f2d427893388ab034ea587ae8ffef21bf",
+    "checkpoints": [
+     {
+      "alloc_requests": 312033,
+      "alloc_bytes": 17272368,
+      "copies": 63,
+      "copy_bytes": 200032,
+      "message_slabs": 19,
+      "arena_reserved_kib": 8576,
+      "grow_bytes": 22281560,
+      "spawns": 10,
+      "stack_misses": 0,
+      "channel_carves": 2,
+      "peak_rss_kib": 17408,
+      "sessions": 1,
+      "admission_seconds": 0.005586
+     },
+     {
+      "alloc_requests": 8272781,
+      "alloc_bytes": 455327376,
+      "copies": 474,
+      "copy_bytes": 4549568,
+      "message_slabs": 108,
+      "arena_reserved_kib": 16768,
+      "grow_bytes": 506386264,
+      "spawns": 29,
+      "stack_misses": 0,
+      "channel_carves": 4,
+      "peak_rss_kib": 64320,
+      "sessions": 10,
+      "admission_seconds": 0.108375
+     },
+     {
+      "alloc_requests": 150438702,
+      "alloc_bytes": 8244169632,
+      "copies": 5629,
+      "copy_bytes": 79060944,
+      "message_slabs": 909,
+      "arena_reserved_kib": 55552,
+      "grow_bytes": 8979575728,
+      "spawns": 110,
+      "stack_misses": 0,
+      "channel_carves": 14,
+      "peak_rss_kib": 266624,
+      "sessions": 50,
+      "admission_seconds": 0.972344
+     },
+     {
+      "alloc_requests": 561246868,
+      "alloc_bytes": 30732806832,
+      "copies": 19617,
+      "copy_bytes": 292923600,
+      "message_slabs": 2856,
+      "arena_reserved_kib": 102016,
+      "grow_bytes": 33380019408,
+      "spawns": 211,
+      "stack_misses": 0,
+      "channel_carves": 27,
+      "peak_rss_kib": 584528,
+      "sessions": 100,
+      "admission_seconds": 3.516611
+     }
+    ]
+   }
+  ]
+ },
+ "ledgers": {
+  "before": {
+   "esc-cost 256": {
+    "output": "esc length=17152 plain=16384",
+    "ledger": {
+     "alloc_requests": 32768,
+     "alloc_bytes": 276013824,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0
+    }
+   },
+   "esc-cost 1024": {
+    "output": "esc length=68608 plain=65536",
+    "ledger": {
+     "alloc_requests": 131072,
+     "alloc_bytes": 4400778240,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0
+    }
+   },
+   "txt-cost 1024": {
+    "output": "txt statics=1 bytes=68619",
+    "ledger": {
+     "alloc_requests": 65555,
+     "alloc_bytes": 2250811216,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0
+    }
+   },
+   "split-cost": {
+    "output": "split count=8192",
+    "ledger": {
+     "alloc_requests": 40960,
+     "alloc_bytes": 1966080,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0
+    }
+   },
+   "media-cost": {
+    "output": "media length=97308 rules length=55296",
+    "ledger": {
+     "alloc_requests": 61444,
+     "alloc_bytes": 159638784,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0
+    }
+   },
+   "render-cost": {
+    "output": "render statics=32 bytes=156356 dynamics=31",
+    "ledger": {
+     "alloc_requests": 130548,
+     "alloc_bytes": 21693408,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0
+    }
+   },
+   "stream-cost": {
+    "output": "stream until: Ok 1048576 a..a",
+    "ledger": {
+     "alloc_requests": 150,
+     "alloc_bytes": 13113840,
+     "copies": 18,
+     "copy_bytes": 11014384,
+     "message_slabs": 18
+    }
+   },
+   "exact-cost": {
+    "output": "stream exactly: Ok 1048576 a..a",
+    "ledger": {
+     "alloc_requests": 142,
+     "alloc_bytes": 12064576,
+     "copies": 17,
+     "copy_bytes": 9965280,
+     "message_slabs": 17
+    }
+   },
+   "ws-cost": {
+    "output": "ws text 1048576",
+    "ledger": {
+     "alloc_requests": 1048775,
+     "alloc_bytes": 67903776,
+     "copies": 21,
+     "copy_bytes": 12194464,
+     "message_slabs": 21
+    }
+   }
+  },
+  "after": {
+   "esc-cost 256": {
+    "output": "esc length=17152 plain=16384",
+    "ledger": {
+     "alloc_requests": 1281,
+     "alloc_bytes": 90912,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0
+    }
+   },
+   "esc-cost 1024": {
+    "output": "esc length=68608 plain=65536",
+    "ledger": {
+     "alloc_requests": 5121,
+     "alloc_bytes": 363552,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0
+    }
+   },
+   "txt-cost 1024": {
+    "output": "txt statics=1 bytes=68619",
+    "ledger": {
+     "alloc_requests": 5144,
+     "alloc_bytes": 433200,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0
+    }
+   },
+   "split-cost": {
+    "output": "split count=8192",
+    "ledger": {
+     "alloc_requests": 16384,
+     "alloc_bytes": 786432,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0
+    }
+   },
+   "media-cost": {
+    "output": "media length=97308 rules length=55296",
+    "ledger": {
+     "alloc_requests": 67590,
+     "alloc_bytes": 3788096,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0
+    }
+   },
+   "render-cost": {
+    "output": "render statics=32 bytes=156356 dynamics=31",
+    "ledger": {
+     "alloc_requests": 122798,
+     "alloc_bytes": 6340544,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0
+    }
+   },
+   "esc-cost 16384": {
+    "output": "esc length=1097728 plain=1048576",
+    "ledger": {
+     "alloc_requests": 81921,
+     "alloc_bytes": 5816352,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0
+    }
+   },
+   "txt-cost 16384": {
+    "output": "txt statics=1 bytes=1097739",
+    "ledger": {
+     "alloc_requests": 81944,
+     "alloc_bytes": 6915120,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0
+    }
+   },
+   "stream-cost": {
+    "output": "stream until: Ok 1048576 a..a",
+    "ledger": {
+     "alloc_requests": 219,
+     "alloc_bytes": 3156544,
+     "copies": 18,
+     "copy_bytes": 11026640,
+     "message_slabs": 18
+    }
+   },
+   "exact-cost": {
+    "output": "stream exactly: Ok 1048576 a..a",
+    "ledger": {
+     "alloc_requests": 191,
+     "alloc_bytes": 3154896,
+     "copies": 17,
+     "copy_bytes": 9976144,
+     "message_slabs": 17
+    }
+   },
+   "ws-cost": {
+    "output": "ws text 1048576",
+    "ledger": {
+     "alloc_requests": 1048832,
+     "alloc_bytes": 57880576,
+     "copies": 21,
+     "copy_bytes": 12205936,
+     "message_slabs": 21
+    }
+   }
+  },
+  "note": "tests/base/linearstrings.fpr with tests/bench/costprobe.c, FPR_HARTS=1; esc-cost/txt-cost 16384 (1 MiB) were not run on the before binary: 1024 (64 KiB) already allocated 4.4 GB"
+ },
+ "logbook": {
+  "note": "examples/logbook.fpr built before and after; GET / and a fresh session's websocket snapshot after two posts; the entry minute stamp is normalised",
+  "page_bytes": 72336,
+  "page_sha256": {
+   "before": "c6f089b14e976ad55a9db25222939aabe2157f2149c05481b7090e676b3cc27b",
+   "before2": "c6f089b14e976ad55a9db25222939aabe2157f2149c05481b7090e676b3cc27b",
+   "after": "c6f089b14e976ad55a9db25222939aabe2157f2149c05481b7090e676b3cc27b"
+  },
+  "snapshot_sha256": {
+   "before": "3faa7132c60ef941f2f1c39e26c0d9245560053086f0eca89cadc34367708f9e",
+   "before2": "3faa7132c60ef941f2f1c39e26c0d9245560053086f0eca89cadc34367708f9e",
+   "after": "3faa7132c60ef941f2f1c39e26c0d9245560053086f0eca89cadc34367708f9e"
+  },
+  "static_bytes": 45197,
+  "statics": 5,
+  "dynamics": 4
+ },
+ "medians": {
+  "1": {
+   "alloc_requests": {
+    "before": 314632,
+    "after": 312033,
+    "reduction_percent": 0.83
+   },
+   "alloc_bytes": {
+    "before": 19251520,
+    "after": 17272368,
+    "reduction_percent": 10.28
+   },
+   "peak_rss_kib": {
+    "before": 21264,
+    "after": 17408,
+    "reduction_percent": 18.13
+   },
+   "arena_reserved_kib": {
+    "before": 8576,
+    "after": 8576,
+    "reduction_percent": 0.0
+   },
+   "admission_seconds": {
+    "before": 0.006539,
+    "after": 0.005586,
+    "reduction_percent": 14.57
+   },
+   "copy_bytes": {
+    "before": 199632,
+    "after": 200032,
+    "reduction_percent": -0.2
+   }
+  },
+  "10": {
+   "alloc_requests": {
+    "before": 8358586,
+    "after": 8272781,
+    "reduction_percent": 1.03
+   },
+   "alloc_bytes": {
+    "before": 520655568,
+    "after": 455327376,
+    "reduction_percent": 12.55
+   },
+   "peak_rss_kib": {
+    "before": 72848,
+    "after": 64320,
+    "reduction_percent": 11.71
+   },
+   "arena_reserved_kib": {
+    "before": 16768,
+    "after": 16768,
+    "reduction_percent": 0.0
+   },
+   "admission_seconds": {
+    "before": 0.13486,
+    "after": 0.108375,
+    "reduction_percent": 19.64
+   },
+   "copy_bytes": {
+    "before": 4546240,
+    "after": 4549568,
+    "reduction_percent": -0.07
+   }
+  },
+  "50": {
+   "alloc_requests": {
+    "before": 157903227,
+    "after": 154280938,
+    "reduction_percent": 2.29
+   },
+   "alloc_bytes": {
+    "before": 9809205568,
+    "after": 8454369360,
+    "reduction_percent": 13.81
+   },
+   "peak_rss_kib": {
+    "before": 301856,
+    "after": 265632,
+    "reduction_percent": 12.0
+   },
+   "arena_reserved_kib": {
+    "before": 56064,
+    "after": 56064,
+    "reduction_percent": 0.0
+   },
+   "admission_seconds": {
+    "before": 1.210361,
+    "after": 0.999595,
+    "reduction_percent": 17.41
+   },
+   "copy_bytes": {
+    "before": 82056576,
+    "after": 81045904,
+    "reduction_percent": 1.23
+   }
+  },
+  "100": {
+   "alloc_requests": {
+    "before": 561755500,
+    "after": 561246868,
+    "reduction_percent": 0.09
+   },
+   "alloc_bytes": {
+    "before": 34878364352,
+    "after": 30732806832,
+    "reduction_percent": 11.89
+   },
+   "peak_rss_kib": {
+    "before": 653696,
+    "after": 580480,
+    "reduction_percent": 11.2
+   },
+   "arena_reserved_kib": {
+    "before": 102016,
+    "after": 102016,
+    "reduction_percent": 0.0
+   },
+   "admission_seconds": {
+    "before": 4.019502,
+    "after": 3.598648,
+    "reduction_percent": 10.47
+   },
+   "copy_bytes": {
+    "before": 290145296,
+    "after": 292923600,
+    "reduction_percent": -0.96
+   }
+  }
+ }
+}

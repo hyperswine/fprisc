@@ -1,0 +1,207 @@
+# Linear string builders (docs/2026-10-18-LINEAR-STRING-BUILDERS.md): exact
+# outputs of View.esc / splitSp / media / rules / render and of the Stream
+# Reader across fill boundaries, plus allocation ledgers for the cost modes.
+unsafe base.
+G = use "std/view".
+ST = use "std/stream".
+WS = use "std/ws".
+File = use "std/file".
+S = use "std/string".
+P = use "std/program".
+Cost.begin : Unit -> Unit .
+Cost.report : Unit -> String .
+
+# ---- view fixtures ----------------------------------------------------------------
+spans n = if n == 0 then Nil else
+  G.El "span" [G.Att "id" "s{n}", G.Cls "row gap-2"] [G.Txt "item {n} <&> \"q\""]
+    :: (if band n 63 == 0 then G.Dyn "d{n}" :: spans (n - 1) else spans (n - 1)).
+tree n = G.El "main" [G.utilities [G.Padding (G.Px 4)], G.narrow [G.Width (G.Px 40)]] (spans n).
+parts Nil = Unit.
+parts (text :: rest) = _ = print "part {strlen text}"; _ = print text; parts rest.
+frame (ss, ds) = _ = print "statics"; _ = parts ss; _ = print "dynamics"; parts ds.
+fragment node = case G.render node of (ss, ds) -> G.Fragment ss ds (G.allClasses node Nil).
+mediaNames n = if n == 0 then Nil else (if band n 1 == 0 then "narrow:row" else "narrow:col") :: mediaNames (n - 1).
+ruleNames n = if n == 0 then Nil else (if band n 1 == 0 then "row" else "gap-2") :: ruleNames (n - 1).
+escaped n = S.repeat n (strcat (S.repeat 63 "a") "<").
+plain n = S.repeat n (S.repeat 64 "a").
+count Nil = 0.
+count (_ :: r) = 1 + count r.
+total Nil = 0.
+total (s :: r) = strlen s + total r.
+
+viewFixture =
+  _ = print "esc: [{G.esc ""}] [{G.esc "plain"}] [{G.esc "<a href=\"x\">&amp;</a>"}] [{G.esc "trailing<"}] [{G.esc "<leading"}] [{G.esc "&&"}]";
+  _ = print "esc bytes: {strlen (G.esc (strJoin "" [chr 0, "<", chr 255, chr 10, ">"]))} {G.esc (strJoin "" [chr 0, "<", chr 255, chr 10, ">"]) == strJoin "" [chr 0, "&lt;", chr 255, chr 10, "&gt;"]}";
+  _ = print "split: {G.splitSp ""} {G.splitSp "a"} {G.splitSp " a  b "} {G.splitSp "row gap-2 center"} {G.splitSp "  "} {G.splitSp " x"}";
+  _ = print "media: [{G.media Nil "narrow" "(max-width:760px)" ["narrow:row", "col", "narrow:col", "narrow:nope", "narrowx:row", "narrow:", "narrow:row"]}]";
+  _ = print "media empty: [{G.media Nil "narrow" "(max-width:760px)" ["col", "nope"]}] [{G.media Nil "narrow" "(max-width:760px)" Nil}]";
+  _ = print "rules: [{G.rules Nil ["row", "nope", "col", "row"]}] [{G.rules Nil Nil}]";
+  _ = frame (G.render (G.Txt ""));
+  _ = frame (G.render (G.Dyn "only"));
+  _ = frame (G.render (G.El "p" [] [G.Txt "a<b", G.Dyn "x", G.Dyn "y", G.LTxt "3", G.Inp [G.Att "name" "q"], G.Txt "tail"]));
+  _ = frame (G.renderStyled (G.El "div" [G.utilities [G.Padding (G.Px 4)]] [G.Txt "styled", G.Dyn "d", G.El "b" [] [G.Txt "x"]]));
+  cached = fragment (G.El "i" [G.Cls "row"] [G.Txt "c1", G.Dyn "cd", G.Txt "c2"]);
+  _ = frame (G.render (G.El "section" [] [G.Txt "before", cached, G.Txt "after", cached]));
+  _ = frame (G.renderStyled (G.El "section" [G.narrow [G.Width (G.Px 40)]] [cached, G.Dyn "z"]));
+  frame (G.renderStyled (tree 130)).
+
+# ---- stream fixtures --------------------------------------------------------------
+show name res = print "{name}: {case res of Ok s -> "Ok {strlen s} {if strlen s > 0 then substr s 0 1 else ""}..{if strlen s > 0 then substr s (strlen s - 1) 1 else ""}" | Err e -> "Err {e}"}".
+same res want = case res of Ok s -> s == want | Err _ -> False.
+
+streamFixture dir =
+  big = "{dir}/big.bin";
+  content = strJoin "" [S.repeat 65535 "a", "\r\n", S.repeat 65534 "b", "XYZ", S.repeat 100000 "d", "END", S.repeat 10 "c", "\n", "last"];
+  _ = File.writeText big content;
+  _ = File.withOpen big "r" (fn s ->
+    r0 = ST.reader s;
+    (r1, ra) = ST.readUntil "\r\n" r0;
+    _ = show "until crlf across a fill" r1;
+    _ = print "  equal: {same r1 (S.repeat 65535 "a")}";
+    (r2, rb) = ST.readUntilWithin 1000 10 "XYZ" ra;
+    _ = show "untilWithin past max" r2;
+    (r3, rc) = ST.readUntil "XYZ" rb;
+    _ = show "until a 3-byte sep across a fill" r3;
+    _ = print "  equal: {same r3 (S.repeat 65534 "b")}";
+    (r4, rd) = ST.readExactly 100000 rc;
+    _ = show "exactly 100000 across fills" r4;
+    _ = print "  equal: {same r4 (S.repeat 100000 "d")}";
+    (r5, re) = ST.readUntil "END" rd;
+    _ = show "until at the front" r5;
+    (r5b, re2) = ST.readUntil "" re;
+    _ = show "until the empty separator" r5b;
+    (r5c, re3) = ST.readExactly 0 re2;
+    _ = show "exactly 0" r5c;
+    (r6, rf) = ST.readLine re3;
+    _ = show "line" r6;
+    _ = print "  equal: {same r6 (S.repeat 10 "c")}";
+    _ = show "rest" (ST.readRest rf);
+    Ok Unit);
+  _ = File.withOpen big "r" (fn s ->
+    (r1, ra) = ST.readExactly 1 (ST.reader s);
+    (r2, rb) = ST.readExactly 1 ra;
+    (r3, rc) = ST.readExactly 1 rb;
+    _ = print "three single bytes: {r1} {r2} {r3}";
+    (r4, rd) = ST.readUntil "\r\n" rc;
+    _ = show "then until crlf" r4;
+    (r5, re) = ST.readExactlyWithin 1000 65537 rd;
+    _ = show "exactlyWithin 65537" r5;
+    _ = print "  equal: {same r5 (strcat (S.repeat 65534 "b") "XYZ")}";
+    _ = show "rest" (ST.readRest re);
+    Ok Unit);
+  short = "{dir}/short.bin";
+  _ = File.writeText short "abc";
+  _ = File.withOpen short "r" (fn s ->
+    (r1, ra) = ST.readExactly 5 (ST.reader s);
+    _ = show "exactly past the end" r1;
+    (r2, rb) = ST.readUntil "\n" ra;
+    _ = show "until past the end" r2;
+    (r3, rc) = ST.readExactly 3 rb;
+    _ = show "the buffer survives the end" r3;
+    (r4, rd) = ST.readLine rc;
+    _ = show "line at the end" r4;
+    _ = show "rest at the end" (ST.readRest rd);
+    Ok Unit);
+  nosep = "{dir}/nosep.bin";
+  _ = File.writeText nosep (S.repeat 200000 "n");
+  _ = File.withOpen nosep "r" (fn s ->
+    (r1, ra) = ST.readUntilWithin 1000 100 "\n" (ST.reader s);
+    _ = show "untilWithin without a separator" r1;
+    (r2, rb) = ST.readExactly 65536 ra;
+    _ = show "the error keeps its buffer" r2;
+    _ = print "  equal: {same r2 (S.repeat 65536 "n")}";
+    (r3, rc) = ST.readUntilWithin 1000 0 "\n" rb;
+    _ = show "unbounded until without a separator" r3;
+    _ = show "rest" (ST.readRest rc);
+    Ok Unit);
+  lines = "{dir}/lines.txt";
+  _ = File.writeText lines (strJoin "" (lineList 100000));
+  _ = File.withOpen lines "r" (fn s -> _ = print "lines: {countLines (ST.reader s) 0 0}"; Ok Unit);
+  Unit.
+lineList n = if n == 0 then Nil else "line {n}\n" :: lineList (n - 1).
+countLines r n chars = case ST.readLine r of (res, r2) ->
+  (case res of Ok l -> countLines r2 (n + 1) (chars + strlen l) | Err e -> (n, chars, e)).
+
+wsFrame2 payload = strJoin "" [chr 129, chr 255, strJoin "" (WS.be64 (strlen payload)), chr 0, chr 0, chr 0, chr 0, payload].
+
+main = case P.args Unit of
+    ["esc-cost", n] ->
+      text = escaped (parseInt n);
+      pure = plain (parseInt n);
+      _ = Cost.begin Unit;
+      out = G.esc text;
+      out2 = G.esc pure;
+      stats = Cost.report Unit;
+      _ = print "esc length={strlen out} plain={strlen out2}";
+      print stats
+  | ["split-cost"] ->
+      text = S.repeat 4096 "row gap-2 ";
+      _ = Cost.begin Unit;
+      names = G.splitSp text;
+      stats = Cost.report Unit;
+      _ = print "split count={count names}";
+      print stats
+  | ["media-cost"] ->
+      cs = mediaNames 2048;
+      rs = ruleNames 2048;
+      _ = Cost.begin Unit;
+      css = G.media Nil "narrow" "(max-width:760px)" cs;
+      css2 = G.rules Nil rs;
+      stats = Cost.report Unit;
+      _ = print "media length={strlen css} rules length={strlen css2}";
+      print stats
+  | ["render-cost"] ->
+      node = tree 2000;
+      _ = Cost.begin Unit;
+      (ss, ds) = G.renderStyled node;
+      stats = Cost.report Unit;
+      _ = print "render statics={count ss} bytes={total ss} dynamics={count ds}";
+      print stats
+  | ["txt-cost", n] ->
+      node = G.El "pre" [] [G.Txt (escaped (parseInt n))];
+      _ = Cost.begin Unit;
+      (ss, ds) = G.render node;
+      stats = Cost.report Unit;
+      _ = print "txt statics={count ss} bytes={total ss}";
+      print stats
+  | ["stream-cost", dir] ->
+      path = "{dir}/message.bin";
+      _ = File.writeText path (strJoin "" [plain 16384, "\n", "tail\n"]);
+      _ = File.withOpen path "r" (fn s ->
+        r = ST.reader s;
+        _ = Cost.begin Unit;
+        (res, r2) = ST.readUntil "\n" r;
+        stats = Cost.report Unit;
+        _ = show "stream until" res;
+        _ = print stats;
+        Ok Unit);
+      Unit
+  | ["exact-cost", dir] ->
+      path = "{dir}/message.bin";
+      _ = File.writeText path (strJoin "" [plain 16384, "\n", "tail\n"]);
+      _ = File.withOpen path "r" (fn s ->
+        r = ST.reader s;
+        _ = Cost.begin Unit;
+        (res, r2) = ST.readExactly 1048576 r;
+        stats = Cost.report Unit;
+        _ = show "stream exactly" res;
+        _ = print stats;
+        Ok Unit);
+      Unit
+  | ["ws-cost", dir] ->
+      path = "{dir}/frame.bin";
+      _ = File.writeText path (wsFrame2 (plain 16384));
+      _ = File.withOpen path "r" (fn s ->
+        r = ST.reader s;
+        _ = Cost.begin Unit;
+        (msg, r2) = WS.receive r s;
+        stats = Cost.report Unit;
+        _ = print "ws {case msg of WS.Text t -> "text {strlen t}" | _ -> "other"}";
+        _ = print stats;
+        Ok Unit);
+      Unit
+  | [dir] ->
+      _ = viewFixture;
+      _ = streamFixture dir;
+      print "linear strings: complete"
+  | _ -> print "usage: linearstrings DIR | MODE [DIR | N]".

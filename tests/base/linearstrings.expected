@@ -1,0 +1,126 @@
+esc: [] [plain] [&lt;a href=&quot;x&quot;&gt;&amp;amp;&lt;/a&gt;] [trailing&lt;] [&lt;leading] [&amp;&amp;]
+esc bytes: 11 True
+split: [] [a] [b, a] [center, gap-2, row] [] [x]
+media: [@media (max-width:760px){
+.narrow\:row{display:flex;flex-direction:row}
+.narrow\:col{display:flex;flex-direction:column}
+.narrow\:row{display:flex;flex-direction:row}
+}
+]
+media empty: [] []
+rules: [.row{display:flex;flex-direction:row}
+.col{display:flex;flex-direction:column}
+.row{display:flex;flex-direction:row}
+] []
+statics
+part 0
+
+dynamics
+statics
+part 0
+
+part 0
+
+dynamics
+part 4
+only
+statics
+part 9
+<p>a&lt;b
+part 0
+
+part 51
+<span data-text="3"></span><input name="q">tail</p>
+dynamics
+part 1
+x
+part 1
+y
+statics
+part 469
+<style data-lv-local-css="">.fpr-u-0-70616464696e672d746f703a347078{padding-top:4px}
+.fpr-u-0-70616464696e672d72696768743a347078{padding-right:4px}
+.fpr-u-0-70616464696e672d626f74746f6d3a347078{padding-bottom:4px}
+.fpr-u-0-70616464696e672d6c6566743a347078{padding-left:4px}
+</style><div class="fpr-u-0-70616464696e672d746f703a347078 fpr-u-0-70616464696e672d72696768743a347078 fpr-u-0-70616464696e672d626f74746f6d3a347078 fpr-u-0-70616464696e672d6c6566743a347078">styled
+part 14
+<b>x</b></div>
+dynamics
+part 1
+d
+statics
+part 32
+<section>before<i class="row">c1
+part 28
+c2</i>after<i class="row">c1
+part 16
+c2</i></section>
+dynamics
+part 2
+cd
+part 2
+cd
+statics
+part 169
+<style data-lv-local-css="">@media (max-width:760px){
+.fpr-u-1-77696474683a34307078{width:40px}
+}
+</style><section class="fpr-u-1-77696474683a34307078"><i class="row">c1
+part 6
+c2</i>
+part 10
+</section>
+dynamics
+part 2
+cd
+part 1
+z
+statics
+part 794
+<style data-lv-local-css="">.fpr-u-0-70616464696e672d746f703a347078{padding-top:4px}
+.fpr-u-0-70616464696e672d72696768743a347078{padding-right:4px}
+.fpr-u-0-70616464696e672d626f74746f6d3a347078{padding-bottom:4px}
+.fpr-u-0-70616464696e672d6c6566743a347078{padding-left:4px}
+@media (max-width:760px){
+.fpr-u-1-77696474683a34307078{width:40px}
+}
+</style><main class="fpr-u-0-70616464696e672d746f703a347078 fpr-u-0-70616464696e672d72696768743a347078 fpr-u-0-70616464696e672d626f74746f6d3a347078 fpr-u-0-70616464696e672d6c6566743a347078 fpr-u-1-77696474683a34307078"><span class="row gap-2" id="s130">item 130 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s129">item 129 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s128">item 128 &lt;&amp;&gt; &quot;q&quot;</span>
+part 4856
+<span class="row gap-2" id="s127">item 127 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s126">item 126 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s125">item 125 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s124">item 124 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s123">item 123 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s122">item 122 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s121">item 121 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s120">item 120 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s119">item 119 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s118">item 118 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s117">item 117 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s116">item 116 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s115">item 115 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s114">item 114 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s113">item 113 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s112">item 112 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s111">item 111 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s110">item 110 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s109">item 109 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s108">item 108 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s107">item 107 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s106">item 106 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s105">item 105 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s104">item 104 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s103">item 103 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s102">item 102 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s101">item 101 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s100">item 100 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s99">item 99 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s98">item 98 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s97">item 97 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s96">item 96 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s95">item 95 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s94">item 94 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s93">item 93 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s92">item 92 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s91">item 91 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s90">item 90 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s89">item 89 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s88">item 88 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s87">item 87 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s86">item 86 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s85">item 85 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s84">item 84 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s83">item 83 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s82">item 82 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s81">item 81 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s80">item 80 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s79">item 79 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s78">item 78 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s77">item 77 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s76">item 76 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s75">item 75 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s74">item 74 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s73">item 73 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s72">item 72 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s71">item 71 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s70">item 70 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s69">item 69 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s68">item 68 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s67">item 67 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s66">item 66 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s65">item 65 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s64">item 64 &lt;&amp;&gt; &quot;q&quot;</span>
+part 4714
+<span class="row gap-2" id="s63">item 63 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s62">item 62 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s61">item 61 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s60">item 60 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s59">item 59 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s58">item 58 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s57">item 57 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s56">item 56 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s55">item 55 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s54">item 54 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s53">item 53 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s52">item 52 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s51">item 51 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s50">item 50 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s49">item 49 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s48">item 48 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s47">item 47 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s46">item 46 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s45">item 45 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s44">item 44 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s43">item 43 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s42">item 42 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s41">item 41 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s40">item 40 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s39">item 39 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s38">item 38 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s37">item 37 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s36">item 36 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s35">item 35 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s34">item 34 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s33">item 33 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s32">item 32 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s31">item 31 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s30">item 30 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s29">item 29 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s28">item 28 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s27">item 27 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s26">item 26 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s25">item 25 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s24">item 24 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s23">item 23 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s22">item 22 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s21">item 21 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s20">item 20 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s19">item 19 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s18">item 18 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s17">item 17 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s16">item 16 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s15">item 15 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s14">item 14 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s13">item 13 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s12">item 12 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s11">item 11 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s10">item 10 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s9">item 9 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s8">item 8 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s7">item 7 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s6">item 6 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s5">item 5 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s4">item 4 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s3">item 3 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s2">item 2 &lt;&amp;&gt; &quot;q&quot;</span><span class="row gap-2" id="s1">item 1 &lt;&amp;&gt; &quot;q&quot;</span></main>
+dynamics
+part 4
+d128
+part 3
+d64
+until crlf across a fill: Ok 65535 a..a
+  equal: True
+untilWithin past max: Err no separator within 10 bytes
+until a 3-byte sep across a fill: Ok 65534 b..b
+  equal: True
+exactly 100000 across fills: Ok 100000 d..d
+  equal: True
+until at the front: Ok 0 ..
+until the empty separator: Ok 0 ..
+exactly 0: Ok 0 ..
+line: Ok 10 c..c
+  equal: True
+rest: Ok 4 l..t
+three single bytes: Ok a Ok a Ok a
+then until crlf: Ok 65532 a..a
+exactlyWithin 65537: Ok 65537 b..Z
+  equal: True
+rest: Ok 100018 d..t
+exactly past the end: Err closed
+until past the end: Err closed
+the buffer survives the end: Ok 3 a..c
+line at the end: Err closed
+rest at the end: Ok 0 ..
+untilWithin without a separator: Err no separator within 100 bytes
+the error keeps its buffer: Ok 65536 n..n
+  equal: True
+unbounded until without a separator: Err closed
+rest: Ok 134464 n..n
+lines: (100000, 988895, closed)
+linear strings: complete

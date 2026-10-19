@@ -37,11 +37,13 @@ attrsOf as = _ = G.once as;
   strcat (G.xdata (G.localsOf as)) (strcat (G.xjson (G.clientOf as))
     (strcat (G.classAttr (G.joinSp (G.classesOf as) (atomClasses (G.localAtoms as))))
       (strcat (G.localStyleAttribute as) (G.others as)))).
-render n = G.fin (goN (G.Ctx "" Nil Nil) n).
+# the render context is the live one (a run of pieces, docs/2026-10-18-LINEAR-STRING-BUILDERS.md);
+# frozen here are the CSS construction functions only
+render n = G.fin (goN (G.Ctx Nil Nil Nil) n).
 renderStyled n =
   css = cssFor n;
   start = "<style data-lv-local-css=\"\">{css}</style>";
-  G.fin (goN (G.Ctx start Nil Nil) n).
+  G.fin (goN (G.Ctx (start :: Nil) Nil Nil) n).
 goN c (G.Fragment ss ds _) = G.appendFragment c ss ds.
 goN c (G.Txt s) = G.emit c (G.esc s).
 goN c (G.Dyn v) = G.slot c v.
