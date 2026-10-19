@@ -70,7 +70,7 @@ import Data.List (isPrefixOf, isSuffixOf, stripPrefix)
 -- lowering fix invalidates cached lowered units (learned the hard way:
 -- the section-aware fixup fix left stale corrupt prelude units behind)
 x64Rev :: Int
-x64Rev = 9 -- promoted params 7/8: `mv rd, a6/a7` read their TLS cells
+x64Rev = 10 -- fallback frames keep ra at the top word; raGuard refuses the rest
 
 -- deTlsQosApp: the QOS-x86_64 (--target=qx64) refinement.  A loaded
 -- QOS Portable app image is a fixed-slot ELF with no dynamic loader
@@ -144,7 +144,7 @@ deTlsQosApp = unlines . concatMap detls . lines
 lowerX64 :: String -> String
 lowerX64 source = unlines (go (True, (False, False)) False input)
   where
-    input = map banner (lines source)
+    input = raGuard (map banner (lines source))
     shadowFunctions = scan Nothing False input
     scan name used [] = [n | Just n <- [name], used]
     scan name used (l:ls) = case functionLabel l of
@@ -172,6 +172,46 @@ lowerX64 source = unlines (go (True, (False, False)) False input)
       | ".rodata" `isPrefixOf` dropWhile isSpace l = (False, stg)
       | ".data" `isPrefixOf` dropWhile isSpace l = (False, stg)
       | otherwise = (cur, stg)
+
+-- raGuard: rule 1 makes the IR frame's top word F-8 (after `addi sp,
+-- sp, -F`) the hardware return address, and `sd ra` / `ld ra` lower to
+-- nothing.  So an rv64 frame that saves ra anywhere else, or stores
+-- anything else over that word, corrupts the return address on x64 and
+-- the function "returns" into data (the typed-vector fallback frames
+-- did both before Codegen put ra at the top word).  Refuse those shapes
+-- at lowering time instead of emitting a crash.  The scan is
+-- conservative: it tracks only the straight-line stretch after a frame's
+-- `sd ra` and forgets the frame at any label, `ret` or other sp
+-- adjustment, so it never rejects a store it cannot place.
+raGuard :: [String] -> [String]
+raGuard = go Nothing Nothing
+  where
+    -- pend: size F of an `addi sp, sp, -F` on the previous line;
+    -- top: offset of the live frame's saved-ra word (F-8)
+    go _ _ [] = []
+    go pend top (l : ls) = l : case stripPrefix "    " l of
+      Just body | not ("." `isPrefixOf` body) -> step (parts body) body
+      _ | isLabel l -> go Nothing Nothing ls
+        | otherwise -> go pend top ls
+      where
+        step ins body = case ins of
+          ("addi", ["sp", "sp", n]) | readInt n < 0 -> go (Just (negate (readInt n))) Nothing ls
+          ("addi", ["sp", "sp", _]) -> go Nothing Nothing ls
+          ("sd", ["ra", m]) | Just f <- pend, Just o <- spOff m ->
+            if o == f - 8 then go Nothing (Just o) ls
+            else error ("X64: `" ++ body ++ "` after a " ++ show f ++ "-byte frame: ra must be saved at the frame's top word "
+                          ++ show (f - 8) ++ "(sp), where x64 keeps the return address")
+          (op, [r, m]) | Just w <- lookup op widths, r /= "ra", Just t <- top, Just o <- spOff m, o < t + 8, o + w > t ->
+            error ("X64: `" ++ body ++ "` overwrites the saved-ra word " ++ show t ++ "(sp), which is the return address on x64")
+          ("ret", _) -> go Nothing Nothing ls
+          _ -> go Nothing top ls
+    widths = [("sd", 8), ("fsd", 8), ("sw", 4), ("fsw", 4), ("sh", 2), ("sb", 1)]
+    spOff m = case break (== '(') m of
+      (o, "(sp)") -> Just (if null o then 0 else readInt o)
+      _ -> Nothing
+    isLabel l = case break (== ':') l of
+      (c : _, ":") -> c /= ' '
+      _ -> False
 
 -- ---- registers -------------------------------------------------------
 
