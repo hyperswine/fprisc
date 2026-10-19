@@ -23,7 +23,7 @@ print(run(['python3', 'tests/check_commit_interfaces.py'], timeout=300).stdout, 
 print(run(['python3', 'tests/check_publication.py'], timeout=600).stdout, end='')
 print(run(['python3', 'tests/check_watch_app.py'], timeout=600).stdout, end='')
 print(run(['python3', 'tests/check_live_runner.py'], timeout=600).stdout, end='')
-print(run(['python3', 'tests/check_pos_reload.py'], timeout=600).stdout, end='')
+print(run(['python3', 'tests/check_pos_reload.py'], timeout=1800).stdout, end='')  # three cold POS app builds
 print(run(['python3', 'tests/check_posix_modules.py'], timeout=600).stdout, end='')
 print(run(['python3', 'tests/check_posix_pic.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_owned_watchers.py'], timeout=300).stdout, end='')
@@ -45,14 +45,16 @@ print(run(['python3', 'tests/check_typed_vectors.py'], timeout=300).stdout, end=
 print(run(['python3', 'tests/check_vector_limits.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_vector_kinds.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_x64_vectors.py'], timeout=300).stdout, end='')
+print(run(['python3', 'tests/check_wide_params.py'], timeout=300).stdout, end='')
+print(run(['python3', 'tests/check_vector_fallback_frames.py'], timeout=600).stdout, end='')
 print(run(['python3', 'tests/check_trust.py'], timeout=60).stdout, end='')
 print(run(['python3', 'tests/check_specialization.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_workers.py'], timeout=300).stdout, end='')
 with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     tmp = Path(temp)
-    def build(prog, name):
+    def build(prog, name, *flags):
         exe = tmp / name
-        out = run(['./fpr', 'build', prog, '-o', exe])
+        out = run(['./fpr', 'build', prog, *flags, '-o', exe])
         assert 'precond' not in out.stdout, 'a build is quiet unless -v'
         return exe
     print(run(['python3', 'tests/check_admission.py']).stdout.strip())
@@ -395,7 +397,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     print('Every position is 0-based: first/last index and -1 for not found, native and Sol agree; index -1 and len panic by name: PASS')
     # 4h. receiveFromRes: a sender that exits is an answer (Err "dead actor"),
     # never a caller parked for ever; a reply sent just before exiting is kept
-    dp = build('tests/base/deadpeer.fpr', 'deadpeer')
+    # --harts 8: the default is the build host's core count (4 on a CI runner)
+    dp = build('tests/base/deadpeer.fpr', 'deadpeer', '--harts', '8')
     for harts in ('1', '4', '8'):
         out = run([dp], env={'FPR_HARTS': harts}, timeout=60).stdout
         assert 'reply=Ok 42 dead=Err dead actor died-while-waiting=Err dead actor' in out, out
@@ -423,7 +426,9 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     assert stress_runs > 0
     for no_inline in ('0', '1'):
         exe = tmp / ('taskstress-' + no_inline)
-        run(['./fpr', 'build', 'tests/base/taskstress.fpr', '-o', exe],
+        # --harts 10: the default is the build host's core count, and the
+        # stress below runs 10 harts (a 4-core CI runner refused them)
+        run(['./fpr', 'build', 'tests/base/taskstress.fpr', '--harts', '10', '-o', exe],
             env={'FPR_NO_INLINE': no_inline})
         for harts in ('1', '4'):
             assert run([exe], env={'FPR_HARTS': harts}, timeout=300).stdout == 'shastress: 40\n'

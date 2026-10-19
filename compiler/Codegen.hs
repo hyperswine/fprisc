@@ -3070,13 +3070,13 @@ emitMapAsSpec tgt sym p layout = do
   fuel <- specFuel tgt
   let makeOut = if null layout then ["    la a0, fpr_unit", "    call fpr_g_Vec_x2enew_call1"]
                 else ["    la a0, " ++ spec, "    call fpr_g_Vec_x2enewAs_call1"]
-      bytes = ((w*(k+2)+15) `div` 16)*16
-      fallback = [fb ++ ":", "    addi sp, sp, -" ++ show bytes, "    " ++ st ++ " ra, 0(sp)"]
+      bytes = ((w*(k+3)+15) `div` 16)*16 -- ra in the TOP word: x64 rule 1 (X64.hs) maps F-8 onto the pushed return address
+      fallback = [fb ++ ":", "    addi sp, sp, -" ++ show bytes, "    " ++ st ++ " ra, " ++ show (bytes - w) ++ "(sp)"]
         ++ ["    " ++ st ++ " a" ++ show i ++ ", " ++ show ((i+1)*w) ++ "(sp)" | i <- [0..k]]
         ++ ["    la a0, fpr_obj_" ++ mangle f]
         ++ concat [["    " ++ ld ++ " a1, " ++ show ((i+1)*w) ++ "(sp)", "    call fpr_apply"] | i <- [0..k-1]]
         ++ ["    mv a1, a0", "    la a0, " ++ spec, "    " ++ ld ++ " a2, " ++ show ((k+1)*w) ++ "(sp)",
-            "    " ++ ld ++ " ra, 0(sp)", "    addi sp, sp, " ++ show bytes, "    j fpr_g_Vec_x2emapAs_call3"]
+            "    " ++ ld ++ " ra, " ++ show (bytes - w) ++ "(sp)", "    addi sp, sp, " ++ show bytes, "    j fpr_g_Vec_x2emapAs_call3"]
   pure $ ["# Vec.mapAs direct scalar kernel on " ++ f ++ " [output layout " ++ show layout ++ "]", "    .globl " ++ sym, sym ++ ":"]
     ++ vecGuard tgt vreg fb
     ++ ["    li t1, 1", "    beq t0, t1, " ++ ready,
@@ -3124,15 +3124,15 @@ capFallback tgt f k scheme =
   let w = tgtW tgt
       ld = tgtLd tgt
       st = tgtSt tgt
-      bytes = ((w * (k + 2) + 15) `div` 16) * 16
+      bytes = ((w * (k + 3) + 15) `div` 16) * 16
    in [ "    addi sp, sp, -" ++ show bytes,
-        "    " ++ st ++ " ra, 0(sp)"
+        "    " ++ st ++ " ra, " ++ show (bytes - w) ++ "(sp)"
       ]
         ++ ["    " ++ st ++ " a" ++ show i ++ ", " ++ show ((i + 1) * w) ++ "(sp)" | i <- [0 .. k]]
         ++ ["    la a0, fpr_obj_" ++ mangle f]
         ++ concat [["    " ++ ld ++ " a1, " ++ show ((i + 1) * w) ++ "(sp)", "    call fpr_apply"] | i <- [0 .. k - 1]]
         ++ [ "    " ++ ld ++ " a1, " ++ show ((k + 1) * w) ++ "(sp)", -- the vector
-             "    " ++ ld ++ " ra, 0(sp)",
+             "    " ++ ld ++ " ra, " ++ show (bytes - w) ++ "(sp)",
              "    addi sp, sp, " ++ show bytes,
              "    j " ++ scheme
            ]
@@ -3144,13 +3144,13 @@ foldFallback :: Target -> String -> Int -> [String]
 foldFallback _ f 0 = ["    mv a2, a1", "    mv a1, a0", "    la a0, fpr_obj_" ++ mangle f, "    j fpr_vec_fold"]
 foldFallback tgt f k =
   let w = tgtW tgt; ld = tgtLd tgt; st = tgtSt tgt
-      bytes = ((w * (k + 3) + 15) `div` 16) * 16
-   in ["    addi sp, sp, -" ++ show bytes, "    " ++ st ++ " ra, 0(sp)"]
+      bytes = ((w * (k + 4) + 15) `div` 16) * 16
+   in ["    addi sp, sp, -" ++ show bytes, "    " ++ st ++ " ra, " ++ show (bytes - w) ++ "(sp)"]
         ++ ["    " ++ st ++ " a" ++ show i ++ ", " ++ show ((i+1)*w) ++ "(sp)" | i <- [0..k+1]]
         ++ ["    la a0, fpr_obj_" ++ mangle f]
         ++ concat [["    " ++ ld ++ " a1, " ++ show ((i+1)*w) ++ "(sp)", "    call fpr_apply"] | i <- [0..k-1]]
         ++ ["    " ++ ld ++ " a1, " ++ show ((k+1)*w) ++ "(sp)", "    " ++ ld ++ " a2, " ++ show ((k+2)*w) ++ "(sp)",
-            "    " ++ ld ++ " ra, 0(sp)", "    addi sp, sp, " ++ show bytes, "    j fpr_vec_fold"]
+            "    " ++ ld ++ " ra, " ++ show (bytes - w) ++ "(sp)", "    addi sp, sp, " ++ show bytes, "    j fpr_vec_fold"]
 
 rvvMapInner :: Target -> String -> Core -> String -> String -> Maybe [String]
 rvvMapInner tgt prm body linner lnextb = do
@@ -3529,15 +3529,15 @@ emitMvMapSpec tgt sym p = do
         [fb ++ ":", "    mv a0, a1"] ++ capFallback tgt f 0 "fpr_vec_map" ++ [""]
         else [ fb ++ ":",
           -- build (f cap) as a real closure, then the generic C tier
-          "    addi sp, sp, -" ++ show (2 * w),
-          "    " ++ st ++ " ra, 0(sp)",
+          "    addi sp, sp, -" ++ show (4 * w),
+          "    " ++ st ++ " ra, " ++ show (3 * w) ++ "(sp)",
           "    " ++ st ++ " a1, " ++ show w ++ "(sp)",
           "    mv a1, a0",
           "    la a0, fpr_obj_" ++ mangle f,
           "    call fpr_apply",
           "    " ++ ld ++ " a1, " ++ show w ++ "(sp)",
-          "    " ++ ld ++ " ra, 0(sp)",
-          "    addi sp, sp, " ++ show (2 * w),
+          "    " ++ ld ++ " ra, " ++ show (3 * w) ++ "(sp)",
+          "    addi sp, sp, " ++ show (4 * w),
           "    j fpr_vec_map",
           ""
         ]
@@ -3850,15 +3850,15 @@ emitWFoldSpec tgt sym p g = do
            fb ++ ":",
            -- the two-pass truth: generic map, then generic fold.  The
            -- middle call means ra and z must survive it.
-           "    addi sp, sp, -16",
-           "    " ++ st ++ " ra, 0(sp)",
+           "    addi sp, sp, -32",
+           "    " ++ st ++ " ra, 24(sp)",
            "    " ++ st ++ " a0, 8(sp)", -- z
            "    la a0, fpr_obj_" ++ mangle g,
            "    call fpr_vec_map",
            "    mv a2, a0",
            "    " ++ ld ++ " a1, 8(sp)",
-           "    " ++ ld ++ " ra, 0(sp)",
-           "    addi sp, sp, 16",
+           "    " ++ ld ++ " ra, 24(sp)",
+           "    addi sp, sp, 32",
            "    la a0, fpr_obj_" ++ mangle f,
            "    j fpr_vec_fold",
            ""
