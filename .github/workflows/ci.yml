@@ -46,7 +46,8 @@ jobs:
             make gcc libc6-dev pkg-config ghc cabal-install libghc-megaparsec-dev \
             libghc-network-dev libghc-utf8-string-dev libgit2-dev libarchive-dev \
             libegl-dev libgl-dev clang lld \
-            gcc-riscv64-linux-gnu libc6-dev-riscv64-cross qemu-user
+            gcc-riscv64-linux-gnu libc6-dev-riscv64-cross qemu-user \
+            gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf qemu-system-misc
       - uses: actions/checkout@v4
       - name: make fpr
         run: |
@@ -58,6 +59,7 @@ jobs:
       - run: echo "FPR_HOME=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
       - name: check_base
         run: python3 -u tests/check_base.py
+      # check_raw also boots builtin/raw images on qemu-system-riscv64
       - name: check_i32, check_raw
         run: |
           python3 -u tests/check_i32.py
