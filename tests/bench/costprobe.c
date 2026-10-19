@@ -1,9 +1,10 @@
 /* Benchmark-only surface: no new language primitives or default counters. */
 #include "fpr.h"
 #include <stdio.h>
-static uint64_t baseline[5];
-static void snapshot(uint64_t out[5]) {
-  for (unsigned k=0;k<5;k++) out[k]=0;
+#define NLEDGER 8
+static uint64_t baseline[NLEDGER];
+static void snapshot(uint64_t out[NLEDGER]) {
+  for (unsigned k=0;k<NLEDGER;k++) out[k]=0;
 #ifdef FPR_COST_PROBE
   for (uw i=0;i<fpr_live_harts;i++) {
     fpr_hart_t *h=&fpr_harts[i];
@@ -12,17 +13,22 @@ static void snapshot(uint64_t out[5]) {
     out[2]+=__atomic_load_n(&h->cost_copies,__ATOMIC_RELAXED);
     out[3]+=__atomic_load_n(&h->cost_copy_bytes,__ATOMIC_RELAXED);
     out[4]+=__atomic_load_n(&h->cost_msg_slabs,__ATOMIC_RELAXED);
+    out[5]+=__atomic_load_n(&h->cost_turns,__ATOMIC_RELAXED);
   }
+  out[6]=__atomic_load_n(&fpr_cost_buddy_allocs,__ATOMIC_RELAXED);
+  out[7]=__atomic_load_n(&fpr_cost_buddy_frees,__ATOMIC_RELAXED);
 #endif
 }
 static V begin(V u) { (void)u; snapshot(baseline); return (V)&fpr_unit; }
 static V report(V u) {
-  (void)u; uint64_t a[5]; snapshot(a);
-  for (unsigned k=0;k<5;k++) a[k]-=baseline[k];
-  char b[320]; int n=snprintf(b,sizeof b,
-    "{\"alloc_requests\":%llu,\"alloc_bytes\":%llu,\"copies\":%llu,\"copy_bytes\":%llu,\"message_slabs\":%llu}",
+  (void)u; uint64_t a[NLEDGER]; snapshot(a);
+  for (unsigned k=0;k<NLEDGER;k++) a[k]-=baseline[k];
+  char b[480]; int n=snprintf(b,sizeof b,
+    "{\"alloc_requests\":%llu,\"alloc_bytes\":%llu,\"copies\":%llu,\"copy_bytes\":%llu,\"message_slabs\":%llu,"
+    "\"turns\":%llu,\"buddy_allocs\":%llu,\"buddy_frees\":%llu}",
     (unsigned long long)a[0],(unsigned long long)a[1],(unsigned long long)a[2],
-    (unsigned long long)a[3],(unsigned long long)a[4]);
+    (unsigned long long)a[3],(unsigned long long)a[4],(unsigned long long)a[5],
+    (unsigned long long)a[6],(unsigned long long)a[7]);
   return (V)fpr_mkstr((const uint8_t*)b,(uw)n);
 }
 static V allocs(V nv,V sizev) {

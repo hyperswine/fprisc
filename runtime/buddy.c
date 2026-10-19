@@ -41,6 +41,12 @@ void (*fpr_buddy_uncharge)(uw tag, uw bytes);
 #define BUDDY_MAX_ORDER 24               /* generous ceiling; real order set by init */
 
 typedef struct free_node { struct free_node *next; } free_node_t;
+#ifdef FPR_COST_PROBE
+uint64_t fpr_cost_buddy_allocs, fpr_cost_buddy_frees; /* under buddy_lock */
+#define BUDDY_COUNT(c) ((c)++)
+#else
+#define BUDDY_COUNT(c) ((void)0)
+#endif
 
 static char *arena_base;
 static uw arena_size;
@@ -123,6 +129,7 @@ void *buddy_alloc(uw bytes) {
     return 0; /* exhausted at this size class */
   }
   void *blk = split_down(order, want);
+  BUDDY_COUNT(fpr_cost_buddy_allocs);
   fpr_unlock(&buddy_lock);
   *(uw *)blk = (uw)want;
   return (char *)blk + sizeof(uw);
@@ -239,6 +246,7 @@ __attribute__((weak)) void hal_heap_release(void *p, uw bytes) { (void)p; (void)
 static void buddy_free_locked(void *p) { /* under buddy_lock */
   char *hdr = (char *)p - sizeof(uw);
   int order = BUDDY_ORDER(*(uw *)hdr);
+  BUDDY_COUNT(fpr_cost_buddy_frees);
   uw off = offset_of(hdr);
   if (order >= BUDDY_RELEASE_ORDER)
     hal_heap_release(hdr + sizeof(free_node_t), block_size(order) - sizeof(free_node_t));
@@ -366,6 +374,7 @@ void *buddy_alloc_try(uw bytes, int *busy) {
     return 0;
   }
   void *blk = split_down(order, want);
+  BUDDY_COUNT(fpr_cost_buddy_allocs);
   fpr_unlock(&buddy_lock);
   *(uw *)blk = (uw)want;
   return (char *)blk + sizeof(uw);
