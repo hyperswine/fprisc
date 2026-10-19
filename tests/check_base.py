@@ -45,6 +45,7 @@ print(run(['python3', 'tests/check_typed_vectors.py'], timeout=300).stdout, end=
 print(run(['python3', 'tests/check_vector_limits.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_vector_kinds.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_x64_vectors.py'], timeout=300).stdout, end='')
+print(run(['python3', 'tests/check_wide_params.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_trust.py'], timeout=60).stdout, end='')
 print(run(['python3', 'tests/check_specialization.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_workers.py'], timeout=300).stdout, end='')
