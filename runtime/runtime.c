@@ -465,7 +465,7 @@ void **fpr_bkt_take(void) {
     }
   }
   if (!k) return 0;
-  for (int i = 0; i < FPR_NBUCKETS; i++) k->b[i] = 0;
+  __builtin_memset(k->b, 0, sizeof k->b);
   return k->b;
 }
 
@@ -604,6 +604,7 @@ V fpr_alloc(V raw_bytes) {
     sl->escaped = 0;
     sl->holds = 0;
     sl->promoted = 0;
+    sl->pushed = 0;
     sl->hp = (char *)(sl + 1);
     sl->next = pool->cur;
     pool->cur = sl;
@@ -666,6 +667,7 @@ void fpr_free(V v) {
   *(uw *)p = 0; /* poison size: crude double-free tripwire */
   void *old;
   if (!pool->buckets) return;
+  sl->pushed = 1; /* an arena's turn reset zeroes the buckets only then */
   do {
     old = __atomic_load_n(&pool->buckets[idx], __ATOMIC_RELAXED);
     *(void **)p = old;
@@ -745,7 +747,12 @@ static void dc_release(V v) {
   }
 }
 
-typedef struct { char *hp; fpr_slab_t *sl; } dctx_t;
+typedef struct {
+  char *hp;
+  fpr_slab_t *sl;
+  const char *novec; /* set: a Vector in the graph is refused by this name
+                      * (a turn's state: its storage IS the arena) */
+} dctx_t;
 
 /* a fresh cell's slab footprint: fpr_alloc's exact rounding + header */
 static uw dc_cellsz(uw raw) { return (((raw + 15) & ~(uw)15)) + 16; }
@@ -958,6 +965,7 @@ static V dc_dup(V v, dctx_t *c) {
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
     case T_VEC: {
+      if (c->novec) fpr_cpanic(c->novec);
       /* the whole vector -- header, col_t's, column spans -- lands in
        * the message slab: one message = one slab, vectors included.
        * cap = len (tight): a later push on the receiver's side grows
@@ -1099,6 +1107,7 @@ static fpr_slab_t *msg_slab_new(uw need) {
   sl->escaped = 0;
   sl->holds = 0;
   sl->promoted = 0;
+  sl->pushed = 0;
   sl->hp = (char *)(sl + 1);
   sl->next = 0;
   return sl;
@@ -1177,7 +1186,7 @@ int fpr_entry_copy_try(V v, uw pid, V *out, fpr_slab_t **hold) {
   if (need > (uw)-1 - sizeof(fpr_slab_t)) return 0;
   fpr_slab_t *sl = fpr_slab_new(need + sizeof(fpr_slab_t));
   if (!sl) return 0;
-  sl->owner = 0; sl->escaped = 0; sl->holds = 1; sl->promoted = 0;
+  sl->owner = 0; sl->escaped = 0; sl->holds = 1; sl->promoted = 0; sl->pushed = 0;
   sl->hp = (char *)(sl + 1); sl->next = 0;
   dctx_t c = {sl->hp, sl};
   *out = dc_dup(v, &c);
@@ -1367,22 +1376,58 @@ static void arena_close(struct fpr_pool **slot, fpr_pool_t *ap, struct fpr_pool 
   fpr_bkt_put(ap->buckets);
   *slot = prev;
 }
+/* TURN END, the arena staying open for the next turn: everything
+ * allocated this turn is dead.  The chain head -- the newest and largest
+ * slab, the size the turn's doubling settled on -- stays with its bump
+ * pointer rewound; the slabs behind it go home; a slab something escaped
+ * from (sent by reference from inside the turn) is orphaned and returns
+ * when its last promoted object drops.  The bucket array is cleared, not
+ * returned: every recorded free cell was in a slab this walk just rewound,
+ * recycled or orphaned (poolReset says the same).  Closing and reopening
+ * the arena every turn -- a slab and a bucket array taken and returned,
+ * the array zeroed on the way -- was most of a small turn
+ * (docs/2026-10-19-RECEIVE-TURN-ARENA.md). */
+static void arena_reset(fpr_pool_t *ap) {
+  uw pushed = 0; /* did any cell of any slab reach the buckets this turn */
+  fpr_lock(&arc_lock);
+  fpr_slab_t *sl = ap->cur, *keep = 0;
+  while (sl) {
+    fpr_slab_t *nx = sl->next;
+    pushed |= sl->pushed;
+    if (sl->escaped) sl->owner = 0;
+    else if (!keep) keep = sl;
+    else slab_home(sl);
+    sl = nx;
+  }
+  if (keep) {
+    keep->hp = (char *)(keep + 1);
+    keep->next = 0;
+    keep->promoted = 0; /* reissued: nothing in it is referenced (fpr_arc_decref) */
+    keep->pushed = 0;
+  }
+  ap->cur = keep;
+  ap->bigfree = 0; /* big free blocks were in the slabs just rewound or recycled */
+  fpr_unlock(&arc_lock);
+  /* nothing pushes after the unlock: a clean slab had no promoted object
+   * to drop, an orphaned one is owned by no pool.  A turn that freed
+   * nothing leaves the heads as the last zeroing left them. */
+  if (pushed) __builtin_memset(ap->buckets, 0, FPR_NBUCKETS * sizeof(void *));
+}
 static void no_vec_out(V r, const char *who) {
   if (has_vec(r))
     fpr_cpanic(who);
 }
-/* a transfer copy's own slab goes home once nothing else keeps it */
-static void transfer_free(V t) {
-  /* Actor handles are shared ACBs, not copied cells with slab preheaders. */
-  if (ISINT(t) || !fpr_in_heap(t) || TID(t) == T_ACTOR) return;
-  fpr_slab_t *ts = slab_of(t);
-  if (ts && !ts->owner && ts->escaped == 0 && ts->holds == 0) {
-    fpr_lock(&arc_lock);
-    slab_home(ts);
-    fpr_unlock(&arc_lock);
-  }
-}
 
+/* ---- transfer slabs ---------------------------------------------------
+ * The state that crosses a turn boundary is copied into an ownerless slab
+ * of its own (a message slab in all but name).  A scope keeps two: `held`,
+ * the state the next turn reads, and `spare`, the slab the previous state
+ * was in, kept once nothing else references it, for the next copy -- so a
+ * loop in its steady state takes no slab from the buddy at all.  A state
+ * that does not fit the spare takes a fresh, bigger slab and the spare goes
+ * home; a state slab retired into an occupied spare keeps the larger of the
+ * two.  Loop exit and death free both.  A slab a promoted object still
+ * pins is never reused: it returns when that object drops, as before. */
 /* These frames live on the actor's stack. The reaper visits them before
  * recycling that stack, including when a region is parked in receive or
  * allocation. Keep this separate from the one pending external request:
@@ -1391,6 +1436,7 @@ struct fpr_scope {
   struct fpr_scope *previous;
   fpr_pool_t *arena;
   V held;
+  fpr_slab_t *spare;
 };
 static struct fpr_scope *bootstrap_scopes[FPR_NHARTS];
 static struct fpr_scope **scope_push(struct fpr_scope *scope) {
@@ -1400,8 +1446,68 @@ static struct fpr_scope **scope_push(struct fpr_scope *scope) {
   scope->previous = *head;
   scope->arena = 0;
   scope->held = 0;
+  scope->spare = 0;
   *head = scope;
   return head;
+}
+static uw slab_room(fpr_slab_t *sl) { return (uw)(sl->end - (char *)(sl + 1)); }
+/* an ownerless slab nothing references any more goes home (arc_lock: the
+ * owner/escaped protocol slab_home's callers keep) */
+static void slab_free_ownerless(fpr_slab_t *sl) {
+  fpr_lock(&arc_lock);
+  slab_home(sl);
+  fpr_unlock(&arc_lock);
+}
+/* the next state: one walk to size it, one to copy it into the spare when
+ * it fits, else into a fresh slab; a Vector in it is refused by name during
+ * the copy (its storage would go with the arena).  The slab being filled
+ * sits in `spare` meanwhile, so an actor ended mid-copy still frees it. */
+static V transfer_copy(V v, struct fpr_scope *scope, const char *novec) {
+  fpr_hart_t *h = fpr_hart();
+  uw pid = fpr_current_pid();
+  if (h) h->copy_pid = pid;
+  uw need = dc_size(v);
+  FPR_COST_ADD(h, cost_copies, 1);
+  FPR_COST_ADD(h, cost_copy_bytes, need);
+  if (!need) return dc_dup(v, 0); /* ints, statics, bare actor handles: no cell, so no Vector */
+  fpr_slab_t *sl = scope->spare;
+  if (!sl || slab_room(sl) < need) {
+    if (sl) { scope->spare = 0; slab_free_ownerless(sl); }
+    sl = msg_slab_new(need); /* may park: the actor can migrate meanwhile */
+    FPR_COST_ADD(fpr_hart(), cost_msg_slabs, 1);
+    scope->spare = sl;
+  }
+  sl->hp = (char *)(sl + 1);
+  sl->promoted = 0; /* reissued (fpr_arc_decref's pre-check): nothing in it is referenced */
+  sl->pushed = 0;
+  h = fpr_hart();
+  if (h) h->copy_pid = pid;
+  dctx_t c = {sl->hp, sl, novec};
+  V r = dc_dup(v, &c);
+  sl->hp = c.hp;
+  scope->spare = 0; /* it is the state now; transfer_retire brings it back */
+  return r;
+}
+/* the state the turn just left behind: its slab becomes the spare when
+ * nothing else references it.  The unlocked reads are sound as they were in
+ * the old transfer_free: only this actor could promote from the slab, and a
+ * count another actor's drop takes to zero frees the slab on that path. */
+static void transfer_retire(struct fpr_scope *scope) {
+  V t = scope->held;
+  scope->held = 0;
+  /* Actor handles are shared ACBs, not copied cells with slab preheaders. */
+  if (ISINT(t) || !fpr_in_heap(t) || TID(t) == T_ACTOR) return;
+  fpr_slab_t *ts = slab_of(t);
+  if (!ts || ts->owner || ts->escaped || ts->holds) return;
+  if (!scope->spare) { scope->spare = ts; return; }
+  fpr_slab_t *lesser = ts;
+  if (slab_room(ts) > slab_room(scope->spare)) { lesser = scope->spare; scope->spare = ts; }
+  slab_free_ownerless(lesser);
+}
+/* loop exit and death: the state's slab and the spare go home */
+static void scope_release(struct fpr_scope *scope) {
+  transfer_retire(scope);
+  if (scope->spare) { slab_free_ownerless(scope->spare); scope->spare = 0; }
 }
 
 static V g_arena(V f) {
@@ -1416,16 +1522,16 @@ static V g_arena(V f) {
   arena_open(slot, &ap);
   scope.arena = &ap;
   V r = fpr_apply(f, (V)&fpr_unit);
-  no_vec_out(r, "Sys.arena: Vector results cannot escape an arena "
-                "(their storage IS the arena) -- return scalars/trees, "
-                "or build pool-owned vectors outside");
-  V t = fpr_msg_copy_fresh(r); /* its own slab: survives the teardown, freed below */
+  /* its own slab: survives the teardown, freed below */
+  V t = transfer_copy(r, &scope, "Sys.arena: Vector results cannot escape an arena "
+                                 "(their storage IS the arena) -- return scalars/trees, "
+                                 "or build pool-owned vectors outside");
   scope.held = t;
   arena_close(slot, &ap, prev);
   scope.arena = 0;
   /* copy the result into the CALLER's pool; free the transfer slab */
   V out = kp_dup(t);
-  transfer_free(t);
+  scope_release(&scope);
   *head = scope.previous;
   return out;
 }
@@ -1483,28 +1589,30 @@ static V g_loop(V s, V f) {
   struct fpr_pool *prev = *slot;
   struct fpr_scope scope;
   struct fpr_scope **head = scope_push(&scope);
+  /* ONE arena for the whole loop, rewound at every turn boundary (arena_reset) */
+  fpr_pool_t ap;
+  arena_open(slot, &ap);
+  scope.arena = &ap;
   V state = s;
   for (;;) {
-    fpr_pool_t ap;
-    arena_open(slot, &ap);
-    scope.arena = &ap;
+    FPR_COST_ADD(fpr_hart(), cost_turns, 1);
     V r = fpr_apply(f, state);
     if (ISINT(r) || !fpr_in_heap(r) || TID(r) != T_TUP2)
       fpr_cpanic("Sys.loop: a step must return (continue, state)");
     V go = FPR_FLD(r, 0), nx = FPR_FLD(r, 1);
     if (ISINT(go) || !go || TID(go) != T_BOOL || ((hdr_t *)go)->var > 1)
       fpr_cpanic("Sys.loop: continue must be a Bool");
-    no_vec_out(nx, "Sys.loop: the state may not hold a Vector (use Sys.loopWith)");
-    V t = fpr_msg_copy_fresh(nx);
+    V t = transfer_copy(nx, &scope, "Sys.loop: the state may not hold a Vector (use Sys.loopWith)");
     int more = ((hdr_t *)go)->var == 1;
-    arena_close(slot, &ap, prev);
-    scope.arena = 0;
-    if (scope.held) transfer_free(scope.held);
+    arena_reset(&ap);
+    transfer_retire(&scope);
     state = scope.held = t;
     if (!more) break;
   }
+  arena_close(slot, &ap, prev);
+  scope.arena = 0;
   V out = kp_dup(state);
-  if (scope.held) transfer_free(scope.held);
+  scope_release(&scope);
   *head = scope.previous;
   return out;
 }
@@ -1560,11 +1668,12 @@ static V g_loop_with(V vec, V s, V f) {
   struct fpr_pool *prev = *slot;
   struct fpr_scope scope;
   struct fpr_scope **head = scope_push(&scope);
+  fpr_pool_t ap;
+  arena_open(slot, &ap);
+  scope.arena = &ap;
   V state = s;
   for (;;) {
-    fpr_pool_t ap;
-    arena_open(slot, &ap);
-    scope.arena = &ap;
+    FPR_COST_ADD(fpr_hart(), cost_turns, 1);
     V r = fpr_apply(fpr_apply(f, state), vec);
     if (ISINT(r) || !fpr_in_heap(r) || TID(r) != T_TUP3)
       fpr_cpanic("Sys.loopWith: a step must return (continue, state, vector)");
@@ -1576,19 +1685,18 @@ static V g_loop_with(V vec, V s, V f) {
                  "-- same storage: size it before the loop, only read "
                  "and write it in a step (no push past capacity, no "
                  "new vector)");
-    no_vec_out(nx, "Sys.loopWith: the state may not hold a Vector "
-                   "(thread the one buffer, keep the rest in it)");
-    V t = fpr_msg_copy_fresh(nx);
+    V t = transfer_copy(nx, &scope, "Sys.loopWith: the state may not hold a Vector "
+                                    "(thread the one buffer, keep the rest in it)");
     int more = !ISINT(go) && TID(go) == T_BOOL && ((hdr_t *)go)->var == 1;
-    arena_close(slot, &ap, prev);
-    scope.arena = 0;
-    if (scope.held) transfer_free(scope.held);
+    arena_reset(&ap);
+    transfer_retire(&scope);
     state = scope.held = t;
     if (!more) break;
   }
+  arena_close(slot, &ap, prev);
+  scope.arena = 0;
   V out = kp_dup(state);
-  if (scope.held) transfer_free(scope.held);
-  scope.held = 0;
+  scope_release(&scope);
   hdr_t *tup = (hdr_t *)fpr_alloc(8 + 2 * sizeof(uw));
   tup->tid = T_TUP2;
   tup->var = 0;
@@ -1617,7 +1725,7 @@ void fpr_pool_reclaim(struct fpr_acb *a) {
   struct fpr_scope **head = fpr_acb_scope_slot(a);
   for (struct fpr_scope *s = *head; s; s = s->previous) {
     if (s->arena) fpr_arc_teardown_pool(s->arena);
-    if (s->held) transfer_free(s->held);
+    scope_release(s); /* the state's slab and the spare */
   }
   *head = 0;
   *fpr_acb_override_slot(a) = 0;

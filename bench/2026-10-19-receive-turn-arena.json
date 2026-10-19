@@ -1,0 +1,1083 @@
+{
+ "date": "2026-10-19",
+ "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+ "fprisc_base": "041dc2047e806ae05c2f089e373e2e2d324cafa9",
+ "baseline": "main 041dc20: a fresh arena and a fresh transfer slab per turn (runtime/runtime.c g_loop)",
+ "candidate": "the arena kept open across turns and rewound (arena_reset), two transfer slabs per loop, has_vec folded into the copy",
+ "receive_turn_costs": {
+  "tool": "tools/receive-turn-costs.py --runs 3",
+  "before": [
+   {
+    "shape": "small",
+    "harts": 1,
+    "pairs": 1,
+    "rounds_per_pair": 500000,
+    "turns": 1000006,
+    "best_ms": 217.2,
+    "cpu_ms": 213.8,
+    "turns_per_second": 4604175,
+    "cpu_ns_per_turn": 213.8,
+    "per_turn": {
+     "buddy_allocs": 2.0002,
+     "buddy_frees": 2.0002,
+     "message_slabs": 1.0002,
+     "alloc_requests": 3.0,
+     "alloc_bytes": 168.0001,
+     "copy_bytes": 119.9997
+    },
+    "ledger": {
+     "alloc_requests": 3000019,
+     "alloc_bytes": 168001088,
+     "copies": 2000008,
+     "copy_bytes": 120000416,
+     "message_slabs": 1000188,
+     "turns": 1000006,
+     "buddy_allocs": 2000199,
+     "buddy_frees": 2000196
+    }
+   },
+   {
+    "shape": "small",
+    "harts": 4,
+    "pairs": 4,
+    "rounds_per_pair": 500000,
+    "turns": 4000017,
+    "best_ms": 2945.9,
+    "cpu_ms": 11508.1,
+    "turns_per_second": 1357831,
+    "cpu_ns_per_turn": 2877.0,
+    "per_turn": {
+     "buddy_allocs": 2.0003,
+     "buddy_frees": 2.0003,
+     "message_slabs": 1.0002,
+     "alloc_requests": 3.0,
+     "alloc_bytes": 168.0001,
+     "copy_bytes": 120.0
+    },
+    "ledger": {
+     "alloc_requests": 12000057,
+     "alloc_bytes": 672003296,
+     "copies": 8000025,
+     "copy_bytes": 480002176,
+     "message_slabs": 4000745,
+     "turns": 4000017,
+     "buddy_allocs": 8001268,
+     "buddy_frees": 8001263
+    }
+   },
+   {
+    "shape": "record",
+    "harts": 1,
+    "pairs": 1,
+    "rounds_per_pair": 200000,
+    "turns": 400006,
+    "best_ms": 132.5,
+    "cpu_ms": 130.4,
+    "turns_per_second": 3019139,
+    "cpu_ns_per_turn": 326.1,
+    "per_turn": {
+     "buddy_allocs": 2.0002,
+     "buddy_frees": 2.0002,
+     "message_slabs": 1.0002,
+     "alloc_requests": 8.4999,
+     "alloc_bytes": 431.9933,
+     "copy_bytes": 359.9926
+    },
+    "ledger": {
+     "alloc_requests": 3399994,
+     "alloc_bytes": 172799904,
+     "copies": 800008,
+     "copy_bytes": 143999184,
+     "message_slabs": 400078,
+     "turns": 400006,
+     "buddy_allocs": 800089,
+     "buddy_frees": 800086
+    }
+   },
+   {
+    "shape": "record",
+    "harts": 4,
+    "pairs": 4,
+    "rounds_per_pair": 200000,
+    "turns": 1600016,
+    "best_ms": 1010.0,
+    "cpu_ms": 3909.3,
+    "turns_per_second": 1584163,
+    "cpu_ns_per_turn": 2443.3,
+    "per_turn": {
+     "buddy_allocs": 2.0003,
+     "buddy_frees": 2.0003,
+     "message_slabs": 1.0002,
+     "alloc_requests": 8.4999,
+     "alloc_bytes": 431.9944,
+     "copy_bytes": 359.9944
+    },
+    "ledger": {
+     "alloc_requests": 13599946,
+     "alloc_bytes": 691198016,
+     "copies": 3200025,
+     "copy_bytes": 575996768,
+     "message_slabs": 1600304,
+     "turns": 1600016,
+     "buddy_allocs": 3200513,
+     "buddy_frees": 3200508
+    }
+   },
+   {
+    "shape": "big",
+    "harts": 1,
+    "pairs": 1,
+    "rounds_per_pair": 20000,
+    "turns": 40006,
+    "best_ms": 267.1,
+    "cpu_ms": 265.4,
+    "turns_per_second": 149799,
+    "cpu_ns_per_turn": 6633.2,
+    "per_turn": {
+     "buddy_allocs": 2.0003,
+     "buddy_frees": 2.0002,
+     "message_slabs": 1.0001,
+     "alloc_requests": 503.45,
+     "alloc_bytes": 24189.6016,
+     "copy_bytes": 24141.5908
+    },
+    "ledger": {
+     "alloc_requests": 20141021,
+     "alloc_bytes": 967729200,
+     "copies": 80008,
+     "copy_bytes": 965808480,
+     "message_slabs": 40012,
+     "turns": 40006,
+     "buddy_allocs": 80023,
+     "buddy_frees": 80020
+    }
+   },
+   {
+    "shape": "big",
+    "harts": 4,
+    "pairs": 4,
+    "rounds_per_pair": 20000,
+    "turns": 160018,
+    "best_ms": 368.8,
+    "cpu_ms": 1423.4,
+    "turns_per_second": 433900,
+    "cpu_ns_per_turn": 8895.0,
+    "per_turn": {
+     "buddy_allocs": 2.0003,
+     "buddy_frees": 2.0002,
+     "message_slabs": 1.0001,
+     "alloc_requests": 503.4688,
+     "alloc_bytes": 24190.5023,
+     "copy_bytes": 24142.4996
+    },
+    "ledger": {
+     "alloc_requests": 80564066,
+     "alloc_bytes": 3870915792,
+     "copies": 320026,
+     "copy_bytes": 3863234496,
+     "message_slabs": 160042,
+     "turns": 160018,
+     "buddy_allocs": 320080,
+     "buddy_frees": 320074
+    }
+   }
+  ],
+  "after": [
+   {
+    "shape": "small",
+    "harts": 1,
+    "pairs": 1,
+    "rounds_per_pair": 500000,
+    "turns": 1000006,
+    "best_ms": 125.5,
+    "cpu_ms": 123.1,
+    "turns_per_second": 7968062,
+    "cpu_ns_per_turn": 123.1,
+    "per_turn": {
+     "buddy_allocs": 0.0002,
+     "buddy_frees": 0.0002,
+     "message_slabs": 0.0002,
+     "alloc_requests": 3.0,
+     "alloc_bytes": 168.0001,
+     "copy_bytes": 119.9997
+    },
+    "ledger": {
+     "alloc_requests": 3000019,
+     "alloc_bytes": 168001088,
+     "copies": 2000008,
+     "copy_bytes": 120000416,
+     "message_slabs": 192,
+     "turns": 1000006,
+     "buddy_allocs": 202,
+     "buddy_frees": 199
+    }
+   },
+   {
+    "shape": "small",
+    "harts": 4,
+    "pairs": 4,
+    "rounds_per_pair": 500000,
+    "turns": 4000018,
+    "best_ms": 765.8,
+    "cpu_ms": 2984.1,
+    "turns_per_second": 5223451,
+    "cpu_ns_per_turn": 746.0,
+    "per_turn": {
+     "buddy_allocs": 0.0003,
+     "buddy_frees": 0.0003,
+     "message_slabs": 0.0002,
+     "alloc_requests": 3.0,
+     "alloc_bytes": 168.0001,
+     "copy_bytes": 120.0
+    },
+    "ledger": {
+     "alloc_requests": 12000058,
+     "alloc_bytes": 672003344,
+     "copies": 8000026,
+     "copy_bytes": 480002240,
+     "message_slabs": 757,
+     "turns": 4000018,
+     "buddy_allocs": 1194,
+     "buddy_frees": 1188
+    }
+   },
+   {
+    "shape": "record",
+    "harts": 1,
+    "pairs": 1,
+    "rounds_per_pair": 200000,
+    "turns": 400006,
+    "best_ms": 83.8,
+    "cpu_ms": 81.7,
+    "turns_per_second": 4772478,
+    "cpu_ns_per_turn": 204.2,
+    "per_turn": {
+     "buddy_allocs": 0.0002,
+     "buddy_frees": 0.0002,
+     "message_slabs": 0.0002,
+     "alloc_requests": 8.4999,
+     "alloc_bytes": 431.9933,
+     "copy_bytes": 359.9926
+    },
+    "ledger": {
+     "alloc_requests": 3399994,
+     "alloc_bytes": 172799904,
+     "copies": 800008,
+     "copy_bytes": 143999184,
+     "message_slabs": 82,
+     "turns": 400006,
+     "buddy_allocs": 92,
+     "buddy_frees": 89
+    }
+   },
+   {
+    "shape": "record",
+    "harts": 4,
+    "pairs": 4,
+    "rounds_per_pair": 200000,
+    "turns": 1600018,
+    "best_ms": 303.5,
+    "cpu_ms": 1180.2,
+    "turns_per_second": 5272004,
+    "cpu_ns_per_turn": 737.6,
+    "per_turn": {
+     "buddy_allocs": 0.0003,
+     "buddy_frees": 0.0003,
+     "message_slabs": 0.0002,
+     "alloc_requests": 8.4999,
+     "alloc_bytes": 431.9943,
+     "copy_bytes": 359.9943
+    },
+    "ledger": {
+     "alloc_requests": 13599958,
+     "alloc_bytes": 691198608,
+     "copies": 3200026,
+     "copy_bytes": 575997312,
+     "message_slabs": 317,
+     "turns": 1600018,
+     "buddy_allocs": 482,
+     "buddy_frees": 476
+    }
+   },
+   {
+    "shape": "big",
+    "harts": 1,
+    "pairs": 1,
+    "rounds_per_pair": 20000,
+    "turns": 40006,
+    "best_ms": 217.3,
+    "cpu_ms": 214.5,
+    "turns_per_second": 184068,
+    "cpu_ns_per_turn": 5362.9,
+    "per_turn": {
+     "buddy_allocs": 0.0006,
+     "buddy_frees": 0.0006,
+     "message_slabs": 0.0004,
+     "alloc_requests": 503.45,
+     "alloc_bytes": 24189.6016,
+     "copy_bytes": 24141.5908
+    },
+    "ledger": {
+     "alloc_requests": 20141021,
+     "alloc_bytes": 967729200,
+     "copies": 80008,
+     "copy_bytes": 965808480,
+     "message_slabs": 16,
+     "turns": 40006,
+     "buddy_allocs": 26,
+     "buddy_frees": 23
+    }
+   },
+   {
+    "shape": "big",
+    "harts": 4,
+    "pairs": 4,
+    "rounds_per_pair": 20000,
+    "turns": 160018,
+    "best_ms": 257.2,
+    "cpu_ms": 999.4,
+    "turns_per_second": 622106,
+    "cpu_ns_per_turn": 6245.2,
+    "per_turn": {
+     "buddy_allocs": 0.0005,
+     "buddy_frees": 0.0005,
+     "message_slabs": 0.0003,
+     "alloc_requests": 503.4688,
+     "alloc_bytes": 24190.5023,
+     "copy_bytes": 24142.4996
+    },
+    "ledger": {
+     "alloc_requests": 80564066,
+     "alloc_bytes": 3870915792,
+     "copies": 320026,
+     "copy_bytes": 3863234496,
+     "message_slabs": 53,
+     "turns": 160018,
+     "buddy_allocs": 85,
+     "buddy_frees": 80
+    }
+   }
+  ]
+ },
+ "bench": {
+  "tool": "tools/bench.py pingpong xpingpong (best of 7)",
+  "before": {
+   "pingpong": {
+    "best_ms": 646.0,
+    "median_ms": 903.2
+   },
+   "xpingpong": {
+    "best_ms": 1032.6,
+    "median_ms": 1049.7
+   }
+  },
+  "after": {
+   "pingpong": {
+    "best_ms": 351.6,
+    "median_ms": 427.9
+   },
+   "xpingpong": {
+    "best_ms": 399.9,
+    "median_ms": 404.8
+   }
+  }
+ },
+ "runtime_costs_after": {
+  "results": [
+   {
+    "kind": "alloc",
+    "receive_turns": false,
+    "payload_bytes": 16,
+    "operations": 4096,
+    "harts": 1,
+    "best_ms": 274.433,
+    "median_ms": 274.433,
+    "operations_per_second": 14925,
+    "probe_best_ms": 338.525,
+    "ledger": {
+     "alloc_requests": 4096,
+     "alloc_bytes": 131072,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0,
+     "turns": 0,
+     "buddy_allocs": 1,
+     "buddy_frees": 0
+    }
+   },
+   {
+    "kind": "alloc",
+    "receive_turns": false,
+    "payload_bytes": 256,
+    "operations": 4096,
+    "harts": 1,
+    "best_ms": 269.148,
+    "median_ms": 269.148,
+    "operations_per_second": 15218,
+    "probe_best_ms": 244.383,
+    "ledger": {
+     "alloc_requests": 4096,
+     "alloc_bytes": 1114112,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0,
+     "turns": 0,
+     "buddy_allocs": 1,
+     "buddy_frees": 0
+    }
+   },
+   {
+    "kind": "alloc",
+    "receive_turns": false,
+    "payload_bytes": 4096,
+    "operations": 4096,
+    "harts": 1,
+    "best_ms": 421.277,
+    "median_ms": 421.277,
+    "operations_per_second": 9723,
+    "probe_best_ms": 288.456,
+    "ledger": {
+     "alloc_requests": 4096,
+     "alloc_bytes": 16842752,
+     "copies": 0,
+     "copy_bytes": 0,
+     "message_slabs": 0,
+     "turns": 0,
+     "buddy_allocs": 1,
+     "buddy_frees": 0
+    }
+   },
+   {
+    "kind": "message",
+    "receive_turns": false,
+    "payload_bytes": 16,
+    "operations": 256,
+    "harts": 1,
+    "best_ms": 266.328,
+    "median_ms": 266.328,
+    "operations_per_second": 961,
+    "probe_best_ms": 663.02,
+    "ledger": {
+     "alloc_requests": 0,
+     "alloc_bytes": 0,
+     "copies": 512,
+     "copy_bytes": 12288,
+     "message_slabs": 0,
+     "turns": 0,
+     "buddy_allocs": 0,
+     "buddy_frees": 0
+    }
+   },
+   {
+    "kind": "message",
+    "receive_turns": false,
+    "payload_bytes": 256,
+    "operations": 256,
+    "harts": 1,
+    "best_ms": 297.457,
+    "median_ms": 297.457,
+    "operations_per_second": 861,
+    "probe_best_ms": 278.383,
+    "ledger": {
+     "alloc_requests": 0,
+     "alloc_bytes": 0,
+     "copies": 512,
+     "copy_bytes": 73728,
+     "message_slabs": 0,
+     "turns": 0,
+     "buddy_allocs": 0,
+     "buddy_frees": 0
+    }
+   },
+   {
+    "kind": "message",
+    "receive_turns": false,
+    "payload_bytes": 4096,
+    "operations": 256,
+    "harts": 1,
+    "best_ms": 261.073,
+    "median_ms": 261.073,
+    "operations_per_second": 981,
+    "probe_best_ms": 244.924,
+    "ledger": {
+     "alloc_requests": 0,
+     "alloc_bytes": 0,
+     "copies": 512,
+     "copy_bytes": 1056768,
+     "message_slabs": 8,
+     "turns": 0,
+     "buddy_allocs": 8,
+     "buddy_frees": 7
+    }
+   },
+   {
+    "kind": "message",
+    "receive_turns": true,
+    "payload_bytes": 16,
+    "operations": 256,
+    "harts": 1,
+    "best_ms": 245.7,
+    "median_ms": 245.7,
+    "operations_per_second": 1042,
+    "probe_best_ms": 332.333,
+    "ledger": {
+     "alloc_requests": 1541,
+     "alloc_bytes": 86304,
+     "copies": 1025,
+     "copy_bytes": 86016,
+     "message_slabs": 4,
+     "turns": 514,
+     "buddy_allocs": 7,
+     "buddy_frees": 3
+    }
+   },
+   {
+    "kind": "message",
+    "receive_turns": true,
+    "payload_bytes": 256,
+    "operations": 256,
+    "harts": 1,
+    "best_ms": 250.34,
+    "median_ms": 250.34,
+    "operations_per_second": 1023,
+    "probe_best_ms": 260.075,
+    "ledger": {
+     "alloc_requests": 1541,
+     "alloc_bytes": 86304,
+     "copies": 1025,
+     "copy_bytes": 208896,
+     "message_slabs": 4,
+     "turns": 514,
+     "buddy_allocs": 7,
+     "buddy_frees": 3
+    }
+   },
+   {
+    "kind": "message",
+    "receive_turns": true,
+    "payload_bytes": 4096,
+    "operations": 256,
+    "harts": 1,
+    "best_ms": 252.775,
+    "median_ms": 252.775,
+    "operations_per_second": 1013,
+    "probe_best_ms": 264.057,
+    "ledger": {
+     "alloc_requests": 1541,
+     "alloc_bytes": 86304,
+     "copies": 1025,
+     "copy_bytes": 2174976,
+     "message_slabs": 12,
+     "turns": 514,
+     "buddy_allocs": 15,
+     "buddy_frees": 10
+    }
+   },
+   {
+    "kind": "message",
+    "receive_turns": false,
+    "payload_bytes": 16,
+    "operations": 256,
+    "harts": 2,
+    "best_ms": 244.671,
+    "median_ms": 244.671,
+    "operations_per_second": 1046,
+    "probe_best_ms": 279.238,
+    "ledger": {
+     "alloc_requests": 0,
+     "alloc_bytes": 0,
+     "copies": 512,
+     "copy_bytes": 12288,
+     "message_slabs": 0,
+     "turns": 0,
+     "buddy_allocs": 0,
+     "buddy_frees": 0
+    }
+   },
+   {
+    "kind": "message",
+    "receive_turns": false,
+    "payload_bytes": 256,
+    "operations": 256,
+    "harts": 2,
+    "best_ms": 240.542,
+    "median_ms": 240.542,
+    "operations_per_second": 1064,
+    "probe_best_ms": 245.724,
+    "ledger": {
+     "alloc_requests": 0,
+     "alloc_bytes": 0,
+     "copies": 512,
+     "copy_bytes": 73728,
+     "message_slabs": 0,
+     "turns": 0,
+     "buddy_allocs": 0,
+     "buddy_frees": 0
+    }
+   },
+   {
+    "kind": "message",
+    "receive_turns": false,
+    "payload_bytes": 4096,
+    "operations": 256,
+    "harts": 2,
+    "best_ms": 257.183,
+    "median_ms": 257.183,
+    "operations_per_second": 995,
+    "probe_best_ms": 260.634,
+    "ledger": {
+     "alloc_requests": 0,
+     "alloc_bytes": 0,
+     "copies": 512,
+     "copy_bytes": 1056768,
+     "message_slabs": 8,
+     "turns": 0,
+     "buddy_allocs": 8,
+     "buddy_frees": 7
+    }
+   },
+   {
+    "kind": "message",
+    "receive_turns": true,
+    "payload_bytes": 16,
+    "operations": 256,
+    "harts": 2,
+    "best_ms": 246.62,
+    "median_ms": 246.62,
+    "operations_per_second": 1038,
+    "probe_best_ms": 261.865,
+    "ledger": {
+     "alloc_requests": 1541,
+     "alloc_bytes": 86304,
+     "copies": 1025,
+     "copy_bytes": 86016,
+     "message_slabs": 4,
+     "turns": 514,
+     "buddy_allocs": 7,
+     "buddy_frees": 3
+    }
+   },
+   {
+    "kind": "message",
+    "receive_turns": true,
+    "payload_bytes": 256,
+    "operations": 256,
+    "harts": 2,
+    "best_ms": 247.018,
+    "median_ms": 247.018,
+    "operations_per_second": 1036,
+    "probe_best_ms": 256.255,
+    "ledger": {
+     "alloc_requests": 1541,
+     "alloc_bytes": 86304,
+     "copies": 1025,
+     "copy_bytes": 208896,
+     "message_slabs": 4,
+     "turns": 514,
+     "buddy_allocs": 7,
+     "buddy_frees": 3
+    }
+   },
+   {
+    "kind": "message",
+    "receive_turns": true,
+    "payload_bytes": 4096,
+    "operations": 256,
+    "harts": 2,
+    "best_ms": 376.92,
+    "median_ms": 376.92,
+    "operations_per_second": 679,
+    "probe_best_ms": 252.596,
+    "ledger": {
+     "alloc_requests": 1541,
+     "alloc_bytes": 86304,
+     "copies": 1025,
+     "copy_bytes": 2174976,
+     "message_slabs": 12,
+     "turns": 514,
+     "buddy_allocs": 15,
+     "buddy_frees": 10
+    }
+   }
+  ]
+ },
+ "liveboard": {
+  "tool": "tools/session-memory.py --qos ../qos (three runs each, alternating; a list of runs, each a list of the 1/10/50/100-session rows)",
+  "before": [
+   [
+    {
+     "alloc_requests": 312034,
+     "alloc_bytes": 17272544,
+     "copies": 63,
+     "copy_bytes": 199952,
+     "message_slabs": 19,
+     "arena_reserved_kib": 8576,
+     "grow_bytes": 22281560,
+     "spawns": 10,
+     "stack_misses": 0,
+     "channel_carves": 2,
+     "peak_rss_kib": 17440,
+     "sessions": 1,
+     "admission_seconds": 0.01414
+    },
+    {
+     "alloc_requests": 8272913,
+     "alloc_bytes": 455333168,
+     "copies": 480,
+     "copy_bytes": 4549680,
+     "message_slabs": 108,
+     "arena_reserved_kib": 16896,
+     "grow_bytes": 506517328,
+     "spawns": 29,
+     "stack_misses": 0,
+     "channel_carves": 4,
+     "peak_rss_kib": 70048,
+     "sessions": 10,
+     "admission_seconds": 0.131376
+    },
+    {
+     "alloc_requests": 154652671,
+     "alloc_bytes": 8474699616,
+     "copies": 5776,
+     "copy_bytes": 81230448,
+     "message_slabs": 928,
+     "arena_reserved_kib": 55552,
+     "grow_bytes": 9229853208,
+     "spawns": 110,
+     "stack_misses": 0,
+     "channel_carves": 14,
+     "peak_rss_kib": 287056,
+     "sessions": 50,
+     "admission_seconds": 0.908663
+    },
+    {
+     "alloc_requests": 569054658,
+     "alloc_bytes": 31159946032,
+     "copies": 19869,
+     "copy_bytes": 296942592,
+     "message_slabs": 2891,
+     "arena_reserved_kib": 99712,
+     "grow_bytes": 33842564160,
+     "spawns": 211,
+     "stack_misses": 0,
+     "channel_carves": 27,
+     "peak_rss_kib": 561760,
+     "sessions": 100,
+     "admission_seconds": 3.197202
+    }
+   ],
+   [
+    {
+     "alloc_requests": 312034,
+     "alloc_bytes": 17272544,
+     "copies": 63,
+     "copy_bytes": 199952,
+     "message_slabs": 19,
+     "arena_reserved_kib": 8576,
+     "grow_bytes": 22281560,
+     "spawns": 10,
+     "stack_misses": 0,
+     "channel_carves": 2,
+     "peak_rss_kib": 17440,
+     "sessions": 1,
+     "admission_seconds": 0.010062
+    },
+    {
+     "alloc_requests": 8396797,
+     "alloc_bytes": 462111024,
+     "copies": 485,
+     "copy_bytes": 4614112,
+     "message_slabs": 108,
+     "arena_reserved_kib": 16896,
+     "grow_bytes": 513791696,
+     "spawns": 29,
+     "stack_misses": 0,
+     "channel_carves": 4,
+     "peak_rss_kib": 60832,
+     "sessions": 10,
+     "admission_seconds": 0.143271
+    },
+    {
+     "alloc_requests": 155644216,
+     "alloc_bytes": 8528944224,
+     "copies": 5817,
+     "copy_bytes": 81743424,
+     "message_slabs": 930,
+     "arena_reserved_kib": 55552,
+     "grow_bytes": 9288310280,
+     "spawns": 110,
+     "stack_misses": 0,
+     "channel_carves": 14,
+     "peak_rss_kib": 264144,
+     "sessions": 50,
+     "admission_seconds": 1.419772
+    },
+    {
+     "alloc_requests": 590371607,
+     "alloc_bytes": 32326178656,
+     "copies": 20558,
+     "copy_bytes": 308002960,
+     "message_slabs": 2973,
+     "arena_reserved_kib": 99136,
+     "grow_bytes": 35105354640,
+     "spawns": 211,
+     "stack_misses": 0,
+     "channel_carves": 27,
+     "peak_rss_kib": 524192,
+     "sessions": 100,
+     "admission_seconds": 6.095295
+    }
+   ],
+   [
+    {
+     "alloc_requests": 312034,
+     "alloc_bytes": 17272544,
+     "copies": 63,
+     "copy_bytes": 199952,
+     "message_slabs": 19,
+     "arena_reserved_kib": 8576,
+     "grow_bytes": 22281560,
+     "spawns": 10,
+     "stack_misses": 0,
+     "channel_carves": 2,
+     "peak_rss_kib": 17440,
+     "sessions": 1,
+     "admission_seconds": 0.007607
+    },
+    {
+     "alloc_requests": 8148841,
+     "alloc_bytes": 448546032,
+     "copies": 470,
+     "copy_bytes": 4484528,
+     "message_slabs": 107,
+     "arena_reserved_kib": 16768,
+     "grow_bytes": 498980832,
+     "spawns": 29,
+     "stack_misses": 0,
+     "channel_carves": 4,
+     "peak_rss_kib": 66896,
+     "sessions": 10,
+     "admission_seconds": 0.16176
+    },
+    {
+     "alloc_requests": 158989970,
+     "alloc_bytes": 8711982272,
+     "copies": 5915,
+     "copy_bytes": 83473616,
+     "message_slabs": 945,
+     "arena_reserved_kib": 55552,
+     "grow_bytes": 9486684176,
+     "spawns": 110,
+     "stack_misses": 0,
+     "channel_carves": 14,
+     "peak_rss_kib": 276208,
+     "sessions": 50,
+     "admission_seconds": 1.883661
+    },
+    {
+     "alloc_requests": 533733528,
+     "alloc_bytes": 29227580896,
+     "copies": 18723,
+     "copy_bytes": 278689296,
+     "message_slabs": 2744,
+     "arena_reserved_kib": 99200,
+     "grow_bytes": 31749578592,
+     "spawns": 211,
+     "stack_misses": 0,
+     "channel_carves": 27,
+     "peak_rss_kib": 553552,
+     "sessions": 100,
+     "admission_seconds": 5.156502
+    }
+   ]
+  ],
+  "after": [
+   [
+    {
+     "alloc_requests": 312034,
+     "alloc_bytes": 17272608,
+     "copies": 63,
+     "copy_bytes": 200048,
+     "message_slabs": 18,
+     "arena_reserved_kib": 8960,
+     "grow_bytes": 21822856,
+     "spawns": 10,
+     "stack_misses": 0,
+     "channel_carves": 2,
+     "peak_rss_kib": 16800,
+     "sessions": 1,
+     "admission_seconds": 0.020459
+    },
+    {
+     "alloc_requests": 8148903,
+     "alloc_bytes": 448549344,
+     "copies": 474,
+     "copy_bytes": 4485872,
+     "message_slabs": 86,
+     "arena_reserved_kib": 17280,
+     "grow_bytes": 494066072,
+     "spawns": 29,
+     "stack_misses": 0,
+     "channel_carves": 4,
+     "peak_rss_kib": 69216,
+     "sessions": 10,
+     "admission_seconds": 0.137577
+    },
+    {
+     "alloc_requests": 157255316,
+     "alloc_bytes": 8617083168,
+     "copies": 5866,
+     "copy_bytes": 82579040,
+     "message_slabs": 836,
+     "arena_reserved_kib": 55936,
+     "grow_bytes": 9360203624,
+     "spawns": 110,
+     "stack_misses": 0,
+     "channel_carves": 14,
+     "peak_rss_kib": 260368,
+     "sessions": 50,
+     "admission_seconds": 0.926699
+    },
+    {
+     "alloc_requests": 561741198,
+     "alloc_bytes": 30759827984,
+     "copies": 19632,
+     "copy_bytes": 293167872,
+     "message_slabs": 2649,
+     "arena_reserved_kib": 100096,
+     "grow_bytes": 33361345280,
+     "spawns": 211,
+     "stack_misses": 0,
+     "channel_carves": 27,
+     "peak_rss_kib": 613312,
+     "sessions": 100,
+     "admission_seconds": 3.169154
+    }
+   ],
+   [
+    {
+     "alloc_requests": 312034,
+     "alloc_bytes": 17272608,
+     "copies": 63,
+     "copy_bytes": 200048,
+     "message_slabs": 18,
+     "arena_reserved_kib": 8960,
+     "grow_bytes": 21822856,
+     "spawns": 10,
+     "stack_misses": 0,
+     "channel_carves": 2,
+     "peak_rss_kib": 16816,
+     "sessions": 1,
+     "admission_seconds": 0.011679
+    },
+    {
+     "alloc_requests": 8272695,
+     "alloc_bytes": 455321904,
+     "copies": 469,
+     "copy_bytes": 4548320,
+     "message_slabs": 87,
+     "arena_reserved_kib": 17152,
+     "grow_bytes": 501340440,
+     "spawns": 29,
+     "stack_misses": 0,
+     "channel_carves": 4,
+     "peak_rss_kib": 58608,
+     "sessions": 10,
+     "admission_seconds": 0.20752
+    },
+    {
+     "alloc_requests": 157750978,
+     "alloc_bytes": 8644200464,
+     "copies": 5881,
+     "copy_bytes": 82835088,
+     "message_slabs": 833,
+     "arena_reserved_kib": 55936,
+     "grow_bytes": 9388907904,
+     "spawns": 110,
+     "stack_misses": 0,
+     "channel_carves": 14,
+     "peak_rss_kib": 273344,
+     "sessions": 50,
+     "admission_seconds": 1.589486
+    },
+    {
+     "alloc_requests": 582313741,
+     "alloc_bytes": 31885327936,
+     "copies": 20292,
+     "copy_bytes": 303809488,
+     "message_slabs": 2740,
+     "arena_reserved_kib": 100096,
+     "grow_bytes": 34580751664,
+     "spawns": 211,
+     "stack_misses": 0,
+     "channel_carves": 27,
+     "peak_rss_kib": 533472,
+     "sessions": 100,
+     "admission_seconds": 5.77438
+    }
+   ],
+   [
+    {
+     "alloc_requests": 312034,
+     "alloc_bytes": 17272608,
+     "copies": 63,
+     "copy_bytes": 200048,
+     "message_slabs": 18,
+     "arena_reserved_kib": 8960,
+     "grow_bytes": 21822856,
+     "spawns": 10,
+     "stack_misses": 0,
+     "channel_carves": 2,
+     "peak_rss_kib": 16816,
+     "sessions": 1,
+     "admission_seconds": 0.008627
+    },
+    {
+     "alloc_requests": 8272934,
+     "alloc_bytes": 455333984,
+     "copies": 474,
+     "copy_bytes": 4548624,
+     "message_slabs": 86,
+     "arena_reserved_kib": 17152,
+     "grow_bytes": 501209376,
+     "spawns": 29,
+     "stack_misses": 0,
+     "channel_carves": 4,
+     "peak_rss_kib": 74880,
+     "sessions": 10,
+     "admission_seconds": 0.124592
+    },
+    {
+     "alloc_requests": 153537472,
+     "alloc_bytes": 8413688960,
+     "copies": 5750,
+     "copy_bytes": 80658256,
+     "message_slabs": 818,
+     "arena_reserved_kib": 55936,
+     "grow_bytes": 9139613432,
+     "spawns": 110,
+     "stack_misses": 0,
+     "channel_carves": 14,
+     "peak_rss_kib": 262000,
+     "sessions": 50,
+     "admission_seconds": 1.564719
+    },
+    {
+     "alloc_requests": 575003459,
+     "alloc_bytes": 31485397712,
+     "copies": 20072,
+     "copy_bytes": 300038608,
+     "message_slabs": 2711,
+     "arena_reserved_kib": 100096,
+     "grow_bytes": 34147894152,
+     "spawns": 211,
+     "stack_misses": 0,
+     "channel_carves": 27,
+     "peak_rss_kib": 604688,
+     "sessions": 100,
+     "admission_seconds": 4.773083
+    }
+   ]
+  ]
+ }
+}

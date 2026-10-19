@@ -119,8 +119,12 @@ typedef struct fpr_slab {
                            * never held a promoted object has no entry to
                            * find and takes no lock (runtime.c, the
                            * soundness argument sits on the decref). */
-  uw slab_pad_;           /* keeps sizeof a multiple of 16: the first block
-                           * header sits at sl + 1 and objects stay 16-aligned */
+  uw pushed;              /* a cell of this slab has been pushed to its pool's
+                           * buckets (fpr_free) since the slab was issued:
+                           * an arena's turn reset zeroes the bucket heads only
+                           * when a slab it walks says so, and clears it on the
+                           * slab it keeps.  (Also what keeps sizeof a multiple
+                           * of 16: objects start at sl + 1, 16-aligned.) */
 } fpr_slab_t;
 _Static_assert(sizeof(fpr_slab_t) % 16 == 0, "fpr_slab_t: objects start at sl + 1, keep it 16-aligned");
 
@@ -387,6 +391,9 @@ typedef struct {
                                            * (docs/2026-10-18-ARC-TABLE-CHURN.md) */
   uint64_t xl_drain_n, xl_drain_ns, xl_run_n, xl_run_ns;
   uint64_t xp_park_n, xp_park_ns, xp_bell_n, xp_bell_ns;
+  uint64_t cost_turns; /* value-state turns run (Sys.loop, loopWith, the
+                        * receive trampoline): the denominator of the
+                        * per-turn ledgers (docs/2026-10-19-RECEIVE-TURN-ARENA.md) */
 #endif
 } fpr_hart_t;
 
@@ -408,6 +415,9 @@ uint64_t hal_probe_ns(void); /* machine/posix/hal.c: a fine monotonic clock */
 #endif
 #ifdef FPR_COST_PROBE
 #define FPR_COST_ADD(h, field, n) do { if (h) __atomic_fetch_add(&(h)->field, (uint64_t)(n), __ATOMIC_RELAXED); } while (0)
+/* the buddy's own ledger (buddy.c, counted under its lock): blocks handed
+ * out and taken back, whoever asked -- a hart is not always known there */
+extern uint64_t fpr_cost_buddy_allocs, fpr_cost_buddy_frees;
 #else
 #define FPR_COST_ADD(h, field, n) ((void)0)
 #endif
