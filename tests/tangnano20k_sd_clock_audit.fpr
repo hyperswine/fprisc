@@ -1,0 +1,24 @@
+profile base.
+# Read-only, card-specific sector evidence after the clock experiment.
+# It uses the SD protocol directly; it never imports FAT or calls Sd.write.
+Sd = use "std/tangnano20k/sd".
+Hex = use "tests/tangnano20k_sd_backup".
+Program = use "std/program".
+need result = case result of Ok value -> value | Err why -> error why.
+dump card block = print "SD CLOCK AUDIT {block} {Hex.hex (need (Sd.read card block))}".
+main : Unit .
+main =
+  divider = parseInt (Program.envOr "17" "SD_DIVIDER");
+  card = need (Sd.open divider);
+  _ = if Sd.blocks card == 122152960 and Sd.product card == "SDABC" then Unit else error "SD clock audit card differs";
+  _ = print "SD CLOCK AUDIT CARD SDABC BLOCKS {Sd.blocks card} DIVIDER {divider}";
+  _ = dump card 0;
+  _ = dump card 8194;
+  _ = dump card 8195;
+  _ = dump card 120913920;
+  _ = dump card 120913921;
+  _ = dump card 120914049;
+  _ = dump card 120914177;
+  _ = dump card 120914209;
+  _ = dump card 120914210;
+  print "FP SD CLOCK INDEPENDENT SECTOR AUDIT HOLDS".

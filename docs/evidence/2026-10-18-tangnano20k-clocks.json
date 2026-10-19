@@ -1,0 +1,1169 @@
+{
+  "date": "2026-10-18",
+  "complete": true,
+  "status": "physical72_passed",
+  "request": "108 MHz CPU with slower SDRAM, then FP-RISC and SD card acceptance",
+  "outcome_108": "Timing failed; physical UART passed, RV32C failed; stopped before FP-RISC and SD writes",
+  "frozen_rtl": {
+    "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr-trial3/sdram_pipeline_risc.v",
+    "sha256": "3b2a9fe155b15806517c575a91c285aa5060f5171861d0ccfd28d270d980fcc0",
+    "bytes": 794757
+  },
+  "vendor": {
+    "version": "V1.9.12.04",
+    "part": "GW2AR-LV18QN88C8/I7",
+    "setup_model": "Slow 0.95 V 85 C C8/I7",
+    "hold_model": "Fast 1.05 V 0 C C8/I7",
+    "internal_checks_only": true
+  },
+  "timing": {
+    "trial1_108": {
+      "cpu_mhz": 108,
+      "sdram_mhz": 54,
+      "cpu_fmax_mhz": 79.514,
+      "memory_fmax_mhz": 141.538,
+      "worst_setup_slack_ns": -3.317,
+      "setup_violated_endpoints": 1955,
+      "hold_violated_endpoints": 0,
+      "timing_report": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr/impl/pnr/sdram_test.tr",
+        "sha256": "98606397d0863f845bdaba4614a5299b0df154f4ee2e71fa3994f7742d471681",
+        "bytes": 293757
+      },
+      "resource_report": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr/impl/pnr/sdram_test.rpt.txt",
+        "sha256": "b6404527e7e2536120ac58f6430c7d6809702c158c992784a7a1adf026444d34",
+        "bytes": 45186
+      },
+      "fpga_image": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr/impl/pnr/sdram_test.fs",
+        "sha256": "7c945ee7ca5b766974fb45b66da5559041ae98b62011c213223b558672b1c73e",
+        "bytes": 7261998
+      },
+      "constraints": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr/clocks.sdc",
+        "sha256": "f155d0ac97811ce7974ef5edb967abf94cb6dcb27e057a684458555b5146ab44",
+        "bytes": 784
+      },
+      "top": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr/pipeline_top.v",
+        "sha256": "fed96d7acf09777e309403f1c1610da1731ac9e117e89750912a639756c052fb",
+        "bytes": 3207
+      }
+    },
+    "trial2_108": {
+      "cpu_mhz": 108,
+      "sdram_mhz": 54,
+      "cpu_fmax_mhz": 79.757,
+      "memory_fmax_mhz": 133.621,
+      "worst_setup_slack_ns": -3.279,
+      "setup_violated_endpoints": 1549,
+      "hold_violated_endpoints": 0,
+      "timing_report": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr-trial2/impl/pnr/sdram_test.tr",
+        "sha256": "b346abc24dfe24ddb304b3f15d60b24e01badb123048977ff5c694fea38758ca",
+        "bytes": 301741
+      },
+      "resource_report": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr-trial2/impl/pnr/sdram_test.rpt.txt",
+        "sha256": "cce1c3eb62ad43cb9d05d07d7ea6eec4c576b6f5f3df303069002b901d37bc08",
+        "bytes": 45195
+      },
+      "fpga_image": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr-trial2/impl/pnr/sdram_test.fs",
+        "sha256": "67589a6c38a11264e2c5efb7f37e0af2f19390469d6a19107a0130b95e1bfab3",
+        "bytes": 7261998
+      },
+      "constraints": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr-trial2/clocks.sdc",
+        "sha256": "f155d0ac97811ce7974ef5edb967abf94cb6dcb27e057a684458555b5146ab44",
+        "bytes": 784
+      },
+      "top": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr-trial2/pipeline_top.v",
+        "sha256": "fed96d7acf09777e309403f1c1610da1731ac9e117e89750912a639756c052fb",
+        "bytes": 3207
+      }
+    },
+    "trial3_108": {
+      "cpu_mhz": 108,
+      "sdram_mhz": 54,
+      "cpu_fmax_mhz": 82.359,
+      "memory_fmax_mhz": 116.431,
+      "worst_setup_slack_ns": -2.883,
+      "setup_violated_endpoints": 2367,
+      "hold_violated_endpoints": 0,
+      "timing_report": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr-trial3/impl/pnr/sdram_test.tr",
+        "sha256": "8817a7c8f4de317e2d0a131c23a46e80b5c9cf1a4c1b709e0b74a416ddf30d16",
+        "bytes": 280728
+      },
+      "resource_report": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr-trial3/impl/pnr/sdram_test.rpt.txt",
+        "sha256": "97c4be0e94f946f640a5876326ff23106c99baf78d6f7cfcc8898bdbd7b09171",
+        "bytes": 45208
+      },
+      "fpga_image": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr-trial3/impl/pnr/sdram_test.fs",
+        "sha256": "3f23060d1edb5cb5cdb4dd045c1b0ad28da39db71c340a2386210c2a5b364c8d",
+        "bytes": 7261998
+      },
+      "constraints": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr-trial3/clocks.sdc",
+        "sha256": "f5d23d733c92a864a648a999f6a9fc5d4642a804942f77981fe66483af27a704",
+        "bytes": 798
+      },
+      "top": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr-trial3/pipeline_top.v",
+        "sha256": "86c7995e1fab53791d685d9a5bcbe51561d8cbb7dac307b093b03e29a021cd8c",
+        "bytes": 3224
+      }
+    },
+    "trial3_72": {
+      "cpu_mhz": 72,
+      "sdram_mhz": 54,
+      "cpu_fmax_mhz": 72.018,
+      "memory_fmax_mhz": 121.169,
+      "worst_setup_slack_ns": 0.003,
+      "setup_violated_endpoints": 0,
+      "hold_violated_endpoints": 0,
+      "timing_report": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c72-m54-sd-fpr-trial3/impl/pnr/sdram_test.tr",
+        "sha256": "64c0ab00ebe1d9b7fb4e8a44439a45be487c5b7591b4d257c759ae2eebfdaabb",
+        "bytes": 269378
+      },
+      "resource_report": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c72-m54-sd-fpr-trial3/impl/pnr/sdram_test.rpt.txt",
+        "sha256": "c99f1a7e39399fa2a326f362e5142eaab3ca23c8349f0e7f23142cb45ade40d8",
+        "bytes": 45212
+      },
+      "fpga_image": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c72-m54-sd-fpr-trial3/impl/pnr/sdram_test.fs",
+        "sha256": "49bf20aa59d07b6b480fa7ba80885a1468b4a52a7118b8767c0c0b026301ecf8",
+        "bytes": 7261998
+      },
+      "constraints": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c72-m54-sd-fpr-trial3/clocks.sdc",
+        "sha256": "8c370ebbf2e60a1216dd0a593c62959da76e92fa9309620e19992a58ba0ee906",
+        "bytes": 798
+      },
+      "top": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c72-m54-sd-fpr-trial3/pipeline_top.v",
+        "sha256": "f8920172116d45273b3adfddb006d362d9349be8b080eec57412b6a3a6e77f3a",
+        "bytes": 3222
+      }
+    }
+  },
+  "resources_72": {
+    "logic": 12933,
+    "registers": 5036,
+    "bsram": 5,
+    "available_bsram": 46
+  },
+  "physical_108": {
+    "cpu_mhz": 108,
+    "sdram_mhz": 54,
+    "bitstream_sha256": "3f23060d1edb5cb5cdb4dd045c1b0ad28da39db71c340a2386210c2a5b364c8d",
+    "complete": false,
+    "passed": false,
+    "cases": [
+      {
+        "name": "uart",
+        "passed": true,
+        "seconds": 0.0378350829705596,
+        "command": [
+          "python3",
+          "/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py",
+          "--probe",
+          "--freq-mhz",
+          "108"
+        ],
+        "exit_code": 0,
+        "log_sha256": "1991e5bb5722e226f000cee15125ed17e5edbeaaf655c1161203e31f30b8de16",
+        "output": "PASS: board UART diagnostic\n"
+      },
+      {
+        "name": "rv32c",
+        "passed": false,
+        "seconds": 0.22143870790023357,
+        "command": [
+          "python3",
+          "/Users/jasonqin/Documents/GitHub/HaskPlayground/boards/tangnano20k/sdram/check_compressed_board.py",
+          "--freq-mhz",
+          "108"
+        ],
+        "exit_code": 1,
+        "log_sha256": "143c783e6907f20bb778aaf9264fca12c2fa88719fb91c6bdb2dea7712a80e07",
+        "output": "584 bytes -> /Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/rv32c-board-checks/compressed-frame.hex\nDONE00000000\nDONEDONEDONEDONEDONE00000000\nDONEDONEDONE00000000\nDONEDONE\nTraceback (most recent call last):\n  File \"/Users/jasonqin/Documents/GitHub/HaskPlayground/boards/tangnano20k/sdram/check_compressed_board.py\", line 39, in <module>\n    assert 'RV32C BOARD HOLDS\\n' in result.stdout and 'DONE' in result.stdout,result.stdout\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: DONE00000000\nDONEDONEDONEDONEDONE00000000\nDONEDONEDONE00000000\nDONEDONE\n\n"
+      }
+    ],
+    "guest_images": {
+      "numeric": {
+        "bytes": 44532,
+        "sha256": "f8c96d45f2f10346d2026d27ae0ed4dda2a94517eca917a1cd4ba3613fc2cad8"
+      },
+      "i32": {
+        "bytes": 219648,
+        "sha256": "d890f4014df31225b99d58980375eefd65588b8b760e5ffeb0bd4b215a4f62e2"
+      },
+      "host": {
+        "bytes": 316048,
+        "sha256": "c10e0a5031d98090806db13ecb4440424f4f1a8b8ce0181f3c3f529208628b54"
+      },
+      "sd": {
+        "bytes": 308924,
+        "sha256": "4e1b822aeacf954c4621786b239dcb353aaa52e1fdf389e45f6d90a1e6e73c7d"
+      },
+      "sd-audit": {
+        "bytes": 185636,
+        "sha256": "b3c96a95b5e0a67ec448e0ebd258485feb3397cfb11e99260806a5f3b5175dbd"
+      }
+    },
+    "error": "rv32c failed; see /Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock108/board/rv32c.log"
+  },
+  "physical_72": {
+    "cpu_mhz": 72,
+    "sdram_mhz": 54,
+    "bitstream_sha256": "49bf20aa59d07b6b480fa7ba80885a1468b4a52a7118b8767c0c0b026301ecf8",
+    "complete": true,
+    "passed": true,
+    "cases": [
+      {
+        "name": "uart",
+        "passed": true,
+        "seconds": 0.03562004095874727,
+        "command": [
+          "python3",
+          "/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py",
+          "--probe",
+          "--freq-mhz",
+          "72"
+        ],
+        "exit_code": 0,
+        "log_sha256": "1991e5bb5722e226f000cee15125ed17e5edbeaaf655c1161203e31f30b8de16",
+        "output": "PASS: board UART diagnostic\n"
+      },
+      {
+        "name": "rv32c",
+        "passed": true,
+        "seconds": 0.23156491701956838,
+        "command": [
+          "python3",
+          "/Users/jasonqin/Documents/GitHub/HaskPlayground/boards/tangnano20k/sdram/check_compressed_board.py",
+          "--freq-mhz",
+          "72"
+        ],
+        "exit_code": 0,
+        "log_sha256": "72d7f768e5580fb044da3ed18d90877efc818df33da64662f93a8e63a02bca84",
+        "output": "584 bytes -> /Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/rv32c-board-checks/compressed-frame.hex\nRV32C BOARD HOLDS\nDONE\nPASS: physical RV32IMC integer forms, pc+2/pc+4 links, straddled fetch, raw illegal traps, mret, fence.i and RAM boundary\n"
+      },
+      {
+        "name": "ram",
+        "passed": true,
+        "seconds": 0.5080045840004459,
+        "command": [
+          "python3",
+          "/Users/jasonqin/Documents/GitHub/HaskPlayground/boards/tangnano20k/sdram/check_core.py",
+          "--freq-mhz",
+          "72"
+        ],
+        "exit_code": 0,
+        "log_sha256": "1f3977bb3135df3990b856e9fe02f4b82391aaf5a0f26f4b773bd50e669a9b79",
+        "output": "PASS: high-address execution, 1 MiB full working set, all banks, last word and byte lanes\n"
+      },
+      {
+        "name": "numeric",
+        "passed": true,
+        "seconds": 6.604612542083487,
+        "command": [
+          "python3",
+          "/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/numeric/base.bin",
+          "--freq-mhz",
+          "72",
+          "--root",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/board/host-files",
+          "--timeout",
+          "180"
+        ],
+        "exit_code": 0,
+        "log_sha256": "3b08975eb83b0cc72a02daf1a5c365f3b234a07b2fd9a41d922c058f0b29d376",
+        "output": "NUMERIC I64 HOLDS\nNUMERIC FLOAT HOLDS\nRV32 BASE NUMERIC HOLDS\nFPR EXIT 0\nDONE\n"
+      },
+      {
+        "name": "i32",
+        "passed": true,
+        "seconds": 32.27919833303895,
+        "command": [
+          "python3",
+          "/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/i32/base.bin",
+          "--freq-mhz",
+          "72",
+          "--root",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/board/host-files",
+          "--timeout",
+          "180"
+        ],
+        "exit_code": 0,
+        "log_sha256": "585adb883f3d6e67dce2d7728751579567d1b08a733e82fafff079a5ca400723",
+        "output": "I32 INTEGER HOLDS\nI32 WIDE BRIDGES HOLD\nI32 BASE HOLDS\nTANG NANO I32 HOLDS\nFPR EXIT 0\nDONE\n"
+      },
+      {
+        "name": "host",
+        "passed": true,
+        "seconds": 48.51968045788817,
+        "command": [
+          "python3",
+          "/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/host/base.bin",
+          "--freq-mhz",
+          "72",
+          "--root",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/board/host-files",
+          "--timeout",
+          "180",
+          "--env",
+          "TEST_UART=connected",
+          "--input",
+          "hello RV32"
+        ],
+        "exit_code": 0,
+        "log_sha256": "76ed5658a0660bce17e432621147413a53a2b0b029aeba20bf5956f5e62ee8be",
+        "output": "RV32 BASE HOST HOLDS\nFPR EXIT 0\nDONE\n"
+      },
+      {
+        "name": "dtree-1",
+        "passed": true,
+        "seconds": 31.689132416038774,
+        "command": [
+          "python3",
+          "/Users/jasonqin/Documents/GitHub/fprisc/tests/check_tangnano20k_dtree.py",
+          "--hardware",
+          "--xlen",
+          "32",
+          "--freq-mhz",
+          "72",
+          "--train",
+          "128",
+          "--test",
+          "64",
+          "--bins",
+          "8",
+          "--depth",
+          "5",
+          "--min-leaf",
+          "2",
+          "--timeout",
+          "180",
+          "--output",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/board/dtree-1",
+          "--bitstream",
+          "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c72-m54-sd-fpr-trial3/impl/pnr/sdram_test.fs"
+        ],
+        "exit_code": 0,
+        "log_sha256": "8c88c5d4bcfb92a9194ad3f0207d9b08314a2a6363b7f4d85013bded107eebe2",
+        "output": "{\n  \"train_rows\": 128,\n  \"test_rows\": 64,\n  \"bins\": 8,\n  \"max_depth\": 5,\n  \"min_leaf\": 2,\n  \"nodes\": 23,\n  \"depth\": 5,\n  \"train\": {\n    \"hits\": 124,\n    \"rows\": 128,\n    \"digest\": 21562,\n    \"predictions_sha256\": \"888ded6dbd04c33e23d17c8ca7f8899a5ee30b08afa5e7bafb17e3fe3f672877\"\n  },\n  \"test\": {\n    \"hits\": 61,\n    \"rows\": 64,\n    \"digest\": 909572,\n    \"predictions_sha256\": \"f8bad44ad21890cd6a00359c8fee71a036eeb5cb10f3eeef5beafed31bd3c958\"\n  },\n  \"root\": {\n    \"column\": 1,\n    \"threshold\": 0.7506353431381285\n  },\n  \"entropy\": \"Independent Python math.log2; classifier uses its existing 48-step log2\"\n}\nUploading 153,280 bytes; execution timeout 180s\nDTREE BEGIN train=128 test=64 bins=8 depth=5 minLeaf=2\nDTREE DATA READY\nDTREE nodes=23 depth=5\nDTREE train hits=124/128 digest=21562\nDTREE test hits=61/64 digest=909572\nroot split: col 1 @ 0.750635343138128\nDTREE elapsed_us=6608712\nFPR EXIT 0\nDONE\nPASS: decision-tree shape, all prediction digests, hit counts and root split match the independent reference\n"
+      },
+      {
+        "name": "dtree-2",
+        "passed": true,
+        "seconds": 31.222544750082307,
+        "command": [
+          "python3",
+          "/Users/jasonqin/Documents/GitHub/fprisc/tests/check_tangnano20k_dtree.py",
+          "--hardware",
+          "--xlen",
+          "32",
+          "--freq-mhz",
+          "72",
+          "--train",
+          "128",
+          "--test",
+          "64",
+          "--bins",
+          "8",
+          "--depth",
+          "5",
+          "--min-leaf",
+          "2",
+          "--timeout",
+          "180",
+          "--output",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/board/dtree-2",
+          "--bitstream",
+          "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c72-m54-sd-fpr-trial3/impl/pnr/sdram_test.fs"
+        ],
+        "exit_code": 0,
+        "log_sha256": "987a76985f215247357efa1ad097f34598534d4b1dffc7c804cd54d458e2e808",
+        "output": "{\n  \"train_rows\": 128,\n  \"test_rows\": 64,\n  \"bins\": 8,\n  \"max_depth\": 5,\n  \"min_leaf\": 2,\n  \"nodes\": 23,\n  \"depth\": 5,\n  \"train\": {\n    \"hits\": 124,\n    \"rows\": 128,\n    \"digest\": 21562,\n    \"predictions_sha256\": \"888ded6dbd04c33e23d17c8ca7f8899a5ee30b08afa5e7bafb17e3fe3f672877\"\n  },\n  \"test\": {\n    \"hits\": 61,\n    \"rows\": 64,\n    \"digest\": 909572,\n    \"predictions_sha256\": \"f8bad44ad21890cd6a00359c8fee71a036eeb5cb10f3eeef5beafed31bd3c958\"\n  },\n  \"root\": {\n    \"column\": 1,\n    \"threshold\": 0.7506353431381285\n  },\n  \"entropy\": \"Independent Python math.log2; classifier uses its existing 48-step log2\"\n}\nUploading 153,280 bytes; execution timeout 180s\nDTREE BEGIN train=128 test=64 bins=8 depth=5 minLeaf=2\nDTREE DATA READY\nDTREE nodes=23 depth=5\nDTREE train hits=124/128 digest=21562\nDTREE test hits=61/64 digest=909572\nroot split: col 1 @ 0.750635343138128\nDTREE elapsed_us=6608709\nFPR EXIT 0\nDONE\nPASS: decision-tree shape, all prediction digests, hit counts and root split match the independent reference\n"
+      },
+      {
+        "name": "sd-1",
+        "passed": true,
+        "seconds": 47.45921629096847,
+        "command": [
+          "python3",
+          "/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/sd/base.bin",
+          "--freq-mhz",
+          "72",
+          "--root",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/board/host-files",
+          "--timeout",
+          "180",
+          "--env",
+          "SD_DIVIDER=11"
+        ],
+        "exit_code": 0,
+        "log_sha256": "54b520c6cab0a1d3e1955ab7202bb5d579a14fe1fc0cbb32789d9610cbb0957b",
+        "created_file": true,
+        "output": "CLOCK SD CARD SDABC BLOCKS 122152960 DIVIDER 11\nCLOCK SD NEW FILE STORED\nCLOCK SD FILE HOLDS 512 BYTES 9 READS\nFPR EXIT 0\nDONE\n"
+      },
+      {
+        "name": "sd-2",
+        "passed": true,
+        "seconds": 46.908272958011366,
+        "command": [
+          "python3",
+          "/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/sd/base.bin",
+          "--freq-mhz",
+          "72",
+          "--root",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/board/host-files",
+          "--timeout",
+          "180",
+          "--env",
+          "SD_DIVIDER=11"
+        ],
+        "exit_code": 0,
+        "log_sha256": "99d569a39aeaaadfbd6484228efd8c93a1e79480cc376a7e9efaa9fd6c9f861e",
+        "created_file": false,
+        "output": "CLOCK SD CARD SDABC BLOCKS 122152960 DIVIDER 11\nCLOCK SD EXISTING FILE VERIFIED\nCLOCK SD FILE HOLDS 512 BYTES 9 READS\nFPR EXIT 0\nDONE\n"
+      },
+      {
+        "name": "sd-audit",
+        "passed": true,
+        "seconds": 29.45785129198339,
+        "command": [
+          "python3",
+          "/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/sd-audit/base.bin",
+          "--freq-mhz",
+          "72",
+          "--root",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/board/host-files",
+          "--timeout",
+          "180",
+          "--env",
+          "SD_DIVIDER=11"
+        ],
+        "exit_code": 0,
+        "log_sha256": "e82a3735bc55ff748c3707186448fbb27c01db6f02151b137e5eca8914a548db",
+        "output": "SD CLOCK AUDIT CARD SDABC BLOCKS 122152960 DIVIDER 11\nSD CLOCK AUDIT 0 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000333dd4a3000000861300837319c00020000000e0340700feffff06feffff0000350700800000000000000000000000000000000000000000000000000000000000000000000055aa\nSD CLOCK AUDIT 8194 20bc3800009ce600e866020001dbc9009a0537000000000002000000020000000080000000800000701f00003dc19869885101001b00ffff53ef01000100000073a19066000000000000000001000000000000000b000000000100003c000000460200006b0000002a44ed576df244b49d5199000c47e55b6f70695f726f6f7400000000000000002f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009900000000000000000000000000000000000800000000000000000000003c43bf035ee34bc39c36aa3f56aba8d1010100006c0000000000000073a190660af3010004000000000000000000000000400000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000200020000100000000000000000000000000000000000000040000003ebc4d00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\nSD CLOCK AUDIT 8195 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000064d7030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\nSD CLOCK AUDIT 120913920 eb3c90465052495343202000020101000200020080f880003f00ff00000035070000000080002932525046465052495343205344202046415431362020200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000055aa\nSD CLOCK AUDIT 120913921 f8ffffffffffffff000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\nSD CLOCK AUDIT 120914049 f8ffffffffffffff000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\nSD CLOCK AUDIT 120914177 465052544553542054585420000000000000000000000000000002003c000000434c4b544553542042494e20000000000000000000000000000003000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\nSD CLOCK AUDIT 120914209 46502d524953432054616e67204e616e6f2032304b2053442066696c650a493332202b20535049202b2046415420696e2046502d524953430a00ff0a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\nSD CLOCK AUDIT 120914210 135ca5ee3780c9125ba4ed367fc8115aa3ec357ec71059a2eb347dc60f58a1ea337cc50e57a0e9327bc40d569fe8317ac30c559ee73079c20b549de62f78c10a539ce52e77c009529be42d76bf08519ae32c75be075099e22b74bd064f98e12a73bc054e97e02972bb044d96df2871ba034c95de2770b9024b94dd266fb8014a93dc256eb7004992db246db6ff4891da236cb5fe4790d9226bb4fd468fd8216ab3fc458ed72069b2fb448dd61f68b1fa438cd51e67b0f9428bd41d66aff8418ad31c65aef74089d21b64adf63f88d11a63acf53e87d01962abf43d86cf1861aaf33c85ce1760a9f23b84cd165fa8f13a83cc155ea7f03982cb145da6ef3881ca135ca5ee3780c9125ba4ed367fc8115aa3ec357ec71059a2eb347dc60f58a1ea337cc50e57a0e9327bc40d569fe8317ac30c559ee73079c20b549de62f78c10a539ce52e77c009529be42d76bf08519ae32c75be075099e22b74bd064f98e12a73bc054e97e02972bb044d96df2871ba034c95de2770b9024b94dd266fb8014a93dc256eb7004992db246db6ff4891da236cb5fe4790d9226bb4fd468fd8216ab3fc458ed72069b2fb448dd61f68b1fa438cd51e67b0f9428bd41d66aff8418ad31c65aef74089d21b64adf63f88d11a63acf53e87d01962abf43d86cf1861aaf33c85ce1760a9f23b84cd165fa8f13a83cc155ea7f03982cb145da6ef3881ca\nFP SD CLOCK INDEPENDENT SECTOR AUDIT HOLDS\nFPR EXIT 0\nDONE\n"
+      },
+      {
+        "name": "sd-independent",
+        "passed": true,
+        "seconds": 0.04598770791199058,
+        "command": [
+          "python3",
+          "/Users/jasonqin/Documents/GitHub/fprisc/tests/check_tangnano20k_sd_clock_audit.py",
+          "--log",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/board/sd-audit.log",
+          "--out",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/board/sd-sectors"
+        ],
+        "exit_code": 0,
+        "log_sha256": "2609cfbd58e8e1c84da67d353870c7dd21ab0ba4d9d9148bb57e928c31f50094",
+        "output": "PASS: both binary files, independent FAT/root decoding, unchanged MBR/boot and Linux superblock samples\n"
+      }
+    ],
+    "guest_images": {
+      "numeric": {
+        "bytes": 44532,
+        "sha256": "f8c96d45f2f10346d2026d27ae0ed4dda2a94517eca917a1cd4ba3613fc2cad8"
+      },
+      "i32": {
+        "bytes": 219648,
+        "sha256": "d890f4014df31225b99d58980375eefd65588b8b760e5ffeb0bd4b215a4f62e2"
+      },
+      "host": {
+        "bytes": 316048,
+        "sha256": "520bcf4984771ca59c419e8cbe491e6da84cf77743233d86f4a12d9dc8f4aaa8"
+      },
+      "sd": {
+        "bytes": 308924,
+        "sha256": "dac8930a02c9564676055832e0b3247b97a8ae799d5f5abdb07eb3cb36813e6b"
+      },
+      "sd-audit": {
+        "bytes": 185636,
+        "sha256": "2474928c342925aa4e92adc03c6f54d9d55b54681570d84dc0f655e576e68af7"
+      }
+    }
+  },
+  "performance": {
+    "baseline_record": {
+      "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock108/baseline48-dtree/results.json",
+      "sha256": "03a8b799786cbf7fdb6ec7dfc909124d0881c2709e49ddc9acb62cc4529e9e60",
+      "bytes": 1495
+    },
+    "baseline": {
+      "reference": {
+        "train_rows": 128,
+        "test_rows": 64,
+        "bins": 8,
+        "max_depth": 5,
+        "min_leaf": 2,
+        "nodes": 23,
+        "depth": 5,
+        "train": {
+          "hits": 124,
+          "rows": 128,
+          "digest": 21562,
+          "predictions_sha256": "888ded6dbd04c33e23d17c8ca7f8899a5ee30b08afa5e7bafb17e3fe3f672877"
+        },
+        "test": {
+          "hits": 61,
+          "rows": 64,
+          "digest": 909572,
+          "predictions_sha256": "f8bad44ad21890cd6a00359c8fee71a036eeb5cb10f3eeef5beafed31bd3c958"
+        },
+        "root": {
+          "column": 1,
+          "threshold": 0.7506353431381285
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "b8f672d2936b9d05c204d5cf970e14fbf2fd4e927a73262616d74b162e4a68bb",
+      "classifier_sha256": "486a4abbd0876014555862a5bb70db6d4c0402e6e3f7f6193fbacb576750c791",
+      "compiler_sha256": "217b2261382cd41ca553d39b5937a857c77c8e23865147d06e4bfd2253838843",
+      "executions": {
+        "board": {
+          "image_sha256": "34c75289652164a8027db655387c4afca96e82dd220a5ea2f2ee9f150aaec270",
+          "image_bytes": 153280,
+          "heap_arena_bytes": 8122752,
+          "heap_bitmap_bytes": 63472,
+          "usable_heap_block_bytes": 8059280,
+          "stack_bytes": 65536,
+          "frequency_mhz": 48,
+          "isa": "RV32IMC",
+          "passed": true,
+          "bitstream_sha256": "7bf0accf071d4f032644ac00f3c91a9776289464bc337822571aec6808efe092",
+          "elapsed_us": 4856153,
+          "wall_seconds_with_upload": 38.466685791965574
+        }
+      }
+    },
+    "runs_72": [
+      {
+        "name": "dtree-1",
+        "elapsed_us": 6608712,
+        "log": {
+          "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/board/dtree-1.log",
+          "sha256": "8c88c5d4bcfb92a9194ad3f0207d9b08314a2a6363b7f4d85013bded107eebe2",
+          "bytes": 1013
+        }
+      },
+      {
+        "name": "dtree-2",
+        "elapsed_us": 6608709,
+        "log": {
+          "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/board/dtree-2.log",
+          "sha256": "987a76985f215247357efa1ad097f34598534d4b1dffc7c804cd54d458e2e808",
+          "bytes": 1013
+        }
+      }
+    ],
+    "mean_72_elapsed_us": 6608710.5,
+    "runtime_ratio_vs_48": 1.3608942098817727,
+    "runtime_increase_percent": 36.08942098817727,
+    "interpretation": "Correctness passes; this workload is slower at 72 MHz. Added dependency waits, the multiply cycle and CDC refill costs are source-grounded contributors, not separately profiled."
+  },
+  "checks": {
+    "integrated_rtl": {
+      "record": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/pipeline-trial3-integrated/results.json",
+        "sha256": "1073fb0bd0c542622132bc4b6702de2640d6d85360dd169462066e6712b513f7",
+        "bytes": 3701
+      },
+      "results": {
+        "complete": true,
+        "physical_board_access": false,
+        "platform": "generated Clash RTL with production cache and optional clock bridge",
+        "generated_rtl": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-pipeline-c108-m54-sd-fpr-trial3/sdram_pipeline_risc.v",
+        "generated_rtl_sha256": "3b2a9fe155b15806517c575a91c285aa5060f5171861d0ccfd28d270d980fcc0",
+        "source_sha256": {
+          "src/SimpleRisc.hs": "3bf5f176835c91a7e9e1e786a9425a3166e36aead086282c1210fe267d234dc7",
+          "src/SdramPipeline.hs": "da90e43ae4782e51e62076032a25c02380e9a2b022162def0b961d60c132b129",
+          "src/RiscVCompressed.hs": "2104bdb10ca4eefc4e04e9a8e98e550c7a301e3aa7a37f39c17b9420e6409157",
+          "boards/tangnano20k/sdram/pipeline_cache.v": "6b275bef88838363e6afcc4703d7629a14171a5ad3af72b9631be940940314e2",
+          "boards/tangnano20k/sdram/check_pipeline_cache.py": "19c61f6d461222c3edb1a60ec01f83f5f8a8f7f150c464f46668471ad8390fcd",
+          "boards/tangnano20k/sdram/check_pipeline_rtl.py": "dc79a0045c19d5e238824021961b672fadcd8567fe9980c1559810c94fab2c07",
+          "boards/tangnano20k/sdram/pipeline_cpu_tb.v": "a5f3ab602ff4ca8c2e96c6737fdc54e3e375b0dca426ba96a831b73f339f9592",
+          "boards/tangnano20k/sdram/clock_bridge.v": "32c40ca8855168fd7716b3ffc0dc26ad61cf361f23b693d5974d8a06072aa9fb",
+          "boards/tangnano20k/sdram/sdram.v": "fac724ff34098570c5ad55b18fa2fd43770496c11005e8b6992ad27f7830693e",
+          "boards/tangnano20k/sdram/burst_memory.v": "b96af62e6b1ec957c112d6607d6bfd901560776dedbac9078588cb8910ddb35a"
+        },
+        "pin_model": {
+          "cpu_mhz": 108,
+          "sdram_mhz": 54,
+          "sdram_phase_degrees": 135,
+          "dq_tac_ns": 5.4,
+          "uart_cycles_simulation_override": 32,
+          "io_pvt_signoff": false
+        },
+        "cases": [
+          {
+            "name": "cpu-cache",
+            "passed": true,
+            "output": "PASS: pipeline/cache guest, high RAM, masked stores, fence.i, IM/branches/traps, counters and Ctrl-C; 72 fills 18 writes 15425 held clocks\n/Users/jasonqin/Documents/GitHub/HaskPlayground/boards/tangnano20k/sdram/pipeline_cpu_tb.v:294: $finish called at 2981100000 (100fs)\n",
+            "source_log": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/pipeline-rtl-c/pass.log",
+            "corrupted_backend_rejected": true,
+            "negative_output": "FATAL: /Users/jasonqin/Documents/GitHub/HaskPlayground/boards/tangnano20k/sdram/pipeline_cpu_tb.v:278: guest failure stage=2 cycles=1064 retired=3\n       Time: 214500000  Scope: pipeline_cpu_tb\n"
+          },
+          {
+            "name": "cpu-cache-cdc",
+            "passed": true,
+            "output": "PASS: pipeline/cache guest, high RAM, masked stores, fence.i, IM/branches/traps, counters and Ctrl-C; 72 fills 18 writes 32102 held clocks\n/Users/jasonqin/Documents/GitHub/HaskPlayground/boards/tangnano20k/sdram/pipeline_cpu_tb.v:294: $finish called at 4648800000 (100fs)\n",
+            "source_log": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/pipeline-rtl-c-cdc/pass.log",
+            "corrupted_backend_rejected": true,
+            "negative_output": "FATAL: /Users/jasonqin/Documents/GitHub/HaskPlayground/boards/tangnano20k/sdram/pipeline_cpu_tb.v:278: guest failure stage=2 cycles=2129 retired=3\n       Time: 418400000  Scope: pipeline_cpu_tb\n"
+          },
+          {
+            "name": "cpu108-sdram54-pins-loader",
+            "passed": true,
+            "output": "DONE14a21185\nLDONE\nPASS: extended ROM T/Q/V/H UART loader, XOR readback, program execution and trap DONE\n/Users/jasonqin/Documents/GitHub/HaskPlayground/boards/tangnano20k/sdram/pipeline_cpu_tb.v:266: $finish called at 3325775300 (100fs)\n",
+            "source_log": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/pipeline-rtl-c-loader-cdc-pins-uart32-extended-f54-p135-t5.4/pass.log"
+          }
+        ]
+      }
+    },
+    "cache_collisions": {
+      "record": {
+        "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/pipeline-cache-regression/results.json",
+        "sha256": "f8e4441691bcfccd7e6aaef0f6fdc4f512915187113001b296e809659af92268",
+        "bytes": 1819
+      },
+      "results": {
+        "complete": true,
+        "source_sha256": "6b275bef88838363e6afcc4703d7629a14171a5ad3af72b9631be940940314e2",
+        "fixture_sha256": "16ed758fcbd36db5e9e721e15fab45549cf920c0bd9160646c1792b302edb0de",
+        "cases": [
+          {
+            "name": "normal",
+            "passed": true,
+            "expected_exit": 0,
+            "rtl_sha256": "6b275bef88838363e6afcc4703d7629a14171a5ad3af72b9631be940940314e2",
+            "testbench_sha256": "16ed758fcbd36db5e9e721e15fab45549cf920c0bd9160646c1792b302edb0de",
+            "output": "PASS: 201 reads, 121 ordered masked writes, 73 line fills, 2555 held clocks\n/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/pipeline-cache-regression/normal-tb.v:65: $finish called at 28875000 (1ps)\n"
+          },
+          {
+            "name": "tag-collision-poison",
+            "passed": true,
+            "expected_exit": 0,
+            "rtl_sha256": "be6a6dc95235994c9a7f3087de5853468774700f5567dd973150a1ca1674a539",
+            "testbench_sha256": "b0b902ea97f46ef3db337f0b469106ea5b974f1764cbd359254340f1e8d7a495",
+            "output": "PASS: 82 logical tag collisions ignored\nPASS: 201 reads, 121 ordered masked writes, 73 line fills, 2555 held clocks\n/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/pipeline-cache-regression/tag-collision-poison-tb.v:72: $finish called at 28875000 (1ps)\n"
+          },
+          {
+            "name": "missing-collision-guard",
+            "passed": true,
+            "expected_exit": 1,
+            "rtl_sha256": "ce5103a68901eccd8c739cfb1dab9375b84e71edba3ff14f9a74fe81aa76877c",
+            "testbench_sha256": "b0b902ea97f46ef3db337f0b469106ea5b974f1764cbd359254340f1e8d7a495",
+            "output": "FATAL: /Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/pipeline-cache-regression/missing-collision-guard-tb.v:22: undefined tag collision used as a hit\n       Time: 3575000  Scope: pipeline_cache_tb\n"
+          }
+        ]
+      }
+    },
+    "sd_native_and_auditor": {
+      "record": {
+        "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock108/sd-offline/results.json",
+        "sha256": "51c417aa4ff219ad6e328f66bf7bb08f6dc5c32464f33fc83fc2c93a4a7821a2",
+        "bytes": 5214
+      },
+      "results": {
+        "platform": "native SPI SDHC model",
+        "sparse_regular_file": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock108/sd-offline/card.img",
+        "cases": [
+          {
+            "run": 1,
+            "passed": true,
+            "output": "CLOCK SD CARD SDABC BLOCKS 122152960 DIVIDER 17\nCLOCK SD NEW FILE STORED\nCLOCK SD FILE HOLDS 512 BYTES 9 READS\n",
+            "stats": {
+              "blocks": 122152960,
+              "reads": 35,
+              "writes": 4,
+              "crc_errors": 0,
+              "commands_before_clock_train": 0,
+              "commands": {
+                "0": 1,
+                "8": 1,
+                "9": 1,
+                "10": 1,
+                "13": 4,
+                "17": 35,
+                "24": 4,
+                "41": 1,
+                "55": 1,
+                "58": 1,
+                "59": 1
+              },
+              "written_blocks": [
+                120914210,
+                120913921,
+                120914049,
+                120914177
+              ]
+            }
+          },
+          {
+            "run": 2,
+            "passed": true,
+            "output": "CLOCK SD CARD SDABC BLOCKS 122152960 DIVIDER 17\nCLOCK SD EXISTING FILE VERIFIED\nCLOCK SD FILE HOLDS 512 BYTES 9 READS\n",
+            "stats": {
+              "blocks": 122152960,
+              "reads": 27,
+              "writes": 0,
+              "crc_errors": 0,
+              "commands_before_clock_train": 0,
+              "commands": {
+                "0": 1,
+                "8": 1,
+                "9": 1,
+                "10": 1,
+                "17": 27,
+                "41": 1,
+                "55": 1,
+                "58": 1,
+                "59": 1
+              },
+              "written_blocks": []
+            }
+          }
+        ],
+        "complete": true,
+        "passed": true,
+        "physical_device_access": false,
+        "audit_stats": {
+          "blocks": 122152960,
+          "reads": 9,
+          "writes": 0,
+          "crc_errors": 0,
+          "commands_before_clock_train": 0,
+          "commands": {
+            "0": 1,
+            "8": 1,
+            "9": 1,
+            "10": 1,
+            "17": 9,
+            "41": 1,
+            "55": 1,
+            "58": 1,
+            "59": 1
+          },
+          "written_blocks": []
+        },
+        "independent_sector_decode": {
+          "passed": true,
+          "files": {
+            "FPRTEST.TXT": {
+              "bytes": 60,
+              "cluster": 2,
+              "payload_sha256": "7dad67abfb60d770ada2b8e49c8c5f6a46d472e11af911cf211ed9d54d311620"
+            },
+            "CLKTEST.BIN": {
+              "bytes": 512,
+              "cluster": 3,
+              "payload_sha256": "8d35978b98877da24dc6904f1a27aaf031f9103991d3ed868ae7dc938a6a00fd"
+            }
+          },
+          "mbr_identical": true,
+          "fat16_boot_identical": true,
+          "linux_superblock_sample_identical": [
+            8194,
+            8195
+          ],
+          "inspected_fat_copy_sectors_identical": [
+            120913921,
+            120914049
+          ],
+          "root_changes_confined_to_new_entry": true,
+          "sector_sha256": {
+            "0": "e10ec3a62851ed869b1105bc3e48b88b5772c9a8bee79bfc89bacfaff5290b51",
+            "8194": "2dd2319c3a95b49fde087b9d516e33f8f4fbe7e8b50d9999b4fc6d098c3a4b99",
+            "8195": "b9bdc8b9b5515b7a2b2de663f3681a71edd31219d7bc86e963f6843f3f178040",
+            "120913920": "babfae53d70bc784db64f8c7d990f22da2ce00fc5ba0f526de86ef1977d64f73",
+            "120913921": "831c717467f7a8b654dfbd2aa2196176a386ca09f8bf795819f824191fdfb83b",
+            "120914049": "831c717467f7a8b654dfbd2aa2196176a386ca09f8bf795819f824191fdfb83b",
+            "120914177": "b5962bcace39fcfe8cd5d70b1181ba56267e3af4480201d1c1a71986bf358666",
+            "120914209": "7249dd4f03e7d3e6fcb9ce2d09644c26787a4558b75d83c00da54a88f6bb0355",
+            "120914210": "8d35978b98877da24dc6904f1a27aaf031f9103991d3ed868ae7dc938a6a00fd"
+          },
+          "platform": "native SPI model",
+          "divider": 17,
+          "log_sha256": "6287bfe49d4cb174f0590c36d3bbc7947df49de3311313fd9c70f6b1947b226b",
+          "baseline": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-sd/audit"
+        },
+        "rejected_mutations": [
+          "sector-0-byte-450",
+          "sector-8194-byte-56",
+          "sector-8195-byte-100",
+          "sector-120913920-byte-19",
+          "sector-120913921-byte-8",
+          "sector-120914049-byte-6",
+          "sector-120914177-byte-0",
+          "sector-120914177-byte-58",
+          "sector-120914177-byte-64",
+          "sector-120914209-byte-0",
+          "sector-120914209-byte-100",
+          "sector-120914210-byte-511",
+          "missing-DONE",
+          "guest-failure",
+          "duplicate-sector",
+          "missing-sector"
+        ],
+        "sources": {
+          "tests/tangnano20k_sd_clock.fpr": "265888adff2d9ec73b28c030c041e46ec36fe90daf4849e3311d109478c430ca",
+          "tests/tangnano20k_sd_clock_audit.fpr": "38a4410e268ac5a68d3eb703633145c5d3b1e0ceb7614210361c5585e0e830f9",
+          "tests/check_tangnano20k_sd_clock_audit.py": "62cc771f5fd6cfdfff52439301d2f986d72f90deec5d67bf30a5f62c79f051b4",
+          "tests/tangnano20k_sd_probe.fpr": "4628b39a612fe1fd8e08828f4a21ba9917ada3fd4d1c8ad98672586fdb71b72a",
+          "machine/tangnano20k/sd_hal.c": "0f315f1400887d2bbbf03cc824aa1f7eefb16910f53ce99a422f20daa9149e56",
+          "std/tangnano20k/sd.fpr": "bf2b52aebf514d8a861fdb5bb90b6bd42f27f04991819cab596f520a1b97bcdd",
+          "std/tangnano20k/fat.fpr": "58372f11627400f5262155b3017435f8b4cbdcc837939097228e9d3f4d419327",
+          "tests/base/tangnano20k_sd_model.c": "19687fdf08c37665cc96c4eed2c9244bfebe9795cb1886d31766b328611aab53"
+        },
+        "rv32imc_108mhz_builds": {
+          "sd-audit": {
+            "sha256": "b3c96a95b5e0a67ec448e0ebd258485feb3397cfb11e99260806a5f3b5175dbd",
+            "bytes": 185636
+          },
+          "sd-probe": {
+            "sha256": "455a587ec7e545f01141e4377b75891af94263eda2886f5de44d8c2c855271aa",
+            "bytes": 181972
+          }
+        }
+      }
+    },
+    "rv32_72_builds": {
+      "record": {
+        "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/build-results.json",
+        "sha256": "f0e7cab9191880258ef8423672b2dbb90afc3875ea015ed036f3f9a14f6618ea",
+        "bytes": 3218
+      },
+      "results": {
+        "complete": true,
+        "physical_board_access": false,
+        "programs": [
+          {
+            "name": "numeric",
+            "source": "tests/tangnano20k_rv32_numeric.fpr",
+            "source_sha256": "41924634d9e716a42c27d4bc25ad424015ee63c1623a08dbc77008b42152cbda",
+            "binary": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/numeric/base.bin",
+            "bytes": 44532,
+            "binary_sha256": "f8c96d45f2f10346d2026d27ae0ed4dda2a94517eca917a1cd4ba3613fc2cad8",
+            "elf_sha256": "7981441acdaadaa0f9c0bb95c9391cf710553248fa13d4526b124a5940d3739e",
+            "isa_check_passed": true,
+            "cpu_mhz": 72,
+            "xlen": 32,
+            "compressed": true
+          },
+          {
+            "name": "i32",
+            "source": "tests/tangnano20k_i32.fpr",
+            "source_sha256": "a35a322dafa14aedab99de36d80276a25b4347181293b5113127d781cd3ea141",
+            "binary": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/i32/base.bin",
+            "bytes": 219648,
+            "binary_sha256": "d890f4014df31225b99d58980375eefd65588b8b760e5ffeb0bd4b215a4f62e2",
+            "elf_sha256": "08b49d8a1b0829563aeb659ceebff5c3311c6b96801b18e4c2220dc11fb6d2b7",
+            "isa_check_passed": true,
+            "cpu_mhz": 72,
+            "xlen": 32,
+            "compressed": true
+          },
+          {
+            "name": "host",
+            "source": "tests/tangnano20k_rv32_host.fpr",
+            "source_sha256": "61df9f1f30ad89dd8b8fac51048b420997750fad4b2f0e2ff5c804a823f82d7d",
+            "binary": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/host/base.bin",
+            "bytes": 316048,
+            "binary_sha256": "520bcf4984771ca59c419e8cbe491e6da84cf77743233d86f4a12d9dc8f4aaa8",
+            "elf_sha256": "829b6e49010d045bf03429ad868a0ec094c3f5000be23f55479382e0718e833f",
+            "isa_check_passed": true,
+            "cpu_mhz": 72,
+            "xlen": 32,
+            "compressed": true
+          },
+          {
+            "name": "sd",
+            "source": "tests/tangnano20k_sd_clock.fpr",
+            "source_sha256": "265888adff2d9ec73b28c030c041e46ec36fe90daf4849e3311d109478c430ca",
+            "binary": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/sd/base.bin",
+            "bytes": 308924,
+            "binary_sha256": "dac8930a02c9564676055832e0b3247b97a8ae799d5f5abdb07eb3cb36813e6b",
+            "elf_sha256": "8d8e40e69e0bdcd905f557f1044f27ea4531d192734111800352bdecfe3d2de8",
+            "isa_check_passed": true,
+            "cpu_mhz": 72,
+            "xlen": 32,
+            "compressed": true
+          },
+          {
+            "name": "sd-audit",
+            "source": "tests/tangnano20k_sd_clock_audit.fpr",
+            "source_sha256": "38a4410e268ac5a68d3eb703633145c5d3b1e0ceb7614210361c5585e0e830f9",
+            "binary": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/sd-audit/base.bin",
+            "bytes": 185636,
+            "binary_sha256": "2474928c342925aa4e92adc03c6f54d9d55b54681570d84dc0f655e576e68af7",
+            "elf_sha256": "d37e11ec3e8c2898069bce4cd9a7c3c2e9c4e4c62f7f1e8975501e52166267b4",
+            "isa_check_passed": true,
+            "cpu_mhz": 72,
+            "xlen": 32,
+            "compressed": true
+          }
+        ],
+        "sd_runtime_environment": {
+          "SD_DIVIDER": "11"
+        },
+        "host_runtime_arguments": [
+          "--root",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/host-files",
+          "--env",
+          "TEST_UART=connected",
+          "--input",
+          "hello RV32"
+        ]
+      }
+    },
+    "haskell": {
+      "simple_risc_properties": 64,
+      "passed": true,
+      "log": {
+        "path": "/tmp/simplerisc108-trial3-cpu-tests.log",
+        "sha256": "865d246913032ffa1d3806993a30279f2839ba91f024c47139ca577d42efb837",
+        "bytes": 21981
+      }
+    },
+    "clock_bridge": {
+      "logs": [
+        {
+          "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-clock-bridge-tests/108-54-p17.log",
+          "sha256": "dca2c7221adf79b3f738d61adccf851757d90835ca04a479746b557b48b0d916",
+          "bytes": 280,
+          "output": "PASS: CDC CPUhalf=4.6296 memhalf=9.2593 phase=1.700: all masks, 1233 operations, 2484 comparisons, 830 stalls/refreshes, four interrupted-read resets\n/Users/jasonqin/Documents/GitHub/HaskPlayground/boards/tangnano20k/sdram/clock_bridge_tb.v:117: $finish called at 355097850 (1ps)\n"
+        },
+        {
+          "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-clock-bridge-tests/108-54-p63.log",
+          "sha256": "591e2ee8d4b2ec68f6fe7f9366fb3be1029b8b6d672bc34e5a864e37222e1c8d",
+          "bytes": 280,
+          "output": "PASS: CDC CPUhalf=4.6296 memhalf=9.2593 phase=6.300: all masks, 1233 operations, 2484 comparisons, 831 stalls/refreshes, four interrupted-read resets\n/Users/jasonqin/Documents/GitHub/HaskPlayground/boards/tangnano20k/sdram/clock_bridge_tb.v:117: $finish called at 355107110 (1ps)\n"
+        },
+        {
+          "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-clock-bridge-tests/memory-faster.log",
+          "sha256": "71608cc24271591be704613ced60de609789f918441891108482db378281d7e3",
+          "bytes": 281,
+          "output": "PASS: CDC CPUhalf=8.7130 memhalf=3.6190 phase=0.713: all masks, 1233 operations, 2484 comparisons, 1836 stalls/refreshes, four interrupted-read resets\n/Users/jasonqin/Documents/GitHub/HaskPlayground/boards/tangnano20k/sdram/clock_bridge_tb.v:117: $finish called at 306566905 (1ps)\n"
+        },
+        {
+          "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-clock-bridge-tests/pins-108-54-p135-tac0.log",
+          "sha256": "a2b25a8d6181ded9733101e61a3683f1168f81dfc5d40d9cce7422ef8ea5bea8",
+          "bytes": 293,
+          "output": "PASS: 108 MHz CPU CDC / 54 MHz SDRAM pins CAS2/burst4/mode222: 207 reads, 98 masked writes, 828 beat comparisons, 13 autonomous refreshes\n/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-clock-bridge-tests/burst_clock_bridge_tb.v:199: $finish called at 321261810 (1ps)\n"
+        },
+        {
+          "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-clock-bridge-tests/pins-108-54-p135-tac6.log",
+          "sha256": "a2b25a8d6181ded9733101e61a3683f1168f81dfc5d40d9cce7422ef8ea5bea8",
+          "bytes": 293,
+          "output": "PASS: 108 MHz CPU CDC / 54 MHz SDRAM pins CAS2/burst4/mode222: 207 reads, 98 masked writes, 828 beat comparisons, 13 autonomous refreshes\n/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-clock-bridge-tests/burst_clock_bridge_tb.v:199: $finish called at 321261810 (1ps)\n"
+        },
+        {
+          "path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/output/tangnano20k/sdram-clock-bridge-tests/unrelated.log",
+          "sha256": "6bbb681b6046204a88fee26113cea97b422ee6b662840d7e0fff4793a00af0dd",
+          "bytes": 281,
+          "output": "PASS: CDC CPUhalf=5.1370 memhalf=9.4170 phase=2.091: all masks, 1233 operations, 2484 comparisons, 1079 stalls/refreshes, four interrupted-read resets\n/Users/jasonqin/Documents/GitHub/HaskPlayground/boards/tangnano20k/sdram/clock_bridge_tb.v:117: $finish called at 468489263 (1ps)\n"
+        }
+      ]
+    }
+  },
+  "source_sha256": {
+    "fprisc/machine/tangnano20k/README.md": "0b8d99a6648ed5a50ac5ea99113f7dc507657232ea558c9ea3ca8784693dfcdd",
+    "fprisc/machine/tangnano20k/base.c": "fbb47afef2a3c7e8f94f643a3e416a1d3424beca56b1705237d60a38996e44c5",
+    "fprisc/machine/tangnano20k/build.sh": "758e4b27b934c6430dd6908b500e9504d53b91445b768ec46213655f85e54efa",
+    "fprisc/machine/tangnano20k/sd_hal.c": "0f315f1400887d2bbbf03cc824aa1f7eefb16910f53ce99a422f20daa9149e56",
+    "fprisc/machine/tangnano20k/crt0.S": "d8770688ef19918172b41e01445f3fe79c00ea668669e5a363816702e4376f2b",
+    "fprisc/machine/tangnano20k/link.ld": "ae9a3894f6e98be3c32d6e7b7ae3abc337209211043d67642357440e8cc3e4dd",
+    "fprisc/std/tangnano20k/sd.fpr": "bf2b52aebf514d8a861fdb5bb90b6bd42f27f04991819cab596f520a1b97bcdd",
+    "fprisc/std/tangnano20k/fat.fpr": "58372f11627400f5262155b3017435f8b4cbdcc837939097228e9d3f4d419327",
+    "fprisc/tests/tangnano20k_rv32_numeric.fpr": "41924634d9e716a42c27d4bc25ad424015ee63c1623a08dbc77008b42152cbda",
+    "fprisc/tests/tangnano20k_i32.fpr": "a35a322dafa14aedab99de36d80276a25b4347181293b5113127d781cd3ea141",
+    "fprisc/tests/tangnano20k_rv32_host.fpr": "61df9f1f30ad89dd8b8fac51048b420997750fad4b2f0e2ff5c804a823f82d7d",
+    "fprisc/tests/tangnano20k_sd_clock.fpr": "265888adff2d9ec73b28c030c041e46ec36fe90daf4849e3311d109478c430ca",
+    "fprisc/tests/tangnano20k_sd_clock_audit.fpr": "38a4410e268ac5a68d3eb703633145c5d3b1e0ceb7614210361c5585e0e830f9",
+    "fprisc/tests/tangnano20k_sd_probe.fpr": "4628b39a612fe1fd8e08828f4a21ba9917ada3fd4d1c8ad98672586fdb71b72a",
+    "fprisc/tests/check_tangnano20k_sd_clock_audit.py": "62cc771f5fd6cfdfff52439301d2f986d72f90deec5d67bf30a5f62c79f051b4",
+    "fprisc/tests/tangnano20k_dtree.fpr": "c938b3af5128219947ec3e06f32d5e3511a803ce4cb6a8647bdc56f3f222ddf5",
+    "fprisc/tests/check_tangnano20k_dtree.py": "3dddd33bb20788365f2701914572d531a67cfe93d1be4fe03f99b9174790035d",
+    "fprisc/tools/run_tangnano20k_base.py": "c543c9afcabff4fe75bda79650bb82f0811c0f4c6c37637808f57df9ded53824",
+    "HaskPlayground/src/SimpleRisc.hs": "3bf5f176835c91a7e9e1e786a9425a3166e36aead086282c1210fe267d234dc7",
+    "HaskPlayground/src/SdramPipeline.hs": "da90e43ae4782e51e62076032a25c02380e9a2b022162def0b961d60c132b129",
+    "HaskPlayground/src/RiscVCompressed.hs": "2104bdb10ca4eefc4e04e9a8e98e550c7a301e3aa7a37f39c17b9420e6409157",
+    "HaskPlayground/boards/tangnano20k/sdram/pipeline_cache.v": "6b275bef88838363e6afcc4703d7629a14171a5ad3af72b9631be940940314e2",
+    "HaskPlayground/boards/tangnano20k/sdram/pipeline_top.v": "cba996f773ec1b1f468c484a55979f0ffaf8ce101bb4018eceb695e975cca5d7",
+    "HaskPlayground/boards/tangnano20k/sdram/clock_bridge.v": "32c40ca8855168fd7716b3ffc0dc26ad61cf361f23b693d5974d8a06072aa9fb",
+    "HaskPlayground/boards/tangnano20k/sdram/dual_pll.v": "de887b8042b2a0c8de65e708fc7e55953b5370ed27e46cc28ac701c77cf94c95",
+    "HaskPlayground/boards/tangnano20k/sdram/pll.v": "ee87e9d502d45b95a12e461ff5794eab89272b5f5a876b4fbe6b020b64b1c8aa",
+    "HaskPlayground/boards/tangnano20k/sdram/build.sh": "5845a761449a3e7111c942dcb3dc442f083d872776531ec59c2063d637f42ffd",
+    "HaskPlayground/boards/tangnano20k/sdram/sdram.v": "fac724ff34098570c5ad55b18fa2fd43770496c11005e8b6992ad27f7830693e",
+    "HaskPlayground/boards/tangnano20k/sdram/burst_memory.v": "b96af62e6b1ec957c112d6607d6bfd901560776dedbac9078588cb8910ddb35a",
+    "HaskPlayground/boards/tangnano20k/sdram/check_pipeline_cache.py": "19c61f6d461222c3edb1a60ec01f83f5f8a8f7f150c464f46668471ad8390fcd",
+    "HaskPlayground/boards/tangnano20k/sdram/check_pipeline_rtl.py": "dc79a0045c19d5e238824021961b672fadcd8567fe9980c1559810c94fab2c07",
+    "fprisc/tests/check_tangnano20k_clock_board.py": "a6112348b26804efe4a233957e4e64da0c38701af0626aa2bd92d2a8554a0a61",
+    "HaskPlayground/boards/tangnano20k/check_gowin_timing.py": "cfc3f1188d6af7dce2c27b1ee873bee15f4bfc875ed4ae8cc6692db049b8a8a8",
+    "HaskPlayground/boards/tangnano20k/sdram/check_clock_bridge.py": "b3cfc6fafc62de9a08f1db462423726929af415d4d9b60ab68bfff64e2930e7a",
+    "HaskPlayground/boards/tangnano20k/sdram/clock_bridge_tb.v": "0076eb490203e6b1c3af4265f3f879087410bd385af1e02a5cd3846b5f1c2091",
+    "HaskPlayground/boards/tangnano20k/sdram/pipeline_cache_tb.v": "16ed758fcbd36db5e9e721e15fab45549cf920c0bd9160646c1792b302edb0de",
+    "HaskPlayground/boards/tangnano20k/sdram/pipeline_cpu_tb.v": "a5f3ab602ff4ca8c2e96c6737fdc54e3e375b0dca426ba96a831b73f339f9592",
+    "HaskPlayground/test/SimpleRisc.hs": "d1245a0e696fa7ce7fa36cc2728951156cd6241b0deee7d5429a5eebb765f2f7"
+  },
+  "limits": [
+    "72 MHz placement has only 0.003 ns reported setup margin",
+    "No board I/O/PVT signoff or long-duration stability bound",
+    "SD preserves two sampled Linux superblock sectors, not full-partition reread",
+    "Physical 108 MHz stopped at RV32C before SD writes"
+  ],
+  "sd_runtime_divider_72": 11,
+  "sd_spi_mhz": 3,
+  "physical_sd_independent_decode": {
+    "record": {
+      "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/board/sd-sectors/results.json",
+      "sha256": "f5d47970812dbc0e65e4a9ec7db10f358e3c7483afee57937aceab823823de1f",
+      "bytes": 1597
+    },
+    "results": {
+      "passed": true,
+      "files": {
+        "FPRTEST.TXT": {
+          "bytes": 60,
+          "cluster": 2,
+          "payload_sha256": "7dad67abfb60d770ada2b8e49c8c5f6a46d472e11af911cf211ed9d54d311620"
+        },
+        "CLKTEST.BIN": {
+          "bytes": 512,
+          "cluster": 3,
+          "payload_sha256": "8d35978b98877da24dc6904f1a27aaf031f9103991d3ed868ae7dc938a6a00fd"
+        }
+      },
+      "mbr_identical": true,
+      "fat16_boot_identical": true,
+      "linux_superblock_sample_identical": [
+        8194,
+        8195
+      ],
+      "inspected_fat_copy_sectors_identical": [
+        120913921,
+        120914049
+      ],
+      "root_changes_confined_to_new_entry": true,
+      "sector_sha256": {
+        "0": "e10ec3a62851ed869b1105bc3e48b88b5772c9a8bee79bfc89bacfaff5290b51",
+        "8194": "2dd2319c3a95b49fde087b9d516e33f8f4fbe7e8b50d9999b4fc6d098c3a4b99",
+        "8195": "b9bdc8b9b5515b7a2b2de663f3681a71edd31219d7bc86e963f6843f3f178040",
+        "120913920": "babfae53d70bc784db64f8c7d990f22da2ce00fc5ba0f526de86ef1977d64f73",
+        "120913921": "831c717467f7a8b654dfbd2aa2196176a386ca09f8bf795819f824191fdfb83b",
+        "120914049": "831c717467f7a8b654dfbd2aa2196176a386ca09f8bf795819f824191fdfb83b",
+        "120914177": "b5962bcace39fcfe8cd5d70b1181ba56267e3af4480201d1c1a71986bf358666",
+        "120914209": "7249dd4f03e7d3e6fcb9ce2d09644c26787a4558b75d83c00da54a88f6bb0355",
+        "120914210": "8d35978b98877da24dc6904f1a27aaf031f9103991d3ed868ae7dc938a6a00fd"
+      },
+      "platform": "physical FPGA console",
+      "divider": 11,
+      "log_sha256": "e82a3735bc55ff748c3707186448fbb27c01db6f02151b137e5eca8914a548db",
+      "baseline": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-sd/audit"
+    }
+  },
+  "larger_workload": {
+    "passed": false,
+    "failure_kind": "reported Base heap exhaustion",
+    "hardware_failure_inferred": false,
+    "record": {
+      "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/large-dtree/results.json",
+      "sha256": "1be573b85660c96e664bbc517b375c36e0531699891abd9a48d0b5ddd2464b76",
+      "bytes": 2138
+    },
+    "results": {
+      "reference": {
+        "train_rows": 512,
+        "test_rows": 128,
+        "bins": 16,
+        "max_depth": 6,
+        "min_leaf": 5,
+        "nodes": 55,
+        "depth": 6,
+        "train": {
+          "hits": 481,
+          "rows": 512,
+          "digest": 354774,
+          "predictions_sha256": "dbc85e3a7188d43555e0876fc50dd901b15fa11c6da8ebda539e8580266f37a1"
+        },
+        "test": {
+          "hits": 116,
+          "rows": 128,
+          "digest": 434626,
+          "predictions_sha256": "9bc880f50defb44919cec07bff13fdfb9442287d88fa9e8b09300cc8100ef5c8"
+        },
+        "root": {
+          "column": 0,
+          "threshold": -0.12101956852711737
+        },
+        "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+      },
+      "source_sha256": "4a5b9324a01062ee7f21e260f8d3894e3577aa9763df9f6625e5c754078b820e",
+      "classifier_sha256": "486a4abbd0876014555862a5bb70db6d4c0402e6e3f7f6193fbacb576750c791",
+      "compiler_sha256": "217b2261382cd41ca553d39b5937a857c77c8e23865147d06e4bfd2253838843",
+      "executions": {
+        "board": {
+          "image_sha256": "e36e70336ddd17f91b3b9ae502890ed8cd054e856240dbb96167e096511c1c00",
+          "image_bytes": 153288,
+          "heap_arena_bytes": 8122736,
+          "heap_bitmap_bytes": 63472,
+          "usable_heap_block_bytes": 8059264,
+          "stack_bytes": 65536,
+          "frequency_mhz": 72,
+          "isa": "RV32IMC",
+          "passed": false,
+          "bitstream_sha256": "49bf20aa59d07b6b480fa7ba80885a1468b4a52a7118b8767c0c0b026301ecf8"
+        }
+      },
+      "error": "DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5\nDTREE DATA READY\nBase panic: Builtin: out of memory\nFPR EXIT 1\nDONE\nTraceback (most recent call last):\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 131, in <module>\n    if __name__=='__main__':main()\n                            ~~~~^^\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 123, in main\n    if b'FPR EXIT 0\\n' not in output:raise ValueError('CPU halted without successful runtime exit')\n                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nValueError: CPU halted without successful runtime exit\n"
+    },
+    "guest_image": {
+      "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/large-dtree/base.bin",
+      "sha256": "e36e70336ddd17f91b3b9ae502890ed8cd054e856240dbb96167e096511c1c00",
+      "bytes": 153288
+    },
+    "raw_failure_log": {
+      "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/large-dtree/failure.log",
+      "sha256": "7f815f584bdddc5a2287f5b86947c902a4348c7f74d114c2518ff84239bdf39d",
+      "bytes": 686
+    },
+    "raw_failure_output": "DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5\nDTREE DATA READY\nBase panic: Builtin: out of memory\nFPR EXIT 1\nDONE\nTraceback (most recent call last):\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 131, in <module>\n    if __name__=='__main__':main()\n                            ~~~~^^\n  File \"/Users/jasonqin/Documents/GitHub/fprisc/tools/run_tangnano20k_base.py\", line 123, in main\n    if b'FPR EXIT 0\\n' not in output:raise ValueError('CPU halted without successful runtime exit')\n                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nValueError: CPU halted without successful runtime exit\n\n",
+    "outer_runner_log": {
+      "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/large-dtree.log",
+      "sha256": "7fe9308daa172b7185845e2b88d295c61556584ce2feacae318212fc084c1717",
+      "bytes": 2827
+    }
+  },
+  "post_large_workload_health": {
+    "passed": true,
+    "cpu_mhz": 72,
+    "sdram_mhz": 54,
+    "bitstream_sha256": "49bf20aa59d07b6b480fa7ba80885a1468b4a52a7118b8767c0c0b026301ecf8",
+    "log": {
+      "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-clock72/post-large-uart.log",
+      "sha256": "1991e5bb5722e226f000cee15125ed17e5edbeaaf655c1161203e31f30b8de16",
+      "bytes": 28
+    },
+    "output": "PASS: board UART diagnostic\n"
+  }
+}

@@ -3,7 +3,11 @@
 This is an experimental RV32IM/IMC and RV64IM/IMC Base host, alongside the
 established RV32 Builtin target. Both Base variants use cached 8 MiB SDRAM and
 a 64 KiB stack. RV64 uses HaskPlayground's `boards/tangnano20k/rv64` image at
-27 MHz; RV32 uses its SDRAM pipeline image at 48 MHz. This is a single execution thread; the Base
+27 MHz; RV32 has a physically tested 72 MHz CPU / 54 MHz SDRAM image, with the
+48 MHz image retained as a baseline. The 108 MHz attempt failed timing and
+the physical instruction check. See the [clock experiment and acceptance
+record](../../docs/2026-10-18-TANG-NANO-CLOCKS.md) for current results and the
+small timing margin. This is a single execution thread; the Base
 actor scheduler, interrupts, processes and dynamic stack growth are unavailable.
 
 The program keeps `profile base.` and uses the ordinary `core/prelude.fpr` and
@@ -68,10 +72,10 @@ for large Base programs. From fprisc:
 
 ```bash
 FPR_XLEN=32 machine/tangnano20k/build-softfloat.sh
-FPR_XLEN=32 FPR_RVC=1 FPR_CPU_MHZ=48 machine/tangnano20k/build.sh \
+FPR_XLEN=32 FPR_RVC=1 FPR_CPU_MHZ=72 machine/tangnano20k/build.sh \
   tests/tangnano20k_rv32_host.fpr "$PWD/build/tangnano20k-rv32-host"
 python3 tools/run_tangnano20k_base.py build/tangnano20k-rv32-host/base.bin \
-  --root build/tangnano20k-rv32-host --freq-mhz 48 \
+  --root build/tangnano20k-rv32-host --freq-mhz 72 \
   --env TEST_UART=connected --input 'hello RV32'
 ```
 
@@ -118,15 +122,26 @@ internal to the software library; RV64IM has no floating-point CSR state.
 
 The SPI-enabled RV32IMC SDRAM image exposes the board slot to an FP-RISC
 SD protocol driver and a small FAT16/FAT32 file layer. The C HAL is 84 lines
-of register and buffer access. The physical 48 MHz CPU / 3 MHz SPI test
+of register and buffer access. The original 48 MHz CPU / 3 MHz SPI test
 created and read `FPRTEST.TXT` on an approved 16 MiB test partition, including
-binary bytes and overwrite refusal. The existing Linux partition was retained.
+binary bytes and overwrite refusal. The 72 MHz CPU / 54 MHz SDRAM image also
+passes a new 512-byte `CLKTEST.BIN` creation test, nine exact reads, overwrite
+refusal and fresh guest reopening. Its independent nine-sector audit verifies
+both files, affected FAT copies, the unchanged MBR/boot sector and preserved
+Linux superblock samples. See the [clock report](../../docs/2026-10-18-TANG-NANO-CLOCKS.md)
+for exact images, timing margin and the classifier performance regression.
 
 Use `tests/tangnano20k_sd_probe.fpr` for read-only inspection and
 `tests/tangnano20k_sd_files.fpr` for a new-file/readback test on a compatible
 card. The latter refuses a conflicting existing file. The dedicated
 card-specific preparation tool requires explicit approval and a runtime gate;
 ordinary tests never format the card.
+
+For the current 72 MHz image, use `tests/tangnano20k_sd_clock.fpr` and pass
+`--env SD_DIVIDER=11` to the Base runner for 3 MHz SPI. The read-only probe
+also accepts `SD_DIVIDER`; its default 7 corresponds to the older 48 MHz
+image. `tests/tangnano20k_sd_clock_audit.fpr` is the read-only, card-specific
+audit for the retained test partition.
 
 See the [driver, hardware and validation report](../../docs/2026-10-18-TANGNANO20K-SD.md)
 for the required FPGA image, build commands and the initial 512-byte file limit.

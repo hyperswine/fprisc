@@ -1,6 +1,7 @@
 profile base.
 # Read-only physical inspection. It never calls Sd.write.
 Sd = use "std/tangnano20k/sd".
+Program = use "std/program".
 need r = case r of Ok value -> value | Err why -> error why.
 hexGo : (at : Int | measure at) -> String -> List String -> List String .
 hexGo at text acc = if at < 0 then acc else
@@ -35,7 +36,8 @@ partition index card mbr = if index >= 4 then Unit else
   partition (index + 1) card mbr.
 main : Unit .
 main =
-  card = need (Sd.open 7);
+  divider = parseInt (Program.envOr "7" "SD_DIVIDER");
+  card = need (Sd.open divider);
   _ = print "SD CARD {Sd.product card} BLOCKS {Sd.blocks card} HIGH_CAPACITY {Sd.highCapacity card} OCR {I32.hex (Sd.ocr card)}";
   _ = print "SD CID {hex (Sd.cid card)} CSD {hex (Sd.csd card)}";
   mbr = dump card 0;

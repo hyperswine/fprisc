@@ -1,0 +1,36 @@
+profile base.
+# Clock experiment acceptance. Explicit divider keeps SPI at 3 MHz for
+# 108 MHz CPU (17) and 48 MHz CPU (7). No formatting or raw-sector writes.
+Sd = use "std/tangnano20k/sd".
+Fat = use "std/tangnano20k/fat".
+Program = use "std/program".
+need result = case result of Ok value -> value | Err why -> error why.
+check yes why = if yes then Unit else error why.
+bytes : (at : Int | measure at) -> List String -> String .
+bytes at acc = if at < 0 then strJoin "" acc else
+  bytes (at - 1) (chr ((at * 73 + 19) % 256) :: acc).
+readOnce volume expected = check (need (Fat.read volume "CLKTEST.BIN") == expected) "SD repeated binary read differs".
+main : Unit .
+main =
+  divider = parseInt (Program.envOr "17" "SD_DIVIDER");
+  card = need (Sd.open divider);
+  _ = print "CLOCK SD CARD {Sd.product card} BLOCKS {Sd.blocks card} DIVIDER {divider}";
+  volume = need (Fat.mount card);
+  old = strJoin "" ["FP-RISC Tang Nano 20K SD file\n", "I32 + SPI + FAT in FP-RISC\n", chr 0, chr 255, "\n"];
+  _ = check (need (Fat.read volume "FPRTEST.TXT") == old) "SD original test file changed";
+  expected = bytes 511 Nil;
+  _ = case Fat.read volume "CLKTEST.BIN" of
+      Ok actual -> _ = check (actual == expected) "CLKTEST.BIN collision; overwrite refused"; print "CLOCK SD EXISTING FILE VERIFIED"
+    | Err _ -> _ = need (Fat.create volume "CLKTEST.BIN" expected); print "CLOCK SD NEW FILE STORED";
+  _ = readOnce volume expected;
+  _ = readOnce volume expected;
+  _ = readOnce volume expected;
+  _ = readOnce volume expected;
+  _ = readOnce volume expected;
+  _ = readOnce volume expected;
+  _ = readOnce volume expected;
+  _ = readOnce volume expected;
+  _ = case Fat.create volume "CLKTEST.BIN" "must not overwrite" of Err _ -> Unit | Ok _ -> error "SD overwrite accepted";
+  _ = readOnce volume expected;
+  _ = check (need (Fat.read volume "FPRTEST.TXT") == old) "SD original file changed after create";
+  print "CLOCK SD FILE HOLDS 512 BYTES 9 READS".
