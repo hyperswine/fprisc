@@ -1,0 +1,56 @@
+{
+  "reference": {
+    "train_rows": 512,
+    "test_rows": 128,
+    "bins": 16,
+    "max_depth": 6,
+    "min_leaf": 5,
+    "nodes": 55,
+    "depth": 6,
+    "train": {
+      "hits": 481,
+      "rows": 512,
+      "digest": 354774,
+      "predictions_sha256": "dbc85e3a7188d43555e0876fc50dd901b15fa11c6da8ebda539e8580266f37a1"
+    },
+    "test": {
+      "hits": 116,
+      "rows": 128,
+      "digest": 434626,
+      "predictions_sha256": "9bc880f50defb44919cec07bff13fdfb9442287d88fa9e8b09300cc8100ef5c8"
+    },
+    "root": {
+      "column": 0,
+      "threshold": -0.12101956852711737
+    },
+    "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+  },
+  "source_sha256": "feeb00123abbe9254ac5b8e759a8fa3f144b778c83e07e5a0e6bf6bfca82d2a9",
+  "classifier_sha256": "486a4abbd0876014555862a5bb70db6d4c0402e6e3f7f6193fbacb576750c791",
+  "compiler_sha256": "858ccf88b8b52bad49625629e61fd8c3f9d486b544f60ec2a0a20dea830f199f",
+  "repeats": 10,
+  "executions": {
+    "board": {
+      "image_sha256": "1e87b1e1a2e06b79a70b10b8a137a64b7469b1065308d03c14fb3d22686351e1",
+      "image_bytes": 152288,
+      "heap_arena_bytes": 8123712,
+      "heap_bitmap_bytes": 63472,
+      "usable_heap_block_bytes": 8060240,
+      "stack_bytes": 65536,
+      "frequency_mhz": 72,
+      "isa": "RV32IMC",
+      "passed": false,
+      "bitstream_sha256": "5eb222ff39eee54dd53d45a69e1dee94481dd585dcb903c8f3000a56f91b7e3c"
+    }
+  },
+  "build_options": {
+    "FPR_XLEN": "32",
+    "FPR_RVC": "1",
+    "FPR_QEMU": "0",
+    "FPR_CPU_MHZ": "72",
+    "FPR_GC": "1",
+    "FPR_HEAP_REPORT": "1",
+    "FPR_GC_STRESS": "0"
+  },
+  "error": "('DTREE nodes=55 depth=6', 'DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5\\nDTREE DATA READY\\nGC HEAP live=160992 peak=8060240 requests=706626 requested=16740914 collections=7 reclaimed=54949392\\nGC HEAP live=216112 peak=8060240 requests=806904 requested=19088526 collections=8 reclaimed=62793520\\nDTREE nodes=57 depth=6\\nDTREE train hits=478/512 digest=853501\\nDTREE test hits=117/128 digest=102644\\nroot split: col 0 @ -0.121019568527117\\nDTREE elapsed_us=9221422\\n')"
+}

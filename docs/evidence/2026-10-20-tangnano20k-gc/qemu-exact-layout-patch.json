@@ -1,0 +1,9 @@
+{
+  "source_sha256": "868a7ba591896f16665092ebea429be2d3b85b5e0867a2b63a80c8202fac792a",
+  "patched_sha256": "fefa6d69bde4f3b6e47f02c9c2f6051ce9cb0d2ef20abe0cecd8b17effb1d127",
+  "address": "0x80000198",
+  "file_offset": 4504,
+  "original_bytes": "3707001011071c43858bf5df",
+  "new_bytes": "b70200102380a20067800000",
+  "scope": "Only hal_putc MMIO output adapter changed; all other guest bytes and addresses retained"
+}

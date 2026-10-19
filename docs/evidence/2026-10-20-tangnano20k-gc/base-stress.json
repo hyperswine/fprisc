@@ -1,0 +1,82 @@
+[
+  {
+    "case": "numeric",
+    "isa": "RV32IM",
+    "sha256": "bb4b98381ed2a9e66b7e2b432b951aa68c0b90442b64cc6bb81f584002428792",
+    "image_bytes": 158032,
+    "output": "NUMERIC I64 HOLDS\nNUMERIC FLOAT HOLDS\nRV32 BASE NUMERIC HOLDS\nFPR EXIT 0\n",
+    "passed": true
+  },
+  {
+    "case": "int",
+    "isa": "RV32IM",
+    "sha256": "433937ac2a8cb2da07b23225b4ddc29c4b8177564e26e09ab7422743610dc887",
+    "image_bytes": 135664,
+    "output": "RV32 INT HOLDS max=1073741823 min=-1073741824\nFPR EXIT 0\n",
+    "passed": true
+  },
+  {
+    "case": "word",
+    "isa": "RV32IM",
+    "sha256": "703f53deb862cb82d9114fad7182419859fffe47af9d9d30c6affe03216da753",
+    "image_bytes": 137232,
+    "output": "RV32 WORD32 HOLDS\nFPR EXIT 0\n",
+    "passed": true
+  },
+  {
+    "case": "host",
+    "isa": "RV32IM",
+    "sha256": "b7a84d6c3ed5691563ee512bc39c2b94fb5754e5f5b099e025b7b4c78e76fdcd",
+    "image_bytes": 315472,
+    "output": "RV32 BASE HOST HOLDS\nFPR EXIT 0\n",
+    "passed": true
+  },
+  {
+    "case": "records",
+    "isa": "RV32IM",
+    "sha256": "e0f7c89b37bedb99049357f0e4697d5009e183bcfa1216c678a5eaec3a43d9b0",
+    "image_bytes": 144640,
+    "output": "captured dispatch: literal=1160045 variable=1160045\nvecshape: two=1149000 four=2498000 in place=True\nFPR EXIT 0\n",
+    "passed": true
+  },
+  {
+    "case": "numeric",
+    "isa": "RV32IMC",
+    "sha256": "c201d38b5d96f92f1701fc644abd3353cfcb0d7d4e0a7e09765487fa167cff47",
+    "image_bytes": 129088,
+    "output": "NUMERIC I64 HOLDS\nNUMERIC FLOAT HOLDS\nRV32 BASE NUMERIC HOLDS\nFPR EXIT 0\n",
+    "passed": true
+  },
+  {
+    "case": "int",
+    "isa": "RV32IMC",
+    "sha256": "128874594a09ccc0e8531d443dfbb28cdbdb4878af13b850ca3d82059e17be14",
+    "image_bytes": 109824,
+    "output": "RV32 INT HOLDS max=1073741823 min=-1073741824\nFPR EXIT 0\n",
+    "passed": true
+  },
+  {
+    "case": "word",
+    "isa": "RV32IMC",
+    "sha256": "d23b2a2fec19ed1d5f4aa4e52f5281486116b62360635827e4f6df9db7ce9454",
+    "image_bytes": 110928,
+    "output": "RV32 WORD32 HOLDS\nFPR EXIT 0\n",
+    "passed": true
+  },
+  {
+    "case": "host",
+    "isa": "RV32IMC",
+    "sha256": "a9995ef8d27d992d6f99681d892517679ac92019af77ad5b4c015fdb48e1ad57",
+    "image_bytes": 266032,
+    "output": "RV32 BASE HOST HOLDS\nFPR EXIT 0\n",
+    "passed": true
+  },
+  {
+    "case": "records",
+    "isa": "RV32IMC",
+    "sha256": "81e934636c9cdc06317d58890776fa2182c2d8910a0b1d8eb9a32bc8c32d177f",
+    "image_bytes": 117248,
+    "output": "captured dispatch: literal=1160045 variable=1160045\nvecshape: two=1149000 four=2498000 in place=True\nFPR EXIT 0\n",
+    "passed": true
+  }
+]

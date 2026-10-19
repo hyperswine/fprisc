@@ -1,0 +1,21 @@
+Native ASan/UBSan: HEAP WORK nodes=512 allocations=512 lookups=1538 cycles=0
+HEAP WORK nodes=2048 allocations=2048 lookups=6146 cycles=0
+HEAP WORK nodes=8192 allocations=8192 lookups=24578 cycles=0
+INDEXED BUILTIN HEAP HOLDS
+Native explicit refusals: 21 passed
+Existing manual-Rc and exact-layout/deep-ARC sanitizer fixtures: passed
+Native bounded 64 KiB/8 MiB heaps, oversized arena refusal and invalid configuration rejection: passed
+RV32IM QEMU: HEAP WORK nodes=512 allocations=512 lookups=1538 cycles=420114
+HEAP WORK nodes=2048 allocations=2048 lookups=6146 cycles=1679634
+HEAP WORK nodes=8192 allocations=8192 lookups=24578 cycles=6709012
+INDEXED BUILTIN HEAP HOLDS
+qemu-system-riscv32: warning: icount sleep disabled and no active timers
+RV32 explicit refusals: 21 passed
+RV32 bounded 64 KiB/8 MiB heaps, oversized refusal and complete bounded contracts: passed
+RV64IM QEMU: HEAP WORK nodes=512 allocations=512 lookups=1538 cycles=449811
+HEAP WORK nodes=2048 allocations=2048 lookups=6146 cycles=1798419
+HEAP WORK nodes=8192 allocations=8192 lookups=24578 cycles=7178225
+INDEXED BUILTIN HEAP HOLDS
+qemu-system-riscv64: warning: icount sleep disabled and no active timers
+RV64 explicit refusals: 21 passed
+RV64 bounded 64 KiB/8 MiB heaps, oversized refusal and complete bounded contracts: passed

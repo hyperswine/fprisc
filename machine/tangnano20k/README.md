@@ -36,13 +36,16 @@ FP-RISC semantics. The board C code supplies allocation, UART and ABI mechanisms
 | Stream files, directory APIs, watch-open | `Err` with a named unavailable capability |
 | Actors, IRQ routing, polling/watch operations without a Result error channel | Named panic / failing exit |
 | Selective nonblocking `receiveFromNow` | Named unavailable `Err`; no actor or mailbox is fabricated |
+| Temporary reclamation | Opt-in `FPR_GC=1`: single-threaded nonmoving conservative collector |
 | Unlisted primitives | Link failure; never automatic success stubs |
 
 The allocator is the single-threaded indexed coalescing C heap described in
-[the heap record](../../docs/2026-10-16-BUILTIN-HEAP.md). Base's temporary
-VM allocations are not automatically reclaimed. The documented desktop WASM
-suite peaks around 100 MB and does not fit this board. Full Base scheduling,
-garbage collection and the full WASM suite are not claimed.
+[the heap record](../../docs/2026-10-16-BUILTIN-HEAP.md). By default, Base's temporary
+allocations are not automatically reclaimed. `FPR_GC=1` adds collection on
+allocation pressure; the [reclamation report](../../docs/2026-10-20-TANGNANO20K-GC.md)
+records its root contract and repeated 512-row classifier acceptance. The
+documented desktop WASM suite peaks around 100 MB and does not fit this board.
+Full Base scheduling and the full WASM suite are not claimed.
 
 ## Build
 
@@ -96,8 +99,37 @@ bit operations and checked numeric conversions. `I32.toInt`/`toIntU` return
 RV32 floating literals are immutable static boxes, and floating arithmetic
 uses runtime boxes and generic vector callbacks. Integer vector kernels remain
 enabled. This changes allocation costs: the 128/64-row classifier passes,
-while 512/128 rows with 16 bins exhaust the current 8 MiB heap. Automatic
-temporary reclamation remains unavailable. See [the RV32 port record](../../docs/2026-10-18-RV32-BASE.md).
+while 512/128 rows with 16 bins exhaust the current 8 MiB heap without
+collection. With `FPR_GC=1`, the latter configuration passes ten repetitions
+in one process on the RV32 board at CPU/SDRAM 48/48 MHz. The 72/54 MHz
+image produces intermittent wrong results with this larger regression and is
+not accepted for this workload. See [the original RV32 port record](../../docs/2026-10-18-RV32-BASE.md)
+and [the reclamation follow-up](../../docs/2026-10-20-TANGNANO20K-GC.md).
+
+### Optional temporary reclamation
+
+```bash
+FPR_XLEN=32 FPR_RVC=1 FPR_CPU_MHZ=48 FPR_GC=1 \
+  machine/tangnano20k/build.sh tests/tangnano20k_dtree.fpr "$PWD/build/tangnano20k-gc"
+```
+
+`FPR_GC=1` saves the integer registers and scans the active stack, static
+application data and reachable heap blocks. It does not move objects or
+change their representation. It supports the current single-threaded,
+soft-float IM/IMC host; it is separate from compiler ARC and is off by default.
+Pointers must remain visible in naturally aligned machine-word slots or
+registers. Interior payload and one-past-end pointers are recognized. Packed
+or encoded pointers, roots in external/device memory, and concurrent heap
+access are outside this mode's contract. Ordinary explicit frees still apply;
+collection does not repair use-after-free. Conservative false positives can
+retain dead data, and collection pauses are not bounded for real-time use.
+
+`FPR_HEAP_REPORT=1` prints allocation residency/churn at exit and after each
+collection. Residency includes allocator headers and padding, excludes the
+bitmap, and does not equal the live language payload. Cumulative counters
+have machine-word width. `FPR_GC_STRESS=N` requires `FPR_GC=1` and collects
+every N allocations for root-liveness tests; leave it unset for ordinary use.
+No GC or statistics work is added to the default manual heap allocation path.
 
 On RV32, `Sys.mtime` returns 10 MHz ticks modulo 2^30 (about 107.37 seconds),
 and `Sys.timeUs` returns host microseconds modulo 2^30 (about 17.90 minutes),

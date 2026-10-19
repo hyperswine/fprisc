@@ -11,6 +11,16 @@ case "$xlen" in 32) abi=ilp32; support=(-lgcc);; 64) abi=lp64; support=();; *) e
 if [[ "$xlen" == 32 && $# == 0 ]];then prog=tests/tangnano20k_rv32_host.fpr;fi
 case "$rvc" in 0) march=rv${xlen}im_zicsr_zifencei;; 1) march=rv${xlen}imc_zicsr_zifencei;; *) echo 'FPR_RVC must be 0 or 1' >&2;exit 1;; esac
 uart=()
+diagnostics=()
+gc=()
+case "${FPR_GC:-0}" in 0) ;; 1) gc=(-DFPR_BUILTIN_GC machine/tangnano20k/gc_registers.S machine/tangnano20k/gc_roots.c);; *) echo 'FPR_GC must be 0 or 1' >&2;exit 1;; esac
+case "${FPR_HEAP_REPORT:-0}" in 0) ;; 1) diagnostics=(-DFPR_HEAP_REPORT -DFPR_BUILTIN_HEAP_STATS);; *) echo 'FPR_HEAP_REPORT must be 0 or 1' >&2;exit 1;; esac
+if [[ -n "${FPR_GC_STRESS:-}" ]];then
+  if [[ "${FPR_GC:-0}" != 1 || ! "$FPR_GC_STRESS" =~ ^[1-9][0-9]{0,5}$ ]];then
+    echo 'FPR_GC_STRESS needs FPR_GC=1 and an interval in 1..999999' >&2;exit 1
+  fi
+  gc+=(-DFPR_BUILTIN_GC_STRESS="$FPR_GC_STRESS")
+fi
 case "${FPR_QEMU:-0}" in 0) ;; 1) uart=(-DFPR_TANGNANO_QEMU);; *) echo 'FPR_QEMU must be 0 or 1' >&2;exit 1;; esac
 mkdir -p "$out"
 FPR_NO_F64_INLINE=1 ./fprc --system=bare-metal --profile=base --target="rv$xlen" --prelude=core/prelude.fpr "$prog" "$out/base.s"
@@ -22,7 +32,7 @@ fi
 # The compiler's unit list contains one pathname per line; quote every one.
 units=();while IFS= read -r unit;do [[ -z "$unit" ]] || units+=("$unit");done < "$out/base.s.units"
 riscv64-unknown-elf-gcc -march="$march" -mabi="$abi" -mcmodel=medany -Os \
- -ffreestanding -nostdlib -nostartfiles -fno-builtin -DFPR_NHARTS=1 -DFPR_BUILTIN ${uart[@]+"${uart[@]}"} \
+ -ffreestanding -nostdlib -nostartfiles -fno-builtin -DFPR_NHARTS=1 -DFPR_BUILTIN ${uart[@]+"${uart[@]}"} ${diagnostics[@]+"${diagnostics[@]}"} ${gc[@]+"${gc[@]}"} \
  -DFPR_SIMPLE_RISC -DFPR_CPU_MHZ="$freq" -DFPR_BUILTIN_HEAP_MAX_BYTES=8388608 -ffunction-sections -fdata-sections \
  -Wl,--gc-sections -Wl,--no-warn-rwx-segments -I runtime -I machine/builtin \
  -T machine/tangnano20k/link.ld machine/tangnano20k/crt0.S machine/tangnano20k/base.c \

@@ -1,0 +1,95 @@
+DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5
+DTREE DATA READY
+GC HEAP live=203776 peak=8060240 requests=103829 requested=2487324 collections=1 reclaimed=7856464
+GC HEAP live=231008 peak=8060240 requests=203726 requested=4820700 collections=2 reclaimed=15685696
+DTREE nodes=55 depth=6
+DTREE train hits=481/512 digest=354774
+DTREE test hits=116/128 digest=434626
+root split: col 0 @ -0.121019568527117
+DTREE elapsed_us=12931558
+DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5
+DTREE DATA READY
+GC HEAP live=221344 peak=8060240 requests=304769 requested=7240888 collections=3 reclaimed=23524592
+GC HEAP live=225936 peak=8060240 requests=404466 requested=9568584 collections=4 reclaimed=31358832
+DTREE nodes=55 depth=6
+DTREE train hits=481/512 digest=354774
+DTREE test hits=116/128 digest=434626
+root split: col 0 @ -0.121019568527117
+DTREE elapsed_us=12917168
+DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5
+DTREE DATA READY
+GC HEAP live=194640 peak=8060240 requests=505590 requested=11988660 collections=5 reclaimed=39224432
+GC HEAP live=234048 peak=8060240 requests=605500 requested=14325840 collections=6 reclaimed=47050624
+DTREE nodes=55 depth=6
+DTREE train hits=481/512 digest=354774
+DTREE test hits=116/128 digest=434626
+root split: col 0 @ -0.121019568527117
+DTREE elapsed_us=12919668
+DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5
+DTREE DATA READY
+GC HEAP live=161360 peak=8060240 requests=706661 requested=16742344 collections=7 reclaimed=54949504
+GC HEAP live=216352 peak=8060240 requests=806931 requested=19089900 collections=8 reclaimed=62793392
+DTREE nodes=55 depth=6
+DTREE train hits=481/512 digest=354774
+DTREE test hits=116/128 digest=434626
+root split: col 0 @ -0.121019568527117
+DTREE elapsed_us=12894647
+DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5
+GC HEAP live=144640 peak=8060240 requests=906354 requested=21435732 collections=9 reclaimed=70708352
+DTREE DATA READY
+GC HEAP live=219344 peak=8060240 requests=1008731 requested=23869068 collections=10 reclaimed=78549248
+GC HEAP live=243632 peak=8060240 requests=1108315 requested=26198328 collections=11 reclaimed=86365856
+DTREE nodes=55 depth=6
+DTREE train hits=481/512 digest=354774
+DTREE test hits=116/128 digest=434626
+root split: col 0 @ -0.121019568527117
+DTREE elapsed_us=13494462
+DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5
+DTREE DATA READY
+GC HEAP live=210400 peak=8060240 requests=1209250 requested=28613596 collections=12 reclaimed=94215696
+GC HEAP live=228416 peak=8060240 requests=1309010 requested=30945384 collections=13 reclaimed=102047520
+DTREE nodes=55 depth=6
+DTREE train hits=481/512 digest=354774
+DTREE test hits=116/128 digest=434626
+root split: col 0 @ -0.121019568527117
+DTREE elapsed_us=12910489
+DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5
+DTREE DATA READY
+GC HEAP live=215360 peak=8060240 requests=1410076 requested=33364836 collections=14 reclaimed=109892400
+GC HEAP live=234656 peak=8060240 requests=1509772 requested=35695484 collections=15 reclaimed=117717984
+DTREE nodes=55 depth=6
+DTREE train hits=481/512 digest=354774
+DTREE test hits=116/128 digest=434626
+root split: col 0 @ -0.121019568527117
+DTREE elapsed_us=12921374
+DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5
+DTREE DATA READY
+GC HEAP live=194160 peak=8060240 requests=1610909 requested=38111196 collections=16 reclaimed=125584064
+GC HEAP live=226672 peak=8060240 requests=1710760 requested=40449612 collections=17 reclaimed=133417632
+DTREE nodes=55 depth=6
+DTREE train hits=481/512 digest=354774
+DTREE test hits=116/128 digest=434626
+root split: col 0 @ -0.121019568527117
+DTREE elapsed_us=12919519
+DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5
+DTREE DATA READY
+GC HEAP live=161040 peak=8060240 requests=1812104 requested=42867320 collections=18 reclaimed=141316832
+GC HEAP live=197504 peak=8060240 requests=1912263 requested=45217024 collections=19 reclaimed=149179568
+DTREE nodes=55 depth=6
+DTREE train hits=481/512 digest=354774
+DTREE test hits=116/128 digest=434626
+root split: col 0 @ -0.121019568527117
+DTREE elapsed_us=12897706
+DTREE BEGIN train=512 test=128 bins=16 depth=6 minLeaf=5
+GC HEAP live=102032 peak=8060240 requests=2012072 requested=47562568 collections=20 reclaimed=157136880
+DTREE DATA READY
+GC HEAP live=220448 peak=8060240 requests=2114839 requested=50011384 collections=21 reclaimed=164976672
+GC HEAP live=238224 peak=8060240 requests=2214450 requested=52339280 collections=22 reclaimed=172798624
+DTREE nodes=55 depth=6
+DTREE train hits=481/512 digest=354774
+DTREE test hits=116/128 digest=434626
+root split: col 0 @ -0.121019568527117
+DTREE elapsed_us=13464223
+HEAP live=1038688 peak=8060240 requests=2224756 requested=52579120 collections=22 reclaimed=172798624
+FPR EXIT 0
+DONE

@@ -1,0 +1,6 @@
+Native ASan/UBSan: graph, cycles, interior/one-past pointers, pressure, coalescing and live OOM PASS
+RV32: caller/callee registers, stack, static roots, realloc and pressure PASS
+RV32: missing caller-register root is rejected PASS
+RV64: caller/callee registers, stack, static roots, realloc and pressure PASS
+RV64: missing caller-register root is rejected PASS
+build/tangnano20k-memory-20261020/gc-accepted-repeat/results.json: repeated classifier exact results and bounded retained heap PASS

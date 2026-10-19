@@ -4,6 +4,13 @@ profile base.
 # Reduced histograms bound temporary allocation on the 8 MiB Base host.
 D = use "dtree".
 
+# RV32 Sys.mtime is positive modulo 2^30. Each measured run must be shorter
+# than one wrap (~107 s); the repeated process can cross any number of wraps.
+elapsedTicks : Int -> Int -> Int .
+elapsedTicks start end =
+  delta = end - start;
+  case delta < 0 of True -> (delta + 1073741823) + 1 | False -> delta.
+
 checkRows : unsafe D.Tree -> (Vector _) -> (Vector _) -> (Vector _) -> Int -> Int -> Int -> Int -> _ .
 checkRows tree xs zs ys i n hits digest = case i >= n of
   True -> (hits, digest, xs, zs, ys)
@@ -18,6 +25,7 @@ checkOne tree xs zs ys i n hits digest =
 
 run : unsafe Int -> Int -> Int -> Int -> Int -> Unit .
 run trainRows testRows bins maxDepth minLeaf =
+  _ = case elapsedTicks 1073741820 7 == 11 of True -> Unit | False -> Sys.exit 1;
   _ = print "DTREE BEGIN train={trainRows} test={testRows} bins={bins} depth={maxDepth} minLeaf={minLeaf}";
   started = Sys.mtime Unit;
   ps = D.P bins maxDepth 0.001 minLeaf 2;
@@ -41,7 +49,7 @@ run trainRows testRows bins maxDepth minLeaf =
   _ = Vec.free exs2;
   _ = Vec.free ezs2;
   _ = Vec.free eys2;
-  elapsed = Sys.mtime Unit - started;
+  elapsed = elapsedTicks started (Sys.mtime Unit);
   print "DTREE elapsed_us={elapsed / 10}".
 
 main : Unit .

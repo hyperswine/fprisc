@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "device": "GW2AR-LV18QN88C8/I7",
+  "model_complete": false,
+  "missing": [
+    "t_ac_max",
+    "t_oh_min",
+    "t_cmd_setup",
+    "t_cmd_hold",
+    "t_data_setup",
+    "t_data_hold",
+    "t_dqm_setup",
+    "t_dqm_hold",
+    "clock_flight_min",
+    "clock_flight_max",
+    "read_flight_min",
+    "read_flight_max",
+    "command_flight_min",
+    "command_flight_max",
+    "write_flight_min",
+    "write_flight_max",
+    "dqm_flight_min",
+    "dqm_flight_max",
+    "setup_uncertainty",
+    "hold_uncertainty",
+    "qualification.source",
+    "qualification.operating_conditions",
+    "qualification.boundary_accounting",
+    "qualification.status",
+    "qualification.frequency_range"
+  ],
+  "memory_mhz": 48.0,
+  "phase_degrees": 135.0,
+  "cas_latency": 2,
+  "burst_words": 4,
+  "period_ns": 20.833333333333332,
+  "nominal_launch_to_memory_edge_ns": 7.8125,
+  "nominal_memory_edge_to_next_capture_ns": 13.020833333333332,
+  "signoff": false,
+  "scope": "Static I/O bounds only; routed path coverage, clock propagation, pulse widths, bus turnaround and SDRAM protocol remain to be checked.",
+  "static_ports": {
+    "O_sdram_cs_n": 0,
+    "O_sdram_cke": 1
+  },
+  "profile": {
+    "schema_version": 1,
+    "device": "GW2AR-LV18QN88C8/I7",
+    "reference_plane": "fpga_sdram_io_boundary",
+    "qualification": {
+      "status": "pending_vendor",
+      "source": null,
+      "operating_conditions": null,
+      "boundary_accounting": null,
+      "cas_latency": 2,
+      "burst_words": 4,
+      "min_mhz": null,
+      "max_mhz": null
+    },
+    "reported_features": {
+      "access_time_ns": 5.4,
+      "source": "Gowin DS226-2.7E section 2.2.1",
+      "url": "https://cdn.gowinsemi.com.cn/DS226E.pdf",
+      "note": "Feature listing only. Not substituted for a qualified tAC maximum or any other AC bound."
+    },
+    "parameters_ns": {
+      "t_ac_max": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "t_oh_min": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "t_cmd_setup": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "t_cmd_hold": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "t_data_setup": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "t_data_hold": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "t_dqm_setup": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "t_dqm_hold": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "clock_flight_min": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "clock_flight_max": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "read_flight_min": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "read_flight_max": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "command_flight_min": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "command_flight_max": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "write_flight_min": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "write_flight_max": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "dqm_flight_min": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "dqm_flight_max": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "setup_uncertainty": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      },
+      "hold_uncertainty": {
+        "ns": null,
+        "status": "missing",
+        "source": null
+      }
+    },
+    "unresolved_outside_static_sdc": [
+      "SDRAM tLZ/tHZ and output-enable bus turnaround",
+      "Clock pulse widths and duty-cycle bounds",
+      "Controller command spacing and refresh timing",
+      "Routed input/output path coverage and generated-clock propagation"
+    ]
+  },
+  "profile_path": "/Users/jasonqin/Documents/GitHub/HaskPlayground/boards/tangnano20k/sdram/io_timing_gw2ar18_qn88.json",
+  "profile_sha256": "0d55614b70979419f46782ef77b65339a7daaae840b7ce0fb1b36c453f465a93",
+  "controller_sha256": "fac724ff34098570c5ad55b18fa2fd43770496c11005e8b6992ad27f7830693e",
+  "constraints_emitted": false
+}

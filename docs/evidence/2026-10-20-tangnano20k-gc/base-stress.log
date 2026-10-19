@@ -1,0 +1,10 @@
+numeric RV32IM: PASS
+int RV32IM: PASS
+word RV32IM: PASS
+host RV32IM: PASS
+records RV32IM: PASS
+numeric RV32IMC: PASS
+int RV32IMC: PASS
+word RV32IMC: PASS
+host RV32IMC: PASS
+records RV32IMC: PASS

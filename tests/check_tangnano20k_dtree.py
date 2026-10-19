@@ -127,6 +127,17 @@ def validate(output, expected):
     return int(elapsed[1])
 
 
+def validate_runs(output, expected, repeats):
+    runs = re.split(r'(?=^DTREE BEGIN )', output, flags=re.M)[1:]
+    assert len(runs) == repeats, (len(runs), repeats, output)
+    return [validate(run, expected) for run in runs]
+
+
+def heap_samples(output):
+    return [dict((key, int(value)) for key, value in re.findall(r'(\w+)=(\d+)', line))
+            for line in output.splitlines() if line.startswith(('HEAP ', 'GC HEAP '))]
+
+
 def execute(command, cwd, env, timeout, live=False):
     started = time.monotonic()
     process = subprocess.Popen([str(x) for x in command], cwd=cwd, env=env,
@@ -188,7 +199,10 @@ def main():
     parser.add_argument('--freq-mhz', type=int, default=27)
     parser.add_argument('--timeout', type=float, default=240)
     parser.add_argument('--bitstream', type=Path)
+    parser.add_argument('--repeat', type=int, default=1, help='repeat inside one guest process and heap')
     args = parser.parse_args()
+    if not 1 <= args.repeat <= 100:
+        parser.error('--repeat must be in 1..100')
     if args.qemu and (args.hardware or args.xlen != 32):
         parser.error('--qemu currently requires --xlen 32 and excludes --hardware')
     if min(args.train, args.test, args.min_leaf, args.freq_mhz) < 1 or args.bins < 2 or not 1 <= args.depth <= 12 or not math.isfinite(args.timeout) or args.timeout <= 0:
@@ -206,21 +220,31 @@ def main():
     source, replacements = re.subn(r'main = run \d+ \d+ \d+ \d+ \d+\.',
                                   f'main = run {args.train} {args.test} {args.bins} {args.depth} {args.min_leaf}.', source)
     assert replacements == 1, 'classifier fixture main parameters were not found exactly once'
+    if args.repeat > 1:
+        call = f'run {args.train} {args.test} {args.bins} {args.depth} {args.min_leaf}'
+        source = source.replace(f'main = {call}.',
+            f'main = repeatRuns {args.repeat}.\n'
+            'repeatRuns : unsafe Int -> Unit .\n'
+            'repeatRuns 0 = Unit.\n'
+            f'repeatRuns n = _ = {call}; repeatRuns (n - 1).')
     fixture = out / 'program.fpr'
     fixture.write_text(source)
     sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
     report = {'reference': expected, 'source_sha256': sha(fixture),
               'classifier_sha256': sha(source_root / 'tests/dtree.fpr'),
-              'compiler_sha256': sha(source_root / 'fpr'), 'executions': {}}
+              'compiler_sha256': sha(source_root / 'fpr'), 'repeats': args.repeat, 'executions': {}}
     environment = {**os.environ, 'FPR_RVC': '1', 'FPR_XLEN': str(args.xlen), 'FPR_QEMU': str(int(args.qemu)), 'FPR_CPU_MHZ': str(args.freq_mhz),
                    'FPR_SOFTFLOAT_ROOT': os.environ.get('FPR_SOFTFLOAT_ROOT', str(ROOT / 'build/tangnano20k-softfloat'))}
+    report['build_options']={key:environment.get(key,'0') for key in
+                            ('FPR_XLEN','FPR_RVC','FPR_QEMU','FPR_CPU_MHZ','FPR_GC','FPR_HEAP_REPORT','FPR_GC_STRESS')}
     try:
         if args.native:
             output, _ = execute([source_root / 'fpr', 'build', fixture, '-o', out / 'native'], source_root, environment, 180)
             (out / 'native-build.log').write_text(output)
             output, wall = execute([out / 'native'], source_root, environment, args.timeout)
             (out / 'native.log').write_text(output)
-            report['executions']['native'] = {'elapsed_us': validate(output, expected), 'wall_seconds': wall, 'passed': True}
+            times = validate_runs(output, expected, args.repeat)
+            report['executions']['native'] = {'elapsed_us': times[-1], 'elapsed_us_runs': times, 'wall_seconds': wall, 'passed': True}
             print(output, flush=True)
         if args.hardware or args.qemu:
             output, _ = execute([source_root / 'machine/tangnano20k/build.sh', fixture, out], source_root, environment, 180)
@@ -228,11 +252,14 @@ def main():
             image = out / 'base.bin'
             board = {**board_artifact(out), 'frequency_mhz': args.freq_mhz,
                      'isa': f'RV{args.xlen}IMC', 'passed': False}
+            report['executions']['qemu' if args.qemu else 'board'] = board
             if args.qemu:
                 from check_tangnano20k_rv32_base import run_image
                 output = run_image(out / 'base.elf', out, args.timeout)
                 (out / 'qemu.log').write_text(output)
-                board.update(elapsed_us=validate(output, expected), passed=True)
+                board['heap_samples'] = heap_samples(output)
+                times = validate_runs(output, expected, args.repeat)
+                board.update(elapsed_us=times[-1], elapsed_us_runs=times, heap_samples=heap_samples(output), passed=True)
                 report['executions']['qemu'] = board
                 print(output, flush=True)
                 return
@@ -245,8 +272,10 @@ def main():
             output, wall = execute(command, ROOT, environment,
                                    args.timeout + image.stat().st_size * 8680 / (args.freq_mhz * 1e6) + 60, live=True)
             (out / 'board.log').write_text(output)
+            board['heap_samples'] = heap_samples(output)
             assert 'FPR EXIT 0\n' in output and output.rstrip().endswith('DONE'), output
-            board.update(elapsed_us=validate(output, expected), wall_seconds_with_upload=wall, passed=True)
+            times = validate_runs(output, expected, args.repeat)
+            board.update(elapsed_us=times[-1], elapsed_us_runs=times, heap_samples=heap_samples(output), wall_seconds_with_upload=wall, passed=True)
     except BaseException as error:
         report['error'] = str(error)
         (out / 'failure.log').write_text(str(error) + '\n')

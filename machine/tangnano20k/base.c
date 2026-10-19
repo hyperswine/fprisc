@@ -24,7 +24,17 @@ static unsigned rx_byte(void){return UART[2]&255;}
 void hal_putc(char c){while(!(UART[1]&1)){}UART[0]=(uint8_t)c;}
 #endif
 static void raw(const char *s){while(*s)hal_putc(*s++);}
-__attribute__((noreturn)) void hal_poweroff(int code){raw(code?"FPR EXIT 1\n":"FPR EXIT 0\n");*(volatile uint32_t *)0x100000=code?0x13333:0x5555;for(;;){}}
+static void heap_report(void) {
+#ifdef FPR_HEAP_REPORT
+ fpr_builtin_heap_stats s;fpr_builtin_heap_get_stats(&s);
+ const char *names[]={" live="," peak="," requests="," requested="," collections="," reclaimed="};
+ uw values[]={s.live_bytes,s.peak_bytes,s.requests,s.requested_bytes,s.collections,s.reclaimed_bytes};
+ raw("HEAP");
+ for(unsigned i=0;i<6;i++){char buf[24];unsigned n=0;uw v=values[i];raw(names[i]);do{buf[n++]=(char)('0'+v%10);v/=10;}while(v);while(n)hal_putc(buf[--n]);}
+ raw("\n");
+#endif
+}
+__attribute__((noreturn)) void hal_poweroff(int code){heap_report();raw(code?"FPR EXIT 1\n":"FPR EXIT 0\n");*(volatile uint32_t *)0x100000=code?0x13333:0x5555;for(;;){}}
 void fpr_cpanic_n(const char *s,uw n){raw("Base panic: ");for(uw i=0;i<n;i++)hal_putc(s[i]);hal_putc('\n');hal_poweroff(1);}
 void fpr_cpanic(const char *s){fpr_cpanic_n(s,strlen(s));}
 void fpr_builtin_main(void){
@@ -32,6 +42,9 @@ void fpr_builtin_main(void){
  fpr_builtin_heap_init(_heap_start,_heap_end);(void)fpr_fn_main();hal_poweroff(0);
 }
 void fpr_fuel_exhausted(void){fpr_harts[0].fuel=1000000;}
+#ifdef FPR_BUILTIN_GC
+void fpr_tangnano_gc_report(void) { raw("GC "); heap_report(); }
+#endif
 static uint64_t cycles(void){
 #if __riscv_xlen == 32
  uint32_t hi,lo,end;
