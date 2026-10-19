@@ -17,6 +17,7 @@ FPR_FN(fpr_g_DnsHost_x2eclose, unavailable_close, 1);
 
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <netinet/in.h>
 #include <stdio.h>
 #include <sys/socket.h>
 typedef struct { pthread_mutex_t mu; size_t limit, active, refs; int closed; } dns_pool_t;

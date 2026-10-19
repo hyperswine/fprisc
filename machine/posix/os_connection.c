@@ -20,6 +20,7 @@ FPR_FN(fpr_g_ConnHost_x2eclose, unavailable_close, 1);
 #include <fcntl.h>
 #include <limits.h>
 #include <net/if.h>
+#include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <sys/socket.h>
