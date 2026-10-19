@@ -168,3 +168,4 @@ they began.
 
 - [Private workers](2026-10-18-PRIVATE-WORKERS.md): checked raw Int call chains and split two-field accumulators, stable public entries, allocation ratchets, physical Pi/STAR64 timings and remaining convention limits.
 - [Compiler build optimisation](2026-10-18-COMPILER-BUILD-OPT.md): `make fpr-opt` (-O2, own build dir, build/fpr-opt), cold/warm compile and build timings for logbook and pos1 at -O0/-O1/-O2 with and without a 64 MiB nursery, identical assembly, what was not verified.
+- [Std-suite repairs](2026-10-19-STD-SUITE-REPAIRS.md): the two check_std failures at 3e44148 -- a receive loop's two entry cells leaked per activation (112 bytes; the runtime now recycles them, the poller test warms its loop), and the ownership checker's hole for named record types in declared signatures, closed; examples/swarm keeps its vectors in a keeper actor.

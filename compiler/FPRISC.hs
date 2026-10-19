@@ -2676,14 +2676,26 @@ data LinInfo = LinInfo
   }
 
 shapeOfTy :: [Name] -> Ty -> LShape
-shapeOfTy lin = \case
-  TTup ts -> LTupS (map (shapeOfTy lin) ts)
-  TCon n as -> if n `elem` lin then lown n (map (shapeOfTy lin) as) else lcon n (map (shapeOfTy lin) as)
-  TVarT v -> LVar v
-  TArrT _ _ -> LU
-  TVApp _ _ -> LU
-  TRecT fs row -> LRecS [(f, shapeOfTy lin t) | (f, t) <- fs] (isJust row)
-  TOther -> LU
+shapeOfTy lin = shapeOfTyIn lin M.empty
+
+-- A NAMED record type (`Cols = { xs : Vector Int, ... }`, a TShape) is the
+-- record it names: its owned fields are owned through a declared signature
+-- exactly as they are through an inferred one or a record type spelled out
+-- in the signature.  Without this a declared `Cols -> Cols` was a hole: the
+-- name resolved to an unrestricted constructor and the vectors inside were
+-- invisible to the checker (docs/2026-10-19-STD-SUITE-REPAIRS.md).
+shapeOfTyIn :: [Name] -> M.Map Name [(Name, Ty)] -> Ty -> LShape
+shapeOfTyIn lin shapes = go S.empty
+  where
+    go seen = \case
+      TTup ts -> LTupS (map (go seen) ts)
+      TCon n [] | Just fs <- M.lookup n shapes, n `S.notMember` seen -> LRecS [(f, go (S.insert n seen) t) | (f, t) <- fs] False
+      TCon n as -> if n `elem` lin then lown n (map (go seen) as) else lcon n (map (go seen) as)
+      TVarT v -> LVar v
+      TArrT _ _ -> LU
+      TVApp _ _ -> LU
+      TRecT fs row -> LRecS [(f, go seen t) | (f, t) <- fs] (isJust row)
+      TOther -> LU
 
 buildLinInfo :: [STop] -> LinInfo
 buildLinInfo tops = LinInfo lin sigs conSh conAr M.empty
@@ -2703,7 +2715,7 @@ buildLinInfo tops = LinInfo lin sigs conSh conAr M.empty
     conSh = foldl' (\m (t, tgt) -> maybe m (\e -> M.insert t e m) (M.lookup tgt m)) conSh0 aliases
     conAr0 = M.union (M.fromList [(c, length tys) | TType _ _ _ cs2 <- tops, (c, tys) <- cs2]) builtinConAr
     conAr = foldl' (\m (t, tgt) -> maybe m (\e -> M.insert t e m) (M.lookup tgt m)) conAr0 aliases
-    sh = shapeOfTy lin
+    sh = shapeOfTyIn lin (shapeTyTable tops)
 
 -- the prelude's own generic containers: Result and List
 builtinConSh :: M.Map Name (LShape, [LShape])

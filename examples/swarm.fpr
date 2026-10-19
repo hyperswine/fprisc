@@ -29,8 +29,20 @@
 # column dualizer (compiler/Codegen.hs bodyOK) takes literals, the ten
 # arithmetic and comparison operators, if, let and calls into the same
 # fragment, and a top-level constant is a call it declines.
+#
+# WHO OWNS THE VECTORS: a Vector is an owned value, and a record holding one
+# is owned with it -- read through once and the rest is discarded
+# (docs/2026-10-17-OWNERSHIP-CORRECTIONS.md).  An MVU model is read many
+# times a turn (update, subs, view), so it may not own the swarm
+# (docs/2026-10-17-VALUE-SEMANTICS.md: a service owns the resource).  The
+# swarm therefore lives in ONE keeper actor for the life of the game, as
+# `Swarm`, and the game's model keeps the keeper's address and the scalars:
+# every tick is a `Step` request answered with the bites and the picture
+# (std/actor call/reply).  The bench threads the same `Swarm` through the
+# same `tick` by hand, with no actor in the way of the timings.
 profile base.
 Term = use "std/term".
+AC = use "std/actor".
 List = use "std/list".
 S = use "std/string".
 Config = use "std/config".
@@ -45,8 +57,13 @@ sc = 256.
 maxV = 192.
 pulseR2 = 2359296.   # (6 cells)^2, in 1/256 units
 Mote = { x : Int, y : Int, vx : Int, vy : Int }.
-Cols = { xs : Vector Int, ys : Vector Int, vxs : Vector Int, vys : Vector Int }.
-Model = { motes : Vector Mote, cols : Cols, mode : Int, n : Int, w : Int, h : Int, px : Int, py : Int,
+# the swarm, owned: one Vector of records, or the four columns
+Swarm = Type (Records (Vector Mote) | Columns (Vector Int) (Vector Int) (Vector Int) (Vector Int)).
+# what one tick answers (nothing owned in it: it travels in a reply)
+Answer = { bites : Int, pic : List String, stepUs : Int, biteUs : Int, picUs : Int }.
+# what the keeper is asked: a tick (px py pulse w fieldH), or to free the swarm and end
+Request = Type (Step Int Int Int Int Int | Stop).
+Model = { keeper : Int, mode : Int, n : Int, w : Int, h : Int, px : Int, py : Int,
           health : Int, energy : Int, ticks : Int, pulse : Int, frame : List String,
           stepUs : Int, biteUs : Int, picUs : Int, over : Bool }.
 Msg = Type (Tick).
@@ -59,14 +76,17 @@ spread i a m = r = (i * a + 12345) % 1000003; (r * r) % m.
 mote : Int -> Int -> Int -> Mote .
 mote w h i = { x = spread i 7919 (w * sc), y = spread i 104729 (h * sc),
                vx = spread i 31 (2 * maxV) - maxV, vy = spread i 37 (2 * maxV) - maxV }.
-records : Int -> Int -> Int -> Vector Mote .
-records n w h = Vec.map (mote w h) (Vec.iota n).
-columns : Int -> Int -> Int -> Cols .
-columns n w h = { xs = Vec.map (fn i -> spread i 7919 (w * sc)) (Vec.iota n), ys = Vec.map (fn i -> spread i 104729 (h * sc)) (Vec.iota n),
-                  vxs = Vec.map (fn i -> spread i 31 (2 * maxV) - maxV) (Vec.iota n), vys = Vec.map (fn i -> spread i 37 (2 * maxV) - maxV) (Vec.iota n) }.
-noCols : Unit -> Cols .
-noCols u = { xs = Vec.new Unit, ys = Vec.new Unit, vxs = Vec.new Unit, vys = Vec.new Unit }.
-freeCols c = _ = Vec.free c.xs; _ = Vec.free c.ys; _ = Vec.free c.vxs; Vec.free c.vys.
+records : Int -> Int -> Int -> Swarm .
+records n w h = Records (Vec.map (mote w h) (Vec.iota n)).
+columns : Int -> Int -> Int -> Swarm .
+columns n w h = Columns (Vec.map (fn i -> spread i 7919 (w * sc)) (Vec.iota n)) (Vec.map (fn i -> spread i 104729 (h * sc)) (Vec.iota n))
+                        (Vec.map (fn i -> spread i 31 (2 * maxV) - maxV) (Vec.iota n)) (Vec.map (fn i -> spread i 37 (2 * maxV) - maxV) (Vec.iota n)).
+swarmOf : Int -> Int -> Int -> Int -> Swarm .
+swarmOf mode n w h = if mode == 1 then columns n w h else records n w h.
+freeSwarm : Swarm -> Unit .
+freeSwarm s = case s of
+    Records v -> Vec.free v
+  | Columns xs ys vxs vys -> _ = Vec.free xs; _ = Vec.free ys; _ = Vec.free vxs; Vec.free vys.
 
 clamp lo hi v = if v < lo then lo else if v > hi then hi else v.
 
@@ -105,11 +125,13 @@ stepK k m =
 
 # ---- columns: the tick as fixed kernels -----------------------------------------
 # every zip consumes its right operand and blend its mask and source, so a
-# column read twice is dup'd first (an honest copy, VEC.md section 7)
-stepCols : Int -> Int -> Int -> Int -> Int -> Cols -> Cols .
-stepCols px py pulse w h c =
-  (xa, xb) = Vec.dup c.xs;
-  (ya, yb) = Vec.dup c.ys;
+# column read twice is dup'd first (an honest copy, VEC.md section 7).  The
+# four columns go in and come out as a tuple: each is owned, and a tuple
+# hands each back by name.
+stepCols : Int -> Int -> Int -> Int -> Int -> Vector Int -> Vector Int -> Vector Int -> Vector Int -> (Vector Int, Vector Int, Vector Int, Vector Int) .
+stepCols px py pulse w h xs ys vxs vys =
+  (xa, xb) = Vec.dup xs;
+  (ya, yb) = Vec.dup ys;
   dx = Vec.axpb (0 - 1) px xa;                  # px - x
   dy = Vec.axpb (0 - 1) py ya;
   (dx1, dx2) = Vec.dup dx;
@@ -122,16 +144,15 @@ stepCols px py pulse w h c =
   (farX, farY) = Vec.dup far;
   ax = Vec.blend farX (Vec.sar 7 dx5) (Vec.axpb (0 - 1) 0 (Vec.sar 2 dx6));      # far ? dx/128 : -(dx/4)
   ay = Vec.blend farY (Vec.sar 7 dy5) (Vec.axpb (0 - 1) 0 (Vec.sar 2 dy6));
-  (vx1, vx2) = Vec.dup (Vec.maxS (0 - 192) (Vec.minS 192 (Vec.zipAdd c.vxs ax)));
-  (vy1, vy2) = Vec.dup (Vec.maxS (0 - 192) (Vec.minS 192 (Vec.zipAdd c.vys ay)));
-  { xs = Vec.maxS 0 (Vec.minS (w * 256 - 1) (Vec.zipAdd xb vx1)), ys = Vec.maxS 0 (Vec.minS (h * 256 - 1) (Vec.zipAdd yb vy1)),
-    vxs = vx2, vys = vy2 }.
-# the cell of every mote, as one Int column; the columns thread back
-cellsOf : Int -> Cols -> (Vector Int, Cols) .
-cellsOf w c =
-  (xa, xb) = Vec.dup c.xs;
-  (ya, yb) = Vec.dup c.ys;
-  (Vec.zipAdd (Vec.axpb w 0 (Vec.sar 8 ya)) (Vec.sar 8 xa), { c | xs = xb, ys = yb }).
+  (vx1, vx2) = Vec.dup (Vec.maxS (0 - 192) (Vec.minS 192 (Vec.zipAdd vxs ax)));
+  (vy1, vy2) = Vec.dup (Vec.maxS (0 - 192) (Vec.minS 192 (Vec.zipAdd vys ay)));
+  (Vec.maxS 0 (Vec.minS (w * 256 - 1) (Vec.zipAdd xb vx1)), Vec.maxS 0 (Vec.minS (h * 256 - 1) (Vec.zipAdd yb vy1)), vx2, vy2).
+# the cell of every mote, as one Int column; the two position columns come back
+cellsOf : Int -> Vector Int -> Vector Int -> (Vector Int, Vector Int, Vector Int) .
+cellsOf w xs ys =
+  (xa, xb) = Vec.dup xs;
+  (ya, yb) = Vec.dup ys;
+  (Vec.zipAdd (Vec.axpb w 0 (Vec.sar 8 ya)) (Vec.sar 8 xa), xb, yb).
 # how many lanes equal the player's cell: a 0/1 mask summed
 bitesIn : Int -> Vector Int -> Int .
 bitesIn pc idx =
@@ -160,52 +181,79 @@ glyph d = if d == 0 then " " else if d == 1 then "." else if d == 2 then ":" els
   else if d == 4 then "*" else if d < 8 then "%" else "#".
 
 # ---- a tick, three ways -----------------------------------------------------------
-advance : Model -> Model .
-advance m = case m.mode of 1 -> advanceCols m | 2 -> advanceCaptured m | _ -> advanceRecords m.
-advanceRecords m =
+# the swarm goes in owned and comes back owned, with the answer beside it
+tick : Int -> Int -> Int -> Int -> Int -> Int -> Swarm -> (Answer, Swarm) .
+tick mode px py pulse w fieldH s = case s of
+    Columns xs ys vxs vys -> tickCols px py pulse w fieldH xs ys vxs vys
+  | Records v -> (if mode == 2 then tickCaptured px py pulse w fieldH v else tickRecords px py pulse w fieldH v).
+tickRecords : Int -> Int -> Int -> Int -> Int -> Vector Mote -> (Answer, Swarm) .
+tickRecords px py pulse w fieldH v0 =
   t0 = Sys.timeUs Unit;
-  fieldH = m.h - 1;
-  v1 = Vec.map (step m.px m.py m.pulse m.w fieldH) m.motes;
+  v1 = Vec.map (step px py pulse w fieldH) v0;
   t1 = Sys.timeUs Unit;
-  (bites, v2) = Vec.fold (bite m.px m.py) 0 v1;
+  (bites, v2) = Vec.fold (bite px py) 0 v1;
   t2 = Sys.timeUs Unit;
-  (pic, v3) = pictureRecords v2 m.w fieldH m.px m.py;
+  (pic, v3) = pictureRecords v2 w fieldH px py;
   t3 = Sys.timeUs Unit;
-  settle { m | motes = v3 } bites pic (t1 - t0) (t2 - t1) (t3 - t2).
-advanceCaptured m =
+  ({ bites = bites, pic = pic, stepUs = t1 - t0, biteUs = t2 - t1, picUs = t3 - t2 }, Records v3).
+tickCaptured : Int -> Int -> Int -> Int -> Int -> Vector Mote -> (Answer, Swarm) .
+tickCaptured px py pulse w fieldH v0 =
   t0 = Sys.timeUs Unit;
-  fieldH = m.h - 1;
-  v1 = Vec.map (stepK { px = m.px, py = m.py, pulse = m.pulse, w = m.w, h = fieldH }) m.motes;
+  v1 = Vec.map (stepK { px = px, py = py, pulse = pulse, w = w, h = fieldH }) v0;
   t1 = Sys.timeUs Unit;
-  (bites, v2) = Vec.fold (bite m.px m.py) 0 v1;
+  (bites, v2) = Vec.fold (bite px py) 0 v1;
   t2 = Sys.timeUs Unit;
-  (pic, v3) = pictureRecords v2 m.w fieldH m.px m.py;
+  (pic, v3) = pictureRecords v2 w fieldH px py;
   t3 = Sys.timeUs Unit;
-  settle { m | motes = v3 } bites pic (t1 - t0) (t2 - t1) (t3 - t2).
-advanceCols m =
+  ({ bites = bites, pic = pic, stepUs = t1 - t0, biteUs = t2 - t1, picUs = t3 - t2 }, Records v3).
+tickCols : Int -> Int -> Int -> Int -> Int -> Vector Int -> Vector Int -> Vector Int -> Vector Int -> (Answer, Swarm) .
+tickCols px py pulse w fieldH xs ys vxs vys =
   t0 = Sys.timeUs Unit;
-  fieldH = m.h - 1;
-  c1 = stepCols m.px m.py m.pulse m.w fieldH m.cols;
+  (xs1, ys1, vxs1, vys1) = stepCols px py pulse w fieldH xs ys vxs vys;
   t1 = Sys.timeUs Unit;
-  (idx, c2) = cellsOf m.w c1;
+  (idx, xs2, ys2) = cellsOf w xs1 ys1;
   (idxA, idxB) = Vec.dup idx;
-  bites = bitesIn ((m.py / 256) * m.w + m.px / 256) idxA;
+  bites = bitesIn ((py / 256) * w + px / 256) idxA;
   t2 = Sys.timeUs Unit;
-  pic = pictureCells idxB m.w fieldH m.px m.py;
+  pic = pictureCells idxB w fieldH px py;
   t3 = Sys.timeUs Unit;
-  settle { m | cols = c2 } bites pic (t1 - t0) (t2 - t1) (t3 - t2).
-settle m bites pic stepUs biteUs picUs =
-  health = m.health - bites;
+  ({ bites = bites, pic = pic, stepUs = t1 - t0, biteUs = t2 - t1, picUs = t3 - t2 }, Columns xs2 ys2 vxs1 vys1).
+
+# ---- the keeper: the actor that owns the swarm ------------------------------------
+# It answers one Step per tick and ends on Stop, freeing the swarm.  Unsafe:
+# it loops until told to stop.
+keeper : unsafe Int -> Int -> Swarm -> Unit .
+keeper self mode s =
+  m = receive self;
+  (from, id, q) = m;
+  _ = drop m;
+  case q of
+    Stop -> _ = freeSwarm s; _ = AC.reply (from, id) Unit; Unit
+  | Step px py pulse w fieldH ->
+      (a, s2) = tick mode px py pulse w fieldH s;
+      _ = AC.reply (from, id) a;
+      keeper self mode s2.
+startKeeper : unsafe Int -> Int -> Int -> Int -> Int .
+startKeeper mode n w h = spawn (fn self -> keeper self mode (swarmOf mode n w h)).
+
+# ---- the game -------------------------------------------------------------------
+advance : Model -> Model .
+advance m = case AC.call (myself 0) m.keeper (Step m.px m.py m.pulse m.w (m.h - 1)) of
+    Ok a -> settle m a
+  | Err why -> { m | over = True, frame = status m :: "swarm: the keeper did not answer ({why})" :: Nil }.
+settle m a =
+  health = m.health - a.bites;
   m2 = { m | health = health, over = health <= 0, ticks = m.ticks + 1,
             energy = (if m.energy >= 100 then 100 else m.energy + 1), pulse = 0,
-            stepUs = stepUs, biteUs = biteUs, picUs = picUs };
-  { m2 | frame = status m2 :: pic }.
+            stepUs = a.stepUs, biteUs = a.biteUs, picUs = a.picUs };
+  { m2 | frame = status m2 :: a.pic }.
 modeName mode = if mode == 1 then "columns" else if mode == 2 then "captured" else "records".
 status m =
   Term.bold "Swarm" |> (fn t -> "{t}  {modeName m.mode}  motes {m.n}  health {m.health}  energy {m.energy}  score {m.ticks}  step {m.stepUs} bites {m.biteUs} picture {m.picUs} us   {(if m.over then Term.inverse " you were eaten -- q quits " else "arrows move, space pulses, q quits")}").
 
 moveBy dx dy m = { m | px = clamp 0 (m.w * sc - 1) (m.px + dx), py = clamp 0 ((m.h - 1) * sc - 1) (m.py + dy) }.
-quit m = (m, Term.Quit :: Nil).
+# the keeper frees the swarm and ends before the screen goes
+quit m = _ = AC.call (myself 0) m.keeper Stop; (m, Term.Quit :: Nil).
 update ev m = case ev of
     Term.Resized w h -> ({ m | w = w, h = h }, Nil)
   | Term.Msg Tick -> (if m.over then (m, Nil) else (advance m, Nil))
@@ -222,25 +270,30 @@ update ev m = case ev of
 view size m = m.frame.
 subs m = Term.Every 33 Tick :: Nil.
 
-fresh : Int -> Int -> Int -> Int -> Model .
+fresh : unsafe Int -> Int -> Int -> Int -> Model .
 fresh mode n w h =
-  { motes = (if mode == 1 then Vec.new Unit else records n w (h - 1)), cols = (if mode == 1 then columns n w (h - 1) else noCols Unit),
+  { keeper = startKeeper mode n w (h - 1),
     mode = mode, n = n, w = w, h = h, px = (w / 2) * sc, py = ((h - 1) / 2) * sc,
     health = 300, energy = 100, ticks = 0, pulse = 0, frame = Nil, stepUs = 0, biteUs = 0, picUs = 0, over = False }.
-release m = _ = Vec.free m.motes; freeCols m.cols.
 
 # ---- the bench: ticks with no terminal -------------------------------------------
-loopN : (k : Int | measure k) -> Model -> Model .
-loopN k m = if k <= 0 then m else loopN (k - 1) (advance m).
+# the same `tick`, the swarm threaded by hand; the player stands still
+noAnswer = { bites = 0, pic = Nil, stepUs = 0, biteUs = 0, picUs = 0 }.
+benchLoop : (k : Int | measure k) -> Int -> Int -> Int -> Int -> Int -> Swarm -> Answer -> Int -> (Swarm, Answer, Int) .
+benchLoop k mode px py w fieldH s last health =
+  if k <= 0 then (s, last, health)
+  else (a, s2) = tick mode px py 0 w fieldH s; benchLoop (k - 1) mode px py w fieldH s2 a (health - a.bites).
 benchRun : Int -> Int -> Int -> Int .
 benchRun mode n ticks =
-  m0 = fresh mode n 80 24;
+  w = 80;
+  h = 24;
+  s0 = swarmOf mode n w (h - 1);
   t0 = Sys.timeUs Unit;
-  m = loopN ticks m0;
+  (s, a, health) = benchLoop ticks mode ((w / 2) * sc) (((h - 1) / 2) * sc) w (h - 1) s0 noAnswer 300;
   t1 = Sys.timeUs Unit;
+  _ = freeSwarm s;
   perTick = (t1 - t0) / ticks;
-  _ = print "swarm {modeName mode}: {n} motes, {ticks} ticks on 80x24: {perTick} us per tick, {perTick * 1000 / n} ns per mote; last tick: step {m.stepUs} us, bites {m.biteUs} us, picture {m.picUs} us; health left {m.health}";
-  _ = release m;
+  _ = print "swarm {modeName mode}: {n} motes, {ticks} ticks on {w}x{h}: {perTick} us per tick, {perTick * 1000 / n} ns per mote; last tick: step {a.stepUs} us, bites {a.biteUs} us, picture {a.picUs} us; health left {health}";
   0.
 
 Settings = Type (Settings motes mode bench).

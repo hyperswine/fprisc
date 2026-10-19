@@ -23,9 +23,19 @@ client port n =
   _ = Stream.close conn;
   all.
 
+# `spin` is a receive loop, so the compiler runs it as receive turns
+# (compiler/ReceiveTurns.hs): its entry builds the turn's closure and a tuple
+# of the live parameters in the caller's pool, two cells the runtime hands
+# back to the pool's buckets when the loop returns.  heapUsed counts bytes
+# bumped, not bucket hits, so the first activation shows those two cells
+# once; a one-ask warm-up puts them in the buckets, and the measured window
+# then holds only what the asks themselves allocate -- and would show the
+# two cells again if the runtime stopped recycling them
+# (docs/2026-10-19-STD-SUITE-REPAIRS.md).
 main =
   me = myself 0;
   _ = print "empty: {receiveNow me}";
+  _ = spin me 1;
   h0 = heapUsed Unit;
   _ = spin me 100000;
   _ = print "100,000 asks of an empty mailbox allocated {heapUsed Unit - h0} bytes";

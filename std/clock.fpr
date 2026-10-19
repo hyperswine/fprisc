@@ -72,9 +72,12 @@ stamp secs =
 
 # ---- a receive that gives up (it needs a clock, so it lives here: std/actor is
 # for every system, and not every system has this one) ------------------------------
-# the next message, or None after `ms`.  Waiting allocates nothing (`receiveNow`
-# answers a static Err on an empty mailbox) and sleeps the ACTOR, backing off from
-# 0.1 ms to 5 ms.  Drop the message when you have read it, as after any receive.
+# the next message, or None after `ms`.  Waiting allocates nothing per ask
+# (`receiveNow` answers a static Err on an empty mailbox) and sleeps the ACTOR,
+# backing off from 0.1 ms to 5 ms.  `withinGo` is a receive loop, so each call
+# of receiveWithin costs the loop's two entry cells once, which the runtime
+# recycles when it returns (docs/2026-10-19-STD-SUITE-REPAIRS.md).  Drop the
+# message when you have read it, as after any receive.
 receiveWithin : Int -> Int -> O.Option a .
 receiveWithin ms me = withinGo me (Sys.timeUs Unit + ms * 1000) 100.
 withinGo : unsafe Int -> Int -> Int -> O.Option a .

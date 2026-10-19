@@ -898,7 +898,7 @@ compileWithInterface accepted = do
               [ M.fromList [(n, length as) | TSig n (as, _) _ <- preludeE' ++ concatMap snd units' ++ root'],
                 M.map (\(Forall _ _ t) -> arrows t) builtinEnv,
                 -- the internal pair-free vector reads (Inline.vecPeek, vec.c)
-                M.fromList [("$vec.at", 2), ("$vec.get", 2), ("$vec.len", 1), ("$receiveLoop", 1)] ]
+                M.fromList [("$vec.at", 2), ("$vec.get", 2), ("$vec.len", 1), ("$receiveLoop", 2)] ]
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
           tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = not envNoFloatInline, tgtRegisters = not envNoRegisters, tgtSimd=oA64 opts && not envNoSimd, tgtFusion=not envNoFusion,

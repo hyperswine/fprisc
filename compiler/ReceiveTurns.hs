@@ -126,7 +126,10 @@ receiveTurns types tops context joins prog = (M.union rewritten prog, notes)
                     Nothing -> CInt 0 -- dead (possibly polymorphic) forwarding slot
                     Just i -> if length ks == 1 then CVar "$receive.state" else CProj i (CVar "$receive.state")
                   unpacked = foldr (\p body -> CLet p (unpack p) body) b ps
-               in [(n, (ps, CApp (CVar "$receiveLoop") thunk)),
+                  -- the runtime frees the thunk and, when the stub packed
+                  -- two or more live parameters, the tuple it made for them
+                  -- (runtime.c g_receive_loop): the count says which
+               in [(n, (ps, CApp (CApp (CVar "$receiveLoop") thunk) (CInt (fromIntegral (length ks))))),
                    (helper n, (["$receive.state", "$receive.unit"], unpacked))]
 
     -- Only live, closed first-order values cross a turn. Unknown captures
