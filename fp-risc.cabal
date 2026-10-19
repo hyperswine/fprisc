@@ -17,12 +17,13 @@ license:            NONE
 author:             Jasen
 build-type:         Simple
 
--- `make fpr-opt` (docs/2026-10-18-COMPILER-BUILD-OPT.md): the same
--- compiler built with -O2.  Off by default so `make fpr` keeps its
--- fast -O0 rebuild loop; the optimised build lives in its own cabal
--- build dir (dist-opt-*) and never clobbers the -O0 objects.
-flag optimised
-  description:        Build the compiler with -O2 (make fpr-opt)
+-- `make fpr-dev` (docs/2026-10-19-COMPILER-DEFAULTS.md): the same
+-- compiler built with -O0, in its own cabal build dir (dist-dev) so it
+-- never clobbers the default build's objects.  Off by default: the
+-- compiler's own rebuilds measured the same at -O0 and -O1, and the
+-- -O1 compiler compiles programs twice as fast.
+flag dev
+  description:        Build the compiler with -O0 (make fpr-dev)
   default:            False
   manual:             True
 
@@ -30,13 +31,16 @@ executable fpr
   main-is:            Main.hs
   hs-source-dirs:     compiler
   default-language:   Haskell2010
-  -- -O0 matches the Makefile: this is a working compiler rebuilt many
-  -- times a session; FPRISC/Sol.Bytecode/Sol.Cache opt in to -O2.
-  -- Keep the threaded RTS for subprocess I/O; a 1 ms tick reduces macOS
-  -- timer-thread shutdown latency. Override with +RTS -V0.01 -RTS.
-  ghc-options:        -O0 -rtsopts -threaded -with-rtsopts=-V0.001
-  if flag(optimised)
-    ghc-options:      -O2
+  -- -O1 matches the Makefile: the compiler deploys ship and the suites
+  -- run (2026-10-18-COMPILER-BUILD-OPT.md found -O2 equal to it);
+  -- FPRISC/Sol.Bytecode/Sol.Cache opt in to -O2.  Keep the threaded RTS
+  -- for subprocess I/O; a 1 ms tick reduces macOS timer-thread shutdown
+  -- latency; a 64 MiB nursery (-A64m, GHC's default is 4 MiB) halves the
+  -- compiler's GC time for 64 MiB more peak RSS.  Override with
+  -- +RTS -V0.01 -A4m -RTS or GHCRTS.
+  ghc-options:        -O1 -rtsopts -threaded "-with-rtsopts=-V0.001 -A64m"
+  if flag(dev)
+    ghc-options:      -O0
   other-modules:
       A64
       Arc

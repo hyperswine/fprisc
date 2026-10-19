@@ -18,6 +18,13 @@ additionally need the RISC-V cross compiler;
 `make bare-metal-run` needs QEMU. Neither building the compiler nor running Sol or
 building bare-metal examples requires QOS.
 
+`make fpr` builds the compiler at -O1 with a 64 MiB GHC nursery: the binary
+deploys ship, the suites run and `fpr build` spawns; it compiles a program
+about twice as fast as the -O0 build, and its own rebuilds cost the same.
+`make fpr-dev` is the -O0 build at the same `./fpr` (own build dir, so the two
+stay incremental); `make fpr-opt` is the -O2 experiment at `build/fpr-opt`.
+See [docs/2026-10-19-COMPILER-DEFAULTS.md](docs/2026-10-19-COMPILER-DEFAULTS.md).
+
 - `compiler/`: shared frontend, native backends, Sol bytecode interpreter and JIT.
 - `core/`, `std/`: language prelude and libraries that do not import QOS services.
 - `runtime/`: the RUNTIME -- allocation, actors and the scheduler, vectors, values.

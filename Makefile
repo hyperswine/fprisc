@@ -111,24 +111,49 @@ fpr: $(FPR_HOST_STAMP) compiler/*.hs compiler/Sol/*.hs compiler/cbits/fsx.c comp
 	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libgit2 libarchive) -c compiler/cbits/native_git.c -o compiler/cbits/native_git.o; \
 	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libgit2 libarchive) -c compiler/cbits/native_archive.c -o compiler/cbits/native_archive.o; \
 	  gcc -c compiler/cbits/native_host.c -o compiler/cbits/native_host.o; \
-	  (cd compiler && ghc -O0 -threaded -rtsopts -with-rtsopts=-V0.001 -i. -o ../"$$fresh" Main.hs cbits/fsx.o cbits/vecgpu.o cbits/handjit.o cbits/native_git.o cbits/native_archive.o cbits/native_host.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
+	  (cd compiler && ghc -O1 -threaded -rtsopts "-with-rtsopts=-V0.001 -A64m" -i. -o ../"$$fresh" Main.hs cbits/fsx.o cbits/vecgpu.o cbits/handjit.o cbits/native_git.o cbits/native_archive.o cbits/native_host.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
 	fi; chmod 755 "$$fresh"; mv -f "$$fresh" fpr
 	ln -sf fpr fprc
 endif
 
-# the optimised compiler: the same sources at -O2 (GHCOPT=-O1 for the
-# middle step), built in its own cabal build dir so the -O0 objects of
-# `make fpr` are never clobbered and either rebuild stays incremental.
-# Writes build/fpr-opt; ./fpr stays the -O0 developer build.  Measured
-# in docs/2026-10-18-COMPILER-BUILD-OPT.md.  Without cabal the classic
-# ghc path builds into build/ghc$(GHCOPT) for the same reason.
+# ---- the compiler's own build level (docs/2026-10-19-COMPILER-DEFAULTS.md)
+# `make fpr` is the compiler deploys ship and the suites run: -O1, with a
+# 64 MiB GHC nursery (-A64m) baked in beside the 1 ms tick.  Measured: a
+# warm `fpr compile` 2x faster than the -O0 build, the compiler's own
+# from-scratch and incremental rebuilds the same to the second, 64 MiB
+# more peak RSS.  `make fpr-dev` is the -O0 build of the same sources,
+# written to the same ./fpr, in its own cabal build dir (dist-dev) so
+# the two never clobber each other's objects; `make fpr` after it is a
+# no-op until a source changes.  `make fpr-opt` is the -O2 experiment
+# (GHCOPT=-O2, build/fpr-opt; 2026-10-18-COMPILER-BUILD-OPT.md found it
+# equal to -O1).  Without cabal the classic ghc path builds each level
+# into its own build/ghc-* dir for the same reason.
+.PHONY: fpr-dev
+fpr-dev: $(FPR_HOST_STAMP) compiler/*.hs compiler/Sol/*.hs compiler/cbits/*.c fp-risc.cabal Makefile
+	@set -e; mkdir -p build; fresh=$$(mktemp ./.fpr.tmp.XXXXXX); trap 'rm -f "$$fresh"' 0; \
+	if command -v cabal >/dev/null 2>&1; then \
+	  $(NATIVE_PKG_ENV) cabal build exe:fpr -f dev --builddir=dist-dev; \
+	  cp "$$($(NATIVE_PKG_ENV) cabal list-bin fpr -f dev --builddir=dist-dev)" "$$fresh"; \
+	else \
+	  mkdir -p build/ghc-dev; \
+	  gcc -c compiler/cbits/fsx.c -o build/ghc-dev/fsx.o; \
+	  gcc -c compiler/cbits/vecgpu.c -o build/ghc-dev/vecgpu.o; \
+	  gcc -c compiler/cbits/handjit.c -o build/ghc-dev/handjit.o; \
+	  $(NATIVE_PKG_ENV) pkg-config --cflags --libs libgit2 libarchive > build/native-libs.flags; \
+	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libgit2 libarchive) -c compiler/cbits/native_git.c -o build/ghc-dev/native_git.o; \
+	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libgit2 libarchive) -c compiler/cbits/native_archive.c -o build/ghc-dev/native_archive.o; \
+	  gcc -c compiler/cbits/native_host.c -o build/ghc-dev/native_host.o; \
+	  (cd compiler && ghc -O0 -threaded -rtsopts "-with-rtsopts=-V0.001 -A64m" -i. -outputdir ../build/ghc-dev -o ../"$$fresh" Main.hs ../build/ghc-dev/*.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
+	fi; chmod 755 "$$fresh"; mv -f "$$fresh" fpr
+	ln -sf fpr fprc
+
 GHCOPT ?= -O2
 .PHONY: fpr-opt
 fpr-opt: $(FPR_HOST_STAMP) compiler/*.hs compiler/Sol/*.hs compiler/cbits/*.c fp-risc.cabal Makefile
 	@set -e; mkdir -p build; fresh=$$(mktemp ./.fpr.tmp.XXXXXX); trap 'rm -f "$$fresh"' 0; \
 	if command -v cabal >/dev/null 2>&1; then \
-	  $(NATIVE_PKG_ENV) cabal build exe:fpr -f optimised --ghc-options="$(GHCOPT)" --builddir=dist-opt$(GHCOPT); \
-	  cp "$$($(NATIVE_PKG_ENV) cabal list-bin fpr -f optimised --ghc-options="$(GHCOPT)" --builddir=dist-opt$(GHCOPT))" "$$fresh"; \
+	  $(NATIVE_PKG_ENV) cabal build exe:fpr --ghc-options="$(GHCOPT)" --builddir=dist-opt$(GHCOPT); \
+	  cp "$$($(NATIVE_PKG_ENV) cabal list-bin fpr --ghc-options="$(GHCOPT)" --builddir=dist-opt$(GHCOPT))" "$$fresh"; \
 	else \
 	  mkdir -p build/ghc$(GHCOPT); \
 	  gcc -c compiler/cbits/fsx.c -o build/ghc$(GHCOPT)/fsx.o; \
@@ -138,7 +163,7 @@ fpr-opt: $(FPR_HOST_STAMP) compiler/*.hs compiler/Sol/*.hs compiler/cbits/*.c fp
 	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libgit2 libarchive) -c compiler/cbits/native_git.c -o build/ghc$(GHCOPT)/native_git.o; \
 	  gcc $$($(NATIVE_PKG_ENV) pkg-config --cflags libgit2 libarchive) -c compiler/cbits/native_archive.c -o build/ghc$(GHCOPT)/native_archive.o; \
 	  gcc -c compiler/cbits/native_host.c -o build/ghc$(GHCOPT)/native_host.o; \
-	  (cd compiler && ghc $(GHCOPT) -threaded -rtsopts -with-rtsopts=-V0.001 -i. -outputdir ../build/ghc$(GHCOPT) -o ../"$$fresh" Main.hs ../build/ghc$(GHCOPT)/*.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
+	  (cd compiler && ghc $(GHCOPT) -threaded -rtsopts "-with-rtsopts=-V0.001 -A64m" -i. -outputdir ../build/ghc$(GHCOPT) -o ../"$$fresh" Main.hs ../build/ghc$(GHCOPT)/*.o $$(cat ../build/native-libs.flags) $(GLLIBS)); \
 	fi; chmod 755 "$$fresh"; mv -f "$$fresh" build/fpr-opt
 
 # build through cabal (declared FFI/libs in fp-risc.cabal).  Uses
@@ -218,7 +243,7 @@ sol: fpr
 	@echo "the HostedBytecode profile is: ./fpr sol <script.sol>"
 
 clean-cabal:
-	rm -rf dist dist-newstyle dist-opt-O* build/Setup
+	rm -rf dist dist-newstyle dist-dev dist-opt-O* build/Setup
 
 clean:
 	rm -rf build image.elf app.qa fpr fprc compiler/*.o compiler/*.hi compiler/Sol/*.o compiler/Sol/*.hi compiler/cbits/*.o
