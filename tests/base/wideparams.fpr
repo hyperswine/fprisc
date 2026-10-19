@@ -1,0 +1,15 @@
+# Seventh and eighth parameters that register promotion keeps in saved
+# registers (tests/check_wide_params.py): g and h are read far more often
+# than any other slot, so the prologue copies them straight from their
+# argument registers (`mv sN, a6` / `mv sN, a7` in the RV64 emission).
+mix7 : Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int .
+mix7 a b c d e f g =
+  s = strlen "{g}";
+  t = strlen "{g}{g}";
+  a + b + c + d + e + f + g * g + g * s + g * t + (g + g) * (g + s) + g * 3 + g.
+mix8 : Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int .
+mix8 a b c d e f g h =
+  s = strlen "{h}{g}";
+  t = strlen "{h}";
+  a + b + c + d + e + f + h * h + h * g + h * s + g * t + (h + g) * (h + s) + h * 5 + g * g + h + g.
+main = print "wide: {mix7 1 2 3 4 5 6 7} {mix8 1 2 3 4 5 6 7 8} {mix7 (0 - 1) 0 0 0 0 0 123456}".
