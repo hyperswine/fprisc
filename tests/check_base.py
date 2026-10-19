@@ -52,9 +52,9 @@ print(run(['python3', 'tests/check_specialization.py'], timeout=300).stdout, end
 print(run(['python3', 'tests/check_workers.py'], timeout=300).stdout, end='')
 with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     tmp = Path(temp)
-    def build(prog, name):
+    def build(prog, name, *flags):
         exe = tmp / name
-        out = run(['./fpr', 'build', prog, '-o', exe])
+        out = run(['./fpr', 'build', prog, *flags, '-o', exe])
         assert 'precond' not in out.stdout, 'a build is quiet unless -v'
         return exe
     print(run(['python3', 'tests/check_admission.py']).stdout.strip())
@@ -384,7 +384,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     print('Every position is 0-based: first/last index and -1 for not found, native and Sol agree; index -1 and len panic by name: PASS')
     # 4h. receiveFromRes: a sender that exits is an answer (Err "dead actor"),
     # never a caller parked for ever; a reply sent just before exiting is kept
-    dp = build('tests/base/deadpeer.fpr', 'deadpeer')
+    # --harts 8: the default is the build host's core count (4 on a CI runner)
+    dp = build('tests/base/deadpeer.fpr', 'deadpeer', '--harts', '8')
     for harts in ('1', '4', '8'):
         out = run([dp], env={'FPR_HARTS': harts}, timeout=60).stdout
         assert 'reply=Ok 42 dead=Err dead actor died-while-waiting=Err dead actor' in out, out
