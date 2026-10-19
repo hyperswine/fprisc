@@ -52,7 +52,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 49 -- private scalar and two-field Base workers
+codegenRev = 50 -- receive loops hand the runtime their pack count ($receiveLoop thunk k)
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value

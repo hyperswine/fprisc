@@ -1521,10 +1521,32 @@ static V receive_step(V thunk) {
   return fpr_apply(thunk, (V)&fpr_unit);
 }
 static const pap0_t receive_step_fn = {T_PAP, 0, (uw)(uintptr_t)receive_step, 1, 0};
-static V g_receive_loop(V thunk) {
-  return g_loop(thunk, (V)&receive_step_fn);
+/* `packed` is the stub's word on the thunk's one argument: the number of
+ * live parameters it bundled.  Two or more means the argument is a tuple
+ * the stub made for this call alone; one means the parameter itself,
+ * which may be the caller's own value and is not ours to free.
+ *
+ * The thunk and that tuple are allocated by the entry stub in the caller's
+ * pool (there is no arena yet).  The first turn unpacks them into locals
+ * and every later turn's state is a fresh copy in transfer storage, so once
+ * the loop has returned both cells are dead.  Hand them back to the pool's
+ * buckets: otherwise every activation of a receive loop -- each
+ * `Clock.receiveWithin`, each `Poller` wait -- bumps them anew and leaks
+ * them until the actor dies (112 bytes on a 64-bit host: tests/std/poller.fpr,
+ * docs/2026-10-19-STD-SUITE-REPAIRS.md). */
+static V g_receive_loop(V thunk, V packed) {
+  V out = g_loop(thunk, (V)&receive_step_fn);
+  if (!ISINT(thunk) && thunk && fpr_in_heap(thunk) && TID(thunk) == T_PAP) {
+    pap_t *p = (pap_t *)thunk;
+    if (p->nargs == 1 && ISINT(packed) && UNTAG(packed) > 1) {
+      V state = (V)p->args[0];
+      if (!ISINT(state) && state && fpr_in_heap(state)) fpr_free(state);
+    }
+    fpr_free(thunk);
+  }
+  return out;
 }
-FPR_FN(fpr_g__x24receiveLoop, g_receive_loop, 1);
+FPR_FN(fpr_g__x24receiveLoop, g_receive_loop, 2);
 
 static V g_loop_with(V vec, V s, V f) {
   if (fpr_plane_memory) return fpr_plane_memory->loop_with(vec, s, f);
