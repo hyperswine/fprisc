@@ -17,7 +17,7 @@ Checks:
   * tests/base/vecfallback.fpr, whose calls all leave through fallback
     frames, prints the reference line on this host.
 """
-import os, re, shutil, subprocess, tempfile
+import os, re, subprocess, tempfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ENV = {**os.environ, 'FPR_HOME': str(ROOT), 'LC_ALL': 'C.UTF-8'}
@@ -31,8 +31,8 @@ def run(args):
     assert p.returncode == 0, f'{args}: exit {p.returncode}\n{p.stdout[-2000:]}{p.stderr[-4000:]}'
     return p.stdout
 
-ghc = ['cabal', 'exec', '--', 'runghc'] if shutil.which('cabal') else ['runghc']
-print(run([*ghc, '-w', '-icompiler', 'tests/X64Frames.hs']), end='')
+# X64.hs needs only base: plain runghc, no cabal package db
+print(run(['runghc', '-w', '-icompiler', 'tests/X64Frames.hs']), end='')
 
 with tempfile.TemporaryDirectory(prefix='fpr-fallback-frames-') as d:
     tmp = Path(d)
