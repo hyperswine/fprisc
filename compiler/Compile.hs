@@ -692,12 +692,14 @@ compileWithInterface accepted = do
       let preludeHash = hashAST preludeTops
           -- content-addressed cons: every unit's types under ITS hash;
           -- both sides of a `use` compute the same ids from the same AST.
-          consAll =
-            M.unions
-              ( collectCons preludeHash preludeE
-                  : collectCons rootHash root'
-                  : [collectCons h uts | (h, uts) <- units]
-              )
+          -- ... and per OWNER, for the stubs: the unit that declares a type
+          -- emits its constructors' stubs, the others reference them
+          -- (docs/2026-10-19-SHARED-PRELUDE-UNIT.md).  builtinCons rides in
+          -- every collectCons; the prelude's map is the one that owns it.
+          consPrelude = collectCons preludeHash preludeE
+          consRoot = collectCons rootHash root'
+          consUnits = [(h, collectCons h uts) | (h, uts) <- units]
+          consAll = M.unions (consPrelude : consRoot : map snd consUnits)
           shapes = collectShapes finalTops -- structural fnv ids: globally consistent
           compileRaw uts = let (p, st) = runState (compileTop uts >>= liftFix) (DEnv 0 consAll shapes [] [])
                             in (M.map (fmap eraseCast) p, S.fromList (dJoins st))
@@ -965,14 +967,33 @@ compileWithInterface accepted = do
           corePrimNames = ["+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "strcat", "str", "String.len"]
           mono ns ext p = if envNoSpec || oArc opts then p else specializeFunctions ns halAr ext p
           preludeResolved = resolveUnit preludeE'
+          -- constructor stub ownership.  Every unit's Core holds a stub per
+          -- constructor of the program (compileTop's conGlobals: the inliner
+          -- and `known` need them); the SYMBOL is defined once, by the owner,
+          -- and elided from every other unit's emission.  The prelude unit
+          -- owns the builtin and prelude constructors when it is emitted,
+          -- else the root does; a unit owns its own types; the root its own.
+          -- Under --arc nothing is elided (the root is the whole program).
+          preludeEmitted = not (oArc opts) && not (null preludeTops)
+          unitsEmitted = not (oArc opts)
+          allCons = M.keysSet consAll
+          preludeCons = M.keysSet consPrelude
+          unitConsOf h = maybe S.empty M.keysSet (lookup h consUnits) `S.difference` M.keysSet builtinCons
+          rootElided = (if preludeEmitted then preludeCons else S.empty)
+                       `S.union` (if unitsEmitted then S.unions [unitConsOf h | (h, _) <- units'] else S.empty)
+          rootCons = allCons `S.difference` rootElided
+          preludeElided = allCons `S.difference` preludeCons
+          unitElided h = allCons `S.difference` unitConsOf h
+          -- a constructor is global everywhere: a clone that references one
+          -- links against the owner's symbol, so qualifyAux leaves the name
           importedCore = M.unions
-            (qualifyAux ("$specaux.p" ++ take 12 preludeHash ++ ".") (bindNames preludeE') (compileUnit preludeResolved)
-             : [qualifyAux ("$specaux.u" ++ take 12 h ++ ".") (bindNames uts) (compileUnit (resolveUnit uts)) | (h,uts) <- units'])
+            (qualifyAux ("$specaux.p" ++ take 12 preludeHash ++ ".") (bindNames preludeE' `S.union` allCons) (compileUnit preludeResolved)
+             : [qualifyAux ("$specaux.u" ++ take 12 h ++ ".") (bindNames uts `S.union` allCons) (compileUnit (resolveUnit uts)) | (h,uts) <- units'])
           applyReport label asm = when envApply $ hPutStrLn stderr
             ("apply " ++ label ++ ": dispatch=" ++ show (length [() | l <- lines asm, "fpr_apply" `List.isInfixOf` l, any (`List.isInfixOf` l) ["call ", "bl "]])
              ++ " known-partial=" ++ show (length [() | l <- lines asm, "# pap-create:" `List.isPrefixOf` l])
              ++ " static-descriptors=" ++ show (length [() | l <- lines asm, "# static-pap:" `List.isPrefixOf` l]))
-          emitUnit path exps ext uts = do
+          emitUnit path exps elide ext uts = do
             reportTurns uts
             checkBuiltinWidth (compileUnit uts)
             cached <- doesFileExist path
@@ -986,7 +1007,7 @@ compileWithInterface accepted = do
                 -- assembly is lazily produced must propagate, never
                 -- leave an empty file the cache then serves as a valid
                 -- compiled unit (the bbspi arity>8 incident)
-                let (asm0, vnotes) = emitProgram tgt rvv spec [] (M.union (if oArc opts then arcExterns else M.empty) ext) exps prog
+                let (asm0, vnotes) = emitProgram tgt rvv spec [] (M.union (if oArc opts then arcExterns else M.empty) ext) exps elide prog
                     asm = lower asm0
                 mapM_ putStrLn vnotes
                 length asm `seq` writeFile path asm
@@ -1001,7 +1022,7 @@ compileWithInterface accepted = do
           then pure []
           else do
             r <- emitUnit (unitDir </> ("prelude-" ++ take 12 preludeHash ++ "-" ++ tag ++ ".s"))
-                          (bindNames preludeE') checkedExt preludeResolved
+                          (bindNames preludeE' `S.union` preludeCons) preludeElided checkedExt preludeResolved
             pure [r]
       -- dep module units (hash-qualified; filename carries the prelude
       -- hash too -- unit code depends on prelude arities -- AND a hash of
@@ -1013,7 +1034,7 @@ compileWithInterface accepted = do
       let shapesHash = hashAST [TShape (concat fs) [] | fs <- M.keys shapes]
       unitOuts <- forM (if oArc opts then [] else units') $ \(h, uts) ->
         emitUnit (unitDir </> ("u-" ++ take 12 h ++ "-p" ++ take 8 preludeHash ++ "-s" ++ take 8 shapesHash ++ "-" ++ tag ++ ".s"))
-                 (bindNames uts) extFor (resolveUnit uts)
+                 (bindNames uts `S.union` unitConsOf h) (unitElided h) extFor (resolveUnit uts)
       -- the root: exports its own binds; modtab (all dep exports) lives
       -- here. Root codegen uses the FULLY specialized+resolved tops
       -- (finalTops), filtered to root's own names + any monomorphized
@@ -1083,7 +1104,9 @@ compileWithInterface accepted = do
         Left e -> hPutStrLn stderr ("error: " ++ e) >> exitFailure
         Right p -> pure p
       rootProg <- own (mono ("root" ++ take 12 rootHash) importedSym rootProgSym)
-      let (rootAsm0, rootVNotes) = emitProgram tgt rvv spec imageExports extFor (if oArc opts then M.keysSet rootProg else bindNames root'') rootProg
+      let (rootAsm0, rootVNotes) = emitProgram tgt rvv spec imageExports extFor
+                                     (if oArc opts then M.keysSet rootProg else bindNames root'' `S.union` rootCons)
+                                     (if oArc opts then S.empty else rootElided) rootProg
       -- the C-callable entries: each export needs a declared signature
       -- over C-representable types, a function of that arity, <= 8 params
       let baseName = takeWhile (/= '@')

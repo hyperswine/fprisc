@@ -52,7 +52,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 50 -- receive loops hand the runtime their pack count ($receiveLoop thunk k)
+codegenRev = 51 -- constructor stubs emitted once, by the unit that declares the type (docs/2026-10-19-SHARED-PRELUDE-UNIT.md)
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -369,16 +369,25 @@ floatLabel width bits = do
       modify (\c -> c {cgFloats = M.insert key label (cgFloats c)})
       pure label
 
-emitProgram :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> Prog -> (String, [String])
-emitProgram tgt rvv spec exports ext exps prog0 =
+-- `elide`: names in `prog` whose code and descriptor ANOTHER unit emits
+-- (the constructor stubs: every unit's Core holds a stub for every
+-- constructor of the program, so the inliner turns a saturated `Cons x xs`
+-- into an inline allocation and `known` resolves the name -- but the
+-- symbol is defined once, by the unit that declares the type, and the
+-- others reference it; docs/2026-10-19-SHARED-PRELUDE-UNIT.md).  They stay
+-- in cgProg, so every lookup sees them as before; only the emission loops
+-- skip them.
+emitProgram :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> S.Set String -> Prog -> (String, [String])
+emitProgram tgt rvv spec exports ext exps elide prog0 =
   let -- Fusion precedes workers so callback analysis sees original bodies.
       (fused, fnotes) = if tgtFusion tgt then fuseVecFix prog0 else (prog0,[])
       enable = tgtW tgt == 8 && tgtFuel tgt && tgtScalarFast tgt && not (tgtArc tgt)
       (prog,wnotes) = workerize (enable && tgtFieldWorkers tgt) (enable && tgtScalarWorkers tgt) fused
-      (body, st) = runState (top prog) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes))
+      emitted = if S.null elide then prog else M.filterWithKey (\n _ -> S.notMember n elide) prog
+      (body, st) = runState (top prog emitted) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes))
    in (unlines (wnotes ++ body), reverse (cgVNotes st))
   where
-    top prog = do
+    top prog emitted = do
       -- specialization-decline scan: a Vec.map/filter/fold site whose
       -- element fn is a NAMED global but which no plan accepts runs
       -- row-by-row in the generic apply tier.  Say so at compile time
@@ -390,8 +399,8 @@ emitProgram tgt rvv spec exports ext exps prog0 =
       -- (x64): a target that runs EVERY site generic owes the loudest
       -- notes of all, not silence -- there the note names the target
       -- gate, and distinguishes sites that would specialize elsewhere.
-      modify (\st -> st {cgVNotes = concat [declines tgt spec prog fn b | (fn, (_, b)) <- M.toList prog] ++ cgVNotes st})
-      fns <- concat <$> mapM (uncurry (compileFn prog)) (M.toList prog)
+      modify (\st -> st {cgVNotes = concat [declines tgt spec prog fn b | (fn, (_, b)) <- M.toList emitted] ++ cgVNotes st})
+      fns <- concat <$> mapM (uncurry (compileFn prog)) (M.toList emitted)
       specs <- emitSpecs prog
       -- the builtin target links no module registry (runtime/mod.c is not
       -- in its runtime), so the table has no reader there -- and as a strong
@@ -409,7 +418,7 @@ emitProgram tgt rvv spec exports ext exps prog0 =
           ++ fns
           ++ specs
           ++ ["    .section .rodata", ""]
-          ++ concatMap objFor (M.toList prog)
+          ++ concatMap objFor (M.toList emitted)
           ++ ["    .section .rodata" | tgtArc tgt]
           ++ modtab
           ++ ["    .section .rodata" | tgtArc tgt, not (null modtab)]
@@ -417,7 +426,7 @@ emitProgram tgt rvv spec exports ext exps prog0 =
           ++ ["    .section .rodata" | not (M.null floats)]
           ++ concatMap floatFor (M.toList floats)
           ++ ["    .section .rodata" | tgtArc tgt]
-          ++ concatMap nulFor (S.toList (nullaries prog))
+          ++ concatMap nulFor (S.toList (nullaries emitted))
     -- Versioned module table: magic/schema/root hash, then four-word rows
     -- (hash str, export-name str, static PAP, checked interface string),
     -- zero-terminated.  mod.c's `Mod.fn hash name` scans it — the local
