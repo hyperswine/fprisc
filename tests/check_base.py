@@ -412,7 +412,9 @@ with tempfile.TemporaryDirectory(prefix='fpr-base-') as temp:
     assert stress_runs > 0
     for no_inline in ('0', '1'):
         exe = tmp / ('taskstress-' + no_inline)
-        run(['./fpr', 'build', 'tests/base/taskstress.fpr', '-o', exe],
+        # --harts 10: the default is the build host's core count, and the
+        # stress below runs 10 harts (a 4-core CI runner refused them)
+        run(['./fpr', 'build', 'tests/base/taskstress.fpr', '--harts', '10', '-o', exe],
             env={'FPR_NO_INLINE': no_inline})
         for harts in ('1', '4'):
             assert run([exe], env={'FPR_HARTS': harts}, timeout=300).stdout == 'shastress: 40\n'
