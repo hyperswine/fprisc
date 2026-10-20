@@ -45,21 +45,22 @@ def main():
         base.pop('FPR_FOREIGN',None)
         for no_inline in ('0','1'):
             for no_regs in ('0','1'):
-                for no_fuse in ('1','0','1'):
-                    env=dict(base,FPR_NO_INLINE=no_inline,FPR_NO_REGISTERS=no_regs,FPR_NO_VEC_FUSE=no_fuse)
+                for no_fuse,no_pipe_inline in [('1','0'),('0','1'),('0','0'),('1','0')]:
+                    env=dict(base,FPR_NO_INLINE=no_inline,FPR_NO_REGISTERS=no_regs,FPR_NO_VEC_FUSE=no_fuse,FPR_NO_PIPELINE_INLINE=no_pipe_inline)
                     exe=tmp/'pipeline'
                     command([ROOT/'fpr','build',FIXTURE,'--harts','4','--with',ROOT/'tests/bench/workers_clock.c','--with',ROOT/'tests/base/floatprobe.c','-o',exe],env)
                     def run(case,harts):
                         p=subprocess.run([str(exe)]+([case] if case else []),env=dict(env,FPR_HARTS=str(harts)),capture_output=True,text=True,timeout=60)
                         return p.returncode,p.stdout,p.stderr
                     check_execution(run)
-                    print(f'pipeline inline-disabled={no_inline} registers-disabled={no_regs} fusion-disabled={no_fuse}: PASS',flush=True)
+                    print(f'pipeline inline-disabled={no_inline} registers-disabled={no_regs} fusion-disabled={no_fuse} pipeline-inline-disabled={no_pipe_inline}: PASS',flush=True)
         for target in ('rv64','a64','x64','rv32'):
-            for off in ('0','1'):
-                out=tmp/f'{target}-{off}.s'
-                command([ROOT/'fpr','compile','--target='+target,FIXTURE,out],dict(base,FPR_NO_VEC_FUSE=off))
+            for off,no_pipe_inline in (('0','0'),('0','1'),('1','0')):
+                out=tmp/f'{target}-{off}-{no_pipe_inline}.s'
+                command([ROOT/'fpr','compile','--target='+target,FIXTURE,out],dict(base,FPR_NO_VEC_FUSE=off,FPR_NO_PIPELINE_INLINE=no_pipe_inline))
                 asm=out.read_text()
                 if off=='0':
+                    assert ('# inline pipeline callback' in asm)==(no_pipe_inline=='0'),target
                     assert '# mixed scalar pipeline: map plus -> filter above -> fold weighted' in asm,target
                     assert '# mixed scalar pipeline: map floatPlus -> filter floatAbove -> fold floatSum' in asm or target=='rv32',target
                 else: assert '# mixed scalar pipeline:' not in asm,target

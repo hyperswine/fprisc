@@ -1,0 +1,50 @@
+unsafe base.
+Cost.begin : Unit -> Unit.
+Cost.report : Unit -> String.
+Bench.start : Unit -> Unit.
+Bench.elapsed : Unit -> Int.
+Row = {left:Int,right:Int}.
+fresh n = r = {left=n,right=n+1}; {left=r.right,right=r.left}.
+tuple n = r = (n,n+1); (a,b) = r; (b,a).
+cell n = r = n :: Nil; case r of x :: xs -> (x+1) :: xs | Nil -> error "empty".
+escape n = r = {left=n,right=n+1}; (r,{left=r.right,right=r.left}).
+alias n = r = {left=n,right=n+1}; s = r; (s,{left=r.right,right=r.left}).
+borrow r = {left=r.right,right=r.left}.
+sharing =
+  text = "hello" + " world";
+  r = {first=text,second=text};
+  {first=r.second,second=r.first}.
+observe text n = _ = print text; n.
+effects =
+  r = {left=1,right=2};
+  {left=observe "left" r.right,right=observe "right" r.left}.
+bad =
+  r = {left=1,right=2};
+  {left=error "field failure",right=observe "WRONG" r.left}.
+loop : (n:Int | measure n) -> Int -> Int.
+loop n s | n <= 0 = s.
+loop n s = r = fresh n; loop (n - 1) (s+r.left+r.right).
+cost =
+  _ = Cost.begin Unit;
+  result = loop 10000 0;
+  ledger = Cost.report Unit;
+  _ = print result; print ledger.
+bench =
+  _ = Bench.start Unit;
+  result = loop 1000000 0;
+  ns = Bench.elapsed Unit;
+  print "{result} {ns}".
+main = case Sys.args Unit of
+    ["cost"] -> cost
+  | ["bench"] -> bench
+  | ["bad"] -> print bad
+  | _ ->
+    _ = print (fresh 10);
+    _ = print (tuple 10);
+    _ = print (cell 10);
+    _ = print (escape 10);
+    _ = print (alias 10);
+    r = {left=10,right=11};
+    _ = print (borrow r,r);
+    _ = print sharing;
+    print effects.

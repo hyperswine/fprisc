@@ -48,6 +48,7 @@ executable fpr
       Codegen
       KernelKinds
       Workers
+      Reuse
       Commit
       Compile
       FPRISC

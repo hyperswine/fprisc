@@ -180,3 +180,4 @@ they began.
 - [Tang Nano temporary reclamation](2026-10-20-TANGNANO20K-GC.md): opt-in conservative collection runs the 512-row classifier ten times within 8 MiB on the physical 48 MHz RV32 board; root regressions, allocation evidence and the unresolved 72 MHz mismatch.
 - [Wider accumulator workers](2026-10-20-WIDE-ACCUMULATOR-WORKERS.md): private tuple/record accumulator workers, argument spills, differential allocation and Pi/STAR64 validation.
 - [Mixed scalar pipelines](2026-10-20-MIXED-SCALAR-PIPELINES.md): filtering map/fold chains in one traversal, scalar captures, stable output, differential checks and measured Pi/STAR64 results.
+- [Reuse and pipeline roadmap](2026-10-20-REUSE-AND-PIPELINE-ROADMAP.md): bounded callback inlining, proven fresh constructor reuse, allocation and physical timing evidence, and the remaining ownership/SIMD work.

@@ -46,6 +46,7 @@ import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, isJust)
 import Peephole (peepholeFor)
 import KernelKinds (Kind(..), signature)
+import Reuse (reuseFresh, reuseView)
 import Workers (workerize, internalWorker, scalarPrimitives)
 
 import FPRISC (Core (..), Prog, freeVars, occurs)
@@ -53,7 +54,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 53 -- mixed scalar vector pipelines and widened accumulator workers
+codegenRev = 54 -- bounded pipeline callback inlining and fresh constructor reuse
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -78,14 +79,16 @@ data Target = Target
     tgtIndexedMemory :: Bool, -- fuse private manual Addr.add/access/release
     tgtScalarWorkers :: Bool,
     tgtFieldWorkers :: Bool,
+    tgtPipelineInline :: Bool,
+    tgtReuse :: Bool,
     tgtHal :: M.Map String Int -- primitive name -> arity (builtin schemes and
                         -- foreign declarations): a saturated call to one is
                         -- a direct `call fpr_g_<name>_call<n>` (fpr.h FPR_FN)
   }
 
 rv64, rv32 :: Target
-rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True M.empty
-rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True M.empty
+rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True M.empty
+rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True M.empty
 
 -- the visibility directive for a unit-visible global: a library unit
 -- shares every name it did not qualify with '@hash' with the program it
@@ -607,6 +610,9 @@ slotsNeeded tgt spec hal ext prog = go0
       | Just a <- M.lookup h hal = a == n && n > 0
       | otherwise = False
     go0 bound e
+      | Just (_,fs) <- reuseView e =
+          maximum (length fs : [i+1+go0 bound a | (i,a)<-zip [0..] fs])
+    go0 bound e
       | spec, Just (plan,args) <- vecSpec (tgtFusion tgt) prog (`S.member` bound) e,
         (tgtW tgt == 8 && tgtFloatInline tgt) || not (specUsesFloat prog plan) =
           maximum (length args : [i + 1 + go0 bound a | (i,a)<-zip [0..] args])
@@ -643,7 +649,9 @@ compileFn prog name (params, body0) = do
       -- inline-condition fusions in genT apply)
       fused = if tgtIndexedMemory tgt && not (tgtFuel tgt || tgtArc tgt)
                 then indexedMemory (M.keysSet prog `S.union` M.keysSet ext) (S.fromList params) body0 else body0
-      body = if tgtScalarFast tgt then normIn (S.fromList params) fused else fused
+      normal = if tgtScalarFast tgt then normIn (S.fromList params) fused else fused
+      body = if tgtReuse tgt && w==8 && tgtFuel tgt && not (tgtArc tgt)
+               then reuseFresh normal else normal
       -- exact high-water mark (see slotsNeeded); +2 is pure paranoia
       nslots = length params + slotsNeeded tgt spec (tgtHal tgt) ext prog (S.fromList params) body + 2
       baseFrame = ((2 * w + w * nslots + 15) `div` 16) * 16
@@ -1372,6 +1380,13 @@ genT tgt spec prog ext = go
       | (CVar h, args@(_ : _)) <- spineOf e,
         Just target <- known env h (length args) =
           knownCall env nxt pos target args
+    go env nxt _ e | Just (x,fs) <- reuseView e, Just root <- M.lookup x env = do
+      -- Compute EVERY field before the first store, preserving swaps, old
+      -- projections, effects and failures. No call occurs during overwrite.
+      fields <- concat <$> sequence
+        [(++ stSlot tgt "a0" (nxt+i)) <$> go env (nxt+i+1) NonTail f | (i,f)<-zip [0..] fs]
+      pure (["# reuse fresh constructor"] ++ fields ++ ldSlot tgt "a0" root ++
+        concat [ldSlot tgt "t0" (nxt+i) ++ ["    "++st++" t0, "++show (8+w*i)++"(a0)"] | i<-[0..length fs-1]])
     -- Vec.map/filter/fold with a statically known arithmetic-only element
     -- function: route through a specialized column loop (emitted once per
     -- (op, fn); see emitSpecs).  The spec symbol behaves exactly like a
@@ -2813,7 +2828,13 @@ compileUFn tgt prog uset label (params, body) = do
          ]
 
 genU :: Target -> Prog -> S.Set String -> M.Map String Int -> Int -> Pos -> Core -> G [String]
-genU tgt prog uset = go
+genU tgt prog uset = genUWithSlots tgt prog uset (ldSlot tgt) (stSlot tgt)
+
+-- Kernels use sp-relative scratch storage; ordinary raw functions use their
+-- s0-relative frame. Sharing the expression emitter preserves numeric checks.
+genUWithSlots :: Target -> Prog -> S.Set String -> (String -> Int -> [String])
+              -> (String -> Int -> [String]) -> M.Map String Int -> Int -> Pos -> Core -> G [String]
+genUWithSlots tgt prog uset load save = go
   where
     ld = tgtLd tgt
     st = tgtSt tgt
@@ -2854,9 +2875,9 @@ genU tgt prog uset = go
     go env nxt pos (CLet x a b) = do
       al <- go env nxt NonTail a
       bl <- go (M.insert x nxt env) (nxt + 1) pos b
-      pure (al ++ stSlot tgt "a0" nxt ++ bl)
+      pure (al ++ save "a0" nxt ++ bl)
     go env _ _ (CVar n)
-      | Just k <- M.lookup n env = pure (ldSlot tgt "a0" k)
+      | Just k <- M.lookup n env = pure (load "a0" k)
     go _ _ _ (CInt i) = pure ["    li a0, " ++ show i]
     go _ _ _ (CMk 1 v []) = pure ["    li a0, " ++ show v]
     go _ _ _ (CErr msg) = do
@@ -2870,12 +2891,12 @@ genU tgt prog uset = go
       argLines <-
         concat
           <$> sequence
-            [ (++ stSlot tgt "a0" (nxt + i)) <$> go env (nxt + i + 1) NonTail a
+            [ (++ save "a0" (nxt + i)) <$> go env (nxt + i + 1) NonTail a
               | (i, a) <- zip [0 :: Int ..] args
             ]
-      pure (argLines ++ concat [ldSlot tgt ("a" ++ show i) (nxt + i) | i <- [0 .. min 7 (length args - 1)]]
+      pure (argLines ++ concat [load ("a" ++ show i) (nxt + i) | i <- [0 .. min 7 (length args - 1)]]
             ++ if length args <= 8 then [] else ["    mv t0, tp"] ++ concat
-              [ldSlot tgt "t1" (nxt+i) ++ ["    " ++ st ++ " t1, " ++ spillRef tgt (i-8) ++ "(t0)"] | i <- [8 .. length args - 1]])
+              [load "t1" (nxt+i) ++ ["    " ++ st ++ " t1, " ++ spillRef tgt (i-8) ++ "(t0)"] | i <- [8 .. length args - 1]])
     -- Int + - * / on bare words TRAP on overflow here too (docs/
     -- 2026-10-12-INT-OVERFLOW.md): the operands fit 63 bits, so + and -
     -- cannot wrap the 64-bit word and the result's 63-bit fit is the
@@ -3910,27 +3931,45 @@ emitFoldSpec tgt rvv sym p = do
 -- entry tick need not be repeated per element (as in the older scalar kernels).
 emitPipelineSpec :: Target -> String -> SpecPlan -> PipePlan -> G [String]
 emitPipelineSpec tgt sym p pipeline = do
+  prog <- gets cgProg
+  ext <- gets cgExt
   let k=spCaps p; w=tgtW tgt; ld=tgtLd tgt; st=tgtSt tgt
       vr="a"++show k
       regs="ra":["s"++show i | i<-[0..9 :: Int]]
-      (_,pro,epi)=specFrame tgt regs k
       stages=pipeStages pipeline
+      inlineBody f = do
+        (ps,b) <- M.lookup f prog
+        let need=slotsNeeded tgt False (tgtHal tgt) ext prog (S.fromList ps) b
+        if tgtPipelineInline tgt && length (take 65 (nodes b))<=64 && need<=64
+          then Just (ps,b,need) else Nothing
+      scratch=maximum (0:[need+2 | (_,f,_)<-stages, Just (_,_,need)<-[inlineBody f]])
+      (_,pro,epi)=specFrame tgt regs (k+scratch)
       slot i=show (i*w)++"(sp)"
       load reg i="    "++ld++" "++reg++", "++slot i
       store reg i="    "++st++" "++reg++", "++slot i
   ~[fb,loop,skip,done] <- mapM freshL ["pipefb","pipeloop","pipeskip","pipedone"]
   fuel <- specFuel tgt
-  let step (op,f,caps) =
+  steps <- concat <$> mapM (\(op,f,caps) -> do
+    body <- case inlineBody f of
+      Just (ps,b,_) -> do
+        tick <- specFuel tgt
+        let inputSlots=if op=="fold" then [k+1,k] else [k]
+            env=M.fromList (zip ps (caps++inputSlots))
+        code <- genUWithSlots tgt prog (spClosure p) (\r i->[load r i])
+                  (\r i->[store r i]) env (k+2) NonTail b
+        pure (["# inline pipeline callback "++f,store "s8" k] ++
+              [store "s7" (k+1) | op=="fold"] ++ tick ++ code)
+      Nothing -> pure $
         [load ("a"++show j) i | (j,i)<-zip [0..] caps] ++
-        (if op=="fold" then ["    mv a"++show (length caps)++", s7",
-                            "    mv a"++show (length caps+1)++", s8"]
-         else ["    mv a"++show (length caps)++", s8"]) ++
-        ["    call fpr_ufn_"++mangle f] ++
-        case op of
+          (if op=="fold" then ["    mv a"++show (length caps)++", s7",
+                              "    mv a"++show (length caps+1)++", s8"]
+           else ["    mv a"++show (length caps)++", s8"]) ++
+          ["    call fpr_ufn_"++mangle f]
+    pure $ body ++ case op of
           "filter" -> ["    beqz a0, "++skip]
           "fold" -> ["    mv s7, a0"]
-          _ -> ["    mv s8, a0"]
-      finish = case pipeAccumulator pipeline of
+          _ -> ["    mv s8, a0"]) stages
+  let finish = case pipeAccumulator pipeline of
         Nothing -> ["    mv a0, s0"]
         Just (_,kind) ->
           ["    li a0, "++show (8+2*w),"    call fpr_alloc",
@@ -3959,11 +3998,21 @@ emitPipelineSpec tgt sym p pipeline = do
      "    "++ld++" s4, "++show (vColsP tgt)++"(s0)","    "++ld++" s4, 0(s4)",
      "    "++ld++" s5, "++show (colBlk0 tgt)++"(s4)","    mv s6, s5"] ++ fuel ++
     [loop++":","    bgeu s2, s1, "++done] ++
-    ["    "++ld++" s8, 0(s5)"] ++ concatMap step stages ++
+    ["    "++ld++" s8, 0(s5)"] ++ steps ++
     ["    "++st++" s8, 0(s6)","    addi s6, s6, "++show w,"    addi s3, s3, 1",
      skip++":","    addi s5, s5, "++show w,"    addi s2, s2, 1","    j "++loop,
      done++":","    "++st++" s3, "++show vLen++"(s0)"] ++ finish ++ epi ++ ["    ret",fb++":"] ++
     fbpro ++ [store ("a"++show i) i | i<-[0..k]] ++ concatMap fallback stages ++ fbepi ++ ["    ret",""]
+  where
+    nodes e = e : case e of
+      CApp a b -> nodes a++nodes b
+      CLet _ a b -> nodes a++nodes b
+      CIf c a b -> nodes c++nodes a++nodes b
+      CMk _ _ fs -> concatMap nodes fs
+      CProj _ a -> nodes a
+      CTagEq _ _ a -> nodes a
+      CLam _ b -> nodes b
+      _ -> []
 
 -- WRITE-BACK FOLD: one pass that stores g(el) back into the column
 -- AND folds f over the stored value -- Vec.fold f z (Vec.map g v)

@@ -1,0 +1,902 @@
+{
+  "date": "2026-10-20",
+  "base_commit": "0c71fb40e929428df17c6287e2f5e213aa0e5ddc",
+  "codegen_revision": 54,
+  "source_sha256": {
+    "compiler/Codegen.hs": "e590876d3190a521cb8971773859bf91b5bef0945d6420bb63d86a428773eb4e",
+    "compiler/Reuse.hs": "db8eb73dcd8dd03c2ae51e784a44d5646346352d0b537c0dc1c2876f9f2c4721",
+    "compiler/Compile.hs": "480f2a8c1ae9e405829b4776c5644a5a6a1a8d621bb6c5164a0a698eca1a10bd",
+    "compiler/Build.hs": "476ea8f5531e64f1ef0ccf01378b0fc0186977a17dcf07bc3c988af3c34d7279",
+    "fp-risc.cabal": "da63c90c535d5e39ef7cd494f4933a5fb613d626e8a8ece4a254dc08efdaf8f6",
+    "tests/base/vecpipeline.fpr": "51c1062cd7a7783581754f6503d9470e2dc92e591ae58407be0a830df71424ef",
+    "tests/base/freshreuse.fpr": "388c5dff2a7e041fc926341857038814b68246784ab2275a47a471b94b3732d6",
+    "tests/check_vector_pipelines.py": "435895226e3f4b93ed44079d7944473b99a1fd3ca12943a682a656b3d0a9c9c9",
+    "tests/check_reuse.py": "aeb461ea18ff72391cb498b9a5db482e9a385d6f85d838fb2ebcc55eaf477348",
+    "tests/Reuse.hs": "318d40ac78761b60638a9de9e4be34294d32bd0e56d0c3bd99327e80066f38aa",
+    "tests/bench/costprobe.c": "9ff97e9fd5ef221db50e652366148ee9260fcee9b0f09b5a1ed3dee748ed778a",
+    "tests/bench/workers_clock.c": "3957ea26e997275bb80ab8550ed9a9c8cdfc1d76b8e65bacafdfa450d76bde5b",
+    "tests/base/floatprobe.c": "9f881747ece149551f58f87a8e8f07edbd2fba2e53a552afc8ea8be6bfa35164"
+  },
+  "compiler_sha256": {
+    "macOS": "63d62e2b79f670b5d958be0300d5828b59a0f5a9f007b7fa629e3cddf151f71f",
+    "Linux": "e0445c6f7fa9b0b4abd31e3549ef509195b082b90c5c7743e80280193960ffc9"
+  },
+  "local_tests": {
+    "reuse": {
+      "status": "PASS",
+      "log_sha256": "420d15e0f363a54ac37b593d8d8d49fd6ff059807d05f23fbdd61b0f978f2bd8",
+      "summary": [
+        "reuse disabled=0 inline-disabled=1 registers-disabled=1: 10000 allocations PASS",
+        "reuse disabled=1 inline-disabled=1 registers-disabled=1: 20000 allocations PASS",
+        "Fresh reuse: native values, alias/child preservation, field failure order, 1/4 harts, allocation ratchet, warm caches and four-target emission PASS"
+      ]
+    },
+    "vector_pipelines": {
+      "status": "PASS",
+      "log_sha256": "0a01d1731baa01254000a122692a43a0e953c492ff846f09938c71aec55dcb04",
+      "summary": [
+        "pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=0 pipeline-inline-disabled=0: PASS",
+        "pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=1 pipeline-inline-disabled=0: PASS",
+        "mixed scalar pipelines: native differential, 1/4 harts, returns/compaction, floats, captures, effects/traps and four-target emission PASS"
+      ]
+    },
+    "vector_kinds": {
+      "status": "PASS",
+      "log_sha256": "957412927938d735e105f6bbd6a92cb32e045e3f1d27370d3b2556312f145143",
+      "summary": [
+        "Vector kinds: float captures, mixed record fold, captured map/map and filter/filter, strict order and 100 SIMD tails PASS",
+        "A64 NEON execution: native host and C IEEE reference PASS"
+      ]
+    },
+    "vector_fallback_frames": {
+      "status": "PASS",
+      "log_sha256": "ed17f7f4e555ad6afbf8e08c193909a080dd8ac7d46c122c956aa60c9cbb52e5",
+      "summary": [
+        "x64 raGuard: top-word ra frames accepted; misplaced or overwritten ra refused: PASS",
+        "Vector fallback frames: ra in the top word across 7 fixtures (49 Vec frames), x64 lowering accepts them, fallbacks run (fallback frames: ok 5 cap 27 43): PASS"
+      ]
+    },
+    "x64_vectors": {
+      "status": "PASS",
+      "log_sha256": "46c35cc16ed48910f026aa25515f4a357138c6e9e8ee540d046d26b303acb4c1",
+      "summary": [
+        "x64 kernels: 100 scalar/pipeline lengths, eight pipeline arguments, nine-column map/filter, captured wide fold and clobbering calls PASS"
+      ]
+    },
+    "x64_calls": {
+      "status": "PASS",
+      "log_sha256": "46c35cc16ed48910f026aa25515f4a357138c6e9e8ee540d046d26b303acb4c1",
+      "summary": [
+        "x64 kernels: 100 scalar/pipeline lengths, eight pipeline arguments, nine-column map/filter, captured wide fold and clobbering calls PASS"
+      ]
+    },
+    "wide_workers": {
+      "status": "PASS",
+      "log_sha256": "2f6eb0e234001925bd57b97924ccc87d9d62cc8157940487d89324c60458b4c3",
+      "summary": [
+        "wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers optimized shared module called by general ABI host: PASS",
+        "wide workers native differential, allocation, effects, actor ownership, stack, 64-argument boundary and four-target emission: PASS"
+      ]
+    },
+    "workers": {
+      "status": "PASS",
+      "log_sha256": "d4e9a93df6f18fbc58a46460abc65bd2ed8e52a0b3237f882f93d67b11e71c7e",
+      "summary": [
+        "Workers: native 1/4-worker differential, independent switches/inliner, warm caches, dynamic entry and exact failure reasons PASS",
+        "Workers: A64/RV64/x64 emission, RV32 fallback, private entries and bounded fuel segments PASS",
+        "Workers: optimized shared module called by general-ABI host PASS"
+      ]
+    },
+    "complete_base_suite": {
+      "status": "PASS",
+      "exit_code": 0,
+      "log_sha256": "b2d5c0c7d9b45567d21ffa57eb43fc8900b93b81a410da4e54db71b5b9409220",
+      "final_lines": [
+        "fpr run passes arguments and status through; -v shows the compiler; the runtime is cached: PASS",
+        "A server out of descriptors says so and keeps serving (std/tcp accept loop): PASS",
+        "The job broker: host work off the harts, in order, three actors at once (std/job): PASS",
+        "A primitive-built list survives send (the heap nil is a leaf to the copier): PASS",
+        "I64: wrapping 64-bit arithmetic, unsigned views, conversions, parse, structures, send, and no implicit mixing with Int: PASS"
+      ]
+    },
+    "executable_run_cache": {
+      "status": "PASS",
+      "reuse_disabled_sequence": [
+        true,
+        false,
+        true
+      ],
+      "allocation_requests": [
+        20000,
+        10000,
+        20000
+      ]
+    },
+    "reuse_width_boundaries": {
+      "status": "PASS",
+      "admitted_fields": 64,
+      "declined_fields": 65
+    }
+  },
+  "boards": {
+    "pi": {
+      "identity": "Linux qosp 6.6.28-v8 #3 SMP PREEMPT Sun Sep 20 13:26:50 UTC 2026 aarch64 GNU/Linux\n 04:37:06 up 5 days, 20:15,  load average: 0.39, 0.50, 0.42\nRaspberry Pi 4 Model B Rev 1.4\u0000\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [pool_workqueue_]\n    4 root     [kworker/R-rcu_g]\n    5 root     [kworker/R-rcu_p]\n    6 root     [kworker/R-slub_]\n    7 root     [kworker/R-netns]\n    9 root     [kworker/0:0H-kb]\n   11 root     [kworker/u8:0-cf]\n   12 root     [kworker/R-mm_pe]\n   13 root     [rcu_tasks_kthre]\n   14 root     [rcu_tasks_rude_]\n   15 root     [rcu_tasks_trace]\n   16 root     [ksoftirqd/0]\n   17 root     [rcu_preempt]\n   18 root     [migration/0]\n   19 root     [cpuhp/0]\n   20 root     [cpuhp/1]\n   21 root     [migration/1]\n",
+      "files": {
+        "pipe-off": {
+          "sha256": "312ab746476dac040cb3060d259cee97e938fabfafe6e5747fa2f4d152999f74",
+          "bytes": 636072
+        },
+        "pipe-fused": {
+          "sha256": "1749ff1cf0655d7ce8d73ed8369b48ec47ba26127a52cef11352499c73cdf95f",
+          "bytes": 638840
+        },
+        "pipe-inline": {
+          "sha256": "f6a32145d9edbecdd5fefa0823df3fe3118ec030594bea6ae450b9eed1999f79",
+          "bytes": 638496
+        },
+        "reuse-off": {
+          "sha256": "5b64b17af723b8e7240772cd64cad6f438b300cf8332cf7482e91d3a33b35096",
+          "bytes": 566720
+        },
+        "reuse-on": {
+          "sha256": "ef4224a0d244d0fa8dd09dc7cf3e9b86b9f21b852d4d8c7fc36ad84870f7746b",
+          "bytes": 566432
+        }
+      },
+      "modes": {
+        "pipe-off": "PASS",
+        "pipe-fused": "PASS",
+        "pipe-inline": "PASS",
+        "reuse-off": {
+          "alloc_requests": 20000,
+          "alloc_bytes": 960000,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0,
+          "turns": 0,
+          "buddy_allocs": 3,
+          "buddy_frees": 0
+        },
+        "reuse-on": {
+          "alloc_requests": 10000,
+          "alloc_bytes": 480000,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0,
+          "turns": 0,
+          "buddy_allocs": 3,
+          "buddy_frees": 0
+        }
+      },
+      "calls": [
+        {
+          "mode": "pipe-off",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "pipe-off",
+          "case": "effects",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "pipe-off",
+          "case": "seed",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "pipe-off",
+          "case": "trap",
+          "harts": 1,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "pipe-off",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "pipe-off",
+          "case": "effects",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "pipe-off",
+          "case": "seed",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "pipe-off",
+          "case": "trap",
+          "harts": 4,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "effects",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "seed",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "trap",
+          "harts": 1,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "effects",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "seed",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "trap",
+          "harts": 4,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "effects",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "seed",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "trap",
+          "harts": 1,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "effects",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "seed",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "trap",
+          "harts": 4,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "reuse-off",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "0f3cf4524e19e9f70e95f60449ea4c424a2f7feec3d62338cd24f63700d639ae"
+        },
+        {
+          "mode": "reuse-off",
+          "case": "bad",
+          "harts": 1,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "b2874088642cb6c886e1a221a117de02b376610ff10dde7367f16520bafa355f"
+        },
+        {
+          "mode": "reuse-off",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "0f3cf4524e19e9f70e95f60449ea4c424a2f7feec3d62338cd24f63700d639ae"
+        },
+        {
+          "mode": "reuse-off",
+          "case": "bad",
+          "harts": 4,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "b2874088642cb6c886e1a221a117de02b376610ff10dde7367f16520bafa355f"
+        },
+        {
+          "mode": "reuse-off",
+          "case": "cost",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "0933c9f37bacfd68b60dc7c707cabf095e8e81d1f0171ccbd381145316c23b74"
+        },
+        {
+          "mode": "reuse-on",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "0f3cf4524e19e9f70e95f60449ea4c424a2f7feec3d62338cd24f63700d639ae"
+        },
+        {
+          "mode": "reuse-on",
+          "case": "bad",
+          "harts": 1,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "b2874088642cb6c886e1a221a117de02b376610ff10dde7367f16520bafa355f"
+        },
+        {
+          "mode": "reuse-on",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "0f3cf4524e19e9f70e95f60449ea4c424a2f7feec3d62338cd24f63700d639ae"
+        },
+        {
+          "mode": "reuse-on",
+          "case": "bad",
+          "harts": 4,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "b2874088642cb6c886e1a221a117de02b376610ff10dde7367f16520bafa355f"
+        },
+        {
+          "mode": "reuse-on",
+          "case": "cost",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "758ef31bcdd509ca203d570d9e1f7dc0b28dcc0fae7c7ae04eaf3c4a391a0781"
+        }
+      ],
+      "samples_ns": {
+        "pipe-off": [
+          98464741,
+          98809667,
+          98416259,
+          98537889,
+          98533574,
+          98309018,
+          98870556
+        ],
+        "pipe-fused": [
+          95697648,
+          96972648,
+          96383056,
+          97075074,
+          97498074,
+          96933092,
+          95803093
+        ],
+        "pipe-inline": [
+          77263240,
+          78072537,
+          78122593,
+          77626908,
+          77808315,
+          77492852,
+          77703722
+        ],
+        "reuse-off": [
+          620273148,
+          621951277,
+          621437759,
+          620839611,
+          620543166,
+          619498685,
+          622644999
+        ],
+        "reuse-on": [
+          353375833,
+          353088741,
+          353229537,
+          352592425,
+          352140111,
+          353293814,
+          353358851
+        ]
+      },
+      "medians_ns": {
+        "pipe-off": 98533574,
+        "pipe-fused": 96933092,
+        "pipe-inline": 77703722,
+        "reuse-off": 620839611,
+        "reuse-on": 353229537
+      },
+      "final_identity": " 04:37:23 up 5 days, 20:15,  load average: 0.45, 0.51, 0.43\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [pool_workqueue_]\n    4 root     [kworker/R-rcu_g]\n    5 root     [kworker/R-rcu_p]\n    6 root     [kworker/R-slub_]\n    7 root     [kworker/R-netns]\n    9 root     [kworker/0:0H-kb]\n   11 root     [kworker/u8:0-cf]\n   12 root     [kworker/R-mm_pe]\n   13 root     [rcu_tasks_kthre]\n   14 root     [rcu_tasks_rude_]\n   15 root     [rcu_tasks_trace]\n   16 root     [ksoftirqd/0]\n   17 root     [rcu_preempt]\n   18 root     [migration/0]\n   19 root     [cpuhp/0]\n   20 root     [cpuhp/1]\n   21 root     [migration/1]\n",
+      "status": "PASS",
+      "cleanup_status": 0
+    },
+    "star64": {
+      "identity": "Linux qos-star64 5.15.131 #3 SMP Thu Oct 15 11:05:41 UTC 2026 riscv64 GNU/Linux\n 12:03:42 up 4 days, 12:03,  load average: 0.30, 0.32, 0.29\nPine64 Star64\u0000\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [rcu_gp]\n    4 root     [rcu_par_gp]\n    5 root     [slub_flushwq]\n    6 root     [netns]\n   10 root     [mm_percpu_wq]\n   11 root     [rcu_tasks_trace]\n   12 root     [ksoftirqd/0]\n   13 root     [rcu_sched]\n   14 root     [migration/0]\n   16 root     [cpuhp/0]\n   17 root     [cpuhp/1]\n   18 root     [migration/1]\n   19 root     [ksoftirqd/1]\n   22 root     [cpuhp/2]\n   23 root     [migration/2]\n   24 root     [ksoftirqd/2]\n   27 root     [cpuhp/3]\n",
+      "files": {
+        "pipe-off": {
+          "sha256": "d0938e90e679290545f8b1885b4e57de783f847684aae852950600509d185b14",
+          "bytes": 499416
+        },
+        "pipe-fused": {
+          "sha256": "6dc8982e3809a101b1ce0a6f39becc46273a4ea16874a704267bc74b7110a301",
+          "bytes": 506280
+        },
+        "pipe-inline": {
+          "sha256": "9a76706b5b74df0c329930e42199ff71a14558bd70b5fe2b0e5e7bcfad403267",
+          "bytes": 510040
+        },
+        "reuse-off": {
+          "sha256": "70821962f1b6555cc4cd0c9fd5e231ca5b6b40fa43314a63e19425471fbc7ef9",
+          "bytes": 479240
+        },
+        "reuse-on": {
+          "sha256": "b1650edcdec0c31964690a1d96d8f6bb32b1422985adf8cdc5b162420458a094",
+          "bytes": 478952
+        }
+      },
+      "modes": {
+        "pipe-off": "PASS",
+        "pipe-fused": "PASS",
+        "pipe-inline": "PASS",
+        "reuse-off": {
+          "alloc_requests": 20000,
+          "alloc_bytes": 960000,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0,
+          "turns": 0,
+          "buddy_allocs": 3,
+          "buddy_frees": 0
+        },
+        "reuse-on": {
+          "alloc_requests": 10000,
+          "alloc_bytes": 480000,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0,
+          "turns": 0,
+          "buddy_allocs": 3,
+          "buddy_frees": 0
+        }
+      },
+      "calls": [
+        {
+          "mode": "pipe-off",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "pipe-off",
+          "case": "effects",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "pipe-off",
+          "case": "seed",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "pipe-off",
+          "case": "trap",
+          "harts": 1,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "pipe-off",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "pipe-off",
+          "case": "effects",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "pipe-off",
+          "case": "seed",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "pipe-off",
+          "case": "trap",
+          "harts": 4,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "effects",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "seed",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "trap",
+          "harts": 1,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "effects",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "seed",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "pipe-fused",
+          "case": "trap",
+          "harts": 4,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "effects",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "seed",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "trap",
+          "harts": 1,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "effects",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "seed",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "pipe-inline",
+          "case": "trap",
+          "harts": 4,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "reuse-off",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "0f3cf4524e19e9f70e95f60449ea4c424a2f7feec3d62338cd24f63700d639ae"
+        },
+        {
+          "mode": "reuse-off",
+          "case": "bad",
+          "harts": 1,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "b2874088642cb6c886e1a221a117de02b376610ff10dde7367f16520bafa355f"
+        },
+        {
+          "mode": "reuse-off",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "0f3cf4524e19e9f70e95f60449ea4c424a2f7feec3d62338cd24f63700d639ae"
+        },
+        {
+          "mode": "reuse-off",
+          "case": "bad",
+          "harts": 4,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "b2874088642cb6c886e1a221a117de02b376610ff10dde7367f16520bafa355f"
+        },
+        {
+          "mode": "reuse-off",
+          "case": "cost",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "0933c9f37bacfd68b60dc7c707cabf095e8e81d1f0171ccbd381145316c23b74"
+        },
+        {
+          "mode": "reuse-on",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "0f3cf4524e19e9f70e95f60449ea4c424a2f7feec3d62338cd24f63700d639ae"
+        },
+        {
+          "mode": "reuse-on",
+          "case": "bad",
+          "harts": 1,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "b2874088642cb6c886e1a221a117de02b376610ff10dde7367f16520bafa355f"
+        },
+        {
+          "mode": "reuse-on",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "0f3cf4524e19e9f70e95f60449ea4c424a2f7feec3d62338cd24f63700d639ae"
+        },
+        {
+          "mode": "reuse-on",
+          "case": "bad",
+          "harts": 4,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "b2874088642cb6c886e1a221a117de02b376610ff10dde7367f16520bafa355f"
+        },
+        {
+          "mode": "reuse-on",
+          "case": "cost",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "758ef31bcdd509ca203d570d9e1f7dc0b28dcc0fae7c7ae04eaf3c4a391a0781"
+        }
+      ],
+      "samples_ns": {
+        "pipe-off": [
+          76016750,
+          74137250,
+          74968500,
+          74113750,
+          74472750,
+          74582500,
+          74647000
+        ],
+        "pipe-fused": [
+          69326500,
+          69830750,
+          69544500,
+          69061750,
+          69664750,
+          69663500,
+          70042750
+        ],
+        "pipe-inline": [
+          51846500,
+          53222750,
+          52278000,
+          55954750,
+          52390250,
+          51906750,
+          51856500
+        ],
+        "reuse-off": [
+          350492000,
+          350225750,
+          358319750,
+          360064250,
+          344107500,
+          347297500,
+          351275250
+        ],
+        "reuse-on": [
+          207099000,
+          213036000,
+          221220250,
+          212371000,
+          209686000,
+          212839500,
+          208142000
+        ]
+      },
+      "medians_ns": {
+        "pipe-off": 74582500,
+        "pipe-fused": 69663500,
+        "pipe-inline": 52278000,
+        "reuse-off": 350492000,
+        "reuse-on": 212371000
+      },
+      "final_identity": " 12:03:55 up 4 days, 12:03,  load average: 0.33, 0.33, 0.29\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [rcu_gp]\n    4 root     [rcu_par_gp]\n    5 root     [slub_flushwq]\n    6 root     [netns]\n   10 root     [mm_percpu_wq]\n   11 root     [rcu_tasks_trace]\n   12 root     [ksoftirqd/0]\n   13 root     [rcu_sched]\n   14 root     [migration/0]\n   16 root     [cpuhp/0]\n   17 root     [cpuhp/1]\n   18 root     [migration/1]\n   19 root     [ksoftirqd/1]\n   22 root     [cpuhp/2]\n   23 root     [migration/2]\n   24 root     [ksoftirqd/2]\n   27 root     [cpuhp/3]\n",
+      "status": "PASS",
+      "cleanup_status": 0
+    }
+  },
+  "raw_evidence_directory": "/Users/jasonqin/Documents/GitHub/qos/.qos/validation/allocation-20261018/roadmap-20261020",
+  "benchmark": {
+    "samples_per_mode": 7,
+    "order": "forward then reverse alternating",
+    "runtime_harts": 1,
+    "limitations": "microbenchmarks with live services, unpinned clocks; reuse benchmark has allocation instrumentation; no RSS or QOS app measurement",
+    "pipeline_modes": {
+      "pipe-off": "fusion off",
+      "pipe-fused": "fusion on, callback inline off",
+      "pipe-inline": "fusion and callback inline on"
+    },
+    "reuse_modes": {
+      "reuse-off": "ordinary construction",
+      "reuse-on": "fresh constructor reuse"
+    }
+  }
+}
