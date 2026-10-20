@@ -19,6 +19,8 @@ That is evidence about `main`, not this change.
 The existing job now explicitly runs `cabal build` before `make fpr`. It also
 runs the worker, register and self-loop suites with the experimental modes
 enabled on native x86-64, in addition to the ordinary umbrella checks.
+This performance branch also has a push trigger: the available GitHub CLI
+account could read runs but received HTTP 403 for manual workflow dispatch.
 
 On macOS, the old local-project example pointed at LLVM directories.
 The current native dependency problem is Homebrew's keg-only `libarchive`
