@@ -21,7 +21,8 @@ def main():
         tmp = Path(td)
         env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
                    XDG_CACHE_HOME=str(tmp / "cache"), FPR_NO_INLINE="1",
-                   FPR_SELF_LOOPS="0", FPR_NO_REGISTERS="0")
+                   FPR_SELF_LOOPS="0", FPR_NO_REGISTERS="0",
+                   FPR_COSTED_REGISTERS="0", FPR_COMPACT_FRAMES="0")
         env.pop("FPR_FOREIGN", None)
         source = tmp / "retained.fpr"
         definition = ("hot : unsafe Int -> Int -> Int .\n"

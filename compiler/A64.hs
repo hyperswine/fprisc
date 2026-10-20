@@ -54,25 +54,49 @@
 --     saved around it; x17 stashes the loaded hart pointer across the
 --     restore.  The C side's __thread cell uses the same TLV machinery,
 --     so both sides agree by construction.
-module A64 (lowerA64, lowerA64WithGuards, deTlsQosAppA64, a64Rev) where
+module A64 (lowerA64, lowerA64WithGuards, lowerA64WithOptions, deTlsQosAppA64, a64Rev) where
 
 
 import Data.Bits (shiftR, (.&.))
 import Data.Char (isDigit, isSpace)
 import Data.List (isPrefixOf, stripPrefix)
 import Data.Word (Word64)
+import Text.Read (readMaybe)
 
 -- bump when the lowering changes (unit-cache tag component; see X64.hs)
 a64Rev :: Int
-a64Rev = 14 -- sign-extract fit guard; r13 was the bit-test experiment
+a64Rev = 15 -- opt-in paired frame-link saves/restores
 
 lowerA64 :: Bool -> String -> String
 lowerA64 = lowerA64WithGuards False
 
 lowerA64WithGuards :: Bool -> Bool -> String -> String
-lowerA64WithGuards guards mach =
+lowerA64WithGuards guards = lowerA64WithOptions guards False
+
+lowerA64WithOptions :: Bool -> Bool -> Bool -> String -> String
+lowerA64WithOptions guards pairs mach =
   post . unlines . lowerLines . map banner . lines
   where
+    -- Match exact adjacent frame operations; never cross a label, call or
+    -- saved-register restore. No writeback, and x28 is never part of a pair.
+    -- STP's signed scaled offset is narrower than individual stores.
+    lowerLines (a : b : rest)
+      | pairs,
+        ["sd", "ra,", raMem] <- words a,
+        ["sd", "s0,", fpMem] <- words b,
+        Just raOff <- spOffset raMem,
+        Just fpOff <- spOffset fpMem,
+        raOff == (fpOff :: Int) + 8, fpOff `mod` 8 == 0,
+        fpOff >= -512, fpOff <= 504 =
+          ("    stp x29, x30, [sp, #" ++ show fpOff ++ "]") : lowerLines rest
+    lowerLines (a : b : c : d : rest)
+      | pairs,
+        words a == ["ld", "ra,", "-8(s0)"],
+        words b == ["mv", "t0,", "s0"],
+        words c == ["ld", "s0,", "-16(s0)"],
+        words d == ["mv", "sp,", "t0"] =
+          ["    mov x9, x29", "    ldp x29, x30, [x9, #-16]",
+           "    mov sp, x9"] ++ lowerLines rest
     -- Sign-extract the low 63 bits in one instruction, preserving the
     -- exact t1 value on BOTH successors. Unlike a bit-test branch this
     -- keeps the original B.cond reach and compare/branch pairing. The
@@ -85,6 +109,9 @@ lowerA64WithGuards guards mach =
            "    b.ne " ++ target] ++ lowerLines rest
     lowerLines (l : ls) = lowerLine mach l ++ lowerLines ls
     lowerLines [] = []
+    spOffset s = case break (== '(') s of
+      (n, "(sp)") -> readMaybe n :: Maybe Int
+      _ -> Nothing
     banner "# target: rv64"
       | mach = "# target: a64mac (lowered from the rv64 emission; Mach-O syntax)"
       | otherwise = "# target: a64 (lowered from the rv64 emission -- the shared RISC IR)"

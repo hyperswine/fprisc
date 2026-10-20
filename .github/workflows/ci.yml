@@ -67,6 +67,16 @@ jobs:
         run: |
           python3 -u tests/check_i32.py
           python3 -u tests/check_raw.py
+      - name: Experimental frame and register modes (native x86-64)
+        env:
+          FPR_COSTED_REGISTERS: "1"
+          FPR_COMPACT_FRAMES: "1"
+          FPR_SELF_LOOPS: "1"
+          FPR_A64_FRAME_PAIRS: "1"
+        run: |
+          python3 -u tests/check_self_loops.py
+          python3 -u tests/check_workers.py
+          python3 -u tests/check_registers.py
       - name: RV64 Linux (cross-built, qemu-user)
         run: |
           python3 -u tests/check_rv64_linux.py --cc riscv64-linux-gnu-gcc \

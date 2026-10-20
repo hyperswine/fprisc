@@ -10,6 +10,11 @@ by 13.0% against both switches off. It does **not** materially close the
 recursive Fibonacci gap to C, and it does **not** fix the helpers regression.
 Both optimizations remain off by default.
 
+Follow-up: [frame placement and recursive-call costs](2026-10-20-FRAME-PLACEMENT-AND-CALL-COSTS.md)
+adds a fuel-bound selection gate, private frame compaction, paired A64 frames,
+and controlled helpers measurements. It also records the still-open mixed-local
+representation work.
+
 ## Implementation and scope
 
 The existing promotion pass counts frame-slot accesses before slot cleanup,

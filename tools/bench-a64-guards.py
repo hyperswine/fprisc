@@ -20,10 +20,15 @@ def main():
     experiment.add_argument("--before-compiler", type=Path, help="Compare frozen compiler with current compiler, guards off in both")
     experiment.add_argument("--self-loops", action="store_true", help="Compare FPR_SELF_LOOPS off/on, guards off in both")
     experiment.add_argument("--retained-registers", action="store_true", help="Compare retained-access register scoring off/on")
+    experiment.add_argument("--placement", action="store_true", help="Compare bounded register selection plus compact frames off/on")
+    experiment.add_argument("--frame-pairs", action="store_true", help="Compare A64 paired frame-link saves/restores off/on")
     ap.add_argument("--with-self-loops", action="store_true", help="With --retained-registers, also enable frame reuse in the on variant")
+    ap.add_argument("--with-frame-pairs", action="store_true", help="With --placement, also enable A64 paired frames in the on variant")
     args = ap.parse_args()
-    if args.with_self_loops and not args.retained_registers:
-        ap.error("--with-self-loops requires --retained-registers")
+    if args.with_self_loops and not (args.retained_registers or args.placement):
+        ap.error("--with-self-loops requires --retained-registers or --placement")
+    if args.with_frame_pairs and not args.placement:
+        ap.error("--with-frame-pairs requires --placement")
     if args.runs < 3:
         ap.error("--runs must be at least 3")
     if platform.machine() not in ("arm64", "aarch64"):
@@ -34,7 +39,7 @@ def main():
                XDG_CACHE_HOME=str(out / "cache"), FPR_HARTS="1")
     # Freeze relevant compiler modes instead of inheriting an editor/debug run.
     for key in list(env):
-        if key.startswith("FPR_NO_") or key in ("FPR_FOREIGN", "FPR_COST_PROBE", "FPR_CC", "FPR_A64_FIT_GUARDS", "FPR_SELF_LOOPS", "FPR_RETAINED_REGISTERS"):
+        if key.startswith("FPR_NO_") or key in ("FPR_FOREIGN", "FPR_COST_PROBE", "FPR_CC", "FPR_A64_FIT_GUARDS", "FPR_A64_FRAME_PAIRS", "FPR_SELF_LOOPS", "FPR_RETAINED_REGISTERS", "FPR_COSTED_REGISTERS", "FPR_COMPACT_FRAMES"):
             env.pop(key)
     def run(cmd, mode=env):
         p = subprocess.run(list(map(str, cmd)), cwd=ROOT, env=mode,
@@ -62,9 +67,12 @@ def main():
     def mode(label):
         # The frozen pre-literal compiler used the old disable switch.
         return dict(env, FPR_NO_A64_GUARDS="1",
+                    FPR_A64_FRAME_PAIRS="1" if (args.frame_pairs or args.with_frame_pairs) and label == "on" else "0",
+                    FPR_COSTED_REGISTERS="1" if args.placement and label == "on" else "0",
+                    FPR_COMPACT_FRAMES="1" if args.placement and label == "on" else "0",
                     FPR_SELF_LOOPS="1" if (args.self_loops or args.with_self_loops) and label == "on" else "0",
                     FPR_RETAINED_REGISTERS="1" if args.retained_registers and label == "on" else "0",
-                    FPR_A64_FIT_GUARDS="1" if not (args.before_compiler or args.self_loops or args.retained_registers) and label == "on" else "0")
+                    FPR_A64_FIT_GUARDS="1" if not (args.before_compiler or args.self_loops or args.retained_registers or args.placement or args.frame_pairs) and label == "on" else "0")
     for name, (defs, expr, expected) in sources.items():
         source = out / (name + ".fpr")
         body = (f"_ = Bench.start Unit; value = {expr}; ns = Bench.elapsed Unit;\n"
@@ -155,7 +163,9 @@ int main(int argc, char **argv) {
         print(f"paired round {i+1}/{args.runs}", flush=True)
     digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
     result = {
-        "experiment": ("retained-access register scoring" + (" and self-tail frame reuse" if args.with_self_loops else "") + " off/on, guards disabled") if args.retained_registers else
+        "experiment": "A64 paired frame saves/restores off/on" if args.frame_pairs else
+                      ("bounded register selection and compact frames" + (" and self-tail frame reuse" if args.with_self_loops else "") + (" and A64 paired frames" if args.with_frame_pairs else "") + " off/on, guards disabled") if args.placement else
+                      ("retained-access register scoring" + (" and self-tail frame reuse" if args.with_self_loops else "") + " off/on, guards disabled") if args.retained_registers else
                       "self-tail frame reuse off/on, guards disabled" if args.self_loops else
                       "frozen-before/current-after, guards disabled" if args.before_compiler else "A64 fit guards off/on",
         "before_compiler_sha256": digest(args.before_compiler.resolve()) if args.before_compiler else None,

@@ -26,7 +26,7 @@
 -- generation. Source effects retain evaluation order; HAL MMIO remains
 -- volatile, and slot promotion does not reorder device accesses.
 
-module Codegen (emitProgram, externals, Target (..), rv64, rv32, codegenRev, normArc, wcetAnnotate) where
+module Codegen (emitProgram, externals, Target (..), rv64, rv32, codegenRev, normArc, wcetAnnotate, compactFrameSlots) where
 -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
 -- specialization. All scalar backends support the shared saved-register
 -- convention; x64 uses its XMM shadow bank for s6..s11.
@@ -54,7 +54,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 65 -- opt-in retained-access register scoring for Base 64-bit
+codegenRev = 66 -- opt-in bounded register placement and private frame compaction
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -83,14 +83,16 @@ data Target = Target
     tgtReuse :: Bool,
     tgtSelfLoops :: Bool, -- experimental frame reuse; keeps every entry fuel/stack check
     tgtRetainedRegisters :: Bool, -- experimental scoring after slot cleanup
+    tgtCostedRegisters :: Bool, -- reject retained placement that raises fuel bounds
+    tgtCompactFrames :: Bool, -- remove holes in private, directly addressed slots
     tgtHal :: M.Map String Int -- primitive name -> arity (builtin schemes and
                         -- foreign declarations): a saturated call to one is
                         -- a direct `call fpr_g_<name>_call<n>` (fpr.h FPR_FN)
   }
 
 rv64, rv32 :: Target
-rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True False False M.empty
-rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True False False M.empty
+rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True False False False False M.empty
+rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True False False False False M.empty
 
 -- the visibility directive for a unit-visible global: a library unit
 -- shares every name it did not qualify with '@hash' with the program it
@@ -640,7 +642,38 @@ slotsNeeded tgt spec hal ext prog = go0
     go0 _ _ = 0
 
 compileFn :: Prog -> String -> ([String], Core) -> G [String]
-compileFn prog name (params, body0) = do
+compileFn prog name args = do
+  start <- get
+  let tgt = cgTgt start
+      -- Compile both choices from the same state: labels and constant-pool
+      -- entries must belong to the selected body, including on fallback.
+      candidate retained = do
+        put start {cgTgt = tgt {tgtRetainedRegisters = retained}}
+        ls <- compileFnBody prog name args
+        end <- get
+        pure (ls, end {cgTgt = tgt})
+      bounds ls = case reverse ls of
+        l : _ | ["#","wcet:",_,seg,tailCost,cc] <- words l ->
+          traverse value [seg,tailCost,cc]
+        _ -> Nothing
+      value s = case break (== '=') s of
+        (_, '=' : v) -> readMaybe v :: Maybe Int
+        _ -> Nothing
+  if tgtCostedRegisters tgt && tgtW tgt == 8 && tgtFuel tgt && not (tgtArc tgt)
+    then do
+      (old, oldState) <- candidate False
+      (new, newState) <- candidate True
+      -- segmax, exit-tail and C-call count must all stay finite and no
+      -- larger. This is an IR safety/cost gate, not a hardware cycle model.
+      let accept = case (bounds old, bounds new) of
+            (Just a, Just b) -> and (zipWith (<=) b a)
+            _ -> False
+      put (if accept then newState else oldState)
+      pure (if accept then new else old)
+    else compileFnBody prog name args
+
+compileFnBody :: Prog -> String -> ([String], Core) -> G [String]
+compileFnBody prog name (params, body0) = do
   spec <- gets cgSpec
   tgt <- gets cgTgt
   exps <- gets cgExports
@@ -773,6 +806,8 @@ compileFn prog name (params, body0) = do
   -- frame is opened
   let tidy = if tgtScalarFast tgt then peepholeFor (tgtLd tgt) (tgtSt tgt) else id
   pure $ wcetAnnotate [selfEntry | looped] name $
+    (if tgtCompactFrames tgt && w == 8 && tgtFuel tgt && not (tgtArc tgt)
+      then compactFrameSlots tgt frame else id) $
     -- `# fn <name>`, never `# <name>`: a hosted backend runs the unit through
     -- the C preprocessor, which reads `# line ...`, `# error ...`, `# define
     -- ...` as DIRECTIVES -- a function called `line` failed the build with
@@ -812,6 +847,44 @@ compileFn prog name (params, body0) = do
            "    ret",
            ""
          ])))
+
+-- Compact only fixed, private frame slots after cleanup and promotion.
+-- This is a bijective renumbering, NOT lifetime-based slot sharing. Reject
+-- computed/escaping frame pointers and nonstandard frame operations; those
+-- keep their original layout. Saved registers are ordinary private slots.
+compactFrameSlots :: Target -> Int -> [String] -> [String]
+compactFrameSlots tgt frame ls
+  | frame > 2032 = ls
+  | otherwise = case break (== "    addi sp, sp, -" ++ show frame) ls of
+      (prefix, rest) | Just body <- stripPrefix pro rest,
+        safe body,
+        all (\k -> (k+3)*w <= frame) slots ->
+          prefix ++ framePro tgt smaller ++ map rewrite body
+      _ -> ls
+  where
+    w = tgtW tgt
+    pro = framePro tgt frame
+    slots = sort . nub $ [k | Just (_,_,k) <- map (slotAccess tgt) ls]
+    mapping = M.fromList (zip slots [0..])
+    smaller = ((2*w + w*length slots + 15) `div` 16)*16
+    rewrite l = case slotAccess tgt l of
+      Just (op,r,k) -> "    " ++ op ++ " " ++ r ++ ", " ++ slotRef tgt (mapping M.! k)
+      _ -> l
+    tokens = words . map (\c -> if c `elem` ",()" then ' ' else c)
+    safe [] = True
+    safe (a:more)
+      | words a == ["mv","t0,","s0"],
+        (_, b:c:rest) <- span restore more,
+        words b == [tgtLd tgt,"s0,",show (-2*w) ++ "(s0)"],
+        words c == ["mv","sp,","t0"] = safe rest
+    safe (l:rest)
+      | Just (_,r,_) <- slotAccess tgt l = r /= "s0" && safe rest
+      | words l == [tgtLd tgt,"ra,",show (-w) ++ "(s0)"] = safe rest
+      | "s0" `notElem` tokens l = safe rest
+      | otherwise = False
+    restore l = case slotAccess tgt l of
+      Just (op,r,_) -> op == tgtLd tgt && r `elem` ["s1","s2","s3","s4","s5"]
+      _ -> False
 
 -- Private slot promotion: a register is the slot's storage for the entire
 -- function, including branches and scratch-slot reuse. No liveness guesses
