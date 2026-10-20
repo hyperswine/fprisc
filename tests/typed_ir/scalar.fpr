@@ -1,0 +1,32 @@
+# The M1 scalar fixture of the typed IR (docs/2026-10-20-TYPED-IR-M1.md).
+# Every function but main lowers; main is the reported fallback (print).
+# The check script evaluates each through the reference evaluator and
+# through this program built by the legacy backend, with the same arguments.
+unsafe base.
+# binary recursion: known calls in value position, a checked + on their results
+fib : unsafe Int -> Int .
+fib n = if n < 2 then n else fib (n - 1) + fib (n - 2).
+# a self tail call: the loop with the safepoint on its entry
+sum : unsafe Int -> Int -> Int .
+sum n acc = if n == 0 then acc else sum (n - 1) (acc + n).
+# a checked operation that traps with the primitive's message
+addovf : Int -> Int -> Int .
+addovf a b = a + b.
+divz : Int -> Int -> Int .
+divz a b = a / b.
+# mutual recursion through tail calls to another function
+even : unsafe Int -> Int .
+even n = if n == 0 then 1 else odd (n - 1).
+odd : unsafe Int -> Int .
+odd n = if n == 0 then 0 else even (n - 1).
+# a branch in value position: a join block with a parameter
+clamp : Int -> Int -> Int -> Int .
+clamp x lo hi = (if x < lo then lo else if x > hi then hi else x) * 2.
+main = case Sys.args Unit of
+    ["fib", n] -> print "{fib (parseInt n)}"
+  | ["sum", n, a] -> print "{sum (parseInt n) (parseInt a)}"
+  | ["addovf", a, b] -> print "{addovf (parseInt a) (parseInt b)}"
+  | ["divz", a, b] -> print "{divz (parseInt a) (parseInt b)}"
+  | ["even", n] -> print "{even (parseInt n)}"
+  | ["clamp", x, lo, hi] -> print "{clamp (parseInt x) (parseInt lo) (parseInt hi)}"
+  | _ -> print "scalar".

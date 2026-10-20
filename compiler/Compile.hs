@@ -8,7 +8,7 @@ import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Mono (specializeFunctions, qualifyAux)
 import Inline (inlineSmall, inlineWith, vecPeek)
 import ReceiveTurns (receiveTurns)
-import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtSelfLoops, tgtRetainedRegisters, tgtCostedRegisters, tgtCompactFrames, normArc)
+import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtSelfLoops, tgtRetainedRegisters, tgtCostedRegisters, tgtCompactFrames, tgtTypedIr, normArc)
 import Data.Char (isAlphaNum, isAscii, ord)
 import Numeric (showHex)
 import qualified Data.ByteString as BS
@@ -411,6 +411,7 @@ compileWithInterface accepted = do
   envSelfLoops <- (== Just "1") <$> lookupEnv "FPR_SELF_LOOPS"
   envCostedRegisters <- (== Just "1") <$> lookupEnv "FPR_COSTED_REGISTERS"
   envCompactFrames <- (== Just "1") <$> lookupEnv "FPR_COMPACT_FRAMES"
+  envTypedIr <- lookupEnv "FPR_TYPED_IR"
   envRetainedRegisters <- (== Just "1") <$> lookupEnv "FPR_RETAINED_REGISTERS"
   envA64Pairs <- (== Just "1") <$> lookupEnv "FPR_A64_FRAME_PAIRS"
   envA64Guards <- (== Just "1") <$> lookupEnv "FPR_A64_FIT_GUARDS"
@@ -912,7 +913,7 @@ compileWithInterface accepted = do
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
           tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = not envNoFloatInline, tgtRegisters = not envNoRegisters, tgtSimd=oA64 opts && not envNoSimd, tgtFusion=not envNoFusion,
-                               tgtScalarFast = tgtName (oTarget opts) /= "rv32" || not envNoRv32Fast, tgtIndexedMemory = not envNoIndexed, tgtScalarWorkers = not envNoScalarWorkers, tgtFieldWorkers = not envNoFieldWorkers, tgtPipelineInline = not envNoPipelineInline, tgtReuse = not envNoReuse, tgtSelfLoops = envSelfLoops, tgtRetainedRegisters = envRetainedRegisters, tgtCostedRegisters = envCostedRegisters, tgtCompactFrames = envCompactFrames}
+                               tgtScalarFast = tgtName (oTarget opts) /= "rv32" || not envNoRv32Fast, tgtIndexedMemory = not envNoIndexed, tgtScalarWorkers = not envNoScalarWorkers, tgtFieldWorkers = not envNoFieldWorkers, tgtPipelineInline = not envNoPipelineInline, tgtReuse = not envNoReuse, tgtSelfLoops = envSelfLoops, tgtRetainedRegisters = envRetainedRegisters, tgtCostedRegisters = envCostedRegisters, tgtCompactFrames = envCompactFrames, tgtTypedIr = envTypedIr}
           a64 = oA64 opts
           a64mac = oA64Mac opts
           x64 = oX64 opts

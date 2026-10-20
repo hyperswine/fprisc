@@ -45,6 +45,11 @@ import Numeric (showHex)
 import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, isJust)
 import Peephole (peepholeFor)
+import Codegen.IR (Fn (..), Block (..))
+import Codegen.Lower (lowerProgram)
+import Codegen.Verify (verifyProgram)
+import Codegen.Dump (dumpFn)
+import Codegen.Eval (Outcome (..), Failure (..), Event (..), RV (..), evalProgram)
 import KernelKinds (Kind(..), signature)
 import Reuse (reuseFresh, reuseProgram, reuseView)
 import Workers (workerize, internalWorker, scalarPrimitives)
@@ -85,14 +90,49 @@ data Target = Target
     tgtRetainedRegisters :: Bool, -- experimental scoring after slot cleanup
     tgtCostedRegisters :: Bool, -- reject retained placement that raises fuel bounds
     tgtCompactFrames :: Bool, -- remove holes in private, directly addressed slots
+    tgtTypedIr :: Maybe String, -- FPR_TYPED_IR: report the typed-IR lowering (M1); changes no emitted code
     tgtHal :: M.Map String Int -- primitive name -> arity (builtin schemes and
                         -- foreign declarations): a saturated call to one is
                         -- a direct `call fpr_g_<name>_call<n>` (fpr.h FPR_FN)
   }
 
 rv64, rv32 :: Target
-rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True False False False False M.empty
-rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True False False False False M.empty
+rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True False False False False Nothing M.empty
+rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True False False False False Nothing M.empty
+
+-- The typed-IR lowering of M1 (docs/2026-10-20-TYPED-NATIVE-IR-PLAN.md), as a
+-- report beside the legacy emission: which functions lower, why the others
+-- do not, their dumps (`dump`) and the reference evaluator's answer for
+-- `eval:<fn>:<int>...`.  A verifier failure is a compiler error, never a
+-- fallback.  Nothing here changes what is emitted.
+typedIrNotes :: Maybe String -> M.Map String Int -> Prog -> [String]
+typedIrNotes Nothing _ _ = []
+typedIrNotes (Just mode) ext prog =
+  case verifyProgram lowered of
+    Left err -> error ("typed-ir: " ++ err)
+    Right () ->
+      ["typed-ir: coverage " ++ show (M.size lowered) ++ "/" ++ show (M.size prog) ++ " functions"]
+        ++ ["typed-ir: " ++ n ++ " lowered (" ++ show (length (fnBlocks f)) ++ " blocks, " ++ show (sum (map (length . bInstrs) (fnBlocks f))) ++ " instructions)" | (n, f) <- M.toList lowered]
+        ++ ["typed-ir: " ++ n ++ " fallback: " ++ r | (n, r) <- failures]
+        ++ (if "dump" `elem` ws then concatMap (map ("typed-ir: | " ++) . lines . dumpFn) (M.elems lowered) else [])
+        ++ concatMap evalNote ws
+  where
+    (lowered, failures) = lowerProgram prog ext
+    ws = words mode
+    evalNote w = case splitOn ':' w of
+      ("eval" : fn : args) | Just ns <- mapM readMaybe args ->
+        let out = evalProgram lowered fn (map RInt ns)
+            shown = "typed-ir: eval " ++ fn ++ concatMap ((' ' :) . show) (ns :: [Integer])
+            counts = " (" ++ show (length [() | EvSafepoint _ <- ocEvents out]) ++ " safepoints, " ++ show (length [() | EvCall _ _ <- ocEvents out]) ++ " calls)"
+         in [ case ocResult out of
+                Right (RInt n) -> shown ++ " = " ++ show n ++ counts
+                Right v -> shown ++ " = " ++ show v ++ counts
+                Left (Trap msg) -> shown ++ " trap: " ++ msg ++ counts
+                Left (Stuck msg) -> shown ++ " stuck: " ++ msg ++ counts ]
+      _ -> []
+    splitOn c s = case break (== c) s of
+      (a, _ : rest) -> a : splitOn c rest
+      (a, []) -> [a]
 
 -- the visibility directive for a unit-visible global: a library unit
 -- shares every name it did not qualify with '@hash' with the program it
@@ -409,7 +449,8 @@ emitProgram tgt rvv spec exports ext exps elide prog0 =
       (prog,rnotes) = if reuseEnabled then reuseProgram elide normalized else (workers,[])
       emitted = if S.null elide then prog else M.filterWithKey (\n _ -> S.notMember n elide) prog
       (body, st) = runState (top prog emitted) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty)
-   in (unlines (wnotes ++ rnotes ++ body), reverse (cgVNotes st))
+   in (unlines (wnotes ++ rnotes ++ body), reverse (cgVNotes st) ++ typedIrNotes (if tgtW tgt == 8 then tgtTypedIr tgt else Nothing) ext emitted
+        ++ ["typed-ir: not available on " ++ tgtName tgt ++ " (M1 lowers the 64-bit targets)" | tgtW tgt /= 8, Just _ <- [tgtTypedIr tgt]])
   where
     top prog emitted = do
       -- specialization-decline scan: a Vec.map/filter/fold site whose

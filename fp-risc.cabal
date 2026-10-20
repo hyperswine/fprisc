@@ -50,6 +50,11 @@ executable fpr
       Representation
       Interrupt
       Codegen
+      Codegen.IR
+      Codegen.Verify
+      Codegen.Dump
+      Codegen.Eval
+      Codegen.Lower
       KernelKinds
       Workers
       Reuse
