@@ -1,0 +1,6 @@
+{
+  "result": "PASS",
+  "scope": "RV64 builtin emission with all four flags off/on",
+  "source": "profile builtin.\nloop n a = if n == 0 then a else loop (n - 1) (a + n).\nmain = loop 100 0.\n",
+  "assembly_sha256": "efc0d29e9e093bf3c61596cc1bba0811bd572f7829ae3c834c2a7d63d0622018"
+}

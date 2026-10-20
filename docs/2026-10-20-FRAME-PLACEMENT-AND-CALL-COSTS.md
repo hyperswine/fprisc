@@ -30,8 +30,12 @@ solver find it in a fresh build directory. The updated example selects
 the real pkg-config. It supports `/opt/homebrew` and `/usr/local`.
 
 The ignored `cabal.project.local` in this worktree now uses that configuration.
-Both fresh dependency resolution and `env -u PKG_CONFIG_PATH cabal build`
-succeeded. To configure another macOS checkout, install `pkgconf`, `libgit2`
+The main `fprisc/` checkout also has a local wrapper in ignored `.cabal-tools/`,
+preserving its existing `network == 3.2.7.0` constraint. Fresh dependency
+resolution and `env -u PKG_CONFIG_PATH cabal build` succeeded in both checkouts:
+[main build](evidence/2026-10-20-frame-placement/cabal-main.log),
+[performance worktree](evidence/2026-10-20-frame-placement/cabal-worktree.log).
+To configure another macOS checkout, install `pkgconf`, `libgit2`
 and `libarchive` with Homebrew, then copy `cabal.project.local.example` to
 `cabal.project.local`, preserving any existing machine-specific constraints.
 Linux does not need this local override.
@@ -175,14 +179,25 @@ comparison, not a general language ratio.
 - With all flags off, [27 root/import assembly comparisons](evidence/2026-10-20-frame-placement/default-parity.json)
   match revision 65 after normalizing only compiler/lowering revisions and
   interface metadata. This is assembly parity, not binary identity.
-- The full Base suite with all four experimental modes enabled is being run;
-  its final outcome will be recorded with the validation evidence.
+- [Builtin RV64 emission](evidence/2026-10-20-frame-placement/builtin-parity.json)
+  is identical with all four experimental flags off/on.
+- The full Base suite with all four experimental modes enabled passed:
+  [297-line log](evidence/2026-10-20-frame-placement/base-g66.log),
+  [validation manifest](evidence/2026-10-20-frame-placement/validation.json).
+  This includes exact arithmetic/failure reasons, managed ownership, live apps,
+  vectors, scalar/wide workers, 200,000-frame stack growth, 577 MiB heap growth,
+  actor scheduling and cleanup. Dedicated x64 and RV64/QEMU self-loop oracles
+  each passed 2,100 C-reference cases per loop mode. The separate POSIX RV64
+  artifact check skipped because Apple clang lacks a RISC-V backend.
 
 All new switches participate in imported-unit and executable cache identity.
 No default is changed. No physical Pi/STAR64 validation, QOS deployment,
 strict RV64IM toolchain repair, power measurement or production acceptance is
-claimed here. Linux CI status for this branch must be checked separately from
-the inspected `main` successes.
+claimed here. The branch's [Linux run on `e8038d5`](https://github.com/hyperswine/fprisc/actions/runs/39413199551)
+has passed direct Cabal build and is still running its tests at the time of
+this [status snapshot](evidence/2026-10-20-frame-placement/linux-ci-status.json).
+That is not a completed Linux-suite pass. The subsequent evidence-only commit
+skips a redundant CI run; compiler and test sources are the ones in `e8038d5`.
 
 ## Reproduction
 

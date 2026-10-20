@@ -1,0 +1,123 @@
+{
+  "conclusion": "",
+  "jobs": [
+    {
+      "completedAt": "0001-01-01T00:00:00Z",
+      "conclusion": "",
+      "databaseId": 118595791925,
+      "name": "x86-64 (debian trixie)",
+      "startedAt": "2026-10-20T11:11:39Z",
+      "status": "in_progress",
+      "steps": [
+        {
+          "completedAt": "2026-10-20T11:11:40Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-20T11:11:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-20T11:11:46Z",
+          "conclusion": "success",
+          "name": "Initialize containers",
+          "number": 2,
+          "startedAt": "2026-10-20T11:11:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-20T11:12:30Z",
+          "conclusion": "success",
+          "name": "tools",
+          "number": 3,
+          "startedAt": "2026-10-20T11:11:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-20T11:12:31Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 4,
+          "startedAt": "2026-10-20T11:12:30Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-20T11:14:18Z",
+          "conclusion": "success",
+          "name": "cabal build (Linux x86-64)",
+          "number": 5,
+          "startedAt": "2026-10-20T11:12:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-20T11:14:18Z",
+          "conclusion": "success",
+          "name": "make fpr",
+          "number": 6,
+          "startedAt": "2026-10-20T11:14:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-20T11:14:18Z",
+          "conclusion": "success",
+          "name": "Run echo \"FPR_HOME=$GITHUB_WORKSPACE\" >> \"$GITHUB_ENV\"",
+          "number": 7,
+          "startedAt": "2026-10-20T11:14:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "check_base",
+          "number": 8,
+          "startedAt": "2026-10-20T11:14:18Z",
+          "status": "in_progress"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "check_i32, check_raw",
+          "number": 9,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Experimental frame and register modes (native x86-64)",
+          "number": 10,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "RV64 Linux (cross-built, qemu-user)",
+          "number": 11,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Post Run actions/checkout@v4",
+          "number": 21,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Stop containers",
+          "number": 22,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        }
+      ],
+      "url": "https://github.com/hyperswine/fprisc/actions/runs/39413199551/job/118595791925"
+    }
+  ],
+  "status": "in_progress",
+  "url": "https://github.com/hyperswine/fprisc/actions/runs/39413199551",
+  "recorded_at": "2026-10-20T11:26:54.489384+00:00"
+}
