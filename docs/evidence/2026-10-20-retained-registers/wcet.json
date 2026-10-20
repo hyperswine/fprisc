@@ -1,0 +1,3814 @@
+{
+  "retained-registers-final": {
+    "fib": {
+      "functions": 270,
+      "maximum_off": 174,
+      "maximum_on": 177,
+      "increases": {
+        "$worker.scalar.fib": [
+          20,
+          21
+        ],
+        "$receive.local.irqRouteReq": [
+          51,
+          55
+        ],
+        "$receive.local.irqRouteSrc": [
+          65,
+          68
+        ],
+        "$receive.local.irqUnbindNow": [
+          52,
+          54
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+          53,
+          55
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+          27,
+          28
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+          40,
+          41
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+          28,
+          29
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+          40,
+          41
+        ],
+        "Int.abs": [
+          22,
+          23
+        ],
+        "fromTo": [
+          24,
+          25
+        ],
+        "fstV": [
+          25,
+          26
+        ],
+        "irqOwner": [
+          51,
+          52
+        ],
+        "irqRouteReq": [
+          42,
+          50
+        ],
+        "irqRouteSrc": [
+          42,
+          48
+        ],
+        "irqUnbindNow": [
+          41,
+          45
+        ],
+        "lifted_877": [
+          44,
+          45
+        ],
+        "lifted_878": [
+          38,
+          39
+        ],
+        "listAppend": [
+          24,
+          25
+        ],
+        "listDrop": [
+          23,
+          24
+        ],
+        "listFold": [
+          39,
+          40
+        ],
+        "listMap": [
+          24,
+          25
+        ],
+        "listPrefEq": [
+          20,
+          22
+        ],
+        "listPrefEqAt": [
+          21,
+          22
+        ],
+        "listPrefEqCmp": [
+          22,
+          23
+        ],
+        "listSub": [
+          20,
+          21
+        ],
+        "listTake": [
+          24,
+          25
+        ],
+        "logDo": [
+          28,
+          29
+        ],
+        "logPrefix": [
+          45,
+          46
+        ],
+        "logRingAt": [
+          53,
+          54
+        ],
+        "logSev": [
+          18,
+          19
+        ],
+        "mapV": [
+          24,
+          25
+        ],
+        "modCompatAt": [
+          50,
+          52
+        ],
+        "modCompatMatch": [
+          174,
+          177
+        ],
+        "modCompatRow": [
+          41,
+          44
+        ],
+        "modCompatRows": [
+          59,
+          63
+        ],
+        "modHasFrom": [
+          22,
+          23
+        ],
+        "modRow": [
+          53,
+          54
+        ],
+        "parseDigit": [
+          114,
+          115
+        ],
+        "parseDigits": [
+          44,
+          46
+        ],
+        "sndV": [
+          25,
+          26
+        ],
+        "strCmpGo": [
+          56,
+          59
+        ],
+        "strIndexGo": [
+          52,
+          54
+        ],
+        "strMatchAt": [
+          83,
+          84
+        ],
+        "strSub": [
+          37,
+          38
+        ],
+        "strTakeGo": [
+          51,
+          52
+        ],
+        "sumV": [
+          19,
+          20
+        ],
+        "wireMap": [
+          24,
+          25
+        ],
+        "wireRev": [
+          26,
+          27
+        ]
+      },
+      "decreases": {
+        "$receive.turn.irqRoute": [
+          36,
+          35
+        ],
+        "Sys.logAt": [
+          51,
+          50
+        ],
+        "irqSendSure": [
+          35,
+          33
+        ],
+        "log": [
+          51,
+          50
+        ],
+        "logErr": [
+          51,
+          50
+        ],
+        "logPut": [
+          51,
+          50
+        ],
+        "logServe": [
+          46,
+          44
+        ],
+        "logStep": [
+          29,
+          28
+        ],
+        "logWarn": [
+          51,
+          50
+        ],
+        "modFindAt": [
+          40,
+          39
+        ],
+        "par2": [
+          146,
+          145
+        ],
+        "serve": [
+          57,
+          56
+        ],
+        "wireToInt": [
+          20,
+          19
+        ]
+      }
+    },
+    "sum": {
+      "functions": 270,
+      "maximum_off": 174,
+      "maximum_on": 177,
+      "increases": {
+        "$worker.scalar.loop": [
+          43,
+          44
+        ],
+        "loop": [
+          54,
+          56
+        ],
+        "$receive.local.irqRouteReq": [
+          51,
+          55
+        ],
+        "$receive.local.irqRouteSrc": [
+          65,
+          68
+        ],
+        "$receive.local.irqUnbindNow": [
+          52,
+          54
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+          53,
+          55
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+          27,
+          28
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+          40,
+          41
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+          28,
+          29
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+          40,
+          41
+        ],
+        "Int.abs": [
+          22,
+          23
+        ],
+        "fromTo": [
+          24,
+          25
+        ],
+        "fstV": [
+          25,
+          26
+        ],
+        "irqOwner": [
+          51,
+          52
+        ],
+        "irqRouteReq": [
+          42,
+          50
+        ],
+        "irqRouteSrc": [
+          42,
+          48
+        ],
+        "irqUnbindNow": [
+          41,
+          45
+        ],
+        "lifted_877": [
+          44,
+          45
+        ],
+        "lifted_878": [
+          38,
+          39
+        ],
+        "listAppend": [
+          24,
+          25
+        ],
+        "listDrop": [
+          23,
+          24
+        ],
+        "listFold": [
+          39,
+          40
+        ],
+        "listMap": [
+          24,
+          25
+        ],
+        "listPrefEq": [
+          20,
+          22
+        ],
+        "listPrefEqAt": [
+          21,
+          22
+        ],
+        "listPrefEqCmp": [
+          22,
+          23
+        ],
+        "listSub": [
+          20,
+          21
+        ],
+        "listTake": [
+          24,
+          25
+        ],
+        "logDo": [
+          28,
+          29
+        ],
+        "logPrefix": [
+          45,
+          46
+        ],
+        "logRingAt": [
+          53,
+          54
+        ],
+        "logSev": [
+          18,
+          19
+        ],
+        "mapV": [
+          24,
+          25
+        ],
+        "modCompatAt": [
+          50,
+          52
+        ],
+        "modCompatMatch": [
+          174,
+          177
+        ],
+        "modCompatRow": [
+          41,
+          44
+        ],
+        "modCompatRows": [
+          59,
+          63
+        ],
+        "modHasFrom": [
+          22,
+          23
+        ],
+        "modRow": [
+          53,
+          54
+        ],
+        "parseDigit": [
+          114,
+          115
+        ],
+        "parseDigits": [
+          44,
+          46
+        ],
+        "sndV": [
+          25,
+          26
+        ],
+        "strCmpGo": [
+          56,
+          59
+        ],
+        "strIndexGo": [
+          52,
+          54
+        ],
+        "strMatchAt": [
+          83,
+          84
+        ],
+        "strSub": [
+          37,
+          38
+        ],
+        "strTakeGo": [
+          51,
+          52
+        ],
+        "sumV": [
+          19,
+          20
+        ],
+        "wireMap": [
+          24,
+          25
+        ],
+        "wireRev": [
+          26,
+          27
+        ]
+      },
+      "decreases": {
+        "$receive.turn.irqRoute": [
+          36,
+          35
+        ],
+        "Sys.logAt": [
+          51,
+          50
+        ],
+        "irqSendSure": [
+          35,
+          33
+        ],
+        "log": [
+          51,
+          50
+        ],
+        "logErr": [
+          51,
+          50
+        ],
+        "logPut": [
+          51,
+          50
+        ],
+        "logServe": [
+          46,
+          44
+        ],
+        "logStep": [
+          29,
+          28
+        ],
+        "logWarn": [
+          51,
+          50
+        ],
+        "modFindAt": [
+          40,
+          39
+        ],
+        "par2": [
+          146,
+          145
+        ],
+        "serve": [
+          57,
+          56
+        ],
+        "wireToInt": [
+          20,
+          19
+        ]
+      }
+    },
+    "pipeline": {
+      "functions": 271,
+      "maximum_off": 174,
+      "maximum_on": 177,
+      "increases": {
+        "$receive.local.irqRouteReq": [
+          51,
+          55
+        ],
+        "$receive.local.irqRouteSrc": [
+          65,
+          68
+        ],
+        "$receive.local.irqUnbindNow": [
+          52,
+          54
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+          53,
+          55
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+          27,
+          28
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+          40,
+          41
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+          28,
+          29
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+          40,
+          41
+        ],
+        "Int.abs": [
+          22,
+          23
+        ],
+        "fromTo": [
+          24,
+          25
+        ],
+        "fstV": [
+          25,
+          26
+        ],
+        "irqOwner": [
+          51,
+          52
+        ],
+        "irqRouteReq": [
+          42,
+          50
+        ],
+        "irqRouteSrc": [
+          42,
+          48
+        ],
+        "irqUnbindNow": [
+          41,
+          45
+        ],
+        "lifted_877": [
+          44,
+          45
+        ],
+        "lifted_878": [
+          38,
+          39
+        ],
+        "listAppend": [
+          24,
+          25
+        ],
+        "listDrop": [
+          23,
+          24
+        ],
+        "listFold": [
+          39,
+          40
+        ],
+        "listMap": [
+          24,
+          25
+        ],
+        "listPrefEq": [
+          20,
+          22
+        ],
+        "listPrefEqAt": [
+          21,
+          22
+        ],
+        "listPrefEqCmp": [
+          22,
+          23
+        ],
+        "listSub": [
+          20,
+          21
+        ],
+        "listTake": [
+          24,
+          25
+        ],
+        "logDo": [
+          28,
+          29
+        ],
+        "logPrefix": [
+          45,
+          46
+        ],
+        "logRingAt": [
+          53,
+          54
+        ],
+        "logSev": [
+          18,
+          19
+        ],
+        "mapV": [
+          24,
+          25
+        ],
+        "modCompatAt": [
+          50,
+          52
+        ],
+        "modCompatMatch": [
+          174,
+          177
+        ],
+        "modCompatRow": [
+          41,
+          44
+        ],
+        "modCompatRows": [
+          59,
+          63
+        ],
+        "modHasFrom": [
+          22,
+          23
+        ],
+        "modRow": [
+          53,
+          54
+        ],
+        "parseDigit": [
+          114,
+          115
+        ],
+        "parseDigits": [
+          44,
+          46
+        ],
+        "sndV": [
+          25,
+          26
+        ],
+        "strCmpGo": [
+          56,
+          59
+        ],
+        "strIndexGo": [
+          52,
+          54
+        ],
+        "strMatchAt": [
+          83,
+          84
+        ],
+        "strSub": [
+          37,
+          38
+        ],
+        "strTakeGo": [
+          51,
+          52
+        ],
+        "sumV": [
+          19,
+          20
+        ],
+        "wireMap": [
+          24,
+          25
+        ],
+        "wireRev": [
+          26,
+          27
+        ]
+      },
+      "decreases": {
+        "$receive.turn.irqRoute": [
+          36,
+          35
+        ],
+        "Sys.logAt": [
+          51,
+          50
+        ],
+        "irqSendSure": [
+          35,
+          33
+        ],
+        "log": [
+          51,
+          50
+        ],
+        "logErr": [
+          51,
+          50
+        ],
+        "logPut": [
+          51,
+          50
+        ],
+        "logServe": [
+          46,
+          44
+        ],
+        "logStep": [
+          29,
+          28
+        ],
+        "logWarn": [
+          51,
+          50
+        ],
+        "modFindAt": [
+          40,
+          39
+        ],
+        "par2": [
+          146,
+          145
+        ],
+        "serve": [
+          57,
+          56
+        ],
+        "wireToInt": [
+          20,
+          19
+        ]
+      }
+    },
+    "byteloop": {
+      "functions": 358,
+      "maximum_off": 174,
+      "maximum_on": 177,
+      "increases": {
+        "sumB": [
+          60,
+          61
+        ],
+        "$receive.local.irqRouteReq": [
+          51,
+          55
+        ],
+        "$receive.local.irqRouteSrc": [
+          65,
+          68
+        ],
+        "$receive.local.irqUnbindNow": [
+          52,
+          54
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+          53,
+          55
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+          27,
+          28
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+          40,
+          41
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+          28,
+          29
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+          40,
+          41
+        ],
+        "Int.abs": [
+          22,
+          23
+        ],
+        "fromTo": [
+          24,
+          25
+        ],
+        "fstV": [
+          25,
+          26
+        ],
+        "irqOwner": [
+          51,
+          52
+        ],
+        "irqRouteReq": [
+          42,
+          50
+        ],
+        "irqRouteSrc": [
+          42,
+          48
+        ],
+        "irqUnbindNow": [
+          41,
+          45
+        ],
+        "lifted_877": [
+          44,
+          45
+        ],
+        "lifted_878": [
+          38,
+          39
+        ],
+        "listAppend": [
+          24,
+          25
+        ],
+        "listDrop": [
+          23,
+          24
+        ],
+        "listFold": [
+          39,
+          40
+        ],
+        "listMap": [
+          24,
+          25
+        ],
+        "listPrefEq": [
+          20,
+          22
+        ],
+        "listPrefEqAt": [
+          21,
+          22
+        ],
+        "listPrefEqCmp": [
+          22,
+          23
+        ],
+        "listSub": [
+          20,
+          21
+        ],
+        "listTake": [
+          24,
+          25
+        ],
+        "logDo": [
+          28,
+          29
+        ],
+        "logPrefix": [
+          45,
+          46
+        ],
+        "logRingAt": [
+          53,
+          54
+        ],
+        "logSev": [
+          18,
+          19
+        ],
+        "mapV": [
+          24,
+          25
+        ],
+        "modCompatAt": [
+          50,
+          52
+        ],
+        "modCompatMatch": [
+          174,
+          177
+        ],
+        "modCompatRow": [
+          41,
+          44
+        ],
+        "modCompatRows": [
+          59,
+          63
+        ],
+        "modHasFrom": [
+          22,
+          23
+        ],
+        "modRow": [
+          53,
+          54
+        ],
+        "parseDigit": [
+          114,
+          115
+        ],
+        "parseDigits": [
+          44,
+          46
+        ],
+        "sndV": [
+          25,
+          26
+        ],
+        "strCmpGo": [
+          56,
+          59
+        ],
+        "strIndexGo": [
+          52,
+          54
+        ],
+        "strMatchAt": [
+          83,
+          84
+        ],
+        "strSub": [
+          37,
+          38
+        ],
+        "strTakeGo": [
+          51,
+          52
+        ],
+        "sumV": [
+          19,
+          20
+        ],
+        "wireMap": [
+          24,
+          25
+        ],
+        "wireRev": [
+          26,
+          27
+        ],
+        "chrs@4a1ebe94bef43a82": [
+          26,
+          27
+        ],
+        "count@4a1ebe94bef43a82": [
+          28,
+          29
+        ],
+        "digitsGo@4a1ebe94bef43a82": [
+          83,
+          84
+        ],
+        "dropCr@4a1ebe94bef43a82": [
+          39,
+          41
+        ],
+        "dropLeft@4a1ebe94bef43a82": [
+          38,
+          40
+        ],
+        "dropRight@4a1ebe94bef43a82": [
+          38,
+          39
+        ],
+        "endsWith@4a1ebe94bef43a82": [
+          99,
+          101
+        ],
+        "leadGo@4a1ebe94bef43a82": [
+          23,
+          24
+        ],
+        "lifted_177": [
+          29,
+          30
+        ],
+        "lifted_178": [
+          28,
+          29
+        ],
+        "rev@4a1ebe94bef43a82": [
+          26,
+          27
+        ],
+        "right@4a1ebe94bef43a82": [
+          50,
+          52
+        ],
+        "sliceAt@4a1ebe94bef43a82": [
+          28,
+          29
+        ],
+        "split@4a1ebe94bef43a82": [
+          26,
+          27
+        ],
+        "startsWith@4a1ebe94bef43a82": [
+          62,
+          63
+        ],
+        "trailGo@4a1ebe94bef43a82": [
+          31,
+          32
+        ],
+        "trimLeft@4a1ebe94bef43a82": [
+          39,
+          40
+        ],
+        "wordEnd@4a1ebe94bef43a82": [
+          39,
+          42
+        ],
+        "wordsGo@4a1ebe94bef43a82": [
+          37,
+          41
+        ]
+      },
+      "decreases": {
+        "$receive.turn.irqRoute": [
+          36,
+          35
+        ],
+        "Sys.logAt": [
+          51,
+          50
+        ],
+        "irqSendSure": [
+          35,
+          33
+        ],
+        "log": [
+          51,
+          50
+        ],
+        "logErr": [
+          51,
+          50
+        ],
+        "logPut": [
+          51,
+          50
+        ],
+        "logServe": [
+          46,
+          44
+        ],
+        "logStep": [
+          29,
+          28
+        ],
+        "logWarn": [
+          51,
+          50
+        ],
+        "modFindAt": [
+          40,
+          39
+        ],
+        "par2": [
+          146,
+          145
+        ],
+        "serve": [
+          57,
+          56
+        ],
+        "wireToInt": [
+          20,
+          19
+        ]
+      }
+    },
+    "helpers": {
+      "functions": 274,
+      "maximum_off": 174,
+      "maximum_on": 177,
+      "increases": {
+        "clamp": [
+          18,
+          19
+        ],
+        "$receive.local.irqRouteReq": [
+          51,
+          55
+        ],
+        "$receive.local.irqRouteSrc": [
+          65,
+          68
+        ],
+        "$receive.local.irqUnbindNow": [
+          52,
+          54
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+          53,
+          55
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+          27,
+          28
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+          40,
+          41
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+          28,
+          29
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+          40,
+          41
+        ],
+        "Int.abs": [
+          22,
+          23
+        ],
+        "fromTo": [
+          24,
+          25
+        ],
+        "fstV": [
+          25,
+          26
+        ],
+        "irqOwner": [
+          51,
+          52
+        ],
+        "irqRouteReq": [
+          42,
+          50
+        ],
+        "irqRouteSrc": [
+          42,
+          48
+        ],
+        "irqUnbindNow": [
+          41,
+          45
+        ],
+        "lifted_877": [
+          44,
+          45
+        ],
+        "lifted_878": [
+          38,
+          39
+        ],
+        "listAppend": [
+          24,
+          25
+        ],
+        "listDrop": [
+          23,
+          24
+        ],
+        "listFold": [
+          39,
+          40
+        ],
+        "listMap": [
+          24,
+          25
+        ],
+        "listPrefEq": [
+          20,
+          22
+        ],
+        "listPrefEqAt": [
+          21,
+          22
+        ],
+        "listPrefEqCmp": [
+          22,
+          23
+        ],
+        "listSub": [
+          20,
+          21
+        ],
+        "listTake": [
+          24,
+          25
+        ],
+        "logDo": [
+          28,
+          29
+        ],
+        "logPrefix": [
+          45,
+          46
+        ],
+        "logRingAt": [
+          53,
+          54
+        ],
+        "logSev": [
+          18,
+          19
+        ],
+        "mapV": [
+          24,
+          25
+        ],
+        "modCompatAt": [
+          50,
+          52
+        ],
+        "modCompatMatch": [
+          174,
+          177
+        ],
+        "modCompatRow": [
+          41,
+          44
+        ],
+        "modCompatRows": [
+          59,
+          63
+        ],
+        "modHasFrom": [
+          22,
+          23
+        ],
+        "modRow": [
+          53,
+          54
+        ],
+        "parseDigit": [
+          114,
+          115
+        ],
+        "parseDigits": [
+          44,
+          46
+        ],
+        "sndV": [
+          25,
+          26
+        ],
+        "strCmpGo": [
+          56,
+          59
+        ],
+        "strIndexGo": [
+          52,
+          54
+        ],
+        "strMatchAt": [
+          83,
+          84
+        ],
+        "strSub": [
+          37,
+          38
+        ],
+        "strTakeGo": [
+          51,
+          52
+        ],
+        "sumV": [
+          19,
+          20
+        ],
+        "wireMap": [
+          24,
+          25
+        ],
+        "wireRev": [
+          26,
+          27
+        ]
+      },
+      "decreases": {
+        "$receive.turn.irqRoute": [
+          36,
+          35
+        ],
+        "Sys.logAt": [
+          51,
+          50
+        ],
+        "irqSendSure": [
+          35,
+          33
+        ],
+        "log": [
+          51,
+          50
+        ],
+        "logErr": [
+          51,
+          50
+        ],
+        "logPut": [
+          51,
+          50
+        ],
+        "logServe": [
+          46,
+          44
+        ],
+        "logStep": [
+          29,
+          28
+        ],
+        "logWarn": [
+          51,
+          50
+        ],
+        "modFindAt": [
+          40,
+          39
+        ],
+        "par2": [
+          146,
+          145
+        ],
+        "serve": [
+          57,
+          56
+        ],
+        "wireToInt": [
+          20,
+          19
+        ]
+      }
+    },
+    "sha": {
+      "functions": 640,
+      "maximum_off": 357,
+      "maximum_on": 357,
+      "increases": {
+        "$receive.local.irqRouteReq": [
+          51,
+          55
+        ],
+        "$receive.local.irqRouteSrc": [
+          65,
+          68
+        ],
+        "$receive.local.irqUnbindNow": [
+          52,
+          54
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+          53,
+          55
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+          27,
+          28
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+          40,
+          41
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+          28,
+          29
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+          40,
+          41
+        ],
+        "Int.abs": [
+          22,
+          23
+        ],
+        "fromTo": [
+          24,
+          25
+        ],
+        "fstV": [
+          25,
+          26
+        ],
+        "irqOwner": [
+          51,
+          52
+        ],
+        "irqRouteReq": [
+          42,
+          50
+        ],
+        "irqRouteSrc": [
+          42,
+          48
+        ],
+        "irqUnbindNow": [
+          41,
+          45
+        ],
+        "lifted_877": [
+          44,
+          45
+        ],
+        "lifted_878": [
+          38,
+          39
+        ],
+        "listAppend": [
+          24,
+          25
+        ],
+        "listDrop": [
+          23,
+          24
+        ],
+        "listFold": [
+          39,
+          40
+        ],
+        "listMap": [
+          24,
+          25
+        ],
+        "listPrefEq": [
+          20,
+          22
+        ],
+        "listPrefEqAt": [
+          21,
+          22
+        ],
+        "listPrefEqCmp": [
+          22,
+          23
+        ],
+        "listSub": [
+          20,
+          21
+        ],
+        "listTake": [
+          24,
+          25
+        ],
+        "logDo": [
+          28,
+          29
+        ],
+        "logPrefix": [
+          45,
+          46
+        ],
+        "logRingAt": [
+          53,
+          54
+        ],
+        "logSev": [
+          18,
+          19
+        ],
+        "mapV": [
+          24,
+          25
+        ],
+        "modCompatAt": [
+          50,
+          52
+        ],
+        "modCompatMatch": [
+          174,
+          177
+        ],
+        "modCompatRow": [
+          41,
+          44
+        ],
+        "modCompatRows": [
+          59,
+          63
+        ],
+        "modHasFrom": [
+          22,
+          23
+        ],
+        "modRow": [
+          53,
+          54
+        ],
+        "parseDigit": [
+          114,
+          115
+        ],
+        "parseDigits": [
+          44,
+          46
+        ],
+        "sndV": [
+          25,
+          26
+        ],
+        "strCmpGo": [
+          56,
+          59
+        ],
+        "strIndexGo": [
+          52,
+          54
+        ],
+        "strMatchAt": [
+          83,
+          84
+        ],
+        "strSub": [
+          37,
+          38
+        ],
+        "strTakeGo": [
+          51,
+          52
+        ],
+        "sumV": [
+          19,
+          20
+        ],
+        "wireMap": [
+          24,
+          25
+        ],
+        "wireRev": [
+          26,
+          27
+        ],
+        "awaitReplyUntil@72f59195cb10e418": [
+          38,
+          40
+        ],
+        "sendRetry@72f59195cb10e418": [
+          38,
+          40
+        ],
+        "session@72f59195cb10e418": [
+          20,
+          21
+        ],
+        "sessionStep@72f59195cb10e418": [
+          28,
+          29
+        ],
+        "addAll@dab63e1fc0e65070": [
+          27,
+          30
+        ],
+        "nth@dab63e1fc0e65070": [
+          47,
+          48
+        ],
+        "padLen@dab63e1fc0e65070": [
+          32,
+          33
+        ],
+        "rev@dab63e1fc0e65070": [
+          26,
+          27
+        ],
+        "rotr@dab63e1fc0e65070": [
+          74,
+          75
+        ],
+        "s0@dab63e1fc0e65070": [
+          27,
+          28
+        ],
+        "s1@dab63e1fc0e65070": [
+          27,
+          28
+        ],
+        "update@dab63e1fc0e65070": [
+          55,
+          56
+        ],
+        "wordsToBytes@dab63e1fc0e65070": [
+          26,
+          27
+        ],
+        "hexDigit@d1f8a8215a77de3d": [
+          37,
+          38
+        ],
+        "queryGo@d1f8a8215a77de3d": [
+          38,
+          39
+        ],
+        "rev@d1f8a8215a77de3d": [
+          26,
+          27
+        ],
+        "$spec.u-405eba153a1e-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.foldGo@405eba153a1e2ce1.mono.29": [
+          24,
+          25
+        ],
+        "$spec.u-405eba153a1e-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.foldGo@405eba153a1e2ce1.mono.49": [
+          24,
+          25
+        ],
+        "balance@405eba153a1e2ce1": [
+          41,
+          45
+        ],
+        "getGo@405eba153a1e2ce1": [
+          43,
+          46
+        ],
+        "insGo@405eba153a1e2ce1": [
+          64,
+          66
+        ],
+        "map@405eba153a1e2ce1": [
+          31,
+          32
+        ],
+        "mapGo@405eba153a1e2ce1": [
+          43,
+          44
+        ],
+        "node@405eba153a1e2ce1": [
+          43,
+          44
+        ],
+        "pairsEq@405eba153a1e2ce1": [
+          38,
+          40
+        ],
+        "popMin@405eba153a1e2ce1": [
+          60,
+          61
+        ],
+        "rev@405eba153a1e2ce1": [
+          26,
+          27
+        ],
+        "rotLeft@405eba153a1e2ce1": [
+          26,
+          27
+        ],
+        "rotRight@405eba153a1e2ce1": [
+          26,
+          27
+        ],
+        "update@405eba153a1e2ce1": [
+          27,
+          29
+        ],
+        "$receive.turn.retiring@fb4e016caaf5e014": [
+          142,
+          143
+        ],
+        "$receive.turn.waking@fb4e016caaf5e014": [
+          56,
+          57
+        ],
+        "cancel@fb4e016caaf5e014": [
+          20,
+          21
+        ],
+        "drain@fb4e016caaf5e014": [
+          23,
+          26
+        ],
+        "lifted_113": [
+          44,
+          45
+        ],
+        "loop@fb4e016caaf5e014": [
+          40,
+          43
+        ],
+        "notify@fb4e016caaf5e014": [
+          21,
+          23
+        ],
+        "shutdown@fb4e016caaf5e014": [
+          42,
+          46
+        ],
+        "tell@fb4e016caaf5e014": [
+          21,
+          22
+        ],
+        "waker@fb4e016caaf5e014": [
+          44,
+          45
+        ],
+        "dropGo@9a286879cab863cc": [
+          47,
+          49
+        ],
+        "findNext@9a286879cab863cc": [
+          37,
+          38
+        ],
+        "lensOf@9a286879cab863cc": [
+          49,
+          50
+        ],
+        "prefixOf@9a286879cab863cc": [
+          46,
+          48
+        ],
+        "readGo@9a286879cab863cc": [
+          36,
+          38
+        ],
+        "rev@9a286879cab863cc": [
+          26,
+          27
+        ],
+        "scanFrom@9a286879cab863cc": [
+          33,
+          37
+        ],
+        "slice@9a286879cab863cc": [
+          43,
+          44
+        ],
+        "writeGo@9a286879cab863cc": [
+          46,
+          48
+        ],
+        "chrs@4a1ebe94bef43a82": [
+          26,
+          27
+        ],
+        "count@4a1ebe94bef43a82": [
+          28,
+          29
+        ],
+        "digitsGo@4a1ebe94bef43a82": [
+          83,
+          84
+        ],
+        "dropCr@4a1ebe94bef43a82": [
+          39,
+          41
+        ],
+        "dropLeft@4a1ebe94bef43a82": [
+          38,
+          40
+        ],
+        "dropRight@4a1ebe94bef43a82": [
+          38,
+          39
+        ],
+        "endsWith@4a1ebe94bef43a82": [
+          99,
+          101
+        ],
+        "leadGo@4a1ebe94bef43a82": [
+          23,
+          24
+        ],
+        "lifted_177": [
+          29,
+          30
+        ],
+        "lifted_178": [
+          28,
+          29
+        ],
+        "rev@4a1ebe94bef43a82": [
+          26,
+          27
+        ],
+        "right@4a1ebe94bef43a82": [
+          50,
+          52
+        ],
+        "sliceAt@4a1ebe94bef43a82": [
+          28,
+          29
+        ],
+        "split@4a1ebe94bef43a82": [
+          26,
+          27
+        ],
+        "startsWith@4a1ebe94bef43a82": [
+          62,
+          63
+        ],
+        "trailGo@4a1ebe94bef43a82": [
+          31,
+          32
+        ],
+        "trimLeft@4a1ebe94bef43a82": [
+          39,
+          40
+        ],
+        "wordEnd@4a1ebe94bef43a82": [
+          39,
+          42
+        ],
+        "wordsGo@4a1ebe94bef43a82": [
+          37,
+          41
+        ]
+      },
+      "decreases": {
+        "$receive.turn.irqRoute": [
+          36,
+          35
+        ],
+        "Sys.logAt": [
+          51,
+          50
+        ],
+        "irqSendSure": [
+          35,
+          33
+        ],
+        "log": [
+          51,
+          50
+        ],
+        "logErr": [
+          51,
+          50
+        ],
+        "logPut": [
+          51,
+          50
+        ],
+        "logServe": [
+          46,
+          44
+        ],
+        "logStep": [
+          29,
+          28
+        ],
+        "logWarn": [
+          51,
+          50
+        ],
+        "modFindAt": [
+          40,
+          39
+        ],
+        "par2": [
+          146,
+          145
+        ],
+        "serve": [
+          57,
+          56
+        ],
+        "wireToInt": [
+          20,
+          19
+        ],
+        "tidy@72f59195cb10e418": [
+          42,
+          41
+        ],
+        "finishBytes@dab63e1fc0e65070": [
+          44,
+          42
+        ],
+        "k@dab63e1fc0e65070": [
+          26,
+          25
+        ],
+        "lengthBytes@dab63e1fc0e65070": [
+          31,
+          30
+        ],
+        "$receive.turn.finish@fb4e016caaf5e014": [
+          133,
+          131
+        ]
+      }
+    }
+  },
+  "retained-registers-combined": {
+    "fib": {
+      "functions": 270,
+      "maximum_off": 174,
+      "maximum_on": 177,
+      "increases": {
+        "$worker.scalar.fib": [
+          20,
+          21
+        ],
+        "$receive.local.irqRouteReq": [
+          51,
+          55
+        ],
+        "$receive.local.irqRouteSrc": [
+          65,
+          68
+        ],
+        "$receive.local.irqUnbindNow": [
+          52,
+          54
+        ],
+        "Int.abs": [
+          22,
+          23
+        ],
+        "fromTo": [
+          24,
+          25
+        ],
+        "fstV": [
+          25,
+          26
+        ],
+        "irqOwner": [
+          51,
+          52
+        ],
+        "irqRouteReq": [
+          42,
+          50
+        ],
+        "irqRouteSrc": [
+          42,
+          48
+        ],
+        "irqUnbindNow": [
+          41,
+          45
+        ],
+        "lifted_877": [
+          44,
+          45
+        ],
+        "lifted_878": [
+          38,
+          39
+        ],
+        "listAppend": [
+          24,
+          25
+        ],
+        "listMap": [
+          24,
+          25
+        ],
+        "listPrefEq": [
+          20,
+          22
+        ],
+        "listPrefEqAt": [
+          21,
+          22
+        ],
+        "listPrefEqCmp": [
+          22,
+          23
+        ],
+        "listSub": [
+          20,
+          21
+        ],
+        "listTake": [
+          24,
+          25
+        ],
+        "logDo": [
+          28,
+          29
+        ],
+        "logPrefix": [
+          45,
+          46
+        ],
+        "logSev": [
+          18,
+          19
+        ],
+        "mapV": [
+          24,
+          25
+        ],
+        "modCompatAt": [
+          50,
+          52
+        ],
+        "modCompatMatch": [
+          174,
+          177
+        ],
+        "modCompatRow": [
+          41,
+          44
+        ],
+        "modCompatRows": [
+          59,
+          63
+        ],
+        "parseDigit": [
+          114,
+          115
+        ],
+        "parseDigits": [
+          44,
+          46
+        ],
+        "sndV": [
+          25,
+          26
+        ],
+        "strCmpGo": [
+          56,
+          59
+        ],
+        "strIndexGo": [
+          52,
+          54
+        ],
+        "strSub": [
+          37,
+          38
+        ],
+        "sumV": [
+          19,
+          20
+        ],
+        "wireMap": [
+          24,
+          25
+        ]
+      },
+      "decreases": {
+        "$receive.turn.irqRoute": [
+          36,
+          35
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+          53,
+          49
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+          27,
+          24
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+          40,
+          36
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+          28,
+          25
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+          40,
+          36
+        ],
+        "Sys.logAt": [
+          51,
+          50
+        ],
+        "irqSendSure": [
+          35,
+          29
+        ],
+        "listDrop": [
+          23,
+          21
+        ],
+        "listFold": [
+          39,
+          35
+        ],
+        "log": [
+          51,
+          50
+        ],
+        "logErr": [
+          51,
+          50
+        ],
+        "logPut": [
+          51,
+          50
+        ],
+        "logRingAt": [
+          53,
+          49
+        ],
+        "logServe": [
+          46,
+          44
+        ],
+        "logStep": [
+          29,
+          28
+        ],
+        "logWarn": [
+          51,
+          50
+        ],
+        "modFindAt": [
+          40,
+          39
+        ],
+        "modRow": [
+          53,
+          49
+        ],
+        "par2": [
+          146,
+          145
+        ],
+        "serve": [
+          57,
+          52
+        ],
+        "strMatchAt": [
+          83,
+          79
+        ],
+        "strTakeGo": [
+          51,
+          47
+        ],
+        "wireDigits": [
+          86,
+          77
+        ],
+        "wireRev": [
+          26,
+          22
+        ],
+        "wireToInt": [
+          20,
+          19
+        ]
+      }
+    },
+    "sum": {
+      "functions": 270,
+      "maximum_off": 174,
+      "maximum_on": 177,
+      "increases": {
+        "$receive.local.irqRouteReq": [
+          51,
+          55
+        ],
+        "$receive.local.irqRouteSrc": [
+          65,
+          68
+        ],
+        "$receive.local.irqUnbindNow": [
+          52,
+          54
+        ],
+        "Int.abs": [
+          22,
+          23
+        ],
+        "fromTo": [
+          24,
+          25
+        ],
+        "fstV": [
+          25,
+          26
+        ],
+        "irqOwner": [
+          51,
+          52
+        ],
+        "irqRouteReq": [
+          42,
+          50
+        ],
+        "irqRouteSrc": [
+          42,
+          48
+        ],
+        "irqUnbindNow": [
+          41,
+          45
+        ],
+        "lifted_877": [
+          44,
+          45
+        ],
+        "lifted_878": [
+          38,
+          39
+        ],
+        "listAppend": [
+          24,
+          25
+        ],
+        "listMap": [
+          24,
+          25
+        ],
+        "listPrefEq": [
+          20,
+          22
+        ],
+        "listPrefEqAt": [
+          21,
+          22
+        ],
+        "listPrefEqCmp": [
+          22,
+          23
+        ],
+        "listSub": [
+          20,
+          21
+        ],
+        "listTake": [
+          24,
+          25
+        ],
+        "logDo": [
+          28,
+          29
+        ],
+        "logPrefix": [
+          45,
+          46
+        ],
+        "logSev": [
+          18,
+          19
+        ],
+        "mapV": [
+          24,
+          25
+        ],
+        "modCompatAt": [
+          50,
+          52
+        ],
+        "modCompatMatch": [
+          174,
+          177
+        ],
+        "modCompatRow": [
+          41,
+          44
+        ],
+        "modCompatRows": [
+          59,
+          63
+        ],
+        "parseDigit": [
+          114,
+          115
+        ],
+        "parseDigits": [
+          44,
+          46
+        ],
+        "sndV": [
+          25,
+          26
+        ],
+        "strCmpGo": [
+          56,
+          59
+        ],
+        "strIndexGo": [
+          52,
+          54
+        ],
+        "strSub": [
+          37,
+          38
+        ],
+        "sumV": [
+          19,
+          20
+        ],
+        "wireMap": [
+          24,
+          25
+        ]
+      },
+      "decreases": {
+        "$worker.scalar.loop": [
+          43,
+          39
+        ],
+        "loop": [
+          54,
+          50
+        ],
+        "$receive.turn.irqRoute": [
+          36,
+          35
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+          53,
+          49
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+          27,
+          24
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+          40,
+          36
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+          28,
+          25
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+          40,
+          36
+        ],
+        "Sys.logAt": [
+          51,
+          50
+        ],
+        "irqSendSure": [
+          35,
+          29
+        ],
+        "listDrop": [
+          23,
+          21
+        ],
+        "listFold": [
+          39,
+          35
+        ],
+        "log": [
+          51,
+          50
+        ],
+        "logErr": [
+          51,
+          50
+        ],
+        "logPut": [
+          51,
+          50
+        ],
+        "logRingAt": [
+          53,
+          49
+        ],
+        "logServe": [
+          46,
+          44
+        ],
+        "logStep": [
+          29,
+          28
+        ],
+        "logWarn": [
+          51,
+          50
+        ],
+        "modFindAt": [
+          40,
+          39
+        ],
+        "modRow": [
+          53,
+          49
+        ],
+        "par2": [
+          146,
+          145
+        ],
+        "serve": [
+          57,
+          52
+        ],
+        "strMatchAt": [
+          83,
+          79
+        ],
+        "strTakeGo": [
+          51,
+          47
+        ],
+        "wireDigits": [
+          86,
+          77
+        ],
+        "wireRev": [
+          26,
+          22
+        ],
+        "wireToInt": [
+          20,
+          19
+        ]
+      }
+    },
+    "pipeline": {
+      "functions": 271,
+      "maximum_off": 174,
+      "maximum_on": 177,
+      "increases": {
+        "$receive.local.irqRouteReq": [
+          51,
+          55
+        ],
+        "$receive.local.irqRouteSrc": [
+          65,
+          68
+        ],
+        "$receive.local.irqUnbindNow": [
+          52,
+          54
+        ],
+        "Int.abs": [
+          22,
+          23
+        ],
+        "fromTo": [
+          24,
+          25
+        ],
+        "fstV": [
+          25,
+          26
+        ],
+        "irqOwner": [
+          51,
+          52
+        ],
+        "irqRouteReq": [
+          42,
+          50
+        ],
+        "irqRouteSrc": [
+          42,
+          48
+        ],
+        "irqUnbindNow": [
+          41,
+          45
+        ],
+        "lifted_877": [
+          44,
+          45
+        ],
+        "lifted_878": [
+          38,
+          39
+        ],
+        "listAppend": [
+          24,
+          25
+        ],
+        "listMap": [
+          24,
+          25
+        ],
+        "listPrefEq": [
+          20,
+          22
+        ],
+        "listPrefEqAt": [
+          21,
+          22
+        ],
+        "listPrefEqCmp": [
+          22,
+          23
+        ],
+        "listSub": [
+          20,
+          21
+        ],
+        "listTake": [
+          24,
+          25
+        ],
+        "logDo": [
+          28,
+          29
+        ],
+        "logPrefix": [
+          45,
+          46
+        ],
+        "logSev": [
+          18,
+          19
+        ],
+        "mapV": [
+          24,
+          25
+        ],
+        "modCompatAt": [
+          50,
+          52
+        ],
+        "modCompatMatch": [
+          174,
+          177
+        ],
+        "modCompatRow": [
+          41,
+          44
+        ],
+        "modCompatRows": [
+          59,
+          63
+        ],
+        "parseDigit": [
+          114,
+          115
+        ],
+        "parseDigits": [
+          44,
+          46
+        ],
+        "sndV": [
+          25,
+          26
+        ],
+        "strCmpGo": [
+          56,
+          59
+        ],
+        "strIndexGo": [
+          52,
+          54
+        ],
+        "strSub": [
+          37,
+          38
+        ],
+        "sumV": [
+          19,
+          20
+        ],
+        "wireMap": [
+          24,
+          25
+        ]
+      },
+      "decreases": {
+        "$receive.turn.irqRoute": [
+          36,
+          35
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+          53,
+          49
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+          27,
+          24
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+          40,
+          36
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+          28,
+          25
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+          40,
+          36
+        ],
+        "Sys.logAt": [
+          51,
+          50
+        ],
+        "irqSendSure": [
+          35,
+          29
+        ],
+        "listDrop": [
+          23,
+          21
+        ],
+        "listFold": [
+          39,
+          35
+        ],
+        "log": [
+          51,
+          50
+        ],
+        "logErr": [
+          51,
+          50
+        ],
+        "logPut": [
+          51,
+          50
+        ],
+        "logRingAt": [
+          53,
+          49
+        ],
+        "logServe": [
+          46,
+          44
+        ],
+        "logStep": [
+          29,
+          28
+        ],
+        "logWarn": [
+          51,
+          50
+        ],
+        "modFindAt": [
+          40,
+          39
+        ],
+        "modRow": [
+          53,
+          49
+        ],
+        "par2": [
+          146,
+          145
+        ],
+        "serve": [
+          57,
+          52
+        ],
+        "strMatchAt": [
+          83,
+          79
+        ],
+        "strTakeGo": [
+          51,
+          47
+        ],
+        "wireDigits": [
+          86,
+          77
+        ],
+        "wireRev": [
+          26,
+          22
+        ],
+        "wireToInt": [
+          20,
+          19
+        ]
+      }
+    },
+    "byteloop": {
+      "functions": 358,
+      "maximum_off": 174,
+      "maximum_on": 177,
+      "increases": {
+        "$receive.local.irqRouteReq": [
+          51,
+          55
+        ],
+        "$receive.local.irqRouteSrc": [
+          65,
+          68
+        ],
+        "$receive.local.irqUnbindNow": [
+          52,
+          54
+        ],
+        "Int.abs": [
+          22,
+          23
+        ],
+        "fromTo": [
+          24,
+          25
+        ],
+        "fstV": [
+          25,
+          26
+        ],
+        "irqOwner": [
+          51,
+          52
+        ],
+        "irqRouteReq": [
+          42,
+          50
+        ],
+        "irqRouteSrc": [
+          42,
+          48
+        ],
+        "irqUnbindNow": [
+          41,
+          45
+        ],
+        "lifted_877": [
+          44,
+          45
+        ],
+        "lifted_878": [
+          38,
+          39
+        ],
+        "listAppend": [
+          24,
+          25
+        ],
+        "listMap": [
+          24,
+          25
+        ],
+        "listPrefEq": [
+          20,
+          22
+        ],
+        "listPrefEqAt": [
+          21,
+          22
+        ],
+        "listPrefEqCmp": [
+          22,
+          23
+        ],
+        "listSub": [
+          20,
+          21
+        ],
+        "listTake": [
+          24,
+          25
+        ],
+        "logDo": [
+          28,
+          29
+        ],
+        "logPrefix": [
+          45,
+          46
+        ],
+        "logSev": [
+          18,
+          19
+        ],
+        "mapV": [
+          24,
+          25
+        ],
+        "modCompatAt": [
+          50,
+          52
+        ],
+        "modCompatMatch": [
+          174,
+          177
+        ],
+        "modCompatRow": [
+          41,
+          44
+        ],
+        "modCompatRows": [
+          59,
+          63
+        ],
+        "parseDigit": [
+          114,
+          115
+        ],
+        "parseDigits": [
+          44,
+          46
+        ],
+        "sndV": [
+          25,
+          26
+        ],
+        "strCmpGo": [
+          56,
+          59
+        ],
+        "strIndexGo": [
+          52,
+          54
+        ],
+        "strSub": [
+          37,
+          38
+        ],
+        "sumV": [
+          19,
+          20
+        ],
+        "wireMap": [
+          24,
+          25
+        ],
+        "count@4a1ebe94bef43a82": [
+          28,
+          29
+        ],
+        "dropCr@4a1ebe94bef43a82": [
+          39,
+          41
+        ],
+        "dropLeft@4a1ebe94bef43a82": [
+          38,
+          40
+        ],
+        "dropRight@4a1ebe94bef43a82": [
+          38,
+          39
+        ],
+        "endsWith@4a1ebe94bef43a82": [
+          99,
+          101
+        ],
+        "lifted_177": [
+          29,
+          30
+        ],
+        "lifted_178": [
+          28,
+          29
+        ],
+        "right@4a1ebe94bef43a82": [
+          50,
+          52
+        ],
+        "sliceAt@4a1ebe94bef43a82": [
+          28,
+          29
+        ],
+        "split@4a1ebe94bef43a82": [
+          26,
+          27
+        ],
+        "startsWith@4a1ebe94bef43a82": [
+          62,
+          63
+        ],
+        "trailGo@4a1ebe94bef43a82": [
+          31,
+          32
+        ],
+        "trimLeft@4a1ebe94bef43a82": [
+          39,
+          40
+        ],
+        "wordsGo@4a1ebe94bef43a82": [
+          37,
+          41
+        ]
+      },
+      "decreases": {
+        "sumB": [
+          60,
+          56
+        ],
+        "$receive.turn.irqRoute": [
+          36,
+          35
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+          53,
+          49
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+          27,
+          24
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+          40,
+          36
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+          28,
+          25
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+          40,
+          36
+        ],
+        "Sys.logAt": [
+          51,
+          50
+        ],
+        "irqSendSure": [
+          35,
+          29
+        ],
+        "listDrop": [
+          23,
+          21
+        ],
+        "listFold": [
+          39,
+          35
+        ],
+        "log": [
+          51,
+          50
+        ],
+        "logErr": [
+          51,
+          50
+        ],
+        "logPut": [
+          51,
+          50
+        ],
+        "logRingAt": [
+          53,
+          49
+        ],
+        "logServe": [
+          46,
+          44
+        ],
+        "logStep": [
+          29,
+          28
+        ],
+        "logWarn": [
+          51,
+          50
+        ],
+        "modFindAt": [
+          40,
+          39
+        ],
+        "modRow": [
+          53,
+          49
+        ],
+        "par2": [
+          146,
+          145
+        ],
+        "serve": [
+          57,
+          52
+        ],
+        "strMatchAt": [
+          83,
+          79
+        ],
+        "strTakeGo": [
+          51,
+          47
+        ],
+        "wireDigits": [
+          86,
+          77
+        ],
+        "wireRev": [
+          26,
+          22
+        ],
+        "wireToInt": [
+          20,
+          19
+        ],
+        "chrs@4a1ebe94bef43a82": [
+          26,
+          22
+        ],
+        "digitsGo@4a1ebe94bef43a82": [
+          83,
+          77
+        ],
+        "leadGo@4a1ebe94bef43a82": [
+          23,
+          22
+        ],
+        "repeatGo@4a1ebe94bef43a82": [
+          27,
+          25
+        ],
+        "rev@4a1ebe94bef43a82": [
+          26,
+          22
+        ]
+      }
+    },
+    "helpers": {
+      "functions": 274,
+      "maximum_off": 174,
+      "maximum_on": 177,
+      "increases": {
+        "clamp": [
+          18,
+          19
+        ],
+        "$receive.local.irqRouteReq": [
+          51,
+          55
+        ],
+        "$receive.local.irqRouteSrc": [
+          65,
+          68
+        ],
+        "$receive.local.irqUnbindNow": [
+          52,
+          54
+        ],
+        "Int.abs": [
+          22,
+          23
+        ],
+        "fromTo": [
+          24,
+          25
+        ],
+        "fstV": [
+          25,
+          26
+        ],
+        "irqOwner": [
+          51,
+          52
+        ],
+        "irqRouteReq": [
+          42,
+          50
+        ],
+        "irqRouteSrc": [
+          42,
+          48
+        ],
+        "irqUnbindNow": [
+          41,
+          45
+        ],
+        "lifted_877": [
+          44,
+          45
+        ],
+        "lifted_878": [
+          38,
+          39
+        ],
+        "listAppend": [
+          24,
+          25
+        ],
+        "listMap": [
+          24,
+          25
+        ],
+        "listPrefEq": [
+          20,
+          22
+        ],
+        "listPrefEqAt": [
+          21,
+          22
+        ],
+        "listPrefEqCmp": [
+          22,
+          23
+        ],
+        "listSub": [
+          20,
+          21
+        ],
+        "listTake": [
+          24,
+          25
+        ],
+        "logDo": [
+          28,
+          29
+        ],
+        "logPrefix": [
+          45,
+          46
+        ],
+        "logSev": [
+          18,
+          19
+        ],
+        "mapV": [
+          24,
+          25
+        ],
+        "modCompatAt": [
+          50,
+          52
+        ],
+        "modCompatMatch": [
+          174,
+          177
+        ],
+        "modCompatRow": [
+          41,
+          44
+        ],
+        "modCompatRows": [
+          59,
+          63
+        ],
+        "parseDigit": [
+          114,
+          115
+        ],
+        "parseDigits": [
+          44,
+          46
+        ],
+        "sndV": [
+          25,
+          26
+        ],
+        "strCmpGo": [
+          56,
+          59
+        ],
+        "strIndexGo": [
+          52,
+          54
+        ],
+        "strSub": [
+          37,
+          38
+        ],
+        "sumV": [
+          19,
+          20
+        ],
+        "wireMap": [
+          24,
+          25
+        ]
+      },
+      "decreases": {
+        "$receive.turn.irqRoute": [
+          36,
+          35
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+          53,
+          49
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+          27,
+          24
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+          40,
+          36
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+          28,
+          25
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+          40,
+          36
+        ],
+        "Sys.logAt": [
+          51,
+          50
+        ],
+        "irqSendSure": [
+          35,
+          29
+        ],
+        "listDrop": [
+          23,
+          21
+        ],
+        "listFold": [
+          39,
+          35
+        ],
+        "log": [
+          51,
+          50
+        ],
+        "logErr": [
+          51,
+          50
+        ],
+        "logPut": [
+          51,
+          50
+        ],
+        "logRingAt": [
+          53,
+          49
+        ],
+        "logServe": [
+          46,
+          44
+        ],
+        "logStep": [
+          29,
+          28
+        ],
+        "logWarn": [
+          51,
+          50
+        ],
+        "modFindAt": [
+          40,
+          39
+        ],
+        "modRow": [
+          53,
+          49
+        ],
+        "par2": [
+          146,
+          145
+        ],
+        "serve": [
+          57,
+          52
+        ],
+        "strMatchAt": [
+          83,
+          79
+        ],
+        "strTakeGo": [
+          51,
+          47
+        ],
+        "wireDigits": [
+          86,
+          77
+        ],
+        "wireRev": [
+          26,
+          22
+        ],
+        "wireToInt": [
+          20,
+          19
+        ]
+      }
+    },
+    "sha": {
+      "functions": 640,
+      "maximum_off": 357,
+      "maximum_on": 357,
+      "increases": {
+        "$receive.local.irqRouteReq": [
+          51,
+          55
+        ],
+        "$receive.local.irqRouteSrc": [
+          65,
+          68
+        ],
+        "$receive.local.irqUnbindNow": [
+          52,
+          54
+        ],
+        "Int.abs": [
+          22,
+          23
+        ],
+        "fromTo": [
+          24,
+          25
+        ],
+        "fstV": [
+          25,
+          26
+        ],
+        "irqOwner": [
+          51,
+          52
+        ],
+        "irqRouteReq": [
+          42,
+          50
+        ],
+        "irqRouteSrc": [
+          42,
+          48
+        ],
+        "irqUnbindNow": [
+          41,
+          45
+        ],
+        "lifted_877": [
+          44,
+          45
+        ],
+        "lifted_878": [
+          38,
+          39
+        ],
+        "listAppend": [
+          24,
+          25
+        ],
+        "listMap": [
+          24,
+          25
+        ],
+        "listPrefEq": [
+          20,
+          22
+        ],
+        "listPrefEqAt": [
+          21,
+          22
+        ],
+        "listPrefEqCmp": [
+          22,
+          23
+        ],
+        "listSub": [
+          20,
+          21
+        ],
+        "listTake": [
+          24,
+          25
+        ],
+        "logDo": [
+          28,
+          29
+        ],
+        "logPrefix": [
+          45,
+          46
+        ],
+        "logSev": [
+          18,
+          19
+        ],
+        "mapV": [
+          24,
+          25
+        ],
+        "modCompatAt": [
+          50,
+          52
+        ],
+        "modCompatMatch": [
+          174,
+          177
+        ],
+        "modCompatRow": [
+          41,
+          44
+        ],
+        "modCompatRows": [
+          59,
+          63
+        ],
+        "parseDigit": [
+          114,
+          115
+        ],
+        "parseDigits": [
+          44,
+          46
+        ],
+        "sndV": [
+          25,
+          26
+        ],
+        "strCmpGo": [
+          56,
+          59
+        ],
+        "strIndexGo": [
+          52,
+          54
+        ],
+        "strSub": [
+          37,
+          38
+        ],
+        "sumV": [
+          19,
+          20
+        ],
+        "wireMap": [
+          24,
+          25
+        ],
+        "awaitReplyUntil@72f59195cb10e418": [
+          38,
+          40
+        ],
+        "sendRetry@72f59195cb10e418": [
+          38,
+          40
+        ],
+        "session@72f59195cb10e418": [
+          20,
+          21
+        ],
+        "sessionStep@72f59195cb10e418": [
+          28,
+          29
+        ],
+        "padLen@dab63e1fc0e65070": [
+          32,
+          33
+        ],
+        "rotr@dab63e1fc0e65070": [
+          74,
+          75
+        ],
+        "s0@dab63e1fc0e65070": [
+          27,
+          28
+        ],
+        "s1@dab63e1fc0e65070": [
+          27,
+          28
+        ],
+        "update@dab63e1fc0e65070": [
+          55,
+          56
+        ],
+        "hexDigit@d1f8a8215a77de3d": [
+          37,
+          38
+        ],
+        "balance@405eba153a1e2ce1": [
+          41,
+          45
+        ],
+        "insGo@405eba153a1e2ce1": [
+          64,
+          66
+        ],
+        "map@405eba153a1e2ce1": [
+          31,
+          32
+        ],
+        "mapGo@405eba153a1e2ce1": [
+          43,
+          44
+        ],
+        "node@405eba153a1e2ce1": [
+          43,
+          44
+        ],
+        "pairsEq@405eba153a1e2ce1": [
+          38,
+          40
+        ],
+        "popMin@405eba153a1e2ce1": [
+          60,
+          61
+        ],
+        "rotLeft@405eba153a1e2ce1": [
+          26,
+          27
+        ],
+        "rotRight@405eba153a1e2ce1": [
+          26,
+          27
+        ],
+        "update@405eba153a1e2ce1": [
+          27,
+          29
+        ],
+        "$receive.turn.retiring@fb4e016caaf5e014": [
+          142,
+          143
+        ],
+        "$receive.turn.waking@fb4e016caaf5e014": [
+          56,
+          57
+        ],
+        "cancel@fb4e016caaf5e014": [
+          20,
+          21
+        ],
+        "drain@fb4e016caaf5e014": [
+          23,
+          26
+        ],
+        "lifted_113": [
+          44,
+          45
+        ],
+        "notify@fb4e016caaf5e014": [
+          21,
+          23
+        ],
+        "shutdown@fb4e016caaf5e014": [
+          42,
+          46
+        ],
+        "tell@fb4e016caaf5e014": [
+          21,
+          22
+        ],
+        "waker@fb4e016caaf5e014": [
+          44,
+          45
+        ],
+        "findNext@9a286879cab863cc": [
+          37,
+          38
+        ],
+        "prefixOf@9a286879cab863cc": [
+          46,
+          48
+        ],
+        "slice@9a286879cab863cc": [
+          43,
+          44
+        ],
+        "count@4a1ebe94bef43a82": [
+          28,
+          29
+        ],
+        "dropCr@4a1ebe94bef43a82": [
+          39,
+          41
+        ],
+        "dropLeft@4a1ebe94bef43a82": [
+          38,
+          40
+        ],
+        "dropRight@4a1ebe94bef43a82": [
+          38,
+          39
+        ],
+        "endsWith@4a1ebe94bef43a82": [
+          99,
+          101
+        ],
+        "lifted_177": [
+          29,
+          30
+        ],
+        "lifted_178": [
+          28,
+          29
+        ],
+        "right@4a1ebe94bef43a82": [
+          50,
+          52
+        ],
+        "sliceAt@4a1ebe94bef43a82": [
+          28,
+          29
+        ],
+        "split@4a1ebe94bef43a82": [
+          26,
+          27
+        ],
+        "startsWith@4a1ebe94bef43a82": [
+          62,
+          63
+        ],
+        "trailGo@4a1ebe94bef43a82": [
+          31,
+          32
+        ],
+        "trimLeft@4a1ebe94bef43a82": [
+          39,
+          40
+        ],
+        "wordsGo@4a1ebe94bef43a82": [
+          37,
+          41
+        ]
+      },
+      "decreases": {
+        "$receive.turn.irqRoute": [
+          36,
+          35
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+          53,
+          49
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+          27,
+          24
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+          40,
+          36
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+          28,
+          25
+        ],
+        "$spec.prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+          40,
+          36
+        ],
+        "Sys.logAt": [
+          51,
+          50
+        ],
+        "irqSendSure": [
+          35,
+          29
+        ],
+        "listDrop": [
+          23,
+          21
+        ],
+        "listFold": [
+          39,
+          35
+        ],
+        "log": [
+          51,
+          50
+        ],
+        "logErr": [
+          51,
+          50
+        ],
+        "logPut": [
+          51,
+          50
+        ],
+        "logRingAt": [
+          53,
+          49
+        ],
+        "logServe": [
+          46,
+          44
+        ],
+        "logStep": [
+          29,
+          28
+        ],
+        "logWarn": [
+          51,
+          50
+        ],
+        "modFindAt": [
+          40,
+          39
+        ],
+        "modRow": [
+          53,
+          49
+        ],
+        "par2": [
+          146,
+          145
+        ],
+        "serve": [
+          57,
+          52
+        ],
+        "strMatchAt": [
+          83,
+          79
+        ],
+        "strTakeGo": [
+          51,
+          47
+        ],
+        "wireDigits": [
+          86,
+          77
+        ],
+        "wireRev": [
+          26,
+          22
+        ],
+        "wireToInt": [
+          20,
+          19
+        ],
+        "sendSureResult@72f59195cb10e418": [
+          25,
+          21
+        ],
+        "tidy@72f59195cb10e418": [
+          42,
+          41
+        ],
+        "addAll@dab63e1fc0e65070": [
+          27,
+          26
+        ],
+        "finishBytes@dab63e1fc0e65070": [
+          44,
+          42
+        ],
+        "k@dab63e1fc0e65070": [
+          26,
+          25
+        ],
+        "lengthBytes@dab63e1fc0e65070": [
+          31,
+          30
+        ],
+        "nth@dab63e1fc0e65070": [
+          47,
+          43
+        ],
+        "rev@dab63e1fc0e65070": [
+          26,
+          22
+        ],
+        "wordsToBytes@dab63e1fc0e65070": [
+          26,
+          22
+        ],
+        "queryGo@d1f8a8215a77de3d": [
+          38,
+          31
+        ],
+        "rev@d1f8a8215a77de3d": [
+          26,
+          22
+        ],
+        "getGo@405eba153a1e2ce1": [
+          43,
+          39
+        ],
+        "rev@405eba153a1e2ce1": [
+          26,
+          22
+        ],
+        "$receive.turn.finish@fb4e016caaf5e014": [
+          133,
+          131
+        ],
+        "loop@fb4e016caaf5e014": [
+          40,
+          34
+        ],
+        "dropGo@9a286879cab863cc": [
+          47,
+          45
+        ],
+        "lensOf@9a286879cab863cc": [
+          49,
+          45
+        ],
+        "readAllGo@9a286879cab863cc": [
+          28,
+          26
+        ],
+        "readGo@9a286879cab863cc": [
+          36,
+          30
+        ],
+        "rev@9a286879cab863cc": [
+          26,
+          22
+        ],
+        "writeGo@9a286879cab863cc": [
+          46,
+          42
+        ],
+        "chrs@4a1ebe94bef43a82": [
+          26,
+          22
+        ],
+        "digitsGo@4a1ebe94bef43a82": [
+          83,
+          77
+        ],
+        "leadGo@4a1ebe94bef43a82": [
+          23,
+          22
+        ],
+        "repeatGo@4a1ebe94bef43a82": [
+          27,
+          25
+        ],
+        "rev@4a1ebe94bef43a82": [
+          26,
+          22
+        ]
+      }
+    }
+  }
+}

@@ -19,7 +19,11 @@ def main():
     experiment = ap.add_mutually_exclusive_group()
     experiment.add_argument("--before-compiler", type=Path, help="Compare frozen compiler with current compiler, guards off in both")
     experiment.add_argument("--self-loops", action="store_true", help="Compare FPR_SELF_LOOPS off/on, guards off in both")
+    experiment.add_argument("--retained-registers", action="store_true", help="Compare retained-access register scoring off/on")
+    ap.add_argument("--with-self-loops", action="store_true", help="With --retained-registers, also enable frame reuse in the on variant")
     args = ap.parse_args()
+    if args.with_self_loops and not args.retained_registers:
+        ap.error("--with-self-loops requires --retained-registers")
     if args.runs < 3:
         ap.error("--runs must be at least 3")
     if platform.machine() not in ("arm64", "aarch64"):
@@ -30,7 +34,7 @@ def main():
                XDG_CACHE_HOME=str(out / "cache"), FPR_HARTS="1")
     # Freeze relevant compiler modes instead of inheriting an editor/debug run.
     for key in list(env):
-        if key.startswith("FPR_NO_") or key in ("FPR_FOREIGN", "FPR_COST_PROBE", "FPR_CC", "FPR_A64_FIT_GUARDS", "FPR_SELF_LOOPS"):
+        if key.startswith("FPR_NO_") or key in ("FPR_FOREIGN", "FPR_COST_PROBE", "FPR_CC", "FPR_A64_FIT_GUARDS", "FPR_SELF_LOOPS", "FPR_RETAINED_REGISTERS"):
             env.pop(key)
     def run(cmd, mode=env):
         p = subprocess.run(list(map(str, cmd)), cwd=ROOT, env=mode,
@@ -58,8 +62,9 @@ def main():
     def mode(label):
         # The frozen pre-literal compiler used the old disable switch.
         return dict(env, FPR_NO_A64_GUARDS="1",
-                    FPR_SELF_LOOPS="1" if args.self_loops and label == "on" else "0",
-                    FPR_A64_FIT_GUARDS="1" if not (args.before_compiler or args.self_loops) and label == "on" else "0")
+                    FPR_SELF_LOOPS="1" if (args.self_loops or args.with_self_loops) and label == "on" else "0",
+                    FPR_RETAINED_REGISTERS="1" if args.retained_registers and label == "on" else "0",
+                    FPR_A64_FIT_GUARDS="1" if not (args.before_compiler or args.self_loops or args.retained_registers) and label == "on" else "0")
     for name, (defs, expr, expected) in sources.items():
         source = out / (name + ".fpr")
         body = (f"_ = Bench.start Unit; value = {expr}; ns = Bench.elapsed Unit;\n"
@@ -150,7 +155,8 @@ int main(int argc, char **argv) {
         print(f"paired round {i+1}/{args.runs}", flush=True)
     digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
     result = {
-        "experiment": "self-tail frame reuse off/on, guards disabled" if args.self_loops else
+        "experiment": ("retained-access register scoring" + (" and self-tail frame reuse" if args.with_self_loops else "") + " off/on, guards disabled") if args.retained_registers else
+                      "self-tail frame reuse off/on, guards disabled" if args.self_loops else
                       "frozen-before/current-after, guards disabled" if args.before_compiler else "A64 fit guards off/on",
         "before_compiler_sha256": digest(args.before_compiler.resolve()) if args.before_compiler else None,
         "base_revision": run(["git", "rev-parse", "HEAD"]).strip(),

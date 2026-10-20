@@ -1,0 +1,152 @@
+{
+  "normalization": "Compiler revision in cache namespace and fpr-interface metadata; canonical byte line wrapping only",
+  "comparisons": {
+    "fib": [
+      {
+        "old_file": "build/cleaned-registers-measurement/cache/fpr/build/fib-20232.s",
+        "new_file": "build/retained-registers-final/cache/fpr/build/fib-27452.s",
+        "normalized_sha256": "19d5ceceb0a07e14f966a8eeff1cc1ba78a68300ed689493c065433d79eec20f"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/prelude-b2084da22e6a-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "35b25a6107b85e4c4b54aff79b77e2a4a08ba9753cd068830914b072af34c532"
+      }
+    ],
+    "sum": [
+      {
+        "old_file": "build/cleaned-registers-measurement/cache/fpr/build/sum-20630.s",
+        "new_file": "build/retained-registers-final/cache/fpr/build/sum-27671.s",
+        "normalized_sha256": "664e57bac6a309ede6c2f0baf046beca2531fbb6a4899ba89149d0b34879226b"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/prelude-b2084da22e6a-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "35b25a6107b85e4c4b54aff79b77e2a4a08ba9753cd068830914b072af34c532"
+      }
+    ],
+    "pipeline": [
+      {
+        "old_file": "build/cleaned-registers-measurement/cache/fpr/build/pipeline-20682.s",
+        "new_file": "build/retained-registers-final/cache/fpr/build/pipeline-27708.s",
+        "normalized_sha256": "7924025c65903196ff09f4228213819c50d182ddf5d0c13eaaa1de0e544280a7"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/prelude-b2084da22e6a-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "35b25a6107b85e4c4b54aff79b77e2a4a08ba9753cd068830914b072af34c532"
+      }
+    ],
+    "byteloop": [
+      {
+        "old_file": "build/cleaned-registers-measurement/cache/fpr/build/byteloop-20732.s",
+        "new_file": "build/retained-registers-final/cache/fpr/build/byteloop-27751.s",
+        "normalized_sha256": "d152e8ec362131a2b3a9c96aea3a36be74f43fc34f2ccce2d62f6eb4a30c20ae"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/prelude-b2084da22e6a-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "35b25a6107b85e4c4b54aff79b77e2a4a08ba9753cd068830914b072af34c532"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-4c93ed62e360-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-4c93ed62e360-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "811f24500195e57422a59a396f33783f936e00a0d20256de773f857fd885f3a1"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-a83675e93318-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-a83675e93318-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "9fb1cded6d38f8b16e696e79940ade4dca2e94201b4dd52dc5ea3b4b5d61390c"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-4a1ebe94bef4-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-4a1ebe94bef4-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "ff6a226842e1f6e6959a1d0c23e0125732c4014381a7d3a0950f08c77c9ac619"
+      }
+    ],
+    "helpers": [
+      {
+        "old_file": "build/cleaned-registers-measurement/cache/fpr/build/helpers-20778.s",
+        "new_file": "build/retained-registers-final/cache/fpr/build/helpers-27798.s",
+        "normalized_sha256": "b734aab366afe2dadab480268f5edd86f5e6c19a8b59f83c2f9bd4099f618d4e"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/prelude-b2084da22e6a-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "35b25a6107b85e4c4b54aff79b77e2a4a08ba9753cd068830914b072af34c532"
+      }
+    ],
+    "sha": [
+      {
+        "old_file": "build/cleaned-registers-measurement/cache/fpr/build/sha-20812.s",
+        "new_file": "build/retained-registers-final/cache/fpr/build/sha-27833.s",
+        "normalized_sha256": "274bb8292e622b14b790236419106fe4f1490c8ba51534444a2669f76956deff"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/prelude-b2084da22e6a-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "35b25a6107b85e4c4b54aff79b77e2a4a08ba9753cd068830914b072af34c532"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-72f59195cb10-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-72f59195cb10-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "31fef2361880286689ddfc73f0bff27052e5aae3a5594392b86511d692204d40"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-dab63e1fc0e6-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-dab63e1fc0e6-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "fb54339fb4f0a6b65a1e7b9bb3bde68e912d69fb4766df749669a8b86f3dfb43"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-d1f8a8215a77-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-d1f8a8215a77-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "f670c04f3f70826e78f67dd5a39e5c0f2198cafa170fe5505109383883454361"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-405eba153a1e-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-405eba153a1e-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "1143c7e6d8490c83be16fe88e6408238c16528a3afe760beab7e931b8a23ec1b"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-4c93ed62e360-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-4c93ed62e360-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "811f24500195e57422a59a396f33783f936e00a0d20256de773f857fd885f3a1"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-a83675e93318-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-a83675e93318-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "9fb1cded6d38f8b16e696e79940ade4dca2e94201b4dd52dc5ea3b4b5d61390c"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-88b87577cd28-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-88b87577cd28-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "d4dc72e2be302f4374961e1939634cd3433ba340fe73cf0ec9563c31e892f144"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-581231fdf2ea-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-581231fdf2ea-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "fc6ee638dcb9d4c7aabc95a99ec3c56865cef76efaedb32e62d32b83499d29a4"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-3956ff10e29c-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-3956ff10e29c-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "99513daf5be6401621febad285e9f102e578d360226fd6e12081b939d62a00d1"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-fb4e016caaf5-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-fb4e016caaf5-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "f5247a03f83814054a3a91110a0c40ba260c5ea4001404061c2e7af4455e59c6"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-9a286879cab8-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-9a286879cab8-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "4624801cb506453231b908b71673b23a3829fcc1722aa322743f22a93ad54ae4"
+      },
+      {
+        "old_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/cleaned-registers-measurement/cache/fpr/build/units/u-4a1ebe94bef4-pb2084da2-s323128cc-g61rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "new_file": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-final/cache/fpr/build/units/u-4a1ebe94bef4-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "normalized_sha256": "ff6a226842e1f6e6959a1d0c23e0125732c4014381a7d3a0950f08c77c9ac619"
+      }
+    ]
+  }
+}

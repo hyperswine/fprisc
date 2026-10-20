@@ -54,7 +54,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 61 -- retain nullaries introduced by lowering or elided constructor references
+codegenRev = 65 -- opt-in retained-access register scoring for Base 64-bit
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -82,14 +82,15 @@ data Target = Target
     tgtPipelineInline :: Bool,
     tgtReuse :: Bool,
     tgtSelfLoops :: Bool, -- experimental frame reuse; keeps every entry fuel/stack check
+    tgtRetainedRegisters :: Bool, -- experimental scoring after slot cleanup
     tgtHal :: M.Map String Int -- primitive name -> arity (builtin schemes and
                         -- foreign declarations): a saturated call to one is
                         -- a direct `call fpr_g_<name>_call<n>` (fpr.h FPR_FN)
   }
 
 rv64, rv32 :: Target
-rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True False M.empty
-rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True False M.empty
+rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True False False M.empty
+rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True False False M.empty
 
 -- the visibility directive for a unit-visible global: a library unit
 -- shares every name it did not qualify with '@hash' with the program it
@@ -689,8 +690,20 @@ compileFn prog name (params, body0) = do
             ("    j " ++ selfEntry) : selfLoop more
         | otherwise = l : selfLoop rest
       bodyLines = originalBody
-  let regs = if tgtRegisters tgt && tgtScalarFast tgt && not (tgtArc tgt) && nslots < 240
-               then registerSlots tgt bodyLines else []
+  let retained = tgtRetainedRegisters tgt && w == 8 && tgtFuel tgt && not (tgtArc tgt)
+      -- Score traffic that survives cleanup. Parameter stores precede the
+      -- entry safepoint, which kills forwarding, so count them separately.
+      -- Only parameters get the lower threshold; reused staging slots still
+      -- need six accesses. This changes storage choices, never evaluation
+      -- order or the whole-function ownership of a promoted register.
+      promotionBody
+        | retained =
+            concat [stSlot tgt (if i < 8 then "a" ++ show i else "t1") i
+                     | i <- [0 .. length params - 1]]
+            ++ peepholeFor (tgtLd tgt) (tgtSt tgt) bodyLines
+        | otherwise = bodyLines
+      regs = if tgtRegisters tgt && tgtScalarFast tgt && not (tgtArc tgt) && nslots < 240
+               then registerSlots tgt (if retained then length params else 0) promotionBody else []
       frame = ((baseFrame + w * length regs + 15) `div` 16) * 16
       saved = zip (map snd regs) [nslots ..]
       saveRegs = concat [stSlot tgt r k | (r,k) <- saved]
@@ -812,11 +825,11 @@ slotAccess t l = case words l of
     n `mod` tgtW t == 0 -> Just (op, filter (/= ',') r, (-n `div` tgtW t) - 3)
   _ -> Nothing
 
-registerSlots :: Target -> [String] -> [(Int,String)]
-registerSlots t ls
+registerSlots :: Target -> Int -> [String] -> [(Int,String)]
+registerSlots t nparams ls
   | any (\l -> any (`elem` words (map (\c -> if c == ',' then ' ' else c) l)) ["s1","s2","s3","s4","s5"]) ls = []
   | any (\l -> words l == ["add","t2,","s0,","t2"]) ls = []
-  | otherwise = zip (take 5 [k | (k,n) <- sortOn (\(k,n) -> (negate n,k)) (M.toList counts), n >= 6]) ["s1","s2","s3","s4","s5"]
+  | otherwise = zip (take 5 [k | (k,n) <- sortOn (\(k,n) -> (negate n,k)) (M.toList counts), n >= (if k < nparams then 4 else 6)]) ["s1","s2","s3","s4","s5"]
   where counts = M.fromListWith (+) [(k,1 :: Int) | Just (_,_,k) <- map (slotAccess t) ls]
 
 -- Shapes the ownership lowering leaves in a body, rewritten so the

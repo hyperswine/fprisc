@@ -16,6 +16,10 @@ This follows the self-tail-loop item in
 [the register-allocation design](2026-10-19-REGISTER-ALLOCATION.md) and the
 [earlier native cost experiments](2026-10-20-NATIVE-COST-EXPERIMENTS.md).
 
+The later [retained-register experiment](2026-10-20-RETAINED-REGISTER-SCORING.md)
+measures this mode together with a different promotion policy at revision 65.
+Its combined results and validation are separate from the frame-only numbers here.
+
 ## What changed
 
 For an eligible saturated call back to the same function, the compiler replaces

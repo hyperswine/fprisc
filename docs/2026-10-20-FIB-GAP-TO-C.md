@@ -10,6 +10,8 @@ Follow-up, 2026-10-20:
 checked-C and numerical attribution claims below, measures two guard variants,
 and records a direct-literal worker candidate. The half/quarter/quarter split
 below must not be treated as measured cost attribution.
+The subsequent [retained-register experiment](2026-10-20-RETAINED-REGISTER-SCORING.md)
+improves loop workloads but leaves recursive Fibonacci essentially unchanged.
 
 ## The question
 

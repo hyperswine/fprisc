@@ -138,7 +138,7 @@ def main():
                     assert count != "UNBOUNDED", (enabled, name)
                     # Specialization names embed the unit cache filename.
                     if name.startswith("$spec."):
-                        name = re.sub(r"(g\d+)-selfloops(?=rt\d+pc\d+-)", r"\1", name)
+                        name = re.sub(r"-selfloops(?=rt\d+pc\d+-)", "", name)
                     table[name] = int(count)
             tables.append(table)
         assert tables[0].keys() == tables[1].keys()
