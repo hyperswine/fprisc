@@ -19,11 +19,11 @@ main =
   styles = G.Style "card-x" [G.Width (G.Px 180), G.MaxWidth (G.Less (G.Pct 50) (G.Px 4)), G.Basis (G.Vh 46)] ::
            G.Style "col" [G.Prop "display" "grid"] :: Nil;
   css = G.cssWith styles tree;
-  _ = check "utility" (has css ".flex-auto\{flex:1 1 auto}");
+  _ = check "utility" (has css ".flex-auto\{flex-grow:1;flex-shrink:1;flex-basis:auto}");
   _ = check "screen" (has css ".screen\{height:100vh;height:100dvh;width:100vw;max-width:100vw;overflow:hidden}");
-  _ = check "screen locks the body" (has css "body:has(.screen)\{overflow:hidden}");
-  _ = check "hide-empty" (has css ".hide-empty:has(>[data-slot]:empty)\{display:none}");
-  _ = check "show-empty opts out" (has css ".pre:not(.show-empty):has(>[data-slot]:empty)");
+  # empty live slots are the page script's business now (data-hide-empty), not a stylesheet selector
+  (hs, hd) = G.render (G.El "div" [G.hideEmpty] [G.Dyn ""]);
+  _ = check "hide-empty is an attribute" (has (strJoin "" hs) "data-hide-empty" and not (has css ":has("));
   _ = check "app style, typed lengths" (has css ".card-x\{width:180px;max-width:calc(50% - 4px);flex-basis:46vh}");
   _ = check "app style replaces a utility" (has css ".col\{display:grid}");
   _ = check "narrow" (has css "@media (max-width:760px)\{\n.narrow\\:row\{display:flex;flex-direction:row}\n}");
@@ -31,7 +31,8 @@ main =
   _ = check "media after plain" (at css "@media" > at css ".card-x\{");
   _ = check "unused utility absent" (not (has css ".flex-none"));
   _ = check "no global palettes" (not (has css ":root\{") and not (has css ".day\{") and not (has css "body:has(.day)"));
-  plain = G.cssFor (G.El "div" [G.Cls "row"] Nil);
-  _ = check "cssFor unchanged" (has plain ".row\{display:flex;flex-direction:row}" and not (has plain "@media"));
+  # cssFor now emits only typed per-element styles; utilities come from cssWith
+  plain = G.cssWith Nil (G.El "div" [G.Cls "row"] Nil);
+  _ = check "cssWith Nil: utilities, no media" (has plain ".row\{display:flex;flex-direction:row}" and not (has plain "@media"));
   _ = print "view css: utilities, typed app styles, breakpoints, empty slots PASS";
   0.
