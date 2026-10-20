@@ -1,0 +1,2 @@
+FPR_SELF_LOOPS=0 RV64/QEMU: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+FPR_SELF_LOOPS=1 RV64/QEMU: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS

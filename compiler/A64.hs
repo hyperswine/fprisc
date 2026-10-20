@@ -54,7 +54,7 @@
 --     saved around it; x17 stashes the loaded hart pointer across the
 --     restore.  The C side's __thread cell uses the same TLV machinery,
 --     so both sides agree by construction.
-module A64 (lowerA64, deTlsQosAppA64, a64Rev) where
+module A64 (lowerA64, lowerA64WithGuards, deTlsQosAppA64, a64Rev) where
 
 
 import Data.Bits (shiftR, (.&.))
@@ -64,12 +64,27 @@ import Data.Word (Word64)
 
 -- bump when the lowering changes (unit-cache tag component; see X64.hs)
 a64Rev :: Int
-a64Rev = 12 -- NEON two-lane map IR; r11: lbu, or, srl
+a64Rev = 14 -- sign-extract fit guard; r13 was the bit-test experiment
 
 lowerA64 :: Bool -> String -> String
-lowerA64 mach =
-  post . unlines . concatMap (lowerLine mach) . map banner . lines
+lowerA64 = lowerA64WithGuards False
+
+lowerA64WithGuards :: Bool -> Bool -> String -> String
+lowerA64WithGuards guards mach =
+  post . unlines . lowerLines . map banner . lines
   where
+    -- Sign-extract the low 63 bits in one instruction, preserving the
+    -- exact t1 value on BOTH successors. Unlike a bit-test branch this
+    -- keeps the original B.cond reach and compare/branch pairing. The
+    -- exact three-line match never crosses labels or directives.
+    lowerLines (a : b : c : rest)
+      | guards,
+        a == "    slli t1, t0, 1", b == "    srai t1, t1, 1",
+        Just target <- stripPrefix "    bne t1, t0, " c =
+          ["    sbfx x10, x9, #0, #63", "    cmp x10, x9",
+           "    b.ne " ++ target] ++ lowerLines rest
+    lowerLines (l : ls) = lowerLine mach l ++ lowerLines ls
+    lowerLines [] = []
     banner "# target: rv64"
       | mach = "# target: a64mac (lowered from the rv64 emission; Mach-O syntax)"
       | otherwise = "# target: a64 (lowered from the rv64 emission -- the shared RISC IR)"

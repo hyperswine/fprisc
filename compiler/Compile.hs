@@ -8,14 +8,14 @@ import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Mono (specializeFunctions, qualifyAux)
 import Inline (inlineSmall, inlineWith, vecPeek)
 import ReceiveTurns (receiveTurns)
-import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, normArc)
+import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtSelfLoops, normArc)
 import Data.Char (isAlphaNum, isAscii, ord)
 import Numeric (showHex)
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TEE
-import A64 (deTlsQosAppA64, lowerA64, a64Rev)
+import A64 (deTlsQosAppA64, lowerA64WithGuards, a64Rev)
 import X64 (lowerX64, deTlsQosApp, x64Rev)
 import RV64 (lowerPosixRV64, lowerQosRV64, rv64HostRev)
 import Control.Monad (forM, forM_, unless, when)
@@ -408,6 +408,8 @@ compileWithInterface accepted = do
     (Just d, _) -> pure d
     (Nothing, Just f) -> pure f
     (Nothing, Nothing) -> pure "base"
+  envSelfLoops <- (== Just "1") <$> lookupEnv "FPR_SELF_LOOPS"
+  envA64Guards <- (== Just "1") <$> lookupEnv "FPR_A64_FIT_GUARDS"
   envNoRegisters <- (== Just "1") <$> lookupEnv "FPR_NO_REGISTERS"
   envNoRv32Fast <- (== Just "1") <$> lookupEnv "FPR_NO_RV32_FAST"
   envNoIndexed <- (== Just "1") <$> lookupEnv "FPR_NO_INDEXED_MEMORY"
@@ -906,7 +908,7 @@ compileWithInterface accepted = do
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
           tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = not envNoFloatInline, tgtRegisters = not envNoRegisters, tgtSimd=oA64 opts && not envNoSimd, tgtFusion=not envNoFusion,
-                               tgtScalarFast = tgtName (oTarget opts) /= "rv32" || not envNoRv32Fast, tgtIndexedMemory = not envNoIndexed, tgtScalarWorkers = not envNoScalarWorkers, tgtFieldWorkers = not envNoFieldWorkers, tgtPipelineInline = not envNoPipelineInline, tgtReuse = not envNoReuse}
+                               tgtScalarFast = tgtName (oTarget opts) /= "rv32" || not envNoRv32Fast, tgtIndexedMemory = not envNoIndexed, tgtScalarWorkers = not envNoScalarWorkers, tgtFieldWorkers = not envNoFieldWorkers, tgtPipelineInline = not envNoPipelineInline, tgtReuse = not envNoReuse, tgtSelfLoops = envSelfLoops}
           a64 = oA64 opts
           a64mac = oA64Mac opts
           x64 = oX64 opts
@@ -915,9 +917,9 @@ compileWithInterface accepted = do
           -- hosted posix AArch64 reads its hart from x28 too (runtime/fpr.h):
           -- a thread-local cannot follow an actor that migrates between harts
           lower0 | espHost = espTls
-                | a64 && qapp = deTlsQosAppA64 a64mac qsingle . lowerA64 a64mac
-                | a64 && oBase opts = deTlsQosAppA64 a64mac False . lowerA64 a64mac
-                | a64 = lowerA64 a64mac
+                | a64 && qapp = deTlsQosAppA64 a64mac qsingle . lowerA64WithGuards envA64Guards a64mac
+                | a64 && oBase opts = deTlsQosAppA64 a64mac False . lowerA64WithGuards envA64Guards a64mac
+                | a64 = lowerA64WithGuards envA64Guards a64mac
                 | x64 && qapp = deTlsQosApp . lowerX64
                 | x64 = lowerX64
                 | qapp = lowerQosRV64
@@ -940,12 +942,12 @@ compileWithInterface accepted = do
                   else if qapp then "qrv64r" ++ show rv64HostRev
                   else if oBase opts then "rv64posixr" ++ show rv64HostRev
                   else tgtName tgt
-          tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0
+          tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0 ++ (if a64 && envA64Guards then "-fitguards" else "")
           -- A root can constrain a global foreign primitive used inside an
           -- unchanged imported unit. Cache that contract context as well as
           -- source/prelude/shape identity so another root cannot reuse raw calls.
           contractHash = hashAST [t | t@(TSig n _ _) <- tops, M.member n preTab]
-          tag = "g" ++ show codegenRev ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
+          tag = "g" ++ show codegenRev ++ (if envSelfLoops then "-selfloops" else "") ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit

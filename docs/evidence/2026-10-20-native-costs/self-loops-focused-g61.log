@@ -1,0 +1,4 @@
+Self loops: WCET reset boundaries, unbounded negative controls and loop-carried slot values PASS
+Nullary constants: lowering-created Unit, elided functions, unique definitions, unused constructors, shadowing and Base boundary PASS
+Self loops: 1/4 harts, registers off/on, 3/8/9/64 args, exact fuel ticks, effects, stack growth, fairness, emission and off/on/off caches PASS
+Self loops: SHA and imported units, 640 finite WCET bounds, no per-function increase PASS

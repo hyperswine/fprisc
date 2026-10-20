@@ -185,3 +185,6 @@ they began.
 - [Wider accumulator workers](2026-10-20-WIDE-ACCUMULATOR-WORKERS.md): private tuple/record accumulator workers, argument spills, differential allocation and Pi/STAR64 validation.
 - [Mixed scalar pipelines](2026-10-20-MIXED-SCALAR-PIPELINES.md): filtering map/fold chains in one traversal, scalar captures, stable output, differential checks and measured Pi/STAR64 results.
 - [Reuse and pipeline roadmap](2026-10-20-REUSE-AND-PIPELINE-ROADMAP.md): bounded callback inlining, proven fresh constructor reuse, allocation and physical timing evidence, and the remaining ownership/SIMD work.
+
+- [Native cost experiments](2026-10-20-NATIVE-COST-EXPERIMENTS.md): measured guard-shortening regressions, opt-in A64 sign extraction, a direct-literal worker candidate with a 2.6% Fibonacci gain and 2.2% sum-loop regression, checked C baselines and reproducible evidence.
+- [Self-tail frame reuse](2026-10-20-SELF-TAIL-FRAME-REUSE.md): opt-in frame reuse after slot cleanup, preserved fuel checks, native/x64/RV64 validation, paired loop/SHA gains and a helpers regression.

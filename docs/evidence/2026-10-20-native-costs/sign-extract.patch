@@ -1,0 +1,95 @@
+--- a/compiler/A64.hs
++++ b/compiler/A64.hs
+@@ -54,7 +54,7 @@
+ --     saved around it; x17 stashes the loaded hart pointer across the
+ --     restore.  The C side's __thread cell uses the same TLV machinery,
+ --     so both sides agree by construction.
+-module A64 (lowerA64, deTlsQosAppA64, a64Rev) where
++module A64 (lowerA64, lowerA64WithGuards, deTlsQosAppA64, a64Rev) where
+ 
+ 
+ import Data.Bits (shiftR, (.&.))
+@@ -64,12 +64,27 @@
+ 
+ -- bump when the lowering changes (unit-cache tag component; see X64.hs)
+ a64Rev :: Int
+-a64Rev = 12 -- NEON two-lane map IR; r11: lbu, or, srl
++a64Rev = 14 -- sign-extract fit guard; r13 was the bit-test experiment
+ 
+ lowerA64 :: Bool -> String -> String
+-lowerA64 mach =
+-  post . unlines . concatMap (lowerLine mach) . map banner . lines
+-  where
++lowerA64 = lowerA64WithGuards True
++
++lowerA64WithGuards :: Bool -> Bool -> String -> String
++lowerA64WithGuards guards mach =
++  post . unlines . lowerLines . map banner . lines
++  where
++    -- Sign-extract the low 63 bits in one instruction, preserving the
++    -- exact t1 value on BOTH successors. Unlike a bit-test branch this
++    -- keeps the original B.cond reach and compare/branch pairing. The
++    -- exact three-line match never crosses labels or directives.
++    lowerLines (a : b : c : rest)
++      | guards,
++        a == "    slli t1, t0, 1", b == "    srai t1, t1, 1",
++        Just target <- stripPrefix "    bne t1, t0, " c =
++          ["    sbfx x10, x9, #0, #63", "    cmp x10, x9",
++           "    b.ne " ++ target] ++ lowerLines rest
++    lowerLines (l : ls) = lowerLine mach l ++ lowerLines ls
++    lowerLines [] = []
+     banner "# target: rv64"
+       | mach = "# target: a64mac (lowered from the rv64 emission; Mach-O syntax)"
+       | otherwise = "# target: a64 (lowered from the rv64 emission -- the shared RISC IR)"
+--- a/compiler/Compile.hs
++++ b/compiler/Compile.hs
+@@ -15,7 +15,7 @@
+ import qualified Data.Text as T
+ import qualified Data.Text.Encoding as TE
+ import qualified Data.Text.Encoding.Error as TEE
+-import A64 (deTlsQosAppA64, lowerA64, a64Rev)
++import A64 (deTlsQosAppA64, lowerA64WithGuards, a64Rev)
+ import X64 (lowerX64, deTlsQosApp, x64Rev)
+ import RV64 (lowerPosixRV64, lowerQosRV64, rv64HostRev)
+ import Control.Monad (forM, forM_, unless, when)
+@@ -408,6 +408,7 @@
+     (Just d, _) -> pure d
+     (Nothing, Just f) -> pure f
+     (Nothing, Nothing) -> pure "base"
++  envNoA64Guards <- (== Just "1") <$> lookupEnv "FPR_NO_A64_GUARDS"
+   envNoRegisters <- (== Just "1") <$> lookupEnv "FPR_NO_REGISTERS"
+   envNoRv32Fast <- (== Just "1") <$> lookupEnv "FPR_NO_RV32_FAST"
+   envNoIndexed <- (== Just "1") <$> lookupEnv "FPR_NO_INDEXED_MEMORY"
+@@ -915,9 +916,9 @@
+           -- hosted posix AArch64 reads its hart from x28 too (runtime/fpr.h):
+           -- a thread-local cannot follow an actor that migrates between harts
+           lower0 | espHost = espTls
+-                | a64 && qapp = deTlsQosAppA64 a64mac qsingle . lowerA64 a64mac
+-                | a64 && oBase opts = deTlsQosAppA64 a64mac False . lowerA64 a64mac
+-                | a64 = lowerA64 a64mac
++                | a64 && qapp = deTlsQosAppA64 a64mac qsingle . lowerA64WithGuards (not envNoA64Guards) a64mac
++                | a64 && oBase opts = deTlsQosAppA64 a64mac False . lowerA64WithGuards (not envNoA64Guards) a64mac
++                | a64 = lowerA64WithGuards (not envNoA64Guards) a64mac
+                 | x64 && qapp = deTlsQosApp . lowerX64
+                 | x64 = lowerX64
+                 | qapp = lowerQosRV64
+@@ -940,7 +941,7 @@
+                   else if qapp then "qrv64r" ++ show rv64HostRev
+                   else if oBase opts then "rv64posixr" ++ show rv64HostRev
+                   else tgtName tgt
+-          tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0
++          tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0 ++ (if a64 && envNoA64Guards then "-nofitguards" else "")
+           -- A root can constrain a global foreign primitive used inside an
+           -- unchanged imported unit. Cache that contract context as well as
+           -- source/prelude/shape identity so another root cannot reuse raw calls.
+--- a/compiler/Build.hs
++++ b/compiler/Build.hs
+@@ -311,7 +311,7 @@
+   stamps <- mapM stamp (self : (home </> "core" </> "prelude.fpr") : rtFiles ++ pWith p)
+   bodies <- mapM readFileStrict srcs
+   foreignDecls <- lookupEnv "FPR_FOREIGN"
+-  modes <- mapM lookupEnv ["FPR_NO_PIPELINE_INLINE", "FPR_NO_REUSE", "FPR_NO_VEC_FUSE", "FPR_NO_VEC_SIMD", "FPR_NO_SCALAR_WORKERS", "FPR_NO_FIELD_WORKERS", "FPR_COST_PROBE", "FPR_NO_REGISTERS", "FPR_NO_F64_INLINE", "FPR_NO_INLINE", "FPR_NO_VEC_PEEK", "FPR_NO_SPEC", "FPR_NO_RV32_FAST", "FPR_NO_INDEXED_MEMORY"]
++  modes <- mapM lookupEnv ["FPR_NO_A64_GUARDS", "FPR_NO_PIPELINE_INLINE", "FPR_NO_REUSE", "FPR_NO_VEC_FUSE", "FPR_NO_VEC_SIMD", "FPR_NO_SCALAR_WORKERS", "FPR_NO_FIELD_WORKERS", "FPR_COST_PROBE", "FPR_NO_REGISTERS", "FPR_NO_F64_INLINE", "FPR_NO_INLINE", "FPR_NO_VEC_PEEK", "FPR_NO_SPEC", "FPR_NO_RV32_FAST", "FPR_NO_INDEXED_MEMORY"]
+   let text = unlines (srcs ++ bodies ++ stamps ++ [show (pHarts p), show (pCC p), unwords (pCFlags p ++ pLink p), show foreignDecls, show modes])
+   pure (showHex (fnv64 text) "")
+   where

@@ -26,7 +26,7 @@
 -- generation. Source effects retain evaluation order; HAL MMIO remains
 -- volatile, and slot promotion does not reorder device accesses.
 
-module Codegen (emitProgram, externals, Target (..), rv64, rv32, codegenRev, normArc) where
+module Codegen (emitProgram, externals, Target (..), rv64, rv32, codegenRev, normArc, wcetAnnotate) where
 -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
 -- specialization. All scalar backends support the shared saved-register
 -- convention; x64 uses its XMM shadow bank for s6..s11.
@@ -54,7 +54,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 55 -- uniqueness tracking and private consuming entries
+codegenRev = 61 -- retain nullaries introduced by lowering or elided constructor references
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -81,14 +81,15 @@ data Target = Target
     tgtFieldWorkers :: Bool,
     tgtPipelineInline :: Bool,
     tgtReuse :: Bool,
+    tgtSelfLoops :: Bool, -- experimental frame reuse; keeps every entry fuel/stack check
     tgtHal :: M.Map String Int -- primitive name -> arity (builtin schemes and
                         -- foreign declarations): a saturated call to one is
                         -- a direct `call fpr_g_<name>_call<n>` (fpr.h FPR_FN)
   }
 
 rv64, rv32 :: Target
-rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True M.empty
-rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True M.empty
+rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True False M.empty
+rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True False M.empty
 
 -- the visibility directive for a unit-visible global: a library unit
 -- shares every name it did not qualify with '@hash' with the program it
@@ -110,12 +111,12 @@ corePrims = ["+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "strcat", "st
 -- The fuel model bounds GENERATED-code time between safepoints, but a
 -- fuel unit is "one safepoint passed", not a duration — G1 in
 -- FUEL-RC-ABI.md. This closes it at the compiler: for every emitted
--- function, walk the assembly as a CFG (a DAG — all loops are tail
--- calls, so intra-function branches are forward) and compute the
+-- function, walk the assembly as a CFG and compute the
 -- maximum number of instructions on any path between two consecutive
 -- safepoint events. Events: the entry fuel check, any later
 -- `call fpr_fuel_exhausted` (vector-kernel checks), and any call/jump
--- into an fpr_fn_* (the callee's entry check fires next).
+-- into an fpr_fn_* (the callee's entry check fires next), or a self
+-- tail jump to a compiler-proven entry that repeats that same check.
 --
 -- Counts are pre-lowering IR instructions: the per-target lowering
 -- multiplies by a small bounded factor (x64 fixups etc.), which
@@ -136,8 +137,11 @@ data WBlock = WBlock
     wExit :: Bool -- ends in ret (or falls off the end / tail-jumps out)
   }
 
-wcetAnnotate :: String -> [String] -> [String]
-wcetAnnotate fname lns =
+-- Only pass labels whose entry executes the ordinary parameter spill and
+-- fuel check. Arbitrary back-edges remain UNBOUNDED; a label name alone
+-- is never evidence of a safepoint.
+wcetAnnotate :: [String] -> String -> [String] -> [String]
+wcetAnnotate fuelEntries fname lns =
   lns ++ ["# wcet: " ++ fname ++ " segmax=" ++ segS ++ " exittail=" ++ tailS ++ " ccalls=" ++ show ccTotal]
   where
     segS = maybe "UNBOUNDED" show segMax'
@@ -169,7 +173,7 @@ wcetAnnotate fname lns =
     -- ---- classify one instruction ----
     isReset ws = case ws of
       ("call" : t : _) -> t == "fpr_fuel_exhausted" || isFprFn t
-      ("j" : t : _) -> isFprFn t
+      ("j" : t : _) -> isFprFn t || t `elem` fuelEntries
       ("jmp" : t : _) -> isFprFn t
       _ -> False
     isFprFn t = take 7 t == "fpr_fn_"
@@ -202,8 +206,8 @@ wcetAnnotate fname lns =
     bmap = [(l, summarize l is) | (l, is) <- blocks]
     blockMap = M.fromList bmap
     -- ---- maxFrom: max insns from block start to first reset/exit ----
-    -- Memoized DFS with a grey (on-stack) set: a back-edge (shouldn't
-    -- exist — all loops are tail calls) yields Nothing = UNBOUNDED,
+    -- Memoized DFS with a grey (on-stack) set: a cycle with no reset
+    -- yields Nothing = UNBOUNDED,
     -- loudly, exactly as before; the memo table makes the walk linear.
     -- (The previous path-guarded walk recomputed every diamond's tail
     -- once per path through the diamond — exponential in join depth;
@@ -302,7 +306,8 @@ data CG = CG
     -- separate compilation:
     cgExt :: M.Map String Int, -- extern known globals (other units): name -> arity
     cgExports :: S.Set String, -- THIS unit's cross-unit-visible names (.globl gate)
-    cgVNotes :: [String] -- Vec.x sites that DECLINED specialization (printed by Compile)
+    cgVNotes :: [String], -- Vec.x sites that DECLINED specialization (printed by Compile)
+    cgNulls :: S.Set (Int, Int) -- actual constant references, including ones introduced during lowering
   }
 
 -- one specialization request: a Vec.map/filter/fold call site whose
@@ -400,7 +405,7 @@ emitProgram tgt rvv spec exports ext exps elide prog0 =
       normalized = M.map (\(ps,b)->(ps,if tgtScalarFast tgt then normIn (S.fromList ps) b else b)) workers
       (prog,rnotes) = if reuseEnabled then reuseProgram elide normalized else (workers,[])
       emitted = if S.null elide then prog else M.filterWithKey (\n _ -> S.notMember n elide) prog
-      (body, st) = runState (top prog emitted) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes))
+      (body, st) = runState (top prog emitted) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty)
    in (unlines (wnotes ++ rnotes ++ body), reverse (cgVNotes st))
   where
     top prog emitted = do
@@ -425,6 +430,7 @@ emitProgram tgt rvv spec exports ext exps elide prog0 =
       modtab <- if null exports || tgtArc tgt then pure [] else modTable
       strs <- gets cgStrs
       floats <- gets cgFloats
+      referencedNulls <- gets cgNulls
       pure $
         ( ["# target: " ++ tgtName tgt]
             ++ ["    .option arch, +v" | rvv] -- let gas accept vector mnemonics
@@ -442,7 +448,7 @@ emitProgram tgt rvv spec exports ext exps elide prog0 =
           ++ ["    .section .rodata" | not (M.null floats)]
           ++ concatMap floatFor (M.toList floats)
           ++ ["    .section .rodata" | tgtArc tgt]
-          ++ concatMap nulFor (S.toList (nullaries emitted))
+          ++ concatMap nulFor (S.toList (nullaries emitted `S.union` referencedNulls))
     -- Versioned module table: magic/schema/root hash, then four-word rows
     -- (hash str, export-name str, static PAP, checked interface string),
     -- zero-terminated.  mod.c's `Mod.fn hash name` scans it — the local
@@ -659,7 +665,30 @@ compileFn prog name (params, body0) = do
       nslots = length params + slotsNeeded tgt spec (tgtHal tgt) ext prog (S.fromList params) body + 2
       baseFrame = ((2 * w + w * nslots + 15) `div` 16) * 16
       env0 = M.fromList (zip params [0 ..])
-  bodyLines <- gen prog env0 (length params) Tail body
+  originalBody <- gen prog env0 (length params) Tail body
+  let tailExit =
+        [ "    " ++ tgtLd tgt ++ " ra, " ++ show (-w) ++ "(s0)",
+          "    mv t0, s0",
+          "    " ++ tgtLd tgt ++ " s0, " ++ show (-2*w) ++ "(s0)",
+          "    mv sp, t0",
+          "    j fpr_fn_" ++ m
+        ]
+      hasSelf [] = False
+      hasSelf ls@(_:rest) = tailExit `isPrefixOf` ls || hasSelf rest
+      looped = tgtSelfLoops tgt && w == 8 && tgtFuel tgt &&
+               tgtScalarFast tgt && not (tgtArc tgt) && hasSelf originalBody
+  selfEntry <- if looped then freshL "self" else pure ""
+  let -- All call arguments are already staged in a0..a7 / hart spill
+      -- cells before this exact tail exit. Re-enter at the parameter
+      -- stores, after frame setup and saved-register saves. This handles
+      -- cyclic permutations and wide args without overwriting live inputs.
+      -- The entry still repeats BOTH stack headroom and fuel checks.
+      selfLoop [] = []
+      selfLoop ls@(l:rest)
+        | looped, Just more <- stripPrefix tailExit ls =
+            ("    j " ++ selfEntry) : selfLoop more
+        | otherwise = l : selfLoop rest
+      bodyLines = originalBody
   let regs = if tgtRegisters tgt && tgtScalarFast tgt && not (tgtArc tgt) && nslots < 240
                then registerSlots tgt bodyLines else []
       frame = ((baseFrame + w * length regs + 15) `div` 16) * 16
@@ -730,7 +759,7 @@ compileFn prog name (params, body0) = do
   -- slot forwarding and dead slot stores, per function, after the
   -- frame is opened
   let tidy = if tgtScalarFast tgt then peepholeFor (tgtLd tgt) (tgtSt tgt) else id
-  pure $ wcetAnnotate name $
+  pure $ wcetAnnotate [selfEntry | looped] name $
     -- `# fn <name>`, never `# <name>`: a hosted backend runs the unit through
     -- the C preprocessor, which reads `# line ...`, `# error ...`, `# define
     -- ...` as DIRECTIVES -- a function called `line` failed the build with
@@ -746,7 +775,13 @@ compileFn prog name (params, body0) = do
       ++ [ "fpr_fn_" ++ m ++ ":" ]
       ++ framePro tgt frame
       ++ saveRegs
-      ++ concatMap promote (tidy (concat [stSlot tgt ("a" ++ show i) i | (i, _) <- zip [0 :: Int ..] params, i < 8]
+      -- Clean up the ordinary invocation first. A self tail call already
+      -- reuses these exact slot addresses after reopening the same-sized
+      -- frame; removing teardown/setup does not create new slot liveness.
+      -- Introducing the back-edge BEFORE tidy would make its conservative
+      -- cycle fallback retain stores that the ordinary invocation drops.
+      ++ [selfEntry ++ ":" | looped]
+      ++ concatMap promote (selfLoop (tidy (concat [stSlot tgt ("a" ++ show i) i | (i, _) <- zip [0 :: Int ..] params, i < 8]
       -- wide params ride the hart spill cells: copy them into frame
       -- slots BEFORE the fuel check (fpr_fuel_exhausted may deschedule;
       -- by then the cells must be dead)
@@ -763,7 +798,7 @@ compileFn prog name (params, body0) = do
            "    mv sp, t0",
            "    ret",
            ""
-         ]))
+         ])))
 
 -- Private slot promotion: a register is the slot's storage for the entire
 -- function, including branches and scratch-slot reuse. No liveness guesses
@@ -1334,7 +1369,11 @@ genT tgt spec prog ext = go
       | "$sym." `isPrefixOf` h = pure ["    la a0, " ++ drop 5 h]
     -- a nullary constructor is its immortal object; no call
     go env _ _ (CVar h)
-      | tgtArc tgt, not (M.member h env), Just ([], b) <- M.lookup h prog, CMk t v [] <- normArc b =
+      | tgtArc tgt, not (M.member h env), Just ([], b) <- M.lookup h prog, CMk t v [] <- normArc b = do
+          -- The constructor may belong to another unit and be elided
+          -- here. Its function still informs this lookup, but scanning
+          -- only emitted bodies cannot discover the local constant.
+          modify (\s -> s {cgNulls = S.insert (t,v) (cgNulls s)})
           pure ["    la a0, .Lnul_" ++ show t ++ "_" ++ show v]
     go env nxt pos (CVar h)
       | tgtArc tgt, Just target <- known env h 0 =
@@ -1489,6 +1528,12 @@ genT tgt spec prog ext = go
     -- time; every other argument is evaluated into slot nxt+i
     directArg env (CVar y) | Just k <- M.lookup y env = Just (\r -> ldSlot tgt r k)
     directArg _ (CInt i) | intFits tgt i = Just (\r -> ["    li " ++ r ++ ", " ++ show (2 * i + 1)])
+    -- Workers spell a raw literal as unbox(Int literal). Like the
+    -- ordinary literal above, it cannot fail or have effects; defer its
+    -- immediate load until argument transfer instead of storing/reloading
+    -- a staging slot. All effectful arguments keep their existing order.
+    directArg _ (CApp (CVar "$scalar.unbox") (CInt i))
+      | w == 8, tgtScalarFast tgt, intFits tgt i = Just (\r -> ["    li " ++ r ++ ", " ++ show i])
     directArg _ _ = Nothing
     argLoad env nxt r (i, a) = maybe (ldSlot tgt r (nxt + i)) ($ r) (directArg env a)
     stageArgs env nxt args =
@@ -1686,7 +1731,10 @@ genT tgt spec prog ext = go
       -- static instead of calling fpr_alloc.  Before this, `strEq`
       -- allocated a fresh 8-byte Bool per character compared -- which
       -- a polling loop turned into ~100 MB/s of slab garbage.
-      CMk tid var [] ->
+      CMk tid var [] -> do
+        -- Local lowering (e.g. indexedMemory's release result) can create
+        -- a nullary absent from the original program's constant scan.
+        modify (\s -> s {cgNulls = S.insert (tid,var) (cgNulls s)})
         pure ["    la a0, .Lnul_" ++ show tid ++ "_" ++ show var]
       CMk tid var fs -> goThen env nxt NonTail (CMk tid var fs) []
       CErr msg -> do

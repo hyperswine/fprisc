@@ -5,6 +5,7 @@ Uses a small test-only virt machine adapter; no FPGA is reconfigured. The two
 differential flags also test warm unit-cache separation. Metrics count generated
 assembly instructions and linked text bytes, not FPGA cycle throughput.
 """
+import argparse
 import json
 import os
 from pathlib import Path
@@ -99,7 +100,9 @@ def compile_image(out, bits, source, env, compressed=False):
          '-T', out / 'link.ld', out / 'crt.S', out / 'host.c',
          'machine/builtin/heap.c', 'machine/builtin/unsafe.c',
          'machine/builtin/tangnano20k/machine.c', 'runtime/runtime.c',
-         'runtime/bits.c', 'machine/virt/memshim.c', asm, *units, '-o', image], env)
+         # -nostdlib also suppresses libgcc. The runtime's scalar equality
+         # and formatting paths need its width/ABI-matched soft-float helpers.
+         'runtime/bits.c', 'machine/virt/memshim.c', asm, *units, '-lgcc', '-o', image], env)
     text = asm.read_text()
     if bits == 32:
         assert not re.search(r'^\s+(?:ld|sd|lwu|f(?:add|mul|sub|div|mv|ld|sd|eq|lt|le|sqrt)[a-z.]*)\s', text, re.M), 'RV64/FPU instruction in RV32 output'
@@ -127,12 +130,16 @@ def execute(bits, image, expected=0):
 
 
 def main():
-    for tool in ('riscv64-unknown-elf-gcc', 'qemu-system-riscv32', 'qemu-system-riscv64'):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--bits', type=int, nargs='+', choices=(32, 64), default=[32, 64],
+                        help='Run selected word sizes; default checks both')
+    widths = parser.parse_args().bits
+    for tool in ('riscv64-unknown-elf-gcc', *(f'qemu-system-riscv{b}' for b in widths)):
         assert shutil.which(tool), f'{tool} is required for this execution gate'
     metrics = {}
     with tempfile.TemporaryDirectory(prefix='fpr-riscv-scalar-') as tmp:
         root = Path(tmp)
-        for bits in (32, 64):
+        for bits in widths:
             out = root / str(bits); out.mkdir(); setup(out, bits)
             outputs = []; caches = []
             for slow, indexed in ((False, True), (True, False), (False, False), (False, True)):
@@ -193,7 +200,8 @@ def main():
                     _, info = compile_image(out, bits, f'tests/tangnano20k_stress/{bench}.fpr', env)
                     metrics[f'rv{bits}-{bench}-slow{int(slow)}'] = info
         print(json.dumps(metrics, indent=2))
-    print('RV32/RV64 scalar semantics, primitive shadowing, overflow/refusals, cache isolation and indexed memory: PASS')
+    print('/'.join(f'RV{b}' for b in widths) +
+          ' scalar semantics, primitive shadowing, overflow/refusals, cache isolation and indexed memory: PASS')
 
 
 if __name__ == '__main__':

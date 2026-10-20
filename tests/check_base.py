@@ -15,6 +15,10 @@ def run(args, expected=0, timeout=120, stdin=None, env=None):
         raise AssertionError(f'{args}: exit {p.returncode}, expected {expected}\n{p.stdout}\n{p.stderr}')
     return p
 run(['make', 'fpr'], timeout=300)
+print(run(['python3', 'tests/check_a64_guards.py'], timeout=600).stdout, end='')
+print(run(['python3', 'tests/check_self_loops.py'], timeout=600).stdout, end='')
+print(run(['python3', 'tests/check_self_loop_x64.py'], timeout=300).stdout, end='')
+print(run(['python3', 'tests/check_self_loop_rv64.py'], timeout=600).stdout, end='')
 print(run(['python3', 'tests/check_rv64_linux.py'], timeout=120).stdout, end='')
 print(run(['python3', 'tests/check_byte_strings.py'], timeout=300).stdout, end='')
 print(run(['python3', 'tests/check_view_construction.py'], timeout=600).stdout, end='')

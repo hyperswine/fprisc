@@ -1,0 +1,153 @@
+diff --git a/compiler/A64.hs b/compiler/A64.hs
+index a987577..126fc2d 100644
+--- a/compiler/A64.hs
++++ b/compiler/A64.hs
+@@ -54,7 +54,7 @@
+ --     saved around it; x17 stashes the loaded hart pointer across the
+ --     restore.  The C side's __thread cell uses the same TLV machinery,
+ --     so both sides agree by construction.
+-module A64 (lowerA64, deTlsQosAppA64, a64Rev) where
++module A64 (lowerA64, lowerA64WithGuards, deTlsQosAppA64, a64Rev) where
+ 
+ 
+ import Data.Bits (shiftR, (.&.))
+@@ -64,12 +64,40 @@ import Data.Word (Word64)
+ 
+ -- bump when the lowering changes (unit-cache tag component; see X64.hs)
+ a64Rev :: Int
+-a64Rev = 12 -- NEON two-lane map IR; r11: lbu, or, srl
++a64Rev = 13 -- bounded raw Int fit-guard lowering
+ 
+ lowerA64 :: Bool -> String -> String
+-lowerA64 mach =
+-  post . unlines . concatMap (lowerLine mach) . map banner . lines
++lowerA64 = lowerA64WithGuards True
++
++lowerA64WithGuards :: Bool -> Bool -> String -> String
++lowerA64WithGuards guards mach =
++  post . unlines . lowerLines . map banner . lines
+   where
++    -- Only Codegen's annotated guard may leave t1 unspecified. Match all
++    -- three instructions exactly; labels/directives cannot be crossed.
++    lowerLines (mark : a : b : c : rest)
++      | guards, mark == "# int-fit: t0 result; t1 dead",
++        a == "    slli t1, t0, 1", b == "    srai t1, t1, 1",
++        Just target <- stripPrefix "    bne t1, t0, " c,
++        nearby target rest =
++          [mark, "    eor x10, x9, x9, lsl #1",
++           "    tbnz x10, #63, " ++ target] ++ lowerLines rest
++    lowerLines (l : ls) = lowerLine mach l ++ lowerLines ls
++    lowerLines [] = []
++    -- TBNZ has a shorter reach than B.cond. Count the ACTUAL lowered
++    -- instructions up to a nearby label, refusing intervening directives
++    -- (alignment/data may insert bytes). The conservative 4 KiB bound is
++    -- comfortably inside its signed 32 KiB reach on ELF and Mach-O.
++    nearby target = seek (0 :: Int) . take 64
++      where
++        seek _ [] = False
++        seek n (l : ls)
++          | l == target ++ ":" = n < 1024
++          | null t || "#" `isPrefixOf` t = seek n ls
++          | "." `isPrefixOf` t && not (":" `isPrefixOf` reverse t) = False
++          | n >= 1024 = False
++          | otherwise = seek (n + length (lowerLine mach l)) ls
++          where t = dropWhile isSpace l
+     banner "# target: rv64"
+       | mach = "# target: a64mac (lowered from the rv64 emission; Mach-O syntax)"
+       | otherwise = "# target: a64 (lowered from the rv64 emission -- the shared RISC IR)"
+diff --git a/compiler/Build.hs b/compiler/Build.hs
+index 7db55fa..43f122f 100644
+--- a/compiler/Build.hs
++++ b/compiler/Build.hs
+@@ -311,7 +311,7 @@ runKey p = do
+   stamps <- mapM stamp (self : (home </> "core" </> "prelude.fpr") : rtFiles ++ pWith p)
+   bodies <- mapM readFileStrict srcs
+   foreignDecls <- lookupEnv "FPR_FOREIGN"
+-  modes <- mapM lookupEnv ["FPR_NO_PIPELINE_INLINE", "FPR_NO_REUSE", "FPR_NO_VEC_FUSE", "FPR_NO_VEC_SIMD", "FPR_NO_SCALAR_WORKERS", "FPR_NO_FIELD_WORKERS", "FPR_COST_PROBE", "FPR_NO_REGISTERS", "FPR_NO_F64_INLINE", "FPR_NO_INLINE", "FPR_NO_VEC_PEEK", "FPR_NO_SPEC", "FPR_NO_RV32_FAST", "FPR_NO_INDEXED_MEMORY"]
++  modes <- mapM lookupEnv ["FPR_NO_A64_GUARDS", "FPR_NO_PIPELINE_INLINE", "FPR_NO_REUSE", "FPR_NO_VEC_FUSE", "FPR_NO_VEC_SIMD", "FPR_NO_SCALAR_WORKERS", "FPR_NO_FIELD_WORKERS", "FPR_COST_PROBE", "FPR_NO_REGISTERS", "FPR_NO_F64_INLINE", "FPR_NO_INLINE", "FPR_NO_VEC_PEEK", "FPR_NO_SPEC", "FPR_NO_RV32_FAST", "FPR_NO_INDEXED_MEMORY"]
+   let text = unlines (srcs ++ bodies ++ stamps ++ [show (pHarts p), show (pCC p), unwords (pCFlags p ++ pLink p), show foreignDecls, show modes])
+   pure (showHex (fnv64 text) "")
+   where
+diff --git a/compiler/Codegen.hs b/compiler/Codegen.hs
+index ef87d7c..f0dda31 100644
+--- a/compiler/Codegen.hs
++++ b/compiler/Codegen.hs
+@@ -54,7 +54,16 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
+ -- bump on ANY change to emitted code: it keys the build/units cache
+ -- (a unit's content hash names its SOURCE, not its compilation)
+ codegenRev :: Int
+-codegenRev = 55 -- uniqueness tracking and private consuming entries
++codegenRev = 56 -- explicit scratch contract for raw Int fit guards
++
++-- At these raw arithmetic guards t0 is the result, a0/a1 still hold
++-- the original operands, and t1 is dead on BOTH successors. The marker
++-- lets A64 shorten the test without pretending an arbitrary shift pair
++-- has that liveness contract. Other targets execute the ordinary IR.
++intFitCheck :: Target -> String -> [String]
++intFitCheck tgt slow =
++  ["# int-fit: t0 result; t1 dead" | tgtW tgt == 8] ++
++  ["    slli t1, t0, 1", "    srai t1, t1, 1", "    bne t1, t0, " ++ slow]
+ 
+ -- Target word parameterization: everything the emitted assembly does
+ -- that depends on XLEN funnels through these five fields.  The value
+@@ -1208,7 +1217,7 @@ inlineTable tgt =
+          ("<=",["    slt t0, a1, a0","    xori t0, t0, 1"]),
+          (">=",["    slt t0, a0, a1","    xori t0, t0, 1"])]] ++
+       [("$scalar."++op,ScalarChecked op (checks op) ["    mv a0, t0"]) | op<-["+","-","*","/"]]
+-    fit slow = ["    slli t1, t0, 1", "    srai t1, t1, 1", "    bne t1, t0, "++slow]
++    fit = intFitCheck tgt
+     checks "+" slow = ["    add t0, a0, a1"] ++ fit slow
+     checks "-" slow = ["    sub t0, a0, a1"] ++ fit slow
+     -- No host-word wrap is possible for +/-. Multiplication needs both
+@@ -2911,7 +2920,7 @@ genUWithSlots tgt prog uset load save = go
+     checked body = do
+       lt <- freshL "iovf"
+       lk <- freshL "iok"
+-      pure (body lt ++ ["    slli t1, t0, 1", "    srai t1, t1, 1", "    bne t1, t0, " ++ lt, "    mv a0, t0", "    j " ++ lk,
++      pure (body lt ++ intFitCheck tgt lt ++ ["    mv a0, t0", "    j " ++ lk,
+                         lt ++ ":", "    call fpr_int_overflow_kernel", lk ++ ":"])
+     op2 = \case
+       "+" -> checked (const ["    add t0, a0, a1"])
+diff --git a/compiler/Compile.hs b/compiler/Compile.hs
+index 73c8af4..7742e91 100644
+--- a/compiler/Compile.hs
++++ b/compiler/Compile.hs
+@@ -15,7 +15,7 @@ import qualified Data.ByteString as BS
+ import qualified Data.Text as T
+ import qualified Data.Text.Encoding as TE
+ import qualified Data.Text.Encoding.Error as TEE
+-import A64 (deTlsQosAppA64, lowerA64, a64Rev)
++import A64 (deTlsQosAppA64, lowerA64WithGuards, a64Rev)
+ import X64 (lowerX64, deTlsQosApp, x64Rev)
+ import RV64 (lowerPosixRV64, lowerQosRV64, rv64HostRev)
+ import Control.Monad (forM, forM_, unless, when)
+@@ -408,6 +408,7 @@ compileWithInterface accepted = do
+     (Just d, _) -> pure d
+     (Nothing, Just f) -> pure f
+     (Nothing, Nothing) -> pure "base"
++  envNoA64Guards <- (== Just "1") <$> lookupEnv "FPR_NO_A64_GUARDS"
+   envNoRegisters <- (== Just "1") <$> lookupEnv "FPR_NO_REGISTERS"
+   envNoRv32Fast <- (== Just "1") <$> lookupEnv "FPR_NO_RV32_FAST"
+   envNoIndexed <- (== Just "1") <$> lookupEnv "FPR_NO_INDEXED_MEMORY"
+@@ -915,9 +916,9 @@ compileWithInterface accepted = do
+           -- hosted posix AArch64 reads its hart from x28 too (runtime/fpr.h):
+           -- a thread-local cannot follow an actor that migrates between harts
+           lower0 | espHost = espTls
+-                | a64 && qapp = deTlsQosAppA64 a64mac qsingle . lowerA64 a64mac
+-                | a64 && oBase opts = deTlsQosAppA64 a64mac False . lowerA64 a64mac
+-                | a64 = lowerA64 a64mac
++                | a64 && qapp = deTlsQosAppA64 a64mac qsingle . lowerA64WithGuards (not envNoA64Guards) a64mac
++                | a64 && oBase opts = deTlsQosAppA64 a64mac False . lowerA64WithGuards (not envNoA64Guards) a64mac
++                | a64 = lowerA64WithGuards (not envNoA64Guards) a64mac
+                 | x64 && qapp = deTlsQosApp . lowerX64
+                 | x64 = lowerX64
+                 | qapp = lowerQosRV64
+@@ -940,7 +941,7 @@ compileWithInterface accepted = do
+                   else if qapp then "qrv64r" ++ show rv64HostRev
+                   else if oBase opts then "rv64posixr" ++ show rv64HostRev
+                   else tgtName tgt
+-          tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0
++          tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0 ++ (if a64 && envNoA64Guards then "-nofitguards" else "")
+           -- A root can constrain a global foreign primitive used inside an
+           -- unchanged imported unit. Cache that contract context as well as
+           -- source/prelude/shape identity so another root cannot reuse raw calls.
