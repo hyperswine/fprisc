@@ -1,0 +1,12 @@
+mixed
+["# private workers: fields=0 scalar=1"]
+fromList [("$worker.scalar.mixed",([TVal,TInt],TInt))]
+[("$worker.scalar.mixed","a TInt where a TPred is needed")]
+Right ()
+Left (Stuck "untag of an object RObj 1 1 []")
+boolEq
+["# private workers: fields=0 scalar=1"]
+fromList [("$worker.scalar.boolEq",([TInt,TInt],TVal))]
+[]
+Right ()
+Left (Stuck "untag of an object RObj 1 1 []")

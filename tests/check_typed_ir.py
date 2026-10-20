@@ -2,9 +2,10 @@
 """The typed IR of M1 (docs/2026-10-20-TYPED-IR-M1.md): its verifier and
 lowering checks (tests/TypedIR.hs), then the real pipeline: the scalar
 fixture compiled for each 64-bit target with FPR_TYPED_IR reports which
-functions lower (all but main), the dumps are the same on every target
-and between runs, and the reference evaluator's answers, traps and tick
-counts equal the legacy binary's for the same calls.  The emitted
+functions lower and why others decline, the dumps are the same on every target
+and between runs, and the reference evaluator's answers and traps equal
+the legacy binary's for the same calls. Tick counts use structural
+expectations, not measured native counters. The emitted
 assembly is byte-identical with the report on and off: the report
 changes nothing."""
 import os, re, shutil, subprocess, sys, tempfile
@@ -30,7 +31,8 @@ print(run([*ghc, '-w', '-icompiler', 'tests/TypedIR.hs']), end='', flush=True)
 
 FIXTURE = 'tests/typed_ir/scalar.fpr'
 CALLS = [('fib', [20]), ('sum', [1000, 0]), ('addovf', [4611686018427387903, 1]), ('divz', [7, 0]),
-         ('divz', [7, 2]), ('even', [11]), ('clamp', [50, 0, 10]), ('clamp', [-5, 0, 10]), ('clamp', [5, 0, 10])]
+         ('divz', [7, 2]), ('even', [11]), ('clamp', [50, 0, 10]), ('clamp', [-5, 0, 10]), ('clamp', [5, 0, 10]),
+         ('boolResult', [3, 1]), ('boolResult', [3, 0])]
 mode = 'dump ' + ' '.join('eval:' + fn + ''.join(':' + str(a) for a in args) for fn, args in CALLS)
 with tempfile.TemporaryDirectory(prefix='fpr-typed-ir-') as d:
     tmp = Path(d)
@@ -47,6 +49,15 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-ir-') as d:
             m = re.search(r'PANIC \[actor 0\]: (.*) \*\*\*', out)
             assert m, (fn, args, out)
             legacy[(fn, tuple(args))] = ('trap', m.group(1))
+    # Independent Bool truth-table oracle: equality contributes 10,
+    # inequality 1. Exercise optimization/cache transitions, not just
+    # agreement between two implementations sharing a worker transform.
+    for disabled in ('1', '0', '1', '0'):
+        run(['./fpr', 'build', FIXTURE, '-o', exe], {**ENV, 'FPR_NO_SCALAR_WORKERS': disabled})
+        for n in (0, 1, 7):
+            for flag in (-1, 0, 1):
+                got = run([exe, 'boolResult', n, flag]).strip()
+                assert got == ('10' if flag > 0 else '1'), (disabled, n, flag, got)
     dumps = {}
     for target in ('a64', 'x64', 'rv64'):
         asm_off, asm_on = tmp / f'{target}-off.s', tmp / f'{target}-on.s'
@@ -57,7 +68,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-ir-') as d:
         assert lines, notes[-2000:]
         lowered = {m.group(1) for l in lines for m in [re.match(r'typed-ir: (\S+) lowered', l)] if m}
         fallbacks = {m.group(1): m.group(2) for l in lines for m in [re.match(r'typed-ir: (\S+) fallback: (.*)', l)] if m}
-        for fn in ('fib', 'sum', 'addovf', 'divz', 'even', 'odd', 'clamp'):
+        for fn in ('fib', 'sum', 'addovf', 'divz', 'even', 'odd', 'clamp', 'boolEq', 'boolNe', 'boolResult'):
             assert fn in lowered, (target, fn, fallbacks.get(fn), lines[:3])
         assert '$worker.scalar.fib' in lowered and '$worker.scalar.sum' in lowered, (target, sorted(lowered))
         assert 'main' in fallbacks and 'primitive' in fallbacks['main'], (target, fallbacks.get('main'))
@@ -87,4 +98,4 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-ir-') as d:
     # rv32 says it is out of M1's scope rather than lowering with the wrong Int range
     note32 = run(['./fpr', '--target=rv32', f'--prelude={ROOT}/core/prelude.fpr', FIXTURE, tmp / 'rv32.s'], {**ENV, 'FPR_TYPED_IR': '1'})
     assert 'typed-ir: not available on rv32' in note32, note32[-500:]
-print('Typed IR M1: fixture functions lower on a64/x64/rv64 with main reported as fallback, dumps deterministic and target-independent, evaluator equals the legacy binary on values, traps and tick counts, emission unchanged: PASS')
+print('Typed IR M1: a64/x64/rv64 portable lowering, deterministic dumps, native value/trap parity, structural tick counts, independent Bool oracle and worker cache transitions, report leaves emission unchanged: PASS')

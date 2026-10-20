@@ -1,0 +1,248 @@
+Typed IR verifier: a well-formed function accepted, 19 malformations refused by name PASS
+Typed IR worker metadata: ordered mixed parameters, renaming, Bool equality/aliases, missing and malformed signatures PASS
+Typed IR lowering: the generator's fib and sum shapes lower, verify, dump stably and evaluate to the legacy answers, traps and tick counts; unsupported forms are refused by name PASS
+a64: coverage 14/22 functions; main falls back (the primitive `Sys.args`); 11 evaluations equal the legacy binary
+x64: coverage 14/22 functions; main falls back (the primitive `Sys.args`); 11 evaluations equal the legacy binary
+rv64: coverage 14/22 functions; main falls back (the primitive `Sys.args`); 11 evaluations equal the legacy binary
+Typed IR M1: a64/x64/rv64 portable lowering, deterministic dumps, native value/trap parity, structural tick counts, independent Bool oracle and worker cache transitions, report leaves emission unchanged: PASS
+A64 fit guards: exact match, preserved scratch value, original branch reach and both syntaxes PASS
+A64 guard execution: 100009 boundary/random C-reference cases PASS
+A64 guards: exact overflow reasons, 1/4 harts, off/on/off caches, ELF/Mach-O and unchanged RV64/x64 PASS
+A64 frame pairs: offset limits, label barriers, frame-pointer restore ordering PASS
+A64 frame pairs: 2001 independent C call/return cases PASS
+A64 frame pairs: ELF/Mach-O emission, off/on/off unit and executable caches, unchanged RV64/x64 PASS
+Self loops: WCET reset boundaries, unbounded negative controls and loop-carried slot values PASS
+Nullary constants: lowering-created Unit, elided functions, unique definitions, unused constructors, shadowing and Base boundary PASS
+Self loops: 1/4 harts, registers off/on, 3/8/9/64 args, exact fuel ticks, effects, stack growth, fairness, emission and off/on/off caches PASS
+Self loops: SHA and imported units, 640 finite WCET bounds, no per-function increase PASS
+Retained registers: independent arithmetic results, 1/4 harts, registers off/on, three backends, unchanged RV32/builtin, off/on/off caches PASS
+Frame compaction: preserved values/register saves, dense layout, escaping/computed/deep frame fallback PASS
+Frame placement: 1/4 harts, deep stack growth, self loops, mixed values, three-backend fuel bounds, RV32 fallback, four cache modes PASS; deep frame 80 -> 32 bytes
+FPR_SELF_LOOPS=0: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+FPR_SELF_LOOPS=1: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+FPR_SELF_LOOPS=0 RV64/QEMU: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+FPR_SELF_LOOPS=1 RV64/QEMU: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+RV64 Unix/QOS/module lowering, flag order and warm-cache isolation PASS
+Byte Strings: all values, zero allocations, actor lifetime and refusals (1 workers) PASS
+Foreign image: byte Strings survive poisoning/unload (1 workers) PASS
+Byte Strings: all values, zero allocations, actor lifetime and refusals (4 workers) PASS
+Foreign image: byte Strings survive poisoning/unload (4 workers) PASS
+View construction: byte-identical CSS, classes, render frames and cached fragments (1 workers) PASS; bytes=125308 sha256=9119d98d67cab660377e5ac554473a30a10620a7866d326b907a600958e799cd
+View construction: byte-identical CSS, classes, render frames and cached fragments (4 workers) PASS; bytes=125308 sha256=9119d98d67cab660377e5ac554473a30a10620a7866d326b907a600958e799cd
+prefix-cost: {"baseline": {"alloc_bytes": 48000, "alloc_requests": 1000, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "candidate": {"alloc_bytes": 0, "alloc_requests": 0, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}
+stage-cost: {"baseline": {"alloc_bytes": 1841904, "alloc_requests": 8488, "buddy_allocs": 4, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "candidate": {"alloc_bytes": 394224, "alloc_requests": 7468, "buddy_allocs": 1, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}
+class-cost: {"baseline": {"alloc_bytes": 2290240, "alloc_requests": 7206, "buddy_allocs": 6, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "candidate": {"alloc_bytes": 349648, "alloc_requests": 6953, "buddy_allocs": 2, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}
+tree-cost: {"baseline": {"alloc_bytes": 2467728, "alloc_requests": 39789, "buddy_allocs": 6, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "candidate": {"alloc_bytes": 1579152, "alloc_requests": 31562, "buddy_allocs": 4, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}
+inbox: one/four harts HOLDS
+inboxshared: one/four harts HOLDS
+inboxownership: one/four harts HOLDS
+inboxkill: one/four harts HOLDS
+inboxadmission: one/four harts HOLDS
+Production actor runtime has no inbox fault hook dependency HOLDS
+commit unannotated argument/result: refusal leaves store unchanged; explicit major PASS
+commit polymorphic restriction: refusal leaves store unchanged; explicit major PASS
+commit variable correlation: refusal leaves store unchanged; explicit major PASS
+commit record requirement: refusal leaves store unchanged; explicit major PASS
+commit constant representation: refusal leaves store unchanged; explicit major PASS
+commit precondition: refusal leaves store unchanged; explicit major PASS
+commit unsafe marker: refusal leaves store unchanged; explicit major PASS
+commit resource bound: refusal leaves store unchanged; explicit major PASS
+commit nominal version: refusal leaves store unchanged; explicit major PASS
+commit linear declaration: refusal leaves store unchanged; explicit major PASS
+commit alpha normalization, sorted rows, export additions and no-op: PASS
+commit type error and missing/malformed prior blob: refusal before writes PASS
+commit refused new pinned dependency: no closure blob publication PASS
+commit checked pinned closure from store, no scratch dependency: PASS
+commit contract identity ignores diagnostic source positions: PASS
+publication: images, cursor, one/four harts, compile/type/link refusal, watch recovery PASS
+Watch app: 1 hart(s), store commit -> publication -> live MVU, refusal/recovery/state/old closure/exit PASS
+Watch app: 4 hart(s), store commit -> publication -> live MVU, refusal/recovery/state/old closure/exit PASS
+Watch app termination: application reaped and temporary executable removed PASS
+Watch app startup: missing subscription and invalid app refused without temporary executable/lock leaks PASS
+Live runner: 1 hart(s), interactive input, binding rollback, compatible state retention, invalid root refusal, checked cold restart PASS
+Live runner: 4 hart(s), interactive input, binding rollback, compatible state retention, invalid root refusal, checked cold restart PASS
+Live runner startup: missing export refuses binding and removes initial table PASS
+PASS harts=1: delayed writer finishes before close; stuck writer retires within budget; fresh HTTP clean
+PASS harts=4: delayed writer finishes before close; stuck writer retires within budget; fresh HTTP clean
+reload notice: opt-in, UTC text, deadline, replacement and stable view PASS
+POS reload: 1 hart(s), two live sockets/cashiers/carts, checkout policy changes, receipt history, invalid/incompatible refusal, recovery, reload notice enabled=True and log rebuild PASS
+POS reload: 4 hart(s), two live sockets/cashiers/carts, checkout policy changes, receipt history, invalid/incompatible refusal, recovery, reload notice enabled=False and log rebuild PASS
+POS ordinary run: static pricing works without a publication journal PASS
+POSIX real modules: one/four harts, scoped swap/refusals/old functions/clock PASS
+POSIX live MVU: real module replacement/refusal/state/render/pacing on one/four harts PASS
+POSIX x64: root/imports/TLS/9-argument spill, ELF shared object without text relocations PASS
+POSIX a64: root/imports/TLS/9-argument spill, ELF shared object without text relocations PASS
+POSIX rv64 artifact check SKIPPED: clang has no RISC-V backend; use a Linux RV64 cross compiler with check_rv64_linux.py
+Owned watcher owned: one/four harts, cleanup and subscriptions PASS
+Owned watcher initialquit: one/four harts, cleanup and subscriptions PASS
+Owned watcher refused: one/four harts, cleanup and subscriptions PASS
+Sys.loop: one million value-state turns, 64 MiB heap, one/four harts PASS
+Sys.loop / Sys.arena bare actor handle: identity and liveness PASS
+Nested Sys.arena / Sys.loop / Sys.loopWith cancellation: one/four harts PASS
+Sys.loop initial-vector: named refusal PASS
+Sys.loop captured-vector: named refusal PASS
+Sys.loop returned-vector: named refusal PASS
+automatic receive turns: million messages, one/four harts, 64 MiB PASS
+automatic receive turns: zero args, shared joins, dead state and strict effects PASS
+automatic receive turns: concrete MVU text protocol and root ownership PASS
+automatic receive turns: ordered typed ports, deduplication and ownership PASS
+automatic receive turns: opt-out baseline reproduces growth PASS
+automatic receive turns: mutual recursion, nominal state, case branches and strictness PASS
+automatic receive turns: imported helper receives, arity spill and cache isolation PASS
+automatic receive turns: cancellation releases transferred closures PASS
+automatic receive turns: functional-result reported unchanged PASS
+automatic receive turns: mutable reported unchanged PASS
+automatic receive turns: non-tail reported unchanged PASS
+automatic receive turns: functional reported unchanged PASS
+automatic receive turns: managed reported unchanged PASS
+MVU reload runner: one/four harts PASS
+MVU reload observe: one/four harts PASS
+MVU reload legacy: one/four harts PASS
+MVU reload liveapp: one/four harts PASS
+MVU reload legacyapp: one/four harts PASS
+MVU reload baseline: one/four harts PASS
+MVU reload productiontick: one/four harts PASS
+MVU reload default-boundaries: one/four harts PASS
+MVU reload scoped-alias: one/four harts PASS
+MVU default: caller lifetime and bounded 20000-frame state, one/four harts PASS
+MVU event port: 20000 FIFO batches and released roots, one/four harts PASS
+MVU service failures: request refusal, service/worker death, cleanup and subsequent run, one/four harts PASS
+deadlines: one/four harts PASS
+taskfailure: one/four harts PASS
+mvudeadlines: one/four harts PASS
+mvuretained: one/four harts PASS
+par2: failed worker ends its join by name PASS
+Sol: selective empty/live-deadline/dead contracts PASS
+actor reap: detached cleanup can re-enter admission PASS
+eight ideal programs build; their declared bounds are proven
+wc output and read failures match the original
+report data, console and input/write failures match the original
+todo event trace, rows, UTF-8 backspace, the durable list and an unopenable store match
+service live HTTP routes, store, digests, shutdown and invalid configuration match
+linear buffer parity and map/filter/fold; guarded transitions and measured replay agree with independent references
+linear reuse/aliasing, broken buffer contracts, nondecreasing replay/build and insufficient replay bounds are refused
+five violated preconditions panic; insufficient work and nondecreasing recursion are refused
+ideal examples: all checks passed
+Higher-order contracts: native + Sol aliases, callbacks, records, returns, partials, guards, imports, order, rollback and linear ownership HOLD; direct budgets prove and checked costs remain visible
+Contract rewrites: selected operators, guards and imported unit calls retain contracts in native/Sol; native cache context is isolated; direct budgets still prove
+1 hart(s): printer ownership: fragmented frames, failure cleanup, bounded snapshots, quotas, stale/wrong owner and actor death PASS
+4 hart(s): printer ownership: fragmented frames, failure cleanup, bounded snapshots, quotas, stale/wrong owner and actor death PASS
+12 lost/stale/duplicated connection, client and buffer owners refused
+eight scalar work/allocation bounds PROVEN; maximum frame/read/chunk arithmetic agrees
+insufficient work and owner-cell allocation budgets refused
+303 independent capacity/chunk/backoff reference cases agree
+Sol inferred linearity: 8 checks passed
+record-duplicate-owned-field: refused by native and Sol
+record-literal-double: refused by native and Sol
+record-projection-double: refused by native and Sol
+record-pattern-double: refused by native and Sol
+record-update-stale: refused by native and Sol
+record-alias-double: refused by native and Sol
+record-projection-residual: refused by native and Sol
+record-nested-projection-residual: refused by native and Sol
+record-pattern-residual: refused by native and Sol
+record-update-overwrite-owner: refused by native and Sol
+record-nested-update-overwrite-owner: refused by native and Sol
+record-metadata-loses-owner: refused by native and Sol
+record-open-row-residual: refused by native and Sol
+record-inferred-return-double: refused by native and Sol
+case-result-closure-double: refused by native and Sol
+guard-created-owner-double: refused by native and Sol
+guard-created-owner-lost: refused by native and Sol
+guard-created-owner-fallthrough: refused by native and Sol
+record-one-owner-projection: single-use result agrees in native and Sol
+record-complete-two-owner-pattern: single-use result agrees in native and Sol
+record-metadata-update-transfer: single-use result agrees in native and Sol
+record-alias-once: single-use result agrees in native and Sol
+record-pattern-ignores-metadata: single-use result agrees in native and Sol
+record-nested-single-owner: single-use result agrees in native and Sol
+record-nested-projection-path: single-use result agrees in native and Sol
+record-nested-metadata-update: single-use result agrees in native and Sol
+record-inferred-return-once: single-use result agrees in native and Sol
+guard-created-owner-once: single-use result agrees in native and Sol
+case-result-linear-closure-once: single-use result agrees in native and Sol
+29 structural/control-flow ownership cases PASS
+42 generic ownership cases (polymorphic functions and containers, native and Sol) PASS
+POS core: independent quantity/cash/restock oracle, full Int boundaries, one/four harts: PASS
+POS app: checkout, stock, receipt totals, change and ordinary refusals: PASS
+POS core: six scalar work/allocation declarations proved: PASS
+POS core: direct, aliased and mapped invalid contracts refuse by name: PASS
+Pagination: 2286 independent-reference cases on 1/4 harts, including tagged Int extrema; constant budgets prove
+Pagination: invalid internal size/count fail with named contracts; insufficient work/allocation bounds fail compilation
+Inventory: actual projection keeps sorted page contents, empty/shrunk/late/negative requests, and historical config normalization on 1/4 harts
+Typed Vector: 14 element/layout/ownership refusal paths PASS
+Typed Vector: generic identity, same-element generic map, Int/F64/tuple/String/Bool maps and inferred float constructors PASS
+Typed Vector: HostedBytecode rejects mixed elements and executes a type-changing map PASS
+Vector limits: generic/imported/recursive layouts, nested float records and copies, captured/wide folds, direct type-changing map and ordered failure; 64-bit layouts and RV32 integer fold emission PASS
+Vector kinds: float captures, mixed record fold, captured map/map and filter/filter, strict order and 100 SIMD tails PASS
+A64 NEON execution: native host and C IEEE reference PASS
+pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=1: PASS
+pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=0 registers-disabled=1 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=0 registers-disabled=1 fusion-disabled=0 pipeline-inline-disabled=1: PASS
+pipeline inline-disabled=0 registers-disabled=1 fusion-disabled=0 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=0 registers-disabled=1 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=1: PASS
+pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=0 pipeline-inline-disabled=1: PASS
+pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=0 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+mixed scalar pipelines: native differential, 1/4 harts, returns/compaction, floats, captures, effects/traps and four-target emission PASS
+Fresh reuse: nonescape, last-use, shape, branch, shadow and size proof checks PASS
+reuse disabled=1 inline-disabled=0 registers-disabled=0: 20000 allocations PASS
+reuse disabled=0 inline-disabled=0 registers-disabled=0: 10000 allocations PASS
+reuse disabled=1 inline-disabled=0 registers-disabled=0: 20000 allocations PASS
+reuse disabled=1 inline-disabled=0 registers-disabled=1: 20000 allocations PASS
+reuse disabled=0 inline-disabled=0 registers-disabled=1: 10000 allocations PASS
+reuse disabled=1 inline-disabled=0 registers-disabled=1: 20000 allocations PASS
+reuse disabled=1 inline-disabled=1 registers-disabled=0: 20000 allocations PASS
+reuse disabled=0 inline-disabled=1 registers-disabled=0: 10000 allocations PASS
+reuse disabled=1 inline-disabled=1 registers-disabled=0: 20000 allocations PASS
+reuse disabled=1 inline-disabled=1 registers-disabled=1: 20000 allocations PASS
+reuse disabled=0 inline-disabled=1 registers-disabled=1: 10000 allocations PASS
+reuse disabled=1 inline-disabled=1 registers-disabled=1: 20000 allocations PASS
+Fresh reuse: native values, alias/child preservation, field failure order, 1/4 harts, allocation ratchet, warm caches and four-target emission PASS
+consuming reuse off=1 no-inline=1 no-registers=1: 20000 allocations PASS
+consuming reuse off=0 no-inline=1 no-registers=1: 10000 allocations PASS
+consuming reuse off=1 no-inline=1 no-registers=1: 20000 allocations PASS
+consuming reuse off=1 no-inline=1 no-registers=0: 20000 allocations PASS
+consuming reuse off=0 no-inline=1 no-registers=0: 10000 allocations PASS
+consuming reuse off=1 no-inline=1 no-registers=0: 20000 allocations PASS
+consuming reuse off=1 no-inline=0 no-registers=1: 20000 allocations PASS
+consuming reuse off=0 no-inline=0 no-registers=1: 10000 allocations PASS
+consuming reuse off=1 no-inline=0 no-registers=1: 20000 allocations PASS
+consuming reuse off=1 no-inline=0 no-registers=0: 20000 allocations PASS
+consuming reuse off=0 no-inline=0 no-registers=0: 10000 allocations PASS
+consuming reuse off=1 no-inline=0 no-registers=0: 20000 allocations PASS
+Consuming workers: aliases, branch joins, retained originals, shared list tails, ordered failures, allocation counts, 1/4 harts and four-target ABI gates PASS
+x64 kernels: 100 scalar/pipeline lengths, eight pipeline arguments, nine-column map/filter, captured wide fold and clobbering calls PASS
+wide params: 7th/8th params promoted to saved registers lower on rv64/a64/x64 and run on arm64 (wide: 231 418 45728349311): PASS
+x64 raGuard: top-word ra frames accepted; misplaced or overwritten ra refused: PASS
+Vector fallback frames: ra in the top word across 7 fixtures (49 Vec frames), x64 lowering accepts them, fallbacks run (fallback frames: ok 5 cap 27 43): PASS
+Safety allow-list: all 94 std modules listed, none stale: PASS
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/tests/check_base.py", line 63, in <module>
+    print(run(['python3', 'tests/check_specialization.py'], timeout=300).stdout, end='')
+          ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/tests/check_base.py", line 15, in run
+    raise AssertionError(f'{args}: exit {p.returncode}, expected {expected}\n{p.stdout}\n{p.stderr}')
+AssertionError: ['python3', 'tests/check_specialization.py']: exit 1, expected 0
+
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/tests/check_specialization.py", line 64, in <module>
+    main()
+    ~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/tests/check_specialization.py", line 27, in main
+    print(run(['cabal', 'exec', '--', 'runghc', '-w', '-icompiler',
+          ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+               'tests/Specialization.hs'], env).stdout, end='')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/tests/check_specialization.py", line 17, in run
+    assert p.returncode == code, (args, p.returncode, p.stdout, p.stderr)
+           ^^^^^^^^^^^^^^^^^^^^
+AssertionError: (['cabal', 'exec', '--', 'runghc', '-w', '-icompiler', 'tests/Specialization.hs'], 1, 'Resolving dependencies...\n', "Error: [Cabal-7107]\nCould not resolve dependencies:\n[__0] next goal: fp-risc (user goal)\n[__0] rejecting: fp-risc-0.12.0 (conflict: pkg-config package libarchive>=3.6, not found in the pkg-config database)\n[__0] fail (backjumping, conflict set: fp-risc)\nAfter searching the rest of the dependency tree exhaustively, these were the goals I've had most trouble fulfilling: fp-risc\n\n")

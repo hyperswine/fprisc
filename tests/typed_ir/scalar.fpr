@@ -22,6 +22,16 @@ odd n = if n == 0 then 0 else even (n - 1).
 # a branch in value position: a join block with a parameter
 clamp : Int -> Int -> Int -> Int .
 clamp x lo hi = (if x < lo then lo else if x > hi then hi else x) * 2.
+# Compare wrapper Bools with comparison-produced Bools inside workers.
+boolEq : unsafe Int -> Bool -> Bool .
+boolEq n b = if n == 0 then b == (n < 1) else boolEq (n - 1) b.
+boolNe : unsafe Int -> Bool -> Bool .
+boolNe n b = if n == 0 then b != (n < 1) else boolNe (n - 1) b.
+boolResult : unsafe Int -> Int -> Int .
+boolResult n flag =
+  a = boolEq n (flag > 0);
+  b = boolNe n (flag > 0);
+  (if a then 10 else 0) + (if b then 1 else 0).
 main = case Sys.args Unit of
     ["fib", n] -> print "{fib (parseInt n)}"
   | ["sum", n, a] -> print "{sum (parseInt n) (parseInt a)}"
@@ -29,4 +39,5 @@ main = case Sys.args Unit of
   | ["divz", a, b] -> print "{divz (parseInt a) (parseInt b)}"
   | ["even", n] -> print "{even (parseInt n)}"
   | ["clamp", x, lo, hi] -> print "{clamp (parseInt x) (parseInt lo) (parseInt hi)}"
+  | ["boolResult", n, flag] -> print "{boolResult (parseInt n) (parseInt flag)}"
   | _ -> print "scalar".

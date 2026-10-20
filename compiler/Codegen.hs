@@ -52,14 +52,14 @@ import Codegen.Dump (dumpFn)
 import Codegen.Eval (Outcome (..), Failure (..), Event (..), RV (..), evalProgram)
 import KernelKinds (Kind(..), signature)
 import Reuse (reuseFresh, reuseProgram, reuseView)
-import Workers (workerize, internalWorker, scalarPrimitives)
+import Workers (workerizeWithSignatures, ScalarSignatures, internalWorker, scalarPrimitives)
 
 import FPRISC (Core (..), Prog, freeVars, occurs)
 
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 66 -- opt-in bounded register placement and private frame compaction
+codegenRev = 67 -- Base Bool constructors share runtime singletons with comparisons
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -105,9 +105,9 @@ rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False 
 -- do not, their dumps (`dump`) and the reference evaluator's answer for
 -- `eval:<fn>:<int>...`.  A verifier failure is a compiler error, never a
 -- fallback.  Nothing here changes what is emitted.
-typedIrNotes :: Maybe String -> M.Map String Int -> Prog -> [String]
-typedIrNotes Nothing _ _ = []
-typedIrNotes (Just mode) ext prog =
+typedIrNotes :: Maybe String -> ScalarSignatures -> M.Map String Int -> Prog -> [String]
+typedIrNotes Nothing _ _ _ = []
+typedIrNotes (Just mode) sigs ext prog =
   case verifyProgram lowered of
     Left err -> error ("typed-ir: " ++ err)
     Right () ->
@@ -117,7 +117,7 @@ typedIrNotes (Just mode) ext prog =
         ++ (if "dump" `elem` ws then concatMap (map ("typed-ir: | " ++) . lines . dumpFn) (M.elems lowered) else [])
         ++ concatMap evalNote ws
   where
-    (lowered, failures) = lowerProgram prog ext
+    (lowered, failures) = lowerProgram sigs prog ext
     ws = words mode
     evalNote w = case splitOn ':' w of
       ("eval" : fn : args) | Just ns <- mapM readMaybe args ->
@@ -443,13 +443,13 @@ emitProgram tgt rvv spec exports ext exps elide prog0 =
   let -- Fusion precedes workers so callback analysis sees original bodies.
       (fused, fnotes) = if tgtFusion tgt then fuseVecFix prog0 else (prog0,[])
       enable = tgtW tgt == 8 && tgtFuel tgt && tgtScalarFast tgt && not (tgtArc tgt)
-      (workers,wnotes) = workerize (enable && tgtFieldWorkers tgt) (enable && tgtScalarWorkers tgt) fused
+      (workers,wnotes,workerSigs) = workerizeWithSignatures (enable && tgtFieldWorkers tgt) (enable && tgtScalarWorkers tgt) fused
       reuseEnabled = tgtReuse tgt && tgtW tgt==8 && tgtFuel tgt && not (tgtArc tgt)
       normalized = M.map (\(ps,b)->(ps,if tgtScalarFast tgt then normIn (S.fromList ps) b else b)) workers
       (prog,rnotes) = if reuseEnabled then reuseProgram elide normalized else (workers,[])
       emitted = if S.null elide then prog else M.filterWithKey (\n _ -> S.notMember n elide) prog
       (body, st) = runState (top prog emitted) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty)
-   in (unlines (wnotes ++ rnotes ++ body), reverse (cgVNotes st) ++ typedIrNotes (if tgtW tgt == 8 then tgtTypedIr tgt else Nothing) ext emitted
+   in (unlines (wnotes ++ rnotes ++ body), reverse (cgVNotes st) ++ typedIrNotes (if tgtW tgt == 8 then tgtTypedIr tgt else Nothing) workerSigs ext emitted
         ++ ["typed-ir: not available on " ++ tgtName tgt ++ " (M1 lowers the 64-bit targets)" | tgtW tgt /= 8, Just _ <- [tgtTypedIr tgt]])
   where
     top prog emitted = do
@@ -1858,6 +1858,11 @@ genT tgt spec prog ext = go
       -- static instead of calling fpr_alloc.  Before this, `strEq`
       -- allocated a fresh 8-byte Bool per character compared -- which
       -- a polling loop turned into ~100 MB/s of slab garbage.
+      -- Worker Bool equality compares object addresses. The wrapper and
+      -- Bool literals must use the same immortal objects as inline/runtime
+      -- comparisons, including across units. Builtin emission stays local.
+      CMk 1 var [] | tgtFuel tgt, var == 0 || var == 1 ->
+        pure ["    la a0, " ++ if var == 1 then "fpr_true" else "fpr_false"]
       CMk tid var [] -> do
         -- Local lowering (e.g. indexedMemory's release result) can create
         -- a nullary absent from the original program's constant scan.

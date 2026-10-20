@@ -13,14 +13,15 @@
 -- Evaluation order is the legacy generator's: arguments left to right,
 -- each fully evaluated before the next; a branch's arms are their own
 -- blocks; a trap happens where its operation is.
-module Codegen.Lower (lowerFn, lowerProgram, workerSignatures, Reason) where
+module Codegen.Lower (lowerFn, lowerProgram, Reason) where
 
 import Codegen.IR
 import Control.Monad (when)
 import Control.Monad.State.Strict
 import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as M
-import qualified Data.Set as S
+import KernelKinds (Kind (..))
+import Workers (ScalarSignatures)
 import FPRISC (Core (..), Prog)
 
 type Reason = String
@@ -132,83 +133,23 @@ workerPrefix = "$worker.scalar."
 scalarPrefix :: String
 scalarPrefix = "$scalar."
 
--- ---------------------------------------------------------------------
--- The scalar workers' conventions.  A worker (Workers.scalarWorkers)
--- takes each Int parameter as a raw word and each Bool as the ordinary
--- immutable object, and answers a raw word or a Bool object.  The kinds
--- are recovered from the worker bodies: an operand of a `$scalar.`
--- operation is an Int, a tag-tested or branched-on parameter is a Bool,
--- an argument to another worker has that parameter's kind, to a
--- fixpoint.  A worker with a parameter or result left undetermined gets
--- no signature and is refused.
-
-data K = KInt | KBool deriving (Eq, Show)
-
-workerSignatures :: Prog -> M.Map Name ([Ty], Ty)
-workerSignatures prog = M.mapMaybe finish (iterateFix step start)
-  where
-    workers = M.filterWithKey (\n _ -> workerPrefix `isPrefixOf` n) prog
-    start = M.map (\(ps, _) -> (M.fromList [(p, Nothing) | p <- ps], Nothing)) workers
-    iterateFix f x = let x' = f x in if x' == x then x else iterateFix f x'
-    step sol = M.mapWithKey (stepOne sol) sol
-    stepOne sol n (pk, rk) =
-      let (ps, b) = workers M.! n
-          pk' = foldr (\(p, k) m -> M.insertWith merge p k m) pk (demands sol (S.fromList ps) b)
-       in (pk', merge rk (resultKind sol pk' b))
-    merge (Just a) (Just b) | a /= b = Nothing -- a conflict: left undetermined, refused later
-    merge a b = maybe b Just a
-    finish (pk, rk) = do
-      ps <- mapM (\k -> ty <$> k) (M.elems pk)
-      r <- ty <$> rk
-      pure (ps, r)
-    ty KInt = TInt
-    ty KBool = TVal
-    -- (parameter, kind) facts from one body
-    demands sol ps e = case spineOf e of
-      (CVar h, args@(_ : _))
-        | scalarPrefix `isPrefixOf` h, h `notElem` [scalarPrefix ++ "unbox", scalarPrefix ++ "box", scalarPrefix ++ "isInt"] ->
-            [(p, Just KInt) | CVar p <- args, S.member p ps] ++ concatMap (demands sol ps) args
-        | Just (pk, _) <- M.lookup h sol, Just (wps, _) <- M.lookup h workers ->
-            [(p, M.findWithDefault Nothing wp pk) | (CVar p, wp) <- zip args wps, S.member p ps] ++ concatMap (demands sol ps) args
-        | otherwise -> concatMap (demands sol ps) args
-      _ -> case e of
-        CTagEq 1 _ (CVar p) | S.member p ps -> [(p, Just KBool)]
-        CTagEq _ _ x -> demands sol ps x
-        CIf (CVar p) t f | S.member p ps -> (p, Just KBool) : concatMap (demands sol ps) [t, f]
-        CIf c t f -> concatMap (demands sol ps) [c, t, f]
-        CLet x a b -> demands sol ps a ++ demands sol (S.delete x ps) b
-        CApp f a -> demands sol ps f ++ demands sol ps a
-        _ -> []
-    resultKind sol pk = \case
-      CLet _ _ b -> resultKind sol pk b
-      CIf _ t f -> case (resultKind sol pk t, resultKind sol pk f) of
-        (Just a, Just b) | a == b -> Just a
-        (Just a, Nothing) -> Just a
-        (Nothing, b) -> b
-        _ -> Nothing
-      CTagEq _ _ _ -> Just KBool
-      CMk 1 _ [] -> Just KBool
-      CVar p -> M.findWithDefault Nothing p pk
-      e -> case spineOf e of
-        (CVar h, _ : _)
-          | h == scalarPrefix ++ "unbox" -> Just KInt
-          | scalarPrefix `isPrefixOf` h, Just _ <- M.lookup (drop (length scalarPrefix) h) arithOps -> Just KInt
-          | scalarPrefix `isPrefixOf` h, Just _ <- M.lookup (drop (length scalarPrefix) h) cmpOps -> Just KBool
-          | Just (_, rk) <- M.lookup h sol -> rk
-        _ -> Nothing
-
--- ---------------------------------------------------------------------
-
-lowerProgram :: Prog -> M.Map String Int -> (Program, [(Name, Reason)])
-lowerProgram prog ext =
-  let sigs = workerSignatures prog
+-- The producer's ordered signatures survive normalization and reuse.
+-- Unsupported kinds remain absent, causing explicit worker fallback.
+lowerProgram :: ScalarSignatures -> Prog -> M.Map String Int -> (Program, [(Name, Reason)])
+lowerProgram workerSigs prog ext =
+  let sigs = M.mapMaybe convert workerSigs
+      convert (ps, r) = (,) <$> traverse kindTy ps <*> kindTy r
+      kindTy KI = Just TInt
+      kindTy KB = Just TVal
+      kindTy _ = Nothing
       results = [(n, lowerFn sigs prog ext n def) | (n, def) <- M.toList prog]
    in (M.fromList [(n, f) | (n, Right f) <- results], [(n, r) | (n, Left r) <- results])
 
 lowerFn :: M.Map Name ([Ty], Ty) -> Prog -> M.Map String Int -> Name -> ([Name], Core) -> Either Reason Fn
 lowerFn sigs prog ext name (params, body)
   | length params > 8 = Left "arity above 8 (parameters through the hart spill cells)"
-  | workerPrefix `isPrefixOf` name, M.notMember name sigs = Left "a scalar worker whose convention was not determined"
+  | workerPrefix `isPrefixOf` name, M.notMember name sigs = Left "a scalar worker without representation metadata"
+  | length ptys /= length params = Left "worker representation metadata has the wrong arity"
   | otherwise = evalStateT go (St 0 0 Nothing [])
   where
     (ptys, rty) = M.findWithDefault (map (const TVal) params, TVal) name sigs
@@ -227,6 +168,8 @@ lowerFn sigs prog ext name (params, body)
 -- the convention of a known callee
 calleeOf :: Cx -> Name -> Int -> Maybe Callee
 calleeOf cx h n
+  | workerPrefix `isPrefixOf` h, M.notMember h (cxSigs cx) = Nothing
+  | Just (pts, _) <- M.lookup h (cxSigs cx), length pts /= n = Nothing
   | Just (ps, _) <- M.lookup h (cxProg cx), length ps == n =
       let (pts, r) = M.findWithDefault (map (const TVal) ps, TVal) h (cxSigs cx)
        in Just (Callee h Local pts r)
@@ -352,6 +295,10 @@ lowerVal cx env = \case
   e@(CApp _ _) -> case spineOf e of
     (CVar h, args)
       | M.member h env -> refuse ("an application of the local `" ++ h ++ "`")
+      | workerPrefix `isPrefixOf` h, M.notMember h (cxSigs cx) ->
+          refuse ("call to scalar worker `" ++ h ++ "` without representation metadata")
+      | Just (pts, _) <- M.lookup h (cxSigs cx), length pts /= length args ->
+          refuse ("call to scalar worker `" ++ h ++ "` whose representation metadata has the wrong arity")
       -- tagged Int arithmetic and comparison (the base profile's operators)
       | isPrim cx env h, Just o <- M.lookup h arithOps, [a, b] <- args -> arith o a b
       | isPrim cx env h, Just o <- M.lookup h cmpOps, [a, b] <- args -> compare' o a b

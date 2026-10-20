@@ -2,9 +2,11 @@
 
 Date: 2026-10-20. Kind: goal / plan and proposed architecture.
 Status: accepted with the narrowing of the 2026-10-20 review (one IR, A64
-first, M0 as a register page, a kill criterion); M1 in progress.
-Applies to: native compiler at `c328232f63d3f4a6a4b4c1dde7bce17cc449e19d`
-(codegen revision 66). Audience: compiler implementers and reviewers.
+first, M0 as a register page, an M3 investment review). M1 review repairs
+are implemented; M2 native emission remains pending.
+Baseline: native compiler at `c328232f63d3f4a6a4b4c1dde7bce17cc449e19d`
+(codegen revision 66); 2026-10-21 amendments cover the M1 repairs at revision 67.
+Audience: compiler implementers and reviewers.
 This page changes no language contract, backend default, or runtime ABI.
 
 ## Goal and relationship to the performance work
@@ -72,28 +74,25 @@ Core after existing ownership and worker transformations
   -> typed low-level CFG with virtual values and explicit effects
   -> verified shared simplification and representation decisions
   -> target legalization, instruction selection and ABI lowering
-  -> machine IR with virtual registers and explicit constraints
+  -> selected instructions with virtual operands and explicit constraints
   -> register allocation, spill insertion and parallel-copy resolution
   -> frame layout, prologue/epilogue and stack-check expansion
   -> target verification and instruction-bound analysis
   -> assembly printer -> existing assembler/linker
 ```
 
-Use one representation until a target forces a second. The typed IR
+Use one portable IR and a small selected-instruction structure initially. The typed IR
 describes operations, their semantics and their effects over virtual
 values. Instruction selection is a per-target function from an IR
 operation to a list of selected instructions whose operands carry
 constraints: register class, fixed or tied operand, implicit uses and
 definitions, clobbers. Physical register assignment respects those
-constraints. The subset the legacy emission uses is about twenty
-mnemonics on three targets that already agree on register roles; LLVM
-separates a portable IR from a machine IR for dozens of targets, and that
-split is not earned here yet. A separate machine IR is added only if
-x86-64's tied operands and fixed division/shift registers cannot be
-expressed as operand constraints on selected instructions, and the page
-that adds it says what could not be expressed. `Sol/KIR.hs` is the house
-precedent: one small IR, two assemblers, correctness visible per
-instruction.
+constraints. Every temporary introduced by selection, flag dependency, fixed/tied operand,
+and runtime-call clobber must be visible before allocation. This information
+may live in a small instruction structure; the number of representations is
+not a restriction. Add a separate machine IR if it makes those contracts
+clearer. `Sol/KIR.hs` is a useful local precedent, not a constraint on native
+compiler design.
 
 Keep ISA/word size, calling convention, object format and execution profile
 separate in target configuration. AArch64 macOS and Linux share instruction
@@ -108,7 +107,8 @@ Proposed module boundaries, subject to the first implementation review:
 | `Codegen/IR.hs`, `Codegen/Verify.hs`, `Codegen/Dump.hs` | Portable types, CFG, validation and deterministic dumps |
 | `Codegen/Lower.hs` | Core-to-IR lowering with source locations and existing semantics |
 | `Codegen/Liveness.hs`, `Codegen/Allocate.hs` | Shared analyses, allocation and spill decisions |
-| `Codegen/Frame.hs` | Selected-instruction operand constraints, symbolic frame objects and final layout |
+| `Codegen/Selected.hs` | Selected instructions, operand constraints, temporaries, flags and call clobbers |
+| `Codegen/Frame.hs` | Symbolic frame objects and final layout |
 | `Codegen/Target/{A64,X64,RV64,RV32}.hs` | Legalization, instruction selection, ABI constraints and target printing |
 | `Codegen/Bounds.hs` | Structured segment analysis and explicit bound provenance |
 
@@ -203,8 +203,9 @@ metric; changing an externally consumed bound requires explicit migration.
 
 ## Implementation milestones
 
-All stages are pending. Each stage should be independently reviewable and
-retain a working legacy backend.
+M1 has an initial implementation; its review repairs and M0 inventory precede
+M2 native emission. Each stage remains independently reviewable and retains
+a working legacy backend.
 
 ### M0. The inventory as a register page
 
@@ -213,22 +214,25 @@ already record how values flow through the generator, the three
 translators' register maps and per-line costs, the call, constructor and
 case sequences, the fuel tick and the stack check. M0 is a short register
 page that points at those sections and adds what they do not hold. It is
-days of work, not a milestone with its own exit gate.
+a bounded inventory rather than a broad redesign. Its ABI, root, stack and
+bound contracts are an exit gate before M2 emits native code.
 
-- [ ] Core forms the generator accepts, grouped by the milestone that lowers them.
-- [ ] Call shapes: `a0..a7`, the x64 `a6`/`a7` cells, the per-hart argspill
+- [x] Core forms the generator accepts, grouped by the milestone that lowers them.
+- [x] Preserve ordered scalar-worker representations from the worker producer;
+  never recover them by parameter name or default an unknown worker to `TVal`.
+- [x] Call shapes: `a0..a7`, the x64 `a6`/`a7` cells, the per-hart argspill
   cells, `fpr_apply`'s argument vector, exported and imported entrypoints,
   TLS and hart reads per host.
-- [ ] The root, scanning and stack-relocation contract per profile.
-- [x] The bound's consumers: `Compile.wcetSummary` under `FPRC_WCET`, the
-  `tests/check_*.py` scripts that read it, and nothing in QOS as of
-  `c328232` (recorded in the [M1 page](2026-10-20-TYPED-IR-M1.md)); the
-  compatibility strategy from the fuel section above is still to write.
+- [x] The root, scanning and stack-relocation contract per profile.
+- [x] Bound consumers and a compatibility strategy are recorded in the
+  [register](2026-10-21-NATIVE-IR-CONTRACTS.md). QOS has documentation
+  references; no executable QOS parser was found in the inspected source.
 - [ ] The opt-in backend selector and strict coverage mode (M2); the
   report and dump format are the M1 page's `FPR_TYPED_IR`.
 
-Exit: the page exists and M1's lowering cites it for every form it accepts
-or refuses.
+Exit: the [register](2026-10-21-NATIVE-IR-CONTRACTS.md) maps every Core form
+and records the runtime contracts. Executable native selection and strict
+coverage remain M2 deliverables.
 
 ### M1. IR, verifier and a scalar lowering path
 
@@ -368,15 +372,15 @@ Build all binaries before timing; use at least 31 alternating paired rounds
 after warmup, validate every result, and retain raw samples, hashes and flags.
 Separate process-wall and internal-kernel timing.
 
-**Kill criterion.** The IR is justified by allocation, not by tidiness.
+**M3 investment review.** Assess allocation gains and maintainability separately.
 If, at the end of M3, the new path's allocator does not beat the best
 validated legacy opt-in combination (as of `c328232`: retained scoring
 under the costed gate, compact frames, self loops and A64 frame pairs
 together) on fib, sum and helpers by at least the 2% trigger below, with
-no regression on pipeline and SHA, then the project is a maintainability
-project only. The page that records that result says so, and whether to
-carry on to M4 with four direct backends is a decision taken on that
-page, not a default.
+no regression on pipeline and SHA, record which performance goals remain unmet and assess whether to proceed to
+M4. Use repeatable paired results and their uncertainty, not a single median
+cutoff. Include compile time, code size, maintenance cost and target-specific
+tradeoffs. Further backend investment is an explicit decision on that page.
 
 For default promotion, set target-specific budgets before the experiment.
 As an initial review trigger, investigate any median slowdown above 2% or a
@@ -391,18 +395,20 @@ remain open acceptance items.
 
 ## Immediate next implementation slice
 
-Start with M1 and write M0's register page beside it: add the typed IR,
-its verifier, deterministic dumps and a reference evaluator, and lower a
-scalar subset of Core containing checked arithmetic, a branch join, a
-known call, a recursive function with an explicit fuel point and a self
-tail loop. The slice emits no code, bumps no code-generation revision
-and changes no default; an unsupported Core form is a reported fallback
-reason. Its page is
-[2026-10-20-TYPED-IR-M1.md](2026-10-20-TYPED-IR-M1.md).
+M1's initial implementation and review repairs are recorded in
+[TYPED-IR-M1](2026-10-20-TYPED-IR-M1.md) and
+[M1-REPAIRS](2026-10-21-TYPED-IR-M1-REPAIRS.md). The bounded M0 inventory is
+[NATIVE-IR-CONTRACTS](2026-10-21-NATIVE-IR-CONTRACTS.md).
 
-Then implement M2 for AArch64 with conservative allocation and the
-x86-64 constraints in the model. That creates an executable comparison
-before adding the register allocator and representation rewrites.
+Next is M2: define explicit target/profile policy and a selected-instruction
+structure with all introduced temporaries, fixed/tied operands, flag
+use/definitions, register classes and runtime-call clobbers. Include the x86
+constraints in its first tests. Then implement conservative A64 scalar
+selection and spill placement, preserving the runtime ABI and entry policy.
+Compare checked arithmetic, branch joins, known calls, recursion and a self
+tail loop through independent oracles before attempting allocation improvements.
+The opt-in selector, strict coverage, cache identity, bound reporting and
+legacy/new ABI tests are part of this milestone, not follow-up default work.
 
 ## Alternatives and decision status
 
@@ -421,3 +427,25 @@ not a dependency decision.
 
 Keep implementation evidence in dated follow-ups and update milestone
 checkboxes only with links to the corresponding changes and validation.
+
+## 2026-10-21 review amendments and immediate work
+
+The [M1 review](2026-10-21-TYPED-IR-REVIEW.md) found two convention-recovery
+defects and a native Bool equality discrepancy. Before native emission:
+
+- [x] Carry ordered worker signatures from `Workers` into IR lowering and
+  refuse internal calls with missing signature metadata.
+- [x] Repair the native Bool discrepancy and cover mixed Bool/Int parameter
+  order, equality/inequality and aliases. Cross-unit and foreign-Bool
+  boundaries are exercised by the worker suite; M2 retains its own ABI gate.
+- [x] Use independent expected results as well as legacy differential tests.
+- [x] Finish the [runtime contract register](2026-10-21-NATIVE-IR-CONTRACTS.md),
+  including target/profile policy and instruction-bound provenance.
+- [x] Correct M1 evidence: native result/trap comparisons, structural evaluator
+  tick expectations, and portable dumps are distinct validation legs.
+
+Implementation evidence: [M1 repairs](2026-10-21-TYPED-IR-M1-REPAIRS.md).
+
+Next implementation: M2's
+selected-instruction constraints and conservative A64 emission. No native
+backend selection or default promotion is implied by closing the repairs.

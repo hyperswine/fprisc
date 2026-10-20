@@ -1,0 +1,6 @@
+unsafe base.
+boolEq : unsafe Int -> Bool -> Bool .
+boolEq n b = if n == 0 then b == (n < 1) else boolEq (n - 1) b.
+run : unsafe Int -> Int .
+run n = if boolEq n (n >= 0) then 1 else 0.
+main = print "{run 2}".
