@@ -44,6 +44,12 @@ artifact, rather than at its old executable command path.
 
 ## Executable identity
 
+The original identity below remains active. On 20 October, the targeted
+`b415870-writer-lifetime-20261020` fix passed isolated tests but failed real printer
+access after installation; both attempts were rolled back. See the
+[outage follow-up](2026-10-20-PRINTER-DASHBOARD-OUTAGE.md) for the reproduced
+socket race, candidate hashes, validation and macOS app-identity investigation.
+
 Source commit: `b4158705155c9fc901d9b2bd3e07e968636d99cc`.
 
 Original tested release artifact SHA-256:
@@ -151,3 +157,19 @@ HTTP requests. A short native stack sample was retained at
 threads and accept-loop activity. Restart recovered HTTP service. Its exact
 trigger remains unconfirmed, and the successful acceptance is not a long-running
 reliability or reboot test.
+
+## Follow-up: recurring HTTP outage, 2026-10-20
+
+The process remained alive but reset HTTP requests after roughly 58 hours.
+A restart recovered service with maintenance data unchanged. The
+[incident report](2026-10-20-PRINTER-DASHBOARD-OUTAGE.md) records evidence,
+the unconfirmed underlying trigger and the deployed HTTP watchdog. Its current
+GUI-session scope does not provide boot-wide recovery; see the watchdog runbook.
+
+The follow-up socket-lifetime fix and bounded native diagnostics are tested in
+source, but the 20 October redeployment was rolled back. The updated app reported
+TCP errno 65 before TLS, while SSH could reach both printers. The original
+signed app remains installed. Resolve the mini's app/context-specific Local
+Network access and repeat full authenticated A1/P1S acceptance before promoting
+the candidate; HTTP health alone is insufficient. See the incident's final
+redeployment section for artifact hashes, rollback and validation evidence.

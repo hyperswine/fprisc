@@ -11,6 +11,18 @@
 #include <sys/socket.h>
 #include <unistd.h>
 static uw tls_active;
+/* Numeric native failures only: no peer names, paths, payloads or credentials.
+ * Per-operation exponential sampling retains first failures without an
+ * unbounded log stream during repeated upstream outages. */
+static void tls_failure(int operation, int error, long verify) {
+  static unsigned long counts[5];
+  unsigned index = operation >= 1 && operation <= 5 ? (unsigned)operation - 1 : 4;
+  unsigned long n = __atomic_add_fetch(&counts[index], 1, __ATOMIC_RELAXED);
+  if (n && (n <= 4 || !(n & (n - 1))))
+    fprintf(stderr, "TLS failure op=%d count=%lu errno=%d verify=%ld\n",
+            operation, n, error, verify);
+  errno = error;
+}
 static int tls_admit(uw capacity) {
   uw count = __atomic_load_n(&tls_active, __ATOMIC_ACQUIRE);
   while (count < capacity)
@@ -93,6 +105,8 @@ static void *tls_worker(void *arg) {
     }
     char message[256] = "TLS operation failed";
     if (code < 0) {
+      int saved_errno = errno;
+      tls_failure(op, saved_errno, t->ssl ? SSL_get_verify_result(t->ssl) : -1L);
       unsigned long error = ERR_get_error();
       if (error) ERR_error_string_n(error, message, sizeof message);
       else if (errno) snprintf(message, sizeof message, "TLS I/O: %s", strerror(errno));

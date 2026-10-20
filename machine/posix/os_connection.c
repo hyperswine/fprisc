@@ -23,6 +23,8 @@ FPR_FN(fpr_g_ConnHost_x2eclose, unavailable_close, 1);
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
+#include <stdio.h>
+#include <time.h>
 #include <sys/socket.h>
 #include <unistd.h>
 static void socket_destroy(void *data, int fd) { (void)data; close(fd); }
@@ -37,16 +39,32 @@ static int socket_nonblock(int fd) {
 #endif
   return 0;
 }
+/* Adoption failures otherwise become a silent TCP reset at a gateway;
+ * outgoing connect failures need the same evidence for offline devices. Log
+ * only native metadata, never peer addresses or request/authentication bytes.
+ * Independent counters retain the first occurrence of each stage; exponential
+ * sampling bounds log growth during a persistent failure or hostile traffic. */
+static void connection_failure(unsigned stage, int fd, int error) {
+  static unsigned long counts[6];
+  static const char *names[] = {"socket-type", "peer", "nonblocking", "ownership", "connect-begin", "connect-status"};
+  unsigned long n = __atomic_add_fetch(&counts[stage], 1, __ATOMIC_RELAXED);
+  if (n && (n <= 4 || !(n & (n - 1))))
+    fprintf(stderr, "ConnHost failure time=%lld stage=%s count=%lu fd=%d errno=%d\n",
+            (long long)time(NULL), names[stage], n, fd, error);
+  errno = error;
+}
 static V conn_adopt(V fdv) {
   if (!ISINT(fdv) || UNTAG(fdv) < 0 || UNTAG(fdv) > INT_MAX) return os_err("invalid descriptor");
   int fd = (int)UNTAG(fdv), type; socklen_t len = sizeof type;
   struct sockaddr_storage peer;
-  if (getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &len)) return os_errno();
-  if (type != SOCK_STREAM) return os_err("not a stream socket");
+  if (getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &len)) { connection_failure(0, fd, errno); return os_errno(); }
+  if (type != SOCK_STREAM) { connection_failure(0, fd, 0); return os_err("not a stream socket"); }
   len = sizeof peer;
-  if (getpeername(fd, (struct sockaddr *)&peer, &len) || socket_nonblock(fd)) return os_errno();
+  if (getpeername(fd, (struct sockaddr *)&peer, &len)) { connection_failure(1, fd, errno); return os_errno(); }
+  if (socket_nonblock(fd)) { connection_failure(2, fd, errno); return os_errno(); }
   uw id = fpr_owned_add(OWN_SOCKET, fd, 0, socket_destroy);
-  return id ? os_ok(TAG(id)) : os_err("socket already owned or resource ownership unavailable");
+  if (!id) { connection_failure(3, fd, 0); return os_err("socket already owned or resource ownership unavailable"); }
+  return os_ok(TAG(id));
 }
 FPR_FN(fpr_g_ConnHost_x2eadopt, conn_adopt, 1);
 static V conn_begin(V familyv, V addrv, V portv) {
@@ -73,7 +91,7 @@ static V conn_begin(V familyv, V addrv, V portv) {
   if (fd < 0) return os_errno();
   if (socket_nonblock(fd)) { int e = errno; close(fd); errno = e; return os_errno(); }
   int r = connect(fd, (struct sockaddr *)&storage, len);
-  if (r && errno != EINPROGRESS && errno != EWOULDBLOCK && errno != EINTR) { int e = errno; close(fd); errno = e; return os_errno(); }
+  if (r && errno != EINPROGRESS && errno != EWOULDBLOCK && errno != EINTR) { int e = errno; connection_failure(4, fd, e); close(fd); errno = e; return os_errno(); }
   uw id = fpr_owned_add(OWN_SOCKET, fd, 0, socket_destroy);
   if (!id) { close(fd); return os_err("native resource ownership unavailable"); }
   return os_ok(TAG(id));
@@ -93,7 +111,9 @@ static V conn_status(V id) {
   struct sockaddr_storage peer; n = sizeof peer;
   int connected = !bad && !error && getpeername(r->fd, (struct sockaddr *)&peer, &n) == 0;
   int saved = bad ? errno : error;
+  int fd = r->fd;
   fpr_owned_unlock();
+  if (saved) connection_failure(5, fd, saved);
   if (saved) { errno = saved; return os_errno(); }
   return os_ok(connected ? (V)&fpr_true : (V)&fpr_false);
 }

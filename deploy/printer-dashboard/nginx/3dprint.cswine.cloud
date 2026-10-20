@@ -1,4 +1,4 @@
-# Linode HTTPS -> private Tailscale TCP forward -> macm4 loopback dashboard.
+# Linode HTTPS -> M1 Mac mini Printer Host over Tailscale.
 # Access is configured separately in /etc/nginx/snippets/3dprint-access.conf.
 map $http_upgrade $printer_connection_upgrade {
     default upgrade;
@@ -25,7 +25,7 @@ server {
     add_header Referrer-Policy no-referrer always;
     add_header X-Robots-Tag "noindex, nofollow" always;
     location / {
-        proxy_pass http://100.94.229.117:6730;
+        proxy_pass http://100.107.153.43:6730;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

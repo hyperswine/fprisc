@@ -1,5 +1,21 @@
 # Printer dashboard proxy
 
+## Current deployment
+
+Production uses `root@localhost-0` (Linode Nginx) to proxy to
+`jq@100.107.153.43:6730` (M1 Mac mini Printer Host system LaunchDaemon).
+The tracked Nginx template now matches this upstream. Use the
+[migration runbook](../../docs/2026-10-17-PRINTER-MAC-MINI-MIGRATION.md) for
+current service/data paths and rollback. The old macm4 host is retired.
+
+A 2026-10-20 outage was recovered by restarting the living-but-unhealthy app.
+See the [incident report](../../docs/2026-10-20-PRINTER-DASHBOARD-OUTAGE.md) and
+[HTTP watchdog runbook](watchdog/README.md), including its GUI-session limitation.
+The tested socket-lifetime update was rolled back pending macOS printer-network
+access in the updated app context; the original signed binary remains installed.
+
+## Historical workstation deployment (superseded 2026-10-17)
+
 `3dprint.cswine.cloud` resolves to the Linode (`root@localhost-0`). The app
 runs on macm4 at `127.0.0.1:6730`; its private FP-RISC listener and printer
 credentials stay on that machine.

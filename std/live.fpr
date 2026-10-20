@@ -614,7 +614,7 @@ session reg poller app conn req = case WS.accept req of
       r = ask me reg (Join writer);
       sid = (case r of Welcome n _ -> n | _ -> 0);
       _ = drop r; # a reply is a message: undropped, it pins the register's slab for this session's life
-      (if sid == 0 then Unit else reading reg app.codec writer sid (ST.readerOn poller conn) conn A.tidySmall).
+      (if sid == 0 then writerFinished me writer else reading reg app.codec writer sid (ST.readerOn poller conn) conn A.tidySmall).
 
 # frames in, events out.  A frame is {"msg": wire, "arg": text} (the client
 # script's shape); what it decodes to is a message of the app's type, or Refused.
@@ -626,7 +626,22 @@ reading reg codec writer sid r0 conn t0 = case A.tidy (myself 0) (r0, t0) of (r,
             reading reg codec writer sid r2 conn t
         | WS.Ping payload -> _ = send writer (Pong payload); reading reg codec writer sid r2 conn t
         | WS.Binary _ -> reading reg codec writer sid r2 conn t
-        | _ -> _ = A.sendSure (myself 0) reg (0, Leave sid); _ = A.sendSure (myself 0) writer Stop; Unit)).
+        | _ -> _ = A.sendSure (myself 0) reg (0, Leave sid); writerFinished (myself 0) writer)).
+
+# Tcp closes this descriptor when the reader returns. The writer must stop
+# first: a late close frame could otherwise hit a newly reused descriptor.
+# Both actors are pinned to this hart (spawnWith above), so killing the writer
+# after a bounded drain cannot race a write on another hart. A peer that stops
+# reading must not hold the TCP handler forever. Writer sends no replies here.
+writerFinished : unsafe Int -> Int -> Unit .
+writerFinished me writer =
+  deadline = Sys.timeUs Unit + 2000000;
+  sent = A.sendSureUntil deadline me writer Stop;
+  _ = drop sent;
+  result = A.awaitFromUntil deadline me writer;
+  _ = drop result;
+  _ = kill writer;
+  Unit.
 
 eventOf codec sid text = case J.parse text of
     Err why -> Refused sid "not JSON: {why}"

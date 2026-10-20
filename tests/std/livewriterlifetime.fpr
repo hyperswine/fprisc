@@ -1,0 +1,29 @@
+# Exercise Live's real reader teardown with a deliberately delayed writer.
+unsafe base.
+Live = use "std/live".
+A = use "std/actor".
+TCP = use "std/tcp".
+ST = use "std/stream".
+WS = use "std/ws".
+H = use "std/http".
+Msg = Type (Ignore).
+sink self = message = receive self; _ = drop message; sink self.
+writer conn stuck self =
+  message = receive self;
+  _ = drop message;
+  if stuck then _ = receive self; Unit else
+  _ = Sys.sleepUs 200000;
+  _ = WS.sendClose 1001 conn;
+  Unit.
+handle reg conn peer = case H.readRequest conn of
+    Err _ -> Unit
+  | Ok req -> if req.path == "/health" then _ = ST.write (H.renderResponse (H.text 200 "ok\n")) conn; Unit else
+      worker = A.spawnWith (A.Dynamic 64) (writer conn (req.path == "/stuck"));
+      _ = ST.write "HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\n\r\n" conn;
+      Live.reading reg @Msg worker 1 (ST.reader conn) conn A.tidySmall.
+main =
+  reg = spawn sink;
+  listener = case TCP.listen "127.0.0.1" 0 of Ok l -> l | Err why -> error why;
+  _ = print "ready {TCP.port listener}";
+  _ = TCP.serve listener (handle reg);
+  Unit.
