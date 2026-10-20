@@ -1,0 +1,12 @@
+#!/bin/sh
+# Cabal's dependency solver probes pkg-config before package program-options
+# apply. Select this wrapper in cabal.project.local for direct macOS builds.
+set -eu
+for prefix in /opt/homebrew /usr/local; do
+    if [ -d "$prefix/opt/libarchive/lib/pkgconfig" ]; then
+        PKG_CONFIG_PATH="$prefix/opt/libarchive/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+        export PKG_CONFIG_PATH
+        break
+    fi
+done
+exec pkg-config "$@"

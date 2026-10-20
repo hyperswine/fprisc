@@ -2,8 +2,8 @@
 #
 # Debian trixie container: fp-risc.cabal needs libgit2 >= 1.9
 # (pkgconfig-depends), which Ubuntu 24.04 does not ship; trixie's GHC
-# 9.6 and its libghc-* packages cover every build-depend, so no Hackage
-# downloads.  One job: building the compiler dominates, and the checks
+# 9.6 and its libghc-* packages provide the Haskell dependencies.
+# One job: building the compiler dominates, and the checks
 # all need the same tree.
 #
 # Covered: tests/check_base.py (the umbrella: hosted x86-64 builds and
@@ -11,8 +11,8 @@
 # vector limits and POSIX PIC, the RV64 Unix lowering), check_i32 and
 # check_raw, and the RV64 Linux suite cross-built with
 # riscv64-linux-gnu-gcc and run under qemu-user.
-# Not covered: bare-metal RISC-V/RV32 legs (riscv64-unknown-elf multilib,
-# qemu-system), boards, macOS/AArch64 hosts.
+# check_raw also covers builtin images with the installed bare-metal tools.
+# Not covered: physical boards and macOS/AArch64 hosts.
 name: ci
 
 on:
@@ -49,9 +49,12 @@ jobs:
             gcc-riscv64-linux-gnu libc6-dev-riscv64-cross qemu-user \
             gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf qemu-system-misc
       - uses: actions/checkout@v4
-      - name: make fpr
+      - name: cabal build (Linux x86-64)
         run: |
           cabal update
+          cabal build
+      - name: make fpr
+        run: |
           make fpr
           ./fpr --version || test -x ./fpr
       # in a container job ${{ github.workspace }} is the HOST's path;

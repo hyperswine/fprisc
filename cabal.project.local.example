@@ -1,8 +1,11 @@
--- per-machine knobs (copy to cabal.project.local):
-package fp-risc
-  -- `make fpr` discovers Homebrew llvm@18 automatically on macOS.
-  -- These are only needed for direct `cabal build` on this example host.
-  extra-lib-dirs: /opt/homebrew/opt/llvm@18/lib
-  extra-include-dirs: /opt/homebrew/opt/llvm@18/include
-  -- profiling build: uncomment
-  -- profiling: True
+-- macOS with Homebrew: copy to cabal.project.local, then run cabal build.
+-- Install the native dependencies with: brew install pkgconf libgit2 libarchive
+-- libarchive is keg-only. Cabal's solver needs its pkg-config metadata;
+-- extra-lib-dirs alone does not satisfy pkgconfig-depends.
+-- The wrapper supports Apple Silicon and Intel Homebrew prefixes.
+program-locations
+  pkg-config-location: tools/pkg-config-homebrew
+
+-- Optional per-package knobs:
+-- package fp-risc
+--   profiling: True
