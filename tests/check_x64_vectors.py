@@ -13,9 +13,10 @@ temporary=tempfile.TemporaryDirectory(prefix='fpr-x64-vectors-')
 tmp=Path(temporary.name)
 def kernels(fixture, name):
     output = tmp / (name + '.s')
-    subprocess.run([str(root/'fprc'), '--profile=base', '--target=x64',
+    compiled=subprocess.run([str(root/'fprc'), '--profile=base', '--target=x64',
                     str(root/'tests/base'/fixture), str(output)], cwd=root,
-                   capture_output=True, text=True, check=True, timeout=120)
+                   capture_output=True, text=True, timeout=120)
+    assert compiled.returncode==0,(compiled.stdout,compiled.stderr)
     assembly = output.read_text().split('# ---- Vec specializations', 1)[1].split('\n', 1)[1]
     assembly = assembly.split('    .section')[0].split('    .rodata')[0]
     # Keep instructions intact; adapt only platform symbol/TLS linkage.
@@ -31,8 +32,21 @@ def kernels(fixture, name):
 
 scalar_path, a = kernels('veccaps.fpr', 'scalar-kernels')
 fold_path, fold_assembly = kernels('veccaps_fold.fpr', 'captured-fold-kernels')
+pipeline_fixture=tmp/'pipeline.fpr'
+pipeline_fixture.write_text('''profile base.
+pplus a x = x + a.
+pabove a x = x > a.
+pbelow a x = x < a.
+pweighted f a x = a + f * x.
+probe a b c d e f seed v =
+  Vec.fold (pweighted f) seed (Vec.map (pplus e) (Vec.filter (pbelow d)
+    (Vec.map (pplus c) (Vec.filter (pabove b) (Vec.map (pplus a) v))))).
+main = (s,v) = probe 1 4 2 20 3 2 7 (Vec.iota 99); _ = print s; Vec.free v.
+''')
+pipeline_path, pipeline_assembly=kernels(pipeline_fixture,'pipeline-kernels')
+pipeline_symbol=re.search(r'\.globl (_?fpr_vspec_pipeline\w+)',pipeline_assembly).group(1).removeprefix('_')
 # Referenced object constants need addresses even when guards never fall back.
-objs=set(re.findall(r'\bfpr_obj_[A-Za-z0-9_]+', (a+fold_assembly).replace('_fpr_obj_','fpr_obj_')))
+objs=set(re.findall(r'\bfpr_obj_[A-Za-z0-9_]+', (a+fold_assembly+pipeline_assembly).replace('_fpr_obj_','fpr_obj_')))
 Path(str(tmp/'fpr-x64-kernel-probe.c')).write_text('''
 #include <stdint.h>
 #include <stdlib.h>
@@ -64,6 +78,7 @@ extern Vec *fpr_vspec_mvmap_bump9(V,Vec*);
 extern Vec *fpr_vspec_rfilter_keep9(Vec*);
 extern void *fpr_vspec_fold_lifted_x5f31(V,Vec*);
 extern void *fpr_vspec_fold_step(V,V,V,Vec*);
+extern void *PIPELINE(V,V,V,V,V,V);
 static Vec *mk(int n,int k,int rep) {
  Vec *v=calloc(1,sizeof *v);v->tid=9006;v->var=rep;v->len=n;v->ncols=k;
  v->kinds=calloc(k<8?8:k,1);v->cols=calloc(k,sizeof(Col*));
@@ -80,6 +95,17 @@ int main(void) {
   void *pair=fpr_vspec_fold_lifted_x5f31(1,v);
   intptr_t s=0;for(int i=0;i<kept;i++)s+=v->cols[0]->base[i];
   assert(*(intptr_t*)((char*)pair+8)==2*s+1);
+  Vec *p=mk(n,1,1);
+  // FP-RISC's seventh/eighth arguments use TLS cells on x64.
+  probe_a6=3;probe_a7=(intptr_t)p;
+  void *result=PIPELINE(5,15,7,41,5,9);
+  intptr_t expected=7;int count=0;
+  for(int i=0;i<n;i++)if(i+1>4 && i+3<20) {
+   intptr_t x=i+6;expected+=2*x;assert(p->cols[0]->base[count++]==x);
+  }
+  assert(p->len==count);
+  assert(*(intptr_t*)((char*)result+8)==2*expected+1);
+  assert(*(Vec**)((char*)result+16)==p);
  }
  Vec *v=mk(1000,9,3);
  // Set the shape identity from the generated guard before calling the map.
@@ -95,13 +121,13 @@ int main(void) {
  for(int i=0;i<1000;i++)total+=2*(9*i+36)+3;
  assert(*(intptr_t*)((char*)pair+8)==2*total+1);
  assert(fuel_calls>100);
- puts("x64 kernels: 100 scalar map/filter/fold lengths, nine-column map/filter, captured wide fold and clobbering calls PASS");
+ puts("x64 kernels: 100 scalar/pipeline lengths, eight pipeline arguments, nine-column map/filter, captured wide fold and clobbering calls PASS");
 }
 ''')
 # x64 shape guard emits immediate tid into r11.
 guard=a[a.index(('_' if mac else '')+'fpr_vspec_mvmap_bump9:'):]
 shape=re.search(r'movq 16\(%rsi\), %r10\s+movq \$(\d+), %r11',guard).group(1)
-p=Path(str(tmp/'fpr-x64-kernel-probe.c'));p.write_text(p.read_text().replace('SHAPE',shape))
-subprocess.run([shutil.which('clang') or 'cc',*(['-arch','x86_64'] if mac else []),'-O2',str(scalar_path),str(fold_path),str(p),'-o',str(tmp/'fpr-x64-kernel-probe-v2')],check=True,timeout=60)
+p=Path(str(tmp/'fpr-x64-kernel-probe.c'));p.write_text(p.read_text().replace('SHAPE',shape).replace('PIPELINE',pipeline_symbol))
+subprocess.run([shutil.which('clang') or 'cc',*(['-arch','x86_64'] if mac else []),'-O2',str(scalar_path),str(fold_path),str(pipeline_path),str(p),'-o',str(tmp/'fpr-x64-kernel-probe-v2')],check=True,timeout=60)
 if mac: subprocess.run(['codesign','--force','--sign','-',str(tmp/'fpr-x64-kernel-probe-v2')],capture_output=True,check=True)
 subprocess.run([*(['arch','-x86_64'] if rosetta else []),str(tmp/'fpr-x64-kernel-probe-v2')],check=True,timeout=60)

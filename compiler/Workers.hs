@@ -74,7 +74,7 @@ reduce = walk $ \e -> case e of
   CIf (CMk 1 1 []) a _ -> a
   CIf (CMk 1 0 []) _ b -> b
   _ -> e
-  where fieldVar (CVar n) = (prefix++"field0.") `isPrefixOf` n || (prefix++"field1.") `isPrefixOf` n
+  where fieldVar (CVar n) = (prefix++"field.") `isPrefixOf` n
         fieldVar _ = False
 
 -- Preserve the existing vector kernel tier: its arithmetic-closure analysis
@@ -97,9 +97,10 @@ workerize fields scalars prog =
       (q,ns) = if scalars then scalarWorkers p else (p,0)
   in (q,["# private workers: fields="++show nf++" scalar="++show ns])
 
--- One two-field constructor parameter per function in this first pass.
+-- One fixed-width constructor parameter per function. The expanded arity
+-- must fit the native ABI (8 registers plus 56 per-hart spill cells).
 -- Whole-value uses must forward to the same recursive parameter. Returning
--- the original pair would require a new allocation at a general entry, so it
+-- the original accumulator would require a new allocation at a general entry, so it
 -- stays general too. Explicit constructor results retain their original cost.
 fieldWorkers :: Prog -> (Prog,Int)
 fieldWorkers input = (M.map (\(ps,b)->(ps,rewrite (S.fromList ps) b)) combined,M.size plans)
@@ -111,55 +112,77 @@ fieldWorkers input = (M.map (\(ps,b)->(ps,rewrite (S.fromList ps) b)) combined,M
     blocked = vectorCallbacks prog
     choose (name,(ps,b))
       | S.member name blocked = Nothing
-      | null ps || length ps >= 8 || size b > 1024 || internalWorker name = Nothing
+      | null ps || length ps > 64 || size b > 8192 || internalWorker name = Nothing
       | otherwise = case mapMaybe (candidate name ps b) (zip [0..] ps) of
-          (i,tv):_ -> Just (name,(i,tv,prefix++"fields."++name))
+          (i,tv,width):_ -> Just (name,(i,tv,width,prefix++"fields."++name))
           _ -> Nothing
     candidate name ps b (i,p) = do
       let tags = S.fromList [(t,v) | CTagEq t v (CVar x) <- nodes b, x==p]
-          projections = [k | CProj k (CVar x) <- nodes b, x==p]
-          -- Record patterns project directly, without a tag guard. Infer
-          -- their shape only from a unique reconstructed recursive argument;
-          -- the general wrapper still checks it before splitting fields.
+          -- Record projections may test several shapes sharing a field name.
+          -- Prefer a unique reconstructed recursive shape; the general wrapper
+          -- checks that shape before entering the worker. Other shape tests
+          -- then reduce against the known constructor without losing branches
+          -- at the general entry.
           rebuilt = S.fromList [(t,v) | e<-nodes b, (CVar f,args)<-[spine e],
-                                f==name, i<length args, CMk t v [_,_]<-[args!!i]]
-      tv <- case S.toList (if S.null tags then rebuilt else tags) of
-              [one] -> Just one; _ -> Nothing
-      if M.lookup tv arities /= Just (S.singleton 2) || null projections ||
-         any (`notElem` [0,1]) projections || not (uses name i p True b) ||
-         not (any (recursive name i tv) (nodes b)) then Nothing else Just (i,tv)
-    recursive name i (t,v) e = case spine e of
-      (CVar f,args) | f==name, i < length args -> case args!!i of
-        CMk t' v' [_,_] -> (t,v)==(t',v'); _ -> False
+                                f==name, length args==length ps, CMk t v _<-[args!!i]]
+      tv <- case (S.toList rebuilt, S.toList tags) of
+              ([one], _) -> Just one
+              (_, [one]) -> Just one
+              _ -> Nothing
+      width <- case M.lookup tv arities of
+        Just widths | [n] <- S.toList widths -> Just n
+        _ -> Nothing
+      -- Discard only branches excluded by the guarded constructor shape.
+      -- A shared record field can have different offsets in other shapes;
+      -- those unreachable projections must not veto this worker.
+      let narrowed = narrow p tv b
+          projections = [k | CProj k (CVar x) <- nodes narrowed, x==p]
+      if width < 2 || length ps - 1 + width > 64 || size narrowed > 1024 || null projections ||
+         any (\k -> k < 0 || k >= width) projections ||
+         name `elem` ps || rebinds name b || rebinds p b ||
+         not (uses name i p width narrowed) ||
+         size (snd (makeBody name ps b i tv width)) > 1024 ||
+         not (any (recursive name (length ps) i tv width) (nodes narrowed))
+        then Nothing else Just (i,tv,width)
+    narrow p tv = walk $ \e -> case e of
+      CTagEq t v (CVar x) | x==p -> CMk 1 (if tv==(t,v) then 1 else 0) []
+      CIf (CMk 1 1 []) a _ -> a
+      CIf (CMk 1 0 []) _ b -> b
+      _ -> e
+    recursive name arity i (t,v) width e = case spine e of
+      (CVar f,args) | f==name, length args==arity -> case args!!i of
+        CMk t' v' xs -> (t,v)==(t',v') && length xs==width; _ -> False
       _ -> False
-    uses name i p tailPos e = case e of
+    uses name i p width e = case e of
       CVar x | x==p -> False
-      CProj k (CVar x) | x==p -> k `elem` [0,1]
+      CProj k (CVar x) | x==p -> k >= 0 && k < width
       CTagEq _ _ (CVar x) | x==p -> True
-      CLet x a b -> uses name i p False a && (x==p || uses name i p tailPos b)
-      CIf c a b -> uses name i p False c && uses name i p tailPos a && uses name i p tailPos b
+      CLet x a b -> uses name i p width a && (x==p || uses name i p width b)
+      CIf c a b -> uses name i p width c && uses name i p width a && uses name i p width b
       _ -> case spine e of
-        (CVar f,args@(_:_)) | f==name -> and [if j==i && a==CVar p then True else uses name i p False a | (j,a)<-zip [0..] args]
-        _ -> all (uses name i p False) (children e)
-    -- A fixed budget bounds code growth; all selected calls remain saturated.
+        (CVar f,args@(_:_)) | f==name -> and [if j==i && a==CVar p then True else uses name i p width a | (j,a)<-zip [0..] args]
+        _ -> all (uses name i p width) (children e)
+    -- Bound both the source scan (8192 nodes, allowing record shape chains)
+    -- and the actual cloned body (1024 nodes, including expanded forwarding).
+    -- All selected calls remain saturated; at most 128 workers per unit.
     plans = M.fromList (take 128 (mapMaybe choose (M.toAscList prog)))
-    additions = M.fromList [(worker,makeBody name ps b i tv) |
-                   (name,(i,tv,worker))<-M.toList plans, let (ps,b)=prog M.! name]
-    makeBody name ps b i (t,v) =
-      let p=ps!!i; a=prefix++"field0."++name; z=prefix++"field1."++name
-          params=take i ps++[a,z]++drop (i+1) ps
-      in (params,reduce (subst p (CMk t v [CVar a,CVar z]) b))
+    additions = M.fromList [(worker,makeBody name ps b i tv width) |
+                   (name,(i,tv,width,worker))<-M.toList plans, let (ps,b)=prog M.! name]
+    makeBody name ps b i (t,v) width =
+      let p=ps!!i; fields=[prefix++"field."++show k++"."++name | k<-[0..width-1]]
+          params=take i ps++fields++drop (i+1) ps
+      in (params,reduce (subst p (CMk t v (map CVar fields)) b))
     wrapped = M.mapWithKey (\name def@(ps,b) -> case M.lookup name plans of
       Nothing -> input M.! name
-      Just (i,(t,v),worker) -> let p=CVar (ps!!i) in
-        (ps,CIf (CTagEq t v p) (app worker (map CVar (take i ps)++[CProj 0 p,CProj 1 p]++map CVar (drop (i+1) ps))) b)) prog
+      Just (i,(t,v),width,worker) -> let p=CVar (ps!!i) in
+        (ps,CIf (CTagEq t v p) (app worker (map CVar (take i ps)++[CProj k p | k<-[0..width-1]]++map CVar (drop (i+1) ps))) b)) prog
     combined = M.union wrapped additions
     -- Rewrite a complete spine once, preserving strict field/argument order.
     rewrite bound e = case spine e of
-      (CVar f,args@(_:_)) | S.notMember f bound, Just (i,(t,v),worker) <- M.lookup f plans,
+      (CVar f,args@(_:_)) | S.notMember f bound, Just (i,(t,v),width,worker) <- M.lookup f plans,
                            length args == length (fst (prog M.! f)),
-                           CMk t' v' [a,b] <- args!!i, (t,v)==(t',v') ->
-          app worker (map (rewrite bound) (take i args++[a,b]++drop (i+1) args))
+                           CMk t' v' xs <- args!!i, (t,v)==(t',v'), length xs==width ->
+          app worker (map (rewrite bound) (take i args++xs++drop (i+1) args))
       _ -> case e of
         CApp a b -> CApp (rewrite bound a) (rewrite bound b); CLet n a b -> CLet n (rewrite bound a) (rewrite (S.insert n bound) b)
         CIf a b c -> CIf (rewrite bound a) (rewrite bound b) (rewrite bound c)

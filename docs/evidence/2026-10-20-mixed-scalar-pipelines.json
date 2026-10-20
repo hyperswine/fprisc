@@ -1,0 +1,450 @@
+{
+  "date": "2026-10-20",
+  "base_commit": "01772b42d10a297bed5122fff5dbe2985f543bf3",
+  "codegen_revision": 53,
+  "source_sha256": {
+    "compiler/Codegen.hs": "6847e6f2708b63f136fae617c5211f9d83c87a422647437318e20bac9dfc837f",
+    "compiler/Workers.hs": "d525998815cf318ffe2f8921102115d895adc319eab1f268107934466bfe3a56",
+    "tests/base/vecpipeline.fpr": "51c1062cd7a7783581754f6503d9470e2dc92e591ae58407be0a830df71424ef",
+    "tests/check_vector_pipelines.py": "bdb25bdc6ab38e82094686b661968e15ce5eea3e7b84d313b405f9e9fa95e154",
+    "tests/check_vector_kinds.py": "bbe1d91d6442e48a86b135bb43fab9d6779ea211586d3a195fb85dc2ba5cfe3a",
+    "tests/check_x64_vectors.py": "9560d86b25529585e1640ba00009898aae4b9a5d768fc269bd76274d1b04291f",
+    "tests/bench/workers_clock.c": "3957ea26e997275bb80ab8550ed9a9c8cdfc1d76b8e65bacafdfa450d76bde5b",
+    "tests/base/floatprobe.c": "9f881747ece149551f58f87a8e8f07edbd2fba2e53a552afc8ea8be6bfa35164"
+  },
+  "compiler_sha256": {
+    "macOS": "84f11ab075f802d5e00c72d71c3fa3d671a33dbe6c30db4ce882ca9e14ba6092",
+    "Linux": "60e8d289863c534c964d48ef3492648519b514cb21910a2a29d4b70fb165f205"
+  },
+  "local_tests": {
+    "pipelines": {
+      "status": "PASS",
+      "log_sha256": "2feaf6ba8b3a1c05f0d313bdc3967e1a13555367367342e834058161b89d9346",
+      "last_lines": [
+        "pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=0: PASS",
+        "pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=1: PASS",
+        "mixed scalar pipelines: native differential, 1/4 harts, returns/compaction, floats, captures, effects/traps and four-target emission PASS"
+      ]
+    },
+    "vector_kinds": {
+      "status": "PASS",
+      "log_sha256": "957412927938d735e105f6bbd6a92cb32e045e3f1d27370d3b2556312f145143",
+      "last_lines": [
+        "Vector kinds: float captures, mixed record fold, captured map/map and filter/filter, strict order and 100 SIMD tails PASS",
+        "A64 NEON execution: native host and C IEEE reference PASS"
+      ]
+    },
+    "vector_fallback_frames": {
+      "status": "PASS",
+      "log_sha256": "62cebfe3b173e67d6d2409f0f3c77b27efefa6ba876652da365881072c433acf",
+      "last_lines": [
+        "x64 raGuard: top-word ra frames accepted; misplaced or overwritten ra refused: PASS",
+        "Vector fallback frames: ra in the top word across 7 fixtures (46 Vec frames), x64 lowering accepts them, fallbacks run (fallback frames: ok 5 cap 27 43): PASS"
+      ]
+    },
+    "x64_vectors": {
+      "status": "PASS",
+      "log_sha256": "46c35cc16ed48910f026aa25515f4a357138c6e9e8ee540d046d26b303acb4c1",
+      "last_lines": [
+        "x64 kernels: 100 scalar/pipeline lengths, eight pipeline arguments, nine-column map/filter, captured wide fold and clobbering calls PASS"
+      ]
+    },
+    "specialization": {
+      "status": "PASS",
+      "log_sha256": "88d42c0781bd52a2ce3cf9109fd8d094b540db2d20955414ea9839fce952b9e9",
+      "last_lines": [
+        "Specialization Core: recursive groups, shadowing, dynamic callbacks, imported lifts, bounded growth: PASS",
+        "Specialization: native/Sol differential + warm mode caches, effects/panics, 64,000 -> 0 callback bytes, RV64/RV32/A64/x64 emission: PASS"
+      ]
+    },
+    "registers": {
+      "status": "PASS",
+      "log_sha256": "6853656d87f7bf22b01df07e02c7dc44c46ad66466a62c4f7ae7ab1a07e0f26d",
+      "last_lines": [
+        "x64 register-heavy body: 285 independent C-reference cases: PASS",
+        "Registers: differential fixtures, warm-cache mode separation and three-backend emission: PASS"
+      ]
+    },
+    "wide_workers": {
+      "status": "PASS",
+      "log_sha256": "2f6eb0e234001925bd57b97924ccc87d9d62cc8157940487d89324c60458b4c3",
+      "last_lines": [
+        "wide workers optimized shared module called by general ABI host: PASS",
+        "wide workers native differential, allocation, effects, actor ownership, stack, 64-argument boundary and four-target emission: PASS",
+        "{\"0:0:0\": {\"record16:1\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}}, \"0:0:1\": {\"record16:1\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}}, \"0:1:0\": {\"record16:1\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}}, \"0:1:1\": {\"record16:1\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}}, \"1:0:0\": {\"record16:1\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}}, \"1:0:1\": {\"record16:1\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 160, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 64, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 528, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 96, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}}, \"1:1:0\": {\"record16:1\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}}, \"1:1:1\": {\"record16:1\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record16:4\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:1\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record3:4\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:1\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record4:4\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:1\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record63:4\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:1\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"record8:4\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:1\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple16:4\": {\"alloc_bytes\": 1600320, \"alloc_requests\": 10002, \"buddy_allocs\": 5, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:1\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple3:4\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:1\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple4:4\": {\"alloc_bytes\": 640128, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:1\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple63:4\": {\"alloc_bytes\": 5281056, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:1\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple64:4\": {\"alloc_bytes\": 5441088, \"alloc_requests\": 10002, \"buddy_allocs\": 12, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:1\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"tuple8:4\": {\"alloc_bytes\": 960192, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}}}"
+      ]
+    },
+    "workers": {
+      "status": "PASS",
+      "log_sha256": "d4e9a93df6f18fbc58a46460abc65bd2ed8e52a0b3237f882f93d67b11e71c7e",
+      "last_lines": [
+        "{\"allocations\": {\"0:0:0:combined-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:0:0:pair-cost\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:0:0:record-cost\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:0:0:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:0:1:combined-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:0:1:pair-cost\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:0:1:record-cost\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:0:1:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:1:0:combined-cost\": {\"alloc_bytes\": 480048, \"alloc_requests\": 10001, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:1:0:pair-cost\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:1:0:record-cost\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:1:0:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:1:1:combined-cost\": {\"alloc_bytes\": 480048, \"alloc_requests\": 10001, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:1:1:pair-cost\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:1:1:record-cost\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"0:1:1:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:0:0:combined-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:0:0:pair-cost\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:0:0:record-cost\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:0:0:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:0:1:combined-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:0:1:pair-cost\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:0:1:record-cost\": {\"alloc_bytes\": 48, \"alloc_requests\": 1, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:0:1:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:1:0:combined-cost\": {\"alloc_bytes\": 480048, \"alloc_requests\": 10001, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:1:0:pair-cost\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:1:0:record-cost\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:1:0:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:1:1:combined-cost\": {\"alloc_bytes\": 480048, \"alloc_requests\": 10001, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:1:1:pair-cost\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:1:1:record-cost\": {\"alloc_bytes\": 480096, \"alloc_requests\": 10002, \"buddy_allocs\": 3, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}, \"1:1:1:scalar-cost\": {\"alloc_bytes\": 0, \"alloc_requests\": 0, \"buddy_allocs\": 0, \"buddy_frees\": 0, \"copies\": 0, \"copy_bytes\": 0, \"message_slabs\": 0, \"turns\": 0}}, \"panic_reasons\": {\"add-overflow\": \"Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\", \"bad-pair\": \"no matching clause for pairSum\", \"div-overflow\": \"Int overflow: -4611686018427387904 / -1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\", \"division-zero\": \"division by zero\", \"field-panic\": \"field panic\", \"mul-overflow\": \"Int overflow: 1099511627776 * 1099511627776 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\", \"sub-overflow\": \"Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps\"}}",
+        "Workers: A64/RV64/x64 emission, RV32 fallback, private entries and bounded fuel segments PASS",
+        "Workers: optimized shared module called by general-ABI host PASS"
+      ]
+    }
+  },
+  "boards": {
+    "pi": {
+      "identity": "Linux qosp 6.6.28-v8 #3 SMP PREEMPT Sun Sep 20 13:26:50 UTC 2026 aarch64 GNU/Linux\n 04:16:54 up 5 days, 19:55,  load average: 0.34, 0.39, 0.36\nRaspberry Pi 4 Model B Rev 1.4\u0000\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [pool_workqueue_]\n    4 root     [kworker/R-rcu_g]\n    5 root     [kworker/R-rcu_p]\n    6 root     [kworker/R-slub_]\n    7 root     [kworker/R-netns]\n    9 root     [kworker/0:0H-kb]\n   11 root     [kworker/u8:0-cf]\n   12 root     [kworker/R-mm_pe]\n   13 root     [rcu_tasks_kthre]\n   14 root     [rcu_tasks_rude_]\n   15 root     [rcu_tasks_trace]\n   16 root     [ksoftirqd/0]\n   17 root     [rcu_preempt]\n   18 root     [migration/0]\n   19 root     [cpuhp/0]\n   20 root     [cpuhp/1]\n   21 root     [migration/1]\n",
+      "files": {
+        "off": {
+          "sha256": "c206171356e02e143f98c996788d5d082f3cbe44d228d1e8fe4367169498035f",
+          "bytes": 636072
+        },
+        "on": {
+          "sha256": "d9cc30ba63a9cc79c3b9efd201122b1a1178dbe1d3cd1a6fe6399e463d52f2e6",
+          "bytes": 638496
+        }
+      },
+      "modes": {
+        "off": "PASS",
+        "on": "PASS"
+      },
+      "calls": [
+        {
+          "mode": "off",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "off",
+          "case": "effects",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "off",
+          "case": "seed",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "off",
+          "case": "trap",
+          "harts": 1,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "off",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "off",
+          "case": "effects",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "off",
+          "case": "seed",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "off",
+          "case": "trap",
+          "harts": 4,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "on",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "on",
+          "case": "effects",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "on",
+          "case": "seed",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "on",
+          "case": "trap",
+          "harts": 1,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "on",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "on",
+          "case": "effects",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "on",
+          "case": "seed",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "on",
+          "case": "trap",
+          "harts": 4,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        }
+      ],
+      "samples_ns": {
+        "off": [
+          98120630,
+          98294333,
+          98357297,
+          98227518,
+          98576445,
+          99944870,
+          98327852
+        ],
+        "on": [
+          97095944,
+          99180852,
+          98941019,
+          99983278,
+          98197944,
+          97480074,
+          96738963
+        ]
+      },
+      "medians_ns": {
+        "off": 98327852,
+        "on": 98197944
+      },
+      "final_identity": " 04:16:59 up 5 days, 19:55,  load average: 0.39, 0.40, 0.36\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [pool_workqueue_]\n    4 root     [kworker/R-rcu_g]\n    5 root     [kworker/R-rcu_p]\n    6 root     [kworker/R-slub_]\n    7 root     [kworker/R-netns]\n    9 root     [kworker/0:0H-kb]\n   11 root     [kworker/u8:0-cf]\n   12 root     [kworker/R-mm_pe]\n   13 root     [rcu_tasks_kthre]\n   14 root     [rcu_tasks_rude_]\n   15 root     [rcu_tasks_trace]\n   16 root     [ksoftirqd/0]\n   17 root     [rcu_preempt]\n   18 root     [migration/0]\n   19 root     [cpuhp/0]\n   20 root     [cpuhp/1]\n   21 root     [migration/1]\n",
+      "status": "PASS",
+      "cleanup_status": 0
+    },
+    "star64": {
+      "identity": "Linux qos-star64 5.15.131 #3 SMP Thu Oct 15 11:05:41 UTC 2026 riscv64 GNU/Linux\n 11:43:18 up 4 days, 11:43,  load average: 0.32, 0.28, 0.29\nPine64 Star64\u0000\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [rcu_gp]\n    4 root     [rcu_par_gp]\n    5 root     [slub_flushwq]\n    6 root     [netns]\n   10 root     [mm_percpu_wq]\n   11 root     [rcu_tasks_trace]\n   12 root     [ksoftirqd/0]\n   13 root     [rcu_sched]\n   14 root     [migration/0]\n   16 root     [cpuhp/0]\n   17 root     [cpuhp/1]\n   18 root     [migration/1]\n   19 root     [ksoftirqd/1]\n   22 root     [cpuhp/2]\n   23 root     [migration/2]\n   24 root     [ksoftirqd/2]\n   27 root     [cpuhp/3]\n",
+      "files": {
+        "off": {
+          "sha256": "2e05479621bc515bb9de055a6acdf9a03f7b5a6ebb92ae4b485487761a013686",
+          "bytes": 499416
+        },
+        "on": {
+          "sha256": "5c3608ee43a434e1a5b83289ca64de24ba8450f56a8c784b7eb03593ed6bd6d3",
+          "bytes": 505944
+        }
+      },
+      "modes": {
+        "off": "PASS",
+        "on": "PASS"
+      },
+      "calls": [
+        {
+          "mode": "off",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "off",
+          "case": "effects",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "off",
+          "case": "seed",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "off",
+          "case": "trap",
+          "harts": 1,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "off",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "off",
+          "case": "effects",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "off",
+          "case": "seed",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "off",
+          "case": "trap",
+          "harts": 4,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "on",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "on",
+          "case": "effects",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "on",
+          "case": "seed",
+          "harts": 1,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "on",
+          "case": "trap",
+          "harts": 1,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        },
+        {
+          "mode": "on",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "ad30a5f1cadf8bf9daac7a7629bd9041daabe3504ef988eba4e2fd0db7952271"
+        },
+        {
+          "mode": "on",
+          "case": "effects",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "e74bdd135e5d6f17cff3864d3cbb6be92f6153c7ae26d10b454749fe2304ddb6"
+        },
+        {
+          "mode": "on",
+          "case": "seed",
+          "harts": 4,
+          "status": 0,
+          "stderr": "",
+          "stdout_sha256": "3d904723f460c9f01628eb3afc71a6a46cb090daad237913e27e98a22a6c837a"
+        },
+        {
+          "mode": "on",
+          "case": "trap",
+          "harts": 4,
+          "status": 1,
+          "stderr": "",
+          "stdout_sha256": "8c10982d7880eb3183ed9c5982c6163096e4724c535c1b30c03cdafa3fd4ac9b"
+        }
+      ],
+      "samples_ns": {
+        "off": [
+          74289750,
+          74549250,
+          74754250,
+          75174500,
+          74832500,
+          74544750,
+          74348250
+        ],
+        "on": [
+          69552500,
+          69456500,
+          69618750,
+          70225500,
+          69345250,
+          69345000,
+          69693000
+        ]
+      },
+      "medians_ns": {
+        "off": 74549250,
+        "on": 69552500
+      },
+      "final_identity": " 11:43:23 up 4 days, 11:43,  load average: 0.37, 0.30, 0.30\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [rcu_gp]\n    4 root     [rcu_par_gp]\n    5 root     [slub_flushwq]\n    6 root     [netns]\n   10 root     [mm_percpu_wq]\n   11 root     [rcu_tasks_trace]\n   12 root     [ksoftirqd/0]\n   13 root     [rcu_sched]\n   14 root     [migration/0]\n   16 root     [cpuhp/0]\n   17 root     [cpuhp/1]\n   18 root     [migration/1]\n   19 root     [ksoftirqd/1]\n   22 root     [cpuhp/2]\n   23 root     [migration/2]\n   24 root     [ksoftirqd/2]\n   27 root     [cpuhp/3]\n",
+      "status": "PASS",
+      "cleanup_status": 0
+    }
+  },
+  "benchmark": {
+    "elements": 1000000,
+    "pipeline": "map (+1), filter (>500000), fold (acc + 2*x) from 7",
+    "expected_sum": 750000500007,
+    "expected_retained": 500000,
+    "samples_per_mode": 7,
+    "order": "alternating off/on then on/off",
+    "runtime_harts": 1,
+    "timed": "pipeline only; vector construction and freeing excluded",
+    "switch": "FPR_NO_VEC_FUSE=1 versus 0; other optimizations enabled",
+    "limitations": "single arithmetic microbenchmark, live QOS services, no clock pinning, no RSS/allocation measurement"
+  },
+  "raw_evidence_directory": "/Users/jasonqin/Documents/GitHub/qos/.qos/validation/allocation-20261018/mixed-pipelines-20261020"
+}

@@ -33,11 +33,15 @@ with tempfile.TemporaryDirectory(prefix='fpr-vector-kinds-') as d:
     asm=tmp/'kinds.s'
     run(['./fprc','--profile=base','--target=a64','tests/base/veckinds.fpr',asm])
     text=asm.read_text()
-    assert '([KD,KD,KD],KD)' in text and '([KD,KI,KD,KI,KD,KD],KD)' in text,text[-15000:]
+    assert '([KD,KD,KD,KD,KD],KD)' in text and '([KD,KI,KD,KI,KD,KD],KD)' in text,text[-15000:]
+    assert 'mixed scalar pipeline: map affine -> filter above -> fold sumFloat' in text
     # the Int map/map pair (`plus`) fuses although Int + traps on overflow:
     # the 2026-10-13 relaxation (docs/2026-10-03-FUSION-EFFECT-ORDER.md)
-    assert re.search(r'Vec.map specialized on _vfuse_',text),text[-15000:]
-    assert re.search(r'Vec.filter specialized on _vfuse_',text),text[-15000:]
+    assert re.search(r'mixed scalar pipeline: map _vfuse_.* -> filter _vfuse_',text),text[-15000:]
+    run(['./fprc','--profile=base','--target=a64','tests/base/veckinds.fpr',asm],{'FPR_NO_VEC_FUSE':'1'})
+    text=asm.read_text()
+    assert '([KD,KD,KD],KD)' in text and '([KD,KI,KD,KI,KD,KD],KD)' in text
+    assert 'mixed scalar pipeline:' not in text
     run(['./fprc','--profile=base','--target=a64','tests/base/vecsimd.fpr',asm])
     text=asm.read_text()
     assert text.count('[NEON 2 lanes]')==1 and 'fmul v' in text and '.2d' in text

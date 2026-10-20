@@ -1,0 +1,119 @@
+unsafe base.
+Bench.start : Unit -> Unit .
+Bench.elapsed : Unit -> Int .
+plus a x = x + a.
+scale a x = x * a.
+above a x = x > a.
+below a x = x < a.
+sum a x = a + x.
+weighted factor a x = a + x * factor.
+choose flag x = if flag then x > 3 else x < 3.
+floatPlus : F64 -> F64 -> F64 .
+floatPlus a x = x + a.
+floatAbove : F64 -> F64 -> Bool .
+floatAbove a x = x > a.
+floatSum : F64 -> F64 -> F64 .
+floatSum a x = a + x.
+smallPlus : F32 -> F32 -> F32 .
+smallPlus a x = x + a.
+smallAbove : F32 -> F32 -> Bool .
+smallAbove a x = x > a.
+smallSum : F32 -> F32 -> F32 .
+smallSum a x = a + x.
+
+nested n =
+  (s,v) = Vec.fold (weighted 2) 7 (Vec.filter (above 5) (Vec.map (plus 1) (Vec.iota n)));
+  xs = Vec.toList v; print "nested {n} {s} {xs}".
+lets n =
+  v = Vec.iota n;
+  a = Vec.map (plus 1) v;
+  b = Vec.filter (above 3) a;
+  c = Vec.map (scale 2) b;
+  d = Vec.filter (below 20) c;
+  (s,e) = Vec.fold (weighted 3) 4 d;
+  xs = Vec.toList e; print "lets {n} {s} {xs}".
+noFold n =
+  v = Vec.map (scale 2) (Vec.filter (choose True) (Vec.iota n));
+  print "nofold {n} {Vec.toList v}".
+none n =
+  (s,v) = Vec.fold sum 9 (Vec.map (plus 10) (Vec.filter (above n) (Vec.iota n)));
+  print "none {n} {s} {Vec.toList v}".
+# Six captures plus the seed and vector reach a7, testing flattened staging.
+seven a b c d e f seed n =
+  (s,v) = Vec.fold (weighted f) seed
+    (Vec.filter (below e) (Vec.map (plus d) (Vec.filter (above c)
+      (Vec.map (scale b) (Vec.map (plus a) (Vec.iota n))))));
+  print "seven {s} {Vec.toList v}".
+fillBox n v = if n == 0 then v else fillBox (n - 1) (Vec.push (10 - n) v).
+boxed =
+  (s,v) = Vec.fold (weighted 2) 7 (Vec.filter (above 5) (Vec.map (plus 1) (fillBox 10 (Vec.newAs "b"))));
+  print "boxed {s} {Vec.toList v}".
+show64 xs = case xs of Nil -> "" | x :: rest -> F64.str x + ";" + show64 rest.
+show32 xs = case xs of Nil -> "" | x :: rest -> F32.str x + ";" + show32 rest.
+floats =
+  (s,v) = Vec.fold floatSum 0.0 (Vec.filter (floatAbove 0.0)
+     (Vec.map (floatPlus 1.5) (Vec.fromList [-2.0, -1.0, 0.0, 2.0])));
+  _ = print "float {F64.str s} {show64 (Vec.toList v)}";
+  (t,w) = Vec.fold smallSum 0f (Vec.filter (smallAbove 0f)
+     (Vec.map (smallPlus 1.5f) (Vec.fromList [-2f, -1f, 0f, 2f])));
+  print "small {F32.str t} {show32 (Vec.toList w)}".
+ordered =
+  (s,v) = Vec.fold floatSum 0.0 (Vec.map (floatPlus 0.0)
+    (Vec.filter (floatAbove -1.0e30) (Vec.fromList [1.0e16,1.0,-1.0e16,3.0])));
+  _ = Vec.free v; print "ordered {F64.str s}".
+floatBits : F64 -> String.
+floatRefAdd : F64 -> F64 -> F64.
+floatRefSub : F64 -> F64 -> F64.
+floatRefMul : F64 -> F64 -> F64.
+edgeValues = [0.0, f64frombits 2147483648 0, 1.0, -1.0, 0.1,
+              1.0e308, -1.0e308, f64frombits 0 1, f64frombits 2147483648 1,
+              f64frombits 2146435072 0, f64frombits 4293918720 0,
+              f64frombits 2146959360 1, f64frombits 2146435072 1].
+edgeMap : F64 -> F64.
+edgeMap x = x * 1.5 + 2.0.
+edgePred : F64 -> Bool.
+edgePred x = x >= 0.0.
+edgeLast : F64 -> F64.
+edgeLast x = x - 1.0.
+sameBits : F64 -> F64 -> Bool.
+sameBits a b = if a != a then b != b else floatBits a == floatBits b.
+checkIEEE xs i rows errors = case xs of
+    Nil -> (count,next) = Vec.len rows; _ = Vec.free next; errors + (if count == i then 0 else 1)
+  | x :: rest ->
+      mapped = floatRefAdd (floatRefMul x 1.5) 2.0;
+      if mapped >= 0.0 then
+        (actual,next) = Vec.get i rows;
+        want = floatRefSub mapped 1.0;
+        checkIEEE rest (i + 1) next (errors + (if sameBits actual want then 0 else 1))
+      else checkIEEE rest i rows errors.
+ieee =
+  rows = Vec.map edgeLast (Vec.filter edgePred (Vec.map edgeMap (Vec.fromList edgeValues)));
+  print "IEEE {checkIEEE edgeValues 0 rows 0}".
+noisy x = _ = print "map {x}"; x + 1.
+noisyPred x = _ = print "filter {x}"; x > 0.
+effects =
+  (s,v) = Vec.fold sum 0 (Vec.filter noisyPred (Vec.map noisy (Vec.iota 3)));
+  _ = Vec.free v; print "effects {s}".
+divide x = 12 / x.
+traps =
+  (s,v) = Vec.fold sum 0 (Vec.filter noisyPred (Vec.map divide (Vec.iota 3)));
+  _ = Vec.free v; print s.
+seed = _ = print "seed"; 0.
+seedOrder =
+  v = Vec.map noisy (Vec.iota 3);
+  (s,w) = Vec.fold sum seed (Vec.filter (above 0) v);
+  _ = Vec.free w; print "seed-total {s}".
+run n = if n == 100 then Unit else
+  _ = nested n; _ = lets n; _ = noFold n; _ = none n; run (n + 1).
+bench n =
+  v = Vec.iota n;
+  _ = Bench.start Unit;
+  (s,w) = Vec.fold (weighted 2) 7 (Vec.filter (above 500000) (Vec.map (plus 1) v));
+  ns = Bench.elapsed Unit; (count,z) = Vec.len w; _ = Vec.free z;
+  print "{s} {count} {ns}".
+main = case Sys.args Unit of
+    ["bench"] -> bench 1000000
+  | ["effects"] -> effects
+  | ["trap"] -> traps
+  | ["seed"] -> seedOrder
+  | _ -> _ = run 0; _ = seven 1 2 3 4 20 3 5 10; _ = boxed; _ = floats; _ = ordered; ieee.

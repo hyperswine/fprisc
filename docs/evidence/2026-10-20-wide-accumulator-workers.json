@@ -1,0 +1,3750 @@
+{
+  "date": "2026-10-20",
+  "base_revision": "01772b42d10a297bed5122fff5dbe2985f543bf3",
+  "branch": "codex/wide-workers-20261020",
+  "codegen_revision": 52,
+  "source_sha256": {
+    "compiler/Workers.hs": "d525998815cf318ffe2f8921102115d895adc319eab1f268107934466bfe3a56",
+    "compiler/Codegen.hs": "fea662082829be2a203298840010b458f259cd32ba338ae9361abad0d14394ab",
+    "tests/Workers.hs": "cea0af02eb2853b32e628fc7bfe0a82081bf0134784752acb13e9c7226cc557b",
+    "tests/check_wide_workers.py": "38922ea377f512e08f698ec9d333dc32626a0dd096564629e5ead5a2e057ffe3",
+    "tests/check_base.py": "565f238d1c8ff6f76594e4eec9e1d7b2ab23448731214b9e50228b217af47a15"
+  },
+  "compiler_sha256": {
+    "macOS": "f8d53c3419730610d6f1fc542a4bec9344710c8bb2959cbcebb32bc8814fec80",
+    "Linux": "74cba892f0fa3bc574a18fa2eb7c2f90904affa65743635015347b1893321e73"
+  },
+  "fixture_sha256": "6db490ba4271b8e5b2a9e7d5fbe4912f72293802aeed66fa1dc44db64bc6f8d1",
+  "linux_build_tools": {
+    "ghc": "9.4.7",
+    "gcc": "13.3.0",
+    "riscv64-linux-gnu-gcc": "13.3.0"
+  },
+  "macOS_platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "local_suites": {
+    "native": {
+      "sha256": "2f6eb0e234001925bd57b97924ccc87d9d62cc8157940487d89324c60458b4c3",
+      "messages": [
+        "wide workers inline-disabled=0 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=0 fields-disabled=0 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=0 fields-disabled=1 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=0 fields-disabled=0 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=0 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=1 fields-disabled=0 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=1 fields-disabled=0 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers optimized shared module called by general ABI host: PASS",
+        "wide workers native differential, allocation, effects, actor ownership, stack, 64-argument boundary and four-target emission: PASS"
+      ],
+      "status": "PASS"
+    },
+    "existing": {
+      "sha256": "d4e9a93df6f18fbc58a46460abc65bd2ed8e52a0b3237f882f93d67b11e71c7e",
+      "messages": [
+        "Workers Core: admission, public arity, shadowing, escaping values, unknown kinds, vector tier and clone budget PASS",
+        "Workers: native 1/4-worker differential, independent switches/inliner, warm caches, dynamic entry and exact failure reasons PASS",
+        "Workers: A64/RV64/x64 emission, RV32 fallback, private entries and bounded fuel segments PASS",
+        "Workers: optimized shared module called by general-ABI host PASS"
+      ],
+      "status": "PASS"
+    },
+    "specialization": {
+      "sha256": "88d42c0781bd52a2ce3cf9109fd8d094b540db2d20955414ea9839fce952b9e9",
+      "messages": [
+        "Specialization Core: recursive groups, shadowing, dynamic callbacks, imported lifts, bounded growth: PASS",
+        "Specialization: native/Sol differential + warm mode caches, effects/panics, 64,000 -> 0 callback bytes, RV64/RV32/A64/x64 emission: PASS"
+      ],
+      "status": "PASS"
+    },
+    "registers": {
+      "sha256": "6853656d87f7bf22b01df07e02c7dc44c46ad66466a62c4f7ae7ab1a07e0f26d",
+      "messages": [
+        "x64 register-heavy body: 285 independent C-reference cases: PASS",
+        "Registers: differential fixtures, warm-cache mode separation and three-backend emission: PASS"
+      ],
+      "status": "PASS"
+    },
+    "wide_params": {
+      "sha256": "8930fca5011be595b28ead0f2b1f7e648e01c2786800d648aef13f133f9f7ae3",
+      "messages": [
+        "wide params: 7th/8th params promoted to saved registers lower on rv64/a64/x64 and run on arm64 (wide: 231 418 45728349311): PASS"
+      ],
+      "status": "PASS"
+    },
+    "vector_kinds": {
+      "sha256": "957412927938d735e105f6bbd6a92cb32e045e3f1d27370d3b2556312f145143",
+      "messages": [
+        "Vector kinds: float captures, mixed record fold, captured map/map and filter/filter, strict order and 100 SIMD tails PASS",
+        "A64 NEON execution: native host and C IEEE reference PASS"
+      ],
+      "status": "PASS"
+    }
+  },
+  "local_allocations": {
+    "0:0:0": {
+      "record16:1": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record16:4": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:1": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:4": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:1": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:4": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:1": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:4": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:1": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:4": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:1": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:4": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:1": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:4": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:1": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:4": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:1": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:4": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:1": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:4": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      }
+    },
+    "0:0:1": {
+      "record16:1": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record16:4": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:1": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:4": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:1": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:4": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:1": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:4": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:1": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:4": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:1": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:4": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:1": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:4": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:1": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:4": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:1": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:4": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:1": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:4": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      }
+    },
+    "0:1:0": {
+      "record16:1": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record16:4": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:1": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:4": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:1": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:4": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:1": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:4": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:1": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:4": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:1": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:4": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:1": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:4": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:1": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:4": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:1": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:4": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:1": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:4": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      }
+    },
+    "0:1:1": {
+      "record16:1": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record16:4": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:1": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:4": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:1": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:4": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:1": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:4": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:1": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:4": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:1": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:4": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:1": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:4": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:1": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:4": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:1": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:4": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:1": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:4": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      }
+    },
+    "1:0:0": {
+      "record16:1": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record16:4": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:1": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:4": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:1": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:4": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:1": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:4": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:1": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:4": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:1": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:4": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:1": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:4": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:1": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:4": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:1": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:4": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:1": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:4": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      }
+    },
+    "1:0:1": {
+      "record16:1": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record16:4": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:1": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:4": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:1": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:4": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:1": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:4": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:1": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:4": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:1": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:4": {
+        "alloc_bytes": 160,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:1": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:4": {
+        "alloc_bytes": 48,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:1": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:4": {
+        "alloc_bytes": 64,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:1": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:4": {
+        "alloc_bytes": 528,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:1": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:4": {
+        "alloc_bytes": 96,
+        "alloc_requests": 1,
+        "buddy_allocs": 0,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      }
+    },
+    "1:1:0": {
+      "record16:1": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record16:4": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:1": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:4": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:1": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:4": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:1": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:4": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:1": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:4": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:1": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:4": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:1": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:4": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:1": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:4": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:1": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:4": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:1": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:4": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      }
+    },
+    "1:1:1": {
+      "record16:1": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record16:4": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:1": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record3:4": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:1": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record4:4": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:1": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record63:4": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:1": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "record8:4": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:1": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple16:4": {
+        "alloc_bytes": 1600320,
+        "alloc_requests": 10002,
+        "buddy_allocs": 5,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:1": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple3:4": {
+        "alloc_bytes": 480096,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:1": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple4:4": {
+        "alloc_bytes": 640128,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:1": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple63:4": {
+        "alloc_bytes": 5281056,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:1": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple64:4": {
+        "alloc_bytes": 5441088,
+        "alloc_requests": 10002,
+        "buddy_allocs": 12,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:1": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      },
+      "tuple8:4": {
+        "alloc_bytes": 960192,
+        "alloc_requests": 10002,
+        "buddy_allocs": 3,
+        "buddy_frees": 0,
+        "copies": 0,
+        "copy_bytes": 0,
+        "message_slabs": 0,
+        "turns": 0
+      }
+    }
+  },
+  "boards": {
+    "pi": {
+      "identity": "Linux qosp 6.6.28-v8 #3 SMP PREEMPT Sun Sep 20 13:26:50 UTC 2026 aarch64 GNU/Linux\n 03:39:46 up 5 days, 19:18,  load average: 0.15, 0.23, 0.27\nRaspberry Pi 4 Model B Rev 1.4\u0000\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [pool_workqueue_]\n    4 root     [kworker/R-rcu_g]\n    5 root     [kworker/R-rcu_p]\n    6 root     [kworker/R-slub_]\n    7 root     [kworker/R-netns]\n    9 root     [kworker/0:0H-kb]\n   11 root     [kworker/u8:0-cf]\n   12 root     [kworker/R-mm_pe]\n   13 root     [rcu_tasks_kthre]\n   14 root     [rcu_tasks_rude_]\n   15 root     [rcu_tasks_trace]\n   16 root     [ksoftirqd/0]\n   17 root     [rcu_preempt]\n   18 root     [migration/0]\n   19 root     [cpuhp/0]\n   20 root     [cpuhp/1]\n   21 root     [migration/1]\n",
+      "files": {
+        "off": {
+          "sha256": "464ea222d42f4cc4ca21c708d19b5acc1b63fbbb30be79e594f2c33a6af9eda7",
+          "bytes": 895064
+        },
+        "fields": {
+          "sha256": "3a6cc76fc0c6eb97f415a1636d8f8f7f57657c19acbe2baac5c23e11f0e6b54d",
+          "bytes": 895832
+        },
+        "on": {
+          "sha256": "6d18c3162125f19f84bdb02bc1cb138951addf56f37d1ff9c76b4e2294ffb657",
+          "bytes": 895832
+        },
+        "bench-off": {
+          "sha256": "a4d27f792689717e89666cd28841fe052bbae3ef2d99b434c5b556e4bda0348c",
+          "bytes": 829232
+        },
+        "bench-on": {
+          "sha256": "01044ab55f3ecb18a2af256bd09ccc8733aacf640a639a4d6265438a36e98f09",
+          "bytes": 895584
+        }
+      },
+      "modes": {
+        "off": {
+          "tuple3:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 480096,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "record3:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 480096,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "tuple4:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 640128,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "record4:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 640128,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "tuple8:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 960192,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "record8:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 960192,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "tuple16:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 1600320,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 5,
+            "buddy_frees": 0
+          },
+          "record16:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 1600320,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 5,
+            "buddy_frees": 0
+          },
+          "tuple63:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5281056,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record63:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5281056,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "tuple64:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record64:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "tuple3:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 480096,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "record3:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 480096,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "tuple4:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 640128,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "record4:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 640128,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "tuple8:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 960192,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "record8:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 960192,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "tuple16:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 1600320,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 5,
+            "buddy_frees": 0
+          },
+          "record16:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 1600320,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 5,
+            "buddy_frees": 0
+          },
+          "tuple63:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5281056,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record63:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5281056,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "tuple64:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record64:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          }
+        },
+        "fields": {
+          "tuple3:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record3:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple4:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record4:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple8:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record8:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple16:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record16:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple63:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record63:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple64:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record64:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "tuple3:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record3:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple4:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record4:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple8:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record8:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple16:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record16:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple63:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record63:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple64:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record64:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          }
+        },
+        "on": {
+          "tuple3:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record3:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple4:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record4:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple8:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record8:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple16:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record16:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple63:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record63:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple64:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record64:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "tuple3:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record3:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple4:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record4:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple8:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record8:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple16:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record16:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple63:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record63:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple64:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record64:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          }
+        }
+      },
+      "samples_ns": {
+        "tuple3:off": [
+          259112259,
+          258101722,
+          258594407,
+          257811778,
+          257988722
+        ],
+        "tuple3:on": [
+          60807667,
+          60812296,
+          60495556,
+          60519407,
+          60670000
+        ],
+        "record3:off": [
+          320836851,
+          321574963,
+          320685759,
+          320989444,
+          322516444
+        ],
+        "record3:on": [
+          61109426,
+          60742462,
+          61159666,
+          60790629,
+          60509703
+        ],
+        "tuple8:off": [
+          427453352,
+          428978722,
+          427802500,
+          430040462,
+          429816444
+        ],
+        "tuple8:on": [
+          109697130,
+          109308148,
+          110286204,
+          110097629,
+          109304870
+        ],
+        "record8:off": [
+          760572573,
+          793850481,
+          766305722,
+          762138018,
+          760747296
+        ],
+        "record8:on": [
+          109255834,
+          109222777,
+          109441537,
+          109311815,
+          109432741
+        ],
+        "tuple16:off": [
+          637543925,
+          643523073,
+          646062574,
+          643937444,
+          644071574
+        ],
+        "tuple16:on": [
+          218508666,
+          219110722,
+          217890426,
+          218363129,
+          217984426
+        ],
+        "record16:off": [
+          1105212573,
+          1070365814,
+          1118577684,
+          1103338629,
+          1110199221
+        ],
+        "record16:on": [
+          218057500,
+          217954037,
+          220381074,
+          217976908,
+          218105593
+        ]
+      },
+      "medians_ns": {
+        "tuple3:off": 258101722,
+        "tuple3:on": 60670000,
+        "record3:off": 320989444,
+        "record3:on": 60790629,
+        "tuple8:off": 428978722,
+        "tuple8:on": 109697130,
+        "record8:off": 762138018,
+        "record8:on": 109311815,
+        "tuple16:off": 643937444,
+        "tuple16:on": 218363129,
+        "record16:off": 1105212573,
+        "record16:on": 218057500
+      },
+      "final_identity": " 03:40:33 up 5 days, 19:18,  load average: 0.70, 0.36, 0.32\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [pool_workqueue_]\n    4 root     [kworker/R-rcu_g]\n    5 root     [kworker/R-rcu_p]\n    6 root     [kworker/R-slub_]\n    7 root     [kworker/R-netns]\n    9 root     [kworker/0:0H-kb]\n   11 root     [kworker/u8:0-cf]\n   12 root     [kworker/R-mm_pe]\n   13 root     [rcu_tasks_kthre]\n   14 root     [rcu_tasks_rude_]\n   15 root     [rcu_tasks_trace]\n   16 root     [ksoftirqd/0]\n   17 root     [rcu_preempt]\n   18 root     [migration/0]\n   19 root     [cpuhp/0]\n   20 root     [cpuhp/1]\n   21 root     [migration/1]\n",
+      "status": "PASS",
+      "cleanup_status": 0,
+      "execution_count": 174,
+      "full_execution_log_sha256": "872b93bc8b9b94515555aeda3598435ce1bf8b5ffb418a152bcc57bbb76eb93c"
+    },
+    "star64": {
+      "identity": "Linux qos-star64 5.15.131 #3 SMP Thu Oct 15 11:05:41 UTC 2026 riscv64 GNU/Linux\n 11:06:52 up 4 days, 11:06,  load average: 0.47, 0.34, 0.28\nPine64 Star64\u0000\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [rcu_gp]\n    4 root     [rcu_par_gp]\n    5 root     [slub_flushwq]\n    6 root     [netns]\n   10 root     [mm_percpu_wq]\n   11 root     [rcu_tasks_trace]\n   12 root     [ksoftirqd/0]\n   13 root     [rcu_sched]\n   14 root     [migration/0]\n   16 root     [cpuhp/0]\n   17 root     [cpuhp/1]\n   18 root     [migration/1]\n   19 root     [ksoftirqd/1]\n   22 root     [cpuhp/2]\n   23 root     [migration/2]\n   24 root     [ksoftirqd/2]\n   27 root     [cpuhp/3]\n",
+      "files": {
+        "off": {
+          "sha256": "302155a1b6fc1f435b84c2665879836651cb193649ece4b9a730b07a45a98c04",
+          "bytes": 684608
+        },
+        "fields": {
+          "sha256": "c3d44284776e00224fa4378ebf3062a7c2347da1e35b1cbf4add75023117b0fb",
+          "bytes": 705904
+        },
+        "on": {
+          "sha256": "53fc45a92eebe7c23ad53a5b9bcb525694c7296eeb41c17d11009374b339c867",
+          "bytes": 705904
+        },
+        "bench-off": {
+          "sha256": "e4eef428a7f0d7245faa3cbab0092b70036167a68d5bd9c3cd19cd476a7d747f",
+          "bytes": 684360
+        },
+        "bench-on": {
+          "sha256": "a009b9bc71919c81fb2430d5b9988b2c0f4528b46a804e9dfb3c5625d660af4d",
+          "bytes": 701560
+        }
+      },
+      "modes": {
+        "off": {
+          "tuple3:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 480096,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "record3:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 480096,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "tuple4:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 640128,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "record4:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 640128,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "tuple8:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 960192,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "record8:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 960192,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "tuple16:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 1600320,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 5,
+            "buddy_frees": 0
+          },
+          "record16:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 1600320,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 5,
+            "buddy_frees": 0
+          },
+          "tuple63:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5281056,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record63:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5281056,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "tuple64:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record64:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "tuple3:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 480096,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "record3:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 480096,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "tuple4:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 640128,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "record4:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 640128,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "tuple8:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 960192,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "record8:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 960192,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 3,
+            "buddy_frees": 0
+          },
+          "tuple16:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 1600320,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 5,
+            "buddy_frees": 0
+          },
+          "record16:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 1600320,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 5,
+            "buddy_frees": 0
+          },
+          "tuple63:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5281056,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record63:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5281056,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "tuple64:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record64:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          }
+        },
+        "fields": {
+          "tuple3:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record3:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple4:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record4:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple8:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record8:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple16:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record16:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple63:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record63:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple64:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record64:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "tuple3:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record3:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple4:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record4:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple8:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record8:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple16:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record16:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple63:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record63:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple64:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record64:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          }
+        },
+        "on": {
+          "tuple3:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record3:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple4:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record4:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple8:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record8:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple16:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record16:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple63:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record63:1": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple64:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record64:1": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "tuple3:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record3:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 48,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple4:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record4:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 64,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple8:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record8:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 96,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple16:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record16:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 160,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple63:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "record63:4": {
+            "alloc_requests": 1,
+            "alloc_bytes": 528,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 0,
+            "buddy_frees": 0
+          },
+          "tuple64:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          },
+          "record64:4": {
+            "alloc_requests": 10002,
+            "alloc_bytes": 5441088,
+            "copies": 0,
+            "copy_bytes": 0,
+            "message_slabs": 0,
+            "turns": 0,
+            "buddy_allocs": 12,
+            "buddy_frees": 0
+          }
+        }
+      },
+      "samples_ns": {
+        "tuple3:off": [
+          187057250,
+          187378750,
+          184096000,
+          187098750,
+          188254750
+        ],
+        "tuple3:on": [
+          50265750,
+          50937250,
+          54626500,
+          45755500,
+          50472000
+        ],
+        "record3:off": [
+          224898500,
+          220316000,
+          226730750,
+          226481750,
+          233369000
+        ],
+        "record3:on": [
+          52173750,
+          51769000,
+          51673000,
+          47934500,
+          48336500
+        ],
+        "tuple8:off": [
+          331163250,
+          337202750,
+          335125500,
+          331879750,
+          335326750
+        ],
+        "tuple8:on": [
+          94432000,
+          93785250,
+          91341500,
+          93872000,
+          97764000
+        ],
+        "record8:off": [
+          494106750,
+          479589250,
+          475344500,
+          483416000,
+          483729000
+        ],
+        "record8:on": [
+          94582250,
+          94196250,
+          97653000,
+          90451250,
+          93869750
+        ],
+        "tuple16:off": [
+          540195250,
+          527826750,
+          538363000,
+          533097750,
+          537176750
+        ],
+        "tuple16:on": [
+          158956750,
+          166234500,
+          158648750,
+          161603500,
+          162383500
+        ],
+        "record16:off": [
+          728201750,
+          711128000,
+          706264500,
+          724037250,
+          708770000
+        ],
+        "record16:on": [
+          163337750,
+          164748250,
+          159851500,
+          160866250,
+          161398750
+        ]
+      },
+      "medians_ns": {
+        "tuple3:off": 187098750,
+        "tuple3:on": 50472000,
+        "record3:off": 226481750,
+        "record3:on": 51673000,
+        "tuple8:off": 335125500,
+        "tuple8:on": 93872000,
+        "record8:off": 483416000,
+        "record8:on": 94196250,
+        "tuple16:off": 537176750,
+        "tuple16:on": 161603500,
+        "record16:off": 711128000,
+        "record16:on": 161398750
+      },
+      "final_identity": " 11:07:24 up 4 days, 11:07,  load average: 0.74, 0.42, 0.31\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [rcu_gp]\n    4 root     [rcu_par_gp]\n    5 root     [slub_flushwq]\n    6 root     [netns]\n   10 root     [mm_percpu_wq]\n   11 root     [rcu_tasks_trace]\n   12 root     [ksoftirqd/0]\n   13 root     [rcu_sched]\n   14 root     [migration/0]\n   16 root     [cpuhp/0]\n   17 root     [cpuhp/1]\n   18 root     [migration/1]\n   19 root     [ksoftirqd/1]\n   22 root     [cpuhp/2]\n   23 root     [migration/2]\n   24 root     [ksoftirqd/2]\n   27 root     [cpuhp/3]\n",
+      "status": "PASS",
+      "cleanup_status": 0,
+      "execution_count": 174,
+      "full_execution_log_sha256": "49f88f908d57f529cd66f4976a0d2e4417570ff94e0a91d515dff0f8086be21c"
+    }
+  },
+  "timing_protocol": {
+    "iterations": 1000000,
+    "samples": 5,
+    "order": "alternating off/on then on/off",
+    "runtime_harts": 1,
+    "cost_counters": false,
+    "normal_board_services_active": true
+  },
+  "scope": "Native compiler fixtures; existing QOS installation not replaced; no human GUI validation. Full Base suite not run."
+}

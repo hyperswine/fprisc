@@ -35,6 +35,7 @@ import Modules (ModExport (..))
 
 import Control.Monad (when)
 import Control.Monad.State.Strict
+import Data.Graph (SCC(..), stronglyConnComp)
 import Data.Bits (shiftR, (.&.))
 import Data.Char (isAlphaNum, isAscii, ord)
 import Data.List (stripPrefix, isSuffixOf, foldl', intercalate, isPrefixOf, nub, sort, sortOn)
@@ -52,7 +53,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 51 -- constructor stubs emitted once, by the unit that declares the type (docs/2026-10-19-SHARED-PRELUDE-UNIT.md)
+codegenRev = 53 -- mixed scalar vector pipelines and widened accumulator workers
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -323,8 +324,17 @@ data SpecPlan = SpecPlan
     -- Int captures are guarded/untagged once; typed float captures retain
     -- their IEEE bits. Each argument has an independent kind in spKinds.  0 for the capture-free and record-captured plans.
     spCaps :: Int,
-    spKinds :: Maybe ([Kind], Kind) -- captures, accumulator/columns, result
+    spKinds :: Maybe ([Kind], Kind), -- captures, accumulator/columns, result
+    spPipe :: Maybe PipePlan
   }
+
+-- Stage order is execution order; capture indices refer to entry arguments
+-- saved in frame slots. Those arguments retain source evaluation order.
+data PipePlan = PipePlan
+  { pipeStages :: [(String,String,[Int])],
+    pipeElement :: Kind,
+    pipeAccumulator :: Maybe (Int,Kind)
+  } deriving (Show)
 
 data MvPlan = MvPlan
   { mvTid :: (Int, Int), -- required eltid/elvar (spec guard)
@@ -579,8 +589,8 @@ emitProgram tgt rvv spec exports ext exps elide prog0 =
 --   * everything else (CIf branches, CMk fields, generic CApp) runs
 --     subterms at the same nxt: intermediate values go via the machine
 --     stack, not slots.
-slotsNeeded :: M.Map String Int -> M.Map String Int -> Prog -> S.Set String -> Core -> Int
-slotsNeeded hal ext prog = go0
+slotsNeeded :: Target -> Bool -> M.Map String Int -> M.Map String Int -> Prog -> S.Set String -> Core -> Int
+slotsNeeded tgt spec hal ext prog = go0
   where
     isKnown bound h n
       | S.member h bound = False
@@ -597,11 +607,12 @@ slotsNeeded hal ext prog = go0
       | Just a <- M.lookup h hal = a == n && n > 0
       | otherwise = False
     go0 bound e
+      | spec, Just (plan,args) <- vecSpec (tgtFusion tgt) prog (`S.member` bound) e,
+        (tgtW tgt == 8 && tgtFloatInline tgt) || not (specUsesFloat prog plan) =
+          maximum (length args : [i + 1 + go0 bound a | (i,a)<-zip [0..] args])
+    go0 bound e
       | (CVar h, args@(_ : _)) <- spineOf e,
         isKnown bound h (length args) =
-          maximum (length args : [i + 1 + go0 bound a | (i, a) <- zip [0 ..] args])
-    go0 bound e
-      | Just (_, args) <- vecSpec prog (`S.member` bound) e =
           maximum (length args : [i + 1 + go0 bound a | (i, a) <- zip [0 ..] args])
     go0 bound (CIf c t e) = maximum [go0 bound c, go0 bound t, go0 bound e]
     go0 bound (CLet x a b) = max (go0 bound a) (1 + go0 (S.insert x bound) b)
@@ -614,6 +625,7 @@ slotsNeeded hal ext prog = go0
 
 compileFn :: Prog -> String -> ([String], Core) -> G [String]
 compileFn prog name (params, body0) = do
+  spec <- gets cgSpec
   tgt <- gets cgTgt
   exps <- gets cgExports
   ext <- gets cgExt
@@ -633,7 +645,7 @@ compileFn prog name (params, body0) = do
                 then indexedMemory (M.keysSet prog `S.union` M.keysSet ext) (S.fromList params) body0 else body0
       body = if tgtScalarFast tgt then normIn (S.fromList params) fused else fused
       -- exact high-water mark (see slotsNeeded); +2 is pure paranoia
-      nslots = length params + slotsNeeded (tgtHal tgt) ext prog (S.fromList params) body + 2
+      nslots = length params + slotsNeeded tgt spec (tgtHal tgt) ext prog (S.fromList params) body + 2
       baseFrame = ((2 * w + w * nslots + 15) `div` 16) * 16
       env0 = M.fromList (zip params [0 ..])
   bodyLines <- gen prog env0 (length params) Tail body
@@ -1365,7 +1377,7 @@ genT tgt spec prog ext = go
     -- (op, fn); see emitSpecs).  The spec symbol behaves exactly like a
     -- supercombinator, so knownCall staging + TCO apply unchanged.
     go env nxt pos e
-      | spec, Just (plan, callArgs) <- vecSpec prog (`M.member` env) e,
+      | spec, Just (plan, callArgs) <- vecSpec (tgtFusion tgt) prog (`M.member` env) e,
         (w == 8 && tgtFloatInline tgt) || not (specUsesFloat prog plan) = do
           sym <- requestSpec plan
           knownCall env nxt pos sym callArgs
@@ -1772,7 +1784,7 @@ declines tgt spec prog owner = goD S.empty
               (CVar f, caps) <- spineOf fe,
               M.member f prog,
               not (S.member f bound) ->
-                case vecSpec prog (`S.member` bound) e of
+                case vecSpec (tgtFusion tgt) prog (`S.member` bound) e of
                   Nothing ->
                     [ "vec note: " ++ op ++ " over `" ++ f ++ "`" ++ capsNote caps ++ " (in " ++ owner
                         ++ ") runs in the GENERIC apply tier -- " ++ why op f caps
@@ -1820,7 +1832,7 @@ declines tgt spec prog owner = goD S.empty
 -- is a backstop, not a budget: a chain of length n needs n-1 rounds
 -- and real programs stop far short of it.
 fuseVecFix :: Prog -> (Prog, [String])
-fuseVecFix = go (0 :: Int)
+fuseVecFix prog = go (0 :: Int) (nestPipelines prog)
   where
     go r p
       | r >= 16 = (p, [])
@@ -1976,9 +1988,104 @@ fuseVec round' prog = (M.union extras (M.map (\(ps,b) -> (ps,rewrite b)) prog), 
          (CVar op',[fe,CVar v]) <- [spineOf m], op == op', v == x]
     letCandidates _ = []
 
-vecSpec :: Prog -> (String -> Bool) -> Core -> Maybe (SpecPlan, [Core])
-vecSpec prog isLocal e = do
-  (p,args) <- vecSpecRaw prog isLocal e
+-- A bounded, same-element-kind scalar pipeline. Entry arguments are flattened
+-- outermost-first, just like source evaluation; stages execute innermost-first.
+-- Captures and seed must already be values, so let nesting cannot move effects.
+pipelinePlan :: Prog -> (String -> Bool) -> Core -> Maybe (SpecPlan,[Core])
+pipelinePlan prog local expr = do
+  (stages,args,kinds,acc,vector) <- collect True 0 expr
+  -- Start with genuinely mixed, filtering pipelines. Keep map-only chains
+  -- (including map/fold) on their existing SIMD/worker paths.
+  let ops=[op | (op,_,_,_)<-stages]
+  if length stages < 2 || length stages > 16 || length args > 7 ||
+     "filter" `notElem` ops || not (any (`elem` ["map","fold"]) ops)
+    then Nothing else Just ()
+  let elems=[last ks | (_,_,_,ks)<-stages]
+  element <- case elems of k:rest | k/=KB && all (==k) rest -> Just k; _ -> Nothing
+  let names=[f | (_,f,_,_)<-stages]
+  cl <- arithClosure prog names
+  if S.size cl > 64 || not (all (fusionSafe prog) names) ||
+     not (acyclic cl) then Nothing else Just ()
+  let pipeline=PipePlan [(op,f,slots) | (op,f,slots,_)<-stages] element acc
+      result=maybe element snd acc
+      plan=SpecPlan ("pipeline@"++show pipeline) (head names) True cl Nothing Nothing Nothing
+             (case result of KD->Just "64"; KS->Just "32"; _->Nothing)
+             (length args) (Just (kinds++[element],result)) (Just pipeline)
+  pure (plan,args++[vector])
+  where
+    primitive op = not (local op) && M.notMember op prog
+    value (CVar n) = local n
+    value (CInt _) = True
+    value (CMk 1 _ []) = True
+    value e = isJust (floatLitBits e)
+    callback count fe = do
+      (CVar f,caps) <- Just (spineOf fe)
+      (ps,b) <- M.lookup f prog
+      if local f || length ps/=length caps+count || length ps>8 || not (all value caps)
+        then Nothing else Just ()
+      sig <- signature prog ps b
+      pure (f,caps,sig)
+    collect top offset e = case spineOf e of
+      (CVar op,[fe,z,v]) | top, op=="Vec.fold", primitive op -> do
+        (f,caps,(ks,out)) <- callback 2 fe
+        let n=length caps; ak=ks!!n
+        if not (value z) || ak/=out || out==KB then Nothing else Just ()
+        (ss,as,ts,_,input) <- collect False (offset+n+1) v
+        pure (ss++[("fold",f,[offset..offset+n-1],ks)],caps++[z]++as,
+              take n ks++[ak]++ts,Just (offset+n,ak),input)
+      (CVar op,[fe,v]) | op `elem` ["Vec.map","Vec.filter"], primitive op -> do
+        (f,caps,(ks,out)) <- callback 1 fe
+        let n=length caps; short=drop 4 op
+        if (short=="map" && (last ks/=out || out==KB)) ||
+           (short=="filter" && out/=KB) then Nothing else Just ()
+        (ss,as,ts,acc,input) <- collect False (offset+n) v
+        pure (ss++[(short,f,[offset..offset+n-1],ks)],caps++as,take n ks++ts,acc,input)
+      _ -> Just ([],[],[],Nothing,e)
+    -- Cyclic callback graphs can change divergence-versus-failure behavior
+    -- when passes interleave. Start with finite arithmetic callbacks only.
+    acyclic cl = all isAcyclic (stronglyConnComp
+      [(f,f,S.toList calls) | f<-S.toList cl, let (ps,b)=prog M.! f,
+                            let calls=fromMaybe S.empty (bodyOK prog (S.fromList ps) b)])
+    isAcyclic (AcyclicSCC _) = True
+    isAcyclic _ = False
+
+-- Only adjacent, single-consumer lets are nested; a successfully planned
+-- pipeline proves that moved captures/seed are already values. Bindings remain
+-- lexical, and a retained intermediate prevents this rewrite.
+nestPipelines :: Prog -> Prog
+nestPipelines prog = M.map (\(ps,b)->(ps,go (S.fromList ps) b)) prog
+  where
+    go bound e = join bound $ case e of
+      CLet n a b -> CLet n (go bound a) (go (S.insert n bound) b)
+      CApp a b -> CApp (go bound a) (go bound b)
+      CIf c a b -> CIf (go bound c) (go bound a) (go bound b)
+      CMk t v xs -> CMk t v (map (go bound) xs)
+      CTagEq t v x -> CTagEq t v (go bound x)
+      CProj k x -> CProj k (go bound x)
+      _ -> e
+    join bound e@(CLet x producer body) =
+      let replace consumer = case spineOf consumer of
+            (CVar op,args) | op `elem` ["Vec.map","Vec.filter","Vec.fold"],
+              not (null args), all (not . elem x . freeVars) (init args) -> do
+                input <- if last args==CVar x then Just producer else replace (last args)
+                pure (foldl' CApp (CVar op) (init args++[input]))
+            _ -> Nothing
+          plug consumer = do
+            candidate <- replace consumer
+            _ <- pipelinePlan prog (`S.member` bound) candidate
+            pure candidate
+      in case body of
+        CLet y consumer rest | x `notElem` freeVars rest, Just candidate<-plug consumer ->
+          go bound (CLet y candidate rest)
+        _ | Just candidate<-plug body -> go bound candidate
+        _ -> e
+    join _ e = e
+
+vecSpec :: Bool -> Prog -> (String -> Bool) -> Core -> Maybe (SpecPlan, [Core])
+vecSpec fusion prog isLocal e = do
+  (p,args) <- case if fusion then pipelinePlan prog isLocal e else Nothing of
+    Just plan -> Just plan
+    Nothing -> vecSpecRaw fusion prog isLocal e
   typed <- typePlan prog p
   pure (typed,args)
 
@@ -1998,6 +2105,7 @@ specUsesFloat prog p =
 -- mapAs retains the ordinary tagged callback ABI, rather than guessing kinds.
 typePlan :: Prog -> SpecPlan -> Maybe SpecPlan
 typePlan prog p
+  | Just _ <- spPipe p = Just p
   | Just mp <- spMv p = do
       sigs <- mapM (\(_, (ps,b)) -> signature prog ps b) (mvFields mp)
       if any (\(ks,out) -> KB `elem` (out:ks)) sigs then Nothing else Just ()
@@ -2024,19 +2132,19 @@ typePlan prog p
       if any (== KB) args then Nothing else Just ()
       pure p {spKinds=Just sig, spFloat=case out of KD -> Just "64"; KS -> Just "32"; _ -> Nothing}
 
-vecSpecRaw :: Prog -> (String -> Bool) -> Core -> Maybe (SpecPlan,[Core])
-vecSpecRaw prog isLocal e = case spineOf e of
+vecSpecRaw :: Bool -> Prog -> (String -> Bool) -> Core -> Maybe (SpecPlan,[Core])
+vecSpecRaw fusion prog isLocal e = case spineOf e of
   (CVar "Vec.mapAs", [CStr layout, fe, v])
     | (CVar f, caps) <- spineOf fe,
       okOp "Vec.mapAs", okFn f (length caps + 1), length caps + 1 <= 8 ->
-        Just (SpecPlan ("mapAs@" ++ layout) f False S.empty Nothing Nothing Nothing Nothing (length caps) Nothing, caps ++ [v])
+        Just (SpecPlan ("mapAs@" ++ layout) f False S.empty Nothing Nothing Nothing Nothing (length caps) Nothing Nothing, caps ++ [v])
   (CVar "Vec.map", [fe, v])
     | (CVar f, [capE]) <- spineOf fe,
       okOp "Vec.map",
       okFn f 2,
       Just mp <- soaDualMap prog f (capShapeOf capE) -> do
         cl <- arithClosure prog [fn | (_, (_, b)) <- mvFields mp, fn <- S.toList (calleesOf prog b)]
-        Just (SpecPlan "mvmap" f False cl Nothing Nothing (Just mp) Nothing 0 Nothing, [capE, v])
+        Just (SpecPlan "mvmap" f False cl Nothing Nothing (Just mp) Nothing 0 Nothing Nothing, [capE, v])
   (CVar "Vec.map", [CVar f, v])
     | okOp "Vec.map",
       okFn f 1,
@@ -2045,7 +2153,7 @@ vecSpecRaw prog isLocal e = case spineOf e of
         -- capture-free record->record map: same in-place column loop,
         -- with a dead capture slot (a0 = tagged 0, never dereferenced:
         -- ms is empty for every field, so nothing loads off s8)
-        Just (SpecPlan "mvmap" f False cl Nothing Nothing (Just mp) Nothing 0 Nothing, [CInt 0, v])
+        Just (SpecPlan "mvmap" f False cl Nothing Nothing (Just mp) Nothing 0 Nothing Nothing, [CInt 0, v])
   (CVar "Vec.map", [CVar f, v]) | okOp "Vec.map", okFn f 1 -> plan "map" f [v]
   (CVar "Vec.filter", [CVar f, v])
     | okOp "Vec.filter", okFn f 1, Just pl <- planSpec prog "filter" f -> Just (pl, [v])
@@ -2054,7 +2162,7 @@ vecSpecRaw prog isLocal e = case spineOf e of
     | okOp "Vec.filter",
       okFn f 1,
       Just (ks, ps, b, tv, cl) <- soaDualPred prog f ->
-        Just (SpecPlan "rfilter" f False cl (Just (ks, ps, b, tv)) Nothing Nothing Nothing 0 Nothing, [v])
+        Just (SpecPlan "rfilter" f False cl (Just (ks, ps, b, tv)) Nothing Nothing Nothing 0 Nothing Nothing, [v])
   -- scalar captures: Vec.map (affine a b) v, Vec.filter (above k) v.  The
   -- captures ride ahead of the vector in the kernel's argument list; the
   -- element function's arity is captures + 1 and fits the 8 registers.
@@ -2078,7 +2186,7 @@ vecSpecRaw prog isLocal e = case spineOf e of
   -- through to the plain fold plan below, whose map argument then
   -- specializes on its own.
   (CVar "Vec.fold", [CVar f, z, me])
-    | (CVar "Vec.map", [CVar g, v]) <- spineOf me,
+    | fusion, (CVar "Vec.map", [CVar g, v]) <- spineOf me,
       okOp "Vec.fold",
       not (isLocal "Vec.map"),
       okFn f 2,
@@ -2089,7 +2197,7 @@ vecSpecRaw prog isLocal e = case spineOf e of
       Just clg <- arithClosure prog [g],
       floatWidthOf prog clf == Nothing,
       floatWidthOf prog clg == Nothing ->
-        Just (SpecPlan ("wfold@" ++ g) f True (clf `S.union` clg) Nothing Nothing Nothing Nothing 0 Nothing, [z, v])
+        Just (SpecPlan ("wfold@" ++ g) f True (clf `S.union` clg) Nothing Nothing Nothing Nothing 0 Nothing Nothing, [z, v])
   (CVar "Vec.fold", [fe, z, v])
     | (CVar f, caps@(_ : _)) <- spineOf fe,
       okOp "Vec.fold", okFn f (length caps + 2), length caps + 2 <= 8 ->
@@ -2097,7 +2205,7 @@ vecSpecRaw prog isLocal e = case spineOf e of
           Just p -> Just p
           Nothing -> do
             (ks,ps,b,tv,cl) <- soaDualCaps prog f k
-            Just (SpecPlan "fold" f False cl (Just (ks,ps,b,tv)) Nothing Nothing Nothing k Nothing)
+            Just (SpecPlan "fold" f False cl (Just (ks,ps,b,tv)) Nothing Nothing Nothing k Nothing Nothing)
   (CVar "Vec.fold", [CVar f, z, v]) | okOp "Vec.fold", okFn f 2 -> plan "fold" f [z, v]
   _ -> Nothing
   where
@@ -2139,7 +2247,8 @@ planSpec prog "fold" f =
                 spMv = Nothing,
                 spFloat = fw,
                 spCaps = 0,
-                spKinds = Nothing
+                spKinds = Nothing,
+                spPipe = Nothing
               }
 planSpec prog op f = planSpecCaps prog op f 0
 
@@ -2157,7 +2266,7 @@ planSpecCaps prog op f k = do
   pure () -- captures are validated individually by typePlan
    -- RVV lanes are integer vadd/vmul in this pass, so a float
    -- closure takes the scalar float loop, not the vector one
-  Just (SpecPlan op f True cl Nothing (if fw == Nothing then rvv else Nothing) Nothing fw k Nothing)
+  Just (SpecPlan op f True cl Nothing (if fw == Nothing then rvv else Nothing) Nothing fw k Nothing Nothing)
 
 -- the closed arithmetic call graph rooted at the given functions;
 -- Nothing if anything outside the unboxable fragment is reachable
@@ -2234,14 +2343,19 @@ planKindChecks p reg fb cols = case spKinds p of
 planCapKinds p = maybe (replicate (spCaps p) KI) (take (spCaps p) . fst) (spKinds p)
 planCapGuards p fb = concat [guardCap i k | (i,k) <- zip [0..] (planCapKinds p)]
   where
-    guardCap i KI = ["    andi t0, a" ++ show i ++ ", 1", "    beqz t0, " ++ fb]
-    guardCap i KB = ["    andi t0, a" ++ show i ++ ", 1", "    bnez t0, " ++ fb,
-                     "    lw t0, 0(a" ++ show i ++ ")", "    li t1, 1", "    bne t0, t1, " ++ fb,
-                     "    lw t0, 4(a" ++ show i ++ ")", "    bltu t1, t0, " ++ fb]
-    guardCap _ _ = [] -- raw floats rely on the type-checked callback signature
+    -- a6/a7 are TLS argument cells on x64, not hardware registers.
+    guardCap i k = (if i>=6 then ["    mv t2, a"++show i] else []) ++
+      valueGuard (if i>=6 then "t2" else "a"++show i) k fb
+valueGuard reg KI fb = ["    andi t0, "++reg++", 1", "    beqz t0, "++fb]
+valueGuard reg KB fb = ["    andi t0, "++reg++", 1", "    bnez t0, "++fb,
+                       "    lw t0, 0("++reg++")", "    li t1, 1", "    bne t0, t1, "++fb,
+                       "    lw t0, 4("++reg++")", "    bltu t1, t0, "++fb]
+valueGuard _ _ _ = [] -- raw floats rely on the type-checked callback signature
 planCapStores tgt p = concat
-  [["    " ++ (case k of KI -> "srai t0, a" ++ show i ++ ", 1"; KB -> "lw t0, 4(a" ++ show i ++ ")"; _ -> "mv t0, a" ++ show i),
-    "    " ++ tgtSt tgt ++ " t0, " ++ show (i*tgtW tgt) ++ "(sp)"] | (i,k) <- zip [0..] (planCapKinds p)]
+  [ (if i>=6 then ["    mv t0, a"++show i] else []) ++
+    ["    " ++ (case k of KI -> "srai t0, "++src++", 1"; KB -> "lw t0, 4("++src++")"; _ -> "mv t0, "++src),
+     "    " ++ tgtSt tgt ++ " t0, " ++ show (i*tgtW tgt) ++ "(sp)"]
+  | (i,k) <- zip [0..] (planCapKinds p), let src=if i>=6 then "t0" else "a"++show i]
 
 -- "F64.+" -> ("64", "+")
 fSplit :: String -> Maybe (String, String)
@@ -2665,7 +2779,7 @@ compileUFn tgt prog uset label (params, body) = do
   let (lowered,extraTicks) = if ("fpr_ufn_" ++ mangle "_vfuse_") `isPrefixOf` label
                             then maybe (body,0) id (expandKernel prog 12 body) else (body,0)
       w = tgtW tgt
-      nslots = length params + slotsNeeded (tgtHal tgt) ext prog (S.fromList params) lowered + 2
+      nslots = length params + slotsNeeded tgt False (tgtHal tgt) ext prog (S.fromList params) lowered + 2
       frame = ((2 * w + w * nslots + 15) `div` 16) * 16
       env0 = M.fromList (zip params [0 ..])
   bodyLines <- genU tgt prog uset env0 (length params) Tail lowered
@@ -2915,6 +3029,7 @@ emitSpec :: Target -> Bool -> (String, SpecPlan) -> G [String]
 emitSpec tgt rvv pair@(_,p) = do
   ls <- emitSpecBody tgt rvv pair
   pure (["# vector kinds " ++ spOp p ++ " " ++ show (spKinds p) ++ maybe "" (\mp -> " fields=" ++ show (mvKinds mp)) (spMv p)] ++ ls)
+emitSpecBody tgt rvv (sym, p) | Just pipeline <- spPipe p = emitPipelineSpec tgt sym p pipeline
 emitSpecBody tgt rvv (sym, p) = case spOp p of
   op | Just layout <- stripPrefix "mapAs@" op -> emitMapAsSpec tgt sym p layout
   "map" -> emitMapSpec tgt rvv sym p
@@ -3787,6 +3902,68 @@ emitFoldSpec tgt rvv sym p = do
       ++ scalPath
       ++ soaPath
       ++ finish
+
+-- One scalar traversal with stable compaction. The vector's final contents and
+-- optional (acc, vector) return are identical to the materialized pipeline.
+-- Callbacks use the existing raw ABI, including their own fuel safepoints.
+-- Every iteration calls at least the first callback, so the loop's additional
+-- entry tick need not be repeated per element (as in the older scalar kernels).
+emitPipelineSpec :: Target -> String -> SpecPlan -> PipePlan -> G [String]
+emitPipelineSpec tgt sym p pipeline = do
+  let k=spCaps p; w=tgtW tgt; ld=tgtLd tgt; st=tgtSt tgt
+      vr="a"++show k
+      regs="ra":["s"++show i | i<-[0..9 :: Int]]
+      (_,pro,epi)=specFrame tgt regs k
+      stages=pipeStages pipeline
+      slot i=show (i*w)++"(sp)"
+      load reg i="    "++ld++" "++reg++", "++slot i
+      store reg i="    "++st++" "++reg++", "++slot i
+  ~[fb,loop,skip,done] <- mapM freshL ["pipefb","pipeloop","pipeskip","pipedone"]
+  fuel <- specFuel tgt
+  let step (op,f,caps) =
+        [load ("a"++show j) i | (j,i)<-zip [0..] caps] ++
+        (if op=="fold" then ["    mv a"++show (length caps)++", s7",
+                            "    mv a"++show (length caps+1)++", s8"]
+         else ["    mv a"++show (length caps)++", s8"]) ++
+        ["    call fpr_ufn_"++mangle f] ++
+        case op of
+          "filter" -> ["    beqz a0, "++skip]
+          "fold" -> ["    mv s7, a0"]
+          _ -> ["    mv s8, a0"]
+      finish = case pipeAccumulator pipeline of
+        Nothing -> ["    mv a0, s0"]
+        Just (_,kind) ->
+          ["    li a0, "++show (8+2*w),"    call fpr_alloc",
+           "    li t0, 4","    sw t0, 0(a0)","    sw zero, 4(a0)"] ++
+          (if kind==KI then ["    slli t0, s7, 1","    ori t0, t0, 1"] else ["    mv t0, s7"]) ++
+          ["    "++st++" t0, 8(a0)","    "++st++" s0, "++show (8+w)++"(a0)"]
+      -- Preserve boxed arguments for the deoptimized sequence. Rebuild each
+      -- closure only on this path and execute complete passes in source order.
+      (_,fbpro,fbepi)=specFrame tgt ["ra"] (k+1)
+      fallback (op,f,caps) = ["    la a0, fpr_obj_"++mangle f] ++
+        concat [[load "a1" i,"    call fpr_apply"] | i<-caps] ++
+        (case (op,pipeAccumulator pipeline) of
+          ("fold",Just (acc,_)) -> [load "a1" acc,load "a2" k,"    call fpr_vec_fold"]
+          _ -> [load "a1" k,"    call fpr_vec_"++op,store "a0" k])
+  pure $ ["# mixed scalar pipeline: "++intercalate " -> " [op++" "++f | (op,f,_)<-stages],
+          "    .globl "++sym,sym++":"] ++
+    planCapGuards p fb ++ ["    mv t2, "++vr] ++ vecGuard tgt "t2" fb ++
+    ["    li t1, "++show (kindRep (pipeElement pipeline)),"    bne t0, t1, "++fb,
+     "    "++ld++" t0, "++show (vKindsP tgt)++"(t2)",
+     "    lbu t1, 0(t0)","    li t2, "++show (kindByte (pipeElement pipeline)),"    bne t1, t2, "++fb] ++
+    pro ++ planCapStores tgt p ++
+    ["    mv s0, "++vr,"    "++ld++" s1, "++show vLen++"(s0)",
+     "    li s2, 0","    li s3, 0"] ++
+    (case pipeAccumulator pipeline of Just (i,_) -> [load "s7" i]; _ -> []) ++
+    ["    beqz s1, "++done,
+     "    "++ld++" s4, "++show (vColsP tgt)++"(s0)","    "++ld++" s4, 0(s4)",
+     "    "++ld++" s5, "++show (colBlk0 tgt)++"(s4)","    mv s6, s5"] ++ fuel ++
+    [loop++":","    bgeu s2, s1, "++done] ++
+    ["    "++ld++" s8, 0(s5)"] ++ concatMap step stages ++
+    ["    "++st++" s8, 0(s6)","    addi s6, s6, "++show w,"    addi s3, s3, 1",
+     skip++":","    addi s5, s5, "++show w,"    addi s2, s2, 1","    j "++loop,
+     done++":","    "++st++" s3, "++show vLen++"(s0)"] ++ finish ++ epi ++ ["    ret",fb++":"] ++
+    fbpro ++ [store ("a"++show i) i | i<-[0..k]] ++ concatMap fallback stages ++ fbepi ++ ["    ret",""]
 
 -- WRITE-BACK FOLD: one pass that stores g(el) back into the column
 -- AND folds f over the stored value -- Vec.fold f z (Vec.map g v)
