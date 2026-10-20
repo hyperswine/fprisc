@@ -1,5 +1,7 @@
 # docs/: a chronological record
 
+- [Uniqueness tracking and private consuming workers](2026-10-20-CONSUMING-WORKERS.md) — bounded alias/branch proofs, private helper calls and physical target evidence.
+
 Kind: index. Every document in this directory is named
 `YYYY-MM-DD-NAME.md`, dated by the day it was first written, so a listing
 of the directory is the timeline of the project's thinking. Older and

@@ -30,6 +30,10 @@ fallback-frame regressions pass.
 
 ## Fresh constructor storage can be reused
 
+This section records the initial implementation. The
+[consuming-worker follow-up](2026-10-20-CONSUMING-WORKERS.md) extends it to local
+aliases, fresh branch joins and private helper calls.
+
 `compiler/Reuse.hs` proves a narrow local case:
 
 ```text
@@ -108,9 +112,13 @@ QOS application speedup. QOS was not repinned or redeployed.
 
 ## Remaining roadmap
 
+The [consuming-worker follow-up](2026-10-20-CONSUMING-WORKERS.md) now implements
+bounded alias/branch tracking and private nonrecursive helper entries. General
+recursive consumption remains separate work.
+
 | Track | Next implementation | Evidence needed before enabling |
 |---|---|---|
-| Allocation reuse | Propagate uniqueness through local aliases and branches, then introduce private consuming workers for callers that prove unique arguments | Retained-alias negatives, shared tails/children, message and module boundaries, failure-before-write tests, allocation counts |
+| Allocation reuse | Extend the bounded local-alias, fresh-branch and private-helper proofs to more control-flow patterns | Retained-alias negatives, shared tails/children, message and module boundaries, failure-before-write tests, allocation counts |
 | Allocation reuse | Extend consuming workers to record-update loops and list-node rebuilding | Recursive ownership proof; no assumption that local last use means global uniqueness; ARC retain/drop integration before enabling that backend |
 | Pipeline fusion | Reduce scratch loads and stores within bounded inlined callback bodies | Same arithmetic/trap/fuel behavior, register-pressure and code-size measurements on A64/RV64/x64 |
 | Pipeline fusion | Add captured and record-valued SIMD kernels where their layouts and operations qualify | Scalar/C IEEE parity, lane tails, stable filter compaction, unchanged fold order and target-specific hardware execution |

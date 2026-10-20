@@ -1,0 +1,43 @@
+unsafe base.
+Cost.begin : Unit -> Unit.
+Cost.report : Unit -> String.
+Bench.start : Unit -> Unit.
+Bench.elapsed : Unit -> Int.
+Row = {left:Int,right:Int}.
+swap r = {left=r.right,right=r.left}.
+withChild r child = {left=r.right,right=child}.
+updateCell r = case r of x :: xs -> (x+1) :: xs | Nil -> error "empty".
+forward n = r={left=n,right=n+1}; s=r; swap s.
+joined n flag = r=if flag then {left=n,right=n+1} else {left=n+2,right=n+3}; swap r.
+chain n = r={left=n,right=n+1}; s=swap r; swap s.
+retained n = r={left=n,right=n+1}; s=r; u=swap r; (s,u).
+borrowed r = u=swap r; (r,u).
+shared n = tail=[n]; r=n :: tail; u=updateCell r; (tail,u).
+branches n flag = r={left=n,right=n+1}; if flag then swap r else r.
+observe label x = _=print label; x.
+ordered r = {left=observe "left" r.right,right=observe "right" r.left}.
+failUpdate r = {left=error "consume failure",right=observe "WRONG" r.left}.
+echo parent r self = _=send parent r; Unit.
+actorSaved n = r={left=n,right=n+1}; me=myself 0; child=spawn (echo me r); u=swap r; saved=receiveFrom me child; (saved,u).
+loop : (n:Int | measure n) -> Int -> Int.
+loop n s | n <= 0 = s.
+loop n s = r={left=n,right=n+1}; u=swap r; loop (n - 1) (s+u.left+u.right).
+cost = _=Cost.begin Unit; result=loop 10000 0; ledger=Cost.report Unit; _=print result; print ledger.
+bench = _=Bench.start Unit; result=loop 1000000 0; ns=Bench.elapsed Unit; print "{result} {ns}".
+main = case Sys.args Unit of
+    ["cost"] -> cost
+  | ["bench"] -> bench
+  | ["bad"] -> r={left=1,right=2}; print (failUpdate r)
+  | _ ->
+    _=print (forward 10);
+    _=print (joined 10 True);
+    _=print (joined 10 False);
+    _=print (chain 10);
+    _=print (retained 10);
+    r={left=10,right=11};
+    _=print (borrowed r);
+    _=print (shared 10);
+    _=print (actorSaved 10);
+    _=print (branches 10 True);
+    _=print (branches 10 False);
+    p={left=1,right=2}; print (ordered p).

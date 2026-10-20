@@ -1,0 +1,341 @@
+{
+  "codegen_revision": 55,
+  "base_commit": "61958bae8f179286e438d144b4fd52fcaece1219",
+  "source_sha256": {
+    "compiler/Codegen.hs": "926ddfe9dca99ebf2c3c9e90a1f3ee6688e877550a86c017c298b8f82bdedb29",
+    "compiler/Reuse.hs": "a749feba05b3dbfb506f28a5aaa0ac4f098744ae5f1a6699a3a13380d2586412",
+    "tests/Reuse.hs": "477ddca076f5c0532489f92dd95e31e0262b845dee923932e89ebbb88469c3be",
+    "tests/base/consumingreuse.fpr": "94542d99fb5cbf174592de04f99ec61495b23bdf0260255e3378d005cc92451c",
+    "tests/check_consuming_reuse.py": "bb6aadde632377a70dc9fb0839c08b12889c08806e732509901797d42bdd1d45",
+    "tests/check_base.py": "d1ee1ea66acf9e7e6882a287ca2be5ce4506bbcccb76c20cbba7c66fe4a7fcaa"
+  },
+  "boards": {
+    "pi": {
+      "identity": "Linux qosp 6.6.28-v8 #3 SMP PREEMPT Sun Sep 20 13:26:50 UTC 2026 aarch64 GNU/Linux\n 06:45:34 up 5 days, 22:23,  load average: 0.25, 0.28, 0.26\nRaspberry Pi 4 Model B Rev 1.4\u0000\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [pool_workqueue_]\n    4 root     [kworker/R-rcu_g]\n    5 root     [kworker/R-rcu_p]\n    6 root     [kworker/R-slub_]\n    7 root     [kworker/R-netns]\n    9 root     [kworker/0:0H-kb]\n   11 root     [kworker/u8:0-cf]\n   12 root     [kworker/R-mm_pe]\n   13 root     [rcu_tasks_kthre]\n   14 root     [rcu_tasks_rude_]\n   15 root     [rcu_tasks_trace]\n   16 root     [ksoftirqd/0]\n   17 root     [rcu_preempt]\n   18 root     [migration/0]\n   19 root     [cpuhp/0]\n   20 root     [cpuhp/1]\n   21 root     [migration/1]\n",
+      "files": {
+        "reuse-off": {
+          "sha256": "eb95b643d50ef574e938b6d869240c1bd32bf77714517d03ffec66fe732b4762",
+          "bytes": 567528
+        },
+        "reuse-on": {
+          "sha256": "f47a4ae69e7ef4331bbf640b86abe0fa34a5b2a99e6969416280c9b3234506e8",
+          "bytes": 567280
+        }
+      },
+      "modes": {
+        "reuse-off": {
+          "alloc_requests": 20000,
+          "alloc_bytes": 960000,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0,
+          "turns": 0,
+          "buddy_allocs": 3,
+          "buddy_frees": 0
+        },
+        "reuse-on": {
+          "alloc_requests": 10000,
+          "alloc_bytes": 480000,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0,
+          "turns": 0,
+          "buddy_allocs": 3,
+          "buddy_frees": 0
+        }
+      },
+      "calls": [
+        {
+          "mode": "reuse-off",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stdout": "{left = 11, right = 10}\n{left = 11, right = 10}\n{left = 13, right = 12}\n{left = 10, right = 11}\n({left = 10, right = 11}, {left = 11, right = 10})\n({left = 10, right = 11}, {left = 11, right = 10})\n([10], [11, 10])\n({left = 10, right = 11}, {left = 11, right = 10})\n{left = 11, right = 10}\n{left = 10, right = 11}\nleft\nright\n{left = 2, right = 1}\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-off",
+          "case": "bad",
+          "harts": 1,
+          "status": 1,
+          "stdout": "[ERR] consume failure\n\n*** FPRISC PANIC [actor 0]: consume failure ***\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-off",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stdout": "{left = 11, right = 10}\n{left = 11, right = 10}\n{left = 13, right = 12}\n{left = 10, right = 11}\n({left = 10, right = 11}, {left = 11, right = 10})\n({left = 10, right = 11}, {left = 11, right = 10})\n([10], [11, 10])\n({left = 10, right = 11}, {left = 11, right = 10})\n{left = 11, right = 10}\n{left = 10, right = 11}\nleft\nright\n{left = 2, right = 1}\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-off",
+          "case": "bad",
+          "harts": 4,
+          "status": 1,
+          "stdout": "[ERR] consume failure\n\n*** FPRISC PANIC [actor 0]: consume failure ***\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-off",
+          "case": "cost",
+          "harts": 1,
+          "status": 0,
+          "stdout": "100020000\n{\"alloc_requests\":20000,\"alloc_bytes\":960000,\"copies\":0,\"copy_bytes\":0,\"message_slabs\":0,\"turns\":0,\"buddy_allocs\":3,\"buddy_frees\":0}\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-on",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stdout": "{left = 11, right = 10}\n{left = 11, right = 10}\n{left = 13, right = 12}\n{left = 10, right = 11}\n({left = 10, right = 11}, {left = 11, right = 10})\n({left = 10, right = 11}, {left = 11, right = 10})\n([10], [11, 10])\n({left = 10, right = 11}, {left = 11, right = 10})\n{left = 11, right = 10}\n{left = 10, right = 11}\nleft\nright\n{left = 2, right = 1}\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-on",
+          "case": "bad",
+          "harts": 1,
+          "status": 1,
+          "stdout": "[ERR] consume failure\n\n*** FPRISC PANIC [actor 0]: consume failure ***\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-on",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stdout": "{left = 11, right = 10}\n{left = 11, right = 10}\n{left = 13, right = 12}\n{left = 10, right = 11}\n({left = 10, right = 11}, {left = 11, right = 10})\n({left = 10, right = 11}, {left = 11, right = 10})\n([10], [11, 10])\n({left = 10, right = 11}, {left = 11, right = 10})\n{left = 11, right = 10}\n{left = 10, right = 11}\nleft\nright\n{left = 2, right = 1}\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-on",
+          "case": "bad",
+          "harts": 4,
+          "status": 1,
+          "stdout": "[ERR] consume failure\n\n*** FPRISC PANIC [actor 0]: consume failure ***\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-on",
+          "case": "cost",
+          "harts": 1,
+          "status": 0,
+          "stdout": "100020000\n{\"alloc_requests\":10000,\"alloc_bytes\":480000,\"copies\":0,\"copy_bytes\":0,\"message_slabs\":0,\"turns\":0,\"buddy_allocs\":3,\"buddy_frees\":0}\n",
+          "stderr": ""
+        }
+      ],
+      "samples_ns": {
+        "reuse-off": [
+          622529870,
+          624529963,
+          624698796,
+          621596759,
+          624718944,
+          622841018,
+          622828667
+        ],
+        "reuse-on": [
+          362415926,
+          362625536,
+          362509333,
+          361950056,
+          362393370,
+          362382888,
+          361713019
+        ]
+      },
+      "medians_ns": {
+        "reuse-off": 622841018,
+        "reuse-on": 362393370
+      },
+      "final_identity": " 06:45:43 up 5 days, 22:24,  load average: 0.44, 0.32, 0.27\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [pool_workqueue_]\n    4 root     [kworker/R-rcu_g]\n    5 root     [kworker/R-rcu_p]\n    6 root     [kworker/R-slub_]\n    7 root     [kworker/R-netns]\n    9 root     [kworker/0:0H-kb]\n   11 root     [kworker/u8:0-cf]\n   12 root     [kworker/R-mm_pe]\n   13 root     [rcu_tasks_kthre]\n   14 root     [rcu_tasks_rude_]\n   15 root     [rcu_tasks_trace]\n   16 root     [ksoftirqd/0]\n   17 root     [rcu_preempt]\n   18 root     [migration/0]\n   19 root     [cpuhp/0]\n   20 root     [cpuhp/1]\n   21 root     [migration/1]\n",
+      "status": "PASS",
+      "cleanup_status": 0
+    },
+    "star64": {
+      "identity": "Linux qos-star64 5.15.131 #3 SMP Thu Oct 15 11:05:41 UTC 2026 riscv64 GNU/Linux\n 14:12:01 up 4 days, 14:12,  load average: 0.40, 0.34, 0.35\nPine64 Star64\u0000\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [rcu_gp]\n    4 root     [rcu_par_gp]\n    5 root     [slub_flushwq]\n    6 root     [netns]\n   10 root     [mm_percpu_wq]\n   11 root     [rcu_tasks_trace]\n   12 root     [ksoftirqd/0]\n   13 root     [rcu_sched]\n   14 root     [migration/0]\n   16 root     [cpuhp/0]\n   17 root     [cpuhp/1]\n   18 root     [migration/1]\n   19 root     [ksoftirqd/1]\n   22 root     [cpuhp/2]\n   23 root     [migration/2]\n   24 root     [ksoftirqd/2]\n   27 root     [cpuhp/3]\n",
+      "files": {
+        "reuse-off": {
+          "sha256": "282c87611feee8835fb88463afe9a18993cd1bcfbb176bb0ebabdb53000023bc",
+          "bytes": 467736
+        },
+        "reuse-on": {
+          "sha256": "74f9d7a4cdebc13fa6ad5122f948712769a2350e8ed2377f3e1288a59344dbb8",
+          "bytes": 467520
+        }
+      },
+      "modes": {
+        "reuse-off": {
+          "alloc_requests": 20000,
+          "alloc_bytes": 960000,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0,
+          "turns": 0,
+          "buddy_allocs": 3,
+          "buddy_frees": 0
+        },
+        "reuse-on": {
+          "alloc_requests": 10000,
+          "alloc_bytes": 480000,
+          "copies": 0,
+          "copy_bytes": 0,
+          "message_slabs": 0,
+          "turns": 0,
+          "buddy_allocs": 3,
+          "buddy_frees": 0
+        }
+      },
+      "calls": [
+        {
+          "mode": "reuse-off",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stdout": "{left = 11, right = 10}\n{left = 11, right = 10}\n{left = 13, right = 12}\n{left = 10, right = 11}\n({left = 10, right = 11}, {left = 11, right = 10})\n({left = 10, right = 11}, {left = 11, right = 10})\n([10], [11, 10])\n({left = 10, right = 11}, {left = 11, right = 10})\n{left = 11, right = 10}\n{left = 10, right = 11}\nleft\nright\n{left = 2, right = 1}\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-off",
+          "case": "bad",
+          "harts": 1,
+          "status": 1,
+          "stdout": "[ERR] consume failure\n\n*** FPRISC PANIC [actor 0]: consume failure ***\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-off",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stdout": "{left = 11, right = 10}\n{left = 11, right = 10}\n{left = 13, right = 12}\n{left = 10, right = 11}\n({left = 10, right = 11}, {left = 11, right = 10})\n({left = 10, right = 11}, {left = 11, right = 10})\n([10], [11, 10])\n({left = 10, right = 11}, {left = 11, right = 10})\n{left = 11, right = 10}\n{left = 10, right = 11}\nleft\nright\n{left = 2, right = 1}\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-off",
+          "case": "bad",
+          "harts": 4,
+          "status": 1,
+          "stdout": "[ERR] consume failure\n\n*** FPRISC PANIC [actor 0]: consume failure ***\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-off",
+          "case": "cost",
+          "harts": 1,
+          "status": 0,
+          "stdout": "100020000\n{\"alloc_requests\":20000,\"alloc_bytes\":960000,\"copies\":0,\"copy_bytes\":0,\"message_slabs\":0,\"turns\":0,\"buddy_allocs\":3,\"buddy_frees\":0}\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-on",
+          "case": "",
+          "harts": 1,
+          "status": 0,
+          "stdout": "{left = 11, right = 10}\n{left = 11, right = 10}\n{left = 13, right = 12}\n{left = 10, right = 11}\n({left = 10, right = 11}, {left = 11, right = 10})\n({left = 10, right = 11}, {left = 11, right = 10})\n([10], [11, 10])\n({left = 10, right = 11}, {left = 11, right = 10})\n{left = 11, right = 10}\n{left = 10, right = 11}\nleft\nright\n{left = 2, right = 1}\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-on",
+          "case": "bad",
+          "harts": 1,
+          "status": 1,
+          "stdout": "[ERR] consume failure\n\n*** FPRISC PANIC [actor 0]: consume failure ***\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-on",
+          "case": "",
+          "harts": 4,
+          "status": 0,
+          "stdout": "{left = 11, right = 10}\n{left = 11, right = 10}\n{left = 13, right = 12}\n{left = 10, right = 11}\n({left = 10, right = 11}, {left = 11, right = 10})\n({left = 10, right = 11}, {left = 11, right = 10})\n([10], [11, 10])\n({left = 10, right = 11}, {left = 11, right = 10})\n{left = 11, right = 10}\n{left = 10, right = 11}\nleft\nright\n{left = 2, right = 1}\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-on",
+          "case": "bad",
+          "harts": 4,
+          "status": 1,
+          "stdout": "[ERR] consume failure\n\n*** FPRISC PANIC [actor 0]: consume failure ***\n",
+          "stderr": ""
+        },
+        {
+          "mode": "reuse-on",
+          "case": "cost",
+          "harts": 1,
+          "status": 0,
+          "stdout": "100020000\n{\"alloc_requests\":10000,\"alloc_bytes\":480000,\"copies\":0,\"copy_bytes\":0,\"message_slabs\":0,\"turns\":0,\"buddy_allocs\":3,\"buddy_frees\":0}\n",
+          "stderr": ""
+        }
+      ],
+      "samples_ns": {
+        "reuse-off": [
+          384691750,
+          360781250,
+          387751750,
+          359766500,
+          379530750,
+          362829750,
+          355603000
+        ],
+        "reuse-on": [
+          221389500,
+          220149250,
+          231119750,
+          221690750,
+          222853250,
+          231167250,
+          220001000
+        ]
+      },
+      "medians_ns": {
+        "reuse-off": 362829750,
+        "reuse-on": 221690750
+      },
+      "final_identity": " 14:12:08 up 4 days, 14:12,  load average: 0.42, 0.35, 0.35\nPID   USER     COMMAND\n    1 root     init\n    2 root     [kthreadd]\n    3 root     [rcu_gp]\n    4 root     [rcu_par_gp]\n    5 root     [slub_flushwq]\n    6 root     [netns]\n   10 root     [mm_percpu_wq]\n   11 root     [rcu_tasks_trace]\n   12 root     [ksoftirqd/0]\n   13 root     [rcu_sched]\n   14 root     [migration/0]\n   16 root     [cpuhp/0]\n   17 root     [cpuhp/1]\n   18 root     [migration/1]\n   19 root     [ksoftirqd/1]\n   22 root     [cpuhp/2]\n   23 root     [migration/2]\n   24 root     [ksoftirqd/2]\n   27 root     [cpuhp/3]\n",
+      "status": "PASS",
+      "cleanup_status": 0
+    }
+  },
+  "local_tests": {
+    "core": {
+      "status": "PASS",
+      "log_sha256": "f498d490ea355dfd5915758b58b1cc1f0ee40d19183116ba69a0275804af7965",
+      "final_line": "Fresh reuse: nonescape, last-use, shape, branch, shadow and size proof checks PASS"
+    },
+    "consuming": {
+      "status": "PASS",
+      "log_sha256": "4aee9bc59455e5f91d7fce2c5e7b913e2fe6f4832860d2d77622b7a512711807",
+      "final_line": "Consuming workers: aliases, branch joins, retained originals, shared list tails, ordered failures, allocation counts, 1/4 harts and four-target ABI gates PASS"
+    },
+    "vector_kinds": {
+      "status": "PASS",
+      "log_sha256": "957412927938d735e105f6bbd6a92cb32e045e3f1d27370d3b2556312f145143",
+      "final_line": "A64 NEON execution: native host and C IEEE reference PASS"
+    },
+    "complete_base_suite": {
+      "status": "PASS",
+      "exit_code": 0,
+      "log_sha256": "e3178cb905519719ee286b9cb8d9d9569f3cd26bcd085505677b14aa91a42fd1",
+      "final_lines": [
+        "fpr run passes arguments and status through; -v shows the compiler; the runtime is cached: PASS",
+        "A server out of descriptors says so and keeps serving (std/tcp accept loop): PASS",
+        "The job broker: host work off the harts, in order, three actors at once (std/job): PASS",
+        "A primitive-built list survives send (the heap nil is a leaf to the copier): PASS",
+        "I64: wrapping 64-bit arithmetic, unsigned views, conversions, parse, structures, send, and no implicit mixing with Int: PASS"
+      ]
+    }
+  },
+  "raw_evidence_directory": "/Users/jasonqin/Documents/GitHub/qos/.qos/validation/allocation-20261018/consuming-20261020",
+  "limits": [
+    "nonrecursive private helpers",
+    "64-bit Base only; no ARC",
+    "benchmark is not overall QOS speedup"
+  ],
+  "compiler_sha256": {
+    "native": "6eab63e397a160f35ee4f5864782952c4faea43a0792a9c546b2229cb7c7fb64",
+    "linux_aarch64_host": "adfc81739df704ac418b56bacc94015a8b94644399fefe277588cd679365e5e2"
+  }
+}

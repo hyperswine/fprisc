@@ -1,5 +1,8 @@
 import FPRISC (Core(..))
 import Reuse
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S
+import Data.List (isPrefixOf)
 import Control.Monad (unless)
 check label ok = unless ok (error label)
 main = do
@@ -18,7 +21,7 @@ main = do
   check "error branch" (marked (CIf (v "flag") rebuild (CErr "bad")))
   check "projected child may escape" (marked (CLet "z" (CApp (v "keep") (CProj 0 (v "r"))) rebuild))
   check "whole-value escape" (not (marked (CLet "z" (CApp (v "keep") (v "r")) rebuild)))
-  check "local alias" (not (marked (CLet "z" (v "r") rebuild)))
+  check "local alias" (marked (CLet "z" (v "r") (mk [CProj 1 (v "z"), CProj 0 (v "r")])))
   check "closure escape" (not (marked (CLet "z" (CLam [] (CProj 0 (v "r"))) rebuild)))
   check "shadowed binder" (not (marked (CLet "r" (CInt 0) rebuild)))
   check "invalid projection" (not (marked (mk [CProj 2 (v "r"),CInt 0])))
@@ -32,4 +35,42 @@ main = do
   check "64 fields admitted" (selected 64)
   check "65 fields declined" (not (selected 65))
   check "node budget" (not (marked (foldr (\i b->CLet ("x"++show i) (CInt 0) b) rebuild [1..260])))
+  let apply f xs=foldl CApp (v f) xs
+      update=mk [CProj 1 (v "p"),CProj 0 (v "p")]
+      call=apply "update" [v "r"]
+      program body=M.fromList [("update",(["p"],update)),("entry",([],local body))]
+      compile p=fst (reuseProgram S.empty p)
+      private p=[n | n<-M.keys p,"$worker.consume." `isPrefixOf` n]
+      selects b=not (null (private (compile (program b))))
+      aliasesCall=CLet "s" (v "r") (apply "update" [v "s"])
+  check "private consuming entry" (selects call)
+  check "alias consuming entry" (selects aliasesCall)
+  check "branch consuming entries" (selects (CIf (v "flag") call aliasesCall))
+  check "public body unchanged" (M.lookup "update" (compile (program call))==Just (["p"],update))
+  check "retained alias blocks transfer" (not (selects (CLet "s" (v "r") (CLet "u" call (mk [v "u",v "s"])))))
+  check "capture blocks transfer" (not (selects (CLet "closure" (CLam [] (v "r")) call)))
+  check "non-tail last-use transfer" (selects (CLet "u" call (CProj 0 (v "u"))))
+  check "post-transfer read blocks" (not (selects (CLet "u" call (CProj 0 (v "r")))))
+  check "unknown call blocks" (not (selects (CLet "u" (apply "unknown" [v "r"]) call)))
+  check "borrowed entry unchanged" $ null $ private $ compile $ M.fromList [("update",(["p"],update)),("borrow",(["r"],call))]
+  check "excluded entry cannot clone" (null (private (fst (reuseProgram (S.singleton "update") (program call)))))
+  check "shadowed callee cannot select" (not (selects (CLet "update" (v "unknown") call)))
+  check "other argument cannot alias" $ null $ private $ compile $ M.fromList
+    [("update",(["p","other"],update)),("entry",([],local (apply "update" [v "r",v "r"])))]
+  let freshBranch=CLet "r" (CIf (v "flag") initial initial) rebuild
+      mismatched=CLet "r" (CIf (v "flag") initial (CMk 99 0 [CInt 0])) rebuild
+  check "fresh branch join" (has (reuseFresh freshBranch))
+  check "different-shape branch join declined" (not (has (reuseFresh mismatched)))
+  -- A transfer followed by a scalar result must not become a proof that the
+  -- scalar is the original allocation, even if another helper accepts it.
+  let scalarTail=CLet "u" call (CInt 9)
+      trap=local (CLet "q" scalarTail (apply "update" [v "q"]))
+      out=compile (M.insert "entry" ([],trap) (program call))
+      calls e=case e of
+        CApp a b -> calls a++calls b
+        CLet _ a b -> calls a++calls b
+        CIf c a b -> calls c++calls a++calls b
+        CVar n | "$worker.consume." `isPrefixOf` n -> [n]
+        _ -> []
+  check "scalar tail does not confer uniqueness" (length (calls (snd (out M.! "entry")))<=1)
   putStrLn "Fresh reuse: nonescape, last-use, shape, branch, shadow and size proof checks PASS"

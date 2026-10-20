@@ -46,7 +46,7 @@ import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, isJust)
 import Peephole (peepholeFor)
 import KernelKinds (Kind(..), signature)
-import Reuse (reuseFresh, reuseView)
+import Reuse (reuseFresh, reuseProgram, reuseView)
 import Workers (workerize, internalWorker, scalarPrimitives)
 
 import FPRISC (Core (..), Prog, freeVars, occurs)
@@ -54,7 +54,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 54 -- bounded pipeline callback inlining and fresh constructor reuse
+codegenRev = 55 -- uniqueness tracking and private consuming entries
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -395,10 +395,13 @@ emitProgram tgt rvv spec exports ext exps elide prog0 =
   let -- Fusion precedes workers so callback analysis sees original bodies.
       (fused, fnotes) = if tgtFusion tgt then fuseVecFix prog0 else (prog0,[])
       enable = tgtW tgt == 8 && tgtFuel tgt && tgtScalarFast tgt && not (tgtArc tgt)
-      (prog,wnotes) = workerize (enable && tgtFieldWorkers tgt) (enable && tgtScalarWorkers tgt) fused
+      (workers,wnotes) = workerize (enable && tgtFieldWorkers tgt) (enable && tgtScalarWorkers tgt) fused
+      reuseEnabled = tgtReuse tgt && tgtW tgt==8 && tgtFuel tgt && not (tgtArc tgt)
+      normalized = M.map (\(ps,b)->(ps,if tgtScalarFast tgt then normIn (S.fromList ps) b else b)) workers
+      (prog,rnotes) = if reuseEnabled then reuseProgram elide normalized else (workers,[])
       emitted = if S.null elide then prog else M.filterWithKey (\n _ -> S.notMember n elide) prog
       (body, st) = runState (top prog emitted) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes))
-   in (unlines (wnotes ++ body), reverse (cgVNotes st))
+   in (unlines (wnotes ++ rnotes ++ body), reverse (cgVNotes st))
   where
     top prog emitted = do
       -- specialization-decline scan: a Vec.map/filter/fold site whose
