@@ -1,8 +1,9 @@
 # Printer dashboard HTTP watchdog
 
 Installed on the mini on 2026-10-20 after a live-process / failed-HTTP outage.
-The application itself remains the same signed FP-RISC binary. This separate
-Python standard-library check does not load credentials or contact printers.
+The application was subsequently updated with the verified socket-lifetime fix
+and bounded diagnostics after macOS permission approval; see the incident report.
+This separate Python standard-library check does not load credentials or contact printers.
 
 Every 30 seconds it GETs `/health` directly on `100.107.153.43:6730`, with the
 required `Host: 3dprint.cswine.cloud`, expecting exactly HTTP 200 and `ok\n`.

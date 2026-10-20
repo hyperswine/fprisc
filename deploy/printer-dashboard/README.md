@@ -11,8 +11,9 @@ current service/data paths and rollback. The old macm4 host is retired.
 A 2026-10-20 outage was recovered by restarting the living-but-unhealthy app.
 See the [incident report](../../docs/2026-10-20-PRINTER-DASHBOARD-OUTAGE.md) and
 [HTTP watchdog runbook](watchdog/README.md), including its GUI-session limitation.
-The tested socket-lifetime update was rolled back pending macOS printer-network
-access in the updated app context; the original signed binary remains installed.
+After the owner approved macOS prompts, the socket-lifetime fix and bounded
+TCP/TLS diagnostics were deployed on 20 October and passed real A1/P1S
+telemetry/camera acceptance. See the incident report for current artifact hashes.
 
 ## Historical workstation deployment (superseded 2026-10-17)
 

@@ -44,11 +44,15 @@ artifact, rather than at its old executable command path.
 
 ## Executable identity
 
-The original identity below remains active. On 20 October, the targeted
-`b415870-writer-lifetime-20261020` fix passed isolated tests but failed real printer
-access after installation; both attempts were rolled back. See the
-[outage follow-up](2026-10-20-PRINTER-DASHBOARD-OUTAGE.md) for the reproduced
-socket race, candidate hashes, validation and macOS app-identity investigation.
+Current release: `b415870-writer-lifetime-v2-20261020`, signed executable SHA-256
+`04eb35dfa6033ec28fd7258031cc375ad871332bb72f383ce094fda439550070`. It contains
+the historical source baseline plus the targeted Live writer fix and bounded
+TCP/TLS diagnostics from `c36aa5b`. It passed real A1/P1S acceptance after the
+owner approved macOS prompts on 20 October. See the
+[outage follow-up](2026-10-20-PRINTER-DASHBOARD-OUTAGE.md) for the exact source
+patch, rollback, permission investigation and acceptance evidence.
+
+The following original identity is retained for rollback:
 
 Source commit: `b4158705155c9fc901d9b2bd3e07e968636d99cc`.
 
@@ -166,10 +170,9 @@ A restart recovered service with maintenance data unchanged. The
 the unconfirmed underlying trigger and the deployed HTTP watchdog. Its current
 GUI-session scope does not provide boot-wide recovery; see the watchdog runbook.
 
-The follow-up socket-lifetime fix and bounded native diagnostics are tested in
-source, but the 20 October redeployment was rolled back. The updated app reported
-TCP errno 65 before TLS, while SSH could reach both printers. The original
-signed app remains installed. Resolve the mini's app/context-specific Local
-Network access and repeat full authenticated A1/P1S acceptance before promoting
-the candidate; HTTP health alone is insufficient. See the incident's final
-redeployment section for artifact hashes, rollback and validation evidence.
+The follow-up socket-lifetime fix and bounded native diagnostics are now live.
+Initial deployment attempts reported TCP errno 65 before TLS and were rolled
+back. After the owner approved the pending macOS prompts, the unchanged staged
+release passed full public A1/P1S telemetry, cameras and session acceptance.
+HTTP health alone remains insufficient for future deployments. See the incident's
+final permission-approved deployment section for hashes, rollback and evidence.

@@ -2,10 +2,11 @@
 
 ## Outcome
 
-The socket-lifetime fix is implemented and tested, but its production promotion
-was rolled back because macOS denied printer TCP connections in the updated
-app context. The original signed binary is restored. See the final
-redeployment section for current acceptance and the remaining access blocker.
+The socket-lifetime fix and bounded TCP/TLS diagnostics are now deployed.
+After the owner allowed the pending macOS prompts, the exact staged release
+passed public A1/P1S telemetry, cameras, WSS and logout acceptance. Earlier
+failed attempts and rollbacks are retained below as incident history. See the
+final permission-approved deployment section for current identity and evidence.
 
 Restored `https://3dprint.cswine.cloud` by sending SIGTERM to only the unhealthy
 Printer Host process on the M1 Mac mini. The existing system LaunchDaemon
@@ -324,7 +325,7 @@ synthetic gateway/auth/camera cases. These checks do not establish real-printer
 production acceptance or a fix for the original 58-hour sustained outage.
 
 
-### Final state after the requested redeployment attempt
+### State after the failed redeployment attempt (superseded below)
 
 The final rollback runs PID **99153**, the original signed executable
 `d9c0b0f20a577ac9431e682a477c3f48026e5a6dae62ce960e6593cdf886facf`.
@@ -341,8 +342,59 @@ The local branch already contained five commits ahead of `origin/main`; the
 normal push includes those ancestors as well as the scoped printer fix. The
 unrelated untracked `.claude/` directory is excluded. No release tag is created.
 
-Next deployment acceptance requires the updated app to have working Local
+At that point, next deployment acceptance required the updated app to have working Local
 Network access in its actual system LaunchDaemon context. Inspect permissions
 from the mini desktop, then install the staged bundle and repeat real-device
 acceptance. Retain the original app rollback until that passes. A diagnostic
 app's success, SSH TCP reachability and `/health` are each insufficient alone.
+
+
+### Permission-approved production deployment
+
+At approximately 14:19 AEDT on 20 October, the owner reported allowing all
+pending prompts on the M1. The **same** staged v2 artifact was installed again,
+without rebuilding, changing its signature identity, weakening TLS checks or
+editing privacy databases. It passed full public HTTPS acceptance: both A1 and
+P1S ONLINE with fresh telemetry, authenticated view/WSS updates, camera toggles,
+two JPEG frames per printer, shared upstreams, final-viewer cleanup, maintenance
+controls and logout revocation. The initial process was PID 3354.
+
+- Active release: `releases/b415870-writer-lifetime-v2-20261020/`.
+- Source: historical `b4158705155c9fc901d9b2bd3e07e968636d99cc` plus the exact
+  three-file runtime/Live patch; the fix is committed as `c36aa5b` on main.
+- Active signed SHA-256: `04eb35dfa6033ec28fd7258031cc375ad871332bb72f383ce094fda439550070`.
+- Previous accepted app: `rollback/writer-lifetime-20261020T031906Z/PrinterHost.app`.
+- Pre-approval deployment, rollback and provenance records were copied into a
+  timestamped `attempt-before-permission-retry-*` directory before installation.
+- Evidence: `public-after-permission-approval.json` in the local ignored incident
+  directory and alongside the release on the mini.
+- Maintenance hash remains `5b7be6d7369c1141daf4e9d27028ab5699f9c2d49055520bb8d3ac7a3750b2f3`:
+  ten tasks, revision zero, zero history entries.
+
+The watchdog was also kicked in its actual `gui/501` launchd context and observed
+healthy HTTP, zero failures and no watchdog restart. Its login-session limitation
+still applies. No printer control/print operation was sent by these checks.
+
+This controlled retry strongly supports macOS permission as the prior deployment
+blocker: the artifact, device config and runtime credentials were unchanged,
+and the owner approved prompts before the successful retry. This is separate
+from the original sustained HTTP outage; the long-duration causality caveat
+above still applies.
+
+The app is still ad-hoc signed. Apple's [local network privacy guidance](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)
+recommends an Apple-issued signing identity so macOS can reliably track the
+program across builds. For future releases, keep the canonical bundle ID/path,
+use a stable Apple-issued signing identity when available, and require real
+printer acceptance in the launchd context. Approval of this binary does not
+prove approval of every future rebuild. We did not grant unrelated privacy
+permissions or disable macOS protections; the exercised service paths establish
+that their required permissions are available.
+
+
+A deliberate normal launchd restart then replaced PID 3354 with PID **3460**,
+using the identical signed executable. Full public acceptance passed again,
+including both cameras, sharing/cleanup and logout; both MQTT sockets were
+established, and no new connect-denial entries appeared after that restart.
+Evidence: `permission-restart.json` and `public-permission-restart.json` in the
+release directory. This confirms permission survives a process restart; a
+whole-machine reboot, future rebuild and long-duration soak remain untested.
