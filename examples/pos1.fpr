@@ -336,7 +336,10 @@ flush j m = case m.pend of
     Nil -> m
   | ls -> (case Journal.append (rev ls Nil) j of
       Ok _ -> { m | pend = Nil }
-    | Err why -> error "pos1: {why}").
+      # the PROCESS ends, not just the model's actor: an actor's `error` is
+      # now contained, which would leave a server that answers the page and
+      # never commits again, and a supervisor that sees nothing to restart
+    | Err why -> Program.fail 1 "pos1: {why}").
 
 # ---- stock, for a scraper ------------------------------------------------------------------
 # With --metrics=FILE the stock of every live product, and the low-stock mark,
