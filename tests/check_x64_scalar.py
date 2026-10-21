@@ -110,7 +110,9 @@ def main():
                 # (the merge with M3: the arrival loads each cell into the
                 # parameter's allocated register, docs/2026-10-21-TYPED-IR-MERGE.md)
                 rotate63 = next(body for title, body in bodies if title.startswith('rotate63 '))
-                assert 'movq %fs:fpr_posix_hart@tpoff, %r10' in rotate63 and ', 8(%r10)' in rotate63 and ', 448(%r10)' in rotate63, rotate63[:600]
+                # (the caller's store goes through %r11 when the value itself
+                # was reloaded into %r10, the allocator's first scratch)
+                assert re.search(r'movq %fs:fpr_posix_hart@tpoff, %r1[01]', rotate63) and re.search(r', 8\(%r1[01]\)', rotate63) and re.search(r', 448\(%r1[01]\)', rotate63), rotate63[:600]
                 assert re.search(r'movq 8\(%(\w+)\), %\1', rotate63) and re.search(r'movq 448\(%(\w+)\), %\1', rotate63), rotate63[:600]
                 assert 'cqto' in selected and 'imulq' in selected
                 headers = {title.split()[0]: title for title, _ in bodies if 'typed-ir x64' in title}

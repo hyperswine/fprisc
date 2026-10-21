@@ -134,8 +134,10 @@ rotation stores its own base register.
 prologue copy (`movq 8(%r11), %r11` and `movq 448(%r11), %r11`). The
 arrival now loads into the parameter's own register, so the check accepts
 `movq 8(%R), %R` and `movq 448(%R), %R` for any one register R. It
-still requires the first and last cell, and the caller's `%r10` stores are
-asserted unchanged. The combined line it prints no longer says "shifts and
+still requires the first and last cell. After the `store.spill` fix
+above, the caller's stores go through %r10 or through %r11 (%r11 when the
+value was reloaded into %r10), and the check accepts either register; it
+used to require %r10. The combined line it prints no longer says "shifts and
 arities 9/64 explicitly legacy" (that was M3's text from before coverage).
 It says "including arities 9 and 64".
 
