@@ -3,7 +3,8 @@
 Date: 2026-10-20. Kind: goal / plan and proposed architecture.
 Status: accepted with the narrowing of the 2026-10-20 review (one IR, A64
 first, M0 as a register page, an M3 investment review). M1 review repairs
-are implemented; M2 native emission remains pending.
+are implemented; M2's AArch64 half is implemented
+([M2 page](2026-10-21-TYPED-IR-M2-A64.md)); its x86-64 half is open.
 Baseline: native compiler at `c328232f63d3f4a6a4b4c1dde7bce17cc449e19d`
 (codegen revision 66); 2026-10-21 amendments cover the M1 repairs at revision 67.
 Audience: compiler implementers and reviewers.
@@ -227,7 +228,9 @@ bound contracts are an exit gate before M2 emits native code.
 - [x] Bound consumers and a compatibility strategy are recorded in the
   [register](2026-10-21-NATIVE-IR-CONTRACTS.md). QOS has documentation
   references; no executable QOS parser was found in the inspected source.
-- [ ] The opt-in backend selector and strict coverage mode (M2); the
+- [x] The opt-in backend selector and strict coverage mode (M2):
+  `FPR_TYPED_IR_BACKEND`, `FPR_TYPED_IR_STRICT`
+  ([M2 page](2026-10-21-TYPED-IR-M2-A64.md), commit `17c2dec`); the
   report and dump format are the M1 page's `FPR_TYPED_IR`.
 
 Exit: the [register](2026-10-21-NATIVE-IR-CONTRACTS.md) maps every Core form
@@ -255,17 +258,23 @@ verified IR and reference results. This stage makes no native speed claim.
 
 ### M2. First direct native path: AArch64 first, x86-64 inside the milestone
 
-- [ ] Define the operand-constraint model with x86-64's needs in it from the
+- [x] Define the operand-constraint model with x86-64's needs in it from the
   first commit: tied destination, fixed registers for division and shifts,
   the `%rax`/`%rdi` split of value and first argument, call alignment, and
-  the `a6`/`a7` cells.
-- [ ] Select AArch64 instructions directly from the IR, initially using
-  conservative spill placement to establish correctness.
-- [ ] Integrate existing ABI, fuel and stack-growth behaviour, with direct
-  Mach-O assembly emission and ELF assembly checks.
+  the `a6`/`a7` cells (`Codegen/Selected.hs`, `tests/SelectedIR.hs`;
+  [M2 page](2026-10-21-TYPED-IR-M2-A64.md), commit `17c2dec`).
+- [x] Select AArch64 instructions directly from the IR, initially using
+  conservative spill placement to establish correctness
+  (`Codegen/Target/A64.hs`, `Codegen/Place.hs`, `Codegen/Frame.hs`; commit `17c2dec`).
+- [x] Integrate existing ABI, fuel and stack-growth behaviour, with direct
+  Mach-O assembly emission and ELF assembly checks
+  ([M2 page](2026-10-21-TYPED-IR-M2-A64.md) "Selection" and "Evidence"; commit `17c2dec`).
 - [ ] Implement the same scalar subset for x86-64 Linux through that
-  constraint model, before any default change or performance claim.
-- [ ] Test independent C callers/callees and legacy/new compiled units together.
+  constraint model, before any default change or performance claim
+  (open: the vocabulary and its tests exist, no x86-64 selection does).
+- [x] Test independent C callers/callees and legacy/new compiled units together
+  (`tests/typed_ir/tir_probe.c`, `scalarlib.fpr` under `scalar_mod.fpr`,
+  `tests/check_typed_ir_a64.py`; commit `17c2dec`).
 
 Exit: the same scalar fixtures execute through both direct backends with exact
 results and failure behaviour. New-backend strict mode proves that the intended
