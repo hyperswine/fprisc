@@ -89,8 +89,44 @@ What changed in the details:
   limit is new to the merge. Neither branch alone had a self tail call
   above eight that the loop form could see.
 - Selection revisions: A64 7 (M3 3, coverage 6) and x86-64 6 (M3 2,
-  coverage 5). Each is above both branches' values, so every cached
-  typed-IR unit from either branch is invalidated.
+  coverage 5) at the merge commit, then A64 8 and x86-64 7 with the fix
+  below. Each is above both branches' values, so every cached typed-IR
+  unit from either branch is invalidated.
+
+## A defect the merge exposed: `store.spill` and the allocator
+
+The first suite run on the merged tree failed in two places.
+
+- A64, `check_typed_ir_a64.py`: `tailWide 5` returned 6553002561 where
+  255 was expected. `tailWide` makes a tail call to the 10-parameter
+  `rot9`.
+- x86-64, `check_x64_scalar.py` under Rosetta: the typed-IR oracle failed
+  on the 9- and 64-argument rotations.
+
+Cause: coverage's `store.spill` writes the hart block into x9 (A64) or
+%r10 (x86-64) before it reads the value it stores. M3's allocator assumes
+an A64 form never does that; its `acEarlyDef = const False` relies on it.
+So the allocator gave the outgoing tenth argument x9 itself, and the
+expansion stored the hart pointer into the cell. On x86-64 a spilled
+argument is reloaded into %r10, the allocator's first scratch register,
+and the same thing happened. Neither branch could show this alone. Under
+coverage's slot placement no value lives in x9 or %r10 across an
+instruction. M3 had no `store.spill`. M3's `checkAllocation` oracle did
+not catch it, because it does not model an expansion that writes a
+register before reading its operands. That gap is still open.
+
+Fix (selection revisions A64 8, x86-64 7):
+
+- A64: `acEarlyDef` is true for `store.spill`. The allocator then keeps
+  its operand out of x9, x16 and x17, its declared implicit definitions.
+  This is a narrow exception to the claim in M3's A64 configuration, now
+  written in the comment there.
+- x86-64: `store.spill` declares %r10 and %r11, both scratch and never
+  allocated. It reads the hart block into whichever of the two does not
+  hold the value. It is also an early-def form.
+
+After the fix, `tailWide 5` = 255, and no `store.spill` in the 64-argument
+rotation stores its own base register.
 
 ## Test expectation changed
 

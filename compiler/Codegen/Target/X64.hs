@@ -29,7 +29,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 6 -- the merge: M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
+x64SelectionRev = 7 -- the merge (6, then 7: store.spill never overwrites its own value): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
 
 data X64Config = X64Config
   { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool,
@@ -156,7 +156,7 @@ stageArgs args = do
   forM_ (zip [6 :: Int, 7] (take 2 (drop 6 args))) $ \(n,v) ->
     emitI (plain "store.cell" [] [any' v, OS ("fpr_x64_a" ++ show n)])
   forM_ (zip [0 :: Int ..] (drop 8 args)) $ \(j,v) ->
-    emitI ((plain "store.spill" [] [any' v, OI (fromIntegral j)]) {siImplicitDefs = [r "r10"]})
+    emitI ((plain "store.spill" [] [any' v, OI (fromIntegral j)]) {siImplicitDefs = [r "r10", r "r11"]})
 
 emitCall :: String -> Bool -> Bool -> [VReg] -> Maybe VReg -> Se ()
 emitCall sym safepoint runtime args res = do
@@ -468,7 +468,8 @@ allocConfig self managed = AllocConfig
     acMove = \d s' -> plain "movq" [OP d] [OP s'],
     acSlot = \n v -> frameObj n 8 8 (SpillSlot n) (S.member v managed),
     -- cqto writes rdx before idivq reads the divisor
-    acEarlyDef = \i -> siOp i == "divide",
+    -- store.spill writes a scratch register before it reads the value
+    acEarlyDef = \i -> siOp i `elem` ["divide", "store.spill"],
     acClassOf = rfClassOf x64RegisterFile,
     acSelfLoop = self }
 
@@ -540,7 +541,11 @@ renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i
       ("load",[d],[OF ref 0]) -> ["movq " ++ slot ref ++ ", " ++ reg d]
       ("store",[],[s,OF ref 0]) -> ["movq " ++ reg s ++ ", " ++ slot ref]
       ("store.cell",[],[s,OS cell]) -> ["movq " ++ reg s ++ ", %fs:" ++ cell ++ "@tpoff"]
-      ("store.spill",[],[s,OI j]) -> ["movq %fs:fpr_posix_hart@tpoff, %r10", "movq " ++ reg s ++ ", " ++ show (8 * (1 + j)) ++ "(%r10)"]
+      -- the hart block in whichever scratch register the value is not in
+      -- (a spilled value is reloaded into %r10, the allocator's first
+      -- scratch: the merge, docs/2026-10-21-TYPED-IR-MERGE.md)
+      ("store.spill",[],[s,OI j]) -> let h = if reg s == "%r10" then "%r11" else "%r10" in
+        ["movq %fs:fpr_posix_hart@tpoff, " ++ h, "movq " ++ reg s ++ ", " ++ show (8 * (1 + j)) ++ "(" ++ h ++ ")"]
       ("load.spill",[d],[OI j]) -> ["movq %fs:fpr_posix_hart@tpoff, " ++ reg d, "movq " ++ show (8 * (1 + j)) ++ "(" ++ reg d ++ "), " ++ reg d]
       ("movq",[d],[s]) -> ["movq " ++ reg s ++ ", " ++ reg d]
       ("li",[d],[n]) -> ["movabsq $" ++ imm n ++ ", " ++ reg d]

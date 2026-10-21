@@ -79,7 +79,7 @@ import Codegen.Target.Common
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 7 -- the merge: M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
+a64SelectionRev = 8 -- the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -604,8 +604,11 @@ allocConfig self managed =
       acMove = \d s' -> plain "mov" [OP d] [OP s'],
       acSlot = \n v -> frameObj n 8 8 (SpillSlot n) (S.member v managed),
       -- every A64 form with a definition and register uses is one
-      -- instruction, or writes only its own definition (la: adrp then add)
-      acEarlyDef = const False,
+      -- instruction, or writes only its own definition (la: adrp then add);
+      -- store.spill reads the hart into x9 before it reads the value it
+      -- stores, so that value must not be in x9 (the merge,
+      -- docs/2026-10-21-TYPED-IR-MERGE.md)
+      acEarlyDef = \i -> siOp i == "store.spill",
       acClassOf = rfClassOf a64RegisterFile,
       acSelfLoop = self
     }
