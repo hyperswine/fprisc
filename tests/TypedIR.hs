@@ -10,6 +10,7 @@ import Codegen.IR
 import Codegen.Lower (lowerFn, lowerProgram, Prim (..))
 import Codegen.Policy (m2Policy, Policy (..), Profile (..))
 import Codegen.Simplify (simplifyFn, simplifyProgram)
+import Codegen.Split (splitEntryValues)
 import Codegen.Verify (verifyFn, verifyProgram, verifyProgramWidth)
 import Control.Monad (unless)
 import Data.List (isInfixOf)
@@ -132,6 +133,22 @@ main = do
       sum100 = evalProgram lowered "sum" [RInt 100, RInt 0]
       ovf = evalProgram lowered "addovf" [RInt intMax, RInt 1]
   check "fib 20 = 6765" (ocResult fib20 == Right (RInt 6765))
+  -- FPR_TYPED_IR_SPLIT_ENTRY (docs/2026-10-22-TYPED-IR-FIB.md): the entry's
+  -- single-predecessor successors get their own copies of the entry values
+  let splitProg = M.map splitEntryValues lowered
+      splitCases = [("fib", [RInt 0]), ("fib", [RInt 1]), ("fib", [RInt 15]), ("sum", [RInt 100, RInt 0]),
+                    ("sum", [RInt 0, RInt 7]), ("addovf", [RInt intMax, RInt 1]), ("addovf", [RInt 3, RInt 4])]
+  check "split entry values verify" (verifyProgram splitProg == Right ())
+  check "split entry values give fib's calling arm, and only it, its own parameter"
+    (case M.lookup "fib" splitProg of
+       Just f -> length [b | b <- fnBlocks f, bId b /= fnEntry f, not (null (bParams b))] == 1
+       Nothing -> False)
+  check "split entry values leave a loop without calls alone (no copies in its turn)"
+    (M.lookup "sum" splitProg == M.lookup "sum" lowered)
+  check "split entry values change no result, trap or event order"
+    (and [evalProgram splitProg f a == evalProgram lowered f a | (f, a) <- splitCases])
+  check "split entry values leave a function without a branching entry alone"
+    (M.lookup "addovf" splitProg == M.lookup "addovf" lowered)
   check "fib 20 ticks once per activation" (length [() | EvSafepoint _ <- ocEvents fib20] == 21891)
   check "sum 100 0 = 5050" (ocResult sum100 == Right (RInt 5050))
   check "sum's loop ticks on every turn" (length [() | EvSafepoint _ <- ocEvents sum100] == 101)
@@ -220,6 +237,9 @@ main = do
     (all (\(n,msg) -> case ocEvents (evalProgram deadIR n [RInt 0]) of
       [EvCall _ _, EvStackCheck _, EvSafepoint _, EvAllocate _ 8 0 [RInt 1], EvTrap t] -> t == msg
       _ -> False) [("nested","field"),("argument","argument")])
+  check "split entry values preserve terminated-expression effects and traps"
+    (let sp = M.map splitEntryValues deadIR
+      in verifyProgram sp == Right () && all (\(n,x,_) -> evalProgram sp n [RInt x] == evalProgram deadIR n [RInt x]) deadCases)
   check "simplification preserves terminated-expression effects and traps"
     (case simplifyProgram deadIR of
       Right (simp,_) -> all (\(n,x,_) -> evalProgram simp n [RInt x] == evalProgram deadIR n [RInt x]) deadCases

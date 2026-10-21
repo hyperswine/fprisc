@@ -13,7 +13,7 @@ import Codegen.Frame
 import Codegen.IR
 import Codegen.Place
 import Codegen.Policy (m2Policy, StackPolicy (..), Policy (..), Profile (..))
-import Codegen.Target.Common (shallowEntry, noTune)
+import Codegen.Target.Common (shallowEntry, noTune, shrinkWrap)
 import Codegen.Selected
 import qualified Codegen.Target.X64 as X64
 import Codegen.Target.A64
@@ -224,4 +224,33 @@ main = do
   refused "x64 frame beyond the ceiling" "ceiling" (X64.emitFnX64 (X64.X64Config m2Policy S.empty False True False noTune) wide)
   refused "a frame beyond the ceiling" "ceiling" (emitFnA64 cfg wide)
   forM_ [("one", nf)] $ \(n, f) -> check ("no legacy bound label on " ++ n) (not ("# wcet:" `isInfixOf` unlines (nfLines f)))
-  putStrLn "SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, frame ceilings: PASS"
+  -- FPR_TYPED_IR_SHRINK_WRAP (docs/2026-10-22-TYPED-IR-FIB.md) on hand-built
+  -- physical streams: s1 is a saved register
+  let s1 = Phys "x19"
+      op o ds us = plain o (map OP ds) (map OP us)
+      ret' = (plain "ret" [] [OP (Phys "x0")]) {siControl = Return}
+      br l = (plain "bz" [] [OP (Phys "x0"), OL (Label l)]) {siControl = CondTo [Label l]}
+      jmp l = (plain "jump" [] [OL (Label l)]) {siControl = JumpTo (Label l)}
+      callS = (op "call" [] []) {siCalls = [Call "f" True False]}
+      notes xs = [(siOp i, siNote i) | I i <- xs]
+      -- entry branches: the leaf returns at once, the other arm uses s1 around a call
+      arms = [ I (op "entry" [] []), I (br "leaf"),
+               I (op "mv" [s1] [Phys "x0"]), I callS, I (op "mv" [Phys "x0"] [s1]), I ret',
+               ILabel (Label "leaf"), I ret' ]
+  case shrinkWrap [s1] arms of
+    Just wrapped -> do
+      check "the saves move to the arm that uses the register"
+        (take 3 (map fst (notes wrapped)) == ["entry", "bz", "saves.here"])
+      check "only the returns that arm dominates restore"
+        ([n | (o, n) <- notes wrapped, o == "ret"] == ["", "norestore"])
+    Nothing -> error "FAIL: shrink-wrap declined the two-arm stream"
+  check "a register used in the entry block keeps the prologue saves"
+    (shrinkWrap [s1] (I (op "mv" [s1] [Phys "x0"]) : arms) == Nothing)
+  check "a save point on a cycle is refused"
+    (shrinkWrap [s1] [ I (op "entry" [] []), I (br "out"), ILabel (Label "loop"), I (op "mv" [s1] [Phys "x0"]), I callS,
+                       I (br "out"), I (jmp "loop"), ILabel (Label "out"), I ret' ] == Nothing)
+  check "an exit the save point does not dominate is refused"
+    (shrinkWrap [s1] [ I (op "entry" [] []), I (br "join"), I (op "mv" [s1] [Phys "x0"]), I callS,
+                       ILabel (Label "join"), I ret' ] == Nothing)
+  check "no saved register, no change" (shrinkWrap [] arms == Nothing)
+  putStrLn "SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, frame ceilings, shrink-wrap placement and refusals: PASS"
