@@ -230,11 +230,12 @@ shrinkWrap saved items
        in if dm' == dm then dm else fixDom dm'
 
 -- The fib experiments' switches (docs/2026-10-22-TYPED-IR-FIB.md), each its
--- own cache identity, all off by default.
+-- own cache identity; the link pairs are on unless 0, the rest off.
+-- `noTune` is everything off (the tests' explicit baseline).
 data Tune = Tune
   { tuneEntryArgs :: Bool, -- FPR_TYPED_IR_ENTRY_ARGS: parameters stay in their registers through the entry
     tuneShrinkWrap :: Bool, -- FPR_TYPED_IR_SHRINK_WRAP: callee saves at a dominating, acyclic block
-    tuneLinkPairs :: Bool -- FPR_TYPED_IR_LINK_PAIRS: the frame link as one stp/ldp
+    tuneLinkPairs :: Bool -- FPR_TYPED_IR_LINK_PAIRS (on unless 0): the frame link as one stp/ldp
   }
   deriving (Eq, Show)
 

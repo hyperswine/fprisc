@@ -446,7 +446,8 @@ compileWithInterface accepted = do
   envTirEntryArgs <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_ENTRY_ARGS"
   envTirSplit <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_SPLIT_ENTRY"
   envTirWrap <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_SHRINK_WRAP"
-  envTirLinkPairs <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_LINK_PAIRS"
+  -- on unless 0: measured a pure win (docs/2026-10-22-TYPED-IR-FIB.md)
+  envTirLinkPairs <- (/= Just "0") <$> lookupEnv "FPR_TYPED_IR_LINK_PAIRS"
   envRetainedRegisters <- (== Just "1") <$> lookupEnv "FPR_RETAINED_REGISTERS"
   envA64Pairs <- (== Just "1") <$> lookupEnv "FPR_A64_FRAME_PAIRS"
   envA64Guards <- (== Just "1") <$> lookupEnv "FPR_A64_FIT_GUARDS"
@@ -1028,7 +1029,7 @@ compileWithInterface accepted = do
           contractHash = hashAST [t | t@(TSig n _ _) <- tops, M.member n preTab]
           backendTag = case envBackend of
             Nothing -> ""
-            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev) ++ (if g == PerFunction then "mixed" else "") ++ (if envTirLoops then "" else "-noloops") ++ (if envTirShallow then "-shallow" else "") ++ (if envTirForward then "-forward" else "") ++ (if envTirEntryArgs then "-entryargs" else "") ++ (if envTirSplit then "-split" else "") ++ (if envTirWrap then "-wrap" else "") ++ (if envTirLinkPairs then "-linkpairs" else "") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
+            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev) ++ (if g == PerFunction then "mixed" else "") ++ (if envTirLoops then "" else "-noloops") ++ (if envTirShallow then "-shallow" else "") ++ (if envTirForward then "-forward" else "") ++ (if envTirEntryArgs then "-entryargs" else "") ++ (if envTirSplit then "-split" else "") ++ (if envTirWrap then "-wrap" else "") ++ (if envTirLinkPairs then "" else "-nolinkpairs") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
           fnv = foldl (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) (14695981039346656037 :: Word64)
           tag = "g" ++ show codegenRev ++ backendTag ++ (if envCostedRegisters then "-costedregs" else "") ++ (if envCompactFrames then "-compactframes" else "") ++ (if envRetainedRegisters then "-retainedregs" else "") ++ (if envSelfLoops then "-selfloops" else "") ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"

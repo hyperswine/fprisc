@@ -206,3 +206,4 @@ they began.
 
 - [Typed IR migration execution](2026-10-22-TYPED-IR-MIGRATION.md): refreshed merged baseline, ordered overhead/coverage/target work and conditional promotion gates.
 - [Typed-IR migration review](2026-10-22-TYPED-IR-MIGRATION-REVIEW.md): the migration branch reviewed before merge for the allocator interaction class (RISC-V early-write store, callee-saved budget, aggregates, vector decline, constructor reuse); legacy emission byte-identical on five targets; suites and Base green.
+- [Typed-IR fib regression](2026-10-22-TYPED-IR-FIB.md): fib's leaf activations paid an unpaired frame link and the recursive arm's callee saves; four switched experiments measured (link pairs, entry arguments, entry splitting, shrink-wrapping); the paired link is now the A64 backend's default and brings fib to parity with legacy-best; the other three stay opt-in.
