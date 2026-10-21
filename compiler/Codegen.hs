@@ -47,6 +47,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Peephole (peepholeFor)
 import Codegen.IR (Fn (..), Block (..))
 import Codegen.Lower (lowerProgram, Prim (..))
+import Codegen.Simplify (simplifyProgram)
 import Codegen.Policy (Policy, m2Policy)
 import qualified Codegen.Target.X64 as X64
 import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat (..), emitFnA64)
@@ -145,27 +146,35 @@ rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False 
 typedIrNotes :: Maybe String -> Policy -> ScalarSignatures -> M.Map String Int -> M.Map String Prim -> Prog -> Prog -> [String]
 typedIrNotes Nothing _ _ _ _ _ _ = []
 typedIrNotes (Just mode) policy sigs ext hal prog emitted =
-  case verifyProgram lowered of
+  case verifyProgram lowered >> verifyProgram simplified of
     Left err -> error ("typed-ir: " ++ err)
     Right () ->
-      ["typed-ir: coverage " ++ show (M.size lowered) ++ "/" ++ show (M.size emitted) ++ " functions"]
-        ++ ["typed-ir: " ++ n ++ " lowered (" ++ show (length (fnBlocks f)) ++ " blocks, " ++ show (sum (map (length . bInstrs) (fnBlocks f))) ++ " instructions)" | (n, f) <- M.toList lowered]
+      ["typed-ir: coverage " ++ show (M.size simplified) ++ "/" ++ show (M.size emitted) ++ " functions"]
+        ++ ["typed-ir: " ++ n ++ " lowered (" ++ show (length (fnBlocks f)) ++ " blocks, " ++ show (sum (map (length . bInstrs) (fnBlocks f))) ++ " instructions"
+              ++ maybe "" (\k -> ", " ++ show k ++ " removed by simplification") (M.lookup n removed) ++ ")" | (n, f) <- M.toList simplified]
         ++ ["typed-ir: " ++ n ++ " fallback: " ++ r | (n, r) <- failures]
-        ++ (if "dump" `elem` ws then concatMap (map ("typed-ir: | " ++) . lines . dumpFn) (M.elems lowered) else [])
+        ++ (if "dump" `elem` ws then concatMap (map ("typed-ir: | " ++) . lines . dumpFn) (M.elems simplified) else [])
+        ++ (if "dumplowered" `elem` ws then concatMap (map ("typed-ir: lowered | " ++) . lines . dumpFn) (M.elems lowered) else [])
         ++ concatMap evalNote ws
   where
     (lowered, failures) = lowerProgram policy sigs prog emitted ext hal
+    -- the simplified program is what the backend consumes; the lowered one
+    -- is kept beside it as the differential oracle of every evaluation
+    (simplified, removed) = either (\e -> error ("typed-ir: " ++ e)) id (simplifyProgram lowered)
     ws = words mode
     evalNote w = case splitOn ':' w of
       ("eval" : fn : args) | Just ns <- mapM readMaybe args ->
-        let out = evalProgram lowered fn (map RInt ns)
+        let out = evalProgram simplified fn (map RInt ns)
+            out0 = evalProgram lowered fn (map RInt ns)
             shown = "typed-ir: eval " ++ fn ++ concatMap ((' ' :) . show) (ns :: [Integer])
             counts = " (" ++ show (length [() | EvSafepoint _ <- ocEvents out]) ++ " safepoints, " ++ show (length [() | EvCall _ _ <- ocEvents out]) ++ " calls)"
-         in [ case ocResult out of
-                Right (RInt n) -> shown ++ " = " ++ show n ++ counts
-                Right v -> shown ++ " = " ++ show v ++ counts
-                Left (Trap msg) -> shown ++ " trap: " ++ msg ++ counts
-                Left (Stuck msg) -> shown ++ " stuck: " ++ msg ++ counts ]
+         in if out /= out0
+              then error ("typed-ir: simplification changed the evaluation of " ++ shown ++ ":\n  lowered:    " ++ show out0 ++ "\n  simplified: " ++ show out)
+              else [ case ocResult out of
+                       Right (RInt n) -> shown ++ " = " ++ show n ++ counts
+                       Right v -> shown ++ " = " ++ show v ++ counts
+                       Left (Trap msg) -> shown ++ " trap: " ++ msg ++ counts
+                       Left (Stuck msg) -> shown ++ " stuck: " ++ msg ++ counts ]
       _ -> []
     splitOn c s = case break (== c) s of
       (a, _ : rest) -> a : splitOn c rest
@@ -496,7 +505,7 @@ foreignEntries tgt =
 -- granularity turns one fallback into the unit's.
 nativeSelect :: Target -> NativeMode -> ScalarSignatures -> M.Map String Int -> S.Set String -> Prog -> Prog -> (M.Map String NativeFn, [(String, String)], [String])
 nativeSelect tgt nm sigs ext exps prog emitted =
-  case verifyProgram lowered of
+  case verifyProgram lowered0 >> verifyProgram lowered of
     Left err -> error ("typed-ir: " ++ err)
     Right () -> case nmBackend nm of
       Nothing -> (M.empty, [(n, "no typed-IR native backend for " ++ nmTargetName nm ++ " (M2 emits AArch64 and x86-64)") | n <- M.keys emitted], [])
@@ -537,7 +546,10 @@ nativeSelect tgt nm sigs ext exps prog emitted =
                               : ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- reasons]
                           )
   where
-    (lowered, failures) = lowerProgram (tgtPolicy tgt) sigs prog emitted ext (foreignEntries tgt)
+    (lowered0, failures) = lowerProgram (tgtPolicy tgt) sigs prog emitted ext (foreignEntries tgt)
+    -- the simplification passes (Codegen.Simplify), each verified; a
+    -- failure is a compiler error
+    lowered = either (\e -> error ("typed-ir: " ++ e)) fst (simplifyProgram lowered0)
 
 emitProgram :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> S.Set String -> Prog -> (String, [String])
 emitProgram tgt rvv spec exports ext exps elide prog0 =

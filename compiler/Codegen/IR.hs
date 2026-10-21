@@ -27,7 +27,7 @@ module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
     ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), Callee (..), CalleeKind (..), isForeign,
     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
-    Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs,
+    Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
     intMin, intMax, intFits64, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
   ) where
 
@@ -202,6 +202,37 @@ termUses = \case
   TCondBr c _ as _ bs -> c : as ++ bs
   TTailCall _ as -> as
   TUnreachable _ -> []
+
+-- the same operation or terminator over renamed values (the simplification
+-- passes substitute one value for another)
+mapOpUses :: (VId -> VId) -> Op -> Op
+mapOpUses f = \case
+  OConstInt n -> OConstInt n
+  ONullary t v -> ONullary t v
+  OTag v -> OTag (f v)
+  OUntag v -> OUntag (f v)
+  OBoolOf v -> OBoolOf (f v)
+  OTruth v -> OTruth (f v)
+  ONot v -> ONot (f v)
+  OIsInt v -> OIsInt (f v)
+  OTagTest t c v -> OTagTest t c (f v)
+  OSymbol s -> OSymbol s
+  OArith o a b -> OArith o (f a) (f b)
+  OBit o a b -> OBit o (f a) (f b)
+  OShift o a b -> OShift o (f a) (f b)
+  OCmp o a b -> OCmp o (f a) (f b)
+  OEqVal e a b -> OEqVal e (f a) (f b)
+  OCall c as -> OCall c (map f as)
+  OSafepoint -> OSafepoint
+  OStackCheck -> OStackCheck
+
+mapTermUses :: (VId -> VId) -> Term -> Term
+mapTermUses f = \case
+  TRet v -> TRet (f v)
+  TBr b as -> TBr b (map f as)
+  TCondBr c t as e bs -> TCondBr (f c) t (map f as) e (map f bs)
+  TTailCall c as -> TTailCall c (map f as)
+  TUnreachable m -> TUnreachable m
 
 termSuccs :: Term -> [(BId, [VId])]
 termSuccs = \case

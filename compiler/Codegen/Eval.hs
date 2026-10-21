@@ -40,7 +40,7 @@ data Event
 
 data Failure = Trap String | Stuck String deriving (Eq, Show)
 
-data Outcome = Outcome {ocResult :: Either Failure RV, ocEvents :: [Event]} deriving (Show)
+data Outcome = Outcome {ocResult :: Either Failure RV, ocEvents :: [Event]} deriving (Eq, Show)
 
 data Val = VVal RV | VInt Integer | VPred Bool deriving (Eq, Ord, Show)
 

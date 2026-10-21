@@ -9,6 +9,7 @@ import Codegen.Eval
 import Codegen.IR
 import Codegen.Lower (lowerFn, lowerProgram, Prim (..))
 import Codegen.Policy (m2Policy)
+import Codegen.Simplify (simplifyFn, simplifyProgram)
 import Codegen.Verify (verifyFn, verifyProgram)
 import Control.Monad (unless)
 import Data.List (isInfixOf)
@@ -211,6 +212,64 @@ main = do
       (irE, failE) = lowerProgram m2Policy M.empty whole (M.singleton "f" (whole M.! "f")) M.empty M.empty
   check "only the emitted function is lowered, with the elided definitions known" (null failE && M.keys irE == ["f"] && "nullary 7 0" `isInfixOf` dumpFn (irE M.! "f") && "call helper ::" `isInfixOf` dumpFn (irE M.! "f"))
   putStrLn "Typed IR dead arms, nullary definitions, function/HAL/primitive values, whole-program lookups: lowered, verified, evaluated with the legacy trap text PASS"
+  -- increment 4: the simplification passes, verified IR to verified IR,
+  -- differential against the evaluator on every fixture program above
+  let differential name program calls = do
+        (simplified, removed) <- either (error . (("FAIL: " ++ name ++ ": ") ++)) pure (simplifyProgram program)
+        check (name ++ ": the simplified program verifies") (verifyProgram simplified == Right ())
+        mapM_ (\(fn, args) -> do
+          let before = evalProgram program fn args
+              after = evalProgram simplified fn args
+          unless (before == after) (error ("FAIL: " ++ name ++ ": simplification changed " ++ fn ++ " " ++ show args ++ "\n  " ++ show before ++ "\n  " ++ show after))) calls
+        pure (simplified, removed)
+  (simpl1, removed1) <- differential "scalar fixtures" lowered [("fib", [RInt 20]), ("fib", [RInt 0]), ("sum", [RInt 100, RInt 0]), ("addovf", [RInt intMax, RInt 1]), ("addovf", [RInt 1, RInt 2])]
+  check "sum's repeated untag of n is shared" (M.lookup "sum" removed1 == Just 1 && length (filter ("untag v0" `isInfixOf`) (lines (dumpFn (simpl1 M.! "sum")))) == 1)
+  check "fib's two untags of n are shared" (M.lookup "fib" removed1 == Just 1)
+  _ <- differential "bit operations" bitIr [("shl", [RInt 1, RInt 3]), ("shl", [RInt 1, RInt 64]), ("shr", [RInt (-8), RInt 1]), ("andf", [RInt 12, RInt 10])]
+  _ <- differential "increment-3 shapes" ir3 [("deadTail", [RInt 1]), ("deadTail", [RInt 2]), ("deadValue", [RInt 0]), ("deadValue", [RInt 5]), ("useCaf", [RInt 8])]
+  -- the folds and the threading on hand-written shapes: tag/untag pairs
+  -- from a worker boundary, a materialised Bool tested by a branch
+  let pairFn = Fn "pair" ["n"] TVal (BId 0)
+        [ Block (BId 0) [(VId 0, TVal)]
+            [ Instr Nothing OStackCheck, Instr Nothing OSafepoint,
+              Instr (Just (VId 1, TInt)) (OUntag (VId 0)),
+              Instr (Just (VId 2, TVal)) (OTag (VId 1)),
+              Instr (Just (VId 3, TInt)) (OUntag (VId 2)),
+              Instr (Just (VId 4, TInt)) (OConstInt 1),
+              Instr (Just (VId 5, TInt)) (OArith Add (VId 3) (VId 4)),
+              Instr (Just (VId 6, TInt)) (OUntag (VId 0)),
+              Instr (Just (VId 7, TInt)) (OArith Mul (VId 5) (VId 6)),
+              Instr (Just (VId 8, TVal)) (OTag (VId 7)) ]
+            (TRet (VId 8)) ]
+      -- if (if n < 3 then True else boolof (n < 10)) then 1 else 2, with the join's truth tested
+      joinFn = Fn "join" ["n"] TVal (BId 0)
+        [ Block (BId 0) [(VId 0, TVal)]
+            [ Instr Nothing OStackCheck, Instr Nothing OSafepoint,
+              Instr (Just (VId 1, TInt)) (OUntag (VId 0)),
+              Instr (Just (VId 2, TInt)) (OConstInt 3),
+              Instr (Just (VId 3, TPred)) (OCmp Lt (VId 1) (VId 2)) ]
+            (TCondBr (VId 3) (BId 1) [] (BId 2) []),
+          Block (BId 1) [] [Instr (Just (VId 4, TVal)) (ONullary 1 1)] (TBr (BId 3) [VId 4]),
+          Block (BId 2) []
+            [ Instr (Just (VId 5, TInt)) (OConstInt 10),
+              Instr (Just (VId 6, TPred)) (OCmp Lt (VId 1) (VId 5)),
+              Instr (Just (VId 7, TVal)) (OBoolOf (VId 6)) ]
+            (TBr (BId 3) [VId 7]),
+          Block (BId 3) [(VId 8, TVal)] [Instr (Just (VId 9, TPred)) (OTruth (VId 8))] (TCondBr (VId 9) (BId 4) [] (BId 5) []),
+          Block (BId 4) [] [Instr (Just (VId 10, TInt)) (OConstInt 1), Instr (Just (VId 11, TVal)) (OTag (VId 10))] (TRet (VId 11)),
+          Block (BId 5) [] [Instr (Just (VId 12, TInt)) (OConstInt 2), Instr (Just (VId 13, TVal)) (OTag (VId 12))] (TRet (VId 13)) ]
+      hand = M.fromList [("pair", pairFn), ("join", joinFn)]
+  check "the hand-written shapes verify" (verifyProgram hand == Right ())
+  (simplH, removedH) <- differential "hand-written shapes" hand [("pair", [RInt 5]), ("pair", [RInt intMax]), ("join", [RInt 1]), ("join", [RInt 5]), ("join", [RInt 50])]
+  let pairD = dumpFn (simplH M.! "pair")
+      joinD = dumpFn (simplH M.! "join")
+  check "tag/untag pairs fold and the untags are shared" (M.lookup "pair" removedH == Just 3 && length (filter ("untag" `isInfixOf`) (lines pairD)) == 1 && not ("tag v1" `isInfixOf` pairD))
+  check "the materialised Bool is gone: the join block is threaded away" (M.lookup "join" removedH == Just 3 && not ("truth" `isInfixOf` joinD) && not ("boolof" `isInfixOf` joinD) && not ("b3(" `isInfixOf` joinD))
+  check "the constant edge jumps to its arm, the boolof edge branches on its predicate" ("  br b4()" `isInfixOf` joinD && "condbr v6 -> b4() | b5()" `isInfixOf` joinD)
+  -- a pass whose result does not verify is a compiler error, not a fallback
+  let broken = (simplifyFn M.empty pairFn {fnBlocks = [b {bTerm = TRet (VId 99)} | b <- fnBlocks pairFn]})
+  check "an unverifiable result is an error naming the pass" (case broken of Left e -> "simplify fold-conversions on pair" `isInfixOf` e; _ -> False)
+  putStrLn "Typed IR simplification: conversion pairs folded, Bool joins threaded, pure operations shared per block, dead pure definitions dropped; evaluator results, traps and events unchanged on every fixture PASS"
   -- refusals name the form
   let refused what = case lowerFn m2Policy M.empty (M.insert "f" what prog) M.empty M.empty "f" what of
         Left r -> r
