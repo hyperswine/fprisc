@@ -12,6 +12,10 @@ Variants, every unrelated setting fixed (one hart, no inherited FPR_ switch):
                 allocator, the rest stays legacy (default settings)
   typed-ir-noloop  the same with FPR_TYPED_IR_SELF_LOOPS=0 (the loop form's
                 separate switch)
+  typed-ir-best the backend for the functions it covers and the best legacy
+                combination for the rest (the functions the scalar lowering
+                refuses stay legacy, and their legacy opt-ins are unrelated
+                settings that a fair comparison keeps equal)
 
 Workloads: fib, sum, pipeline (internal CLOCK_MONOTONIC, the sources of
 tools/bench-a64-guards.py) and helpers, sha (tests/bench, process wall time
@@ -45,6 +49,8 @@ VARIANTS = {
     "legacy-best": {"FPR_COSTED_REGISTERS": "1", "FPR_COMPACT_FRAMES": "1", "FPR_SELF_LOOPS": "1", "FPR_A64_FRAME_PAIRS": "1"},
     "typed-ir": {"FPR_TYPED_IR_BACKEND": "mixed"},
     "typed-ir-noloop": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_SELF_LOOPS": "0"},
+    # the backend for what it covers, the best legacy combination for the rest
+    "typed-ir-best": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_COSTED_REGISTERS": "1", "FPR_COMPACT_FRAMES": "1", "FPR_SELF_LOOPS": "1", "FPR_A64_FRAME_PAIRS": "1"},
 }
 INTERNAL = {
     "fib": ("fib : unsafe Int -> Int .\nfib n = if n < 2 then n else fib (n - 1) + fib (n - 2).\n", "fib 35", 9227465),
