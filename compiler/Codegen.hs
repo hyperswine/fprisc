@@ -506,8 +506,8 @@ foreignEntries tgt =
 -- refusal (a frame beyond the ceiling) is a reported fallback; an invalid
 -- selection, placement or layout is a compiler error.  Whole-unit
 -- granularity turns one fallback into the unit's.
-nativeSelect :: Target -> NativeMode -> ScalarSignatures -> M.Map String Int -> S.Set String -> Prog -> Prog -> (M.Map String NativeFn, [(String, String)], [String])
-nativeSelect tgt nm sigs ext exps prog emitted =
+nativeSelect :: Target -> Bool -> NativeMode -> ScalarSignatures -> M.Map String Int -> S.Set String -> Prog -> Prog -> (M.Map String NativeFn, [(String, String)], [String])
+nativeSelect tgt spec nm sigs ext exps prog emitted =
   case verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered0 >> verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered of
     Left err -> error ("typed-ir: " ++ err)
     Right () -> case nmBackend nm of
@@ -551,7 +551,26 @@ nativeSelect tgt nm sigs ext exps prog emitted =
                               : ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- reasons]
                           )
   where
-    (lowered0, failures) = lowerProgram (tgtPolicy tgt) sigs prog emitted ext (foreignEntries tgt)
+    (lowered0, loweringFailures) = lowerProgram (tgtPolicy tgt) sigs prog eligible ext (foreignEntries tgt)
+    -- The direct backend must not silently replace an enabled specialized
+    -- column loop with generic per-element apply. Keep this named fallback
+    -- until equivalent typed kernels exist; respect target and float gates.
+    specialized = if spec then M.filter hasKernel emitted else M.empty
+    eligible = emitted `M.difference` specialized
+    failures = loweringFailures ++ [(n, "vector specialization requires legacy kernel emission") | n <- M.keys specialized]
+    hasKernel (ps,b) = scan (S.fromList ps) b
+    scan bound e
+      | Just (plan,_) <- vecSpec (tgtFusion tgt) prog (`S.member` bound) e,
+        (tgtW tgt == 8 && tgtFloatInline tgt) || not (specUsesFloat prog plan) = True
+      | otherwise = case e of
+          CApp a b -> scan bound a || scan bound b
+          CLet x a b -> scan bound a || scan (S.insert x bound) b
+          CIf c t f -> any (scan bound) [c,t,f]
+          CMk _ _ fs -> any (scan bound) fs
+          CTagEq _ _ x -> scan bound x
+          CProj _ x -> scan bound x
+          CLam ps b -> scan (S.union bound (S.fromList ps)) b
+          _ -> False
     -- the simplification passes (Codegen.Simplify), each verified; a
     -- failure is a compiler error
     lowered = either (\e -> error ("typed-ir: " ++ e)) fst (simplifyProgram lowered0)
@@ -572,7 +591,7 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
       emitted = if S.null elide then prog else M.filterWithKey (\n _ -> S.notMember n elide) prog
       (nativeFns, nativeFallbacks, nativeNotes) = case tgtNative tgt of
         Nothing -> (M.empty, [], [])
-        Just nm -> nativeSelect tgt nm workerSigs ext exps prog emitted
+        Just nm -> nativeSelect tgt spec nm workerSigs ext exps prog emitted
       (body, st) = runState (top prog emitted nativeFns) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty)
       -- the native text in the target's own syntax, then the string
       -- objects it names (one per distinct text; the unit-local nullary

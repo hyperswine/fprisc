@@ -3,10 +3,10 @@
 --
 -- The input is the Core a function has when `Codegen.compileFnBody`
 -- receives it: after inlining, fusion, workers, `normIn` and reuse.  The
--- lowering accepts Int arithmetic and comparison (tagged, and the raw
--- `$scalar.*` forms of the private workers), let, if, Bool tag tests,
--- nullary constructors, saturated known calls, tail calls and self tail
--- calls, and the inlined entry safepoint.  Everything else is refused
+-- lowering accepts scalar arithmetic, control flow, immutable aggregates,
+-- byte strings, generic apply, and runtime value-ABI calls (including floats).
+-- Private workers retain their representation signatures and all entries
+-- retain their declared stack/fuel obligations.  Everything else is refused
 -- with a reason naming the form, and the function stays on the legacy
 -- path: an unsupported form is a reported fallback, never a partial IR.
 --
@@ -19,6 +19,7 @@ import Codegen.IR
 import Codegen.Policy
 import Codegen.Target.Common (mangleName)
 import Control.Monad (when)
+import Control.Monad.Except (ExceptT, catchError, runExceptT, throwError)
 import Control.Monad.State.Strict
 import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as M
@@ -40,7 +41,9 @@ data Cur = Cur BId [(VId, Ty)] [Instr] -- instructions reversed
 
 data St = St {stV :: Int, stB :: Int, stCur :: Maybe Cur, stDone :: [Block]}
 
-type L = StateT St (Either Reason)
+-- A terminated expression has no value. Keep its closed blocks and prior
+-- effects; a lowering refusal still discards the whole function.
+type L = ExceptT () (StateT St (Either Reason))
 
 data Cx = Cx
   { cxProg :: Prog,
@@ -57,7 +60,10 @@ data Cx = Cx
 type Env = M.Map Name (VId, Ty)
 
 refuse :: String -> L a
-refuse = lift . Left
+refuse = lift . lift . Left
+
+ended :: L a -> L (Maybe a)
+ended action = catchError (Just <$> action) (\() -> pure Nothing)
 
 fresh :: L VId
 fresh = do
@@ -179,7 +185,9 @@ lowerFn policy sigs prog ext hal name (params, body)
   | length params > arityCeiling = Left ("arity above " ++ show arityCeiling ++ " (eight registers and the hart spill cells)")
   | workerPrefix `isPrefixOf` name, M.notMember name sigs = Left "a scalar worker without representation metadata"
   | length ptys /= length params = Left "worker representation metadata has the wrong arity"
-  | otherwise = evalStateT go (St 0 0 Nothing [])
+  | otherwise = do
+      result <- evalStateT (runExceptT go) (St 0 0 Nothing [])
+      either (const (Left "internal: uncaught terminated function")) Right result
   where
     (ptys, rty) = M.findWithDefault (map (const TVal) params, TVal) name sigs
     go = do
@@ -212,7 +220,7 @@ calleeOf cx h n
   -- `call fpr_prim_fn_<name>` for a core primitive and `call
   -- fpr_g_<name>_call<n>` for a declared HAL/foreign one (Codegen.genT:
   -- `known` and the tgtHal case); the names with inline expansions
-  -- ($arc.*, $scalar.*, F64.*, the operators) are not calls there and stay
+  -- ($arc.*, $scalar.*, the integer operators) are not calls there and stay
   -- refused here
   | M.notMember h (cxProg cx), Just (Prim a (Just sym) _) <- M.lookup h (cxHal cx), a == n, foreignName h = Just (Callee h (Foreign sym) (replicate n TVal) TVal)
   | otherwise = Nothing
@@ -223,10 +231,10 @@ foreignName h = not (any (`isPrefixOf` h) expanded) && h `notElem` inlined
     -- the families the legacy generator expands in place or routes
     -- elsewhere (their slow paths and guards are its own, not a C call):
     -- the builtin adapters, the scalar workers' raw forms, the indexed
-    -- memory forms, link-time symbols, the inlined entry tick, the float
-    -- operators; a `$`-name outside them ($receiveLoop, $vec.at/get/len)
+    -- memory forms, link-time symbols and the inlined entry tick. F64/F32 use the declared runtime V ABI, not raw FP registers.
+    -- A `$`-name outside them ($receiveLoop, $vec.at/get/len)
     -- is a direct C entry in both generators
-    expanded = ["$arc.", "$scalar.", "$mem.", "$sym.", "$fuel", "F64.", "F32."]
+    expanded = ["$arc.", "$scalar.", "$mem.", "$sym.", "$fuel"]
     -- the plain names Codegen.inlineTable expands in place
     inlined = ["+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "charAt", "strlen", "band", "bor", "bxor", "BITSHIFTL", "BITSHIFTR"]
 
@@ -257,35 +265,37 @@ unify a b
 
 -- tail position: the expression is the function's result
 lowerTail :: Cx -> Env -> Core -> L ()
-lowerTail cx env = \case
-  CLet x a b -> lowerBind cx env x a >>= \env' -> lowerTail cx env' b
-  CIf c t f -> do
-    p <- lowerCond cx env c
-    (bt, _) <- newBlock []
-    (bf, _) <- newBlock []
-    close (TCondBr p bt [] bf [])
-    open bt [] >> lowerTail cx env t
-    open bf [] >> lowerTail cx env f
-  -- a dead arm: exhaustiveness proved it unreachable; the legacy generator
-  -- emits the trap there (`la a0, <str>; call fpr_panic`) and so does the IR
-  CErr msg -> close (TUnreachable msg)
-  e
-    | (CVar h, args@(_ : _)) <- spineOf e,
-      M.notMember h env,
-      Just c <- calleeOf cx h (length args) -> do
-        as <- mapM (lowerVal cx env) args
-        if h == cxSelf cx
-          then do
-            as' <- mapM (uncurry coerce) (zip as (cxEntryTys cx))
-            close (TBr (cxEntry cx) as')
-          else do
-            when (calleeResult c /= cxResult cx) $ refuse ("a tail call to " ++ h ++ " answers " ++ show (calleeResult c) ++ ", this function " ++ show (cxResult cx))
-            as' <- mapM (uncurry coerce) (zip as (calleeParams c))
-            close (TTailCall c as')
-    | otherwise -> do
-        r <- lowerVal cx env e
-        v <- coerce r (cxResult cx)
-        close (TRet v)
+lowerTail cx env expr = ended (go expr) >> pure ()
+ where
+  go = \case
+    CLet x a b -> lowerBind cx env x a >>= \env' -> lowerTail cx env' b
+    CIf c t f -> do
+      p <- lowerCond cx env c
+      (bt, _) <- newBlock []
+      (bf, _) <- newBlock []
+      close (TCondBr p bt [] bf [])
+      open bt [] >> lowerTail cx env t
+      open bf [] >> lowerTail cx env f
+    -- a dead arm: exhaustiveness proved it unreachable; the legacy generator
+    -- emits the trap there (`la a0, <str>; call fpr_panic`) and so does the IR
+    CErr msg -> close (TUnreachable msg)
+    e
+      | (CVar h, args@(_ : _)) <- spineOf e,
+        M.notMember h env,
+        Just c <- calleeOf cx h (length args) -> do
+          as <- mapM (lowerVal cx env) args
+          if h == cxSelf cx
+            then do
+              as' <- mapM (uncurry coerce) (zip as (cxEntryTys cx))
+              close (TBr (cxEntry cx) as')
+            else do
+              when (calleeResult c /= cxResult cx) $ refuse ("a tail call to " ++ h ++ " answers " ++ show (calleeResult c) ++ ", this function " ++ show (cxResult cx))
+              as' <- mapM (uncurry coerce) (zip as (calleeParams c))
+              close (TTailCall c as')
+      | otherwise -> do
+          r <- lowerVal cx env e
+          v <- coerce r (cxResult cx)
+          close (TRet v)
 
 -- a let binder: a local alias shares the value; anything else is lowered
 lowerBind :: Cx -> Env -> Name -> Core -> L Env
@@ -298,10 +308,7 @@ lowerBind cx env x a = case a of
 -- an arm of a branch in value position: a dead arm (CErr, after its lets)
 -- closes the block with the unreachable terminator and yields no value
 lowerArm :: Cx -> Env -> Core -> L (Maybe (VId, Ty))
-lowerArm cx env = \case
-  CLet x a b -> lowerBind cx env x a >>= \env' -> lowerArm cx env' b
-  CErr msg -> close (TUnreachable msg) >> pure Nothing
-  e -> Just <$> lowerVal cx env e
+lowerArm cx env e = ended (lowerVal cx env e)
 
 -- condition position: a predicate
 lowerCond :: Cx -> Env -> Core -> L VId
@@ -344,7 +351,7 @@ lowerVal cx env = \case
     v <- emit TVal (OField index value)
     pure (v, TVal)
   CLam _ _ -> refuse "a lambda"
-  CErr _ -> refuse "a dead arm (CErr) in value position (not an arm of a branch)"
+  CErr msg -> close (TUnreachable msg) >> throwError ()
   CTagEq 1 1 c -> (\p -> (p, TPred)) <$> lowerCond cx env c
   CTagEq 1 0 c -> (\p -> (p, TPred)) <$> lowerCond cx env (CTagEq 1 0 c)
   CTagEq t v c -> do
@@ -379,7 +386,8 @@ lowerVal cx env = \case
         close (TBr bj [vf])
         open bj [(vj, jty)]
         pure (vj, jty)
-      _ -> refuse "both arms of a branch are dead (CErr)"
+      (Nothing, Nothing, _, _) -> throwError ()
+      _ -> refuse "internal: inconsistent branch termination"
   e@(CApp _ _) -> case spineOf e of
     (CVar h, args)
       -- a local head: the generic application through the runtime

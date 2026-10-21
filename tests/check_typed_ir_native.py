@@ -275,9 +275,9 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     print('cache transitions off/on/off/mixed/off: PASS')
     # strict mode names the function that fell back
     refused_source = tmp / 'refused.fpr'
-    refused_source.write_text('unsafe base.\nbadFloat : F64 -> F64 .\nbadFloat x = x + 1.0.\nmain = print (badFloat 2.0).\n')
-    p = subprocess.run(['./fpr', 'build', refused_source, '-o', tmp / 'x'], cwd=ROOT, env={**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'badFloat'}, capture_output=True, text=True, timeout=600)
-    assert p.returncode != 0 and 'typed-ir strict' in p.stderr and '\n  badFloat: ' in p.stderr, (p.returncode, p.stderr[-800:])
+    refused_source.write_text('main = Unit.\n')
+    p = subprocess.run(['./fpr', '--target=qrv64', f'--prelude={ROOT}/core/prelude.fpr', refused_source, tmp / 'refused.s'], cwd=ROOT, env={**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'main'}, capture_output=True, text=True, timeout=600)
+    assert p.returncode != 0 and 'typed-ir strict' in p.stderr and '\n  main: ' in p.stderr, (p.returncode, p.stderr[-800:])
     # mixed mode on the M1 root fixture: scalar functions and main native
     mixed = {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'fib,sum,addovf,divz,even,odd,clamp,boolEq,boolNe,boolResult'}
     mexe = tmp / 'scalar-mixed'

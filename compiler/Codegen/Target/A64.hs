@@ -79,7 +79,7 @@ import Codegen.Target.Common
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 9 -- aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
+a64SelectionRev = 10 -- aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
 
 -- how generated code reaches the hart block
 data HartAccess

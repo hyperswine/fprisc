@@ -199,7 +199,31 @@ main = do
     (ocResult (evalProgram ir3 "deadTail" [RInt 2]) == Left (Trap "case: no matching pattern")
        && ocResult (evalProgram ir3 "deadValue" [RInt 5]) == Left (Trap "no shape matched")
        && case ocEvents (evalProgram ir3 "deadTail" [RInt 2]) of [EvCall _ _, EvStackCheck _, EvSafepoint _, EvTrap "case: no matching pattern"] -> True; _ -> False)
-  check "both arms dead is refused by name" (case lowerProgram m2Policy M.empty (M.singleton "f" bothDead) (M.singleton "f" bothDead) M.empty M.empty of (_, [(_, r)]) -> "both arms" `isInfixOf` r; _ -> False)
+  let deadProg = M.fromList
+        [("both", bothDead),
+         ("nested", (["n"], CMk 9 0 [CMk 8 0 [CInt 1], CErr "field", CMk 8 0 [CInt 2]])),
+         ("condition", (["n"], CIf (CErr "condition") (CInt 1) (CInt 2))),
+         ("argument", (["n"], app "callee" [CMk 8 0 [CInt 1], CErr "argument"])),
+         ("callee", (["a","b"], var "a")),
+         ("sibling", (["n"], CIf (app "==" [var "n",CInt 0])
+           (CLet "x" (CErr "bind") (var "x")) (CInt 42)))]
+      (deadIR, deadFailures) = lowerProgram m2Policy M.empty deadProg deadProg M.empty M.empty
+      deadCases = [("both",0,"a"),("both",1,"b"),("nested",0,"field"),
+                   ("condition",0,"condition"),("argument",0,"argument"),("sibling",0,"bind")]
+  check "terminated values lower without phantom results or dangling blocks"
+    (null deadFailures && verifyProgram deadIR == Right ())
+  check "nested termination and both dead arms preserve exact traps"
+    (all (\(n,x,msg) -> ocResult (evalProgram deadIR n [RInt x]) == Left (Trap msg)) deadCases)
+  check "termination in the first arm does not discard its live sibling"
+    (ocResult (evalProgram deadIR "sibling" [RInt 1]) == Right (RInt 42))
+  check "earlier allocation survives and later allocation/callee are absent"
+    (all (\(n,msg) -> case ocEvents (evalProgram deadIR n [RInt 0]) of
+      [EvCall _ _, EvStackCheck _, EvSafepoint _, EvAllocate _ 8 0 [RInt 1], EvTrap t] -> t == msg
+      _ -> False) [("nested","field"),("argument","argument")])
+  check "simplification preserves terminated-expression effects and traps"
+    (case simplifyProgram deadIR of
+      Right (simp,_) -> all (\(n,x,_) -> evalProgram simp n [RInt x] == evalProgram deadIR n [RInt x]) deadCases
+      _ -> False)
   check "a nullary definition is evaluated by a call" ("call answer ::  -> val()" `isInfixOf` dump3 "useCaf" && ocResult (evalProgram ir3 "useCaf" [RInt 8]) == Right (RInt 50))
   check "an imported nullary is an imported call" ("call Imp.caf@import ::  -> val()" `isInfixOf` dump3 "impCaf")
   check "a function value is its static PAP" ("funvalue useCaf" `isInfixOf` dump3 "funValue" && "funvalue Imp.fun" `isInfixOf` dump3 "impFun")

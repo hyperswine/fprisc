@@ -1,0 +1,13 @@
+byteloop: 358/358 functions native (per-function mode), output equals .expected
+fib: 270/270 functions native (per-function mode), output equals .expected
+floatcmp: 269/269 functions native (per-function mode), output equals .expected
+helpers: 274/274 functions native (per-function mode), output equals .expected
+mixed_locals: 269/269 functions native (per-function mode), output equals .expected
+nbody: 269/269 functions native (per-function mode), output equals .expected
+pingpong: 272/272 functions native (per-function mode), output equals .expected
+sha: 640/640 functions native (per-function mode), output equals .expected
+specialization: 272/272 functions native (per-function mode), output equals .expected
+strbuild: 270/270 functions native (per-function mode), output equals .expected
+vecread: 272/272 functions native (per-function mode), output equals .expected
+xpingpong: 272/272 functions native (per-function mode), output equals .expected
+typed-ir bench differential: 12 programs, 3707/3707 functions native, every output equal to .expected: PASS

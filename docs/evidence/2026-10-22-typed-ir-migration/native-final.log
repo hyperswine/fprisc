@@ -1,0 +1,9 @@
+SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, frame ceilings: PASS
+AllocIR: live ranges over block parameters, loops and calls; budget, spills and shared slots; staged fixed operands through a swap; tied copies; a tied destination never on a fixed operand's register; dead definitions; float refusal; the physical-liveness oracle; determinism: PASS
+whole unit: scalarlib 267/267 native under strict mode; 73 calls equal the legacy binary and independent arithmetic; C calls native code and is called back; deep recursion crossed 6 segments
+allocation facts: pressure spills 5 of 15 crossing; wide spills 16; fib and sum spill nothing
+one and four harts: PASS
+cache transitions off/on/off/mixed/off: PASS
+mixed mode on the M1 fixture: PASS
+Mach-O TLV and ELF variants assemble with clang: PASS
+Typed IR M2 (a64): selected vocabulary, whole-unit and mixed native emission with exact results and traps, C interoperability, segment growth, harts, cache transitions, strict mode, bounds: PASS

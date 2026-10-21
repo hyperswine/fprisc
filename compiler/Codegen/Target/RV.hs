@@ -19,7 +19,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 1
+rvSelectionRev = 2
 
 data RVHart = HartTp | HartTls deriving (Eq, Show)
 data RVConfig = RVConfig

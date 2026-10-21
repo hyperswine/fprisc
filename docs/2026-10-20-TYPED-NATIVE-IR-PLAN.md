@@ -337,8 +337,11 @@ The exit evidence and the investment review are in the
   are separate gates in the execution record.
 - [x] Add immutable constructors, projections, literal strings, checked byte length
   and byte access; retain the existing generic-application support.
-- [ ] Finish value-position dead arms, floating point, vectors and
-  ownership-sensitive builtin/HAL operations in bounded increments.
+- [x] Lower terminating expressions in every value context and floating calls
+  through the existing runtime value ABI; the 12-program corpus is 3707/3707.
+- [ ] Add unboxed floating selection, typed vector kernels and ownership-sensitive
+  builtin/HAL operations. Preserve enabled legacy vector specializations via a
+  named fallback until typed kernels match their behavior and performance.
 - [ ] Cover QOS TLS/hart access, imported units, dynamic loading and exported
   C entrypoints where supported.
 - [ ] Complete the target/profile coverage matrix with native or board

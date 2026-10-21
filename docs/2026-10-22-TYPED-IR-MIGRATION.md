@@ -11,7 +11,7 @@ assessment. Default promotion is conditional on the recorded acceptance gates.
 |---|---|---|---|
 | 1 | Reconcile plan; paired merged-compiler measurements | Exact source/compiler/host identities, outputs, 31 paired samples, regressions included | Complete: frozen compiler, 31 rounds on Apple M4 |
 | 2 | Shallow-entry checks and forwarding parameters | Independent switches/cache identities, native ABI and scheduler tests, before/after measurements | Validated A64/Rosetta; 31 paired rounds; kept opt-in |
-| 3 | Broader language coverage | Layout/allocation/root contracts; verifier/evaluator/native oracles; corpus counts | Aggregates/strings validated; 3700/3707 corpus instances |
+| 3 | Broader language coverage | Layout/allocation/root contracts; verifier/evaluator/native oracles; corpus counts | Aggregates/strings, terminating expressions and float runtime calls validated; 3707/3707 corpus instances |
 | 4 | RV64/RV32 and remaining profiles | Direct selection and width legalization; matching runtime/board evidence | RV32/RV64 QEMU pass; Linux CI pending; other profiles remain refused |
 | 5 | Promotion and retirement | Per-target correctness, coverage and performance gates pass; no remaining legacy consumers | Gates reviewed; promotion and retirement blocked by explicit gaps |
 
@@ -85,10 +85,48 @@ Validation: IR verifier/evaluator and simplification equivalence; native nested
 constructors/records across 2000 allocations/calls; UTF-8 byte results and bounds
 traps; one/four harts; full A64 integration and Rosetta arithmetic/ABI checks.
 All 12 benchmark-corpus outputs match their independent `.expected` files,
-with **3700/3707 emitted function instances** native (formerly 1544/3707).
-Repeated library instances are counted. Remaining refusals are four
-value-position `CErr` instances and one each of `F64.<`, `F64.str`, `F64.+`.
+with **3707/3707 emitted function instances** native (formerly 1544/3707).
+Repeated library instances are counted. The intermediate 3700/3707 result
+left four value-position `CErr` instances and three F64 calls; these now lower.
 These are coverage results, not a speedup or full-language acceptance claim.
+
+## Terminating expressions and float value ABI
+
+`CErr` now terminates any expression context, including constructor fields,
+call arguments, conditions and both arms of a value-producing conditional.
+The lowering keeps closed blocks and earlier effects, emits no phantom value,
+and stops evaluating subsequent arguments. The independent evaluator verifies
+trap text/order, earlier allocation, surviving sibling branches and unchanged
+behavior through simplification.
+
+F32/F64 operations use declared saturated runtime entries with `TVal` operands
+and results. These are the existing target-width `V` representations (raw float
+bits on 64-bit, runtime-managed representations where required on 32-bit), not
+FP register allocation. The host runtime oracle compares 400 pairs containing
+signed zero, subnormals, infinities and NaNs with C, with the inliner both ways
+and one/four harts. Additional tests cover conversions, rendering, ten float
+arguments, aggregate fields, generic apply and a 100,000-iteration tail loop.
+Unboxed FP selection/allocation remains open.
+
+## Coverage performance regression and preservation
+
+The clean `7c6f8af` compiler was measured in 31 paired rounds:
+[raw samples](evidence/2026-10-22-typed-ir-migration/coverage.json),
+[tables](evidence/2026-10-22-typed-ir-migration/coverage.md).
+Against legacy-best, typed ratios were fib 1.1053, sum 0.6449, pipeline 5.4597
+(internal), helpers 0.5770 and SHA 0.8759 (wall). Expanded coverage exposed a
+real regression: lowering the pipeline's main function bypassed the legacy
+vector-specialization planner and ran generic callbacks instead of its fused
+column kernel. The root coverage increase was therefore not a performance win.
+
+Until typed kernels are implemented, native selection explicitly declines
+functions with an enabled applicable vector specialization. The scan honors
+lexical bindings, the target gate and float capability; it reports
+`vector specialization requires legacy kernel emission`. Tests retain the
+fused kernel on A64, x64, RV64 and RV32 and prove that local callback parameters
+remain eligible for direct selection. Runtime results equal an independent
+arithmetic answer. Final paired measurements of this repair follow below.
+This preserves a live legacy consumer rather than claiming it has migrated.
 
 ## Direct RISC-V contract and evidence
 
@@ -115,7 +153,7 @@ it is not physical-board or real Linux scheduler acceptance.
 
 | Target/profile | Local evidence | Remaining acceptance | Default |
 |---|---|---|---|
-| A64 hosted Base | Full native integration, aggregates, corpus, one/four harts | Final performance review; broader language gaps | Legacy |
+| A64 hosted Base | Full native integration, aggregates, corpus, one/four harts | Final performance review; typed vector kernels and broader language gaps | Legacy |
 | x64 Linux Base | Selected constraints and Rosetta ABI oracle | Fresh Linux CI with real TLS/scheduler and aggregates | Legacy |
 | RV64 Unix Base | Direct QEMU oracle, TLS assembly path implemented | Fresh Linux cross-build/QEMU-user runtime job | Legacy |
 | RV64 bare Base | Direct QEMU oracle, small-frame limit | Real runtime and physical STAR64 acceptance | Legacy |
@@ -129,9 +167,8 @@ emulation/native support into failure for the required jobs. Loaded RV64 Unix
 modules still use legacy emission; their host can exercise direct code, and
 this distinction must stay visible.
 
-Next implementation order: inspect the final coverage benchmark; lower
-value-position dead arms with explicit unreachable control flow; introduce
-verified floating representations; then implement each remaining runtime
-profile with its own ownership/root and hart-access tests. Promote only a
+Next implementation order: review the repaired benchmark; implement typed
+vector kernels and unboxed floating selection; then implement each remaining
+runtime profile with its own ownership/root and hart-access tests. Promote only a
 specific target/profile after those gates pass. The legacy translators still
 have live consumers, so retiring them now would remove supported behavior.

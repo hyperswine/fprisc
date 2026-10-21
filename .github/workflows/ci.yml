@@ -66,6 +66,7 @@ jobs:
           python3 -u tests/check_typed_ir_x64.py --require-execution
           python3 -u tests/check_typed_ir_x64.py --require-execution --entry-optimizations
           python3 -u tests/check_typed_ir_aggregates.py
+          python3 -u tests/check_typed_ir_coverage.py
           python3 -u tests/check_typed_ir_bench.py
       - name: Typed IR direct RISC-V (QEMU independent oracles)
         run: |
