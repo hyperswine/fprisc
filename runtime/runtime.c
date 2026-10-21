@@ -2664,10 +2664,18 @@ static int veq(V a0, V b0) {
     uw nf = fpr_builtin_field_count(a);
     if (nf != fpr_builtin_field_count(b)) { eq = 0; break; }
 #else
-    uw ta = *(uw *)((char *)a - 16), tb = *(uw *)((char *)b - 16);
-    if (ta != tb) { eq = 0; break; }
-    if (ta < 24) continue;
-    uw nf = (ta - 16 - 8) / sizeof(uw);
+    uw nf;
+    if (((hdr_t *)a)->tid == T_LIST) {
+      /* Cons has exactly two fields. A coalescing allocator can give equal
+       * lists different capacities when a free block is too small to split;
+       * capacity and zero padding are not part of a list's value. */
+      nf = ((hdr_t *)a)->var == 1 ? 2 : 0;
+    } else {
+      uw ta = *(uw *)((char *)a - 16), tb = *(uw *)((char *)b - 16);
+      if (ta != tb) { eq = 0; break; }
+      if (ta < 24) continue;
+      nf = (ta - 16 - 8) / sizeof(uw);
+    }
 #endif
     if (n + nf > cap) {
       uw ncap = cap;

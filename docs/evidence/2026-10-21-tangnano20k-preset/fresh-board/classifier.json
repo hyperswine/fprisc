@@ -1,0 +1,255 @@
+{
+  "reference": {
+    "train_rows": 512,
+    "test_rows": 128,
+    "bins": 16,
+    "max_depth": 6,
+    "min_leaf": 5,
+    "nodes": 55,
+    "depth": 6,
+    "train": {
+      "hits": 481,
+      "rows": 512,
+      "digest": 354774,
+      "predictions_sha256": "dbc85e3a7188d43555e0876fc50dd901b15fa11c6da8ebda539e8580266f37a1"
+    },
+    "test": {
+      "hits": 116,
+      "rows": 128,
+      "digest": 434626,
+      "predictions_sha256": "9bc880f50defb44919cec07bff13fdfb9442287d88fa9e8b09300cc8100ef5c8"
+    },
+    "root": {
+      "column": 0,
+      "threshold": -0.12101956852711737
+    },
+    "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+  },
+  "source_sha256": "feeb00123abbe9254ac5b8e759a8fa3f144b778c83e07e5a0e6bf6bfca82d2a9",
+  "classifier_sha256": "486a4abbd0876014555862a5bb70db6d4c0402e6e3f7f6193fbacb576750c791",
+  "compiler_sha256": "9987da491a791af853300f38ad3e73c52a243dbfd1422379a8dbe437369b776e",
+  "repeats": 10,
+  "executions": {
+    "board": {
+      "image_sha256": "ad7e585f53048ffea1b2b8aeb1849237eeb9cbcf4c2397245d8fedaa7ad2ef98",
+      "image_bytes": 152304,
+      "heap_arena_bytes": 8123696,
+      "heap_bitmap_bytes": 63472,
+      "usable_heap_block_bytes": 8060224,
+      "stack_bytes": 65536,
+      "frequency_mhz": 48,
+      "isa": "RV32IMC",
+      "passed": true,
+      "bitstream_sha256": "30a3f82d8249fe1db0e35c51e7b3b9abb269b729e6b16b60ded71fdf57d986c3",
+      "heap_samples": [
+        {
+          "live": 203440,
+          "peak": 8060224,
+          "requests": 103829,
+          "requested": 2487324,
+          "collections": 1,
+          "reclaimed": 7856784
+        },
+        {
+          "live": 230640,
+          "peak": 8060224,
+          "requests": 203735,
+          "requested": 4821228,
+          "collections": 2,
+          "reclaimed": 15686368
+        },
+        {
+          "live": 221440,
+          "peak": 8060224,
+          "requests": 304785,
+          "requested": 7240688,
+          "collections": 3,
+          "reclaimed": 23525152
+        },
+        {
+          "live": 226080,
+          "peak": 8060224,
+          "requests": 404479,
+          "requested": 9568312,
+          "collections": 4,
+          "reclaimed": 31359296
+        },
+        {
+          "live": 194496,
+          "peak": 8060224,
+          "requests": 505605,
+          "requested": 11988540,
+          "collections": 5,
+          "reclaimed": 39225024
+        },
+        {
+          "live": 233904,
+          "peak": 8060224,
+          "requests": 605520,
+          "requested": 14325840,
+          "collections": 6,
+          "reclaimed": 47051344
+        },
+        {
+          "live": 161504,
+          "peak": 8060224,
+          "requests": 706678,
+          "requested": 16742272,
+          "collections": 7,
+          "reclaimed": 54950064
+        },
+        {
+          "live": 216976,
+          "peak": 8060224,
+          "requests": 806948,
+          "requested": 19089828,
+          "collections": 8,
+          "reclaimed": 62793248
+        },
+        {
+          "live": 145552,
+          "peak": 8060224,
+          "requests": 906362,
+          "requested": 21435444,
+          "collections": 9,
+          "reclaimed": 70707344
+        },
+        {
+          "live": 219536,
+          "peak": 8060224,
+          "requests": 1008734,
+          "requested": 23869636,
+          "collections": 10,
+          "reclaimed": 78548032
+        },
+        {
+          "live": 243712,
+          "peak": 8060224,
+          "requests": 1108312,
+          "requested": 26198752,
+          "collections": 11,
+          "reclaimed": 86364480
+        },
+        {
+          "live": 209936,
+          "peak": 8060224,
+          "requests": 1209243,
+          "requested": 28613924,
+          "collections": 12,
+          "reclaimed": 94214768
+        },
+        {
+          "live": 228256,
+          "peak": 8060224,
+          "requests": 1309003,
+          "requested": 30945608,
+          "collections": 13,
+          "reclaimed": 102046736
+        },
+        {
+          "live": 215376,
+          "peak": 8060224,
+          "requests": 1410071,
+          "requested": 33365108,
+          "collections": 14,
+          "reclaimed": 109891584
+        },
+        {
+          "live": 234720,
+          "peak": 8060224,
+          "requests": 1509766,
+          "requested": 35695628,
+          "collections": 15,
+          "reclaimed": 117717088
+        },
+        {
+          "live": 194480,
+          "peak": 8060224,
+          "requests": 1610903,
+          "requested": 38111236,
+          "collections": 16,
+          "reclaimed": 125582832
+        },
+        {
+          "live": 226608,
+          "peak": 8060224,
+          "requests": 1710750,
+          "requested": 40449556,
+          "collections": 17,
+          "reclaimed": 133416448
+        },
+        {
+          "live": 160688,
+          "peak": 8060224,
+          "requests": 1812095,
+          "requested": 42867184,
+          "collections": 18,
+          "reclaimed": 141315984
+        },
+        {
+          "live": 197504,
+          "peak": 8060224,
+          "requests": 1912260,
+          "requested": 45217032,
+          "collections": 19,
+          "reclaimed": 149178704
+        },
+        {
+          "live": 104240,
+          "peak": 8060224,
+          "requests": 2012072,
+          "requested": 47562752,
+          "collections": 20,
+          "reclaimed": 157133856
+        },
+        {
+          "live": 221072,
+          "peak": 8060224,
+          "requests": 2114801,
+          "requested": 50012940,
+          "collections": 21,
+          "reclaimed": 164973008
+        },
+        {
+          "live": 237872,
+          "peak": 8060224,
+          "requests": 2214415,
+          "requested": 52340704,
+          "collections": 22,
+          "reclaimed": 172795360
+        },
+        {
+          "live": 1041904,
+          "peak": 8060224,
+          "requests": 2224760,
+          "requested": 52581424,
+          "collections": 22,
+          "reclaimed": 172795360
+        }
+      ],
+      "elapsed_us": 13453496,
+      "elapsed_us_runs": [
+        12916235,
+        12903553,
+        12896364,
+        12885467,
+        13472085,
+        12894739,
+        12903649,
+        12894169,
+        12877016,
+        13453496
+      ],
+      "wall_seconds_with_upload": 163.7780960421078
+    }
+  },
+  "build_options": {
+    "FPR_XLEN": "32",
+    "FPR_RVC": "1",
+    "FPR_QEMU": "0",
+    "FPR_CPU_MHZ": "48",
+    "FPR_GC": "1",
+    "FPR_HEAP_REPORT": "1",
+    "FPR_GC_STRESS": "0"
+  }
+}

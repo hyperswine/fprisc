@@ -2,6 +2,7 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
+source "$root/machine/tangnano20k/preset.sh"
 prog="${1:-tests/tangnano20k_base.fpr}"
 out="${2:-$root/build/tangnano20k-base}"
 freq="${FPR_CPU_MHZ:-27}"
@@ -23,6 +24,8 @@ if [[ -n "${FPR_GC_STRESS:-}" ]];then
 fi
 case "${FPR_QEMU:-0}" in 0) ;; 1) uart=(-DFPR_TANGNANO_QEMU);; *) echo 'FPR_QEMU must be 0 or 1' >&2;exit 1;; esac
 mkdir -p "$out"
+# A failed rebuild must not leave a previous successful manifest behind.
+rm -f "$out/build-manifest.json"
 FPR_NO_F64_INLINE=1 ./fprc --system=bare-metal --profile=base --target="rv$xlen" --prelude=core/prelude.fpr "$prog" "$out/base.s"
 softfloat="${FPR_SOFTFLOAT_ROOT:-$root/build/tangnano20k-softfloat}"
 library="$softfloat/build/Linux-RISCV$xlen-GCC/softfloat.a"
@@ -49,3 +52,4 @@ else
 fi
 riscv64-unknown-elf-objcopy -O binary "$out/base.elf" "$out/base.bin"
 riscv64-unknown-elf-size "$out/base.elf"
+python3 tools/tangnano_artifact.py "$prog" "$out" "$xlen" "$rvc" "$freq"

@@ -7,7 +7,18 @@ import argparse, math, re, functools, operator, os, select, struct, sys, termios
 from pathlib import Path
 from run_simple_risc import open_port
 MAX_PAYLOAD=1024*1024
+MAX_ARGS=256
+MAX_ARGS_BYTES=65536
 PREFIX=b'@FPR1 '
+def encode_args(args):
+    if len(args)>MAX_ARGS:raise ValueError('at most 256 program arguments')
+    payload=bytearray(struct.pack('<I',len(args)))
+    for arg in args:
+        if '\0' in arg:raise ValueError('program argument contains NUL')
+        data=arg.encode('utf-8')
+        if len(data)>MAX_ARGS_BYTES-len(payload)-4:raise ValueError('program arguments exceed 65536 encoded bytes')
+        payload.extend(struct.pack('<I',len(data)));payload.extend(data)
+    return bytes(payload)
 def checksum(data):return functools.reduce(operator.xor,data,0)
 def frame(seq,code,payload):
     if not 0<seq<=0xffffffff or not 0<=code<=255 or len(payload)>MAX_PAYLOAD:raise ValueError('frame bounds')
@@ -23,7 +34,9 @@ def parse(line):
     if seq==0:raise ValueError('RPC sequence')
     return seq,op,data
 class Device:
-    def __init__(self,root,env=None,lines=None):self.root=Path(root).resolve();self.env=env or {};self.lines=iter(lines or [])
+    def __init__(self,root,env=None,lines=None,args=None):
+        self.root=Path(root).resolve();self.env=env or {};self.lines=iter(lines or [])
+        self.args=encode_args(args or [])
     def path(self,data):
         name=data.decode('utf-8')
         if '\0' in name or Path(name).is_absolute():raise ValueError('virtual path must be relative')
@@ -52,6 +65,9 @@ class Device:
                 if data:raise ValueError('input payload must be empty')
                 try:value=next(self.lines).encode()
                 except StopIteration:return 1,b'eof'
+            elif op==9:
+                if data:raise ValueError('arguments payload must be empty')
+                value=self.args
             else:return 1,b'virtual operation unavailable'
             if len(value)>MAX_PAYLOAD:return 1,b'virtual reply too large'
             return 0,value
@@ -81,10 +97,13 @@ def main():
     p.add_argument('--port',default='/dev/cu.usbserial-20250303171');p.add_argument('--freq-mhz',type=float,default=27)
     p.add_argument('--timeout',type=float,default=120);p.add_argument('--probe',action='store_true')
     p.add_argument('--env',action='append',default=[]);p.add_argument('--input',action='append',default=[])
+    p.add_argument('--arg',action='append',default=[],help='program argument; use --arg=-x for a leading dash; repeat in order')
     a=p.parse_args()
     if not a.probe and not a.image:p.error('image required')
     if not math.isfinite(a.freq_mhz) or a.freq_mhz<=0 or not math.isfinite(a.timeout) or a.timeout<=0:p.error('clock and timeout must be finite and positive')
     if any('=' not in e for e in a.env):p.error('--env requires NAME=value')
+    try:device=Device(a.root,dict(e.split('=',1) for e in a.env),a.input,a.arg)
+    except (ValueError,UnicodeError) as e:p.error(str(e))
     image=b'' if a.probe else a.image.read_bytes()
     if not a.probe and not 0<len(image)<=2*1024*1024:p.error('image must contain 1..2 MiB')
     fd=open_port(a.port,round(a.freq_mhz*1e6/868));started=False
@@ -104,7 +123,6 @@ def main():
             if select.select([fd],[],[],.05)[0]:verify+=os.read(fd,9-len(verify))
         if verify!=f'{expected:08x}\n'.encode():raise ValueError(f'image readback mismatch: {verify!r}, expected {expected:08x}')
         send(fd,b'H');started=True
-        device=Device(a.root,dict(e.split('=',1) for e in a.env),a.input)
         end=time.monotonic()+a.timeout;buffer=b'';output=b'';sequence=0
         while time.monotonic()<end:
             if not select.select([fd],[],[],.05)[0]:continue

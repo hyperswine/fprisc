@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-21",
+  "command": "python3 tools/run_tangnano20k_examples.py --target board --fpga-manifest ../simple-risc/output/tangnano20k/fprisc-48/build-manifest.json --out build/tangnano20k-examples/board-fresh-20261021",
+  "passed": true,
+  "suite_complete": true,
+  "cases": [
+    "hello",
+    "numeric",
+    "collections",
+    "host",
+    "args",
+    "wc",
+    "classifier"
+  ],
+  "bitstream_sha256": "30a3f82d8249fe1db0e35c51e7b3b9abb269b729e6b16b60ded71fdf57d986c3",
+  "fpga_programmed_sram": true,
+  "flash_written": false,
+  "sd_written": false,
+  "all_guests_exited_zero_and_done": true,
+  "classifier": {
+    "iterations": 10,
+    "elapsed_us_runs": [
+      12916235,
+      12903553,
+      12896364,
+      12885467,
+      13472085,
+      12894739,
+      12903649,
+      12894169,
+      12877016,
+      13453496
+    ],
+    "final_heap": {
+      "live": 1041904,
+      "peak": 8060224,
+      "requests": 2224760,
+      "requested": 52581424,
+      "collections": 22,
+      "reclaimed": 172795360
+    },
+    "max_post_collection_retained_live_bytes": 243712,
+    "usable_heap_block_bytes": 8060224
+  },
+  "final_state": "New 48/48 MHz image in FPGA SRAM; final guest exited successfully and returned to ROM DONE",
+  "evidence_sha256": {
+    "results.json": "1c04a620394c5096b95936ba46406165ce0a0327f6fc48428de7c285d2dbc142",
+    "program-fpga.log": "325fae90fb428bbe0958682a2bd1a75b561e4cee176ff7cda8a091d7b64f6240",
+    "classifier.json": "3297a9e7adec084f7d492381caaccece3eaa5feed4f9b1c03f78e0b6278616fa",
+    "classifier.log": "f8759a71d589fe64513a1c0f42ad1516f02b33b984823cfa7579a317e7fd6ca4",
+    "classifier-build-manifest.json": "42026e3f1088bfea03e3f898d1035b27b474ad8ffe215813a694777b290cb147",
+    "hello.log": "32f1a31227d01054f7f8f0fe6fb78ce8b8fbc80bb870d0022c4b5c120998dffe",
+    "numeric.log": "d050e2cb8be3a42d38362b76d9abf90566f2b9ec27c91a185f89ea8d04ed827a",
+    "collections.log": "dfcf244d749c5fe1171b1e3b90440312386c0112baa9a81ae1871ef9b6fa0290",
+    "host.log": "74170cddc4d50d21aad5a10b1854af5204ac75ceb9cfe0daf4f625df838abd4f",
+    "args.log": "fbd9ee348ad964fecca0c79e5f1b8178b27b6a6b0094aad68c1d7856925d5fc0",
+    "wc.log": "d0410f0adc2aef40dfb17625197e7632458ac4dabecf772fedbb6858cc22ef8e"
+  }
+}

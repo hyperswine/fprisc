@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-21",
+  "command": "SDRAM_PRESET=fprisc-48 boards/tangnano20k/sdram/build.sh",
+  "exit_code": 0,
+  "ready": true,
+  "constraint_mhz": 48,
+  "fmax_mhz": 55.269,
+  "worst_setup_slack_ns": 2.74,
+  "setup_violating_endpoints": 0,
+  "hold_violating_endpoints": 0,
+  "artifact_hashes_verified": 6,
+  "rtl_hash_verified": true,
+  "board_programmed": false,
+  "external_io_qualified": false,
+  "evidence_sha256": {
+    "gowin-retry.log": "436ed5af2787f5b7068d399cee49f541c307ca8ccccb7905d9ffd349c8261d12",
+    "gowin-build-manifest.json": "9fa662d7e0e6ae545356ed4d5913ac094e6ddee69a256e8ca09efc6ef34e0dc2"
+  }
+}

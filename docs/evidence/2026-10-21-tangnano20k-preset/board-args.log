@@ -1,0 +1,9 @@
+ARG 0:
+ARG 9:two words
+ARG 2:-n
+ARG 3:雪
+ARG 12:quote"slash\
+ARGS count=5
+HEAP live=3440 peak=3440 requests=44 requested=889 collections=0 reclaimed=0
+FPR EXIT 0
+DONE

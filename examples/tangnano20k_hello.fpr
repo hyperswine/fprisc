@@ -1,0 +1,8 @@
+profile base.
+
+# A small first program for the fprisc-48 preset. All computation is on board.
+fact : unsafe Int -> Int .
+fact 0 = 1.
+fact n = n * fact (n - 1).
+main : unsafe Unit .
+main = print "SimpleRisc: factorial(6)={fact 6}".

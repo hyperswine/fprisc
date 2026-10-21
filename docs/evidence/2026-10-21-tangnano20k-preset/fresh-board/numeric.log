@@ -1,0 +1,6 @@
+NUMERIC I64 HOLDS
+NUMERIC FLOAT HOLDS
+RV32 BASE NUMERIC HOLDS
+HEAP live=6224 peak=6752 requests=119 requested=2844 collections=0 reclaimed=0
+FPR EXIT 0
+DONE

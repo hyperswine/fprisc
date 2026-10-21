@@ -1,0 +1,42 @@
+ok  1 == 1
+ok  1 == 2
+ok  0 - 1 == 1
+ok  (1, 2) == (1, 2)
+ok  (1, 2) == (3, 4)
+ok  (1, 2) == (1, 9)  -- one field differing is enough
+ok  a tuple built twice is still equal
+ok  and not to its neighbour
+ok  [] == []
+ok  [1,2,3] == [1,2,3]
+ok  [1,2,3] == [2,3,4]
+ok  a longer list is not equal
+ok  nor a shorter one
+ok  [] is not [0]
+ok  "ab" == "ab"
+ok  "ab" == "ac"
+ok  prefixes are not equal
+ok  the empty string
+ok  Nought == Nought
+ok  Nought != One 1
+ok  One 1 == One 1
+ok  One 1 != One 2
+ok  Two 1 "a" == Two 1 "a"
+ok  Two 1 "a" != Two 1 "b"
+ok  nested, same
+ok  nested, one leaf differs
+ok  a difference inside a list inside a tuple
+ok  65-element lists, same
+ok  65-element lists differing only in the last element
+ok  100000-element lists differing only in the last element
+ok  100000-element lists, same
+ok  nested 100000 deep through the first field, innermost leaf differs
+ok  nested 100000 deep, same
+ok  records by field
+ok  records differ by field
+ok  != on tuples
+ok  != on equal tuples
+ok  != on lists
+ok  True == True
+ok  True == False
+ok  Unit == Unit
+eq: done

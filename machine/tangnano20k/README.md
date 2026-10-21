@@ -1,5 +1,11 @@
 # Tang Nano 20K: Base host, UART virtual device and microSD
 
+The recommended RV32 example configuration is now **`FPR_PRESET=fprisc-48`**:
+RV32IMC, CPU/SDRAM 48/48 MHz, 64 KiB cache and conservative collection enabled.
+The [preset and example guide](../../docs/2026-10-21-TANGNANO20K-PRESET.md)
+has the matching FPGA command, one-command QEMU/board suite, build manifests
+and verification limits. Without the preset the legacy defaults below remain.
+
 This is an experimental RV32IM/IMC and RV64IM/IMC Base host, alongside the
 established RV32 Builtin target. Both Base variants use cached 8 MiB SDRAM and
 a 64 KiB stack. RV64 uses HaskPlayground's `boards/tangnano20k/rv64` image at
@@ -31,7 +37,7 @@ FP-RISC semantics. The board C code supplies allocation, UART and ABI mechanisms
 | `Sys.timeUs` | Host monotonic microseconds |
 | `Sys.mtime` | Local cycle counter converted to the shared 10 MHz tick contract |
 | `Sys.readLine` | Explicit `--input` lines, then EOF |
-| `Sys.args` | Empty list in this initial host |
+| `Sys.args` | Explicit uploader `--arg` values, in order; excludes the program name |
 | `Sys.sleepUs` | Local cycle-counter wait |
 | Stream files, directory APIs, watch-open | `Err` with a named unavailable capability |
 | Actors, IRQ routing, polling/watch operations without a Result error channel | Named panic / failing exit |
@@ -50,6 +56,24 @@ Full Base scheduling and the full WASM suite are not claimed.
 ## Build
 
 From fprisc:
+
+For the recommended RV32 configuration:
+
+```bash
+python3 tools/run_tangnano20k_examples.py --target qemu
+FPR_PRESET=fprisc-48 machine/tangnano20k/build.sh examples/wc.fpr build/tangnano20k-wc
+python3 tools/run_tangnano20k_base.py build/tangnano20k-wc/base.bin \
+  --freq-mhz 48 --root /path/to/files --arg=notes.txt --arg='two words.txt'
+```
+
+The uploader requires the matching 48 MHz FPGA image already loaded.
+`--arg=` preserves an empty argument and `--arg=-n` preserves a leading dash.
+At most 256 arguments and 65,536 encoded bytes (including lengths) are allowed.
+Arguments are UTF-8, exclude NUL, and are never interpreted by a shell.
+The host supplies an empty list if no `--arg` options are given. A new guest
+asking an older host for arguments receives an explicit unavailable error.
+
+The following commands retain the original RV64 configuration:
 
 ```bash
 make fpr

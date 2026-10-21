@@ -1,0 +1,107 @@
+{
+  "date": "2026-10-21",
+  "fprisc_revision": "a55664714f9fdefdba2b29b4f367616c309ffc7a",
+  "simple_risc_revision": "b8fee771059f04bc64cbcca1cd330036accb4239",
+  "source_sha256": {
+    "machine/tangnano20k/base.c": "e2d3c32623d07193def584708005b695371f560df61ff611214a9f029bff6518",
+    "machine/tangnano20k/preset.sh": "1207c320f0eefe7b6d6833c8814e899f35001af4ec8a6319879878780ff35fc7",
+    "machine/tangnano20k/build.sh": "e0af813961dd8bd80c0fbc93eb89e318e6f6ccd6d105c6d94372f6d029fe1393",
+    "machine/tangnano20k/build-softfloat.sh": "4ab40aab74db3398cb911dc20ce23de72309d5d363cd2de7436eb6a406513c49",
+    "runtime/runtime.c": "a8a475b0c01dfcc9110cca9f763636bd8f34bbd659cc12d91bc01549fb264f57",
+    "tools/run_tangnano20k_base.py": "db1458f9a7c29eda2bfd7b81a127f9912d1cfa8d149fd1f2006a991e799b3785",
+    "tools/run_tangnano20k_examples.py": "1812cdc5d725f3b90610600ee9fe6e73adbe3421b80aecc3d2aacac826f36d5c",
+    "tools/tangnano_artifact.py": "4b7db0f07b8bd3fc39348a499aaf032ddee41ee978e7a82724f244dd21b7d171",
+    "tests/check_tangnano20k_rv32_base.py": "e33be0cf12f0b7b8b1054e796c05b3ff1af35a9abae6df8dc47de7acc973eff9",
+    "tests/check_tangnano20k_args.py": "7d14f96fa55848a9417a89d928d30b3ec22d7ed467e93ddb798e416892489eab",
+    "tests/test_tangnano20k_examples.py": "5b8cf972de7b55d4ab72daab304d54501081f31d3d27616af3010cae19df6564",
+    "tests/tangnano20k_args.fpr": "b5f75c418413ae9ac359027ba79c34c00f4bcf502c805feb5c8e4043c95f40be",
+    "examples/tangnano20k_hello.fpr": "1b66e4d6295c53303fc224842b8a4061c702cd7b928138cc66dfbbb3901fa9c5"
+  },
+  "simple_risc_source_sha256": {
+    "boards/tangnano20k/sdram/build.sh": "17e48b31d4c7f0c66a14da8dd139daae7fb6ccad8fcdac6601a3cdc4b033139d",
+    "boards/tangnano20k/sdram/preset.sh": "d0ca254827cbed71506171e52b0e0f6aaac7935efccaecc108b166e2f88d5459",
+    "boards/tangnano20k/sdram/preset_manifest.py": "3f9cea7f1dd80ce146cb503c1022e5343060d86f2927bafd267908b1fd4f1e4a",
+    "boards/tangnano20k/sdram/test_preset_manifest.py": "ed97cf75f0cbd5f1235e94269205edd7aa6271c187da9e76ecbde26af0dd85de"
+  },
+  "qemu_cases": 7,
+  "board_cases": 7,
+  "argument_regression": "RV32 and RV64, 4 valid and 7 malformed/unavailable replies each; GC before every allocation",
+  "base_regression": "10 existing RV32IM/IMC fixtures, GC every seven allocations",
+  "negative_gate_tests": {
+    "example_runner": 4,
+    "fpga_manifest": 2
+  },
+  "native_equality_output_lines": 42,
+  "board_classifier": {
+    "iterations": 10,
+    "elapsed_us_runs": [
+      12916235,
+      12903554,
+      12896365,
+      12885467,
+      13472085,
+      12894739,
+      12903649,
+      12894168,
+      12877016,
+      13453496
+    ],
+    "final_heap": {
+      "live": 1041904,
+      "peak": 8060224,
+      "requests": 2224760,
+      "requested": 52581424,
+      "collections": 22,
+      "reclaimed": 172795360
+    }
+  },
+  "fpga": {
+    "bitstream_sha256": "032849eeb6fe291eb8b73038ed0ef88f9ffacfe24e1e834342672683ac539f40",
+    "origin": {
+      "kind": "previously_accepted_build",
+      "date": "2026-10-20",
+      "source_revision": "32bdefff1932b6ab845a65a6b78424c59dfc0226",
+      "evidence_manifest": "/Users/jasonqin/Documents/GitHub/fprisc/docs/evidence/2026-10-20-tangnano20k-gc/manifest.json",
+      "evidence_manifest_sha256": "397f2c7786dfd97cffd27264e665567483dce24d4b364c73d88e294fe9620e32",
+      "note": "Fresh synthesis blocked by Gowin license server. Original bitstream and RTL hashes match recorded evidence. Current RTL differs only in source-location comments; generated configuration and hand-written HDL/ROM inputs match."
+    },
+    "fresh_generation": "passed; configuration matches prior accepted image; CPU RTL differs only in source-location comments",
+    "fresh_vendor_build": "passed on subsequent full retry; see gowin-retry.json; prior board tests used the accepted 2026-10-20 image",
+    "external_io_qualified": false
+  },
+  "board_final_state": "New 48/48 MHz image in FPGA SRAM; final guest exited successfully and returned to ROM DONE; no flash or SD writes",
+  "evidence_sha256": {
+    "args-regression.log": "49a4a8f1fadd6d8a8384074b27296a208befd069b87edf5f023bfc2ab5dc5b5e",
+    "base-regression.log": "8886769c5135e16b5e985a78db1cf792ea94db8a76aeb7c05778a722bbd6c8c8",
+    "board-args.log": "fbd9ee348ad964fecca0c79e5f1b8178b27b6a6b0094aad68c1d7856925d5fc0",
+    "board-classifier.json": "86ff761f231dc20741d44c7f41dabdb789d954d956d96d8496e845993cb422da",
+    "board-classifier.log": "5ebdc2187427400ed45f5f713ced89fd1ae9668daf5fe612270ad408a59609a4",
+    "board-results.json": "d51a33670e065c39d787c0593d68eefdb5a254fb370bb1cc83777d8e29198ec0",
+    "board-wc.log": "d0410f0adc2aef40dfb17625197e7632458ac4dabecf772fedbb6858cc22ef8e",
+    "fpga-program.log": "92e26c513c48c35581564ac527404d7a5cc2a897ed9858aba7a72bf56e9e283e",
+    "native-equality.log": "04486071f47e400a2c4475412640fcaa55ae5d14fd618e231f1d48f37402994f",
+    "qemu-classifier.json": "34beb1f6edd8af408702aaf3f3aee92d3259d8e0dfc7a0187b7e33ddf34a4d9a",
+    "qemu-results.json": "8f863f1eed25f2ef3f608d10ce40580d488ce8eea2077e582ace23f5b8160767",
+    "gowin-retry.json": "490c16d4c826678e81f54c4b17a917fd0e3f53f4b4d6b5103f8f7e871e64dd6a",
+    "gowin-retry.log": "436ed5af2787f5b7068d399cee49f541c307ca8ccccb7905d9ffd349c8261d12",
+    "gowin-build-manifest.json": "9fa662d7e0e6ae545356ed4d5913ac094e6ddee69a256e8ca09efc6ef34e0dc2",
+    "fresh-board/args.log": "fbd9ee348ad964fecca0c79e5f1b8178b27b6a6b0094aad68c1d7856925d5fc0",
+    "fresh-board/classifier-build-manifest.json": "42026e3f1088bfea03e3f898d1035b27b474ad8ffe215813a694777b290cb147",
+    "fresh-board/classifier.json": "3297a9e7adec084f7d492381caaccece3eaa5feed4f9b1c03f78e0b6278616fa",
+    "fresh-board/classifier.log": "f8759a71d589fe64513a1c0f42ad1516f02b33b984823cfa7579a317e7fd6ca4",
+    "fresh-board/collections.log": "dfcf244d749c5fe1171b1e3b90440312386c0112baa9a81ae1871ef9b6fa0290",
+    "fresh-board/hello.log": "32f1a31227d01054f7f8f0fe6fb78ce8b8fbc80bb870d0022c4b5c120998dffe",
+    "fresh-board/host.log": "74170cddc4d50d21aad5a10b1854af5204ac75ceb9cfe0daf4f625df838abd4f",
+    "fresh-board/manifest.json": "f7bcb97fece578230c0823143382ccefc5e2d6dd028cdbbd9397c621ec15069b",
+    "fresh-board/numeric.log": "d050e2cb8be3a42d38362b76d9abf90566f2b9ec27c91a185f89ea8d04ed827a",
+    "fresh-board/program-fpga.log": "325fae90fb428bbe0958682a2bd1a75b561e4cee176ff7cda8a091d7b64f6240",
+    "fresh-board/results.json": "1c04a620394c5096b95936ba46406165ce0a0327f6fc48428de7c285d2dbc142",
+    "fresh-board/wc.log": "d0410f0adc2aef40dfb17625197e7632458ac4dabecf772fedbb6858cc22ef8e"
+  },
+  "fresh_board_validation": {
+    "manifest": "fresh-board/manifest.json",
+    "passed": true,
+    "cases": 7,
+    "bitstream_sha256": "30a3f82d8249fe1db0e35c51e7b3b9abb269b729e6b16b60ded71fdf57d986c3"
+  }
+}

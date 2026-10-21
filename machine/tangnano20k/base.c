@@ -126,7 +126,35 @@ static V h_time(V u){
  return TAG(n);
 #endif
 }
-static V h_args(V u){(void)u;static const hdr_t nil={T_LIST,0};return (V)&nil;}
+/* Operation 9: LE u32 count, then (LE u32 byte length, UTF-8 bytes).
+ * Validate the entire bounded frame before allocating any list nodes. Length
+ * prefixes preserve empty arguments, whitespace and argument order. */
+static uint32_t arg_word(const str_t *s,uw *offset){
+ if(*offset>s->len || s->len-*offset<4)fpr_cpanic("virtual arguments truncated");
+ const uint8_t *p=s->bytes+*offset;*offset+=4;
+ return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);
+}
+static V h_args(V u){
+ (void)u;unsigned e;V reply=rpc(9,0,0,0,0,&e);if(e)fpr_panic(reply);
+ const str_t *s=string(reply);uw offset=0;uint32_t starts[256],lengths[256];
+ if(s->len>65536)fpr_cpanic("virtual arguments too large");
+ uint32_t count=arg_word(s,&offset);
+ if(count>256)fpr_cpanic("virtual arguments too many");
+ for(uint32_t i=0;i<count;i++){
+  uint32_t n=arg_word(s,&offset);
+  if(n>s->len-offset)fpr_cpanic("virtual arguments truncated");
+  for(uint32_t j=0;j<n;j++)if(!s->bytes[offset+j])fpr_cpanic("virtual argument contains NUL");
+  starts[i]=(uint32_t)offset;lengths[i]=n;offset+=n;
+ }
+ if(offset!=s->len)fpr_cpanic("virtual arguments trailing bytes");
+ static const hdr_t nil={T_LIST,0};V list=(V)&nil;
+ while(count){
+  --count;V text=(V)mktext((const char *)s->bytes+starts[count],lengths[count]);
+  V node=fpr_alloc(8+2*sizeof(V));((hdr_t *)node)->tid=T_LIST;((hdr_t *)node)->var=1;
+  *(V *)((char *)node+8)=text;*(V *)((char *)node+8+sizeof(V))=list;list=node;
+ }
+ return list;
+}
 static V h_exit(V code){if(!ISINT(code))fpr_cpanic("Sys.exit expected Int");hal_poweroff(UNTAG(code));return (V)&fpr_unit;}
 static V h_stderr(V text){const str_t *s=string(text);for(uw i=0;i<s->len;i++)hal_putc(s->bytes[i]);return (V)&fpr_unit;}
 static V h_line(V u){(void)u;unsigned e;V v=rpc(8,0,0,0,0,&e);return result(e,v);}

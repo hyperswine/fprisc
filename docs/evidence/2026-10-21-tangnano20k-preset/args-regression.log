@@ -1,0 +1,2 @@
+RV32: arguments, limits, malformed/unsupported replies and GC roots PASS
+RV64: arguments, limits, malformed/unsupported replies and GC roots PASS

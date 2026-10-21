@@ -1,0 +1,5 @@
+captured dispatch: literal=1160045 variable=1160045
+vecshape: two=1149000 four=2498000 in place=True
+HEAP live=294192 peak=314240 requests=6175 requested=195807 collections=0 reclaimed=0
+FPR EXIT 0
+DONE

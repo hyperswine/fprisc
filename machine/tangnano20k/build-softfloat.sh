@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
+source "$root/machine/tangnano20k/preset.sh"
 out="${FPR_SOFTFLOAT_ROOT:-$root/build/tangnano20k-softfloat}"
 revision=a0c6494cdc11865811dec815d5c0049fba9d82a8
 xlen="${FPR_XLEN:-64}"

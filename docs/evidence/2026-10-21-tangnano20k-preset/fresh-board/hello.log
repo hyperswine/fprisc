@@ -1,0 +1,4 @@
+SimpleRisc: factorial(6)=720
+HEAP live=176 peak=176 requests=2 requested=63 collections=0 reclaimed=0
+FPR EXIT 0
+DONE

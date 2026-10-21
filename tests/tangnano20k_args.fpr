@@ -1,0 +1,13 @@
+profile base.
+Program = use "../std/program".
+List = use "../std/list".
+String = use "../std/string".
+
+showArg text = print "ARG {String.length text}:{text}".
+main =
+  args = Program.args Unit;
+  _ = List.each showArg args;
+  # A second request must return the same arguments, not consume them.
+  again = Program.args Unit;
+  _ = case args == again of True -> Unit | False -> error "arguments changed";
+  print "ARGS count={List.length args}".

@@ -1,0 +1,149 @@
+SDRAM I/O model incomplete: t_ac_max, t_oh_min, t_cmd_setup, t_cmd_hold, t_data_setup, t_data_hold, t_dqm_setup, t_dqm_hold, clock_flight_min, clock_flight_max, read_flight_min, read_flight_max, command_flight_min, command_flight_max, write_flight_min, write_flight_max, dqm_flight_min, dqm_flight_max, setup_uncertainty, hold_uncertainty, qualification.source, qualification.operating_conditions, qualification.boundary_accounting, qualification.status, qualification.frequency_range
+Loaded package environment from /Users/jasonqin/Documents/GitHub/simple-risc/.ghc.environment.aarch64-darwin-9.8.2
+GHC: Setting up GHC took: 0.635s
+GHC: Compiling and loading modules took: 44.407s
+Clash: Parsing and compiling primitives took 0.347s
+GHC+Clash: Loading modules cumulatively took 5m29s
+Clash: Compiling SdramPipeline.topEntity
+Clash: Compiling SimpleRisc.topEntity
+Clash: Normalization took 1m15s
+[1m[WARNING] Dubious primitive instantiation for GHC.Num.Integer.integerToInt#: GHC.Num.Integer.integerToInt#: Integers are dynamically sized in simulation, but fixed-length after synthesis. Use carefully. (disable with -fclash-no-prim-warn)
+[0mClash: Netlist generation took 0.665s
+Clash: Compiling SimpleRisc.topEntity took 1m16s
+Clash: Normalization took 1m16s
+[1m[WARNING] Dubious primitive instantiation for GHC.Num.Integer.integerToInt#: GHC.Num.Integer.integerToInt#: Integers are dynamically sized in simulation, but fixed-length after synthesis. Use carefully. (disable with -fclash-no-prim-warn)
+[0mClash: Netlist generation took 0.275s
+Clash: Compiling SdramPipeline.topEntity took 1m16s
+Clash: Total compilation took 6m47s
+SDRAM I/O remains unqualified: this build checks internal FPGA timing only.
+*** GOWIN Tcl Command Line Console  *** 
+The available OpenGL surface format was either not version 3.2 or higher or not a Core Profile.
+Chromium on macOS will fall back to software rendering in this case.
+Hardware acceleration and features such as WebGL will not be available.
+current device: GW2AR-18C  GW2AR-LV18QN88C8/I7
+add new file: "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/pipeline_top.v"
+add new file: "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/memory.v"
+add new file: "/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/cache.v"
+add new file: "/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v"
+add new file: "/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/burst_memory.v"
+add new file: "/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/clock_bridge.v"
+add new file: "/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/sdram.v"
+add new file: "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/pll.v"
+add new file: "/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/dual_pll.v"
+add new file: "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/pins.cst"
+add new file: "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/clocks.sdc"
+add new file: "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/sdram-generated/SdramPipeline-1/SdramPipeline.topEntity/sdram_pipeline_risc.v"
+GowinSynthesis start
+Running parser ...
+Analyzing Verilog file '/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/pipeline_top.v'
+Analyzing Verilog file '/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/memory.v'
+Analyzing Verilog file '/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/cache.v'
+Analyzing Verilog file '/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v'
+Analyzing Verilog file '/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/burst_memory.v'
+Analyzing Verilog file '/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/clock_bridge.v'
+Analyzing Verilog file '/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/sdram.v'
+Analyzing Verilog file '/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/pll.v'
+Analyzing Verilog file '/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/dual_pll.v'
+Analyzing Verilog file '/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/sdram-generated/SdramPipeline-1/SdramPipeline.topEntity/sdram_pipeline_risc.v'
+Compiling module 'top'("/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/pipeline_top.v":1)
+Compiling module 'sdram_pll'("/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/pll.v":1)
+Compiling module 'sdram_pipeline_risc'("/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/sdram-generated/SdramPipeline-1/SdramPipeline.topEntity/sdram_pipeline_risc.v":6)
+Extracting RAM for identifier 'RAM'("/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/sdram-generated/SdramPipeline-1/SdramPipeline.topEntity/sdram_pipeline_risc.v":15226)
+Extracting RAM for identifier 'RAM_0'("/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/sdram-generated/SdramPipeline-1/SdramPipeline.topEntity/sdram_pipeline_risc.v":15239)
+Compiling module 'sdram_pipeline_cache(LINE_BITS=12,ROM_FILE="/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/bootrom/bootrom-sdram.hex")'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":6)
+Extracting RAM for identifier 'tags'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":32)
+Extracting RAM for identifier 'rom'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":33)
+Extracting RAM for identifier 'write_address'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":41)
+Extracting RAM for identifier 'write_data'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":42)
+Extracting RAM for identifier 'write_mask'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":42)
+Extracting RAM for identifier 'fill_data'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":46)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Extracting RAM for identifier 'mem'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/pipeline_cache.v":104)
+Compiling module 'sdram_burst_memory(FREQ=48000000)'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/burst_memory.v":3)
+Compiling module 'sdram(FREQ=48000000,BURST_WORDS=4)'("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/sdram.v":32)
+WARN  (EX3791) : Expression size 4 truncated to fit in target size 2("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/sdram.v":265)
+WARN  (EX3791) : Expression size 16 truncated to fit in target size 15("/Users/jasonqin/Documents/GitHub/simple-risc/boards/tangnano20k/sdram/sdram.v":293)
+NOTE  (EX0101) : Current top module is "top"
+[5%] Running netlist conversion ...
+Running device independent optimization ...
+[10%] Optimizing Phase 0 completed
+[15%] Optimizing Phase 1 completed
+[25%] Optimizing Phase 2 completed
+Running inference ...
+[30%] Inferring Phase 0 completed
+[40%] Inferring Phase 1 completed
+[50%] Inferring Phase 2 completed
+[55%] Inferring Phase 3 completed
+Running technical mapping ...
+[60%] Tech-Mapping Phase 0 completed
+[65%] Tech-Mapping Phase 1 completed
+[75%] Tech-Mapping Phase 2 completed
+[80%] Tech-Mapping Phase 3 completed
+[90%] Tech-Mapping Phase 4 completed
+[95%] Generate netlist file "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/impl/gwsynthesis/sdram_test.vg" completed
+[100%] Generate report file "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/impl/gwsynthesis/sdram_test_syn.rpt.html" completed
+GowinSynthesis finish
+Reading netlist file: "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/impl/gwsynthesis/sdram_test.vg"
+Parsing netlist file "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/impl/gwsynthesis/sdram_test.vg" completed
+Processing netlist completed
+Reading constraint file: "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/pins.cst"
+Physical Constraint parsed completed
+Running placement......
+[10%] Placement Phase 0 completed
+[20%] Placement Phase 1 completed
+[30%] Placement Phase 2 completed
+[50%] Placement Phase 3 completed
+Running routing......
+[60%] Routing Phase 0 completed
+[70%] Routing Phase 1 completed
+[80%] Routing Phase 2 completed
+WARN  (PR1014) : Generic routing resource will be used to clock signal 'clk_27m_d' by the specified constraint. And then it may lead to the excessive delay or skew
+[90%] Routing Phase 3 completed
+Running timing analysis......
+[95%] Timing analysis completed
+Placement and routing completed
+Bitstream generation in progress......
+Bitstream generation completed
+Running power analysis......
+[100%] Power analysis completed
+Generate file "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/impl/pnr/sdram_test.power.html" completed
+Generate file "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/impl/pnr/sdram_test.pin.html" completed
+Generate file "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/impl/pnr/sdram_test.rpt.html" completed
+Generate file "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/impl/pnr/sdram_test.rpt.txt" completed
+Generate file "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/impl/pnr/sdram_test.vo" completed
+Generate file "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/impl/pnr/sdram_test.tr.html" completed
+Generate file "/Users/jasonqin/Documents/GitHub/simple-risc/output/tangnano20k/fprisc-48/impl/pnr/sdram_test.tr" completed
+Wed Oct 21 17:02:18 2026
+
+PASS: STA under supplied constraints (SDRAM I/O signoff unverified); 48 MHz constraint, 55.269 MHz Fmax, 2.740 ns worst setup slack; 0 setup / 0 hold violating endpoints
+PASS: STA under supplied constraints (SDRAM I/O signoff unverified); 48 MHz constraint, 55.269 MHz Fmax, 2.740 ns worst setup slack; 0 setup / 0 hold violating endpoints

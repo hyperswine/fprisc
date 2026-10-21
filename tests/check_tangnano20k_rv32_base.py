@@ -18,14 +18,15 @@ sys.path.insert(0, str(ROOT / 'tools'))
 from run_tangnano20k_base import Device, PREFIX, frame, parse
 
 
-def run_image(image, files, timeout=30):
+def run_image(image, files, timeout=30, *, device=None, expected_exit=0, xlen=32):
     process = subprocess.Popen([
-        'qemu-system-riscv32', '-machine', 'virt', '-m', '8M', '-bios', 'none',
+        f'qemu-system-riscv{xlen}', '-machine', 'virt', '-m', '8M', '-bios', 'none',
         '-kernel', str(image), '-display', 'none', '-monitor', 'none',
         '-serial', 'stdio'], stdin=subprocess.PIPE,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     deadline = time.monotonic() + timeout
-    device = Device(files, {'TEST_UART': 'connected'}, ['hello RV32'])
+    if device is None:
+        device = Device(files, {'TEST_UART': 'connected'}, ['hello RV32'])
     pending, output, sequence = b'', bytearray(), 0
     try:
         while time.monotonic() < deadline:
@@ -58,7 +59,7 @@ def run_image(image, files, timeout=30):
         code = process.wait(timeout=5)
         stderr = process.stderr.read().decode()
         text = output.decode()
-        assert code == 0 and 'FPR EXIT 0\n' in text, (code, text, stderr)
+        assert code == expected_exit and f'FPR EXIT {int(expected_exit != 0)}\n' in text, (code, text, stderr)
         return text
     finally:
         if process.poll() is None:
