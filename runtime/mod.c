@@ -37,7 +37,21 @@ __attribute__((weak)) const uw fpr_modtab[1] = {0};
  * Attach and detach take a lock; readers on any hart load the count
  * with acquire, and an attach publishes the slot and the array before
  * the count.  A replaced array is never freed: a reader may still be
- * walking it, and doubling wastes at most the final array again. */
+ * walking it, and doubling wastes at most the final array again.
+ *
+ * The arrays are buddy blocks charged to no one, never fpr_alloc: the
+ * registry is the whole program's, but fpr_alloc takes from the calling
+ * actor's heap, and a table attached from inside a confined process or
+ * a receive turn would have had its slot array reclaimed under the
+ * registry when that heap went (QOS's Editor policy check: a child that
+ * exhausted its budget, then a fault reading slot 0x3, the tagged 1 that
+ * reused the array's memory).
+ *
+ * fpr_mod_detach empties the slot of a table whose image is going away
+ * (a launched plugin whose process ended).  The slot stays: indices are
+ * what the prelude's readers hold between calls, so they never shift; an
+ * empty slot reads as a table of no rows.  A slot is 16 bytes, kept for
+ * the life of the program, per image that was ever attached. */
 static const uw **xtabs; /* doubles: a program attaches as many libraries as it has memory for */
 static uw *xrows;        /* row count of each attached table, counted once at attach */
 static int nxtabs, capxtabs;
@@ -76,8 +90,14 @@ int fpr_mod_attach(const uw *tab) {
     if (xtabs[i] == tab) { fpr_unlock(&xlock); return 0; } /* re-attach: idempotent */
   if (nxtabs == capxtabs) {
     int cap = capxtabs ? capxtabs * 2 : 8;
-    const uw **t = (const uw **)fpr_alloc((uw)cap * sizeof *t);
-    uw *r = (uw *)fpr_alloc((uw)cap * sizeof *r);
+    const uw **t = (const uw **)buddy_alloc((uw)cap * sizeof *t);
+    uw *r = (uw *)buddy_alloc((uw)cap * sizeof *r);
+    if (!t || !r) {
+      if (t) buddy_free((void *)t);
+      if (r) buddy_free(r);
+      fpr_unlock(&xlock);
+      return -2; /* no memory for the registry: the image is not attached */
+    }
     for (int i = 0; i < nxtabs; i++) { t[i] = xtabs[i]; r[i] = xrows[i]; }
     __atomic_store_n(&xrows, r, __ATOMIC_RELEASE);
     __atomic_store_n(&xtabs, t, __ATOMIC_RELEASE);
@@ -90,7 +110,23 @@ int fpr_mod_attach(const uw *tab) {
   return 0;
 }
 
-/* table t's rows and their count; 0 for an index that names no table */
+/* Empty the slot of an attached table (its image is going away).  The
+ * caller frees the image only after this returns: a walk that holds the
+ * lock (Mod.fn) finishes first. */
+void fpr_mod_detach(const uw *tab) {
+  if (!tab) return;
+  fpr_lock(&xlock);
+  for (int i = 0; i < nxtabs; i++)
+    if (xtabs[i] == tab) {
+      __atomic_store_n(&xrows[i], 0, __ATOMIC_RELEASE);
+      __atomic_store_n(&xtabs[i], (const uw *)0, __ATOMIC_RELEASE);
+    }
+  fpr_unlock(&xlock);
+}
+
+/* table t's rows and their count; 0 for an index that names no table or
+ * an emptied slot (the pointer decides: a count read before a detach
+ * never walks a table that is gone) */
 static const uw *tab_rows(sw t, uw *count) {
   static uw static_rows = (uw)-1; /* the image's own table never changes: a race only recounts it */
   if (t == -1) {
@@ -99,8 +135,10 @@ static const uw *tab_rows(sw t, uw *count) {
     return rows(fpr_modtab);
   }
   if (t < 0 || t >= ntabs()) { *count = 0; return 0; }
-  *count = __atomic_load_n(&xrows, __ATOMIC_ACQUIRE)[t];
-  return rows(__atomic_load_n(&xtabs, __ATOMIC_ACQUIRE)[t]);
+  uw n = __atomic_load_n(&__atomic_load_n(&xrows, __ATOMIC_ACQUIRE)[t], __ATOMIC_ACQUIRE);
+  const uw *tab = __atomic_load_n(&__atomic_load_n(&xtabs, __ATOMIC_ACQUIRE)[t], __ATOMIC_ACQUIRE);
+  *count = tab ? n : 0;
+  return tab ? rows(tab) : 0;
 }
 /* row i of table t, or 0 */
 static const uw *row_at(V tv, V iv, const char *who) {
@@ -142,7 +180,8 @@ static V h_modhashat(V iv) {
   if (!ISINT(iv)) fpr_trap("Mod.hashAt: index not an Int");
   sw i = UNTAG(iv);
   if (i < 0 || i >= ntabs()) return empty_str();
-  return (V)__atomic_load_n(&xtabs, __ATOMIC_ACQUIRE)[i][2];
+  const uw *tab = __atomic_load_n(&__atomic_load_n(&xtabs, __ATOMIC_ACQUIRE)[i], __ATOMIC_ACQUIRE);
+  return tab ? (V)tab[2] : empty_str();
 }
 
 /* Mod.fn hash name: the LOUD lookup, for a caller who pinned a hash and
@@ -159,13 +198,20 @@ static V h_modfn(V hash, V name) {
   if (ISINT(hash) || TID(hash) != T_STR) fpr_trap("Mod.fn: hash not a String");
   if (ISINT(name) || TID(name) != T_STR) fpr_trap("Mod.fn: name not a String");
   const str_t *h = (const str_t *)hash, *n = (const str_t *)name;
+  /* under the registry lock: a detach (and the image's release after it)
+   * waits for the walk, which only compares strings */
+  fpr_lock(&xlock);
   for (sw t = -1; t < ntabs(); t++) {
     uw c;
     const uw *p = tab_rows(t, &c);
     for (uw i = 0; i < c; i++, p += MOD_ROW)
-      if (str_eq((const str_t *)p[0], h) && str_eq((const str_t *)p[1], n))
-        return (V)p[2];
+      if (str_eq((const str_t *)p[0], h) && str_eq((const str_t *)p[1], n)) {
+        V f = (V)p[2];
+        fpr_unlock(&xlock);
+        return f;
+      }
   }
+  fpr_unlock(&xlock);
   fpr_trap("Mod.fn: no such (hash, name) in the module table");
 }
 

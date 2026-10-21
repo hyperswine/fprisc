@@ -22,7 +22,10 @@ static V attach(V pathv) {
   const char *why = !abi || !rev || !table ? "not an FP-RISC host module" :
                     *abi != FPR_NATIVE_ABI || *rev != FPR_POSIX_CODEGEN_REV ? "host module ABI mismatch (rebuild module)" : 0;
   if (!why && fpr_mod_registered(table)) why = "module already attached";
-  if (!why && fpr_mod_attach(table)) why = "unsupported module interface schema";
+  if (!why) {
+    int r = fpr_mod_attach(table);
+    why = r == -2 ? "no memory for the module registry" : r ? "unsupported module interface schema" : 0;
+  }
   if (why) { dlclose(handle); return fpr_mkresult(1, why); }
   return fpr_mkresult(0, "");
 }

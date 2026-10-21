@@ -1,4 +1,4 @@
-# Regressions after the typed-IR merge: the x86-64 tied shift and Sol NN
+# Regressions after the typed-IR merge: the x86-64 tied shift, Sol NN, the module registry
 
 Date: 2026-10-22. Kind: fix record.
 Base: `origin/main` at `43ffba2`, the
@@ -92,3 +92,44 @@ the same rows in the same order.
 
 The leg's three checks pass: `nn: OK`, `compiled vecmap<relu>` (the JIT
 still compiles the relu map) and `ok mse<0.02` (5.10e-3).
+
+## The module registry lived in a process's heap
+
+QOS's check-all leg "Editor policies" (`tools/editor-policy-check.py`)
+died with `qosp fatal SIGSEGV: addr=0x3` in `editorpolicyprocess`, on the
+previous QOS pin as well. The test launches a child plugin that runs out
+of its 32 MiB budget and ends, then launches another. The fault is in
+`tab_rows` (`runtime/mod.c`): the registry's slot array held `0x3`, the
+tagged Int 1, where a table pointer belonged.
+
+Cause: `fpr_mod_attach` grew the registry's two arrays with `fpr_alloc`,
+which takes from the calling actor's heap. The registry is the whole
+program's, but an attach made from inside a process that later ends, or
+inside a receive turn, leaves the arrays in memory that is reclaimed and
+reused under it. Separately, QOS's `plug_image_quiet` freed a launched
+plugin's image when its process ended without removing its module table
+from the registry, so a later walk would read the freed image.
+
+Fix:
+
+- The arrays are `buddy_alloc` blocks, charged to no process. Running out
+  of that memory is an attach failure with its own result (`-2`); the
+  posix loader reports "no memory for the module registry" (QOS's attach
+  does the same in its own change).
+- `fpr_mod_detach` empties a table's slot. The slot is kept so the indices
+  the prelude's readers hold between calls never shift; an empty slot reads
+  as no rows (`tab_rows`) and no hash (`Mod.hashAt`). A slot is 16 bytes
+  per image ever attached, for the life of the program.
+- `Mod.fn` walks the tables under the registry lock, so a detach, and the
+  image's release that follows it, waits for the walk.
+- QOS records each plugin's table and detaches it before freeing the
+  image (QOS `qos/appside/entry.c`, on its own branch).
+
+Verified: with the fix, the Editor policies leg holds for all four of its
+programs on one and four harts. With only the arrays put back on
+`fpr_alloc`, `editorpolicyprocess` faults again at `addr=0x3`.
+
+Not closed: a value a reader took from a plugin's table (a hash string, a
+function value) still points into that plugin's image after the image is
+released. That is the contract every image-held static already has; this
+change only stops the registry itself from reaching a released image.
