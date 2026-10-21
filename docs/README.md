@@ -186,3 +186,4 @@ they began.
 - [Mixed scalar pipelines](2026-10-20-MIXED-SCALAR-PIPELINES.md): filtering map/fold chains in one traversal, scalar captures, stable output, differential checks and measured Pi/STAR64 results.
 - [Reuse and pipeline roadmap](2026-10-20-REUSE-AND-PIPELINE-ROADMAP.md): bounded callback inlining, proven fresh constructor reuse, allocation and physical timing evidence, and the remaining ownership/SIMD work.
 - [Tang Nano preset and examples](2026-10-21-TANGNANO20K-PRESET.md): matching 48 MHz FPGA/runtime preset, unified QEMU/board runner, program arguments, manifests and acceptance boundaries.
+- [check_base in parallel](2026-10-21-PARALLEL-CHECK-BASE.md): the conformance run as independent jobs on a pool, one per core: 1006 s to about 185 s with byte-identical output; the shared-state audit (a timed check runs alone, cabal users take a lock, the compiler's unit cache now written atomically); the floor is examples/ideal at about 165 s.
