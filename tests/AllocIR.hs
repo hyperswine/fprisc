@@ -84,6 +84,11 @@ add d a b = plain "add" [gpr d] [gpr a, gpr b]
 addTied :: Int -> Int -> Int -> SInstr
 addTied d a b = plain "addt" [OV (v d) (Tied 0)] [gpr a, gpr b]
 
+-- x86-64's variable shift: the result tied to the value, the count fixed
+-- (here in c1, the first caller-saved register the scan prefers)
+shiftTied :: Int -> Int -> Int -> SInstr
+shiftTied d a b = plain "shl" [OV (v d) (Tied 0)] [gpr a, OV (v b) (Fix c1)]
+
 call :: String -> [Int] -> Int -> SInstr
 call f args d =
   (plain "call" [OV (v d) (Fix a0)] (OS f : zipWith (\x p -> OV (v x) (Fix p)) args [a0, a1]))
@@ -265,4 +270,17 @@ main = do
   -- determinism
   pb <- either (error . ("FAIL: pressure again: " ++)) pure (allocateFn plainCfg pressure)
   check "allocation is deterministic" (alBody pa == alBody pb && alSaved pa == alSaved pb)
-  putStrLn "AllocIR: live ranges over block parameters, loops and calls; budget, spills and shared slots; staged fixed operands through a swap; tied copies; dead definitions; float refusal; the physical-liveness oracle; determinism: PASS"
+  -- a tied definition never takes a register its instruction fixes for
+  -- another operand: the result would be c1 (the first preference), the
+  -- count is fixed in c1; with the value dying there too, the result
+  -- reusing the value's register would let the count overwrite the value
+  let shiftLive = fn [v 0, v 1] [I (shiftTied 2 0 1), I (add 3 2 0), I (ret 3)]
+      shiftDies = fn [v 0, v 1] [I (add 4 0 1), I (shiftTied 2 4 1), I (add 3 2 1), I (ret 3)]
+      shiftOf a = head [i | I i <- alBody a, siOp i == "shl"]
+  forM_ [("value lives on", shiftLive), ("value dies there", shiftDies)] $ \(what, f) -> do
+    a <- either (error . (("FAIL: tied shift (" ++ what ++ "): ") ++)) pure (allocateFn plainCfg f)
+    either (error . (("FAIL: tied shift simulation (" ++ what ++ "): ") ++)) pure (simulate f (alBody a))
+    check ("a tied shift's destination is not its fixed count's register (" ++ what ++ ")")
+      (case (siDefs (shiftOf a), siUses (shiftOf a)) of ([OP d], [OP x, OP c]) -> d /= c1 && c == c1 && d == x; _ -> False)
+    either (error . (("FAIL: tied shift oracle (" ++ what ++ "): ") ++)) pure (checkAllocation plainCfg "shift" (alBody a))
+  putStrLn "AllocIR: live ranges over block parameters, loops and calls; budget, spills and shared slots; staged fixed operands through a swap; tied copies; a tied destination never on a fixed operand's register; dead definitions; float refusal; the physical-liveness oracle; determinism: PASS"

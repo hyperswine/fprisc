@@ -29,7 +29,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 7 -- the merge (6, then 7: store.spill never overwrites its own value): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
+x64SelectionRev = 8 -- the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
 
 data X64Config = X64Config
   { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool,

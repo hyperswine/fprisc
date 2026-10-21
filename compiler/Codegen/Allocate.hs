@@ -147,13 +147,21 @@ allocateFn cfg fn = do
       -- when the expansion may write early (the fixed registers of its
       -- other operands are met by the parallel copy before it, and its
       -- clobbers and definitions happen after the reads).
+      -- A tied definition is written early too: the parallel copy before
+      -- the instruction puts its use into the destination register at the
+      -- same moment the fixed operands are staged, so the destination may
+      -- not be a register the instruction fixes or reads (x86-64's
+      -- variable shift: the result tied to the value, the count fixed in
+      -- %rcx; given %rcx, the two copies collided, or, when the value died
+      -- in %rcx and the result reused it, the count overwrote the value).
+      tiedAt v i = not (null [() | OV d (Tied _) <- siDefs i, d == v])
       forbiddenAt v p i
         | crosses v p = reservedAt i
         | definedAt v p && isLiveOut v p =
             S.fromList
               ( siImplicitDefs i -- not the clobbers: they happen before the definition exists (a call's result is copied out afterwards)
                   ++ [r | OV d (Fix r) <- siDefs i, d /= v] ++ [r | OP r <- siDefs i]
-                  ++ (if earlyAt p then siImplicitUses i ++ [r | OV _ (Fix r) <- siUses i] ++ [r | OP r <- siUses i] else [])
+                  ++ (if earlyAt p || tiedAt v i then siImplicitUses i ++ [r | OV _ (Fix r) <- siUses i] ++ [r | OP r <- siUses i] else [])
               )
         | usedAt v p =
             S.fromList
@@ -391,6 +399,19 @@ rewrite cfg here locOf _ i = do
                 Tied _ -> Left (here ++ siOp i ++ ": a tied use operand")
         _ -> pure (acc ++ [o], pool, pre)
   (uses', pool1, pre0) <- foldlM step ([], scratch1, []) uses
+  -- the tied destination is written before the instruction reads its
+  -- other operands: it may share a register with none of them (checked
+  -- here, independently of the scan's constraint and of resolveCopies)
+  case (rd, tied) of
+    (Just r, [(_, k)]) -> do
+      -- an operand that is the tied use's own value travels in the
+      -- destination (`x * x`): that sharing is the point, not a collision
+      let other j = j /= k && case uses !! j of
+            OV u _ -> Just u /= tiedUse
+            _ -> True
+      when (r `elem` ([q | (j, OP q) <- zip [0 :: Int ..] uses', other j] ++ siImplicitUses i)) $
+        Left (here ++ siOp i ++ ": the tied destination " ++ show r ++ " is also another operand's register")
+    _ -> pure ()
   -- the tied copy: the use into its destination (a load when spilled)
   let preTied = case (rd, tiedLoc) of
         (Just r, Just l) | toPlace l /= PR r -> [(PR r, toPlace l)]
