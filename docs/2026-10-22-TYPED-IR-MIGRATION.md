@@ -10,9 +10,9 @@ assessment. Default promotion is conditional on the recorded acceptance gates.
 | Step | Work | Acceptance | Status |
 |---|---|---|---|
 | 1 | Reconcile plan; paired merged-compiler measurements | Exact source/compiler/host identities, outputs, 31 paired samples, regressions included | Complete: frozen compiler, 31 rounds on Apple M4 |
-| 2 | Shallow-entry checks and forwarding parameters | Independent switches/cache identities, native ABI and scheduler tests, before/after measurements | Validated A64/Rosetta; 31 paired rounds; kept opt-in |
+| 2 | Shallow-entry checks and forwarding parameters | Independent switches/cache identities, native ABI and scheduler tests, before/after measurements | Validated A64/Rosetta/native Linux x64; 31 paired rounds; kept opt-in |
 | 3 | Broader language coverage | Layout/allocation/root contracts; verifier/evaluator/native oracles; corpus counts | Aggregates/strings, terminating expressions and float runtime calls validated; 3707/3707 corpus instances |
-| 4 | RV64/RV32 and remaining profiles | Direct selection and width legalization; matching runtime/board evidence | RV32/RV64 QEMU pass; Linux CI pending; other profiles remain refused |
+| 4 | RV64/RV32 and remaining profiles | Direct selection and width legalization; matching runtime/board evidence | RV32/RV64 QEMU and direct RV64 Linux runtime CI pass; other profiles remain refused |
 | 5 | Promotion and retirement | Per-target correctness, coverage and performance gates pass; no remaining legacy consumers | Gates reviewed; promotion and retirement blocked by explicit gaps |
 
 ## Baseline evidence
@@ -176,9 +176,9 @@ it is not physical-board or real Linux scheduler acceptance.
 
 | Target/profile | Local evidence | Remaining acceptance | Default |
 |---|---|---|---|
-| A64 hosted Base | Full native integration, aggregates, corpus, one/four harts | Final performance review; typed vector kernels and broader language gaps | Legacy |
-| x64 Linux Base | Selected constraints and Rosetta ABI oracle | Fresh Linux CI with real TLS/scheduler and aggregates | Legacy |
-| RV64 Unix Base | Direct QEMU oracle, TLS assembly path implemented | Fresh Linux cross-build/QEMU-user runtime job | Legacy |
+| A64 hosted Base | Full native integration, aggregates, corpus, one/four harts | Fib regression; typed vector kernels and broader language gaps | Legacy |
+| x64 Linux Base | Native Linux CI with real TLS/scheduler, aggregates, floats and corpus; Rosetta ABI oracle | Target performance and broader coverage | Legacy |
+| RV64 Unix Base | Direct oracle and real Linux runtime under QEMU-user, one/four harts, native module host | Native hardware performance; module emitter remains legacy | Legacy |
 | RV64 bare Base | Direct QEMU oracle, small-frame limit | Real runtime and physical STAR64 acceptance | Legacy |
 | RV32 bare Base | Width verifier/evaluator and direct QEMU oracle | Real runtime and physical RV32 board acceptance | Legacy |
 | Builtin / BuiltinArc / loaded QOS app | Named refusals retained | Ownership, roots, allocation and loader/hart contracts plus target oracles | Legacy |
@@ -209,3 +209,27 @@ have live consumers, so retiring them now would remove supported behavior.
   RV64 acceptance to require each workload's named root functions, not merely
   a native prelude, and moves the real RV64 runtime checks before the broad
   legacy suite. Record the final branch run separately from local evidence.
+
+### Direct runtime acceptance at `356297d`
+
+[CI 39639710903](https://github.com/hyperswine/fprisc/actions/runs/39639710903)
+passed direct native x86 integration with and without entry options, aggregate
+and float/vector tests, corpus goldens, RV32/RV64 independent QEMU oracles, and
+the strengthened direct RV64 Linux runtime stage. RV64's 17 execution cases
+cover one/four harts, floats, vectors, actors, sleep/wake, line I/O, context
+preservation and a direct module host with a legacy-emitted loaded module.
+The **full run passed**, including the broad Base suite, I32/raw, experimental
+frame/register modes and legacy RV64 Linux execution. The machine-readable
+[CI record](evidence/2026-10-22-typed-ir-migration/ci.json) pins the exact
+implementation/test commit, job and step results. Subsequent acceptance-note
+changes are documentation only; no source or test changes follow that commit.
+
+### Next performance experiment
+
+The measured fib worker has zero allocator spills and a 32-byte frame, yet is
+slower than legacy-best's 48-byte frame. Inspection finds both saved registers
+paid for on the leaf path, plus separate frame-link saves/restores where the
+legacy-best emitter uses pairs. Test frame-link pairing and path-sensitive
+save placement independently, preserving stack-segment restoration and bounds.
+These are candidates, not a measured attribution of the regression. A smaller
+frame or fewer static memory instructions alone does not prove a speedup.

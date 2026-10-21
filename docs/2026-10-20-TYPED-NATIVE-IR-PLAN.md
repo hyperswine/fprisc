@@ -8,7 +8,10 @@ native Linux CI at that exact commit in
 The backend remains opt-in. M3's historical performance gates were not all
 met; broader coverage, remaining targets/profiles and default promotion
 remain open. The migration branch now adds aggregate/string coverage and direct RISC-V
-selection; this is not yet a claim that all M4 profiles are accepted. Current work is tracked in
+selection. Full Linux CI at `356297d` passed the direct x86 and RV32/RV64
+oracles, direct RV64 Linux runtime, and existing regression suites
+([run 39639710903](https://github.com/hyperswine/fprisc/actions/runs/39639710903)).
+This does not accept all M4 profiles or meet the performance promotion gate. Current work is tracked in
 [the migration execution record](2026-10-22-TYPED-IR-MIGRATION.md).
 Baseline: native compiler at `c328232f63d3f4a6a4b4c1dde7bce17cc449e19d`
 (codegen revision 66); 2026-10-21 amendments cover the M1 repairs at revision 67.
