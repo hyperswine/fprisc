@@ -3,7 +3,7 @@ module Compile (compileMain, checkedInterface, parseFile) where
 import Data.List (sortBy)
 import Data.Maybe (fromMaybe)
 import System.Environment (lookupEnv)
-import System.IO (hPutStrLn, stderr)
+import System.IO (hClose, hPutStr, hPutStrLn, openTempFile, stderr)
 import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Mono (specializeFunctions, qualifyAux)
 import Inline (inlineSmall, inlineWith, vecPeek)
@@ -34,7 +34,7 @@ import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
 import Modules (LoadResult (..), ModExport (..), hashAST, loadProgram)
 import Precond (PreNote (..), PreStatus (..), applyPreconds, checkedName, preTable, renderNote, validatePre, validatePreUses)
 import Home (underHome)
-import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.Directory (createDirectoryIfMissing, doesFileExist, renameFile)
 import System.Environment (getArgs)
 import qualified System.Info
 import StdBridge (runStdCheck)
@@ -1012,7 +1012,10 @@ compileWithInterface accepted = do
                 let (asm0, vnotes) = emitProgram tgt rvv spec [] (M.union (if oArc opts then arcExterns else M.empty) ext) exps elide prog
                     asm = lower asm0
                 mapM_ putStrLn vnotes
-                length asm `seq` writeFile path asm
+                -- written beside it and renamed whole: a build running at the
+                -- same time (check_base runs many) finds the unit complete or
+                -- absent, never half-written and taken as cached
+                length asm `seq` writeWhole path asm
                 wcetSummary ("unit " ++ takeFileName path) asm
                 applyReport (takeFileName path) asm
                 pure (path, show (M.size prog) ++ " supercombinators")
@@ -1177,6 +1180,14 @@ fst3 _ = ""
 isTBind :: STop -> Bool
 isTBind TBind {} = True
 isTBind _ = False
+
+-- a cache file appears whole: written to a temp name in its directory, renamed
+writeWhole :: FilePath -> String -> IO ()
+writeWhole path text = do
+  (tmp, h) <- openTempFile (takeDirectory path) (takeFileName path ++ ".tmp")
+  hPutStr h text
+  hClose h
+  renameFile tmp path
 
 -- G1 (docs/FUEL-RC-ABI.md): with FPRC_WCET=1, print the per-emission
 -- safepoint-distance table. The program bound is the max over ALL
