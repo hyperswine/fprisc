@@ -143,4 +143,27 @@ It says "including arities 9 and 64".
 
 ## Validation
 
-Recorded below once the suites have run on the merged tree.
+Compiler at `a5c4c6f` (the merge plus the fix). Run on the M1 Mac mini
+(arm64, macOS, Rosetta), as this project's suites are, from a fresh
+worktree with a fresh `make fpr`:
+
+| Check | Result |
+|---|---|
+| `tests/check_typed_ir.py` | PASS (verifier 24 malformations, bits/shifts, dead arms, generic application, simplification, M1 on a64/x64/rv64) |
+| `tests/check_typed_ir_a64.py` | PASS (SelectedIR, AllocIR, the whole-unit fixture with both branches' functions under strict mode, harts, caches) |
+| `tests/check_typed_ir_x64.py` | host skip, as designed on arm64; its shared SelectedIR and AllocIR checks passed |
+| `tests/check_x64_local.py --require-execution` | PASS under Rosetta (scalar/ABI, self loops, vectors) |
+| `tests/check_x64_scalar.py` | PASS, all modes including typed-ir (24 strict functions, arities 9 and 64, pressure spills 9, rotate6 a loop) |
+| `tests/check_registers.py`, `check_self_loops.py`, `check_workers.py` | PASS |
+| `tests/check_typed_ir_bench.py` (coverage) | PASS: 12 programs, 1544/3707 functions native, every output equal to `.expected` (the coverage page's count) |
+| `tests/check_base.py` | PASS: 105 jobs in 280 s on 8 workers |
+
+Not verified here:
+
+- Native Linux x86-64. CI runs it after the push; Rosetta substitutes the
+  Linux TLS and runtime hooks.
+- A64 ELF execution, boards, performance. No timing was claimed for the
+  merge.
+- The Mach-O TLV hart read inside `store.spill` and `load.spill`. It is
+  assembled by the A64 pipeline check but not executed: the host uses x28.
+- QOS, which is recorded with its pin in the qos repository.
