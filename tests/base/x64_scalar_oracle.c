@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef intptr_t V;
 typedef void (*Fn)(void);
@@ -49,6 +50,27 @@ V fpr_g_BITSHIFTL_call2(V a, V b) {
     assert(untag(b) < 0 || untag(b) > 63);
     return fail(6,a,b);
 }
+/* a dead arm reached: the reason is a String object {tid 9000, var, len, bytes} */
+struct Str { uint32_t tid, var; uint64_t len; unsigned char bytes[]; };
+static const char *dead_reason = "case: no matching pattern; arms were [PCon \"Unit\" []]";
+V fpr_panic(V s) {
+    const struct Str *t = (const void *)s;
+    assert(t->tid == 9000 && t->len == strlen(dead_reason) && memcmp(t->bytes, dead_reason, t->len) == 0);
+    return fail(7, s, 0);
+}
+struct Bool fpr_unit = {0, 0};
+/* the generic application's staging: head at 16n(rargs), argument i at
+   16(n-1-i)(rargs); this substitute applies a saturated static PAP only */
+struct Pap { uint32_t tid, var; V (*fn)(V); intptr_t arity, nargs; };
+static V inc(V x) { return tag(untag(x) + 1); }
+static struct Pap incPap = {9001, 0, inc, 1, 0};
+static unsigned applies;
+V fpr_applyN(V f, uintptr_t n, V *rargs) {
+    struct Pap *p = (struct Pap *)f;
+    assert(p->tid == 9001 && p->nargs == 0 && n == (uintptr_t)p->arity && n == 1);
+    ++applies;
+    return p->fn(rargs[0]);
+}
 static int equal(V a,V b) {
     if ((a&1) || (b&1)) return a==b;
     struct Bool *x=(void *)a, *y=(void *)b;
@@ -65,6 +87,7 @@ DECL(add); DECL(sub); DECL(mul); DECL(divide); DECL(shift); DECL(branch);
 DECL(hot); DECL(calls); DECL(boolResult); DECL(boolEq); DECL(boolNe);
 DECL(call7); DECL(call8); DECL(rotate6); DECL(rotate7); DECL(rotate8); DECL(rotate63);
 DECL(pressure); DECL(wide);
+DECL(answer); DECL(useCaf); DECL(tick); DECL(applyLocal);
 
 static V invoke(Fn fn, const V *args, unsigned count) {
     V first[6] = {0};
@@ -148,7 +171,18 @@ int main(void) {
             assert(invoke(width==6 ? fpr_fn_call7 : fpr_fn_call8,args,width+1)==tag(want+next-30));
         }
     }
-    assert(yields>cases && traps==12);
-    printf("%u C-reference cases, 12 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, callee saves/alignment/volatile clobbers PASS\n",cases);
+    /* a nullary definition evaluated by a call, and a case on Unit: the
+       live arm, then the dead arm reached with an Int (the legacy trap) */
+    { V none[1]={0}; assert(invoke(fpr_fn_answer,none,0)==tag(42)); }
+    for (int64_t n=-3;n<=3;n++) { V args[]={tag(n)}; assert(invoke(fpr_fn_useCaf,args,1)==tag(n+42)); }
+    { V args[]={(V)&fpr_unit}; assert(invoke(fpr_fn_tick,args,1)==tag(7)); }
+    { V args[]={tag(5)}; expected_trap=1;
+      if (!setjmp(failure)) { invoke(fpr_fn_tick,args,1); assert(!"missing trap"); }
+      assert(trap_kind==7); expected_trap=0; }
+    /* a function parameter applied twice through fpr_applyN's stack staging */
+    for (int64_t x=-5;x<=5;x++) { V args[]={(V)&incPap,tag(x)}; assert(invoke(fpr_fn_applyLocal,args,2)==tag(2*x+3)); }
+    assert(applies==22);
+    assert(yields>cases && traps==13);
+    printf("%u C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS\n",cases);
     return 0;
 }

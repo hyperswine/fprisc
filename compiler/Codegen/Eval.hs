@@ -12,12 +12,16 @@ module Codegen.Eval (RV (..), Event (..), Failure (..), Outcome (..), evalProgra
 
 import Codegen.IR
 import Control.Monad (foldM, when)
+import Data.Bits (shiftL, shiftR, xor, (.&.), (.|.))
 import Control.Monad.Except
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 
--- a runtime value: a tagged Int or an object
-data RV = RInt Integer | RObj Int Int [RV] deriving (Eq, Ord, Show)
+-- a runtime value: a tagged Int, an object, a partial application of a
+-- program function (its static PAP when no argument is supplied), or an
+-- immortal object known only by its symbol (a primitive's object, a HAL
+-- contract): opaque, equal only to itself
+data RV = RInt Integer | RObj Int Int [RV] | RPap Name [RV] | RSym String deriving (Eq, Ord, Show)
 
 rvInt :: Integer -> RV
 rvInt = RInt
@@ -37,7 +41,7 @@ data Event
 
 data Failure = Trap String | Stuck String deriving (Eq, Show)
 
-data Outcome = Outcome {ocResult :: Either Failure RV, ocEvents :: [Event]} deriving (Show)
+data Outcome = Outcome {ocResult :: Either Failure RV, ocEvents :: [Event]} deriving (Eq, Show)
 
 data Val = VVal RV | VInt Integer | VPred Bool deriving (Eq, Ord, Show)
 
@@ -77,6 +81,7 @@ callFn program name args = do
           TTailCall c as -> do
             when (isForeign c) (stuck ("a foreign tail call to " ++ calleeName c ++ ": the evaluator models no C"))
             mapM (look env) as >>= callFn program (calleeName c)
+          TUnreachable msg -> trap msg
       instr env (Instr d op) = do
         r <- opValue env op
         case (d, r) of
@@ -101,10 +106,28 @@ callFn program name args = do
         OTagTest t c v -> val env v >>= \case
           RObj t' c' _ -> pure (Just (VPred (t == t' && c == c')))
           RInt _ -> pure (Just (VPred False))
+          RSym s -> stuck ("a tag test on the immortal object " ++ s ++ ", whose typeid the evaluator does not model")
+          RPap _ _ -> pure (Just (VPred False)) -- T_PAP is no constructor's typeid
+        OSymbol sym -> pure (Just (VVal (RSym sym)))
+        OFunValue n -> pure (Just (VVal (RPap n [])))
+        OApply f as -> do
+          h <- val env f
+          args' <- mapM (val env) as
+          r <- applyN program h args'
+          pure (Just (VVal r))
         OArith o a b -> do
           x <- int env a
           y <- int env b
           r <- arith o x y
+          pure (Just (VInt r))
+        OBit o a b -> do
+          x <- int env a
+          y <- int env b
+          pure (Just (VInt (bit o x y)))
+        OShift o a b -> do
+          x <- int env a
+          n <- int env b
+          r <- shift o x n
           pure (Just (VInt r))
         OCmp o a b -> do
           x <- int env a
@@ -127,6 +150,27 @@ callFn program name args = do
       predicate env v = look env v >>= \case VPred b -> pure b; x -> stuck ("a predicate was needed, found " ++ show x)
   run (fnEntry fn) args M.empty
 
+-- the generic application as runtime/runtime.c fpr_applyN states it: an
+-- Int or an object that is no PAP traps by name; fewer arguments than the
+-- function still needs make a larger PAP; exactly enough call it; more
+-- call it with what it needs and apply the result to the rest
+applyN :: Program -> RV -> [RV] -> E RV
+applyN program f args = case f of
+  RInt _ -> trap "apply: applied an integer"
+  RObj _ _ _ -> trap "apply: not a function value"
+  RSym s -> stuck ("an application of the immortal object " ++ s ++ ": the evaluator models no C")
+  RPap n supplied -> do
+    fn <- maybe (stuck ("an application of " ++ n ++ ", which is not in the lowered program")) pure (M.lookup n program)
+    let arity = length (fnSourceParams fn)
+        need = arity - length supplied
+    if length args < need
+      then pure (RPap n (supplied ++ args))
+      else do
+        r <- callFn program n (map VVal (supplied ++ take need args))
+        let rest = drop need args
+        r' <- case r of VVal v -> pure v; VInt k -> pure (RInt k); VPred b -> pure (rvBool b)
+        if null rest then pure r' else applyN program r' rest
+
 -- Int + - * / as runtime/runtime.c states them: the result must fit the
 -- Int range; / refuses a zero divisor first; division truncates toward
 -- zero like the C primitive.
@@ -147,3 +191,19 @@ arith o x y = case o of
 
 cmp :: CmpOp -> Integer -> Integer -> Bool
 cmp = \case Lt -> (<); Gt -> (>); Le -> (<=); Ge -> (>=); Eq -> (==); Ne -> (/=)
+
+-- band/bor/bxor on the untagged Ints (runtime/bits.c): two's complement,
+-- bit for bit; the result of two 63-bit values is a 63-bit value
+bit :: BitOp -> Integer -> Integer -> Integer
+bit = \case BAnd -> (.&.); BOr -> (.|.); BXor -> xor
+
+-- BITSHIFTL / BITSHIFTR as bits.c states them: the count must be 0..63
+-- (checked first, the primitive's text), then the 64-bit shift of the
+-- untagged value, logical to the right, and the low 63 bits sign-extended
+-- (TAG((sw)...) drops the top bit)
+shift :: ShiftOp -> Integer -> Integer -> E Integer
+shift o x n
+  | n < 0 || n > 63 = trap (shiftName o ++ ": shift must be 0..63")
+  | otherwise = pure $ case o of
+      Shl -> wrap63 (x `shiftL` fromInteger n)
+      Shr -> wrap63 ((x `mod` 2 ^ (64 :: Int)) `shiftR` fromInteger n)

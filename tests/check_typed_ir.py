@@ -71,7 +71,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-ir-') as d:
         for fn in ('fib', 'sum', 'addovf', 'divz', 'even', 'odd', 'clamp', 'boolEq', 'boolNe', 'boolResult'):
             assert fn in lowered, (target, fn, fallbacks.get(fn), lines[:3])
         assert '$worker.scalar.fib' in lowered and '$worker.scalar.sum' in lowered, (target, sorted(lowered))
-        assert 'main' in fallbacks and 'primitive' in fallbacks['main'], (target, fallbacks.get('main'))
+        # main matches Sys.args' list (a field projection) and prints a string: M4 forms
+        assert 'main' in fallbacks and any(k in fallbacks['main'] for k in ('field projection', 'string literal', 'primitive')), (target, fallbacks.get('main'))
         coverage = next(l for l in lines if l.startswith('typed-ir: coverage'))
         dumps[target] = '\n'.join(l for l in lines if l.startswith('typed-ir: | '))
         assert dumps[target], target
@@ -91,6 +92,10 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-ir-') as d:
         assert '(21892 safepoints, 21892 calls)' in fib_line, fib_line
         sum_line = next(l for l in lines if l.startswith('typed-ir: eval sum 1000 0 '))
         assert '(1002 safepoints, 2 calls)' in sum_line, sum_line
+        # the simplification shared sum's repeated untag of n; every eval
+        # line above was computed on the simplified program and checked
+        # against the lowered one by the report itself
+        assert any(re.match(r'typed-ir: sum lowered \(\d+ blocks, \d+ instructions, \d+ removed by simplification\)', l) for l in lines), [l for l in lines if ' sum lowered' in l]
         print(f'{target}: {coverage[10:]}; main falls back ({fallbacks["main"]}); {len(CALLS)} evaluations equal the legacy binary')
     assert dumps['a64'] == dumps['x64'] == dumps['rv64'], 'the dump differs between targets'
     again = run(['./fpr', '--target=a64', f'--prelude={ROOT}/core/prelude.fpr', FIXTURE, tmp / 'again.s'], {**ENV, 'FPR_TYPED_IR': 'dump'})

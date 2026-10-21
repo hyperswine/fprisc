@@ -6,6 +6,7 @@ L = use "scalarlib".
 TirProbe.call1 : (Int -> Int) -> Int -> Int .
 TirProbe.call2 : (Int -> Int -> Int) -> Int -> Int -> Int .
 TirProbe.segments : Unit -> Int .
+TirProbe.callU : (Unit -> Int) -> Int -> Int .
 main = case Sys.args Unit of
     ["fib", n] -> print "{L.fib (parseInt n)}"
   | ["sum", n, a] -> print "{L.sum (parseInt n) (parseInt a)}"
@@ -25,6 +26,23 @@ main = case Sys.args Unit of
   | ["deepLive", n] -> print "{L.deepLive (parseInt n)} {TirProbe.segments Unit}"
   | ["rot3", n, a, b, c] -> print "{L.rot3 (parseInt n) (parseInt a) (parseInt b) (parseInt c)}"
   | ["cpressure", n] -> print "{TirProbe.call1 L.pressure (parseInt n)}"
+  | ["shl", a, n] -> print "{L.shl (parseInt a) (parseInt n)}"
+  | ["shr", a, n] -> print "{L.shr (parseInt a) (parseInt n)}"
+  | ["bits", a, b] -> print "{L.bits (parseInt a) (parseInt b)}"
+  | ["mix", n, acc] -> print "{L.mix (parseInt n) (parseInt acc)}"
+  | ["rot9", n] -> print "{L.rot9 (parseInt n) 1 2 3 4 5 6 7 8 9}"
+  | ["callWide", n] -> print "{L.callWide (parseInt n)}"
+  | ["tailWide", n] -> print "{L.tailWide (parseInt n)}"
+  | ["call64", n] -> print "{L.call64 (parseInt n)}"
+  | ["useCaf", n] -> print "{L.useCaf (parseInt n)}"
+  | ["pos", n] -> print "{if L.pos (parseInt n) then 1 else 0}"
+  | ["tick"] -> print "{L.tick Unit}"
+  | ["tickBad", n] -> print "{TirProbe.callU L.tick (parseInt n)}"
+  | ["viaFun", n] -> print "{L.viaFun (parseInt n)}"
+  | ["viaHal", n] -> print "{L.viaHal (parseInt n)}"
+  | ["applyFib", n] -> print "{L.applyLocal L.fib (parseInt n)}"
+  | ["partial", n] -> print "{L.partial (parseInt n)}"
+  | ["over", n] -> print "{L.over (parseInt n)}"
   | ["cfib", n] -> print "{TirProbe.call1 L.fib (parseInt n)}"
   | ["csum", n, a] -> print "{TirProbe.call2 L.sum (parseInt n) (parseInt a)}"
   | ["caddovf", a, b] -> print "{TirProbe.call2 L.addovf (parseInt a) (parseInt b)}"

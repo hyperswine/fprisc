@@ -71,10 +71,34 @@ if args.portable_only or not NATIVE_HOST:
 
 MOD, LIB, PROBE = 'tests/typed_ir/scalar_mod.fpr', 'tests/typed_ir/scalarlib.fpr', 'tests/typed_ir/tir_probe.c'
 LIB_FNS = ['fib', 'sum', 'addovf', 'mulovf', 'divz', 'even', 'odd', 'clamp', 'boolEq', 'boolNe', 'boolResult', 'cbSum', 'cbTail', 'deep', 'swapLoop',
-           'pressure', 'wide', 'holdLoop', 'deepLive', 'rot3']
+           'pressure', 'wide', 'holdLoop', 'deepLive', 'rot3',
+           'shl', 'shr', 'bits', 'mix', 'rot9', 'callWide', 'tailWide', 'rot64', 'call64',
+           'answer', 'useCaf', 'pos', 'tick', 'viaFun', 'viaHal', 'applyLocal', 'addTo', 'partial', 'mkAdd', 'over']
 INT_MIN, INT_MAX = -(1 << 62), (1 << 62) - 1
 def overflow(a, op, b):
     return ('trap', f'Int overflow: {a} {op} {b} does not fit an Int ({INT_MIN}..{INT_MAX}); I64 is the type that wraps')
+# the shifts as runtime/bits.c states them: the 64-bit shift of the untagged
+# value (logical to the right), then the low 63 bits sign-extended
+def wrap63(v):
+    m = v % (1 << 63)
+    return m - (1 << 63) if m > INT_MAX else m
+def shl(a, n):
+    return ('trap', 'BITSHIFTL: shift must be 0..63') if not 0 <= n <= 63 else ('value', str(wrap63(a << n)))
+def shr(a, n):
+    return ('trap', 'BITSHIFTR: shift must be 0..63') if not 0 <= n <= 63 else ('value', str(wrap63((a % (1 << 64)) >> n)))
+# the wide rotations: n turns of the argument list, then the weighted sum
+def rot(n, args):
+    args = list(args)
+    for _ in range(n):
+        args = args[1:] + args[:1]
+    return sum((i + 1) * a for i, a in enumerate(args))
+def mix(n, acc):
+    while n:
+        acc = wrap63(acc << 5) ^ wrap63((acc % (1 << 64)) >> 2)
+        acc += n
+        assert INT_MIN <= acc <= INT_MAX
+        n -= 1
+    return ('value', str(acc))
 # independent expected values: arithmetic, not a compiler (the most negative
 # Int by -1 is covered by tests/SelectedIR.hs's fit check and the worker suite;
 # the fixture's parseInt does not read INT_MIN)
@@ -116,6 +140,39 @@ EXPECTED = {
     ('rot3', (7, 1, 2, 3)): ('value', '2003001'),
     ('rot3', (8, 1, 2, 3)): ('value', '3001002'),
     ('cpressure', (5,)): ('value', str(14 * 5 + 79)),
+    ('shl', (1, 3)): shl(1, 3),
+    ('shl', (1, 62)): shl(1, 62),
+    ('shl', (3, 63)): shl(3, 63),
+    ('shl', (-1, 1)): shl(-1, 1),
+    ('shl', (1, 64)): shl(1, 64),
+    ('shl', (1, -1)): shl(1, -1),
+    ('shr', (-1, 1)): shr(-1, 1),
+    ('shr', (-8, 1)): shr(-8, 1),
+    ('shr', (1024, 3)): shr(1024, 3),
+    ('shr', (5, 63)): shr(5, 63),
+    ('shr', (5, 0)): shr(5, 0),
+    ('shr', (5, 64)): shr(5, 64),
+    ('shr', (5, -7)): shr(5, -7),
+    ('bits', (12, 10)): ('value', str((12 & 10) * 1000000 + (12 | 10) * 1000 + (12 ^ 10))),
+    ('bits', (-1, 77)): ('value', str((-1 & 77) * 1000000 + (-1 | 77) * 1000 + (-1 ^ 77))),
+    ('mix', (1000, 7)): mix(1000, 7),
+    ('rot9', (0,)): ('value', str(rot(0, range(1, 10)))),
+    ('rot9', (4,)): ('value', str(rot(4, range(1, 10)))),
+    ('rot9', (100000,)): ('value', str(rot(100000, range(1, 10)))),
+    ('callWide', (3,)): ('value', str(rot(3, range(1, 10)) + rot(4, range(1, 10)))),
+    ('tailWide', (5,)): ('value', str(rot(5, range(9, 0, -1)))),
+    ('call64', (0,)): ('value', str(rot(0, range(1, 64)) + 1)),
+    ('call64', (7,)): ('value', str(rot(7, range(1, 64)) + 1)),
+    ('call64', (200000,)): ('value', str(rot(200000, range(1, 64)) + 1)),
+    ('useCaf', (8,)): ('value', '50'),
+    ('pos', (3,)): ('value', '1'),
+    ('pos', (-3,)): ('value', '1' if False else '0'),
+    ('tick', ()): ('value', '7'),
+    ('viaFun', (20,)): ('value', '6765'),
+    ('viaHal', (20,)): ('value', '41'),
+    ('applyFib', (10,)): ('value', str(55 + 89)),
+    ('partial', (3,)): ('value', '17'),
+    ('over', (5,)): ('value', '12'),
     ('cfib', (22,)): ('value', '17711'),
     ('csum', (100, 5)): ('value', '5055'),
     ('caddovf', (INT_MAX, 1)): overflow(INT_MAX, '+', 1),
@@ -153,6 +210,15 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     for k, want in EXPECTED.items():
         got = outcome(native_exe, *k)
         assert got == want == legacy[k], (k, got, want, legacy[k])
+    # the string object of the dead arm's reason is in the unit, once
+    unit_s = next(Path(ENV['XDG_CACHE_HOME']).glob('fpr/build/units/u-*tirbe*.s'))
+    unit_t = unit_s.read_text()
+    assert unit_t.count('Ltirstr_') >= 2 and unit_t.count('.long 9000') >= 1, unit_s
+    # the dead arm reached (C hands tick an Int): the native trap is the
+    # legacy trap, text for text
+    dead_legacy, dead_native = outcome(legacy_exe, 'tickBad', [5]), outcome(native_exe, 'tickBad', [5])
+    assert dead_legacy == ('trap', 'case: no matching pattern; arms were [PCon "Unit" []]'), dead_legacy
+    assert dead_native == dead_legacy, (dead_native, dead_legacy)
     # deep recursion across stack segments: the same answer, and the
     # harness saw the native frames in more than one segment; deepLive
     # carries three values across the recursive call (saved registers

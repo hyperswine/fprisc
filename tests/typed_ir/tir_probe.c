@@ -32,9 +32,14 @@ static V call2(V fn, V a, V b) {
   pap_t *p = (pap_t *)fn;
   return ((V (*)(V, V))(uintptr_t)p->fn)(a, b);
 }
+/* callU hands a function over Unit a tagged Int instead: the case's dead
+ * arm, which exhaustiveness proved unreachable, is reached, and the trap
+ * must be the legacy one */
+static V callU(V fn, V a) { return call1(fn, a); }
 
 FPR_FN(fpr_g_TirProbe_x2ecb, cb, 1);
 FPR_FN(fpr_g_TirProbe_x2emark, mark, 1);
 FPR_FN(fpr_g_TirProbe_x2esegments, segments, 1);
 FPR_FN(fpr_g_TirProbe_x2ecall1, call1, 2);
 FPR_FN(fpr_g_TirProbe_x2ecall2, call2, 3);
+FPR_FN(fpr_g_TirProbe_x2ecallU, callU, 2);

@@ -29,7 +29,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 2 -- M3: register allocation, saved registers, shared spill slots
+x64SelectionRev = 6 -- the merge: M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
 
 data X64Config = X64Config
   { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool,
@@ -67,7 +67,8 @@ data Sel = Sel
     selLabel :: Int,
     selItems :: [Item], -- reversed
     selManaged :: S.Set VReg, -- virtual registers that hold tagged words
-    selNullaries :: S.Set (Int, Int)
+    selNullaries :: S.Set (Int, Int),
+    selStrings :: S.Set String -- the string literals the function names
   }
 
 type Se = StateT Sel (Either String)
@@ -135,15 +136,27 @@ cbnz v l = (plain "jnonzero" [] [any' v, OL l]) {siFlags = FlagsDef, siControl =
 jump :: Label -> SInstr
 jump l = (plain "jmp" [] [OL l]) {siControl = JumpTo l}
 
+-- a variable shift: the count in %rcx (the instruction reads %cl), the
+-- value tied to the destination
+shiftv :: String -> VReg -> VReg -> VReg -> SInstr
+shiftv op d a b = (plain op [OV d (Tied 0)] [any' a, fix b (r "rcx")]) {siFlags = FlagsDef}
+
 -- cqto sign-extends the dividend into rdx before idivq. Placement excludes
 -- both fixed rax and implicit rdx when choosing the divisor's register.
 divide :: VReg -> VReg -> VReg -> SInstr
 divide d a b = (plain "divide" [fix d (r "rax")] [fix a (r "rax"), any' b])
   {siImplicitDefs = [r "rdx"], siFlags = FlagsDef}
 
+-- arguments 7 and 8 into the private TLS cells, 9.. into the per-hart
+-- spill cells (cell j at 8*(1+j) in the hart block, read into %r10 for
+-- each store); every argument is evaluated by now and no call separates
+-- these stores from the transfer, so the callee's prologue copies them
 stageArgs :: [VReg] -> Se ()
-stageArgs args = forM_ (zip [6 :: Int ..] (drop 6 args)) $ \(n,v) ->
-  emitI (plain "store.cell" [] [any' v, OS ("fpr_x64_a" ++ show n)])
+stageArgs args = do
+  forM_ (zip [6 :: Int, 7] (take 2 (drop 6 args))) $ \(n,v) ->
+    emitI (plain "store.cell" [] [any' v, OS ("fpr_x64_a" ++ show n)])
+  forM_ (zip [0 :: Int ..] (drop 8 args)) $ \(j,v) ->
+    emitI ((plain "store.spill" [] [any' v, OI (fromIntegral j)]) {siImplicitDefs = [r "r10"]})
 
 emitCall :: String -> Bool -> Bool -> [VReg] -> Maybe VReg -> Se ()
 emitCall sym safepoint runtime args res = do
@@ -191,16 +204,16 @@ nullarySymbol t v = case (t, v) of
     modify (\s -> s {selNullaries = S.insert (t, v) (selNullaries s)})
     pure (".Lnul_" ++ show t ++ "_" ++ show v)
 
-select :: X64Config -> Fn -> Either String (SFn, S.Set VReg, S.Set (Int, Int))
+select :: X64Config -> Fn -> Either String (SFn, S.Set VReg, S.Set (Int, Int), S.Set String)
 select cfg fn = do
   let maxV = maximum (0 : [n | b <- fnBlocks fn, (VId n, _) <- blockDefs b]) + 1
       tyMap = M.fromList (concatMap blockDefs (fnBlocks fn))
       managed0 = S.fromList [vreg v | (v, TVal) <- M.toList tyMap]
       params = [vreg v | (v, _) <- bParams (entryBlock fn)]
-      st0 = Sel maxV 0 [] managed0 S.empty
-  when (length params > 8) (Left "arity above 8")
+      st0 = Sel maxV 0 [] managed0 S.empty S.empty
+  when (length params > arityCeiling) (Left ("arity above " ++ show arityCeiling))
   (_, st) <- runStateT (mapM_ (selectBlock cfg fn tyMap) (fnBlocks fn)) st0
-  pure (SFn (fnName fn) params (reverse (selItems st)), selManaged st, selNullaries st)
+  pure (SFn (fnName fn) params (reverse (selItems st)), selManaged st, selNullaries st, selStrings st)
 
 entryBlock :: Fn -> Block
 entryBlock fn = head [b | b <- fnBlocks fn, bId b == fnEntry fn]
@@ -234,6 +247,16 @@ selectInstr _ _ (Instr d op) = case op of
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
   OConstInt n -> def (\r -> emitI (li r n))
   ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
+  OSymbol sym -> def (\r -> emitI (la r sym)) -- the legacy `la a0, <symbol>`
+  OFunValue n -> def (\r -> emitI (la r ("fpr_obj_" ++ mangleName n)))
+  -- the generic application: the head then every argument pushed 16 bytes
+  -- apart (the last at the stack pointer), fpr_applyN(head, n, &args) with
+  -- the call-alignment adjustment, the pushes popped; slots are %rbp-relative
+  OApply f as -> def $ \rd -> do
+    forM_ (f : as) $ \v -> emitI ((plain "push" [] [any' (vreg v)]) {siImplicitDefs = [r "rsp"]})
+    emitI ((plain "applyn" [fix rd (r "rax")] [OI (fromIntegral (length as))])
+             { siImplicitDefs = map r ["rdi", "rsi", "rdx", "rsp"], siClobbers = filter (/= r "rax") callerSaved,
+               siFlags = FlagsDef, siCalls = [Call "fpr_applyN" False True] })
   OTag v -> def $ \r -> do
     t <- freshV False
     emitI (rri "lsl" t (vreg v) 1)
@@ -272,6 +295,9 @@ selectInstr _ _ (Instr d op) = case op of
     emitI (li r 0)
     emitL done
   OArith o a b -> def (\r -> arith o r (vreg a) (vreg b))
+  -- band/bor/bxor on the untagged values: one instruction, the result fits
+  OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> "and"; BOr -> "or"; BXor -> "xor") r (vreg a) (vreg b)))
+  OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
     emitI (cmp (vreg a) (vreg b))
     emitI (cset (cond o) r)
@@ -292,7 +318,7 @@ selectInstr _ _ (Instr d op) = case op of
     emitI (ldrsw r res 4)
     emitL done
   OCall c as -> do
-    when (length as > 8) (refuse "a call with more than eight arguments")
+    when (length as > arityCeiling) (refuse ("a call with more than " ++ show arityCeiling ++ " arguments"))
     def (\r -> emitCall (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as) (Just r))
   where
     def k = case d of
@@ -339,6 +365,33 @@ selectInstr _ _ (Instr d op) = case op of
       emitI (rri "sext63" n t 0)
       emitI (cmp n t)
       emitI (bcond "ne" slow)
+    -- BITSHIFTL / BITSHIFTR (Codegen.inlineTable, shiftOk): a count outside
+    -- 0..63 (negative counts included, compared unsigned) takes the slow
+    -- path, the HAL entry fpr_g_<name>_call2 with the original operands
+    -- retagged, which traps with the primitive's text; the fast path is
+    -- the 64-bit shift (%cl) of the untagged value with the low 63 bits kept
+    shift o r a b = do
+      slow <- freshL "shslow"
+      done <- freshL "shdone"
+      t <- freshV False
+      emitI (cmpi b 64)
+      emitI (bcond "hs" slow)
+      emitI (shiftv (case o of Shl -> "shlq"; Shr -> "shrq") t a b)
+      emitI (rri "sext63" r t 0)
+      emitI (jump done)
+      emitL slow
+      ta <- freshV False
+      ta' <- freshV True
+      tb <- freshV False
+      tb' <- freshV True
+      emitI (rri "lsl" ta a 1)
+      emitI (rri "orri" ta' ta 1)
+      emitI (rri "lsl" tb b 1)
+      emitI (rri "orri" tb' tb 1)
+      res <- freshV True
+      emitCall ("fpr_g_" ++ mangleName (shiftName o) ++ "_call2") False True [ta', tb'] (Just res)
+      emitI (rri "asr" r res 1)
+      emitL done
 
 -- block parameters are assigned in parallel: a cycle is broken with a
 -- fresh temporary
@@ -376,8 +429,14 @@ selectTerm _ fn b = case bTerm b of
         parallelMoves (zip (paramsOf t) (map vreg as))
         emitI (jump (blockLabel t))
   TTailCall c as -> do
-    when (length as > 8) (refuse "a tail call with more than eight arguments")
+    when (length as > arityCeiling) (refuse ("a tail call with more than " ++ show arityCeiling ++ " arguments"))
     emitTail (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as)
+  -- a dead arm: the legacy trap if ever reached (`la a0, <str>; call
+  -- fpr_panic`, which does not return); the function's text ends here
+  TUnreachable msg -> do
+    modify (\s -> s {selStrings = S.insert msg (selStrings s)})
+    emitI ((plain "panic" [] [OS (stringLabel msg)])
+             {siImplicitDefs = map r ["rdi", "rsp"], siClobbers = callerSaved, siControl = Return, siCalls = [Call "fpr_panic" False True]})
   where
     paramsOf bid = [vreg v | blk <- fnBlocks fn, bId blk == bid, (v, _) <- bParams blk]
 
@@ -400,7 +459,10 @@ allocConfig self managed = AllocConfig
     acPreserved = map r ["rbp", "rsp"],
     acArrival = \params ->
       plain "params" (zipWith fix (take 6 params) argRegs) []
-        : [plain "load.cell" [OV p (Any GPR)] [OS ("fpr_x64_a" ++ show n)] | (n, p) <- drop 6 (zip [0 :: Int ..] params)],
+        : [plain "load.cell" [OV p (Any GPR)] [OS ("fpr_x64_a" ++ show n)] | (n, p) <- take 2 (drop 6 (zip [0 :: Int ..] params))]
+        -- the ninth and later from the hart spill cells (cell j at 8*(1+j)),
+        -- the hart block read into the parameter's own register
+        ++ [plain "load.spill" [OV p (Any GPR)] [OI (fromIntegral j)] | (j, p) <- zip [0 :: Int ..] (drop 8 params)],
     acLoad = \p ref -> plain "load" [OP p] [OF ref 0],
     acStore = \p ref -> plain "store" [] [OP p, OF ref 0],
     acMove = \d s' -> plain "movq" [OP d] [OP s'],
@@ -415,7 +477,7 @@ savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) Fa
 
 emitFnX64 :: X64Config -> Fn -> Either String NativeFn
 emitFnX64 cfg fn = do
-  (sel, managed, nulls) <- select cfg fn
+  (sel, managed, nulls, strs) <- select cfg fn
   either (Left . ("compiler error: " ++)) Right (checkFn x64RegisterFile sel)
   let ac = allocConfig (if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing) managed
   alloc <- either (Left . ("compiler error: " ++)) Right (allocateFn ac sel)
@@ -438,7 +500,7 @@ emitFnX64 cfg fn = do
       header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir x64 frame=" ++ show (lyBytes ly)
                   ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
         ++ ["    " ++ visibility ++ " " ++ sym | S.member name (cfgExports cfg)] ++ [sym ++ ":"]
-  pure (NativeFn name (header ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList nulls))
+  pure (NativeFn name (header ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList nulls) (S.toList strs))
   where
     tokOf (ILabel (Label l)) _ = [TLabel l]
     tokOf (I i) ls = [TIns
@@ -465,7 +527,7 @@ renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i
       p -> error ("X64 render: no byte register for " ++ p)
     imm = \case OI n -> show n; o -> error ("X64 render: not an immediate " ++ show o)
     slot ref = show (M.findWithDefault (error "X64 render: missing frame object") ref (lyOffset ly)) ++ "(%rbp)"
-    cc = \case "eq" -> "e"; "ne" -> "ne"; "lt" -> "l"; "gt" -> "g"; "le" -> "le"; "ge" -> "ge"; "o" -> "o"; c -> error ("X64 condition " ++ c)
+    cc = \case "eq" -> "e"; "ne" -> "ne"; "lt" -> "l"; "gt" -> "g"; "le" -> "le"; "ge" -> "ge"; "o" -> "o"; "hs" -> "ae"; c -> error ("X64 condition " ++ c)
     call sym = ["subq $8, %rsp", "call " ++ sym, "addq $8, %rsp"]
     go op ds us = case (op,ds,us) of
       ("enter",[],[]) ->
@@ -477,8 +539,9 @@ renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i
       ("load.cell",[d],[OS cell]) -> ["movq %fs:" ++ cell ++ "@tpoff, " ++ reg d]
       ("load",[d],[OF ref 0]) -> ["movq " ++ slot ref ++ ", " ++ reg d]
       ("store",[],[s,OF ref 0]) -> ["movq " ++ reg s ++ ", " ++ slot ref]
-      ("park.cell",[],[OS cell,OF ref 0]) -> ["movq %fs:" ++ cell ++ "@tpoff, %r11", "movq %r11, " ++ slot ref]
       ("store.cell",[],[s,OS cell]) -> ["movq " ++ reg s ++ ", %fs:" ++ cell ++ "@tpoff"]
+      ("store.spill",[],[s,OI j]) -> ["movq %fs:fpr_posix_hart@tpoff, %r10", "movq " ++ reg s ++ ", " ++ show (8 * (1 + j)) ++ "(%r10)"]
+      ("load.spill",[d],[OI j]) -> ["movq %fs:fpr_posix_hart@tpoff, " ++ reg d, "movq " ++ show (8 * (1 + j)) ++ "(" ++ reg d ++ "), " ++ reg d]
       ("movq",[d],[s]) -> ["movq " ++ reg s ++ ", " ++ reg d]
       ("li",[d],[n]) -> ["movabsq $" ++ imm n ++ ", " ++ reg d]
       ("la",[d],[OS s]) -> ["leaq " ++ s ++ "(%rip), " ++ reg d]
@@ -487,8 +550,9 @@ renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i
       ("sext63",[d],[_,_]) -> ["shlq $1, " ++ reg d, "sarq $1, " ++ reg d]
       (o,[d],[_,n]) | Just mnemonic <- lookup o [("lsl","shlq"),("asr","sarq"),("orri","orq"),("andi","andq"),("eori","xorq")] ->
         [mnemonic ++ " $" ++ imm n ++ ", " ++ reg d]
-      (o,[d],[_,b]) | Just mnemonic <- lookup o [("add","addq"),("sub","subq"),("mul","imulq"),("and","andq")] ->
+      (o,[d],[_,b]) | Just mnemonic <- lookup o [("add","addq"),("sub","subq"),("mul","imulq"),("and","andq"),("or","orq"),("xor","xorq")] ->
         [mnemonic ++ " " ++ reg b ++ ", " ++ reg d]
+      (o,[d],[_,c]) | o `elem` ["shlq","shrq"] -> [o ++ " " ++ byte c ++ ", " ++ reg d] -- the count register is %rcx by constraint
       ("divide",[_],[_,b]) -> ["cqto", "idivq " ++ reg b]
       ("cmpq",[],[a,b]) -> ["cmpq " ++ reg b ++ ", " ++ reg a]
       ("cmpi",[],[a,n]) -> ["cmpq $" ++ imm n ++ ", " ++ reg a]
@@ -499,6 +563,10 @@ renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i
       ("jmp",[],[OL l]) -> ["jmp " ++ lbl l]
       ("jump.loop",[],[OL l]) -> ["jmp " ++ lbl l]
       ("call",_,OS s:_) -> call s
+      ("push",[],[v]) -> ["subq $16, %rsp", "movq " ++ reg v ++ ", (%rsp)"]
+      ("applyn",[_],[OI n]) -> ["movq %rsp, %rdx", "movq $" ++ show n ++ ", %rsi", "movq " ++ show (16 * n) ++ "(%rsp), %rdi"]
+        ++ call "fpr_applyN" ++ ["addq $" ++ show (16 * (n + 1)) ++ ", %rsp"]
+      ("panic",[],[OS s]) -> ("leaq " ++ s ++ "(%rip), %rdi") : call "fpr_panic"
       ("ret",[],[_]) -> epilogue ++ ["ret"]
       ("tailjump",[],OS s:_) -> epilogue ++ ["jmp " ++ s]
       ("entry.check.tick",[],[]) -> hartRead ++ stackCheck ++ tick

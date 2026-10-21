@@ -31,8 +31,9 @@
 --
 -- What the generated code relies on (the register's "Calls and target
 -- constraints" and "Scheduler, hart and stack boundary"):
---   * arguments 1..8 in x0..x7, the result in x0; eight is the ceiling the
---     lowering enforces (the hart spill cells are not implemented here);
+--   * arguments 1..8 in x0..x7, 9..64 in the per-hart spill cells (stored
+--     by the caller after every argument is evaluated, copied into the
+--     callee's frame before its entry sequence), the result in x0;
 --   * x29 is the frame pointer and the frame is addressed through it; the
 --     epilogue restores sp from x29, so after fpr_stack_grow moved sp to a
 --     new segment the function still returns into the old one;
@@ -78,7 +79,7 @@ import Codegen.Target.Common
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 3 -- M3: register allocation, saved pairs, shared spill slots
+a64SelectionRev = 7 -- the merge: M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -141,7 +142,8 @@ data Sel = Sel
     selLabel :: Int,
     selItems :: [Item], -- reversed
     selManaged :: S.Set VReg, -- virtual registers that hold tagged words
-    selNullaries :: S.Set (Int, Int)
+    selNullaries :: S.Set (Int, Int),
+    selStrings :: S.Set String -- the string literals the function names
   }
 
 type Se = StateT Sel (Either String)
@@ -226,14 +228,16 @@ cbnz r l = (plain "cbnz" [] [any' r, OL l]) {siControl = CondTo [l]}
 jump :: Label -> SInstr
 jump l = (plain "b" [] [OL l]) {siControl = JumpTo l}
 
--- a direct call: arguments fixed to x0.., the result to x0; the callee
--- destroys the caller-saved set; `safepoint` says its entry ticks
+-- a direct call: arguments 1..8 fixed to x0..x7, the result to x0; the
+-- callee destroys the caller-saved set; `safepoint` says its entry ticks.
+-- Arguments beyond the eighth are in the hart spill cells by now
+-- (`stageCells` precedes the call, as the legacy generator's stores do)
 call :: String -> Bool -> Bool -> [VReg] -> Maybe VReg -> SInstr
 call sym safepoint runtime args res =
   SInstr
     { siOp = "bl",
       siDefs = [fix r (x 0) | Just r <- [res]],
-      siUses = [OS sym] ++ zipWith fix args (map x [0 ..]),
+      siUses = [OS sym] ++ zipWith fix (take 8 args) (map x [0 ..]),
       siImplicitDefs = [],
       siImplicitUses = [],
       siClobbers = filter (\p -> p `notElem` [x 0 | Just _ <- [res]]) callerSaved,
@@ -247,15 +251,33 @@ call sym safepoint runtime args res =
 ret :: VReg -> SInstr
 ret v = (plain "ret" [] [fix v (x 0)]) {siImplicitDefs = [x 9, x 29, x 30, Phys "sp"], siControl = Return}
 
--- a tail transfer: arguments staged in x0.., the frame torn down, a jump
+-- a tail transfer: arguments 1..8 staged in x0..x7 (the rest in the
+-- cells, stored before the teardown), the frame torn down, a jump
 tailJump :: String -> Bool -> Bool -> [VReg] -> SInstr
 tailJump sym safepoint runtime args =
-  (plain "tailjump" [] (OS sym : zipWith fix args (map x [0 ..])))
+  (plain "tailjump" [] (OS sym : zipWith fix (take 8 args) (map x [0 ..])))
     { siImplicitDefs = [x 9, x 29, x 30, Phys "sp"],
       siClobbers = callerSaved,
       siControl = Return,
       siCalls = [Call sym safepoint runtime]
     }
+
+-- arguments 9.. of a call or transfer into the per-hart spill cells
+-- (docs/2026-10-21-NATIVE-IR-CONTRACTS.md "Arguments 9-64": cell j at
+-- W*(1+j) in the hart block, fuel at 0): the hart block is read into x9
+-- for each store, after every argument is evaluated and with no call
+-- between the stores and the transfer, so nothing can touch the cells
+-- before the callee's prologue copies them
+stageCells :: [VReg] -> Se ()
+stageCells args = forM_ (zip [0 :: Int ..] (drop 8 args)) $ \(j, v) ->
+  emitI ((plain "store.spill" [] [any' v, OI (fromIntegral j)]) {siImplicitDefs = [x 9, x 16, x 17]})
+
+-- the arrival of parameter 9+j: cell j into the parameter's register,
+-- read before the entry sequence's calls can deschedule the actor (the
+-- cells are the hart's, dead once copied); the hart block is read into x9
+-- for each load, as stageCells does for each store
+loadSpill :: VReg -> Int -> SInstr
+loadSpill v j = (plain "load.spill" [OV v (Any GPR)] [OI (fromIntegral j)]) {siImplicitDefs = [x 9, x 16, x 17]}
 
 -- the entry sequence: the stack check (a call to fpr_stack_grow that may
 -- move sp to a new segment) and the fuel tick (a call to
@@ -291,16 +313,16 @@ nullarySymbol t v = case (t, v) of
     modify (\s -> s {selNullaries = S.insert (t, v) (selNullaries s)})
     pure (".Lnul_" ++ show t ++ "_" ++ show v)
 
-select :: A64Config -> Fn -> Either String (SFn, S.Set VReg, S.Set (Int, Int))
+select :: A64Config -> Fn -> Either String (SFn, S.Set VReg, S.Set (Int, Int), S.Set String)
 select cfg fn = do
   let maxV = maximum (0 : [n | b <- fnBlocks fn, (VId n, _) <- blockDefs b]) + 1
       tyMap = M.fromList (concatMap blockDefs (fnBlocks fn))
       managed0 = S.fromList [vreg v | (v, TVal) <- M.toList tyMap]
       params = [vreg v | (v, _) <- bParams (entryBlock fn)]
-      st0 = Sel maxV 0 [] managed0 S.empty
-  when (length params > 8) (Left "arity above 8")
+      st0 = Sel maxV 0 [] managed0 S.empty S.empty
+  when (length params > arityCeiling) (Left ("arity above " ++ show arityCeiling))
   (_, st) <- runStateT (mapM_ (selectBlock cfg fn tyMap) (fnBlocks fn)) st0
-  pure (SFn (fnName fn) params (reverse (selItems st)), selManaged st, selNullaries st)
+  pure (SFn (fnName fn) params (reverse (selItems st)), selManaged st, selNullaries st, selStrings st)
 
 entryBlock :: Fn -> Block
 entryBlock fn = head [b | b <- fnBlocks fn, bId b == fnEntry fn]
@@ -334,6 +356,18 @@ selectInstr _ _ (Instr d op) = case op of
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
   OConstInt n -> def (\r -> emitI (li r n))
   ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
+  OSymbol sym -> def (\r -> emitI (la r sym)) -- the legacy `la a0, <symbol>`
+  OFunValue n -> def (\r -> emitI (la r ("fpr_obj_" ++ mangleName n)))
+  -- the generic application (Codegen.genT's CApp case): the head, then every
+  -- argument, pushed 16 bytes apart (the last argument at the stack
+  -- pointer), then fpr_applyN(head, n, &args) and the pushes popped; the
+  -- pushes move sp below the frame the entry check sized, as the legacy
+  -- pushes do, and every slot is addressed through x29
+  OApply f as -> def $ \r -> do
+    forM_ (f : as) $ \v -> emitI ((plain "push" [] [any' (vreg v)]) {siImplicitDefs = [Phys "sp"]})
+    emitI ((plain "applyn" [fix r (x 0)] [OI (fromIntegral (length as))])
+             { siImplicitDefs = [x 1, x 2, Phys "sp"], siClobbers = filter (/= x 0) callerSaved,
+               siFlags = FlagsDef, siCalls = [Call "fpr_applyN" False True] })
   OTag v -> def $ \r -> do
     t <- freshV False
     emitI (rri "lsl" t (vreg v) 1)
@@ -372,6 +406,9 @@ selectInstr _ _ (Instr d op) = case op of
     emitI (li r 0)
     emitL done
   OArith o a b -> def (\r -> arith o r (vreg a) (vreg b))
+  -- band/bor/bxor on the untagged values: one instruction, the result fits
+  OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> "and"; BOr -> "orr"; BXor -> "eor") r (vreg a) (vreg b)))
+  OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
     emitI (cmp (vreg a) (vreg b))
     emitI (cset (cond o) r)
@@ -392,7 +429,8 @@ selectInstr _ _ (Instr d op) = case op of
     emitI (ldrsw r res 4)
     emitL done
   OCall c as -> do
-    when (length as > 8) (refuse "a call with more than eight arguments")
+    when (length as > arityCeiling) (refuse ("a call with more than " ++ show arityCeiling ++ " arguments"))
+    stageCells (map vreg as)
     def (\r -> emitI (call (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as) (Just r)))
   where
     def k = case d of
@@ -455,6 +493,34 @@ selectInstr _ _ (Instr d op) = case op of
       emitI (rri "sbfx63" n t 0)
       emitI (cmp n t)
       emitI (bcond "ne" slow)
+    -- BITSHIFTL / BITSHIFTR (Codegen.inlineTable, shiftOk): a count outside
+    -- 0..63 (negative counts included, compared unsigned) takes the slow
+    -- path, the HAL entry fpr_g_<name>_call2 with the original operands
+    -- retagged, which traps with the primitive's text; the fast path is
+    -- the 64-bit shift of the untagged value with the low 63 bits kept
+    -- (the legacy `slli 1; ori 1` then `srai 1`)
+    shift o r a b = do
+      slow <- freshL "shslow"
+      done <- freshL "shdone"
+      t <- freshV False
+      emitI (cmpi b 64)
+      emitI (bcond "hs" slow)
+      emitI (rrr (case o of Shl -> "lslr"; Shr -> "lsrr") t a b)
+      emitI (rri "sbfx63" r t 0)
+      emitI (jump done)
+      emitL slow
+      ta <- freshV False
+      ta' <- freshV True
+      tb <- freshV False
+      tb' <- freshV True
+      emitI (rri "lsl" ta a 1)
+      emitI (rri "orri" ta' ta 1)
+      emitI (rri "lsl" tb b 1)
+      emitI (rri "orri" tb' tb 1)
+      res <- freshV True
+      emitI (call ("fpr_g_" ++ mangleName (shiftName o) ++ "_call2") False True [ta', tb'] (Just res))
+      emitI (rri "asr" r res 1)
+      emitL done
 
 -- block parameters are assigned in parallel: a cycle is broken with a
 -- fresh temporary
@@ -474,7 +540,8 @@ selectTerm :: A64Config -> Fn -> Block -> Se ()
 selectTerm _ fn b = case bTerm b of
   TRet v -> emitI (ret (vreg v))
   TBr target as
-    | target == fnEntry fn -> -- the self tail call: the legacy transfer re-enters the function through its symbol
+    | target == fnEntry fn -> do -- the self tail call: the legacy transfer re-enters the function through its symbol
+        stageCells (map vreg as)
         emitI (tailJump (functionSymbol (fnName fn)) True False (map vreg as))
     | otherwise -> do
         parallelMoves (zip (paramsOf target) (map vreg as))
@@ -492,8 +559,15 @@ selectTerm _ fn b = case bTerm b of
         parallelMoves (zip (paramsOf t) (map vreg as))
         emitI (jump (blockLabel t))
   TTailCall c as -> do
-    when (length as > 8) (refuse "a tail call with more than eight arguments")
+    when (length as > arityCeiling) (refuse ("a tail call with more than " ++ show arityCeiling ++ " arguments"))
+    stageCells (map vreg as)
     emitI (tailJump (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as))
+  -- a dead arm: the legacy trap if ever reached (`la a0, <str>; call
+  -- fpr_panic`, which does not return); the function's text ends here
+  TUnreachable msg -> do
+    modify (\s -> s {selStrings = S.insert msg (selStrings s)})
+    emitI ((plain "panic" [] [OS (stringLabel msg)])
+             {siImplicitDefs = [x 0], siClobbers = callerSaved, siControl = Return, siCalls = [Call "fpr_panic" False True]})
   where
     paramsOf bid = [vreg v | blk <- fnBlocks fn, bId blk == bid, (v, _) <- bParams blk]
 
@@ -523,7 +597,8 @@ allocConfig self managed =
       acCallerSaved = callerPool,
       acScratch = allocScratch,
       acPreserved = [x 29, Phys "sp", x 28],
-      acArrival = \params -> [plain "params" (zipWith fix params (map x [0 ..])) []],
+      -- x0..x7, then the ninth and later from the hart spill cells
+      acArrival = \params -> plain "params" (zipWith fix (take 8 params) (map x [0 ..])) [] : zipWith loadSpill (drop 8 params) [0 ..],
       acLoad = \p ref -> plain "ldr" [OP p] [OF ref 0],
       acStore = \p ref -> plain "str" [] [OP p, OF ref 0],
       acMove = \d s' -> plain "mov" [OP d] [OP s'],
@@ -542,7 +617,7 @@ savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) Fa
 
 emitFnA64 :: A64Config -> Fn -> Either String NativeFn
 emitFnA64 cfg fn = do
-  (sel, managed, nulls) <- select cfg fn
+  (sel, managed, nulls, strs) <- select cfg fn
   either (\e -> Left ("compiler error: " ++ e)) Right (checkFn a64RegisterFile sel)
   let ac = allocConfig (if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing) managed
   alloc <- either (\e -> Left ("compiler error: " ++ e)) Right (allocateFn ac sel)
@@ -573,7 +648,7 @@ emitFnA64 cfg fn = do
           ++ [gsym cfg sym ++ ":"]
       visibility = if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl"
       lines' = header ++ concatMap snd rendered ++ [reportLine name report, ""]
-  pure (NativeFn name lines' report (S.toList nulls))
+  pure (NativeFn name lines' report (S.toList nulls) (S.toList strs))
   where
     tokOf (ILabel (Label l)) _ = [TLabel l]
     tokOf (I i) ls =
@@ -663,6 +738,8 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
       ("sbfx31", [d], [s, _]) -> ["sbfx " ++ reg d ++ ", " ++ reg s ++ ", #0, #31"]
       ("ldrsw", [d], [s, n]) -> ["ldursw " ++ reg d ++ ", [" ++ reg s ++ ", #" ++ show (imm n) ++ "]"]
       (o, [d], [a, b]) | o `elem` ["add", "sub", "mul", "sdiv", "and", "eor", "orr"] -> [o ++ " " ++ reg d ++ ", " ++ reg a ++ ", " ++ reg b]
+      ("lslr", [d], [a, b]) -> ["lsl " ++ reg d ++ ", " ++ reg a ++ ", " ++ reg b] -- the register-count form (lslv)
+      ("lsrr", [d], [a, b]) -> ["lsr " ++ reg d ++ ", " ++ reg a ++ ", " ++ reg b]
       ("cmp", [], [a, b]) -> ["cmp " ++ reg a ++ ", " ++ reg b]
       ("cmpi", [], [a, n]) -> ["cmp " ++ reg a ++ ", #" ++ show (imm n)]
       ('c' : 's' : 'e' : 't' : '.' : c, [d], []) -> ["cset " ++ reg d ++ ", " ++ c]
@@ -673,8 +750,15 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
       ("b", [], [OL l]) -> ["b " ++ lbl l]
       ("jump.loop", [], [OL l]) -> ["b " ++ lbl l]
       ("bl", _, OS s : _) -> ["bl " ++ gsym cfg s]
+      ("push", [], [v]) -> ["sub sp, sp, #16", "str " ++ reg v ++ ", [sp]"]
+      ("applyn", [_], [OI n]) ->
+        [ "mov x2, sp", "mov x1, #" ++ show n, "ldr x0, [sp, #" ++ show (16 * n) ++ "]",
+          "bl " ++ gsym cfg "fpr_applyN", "add sp, sp, #" ++ show (16 * (n + 1)) ]
+      ("panic", [], [OS s]) -> address "x0" s ++ ["bl " ++ gsym cfg "fpr_panic"]
       ("ret", [], [_]) -> epilogue ++ ["ret"]
       ("tailjump", [], OS s : _) -> epilogue ++ ["b " ++ gsym cfg s]
+      ("store.spill", [], [s, OI j]) -> hartRead ++ ldst "str" "stur" (reg s) "x9" (8 * (1 + j))
+      ("load.spill", [d], [OI j]) -> hartRead ++ ldst "ldr" "ldur" (reg d) "x9" (8 * (1 + j))
       ("entry.check.tick", [], []) -> hartRead ++ stackCheck ++ tick
       ("entry.check", [], []) -> hartRead ++ stackCheck
       ("entry.tick", [], []) -> hartRead ++ tick

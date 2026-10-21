@@ -25,10 +25,10 @@
 -- (Codegen.Eval) is the executable statement of these semantics.
 module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
-    ArithOp (..), CmpOp (..), Callee (..), CalleeKind (..), isForeign,
+    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), Callee (..), CalleeKind (..), isForeign,
     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
-    Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs,
-    intMin, intMax, intFits64, arithSymbol, cmpSymbol,
+    Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
+    intMin, intMax, intFits64, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
   ) where
 
 import qualified Data.Map.Strict as M
@@ -58,6 +58,15 @@ data Ty
 data ArithOp = Add | Sub | Mul | Div deriving (Eq, Ord, Show, Enum, Bounded)
 
 data CmpOp = Lt | Gt | Le | Ge | Eq | Ne deriving (Eq, Ord, Show, Enum, Bounded)
+
+-- the bitwise operations of the base profile (runtime/bits.c band, bor,
+-- bxor): on the untagged Ints, bit for bit; the result always fits
+data BitOp = BAnd | BOr | BXor deriving (Eq, Ord, Show, Enum, Bounded)
+
+-- BITSHIFTL / BITSHIFTR (runtime/bits.c h_shiftl, h_shiftr): the 64-bit
+-- shift of the untagged value, wrapped to the 63-bit Int (`wrap63`); a
+-- count outside 0..63 traps with the primitive's text
+data ShiftOp = Shl | Shr deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- A call target with its calling convention in representation terms.
 -- The legacy convention for FP-RISC functions is every argument and the
@@ -91,7 +100,12 @@ data Op
   | ONot VId -- TPred -> TPred
   | OIsInt VId -- TVal -> TPred: the tag bit (a tagged Int, not an object)
   | OTagTest Int Int VId -- TVal -> TPred: typeid and variant match (a tagged Int never matches)
+  | OSymbol String -- :: TVal; the address of an immortal object the unit links against: a core primitive's object (fpr_prim_obj_), a HAL contract (fpr_g_); the legacy `la a0, <symbol>`
+  | OFunValue Name -- :: TVal; a program function's static PAP (its arity, no arguments): the legacy `la a0, fpr_obj_<name>`
+  | OApply VId [VId] -- TVal, TVal.. -> TVal: the generic application through the runtime (fpr_applyN): partial, over-saturated, or of a computed head; allocates PAPs in the runtime, calls anything
   | OArith ArithOp VId VId -- TInt TInt -> TInt; traps in program order with the primitive's message
+  | OBit BitOp VId VId -- TInt TInt -> TInt: and, or, xor of the untagged values
+  | OShift ShiftOp VId VId -- TInt TInt -> TInt: value, count; the count outside 0..63 traps (bits.c)
   | OCmp CmpOp VId VId -- TInt TInt -> TPred
   | OEqVal Bool VId VId -- TVal TVal -> TPred: deep structural equality (True) or inequality (False)
   | OCall Callee [VId] -- calleeParams -> calleeResult; clobbers every caller-saved register; any effect
@@ -107,6 +121,7 @@ data Term
   | TBr BId [VId] -- a jump with block arguments; to the entry block it is a self tail call
   | TCondBr VId BId [VId] BId [VId] -- predicate, then-target, else-target
   | TTailCall Callee [VId] -- parallel argument assignment, frame teardown, transfer
+  | TUnreachable String -- a dead arm (Core's CErr: exhaustiveness proved it unreachable); if ever reached, the legacy trap with this text (fpr_panic)
   deriving (Eq, Ord, Show)
 
 data Block = Block
@@ -151,7 +166,12 @@ opEffect = \case
   ONot _ -> Pure
   OIsInt _ -> Pure
   OTagTest _ _ _ -> Pure
+  OSymbol _ -> Pure
+  OFunValue _ -> Pure
+  OApply _ _ -> AnyEffect
   OArith _ _ _ -> MayTrap
+  OBit _ _ _ -> Pure
+  OShift _ _ _ -> MayTrap
   OCmp _ _ _ -> Pure
   OEqVal _ _ _ -> RuntimeCall -- deep equality is the C primitive unless both are tagged Ints
   OCall _ _ -> AnyEffect
@@ -169,7 +189,12 @@ opUses = \case
   ONot v -> [v]
   OIsInt v -> [v]
   OTagTest _ _ v -> [v]
+  OSymbol _ -> []
+  OFunValue _ -> []
+  OApply f as -> f : as
   OArith _ a b -> [a, b]
+  OBit _ a b -> [a, b]
+  OShift _ a b -> [a, b]
   OCmp _ a b -> [a, b]
   OEqVal _ a b -> [a, b]
   OCall _ as -> as
@@ -182,6 +207,40 @@ termUses = \case
   TBr _ as -> as
   TCondBr c _ as _ bs -> c : as ++ bs
   TTailCall _ as -> as
+  TUnreachable _ -> []
+
+-- the same operation or terminator over renamed values (the simplification
+-- passes substitute one value for another)
+mapOpUses :: (VId -> VId) -> Op -> Op
+mapOpUses f = \case
+  OConstInt n -> OConstInt n
+  ONullary t v -> ONullary t v
+  OTag v -> OTag (f v)
+  OUntag v -> OUntag (f v)
+  OBoolOf v -> OBoolOf (f v)
+  OTruth v -> OTruth (f v)
+  ONot v -> ONot (f v)
+  OIsInt v -> OIsInt (f v)
+  OTagTest t c v -> OTagTest t c (f v)
+  OSymbol s -> OSymbol s
+  OFunValue n -> OFunValue n
+  OApply h as -> OApply (f h) (map f as)
+  OArith o a b -> OArith o (f a) (f b)
+  OBit o a b -> OBit o (f a) (f b)
+  OShift o a b -> OShift o (f a) (f b)
+  OCmp o a b -> OCmp o (f a) (f b)
+  OEqVal e a b -> OEqVal e (f a) (f b)
+  OCall c as -> OCall c (map f as)
+  OSafepoint -> OSafepoint
+  OStackCheck -> OStackCheck
+
+mapTermUses :: (VId -> VId) -> Term -> Term
+mapTermUses f = \case
+  TRet v -> TRet (f v)
+  TBr b as -> TBr b (map f as)
+  TCondBr c t as e bs -> TCondBr (f c) t (map f as) e (map f bs)
+  TTailCall c as -> TTailCall c (map f as)
+  TUnreachable m -> TUnreachable m
 
 termSuccs :: Term -> [(BId, [VId])]
 termSuccs = \case
@@ -189,9 +248,17 @@ termSuccs = \case
   TBr b as -> [(b, as)]
   TCondBr _ t as e bs -> [(t, as), (e, bs)]
   TTailCall _ _ -> []
+  TUnreachable _ -> []
 
 blockDefs :: Block -> [(VId, Ty)]
 blockDefs b = bParams b ++ [d | Instr (Just d) _ <- bInstrs b]
+
+-- the generated-code convention's arity ceiling: eight register arguments
+-- and the 56 per-hart spill cells (fpr.h FPR_ARGSPILL, Codegen.spillCells;
+-- docs/2026-10-21-NATIVE-IR-CONTRACTS.md "Arguments 9-64").  A definition,
+-- call or tail transfer beyond it has no convention and is refused.
+arityCeiling :: Int
+arityCeiling = 64
 
 -- the Int range of the 64-bit targets (docs/2026-10-12-INT-OVERFLOW.md)
 intMin, intMax :: Integer
@@ -206,3 +273,16 @@ arithSymbol = \case Add -> "+"; Sub -> "-"; Mul -> "*"; Div -> "/"
 
 cmpSymbol :: CmpOp -> String
 cmpSymbol = \case Lt -> "<"; Gt -> ">"; Le -> "<="; Ge -> ">="; Eq -> "=="; Ne -> "!="
+
+-- the primitives' source names (their HAL entries are fpr_g_<name>_call2)
+bitName :: BitOp -> String
+bitName = \case BAnd -> "band"; BOr -> "bor"; BXor -> "bxor"
+
+shiftName :: ShiftOp -> String
+shiftName = \case Shl -> "BITSHIFTL"; Shr -> "BITSHIFTR"
+
+-- the low 63 bits of a two's-complement value, sign-extended: what
+-- `slli 1; ori 1` then `srai 1` leave of a 64-bit result (the legacy
+-- shift expansions and bits.c's TAG((sw)...))
+wrap63 :: Integer -> Integer
+wrap63 v = let m = v `mod` (2 ^ (63 :: Int)) in if m > intMax then m - 2 ^ (63 :: Int) else m
