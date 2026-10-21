@@ -6,7 +6,9 @@ first, M0 as a register page, an M3 investment review). M1 review repairs
 are implemented; both M2 scalar selectors are implemented
 ([A64](2026-10-21-TYPED-IR-M2-A64.md),
 [x86 and shared review](2026-10-21-TYPED-IR-M2-X64.md)). M2 remains open
-pending native Linux runtime acceptance.
+pending native Linux runtime acceptance. (2026-10-21, later: that leg passed in
+[run 39531450292](https://github.com/hyperswine/fprisc/actions/runs/39531450292);
+every M2 box is ticked.)
 Baseline: native compiler at `c328232f63d3f4a6a4b4c1dde7bce17cc449e19d`
 (codegen revision 66); 2026-10-21 amendments cover the M1 repairs at revision 67.
 Audience: compiler implementers and reviewers.
@@ -274,9 +276,13 @@ verified IR and reference results. This stage makes no native speed claim.
 - [x] Implement the same scalar subset for x86-64 Linux through that
   constraint model, before any default change or performance claim
   (`Codegen/Target/X64.hs`; [implementation and local execution](2026-10-21-TYPED-IR-M2-X64.md)).
-- [ ] Pass the native Linux runtime acceptance leg with the direct x86
+- [x] Pass the native Linux runtime acceptance leg with the direct x86
   backend (`tests/check_typed_ir_x64.py`, integrated into Base/CI).
   Rosetta and ELF assembly checks do not close this gate.
+  Passed 2026-10-21 at `34c3ff9` in
+  [GitHub Actions run 39531450292](https://github.com/hyperswine/fprisc/actions/runs/39531450292)
+  (Debian trixie x86-64, `--require-execution`; what it executed is in the
+  [x64 page's 2026-10-21 note](2026-10-21-TYPED-IR-M2-X64.md#2026-10-21-native-linux-acceptance-run)).
 - [x] Test independent C callers/callees and legacy/new compiled units together
   (`tests/typed_ir/tir_probe.c`, `scalarlib.fpr` under `scalar_mod.fpr`,
   `tests/check_typed_ir_a64.py`; commit `17c2dec`).
