@@ -7,6 +7,7 @@ import argparse
 import importlib.util
 import json
 import os
+import queue
 from pathlib import Path
 import socket
 import ssl
@@ -68,7 +69,8 @@ def take_field(body):
 
 
 class PrinterPeer:
-    def __init__(self, refuse=False, reconnect=False):
+    def __init__(self, refuse=False, reconnect=False, faults=False):
+        self.faults, self.pending = faults, queue.Queue()
         self.refuse, self.reconnect = refuse, reconnect
         self.stopping = threading.Event()
         self.listener = socket.socket()
@@ -122,7 +124,7 @@ class PrinterPeer:
                             publication('device/OTHER/report', {'print': {'mc_percent': 99}}),
                             publication('device/TESTSERIAL/report', b'not JSON'),
                             publication('device/TESTSERIAL/report', {'print': {'bed_temper': 60}}),
-                            publication('device/TESTSERIAL/report', {'print': {'command': 'pushall', 'result': 'success'}})])
+                            publication('device/TESTSERIAL/report', {'print': {'command': 'pushall', 'result': 'success'}})] + ([publication('device/TESTSERIAL/report', {'print': {'print_error': 302022662, 'hms': [{'attr': 117448704, 'code': 131073, 'access_code': 'hms-must-not-be-public'}]}})] if self.faults else []))
                         for at in range(0, len(wire), 11):
                             conn.sendall(wire[at:at + 11])
                         if self.reconnect:
@@ -131,6 +133,8 @@ class PrinterPeer:
                     else:
                         conn.sendall(publication('device/TESTSERIAL/report', {'print': {'bed_temper': 61}}))
                     while not self.stopping.is_set():
+                        while not self.pending.empty():
+                            conn.sendall(publication('device/TESTSERIAL/report', {'print': self.pending.get_nowait()}))
                         try:
                             header, body = packet(conn)
                         except socket.timeout:

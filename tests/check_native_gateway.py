@@ -16,7 +16,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from check_live_wire import Client
+from check_live_wire import Client, has
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -33,7 +33,7 @@ def run(binary,harts,directory,lan=False):
         from check_native_camera import Peer
         # The camera service permits a first frame later than the WebSocket
         # upgrade timeout. Exercise that contract through the public proxy.
-        telemetry,camera=PrinterPeer(),Peer(first_frame_delay=3.5)
+        telemetry,camera=PrinterPeer(faults=True),Peer(first_frame_delay=3.5)
         config=directory/'printers.json'
         config.write_text(json.dumps([{'id':'test','name':'Synthetic native printer','model':'P1S','location':'test','host':'127.0.0.1','mqtt_port':telemetry.port,'serial':'TESTSERIAL','access_code_env':'SYNTHETIC_PRINTER_CODE','tls_peer':'server.example','tls_ca':str(ROOT/'tests/fixtures/tls/rootcert.pem'),'camera':'bambu-jpeg','camera_port':camera.port}]))
         arguments=['--config='+str(config)]
@@ -97,10 +97,40 @@ def run(binary,harts,directory,lan=False):
                 time.sleep(.05);snapshot=json.loads(request('/api/status',cookie=cookie)[2])
             assert snapshot['printers'][0]['connection']=='ONLINE' and snapshot['printers'][0]['progress']==24,snapshot
             assert 'must-not-be-public' not in json.dumps(snapshot)
+            alerts=snapshot['printers'][0]['alerts']
+            assert {a['code'] for a in alerts}=={'12008006','0700200000020001'},alerts
+            assert all(a['severity']=='error' for a in alerts),alerts
+            assert all(a['url'].startswith('https://') for a in alerts),alerts
         else:assert snapshot['demo'] and snapshot['printers'][0]['connection']=='ONLINE'
         assert b'access_code' not in raw and b'FPR_PRINTER_CODE' not in raw
         status,hs,page=request('/',cookie=cookie)
         assert status==200 and b'Print room' in page and b'/auth/session' in page
+        if lan:
+            until=time.monotonic()+5
+            while b'Filament runout reported' not in page and time.monotonic()<until:
+                time.sleep(.1);page=request('/',cookie=cookie)[2]
+            assert b'Printer alerts' in page and b'Filament runout reported' in page and b'Filament feeding needs attention' in page,page[:500]
+            assert b'https://e.bambulab.com/?e=0700200000020001' in page
+            assert b'hms-must-not-be-public' not in page
+            fault_ws=Client(port,3,headers={'Cookie':cookie,'Origin':origin})
+            fault_ws.until(lambda state: has(state,'Filament runout reported'))
+            # An unrelated status delta must retain the faults. Explicit clears
+            # must remove them, including a zero-only print_error packet.
+            telemetry.pending.put({'bed_temper':61})
+            time.sleep(.6)
+            assert len(json.loads(request('/api/status',cookie=cookie)[2])['printers'][0]['alerts'])==2
+            telemetry.pending.put({'hms':[]})
+            telemetry.pending.put({'print_error':0})
+            until=time.monotonic()+5
+            while time.monotonic()<until:
+                clean=json.loads(request('/api/status',cookie=cookie)[2])['printers'][0]
+                if not clean['alerts']:break
+                time.sleep(.1)
+            assert clean['alerts']==[],clean
+            # The Live page is hydrated by its WebSocket. Check the live
+            # projection rather than assuming the HTTP shell is a new snapshot.
+            fault_ws.until(lambda state: has(state,'No active faults reported.') and not has(state,'Filament runout reported'))
+            fault_ws.close()
         assert request('/auth/session',cookie=cookie)[0]==200
         ws=Client(port,3,headers={'Cookie':cookie,'Origin':origin})
         # Declared oversized frames must close before receiving their bodies.

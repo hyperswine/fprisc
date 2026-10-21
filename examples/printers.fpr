@@ -90,6 +90,25 @@ pill attrs s = El "span" attrs [Txt s].
 metric title value suffix = El "div" Nil [El "dt" UI.term [Txt title], El "dd" UI.value [Dyn value, El "small" UI.unit [Txt suffix]]].
 row title value = El "div" Nil [El "dt" UI.rowTerm [Txt title], El "dd" UI.rowValue [Dyn value]].
 button label msg attrs = El "button" (G.send codec msg :: Att "type" "button" :: List.append UI.button attrs) [Txt label].
+printerAlert a = El "li" (List.append UI.printerAlert (UI.alertTone (text "severity" a)))
+  [El "strong" Nil [Dyn (text "title" a)],
+   El "p" UI.footnote [Dyn "{text "source" a} · {text "severity" a} · {text "code" a}"],
+   El "a" [Att "href" (text "url" a), Att "target" "_blank", Att "rel" "noopener noreferrer"] [Txt "Bambu troubleshooting ↗"]].
+printerAlerts v p =
+  items = values "alerts" p;
+  expanded = List.member (text "id" p) v.session.expanded;
+  uncertain = link p v != "ONLINE";
+  paused = text "state" p == "PAUSE";
+  failed = text "state" p == "FAILED";
+  El "section" (Att "aria-label" "Printer alerts" :: Att "aria-live" "polite" :: UI.printerAlerts)
+    [El "strong" [UI.text 12] [Txt "Printer alerts", Dyn (if uncertain then " · last known" else "")],
+     El "p" (UI.hidden (not paused and not failed) :: UI.notice) [Dyn (if failed then "Print failed. Check the printer before retrying." else "Print paused. Check the printer and feed path before resuming.")],
+     El "p" (UI.hidden (not (boolean "fault_data_problem" p)) :: UI.notice) [Txt "An invalid fault update was ignored; previous alerts are retained."],
+     El "ul" UI.alertList (List.map printerAlert (List.take (if expanded then 33 else 3) items)),
+     El "p" (UI.hidden (expanded or List.length items <= 3) :: UI.footnote) [Dyn "{List.length items - 3} more alerts — View details to see all."],
+     El "p" (UI.hidden (List.length items != 0) :: UI.footnote)
+       [Dyn (if uncertain then "Fault state may be out of date." else if not (boolean "print_error_reported" p) and not (boolean "hms_reported" p) then "Waiting for printer fault data." else "No active faults reported.")],
+     El "p" UI.footnote [Dyn (if boolean "hms_reported" p then "" else "HMS data not yet reported. "), Txt "A spool tangle may not be detected. Use Care & print log for observed issues."]].
 card v p =
   id = text "id" p;
   expanded = List.member id v.session.expanded;
@@ -104,6 +123,7 @@ card v p =
         , pill ((if connection == "ONLINE" then UI.online else UI.offline) :: UI.badge) connection ]
     , El "div" UI.jobLine [El "strong" UI.jobState [Dyn (text "state" p)], El "span" [UI.muted] [Dyn (text "remaining" p)]]
     , El "p" UI.jobName [Dyn (text "job" p)]
+    , printerAlerts v p
     , El "div" (List.append UI.progress [Att "role" "progressbar", Att "aria-valuemin" "0", Att "aria-valuemax" "100", Att "aria-valuenow" (str progress), Att "aria-label" "Print progress"])
         [El "div" (UI.progressFill progress) Nil]
     , El "div" UI.progressLabel [Dyn "{progress}%", El "span" [UI.muted] [Dyn (text "layers" p)]]
@@ -119,7 +139,7 @@ card v p =
         El "span" [UI.muted, UI.text 11] [Dyn "{List.length (List.filter (fn t -> t.printer == id and Care.isDue v.now t) v.care.tasks)} due · {List.length (List.filter (fn i -> i.printer == id and not i.resolved) v.care.issues)} open issues"]]
     , El "section" (Att "id" "details-{id}" :: UI.hidden (not expanded) :: UI.details)
         [El "dl" UI.detailGrid
-          [row "Nozzle target" (number "nozzle_target" p), row "Bed target" (number "bed_target" p), row "Print error" (text "error" p), row "Filament" (text "filament" p), row "Reports received" (number "reports" p), row "Last report (UTC)" (text "last_report_iso" p)]
+          [row "Nozzle target" (number "nozzle_target" p), row "Bed target" (number "bed_target" p), row "Print error" (text "error" p), row "Filament" (text "filament" p), row "Active spool" (text "filament_source" p), row "Reports received" (number "reports" p), row "Last report (UTC)" (text "last_report_iso" p)]
         , El "p" UI.notice [Dyn (text "note" p)]
         , El "div" [UI.divider, UI.hidden (not camera)]
           [El "div" UI.cameraHeading [Txt "LIVE VIEW", El "span" [UI.muted] [Txt "Native camera cadence"]]

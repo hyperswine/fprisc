@@ -65,6 +65,15 @@ let phase='launch';
    }
    dimensions[id]=await card.locator('img').evaluate(e=>({width:e.naturalWidth,height:e.naturalHeight}));
   }
+  phase='printer alert panels';
+  assert.equal(await page.locator('[aria-label="Printer alerts"]').count(),2);
+  const liveStatus=await page.evaluate(async()=>await(await fetch('/api/status')).json());
+  for(const printer of liveStatus.printers) {
+   if(printer.state==='FAILED') {
+    const card=page.locator('article').filter({has:page.getByRole('heading',{name:printer.name,exact:true})});
+    await card.getByText('Print failed. Check the printer before retrying.',{exact:true}).waitFor();
+   }
+  }
   phase='public responsive view';
   for(const width of [1300,390]) {
    await page.setViewportSize({width,height:1000});

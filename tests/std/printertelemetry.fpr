@@ -4,6 +4,7 @@ J = use "std/json".
 L = use "std/list".
 S = use "std/string".
 M = use "std/map".
+Alerts = use "std/printeralerts".
 check name yes = if yes then Unit else error "printer telemetry: {name}".
 need r = case r of Ok x -> x | Err _ -> error "printer telemetry fixture".
 main =
@@ -28,6 +29,34 @@ main =
   ams = J.object [("print", J.object [("bed_temper", J.Integer 61), ("ams", J.object [("ams", J.Sequence [J.object [("tray", J.Sequence [J.object [("tray_type", J.Text "PLA")]])]])])])];
   fil = PT.report 2 2 ams (PT.report 1 1 ext PT.initial);
   _ = check "AMS delta preserves external filament" (PT.get "filament" (PT.snapshot 2 True "" fil) == J.Text "PLA, PETG");
+  fault = J.object [("print", J.object [("print_error", J.Integer 302022662)])];
+  faulty = PT.report 4000 1720000003 fault second;
+  _ = check "fault-only delta counted and keeps temperatures" (faulty.reports == second.reports + 1 and PT.num "nozzle_temper" faulty == J.Real "215.5");
+  faultView = PT.snapshot 4000 True "" faulty;
+  _ = check "print error decoded with exact code" (S.contains "12008006" (J.render (PT.get "alerts" faultView)) and S.contains "Filament feeding needs attention" (J.render faultView));
+  h = J.object [("attr", J.Integer 117448704), ("code", J.Integer 131073), ("access_code", J.Text "hms-secret")];
+  health = PT.report 5000 1720000004 (J.object [("print", J.object [("hms", J.Sequence [h])])]) faulty;
+  _ = check "HMS code and severity from code high word" (S.contains "0700200000020001" (J.render (PT.snapshot 5000 True "" health)) and S.contains "Filament runout reported" (J.render (PT.snapshot 5000 True "" health)) and PT.get "severity" (Alerts.hms h) == J.Text "error");
+  _ = check "HMS arbitrary strings are redacted" (not (S.contains "hms-secret" (J.render (PT.snapshot 5000 True "" health))));
+  retained = PT.report 6000 1720000005 delta health;
+  _ = check "ordinary delta retains faults" (PT.get "alerts" (PT.snapshot 6000 True "" retained) == PT.get "alerts" (PT.snapshot 5000 True "" health));
+  clearedHms = PT.report 7000 1720000006 (J.object [("print", J.object [("hms", J.Sequence Nil)])]) retained;
+  _ = check "empty HMS clears health alerts only" (L.length (PT.items (PT.get "alerts" (PT.snapshot 7000 True "" clearedHms))) == 1);
+  cleared = PT.report 8000 1720000007 (J.object [("print", J.object [("print_error", J.Integer 0)])]) clearedHms;
+  _ = check "explicit zero clears print error" (PT.get "alerts" (PT.snapshot 8000 True "" cleared) == J.Sequence Nil);
+  badHealth = PT.report 9000 1720000008 (J.object [("print", J.object [("hms", J.Text "invalid")])]) health;
+  badStill = PT.report 10000 1720000009 (J.object [("print", J.object [("print_error", J.Integer 0)])]) badHealth;
+  _ = check "malformed HMS cannot clear faults or be hidden by print delta" (L.length (PT.items (PT.get "alerts" (PT.snapshot 10000 True "" badStill))) == 1 and PT.get "fault_data_problem" (PT.snapshot 10000 True "" badStill) == J.Boolean True);
+  tooMany = PT.report 10000 1720000009 (J.object [("print", J.object [("hms", J.Sequence (L.map (fn n -> h) (L.range 1 33)))])]) health;
+  _ = check "oversized HMS array retains last bounded state" (PT.get "alerts" (PT.snapshot 10000 True "" tooMany) == PT.get "alerts" (PT.snapshot 5000 True "" health));
+  _ = check "full uint32 codes accepted, negative and overflow refused" (Alerts.u32 (J.Integer 4294967295) and not (Alerts.u32 (J.Integer 4294967296)) and not (Alerts.u32 (J.Integer (0 - 1))) and Alerts.hex 8 4294967295 == "FFFFFFFF");
+  wide = PT.report 10000 1720000009 (J.object [("print", J.object [("print_error", J.Integer 4294967295)])]) cleared;
+  _ = check "unknown high-bit print error remains visible" (S.contains "FFFFFFFF" (J.render (PT.snapshot 10000 True "" wide)));
+  _ = check "HMS common/info/unknown severity mapping" (PT.get "severity" (Alerts.hms (J.object [("attr", J.Integer 0), ("code", J.Integer 196609)])) == J.Text "warning" and PT.get "severity" (Alerts.hms (J.object [("attr", J.Integer 0), ("code", J.Integer 262145)])) == J.Text "info" and PT.get "severity" (Alerts.hms (J.object [("attr", J.Integer 0), ("code", J.Integer 327681)])) == J.Text "unknown");
+  source = PT.report 9000 1720000008 (J.object [("print", J.object [("ams", J.object [("tray_now", J.Text "254")])])]) cleared;
+  _ = check "external spool delta and omission are safe" (PT.get "filament_source" (PT.snapshot 10000 True "" (PT.report 10000 1720000009 delta source)) == J.Text "External spool" and PT.spool (J.Text "2") == "AMS 1 / slot 3" and PT.spool (J.Text "255") == "No active spool reported");
+  amsPartial = PT.report 3 3 (J.object [("print", J.object [("ams", J.object [("tray_now", J.Text "2")]), ("vt_tray", J.object [("remain", J.Integer 50)])])]) fil;
+  _ = check "source-only AMS delta keeps both material summaries" (PT.get "filament" (PT.snapshot 3 True "" amsPartial) == J.Text "PLA, PETG");
   many = L.fold (fn state second -> PT.report (second * 1000) second delta state) PT.initial (L.range 0 100);
   _ = check "rate storage bounded and expires" (M.size many.buckets <= 30 and PT.get "report_hz" (PT.snapshot 131000 True "" many) == J.Real "0.00");
   print "Printer telemetry: delta projection, redaction, freshness, numeric/depth/size bounds and rate window PASS".

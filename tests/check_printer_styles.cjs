@@ -59,6 +59,12 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'fpr-printer-styles-'));
    await page.locator('button').first().focus();
    assert.equal(await page.locator('button').first().evaluate(e=>getComputedStyle(e).outlineWidth),'3px');
    assert.equal(await page.locator('[role="switch"] > span').count(),1);
+   assert.equal(await page.locator('[aria-label="Printer alerts"]').count(),1);
+   assert.equal(await page.locator('[aria-label="Printer alerts"] li').count(),2);
+   assert.match(await page.locator('[aria-label="Printer alerts"]').innerText(),/Filament runout reported/);
+   assert.match(await page.locator('[aria-label="Printer alerts"]').innerText(),/FFFFFFFF00000001/);
+   assert.match(await page.locator('[aria-label="Printer alerts"]').innerText(),/Print paused/);
+   assert.equal(await page.locator('[aria-label="Printer alerts"] a').first().getAttribute('rel'),'noopener noreferrer');
    // A conflicting element-local rule cannot affect a sibling component.
    await page.locator('article').evaluate(e=>{e.style.color='rgb(200, 0, 0)';});
    assert.equal(await page.locator('h1').evaluate(e=>getComputedStyle(e).color),'rgb(38, 51, 46)');

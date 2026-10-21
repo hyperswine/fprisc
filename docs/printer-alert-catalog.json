@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "sources": [
+    {
+      "file": "hms_en_093.json",
+      "sha256": "7801fd6c355854b62ecb62ee32727b4e5dcca908841dbcfd5e5de45b3dfd1c25",
+      "version": 202508192303
+    },
+    {
+      "file": "hms_en_094.json",
+      "sha256": "047c15e2140738ec08258b74536e6cb996cddf0c586c5c39e2318e54125a9e76",
+      "version": 202503231214
+    },
+    {
+      "file": "hms_en_20P.json",
+      "sha256": "e4f067d027b9bcbb9bbf6cb90f41f11130cf4d83dffd3dee101db7826dc808c3",
+      "version": 202511162200
+    },
+    {
+      "file": "hms_en_22E.json",
+      "sha256": "87426021aea2bd4e8d721e46e1c86808fd7c6fc06f52baf6d952ead9e8d14d1e",
+      "version": 202510142200
+    },
+    {
+      "file": "hms_en_239.json",
+      "sha256": "c1d23d5302756d57df5cb9bc795d95fc54ef1db7565dca1f04b69a024886426a",
+      "version": 202506171403
+    },
+    {
+      "file": "hms_en_26A.json",
+      "sha256": "2c586ce50b03d04903b2fa43e013fde385c0a98bd0653f5c925011ebdbb4ece8",
+      "version": 202511162200
+    },
+    {
+      "file": "hms_en_31B.json",
+      "sha256": "dcf63657bff5451f0715ea3c032efe482279bc8cbc28cb9b8ae51c7354826574",
+      "version": 202511162200
+    }
+  ],
+  "category_counts": {
+    "Filament runout reported": 367,
+    "Filament cutter needs attention": 47,
+    "Temperature or heater needs attention": 491,
+    "Filament feeding needs attention": 2788,
+    "Fan needs attention": 32,
+    "Movement or homing needs attention": 690,
+    "Print file or storage needs attention": 12,
+    "Build plate needs attention": 50
+  },
+  "ambiguous_codes_omitted": 186,
+  "meaning": "Exact-code categories, not diagnoses. Unknown/ambiguous codes retain raw identifiers and official help links.",
+  "protocol_source": "https://github.com/bambulab/BambuStudio/blob/master/src/slic3r/GUI/DeviceCore/DevHMS.cpp"
+}

@@ -145,6 +145,8 @@ approvedLibraries =
     "std/oswatch.fpr",
     "std/path.fpr",
     "std/poller.fpr",
+    "std/printeralertcodes.fpr",
+    "std/printeralerts.fpr",
     "std/printertelemetry.fpr",
     "std/proc.fpr",
     "std/program.fpr",

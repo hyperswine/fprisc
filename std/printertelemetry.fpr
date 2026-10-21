@@ -7,6 +7,7 @@ L = use "list".
 S = use "string".
 C = use "clock".
 Ord = use "order".
+Alerts = use "printeralerts".
 initial = {fields = M.empty S.compare, buckets = M.empty Ord.int, reports = 0, last = 0, wall = 0}.
 get key value = O.withDefault J.Null (J.field key value).
 items value = O.withDefault Nil (J.asList value).
@@ -23,21 +24,31 @@ numeric = ["mc_percent", "nozzle_temper", "bed_temper", "mc_remaining_time", "la
 texts = ["gcode_state", "gcode_file", "subtask_name", "wifi_signal"].
 putField payload key fields = case J.field key payload of
     O.None -> fields
-  | O.Some value -> M.insert key (if L.member key numeric then number value else case value of J.Text s -> J.Text (S.left 160 s) | _ -> J.Null) fields.
+  | O.Some value -> M.insert key (if key == "print_error" then (if Alerts.u32 value then value else M.getOr J.Null key fields) else if L.member key numeric then number value else case value of J.Text s -> J.Text (S.left 160 s) | _ -> J.Null) fields.
 tray value = case get "tray_type" value of J.Text s -> if strlen s == 0 then Nil else [S.left 40 s] | _ -> Nil.
 filaments payload =
   units = L.take 16 (items (get "ams" (get "ams" payload)));
   trays = L.concatMap (fn unit -> L.concatMap tray (L.take 16 (items (get "tray" unit)))) units;
   S.join ", " (L.take 32 (L.append trays (tray (get "vt_tray" payload)))).
+spool value =
+  raw = short value "";
+  parsed = if strlen raw > 3 then Err "invalid" else S.toInt raw;
+  case parsed of Ok n -> if n == 254 then "External spool" else if n >= 0 and n < 254 then "AMS {n / 4 + 1} / slot {n % 4 + 1}" else "No active spool reported" | _ -> "Not reported".
 report now wall value state =
   payload = get "print" value;
-  sample = L.any (fn k -> case J.field k payload of O.Some _ -> True | _ -> False) ["gcode_state", "nozzle_temper", "bed_temper", "mc_percent", "layer_num", "mc_remaining_time"];
+  sample = L.any (fn k -> case J.field k payload of O.Some _ -> True | _ -> False) (L.append numeric (L.append texts ["hms", "ams", "vt_tray", "ams_status", "hw_switch_state"]));
   if not sample then state else
-  fields = L.fold (fn acc k -> putField payload k acc) state.fields (L.append numeric texts);
-  ams = case J.field "ams" payload of O.None -> fields | O.Some value -> M.insert "_ams_filament" (J.Text (filaments (J.object [("ams", value)]))) fields;
-  external = case J.field "vt_tray" payload of O.None -> ams | O.Some value -> M.insert "_ext_filament" (J.Text (S.join ", " (tray value))) ams;
+  base = L.fold (fn acc k -> putField payload k acc) state.fields (L.append numeric texts);
+  badError = case J.field "print_error" payload of O.Some value -> not (Alerts.u32 value) | _ -> False;
+  badHms = case J.field "hms" payload of O.Some value -> not (Alerts.validList value) | _ -> False;
+  merged = case J.field "hms" payload of O.Some (J.Sequence items) -> if badHms then base else M.insert "hms" (J.Sequence (L.map Alerts.clean items)) base | _ -> base;
+  withError = if J.field "print_error" payload != O.None then M.insert "_print_error_problem" (J.Boolean badError) merged else merged;
+  fields = if J.field "hms" payload != O.None then M.insert "_hms_problem" (J.Boolean badHms) withError else withError;
+  ams = case J.field "ams" (get "ams" payload) of O.None -> fields | O.Some _ -> M.insert "_ams_filament" (J.Text (filaments (J.object [("ams", get "ams" payload)]))) fields;
+  external = case J.field "tray_type" (get "vt_tray" payload) of O.None -> ams | O.Some _ -> M.insert "_ext_filament" (J.Text (S.join ", " (tray (get "vt_tray" payload)))) ams;
   joined = S.join ", " (L.filter (fn text -> text != "") (L.map (fn key -> O.withDefault "" (J.asString (M.getOr J.Null key external))) ["_ams_filament", "_ext_filament"]));
-  fields2 = if J.field "ams" payload != O.None or J.field "vt_tray" payload != O.None then M.insert "filament" (J.Text (if joined == "" then "Not reported" else joined)) external else fields;
+  withSource = case J.field "tray_now" (get "ams" payload) of O.None -> external | O.Some source -> M.insert "_filament_source" (J.Text (spool source)) external;
+  fields2 = if J.field "ams" payload != O.None or J.field "vt_tray" payload != O.None then M.insert "filament" (J.Text (if joined == "" then "Not reported" else joined)) withSource else fields;
   second = now / 1000;
   buckets = M.filter (fn key count -> key > second - 30 and key <= second) state.buckets;
   {state | fields = fields2, buckets = M.insert second (M.getOr 0 second buckets + 1) buckets, reports = state.reports + 1, last = now, wall = wall}.
@@ -75,4 +86,9 @@ snapshot now connected note state =
     ("reports", J.Integer state.reports), ("report_hz", J.Real "{rate / 100}.{S.padLeft 2 "0" (str (rate % 100))}"),
     ("last_report", J.Integer state.wall), ("last_report_iso", J.Text (if state.wall == 0 then "—" else C.iso state.wall)),
     ("error", J.Text (if num "print_error" state == J.Integer 0 then "None reported" else display "print_error" "Not reported" state)),
+    ("filament_source", J.Text (display "_filament_source" "Not reported" state)),
+    ("alerts", J.Sequence (Alerts.alerts (num "print_error" state) (num "hms" state))),
+    ("print_error_reported", J.Boolean (Alerts.u32 (num "print_error" state))),
+    ("hms_reported", J.Boolean (case num "hms" state of J.Sequence _ -> True | _ -> False)),
+    ("fault_data_problem", J.Boolean (num "_print_error_problem" state == J.Boolean True or num "_hms_problem" state == J.Boolean True)),
     ("filament", J.Text (O.withDefault "Not reported" (J.asString (num "filament" state)))), ("note", J.Text note)].

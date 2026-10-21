@@ -2,7 +2,9 @@
 main =
   p = Json.object [("id", Json.Text "sample"), ("name", Json.Text "Workshop printer"),
     ("model", Json.Text "P1S"), ("location", Json.Text "Workshop"), ("connection", Json.Text "ONLINE"),
-    ("state", Json.Text "Printing"), ("progress", Json.Integer 37), ("camera_available", Json.Boolean True)];
+    ("alerts", Json.Sequence [Json.object [("title", Json.Text "Filament runout reported"), ("severity", Json.Text "error"), ("source", Json.Text "HMS"), ("code", Json.Text "0700200000020001"), ("url", Json.Text "https://e.bambulab.com/?e=0700200000020001")], Json.object [("title", Json.Text "Printer health alert"), ("severity", Json.Text "unknown"), ("source", Json.Text "HMS"), ("code", Json.Text "FFFFFFFF00000001"), ("url", Json.Text "https://e.bambulab.com/?e=FFFFFFFF00000001")]]),
+    ("print_error_reported", Json.Boolean True), ("hms_reported", Json.Boolean True),
+    ("state", Json.Text "PAUSE"), ("progress", Json.Integer 37), ("camera_available", Json.Boolean True)];
   v = {printers = [p], now = 1, generated = 1, tickUs = 0, ticks = 0, demo = True, issue = "", care = Care.empty, careProblem = "",
     session = {noSess | sid = 1, expanded = ["sample"], cameras = ["sample"]}};
   (ss, ds) = view 1000 1 v;

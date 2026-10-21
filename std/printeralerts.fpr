@@ -1,0 +1,23 @@
+# Bounded native printer faults. Only numeric codes enter the public snapshot.
+J = use "json".
+O = use "option".
+L = use "list".
+S = use "string".
+Codes = use "printeralertcodes".
+u32 value = case value of J.Integer n -> n >= 0 and n <= 4294967295 | _ -> False.
+value key obj = O.withDefault J.Null (J.field key obj).
+valid item = u32 (value "attr" item) and u32 (value "code" item).
+clean item = J.object [("attr", value "attr" item), ("code", value "code" item)].
+validList value = case value of J.Sequence items -> L.length items <= 32 and L.all valid items | _ -> False.
+hex : Int -> Int -> String .
+hex digits n = if digits <= 0 then "" else hex (digits - 1) (n / 16) + substr "0123456789ABCDEF" (n % 16) 1.
+int key obj = case value key obj of J.Integer n -> n | _ -> 0.
+make source code level fallback url = J.object [("source", J.Text source), ("code", J.Text code), ("severity", J.Text level), ("title", J.Text (Codes.title code fallback)), ("url", J.Text url)].
+hms item =
+  code = hex 8 (int "attr" item) + hex 8 (int "code" item);
+  level = int "code" item / 65536;
+  make "HMS" code (if level == 1 or level == 2 then "error" else if level == 3 then "warning" else if level == 4 then "info" else "unknown") "Printer health alert" ("https://e.bambulab.com/?e=" + code).
+alerts error health =
+  printFault = case error of J.Integer n -> if n == 0 then Nil else [make "Print error" (hex 8 n) "error" "Printer reports an error" "https://wiki.bambulab.com/en/hms/error-code"] | _ -> Nil;
+  healthFaults = case health of J.Sequence items -> L.map hms (L.take 32 (L.filter valid items)) | _ -> Nil;
+  L.append printFault healthFaults.

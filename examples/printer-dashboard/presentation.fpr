@@ -74,3 +74,8 @@ footnote = [muted, text 11].
 banner = [border, u [G.Padding (p 14), G.BorderColour (G.Rgb 236 218 191), G.Radius (p 8), G.Foreground (G.Rgb 150 97 49), G.Background (G.Rgb 255 245 232)]].
 empty = [muted, u [G.Padding (p 60), G.TextAlign G.TextCenter]].
 footer = [muted, text 11, u [G.MarginTop (p 32), G.PaddingTop (p 20), G.BorderTop (p 1) line, G.LineHeight 170]].
+
+printerAlerts = [u [G.MarginTop (p 12), G.Padding (p 12), G.Radius (p 8), G.Background (G.Rgb 245 246 240)]].
+alertList = [u [G.PaddingLeft (p 0), G.MarginTop (p 8)]].
+printerAlert = [u [G.Display G.Block, G.Padding (p 10), G.MarginBottom (p 8), G.Radius (p 6), G.FontSize (p 12), G.WordWrap G.WrapAnywhere]].
+alertTone severity = [u [G.Background (if severity == "error" then G.Rgb 255 234 230 else if severity == "warning" then G.Rgb 255 243 220 else G.Rgb 232 239 245), G.Foreground (G.Rgb 76 48 39)]].
