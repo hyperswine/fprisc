@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
 """Execute the emitted x64 self loop against a C value/fuel/stack oracle."""
 import os
-import platform
 import re
-import subprocess
 import tempfile
 from pathlib import Path
 from check_self_loops import ROOT, fixture, run
+from x64_probe import adapt, host, link
 
 def main():
-    mac = platform.system() == "Darwin"
-    native = platform.machine() in ("x86_64", "AMD64")
-    rosetta = mac and not native and subprocess.run(
-        ["arch", "-x86_64", "/usr/bin/true"], capture_output=True).returncode == 0
-    if not (native or rosetta):
+    target = host()
+    if target is None:
         print("Self-loop x64 execution SKIP: needs x64 or Rosetta")
         return
+    mac, runner, label = target
     with tempfile.TemporaryDirectory(prefix="fpr-self-x64-") as td:
         tmp = Path(td)
         env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
@@ -34,16 +31,11 @@ def main():
             assert match
             selected = ".text\n" + match[0]
             assert bool(re.search(r"^\.Lself\d+:", selected, re.M)) == (enabled == "1")
-            selected = selected.replace("%fs:fpr_posix_hart@tpoff", "probe_hart(%rip)")
-            if mac:
-                selected = re.sub(r"\bfpr_[A-Za-z0-9_]+\b", lambda m: "_" + m[0], selected)
-                selected = selected.replace("probe_hart(%rip)", "_probe_hart(%rip)")
-            assembly.write_text(selected)
+            assembly.write_text(adapt(selected, mac))
             exe = tmp / "oracle"
-            run(["clang", *(["-arch", "x86_64"] if mac else []), "-O2",
-                 assembly, harness, "-o", exe], env)
-            print(f"FPR_SELF_LOOPS={enabled}: " +
-                  run([*(["arch", "-x86_64"] if rosetta else []), exe], env).strip(), flush=True)
+            link([assembly, harness], exe, mac, env)
+            print(f"{label} FPR_SELF_LOOPS={enabled}: " +
+                  run([*runner, exe], env).strip(), flush=True)
 
 if __name__ == "__main__":
     main()

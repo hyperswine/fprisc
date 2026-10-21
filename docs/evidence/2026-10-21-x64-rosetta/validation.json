@@ -1,0 +1,23 @@
+{
+  "base_commit": "492dc9a281c9f17a2ad2ff1a8642b060d9aeaac7",
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "compiler_sha256": "05d21f6101cbb524da0f692a06fd0b724d3fff5c7a4f40864df13b7901e93018",
+  "command": "python3 -u tests/check_x64_local.py --require-execution",
+  "exit_code": 0,
+  "execution": "Rosetta x86-64",
+  "elapsed_seconds_including_build_check": 6.87,
+  "source_sha256": {
+    "tests/check_x64_local.py": "8e6f086834bbea03fed1bffcc3572e2ab6c50745373865665fb6a96a65a49657",
+    "tests/check_x64_scalar.py": "f9bcb65da9b5a752b967301c3f77864e07b12a3eeda53dc872a4b0df9a10991b",
+    "tests/x64_probe.py": "62df86813ae3de05e239eee52da7d6b4288fb2703dd33db86a5188b491beed06",
+    "tests/base/x64_scalar_abi.s": "c9268edc9a617e802f2aa14f49b345969c2b3978d01c5fe358b07291aace3266",
+    "tests/base/x64_scalar_oracle.c": "8497d72829cb5f25e7a96d36f00ad1dbb2fc5a40050bb500f21fa3df7e46bc75",
+    "tests/check_self_loop_x64.py": "4b73dea03a57ec52c1159a5122c5786e47faa2040622358e220072911dd99664",
+    "tests/check_x64_vectors.py": "349a22fa2629dced77a1a86ec33d75960e5cce5fc8cde61349a23acef2b3fccd"
+  },
+  "limitations": [
+    "Linux TLS and scheduler hooks substituted",
+    "No native Linux execution of new tests in this run",
+    "No production compiler changes"
+  ]
+}

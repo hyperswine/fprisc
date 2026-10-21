@@ -362,6 +362,12 @@ Existing starting points include `tests/check_base.py`,
 `tests/check_self_loop_x64.py` and `tests/check_self_loop_rv64.py`.
 Extend or supplement them when the IR introduces behaviour they do not cover.
 
+For fast local x64 iteration, `python3 tests/check_x64_local.py --require-execution`
+runs scalar/ABI, self-loop and vector probes on Intel or macOS Rosetta. The
+[Rosetta testing record](2026-10-21-X64-ROSETTA-TESTING.md) documents its C
+oracles and substituted runtime/TLS boundaries. It supplements the required
+native Linux leg; it does not close that acceptance gate.
+
 | Gate | Required evidence |
 |---|---|
 | IR validity | Verifier after each transforming pass; negative cases and deterministic dumps |
