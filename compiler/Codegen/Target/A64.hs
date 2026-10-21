@@ -25,8 +25,9 @@
 --
 -- What the generated code relies on (the register's "Calls and target
 -- constraints" and "Scheduler, hart and stack boundary"):
---   * arguments 1..8 in x0..x7, the result in x0; eight is the ceiling the
---     lowering enforces (the hart spill cells are not implemented here);
+--   * arguments 1..8 in x0..x7, 9..64 in the per-hart spill cells (stored
+--     by the caller after every argument is evaluated, copied into the
+--     callee's frame before its entry sequence), the result in x0;
 --   * x29 is the frame pointer and the frame is addressed through it; the
 --     epilogue restores sp from x29, so after fpr_stack_grow moved sp to a
 --     new segment the function still returns into the old one;
@@ -66,7 +67,7 @@ import Codegen.Target.Common
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 3 -- coverage: bit operations and shifts
+a64SelectionRev = 4 -- coverage: bit operations and shifts; arities 9..64 through the spill cells
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -200,14 +201,16 @@ cbnz r l = (plain "cbnz" [] [any' r, OL l]) {siControl = CondTo [l]}
 jump :: Label -> SInstr
 jump l = (plain "b" [] [OL l]) {siControl = JumpTo l}
 
--- a direct call: arguments fixed to x0.., the result to x0; the callee
--- destroys the caller-saved set; `safepoint` says its entry ticks
+-- a direct call: arguments 1..8 fixed to x0..x7, the result to x0; the
+-- callee destroys the caller-saved set; `safepoint` says its entry ticks.
+-- Arguments beyond the eighth are in the hart spill cells by now
+-- (`stageCells` precedes the call, as the legacy generator's stores do)
 call :: String -> Bool -> Bool -> [VReg] -> Maybe VReg -> SInstr
 call sym safepoint runtime args res =
   SInstr
     { siOp = "bl",
       siDefs = [fix r (x 0) | Just r <- [res]],
-      siUses = [OS sym] ++ zipWith fix args (map x [0 ..]),
+      siUses = [OS sym] ++ zipWith fix (take 8 args) (map x [0 ..]),
       siImplicitDefs = [],
       siImplicitUses = [],
       siClobbers = filter (\p -> p `notElem` [x 0 | Just _ <- [res]]) callerSaved,
@@ -221,15 +224,34 @@ call sym safepoint runtime args res =
 ret :: VReg -> SInstr
 ret v = (plain "ret" [] [fix v (x 0)]) {siImplicitDefs = [x 9, x 29, x 30, Phys "sp"], siControl = Return}
 
--- a tail transfer: arguments staged in x0.., the frame torn down, a jump
+-- a tail transfer: arguments 1..8 staged in x0..x7 (the rest in the
+-- cells, stored before the teardown), the frame torn down, a jump
 tailJump :: String -> Bool -> Bool -> [VReg] -> SInstr
 tailJump sym safepoint runtime args =
-  (plain "tailjump" [] (OS sym : zipWith fix args (map x [0 ..])))
+  (plain "tailjump" [] (OS sym : zipWith fix (take 8 args) (map x [0 ..])))
     { siImplicitDefs = [x 9, x 29, x 30, Phys "sp"],
       siClobbers = callerSaved,
       siControl = Return,
       siCalls = [Call sym safepoint runtime]
     }
+
+-- arguments 9.. of a call or transfer into the per-hart spill cells
+-- (docs/2026-10-21-NATIVE-IR-CONTRACTS.md "Arguments 9-64": cell j at
+-- W*(1+j) in the hart block, fuel at 0): the hart block is read into x9
+-- for each store, after every argument is evaluated and with no call
+-- between the stores and the transfer, so nothing can touch the cells
+-- before the callee's prologue copies them
+stageCells :: [VReg] -> Se ()
+stageCells args = forM_ (zip [0 :: Int ..] (drop 8 args)) $ \(j, v) ->
+  emitI ((plain "store.spill" [] [any' v, OI (fromIntegral j)]) {siImplicitDefs = [x 9, x 16, x 17]})
+
+-- the prologue's copy of cell j into a parameter's slot: x9 holds the
+-- hart block (`hart.x9`, read once after the frame is opened), x10 the value
+parkCell :: Int -> FrameRef -> Item
+parkCell j ref = I ((plain "park.spill" [] [OI (fromIntegral j), OF ref 0]) {siImplicitDefs = [x 10], siImplicitUses = [x 9]})
+
+hartX9 :: Item
+hartX9 = I ((plain "hart.x9" [] []) {siImplicitDefs = [x 9, x 16, x 17]})
 
 -- the entry sequence: the stack check (a call to fpr_stack_grow that may
 -- move sp to a new segment) and the fuel tick (a call to
@@ -272,7 +294,7 @@ select cfg fn = do
       managed0 = S.fromList [vreg v | (v, TVal) <- M.toList tyMap]
       params = [vreg v | (v, _) <- bParams (entryBlock fn)]
       st0 = Sel maxV 0 [] managed0 S.empty
-  when (length params > 8) (Left "arity above 8")
+  when (length params > arityCeiling) (Left ("arity above " ++ show arityCeiling))
   (_, st) <- runStateT (mapM_ (selectBlock cfg fn tyMap) (fnBlocks fn)) st0
   pure (SFn (fnName fn) params (reverse (selItems st)), selManaged st, selNullaries st)
 
@@ -369,7 +391,8 @@ selectInstr _ _ (Instr d op) = case op of
     emitI (ldrsw r res 4)
     emitL done
   OCall c as -> do
-    when (length as > 8) (refuse "a call with more than eight arguments")
+    when (length as > arityCeiling) (refuse ("a call with more than " ++ show arityCeiling ++ " arguments"))
+    stageCells (map vreg as)
     def (\r -> emitI (call (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as) (Just r)))
   where
     def k = case d of
@@ -479,7 +502,8 @@ selectTerm :: A64Config -> Fn -> Block -> Se ()
 selectTerm _ fn b = case bTerm b of
   TRet v -> emitI (ret (vreg v))
   TBr target as
-    | target == fnEntry fn -> -- the self tail call: the legacy transfer re-enters the function through its symbol
+    | target == fnEntry fn -> do -- the self tail call: the legacy transfer re-enters the function through its symbol
+        stageCells (map vreg as)
         emitI (tailJump (functionSymbol (fnName fn)) True False (map vreg as))
     | otherwise -> do
         parallelMoves (zip (paramsOf target) (map vreg as))
@@ -497,7 +521,8 @@ selectTerm _ fn b = case bTerm b of
         parallelMoves (zip (paramsOf t) (map vreg as))
         emitI (jump (blockLabel t))
   TTailCall c as -> do
-    when (length as > 8) (refuse "a tail call with more than eight arguments")
+    when (length as > arityCeiling) (refuse ("a tail call with more than " ++ show arityCeiling ++ " arguments"))
+    stageCells (map vreg as)
     emitI (tailJump (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as))
   where
     paramsOf bid = [vreg v | blk <- fnBlocks fn, bId blk == bid, (v, _) <- bParams blk]
@@ -531,8 +556,11 @@ emitFnA64 cfg fn = do
   let name = fnName fn
       sym = functionSymbol name
       -- the prologue: the frame, then the parameters into their slots
-      -- before the entry sequence's calls (the legacy order)
-      paramStores = [I (plain "str" [] [OP (x i), OF (slotRef v) 0]) | (i, v) <- zip [0 ..] (sfParams placed)]
+      -- before the entry sequence's calls (the legacy order): x0..x7, then
+      -- the ninth and later from the hart spill cells, which are dead once
+      -- copied (the fuel tick may deschedule the actor)
+      paramStores = [I (plain "str" [] [OP (x i), OF (slotRef v) 0]) | (i, v) <- zip [0 .. 7] (sfParams placed)]
+        ++ (if length (sfParams placed) > 8 then hartX9 : [parkCell j (slotRef v) | (j, v) <- zip [0 ..] (drop 8 (sfParams placed))] else [])
       slotRef (VReg n) = head [foRef o | o <- objs, foKind o == SpillSlot n]
       body = I ((plain "enter" [] []) {siImplicitDefs = [Phys "sp", x 29, x 16]}) : paramStores ++ sfBody placed
       rendered = map (\it -> (it, renderItem cfg ly name it)) body
@@ -622,6 +650,9 @@ renderItem cfg ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
       ("bl", _, OS s : _) -> ["bl " ++ gsym cfg s]
       ("ret", [], [_]) -> epilogue ++ ["ret"]
       ("tailjump", [], OS s : _) -> epilogue ++ ["b " ++ gsym cfg s]
+      ("store.spill", [], [s, OI j]) -> hartRead ++ ldst "str" "stur" (reg s) "x9" (8 * (1 + j))
+      ("hart.x9", [], []) -> hartRead
+      ("park.spill", [], [OI j, OF ref 0]) -> ldst "ldr" "ldur" "x10" "x9" (8 * (1 + j)) ++ ldst "str" "stur" "x10" "x29" (fromIntegral (off ref))
       ("entry.check.tick", [], []) -> hartRead ++ stackCheck ++ tick
       ("entry.check", [], []) -> hartRead ++ stackCheck
       ("entry.tick", [], []) -> hartRead ++ tick

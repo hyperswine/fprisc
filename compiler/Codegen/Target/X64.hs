@@ -23,7 +23,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 2 -- coverage: bit operations and shifts
+x64SelectionRev = 3 -- coverage: bit operations and shifts; arities 9..64 through the spill cells
 
 data X64Config = X64Config
   { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool }
@@ -131,9 +131,16 @@ divide :: VReg -> VReg -> VReg -> SInstr
 divide d a b = (plain "divide" [fix d (r "rax")] [fix a (r "rax"), any' b])
   {siImplicitDefs = [r "rdx"], siFlags = FlagsDef}
 
+-- arguments 7 and 8 into the private TLS cells, 9.. into the per-hart
+-- spill cells (cell j at 8*(1+j) in the hart block, read into %r10 for
+-- each store); every argument is evaluated by now and no call separates
+-- these stores from the transfer, so the callee's prologue copies them
 stageArgs :: [VReg] -> Se ()
-stageArgs args = forM_ (zip [6 :: Int ..] (drop 6 args)) $ \(n,v) ->
-  emitI (plain "store.cell" [] [any' v, OS ("fpr_x64_a" ++ show n)])
+stageArgs args = do
+  forM_ (zip [6 :: Int, 7] (take 2 (drop 6 args))) $ \(n,v) ->
+    emitI (plain "store.cell" [] [any' v, OS ("fpr_x64_a" ++ show n)])
+  forM_ (zip [0 :: Int ..] (drop 8 args)) $ \(j,v) ->
+    emitI ((plain "store.spill" [] [any' v, OI (fromIntegral j)]) {siImplicitDefs = [r "r10"]})
 
 emitCall :: String -> Bool -> Bool -> [VReg] -> Maybe VReg -> Se ()
 emitCall sym safepoint runtime args res = do
@@ -188,7 +195,7 @@ select cfg fn = do
       managed0 = S.fromList [vreg v | (v, TVal) <- M.toList tyMap]
       params = [vreg v | (v, _) <- bParams (entryBlock fn)]
       st0 = Sel maxV 0 [] managed0 S.empty
-  when (length params > 8) (Left "arity above 8")
+  when (length params > arityCeiling) (Left ("arity above " ++ show arityCeiling))
   (_, st) <- runStateT (mapM_ (selectBlock cfg fn tyMap) (fnBlocks fn)) st0
   pure (SFn (fnName fn) params (reverse (selItems st)), selManaged st, selNullaries st)
 
@@ -285,7 +292,7 @@ selectInstr _ _ (Instr d op) = case op of
     emitI (ldrsw r res 4)
     emitL done
   OCall c as -> do
-    when (length as > 8) (refuse "a call with more than eight arguments")
+    when (length as > arityCeiling) (refuse ("a call with more than " ++ show arityCeiling ++ " arguments"))
     def (\r -> emitCall (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as) (Just r))
   where
     def k = case d of
@@ -396,7 +403,7 @@ selectTerm _ fn b = case bTerm b of
         parallelMoves (zip (paramsOf t) (map vreg as))
         emitI (jump (blockLabel t))
   TTailCall c as -> do
-    when (length as > 8) (refuse "a tail call with more than eight arguments")
+    when (length as > arityCeiling) (refuse ("a tail call with more than " ++ show arityCeiling ++ " arguments"))
     emitTail (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as)
   where
     paramsOf bid = [vreg v | blk <- fnBlocks fn, bId blk == bid, (v, _) <- bParams blk]
@@ -421,9 +428,11 @@ emitFnX64 cfg fn = do
       slotRef (VReg n) = head [foRef o | o <- objs, foKind o == SpillSlot n]
       -- Read the private cells before any call: a fuel boundary may destroy
       -- them. The first six argument registers are stored before the scratch.
+      -- the ninth and later parameters come from the hart spill cells
       paramStores = [I (if n < 6
         then plain "store" [] [OP (argRegs !! n), OF (slotRef v) 0]
-        else (plain "park.cell" [] [OS ("fpr_x64_a" ++ show n), OF (slotRef v) 0]) {siImplicitDefs = [r "r11"]})
+        else if n < 8 then (plain "park.cell" [] [OS ("fpr_x64_a" ++ show n), OF (slotRef v) 0]) {siImplicitDefs = [r "r11"]}
+        else (plain "park.spill" [] [OI (fromIntegral (n - 8)), OF (slotRef v) 0]) {siImplicitDefs = [r "r11"]})
         | (n,v) <- zip [0..] (sfParams placed)]
       body = I ((plain "enter" [] []) {siImplicitDefs = map r ["rsp", "rbp"]}) : paramStores ++ sfBody placed
       rendered = [(it, renderItem ly name it) | it <- body]
@@ -469,6 +478,8 @@ renderItem ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
       ("store",[],[s,OF ref 0]) -> ["movq " ++ reg s ++ ", " ++ slot ref]
       ("park.cell",[],[OS cell,OF ref 0]) -> ["movq %fs:" ++ cell ++ "@tpoff, %r11", "movq %r11, " ++ slot ref]
       ("store.cell",[],[s,OS cell]) -> ["movq " ++ reg s ++ ", %fs:" ++ cell ++ "@tpoff"]
+      ("store.spill",[],[s,OI j]) -> ["movq %fs:fpr_posix_hart@tpoff, %r10", "movq " ++ reg s ++ ", " ++ show (8 * (1 + j)) ++ "(%r10)"]
+      ("park.spill",[],[OI j,OF ref 0]) -> ["movq %fs:fpr_posix_hart@tpoff, %r11", "movq " ++ show (8 * (1 + j)) ++ "(%r11), %r11", "movq %r11, " ++ slot ref]
       ("movq",[d],[s]) -> ["movq " ++ reg s ++ ", " ++ reg d]
       ("li",[d],[n]) -> ["movabsq $" ++ imm n ++ ", " ++ reg d]
       ("la",[d],[OS s]) -> ["leaq " ++ s ++ "(%rip), " ++ reg d]

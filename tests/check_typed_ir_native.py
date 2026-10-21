@@ -65,7 +65,7 @@ if args.portable_only or not NATIVE_HOST:
 
 MOD, LIB, PROBE = 'tests/typed_ir/scalar_mod.fpr', 'tests/typed_ir/scalarlib.fpr', 'tests/typed_ir/tir_probe.c'
 LIB_FNS = ['fib', 'sum', 'addovf', 'mulovf', 'divz', 'even', 'odd', 'clamp', 'boolEq', 'boolNe', 'boolResult', 'cbSum', 'cbTail', 'deep', 'swapLoop',
-           'shl', 'shr', 'bits', 'mix']
+           'shl', 'shr', 'bits', 'mix', 'rot9', 'callWide', 'tailWide', 'rot64', 'call64']
 INT_MIN, INT_MAX = -(1 << 62), (1 << 62) - 1
 def overflow(a, op, b):
     return ('trap', f'Int overflow: {a} {op} {b} does not fit an Int ({INT_MIN}..{INT_MAX}); I64 is the type that wraps')
@@ -78,6 +78,12 @@ def shl(a, n):
     return ('trap', 'BITSHIFTL: shift must be 0..63') if not 0 <= n <= 63 else ('value', str(wrap63(a << n)))
 def shr(a, n):
     return ('trap', 'BITSHIFTR: shift must be 0..63') if not 0 <= n <= 63 else ('value', str(wrap63((a % (1 << 64)) >> n)))
+# the wide rotations: n turns of the argument list, then the weighted sum
+def rot(n, args):
+    args = list(args)
+    for _ in range(n):
+        args = args[1:] + args[:1]
+    return sum((i + 1) * a for i, a in enumerate(args))
 def mix(n, acc):
     while n:
         acc = wrap63(acc << 5) ^ wrap63((acc % (1 << 64)) >> 2)
@@ -132,6 +138,14 @@ EXPECTED = {
     ('bits', (12, 10)): ('value', str((12 & 10) * 1000000 + (12 | 10) * 1000 + (12 ^ 10))),
     ('bits', (-1, 77)): ('value', str((-1 & 77) * 1000000 + (-1 | 77) * 1000 + (-1 ^ 77))),
     ('mix', (1000, 7)): mix(1000, 7),
+    ('rot9', (0,)): ('value', str(rot(0, range(1, 10)))),
+    ('rot9', (4,)): ('value', str(rot(4, range(1, 10)))),
+    ('rot9', (100000,)): ('value', str(rot(100000, range(1, 10)))),
+    ('callWide', (3,)): ('value', str(rot(3, range(1, 10)) + rot(4, range(1, 10)))),
+    ('tailWide', (5,)): ('value', str(rot(5, range(9, 0, -1)))),
+    ('call64', (0,)): ('value', str(rot(0, range(1, 64)) + 1)),
+    ('call64', (7,)): ('value', str(rot(7, range(1, 64)) + 1)),
+    ('call64', (200000,)): ('value', str(rot(200000, range(1, 64)) + 1)),
     ('cfib', (22,)): ('value', '17711'),
     ('csum', (100, 5)): ('value', '5055'),
     ('caddovf', (INT_MAX, 1)): overflow(INT_MAX, '+', 1),

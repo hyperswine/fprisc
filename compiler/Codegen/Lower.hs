@@ -163,7 +163,7 @@ lowerProgram policy workerSigs prog ext hal =
 lowerFn :: Policy -> M.Map Name ([Ty], Ty) -> Prog -> M.Map String Int -> M.Map String (Int, String) -> Name -> ([Name], Core) -> Either Reason Fn
 lowerFn policy sigs prog ext hal name (params, body)
   | Left why <- validatePolicy policy = Left why
-  | length params > 8 = Left "arity above 8 (parameters through the hart spill cells)"
+  | length params > arityCeiling = Left ("arity above " ++ show arityCeiling ++ " (eight registers and the hart spill cells)")
   | workerPrefix `isPrefixOf` name, M.notMember name sigs = Left "a scalar worker without representation metadata"
   | length ptys /= length params = Left "worker representation metadata has the wrong arity"
   | otherwise = evalStateT go (St 0 0 Nothing [])
@@ -188,6 +188,7 @@ lowerFn policy sigs prog ext hal name (params, body)
 -- the convention of a known callee
 calleeOf :: Cx -> Name -> Int -> Maybe Callee
 calleeOf cx h n
+  | n > arityCeiling = Nothing -- no convention beyond the spill cells; refused as an over-saturated application
   | workerPrefix `isPrefixOf` h, M.notMember h (cxSigs cx) = Nothing
   | Just (pts, _) <- M.lookup h (cxSigs cx), length pts /= n = Nothing
   | Just (ps, _) <- M.lookup h (cxProg cx), length ps == n =

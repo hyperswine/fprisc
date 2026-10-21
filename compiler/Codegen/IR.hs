@@ -28,7 +28,7 @@ module Codegen.IR
     ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), Callee (..), CalleeKind (..), isForeign,
     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs,
-    intMin, intMax, intFits64, arithSymbol, cmpSymbol, bitName, shiftName, wrap63,
+    intMin, intMax, intFits64, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
   ) where
 
 import qualified Data.Map.Strict as M
@@ -207,6 +207,13 @@ termSuccs = \case
 
 blockDefs :: Block -> [(VId, Ty)]
 blockDefs b = bParams b ++ [d | Instr (Just d) _ <- bInstrs b]
+
+-- the generated-code convention's arity ceiling: eight register arguments
+-- and the 56 per-hart spill cells (fpr.h FPR_ARGSPILL, Codegen.spillCells;
+-- docs/2026-10-21-NATIVE-IR-CONTRACTS.md "Arguments 9-64").  A definition,
+-- call or tail transfer beyond it has no convention and is refused.
+arityCeiling :: Int
+arityCeiling = 64
 
 -- the Int range of the 64-bit targets (docs/2026-10-12-INT-OVERFLOW.md)
 intMin, intMax :: Integer

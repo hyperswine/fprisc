@@ -61,9 +61,9 @@ def main():
                                   FPR_COMPACT_FRAMES='1', FPR_SELF_LOOPS='1',
                                   FPR_NO_SCALAR_WORKERS='0')),
                  ('typed-ir', dict(FPR_TYPED_IR_BACKEND='mixed',
-                                   FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,call7,call8')),
+                                   FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8')),
                  ('typed-ir-workers', dict(FPR_TYPED_IR_BACKEND='mixed', FPR_NO_SCALAR_WORKERS='0',
-                                           FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,call7,call8')),
+                                           FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8')),
                  ('baseline-repeat', {})]
         original = None
         for name, settings in modes:
@@ -80,11 +80,15 @@ def main():
                 native_names = {title.split()[0] for title, _ in bodies if 'typed-ir x64' in title}
                 required = set(mode['FPR_TYPED_IR_STRICT'].split(','))
                 assert required <= native_names, (required - native_names, native_names)
-                assert not {'rotate8', 'rotate63'} & native_names
                 assert 'UNBOUNDED' not in text
                 assert '%fs:fpr_x64_a6@tpoff' in selected and '%fs:fpr_x64_a7@tpoff' in selected
+                # arguments 9 and 64 through the hart spill cells: the caller's
+                # stores and the prologue's copies name the first and last cell
+                rotate63 = next(body for title, body in bodies if title.startswith('rotate63 '))
+                assert 'movq %fs:fpr_posix_hart@tpoff, %r10' in rotate63 and ', 8(%r10)' in rotate63 and ', 448(%r10)' in rotate63, rotate63[:600]
+                assert 'movq 8(%r11), %r11' in rotate63 and 'movq 448(%r11), %r11' in rotate63
                 assert 'cqto' in selected and 'imulq' in selected
-                print(f'{name}: strict direct coverage {len(native_names)} functions; arities 9/64 explicitly legacy', flush=True)
+                print(f'{name}: strict direct coverage {len(native_names)} functions including arities 9 and 64', flush=True)
             else:
                 hot = next(body for title, body in bodies if title == 'hot (arity 5)')
                 # Costed placement may legitimately reject promotion.
@@ -119,11 +123,9 @@ def main():
                     assembly.write_text(adapt('.text\n' + mixed, mac))
                     link([assembly, legacy_asm, shim, ROOT / 'tests/base/x64_scalar_oracle.c'], exe, mac, mode)
                     print(f'{label} typed-ir/{boundary}: ' + run([*runner, exe], mode).strip(), flush=True)
-        refused = subprocess.run([str(ROOT / 'fpr'), 'compile', '--target=x64', str(source), str(assembly)],
-            cwd=ROOT, env=dict(env, FPR_TYPED_IR_BACKEND='mixed', FPR_TYPED_IR_STRICT='rotate63'),
-            capture_output=True, text=True, timeout=240)
-        assert refused.returncode != 0 and 'rotate63:' in refused.stderr and 'typed-ir strict' in refused.stderr, refused.stderr
-        print('typed-ir strict refusal for unsupported arity: PASS')
+        # (a 65th parameter never reaches the generator: the front end bundles
+        # arguments beyond the 64-argument convention; the lowering's own
+        # ceiling check is exercised in tests/TypedIR.hs)
     print(f'x64 scalar/ABI probes: {time.monotonic()-started:.2f}s including compilation/linking; Linux TLS and scheduler are substituted')
 
 

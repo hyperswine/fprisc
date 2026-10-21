@@ -107,9 +107,11 @@ main = do
     (verifyFn M.empty (editBlock (BId 2) (\b -> b {bInstrs = [Instr (Just (VId 4, TInt)) (OConstInt 1), Instr (Just (VId 5, TInt)) (OShift Shl (VId 0) (VId 4)), Instr (Just (VId 6, TVal)) (OTag (VId 5))]})))
   expectRefusal "a bit operation declared a predicate" "operation gives"
     (verifyFn M.empty (editBlock (BId 2) (\b -> b {bInstrs = [Instr (Just (VId 4, TInt)) (OConstInt 1), Instr (Just (VId 5, TPred)) (OBit BAnd (VId 1) (VId 4)), Instr (Just (VId 6, TVal)) (OBoolOf (VId 5))]})))
+  expectRefusal "arity above the ceiling" "above the ceiling"
+    (verifyFn M.empty (let ps = [(VId (100 + i), TVal) | i <- [0 .. 64]] in good {fnBlocks = [Block (BId 0) ps [Instr Nothing OStackCheck, Instr Nothing OSafepoint] (TRet (VId 100))]}))
   expectRefusal "const outside the Int range" "outside the Int range"
     (verifyFn M.empty (editBlock (BId 2) (\b -> b {bInstrs = [Instr (Just (VId 4, TInt)) (OConstInt (2 ^ (62 :: Int))), Instr (Just (VId 5, TInt)) (OArith Sub (VId 1) (VId 4)), Instr (Just (VId 6, TVal)) (OTag (VId 5))]})))
-  putStrLn "Typed IR verifier: a well-formed function accepted, 21 malformations refused by name PASS"
+  putStrLn "Typed IR verifier: a well-formed function accepted, 22 malformations refused by name PASS"
   -- the lowering of the generator's shapes
   let prog = M.fromList [("fib", fibCore), ("sum", sumCore), ("addovf", addCore)]
       (lowered, failures) = lowerProgram m2Policy M.empty prog M.empty M.empty
@@ -172,7 +174,11 @@ main = do
   check "a primitive outside the subset is refused by name" ("primitive `print`" `isInfixOf` refused (["x"], app "print" [var "x"]))
   check "a partial application is refused by name" ("partial" `isInfixOf` refused (["x"], app "sum" [var "x"]))
   check "a constructor with fields is refused by name" ("constructor with fields" `isInfixOf` refused (["x"], CMk 2 1 [var "x"]))
-  check "a ninth parameter is refused by name" ("arity above 8" `isInfixOf` refused (map (: []) "abcdefghi", var "a"))
+  -- arities 9..64 lower (the hart spill cells); a 65th parameter has no convention
+  check "nine parameters lower" (refused (map (: []) "abcdefghi", var "i") == "accepted")
+  check "sixty-four parameters lower" (refused (["p" ++ show i | i <- [1 .. 64 :: Int]], var "p64") == "accepted")
+  check "a sixty-fifth parameter is refused by name" ("arity above 64" `isInfixOf` refused (["p" ++ show i | i <- [1 .. 65 :: Int]], var "p65"))
+  check "a call with sixty-five arguments is refused by name" ("over-saturated" `isInfixOf` refused (["x"], app "sum" (replicate 65 (var "x"))))
   -- Keep the worker producer's ABI evidence, including parameter order.
   let mixed z a = ([z,a], CIf (app "<" [var z,CInt 1])
         (CIf (CTagEq 1 1 (var a)) (app "+" [var z,CInt 1]) (app "+" [var z,CInt 2]))

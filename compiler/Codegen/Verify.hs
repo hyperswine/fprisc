@@ -36,6 +36,7 @@ opSignature tyOf = \case
   OCall c as -> do
     when (length as /= length (calleeParams c)) $
       Left ("call " ++ calleeName c ++ ": " ++ show (length as) ++ " arguments for " ++ show (length (calleeParams c)) ++ " parameters")
+    when (length as > arityCeiling) $ Left ("call " ++ calleeName c ++ ": " ++ show (length as) ++ " arguments is above the ceiling of " ++ show arityCeiling)
     mapM_ (uncurry expect) (zip as (calleeParams c))
     pure (Just (calleeResult c))
   OSafepoint -> pure Nothing
@@ -53,6 +54,7 @@ verifyFn program fn = mapLeft (("verify " ++ fnName fn ++ ": ") ++) $ do
   when (length (S.fromList ids) /= length ids) (Left "duplicate block id")
   let byId = M.fromList [(bId b, b) | b <- blocks]
   entry <- maybe (Left "entry block missing") Right (M.lookup (fnEntry fn) byId)
+  when (length (bParams entry) > arityCeiling) (Left ("arity " ++ show (length (bParams entry)) ++ " is above the ceiling of " ++ show arityCeiling))
   -- single definitions, and the type of every value
   let defs = concatMap blockDefs blocks
       defIds = map fst defs
@@ -79,6 +81,7 @@ verifyFn program fn = mapLeft (("verify " ++ fnName fn ++ ": ") ++) $ do
         unless (t == TPred) (Left (here ++ "branches on " ++ show t ++ ", TPred needed"))
       TTailCall c as -> do
         when (length as /= length (calleeParams c)) (Left (here ++ "tail call " ++ calleeName c ++ ": wrong arity"))
+        when (length as > arityCeiling) (Left (here ++ "tail call " ++ calleeName c ++ ": " ++ show (length as) ++ " arguments is above the ceiling of " ++ show arityCeiling))
         when (calleeResult c /= fnResult fn) (Left (here ++ "tail call " ++ calleeName c ++ " answers " ++ show (calleeResult c) ++ ", this function " ++ show (fnResult fn)))
         forM_ (zip as (calleeParams c)) $ \(a, t) -> do
           t' <- tyOf a
