@@ -1,0 +1,2 @@
+SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, frame ceilings: PASS
+Typed IR M2 x64 execution: SKIP (portable-only requested or nonmatching native host); shared selected-IR checks passed

@@ -36,6 +36,8 @@ def environment(cache):
                FPR_SELF_LOOPS='0')
     env.pop('FPR_FOREIGN', None)
     env.pop('FPR_TYPED_IR', None)
+    env.pop('FPR_TYPED_IR_BACKEND', None)
+    env.pop('FPR_TYPED_IR_STRICT', None)
     return env
 
 

@@ -1,0 +1,21 @@
+Rosetta x86-64 baseline: 31689 C-reference cases, 12 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, callee saves/alignment/volatile clobbers PASS
+Rosetta x86-64 registers: 31689 C-reference cases, 12 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, callee saves/alignment/volatile clobbers PASS
+Rosetta x86-64 costed: 31689 C-reference cases, 12 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, callee saves/alignment/volatile clobbers PASS
+Rosetta x86-64 workers: 31689 C-reference cases, 12 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, callee saves/alignment/volatile clobbers PASS
+typed-ir: strict direct coverage 14 functions; shifts and arities 9/64 explicitly legacy
+Rosetta x86-64 typed-ir: 31689 C-reference cases, 12 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, callee saves/alignment/volatile clobbers PASS
+Rosetta x86-64 typed-ir/legacy-callees: 31689 C-reference cases, 12 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, callee saves/alignment/volatile clobbers PASS
+Rosetta x86-64 typed-ir/legacy-callers: 31689 C-reference cases, 12 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, callee saves/alignment/volatile clobbers PASS
+typed-ir-workers: strict direct coverage 18 functions; shifts and arities 9/64 explicitly legacy
+Rosetta x86-64 typed-ir-workers: 31689 C-reference cases, 12 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, callee saves/alignment/volatile clobbers PASS
+Rosetta x86-64 baseline-repeat: 31689 C-reference cases, 12 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, callee saves/alignment/volatile clobbers PASS
+typed-ir strict refusal for unsupported arity: PASS
+x64 scalar/ABI probes: 11.72s including compilation/linking; Linux TLS and scheduler are substituted
+check_x64_scalar.py: 11.78s
+Rosetta x86-64 FPR_SELF_LOOPS=0: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+Rosetta x86-64 FPR_SELF_LOOPS=1: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+check_self_loop_x64.py: 2.34s
+Rosetta x86-64: x64 kernels: 100 scalar/pipeline lengths, eight pipeline arguments, nine-column map/filter, captured wide fold and clobbering calls PASS
+check_x64_vectors.py: 1.42s
+Local x64 suite (Rosetta x86-64): PASS in 15.59s including build check
+Evidence: adapted generated instructions and C oracles; not Linux TLS, actor scheduling or native x86 performance.

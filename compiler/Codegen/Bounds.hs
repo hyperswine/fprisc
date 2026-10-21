@@ -57,11 +57,27 @@ data Blk = Blk
   }
 
 analyse :: [Tok] -> Report
-analyse toks = Report segMax exitTail ccalls
+analyse toks
+  | invalid = Report Nothing Nothing ccalls
+  | otherwise = Report segMax exitTail ccalls
   where
     ccalls = sum [tCCalls t | t@TIns {} <- toks]
+    labels = [l | TLabel l <- toks]
+    targets = concat [case tFlow t of FCond ls -> ls; FJump l -> [l]; _ -> [] | t@TIns {} <- toks]
+    invalid = length labels /= S.size (S.fromList labels)
+      || "%entry" `elem` labels
+      || any (`notElem` labels) targets
+      || any (\t -> tCost t < 0 || tCCalls t < 0) [t | t@TIns {} <- toks]
+    -- A conditional transfer ends a basic block even without an explicit
+    -- source label afterward. Otherwise a later reset can incorrectly cut
+    -- a back-edge that branches BEFORE it (and understate the segment bound).
+    prefix = head [p | n <- [0 :: Int ..], let p = "%bound" ++ show n ++ ":",
+                       all (\l -> take (length p) l /= p) labels]
+    split = concat [case t of
+      TIns {tFlow = flow} | flow /= FNext -> [t, TLabel (prefix ++ show n)]
+      _ -> [t] | (n,t) <- zip [0 :: Int ..] toks]
     -- blocks: the entry (unnamed) and one per label, in order
-    blocks = go "%entry" [] toks
+    blocks = go "%entry" [] split
       where
         go cur acc [] = [(cur, reverse acc)]
         go cur acc (TLabel l : rest) = (cur, reverse acc) : go l [] rest

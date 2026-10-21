@@ -1,7 +1,8 @@
 # Local x86-64 execution with Rosetta
 
 Date: 2026-10-21. Kind: implementation and validation record.
-Applies to: test changes following `492dc9a`; compiler/codegen unchanged.
+Initial record: test changes following `492dc9a`, committed in `d6f8468`.
+Current direct-backend extension: [M2 x86](2026-10-21-TYPED-IR-M2-X64.md).
 
 Run the focused local suite from the repository root:
 
@@ -21,18 +22,22 @@ probe executable.
 
 | Probe | Executed checks |
 |---|---|
-| `check_x64_scalar.py` | 31,547 C-reference cases per mode: signed arithmetic, division, branches, all 64 shift counts on boundary inputs, nested calls, Bool workers and independently allocated foreign Bool objects |
-| Scalar slow paths | Ten overflow/division-zero/invalid-shift cases check the selected fallback kind and original tagged operands, using test-owned C hooks and `longjmp` |
-| Scalar ABI | 7/8/9/64-argument recursive rotations; integer callee-save sentinels; fuel-call stack alignment; destruction of all volatile integer/XMM registers and private argument cells at the simulated scheduling boundary |
+| `check_x64_scalar.py` | 31,689 C-reference cases per mode: signed arithmetic, division, branches, all 64 shift counts on boundary inputs, nested calls, Bool workers and independently allocated foreign Bool objects |
+| Scalar slow paths | Twelve overflow/division-zero/invalid-shift cases check the selected fallback kind and original tagged operands, using test-owned C hooks and `longjmp` |
+| Scalar ABI | 7/8-argument non-tail calls; 7/8/9/64-argument recursive rotations; integer callee-save sentinels; fuel-call stack alignment; destruction of all volatile integer/XMM registers and private argument cells at the simulated scheduling boundary |
 | `check_self_loop_x64.py` | 2,100 C-reference argument permutations each with self loops off/on; exact fuel counts and flat stack usage |
 | `check_x64_vectors.py` | 100 scalar/pipeline lengths, eight pipeline arguments, nine-column map/filter, captured fold and clobbering runtime calls |
 
-The scalar probe executes five modes: baseline, retained registers with
+The original scalar probe executes five legacy modes: baseline, retained registers with
 compact frames/self loops, costed placement, scalar workers with retained
 registers/compact frames/self loops, and baseline again. Assembly assertions
 prove that retained-register promotion, self loops and worker generation
 actually occur. Costed placement may reject promotion and is tested separately.
 The return to baseline must reproduce the original selected assembly.
+The M2 extension adds two strict direct-IR modes (workers off/on) and mixed
+legacy-caller/legacy-callee binaries; shifts and arities above eight remain
+explicit legacy fallbacks. Unadapted output also assembles as x86 ELF with
+real TLS relocations.
 
 Arithmetic results come from independent C expressions, with `__int128` for
 overflow checks and unsigned shifts to avoid undefined signed overflow.
@@ -61,12 +66,12 @@ x86 macOS Base runtime. These remain separate Linux/native acceptance gates.
 
 Rosetta timings describe local test turnaround only. They cannot establish
 native x86 performance or energy efficiency, and they do not close M2's
-native Linux execution gate. The same fixtures can later exercise direct IR
-emission once an actual backend selector exists.
+native Linux execution gate. The fixtures now also exercise direct IR emission under strict mode;
+that remains separate from real Linux runtime acceptance.
 
 ## Validation
 
-The complete local suite was executed under Rosetta on the Apple Silicon
+The original five-mode local suite was executed under Rosetta on the Apple Silicon
 development host. Final timings and output are recorded in
 [`local-suite.log`](evidence/2026-10-21-x64-rosetta/local-suite.log).
 The run includes five scalar modes, both self-loop modes and vector probes.
@@ -76,3 +81,6 @@ one observed local turnaround measurement, not a native x86 benchmark.
 Compiler identity, source hashes and platform are in
 [`validation.json`](evidence/2026-10-21-x64-rosetta/validation.json).
 Linux execution of these new test changes remains for CI.
+
+The expanded direct-IR and mixed-boundary run has separate evidence linked
+from [M2 x86](2026-10-21-TYPED-IR-M2-X64.md); the original logs above are preserved.

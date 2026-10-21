@@ -2,8 +2,8 @@
  * scalar_mod.fpr): native functions call back into C through TirProbe.cb
  * and TirProbe.mark; C calls native functions directly through the
  * function values the root hands TirProbe.call1/call2 (a static PAP whose
- * code pointer is the generated entry: tagged words in x0.., the result
- * in x0, the generated-code ABI the legacy generator uses too). */
+ * code pointer is the generated entry: tagged words in the target argument registers, the result
+ * in the target result register, the generated-code ABI the legacy generator uses too). */
 #include "fpr.h"
 #include <stdint.h>
 

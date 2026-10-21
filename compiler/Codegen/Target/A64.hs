@@ -58,18 +58,15 @@ import Codegen.Selected
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict
 import Data.Bits (shiftR, (.&.))
-import Data.Char (isAlphaNum, isAscii, ord)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Word (Word64)
-import Numeric (showHex)
+import Codegen.Target.Common
 
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 1
-
-data ObjectFormat = MachO | ELF deriving (Eq, Ord, Show)
+a64SelectionRev = 2 -- conditional bounds split at transfers; validation tightened
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -85,27 +82,6 @@ data A64Config = A64Config
     cfgExports :: S.Set String, -- functions that get a visibility directive
     cfgWeak :: Bool -- a library unit: unqualified globals are .weak
   }
-
-data NativeFn = NativeFn
-  { nfName :: String,
-    nfLines :: [String], -- the assembly, header comment through the bound line
-    nfReport :: Report,
-    nfNullaries :: [(Int, Int)] -- the unit-local nullary objects referenced
-  }
-
--- the symbol encoding of Codegen.mangle (ASCII alphanumerics stay, every
--- other character is `_xHH`); repeated here so this module needs nothing
--- from the legacy generator
-mangleName :: String -> String
-mangleName = concatMap enc
-  where
-    enc c
-      | isAscii c && isAlphaNum c = [c]
-      | otherwise = "_x" ++ pad (showHex (ord c) "")
-    pad s = if length s < 2 then '0' : s else s
-
-functionSymbol :: Name -> String
-functionSymbol n = "fpr_fn_" ++ mangleName n
 
 -- ---- registers ---------------------------------------------------------
 

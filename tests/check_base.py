@@ -4,10 +4,14 @@ machine (`fpr build`), with the environment docs/2026-09-18-BASE.md promises -- 
 command line, the exit status, stdin/stdout/stderr, files, the clock --
 and the same actors, std modules and panics as every other profile."""
 from pathlib import Path
-import os, subprocess, tempfile
+import argparse, os, subprocess, tempfile
 from concurrent.futures import ThreadPoolExecutor
 ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--skip-typed-ir-native', action='store_true',
+                    help='CI only: direct-backend suites already passed in a preceding explicit step')
+args = parser.parse_args()
 def run(args, expected=0, timeout=120, stdin=None, env=None):
     p = subprocess.run([str(a) for a in args], capture_output=True, text=True, timeout=timeout, input=stdin,
                        env=None if env is None else {**os.environ, **env})
@@ -16,7 +20,9 @@ def run(args, expected=0, timeout=120, stdin=None, env=None):
     return p
 run(['make', 'fpr'], timeout=300)
 print(run(['python3', 'tests/check_typed_ir.py'], timeout=900).stdout, end='')
-print(run(['python3', 'tests/check_typed_ir_a64.py'], timeout=1200).stdout, end='')
+if not args.skip_typed_ir_native:
+    print(run(['python3', 'tests/check_typed_ir_a64.py'], timeout=1200).stdout, end='')
+    print(run(['python3', 'tests/check_typed_ir_x64.py'], timeout=1200).stdout, end='')
 print(run(['python3', 'tests/check_a64_guards.py'], timeout=600).stdout, end='')
 print(run(['python3', 'tests/check_a64_frame_pairs.py'], timeout=600).stdout, end='')
 print(run(['python3', 'tests/check_self_loops.py'], timeout=600).stdout, end='')

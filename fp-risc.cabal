@@ -60,6 +60,8 @@ executable fpr
       Codegen.Frame
       Codegen.Place
       Codegen.Bounds
+      Codegen.Target.Common
+      Codegen.Target.X64
       Codegen.Target.A64
       KernelKinds
       Workers

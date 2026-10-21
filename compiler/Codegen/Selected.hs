@@ -25,11 +25,11 @@
 -- split between the value register (%rax) and the first-argument register
 -- (%rdi) at a call, the call-alignment pseudo and the a6/a7 argument cells
 -- as memory operands.  `tests/SelectedIR.hs` writes those shapes down and
--- checks the validity rules on them, although x86-64 selection itself
--- comes after AArch64.
+-- checks the validity rules on them; both direct scalar selectors use
+-- this vocabulary.
 --
 -- Nothing here chooses a physical register for a virtual one.  That is
--- placement (Codegen.Frame.placeInSlots in M2: every virtual register in a
+-- placement (Codegen.Place.placeInSlots in M2: every virtual register in a
 -- frame slot) or allocation (M3).
 module Codegen.Selected
   ( VReg (..), RegClass (..), Phys (..), Constraint (..), Operand (..),
@@ -168,7 +168,9 @@ checkFn rf fn = mapLeft (("selected " ++ sfName fn ++ ": ") ++) $ do
         fixes os = [(p, v) | OV v (Fix p) <- os]
     forM_ (siUses i) $ \o -> case o of
       OV _ (Tied _) -> Left (here ++ "a use operand is tied")
-      OV v (Fix p) -> fixOk here v p
+      OV v (Fix p) -> do
+        fixOk here v p
+        unless (S.member v defined) (Left (here ++ show v ++ " is never defined"))
       OV v _ -> unless (S.member v defined) (Left (here ++ show v ++ " is never defined"))
       OL l -> unless (S.member l labelSet) (Left (here ++ "names an undefined label"))
       _ -> pure ()

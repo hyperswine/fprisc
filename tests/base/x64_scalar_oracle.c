@@ -63,7 +63,7 @@ extern V probe_call(Fn, const V *);
 #define DECL(name) extern void fpr_fn_##name(void)
 DECL(add); DECL(sub); DECL(mul); DECL(divide); DECL(shift); DECL(branch);
 DECL(hot); DECL(calls); DECL(boolResult); DECL(boolEq); DECL(boolNe);
-DECL(rotate6); DECL(rotate7); DECL(rotate8); DECL(rotate63);
+DECL(call7); DECL(call8); DECL(rotate6); DECL(rotate7); DECL(rotate8); DECL(rotate63);
 
 static V invoke(Fn fn, const V *args, unsigned count) {
     V first[6] = {0};
@@ -113,6 +113,7 @@ int main(void) {
     trap(fpr_fn_add,1,hi,1); trap(fpr_fn_add,1,lo,-1);
     trap(fpr_fn_sub,2,lo,1); trap(fpr_fn_sub,2,hi,-1);
     trap(fpr_fn_mul,3,2147483648LL,2147483648LL);
+    trap(fpr_fn_mul,3,lo,lo); trap(fpr_fn_mul,3,hi,hi);
     trap(fpr_fn_mul,3,lo,-1); trap(fpr_fn_divide,4,lo,-1);
     trap(fpr_fn_divide,5,7,0);
     trap(fpr_fn_shift,6,7,-1); trap(fpr_fn_shift,6,7,64);
@@ -133,8 +134,13 @@ int main(void) {
         int64_t want=0;
         for(unsigned i=0;i<width;i++) want+=(int64_t)(i+1)*((int)((i+n)%width)-30);
         assert(invoke(rotations[w],args,width+1)==tag(want));
+        if (width <= 7) {
+            int64_t next=0;
+            for(unsigned i=0;i<width;i++) next+=(int64_t)(i+1)*((int)((i+n+1)%width)-30);
+            assert(invoke(width==6 ? fpr_fn_call7 : fpr_fn_call8,args,width+1)==tag(want+next-30));
+        }
     }
-    assert(yields>cases && traps==10);
-    printf("%u C-reference cases, 10 exact slow-path traps, foreign Bools, 7/8/9/64-argument rotations, callee saves/alignment/volatile clobbers PASS\n",cases);
+    assert(yields>cases && traps==12);
+    printf("%u C-reference cases, 12 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, callee saves/alignment/volatile clobbers PASS\n",cases);
     return 0;
 }

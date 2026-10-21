@@ -3,8 +3,10 @@
 Date: 2026-10-20. Kind: goal / plan and proposed architecture.
 Status: accepted with the narrowing of the 2026-10-20 review (one IR, A64
 first, M0 as a register page, an M3 investment review). M1 review repairs
-are implemented; M2's AArch64 half is implemented
-([M2 page](2026-10-21-TYPED-IR-M2-A64.md)); its x86-64 half is open.
+are implemented; both M2 scalar selectors are implemented
+([A64](2026-10-21-TYPED-IR-M2-A64.md),
+[x86 and shared review](2026-10-21-TYPED-IR-M2-X64.md)). M2 remains open
+pending native Linux runtime acceptance.
 Baseline: native compiler at `c328232f63d3f4a6a4b4c1dde7bce17cc449e19d`
 (codegen revision 66); 2026-10-21 amendments cover the M1 repairs at revision 67.
 Audience: compiler implementers and reviewers.
@@ -234,8 +236,8 @@ bound contracts are an exit gate before M2 emits native code.
   report and dump format are the M1 page's `FPR_TYPED_IR`.
 
 Exit: the [register](2026-10-21-NATIVE-IR-CONTRACTS.md) maps every Core form
-and records the runtime contracts. Executable native selection and strict
-coverage remain M2 deliverables.
+and records the runtime contracts. M2 implements executable selection and
+strict coverage for AArch64 and x86-64; native Linux acceptance remains open.
 
 ### M1. IR, verifier and a scalar lowering path
 
@@ -269,9 +271,12 @@ verified IR and reference results. This stage makes no native speed claim.
 - [x] Integrate existing ABI, fuel and stack-growth behaviour, with direct
   Mach-O assembly emission and ELF assembly checks
   ([M2 page](2026-10-21-TYPED-IR-M2-A64.md) "Selection" and "Evidence"; commit `17c2dec`).
-- [ ] Implement the same scalar subset for x86-64 Linux through that
+- [x] Implement the same scalar subset for x86-64 Linux through that
   constraint model, before any default change or performance claim
-  (open: the vocabulary and its tests exist, no x86-64 selection does).
+  (`Codegen/Target/X64.hs`; [implementation and local execution](2026-10-21-TYPED-IR-M2-X64.md)).
+- [ ] Pass the native Linux runtime acceptance leg with the direct x86
+  backend (`tests/check_typed_ir_x64.py`, integrated into Base/CI).
+  Rosetta and ELF assembly checks do not close this gate.
 - [x] Test independent C callers/callees and legacy/new compiled units together
   (`tests/typed_ir/tir_probe.c`, `scalarlib.fpr` under `scalar_mod.fpr`,
   `tests/check_typed_ir_a64.py`; commit `17c2dec`).
@@ -415,15 +420,29 @@ M1's initial implementation and review repairs are recorded in
 [M1-REPAIRS](2026-10-21-TYPED-IR-M1-REPAIRS.md). The bounded M0 inventory is
 [NATIVE-IR-CONTRACTS](2026-10-21-NATIVE-IR-CONTRACTS.md).
 
-Next is M2: define explicit target/profile policy and a selected-instruction
-structure with all introduced temporaries, fixed/tied operands, flag
-use/definitions, register classes and runtime-call clobbers. Include the x86
-constraints in its first tests. Then implement conservative A64 scalar
-selection and spill placement, preserving the runtime ABI and entry policy.
-Compare checked arithmetic, branch joins, known calls, recursion and a self
-tail loop through independent oracles before attempting allocation improvements.
-The opt-in selector, strict coverage, cache identity, bound reporting and
-legacy/new ABI tests are part of this milestone, not follow-up default work.
+M2's AArch64 half landed in `17c2dec`, recorded in
+[M2-A64](2026-10-21-TYPED-IR-M2-A64.md). Policy, selected instructions,
+conservative spill placement, direct A64 emission, backend selection, strict
+coverage, cache identity and native bounds now exist.
+
+The integration and shared review repairs, direct x86 selector, strict
+Rosetta oracle, mixed ABI probes and Linux test registration are recorded in
+[M2-X64](2026-10-21-TYPED-IR-M2-X64.md).
+
+Proceed in this order:
+
+1. Complete the native Linux runtime CI leg. Inspect exact results/traps,
+   C and mixed ABI boundaries, real TLS, stack growth, harts and cache
+   transitions. Preserve the explicit distinction from Rosetta substitutions.
+2. Resolve any failures and record the CI commit/run before marking M2 done.
+3. Start M3 liveness/allocation with the existing strict corpus retained.
+   Verify flag lifetimes and call-clobber handling as allocation becomes
+   capable of keeping values across instructions; conservative placement
+   currently avoids those lifetime decisions.
+4. Run paired native measurements against legacy emission and C, including
+   compile time, instructions, frame/stack size, code size and runtime.
+   Conservative M2 emission establishes correctness and is not a speedup.
+5. Wider language/profile coverage and arities above eight remain M4.
 
 ## Alternatives and decision status
 
@@ -461,6 +480,6 @@ defects and a native Bool equality discrepancy. Before native emission:
 
 Implementation evidence: [M1 repairs](2026-10-21-TYPED-IR-M1-REPAIRS.md).
 
-Next implementation: M2's
-selected-instruction constraints and conservative A64 emission. No native
-backend selection or default promotion is implied by closing the repairs.
+The historical M1 repairs above are complete. The current M2 gate is native
+Linux acceptance of the implemented x86 selector. M3 follows that evidence;
+default promotion remains a later acceptance decision.

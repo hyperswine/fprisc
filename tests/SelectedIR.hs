@@ -14,6 +14,7 @@ import Codegen.IR
 import Codegen.Place
 import Codegen.Policy (m2Policy)
 import Codegen.Selected
+import qualified Codegen.Target.X64 as X64
 import Codegen.Target.A64
 import Control.Monad (unless, forM_)
 import Data.List (isInfixOf, isPrefixOf)
@@ -96,6 +97,7 @@ main = do
   refused "two uses fixed to one register" "two uses fix" (checkFn x64 (fn [I idiv {siUses = [OV (v 0) (Fix (r "rax")), OV (v 1) (Fix (r "rax"))]}]))
   refused "a branch to an undefined label" "undefined label" (checkFn x64 (fn [I ((plain "je" [] [OL (Label "nowhere")]) {siControl = CondTo [Label "nowhere"]})]))
   refused "a value never defined" "never defined" (checkFn x64 (fn [I (plain "movq" [gpr 2] [gpr 7])]))
+  refused "a fixed use never defined" "never defined" (checkFn x64 (fn [I (plain "movq" [gpr 2] [OV (v 7) (Fix (r "rax"))])]))
   refused "one value in two classes" "two register classes" (checkFn x64 (fn [I (plain "movq" [gpr 2] [gpr 0]), I (plain "movsd" [OV (v 2) (Any FPR)] [OV (v 1) (Any FPR)])]))
   refused "a label defined twice" "defined twice" (checkFn x64 (fn [ILabel (Label "l"), ILabel (Label "l")]))
   -- conservative placement under the x86-64 constraints
@@ -121,6 +123,10 @@ main = do
   let [callq] = [i | i <- instrs, siOp i == "call"]
   check "the call's arguments are in rdi and rsi, its result in rax" (siUses callq == [OS "fpr_fn_f", OP (r "rdi"), OP (r "rsi")] && siDefs callq == [OP (r "rax")])
   refused "placement runs out of scratch" "no scratch register" (placeInSlots pl {plScratch = const []} (fn [I tiedAdd]))
+  refused "flag-clobbering slot loads" "slot transfer changes flags"
+    (placeInSlots pl {plLoad = \p ref -> (plain "badload" [OP p] [OF ref 0]) {siFlags = FlagsDef}} (fn [I tiedAdd]))
+  refused "flag-clobbering slot stores" "slot transfer changes flags"
+    (placeInSlots pl {plStore = \p ref -> (plain "badstore" [] [OP p, OF ref 0]) {siFlags = FlagsDef}} (fn [I tiedAdd]))
   -- frame layout: the legacy shape, 16-aligned, objects below the link area
   let ly = layout 16 16 [frameObj 0 8 8 (SpillSlot 0) True, frameObj 1 8 8 (SpillSlot 1) True, frameObj 2 8 8 (SpillSlot 2) False]
   check "slots follow the link area downward" (M.toList (lyOffset ly) == [(FrameRef 0, -24), (FrameRef 1, -32), (FrameRef 2, -40)])
@@ -133,6 +139,13 @@ main = do
   check "a cycle without a safepoint is UNBOUNDED" (rSegMax (analyse loopNoTick) == Nothing)
   check "a cycle through a safepoint is bounded by its length" (rSegMax (analyse loopTick) == Just 13 && rCCalls (analyse loopTick) == 1)
   check "a straight function: the entry run and the exit tail" (analyse straight == Report (Just 7) (Just 5) 1)
+  let bypassTick = [TLabel "top", ins 1 (FCond ["top"]) False 0, ins 9 FNext True 1, ins 1 FExit False 0]
+      forkTick = [ins 1 (FCond ["out"]) False 0, ins 5 FNext True 0,
+                  TLabel "out", ins 4 FNext False 0, ins 1 FExit False 0]
+  check "a conditional back-edge before a reset is UNBOUNDED" (rSegMax (analyse bypassTick) == Nothing)
+  check "a conditional exit bypassing a reset retains its exit tail" (analyse forkTick == Report (Just 6) (Just 6) 0)
+  check "an undefined bound target is not silently dropped" (rSegMax (analyse [ins 1 (FJump "missing") False 0]) == Nothing)
+  check "duplicate bound labels are refused" (rSegMax (analyse [TLabel "same", TLabel "same"]) == Nothing)
   -- the AArch64 pipeline end to end on a hand-written IR function:
   -- one (n) = n < 2 ? n : n - 1, with the entry sequence
   let one = Fn "one" ["n"] TVal (BId 0)
@@ -164,6 +177,11 @@ main = do
   let tlv = A64Config MachO HartTlvMachO m2Policy S.empty False
   nft <- either (error . ("FAIL: a64 tlv: " ++)) pure (emitFnA64 tlv one)
   check "Mach-O TLV: the descriptor call saves x0 and x30 around it" ("stp x0, x30, [sp]" `isInfixOf` unlines (nfLines nft) && "_fpr_posix_hart@TLVPPAGE" `isInfixOf` unlines (nfLines nft))
+  nfx <- either (error . ("FAIL: x64: " ++)) pure (X64.emitFnX64 (X64.X64Config m2Policy (S.singleton "one") False) one)
+  let xt = unlines (nfLines nfx)
+  check "direct x64: SysV parameter home and TLS hart" ("movq %rdi, -24(%rbp)" `isInfixOf` xt && "%fs:fpr_posix_hart@tpoff" `isInfixOf` xt)
+  check "direct x64: aligned primitive call" ("subq $8, %rsp\n    call fpr_prim_fn__x2d\n    addq $8, %rsp" `isInfixOf` xt)
+  check "direct x64: frame-based return and native bound" ("leaq -8(%r11), %rsp\n    ret" `isInfixOf` xt && rSegMax (nfReport nfx) /= Nothing)
   -- the frame ceiling is a named refusal, never a silent overflow of the headroom
   let wide = Fn "wide" [] TVal (BId 0)
         [ Block (BId 0) []
@@ -171,6 +189,7 @@ main = do
               ++ [Instr (Just (VId n, TInt)) (OConstInt (fromIntegral n)) | n <- [0 .. 4200]]
               ++ [Instr (Just (VId 4201, TVal)) (OTag (VId 4200))])
             (TRet (VId 4201)) ]
+  refused "x64 frame beyond the ceiling" "ceiling" (X64.emitFnX64 (X64.X64Config m2Policy S.empty False) wide)
   refused "a frame beyond the ceiling" "ceiling" (emitFnA64 cfg wide)
   forM_ [("one", nf)] $ \(n, f) -> check ("no legacy bound label on " ++ n) (not ("# wcet:" `isInfixOf` unlines (nfLines f)))
-  putStrLn "SelectedIR: x86-64 constraint shapes, 13 refusals, conservative placement, frame layout, bound analysis, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), frame ceiling: PASS"
+  putStrLn "SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, frame ceilings: PASS"

@@ -8,8 +8,9 @@ import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Mono (specializeFunctions, qualifyAux)
 import Inline (inlineSmall, inlineWith, vecPeek)
 import ReceiveTurns (receiveTurns)
-import Codegen (Target, codegenRev, emitProgramWith, Emission (..), NativeMode (..), Granularity (..), Strict (..), externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtSelfLoops, tgtRetainedRegisters, tgtCostedRegisters, tgtCompactFrames, tgtTypedIr, tgtPolicy, tgtNative, normArc)
+import Codegen (Target, codegenRev, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtSelfLoops, tgtRetainedRegisters, tgtCostedRegisters, tgtCompactFrames, tgtTypedIr, tgtPolicy, tgtNative, normArc)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..))
+import Codegen.Target.X64 (x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64SelectionRev)
 import Data.Char (isAlphaNum, isAscii, ord)
 import Numeric (showHex)
@@ -952,7 +953,7 @@ compileWithInterface accepted = do
                            else HostedBase,
               polFuel = not (oBuiltin opts),
               polStackCheck = StackCheckEveryEntry }
-          -- the direct backend: AArch64 only; the hart read follows the
+          -- direct backends: the AArch64 hart read follows the
           -- legacy lowering (x28 under fpr build, the TLV cell on a64mac
           -- without --base, local-exec TLS on a64 ELF)
           nativeMode = case envBackend of
@@ -960,9 +961,10 @@ compileWithInterface accepted = do
             Just g -> Just NativeMode
               { nmGranularity = g,
                 nmStrict = envStrict,
+                nmTargetName = if x64 then "x64" else if a64 then "a64" else tgtName (oTarget opts),
                 nmBackend = if a64 && not qapp
-                              then Just (if a64mac then MachO else ELF, if oBase opts then HartX28 else if a64mac then HartTlvMachO else HartTlsElf)
-                              else Nothing }
+                              then Just (DirectA64 (if a64mac then MachO else ELF) (if oBase opts then HartX28 else if a64mac then HartTlvMachO else HartTlsElf))
+                              else if x64 && not qapp then Just DirectX64 else Nothing }
           -- strict mode: a named function (or any) that fell back is an error
           strictCheck what fallbacks = case envStrict of
             StrictOff -> pure ()
@@ -1010,7 +1012,7 @@ compileWithInterface accepted = do
           contractHash = hashAST [t | t@(TSig n _ _) <- tops, M.member n preTab]
           backendTag = case envBackend of
             Nothing -> ""
-            Just g -> "-tirbe" ++ show a64SelectionRev ++ (if g == PerFunction then "mixed" else "") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
+            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else show a64SelectionRev) ++ (if g == PerFunction then "mixed" else "") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
           fnv = foldl (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) (14695981039346656037 :: Word64)
           tag = "g" ++ show codegenRev ++ backendTag ++ (if envCostedRegisters then "-costedregs" else "") ++ (if envCompactFrames then "-compactframes" else "") ++ (if envRetainedRegisters then "-retainedregs" else "") ++ (if envSelfLoops then "-selfloops" else "") ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"

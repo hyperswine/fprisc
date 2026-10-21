@@ -20,6 +20,7 @@ module Codegen.Place (Placement (..), placeInSlots) where
 
 import Codegen.Frame
 import Codegen.Selected
+import Control.Monad (unless)
 import Data.List (nub, (\\))
 import qualified Data.Map.Strict as M
 
@@ -53,6 +54,9 @@ placeInSlots pl fn = do
           stores = [I (plStore pl p (slotOf v)) | (OV v _, Just p) <- zip (siDefs i) defRegs]
           sub os rs = [maybe o OP r | (o, r) <- zip os rs]
           placed = i {siUses = sub (siUses i) useRegs, siDefs = sub (siDefs i) defRegs}
+      unless (all (\(I transfer) -> siFlags transfer == FlagsNone
+                      && siControl transfer == Next && null (siCalls transfer)) (loads ++ stores)) $
+        Left (here ++ "slot transfer changes flags, control flow or calls")
       -- an instruction that reads flags must not have a definition store
       -- or a use load between it and the writer that sets them: loads and
       -- stores are flag-neutral by the Placement contract, so this holds;

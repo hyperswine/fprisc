@@ -26,7 +26,7 @@
 -- generation. Source effects retain evaluation order; HAL MMIO remains
 -- volatile, and slot promotion does not reorder device accesses.
 
-module Codegen (emitProgram, emitProgramWith, Emission (..), NativeMode (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev, normArc, wcetAnnotate, compactFrameSlots) where
+module Codegen (emitProgram, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev, normArc, wcetAnnotate, compactFrameSlots) where
 -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
 -- specialization. All scalar backends support the shared saved-register
 -- convention; x64 uses its XMM shadow bank for s6..s11.
@@ -48,6 +48,7 @@ import Peephole (peepholeFor)
 import Codegen.IR (Fn (..), Block (..))
 import Codegen.Lower (lowerProgram)
 import Codegen.Policy (Policy, m2Policy)
+import qualified Codegen.Target.X64 as X64
 import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat, emitFnA64)
 import Codegen.Bounds (Report (..))
 import Codegen.Verify (verifyProgram)
@@ -113,10 +114,13 @@ data Granularity
 
 data Strict = StrictOff | StrictAll | StrictNames [String] deriving (Eq, Show)
 
+data NativeBackend = DirectA64 ObjectFormat HartAccess | DirectX64 deriving (Show)
+
 data NativeMode = NativeMode
   { nmGranularity :: Granularity,
     nmStrict :: Strict,
-    nmBackend :: Maybe (ObjectFormat, HartAccess) -- Nothing: the switch is on but this target has no direct backend yet
+    nmTargetName :: String,
+    nmBackend :: Maybe NativeBackend -- Nothing: the switch is on but this target has no direct backend yet
   }
   deriving (Show)
 
@@ -483,7 +487,7 @@ foreignEntries tgt =
 
 -- The native backend's selection over a unit's emitted functions: the
 -- typed-IR lowering, the verifier (a failure is a compiler error), then
--- AArch64 selection per function.  A lowering refusal or a selection
+-- direct target selection per function.  A lowering refusal or a selection
 -- refusal (a frame beyond the ceiling) is a reported fallback; an invalid
 -- selection, placement or layout is a compiler error.  Whole-unit
 -- granularity turns one fallback into the unit's.
@@ -492,10 +496,12 @@ nativeSelect tgt nm sigs ext exps emitted =
   case verifyProgram lowered of
     Left err -> error ("typed-ir: " ++ err)
     Right () -> case nmBackend nm of
-      Nothing -> (M.empty, [(n, "no typed-IR native backend for " ++ tgtName tgt ++ " (M2 emits AArch64)") | n <- M.keys emitted], [])
-      Just (fmt, hart) ->
-        let cfg = A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt)
-            results = [(n, emitFnA64 cfg f) | (n, f) <- M.toList lowered]
+      Nothing -> (M.empty, [(n, "no typed-IR native backend for " ++ nmTargetName nm ++ " (M2 emits AArch64 and x86-64)") | n <- M.keys emitted], [])
+      Just backend ->
+        let emit = case backend of
+              DirectA64 fmt hart -> emitFnA64 (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt))
+              DirectX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt))
+            results = [(n, emit f) | (n, f) <- M.toList lowered]
             errors = [n ++ ": " ++ e | (n, Left e) <- results, "compiler error: " `isPrefixOf` e]
             refusals = [(n, e) | (n, Left e) <- results, not ("compiler error: " `isPrefixOf` e)]
             accepted = M.fromList [(n, nf) | (n, Right nf) <- results]
