@@ -6,6 +6,7 @@ L = use "scalarlib".
 TirProbe.call1 : (Int -> Int) -> Int -> Int .
 TirProbe.call2 : (Int -> Int -> Int) -> Int -> Int -> Int .
 TirProbe.segments : Unit -> Int .
+TirProbe.callU : (Unit -> Int) -> Int -> Int .
 main = case Sys.args Unit of
     ["fib", n] -> print "{L.fib (parseInt n)}"
   | ["sum", n, a] -> print "{L.sum (parseInt n) (parseInt a)}"
@@ -27,6 +28,12 @@ main = case Sys.args Unit of
   | ["callWide", n] -> print "{L.callWide (parseInt n)}"
   | ["tailWide", n] -> print "{L.tailWide (parseInt n)}"
   | ["call64", n] -> print "{L.call64 (parseInt n)}"
+  | ["useCaf", n] -> print "{L.useCaf (parseInt n)}"
+  | ["pos", n] -> print "{if L.pos (parseInt n) then 1 else 0}"
+  | ["tick"] -> print "{L.tick Unit}"
+  | ["tickBad", n] -> print "{TirProbe.callU L.tick (parseInt n)}"
+  | ["viaFun", n] -> print "{L.viaFun (parseInt n)}"
+  | ["viaHal", n] -> print "{L.viaHal (parseInt n)}"
   | ["cfib", n] -> print "{TirProbe.call1 L.fib (parseInt n)}"
   | ["csum", n, a] -> print "{TirProbe.call2 L.sum (parseInt n) (parseInt a)}"
   | ["caddovf", a, b] -> print "{TirProbe.call2 L.addovf (parseInt a) (parseInt b)}"

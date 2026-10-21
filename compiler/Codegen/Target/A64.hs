@@ -67,7 +67,7 @@ import Codegen.Target.Common
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 4 -- coverage: bit operations and shifts; arities 9..64 through the spill cells
+a64SelectionRev = 5 -- coverage: bit operations and shifts; arities 9..64; symbols and dead arms
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -116,7 +116,8 @@ data Sel = Sel
     selLabel :: Int,
     selItems :: [Item], -- reversed
     selManaged :: S.Set VReg, -- virtual registers that hold tagged words
-    selNullaries :: S.Set (Int, Int)
+    selNullaries :: S.Set (Int, Int),
+    selStrings :: S.Set String -- the string literals the function names
   }
 
 type Se = StateT Sel (Either String)
@@ -287,16 +288,16 @@ nullarySymbol t v = case (t, v) of
     modify (\s -> s {selNullaries = S.insert (t, v) (selNullaries s)})
     pure (".Lnul_" ++ show t ++ "_" ++ show v)
 
-select :: A64Config -> Fn -> Either String (SFn, S.Set VReg, S.Set (Int, Int))
+select :: A64Config -> Fn -> Either String (SFn, S.Set VReg, S.Set (Int, Int), S.Set String)
 select cfg fn = do
   let maxV = maximum (0 : [n | b <- fnBlocks fn, (VId n, _) <- blockDefs b]) + 1
       tyMap = M.fromList (concatMap blockDefs (fnBlocks fn))
       managed0 = S.fromList [vreg v | (v, TVal) <- M.toList tyMap]
       params = [vreg v | (v, _) <- bParams (entryBlock fn)]
-      st0 = Sel maxV 0 [] managed0 S.empty
+      st0 = Sel maxV 0 [] managed0 S.empty S.empty
   when (length params > arityCeiling) (Left ("arity above " ++ show arityCeiling))
   (_, st) <- runStateT (mapM_ (selectBlock cfg fn tyMap) (fnBlocks fn)) st0
-  pure (SFn (fnName fn) params (reverse (selItems st)), selManaged st, selNullaries st)
+  pure (SFn (fnName fn) params (reverse (selItems st)), selManaged st, selNullaries st, selStrings st)
 
 entryBlock :: Fn -> Block
 entryBlock fn = head [b | b <- fnBlocks fn, bId b == fnEntry fn]
@@ -330,6 +331,7 @@ selectInstr _ _ (Instr d op) = case op of
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
   OConstInt n -> def (\r -> emitI (li r n))
   ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
+  OSymbol sym -> def (\r -> emitI (la r sym)) -- the legacy `la a0, <symbol>`
   OTag v -> def $ \r -> do
     t <- freshV False
     emitI (rri "lsl" t (vreg v) 1)
@@ -524,6 +526,12 @@ selectTerm _ fn b = case bTerm b of
     when (length as > arityCeiling) (refuse ("a tail call with more than " ++ show arityCeiling ++ " arguments"))
     stageCells (map vreg as)
     emitI (tailJump (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as))
+  -- a dead arm: the legacy trap if ever reached (`la a0, <str>; call
+  -- fpr_panic`, which does not return); the function's text ends here
+  TUnreachable msg -> do
+    modify (\s -> s {selStrings = S.insert msg (selStrings s)})
+    emitI ((plain "panic" [] [OS (stringLabel msg)])
+             {siImplicitDefs = [x 0], siClobbers = callerSaved, siControl = Return, siCalls = [Call "fpr_panic" False True]})
   where
     paramsOf bid = [vreg v | blk <- fnBlocks fn, bId blk == bid, (v, _) <- bParams blk]
 
@@ -547,7 +555,7 @@ placement managed =
 
 emitFnA64 :: A64Config -> Fn -> Either String NativeFn
 emitFnA64 cfg fn = do
-  (sel, managed, nulls) <- select cfg fn
+  (sel, managed, nulls, strs) <- select cfg fn
   either (\e -> Left ("compiler error: " ++ e)) Right (checkFn a64RegisterFile sel)
   (placed, objs) <- either (\e -> Left ("compiler error: " ++ e)) Right (placeInSlots (placement managed) sel)
   let ly = layout 16 16 objs
@@ -572,7 +580,7 @@ emitFnA64 cfg fn = do
           ++ [gsym cfg sym ++ ":"]
       visibility = if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl"
       lines' = header ++ concatMap snd rendered ++ [reportLine name report, ""]
-  pure (NativeFn name lines' report (S.toList nulls))
+  pure (NativeFn name lines' report (S.toList nulls) (S.toList strs))
   where
     tokOf (ILabel (Label l)) _ = [TLabel l]
     tokOf (I i) ls =
@@ -648,6 +656,7 @@ renderItem cfg ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
       ("cbnz", [], [r, OL l]) -> ["cbnz " ++ reg r ++ ", " ++ lbl l]
       ("b", [], [OL l]) -> ["b " ++ lbl l]
       ("bl", _, OS s : _) -> ["bl " ++ gsym cfg s]
+      ("panic", [], [OS s]) -> address "x0" s ++ ["bl " ++ gsym cfg "fpr_panic"]
       ("ret", [], [_]) -> epilogue ++ ["ret"]
       ("tailjump", [], OS s : _) -> epilogue ++ ["b " ++ gsym cfg s]
       ("store.spill", [], [s, OI j]) -> hartRead ++ ldst "str" "stur" (reg s) "x9" (8 * (1 + j))

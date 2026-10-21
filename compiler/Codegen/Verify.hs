@@ -28,6 +28,9 @@ opSignature tyOf = \case
   ONot v -> expect v TPred >> pure (Just TPred)
   OIsInt v -> expect v TVal >> pure (Just TPred)
   OTagTest _ _ v -> expect v TVal >> pure (Just TPred)
+  OSymbol sym -> do
+    when (null sym) (Left "an empty symbol")
+    pure (Just TVal)
   OArith _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OBit _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OShift _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
@@ -87,6 +90,7 @@ verifyFn program fn = mapLeft (("verify " ++ fnName fn ++ ": ") ++) $ do
           t' <- tyOf a
           unless (t' == t) (Left (here ++ "tail call argument " ++ show a ++ " is " ++ show t' ++ ", " ++ show t ++ " needed"))
       TBr _ _ -> pure ()
+      TUnreachable msg -> when (null msg) (Left (here ++ "an unreachable terminator without a reason"))
     forM_ (termSuccs (bTerm b)) $ \(target, args) -> do
       tb <- maybe (Left (here ++ "jump to a missing block " ++ show target)) Right (M.lookup target byId)
       when (length args /= length (bParams tb)) (Left (here ++ "jump to " ++ show target ++ " passes " ++ show (length args) ++ " arguments for " ++ show (length (bParams tb)) ++ " parameters"))

@@ -65,7 +65,8 @@ if args.portable_only or not NATIVE_HOST:
 
 MOD, LIB, PROBE = 'tests/typed_ir/scalar_mod.fpr', 'tests/typed_ir/scalarlib.fpr', 'tests/typed_ir/tir_probe.c'
 LIB_FNS = ['fib', 'sum', 'addovf', 'mulovf', 'divz', 'even', 'odd', 'clamp', 'boolEq', 'boolNe', 'boolResult', 'cbSum', 'cbTail', 'deep', 'swapLoop',
-           'shl', 'shr', 'bits', 'mix', 'rot9', 'callWide', 'tailWide', 'rot64', 'call64']
+           'shl', 'shr', 'bits', 'mix', 'rot9', 'callWide', 'tailWide', 'rot64', 'call64',
+           'answer', 'useCaf', 'pos', 'tick', 'viaFun', 'viaHal']
 INT_MIN, INT_MAX = -(1 << 62), (1 << 62) - 1
 def overflow(a, op, b):
     return ('trap', f'Int overflow: {a} {op} {b} does not fit an Int ({INT_MIN}..{INT_MAX}); I64 is the type that wraps')
@@ -146,6 +147,12 @@ EXPECTED = {
     ('call64', (0,)): ('value', str(rot(0, range(1, 64)) + 1)),
     ('call64', (7,)): ('value', str(rot(7, range(1, 64)) + 1)),
     ('call64', (200000,)): ('value', str(rot(200000, range(1, 64)) + 1)),
+    ('useCaf', (8,)): ('value', '50'),
+    ('pos', (3,)): ('value', '1'),
+    ('pos', (-3,)): ('value', '1' if False else '0'),
+    ('tick', ()): ('value', '7'),
+    ('viaFun', (20,)): ('value', '6765'),
+    ('viaHal', (20,)): ('value', '41'),
     ('cfib', (22,)): ('value', '17711'),
     ('csum', (100, 5)): ('value', '5055'),
     ('caddovf', (INT_MAX, 1)): overflow(INT_MAX, '+', 1),
@@ -183,6 +190,15 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     for k, want in EXPECTED.items():
         got = outcome(native_exe, *k)
         assert got == want == legacy[k], (k, got, want, legacy[k])
+    # the string object of the dead arm's reason is in the unit, once
+    unit_s = next(Path(ENV['XDG_CACHE_HOME']).glob('fpr/build/units/u-*tirbe*.s'))
+    unit_t = unit_s.read_text()
+    assert unit_t.count('Ltirstr_') >= 2 and unit_t.count('.long 9000') >= 1, unit_s
+    # the dead arm reached (C hands tick an Int): the native trap is the
+    # legacy trap, text for text
+    dead_legacy, dead_native = outcome(legacy_exe, 'tickBad', [5]), outcome(native_exe, 'tickBad', [5])
+    assert dead_legacy == ('trap', 'case: no matching pattern; arms were [PCon "Unit" []]'), dead_legacy
+    assert dead_native == dead_legacy, (dead_native, dead_legacy)
     # deep recursion across stack segments: the same answer, and the
     # harness saw the native frames in more than one segment
     for depth in (100, 100000):

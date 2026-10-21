@@ -17,8 +17,10 @@ import Control.Monad.Except
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 
--- a runtime value: a tagged Int or an object
-data RV = RInt Integer | RObj Int Int [RV] deriving (Eq, Ord, Show)
+-- a runtime value: a tagged Int, an object, or an immortal object known
+-- only by its symbol (a function value, a primitive's object, a HAL
+-- contract): opaque, equal only to itself
+data RV = RInt Integer | RObj Int Int [RV] | RSym String deriving (Eq, Ord, Show)
 
 rvInt :: Integer -> RV
 rvInt = RInt
@@ -78,6 +80,7 @@ callFn program name args = do
           TTailCall c as -> do
             when (isForeign c) (stuck ("a foreign tail call to " ++ calleeName c ++ ": the evaluator models no C"))
             mapM (look env) as >>= callFn program (calleeName c)
+          TUnreachable msg -> trap msg
       instr env (Instr d op) = do
         r <- opValue env op
         case (d, r) of
@@ -102,6 +105,8 @@ callFn program name args = do
         OTagTest t c v -> val env v >>= \case
           RObj t' c' _ -> pure (Just (VPred (t == t' && c == c')))
           RInt _ -> pure (Just (VPred False))
+          RSym s -> stuck ("a tag test on the immortal object " ++ s ++ ", whose typeid the evaluator does not model")
+        OSymbol sym -> pure (Just (VVal (RSym sym)))
         OArith o a b -> do
           x <- int env a
           y <- int env b

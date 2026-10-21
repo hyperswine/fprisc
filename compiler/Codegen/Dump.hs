@@ -34,6 +34,7 @@ dumpFn fn =
       ONot v -> "not " ++ value v
       OIsInt v -> "isint " ++ value v
       OTagTest t c v -> "tagtest " ++ show t ++ " " ++ show c ++ " " ++ value v
+      OSymbol sym -> "symbol " ++ sym
       OArith o a b -> "arith " ++ arithSymbol o ++ " " ++ value a ++ ", " ++ value b
       OBit o a b -> "bit " ++ bitName o ++ " " ++ value a ++ ", " ++ value b
       OShift o a b -> "shift " ++ shiftName o ++ " " ++ value a ++ ", " ++ value b
@@ -47,6 +48,7 @@ dumpFn fn =
       TBr b as -> "br " ++ block b ++ args as
       TCondBr c t as e bs -> "condbr " ++ value c ++ " -> " ++ block t ++ args as ++ " | " ++ block e ++ args bs
       TTailCall c as -> "tailcall " ++ callee c ++ args as
+      TUnreachable msg -> "unreachable " ++ show msg
     callee c = calleeName c ++ (case calleeKind c of Imported -> "@import"; Foreign sym -> "@foreign:" ++ sym; Local -> "")
       ++ " :: " ++ intercalate " " (map ty (calleeParams c)) ++ " -> " ++ ty (calleeResult c)
     args as = "(" ++ intercalate ", " (map value as) ++ ")"

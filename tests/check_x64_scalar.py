@@ -25,6 +25,11 @@ boolNe : unsafe Int -> Bool -> Bool .
 boolNe n b = if n == 0 then b != (n < 1) else boolNe (n - 1) b.
 boolResult : unsafe Int -> Int -> Int .
 boolResult n flag = (if boolEq n (flag > 0) then 10 else 0) + (if boolNe n (flag > 0) then 1 else 0).
+answer = 40 + 2.
+useCaf : Int -> Int .
+useCaf n = n + answer.
+tick : Unit -> Int .
+tick u = case u of Unit -> 7.
 '''
     for width in (6, 7, 8, 63):
         names = [f'a{i}' for i in range(width)]
@@ -61,9 +66,9 @@ def main():
                                   FPR_COMPACT_FRAMES='1', FPR_SELF_LOOPS='1',
                                   FPR_NO_SCALAR_WORKERS='0')),
                  ('typed-ir', dict(FPR_TYPED_IR_BACKEND='mixed',
-                                   FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8')),
+                                   FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8,answer,useCaf,tick')),
                  ('typed-ir-workers', dict(FPR_TYPED_IR_BACKEND='mixed', FPR_NO_SCALAR_WORKERS='0',
-                                           FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8')),
+                                           FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8,answer,useCaf,tick')),
                  ('baseline-repeat', {})]
         original = None
         for name, settings in modes:
@@ -76,6 +81,18 @@ def main():
             selected = '\n'.join(body for title, body in bodies if not title.startswith('main '))
             assert 'fpr_fn_rotate63:' in selected and 'idivq' in selected
             native = 'FPR_TYPED_IR_BACKEND' in mode
+            # the string objects the bodies name (tick's dead-arm reason): the
+            # legacy unit's .Lstr objects, and in native mode the typed-IR
+            # backend's .Ltirstr objects, which end the unit in their own
+            # read-only section, one per distinct text
+            strings = re.findall(r'(?ms)^    \.balign 8\n(\.L(?:tir)?str[^:\n]*):\n    \.long 9000\n.*?(?=^$)', text)
+            objects = re.findall(r'(?ms)^    \.balign 8\n\.L(?:tir)?str[^:\n]*:\n    \.long 9000\n.*?(?=^$)', text)
+            assert objects, 'no string object in the unit'
+            if native:
+                assert any(l.startswith('.Ltirstr_') for l in strings), strings
+                assert sum(l.startswith('.Ltirstr_') for l in strings) == 1, strings
+            # appended to every linked or assembled text below, in the format's syntax
+            data = lambda on_mac: '\n    ' + ('.const' if on_mac else '.section .rodata') + '\n' + '\n'.join(objects) + '\n'
             if native:
                 native_names = {title.split()[0] for title, _ in bodies if 'typed-ir x64' in title}
                 required = set(mode['FPR_TYPED_IR_STRICT'].split(','))
@@ -103,9 +120,9 @@ def main():
                 assert selected == original, 'off/on/off emission changed'
             if native and shutil.which('clang'):
                 raw = tmp / 'real-tls.s'
-                raw.write_text('.text\n' + selected)
+                raw.write_text('.text\n' + selected + data(False))
                 run(['clang', '-target', 'x86_64-unknown-linux-gnu', '-c', raw, '-o', tmp / 'real-tls.o'], mode)
-            assembly.write_text(adapt('.text\n' + selected, mac))
+            assembly.write_text(adapt('.text\n' + selected + data(mac), mac))
             shim = tmp / 'abi.s'
             shim.write_text(adapt((ROOT / 'tests/base/x64_scalar_abi.s').read_text(), mac))
             exe = tmp / 'oracle'
@@ -120,7 +137,7 @@ def main():
                                       if not title.startswith('main ') and title.split()[0] not in legacy_names)
                     legacy_asm = tmp / 'legacy-boundary.s'
                     legacy_asm.write_text(adapt('.text\n' + '\n'.join(baseline_bodies[n] for n in sorted(legacy_names)), mac))
-                    assembly.write_text(adapt('.text\n' + mixed, mac))
+                    assembly.write_text(adapt('.text\n' + mixed + data(mac), mac))
                     link([assembly, legacy_asm, shim, ROOT / 'tests/base/x64_scalar_oracle.c'], exe, mac, mode)
                     print(f'{label} typed-ir/{boundary}: ' + run([*runner, exe], mode).strip(), flush=True)
         # (a 65th parameter never reaches the generator: the front end bundles

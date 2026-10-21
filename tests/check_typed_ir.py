@@ -71,7 +71,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-ir-') as d:
         for fn in ('fib', 'sum', 'addovf', 'divz', 'even', 'odd', 'clamp', 'boolEq', 'boolNe', 'boolResult'):
             assert fn in lowered, (target, fn, fallbacks.get(fn), lines[:3])
         assert '$worker.scalar.fib' in lowered and '$worker.scalar.sum' in lowered, (target, sorted(lowered))
-        assert 'main' in fallbacks and 'primitive' in fallbacks['main'], (target, fallbacks.get('main'))
+        # main matches Sys.args' list (a field projection) and prints a string: M4 forms
+        assert 'main' in fallbacks and any(k in fallbacks['main'] for k in ('field projection', 'string literal', 'primitive')), (target, fallbacks.get('main'))
         coverage = next(l for l in lines if l.startswith('typed-ir: coverage'))
         dumps[target] = '\n'.join(l for l in lines if l.startswith('typed-ir: | '))
         assert dumps[target], target

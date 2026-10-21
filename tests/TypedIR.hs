@@ -7,7 +7,7 @@
 import Codegen.Dump (dumpFn)
 import Codegen.Eval
 import Codegen.IR
-import Codegen.Lower (lowerFn, lowerProgram)
+import Codegen.Lower (lowerFn, lowerProgram, Prim (..))
 import Codegen.Policy (m2Policy)
 import Codegen.Verify (verifyFn, verifyProgram)
 import Control.Monad (unless)
@@ -109,16 +109,20 @@ main = do
     (verifyFn M.empty (editBlock (BId 2) (\b -> b {bInstrs = [Instr (Just (VId 4, TInt)) (OConstInt 1), Instr (Just (VId 5, TPred)) (OBit BAnd (VId 1) (VId 4)), Instr (Just (VId 6, TVal)) (OBoolOf (VId 5))]})))
   expectRefusal "arity above the ceiling" "above the ceiling"
     (verifyFn M.empty (let ps = [(VId (100 + i), TVal) | i <- [0 .. 64]] in good {fnBlocks = [Block (BId 0) ps [Instr Nothing OStackCheck, Instr Nothing OSafepoint] (TRet (VId 100))]}))
+  expectRefusal "an unreachable terminator without a reason" "without a reason"
+    (verifyFn M.empty (editBlock (BId 1) (\b -> b {bTerm = TUnreachable ""})))
+  expectRefusal "an empty symbol" "empty symbol"
+    (verifyFn M.empty (editBlock (BId 1) (\b -> b {bInstrs = [Instr (Just (VId 8, TVal)) (OSymbol "")], bTerm = TRet (VId 8)})))
   expectRefusal "const outside the Int range" "outside the Int range"
     (verifyFn M.empty (editBlock (BId 2) (\b -> b {bInstrs = [Instr (Just (VId 4, TInt)) (OConstInt (2 ^ (62 :: Int))), Instr (Just (VId 5, TInt)) (OArith Sub (VId 1) (VId 4)), Instr (Just (VId 6, TVal)) (OTag (VId 5))]})))
-  putStrLn "Typed IR verifier: a well-formed function accepted, 22 malformations refused by name PASS"
+  putStrLn "Typed IR verifier: a well-formed function accepted, 24 malformations refused by name PASS"
   -- the lowering of the generator's shapes
   let prog = M.fromList [("fib", fibCore), ("sum", sumCore), ("addovf", addCore)]
-      (lowered, failures) = lowerProgram m2Policy M.empty prog M.empty M.empty
+      (lowered, failures) = lowerProgram m2Policy M.empty prog prog M.empty M.empty
   check "every fixture function lowers" (null failures && M.size lowered == 3)
   check "the lowered program verifies" (verifyProgram lowered == Right ())
   let dumps = M.map dumpFn lowered
-  check "a dump is deterministic" (M.map dumpFn (fst (lowerProgram m2Policy M.empty prog M.empty M.empty)) == dumps)
+  check "a dump is deterministic" (M.map dumpFn (fst (lowerProgram m2Policy M.empty prog prog M.empty M.empty)) == dumps)
   check "fib's self call is a call, its tail is a return" ("call fib" `isInfixOf` (dumps M.! "fib") && "br b0" `notElem` lines (dumps M.! "fib"))
   check "sum's self tail call is the loop through the entry" ("  br b0(" `isInfixOf` (dumps M.! "sum"))
   check "every function enters through its stack check and safepoint" (all (\d -> "  stackcheck\n  safepoint\n" `isInfixOf` d) (M.elems dumps))
@@ -138,10 +142,10 @@ main = do
   -- the bitwise primitives and the shifts (increment 1 of
   -- docs/2026-10-21-TYPED-IR-COVERAGE.md): lowered only as declared HAL
   -- names of arity two; the evaluator states bits.c's semantics
-  let hal = M.fromList [(n, (2, "fpr_g_" ++ n ++ "_call2")) | n <- ["band", "bor", "bxor", "BITSHIFTL", "BITSHIFTR"]]
+  let hal = M.fromList [(n, Prim 2 (Just ("fpr_g_" ++ n ++ "_call2")) (Just ("fpr_g_" ++ n))) | n <- ["band", "bor", "bxor", "BITSHIFTL", "BITSHIFTR"]]
       bitProg = M.fromList [("shl", (["a", "n"], app "BITSHIFTL" [var "a", var "n"])), ("shr", (["a", "n"], app "BITSHIFTR" [var "a", var "n"])),
                             ("andf", (["a", "b"], app "band" [var "a", var "b"])), ("orf", (["a", "b"], app "bor" [var "a", var "b"])), ("xorf", (["a", "b"], app "bxor" [var "a", var "b"]))]
-      (bitIr, bitFail) = lowerProgram m2Policy M.empty bitProg M.empty hal
+      (bitIr, bitFail) = lowerProgram m2Policy M.empty bitProg bitProg M.empty hal
       bitEval f a b = ocResult (evalProgram bitIr f [RInt a, RInt b])
   check "the bit operations and shifts lower and verify" (null bitFail && M.size bitIr == 5 && verifyProgram bitIr == Right ())
   check "the dump names the operations" ("shift BITSHIFTL" `isInfixOf` dumpFn (bitIr M.! "shl") && "bit bxor" `isInfixOf` dumpFn (bitIr M.! "xorf"))
@@ -150,7 +154,7 @@ main = do
        && bitEval "andf" (-1) 77 == Right (RInt 77) && bitEval "xorf" (-1) 5 == Right (RInt (-6)))
   -- a program function of the primitive's name shadows it, as in the legacy generator
   check "a function named band shadows the primitive"
-    (case lowerProgram m2Policy M.empty (M.singleton "band" (["a", "b"], app "band" [var "a", var "b"])) M.empty hal of
+    (case lowerProgram m2Policy M.empty (M.singleton "band" (["a", "b"], app "band" [var "a", var "b"])) (M.singleton "band" (["a", "b"], app "band" [var "a", var "b"])) M.empty hal of
        (ir, []) -> "  br b0(" `isInfixOf` dumpFn (ir M.! "band")
        _ -> False)
   check "a left shift keeps the low 63 bits" (bitEval "shl" 1 3 == Right (RInt 8) && bitEval "shl" 1 62 == Right (RInt intMin) && bitEval "shl" 3 63 == Right (RInt 0) && bitEval "shl" (-1) 1 == Right (RInt (-2)))
@@ -162,10 +166,51 @@ main = do
     [EvCall "shl" _, EvStackCheck "shl", EvSafepoint "shl", EvTrap "BITSHIFTL: shift must be 0..63"] -> True
     _ -> False)
   check "an undeclared band is still the primitive, refused by name"
-    (case lowerProgram m2Policy M.empty (M.singleton "andf" (["a", "b"], app "band" [var "a", var "b"])) M.empty M.empty of
+    (case lowerProgram m2Policy M.empty (M.singleton "andf" (["a", "b"], app "band" [var "a", var "b"])) (M.singleton "andf" (["a", "b"], app "band" [var "a", var "b"])) M.empty M.empty of
        (_, [(_, r)]) -> "primitive `band`" `isInfixOf` r
        _ -> False)
   putStrLn "Typed IR bit operations and shifts: lowered as declared HAL names, bits.c semantics, exact trap text and order PASS"
+  -- increment 3: dead arms, nullary definitions, function and HAL values
+  let deadTail = (["n"], CIf (app "==" [var "n", CInt 0]) (CInt 10) (CIf (app "==" [var "n", CInt 1]) (CInt 11) (CErr "case: no matching pattern")))
+      deadValue = (["n"], app "+" [CIf (app "==" [var "n", CInt 0]) (CInt 10) (CLet "u" (CInt 0) (CErr "no shape matched")), CInt 1])
+      bothDead = (["n"], app "+" [CIf (app "==" [var "n", CInt 0]) (CErr "a") (CErr "b"), CInt 1])
+      caf = ([], app "+" [CInt 40, CInt 2])
+      useCaf = (["n"], app "+" [var "n", var "answer"])
+      funValue = (["n"], app "TirProbe.call1" [var "useCaf", var "n"])
+      halValue = (["n"], app "TirProbe.call1" [var "TirProbe.cb", var "n"])
+      primValue = (["n"], app "TirProbe.call1" [var "str", var "n"])
+      workerValue = (["n"], app "TirProbe.call1" [var "$worker.scalar.w", var "n"])
+      ext3 = M.fromList [("Imp.caf", 0), ("Imp.fun", 2)]
+      impCaf = (["n"], app "+" [var "n", var "Imp.caf"])
+      impFun = (["n"], app "TirProbe.call1" [var "Imp.fun", var "n"])
+      prims3 = M.fromList [("TirProbe.call1", Prim 2 (Just "fpr_g_TirProbe_x2ecall1_call2") (Just "fpr_g_TirProbe_x2ecall1")),
+                           ("TirProbe.cb", Prim 1 (Just "fpr_g_TirProbe_x2ecb_call1") (Just "fpr_g_TirProbe_x2ecb")),
+                           ("str", Prim 1 (Just "fpr_prim_fn_str") (Just "fpr_prim_obj_str"))]
+      prog3 = M.fromList [("deadTail", deadTail), ("deadValue", deadValue), ("answer", caf), ("useCaf", useCaf), ("funValue", funValue),
+                          ("halValue", halValue), ("primValue", primValue), ("impCaf", impCaf), ("impFun", impFun), ("$worker.scalar.w", (["a"], var "a"))]
+      (ir3, fail3) = lowerProgram m2Policy M.empty prog3 (M.delete "$worker.scalar.w" prog3) ext3 prims3
+      dump3 n = dumpFn (ir3 M.! n)
+  check ("the increment-3 shapes lower and verify: " ++ show fail3 ++ show (verifyProgram ir3)) (null fail3 && M.size ir3 == 9 && verifyProgram ir3 == Right ())
+  check "a dead arm in tail position is the unreachable terminator" ("unreachable \"case: no matching pattern\"" `isInfixOf` dump3 "deadTail")
+  check "a dead arm in value position closes its block; the live arm needs no join" ("unreachable \"no shape matched\"" `isInfixOf` dump3 "deadValue" && not ("br b" `isInfixOf` dump3 "deadValue"))
+  check "the live arms answer" (ocResult (evalProgram ir3 "deadTail" [RInt 1]) == Right (RInt 11) && ocResult (evalProgram ir3 "deadValue" [RInt 0]) == Right (RInt 11))
+  check "a reached dead arm traps with its text, after the entry events"
+    (ocResult (evalProgram ir3 "deadTail" [RInt 2]) == Left (Trap "case: no matching pattern")
+       && ocResult (evalProgram ir3 "deadValue" [RInt 5]) == Left (Trap "no shape matched")
+       && case ocEvents (evalProgram ir3 "deadTail" [RInt 2]) of [EvCall _ _, EvStackCheck _, EvSafepoint _, EvTrap "case: no matching pattern"] -> True; _ -> False)
+  check "both arms dead is refused by name" (case lowerProgram m2Policy M.empty (M.singleton "f" bothDead) (M.singleton "f" bothDead) M.empty M.empty of (_, [(_, r)]) -> "both arms" `isInfixOf` r; _ -> False)
+  check "a nullary definition is evaluated by a call" ("call answer ::  -> val()" `isInfixOf` dump3 "useCaf" && ocResult (evalProgram ir3 "useCaf" [RInt 8]) == Right (RInt 50))
+  check "an imported nullary is an imported call" ("call Imp.caf@import ::  -> val()" `isInfixOf` dump3 "impCaf")
+  check "a function value is its static PAP" ("symbol fpr_obj_useCaf" `isInfixOf` dump3 "funValue" && "symbol fpr_obj_Imp_x2efun" `isInfixOf` dump3 "impFun")
+  check "a HAL value and a core primitive's value are their objects" ("symbol fpr_g_TirProbe_x2ecb" `isInfixOf` dump3 "halValue" && "symbol fpr_prim_obj_str" `isInfixOf` dump3 "primValue")
+  check "a private worker has no function value" (case lowerProgram m2Policy M.empty (M.insert "wv" workerValue prog3) (M.singleton "wv" workerValue) M.empty prims3 of (_, [(_, r)]) -> "private worker" `isInfixOf` r; _ -> False)
+  check "a name with no object is refused by name" (case lowerProgram m2Policy M.empty (M.singleton "f" (["n"], var "Mystery")) (M.singleton "f" (["n"], var "Mystery")) M.empty M.empty of (_, [(_, r)]) -> "HAL value `Mystery`" `isInfixOf` r; _ -> False)
+  -- lookups see the whole program, lowering covers the emitted part: a
+  -- nullary constructor or a callee elided from this unit is still known
+  let whole = M.fromList [("Nil", ([], CMk 7 0 [])), ("helper", (["a"], app "+" [var "a", CInt 1])), ("f", (["n"], CIf (app "==" [var "n", CInt 0]) (var "Nil") (app "helper" [var "n"])))]
+      (irE, failE) = lowerProgram m2Policy M.empty whole (M.singleton "f" (whole M.! "f")) M.empty M.empty
+  check "only the emitted function is lowered, with the elided definitions known" (null failE && M.keys irE == ["f"] && "nullary 7 0" `isInfixOf` dumpFn (irE M.! "f") && "call helper ::" `isInfixOf` dumpFn (irE M.! "f"))
+  putStrLn "Typed IR dead arms, nullary definitions, function/HAL/primitive values, whole-program lookups: lowered, verified, evaluated with the legacy trap text PASS"
   -- refusals name the form
   let refused what = case lowerFn m2Policy M.empty (M.insert "f" what prog) M.empty M.empty "f" what of
         Left r -> r
@@ -188,7 +233,7 @@ main = do
         (app "boolEq" [app "-" [var "n",CInt 1],var "b"]))
   mapM_ (\def -> do
     let (p,_,sigs) = workerizeWithSignatures False True (M.singleton "mixed" def)
-        (ir,declined) = lowerProgram m2Policy sigs p M.empty M.empty
+        (ir,declined) = lowerProgram m2Policy sigs p p M.empty M.empty
     check "producer preserves mixed parameter order" (M.lookup "$worker.scalar.mixed" sigs == Just ([KI,KB],KI))
     check "mixed worker and wrapper both lower" (null declined && M.size ir == 2)
     check "mixed worker program verifies" (verifyProgram ir == Right ())
@@ -196,8 +241,8 @@ main = do
     check "mixed worker false" (ocResult (evalProgram ir "mixed" [RInt 2,rvBool False]) == Right (RInt 2)))
     [mixed "z" "a", mixed "a" "z"]
   let (bp,_,bsigs) = workerizeWithSignatures False True (M.singleton "boolEq" boolEq)
-      (bir,bfail) = lowerProgram m2Policy bsigs bp M.empty M.empty
-      (_,missing) = lowerProgram m2Policy M.empty bp M.empty M.empty
+      (bir,bfail) = lowerProgram m2Policy bsigs bp bp M.empty M.empty
+      (_,missing) = lowerProgram m2Policy M.empty bp bp M.empty M.empty
   check "Bool equality signature from producer" (M.lookup "$worker.scalar.boolEq" bsigs == Just ([KI,KB],KB))
   check "Bool equality and alias lower and verify" (null bfail && verifyProgram bir == Right ())
   mapM_ (\b -> check "Bool equality agrees with independent expectation"
@@ -205,7 +250,7 @@ main = do
   check "missing worker metadata refuses worker and wrapper"
     (length missing == 2 && all (isInfixOf "representation metadata" . snd) missing)
   let wrong = M.insert "$worker.scalar.boolEq" ([KI],KB) bsigs
-      badArity = snd (lowerProgram m2Policy wrong bp M.empty M.empty)
+      badArity = snd (lowerProgram m2Policy wrong bp bp M.empty M.empty)
   check "wrong metadata arity refuses worker and wrapper"
     (length badArity == 2 && all (isInfixOf "wrong arity" . snd) badArity)
   putStrLn "Typed IR worker metadata: ordered mixed parameters, renaming, Bool equality/aliases, missing and malformed signatures PASS"

@@ -46,10 +46,11 @@ import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, isJust)
 import Peephole (peepholeFor)
 import Codegen.IR (Fn (..), Block (..))
-import Codegen.Lower (lowerProgram)
+import Codegen.Lower (lowerProgram, Prim (..))
 import Codegen.Policy (Policy, m2Policy)
 import qualified Codegen.Target.X64 as X64
-import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat, emitFnA64)
+import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat (..), emitFnA64)
+import Codegen.Target.Common (rodataDirective, stringLabel, stringObject)
 import Codegen.Bounds (Report (..))
 import Codegen.Verify (verifyProgram)
 import Codegen.Dump (dumpFn)
@@ -141,19 +142,19 @@ rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False 
 -- do not, their dumps (`dump`) and the reference evaluator's answer for
 -- `eval:<fn>:<int>...`.  A verifier failure is a compiler error, never a
 -- fallback.  Nothing here changes what is emitted.
-typedIrNotes :: Maybe String -> Policy -> ScalarSignatures -> M.Map String Int -> M.Map String (Int, String) -> Prog -> [String]
-typedIrNotes Nothing _ _ _ _ _ = []
-typedIrNotes (Just mode) policy sigs ext hal prog =
+typedIrNotes :: Maybe String -> Policy -> ScalarSignatures -> M.Map String Int -> M.Map String Prim -> Prog -> Prog -> [String]
+typedIrNotes Nothing _ _ _ _ _ _ = []
+typedIrNotes (Just mode) policy sigs ext hal prog emitted =
   case verifyProgram lowered of
     Left err -> error ("typed-ir: " ++ err)
     Right () ->
-      ["typed-ir: coverage " ++ show (M.size lowered) ++ "/" ++ show (M.size prog) ++ " functions"]
+      ["typed-ir: coverage " ++ show (M.size lowered) ++ "/" ++ show (M.size emitted) ++ " functions"]
         ++ ["typed-ir: " ++ n ++ " lowered (" ++ show (length (fnBlocks f)) ++ " blocks, " ++ show (sum (map (length . bInstrs) (fnBlocks f))) ++ " instructions)" | (n, f) <- M.toList lowered]
         ++ ["typed-ir: " ++ n ++ " fallback: " ++ r | (n, r) <- failures]
         ++ (if "dump" `elem` ws then concatMap (map ("typed-ir: | " ++) . lines . dumpFn) (M.elems lowered) else [])
         ++ concatMap evalNote ws
   where
-    (lowered, failures) = lowerProgram policy sigs prog ext hal
+    (lowered, failures) = lowerProgram policy sigs prog emitted ext hal
     ws = words mode
     evalNote w = case splitOn ':' w of
       ("eval" : fn : args) | Just ns <- mapM readMaybe args ->
@@ -479,11 +480,13 @@ floatLabel width bits = do
 -- at any arity, a declared HAL/foreign primitive `fpr_g_<name>_call<n>`
 -- up to six arguments (beyond that the legacy path stages the apply spine,
 -- and the lowering refuses the call).  Core primitives win, as in `known`.
-foreignEntries :: Target -> M.Map String (Int, String)
+-- The object a name stands for as a value is the legacy `base` case's:
+-- fpr_prim_obj_ for a core primitive, fpr_g_ for a declared HAL name.
+foreignEntries :: Target -> M.Map String Prim
 foreignEntries tgt =
   M.union
-    (M.fromList [(n, (a, "fpr_prim_fn_" ++ mangle n)) | (n, a) <- primArities])
-    (M.fromList [(n, (a, "fpr_g_" ++ mangle n ++ "_call" ++ show a)) | (n, a) <- M.toList (tgtHal tgt), a <= 6])
+    (M.fromList [(n, Prim a (Just ("fpr_prim_fn_" ++ mangle n)) (if n `elem` corePrims then Just ("fpr_prim_obj_" ++ mangle n) else Nothing)) | (n, a) <- primArities])
+    (M.fromList [(n, Prim a (if a <= 6 then Just ("fpr_g_" ++ mangle n ++ "_call" ++ show a) else Nothing) (Just ("fpr_g_" ++ mangle n))) | (n, a) <- M.toList (tgtHal tgt)])
 
 -- The native backend's selection over a unit's emitted functions: the
 -- typed-IR lowering, the verifier (a failure is a compiler error), then
@@ -491,8 +494,8 @@ foreignEntries tgt =
 -- refusal (a frame beyond the ceiling) is a reported fallback; an invalid
 -- selection, placement or layout is a compiler error.  Whole-unit
 -- granularity turns one fallback into the unit's.
-nativeSelect :: Target -> NativeMode -> ScalarSignatures -> M.Map String Int -> S.Set String -> Prog -> (M.Map String NativeFn, [(String, String)], [String])
-nativeSelect tgt nm sigs ext exps emitted =
+nativeSelect :: Target -> NativeMode -> ScalarSignatures -> M.Map String Int -> S.Set String -> Prog -> Prog -> (M.Map String NativeFn, [(String, String)], [String])
+nativeSelect tgt nm sigs ext exps prog emitted =
   case verifyProgram lowered of
     Left err -> error ("typed-ir: " ++ err)
     Right () -> case nmBackend nm of
@@ -534,7 +537,7 @@ nativeSelect tgt nm sigs ext exps emitted =
                               : ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- reasons]
                           )
   where
-    (lowered, failures) = lowerProgram (tgtPolicy tgt) sigs emitted ext (foreignEntries tgt)
+    (lowered, failures) = lowerProgram (tgtPolicy tgt) sigs prog emitted ext (foreignEntries tgt)
 
 emitProgram :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> S.Set String -> Prog -> (String, [String])
 emitProgram tgt rvv spec exports ext exps elide prog0 =
@@ -552,15 +555,24 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
       emitted = if S.null elide then prog else M.filterWithKey (\n _ -> S.notMember n elide) prog
       (nativeFns, nativeFallbacks, nativeNotes) = case tgtNative tgt of
         Nothing -> (M.empty, [], [])
-        Just nm | tgtW tgt == 8 -> nativeSelect tgt nm workerSigs ext exps emitted
+        Just nm | tgtW tgt == 8 -> nativeSelect tgt nm workerSigs ext exps prog emitted
                 | otherwise -> (M.empty, [(n, "no typed-IR native backend for " ++ tgtName tgt) | n <- M.keys emitted], [])
       (body, st) = runState (top prog emitted nativeFns) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty)
+      -- the native text in the target's own syntax, then the string
+      -- objects it names (one per distinct text; the unit-local nullary
+      -- objects go through cgNulls into the legacy rodata)
+      nativeStrings = M.elems (M.fromList [(stringLabel str, str) | nf <- M.elems nativeFns, str <- nfStrings nf])
+      nativeFormat = case tgtNative tgt >>= nmBackend of
+        Just (DirectA64 fmt _) -> fmt
+        _ -> ELF
    in Emission
         { emAsm = unlines (wnotes ++ rnotes ++ body),
-          emNotes = reverse (cgVNotes st) ++ typedIrNotes (if tgtW tgt == 8 then tgtTypedIr tgt else Nothing) (tgtPolicy tgt) workerSigs ext (foreignEntries tgt) emitted
+          emNotes = reverse (cgVNotes st) ++ typedIrNotes (if tgtW tgt == 8 then tgtTypedIr tgt else Nothing) (tgtPolicy tgt) workerSigs ext (foreignEntries tgt) prog emitted
             ++ ["typed-ir: not available on " ++ tgtName tgt ++ " (M1 lowers the 64-bit targets)" | tgtW tgt /= 8, Just _ <- [tgtTypedIr tgt]]
             ++ nativeNotes,
-          emNative = if M.null nativeFns then [] else ["    .text", "    .balign 4", ""] ++ concatMap nfLines (M.elems nativeFns),
+          emNative = if M.null nativeFns then [] else
+            ["    .text", "    .balign 4", ""] ++ concatMap nfLines (M.elems nativeFns)
+              ++ (if null nativeStrings then [] else rodataDirective nativeFormat : concatMap (stringObject nativeFormat) nativeStrings),
           emNativeNames = M.keys nativeFns,
           emFallbacks = nativeFallbacks
         }

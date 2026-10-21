@@ -100,6 +100,7 @@ data Op
   | ONot VId -- TPred -> TPred
   | OIsInt VId -- TVal -> TPred: the tag bit (a tagged Int, not an object)
   | OTagTest Int Int VId -- TVal -> TPred: typeid and variant match (a tagged Int never matches)
+  | OSymbol String -- :: TVal; the address of an immortal object the unit links against: a function's static PAP (fpr_obj_), a core primitive's (fpr_prim_obj_), a HAL contract (fpr_g_); the legacy `la a0, <symbol>`
   | OArith ArithOp VId VId -- TInt TInt -> TInt; traps in program order with the primitive's message
   | OBit BitOp VId VId -- TInt TInt -> TInt: and, or, xor of the untagged values
   | OShift ShiftOp VId VId -- TInt TInt -> TInt: value, count; the count outside 0..63 traps (bits.c)
@@ -118,6 +119,7 @@ data Term
   | TBr BId [VId] -- a jump with block arguments; to the entry block it is a self tail call
   | TCondBr VId BId [VId] BId [VId] -- predicate, then-target, else-target
   | TTailCall Callee [VId] -- parallel argument assignment, frame teardown, transfer
+  | TUnreachable String -- a dead arm (Core's CErr: exhaustiveness proved it unreachable); if ever reached, the legacy trap with this text (fpr_panic)
   deriving (Eq, Ord, Show)
 
 data Block = Block
@@ -162,6 +164,7 @@ opEffect = \case
   ONot _ -> Pure
   OIsInt _ -> Pure
   OTagTest _ _ _ -> Pure
+  OSymbol _ -> Pure
   OArith _ _ _ -> MayTrap
   OBit _ _ _ -> Pure
   OShift _ _ _ -> MayTrap
@@ -182,6 +185,7 @@ opUses = \case
   ONot v -> [v]
   OIsInt v -> [v]
   OTagTest _ _ v -> [v]
+  OSymbol _ -> []
   OArith _ a b -> [a, b]
   OBit _ a b -> [a, b]
   OShift _ a b -> [a, b]
@@ -197,6 +201,7 @@ termUses = \case
   TBr _ as -> as
   TCondBr c _ as _ bs -> c : as ++ bs
   TTailCall _ as -> as
+  TUnreachable _ -> []
 
 termSuccs :: Term -> [(BId, [VId])]
 termSuccs = \case
@@ -204,6 +209,7 @@ termSuccs = \case
   TBr b as -> [(b, as)]
   TCondBr _ t as e bs -> [(t, as), (e, bs)]
   TTailCall _ _ -> []
+  TUnreachable _ -> []
 
 blockDefs :: Block -> [(VId, Ty)]
 blockDefs b = bParams b ++ [d | Instr (Just d) _ <- bInstrs b]
