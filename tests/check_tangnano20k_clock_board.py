@@ -14,7 +14,7 @@ import subprocess
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-HASK = ROOT.parent / 'HaskPlayground'
+HASK = ROOT.parent / 'simple-risc'
 
 
 def sha(path):

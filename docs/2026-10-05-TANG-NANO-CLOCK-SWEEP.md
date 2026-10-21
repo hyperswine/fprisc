@@ -64,7 +64,7 @@ maximum or an absolute limit of the FPGA.
 The tested 114 MHz image is generated locally in the sibling HaskPlayground
 checkout. Its SHA-256 is
 `5852804440d1cf3eb57936f830b66eb53e61450d02675f6acbd9179dc45d0bc2`.
-See `../HaskPlayground/boards/tangnano20k/CLOCK-SWEEP-2026-10-05.md` from the
+See `../simple-risc/docs/2026-10-05-TANGNANO20K-CLOCK-SWEEP.md` from the
 fprisc root for processor changes, timing evidence and PLL-only replay commands.
 The routed-base nextpnr estimate is 150.58 MHz; actual board checks fail well
 below that estimate. No flash was programmed.

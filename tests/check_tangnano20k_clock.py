@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the local Base clock, software float and receive refusal on RV64 RTL.
 
-Uses HaskPlayground's existing CPU/cache testbench and word-memory model.
+Uses simple-risc's (formerly HaskPlayground's) CPU/cache testbench and word-memory model.
 No board programming or UART virtual-device connection is performed.
 """
 import os
@@ -9,7 +9,7 @@ from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-HARDWARE = Path(os.environ.get('HASKPLAYGROUND', ROOT.parent / 'HaskPlayground'))
+HARDWARE = Path(os.environ.get('HASKPLAYGROUND', ROOT.parent / 'simple-risc'))
 CPU = HARDWARE / 'boards/tangnano20k/rv64'
 
 
