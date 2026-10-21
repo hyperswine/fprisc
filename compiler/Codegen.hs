@@ -48,6 +48,8 @@ import Peephole (peepholeFor)
 import Codegen.IR (Fn (..), Block (..), Width)
 import Codegen.Lower (lowerProgram, Prim (..))
 import Codegen.Simplify (simplifyProgram)
+import Codegen.Split (splitEntryValues)
+import Codegen.Target.Common (Tune (..))
 import Codegen.Policy (Policy, m2Policy, policyWidth)
 import qualified Codegen.Target.X64 as X64
 import qualified Codegen.Target.RV as RV
@@ -125,6 +127,8 @@ data NativeMode = NativeMode
     nmTargetName :: String,
     nmBackend :: Maybe NativeBackend, -- Nothing: the switch is on but this target has no direct backend yet
     nmForwardParams :: Bool, -- preserve forwarding arguments only on entry slow paths
+    nmTune :: Tune, -- the fib experiments (docs/2026-10-22-TYPED-IR-FIB.md)
+    nmSplitEntry :: Bool, -- FPR_TYPED_IR_SPLIT_ENTRY: Codegen.Split before selection
     nmSelfLoops :: Bool -- M3: self tail calls as loops in the native backends (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
   }
   deriving (Show)
@@ -514,9 +518,9 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
       Nothing -> (M.empty, [(n, "no typed-IR native backend for " ++ nmTargetName nm ++ " (M2 emits AArch64 and x86-64)") | n <- M.keys emitted], [])
       Just backend ->
         let emit = case backend of
-              DirectA64 fmt hart -> emitFnA64 (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm))
+              DirectA64 fmt hart -> emitFnA64 (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm))
               DirectRV width hart -> RV.emitFnRV (RV.RVConfig width (tgtPolicy tgt) hart exps (tgtWeak tgt) (nmSelfLoops nm))
-              DirectX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm))
+              DirectX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm))
             results = [(n, emit f) | (n, f) <- M.toList lowered]
             errors = [n ++ ": " ++ e | (n, Left e) <- results, "compiler error: " `isPrefixOf` e]
             refusals = [(n, e) | (n, Left e) <- results, not ("compiler error: " `isPrefixOf` e)]
@@ -573,7 +577,9 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
           _ -> False
     -- the simplification passes (Codegen.Simplify), each verified; a
     -- failure is a compiler error
-    lowered = either (\e -> error ("typed-ir: " ++ e)) fst (simplifyProgram lowered0)
+    lowered1 = either (\e -> error ("typed-ir: " ++ e)) fst (simplifyProgram lowered0)
+    -- FPR_TYPED_IR_SPLIT_ENTRY: verified like the simplification (a refusal is a compiler error)
+    lowered = if nmSplitEntry nm then M.map splitEntryValues lowered1 else lowered1
 
 emitProgram :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> S.Set String -> Prog -> (String, [String])
 emitProgram tgt rvv spec exports ext exps elide prog0 =

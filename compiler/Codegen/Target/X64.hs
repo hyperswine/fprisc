@@ -34,7 +34,8 @@ x64SelectionRev = 10 -- aggregate and string selection; prior: the merge (6, the
 data X64Config = X64Config
   { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool,
     cfgSelfLoops :: Bool, -- M3: self tail calls as loops (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
-    cfgForwardParams :: Bool
+    cfgForwardParams :: Bool,
+    cfgTune :: Tune
   }
 
 r :: String -> Phys
@@ -509,7 +510,7 @@ savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) Fa
 emitFnX64 :: X64Config -> Fn -> Either String NativeFn
 emitFnX64 cfg fn = do
   (sel0, managed, nulls, strs) <- select cfg fn
-  let (sel, entrySlots) = forwardEntry (cfgForwardParams cfg) argRegs fn sel0
+  let (sel, entrySlots) = forwardEntry (cfgForwardParams cfg) (tuneEntryArgs (cfgTune cfg)) argRegs fn sel0
   either (Left . ("compiler error: " ++)) Right (checkFn x64RegisterFile sel)
   let ac = allocConfig (if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing) managed
   alloc <- either (Left . ("compiler error: " ++)) Right (allocateFn ac sel)

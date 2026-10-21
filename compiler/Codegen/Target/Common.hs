@@ -3,7 +3,7 @@
 module Codegen.Target.Common
   ( ObjectFormat (..), NativeFn (..), mangleName, functionSymbol,
     stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry,
-    forwardEntry, entrySlot, utf8Bytes ) where
+    forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune ) where
 import Codegen.Bounds (Report)
 import Codegen.IR (Name)
 import qualified Codegen.IR as IR
@@ -14,6 +14,8 @@ import Data.Bits (shiftR, xor, (.&.))
 import Data.Char (isAlphaNum, isAscii, ord)
 import Data.List (intercalate)
 import Data.Word (Word64)
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Numeric (showHex)
 
 -- A forwarding wrapper has no computation between its entry and tail
@@ -22,13 +24,17 @@ import Numeric (showHex)
 -- frame objects. Allocation can then keep parameters in argument registers
 -- on the common path. This is deliberately limited to register arities and
 -- excludes self recursion, TLS argument cells, and arbitrary function bodies.
-forwardEntry :: Bool -> [Phys] -> IR.Fn -> SFn -> (SFn, [FrameObj])
-forwardEntry enabled regs fn sf
-  | enabled, [b] <- IR.fnBlocks fn,
-    IR.TTailCall callee _ <- IR.bTerm b,
-    IR.calleeName callee /= IR.fnName fn,
-    all (\(IR.Instr _ op) -> op `elem` [IR.OStackCheck, IR.OSafepoint]) (IR.bInstrs b),
-    not (null (sfParams sf)), length (sfParams sf) <= length regs =
+--
+-- `general` (FPR_TYPED_IR_ENTRY_ARGS, docs/2026-10-22-TYPED-IR-FIB.md)
+-- applies the same preservation to every function whose parameters all
+-- arrive in registers: on the common path the entry's runtime calls do not
+-- happen, so nothing forces a parameter into a callee-saved register just
+-- to survive them; only the slow paths park and reload.
+forwardEntry :: Bool -> Bool -> [Phys] -> IR.Fn -> SFn -> (SFn, [FrameObj])
+forwardEntry enabled general regs fn sf
+  | wrapper || general,
+    not (null (sfParams sf)), length (sfParams sf) <= length regs,
+    (b : _) <- [blk | blk <- IR.fnBlocks fn, IR.bId blk == IR.fnEntry fn] =
       let ps = zip (sfParams sf) regs
           operands = [OV v (Fix p) | (v, p) <- ps]
           preserve (I i) | siOp i == "entry.check.tick" = I i
@@ -39,6 +45,12 @@ forwardEntry enabled regs fn sf
                   | (n, (_, ty)) <- zip [0..] (IR.bParams b)]
        in (sf {sfBody = map preserve (sfBody sf)}, slots)
   | otherwise = (sf, [])
+  where
+    wrapper = enabled && case IR.fnBlocks fn of
+      [b] | IR.TTailCall callee _ <- IR.bTerm b ->
+        IR.calleeName callee /= IR.fnName fn
+          && all (\(IR.Instr _ op) -> op `elem` [IR.OStackCheck, IR.OSafepoint]) (IR.bInstrs b)
+      _ -> False
 
 -- Separate from allocation's nonnegative spill IDs and saved-register IDs.
 entrySlot :: Int -> Int
@@ -134,3 +146,97 @@ rodataDirective = \case
   MachO -> "    .section __DATA,__const"
   ELF -> "    .section .rodata"
 
+-- Shrink-wrapping (FPR_TYPED_IR_SHRINK_WRAP, docs/2026-10-22-TYPED-IR-FIB.md):
+-- the callee-saved registers the allocation uses are saved at the start of
+-- the deepest block that dominates every instruction naming one of them,
+-- instead of in the prologue, and restored only by the returns that block
+-- dominates.  Taken only when that is sound and gains something:
+--
+--   * the block is not the entry block (nothing would move);
+--   * it is on no cycle (a loop back to it would save the function's own
+--     values over the caller's);
+--   * every return reachable from it is dominated by it (no path leaves
+--     the function with a saved register changed but not restored).
+--
+-- Returns that the block does not dominate never see a saved register
+-- changed, so their epilogue skips the restores (`norestore`).  The result
+-- marks the save point with a `saves.here` pseudo for the target to expand;
+-- Nothing means: keep the prologue saves.
+shrinkWrap :: [Phys] -> [Item] -> Maybe [Item]
+shrinkWrap saved items
+  | null saved = Nothing
+  | otherwise = do
+      let uses = [bk | (bk, its) <- zip [0 ..] blocks, namesSaved its]
+      case uses of
+        [] -> Nothing
+        _ -> do
+          let common = foldr1 S.intersection [doms M.! u | u <- uses]
+              point = snd (maximum [(S.size (doms M.! c), c) | c <- S.toList common])
+          if point == 0 || S.member point (reach (succs point)) then Nothing else do
+            let reachable = S.insert point (reach (succs point))
+                exits = [bk | bk <- S.toList reachable, returns (blocks !! bk)]
+                mark bk its =
+                  let its' = if S.member point (doms M.! bk) then its else map noRestore its
+                   in if bk /= point then its' else case its' of
+                        (ILabel l : rest) -> ILabel l : I savesHere : rest
+                        rest -> I savesHere : rest
+            if any (\bk -> not (S.member point (doms M.! bk))) exits then Nothing else
+              Just (concat [mark bk its | (bk, its) <- zip [0 ..] blocks])
+  where
+    savesHere = plain "saves.here" [] []
+    savedSet = S.fromList saved
+    namesSaved = any (\case I i -> any isSaved (siDefs i ++ siUses i); _ -> False)
+    isSaved = \case OP r -> S.member r savedSet; _ -> False
+    returns = any (\case I i -> siControl i == Return; _ -> False)
+    noRestore = \case
+      I i | siControl i == Return -> I i {siNote = "norestore"}
+      it -> it
+    -- basic blocks: a label starts one, an instruction that transfers ends one
+    blocks = split items
+    split [] = []
+    split xs = let (b, rest) = takeBlock xs in b : split rest
+    takeBlock (x : xs) = go [x] xs (ends x)
+      where
+        go acc rest True = (reverse acc, rest)
+        go acc [] _ = (reverse acc, [])
+        go acc (y@(ILabel _) : ys) _ = (reverse acc, y : ys)
+        go acc (y : ys) _ = go (y : acc) ys (ends y)
+    takeBlock [] = ([], [])
+    ends = \case I i -> siControl i /= Next; _ -> False
+    nblocks = length blocks
+    labelBlock = M.fromList [(l, bk) | (bk, ILabel l : _) <- zip [0 ..] blocks]
+    succsOf bk its = case reverse its of
+      (I i : _) -> case siControl i of
+        Next -> [bk + 1 | bk + 1 < nblocks]
+        CondTo ls -> [bk + 1 | bk + 1 < nblocks] ++ [t | l <- ls, Just t <- [M.lookup l labelBlock]]
+        JumpTo l -> [t | Just t <- [M.lookup l labelBlock]]
+        Return -> []
+      _ -> [bk + 1 | bk + 1 < nblocks]
+    succMap = M.fromList [(bk, succsOf bk its) | (bk, its) <- zip [0 ..] blocks]
+    succs bk = M.findWithDefault [] bk succMap
+    reach start = goR S.empty start
+      where
+        goR seen [] = seen
+        goR seen (y : ys)
+          | S.member y seen = goR seen ys
+          | otherwise = goR (S.insert y seen) (succs y ++ ys)
+    preds = M.fromListWith (++) [(t, [bk]) | (bk, ts) <- M.toList succMap, t <- ts]
+    allBlocks = S.fromList [0 .. nblocks - 1]
+    doms = fixDom (M.fromList [(bk, if bk == 0 then S.singleton 0 else allBlocks) | bk <- [0 .. nblocks - 1]])
+    fixDom dm =
+      let dm' = M.mapWithKey (\bk d -> if bk == 0 then d else case M.findWithDefault [] bk preds of
+                  [] -> S.singleton bk
+                  ps -> S.insert bk (foldr1 S.intersection [dm M.! q | q <- ps])) dm
+       in if dm' == dm then dm else fixDom dm'
+
+-- The fib experiments' switches (docs/2026-10-22-TYPED-IR-FIB.md), each its
+-- own cache identity, all off by default.
+data Tune = Tune
+  { tuneEntryArgs :: Bool, -- FPR_TYPED_IR_ENTRY_ARGS: parameters stay in their registers through the entry
+    tuneShrinkWrap :: Bool, -- FPR_TYPED_IR_SHRINK_WRAP: callee saves at a dominating, acyclic block
+    tuneLinkPairs :: Bool -- FPR_TYPED_IR_LINK_PAIRS: the frame link as one stp/ldp
+  }
+  deriving (Eq, Show)
+
+noTune :: Tune
+noTune = Tune False False False

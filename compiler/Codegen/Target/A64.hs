@@ -95,7 +95,8 @@ data A64Config = A64Config
     cfgExports :: S.Set String, -- functions that get a visibility directive
     cfgWeak :: Bool, -- a library unit: unqualified globals are .weak
     cfgSelfLoops :: Bool, -- M3: self tail calls as loops (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
-    cfgForwardParams :: Bool
+    cfgForwardParams :: Bool,
+    cfgTune :: Tune
   }
 
 -- ---- registers ---------------------------------------------------------
@@ -651,7 +652,7 @@ savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) Fa
 emitFnA64 :: A64Config -> Fn -> Either String NativeFn
 emitFnA64 cfg fn = do
   (sel0, managed, nulls, strs) <- select cfg fn
-  let (sel, entrySlots) = forwardEntry (cfgForwardParams cfg && cfgHart cfg /= HartTlvMachO) (map x [0..7]) fn sel0
+  let (sel, entrySlots) = forwardEntry (cfgForwardParams cfg && cfgHart cfg /= HartTlvMachO) (tuneEntryArgs (cfgTune cfg)) (map x [0..7]) fn sel0
   either (\e -> Left ("compiler error: " ++ e)) Right (checkFn a64RegisterFile sel)
   let ac = allocConfig (if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing) managed
   alloc <- either (\e -> Left ("compiler error: " ++ e)) Right (allocateFn ac sel)
@@ -669,16 +670,19 @@ emitFnA64 cfg fn = do
       -- parameters are parked before the entry sequence's calls: the
       -- legacy order)
       pairs = savePairs ly saves
+      saveItems = [I ((plain "save" [] []) {siNote = show k}) | (k, _) <- zip [0 :: Int ..] pairs]
+      wrapped = if tuneShrinkWrap (cfgTune cfg) then shrinkWrap (alSaved alloc) allocatedBody else Nothing
       body = I ((plain "enter" [] []) {siImplicitDefs = [Phys "sp", x 29, x 16]})
-        : [I ((plain "save" [] []) {siNote = show k}) | (k, _) <- zip [0 :: Int ..] pairs]
-        ++ allocatedBody
+        : case wrapped of
+            Nothing -> saveItems ++ allocatedBody
+            Just items -> concatMap (\it -> case it of I s | siOp s == "saves.here" -> saveItems; _ -> [it]) items
       restores = concatMap (uncurry (pairAccess "ldp" "ldr")) pairs
       rendered = map (\it -> (it, renderItem cfg ly name pairs restores it)) body
       toks = concatMap (uncurry tokOf) rendered
       report = analyse toks
       header =
         ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir a64 frame=" ++ show (lyBytes ly)
-           ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," (map phys ps)) ++ " " ++ statsLine (alStats alloc)]
+           ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ (if wrapped == Nothing then "" else " wrapped=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," (map phys ps)) ++ " " ++ statsLine (alStats alloc)]
           ++ ["    " ++ visibility ++ " " ++ gsym cfg sym | S.member name (cfgExports cfg)]
           ++ [gsym cfg sym ++ ":"]
       visibility = if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl"
@@ -802,15 +806,20 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
       ("entry.tick", _, _) -> hartRead ++ tick
       _ -> error ("A64 render: no form for " ++ op ++ " " ++ show ds ++ " " ++ show us)
     -- the legacy frame: sp down, ra and the caller's fp at the top, fp = old sp
+    -- with FPR_TYPED_IR_LINK_PAIRS the link is one stp/ldp when its offset
+    -- is in the scaled signed range: the same two words, the same layout
+    linkPaired = tuneLinkPairs (cfgTune cfg) && lyBytes ly - 16 <= 504
     enter =
       let n = fromIntegral (lyBytes ly) :: Integer
        in (if n < 4096 then ["sub sp, sp, #" ++ show n] else movImm "x16" n ++ ["sub sp, sp, x16"])
-            ++ ldst "str" "stur" "x30" "sp" (n - 8)
-            ++ ldst "str" "stur" "x29" "sp" (n - 16)
+            ++ (if linkPaired then ["stp x29, x30, [sp, #" ++ show (n - 16) ++ "]"]
+                else ldst "str" "stur" "x30" "sp" (n - 8) ++ ldst "str" "stur" "x29" "sp" (n - 16))
             ++ (if n < 4096 then ["add x29, sp, #" ++ show n] else ["add x29, sp, x16"])
     -- the callee-saved registers come back first (x29-relative, so after a
     -- stack-segment change they still read the frame they were saved in)
-    epilogue = restores ++ ["ldur x30, [x29, #-8]", "mov x9, x29", "ldur x29, [x29, #-16]", "mov sp, x9"]
+    epilogue = (if siNote i == "norestore" then [] else restores)
+      ++ (if linkPaired then ["mov x9, x29", "ldp x29, x30, [x9, #-16]", "mov sp, x9"]
+          else ["ldur x30, [x29, #-8]", "mov x9, x29", "ldur x29, [x29, #-16]", "mov sp, x9"])
     base = siNote i
     parkArgs scaled unscaled = concat
       [ldst scaled unscaled (reg o) "x29" (fromIntegral (lyOffset ly M.! FrameRef (entrySlot n)))

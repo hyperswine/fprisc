@@ -56,6 +56,7 @@ executable fpr
       Codegen.Eval
       Codegen.Lower
       Codegen.Simplify
+      Codegen.Split
       Codegen.Policy
       Codegen.Selected
       Codegen.Frame

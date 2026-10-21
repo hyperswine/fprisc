@@ -52,6 +52,12 @@ VARIANTS = {
     "typed-ir-entry": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_FORWARD_PARAMS": "1", "FPR_TYPED_IR_SHALLOW_STACK": "1"},
     "typed-ir-shallow": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_SHALLOW_STACK": "1"},
     "typed-ir-noloop": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_SELF_LOOPS": "0"},
+    # the fib experiments (docs/2026-10-22-TYPED-IR-FIB.md): each alone, then cumulative
+    "typed-ir-pairs": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_LINK_PAIRS": "1"},
+    "typed-ir-args": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_ENTRY_ARGS": "1"},
+    "typed-ir-args-split": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_ENTRY_ARGS": "1", "FPR_TYPED_IR_SPLIT_ENTRY": "1"},
+    "typed-ir-args-split-wrap": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_ENTRY_ARGS": "1", "FPR_TYPED_IR_SPLIT_ENTRY": "1", "FPR_TYPED_IR_SHRINK_WRAP": "1"},
+    "typed-ir-all": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_ENTRY_ARGS": "1", "FPR_TYPED_IR_SPLIT_ENTRY": "1", "FPR_TYPED_IR_SHRINK_WRAP": "1", "FPR_TYPED_IR_LINK_PAIRS": "1"},
     # the backend for what it covers, the best legacy combination for the rest
     "typed-ir-best": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_COSTED_REGISTERS": "1", "FPR_COMPACT_FRAMES": "1", "FPR_SELF_LOOPS": "1", "FPR_A64_FRAME_PAIRS": "1"},
 }
