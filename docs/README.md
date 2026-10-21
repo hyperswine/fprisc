@@ -205,3 +205,4 @@ they began.
 - [Regressions after the typed-IR merge](2026-10-22-MERGE-REGRESSIONS.md): the red main CI run (an x86-64 tied shift result given the count's fixed %rcx; also a silent variant), the allocator constraint and an independent check, x64 selection revision 8, A64 emission unchanged; Sol NN's matrix used twice, reordered in the example; the module registry's arrays moved off the caller's heap and a detach for unloaded plugins (QOS's Editor policies SIGSEGV).
 
 - [Typed IR migration execution](2026-10-22-TYPED-IR-MIGRATION.md): refreshed merged baseline, ordered overhead/coverage/target work and conditional promotion gates.
+- [Typed-IR migration review](2026-10-22-TYPED-IR-MIGRATION-REVIEW.md): the migration branch reviewed before merge for the allocator interaction class (RISC-V early-write store, callee-saved budget, aggregates, vector decline, constructor reuse); legacy emission byte-identical on five targets; suites and Base green.
