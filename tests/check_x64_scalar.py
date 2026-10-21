@@ -61,9 +61,9 @@ def main():
                                   FPR_COMPACT_FRAMES='1', FPR_SELF_LOOPS='1',
                                   FPR_NO_SCALAR_WORKERS='0')),
                  ('typed-ir', dict(FPR_TYPED_IR_BACKEND='mixed',
-                                   FPR_TYPED_IR_STRICT='add,sub,mul,divide,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,call7,call8')),
+                                   FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,call7,call8')),
                  ('typed-ir-workers', dict(FPR_TYPED_IR_BACKEND='mixed', FPR_NO_SCALAR_WORKERS='0',
-                                           FPR_TYPED_IR_STRICT='add,sub,mul,divide,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,call7,call8')),
+                                           FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,call7,call8')),
                  ('baseline-repeat', {})]
         original = None
         for name, settings in modes:
@@ -80,11 +80,11 @@ def main():
                 native_names = {title.split()[0] for title, _ in bodies if 'typed-ir x64' in title}
                 required = set(mode['FPR_TYPED_IR_STRICT'].split(','))
                 assert required <= native_names, (required - native_names, native_names)
-                assert not {'rotate8', 'rotate63', 'shift'} & native_names
+                assert not {'rotate8', 'rotate63'} & native_names
                 assert 'UNBOUNDED' not in text
                 assert '%fs:fpr_x64_a6@tpoff' in selected and '%fs:fpr_x64_a7@tpoff' in selected
                 assert 'cqto' in selected and 'imulq' in selected
-                print(f'{name}: strict direct coverage {len(native_names)} functions; shifts and arities 9/64 explicitly legacy', flush=True)
+                print(f'{name}: strict direct coverage {len(native_names)} functions; arities 9/64 explicitly legacy', flush=True)
             else:
                 hot = next(body for title, body in bodies if title == 'hot (arity 5)')
                 # Costed placement may legitimately reject promotion.

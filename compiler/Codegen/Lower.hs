@@ -130,6 +130,14 @@ arithOps = M.fromList [("+", Add), ("-", Sub), ("*", Mul), ("/", Div)]
 cmpOps :: M.Map String CmpOp
 cmpOps = M.fromList [("<", Lt), (">", Gt), ("<=", Le), (">=", Ge), ("==", Eq), ("!=", Ne)]
 
+-- the bitwise primitives the legacy inline table expands (runtime/bits.c);
+-- a declared HAL name of arity two, never shadowed, is the operation
+bitOps :: M.Map String BitOp
+bitOps = M.fromList [(bitName o, o) | o <- [minBound .. maxBound]]
+
+shiftOps :: M.Map String ShiftOp
+shiftOps = M.fromList [(shiftName o, o) | o <- [minBound .. maxBound]]
+
 workerPrefix :: String
 workerPrefix = "$worker.scalar."
 
@@ -328,6 +336,19 @@ lowerVal cx env = \case
       -- tagged Int arithmetic and comparison (the base profile's operators)
       | isPrim cx env h, Just o <- M.lookup h arithOps, [a, b] <- args -> arith o a b
       | isPrim cx env h, Just o <- M.lookup h cmpOps, [a, b] <- args -> compare' o a b
+      -- the bitwise primitives and the shifts: declared HAL names of arity
+      -- two (Codegen.inlineTable band/bor/bxor/BITSHIFTL/BITSHIFTR; their
+      -- slow path is the fpr_g_<name>_call2 entry, which traps by name)
+      | isPrim cx env h, Just o <- M.lookup h bitOps, [a, b] <- args, Just (2, _) <- M.lookup h (cxHal cx) -> do
+          x <- lowerVal cx env a >>= asInt
+          y <- lowerVal cx env b >>= asInt
+          v <- emit TInt (OBit o x y)
+          pure (v, TInt)
+      | isPrim cx env h, Just o <- M.lookup h shiftOps, [a, b] <- args, Just (2, _) <- M.lookup h (cxHal cx) -> do
+          x <- lowerVal cx env a >>= asInt
+          y <- lowerVal cx env b >>= asInt
+          v <- emit TInt (OShift o x y)
+          pure (v, TInt)
       -- the raw forms of the scalar workers
       | isPrim cx env h, h == scalarPrefix ++ "unbox", [a] <- args -> lowerVal cx env a >>= asInt >>= \v -> pure (v, TInt)
       | isPrim cx env h, h == scalarPrefix ++ "box", [a] <- args -> lowerVal cx env a >>= asVal >>= \v -> pure (v, TVal)

@@ -29,6 +29,8 @@ opSignature tyOf = \case
   OIsInt v -> expect v TVal >> pure (Just TPred)
   OTagTest _ _ v -> expect v TVal >> pure (Just TPred)
   OArith _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
+  OBit _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
+  OShift _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OCmp _ a b -> expect a TInt >> expect b TInt >> pure (Just TPred)
   OEqVal _ a b -> expect a TVal >> expect b TVal >> pure (Just TPred)
   OCall c as -> do

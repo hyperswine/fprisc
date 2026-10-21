@@ -23,7 +23,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 1
+x64SelectionRev = 2 -- coverage: bit operations and shifts
 
 data X64Config = X64Config
   { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool }
@@ -119,6 +119,11 @@ cbz v l = (plain "jzero" [] [any' v, OL l]) {siFlags = FlagsDef, siControl = Con
 cbnz v l = (plain "jnonzero" [] [any' v, OL l]) {siFlags = FlagsDef, siControl = CondTo [l]}
 jump :: Label -> SInstr
 jump l = (plain "jmp" [] [OL l]) {siControl = JumpTo l}
+
+-- a variable shift: the count in %rcx (the instruction reads %cl), the
+-- value tied to the destination
+shiftv :: String -> VReg -> VReg -> VReg -> SInstr
+shiftv op d a b = (plain op [OV d (Tied 0)] [any' a, fix b (r "rcx")]) {siFlags = FlagsDef}
 
 -- cqto sign-extends the dividend into rdx before idivq. Placement excludes
 -- both fixed rax and implicit rdx when choosing the divisor's register.
@@ -257,6 +262,9 @@ selectInstr _ _ (Instr d op) = case op of
     emitI (li r 0)
     emitL done
   OArith o a b -> def (\r -> arith o r (vreg a) (vreg b))
+  -- band/bor/bxor on the untagged values: one instruction, the result fits
+  OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> "and"; BOr -> "or"; BXor -> "xor") r (vreg a) (vreg b)))
+  OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
     emitI (cmp (vreg a) (vreg b))
     emitI (cset (cond o) r)
@@ -324,6 +332,33 @@ selectInstr _ _ (Instr d op) = case op of
       emitI (rri "sext63" n t 0)
       emitI (cmp n t)
       emitI (bcond "ne" slow)
+    -- BITSHIFTL / BITSHIFTR (Codegen.inlineTable, shiftOk): a count outside
+    -- 0..63 (negative counts included, compared unsigned) takes the slow
+    -- path, the HAL entry fpr_g_<name>_call2 with the original operands
+    -- retagged, which traps with the primitive's text; the fast path is
+    -- the 64-bit shift (%cl) of the untagged value with the low 63 bits kept
+    shift o r a b = do
+      slow <- freshL "shslow"
+      done <- freshL "shdone"
+      t <- freshV False
+      emitI (cmpi b 64)
+      emitI (bcond "hs" slow)
+      emitI (shiftv (case o of Shl -> "shlq"; Shr -> "shrq") t a b)
+      emitI (rri "sext63" r t 0)
+      emitI (jump done)
+      emitL slow
+      ta <- freshV False
+      ta' <- freshV True
+      tb <- freshV False
+      tb' <- freshV True
+      emitI (rri "lsl" ta a 1)
+      emitI (rri "orri" ta' ta 1)
+      emitI (rri "lsl" tb b 1)
+      emitI (rri "orri" tb' tb 1)
+      res <- freshV True
+      emitCall ("fpr_g_" ++ mangleName (shiftName o) ++ "_call2") False True [ta', tb'] (Just res)
+      emitI (rri "asr" r res 1)
+      emitL done
 
 -- block parameters are assigned in parallel: a cycle is broken with a
 -- fresh temporary
@@ -423,7 +458,7 @@ renderItem ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
       p -> error ("X64 render: no byte register for " ++ p)
     imm = \case OI n -> show n; o -> error ("X64 render: not an immediate " ++ show o)
     slot ref = show (M.findWithDefault (error "X64 render: missing frame object") ref (lyOffset ly)) ++ "(%rbp)"
-    cc = \case "eq" -> "e"; "ne" -> "ne"; "lt" -> "l"; "gt" -> "g"; "le" -> "le"; "ge" -> "ge"; "o" -> "o"; c -> error ("X64 condition " ++ c)
+    cc = \case "eq" -> "e"; "ne" -> "ne"; "lt" -> "l"; "gt" -> "g"; "le" -> "le"; "ge" -> "ge"; "o" -> "o"; "hs" -> "ae"; c -> error ("X64 condition " ++ c)
     call sym = ["subq $8, %rsp", "call " ++ sym, "addq $8, %rsp"]
     go op ds us = case (op,ds,us) of
       ("enter",[],[]) ->
@@ -442,8 +477,9 @@ renderItem ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
       ("sext63",[d],[_,_]) -> ["shlq $1, " ++ reg d, "sarq $1, " ++ reg d]
       (o,[d],[_,n]) | Just mnemonic <- lookup o [("lsl","shlq"),("asr","sarq"),("orri","orq"),("andi","andq"),("eori","xorq")] ->
         [mnemonic ++ " $" ++ imm n ++ ", " ++ reg d]
-      (o,[d],[_,b]) | Just mnemonic <- lookup o [("add","addq"),("sub","subq"),("mul","imulq"),("and","andq")] ->
+      (o,[d],[_,b]) | Just mnemonic <- lookup o [("add","addq"),("sub","subq"),("mul","imulq"),("and","andq"),("or","orq"),("xor","xorq")] ->
         [mnemonic ++ " " ++ reg b ++ ", " ++ reg d]
+      (o,[d],[_,c]) | o `elem` ["shlq","shrq"] -> [o ++ " " ++ byte c ++ ", " ++ reg d] -- the count register is %rcx by constraint
       ("divide",[_],[_,b]) -> ["cqto", "idivq " ++ reg b]
       ("cmpq",[],[a,b]) -> ["cmpq " ++ reg b ++ ", " ++ reg a]
       ("cmpi",[],[a,n]) -> ["cmpq $" ++ imm n ++ ", " ++ reg a]

@@ -45,3 +45,15 @@ deep n = TirProbe.mark n + (if n == 0 then 0 else deep (n - 1)).
 # block parameters with a swap: the join carries two values whose sources cross
 swapLoop : unsafe Int -> Int -> Int -> Int .
 swapLoop n a b = if n == 0 then a * 1000 + b else swapLoop (n - 1) b a.
+# the bitwise primitives and the shifts (docs/2026-10-21-TYPED-IR-COVERAGE.md,
+# increment 1): band/bor/bxor on the untagged values; a shift count outside
+# 0..63 is the primitive's trap
+shl : Int -> Int -> Int .
+shl a n = BITSHIFTL a n.
+shr : Int -> Int -> Int .
+shr a n = BITSHIFTR a n.
+bits : Int -> Int -> Int .
+bits a b = band a b * 1000000 + bor a b * 1000 + bxor a b.
+# a shift inside a loop, as a hash kernel uses it
+mix : unsafe Int -> Int -> Int .
+mix n acc = if n == 0 then acc else mix (n - 1) (bxor (BITSHIFTL acc 5) (BITSHIFTR acc 2) + n).

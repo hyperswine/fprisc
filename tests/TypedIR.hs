@@ -103,9 +103,13 @@ main = do
     (verifyFn M.empty (editBlock (BId 1) (\b -> b {bInstrs = [Instr (Just (VId 8, TVal)) (OCall (Callee "one" Local [TVal] TVal) [VId 0, VId 0, VId 0])], bTerm = TRet (VId 8)})))
   expectRefusal "call convention disagrees with the callee" "its entry takes"
     (verifyProgram (M.fromList [("one", good), ("two", (editBlock (BId 1) (\b -> b {bInstrs = [Instr (Just (VId 8, TVal)) (OCall (Callee "one" Local [TVal, TVal] TVal) [VId 0, VId 0])], bTerm = TRet (VId 8)})) {fnName = "two"})]))
+  expectRefusal "a shift of a tagged word" "TInt needed"
+    (verifyFn M.empty (editBlock (BId 2) (\b -> b {bInstrs = [Instr (Just (VId 4, TInt)) (OConstInt 1), Instr (Just (VId 5, TInt)) (OShift Shl (VId 0) (VId 4)), Instr (Just (VId 6, TVal)) (OTag (VId 5))]})))
+  expectRefusal "a bit operation declared a predicate" "operation gives"
+    (verifyFn M.empty (editBlock (BId 2) (\b -> b {bInstrs = [Instr (Just (VId 4, TInt)) (OConstInt 1), Instr (Just (VId 5, TPred)) (OBit BAnd (VId 1) (VId 4)), Instr (Just (VId 6, TVal)) (OBoolOf (VId 5))]})))
   expectRefusal "const outside the Int range" "outside the Int range"
     (verifyFn M.empty (editBlock (BId 2) (\b -> b {bInstrs = [Instr (Just (VId 4, TInt)) (OConstInt (2 ^ (62 :: Int))), Instr (Just (VId 5, TInt)) (OArith Sub (VId 1) (VId 4)), Instr (Just (VId 6, TVal)) (OTag (VId 5))]})))
-  putStrLn "Typed IR verifier: a well-formed function accepted, 19 malformations refused by name PASS"
+  putStrLn "Typed IR verifier: a well-formed function accepted, 21 malformations refused by name PASS"
   -- the lowering of the generator's shapes
   let prog = M.fromList [("fib", fibCore), ("sum", sumCore), ("addovf", addCore)]
       (lowered, failures) = lowerProgram m2Policy M.empty prog M.empty M.empty
@@ -129,6 +133,37 @@ main = do
   check "the trap is the last event, after the entry safepoint" (take 2 (ocEvents ovf) == [EvCall "addovf" [], EvStackCheck "addovf"] || case ocEvents ovf of
     [EvCall "addovf" _, EvStackCheck "addovf", EvSafepoint "addovf", EvTrap _] -> True
     _ -> False)
+  -- the bitwise primitives and the shifts (increment 1 of
+  -- docs/2026-10-21-TYPED-IR-COVERAGE.md): lowered only as declared HAL
+  -- names of arity two; the evaluator states bits.c's semantics
+  let hal = M.fromList [(n, (2, "fpr_g_" ++ n ++ "_call2")) | n <- ["band", "bor", "bxor", "BITSHIFTL", "BITSHIFTR"]]
+      bitProg = M.fromList [("shl", (["a", "n"], app "BITSHIFTL" [var "a", var "n"])), ("shr", (["a", "n"], app "BITSHIFTR" [var "a", var "n"])),
+                            ("andf", (["a", "b"], app "band" [var "a", var "b"])), ("orf", (["a", "b"], app "bor" [var "a", var "b"])), ("xorf", (["a", "b"], app "bxor" [var "a", var "b"]))]
+      (bitIr, bitFail) = lowerProgram m2Policy M.empty bitProg M.empty hal
+      bitEval f a b = ocResult (evalProgram bitIr f [RInt a, RInt b])
+  check "the bit operations and shifts lower and verify" (null bitFail && M.size bitIr == 5 && verifyProgram bitIr == Right ())
+  check "the dump names the operations" ("shift BITSHIFTL" `isInfixOf` dumpFn (bitIr M.! "shl") && "bit bxor" `isInfixOf` dumpFn (bitIr M.! "xorf"))
+  check "band/bor/bxor are two's complement on the untagged values"
+    (bitEval "andf" 12 10 == Right (RInt 8) && bitEval "orf" 12 10 == Right (RInt 14) && bitEval "xorf" 12 10 == Right (RInt 6)
+       && bitEval "andf" (-1) 77 == Right (RInt 77) && bitEval "xorf" (-1) 5 == Right (RInt (-6)))
+  -- a program function of the primitive's name shadows it, as in the legacy generator
+  check "a function named band shadows the primitive"
+    (case lowerProgram m2Policy M.empty (M.singleton "band" (["a", "b"], app "band" [var "a", var "b"])) M.empty hal of
+       (ir, []) -> "  br b0(" `isInfixOf` dumpFn (ir M.! "band")
+       _ -> False)
+  check "a left shift keeps the low 63 bits" (bitEval "shl" 1 3 == Right (RInt 8) && bitEval "shl" 1 62 == Right (RInt intMin) && bitEval "shl" 3 63 == Right (RInt 0) && bitEval "shl" (-1) 1 == Right (RInt (-2)))
+  check "a right shift is logical on the 64-bit word, then wrapped" (bitEval "shr" (-1) 1 == Right (RInt (-1)) && bitEval "shr" (-8) 1 == Right (RInt (-4)) && bitEval "shr" 1024 3 == Right (RInt 128) && bitEval "shr" 5 63 == Right (RInt 0))
+  check "a count outside 0..63 traps with the primitive's text"
+    (bitEval "shl" 1 64 == Left (Trap "BITSHIFTL: shift must be 0..63") && bitEval "shl" 1 (-1) == Left (Trap "BITSHIFTL: shift must be 0..63")
+       && bitEval "shr" 5 64 == Left (Trap "BITSHIFTR: shift must be 0..63") && bitEval "shr" 5 (-7) == Left (Trap "BITSHIFTR: shift must be 0..63"))
+  check "the trap is an ordered event after the entry" (case ocEvents (evalProgram bitIr "shl" [RInt 1, RInt 64]) of
+    [EvCall "shl" _, EvStackCheck "shl", EvSafepoint "shl", EvTrap "BITSHIFTL: shift must be 0..63"] -> True
+    _ -> False)
+  check "an undeclared band is still the primitive, refused by name"
+    (case lowerProgram m2Policy M.empty (M.singleton "andf" (["a", "b"], app "band" [var "a", var "b"])) M.empty M.empty of
+       (_, [(_, r)]) -> "primitive `band`" `isInfixOf` r
+       _ -> False)
+  putStrLn "Typed IR bit operations and shifts: lowered as declared HAL names, bits.c semantics, exact trap text and order PASS"
   -- refusals name the form
   let refused what = case lowerFn m2Policy M.empty (M.insert "f" what prog) M.empty M.empty "f" what of
         Left r -> r

@@ -12,6 +12,7 @@ module Codegen.Eval (RV (..), Event (..), Failure (..), Outcome (..), evalProgra
 
 import Codegen.IR
 import Control.Monad (foldM, when)
+import Data.Bits (shiftL, shiftR, xor, (.&.), (.|.))
 import Control.Monad.Except
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
@@ -106,6 +107,15 @@ callFn program name args = do
           y <- int env b
           r <- arith o x y
           pure (Just (VInt r))
+        OBit o a b -> do
+          x <- int env a
+          y <- int env b
+          pure (Just (VInt (bit o x y)))
+        OShift o a b -> do
+          x <- int env a
+          n <- int env b
+          r <- shift o x n
+          pure (Just (VInt r))
         OCmp o a b -> do
           x <- int env a
           y <- int env b
@@ -147,3 +157,19 @@ arith o x y = case o of
 
 cmp :: CmpOp -> Integer -> Integer -> Bool
 cmp = \case Lt -> (<); Gt -> (>); Le -> (<=); Ge -> (>=); Eq -> (==); Ne -> (/=)
+
+-- band/bor/bxor on the untagged Ints (runtime/bits.c): two's complement,
+-- bit for bit; the result of two 63-bit values is a 63-bit value
+bit :: BitOp -> Integer -> Integer -> Integer
+bit = \case BAnd -> (.&.); BOr -> (.|.); BXor -> xor
+
+-- BITSHIFTL / BITSHIFTR as bits.c states them: the count must be 0..63
+-- (checked first, the primitive's text), then the 64-bit shift of the
+-- untagged value, logical to the right, and the low 63 bits sign-extended
+-- (TAG((sw)...) drops the top bit)
+shift :: ShiftOp -> Integer -> Integer -> E Integer
+shift o x n
+  | n < 0 || n > 63 = trap (shiftName o ++ ": shift must be 0..63")
+  | otherwise = pure $ case o of
+      Shl -> wrap63 (x `shiftL` fromInteger n)
+      Shr -> wrap63 ((x `mod` 2 ^ (64 :: Int)) `shiftR` fromInteger n)

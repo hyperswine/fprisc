@@ -25,10 +25,10 @@
 -- (Codegen.Eval) is the executable statement of these semantics.
 module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
-    ArithOp (..), CmpOp (..), Callee (..), CalleeKind (..), isForeign,
+    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), Callee (..), CalleeKind (..), isForeign,
     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs,
-    intMin, intMax, intFits64, arithSymbol, cmpSymbol,
+    intMin, intMax, intFits64, arithSymbol, cmpSymbol, bitName, shiftName, wrap63,
   ) where
 
 import qualified Data.Map.Strict as M
@@ -58,6 +58,15 @@ data Ty
 data ArithOp = Add | Sub | Mul | Div deriving (Eq, Ord, Show, Enum, Bounded)
 
 data CmpOp = Lt | Gt | Le | Ge | Eq | Ne deriving (Eq, Ord, Show, Enum, Bounded)
+
+-- the bitwise operations of the base profile (runtime/bits.c band, bor,
+-- bxor): on the untagged Ints, bit for bit; the result always fits
+data BitOp = BAnd | BOr | BXor deriving (Eq, Ord, Show, Enum, Bounded)
+
+-- BITSHIFTL / BITSHIFTR (runtime/bits.c h_shiftl, h_shiftr): the 64-bit
+-- shift of the untagged value, wrapped to the 63-bit Int (`wrap63`); a
+-- count outside 0..63 traps with the primitive's text
+data ShiftOp = Shl | Shr deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- A call target with its calling convention in representation terms.
 -- The legacy convention for FP-RISC functions is every argument and the
@@ -92,6 +101,8 @@ data Op
   | OIsInt VId -- TVal -> TPred: the tag bit (a tagged Int, not an object)
   | OTagTest Int Int VId -- TVal -> TPred: typeid and variant match (a tagged Int never matches)
   | OArith ArithOp VId VId -- TInt TInt -> TInt; traps in program order with the primitive's message
+  | OBit BitOp VId VId -- TInt TInt -> TInt: and, or, xor of the untagged values
+  | OShift ShiftOp VId VId -- TInt TInt -> TInt: value, count; the count outside 0..63 traps (bits.c)
   | OCmp CmpOp VId VId -- TInt TInt -> TPred
   | OEqVal Bool VId VId -- TVal TVal -> TPred: deep structural equality (True) or inequality (False)
   | OCall Callee [VId] -- calleeParams -> calleeResult; clobbers every caller-saved register; any effect
@@ -152,6 +163,8 @@ opEffect = \case
   OIsInt _ -> Pure
   OTagTest _ _ _ -> Pure
   OArith _ _ _ -> MayTrap
+  OBit _ _ _ -> Pure
+  OShift _ _ _ -> MayTrap
   OCmp _ _ _ -> Pure
   OEqVal _ _ _ -> RuntimeCall -- deep equality is the C primitive unless both are tagged Ints
   OCall _ _ -> AnyEffect
@@ -170,6 +183,8 @@ opUses = \case
   OIsInt v -> [v]
   OTagTest _ _ v -> [v]
   OArith _ a b -> [a, b]
+  OBit _ a b -> [a, b]
+  OShift _ a b -> [a, b]
   OCmp _ a b -> [a, b]
   OEqVal _ a b -> [a, b]
   OCall _ as -> as
@@ -206,3 +221,16 @@ arithSymbol = \case Add -> "+"; Sub -> "-"; Mul -> "*"; Div -> "/"
 
 cmpSymbol :: CmpOp -> String
 cmpSymbol = \case Lt -> "<"; Gt -> ">"; Le -> "<="; Ge -> ">="; Eq -> "=="; Ne -> "!="
+
+-- the primitives' source names (their HAL entries are fpr_g_<name>_call2)
+bitName :: BitOp -> String
+bitName = \case BAnd -> "band"; BOr -> "bor"; BXor -> "bxor"
+
+shiftName :: ShiftOp -> String
+shiftName = \case Shl -> "BITSHIFTL"; Shr -> "BITSHIFTR"
+
+-- the low 63 bits of a two's-complement value, sign-extended: what
+-- `slli 1; ori 1` then `srai 1` leave of a 64-bit result (the legacy
+-- shift expansions and bits.c's TAG((sw)...))
+wrap63 :: Integer -> Integer
+wrap63 v = let m = v `mod` (2 ^ (63 :: Int)) in if m > intMax then m - 2 ^ (63 :: Int) else m

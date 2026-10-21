@@ -35,6 +35,8 @@ dumpFn fn =
       OIsInt v -> "isint " ++ value v
       OTagTest t c v -> "tagtest " ++ show t ++ " " ++ show c ++ " " ++ value v
       OArith o a b -> "arith " ++ arithSymbol o ++ " " ++ value a ++ ", " ++ value b
+      OBit o a b -> "bit " ++ bitName o ++ " " ++ value a ++ ", " ++ value b
+      OShift o a b -> "shift " ++ shiftName o ++ " " ++ value a ++ ", " ++ value b
       OCmp o a b -> "cmp " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
       OEqVal eq a b -> (if eq then "eqval " else "neval ") ++ value a ++ ", " ++ value b
       OCall c as -> "call " ++ callee c ++ args as

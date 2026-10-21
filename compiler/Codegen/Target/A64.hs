@@ -66,7 +66,7 @@ import Codegen.Target.Common
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 2 -- conditional bounds split at transfers; validation tightened
+a64SelectionRev = 3 -- coverage: bit operations and shifts
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -346,6 +346,9 @@ selectInstr _ _ (Instr d op) = case op of
     emitI (li r 0)
     emitL done
   OArith o a b -> def (\r -> arith o r (vreg a) (vreg b))
+  -- band/bor/bxor on the untagged values: one instruction, the result fits
+  OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> "and"; BOr -> "orr"; BXor -> "eor") r (vreg a) (vreg b)))
+  OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
     emitI (cmp (vreg a) (vreg b))
     emitI (cset (cond o) r)
@@ -429,6 +432,34 @@ selectInstr _ _ (Instr d op) = case op of
       emitI (rri "sbfx63" n t 0)
       emitI (cmp n t)
       emitI (bcond "ne" slow)
+    -- BITSHIFTL / BITSHIFTR (Codegen.inlineTable, shiftOk): a count outside
+    -- 0..63 (negative counts included, compared unsigned) takes the slow
+    -- path, the HAL entry fpr_g_<name>_call2 with the original operands
+    -- retagged, which traps with the primitive's text; the fast path is
+    -- the 64-bit shift of the untagged value with the low 63 bits kept
+    -- (the legacy `slli 1; ori 1` then `srai 1`)
+    shift o r a b = do
+      slow <- freshL "shslow"
+      done <- freshL "shdone"
+      t <- freshV False
+      emitI (cmpi b 64)
+      emitI (bcond "hs" slow)
+      emitI (rrr (case o of Shl -> "lslr"; Shr -> "lsrr") t a b)
+      emitI (rri "sbfx63" r t 0)
+      emitI (jump done)
+      emitL slow
+      ta <- freshV False
+      ta' <- freshV True
+      tb <- freshV False
+      tb' <- freshV True
+      emitI (rri "lsl" ta a 1)
+      emitI (rri "orri" ta' ta 1)
+      emitI (rri "lsl" tb b 1)
+      emitI (rri "orri" tb' tb 1)
+      res <- freshV True
+      emitI (call ("fpr_g_" ++ mangleName (shiftName o) ++ "_call2") False True [ta', tb'] (Just res))
+      emitI (rri "asr" r res 1)
+      emitL done
 
 -- block parameters are assigned in parallel: a cycle is broken with a
 -- fresh temporary
@@ -578,6 +609,8 @@ renderItem cfg ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
       ("sbfx31", [d], [s, _]) -> ["sbfx " ++ reg d ++ ", " ++ reg s ++ ", #0, #31"]
       ("ldrsw", [d], [s, n]) -> ["ldursw " ++ reg d ++ ", [" ++ reg s ++ ", #" ++ show (imm n) ++ "]"]
       (o, [d], [a, b]) | o `elem` ["add", "sub", "mul", "sdiv", "and", "eor", "orr"] -> [o ++ " " ++ reg d ++ ", " ++ reg a ++ ", " ++ reg b]
+      ("lslr", [d], [a, b]) -> ["lsl " ++ reg d ++ ", " ++ reg a ++ ", " ++ reg b] -- the register-count form (lslv)
+      ("lsrr", [d], [a, b]) -> ["lsr " ++ reg d ++ ", " ++ reg a ++ ", " ++ reg b]
       ("cmp", [], [a, b]) -> ["cmp " ++ reg a ++ ", " ++ reg b]
       ("cmpi", [], [a, n]) -> ["cmp " ++ reg a ++ ", #" ++ show (imm n)]
       ('c' : 's' : 'e' : 't' : '.' : c, [d], []) -> ["cset " ++ reg d ++ ", " ++ c]
