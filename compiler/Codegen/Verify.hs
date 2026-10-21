@@ -56,6 +56,11 @@ opSignature tyOf = \case
   OShift _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OCmp _ a b -> expect a TInt >> expect b TInt >> pure (Just TPred)
   OEqVal _ a b -> expect a TVal >> expect b TVal >> pure (Just TPred)
+  OBits n -> do
+    unless (n >= negate (2 ^ (63 :: Int)) && n < 2 ^ (63 :: Int)) (Left ("bits " ++ show n ++ " is not a signed 64-bit word"))
+    pure (Just TVal)
+  OFloatBin _ a b -> expect a TVal >> expect b TVal >> pure (Just TVal)
+  OFloatCmp _ a b -> expect a TVal >> expect b TVal >> pure (Just TPred)
   OCall c as -> do
     when (length as /= length (calleeParams c)) $
       Left ("call " ++ calleeName c ++ ": " ++ show (length as) ++ " arguments for " ++ show (length (calleeParams c)) ++ " parameters")

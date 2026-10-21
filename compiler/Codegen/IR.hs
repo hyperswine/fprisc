@@ -25,7 +25,7 @@
 -- (Codegen.Eval) is the executable statement of these semantics.
 module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
-    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), Callee (..), CalleeKind (..), isForeign,
+    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), Callee (..), CalleeKind (..), isForeign,
     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
     intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
@@ -63,6 +63,10 @@ data CmpOp = Lt | Gt | Le | Ge | Eq | Ne deriving (Eq, Ord, Show, Enum, Bounded)
 -- bxor): on the untagged Ints, bit for bit; the result always fits
 data BitOp = BAnd | BOr | BXor deriving (Eq, Ord, Show, Enum, Bounded)
 
+-- F64 arithmetic on IEEE binary64 bits held in a TVal (the 64-bit V ABI's
+-- float representation): IEEE semantics, no trap, no fused multiply-add
+data FloatOp = FAdd | FSub | FMul | FDiv deriving (Eq, Ord, Show, Enum, Bounded)
+
 -- BITSHIFTL / BITSHIFTR (runtime/bits.c h_shiftl, h_shiftr): the 64-bit
 -- shift of the untagged value, wrapped to the 63-bit Int (`wrap63`); a
 -- count outside 0..63 traps with the primitive's text
@@ -75,6 +79,7 @@ data CalleeKind
   = Local -- a function of this unit (`fpr_fn_<mangled>`)
   | Imported -- another unit's export, same shapes, extern symbol
   | Foreign String -- a saturated primitive of declared arity: a C entry (`fpr_prim_fn_<mangled>` for a core primitive, `fpr_g_<mangled>_call<n>` for a HAL/foreign declaration), tagged words in and out
+  | Generated String -- a function of the generated-code ABI under an explicit symbol: a vector kernel the legacy specialiser emits in this unit (`fpr_vspec_...`), called exactly as the legacy caller calls it (docs/2026-10-22-TYPED-IR-KERNELS.md)
   deriving (Eq, Ord, Show)
 
 isForeign :: Callee -> Bool
@@ -113,6 +118,9 @@ data Op
   | OShift ShiftOp VId VId -- TInt TInt -> TInt: value, count; the count outside 0..63 traps (bits.c)
   | OCmp CmpOp VId VId -- TInt TInt -> TPred
   | OEqVal Bool VId VId -- TVal TVal -> TPred: deep structural equality (True) or inequality (False)
+  | OBits Integer -- TVal: a raw 64-bit word, signed form (an F64 literal's IEEE bits, as the legacy generator splices them)
+  | OFloatBin FloatOp VId VId -- TVal TVal -> TVal: F64 arithmetic on the bits, inline (Codegen.inlineTable F64.+ - * /)
+  | OFloatCmp CmpOp VId VId -- TVal TVal -> TPred: F64 ordered comparison (false on a NaN), != is its negation (true on a NaN)
   | OCall Callee [VId] -- calleeParams -> calleeResult; clobbers every caller-saved register; any effect
   | OSafepoint -- the fuel tick: a runtime call that may deschedule the actor
   | OStackCheck -- the entry headroom check: a runtime call that may move sp to a new segment
@@ -184,6 +192,9 @@ opEffect = \case
   OShift _ _ _ -> MayTrap
   OCmp _ _ _ -> Pure
   OEqVal _ _ _ -> RuntimeCall -- deep equality is the C primitive unless both are tagged Ints
+  OBits _ -> Pure
+  OFloatBin _ _ _ -> Pure
+  OFloatCmp _ _ _ -> Pure
   OCall _ _ -> AnyEffect
   OSafepoint -> RuntimeCall
   OStackCheck -> RuntimeCall
@@ -212,6 +223,9 @@ opUses = \case
   OShift _ a b -> [a, b]
   OCmp _ a b -> [a, b]
   OEqVal _ a b -> [a, b]
+  OBits _ -> []
+  OFloatBin _ a b -> [a, b]
+  OFloatCmp _ a b -> [a, b]
   OCall _ as -> as
   OSafepoint -> []
   OStackCheck -> []
@@ -250,6 +264,9 @@ mapOpUses f = \case
   OShift o a b -> OShift o (f a) (f b)
   OCmp o a b -> OCmp o (f a) (f b)
   OEqVal e a b -> OEqVal e (f a) (f b)
+  OBits n -> OBits n
+  OFloatBin o a b -> OFloatBin o (f a) (f b)
+  OFloatCmp o a b -> OFloatCmp o (f a) (f b)
   OCall c as -> OCall c (map f as)
   OSafepoint -> OSafepoint
   OStackCheck -> OStackCheck

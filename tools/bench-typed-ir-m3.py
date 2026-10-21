@@ -66,7 +66,7 @@ INTERNAL = {
     "sum": ("loop : unsafe Int -> Int -> Int .\nloop n a = if n == 0 then a else loop (n - 1) (a + n).\n", "loop 10000000 0", 50000005000000),
     "pipeline": ("inc x = x + 1.\nabove x = x > 500000.\nweighted a x = a + 2 * x.\n", "0", 750000500007),
 }
-WALL = ["helpers", "sha"]
+WALL = ["helpers", "sha", "floatcmp", "nbody"]
 
 
 def main():

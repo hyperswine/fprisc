@@ -964,7 +964,8 @@ compileWithInterface accepted = do
                            else if qapp then QosApp
                            else HostedBase,
               polFuel = not (oBuiltin opts),
-              polStackCheck = if envTirShallow then StackCheckLegacyShallow else StackCheckEveryEntry }
+              polStackCheck = if envTirShallow then StackCheckLegacyShallow else StackCheckEveryEntry,
+              polFloatInline = not envNoFloatInline }
           -- direct backends: the AArch64 hart read follows the
           -- legacy lowering (x28 under fpr build, the TLV cell on a64mac
           -- without --base, local-exec TLS on a64 ELF)

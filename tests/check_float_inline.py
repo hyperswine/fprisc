@@ -31,33 +31,37 @@ with tempfile.TemporaryDirectory(prefix='fpr-f64-') as temp:
     source = tmp / 'backend.fpr'
     source.write_text(''.join(f'{n} : F64 -> F64 -> {"F64" if n in ("add", "sub", "mul", "div") else "Bool"} .\n{n} a b = a {op} b.\n'
                               for n, op in ops.items()) + 'main = Unit.\n')
-    asm = tmp / 'backend.s'
-    run(['./fpr', '--target=x64', f'--prelude={ROOT}/core/prelude.fpr', source, asm],
-        {'FPR_NO_F64_INLINE': '0'})
-    cc = shutil.which('clang') or shutil.which('cc')
-    if shutil.which('clang'):
-        run(['clang', '--target=x86_64-linux-gnu', '-c', asm, '-o', tmp / 'backend.o'])
-    mac = platform.system() == 'Darwin'
-    native = platform.machine() in ('x86_64', 'AMD64')
-    rosetta = mac and not native and subprocess.run(['arch', '-x86_64', '/usr/bin/true'], capture_output=True).returncode == 0
-    if native or rosetta:
-        text = asm.read_text()
-        chunks = []
-        for n in ops:
-            m = re.search(r'(?ms)^\s*\.globl fpr_fn_' + n + r'\n.*?(?=^# wcet:|^# fn |\Z)', text)
-            assert m, f'missing generated {n}'
-            chunks.append(m.group())
-        selected = '.text\n' + ''.join(chunks)
-        selected = selected.replace('%fs:fpr_posix_hart@tpoff', 'probe_hart(%rip)')
-        if mac:
-            selected = re.sub(r'\bfpr_[A-Za-z0-9_]+\b', lambda m: '_' + m.group(), selected)
-            selected = selected.replace('probe_hart(%rip)', '_probe_hart(%rip)')
-        leaf = tmp / 'leaf.s'; leaf.write_text(selected)
-        exe = tmp / 'x64-probe'
-        run([cc, *(['-arch', 'x86_64'] if mac else []), '-O2', leaf,
-             ROOT / 'tests/base/floatbackend.c', '-o', exe])
-        p = run([*(['arch', '-x86_64'] if rosetta else []), exe])
-        assert p.stdout == 'x64 F64: 0 mismatches over 1280 pairs\n', p.stdout
-        print(p.stdout.strip() + ': PASS')
-    else:
-        print('x64 F64 execution: SKIP (needs native x64 or Rosetta; generated assembly checked when clang is available)')
+    # the legacy generator, then the typed-IR backend, which inlines the
+    # same F64 operations (docs/2026-10-22-TYPED-IR-KERNELS.md)
+    for backend in ('', 'mixed'):
+        label = 'typed-IR ' if backend else ''
+        asm = tmp / 'backend.s'
+        run(['./fpr', '--target=x64', f'--prelude={ROOT}/core/prelude.fpr', source, asm],
+            {'FPR_NO_F64_INLINE': '0', **({'FPR_TYPED_IR_BACKEND': backend} if backend else {})})
+        cc = shutil.which('clang') or shutil.which('cc')
+        if shutil.which('clang'):
+            run(['clang', '--target=x86_64-linux-gnu', '-c', asm, '-o', tmp / 'backend.o'])
+        mac = platform.system() == 'Darwin'
+        native = platform.machine() in ('x86_64', 'AMD64')
+        rosetta = mac and not native and subprocess.run(['arch', '-x86_64', '/usr/bin/true'], capture_output=True).returncode == 0
+        if native or rosetta:
+            text = asm.read_text()
+            chunks = []
+            for n in ops:
+                m = re.search(r'(?ms)^\s*\.globl fpr_fn_' + n + r'\n.*?(?=^# wcet:|^# native-insns-v1:|^# fn |\Z)', text)
+                assert m, f'missing generated {n}'
+                chunks.append(m.group())
+            selected = '.text\n' + ''.join(chunks)
+            selected = selected.replace('%fs:fpr_posix_hart@tpoff', 'probe_hart(%rip)')
+            if mac:
+                selected = re.sub(r'\bfpr_[A-Za-z0-9_]+\b', lambda m: '_' + m.group(), selected)
+                selected = selected.replace('probe_hart(%rip)', '_probe_hart(%rip)')
+            leaf = tmp / 'leaf.s'; leaf.write_text(selected)
+            exe = tmp / 'x64-probe'
+            run([cc, *(['-arch', 'x86_64'] if mac else []), '-O2', leaf,
+                 ROOT / 'tests/base/floatbackend.c', '-o', exe])
+            p = run([*(['arch', '-x86_64'] if rosetta else []), exe])
+            assert p.stdout == 'x64 F64: 0 mismatches over 1280 pairs\n', p.stdout
+            print(label + p.stdout.strip() + ': PASS')
+        else:
+            print('x64 F64 execution: SKIP (needs native x64 or Rosetta; generated assembly checked when clang is available)')

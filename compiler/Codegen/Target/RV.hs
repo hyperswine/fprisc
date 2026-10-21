@@ -14,12 +14,12 @@ import Codegen.Selected
 import Codegen.Target.Common
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict
-import Data.List (intercalate)
+import Data.List (intercalate, stripPrefix)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 2
+rvSelectionRev = 3 -- 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
 
 data RVHart = HartTp | HartTls deriving (Eq, Show)
 data RVConfig = RVConfig
@@ -87,7 +87,7 @@ call sym tick runtime vs result tailCall = do
      siControl = if tailCall then Return else Next,
      siCalls = [Call sym tick runtime]})
 calleeSym :: Callee -> String
-calleeSym c = case calleeKind c of Foreign s -> s; _ -> functionSymbol (calleeName c)
+calleeSym c = case calleeKind c of Foreign s -> s; Generated s -> s; _ -> functionSymbol (calleeName c)
 entry :: Bool -> Bool -> S ()
 entry stack fuel = do
   Label l <- freshLabel
@@ -140,6 +140,7 @@ select cfg fn = do
         Just (v,_) -> value (vreg v) op
     value d = \case
       OConstInt n -> li d n
+      OBits n -> li d n
       ONullary t v -> do
         sym <- case (t,v) of
           (0,0) -> pure "fpr_unit"; (1,0) -> pure "fpr_false"; (1,1) -> pure "fpr_true"
@@ -176,6 +177,8 @@ select cfg fn = do
         call ("fpr_prim_fn_" ++ mangleName (arithSymbol op)) False True [x,y] (Just t) False
         ri "srai" d t 1
       OBit op a b -> rr (case op of BAnd -> "and"; BOr -> "or"; BXor -> "xor") d (vreg a) (vreg b)
+      OFloatBin o a b -> rr ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) d (vreg a) (vreg b)
+      OFloatCmp o a b -> rr ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) d (vreg a) (vreg b)
       OShift op a b -> do
         x <- boxed (vreg a); y <- boxed (vreg b); t <- fresh
         call (if op == Shl then "fpr_g_BITSHIFTL_call2" else "fpr_g_BITSHIFTR_call2") False True [x,y] (Just t) False
@@ -308,6 +311,14 @@ render cfg fn ly restores (I i) = map (\s -> if last s == ':' then s else "    "
       ("entry.check.tick",[],[]) -> hart ++ stack ++ tick
       ("entry.check",[],[]) -> hart ++ stack
       ("entry.tick",[],[]) -> hart ++ tick
+      -- F64 on the bits through ft0/ft1, as the legacy inline table does
+      (o,[d],[a,b]) | Just f <- stripPrefix "fbin." o ->
+        ["fmv.d.x ft0, " ++ r a, "fmv.d.x ft1, " ++ r b, "f" ++ f ++ ".d ft0, ft0, ft1", "fmv.x.d " ++ r d ++ ", ft0"]
+      (o,[d],[a,b]) | Just c <- stripPrefix "fcmp." o ->
+        ["fmv.d.x ft0, " ++ r a, "fmv.d.x ft1, " ++ r b] ++ case c of
+          "lt" -> ["flt.d " ++ r d ++ ", ft0, ft1"]; "gt" -> ["flt.d " ++ r d ++ ", ft1, ft0"]
+          "le" -> ["fle.d " ++ r d ++ ", ft0, ft1"]; "ge" -> ["fle.d " ++ r d ++ ", ft1, ft0"]
+          "eq" -> ["feq.d " ++ r d ++ ", ft0, ft1"]; _ -> ["feq.d " ++ r d ++ ", ft0, ft1", "xori " ++ r d ++ ", " ++ r d ++ ", 1"]
       _ -> error ("RV64 no render form " ++ show (op,ds,us))
 local :: Fn -> Label -> String
 local fn (Label l) = ".Ltir_" ++ mangleName (fnName fn) ++ "_" ++ l

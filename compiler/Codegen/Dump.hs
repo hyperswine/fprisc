@@ -47,6 +47,9 @@ dumpFn fn =
       OShift o a b -> "shift " ++ shiftName o ++ " " ++ value a ++ ", " ++ value b
       OCmp o a b -> "cmp " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
       OEqVal eq a b -> (if eq then "eqval " else "neval ") ++ value a ++ ", " ++ value b
+      OBits n -> "bits " ++ show n
+      OFloatBin o a b -> "fbin " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ value a ++ ", " ++ value b
+      OFloatCmp o a b -> "fcmp " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
       OCall c as -> "call " ++ callee c ++ args as
       OSafepoint -> "safepoint"
       OStackCheck -> "stackcheck"
@@ -56,7 +59,7 @@ dumpFn fn =
       TCondBr c t as e bs -> "condbr " ++ value c ++ " -> " ++ block t ++ args as ++ " | " ++ block e ++ args bs
       TTailCall c as -> "tailcall " ++ callee c ++ args as
       TUnreachable msg -> "unreachable " ++ show msg
-    callee c = calleeName c ++ (case calleeKind c of Imported -> "@import"; Foreign sym -> "@foreign:" ++ sym; Local -> "")
+    callee c = calleeName c ++ (case calleeKind c of Imported -> "@import"; Foreign sym -> "@foreign:" ++ sym; Generated sym -> "@generated:" ++ sym; Local -> "")
       ++ " :: " ++ intercalate " " (map ty (calleeParams c)) ++ " -> " ++ ty (calleeResult c)
     args as = "(" ++ intercalate ", " (map value as) ++ ")"
     value (VId n) = "v" ++ show n

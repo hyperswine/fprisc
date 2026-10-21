@@ -24,12 +24,12 @@ import Codegen.Selected
 import Codegen.Target.Common
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict
-import Data.List (intercalate)
+import Data.List (intercalate, stripPrefix)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 10 -- aggregate and string selection; prior: the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
+x64SelectionRev = 11 -- 11: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 10: aggregate and string selection; prior: the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
 
 data X64Config = X64Config
   { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool,
@@ -195,6 +195,7 @@ primSymbol o = "fpr_prim_fn_" ++ mangleName (arithSymbol o)
 calleeSymbol :: Callee -> String
 calleeSymbol c = case calleeKind c of
   Foreign sym -> sym
+  Generated sym -> sym
   _ -> functionSymbol (calleeName c)
 
 nullarySymbol :: Int -> Int -> Se String
@@ -250,6 +251,7 @@ selectInstr _ _ (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
   OConstInt n -> def (\r -> emitI (li r n))
+  OBits n -> def (\r -> emitI (li r n))
   ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
   OString text -> def $ \rd -> do
     modify (\st -> st {selStrings = S.insert text (selStrings st)})
@@ -328,6 +330,10 @@ selectInstr _ _ (Instr d op) = case op of
   OArith o a b -> def (\r -> arith o r (vreg a) (vreg b))
   -- band/bor/bxor on the untagged values: one instruction, the result fits
   OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> "and"; BOr -> "or"; BXor -> "xor") r (vreg a) (vreg b)))
+  -- F64 on the bits through xmm14/xmm15, inside the expansion only (SysV:
+  -- caller-saved; no float register is allocated)
+  OFloatBin o a b -> def (\r -> emitI (plain ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [any' r] [any' (vreg a), any' (vreg b)]))
+  OFloatCmp o a b -> def (\r -> emitI ((plain ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
   OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
     emitI (cmp (vreg a) (vreg b))
@@ -592,6 +598,13 @@ renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i
       ("ldrsw",[d],[s,n]) -> ["movslq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
       ("movslq",[d],[s,n]) -> ["movslq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
       ("sext63",[d],[_,_]) -> ["shlq $1, " ++ reg d, "sarq $1, " ++ reg d]
+      (o,[d],[a,b]) | Just f <- stripPrefix "fbin." o ->
+        ["movq " ++ reg a ++ ", %xmm14", "movq " ++ reg b ++ ", %xmm15", f ++ "sd %xmm15, %xmm14", "movq %xmm14, " ++ reg d]
+      -- cmp<pred>sd leaves all-ones or zero: exact NaN behaviour (ordered
+      -- predicates false, neq true); gt/ge compare the swapped operands
+      (o,[d],[a,b]) | Just c <- stripPrefix "fcmp." o ->
+        let (x, y, p) = case c of "lt" -> (a, b, "lt"); "le" -> (a, b, "le"); "gt" -> (b, a, "lt"); "ge" -> (b, a, "le"); "eq" -> (a, b, "eq"); _ -> (a, b, "neq")
+         in ["movq " ++ reg x ++ ", %xmm14", "movq " ++ reg y ++ ", %xmm15", "cmp" ++ p ++ "sd %xmm15, %xmm14", "movq %xmm14, " ++ reg d, "andq $1, " ++ reg d]
       (o,[d],[_,n]) | Just mnemonic <- lookup o [("lsl","shlq"),("asr","sarq"),("orri","orq"),("andi","andq"),("eori","xorq")] ->
         [mnemonic ++ " $" ++ imm n ++ ", " ++ reg d]
       (o,[d],[_,b]) | Just mnemonic <- lookup o [("add","addq"),("sub","subq"),("mul","imulq"),("and","andq"),("or","orq"),("xor","xorq")] ->

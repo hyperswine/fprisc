@@ -31,12 +31,13 @@ data StackPolicy
 data Policy = Policy
   { polProfile :: Profile,
     polFuel :: Bool, -- the entry fuel tick and every inlined `$fuel` tick are emitted
-    polStackCheck :: StackPolicy
+    polStackCheck :: StackPolicy,
+    polFloatInline :: Bool -- F64 + - * / and comparisons inline on the 64-bit word (FPR_NO_F64_INLINE=1 keeps the runtime calls, as the legacy differential switch does)
   }
   deriving (Eq, Ord, Show)
 
 m2Policy :: Policy
-m2Policy = Policy HostedBase True StackCheckEveryEntry
+m2Policy = Policy HostedBase True StackCheckEveryEntry True
 
 profileName :: Profile -> String
 profileName = \case

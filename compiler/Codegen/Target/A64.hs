@@ -70,7 +70,7 @@ import Codegen.Selected
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict
 import Data.Bits (shiftR, (.&.))
-import Data.List (intercalate)
+import Data.List (intercalate, stripPrefix)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Word (Word64)
@@ -79,7 +79,7 @@ import Codegen.Target.Common
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 11 -- 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
+a64SelectionRev = 12 -- 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -304,6 +304,7 @@ primSymbol o = "fpr_prim_fn_" ++ mangleName (arithSymbol o)
 calleeSymbol :: Callee -> String
 calleeSymbol c = case calleeKind c of
   Foreign sym -> sym
+  Generated sym -> sym
   _ -> functionSymbol (calleeName c)
 
 nullarySymbol :: Int -> Int -> Se String
@@ -359,6 +360,7 @@ selectInstr _ _ (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
   OConstInt n -> def (\r -> emitI (li r n))
+  OBits n -> def (\r -> emitI (li r n))
   ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
   OString text -> def $ \rd -> do
     modify (\st -> st {selStrings = S.insert text (selStrings st)})
@@ -439,6 +441,10 @@ selectInstr _ _ (Instr d op) = case op of
   OArith o a b -> def (\r -> arith o r (vreg a) (vreg b))
   -- band/bor/bxor on the untagged values: one instruction, the result fits
   OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> "and"; BOr -> "orr"; BXor -> "eor") r (vreg a) (vreg b)))
+  -- F64 on the bits: d16/d17 live only inside the expansion (no float
+  -- register is allocated; AAPCS lets a call clobber them anyway)
+  OFloatBin o a b -> def (\r -> emitI (rrr ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) r (vreg a) (vreg b)))
+  OFloatCmp o a b -> def (\r -> emitI ((rrr ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) r (vreg a) (vreg b)) {siFlags = FlagsDef}))
   OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
     emitI (cmp (vreg a) (vreg b))
@@ -804,6 +810,12 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
       ("entry.check.tick", _, _) -> hartRead ++ stackCheck ++ tick
       ("entry.check", _, _) -> hartRead ++ stackCheck
       ("entry.tick", _, _) -> hartRead ++ tick
+      (o, [d], [a, b]) | Just f <- stripPrefix "fbin." o ->
+        ["fmov d16, " ++ reg a, "fmov d17, " ++ reg b, "f" ++ f ++ " d16, d16, d17", "fmov " ++ reg d ++ ", d16"]
+      -- the conditions are false when unordered except ne (feq negated)
+      (o, [d], [a, b]) | Just c <- stripPrefix "fcmp." o ->
+        ["fmov d16, " ++ reg a, "fmov d17, " ++ reg b, "fcmp d16, d17",
+         "cset " ++ reg d ++ ", " ++ (case c of "lt" -> "mi"; "le" -> "ls"; "gt" -> "gt"; "ge" -> "ge"; "eq" -> "eq"; _ -> "ne")]
       _ -> error ("A64 render: no form for " ++ op ++ " " ++ show ds ++ " " ++ show us)
     -- the legacy frame: sp down, ra and the caller's fp at the top, fp = old sp
     -- with FPR_TYPED_IR_LINK_PAIRS the link is one stp/ldp when its offset

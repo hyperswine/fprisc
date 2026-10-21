@@ -85,6 +85,7 @@ callFn width program name args = do
             if p then mapM (look env) as >>= \as' -> run t as' env else mapM (look env) bs >>= \bs' -> run e bs' env
           TTailCall c as -> do
             when (isForeign c) (stuck ("a foreign tail call to " ++ calleeName c ++ ": the evaluator models no C"))
+            case calleeKind c of Generated s -> stuck ("a tail call of the vector kernel " ++ s ++ ": the evaluator models no kernel"); _ -> pure ()
             mapM (look env) as >>= callFn width program (calleeName c)
           TUnreachable msg -> trap msg
       instr env (Instr d op) = do
@@ -160,9 +161,13 @@ callFn width program name args = do
           x <- val env a
           y <- val env b
           pure (Just (VPred ((x == y) == eq)))
+        OBits _ -> stuck "a raw-bits constant (an F64 literal): the evaluator models no floats"
+        OFloatBin _ _ _ -> stuck "an inline F64 operation: the evaluator models no floats (F64 values come from C entries it does not model either)"
+        OFloatCmp _ _ _ -> stuck "an inline F64 comparison: the evaluator models no floats"
         OCall c as -> do
           args' <- mapM (look env) as
           when (isForeign c) (stuck ("a foreign call to " ++ calleeName c ++ ": the evaluator models no C"))
+          case calleeKind c of Generated s -> stuck ("a call of the vector kernel " ++ s ++ ": the evaluator models no kernel"); _ -> pure ()
           r <- callFn width program (calleeName c) args'
           pure (Just r)
         OSafepoint -> event (EvSafepoint (fnName fn)) >> pure Nothing

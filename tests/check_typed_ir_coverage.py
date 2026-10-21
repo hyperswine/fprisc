@@ -64,15 +64,21 @@ main = v = Vec.iota 1000;
                              '--prelude=' + str(ROOT / 'core/prelude.fpr'), src, asm], env)
                 text = asm.read_text()
                 if not generic:
-                    assert 'main fallback: vector specialization requires legacy kernel emission' in notes, notes[-2000:]
+                    # the caller is native and calls the fused kernel the legacy
+                    # specialiser still emits (docs/2026-10-22-TYPED-IR-KERNELS.md)
+                    assert 'typed-ir-backend: main native ' in notes, notes[-2000:]
                     assert '# mixed scalar pipeline:' in text, target
+                    kernels = set(re.findall(r'^_?(fpr_vspec_pipeline\w*):', text, re.M))
+                    assert kernels, target
+                    calls = re.findall(r'^\s+(?:bl|call|jal|jal ra,|tail|b|jmp)\s+_?(fpr_vspec_pipeline\w*)', text, re.M)
+                    assert set(calls) & kernels, (target, sorted(kernels)[:1])
                 else:
                     assert 'typed-ir-backend: main native ' in notes, notes[-2000:]
                     assert '# mixed scalar pipeline:' not in text, target
             exe = tmp / 'pipeline'
             run([ROOT / 'fpr', 'build', src, '-o', exe], env)
             assert run([exe], env) == '750507\n'
-        print('vector kernels: named fallback preserves specialization on all four selectors; local callback parameters admit direct main; native results equal independent arithmetic PASS', flush=True)
+        print('vector kernels: native callers call the legacy-emitted fused kernel on all four selectors; local callback parameters admit direct main; native results equal independent arithmetic PASS', flush=True)
 
 
 if __name__ == '__main__':

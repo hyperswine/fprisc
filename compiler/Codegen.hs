@@ -510,12 +510,12 @@ foreignEntries tgt =
 -- refusal (a frame beyond the ceiling) is a reported fallback; an invalid
 -- selection, placement or layout is a compiler error.  Whole-unit
 -- granularity turns one fallback into the unit's.
-nativeSelect :: Target -> Bool -> NativeMode -> ScalarSignatures -> M.Map String Int -> S.Set String -> Prog -> Prog -> (M.Map String NativeFn, [(String, String)], [String])
+nativeSelect :: Target -> Bool -> NativeMode -> ScalarSignatures -> M.Map String Int -> S.Set String -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String])
 nativeSelect tgt spec nm sigs ext exps prog emitted =
   case verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered0 >> verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered of
     Left err -> error ("typed-ir: " ++ err)
     Right () -> case nmBackend nm of
-      Nothing -> (M.empty, [(n, "no typed-IR native backend for " ++ nmTargetName nm ++ " (M2 emits AArch64 and x86-64)") | n <- M.keys emitted], [])
+      Nothing -> ([], M.empty, [(n, "no typed-IR native backend for " ++ nmTargetName nm ++ " (M2 emits AArch64 and x86-64)") | n <- M.keys emitted], [])
       Just backend ->
         let emit = case backend of
               DirectA64 fmt hart -> emitFnA64 (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm))
@@ -535,46 +535,56 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
               then error ("typed-ir backend: " ++ intercalate "; " errors)
               else case nmGranularity nm of
                 PerFunction ->
-                  ( accepted,
+                  ( kernelsOf accepted, accepted,
                     declined ++ [(n, "native-insns-v1 is UNBOUNDED: a cycle without a safepoint") | n <- unbounded],
                     ("typed-ir-backend: native " ++ show (M.size accepted) ++ "/" ++ show (M.size emitted) ++ " functions (per-function)")
                       : map nativeNote (M.elems accepted) ++ ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- declined]
                   )
                 WholeUnit
                   | null declined && null unbounded ->
-                      ( accepted, [],
+                      ( kernelsOf accepted, accepted, [],
                         ("typed-ir-backend: native " ++ show (M.size accepted) ++ "/" ++ show (M.size emitted) ++ " functions (whole unit)")
                           : map nativeNote (M.elems accepted)
                       )
                   | otherwise ->
                       let reasons = declined ++ [(n, "native-insns-v1 is UNBOUNDED: a cycle without a safepoint") | n <- unbounded]
                           why = "whole-unit fallback: " ++ show (length reasons) ++ " of " ++ show (M.size emitted) ++ " functions declined"
-                       in ( M.empty,
+                       in ( [], M.empty,
                             reasons ++ [(n, why) | n <- M.keys emitted, n `notElem` map fst reasons],
                             ("typed-ir-backend: native 0/" ++ show (M.size emitted) ++ " functions (" ++ why ++ ")")
                               : ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- reasons]
                           )
   where
-    (lowered0, loweringFailures) = lowerProgram (tgtPolicy tgt) sigs prog eligible ext (foreignEntries tgt)
+    (lowered0, loweringFailures) = lowerProgram (tgtPolicy tgt) sigs prog eligible ext (M.union kernelPrims (foreignEntries tgt))
     -- The direct backend must not silently replace an enabled specialized
-    -- column loop with generic per-element apply. Keep this named fallback
-    -- until equivalent typed kernels exist; respect target and float gates.
-    specialized = if spec then M.filter hasKernel emitted else M.empty
-    eligible = emitted `M.difference` specialized
-    failures = loweringFailures ++ [(n, "vector specialization requires legacy kernel emission") | n <- M.keys specialized]
-    hasKernel (ps,b) = scan (S.fromList ps) b
-    scan bound e
-      | Just (plan,_) <- vecSpec (tgtFusion tgt) prog (`S.member` bound) e,
-        (tgtW tgt == 8 && tgtFloatInline tgt) || not (specUsesFloat prog plan) = True
+    -- column loop with generic per-element apply.  A specialisation site is
+    -- rewritten into a call of the kernel the legacy specialiser emits for
+    -- it (the same symbol and staging the legacy caller uses: the kernel is
+    -- a function of the generated-code ABI), so the caller can be native
+    -- while the kernel stays legacy emission until typed kernels exist
+    -- (docs/2026-10-22-TYPED-IR-KERNELS.md).  Same gates as genT.
+    rewritten = if spec then M.map (\(ps, b) -> let (b', ks) = kernelSites (S.fromList ps) b in ((ps, b'), ks)) emitted else M.map (\d -> (d, [])) emitted
+    eligible = M.map fst rewritten
+    failures = loweringFailures
+    kernelPrims = M.fromList [(kernelName sym, Prim (length args) (Just sym) Nothing) | (_, ks) <- M.elems rewritten, (sym, _, args) <- ks]
+    kernelsOf accepted = M.toList (M.fromList [(sym, plan) | (n, (_, ks)) <- M.toList rewritten, M.member n accepted, (sym, plan, _) <- ks])
+    kernelName sym = "$vkernel:" ++ sym
+    -- every site, innermost arguments first, in the order genT meets them
+    kernelSites bound e
+      | Just (plan, args) <- vecSpec (tgtFusion tgt) prog (`S.member` bound) e,
+        (tgtW tgt == 8 && tgtFloatInline tgt) || not (specUsesFloat prog plan) =
+          let sym = specSymbol plan
+              (args', ks) = unzip (map (kernelSites bound) args)
+           in (foldl CApp (CVar (kernelName sym)) args', concat ks ++ [(sym, plan, args')])
       | otherwise = case e of
-          CApp a b -> scan bound a || scan bound b
-          CLet x a b -> scan bound a || scan (S.insert x bound) b
-          CIf c t f -> any (scan bound) [c,t,f]
-          CMk _ _ fs -> any (scan bound) fs
-          CTagEq _ _ x -> scan bound x
-          CProj _ x -> scan bound x
-          CLam ps b -> scan (S.union bound (S.fromList ps)) b
-          _ -> False
+          CApp a b -> let (a', ka) = kernelSites bound a; (b', kb) = kernelSites bound b in (CApp a' b', ka ++ kb)
+          CLet x a b -> let (a', ka) = kernelSites bound a; (b', kb) = kernelSites (S.insert x bound) b in (CLet x a' b', ka ++ kb)
+          CIf c t f -> let (c', kc) = kernelSites bound c; (t', kt) = kernelSites bound t; (f', kf) = kernelSites bound f in (CIf c' t' f', kc ++ kt ++ kf)
+          CMk t v fs -> let (fs', ks) = unzip (map (kernelSites bound) fs) in (CMk t v fs', concat ks)
+          CTagEq t v x -> let (x', k) = kernelSites bound x in (CTagEq t v x', k)
+          CProj i x -> let (x', k) = kernelSites bound x in (CProj i x', k)
+          CLam ps b -> let (b', k) = kernelSites (S.union bound (S.fromList ps)) b in (CLam ps b', k)
+          _ -> (e, [])
     -- the simplification passes (Codegen.Simplify), each verified; a
     -- failure is a compiler error
     lowered1 = either (\e -> error ("typed-ir: " ++ e)) fst (simplifyProgram lowered0)
@@ -595,10 +605,10 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
       normalized = M.map (\(ps,b)->(ps,if tgtScalarFast tgt then normIn (S.fromList ps) b else b)) workers
       (prog,rnotes) = if reuseEnabled then reuseProgram elide normalized else (workers,[])
       emitted = if S.null elide then prog else M.filterWithKey (\n _ -> S.notMember n elide) prog
-      (nativeFns, nativeFallbacks, nativeNotes) = case tgtNative tgt of
-        Nothing -> (M.empty, [], [])
+      (nativeKernels, nativeFns, nativeFallbacks, nativeNotes) = case tgtNative tgt of
+        Nothing -> ([], M.empty, [], [])
         Just nm -> nativeSelect tgt spec nm workerSigs ext exps prog emitted
-      (body, st) = runState (top prog emitted nativeFns) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty)
+      (body, st) = runState (top prog emitted nativeFns nativeKernels) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty)
       -- the native text in the target's own syntax, then the string
       -- objects it names (one per distinct text; the unit-local nullary
       -- objects go through cgNulls into the legacy rodata)
@@ -618,7 +628,7 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
           emFallbacks = nativeFallbacks
         }
   where
-    top prog emitted nativeFns = do
+    top prog emitted nativeFns nativeKernels = do
       -- specialization-decline scan: a Vec.map/filter/fold site whose
       -- element fn is a NAMED global but which no plan accepts runs
       -- row-by-row in the generic apply tier.  Say so at compile time
@@ -634,6 +644,9 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
       fns <- concat <$> mapM (uncurry (compileFn prog)) [f | f@(n, _) <- M.toList emitted, M.notMember n nativeFns]
       -- the unit-local nullary objects the native functions name
       modify (\s -> s {cgNulls = S.union (S.fromList (concatMap nfNullaries (M.elems nativeFns))) (cgNulls s)})
+      -- the kernels the native callers name are emitted like the legacy
+      -- callers' (requestSpec's key and symbol)
+      mapM_ (requestSpec . snd) nativeKernels
       specs <- emitSpecs prog
       -- the builtin target links no module registry (runtime/mod.c is not
       -- in its runtime), so the table has no reader there -- and as a strong
@@ -3116,11 +3129,15 @@ peelDeepC e = case peel e of
   CProj k x -> CProj k (peelDeepC x)
   e' -> e'
 
+-- a kernel's symbol: one per (op, element function), as requestSpec names it
+specSymbol :: SpecPlan -> String
+specSymbol p = case wfoldG p of
+  Just g -> "fpr_vspec_wfold_" ++ mangle (spFn p) ++ "_" ++ mangle g
+  Nothing -> "fpr_vspec_" ++ mangle (spOp p) ++ "_" ++ mangle (spFn p)
+
 requestSpec :: SpecPlan -> G String
 requestSpec p = do
-  let sym = case wfoldG p of
-        Just g -> "fpr_vspec_wfold_" ++ mangle (spFn p) ++ "_" ++ mangle g
-        Nothing -> "fpr_vspec_" ++ mangle (spOp p) ++ "_" ++ mangle (spFn p)
+  let sym = specSymbol p
   modify (\s -> s {cgSpecs = M.insert (spOp p, spFn p) (sym, p) (cgSpecs s)})
   pure sym
 

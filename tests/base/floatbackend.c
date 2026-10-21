@@ -2,9 +2,15 @@
 #include <stdint.h>
 #include <stdio.h>
 struct boolean { uint32_t tid, var; } fpr_true = {1, 1}, fpr_false = {1, 0};
-static uintptr_t fuel = 1000000;
-uintptr_t *probe_hart = &fuel;
-uintptr_t fpr_fuel_exhausted(void) { fuel = 1000000; return 0; }
+/* A hart block as generated code reads it: fuel at word 0, the stack
+   window (stk_lo, stk_span) at words 57 and 58 after the 56 spill cells.
+   The window always fits, so fpr_stack_grow is never reached; it exists
+   for the link (typed-IR functions check every entry; legacy leaves skip). */
+static uintptr_t hart[64] = {1000000};
+uintptr_t *probe_hart = hart;
+uintptr_t fpr_fuel_exhausted(void) { hart[0] = 1000000; return 0; }
+void *fpr_stack_grow(void) { return 0; }
+static void hart_init(void) { hart[57] = 0; hart[58] = UINTPTR_MAX; }
 #define DECL(n) extern uintptr_t fpr_fn_##n(uintptr_t, uintptr_t)
 DECL(add); DECL(sub); DECL(mul); DECL(div);
 DECL(lt); DECL(le); DECL(gt); DECL(ge); DECL(eq); DECL(ne);
@@ -28,6 +34,7 @@ static int check(uint64_t a, uint64_t b) {
 }
 static uint64_t random_bits(uint64_t *s) { *s ^= *s << 13; *s ^= *s >> 7; *s ^= *s << 17; return *s; }
 int main(void) {
+  hart_init();
   uint64_t v[] = {0, UINT64_C(0x8000000000000000), 1, UINT64_C(0x8000000000000001),
     UINT64_C(0x0010000000000000), UINT64_C(0x8010000000000000),
     UINT64_C(0x7fefffffffffffff), UINT64_C(0xffefffffffffffff),

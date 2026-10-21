@@ -145,6 +145,23 @@ arithOps = M.fromList [("+", Add), ("-", Sub), ("*", Mul), ("/", Div)]
 cmpOps :: M.Map String CmpOp
 cmpOps = M.fromList [("<", Lt), (">", Gt), ("<=", Le), (">=", Ge), ("==", Eq), ("!=", Ne)]
 
+-- an F64 operation or literal the value lowering expands inline: in tail
+-- position too it is a value, never a tail call of the C entry
+inlineFloat :: Cx -> Env -> Name -> [Core] -> Bool
+inlineFloat cx env h args =
+  isPrim cx env h && polFloatInline (cxPolicy cx) && policyWidth (cxPolicy cx) == W64
+    && case args of
+      [CInt _, CInt _] | h == "f64frombits" -> True
+      [_, _] -> M.member h floatBinOps || M.member h floatCmpOps
+      _ -> False
+
+-- the F64 operators the legacy generator expands inline on the 64-bit word
+floatBinOps :: M.Map String FloatOp
+floatBinOps = M.fromList [("F64.+", FAdd), ("F64.-", FSub), ("F64.*", FMul), ("F64./", FDiv)]
+
+floatCmpOps :: M.Map String CmpOp
+floatCmpOps = M.fromList [("F64.<", Lt), ("F64.>", Gt), ("F64.<=", Le), ("F64.>=", Ge), ("F64.==", Eq), ("F64.!=", Ne)]
+
 -- the bitwise primitives the legacy inline table expands (runtime/bits.c);
 -- a declared HAL name of arity two, never shadowed, is the operation
 bitOps :: M.Map String BitOp
@@ -222,8 +239,15 @@ calleeOf cx h n
   -- `known` and the tgtHal case); the names with inline expansions
   -- ($arc.*, $scalar.*, the integer operators) are not calls there and stay
   -- refused here
+  | M.notMember h (cxProg cx), Just (Prim a (Just sym) _) <- M.lookup h (cxHal cx), a == n, kernelPrefix `isPrefixOf` h = Just (Callee h (Generated sym) (replicate n TVal) TVal)
   | M.notMember h (cxProg cx), Just (Prim a (Just sym) _) <- M.lookup h (cxHal cx), a == n, foreignName h = Just (Callee h (Foreign sym) (replicate n TVal) TVal)
   | otherwise = Nothing
+
+-- a vector-specialisation site the native selector rewrote into a call of
+-- its legacy-emitted kernel (Codegen.nativeSelect); the kernel takes and
+-- returns tagged words in the generated-code ABI
+kernelPrefix :: String
+kernelPrefix = "$vkernel:"
 
 foreignName :: Name -> Bool
 foreignName h = not (any (`isPrefixOf` h) expanded) && h `notElem` inlined
@@ -282,6 +306,7 @@ lowerTail cx env expr = ended (go expr) >> pure ()
     e
       | (CVar h, args@(_ : _)) <- spineOf e,
         M.notMember h env,
+        not (inlineFloat cx env h args),
         Just c <- calleeOf cx h (length args) -> do
           as <- mapM (lowerVal cx env) args
           if h == cxSelf cx
@@ -412,6 +437,29 @@ lowerVal cx env = \case
           y <- lowerVal cx env b >>= asInt
           v <- emit TInt (OShift o x y)
           pure (v, TInt)
+      -- F64 + - * / and comparisons on the 64-bit word: inline, as the
+      -- legacy inline table does (Codegen.inlineTable floatBin/floatCmp);
+      -- the values stay IEEE bits in TVal, nothing new crosses a call
+      -- an F64 literal: its bits, as the legacy generator splices them
+      -- (Codegen.floatLitBits), instead of a runtime f64frombits call
+      | isPrim cx env h, h == "f64frombits", polFloatInline (cxPolicy cx), policyWidth (cxPolicy cx) == W64,
+        [CInt hi, CInt lo] <- args -> do
+          let bits = ((hi * 4294967296) + (lo `mod` 4294967296)) `mod` (2 ^ (64 :: Int))
+              signed = if bits >= 2 ^ (63 :: Int) then bits - 2 ^ (64 :: Int) else bits
+          v <- emit TVal (OBits signed)
+          pure (v, TVal)
+      | isPrim cx env h, polFloatInline (cxPolicy cx), policyWidth (cxPolicy cx) == W64,
+        Just o <- M.lookup h floatBinOps, [a, b] <- args -> do
+          x <- lowerVal cx env a >>= asVal
+          y <- lowerVal cx env b >>= asVal
+          v <- emit TVal (OFloatBin o x y)
+          pure (v, TVal)
+      | isPrim cx env h, polFloatInline (cxPolicy cx), policyWidth (cxPolicy cx) == W64,
+        Just o <- M.lookup h floatCmpOps, [a, b] <- args -> do
+          x <- lowerVal cx env a >>= asVal
+          y <- lowerVal cx env b >>= asVal
+          p <- emit TPred (OFloatCmp o x y)
+          pure (p, TPred)
       | isPrim cx env h, h == "strlen", [a] <- args, Just (Prim 1 _ _) <- M.lookup h (cxHal cx) -> do
           str <- lowerVal cx env a >>= asVal
           v <- emit TInt (OStrLen str)
