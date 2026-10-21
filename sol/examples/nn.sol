@@ -103,7 +103,10 @@ epoch n lr xaug xrows ys w1rows w2 =
   w1t = M.fromRows (lT 3 w1rows);
   (z1, xaug2, w1t2) = M.mul xaug w1t;
   u0 = M.free w1t2;
-  a1 = M.map relu z1;                      # JIT: one column pass, n*H cells
+  # Z1's rows are read again by the backward pass: take them before the
+  # map consumes the matrix (mAllRowsOf hands the matrix back)
+  (z1rows, z1c) = mAllRowsOf z1;
+  a1 = M.map relu z1c;                     # JIT: one column pass, n*H cells
   (a1rows, a1b) = mAllRowsOf a1;
   u1 = M.free a1b;
   a1aug = augRows a1rows;
@@ -114,8 +117,6 @@ epoch n lr xaug xrows ys w1rows w2 =
   ds = lScale (2.0 / n) errs;                # dL/dyhat per sample
   dw2 = accumRows a1aug ds (lZeros (List.len w2));
   w2h = dropLast w2;                       # hidden part of w2 (no bias)
-  (z1rows, z1c) = mAllRowsOf z1;
-  u2 = M.free z1c;
   dz1rows = zip2W (fn zr d -> zip2W (fn z wj -> reluGate z (wj * d)) zr w2h) z1rows ds;
   dw1rows = accumOuter dz1rows xrows (lZeros3 (List.len w2h));
   # update
