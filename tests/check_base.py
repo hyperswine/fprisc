@@ -4,19 +4,19 @@ machine (`fpr build`), with the environment docs/2026-09-18-BASE.md promises -- 
 command line, the exit status, stdin/stdout/stderr, files, the clock --
 and the same actors, std modules and panics as every other profile.
 
-The checks are independent jobs run on a pool of workers, one per core by
-default (docs/2026-10-21-PARALLEL-CHECK-BASE.md).  `make fpr` runs first,
-alone.  Each job's output is printed whole and in the order the jobs are
-written, never interleaved; the first job to fail stops the others and is
-reported by name with its output.
+The checks are independent jobs run on a pool of workers, by default one
+per core idle when the run starts (docs/2026-10-21-PARALLEL-CHECK-BASE.md).
+`make fpr` runs first, alone.  Each job's output is printed whole and in
+the order the jobs are written, never interleaved; the first job to fail
+stops the others and is reported by name with its output.
 
-  python3 tests/check_base.py            # one worker per core
+  python3 tests/check_base.py            # one worker per idle core
   python3 tests/check_base.py -j 4       # or FPR_CHECK_JOBS=4
   python3 tests/check_base.py --serial   # one at a time, as written (-j 1)
   python3 tests/check_base.py --times    # the slowest jobs, on stderr
   python3 tests/check_base.py --only taskstress --only check_trust"""
 from pathlib import Path
-import argparse, io, os, signal, subprocess, sys, tempfile, threading, time, traceback
+import argparse, io, os, re, signal, subprocess, sys, tempfile, threading, time, traceback
 from concurrent.futures import ThreadPoolExecutor
 ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
@@ -123,6 +123,29 @@ LONGEST_FIRST = ('examples/ideal/check.py', 'tests/check_mvu_reload.py', 'tests/
 _locks = {}
 
 
+def idle_cores(seconds=2):
+    """How many cores were idle over a short sample: the default pool is
+    what the machine has free, not what it has.  Other programs' load plus
+    one job per core oversubscribed it threefold and the sub-checks' hang
+    guards fired (docs/2026-10-21-PARALLEL-CHECK-BASE.md).  The load
+    average is no measure on macOS: it read 22 with six cores busy."""
+    cores = os.cpu_count() or 1
+    try:
+        if os.path.exists('/proc/stat'):
+            def sample():
+                v = [int(x) for x in open('/proc/stat').readline().split()[1:]]
+                return v[3] + v[4], sum(v)   # idle + iowait, total
+            i0, t0 = sample()
+            time.sleep(seconds)
+            i1, t1 = sample()
+            return cores * (i1 - i0) / max(1, t1 - t0)
+        out = subprocess.run(['top', '-l', '2', '-s', str(seconds), '-n', '0'],
+                             capture_output=True, text=True, timeout=30).stdout
+        return cores * float(re.findall(r'([\d.]+)% idle', out)[-1]) / 100
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return cores
+
+
 def _work(i, tmp_root):
     name, fn, options = JOBS[i]
     lock = _locks.setdefault(options.get('lock'), threading.Lock()) if options.get('lock') else None
@@ -160,16 +183,24 @@ def _work(i, tmp_root):
 
 def main():
     ap = argparse.ArgumentParser(description='The Base profile conformance run.')
-    ap.add_argument('-j', '--jobs', type=int, default=int(os.environ.get('FPR_CHECK_JOBS', os.cpu_count() or 1)),
-                    help='jobs at once (default: FPR_CHECK_JOBS, else one per core)')
+    ap.add_argument('-j', '--jobs', type=int, default=int(os.environ['FPR_CHECK_JOBS']) if os.environ.get('FPR_CHECK_JOBS') else None,
+                    help='jobs at once (default: FPR_CHECK_JOBS, else one per idle core)')
     ap.add_argument('--serial', action='store_true', help='one job at a time, in order (-j 1)')
     ap.add_argument('--times', action='store_true', help='print the slowest jobs on stderr')
     ap.add_argument('--only', action='append', metavar='TEXT', help='only the jobs whose name contains TEXT (repeatable)')
     a = ap.parse_args()
     if a.only:
         JOBS[:] = [j for j in JOBS if any(t in j[0] for t in a.only)]
-    workers = 1 if a.serial else max(1, a.jobs)
     began = time.monotonic()
+    if a.serial:
+        workers = 1
+    elif a.jobs is not None:
+        workers = max(1, a.jobs)
+    else:
+        idle, cores = idle_cores(), os.cpu_count() or 1
+        workers = max(1, min(cores, round(idle)))
+        print(f'check_base: {idle:.1f} of {cores} cores idle: {workers} worker(s) (-j or FPR_CHECK_JOBS to choose)',
+              file=sys.stderr)
     run(['make', 'fpr'], timeout=300)
     sys.stdout = _Stdout(sys.stdout)
     results = [None] * len(JOBS)

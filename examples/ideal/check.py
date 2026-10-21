@@ -18,7 +18,9 @@ IDEAL = ROOT / 'examples' / 'ideal'
 ENV = dict(os.environ)
 
 
-def run(args, *, cwd=ROOT, ok=True, timeout=90):
+# a hang guard, not a time limit: the --cost build of todo.fpr takes 18 s on
+# an idle machine, and check_base runs this beside other jobs
+def run(args, *, cwd=ROOT, ok=True, timeout=300):
     p = subprocess.run(list(map(str, args)), cwd=cwd, env=ENV,
                        capture_output=True, text=True, timeout=timeout)
     if ok and p.returncode:
