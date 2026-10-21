@@ -59,6 +59,18 @@ V fpr_panic(V s) {
     return fail(7, s, 0);
 }
 struct Bool fpr_unit = {0, 0};
+/* the generic application's staging: head at 16n(rargs), argument i at
+   16(n-1-i)(rargs); this substitute applies a saturated static PAP only */
+struct Pap { uint32_t tid, var; V (*fn)(V); intptr_t arity, nargs; };
+static V inc(V x) { return tag(untag(x) + 1); }
+static struct Pap incPap = {9001, 0, inc, 1, 0};
+static unsigned applies;
+V fpr_applyN(V f, uintptr_t n, V *rargs) {
+    struct Pap *p = (struct Pap *)f;
+    assert(p->tid == 9001 && p->nargs == 0 && n == (uintptr_t)p->arity && n == 1);
+    ++applies;
+    return p->fn(rargs[0]);
+}
 static int equal(V a,V b) {
     if ((a&1) || (b&1)) return a==b;
     struct Bool *x=(void *)a, *y=(void *)b;
@@ -74,7 +86,7 @@ extern V probe_call(Fn, const V *);
 DECL(add); DECL(sub); DECL(mul); DECL(divide); DECL(shift); DECL(branch);
 DECL(hot); DECL(calls); DECL(boolResult); DECL(boolEq); DECL(boolNe);
 DECL(call7); DECL(call8); DECL(rotate6); DECL(rotate7); DECL(rotate8); DECL(rotate63);
-DECL(answer); DECL(useCaf); DECL(tick);
+DECL(answer); DECL(useCaf); DECL(tick); DECL(applyLocal);
 
 static V invoke(Fn fn, const V *args, unsigned count) {
     V first[6] = {0};
@@ -159,7 +171,10 @@ int main(void) {
     { V args[]={tag(5)}; expected_trap=1;
       if (!setjmp(failure)) { invoke(fpr_fn_tick,args,1); assert(!"missing trap"); }
       assert(trap_kind==7); expected_trap=0; }
+    /* a function parameter applied twice through fpr_applyN's stack staging */
+    for (int64_t x=-5;x<=5;x++) { V args[]={(V)&incPap,tag(x)}; assert(invoke(fpr_fn_applyLocal,args,2)==tag(2*x+3)); }
+    assert(applies==22);
     assert(yields>cases && traps==13);
-    printf("%u C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, a nullary definition, a dead arm reached, callee saves/alignment/volatile clobbers PASS\n",cases);
+    printf("%u C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS\n",cases);
     return 0;
 }

@@ -30,6 +30,8 @@ useCaf : Int -> Int .
 useCaf n = n + answer.
 tick : Unit -> Int .
 tick u = case u of Unit -> 7.
+applyLocal : (Int -> Int) -> Int -> Int .
+applyLocal f x = f x + f (x + 1).
 '''
     for width in (6, 7, 8, 63):
         names = [f'a{i}' for i in range(width)]
@@ -66,9 +68,9 @@ def main():
                                   FPR_COMPACT_FRAMES='1', FPR_SELF_LOOPS='1',
                                   FPR_NO_SCALAR_WORKERS='0')),
                  ('typed-ir', dict(FPR_TYPED_IR_BACKEND='mixed',
-                                   FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8,answer,useCaf,tick')),
+                                   FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8,answer,useCaf,tick,applyLocal')),
                  ('typed-ir-workers', dict(FPR_TYPED_IR_BACKEND='mixed', FPR_NO_SCALAR_WORKERS='0',
-                                           FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8,answer,useCaf,tick')),
+                                           FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8,answer,useCaf,tick,applyLocal')),
                  ('baseline-repeat', {})]
         original = None
         for name, settings in modes:

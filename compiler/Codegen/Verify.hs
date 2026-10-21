@@ -31,6 +31,14 @@ opSignature tyOf = \case
   OSymbol sym -> do
     when (null sym) (Left "an empty symbol")
     pure (Just TVal)
+  OFunValue n -> do
+    when (null n) (Left "a function value without a name")
+    pure (Just TVal)
+  OApply f as -> do
+    expect f TVal
+    mapM_ (`expect` TVal) as
+    when (null as) (Left "an application without arguments")
+    pure (Just TVal)
   OArith _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OBit _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OShift _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)

@@ -67,7 +67,7 @@ import Codegen.Target.Common
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 5 -- coverage: bit operations and shifts; arities 9..64; symbols and dead arms
+a64SelectionRev = 6 -- coverage: bit operations and shifts; arities 9..64; symbols and dead arms; the generic application
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -332,6 +332,17 @@ selectInstr _ _ (Instr d op) = case op of
   OConstInt n -> def (\r -> emitI (li r n))
   ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
   OSymbol sym -> def (\r -> emitI (la r sym)) -- the legacy `la a0, <symbol>`
+  OFunValue n -> def (\r -> emitI (la r ("fpr_obj_" ++ mangleName n)))
+  -- the generic application (Codegen.genT's CApp case): the head, then every
+  -- argument, pushed 16 bytes apart (the last argument at the stack
+  -- pointer), then fpr_applyN(head, n, &args) and the pushes popped; the
+  -- pushes move sp below the frame the entry check sized, as the legacy
+  -- pushes do, and every slot is addressed through x29
+  OApply f as -> def $ \r -> do
+    forM_ (f : as) $ \v -> emitI ((plain "push" [] [any' (vreg v)]) {siImplicitDefs = [Phys "sp"]})
+    emitI ((plain "applyn" [fix r (x 0)] [OI (fromIntegral (length as))])
+             { siImplicitDefs = [x 1, x 2, Phys "sp"], siClobbers = filter (/= x 0) callerSaved,
+               siFlags = FlagsDef, siCalls = [Call "fpr_applyN" False True] })
   OTag v -> def $ \r -> do
     t <- freshV False
     emitI (rri "lsl" t (vreg v) 1)
@@ -656,6 +667,10 @@ renderItem cfg ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
       ("cbnz", [], [r, OL l]) -> ["cbnz " ++ reg r ++ ", " ++ lbl l]
       ("b", [], [OL l]) -> ["b " ++ lbl l]
       ("bl", _, OS s : _) -> ["bl " ++ gsym cfg s]
+      ("push", [], [v]) -> ["sub sp, sp, #16", "str " ++ reg v ++ ", [sp]"]
+      ("applyn", [_], [OI n]) ->
+        [ "mov x2, sp", "mov x1, #" ++ show n, "ldr x0, [sp, #" ++ show (16 * n) ++ "]",
+          "bl " ++ gsym cfg "fpr_applyN", "add sp, sp, #" ++ show (16 * (n + 1)) ]
       ("panic", [], [OS s]) -> address "x0" s ++ ["bl " ++ gsym cfg "fpr_panic"]
       ("ret", [], [_]) -> epilogue ++ ["ret"]
       ("tailjump", [], OS s : _) -> epilogue ++ ["b " ++ gsym cfg s]

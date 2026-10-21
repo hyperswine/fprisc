@@ -66,7 +66,7 @@ if args.portable_only or not NATIVE_HOST:
 MOD, LIB, PROBE = 'tests/typed_ir/scalar_mod.fpr', 'tests/typed_ir/scalarlib.fpr', 'tests/typed_ir/tir_probe.c'
 LIB_FNS = ['fib', 'sum', 'addovf', 'mulovf', 'divz', 'even', 'odd', 'clamp', 'boolEq', 'boolNe', 'boolResult', 'cbSum', 'cbTail', 'deep', 'swapLoop',
            'shl', 'shr', 'bits', 'mix', 'rot9', 'callWide', 'tailWide', 'rot64', 'call64',
-           'answer', 'useCaf', 'pos', 'tick', 'viaFun', 'viaHal']
+           'answer', 'useCaf', 'pos', 'tick', 'viaFun', 'viaHal', 'applyLocal', 'addTo', 'partial', 'mkAdd', 'over']
 INT_MIN, INT_MAX = -(1 << 62), (1 << 62) - 1
 def overflow(a, op, b):
     return ('trap', f'Int overflow: {a} {op} {b} does not fit an Int ({INT_MIN}..{INT_MAX}); I64 is the type that wraps')
@@ -153,6 +153,9 @@ EXPECTED = {
     ('tick', ()): ('value', '7'),
     ('viaFun', (20,)): ('value', '6765'),
     ('viaHal', (20,)): ('value', '41'),
+    ('applyFib', (10,)): ('value', str(55 + 89)),
+    ('partial', (3,)): ('value', '17'),
+    ('over', (5,)): ('value', '12'),
     ('cfib', (22,)): ('value', '17711'),
     ('csum', (100, 5)): ('value', '5055'),
     ('caddovf', (INT_MAX, 1)): overflow(INT_MAX, '+', 1),

@@ -218,10 +218,16 @@ calleeOf cx h n
   | otherwise = Nothing
 
 foreignName :: Name -> Bool
-foreignName h = not ("$" `isPrefixOf` h) && not ("F64." `isPrefixOf` h) && h `notElem` inlined
+foreignName h = not (any (`isPrefixOf` h) expanded) && h `notElem` inlined
   where
-    -- the plain names Codegen.inlineTable expands in place (their slow
-    -- paths and guards are the legacy generator's, not a C call)
+    -- the families the legacy generator expands in place or routes
+    -- elsewhere (their slow paths and guards are its own, not a C call):
+    -- the builtin adapters, the scalar workers' raw forms, the indexed
+    -- memory forms, link-time symbols, the inlined entry tick, the float
+    -- operators; a `$`-name outside them ($receiveLoop, $vec.at/get/len)
+    -- is a direct C entry in both generators
+    expanded = ["$arc.", "$scalar.", "$mem.", "$sym.", "$fuel", "F64.", "F32."]
+    -- the plain names Codegen.inlineTable expands in place
     inlined = ["+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "charAt", "strlen", "band", "bor", "bxor", "BITSHIFTL", "BITSHIFTR"]
 
 -- a head is a primitive only when nothing shadows it
@@ -319,7 +325,7 @@ lowerVal cx env = \case
     | M.member x (cxProg cx) || M.member x (cxExt cx) ->
         if workerPrefix `isPrefixOf` x || "$worker." `isPrefixOf` x
           then refuse ("the function value of the private worker `" ++ x ++ "`")
-          else symbolValue ("fpr_obj_" ++ mangleName x)
+          else (\v -> (v, TVal)) <$> emit TVal (OFunValue x)
     -- a core primitive's object or a declared HAL contract (`la a0,
     -- fpr_prim_obj_<x>` / `la a0, fpr_g_<x>`); other names have no object
     | Just (Prim _ _ (Just sym)) <- M.lookup x (cxHal cx) -> symbolValue sym
@@ -370,7 +376,8 @@ lowerVal cx env = \case
       _ -> refuse "both arms of a branch are dead (CErr)"
   e@(CApp _ _) -> case spineOf e of
     (CVar h, args)
-      | M.member h env -> refuse ("an application of the local `" ++ h ++ "`")
+      -- a local head: the generic application through the runtime
+      | Just r <- M.lookup h env -> applyGeneric r args
       | workerPrefix `isPrefixOf` h, M.notMember h (cxSigs cx) ->
           refuse ("call to scalar worker `" ++ h ++ "` without representation metadata")
       | Just (pts, _) <- M.lookup h (cxSigs cx), length pts /= length args ->
@@ -408,12 +415,23 @@ lowerVal cx env = \case
           as' <- mapM (uncurry coerce) (zip as (calleeParams c))
           v <- emit (calleeResult c) (OCall c as')
           pure (v, calleeResult c)
-      | M.member h (cxProg cx) || M.member h (cxExt cx) -> refuse ("a partial or over-saturated application of `" ++ h ++ "`")
+      -- a partial or over-saturated application of a known function: the
+      -- legacy generator stages the whole spine for one fpr_applyN
+      | M.member h (cxProg cx) || M.member h (cxExt cx) -> lowerVal cx env (CVar h) >>= \r -> applyGeneric r args
       | otherwise -> refuse ("the primitive `" ++ h ++ "`")
-    _ -> refuse "an application with a computed head"
+    -- a computed head (a branch, a let, an application answering a function)
+    (hd, args) -> lowerVal cx env hd >>= \r -> applyGeneric r args
   where
     nullary t v = (\x -> (x, TVal)) <$> emit TVal (ONullary t v)
     callValue c = (\x -> (x, TVal)) <$> emit TVal (OCall c [])
+    -- fpr_applyN over the head and every argument as tagged words, the
+    -- arguments evaluated left to right after the head (Codegen.genT's
+    -- generic CApp case)
+    applyGeneric hd args = do
+      f <- asVal hd
+      as <- mapM (\a -> lowerVal cx env a >>= asVal) args
+      v <- emit TVal (OApply f as)
+      pure (v, TVal)
     symbolValue sym = (\x -> (x, TVal)) <$> emit TVal (OSymbol sym)
     arith o a b = do
       x <- lowerVal cx env a >>= asInt

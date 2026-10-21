@@ -87,3 +87,16 @@ viaFun : Int -> Int .
 viaFun n = TirProbe.call1 fib n.
 viaHal : Int -> Int .
 viaHal n = TirProbe.call1 TirProbe.cb n.
+# the generic application (increment 5): a function parameter applied, a
+# partial application made and applied, an over-saturated spine; all
+# through the runtime's fpr_applyN, as the legacy generator stages them
+applyLocal : (Int -> Int) -> Int -> Int .
+applyLocal f x = f x + f (x + 1).
+addTo : Int -> Int -> Int .
+addTo a b = a + b.
+partial : Int -> Int .
+partial n = applyLocal (addTo n) 5.
+mkAdd : Int -> (Int -> Int) .
+mkAdd a = addTo a.
+over : Int -> Int .
+over n = mkAdd n 7.

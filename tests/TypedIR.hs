@@ -202,7 +202,7 @@ main = do
   check "both arms dead is refused by name" (case lowerProgram m2Policy M.empty (M.singleton "f" bothDead) (M.singleton "f" bothDead) M.empty M.empty of (_, [(_, r)]) -> "both arms" `isInfixOf` r; _ -> False)
   check "a nullary definition is evaluated by a call" ("call answer ::  -> val()" `isInfixOf` dump3 "useCaf" && ocResult (evalProgram ir3 "useCaf" [RInt 8]) == Right (RInt 50))
   check "an imported nullary is an imported call" ("call Imp.caf@import ::  -> val()" `isInfixOf` dump3 "impCaf")
-  check "a function value is its static PAP" ("symbol fpr_obj_useCaf" `isInfixOf` dump3 "funValue" && "symbol fpr_obj_Imp_x2efun" `isInfixOf` dump3 "impFun")
+  check "a function value is its static PAP" ("funvalue useCaf" `isInfixOf` dump3 "funValue" && "funvalue Imp.fun" `isInfixOf` dump3 "impFun")
   check "a HAL value and a core primitive's value are their objects" ("symbol fpr_g_TirProbe_x2ecb" `isInfixOf` dump3 "halValue" && "symbol fpr_prim_obj_str" `isInfixOf` dump3 "primValue")
   check "a private worker has no function value" (case lowerProgram m2Policy M.empty (M.insert "wv" workerValue prog3) (M.singleton "wv" workerValue) M.empty prims3 of (_, [(_, r)]) -> "private worker" `isInfixOf` r; _ -> False)
   check "a name with no object is refused by name" (case lowerProgram m2Policy M.empty (M.singleton "f" (["n"], var "Mystery")) (M.singleton "f" (["n"], var "Mystery")) M.empty M.empty of (_, [(_, r)]) -> "HAL value `Mystery`" `isInfixOf` r; _ -> False)
@@ -212,6 +212,32 @@ main = do
       (irE, failE) = lowerProgram m2Policy M.empty whole (M.singleton "f" (whole M.! "f")) M.empty M.empty
   check "only the emitted function is lowered, with the elided definitions known" (null failE && M.keys irE == ["f"] && "nullary 7 0" `isInfixOf` dumpFn (irE M.! "f") && "call helper ::" `isInfixOf` dumpFn (irE M.! "f"))
   putStrLn "Typed IR dead arms, nullary definitions, function/HAL/primitive values, whole-program lookups: lowered, verified, evaluated with the legacy trap text PASS"
+  -- increment 5: the generic application through fpr_applyN: a local head,
+  -- a partial application, an over-saturated spine, a computed head
+  let addTo = (["a", "b"], app "+" [var "a", var "b"])
+      applyLocal = (["f", "x"], app "+" [app "f" [var "x"], app "f" [app "+" [var "x", CInt 1]]])
+      partial = (["n"], app "applyLocal" [app "addTo" [var "n"], CInt 5])
+      mkAdd = (["a"], app "addTo" [var "a"])
+      over = (["n"], app "mkAdd" [var "n", CInt 7])
+      appE hd = foldl CApp hd
+      computed = (["n"], appE (CIf (app "<" [var "n", CInt 0]) (var "mkAdd") (var "addTo")) [var "n", CInt 1])
+      applyInt = (["n"], app "n" [CInt 1])
+      applyBool = (["n"], appE (CMk 1 1 []) [var "n"])
+      progA = M.fromList [("addTo", addTo), ("applyLocal", applyLocal), ("partial", partial), ("mkAdd", mkAdd), ("over", over), ("computed", computed), ("applyInt", applyInt), ("applyBool", applyBool)]
+      (irA, failA) = lowerProgram m2Policy M.empty progA progA M.empty M.empty
+      evalA f args = ocResult (evalProgram irA f (map RInt args))
+  check ("the application shapes lower and verify: " ++ show failA) (null failA && verifyProgram irA == Right ())
+  check "a local head applies" ("apply v0(" `isInfixOf` dumpFn (irA M.! "applyLocal") && evalA "applyLocal" [] == evalA "applyLocal" [] )
+  check "a partial application is the function value applied" ("funvalue addTo" `isInfixOf` dumpFn (irA M.! "partial") && "apply " `isInfixOf` dumpFn (irA M.! "partial"))
+  check "partial: addTo 3 applied to 5 and 6" (evalA "partial" [3] == Right (RInt 17))
+  check "over-saturated: mkAdd n 7 calls mkAdd then applies its result" (evalA "over" [5] == Right (RInt 12))
+  check "a computed head applies" (evalA "computed" [-2] == Right (RInt (-1)) && evalA "computed" [4] == Right (RInt 5))
+  check "applying an Int or a Bool traps with fpr_applyN's text"
+    (evalA "applyInt" [3] == Left (Trap "apply: applied an integer") && evalA "applyBool" [3] == Left (Trap "apply: not a function value"))
+  check "the application is an event-ordered call" (case ocEvents (evalProgram irA "partial" [RInt 3]) of
+    EvCall "partial" _ : EvStackCheck _ : EvSafepoint _ : EvCall "applyLocal" _ : _ -> True
+    _ -> False)
+  putStrLn "Typed IR generic application: local, partial, over-saturated and computed heads through the runtime's apply, traps by name PASS"
   -- increment 4: the simplification passes, verified IR to verified IR,
   -- differential against the evaluator on every fixture program above
   let differential name program calls = do
@@ -227,6 +253,7 @@ main = do
   check "fib's two untags of n are shared" (M.lookup "fib" removed1 == Just 1)
   _ <- differential "bit operations" bitIr [("shl", [RInt 1, RInt 3]), ("shl", [RInt 1, RInt 64]), ("shr", [RInt (-8), RInt 1]), ("andf", [RInt 12, RInt 10])]
   _ <- differential "increment-3 shapes" ir3 [("deadTail", [RInt 1]), ("deadTail", [RInt 2]), ("deadValue", [RInt 0]), ("deadValue", [RInt 5]), ("useCaf", [RInt 8])]
+  _ <- differential "generic applications" irA [("partial", [RInt 3]), ("over", [RInt 5]), ("computed", [RInt 4]), ("applyInt", [RInt 3])]
   -- the folds and the threading on hand-written shapes: tag/untag pairs
   -- from a worker boundary, a materialised Bool tested by a branch
   let pairFn = Fn "pair" ["n"] TVal (BId 0)
@@ -276,13 +303,14 @@ main = do
         Right _ -> "accepted"
   check "a string literal is refused by name" ("string literal" `isInfixOf` refused ([], CStr "x"))
   check "a primitive outside the subset is refused by name" ("primitive `print`" `isInfixOf` refused (["x"], app "print" [var "x"]))
-  check "a partial application is refused by name" ("partial" `isInfixOf` refused (["x"], app "sum" [var "x"]))
+  check "a partial application lowers (the generic application)" (refused (["x"], app "sum" [var "x"]) == "accepted")
   check "a constructor with fields is refused by name" ("constructor with fields" `isInfixOf` refused (["x"], CMk 2 1 [var "x"]))
   -- arities 9..64 lower (the hart spill cells); a 65th parameter has no convention
   check "nine parameters lower" (refused (map (: []) "abcdefghi", var "i") == "accepted")
   check "sixty-four parameters lower" (refused (["p" ++ show i | i <- [1 .. 64 :: Int]], var "p64") == "accepted")
   check "a sixty-fifth parameter is refused by name" ("arity above 64" `isInfixOf` refused (["p" ++ show i | i <- [1 .. 65 :: Int]], var "p65"))
-  check "a call with sixty-five arguments is refused by name" ("over-saturated" `isInfixOf` refused (["x"], app "sum" (replicate 65 (var "x"))))
+  check "a sixty-five-argument spine is no direct call: the generic application" (refused (["x"], app "sum" (replicate 65 (var "x"))) == "accepted"
+    && case lowerFn m2Policy M.empty prog M.empty M.empty "f" (["x"], app "sum" (replicate 65 (var "x"))) of Right f -> "apply " `isInfixOf` dumpFn f && not ("call sum" `isInfixOf` dumpFn f); _ -> False)
   -- Keep the worker producer's ABI evidence, including parameter order.
   let mixed z a = ([z,a], CIf (app "<" [var z,CInt 1])
         (CIf (CTagEq 1 1 (var a)) (app "+" [var z,CInt 1]) (app "+" [var z,CInt 2]))

@@ -23,7 +23,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 4 -- coverage: bit operations and shifts; arities 9..64; symbols and dead arms
+x64SelectionRev = 5 -- coverage: bit operations and shifts; arities 9..64; symbols and dead arms; the generic application
 
 data X64Config = X64Config
   { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool }
@@ -233,6 +233,15 @@ selectInstr _ _ (Instr d op) = case op of
   OConstInt n -> def (\r -> emitI (li r n))
   ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
   OSymbol sym -> def (\r -> emitI (la r sym)) -- the legacy `la a0, <symbol>`
+  OFunValue n -> def (\r -> emitI (la r ("fpr_obj_" ++ mangleName n)))
+  -- the generic application: the head then every argument pushed 16 bytes
+  -- apart (the last at the stack pointer), fpr_applyN(head, n, &args) with
+  -- the call-alignment adjustment, the pushes popped; slots are %rbp-relative
+  OApply f as -> def $ \rd -> do
+    forM_ (f : as) $ \v -> emitI ((plain "push" [] [any' (vreg v)]) {siImplicitDefs = [r "rsp"]})
+    emitI ((plain "applyn" [fix rd (r "rax")] [OI (fromIntegral (length as))])
+             { siImplicitDefs = map r ["rdi", "rsi", "rdx", "rsp"], siClobbers = filter (/= r "rax") callerSaved,
+               siFlags = FlagsDef, siCalls = [Call "fpr_applyN" False True] })
   OTag v -> def $ \r -> do
     t <- freshV False
     emitI (rri "lsl" t (vreg v) 1)
@@ -508,6 +517,9 @@ renderItem ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
       (o,[],[v,OL l]) | o `elem` ["jzero","jnonzero"] -> ["testq " ++ reg v ++ ", " ++ reg v, (if o == "jzero" then "jz " else "jnz ") ++ lbl l]
       ("jmp",[],[OL l]) -> ["jmp " ++ lbl l]
       ("call",_,OS s:_) -> call s
+      ("push",[],[v]) -> ["subq $16, %rsp", "movq " ++ reg v ++ ", (%rsp)"]
+      ("applyn",[_],[OI n]) -> ["movq %rsp, %rdx", "movq $" ++ show n ++ ", %rsi", "movq " ++ show (16 * n) ++ "(%rsp), %rdi"]
+        ++ call "fpr_applyN" ++ ["addq $" ++ show (16 * (n + 1)) ++ ", %rsp"]
       ("panic",[],[OS s]) -> ("leaq " ++ s ++ "(%rip), %rdi") : call "fpr_panic"
       ("ret",[],[_]) -> epilogue ++ ["ret"]
       ("tailjump",[],OS s:_) -> epilogue ++ ["jmp " ++ s]

@@ -100,7 +100,9 @@ data Op
   | ONot VId -- TPred -> TPred
   | OIsInt VId -- TVal -> TPred: the tag bit (a tagged Int, not an object)
   | OTagTest Int Int VId -- TVal -> TPred: typeid and variant match (a tagged Int never matches)
-  | OSymbol String -- :: TVal; the address of an immortal object the unit links against: a function's static PAP (fpr_obj_), a core primitive's (fpr_prim_obj_), a HAL contract (fpr_g_); the legacy `la a0, <symbol>`
+  | OSymbol String -- :: TVal; the address of an immortal object the unit links against: a core primitive's object (fpr_prim_obj_), a HAL contract (fpr_g_); the legacy `la a0, <symbol>`
+  | OFunValue Name -- :: TVal; a program function's static PAP (its arity, no arguments): the legacy `la a0, fpr_obj_<name>`
+  | OApply VId [VId] -- TVal, TVal.. -> TVal: the generic application through the runtime (fpr_applyN): partial, over-saturated, or of a computed head; allocates PAPs in the runtime, calls anything
   | OArith ArithOp VId VId -- TInt TInt -> TInt; traps in program order with the primitive's message
   | OBit BitOp VId VId -- TInt TInt -> TInt: and, or, xor of the untagged values
   | OShift ShiftOp VId VId -- TInt TInt -> TInt: value, count; the count outside 0..63 traps (bits.c)
@@ -165,6 +167,8 @@ opEffect = \case
   OIsInt _ -> Pure
   OTagTest _ _ _ -> Pure
   OSymbol _ -> Pure
+  OFunValue _ -> Pure
+  OApply _ _ -> AnyEffect
   OArith _ _ _ -> MayTrap
   OBit _ _ _ -> Pure
   OShift _ _ _ -> MayTrap
@@ -186,6 +190,8 @@ opUses = \case
   OIsInt v -> [v]
   OTagTest _ _ v -> [v]
   OSymbol _ -> []
+  OFunValue _ -> []
+  OApply f as -> f : as
   OArith _ a b -> [a, b]
   OBit _ a b -> [a, b]
   OShift _ a b -> [a, b]
@@ -217,6 +223,8 @@ mapOpUses f = \case
   OIsInt v -> OIsInt (f v)
   OTagTest t c v -> OTagTest t c (f v)
   OSymbol s -> OSymbol s
+  OFunValue n -> OFunValue n
+  OApply h as -> OApply (f h) (map f as)
   OArith o a b -> OArith o (f a) (f b)
   OBit o a b -> OBit o (f a) (f b)
   OShift o a b -> OShift o (f a) (f b)

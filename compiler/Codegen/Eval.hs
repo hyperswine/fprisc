@@ -17,10 +17,11 @@ import Control.Monad.Except
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 
--- a runtime value: a tagged Int, an object, or an immortal object known
--- only by its symbol (a function value, a primitive's object, a HAL
+-- a runtime value: a tagged Int, an object, a partial application of a
+-- program function (its static PAP when no argument is supplied), or an
+-- immortal object known only by its symbol (a primitive's object, a HAL
 -- contract): opaque, equal only to itself
-data RV = RInt Integer | RObj Int Int [RV] | RSym String deriving (Eq, Ord, Show)
+data RV = RInt Integer | RObj Int Int [RV] | RPap Name [RV] | RSym String deriving (Eq, Ord, Show)
 
 rvInt :: Integer -> RV
 rvInt = RInt
@@ -106,7 +107,14 @@ callFn program name args = do
           RObj t' c' _ -> pure (Just (VPred (t == t' && c == c')))
           RInt _ -> pure (Just (VPred False))
           RSym s -> stuck ("a tag test on the immortal object " ++ s ++ ", whose typeid the evaluator does not model")
+          RPap _ _ -> pure (Just (VPred False)) -- T_PAP is no constructor's typeid
         OSymbol sym -> pure (Just (VVal (RSym sym)))
+        OFunValue n -> pure (Just (VVal (RPap n [])))
+        OApply f as -> do
+          h <- val env f
+          args' <- mapM (val env) as
+          r <- applyN program h args'
+          pure (Just (VVal r))
         OArith o a b -> do
           x <- int env a
           y <- int env b
@@ -141,6 +149,27 @@ callFn program name args = do
       val env v = look env v >>= \case VVal x -> pure x; x -> stuck ("a runtime value was needed, found " ++ show x)
       predicate env v = look env v >>= \case VPred b -> pure b; x -> stuck ("a predicate was needed, found " ++ show x)
   run (fnEntry fn) args M.empty
+
+-- the generic application as runtime/runtime.c fpr_applyN states it: an
+-- Int or an object that is no PAP traps by name; fewer arguments than the
+-- function still needs make a larger PAP; exactly enough call it; more
+-- call it with what it needs and apply the result to the rest
+applyN :: Program -> RV -> [RV] -> E RV
+applyN program f args = case f of
+  RInt _ -> trap "apply: applied an integer"
+  RObj _ _ _ -> trap "apply: not a function value"
+  RSym s -> stuck ("an application of the immortal object " ++ s ++ ": the evaluator models no C")
+  RPap n supplied -> do
+    fn <- maybe (stuck ("an application of " ++ n ++ ", which is not in the lowered program")) pure (M.lookup n program)
+    let arity = length (fnSourceParams fn)
+        need = arity - length supplied
+    if length args < need
+      then pure (RPap n (supplied ++ args))
+      else do
+        r <- callFn program n (map VVal (supplied ++ take need args))
+        let rest = drop need args
+        r' <- case r of VVal v -> pure v; VInt k -> pure (RInt k); VPred b -> pure (rvBool b)
+        if null rest then pure r' else applyN program r' rest
 
 -- Int + - * / as runtime/runtime.c states them: the result must fit the
 -- Int range; / refuses a zero divisor first; division truncates toward

@@ -35,6 +35,8 @@ dumpFn fn =
       OIsInt v -> "isint " ++ value v
       OTagTest t c v -> "tagtest " ++ show t ++ " " ++ show c ++ " " ++ value v
       OSymbol sym -> "symbol " ++ sym
+      OFunValue n -> "funvalue " ++ n
+      OApply f as -> "apply " ++ value f ++ args as
       OArith o a b -> "arith " ++ arithSymbol o ++ " " ++ value a ++ ", " ++ value b
       OBit o a b -> "bit " ++ bitName o ++ " " ++ value a ++ ", " ++ value b
       OShift o a b -> "shift " ++ shiftName o ++ " " ++ value a ++ ", " ++ value b
