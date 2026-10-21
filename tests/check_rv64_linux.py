@@ -21,6 +21,25 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 FPR = ROOT / 'fpr'
 
+# A native prelude function alone is insufficient evidence that a workload
+# exercised the direct backend. Require its specific ABI/runtime functions.
+TYPED_REQUIRED = {
+    'hello': ('main',),
+    'float': ('half', 'hyp', 'sumTo', 'wsum', 'addAll', 'swapF'),
+    'vectors': ('affine', 'above', 'fill9'),
+    'actors': ('main', 'echo', 'counterLoop'),
+    'sleepwake': ('main', 'napper', 'pester'),
+    'sleepwait': ('main', 'waiter'),
+    'lines': ('main', 'loop'),
+    'module-host': ('main', 'run'),
+}
+
+
+def require_native(name, log):
+    if os.environ.get('FPR_TYPED_IR_BACKEND'):
+        for fn in TYPED_REQUIRED[name]:
+            assert re.search(r'typed-ir-backend: ' + re.escape(fn) + r' native ', log), (name, fn, log[-6000:])
+
 
 def command(args, expected=0, **kwargs):
     p = subprocess.run(list(map(str, args)), cwd=ROOT, capture_output=True,
@@ -77,8 +96,7 @@ def build(output, cc):
     for name, (source, markers) in sources.items():
         log = command([FPR, 'build', ROOT / source, '--target=linux-riscv64', '--cc', cc,
                  '--harts', '4', '-o', output / name, '-v'])
-        if os.environ.get('FPR_TYPED_IR_BACKEND'):
-            assert re.search(r'typed-ir-backend: native [1-9][0-9]*/', log), (name, log[-4000:])
+        require_native(name, log)
         for harts in (1, 4):
             cases.append(dict(name=name, harts=harts, markers=markers,
                               stdin='ab\ncde\n\nlast' if name == 'lines' else ''))
@@ -106,8 +124,9 @@ run path =
       True -> print "RV64_MODULE_PASS 30 2.5"
     | False -> error "module result mismatch".
 ''')
-    command([FPR, 'build', host, '--target=linux-riscv64', '--cc', cc,
-             '--harts', '4', '-o', output / 'module-host'])
+    log = command([FPR, 'build', host, '--target=linux-riscv64', '--cc', cc,
+             '--harts', '4', '-o', output / 'module-host', '-v'])
+    require_native('module-host', log)
     for harts in (1, 4):
         cases.append(dict(name='module-host', harts=harts, markers=['RV64_MODULE_PASS'],
                           artifacts=['math.so']))

@@ -128,6 +128,29 @@ remain eligible for direct selection. Runtime results equal an independent
 arithmetic answer. Final paired measurements of this repair follow below.
 This preserves a live legacy consumer rather than claiming it has migrated.
 
+### Repaired compiler measurements
+
+The clean `9a60178` compiler (SHA256 prefix `94ea3852c8ef`) has a separate
+31-round run: [raw samples](evidence/2026-10-22-typed-ir-migration/final.json),
+[tables](evidence/2026-10-22-typed-ir-migration/final.md). The recorded working
+tree is clean; the optimized compiler was frozen before timing.
+
+| Workload | Timer | Typed / legacy-best paired ratio | 95% interval | Decision |
+|---|---|---:|---|---|
+| fib | internal | 1.1236 | 1.1091-1.1328 | Still a material regression |
+| sum | internal | 0.6654 | 0.6585-0.6715 | Faster |
+| pipeline | internal | 1.0221 | 0.9505-1.0600 | Parity within this run's uncertainty |
+| helpers | process wall | 0.5874 | 0.5802-0.5941 | Faster |
+| SHA | process wall | 0.9375 | 0.9212-0.9590 | Faster |
+
+The pipeline's root is now 3/4 direct, with its specialized main explicitly
+legacy. The 12-program corpus is a different set of programs and remains
+3707/3707; neither count implies all language/runtime combinations migrated.
+Combined entry options improve SHA another 2.35% in this run (ratio 0.9765,
+CI 0.9663-0.9801) but do not reliably improve the other four workloads. Keep
+the switches opt-in and retain the fib regression as a promotion blocker.
+These measurements compare codegen modes, not a fresh C implementation baseline.
+
 ## Direct RISC-V contract and evidence
 
 `Codegen.Target.RV` selects directly from typed IR and shares the allocator,
@@ -172,3 +195,17 @@ vector kernels and unboxed floating selection; then implement each remaining
 runtime profile with its own ownership/root and hart-access tests. Promote only a
 specific target/profile after those gates pass. The legacy translators still
 have live consumers, so retiring them now would remove supported behavior.
+
+## Validation provenance
+
+- `7c6f8af`: local A64, Rosetta and both direct RISC-V oracles passed.
+  [CI 39637056543](https://github.com/hyperswine/fprisc/actions/runs/39637056543)
+  passed the direct x86 and both RISC-V oracle stages, then was superseded and
+  cancelled during the broad legacy/Base suite. It is not a full green CI run.
+- `9a60178`: local native integration, terminating-expression evaluator,
+  float/vector preservation and all corpus goldens pass.
+  [CI 39638966511](https://github.com/hyperswine/fprisc/actions/runs/39638966511)
+  was queued for this compiler. The subsequent test-only update strengthens
+  RV64 acceptance to require each workload's named root functions, not merely
+  a native prelude, and moves the real RV64 runtime checks before the broad
+  legacy suite. Record the final branch run separately from local evidence.
