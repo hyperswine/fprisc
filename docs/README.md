@@ -195,3 +195,4 @@ they began.
 
 - [Native IR runtime contracts](2026-10-21-NATIVE-IR-CONTRACTS.md): M0 Core coverage, ordered worker ABIs, non-moving stack segments, profile-specific roots, target constraints and bounds migration.
 - [Typed IR M1 review repairs](2026-10-21-TYPED-IR-M1-REPAIRS.md): producer-owned worker signatures, canonical Base Bool objects, independent truth-table regressions and validation evidence.
+- [Typed IR M2: the direct AArch64 backend](2026-10-21-TYPED-IR-M2-A64.md): `FPR_TYPED_IR_BACKEND` and `FPR_TYPED_IR_STRICT`, the policy record, the selected-instruction vocabulary with x86-64's constraints, symbolic frames, conservative placement, A64 selection emitting the legacy ABI, `native-insns-v1`, the whole-unit fixture with a C harness; x86-64 selection open.

@@ -74,7 +74,9 @@ callFn program name args = do
           TCondBr c t as e bs -> do
             p <- look env c >>= \case VPred p -> pure p; x -> stuck ("condbr on " ++ show x)
             if p then mapM (look env) as >>= \as' -> run t as' env else mapM (look env) bs >>= \bs' -> run e bs' env
-          TTailCall c as -> mapM (look env) as >>= callFn program (calleeName c)
+          TTailCall c as -> do
+            when (isForeign c) (stuck ("a foreign tail call to " ++ calleeName c ++ ": the evaluator models no C"))
+            mapM (look env) as >>= callFn program (calleeName c)
       instr env (Instr d op) = do
         r <- opValue env op
         case (d, r) of
@@ -114,6 +116,7 @@ callFn program name args = do
           pure (Just (VPred ((x == y) == eq)))
         OCall c as -> do
           args' <- mapM (look env) as
+          when (isForeign c) (stuck ("a foreign call to " ++ calleeName c ++ ": the evaluator models no C"))
           r <- callFn program (calleeName c) args'
           pure (Just r)
         OSafepoint -> event (EvSafepoint (fnName fn)) >> pure Nothing

@@ -8,6 +8,7 @@ import Codegen.Dump (dumpFn)
 import Codegen.Eval
 import Codegen.IR
 import Codegen.Lower (lowerFn, lowerProgram)
+import Codegen.Policy (m2Policy)
 import Codegen.Verify (verifyFn, verifyProgram)
 import Control.Monad (unless)
 import Data.List (isInfixOf)
@@ -107,11 +108,11 @@ main = do
   putStrLn "Typed IR verifier: a well-formed function accepted, 19 malformations refused by name PASS"
   -- the lowering of the generator's shapes
   let prog = M.fromList [("fib", fibCore), ("sum", sumCore), ("addovf", addCore)]
-      (lowered, failures) = lowerProgram M.empty prog M.empty
+      (lowered, failures) = lowerProgram m2Policy M.empty prog M.empty M.empty
   check "every fixture function lowers" (null failures && M.size lowered == 3)
   check "the lowered program verifies" (verifyProgram lowered == Right ())
   let dumps = M.map dumpFn lowered
-  check "a dump is deterministic" (M.map dumpFn (fst (lowerProgram M.empty prog M.empty)) == dumps)
+  check "a dump is deterministic" (M.map dumpFn (fst (lowerProgram m2Policy M.empty prog M.empty M.empty)) == dumps)
   check "fib's self call is a call, its tail is a return" ("call fib" `isInfixOf` (dumps M.! "fib") && "br b0" `notElem` lines (dumps M.! "fib"))
   check "sum's self tail call is the loop through the entry" ("  br b0(" `isInfixOf` (dumps M.! "sum"))
   check "every function enters through its stack check and safepoint" (all (\d -> "  stackcheck\n  safepoint\n" `isInfixOf` d) (M.elems dumps))
@@ -129,7 +130,7 @@ main = do
     [EvCall "addovf" _, EvStackCheck "addovf", EvSafepoint "addovf", EvTrap _] -> True
     _ -> False)
   -- refusals name the form
-  let refused what = case lowerFn M.empty (M.insert "f" what prog) M.empty "f" what of
+  let refused what = case lowerFn m2Policy M.empty (M.insert "f" what prog) M.empty M.empty "f" what of
         Left r -> r
         Right _ -> "accepted"
   check "a string literal is refused by name" ("string literal" `isInfixOf` refused ([], CStr "x"))
@@ -146,7 +147,7 @@ main = do
         (app "boolEq" [app "-" [var "n",CInt 1],var "b"]))
   mapM_ (\def -> do
     let (p,_,sigs) = workerizeWithSignatures False True (M.singleton "mixed" def)
-        (ir,declined) = lowerProgram sigs p M.empty
+        (ir,declined) = lowerProgram m2Policy sigs p M.empty M.empty
     check "producer preserves mixed parameter order" (M.lookup "$worker.scalar.mixed" sigs == Just ([KI,KB],KI))
     check "mixed worker and wrapper both lower" (null declined && M.size ir == 2)
     check "mixed worker program verifies" (verifyProgram ir == Right ())
@@ -154,8 +155,8 @@ main = do
     check "mixed worker false" (ocResult (evalProgram ir "mixed" [RInt 2,rvBool False]) == Right (RInt 2)))
     [mixed "z" "a", mixed "a" "z"]
   let (bp,_,bsigs) = workerizeWithSignatures False True (M.singleton "boolEq" boolEq)
-      (bir,bfail) = lowerProgram bsigs bp M.empty
-      (_,missing) = lowerProgram M.empty bp M.empty
+      (bir,bfail) = lowerProgram m2Policy bsigs bp M.empty M.empty
+      (_,missing) = lowerProgram m2Policy M.empty bp M.empty M.empty
   check "Bool equality signature from producer" (M.lookup "$worker.scalar.boolEq" bsigs == Just ([KI,KB],KB))
   check "Bool equality and alias lower and verify" (null bfail && verifyProgram bir == Right ())
   mapM_ (\b -> check "Bool equality agrees with independent expectation"
@@ -163,7 +164,7 @@ main = do
   check "missing worker metadata refuses worker and wrapper"
     (length missing == 2 && all (isInfixOf "representation metadata" . snd) missing)
   let wrong = M.insert "$worker.scalar.boolEq" ([KI],KB) bsigs
-      badArity = snd (lowerProgram wrong bp M.empty)
+      badArity = snd (lowerProgram m2Policy wrong bp M.empty M.empty)
   check "wrong metadata arity refuses worker and wrapper"
     (length badArity == 2 && all (isInfixOf "wrong arity" . snd) badArity)
   putStrLn "Typed IR worker metadata: ordered mixed parameters, renaming, Bool equality/aliases, missing and malformed signatures PASS"

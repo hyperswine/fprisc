@@ -55,6 +55,12 @@ executable fpr
       Codegen.Dump
       Codegen.Eval
       Codegen.Lower
+      Codegen.Policy
+      Codegen.Selected
+      Codegen.Frame
+      Codegen.Place
+      Codegen.Bounds
+      Codegen.Target.A64
       KernelKinds
       Workers
       Reuse

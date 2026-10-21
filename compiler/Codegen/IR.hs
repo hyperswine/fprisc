@@ -25,7 +25,7 @@
 -- (Codegen.Eval) is the executable statement of these semantics.
 module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
-    ArithOp (..), CmpOp (..), Callee (..), CalleeKind (..),
+    ArithOp (..), CmpOp (..), Callee (..), CalleeKind (..), isForeign,
     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs,
     intMin, intMax, intFits64, arithSymbol, cmpSymbol,
@@ -65,7 +65,13 @@ data CmpOp = Lt | Gt | Le | Ge | Eq | Ne deriving (Eq, Ord, Show, Enum, Bounded)
 data CalleeKind
   = Local -- a function of this unit (`fpr_fn_<mangled>`)
   | Imported -- another unit's export, same shapes, extern symbol
+  | Foreign String -- a saturated primitive of declared arity: a C entry (`fpr_prim_fn_<mangled>` for a core primitive, `fpr_g_<mangled>_call<n>` for a HAL/foreign declaration), tagged words in and out
   deriving (Eq, Ord, Show)
+
+isForeign :: Callee -> Bool
+isForeign c = case calleeKind c of
+  Foreign _ -> True
+  _ -> False
 
 data Callee = Callee
   { calleeName :: Name,

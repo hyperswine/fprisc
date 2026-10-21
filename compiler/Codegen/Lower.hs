@@ -16,6 +16,7 @@
 module Codegen.Lower (lowerFn, lowerProgram, Reason) where
 
 import Codegen.IR
+import Codegen.Policy
 import Control.Monad (when)
 import Control.Monad.State.Strict
 import Data.List (isPrefixOf)
@@ -35,6 +36,8 @@ type L = StateT St (Either Reason)
 data Cx = Cx
   { cxProg :: Prog,
     cxExt :: M.Map String Int,
+    cxHal :: M.Map String (Int, String), -- primitives with a direct C entry: arity and symbol (the legacy generator's `known` and HAL tables)
+    cxPolicy :: Policy,
     cxSelf :: Name,
     cxEntry :: BId,
     cxEntryTys :: [Ty],
@@ -135,18 +138,23 @@ scalarPrefix = "$scalar."
 
 -- The producer's ordered signatures survive normalization and reuse.
 -- Unsupported kinds remain absent, causing explicit worker fallback.
-lowerProgram :: ScalarSignatures -> Prog -> M.Map String Int -> (Program, [(Name, Reason)])
-lowerProgram workerSigs prog ext =
+-- The policy says which profile's entry sequence the IR states; a profile
+-- M2 does not implement refuses every function by name (Codegen.Policy).
+lowerProgram :: Policy -> ScalarSignatures -> Prog -> M.Map String Int -> M.Map String (Int, String) -> (Program, [(Name, Reason)])
+lowerProgram policy workerSigs prog ext hal =
   let sigs = M.mapMaybe convert workerSigs
       convert (ps, r) = (,) <$> traverse kindTy ps <*> kindTy r
       kindTy KI = Just TInt
       kindTy KB = Just TVal
       kindTy _ = Nothing
-      results = [(n, lowerFn sigs prog ext n def) | (n, def) <- M.toList prog]
+      results = case validatePolicy policy of
+        Left why -> [(n, Left why) | n <- M.keys prog]
+        Right () -> [(n, lowerFn policy sigs prog ext hal n def) | (n, def) <- M.toList prog]
    in (M.fromList [(n, f) | (n, Right f) <- results], [(n, r) | (n, Left r) <- results])
 
-lowerFn :: M.Map Name ([Ty], Ty) -> Prog -> M.Map String Int -> Name -> ([Name], Core) -> Either Reason Fn
-lowerFn sigs prog ext name (params, body)
+lowerFn :: Policy -> M.Map Name ([Ty], Ty) -> Prog -> M.Map String Int -> M.Map String (Int, String) -> Name -> ([Name], Core) -> Either Reason Fn
+lowerFn policy sigs prog ext hal name (params, body)
+  | Left why <- validatePolicy policy = Left why
   | length params > 8 = Left "arity above 8 (parameters through the hart spill cells)"
   | workerPrefix `isPrefixOf` name, M.notMember name sigs = Left "a scalar worker without representation metadata"
   | length ptys /= length params = Left "worker representation metadata has the wrong arity"
@@ -157,9 +165,13 @@ lowerFn sigs prog ext name (params, body)
       pvs <- mapM (const fresh) params
       entry <- freshB
       open entry (zip pvs ptys)
-      emitDo OStackCheck
-      emitDo OSafepoint
-      let cx = Cx prog ext name entry ptys rty sigs
+      -- the entry sequence the policy states: the headroom check, then the
+      -- fuel tick, both after the parameters are the entry's values
+      case polStackCheck policy of
+        StackCheckEveryEntry -> emitDo OStackCheck
+        StackCheckLegacyShallow -> refuse "the legacy shallow stack-check rule is not implemented in M2"
+      when (polFuel policy) (emitDo OSafepoint)
+      let cx = Cx prog ext hal policy name entry ptys rty sigs
           env = M.fromList (zip params (zip pvs ptys))
       lowerTail cx env body
       blocks <- gets (reverse . stDone)
@@ -174,7 +186,21 @@ calleeOf cx h n
       let (pts, r) = M.findWithDefault (map (const TVal) ps, TVal) h (cxSigs cx)
        in Just (Callee h Local pts r)
   | Just a <- M.lookup h (cxExt cx), a == n = Just (Callee h Imported (replicate n TVal) TVal)
+  -- a primitive with a direct C entry: the legacy generator's
+  -- `call fpr_prim_fn_<name>` for a core primitive and `call
+  -- fpr_g_<name>_call<n>` for a declared HAL/foreign one (Codegen.genT:
+  -- `known` and the tgtHal case); the names with inline expansions
+  -- ($arc.*, $scalar.*, F64.*, the operators) are not calls there and stay
+  -- refused here
+  | M.notMember h (cxProg cx), Just (a, sym) <- M.lookup h (cxHal cx), a == n, foreignName h = Just (Callee h (Foreign sym) (replicate n TVal) TVal)
   | otherwise = Nothing
+
+foreignName :: Name -> Bool
+foreignName h = not ("$" `isPrefixOf` h) && not ("F64." `isPrefixOf` h) && h `notElem` inlined
+  where
+    -- the plain names Codegen.inlineTable expands in place (their slow
+    -- paths and guards are the legacy generator's, not a C call)
+    inlined = ["+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "charAt", "strlen", "band", "bor", "bxor", "BITSHIFTL", "BITSHIFTR"]
 
 -- a head is a primitive only when nothing shadows it
 isPrim :: Cx -> Env -> Name -> Bool

@@ -311,7 +311,7 @@ runKey p = do
   stamps <- mapM stamp (self : (home </> "core" </> "prelude.fpr") : rtFiles ++ pWith p)
   bodies <- mapM readFileStrict srcs
   foreignDecls <- lookupEnv "FPR_FOREIGN"
-  modes <- mapM lookupEnv ["FPR_A64_FRAME_PAIRS", "FPR_COSTED_REGISTERS", "FPR_COMPACT_FRAMES", "FPR_RETAINED_REGISTERS", "FPR_SELF_LOOPS", "FPR_A64_FIT_GUARDS", "FPR_NO_PIPELINE_INLINE", "FPR_NO_REUSE", "FPR_NO_VEC_FUSE", "FPR_NO_VEC_SIMD", "FPR_NO_SCALAR_WORKERS", "FPR_NO_FIELD_WORKERS", "FPR_COST_PROBE", "FPR_NO_REGISTERS", "FPR_NO_F64_INLINE", "FPR_NO_INLINE", "FPR_NO_VEC_PEEK", "FPR_NO_SPEC", "FPR_NO_RV32_FAST", "FPR_NO_INDEXED_MEMORY"]
+  modes <- mapM lookupEnv ["FPR_A64_FRAME_PAIRS", "FPR_COSTED_REGISTERS", "FPR_COMPACT_FRAMES", "FPR_RETAINED_REGISTERS", "FPR_SELF_LOOPS", "FPR_A64_FIT_GUARDS", "FPR_NO_PIPELINE_INLINE", "FPR_NO_REUSE", "FPR_NO_VEC_FUSE", "FPR_NO_VEC_SIMD", "FPR_NO_SCALAR_WORKERS", "FPR_NO_FIELD_WORKERS", "FPR_COST_PROBE", "FPR_NO_REGISTERS", "FPR_NO_F64_INLINE", "FPR_NO_INLINE", "FPR_NO_VEC_PEEK", "FPR_NO_SPEC", "FPR_NO_RV32_FAST", "FPR_NO_INDEXED_MEMORY", "FPR_TYPED_IR_BACKEND", "FPR_TYPED_IR_STRICT"]
   let text = unlines (srcs ++ bodies ++ stamps ++ [show (pHarts p), show (pCC p), unwords (pCFlags p ++ pLink p), show foreignDecls, show modes])
   pure (showHex (fnv64 text) "")
   where

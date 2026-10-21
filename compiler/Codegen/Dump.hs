@@ -45,7 +45,7 @@ dumpFn fn =
       TBr b as -> "br " ++ block b ++ args as
       TCondBr c t as e bs -> "condbr " ++ value c ++ " -> " ++ block t ++ args as ++ " | " ++ block e ++ args bs
       TTailCall c as -> "tailcall " ++ callee c ++ args as
-    callee c = calleeName c ++ (if calleeKind c == Imported then "@import" else "")
+    callee c = calleeName c ++ (case calleeKind c of Imported -> "@import"; Foreign sym -> "@foreign:" ++ sym; Local -> "")
       ++ " :: " ++ intercalate " " (map ty (calleeParams c)) ++ " -> " ++ ty (calleeResult c)
     args as = "(" ++ intercalate ", " (map value as) ++ ")"
     value (VId n) = "v" ++ show n

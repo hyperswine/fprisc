@@ -26,7 +26,7 @@
 -- generation. Source effects retain evaluation order; HAL MMIO remains
 -- volatile, and slot promotion does not reorder device accesses.
 
-module Codegen (emitProgram, externals, Target (..), rv64, rv32, codegenRev, normArc, wcetAnnotate, compactFrameSlots) where
+module Codegen (emitProgram, emitProgramWith, Emission (..), NativeMode (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev, normArc, wcetAnnotate, compactFrameSlots) where
 -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
 -- specialization. All scalar backends support the shared saved-register
 -- convention; x64 uses its XMM shadow bank for s6..s11.
@@ -47,6 +47,9 @@ import Data.Maybe (fromMaybe, isJust)
 import Peephole (peepholeFor)
 import Codegen.IR (Fn (..), Block (..))
 import Codegen.Lower (lowerProgram)
+import Codegen.Policy (Policy, m2Policy)
+import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat, emitFnA64)
+import Codegen.Bounds (Report (..))
 import Codegen.Verify (verifyProgram)
 import Codegen.Dump (dumpFn)
 import Codegen.Eval (Outcome (..), Failure (..), Event (..), RV (..), evalProgram)
@@ -91,23 +94,52 @@ data Target = Target
     tgtCostedRegisters :: Bool, -- reject retained placement that raises fuel bounds
     tgtCompactFrames :: Bool, -- remove holes in private, directly addressed slots
     tgtTypedIr :: Maybe String, -- FPR_TYPED_IR: report the typed-IR lowering (M1); changes no emitted code
-    tgtHal :: M.Map String Int -- primitive name -> arity (builtin schemes and
+    tgtHal :: M.Map String Int, -- primitive name -> arity (builtin schemes and
                         -- foreign declarations): a saturated call to one is
                         -- a direct `call fpr_g_<name>_call<n>` (fpr.h FPR_FN)
+    tgtPolicy :: Policy, -- the profile the typed-IR lowering states (Codegen.Policy)
+    tgtNative :: Maybe NativeMode -- FPR_TYPED_IR_BACKEND: route units through the typed-IR native backend (M2)
+  }
+
+-- The opt-in typed-IR backend (docs/2026-10-20-TYPED-NATIVE-IR-PLAN.md,
+-- "Selection, fallback and cache policy").  A unit is routed through the
+-- new backend when its functions lower and select; the others fall back
+-- to the legacy generator with their reasons reported.  Strict mode makes
+-- a fallback of a named function (or of any function) a compile error.
+data Granularity
+  = WholeUnit -- every function of the unit or none (the default until the ABI interoperability tests pass)
+  | PerFunction -- accepted functions are native, the others legacy, in one unit
+  deriving (Eq, Show)
+
+data Strict = StrictOff | StrictAll | StrictNames [String] deriving (Eq, Show)
+
+data NativeMode = NativeMode
+  { nmGranularity :: Granularity,
+    nmStrict :: Strict,
+    nmBackend :: Maybe (ObjectFormat, HartAccess) -- Nothing: the switch is on but this target has no direct backend yet
+  }
+  deriving (Show)
+
+data Emission = Emission
+  { emAsm :: String, -- the legacy emission (rv64 text the translators lower)
+    emNotes :: [String],
+    emNative :: [String], -- the native backend's text in the target's own syntax, appended after lowering
+    emNativeNames :: [String], -- the functions the native backend emitted
+    emFallbacks :: [(String, String)] -- the functions it did not, with reasons
   }
 
 rv64, rv32 :: Target
-rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True False False False False Nothing M.empty
-rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True False False False False Nothing M.empty
+rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True False False False False Nothing M.empty m2Policy Nothing
+rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True False False False False Nothing M.empty m2Policy Nothing
 
 -- The typed-IR lowering of M1 (docs/2026-10-20-TYPED-NATIVE-IR-PLAN.md), as a
 -- report beside the legacy emission: which functions lower, why the others
 -- do not, their dumps (`dump`) and the reference evaluator's answer for
 -- `eval:<fn>:<int>...`.  A verifier failure is a compiler error, never a
 -- fallback.  Nothing here changes what is emitted.
-typedIrNotes :: Maybe String -> ScalarSignatures -> M.Map String Int -> Prog -> [String]
-typedIrNotes Nothing _ _ _ = []
-typedIrNotes (Just mode) sigs ext prog =
+typedIrNotes :: Maybe String -> Policy -> ScalarSignatures -> M.Map String Int -> M.Map String (Int, String) -> Prog -> [String]
+typedIrNotes Nothing _ _ _ _ _ = []
+typedIrNotes (Just mode) policy sigs ext hal prog =
   case verifyProgram lowered of
     Left err -> error ("typed-ir: " ++ err)
     Right () ->
@@ -117,7 +149,7 @@ typedIrNotes (Just mode) sigs ext prog =
         ++ (if "dump" `elem` ws then concatMap (map ("typed-ir: | " ++) . lines . dumpFn) (M.elems lowered) else [])
         ++ concatMap evalNote ws
   where
-    (lowered, failures) = lowerProgram sigs prog ext
+    (lowered, failures) = lowerProgram policy sigs prog ext hal
     ws = words mode
     evalNote w = case splitOn ':' w of
       ("eval" : fn : args) | Just ns <- mapM readMaybe args ->
@@ -438,8 +470,72 @@ floatLabel width bits = do
 -- others reference it; docs/2026-10-19-SHARED-PRELUDE-UNIT.md).  They stay
 -- in cgProg, so every lookup sees them as before; only the emission loops
 -- skip them.
+-- The primitives a saturated call reaches directly, as genT's `known` and
+-- its tgtHal case resolve them: a core primitive is `fpr_prim_fn_<name>`
+-- at any arity, a declared HAL/foreign primitive `fpr_g_<name>_call<n>`
+-- up to six arguments (beyond that the legacy path stages the apply spine,
+-- and the lowering refuses the call).  Core primitives win, as in `known`.
+foreignEntries :: Target -> M.Map String (Int, String)
+foreignEntries tgt =
+  M.union
+    (M.fromList [(n, (a, "fpr_prim_fn_" ++ mangle n)) | (n, a) <- primArities])
+    (M.fromList [(n, (a, "fpr_g_" ++ mangle n ++ "_call" ++ show a)) | (n, a) <- M.toList (tgtHal tgt), a <= 6])
+
+-- The native backend's selection over a unit's emitted functions: the
+-- typed-IR lowering, the verifier (a failure is a compiler error), then
+-- AArch64 selection per function.  A lowering refusal or a selection
+-- refusal (a frame beyond the ceiling) is a reported fallback; an invalid
+-- selection, placement or layout is a compiler error.  Whole-unit
+-- granularity turns one fallback into the unit's.
+nativeSelect :: Target -> NativeMode -> ScalarSignatures -> M.Map String Int -> S.Set String -> Prog -> (M.Map String NativeFn, [(String, String)], [String])
+nativeSelect tgt nm sigs ext exps emitted =
+  case verifyProgram lowered of
+    Left err -> error ("typed-ir: " ++ err)
+    Right () -> case nmBackend nm of
+      Nothing -> (M.empty, [(n, "no typed-IR native backend for " ++ tgtName tgt ++ " (M2 emits AArch64)") | n <- M.keys emitted], [])
+      Just (fmt, hart) ->
+        let cfg = A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt)
+            results = [(n, emitFnA64 cfg f) | (n, f) <- M.toList lowered]
+            errors = [n ++ ": " ++ e | (n, Left e) <- results, "compiler error: " `isPrefixOf` e]
+            refusals = [(n, e) | (n, Left e) <- results, not ("compiler error: " `isPrefixOf` e)]
+            accepted = M.fromList [(n, nf) | (n, Right nf) <- results]
+            declined = failures ++ refusals
+            nativeNote nf = "typed-ir-backend: " ++ nfName nf ++ " native (frame " ++ frameOf nf ++ ", native-insns-v1 segmax=" ++ bound (rSegMax (nfReport nf)) ++ " exittail=" ++ bound (rExitTail (nfReport nf)) ++ " ccalls=" ++ show (rCCalls (nfReport nf)) ++ ")"
+            frameOf nf = case words (head (nfLines nf)) of ws | (f : _) <- [drop 6 w | w <- ws, "frame=" `isPrefixOf` w] -> f; _ -> "?"
+            bound = maybe "UNBOUNDED" show
+            unbounded = [n | (n, nf) <- M.toList accepted, rSegMax (nfReport nf) == Nothing]
+         in if not (null errors)
+              then error ("typed-ir backend: " ++ intercalate "; " errors)
+              else case nmGranularity nm of
+                PerFunction ->
+                  ( accepted,
+                    declined ++ [(n, "native-insns-v1 is UNBOUNDED: a cycle without a safepoint") | n <- unbounded],
+                    ("typed-ir-backend: native " ++ show (M.size accepted) ++ "/" ++ show (M.size emitted) ++ " functions (per-function)")
+                      : map nativeNote (M.elems accepted) ++ ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- declined]
+                  )
+                WholeUnit
+                  | null declined && null unbounded ->
+                      ( accepted, [],
+                        ("typed-ir-backend: native " ++ show (M.size accepted) ++ "/" ++ show (M.size emitted) ++ " functions (whole unit)")
+                          : map nativeNote (M.elems accepted)
+                      )
+                  | otherwise ->
+                      let reasons = declined ++ [(n, "native-insns-v1 is UNBOUNDED: a cycle without a safepoint") | n <- unbounded]
+                          why = "whole-unit fallback: " ++ show (length reasons) ++ " of " ++ show (M.size emitted) ++ " functions declined"
+                       in ( M.empty,
+                            reasons ++ [(n, why) | n <- M.keys emitted, n `notElem` map fst reasons],
+                            ("typed-ir-backend: native 0/" ++ show (M.size emitted) ++ " functions (" ++ why ++ ")")
+                              : ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- reasons]
+                          )
+  where
+    (lowered, failures) = lowerProgram (tgtPolicy tgt) sigs emitted ext (foreignEntries tgt)
+
 emitProgram :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> S.Set String -> Prog -> (String, [String])
 emitProgram tgt rvv spec exports ext exps elide prog0 =
+  let e = emitProgramWith tgt rvv spec exports ext exps elide prog0 in (emAsm e, emNotes e)
+
+emitProgramWith :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> S.Set String -> Prog -> Emission
+emitProgramWith tgt rvv spec exports ext exps elide prog0 =
   let -- Fusion precedes workers so callback analysis sees original bodies.
       (fused, fnotes) = if tgtFusion tgt then fuseVecFix prog0 else (prog0,[])
       enable = tgtW tgt == 8 && tgtFuel tgt && tgtScalarFast tgt && not (tgtArc tgt)
@@ -448,11 +544,22 @@ emitProgram tgt rvv spec exports ext exps elide prog0 =
       normalized = M.map (\(ps,b)->(ps,if tgtScalarFast tgt then normIn (S.fromList ps) b else b)) workers
       (prog,rnotes) = if reuseEnabled then reuseProgram elide normalized else (workers,[])
       emitted = if S.null elide then prog else M.filterWithKey (\n _ -> S.notMember n elide) prog
-      (body, st) = runState (top prog emitted) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty)
-   in (unlines (wnotes ++ rnotes ++ body), reverse (cgVNotes st) ++ typedIrNotes (if tgtW tgt == 8 then tgtTypedIr tgt else Nothing) workerSigs ext emitted
-        ++ ["typed-ir: not available on " ++ tgtName tgt ++ " (M1 lowers the 64-bit targets)" | tgtW tgt /= 8, Just _ <- [tgtTypedIr tgt]])
+      (nativeFns, nativeFallbacks, nativeNotes) = case tgtNative tgt of
+        Nothing -> (M.empty, [], [])
+        Just nm | tgtW tgt == 8 -> nativeSelect tgt nm workerSigs ext exps emitted
+                | otherwise -> (M.empty, [(n, "no typed-IR native backend for " ++ tgtName tgt) | n <- M.keys emitted], [])
+      (body, st) = runState (top prog emitted nativeFns) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty)
+   in Emission
+        { emAsm = unlines (wnotes ++ rnotes ++ body),
+          emNotes = reverse (cgVNotes st) ++ typedIrNotes (if tgtW tgt == 8 then tgtTypedIr tgt else Nothing) (tgtPolicy tgt) workerSigs ext (foreignEntries tgt) emitted
+            ++ ["typed-ir: not available on " ++ tgtName tgt ++ " (M1 lowers the 64-bit targets)" | tgtW tgt /= 8, Just _ <- [tgtTypedIr tgt]]
+            ++ nativeNotes,
+          emNative = if M.null nativeFns then [] else ["    .text", "    .balign 4", ""] ++ concatMap nfLines (M.elems nativeFns),
+          emNativeNames = M.keys nativeFns,
+          emFallbacks = nativeFallbacks
+        }
   where
-    top prog emitted = do
+    top prog emitted nativeFns = do
       -- specialization-decline scan: a Vec.map/filter/fold site whose
       -- element fn is a NAMED global but which no plan accepts runs
       -- row-by-row in the generic apply tier.  Say so at compile time
@@ -465,7 +572,9 @@ emitProgram tgt rvv spec exports ext exps elide prog0 =
       -- notes of all, not silence -- there the note names the target
       -- gate, and distinguishes sites that would specialize elsewhere.
       modify (\st -> st {cgVNotes = concat [declines tgt spec prog fn b | (fn, (_, b)) <- M.toList emitted] ++ cgVNotes st})
-      fns <- concat <$> mapM (uncurry (compileFn prog)) (M.toList emitted)
+      fns <- concat <$> mapM (uncurry (compileFn prog)) [f | f@(n, _) <- M.toList emitted, M.notMember n nativeFns]
+      -- the unit-local nullary objects the native functions name
+      modify (\s -> s {cgNulls = S.union (S.fromList (concatMap nfNullaries (M.elems nativeFns))) (cgNulls s)})
       specs <- emitSpecs prog
       -- the builtin target links no module registry (runtime/mod.c is not
       -- in its runtime), so the table has no reader there -- and as a strong
