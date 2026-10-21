@@ -50,6 +50,19 @@ executable fpr
       Representation
       Interrupt
       Codegen
+      Codegen.IR
+      Codegen.Verify
+      Codegen.Dump
+      Codegen.Eval
+      Codegen.Lower
+      Codegen.Policy
+      Codegen.Selected
+      Codegen.Frame
+      Codegen.Place
+      Codegen.Bounds
+      Codegen.Target.Common
+      Codegen.Target.X64
+      Codegen.Target.A64
       KernelKinds
       Workers
       Reuse

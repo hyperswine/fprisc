@@ -1,0 +1,46 @@
+{
+  "code_commit": "2a1450b",
+  "ci_commit": "e8038d5acb3fc6cd70c7e8b3fda825468ad42bb1",
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "codegen_revision": 66,
+  "a64_revision": 15,
+  "compiler_sha256": "59dde10da74ba9741a6bc2d93bc0b18c70ce34337d934852846a9424891844a8",
+  "source_sha256": {
+    "compiler/Codegen.hs": "0ceb6aa2615d6cfc7627fc6406384dfc5260f1d6812e9d617bc6055858c1e93d",
+    "compiler/A64.hs": "6814c9cbfff154d5da1f065effa28ebf5d5a92b815e15e5958d7bc01120675af",
+    "compiler/Compile.hs": "467d5b89f024f5350071cb6d5eeaf97bc05b24a6a5bcbd702aefe30bb20da3c2",
+    "compiler/Build.hs": "b0d9b202a424ab0a70f10c427bd4be7bdc3b09fea4e97b772390eeaad9ea5211"
+  },
+  "full_base": {
+    "command": "FPR_HOME=$PWD FPR_COSTED_REGISTERS=1 FPR_COMPACT_FRAMES=1 FPR_SELF_LOOPS=1 FPR_A64_FRAME_PAIRS=1 python3 -u tests/check_base.py",
+    "exit_code": 0,
+    "log_lines": 297,
+    "log_sha256": "ec0404ff96432cc593e28365ea628e7f85c53cd4bf900825095c14af63d75eec",
+    "skips": [
+      "POSIX rv64 artifact check SKIPPED: clang has no RISC-V backend; use a Linux RV64 cross compiler with check_rv64_linux.py"
+    ]
+  },
+  "cabal": {
+    "command": "env -u PKG_CONFIG_PATH cabal build",
+    "worktree_exit_code": 0,
+    "main_checkout_exit_code": 0,
+    "fresh_resolution_exit_code_both_checkouts": 0,
+    "main_constraint_preserved": "network == 3.2.7.0",
+    "main_wrapper": ".cabal-tools/pkg-config-homebrew"
+  },
+  "linux_ci": {
+    "run_id": 39413199551,
+    "url": "https://github.com/hyperswine/fprisc/actions/runs/39413199551",
+    "status": "in_progress",
+    "plain_cabal_build": "success",
+    "conclusion": "",
+    "recorded_at": "2026-10-20T11:26:54.489384+00:00"
+  },
+  "not_claimed": [
+    "physical Pi or STAR64 acceptance",
+    "QOS rebuild/deployment",
+    "strict RV64IM multilib repair",
+    "power or energy measurements",
+    "mixed-local representation rewrite"
+  ]
+}

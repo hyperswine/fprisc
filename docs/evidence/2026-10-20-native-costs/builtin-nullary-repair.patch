@@ -1,0 +1,171 @@
+--- a/compiler/Codegen.hs
++++ b/compiler/Codegen.hs
+@@ -54,7 +54,7 @@
+ -- bump on ANY change to emitted code: it keys the build/units cache
+ -- (a unit's content hash names its SOURCE, not its compilation)
+ codegenRev :: Int
+-codegenRev = 59 -- reuse self-tail frames after ordinary slot cleanup
++codegenRev = 61 -- retain nullaries introduced by lowering or elided constructor references
+ 
+ -- Target word parameterization: everything the emitted assembly does
+ -- that depends on XLEN funnels through these five fields.  The value
+@@ -306,7 +306,8 @@
+     -- separate compilation:
+     cgExt :: M.Map String Int, -- extern known globals (other units): name -> arity
+     cgExports :: S.Set String, -- THIS unit's cross-unit-visible names (.globl gate)
+-    cgVNotes :: [String] -- Vec.x sites that DECLINED specialization (printed by Compile)
++    cgVNotes :: [String], -- Vec.x sites that DECLINED specialization (printed by Compile)
++    cgNulls :: S.Set (Int, Int) -- actual constant references, including ones introduced during lowering
+   }
+ 
+ -- one specialization request: a Vec.map/filter/fold call site whose
+@@ -404,7 +405,7 @@
+       normalized = M.map (\(ps,b)->(ps,if tgtScalarFast tgt then normIn (S.fromList ps) b else b)) workers
+       (prog,rnotes) = if reuseEnabled then reuseProgram elide normalized else (workers,[])
+       emitted = if S.null elide then prog else M.filterWithKey (\n _ -> S.notMember n elide) prog
+-      (body, st) = runState (top prog emitted) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes))
++      (body, st) = runState (top prog emitted) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty)
+    in (unlines (wnotes ++ rnotes ++ body), reverse (cgVNotes st))
+   where
+     top prog emitted = do
+@@ -429,6 +430,7 @@
+       modtab <- if null exports || tgtArc tgt then pure [] else modTable
+       strs <- gets cgStrs
+       floats <- gets cgFloats
++      referencedNulls <- gets cgNulls
+       pure $
+         ( ["# target: " ++ tgtName tgt]
+             ++ ["    .option arch, +v" | rvv] -- let gas accept vector mnemonics
+@@ -446,7 +448,7 @@
+           ++ ["    .section .rodata" | not (M.null floats)]
+           ++ concatMap floatFor (M.toList floats)
+           ++ ["    .section .rodata" | tgtArc tgt]
+-          ++ concatMap nulFor (S.toList (nullaries emitted))
++          ++ concatMap nulFor (S.toList (nullaries emitted `S.union` referencedNulls))
+     -- Versioned module table: magic/schema/root hash, then four-word rows
+     -- (hash str, export-name str, static PAP, checked interface string),
+     -- zero-terminated.  mod.c's `Mod.fn hash name` scans it — the local
+@@ -1367,7 +1369,11 @@
+       | "$sym." `isPrefixOf` h = pure ["    la a0, " ++ drop 5 h]
+     -- a nullary constructor is its immortal object; no call
+     go env _ _ (CVar h)
+-      | tgtArc tgt, not (M.member h env), Just ([], b) <- M.lookup h prog, CMk t v [] <- normArc b =
++      | tgtArc tgt, not (M.member h env), Just ([], b) <- M.lookup h prog, CMk t v [] <- normArc b = do
++          -- The constructor may belong to another unit and be elided
++          -- here. Its function still informs this lookup, but scanning
++          -- only emitted bodies cannot discover the local constant.
++          modify (\s -> s {cgNulls = S.insert (t,v) (cgNulls s)})
+           pure ["    la a0, .Lnul_" ++ show t ++ "_" ++ show v]
+     go env nxt pos (CVar h)
+       | tgtArc tgt, Just target <- known env h 0 =
+@@ -1725,7 +1731,10 @@
+       -- static instead of calling fpr_alloc.  Before this, `strEq`
+       -- allocated a fresh 8-byte Bool per character compared -- which
+       -- a polling loop turned into ~100 MB/s of slab garbage.
+-      CMk tid var [] ->
++      CMk tid var [] -> do
++        -- Local lowering (e.g. indexedMemory's release result) can create
++        -- a nullary absent from the original program's constant scan.
++        modify (\s -> s {cgNulls = S.insert (tid,var) (cgNulls s)})
+         pure ["    la a0, .Lnul_" ++ show tid ++ "_" ++ show var]
+       CMk tid var fs -> goThen env nxt NonTail (CMk tid var fs) []
+       CErr msg -> do
+--- a/tests/check_riscv_scalar.py
++++ b/tests/check_riscv_scalar.py
+@@ -5,6 +5,7 @@
+ differential flags also test warm unit-cache separation. Metrics count generated
+ assembly instructions and linked text bytes, not FPGA cycle throughput.
+ """
++import argparse
+ import json
+ import os
+ from pathlib import Path
+@@ -99,7 +100,9 @@
+          '-T', out / 'link.ld', out / 'crt.S', out / 'host.c',
+          'machine/builtin/heap.c', 'machine/builtin/unsafe.c',
+          'machine/builtin/tangnano20k/machine.c', 'runtime/runtime.c',
+-         'runtime/bits.c', 'machine/virt/memshim.c', asm, *units, '-o', image], env)
++         # -nostdlib also suppresses libgcc. The runtime's scalar equality
++         # and formatting paths need its width/ABI-matched soft-float helpers.
++         'runtime/bits.c', 'machine/virt/memshim.c', asm, *units, '-lgcc', '-o', image], env)
+     text = asm.read_text()
+     if bits == 32:
+         assert not re.search(r'^\s+(?:ld|sd|lwu|f(?:add|mul|sub|div|mv|ld|sd|eq|lt|le|sqrt)[a-z.]*)\s', text, re.M), 'RV64/FPU instruction in RV32 output'
+@@ -127,12 +130,16 @@
+ 
+ 
+ def main():
+-    for tool in ('riscv64-unknown-elf-gcc', 'qemu-system-riscv32', 'qemu-system-riscv64'):
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--bits', type=int, nargs='+', choices=(32, 64), default=[32, 64],
++                        help='Run selected word sizes; default checks both')
++    widths = parser.parse_args().bits
++    for tool in ('riscv64-unknown-elf-gcc', *(f'qemu-system-riscv{b}' for b in widths)):
+         assert shutil.which(tool), f'{tool} is required for this execution gate'
+     metrics = {}
+     with tempfile.TemporaryDirectory(prefix='fpr-riscv-scalar-') as tmp:
+         root = Path(tmp)
+-        for bits in (32, 64):
++        for bits in widths:
+             out = root / str(bits); out.mkdir(); setup(out, bits)
+             outputs = []; caches = []
+             for slow, indexed in ((False, True), (True, False), (False, False), (False, True)):
+@@ -193,7 +200,8 @@
+                     _, info = compile_image(out, bits, f'tests/tangnano20k_stress/{bench}.fpr', env)
+                     metrics[f'rv{bits}-{bench}-slow{int(slow)}'] = info
+         print(json.dumps(metrics, indent=2))
+-    print('RV32/RV64 scalar semantics, primitive shadowing, overflow/refusals, cache isolation and indexed memory: PASS')
++    print('/'.join(f'RV{b}' for b in widths) +
++          ' scalar semantics, primitive shadowing, overflow/refusals, cache isolation and indexed memory: PASS')
+ 
+ 
+ if __name__ == '__main__':
+--- /dev/null
++++ b/tests/NullaryConstants.hs
+@@ -0,0 +1,46 @@
++import Codegen (emitProgram, rv32, rv64, Target(..))
++import FPRISC (Core(..))
++import qualified Data.Map.Strict as M
++import qualified Data.Set as S
++import Data.List (isInfixOf)
++import Control.Monad (unless)
++
++check name yes = unless yes (error name)
++main = do
++  let prog = M.fromList [("Unit",([],CMk 0 0 [])),
++                        ("Unused",([],CMk 99 0 [])),
++                        ("get",([],CVar "Unit")),
++                        ("again",([],CVar "Unit"))]
++      emit t p = fst (emitProgram t False False [] M.empty
++                      (S.fromList ["get","again"]) (S.fromList ["Unit","Unused"]) p)
++  mapM_ (\target -> do
++    let t = target {tgtArc=True,tgtFuel=False}
++        asm = emit t prog
++    check "elided constructor function stays elided" (not ("fpr_fn_Unit:" `isInfixOf` asm))
++    check "referenced local nullary is defined exactly once"
++      (length (filter (== ".Lnul_0_0:") (lines asm)) == 1)
++    check "both constructor references use the local constant"
++      (length (filter (== "    la a0, .Lnul_0_0") (lines asm)) == 2)
++    check "unreferenced elided nullary stays absent" (not (".Lnul_99_0:" `isInfixOf` asm))
++    let shadow = emit t (M.insert "get" (["Unit"],CVar "Unit") (M.delete "again" prog))
++    check "a shadowing parameter does not materialize a constructor"
++      (not (".Lnul_0_0:" `isInfixOf` shadow))
++    ) [rv32,rv64]
++  let base = emit rv64 prog
++  check "ordinary base calls do not materialize elided nullaries"
++    (not (".Lnul_0_0:" `isInfixOf` base))
++  -- Indexed-memory lowering synthesizes Unit for the release. There is
++  -- deliberately no CMk or constructor definition in the original Core.
++  let app h = foldl CApp (CVar h)
++      get = (["p","i"],CLet "addr" (app "Addr.add" [CVar "p",CVar "i"])
++               (CLet "value" (app "Mem.read8" [CVar "addr"])
++                 (CLet "released" (app "Rc.release" [CVar "addr"]) (CVar "value"))))
++      hal = M.fromList [("Addr.add",2),("Mem.read8",1),("Rc.release",1)]
++  mapM_ (\target -> do
++    let t = target {tgtFuel=False,tgtArc=False,tgtHal=hal}
++        asm = fst (emitProgram t False False [] M.empty (S.singleton "get") S.empty (M.singleton "get" get))
++    check "indexed memory actually fused" ("fpr_prim_fn__x24mem_x2eread8at" `isInfixOf` asm)
++    check "synthesized Unit reference has a definition"
++      ("    la a0, .Lnul_0_0" `isInfixOf` asm && ".Lnul_0_0:" `isInfixOf` asm)
++    ) [rv32,rv64]
++  putStrLn "Nullary constants: lowering-created Unit, elided functions, unique definitions, unused constructors, shadowing and Base boundary PASS"

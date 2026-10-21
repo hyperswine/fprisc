@@ -1,0 +1,9 @@
+{
+  "compiler_sha256": "05d21f6101cbb524da0f692a06fd0b724d3fff5c7a4f40864df13b7901e93018",
+  "codegen_revision": 67,
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "focused_suite_log": "typed-ir.log",
+  "base_continuation_log": "base-continuation.log",
+  "note": "Final focused checks include the defensive malformed-call-metadata arity refusal; no native emission changed after the initial Base run.",
+  "base_continuation_exit": 0
+}

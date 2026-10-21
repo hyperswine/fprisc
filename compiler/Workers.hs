@@ -1,6 +1,6 @@
 -- Private Base worker/wrapper conventions. Public arities and function values
 -- stay general. This pass runs after all source safety/ownership checking.
-module Workers (workerize, internalWorker, scalarPrimitives) where
+module Workers (workerize, workerizeWithSignatures, ScalarSignatures, internalWorker, scalarPrimitives) where
 
 import FPRISC (Core(..), Prog)
 import KernelKinds (Kind(..), signatureStrict)
@@ -93,9 +93,18 @@ vectorCallbacks prog = close roots
 
 workerize :: Bool -> Bool -> Prog -> (Prog,[String])
 workerize fields scalars prog =
+  let (p, notes, _) = workerizeWithSignatures fields scalars prog
+  in (p, notes)
+
+-- Ordered parameter/result representations, recorded when the worker is
+-- chosen. Consumers must not infer this ABI from an already-rewritten body.
+type ScalarSignatures = M.Map String ([Kind], Kind)
+
+workerizeWithSignatures :: Bool -> Bool -> Prog -> (Prog,[String],ScalarSignatures)
+workerizeWithSignatures fields scalars prog =
   let (p,nf) = if fields then fieldWorkers prog else (prog,0)
-      (q,ns) = if scalars then scalarWorkers p else (p,0)
-  in (q,["# private workers: fields="++show nf++" scalar="++show ns])
+      (q,sigs) = if scalars then scalarWorkers p else (p,M.empty)
+  in (q,["# private workers: fields="++show nf++" scalar="++show (M.size sigs)],sigs)
 
 -- One fixed-width constructor parameter per function. The expanded arity
 -- must fit the native ABI (8 registers plus 56 per-hart spill cells).
@@ -189,8 +198,8 @@ fieldWorkers input = (M.map (\(ps,b)->(ps,rewrite (S.fromList ps) b)) combined,M
         CMk t v xs -> CMk t v (map (rewrite bound) xs); CTagEq t v x -> CTagEq t v (rewrite bound x)
         CProj k x -> CProj k (rewrite bound x); _ -> e
 
-scalarWorkers :: Prog -> (Prog,Int)
-scalarWorkers prog = (M.union wrapped workers,M.size chosen)
+scalarWorkers :: Prog -> (Prog,ScalarSignatures)
+scalarWorkers prog = (M.union wrapped workers,M.mapKeys worker chosen)
   where
     -- The fragment has no allocation, managed projections, unknown callbacks
     -- or foreign calls. Bool values retain the normal immutable ABI.
@@ -244,8 +253,9 @@ scalarWorkers prog = (M.union wrapped workers,M.size chosen)
             boxed=if r==KI then app "$scalar.box" [result] else result
             valid p KI=app "$scalar.isInt" [CVar p]
             valid p _=CIf (CTagEq 1 0 (CVar p)) (CMk 1 1 []) (CTagEq 1 1 (CVar p))
-            -- Bool equality in a worker is pointer equality: normalize
-            -- valid foreign Bool objects to the immutable singleton ABI.
+            -- Bool equality in a worker is pointer equality. Base codegen
+            -- must emit these CMk Bools as the SAME runtime singletons used
+            -- by comparisons, including across separately compiled units.
             condition=foldr (\(p,k) yes -> CIf (valid p k) yes (CMk 1 0 [])) (CMk 1 1 []) (zip ps ks)
             guarded=CIf condition boxed b
         in (ps,guarded)) prog

@@ -1,0 +1,87 @@
+{
+  "base_commit": "d04971407d8e4568e6ae3cc8590f62603fb2ab54",
+  "codegen_revision": 65,
+  "compiler_sha256": "ac75ce1dd7adb4ced585f40c44f29edc25843dcc7829b3ae6994d24d9c7f767e",
+  "compiler_source_sha256": {
+    "compiler/A64.hs": "b625b8f9f8e7f35a40cce32ca3f751d9ca223bf1099bb682a1bd1ae7989f3e67",
+    "compiler/Codegen.hs": "c4e6ec3fdfe1bfb4503d9353a27548c6c6cd4f100a43682ab92b93fbdf5d7566",
+    "compiler/Compile.hs": "8949d23e1135b20c0f5a6b9d6c815432c0323372f7e7e3028a283c0b6dc80ae9",
+    "compiler/Build.hs": "5a6f8b5963d2477c57a138680477ac79fbc0f95a1891a618828fe82eff47fb50"
+  },
+  "validation_source_sha256": {
+    "tests/check_retained_registers.py": "ef0e4c926b91b7afb5ded91c4d1c87d74a1e3fd47e3401ed02e5b163ccba5cb9",
+    "tests/check_base.py": "c9f3319f07e797436780970a08a47ad952aa80ce507b4b0d551f844cf0d3a3a4",
+    "tests/check_self_loops.py": "cda1f53dc0d2b46967838eb8fd118bc6e5f98ae8605e1adbf6c088a8fcb9838b",
+    "tools/bench-a64-guards.py": "3495ec00d60971c68f6dcbe68229e5c2da1c4291703a3601cccd5d46530c6edc"
+  },
+  "checks": [
+    {
+      "command": "python3 -u tests/check_retained_registers.py",
+      "exit_code": 0,
+      "log": "focused-g65.log"
+    },
+    {
+      "command": "FPR_RETAINED_REGISTERS=1 FPR_SELF_LOOPS=1 python3 -u tests/check_base.py",
+      "exit_code": 0,
+      "log": "base-g65.log",
+      "log_lines": 292,
+      "skips": [
+        "POSIX rv64 artifact check SKIPPED: clang has no RISC-V backend; use a Linux RV64 cross compiler with check_rv64_linux.py"
+      ]
+    },
+    {
+      "check": "default emitted assembly vs frozen g61 compiler",
+      "result": "27 roots/imported assembly files identical after revision metadata normalization",
+      "evidence": "default-parity-g61-g65.json"
+    },
+    {
+      "check": "finite per-function WCET bounds",
+      "result": "all finite; program max 174 -> 177 in five workloads, SHA unchanged at 357; no-increase gate FAIL",
+      "evidence": "wcet.json"
+    },
+    {
+      "check": "31 paired performance samples, each mode",
+      "result": "sum/byte/SHA gains; helpers regression; no default promotion",
+      "evidence": [
+        "registers.json",
+        "combined.json"
+      ]
+    }
+  ],
+  "toolchain_inventory": {
+    "multilib": [
+      ".;",
+      "rv32i/ilp32;@march=rv32i@mabi=ilp32",
+      "rv32im/ilp32;@march=rv32im@mabi=ilp32",
+      "rv32iac/ilp32;@march=rv32iac@mabi=ilp32",
+      "rv32imac/ilp32;@march=rv32imac@mabi=ilp32",
+      "rv32imafc/ilp32f;@march=rv32imafc@mabi=ilp32f",
+      "rv64imac/lp64;@march=rv64imac@mabi=lp64",
+      "rv64imafdc/lp64d;@march=rv64imafdc@mabi=lp64d"
+    ],
+    "strict_rv64im_lp64_libgcc": "/opt/homebrew/Cellar/riscv-gnu-toolchain/main/lib/gcc/riscv64-unknown-elf/14.2.0/libgcc.a",
+    "strict_scalar_gate": "not rerun; inventory still lacks RV64IM/LP64 multilib; prior link failure recorded in ../2026-10-20-native-costs/self-loops-rv64-toolchain-gap.json"
+  },
+  "boundaries": [
+    "opt-in only",
+    "Full Base covers g65 with both optimizations enabled; subtests exercise their own differential modes",
+    "No physical Pi/STAR64, QOS rebuild/deployment, remote CI or energy measurement"
+  ],
+  "evidence_sha256": {
+    "analyze.py": "4a870ba9959ee12a068c2a5c9d3f866f025ef757006a4199653d816e02374a10",
+    "base-g65.log": "11733bb49aa1d2e9e0f97b45dd39710876f8ed56fde47a685add097f6559df29",
+    "cleanup-only.json": "0f1965431f4638c78b057158615747e3192eb8c95cce0a313d155aa66caf077c",
+    "cleanup-only.patch": "7a6302f29e97fd08b6727b6c43dc631314724f2f9814f3529c53f35a0cd5edd9",
+    "combined-sum-off.s": "35ad2bd14b8ff2360c980bd4b439db74141f0503f676157d37415ace6fc6871f",
+    "combined-sum-on.s": "c1e63bb9ecc6d75980f47d2ea43450e8357dcea7ba4f47232facc3dbc2571067",
+    "combined.json": "f29419d49653442c52bbad3c6767515ecb62ec7b7556b8a870cd5c78b8072038",
+    "default-parity-g61-g65.json": "bcd77e6306235c6bd77957c1b48096d941d2c026a01e24d670c3e47507cbb61c",
+    "focused-g65.log": "ce02a20929bffd3bbddcdc816e9b7fc213388b46eb7421e3573688e381026fc2",
+    "lower-threshold.json": "6f9129b4f487557c7dbaaf62efb9bcd449d5c9e3adf49bffad3185f97ff22d43",
+    "lower-threshold.patch": "ba297c0101b631fb927854be56758e8d8d926670433af66889e3b3159d2ad142",
+    "parameter-only.json": "32cd4979b8c471472da720320e71e7989ecdafc406f546db4f2653e6a952fd9c",
+    "parameter-only.patch": "152309655162520f91014f2c4b7e2e6adaf837bd41bc0a09426381bc468e3d40",
+    "registers.json": "fe2932175b841db1436c141b126d89bd96fcf7a84e07edbe10ecb1ea63b8882b",
+    "wcet.json": "11d2bba20150766c6ecf584c372bf94b09a9f05780d440edc08e50131802f228"
+  }
+}

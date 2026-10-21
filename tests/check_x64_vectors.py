@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Execute the generated x64 vector kernels against independent C references."""
-import re, subprocess, tempfile, platform, shutil
+import re, subprocess, tempfile
 from pathlib import Path
+from x64_probe import adapt, host, link, run
 root=Path(__file__).resolve().parents[1]
-mac=platform.system() == 'Darwin'
-native=platform.machine() in ('x86_64','AMD64')
-rosetta=mac and not native and subprocess.run(['arch','-x86_64','/usr/bin/true'],capture_output=True).returncode == 0
-if not (native or rosetta):
+target=host()
+if target is None:
     print('x64 vector execution: SKIP (requires native x64 or Rosetta)')
     raise SystemExit(0)
+mac,runner,label=target
 temporary=tempfile.TemporaryDirectory(prefix='fpr-x64-vectors-')
 tmp=Path(temporary.name)
 def kernels(fixture, name):
@@ -20,13 +20,7 @@ def kernels(fixture, name):
     assembly = output.read_text().split('# ---- Vec specializations', 1)[1].split('\n', 1)[1]
     assembly = assembly.split('    .section')[0].split('    .rodata')[0]
     # Keep instructions intact; adapt only platform symbol/TLS linkage.
-    assembly = assembly.replace('%fs:fpr_posix_hart@tpoff', 'probe_hart(%rip)')
-    assembly = assembly.replace('%fs:fpr_x64_a6@tpoff', 'probe_a6(%rip)')
-    assembly = assembly.replace('%fs:fpr_x64_a7@tpoff', 'probe_a7(%rip)')
-    if mac:
-        assembly = re.sub(r'\bfpr_[A-Za-z0-9_]+\b', lambda m: '_'+m.group(), assembly)
-        for symbol in ('probe_hart', 'probe_a6', 'probe_a7'):
-            assembly = assembly.replace(symbol+'(%rip)', '_'+symbol+'(%rip)')
+    assembly = adapt(assembly, mac)
     output.write_text('.text\n'+assembly)
     return output, assembly
 
@@ -128,6 +122,6 @@ int main(void) {
 guard=a[a.index(('_' if mac else '')+'fpr_vspec_mvmap_bump9:'):]
 shape=re.search(r'movq 16\(%rsi\), %r10\s+movq \$(\d+), %r11',guard).group(1)
 p=Path(str(tmp/'fpr-x64-kernel-probe.c'));p.write_text(p.read_text().replace('SHAPE',shape).replace('PIPELINE',pipeline_symbol))
-subprocess.run([shutil.which('clang') or 'cc',*(['-arch','x86_64'] if mac else []),'-O2',str(scalar_path),str(fold_path),str(pipeline_path),str(p),'-o',str(tmp/'fpr-x64-kernel-probe-v2')],check=True,timeout=60)
-if mac: subprocess.run(['codesign','--force','--sign','-',str(tmp/'fpr-x64-kernel-probe-v2')],capture_output=True,check=True)
-subprocess.run([*(['arch','-x86_64'] if rosetta else []),str(tmp/'fpr-x64-kernel-probe-v2')],check=True,timeout=60)
+exe=tmp/'fpr-x64-kernel-probe-v2'
+link([scalar_path,fold_path,pipeline_path,p],exe,mac,None)
+print(label + ': ' + run([*runner,exe]).strip(),flush=True)

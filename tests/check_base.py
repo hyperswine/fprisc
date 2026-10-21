@@ -188,7 +188,11 @@ def main():
     ap.add_argument('--serial', action='store_true', help='one job at a time, in order (-j 1)')
     ap.add_argument('--times', action='store_true', help='print the slowest jobs on stderr')
     ap.add_argument('--only', action='append', metavar='TEXT', help='only the jobs whose name contains TEXT (repeatable)')
+    ap.add_argument('--skip-typed-ir-native', action='store_true',
+                    help='CI only: direct-backend suites already passed in a preceding explicit step')
     a = ap.parse_args()
+    if a.skip_typed_ir_native:
+        JOBS[:] = [j for j in JOBS if j[0] not in TYPED_IR_NATIVE]
     if a.only:
         JOBS[:] = [j for j in JOBS if any(t in j[0] for t in a.only)]
     began = time.monotonic()
@@ -262,6 +266,18 @@ def main():
             print(f'  {t:7.1f} s  {name}', file=sys.stderr)
 
 # ---- the sub-check scripts, each one job; its stdout is printed whole
+script('tests/check_typed_ir.py', 900, lock='cabal')
+TYPED_IR_NATIVE = ('tests/check_typed_ir_a64.py', 'tests/check_typed_ir_x64.py')
+script('tests/check_typed_ir_a64.py', 1200)
+script('tests/check_typed_ir_x64.py', 1200)
+script('tests/check_a64_guards.py', 600)
+script('tests/check_a64_frame_pairs.py', 600)
+script('tests/check_self_loops.py', 600, lock='cabal')
+script('tests/check_retained_registers.py', 600)
+script('tests/check_frame_placement.py', 600, lock='cabal')
+script('tests/check_self_loop_x64.py', 300)
+script('tests/check_x64_scalar.py', 300)
+script('tests/check_self_loop_rv64.py', 600)
 script('tests/check_rv64_linux.py', 120)
 script('tests/check_byte_strings.py', 300)
 script('tests/check_view_construction.py', 600)

@@ -1,0 +1,152 @@
+{
+  "normalization": "Codegen/A64 cache revision and encoded interface revision; byte-line wrapping",
+  "comparisons": {
+    "fib": [
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/fib-28661.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/fib-45548.s",
+        "normalized_sha256": "19d5ceceb0a07e14f966a8eeff1cc1ba78a68300ed689493c065433d79eec20f"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/prelude-b2084da22e6a-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "3005f795e662a1a72ed921c5e705148253b0c458425af881020c1089b79dae73"
+      }
+    ],
+    "sum": [
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/sum-28903.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/sum-46491.s",
+        "normalized_sha256": "664e57bac6a309ede6c2f0baf046beca2531fbb6a4899ba89149d0b34879226b"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/prelude-b2084da22e6a-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "3005f795e662a1a72ed921c5e705148253b0c458425af881020c1089b79dae73"
+      }
+    ],
+    "pipeline": [
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/pipeline-28939.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/pipeline-46619.s",
+        "normalized_sha256": "7924025c65903196ff09f4228213819c50d182ddf5d0c13eaaa1de0e544280a7"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/prelude-b2084da22e6a-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "3005f795e662a1a72ed921c5e705148253b0c458425af881020c1089b79dae73"
+      }
+    ],
+    "byteloop": [
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/byteloop-28984.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/byteloop-46752.s",
+        "normalized_sha256": "708aa6e42217cafa8dc63cba94b17125b33dc35996ef61356fdee59c228a7c89"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/prelude-b2084da22e6a-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "3005f795e662a1a72ed921c5e705148253b0c458425af881020c1089b79dae73"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-4c93ed62e360-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-4c93ed62e360-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "811f24500195e57422a59a396f33783f936e00a0d20256de773f857fd885f3a1"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-a83675e93318-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-a83675e93318-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "9fb1cded6d38f8b16e696e79940ade4dca2e94201b4dd52dc5ea3b4b5d61390c"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-4a1ebe94bef4-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-4a1ebe94bef4-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "873da78ff0b5d5622de5b32e4f5144db2cfcad70b618565cb92c2723d95cdb94"
+      }
+    ],
+    "helpers": [
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/helpers-29031.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/helpers-46888.s",
+        "normalized_sha256": "b734aab366afe2dadab480268f5edd86f5e6c19a8b59f83c2f9bd4099f618d4e"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/prelude-b2084da22e6a-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "3005f795e662a1a72ed921c5e705148253b0c458425af881020c1089b79dae73"
+      }
+    ],
+    "sha": [
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/sha-29100.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/sha-47011.s",
+        "normalized_sha256": "651dc0de73bfb1a9575ab2c5a65241b2abd6e6c4e38a28d2d927695c32084325"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/prelude-b2084da22e6a-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/prelude-b2084da22e6a-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "3005f795e662a1a72ed921c5e705148253b0c458425af881020c1089b79dae73"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-72f59195cb10-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-72f59195cb10-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "31fef2361880286689ddfc73f0bff27052e5aae3a5594392b86511d692204d40"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-dab63e1fc0e6-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-dab63e1fc0e6-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "fb54339fb4f0a6b65a1e7b9bb3bde68e912d69fb4766df749669a8b86f3dfb43"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-d1f8a8215a77-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-d1f8a8215a77-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "f670c04f3f70826e78f67dd5a39e5c0f2198cafa170fe5505109383883454361"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-405eba153a1e-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-405eba153a1e-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "77cacd30c822a261c34026482518e4373f4ecafe69bc551c7b97802d42f8a810"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-4c93ed62e360-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-4c93ed62e360-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "811f24500195e57422a59a396f33783f936e00a0d20256de773f857fd885f3a1"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-a83675e93318-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-a83675e93318-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "9fb1cded6d38f8b16e696e79940ade4dca2e94201b4dd52dc5ea3b4b5d61390c"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-88b87577cd28-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-88b87577cd28-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "d4dc72e2be302f4374961e1939634cd3433ba340fe73cf0ec9563c31e892f144"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-581231fdf2ea-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-581231fdf2ea-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "fc6ee638dcb9d4c7aabc95a99ec3c56865cef76efaedb32e62d32b83499d29a4"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-3956ff10e29c-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-3956ff10e29c-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "99513daf5be6401621febad285e9f102e578d360226fd6e12081b939d62a00d1"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-fb4e016caaf5-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-fb4e016caaf5-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "f5247a03f83814054a3a91110a0c40ba260c5ea4001404061c2e7af4455e59c6"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-9a286879cab8-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-9a286879cab8-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "4624801cb506453231b908b71673b23a3829fcc1722aa322743f22a93ad54ae4"
+      },
+      {
+        "before": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/retained-registers-combined/cache/fpr/build/units/u-4a1ebe94bef4-pb2084da2-s323128cc-g65rt3pc5-c09612b07b5ec-a64macx28r14.s",
+        "after": "/Users/jasonqin/Documents/GitHub/fprisc-a64-overflow/build/placement-pairs-combined/cache/fpr/build/units/u-4a1ebe94bef4-pb2084da2-s323128cc-g66rt3pc5-c09612b07b5ec-a64macx28r15.s",
+        "normalized_sha256": "873da78ff0b5d5622de5b32e4f5144db2cfcad70b618565cb92c2723d95cdb94"
+      }
+    ]
+  }
+}

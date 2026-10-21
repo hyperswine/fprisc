@@ -1,0 +1,82 @@
+{
+  "base_revision": "a55664714f9fdefdba2b29b4f367616c309ffc7a",
+  "measured_codegen_revision": 59,
+  "measured_compiler_sha256": "1962b0ee8dcf6ec553fbd189b20368a37b2ee917b60ee789a7fa132dece3eb6d",
+  "final_codegen_revision": 61,
+  "final_compiler_sha256": "adc68159e9a8199ea1a1623edc6dbcaece359cfdf985ddf4b082eb2de0c20224",
+  "final_source_sha256": {
+    "compiler/Codegen.hs": "5793f57c8f552226b8b08a5e59e4e820b33b47a435b61bde6689b0adacc6e86f",
+    "compiler/Compile.hs": "8f67753579c4ad65cb18e24382c729912cd992866142f31cf07122674a5c6550",
+    "compiler/Build.hs": "3ee4f73eb38618b99edbb18ea991f462503ba77121476b45516c1d1ed9d796f2",
+    "compiler/A64.hs": "b625b8f9f8e7f35a40cce32ca3f751d9ca223bf1099bb682a1bd1ae7989f3e67",
+    "tests/NullaryConstants.hs": "f28828c5761e8d037a52dd4b787f6c1d1563b15e1889e992fb14e489ab5c7867",
+    "tests/SelfLoops.hs": "688e76307782197883d928ebf4136ddcb35f6bc9301976f0315bde8ea256a968",
+    "tests/check_self_loops.py": "11e6c776123c4048d68d4f1edece35b988b8ab0620386fe57b9612a5ceb8ca22",
+    "tests/check_self_loop_x64.py": "caf35d7ffcc8fff051a408c0a19eb627f05b12247f840d9586d82a23736bede4",
+    "tests/check_self_loop_rv64.py": "8e51790403538f61e5dceef8b6e137b68f8bae6a54d9d5de3da3035c7b76225c",
+    "tests/check_riscv_scalar.py": "a7744128f71cd911f8411aa0304d30859c30e980551f6cd842f331e7eb8a600b",
+    "tests/base/selfloops_probe.c": "cd9b0084d47c28d0a34a079bdc5c258bfe91e1e6776b052e96739af10dc7d11a",
+    "tests/base/selfloops_oracle.c": "1bff05cc3fa8420df2c47a530fe7fff415b178593a16ab6df027fb17035bcb6e"
+  },
+  "checks": [
+    {
+      "name": "full-base",
+      "command": "FPR_SELF_LOOPS=1 python3 tests/check_base.py",
+      "codegen_revision": 59,
+      "exit_code": 0,
+      "log_sha256": "705e1ca00f947ba957c7f214e17e0b2828f2ff6e5be4f199ae352b9c2038abf9",
+      "summary": "I64: wrapping 64-bit arithmetic, unsigned views, conversions, parse, structures, send, and no implicit mixing with Int: PASS"
+    },
+    {
+      "name": "focused",
+      "command": "python3 tests/check_self_loops.py",
+      "codegen_revision": 61,
+      "exit_code": 0,
+      "log_sha256": "026af9411373666187c3fb437ca7c95bbc8c7a52903ee989d26a0ad4d22fabc5",
+      "summary": "Self loops: SHA and imported units, 640 finite WCET bounds, no per-function increase PASS",
+      "retained_log": "self-loops-focused-g61.log"
+    },
+    {
+      "name": "x64",
+      "command": "python3 tests/check_self_loop_x64.py",
+      "codegen_revision": 61,
+      "exit_code": 0,
+      "log_sha256": "bb5244b5a1a1ef558097ff8eefcaf5e8188c14393d1adae156928ffcaa48a4aa",
+      "summary": "FPR_SELF_LOOPS=1: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS",
+      "retained_log": "self-loops-x64-g61.log"
+    },
+    {
+      "name": "rv64-oracle",
+      "command": "python3 tests/check_self_loop_rv64.py",
+      "codegen_revision": 61,
+      "exit_code": 0,
+      "log_sha256": "45a005ebb3dd80754f192105702596f02d79bc5edf55ee8d096b03ffa378aea3",
+      "summary": "FPR_SELF_LOOPS=1 RV64/QEMU: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS",
+      "retained_log": "self-loops-rv64-oracle-g61.log"
+    },
+    {
+      "name": "rv32-scalar",
+      "command": "FPR_SELF_LOOPS=1 python3 tests/check_riscv_scalar.py --bits 32",
+      "codegen_revision": 61,
+      "exit_code": 0,
+      "log_sha256": "a646c5be1d77438774c2f538b6c6659395a9f393fed87b276a086d4a1659bee3",
+      "summary": "RV32 scalar semantics, primitive shadowing, overflow/refusals, cache isolation and indexed memory: PASS",
+      "retained_log": "self-loops-rv32-scalar-g61.log"
+    },
+    {
+      "name": "scalar-all-widths",
+      "command": "FPR_SELF_LOOPS=1 python3 tests/check_riscv_scalar.py",
+      "codegen_revision": 61,
+      "exit_code": 1,
+      "log_sha256": "07bb194f3ec3c10d9d488938b2d6077befc4149ba6cf03ca4ae5b273069baceb",
+      "summary": "RV32 passes, then RV64 link rejects installed double-float libgcc for requested RV64IM/LP64 soft-float ABI"
+    }
+  ],
+  "full_base_skip": "POSIX RV64 artifacts: Apple clang lacks RISC-V backend",
+  "limits": [
+    "No physical Pi/STAR64 or QOS deployment",
+    "Full Base ran on measured revision 59; revision 61 has focused native, x64/RV64 oracle, RV32 scalar validation and 27 unchanged assembly-file comparisons after revision metadata normalization",
+    "Strict RV64IM/LP64 full scalar gate blocked by installed libgcc multilib coverage"
+  ],
+  "rv64_toolchain_evidence": "self-loops-rv64-toolchain-gap.json"
+}

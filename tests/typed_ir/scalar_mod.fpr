@@ -1,0 +1,26 @@
+# The root of the M2 interoperability fixture: legacy main calling the
+# native unit scalarlib.fpr, and handing its function values to the C
+# harness (tests/typed_ir/tir_probe.c) so C calls native code directly.
+unsafe base.
+L = use "scalarlib".
+TirProbe.call1 : (Int -> Int) -> Int -> Int .
+TirProbe.call2 : (Int -> Int -> Int) -> Int -> Int -> Int .
+TirProbe.segments : Unit -> Int .
+main = case Sys.args Unit of
+    ["fib", n] -> print "{L.fib (parseInt n)}"
+  | ["sum", n, a] -> print "{L.sum (parseInt n) (parseInt a)}"
+  | ["addovf", a, b] -> print "{L.addovf (parseInt a) (parseInt b)}"
+  | ["mulovf", a, b] -> print "{L.mulovf (parseInt a) (parseInt b)}"
+  | ["divz", a, b] -> print "{L.divz (parseInt a) (parseInt b)}"
+  | ["even", n] -> print "{L.even (parseInt n)}"
+  | ["clamp", x, lo, hi] -> print "{L.clamp (parseInt x) (parseInt lo) (parseInt hi)}"
+  | ["boolResult", n, flag] -> print "{L.boolResult (parseInt n) (parseInt flag)}"
+  | ["cbSum", n] -> print "{L.cbSum (parseInt n)}"
+  | ["cbTail", n] -> print "{L.cbTail (parseInt n)}"
+  | ["deep", n] -> print "{L.deep (parseInt n)} {TirProbe.segments Unit}"
+  | ["swapLoop", n, a, b] -> print "{L.swapLoop (parseInt n) (parseInt a) (parseInt b)}"
+  | ["cfib", n] -> print "{TirProbe.call1 L.fib (parseInt n)}"
+  | ["csum", n, a] -> print "{TirProbe.call2 L.sum (parseInt n) (parseInt a)}"
+  | ["caddovf", a, b] -> print "{TirProbe.call2 L.addovf (parseInt a) (parseInt b)}"
+  | ["ccbSum", n] -> print "{TirProbe.call1 L.cbSum (parseInt n)}"
+  | _ -> print "scalar".

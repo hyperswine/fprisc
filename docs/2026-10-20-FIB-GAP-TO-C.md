@@ -5,6 +5,14 @@ Date: 2026-10-20. Kind: attribution record. Base: FP-RISC `3206b84`
 `35985c7` on branch `register-allocation-design`, Apple M4, macOS, Apple
 clang at `-O2`.
 
+Follow-up, 2026-10-20:
+[Native cost experiments](2026-10-20-NATIVE-COST-EXPERIMENTS.md) corrects the
+checked-C and numerical attribution claims below, measures two guard variants,
+and records a direct-literal worker candidate. The half/quarter/quarter split
+below must not be treated as measured cost attribution.
+The subsequent [retained-register experiment](2026-10-20-RETAINED-REGISTER-SCORING.md)
+improves loop workloads but leaves recursive Fibonacci essentially unchanged.
+
 ## The question
 
 [The register-allocation design page](2026-10-19-REGISTER-ALLOCATION.md)

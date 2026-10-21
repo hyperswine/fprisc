@@ -26,7 +26,7 @@
 -- generation. Source effects retain evaluation order; HAL MMIO remains
 -- volatile, and slot promotion does not reorder device accesses.
 
-module Codegen (emitProgram, externals, Target (..), rv64, rv32, codegenRev, normArc) where
+module Codegen (emitProgram, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, Target (..), rv64, rv32, codegenRev, normArc, wcetAnnotate, compactFrameSlots) where
 -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
 -- specialization. All scalar backends support the shared saved-register
 -- convention; x64 uses its XMM shadow bank for s6..s11.
@@ -45,16 +45,25 @@ import Numeric (showHex)
 import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, isJust)
 import Peephole (peepholeFor)
+import Codegen.IR (Fn (..), Block (..))
+import Codegen.Lower (lowerProgram)
+import Codegen.Policy (Policy, m2Policy)
+import qualified Codegen.Target.X64 as X64
+import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat, emitFnA64)
+import Codegen.Bounds (Report (..))
+import Codegen.Verify (verifyProgram)
+import Codegen.Dump (dumpFn)
+import Codegen.Eval (Outcome (..), Failure (..), Event (..), RV (..), evalProgram)
 import KernelKinds (Kind(..), signature)
 import Reuse (reuseFresh, reuseProgram, reuseView)
-import Workers (workerize, internalWorker, scalarPrimitives)
+import Workers (workerizeWithSignatures, ScalarSignatures, internalWorker, scalarPrimitives)
 
 import FPRISC (Core (..), Prog, freeVars, occurs)
 
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 55 -- uniqueness tracking and private consuming entries
+codegenRev = 67 -- Base Bool constructors share runtime singletons with comparisons
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -81,14 +90,85 @@ data Target = Target
     tgtFieldWorkers :: Bool,
     tgtPipelineInline :: Bool,
     tgtReuse :: Bool,
-    tgtHal :: M.Map String Int -- primitive name -> arity (builtin schemes and
+    tgtSelfLoops :: Bool, -- experimental frame reuse; keeps every entry fuel/stack check
+    tgtRetainedRegisters :: Bool, -- experimental scoring after slot cleanup
+    tgtCostedRegisters :: Bool, -- reject retained placement that raises fuel bounds
+    tgtCompactFrames :: Bool, -- remove holes in private, directly addressed slots
+    tgtTypedIr :: Maybe String, -- FPR_TYPED_IR: report the typed-IR lowering (M1); changes no emitted code
+    tgtHal :: M.Map String Int, -- primitive name -> arity (builtin schemes and
                         -- foreign declarations): a saturated call to one is
                         -- a direct `call fpr_g_<name>_call<n>` (fpr.h FPR_FN)
+    tgtPolicy :: Policy, -- the profile the typed-IR lowering states (Codegen.Policy)
+    tgtNative :: Maybe NativeMode -- FPR_TYPED_IR_BACKEND: route units through the typed-IR native backend (M2)
+  }
+
+-- The opt-in typed-IR backend (docs/2026-10-20-TYPED-NATIVE-IR-PLAN.md,
+-- "Selection, fallback and cache policy").  A unit is routed through the
+-- new backend when its functions lower and select; the others fall back
+-- to the legacy generator with their reasons reported.  Strict mode makes
+-- a fallback of a named function (or of any function) a compile error.
+data Granularity
+  = WholeUnit -- every function of the unit or none (the default until the ABI interoperability tests pass)
+  | PerFunction -- accepted functions are native, the others legacy, in one unit
+  deriving (Eq, Show)
+
+data Strict = StrictOff | StrictAll | StrictNames [String] deriving (Eq, Show)
+
+data NativeBackend = DirectA64 ObjectFormat HartAccess | DirectX64 deriving (Show)
+
+data NativeMode = NativeMode
+  { nmGranularity :: Granularity,
+    nmStrict :: Strict,
+    nmTargetName :: String,
+    nmBackend :: Maybe NativeBackend -- Nothing: the switch is on but this target has no direct backend yet
+  }
+  deriving (Show)
+
+data Emission = Emission
+  { emAsm :: String, -- the legacy emission (rv64 text the translators lower)
+    emNotes :: [String],
+    emNative :: [String], -- the native backend's text in the target's own syntax, appended after lowering
+    emNativeNames :: [String], -- the functions the native backend emitted
+    emFallbacks :: [(String, String)] -- the functions it did not, with reasons
   }
 
 rv64, rv32 :: Target
-rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True M.empty
-rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True M.empty
+rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True False False False False Nothing M.empty m2Policy Nothing
+rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True False False False False Nothing M.empty m2Policy Nothing
+
+-- The typed-IR lowering of M1 (docs/2026-10-20-TYPED-NATIVE-IR-PLAN.md), as a
+-- report beside the legacy emission: which functions lower, why the others
+-- do not, their dumps (`dump`) and the reference evaluator's answer for
+-- `eval:<fn>:<int>...`.  A verifier failure is a compiler error, never a
+-- fallback.  Nothing here changes what is emitted.
+typedIrNotes :: Maybe String -> Policy -> ScalarSignatures -> M.Map String Int -> M.Map String (Int, String) -> Prog -> [String]
+typedIrNotes Nothing _ _ _ _ _ = []
+typedIrNotes (Just mode) policy sigs ext hal prog =
+  case verifyProgram lowered of
+    Left err -> error ("typed-ir: " ++ err)
+    Right () ->
+      ["typed-ir: coverage " ++ show (M.size lowered) ++ "/" ++ show (M.size prog) ++ " functions"]
+        ++ ["typed-ir: " ++ n ++ " lowered (" ++ show (length (fnBlocks f)) ++ " blocks, " ++ show (sum (map (length . bInstrs) (fnBlocks f))) ++ " instructions)" | (n, f) <- M.toList lowered]
+        ++ ["typed-ir: " ++ n ++ " fallback: " ++ r | (n, r) <- failures]
+        ++ (if "dump" `elem` ws then concatMap (map ("typed-ir: | " ++) . lines . dumpFn) (M.elems lowered) else [])
+        ++ concatMap evalNote ws
+  where
+    (lowered, failures) = lowerProgram policy sigs prog ext hal
+    ws = words mode
+    evalNote w = case splitOn ':' w of
+      ("eval" : fn : args) | Just ns <- mapM readMaybe args ->
+        let out = evalProgram lowered fn (map RInt ns)
+            shown = "typed-ir: eval " ++ fn ++ concatMap ((' ' :) . show) (ns :: [Integer])
+            counts = " (" ++ show (length [() | EvSafepoint _ <- ocEvents out]) ++ " safepoints, " ++ show (length [() | EvCall _ _ <- ocEvents out]) ++ " calls)"
+         in [ case ocResult out of
+                Right (RInt n) -> shown ++ " = " ++ show n ++ counts
+                Right v -> shown ++ " = " ++ show v ++ counts
+                Left (Trap msg) -> shown ++ " trap: " ++ msg ++ counts
+                Left (Stuck msg) -> shown ++ " stuck: " ++ msg ++ counts ]
+      _ -> []
+    splitOn c s = case break (== c) s of
+      (a, _ : rest) -> a : splitOn c rest
+      (a, []) -> [a]
 
 -- the visibility directive for a unit-visible global: a library unit
 -- shares every name it did not qualify with '@hash' with the program it
@@ -110,12 +190,12 @@ corePrims = ["+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "strcat", "st
 -- The fuel model bounds GENERATED-code time between safepoints, but a
 -- fuel unit is "one safepoint passed", not a duration — G1 in
 -- FUEL-RC-ABI.md. This closes it at the compiler: for every emitted
--- function, walk the assembly as a CFG (a DAG — all loops are tail
--- calls, so intra-function branches are forward) and compute the
+-- function, walk the assembly as a CFG and compute the
 -- maximum number of instructions on any path between two consecutive
 -- safepoint events. Events: the entry fuel check, any later
 -- `call fpr_fuel_exhausted` (vector-kernel checks), and any call/jump
--- into an fpr_fn_* (the callee's entry check fires next).
+-- into an fpr_fn_* (the callee's entry check fires next), or a self
+-- tail jump to a compiler-proven entry that repeats that same check.
 --
 -- Counts are pre-lowering IR instructions: the per-target lowering
 -- multiplies by a small bounded factor (x64 fixups etc.), which
@@ -136,8 +216,11 @@ data WBlock = WBlock
     wExit :: Bool -- ends in ret (or falls off the end / tail-jumps out)
   }
 
-wcetAnnotate :: String -> [String] -> [String]
-wcetAnnotate fname lns =
+-- Only pass labels whose entry executes the ordinary parameter spill and
+-- fuel check. Arbitrary back-edges remain UNBOUNDED; a label name alone
+-- is never evidence of a safepoint.
+wcetAnnotate :: [String] -> String -> [String] -> [String]
+wcetAnnotate fuelEntries fname lns =
   lns ++ ["# wcet: " ++ fname ++ " segmax=" ++ segS ++ " exittail=" ++ tailS ++ " ccalls=" ++ show ccTotal]
   where
     segS = maybe "UNBOUNDED" show segMax'
@@ -169,7 +252,7 @@ wcetAnnotate fname lns =
     -- ---- classify one instruction ----
     isReset ws = case ws of
       ("call" : t : _) -> t == "fpr_fuel_exhausted" || isFprFn t
-      ("j" : t : _) -> isFprFn t
+      ("j" : t : _) -> isFprFn t || t `elem` fuelEntries
       ("jmp" : t : _) -> isFprFn t
       _ -> False
     isFprFn t = take 7 t == "fpr_fn_"
@@ -202,8 +285,8 @@ wcetAnnotate fname lns =
     bmap = [(l, summarize l is) | (l, is) <- blocks]
     blockMap = M.fromList bmap
     -- ---- maxFrom: max insns from block start to first reset/exit ----
-    -- Memoized DFS with a grey (on-stack) set: a back-edge (shouldn't
-    -- exist — all loops are tail calls) yields Nothing = UNBOUNDED,
+    -- Memoized DFS with a grey (on-stack) set: a cycle with no reset
+    -- yields Nothing = UNBOUNDED,
     -- loudly, exactly as before; the memo table makes the walk linear.
     -- (The previous path-guarded walk recomputed every diamond's tail
     -- once per path through the diamond — exponential in join depth;
@@ -302,7 +385,8 @@ data CG = CG
     -- separate compilation:
     cgExt :: M.Map String Int, -- extern known globals (other units): name -> arity
     cgExports :: S.Set String, -- THIS unit's cross-unit-visible names (.globl gate)
-    cgVNotes :: [String] -- Vec.x sites that DECLINED specialization (printed by Compile)
+    cgVNotes :: [String], -- Vec.x sites that DECLINED specialization (printed by Compile)
+    cgNulls :: S.Set (Int, Int) -- actual constant references, including ones introduced during lowering
   }
 
 -- one specialization request: a Vec.map/filter/fold call site whose
@@ -390,20 +474,98 @@ floatLabel width bits = do
 -- others reference it; docs/2026-10-19-SHARED-PRELUDE-UNIT.md).  They stay
 -- in cgProg, so every lookup sees them as before; only the emission loops
 -- skip them.
+-- The primitives a saturated call reaches directly, as genT's `known` and
+-- its tgtHal case resolve them: a core primitive is `fpr_prim_fn_<name>`
+-- at any arity, a declared HAL/foreign primitive `fpr_g_<name>_call<n>`
+-- up to six arguments (beyond that the legacy path stages the apply spine,
+-- and the lowering refuses the call).  Core primitives win, as in `known`.
+foreignEntries :: Target -> M.Map String (Int, String)
+foreignEntries tgt =
+  M.union
+    (M.fromList [(n, (a, "fpr_prim_fn_" ++ mangle n)) | (n, a) <- primArities])
+    (M.fromList [(n, (a, "fpr_g_" ++ mangle n ++ "_call" ++ show a)) | (n, a) <- M.toList (tgtHal tgt), a <= 6])
+
+-- The native backend's selection over a unit's emitted functions: the
+-- typed-IR lowering, the verifier (a failure is a compiler error), then
+-- direct target selection per function.  A lowering refusal or a selection
+-- refusal (a frame beyond the ceiling) is a reported fallback; an invalid
+-- selection, placement or layout is a compiler error.  Whole-unit
+-- granularity turns one fallback into the unit's.
+nativeSelect :: Target -> NativeMode -> ScalarSignatures -> M.Map String Int -> S.Set String -> Prog -> (M.Map String NativeFn, [(String, String)], [String])
+nativeSelect tgt nm sigs ext exps emitted =
+  case verifyProgram lowered of
+    Left err -> error ("typed-ir: " ++ err)
+    Right () -> case nmBackend nm of
+      Nothing -> (M.empty, [(n, "no typed-IR native backend for " ++ nmTargetName nm ++ " (M2 emits AArch64 and x86-64)") | n <- M.keys emitted], [])
+      Just backend ->
+        let emit = case backend of
+              DirectA64 fmt hart -> emitFnA64 (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt))
+              DirectX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt))
+            results = [(n, emit f) | (n, f) <- M.toList lowered]
+            errors = [n ++ ": " ++ e | (n, Left e) <- results, "compiler error: " `isPrefixOf` e]
+            refusals = [(n, e) | (n, Left e) <- results, not ("compiler error: " `isPrefixOf` e)]
+            accepted = M.fromList [(n, nf) | (n, Right nf) <- results]
+            declined = failures ++ refusals
+            nativeNote nf = "typed-ir-backend: " ++ nfName nf ++ " native (frame " ++ frameOf nf ++ ", native-insns-v1 segmax=" ++ bound (rSegMax (nfReport nf)) ++ " exittail=" ++ bound (rExitTail (nfReport nf)) ++ " ccalls=" ++ show (rCCalls (nfReport nf)) ++ ")"
+            frameOf nf = case words (head (nfLines nf)) of ws | (f : _) <- [drop 6 w | w <- ws, "frame=" `isPrefixOf` w] -> f; _ -> "?"
+            bound = maybe "UNBOUNDED" show
+            unbounded = [n | (n, nf) <- M.toList accepted, rSegMax (nfReport nf) == Nothing]
+         in if not (null errors)
+              then error ("typed-ir backend: " ++ intercalate "; " errors)
+              else case nmGranularity nm of
+                PerFunction ->
+                  ( accepted,
+                    declined ++ [(n, "native-insns-v1 is UNBOUNDED: a cycle without a safepoint") | n <- unbounded],
+                    ("typed-ir-backend: native " ++ show (M.size accepted) ++ "/" ++ show (M.size emitted) ++ " functions (per-function)")
+                      : map nativeNote (M.elems accepted) ++ ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- declined]
+                  )
+                WholeUnit
+                  | null declined && null unbounded ->
+                      ( accepted, [],
+                        ("typed-ir-backend: native " ++ show (M.size accepted) ++ "/" ++ show (M.size emitted) ++ " functions (whole unit)")
+                          : map nativeNote (M.elems accepted)
+                      )
+                  | otherwise ->
+                      let reasons = declined ++ [(n, "native-insns-v1 is UNBOUNDED: a cycle without a safepoint") | n <- unbounded]
+                          why = "whole-unit fallback: " ++ show (length reasons) ++ " of " ++ show (M.size emitted) ++ " functions declined"
+                       in ( M.empty,
+                            reasons ++ [(n, why) | n <- M.keys emitted, n `notElem` map fst reasons],
+                            ("typed-ir-backend: native 0/" ++ show (M.size emitted) ++ " functions (" ++ why ++ ")")
+                              : ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- reasons]
+                          )
+  where
+    (lowered, failures) = lowerProgram (tgtPolicy tgt) sigs emitted ext (foreignEntries tgt)
+
 emitProgram :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> S.Set String -> Prog -> (String, [String])
 emitProgram tgt rvv spec exports ext exps elide prog0 =
+  let e = emitProgramWith tgt rvv spec exports ext exps elide prog0 in (emAsm e, emNotes e)
+
+emitProgramWith :: Target -> Bool -> Bool -> [ModExport] -> M.Map String Int -> S.Set String -> S.Set String -> Prog -> Emission
+emitProgramWith tgt rvv spec exports ext exps elide prog0 =
   let -- Fusion precedes workers so callback analysis sees original bodies.
       (fused, fnotes) = if tgtFusion tgt then fuseVecFix prog0 else (prog0,[])
       enable = tgtW tgt == 8 && tgtFuel tgt && tgtScalarFast tgt && not (tgtArc tgt)
-      (workers,wnotes) = workerize (enable && tgtFieldWorkers tgt) (enable && tgtScalarWorkers tgt) fused
+      (workers,wnotes,workerSigs) = workerizeWithSignatures (enable && tgtFieldWorkers tgt) (enable && tgtScalarWorkers tgt) fused
       reuseEnabled = tgtReuse tgt && tgtW tgt==8 && tgtFuel tgt && not (tgtArc tgt)
       normalized = M.map (\(ps,b)->(ps,if tgtScalarFast tgt then normIn (S.fromList ps) b else b)) workers
       (prog,rnotes) = if reuseEnabled then reuseProgram elide normalized else (workers,[])
       emitted = if S.null elide then prog else M.filterWithKey (\n _ -> S.notMember n elide) prog
-      (body, st) = runState (top prog emitted) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes))
-   in (unlines (wnotes ++ rnotes ++ body), reverse (cgVNotes st))
+      (nativeFns, nativeFallbacks, nativeNotes) = case tgtNative tgt of
+        Nothing -> (M.empty, [], [])
+        Just nm | tgtW tgt == 8 -> nativeSelect tgt nm workerSigs ext exps emitted
+                | otherwise -> (M.empty, [(n, "no typed-IR native backend for " ++ tgtName tgt) | n <- M.keys emitted], [])
+      (body, st) = runState (top prog emitted nativeFns) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty)
+   in Emission
+        { emAsm = unlines (wnotes ++ rnotes ++ body),
+          emNotes = reverse (cgVNotes st) ++ typedIrNotes (if tgtW tgt == 8 then tgtTypedIr tgt else Nothing) (tgtPolicy tgt) workerSigs ext (foreignEntries tgt) emitted
+            ++ ["typed-ir: not available on " ++ tgtName tgt ++ " (M1 lowers the 64-bit targets)" | tgtW tgt /= 8, Just _ <- [tgtTypedIr tgt]]
+            ++ nativeNotes,
+          emNative = if M.null nativeFns then [] else ["    .text", "    .balign 4", ""] ++ concatMap nfLines (M.elems nativeFns),
+          emNativeNames = M.keys nativeFns,
+          emFallbacks = nativeFallbacks
+        }
   where
-    top prog emitted = do
+    top prog emitted nativeFns = do
       -- specialization-decline scan: a Vec.map/filter/fold site whose
       -- element fn is a NAMED global but which no plan accepts runs
       -- row-by-row in the generic apply tier.  Say so at compile time
@@ -416,7 +578,9 @@ emitProgram tgt rvv spec exports ext exps elide prog0 =
       -- notes of all, not silence -- there the note names the target
       -- gate, and distinguishes sites that would specialize elsewhere.
       modify (\st -> st {cgVNotes = concat [declines tgt spec prog fn b | (fn, (_, b)) <- M.toList emitted] ++ cgVNotes st})
-      fns <- concat <$> mapM (uncurry (compileFn prog)) (M.toList emitted)
+      fns <- concat <$> mapM (uncurry (compileFn prog)) [f | f@(n, _) <- M.toList emitted, M.notMember n nativeFns]
+      -- the unit-local nullary objects the native functions name
+      modify (\s -> s {cgNulls = S.union (S.fromList (concatMap nfNullaries (M.elems nativeFns))) (cgNulls s)})
       specs <- emitSpecs prog
       -- the builtin target links no module registry (runtime/mod.c is not
       -- in its runtime), so the table has no reader there -- and as a strong
@@ -425,6 +589,7 @@ emitProgram tgt rvv spec exports ext exps elide prog0 =
       modtab <- if null exports || tgtArc tgt then pure [] else modTable
       strs <- gets cgStrs
       floats <- gets cgFloats
+      referencedNulls <- gets cgNulls
       pure $
         ( ["# target: " ++ tgtName tgt]
             ++ ["    .option arch, +v" | rvv] -- let gas accept vector mnemonics
@@ -442,7 +607,7 @@ emitProgram tgt rvv spec exports ext exps elide prog0 =
           ++ ["    .section .rodata" | not (M.null floats)]
           ++ concatMap floatFor (M.toList floats)
           ++ ["    .section .rodata" | tgtArc tgt]
-          ++ concatMap nulFor (S.toList (nullaries emitted))
+          ++ concatMap nulFor (S.toList (nullaries emitted `S.union` referencedNulls))
     -- Versioned module table: magic/schema/root hash, then four-word rows
     -- (hash str, export-name str, static PAP, checked interface string),
     -- zero-terminated.  mod.c's `Mod.fn hash name` scans it — the local
@@ -633,7 +798,38 @@ slotsNeeded tgt spec hal ext prog = go0
     go0 _ _ = 0
 
 compileFn :: Prog -> String -> ([String], Core) -> G [String]
-compileFn prog name (params, body0) = do
+compileFn prog name args = do
+  start <- get
+  let tgt = cgTgt start
+      -- Compile both choices from the same state: labels and constant-pool
+      -- entries must belong to the selected body, including on fallback.
+      candidate retained = do
+        put start {cgTgt = tgt {tgtRetainedRegisters = retained}}
+        ls <- compileFnBody prog name args
+        end <- get
+        pure (ls, end {cgTgt = tgt})
+      bounds ls = case reverse ls of
+        l : _ | ["#","wcet:",_,seg,tailCost,cc] <- words l ->
+          traverse value [seg,tailCost,cc]
+        _ -> Nothing
+      value s = case break (== '=') s of
+        (_, '=' : v) -> readMaybe v :: Maybe Int
+        _ -> Nothing
+  if tgtCostedRegisters tgt && tgtW tgt == 8 && tgtFuel tgt && not (tgtArc tgt)
+    then do
+      (old, oldState) <- candidate False
+      (new, newState) <- candidate True
+      -- segmax, exit-tail and C-call count must all stay finite and no
+      -- larger. This is an IR safety/cost gate, not a hardware cycle model.
+      let accept = case (bounds old, bounds new) of
+            (Just a, Just b) -> and (zipWith (<=) b a)
+            _ -> False
+      put (if accept then newState else oldState)
+      pure (if accept then new else old)
+    else compileFnBody prog name args
+
+compileFnBody :: Prog -> String -> ([String], Core) -> G [String]
+compileFnBody prog name (params, body0) = do
   spec <- gets cgSpec
   tgt <- gets cgTgt
   exps <- gets cgExports
@@ -659,9 +855,44 @@ compileFn prog name (params, body0) = do
       nslots = length params + slotsNeeded tgt spec (tgtHal tgt) ext prog (S.fromList params) body + 2
       baseFrame = ((2 * w + w * nslots + 15) `div` 16) * 16
       env0 = M.fromList (zip params [0 ..])
-  bodyLines <- gen prog env0 (length params) Tail body
-  let regs = if tgtRegisters tgt && tgtScalarFast tgt && not (tgtArc tgt) && nslots < 240
-               then registerSlots tgt bodyLines else []
+  originalBody <- gen prog env0 (length params) Tail body
+  let tailExit =
+        [ "    " ++ tgtLd tgt ++ " ra, " ++ show (-w) ++ "(s0)",
+          "    mv t0, s0",
+          "    " ++ tgtLd tgt ++ " s0, " ++ show (-2*w) ++ "(s0)",
+          "    mv sp, t0",
+          "    j fpr_fn_" ++ m
+        ]
+      hasSelf [] = False
+      hasSelf ls@(_:rest) = tailExit `isPrefixOf` ls || hasSelf rest
+      looped = tgtSelfLoops tgt && w == 8 && tgtFuel tgt &&
+               tgtScalarFast tgt && not (tgtArc tgt) && hasSelf originalBody
+  selfEntry <- if looped then freshL "self" else pure ""
+  let -- All call arguments are already staged in a0..a7 / hart spill
+      -- cells before this exact tail exit. Re-enter at the parameter
+      -- stores, after frame setup and saved-register saves. This handles
+      -- cyclic permutations and wide args without overwriting live inputs.
+      -- The entry still repeats BOTH stack headroom and fuel checks.
+      selfLoop [] = []
+      selfLoop ls@(l:rest)
+        | looped, Just more <- stripPrefix tailExit ls =
+            ("    j " ++ selfEntry) : selfLoop more
+        | otherwise = l : selfLoop rest
+      bodyLines = originalBody
+  let retained = tgtRetainedRegisters tgt && w == 8 && tgtFuel tgt && not (tgtArc tgt)
+      -- Score traffic that survives cleanup. Parameter stores precede the
+      -- entry safepoint, which kills forwarding, so count them separately.
+      -- Only parameters get the lower threshold; reused staging slots still
+      -- need six accesses. This changes storage choices, never evaluation
+      -- order or the whole-function ownership of a promoted register.
+      promotionBody
+        | retained =
+            concat [stSlot tgt (if i < 8 then "a" ++ show i else "t1") i
+                     | i <- [0 .. length params - 1]]
+            ++ peepholeFor (tgtLd tgt) (tgtSt tgt) bodyLines
+        | otherwise = bodyLines
+      regs = if tgtRegisters tgt && tgtScalarFast tgt && not (tgtArc tgt) && nslots < 240
+               then registerSlots tgt (if retained then length params else 0) promotionBody else []
       frame = ((baseFrame + w * length regs + 15) `div` 16) * 16
       saved = zip (map snd regs) [nslots ..]
       saveRegs = concat [stSlot tgt r k | (r,k) <- saved]
@@ -730,7 +961,9 @@ compileFn prog name (params, body0) = do
   -- slot forwarding and dead slot stores, per function, after the
   -- frame is opened
   let tidy = if tgtScalarFast tgt then peepholeFor (tgtLd tgt) (tgtSt tgt) else id
-  pure $ wcetAnnotate name $
+  pure $ wcetAnnotate [selfEntry | looped] name $
+    (if tgtCompactFrames tgt && w == 8 && tgtFuel tgt && not (tgtArc tgt)
+      then compactFrameSlots tgt frame else id) $
     -- `# fn <name>`, never `# <name>`: a hosted backend runs the unit through
     -- the C preprocessor, which reads `# line ...`, `# error ...`, `# define
     -- ...` as DIRECTIVES -- a function called `line` failed the build with
@@ -746,7 +979,13 @@ compileFn prog name (params, body0) = do
       ++ [ "fpr_fn_" ++ m ++ ":" ]
       ++ framePro tgt frame
       ++ saveRegs
-      ++ concatMap promote (tidy (concat [stSlot tgt ("a" ++ show i) i | (i, _) <- zip [0 :: Int ..] params, i < 8]
+      -- Clean up the ordinary invocation first. A self tail call already
+      -- reuses these exact slot addresses after reopening the same-sized
+      -- frame; removing teardown/setup does not create new slot liveness.
+      -- Introducing the back-edge BEFORE tidy would make its conservative
+      -- cycle fallback retain stores that the ordinary invocation drops.
+      ++ [selfEntry ++ ":" | looped]
+      ++ concatMap promote (selfLoop (tidy (concat [stSlot tgt ("a" ++ show i) i | (i, _) <- zip [0 :: Int ..] params, i < 8]
       -- wide params ride the hart spill cells: copy them into frame
       -- slots BEFORE the fuel check (fpr_fuel_exhausted may deschedule;
       -- by then the cells must be dead)
@@ -763,7 +1002,45 @@ compileFn prog name (params, body0) = do
            "    mv sp, t0",
            "    ret",
            ""
-         ]))
+         ])))
+
+-- Compact only fixed, private frame slots after cleanup and promotion.
+-- This is a bijective renumbering, NOT lifetime-based slot sharing. Reject
+-- computed/escaping frame pointers and nonstandard frame operations; those
+-- keep their original layout. Saved registers are ordinary private slots.
+compactFrameSlots :: Target -> Int -> [String] -> [String]
+compactFrameSlots tgt frame ls
+  | frame > 2032 = ls
+  | otherwise = case break (== "    addi sp, sp, -" ++ show frame) ls of
+      (prefix, rest) | Just body <- stripPrefix pro rest,
+        safe body,
+        all (\k -> (k+3)*w <= frame) slots ->
+          prefix ++ framePro tgt smaller ++ map rewrite body
+      _ -> ls
+  where
+    w = tgtW tgt
+    pro = framePro tgt frame
+    slots = sort . nub $ [k | Just (_,_,k) <- map (slotAccess tgt) ls]
+    mapping = M.fromList (zip slots [0..])
+    smaller = ((2*w + w*length slots + 15) `div` 16)*16
+    rewrite l = case slotAccess tgt l of
+      Just (op,r,k) -> "    " ++ op ++ " " ++ r ++ ", " ++ slotRef tgt (mapping M.! k)
+      _ -> l
+    tokens = words . map (\c -> if c `elem` ",()" then ' ' else c)
+    safe [] = True
+    safe (a:more)
+      | words a == ["mv","t0,","s0"],
+        (_, b:c:rest) <- span restore more,
+        words b == [tgtLd tgt,"s0,",show (-2*w) ++ "(s0)"],
+        words c == ["mv","sp,","t0"] = safe rest
+    safe (l:rest)
+      | Just (_,r,_) <- slotAccess tgt l = r /= "s0" && safe rest
+      | words l == [tgtLd tgt,"ra,",show (-w) ++ "(s0)"] = safe rest
+      | "s0" `notElem` tokens l = safe rest
+      | otherwise = False
+    restore l = case slotAccess tgt l of
+      Just (op,r,_) -> op == tgtLd tgt && r `elem` ["s1","s2","s3","s4","s5"]
+      _ -> False
 
 -- Private slot promotion: a register is the slot's storage for the entire
 -- function, including branches and scratch-slot reuse. No liveness guesses
@@ -777,11 +1054,11 @@ slotAccess t l = case words l of
     n `mod` tgtW t == 0 -> Just (op, filter (/= ',') r, (-n `div` tgtW t) - 3)
   _ -> Nothing
 
-registerSlots :: Target -> [String] -> [(Int,String)]
-registerSlots t ls
+registerSlots :: Target -> Int -> [String] -> [(Int,String)]
+registerSlots t nparams ls
   | any (\l -> any (`elem` words (map (\c -> if c == ',' then ' ' else c) l)) ["s1","s2","s3","s4","s5"]) ls = []
   | any (\l -> words l == ["add","t2,","s0,","t2"]) ls = []
-  | otherwise = zip (take 5 [k | (k,n) <- sortOn (\(k,n) -> (negate n,k)) (M.toList counts), n >= 6]) ["s1","s2","s3","s4","s5"]
+  | otherwise = zip (take 5 [k | (k,n) <- sortOn (\(k,n) -> (negate n,k)) (M.toList counts), n >= (if k < nparams then 4 else 6)]) ["s1","s2","s3","s4","s5"]
   where counts = M.fromListWith (+) [(k,1 :: Int) | Just (_,_,k) <- map (slotAccess t) ls]
 
 -- Shapes the ownership lowering leaves in a body, rewritten so the
@@ -1334,7 +1611,11 @@ genT tgt spec prog ext = go
       | "$sym." `isPrefixOf` h = pure ["    la a0, " ++ drop 5 h]
     -- a nullary constructor is its immortal object; no call
     go env _ _ (CVar h)
-      | tgtArc tgt, not (M.member h env), Just ([], b) <- M.lookup h prog, CMk t v [] <- normArc b =
+      | tgtArc tgt, not (M.member h env), Just ([], b) <- M.lookup h prog, CMk t v [] <- normArc b = do
+          -- The constructor may belong to another unit and be elided
+          -- here. Its function still informs this lookup, but scanning
+          -- only emitted bodies cannot discover the local constant.
+          modify (\s -> s {cgNulls = S.insert (t,v) (cgNulls s)})
           pure ["    la a0, .Lnul_" ++ show t ++ "_" ++ show v]
     go env nxt pos (CVar h)
       | tgtArc tgt, Just target <- known env h 0 =
@@ -1489,6 +1770,12 @@ genT tgt spec prog ext = go
     -- time; every other argument is evaluated into slot nxt+i
     directArg env (CVar y) | Just k <- M.lookup y env = Just (\r -> ldSlot tgt r k)
     directArg _ (CInt i) | intFits tgt i = Just (\r -> ["    li " ++ r ++ ", " ++ show (2 * i + 1)])
+    -- Workers spell a raw literal as unbox(Int literal). Like the
+    -- ordinary literal above, it cannot fail or have effects; defer its
+    -- immediate load until argument transfer instead of storing/reloading
+    -- a staging slot. All effectful arguments keep their existing order.
+    directArg _ (CApp (CVar "$scalar.unbox") (CInt i))
+      | w == 8, tgtScalarFast tgt, intFits tgt i = Just (\r -> ["    li " ++ r ++ ", " ++ show i])
     directArg _ _ = Nothing
     argLoad env nxt r (i, a) = maybe (ldSlot tgt r (nxt + i)) ($ r) (directArg env a)
     stageArgs env nxt args =
@@ -1686,7 +1973,15 @@ genT tgt spec prog ext = go
       -- static instead of calling fpr_alloc.  Before this, `strEq`
       -- allocated a fresh 8-byte Bool per character compared -- which
       -- a polling loop turned into ~100 MB/s of slab garbage.
-      CMk tid var [] ->
+      -- Worker Bool equality compares object addresses. The wrapper and
+      -- Bool literals must use the same immortal objects as inline/runtime
+      -- comparisons, including across units. Builtin emission stays local.
+      CMk 1 var [] | tgtFuel tgt, var == 0 || var == 1 ->
+        pure ["    la a0, " ++ if var == 1 then "fpr_true" else "fpr_false"]
+      CMk tid var [] -> do
+        -- Local lowering (e.g. indexedMemory's release result) can create
+        -- a nullary absent from the original program's constant scan.
+        modify (\s -> s {cgNulls = S.insert (tid,var) (cgNulls s)})
         pure ["    la a0, .Lnul_" ++ show tid ++ "_" ++ show var]
       CMk tid var fs -> goThen env nxt NonTail (CMk tid var fs) []
       CErr msg -> do

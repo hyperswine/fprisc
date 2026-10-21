@@ -1,0 +1,7 @@
+{
+  "compiler_sha256": "757f4859cc34191343ba789f862e8e0522ebf4f5d234a307458d6baf756c9c77",
+  "codegen_revision": 67,
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "base_suite_log": "base.log",
+  "note": "Compiler used by the initial Base sections through the safety allow-list. The later final compiler adds a diagnostic malformed-call-metadata arity refusal; native emission is unchanged. See final-compiler.json and the continuation log."
+}

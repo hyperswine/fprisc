@@ -1,0 +1,37 @@
+diff --git a/compiler/Codegen.hs b/compiler/Codegen.hs
+index a8183b1..f8bbfe8 100644
+--- a/compiler/Codegen.hs
++++ b/compiler/Codegen.hs
+@@ -54,7 +54,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
+ -- bump on ANY change to emitted code: it keys the build/units cache
+ -- (a unit's content hash names its SOURCE, not its compilation)
+ codegenRev :: Int
+-codegenRev = 61 -- retain nullaries introduced by lowering or elided constructor references
++codegenRev = 64 -- lower the retained-use threshold only for parameters
+ 
+ -- Target word parameterization: everything the emitted assembly does
+ -- that depends on XLEN funnels through these five fields.  The value
+@@ -690,7 +690,7 @@ compileFn prog name (params, body0) = do
+         | otherwise = l : selfLoop rest
+       bodyLines = originalBody
+   let regs = if tgtRegisters tgt && tgtScalarFast tgt && not (tgtArc tgt) && nslots < 240
+-               then registerSlots tgt bodyLines else []
++               then registerSlots tgt (if w == 8 && tgtFuel tgt then length params else 0) (if w == 8 && tgtFuel tgt then concat [stSlot tgt ("a" ++ show i) i | i <- [0 .. min 7 (length params - 1)]] ++ peepholeFor (tgtLd tgt) (tgtSt tgt) bodyLines else bodyLines) else []
+       frame = ((baseFrame + w * length regs + 15) `div` 16) * 16
+       saved = zip (map snd regs) [nslots ..]
+       saveRegs = concat [stSlot tgt r k | (r,k) <- saved]
+@@ -812,11 +812,11 @@ slotAccess t l = case words l of
+     n `mod` tgtW t == 0 -> Just (op, filter (/= ',') r, (-n `div` tgtW t) - 3)
+   _ -> Nothing
+ 
+-registerSlots :: Target -> [String] -> [(Int,String)]
+-registerSlots t ls
++registerSlots :: Target -> Int -> [String] -> [(Int,String)]
++registerSlots t nparams ls
+   | any (\l -> any (`elem` words (map (\c -> if c == ',' then ' ' else c) l)) ["s1","s2","s3","s4","s5"]) ls = []
+   | any (\l -> words l == ["add","t2,","s0,","t2"]) ls = []
+-  | otherwise = zip (take 5 [k | (k,n) <- sortOn (\(k,n) -> (negate n,k)) (M.toList counts), n >= 6]) ["s1","s2","s3","s4","s5"]
++  | otherwise = zip (take 5 [k | (k,n) <- sortOn (\(k,n) -> (negate n,k)) (M.toList counts), n >= (if k < nparams then 4 else 6)]) ["s1","s2","s3","s4","s5"]
+   where counts = M.fromListWith (+) [(k,1 :: Int) | Just (_,_,k) <- map (slotAccess t) ls]
+ 
+ -- Shapes the ownership lowering leaves in a body, rewritten so the

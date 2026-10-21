@@ -1,0 +1,2 @@
+Frame compaction: preserved values/register saves, dense layout, escaping/computed/deep frame fallback PASS
+Frame placement: 1/4 harts, deep stack growth, self loops, mixed values, three-backend fuel bounds, RV32 fallback, four cache modes PASS; deep frame 80 -> 32 bytes

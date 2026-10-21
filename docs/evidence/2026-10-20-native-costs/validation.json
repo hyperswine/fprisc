@@ -1,0 +1,85 @@
+{
+  "base_commit": "a55664714f9fdefdba2b29b4f367616c309ffc7a",
+  "codegen_revision": 57,
+  "a64_revision": 14,
+  "checks": {
+    "workers": {
+      "sha256": "498f05e2f6a35c34c5eea8edd1e038d0453b3e92ae5b2ef702af7538794b8f7e",
+      "pass_lines": [
+        "Workers Core: admission, public arity, shadowing, escaping values, unknown kinds, vector tier and clone budget PASS",
+        "Workers: native 1/4-worker differential, independent switches/inliner, warm caches, dynamic entry and exact failure reasons PASS",
+        "Workers: A64/RV64/x64 emission, RV32 fallback, private entries and bounded fuel segments PASS",
+        "Workers: raw literal call operands load directly without staging PASS",
+        "Workers: optimized shared module called by general-ABI host PASS"
+      ]
+    },
+    "a64_guards": {
+      "sha256": "7246f5e793fd89d1bd6b6e5e1a096abefe16f2a69df642da36b839ce120261b4",
+      "pass_lines": [
+        "A64 fit guards: exact match, preserved scratch value, original branch reach and both syntaxes PASS",
+        "A64 guard execution: 100009 boundary/random C-reference cases PASS",
+        "A64 guards: exact overflow reasons, 1/4 harts, off/on/off caches, ELF/Mach-O and unchanged RV64/x64 PASS"
+      ]
+    },
+    "vector_pipelines": {
+      "sha256": "0a01d1731baa01254000a122692a43a0e953c492ff846f09938c71aec55dcb04",
+      "pass_lines": [
+        "pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS",
+        "pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=1: PASS",
+        "pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=0: PASS",
+        "pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS",
+        "pipeline inline-disabled=0 registers-disabled=1 fusion-disabled=1 pipeline-inline-disabled=0: PASS",
+        "pipeline inline-disabled=0 registers-disabled=1 fusion-disabled=0 pipeline-inline-disabled=1: PASS",
+        "pipeline inline-disabled=0 registers-disabled=1 fusion-disabled=0 pipeline-inline-disabled=0: PASS",
+        "pipeline inline-disabled=0 registers-disabled=1 fusion-disabled=1 pipeline-inline-disabled=0: PASS",
+        "pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS",
+        "pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=1: PASS",
+        "pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=0: PASS",
+        "pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS",
+        "pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=1 pipeline-inline-disabled=0: PASS",
+        "pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=0 pipeline-inline-disabled=1: PASS",
+        "pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=0 pipeline-inline-disabled=0: PASS",
+        "pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=1 pipeline-inline-disabled=0: PASS",
+        "mixed scalar pipelines: native differential, 1/4 harts, returns/compaction, floats, captures, effects/traps and four-target emission PASS"
+      ]
+    },
+    "vector_kinds": {
+      "sha256": "957412927938d735e105f6bbd6a92cb32e045e3f1d27370d3b2556312f145143",
+      "pass_lines": [
+        "Vector kinds: float captures, mixed record fold, captured map/map and filter/filter, strict order and 100 SIMD tails PASS",
+        "A64 NEON execution: native host and C IEEE reference PASS"
+      ]
+    },
+    "registers": {
+      "sha256": "6853656d87f7bf22b01df07e02c7dc44c46ad66466a62c4f7ae7ab1a07e0f26d",
+      "pass_lines": [
+        "x64 register-heavy body: 285 independent C-reference cases: PASS",
+        "Registers: differential fixtures, warm-cache mode separation and three-backend emission: PASS"
+      ]
+    },
+    "wide_workers": {
+      "sha256": "2f6eb0e234001925bd57b97924ccc87d9d62cc8157940487d89324c60458b4c3",
+      "pass_lines": [
+        "wide workers inline-disabled=0 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=0 fields-disabled=0 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=0 fields-disabled=1 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=0 fields-disabled=0 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=0 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=1 fields-disabled=0 scalar-disabled=1: PASS",
+        "wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=1 fields-disabled=0 scalar-disabled=0: PASS",
+        "wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=1: PASS",
+        "wide workers optimized shared module called by general ABI host: PASS",
+        "wide workers native differential, allocation, effects, actor ownership, stack, 64-argument boundary and four-target emission: PASS"
+      ]
+    }
+  },
+  "scope": "Host execution and cross-target emission only; no full Base suite, physical board execution, QOS repin or deployment. Pipeline/vector/register/wide-worker suites ran before the final cache-revision-only bump; workers and A64 guard/cache suite reran after it.",
+  "test_source_sha256": {
+    "tests/A64Guards.hs": "f43b055fcc06b412685d5fd545ac179489328ac26eab05b255d017328762f88c",
+    "tests/check_a64_guards.py": "e11904abfb6a51399b40f4e9c202b2892d480a8ff427e237fe1270211fb10ad5",
+    "tests/check_workers.py": "5f82b07779f61fc5f71baa30c656af3bb0102dba7a72132918152b61f3f0ed50",
+    "tools/bench-a64-guards.py": "561ad14659850394e7b7a7ed4e1a05eb18db8191b6fe2d3b8ed17fab9abdc706"
+  }
+}

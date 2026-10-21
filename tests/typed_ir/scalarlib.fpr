@@ -1,0 +1,47 @@
+# The M2 interoperability fixture (docs/2026-10-21-TYPED-IR-M2-A64.md): the
+# scalar functions of scalar.fpr as a module unit, so that whole-unit
+# selection routes this unit through the typed-IR AArch64 backend while
+# the root that uses it (scalar_mod.fpr: main, print, Sys.args) stays on
+# the legacy generator.  TirProbe.* are the C harness tests/typed_ir/tir_probe.c:
+# the native functions call back into C through them, and the harness calls
+# native functions through the function values the root hands it.
+unsafe base.
+TirProbe.cb : Int -> Int .
+TirProbe.mark : Int -> Int .
+fib : unsafe Int -> Int .
+fib n = if n < 2 then n else fib (n - 1) + fib (n - 2).
+sum : unsafe Int -> Int -> Int .
+sum n acc = if n == 0 then acc else sum (n - 1) (acc + n).
+addovf : Int -> Int -> Int .
+addovf a b = a + b.
+mulovf : Int -> Int -> Int .
+mulovf a b = a * b.
+divz : Int -> Int -> Int .
+divz a b = a / b.
+even : unsafe Int -> Int .
+even n = if n == 0 then 1 else odd (n - 1).
+odd : unsafe Int -> Int .
+odd n = if n == 0 then 0 else even (n - 1).
+clamp : Int -> Int -> Int -> Int .
+clamp x lo hi = (if x < lo then lo else if x > hi then hi else x) * 2.
+boolEq : unsafe Int -> Bool -> Bool .
+boolEq n b = if n == 0 then b == (n < 1) else boolEq (n - 1) b.
+boolNe : unsafe Int -> Bool -> Bool .
+boolNe n b = if n == 0 then b != (n < 1) else boolNe (n - 1) b.
+boolResult : unsafe Int -> Int -> Int .
+boolResult n flag =
+  a = boolEq n (flag > 0);
+  b = boolNe n (flag > 0);
+  (if a then 10 else 0) + (if b then 1 else 0).
+# callbacks into C: a foreign call in value position and in tail position
+cbSum : Int -> Int .
+cbSum n = TirProbe.cb n + TirProbe.cb (n + 1).
+cbTail : Int -> Int .
+cbTail n = TirProbe.cb (n * 3).
+# non-tail recursion deep enough to cross stack segments; every level
+# marks its frame in the harness, which counts the segments it saw
+deep : unsafe Int -> Int .
+deep n = TirProbe.mark n + (if n == 0 then 0 else deep (n - 1)).
+# block parameters with a swap: the join carries two values whose sources cross
+swapLoop : unsafe Int -> Int -> Int -> Int .
+swapLoop n a b = if n == 0 then a * 1000 + b else swapLoop (n - 1) b a.

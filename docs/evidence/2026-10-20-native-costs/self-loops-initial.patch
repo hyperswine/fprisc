@@ -1,0 +1,271 @@
+--- a/compiler/A64.hs
++++ b/compiler/A64.hs
+@@ -54,7 +54,7 @@
+ --     saved around it; x17 stashes the loaded hart pointer across the
+ --     restore.  The C side's __thread cell uses the same TLV machinery,
+ --     so both sides agree by construction.
+-module A64 (lowerA64, deTlsQosAppA64, a64Rev) where
++module A64 (lowerA64, lowerA64WithGuards, deTlsQosAppA64, a64Rev) where
+ 
+ 
+ import Data.Bits (shiftR, (.&.))
+@@ -64,12 +64,27 @@
+ 
+ -- bump when the lowering changes (unit-cache tag component; see X64.hs)
+ a64Rev :: Int
+-a64Rev = 12 -- NEON two-lane map IR; r11: lbu, or, srl
++a64Rev = 14 -- sign-extract fit guard; r13 was the bit-test experiment
+ 
+ lowerA64 :: Bool -> String -> String
+-lowerA64 mach =
+-  post . unlines . concatMap (lowerLine mach) . map banner . lines
+-  where
++lowerA64 = lowerA64WithGuards False
++
++lowerA64WithGuards :: Bool -> Bool -> String -> String
++lowerA64WithGuards guards mach =
++  post . unlines . lowerLines . map banner . lines
++  where
++    -- Sign-extract the low 63 bits in one instruction, preserving the
++    -- exact t1 value on BOTH successors. Unlike a bit-test branch this
++    -- keeps the original B.cond reach and compare/branch pairing. The
++    -- exact three-line match never crosses labels or directives.
++    lowerLines (a : b : c : rest)
++      | guards,
++        a == "    slli t1, t0, 1", b == "    srai t1, t1, 1",
++        Just target <- stripPrefix "    bne t1, t0, " c =
++          ["    sbfx x10, x9, #0, #63", "    cmp x10, x9",
++           "    b.ne " ++ target] ++ lowerLines rest
++    lowerLines (l : ls) = lowerLine mach l ++ lowerLines ls
++    lowerLines [] = []
+     banner "# target: rv64"
+       | mach = "# target: a64mac (lowered from the rv64 emission; Mach-O syntax)"
+       | otherwise = "# target: a64 (lowered from the rv64 emission -- the shared RISC IR)"
+--- a/compiler/Build.hs
++++ b/compiler/Build.hs
+@@ -311,7 +311,7 @@
+   stamps <- mapM stamp (self : (home </> "core" </> "prelude.fpr") : rtFiles ++ pWith p)
+   bodies <- mapM readFileStrict srcs
+   foreignDecls <- lookupEnv "FPR_FOREIGN"
+-  modes <- mapM lookupEnv ["FPR_NO_PIPELINE_INLINE", "FPR_NO_REUSE", "FPR_NO_VEC_FUSE", "FPR_NO_VEC_SIMD", "FPR_NO_SCALAR_WORKERS", "FPR_NO_FIELD_WORKERS", "FPR_COST_PROBE", "FPR_NO_REGISTERS", "FPR_NO_F64_INLINE", "FPR_NO_INLINE", "FPR_NO_VEC_PEEK", "FPR_NO_SPEC", "FPR_NO_RV32_FAST", "FPR_NO_INDEXED_MEMORY"]
++  modes <- mapM lookupEnv ["FPR_SELF_LOOPS", "FPR_A64_FIT_GUARDS", "FPR_NO_PIPELINE_INLINE", "FPR_NO_REUSE", "FPR_NO_VEC_FUSE", "FPR_NO_VEC_SIMD", "FPR_NO_SCALAR_WORKERS", "FPR_NO_FIELD_WORKERS", "FPR_COST_PROBE", "FPR_NO_REGISTERS", "FPR_NO_F64_INLINE", "FPR_NO_INLINE", "FPR_NO_VEC_PEEK", "FPR_NO_SPEC", "FPR_NO_RV32_FAST", "FPR_NO_INDEXED_MEMORY"]
+   let text = unlines (srcs ++ bodies ++ stamps ++ [show (pHarts p), show (pCC p), unwords (pCFlags p ++ pLink p), show foreignDecls, show modes])
+   pure (showHex (fnv64 text) "")
+   where
+--- a/compiler/Codegen.hs
++++ b/compiler/Codegen.hs
+@@ -26,7 +26,7 @@
+ -- generation. Source effects retain evaluation order; HAL MMIO remains
+ -- volatile, and slot promotion does not reorder device accesses.
+ 
+-module Codegen (emitProgram, externals, Target (..), rv64, rv32, codegenRev, normArc) where
++module Codegen (emitProgram, externals, Target (..), rv64, rv32, codegenRev, normArc, wcetAnnotate) where
+ -- NOTE: emitProgram's `spec` flag gates Vec.map/filter/fold loop
+ -- specialization. All scalar backends support the shared saved-register
+ -- convention; x64 uses its XMM shadow bank for s6..s11.
+@@ -54,7 +54,7 @@
+ -- bump on ANY change to emitted code: it keys the build/units cache
+ -- (a unit's content hash names its SOURCE, not its compilation)
+ codegenRev :: Int
+-codegenRev = 55 -- uniqueness tracking and private consuming entries
++codegenRev = 58 -- opt-in frame reuse for fuel-checked self tail calls
+ 
+ -- Target word parameterization: everything the emitted assembly does
+ -- that depends on XLEN funnels through these five fields.  The value
+@@ -81,14 +81,15 @@
+     tgtFieldWorkers :: Bool,
+     tgtPipelineInline :: Bool,
+     tgtReuse :: Bool,
++    tgtSelfLoops :: Bool, -- experimental frame reuse; keeps every entry fuel/stack check
+     tgtHal :: M.Map String Int -- primitive name -> arity (builtin schemes and
+                         -- foreign declarations): a saturated call to one is
+                         -- a direct `call fpr_g_<name>_call<n>` (fpr.h FPR_FN)
+   }
+ 
+ rv64, rv32 :: Target
+-rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True M.empty
+-rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True M.empty
++rv64 = Target 8 "ld" "sd" ".quad" "rv64" True False False True False True True True True True True True True False M.empty
++rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False True True True True True True False M.empty
+ 
+ -- the visibility directive for a unit-visible global: a library unit
+ -- shares every name it did not qualify with '@hash' with the program it
+@@ -110,12 +111,12 @@
+ -- The fuel model bounds GENERATED-code time between safepoints, but a
+ -- fuel unit is "one safepoint passed", not a duration — G1 in
+ -- FUEL-RC-ABI.md. This closes it at the compiler: for every emitted
+--- function, walk the assembly as a CFG (a DAG — all loops are tail
+--- calls, so intra-function branches are forward) and compute the
++-- function, walk the assembly as a CFG and compute the
+ -- maximum number of instructions on any path between two consecutive
+ -- safepoint events. Events: the entry fuel check, any later
+ -- `call fpr_fuel_exhausted` (vector-kernel checks), and any call/jump
+--- into an fpr_fn_* (the callee's entry check fires next).
++-- into an fpr_fn_* (the callee's entry check fires next), or a self
++-- tail jump to a compiler-proven entry that repeats that same check.
+ --
+ -- Counts are pre-lowering IR instructions: the per-target lowering
+ -- multiplies by a small bounded factor (x64 fixups etc.), which
+@@ -136,8 +137,11 @@
+     wExit :: Bool -- ends in ret (or falls off the end / tail-jumps out)
+   }
+ 
+-wcetAnnotate :: String -> [String] -> [String]
+-wcetAnnotate fname lns =
++-- Only pass labels whose entry executes the ordinary parameter spill and
++-- fuel check. Arbitrary back-edges remain UNBOUNDED; a label name alone
++-- is never evidence of a safepoint.
++wcetAnnotate :: [String] -> String -> [String] -> [String]
++wcetAnnotate fuelEntries fname lns =
+   lns ++ ["# wcet: " ++ fname ++ " segmax=" ++ segS ++ " exittail=" ++ tailS ++ " ccalls=" ++ show ccTotal]
+   where
+     segS = maybe "UNBOUNDED" show segMax'
+@@ -169,7 +173,7 @@
+     -- ---- classify one instruction ----
+     isReset ws = case ws of
+       ("call" : t : _) -> t == "fpr_fuel_exhausted" || isFprFn t
+-      ("j" : t : _) -> isFprFn t
++      ("j" : t : _) -> isFprFn t || t `elem` fuelEntries
+       ("jmp" : t : _) -> isFprFn t
+       _ -> False
+     isFprFn t = take 7 t == "fpr_fn_"
+@@ -202,8 +206,8 @@
+     bmap = [(l, summarize l is) | (l, is) <- blocks]
+     blockMap = M.fromList bmap
+     -- ---- maxFrom: max insns from block start to first reset/exit ----
+-    -- Memoized DFS with a grey (on-stack) set: a back-edge (shouldn't
+-    -- exist — all loops are tail calls) yields Nothing = UNBOUNDED,
++    -- Memoized DFS with a grey (on-stack) set: a cycle with no reset
++    -- yields Nothing = UNBOUNDED,
+     -- loudly, exactly as before; the memo table makes the walk linear.
+     -- (The previous path-guarded walk recomputed every diamond's tail
+     -- once per path through the diamond — exponential in join depth;
+@@ -659,7 +663,30 @@
+       nslots = length params + slotsNeeded tgt spec (tgtHal tgt) ext prog (S.fromList params) body + 2
+       baseFrame = ((2 * w + w * nslots + 15) `div` 16) * 16
+       env0 = M.fromList (zip params [0 ..])
+-  bodyLines <- gen prog env0 (length params) Tail body
++  originalBody <- gen prog env0 (length params) Tail body
++  let tailExit =
++        [ "    " ++ tgtLd tgt ++ " ra, " ++ show (-w) ++ "(s0)",
++          "    mv t0, s0",
++          "    " ++ tgtLd tgt ++ " s0, " ++ show (-2*w) ++ "(s0)",
++          "    mv sp, t0",
++          "    j fpr_fn_" ++ m
++        ]
++      hasSelf [] = False
++      hasSelf ls@(_:rest) = tailExit `isPrefixOf` ls || hasSelf rest
++      looped = tgtSelfLoops tgt && w == 8 && tgtFuel tgt &&
++               tgtScalarFast tgt && not (tgtArc tgt) && hasSelf originalBody
++  selfEntry <- if looped then freshL "self" else pure ""
++  let -- All call arguments are already staged in a0..a7 / hart spill
++      -- cells before this exact tail exit. Re-enter at the parameter
++      -- stores, after frame setup and saved-register saves. This handles
++      -- cyclic permutations and wide args without overwriting live inputs.
++      -- The entry still repeats BOTH stack headroom and fuel checks.
++      selfLoop [] = []
++      selfLoop ls@(l:rest)
++        | looped, Just more <- stripPrefix tailExit ls =
++            ("    j " ++ selfEntry) : selfLoop more
++        | otherwise = l : selfLoop rest
++      bodyLines = selfLoop originalBody
+   let regs = if tgtRegisters tgt && tgtScalarFast tgt && not (tgtArc tgt) && nslots < 240
+                then registerSlots tgt bodyLines else []
+       frame = ((baseFrame + w * length regs + 15) `div` 16) * 16
+@@ -730,7 +757,7 @@
+   -- slot forwarding and dead slot stores, per function, after the
+   -- frame is opened
+   let tidy = if tgtScalarFast tgt then peepholeFor (tgtLd tgt) (tgtSt tgt) else id
+-  pure $ wcetAnnotate name $
++  pure $ wcetAnnotate [selfEntry | looped] name $
+     -- `# fn <name>`, never `# <name>`: a hosted backend runs the unit through
+     -- the C preprocessor, which reads `# line ...`, `# error ...`, `# define
+     -- ...` as DIRECTIVES -- a function called `line` failed the build with
+@@ -746,7 +773,8 @@
+       ++ [ "fpr_fn_" ++ m ++ ":" ]
+       ++ framePro tgt frame
+       ++ saveRegs
+-      ++ concatMap promote (tidy (concat [stSlot tgt ("a" ++ show i) i | (i, _) <- zip [0 :: Int ..] params, i < 8]
++      ++ concatMap promote (tidy ([selfEntry ++ ":" | looped]
++      ++ concat [stSlot tgt ("a" ++ show i) i | (i, _) <- zip [0 :: Int ..] params, i < 8]
+       -- wide params ride the hart spill cells: copy them into frame
+       -- slots BEFORE the fuel check (fpr_fuel_exhausted may deschedule;
+       -- by then the cells must be dead)
+@@ -1489,6 +1517,12 @@
+     -- time; every other argument is evaluated into slot nxt+i
+     directArg env (CVar y) | Just k <- M.lookup y env = Just (\r -> ldSlot tgt r k)
+     directArg _ (CInt i) | intFits tgt i = Just (\r -> ["    li " ++ r ++ ", " ++ show (2 * i + 1)])
++    -- Workers spell a raw literal as unbox(Int literal). Like the
++    -- ordinary literal above, it cannot fail or have effects; defer its
++    -- immediate load until argument transfer instead of storing/reloading
++    -- a staging slot. All effectful arguments keep their existing order.
++    directArg _ (CApp (CVar "$scalar.unbox") (CInt i))
++      | w == 8, tgtScalarFast tgt, intFits tgt i = Just (\r -> ["    li " ++ r ++ ", " ++ show i])
+     directArg _ _ = Nothing
+     argLoad env nxt r (i, a) = maybe (ldSlot tgt r (nxt + i)) ($ r) (directArg env a)
+     stageArgs env nxt args =
+--- a/compiler/Compile.hs
++++ b/compiler/Compile.hs
+@@ -8,14 +8,14 @@
+ import Mono (specializeFunctions, qualifyAux)
+ import Inline (inlineSmall, inlineWith, vecPeek)
+ import ReceiveTurns (receiveTurns)
+-import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, normArc)
++import Codegen (Target, codegenRev, emitProgram, externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtSelfLoops, normArc)
+ import Data.Char (isAlphaNum, isAscii, ord)
+ import Numeric (showHex)
+ import qualified Data.ByteString as BS
+ import qualified Data.Text as T
+ import qualified Data.Text.Encoding as TE
+ import qualified Data.Text.Encoding.Error as TEE
+-import A64 (deTlsQosAppA64, lowerA64, a64Rev)
++import A64 (deTlsQosAppA64, lowerA64WithGuards, a64Rev)
+ import X64 (lowerX64, deTlsQosApp, x64Rev)
+ import RV64 (lowerPosixRV64, lowerQosRV64, rv64HostRev)
+ import Control.Monad (forM, forM_, unless, when)
+@@ -408,6 +408,8 @@
+     (Just d, _) -> pure d
+     (Nothing, Just f) -> pure f
+     (Nothing, Nothing) -> pure "base"
++  envSelfLoops <- (== Just "1") <$> lookupEnv "FPR_SELF_LOOPS"
++  envA64Guards <- (== Just "1") <$> lookupEnv "FPR_A64_FIT_GUARDS"
+   envNoRegisters <- (== Just "1") <$> lookupEnv "FPR_NO_REGISTERS"
+   envNoRv32Fast <- (== Just "1") <$> lookupEnv "FPR_NO_RV32_FAST"
+   envNoIndexed <- (== Just "1") <$> lookupEnv "FPR_NO_INDEXED_MEMORY"
+@@ -906,7 +908,7 @@
+           arrows (TFn _ r) = 1 + arrows r
+           arrows _ = 0 :: Int
+           tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = not envNoFloatInline, tgtRegisters = not envNoRegisters, tgtSimd=oA64 opts && not envNoSimd, tgtFusion=not envNoFusion,
+-                               tgtScalarFast = tgtName (oTarget opts) /= "rv32" || not envNoRv32Fast, tgtIndexedMemory = not envNoIndexed, tgtScalarWorkers = not envNoScalarWorkers, tgtFieldWorkers = not envNoFieldWorkers, tgtPipelineInline = not envNoPipelineInline, tgtReuse = not envNoReuse}
++                               tgtScalarFast = tgtName (oTarget opts) /= "rv32" || not envNoRv32Fast, tgtIndexedMemory = not envNoIndexed, tgtScalarWorkers = not envNoScalarWorkers, tgtFieldWorkers = not envNoFieldWorkers, tgtPipelineInline = not envNoPipelineInline, tgtReuse = not envNoReuse, tgtSelfLoops = envSelfLoops}
+           a64 = oA64 opts
+           a64mac = oA64Mac opts
+           x64 = oX64 opts
+@@ -915,9 +917,9 @@
+           -- hosted posix AArch64 reads its hart from x28 too (runtime/fpr.h):
+           -- a thread-local cannot follow an actor that migrates between harts
+           lower0 | espHost = espTls
+-                | a64 && qapp = deTlsQosAppA64 a64mac qsingle . lowerA64 a64mac
+-                | a64 && oBase opts = deTlsQosAppA64 a64mac False . lowerA64 a64mac
+-                | a64 = lowerA64 a64mac
++                | a64 && qapp = deTlsQosAppA64 a64mac qsingle . lowerA64WithGuards envA64Guards a64mac
++                | a64 && oBase opts = deTlsQosAppA64 a64mac False . lowerA64WithGuards envA64Guards a64mac
++                | a64 = lowerA64WithGuards envA64Guards a64mac
+                 | x64 && qapp = deTlsQosApp . lowerX64
+                 | x64 = lowerX64
+                 | qapp = lowerQosRV64
+@@ -940,12 +942,12 @@
+                   else if qapp then "qrv64r" ++ show rv64HostRev
+                   else if oBase opts then "rv64posixr" ++ show rv64HostRev
+                   else tgtName tgt
+-          tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0
++          tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0 ++ (if a64 && envA64Guards then "-fitguards" else "")
+           -- A root can constrain a global foreign primitive used inside an
+           -- unchanged imported unit. Cache that contract context as well as
+           -- source/prelude/shape identity so another root cannot reuse raw calls.
+           contractHash = hashAST [t | t@(TSig n _ _) <- tops, M.member n preTab]
+-          tag = "g" ++ show codegenRev ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
++          tag = "g" ++ show codegenRev ++ (if envSelfLoops then "-selfloops" else "") ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
+           unitDir = takeDirectory out </> "units"
+           -- --arc: lower ownership, then inline the small helpers at
+           -- their sites (Inline.hs) before the generator sees the unit

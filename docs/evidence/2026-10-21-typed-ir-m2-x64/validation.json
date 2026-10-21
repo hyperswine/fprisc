@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-21",
+  "base_commit": "d6f84685bb7a52491c5193ab15c659ba1431c022",
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "compiler_sha256": "b8ebe93a66674db9bf883c0d9d5ab05573399d0bfe8fd75fd9011747946abc75",
+  "compiler_build": "make fpr (Cabal -O1)",
+  "source_sha256": {
+    ".github/workflows/ci.yml": "208c75d2f65c4e65ba07128ac66cf7438e118d20533d777cf33cfbc877f4fad6",
+    "Makefile": "3988862a9dc10b3c06868a2a40423fcdb99dc5d7fb52640508825c404dc95647",
+    "compiler/Codegen.hs": "8af1f073ae2a781059e86d3260635aadd3c9db72d7eae406e335dc7e96560ee9",
+    "compiler/Codegen/Bounds.hs": "ba20de8c5eaf71fc3e2b25a5637527e0b74f1f87ef420a574e76976a544815d7",
+    "compiler/Codegen/Place.hs": "79b544a7dc5ce984dde681d65358b7a85d691d8b1fbbf6dbcf30643f20507c06",
+    "compiler/Codegen/Selected.hs": "f4f6a60b0afe0aeddb11ec8483a7e239441d5bf8abec4e02e82b94ad01c9e834",
+    "compiler/Codegen/Target/A64.hs": "d8c1aaeb7052c17171151ff53d1bda5010ae365dc554b1149e8c181e7bf96368",
+    "compiler/Codegen/Target/Common.hs": "ef265ac347bd979af27904c706f059dfea8af4f55561877e22c2a6270d8b074d",
+    "compiler/Codegen/Target/X64.hs": "706e17fe770a3d6c5cd510f405caf8700e76efdc1308ecf24dae4a295ed0f4c0",
+    "compiler/Compile.hs": "888e608ab52c816440f4b04c4a49bc2c1fa77785d01799c228e4fbd86b097b0c",
+    "docs/2026-10-20-TYPED-NATIVE-IR-PLAN.md": "50f43437859b5601328fbd86e7af978264fb727b9b34fa58cd96d932a17e358a",
+    "docs/2026-10-21-TYPED-IR-M2-X64.md": "2a06e5d7cba45f29ed55f9216f98d600d291fead5ccb5040d9eb466d66a3cec9",
+    "docs/2026-10-21-X64-ROSETTA-TESTING.md": "c6b00b82f0f3de683c14c10e363cb6aee969b542aebbcc206c382ef22cc2216f",
+    "docs/README.md": "8bcaf66b3e2407c87a54987351bbd2f9c00cb09f0021fdf200edab9ae6a47bdb",
+    "fp-risc.cabal": "a442d321f55bda1d048d301a0aa256aa561d4059a655ab8210714d0a062f38b8",
+    "tests/SelectedIR.hs": "afa22deb24db6b63c9250a57d0d9a1642ff84ad417557f970cc49f8716ebeba1",
+    "tests/base/x64_scalar_oracle.c": "8514b1ffbb0e570d5570f1a01b251225e967390935ad2672684255ea9b4c0f4b",
+    "tests/check_base.py": "07d386f8947e7b9174ee1da62a14f52e54fcbe573e9ae8a7deb61f4dc17a80c6",
+    "tests/check_typed_ir_a64.py": "62095f3571df907c4ce2b61a063e79dacfece6a6f380b93c5db6ebf4254c2581",
+    "tests/check_typed_ir_native.py": "9210c364a2a7f03ea07ad05ee297a6eeef07ab9d967468b0590af802c0b83467",
+    "tests/check_typed_ir_x64.py": "57cefb96ffec27c230ec39f4049f9f301464472fd62d5818008d9c86e4f92558",
+    "tests/check_x64_local.py": "67794179b149a0dbc8370073f56b7c49d84b9a23c145297c06d1368537eef7dd",
+    "tests/check_x64_scalar.py": "66c93ef1d02fe9919206eecf94778a68b9a6e79341cdb6e69a392610f6b1539d",
+    "tests/typed_ir/tir_probe.c": "bdcabf73c13caf1394f5cbf59c09384456d818a1239fe6fd33665cec36219eb6",
+    "tests/x64_probe.py": "98a576453039fee98a453a0a8e9c2f4f5bc0b8e3912a29b3ced6c3be141e2aaf"
+  },
+  "status": {
+    "shared_ir": "PASS",
+    "a64_native": "PASS",
+    "rosetta_direct_and_mixed_abi": "PASS",
+    "x64_native_linux": "PENDING CI; this host correctly skipped native Linux execution",
+    "default_backend": "unchanged",
+    "required_hostgate": "PASS: require-execution rejects the non-Linux host"
+  }
+}

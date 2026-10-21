@@ -1,0 +1,471 @@
+{-# LANGUAGE LambdaCase #-}
+-- Direct x86-64 selection from typed scalar IR. No shared-RISC assembly is
+-- generated or parsed here. Selection exposes two-address ties, fixed
+-- division registers, argument cells and call clobbers to shared placement.
+-- M2 deliberately spills every virtual value; allocation belongs to M3.
+-- ABI: SysV first six arguments, private TLS cells seven/eight, result rax;
+-- legacy frame pointer = entry rsp + 8, return address fp-8, saved rbp fp-16.
+-- Parameters are parked before any entry check/tick, and rsp is restored
+-- from rbp at exit so stack-segment growth remains compatible with legacy.
+module Codegen.Target.X64
+  ( X64Config (..), x64SelectionRev, emitFnX64, x64RegisterFile ) where
+
+import Codegen.Bounds (Flow (..), Report (..), Tok (..), analyse, reportLine)
+import Codegen.Frame
+import Codegen.IR
+import Codegen.Place
+import Codegen.Policy
+import Codegen.Selected
+import Codegen.Target.Common
+import Control.Monad (forM_, unless, when)
+import Control.Monad.State.Strict
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S
+
+x64SelectionRev :: Int
+x64SelectionRev = 1
+
+data X64Config = X64Config
+  { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool }
+
+r :: String -> Phys
+r = Phys
+
+x64RegisterFile :: RegisterFile
+x64RegisterFile = RegisterFile classOf (map r ["rsp", "rbp", "r10", "r11"])
+  where
+    classOf (Phys p)
+      | p `elem` ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rsp", "rbp"]
+          ++ ["r" ++ show n | n <- [8 :: Int .. 15]] = Just GPR
+      | p `elem` ["xmm" ++ show n | n <- [0 :: Int .. 15]] = Just FPR
+      | otherwise = Nothing
+
+callerSaved, argRegs, scratchPool :: [Phys]
+callerSaved = map r ["rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11"]
+argRegs = map r ["rdi", "rsi", "rdx", "rcx", "r8", "r9"]
+scratchPool = map r ["r8", "r9", "rsi", "rdi", "rcx", "rax", "rdx"]
+
+-- ---- selection state ---------------------------------------------------
+
+data Sel = Sel
+  { selNext :: Int, -- next virtual register
+    selLabel :: Int,
+    selItems :: [Item], -- reversed
+    selManaged :: S.Set VReg, -- virtual registers that hold tagged words
+    selNullaries :: S.Set (Int, Int)
+  }
+
+type Se = StateT Sel (Either String)
+
+refuse :: String -> Se a
+refuse = lift . Left
+
+emitI :: SInstr -> Se ()
+emitI i = modify (\s -> s {selItems = I i : selItems s})
+
+emitL :: Label -> Se ()
+emitL l = modify (\s -> s {selItems = ILabel l : selItems s})
+
+freshV :: Bool -> Se VReg
+freshV managed = do
+  n <- gets selNext
+  modify (\s -> s {selNext = n + 1, selManaged = if managed then S.insert (VReg n) (selManaged s) else selManaged s})
+  pure (VReg n)
+
+freshL :: String -> Se Label
+freshL base = do
+  n <- gets selLabel
+  modify (\s -> s {selLabel = n + 1})
+  pure (Label (base ++ show n))
+
+vreg :: VId -> VReg
+vreg (VId n) = VReg n
+
+blockLabel :: BId -> Label
+blockLabel (BId n) = Label ("b" ++ show n)
+
+-- ---- selected x86 forms ------------------------------------------------
+any' :: VReg -> Operand
+any' v = OV v (Any GPR)
+fix :: VReg -> Phys -> Operand
+fix v p = OV v (Fix p)
+mov :: VReg -> VReg -> SInstr
+mov d s = plain "movq" [any' d] [any' s]
+li :: VReg -> Integer -> SInstr
+li d n = plain "li" [any' d] [OI n]
+la :: VReg -> String -> SInstr
+la d s = plain "la" [any' d] [OS s]
+
+-- A two-address result occupies the first source's register, after loading
+-- that source from its home. Its home is unchanged (no destructive IR use).
+rrr :: String -> VReg -> VReg -> VReg -> SInstr
+rrr op d a b = (plain op [OV d (Tied 0)] [any' a, any' b]) {siFlags = FlagsDef}
+rri :: String -> VReg -> VReg -> Integer -> SInstr
+rri op d s n = (plain op [OV d (Tied 0)] [any' s, OI n]) {siFlags = FlagsDef}
+ldrsw :: VReg -> VReg -> Integer -> SInstr
+ldrsw d s off = plain "movslq" [any' d] [any' s, OI off]
+cmp :: VReg -> VReg -> SInstr
+cmp a b = (plain "cmpq" [] [any' a, any' b]) {siFlags = FlagsDef}
+cmpi :: VReg -> Integer -> SInstr
+cmpi a n = (plain "cmpi" [] [any' a, OI n]) {siFlags = FlagsDef}
+cset :: String -> VReg -> SInstr
+cset cond d = (plain ("set." ++ cond) [any' d] []) {siFlags = FlagsUse}
+csel :: String -> VReg -> VReg -> VReg -> SInstr
+csel cond d a b = (plain ("cmov." ++ cond) [OV d (Tied 0)] [any' b, any' a]) {siFlags = FlagsUse}
+bcond :: String -> Label -> SInstr
+bcond cond l = (plain ("j." ++ cond) [] [OL l]) {siFlags = FlagsUse, siControl = CondTo [l]}
+cbz, cbnz :: VReg -> Label -> SInstr
+cbz v l = (plain "jzero" [] [any' v, OL l]) {siFlags = FlagsDef, siControl = CondTo [l]}
+cbnz v l = (plain "jnonzero" [] [any' v, OL l]) {siFlags = FlagsDef, siControl = CondTo [l]}
+jump :: Label -> SInstr
+jump l = (plain "jmp" [] [OL l]) {siControl = JumpTo l}
+
+-- cqto sign-extends the dividend into rdx before idivq. Placement excludes
+-- both fixed rax and implicit rdx when choosing the divisor's register.
+divide :: VReg -> VReg -> VReg -> SInstr
+divide d a b = (plain "divide" [fix d (r "rax")] [fix a (r "rax"), any' b])
+  {siImplicitDefs = [r "rdx"], siFlags = FlagsDef}
+
+stageArgs :: [VReg] -> Se ()
+stageArgs args = forM_ (zip [6 :: Int ..] (drop 6 args)) $ \(n,v) ->
+  emitI (plain "store.cell" [] [any' v, OS ("fpr_x64_a" ++ show n)])
+
+emitCall :: String -> Bool -> Bool -> [VReg] -> Maybe VReg -> Se ()
+emitCall sym safepoint runtime args res = do
+  stageArgs args
+  emitI $ (plain "call" [fix v (r "rax") | Just v <- [res]]
+    (OS sym : zipWith fix args argRegs))
+    {siClobbers = filter (\p -> p `notElem` [r "rax" | Just _ <- [res]]) callerSaved,
+     siImplicitDefs = [r "rsp"], siFlags = FlagsDef,
+     siCalls = [Call sym safepoint runtime]}
+
+ret :: VReg -> SInstr
+ret v = (plain "ret" [] [fix v (r "rax")])
+  {siImplicitDefs = map r ["r11", "rbp", "rsp"], siControl = Return}
+emitTail :: String -> Bool -> Bool -> [VReg] -> Se ()
+emitTail sym safepoint runtime args = do
+  stageArgs args
+  emitI $ (plain "tailjump" [] (OS sym : zipWith fix args argRegs))
+    {siImplicitDefs = map r ["r11", "rbp", "rsp"], siClobbers = callerSaved,
+     siControl = Return, siCalls = [Call sym safepoint runtime]}
+
+entrySeq :: Bool -> Bool -> Label -> SInstr
+entrySeq stack fuel (Label base) =
+  (plain (case (stack, fuel) of (True, True) -> "entry.check.tick"; (True, False) -> "entry.check"; _ -> "entry.tick") [] [])
+    {siImplicitDefs = map r ["r10", "r11", "rax", "rsp"], siClobbers = callerSaved,
+     siFlags = FlagsDef,
+     siCalls = [Call "fpr_stack_grow" False True | stack] ++ [Call "fpr_fuel_exhausted" True False | fuel],
+     siNote = base}
+
+-- ---- selection ---------------------------------------------------------
+
+primSymbol :: ArithOp -> String
+primSymbol o = "fpr_prim_fn_" ++ mangleName (arithSymbol o)
+
+calleeSymbol :: Callee -> String
+calleeSymbol c = case calleeKind c of
+  Foreign sym -> sym
+  _ -> functionSymbol (calleeName c)
+
+nullarySymbol :: Int -> Int -> Se String
+nullarySymbol t v = case (t, v) of
+  (0, 0) -> pure "fpr_unit"
+  (1, 0) -> pure "fpr_false"
+  (1, 1) -> pure "fpr_true"
+  _ -> do
+    modify (\s -> s {selNullaries = S.insert (t, v) (selNullaries s)})
+    pure (".Lnul_" ++ show t ++ "_" ++ show v)
+
+select :: X64Config -> Fn -> Either String (SFn, S.Set VReg, S.Set (Int, Int))
+select cfg fn = do
+  let maxV = maximum (0 : [n | b <- fnBlocks fn, (VId n, _) <- blockDefs b]) + 1
+      tyMap = M.fromList (concatMap blockDefs (fnBlocks fn))
+      managed0 = S.fromList [vreg v | (v, TVal) <- M.toList tyMap]
+      params = [vreg v | (v, _) <- bParams (entryBlock fn)]
+      st0 = Sel maxV 0 [] managed0 S.empty
+  when (length params > 8) (Left "arity above 8")
+  (_, st) <- runStateT (mapM_ (selectBlock cfg fn tyMap) (fnBlocks fn)) st0
+  pure (SFn (fnName fn) params (reverse (selItems st)), selManaged st, selNullaries st)
+
+entryBlock :: Fn -> Block
+entryBlock fn = head [b | b <- fnBlocks fn, bId b == fnEntry fn]
+
+selectBlock :: X64Config -> Fn -> M.Map VId Ty -> Block -> Se ()
+selectBlock cfg fn tyMap b = do
+  emitL (blockLabel (bId b))
+  let isEntry = bId b == fnEntry fn
+      policy = cfgPolicy cfg
+  -- the entry sequence: the stack check and the tick are the first
+  -- instructions of the entry block, in that order, and nowhere else
+  let (entryOps, rest) = span (\(Instr _ op) -> op `elem` [OStackCheck, OSafepoint]) (bInstrs b)
+      stack = OStackCheck `elem` [op | Instr _ op <- entryOps]
+      fuel = OSafepoint `elem` [op | Instr _ op <- entryOps]
+  forM_ rest $ \(Instr _ op) -> when (op == OStackCheck) (refuse "a stack check that is not the first instruction of the entry block")
+  if isEntry
+    then do
+      when (not stack && polStackCheck policy == StackCheckEveryEntry) (refuse "the entry block has no stack check under a policy that checks every entry")
+      when (not fuel && polFuel policy) (refuse "the entry block has no fuel tick under a policy with fuel")
+      unless (null entryOps) $ freshL "entry" >>= emitI . entrySeq stack fuel
+    else do
+      when stack (refuse "a stack check outside the entry block")
+      -- an inlined callee's tick ($fuel) at the start of a non-entry block
+      forM_ entryOps $ \_ -> freshL "tick" >>= emitI . entrySeq False True
+  forM_ rest (selectInstr cfg tyMap)
+  selectTerm cfg fn b
+
+selectInstr :: X64Config -> M.Map VId Ty -> Instr -> Se ()
+selectInstr _ _ (Instr d op) = case op of
+  OStackCheck -> refuse "internal: a stack check reached selection"
+  OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
+  OConstInt n -> def (\r -> emitI (li r n))
+  ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
+  OTag v -> def $ \r -> do
+    t <- freshV False
+    emitI (rri "lsl" t (vreg v) 1)
+    emitI (rri "orri" r t 1)
+  OUntag v -> def (\r -> emitI (rri "asr" r (vreg v) 1))
+  OBoolOf p -> def $ \r -> do
+    f <- freshV True
+    t <- freshV True
+    emitI (la f "fpr_false")
+    emitI (la t "fpr_true")
+    emitI (cmpi (vreg p) 0)
+    emitI (csel "ne" r t f)
+  OTruth v -> def (\r -> emitI (ldrsw r (vreg v) 4))
+  ONot p -> def (\r -> emitI (rri "eori" r (vreg p) 1))
+  OIsInt v -> def (\r -> emitI (rri "andi" r (vreg v) 1))
+  OTagTest t c v -> def $ \r -> do
+    miss <- freshL "tagno"
+    done <- freshL "tagdone"
+    bit <- freshV False
+    emitI (rri "andi" bit (vreg v) 1)
+    emitI (cbnz bit miss)
+    tid <- freshV False
+    want <- freshV False
+    emitI (ldrsw tid (vreg v) 0)
+    emitI (li want (fromIntegral t))
+    emitI (cmp tid want)
+    emitI (bcond "ne" miss)
+    var <- freshV False
+    wantv <- freshV False
+    emitI (ldrsw var (vreg v) 4)
+    emitI (li wantv (fromIntegral c))
+    emitI (cmp var wantv)
+    emitI (cset "eq" r)
+    emitI (jump done)
+    emitL miss
+    emitI (li r 0)
+    emitL done
+  OArith o a b -> def (\r -> arith o r (vreg a) (vreg b))
+  OCmp o a b -> def $ \r -> do
+    emitI (cmp (vreg a) (vreg b))
+    emitI (cset (cond o) r)
+  OEqVal eq a b -> def $ \r -> do
+    slow <- freshL "eqslow"
+    done <- freshL "eqdone"
+    both <- freshV False
+    bit <- freshV False
+    emitI (rrr "and" both (vreg a) (vreg b))
+    emitI (rri "andi" bit both 1)
+    emitI (cbz bit slow)
+    emitI (cmp (vreg a) (vreg b))
+    emitI (cset (if eq then "eq" else "ne") r)
+    emitI (jump done)
+    emitL slow
+    res <- freshV True
+    emitCall ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!=")) False True [vreg a, vreg b] (Just res)
+    emitI (ldrsw r res 4)
+    emitL done
+  OCall c as -> do
+    when (length as > 8) (refuse "a call with more than eight arguments")
+    def (\r -> emitCall (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as) (Just r))
+  where
+    def k = case d of
+      Just (v, _) -> k (vreg v)
+      Nothing -> refuse ("internal: " ++ take 20 (show op) ++ " without a definition")
+    cond = \case Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne"
+    -- checked Int arithmetic: the legacy worker sequences (Codegen.inlineTable,
+    -- ScalarChecked): the fast path computes and checks the 63-bit fit, the
+    -- slow path retags the ORIGINAL operands and re-enters the C primitive,
+    -- whose panic text and failure order are the language's
+    arith o r a b = do
+      slow <- freshL "slow"
+      done <- freshL "done"
+      t <- freshV False
+      case o of
+        Add -> emitI (rrr "add" t a b) >> fit t slow
+        Sub -> emitI (rrr "sub" t a b) >> fit t slow
+        Mul -> do
+          emitI (rrr "mul" t a b)
+          emitI (bcond "o" slow) -- full 64-bit overflow, then 63-bit language fit
+          fit t slow
+        Div -> do
+          emitI (cbz b slow)
+          emitI (divide t a b)
+          fit t slow
+      emitI (mov r t)
+      emitI (jump done)
+      emitL slow
+      ta <- freshV False
+      ta' <- freshV True
+      tb <- freshV False
+      tb' <- freshV True
+      emitI (rri "lsl" ta a 1)
+      emitI (rri "orri" ta' ta 1)
+      emitI (rri "lsl" tb b 1)
+      emitI (rri "orri" tb' tb 1)
+      res <- freshV True
+      emitCall (primSymbol o) False True [ta', tb'] (Just res)
+      emitI (rri "asr" r res 1)
+      emitL done
+    -- the 63-bit fit check: sign-extend the low 63 bits and compare
+    fit t slow = do
+      n <- freshV False
+      emitI (rri "sext63" n t 0)
+      emitI (cmp n t)
+      emitI (bcond "ne" slow)
+
+-- block parameters are assigned in parallel: a cycle is broken with a
+-- fresh temporary
+parallelMoves :: [(VReg, VReg)] -> Se ()
+parallelMoves = go . filter (uncurry (/=))
+  where
+    go [] = pure ()
+    go ms = case [m | m@(d, _) <- ms, d `notElem` map snd ms] of
+      ((d, s) : _) -> emitI (mov d s) >> go (filter (/= (d, s)) ms)
+      [] -> do
+        let (d, s) = head ms
+        t <- freshV True -- a tagged word may travel through it
+        emitI (mov t s)
+        go ((d, t) : [(d', if s' == s then t else s') | (d', s') <- tail ms])
+
+selectTerm :: X64Config -> Fn -> Block -> Se ()
+selectTerm _ fn b = case bTerm b of
+  TRet v -> emitI (ret (vreg v))
+  TBr target as
+    | target == fnEntry fn -> -- the self tail call: the legacy transfer re-enters the function through its symbol
+        emitTail (functionSymbol (fnName fn)) True False (map vreg as)
+    | otherwise -> do
+        parallelMoves (zip (paramsOf target) (map vreg as))
+        emitI (jump (blockLabel target))
+  TCondBr p t as e bs
+    | null as && null bs -> do
+        emitI (cbnz (vreg p) (blockLabel t))
+        emitI (jump (blockLabel e))
+    | otherwise -> do
+        edge <- freshL "edge"
+        emitI (cbnz (vreg p) edge)
+        parallelMoves (zip (paramsOf e) (map vreg bs))
+        emitI (jump (blockLabel e))
+        emitL edge
+        parallelMoves (zip (paramsOf t) (map vreg as))
+        emitI (jump (blockLabel t))
+  TTailCall c as -> do
+    when (length as > 8) (refuse "a tail call with more than eight arguments")
+    emitTail (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as)
+  where
+    paramsOf bid = [vreg v | blk <- fnBlocks fn, bId blk == bid, (v, _) <- bParams blk]
+
+-- ---- placement, frame layout and rendering ------------------------------
+placement :: S.Set VReg -> Placement
+placement managed = Placement
+  { plScratch = \case GPR -> scratchPool; FPR -> [],
+    plLoad = \p ref -> plain "load" [OP p] [OF ref 0],
+    plStore = \p ref -> plain "store" [] [OP p, OF ref 0],
+    plSlot = \v@(VReg n) -> frameObj n 8 8 (SpillSlot n) (S.member v managed) }
+
+emitFnX64 :: X64Config -> Fn -> Either String NativeFn
+emitFnX64 cfg fn = do
+  (sel, managed, nulls) <- select cfg fn
+  either (Left . ("compiler error: " ++)) Right (checkFn x64RegisterFile sel)
+  (placed, objs) <- either (Left . ("compiler error: " ++)) Right (placeInSlots (placement managed) sel)
+  let ly = layout 16 16 objs
+  when (lyBytes ly > 32768) $ Left ("a frame of " ++ show (lyBytes ly) ++ " bytes exceeds the 32768-byte ceiling (half the runtime's stack headroom)")
+  let name = fnName fn
+      sym = functionSymbol name
+      slotRef (VReg n) = head [foRef o | o <- objs, foKind o == SpillSlot n]
+      -- Read the private cells before any call: a fuel boundary may destroy
+      -- them. The first six argument registers are stored before the scratch.
+      paramStores = [I (if n < 6
+        then plain "store" [] [OP (argRegs !! n), OF (slotRef v) 0]
+        else (plain "park.cell" [] [OS ("fpr_x64_a" ++ show n), OF (slotRef v) 0]) {siImplicitDefs = [r "r11"]})
+        | (n,v) <- zip [0..] (sfParams placed)]
+      body = I ((plain "enter" [] []) {siImplicitDefs = map r ["rsp", "rbp"]}) : paramStores ++ sfBody placed
+      rendered = [(it, renderItem ly name it) | it <- body]
+      report = analyse (concatMap (uncurry tokOf) rendered)
+      visibility = if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl"
+      header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams placed)) ++ ") typed-ir x64 frame=" ++ show (lyBytes ly)]
+        ++ ["    " ++ visibility ++ " " ++ sym | S.member name (cfgExports cfg)] ++ [sym ++ ":"]
+  pure (NativeFn name (header ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList nulls))
+  where
+    tokOf (ILabel (Label l)) _ = [TLabel l]
+    tokOf (I i) ls = [TIns
+      { tCost = length [() | l <- ls, isInstruction l],
+        tFlow = case siControl i of
+          Next -> FNext; CondTo labels -> FCond [l | Label l <- labels]; JumpTo (Label l) -> FJump l; Return -> FExit,
+        tReset = any callSafepoint (siCalls i), tCCalls = length (filter callRuntime (siCalls i)) }]
+    isInstruction l = case dropWhile (== ' ') l of
+      "" -> False; '#':_ -> False; '.':_ -> False; t -> last t /= ':'
+
+local :: String -> Label -> String
+local fname (Label l) = ".Ltir_" ++ mangleName fname ++ "_" ++ l
+
+renderItem :: Layout -> String -> Item -> [String]
+renderItem _ fname (ILabel l) = [local fname l ++ ":"]
+renderItem ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
+  where
+    indent l = if last l == ':' then l else "    " ++ l
+    lbl = local fname
+    reg = \case OP (Phys p) -> '%' : p; o -> error ("X64 render: unplaced operand " ++ show o)
+    byte o = case reg o of
+      "%rax" -> "%al"; "%rcx" -> "%cl"; "%rdx" -> "%dl"; "%rsi" -> "%sil"; "%rdi" -> "%dil"
+      p | p `elem` ["%r8", "%r9"] -> p ++ "b"
+      p -> error ("X64 render: no byte register for " ++ p)
+    imm = \case OI n -> show n; o -> error ("X64 render: not an immediate " ++ show o)
+    slot ref = show (M.findWithDefault (error "X64 render: missing frame object") ref (lyOffset ly)) ++ "(%rbp)"
+    cc = \case "eq" -> "e"; "ne" -> "ne"; "lt" -> "l"; "gt" -> "g"; "le" -> "le"; "ge" -> "ge"; "o" -> "o"; c -> error ("X64 condition " ++ c)
+    call sym = ["subq $8, %rsp", "call " ++ sym, "addq $8, %rsp"]
+    go op ds us = case (op,ds,us) of
+      ("enter",[],[]) ->
+        ["subq $" ++ show (lyBytes ly) ++ ", %rsp",
+         "movq %rbp, " ++ show (lyBytes ly - 8) ++ "(%rsp)",
+         "leaq " ++ show (lyBytes ly + 8) ++ "(%rsp), %rbp"]
+      ("load",[d],[OF ref 0]) -> ["movq " ++ slot ref ++ ", " ++ reg d]
+      ("store",[],[s,OF ref 0]) -> ["movq " ++ reg s ++ ", " ++ slot ref]
+      ("park.cell",[],[OS cell,OF ref 0]) -> ["movq %fs:" ++ cell ++ "@tpoff, %r11", "movq %r11, " ++ slot ref]
+      ("store.cell",[],[s,OS cell]) -> ["movq " ++ reg s ++ ", %fs:" ++ cell ++ "@tpoff"]
+      ("movq",[d],[s]) -> ["movq " ++ reg s ++ ", " ++ reg d]
+      ("li",[d],[n]) -> ["movabsq $" ++ imm n ++ ", " ++ reg d]
+      ("la",[d],[OS s]) -> ["leaq " ++ s ++ "(%rip), " ++ reg d]
+      ("ldrsw",[d],[s,n]) -> ["movslq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
+      ("movslq",[d],[s,n]) -> ["movslq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
+      ("sext63",[d],[_,_]) -> ["shlq $1, " ++ reg d, "sarq $1, " ++ reg d]
+      (o,[d],[_,n]) | Just mnemonic <- lookup o [("lsl","shlq"),("asr","sarq"),("orri","orq"),("andi","andq"),("eori","xorq")] ->
+        [mnemonic ++ " $" ++ imm n ++ ", " ++ reg d]
+      (o,[d],[_,b]) | Just mnemonic <- lookup o [("add","addq"),("sub","subq"),("mul","imulq"),("and","andq")] ->
+        [mnemonic ++ " " ++ reg b ++ ", " ++ reg d]
+      ("divide",[_],[_,b]) -> ["cqto", "idivq " ++ reg b]
+      ("cmpq",[],[a,b]) -> ["cmpq " ++ reg b ++ ", " ++ reg a]
+      ("cmpi",[],[a,n]) -> ["cmpq $" ++ imm n ++ ", " ++ reg a]
+      ('s':'e':'t':'.':c,[d],[]) -> ["set" ++ cc c ++ " " ++ byte d, "movzbq " ++ byte d ++ ", " ++ reg d]
+      ('c':'m':'o':'v':'.':c,[d],[_,a]) -> ["cmov" ++ cc c ++ " " ++ reg a ++ ", " ++ reg d]
+      ('j':'.':c,[],[OL l]) -> ["j" ++ cc c ++ " " ++ lbl l]
+      (o,[],[v,OL l]) | o `elem` ["jzero","jnonzero"] -> ["testq " ++ reg v ++ ", " ++ reg v, (if o == "jzero" then "jz " else "jnz ") ++ lbl l]
+      ("jmp",[],[OL l]) -> ["jmp " ++ lbl l]
+      ("call",_,OS s:_) -> call s
+      ("ret",[],[_]) -> epilogue ++ ["ret"]
+      ("tailjump",[],OS s:_) -> epilogue ++ ["jmp " ++ s]
+      ("entry.check.tick",[],[]) -> hartRead ++ stackCheck ++ tick
+      ("entry.check",[],[]) -> hartRead ++ stackCheck
+      ("entry.tick",[],[]) -> hartRead ++ tick
+      _ -> error ("X64 render: no form for " ++ show (op,ds,us))
+    epilogue = ["movq %rbp, %r11", "movq -16(%rbp), %rbp", "leaq -8(%r11), %rsp"]
+    hartRead = ["movq %fs:fpr_posix_hart@tpoff, %r10"]
+    base = siNote i
+    stackCheck =
+      ["leaq 8(%rsp), %r11", "subq 456(%r10), %r11", "cmpq 464(%r10), %r11", "jb " ++ lbl (Label (base ++ "_stk"))]
+      ++ call "fpr_stack_grow"
+      ++ ["testq %rax, %rax", "jz " ++ lbl (Label (base ++ "_same")), "leaq -8(%rax), %rsp", lbl (Label (base ++ "_same")) ++ ":"]
+      ++ hartRead ++ [lbl (Label (base ++ "_stk")) ++ ":"]
+    tick = ["subq $1, (%r10)", "cmpq $0, (%r10)", "jg " ++ lbl (Label (base ++ "_fuel"))]
+      ++ call "fpr_fuel_exhausted" ++ [lbl (Label (base ++ "_fuel")) ++ ":"]

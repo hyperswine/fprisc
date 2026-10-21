@@ -1,0 +1,608 @@
+{
+  "fib": {
+    "root_identical": true,
+    "functions": 270,
+    "max_off": 174,
+    "max_on": 174,
+    "increased": {},
+    "reduced": {
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+        53,
+        49
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+        27,
+        23
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+        40,
+        36
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+        28,
+        24
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+        40,
+        36
+      ],
+      "irqSendSure": [
+        35,
+        31
+      ],
+      "listDrop": [
+        23,
+        20
+      ],
+      "listFold": [
+        39,
+        35
+      ],
+      "logRingAt": [
+        53,
+        49
+      ],
+      "modHasFrom": [
+        22,
+        21
+      ],
+      "modRow": [
+        53,
+        49
+      ],
+      "serve": [
+        57,
+        52
+      ],
+      "strMatchAt": [
+        83,
+        79
+      ],
+      "strTakeGo": [
+        51,
+        47
+      ],
+      "wireDigits": [
+        86,
+        77
+      ],
+      "wireRev": [
+        26,
+        22
+      ]
+    },
+    "root_sha256": [
+      "8d7eb638207fef4eab2390dc78c4912a233fe72f9c82a02b999f9500862662f0",
+      "8d7eb638207fef4eab2390dc78c4912a233fe72f9c82a02b999f9500862662f0"
+    ],
+    "root_paths": [
+      "build/self-loops-post-tidy/cache/fpr/build/fib-79037.s",
+      "build/self-loops-post-tidy/cache/fpr/build/fib-79234.s"
+    ]
+  },
+  "sum": {
+    "root_identical": false,
+    "functions": 270,
+    "max_off": 174,
+    "max_on": 174,
+    "increased": {},
+    "reduced": {
+      "$worker.scalar.loop": [
+        43,
+        39
+      ],
+      "loop": [
+        54,
+        50
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+        53,
+        49
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+        27,
+        23
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+        40,
+        36
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+        28,
+        24
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+        40,
+        36
+      ],
+      "irqSendSure": [
+        35,
+        31
+      ],
+      "listDrop": [
+        23,
+        20
+      ],
+      "listFold": [
+        39,
+        35
+      ],
+      "logRingAt": [
+        53,
+        49
+      ],
+      "modHasFrom": [
+        22,
+        21
+      ],
+      "modRow": [
+        53,
+        49
+      ],
+      "serve": [
+        57,
+        52
+      ],
+      "strMatchAt": [
+        83,
+        79
+      ],
+      "strTakeGo": [
+        51,
+        47
+      ],
+      "wireDigits": [
+        86,
+        77
+      ],
+      "wireRev": [
+        26,
+        22
+      ]
+    },
+    "root_sha256": [
+      "d3d05bbaeb8da586b2a91a12357852d226ab8c8ac04ebe817e78f6020fe5c478",
+      "0b9b7df8ca4ac25c74f8b9fd09c8286ac706ecedba082d179a4217b7bda00e0a"
+    ],
+    "root_paths": [
+      "build/self-loops-post-tidy/cache/fpr/build/sum-79252.s",
+      "build/self-loops-post-tidy/cache/fpr/build/sum-79272.s"
+    ]
+  },
+  "pipeline": {
+    "root_identical": true,
+    "functions": 271,
+    "max_off": 174,
+    "max_on": 174,
+    "increased": {},
+    "reduced": {
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+        53,
+        49
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+        27,
+        23
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+        40,
+        36
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+        28,
+        24
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+        40,
+        36
+      ],
+      "irqSendSure": [
+        35,
+        31
+      ],
+      "listDrop": [
+        23,
+        20
+      ],
+      "listFold": [
+        39,
+        35
+      ],
+      "logRingAt": [
+        53,
+        49
+      ],
+      "modHasFrom": [
+        22,
+        21
+      ],
+      "modRow": [
+        53,
+        49
+      ],
+      "serve": [
+        57,
+        52
+      ],
+      "strMatchAt": [
+        83,
+        79
+      ],
+      "strTakeGo": [
+        51,
+        47
+      ],
+      "wireDigits": [
+        86,
+        77
+      ],
+      "wireRev": [
+        26,
+        22
+      ]
+    },
+    "root_sha256": [
+      "5e1d921a5174bc2f6a13a82395ed0b3df54665700112ea587b39365e936020f4",
+      "5e1d921a5174bc2f6a13a82395ed0b3df54665700112ea587b39365e936020f4"
+    ],
+    "root_paths": [
+      "build/self-loops-post-tidy/cache/fpr/build/pipeline-79290.s",
+      "build/self-loops-post-tidy/cache/fpr/build/pipeline-79308.s"
+    ]
+  },
+  "byteloop": {
+    "root_identical": false,
+    "functions": 358,
+    "max_off": 174,
+    "max_on": 174,
+    "increased": {},
+    "reduced": {
+      "sumB": [
+        60,
+        56
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+        53,
+        49
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+        27,
+        23
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+        40,
+        36
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+        28,
+        24
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+        40,
+        36
+      ],
+      "irqSendSure": [
+        35,
+        31
+      ],
+      "listDrop": [
+        23,
+        20
+      ],
+      "listFold": [
+        39,
+        35
+      ],
+      "logRingAt": [
+        53,
+        49
+      ],
+      "modHasFrom": [
+        22,
+        21
+      ],
+      "modRow": [
+        53,
+        49
+      ],
+      "serve": [
+        57,
+        52
+      ],
+      "strMatchAt": [
+        83,
+        79
+      ],
+      "strTakeGo": [
+        51,
+        47
+      ],
+      "wireDigits": [
+        86,
+        77
+      ],
+      "wireRev": [
+        26,
+        22
+      ],
+      "chrs@4a1ebe94bef43a82": [
+        26,
+        22
+      ],
+      "digitsGo@4a1ebe94bef43a82": [
+        83,
+        77
+      ],
+      "leadGo@4a1ebe94bef43a82": [
+        23,
+        22
+      ],
+      "repeatGo@4a1ebe94bef43a82": [
+        27,
+        25
+      ],
+      "rev@4a1ebe94bef43a82": [
+        26,
+        22
+      ]
+    },
+    "root_sha256": [
+      "062b55c6b5505040abf7bad25b4463208cd3aa3d92d2e335bae1d7cd83926d7b",
+      "8e7294da5e64387336065b120b1813d367f3573378eaeafbcc151c3a5d2cfdc2"
+    ],
+    "root_paths": [
+      "build/self-loops-post-tidy/cache/fpr/build/byteloop-79332.s",
+      "build/self-loops-post-tidy/cache/fpr/build/byteloop-79356.s"
+    ]
+  },
+  "helpers": {
+    "root_identical": false,
+    "functions": 274,
+    "max_off": 174,
+    "max_on": 174,
+    "increased": {},
+    "reduced": {
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+        53,
+        49
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+        27,
+        23
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+        40,
+        36
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+        28,
+        24
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+        40,
+        36
+      ],
+      "irqSendSure": [
+        35,
+        31
+      ],
+      "listDrop": [
+        23,
+        20
+      ],
+      "listFold": [
+        39,
+        35
+      ],
+      "logRingAt": [
+        53,
+        49
+      ],
+      "modHasFrom": [
+        22,
+        21
+      ],
+      "modRow": [
+        53,
+        49
+      ],
+      "serve": [
+        57,
+        52
+      ],
+      "strMatchAt": [
+        83,
+        79
+      ],
+      "strTakeGo": [
+        51,
+        47
+      ],
+      "wireDigits": [
+        86,
+        77
+      ],
+      "wireRev": [
+        26,
+        22
+      ]
+    },
+    "root_sha256": [
+      "95dcdb32ccf85abea9fb096e2957fb3bfbd8e8a9c00f2905536ee9ddb6572233",
+      "077aabc5ddc523469b36f80710715806c2898f26a06ad0acfd4de996bd61279c"
+    ],
+    "root_paths": [
+      "build/self-loops-post-tidy/cache/fpr/build/helpers-79380.s",
+      "build/self-loops-post-tidy/cache/fpr/build/helpers-79397.s"
+    ]
+  },
+  "sha": {
+    "root_identical": true,
+    "functions": 640,
+    "max_off": 357,
+    "max_on": 357,
+    "increased": {},
+    "reduced": {
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.118": [
+        53,
+        49
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.35": [
+        27,
+        23
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.61": [
+        40,
+        36
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.7": [
+        28,
+        24
+      ],
+      "$spec.prelude-b2084da22e6a-g59rt3pc5-c09612b07b5ec-a64macx28r14.s.modRow.mono.93": [
+        40,
+        36
+      ],
+      "irqSendSure": [
+        35,
+        31
+      ],
+      "listDrop": [
+        23,
+        20
+      ],
+      "listFold": [
+        39,
+        35
+      ],
+      "logRingAt": [
+        53,
+        49
+      ],
+      "modHasFrom": [
+        22,
+        21
+      ],
+      "modRow": [
+        53,
+        49
+      ],
+      "serve": [
+        57,
+        52
+      ],
+      "strMatchAt": [
+        83,
+        79
+      ],
+      "strTakeGo": [
+        51,
+        47
+      ],
+      "wireDigits": [
+        86,
+        77
+      ],
+      "wireRev": [
+        26,
+        22
+      ],
+      "sendSureResult@72f59195cb10e418": [
+        25,
+        21
+      ],
+      "addAll@dab63e1fc0e65070": [
+        27,
+        26
+      ],
+      "nth@dab63e1fc0e65070": [
+        47,
+        43
+      ],
+      "rev@dab63e1fc0e65070": [
+        26,
+        22
+      ],
+      "wordsToBytes@dab63e1fc0e65070": [
+        26,
+        22
+      ],
+      "queryGo@d1f8a8215a77de3d": [
+        38,
+        31
+      ],
+      "rev@d1f8a8215a77de3d": [
+        26,
+        22
+      ],
+      "getGo@405eba153a1e2ce1": [
+        43,
+        39
+      ],
+      "rev@405eba153a1e2ce1": [
+        26,
+        22
+      ],
+      "loop@fb4e016caaf5e014": [
+        40,
+        34
+      ],
+      "dropGo@9a286879cab863cc": [
+        47,
+        45
+      ],
+      "lensOf@9a286879cab863cc": [
+        49,
+        45
+      ],
+      "readAllGo@9a286879cab863cc": [
+        28,
+        26
+      ],
+      "readGo@9a286879cab863cc": [
+        36,
+        30
+      ],
+      "rev@9a286879cab863cc": [
+        26,
+        22
+      ],
+      "scanFrom@9a286879cab863cc": [
+        33,
+        31
+      ],
+      "writeGo@9a286879cab863cc": [
+        46,
+        42
+      ],
+      "chrs@4a1ebe94bef43a82": [
+        26,
+        22
+      ],
+      "digitsGo@4a1ebe94bef43a82": [
+        83,
+        77
+      ],
+      "leadGo@4a1ebe94bef43a82": [
+        23,
+        22
+      ],
+      "repeatGo@4a1ebe94bef43a82": [
+        27,
+        25
+      ],
+      "rev@4a1ebe94bef43a82": [
+        26,
+        22
+      ]
+    },
+    "root_sha256": [
+      "d3db5f71b4cdf0128ad7167f4b3cfb019a95f8c800cee49dc39b65749a97e15d",
+      "d3db5f71b4cdf0128ad7167f4b3cfb019a95f8c800cee49dc39b65749a97e15d"
+    ],
+    "root_paths": [
+      "build/self-loops-post-tidy/cache/fpr/build/sha-79414.s",
+      "build/self-loops-post-tidy/cache/fpr/build/sha-79472.s"
+    ]
+  }
+}

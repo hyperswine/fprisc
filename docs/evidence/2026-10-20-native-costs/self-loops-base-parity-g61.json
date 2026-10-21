@@ -1,0 +1,71 @@
+{
+  "fib": {
+    "assembly_files": 2,
+    "normalization": "g59 -> g61 in cache namespaces and fpr-interface metadata only; canonical byte line wrapping",
+    "identical": true,
+    "normalized_sha256": {
+      "fib.s": "8d7eb638207fef4eab2390dc78c4912a233fe72f9c82a02b999f9500862662f0",
+      "prelude-b2084da22e6a-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "5430ca2cb46873012574b9a349d4f5ad0e726c6dc81029c2a220024ea1eb4822"
+    }
+  },
+  "sum": {
+    "assembly_files": 2,
+    "normalization": "g59 -> g61 in cache namespaces and fpr-interface metadata only; canonical byte line wrapping",
+    "identical": true,
+    "normalized_sha256": {
+      "sum.s": "0b9b7df8ca4ac25c74f8b9fd09c8286ac706ecedba082d179a4217b7bda00e0a",
+      "prelude-b2084da22e6a-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "5430ca2cb46873012574b9a349d4f5ad0e726c6dc81029c2a220024ea1eb4822"
+    }
+  },
+  "pipeline": {
+    "assembly_files": 2,
+    "normalization": "g59 -> g61 in cache namespaces and fpr-interface metadata only; canonical byte line wrapping",
+    "identical": true,
+    "normalized_sha256": {
+      "pipeline.s": "e69d0fe9514f07af8675711db25bd7ce6bf68b19b89b278b0bfcd3e4a01a6751",
+      "prelude-b2084da22e6a-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "5430ca2cb46873012574b9a349d4f5ad0e726c6dc81029c2a220024ea1eb4822"
+    }
+  },
+  "byteloop": {
+    "assembly_files": 5,
+    "normalization": "g59 -> g61 in cache namespaces and fpr-interface metadata only; canonical byte line wrapping",
+    "identical": true,
+    "normalized_sha256": {
+      "byteloop.s": "fc77fe2e0b1e8ec7240f14b421c717661f563a7d65d459c31e0ec25fd0493407",
+      "prelude-b2084da22e6a-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "5430ca2cb46873012574b9a349d4f5ad0e726c6dc81029c2a220024ea1eb4822",
+      "u-4c93ed62e360-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "811f24500195e57422a59a396f33783f936e00a0d20256de773f857fd885f3a1",
+      "u-a83675e93318-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "9fb1cded6d38f8b16e696e79940ade4dca2e94201b4dd52dc5ea3b4b5d61390c",
+      "u-4a1ebe94bef4-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "1b42a4264fb67fa029dee3721229f194cbe50caacac78d45814e8c779fc983cf"
+    }
+  },
+  "helpers": {
+    "assembly_files": 2,
+    "normalization": "g59 -> g61 in cache namespaces and fpr-interface metadata only; canonical byte line wrapping",
+    "identical": true,
+    "normalized_sha256": {
+      "helpers.s": "077aabc5ddc523469b36f80710715806c2898f26a06ad0acfd4de996bd61279c",
+      "prelude-b2084da22e6a-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "5430ca2cb46873012574b9a349d4f5ad0e726c6dc81029c2a220024ea1eb4822"
+    }
+  },
+  "sha": {
+    "assembly_files": 14,
+    "normalization": "g59 -> g61 in cache namespaces and fpr-interface metadata only; canonical byte line wrapping",
+    "identical": true,
+    "normalized_sha256": {
+      "sha.s": "c952feb248a64bfb8810aad8a9c1b9a7fc1e16f8f8e64d601e2f606bb66885ab",
+      "prelude-b2084da22e6a-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "5430ca2cb46873012574b9a349d4f5ad0e726c6dc81029c2a220024ea1eb4822",
+      "u-72f59195cb10-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "9f5f3eac25e87f47b6b00b3195eaebfd3dea262ed0f6147138869af4ef787eaf",
+      "u-dab63e1fc0e6-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "c4d795b58a078460eaaac7c9d543189f24464cacf7efa03e35b71466e5c5ec15",
+      "u-d1f8a8215a77-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "5e249e28fac5b358a851146b5b84bf11993909fc388cdfcdbf6bc90d9f8e0e0c",
+      "u-405eba153a1e-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "5ad296d91e656f82dc2912a059a34c9d8b0b6e8a834ac330079d3ff37cd4e114",
+      "u-4c93ed62e360-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "811f24500195e57422a59a396f33783f936e00a0d20256de773f857fd885f3a1",
+      "u-a83675e93318-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "9fb1cded6d38f8b16e696e79940ade4dca2e94201b4dd52dc5ea3b4b5d61390c",
+      "u-88b87577cd28-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "d4dc72e2be302f4374961e1939634cd3433ba340fe73cf0ec9563c31e892f144",
+      "u-581231fdf2ea-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "fc6ee638dcb9d4c7aabc95a99ec3c56865cef76efaedb32e62d32b83499d29a4",
+      "u-3956ff10e29c-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "99513daf5be6401621febad285e9f102e578d360226fd6e12081b939d62a00d1",
+      "u-fb4e016caaf5-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "8309f107ab3a27ca9875f1661290d3b5263f8c3b825640b979456d6f283713af",
+      "u-9a286879cab8-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "4e45fd9053fc19b597d2db716ba1b02a7676c915f9dd358eb0c886a7e2b0c89d",
+      "u-4a1ebe94bef4-pb2084da2-s323128cc-g61-selfloopsrt3pc5-c09612b07b5ec-a64macx28r14.s": "1b42a4264fb67fa029dee3721229f194cbe50caacac78d45814e8c779fc983cf"
+    }
+  }
+}

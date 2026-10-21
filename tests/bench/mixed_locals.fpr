@@ -1,0 +1,9 @@
+unsafe base.
+# Arithmetic locals in a function that must retain the general value ABI.
+# The String argument and tuple result exclude the existing scalar worker.
+mixed : unsafe String -> Int -> Int -> (String, Int) .
+mixed label a b =
+  x = a + b; y = x * 3; z = y - a; (label, z + b).
+main =
+  (label, n) = mixed ("kept" + " string") 123 17;
+  print "{label} {n}".
