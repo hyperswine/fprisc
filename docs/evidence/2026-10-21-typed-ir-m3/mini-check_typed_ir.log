@@ -1,0 +1,7 @@
+Typed IR verifier: a well-formed function accepted, 19 malformations refused by name PASS
+Typed IR worker metadata: ordered mixed parameters, renaming, Bool equality/aliases, missing and malformed signatures PASS
+Typed IR lowering: the generator's fib and sum shapes lower, verify, dump stably and evaluate to reference answers, exact traps and structural tick counts; unsupported forms are refused by name PASS
+a64: coverage 14/22 functions; main falls back (the primitive or HAL value `Unit`); 11 evaluations equal the legacy binary
+x64: coverage 14/22 functions; main falls back (the primitive or HAL value `Unit`); 11 evaluations equal the legacy binary
+rv64: coverage 14/22 functions; main falls back (the primitive or HAL value `Unit`); 11 evaluations equal the legacy binary
+Typed IR M1: a64/x64/rv64 portable lowering, deterministic dumps, native value/trap parity, structural tick counts, independent Bool oracle and worker cache transitions, report leaves emission unchanged: PASS

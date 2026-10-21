@@ -55,8 +55,14 @@ BACKEND = args.backend
 NATIVE_HOST = (platform.machine() in ('arm64', 'aarch64') if BACKEND == 'a64' else
                platform.machine() in ('x86_64', 'AMD64') and platform.system() == 'Linux')
 run(['make', 'fpr'])
-ghc = ['cabal', 'exec', '--', 'runghc'] if shutil.which('cabal') else ['runghc']
-print(run([*ghc, '-w', '-icompiler', 'tests/SelectedIR.hs']), end='', flush=True)
+# the unit tests are compiled with ghc -O0 into build/ghc-tests (the
+# compiler's own objects are cabal's; interpreting its modules makes the
+# 4200-value frame-ceiling fixture crawl)
+ghc = ['cabal', 'exec', '--', 'ghc'] if shutil.which('cabal') else ['ghc']
+(ROOT / 'build' / 'ghc-tests').mkdir(parents=True, exist_ok=True)
+for unit in ('SelectedIR', 'AllocIR'):
+    run([*ghc, '-O0', '-w', '-icompiler', '-outputdir', 'build/ghc-tests', f'tests/{unit}.hs', '-o', f'build/ghc-tests/{unit}'])
+    print(run([f'./build/ghc-tests/{unit}']), end='', flush=True)
 if args.portable_only or not NATIVE_HOST:
     if args.require_execution:
         raise SystemExit(f'Typed IR M2 {BACKEND}: required native execution unavailable or disabled')
@@ -64,7 +70,8 @@ if args.portable_only or not NATIVE_HOST:
     raise SystemExit(0)
 
 MOD, LIB, PROBE = 'tests/typed_ir/scalar_mod.fpr', 'tests/typed_ir/scalarlib.fpr', 'tests/typed_ir/tir_probe.c'
-LIB_FNS = ['fib', 'sum', 'addovf', 'mulovf', 'divz', 'even', 'odd', 'clamp', 'boolEq', 'boolNe', 'boolResult', 'cbSum', 'cbTail', 'deep', 'swapLoop']
+LIB_FNS = ['fib', 'sum', 'addovf', 'mulovf', 'divz', 'even', 'odd', 'clamp', 'boolEq', 'boolNe', 'boolResult', 'cbSum', 'cbTail', 'deep', 'swapLoop',
+           'pressure', 'wide', 'holdLoop', 'deepLive', 'rot3']
 INT_MIN, INT_MAX = -(1 << 62), (1 << 62) - 1
 def overflow(a, op, b):
     return ('trap', f'Int overflow: {a} {op} {b} does not fit an Int ({INT_MIN}..{INT_MAX}); I64 is the type that wraps')
@@ -99,6 +106,16 @@ EXPECTED = {
     ('cbTail', (7,)): ('value', str(2 * 21 + 1)),
     ('swapLoop', (7, 1, 2)): ('value', '2001'),
     ('swapLoop', (8, 1, 2)): ('value', '1002'),
+    # M3: pressure and values across calls (docs/2026-10-21-TYPED-IR-M3.md)
+    ('pressure', (5,)): ('value', str(14 * 5 + 79)),
+    ('pressure', (100,)): ('value', str(14 * 100 + 79)),
+    ('wide', (7,)): ('value', str(7 * sum(range(2, 26)))),
+    ('wide', (1000,)): ('value', str(1000 * sum(range(2, 26)))),
+    ('holdLoop', (10, 0)): ('value', str(sum(n + 37 for n in range(1, 11)))),
+    ('holdLoop', (3000000, 0)): ('value', str(sum(n + 37 for n in range(1, 3000001)))),
+    ('rot3', (7, 1, 2, 3)): ('value', '2003001'),
+    ('rot3', (8, 1, 2, 3)): ('value', '3001002'),
+    ('cpressure', (5,)): ('value', str(14 * 5 + 79)),
     ('cfib', (22,)): ('value', '17711'),
     ('csum', (100, 5)): ('value', '5055'),
     ('caddovf', (INT_MAX, 1)): overflow(INT_MAX, '+', 1),
@@ -137,19 +154,36 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
         got = outcome(native_exe, *k)
         assert got == want == legacy[k], (k, got, want, legacy[k])
     # deep recursion across stack segments: the same answer, and the
-    # harness saw the native frames in more than one segment
-    for depth in (100, 100000):
-        want = str(depth + 1)
-        lv, nv = outcome(legacy_exe, 'deep', [depth]), outcome(native_exe, 'deep', [depth])
-        assert lv[0] == nv[0] == 'value' and lv[1].split()[0] == nv[1].split()[0] == want, (depth, lv, nv)
+    # harness saw the native frames in more than one segment; deepLive
+    # carries three values across the recursive call (saved registers
+    # restored from each level's own frame across the segment change)
+    for fn, depth, want in (('deep', 100, 101), ('deep', 100000, 100001),
+                            ('deepLive', 100, 3 * 100 * 101 // 2 + 4 * 101), ('deepLive', 100000, 3 * 100000 * 100001 // 2 + 4 * 100001)):
+        lv, nv = outcome(legacy_exe, fn, [depth]), outcome(native_exe, fn, [depth])
+        assert lv[0] == nv[0] == 'value' and lv[1].split()[0] == nv[1].split()[0] == str(want), (fn, depth, lv, nv)
         segs = int(nv[1].split()[1])
-        assert (segs >= 2) == (depth == 100000), (depth, nv)
+        assert (segs >= 2) == (depth == 100000), (fn, depth, nv)
     print(f'whole unit: scalarlib {m.group(1)}/{m.group(2)} native under strict mode; {len(CALLS)} calls equal the legacy binary and independent arithmetic; C calls native code and is called back; deep recursion crossed {segs} segments')
+    # M3 allocation facts, read from the notes: pressure spills (twelve
+    # across a call, nine in the budget), wide spills, fib keeps everything
+    # in registers, saved registers are exactly the budget registers used
+    facts = {l.split()[1].split('@')[0]: l for l in notes if ' native (frame ' in l}
+    def stat(fn, key):
+        return int(re.search(key + r'=(\d+)', facts[fn]).group(1))
+    assert stat('pressure', 'spills') >= 3 and stat('pressure', 'crossing') >= 12, facts['pressure']
+    assert stat('wide', 'spills') >= 1, facts['wide']
+    assert stat('fib', 'spills') == 0 and stat('sum', 'spills') == 0, (facts['fib'], facts['sum'])
+    budget = {'a64': ['x19', 'x20', 'x21', 'x22', 'x23', 'x24', 'x25', 'x26', 'x27'], 'x64': ['rbx', 'r12', 'r13', 'r14', 'r15']}[BACKEND]
+    for fn, l in facts.items():
+        saved = re.search(r'saved=(\S+)', l).group(1)
+        assert saved == 'none' or all(s in budget for s in saved.split(',')), (fn, saved)
+    print('allocation facts: pressure spills ' + str(stat('pressure', 'spills')) + ' of ' + str(stat('pressure', 'crossing')) + ' crossing; wide spills ' + str(stat('wide', 'spills')) + '; fib and sum spill nothing')
     # one and four harts
     for harts in ('1', '4'):
         exe = tmp / f'mod-h{harts}'
         run(['./fpr', 'build', MOD, '--with', PROBE, '--harts', harts, '-o', exe], strict)
-        for k in (('fib', (22,)), ('sum', (3000000, 0)), ('divz', (7, 0)), ('cfib', (22,)), ('cbSum', (10,))):
+        for k in (('fib', (22,)), ('sum', (3000000, 0)), ('divz', (7, 0)), ('cfib', (22,)), ('cbSum', (10,)),
+                  ('holdLoop', (3000000, 0)), ('pressure', (100,)), ('wide', (1000,))):
             got = outcome(exe, *k)
             want = EXPECTED.get(k, ('value', '17711'))
             assert got == want, (harts, k, got)

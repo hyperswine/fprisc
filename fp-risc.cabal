@@ -59,6 +59,8 @@ executable fpr
       Codegen.Selected
       Codegen.Frame
       Codegen.Place
+      Codegen.Liveness
+      Codegen.Allocate
       Codegen.Bounds
       Codegen.Target.Common
       Codegen.Target.X64

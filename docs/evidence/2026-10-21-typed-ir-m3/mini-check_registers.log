@@ -1,0 +1,2 @@
+x64 register-heavy body: 285 independent C-reference cases: PASS
+Registers: differential fixtures, warm-cache mode separation and three-backend emission: PASS

@@ -1,0 +1,28 @@
+=== check_typed_ir_a64.py Wed Oct 21 17:03:26 AEDT 2026
+exit 1 Wed Oct 21 17:03:26 AEDT 2026
+  File "/Users/jq/Documents/GitHub/fprisc-typed-ir-m3/tests/check_typed_ir_native.py", line 35, in run
+    assert p.returncode == expected, (args, p.returncode, p.stdout[-3000:], p.stderr[-3000:])
+AssertionError: (['cabal', 'exec', '--', 'ghc', '-O0', '-w', '-icompiler', '-outputdir', 'build/ghc-tests', 'tests/SelectedIR.hs', '-o', 'build/ghc-tests/SelectedIR'], 1, 'Loaded package environment from /Users/jq/Documents/GitHub/fprisc-typed-ir-m3/dist-newstyle/tmp/environment.-50784/.ghc.environment.aarch64-darwin-9.8.2\n', '<command line>: error: directory portion of "build/ghc-tests/SelectedIR" does not exist (used with "-o" option.)\n')
+=== check_x64_local.py --require-execution Wed Oct 21 17:03:26 AEDT 2026
+exit 2 Wed Oct 21 17:03:26 AEDT 2026
+/Library/Developer/CommandLineTools/usr/bin/python3: can't open file '/Users/jq/Documents/GitHub/fprisc-typed-ir-m3/tests/check_x64_local.py --require-execution': [Errno 2] No such file or directory
+=== check_typed_ir.py Wed Oct 21 17:03:26 AEDT 2026
+exit 0 Wed Oct 21 17:03:43 AEDT 2026
+x64: coverage 14/22 functions; main falls back (the primitive or HAL value `Unit`); 11 evaluations equal the legacy binary
+rv64: coverage 14/22 functions; main falls back (the primitive or HAL value `Unit`); 11 evaluations equal the legacy binary
+Typed IR M1: a64/x64/rv64 portable lowering, deterministic dumps, native value/trap parity, structural tick counts, independent Bool oracle and worker cache transitions, report leaves emission unchanged: PASS
+=== check_registers.py Wed Oct 21 17:03:43 AEDT 2026
+exit 0 Wed Oct 21 17:04:08 AEDT 2026
+x64 register-heavy body: 285 independent C-reference cases: PASS
+Registers: differential fixtures, warm-cache mode separation and three-backend emission: PASS
+=== check_self_loops.py Wed Oct 21 17:04:08 AEDT 2026
+exit 0 Wed Oct 21 17:04:42 AEDT 2026
+Nullary constants: lowering-created Unit, elided functions, unique definitions, unused constructors, shadowing and Base boundary PASS
+Self loops: 1/4 harts, registers off/on, 3/8/9/64 args, exact fuel ticks, effects, stack growth, fairness, emission and off/on/off caches PASS
+Self loops: SHA and imported units, 640 finite WCET bounds, no per-function increase PASS
+=== check_workers.py Wed Oct 21 17:04:42 AEDT 2026
+exit 0 Wed Oct 21 17:05:08 AEDT 2026
+Workers: A64/RV64/x64 emission, RV32 fallback, private entries and bounded fuel segments PASS
+Workers: raw literal call operands load directly without staging PASS
+Workers: optimized shared module called by general-ABI host PASS
+ALLDONE

@@ -120,7 +120,8 @@ data NativeMode = NativeMode
   { nmGranularity :: Granularity,
     nmStrict :: Strict,
     nmTargetName :: String,
-    nmBackend :: Maybe NativeBackend -- Nothing: the switch is on but this target has no direct backend yet
+    nmBackend :: Maybe NativeBackend, -- Nothing: the switch is on but this target has no direct backend yet
+    nmSelfLoops :: Bool -- M3: self tail calls as loops in the native backends (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
   }
   deriving (Show)
 
@@ -499,15 +500,16 @@ nativeSelect tgt nm sigs ext exps emitted =
       Nothing -> (M.empty, [(n, "no typed-IR native backend for " ++ nmTargetName nm ++ " (M2 emits AArch64 and x86-64)") | n <- M.keys emitted], [])
       Just backend ->
         let emit = case backend of
-              DirectA64 fmt hart -> emitFnA64 (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt))
-              DirectX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt))
+              DirectA64 fmt hart -> emitFnA64 (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm))
+              DirectX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm))
             results = [(n, emit f) | (n, f) <- M.toList lowered]
             errors = [n ++ ": " ++ e | (n, Left e) <- results, "compiler error: " `isPrefixOf` e]
             refusals = [(n, e) | (n, Left e) <- results, not ("compiler error: " `isPrefixOf` e)]
             accepted = M.fromList [(n, nf) | (n, Right nf) <- results]
             declined = failures ++ refusals
             nativeNote nf = "typed-ir-backend: " ++ nfName nf ++ " native (frame " ++ frameOf nf ++ ", native-insns-v1 segmax=" ++ bound (rSegMax (nfReport nf)) ++ " exittail=" ++ bound (rExitTail (nfReport nf)) ++ " ccalls=" ++ show (rCCalls (nfReport nf)) ++ ")"
-            frameOf nf = case words (head (nfLines nf)) of ws | (f : _) <- [drop 6 w | w <- ws, "frame=" `isPrefixOf` w] -> f; _ -> "?"
+            -- the header's layout and allocation facts: `frame=N saved=... values=... spills=...` (M3)
+            frameOf nf = case dropWhile (not . isPrefixOf "frame=") (words (head (nfLines nf))) of (f : rest) -> unwords (drop 6 f : rest); [] -> "?"
             bound = maybe "UNBOUNDED" show
             unbounded = [n | (n, nf) <- M.toList accepted, rSegMax (nfReport nf) == Nothing]
          in if not (null errors)

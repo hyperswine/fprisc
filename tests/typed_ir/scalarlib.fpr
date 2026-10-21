@@ -45,3 +45,35 @@ deep n = TirProbe.mark n + (if n == 0 then 0 else deep (n - 1)).
 # block parameters with a swap: the join carries two values whose sources cross
 swapLoop : unsafe Int -> Int -> Int -> Int .
 swapLoop n a b = if n == 0 then a * 1000 + b else swapLoop (n - 1) b a.
+# M3 (docs/2026-10-21-TYPED-IR-M3.md): register pressure and values across
+# calls.  Twelve values live across a C call: more than the nine-register
+# callee-saved budget, so at least three spill
+pressure : Int -> Int .
+pressure n =
+  a = n + 1; b = n + 2; c = n + 3; d = n + 4; e = n + 5; f = n + 6;
+  g = n + 7; h = n + 8; i = n + 9; j = n + 10; k = n + 11; l = n + 12;
+  t = TirProbe.cb n;
+  a + b + c + d + e + f + g + h + i + j + k + l + t.
+# twenty-four values live at once in straight-line code (each
+# multiplication's slow path is a call, so they cross calls too)
+wide : Int -> Int .
+wide n =
+  a1 = n * 2; a2 = n * 3; a3 = n * 4; a4 = n * 5; a5 = n * 6; a6 = n * 7; a7 = n * 8; a8 = n * 9; a9 = n * 10; a10 = n * 11; a11 = n * 12; a12 = n * 13; a13 = n * 14; a14 = n * 15; a15 = n * 16; a16 = n * 17; a17 = n * 18; a18 = n * 19; a19 = n * 20; a20 = n * 21; a21 = n * 22; a22 = n * 23; a23 = n * 24; a24 = n * 25;
+  a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17 + a18 + a19 + a20 + a21 + a22 + a23 + a24.
+# a loop whose body holds eight values across a C call, then carries the
+# accumulator through the entry tick (fuel runs out many times at 3000000)
+holdLoop : unsafe Int -> Int -> Int .
+holdLoop n acc = if n == 0 then acc else
+  a = n + 1; b = n + 2; c = n + 3; d = n + 4; e = n + 5; f = n + 6; g = n + 7; h = n + 8;
+  t = TirProbe.cb n;
+  holdLoop (n - 1) (acc + a + b + c + d + e + f + g + h + t - 9 * n).
+# non-tail recursion with values across the recursive call, deep enough to
+# cross stack segments: every level's saved registers come back from its
+# own frame
+deepLive : unsafe Int -> Int .
+deepLive n = a = n * 2; b = n + 3; c = TirProbe.mark n;
+  (if n == 0 then 0 else deepLive (n - 1)) + a + b + c.
+# three parameters rotate through the self tail call: a copy cycle of
+# length three
+rot3 : unsafe Int -> Int -> Int -> Int -> Int .
+rot3 n a b c = if n == 0 then a * 1000000 + b * 1000 + c else rot3 (n - 1) b c a.

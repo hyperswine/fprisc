@@ -299,20 +299,35 @@ only the Mac.
 
 ### M3. Allocation, frame planning and measured improvements
 
-- [ ] Implement liveness and an initial linear-scan allocator with target
-  constraints, call-clobber handling and correct parallel-copy resolution.
-- [ ] Account for caller/callee-save costs; begin with static loop/call
-  information, recording any later use of measured profiles.
-- [ ] Insert spills and compute frames afterward; reuse slots only with
-  compatible representation, alignment, lifetime and root requirements.
-- [ ] Generate native prologues/epilogues, including legal A64 paired accesses,
-  and preserve stack-growth behaviour for large frames.
-- [ ] Revisit helpers, recursive calls and selected mixed arithmetic regions
-  as separate experiments with separate switches and measurements.
+- [x] Implement liveness and an initial linear-scan allocator with target
+  constraints, call-clobber handling and correct parallel-copy resolution
+  (`Codegen/Liveness.hs`, `Codegen/Allocate.hs`, `tests/AllocIR.hs`;
+  [M3 page](2026-10-21-TYPED-IR-M3.md), commit `a8f25f9`).
+- [x] Account for caller/callee-save costs; begin with static loop/call
+  information, recording any later use of measured profiles (a value that
+  crosses no call takes a caller-saved register, one that does takes the
+  scheduler-preserved budget; the spill choice is by static access count;
+  no measured profile is used: [M3 page](2026-10-21-TYPED-IR-M3.md)).
+- [x] Insert spills and compute frames afterward; reuse slots only with
+  compatible representation, alignment, lifetime and root requirements
+  (`Codegen/Allocate.hs` slot queue per size, alignment and managed
+  status; commit `a8f25f9`).
+- [x] Generate native prologues/epilogues, including legal A64 paired accesses,
+  and preserve stack-growth behaviour for large frames (`Target/A64.hs`
+  `savePairs`/`pairAccess`, `Target/X64.hs`; the stack check and the
+  32768-byte ceiling unchanged; commit `a8f25f9`).
+- [x] Revisit helpers, recursive calls and selected mixed arithmetic regions
+  as separate experiments with separate switches and measurements (the
+  self-tail-call loop form behind `FPR_TYPED_IR_SELF_LOOPS`, measured both
+  ways in the [M3 page](2026-10-21-TYPED-IR-M3.md); helpers and the mixed
+  arithmetic regions are not reached by the scalar lowering yet and are
+  recorded there as unmet).
 
 Exit: register-pressure and runtime-boundary tests pass; targeted reductions
 in spills, frame bytes or conversions are visible in dumps and assembly.
 Publish paired timing and compile-time/memory costs, including regressions.
+The exit evidence and the investment review are in the
+[M3 page](2026-10-21-TYPED-IR-M3.md).
 
 ### M4. RISC-V and broader language/profile coverage
 

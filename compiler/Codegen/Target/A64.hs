@@ -15,11 +15,17 @@
 --            generated-code ABI exactly, so legacy and new functions call
 --            each other and the runtime without adapters
 --   check    Codegen.Selected.checkFn: an invalid selection is a compiler error
---   place    Codegen.Place.placeInSlots: every virtual register in a frame
---            slot of its own, loaded and stored around each instruction;
---            no value is in a register between instructions
+--   allocate Codegen.Allocate.allocateFn (M3): live ranges over the stream
+--            (Codegen.Liveness), a linear scan over x19..x27 for values that
+--            cross a call and x9..x12, x8..x0 for the rest, fixed operands
+--            met by parallel copies, spills to shared slots; then
+--            Codegen.Allocate.checkAllocation, the oracle that recomputes
+--            liveness over the physical stream and refuses a clobbered
+--            live register or a value across a call outside x19..x27
+--            (M2's Codegen.Place.placeInSlots remains for its tests)
 --   layout   Codegen.Frame.layout: the legacy frame shape (ra at fp-8, the
---            caller's fp at fp-16, slots below, 16-aligned)
+--            caller's fp at fp-16, the saved callee-saved registers, then
+--            the spill slots, 16-aligned)
 --   render   the Mach-O or ELF text, pseudos expanded
 --   bound    Codegen.Bounds over the rendered stream: native-insns-v1
 --
@@ -35,10 +41,13 @@
 --     local-exec TLS cell; every read happens where it is needed, after
 --     any call that may have moved the actor to another hart;
 --   * the runtime's C entries clobber x0..x17 and x30 and preserve
---     x19..x28; with nothing in a register between instructions, no value
---     needs a callee-saved register, so this backend saves none (x19..x27
---     are untouched, as the context switch, which saves exactly those and
---     x29, requires);
+--     x19..x28; a value that is live across any call (the runtime's, a
+--     generated function's, the tick, the stack check) is in x19..x27 or in
+--     a slot, which is exactly the set the context switch (ctx_a64.S)
+--     saves, so a descheduled actor resumes with its values; the registers
+--     of that set the function uses are saved in the prologue as pairs
+--     (stp/ldp at signed scaled offsets) and restored before every return
+--     and tail transfer; x27 is never paired with x28;
 --   * the entry parks the parameters in their slots before the stack
 --     check and the fuel tick, both real C calls;
 --   * the overflow and zero-divisor slow paths re-enter the C primitive
@@ -47,8 +56,10 @@
 module Codegen.Target.A64
   ( A64Config (..), ObjectFormat (..), HartAccess (..), NativeFn (..),
     a64SelectionRev, emitFnA64, a64RegisterFile, mangleName, functionSymbol,
+    placement, allocConfig,
   ) where
 
+import Codegen.Allocate
 import Codegen.Bounds (Flow (..), Report (..), Tok (..), analyse, reportLine)
 import Codegen.Frame
 import Codegen.IR
@@ -58,6 +69,7 @@ import Codegen.Selected
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict
 import Data.Bits (shiftR, (.&.))
+import Data.List (intercalate)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Word (Word64)
@@ -66,7 +78,7 @@ import Codegen.Target.Common
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 2 -- conditional bounds split at transfers; validation tightened
+a64SelectionRev = 3 -- M3: register allocation, saved pairs, shared spill slots
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -80,7 +92,8 @@ data A64Config = A64Config
     cfgHart :: HartAccess,
     cfgPolicy :: Policy,
     cfgExports :: S.Set String, -- functions that get a visibility directive
-    cfgWeak :: Bool -- a library unit: unqualified globals are .weak
+    cfgWeak :: Bool, -- a library unit: unqualified globals are .weak
+    cfgSelfLoops :: Bool -- M3: self tail calls as loops (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
   }
 
 -- ---- registers ---------------------------------------------------------
@@ -107,6 +120,19 @@ callerSaved = map x ([0 .. 17] ++ [30])
 -- free and the expansions do not use (x16/x17 are the expansions')
 scratchPool :: [Phys]
 scratchPool = map x [9 .. 15]
+
+-- M3 allocation (Codegen.Allocate): the budget is x19..x27, the registers
+-- the context switch preserves (docs/2026-10-19-REGISTER-ALLOCATION.md 3.3:
+-- s1..s9; x28 is the hart register); the caller-saved pool is what no
+-- expansion reserves for itself across an instruction (x9..x11 are the
+-- entry sequence's scratch, so a value that spans it cannot take them, and
+-- that exclusion comes from the sequence's declared implicit definitions);
+-- x13..x15 are never allocated: they reload spilled operands and break copy
+-- cycles.
+calleeBudget, callerPool, allocScratch :: [Phys]
+calleeBudget = map x [19 .. 27]
+callerPool = map x ([9 .. 12] ++ [8, 7 .. 0])
+allocScratch = map x [13, 14, 15]
 
 -- ---- selection state ---------------------------------------------------
 
@@ -489,26 +515,60 @@ placement managed =
       plSlot = \v@(VReg n) -> frameObj n 8 8 (SpillSlot n) (S.member v managed)
     }
 
+-- the allocator's view of this target (M3)
+allocConfig :: Maybe String -> S.Set VReg -> AllocConfig
+allocConfig self managed =
+  AllocConfig
+    { acCalleeSaved = calleeBudget,
+      acCallerSaved = callerPool,
+      acScratch = allocScratch,
+      acPreserved = [x 29, Phys "sp", x 28],
+      acArrival = \params -> [plain "params" (zipWith fix params (map x [0 ..])) []],
+      acLoad = \p ref -> plain "ldr" [OP p] [OF ref 0],
+      acStore = \p ref -> plain "str" [] [OP p, OF ref 0],
+      acMove = \d s' -> plain "mov" [OP d] [OP s'],
+      acSlot = \n v -> frameObj n 8 8 (SpillSlot n) (S.member v managed),
+      -- every A64 form with a definition and register uses is one
+      -- instruction, or writes only its own definition (la: adrp then add)
+      acEarlyDef = const False,
+      acClassOf = rfClassOf a64RegisterFile,
+      acSelfLoop = self
+    }
+
+-- the saved callee-saved registers as frame objects, one word each,
+-- adjacent in creation order so the renderer can pair them
+savedObjs :: [Phys] -> [FrameObj]
+savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) False False | (k, Phys p) <- zip [0 ..] saved]
+
 emitFnA64 :: A64Config -> Fn -> Either String NativeFn
 emitFnA64 cfg fn = do
   (sel, managed, nulls) <- select cfg fn
   either (\e -> Left ("compiler error: " ++ e)) Right (checkFn a64RegisterFile sel)
-  (placed, objs) <- either (\e -> Left ("compiler error: " ++ e)) Right (placeInSlots (placement managed) sel)
-  let ly = layout 16 16 objs
+  let ac = allocConfig (if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing) managed
+  alloc <- either (\e -> Left ("compiler error: " ++ e)) Right (allocateFn ac sel)
+  either (\e -> Left ("compiler error: " ++ e)) Right (checkAllocation ac (fnName fn) (alBody alloc))
+  let saves = savedObjs (alSaved alloc)
+      objs = saves ++ alSlots alloc
+      ly = layout 16 16 objs
   when (lyBytes ly > frameCeiling) $
     Left ("a frame of " ++ show (lyBytes ly) ++ " bytes exceeds the " ++ show frameCeiling ++ "-byte ceiling (half the runtime's stack headroom)")
   let name = fnName fn
       sym = functionSymbol name
-      -- the prologue: the frame, then the parameters into their slots
-      -- before the entry sequence's calls (the legacy order)
-      paramStores = [I (plain "str" [] [OP (x i), OF (slotRef v) 0]) | (i, v) <- zip [0 ..] (sfParams placed)]
-      slotRef (VReg n) = head [foRef o | o <- objs, foKind o == SpillSlot n]
-      body = I ((plain "enter" [] []) {siImplicitDefs = [Phys "sp", x 29, x 16]}) : paramStores ++ sfBody placed
-      rendered = map (\it -> (it, renderItem cfg ly name it)) body
+      -- the prologue: the frame, the callee-saved registers this function
+      -- uses, then the arrival copies and the entry sequence (the
+      -- parameters are parked before the entry sequence's calls: the
+      -- legacy order)
+      pairs = savePairs ly saves
+      body = I ((plain "enter" [] []) {siImplicitDefs = [Phys "sp", x 29, x 16]})
+        : [I ((plain "save" [] []) {siNote = show k}) | (k, _) <- zip [0 :: Int ..] pairs]
+        ++ alBody alloc
+      restores = concatMap (uncurry (pairAccess "ldp" "ldr")) pairs
+      rendered = map (\it -> (it, renderItem cfg ly name pairs restores it)) body
       toks = concatMap (uncurry tokOf) rendered
       report = analyse toks
       header =
-        ["# fn " ++ name ++ " (arity " ++ show (length (sfParams placed)) ++ ") typed-ir a64 frame=" ++ show (lyBytes ly)]
+        ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir a64 frame=" ++ show (lyBytes ly)
+           ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," (map phys ps)) ++ " " ++ statsLine (alStats alloc)]
           ++ ["    " ++ visibility ++ " " ++ gsym cfg sym | S.member name (cfgExports cfg)]
           ++ [gsym cfg sym ++ ":"]
       visibility = if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl"
@@ -534,6 +594,29 @@ emitFnA64 cfg fn = do
       '.' : _ -> False
       t -> last t /= ':'
 
+-- The saved registers grouped for paired accesses: two adjacent words
+-- whose lower offset is a multiple of 8 within the signed scaled range of
+-- stp/ldp ([-512, 504]) form a pair, written as (registers, lowest
+-- offset); a register without a partner, or beyond that range, is a single
+-- access (never x27 with x28: x28 is not in the budget).
+savePairs :: Layout -> [FrameObj] -> [([String], Integer)]
+savePairs ly = go
+  where
+    off o = fromIntegral (M.findWithDefault (error "A64: a saved register without an offset") (foRef o) (lyOffset ly)) :: Integer
+    nameOf o = case foKind o of SavedRegister p -> p; _ -> error "A64: not a saved register"
+    go (a : b : rest)
+      | off b == off a - 8, pairable (off b) = ([nameOf b, nameOf a], off b) : go rest
+    go (a : rest) = ([nameOf a], off a) : go rest
+    go [] = []
+    pairable o = o >= -512 && o <= 504 && o `mod` 8 == 0
+
+-- `stp rb, ra, [x29, #lo]` stores rb at lo and ra at lo+8; `ldp` the reverse
+pairAccess :: String -> String -> [String] -> Integer -> [String]
+pairAccess paired single regs lo = case regs of
+  [b, a] -> [paired ++ " " ++ b ++ ", " ++ a ++ ", [x29, #" ++ show lo ++ "]"]
+  [a] -> ldst single (if single == "ldr" then "ldur" else "stur") a "x29" lo
+  _ -> error "A64: a save group that is not one or two registers"
+
 -- a C-visible symbol: Mach-O prefixes the underscore; a .L local label
 -- becomes the L private prefix there
 gsym :: A64Config -> String -> String
@@ -549,9 +632,9 @@ local cfg fname (Label l) = gsym cfg (".Ltir_" ++ mangleName fname ++ "_" ++ l)
 phys :: Phys -> String
 phys (Phys p) = p
 
-renderItem :: A64Config -> Layout -> String -> Item -> [String]
-renderItem cfg _ fname (ILabel l) = [local cfg fname l ++ ":"]
-renderItem cfg ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
+renderItem :: A64Config -> Layout -> String -> [([String], Integer)] -> [String] -> Item -> [String]
+renderItem cfg _ fname _ _ (ILabel l) = [local cfg fname l ++ ":"]
+renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
   where
     indent l = if last l == ':' then l else "    " ++ l -- a pseudo's internal labels stand in column one
     lbl = local cfg fname
@@ -564,6 +647,8 @@ renderItem cfg ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
     off ref = M.findWithDefault (error "A64 render: an object without an offset") ref (lyOffset ly)
     go op ds us = case (op, ds, us) of
       ("enter", [], []) -> enter
+      ("save", [], []) -> let (regs, lo) = pairs !! read (siNote i) in pairAccess "stp" "str" regs lo
+      ("params", _, []) -> [] -- the parameters are where the ABI put them
       ("ldr", [d], [OF ref 0]) -> ldst "ldr" "ldur" (reg d) "x29" (fromIntegral (off ref))
       ("str", [], [s, OF ref 0]) -> ldst "str" "stur" (reg s) "x29" (fromIntegral (off ref))
       ("mov", [d], [s]) -> ["mov " ++ reg d ++ ", " ++ reg s]
@@ -586,6 +671,7 @@ renderItem cfg ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
       ("cbz", [], [r, OL l]) -> ["cbz " ++ reg r ++ ", " ++ lbl l]
       ("cbnz", [], [r, OL l]) -> ["cbnz " ++ reg r ++ ", " ++ lbl l]
       ("b", [], [OL l]) -> ["b " ++ lbl l]
+      ("jump.loop", [], [OL l]) -> ["b " ++ lbl l]
       ("bl", _, OS s : _) -> ["bl " ++ gsym cfg s]
       ("ret", [], [_]) -> epilogue ++ ["ret"]
       ("tailjump", [], OS s : _) -> epilogue ++ ["b " ++ gsym cfg s]
@@ -600,7 +686,9 @@ renderItem cfg ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
             ++ ldst "str" "stur" "x30" "sp" (n - 8)
             ++ ldst "str" "stur" "x29" "sp" (n - 16)
             ++ (if n < 4096 then ["add x29, sp, #" ++ show n] else ["add x29, sp, x16"])
-    epilogue = ["ldur x30, [x29, #-8]", "mov x9, x29", "ldur x29, [x29, #-16]", "mov sp, x9"]
+    -- the callee-saved registers come back first (x29-relative, so after a
+    -- stack-segment change they still read the frame they were saved in)
+    epilogue = restores ++ ["ldur x30, [x29, #-8]", "mov x9, x29", "ldur x29, [x29, #-16]", "mov sp, x9"]
     base = siNote i
     stackCheck =
       [ "mov x10, sp",

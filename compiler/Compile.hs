@@ -436,6 +436,9 @@ compileWithInterface accepted = do
     Just names -> pure (StrictNames (filter (not . null) (splitOn ',' names)))
   when (envStrict /= StrictOff && envBackend == Nothing) $
     hPutStrLn stderr "FPR_TYPED_IR_STRICT needs FPR_TYPED_IR_BACKEND" >> exitFailure
+  -- FPR_TYPED_IR_SELF_LOOPS=0 keeps the native backends' self tail calls
+  -- as re-entries (M3's separate switch for the loop form; on otherwise)
+  envTirLoops <- (/= Just "0") <$> lookupEnv "FPR_TYPED_IR_SELF_LOOPS"
   envRetainedRegisters <- (== Just "1") <$> lookupEnv "FPR_RETAINED_REGISTERS"
   envA64Pairs <- (== Just "1") <$> lookupEnv "FPR_A64_FRAME_PAIRS"
   envA64Guards <- (== Just "1") <$> lookupEnv "FPR_A64_FIT_GUARDS"
@@ -964,7 +967,8 @@ compileWithInterface accepted = do
                 nmTargetName = if x64 then "x64" else if a64 then "a64" else tgtName (oTarget opts),
                 nmBackend = if a64 && not qapp
                               then Just (DirectA64 (if a64mac then MachO else ELF) (if oBase opts then HartX28 else if a64mac then HartTlvMachO else HartTlsElf))
-                              else if x64 && not qapp then Just DirectX64 else Nothing }
+                              else if x64 && not qapp then Just DirectX64 else Nothing,
+                nmSelfLoops = envTirLoops }
           -- strict mode: a named function (or any) that fell back is an error
           strictCheck what fallbacks = case envStrict of
             StrictOff -> pure ()
@@ -1012,7 +1016,7 @@ compileWithInterface accepted = do
           contractHash = hashAST [t | t@(TSig n _ _) <- tops, M.member n preTab]
           backendTag = case envBackend of
             Nothing -> ""
-            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else show a64SelectionRev) ++ (if g == PerFunction then "mixed" else "") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
+            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else show a64SelectionRev) ++ (if g == PerFunction then "mixed" else "") ++ (if envTirLoops then "" else "-noloops") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
           fnv = foldl (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) (14695981039346656037 :: Word64)
           tag = "g" ++ show codegenRev ++ backendTag ++ (if envCostedRegisters then "-costedregs" else "") ++ (if envCompactFrames then "-compactframes" else "") ++ (if envRetainedRegisters then "-retainedregs" else "") ++ (if envSelfLoops then "-selfloops" else "") ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
