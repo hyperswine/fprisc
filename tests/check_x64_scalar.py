@@ -25,6 +25,10 @@ boolNe : unsafe Int -> Bool -> Bool .
 boolNe n b = if n == 0 then b != (n < 1) else boolNe (n - 1) b.
 boolResult : unsafe Int -> Int -> Int .
 boolResult n flag = (if boolEq n (flag > 0) then 10 else 0) + (if boolNe n (flag > 0) then 1 else 0).
+pressure n = a = n + 1; b = n + 2; c = n + 3; d = n + 4; e = n + 5; f = n + 6; g = n + 7; h = n + 8; i = n + 9; j = n + 10; k = n + 11; l = n + 12;
+  t = hot n n n n n; a + b + c + d + e + f + g + h + i + j + k + l + t.
+wide n = a1 = n * 2; a2 = n * 3; a3 = n * 4; a4 = n * 5; a5 = n * 6; a6 = n * 7; a7 = n * 8; a8 = n * 9; a9 = n * 10; a10 = n * 11; a11 = n * 12; a12 = n * 13; a13 = n * 14; a14 = n * 15; a15 = n * 16; a16 = n * 17; a17 = n * 18; a18 = n * 19; a19 = n * 20; a20 = n * 21; a21 = n * 22; a22 = n * 23; a23 = n * 24; a24 = n * 25;
+  a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17 + a18 + a19 + a20 + a21 + a22 + a23 + a24.
 '''
     for width in (6, 7, 8, 63):
         names = [f'a{i}' for i in range(width)]
@@ -61,9 +65,9 @@ def main():
                                   FPR_COMPACT_FRAMES='1', FPR_SELF_LOOPS='1',
                                   FPR_NO_SCALAR_WORKERS='0')),
                  ('typed-ir', dict(FPR_TYPED_IR_BACKEND='mixed',
-                                   FPR_TYPED_IR_STRICT='add,sub,mul,divide,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,call7,call8')),
+                                   FPR_TYPED_IR_STRICT='add,sub,mul,divide,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,call7,call8,pressure,wide')),
                  ('typed-ir-workers', dict(FPR_TYPED_IR_BACKEND='mixed', FPR_NO_SCALAR_WORKERS='0',
-                                           FPR_TYPED_IR_STRICT='add,sub,mul,divide,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,call7,call8')),
+                                           FPR_TYPED_IR_STRICT='add,sub,mul,divide,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,call7,call8,pressure,wide')),
                  ('baseline-repeat', {})]
         original = None
         for name, settings in modes:
@@ -84,7 +88,12 @@ def main():
                 assert 'UNBOUNDED' not in text
                 assert '%fs:fpr_x64_a6@tpoff' in selected and '%fs:fpr_x64_a7@tpoff' in selected
                 assert 'cqto' in selected and 'imulq' in selected
-                print(f'{name}: strict direct coverage {len(native_names)} functions; shifts and arities 9/64 explicitly legacy', flush=True)
+                headers = {title.split()[0]: title for title, _ in bodies if 'typed-ir x64' in title}
+                spills = int(re.search(r'spills=(\d+)', headers['pressure']).group(1))
+                assert spills >= 7, headers['pressure']  # twelve values across a call, five budget registers
+                assert all(s in ('none', 'rbx', 'r12', 'r13', 'r14', 'r15') for t in headers.values() for s in re.search(r'saved=(\S+)', t).group(1).split(',')), headers
+                assert int(re.search(r'loops=(\d+)', headers['rotate6']).group(1)) == 1, headers['rotate6']
+                print(f'{name}: strict direct coverage {len(native_names)} functions; shifts and arities 9/64 explicitly legacy; pressure spills {spills}; rotate6 is a loop', flush=True)
             else:
                 hot = next(body for title, body in bodies if title == 'hot (arity 5)')
                 # Costed placement may legitimately reject promotion.

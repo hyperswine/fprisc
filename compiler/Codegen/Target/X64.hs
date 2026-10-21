@@ -2,14 +2,19 @@
 -- Direct x86-64 selection from typed scalar IR. No shared-RISC assembly is
 -- generated or parsed here. Selection exposes two-address ties, fixed
 -- division registers, argument cells and call clobbers to shared placement.
--- M2 deliberately spills every virtual value; allocation belongs to M3.
+-- M3 allocates registers (Codegen.Allocate): rbx and r12..r15, the set the
+-- context switch (ctx_x64.S) preserves, for values live across a call, the
+-- SysV caller-saved registers for the rest, r10/r11 as the reload and
+-- copy-cycle scratch; the budget registers a function uses are saved in
+-- the prologue and restored before every return and tail transfer.
 -- ABI: SysV first six arguments, private TLS cells seven/eight, result rax;
 -- legacy frame pointer = entry rsp + 8, return address fp-8, saved rbp fp-16.
 -- Parameters are parked before any entry check/tick, and rsp is restored
 -- from rbp at exit so stack-segment growth remains compatible with legacy.
 module Codegen.Target.X64
-  ( X64Config (..), x64SelectionRev, emitFnX64, x64RegisterFile ) where
+  ( X64Config (..), x64SelectionRev, emitFnX64, x64RegisterFile, placement, allocConfig ) where
 
+import Codegen.Allocate
 import Codegen.Bounds (Flow (..), Report (..), Tok (..), analyse, reportLine)
 import Codegen.Frame
 import Codegen.IR
@@ -19,14 +24,17 @@ import Codegen.Selected
 import Codegen.Target.Common
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict
+import Data.List (intercalate)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 1
+x64SelectionRev = 2 -- M3: register allocation, saved registers, shared spill slots
 
 data X64Config = X64Config
-  { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool }
+  { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool,
+    cfgSelfLoops :: Bool -- M3: self tail calls as loops (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
+  }
 
 r :: String -> Phys
 r = Phys
@@ -40,10 +48,17 @@ x64RegisterFile = RegisterFile classOf (map r ["rsp", "rbp", "r10", "r11"])
       | p `elem` ["xmm" ++ show n | n <- [0 :: Int .. 15]] = Just FPR
       | otherwise = Nothing
 
-callerSaved, argRegs, scratchPool :: [Phys]
+callerSaved, argRegs, scratchPool, calleeBudget, callerPool, allocScratch :: [Phys]
 callerSaved = map r ["rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11"]
 argRegs = map r ["rdi", "rsi", "rdx", "rcx", "r8", "r9"]
 scratchPool = map r ["r8", "r9", "rsi", "rdi", "rcx", "rax", "rdx"]
+-- M3: the budget (docs/2026-10-19-REGISTER-ALLOCATION.md 3.3: s1..s5, what
+-- ctx_x64.S saves), the caller-saved pool, and the never-allocated scratch
+-- (r10 and r11 are the expansions' own scratch inside the entry sequence
+-- and the epilogue; between instructions they are free)
+calleeBudget = map r ["rbx", "r12", "r13", "r14", "r15"]
+callerPool = map r ["rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9"]
+allocScratch = map r ["r10", "r11"]
 
 -- ---- selection state ---------------------------------------------------
 
@@ -374,27 +389,54 @@ placement managed = Placement
     plStore = \p ref -> plain "store" [] [OP p, OF ref 0],
     plSlot = \v@(VReg n) -> frameObj n 8 8 (SpillSlot n) (S.member v managed) }
 
+-- the allocator's view of this target (M3): the first six parameters
+-- arrive in the SysV registers, seven and eight are read from the private
+-- cells before the entry sequence can destroy them
+allocConfig :: Maybe String -> S.Set VReg -> AllocConfig
+allocConfig self managed = AllocConfig
+  { acCalleeSaved = calleeBudget,
+    acCallerSaved = callerPool,
+    acScratch = allocScratch,
+    acPreserved = map r ["rbp", "rsp"],
+    acArrival = \params ->
+      plain "params" (zipWith fix (take 6 params) argRegs) []
+        : [plain "load.cell" [OV p (Any GPR)] [OS ("fpr_x64_a" ++ show n)] | (n, p) <- drop 6 (zip [0 :: Int ..] params)],
+    acLoad = \p ref -> plain "load" [OP p] [OF ref 0],
+    acStore = \p ref -> plain "store" [] [OP p, OF ref 0],
+    acMove = \d s' -> plain "movq" [OP d] [OP s'],
+    acSlot = \n v -> frameObj n 8 8 (SpillSlot n) (S.member v managed),
+    -- cqto writes rdx before idivq reads the divisor
+    acEarlyDef = \i -> siOp i == "divide",
+    acClassOf = rfClassOf x64RegisterFile,
+    acSelfLoop = self }
+
+savedObjs :: [Phys] -> [FrameObj]
+savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) False False | (k, Phys p) <- zip [0 ..] saved]
+
 emitFnX64 :: X64Config -> Fn -> Either String NativeFn
 emitFnX64 cfg fn = do
   (sel, managed, nulls) <- select cfg fn
   either (Left . ("compiler error: " ++)) Right (checkFn x64RegisterFile sel)
-  (placed, objs) <- either (Left . ("compiler error: " ++)) Right (placeInSlots (placement managed) sel)
-  let ly = layout 16 16 objs
+  let ac = allocConfig (if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing) managed
+  alloc <- either (Left . ("compiler error: " ++)) Right (allocateFn ac sel)
+  either (Left . ("compiler error: " ++)) Right (checkAllocation ac (fnName fn) (alBody alloc))
+  let saves = savedObjs (alSaved alloc)
+      objs = saves ++ alSlots alloc
+      ly = layout 16 16 objs
   when (lyBytes ly > 32768) $ Left ("a frame of " ++ show (lyBytes ly) ++ " bytes exceeds the 32768-byte ceiling (half the runtime's stack headroom)")
   let name = fnName fn
       sym = functionSymbol name
-      slotRef (VReg n) = head [foRef o | o <- objs, foKind o == SpillSlot n]
-      -- Read the private cells before any call: a fuel boundary may destroy
-      -- them. The first six argument registers are stored before the scratch.
-      paramStores = [I (if n < 6
-        then plain "store" [] [OP (argRegs !! n), OF (slotRef v) 0]
-        else (plain "park.cell" [] [OS ("fpr_x64_a" ++ show n), OF (slotRef v) 0]) {siImplicitDefs = [r "r11"]})
-        | (n,v) <- zip [0..] (sfParams placed)]
-      body = I ((plain "enter" [] []) {siImplicitDefs = map r ["rsp", "rbp"]}) : paramStores ++ sfBody placed
-      rendered = [(it, renderItem ly name it) | it <- body]
+      saveOff o = show (M.findWithDefault (error "X64: a saved register without an offset") (foRef o) (lyOffset ly)) ++ "(%rbp)"
+      saveLines = ["movq %" ++ p ++ ", " ++ saveOff o | o <- saves, SavedRegister p <- [foKind o]]
+      restores = ["movq " ++ saveOff o ++ ", %" ++ p | o <- saves, SavedRegister p <- [foKind o]]
+      body = I ((plain "enter" [] []) {siImplicitDefs = map r ["rsp", "rbp"]})
+        : [I (plain "save" [] []) | not (null saves)]
+        ++ alBody alloc
+      rendered = [(it, renderItem ly name saveLines restores it) | it <- body]
       report = analyse (concatMap (uncurry tokOf) rendered)
       visibility = if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl"
-      header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams placed)) ++ ") typed-ir x64 frame=" ++ show (lyBytes ly)]
+      header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir x64 frame=" ++ show (lyBytes ly)
+                  ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
         ++ ["    " ++ visibility ++ " " ++ sym | S.member name (cfgExports cfg)] ++ [sym ++ ":"]
   pure (NativeFn name (header ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList nulls))
   where
@@ -410,16 +452,16 @@ emitFnX64 cfg fn = do
 local :: String -> Label -> String
 local fname (Label l) = ".Ltir_" ++ mangleName fname ++ "_" ++ l
 
-renderItem :: Layout -> String -> Item -> [String]
-renderItem _ fname (ILabel l) = [local fname l ++ ":"]
-renderItem ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
+renderItem :: Layout -> String -> [String] -> [String] -> Item -> [String]
+renderItem _ fname _ _ (ILabel l) = [local fname l ++ ":"]
+renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
   where
     indent l = if last l == ':' then l else "    " ++ l
     lbl = local fname
     reg = \case OP (Phys p) -> '%' : p; o -> error ("X64 render: unplaced operand " ++ show o)
     byte o = case reg o of
-      "%rax" -> "%al"; "%rcx" -> "%cl"; "%rdx" -> "%dl"; "%rsi" -> "%sil"; "%rdi" -> "%dil"
-      p | p `elem` ["%r8", "%r9"] -> p ++ "b"
+      "%rax" -> "%al"; "%rcx" -> "%cl"; "%rdx" -> "%dl"; "%rsi" -> "%sil"; "%rdi" -> "%dil"; "%rbx" -> "%bl"
+      p | p `elem` ["%r" ++ show n | n <- [8 :: Int .. 15]] -> p ++ "b"
       p -> error ("X64 render: no byte register for " ++ p)
     imm = \case OI n -> show n; o -> error ("X64 render: not an immediate " ++ show o)
     slot ref = show (M.findWithDefault (error "X64 render: missing frame object") ref (lyOffset ly)) ++ "(%rbp)"
@@ -430,6 +472,9 @@ renderItem ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
         ["subq $" ++ show (lyBytes ly) ++ ", %rsp",
          "movq %rbp, " ++ show (lyBytes ly - 8) ++ "(%rsp)",
          "leaq " ++ show (lyBytes ly + 8) ++ "(%rsp), %rbp"]
+      ("save",[],[]) -> saveLines
+      ("params",_,[]) -> [] -- the parameters are where the ABI put them
+      ("load.cell",[d],[OS cell]) -> ["movq %fs:" ++ cell ++ "@tpoff, " ++ reg d]
       ("load",[d],[OF ref 0]) -> ["movq " ++ slot ref ++ ", " ++ reg d]
       ("store",[],[s,OF ref 0]) -> ["movq " ++ reg s ++ ", " ++ slot ref]
       ("park.cell",[],[OS cell,OF ref 0]) -> ["movq %fs:" ++ cell ++ "@tpoff, %r11", "movq %r11, " ++ slot ref]
@@ -452,6 +497,7 @@ renderItem ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
       ('j':'.':c,[],[OL l]) -> ["j" ++ cc c ++ " " ++ lbl l]
       (o,[],[v,OL l]) | o `elem` ["jzero","jnonzero"] -> ["testq " ++ reg v ++ ", " ++ reg v, (if o == "jzero" then "jz " else "jnz ") ++ lbl l]
       ("jmp",[],[OL l]) -> ["jmp " ++ lbl l]
+      ("jump.loop",[],[OL l]) -> ["jmp " ++ lbl l]
       ("call",_,OS s:_) -> call s
       ("ret",[],[_]) -> epilogue ++ ["ret"]
       ("tailjump",[],OS s:_) -> epilogue ++ ["jmp " ++ s]
@@ -459,7 +505,9 @@ renderItem ly fname (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
       ("entry.check",[],[]) -> hartRead ++ stackCheck
       ("entry.tick",[],[]) -> hartRead ++ tick
       _ -> error ("X64 render: no form for " ++ show (op,ds,us))
-    epilogue = ["movq %rbp, %r11", "movq -16(%rbp), %rbp", "leaq -8(%r11), %rsp"]
+    -- the callee-saved registers come back first (rbp-relative, so after a
+    -- stack-segment change they still read the frame they were saved in)
+    epilogue = restores ++ ["movq %rbp, %r11", "movq -16(%rbp), %rbp", "leaq -8(%r11), %rsp"]
     hartRead = ["movq %fs:fpr_posix_hart@tpoff, %r10"]
     base = siNote i
     stackCheck =

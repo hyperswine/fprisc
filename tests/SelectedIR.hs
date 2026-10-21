@@ -161,35 +161,40 @@ main = do
               Instr (Just (VId 5, TInt)) (OArith Sub (VId 1) (VId 4)),
               Instr (Just (VId 6, TVal)) (OTag (VId 5)) ]
             (TRet (VId 6)) ]
-      cfg = A64Config MachO HartX28 m2Policy (S.singleton "one") False
+      cfg = A64Config MachO HartX28 m2Policy (S.singleton "one") False True
   nf <- either (error . ("FAIL: a64: " ++)) pure (emitFnA64 cfg one)
   let text = unlines (nfLines nf)
       has s = s `isInfixOf` text
   check "the function is exported under its generated symbol" (has ".globl _fpr_fn_one" && has "_fpr_fn_one:")
-  check "the parameter is parked before the entry calls" (has "stur x0, [x29, #-24]\n" && has "bl _fpr_stack_grow" && has "bl _fpr_fuel_exhausted")
+  check "the parameter is moved to a saved register before the entry calls (M3)" (has "stur x19, [x29, #-24]\n    mov x19, x0\n" && has "bl _fpr_stack_grow" && has "bl _fpr_fuel_exhausted")
+  check "the saved register comes back before every return" (length (filter (== "    ldur x19, [x29, #-24]") (lines text)) == 2 && has "saved=x19 ")
   check "the hart is read from x28" (has "mov x9, x28")
-  check "the subtraction's slow path re-enters the primitive with retagged operands" (has "bl _fpr_prim_fn__x2d" && has "orr x10, x9, #1")
+  check "the subtraction's slow path re-enters the primitive with retagged operands, tagged straight into the argument registers" (has "bl _fpr_prim_fn__x2d" && has "orr x0, x9, #1\n" && has "orr x1, x9, #1\n    bl _fpr_prim_fn__x2d")
+  check "the result is tagged straight into x0 before the epilogue" (has "orr x0, x9, #1\n    ldur x19, [x29, #-24]\n")
   check "the epilogue restores sp from the frame pointer" (has "ldur x29, [x29, #-16]\n    mov sp, x9\n    ret")
   check "the bound is finite and named native-insns-v1" (rSegMax (nfReport nf) /= Nothing && has "# native-insns-v1: one segmax=")
-  let elf = A64Config ELF HartTlsElf m2Policy S.empty False
+  let elf = A64Config ELF HartTlsElf m2Policy S.empty False True
   nfe <- either (error . ("FAIL: a64 elf: " ++)) pure (emitFnA64 elf one)
   check "ELF syntax: no underscore, local-exec TLS" ("bl fpr_stack_grow" `isInfixOf` unlines (nfLines nfe) && "tprel_hi12:fpr_posix_hart" `isInfixOf` unlines (nfLines nfe))
-  let tlv = A64Config MachO HartTlvMachO m2Policy S.empty False
+  let tlv = A64Config MachO HartTlvMachO m2Policy S.empty False True
   nft <- either (error . ("FAIL: a64 tlv: " ++)) pure (emitFnA64 tlv one)
   check "Mach-O TLV: the descriptor call saves x0 and x30 around it" ("stp x0, x30, [sp]" `isInfixOf` unlines (nfLines nft) && "_fpr_posix_hart@TLVPPAGE" `isInfixOf` unlines (nfLines nft))
-  nfx <- either (error . ("FAIL: x64: " ++)) pure (X64.emitFnX64 (X64.X64Config m2Policy (S.singleton "one") False) one)
+  nfx <- either (error . ("FAIL: x64: " ++)) pure (X64.emitFnX64 (X64.X64Config m2Policy (S.singleton "one") False True) one)
   let xt = unlines (nfLines nfx)
-  check "direct x64: SysV parameter home and TLS hart" ("movq %rdi, -24(%rbp)" `isInfixOf` xt && "%fs:fpr_posix_hart@tpoff" `isInfixOf` xt)
+  check "direct x64: SysV parameter moved to rbx, rbx saved, TLS hart" ("movq %rbx, -24(%rbp)\n    movq %rdi, %rbx\n" `isInfixOf` xt && "%fs:fpr_posix_hart@tpoff" `isInfixOf` xt && "saved=rbx " `isInfixOf` xt)
   check "direct x64: aligned primitive call" ("subq $8, %rsp\n    call fpr_prim_fn__x2d\n    addq $8, %rsp" `isInfixOf` xt)
   check "direct x64: frame-based return and native bound" ("leaq -8(%r11), %rsp\n    ret" `isInfixOf` xt && rSegMax (nfReport nfx) /= Nothing)
   -- the frame ceiling is a named refusal, never a silent overflow of the headroom
+  -- 4200 values live at once (every constant is consumed only after all
+  -- are defined): more than the budget and the caller-saved pool, so they
+  -- spill to 4200 distinct slots, beyond the 32768-byte ceiling
   let wide = Fn "wide" [] TVal (BId 0)
         [ Block (BId 0) []
             ([Instr Nothing OStackCheck, Instr Nothing OSafepoint]
-              ++ [Instr (Just (VId n, TInt)) (OConstInt (fromIntegral n)) | n <- [0 .. 4200]]
-              ++ [Instr (Just (VId 4201, TVal)) (OTag (VId 4200))])
-            (TRet (VId 4201)) ]
-  refused "x64 frame beyond the ceiling" "ceiling" (X64.emitFnX64 (X64.X64Config m2Policy S.empty False) wide)
+              ++ [Instr (Just (VId n, TInt)) (OConstInt (fromIntegral n)) | n <- [0 .. 4199]]
+              ++ [Instr (Just (VId (4200 + n), TVal)) (OTag (VId n)) | n <- [0 .. 4199]])
+            (TRet (VId 8399)) ]
+  refused "x64 frame beyond the ceiling" "ceiling" (X64.emitFnX64 (X64.X64Config m2Policy S.empty False True) wide)
   refused "a frame beyond the ceiling" "ceiling" (emitFnA64 cfg wide)
   forM_ [("one", nf)] $ \(n, f) -> check ("no legacy bound label on " ++ n) (not ("# wcet:" `isInfixOf` unlines (nfLines f)))
   putStrLn "SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, frame ceilings: PASS"

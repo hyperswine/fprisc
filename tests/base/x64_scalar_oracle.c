@@ -64,6 +64,7 @@ extern V probe_call(Fn, const V *);
 DECL(add); DECL(sub); DECL(mul); DECL(divide); DECL(shift); DECL(branch);
 DECL(hot); DECL(calls); DECL(boolResult); DECL(boolEq); DECL(boolNe);
 DECL(call7); DECL(call8); DECL(rotate6); DECL(rotate7); DECL(rotate8); DECL(rotate63);
+DECL(pressure); DECL(wide);
 
 static V invoke(Fn fn, const V *args, unsigned count) {
     V first[6] = {0};
@@ -99,6 +100,13 @@ int main(void) {
         assert(invoke(fpr_fn_calls,args,5)==tag(want));
     }
     assert(fallbacks[1]==0 && fallbacks[2]==0 && fallbacks[3]==0 && fallbacks[4]<1000);
+    /* M3: twelve values across a generated call (more than the five-register
+       budget) and twenty-four live at once in straight-line code */
+    for (int64_t n=-50;n<=50;n++) {
+        V arg[]={tag(n)};
+        assert(invoke(fpr_fn_pressure,arg,1)==tag(12*n+78+hot(n,n,n,n,n)));
+        assert(invoke(fpr_fn_wide,arg,1)==tag(n*324));
+    }
     int64_t edges[]={lo,lo+1,-2147483648LL,-1,0,1,2147483647LL,hi-1,hi};
     for (unsigned i=0;i<sizeof edges/sizeof *edges;i++) {
         int64_t x=edges[i];
@@ -141,6 +149,6 @@ int main(void) {
         }
     }
     assert(yields>cases && traps==12);
-    printf("%u C-reference cases, 12 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, callee saves/alignment/volatile clobbers PASS\n",cases);
+    printf("%u C-reference cases, 12 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, callee saves/alignment/volatile clobbers PASS\n",cases);
     return 0;
 }
