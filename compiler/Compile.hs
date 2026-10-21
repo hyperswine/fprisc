@@ -977,6 +977,10 @@ compileWithInterface accepted = do
                 nmTargetName = if x64 then "x64" else if a64 then "a64" else tgtName (oTarget opts),
                 nmBackend = if a64 && not qapp
                               then Just (DirectA64 (if a64mac then MachO else ELF) (if oBase opts then HartX28 else if a64mac then HartTlvMachO else HartTlsElf))
+                              -- a loaded QOS app (and plugin): the hart is x28, or the
+                              -- global cell under qa64single (docs/2026-10-22-TYPED-IR-QOS.md)
+                              else if a64 && qapp
+                                then Just (DirectA64 (if a64mac then MachO else ELF) (if oQosSingle opts then HartGlobal else HartX28))
                               else if x64 && not qapp then Just DirectX64
                               else if not a64 && not x64 && not qapp && not (oPlugin opts) && tgtName (oTarget opts) `elem` ["rv32", "rv64"]
                                 then Just (DirectRV (policyWidth irPolicy) (if oBase opts then RV.HartTls else RV.HartTp))

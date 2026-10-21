@@ -30,6 +30,7 @@ module Codegen.Simplify (simplifyFn, simplifyProgram, passes) where
 
 import Codegen.IR
 import Codegen.Verify (verifyFn)
+import Codegen.Dump (dumpFn)
 import Data.List (foldl')
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -51,7 +52,10 @@ simplifyFn program fn0 = go fn0 passes
     go f ((name, pass) : rest) =
       let f' = pass f
        in case verifyFn program f' of
-            Left err -> Left ("simplify " ++ name ++ " on " ++ fnName f ++ ": " ++ err)
+            -- the function before and after the pass, for the report: this is
+            -- a compiler error, and the IR is what a fix needs
+            Left err -> Left ("simplify " ++ name ++ " on " ++ fnName f ++ ": " ++ err
+                               ++ "\n-- before " ++ name ++ ":\n" ++ dumpFn f ++ "-- after:\n" ++ dumpFn f')
             Right () -> go f' rest
 
 -- every function; the callers' conventions do not change (entry
@@ -112,10 +116,15 @@ foldConversions fn =
 threadBooleanJoins :: Fn -> Fn
 threadBooleanJoins fn = foldl' threadJoin fn [bId b | b <- fnBlocks fn, isBoolJoin b]
   where
+    -- the parameter and its truth must have no use outside the join: once
+    -- the join is threaded away, nothing would define them on the
+    -- threaded paths (a QOS module tested the Bool again two joins later)
+    usedOutside b v = or [v `elem` (concat [opUses op | Instr _ op <- bInstrs o] ++ termUses (bTerm o)) | o <- fnBlocks fn, bId o /= bId b]
     isBoolJoin b = case (bParams b, bInstrs b, bTerm b) of
       ([(vj, TVal)], [Instr (Just (q, TPred)) (OTruth w)], TCondBr c t as e bs) ->
         w == vj && c == q && bId b /= fnEntry fn && t /= bId b && e /= bId b
           && vj `notElem` (as ++ bs) && q `notElem` (as ++ bs)
+          && not (usedOutside b vj) && not (usedOutside b q)
       _ -> False
 
 threadJoin :: Fn -> BId -> Fn

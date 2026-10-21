@@ -195,6 +195,16 @@ main = do
   let tlv = A64Config MachO HartTlvMachO m2Policy S.empty False True False noTune
   nft <- either (error . ("FAIL: a64 tlv: " ++)) pure (emitFnA64 tlv one)
   check "Mach-O TLV: the descriptor call saves x0 and x30 around it" ("stp x0, x30, [sp]" `isInfixOf` unlines (nfLines nft) && "_fpr_posix_hart@TLVPPAGE" `isInfixOf` unlines (nfLines nft))
+  -- a loaded QOS app (docs/2026-10-22-TYPED-IR-QOS.md): its profile is
+  -- admitted, and qa64single reads the global hart cell (ELF and Mach-O)
+  let qos = m2Policy {polProfile = QosApp}
+  nfq <- either (error . ("FAIL: a64 qos: " ++)) pure (emitFnA64 (A64Config ELF HartX28 qos S.empty False True False noTune) one)
+  check "QOS app: x28 is the hart" ("mov x9, x28" `isInfixOf` unlines (nfLines nfq))
+  nfg <- either (error . ("FAIL: a64 qos single: " ++)) pure (emitFnA64 (A64Config ELF HartGlobal qos S.empty False True False noTune) one)
+  check "QOS single: the global hart cell, ELF" ("adrp x9, fpr_posix_hart\n    ldr x9, [x9, #:lo12:fpr_posix_hart]" `isInfixOf` unlines (nfLines nfg))
+  nfgm <- either (error . ("FAIL: a64 qos single mach-o: " ++)) pure (emitFnA64 (A64Config MachO HartGlobal qos S.empty False True False noTune) one)
+  check "QOS single: the global hart cell, Mach-O" ("adrp x9, _fpr_posix_hart@PAGE\n    ldr x9, [x9, _fpr_posix_hart@PAGEOFF]" `isInfixOf` unlines (nfLines nfgm))
+  refused "a QOS app without fuel is refused" "without fuel" (emitFnA64 (A64Config ELF HartX28 (qos {polFuel = False}) S.empty False True False noTune) one)
   nfx <- either (error . ("FAIL: x64: " ++)) pure (X64.emitFnX64 (X64.X64Config m2Policy (S.singleton "one") False True False noTune) one)
   let xt = unlines (nfLines nfx)
   check "direct x64: SysV parameter moved to rbx, rbx saved, TLS hart" ("movq %rbx, -24(%rbp)\n    movq %rdi, %rbx\n" `isInfixOf` xt && "%fs:fpr_posix_hart@tpoff" `isInfixOf` xt && "saved=rbx " `isInfixOf` xt)

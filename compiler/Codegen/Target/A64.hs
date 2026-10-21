@@ -79,13 +79,14 @@ import Codegen.Target.Common
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 12 -- 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
+a64SelectionRev = 13 -- 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
 
 -- how generated code reaches the hart block
 data HartAccess
   = HartX28 -- hosted AArch64 under fpr build: `mov x9, x28`
   | HartTlvMachO -- Darwin TLV descriptor call: _tlv_get_addr preserves all but x0, x16, x17
   | HartTlsElf -- local-exec TLS: mrs tpidr_el0 and the :tprel: adds
+  | HartGlobal -- a loaded QOS app on a host without a hart register (qa64single): the global hart cell, as deTlsQosAppA64's single form loads it
   deriving (Eq, Ord, Show)
 
 data A64Config = A64Config
@@ -866,6 +867,9 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
     -- x9 <- the hart block (A64.hs `mv rd, tp` and deTlsQosAppA64)
     hartRead = case cfgHart cfg of
       HartX28 -> ["mov x9, x28"]
+      HartGlobal -> case cfgFormat cfg of
+        MachO -> ["adrp x9, " ++ gsym cfg "fpr_posix_hart" ++ "@PAGE", "ldr x9, [x9, " ++ gsym cfg "fpr_posix_hart" ++ "@PAGEOFF]"]
+        ELF -> ["adrp x9, fpr_posix_hart", "ldr x9, [x9, #:lo12:fpr_posix_hart]"]
       HartTlvMachO ->
         [ "sub sp, sp, #16",
           "stp x0, x30, [sp]",

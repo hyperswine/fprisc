@@ -340,6 +340,20 @@ main = do
   -- a pass whose result does not verify is a compiler error, not a fallback
   let broken = (simplifyFn M.empty pairFn {fnBlocks = [b {bTerm = TRet (VId 99)} | b <- fnBlocks pairFn]})
   check "an unverifiable result is an error naming the pass" (case broken of Left e -> "simplify fold-conversions on pair" `isInfixOf` e; _ -> False)
+  -- a Bool branched on twice (QOS's header): the first join may not be
+  -- threaded away while the second test still reads its parameter
+  let twiceCore = (["a"], CLet "b" (CIf (app "<" [var "a", CInt 0]) (CMk 1 1 []) (CMk 1 0 []))
+                    (CLet "x" (CIf (var "b") (CInt 1) (CInt 2))
+                      (CLet "y" (CIf (var "b") (CInt 10) (CInt 20)) (app "+" [var "x", var "y"]))))
+      twiceProg = M.singleton "twice" twiceCore
+      (twiceIr, twiceFail) = lowerProgram m2Policy M.empty twiceProg twiceProg M.empty M.empty
+  check "the twice-tested Bool lowers" (null twiceFail && M.member "twice" twiceIr)
+  case simplifyProgram twiceIr of
+    Left err -> error ("FAIL: simplifying a twice-tested Bool: " ++ err)
+    Right (twiceSimp, _) -> do
+      check "a twice-tested Bool simplifies to a verified function" (verifyProgram twiceSimp == Right ())
+      check "and evaluates as before" (and [evalProgram twiceSimp "twice" [RInt a] == evalProgram twiceIr "twice" [RInt a] | a <- [-1, 0, 1]])
+      check "to the source's answers" (map (\a -> ocResult (evalProgram twiceSimp "twice" [RInt a])) [-1, 0, 1] == map (Right . RInt) [11, 22, 22])
   putStrLn "Typed IR simplification: conversion pairs folded, Bool joins threaded, pure operations shared per block, dead pure definitions dropped; evaluator results, traps and events unchanged on every fixture PASS"
   -- refusals name the form
   let refused what = case lowerFn m2Policy M.empty (M.insert "f" what prog) M.empty M.empty "f" what of

@@ -53,6 +53,13 @@ validatePolicy p = case polProfile p of
   HostedBase
     | not (polFuel p) -> Left "the hosted Base profile without fuel is not a supported policy"
     | otherwise -> Right ()
+  -- a loaded QOS app keeps hosted Base's contract: fuel, growable stacks and
+  -- allocation through the app-side runtime, which delegates to the plane
+  -- (NATIVE-IR-CONTRACTS "Managed values and profile-specific roots");
+  -- the hart arrives by x28 or the global cell (Codegen.Target.A64)
+  QosApp
+    | not (polFuel p) -> Left "a QOS app without fuel is not a supported policy"
+    | otherwise -> Right ()
   Rv32
     | polFuel p -> Right ()
     | otherwise -> Left "RV32 builtin ownership/allocator policy is not implemented"
