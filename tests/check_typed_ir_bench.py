@@ -10,6 +10,7 @@ no performance claim is made; a program whose build fails or whose output
 differs fails the check."""
 import os, re, subprocess, sys, tempfile
 from pathlib import Path
+from collections import Counter
 ROOT = Path(__file__).resolve().parents[1]
 BENCH = ROOT / 'tests' / 'bench'
 ENV = {**os.environ, 'FPR_HOME': str(ROOT), 'FPR_PATH': str(ROOT), 'FPR_TYPED_IR_BACKEND': 'mixed'}
@@ -21,6 +22,7 @@ def main():
     names = sys.argv[1:] or sorted(p.stem for p in BENCH.glob('*.fpr') if (BENCH / f'{p.stem}.expected').exists())
     failures = []
     total_native = total_fns = 0
+    reasons = Counter()
     for n in names:
         with tempfile.TemporaryDirectory(prefix=f'fpr-tir-bench-{n}-') as d:
             env = {**ENV, 'XDG_CACHE_HOME': str(Path(d) / 'cache')}
@@ -29,6 +31,7 @@ def main():
                                cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
             if b.returncode != 0:
                 failures.append(n); print(f'{n}: BUILD FAILED\n{(b.stdout + b.stderr)[-2000:]}'); continue
+            reasons.update(re.findall(r"typed-ir-backend: \S+ fallback: (.*)", b.stdout + b.stderr))
             native = fns = 0
             for m in re.finditer(r'typed-ir-backend: native (\d+)/(\d+) functions', b.stdout + b.stderr):
                 native += int(m.group(1)); fns += int(m.group(2))
@@ -40,6 +43,8 @@ def main():
                 continue
             total_native += native; total_fns += fns
             print(f'{n}: {native}/{fns} functions native (per-function mode), output equals .expected')
+    for reason, count in reasons.most_common():
+        print(f"remaining coverage: {count} instances: {reason}")
     if failures:
         print(f'typed-ir bench differential: FAIL ({", ".join(failures)})')
         return 1

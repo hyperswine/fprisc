@@ -8,9 +8,9 @@ import Codegen.Dump (dumpFn)
 import Codegen.Eval
 import Codegen.IR
 import Codegen.Lower (lowerFn, lowerProgram, Prim (..))
-import Codegen.Policy (m2Policy)
+import Codegen.Policy (m2Policy, Policy (..), Profile (..))
 import Codegen.Simplify (simplifyFn, simplifyProgram)
-import Codegen.Verify (verifyFn, verifyProgram)
+import Codegen.Verify (verifyFn, verifyProgram, verifyProgramWidth)
 import Control.Monad (unless)
 import Data.List (isInfixOf)
 import qualified Data.Map.Strict as M
@@ -301,11 +301,44 @@ main = do
   let refused what = case lowerFn m2Policy M.empty (M.insert "f" what prog) M.empty M.empty "f" what of
         Left r -> r
         Right _ -> "accepted"
-  check "a string literal is refused by name" ("string literal" `isInfixOf` refused ([], CStr "x"))
+  check "a string literal lowers" (refused ([], CStr "x") == "accepted")
   check "a primitive outside the subset is refused by name" ("primitive `print`" `isInfixOf` refused (["x"], app "print" [var "x"]))
   check "a partial application lowers (the generic application)" (refused (["x"], app "sum" [var "x"]) == "accepted")
-  check "a constructor with fields is refused by name" ("constructor with fields" `isInfixOf` refused (["x"], CMk 2 1 [var "x"]))
+  check "a constructor with fields lowers" (refused (["x"], CMk 2 1 [var "x"]) == "accepted")
+  let aggregates = M.fromList
+        [("make", (["x"], CMk 2 1 [CStr "\NUL\255\256", var "x"])),
+         ("field", (["x"], CProj 1 (var "x"))),
+         ("len", (["s"], app "strlen" [var "s"])),
+         ("at", (["s", "i"], app "charAt" [var "s", var "i"]))]
+      stringHal = M.fromList [("strlen", Prim 1 (Just "fpr_g_strlen_call1") Nothing),
+                             ("charAt", Prim 2 (Just "fpr_g_charAt_call2") Nothing)]
+      (aggIR, aggFailures) = lowerProgram m2Policy M.empty aggregates aggregates M.empty stringHal
+      bytes = RString [0,255,196,128]
+      made = RObj 2 1 [bytes, RInt 17]
+  check "aggregates lower and verify" (null aggFailures && verifyProgram aggIR == Right ())
+  check "constructor layout and literal bytes" (ocResult (evalProgram aggIR "make" [RInt 17]) == Right made)
+  check "projection reads the typed field" (ocResult (evalProgram aggIR "field" [made]) == Right (RInt 17))
+  check "length counts bytes including NUL" (ocResult (evalProgram aggIR "len" [bytes]) == Right (RInt 4))
+  check "charAt is an unsigned byte" (ocResult (evalProgram aggIR "at" [bytes, RInt 1]) == Right (RInt 255))
+  check "charAt reports the exact runtime range trap" (ocResult (evalProgram aggIR "at" [bytes, RInt (-1)]) == Left (Trap "charAt: index out of range (-1, length 4)"))
+  check "strlen reports the exact runtime type trap" (ocResult (evalProgram aggIR "len" [RInt 3]) == Left (Trap "strlen: not a string"))
+  _ <- differential "aggregate and string effects" aggIR
+    [("make", [RInt 17]), ("field", [made]), ("len", [bytes]),
+     ("at", [bytes, RInt 1]), ("at", [bytes, RInt 4]), ("len", [RInt 3])]
   -- arities 9..64 lower (the hart spill cells); a 65th parameter has no convention
+  let p32 = m2Policy {polProfile = Rv32}
+      (ir32, failures32) = lowerProgram p32 M.empty prog prog M.empty M.empty
+      hi32 = 1073741823
+  check "RV32 lowering verifies under explicit width" (null failures32 && verifyProgramWidth W32 ir32 == Right ())
+  check "RV32 Int overflow uses the 31-bit boundary" (case ocResult (evalProgramWidth W32 ir32 "addovf" [RInt hi32, RInt 1]) of
+    Left (Trap reason) -> "(-1073741824..1073741823)" `isInfixOf` reason
+    _ -> False)
+  check "RV32 shifts use 32-bit logical width and 31-bit wrapping"
+    (ocResult (evalProgramWidth W32 bitIr "shr" [RInt (-1), RInt 31]) == Right (RInt 1)
+      && ocResult (evalProgramWidth W32 bitIr "shl" [RInt 1, RInt 30]) == Right (RInt (-1073741824))
+      && ocResult (evalProgramWidth W32 bitIr "shl" [RInt 1, RInt 32]) == Left (Trap "BITSHIFTL: shift must be 0..31"))
+  check "RV32 rejects a 64-bit source literal" (case lowerFn p32 M.empty M.empty M.empty M.empty "wideLiteral" ([], CInt 1073741824) of
+    Left _ -> True; _ -> False)
   check "nine parameters lower" (refused (map (: []) "abcdefghi", var "i") == "accepted")
   check "sixty-four parameters lower" (refused (["p" ++ show i | i <- [1 .. 64 :: Int]], var "p64") == "accepted")
   check "a sixty-fifth parameter is refused by name" ("arity above 64" `isInfixOf` refused (["p" ++ show i | i <- [1 .. 65 :: Int]], var "p65"))

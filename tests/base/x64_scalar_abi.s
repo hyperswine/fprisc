@@ -49,6 +49,16 @@ probe_call:
 
 # Check alignment at generated-to-C boundaries, then deliberately destroy
 # all SysV volatile integer and SIMD registers before returning to generated code.
+.globl fpr_stack_grow
+fpr_stack_grow:
+    movq %rsp, %r11
+    andq $15, %r11
+    cmpq $8, %r11
+    jne .Lprobe_bad
+    subq $8, %rsp
+    call probe_stack_reset
+    addq $8, %rsp
+    jmp .Lprobe_clobber
 .globl fpr_fuel_exhausted
 fpr_fuel_exhausted:
     movq %rsp, %r11
@@ -58,6 +68,7 @@ fpr_fuel_exhausted:
     subq $8, %rsp
     call probe_fuel_reset
     addq $8, %rsp
+ .Lprobe_clobber:
     xorq %rax, %rax
     xorq %rdi, %rdi
     xorq %rsi, %rsi

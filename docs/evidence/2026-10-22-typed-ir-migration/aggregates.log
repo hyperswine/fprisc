@@ -1,0 +1,3 @@
+legacy: nested constructors, records, live references across 2000 allocations/calls, byte strings, range traps, one/four harts PASS
+typed: nested constructors, records, live references across 2000 allocations/calls, byte strings, range traps, one/four harts PASS
+entry: nested constructors, records, live references across 2000 allocations/calls, byte strings, range traps, one/four harts PASS

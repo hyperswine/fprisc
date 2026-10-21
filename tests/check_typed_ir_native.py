@@ -23,7 +23,8 @@ import argparse, os, platform, re, shutil, subprocess, sys, tempfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ENV = {**os.environ, 'FPR_HOME': str(ROOT), 'FPR_PATH': str(ROOT)}
-for k in ('FPR_FOREIGN', 'FPR_TYPED_IR', 'FPR_TYPED_IR_BACKEND', 'FPR_TYPED_IR_STRICT'):
+for k in ('FPR_FOREIGN', 'FPR_TYPED_IR', 'FPR_TYPED_IR_BACKEND', 'FPR_TYPED_IR_STRICT',
+          'FPR_TYPED_IR_SHALLOW_STACK', 'FPR_TYPED_IR_FORWARD_PARAMS'):
     ENV.pop(k, None)
 for keg in ('/opt/homebrew/opt/libarchive/lib/pkgconfig', '/usr/local/opt/libarchive/lib/pkgconfig'):
     if Path(keg).is_dir():
@@ -50,7 +51,10 @@ parser.add_argument('--portable-only', action='store_true',
                     help='run shared selected-IR checks without native AArch64 execution')
 parser.add_argument('--require-execution', action='store_true',
                     help='fail if native runtime execution is unavailable instead of accepting a host skip')
+parser.add_argument('--entry-optimizations', action='store_true', help='exercise shallow checks and forwarding entry slow paths')
 args = parser.parse_args()
+if args.entry_optimizations:
+    ENV.update(FPR_TYPED_IR_SHALLOW_STACK='1', FPR_TYPED_IR_FORWARD_PARAMS='1')
 BACKEND = args.backend
 NATIVE_HOST = (platform.machine() in ('arm64', 'aarch64') if BACKEND == 'a64' else
                platform.machine() in ('x86_64', 'AMD64') and platform.system() == 'Linux')
@@ -206,7 +210,7 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     for fn in LIB_FNS:
         assert any(n.startswith(fn + '@') for n in native_names), (fn, sorted(native_names))
     assert all(' native-insns-v1 segmax=' in l and 'UNBOUNDED' not in l for l in notes if ' native (frame ' in l), notes
-    assert any('whole-unit fallback' in l for l in notes), 'the root with main should fall back as a unit'
+    assert 'main' in native_names, 'aggregate/string coverage should also admit the root'
     for k, want in EXPECTED.items():
         got = outcome(native_exe, *k)
         assert got == want == legacy[k], (k, got, want, legacy[k])
@@ -270,9 +274,11 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     assert seen[0] == seen[2] == seen[4] and len({seen[1], seen[3], seen[0]}) == 3, seen
     print('cache transitions off/on/off/mixed/off: PASS')
     # strict mode names the function that fell back
-    p = subprocess.run(['./fpr', 'build', 'tests/typed_ir/scalar.fpr', '-o', tmp / 'x'], cwd=ROOT, env={**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'fib,main'}, capture_output=True, text=True, timeout=600)
-    assert p.returncode != 0 and 'typed-ir strict' in p.stderr and '\n  main: ' in p.stderr, (p.returncode, p.stderr[-800:])
-    # mixed mode on the M1 root fixture: main legacy, the scalar functions native
+    refused_source = tmp / 'refused.fpr'
+    refused_source.write_text('unsafe base.\nbadFloat : F64 -> F64 .\nbadFloat x = x + 1.0.\nmain = print (badFloat 2.0).\n')
+    p = subprocess.run(['./fpr', 'build', refused_source, '-o', tmp / 'x'], cwd=ROOT, env={**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'badFloat'}, capture_output=True, text=True, timeout=600)
+    assert p.returncode != 0 and 'typed-ir strict' in p.stderr and '\n  badFloat: ' in p.stderr, (p.returncode, p.stderr[-800:])
+    # mixed mode on the M1 root fixture: scalar functions and main native
     mixed = {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'fib,sum,addovf,divz,even,odd,clamp,boolEq,boolNe,boolResult'}
     mexe = tmp / 'scalar-mixed'
     log = run(['./fpr', 'build', 'tests/typed_ir/scalar.fpr', '-o', mexe, '-v'], mixed)
@@ -289,15 +295,15 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     off_t, on_t = off_s.read_text(), on_s.read_text()
     assert f'typed-ir {BACKEND}' not in off_t and 'native-insns-v1' not in off_t
     native_fns = re.findall(rf'^# fn (\S+) \(arity \d+\) typed-ir {BACKEND}', on_t, re.M)
-    assert len(native_fns) == 14, native_fns
+    assert len(native_fns) == 22 and "main" in native_fns, native_fns
     for fn in native_fns:
         body = on_t[on_t.index(f'# fn {fn} (arity'):]
         body = body[:body.index('\n\n')]
         assert f'# native-insns-v1: {fn} segmax=' in body and 'UNBOUNDED' not in body and '# wcet:' not in body, fn
-    assert on_t.count('# wcet: ') == len(re.findall(r'^# fn ', on_t, re.M)) - 14, 'legacy functions keep their legacy bound'
+    assert on_t.count('# wcet: ') == len(re.findall(r'^# fn ', on_t, re.M)) - len(native_fns), 'legacy functions keep their legacy bound'
     # FPRC_WCET reports the two metrics apart
     wlog = run(['./fpr', f'--target={"a64mac" if BACKEND == "a64" else "x64"}', f'--prelude={ROOT}/core/prelude.fpr', 'tests/typed_ir/scalar.fpr', tmp / 'w.s'], {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPRC_WCET': '1'})
-    assert '[native-insns-v1] root: 14 function(s)' in wlog and 'not in this bound' in wlog, wlog[-1500:]
+    assert '[native-insns-v1] root: 22 function(s)' in wlog and 'not in this bound' in wlog, wlog[-1500:]
     # the Mach-O TLV variant (a64mac without --base) and the ELF variant assemble
     clang = shutil.which('clang')
     if clang and BACKEND == 'a64':
@@ -306,7 +312,7 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
         elf_s = tmp / 'elf.s'
         run(['./fpr', '--target=a64', f'--prelude={ROOT}/core/prelude.fpr', 'tests/typed_ir/scalar.fpr', elf_s], {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed'})
         elf_t = elf_s.read_text()
-        assert 'tprel_hi12:fpr_posix_hart' in elf_t and len(re.findall(r'^# fn \S+ \(arity \d+\) typed-ir a64', elf_t, re.M)) == 14
+        assert 'tprel_hi12:fpr_posix_hart' in elf_t and len(re.findall(r'^# fn \S+ \(arity \d+\) typed-ir a64', elf_t, re.M)) == 22
         p = subprocess.run([clang, '-target', 'aarch64-unknown-linux-gnu', '-c', elf_s, '-o', tmp / 'elf.o'], capture_output=True, text=True)
         if p.returncode == 0:
             print('Mach-O TLV and ELF variants assemble with clang: PASS')

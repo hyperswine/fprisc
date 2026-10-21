@@ -71,8 +71,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-ir-') as d:
         for fn in ('fib', 'sum', 'addovf', 'divz', 'even', 'odd', 'clamp', 'boolEq', 'boolNe', 'boolResult'):
             assert fn in lowered, (target, fn, fallbacks.get(fn), lines[:3])
         assert '$worker.scalar.fib' in lowered and '$worker.scalar.sum' in lowered, (target, sorted(lowered))
-        # main matches Sys.args' list (a field projection) and prints a string: M4 forms
-        assert 'main' in fallbacks and any(k in fallbacks['main'] for k in ('field projection', 'string literal', 'primitive')), (target, fallbacks.get('main'))
+        # Aggregate/string coverage now admits the argument parsing and print root.
+        assert 'main' in lowered, (target, fallbacks.get('main'))
         coverage = next(l for l in lines if l.startswith('typed-ir: coverage'))
         dumps[target] = '\n'.join(l for l in lines if l.startswith('typed-ir: | '))
         assert dumps[target], target
@@ -96,7 +96,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-ir-') as d:
         # line above was computed on the simplified program and checked
         # against the lowered one by the report itself
         assert any(re.match(r'typed-ir: sum lowered \(\d+ blocks, \d+ instructions, \d+ removed by simplification\)', l) for l in lines), [l for l in lines if ' sum lowered' in l]
-        print(f'{target}: {coverage[10:]}; main falls back ({fallbacks["main"]}); {len(CALLS)} evaluations equal the legacy binary')
+        print(f'{target}: {coverage[10:]}; main lowers with aggregate/string coverage; {len(CALLS)} evaluations equal the legacy binary')
     assert dumps['a64'] == dumps['x64'] == dumps['rv64'], 'the dump differs between targets'
     again = run(['./fpr', '--target=a64', f'--prelude={ROOT}/core/prelude.fpr', FIXTURE, tmp / 'again.s'], {**ENV, 'FPR_TYPED_IR': 'dump'})
     assert '\n'.join(l for l in again.splitlines() if l.startswith('typed-ir: | ')) == dumps['a64'], 'the dump differs between runs'

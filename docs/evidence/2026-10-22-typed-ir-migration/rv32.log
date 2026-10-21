@@ -1,0 +1,2 @@
+direct RV32 self-loops=0: TYPED_RV_PASS 4724 reference results, forced fuel clobbers, nine arguments, aggregates, strings
+direct RV32 self-loops=1: TYPED_RV_PASS 4724 reference results, forced fuel clobbers, nine arguments, aggregates, strings

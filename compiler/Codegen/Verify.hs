@@ -7,7 +7,7 @@
 -- operation signatures and result types, terminators and their edges,
 -- block-argument counts and types, reachability, and dominance of every
 -- use by its definition.
-module Codegen.Verify (verifyFn, verifyProgram, opSignature) where
+module Codegen.Verify (verifyFn, verifyProgram, verifyProgramWidth, opSignature) where
 
 import Codegen.IR
 import Control.Monad (forM_, unless, when)
@@ -21,6 +21,18 @@ opSignature tyOf = \case
     unless (intFits64 n) (Left ("const " ++ show n ++ " is outside the Int range"))
     pure (Just TInt)
   ONullary _ _ -> pure (Just TVal)
+  OString _ -> pure (Just TVal)
+  OMake tid variant fields -> do
+    when (tid < 0 || variant < 0 || toInteger tid > 2147483647 || toInteger variant > 2147483647) (Left "constructor header is outside signed 32-bit layout")
+    when (null fields) (Left "an empty constructor uses nullary")
+    mapM_ (`expect` TVal) fields
+    pure (Just TVal)
+  OField index obj -> do
+    when (index < 0 || toInteger index > 268435454) (Left "field index is outside the native displacement range")
+    expect obj TVal
+    pure (Just TVal)
+  OStrLen str -> expect str TVal >> pure (Just TInt)
+  OCharAt str index -> expect str TVal >> expect index TInt >> pure (Just TInt)
   OTag v -> expect v TInt >> pure (Just TVal)
   OUntag v -> expect v TVal >> pure (Just TInt)
   OBoolOf v -> expect v TPred >> pure (Just TVal)
@@ -148,3 +160,13 @@ verifyFn program fn = mapLeft (("verify " ++ fnName fn ++ ": ") ++) $ do
 
 verifyProgram :: Program -> Either String ()
 verifyProgram p = mapM_ (verifyFn p) (M.elems p)
+
+-- Width is an explicit compilation policy, shared by lowering, validation,
+-- evaluation and target selection. Do not admit a 63-bit constant in RV32.
+verifyProgramWidth :: Width -> Program -> Either String ()
+verifyProgramWidth width program = do
+  verifyProgram program
+  forM_ (M.elems program) $ \fn -> forM_ (fnBlocks fn) $ \b ->
+    forM_ (bInstrs b) $ \(Instr _ op) -> case op of
+      OConstInt n -> unless (intFitsWidth width n) (Left ("verify " ++ fnName fn ++ ": literal exceeds " ++ show width ++ " Int range"))
+      _ -> pure ()

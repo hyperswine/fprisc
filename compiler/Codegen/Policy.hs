@@ -10,8 +10,10 @@
 -- wrong contract; each gets its own register and tests before it is
 -- admitted (the plan's M4).
 module Codegen.Policy
-  ( Profile (..), StackPolicy (..), Policy (..), m2Policy, validatePolicy, profileName,
+  ( Profile (..), StackPolicy (..), Policy (..), m2Policy, validatePolicy, profileName, policyWidth,
   ) where
+
+import Codegen.IR (Width (..))
 
 data Profile
   = HostedBase -- the actor runtime on a hosted OS: fuel, growable stacks, no moving collector
@@ -49,6 +51,13 @@ validatePolicy :: Policy -> Either String ()
 validatePolicy p = case polProfile p of
   HostedBase
     | not (polFuel p) -> Left "the hosted Base profile without fuel is not a supported policy"
-    | polStackCheck p /= StackCheckEveryEntry -> Left "the legacy shallow stack-check rule is not implemented in M2 (the frame size is a layout result); every entry is checked"
     | otherwise -> Right ()
+  Rv32
+    | polFuel p -> Right ()
+    | otherwise -> Left "RV32 builtin ownership/allocator policy is not implemented"
   other -> Left ("the " ++ profileName other ++ " profile has no typed-IR native lowering in M2")
+
+-- The existing RV32 profile is the Base runtime with a 32-bit word.
+-- Builtin/ARC and loaded QOS apps remain separate, refused contracts.
+policyWidth :: Policy -> Width
+policyWidth p = if polProfile p == Rv32 then W32 else W64

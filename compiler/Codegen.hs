@@ -45,17 +45,18 @@ import Numeric (showHex)
 import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, isJust)
 import Peephole (peepholeFor)
-import Codegen.IR (Fn (..), Block (..))
+import Codegen.IR (Fn (..), Block (..), Width)
 import Codegen.Lower (lowerProgram, Prim (..))
 import Codegen.Simplify (simplifyProgram)
-import Codegen.Policy (Policy, m2Policy)
+import Codegen.Policy (Policy, m2Policy, policyWidth)
 import qualified Codegen.Target.X64 as X64
+import qualified Codegen.Target.RV as RV
 import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat (..), emitFnA64)
-import Codegen.Target.Common (rodataDirective, stringLabel, stringObject)
+import Codegen.Target.Common (rodataDirective, stringLabel, stringObjectWidth)
 import Codegen.Bounds (Report (..))
-import Codegen.Verify (verifyProgram)
+import Codegen.Verify (verifyProgram, verifyProgramWidth)
 import Codegen.Dump (dumpFn)
-import Codegen.Eval (Outcome (..), Failure (..), Event (..), RV (..), evalProgram)
+import Codegen.Eval (Outcome (..), Failure (..), Event (..), RV (..), evalProgramWidth)
 import KernelKinds (Kind(..), signature)
 import Reuse (reuseFresh, reuseProgram, reuseView)
 import Workers (workerizeWithSignatures, ScalarSignatures, internalWorker, scalarPrimitives)
@@ -116,13 +117,14 @@ data Granularity
 
 data Strict = StrictOff | StrictAll | StrictNames [String] deriving (Eq, Show)
 
-data NativeBackend = DirectA64 ObjectFormat HartAccess | DirectX64 deriving (Show)
+data NativeBackend = DirectA64 ObjectFormat HartAccess | DirectX64 | DirectRV Width RV.RVHart deriving (Show)
 
 data NativeMode = NativeMode
   { nmGranularity :: Granularity,
     nmStrict :: Strict,
     nmTargetName :: String,
     nmBackend :: Maybe NativeBackend, -- Nothing: the switch is on but this target has no direct backend yet
+    nmForwardParams :: Bool, -- preserve forwarding arguments only on entry slow paths
     nmSelfLoops :: Bool -- M3: self tail calls as loops in the native backends (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
   }
   deriving (Show)
@@ -147,7 +149,7 @@ rv32 = Target 4 "lw" "sw" ".word" "rv32" True False False True False True False 
 typedIrNotes :: Maybe String -> Policy -> ScalarSignatures -> M.Map String Int -> M.Map String Prim -> Prog -> Prog -> [String]
 typedIrNotes Nothing _ _ _ _ _ _ = []
 typedIrNotes (Just mode) policy sigs ext hal prog emitted =
-  case verifyProgram lowered >> verifyProgram simplified of
+  case verifyProgramWidth (policyWidth policy) lowered >> verifyProgramWidth (policyWidth policy) simplified of
     Left err -> error ("typed-ir: " ++ err)
     Right () ->
       ["typed-ir: coverage " ++ show (M.size simplified) ++ "/" ++ show (M.size emitted) ++ " functions"]
@@ -165,8 +167,8 @@ typedIrNotes (Just mode) policy sigs ext hal prog emitted =
     ws = words mode
     evalNote w = case splitOn ':' w of
       ("eval" : fn : args) | Just ns <- mapM readMaybe args ->
-        let out = evalProgram simplified fn (map RInt ns)
-            out0 = evalProgram lowered fn (map RInt ns)
+        let out = evalProgramWidth (policyWidth policy) simplified fn (map RInt ns)
+            out0 = evalProgramWidth (policyWidth policy) lowered fn (map RInt ns)
             shown = "typed-ir: eval " ++ fn ++ concatMap ((' ' :) . show) (ns :: [Integer])
             counts = " (" ++ show (length [() | EvSafepoint _ <- ocEvents out]) ++ " safepoints, " ++ show (length [() | EvCall _ _ <- ocEvents out]) ++ " calls)"
          in if out /= out0
@@ -506,14 +508,15 @@ foreignEntries tgt =
 -- granularity turns one fallback into the unit's.
 nativeSelect :: Target -> NativeMode -> ScalarSignatures -> M.Map String Int -> S.Set String -> Prog -> Prog -> (M.Map String NativeFn, [(String, String)], [String])
 nativeSelect tgt nm sigs ext exps prog emitted =
-  case verifyProgram lowered0 >> verifyProgram lowered of
+  case verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered0 >> verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered of
     Left err -> error ("typed-ir: " ++ err)
     Right () -> case nmBackend nm of
       Nothing -> (M.empty, [(n, "no typed-IR native backend for " ++ nmTargetName nm ++ " (M2 emits AArch64 and x86-64)") | n <- M.keys emitted], [])
       Just backend ->
         let emit = case backend of
-              DirectA64 fmt hart -> emitFnA64 (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm))
-              DirectX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm))
+              DirectA64 fmt hart -> emitFnA64 (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm))
+              DirectRV width hart -> RV.emitFnRV (RV.RVConfig width (tgtPolicy tgt) hart exps (tgtWeak tgt) (nmSelfLoops nm))
+              DirectX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm))
             results = [(n, emit f) | (n, f) <- M.toList lowered]
             errors = [n ++ ": " ++ e | (n, Left e) <- results, "compiler error: " `isPrefixOf` e]
             refusals = [(n, e) | (n, Left e) <- results, not ("compiler error: " `isPrefixOf` e)]
@@ -569,8 +572,7 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
       emitted = if S.null elide then prog else M.filterWithKey (\n _ -> S.notMember n elide) prog
       (nativeFns, nativeFallbacks, nativeNotes) = case tgtNative tgt of
         Nothing -> (M.empty, [], [])
-        Just nm | tgtW tgt == 8 -> nativeSelect tgt nm workerSigs ext exps prog emitted
-                | otherwise -> (M.empty, [(n, "no typed-IR native backend for " ++ tgtName tgt) | n <- M.keys emitted], [])
+        Just nm -> nativeSelect tgt nm workerSigs ext exps prog emitted
       (body, st) = runState (top prog emitted nativeFns) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty)
       -- the native text in the target's own syntax, then the string
       -- objects it names (one per distinct text; the unit-local nullary
@@ -586,7 +588,7 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
             ++ nativeNotes,
           emNative = if M.null nativeFns then [] else
             ["    .text", "    .balign 4", ""] ++ concatMap nfLines (M.elems nativeFns)
-              ++ (if null nativeStrings then [] else rodataDirective nativeFormat : concatMap (stringObject nativeFormat) nativeStrings),
+              ++ (if null nativeStrings then [] else rodataDirective nativeFormat : concatMap (stringObjectWidth (policyWidth (tgtPolicy tgt)) nativeFormat) nativeStrings),
           emNativeNames = M.keys nativeFns,
           emFallbacks = nativeFallbacks
         }

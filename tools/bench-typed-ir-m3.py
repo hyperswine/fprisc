@@ -48,6 +48,9 @@ VARIANTS = {
     "legacy": {},
     "legacy-best": {"FPR_COSTED_REGISTERS": "1", "FPR_COMPACT_FRAMES": "1", "FPR_SELF_LOOPS": "1", "FPR_A64_FRAME_PAIRS": "1"},
     "typed-ir": {"FPR_TYPED_IR_BACKEND": "mixed"},
+    "typed-ir-forward": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_FORWARD_PARAMS": "1"},
+    "typed-ir-entry": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_FORWARD_PARAMS": "1", "FPR_TYPED_IR_SHALLOW_STACK": "1"},
+    "typed-ir-shallow": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_SHALLOW_STACK": "1"},
     "typed-ir-noloop": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_SELF_LOOPS": "0"},
     # the backend for what it covers, the best legacy combination for the rest
     "typed-ir-best": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_COSTED_REGISTERS": "1", "FPR_COMPACT_FRAMES": "1", "FPR_SELF_LOOPS": "1", "FPR_A64_FRAME_PAIRS": "1"},
@@ -177,16 +180,21 @@ def main():
 
     def digest(p):
         return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+    dirty = run(["git", "status", "--porcelain"], base)[0]
+    patch = run(["git", "diff", "--binary", "HEAD"], base)[0]
+    (out / "source.patch").write_text(patch)
     result = {
         "revision": run(["git", "rev-parse", "HEAD"], base)[0].strip(),
         "compiler_sha256": digest(compiler),
+        "working_tree_status": dirty,
+        "source_patch_sha256": hashlib.sha256(patch.encode()).hexdigest(),
         "platform": platform.platform(),
         "cc": run(["cc", "--version"], base)[0].splitlines()[0],
         "protocol": {"runs": args.runs, "warmups": 1, "harts": 1,
                      "order": "rotating by one each round, reversed every other block",
                      "internal_timers": list(INTERNAL), "process_wall_timers": WALL,
                      "limits": "host background work and frequency uncontrolled; no energy measurement; "
-                               "pipeline's Vec kernels and sha's digest stay legacy under the backend (see coverage)"},
+                               "mixed-mode coverage is recorded per build; speedups cannot be attributed to one pass without a separate comparison"},
         "variants": {v: VARIANTS[v] for v in variants},
         "builds": {f"{n}-{v}": {k: x for k, x in b.items() if k != "expected"} for (n, v), b in builds.items()},
         "samples": {f"{n}-{v}": s for (n, v), s in samples.items()},
@@ -217,8 +225,8 @@ def summarise(result, workloads, variants):
     rng = random.Random(20261021)
     lines = ["# M3 paired measurements", "", f"revision {result['revision']}, compiler sha256 {result['compiler_sha256'][:12]}, {result['platform']}",
              f"{result['protocol']['runs']} rounds; internal timers: {', '.join(result['protocol']['internal_timers'])}; process wall: {', '.join(result['protocol']['process_wall_timers'])}", ""]
-    for against in [v for v in ("legacy", "legacy-best") if v in variants]:
-        for subject in [v for v in variants if v.startswith("typed-ir")]:
+    for against in [v for v in ("legacy", "legacy-best", "typed-ir") if v in variants]:
+        for subject in [v for v in variants if v.startswith("typed-ir") and v != against]:
             lines += [f"## {subject} against {against}", "",
                       "| workload | timer | " + against + " median ms | " + subject + " median ms | median of paired ratios | 95% bootstrap CI | faster pairs |",
                       "|---|---|---:|---:|---:|---:|---:|"]

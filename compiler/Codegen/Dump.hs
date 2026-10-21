@@ -27,6 +27,11 @@ dumpFn fn =
     opText = \case
       OConstInt n -> "const " ++ show n
       ONullary t v -> "nullary " ++ show t ++ " " ++ show v
+      OString s -> "string " ++ show s
+      OMake t c fs -> "make " ++ show t ++ ":" ++ show c ++ args fs
+      OField n v -> "field " ++ show n ++ " " ++ value v
+      OStrLen v -> "strlen " ++ value v
+      OCharAt s n -> "charAt " ++ value s ++ ", " ++ value n
       OTag v -> "tag " ++ value v
       OUntag v -> "untag " ++ value v
       OBoolOf v -> "boolof " ++ value v

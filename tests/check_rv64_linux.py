@@ -75,8 +75,10 @@ def build(output, cc):
         'lines': ('tests/base/lines.fpr', ['lines: 4 chars: 9', 'lines: to stderr']),
     }
     for name, (source, markers) in sources.items():
-        command([FPR, 'build', ROOT / source, '--target=linux-riscv64', '--cc', cc,
-                 '--harts', '4', '-o', output / name])
+        log = command([FPR, 'build', ROOT / source, '--target=linux-riscv64', '--cc', cc,
+                 '--harts', '4', '-o', output / name, '-v'])
+        if os.environ.get('FPR_TYPED_IR_BACKEND'):
+            assert re.search(r'typed-ir-backend: native [1-9][0-9]*/', log), (name, log[-4000:])
         for harts in (1, 4):
             cases.append(dict(name=name, harts=harts, markers=markers,
                               stdin='ab\ncde\n\nlast' if name == 'lines' else ''))
@@ -136,11 +138,17 @@ def main():
     parser.add_argument('--cc')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--runner')
+    parser.add_argument('--typed-ir', action='store_true', help='exercise direct typed RV64 in mixed mode')
     parser.add_argument('--execute-only', action='store_true')
     args = parser.parse_args()
+    if args.typed_ir:
+        os.environ['FPR_TYPED_IR_BACKEND'] = 'mixed'
+        if args.output:
+            os.environ['XDG_CACHE_HOME'] = str(args.output.resolve() / 'cache')
     if not args.execute_only:
         with tempfile.TemporaryDirectory(prefix='fpr-rv64-lowering-') as tmp:
-            lowering(Path(tmp))
+            if not args.typed_ir:
+                lowering(Path(tmp))
         if args.cc:
             if not args.output:
                 parser.error('--cc requires --output')

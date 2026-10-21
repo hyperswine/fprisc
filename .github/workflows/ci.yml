@@ -17,7 +17,7 @@ name: ci
 
 on:
   push:
-    branches: [main, codex/a64-overflow-checks-20261020]
+    branches: [main, codex/a64-overflow-checks-20261020, codex/typed-ir-migration-20261022]
   pull_request:
   workflow_dispatch:
 
@@ -64,6 +64,13 @@ jobs:
         run: |
           python3 -u tests/check_typed_ir_a64.py
           python3 -u tests/check_typed_ir_x64.py --require-execution
+          python3 -u tests/check_typed_ir_x64.py --require-execution --entry-optimizations
+          python3 -u tests/check_typed_ir_aggregates.py
+          python3 -u tests/check_typed_ir_bench.py
+      - name: Typed IR direct RISC-V (QEMU independent oracles)
+        run: |
+          python3 -u tests/check_typed_ir_rv.py --width 32 --require-execution
+          python3 -u tests/check_typed_ir_rv.py --width 64 --require-execution
       - name: check_base
         run: python3 -u tests/check_base.py --skip-typed-ir-native
       # check_raw also boots builtin/raw images on qemu-system-riscv64
@@ -85,3 +92,10 @@ jobs:
         run: |
           python3 -u tests/check_rv64_linux.py --cc riscv64-linux-gnu-gcc \
             --output "$RUNNER_TEMP/rv64" --runner 'qemu-riscv64 -L /usr/riscv64-linux-gnu'
+
+      - name: Typed IR RV64 Linux (TLS and actor runtime)
+        env:
+          FPR_TYPED_IR_BACKEND: mixed
+        run: |
+          python3 -u tests/check_rv64_linux.py --typed-ir --cc riscv64-linux-gnu-gcc \
+            --output "$RUNNER_TEMP/rv64-typed" --runner 'qemu-riscv64 -L /usr/riscv64-linux-gnu'

@@ -1,0 +1,19 @@
+# Managed aggregates stay alive across allocations and scheduler ticks.
+unsafe base.
+aggPair n = (n, n + 1).
+aggSumPair p = case p of (a, b) -> a + b.
+aggNested n = (aggPair n, aggPair (n + 2)).
+aggSumNested p = case p of (a, b) -> aggSumPair a + aggSumPair b.
+aggRecord n = { count = n, text = "ABC" }.
+aggReadRecord p = p.count + strlen p.text.
+aggLiteral u = "Āÿ".
+aggByteAt s i = charAt s i.
+aggLengthOf s = strlen s.
+aggKeep : unsafe Int -> (Int, Int) -> Int .
+aggKeep n p = if n == 0 then aggSumPair p else q = aggPair n; aggKeep (n - 1) p + aggSumPair q.
+main = case Sys.args Unit of
+    ["value", n] ->
+      x = parseInt n;
+      print "{aggSumNested (aggNested x)} {aggReadRecord (aggRecord x)} {aggKeep 2000 (aggPair x)} {aggLengthOf (aggLiteral Unit)} {aggByteAt (aggLiteral Unit) 0} {aggByteAt (aggLiteral Unit) 1} {aggByteAt (aggLiteral Unit) 2} {aggByteAt (aggLiteral Unit) 3}"
+  | ["bad", i] -> print "{aggByteAt (aggLiteral Unit) (parseInt i)}"
+  | _ -> Unit.

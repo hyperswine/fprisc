@@ -1,0 +1,11 @@
+Typed IR verifier: a well-formed function accepted, 24 malformations refused by name PASS
+Typed IR bit operations and shifts: lowered as declared HAL names, bits.c semantics, exact trap text and order PASS
+Typed IR dead arms, nullary definitions, function/HAL/primitive values, whole-program lookups: lowered, verified, evaluated with the legacy trap text PASS
+Typed IR generic application: local, partial, over-saturated and computed heads through the runtime's apply, traps by name PASS
+Typed IR simplification: conversion pairs folded, Bool joins threaded, pure operations shared per block, dead pure definitions dropped; evaluator results, traps and events unchanged on every fixture PASS
+Typed IR worker metadata: ordered mixed parameters, renaming, Bool equality/aliases, missing and malformed signatures PASS
+Typed IR lowering: the generator's fib and sum shapes lower, verify, dump stably and evaluate to reference answers, exact traps and structural tick counts; unsupported forms are refused by name PASS
+a64: coverage 22/22 functions; main lowers with aggregate/string coverage; 11 evaluations equal the legacy binary
+x64: coverage 22/22 functions; main lowers with aggregate/string coverage; 11 evaluations equal the legacy binary
+rv64: coverage 22/22 functions; main lowers with aggregate/string coverage; 11 evaluations equal the legacy binary
+Typed IR M1: a64/x64/rv64 portable lowering, deterministic dumps, native value/trap parity, structural tick counts, independent Bool oracle and worker cache transitions, report leaves emission unchanged: PASS

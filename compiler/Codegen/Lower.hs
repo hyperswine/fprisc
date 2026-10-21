@@ -188,9 +188,9 @@ lowerFn policy sigs prog ext hal name (params, body)
       open entry (zip pvs ptys)
       -- the entry sequence the policy states: the headroom check, then the
       -- fuel tick, both after the parameters are the entry's values
-      case polStackCheck policy of
-        StackCheckEveryEntry -> emitDo OStackCheck
-        StackCheckLegacyShallow -> refuse "the legacy shallow stack-check rule is not implemented in M2"
+      -- Keep the obligation explicit until native frame layout can prove
+      -- the shallow-entry exemption. Lowering cannot know the frame size.
+      emitDo OStackCheck
       when (polFuel policy) (emitDo OSafepoint)
       let cx = Cx prog ext hal policy name entry ptys rty sigs
           env = M.fromList (zip params (zip pvs ptys))
@@ -331,12 +331,18 @@ lowerVal cx env = \case
     | Just (Prim _ _ (Just sym)) <- M.lookup x (cxHal cx) -> symbolValue sym
     | otherwise -> refuse ("the primitive or HAL value `" ++ x ++ "`")
   CInt n
-    | intFits64 n -> (\v -> (v, TInt)) <$> emit TInt (OConstInt n)
+    | intFitsWidth (policyWidth (cxPolicy cx)) n -> (\v -> (v, TInt)) <$> emit TInt (OConstInt n)
     | otherwise -> refuse ("the literal " ++ show n ++ " does not fit an Int")
-  CStr _ -> refuse "a string literal"
+  CStr s -> (\v -> (v, TVal)) <$> emit TVal (OString s)
   CMk t v [] -> nullary t v
-  CMk _ _ _ -> refuse "a constructor with fields"
-  CProj _ _ -> refuse "a field projection"
+  CMk tid variant fs -> do
+    fields <- mapM (\e -> lowerVal cx env e >>= asVal) fs
+    v <- emit TVal (OMake tid variant fields)
+    pure (v, TVal)
+  CProj index obj -> do
+    value <- lowerVal cx env obj >>= asVal
+    v <- emit TVal (OField index value)
+    pure (v, TVal)
   CLam _ _ -> refuse "a lambda"
   CErr _ -> refuse "a dead arm (CErr) in value position (not an arm of a branch)"
   CTagEq 1 1 c -> (\p -> (p, TPred)) <$> lowerCond cx env c
@@ -397,6 +403,15 @@ lowerVal cx env = \case
           x <- lowerVal cx env a >>= asInt
           y <- lowerVal cx env b >>= asInt
           v <- emit TInt (OShift o x y)
+          pure (v, TInt)
+      | isPrim cx env h, h == "strlen", [a] <- args, Just (Prim 1 _ _) <- M.lookup h (cxHal cx) -> do
+          str <- lowerVal cx env a >>= asVal
+          v <- emit TInt (OStrLen str)
+          pure (v, TInt)
+      | isPrim cx env h, h == "charAt", [a, b] <- args, Just (Prim 2 _ _) <- M.lookup h (cxHal cx) -> do
+          str <- lowerVal cx env a >>= asVal
+          index <- lowerVal cx env b >>= asInt
+          v <- emit TInt (OCharAt str index)
           pure (v, TInt)
       -- the raw forms of the scalar workers
       | isPrim cx env h, h == scalarPrefix ++ "unbox", [a] <- args -> lowerVal cx env a >>= asInt >>= \v -> pure (v, TInt)

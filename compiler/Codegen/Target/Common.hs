@@ -2,14 +2,68 @@
 -- Shared native output and symbol identity, independent of instruction set.
 module Codegen.Target.Common
   ( ObjectFormat (..), NativeFn (..), mangleName, functionSymbol,
-    stringLabel, stringObject, rodataDirective ) where
+    stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry,
+    forwardEntry, entrySlot, utf8Bytes ) where
 import Codegen.Bounds (Report)
 import Codegen.IR (Name)
+import qualified Codegen.IR as IR
+import Codegen.Frame
+import Codegen.Policy (StackPolicy (..))
+import Codegen.Selected
 import Data.Bits (shiftR, xor, (.&.))
 import Data.Char (isAlphaNum, isAscii, ord)
 import Data.List (intercalate)
 import Data.Word (Word64)
 import Numeric (showHex)
+
+-- A forwarding wrapper has no computation between its entry and tail
+-- transfer. Re-declare each parameter at the selected entry pseudo: its
+-- expansion preserves these registers around slow calls using private
+-- frame objects. Allocation can then keep parameters in argument registers
+-- on the common path. This is deliberately limited to register arities and
+-- excludes self recursion, TLS argument cells, and arbitrary function bodies.
+forwardEntry :: Bool -> [Phys] -> IR.Fn -> SFn -> (SFn, [FrameObj])
+forwardEntry enabled regs fn sf
+  | enabled, [b] <- IR.fnBlocks fn,
+    IR.TTailCall callee _ <- IR.bTerm b,
+    IR.calleeName callee /= IR.fnName fn,
+    all (\(IR.Instr _ op) -> op `elem` [IR.OStackCheck, IR.OSafepoint]) (IR.bInstrs b),
+    not (null (sfParams sf)), length (sfParams sf) <= length regs =
+      let ps = zip (sfParams sf) regs
+          operands = [OV v (Fix p) | (v, p) <- ps]
+          preserve (I i) | siOp i == "entry.check.tick" = I i
+            {siDefs = operands, siUses = operands,
+             siClobbers = filter (`notElem` map snd ps) (siClobbers i)}
+          preserve it = it
+          slots = [frameObj (entrySlot n) 8 8 Temporary (ty == IR.TVal)
+                  | (n, (_, ty)) <- zip [0..] (IR.bParams b)]
+       in (sf {sfBody = map preserve (sfBody sf)}, slots)
+  | otherwise = (sf, [])
+
+-- Separate from allocation's nonnegative spill IDs and saved-register IDs.
+entrySlot :: Int -> Int
+entrySlot n = -2000 - n
+
+-- The hosted runtime reserves headroom for one small entry. A small frame
+-- which cannot deepen the generated call chain may use that reserve.
+-- Decide after allocation/layout (and self-loop formation), never from an
+-- estimated frame or assembly text. Tail exits discard this frame first.
+-- Unknown/generic calls are safepoints too and conservatively keep checks.
+-- Keep clobbers unchanged: this pass does not change allocation assumptions.
+shallowEntry :: StackPolicy -> Int -> [Item] -> (Bool, [Item])
+shallowEntry policy bytes items
+  | policy == StackCheckLegacyShallow, bytes <= 1024,
+    not (any deepens items) = (True, concatMap strip items)
+  | otherwise = (False, items)
+  where
+    entry i = siOp i `elem` ["entry.check", "entry.check.tick", "entry.tick"]
+    deepens (I i) = not (entry i) && siControl i /= Return
+      && any (\c -> callSafepoint c || callTarget c == "fpr_applyN") (siCalls i)
+    deepens _ = False
+    strip (I i) | siOp i == "entry.check" = []
+    strip (I i) | siOp i == "entry.check.tick" =
+      [I i {siOp = "entry.tick", siCalls = filter ((/= "fpr_stack_grow") . callTarget) (siCalls i)}]
+    strip i = [i]
 
 data ObjectFormat = MachO | ELF deriving (Eq, Ord, Show)
 
@@ -49,10 +103,13 @@ stringLabel s = ".Ltirstr_" ++ showHex (foldl step 14695981039346656037 (utf8Byt
 -- bytes}, UTF-8 for codepoints from 0x100, raw bytes below (wire data); the
 -- label in the format's spelling (Mach-O's private prefix is `L`)
 stringObject :: ObjectFormat -> String -> [String]
-stringObject fmt s =
+stringObject = stringObjectWidth IR.W64
+
+stringObjectWidth :: IR.Width -> ObjectFormat -> String -> [String]
+stringObjectWidth width fmt s =
   let bs = utf8Bytes s
       label = case fmt of MachO -> drop 1 (stringLabel s); ELF -> stringLabel s
-   in ["    .balign 8", label ++ ":", "    .long 9000", "    .long 0", "    .quad " ++ show (length bs)]
+   in ["    .balign 8", label ++ ":", "    .long 9000", "    .long 0", (if width == IR.W64 then "    .quad " else "    .long ") ++ show (length bs)]
         ++ byteLines bs ++ [""]
   where
     byteLines [] = []

@@ -28,7 +28,7 @@ module Codegen.IR
     ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), Callee (..), CalleeKind (..), isForeign,
     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
-    intMin, intMax, intFits64, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
+    intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
   ) where
 
 import qualified Data.Map.Strict as M
@@ -48,7 +48,7 @@ data Width = W32 | W64 deriving (Eq, Ord, Show)
 -- addresses for the indexed-memory forms, floats for the F64 paths).
 data Ty
   = TVal -- a tagged runtime word: a tagged Int (2n+1) or an object pointer
-  | TInt -- an unboxed language Int, within the 63-bit range by construction
+  | TInt -- unboxed language Int in the policy word width (31 or 63 signed bits)
   | TRaw Width -- a raw machine integer, no language range
   | TPred -- a predicate, 0 or 1
   | TAddr -- an unmanaged address
@@ -93,6 +93,11 @@ data Callee = Callee
 data Op
   = OConstInt Integer -- :: TInt; the literal fits the Int range
   | ONullary Int Int -- :: TVal; the immortal object of a nullary constructor (typeid, variant)
+  | OString String -- immortal byte-string object, same encoding as the source literal
+  | OMake Int Int [VId] -- allocate an immutable constructor with tagged fields
+  | OField Int VId -- read a statically typed constructor field (zero-based)
+  | OStrLen VId -- checked String byte length -> TInt
+  | OCharAt VId VId -- checked String and TInt byte index -> TInt
   | OTag VId -- TInt -> TVal: box as 2n+1
   | OUntag VId -- TVal -> TInt: the value is an Int by typing; a representation change, not a check
   | OBoolOf VId -- TPred -> TVal: fpr_true / fpr_false
@@ -159,6 +164,11 @@ opEffect :: Op -> Effect
 opEffect = \case
   OConstInt _ -> Pure
   ONullary _ _ -> Pure
+  OString _ -> Pure
+  OMake _ _ _ -> RuntimeCall
+  OField _ _ -> Pure
+  OStrLen _ -> MayTrap
+  OCharAt _ _ -> MayTrap
   OTag _ -> Pure
   OUntag _ -> Pure
   OBoolOf _ -> Pure
@@ -182,6 +192,11 @@ opUses :: Op -> [VId]
 opUses = \case
   OConstInt _ -> []
   ONullary _ _ -> []
+  OString _ -> []
+  OMake _ _ fs -> fs
+  OField _ v -> [v]
+  OStrLen v -> [v]
+  OCharAt s n -> [s, n]
   OTag v -> [v]
   OUntag v -> [v]
   OBoolOf v -> [v]
@@ -215,6 +230,11 @@ mapOpUses :: (VId -> VId) -> Op -> Op
 mapOpUses f = \case
   OConstInt n -> OConstInt n
   ONullary t v -> ONullary t v
+  OString s -> OString s
+  OMake t v fs -> OMake t v (map f fs)
+  OField n v -> OField n (f v)
+  OStrLen v -> OStrLen (f v)
+  OCharAt s n -> OCharAt (f s) (f n)
   OTag v -> OTag (f v)
   OUntag v -> OUntag (f v)
   OBoolOf v -> OBoolOf (f v)
@@ -286,3 +306,17 @@ shiftName = \case Shl -> "BITSHIFTL"; Shr -> "BITSHIFTR"
 -- shift expansions and bits.c's TAG((sw)...))
 wrap63 :: Integer -> Integer
 wrap63 v = let m = v `mod` (2 ^ (63 :: Int)) in if m > intMax then m - 2 ^ (63 :: Int) else m
+
+widthBits :: Width -> Int
+widthBits W32 = 32
+widthBits W64 = 64
+
+intBounds :: Width -> (Integer, Integer)
+intBounds width = let half = 2 ^ (widthBits width - 2) in (-half, half - 1)
+
+intFitsWidth :: Width -> Integer -> Bool
+intFitsWidth width n = let (lo,hi) = intBounds width in n >= lo && n <= hi
+
+wrapInt :: Width -> Integer -> Integer
+wrapInt width n = let modulus = 2 ^ (widthBits width - 1); m = n `mod` modulus
+                  in if m > snd (intBounds width) then m - modulus else m

@@ -12,7 +12,8 @@ static uintptr_t hart[64];
 void *probe_hart = hart;
 V probe_a6, probe_a7;
 struct Bool { uint32_t tid, var; } fpr_false = {1, 0}, fpr_true = {1, 1};
-static unsigned yields, traps, cases;
+static unsigned yields, traps, cases, growths;
+static int force_growth;
 static unsigned fallbacks[5];
 static jmp_buf failure;
 static int expected_trap, trap_kind;
@@ -27,7 +28,7 @@ void probe_fuel_reset(void) {
     probe_a6=probe_a7=tag(-777);
     for (unsigned i=1;i<=56;i++) hart[i]=(uintptr_t)tag(-777);
 }
-uintptr_t fpr_stack_grow(void) { fputs("unexpected stack growth\n", stderr); abort(); }
+void probe_stack_reset(void) { ++growths; hart[58]=UINTPTR_MAX; }
 static V fail(int kind, V a, V b) {
     assert(expected_trap);
     trap_kind = kind; trap_a = a; trap_b = b; ++traps;
@@ -84,7 +85,7 @@ V fpr_prim_fn__x3e(V a,V b) { assert(0); return 0; }
 extern V probe_call(Fn, const V *);
 #define DECL(name) extern void fpr_fn_##name(void)
 DECL(add); DECL(sub); DECL(mul); DECL(divide); DECL(shift); DECL(branch);
-DECL(hot); DECL(calls); DECL(boolResult); DECL(boolEq); DECL(boolNe);
+DECL(hot); DECL(calls); DECL(forward); DECL(forwardSwap); DECL(boolResult); DECL(boolEq); DECL(boolNe);
 DECL(call7); DECL(call8); DECL(rotate6); DECL(rotate7); DECL(rotate8); DECL(rotate63);
 DECL(pressure); DECL(wide);
 DECL(answer); DECL(useCaf); DECL(tick); DECL(applyLocal);
@@ -94,7 +95,7 @@ static V invoke(Fn fn, const V *args, unsigned count) {
     for (unsigned i=0;i<count && i<6;i++) first[i]=args[i];
     probe_a6=count>6 ? args[6] : 0; probe_a7=count>7 ? args[7] : 0;
     for (unsigned i=8;i<count;i++) hart[i-7]=(uintptr_t)args[i];
-    hart[0]=1; hart[57]=0; hart[58]=UINTPTR_MAX;
+    hart[0]=1; hart[57]=0; hart[58]=force_growth ? 0 : UINTPTR_MAX; force_growth=0;
     ++cases;
     return probe_call(fn,first);
 }
@@ -129,6 +130,12 @@ int main(void) {
         V arg[]={tag(n)};
         assert(invoke(fpr_fn_pressure,arg,1)==tag(12*n+78+hot(n,n,n,n,n)));
         assert(invoke(fpr_fn_wide,arg,1)==tag(n*324));
+    }
+    for (int64_t n=-50;n<=50;n++) {
+        V args[]={tag(n),tag(2),tag(3),tag(4),tag(5)};
+        force_growth=1;
+        assert(invoke(fpr_fn_forward,args,5)==tag(hot(5,4,3,2,n)));
+        binary(fpr_fn_forwardSwap,n,7,7-n);
     }
     int64_t edges[]={lo,lo+1,-2147483648LL,-1,0,1,2147483647LL,hi-1,hi};
     for (unsigned i=0;i<sizeof edges/sizeof *edges;i++) {
@@ -182,6 +189,9 @@ int main(void) {
     /* a function parameter applied twice through fpr_applyN's stack staging */
     for (int64_t x=-5;x<=5;x++) { V args[]={(V)&incPap,tag(x)}; assert(invoke(fpr_fn_applyLocal,args,2)==tag(2*x+3)); }
     assert(applies==22);
+#ifdef ORACLE_TYPED_ENTRY_CHECKS
+    assert(growths>=101);
+#endif
     assert(yields>cases && traps==13);
     printf("%u C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS\n",cases);
     return 0;

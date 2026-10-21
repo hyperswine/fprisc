@@ -1,14 +1,15 @@
 # Typed native IR and direct architecture backends
 
 Date: 2026-10-20. Kind: goal / plan and proposed architecture.
-Status: accepted with the narrowing of the 2026-10-20 review (one IR, A64
-first, M0 as a register page, an M3 investment review). M1 review repairs
-are implemented; both M2 scalar selectors are implemented
-([A64](2026-10-21-TYPED-IR-M2-A64.md),
-[x86 and shared review](2026-10-21-TYPED-IR-M2-X64.md)). M2 remains open
-pending native Linux runtime acceptance. (2026-10-21, later: that leg passed in
-[run 39531450292](https://github.com/hyperswine/fprisc/actions/runs/39531450292);
-every M2 box is ticked.)
+Status (2026-10-22): M1-M3 and the first coverage increments are merged
+in remote main at `0c9c8b7`. Both direct backends and the allocator passed
+native Linux CI at that exact commit in
+[run 39620437639](https://github.com/hyperswine/fprisc/actions/runs/39620437639).
+The backend remains opt-in. M3's historical performance gates were not all
+met; broader coverage, remaining targets/profiles and default promotion
+remain open. The migration branch now adds aggregate/string coverage and direct RISC-V
+selection; this is not yet a claim that all M4 profiles are accepted. Current work is tracked in
+[the migration execution record](2026-10-22-TYPED-IR-MIGRATION.md).
 Baseline: native compiler at `c328232f63d3f4a6a4b4c1dde7bce17cc449e19d`
 (codegen revision 66); 2026-10-21 amendments cover the M1 repairs at revision 67.
 Audience: compiler implementers and reviewers.
@@ -114,7 +115,7 @@ Proposed module boundaries, subject to the first implementation review:
 | `Codegen/Liveness.hs`, `Codegen/Allocate.hs` | Shared analyses, allocation and spill decisions |
 | `Codegen/Selected.hs` | Selected instructions, operand constraints, temporaries, flags and call clobbers |
 | `Codegen/Frame.hs` | Symbolic frame objects and final layout |
-| `Codegen/Target/{A64,X64,RV64,RV32}.hs` | Legalization, instruction selection, ABI constraints and target printing |
+| `Codegen/Target/{A64,X64,RV}.hs` | Legalization, instruction selection, ABI constraints and target printing |
 | `Codegen/Bounds.hs` | Structured segment analysis and explicit bound provenance |
 
 Start with ordinary Haskell algebraic data types and a mandatory verifier.
@@ -331,9 +332,13 @@ The exit evidence and the investment review are in the
 
 ### M4. RISC-V and broader language/profile coverage
 
-- [ ] Add direct RV64 and RV32 selection and width legalization.
-- [ ] Expand to aggregates, strings, closures/apply, floating point, vectors,
-  ownership-sensitive paths, and builtin/HAL operations in bounded increments.
+- [x] Add direct RV64 and RV32 selection and explicit 31/63-bit width legalization.
+  Local QEMU oracles pass in both loop modes; Linux runtime and board acceptance
+  are separate gates in the execution record.
+- [x] Add immutable constructors, projections, literal strings, checked byte length
+  and byte access; retain the existing generic-application support.
+- [ ] Finish value-position dead arms, floating point, vectors and
+  ownership-sensitive builtin/HAL operations in bounded increments.
 - [ ] Cover QOS TLS/hart access, imported units, dynamic loading and exported
   C entrypoints where supported.
 - [ ] Complete the target/profile coverage matrix with native or board
@@ -346,7 +351,7 @@ acceptance remain separate where those targets are claimed.
 This is the long tail. The vector kernels, NEON and the x64 XMM shadow
 bank, closures, TLS and dynamic loading are the larger half of the
 generator. The legacy path stays the default for every form outside the
-scalar subset until this milestone closes, and that is expected to be a
+validated subset until this milestone closes, and that is expected to be a
 long time; the rule in "Keeping up with the legacy generator" is what
 keeps the two paths honest meanwhile.
 
@@ -450,20 +455,23 @@ The integration and shared review repairs, direct x86 selector, strict
 Rosetta oracle, mixed ABI probes and Linux test registration are recorded in
 [M2-X64](2026-10-21-TYPED-IR-M2-X64.md).
 
-Proceed in this order:
+Proceed in this order (accepted 2026-10-22):
 
-1. Complete the native Linux runtime CI leg. Inspect exact results/traps,
-   C and mixed ABI boundaries, real TLS, stack growth, harts and cache
-   transitions. Preserve the explicit distinction from Rosetta substitutions.
-2. Resolve any failures and record the CI commit/run before marking M2 done.
-3. Start M3 liveness/allocation with the existing strict corpus retained.
-   Verify flag lifetimes and call-clobber handling as allocation becomes
-   capable of keeping values across instructions; conservative placement
-   currently avoids those lifetime decisions.
-4. Run paired native measurements against legacy emission and C, including
-   compile time, instructions, frame/stack size, code size and runtime.
-   Conservative M2 emission establishes correctness and is not a speedup.
-5. Wider language/profile coverage and arities above eight remain M4.
+1. Refresh paired performance measurements at the merged revision. The M3
+   results predate expanded coverage; preserve them as historical evidence.
+2. Implement and independently measure shallow-entry stack checks and
+   forwarding-parameter handling. Retain ticks, argument survival, stack
+   headroom, exact traps, cache separation and strict coverage.
+3. Expand aggregates and strings first, then remaining language forms, with
+   explicit layouts, allocation and root contracts and independent oracles.
+4. Add direct RV64/RV32 selection and remaining runtime profiles; validate
+   each with native, emulated or board evidence labelled by its actual scope.
+5. Promote one target/profile combination only when its coverage, correctness
+   and performance gates pass. Remove a legacy translator only when none of
+   its supported combinations still requires it; preserve rollback meanwhile.
+
+This order does not turn an implementation checkbox into a promotion approval.
+A failed benchmark or missing hardware leg stays an open gate in the record.
 
 ## Alternatives and decision status
 
@@ -501,6 +509,6 @@ defects and a native Bool equality discrepancy. Before native emission:
 
 Implementation evidence: [M1 repairs](2026-10-21-TYPED-IR-M1-REPAIRS.md).
 
-The historical M1 repairs above are complete. The current M2 gate is native
-Linux acceptance of the implemented x86 selector. M3 follows that evidence;
-default promotion remains a later acceptance decision.
+The historical M1 repairs and M2 Linux gate are complete. M3 allocation and
+coverage increments are merged. The dated migration execution record replaces
+the former instructions to start those already completed steps.

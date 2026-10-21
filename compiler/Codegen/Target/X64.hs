@@ -29,11 +29,12 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 8 -- the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
+x64SelectionRev = 9 -- aggregate and string selection; prior: the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
 
 data X64Config = X64Config
   { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool,
-    cfgSelfLoops :: Bool -- M3: self tail calls as loops (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
+    cfgSelfLoops :: Bool, -- M3: self tail calls as loops (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
+    cfgForwardParams :: Bool
   }
 
 r :: String -> Phys
@@ -206,6 +207,8 @@ nullarySymbol t v = case (t, v) of
 
 select :: X64Config -> Fn -> Either String (SFn, S.Set VReg, S.Set (Int, Int), S.Set String)
 select cfg fn = do
+  validatePolicy (cfgPolicy cfg)
+  unless (policyWidth (cfgPolicy cfg) == W64) (Left "this native target requires the 64-bit word policy")
   let maxV = maximum (0 : [n | b <- fnBlocks fn, (VId n, _) <- blockDefs b]) + 1
       tyMap = M.fromList (concatMap blockDefs (fnBlocks fn))
       managed0 = S.fromList [vreg v | (v, TVal) <- M.toList tyMap]
@@ -247,6 +250,33 @@ selectInstr _ _ (Instr d op) = case op of
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
   OConstInt n -> def (\r -> emitI (li r n))
   ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
+  OString text -> def $ \rd -> do
+    modify (\st -> st {selStrings = S.insert text (selStrings st)})
+    emitI (la rd (stringLabel text))
+  OMake tid variant fields -> def $ \rd -> do
+    size <- freshV False
+    emitI (li size (8 + 8 * fromIntegral (length fields)))
+    emitCall "fpr_alloc" False True [size] (Just rd)
+    forM_ [(0, tid), (4, variant)] $ \(offset, value) -> do
+      header <- freshV False
+      emitI (li header (fromIntegral value))
+      emitI (plain "store.header" [] [any' rd, any' header, OI offset])
+    forM_ (zip [0..] fields) $ \(index, value) ->
+      emitI (plain "store.field" [] [any' rd, any' (vreg value), OI (8 + 8 * index)])
+  OField index obj -> def $ \rd ->
+    emitI (plain "load.field" [any' rd] [any' (vreg obj), OI (8 + 8 * fromIntegral index)])
+  OStrLen str -> def $ \rd -> do
+    tagged <- freshV True
+    emitCall "fpr_g_strlen_call1" False True [vreg str] (Just tagged)
+    emitI (rri "asr" rd tagged 1)
+  OCharAt str index -> def $ \rd -> do
+    shifted <- freshV False
+    taggedIndex <- freshV True
+    taggedResult <- freshV True
+    emitI (rri "lsl" shifted (vreg index) 1)
+    emitI (rri "orri" taggedIndex shifted 1)
+    emitCall "fpr_g_charAt_call2" False True [vreg str, taggedIndex] (Just taggedResult)
+    emitI (rri "asr" rd taggedResult 1)
   OSymbol sym -> def (\r -> emitI (la r sym)) -- the legacy `la a0, <symbol>`
   OFunValue n -> def (\r -> emitI (la r ("fpr_obj_" ++ mangleName n)))
   -- the generic application: the head then every argument pushed 16 bytes
@@ -478,14 +508,16 @@ savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) Fa
 
 emitFnX64 :: X64Config -> Fn -> Either String NativeFn
 emitFnX64 cfg fn = do
-  (sel, managed, nulls, strs) <- select cfg fn
+  (sel0, managed, nulls, strs) <- select cfg fn
+  let (sel, entrySlots) = forwardEntry (cfgForwardParams cfg) argRegs fn sel0
   either (Left . ("compiler error: " ++)) Right (checkFn x64RegisterFile sel)
   let ac = allocConfig (if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing) managed
   alloc <- either (Left . ("compiler error: " ++)) Right (allocateFn ac sel)
   either (Left . ("compiler error: " ++)) Right (checkAllocation ac (fnName fn) (alBody alloc))
   let saves = savedObjs (alSaved alloc)
-      objs = saves ++ alSlots alloc
+      objs = saves ++ alSlots alloc ++ entrySlots
       ly = layout 16 16 objs
+      (shallow, allocatedBody) = shallowEntry (polStackCheck (cfgPolicy cfg)) (lyBytes ly) (alBody alloc)
   when (lyBytes ly > 32768) $ Left ("a frame of " ++ show (lyBytes ly) ++ " bytes exceeds the 32768-byte ceiling (half the runtime's stack headroom)")
   let name = fnName fn
       sym = functionSymbol name
@@ -494,12 +526,12 @@ emitFnX64 cfg fn = do
       restores = ["movq " ++ saveOff o ++ ", %" ++ p | o <- saves, SavedRegister p <- [foKind o]]
       body = I ((plain "enter" [] []) {siImplicitDefs = map r ["rsp", "rbp"]})
         : [I (plain "save" [] []) | not (null saves)]
-        ++ alBody alloc
+        ++ allocatedBody
       rendered = [(it, renderItem ly name saveLines restores it) | it <- body]
       report = analyse (concatMap (uncurry tokOf) rendered)
       visibility = if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl"
       header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir x64 frame=" ++ show (lyBytes ly)
-                  ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
+                  ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
         ++ ["    " ++ visibility ++ " " ++ sym | S.member name (cfgExports cfg)] ++ [sym ++ ":"]
   pure (NativeFn name (header ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList nulls) (S.toList strs))
   where
@@ -526,6 +558,9 @@ renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i
       "%rax" -> "%al"; "%rcx" -> "%cl"; "%rdx" -> "%dl"; "%rsi" -> "%sil"; "%rdi" -> "%dil"; "%rbx" -> "%bl"
       p | p `elem` ["%r" ++ show n | n <- [8 :: Int .. 15]] -> p ++ "b"
       p -> error ("X64 render: no byte register for " ++ p)
+    word32 o = case reg o of
+      "%rax" -> "%eax"; "%rbx" -> "%ebx"; "%rcx" -> "%ecx"; "%rdx" -> "%edx"; "%rsi" -> "%esi"; "%rdi" -> "%edi"
+      p -> p ++ "d"
     imm = \case OI n -> show n; o -> error ("X64 render: not an immediate " ++ show o)
     slot ref = show (M.findWithDefault (error "X64 render: missing frame object") ref (lyOffset ly)) ++ "(%rbp)"
     cc = \case "eq" -> "e"; "ne" -> "ne"; "lt" -> "l"; "gt" -> "g"; "le" -> "le"; "ge" -> "ge"; "o" -> "o"; "hs" -> "ae"; c -> error ("X64 condition " ++ c)
@@ -550,6 +585,9 @@ renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i
       ("movq",[d],[s]) -> ["movq " ++ reg s ++ ", " ++ reg d]
       ("li",[d],[n]) -> ["movabsq $" ++ imm n ++ ", " ++ reg d]
       ("la",[d],[OS s]) -> ["leaq " ++ s ++ "(%rip), " ++ reg d]
+      ("load.field",[d],[base,n]) -> ["movq " ++ imm n ++ "(" ++ reg base ++ "), " ++ reg d]
+      ("store.field",[],[base,value,n]) -> ["movq " ++ reg value ++ ", " ++ imm n ++ "(" ++ reg base ++ ")"]
+      ("store.header",[],[base,value,n]) -> ["movl " ++ word32 value ++ ", " ++ imm n ++ "(" ++ reg base ++ ")"]
       ("ldrsw",[d],[s,n]) -> ["movslq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
       ("movslq",[d],[s,n]) -> ["movslq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
       ("sext63",[d],[_,_]) -> ["shlq $1, " ++ reg d, "sarq $1, " ++ reg d]
@@ -574,19 +612,21 @@ renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i
       ("panic",[],[OS s]) -> ("leaq " ++ s ++ "(%rip), %rdi") : call "fpr_panic"
       ("ret",[],[_]) -> epilogue ++ ["ret"]
       ("tailjump",[],OS s:_) -> epilogue ++ ["jmp " ++ s]
-      ("entry.check.tick",[],[]) -> hartRead ++ stackCheck ++ tick
-      ("entry.check",[],[]) -> hartRead ++ stackCheck
-      ("entry.tick",[],[]) -> hartRead ++ tick
+      ("entry.check.tick",_,_) -> hartRead ++ stackCheck ++ tick
+      ("entry.check",_,_) -> hartRead ++ stackCheck
+      ("entry.tick",_,_) -> hartRead ++ tick
       _ -> error ("X64 render: no form for " ++ show (op,ds,us))
     -- the callee-saved registers come back first (rbp-relative, so after a
     -- stack-segment change they still read the frame they were saved in)
     epilogue = restores ++ ["movq %rbp, %r11", "movq -16(%rbp), %rbp", "leaq -8(%r11), %rsp"]
     hartRead = ["movq %fs:fpr_posix_hart@tpoff, %r10"]
     base = siNote i
+    parkArgs save = ["movq " ++ (if save then reg o ++ ", " ++ slot ref else slot ref ++ ", " ++ reg o)
+      | (n, o) <- zip [0..] (siDefs i), let ref = FrameRef (entrySlot n)]
     stackCheck =
       ["leaq 8(%rsp), %r11", "subq 456(%r10), %r11", "cmpq 464(%r10), %r11", "jb " ++ lbl (Label (base ++ "_stk"))]
-      ++ call "fpr_stack_grow"
+      ++ parkArgs True ++ call "fpr_stack_grow"
       ++ ["testq %rax, %rax", "jz " ++ lbl (Label (base ++ "_same")), "leaq -8(%rax), %rsp", lbl (Label (base ++ "_same")) ++ ":"]
-      ++ hartRead ++ [lbl (Label (base ++ "_stk")) ++ ":"]
+      ++ parkArgs False ++ hartRead ++ [lbl (Label (base ++ "_stk")) ++ ":"]
     tick = ["subq $1, (%r10)", "cmpq $0, (%r10)", "jg " ++ lbl (Label (base ++ "_fuel"))]
-      ++ call "fpr_fuel_exhausted" ++ [lbl (Label (base ++ "_fuel")) ++ ":"]
+      ++ parkArgs True ++ call "fpr_fuel_exhausted" ++ parkArgs False ++ [lbl (Label (base ++ "_fuel")) ++ ":"]

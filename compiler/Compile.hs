@@ -8,8 +8,9 @@ import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Mono (specializeFunctions, qualifyAux)
 import Inline (inlineSmall, inlineWith, vecPeek)
 import ReceiveTurns (receiveTurns)
+import qualified Codegen.Target.RV as RV
 import Codegen (Target, codegenRev, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtSelfLoops, tgtRetainedRegisters, tgtCostedRegisters, tgtCompactFrames, tgtTypedIr, tgtPolicy, tgtNative, normArc)
-import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..))
+import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth)
 import Codegen.Target.X64 (x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64SelectionRev)
 import Data.Char (isAlphaNum, isAscii, ord)
@@ -439,6 +440,8 @@ compileWithInterface accepted = do
   -- FPR_TYPED_IR_SELF_LOOPS=0 keeps the native backends' self tail calls
   -- as re-entries (M3's separate switch for the loop form; on otherwise)
   envTirLoops <- (/= Just "0") <$> lookupEnv "FPR_TYPED_IR_SELF_LOOPS"
+  envTirForward <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_FORWARD_PARAMS"
+  envTirShallow <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_SHALLOW_STACK"
   envRetainedRegisters <- (== Just "1") <$> lookupEnv "FPR_RETAINED_REGISTERS"
   envA64Pairs <- (== Just "1") <$> lookupEnv "FPR_A64_FRAME_PAIRS"
   envA64Guards <- (== Just "1") <$> lookupEnv "FPR_A64_FIT_GUARDS"
@@ -955,7 +958,7 @@ compileWithInterface accepted = do
                            else if qapp then QosApp
                            else HostedBase,
               polFuel = not (oBuiltin opts),
-              polStackCheck = StackCheckEveryEntry }
+              polStackCheck = if envTirShallow then StackCheckLegacyShallow else StackCheckEveryEntry }
           -- direct backends: the AArch64 hart read follows the
           -- legacy lowering (x28 under fpr build, the TLV cell on a64mac
           -- without --base, local-exec TLS on a64 ELF)
@@ -967,8 +970,11 @@ compileWithInterface accepted = do
                 nmTargetName = if x64 then "x64" else if a64 then "a64" else tgtName (oTarget opts),
                 nmBackend = if a64 && not qapp
                               then Just (DirectA64 (if a64mac then MachO else ELF) (if oBase opts then HartX28 else if a64mac then HartTlvMachO else HartTlsElf))
-                              else if x64 && not qapp then Just DirectX64 else Nothing,
-                nmSelfLoops = envTirLoops }
+                              else if x64 && not qapp then Just DirectX64
+                              else if not a64 && not x64 && not qapp && not (oPlugin opts) && tgtName (oTarget opts) `elem` ["rv32", "rv64"]
+                                then Just (DirectRV (policyWidth irPolicy) (if oBase opts then RV.HartTls else RV.HartTp))
+                              else Nothing,
+                nmSelfLoops = envTirLoops, nmForwardParams = envTirForward }
           -- strict mode: a named function (or any) that fell back is an error
           strictCheck what fallbacks = case envStrict of
             StrictOff -> pure ()
@@ -1016,7 +1022,7 @@ compileWithInterface accepted = do
           contractHash = hashAST [t | t@(TSig n _ _) <- tops, M.member n preTab]
           backendTag = case envBackend of
             Nothing -> ""
-            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else show a64SelectionRev) ++ (if g == PerFunction then "mixed" else "") ++ (if envTirLoops then "" else "-noloops") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
+            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev) ++ (if g == PerFunction then "mixed" else "") ++ (if envTirLoops then "" else "-noloops") ++ (if envTirShallow then "-shallow" else "") ++ (if envTirForward then "-forward" else "") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
           fnv = foldl (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) (14695981039346656037 :: Word64)
           tag = "g" ++ show codegenRev ++ backendTag ++ (if envCostedRegisters then "-costedregs" else "") ++ (if envCompactFrames then "-compactframes" else "") ++ (if envRetainedRegisters then "-retainedregs" else "") ++ (if envSelfLoops then "-selfloops" else "") ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
@@ -1294,7 +1300,7 @@ wcetSummary what asm = do
       let nparsed = map parse nativeRows
           ntop = take 12 (sortBy (\a b -> compare (segOf b) (segOf a)) nparsed)
       unless (null nparsed) $ do
-        hPutStrLn stderr ("[native-insns-v1] " ++ what ++ ": " ++ show (length nparsed) ++ " function(s), max segment " ++ show (maximum (map segOf nparsed)) ++ " A64 instructions between safepoints")
+        hPutStrLn stderr ("[native-insns-v1] " ++ what ++ ": " ++ show (length nparsed) ++ " function(s), max segment " ++ show (maximum (map segOf nparsed)) ++ " target instructions between safepoints")
         mapM_ (\(fn, kvs) -> hPutStrLn stderr ("[native-insns-v1]   " ++ fn ++ "  segmax=" ++ maybe "?" id (lookup "segmax" kvs) ++ "  exittail=" ++ maybe "?" id (lookup "exittail" kvs) ++ "  ccalls=" ++ maybe "?" id (lookup "ccalls" kvs))) ntop
     _ -> pure ()
 

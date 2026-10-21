@@ -8,9 +8,10 @@
 -- typeid, variant and fields), fuel is counted and never runs out, the
 -- stack never fills.  Anything it cannot evaluate is `Stuck`, which is
 -- a coverage gap or a compiler bug, never a program behaviour.
-module Codegen.Eval (RV (..), Event (..), Failure (..), Outcome (..), evalProgram, rvInt, rvBool, rvUnit) where
+module Codegen.Eval (RV (..), Event (..), Failure (..), Outcome (..), evalProgram, evalProgramWidth, rvInt, rvBool, rvUnit) where
 
 import Codegen.IR
+import Codegen.Target.Common (utf8Bytes)
 import Control.Monad (foldM, when)
 import Data.Bits (shiftL, shiftR, xor, (.&.), (.|.))
 import Control.Monad.Except
@@ -21,7 +22,7 @@ import qualified Data.Map.Strict as M
 -- program function (its static PAP when no argument is supplied), or an
 -- immortal object known only by its symbol (a primitive's object, a HAL
 -- contract): opaque, equal only to itself
-data RV = RInt Integer | RObj Int Int [RV] | RPap Name [RV] | RSym String deriving (Eq, Ord, Show)
+data RV = RInt Integer | RObj Int Int [RV] | RPap Name [RV] | RString [Int] | RSym String deriving (Eq, Ord, Show)
 
 rvInt :: Integer -> RV
 rvInt = RInt
@@ -36,6 +37,7 @@ data Event
   = EvSafepoint Name
   | EvStackCheck Name
   | EvCall Name [Val]
+  | EvAllocate Name Int Int [RV]
   | EvTrap String
   deriving (Eq, Show)
 
@@ -57,12 +59,15 @@ trap :: String -> E a
 trap msg = event (EvTrap msg) >> throwError (Trap msg)
 
 evalProgram :: Program -> Name -> [RV] -> Outcome
-evalProgram program name args =
-  let (r, evs) = runState (runExceptT (callFn program name (map VVal args))) []
+evalProgram = evalProgramWidth W64
+
+evalProgramWidth :: Width -> Program -> Name -> [RV] -> Outcome
+evalProgramWidth width program name args =
+  let (r, evs) = runState (runExceptT (callFn width program name (map VVal args))) []
    in Outcome (fmap (\case VVal v -> v; VInt n -> RInt n; VPred b -> rvBool b) r) (reverse evs)
 
-callFn :: Program -> Name -> [Val] -> E Val
-callFn program name args = do
+callFn :: Width -> Program -> Name -> [Val] -> E Val
+callFn width program name args = do
   fn <- maybe (stuck ("call to " ++ name ++ ", which is not in the lowered program")) pure (M.lookup name program)
   event (EvCall name args)
   let blocks = M.fromList [(bId b, b) | b <- fnBlocks fn]
@@ -80,7 +85,7 @@ callFn program name args = do
             if p then mapM (look env) as >>= \as' -> run t as' env else mapM (look env) bs >>= \bs' -> run e bs' env
           TTailCall c as -> do
             when (isForeign c) (stuck ("a foreign tail call to " ++ calleeName c ++ ": the evaluator models no C"))
-            mapM (look env) as >>= callFn program (calleeName c)
+            mapM (look env) as >>= callFn width program (calleeName c)
           TUnreachable msg -> trap msg
       instr env (Instr d op) = do
         r <- opValue env op
@@ -91,6 +96,23 @@ callFn program name args = do
       opValue env = \case
         OConstInt n -> pure (Just (VInt n))
         ONullary t v -> pure (Just (VVal (RObj t v [])))
+        OString s -> pure (Just (VVal (RString (utf8Bytes s))))
+        OMake tid variant fields -> do
+          fs <- mapM (val env) fields
+          event (EvAllocate (fnName fn) tid variant fs)
+          pure (Just (VVal (RObj tid variant fs)))
+        OField n obj -> val env obj >>= \case
+          RObj _ _ fs | n >= 0 && n < length fs -> pure (Just (VVal (fs !! n)))
+          _ -> stuck "a field projection outside its statically typed constructor"
+        OStrLen str -> do
+          bs <- string env "strlen" str
+          pure (Just (VInt (toInteger (length bs))))
+        OCharAt str index -> do
+          bs <- string env "charAt" str
+          n <- int env index
+          when (n < 0 || n >= toInteger (length bs))
+            (trap ("charAt: index out of range (" ++ show n ++ ", length " ++ show (length bs) ++ ")"))
+          pure (Just (VInt (toInteger (bs !! fromInteger n))))
         OTag v -> int env v >>= \n -> pure (Just (VVal (RInt n)))
         OUntag v -> val env v >>= \case
           RInt n -> pure (Just (VInt n))
@@ -107,18 +129,19 @@ callFn program name args = do
           RObj t' c' _ -> pure (Just (VPred (t == t' && c == c')))
           RInt _ -> pure (Just (VPred False))
           RSym s -> stuck ("a tag test on the immortal object " ++ s ++ ", whose typeid the evaluator does not model")
+          RString _ -> pure (Just (VPred (t == 9000 && c == 0)))
           RPap _ _ -> pure (Just (VPred False)) -- T_PAP is no constructor's typeid
         OSymbol sym -> pure (Just (VVal (RSym sym)))
         OFunValue n -> pure (Just (VVal (RPap n [])))
         OApply f as -> do
           h <- val env f
           args' <- mapM (val env) as
-          r <- applyN program h args'
+          r <- applyN width program h args'
           pure (Just (VVal r))
         OArith o a b -> do
           x <- int env a
           y <- int env b
-          r <- arith o x y
+          r <- arith width o x y
           pure (Just (VInt r))
         OBit o a b -> do
           x <- int env a
@@ -127,7 +150,7 @@ callFn program name args = do
         OShift o a b -> do
           x <- int env a
           n <- int env b
-          r <- shift o x n
+          r <- shift width o x n
           pure (Just (VInt r))
         OCmp o a b -> do
           x <- int env a
@@ -140,13 +163,14 @@ callFn program name args = do
         OCall c as -> do
           args' <- mapM (look env) as
           when (isForeign c) (stuck ("a foreign call to " ++ calleeName c ++ ": the evaluator models no C"))
-          r <- callFn program (calleeName c) args'
+          r <- callFn width program (calleeName c) args'
           pure (Just r)
         OSafepoint -> event (EvSafepoint (fnName fn)) >> pure Nothing
         OStackCheck -> event (EvStackCheck (fnName fn)) >> pure Nothing
       look env v = maybe (stuck ("no value " ++ show v)) pure (M.lookup v env)
       int env v = look env v >>= \case VInt n -> pure n; x -> stuck ("an Int was needed, found " ++ show x)
       val env v = look env v >>= \case VVal x -> pure x; x -> stuck ("a runtime value was needed, found " ++ show x)
+      string env prim v = val env v >>= \case RString bs -> pure bs; _ -> trap (prim ++ ": not a string")
       predicate env v = look env v >>= \case VPred b -> pure b; x -> stuck ("a predicate was needed, found " ++ show x)
   run (fnEntry fn) args M.empty
 
@@ -154,10 +178,11 @@ callFn program name args = do
 -- Int or an object that is no PAP traps by name; fewer arguments than the
 -- function still needs make a larger PAP; exactly enough call it; more
 -- call it with what it needs and apply the result to the rest
-applyN :: Program -> RV -> [RV] -> E RV
-applyN program f args = case f of
+applyN :: Width -> Program -> RV -> [RV] -> E RV
+applyN width program f args = case f of
   RInt _ -> trap "apply: applied an integer"
   RObj _ _ _ -> trap "apply: not a function value"
+  RString _ -> trap "apply: not a function value"
   RSym s -> stuck ("an application of the immortal object " ++ s ++ ": the evaluator models no C")
   RPap n supplied -> do
     fn <- maybe (stuck ("an application of " ++ n ++ ", which is not in the lowered program")) pure (M.lookup n program)
@@ -166,16 +191,16 @@ applyN program f args = case f of
     if length args < need
       then pure (RPap n (supplied ++ args))
       else do
-        r <- callFn program n (map VVal (supplied ++ take need args))
+        r <- callFn width program n (map VVal (supplied ++ take need args))
         let rest = drop need args
         r' <- case r of VVal v -> pure v; VInt k -> pure (RInt k); VPred b -> pure (rvBool b)
-        if null rest then pure r' else applyN program r' rest
+        if null rest then pure r' else applyN width program r' rest
 
 -- Int + - * / as runtime/runtime.c states them: the result must fit the
 -- Int range; / refuses a zero divisor first; division truncates toward
 -- zero like the C primitive.
-arith :: ArithOp -> Integer -> Integer -> E Integer
-arith o x y = case o of
+arith :: Width -> ArithOp -> Integer -> Integer -> E Integer
+arith width o x y = case o of
   Add -> fit (x + y)
   Sub -> fit (x - y)
   Mul -> fit (x * y)
@@ -184,10 +209,10 @@ arith o x y = case o of
     | otherwise -> fit (x `quot` y)
   where
     fit r
-      | intFits64 r = pure r
+      | intFitsWidth width r = pure r
       | otherwise =
           trap ("Int overflow: " ++ show x ++ " " ++ arithSymbol o ++ " " ++ show y
-                  ++ " does not fit an Int (" ++ show intMin ++ ".." ++ show intMax ++ "); I64 is the type that wraps")
+                  ++ " does not fit an Int (" ++ show (fst (intBounds width)) ++ ".." ++ show (snd (intBounds width)) ++ "); I64 is the type that wraps")
 
 cmp :: CmpOp -> Integer -> Integer -> Bool
 cmp = \case Lt -> (<); Gt -> (>); Le -> (<=); Ge -> (>=); Eq -> (==); Ne -> (/=)
@@ -201,9 +226,9 @@ bit = \case BAnd -> (.&.); BOr -> (.|.); BXor -> xor
 -- (checked first, the primitive's text), then the 64-bit shift of the
 -- untagged value, logical to the right, and the low 63 bits sign-extended
 -- (TAG((sw)...) drops the top bit)
-shift :: ShiftOp -> Integer -> Integer -> E Integer
-shift o x n
-  | n < 0 || n > 63 = trap (shiftName o ++ ": shift must be 0..63")
+shift :: Width -> ShiftOp -> Integer -> Integer -> E Integer
+shift width o x n
+  | n < 0 || n >= toInteger (widthBits width) = trap (shiftName o ++ ": shift must be 0.." ++ show (widthBits width - 1))
   | otherwise = pure $ case o of
-      Shl -> wrap63 (x `shiftL` fromInteger n)
-      Shr -> wrap63 ((x `mod` 2 ^ (64 :: Int)) `shiftR` fromInteger n)
+      Shl -> wrapInt width (x `shiftL` fromInteger n)
+      Shr -> wrapInt width ((x `mod` 2 ^ widthBits width) `shiftR` fromInteger n)

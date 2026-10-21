@@ -79,7 +79,7 @@ import Codegen.Target.Common
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 8 -- the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
+a64SelectionRev = 9 -- aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -94,7 +94,8 @@ data A64Config = A64Config
     cfgPolicy :: Policy,
     cfgExports :: S.Set String, -- functions that get a visibility directive
     cfgWeak :: Bool, -- a library unit: unqualified globals are .weak
-    cfgSelfLoops :: Bool -- M3: self tail calls as loops (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
+    cfgSelfLoops :: Bool, -- M3: self tail calls as loops (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
+    cfgForwardParams :: Bool
   }
 
 -- ---- registers ---------------------------------------------------------
@@ -315,6 +316,8 @@ nullarySymbol t v = case (t, v) of
 
 select :: A64Config -> Fn -> Either String (SFn, S.Set VReg, S.Set (Int, Int), S.Set String)
 select cfg fn = do
+  validatePolicy (cfgPolicy cfg)
+  unless (policyWidth (cfgPolicy cfg) == W64) (Left "this native target requires the 64-bit word policy")
   let maxV = maximum (0 : [n | b <- fnBlocks fn, (VId n, _) <- blockDefs b]) + 1
       tyMap = M.fromList (concatMap blockDefs (fnBlocks fn))
       managed0 = S.fromList [vreg v | (v, TVal) <- M.toList tyMap]
@@ -356,6 +359,33 @@ selectInstr _ _ (Instr d op) = case op of
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
   OConstInt n -> def (\r -> emitI (li r n))
   ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
+  OString text -> def $ \rd -> do
+    modify (\st -> st {selStrings = S.insert text (selStrings st)})
+    emitI (la rd (stringLabel text))
+  OMake tid variant fields -> def $ \rd -> do
+    size <- freshV False
+    emitI (li size (8 + 8 * fromIntegral (length fields)))
+    emitI (call "fpr_alloc" False True [size] (Just rd))
+    forM_ [(0, tid), (4, variant)] $ \(offset, value) -> do
+      header <- freshV False
+      emitI (li header (fromIntegral value))
+      emitI (plain "store.header" [] [any' rd, any' header, OI offset])
+    forM_ (zip [0..] fields) $ \(index, value) ->
+      emitI (plain "store.field" [] [any' rd, any' (vreg value), OI (8 + 8 * index)])
+  OField index obj -> def $ \rd ->
+    emitI (plain "load.field" [any' rd] [any' (vreg obj), OI (8 + 8 * fromIntegral index)])
+  OStrLen str -> def $ \rd -> do
+    tagged <- freshV True
+    emitI (call "fpr_g_strlen_call1" False True [vreg str] (Just tagged))
+    emitI (rri "asr" rd tagged 1)
+  OCharAt str index -> def $ \rd -> do
+    shifted <- freshV False
+    taggedIndex <- freshV True
+    taggedResult <- freshV True
+    emitI (rri "lsl" shifted (vreg index) 1)
+    emitI (rri "orri" taggedIndex shifted 1)
+    emitI (call "fpr_g_charAt_call2" False True [vreg str, taggedIndex] (Just taggedResult))
+    emitI (rri "asr" rd taggedResult 1)
   OSymbol sym -> def (\r -> emitI (la r sym)) -- the legacy `la a0, <symbol>`
   OFunValue n -> def (\r -> emitI (la r ("fpr_obj_" ++ mangleName n)))
   -- the generic application (Codegen.genT's CApp case): the head, then every
@@ -620,14 +650,16 @@ savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) Fa
 
 emitFnA64 :: A64Config -> Fn -> Either String NativeFn
 emitFnA64 cfg fn = do
-  (sel, managed, nulls, strs) <- select cfg fn
+  (sel0, managed, nulls, strs) <- select cfg fn
+  let (sel, entrySlots) = forwardEntry (cfgForwardParams cfg && cfgHart cfg /= HartTlvMachO) (map x [0..7]) fn sel0
   either (\e -> Left ("compiler error: " ++ e)) Right (checkFn a64RegisterFile sel)
   let ac = allocConfig (if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing) managed
   alloc <- either (\e -> Left ("compiler error: " ++ e)) Right (allocateFn ac sel)
   either (\e -> Left ("compiler error: " ++ e)) Right (checkAllocation ac (fnName fn) (alBody alloc))
   let saves = savedObjs (alSaved alloc)
-      objs = saves ++ alSlots alloc
+      objs = saves ++ alSlots alloc ++ entrySlots
       ly = layout 16 16 objs
+      (shallow, allocatedBody) = shallowEntry (polStackCheck (cfgPolicy cfg)) (lyBytes ly) (alBody alloc)
   when (lyBytes ly > frameCeiling) $
     Left ("a frame of " ++ show (lyBytes ly) ++ " bytes exceeds the " ++ show frameCeiling ++ "-byte ceiling (half the runtime's stack headroom)")
   let name = fnName fn
@@ -639,14 +671,14 @@ emitFnA64 cfg fn = do
       pairs = savePairs ly saves
       body = I ((plain "enter" [] []) {siImplicitDefs = [Phys "sp", x 29, x 16]})
         : [I ((plain "save" [] []) {siNote = show k}) | (k, _) <- zip [0 :: Int ..] pairs]
-        ++ alBody alloc
+        ++ allocatedBody
       restores = concatMap (uncurry (pairAccess "ldp" "ldr")) pairs
       rendered = map (\it -> (it, renderItem cfg ly name pairs restores it)) body
       toks = concatMap (uncurry tokOf) rendered
       report = analyse toks
       header =
         ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir a64 frame=" ++ show (lyBytes ly)
-           ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," (map phys ps)) ++ " " ++ statsLine (alStats alloc)]
+           ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," (map phys ps)) ++ " " ++ statsLine (alStats alloc)]
           ++ ["    " ++ visibility ++ " " ++ gsym cfg sym | S.member name (cfgExports cfg)]
           ++ [gsym cfg sym ++ ":"]
       visibility = if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl"
@@ -739,6 +771,9 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
       ("eori", [d], [s, n]) -> ["eor " ++ reg d ++ ", " ++ reg s ++ ", #" ++ show (imm n)]
       ("sbfx63", [d], [s, _]) -> ["sbfx " ++ reg d ++ ", " ++ reg s ++ ", #0, #63"]
       ("sbfx31", [d], [s, _]) -> ["sbfx " ++ reg d ++ ", " ++ reg s ++ ", #0, #31"]
+      ("load.field", [d], [base, n]) -> ldst "ldr" "ldur" (reg d) (reg base) (imm n)
+      ("store.field", [], [base, value, n]) -> ldst "str" "stur" (reg value) (reg base) (imm n)
+      ("store.header", [], [base, value, n]) -> ["str w" ++ drop 1 (reg value) ++ ", [" ++ reg base ++ ", #" ++ show (imm n) ++ "]"]
       ("ldrsw", [d], [s, n]) -> ["ldursw " ++ reg d ++ ", [" ++ reg s ++ ", #" ++ show (imm n) ++ "]"]
       (o, [d], [a, b]) | o `elem` ["add", "sub", "mul", "sdiv", "and", "eor", "orr"] -> [o ++ " " ++ reg d ++ ", " ++ reg a ++ ", " ++ reg b]
       ("lslr", [d], [a, b]) -> ["lsl " ++ reg d ++ ", " ++ reg a ++ ", " ++ reg b] -- the register-count form (lslv)
@@ -762,9 +797,9 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
       ("tailjump", [], OS s : _) -> epilogue ++ ["b " ++ gsym cfg s]
       ("store.spill", [], [s, OI j]) -> hartRead ++ ldst "str" "stur" (reg s) "x9" (8 * (1 + j))
       ("load.spill", [d], [OI j]) -> hartRead ++ ldst "ldr" "ldur" (reg d) "x9" (8 * (1 + j))
-      ("entry.check.tick", [], []) -> hartRead ++ stackCheck ++ tick
-      ("entry.check", [], []) -> hartRead ++ stackCheck
-      ("entry.tick", [], []) -> hartRead ++ tick
+      ("entry.check.tick", _, _) -> hartRead ++ stackCheck ++ tick
+      ("entry.check", _, _) -> hartRead ++ stackCheck
+      ("entry.tick", _, _) -> hartRead ++ tick
       _ -> error ("A64 render: no form for " ++ op ++ " " ++ show ds ++ " " ++ show us)
     -- the legacy frame: sp down, ra and the caller's fp at the top, fp = old sp
     enter =
@@ -777,18 +812,23 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
     -- stack-segment change they still read the frame they were saved in)
     epilogue = restores ++ ["ldur x30, [x29, #-8]", "mov x9, x29", "ldur x29, [x29, #-16]", "mov sp, x9"]
     base = siNote i
+    parkArgs scaled unscaled = concat
+      [ldst scaled unscaled (reg o) "x29" (fromIntegral (lyOffset ly M.! FrameRef (entrySlot n)))
+      | (n, o) <- zip [0..] (siDefs i)]
     stackCheck =
       [ "mov x10, sp",
         "ldr x11, [x9, #" ++ show (8 * (1 + 56 :: Int)) ++ "]", -- stk_lo
         "sub x10, x10, x11",
         "ldr x11, [x9, #" ++ show (8 * (2 + 56 :: Int)) ++ "]", -- stk_span
         "cmp x10, x11",
-        "b.lo " ++ lbl (Label (base ++ "_stk")),
+        "b.lo " ++ lbl (Label (base ++ "_stk"))
+      ] ++ parkArgs "str" "stur" ++ [
         "bl " ++ gsym cfg "fpr_stack_grow",
         "cbz x0, " ++ lbl (Label (base ++ "_same")),
         "mov sp, x0",
         lbl (Label (base ++ "_same")) ++ ":"
       ]
+        ++ parkArgs "ldr" "ldur"
         ++ hartRead -- the call clobbered x9
         ++ [lbl (Label (base ++ "_stk")) ++ ":"]
     tick =
@@ -796,8 +836,10 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
         "sub x10, x10, #1",
         "stur x10, [x9, #0]",
         "cmp x10, #0",
-        "b.gt " ++ lbl (Label (base ++ "_fuel")),
-        "bl " ++ gsym cfg "fpr_fuel_exhausted",
+        "b.gt " ++ lbl (Label (base ++ "_fuel"))
+      ] ++ parkArgs "str" "stur" ++ [
+        "bl " ++ gsym cfg "fpr_fuel_exhausted"
+      ] ++ parkArgs "ldr" "ldur" ++ [
         lbl (Label (base ++ "_fuel")) ++ ":"
       ]
     -- x9 <- the hart block (A64.hs `mv rd, tp` and deTlsQosAppA64)

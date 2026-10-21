@@ -18,6 +18,8 @@ divide a b = a / b.
 shift a b = BITSHIFTL a b.
 branch a b = if a < b then a - b else a + b.
 hot a b c d e = a*b + c*d + e*a + b*c + d*e + a*c + b*d + c*e + d*a + e*b.
+forward a b c d e = hot e d c b a.
+forwardSwap a b = sub b a.
 calls a b c d e = hot a b c d e + hot e d c b a + a + b + c + d + e.
 boolEq : unsafe Int -> Bool -> Bool .
 boolEq n b = if n == 0 then b == (n < 1) else boolEq (n - 1) b.
@@ -72,10 +74,15 @@ def main():
                                   FPR_COMPACT_FRAMES='1', FPR_SELF_LOOPS='1',
                                   FPR_NO_SCALAR_WORKERS='0')),
                  ('typed-ir', dict(FPR_TYPED_IR_BACKEND='mixed',
-                                   FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8,pressure,wide,answer,useCaf,tick,applyLocal')),
+                                   FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,forward,forwardSwap,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8,pressure,wide,answer,useCaf,tick,applyLocal')),
                  ('typed-ir-workers', dict(FPR_TYPED_IR_BACKEND='mixed', FPR_NO_SCALAR_WORKERS='0',
-                                           FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8,pressure,wide,answer,useCaf,tick,applyLocal')),
+                                           FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,forward,forwardSwap,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8,pressure,wide,answer,useCaf,tick,applyLocal')),
                  ('baseline-repeat', {})]
+        entry_modes = [("typed-ir-shallow", {"FPR_TYPED_IR_SHALLOW_STACK": "1"}),
+                       ("typed-ir-forward", {"FPR_TYPED_IR_FORWARD_PARAMS": "1"}),
+                       ("typed-ir-entry", {"FPR_TYPED_IR_SHALLOW_STACK": "1", "FPR_TYPED_IR_FORWARD_PARAMS": "1"})]
+        baseline_typed = dict(next(settings for name, settings in modes if name == "typed-ir"))
+        modes[-1:-1] = [(name, {**baseline_typed, **flags}) for name, flags in entry_modes]
         original = None
         for name, settings in modes:
             mode = dict(env, **settings)
@@ -103,6 +110,9 @@ def main():
                 native_names = {title.split()[0] for title, _ in bodies if 'typed-ir x64' in title}
                 required = set(mode['FPR_TYPED_IR_STRICT'].split(','))
                 assert required <= native_names, (required - native_names, native_names)
+                if mode.get("FPR_TYPED_IR_FORWARD_PARAMS") == "1":
+                    wrappers = [title for title, _ in bodies if title.startswith(("forward ", "forwardSwap "))]
+                    assert len(wrappers) == 2 and all("forward=yes saved=none" in t for t in wrappers), wrappers
                 assert 'UNBOUNDED' not in text
                 assert '%fs:fpr_x64_a6@tpoff' in selected and '%fs:fpr_x64_a7@tpoff' in selected
                 # arguments 9 and 64 through the hart spill cells: the caller's
@@ -141,7 +151,8 @@ def main():
             shim = tmp / 'abi.s'
             shim.write_text(adapt((ROOT / 'tests/base/x64_scalar_abi.s').read_text(), mac))
             exe = tmp / 'oracle'
-            link([assembly, shim, ROOT / 'tests/base/x64_scalar_oracle.c'], exe, mac, mode)
+            growth_flag = ['-DORACLE_TYPED_ENTRY_CHECKS'] if native and mode.get('FPR_TYPED_IR_SHALLOW_STACK') != '1' else []
+            link([*growth_flag, assembly, shim, ROOT / 'tests/base/x64_scalar_oracle.c'], exe, mac, mode)
             print(f'{label} {name}: ' + run([*runner, exe], mode).strip(), flush=True)
             if name == 'typed-ir':
                 for boundary, legacy_names in [('legacy-callees', {'hot', 'rotate6', 'rotate7'}),

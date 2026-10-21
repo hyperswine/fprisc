@@ -38,6 +38,8 @@ def environment(cache):
     env.pop('FPR_TYPED_IR', None)
     env.pop('FPR_TYPED_IR_BACKEND', None)
     env.pop('FPR_TYPED_IR_STRICT', None)
+    env.pop('FPR_TYPED_IR_SHALLOW_STACK', None)
+    env.pop('FPR_TYPED_IR_FORWARD_PARAMS', None)
     return env
 
 
