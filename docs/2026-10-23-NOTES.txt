@@ -1,0 +1,4 @@
+Lets do stax.
+Lets put all build artifacts in a single directory.
+No dangling fprc and stuff.
+Get rid of dist-opts and use the default build options.

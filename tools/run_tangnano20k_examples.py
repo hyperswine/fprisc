@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Build and verify fprisc-48 examples in QEMU or on a freshly loaded FPGA.
+"""Build and run fprisc-48 programs or verify the example suite in QEMU/on FPGA.
 
 The board target programs FPGA SRAM from a checked preset build manifest.
 It does not write FPGA flash or the SD card. QEMU verifies software only.
 """
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -86,10 +87,34 @@ def validate_case(name, output, files):
         require(actual == expected, f'wc result mismatch: {actual!r}')
 
 
+def execute_guest(directory, files, arguments, inputs, environment, args, env):
+    log = directory / 'run.log'
+    if args.target == 'qemu':
+        return run_image(directory / 'base.elf', files, args.timeout,
+                         device=Device(files, environment, inputs, arguments), log=log)
+    command = [sys.executable, ROOT / 'tools/run_tangnano20k_base.py', directory / 'base.bin',
+               '--root', files, '--freq-mhz', '48', '--port', args.port,
+               '--timeout', str(args.timeout)]
+    command += [f'--arg={value}' for value in arguments]
+    command += [f'--input={value}' for value in inputs]
+    command += [f'--env={key}={value}' for key, value in environment.items()]
+    upload_seconds = (directory / 'base.bin').stat().st_size * 8680 / 48000000
+    output = run(command, log, env, args.timeout + 60 + upload_seconds)
+    require(output.rstrip().endswith('DONE'), 'board did not return to loader')
+    return output
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--target', choices=('qemu', 'board'), default='qemu')
-    parser.add_argument('--cases', nargs='+', choices=CASES, default=list(CASES))
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument('--cases', nargs='+', choices=CASES)
+    selection.add_argument('--program', type=Path, help='compile and run a Base .fpr program instead of the suite')
+    parser.add_argument('--arg', action='append', default=[], help='program argument; use --arg=-x for leading dashes')
+    parser.add_argument('--input', action='append', default=[], help='input line; repeat in order, then EOF')
+    parser.add_argument('--env', action='append', default=[], metavar='NAME=VALUE')
+    parser.add_argument('--root', type=Path, help='existing guest file root; default: isolated output/files')
+    parser.add_argument('--timeout', type=float, default=120, help='guest execution seconds (default: 120)')
     parser.add_argument('--out', type=Path)
     parser.add_argument('--fpga-manifest', type=Path, help='required for board; programs its bitstream into SRAM')
     parser.add_argument('--loader', default=str(Path.home() / 'Documents/Libs/oss-cad-suite/bin/openFPGALoader'))
@@ -99,17 +124,38 @@ def main():
         parser.error('--target board requires --fpga-manifest from the matching preset build')
     if args.target == 'qemu' and args.fpga_manifest is not None:
         parser.error('--fpga-manifest is only used with --target board')
+    args.cases = args.cases or list(CASES)
     if len(set(args.cases)) != len(args.cases):
         parser.error('duplicate cases')
-    out = (args.out or ROOT / f'build/tangnano20k-examples/{args.target}').resolve()
+    mode = 'program' if args.program is not None else 'suite'
+    default_directory = f'program-{args.target}' if args.program is not None else args.target
+    out = (args.out or ROOT / f'build/tangnano20k-examples/{default_directory}').resolve()
     out.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, 'FPR_PRESET': 'fprisc-48', 'FPR_QEMU': str(int(args.target == 'qemu')),
            'FPR_HEAP_REPORT': '1'}
-    report = dict(preset='fprisc-48', target=args.target, passed=False,
+    report = dict(preset='fprisc-48', target=args.target, mode=mode, passed=False,
                   suite_complete=False, repository=repository(ROOT), cases=[])
     # Invalidate a previous pass before any work, including interrupted runs.
     (out / 'results.json').write_text(json.dumps(report, indent=2) + '\n')
     try:
+        require(math.isfinite(args.timeout) and args.timeout > 0, '--timeout must be finite and positive')
+        require(args.program is not None or not (args.arg or args.input or args.env or args.root),
+                '--arg, --input, --env and --root require --program')
+        if args.program is not None:
+            source = args.program.resolve()
+            require(source.is_file() and source.suffix == '.fpr', '--program must be an existing .fpr file')
+            files = args.root.resolve() if args.root is not None else out / 'files'
+            if args.root is not None:
+                require(files.is_dir(), '--root must be an existing directory')
+            else:
+                files.mkdir(exist_ok=True)
+            require(all('=' in entry and entry.split('=', 1)[0] for entry in args.env),
+                    '--env requires a nonempty NAME=VALUE')
+            environment = dict(entry.split('=', 1) for entry in args.env)
+            # Refuse invalid arguments before compiler work or FPGA programming.
+            Device(files, environment, args.input, args.arg)
+            report['invocation'] = dict(source=str(source), root=str(files), arguments=args.arg,
+                                        input_lines=args.input, environment=environment, timeout=args.timeout)
         # Validate the preset before compiler builds, tool downloads or hardware
         # changes. The shell contract refuses conflicting inherited settings.
         run(['bash', '-c', 'source machine/tangnano20k/preset.sh'], out / 'preset.log', env)
@@ -121,6 +167,24 @@ def main():
         softfloat = Path(env.get('FPR_SOFTFLOAT_ROOT', ROOT / 'build/tangnano20k-softfloat'))
         if not (softfloat / 'build/Linux-RISCV32-GCC/softfloat.a').is_file():
             run(['machine/tangnano20k/build-softfloat.sh'], out / 'softfloat-build.log', env, 300)
+        if args.program is not None:
+            directory = out / 'program'
+            directory.mkdir(exist_ok=True)
+            started = time.monotonic()
+            case = dict(name='program', passed=False)
+            report['cases'].append(case)
+            run(['machine/tangnano20k/build.sh', source, directory], directory / 'build.log', env)
+            case['build'] = json.loads((directory / 'build-manifest.json').read_text())
+            if bitstream:
+                run([args.loader, '-b', 'tangnano20k', bitstream], out / 'program-fpga.log', env, 120)
+                report['fpga_programmed_sram'] = True
+            output = execute_guest(directory, files, args.arg, args.input, environment, args, env)
+            validate_case('program', output, files)
+            print(output, end='' if output.endswith('\n') else '\n', flush=True)
+            case.update(passed=True, wall_seconds=time.monotonic() - started)
+            report['passed'] = True
+            print(f'PASS: program; {out / "results.json"}', flush=True)
+            return
         if bitstream:
             run([args.loader, '-b', 'tangnano20k', bitstream], out / 'program-fpga.log', env, 120)
             report['fpga_programmed_sram'] = True
@@ -163,18 +227,8 @@ def main():
                     (files / 'words.txt').write_bytes(b'alpha beta\ngamma\n')
                     (files / 'two words.txt').write_bytes(b'delta zeta\n')
                     arguments = ['words.txt', 'two words.txt']
-                if args.target == 'qemu':
-                    output = run_image(directory / 'base.elf', files, 120,
-                                       device=Device(files, {'TEST_UART': 'connected'}, ['hello RV32'], arguments))
-                    (directory / 'run.log').write_text(output)
-                else:
-                    command = [sys.executable, ROOT / 'tools/run_tangnano20k_base.py', directory / 'base.bin',
-                               '--root', files, '--freq-mhz', '48', '--port', args.port,
-                               '--timeout', '120', '--env', 'TEST_UART=connected', '--input', 'hello RV32']
-                    command += [f'--arg={arg}' for arg in arguments]
-                    upload_seconds = (directory / 'base.bin').stat().st_size * 8680 / 48000000
-                    output = run(command, directory / 'run.log', env, 180 + upload_seconds)
-                    require(output.rstrip().endswith('DONE'), 'board did not return to loader')
+                output = execute_guest(directory, files, arguments, ['hello RV32'],
+                                       {'TEST_UART': 'connected'}, args, env)
                 validate_case(name, output, files)
             case.update(passed=True, wall_seconds=time.monotonic() - started)
             print(f'{name}: PASS', flush=True)

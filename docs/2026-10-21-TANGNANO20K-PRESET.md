@@ -84,6 +84,72 @@ the preceding success report before running. A failed case exits unsuccessfully.
 QEMU uses the production runtime/startup/root adapter with a 16550 UART
 adapter; it does not test FPGA cache, SDRAM, UART electrical timing or CDC.
 
+## Run your own program
+
+Use `--program` instead of the built-in suite to compile and run any `.fpr`
+program supported by the single-threaded RV32 Base target:
+
+```sh
+python3 tools/run_tangnano20k_examples.py --program examples/wc.fpr \
+  --root /path/to/input-files --arg=notes.txt --arg='two words.txt'
+
+python3 tools/run_tangnano20k_examples.py --target board --program myprogram.fpr \
+  --fpga-manifest ../simple-risc/output/tangnano20k/fprisc-48/build-manifest.json \
+  --root /path/to/files --arg=-n --arg= --input='first line' --input='second line' \
+  --env=MODE=demo --timeout 120
+```
+
+Source, file root, manifest and output paths resolve relative to your current
+directory, including paths containing spaces. `--root` must exist; when omitted,
+the runner creates an isolated `files/` directory under its output directory.
+The guest can read and write files within that root. Arguments and input lines
+are repeatable, preserve their order and are passed without shell interpretation.
+Use `--arg=` or `--input=` for an empty value and `--arg=-n` for a leading dash.
+Input returns EOF after the last supplied line. Environment values are explicit
+`--env NAME=VALUE` entries; they do not inherit the host environment.
+
+The default target is QEMU. The board target validates the FPGA manifest,
+compiles the program, programs FPGA SRAM, uploads the guest and requires a
+successful runtime exit followed by `DONE`. The preset fixes the runtime at
+48 MHz. Unsupported Base services still fail explicitly; selecting a custom
+program does not enable actors or unavailable file APIs.
+
+Custom runs print guest output and save `program/run.log`, build artifacts and
+`results.json` in `build/tangnano20k-examples/program-{qemu,board}/` or `--out`.
+The report records the invocation, source/build identity and successful exit.
+It has `mode: program` and `suite_complete: false`: an arbitrary program's
+successful exit is not a seven-case suite result or an application-specific
+correctness check. Compile errors, runtime errors and timeouts produce failed
+reports and retain diagnostics. `--timeout` limits ordinary/custom guest
+execution; the suite's ten-run classifier retains its separate 600-second limit.
+
+## Continuous integration
+
+The existing Debian CI job now checks out SimpleRisc commit
+`8479466ba159ebaf4faf035502dfc3b6354b2083` into `.ci/simple-risc`, runs both
+repositories' preset/manifest tests and the UART protocol checks, builds
+SoftFloat for RV32 and RV64, then runs all seven examples in QEMU, the custom
+program regression, and the RV32/RV64 argument and GC-root regressions.
+It retains JSON reports and logs even when a step fails. Update the pinned
+SimpleRisc revision deliberately when the shared preset contract changes.
+The unit tests accept `SIMPLE_RISC_ROOT` for CI's non-sibling checkout.
+
+The custom-program regression exercises a source file outside the checkout's
+source directories, caller-relative paths with spaces, arguments, input/EOF,
+environment, rooted file read/write, compile/runtime failures and timeout log
+retention. Run it locally with `python3 tests/check_tangnano20k_program.py`.
+Add `--target board --fpga-manifest PATH` for its physical success case.
+CI does not synthesize or program an FPGA; physical validation remains separate.
+
+Local validation of this extension passed all seven QEMU suite cases, the
+custom program on QEMU and the physical 48 MHz image, all three failure paths,
+six runner unit tests, two pinned SimpleRisc manifest tests, UART protocol
+checks and the RV32/RV64 argument regressions. The workflow passed actionlint
+v1.7.7. The pinned SimpleRisc tests also passed from a non-sibling directory.
+The [runner/CI evidence](evidence/2026-10-21-tangnano20k-runner-ci/manifest.json)
+records source hashes and test results. This validates the added commands
+locally; the edited GitHub workflow has not yet executed on a hosted runner.
+
 ## Argument protocol
 
 `Sys.args` requests operation 9 of the existing `@FPR1` UART service with an

@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / 'tools'))
 from run_tangnano20k_base import Device, PREFIX, frame, parse
 
 
-def run_image(image, files, timeout=30, *, device=None, expected_exit=0, xlen=32):
+def run_image(image, files, timeout=30, *, device=None, expected_exit=0, xlen=32, log=None):
     process = subprocess.Popen([
         f'qemu-system-riscv{xlen}', '-machine', 'virt', '-m', '8M', '-bios', 'none',
         '-kernel', str(image), '-display', 'none', '-monitor', 'none',
@@ -56,6 +56,7 @@ def run_image(image, files, timeout=30, *, device=None, expected_exit=0, xlen=32
         else:
             raise TimeoutError(f'QEMU execution: {bytes(output)!r} {pending!r}')
         output.extend(pending)
+        pending = b''
         code = process.wait(timeout=5)
         stderr = process.stderr.read().decode()
         text = output.decode()
@@ -65,6 +66,8 @@ def run_image(image, files, timeout=30, *, device=None, expected_exit=0, xlen=32
         if process.poll() is None:
             process.kill()
         process.communicate(timeout=5)
+        if log is not None:
+            Path(log).write_bytes(bytes(output) + pending)
 
 
 def main():

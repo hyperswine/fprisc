@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-21",
+  "revision": "d85ec9f7b713f53298eb4f11e45f69f9bdf41e1a",
+  "source_sha256": {
+    ".github/workflows/ci.yml": "bb5efa2a548bedd0263b4bb58fdc6c5b390b0f2543bc5bb45faaa8d600db1cca",
+    "tools/run_tangnano20k_examples.py": "c1cc0cb3bad414ead089f7d55cd194c4b31d808fb439fb82a30e298241a362d0",
+    "tests/check_tangnano20k_rv32_base.py": "f1c3797bec4798142aacaf267e8cc55c3cafa9576a2b86d4670f1a83135bb796",
+    "tests/test_tangnano20k_examples.py": "230324982c76ac5adcb0bb5b57f4b2c530954e344a2f8a1dbb682c80785bb6e0",
+    "tests/check_tangnano20k_program.py": "fd498797df6330a140c046c56e583cba141f20c4ce7017ce2e1bef02864929b1",
+    "tests/tangnano20k_program.fpr": "07202a81eed448492d8c66516efe0f0e0388b05606e48ded97ae75047de4c80d"
+  },
+  "validation": {
+    "actionlint": "v1.7.7 passed",
+    "runner_unit_tests": 6,
+    "pinned_simple_risc_manifest_tests": 2,
+    "virtual_device_checks": "passed",
+    "qemu_suite_cases": 7,
+    "custom_program_qemu": "passed",
+    "custom_program_board": "passed",
+    "compile_runtime_timeout_refusals": "passed with diagnostics retained",
+    "argument_checks": "RV32 and RV64: 4 valid and 7 malformed/unavailable cases each",
+    "github_workflow_execution": "not run; changes remain local",
+    "physical_image_sha256": "30a3f82d8249fe1db0e35c51e7b3b9abb269b729e6b16b60ded71fdf57d986c3"
+  },
+  "evidence_sha256": {
+    "board-program-fpga.log": "325fae90fb428bbe0958682a2bd1a75b561e4cee176ff7cda8a091d7b64f6240",
+    "board-program.json": "ae9ab760c422ac5c0e852086e769c21256c3afe8b1cb532114a230645eb03ae2",
+    "board-program.log": "a4c8ace4b2d3ff14fdc1e4f910898f88cf12afec1046aa0a41c316fff2b915b3",
+    "board-source.fpr": "07202a81eed448492d8c66516efe0f0e0388b05606e48ded97ae75047de4c80d",
+    "compile-failure.json": "7647c0a09ee0013b8a61865aa5d46cd53184551dfc0181417cbf5f6213617d1a",
+    "compile-failure.log": "22e7064c7f99a1f31c658e75ebfc15e4387b3f78c0db2686f96ecbb0ba9f068d",
+    "qemu-classifier.json": "b317326dce31c2892e3c99b1e0d7d8200d9630999307930b0392fedd27263c24",
+    "qemu-program.json": "1598efcb6382b054b5b3b5f8ae9f8abbf75279a18094fbbea777d0cf93ebf1a5",
+    "qemu-program.log": "08d7c12b866d20aaed40073a0e662d10b45de41ddfeaa58b86fae764f2720ee0",
+    "qemu-source.fpr": "07202a81eed448492d8c66516efe0f0e0388b05606e48ded97ae75047de4c80d",
+    "qemu-suite.json": "31be1eeb0c65947a323a481205c34071078e46d3a47cfb8c57082f66983590f6",
+    "runtime-failure.json": "329e39695e69c4ae1d671bece1fcb481b519332e4464bce1ffb6226ef8e8607a",
+    "runtime-failure.log": "a7791d06131a3d5d56125327b745bdb957847f74f6d9b95503f5dff87829fa0e",
+    "timeout.json": "349513e49614fb2f6ad0baacd5c4563e81df70867eb0ada6c7aa03624cd99cd3",
+    "timeout.log": "d11cbecc6640642450838ddf75bd988915c20a39e43afc235505e2fe438ac856"
+  }
+}
