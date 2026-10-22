@@ -1,0 +1,2 @@
+F64: C-reference agreement on 400 edge-case pairs, fast paths and inliner independently on/off: PASS
+typed-IR x64 F64: 0 mismatches over 1280 pairs: PASS

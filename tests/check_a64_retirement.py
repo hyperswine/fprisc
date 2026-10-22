@@ -68,7 +68,7 @@ def main():
             assert stamps and all('/' + interface_targets[target] + '/hardfloat=False/' in s
                                   for s in stamps), (target, stamps)
         # The other translators/generators still own their rollback path.
-        for target in ('rv64', 'rv32', 'x64'):
+        for target in ('rv64', 'rv32'):
             asm = tmp / (target + '.s')
             run([ROOT / 'fprc', '--target=' + target, src, asm],
                 dict(env, FPR_TYPED_IR_BACKEND='legacy'))
@@ -88,7 +88,7 @@ def main():
                 assert 'typed-ir strict: root:' in p.stderr and '\n  main: ' in p.stderr, p.stderr
                 assert 'Wide.call' in p.stderr and not asm.exists()
         print('A64 retirement: unsupported foreign calls refused by name in default/whole/named-strict modes on all five targets PASS', flush=True)
-        print('A64 retirement: five targets, native-only root/imports, whole/mixed warm caches, all rollback aliases refused; RV/x64 rollback retained PASS', flush=True)
+        print('A64 retirement: five targets, native-only root/imports, whole/mixed warm caches, all rollback aliases refused; RV rollback retained PASS', flush=True)
         if platform.machine() in ('arm64', 'aarch64'):
             # Exercise the executable cache too, before the compiler is called.
             assert run([ROOT / 'fpr', 'run', src], env).stdout == '42\n'

@@ -18,6 +18,13 @@ No Linux image, container, or x86 build of GHC is required. The host C toolchain
 must support x86-64; macOS links with `clang -arch x86_64` and ad-hoc signs the
 probe executable.
 
+Current status: [x64 translator retirement](2026-10-23-X64-RETIREMENT.md)
+removes the legacy modes described below. The current suite executes typed
+hosted x64 and QOS x64 scalar/ABI and kernel oracles, including borrowed
+hart/argument cells. QOS's FS base is substituted; this is still not a QOS
+runtime or Linux TLS acceptance run. The tables and original evidence below
+record the earlier translator/backend migration.
+
 ## What runs
 
 | Probe | Executed checks |

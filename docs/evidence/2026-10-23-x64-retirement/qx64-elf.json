@@ -1,0 +1,37 @@
+{
+  "target": "qx64",
+  "compiler_sha256": "adef32b22062a97112a0cff141462149009adad9861cb4aff32cd931acdb86fe",
+  "roots": [
+    {
+      "source": "programs/mods/guishell.fpr",
+      "units": 47
+    },
+    {
+      "source": "programs/mods/diskapp.fpr",
+      "units": 22
+    },
+    {
+      "source": "tests/mainprofile.fpr",
+      "units": 48
+    },
+    {
+      "source": "tests/qlogmemory.fpr",
+      "units": 11
+    },
+    {
+      "source": "tests/sysed1.fpr",
+      "units": 1
+    },
+    {
+      "source": "programs/mods/terminalpreferences.fpr",
+      "units": 3
+    },
+    {
+      "source": "tests/kvlarge.fpr",
+      "units": 1
+    }
+  ],
+  "unique_assembly_files": 88,
+  "borrowed_offset_relocations": 16749,
+  "app_tls_relocations": 0
+}

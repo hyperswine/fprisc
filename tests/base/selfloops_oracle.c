@@ -14,7 +14,10 @@ static void puts(const char *p) {
 #include <assert.h>
 #include <stdio.h>
 #endif
-static intptr_t hart[64];
+static intptr_t hart[64] = {[58] = -1};
+#ifndef FPR_ORACLE_RV64
+void *fpr_stack_grow(void) { __builtin_trap(); }
+#endif
 void *probe_hart = hart;
 static unsigned yields;
 static uintptr_t first_sp;

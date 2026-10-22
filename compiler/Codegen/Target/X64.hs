@@ -8,11 +8,12 @@
 -- copy-cycle scratch; the budget registers a function uses are saved in
 -- the prologue and restored before every return and tail transfer.
 -- ABI: SysV first six arguments, private TLS cells seven/eight, result rax;
+-- hosted uses ELF TLS; QOS borrows {hart, a6, a7} through fpr_g_tlsoff.
 -- legacy frame pointer = entry rsp + 8, return address fp-8, saved rbp fp-16.
 -- Parameters are parked before any entry check/tick, and rsp is restored
 -- from rbp at exit so stack-segment growth remains compatible with legacy.
 module Codegen.Target.X64
-  ( X64Config (..), x64SelectionRev, emitFnX64, x64RegisterFile, placement, allocConfig ) where
+  ( X64Config (..), X64Hart (..), x64InterfaceRev, x64SelectionRev, emitFnX64, x64RegisterFile, placement, allocConfig ) where
 
 import Codegen.Allocate
 import Codegen.Bounds (Flow (..), Report (..), Tok (..), analyse, reportLine)
@@ -29,13 +30,20 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 18 -- generic HAL partial/opaque application; prior 17: inferred boxed I64 operators; prior 16: inference-generated vector runtime entries; prior 15: typed column memory and kernel arithmetic; prior: 14: posix modules reach external symbols through the GOT; 13: units with no legacy code skip translation; 12: in-place constructor reuse; 11: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 10: aggregate and string selection; prior: the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
+x64SelectionRev = 19 -- QOS borrowed TLS hart/argument cells; prior 18: generic HAL partial/opaque application; prior 17: inferred boxed I64 operators; prior 16: inference-generated vector runtime entries; prior 15: typed column memory and kernel arithmetic; prior: 14: posix modules reach external symbols through the GOT; 13: units with no legacy code skip translation; 12: in-place constructor reuse; 11: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 10: aggregate and string selection; prior: the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
+
+-- Module ABI identity is independent of native selector/cache revisions.
+x64InterfaceRev :: Int
+x64InterfaceRev = 10
+
+data X64Hart = HartTls | HartBorrow deriving (Eq, Show)
 
 data X64Config = X64Config
   { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool,
     cfgSelfLoops :: Bool, -- M3: self tail calls as loops (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
     cfgForwardParams :: Bool,
-    cfgTune :: Tune
+    cfgTune :: Tune,
+    cfgHart :: X64Hart
   }
 
 r :: String -> Phys
@@ -156,7 +164,7 @@ divide d a b = (plain "divide" [fix d (r "rax")] [fix a (r "rax"), any' b])
 stageArgs :: [VReg] -> Se ()
 stageArgs args = do
   forM_ (zip [6 :: Int, 7] (take 2 (drop 6 args))) $ \(n,v) ->
-    emitI (plain "store.cell" [] [any' v, OS ("fpr_x64_a" ++ show n)])
+    emitI ((plain "store.cell" [] [any' v, OS ("fpr_x64_a" ++ show n)]) {siImplicitDefs = [r "r10", r "r11"]})
   forM_ (zip [0 :: Int ..] (drop 8 args)) $ \(j,v) ->
     emitI ((plain "store.spill" [] [any' v, OI (fromIntegral j)]) {siImplicitDefs = [r "r10", r "r11"]})
 
@@ -537,7 +545,7 @@ allocConfig self managed = AllocConfig
     acSlot = \n v -> frameObj n 8 8 (SpillSlot n) (S.member v managed),
     -- cqto writes rdx before idivq reads the divisor
     -- store.spill writes a scratch register before it reads the value
-    acEarlyDef = \i -> siOp i `elem` ["divide", "store.spill"],
+    acEarlyDef = \i -> siOp i `elem` ["divide", "store.spill", "store.cell"],
     acClassOf = rfClassOf x64RegisterFile,
     acSelfLoop = self }
 
@@ -565,7 +573,7 @@ emitFnX64 cfg fn = do
       body = I ((plain "enter" [] []) {siImplicitDefs = map r ["rsp", "rbp"]})
         : [I (plain "save" [] []) | not (null saves)]
         ++ allocatedBody
-      rendered = [(it, renderItem ly name saveLines restores it) | it <- body]
+      rendered = [(it, renderItem (cfgHart cfg) ly name saveLines restores it) | it <- body]
       report = analyse (concatMap (uncurry tokOf) rendered)
       visibility = if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl"
       header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir x64 frame=" ++ show (lyBytes ly)
@@ -585,9 +593,9 @@ emitFnX64 cfg fn = do
 local :: String -> Label -> String
 local fname (Label l) = ".Ltir_" ++ mangleName fname ++ "_" ++ l
 
-renderItem :: Layout -> String -> [String] -> [String] -> Item -> [String]
-renderItem _ fname _ _ (ILabel l) = [local fname l ++ ":"]
-renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
+renderItem :: X64Hart -> Layout -> String -> [String] -> [String] -> Item -> [String]
+renderItem _ _ fname _ _ (ILabel l) = [local fname l ++ ":"]
+renderItem hart ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
   where
     indent l = if last l == ':' then l else "    " ++ l
     lbl = local fname
@@ -610,16 +618,16 @@ renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i
          "leaq " ++ show (lyBytes ly + 8) ++ "(%rsp), %rbp"]
       ("save",[],[]) -> saveLines
       ("params",_,[]) -> [] -- the parameters are where the ABI put them
-      ("load.cell",[d],[OS cell]) -> ["movq %fs:" ++ cell ++ "@tpoff, " ++ reg d]
+      ("load.cell",[d],[OS cell]) -> loadCell cell (reg d)
       ("load",[d],[OF ref 0]) -> ["movq " ++ slot ref ++ ", " ++ reg d]
       ("store",[],[s,OF ref 0]) -> ["movq " ++ reg s ++ ", " ++ slot ref]
-      ("store.cell",[],[s,OS cell]) -> ["movq " ++ reg s ++ ", %fs:" ++ cell ++ "@tpoff"]
+      ("store.cell",[],[s,OS cell]) -> storeCell cell (reg s)
       -- the hart block in whichever scratch register the value is not in
       -- (a spilled value is reloaded into %r10, the allocator's first
       -- scratch: the merge, docs/2026-10-21-TYPED-IR-MERGE.md)
       ("store.spill",[],[s,OI j]) -> let h = if reg s == "%r10" then "%r11" else "%r10" in
-        ["movq %fs:fpr_posix_hart@tpoff, " ++ h, "movq " ++ reg s ++ ", " ++ show (8 * (1 + j)) ++ "(" ++ h ++ ")"]
-      ("load.spill",[d],[OI j]) -> ["movq %fs:fpr_posix_hart@tpoff, " ++ reg d, "movq " ++ show (8 * (1 + j)) ++ "(" ++ reg d ++ "), " ++ reg d]
+        loadCell "fpr_posix_hart" h ++ ["movq " ++ reg s ++ ", " ++ show (8 * (1 + j)) ++ "(" ++ h ++ ")"]
+      ("load.spill",[d],[OI j]) -> loadCell "fpr_posix_hart" (reg d) ++ ["movq " ++ show (8 * (1 + j)) ++ "(" ++ reg d ++ "), " ++ reg d]
       ("movq",[d],[s]) -> ["movq " ++ reg s ++ ", " ++ reg d]
       ("li",[d],[n]) -> ["movabsq $" ++ imm n ++ ", " ++ reg d]
       ("la",[d],[OS s]) -> ["leaq " ++ s ++ "(%rip), " ++ reg d]
@@ -672,7 +680,22 @@ renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i
     -- the callee-saved registers come back first (rbp-relative, so after a
     -- stack-segment change they still read the frame they were saved in)
     epilogue = restores ++ ["movq %rbp, %r11", "movq -16(%rbp), %rbp", "leaq -8(%r11), %rsp"]
-    hartRead = ["movq %fs:fpr_posix_hart@tpoff, %r10"]
+    -- QOS publishes the host TLS displacement, shared by all hart threads.
+    -- The borrow block is {hart, a6, a7}; never use the app's ELF TLS offsets.
+    cellOff "fpr_posix_hart" = "0"
+    cellOff "fpr_x64_a6" = "8"
+    cellOff "fpr_x64_a7" = "16"
+    cellOff cell = error ("X64: unknown borrowed cell " ++ cell)
+    loadCell cell dst = case hart of
+      HartTls -> ["movq %fs:" ++ cell ++ "@tpoff, " ++ dst]
+      HartBorrow -> ["movq fpr_g_tlsoff(%rip), " ++ dst,
+                     "movq %fs:" ++ cellOff cell ++ "(" ++ dst ++ "), " ++ dst]
+    storeCell cell src = case hart of
+      HartTls -> ["movq " ++ src ++ ", %fs:" ++ cell ++ "@tpoff"]
+      HartBorrow -> let scratch = if src == "%r10" then "%r11" else "%r10" in
+        ["movq fpr_g_tlsoff(%rip), " ++ scratch,
+         "movq " ++ src ++ ", %fs:" ++ cellOff cell ++ "(" ++ scratch ++ ")"]
+    hartRead = loadCell "fpr_posix_hart" "%r10"
     base = siNote i
     parkArgs save = ["movq " ++ (if save then reg o ++ ", " ++ slot ref else slot ref ++ ", " ++ reg o)
       | (n, o) <- zip [0..] (siDefs i), let ref = FrameRef (entrySlot n)]

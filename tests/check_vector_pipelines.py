@@ -61,7 +61,7 @@ def main():
                         return p.returncode,p.stdout,p.stderr
                     check_execution(run)
                     print(f'pipeline inline-disabled={no_inline} registers-disabled={no_regs} fusion-disabled={no_fuse} pipeline-inline-disabled={no_pipe_inline}: PASS',flush=True)
-        for target in ('rv64','x64','rv32'):
+        for target in ('rv64','rv32'):
             for off,no_pipe_inline in (('0','0'),('0','1'),('1','0')):
                 out=tmp/f'{target}-{off}-{no_pipe_inline}.s'
                 command([ROOT/'fpr','compile','--target='+target,FIXTURE,out],dict(base,FPR_NO_VEC_FUSE=off,FPR_NO_PIPELINE_INLINE=no_pipe_inline))
@@ -73,5 +73,5 @@ def main():
                 else: assert '# mixed scalar pipeline:' not in asm,target
                 assert 'mixed scalar pipeline: map noisy' not in asm
                 assert 'mixed scalar pipeline: map divide' not in asm
-        print('mixed scalar pipelines: native differential, 1/4 harts, returns/compaction, floats, captures, effects/traps and RV64/x64/RV32 legacy emission PASS')
+        print('mixed scalar pipelines: native differential, 1/4 harts, returns/compaction, floats, captures, effects/traps and RV64/RV32 legacy emission PASS')
 if __name__=='__main__': main()

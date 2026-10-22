@@ -12,7 +12,7 @@ import qualified Codegen.Target.RV as RV
 import Codegen.Target.Common (Tune (..), dataSyntax)
 import Codegen (Target, codegenRev, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtSelfLoops, tgtRetainedRegisters, tgtCostedRegisters, tgtCompactFrames, tgtTypedIr, tgtPolicy, tgtNative, normArc)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth)
-import Codegen.Target.X64 (x64SelectionRev)
+import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64InterfaceRev, a64SelectionRev)
 import Data.Char (isAlphaNum, isAscii, ord)
 import Numeric (showHex)
@@ -22,7 +22,6 @@ import qualified Data.ByteString as BS
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TEE
-import X64 (lowerX64, deTlsQosApp, x64Rev)
 import RV64 (lowerPosixRV64, lowerQosRV64, rv64HostRev)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (runState)
@@ -421,7 +420,7 @@ compileWithInterface accepted = do
   -- FPR_TYPED_IR_BACKEND: the typed-IR native backend is the default on the
   -- targets that support it (docs/2026-10-22-TYPED-IR-DEFAULT.md): unset or
   -- `mixed` selects it per function, `1` whole units, and `legacy` (also `0`
-  -- or `off`) is the rollback on x86-64 and RISC-V. AArch64 is typed-only.
+  -- or `off`) is the rollback on RISC-V. AArch64 and x86-64 are typed-only.
   -- FPR_TYPED_IR_STRICT makes a fallback an error: `all`, or a
   -- comma-separated list of function names.
   envBackendRaw <- lookupEnv "FPR_TYPED_IR_BACKEND"
@@ -472,8 +471,8 @@ compileWithInterface accepted = do
   let system = fromMaybe "bare-metal" (oSystem opts0)
       espHost = oHost opts0 == Just "esp-idf" -- the posix system on an ESP-IDF board (docs/2026-09-23-ESP-IDF.md)
       opts = opts0 {oBuiltin = profile == "builtin", oSol = oSol opts0 || profile == "sol", oNoInline = oNoInline opts0 || envNoInline}
-  when (oA64 opts && envBackend == Nothing && not checkOnly && not (oStdCheck opts) && not (oSol opts)) $
-    refuse "the AArch64 legacy backend has been retired; unset FPR_TYPED_IR_BACKEND or select mixed or 1"
+  when ((oA64 opts || oX64 opts) && envBackend == Nothing && not checkOnly && not (oStdCheck opts) && not (oSol opts)) $
+    refuse ("the " ++ (if oA64 opts then "AArch64" else "x86-64") ++ " legacy backend has been retired; unset FPR_TYPED_IR_BACKEND or select mixed or 1")
   -- the posix system's hosts: this machine (unix, the default) and esp-idf
   case oHost opts0 of
     Just h | h /= "esp-idf" -> refuse ("--host=" ++ h ++ ": the posix system's hosts are unix (this machine, the default) and esp-idf")
@@ -983,15 +982,15 @@ compileWithInterface accepted = do
                               -- global cell under qa64single (docs/2026-10-22-TYPED-IR-QOS.md)
                               else if a64 && qapp
                                 then Just (DirectA64 (if a64mac then MachO else ELF) (if oQosSingle opts then HartGlobal else HartX28))
-                              else if x64 && not qapp then Just DirectX64
+                              else if x64 then Just (if qapp then DirectQX64 else DirectX64)
                               else if not a64 && not x64 && not qapp && not (oPlugin opts) && not espHost && tgtName (oTarget opts) `elem` ["rv32", "rv64"]
                                 then Just (DirectRV (policyWidth irPolicy) (if oBase opts then RV.HartTls else RV.HartTp))
                               else Nothing,
                 nmSelfLoops = envTirLoops, nmForwardParams = envTirForward,
                 nmTune = Tune envTirEntryArgs envTirWrap envTirLinkPairs, nmSplitEntry = envTirSplit }
-          -- A64 has no translator: even a named strict subset cannot permit
+          -- A64/x64 have no translator: even a named strict subset cannot permit
           -- another function or kernel to fall back to shared-RISC text.
-          strictCheck what fallbacks = case if a64 then StrictAll else envStrict of
+          strictCheck what fallbacks = case if a64 || x64 then StrictAll else envStrict of
             StrictOff -> pure ()
             StrictAll | null fallbacks -> pure ()
                       | otherwise -> strictFail what fallbacks
@@ -1004,12 +1003,10 @@ compileWithInterface accepted = do
             exitFailure
           directCheck what emission = do
             strictCheck what (emFallbacks emission)
-            case (a64, emDirectData emission) of
-              (True, Nothing) -> refuse ("AArch64 " ++ what ++ " requires legacy translation, which has been retired")
+            case (a64 || x64, emDirectData emission) of
+              (True, Nothing) -> refuse ((if a64 then "AArch64 " else "x86-64 ") ++ what ++ " requires legacy translation, which has been retired")
               _ -> pure ()
           lower0 | espHost = espTls
-                | x64 && qapp = deTlsQosApp . lowerX64
-                | x64 = lowerX64
                 | qapp = lowerQosRV64
                 | oBase opts = lowerPosixRV64 (oPlugin opts)
                 | otherwise = id
@@ -1029,8 +1026,8 @@ compileWithInterface accepted = do
                   else if a64mac then (if oPlugin opts && oBase opts then "module-" else "") ++ "a64macx28r" ++ show a64InterfaceRev
                   else if a64 && qapp then "qa64r" ++ show a64InterfaceRev
                   else if a64 then "a64x28r" ++ show a64InterfaceRev
-                  else if x64 && qapp then "qx64r" ++ show x64Rev
-                  else if x64 then "x64r" ++ show x64Rev
+                  else if x64 && qapp then "qx64r" ++ show x64InterfaceRev
+                  else if x64 then "x64r" ++ show x64InterfaceRev
                   else if espHost then "rv32-idftls1"
                   else if qapp then "qrv64r" ++ show rv64HostRev
                   else if oBase opts then "rv64posixr" ++ show rv64HostRev
@@ -1044,7 +1041,7 @@ compileWithInterface accepted = do
           -- bypassing directCheck, while tname retains module ABI identity.
           backendTag = case envBackend of
             Nothing -> ""
-            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev) ++ (if a64 then "-native1" else "") ++ (if g == PerFunction then "mixed" else "") ++ (if envTirLoops then "" else "-noloops") ++ (if envTirShallow then "-shallow" else "") ++ (if envTirForward then "-forward" else "") ++ (if envTirEntryArgs then "-entryargs" else "") ++ (if envTirSplit then "-split" else "") ++ (if envTirWrap then "-wrap" else "") ++ (if envTirLinkPairs then "" else "-nolinkpairs") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
+            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev) ++ (if a64 || x64 then "-native1" else "") ++ (if g == PerFunction then "mixed" else "") ++ (if envTirLoops then "" else "-noloops") ++ (if envTirShallow then "-shallow" else "") ++ (if envTirForward then "-forward" else "") ++ (if envTirEntryArgs then "-entryargs" else "") ++ (if envTirSplit then "-split" else "") ++ (if envTirWrap then "-wrap" else "") ++ (if envTirLinkPairs then "" else "-nolinkpairs") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
           fnv = foldl (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) (14695981039346656037 :: Word64)
           tag = "g" ++ show codegenRev ++ backendTag ++ (if envCostedRegisters then "-costedregs" else "") ++ (if envCompactFrames then "-compactframes" else "") ++ (if envRetainedRegisters then "-retainedregs" else "") ++ (if envSelfLoops then "-selfloops" else "") ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"

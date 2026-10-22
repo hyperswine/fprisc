@@ -1,0 +1,8 @@
+programs/mods/guishell.fpr: full ELF root/import assembly PASS
+programs/mods/diskapp.fpr: full ELF root/import assembly PASS
+tests/mainprofile.fpr: full ELF root/import assembly PASS
+tests/qlogmemory.fpr: full ELF root/import assembly PASS
+tests/sysed1.fpr: full ELF root/import assembly PASS
+programs/mods/terminalpreferences.fpr: full ELF root/import assembly PASS
+tests/kvlarge.fpr: full ELF root/import assembly PASS
+7 roots, 88 unique assembly files, 16749 borrowed-offset relocations, zero app TLS relocations PASS

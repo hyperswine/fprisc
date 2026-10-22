@@ -15,8 +15,8 @@ ENV = {**os.environ, 'FPR_HOME': str(ROOT), 'FPR_PATH': str(ROOT)}
 ENV.pop('FPR_FOREIGN', None)
 ENV.pop('FPR_TYPED_IR', None)
 # A64's reference is its typed runtime, checked against the IR evaluator
-# and independent truth tables. Other hosts retain the legacy differential.
-ENV['FPR_TYPED_IR_BACKEND'] = 'mixed' if platform.machine() in ('arm64','aarch64') else 'legacy'
+# and independent truth tables. Hosted targets are typed-only.
+ENV['FPR_TYPED_IR_BACKEND'] = 'mixed'
 # cabal exec needs libarchive's pkg-config metadata as the Makefile supplies it
 for keg in ('/opt/homebrew/opt/libarchive/lib/pkgconfig', '/usr/local/opt/libarchive/lib/pkgconfig'):
     if Path(keg).is_dir():

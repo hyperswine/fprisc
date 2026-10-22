@@ -1,0 +1,127 @@
+{
+  "date": "2026-10-23",
+  "starting_revision": "f1ba4093efca522ec18fe8fcb65abe10c50e45d6",
+  "branch": "typed-ir-retire",
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "x64_execution": "Rosetta arch -x86_64",
+  "compiler_sha256": "adef32b22062a97112a0cff141462149009adad9861cb4aff32cd931acdb86fe",
+  "native_selection_revision": 19,
+  "x64_interface_revision": 10,
+  "changed_haskell_sha256": {
+    "compiler/Compile.hs": "7ed9a6ff766841310cccb3f412ea7ee0ca3a381587364990cfd379a2592b9ec7",
+    "compiler/Codegen.hs": "1b91a6056d0ceb9cd07633b812ae497faddfff2a5153c715ec80ae3350e8bef8",
+    "compiler/Codegen/Target/X64.hs": "9ede3ae0ee5ea1be7d21175a7672d053bed1f4de147d9d03098de005c5f89290"
+  },
+  "validation": {
+    "local_before": {
+      "exit_code": 0,
+      "elapsed_s": 15.25
+    },
+    "qos_scalar_before_retirement": {
+      "exit_code": 0,
+      "elapsed_s": 5.14
+    },
+    "local_after": {
+      "exit_code": 0,
+      "elapsed_s": 15.37,
+      "scalar_modes_per_target": 5,
+      "cases_per_mode": 32114,
+      "scalar_traps_per_mode": 13,
+      "kernel_cases_per_target": 3500,
+      "kernel_traps_per_target": 5
+    },
+    "retirement": {
+      "exit_code": 0,
+      "targets": [
+        "x64",
+        "qx64"
+      ],
+      "warm_executable_cache": "not executed on this ARM host; registered for native x64"
+    },
+    "selected_allocator_ir": {
+      "exit_code": 0
+    },
+    "base_after": {
+      "jobs": 107,
+      "elapsed_s": 403,
+      "workers": 4,
+      "exit_code": 0,
+      "cache_root": "/private/tmp/fpr-x64-retirement-base-cache",
+      "command": "python3 -u tests/check_base.py -j 4 --times"
+    },
+    "qos_catalog": {
+      "exit_code": 0,
+      "counts": {
+        "frontend_exception": 1,
+        "frontend_refusal": 49,
+        "native": 198
+      },
+      "elapsed_s": 667.1,
+      "qos_revision": "f9c00aea3f84ddcba34169f9badb594cead8a84f"
+    },
+    "local_after_with_real_tail_calls": {
+      "exit_code": 0,
+      "elapsed_s": 27.01,
+      "scalar_modes_per_target": 6,
+      "cases_per_mode": 32114,
+      "scalar_traps_per_mode": 13,
+      "self_loops": "off and on; wide recursive tail transfers included",
+      "kernel_cases_per_target": 3500,
+      "kernel_traps_per_target": 5
+    },
+    "qos_full_elf": {
+      "exit_code": 0,
+      "roots": 7,
+      "unique_assembly_files": 88,
+      "borrowed_offset_relocations": 16749,
+      "app_tls_relocations": 0
+    },
+    "float_oracle": {
+      "exit_code": 0,
+      "hosted_edge_pairs": 400,
+      "rosetta_pairs": 1280
+    },
+    "workflow_yaml": "Ruby YAML.parse_file passed; actionlint unavailable",
+    "static_checks": {
+      "git_diff_check": 0,
+      "changed_python_ast": "passed",
+      "retired_translator_imports": "none in active compiler/tests/Cabal sources"
+    }
+  },
+  "evidence_boundary": "Adapted generated instructions under Rosetta and separate ELF assembly, not real Linux TLS or a loaded x64 QOS runtime; no native x64 performance claim.",
+  "toolchain": {
+    "clang": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "ghc": "9.8.2",
+    "python": "Python 3.15.0"
+  },
+  "deleted_files": [
+    "compiler/X64.hs",
+    "tests/X64Frames.hs"
+  ],
+  "changed_test_sha256": {
+    "tests/check_a64_retirement.py": "483e0d1a39fe9d453d5785b4b4174bde92f867e2e2f7e80172d65f6d7f742d20",
+    "tests/check_base.py": "9254de99d4dd818a558cb19a166073e78a8b186929d4d79bc3fc859f72d7f91b",
+    "tests/check_consuming_reuse.py": "08f9a15ef534263681466576680a5fbf7ea059ea6a86cbefcdf2b6684ce03bca",
+    "tests/check_float_inline.py": "fec395df709e65a8bf5e155493d391efe73d6f54f5206c318a92eac7b5b1953b",
+    "tests/check_frame_placement.py": "7b435de4ed9e7e3bb9c78b3f521db04bc29d3cb281bbdb064e6ccbfe1fe51717",
+    "tests/check_registers.py": "624934099dd976dae8cf80f18c910970b46d8816f9b21a1713d1a597c104554f",
+    "tests/check_retained_registers.py": "0409393f1b651c78dadbaa900ccae8584c37c221af397f94b7327a624397b768",
+    "tests/check_reuse.py": "d4dd7ed966307a2b130c70c5ddbdec7c2d5910ad307327d72ba51a86aa2570ed",
+    "tests/check_self_loop_x64.py": "62a81c2ba30ece2b2f0392f69d2a1ee33c3bc2648c298cd1ae38dcfc342a0268",
+    "tests/check_self_loops.py": "aff99111792d4559664bdb12f2c1afcfba05bd3a5f1eb6769cbad196df1f327d",
+    "tests/check_typed_ir.py": "11ba1e2d0a8f45f2a1ecc3c8c39b5f0793b6493db4f3d46f10d3ac731b63dc5e",
+    "tests/check_typed_ir_aggregates.py": "d67ba0840b34d5adf1de1eb2fe9a8bde0582c5a27cd0fb0a07fab4757b81c706",
+    "tests/check_typed_ir_kernels.py": "52b712ba64615dd73bf2a499038affe59c7446bbf3dbc6d4c5ceca55e00b1a79",
+    "tests/check_typed_ir_native.py": "6e645df0809b67b1ab5d3a68f30655e3ce4fca356f3c532875bc9fe99b26fada",
+    "tests/check_vector_fallback_frames.py": "9b1e3f113db51d0da2bebbfce84e151b250bd135d76174413c99426185817deb",
+    "tests/check_vector_pipelines.py": "a0f8389982463102625396efa79e0c492a54d75c8d3a1598b47657bb7794abf9",
+    "tests/check_wide_params.py": "e08a4b97fd2b5f0a1d7ff4e88eb5dbc43f82ed5d2b9edc6a870e14788b8402b3",
+    "tests/check_x64_local.py": "a166b9e6edf24730685a7ff1ac3d61966c75f6ee2b74aa3ff9592cfd113ba755",
+    "tests/check_x64_scalar.py": "804ea3a6ca4345c7d9c500254ba9b97e93b35e765683fb5e15e19ca094afe76a",
+    "tests/check_x64_vectors.py": "5d37d56d31d640f67af0f04f37628ea2f9ecd9fbe68e6894b2e96b6f2aa44c83",
+    "tests/x64_probe.py": "616d333b37ce75ab7901a011595cb1003e3149dcd6f772034c498f22fe3e80be",
+    "tests/check_x64_qos.py": "ec83fe0879cd09554d252c1009cd8ffe3328d842f91c2f6a4358e0ac952efbe1",
+    "tests/check_x64_retirement.py": "b19de4e9caba632e121d0f4d0a2c6d07de78bf853d0ffa58cca72ef26fd24551"
+  }
+}

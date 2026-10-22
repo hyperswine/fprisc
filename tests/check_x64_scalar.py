@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Execute generated x64 arithmetic and ABI probes on Intel or macOS Rosetta."""
 import re
-import subprocess
+import sys
 import shutil
 import tempfile
 import time
 from pathlib import Path
-from x64_probe import ROOT, adapt, environment, host, link, run
+from x64_probe import ROOT, adapt, borrowed_oracle, environment, host, link, run
 
 
 def fixture():
@@ -54,6 +54,7 @@ applyLocal f x = f x + f (x + 1).
 
 
 def main():
+    qos = "--qos" in sys.argv
     target = host()
     if target is None:
         print('x64 scalar execution SKIP: needs x86-64 or macOS Rosetta')
@@ -65,107 +66,72 @@ def main():
         env = environment(tmp / 'cache')
         source = tmp / 'scalar.fpr'
         source.write_text(fixture())
-        modes = [('baseline', {}),
-                 ('registers', dict(FPR_NO_REGISTERS='0', FPR_RETAINED_REGISTERS='1',
-                                    FPR_COMPACT_FRAMES='1', FPR_SELF_LOOPS='1')),
-                 ('costed', dict(FPR_NO_REGISTERS='0', FPR_RETAINED_REGISTERS='1',
-                                 FPR_COSTED_REGISTERS='1', FPR_COMPACT_FRAMES='1', FPR_SELF_LOOPS='1')),
-                 ('workers', dict(FPR_NO_REGISTERS='0', FPR_RETAINED_REGISTERS='1',
-                                  FPR_COMPACT_FRAMES='1', FPR_SELF_LOOPS='1',
-                                  FPR_NO_SCALAR_WORKERS='0')),
-                 ('typed-ir', dict(FPR_TYPED_IR_BACKEND='mixed',
-                                   FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,forward,forwardSwap,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8,pressure,wide,answer,useCaf,tick,applyLocal')),
-                 ('typed-ir-workers', dict(FPR_TYPED_IR_BACKEND='mixed', FPR_NO_SCALAR_WORKERS='0',
-                                           FPR_TYPED_IR_STRICT='add,sub,mul,divide,shift,branch,hot,calls,forward,forwardSwap,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8,pressure,wide,answer,useCaf,tick,applyLocal')),
-                 ('baseline-repeat', {})]
+        required = 'add,sub,mul,divide,shift,branch,hot,calls,forward,forwardSwap,boolEq,boolNe,boolResult,rotate6,rotate7,rotate8,rotate63,call7,call8,pressure,wide,answer,useCaf,tick,applyLocal'
+        modes = [('typed-ir', dict(FPR_TYPED_IR_BACKEND='mixed', FPR_TYPED_IR_STRICT=required)),
+                 ('typed-ir-workers', dict(FPR_TYPED_IR_BACKEND='mixed', FPR_NO_SCALAR_WORKERS='0', FPR_TYPED_IR_STRICT=required)),
+                 ('typed-ir-no-loops', dict(FPR_TYPED_IR_BACKEND='mixed', FPR_TYPED_IR_SELF_LOOPS='0', FPR_TYPED_IR_STRICT=required))]
         entry_modes = [("typed-ir-shallow", {"FPR_TYPED_IR_SHALLOW_STACK": "1"}),
                        ("typed-ir-forward", {"FPR_TYPED_IR_FORWARD_PARAMS": "1"}),
                        ("typed-ir-entry", {"FPR_TYPED_IR_SHALLOW_STACK": "1", "FPR_TYPED_IR_FORWARD_PARAMS": "1"})]
         baseline_typed = dict(next(settings for name, settings in modes if name == "typed-ir"))
-        modes[-1:-1] = [(name, {**baseline_typed, **flags}) for name, flags in entry_modes]
-        original = None
+        modes += [(name, {**baseline_typed, **flags}) for name, flags in entry_modes]
         for name, settings in modes:
             mode = dict(env, **settings)
             assembly = tmp / 'scalar.s'
-            run([ROOT / 'fpr', 'compile', '--target=x64', source, assembly], mode)
+            run([ROOT / 'fpr', 'compile', '--target=' + ('qx64' if qos else 'x64'), source, assembly], mode)
             text = assembly.read_text()
             # Select complete top-level functions, including their private workers.
             bodies = re.findall(r'(?ms)^# fn ([^\n]+)\n(.*?)(?=^# (?:wcet|native-insns-v1):)', text)
             selected = '\n'.join(body for title, body in bodies if not title.startswith('main '))
             assert 'fpr_fn_rotate63:' in selected and 'idivq' in selected
-            native = mode.get('FPR_TYPED_IR_BACKEND') == 'mixed'
-            # the string objects the bodies name (tick's dead-arm reason): the
-            # legacy unit's .Lstr objects, and in native mode the typed-IR
-            # backend's .Ltirstr objects, which end the unit in their own
-            # read-only section, one per distinct text
+            # Include tick's dead-arm reason, emitted once in read-only data.
             strings = re.findall(r'(?ms)^    \.balign 8\n(\.L(?:tir)?str[^:\n]*):\n    \.long 9000\n.*?(?=^$)', text)
             objects = re.findall(r'(?ms)^    \.balign 8\n\.L(?:tir)?str[^:\n]*:\n    \.long 9000\n.*?(?=^$)', text)
             assert objects, 'no string object in the unit'
-            if native:
-                assert any(l.startswith('.Ltirstr_') for l in strings), strings
-                assert sum(l.startswith('.Ltirstr_') for l in strings) == 1, strings
+            assert any(l.startswith('.Ltirstr_') for l in strings), strings
+            assert sum(l.startswith('.Ltirstr_') for l in strings) == 1, strings
             # appended to every linked or assembled text below, in the format's syntax
             data = lambda on_mac: '\n    ' + ('.const' if on_mac else '.section .rodata') + '\n' + '\n'.join(objects) + '\n'
-            if native:
-                native_names = {title.split()[0] for title, _ in bodies if 'typed-ir x64' in title}
-                required = set(mode['FPR_TYPED_IR_STRICT'].split(','))
-                assert required <= native_names, (required - native_names, native_names)
-                if mode.get("FPR_TYPED_IR_FORWARD_PARAMS") == "1":
-                    wrappers = [title for title, _ in bodies if title.startswith(("forward ", "forwardSwap "))]
-                    assert len(wrappers) == 2 and all("forward=yes saved=none" in t for t in wrappers), wrappers
-                assert 'UNBOUNDED' not in text
-                assert '%fs:fpr_x64_a6@tpoff' in selected and '%fs:fpr_x64_a7@tpoff' in selected
-                # arguments 9 and 64 through the hart spill cells: the caller's
-                # stores and the arrival's loads name the first and last cell
-                # (the merge with M3: the arrival loads each cell into the
-                # parameter's allocated register, docs/2026-10-21-TYPED-IR-MERGE.md)
-                rotate63 = next(body for title, body in bodies if title.startswith('rotate63 '))
-                # (the caller's store goes through %r11 when the value itself
-                # was reloaded into %r10, the allocator's first scratch)
-                assert re.search(r'movq %fs:fpr_posix_hart@tpoff, %r1[01]', rotate63) and re.search(r', 8\(%r1[01]\)', rotate63) and re.search(r', 448\(%r1[01]\)', rotate63), rotate63[:600]
-                assert re.search(r'movq 8\(%(\w+)\), %\1', rotate63) and re.search(r'movq 448\(%(\w+)\), %\1', rotate63), rotate63[:600]
-                assert 'cqto' in selected and 'imulq' in selected
-                headers = {title.split()[0]: title for title, _ in bodies if 'typed-ir x64' in title}
-                spills = int(re.search(r'spills=(\d+)', headers['pressure']).group(1))
-                assert spills >= 7, headers['pressure']  # twelve values across a call, five budget registers
-                assert all(s in ('none', 'rbx', 'r12', 'r13', 'r14', 'r15') for t in headers.values() for s in re.search(r'saved=(\S+)', t).group(1).split(',')), headers
-                assert int(re.search(r'loops=(\d+)', headers['rotate6']).group(1)) == 1, headers['rotate6']
-                print(f'{name}: strict direct coverage {len(native_names)} functions; including arities 9 and 64; pressure spills {spills}; rotate6 is a loop', flush=True)
-            else:
-                hot = next(body for title, body in bodies if title == 'hot (arity 5)')
-                # Costed placement may legitimately reject promotion.
-                if mode['FPR_COSTED_REGISTERS'] == '0':
-                    assert bool(re.search(r'%(?:rbx|r12|r13|r14|r15)\b', hot)) == (mode['FPR_NO_REGISTERS'] == '0')
-                assert bool(re.search(r'^\.Lself\d+:', selected, re.M)) == (mode['FPR_SELF_LOOPS'] == '1')
+            native_names = {title.split()[0] for title, _ in bodies if 'typed-ir x64' in title}
+            required = set(mode['FPR_TYPED_IR_STRICT'].split(','))
+            assert required <= native_names, (required - native_names, native_names)
+            if mode.get("FPR_TYPED_IR_FORWARD_PARAMS") == "1":
+                wrappers = [title for title, _ in bodies if title.startswith(("forward ", "forwardSwap "))]
+                assert len(wrappers) == 2 and all("forward=yes saved=none" in t for t in wrappers), wrappers
+            assert 'UNBOUNDED' not in text
+            assert all(cell in selected for cell in (('%fs:8(', '%fs:16(') if qos else ('%fs:fpr_x64_a6@tpoff', '%fs:fpr_x64_a7@tpoff')))
+            # arguments 9 and 64 through the hart spill cells: the caller's
+            # stores and the arrival's loads name the first and last cell
+            # (the merge with M3: the arrival loads each cell into the
+            # parameter's allocated register, docs/2026-10-21-TYPED-IR-MERGE.md)
+            rotate63 = next(body for title, body in bodies if title.startswith('rotate63 '))
+            # (the caller's store goes through %r11 when the value itself
+            # was reloaded into %r10, the allocator's first scratch)
+            assert re.search(r'movq %fs:0\(%r1[01]\), %r1[01]' if qos else r'movq %fs:fpr_posix_hart@tpoff, %r1[01]', rotate63) and re.search(r', 8\(%r1[01]\)', rotate63) and re.search(r', 448\(%r1[01]\)', rotate63), rotate63[:600]
+            assert re.search(r'movq 8\(%(\w+)\), %\1', rotate63) and re.search(r'movq 448\(%(\w+)\), %\1', rotate63), rotate63[:600]
+            assert 'cqto' in selected and 'imulq' in selected
+            headers = {title.split()[0]: title for title, _ in bodies if 'typed-ir x64' in title}
+            spills = int(re.search(r'spills=(\d+)', headers['pressure']).group(1))
+            assert spills >= 7, headers['pressure']  # twelve values across a call, five budget registers
+            assert all(s in ('none', 'rbx', 'r12', 'r13', 'r14', 'r15') for t in headers.values() for s in re.search(r'saved=(\S+)', t).group(1).split(',')), headers
+            looped = mode['FPR_TYPED_IR_SELF_LOOPS'] != '0'
+            assert int(re.search(r'loops=(\d+)', headers['rotate6']).group(1)) == int(looped), headers['rotate6']
+            print(f'{name}: strict direct coverage {len(native_names)} functions; including arities 9 and 64; pressure spills {spills}; rotate6 loop={looped}', flush=True)
             assert ('fpr_fn__x24worker_x2escalar_x2e' in selected) == (mode['FPR_NO_SCALAR_WORKERS'] == '0')
-            if name == 'baseline':
-                original = selected
-                baseline_bodies = {title.split()[0]: body for title, body in bodies}
-            if name == 'baseline-repeat':
-                assert selected == original, 'off/on/off emission changed'
-            if native and shutil.which('clang'):
+            if shutil.which('clang'):
                 raw = tmp / 'real-tls.s'
                 raw.write_text('.text\n' + selected + data(False))
                 run(['clang', '-target', 'x86_64-unknown-linux-gnu', '-c', raw, '-o', tmp / 'real-tls.o'], mode)
-            assembly.write_text(adapt('.text\n' + selected + data(mac), mac))
+            assembly.write_text(adapt('.text\n' + selected + data(mac), mac, borrowed=qos))
             shim = tmp / 'abi.s'
             shim.write_text(adapt((ROOT / 'tests/base/x64_scalar_abi.s').read_text(), mac))
             exe = tmp / 'oracle'
-            growth_flag = ['-DORACLE_TYPED_ENTRY_CHECKS'] if native and mode.get('FPR_TYPED_IR_SHALLOW_STACK') != '1' else []
-            link([*growth_flag, assembly, shim, ROOT / 'tests/base/x64_scalar_oracle.c'], exe, mac, mode)
+            growth_flag = ['-DORACLE_TYPED_ENTRY_CHECKS'] if mode.get('FPR_TYPED_IR_SHALLOW_STACK') != '1' else []
+            oracle = tmp / 'oracle.c'
+            oracle_text = (ROOT / 'tests/base/x64_scalar_oracle.c').read_text()
+            oracle.write_text(borrowed_oracle(oracle_text, switch=True) if qos else oracle_text)
+            link([*growth_flag, assembly, shim, oracle], exe, mac, mode)
             print(f'{label} {name}: ' + run([*runner, exe], mode).strip(), flush=True)
-            if name == 'typed-ir':
-                for boundary, legacy_names in [('legacy-callees', {'hot', 'rotate6', 'rotate7'}),
-                                               ('legacy-callers', {'calls', 'call7', 'call8', 'boolResult'})]:
-                    # Different compilations have independent local-label counters.
-                    # Keep them in separate objects, just like real mixed units.
-                    mixed = '\n'.join(body for title, body in bodies
-                                      if not title.startswith('main ') and title.split()[0] not in legacy_names)
-                    legacy_asm = tmp / 'legacy-boundary.s'
-                    legacy_asm.write_text(adapt('.text\n' + '\n'.join(baseline_bodies[n] for n in sorted(legacy_names)), mac))
-                    assembly.write_text(adapt('.text\n' + mixed + data(mac), mac))
-                    link([assembly, legacy_asm, shim, ROOT / 'tests/base/x64_scalar_oracle.c'], exe, mac, mode)
-                    print(f'{label} typed-ir/{boundary}: ' + run([*runner, exe], mode).strip(), flush=True)
         # (a 65th parameter never reaches the generator: the front end bundles
         # arguments beyond the 64-argument convention; the lowering's own
         # ceiling check is exercised in tests/TypedIR.hs)

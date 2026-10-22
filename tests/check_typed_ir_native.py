@@ -5,7 +5,7 @@ vocabulary, placement, layout, bound analysis and the A64 pipeline are
 checked in tests/SelectedIR.hs; then the real pipeline on the matching native host:
 
 - the module fixture tests/typed_ir/scalarlib.fpr goes through the new
-  backend as a whole unit (strict mode proves it) with typed-only A64 emission (x64 also retains a legacy reference), and
+  backend as a whole unit (strict mode proves it) with typed-only A64 emission (independent expected results), and
   every call answers what the host reference answers AND what independent
   arithmetic says, traps included, word for word;
 - the C harness tests/typed_ir/tir_probe.c calls native functions through
@@ -16,7 +16,7 @@ checked in tests/SelectedIR.hs; then the real pipeline on the matching native ho
 - mixed (per-function) mode on the M1 root fixture;
 - the ELF (a64) and the Mach-O TLV (a64mac without --base) variants
   assemble with clang where it has the target;
-- on x64, backend-off leaves no trace; every native
+- every native
   function carries a finite native-insns-v1 bound and no legacy label.
 No performance claim is made or measured here."""
 import argparse, os, platform, re, shutil, subprocess, sys, tempfile
@@ -26,7 +26,7 @@ ENV = {**os.environ, 'FPR_HOME': str(ROOT), 'FPR_PATH': str(ROOT)}
 for k in ('FPR_FOREIGN', 'FPR_TYPED_IR', 'FPR_TYPED_IR_BACKEND', 'FPR_TYPED_IR_STRICT',
           'FPR_TYPED_IR_SHALLOW_STACK', 'FPR_TYPED_IR_FORWARD_PARAMS'):
     ENV.pop(k, None)
-ENV['FPR_TYPED_IR_BACKEND'] = 'legacy' # x64 reference; A64 selects mixed below
+ENV['FPR_TYPED_IR_BACKEND'] = 'mixed'
 for keg in ('/opt/homebrew/opt/libarchive/lib/pkgconfig', '/usr/local/opt/libarchive/lib/pkgconfig'):
     if Path(keg).is_dir():
         ENV['PKG_CONFIG_PATH'] = keg + ':' + ENV.get('PKG_CONFIG_PATH', '')
@@ -57,10 +57,8 @@ args = parser.parse_args()
 if args.entry_optimizations:
     ENV.update(FPR_TYPED_IR_SHALLOW_STACK='1', FPR_TYPED_IR_FORWARD_PARAMS='1')
 BACKEND = args.backend
-# Only x64 has an off/legacy leg now. A64's reference and both granularities
+# Both targets are typed-only. The reference and both granularities
 # are checked against EXPECTED, the independent arithmetic/trap oracle.
-if BACKEND == 'a64':
-    ENV['FPR_TYPED_IR_BACKEND'] = 'mixed'
 NATIVE_HOST = (platform.machine() in ('arm64', 'aarch64') if BACKEND == 'a64' else
                platform.machine() in ('x86_64', 'AMD64') and platform.system() == 'Linux')
 run(['make', 'fpr'])
@@ -268,24 +266,21 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     print('one and four harts: PASS')
     # Distinct supported granularities retain separate, reusable unit identities.
     seen = []
-    modes = ('mixed', '1', 'mixed', '1', 'mixed') if BACKEND == 'a64' else ('', '1', '', 'mixed', '')
+    modes = ('mixed', '1', 'mixed', '1', 'mixed')
     for mode in modes:
-        env = {**ENV, 'FPR_TYPED_IR_BACKEND': mode or 'legacy'}
+        env = {**ENV, 'FPR_TYPED_IR_BACKEND': mode}
         exe = tmp / 'mod-t'
         log = run(['./fpr', 'build', MOD, '--with', PROBE, '-o', exe, '-v'], env)
         tags = {re.search(r'-(g\d+[^/ ]*)\.s', l).group(1) for l in log.splitlines() if re.search(r'units/u-[0-9a-f]+-[^ ]*\.s', l)}
         assert len(tags) == 1, (mode, tags)
         tag = tags.pop()
-        assert ('tirbe' in tag) == bool(mode) and ('mixed' in tag) == (mode == 'mixed'), (mode, tag)
+        assert 'tirbe' in tag and ('mixed' in tag) == (mode == 'mixed'), (mode, tag)
         seen.append(tag)
         for k in (('fib', (20,)), ('cbSum', (10,)), ('divz', (7, 0))):
             assert outcome(exe, *k) == EXPECTED[k], (mode, k)
     assert seen[0] == seen[2] == seen[4], seen
-    if BACKEND == 'a64':
-        assert seen[1] == seen[3] and len(set(seen)) == 2, seen
-    else:
-        assert len({seen[1], seen[3], seen[0]}) == 3, seen
-    print('cache transitions: ' + '/'.join(mode or 'legacy' for mode in modes) + ' PASS')
+    assert seen[1] == seen[3] and len(set(seen)) == 2, seen
+    print('cache transitions: ' + '/'.join(mode for mode in modes) + ' PASS')
     # strict mode names the function that fell back
     refused_source = tmp / 'refused.fpr'
     refused_source.write_text('main = Unit.\n')
@@ -301,15 +296,10 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
                     (('boolResult', (3, 1)), ('value', '10')), (('boolResult', (3, 0)), ('value', '1'))]:
         assert outcome(mexe, *k) == want, (k, outcome(mexe, *k))
     print('mixed mode on the M1 fixture: PASS')
-    # Native emission carries the native metric; x64 retains an off leg.
-    off_s, on_s = tmp / 'off.s', tmp / 'on.s'
-    if BACKEND == 'x64':
-        run(['./fpr', '--target=x64', f'--prelude={ROOT}/core/prelude.fpr', 'tests/typed_ir/scalar.fpr', off_s])
+    # Native emission carries only the native metric.
+    on_s = tmp / 'on.s'
     run(['./fpr', f'--target={"a64mac" if BACKEND == "a64" else "x64"}', f'--prelude={ROOT}/core/prelude.fpr', 'tests/typed_ir/scalar.fpr', on_s], {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed'})
     on_t = on_s.read_text()
-    if BACKEND == 'x64':
-        off_t = off_s.read_text()
-        assert 'typed-ir x64' not in off_t and 'native-insns-v1' not in off_t
     native_fns = re.findall(rf'^# fn (\S+) \(arity \d+\) typed-ir {BACKEND}', on_t, re.M)
     assert len(native_fns) == 22 and "main" in native_fns, native_fns
     for fn in native_fns:

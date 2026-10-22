@@ -1,0 +1,57 @@
+typed-ir: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-workers: strict direct coverage 30 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-workers: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-no-loops: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=False
+Rosetta x86-64 typed-ir-no-loops: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-shallow: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-shallow: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-forward: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-forward: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-entry: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-entry: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+x64 scalar/ABI probes: 7.06s including compilation/linking; Linux TLS and scheduler are substituted
+typed-ir: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-workers: strict direct coverage 30 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-workers: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-no-loops: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=False
+Rosetta x86-64 typed-ir-no-loops: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-shallow: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-shallow: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-forward: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-forward: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-entry: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-entry: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+x64 scalar/ABI probes: 6.81s including compilation/linking; Linux TLS and scheduler are substituted
+check_x64_scalar.py: 14.03s
+Rosetta x86-64 FPR_TYPED_IR_SELF_LOOPS=0: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+Rosetta x86-64 FPR_TYPED_IR_SELF_LOOPS=1: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+check_self_loop_x64.py: 1.80s
+x64: 6 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 700 cases: map/filter/fold/fusion/write-back fold, empty columns, guard fallbacks, hostile yields
+x64: 4 checked arithmetic trap cases PASS
+qx64: 6 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 700 cases: map/filter/fold/fusion/write-back fold, empty columns, guard fallbacks, hostile yields
+qx64: 4 checked arithmetic trap cases PASS
+x64: 5 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 1500 record cases: simultaneous/captured map, 9/64/300-column filter, captured fold, empty, guards, hostile yields
+x64: 1 checked arithmetic trap cases PASS
+qx64: 5 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 1500 record cases: simultaneous/captured map, 9/64/300-column filter, captured fold, empty, guards, hostile yields
+qx64: 1 checked arithmetic trap cases PASS
+x64: 3 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 500 mixed Int/F64 record cases: captured map, stable filter, captured fold, empty, hostile yields
+qx64: 3 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 500 mixed Int/F64 record cases: captured map, stable filter, captured fold, empty, hostile yields
+x64: 3 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 700 F32 cases: map, filter, fold, empty columns, guard fallbacks, hostile yields
+qx64: 3 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 700 F32 cases: map, filter, fold, empty columns, guard fallbacks, hostile yields
+x64: 1 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 100 pair-sum folds: the GPU hook's answer once, the CPU strip otherwise, guard fallback
+qx64: 1 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 100 pair-sum folds: the GPU hook's answer once, the CPU strip otherwise, guard fallback
+check_x64_vectors.py: 11.09s
+Local x64 suite (Rosetta x86-64): PASS in 27.01s including build check
+Evidence: adapted generated instructions and C oracles; not Linux TLS, actor scheduling or native x86 performance.

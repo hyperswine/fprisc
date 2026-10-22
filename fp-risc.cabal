@@ -90,7 +90,6 @@ executable fpr
       StdCheck
       Struct
       Target
-      X64
       Sol.Startup
       Sol.Cache
       Sol.Diagnostic

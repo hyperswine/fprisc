@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Strict native aggregate/string coverage against independent and legacy results."""
+"""Strict native aggregate/string coverage against independent results."""
 import os
-import platform
 from pathlib import Path
 import re
 import subprocess
@@ -24,23 +23,18 @@ def main():
     assert p.returncode == 0, p.stderr[-3000:]
     with tempfile.TemporaryDirectory(prefix='fpr-aggregates-') as d:
         root = Path(d)
-        legacy = {}
-        modes = ('typed', 'entry') if platform.machine() in ('arm64','aarch64') else ('legacy', 'typed', 'entry')
+        modes = ('typed', 'entry')
         for mode in modes:
             env = dict(ENV, XDG_CACHE_HOME=str(root / mode))
-            if mode != 'legacy':
-                env.update(FPR_TYPED_IR_BACKEND='mixed', FPR_TYPED_IR_STRICT=NAMES)
-            else:
-                env.update(FPR_TYPED_IR_BACKEND='legacy')
+            env.update(FPR_TYPED_IR_BACKEND='mixed', FPR_TYPED_IR_STRICT=NAMES)
             if mode == 'entry':
                 env.update(FPR_TYPED_IR_SHALLOW_STACK='1', FPR_TYPED_IR_FORWARD_PARAMS='1')
             exe = root / ('app-' + mode)
             built = run([ROOT / 'fpr', 'build', 'tests/typed_ir/aggregates.fpr', '-o', exe, '-v'], env)
             assert built.returncode == 0, built.stdout[-1500:] + built.stderr[-4000:]
-            if mode != 'legacy':
-                notes = built.stdout + built.stderr
-                for name in NAMES.split(','):
-                    assert re.search(r'typed-ir-backend: ' + name + r' native ', notes), (name, notes[-4000:])
+            notes = built.stdout + built.stderr
+            for name in NAMES.split(','):
+                assert re.search(r'typed-ir-backend: ' + name + r' native ', notes), (name, notes[-4000:])
             for harts in ('1', '4'):
                 for n in (-17, 0, 123):
                     p = run([exe, 'value', n], dict(env, FPR_HARTS=harts))
@@ -50,11 +44,6 @@ def main():
                     p = run([exe, 'bad', index], dict(env, FPR_HARTS=harts))
                     msg = f'charAt: index out of range ({index}, length 4)'
                     assert p.returncode == 1 and msg in p.stdout + p.stderr, (mode, index, p.stdout, p.stderr)
-                    if mode == 'legacy':
-                        legacy[index] = (p.returncode, p.stdout, p.stderr)
-                    elif index in legacy:
-                        # Runtime logging may include actor/hart identities; the trap text is exact.
-                        assert p.returncode == legacy[index][0]
             print(f'{mode}: nested constructors, records, live references across 2000 allocations/calls, byte strings, range traps, one/four harts PASS', flush=True)
     return 0
 

@@ -1,0 +1,2 @@
+x64 retirement: unsupported foreign calls refused by name in default/whole/named-strict modes on all two targets PASS
+x64 retirement: two targets, native-only root/imports, whole/mixed warm caches, all rollback aliases refused; RV rollback retained PASS

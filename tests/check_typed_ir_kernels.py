@@ -9,7 +9,7 @@ import shutil
 import tempfile
 import subprocess
 from check_vector_pipelines import check_execution
-from x64_probe import adapt, host, link, run
+from x64_probe import adapt, borrowed_oracle, host, link, run
 
 ROOT=Path(__file__).resolve().parents[1]
 FIX=ROOT/'tests/typed_ir'
@@ -70,7 +70,7 @@ def main():
         legacy=dict(env,FPR_TYPED_IR_BACKEND='legacy')
         outputs=[]
         modes = [dict(env,FPR_TYPED_IR_STRICT='all')]
-        if platform.machine() not in ('arm64','aarch64'): modes.insert(0,legacy)
+        if platform.machine() not in ('arm64','aarch64','x86_64','AMD64'): modes.insert(0,legacy)
         for mode in modes:
             run([ROOT/'fpr','build',FIX/'mapas_kernels.fpr','-o',exe],mode)
             outputs.append(run([exe],dict(mode,FPR_HARTS='4')))
@@ -95,8 +95,8 @@ def main():
 
 
 
-def check_targets(env,tmp,args,fixture,oracle_source,kernel_count,trap_count,floating=False):
-    for target in (('a64','x64','rv64') if floating else ('a64','x64','rv64','rv32')):
+def check_targets(env,tmp,args,fixture,oracle_source,kernel_count,trap_count,floating=False,targets=None):
+    for target in (targets or (('a64','x64','qx64','rv64') if floating else ('a64','x64','qx64','rv64','rv32'))):
         asm=tmp/(target+'.s')
         # run() returns stdout only; routing is asserted in emitted code.
         run([ROOT/'fpr','compile','--target='+target,fixture,asm],dict(env,FPR_TYPED_IR_STRICT='all'))
@@ -115,14 +115,14 @@ def check_targets(env,tmp,args,fixture,oracle_source,kernel_count,trap_count,flo
         body='\n'.join(b for _,b in chosen)
         objects=set(re.findall(r'\bfpr_obj_[A-Za-z0-9_]+',body))
         oracle=tmp/(target+'.c')
-        oracle.write_text(oracle_source+'\n'+'\n'.join(f'char {o}[40];' for o in sorted(objects)))
-        if target=='x64':
+        oracle.write_text((borrowed_oracle(oracle_source) if target == 'qx64' else oracle_source)+'\n'+'\n'.join(f'char {o}[40];' for o in sorted(objects)))
+        if target in ('x64','qx64'):
             available=host()
             if available is None:
                 assert not args.require_execution,'x64 execution unavailable'
                 print('x64 execution SKIP');continue
             mac,runner,label=available
-            asm.write_text('.text\n'+adapt(body,mac))
+            asm.write_text('.text\n'+adapt(body,mac,borrowed=target=='qx64'))
             exe=tmp/'x64-oracle';link([asm,oracle],exe,mac,env)
             output=run([*runner,exe],env)
         else:
@@ -143,7 +143,7 @@ def check_targets(env,tmp,args,fixture,oracle_source,kernel_count,trap_count,flo
         for trap in range(1,trap_count+1):
             case=tmp/(target+'-trap.c')
             case.write_text(f'#define TRAP_CASE {trap}\n'+oracle.read_text())
-            if target=='x64':
+            if target in ('x64','qx64'):
                 link([asm,case],exe,mac,env)
                 result=run([*runner,exe],env)
             else:

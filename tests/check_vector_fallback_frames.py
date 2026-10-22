@@ -11,9 +11,8 @@ fallback "returned" into the heap: e.g. `Vec.map (fn p -> "ok")` over a
 vector of tuples segfaulted on x86-64.
 
 Checks:
-  * X64.hs raGuard unit cases (tests/X64Frames.hs);
   * across the vector fixtures, every rv64 frame that saves ra saves it at
-    F-8, and the x64 lowering (which runs raGuard) accepts them;
+    F-8, and typed x64 emission is independent of those frames;
   * tests/base/vecfallback.fpr, whose calls all leave through fallback
     frames, prints the reference line on this host.
 """
@@ -30,14 +29,11 @@ def run(args):
     mode=dict(ENV)
     # Only the assembly/frame inspection targets the legacy translator.
     if str(args[0]).endswith('fprc'):
-        mode['FPR_TYPED_IR_BACKEND']='legacy'
+        mode['FPR_TYPED_IR_BACKEND']='legacy' if '--target=rv64' in args else 'mixed'
         mode.pop('FPR_TYPED_IR_STRICT',None)
     p = subprocess.run([str(a) for a in args], cwd=ROOT, env=mode, capture_output=True, text=True, timeout=300)
     assert p.returncode == 0, f'{args}: exit {p.returncode}\n{p.stdout[-2000:]}{p.stderr[-4000:]}'
     return p.stdout
-
-# X64.hs needs only base: plain runghc, no cabal package db
-print(run(['runghc', '-w', '-icompiler', 'tests/X64Frames.hs']), end='')
 
 with tempfile.TemporaryDirectory(prefix='fpr-fallback-frames-') as d:
     tmp = Path(d)
@@ -46,6 +42,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-fallback-frames-') as d:
         src = ROOT / 'tests/base' / f'{name}.fpr'
         for target in ('rv64', 'x64'):
             run(['./fprc', '--profile=base', f'--target={target}', src, tmp / f'{name}.{target}.s'])
+        x64 = (tmp / f'{name}.x64.s').read_text()
+        assert x64.startswith('# typed IR: no translation') and '# wcet:' not in x64
         lines = (tmp / f'{name}.rv64.s').read_text().splitlines()
         section = ''
         for prev, line in zip(lines, lines[1:]):
@@ -62,4 +60,4 @@ with tempfile.TemporaryDirectory(prefix='fpr-fallback-frames-') as d:
     got = run([exe]).strip()
     assert got == EXPECT, (got, EXPECT)
     print(f'Vector fallback frames: ra in the top word across {len(FIXTURES)} fixtures ({fallbacks} Vec frames), '
-          f'x64 lowering accepts them, fallbacks run ({EXPECT}): PASS')
+          f'typed x64 emits without translation, fallbacks run ({EXPECT}): PASS')

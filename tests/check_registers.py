@@ -20,21 +20,21 @@ with tempfile.TemporaryDirectory(prefix='fpr-regs-') as d:
     run(args,env);outputs.append(run([exe],env))
    assert outputs[0]==outputs[1]==outputs[2],(fixture,outputs)
  # Confirm the optimization actually ran; otherwise equivalence is vacuous.
- for target in ('rv64','x64'):
+ for target in ('rv64',):
   for no_regs in ('0','1'):
    asm=tmp/f'{target}{no_regs}.s'
    run(['./fpr',f'--target={target}',f'--prelude={ROOT}/core/prelude.fpr',
         'tests/bench/nbody.fpr',asm],{**ENV,'FPR_TYPED_IR_BACKEND':'legacy','FPR_NO_REGISTERS':no_regs}) # markers are legacy text
    text=asm.read_text()
-   marker={'rv64':r'\bs[1-5]\b','x64':r'%(?:rbx|r12|r13|r14|r15)\b'}[target]
+   marker=r'\bs[1-5]\b'
    assert bool(re.search(marker,text))==(no_regs=='0'),(target,no_regs)
  # Execute a register-heavy generated x64 body against an independent C sum.
  source=tmp/'hot.fpr'
  source.write_text('hot a b c d e = a*b + c*d + e*a + b*c + d*e + a*c + b*d + c*e + d*a + e*b + a*b + c*d + e*a + b*c + d*e + a*c + b*d + c*e + d*a + e*b.\nmain = Unit.\n')
  asm=tmp/'hot.s'
- run(['./fpr','--target=x64',f'--prelude={ROOT}/core/prelude.fpr',source,asm],{**ENV,'FPR_TYPED_IR_BACKEND':'legacy','FPR_NO_REGISTERS':'0'}) # legacy promotion, lifted into a C harness
+ run(['./fpr','--target=x64',f'--prelude={ROOT}/core/prelude.fpr',source,asm],{**ENV,'FPR_TYPED_IR_BACKEND':'mixed','FPR_NO_REGISTERS':'0'}) # typed allocation, lifted into a C harness
  text=asm.read_text()
- match=re.search(r'(?ms)^\s*\.globl fpr_fn_hot\n.*?(?=^# wcet:|^# fn |\Z)',text)
+ match=re.search(r'(?ms)^\s*\.globl fpr_fn_hot\n.*?(?=^# native-insns-v1:|^# fn |\Z)',text)
  assert match and re.search(r'%(?:rbx|r12|r13|r14|r15)\b',match.group())
  mac=platform.system()=='Darwin';native=platform.machine() in ('x86_64','AMD64')
  rosetta=mac and not native and subprocess.run(['arch','-x86_64','/usr/bin/true'],capture_output=True).returncode==0
@@ -48,7 +48,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-regs-') as d:
 #include <stdint.h>
 #include <assert.h>
 #include <stdio.h>
-static intptr_t hart[60]={1000000};
+static intptr_t hart[60]={[0]=1000000,[58]=-1};
+void *fpr_stack_grow(void) { __builtin_trap(); }
 void *probe_hart=hart;
 void fpr_fuel_exhausted(void) { hart[0]=1000000; }
 /* the slow paths of the inline Int arithmetic (never taken here) */
@@ -70,4 +71,4 @@ int main(void) {
   run([shutil.which('clang') or 'cc',*(['-arch','x86_64'] if mac else []),'-O2',leaf,harness,'-o',exe],ENV)
   print(run([*(['arch','-x86_64'] if rosetta else []),exe],ENV).strip())
  else:print('x64 register-heavy execution: SKIP (needs x64 or Rosetta)')
- print('Registers: differential fixtures, warm-cache mode separation and RV64/x64 legacy emission: PASS')
+ print('Registers: differential fixtures, warm-cache mode separation and RV64 legacy emission: PASS')

@@ -21,7 +21,9 @@ the current support boundary and the user-approved retirement acceptance.
 
 Update: [A64 has now been retired](2026-10-22-A64-RETIREMENT.md), following
 a fresh full default Base and QOS sweep. The inventory below is historical;
-`X64.hs` and the RISC-V generator retain their remaining consumers.
+[x64 retirement](2026-10-23-X64-RETIREMENT.md) then adds typed QOS x86-64
+access and removes `X64.hs` too. The RISC-V generator retains its remaining
+consumers.
 
 "The legacy path" is two things with very different futures.
 

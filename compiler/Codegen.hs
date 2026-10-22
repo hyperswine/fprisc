@@ -120,7 +120,7 @@ data Granularity
 
 data Strict = StrictOff | StrictAll | StrictNames [String] deriving (Eq, Show)
 
-data NativeBackend = DirectA64 ObjectFormat HartAccess | DirectX64 | DirectRV Width RV.RVHart deriving (Show)
+data NativeBackend = DirectA64 ObjectFormat HartAccess | DirectX64 | DirectQX64 | DirectRV Width RV.RVHart deriving (Show)
 
 data NativeMode = NativeMode
   { nmGranularity :: Granularity,
@@ -525,8 +525,9 @@ foreignEntries tgt =
 emitNative :: Target -> NativeMode -> S.Set String -> NativeBackend -> Fn -> Either String NativeFn
 emitNative tgt nm exps backend = case backend of
   DirectA64 fmt hart -> emitFnA64 (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm))
+  DirectQX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) X64.HartBorrow)
   DirectRV width hart -> RV.emitFnRV (RV.RVConfig width (tgtPolicy tgt) hart exps (tgtWeak tgt) (nmSelfLoops nm))
-  DirectX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm))
+  DirectX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) X64.HartTls)
 
 nativeSelect :: Target -> Bool -> NativeMode -> ScalarSignatures -> M.Map String Int -> S.Set String -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String])
 nativeSelect tgt spec nm sigs ext exps prog emitted =

@@ -18,7 +18,7 @@ def run(args, env):
 
 
 def main():
-    legacy_host = platform.machine() not in ("arm64", "aarch64")
+    legacy_host = platform.machine() not in ("arm64", "aarch64", "x86_64", "AMD64")
     with tempfile.TemporaryDirectory(prefix="fpr-retained-registers-") as td:
         tmp = Path(td)
         env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
@@ -39,8 +39,8 @@ def main():
         expected = "".join(f"{a*b + 2*a + b}\n" for a, b in pairs)
         builtin = tmp / "builtin.fpr"
         builtin.write_text("profile builtin.\nhot a b = a*b+a+a+b.\nmain = hot 7 9.\n")
-        assemblies = {t: [] for t in ("rv64", "x64", "rv32", "builtin")}
-        units = {t: [] for t in ("rv64", "x64")}
+        assemblies = {t: [] for t in ("rv64", "rv32", "builtin")}
+        units = {t: [] for t in ("rv64",)}
         entries = []
         for enabled in ("0", "1", "0"):
             mode = dict(env, FPR_RETAINED_REGISTERS=enabled)
@@ -67,8 +67,7 @@ def main():
                 entries.append({p.name for p in (tmp / "cache/fpr/run").glob("retained-*") if p.is_file()})
         for target in ("rv32", "builtin"):
             assert assemblies[target][0] == assemblies[target][1] == assemblies[target][2], target
-        markers = {"rv64": r"\bs[1-5]\b",
-                   "x64": r"%(?:rbx|r12|r13|r14|r15)\b"}
+        markers = {"rv64": r"\bs[1-5]\b"}
         for target in units:
             assert assemblies[target][0] == assemblies[target][2]
             # Check the arithmetic body, not unrelated prelude or main code:
@@ -84,7 +83,7 @@ def main():
             assert entries[0] < entries[1] == entries[2]
         if legacy_host:
             print("Retained registers: native legacy arithmetic, one/four harts and run caches PASS")
-        print("Retained registers: RV64/x64 emission, RV32/builtin boundaries and unit caches PASS")
+        print("Retained registers: RV64 emission, RV32/builtin boundaries and unit caches PASS")
 
 
 if __name__ == "__main__":

@@ -33,17 +33,42 @@ def environment(cache):
                FPR_NO_FIELD_WORKERS='1', FPR_NO_SCALAR_WORKERS='1',
                FPR_NO_REGISTERS='1', FPR_RETAINED_REGISTERS='0',
                FPR_COSTED_REGISTERS='0', FPR_COMPACT_FRAMES='0',
-               FPR_SELF_LOOPS='0')
+               FPR_SELF_LOOPS='0', FPR_TYPED_IR_SELF_LOOPS='1')
     env.pop('FPR_FOREIGN', None)
     env.pop('FPR_TYPED_IR', None)
-    env['FPR_TYPED_IR_BACKEND'] = 'legacy'
+    env['FPR_TYPED_IR_BACKEND'] = 'mixed'
     env.pop('FPR_TYPED_IR_STRICT', None)
     env.pop('FPR_TYPED_IR_SHALLOW_STACK', None)
     env.pop('FPR_TYPED_IR_FORWARD_PARAMS', None)
     return env
 
 
-def adapt(assembly, mac):
+def borrowed_oracle(source, switch=False):
+    """Model the ABI block at a nonzero pointer; FS base is substituted only."""
+    pattern = r'void \*probe_hart\s*=\s*hart;\s*(?:V|intptr_t) probe_a6\s*,\s*probe_a7;'
+    replacement = """struct ProbeBorrow { void *hart; intptr_t a6, a7; };
+static struct ProbeBorrow probe_borrows[2] = {{hart, 0, 0}, {hart, 0, 0}};
+uintptr_t fpr_g_tlsoff = (uintptr_t)&probe_borrows[0];
+#define probe_borrow (*(struct ProbeBorrow *)fpr_g_tlsoff)
+#define probe_hart (probe_borrow.hart)
+#define probe_a6 (probe_borrow.a6)
+#define probe_a7 (probe_borrow.a7)
+"""
+    result, count = re.subn(pattern, replacement, source)
+    assert count == 1, 'oracle must expose the three ABI cells'
+    if switch:
+        assert '++yields;' in result
+        result = result.replace('++yields;', 'fpr_g_tlsoff = (uintptr_t)&probe_borrows[(yields + 1) % 2]; ++yields;', 1)
+    return result
+
+
+def adapt(assembly, mac, borrowed=False):
+    if borrowed:
+        assert '@tpoff' not in assembly and 'fpr_g_tlsoff(%rip)' in assembly
+        assert re.search(r'%fs:(?:0|8|16)\(%\w+\)', assembly)
+        # The harness publishes a block pointer instead of an FS displacement.
+        # Keep the offset load, indexed access and scratch choices intact.
+        assembly = assembly.replace('%fs:', '')
     # Single-threaded harness cells replace Linux TLS on BOTH platforms.
     # Reject leftover ELF relocations rather than silently expanding scope.
     for symbol, cell in [('fpr_posix_hart', 'probe_hart'),

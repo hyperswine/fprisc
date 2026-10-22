@@ -61,7 +61,7 @@ rotate{width} n {' '.join(names)} = if n == 0 then {' + '.join(f'{i} * {n}' for 
     return text + "main = case Sys.args Unit of\n  " + "\n | ".join(cases) + ".\n", expected
 
 def main():
-    legacy_host = platform.machine() not in ("arm64", "aarch64")
+    legacy_host = platform.machine() not in ("arm64", "aarch64", "x86_64", "AMD64")
     with tempfile.TemporaryDirectory(prefix="fpr-self-loops-") as td:
         tmp = Path(td)
         env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
@@ -95,7 +95,7 @@ def main():
                         for case, want in expected.items():
                             got = run([exe, case], dict(local, FPR_HARTS=harts))
                             assert got == want, (enabled, no_regs, harts, case, got, want)
-            for target in ("rv64", "x64", "rv32"):
+            for target in ("rv64", "rv32"):
                 asm = tmp / (target + ".s")
                 run([ROOT / "fpr", "compile", "--target=" + target, source, asm], mode)
                 assembly = asm.read_text()
@@ -130,7 +130,7 @@ def main():
         assert builtin_emission[0] == builtin_emission[1] == builtin_emission[2]
         if legacy_host:
             print("Self loops: native legacy values, ticks, effects, stacks, fairness and run caches PASS", flush=True)
-        print("Self loops: RV64/x64/RV32 emission, builtin boundary and unit caches PASS", flush=True)
+        print("Self loops: RV64/RV32 emission, builtin boundary and unit caches PASS", flush=True)
         # SHA/prelude exposed stores retained by introducing a back-edge
         # before slot cleanup. Compare every function, not just a global
         # maximum that could hide a smaller function's regression.

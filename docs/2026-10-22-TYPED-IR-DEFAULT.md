@@ -10,6 +10,10 @@ typed emission for every function and kernel; `legacy`, `0` and `off`
 are refused for A64 code generation. The validation below records promotion
 before that retirement.
 
+Update: [x64 retirement](2026-10-23-X64-RETIREMENT.md) adds typed QOS x86-64
+hart/argument access and removes `X64.hs`. Both hosted x64 and `qx64` now
+require native emission and refuse the rollback aliases too.
+
 ## Decision
 
 `FPR_TYPED_IR_BACKEND` unset now means `mixed`: on every target the typed

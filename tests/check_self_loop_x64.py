@@ -19,24 +19,24 @@ def main():
                    XDG_CACHE_HOME=str(tmp / "cache"), FPR_NO_INLINE="1",
                    FPR_NO_SCALAR_WORKERS="1", FPR_NO_FIELD_WORKERS="1")
         env.pop("FPR_FOREIGN", None)
-        # FPR_SELF_LOOPS is a legacy-emission switch: this check names the legacy backend
-        env["FPR_TYPED_IR_BACKEND"] = "legacy"
+        # Exercise native loop conversion with an independent fuel/stack oracle.
+        env["FPR_TYPED_IR_BACKEND"] = "mixed"
         source = tmp / "probe.fpr"
         source.write_text(fixture()[0])
         harness = ROOT / "tests/base/selfloops_oracle.c"
         for enabled in ("0", "1"):
             assembly = tmp / "probe.s"
             run([ROOT / "fpr", "compile", "--target=x64", source, assembly],
-                dict(env, FPR_SELF_LOOPS=enabled))
-            match = re.search(r"(?ms)^\s*\.globl fpr_fn_rotate2\n.*?(?=^# wcet:)",
+                dict(env, FPR_TYPED_IR_SELF_LOOPS=enabled))
+            match = re.search(r"(?ms)^\s*\.globl fpr_fn_rotate2\n.*?(?=^# native-insns-v1:)",
                               assembly.read_text())
             assert match
             selected = ".text\n" + match[0]
-            assert bool(re.search(r"^\.Lself\d+:", selected, re.M)) == (enabled == "1")
+            assert bool(re.search(r"^\.Ltir_rotate2_m3loop:", selected, re.M)) == (enabled == "1")
             assembly.write_text(adapt(selected, mac))
             exe = tmp / "oracle"
             link([assembly, harness], exe, mac, env)
-            print(f"{label} FPR_SELF_LOOPS={enabled}: " +
+            print(f"{label} FPR_TYPED_IR_SELF_LOOPS={enabled}: " +
                   run([*runner, exe], env).strip(), flush=True)
 
 if __name__ == "__main__":

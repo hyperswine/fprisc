@@ -1,0 +1,9 @@
+Rosetta x86-64 FPR_TYPED_IR_SELF_LOOPS=0: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_self_loop_x64.py", line 43, in <module>
+    main()
+    ~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_self_loop_x64.py", line 35, in main
+    assert bool(re.search(r"^\.Ltir_rotate2_self:", selected, re.M)) == (enabled == "1")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

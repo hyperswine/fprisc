@@ -1,0 +1,13 @@
+20/248 programs/mods/diskapp.fpr: native
+40/248 programs/mods/guishell.fpr: native
+60/248 programs/mods/qar.fpr: frontend_refusal
+80/248 programs/mouse_desktop_gl.fpr: native
+100/248 tests/blocklifecyclep.fpr: native
+120/248 tests/editorpolicyprocess.fpr: native
+140/248 tests/gl2d.fpr: native
+160/248 tests/mainprofile.fpr: native
+180/248 tests/mvuweb.fpr: native
+200/248 tests/panicpersist.fpr: native
+220/248 tests/qlogmemory.fpr: native
+240/248 tests/sysed1.fpr: native
+{"frontend_exception": 1, "frontend_refusal": 49, "native": 198}

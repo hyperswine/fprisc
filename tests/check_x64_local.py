@@ -20,13 +20,15 @@ def main():
     env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT))
     env.pop('FPR_FOREIGN', None)
     env.pop('FPR_TYPED_IR', None)
-    env['FPR_TYPED_IR_BACKEND'] = 'legacy'
+    env['FPR_TYPED_IR_BACKEND'] = 'mixed'
     env.pop('FPR_TYPED_IR_STRICT', None)
     started = time.monotonic()
     run(['make', 'fpr'], env)
     for test in ('check_x64_scalar.py', 'check_self_loop_x64.py', 'check_x64_vectors.py'):
         begin = time.monotonic()
         print(run([sys.executable, ROOT / 'tests' / test], env), end='', flush=True)
+        if test == 'check_x64_scalar.py':
+            print(run([sys.executable, ROOT / 'tests' / test, '--qos'], env), end='', flush=True)
         print(f'{test}: {time.monotonic()-begin:.2f}s', flush=True)
     print(f'Local x64 suite ({label}): PASS in {time.monotonic()-started:.2f}s including build check')
     print('Evidence: adapted generated instructions and C oracles; not Linux TLS, actor scheduling or native x86 performance.')
