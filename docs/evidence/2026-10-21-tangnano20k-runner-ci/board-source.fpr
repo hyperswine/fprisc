@@ -1,0 +1,15 @@
+profile base.
+File = use "std/file".
+check yes = if yes then Unit else error "custom program check failed".
+require r = case r of Ok value -> value | Err why -> error why.
+main =
+  _ = check (Sys.args Unit == ["", "two words", "-n", "雪", "quote\"slash\\"]);
+  _ = check (require (Sys.readLine Unit) == "");
+  _ = check (require (Sys.readLine Unit) == "hello 雪");
+  _ = check (require (Sys.readLine Unit) == "-last");
+  _ = case Sys.readLine Unit of Err _ -> Unit | Ok _ -> error "expected EOF";
+  _ = check (require (Sys.env "CUSTOM_VALUE") == "a=b 雪");
+  _ = check (require (File.readText "two words.txt") == "custom file\n");
+  _ = case File.readText "../outside.txt" of Err _ -> Unit | Ok _ -> error "escaped file root";
+  _ = require (File.writeText "result.txt" "custom output\n");
+  print "CUSTOM PROGRAM HOLDS".

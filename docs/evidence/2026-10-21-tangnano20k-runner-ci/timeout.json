@@ -1,0 +1,56 @@
+{
+  "preset": "fprisc-48",
+  "target": "qemu",
+  "mode": "program",
+  "passed": false,
+  "suite_complete": false,
+  "repository": {
+    "revision": "d85ec9f7b713f53298eb4f11e45f69f9bdf41e1a",
+    "diff_sha256": "870aad8ed548c05c6055fea190f7a6783f15bb3ad89e01aaa3658ddd87f3f45e"
+  },
+  "cases": [
+    {
+      "name": "program",
+      "passed": false,
+      "build": {
+        "preset": "fprisc-48",
+        "repository": {
+          "revision": "d85ec9f7b713f53298eb4f11e45f69f9bdf41e1a",
+          "diff_sha256": "870aad8ed548c05c6055fea190f7a6783f15bb3ad89e01aaa3658ddd87f3f45e"
+        },
+        "program": {
+          "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/timeout.fpr",
+          "sha256": "a0fc2feaa7f8631887d4fef7d011d5716514a79b253b578025335b84f5379c82"
+        },
+        "compiler_sha256": "692a8b4e6e26aeb14832814e9cc0d381f864ff6bc32b33b849b00e7f3273a577",
+        "gcc": "riscv64-unknown-elf-gcc (g04696df09) 14.2.0",
+        "configuration": {
+          "xlen": 32,
+          "compressed": true,
+          "cpu_mhz": 48,
+          "gc": true,
+          "gc_stress": 0,
+          "qemu": true
+        },
+        "artifacts": {
+          "base.s": "bb0c10109ff9ccaf73b2185b5d03a769cb258d28761e9f0f1588e5a8e4b604f8",
+          "base.elf": "c386dd4c6662c32d7de86c28b18234bd85c10e92034708f86a0bdae6f4c942e6",
+          "base.bin": "e37aa63cd2a91365668b7a7a00af932cec5830b4bf06aaca821d6c716c85cc8a"
+        },
+        "units": {
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/timeout/program/units/prelude-b2084da22e6a-g55-nof64rt3pc5-c09612b07b5ec-rv32.s": "b0f7dc33e6fe6f4003b59e51074cf9e681c3f17603bf734c3d5be54259ff9317"
+        },
+        "softfloat_sha256": "f69819701432f08324fc525acba5c5e6515547fe641e72d0dae7230a53204ac8"
+      }
+    }
+  ],
+  "invocation": {
+    "source": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/timeout.fpr",
+    "root": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/timeout/files",
+    "arguments": [],
+    "input_lines": [],
+    "environment": {},
+    "timeout": 1.0
+  },
+  "error": "QEMU execution: b'BEFORE WAIT\\n' b''"
+}

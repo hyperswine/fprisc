@@ -1,0 +1,79 @@
+{
+  "preset": "fprisc-48",
+  "target": "qemu",
+  "mode": "program",
+  "passed": true,
+  "suite_complete": false,
+  "repository": {
+    "revision": "d85ec9f7b713f53298eb4f11e45f69f9bdf41e1a",
+    "diff_sha256": "870aad8ed548c05c6055fea190f7a6783f15bb3ad89e01aaa3658ddd87f3f45e"
+  },
+  "cases": [
+    {
+      "name": "program",
+      "passed": true,
+      "build": {
+        "preset": "fprisc-48",
+        "repository": {
+          "revision": "d85ec9f7b713f53298eb4f11e45f69f9bdf41e1a",
+          "diff_sha256": "870aad8ed548c05c6055fea190f7a6783f15bb3ad89e01aaa3658ddd87f3f45e"
+        },
+        "program": {
+          "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/custom source.fpr",
+          "sha256": "07202a81eed448492d8c66516efe0f0e0388b05606e48ded97ae75047de4c80d"
+        },
+        "compiler_sha256": "692a8b4e6e26aeb14832814e9cc0d381f864ff6bc32b33b849b00e7f3273a577",
+        "gcc": "riscv64-unknown-elf-gcc (g04696df09) 14.2.0",
+        "configuration": {
+          "xlen": 32,
+          "compressed": true,
+          "cpu_mhz": 48,
+          "gc": true,
+          "gc_stress": 0,
+          "qemu": true
+        },
+        "artifacts": {
+          "base.s": "3bbb420ba8e9c0e21805d243ae10f484bb42b3d088ebbcec6dd62ac11a474db2",
+          "base.elf": "f8e90b5d4662decf4e3cfe511f6817e70b797fb51a2b88fd7ac8ffc0298cb212",
+          "base.bin": "62403f2a1e67fb861c7cf2e34b459057244721706f1eeea52da53b5dc22ef959"
+        },
+        "units": {
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/run/program/units/prelude-b2084da22e6a-g55-nof64rt3pc5-c09612b07b5ec-rv32.s": "b0f7dc33e6fe6f4003b59e51074cf9e681c3f17603bf734c3d5be54259ff9317",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/run/program/units/u-72f59195cb10-pb2084da2-s749c143c-g55-nof64rt3pc5-c09612b07b5ec-rv32.s": "799f5f87eb3ac33becc4e1e34db7fb8e9dee4656606d76715a98dcb89fa77c4f",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/run/program/units/u-a442efd34c1c-pb2084da2-s749c143c-g55-nof64rt3pc5-c09612b07b5ec-rv32.s": "0176dedc1138166506555886eac63b1b3224d5441a15a154ce745c278214633b",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/run/program/units/u-405eba153a1e-pb2084da2-s749c143c-g55-nof64rt3pc5-c09612b07b5ec-rv32.s": "5491fba55e5ae61cc4aacb56b532bc69658a2052ee11ffcc47121971e74b2267",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/run/program/units/u-4c93ed62e360-pb2084da2-s749c143c-g55-nof64rt3pc5-c09612b07b5ec-rv32.s": "118a8575c446e6317b743e65c7eb370f3bc383658b57ae12d01e11203012ccba",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/run/program/units/u-a83675e93318-pb2084da2-s749c143c-g55-nof64rt3pc5-c09612b07b5ec-rv32.s": "5d51567761c6c3d23b111547bb1c99f3cb31a898c4a256d73f101507eaf02159",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/run/program/units/u-8a18072ec7f1-pb2084da2-s749c143c-g55-nof64rt3pc5-c09612b07b5ec-rv32.s": "d93a91377fbbd9dcc96b410340ac4b22c0b3809fe392fcf291e695aad5365550",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/run/program/units/u-581231fdf2ea-pb2084da2-s749c143c-g55-nof64rt3pc5-c09612b07b5ec-rv32.s": "df0c76ff0871922ac82f69bd17ee27b13cb05c93c976dfbfa545e890b828f5a5",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/run/program/units/u-3956ff10e29c-pb2084da2-s749c143c-g55-nof64rt3pc5-c09612b07b5ec-rv32.s": "3229974c6b566d69edbaa5f9645a1fb1c21f8b8c79737850c1bda1c857be3679",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/run/program/units/u-fb4e016caaf5-pb2084da2-s749c143c-g55-nof64rt3pc5-c09612b07b5ec-rv32.s": "017c6c8e084f9e4d1e34da54bcfc6c96bf0172a6ae547aeb644e7e2982d41528",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/run/program/units/u-9a286879cab8-pb2084da2-s749c143c-g55-nof64rt3pc5-c09612b07b5ec-rv32.s": "40483a3d7af975c6ed141531228e0107e9c9f8d7fc245ad46424c875c7957606",
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/run/program/units/u-4a1ebe94bef4-pb2084da2-s749c143c-g55-nof64rt3pc5-c09612b07b5ec-rv32.s": "6e5c8e97cbc7b0bd6f349c6863136687074126d9cb2b8a2c7af697b22d777698"
+        },
+        "softfloat_sha256": "f69819701432f08324fc525acba5c5e6515547fe641e72d0dae7230a53204ac8"
+      },
+      "wall_seconds": 4.450667958008125
+    }
+  ],
+  "invocation": {
+    "source": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/custom source.fpr",
+    "root": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/file root",
+    "arguments": [
+      "",
+      "two words",
+      "-n",
+      "\u96ea",
+      "quote\"slash\\"
+    ],
+    "input_lines": [
+      "",
+      "hello \u96ea",
+      "-last"
+    ],
+    "environment": {
+      "CUSTOM_VALUE": "a=b \u96ea"
+    },
+    "timeout": 120
+  }
+}

@@ -14,6 +14,41 @@ from tangnano_artifact import sha
 
 
 class ExampleGate(unittest.TestCase):
+    def test_program_preflight_invalidates_old_success_before_build(self):
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp)
+            source = out / 'source.fpr'
+            source.write_text('profile base. main = print "hello".\n')
+            common = [sys.executable, str(ROOT / 'tools/run_tangnano20k_examples.py'), '--out', temp]
+            invalid = [
+                ['--program', str(out / 'missing.fpr')],
+                ['--program', str(source), '--root', str(out / 'missing')],
+                ['--program', str(source), '--env', 'bad'],
+                ['--program', str(source), '--env', '=empty-name'],
+                ['--program', str(source), '--timeout', 'nan'],
+                ['--program', str(source), '--timeout', '0'],
+                ['--program', str(source), '--timeout', '-1'],
+                ['--program', str(source)] + ['--arg=x'] * 257,
+                ['--arg=ignored'], ['--input=ignored'], ['--root', temp],
+            ]
+            for options in invalid:
+                (out / 'results.json').write_text('{"passed": true, "suite_complete": true}')
+                result = subprocess.run(common + options, capture_output=True, text=True, timeout=10)
+                self.assertNotEqual(result.returncode, 0, options)
+                report = json.loads((out / 'results.json').read_text())
+                self.assertFalse(report['passed'])
+                self.assertFalse(report['suite_complete'])
+                self.assertEqual(report['cases'], [])
+                self.assertFalse((out / 'compiler-build.log').exists())
+                self.assertFalse((out / 'program-fpga.log').exists())
+
+    def test_program_and_suite_selection_are_exclusive(self):
+        result = subprocess.run([sys.executable, str(ROOT / 'tools/run_tangnano20k_examples.py'),
+                                 '--program', 'any.fpr', '--cases', 'hello'],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('not allowed with argument', result.stderr)
+
     def test_failed_run_invalidates_previous_pass(self):
         with tempfile.TemporaryDirectory() as temp:
             out = Path(temp)
@@ -31,7 +66,7 @@ class ExampleGate(unittest.TestCase):
     def test_presets_refuse_conflicting_environment(self):
         env = {k: v for k, v in os.environ.items() if not k.startswith(('FPR_', 'SDRAM_'))}
         runtime = ROOT / 'machine/tangnano20k/preset.sh'
-        hardware = ROOT.parent / 'simple-risc/boards/tangnano20k/sdram/preset.sh'
+        hardware = Path(os.environ.get('SIMPLE_RISC_ROOT', ROOT.parent / 'simple-risc')) / 'boards/tangnano20k/sdram/preset.sh'
         for script, key, options in (
             (runtime, 'FPR_PRESET', {'FPR_XLEN': '64', 'FPR_CPU_MHZ': '72', 'FPR_RVC': '0', 'FPR_GC': '0', 'FPR_GC_STRESS': '1'}),
             (hardware, 'SDRAM_PRESET', {'SDRAM_FREQ_MHZ': '54', 'SDRAM_CPU_FREQ_MHZ': '72',
