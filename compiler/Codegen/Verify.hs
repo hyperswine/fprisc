@@ -27,6 +27,12 @@ opSignature tyOf = \case
     when (null fields) (Left "an empty constructor uses nullary")
     mapM_ (`expect` TVal) fields
     pure (Just TVal)
+  OReuse tid variant root fields -> do
+    when (tid < 0 || variant < 0) (Left "constructor header is outside signed 32-bit layout")
+    when (null fields) (Left "a reuse of a nullary constructor")
+    expect root TVal
+    mapM_ (`expect` TVal) fields
+    pure (Just TVal)
   OField index obj -> do
     when (index < 0 || toInteger index > 268435454) (Left "field index is outside the native displacement range")
     expect obj TVal

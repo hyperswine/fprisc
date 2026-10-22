@@ -66,6 +66,9 @@ def main():
                    XDG_CACHE_HOME=str(tmp / "cache"), FPR_NO_INLINE="1",
                    FPR_NO_SCALAR_WORKERS="1", FPR_NO_FIELD_WORKERS="1")
         env.pop("FPR_FOREIGN", None)
+        # FPR_SELF_LOOPS is a legacy-emission switch, and the exact tick count
+        # below counts legacy entries: this check names the legacy backend
+        env.pop("FPR_TYPED_IR_BACKEND", None)
         ghc = ["cabal", "exec", "--", "runghc"] if shutil.which("cabal") else ["runghc"]
         print(run([*ghc, "-w", "-icompiler", "tests/SelfLoops.hs"], env), end="", flush=True)
         print(run([*ghc, "-w", "-icompiler", "tests/NullaryConstants.hs"], env), end="", flush=True)

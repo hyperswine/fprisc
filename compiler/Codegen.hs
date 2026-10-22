@@ -54,7 +54,7 @@ import Codegen.Policy (Policy, m2Policy, policyWidth)
 import qualified Codegen.Target.X64 as X64
 import qualified Codegen.Target.RV as RV
 import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat (..), emitFnA64)
-import Codegen.Target.Common (rodataDirective, stringLabel, stringObjectWidth)
+import Codegen.Target.Common (rodataDirective, stringLabel, stringObjectWidth, dataSyntax)
 import Codegen.Bounds (Report (..))
 import Codegen.Verify (verifyProgram, verifyProgramWidth)
 import Codegen.Dump (dumpFn)
@@ -138,7 +138,8 @@ data Emission = Emission
     emNotes :: [String],
     emNative :: [String], -- the native backend's text in the target's own syntax, appended after lowering
     emNativeNames :: [String], -- the functions the native backend emitted
-    emFallbacks :: [(String, String)] -- the functions it did not, with reasons
+    emFallbacks :: [(String, String)], -- the functions it did not, with reasons
+    emDirectData :: Maybe [String] -- a unit with no legacy code: its data in the target's spelling, so no translator runs (docs/2026-10-22-TYPED-IR-RETIREMENT.md)
   }
 
 rv64, rv32 :: Target
@@ -403,7 +404,8 @@ data CG = CG
     cgExt :: M.Map String Int, -- extern known globals (other units): name -> arity
     cgExports :: S.Set String, -- THIS unit's cross-unit-visible names (.globl gate)
     cgVNotes :: [String], -- Vec.x sites that DECLINED specialization (printed by Compile)
-    cgNulls :: S.Set (Int, Int) -- actual constant references, including ones introduced during lowering
+    cgNulls :: S.Set (Int, Int), -- actual constant references, including ones introduced during lowering
+    cgLegacyEmpty :: Bool -- set once the unit is emitted: no legacy function and no kernel
   }
 
 -- one specialization request: a Vec.map/filter/fold call site whose
@@ -608,7 +610,7 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
       (nativeKernels, nativeFns, nativeFallbacks, nativeNotes) = case tgtNative tgt of
         Nothing -> ([], M.empty, [], [])
         Just nm -> nativeSelect tgt spec nm workerSigs ext exps prog emitted
-      (body, st) = runState (top prog emitted nativeFns nativeKernels) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty)
+      ((code, dat), st) = runState (top prog emitted nativeFns nativeKernels) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty False)
       -- the native text in the target's own syntax, then the string
       -- objects it names (one per distinct text; the unit-local nullary
       -- objects go through cgNulls into the legacy rodata)
@@ -617,7 +619,7 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
         Just (DirectA64 fmt _) -> fmt
         _ -> ELF
    in Emission
-        { emAsm = unlines (wnotes ++ rnotes ++ body),
+        { emAsm = unlines (wnotes ++ rnotes ++ code ++ dat),
           emNotes = reverse (cgVNotes st) ++ typedIrNotes (if tgtW tgt == 8 then tgtTypedIr tgt else Nothing) (tgtPolicy tgt) workerSigs ext (foreignEntries tgt) prog emitted
             ++ ["typed-ir: not available on " ++ tgtName tgt ++ " (M1 lowers the 64-bit targets)" | tgtW tgt /= 8, Just _ <- [tgtTypedIr tgt]]
             ++ nativeNotes,
@@ -625,7 +627,11 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
             ["    .text", "    .balign 4", ""] ++ concatMap nfLines (M.elems nativeFns)
               ++ (if null nativeStrings then [] else rodataDirective nativeFormat : concatMap (stringObjectWidth (policyWidth (tgtPolicy tgt)) nativeFormat) nativeStrings),
           emNativeNames = M.keys nativeFns,
-          emFallbacks = nativeFallbacks
+          emFallbacks = nativeFallbacks,
+          -- no legacy function, no kernel, no vector init: nothing for a
+          -- translator to do but data spelling
+          emDirectData = if isJust (tgtNative tgt >>= nmBackend) && cgLegacyEmpty st && not rvv
+                           then Just (dataSyntax nativeFormat dat) else Nothing
         }
   where
     top prog emitted nativeFns nativeKernels = do
@@ -656,15 +662,16 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
       strs <- gets cgStrs
       floats <- gets cgFloats
       referencedNulls <- gets cgNulls
-      pure $
-        ( ["# target: " ++ tgtName tgt]
-            ++ ["    .option arch, +v" | rvv] -- let gas accept vector mnemonics
-            ++ ["    .text", "    .balign 4", ""]
-        )
-          ++ rvvInit
-          ++ fns
-          ++ specs
-          ++ ["    .section .rodata", ""]
+      modify (\s -> s {cgLegacyEmpty = null fns && null specs})
+      pure
+        ( ( ["# target: " ++ tgtName tgt]
+              ++ ["    .option arch, +v" | rvv] -- let gas accept vector mnemonics
+              ++ ["    .text", "    .balign 4", ""]
+          )
+            ++ rvvInit
+            ++ fns
+            ++ specs,
+          ["    .section .rodata", ""]
           ++ concatMap objFor (M.toList emitted)
           ++ ["    .section .rodata" | tgtArc tgt]
           ++ modtab
@@ -674,6 +681,7 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
           ++ concatMap floatFor (M.toList floats)
           ++ ["    .section .rodata" | tgtArc tgt]
           ++ concatMap nulFor (S.toList (nullaries emitted `S.union` referencedNulls))
+        )
     -- Versioned module table: magic/schema/root hash, then four-word rows
     -- (hash str, export-name str, static PAP, checked interface string),
     -- zero-terminated.  mod.c's `Mod.fn hash name` scans it — the local

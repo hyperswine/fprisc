@@ -62,11 +62,14 @@ run(['make', 'fpr'])
 # the unit tests are compiled with ghc -O0 into build/ghc-tests (the
 # compiler's own objects are cabal's; interpreting its modules makes the
 # 4200-value frame-ceiling fixture crawl)
+# One directory per backend: the a64 and x64 checks run at once under
+# check_base, and two ghc runs writing one Main.o race.
 ghc = ['cabal', 'exec', '--', 'ghc'] if shutil.which('cabal') else ['ghc']
-(ROOT / 'build' / 'ghc-tests').mkdir(parents=True, exist_ok=True)
+out = f'build/ghc-tests/{BACKEND}'
+(ROOT / out).mkdir(parents=True, exist_ok=True)
 for unit in ('SelectedIR', 'AllocIR'):
-    run([*ghc, '-O0', '-w', '-icompiler', '-outputdir', 'build/ghc-tests', f'tests/{unit}.hs', '-o', f'build/ghc-tests/{unit}'])
-    print(run([f'./build/ghc-tests/{unit}']), end='', flush=True)
+    run([*ghc, '-O0', '-w', '-icompiler', '-outputdir', out, f'tests/{unit}.hs', '-o', f'{out}/{unit}'])
+    print(run([f'./{out}/{unit}']), end='', flush=True)
 if args.portable_only or not NATIVE_HOST:
     if args.require_execution:
         raise SystemExit(f'Typed IR M2 {BACKEND}: required native execution unavailable or disabled')

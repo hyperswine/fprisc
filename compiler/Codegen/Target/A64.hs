@@ -79,7 +79,7 @@ import Codegen.Target.Common
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 13 -- 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
+a64SelectionRev = 16 -- 16: posix modules reach external symbols through the GOT; 15: units with no legacy code skip translation; 14: in-place constructor reuse; 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -376,6 +376,10 @@ selectInstr _ _ (Instr d op) = case op of
       emitI (plain "store.header" [] [any' rd, any' header, OI offset])
     forM_ (zip [0..] fields) $ \(index, value) ->
       emitI (plain "store.field" [] [any' rd, any' (vreg value), OI (8 + 8 * index)])
+  OReuse _ _ root fields -> def $ \rd -> do
+    forM_ (zip [0..] fields) $ \(index, value) ->
+      emitI (plain "store.field" [] [any' (vreg root), any' (vreg value), OI (8 + 8 * index)])
+    emitI (mov rd (vreg root))
   OField index obj -> def $ \rd ->
     emitI (plain "load.field" [any' rd] [any' (vreg obj), OI (8 + 8 * fromIntegral index)])
   OStrLen str -> def $ \rd -> do

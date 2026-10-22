@@ -73,8 +73,10 @@ def main():
         # Raw literal arguments must use immediates, not a staging slot.
         # The arithmetic/overflow C oracle above checks values; this witness
         # ensures a correct but unoptimized fallback cannot pass unnoticed.
+        # The witness reads legacy RISC-V text, so it names the legacy backend.
         direct=tmp/'direct-literals.s'
-        run([ROOT/'fpr','compile','--target=rv64',ROOT/'tests/bench/fib.fpr',direct],env)
+        legacy={k:v for k,v in env.items() if k!='FPR_TYPED_IR_BACKEND'}
+        run([ROOT/'fpr','compile','--target=rv64',ROOT/'tests/bench/fib.fpr',direct],legacy)
         body=direct.read_text().split('# fn $worker.scalar.fib (arity 1)',1)[1].split('# wcet:',1)[0]
         assert '    li a1, 1\n' in body and '    li a1, 2\n' in body,body
         assert not re.search(r'    li a0, [12]\n    (?:sd|mv s[1-5])',body),body

@@ -37,6 +37,8 @@ def main():
                    FPR_SELF_LOOPS="1", FPR_RETAINED_REGISTERS="0",
                    FPR_COSTED_REGISTERS="0", FPR_COMPACT_FRAMES="0")
         env.pop("FPR_FOREIGN", None)
+        # compact frames are a legacy-emission switch: this check names the legacy backend
+        env.pop("FPR_TYPED_IR_BACKEND", None)
         print(run(["cabal", "exec", "--", "runghc", "-w", "-icompiler",
                    "tests/FramePlacement.hs"], env), end="")
         source = tmp / "placement.fpr"

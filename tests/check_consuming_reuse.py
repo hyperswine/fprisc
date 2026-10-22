@@ -51,7 +51,9 @@ def main():
         for target in ('a64','rv64','x64','rv32'):
             for off in ('0','1'):
                 asm=tmp/'probe.s'
-                command([ROOT/'fpr','compile','--target='+target,ROOT/'tests/base/consumingreuse.fpr',asm],dict(env,FPR_NO_REUSE=off,FPR_NO_INLINE='1'))
+                # the worker marker is legacy text: this compile names the legacy backend
+                legacy={k:v for k,v in env.items() if k!='FPR_TYPED_IR_BACKEND'}
+                command([ROOT/'fpr','compile','--target='+target,ROOT/'tests/base/consumingreuse.fpr',asm],dict(legacy,FPR_NO_REUSE=off,FPR_NO_INLINE='1'))
                 text=asm.read_text()
                 assert ('# private consuming workers: 0' not in text and '# private consuming workers:' in text)==(off=='0' and target!='rv32'),(target,off)
                 assert '# static-pap: $worker.consume.' not in text

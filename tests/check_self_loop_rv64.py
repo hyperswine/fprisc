@@ -18,6 +18,8 @@ def main():
                    XDG_CACHE_HOME=str(tmp / "cache"), FPR_NO_INLINE="1",
                    FPR_NO_SCALAR_WORKERS="1", FPR_NO_FIELD_WORKERS="1")
         env.pop("FPR_FOREIGN", None)
+        # FPR_SELF_LOOPS is a legacy-emission switch: this check names the legacy backend
+        env.pop("FPR_TYPED_IR_BACKEND", None)
         source = tmp / "probe.fpr"
         source.write_text(fixture()[0])
         crt = tmp / "crt.s"

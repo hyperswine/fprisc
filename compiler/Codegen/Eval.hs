@@ -102,6 +102,12 @@ callFn width program name args = do
           fs <- mapM (val env) fields
           event (EvAllocate (fnName fn) tid variant fs)
           pure (Just (VVal (RObj tid variant fs)))
+        -- value semantics: the reused object is the new value (the old one
+        -- is consumed; no program can observe the difference)
+        OReuse tid variant root fields -> do
+          _ <- val env root
+          fs <- mapM (val env) fields
+          pure (Just (VVal (RObj tid variant fs)))
         OField n obj -> val env obj >>= \case
           RObj _ _ fs | n >= 0 && n < length fs -> pure (Just (VVal (fs !! n)))
           _ -> stuck "a field projection outside its statically typed constructor"

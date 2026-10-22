@@ -29,6 +29,7 @@ dumpFn fn =
       ONullary t v -> "nullary " ++ show t ++ " " ++ show v
       OString s -> "string " ++ show s
       OMake t c fs -> "make " ++ show t ++ ":" ++ show c ++ args fs
+      OReuse t c r fs -> "reuse " ++ value r ++ " as " ++ show t ++ ":" ++ show c ++ args fs
       OField n v -> "field " ++ show n ++ " " ++ value v
       OStrLen v -> "strlen " ++ value v
       OCharAt s n -> "charAt " ++ value s ++ ", " ++ value n

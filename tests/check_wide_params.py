@@ -43,7 +43,9 @@ with tempfile.TemporaryDirectory(prefix='fpr-wide-') as d:
         asm = {}
         for target in ('rv64', 'a64', 'x64'):
             out = tmp / f'{target}{no_regs}.s'
-            run(['./fpr', f'--target={target}', f'--prelude={ROOT}/core/prelude.fpr', FIXTURE, out], env)
+            # promotion markers are legacy text: this compile names the legacy backend
+            legacy = {k: v for k, v in env.items() if k != 'FPR_TYPED_IR_BACKEND'}
+            run(['./fpr', f'--target={target}', f'--prelude={ROOT}/core/prelude.fpr', FIXTURE, out], legacy)
             asm[target] = out.read_text()
         promoted = {r: bool(re.search(rf'^\s*mv s\d+, {r}$', asm['rv64'], re.M)) for r in ('a6', 'a7')}
         if no_regs == '0':

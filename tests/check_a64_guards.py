@@ -69,10 +69,13 @@ int main(void) {
                         line for line in output.splitlines() if line.startswith("[ERR] "))
                     assert "Int overflow" in value or arg == "ok", (arg, value)
                     assert reference.setdefault(arg, value) == value, (off, harts, arg, value)
+            # fit guards are legacy emission: the text check names the legacy
+            # backend (typed IR has its own overflow checks)
+            legacy = {k: v for k, v in mode.items() if k != "FPR_TYPED_IR_BACKEND"}
             for target in ("a64", "a64mac"):
                 output = tmp / (target + ".s")
                 run([ROOT / "fpr", "compile", "--target=" + target,
-                     "tests/bench/fib.fpr", output], mode)
+                     "tests/bench/fib.fpr", output], legacy)
                 text = output.read_text()
                 assert ("sbfx x10, x9, #0, #63" in text) == (off == "0"), (off, target)
                 units = set(Path(str(output) + ".units").read_text().splitlines())

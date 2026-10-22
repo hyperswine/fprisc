@@ -9,7 +9,7 @@ import Mono (specializeFunctions, qualifyAux)
 import Inline (inlineSmall, inlineWith, vecPeek)
 import ReceiveTurns (receiveTurns)
 import qualified Codegen.Target.RV as RV
-import Codegen.Target.Common (Tune (..))
+import Codegen.Target.Common (Tune (..), dataSyntax)
 import Codegen (Target, codegenRev, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtSelfLoops, tgtRetainedRegisters, tgtCostedRegisters, tgtCompactFrames, tgtTypedIr, tgtPolicy, tgtNative, normArc)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth)
 import Codegen.Target.X64 (x64SelectionRev)
@@ -982,7 +982,7 @@ compileWithInterface accepted = do
                               else if a64 && qapp
                                 then Just (DirectA64 (if a64mac then MachO else ELF) (if oQosSingle opts then HartGlobal else HartX28))
                               else if x64 && not qapp then Just DirectX64
-                              else if not a64 && not x64 && not qapp && not (oPlugin opts) && tgtName (oTarget opts) `elem` ["rv32", "rv64"]
+                              else if not a64 && not x64 && not qapp && not (oPlugin opts) && not espHost && tgtName (oTarget opts) `elem` ["rv32", "rv64"]
                                 then Just (DirectRV (policyWidth irPolicy) (if oBase opts then RV.HartTls else RV.HartTp))
                               else Nothing,
                 nmSelfLoops = envTirLoops, nmForwardParams = envTirForward,
@@ -1011,6 +1011,11 @@ compileWithInterface accepted = do
                 | oBase opts = lowerPosixRV64 (oPlugin opts)
                 | otherwise = id
           lower = if oBase opts && oPlugin opts then posixPic a64 a64mac . lower0 else lower0
+          -- a loaded posix module reaches external symbols through the GOT;
+          -- the pass works on target syntax and leaves its own output
+          -- alone, so it also covers the typed backend's text and a
+          -- translation-free unit (docs/2026-10-22-TYPED-IR-RETIREMENT.md)
+          moduleFinal = if oBase opts && oPlugin opts then posixPic a64 a64mac else id
           rvv = oRvv opts && not a64 && not x64 -- no RVV lowering in the PoCs
           spec = True -- x64 lowers the extra saved registers through its shadow bank
           -- every distinct lowering its own cache tag: a QOS app on Apple Silicon
@@ -1103,7 +1108,10 @@ compileWithInterface accepted = do
                 let emission = emitProgramWith tgt rvv spec [] (M.union (if oArc opts then arcExterns else M.empty) ext) exps elide prog
                     asm0 = emAsm emission
                     vnotes = emNotes emission
-                    asm = lower asm0 ++ unlines (emNative emission)
+                    -- a unit with no legacy code is not translated at all
+                    asm = case emDirectData emission of
+                      Just dat -> moduleFinal (unlines (["# typed IR: no translation"] ++ emNative emission ++ dat))
+                      Nothing -> lower asm0 ++ moduleFinal (unlines (emNative emission))
                 mapM_ putStrLn vnotes
                 strictCheck ("unit " ++ takeFileName path) (emFallbacks emission)
                 -- written beside it and renamed whole: a build running at the
@@ -1251,7 +1259,11 @@ compileWithInterface accepted = do
                                 "    " ++ dir ++ " " ++ show ar, "    " ++ dir ++ " .Lfprcon" ++ show i ]
                             | (i, (tid, var, ar, _)) <- zip [0 :: Int ..] conRows ]
                   ++ [ "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "" ]
-      let rootAsm = lower (rootAsm0 ++ conTab) ++ unlines (concat tramps) ++ unlines (emNative rootEmission)
+      let rootAsm = case emDirectData rootEmission of
+            Just dat -> moduleFinal (unlines (["# typed IR: no translation"] ++ emNative rootEmission ++ dat
+                                   ++ dataSyntax directFormat (lines conTab))) ++ unlines (concat tramps)
+            Nothing -> lower (rootAsm0 ++ conTab) ++ unlines (concat tramps) ++ moduleFinal (unlines (emNative rootEmission))
+          directFormat = if a64mac then MachO else ELF
       applyReport "root" rootAsm
       mapM_ putStrLn rootVNotes
       strictCheck "root" (emFallbacks rootEmission)

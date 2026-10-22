@@ -19,7 +19,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 3 -- 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
+rvSelectionRev = 6 -- 6: an ESP-IDF host keeps the legacy generator (its hart is fpr_esp_hart); 5: units with no legacy code skip translation; 4: in-place constructor reuse; 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
 
 data RVHart = HartTp | HartTls deriving (Eq, Show)
 data RVConfig = RVConfig
@@ -169,6 +169,9 @@ select cfg fn = do
         size <- fresh; li size (8 + w * fromIntegral (length fs)); call "fpr_alloc" False True [size] (Just d) False
         forM_ [(0,t),(4,variant)] $ \(off,n) -> do h <- fresh; li h (fromIntegral n); storeAt "sw" d h off
         forM_ (zip [0..] fs) $ \(n,v) -> storeAt stWord d (vreg v) (8+w*n)
+      OReuse _ _ root fs -> do
+        forM_ (zip [0..] fs) $ \(n,v) -> storeAt stWord (vreg root) (vreg v) (8+w*n)
+        emit (plain "mv" [anyV d] [anyV (vreg root)])
       OField n v -> loadAt ld d (vreg v) (8+w*fromIntegral n)
       OStrLen s -> do t <- fresh; call "fpr_g_strlen_call1" False True [vreg s] (Just t) False; ri "srai" d t 1
       OCharAt s n -> do i <- boxed (vreg n); t <- fresh; call "fpr_g_charAt_call2" False True [vreg s,i] (Just t) False; ri "srai" d t 1

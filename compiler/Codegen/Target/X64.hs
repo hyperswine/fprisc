@@ -29,7 +29,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 11 -- 11: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 10: aggregate and string selection; prior: the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
+x64SelectionRev = 14 -- 14: posix modules reach external symbols through the GOT; 13: units with no legacy code skip translation; 12: in-place constructor reuse; 11: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 10: aggregate and string selection; prior: the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
 
 data X64Config = X64Config
   { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool,
@@ -266,6 +266,10 @@ selectInstr _ _ (Instr d op) = case op of
       emitI (plain "store.header" [] [any' rd, any' header, OI offset])
     forM_ (zip [0..] fields) $ \(index, value) ->
       emitI (plain "store.field" [] [any' rd, any' (vreg value), OI (8 + 8 * index)])
+  OReuse _ _ root fields -> def $ \rd -> do
+    forM_ (zip [0..] fields) $ \(index, value) ->
+      emitI (plain "store.field" [] [any' (vreg root), any' (vreg value), OI (8 + 8 * index)])
+    emitI (mov rd (vreg root))
   OField index obj -> def $ \rd ->
     emitI (plain "load.field" [any' rd] [any' (vreg obj), OI (8 + 8 * fromIntegral index)])
   OStrLen str -> def $ \rd -> do

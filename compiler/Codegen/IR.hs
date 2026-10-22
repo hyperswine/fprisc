@@ -100,6 +100,7 @@ data Op
   | ONullary Int Int -- :: TVal; the immortal object of a nullary constructor (typeid, variant)
   | OString String -- immortal byte-string object, same encoding as the source literal
   | OMake Int Int [VId] -- allocate an immutable constructor with tagged fields
+  | OReuse Int Int VId [VId] -- overwrite the fields of a constructor the program owns uniquely (Reuse.reuseFresh proved it), answer it: the legacy `# reuse fresh constructor`; every field is evaluated before the first store
   | OField Int VId -- read a statically typed constructor field (zero-based)
   | OStrLen VId -- checked String byte length -> TInt
   | OCharAt VId VId -- checked String and TInt byte index -> TInt
@@ -166,6 +167,7 @@ data Effect
   | MayTrap -- ends the actor with a reason, in program order
   | RuntimeCall -- calls the runtime: clobbers caller-saved registers, may deschedule
   | AnyEffect -- an FP-RISC call: anything observable may happen
+  | Writes -- writes memory of an object it owns uniquely: never moved, merged or dropped
   deriving (Eq, Ord, Show)
 
 opEffect :: Op -> Effect
@@ -174,6 +176,7 @@ opEffect = \case
   ONullary _ _ -> Pure
   OString _ -> Pure
   OMake _ _ _ -> RuntimeCall
+  OReuse _ _ _ _ -> Writes
   OField _ _ -> Pure
   OStrLen _ -> MayTrap
   OCharAt _ _ -> MayTrap
@@ -205,6 +208,7 @@ opUses = \case
   ONullary _ _ -> []
   OString _ -> []
   OMake _ _ fs -> fs
+  OReuse _ _ r fs -> r : fs
   OField _ v -> [v]
   OStrLen v -> [v]
   OCharAt s n -> [s, n]
@@ -246,6 +250,7 @@ mapOpUses f = \case
   ONullary t v -> ONullary t v
   OString s -> OString s
   OMake t v fs -> OMake t v (map f fs)
+  OReuse t v r fs -> OReuse t v (f r) (map f fs)
   OField n v -> OField n (f v)
   OStrLen v -> OStrLen (f v)
   OCharAt s n -> OCharAt (f s) (f n)

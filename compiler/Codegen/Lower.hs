@@ -371,6 +371,14 @@ lowerVal cx env = \case
     fields <- mapM (\e -> lowerVal cx env e >>= asVal) fs
     v <- emit TVal (OMake tid variant fields)
     pure (v, TVal)
+  -- a fresh constructor over a uniquely owned one (Reuse.reuseFresh; the
+  -- legacy `# reuse fresh constructor`): every field first, then the stores
+  CApp (CApp (CVar "$reuse.fresh") (CVar x)) (CMk tid variant fs@(_ : _))
+    | Just root <- M.lookup x env -> do
+        fields <- mapM (\e -> lowerVal cx env e >>= asVal) fs
+        r <- asVal root
+        v <- emit TVal (OReuse tid variant r fields)
+        pure (v, TVal)
   CProj index obj -> do
     value <- lowerVal cx env obj >>= asVal
     v <- emit TVal (OField index value)

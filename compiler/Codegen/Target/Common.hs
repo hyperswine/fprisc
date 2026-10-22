@@ -3,7 +3,7 @@
 module Codegen.Target.Common
   ( ObjectFormat (..), NativeFn (..), mangleName, functionSymbol,
     stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry,
-    forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune ) where
+    forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune, dataSyntax ) where
 import Codegen.Bounds (Report)
 import Codegen.IR (Name)
 import qualified Codegen.IR as IR
@@ -11,8 +11,8 @@ import Codegen.Frame
 import Codegen.Policy (StackPolicy (..))
 import Codegen.Selected
 import Data.Bits (shiftR, xor, (.&.))
-import Data.Char (isAlphaNum, isAscii, ord)
-import Data.List (intercalate)
+import Data.Char (isAlphaNum, isAscii, isDigit, ord)
+import Data.List (intercalate, isPrefixOf, stripPrefix)
 import Data.Word (Word64)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -145,6 +145,36 @@ rodataDirective :: ObjectFormat -> String
 rodataDirective = \case
   MachO -> "    .section __DATA,__const"
   ELF -> "    .section .rodata"
+
+-- A unit's data (function-value objects, the module table, strings,
+-- floats, nullary objects, the constructor table) in the object format's
+-- spelling, for a unit with no legacy code to translate
+-- (docs/2026-10-22-TYPED-IR-RETIREMENT.md).  ELF data needs no change on
+-- AArch64 or x86-64.  Mach-O needs exactly the legacy A64 translator's
+-- data rules (A64.macLine and its post pass): a leading underscore on a
+-- C-visible symbol in `.globl`, `.quad` and a label definition, `L` for a
+-- `.L` local label, and `__DATA,__const` for `.rodata` (the section holds
+-- relocations to code, which ld64 refuses in __TEXT).
+dataSyntax :: ObjectFormat -> [String] -> [String]
+dataSyntax ELF = id
+dataSyntax MachO = map (locals . line)
+  where
+    line l
+      | Just rest <- stripPrefix "    .globl " l = "    .globl " ++ intercalate ", " (map (sym . trim) (splitC rest))
+      | Just rest <- stripPrefix "    .quad " l, (c : _) <- dropWhile (== ' ') rest, not (isDigit c), c /= '-' = "    .quad " ++ sym (trim rest)
+      | "    .section .rodata" `isPrefixOf` l = "    .section __DATA,__const"
+      | (name, ':' : rest) <- break (== ':') l, not (null name), all (/= ' ') name,
+        not ("." `isPrefixOf` name) || ".L" `isPrefixOf` name = sym name ++ ":" ++ rest
+      | otherwise = l
+    sym s = if ".L" `isPrefixOf` s then s else '_' : s
+    trim = dropWhile (== ' ') . reverse . dropWhile (== ' ') . reverse
+    splitC t = case break (== ',') t of
+      (x, []) -> [x]
+      (x, _ : r) -> x : splitC r
+    -- the post pass: every ".L" becomes "L" (labels and references alike)
+    locals [] = []
+    locals ('.' : 'L' : r) = 'L' : locals r
+    locals (c : r) = c : locals r
 
 -- Shrink-wrapping (FPR_TYPED_IR_SHRINK_WRAP, docs/2026-10-22-TYPED-IR-FIB.md):
 -- the callee-saved registers the allocation uses are saved at the start of
