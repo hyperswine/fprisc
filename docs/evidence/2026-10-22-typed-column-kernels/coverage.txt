@@ -1,0 +1,3 @@
+float V ABI: C reference on 400 edge pairs, F32/F64, 10 arguments, aggregates, deep tail loop, one/four harts, no-inline=0 PASS
+float V ABI: C reference on 400 edge pairs, F32/F64, 10 arguments, aggregates, deep tail loop, one/four harts, no-inline=1 PASS
+vector kernels: native callers call the typed fused kernel on all four selectors; local callback parameters admit direct main; native results equal independent arithmetic PASS

@@ -19,7 +19,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 6 -- 6: an ESP-IDF host keeps the legacy generator (its hart is fpr_esp_hart); 5: units with no legacy code skip translation; 4: in-place constructor reuse; 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
+rvSelectionRev = 7 -- typed column memory and kernel arithmetic; prior: 6: an ESP-IDF host keeps the legacy generator (its hart is fpr_esp_hart); 5: units with no legacy code skip translation; 4: in-place constructor reuse; 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
 
 data RVHart = HartTp | HartTls deriving (Eq, Show)
 data RVConfig = RVConfig
@@ -112,7 +112,7 @@ select cfg fn = do
       params = [vreg v | b <- fnBlocks fn, bId b == fnEntry fn, (v,_) <- bParams b]
       managed = S.fromList [vreg v | (v,TVal) <- defs]
       start = 1 + maximum (0 : [n | (VId n,_) <- defs])
-  unless (all ((`elem` [TVal,TInt,TPred]) . snd) defs) (Left "RV64: a raw, address or float value is not legalized")
+  unless (all ((`elem` [TVal,TInt,TPred,TAddr]) . snd) defs) (Left "RV64: a raw or float-register value is not legalized")
   (_, st) <- runStateT (mapM_ block (fnBlocks fn)) (Sel start 0 [] S.empty S.empty)
   pure (SFn (fnName fn) params (reverse (items st)), managed, st)
   where
@@ -133,12 +133,21 @@ select cfg fn = do
       mapM_ instruction rest
       terminator b
     instruction (Instr result op) = case op of
+      OStore _ a n v -> storeAt stWord (vreg a) (vreg v) (fromIntegral n)
       OStackCheck -> lift (Left "RV64: misplaced stack check")
       OSafepoint -> entry False True
       _ -> case result of
         Nothing -> lift (Left "compiler error: RV64 instruction lacks result")
         Just (v,_) -> value (vreg v) op
     value d = \case
+      OAddress v -> emit (plain "mv" [anyV d] [anyV (vreg v)])
+      OIndex a i -> do
+        offset <- fresh
+        ri "slli" offset (vreg i) (if cfgWidth cfg == W32 then 2 else 3)
+        rr "add" d (vreg a) offset
+      OLoad _ a n -> loadAt ld d (vreg a) (fromIntegral n)
+      OLoadByte a n -> loadAt "lbu" d (vreg a) (fromIntegral n)
+      OStore {} -> lift (Left "compiler error: a store has a result")
       OConstInt n -> li d n
       OBits n -> li d n
       ONullary t v -> do
@@ -175,6 +184,32 @@ select cfg fn = do
       OField n v -> loadAt ld d (vreg v) (8+w*fromIntegral n)
       OStrLen s -> do t <- fresh; call "fpr_g_strlen_call1" False True [vreg s] (Just t) False; ri "srai" d t 1
       OCharAt s n -> do i <- boxed (vreg n); t <- fresh; call "fpr_g_charAt_call2" False True [vreg s,i] (Just t) False; ri "srai" d t 1
+      OKernelArith op a b -> do
+        slow <- freshLabel; zero <- freshLabel; done <- freshLabel
+        result <- fresh
+        let x = vreg a; y = vreg b
+            failUnlessEqual lhs rhs = do bad <- fresh; rr "cmp.ne" bad lhs rhs; branch bad slow
+        case op of
+          Add -> rr "add" result x y
+          Sub -> rr "sub" result x y
+          Mul -> do
+            rr "mul" result x y
+            high <- fresh; sign <- fresh
+            rr "mulh" high x y
+            ri "srai" sign result (8*w-1)
+            failUnlessEqual high sign
+          Div -> do
+            isZero <- fresh; z <- fresh; li z 0
+            rr "cmp.eq" isZero y z; branch isZero zero
+            rr "div" result x y
+        shifted <- fresh; fit <- fresh
+        ri "slli" shifted result 1; ri "srai" fit shifted 1
+        failUnlessEqual fit result
+        emit (plain "mv" [anyV d] [anyV result]); jump done
+        mark slow; call "fpr_int_overflow_kernel" False True [] Nothing False
+        mark zero; call "fpr_div_zero_kernel" False True [] Nothing False
+        li d 0 -- unreachable after a noreturn trap
+        mark done
       OArith op a b -> do
         x <- boxed (vreg a); y <- boxed (vreg b); t <- fresh
         call ("fpr_prim_fn_" ++ mangleName (arithSymbol op)) False True [x,y] (Just t) False
@@ -296,12 +331,12 @@ render cfg fn ly restores (I i) = map (\s -> if last s == ':' then s else "    "
       ("la",[d],[OS sym]) -> ["la " ++ r d ++ ", " ++ sym]
       ("mv",[d],[v]) -> ["mv " ++ r d ++ ", " ++ r v]
       (o,[d],[v,n]) | o `elem` ["slli","srai","andi","ori","xori"] -> [o ++ " " ++ r d ++ ", " ++ r v ++ ", " ++ show (num n)]
-      (o,[d],[a,b]) | o `elem` ["and","or","xor"] -> [o ++ " " ++ r d ++ ", " ++ r a ++ ", " ++ r b]
+      (o,[d],[a,b]) | o `elem` ["add","sub","mul","mulh","div","and","or","xor"] -> [o ++ " " ++ r d ++ ", " ++ r a ++ ", " ++ r b]
       (o,[d],[a,b]) | o `elem` ["cmp.eq","cmp.ne"] -> ["xor " ++ r d ++ ", " ++ r a ++ ", " ++ r b, (if o == "cmp.eq" then "seqz " else "snez ") ++ r d ++ ", " ++ r d]
       (o,[d],[a,b]) | o `elem` ["cmp.lt","cmp.gt","cmp.le","cmp.ge"] ->
         let (x,y) = if o `elem` ["cmp.gt","cmp.le"] then (b,a) else (a,b)
          in ["slt " ++ r d ++ ", " ++ r x ++ ", " ++ r y] ++ ["xori " ++ r d ++ ", " ++ r d ++ ", 1" | o `elem` ["cmp.le","cmp.ge"]]
-      (o,[d],[base,n]) | o `elem` ["ld","lw"] -> memory o (r d) (r base) (num n)
+      (o,[d],[base,n]) | o `elem` ["ld","lw","lbu"] -> memory o (r d) (r base) (num n)
       (o,[],[base,v,n]) | o `elem` ["sd","sw"] -> memory o (r v) (r base) (num n)
       ("bnez",[],[v,OL l']) -> ["bnez " ++ r v ++ ", " ++ local fn l']
       (o,[],[OL l']) | o `elem` ["j","jump.loop"] -> ["j " ++ local fn l']

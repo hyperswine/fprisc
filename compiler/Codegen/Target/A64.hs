@@ -79,7 +79,7 @@ import Codegen.Target.Common
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 16 -- 16: posix modules reach external symbols through the GOT; 15: units with no legacy code skip translation; 14: in-place constructor reuse; 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
+a64SelectionRev = 17 -- typed column memory and kernel arithmetic; prior: 16: posix modules reach external symbols through the GOT; 15: units with no legacy code skip translation; 14: in-place constructor reuse; 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -360,6 +360,14 @@ selectInstr :: A64Config -> M.Map VId Ty -> Instr -> Se ()
 selectInstr _ _ (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
+  OAddress v -> def (\r -> emitI (mov r (vreg v)))
+  OIndex a i -> def $ \r -> do
+    offset <- freshV False
+    emitI (rri "lsl" offset (vreg i) 3)
+    emitI (rrr "add" r (vreg a) offset)
+  OLoad _ a n -> def (\r -> emitI (plain "load.field" [any' r] [any' (vreg a), OI (fromIntegral n)]))
+  OLoadByte a n -> def (\r -> emitI (plain "load.byte" [any' r] [any' (vreg a), OI (fromIntegral n)]))
+  OStore _ a n v -> emitI (plain "store.field" [] [any' (vreg a), any' (vreg v), OI (fromIntegral n)])
   OConstInt n -> def (\r -> emitI (li r n))
   OBits n -> def (\r -> emitI (li r n))
   ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
@@ -443,7 +451,8 @@ selectInstr _ _ (Instr d op) = case op of
     emitL miss
     emitI (li r 0)
     emitL done
-  OArith o a b -> def (\r -> arith o r (vreg a) (vreg b))
+  OKernelArith o a b -> def (\r -> arith True o r (vreg a) (vreg b))
+  OArith o a b -> def (\r -> arith False o r (vreg a) (vreg b))
   -- band/bor/bxor on the untagged values: one instruction, the result fits
   OBit o a b -> def (\r -> emitI (rrr (case o of BAnd -> "and"; BOr -> "orr"; BXor -> "eor") r (vreg a) (vreg b)))
   -- F64 on the bits: d16/d17 live only inside the expansion (no float
@@ -483,7 +492,7 @@ selectInstr _ _ (Instr d op) = case op of
     -- ScalarChecked): the fast path computes and checks the 63-bit fit, the
     -- slow path retags the ORIGINAL operands and re-enters the C primitive,
     -- whose panic text and failure order are the language's
-    arith o r a b = do
+    arith kernel o r a b = do
       slow <- freshL "slow"
       done <- freshL "done"
       t <- freshV False
@@ -517,17 +526,28 @@ selectInstr _ _ (Instr d op) = case op of
       emitI (mov r t)
       emitI (jump done)
       emitL slow
-      ta <- freshV False
-      ta' <- freshV True
-      tb <- freshV False
-      tb' <- freshV True
-      emitI (rri "lsl" ta a 1)
-      emitI (rri "orri" ta' ta 1)
-      emitI (rri "lsl" tb b 1)
-      emitI (rri "orri" tb' tb 1)
-      res <- freshV True
-      emitI (call (primSymbol o) False True [ta', tb'] (Just res))
-      emitI (rri "asr" r res 1)
+      if kernel then do
+        zero <- freshL "kernelzero"
+        when (o == Div) (emitI (cbz b zero))
+        emitI (call "fpr_int_overflow_kernel" False True [] Nothing)
+        when (o == Div) $ do
+          emitL zero
+          emitI (call "fpr_div_zero_kernel" False True [] Nothing)
+        -- Both entries are noreturn. Define the result on the impossible
+        -- continuation as well so the allocation oracle needs no exception.
+        emitI (li r 0)
+      else do
+        ta <- freshV False
+        ta' <- freshV True
+        tb <- freshV False
+        tb' <- freshV True
+        emitI (rri "lsl" ta a 1)
+        emitI (rri "orri" ta' ta 1)
+        emitI (rri "lsl" tb b 1)
+        emitI (rri "orri" tb' tb 1)
+        res <- freshV True
+        emitI (call (primSymbol o) False True [ta', tb'] (Just res))
+        emitI (rri "asr" r res 1)
       emitL done
     -- the 63-bit fit check: sign-extend the low 63 bits and compare
     fit t slow = do
@@ -786,6 +806,7 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
       ("eori", [d], [s, n]) -> ["eor " ++ reg d ++ ", " ++ reg s ++ ", #" ++ show (imm n)]
       ("sbfx63", [d], [s, _]) -> ["sbfx " ++ reg d ++ ", " ++ reg s ++ ", #0, #63"]
       ("sbfx31", [d], [s, _]) -> ["sbfx " ++ reg d ++ ", " ++ reg s ++ ", #0, #31"]
+      ("load.byte", [d], [base, n]) -> ["ldrb w" ++ drop 1 (reg d) ++ ", [" ++ reg base ++ ", #" ++ show (imm n) ++ "]"]
       ("load.field", [d], [base, n]) -> ldst "ldr" "ldur" (reg d) (reg base) (imm n)
       ("store.field", [], [base, value, n]) -> ldst "str" "stur" (reg value) (reg base) (imm n)
       ("store.header", [], [base, value, n]) -> ["str w" ++ drop 1 (reg value) ++ ", [" ++ reg base ++ ", #" ++ show (imm n) ++ "]"]

@@ -65,9 +65,11 @@ main = v = Vec.iota 1000;
                 text = asm.read_text()
                 if not generic:
                     # the caller is native and calls the fused kernel the legacy
-                    # specialiser still emits (docs/2026-10-22-TYPED-IR-KERNELS.md)
+                    # typed CFG builder emits directly for each target
                     assert 'typed-ir-backend: main native ' in notes, notes[-2000:]
-                    assert '# mixed scalar pipeline:' in text, target
+                    assert '# fn $vkernel:fpr_vspec_pipeline' in text, target
+                    assert '# typed IR: no translation' in text, target
+                    assert 'fpr_ufn_' not in text, target
                     kernels = set(re.findall(r'^_?(fpr_vspec_pipeline\w*):', text, re.M))
                     assert kernels, target
                     calls = re.findall(r'^\s+(?:bl|call|jal|jal ra,|tail|b|jmp)\s+_?(fpr_vspec_pipeline\w*)', text, re.M)
@@ -78,7 +80,7 @@ main = v = Vec.iota 1000;
             exe = tmp / 'pipeline'
             run([ROOT / 'fpr', 'build', src, '-o', exe], env)
             assert run([exe], env) == '750507\n'
-        print('vector kernels: native callers call the legacy-emitted fused kernel on all four selectors; local callback parameters admit direct main; native results equal independent arithmetic PASS', flush=True)
+        print('vector kernels: native callers call the typed fused kernel on all four selectors; local callback parameters admit direct main; native results equal independent arithmetic PASS', flush=True)
 
 
 if __name__ == '__main__':

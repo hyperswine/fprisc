@@ -1,0 +1,11 @@
+unsafe base.
+inc c x = x + c.
+above c x = x > c.
+weighted c a x = a + c*x.
+quotient c x = x / c.
+probeDiv c v = Vec.map (quotient c) v.
+probeMap c v = Vec.map (inc c) v.
+probeFilter c v = Vec.filter (above c) v.
+probeFold c z v = Vec.fold (weighted c) z v.
+probePipe c d e z v = Vec.fold (weighted e) z (Vec.filter (above d) (Vec.map (inc c) v)).
+main = (answer,v) = probePipe 1 500 2 7 (Vec.iota 1000); _ = Vec.free v; print answer.

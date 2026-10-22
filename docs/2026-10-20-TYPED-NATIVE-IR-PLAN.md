@@ -18,6 +18,18 @@ Baseline: native compiler at `c328232f63d3f4a6a4b4c1dde7bce17cc449e19d`
 Audience: compiler implementers and reviewers.
 This page changes no language contract, backend default, or runtime ABI.
 
+## Current retirement acceptance (2026-10-22)
+
+The user has approved proceeding target by target when the major features
+work on AArch64, RV64, RV32 and x86-64 and unsupported features are explicitly
+listed. Full migration of every historical hardware/profile combination is
+not a prerequisite for retiring a supported hosted path. Keep exact execution
+and performance evidence with each promotion, and preserve a named path for
+remaining unsupported consumers. The [typed column kernel implementation
+record](2026-10-22-TYPED-COLUMN-KERNELS.md) tracks the current increment and
+remaining kernel/profile exclusions. Historical milestone gates below retain
+their original context; this is the current retirement acceptance criterion.
+
 ## Goal and relationship to the performance work
 
 Introduce a typed low-level IR between Core and native instructions, then

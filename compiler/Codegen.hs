@@ -46,6 +46,7 @@ import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, isJust)
 import Peephole (peepholeFor)
 import Codegen.IR (Fn (..), Block (..), Width)
+import qualified Codegen.Kernel as K
 import Codegen.Lower (lowerProgram, Prim (..))
 import Codegen.Simplify (simplifyProgram)
 import Codegen.Split (splitEntryValues)
@@ -68,7 +69,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 67 -- Base Bool constructors share runtime singletons with comparisons
+codegenRev = 70 -- typed column kernels and callback clones, with kernel-specific checked arithmetic
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -138,7 +139,7 @@ data Emission = Emission
     emNotes :: [String],
     emNative :: [String], -- the native backend's text in the target's own syntax, appended after lowering
     emNativeNames :: [String], -- the functions the native backend emitted
-    emFallbacks :: [(String, String)], -- the functions it did not, with reasons
+    emFallbacks :: [(String, String)], -- functions and kernels it did not emit natively, with reasons
     emDirectData :: Maybe [String] -- a unit with no legacy code: its data in the target's spelling, so no translator runs (docs/2026-10-22-TYPED-IR-RETIREMENT.md)
   }
 
@@ -405,6 +406,8 @@ data CG = CG
     cgExports :: S.Set String, -- THIS unit's cross-unit-visible names (.globl gate)
     cgVNotes :: [String], -- Vec.x sites that DECLINED specialization (printed by Compile)
     cgNulls :: S.Set (Int, Int), -- actual constant references, including ones introduced during lowering
+    cgKernelFallbacks :: [(String, String)],
+    cgNativeKernels :: [NativeFn],
     cgLegacyEmpty :: Bool -- set once the unit is emitted: no legacy function and no kernel
   }
 
@@ -512,6 +515,12 @@ foreignEntries tgt =
 -- refusal (a frame beyond the ceiling) is a reported fallback; an invalid
 -- selection, placement or layout is a compiler error.  Whole-unit
 -- granularity turns one fallback into the unit's.
+emitNative :: Target -> NativeMode -> S.Set String -> NativeBackend -> Fn -> Either String NativeFn
+emitNative tgt nm exps backend = case backend of
+  DirectA64 fmt hart -> emitFnA64 (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm))
+  DirectRV width hart -> RV.emitFnRV (RV.RVConfig width (tgtPolicy tgt) hart exps (tgtWeak tgt) (nmSelfLoops nm))
+  DirectX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm))
+
 nativeSelect :: Target -> Bool -> NativeMode -> ScalarSignatures -> M.Map String Int -> S.Set String -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String])
 nativeSelect tgt spec nm sigs ext exps prog emitted =
   case verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered0 >> verifyProgramWidth (policyWidth (tgtPolicy tgt)) lowered of
@@ -519,10 +528,7 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
     Right () -> case nmBackend nm of
       Nothing -> ([], M.empty, [(n, "no typed-IR native backend for " ++ nmTargetName nm ++ " (M2 emits AArch64 and x86-64)") | n <- M.keys emitted], [])
       Just backend ->
-        let emit = case backend of
-              DirectA64 fmt hart -> emitFnA64 (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm))
-              DirectRV width hart -> RV.emitFnRV (RV.RVConfig width (tgtPolicy tgt) hart exps (tgtWeak tgt) (nmSelfLoops nm))
-              DirectX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm))
+        let emit = emitNative tgt nm exps backend
             results = [(n, emit f) | (n, f) <- M.toList lowered]
             errors = [n ++ ": " ++ e | (n, Left e) <- results, "compiler error: " `isPrefixOf` e]
             refusals = [(n, e) | (n, Left e) <- results, not ("compiler error: " `isPrefixOf` e)]
@@ -563,7 +569,7 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
     -- rewritten into a call of the kernel the legacy specialiser emits for
     -- it (the same symbol and staging the legacy caller uses: the kernel is
     -- a function of the generated-code ABI), so the caller can be native
-    -- while the kernel stays legacy emission until typed kernels exist
+    -- while supported kernels are independently lowered to typed CFGs;
     -- (docs/2026-10-22-TYPED-IR-KERNELS.md).  Same gates as genT.
     rewritten = if spec then M.map (\(ps, b) -> let (b', ks) = kernelSites (S.fromList ps) b in ((ps, b'), ks)) emitted else M.map (\d -> (d, [])) emitted
     eligible = M.map fst rewritten
@@ -610,11 +616,11 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
       (nativeKernels, nativeFns, nativeFallbacks, nativeNotes) = case tgtNative tgt of
         Nothing -> ([], M.empty, [], [])
         Just nm -> nativeSelect tgt spec nm workerSigs ext exps prog emitted
-      ((code, dat), st) = runState (top prog emitted nativeFns nativeKernels) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty False)
+      ((code, dat), st) = runState (top prog emitted nativeFns nativeKernels) (CG prog 0 M.empty M.empty tgt rvv spec M.empty ext exps (reverse fnotes) S.empty [] [] False)
       -- the native text in the target's own syntax, then the string
       -- objects it names (one per distinct text; the unit-local nullary
       -- objects go through cgNulls into the legacy rodata)
-      nativeStrings = M.elems (M.fromList [(stringLabel str, str) | nf <- M.elems nativeFns, str <- nfStrings nf])
+      nativeStrings = M.elems (M.fromList [(stringLabel str, str) | nf <- M.elems nativeFns ++ cgNativeKernels st, str <- nfStrings nf])
       nativeFormat = case tgtNative tgt >>= nmBackend of
         Just (DirectA64 fmt _) -> fmt
         _ -> ELF
@@ -623,12 +629,12 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
           emNotes = reverse (cgVNotes st) ++ typedIrNotes (if tgtW tgt == 8 then tgtTypedIr tgt else Nothing) (tgtPolicy tgt) workerSigs ext (foreignEntries tgt) prog emitted
             ++ ["typed-ir: not available on " ++ tgtName tgt ++ " (M1 lowers the 64-bit targets)" | tgtW tgt /= 8, Just _ <- [tgtTypedIr tgt]]
             ++ nativeNotes,
-          emNative = if M.null nativeFns then [] else
-            ["    .text", "    .balign 4", ""] ++ concatMap nfLines (M.elems nativeFns)
+          emNative = if M.null nativeFns && null (cgNativeKernels st) then [] else
+            ["    .text", "    .balign 4", ""] ++ concatMap nfLines (M.elems nativeFns ++ cgNativeKernels st)
               ++ (if null nativeStrings then [] else rodataDirective nativeFormat : concatMap (stringObjectWidth (policyWidth (tgtPolicy tgt)) nativeFormat) nativeStrings),
           emNativeNames = M.keys nativeFns,
-          emFallbacks = nativeFallbacks,
-          -- no legacy function, no kernel, no vector init: nothing for a
+          emFallbacks = nativeFallbacks ++ cgKernelFallbacks st,
+          -- no legacy function or kernel, no vector init: nothing for a
           -- translator to do but data spelling
           emDirectData = if isJust (tgtNative tgt >>= nmBackend) && cgLegacyEmpty st && not rvv
                            then Just (dataSyntax nativeFormat dat) else Nothing
@@ -3337,9 +3343,64 @@ genUWithSlots tgt prog uset load save = go
 -- specialized loop emission
 --------------------------------------------------------------------------------
 
+-- Scalar and fused single-column plans share the typed CFG builder. Record
+-- layouts, write-back folds and SIMD kernels retain explicit legacy reasons.
+hasNeonKernel :: Target -> Prog -> SpecPlan -> Bool
+hasNeonKernel tgt prog p = isJust $ do
+  if tgtSimd tgt && spOp p == "map" && spCaps p == 0 then Just () else Nothing
+  ([prm],b) <- M.lookup (spFn p) prog
+  (body,_) <- expandKernel prog 12 b
+  kind <- case spKinds p of Just ([kind],out) | kind == out -> Just kind; _ -> Nothing
+  if kind == KI && not (singleIntOp prm body) then Nothing else Just ()
+  neonExpr kind (M.singleton prm "v16") 17 body
+
+typedKernelPlan :: String -> SpecPlan -> Either String K.Kernel
+typedKernelPlan sym p
+  | Just pipeline <- spPipe p = Right (K.Kernel sym (planCapKinds p) (pipeElement pipeline)
+      (pipeAccumulator pipeline) [K.Stage op f caps | (op,f,caps) <- pipeStages pipeline])
+  | spOp p `elem` ["map","filter","fold"], spScalar p,
+    spSoa p == Nothing, spMv p == Nothing =
+      let k = spCaps p
+          kinds = planCapKinds p
+          element = case spKinds p of Just (ks,_) -> last ks; _ -> KI
+          accKind = case spKinds p of Just (ks,_) -> ks !! k; _ -> KI
+          folding = spOp p == "fold"
+       in Right (K.Kernel sym (kinds ++ [accKind | folding]) element
+            (if folding then Just (k,accKind) else Nothing) [K.Stage (spOp p) (spFn p) [0..k-1]])
+  | otherwise = Left ("typed " ++ spOp p ++ " record/SIMD kernel not implemented")
+
 emitSpecs :: Prog -> G [String]
 emitSpecs prog = do
-  specs <- M.elems <$> gets cgSpecs
+  requested <- M.elems <$> gets cgSpecs
+  tgt <- gets cgTgt
+  rvv <- gets cgRvv
+  ext <- gets cgExt
+  exps <- gets cgExports
+  let native pair@(sym,p) = case tgtNative tgt of
+        Just nm | Just backend <- nmBackend nm, not rvv -> do
+          when (hasNeonKernel tgt prog p) (Left "NEON map retained until typed SIMD lowering")
+          kernel <- typedKernelPlan sym p
+          let names = S.toList (spClosure p) ++ [f | K.Stage _ f _ <- K.kernelStages kernel]
+              chosen = M.filterWithKey (\n _ -> n `elem` names) prog
+              (loweredCallbacks, failures) = lowerProgram (tgtPolicy tgt) M.empty prog chosen ext (foreignEntries tgt)
+              callbacks = K.kernelCallbacks loweredCallbacks
+          when (not (null failures)) (Left ("callback lowering: " ++ show failures))
+          fn <- K.lowerKernel (tgtPolicy tgt) (if isJust (spPipe p) && not (tgtPipelineInline tgt) then M.empty else callbacks) kernel
+          nfs <- mapM (\f -> emitNative tgt nm (S.insert (fnName f) exps) backend f) (fn : M.elems callbacks)
+          if any ((== Nothing) . rSegMax . nfReport) nfs
+            then Left "native-insns-v1 is UNBOUNDED"
+            else Right nfs
+        _ -> Left "typed backend unavailable or explicit RVV mode"
+      results = [(pair,native pair) | pair <- requested]
+      errors = [sym ++ ": " ++ e | ((sym,_),Left e) <- results, "compiler error:" `isPrefixOf` e]
+      specs = if null errors then [pair | (pair,Left _) <- results]
+              else error ("typed-ir kernel: " ++ intercalate "; " errors)
+      natives = M.elems (M.fromList [(nfName nf,nf) | (_,Right nfs) <- results, nf <- nfs])
+      notes = ["typed-ir-kernel: " ++ sym ++ either (" legacy: " ++) (const " native") result | ((sym,_),result) <- results]
+  when (isJust (tgtNative tgt >>= nmBackend)) $
+    modify (\s -> s {cgKernelFallbacks = [(sym,reason) | ((sym,_),Left reason) <- results],
+                     cgNativeKernels = natives, cgVNotes = reverse notes ++ cgVNotes s,
+                     cgNulls = S.union (S.fromList (concatMap nfNullaries natives)) (cgNulls s)})
   if null specs
     then pure []
     else do

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Execute the generated x64 vector kernels against independent C references."""
-import re, subprocess, tempfile
+import os, re, subprocess, tempfile
 from pathlib import Path
 from x64_probe import adapt, host, link, run
 root=Path(__file__).resolve().parents[1]
@@ -13,8 +13,13 @@ temporary=tempfile.TemporaryDirectory(prefix='fpr-x64-vectors-')
 tmp=Path(temporary.name)
 def kernels(fixture, name):
     output = tmp / (name + '.s')
+    # This harness extracts legacy-specializer text. The typed kernel oracle
+    # independently executes the direct allocator/renderer on x64.
+    env=dict(os.environ)
+    env.pop('FPR_TYPED_IR_BACKEND',None)
+    env.pop('FPR_TYPED_IR_STRICT',None)
     compiled=subprocess.run([str(root/'fprc'), '--profile=base', '--target=x64',
-                    str(root/'tests/base'/fixture), str(output)], cwd=root,
+                    str(root/'tests/base'/fixture), str(output)], cwd=root, env=env,
                    capture_output=True, text=True, timeout=120)
     assert compiled.returncode==0,(compiled.stdout,compiled.stderr)
     assembly = output.read_text().split('# ---- Vec specializations', 1)[1].split('\n', 1)[1]

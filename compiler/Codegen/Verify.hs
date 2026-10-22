@@ -33,6 +33,11 @@ opSignature tyOf = \case
     expect root TVal
     mapM_ (`expect` TVal) fields
     pure (Just TVal)
+  OAddress v -> expect v TVal >> pure (Just TAddr)
+  OIndex a i -> expect a TAddr >> expect i TInt >> pure (Just TAddr)
+  OLoad t a n -> memory t a n >> pure (Just t)
+  OLoadByte a n -> memory TInt a n >> pure (Just TInt)
+  OStore t a n v -> memory t a n >> expect v t >> pure Nothing
   OField index obj -> do
     when (index < 0 || toInteger index > 268435454) (Left "field index is outside the native displacement range")
     expect obj TVal
@@ -57,6 +62,7 @@ opSignature tyOf = \case
     mapM_ (`expect` TVal) as
     when (null as) (Left "an application without arguments")
     pure (Just TVal)
+  OKernelArith _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OArith _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OBit _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
   OShift _ a b -> expect a TInt >> expect b TInt >> pure (Just TInt)
@@ -76,6 +82,10 @@ opSignature tyOf = \case
   OSafepoint -> pure Nothing
   OStackCheck -> pure Nothing
   where
+    memory t a n = do
+      unless (t `elem` [TInt,TVal,TAddr]) (Left "unsupported memory representation")
+      unless (n >= 0 && n <= 255) (Left "memory offset outside portable displacement range")
+      expect a TAddr
     expect v t = do
       t' <- tyOf v
       unless (t' == t) (Left (show v ++ " is " ++ show t' ++ ", " ++ show t ++ " needed"))
@@ -179,5 +189,9 @@ verifyProgramWidth width program = do
   verifyProgram program
   forM_ (M.elems program) $ \fn -> forM_ (fnBlocks fn) $ \b ->
     forM_ (bInstrs b) $ \(Instr _ op) -> case op of
+      OLoad _ _ n -> aligned n
+      OStore _ _ n _ -> aligned n
       OConstInt n -> unless (intFitsWidth width n) (Left ("verify " ++ fnName fn ++ ": literal exceeds " ++ show width ++ " Int range"))
       _ -> pure ()
+  where
+    aligned n = unless (n `mod` (widthBits width `div` 8) == 0) (Left "unaligned word memory operation")

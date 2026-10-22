@@ -12,7 +12,7 @@ module Codegen.Eval (RV (..), Event (..), Failure (..), Outcome (..), evalProgra
 
 import Codegen.IR
 import Codegen.Target.Common (utf8Bytes)
-import Control.Monad (foldM, when)
+import Control.Monad (foldM, when, unless)
 import Data.Bits (shiftL, shiftR, xor, (.&.), (.|.))
 import Control.Monad.Except
 import Control.Monad.State.Strict
@@ -95,6 +95,11 @@ callFn width program name args = do
           (Nothing, Nothing) -> pure env
           _ -> stuck "an instruction's definition disagrees with its operation"
       opValue env = \case
+        OAddress _ -> stuck "unmanaged memory is outside the Core evaluator; use the native kernel oracle"
+        OIndex _ _ -> stuck "unmanaged memory is outside the Core evaluator"
+        OLoad _ _ _ -> stuck "unmanaged memory is outside the Core evaluator"
+        OLoadByte _ _ -> stuck "unmanaged memory is outside the Core evaluator"
+        OStore _ _ _ _ -> stuck "unmanaged memory is outside the Core evaluator"
         OConstInt n -> pure (Just (VInt n))
         ONullary t v -> pure (Just (VVal (RObj t v [])))
         OString s -> pure (Just (VVal (RString (utf8Bytes s))))
@@ -145,6 +150,13 @@ callFn width program name args = do
           args' <- mapM (val env) as
           r <- applyN width program h args'
           pure (Just (VVal r))
+        OKernelArith o a b -> do
+          x <- int env a
+          y <- int env b
+          when (o == Div && y == 0) (trap "division by zero")
+          let result = case o of Add -> x+y; Sub -> x-y; Mul -> x*y; Div -> x `quot` y
+          unless (intFitsWidth width result) (trap ("Int overflow in a vector kernel: the result does not fit an Int (" ++ show (fst (intBounds width)) ++ ".." ++ show (snd (intBounds width)) ++ "); I64 is the type that wraps"))
+          pure (Just (VInt result))
         OArith o a b -> do
           x <- int env a
           y <- int env b

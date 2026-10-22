@@ -50,6 +50,7 @@ executable fpr
       Representation
       Interrupt
       Codegen
+      Codegen.Kernel
       Codegen.IR
       Codegen.Verify
       Codegen.Dump

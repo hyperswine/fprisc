@@ -79,7 +79,7 @@ data CalleeKind
   = Local -- a function of this unit (`fpr_fn_<mangled>`)
   | Imported -- another unit's export, same shapes, extern symbol
   | Foreign String -- a saturated primitive of declared arity: a C entry (`fpr_prim_fn_<mangled>` for a core primitive, `fpr_g_<mangled>_call<n>` for a HAL/foreign declaration), tagged words in and out
-  | Generated String -- a function of the generated-code ABI under an explicit symbol: a vector kernel the legacy specialiser emits in this unit (`fpr_vspec_...`), called exactly as the legacy caller calls it (docs/2026-10-22-TYPED-IR-KERNELS.md)
+  | Generated String -- a function of the generated-code ABI under an explicit symbol: a specialized vector kernel or typed callback clone emitted in this unit (`fpr_vspec_...`, `fpr_tkfn_...`), called exactly as the legacy caller calls it (docs/2026-10-22-TYPED-IR-KERNELS.md)
   deriving (Eq, Ord, Show)
 
 isForeign :: Callee -> Bool
@@ -101,6 +101,11 @@ data Op
   | OString String -- immortal byte-string object, same encoding as the source literal
   | OMake Int Int [VId] -- allocate an immutable constructor with tagged fields
   | OReuse Int Int VId [VId] -- overwrite the fields of a constructor the program owns uniquely (Reuse.reuseFresh proved it), answer it: the legacy `# reuse fresh constructor`; every field is evaluated before the first store
+  | OAddress VId -- TVal -> TAddr; internal lowering, after the object/representation guard
+  | OIndex VId VId -- TAddr, TInt -> TAddr; address + index * target word bytes
+  | OLoad Ty VId Int -- word load at a byte offset: TInt, TVal or TAddr; mutable memory, never CSE
+  | OLoadByte VId Int -- zero-extended byte -> TInt (column kind descriptor)
+  | OStore Ty VId Int VId -- word store, same representation as OLoad; uniquely owned vector
   | OField Int VId -- read a statically typed constructor field (zero-based)
   | OStrLen VId -- checked String byte length -> TInt
   | OCharAt VId VId -- checked String and TInt byte index -> TInt
@@ -114,6 +119,7 @@ data Op
   | OSymbol String -- :: TVal; the address of an immortal object the unit links against: a core primitive's object (fpr_prim_obj_), a HAL contract (fpr_g_); the legacy `la a0, <symbol>`
   | OFunValue Name -- :: TVal; a program function's static PAP (its arity, no arguments): the legacy `la a0, fpr_obj_<name>`
   | OApply VId [VId] -- TVal, TVal.. -> TVal: the generic application through the runtime (fpr_applyN): partial, over-saturated, or of a computed head; allocates PAPs in the runtime, calls anything
+  | OKernelArith ArithOp VId VId -- checked TInt arithmetic with the vector-kernel overflow/zero diagnostics
   | OArith ArithOp VId VId -- TInt TInt -> TInt; traps in program order with the primitive's message
   | OBit BitOp VId VId -- TInt TInt -> TInt: and, or, xor of the untagged values
   | OShift ShiftOp VId VId -- TInt TInt -> TInt: value, count; the count outside 0..63 traps (bits.c)
@@ -167,6 +173,7 @@ data Effect
   | MayTrap -- ends the actor with a reason, in program order
   | RuntimeCall -- calls the runtime: clobbers caller-saved registers, may deschedule
   | AnyEffect -- an FP-RISC call: anything observable may happen
+  | Reads -- mutable memory read; ordered against stores and calls
   | Writes -- writes memory of an object it owns uniquely: never moved, merged or dropped
   deriving (Eq, Ord, Show)
 
@@ -177,6 +184,11 @@ opEffect = \case
   OString _ -> Pure
   OMake _ _ _ -> RuntimeCall
   OReuse _ _ _ _ -> Writes
+  OAddress _ -> Pure
+  OIndex _ _ -> Pure
+  OLoad _ _ _ -> Reads
+  OLoadByte _ _ -> Reads
+  OStore _ _ _ _ -> Writes
   OField _ _ -> Pure
   OStrLen _ -> MayTrap
   OCharAt _ _ -> MayTrap
@@ -190,6 +202,7 @@ opEffect = \case
   OSymbol _ -> Pure
   OFunValue _ -> Pure
   OApply _ _ -> AnyEffect
+  OKernelArith _ _ _ -> MayTrap
   OArith _ _ _ -> MayTrap
   OBit _ _ _ -> Pure
   OShift _ _ _ -> MayTrap
@@ -209,6 +222,11 @@ opUses = \case
   OString _ -> []
   OMake _ _ fs -> fs
   OReuse _ _ r fs -> r : fs
+  OAddress v -> [v]
+  OIndex a i -> [a,i]
+  OLoad _ a _ -> [a]
+  OLoadByte a _ -> [a]
+  OStore _ a _ v -> [a,v]
   OField _ v -> [v]
   OStrLen v -> [v]
   OCharAt s n -> [s, n]
@@ -222,6 +240,7 @@ opUses = \case
   OSymbol _ -> []
   OFunValue _ -> []
   OApply f as -> f : as
+  OKernelArith _ a b -> [a,b]
   OArith _ a b -> [a, b]
   OBit _ a b -> [a, b]
   OShift _ a b -> [a, b]
@@ -251,6 +270,11 @@ mapOpUses f = \case
   OString s -> OString s
   OMake t v fs -> OMake t v (map f fs)
   OReuse t v r fs -> OReuse t v (f r) (map f fs)
+  OAddress v -> OAddress (f v)
+  OIndex a i -> OIndex (f a) (f i)
+  OLoad t a n -> OLoad t (f a) n
+  OLoadByte a n -> OLoadByte (f a) n
+  OStore t a n v -> OStore t (f a) n (f v)
   OField n v -> OField n (f v)
   OStrLen v -> OStrLen (f v)
   OCharAt s n -> OCharAt (f s) (f n)
@@ -264,6 +288,7 @@ mapOpUses f = \case
   OSymbol s -> OSymbol s
   OFunValue n -> OFunValue n
   OApply h as -> OApply (f h) (map f as)
+  OKernelArith o a b -> OKernelArith o (f a) (f b)
   OArith o a b -> OArith o (f a) (f b)
   OBit o a b -> OBit o (f a) (f b)
   OShift o a b -> OShift o (f a) (f b)

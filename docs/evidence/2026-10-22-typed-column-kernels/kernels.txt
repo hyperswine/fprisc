@@ -1,0 +1,15 @@
+Typed kernel emission: legacy-only callers retain their native kernel on all four selectors PASS
+typed kernels: hosted result, one/four harts PASS
+hosted typed pipeline: Int/F64/F32, eight arguments, boxed fallback, effects and traps; inline-disabled=0 PASS
+hosted typed pipeline: Int/F64/F32, eight arguments, boxed fallback, effects and traps; inline-disabled=1 PASS
+strict mode rejects unsupported F32 kernel instead of hiding legacy emission PASS
+a64: five typed kernel CFGs; no legacy assembly PASS
+x64: five typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 700 cases: map/filter/fold/fusion, empty columns, guard fallbacks, hostile yields
+x64: add overflow, wide multiply overflow, min/-1 overflow, zero divisor PASS
+rv64: five typed kernel CFGs; no legacy assembly PASS
+rv64: TYPED_KERNEL_PASS 700 cases: map/filter/fold/fusion, empty columns, guard fallbacks, hostile yields
+rv64: add overflow, wide multiply overflow, min/-1 overflow, zero divisor PASS
+rv32: five typed kernel CFGs; no legacy assembly PASS
+rv32: TYPED_KERNEL_PASS 700 cases: map/filter/fold/fusion, empty columns, guard fallbacks, hostile yields
+rv32: add overflow, wide multiply overflow, min/-1 overflow, zero divisor PASS

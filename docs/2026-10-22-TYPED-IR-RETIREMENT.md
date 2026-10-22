@@ -4,6 +4,11 @@ Date: 2026-10-22. Kind: assessment and implementation record.
 Base: main `e243970` (the [QOS work](2026-10-22-TYPED-IR-QOS.md)).
 Branch `typed-ir-retire`.
 
+Update after `8a5de33`: [typed scalar and fused column kernels](2026-10-22-TYPED-COLUMN-KERNELS.md)
+now replace part of the legacy kernel emitter across all four direct targets.
+The tables below describe the inventory at `8a5de33`; the linked record gives
+the current support boundary and the user-approved retirement acceptance.
+
 "The legacy path" is two things with very different futures.
 
 - **The translators**, `compiler/A64.hs` and `compiler/X64.hs` (about 1,040

@@ -11,7 +11,7 @@ import Codegen.Lower (lowerFn, lowerProgram, Prim (..))
 import Codegen.Policy (m2Policy, Policy (..), Profile (..))
 import Codegen.Simplify (simplifyFn, simplifyProgram)
 import Codegen.Split (splitEntryValues)
-import Codegen.Verify (verifyFn, verifyProgram, verifyProgramWidth)
+import Codegen.Verify (verifyFn, verifyProgram, verifyProgramWidth, opSignature)
 import Control.Monad (unless)
 import Data.List (isInfixOf)
 import qualified Data.Map.Strict as M
@@ -69,6 +69,17 @@ addCore = (["a", "b"], app "+" [var "a", var "b"])
 
 main :: IO ()
 main = do
+  -- Column memory is representation-checked and cannot be CSE'd across a
+  -- store/call. A load cannot consume an arbitrary tagged value directly.
+  let memTypes v = Right (if v == VId 0 then TAddr else TInt)
+  check "word load signature" (opSignature memTypes (OLoad TInt (VId 0) 8) == Right (Just TInt))
+  check "address load signature" (opSignature memTypes (OLoad TAddr (VId 0) 0) == Right (Just TAddr))
+  check "store signature" (opSignature memTypes (OStore TInt (VId 0) 8 (VId 1)) == Right Nothing)
+  check "mutable reads ordered" (opEffect (OLoad TInt (VId 0) 0) == Reads)
+  check "column stores ordered" (opEffect (OStore TInt (VId 0) 0 (VId 1)) == Writes)
+  check "load rejects tagged base" (case opSignature (const (Right TVal)) (OLoad TInt (VId 0) 0) of Left _ -> True; _ -> False)
+  check "load rejects float-register representation" (case opSignature memTypes (OLoad TF64 (VId 0) 0) of Left _ -> True; _ -> False)
+  check "store rejects mismatched value" (case opSignature memTypes (OStore TAddr (VId 0) 0 (VId 1)) of Left _ -> True; _ -> False)
   -- the verifier
   check "a well-formed function verifies" (verifyFn M.empty good == Right ())
   expectRefusal "missing entry" "entry block missing" (verifyFn M.empty good {fnEntry = BId 9})

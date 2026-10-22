@@ -1,0 +1,5 @@
+check_base: 10.0 of 10 cores idle: 10 worker(s) (-j or FPR_CHECK_JOBS to choose)
+Int overflow: + - * / trap by name with the operands, inline, in C, in scalar and NEON kernels and in a fold; chr and Sys.exit refuse out of range: PASS
+Vector fusion: printing or failing element functions keep their pass order (and the decline is reported); pure F64 and Int pairs fuse in place: PASS
+Vector kernels: captured map/filter, wide record map and record filter run in place with no declines; RV64/RV32/x64 emit: PASS
+check_base: 3 jobs in 6 s on 10 worker(s)

@@ -34,6 +34,13 @@ def check_execution(run):
         assert 'zero' in (out+err).lower(),(out,err)
 
 def command(args,env):
+    if 'compile' in args:
+        # Static assertions below describe legacy pipeline assembly. Runtime
+        # differentials keep the selected backend; typed CFGs have their own
+        # four-target execution gate in check_typed_ir_kernels.py.
+        env=dict(env)
+        env.pop('FPR_TYPED_IR_BACKEND',None)
+        env.pop('FPR_TYPED_IR_STRICT',None)
     p=subprocess.run(list(map(str,args)),cwd=ROOT,env=env,capture_output=True,text=True,timeout=300)
     assert p.returncode==0,(args,p.stdout[-1200:],p.stderr[-3000:])
     return p

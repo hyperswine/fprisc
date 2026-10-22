@@ -99,6 +99,7 @@ mangleName = concatMap enc
     pad s = if length s < 2 then '0' : s else s
 
 functionSymbol :: Name -> String
+functionSymbol n | Just sym <- stripPrefix "$vkernel:" n = sym
 functionSymbol n = "fpr_fn_" ++ mangleName n
 
 -- the unit-local label of a string literal the native text names: by the

@@ -27,7 +27,12 @@ FIXTURES = ['vecfallback', 'veccaps', 'veccaps_fold', 'vecfuse_capture', 'vecsha
 EXPECT = 'fallback frames: ok 5 cap 27 43'
 
 def run(args):
-    p = subprocess.run([str(a) for a in args], cwd=ROOT, env=ENV, capture_output=True, text=True, timeout=300)
+    mode=dict(ENV)
+    # Only the assembly/frame inspection targets the legacy translator.
+    if str(args[0]).endswith('fprc'):
+        mode.pop('FPR_TYPED_IR_BACKEND',None)
+        mode.pop('FPR_TYPED_IR_STRICT',None)
+    p = subprocess.run([str(a) for a in args], cwd=ROOT, env=mode, capture_output=True, text=True, timeout=300)
     assert p.returncode == 0, f'{args}: exit {p.returncode}\n{p.stdout[-2000:]}{p.stderr[-4000:]}'
     return p.stdout
 

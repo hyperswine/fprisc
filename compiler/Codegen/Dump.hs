@@ -30,6 +30,11 @@ dumpFn fn =
       OString s -> "string " ++ show s
       OMake t c fs -> "make " ++ show t ++ ":" ++ show c ++ args fs
       OReuse t c r fs -> "reuse " ++ value r ++ " as " ++ show t ++ ":" ++ show c ++ args fs
+      OAddress v -> "address " ++ value v
+      OIndex a i -> "index " ++ value a ++ " " ++ value i
+      OLoad t a n -> "load " ++ show t ++ " " ++ value a ++ "+" ++ show n
+      OLoadByte a n -> "load.byte " ++ value a ++ "+" ++ show n
+      OStore t a n v -> "store " ++ show t ++ " " ++ value a ++ "+" ++ show n ++ " " ++ value v
       OField n v -> "field " ++ show n ++ " " ++ value v
       OStrLen v -> "strlen " ++ value v
       OCharAt s n -> "charAt " ++ value s ++ ", " ++ value n
@@ -43,6 +48,7 @@ dumpFn fn =
       OSymbol sym -> "symbol " ++ sym
       OFunValue n -> "funvalue " ++ n
       OApply f as -> "apply " ++ value f ++ args as
+      OKernelArith o a b -> "kernel." ++ show o ++ " " ++ value a ++ " " ++ value b
       OArith o a b -> "arith " ++ arithSymbol o ++ " " ++ value a ++ ", " ++ value b
       OBit o a b -> "bit " ++ bitName o ++ " " ++ value a ++ ", " ++ value b
       OShift o a b -> "shift " ++ shiftName o ++ " " ++ value a ++ ", " ++ value b
