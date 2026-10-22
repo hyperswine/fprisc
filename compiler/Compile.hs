@@ -419,18 +419,21 @@ compileWithInterface accepted = do
   envCostedRegisters <- (== Just "1") <$> lookupEnv "FPR_COSTED_REGISTERS"
   envCompactFrames <- (== Just "1") <$> lookupEnv "FPR_COMPACT_FRAMES"
   envTypedIr <- lookupEnv "FPR_TYPED_IR"
-  -- FPR_TYPED_IR_BACKEND routes units through the typed-IR native backend
-  -- (docs/2026-10-2N-TYPED-IR-M2-A64.md): `1` selects whole units, `mixed`
-  -- selects per function.  FPR_TYPED_IR_STRICT makes a fallback an error:
-  -- `all`, or a comma-separated list of function names.
+  -- FPR_TYPED_IR_BACKEND: the typed-IR native backend is the default on the
+  -- targets that support it (docs/2026-10-22-TYPED-IR-DEFAULT.md): unset or
+  -- `mixed` selects it per function, `1` whole units, and `legacy` (also `0`
+  -- or `off`) is the rollback to the legacy generator and its translators.
+  -- FPR_TYPED_IR_STRICT makes a fallback an error: `all`, or a
+  -- comma-separated list of function names.
   envBackendRaw <- lookupEnv "FPR_TYPED_IR_BACKEND"
   envStrictRaw <- lookupEnv "FPR_TYPED_IR_STRICT"
   envBackend <- case envBackendRaw of
-    Nothing -> pure Nothing
-    Just "" -> pure Nothing
-    Just "1" -> pure (Just WholeUnit)
+    Nothing -> pure (Just PerFunction)
+    Just "" -> pure (Just PerFunction)
     Just "mixed" -> pure (Just PerFunction)
-    Just other -> hPutStrLn stderr ("FPR_TYPED_IR_BACKEND=" ++ other ++ ": expected 1 (whole units) or mixed (per function)") >> exitFailure
+    Just "1" -> pure (Just WholeUnit)
+    Just v | v `elem` ["legacy", "0", "off"] -> pure Nothing
+    Just other -> hPutStrLn stderr ("FPR_TYPED_IR_BACKEND=" ++ other ++ ": expected mixed (per function, the default), 1 (whole units) or legacy") >> exitFailure
   envStrict <- case envStrictRaw of
     Nothing -> pure StrictOff
     Just "" -> pure StrictOff

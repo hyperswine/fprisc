@@ -25,7 +25,7 @@ def main():
                    FPR_COSTED_REGISTERS="0", FPR_COMPACT_FRAMES="0")
         env.pop("FPR_FOREIGN", None)
         # retained registers are a legacy-emission switch: this check names the legacy backend
-        env.pop("FPR_TYPED_IR_BACKEND", None)
+        env["FPR_TYPED_IR_BACKEND"] = "legacy"
         source = tmp / "retained.fpr"
         definition = ("hot : unsafe Int -> Int -> Int .\n"
                       "hot a b = a * b + a + a + b.\n")

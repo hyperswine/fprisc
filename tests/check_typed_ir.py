@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ENV = {**os.environ, 'FPR_HOME': str(ROOT), 'FPR_PATH': str(ROOT)}
 ENV.pop('FPR_FOREIGN', None)
 ENV.pop('FPR_TYPED_IR', None)
+ENV['FPR_TYPED_IR_BACKEND'] = 'legacy' # the differential's reference is the legacy generator
 # cabal exec needs libarchive's pkg-config metadata as the Makefile supplies it
 for keg in ('/opt/homebrew/opt/libarchive/lib/pkgconfig', '/usr/local/opt/libarchive/lib/pkgconfig'):
     if Path(keg).is_dir():

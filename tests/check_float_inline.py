@@ -33,11 +33,11 @@ with tempfile.TemporaryDirectory(prefix='fpr-f64-') as temp:
                               for n, op in ops.items()) + 'main = Unit.\n')
     # the legacy generator, then the typed-IR backend, which inlines the
     # same F64 operations (docs/2026-10-22-TYPED-IR-KERNELS.md)
-    for backend in ('', 'mixed'):
-        label = 'typed-IR ' if backend else ''
+    for backend in ('legacy', 'mixed'):
+        label = 'typed-IR ' if backend == 'mixed' else ''
         asm = tmp / 'backend.s'
         run(['./fpr', '--target=x64', f'--prelude={ROOT}/core/prelude.fpr', source, asm],
-            {'FPR_NO_F64_INLINE': '0', **({'FPR_TYPED_IR_BACKEND': backend} if backend else {})})
+            {'FPR_NO_F64_INLINE': '0', 'FPR_TYPED_IR_BACKEND': backend})
         cc = shutil.which('clang') or shutil.which('cc')
         if shutil.which('clang'):
             run(['clang', '--target=x86_64-linux-gnu', '-c', asm, '-o', tmp / 'backend.o'])

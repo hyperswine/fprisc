@@ -28,6 +28,8 @@ def main():
             env = dict(ENV, XDG_CACHE_HOME=str(root / mode))
             if mode != 'legacy':
                 env.update(FPR_TYPED_IR_BACKEND='mixed', FPR_TYPED_IR_STRICT=NAMES)
+            else:
+                env.update(FPR_TYPED_IR_BACKEND='legacy')
             if mode == 'entry':
                 env.update(FPR_TYPED_IR_SHALLOW_STACK='1', FPR_TYPED_IR_FORWARD_PARAMS='1')
             exe = root / ('app-' + mode)

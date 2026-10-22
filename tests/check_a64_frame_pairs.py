@@ -24,7 +24,7 @@ def main():
                    FPR_COSTED_REGISTERS="0", FPR_COMPACT_FRAMES="0", FPR_SELF_LOOPS="0")
         env.pop("FPR_FOREIGN", None)
         # frame pairs are a legacy-emission switch: this check names the legacy backend
-        env.pop("FPR_TYPED_IR_BACKEND", None)
+        env["FPR_TYPED_IR_BACKEND"] = "legacy"
         print(run(["runghc", "-w", "-icompiler", "tests/A64FramePairs.hs", tmp], env), end="")
         run(["clang", "--target=aarch64-linux-gnu", "-c", tmp / "pair-elf.s",
              "-o", tmp / "pair-elf.o"], env)

@@ -16,7 +16,7 @@ def kernels(fixture, name):
     # This harness extracts legacy-specializer text. The typed kernel oracle
     # independently executes the direct allocator/renderer on x64.
     env=dict(os.environ)
-    env.pop('FPR_TYPED_IR_BACKEND',None)
+    env['FPR_TYPED_IR_BACKEND']='legacy'
     env.pop('FPR_TYPED_IR_STRICT',None)
     compiled=subprocess.run([str(root/'fprc'), '--profile=base', '--target=x64',
                     str(root/'tests/base'/fixture), str(output)], cwd=root, env=env,

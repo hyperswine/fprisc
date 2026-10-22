@@ -36,7 +36,7 @@ def environment(cache):
                FPR_SELF_LOOPS='0')
     env.pop('FPR_FOREIGN', None)
     env.pop('FPR_TYPED_IR', None)
-    env.pop('FPR_TYPED_IR_BACKEND', None)
+    env['FPR_TYPED_IR_BACKEND'] = 'legacy'
     env.pop('FPR_TYPED_IR_STRICT', None)
     env.pop('FPR_TYPED_IR_SHALLOW_STACK', None)
     env.pop('FPR_TYPED_IR_FORWARD_PARAMS', None)

@@ -20,7 +20,7 @@ def main():
     env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT))
     env.pop('FPR_FOREIGN', None)
     env.pop('FPR_TYPED_IR', None)
-    env.pop('FPR_TYPED_IR_BACKEND', None)
+    env['FPR_TYPED_IR_BACKEND'] = 'legacy'
     env.pop('FPR_TYPED_IR_STRICT', None)
     started = time.monotonic()
     run(['make', 'fpr'], env)

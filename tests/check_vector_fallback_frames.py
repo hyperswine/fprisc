@@ -30,7 +30,7 @@ def run(args):
     mode=dict(ENV)
     # Only the assembly/frame inspection targets the legacy translator.
     if str(args[0]).endswith('fprc'):
-        mode.pop('FPR_TYPED_IR_BACKEND',None)
+        mode['FPR_TYPED_IR_BACKEND']='legacy'
         mode.pop('FPR_TYPED_IR_STRICT',None)
     p = subprocess.run([str(a) for a in args], cwd=ROOT, env=mode, capture_output=True, text=True, timeout=300)
     assert p.returncode == 0, f'{args}: exit {p.returncode}\n{p.stdout[-2000:]}{p.stderr[-4000:]}'

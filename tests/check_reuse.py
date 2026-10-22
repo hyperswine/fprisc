@@ -51,11 +51,10 @@ def main():
         for target in ('rv64','a64','x64','rv32'):
             for off in ('0','1'):
                 asm=tmp/'reuse.s'
-                command([ROOT/'fpr','compile','--target='+target,ROOT/'tests/base/freshreuse.fpr',asm],dict(env,FPR_NO_REUSE=off))
                 # the legacy emitter's marker; the typed backend's native
                 # reuse is checked by the allocation ledger above instead
-                if not os.environ.get('FPR_TYPED_IR_BACKEND'):
-                    assert ('# reuse fresh constructor' in asm.read_text())==(off=='0' and target!='rv32'),(target,off)
+                command([ROOT/'fpr','compile','--target='+target,ROOT/'tests/base/freshreuse.fpr',asm],dict(env,FPR_NO_REUSE=off,FPR_TYPED_IR_BACKEND='legacy'))
+                assert ('# reuse fresh constructor' in asm.read_text())==(off=='0' and target!='rv32'),(target,off)
         # Exercise the separate executable-run cache, not only unit caching.
         for off in ('1','0','1'):
             mode=dict(env,FPR_NO_REUSE=off,FPR_HARTS='1')

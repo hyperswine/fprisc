@@ -93,7 +93,7 @@ def main():
             bodies = re.findall(r'(?ms)^# fn ([^\n]+)\n(.*?)(?=^# (?:wcet|native-insns-v1):)', text)
             selected = '\n'.join(body for title, body in bodies if not title.startswith('main '))
             assert 'fpr_fn_rotate63:' in selected and 'idivq' in selected
-            native = 'FPR_TYPED_IR_BACKEND' in mode
+            native = mode.get('FPR_TYPED_IR_BACKEND') == 'mixed'
             # the string objects the bodies name (tick's dead-arm reason): the
             # legacy unit's .Lstr objects, and in native mode the typed-IR
             # backend's .Ltirstr objects, which end the unit in their own

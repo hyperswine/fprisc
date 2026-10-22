@@ -11,6 +11,10 @@ also lower through the typed CFG on supported numeric layouts.
 Update after `12b7d24`: [the remaining kernel forms](2026-10-22-TYPED-KERNELS-COMPLETE.md)
 (`mapAs`, write-back folds, F32, NEON, RVV, the GPU hook) lower too: the
 fused-kernel row below has no legacy consumer left on the hosted targets.
+Update after that: [the typed backend is the default](2026-10-22-TYPED-IR-DEFAULT.md),
+with `FPR_TYPED_IR_BACKEND=legacy` as the rollback; the answer below's first
+two conditions are met, and the translators now serve only the rollback and
+the x86-64 QOS apps.
 
 The tables below describe the inventory at `8a5de33`; the linked record gives
 the current support boundary and the user-approved retirement acceptance.

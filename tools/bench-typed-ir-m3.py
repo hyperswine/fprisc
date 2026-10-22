@@ -45,8 +45,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 VARIANTS = {
-    "legacy": {},
-    "legacy-best": {"FPR_COSTED_REGISTERS": "1", "FPR_COMPACT_FRAMES": "1", "FPR_SELF_LOOPS": "1", "FPR_A64_FRAME_PAIRS": "1"},
+    "legacy": {"FPR_TYPED_IR_BACKEND": "legacy"},
+    "legacy-best": {"FPR_TYPED_IR_BACKEND": "legacy", "FPR_COSTED_REGISTERS": "1", "FPR_COMPACT_FRAMES": "1", "FPR_SELF_LOOPS": "1", "FPR_A64_FRAME_PAIRS": "1"},
     "typed-ir": {"FPR_TYPED_IR_BACKEND": "mixed"},
     "typed-ir-forward": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_FORWARD_PARAMS": "1"},
     "typed-ir-entry": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_FORWARD_PARAMS": "1", "FPR_TYPED_IR_SHALLOW_STACK": "1"},

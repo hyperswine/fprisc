@@ -9,7 +9,7 @@ def run(args, env=None, ok=True):
     # checks above/below retain the selected backend; typed emission has its
     # independent no-translation oracle in check_typed_ir_kernels.py.
     if str(args[0]).endswith('fprc'):
-        mode.pop('FPR_TYPED_IR_BACKEND',None)
+        mode['FPR_TYPED_IR_BACKEND']='legacy'
         mode.pop('FPR_TYPED_IR_STRICT',None)
     p=subprocess.run(list(map(str,args)),cwd=ROOT,env=mode,capture_output=True,text=True,timeout=240)
     if ok: assert p.returncode==0,(args,p.stdout,p.stderr)

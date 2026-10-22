@@ -80,7 +80,11 @@ jobs:
           python3 -u tests/check_rv64_linux.py --typed-ir --cc riscv64-linux-gnu-gcc \
             --output "$RUNNER_TEMP/rv64-typed" --runner 'qemu-riscv64 -L /usr/riscv64-linux-gnu'
 
-      - name: check_base
+      - name: check_base (the typed backend is the default)
+        run: python3 -u tests/check_base.py --skip-typed-ir-native
+      - name: check_base with the legacy backend (the rollback)
+        env:
+          FPR_TYPED_IR_BACKEND: legacy
         run: python3 -u tests/check_base.py --skip-typed-ir-native
       # check_raw also boots builtin/raw images on qemu-system-riscv64
       - name: check_i32, check_raw

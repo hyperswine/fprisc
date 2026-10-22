@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-regs-') as d:
   for no_regs in ('0','1'):
    asm=tmp/f'{target}{no_regs}.s'
    run(['./fpr',f'--target={target}',f'--prelude={ROOT}/core/prelude.fpr',
-        'tests/bench/nbody.fpr',asm],{**{k:v for k,v in ENV.items() if k!='FPR_TYPED_IR_BACKEND'},'FPR_NO_REGISTERS':no_regs}) # markers are legacy text
+        'tests/bench/nbody.fpr',asm],{**ENV,'FPR_TYPED_IR_BACKEND':'legacy','FPR_NO_REGISTERS':no_regs}) # markers are legacy text
    text=asm.read_text()
    marker={'rv64':r'\bs[1-5]\b','a64':r'\bx(?:19|20|21|22|23)\b','x64':r'%(?:rbx|r12|r13|r14|r15)\b'}[target]
    assert bool(re.search(marker,text))==(no_regs=='0'),(target,no_regs)
@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-regs-') as d:
  source=tmp/'hot.fpr'
  source.write_text('hot a b c d e = a*b + c*d + e*a + b*c + d*e + a*c + b*d + c*e + d*a + e*b + a*b + c*d + e*a + b*c + d*e + a*c + b*d + c*e + d*a + e*b.\nmain = Unit.\n')
  asm=tmp/'hot.s'
- run(['./fpr','--target=x64',f'--prelude={ROOT}/core/prelude.fpr',source,asm],{**{k:v for k,v in ENV.items() if k!='FPR_TYPED_IR_BACKEND'},'FPR_NO_REGISTERS':'0'}) # legacy promotion, lifted into a C harness
+ run(['./fpr','--target=x64',f'--prelude={ROOT}/core/prelude.fpr',source,asm],{**ENV,'FPR_TYPED_IR_BACKEND':'legacy','FPR_NO_REGISTERS':'0'}) # legacy promotion, lifted into a C harness
  text=asm.read_text()
  match=re.search(r'(?ms)^\s*\.globl fpr_fn_hot\n.*?(?=^# wcet:|^# fn |\Z)',text)
  assert match and re.search(r'%(?:rbx|r12|r13|r14|r15)\b',match.group())

@@ -36,7 +36,7 @@ TYPED_REQUIRED = {
 
 
 def require_native(name, log):
-    if os.environ.get('FPR_TYPED_IR_BACKEND'):
+    if os.environ.get('FPR_TYPED_IR_BACKEND') == 'mixed':
         for fn in TYPED_REQUIRED[name]:
             assert re.search(r'typed-ir-backend: ' + re.escape(fn) + r' native ', log), (name, fn, log[-6000:])
 
@@ -160,6 +160,8 @@ def main():
     parser.add_argument('--typed-ir', action='store_true', help='exercise direct typed RV64 in mixed mode')
     parser.add_argument('--execute-only', action='store_true')
     args = parser.parse_args()
+    if not args.typed_ir:
+        os.environ['FPR_TYPED_IR_BACKEND'] = 'legacy'
     if args.typed_ir:
         os.environ['FPR_TYPED_IR_BACKEND'] = 'mixed'
         if args.output:

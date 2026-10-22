@@ -66,7 +66,7 @@ def main():
         check_targets(env,tmp,args,FIX/'pairsum_kernels.fpr',support+(FIX/'pairsum_oracle.c').read_text(),1,0)
         # mapAs and the write-back fold: hosted, legacy and typed agree; the
         # typed root names both kernels and no legacy loop
-        legacy={k:v for k,v in env.items() if k!='FPR_TYPED_IR_BACKEND'}
+        legacy=dict(env,FPR_TYPED_IR_BACKEND='legacy')
         outputs=[]
         for mode in (legacy,dict(env,FPR_TYPED_IR_STRICT='all')):
             run([ROOT/'fpr','build',FIX/'mapas_kernels.fpr','-o',exe],mode)

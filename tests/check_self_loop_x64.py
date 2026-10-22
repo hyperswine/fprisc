@@ -20,7 +20,7 @@ def main():
                    FPR_NO_SCALAR_WORKERS="1", FPR_NO_FIELD_WORKERS="1")
         env.pop("FPR_FOREIGN", None)
         # FPR_SELF_LOOPS is a legacy-emission switch: this check names the legacy backend
-        env.pop("FPR_TYPED_IR_BACKEND", None)
+        env["FPR_TYPED_IR_BACKEND"] = "legacy"
         source = tmp / "probe.fpr"
         source.write_text(fixture()[0])
         harness = ROOT / "tests/base/selfloops_oracle.c"

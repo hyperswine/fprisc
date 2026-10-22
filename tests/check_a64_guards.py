@@ -71,7 +71,7 @@ int main(void) {
                     assert reference.setdefault(arg, value) == value, (off, harts, arg, value)
             # fit guards are legacy emission: the text check names the legacy
             # backend (typed IR has its own overflow checks)
-            legacy = {k: v for k, v in mode.items() if k != "FPR_TYPED_IR_BACKEND"}
+            legacy = dict(mode, FPR_TYPED_IR_BACKEND="legacy")
             for target in ("a64", "a64mac"):
                 output = tmp / (target + ".s")
                 run([ROOT / "fpr", "compile", "--target=" + target,

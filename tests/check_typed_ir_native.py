@@ -26,6 +26,7 @@ ENV = {**os.environ, 'FPR_HOME': str(ROOT), 'FPR_PATH': str(ROOT)}
 for k in ('FPR_FOREIGN', 'FPR_TYPED_IR', 'FPR_TYPED_IR_BACKEND', 'FPR_TYPED_IR_STRICT',
           'FPR_TYPED_IR_SHALLOW_STACK', 'FPR_TYPED_IR_FORWARD_PARAMS'):
     ENV.pop(k, None)
+ENV['FPR_TYPED_IR_BACKEND'] = 'legacy' # the reference emission; each check names its own mode
 for keg in ('/opt/homebrew/opt/libarchive/lib/pkgconfig', '/usr/local/opt/libarchive/lib/pkgconfig'):
     if Path(keg).is_dir():
         ENV['PKG_CONFIG_PATH'] = keg + ':' + ENV.get('PKG_CONFIG_PATH', '')
@@ -264,7 +265,7 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     # cache transitions: off/on/off/mixed/off, each with its own unit identity
     seen = []
     for mode in ('', '1', '', 'mixed', ''):
-        env = {**ENV, 'FPR_TYPED_IR_BACKEND': mode} if mode else dict(ENV)
+        env = {**ENV, 'FPR_TYPED_IR_BACKEND': mode or 'legacy'}
         exe = tmp / 'mod-t'
         log = run(['./fpr', 'build', MOD, '--with', PROBE, '-o', exe, '-v'], env)
         tags = {re.search(r'-(g\d+[^/ ]*)\.s', l).group(1) for l in log.splitlines() if re.search(r'units/u-[0-9a-f]+-[^ ]*\.s', l)}
