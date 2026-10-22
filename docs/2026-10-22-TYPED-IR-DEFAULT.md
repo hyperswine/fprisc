@@ -56,3 +56,11 @@ passes; `check_base.py`, every job, 106 of 106; QOS `check-all.sh` 162 of
 values named. The switch's four accepted spellings were checked on fib:
 unset, `mixed` and `1` emit the typed unit, `legacy` the legacy one. CI
 runs on the push, with the new legacy `check_base` stage.
+
+The first CI run's legacy `check_base` stage failed once in
+`examples/ideal/check.py`: the service example's `/shutdown` handler stopped
+the listener before its reply was written, so the accept loop failed, the
+program returned and the reply raced the exit (a race in the example, not
+in either backend; the default stage of the same run passed it). Both
+service examples now answer first and stop the listener from a watcher
+actor once the connection's actor has ended.

@@ -59,8 +59,20 @@ put actor req | String.startsWith "/kv/" req.path and strlen (keyOf req) > 0 =
   Http.text 201 "stored {keyOf req}\n".
 put _ _ = Http.text 404 "PUT /kv/<key>\n".
 post "/digests" workers _ req = digests workers req.body.
-post "/shutdown" _ listener _ = _ = Tcp.stop listener; Http.text 200 "shutting down\n".
+post "/shutdown" _ listener _ = _ = stopAfter (myself 0) listener; Http.text 200 "shutting down\n".
+
 post _ _ _ req = missing req.
+
+# /shutdown answers first: a watcher stops the listener once this connection's
+# actor has ENDED, so the reply is written and the connection closed before
+# the accept loop fails and the program returns. Stopping inside the handler
+# raced the reply against the exit (seen once on Linux CI).
+stopAfter : Int -> Tcp.Listener -> Unit .
+stopAfter conn listener = _ = spawn (fn self -> _ = awaitEnd self conn; Tcp.stop listener); Unit.
+# the connection's actor never messages its watcher, so the first receive
+# answers only when that actor has ended (the "dead actor" refusal)
+awaitEnd : Int -> Int -> Unit .
+awaitEnd self a = case receiveFromRes self a of Ok m -> _ = drop m; Unit | Err _ -> Unit.
 
 # Configuration validation is a Result; this internal API carries its invariant.
 digests : (workers : Int | workers >= 1) -> String -> {status : Int, headers : List (String, String), body : String} .

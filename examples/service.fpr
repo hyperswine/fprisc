@@ -75,9 +75,21 @@ route storeActor workers listener req =
       | False -> Http.text 404 "PUT /kv/<key>\n")
   | "POST" -> (case req.path of
         "/digests" -> digests workers req.body
-      | "/shutdown" -> _ = Tcp.stop listener; Http.text 200 "shutting down\n"
+      | "/shutdown" -> _ = stopAfter me listener; Http.text 200 "shutting down\n"
       | _ -> Http.text 404 "no such page: {req.path}\n")
   | _ -> Http.text 405 "method not allowed\n".
+
+
+# /shutdown answers first: a watcher stops the listener once this connection's
+# actor has ENDED, so the reply is written and the connection closed before
+# the accept loop fails and the program returns. Stopping inside the handler
+# raced the reply against the exit (seen once on Linux CI).
+stopAfter : Int -> Tcp.Listener -> Unit .
+stopAfter conn listener = _ = spawn (fn self -> _ = awaitEnd self conn; Tcp.stop listener); Unit.
+# the connection's actor never messages its watcher, so the first receive
+# answers only when that actor has ended (the "dead actor" refusal)
+awaitEnd : Int -> Int -> Unit .
+awaitEnd self a = case receiveFromRes self a of Ok m -> _ = drop m; Unit | Err _ -> Unit.
 
 # bounded concurrent work: a digest per line, at most `workers` at once
 digests workers body = case Task.mapBounded workers Digest.sha256 (String.lines body) of
