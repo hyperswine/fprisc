@@ -1,0 +1,60 @@
+{
+  "fprisc_before": "72d4bb0db1c4d2db250567a7143145da0226bf74",
+  "compiler_before_sha256": "7063021139c5f7a6e89e0ad591bdf0b5cfe6915d7a92bbdf0e68e0c4aac66894",
+  "qos_revision": "f9c00aea3f84ddcba34169f9badb594cead8a84f",
+  "compiler_after_sha256": "32910f7da1fc8005c7379ca347531ea8a0c4b4993e44d1ec1c877ff6290c7c47",
+  "base_before": {
+    "start_utc": "2026-10-22T11:00:09.660485+00:00",
+    "last_write_utc": "2026-10-22T11:21:36.263485+00:00",
+    "elapsed_to_last_write_s": 1286.6
+  },
+  "qos_before": {
+    "start_utc": "2026-10-22T11:21:52.191558+00:00",
+    "last_write_utc": "2026-10-22T12:23:34.237359+00:00",
+    "elapsed_to_last_write_s": 3702.0
+  },
+  "base_before_jobs": 106,
+  "qos_before_legs": 162,
+  "backend_env_before": "unset",
+  "base_before_workers": 1,
+  "base_after_workers": 2,
+  "cache_before": "/private/tmp/fpr-a64-retire-default-cache",
+  "cache_qos_before": "/private/tmp/fpr-a64-retire-qos-before-cache",
+  "cache_after": "/private/tmp/fpr-a64-retire-complete-cache",
+  "pkg_config_path_after": "/opt/homebrew/opt/libarchive/lib/pkgconfig",
+  "native_selection_revisions_after": {
+    "a64": 20,
+    "x64": 18,
+    "rv": 10
+  },
+  "a64_interface_revision": 15,
+  "base_after": {
+    "jobs": 105,
+    "elapsed_s": 612,
+    "workers": 2,
+    "exit_code": 0
+  },
+  "qos_emission_after": {
+    "counts": {
+      "frontend_exception": 1,
+      "frontend_refusal": 49,
+      "native": 198
+    },
+    "exit_code": 0,
+    "target": "qa64mac",
+    "compiler_sha256": "32910f7da1fc8005c7379ca347531ea8a0c4b4993e44d1ec1c877ff6290c7c47"
+  },
+  "qos_smoke_after": {
+    "two_boots": true,
+    "exit_code": 0
+  },
+  "qos_storage_after": {
+    "portable": true,
+    "replay_bytes": [
+      200000,
+      262144,
+      300000
+    ],
+    "exit_code": 0
+  }
+}

@@ -4,6 +4,12 @@ Date: 2026-10-22. Kind: decision and validation record.
 Base: main `12b7d24` plus [the remaining kernels](2026-10-22-TYPED-KERNELS-COMPLETE.md).
 Branch `typed-ir-retire`.
 
+Update: [A64 retirement](2026-10-22-A64-RETIREMENT.md) removes the AArch64
+rollback and translator after a fresh full default sweep. A64 now requires
+typed emission for every function and kernel; `legacy`, `0` and `off`
+are refused for A64 code generation. The validation below records promotion
+before that retirement.
+
 ## Decision
 
 `FPR_TYPED_IR_BACKEND` unset now means `mixed`: on every target the typed

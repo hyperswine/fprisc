@@ -65,7 +65,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-vector-limits-') as directory:
     assert 'visited 3' not in p.stdout and 'unreachable' not in p.stdout, p.stdout
     for target in ('rv64','a64','x64'):
         asm=tmp/(target+'.s')
-        run(['./fprc','--profile=base','--target='+target,'tests/base/veclimits.fpr',asm])
+        run(['./fprc','--profile=base','--target='+target,'tests/base/veclimits.fpr',asm],
+            env=dict(os.environ,FPR_TYPED_IR_BACKEND='mixed') if target=='a64' else None)
         text=asm.read_text()
         assert ('Vec.mapAs direct scalar kernel on toFloat' in text or
                 '# fn $vkernel:fpr_vspec_mapAs_x40' in text), target

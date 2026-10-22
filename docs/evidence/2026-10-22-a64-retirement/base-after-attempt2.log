@@ -1,0 +1,33 @@
+
+check_base: FAILED: tests/check_higher_order_contracts.py
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 162, in _work
+    fn(tmp)
+    ~~^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 105, in job
+    print(run(['python3', path], timeout=timeout).stdout, end='')
+          ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 73, in run
+    raise AssertionError(f'{args}: exit {p.returncode}, expected {expected}\n{out}\n{err}')
+AssertionError: ['python3', 'tests/check_higher_order_contracts.py']: exit 1, expected 0
+
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_higher_order_contracts.py", line 253, in <module>
+        source('vector-evidence-host', '''
+        ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    M = use "vector-evidence.fpr".
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    main = v = M.create 1 42; (n, v2) = Vec.len v;
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+           u = Vec.free v2; print "vector evidence: {n}".
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ''', 'native', needle='vector evidence: 1')
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_higher_order_contracts.py", line 52, in source
+    invoke([FPR, 'build', *flags, p, '-o', exe])
+    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_higher_order_contracts.py", line 41, in invoke
+    assert p.returncode == code, (args, p.returncode, out)
+           ^^^^^^^^^^^^^^^^^^^^
+AssertionError: ([PosixPath('/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/fpr'), 'build', PosixPath('/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-ho-contracts-ewd97now/vector-evidence-host.fpr'), '-o', PosixPath('/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-ho-contracts-ewd97now/vector-evidence-host')], 1, 'typed-ir strict: unit u-ff4ec7a5de3b-pb2084da2-s323128cc-g71-tirbe17mixedrt3pc5-cec7a027d615a-a64macx28-native1.s: 2 function(s) did not take the native backend:\n  $precond0.create@ff4ec7a5de3b9584: the primitive `Vec.fromListAs`\n  create@ff4ec7a5de3b9584: the primitive `Vec.fromListAs`\ntyped-ir-backend: wireInt native (frame 32 shallow=no saved=x19,x20 values=37 regs=37 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=3 loops=0, native-insns-v1 segmax=40 exittail=12 ccalls=6)\ntyped-ir-backend: wireListGo native (frame 80 shallow=no saved=x19,x20,x21,x22,x23,x24,x25 values=51 regs=51 spills=0 slots=0 reloads=0 stores=0 copies=16 crossing=11 loops=1, native-insns-v1 segmax=58 exittail=15 ccalls=9)\ntyped-ir-backend: wireMap native (frame 48 shallow=no saved=x19,x20,x21 values=17 regs=17 spills=0 slots=0 reloads=0 stores=0 copies=6 crossing=5 loops=0, native-insns-v1 segmax=28 exittail=20 ccalls=3)\ntyped-ir-backend: wireRev native (frame 48 shallow=no saved=x19,x20,x21,x22 values=14 regs=14 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=4 loops=1, native-insns-v1 segmax=25 exittail=19 ccalls=2)\ntyped-ir-backend: wireToBool native (frame 32 shallow=no saved=x19,x20 values=59 regs=59 spills=0 slots=0 reloads=0 stores=0 copies=5 crossing=7 loops=0, native-insns-v1 segmax=77 exittail=12 ccalls=10)\ntyped-ir-backend: wireToInt native (frame 32 shallow=no saved=x19,x20 values=24 regs=24 spills=0 slots=0 reloads=0 stores=0 copies=1 crossing=3 loops=0, native-insns-v1 segmax=37 exittail=12 ccalls=3)\ntyped-ir-backend: wireToList native (frame 32 shallow=no saved=x19,x20 values=18 regs=18 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=3 loops=0, native-insns-v1 segmax=25 exittail=12 ccalls=2)\ntyped-ir-backend: wireToStr native (frame 32 shallow=no saved=x19,x20 values=29 regs=29 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=4 loops=0, native-insns-v1 segmax=37 exittail=12 ccalls=5)\ntyped-ir-backend: zipV native (frame 64 shallow=no saved=x19,x20,x21,x22,x23 values=44 regs=44 spills=0 slots=0 reloads=0 stores=0 copies=6 crossing=8 loops=0, native-insns-v1 segmax=64 exittail=15 ccalls=4)\ntyped-ir-backend: native 0/2 functions (per-function)\ntyped-ir-backend: $precond0.create@ff4ec7a5de3b9584 fallback: the primitive `Vec.fromListAs`\ntyped-ir-backend: create@ff4ec7a5de3b9584 fallback: the primitive `Vec.fromListAs`\n\n')
+

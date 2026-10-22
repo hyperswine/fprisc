@@ -5,18 +5,18 @@ vocabulary, placement, layout, bound analysis and the A64 pipeline are
 checked in tests/SelectedIR.hs; then the real pipeline on the matching native host:
 
 - the module fixture tests/typed_ir/scalarlib.fpr goes through the new
-  backend as a whole unit (strict mode proves it) under a legacy root, and
-  every call answers what the legacy binary answers AND what independent
+  backend as a whole unit (strict mode proves it) with typed-only A64 emission (x64 also retains a legacy reference), and
+  every call answers what the host reference answers AND what independent
   arithmetic says, traps included, word for word;
 - the C harness tests/typed_ir/tir_probe.c calls native functions through
   their function values and is called back by them;
 - a deep non-tail recursion crosses stack-segment boundaries;
-- one and four harts; off/on/off/on/off cache transitions with distinct
+- one and four harts; per-function/whole-unit cache transitions with distinct
   unit identities; a strict-mode failure names the function;
 - mixed (per-function) mode on the M1 root fixture;
 - the ELF (a64) and the Mach-O TLV (a64mac without --base) variants
   assemble with clang where it has the target;
-- the backend off leaves no trace in the emission; on, every native
+- on x64, backend-off leaves no trace; every native
   function carries a finite native-insns-v1 bound and no legacy label.
 No performance claim is made or measured here."""
 import argparse, os, platform, re, shutil, subprocess, sys, tempfile
@@ -26,7 +26,7 @@ ENV = {**os.environ, 'FPR_HOME': str(ROOT), 'FPR_PATH': str(ROOT)}
 for k in ('FPR_FOREIGN', 'FPR_TYPED_IR', 'FPR_TYPED_IR_BACKEND', 'FPR_TYPED_IR_STRICT',
           'FPR_TYPED_IR_SHALLOW_STACK', 'FPR_TYPED_IR_FORWARD_PARAMS'):
     ENV.pop(k, None)
-ENV['FPR_TYPED_IR_BACKEND'] = 'legacy' # the reference emission; each check names its own mode
+ENV['FPR_TYPED_IR_BACKEND'] = 'legacy' # x64 reference; A64 selects mixed below
 for keg in ('/opt/homebrew/opt/libarchive/lib/pkgconfig', '/usr/local/opt/libarchive/lib/pkgconfig'):
     if Path(keg).is_dir():
         ENV['PKG_CONFIG_PATH'] = keg + ':' + ENV.get('PKG_CONFIG_PATH', '')
@@ -57,6 +57,10 @@ args = parser.parse_args()
 if args.entry_optimizations:
     ENV.update(FPR_TYPED_IR_SHALLOW_STACK='1', FPR_TYPED_IR_FORWARD_PARAMS='1')
 BACKEND = args.backend
+# Only x64 has an off/legacy leg now. A64's reference and both granularities
+# are checked against EXPECTED, the independent arithmetic/trap oracle.
+if BACKEND == 'a64':
+    ENV['FPR_TYPED_IR_BACKEND'] = 'mixed'
 NATIVE_HOST = (platform.machine() in ('arm64', 'aarch64') if BACKEND == 'a64' else
                platform.machine() in ('x86_64', 'AMD64') and platform.system() == 'Linux')
 run(['make', 'fpr'])
@@ -196,11 +200,11 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     # a private build cache: the backend's notes are printed only for units
     # compiled in this invocation, and the cache transitions below start empty
     ENV['XDG_CACHE_HOME'] = str(tmp / 'cache')
-    legacy_exe, native_exe = tmp / 'mod-legacy', tmp / 'mod-native'
-    run(['./fpr', 'build', MOD, '--with', PROBE, '-o', legacy_exe])
-    legacy = {k: outcome(legacy_exe, *k) for k in CALLS}
+    reference_exe, native_exe = tmp / 'mod-reference', tmp / 'mod-native'
+    run(['./fpr', 'build', MOD, '--with', PROBE, '-o', reference_exe])
+    reference = {k: outcome(reference_exe, *k) for k in CALLS}
     for k, want in EXPECTED.items():
-        assert legacy[k] == want, ('legacy', k, legacy[k], want)
+        assert reference[k] == want, ('reference', k, reference[k], want)
     # whole-unit selection of the module under strict mode: every function
     # of scalarlib must take the native backend
     strict = {**ENV, 'FPR_TYPED_IR_BACKEND': '1', 'FPR_TYPED_IR_STRICT': ','.join(LIB_FNS)}
@@ -217,27 +221,27 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     assert 'main' in native_names, 'aggregate/string coverage should also admit the root'
     for k, want in EXPECTED.items():
         got = outcome(native_exe, *k)
-        assert got == want == legacy[k], (k, got, want, legacy[k])
+        assert got == want == reference[k], (k, got, want, reference[k])
     # the string object of the dead arm's reason is in the unit, once
     unit_s = next(Path(ENV['XDG_CACHE_HOME']).glob('fpr/build/units/u-*tirbe*.s'))
     unit_t = unit_s.read_text()
     assert unit_t.count('Ltirstr_') >= 2 and unit_t.count('.long 9000') >= 1, unit_s
     # the dead arm reached (C hands tick an Int): the native trap is the
     # legacy trap, text for text
-    dead_legacy, dead_native = outcome(legacy_exe, 'tickBad', [5]), outcome(native_exe, 'tickBad', [5])
-    assert dead_legacy == ('trap', 'case: no matching pattern; arms were [PCon "Unit" []]'), dead_legacy
-    assert dead_native == dead_legacy, (dead_native, dead_legacy)
+    dead_reference, dead_native = outcome(reference_exe, 'tickBad', [5]), outcome(native_exe, 'tickBad', [5])
+    assert dead_reference == ('trap', 'case: no matching pattern; arms were [PCon "Unit" []]'), dead_reference
+    assert dead_native == dead_reference, (dead_native, dead_reference)
     # deep recursion across stack segments: the same answer, and the
     # harness saw the native frames in more than one segment; deepLive
     # carries three values across the recursive call (saved registers
     # restored from each level's own frame across the segment change)
     for fn, depth, want in (('deep', 100, 101), ('deep', 100000, 100001),
                             ('deepLive', 100, 3 * 100 * 101 // 2 + 4 * 101), ('deepLive', 100000, 3 * 100000 * 100001 // 2 + 4 * 100001)):
-        lv, nv = outcome(legacy_exe, fn, [depth]), outcome(native_exe, fn, [depth])
+        lv, nv = outcome(reference_exe, fn, [depth]), outcome(native_exe, fn, [depth])
         assert lv[0] == nv[0] == 'value' and lv[1].split()[0] == nv[1].split()[0] == str(want), (fn, depth, lv, nv)
         segs = int(nv[1].split()[1])
         assert (segs >= 2) == (depth == 100000), (fn, depth, nv)
-    print(f'whole unit: scalarlib {m.group(1)}/{m.group(2)} native under strict mode; {len(CALLS)} calls equal the legacy binary and independent arithmetic; C calls native code and is called back; deep recursion crossed {segs} segments')
+    print(f'whole unit: scalarlib {m.group(1)}/{m.group(2)} native under strict mode; {len(CALLS)} calls equal independent arithmetic and the host reference; C calls native code and is called back; deep recursion crossed {segs} segments')
     # M3 allocation facts, read from the notes: pressure spills (twelve
     # across a call, nine in the budget), wide spills, fib keeps everything
     # in registers, saved registers are exactly the budget registers used
@@ -262,9 +266,10 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
             want = EXPECTED.get(k, ('value', '17711'))
             assert got == want, (harts, k, got)
     print('one and four harts: PASS')
-    # cache transitions: off/on/off/mixed/off, each with its own unit identity
+    # Distinct supported granularities retain separate, reusable unit identities.
     seen = []
-    for mode in ('', '1', '', 'mixed', ''):
+    modes = ('mixed', '1', 'mixed', '1', 'mixed') if BACKEND == 'a64' else ('', '1', '', 'mixed', '')
+    for mode in modes:
         env = {**ENV, 'FPR_TYPED_IR_BACKEND': mode or 'legacy'}
         exe = tmp / 'mod-t'
         log = run(['./fpr', 'build', MOD, '--with', PROBE, '-o', exe, '-v'], env)
@@ -275,8 +280,12 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
         seen.append(tag)
         for k in (('fib', (20,)), ('cbSum', (10,)), ('divz', (7, 0))):
             assert outcome(exe, *k) == EXPECTED[k], (mode, k)
-    assert seen[0] == seen[2] == seen[4] and len({seen[1], seen[3], seen[0]}) == 3, seen
-    print('cache transitions off/on/off/mixed/off: PASS')
+    assert seen[0] == seen[2] == seen[4], seen
+    if BACKEND == 'a64':
+        assert seen[1] == seen[3] and len(set(seen)) == 2, seen
+    else:
+        assert len({seen[1], seen[3], seen[0]}) == 3, seen
+    print('cache transitions: ' + '/'.join(mode or 'legacy' for mode in modes) + ' PASS')
     # strict mode names the function that fell back
     refused_source = tmp / 'refused.fpr'
     refused_source.write_text('main = Unit.\n')
@@ -292,12 +301,15 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
                     (('boolResult', (3, 1)), ('value', '10')), (('boolResult', (3, 0)), ('value', '1'))]:
         assert outcome(mexe, *k) == want, (k, outcome(mexe, *k))
     print('mixed mode on the M1 fixture: PASS')
-    # the emission: off leaves no trace; on carries the native metric and never the legacy label
+    # Native emission carries the native metric; x64 retains an off leg.
     off_s, on_s = tmp / 'off.s', tmp / 'on.s'
-    run(['./fpr', f'--target={"a64mac" if BACKEND == "a64" else "x64"}', f'--prelude={ROOT}/core/prelude.fpr', 'tests/typed_ir/scalar.fpr', off_s])
+    if BACKEND == 'x64':
+        run(['./fpr', '--target=x64', f'--prelude={ROOT}/core/prelude.fpr', 'tests/typed_ir/scalar.fpr', off_s])
     run(['./fpr', f'--target={"a64mac" if BACKEND == "a64" else "x64"}', f'--prelude={ROOT}/core/prelude.fpr', 'tests/typed_ir/scalar.fpr', on_s], {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed'})
-    off_t, on_t = off_s.read_text(), on_s.read_text()
-    assert f'typed-ir {BACKEND}' not in off_t and 'native-insns-v1' not in off_t
+    on_t = on_s.read_text()
+    if BACKEND == 'x64':
+        off_t = off_s.read_text()
+        assert 'typed-ir x64' not in off_t and 'native-insns-v1' not in off_t
     native_fns = re.findall(rf'^# fn (\S+) \(arity \d+\) typed-ir {BACKEND}', on_t, re.M)
     assert len(native_fns) == 22 and "main" in native_fns, native_fns
     for fn in native_fns:

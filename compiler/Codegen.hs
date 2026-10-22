@@ -507,7 +507,14 @@ foreignEntries :: Target -> M.Map String Prim
 foreignEntries tgt =
   M.union
     (M.fromList [(n, Prim a (Just ("fpr_prim_fn_" ++ mangle n)) (if n `elem` corePrims then Just ("fpr_prim_obj_" ++ mangle n) else Nothing)) | (n, a) <- primArities])
-    (M.fromList [(n, Prim a (if a <= 6 then Just ("fpr_g_" ++ mangle n ++ "_call" ++ show a) else Nothing) (Just ("fpr_g_" ++ mangle n))) | (n, a) <- M.toList (tgtHal tgt)])
+    -- Inference introduces layout-aware vector entries and boxed I64
+    -- operators after source
+    -- declarations have been collected (Infer.applySites). They are not
+    -- public source primitives, so tgtHal need not contain them. Preserve
+    -- the existing runtime V ABI and any explicitly declared entry.
+    (M.fromList [(n, Prim a (if a <= 6 then Just ("fpr_g_" ++ mangle n ++ "_call" ++ show a) else Nothing) (Just ("fpr_g_" ++ mangle n)))
+                | (n, a) <- M.toList (M.union (tgtHal tgt) (M.fromList ([("Vec.fromListAs", 2), ("Vec.mapAs", 3)]
+                     ++ [("I64." ++ op, 2) | op <- ["+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!="]])))])
 
 -- The native backend's selection over a unit's emitted functions: the
 -- typed-IR lowering, the verifier (a failure is a compiler error), then

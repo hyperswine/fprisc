@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Self-tail frame reuse: argument cycles, effects, fuel, stacks and caches."""
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -60,6 +61,7 @@ rotate{width} n {' '.join(names)} = if n == 0 then {' + '.join(f'{i} * {n}' for 
     return text + "main = case Sys.args Unit of\n  " + "\n | ".join(cases) + ".\n", expected
 
 def main():
+    legacy_host = platform.machine() not in ("arm64", "aarch64")
     with tempfile.TemporaryDirectory(prefix="fpr-self-loops-") as td:
         tmp = Path(td)
         env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
@@ -83,16 +85,17 @@ def main():
         builtin.write_text("profile builtin.\nloop n a = if n == 0 then a else loop (n - 1) (a + 1).\nmain = loop 10 0.\n")
         for enabled in ("0", "1", "0"):
             mode = dict(env, FPR_SELF_LOOPS=enabled)
-            for no_regs in ("0", "1"):
-                local = dict(mode, FPR_NO_REGISTERS=no_regs)
-                exe = tmp / "probe"
-                run([ROOT / "fpr", "build", source, "--harts", "4",
-                     "--with", ROOT / "tests/base/selfloops_probe.c", "-o", exe], local)
-                for harts in ("1", "4"):
-                    for case, want in expected.items():
-                        got = run([exe, case], dict(local, FPR_HARTS=harts))
-                        assert got == want, (enabled, no_regs, harts, case, got, want)
-            for target in ("rv64", "a64", "x64", "rv32"):
+            if legacy_host:
+                for no_regs in ("0", "1"):
+                    local = dict(mode, FPR_NO_REGISTERS=no_regs)
+                    exe = tmp / "probe"
+                    run([ROOT / "fpr", "build", source, "--harts", "4",
+                         "--with", ROOT / "tests/base/selfloops_probe.c", "-o", exe], local)
+                    for harts in ("1", "4"):
+                        for case, want in expected.items():
+                            got = run([exe, case], dict(local, FPR_HARTS=harts))
+                            assert got == want, (enabled, no_regs, harts, case, got, want)
+            for target in ("rv64", "x64", "rv32"):
                 asm = tmp / (target + ".s")
                 run([ROOT / "fpr", "compile", "--target=" + target, source, asm], mode)
                 assembly = asm.read_text()
@@ -116,14 +119,18 @@ def main():
             asm = tmp / "builtin.s"
             run([ROOT / "fpr", "compile", "--target=rv64", builtin, asm], mode)
             builtin_emission.append(asm.read_text())
-            assert run([ROOT / "fpr", "run", "tests/bench/fib.fpr"], mode).strip() == "fib 35 = 9227465"
-            run_entries.append({p.name for p in (tmp / "cache/fpr/run").glob("fib-*") if p.is_file()})
+            if legacy_host:
+                assert run([ROOT / "fpr", "run", "tests/bench/fib.fpr"], mode).strip() == "fib 35 = 9227465"
+                run_entries.append({p.name for p in (tmp / "cache/fpr/run").glob("fib-*") if p.is_file()})
         assert units[0] == units[2] and units[0].isdisjoint(units[1]), units
-        assert len(run_entries[0]) == 1 and len(run_entries[1]) == 2, run_entries
-        assert run_entries[0] < run_entries[1] == run_entries[2], run_entries
+        if legacy_host:
+            assert len(run_entries[0]) == 1 and len(run_entries[1]) == 2, run_entries
+            assert run_entries[0] < run_entries[1] == run_entries[2], run_entries
         assert rv32_emission[0] == rv32_emission[1] == rv32_emission[2]
         assert builtin_emission[0] == builtin_emission[1] == builtin_emission[2]
-        print("Self loops: 1/4 harts, registers off/on, 3/8/9/64 args, exact fuel ticks, effects, stack growth, fairness, emission and off/on/off caches PASS", flush=True)
+        if legacy_host:
+            print("Self loops: native legacy values, ticks, effects, stacks, fairness and run caches PASS", flush=True)
+        print("Self loops: RV64/x64/RV32 emission, builtin boundary and unit caches PASS", flush=True)
         # SHA/prelude exposed stores retained by introducing a back-edge
         # before slot cleanup. Compare every function, not just a global
         # maximum that could hide a smaller function's regression.

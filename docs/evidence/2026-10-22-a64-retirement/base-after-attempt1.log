@@ -1,0 +1,25 @@
+
+check_base: FAILED: tests/check_workers.py
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 162, in _work
+    fn(tmp)
+    ~~^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 105, in job
+    print(run(['python3', path], timeout=timeout).stdout, end='')
+          ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 73, in run
+    raise AssertionError(f'{args}: exit {p.returncode}, expected {expected}\n{out}\n{err}')
+AssertionError: ['python3', 'tests/check_workers.py']: exit 1, expected 0
+
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_workers.py", line 114, in <module>
+    if __name__=='__main__': main()
+                             ~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_workers.py", line 21, in main
+    print(run([*ghc,'-w','-icompiler','tests/Workers.hs'],env).stdout,end='')
+          ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_workers.py", line 12, in run
+    assert p.returncode==code,(args,p.returncode,p.stdout[-2000:],p.stderr[-4000:])
+           ^^^^^^^^^^^^^^^^^^
+AssertionError: (['cabal', 'exec', '--', 'runghc', '-w', '-icompiler', 'tests/Workers.hs'], 1, 'Resolving dependencies...\n', "Error: [Cabal-7107]\nCould not resolve dependencies:\n[__0] next goal: fp-risc (user goal)\n[__0] rejecting: fp-risc-0.12.0 (conflict: pkg-config package libarchive>=3.6, not found in the pkg-config database)\n[__0] fail (backjumping, conflict set: fp-risc)\nAfter searching the rest of the dependency tree exhaustively, these were the goals I've had most trouble fulfilling: fp-risc\n\n")
+

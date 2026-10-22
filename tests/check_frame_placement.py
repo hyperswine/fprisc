@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Bounded register placement and compact frames: values, bounds and cache modes."""
 import os
+import platform
 import re
 import subprocess
 import tempfile
@@ -30,6 +31,7 @@ def bounds(asm):
 
 
 def main():
+    legacy_host = platform.machine() not in ("arm64", "aarch64")
     with tempfile.TemporaryDirectory(prefix="fpr-frame-placement-") as td:
         tmp = Path(td)
         env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
@@ -60,17 +62,19 @@ main = _ = print (hot 7 9); _ = print (hot (0 - 7) 9);
         entries = []
         for costed, compact in [(0, 0), (1, 0), (0, 1), (1, 1), (0, 0)]:
             mode = dict(env, FPR_COSTED_REGISTERS=str(costed), FPR_COMPACT_FRAMES=str(compact))
-            exe = tmp / "placement"
-            run([ROOT / "fpr", "build", source, "--harts", "4", "-o", exe], mode)
-            for harts in ("1", "4"):
-                assert run([exe], dict(mode, FPR_HARTS=harts)) == expected
-            for target in ("rv64", "a64", "x64", "rv32"):
+            if legacy_host:
+                exe = tmp / "placement"
+                run([ROOT / "fpr", "build", source, "--harts", "4", "-o", exe], mode)
+                for harts in ("1", "4"):
+                    assert run([exe], dict(mode, FPR_HARTS=harts)) == expected
+            for target in ("rv64", "x64", "rv32"):
                 asm = tmp / f"{target}-{costed}-{compact}.s"
                 run([ROOT / "fpr", "compile", "--target=" + target, source, asm], mode)
                 assemblies[target, costed, compact] = asm
-            assert run([ROOT / "fpr", "run", source], mode) == expected
-            entries.append({p.name for p in (tmp / "cache/fpr/run").glob("placement-*") if p.is_file()})
-        for target in ("rv64", "a64", "x64"):
+            if legacy_host:
+                assert run([ROOT / "fpr", "run", source], mode) == expected
+                entries.append({p.name for p in (tmp / "cache/fpr/run").glob("placement-*") if p.is_file()})
+        for target in ("rv64", "x64"):
             for compact in (0, 1):
                 old = bounds(assemblies[target, 0, compact])
                 new = bounds(assemblies[target, 1, compact])
@@ -82,8 +86,11 @@ main = _ = print (hot 7 9); _ = print (hot (0 - 7) 9);
         assert frame(b) < frame(a), (frame(a), frame(b))
         rv32 = [assemblies["rv32", c, f].read_text() for c in (0, 1) for f in (0, 1)]
         assert all(s == rv32[0] for s in rv32)
-        assert [len(x) for x in entries] == [1, 2, 3, 4, 4], entries
-        print(f"Frame placement: 1/4 harts, deep stack growth, self loops, mixed values, three-backend fuel bounds, RV32 fallback, four cache modes PASS; deep frame {frame(a)} -> {frame(b)} bytes")
+        if legacy_host:
+            assert [len(x) for x in entries] == [1, 2, 3, 4, 4], entries
+        if legacy_host:
+            print("Frame placement: native legacy values, stacks, harts and run caches PASS")
+        print(f"Frame placement: RV64/x64 fuel bounds, RV32 boundary PASS; deep frame {frame(a)} -> {frame(b)} bytes")
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ kept most QOS Portable apps from building on x86-64.
 
 Checks, for tests/base/wideparams.fpr:
   * the promotion really happens (the RV64 emission has the `mv` shapes);
-  * rv64, a64 and x64 emission succeed with promotion on and off;
+  * legacy rv64/x64 emission succeeds with promotion on and off;
   * the x64 prologue reads the TLS cells into a saved register;
   * the program built for this host prints the reference values with
     promotion on and off.
@@ -41,7 +41,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-wide-') as d:
     for no_regs in ('0', '1'):
         env = {**ENV, 'FPR_NO_REGISTERS': no_regs}
         asm = {}
-        for target in ('rv64', 'a64', 'x64'):
+        for target in ('rv64', 'x64'):
             out = tmp / f'{target}{no_regs}.s'
             # promotion markers are legacy text: this compile names the legacy backend
             legacy = dict(env, FPR_TYPED_IR_BACKEND='legacy')
@@ -58,4 +58,4 @@ with tempfile.TemporaryDirectory(prefix='fpr-wide-') as d:
         run(['./fpr', 'build', FIXTURE, '-o', exe], env)
         got = run([exe], env).strip()
         assert got == EXPECT, (no_regs, got, EXPECT)
-    print(f'wide params: 7th/8th params promoted to saved registers lower on rv64/a64/x64 and run on {platform.machine()} ({EXPECT}): PASS')
+    print(f'wide params: 7th/8th params promoted to saved registers lower on rv64/x64 and run on {platform.machine()} ({EXPECT}): PASS')

@@ -114,7 +114,8 @@ def main():
                 print(f'wide workers inline-disabled={inline} fields-disabled={fields} scalar-disabled={scalar}: PASS',flush=True)
         for target in ('rv64','a64','x64','rv32'):
             out=tmp/(target+'.s')
-            command([ROOT/'fpr','compile','--no-inline','--target='+target,source,out],dict(base,FPR_NO_FIELD_WORKERS='0',FPR_NO_SCALAR_WORKERS='0'))
+            command([ROOT/'fpr','compile','--no-inline','--target='+target,source,out],dict(base,FPR_NO_FIELD_WORKERS='0',FPR_NO_SCALAR_WORKERS='0',
+                **({'FPR_TYPED_IR_BACKEND':'mixed'} if target=='a64' else {})))
             asm=out.read_text()
             for kind in ('tuple','record'):
                 for width in WIDTHS:

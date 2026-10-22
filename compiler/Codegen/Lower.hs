@@ -522,6 +522,13 @@ lowerVal cx env = \case
       -- a partial or over-saturated application of a known function: the
       -- legacy generator stages the whole spine for one fpr_applyN
       | M.member h (cxProg cx) || M.member h (cxExt cx) -> lowerVal cx env (CVar h) >>= \r -> applyGeneric r args
+      -- HAL declarations may deliberately hide the runtime arity (QOS uses
+      -- a -> b for Sys.storeReq/bindStore). A partial or over-saturated
+      -- primitive therefore applies its actual PAP, just as the legacy
+      -- generator does, rather than guessing a direct _call<n> entry.
+      | Just (Prim ar _ (Just _)) <- M.lookup h (cxHal cx),
+        ar <= arityCeiling, length args <= arityCeiling ->
+          lowerVal cx env (CVar h) >>= \r -> applyGeneric r args
       | otherwise -> refuse ("the primitive `" ++ h ++ "`")
     -- a computed head (a branch, a let, an application answering a function)
     (hd, args) -> lowerVal cx env hd >>= \r -> applyGeneric r args

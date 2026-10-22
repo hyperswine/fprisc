@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """ELF shared module relocation checks; execution lives in check_posix_modules."""
-import re, shutil, subprocess, tempfile
+import os, re, shutil, subprocess, tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 if not all(shutil.which(x) for x in ('clang','ld.lld')):
     print('ELF module artifact check SKIPPED: requires clang and ld.lld')
     raise SystemExit(0)
-def run(args):
-    p=subprocess.run(list(map(str,args)),cwd=ROOT,capture_output=True,text=True,timeout=180)
+def run(args, env=None):
+    p=subprocess.run(list(map(str,args)),cwd=ROOT,env=env,capture_output=True,text=True,timeout=180)
     assert p.returncode==0,p.stdout+p.stderr
     return p.stdout
 with tempfile.TemporaryDirectory(prefix='fpr-module-pic-') as directory:
@@ -19,7 +19,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-module-pic-') as directory:
             print('POSIX rv64 artifact check SKIPPED: clang has no RISC-V backend; use a Linux RV64 cross compiler with check_rv64_linux.py')
             continue
         asm=d/(target+'.s')
-        run([ROOT/'fpr','compile','--system=posix','--target='+target,'--plugin',src,asm])
+        run([ROOT/'fpr','compile','--system=posix','--target='+target,'--plugin',src,asm],
+            env=dict(os.environ,FPR_TYPED_IR_BACKEND='mixed') if target=='a64' else None)
         objs=[]
         for i,unit in enumerate([str(asm),*Path(str(asm)+'.units').read_text().split()]):
             obj=d/(target+str(i)+'.o');run(['clang','--target='+triple,'-c',unit,'-o',obj]);objs.append(obj)

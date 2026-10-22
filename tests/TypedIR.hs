@@ -306,6 +306,23 @@ main = do
     EvCall "partial" _ : EvStackCheck _ : EvSafepoint _ : EvCall "applyLocal" _ : _ -> True
     _ -> False)
   putStrLn "Typed IR generic application: local, partial, over-saturated and computed heads through the runtime's apply, traps by name PASS"
+  let halApps = M.fromList
+        [("partialHal", (["n"], app "Test.add" [var "n"])),
+         ("opaqueHal", (["n"], app "Test.opaque" [var "n", CInt 1]))]
+      halEntries = M.fromList
+        [("Test.add", Prim 2 (Just "test_add_call2") (Just "test_add")),
+         ("Test.opaque", Prim 1 (Just "test_opaque_call1") (Just "test_opaque"))]
+      (halIr, halFailures) = lowerProgram m2Policy M.empty halApps halApps M.empty halEntries
+  check ("HAL application shapes lower and verify: " ++ show halFailures)
+    (null halFailures && verifyProgram halIr == Right ())
+  check "a partial HAL call applies the runtime object"
+    ("symbol test_add" `isInfixOf` dumpFn (halIr M.! "partialHal") &&
+     "apply " `isInfixOf` dumpFn (halIr M.! "partialHal"))
+  check "an opaque HAL call uses the PAP instead of a guessed direct entry"
+    ("symbol test_opaque" `isInfixOf` dumpFn (halIr M.! "opaqueHal") &&
+     "apply " `isInfixOf` dumpFn (halIr M.! "opaqueHal") &&
+     not ("call Test.opaque" `isInfixOf` dumpFn (halIr M.! "opaqueHal")))
+  putStrLn "Typed IR HAL application: partial and opaque-arity calls use verified function-object application PASS"
   -- increment 4: the simplification passes, verified IR to verified IR,
   -- differential against the evaluator on every fixture program above
   let differential name program calls = do

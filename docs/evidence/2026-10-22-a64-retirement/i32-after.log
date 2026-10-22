@@ -1,0 +1,17 @@
+type mix-int: refused on a64 and RV32
+type mix-i64: refused on a64 and RV32
+type mix-word: refused on a64 and RV32
+type mix-f32: refused on a64 and RV32
+type mixed-list: refused on a64 and RV32
+type power: refused on a64 and RV32
+profile arc-wide: explicit refusal
+profile builtin32-wide: explicit refusal
+profile sol: explicit refusal
+profile raw64: integer arithmetic compiles
+native64 base: PASS
+native64 allocation: PASS
+native64 expected panic div-zero: PASS
+native64 expected panic rem-zero: PASS
+native64 expected panic divU-zero: PASS
+native64 expected panic remU-zero: PASS
+native64 expected panic div-overflow: PASS

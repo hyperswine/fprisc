@@ -1,0 +1,1048 @@
+== sweep verdicts: injected failures must fail the sweep ==
+....
+----------------------------------------------------------------------
+Ran 4 tests in 3.358s
+
+OK
+== fprc ==
+== Linux RV64 lowering, cache isolation and QOS TLS ==
+RV64 Unix/QOS/module lowering, flag order and warm-cache isolation PASS
+== DRM scanout: RGB, orientation, pitch and full-screen scaling ==
+DRM scanout pixel check skipped (Linux headers required)
+== STAR64 console ownership with optional QOS autostart ==
+STAR64 console: tty1 baseline, tty2 with QOS, idempotent rebuild and conflicting getty refusal PASS
+== baseline compile gates: graphics-independent, explicit LiveView safety and dynamic-slot refusal ==
+POS with namespace Files client compiles: PASS
+gl2d + LiveView compile without graphics; unmarked LiveView caller refused: PASS
+scene2d: invalid dynamic entries fail by name in both list and packed paths: PASS
+== disk suspension: one-hart progress, abandoned requests and copied buffers ==
+disk worker: abandoned request, owned buffer, completion and refusal: PASS
+disk worker: a stalled worker refuses new requests past the deadline, accepts again once drained: PASS
+Disk wait: legacy path stalls the hart; worker path lets another actor run: PASS
+Native disk: concurrent page buffers and parked completion on RV64/QEMU: PASS
+== virtio raw policy: register programming and full-word deadlines against C ==
+virtio memory-backed differential: 1 hart(s) HOLDS
+virtio memory-backed differential: 2 hart(s) HOLDS
+== native block service: configurable budgets and failure isolation ==
+Native block service: virtio v1, 1 hart(s), budgets/refusal/recovery HOLDS
+Native block service: virtio v1, 2 hart(s), budgets/refusal/recovery HOLDS
+Native block service: virtio v2, 1 hart(s), budgets/refusal/recovery HOLDS
+Native block service: virtio v2, 2 hart(s), budgets/refusal/recovery HOLDS
+== block lifecycle: cancellation, drain and bounded reusable helpers ==
+Portable blocknamespace: 1 hart(s) HOLDS
+Portable blocknamespace: 2 hart(s) HOLDS
+Portable blocklifecyclep: 1 hart(s) HOLDS
+Portable blocklifecyclep: 2 hart(s) HOLDS
+Portable blockmemory: 1 hart(s) HOLDS
+Portable blockmemory: 2 hart(s) HOLDS
+Native blocklifecycle: virtio v1, 1 hart(s) HOLDS
+Native blocknamespace: virtio v1, 1 hart(s) HOLDS
+Native blockmemory: virtio v1, 1 hart(s) HOLDS
+Native blocklifecycle: virtio v2, 1 hart(s) HOLDS
+Native blocknamespace: virtio v2, 1 hart(s) HOLDS
+Native blockmemory: virtio v2, 1 hart(s) HOLDS
+Native blocklifecycle: virtio v1, 2 hart(s) HOLDS
+Native blocknamespace: virtio v1, 2 hart(s) HOLDS
+Native blockmemory: virtio v1, 2 hart(s) HOLDS
+Native blocklifecycle: virtio v2, 2 hart(s) HOLDS
+Native blocknamespace: virtio v2, 2 hart(s) HOLDS
+Native blockmemory: virtio v2, 2 hart(s) HOLDS
+== Qlog and bootstrap block routing ==
+Portable block routing: 1 hart(s), readiness/page I/O/native-budget refusal HOLDS
+Portable block routing: 2 hart(s), readiness/page I/O/native-budget refusal HOLDS
+Qlog route: virtio v1, 1 hart(s), partial append/restart/service death HOLDS
+Files owner: virtio v1, 1 hart(s), recovery/no replay/latched offline HOLDS
+System routing: virtio v1, 1 hart(s), two persistent boots HOLDS
+System routing: virtio v1, 1 hart(s), failed initialization refuses startup HOLDS
+Qlog route: virtio v2, 1 hart(s), partial append/restart/service death HOLDS
+Files owner: virtio v2, 1 hart(s), recovery/no replay/latched offline HOLDS
+System routing: virtio v2, 1 hart(s), two persistent boots HOLDS
+System routing: virtio v2, 1 hart(s), failed initialization refuses startup HOLDS
+System routing: 1 hart(s), no-disk bootstrap HOLDS
+Qlog route: virtio v1, 2 hart(s), partial append/restart/service death HOLDS
+Files owner: virtio v1, 2 hart(s), recovery/no replay/latched offline HOLDS
+System routing: virtio v1, 2 hart(s), two persistent boots HOLDS
+System routing: virtio v1, 2 hart(s), failed initialization refuses startup HOLDS
+Qlog route: virtio v2, 2 hart(s), partial append/restart/service death HOLDS
+Files owner: virtio v2, 2 hart(s), recovery/no replay/latched offline HOLDS
+System routing: virtio v2, 2 hart(s), two persistent boots HOLDS
+System routing: virtio v2, 2 hart(s), failed initialization refuses startup HOLDS
+System routing: 2 hart(s), no-disk bootstrap HOLDS
+Process storage ABI: virtio v1, stable binding/recovery/no replay/mailbox preservation HOLDS
+Process storage ABI: virtio v2, stable binding/recovery/no replay/mailbox preservation HOLDS
+== Storage deadlines, late replies and finite service budgets ==
+storagedeadlines: 1 worker(s) HOLDS
+storagedeadlines: 4 worker(s) HOLDS
+storagebudgets: 1 worker(s) HOLDS
+storagebudgets: 4 worker(s) HOLDS
+storerpc: 1 worker(s) HOLDS
+storerpc: 4 worker(s) HOLDS
+qsysfail: 1 worker(s) HOLDS
+qsysfail: 4 worker(s) HOLDS
+filesreclaim: 1 worker(s) HOLDS
+filesreclaim: 4 worker(s) HOLDS
+filepolicy: 1 worker(s) HOLDS
+filepolicy: 4 worker(s) HOLDS
+== Storage operation types, compatibility and live schema ==
+Storage types: integer-operation refused
+Storage types: integer-version refused
+Storage types: integer-target-kind refused
+Storage types: bare-actor refused
+Storage types: string-error refused
+Storage types: error-as-operation refused
+storageprotocol: 1 worker(s) HOLDS
+storageprotocol: 4 worker(s) HOLDS
+filessvc: 1 worker(s) HOLDS
+filessvc: 4 worker(s) HOLDS
+appsessionmemory: 1 worker(s) HOLDS
+appsessionmemory: 4 worker(s) HOLDS
+== Bootstrap missing-only storage fallbacks ==
+[ERR] app index unavailable: disk offline
+
+[fpr] main => storagefallback: missing-only defaults, offline archives and permission read/write failures HOLDS
+== Qlog scratch reclamation, binary reads and two-boot persistence ==
+Qlog memory: h1-boot1, 64 MiB heap, binary reads/replay/mutations/compaction HOLDS
+Qlog memory: h1-boot2, 64 MiB heap, binary reads/replay/mutations/compaction HOLDS
+Qlog memory: h4-boot1, 64 MiB heap, binary reads/replay/mutations/compaction HOLDS
+Qlog memory: h4-boot2, 64 MiB heap, binary reads/replay/mutations/compaction HOLDS
+== Portable durable storage: barriers, dual metadata and staged recovery ==
+Portable durable: blank format, fresh-process reopen, v1/v2 bounded migration: PASS
+Portable durable: invalid/nonblank metadata and unsafe migration refuse without mutation: PASS
+Portable durable: append survives reopen, newest valid slot wins, corrupt slots refused/repaired: PASS
+Portable durable: SWAP wraps before the backup superblock: PASS
+Portable durable: stale heads refuse without mutation; invalid header/bounds/shape/hash/bulk refuse compact and actor startup: PASS
+Portable durable: invalid tags/keys/header size/tombstone/bulk inputs refuse without mutation and valid image reopens: PASS
+Portable durable: streamed ~2MiB QREC startup verifies partial last page and catches its final payload byte corruption: PASS
+Portable durable: injected data/commit flush failures end owner without success ACK: PASS
+Portable durable: staged, partial-copy, full-copy and first-final-slot snapshots recover; bad stage refused: PASS
+Portable durable: real compaction/idempotence, pre-mutation capacity refusal, all six flush failure boundaries: PASS
+Portable durability checks: PASS (simulated crash snapshots; physical power cuts untested)
+== Portable compatibility KV durability and torn-tail recovery ==
+store: fresh-process binary/empty append, replay/index overflow refusal and file/store-dir/parent flush order: PASS
+store: an invalid app id ("../escaped", "a/b", "..", over 64 bytes, empty) binds no store: PASS
+store: truncated final header/payload/delimiter excluded from replay/index and repaired before later append: PASS
+store: malformed interior/overflow/delimiter refuses replay/index/append without discarding later records: PASS
+store: every partial write boundary returns unknown; fresh-process repair never strands a later acknowledged record: PASS
+store: file/directory/parent flush and close errors report uncertain outcome, never success: PASS
+store: EINTR retry, invalid length/directory refusal, invalid-plugin request unlock: PASS
+store: replies past the buffer answer -6 + their size (200 KB, 256 KiB, 300 KB), 16 MiB reply and 4 MiB record limits: PASS
+store-check: PASS (fresh processes and injected faults; physical power cuts untested)
+== the compile bridge: worker-backed, a reply past the old 256 KiB whole, no server, a silent server, an abandoned request (sanitizers) ==
+none -2
+big 1048579 whole
+silent -3
+abandon 1048579
+compile-check: PASS (a 1 MiB reply whole, no server, a silent server, an abandoned request)
+== Portable compatibility KV application ABI and uncertain outcomes ==
+Portable store: real Sys.storeReq binary append and fresh-process replay HOLDS
+Portable store: failed sync reaches FP-RISC as Err storage outcome unknown; fresh replay HOLDS
+portable-store-check: PASS (host faults and fresh processes; physical power cuts untested)
+== Files quiesce, block drain and final flush ==
+Files shutdown: Portable, 1 hart(s) HOLDS
+Files shutdown: virtio v1, 1 hart(s) HOLDS
+Files shutdown behind failed I/O: virtio v1, 1 hart(s), DMA remains reserved HOLDS
+Files shutdown: virtio v2, 1 hart(s) HOLDS
+Files shutdown behind failed I/O: virtio v2, 1 hart(s), DMA remains reserved HOLDS
+Files shutdown: Portable, 2 hart(s) HOLDS
+Files shutdown: virtio v1, 2 hart(s) HOLDS
+Files shutdown behind failed I/O: virtio v1, 2 hart(s), DMA remains reserved HOLDS
+Files shutdown: virtio v2, 2 hart(s) HOLDS
+Files shutdown behind failed I/O: virtio v2, 2 hart(s), DMA remains reserved HOLDS
+== Portable bounded graceful shutdown ==
+Portable shutdown: 1 hart(s), SIGTERM/SIGINT, TTY, repeated request, fresh-PID readiness and durable replay HOLDS
+Portable shutdown: 2 hart(s), SIGTERM/SIGINT, TTY, repeated request, fresh-PID readiness and durable replay HOLDS
+Portable shutdown: actual flush-error reports exit 1 without a clean claim HOLDS
+Portable shutdown: actual flush-stall reports exit 124 without a clean claim HOLDS
+Portable shutdown: ordinary app return drains and flushes HOLDS
+Portable shutdown: normal stop with stalled flush has a bounded failed exit HOLDS
+Portable shutdown: panic persistence with stalled KV sync has a bounded failed exit without an OS signal HOLDS
+Portable shutdown: software completion 0 exits 0 without an OS signal HOLDS
+Portable shutdown: software completion 1 exits 1 without an OS signal HOLDS
+Portable shutdown: normal return retains the deadline through full host output HOLDS
+Portable shutdown: refused acknowledgement exits 1 within deadline HOLDS
+Portable shutdown: stuck acknowledgement exits 124 within deadline HOLDS
+Portable shutdown: full stderr pipe cannot block the forced deadline HOLDS
+== Buildroot service supervision and finite restart ==
+Service: board configuration reaches the supervised application HOLDS
+Service: concurrent/duplicate start, ready status, graceful stop and repeat stop HOLDS
+Service: an unexpected exit restarts after backoff, later ready child stops HOLDS
+Service: finite restart budget latches failure; administrative restart clears it HOLDS
+Service: missing, stale or wrong-PID readiness cannot pass startup HOLDS
+Service: failed shutdown and TERM refusal are failures; escalation is bounded HOLDS
+Service: stale/reused PID records do not signal an unrelated process HOLDS
+Service: a dead supervisor cannot allow another writer; orphan shutdown is unconfirmed and explicit restart is safe HOLDS
+Service: an unresponsive supervisor gets bounded outer escalation; later start is safe HOLDS
+Service: stop interrupts startup without a restart or held control lock HOLDS
+Service: ownership record failures refuse before launch or bound child teardown; later explicit restart is safe HOLDS
+Service: incomplete launch ownership cannot be reclaimed as a stale instance HOLDS
+Service: lost final shutdown state refuses a clean result; a truly absent instance stops idempotently HOLDS
+Service: malformed and excessive lifecycle settings refuse before launch HOLDS
+== Buildroot persistent state directory installation ==
+Package install: empty has a pre-existing real state directory and preserves state HOLDS
+Package install: normal has a pre-existing real state directory and preserves state HOLDS
+Package install: stock-sysv has a pre-existing real state directory and preserves state HOLDS
+Package install: linked /var fails before installing into volatile storage HOLDS
+Package install: linked /var/lib fails before installing into volatile storage HOLDS
+Package install: linked /var/lib/qosp fails before installing into volatile storage HOLDS
+== Pi quiet boot splash and vector rendering ==
+Boot logo: SVG and renderer data agree
+BOOT_LOGO_PASS centering colors bounds padded stride portrait-safe sizing
+Splash boot policy: serial/root preserved, HDMI quiet, recovery VT, idempotent build, missing helper refusal PASS
+== disk hardening: deadlines, stalled devices, reset, offline refusal, overload refusal (native + Portable) ==
+Portable disk: a stalled disk fail-stops the storage actor (its client gets Err), a late caller, refuses while stalled, recovers: PASS
+Native disk: virtio v1, 1 hart(s), timeout/reset/cancellation/offline HOLDS
+Native disk: virtio v1, 2 hart(s), timeout/reset/cancellation/offline HOLDS
+Native disk: virtio v2, 1 hart(s), timeout/reset/cancellation/offline HOLDS
+Native disk: virtio v2, 2 hart(s), timeout/reset/cancellation/offline HOLDS
+Native reset cancellation: phase 1, virtio v1, 1 hart(s) HOLDS
+Native reset cancellation: phase 1, virtio v1, 2 hart(s) HOLDS
+Native reset cancellation: phase 1, virtio v2, 1 hart(s) HOLDS
+Native reset cancellation: phase 1, virtio v2, 2 hart(s) HOLDS
+Native reset cancellation: phase 2, virtio v1, 1 hart(s) HOLDS
+Native reset cancellation: phase 2, virtio v1, 2 hart(s) HOLDS
+Native reset cancellation: phase 2, virtio v2, 1 hart(s) HOLDS
+Native reset cancellation: phase 2, virtio v2, 2 hart(s) HOLDS
+== native image integrity: corrupt sections and missing digests refuse before allocation ==
+SHA-256: contiguous/disjoint spans, empty inputs and padding/block boundaries match hashlib HOLDS
+Native integrity/ABI/vector process: virtio 1, 1 hart(s) HOLDS
+Native integrity/ABI/vector process: virtio 1, 2 hart(s) HOLDS
+Native integrity/ABI/vector process: virtio 2, 1 hart(s) HOLDS
+Native integrity/ABI/vector process: virtio 2, 2 hart(s) HOLDS
+Production placement object has no test allocation counter HOLDS
+== opt-in inbox admission: native process-plane ownership and reclamation ==
+Native inbox/process ownership: virtio v1, 1 hart(s) HOLDS
+Native inbox/process ownership: virtio v2, 1 hart(s) HOLDS
+Native inbox/process ownership: virtio v1, 2 hart(s) HOLDS
+Native inbox/process ownership: virtio v2, 2 hart(s) HOLDS
+== initial memory admission: routed native process, refusal and reclamation ==
+[fpr] main => admissionnative: abi-refused=True process=[memoryproc: invalid=True denied=True local=True pid=True overrun=True next=True escaped=42] images=0 returned=True HOLDS
+[fpr] main => admissionnative: abi-refused=True process=[memoryproc: invalid=True denied=True local=True pid=True overrun=True next=True escaped=42] images=0 returned=True HOLDS
+== the mailbox contract as a loaded process: Static refuses through the plane's actors table ==
+mailbox contract as a process: 1 hart(s) HOLDS
+mailbox contract as a process: 2 hart(s) HOLDS
+== error in a loaded process ends that actor, not the machine (S8) ==
+error in a loaded process ends that actor, the machine continues: 1 hart(s) HOLDS
+error in a loaded process ends that actor, the machine continues: 2 hart(s) HOLDS
+== native runtime ABI parser: missing, malformed, duplicate and oversized declarations ==
+[36m[qos][0m fpr (compiler; no-op when fresh)
+[36m[qos][0m qos-app tests/nativeabi.fpr -> .qos/nativeabi.qa
+[36m[qos][0m qosp (portable host; no-op when fresh)
+[36m[qos][0m qosp: tests/nativeabi.fpr
+qosp: hosting nativeabi (10 harts, abi v22)
+[host] qosp: hosting nativeabi (10 harts, abi v22)
+
+[qos] nativeabi => nativeabi: HOLDS
+[36m[qos][0m expect: found 'nativeabi: HOLDS'
+[36m[qos][0m total 6.4s
+== audit failure injections: native TX stall/orphan, full console pipe, native process storage refusal and fail-stop ==
+consolefull: blocking flags preserved, 5000 drops in 0.079s, resume and restall HOLDS
+Production objects: injection entry points absent HOLDS
+netstall: virtio v1, 1 hart(s)
+[net] virtio-net v1 slot 7 mac 52:54:00:12:34:56
+[ERR] actor failed: net: transmit timed out (the device stalled) -- network offline
+[ERR] actor failed: net: the device stalled on an earlier frame -- network offline, send refused
+
+[fpr] main => netstall: stalled=True heartbeat=30 elapsed=3036220 offline=True fast=True HOLDS
+netstall: virtio v2, 1 hart(s)
+[net] virtio-net v2 slot 7 mac 52:54:00:12:34:56
+[ERR] actor failed: net: transmit timed out (the device stalled) -- network offline
+[ERR] actor failed: net: the device stalled on an earlier frame -- network offline, send refused
+
+[fpr] main => netstall: stalled=True heartbeat=29 elapsed=3037890 offline=True fast=True HOLDS
+netstall: virtio v1, 2 hart(s)
+[net] virtio-net v1 slot 7 mac 52:54:00:12:34:56
+[ERR] actor failed: net: transmit timed out (the device stalled) -- network offline
+[ERR] actor failed: net: the device stalled on an earlier frame -- network offline, send refused
+
+[fpr] main => netstall: stalled=True heartbeat=30 elapsed=3053240 offline=True fast=True HOLDS
+netstall: virtio v2, 2 hart(s)
+[net] virtio-net v2 slot 7 mac 52:54:00:12:34:56
+[ERR] actor failed: net: transmit timed out (the device stalled) -- network offline
+[ERR] actor failed: net: the device stalled on an earlier frame -- network offline, send refused
+
+[fpr] main => netstall: stalled=True heartbeat=29 elapsed=3030600 offline=True fast=True HOLDS
+netorphan: virtio v1, 1 hart(s)
+[net] virtio-net v1 slot 7 mac 52:54:00:12:34:56
+[ERR] actor failed: net: the device stalled on an abandoned frame -- network offline
+[ERR] actor failed: net: the device stalled on an earlier frame -- network offline, send refused
+
+[fpr] main => netorphan: held=True recovered=True orphan-timeout=True offline=True fast=True HOLDS
+netorphan: virtio v2, 1 hart(s)
+[net] virtio-net v2 slot 7 mac 52:54:00:12:34:56
+[ERR] actor failed: net: the device stalled on an abandoned frame -- network offline
+[ERR] actor failed: net: the device stalled on an earlier frame -- network offline, send refused
+
+[fpr] main => netorphan: held=True recovered=True orphan-timeout=True offline=True fast=True HOLDS
+netorphan: virtio v1, 2 hart(s)
+[net] virtio-net v1 slot 7 mac 52:54:00:12:34:56
+[ERR] actor failed: net: the device stalled on an abandoned frame -- network offline
+[ERR] actor failed: net: the device stalled on an earlier frame -- network offline, send refused
+
+[fpr] main => netorphan: held=True recovered=True orphan-timeout=True offline=True fast=True HOLDS
+netorphan: virtio v2, 2 hart(s)
+[net] virtio-net v2 slot 7 mac 52:54:00:12:34:56
+[ERR] actor failed: net: the device stalled on an abandoned frame -- network offline
+[ERR] actor failed: net: the device stalled on an earlier frame -- network offline, send refused
+
+[fpr] main => netorphan: held=True recovered=True orphan-timeout=True offline=True fast=True HOLDS
+nativerefusal: virtio v1, 1 hart(s)
+[blk] virtio-blk v1 slot 7, 2048 pages of 4096 bytes
+[blk] virtio-blk v1 slot 7, 2048 pages of 4096 bytes
+[ERR] actor failed: blk: page out of range
+
+[fpr] main => nativerefusal: full=[storeprobe: Err storage: the storage actor refused the request noise=True] dead=[storeprobe: Err storage: the storage actor refused the request noise=True] during=[storeprobe: Err storage service: dead actor noise=True] deadline=[storeprobe: Err storage service: deadline exceeded noise=True] mutation=[storeprobe: Err storage service: deadline exceeded (outcome unknown) noise=True] invalid=[storeprobe: Err storage: invalid reply value (outcome unknown) noise=True] live=True healthy=[storeprobe: Ok  noise=True] routed=[failed: dead actor: blk: page out of range] freed=True HOLDS
+nativerefusal: virtio v2, 1 hart(s)
+[blk] virtio-blk v2 slot 7, 2048 pages of 4096 bytes
+[blk] virtio-blk v2 slot 7, 2048 pages of 4096 bytes
+[ERR] actor failed: blk: page out of range
+
+[fpr] main => nativerefusal: full=[storeprobe: Err storage: the storage actor refused the request noise=True] dead=[storeprobe: Err storage: the storage actor refused the request noise=True] during=[storeprobe: Err storage service: dead actor noise=True] deadline=[storeprobe: Err storage service: deadline exceeded noise=True] mutation=[storeprobe: Err storage service: deadline exceeded (outcome unknown) noise=True] invalid=[storeprobe: Err storage: invalid reply value (outcome unknown) noise=True] live=True healthy=[storeprobe: Ok  noise=True] routed=[failed: dead actor: blk: page out of range] freed=True HOLDS
+nativerefusal: virtio v1, 2 hart(s)
+[blk] virtio-blk v1 slot 7, 2048 pages of 4096 bytes
+[blk] virtio-blk v1 slot 7, 2048 pages of 4096 bytes
+[ERR] actor failed: blk: page out of range
+
+[fpr] main => nativerefusal: full=[storeprobe: Err storage: the storage actor refused the request noise=True] dead=[storeprobe: Err storage: the storage actor refused the request noise=True] during=[storeprobe: Err storage service: dead actor noise=True] deadline=[storeprobe: Err storage service: deadline exceeded noise=True] mutation=[storeprobe: Err storage service: deadline exceeded (outcome unknown) noise=True] invalid=[storeprobe: Err storage: invalid reply value (outcome unknown) noise=True] live=True healthy=[storeprobe: Ok  noise=True] routed=[failed: dead actor: blk: page out of range] freed=True HOLDS
+nativerefusal: virtio v2, 2 hart(s)
+[blk] virtio-blk v2 slot 7, 2048 pages of 4096 bytes
+[blk] virtio-blk v2 slot 7, 2048 pages of 4096 bytes
+[ERR] actor failed: blk: page out of range
+
+[fpr] main => nativerefusal: full=[storeprobe: Err storage: the storage actor refused the request noise=True] dead=[storeprobe: Err storage: the storage actor refused the request noise=True] during=[storeprobe: Err storage service: dead actor noise=True] deadline=[storeprobe: Err storage service: deadline exceeded noise=True] mutation=[storeprobe: Err storage service: deadline exceeded (outcome unknown) noise=True] invalid=[storeprobe: Err storage: invalid reply value (outcome unknown) noise=True] live=True healthy=[storeprobe: Ok  noise=True] routed=[failed: dead actor: blk: page out of range] freed=True HOLDS
+== stdcheck ==
+stdcheck: OK — every obligation above is either PROVEN or carries an inserted DYNAMIC check; ω terms mark exactly where unsafe cost enters.
+== stdcheck: the REAL std library (lifted lambdas) ==
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/std/std.fpr checkable: pow2 static (n·2), retryN carries its ω(step) equation
+== WCET ratchet: preemption-latency ceiling (system.fpr) ==
+wcet ratchet holds: program max 104 <= ceiling 200 IR insns between safepoints (rv64, system.fpr)
+== BareMetal ==
+std: clamp=10 backoff=800 fold=15
+== Wide ABI: arity 24, wide TCO, Tup4..8 ==
+WIDEABI HOLDS
+== Floats: F64/F32 in the AOT tier ==
+FLOATS HOLD
+float-in-structure str/print: compile-time refusal (guard holds)
+== F64 fast paths: C-reference IEEE edges, literal splices and x64 backend ==
+F64: C-reference agreement on 400 edge-case pairs, fast paths and inliner independently on/off: PASS
+x64 F64: 0 mismatches over 1280 pairs: PASS
+typed-IR x64 F64: 0 mismatches over 1280 pairs: PASS
+F64 inline: 0 mismatches over 400 pairs
+== Float columns: declared layout + specialized float loops ==
+FLOATVEC2 HOLDS
+column loops emit float instructions and guard on the FLOAT rep
+== Literal suffixes: 2f / 1.5f F32, 1.5 / 1.5d / 1e3 F64 ==
+3.5 3 1000
+== Floats: F64/F32 raw-bits, IEEE, dtoa, refusal guard ==
+FLOATS HOLD
+float-in-structure print: refused with the restriction named
+== buddy: alloc/realloc/dealloc proven on the host ==
+buddy_check: ALL LEGS PASS
+== verification slice: PBT (Hypothesis over buddy.c via ctypes) + SPIN (SPSC channel model); CBMC opt-in ==
+pbt buddy + spin spsc green (cbmc: VERIFY_CBMC=1)
+== dedup ratchet: the frontend un-forking must not regress ==
+  compiler/Sol/Infer.hs:      130 <= 132
+  compiler/Sol/Lang.hs:      244 <= 244
+dedup-ratchet: OK
+== spans: diagnostics carry file:line[:col] anchors (steps 1-3) ==
+Diagnostic anchors: signature, linear binder, imported module and repeated token PASS
+== versions: every pin is a committed version, fpr.lock current ==
+[36m[qos][0m lock: OK, 302 pin(s) all resolvable from the store, fpr.lock current
+== QOSPortable app ==
+== clause groups: a function split by another definition is still one function ==
+[qos] split => split: zero n6 one
+== the mailbox contract: Static refuses and says so, Dynamic grows in order, the ARC table grows (/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/mailbox.fpr, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/docs/MAILBOX.md) ==
+mailbox: static 8 queued 8 of 20 (12 refused), drained 8 in order; dynamic 8 queued 20 of 20, drained 20 in order; arc 3000 shared values held, drained 3000 in order; a dead actor answers dead actor
+== QOSPortable host+run ==
+qosp: hosting mailbox (10 harts, abi v22)
+[qos] mailbox => 0
+== Memory.qa stage 1: one actor owns the buddy; 100 workers' blocks come home, on qosp and on the bare-metal kernel (/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/memory.fpr, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/docs/MEMORY.md) ==
+qosp memory: arena 1073741248 KiB, free 1073738944 -> 1073738176 KiB (99%) after 100 workers; 338 served inline, 79 queued on the actor (79 parked), 14 direct, 405 frees, 0 denied
+bare-metal memory: arena 130304 KiB, free 129280 -> 128256 KiB (99%) after 100 workers; 317 served inline, 2 queued on the actor (2 parked), 13 direct, 303 frees, 0 denied
+== apps: two app images from the disk, each under its own pid, memory home when they exit (tests/apps.fpr) ==
+[qos] apps => apps: appa pid 1 ran (helper pid 1) = 9006000; appb pid 2 ran (helper pid 2) = 42; shell pid 0; APPS HOLD
+== MVU: the elm surface (App / Ev / subs) on the engine ==
+mvutick: STick-only ticks; mvugame: scripted SKeys -> exact 3-frame run on a custom render service
+== MVU: LV.server -- the LiveView wire over the socket tier ==
+mvuweb-check: ALL LEGS PASS
+== FPRLive: POS v2 over a real websocket, functional + adversarial ==
+fprlive: SKIP (needs python websockets)
+== liveboard: std/live end to end -- sessions, deltas, client state, commands, subscriptions, durable fields, replay ==
+durable FIELDS survive a restart (count and notes back; clock, visitors and toast, deliberately, not): PASS
+replay: the model rebuilt from the journal ALONE (236 events) equals what was saved; the log holds every value the counter had [0, 10, 11, 10, 11, 111]: PASS
+== liveboard: LiveReload -- a broken edit keeps the old program serving, a good one is rebuilt and becomes the server, state intact ==
+live: restarting into the rebuilt program
+reload: the failed rebuild was reported and survived; the good one took over with durable state
+== POS v1: the shop as one log, websocket registers, the adversarial legs (docs/2026-09-07-POS1.md) ==
+pos1-check: SKIP (pip install websockets)
+== actor runtime: cross-hart wake stress (pingpong) + 40-sender fan-in through one hub ==
+fanin: ok, 40 clients x 1500 addressed replies through one hub
+== MVU: input/display service-roundtrip latency (mvulat, headless) ==
+[qos] mvulat => lat key->update: n=400 min=119.0us avg=1122.8us max=2170.0us  [<=10us:0 <=100us:0 <=1ms:175 >1ms:225] [mvu: 24 frames, 1 statics builds] [run 57917.0us]
+== std.compile: the fpr compiler behind a unix socket (editor loop) ==
+[qos] editor => editor: compiled 5015B of qos-portable asm; stored ed/hello.fpr (14B) + ed/hello.s (5015B readback ok); bad source -> Err ok
+== sysdisk: the disk IS the system (loader + sys/live replay across two boots) ==
+boot1 builds the live set as sys/live records; boot2 replays it -- the hot swap survives the reboot with no compiler present
+== endpoints: a new service claims a url with no central edit; open/read/write/close direct, listing, refusals, cancel, grants (tests/epecho.fpr) ==
+epecho: HOLDS
+== the Svc surface over the namespace: display, clock, keyboard, diskless storage, unknown url, wrong shape (tests/svcurl.fpr) ==
+svcurl: done
+== Files.qa: two application prefixes, two boots and owner-death refusal ==
+filessvc: two boots, shared disk, prefix refusal, compact refusal and dead owner HOLDS
+== Graphics.qa: real Terra II + dungeon, focused input, close/restart and captured pixels ==
+gfxapps: real GL, two real games, focused input, close/restart and five captures HOLDS
+== Main Profile: paged GUI shell, onboard .qa apps, refusals and two boots ==
+Compiler daemon: /tmp/qos-fprd-dxmbhz1d/compiler.sock (log /private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/qos-check-all.SzsNz5/qos-shell-parent.wMqj4i/check/fprd.log)
+guishell: Pi panel, 720p, 1080p real GL; native touch replay, cancellation and keyboard focus HOLDS
+guishell: graphics death drains storage before failed exit HOLDS
+guishell: live render-worker deadline drains storage before failed exit HOLDS
+guishell: visible pane failure, explicit retry, Home and clean shutdown HOLDS
+guishell: real GL, Files/Logs vertical scrolling, two pages, all six onboard sessions (the Terminal typed and written to, the Editor saving, running, building and recovering), reopen/close, refusals, pointer protocol and two boots HOLDS
+== Graphics.qa: two programs on one display, focus, close and restart, a dead program never holds it (tests/gfxshare.fpr, headless) ==
+gfxshare: HOLDS
+== the keyboard endpoint over UART.qa: a held read, bytes queued before the first poll one per poll, an empty poll (tests/kbdread.fpr) ==
+[qos] kbdread => kbdread: seq=wxyz00 first=97 second=98 poll=0 HOLDS
+== qsys: namespace and plugins persist across two boots ==
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: std/actor#201a0e9b… resolved from .fpr store (committed version)
+use: QS resolves to "../programs/mods/qsys#04a9829178b981ce"  (pin it to freeze this exact code)
+use: AK resolves to "../programs/mods/appkit#65cbfb86355d53c6"  (pin it to freeze this exact code)
+use: AppsEP resolves to "../programs/mods/appsep#b721f8e9d5e0aa31"  (pin it to freeze this exact code)
+autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure
+autodrop: irqRouteStart: inserted `drop _autodrop_root_irqRouteStart_0` into 2 case arm(s)
+autodrop: logStart: inserted `drop _autodrop_root_logStart_0` into 2 case arm(s)
+autodrop: parWorker: inserted `drop _autodrop_root_parWorker_0` into 1 case arm(s)
+autodrop: nsLoop@c66ad65e68dd97f5: inserted `drop m` after destructure
+autodrop: lsLoop@c66ad65e68dd97f5: inserted `drop m` after destructure
+autodrop: sLoop@c66ad65e68dd97f5: inserted `drop m` after destructure
+autodrop: nsReceive@e8bce05a1ddf73db: inserted `drop m` after destructure
+autodrop: lsReceive@e8bce05a1ddf73db: inserted `drop m` after destructure
+autodrop: sReceive@e8bce05a1ddf73db: inserted `drop m` after destructure
+autodrop: dispatch@3387ce1bd131fdf4: inserted `drop m` into 2 case arm(s)
+autodrop: logActor@04a9829178b981ce: inserted `drop m` after destructure
+autodrop: filesServe@04a9829178b981ce: inserted `drop m` into 2 case arm(s)
+precond: 23 obligations: 18 discharged, 0 runtime-checked, 5 builtin traps
+linear types: Handle Vector SString
+typed-ir-backend: native 11/11 functions (per-function)
+typed-ir-backend: callAt native (frame 64 shallow=no saved=x19,x20,x21,x22,x23 values=48 regs=48 spills=0 slots=0 reloads=0 stores=0 copies=8 crossing=7 loops=0, native-insns-v1 segmax=40 exittail=40 ccalls=5)
+typed-ir-backend: callAt2 native (frame 48 shallow=no saved=x19,x20,x21 values=25 regs=25 spills=0 slots=0 reloads=0 stores=0 copies=6 crossing=5 loops=0, native-insns-v1 segmax=39 exittail=39 ccalls=4)
+typed-ir-backend: callAt3 native (frame 32 shallow=no saved=x19,x20 values=19 regs=19 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=3 loops=0, native-insns-v1 segmax=38 exittail=38 ccalls=4)
+typed-ir-backend: callIAt native (frame 64 shallow=no saved=x19,x20,x21,x22,x23 values=42 regs=42 spills=0 slots=0 reloads=0 stores=0 copies=9 crossing=5 loops=0, native-insns-v1 segmax=35 exittail=26 ccalls=3)
+typed-ir-backend: callIAt2 native (frame 48 shallow=no saved=x19,x20,x21 values=19 regs=19 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=3 loops=0, native-insns-v1 segmax=25 exittail=25 ccalls=2)
+typed-ir-backend: callIAt3 native (frame 32 shallow=no saved=x19,x20 values=30 regs=30 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=3 loops=0, native-insns-v1 segmax=44 exittail=44 ccalls=5)
+typed-ir-backend: imageMagic native (frame 32 shallow=no saved=x19,x20 values=24 regs=24 spills=0 slots=0 reloads=0 stores=0 copies=5 crossing=3 loops=0, native-insns-v1 segmax=34 exittail=34 ccalls=6)
+typed-ir-backend: main native (frame 48 shallow=no saved=x19,x20,x21,x22 values=23 regs=23 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=4 loops=0, native-insns-v1 segmax=22 exittail=18 ccalls=4)
+typed-ir-backend: run native (frame 128 shallow=no saved=x19,x20,x21,x22,x23,x24,x25,x26,x27 values=189 regs=185 spills=4 slots=4 reloads=4 stores=4 copies=78 crossing=39 loops=0, native-insns-v1 segmax=98 exittail=98 ccalls=43)
+typed-ir-backend: tblOf native (frame 32 shallow=no saved=x19,x20 values=22 regs=22 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=2 loops=0, native-insns-v1 segmax=31 exittail=31 ccalls=2)
+typed-ir-backend: tblStep native (frame 48 shallow=no saved=x19,x20,x21,x22 values=33 regs=33 spills=0 slots=0 reloads=0 stores=0 copies=5 crossing=4 loops=1, native-insns-v1 segmax=32 exittail=32 ccalls=3)
+unit build/units/prelude-a5a8a1130833-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-72f59195cb10-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-1275a08e2a1a-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-201a0e9bf98a-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-65cbfb86355d-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-b721f8e9d5e0-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-bd295a609815-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-00b87d7442c6-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-d1e8ef3088e7-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-c66ad65e68dd-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-08a8ecf9d7c5-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-e8bce05a1ddf-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-96aed2d0925b-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-99a90ac571d2-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-de1ed212cbd3-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-3387ce1bd131-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-5a59a9be2244-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-0017bdffdea8-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-f383be860d57-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-9fb989d99cdb-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-2918093d7d2e-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-b4d239131ca0-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-bf624a30b7d2-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-24be2376605c-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-7022992c8e4a-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-04a9829178b9-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-75479fb6d5f3-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-caf57fad543a-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-8b4ffa1467ca-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-84826bc9e8dd-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-6e7bea28db71-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-464ca3ee0d89-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-a8f7ee14e1ef-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-32fbbd385970-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+unit build/units/u-cf3a5b74b17a-pa5a8a113-seb662bbf-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+wrote build/qosapp-a64.s (209 supercombinators, linearity OK)
+module table: 1585 remote-callable exports
+assumed external symbols (the fpr_g_ HAL/runtime contract):
+  myself strlen substr
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1160:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1160 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1191:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1191 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2419:11: warning: explicitly assigning value of variable of type 'V *' (aka 'unsigned long *') to itself [-Wself-assign]
+ 2419 |     rargs = rargs; /* remaining logical args are 0..n-1: same base */
+      |     ~~~~~ ^ ~~~~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2802:13: warning: unused function 'rfields' [-Wunused-function]
+ 2802 | static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
+      |             ^~~~~~~
+4 warnings generated.
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:689:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  689 | #pragma GCC push_options
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:690:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  690 | #pragma GCC optimize("O3,tree-vectorize")
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:900:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  900 | #pragma GCC pop_options
+      |             ^
+3 warnings generated.
+mkexports: 841 runtime symbols
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1160:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1160 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1191:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1191 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2419:11: warning: explicitly assigning value of variable of type 'V *' (aka 'unsigned long *') to itself [-Wself-assign]
+ 2419 |     rargs = rargs; /* remaining logical args are 0..n-1: same base */
+      |     ~~~~~ ^ ~~~~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2802:13: warning: unused function 'rfields' [-Wunused-function]
+ 2802 | static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
+      |             ^~~~~~~
+4 warnings generated.
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:689:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  689 | #pragma GCC push_options
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:690:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  690 | #pragma GCC optimize("O3,tree-vectorize")
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:900:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  900 | #pragma GCC pop_options
+      |             ^
+3 warnings generated.
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1160:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1160 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1191:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1191 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2419:11: warning: explicitly assigning value of variable of type 'V *' (aka 'unsigned long *') to itself [-Wself-assign]
+ 2419 |     rargs = rargs; /* remaining logical args are 0..n-1: same base */
+      |     ~~~~~ ^ ~~~~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2802:13: warning: unused function 'rfields' [-Wunused-function]
+ 2802 | static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
+      |             ^~~~~~~
+4 warnings generated.
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:689:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  689 | #pragma GCC push_options
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:690:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  690 | #pragma GCC optimize("O3,tree-vectorize")
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:900:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  900 | #pragma GCC pop_options
+      |             ^
+3 warnings generated.
+wrote app.qa: manifest 89B + load 220B + image 1310784B (memsz 1493472) + 10329 relocations = 1352479B total
+app.qa built for Apple Silicon (relocatable)
+autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure
+autodrop: irqRouteStart: inserted `drop _autodrop_root_irqRouteStart_0` into 2 case arm(s)
+autodrop: logStart: inserted `drop _autodrop_root_logStart_0` into 2 case arm(s)
+autodrop: parWorker: inserted `drop _autodrop_root_parWorker_0` into 1 case arm(s)
+precond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps
+linear types: Handle Vector SString
+typed-ir-backend: native 3/3 functions (per-function)
+typed-ir-backend: main native (frame 16 shallow=no saved=none values=1 regs=1 spills=0 slots=0 reloads=0 stores=0 copies=0 crossing=0 loops=0, native-insns-v1 segmax=20 exittail=6 ccalls=1)
+typed-ir-backend: plugAdd native (frame 32 shallow=no saved=x19,x20 values=14 regs=14 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=2 loops=0, native-insns-v1 segmax=23 exittail=19 ccalls=2)
+typed-ir-backend: plugPing native (frame 16 shallow=no saved=none values=1 regs=1 spills=0 slots=0 reloads=0 stores=0 copies=0 crossing=0 loops=0, native-insns-v1 segmax=20 exittail=6 ccalls=1)
+unit build/units/prelude-a5a8a1130833-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+wrote build/plug-plugmini-a64.s (27 supercombinators, linearity OK)
+module table: 2 remote-callable exports
+assumed external symbols (the fpr_g_ HAL/runtime contract):
+  
+mkimports: 76 imports (73 functions)
+wrote plugmini.qa: manifest 103B + load 214B + image 131680B (memsz 131680) + 262 relocations + 76 imports = 135608B total
+plugmini.qa built (relocatable) -- install: make -C ../qos disk-seed QAS=...
+autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure
+autodrop: irqRouteStart: inserted `drop _autodrop_root_irqRouteStart_0` into 2 case arm(s)
+autodrop: logStart: inserted `drop _autodrop_root_logStart_0` into 2 case arm(s)
+autodrop: parWorker: inserted `drop _autodrop_root_parWorker_0` into 1 case arm(s)
+precond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps
+linear types: Handle Vector SString
+typed-ir-backend: native 3/3 functions (per-function)
+typed-ir-backend: helloDouble native (frame 32 shallow=no saved=x19 values=12 regs=12 spills=0 slots=0 reloads=0 stores=0 copies=1 crossing=1 loops=0, native-insns-v1 segmax=22 exittail=18 ccalls=2)
+typed-ir-backend: helloTitle native (frame 16 shallow=no saved=none values=1 regs=1 spills=0 slots=0 reloads=0 stores=0 copies=0 crossing=0 loops=0, native-insns-v1 segmax=20 exittail=6 ccalls=1)
+typed-ir-backend: main native (frame 16 shallow=no saved=none values=1 regs=1 spills=0 slots=0 reloads=0 stores=0 copies=0 crossing=0 loops=0, native-insns-v1 segmax=20 exittail=6 ccalls=1)
+unit build/units/prelude-a5a8a1130833-g71-tirbe17mixedrt3pc5-c09612b07b5ec-qa64r15.s (cached)
+wrote build/plug-plughello-a64.s (27 supercombinators, linearity OK)
+module table: 2 remote-callable exports
+assumed external symbols (the fpr_g_ HAL/runtime contract):
+  
+mkimports: 76 imports (73 functions)
+wrote plughello.qa: manifest 105B + load 214B + image 131680B (memsz 131680) + 262 relocations + 76 imports = 135610B total
+plughello.qa built (relocatable) -- install: make -C ../qos disk-seed QAS=...
+[qos] qsys => qsys: boot #1; 2 apps [plugmini,plughello]; ping=pong from a .qa read off qosp.disk; hello=plughello: the second sub-slot; 21+21=42; note=3B; 18 paths; logs=4; image=QAR2
+[qos] qsys => qsys: boot #1; 2 apps [plugmini,plughello]; ping=pong from a .qa read off qosp.disk; hello=plughello: the second sub-slot; 21+21=42; note=3B; 18 paths; logs=4; image=QAR2
+[qos] qsys => qsys: boot #2; 2 apps [plugmini,plughello]; ping=pong from a .qa read off qosp.disk; hello=plughello: the second sub-slot; 21+21=42; note=6B; 18 paths; logs=3; image=QAR2
+[qos] qsys => qsys: boot #2; 2 apps [plugmini,plughello]; ping=pong from a .qa read off qosp.disk; hello=plughello: the second sub-slot; 21+21=42; note=6B; 18 paths; logs=3; image=QAR2
+qsys: two boots HOLDS
+== plugin imports: one plugin build under two shell builds, bound by name; a missing import refused by name ==
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1160:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1160 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1191:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1191 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2419:11: warning: explicitly assigning value of variable of type 'V *' (aka 'unsigned long *') to itself [-Wself-assign]
+ 2419 |     rargs = rargs; /* remaining logical args are 0..n-1: same base */
+      |     ~~~~~ ^ ~~~~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2802:13: warning: unused function 'rfields' [-Wunused-function]
+ 2802 | static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
+      |             ^~~~~~~
+4 warnings generated.
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:689:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  689 | #pragma GCC push_options
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:690:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  690 | #pragma GCC optimize("O3,tree-vectorize")
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:900:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  900 | #pragma GCC pop_options
+      |             ^
+3 warnings generated.
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1160:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1160 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1191:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1191 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2419:11: warning: explicitly assigning value of variable of type 'V *' (aka 'unsigned long *') to itself [-Wself-assign]
+ 2419 |     rargs = rargs; /* remaining logical args are 0..n-1: same base */
+      |     ~~~~~ ^ ~~~~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2802:13: warning: unused function 'rfields' [-Wunused-function]
+ 2802 | static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
+      |             ^~~~~~~
+4 warnings generated.
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:689:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  689 | #pragma GCC push_options
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:690:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  690 | #pragma GCC optimize("O3,tree-vectorize")
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:900:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  900 | #pragma GCC pop_options
+      |             ^
+3 warnings generated.
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1160:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1160 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1191:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1191 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2419:11: warning: explicitly assigning value of variable of type 'V *' (aka 'unsigned long *') to itself [-Wself-assign]
+ 2419 |     rargs = rargs; /* remaining logical args are 0..n-1: same base */
+      |     ~~~~~ ^ ~~~~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2802:13: warning: unused function 'rfields' [-Wunused-function]
+ 2802 | static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
+      |             ^~~~~~~
+4 warnings generated.
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:689:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  689 | #pragma GCC push_options
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:690:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  690 | #pragma GCC optimize("O3,tree-vectorize")
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:900:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  900 | #pragma GCC pop_options
+      |             ^
+3 warnings generated.
+[qos] qload => qload: 135608B .qa read off disk -> table #0; ping=pong from a .qa read off qosp.disk; 40+2=42
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1160:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1160 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1191:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1191 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2419:11: warning: explicitly assigning value of variable of type 'V *' (aka 'unsigned long *') to itself [-Wself-assign]
+ 2419 |     rargs = rargs; /* remaining logical args are 0..n-1: same base */
+      |     ~~~~~ ^ ~~~~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2802:13: warning: unused function 'rfields' [-Wunused-function]
+ 2802 | static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
+      |             ^~~~~~~
+4 warnings generated.
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:689:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  689 | #pragma GCC push_options
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:690:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  690 | #pragma GCC optimize("O3,tree-vectorize")
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:900:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  900 | #pragma GCC pop_options
+      |             ^
+3 warnings generated.
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1160:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1160 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1191:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1191 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2419:11: warning: explicitly assigning value of variable of type 'V *' (aka 'unsigned long *') to itself [-Wself-assign]
+ 2419 |     rargs = rargs; /* remaining logical args are 0..n-1: same base */
+      |     ~~~~~ ^ ~~~~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2802:13: warning: unused function 'rfields' [-Wunused-function]
+ 2802 | static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
+      |             ^~~~~~~
+4 warnings generated.
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:689:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  689 | #pragma GCC push_options
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:690:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  690 | #pragma GCC optimize("O3,tree-vectorize")
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:900:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  900 | #pragma GCC pop_options
+      |             ^
+3 warnings generated.
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1160:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1160 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1191:25: warning: missing field 'novec' initializer [-Wmissing-field-initializers]
+ 1191 |   dctx_t c = {sl->hp, sl};
+      |                         ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2419:11: warning: explicitly assigning value of variable of type 'V *' (aka 'unsigned long *') to itself [-Wself-assign]
+ 2419 |     rargs = rargs; /* remaining logical args are 0..n-1: same base */
+      |     ~~~~~ ^ ~~~~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2802:13: warning: unused function 'rfields' [-Wunused-function]
+ 2802 | static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
+      |             ^~~~~~~
+4 warnings generated.
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:689:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  689 | #pragma GCC push_options
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:690:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  690 | #pragma GCC optimize("O3,tree-vectorize")
+      |             ^
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/vec.c:900:13: warning: unknown pragma ignored [-Wunknown-pragmas]
+  900 | #pragma GCC pop_options
+      |             ^
+3 warnings generated.
+[qos] plugimports => plugimports: plugmini under a second shell: 40+2=42; plugneeds: the plugin needs fpr_g_Sys_x2enotInAnyApp_call1, which this app does not export; plugtamp: RELOC sha256 mismatch (corrupt archive) HOLDS
+== storage RPC: mixed traffic, refusal and death ==
+== failure honesty: publication, contracts and atomic writes ==
+failure honesty: commit, contracts, mode and symlinks HOLD
+== qsys failure paths: refused and ended services are answers; a refused write leaves the file as the disk has it (tests/qsysfail.fpr) ==
+qsysfail: HOLDS
+== loader: a load whose sys/live record fails is rolled back (tests/loaderfail.fpr) ==
+loaderfail: HOLDS
+== selfhost: on-QOS edit -> package (fprd plugin op) -> store -> hot-swap ==
+[qos] selfhost => selfhost: v1 one | v2 hot self-compiled Two | bad: refused | still v2: Three ver=self.v2
+== endpoint state: linear ownership, close retries, uncertainty and app memory ==
+endpoint state: duplicate refused
+endpoint state: discard refused
+endpoint state: discard-after-inspection refused
+endpoint state: reuse-after-inspection refused
+endpoint state: duplicate-generic refused
+endpoint state: discard-cleanup-owner refused
+appjobs: 1 worker(s) HOLDS
+appjobs: 4 worker(s) HOLDS
+appsession: 1 worker(s) HOLDS
+appsession: 4 worker(s) HOLDS
+appsessionmemory: 1 worker(s) HOLDS
+appsessionmemory: 4 worker(s) HOLDS
+filepolicy: 1 worker(s) HOLDS
+filepolicy: 4 worker(s) HOLDS
+apppolicy: 1 worker(s) HOLDS
+apppolicy: 4 worker(s) HOLDS
+== Editor policies: live run budgets, file grants and existing-process confinement ==
+editorpolicy: 1 worker(s) HOLDS
+editorpolicy: 4 worker(s) HOLDS
+Compiler daemon: /tmp/qos-fprd-tbpad3kb/compiler.sock (log /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/qos-editor-policy-6yh6z6r2/fprd.log)
+editorpolicyprocess: 1 worker(s) HOLDS
+editorpolicyprocess: 4 worker(s) HOLDS
+appsession: 1 worker(s) HOLDS
+appsession: 4 worker(s) HOLDS
+appsessionmemory: 1 worker(s) HOLDS
+appsessionmemory: 4 worker(s) HOLDS
+== Editor state: named types, live prompt transitions and lifecycle ==
+Editor state: integer-job refused
+Editor state: integer-prompt refused
+Editor state: job-as-prompt refused
+Editor state: integer-confirmation refused
+Editor state: prompt-as-edit refused
+Editor state: job-as-action refused
+editorstate: 1 worker(s) HOLDS
+editorstate: 4 worker(s) HOLDS
+appsession: 1 worker(s) HOLDS
+appsession: 4 worker(s) HOLDS
+editorpolicy: 1 worker(s) HOLDS
+editorpolicy: 4 worker(s) HOLDS
+appsessionmemory: 1 worker(s) HOLDS
+appsessionmemory: 4 worker(s) HOLDS
+== Editor and Terminal live preferences and restart persistence ==
+Preferences: integer-editor refused
+Preferences: integer-terminal refused
+Preferences: crossed-preferences refused
+Preferences: string-retention refused
+Preferences: boolean-retention refused
+preferences: 1 worker(s) HOLDS
+preferences: 4 worker(s) HOLDS
+preferencesrecovery: 1 worker(s) HOLDS
+preferencesrecovery: 4 worker(s) HOLDS
+preferencespersistent: 1 worker(s) HOLDS
+preferencespersistent: 4 worker(s) HOLDS
+editorstate: 1 worker(s) HOLDS
+editorstate: 4 worker(s) HOLDS
+appsession: 1 worker(s) HOLDS
+appsession: 4 worker(s) HOLDS
+appsessionmemory: 1 worker(s) HOLDS
+appsessionmemory: 4 worker(s) HOLDS
+preferencespersistent: 1 worker(s), second host boot HOLDS
+preferencespersistent: 4 worker(s), second host boot HOLDS
+== hosted timers: linear owners, checked durations, cancellation, stale ticks, backpressure and owner death ==
+hostedtimers: 1 worker(s) HOLDS
+hostedtimers: 4 worker(s) HOLDS
+appsession: 1 worker(s) HOLDS
+appsession: 4 worker(s) HOLDS
+hosted timers: 6 ownership refusals, 9 contract guards, enforced work/allocation bounds and lifecycle integration HOLDS
+== the Editor's Run: packaged by the host compiler, started as a process of its own, its console captured, its end seen; a compile holds no hart (tests/runprog.fpr, one hart) ==
+runprog: HOLDS
+== the Editor's buffer: edits, selections, find, indentation (tests/editbuf.fpr) ==
+editbuf: HOLDS
+== dtree: histogram decision tree, F64 columns, == GHC reference ==
+noisy-XOR tree == Haskell reference bit-for-bit (133 nodes, test 0.949, same root split)
+== F64 transcendentals: freestanding log/log2/exp/pow/sin/cos ==
+[fpr] main => FMATH HOLDS (16 checks)
+== Memory: big blocks come back (the bigfree LIFO) ==
+[qos] bigfree => BIGFREE HOLDS: 40 cycles of 100k-int vec build+free, arena 4MB -> 4MB (sum 200002000000)
+== big frames: 300-slot function, 12-bit imm rule retired ==
+2.4KB frame: qx64 + rv64 agree (chunked prologue, deep slots via t2)
+== linear PAPs: partials + lambdas may hold linear values ==
+linear PAP consumed-once holds; double-apply still refused by name
+== linearity: unannotated misuse refused (the closed audit hole) ==
+double-free in main and sigless double-use both refused by name
+== ergonomics: arm/lambda bindings + negative literals ==
+[fpr] main => ergo: pos8 neg-15 zero0 f5=36 neg=15 fneg=5 f32=-3
+== termination measures: declared, verified, unsafe retired ==
+[fpr] main => measure: 10 120 55 (zero unsafe markers)
+three shapes verified; non-decrease and missing floor both refused
+== std.uart: linear phase-typed handle over UART.qa (bare metal, IRQ tx+rx) ==
+[fpr] main => uartsvc: tx=28B flushed; rx=3B first=65
+== std.uart on QOS Portable (same protocol, synchronous backend) ==
+[qos] uartsvc => uartsvc: tx=28B flushed; rx=2B first=88
+== /services/uart: the Svc-funnel route to UART.qa (capability-gated) ==
+[qos] uartroute => uartroute: wrote 15B via /services/uart; rx="hi"
+== std.uart safety: write-before-arm and handle reuse REFUSED ==
+phase misuse = type error; handle aliasing = linearity error
+== Timer.qa: aux-hart CLINT bridge (native) + sleeper fallback (qosp) + /services/timer route ==
+hardware deadline on the irq hart; sleeper children on qosp; routed fire through the funnel
+== linearity: wildcard discard of a linear value REFUSED ==
+block-statement and tuple-pattern wildcard leaks both refused
+== development publication: real saves, checked packages, durable QOS reload ==
+Development publication: 1 hart(s), invalid/incompatible save refused, valid save adopted, owned watcher stopped PASS
+Development publication: 4 hart(s), invalid/incompatible save refused, valid save adopted, owned watcher stopped PASS
+Development daemon termination: host stops, daemon reaped, socket removed PASS
+== publication: immutable archives, storage failures, owned watchers and two boots ==
+QOS publication: 1 hart(s), two boots, failures, immutable retry, owned MVU watcher PASS
+QOS publication: 4 hart(s), two boots, failures, immutable retry, owned MVU watcher PASS
+== MVU reload: real plugin replacements and failure paths, one/four harts ==
+MVU real plugin reload: 1 hart(s), state/render/scoped gate/refusals/old closure PASS
+Checked precondition/work contract and specialized patch preserved: 1 hart(s) PASS
+MVU real plugin reload: 4 hart(s), state/render/scoped gate/refusals/old closure PASS
+Checked precondition/work contract and specialized patch preserved: 4 hart(s) PASS
+== first-class paths: @Shape literals + schema tier + refusals (/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/docs/PATHS.md) ==
+typed literals, compose, string sets/gets by tag, bad path Err'd at runtime + bad field refused at compile
+== pathnotes: value-space iteration on the Notes app (paths + port + livereload) ==
+schema sets + nested leaf + live cap retune; edit-fn hot-swapped v1->caps.v2 mid-run, impostor refused; inspector walked the model
+== sketch tier: FPR programs INTERPRETED (actors + MVU + paths under fpr sol) ==
+paths byte-identical, std.MVU engine (render worker + subs + statics cache) on green actors, std.fpr Struct via language-matched module resolution
+== QAR2 integrity: a flipped byte in IMAGE or in RELOC refused before copy ==
+tamper refused: IMAGE and RELOC sha256 mismatch (named, pre-copy)
+== Log plane: host lines land in the app's /logs/host ring (ABI v4) ==
+[qos] hostlog => hostlog: HOST RING POPULATED (1 lines)
+== Log plane: panic last words persist (sys/panic kv record) ==
+panic record persisted: sys/panic + last words on the kv log
+== Log plane: echo rate limit (rings never limited) ==
+storm: 32/100 echoed, suppression named, ring holds all 100
+== Grow attribution: the counted gateway names its callers ==
+[qos] growlog => growlog: 2 events, newest [#2 slab a0 want 32K got 63K]
+== QOS-aarch64: x28 hart discipline (no TLS, Darwin-proof) ==
+skipped (needs qemu-aarch64 + aarch64-linux-gnu-gcc)
+== program-carried meshes: the CoScad tank (STL -> mkmesh -> glMesh) drawn by the walker ==
+skipped (needs xvfb-run + libglfw)
+== the walker's text pass: the SDF face, discs and corners (tests/gltext.fpr) ==
+skipped (needs xvfb-run + libglfw)
+== the 2D layer's box treatments: glass, rings, corners, a menu over a layer (tests/gl2d.fpr) ==
+skipped (needs xvfb-run + libglfw)
+== Terra II: the card game on the GLES walker, a scripted game under Xvfb (and the MP3 music channel) ==
+skipped (needs xvfb-run + libglfw)
+== equality is DEEP: tuples, lists, records, constructors compared by content (/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/eq.fpr, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c veq) ==
+41 assertions hold; (1,2) == (3,4) is False again
+== dungeon rules: a turn is a pure function, so a whole game is a fold (tests/dungeon.fpr, docs/2026-09-08-DUNGEON.md) ==
+34 assertions over the board, the stances, the goal tree and the turn -- no GPU, no window, no frame
+== the dungeon: the Java crawler as an MVU game on the GLES walker, played to a win under Xvfb ==
+skipped (needs xvfb-run + libglfw)
+== the tree as a toolchain: qos.py install to a prefix, then qos/fpr/sol from an empty directory (/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/docs/2026-09-10-INSTALL.md) ==
+install-check: ALL LEGS PASS (prefix /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/tmp.18Y29vnK0Y/prefix: bin/{fpr,qos,sol}; a new project ran, tests/eq.fpr ran by path, sol used the installed lib, fpr compiled with its own prelude, a bundle ran;        2 .qa in the project's .qos/, zero writes under libexec)
+== Desktop GL: GLFW window + synthetic-evdev keys (Xvfb) ==
+skipped (needs xvfb-run + xdotool + libglfw)
+== QOSNative kernel ==
+/Users/jasonqin/Documents/GitHub/qos-typed-ir-pin/hal/virt/net.c:41:12: warning: 'htonl32' defined but not used [-Wunused-function]
+   41 | static u32 htonl32(u32 v) {
+      |            ^~~~~~~
+/Users/jasonqin/Documents/GitHub/qos-typed-ir-pin/hal/virt/net.c:40:12: warning: 'htons16' defined but not used [-Wunused-function]
+   40 | static u16 htons16(u16 v) { return (u16)((v << 8) | (v >> 8)); }
+      |            ^~~~~~~
+/Users/jasonqin/Documents/GitHub/qos-typed-ir-pin/hal/virt/net.c:39:12: warning: 'neq' defined but not used [-Wunused-function]
+   39 | static int neq(const u8 *a, const u8 *b, u32 n) { while (n--) if (*a++ != *b++) return 0; return 1; }
+      |            ^~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c: In function 'msg_copy_held_in':
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1160:3: warning: missing initializer for field 'novec' of 'dctx_t' [-Wmissing-field-initializers]
+ 1160 |   dctx_t c = {sl->hp, sl};
+      |   ^~~~~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:753:15: note: 'novec' declared here
+  753 |   const char *novec; /* set: a Vector in the graph is refused by this name
+      |               ^~~~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c: In function 'fpr_entry_copy_try':
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:1191:3: warning: missing initializer for field 'novec' of 'dctx_t' [-Wmissing-field-initializers]
+ 1191 |   dctx_t c = {sl->hp, sl};
+      |   ^~~~~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:753:15: note: 'novec' declared here
+  753 |   const char *novec; /* set: a Vector in the graph is refused by this name
+      |               ^~~~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c: At top level:
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/runtime.c:2802:13: warning: 'rfields' defined but not used [-Wunused-function]
+ 2802 | static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
+      |             ^~~~~~~
+In function 'rows',
+    inlined from 'count_rows' at /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/mod.c:72:22,
+    inlined from 'tab_rows' at /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/mod.c:133:46:
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/mod.c:66:33: warning: array subscript 1 is outside array bounds of 'const uw[1]' {aka 'const long unsigned int[1]'} [-Warray-bounds=]
+   66 |   if (tab[0] != MOD_MAGIC || tab[1] != MOD_SCHEMA)
+      |                              ~~~^~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/mod.c: In function 'tab_rows':
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/mod.c:26:32: note: at offset 8 into object 'fpr_modtab' of size 8
+   26 | __attribute__((weak)) const uw fpr_modtab[1] = {0};
+      |                                ^~~~~~~~~~
+In function 'rows',
+    inlined from 'tab_rows' at /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/mod.c:135:12:
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/mod.c:66:33: warning: array subscript 1 is outside array bounds of 'const uw[1]' {aka 'const long unsigned int[1]'} [-Warray-bounds=]
+   66 |   if (tab[0] != MOD_MAGIC || tab[1] != MOD_SCHEMA)
+      |                              ~~~^~~
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/mod.c: In function 'tab_rows':
+/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/runtime/mod.c:26:32: note: at offset 8 into object 'fpr_modtab' of size 8
+   26 | __attribute__((weak)) const uw fpr_modtab[1] = {0};
+      |                                ^~~~~~~~~~
+/opt/homebrew/Cellar/riscv-gnu-toolchain/main/lib/gcc/riscv64-unknown-elf/14.2.0/../../../../riscv64-unknown-elf/bin/ld: warning: qos-native.elf has a LOAD segment with RWX permissions
+[?1049h[?25l[2J[1;1H[35;49m+------------------------------------------------------------------------------+[2;1H|  QOS   app launcher  [33;49m      apps 0   page 1/0                     [32;49m  00:00     [35;49m|[3;1H|                                                                              |[4;1H|[39;49m                                                                              [35;49m|[5;1H|[39;49m                                                                              [35;49m|[6;1H|[39;49m                                                                              [35;49m|[7;1H|[39;49m                                                                              [35;49m|[8;1H|[39;49m                                                                              [35;49m|[9;1H|[39;49m                                                                              [35;49m|[10;1H|[39;49m                                                                              [35;49m|[11;1H|[39;49m                                                                              [35;49m|[12;1H|[39;49m                                                                              [35;49m|[13;1H|[39;49m                                                                              [35;49m|[14;1H|[39;49m                                                                              [35;49m|[15;1H|[39;49m                                                                              [35;49m|[16;1H|[39;49m                                                                              [35;49m|[17;1H|[39;49m                                                                              [35;49m|[18;1H|[39;49m                                                                              [35;49m|[19;1H|[39;49m                                                                              [35;49m|[20;1H|[39;49m                                                                              [35;49m|[21;1H|[39;49m                                                                              [35;49m|[22;1H|                                                                              |[23;1H|[30;46m  j/k move   enter launch   1-9 direct   n/p page   q quit                    [35;49m|[24;1H+------------------------------------------------------------------------------+[2;74H[32;49m1[2;74H[32;49m2[2;74H[32;49m3[2;74H[32;49m4[2;74H[32;49m5[2;74H[32;49m6[2;74H[32;49m7[2;74H[32;49m8[2;74H[32;49m9[2;73H[32;49m10[2;74H[32;49m1[2;74H[32;49m2[2;74H[32;49m3
+== QAR2 process load: build, seed, launch, exit ==
+process exited: qar2 process ran
+== Transparent ACBs: process spawn/steal across harts, pid-tagged ==
+process exited: tpar: ok pid=1 pidsum=8 harts=2 sum=4000004000000
+== typed vectors: type-changing output layouts on Portable and Native ==
+typed: 2 7 2.5 ok 2.25 3 True
+typed: 2 7 2.5 ok 2.25 3 True
+== native process images: buddy blocks, relocated; two at once, each held until its process has ended, memory back ==
+[fpr] main => nativeimage: concurrent=both-intact linger=held-then-freed images=0 memory=returned HOLDS
+== a loaded process reaches the namespace: granted urls open, an ungranted one is refused, its own storage stream round-trips (tests/epproc.fpr) ==
+process exited: epproc: display=ok clock=ok ungranted=not granted: /pins/1 (read) kv=ok
+== Numeric: ONE surface number, VNum/JD underneath, 3 tiers agree ==
+float literal is a Numeric; jit==jit(hand alias)==interp: num3: 2.5 2.985017500000037e8
+== ONE grammar, two profiles (both.sol) ==
+both: sumTo(10)=55 double=42 k=neg
+both: sumTo(10)=55 double=42 k=neg
+== Memory: linear frames (Arc-flat) ==
+ARC FLAT: 199 frames, zero copies -- the sendLinear relay holds
+== send triad: sendLinear relay + sendArc share + refusals ==
+moved frame ARC-flat over 200 zero-copy bounces; shared tuple balanced across three holders; reuse-after-move refused by name
+== Memory: autodrop (the drop law, compiler-discharged) ==
+AUTODROP HOLDS: 600 undropped-by-hand round trips (destructure + case + transitive last-use shapes), zero Arc growth
+== Memory: ARC.qa audit ==
+ARC.qa: clean path flat, leak detected -- policy is service-owned
+== fpr commit / store resolution ==
+use: m#52286372… resolved from .fpr store (committed version)
+== THE FOLD, COMPLETE: one parser, VM as a target ==
+examples green under the ONE parser: 46/47 (~2min leg)
+bytecode target emits (fpr --target=bytecode)
+== Vec dispatch lattice: GPU/JIT/interp agree ==
+GPU==JIT checksum: dispatch: checksum = 82293942560000
+== Sol ML pipeline: range fill, GPU uniform captures, record-SoA JIT folds, 3 tiers identical ==
+GPU captures: skipped (no GPU dispatch; fallback compared)
+quadratic fit converged; record duals; requested-GPU/fallback == jit == interp: mlpipe: pred-checksum 384000.12885726243
+== Sol NN: feed-forward + backprop over Matrix-on-Vec ==
+MLP learned x1*x2 (22x under linear-best); relu batch on the Vec JIT; nested-Vec probe ok
+== Sol plot: SVG/SMIL backend (charts + animations as text) ==
+5 charts well-formed; 5 SMIL animate elements across wave+orbit
+== auto-tabling: gated, correct, braked ==
+tabling: fib 27 = 196418 / again = 196418 / cheap = 6
+[table] fib: 26 hits / 28 misses / 0 evict (28 cached)
+== Mat4*Vec4: operator -> axpb column loops, EXECUTED ==
+MATVEC AGREES
+matvec: spec loop EXECUTED (in-place, heap delta 0)
+record SoA columns + in-place spec loop: emitted AND run
+== Vec.filter: eager COMPACTION in place (the decision, tested) ==
+FILTER COMPACTS
+== Vec fusion: adjacent maps -> ONE column loop ==
+FUSION HOLDS
+composites specialized in asm
+== Vec fixpoint + write-back fold: 3-chain collapses, fold-of-map fuses ==
+[fpr] main => vecfuse2: OK
+round-2 composite and the wfold loop both in the asm
+== Vec record folds: named fns dualize; declines stay NAMED; x64 the same (its tier is on since fprisc 28dcacc) ==
+[fpr] main => recfold: OK 1015050 5050 15150
+sxy dualized+executed; record-acc decline named; x64 dualizes and names the same
+== RVV: --rvv links (COMDAT enable shim) and runs under -cpu v=true ==
+[fpr] main => vecfuse2: OK
+vector loops emitted, link-once shim, vector cpu executes them
+== Vec edges: SoA<->AoS, lenses, chains, wide records, empty, SIMD prims ==
+18 interaction probes hold (18 ok)
+== operator sugar: + / - on Str and List (prelude-backed) ==
+OPS AGREE x7: concat laws hold ((a+b)-b == a; non-suffix - is identity)
+== std/ui on std/view: components over Elem, delta vs reshape ==
+ui: statics=3 dynamics=2
+ui: bump same-statics=True delta={"0":"1"}
+ui: save same-statics=True delta={"1":"toast 1 -- saved"}
+ui: theme same-statics=False (reshape -> full re-render)
+== typed holes: ?name refuses w/ type, ?? runs-then-traps ==
+holes: named=compile-refusal-with-type, ??=pipeline-runs-then-traps
+== txn: the SCRIPT is the transaction (abort is total) ==
+abort total: phase-1 write unwritten by phase-2 panic
+== sol txn hygiene 2: run-overlap refused, binary honest, shq fail-open files, actor warning ==
+read-before-run refused with the child run ONCE; binary reads honest (exists yes, read no); files commit past a failed shq with the receipt saying so; live actors named at commit
+== operators on user types: + - * resolve by the operand type ==
+a user type with an operator struct gets + - *; Int/String/List sites unchanged; a type WITHOUT one is still refused by name
+== sol Ok/Err tier + txn hygiene: Try.*, |>?, honest receipts ==
+combinators (mapErr/context/orElse/collect/andThen) hold with a colliding global in scope; a > statement error anchors to file:line:col with no stamp leak
+== Sol structured processes + typed Git wrapper ==
+sol structured process + git wrappers: OK
+== Sol general-purpose scripts ==
+sol general-purpose scripts: OK
+== Sol purity + filesystem + lock + retry-actor safety ==
+sol purity + filesystem + locks + retry actors: OK
+== Sol transactional properties: panic rollback, retry-once, race serialization, fenced commands; railway/builtin/proc specs ==
+sol transactional properties: panic rollback, retry-once, race serialization, fenced commands, failed removals, torn-replay fencing, per-run journals, transactional log: OK
+== operators are the default: % ^ on numbers, + - on strings/lists, + - * on Vec/Matrix (dot, matmul, matvec), user structs; same on the AOT profile ==
+algebra spec green; AOT: 7 % 3 = 1, 2 ^ 10 = 1024, 2 ^ 3 ^ 2 = 512, string and list +
+== Sol JSON + CSV: parse, reshape, render, both directions, round trips are the identity ==
+jsoncsv spec green; python json/csv readers agree with the files Sol wrote
+== native JIT tier (hand-rolled x86-64/A64, no LLVM) == interpreter: f64 + i64 lattice ==
+jit==interp (f64) and jit==interp (i64): dispatch: checksum = 82293942560000 / handint: checksum = 157951101212
+== native JIT: A64 backend executes every dumped kernel under qemu-user, bit-identical to x86-64 ==
+hjit a64 check: skipped (needs aarch64-linux-gnu-gcc + qemu-aarch64)
+== sol as a text tool: grep/sed/awk/sort/uniq/regex/pipe/sh in Sol over one sample (/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/sol/scripts/text, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/docs/SOL-TEXT.md) ==
+grep -n, sed p/s/d, awk sum/count, sort|uniq -c, grep -oE (a regex in Sol), a pipe filter and ls -l parsed: all as Sol scripts
+== HostedBytecode (sol) ==
+std via sol: total=31 avg=3 doubled=[6, 8, 10, 18, 12]
+ALL LEGS GREEN

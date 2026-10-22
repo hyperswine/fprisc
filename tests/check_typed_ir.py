@@ -4,17 +4,19 @@ lowering checks (tests/TypedIR.hs), then the real pipeline: the scalar
 fixture compiled for each 64-bit target with FPR_TYPED_IR reports which
 functions lower and why others decline, the dumps are the same on every target
 and between runs, and the reference evaluator's answers and traps equal
-the legacy binary's for the same calls. Tick counts use structural
+the host runtime's for the same calls. Tick counts use structural
 expectations, not measured native counters. The emitted
 assembly is byte-identical with the report on and off: the report
 changes nothing."""
-import os, re, shutil, subprocess, sys, tempfile
+import os, platform, re, shutil, subprocess, sys, tempfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ENV = {**os.environ, 'FPR_HOME': str(ROOT), 'FPR_PATH': str(ROOT)}
 ENV.pop('FPR_FOREIGN', None)
 ENV.pop('FPR_TYPED_IR', None)
-ENV['FPR_TYPED_IR_BACKEND'] = 'legacy' # the differential's reference is the legacy generator
+# A64's reference is its typed runtime, checked against the IR evaluator
+# and independent truth tables. Other hosts retain the legacy differential.
+ENV['FPR_TYPED_IR_BACKEND'] = 'mixed' if platform.machine() in ('arm64','aarch64') else 'legacy'
 # cabal exec needs libarchive's pkg-config metadata as the Makefile supplies it
 for keg in ('/opt/homebrew/opt/libarchive/lib/pkgconfig', '/usr/local/opt/libarchive/lib/pkgconfig'):
     if Path(keg).is_dir():
@@ -22,6 +24,8 @@ for keg in ('/opt/homebrew/opt/libarchive/lib/pkgconfig', '/usr/local/opt/libarc
         break
 
 def run(args, env=ENV, expected=0, timeout=600):
+    if '--target=a64' in args:
+        env = dict(env, FPR_TYPED_IR_BACKEND='mixed')
     p = subprocess.run([str(a) for a in args], cwd=ROOT, env=env, capture_output=True, text=True, timeout=timeout)
     assert p.returncode == expected, (args, p.returncode, p.stdout[-3000:], p.stderr[-3000:])
     return p.stdout + p.stderr
@@ -37,7 +41,7 @@ CALLS = [('fib', [20]), ('sum', [1000, 0]), ('addovf', [4611686018427387903, 1])
 mode = 'dump ' + ' '.join('eval:' + fn + ''.join(':' + str(a) for a in args) for fn, args in CALLS)
 with tempfile.TemporaryDirectory(prefix='fpr-typed-ir-') as d:
     tmp = Path(d)
-    # the legacy answers
+    # Host reference answers; A64 no longer has a legacy binary.
     exe = tmp / 'scalar'
     run(['./fpr', 'build', FIXTURE, '-o', exe])
     legacy = {}
@@ -97,7 +101,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-ir-') as d:
         # line above was computed on the simplified program and checked
         # against the lowered one by the report itself
         assert any(re.match(r'typed-ir: sum lowered \(\d+ blocks, \d+ instructions, \d+ removed by simplification\)', l) for l in lines), [l for l in lines if ' sum lowered' in l]
-        print(f'{target}: {coverage[10:]}; main lowers with aggregate/string coverage; {len(CALLS)} evaluations equal the legacy binary')
+        print(f'{target}: {coverage[10:]}; main lowers with aggregate/string coverage; {len(CALLS)} evaluations equal the host reference')
     assert dumps['a64'] == dumps['x64'] == dumps['rv64'], 'the dump differs between targets'
     again = run(['./fpr', '--target=a64', f'--prelude={ROOT}/core/prelude.fpr', FIXTURE, tmp / 'again.s'], {**ENV, 'FPR_TYPED_IR': 'dump'})
     assert '\n'.join(l for l in again.splitlines() if l.startswith('typed-ir: | ')) == dumps['a64'], 'the dump differs between runs'

@@ -30,7 +30,6 @@ def measure(name, keep_cache=None):
                'XDG_CACHE_HOME': keep_cache or str(Path(d) / 'cache')}
         for k in ('FPR_FOREIGN', 'FPR_TYPED_IR_BACKEND', 'FPR_TYPED_IR_STRICT'):
             env.pop(k, None)
-        env['FPR_TYPED_IR_BACKEND'] = 'legacy' # the report is over the legacy emission, as before the default changed
         p = subprocess.run([str(ROOT / 'fpr'), 'build', str(BENCH / f'{name}.fpr'), '-o', str(Path(d) / name), '-v'],
                            cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
         if p.returncode != 0:

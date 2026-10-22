@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Strict native aggregate/string coverage against independent and legacy results."""
 import os
+import platform
 from pathlib import Path
 import re
 import subprocess
@@ -24,7 +25,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix='fpr-aggregates-') as d:
         root = Path(d)
         legacy = {}
-        for mode in ('legacy', 'typed', 'entry'):
+        modes = ('typed', 'entry') if platform.machine() in ('arm64','aarch64') else ('legacy', 'typed', 'entry')
+        for mode in modes:
             env = dict(ENV, XDG_CACHE_HOME=str(root / mode))
             if mode != 'legacy':
                 env.update(FPR_TYPED_IR_BACKEND='mixed', FPR_TYPED_IR_STRICT=NAMES)
@@ -47,10 +49,10 @@ def main():
                 for index in (-1, 4):
                     p = run([exe, 'bad', index], dict(env, FPR_HARTS=harts))
                     msg = f'charAt: index out of range ({index}, length 4)'
-                    assert msg in p.stdout + p.stderr, (mode, index, p.stdout, p.stderr)
+                    assert p.returncode == 1 and msg in p.stdout + p.stderr, (mode, index, p.stdout, p.stderr)
                     if mode == 'legacy':
                         legacy[index] = (p.returncode, p.stdout, p.stderr)
-                    else:
+                    elif index in legacy:
                         # Runtime logging may include actor/hart identities; the trap text is exact.
                         assert p.returncode == legacy[index][0]
             print(f'{mode}: nested constructors, records, live references across 2000 allocations/calls, byte strings, range traps, one/four harts PASS', flush=True)

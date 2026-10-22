@@ -19,6 +19,10 @@ the x86-64 QOS apps.
 The tables below describe the inventory at `8a5de33`; the linked record gives
 the current support boundary and the user-approved retirement acceptance.
 
+Update: [A64 has now been retired](2026-10-22-A64-RETIREMENT.md), following
+a fresh full default Base and QOS sweep. The inventory below is historical;
+`X64.hs` and the RISC-V generator retain their remaining consumers.
+
 "The legacy path" is two things with very different futures.
 
 - **The translators**, `compiler/A64.hs` and `compiler/X64.hs` (about 1,040

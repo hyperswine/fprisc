@@ -2,6 +2,7 @@
 """Typed column CFGs: real hosted execution and independent x64/RV oracles."""
 import argparse
 import os
+import platform
 from pathlib import Path
 import re
 import shutil
@@ -68,16 +69,18 @@ def main():
         # typed root names both kernels and no legacy loop
         legacy=dict(env,FPR_TYPED_IR_BACKEND='legacy')
         outputs=[]
-        for mode in (legacy,dict(env,FPR_TYPED_IR_STRICT='all')):
+        modes = [dict(env,FPR_TYPED_IR_STRICT='all')]
+        if platform.machine() not in ('arm64','aarch64'): modes.insert(0,legacy)
+        for mode in modes:
             run([ROOT/'fpr','build',FIX/'mapas_kernels.fpr','-o',exe],mode)
             outputs.append(run([exe],dict(mode,FPR_HARTS='4')))
-        assert outputs[0]==outputs[1] and outputs[0].split()==['45','97','90'],outputs
+        assert all(out.split()==['45','97','90'] for out in outputs),outputs
         asm=tmp/'mapas.s'
         run([ROOT/'fpr','compile','--target=a64',FIX/'mapas_kernels.fpr',asm],dict(env,FPR_TYPED_IR_STRICT='all'))
         text=asm.read_text()
         assert '$vkernel:fpr_vspec_mapAs' in text and '$vkernel:fpr_vspec_wfold' in text,text[-3000:]
         assert 'direct scalar kernel' not in text and 'write-back fold:' not in text
-        print('typed mapAs and write-back fold: hosted agreement with legacy, typed kernels named PASS',flush=True)
+        print('typed mapAs and write-back fold: independent hosted answers, typed kernels named PASS',flush=True)
         # NEON: the two-lane body on A64, scalar tails; its hosted IEEE reference is check_vector_kinds
         for fixture,lanes in (('vecsimd.fpr',r'fmul v\d+\.2d'),('vecsimd_int.fpr',r'add v\d+\.2d')):
             run([ROOT/'fpr','compile','--target=a64',ROOT/'tests/base'/fixture,asm],dict(env,FPR_TYPED_IR_STRICT='all'))

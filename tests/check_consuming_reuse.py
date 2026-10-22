@@ -48,7 +48,7 @@ def main():
                         return p.returncode,p.stdout,p.stderr
                     ledger=check_execution(run,off=='0')
                     print(f'consuming reuse off={off} no-inline={inline} no-registers={regs}: {ledger["alloc_requests"]} allocations PASS',flush=True)
-        for target in ('a64','rv64','x64','rv32'):
+        for target in ('rv64','x64','rv32'):
             for off in ('0','1'):
                 asm=tmp/'probe.s'
                 # the worker marker is legacy text: this compile names the legacy backend
@@ -81,5 +81,5 @@ main = _=ok (N.attach "MODULE"); swap=R.bindAt 0 "swap"; entry=R.bindAt 0 "entry
         for flags in ([],['--arc']):
             command([ROOT/'fpr','compile',*flags,fallback,tmp/'fallback.s'],enabled)
             assert '# private consuming workers:' not in (tmp/'fallback.s').read_text()
-        print('Consuming workers: aliases, branch joins, retained originals, shared list tails, ordered failures, allocation counts, 1/4 harts and four-target ABI gates PASS')
+        print('Consuming workers: aliases, branch joins, retained originals, shared list tails, ordered failures, allocation counts, 1/4 harts and RV64/x64/RV32 legacy ABI gates PASS')
 if __name__=='__main__':main()

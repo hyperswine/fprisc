@@ -13,7 +13,7 @@ import Codegen.Target.Common (Tune (..), dataSyntax)
 import Codegen (Target, codegenRev, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtSelfLoops, tgtRetainedRegisters, tgtCostedRegisters, tgtCompactFrames, tgtTypedIr, tgtPolicy, tgtNative, normArc)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth)
 import Codegen.Target.X64 (x64SelectionRev)
-import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64SelectionRev)
+import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64InterfaceRev, a64SelectionRev)
 import Data.Char (isAlphaNum, isAscii, ord)
 import Numeric (showHex)
 import Data.Bits (xor)
@@ -22,7 +22,6 @@ import qualified Data.ByteString as BS
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TEE
-import A64 (deTlsQosAppA64, lowerA64WithOptions, a64Rev)
 import X64 (lowerX64, deTlsQosApp, x64Rev)
 import RV64 (lowerPosixRV64, lowerQosRV64, rv64HostRev)
 import Control.Monad (forM, forM_, unless, when)
@@ -66,7 +65,7 @@ data Opts = Opts
     oLib :: Bool, -- a LIBRARY unit: the file is compiled as an imported module (names qualified), no main, weak shared stubs
     oExports :: [(String, String)], -- C-callable trampolines: (fpr function, C symbol)
     oHardFloat :: Bool, -- exports follow the lp64d ABI (floats in fa0..); default lp64, soft
-    oA64 :: Bool, -- lower the rv64 emission (the shared RISC IR) to AArch64
+    oA64 :: Bool, -- select the direct typed AArch64 backend
     oA64Mac :: Bool, -- AArch64 with Mach-O syntax (macOS): _sym, @PAGE, TLV
     oX64 :: Bool, -- lower it to x86-64 (SysV) instead
     oQosApp :: Bool, -- qx64: QOS-x86_64 app image (plain-global cells, no TLS)
@@ -143,8 +142,8 @@ parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothin
     step o "--sol" = o {oSol = True}
     step o "--target=rv32" = o {oTarget = rv32, oTargetFlag = True}
     step o "--target=rv64" = o {oTarget = rv64, oTargetFlag = True}
-    step o "--target=a64" = o {oTarget = rv64, oA64 = True, oTargetFlag = True} -- rv64 emission is the IR
-    step o "--target=a64mac" = o {oTarget = rv64, oA64 = True, oA64Mac = True, oTargetFlag = True} -- same lowering, Mach-O syntax
+    step o "--target=a64" = o {oTarget = rv64, oA64 = True, oTargetFlag = True} -- direct typed ELF output
+    step o "--target=a64mac" = o {oTarget = rv64, oA64 = True, oA64Mac = True, oTargetFlag = True} -- direct typed Mach-O output
     step o "--target=x64" = o {oTarget = rv64, oX64 = True, oTargetFlag = True} -- likewise
     step o "--target=qx64" = o {oTarget = rv64, oX64 = True, oQosApp = True, oTargetFlag = True} -- QOS-x86_64
     step o "--target=qrv64" = o {oTarget = rv64, oA64 = False, oA64Mac = False, oX64 = False, oQosApp = True, oTargetFlag = True} -- Linux QOS-RISC-V
@@ -422,7 +421,7 @@ compileWithInterface accepted = do
   -- FPR_TYPED_IR_BACKEND: the typed-IR native backend is the default on the
   -- targets that support it (docs/2026-10-22-TYPED-IR-DEFAULT.md): unset or
   -- `mixed` selects it per function, `1` whole units, and `legacy` (also `0`
-  -- or `off`) is the rollback to the legacy generator and its translators.
+  -- or `off`) is the rollback on x86-64 and RISC-V. AArch64 is typed-only.
   -- FPR_TYPED_IR_STRICT makes a fallback an error: `all`, or a
   -- comma-separated list of function names.
   envBackendRaw <- lookupEnv "FPR_TYPED_IR_BACKEND"
@@ -452,8 +451,6 @@ compileWithInterface accepted = do
   -- on unless 0: measured a pure win (docs/2026-10-22-TYPED-IR-FIB.md)
   envTirLinkPairs <- (/= Just "0") <$> lookupEnv "FPR_TYPED_IR_LINK_PAIRS"
   envRetainedRegisters <- (== Just "1") <$> lookupEnv "FPR_RETAINED_REGISTERS"
-  envA64Pairs <- (== Just "1") <$> lookupEnv "FPR_A64_FRAME_PAIRS"
-  envA64Guards <- (== Just "1") <$> lookupEnv "FPR_A64_FIT_GUARDS"
   envNoRegisters <- (== Just "1") <$> lookupEnv "FPR_NO_REGISTERS"
   envNoRv32Fast <- (== Just "1") <$> lookupEnv "FPR_NO_RV32_FAST"
   envNoIndexed <- (== Just "1") <$> lookupEnv "FPR_NO_INDEXED_MEMORY"
@@ -475,6 +472,8 @@ compileWithInterface accepted = do
   let system = fromMaybe "bare-metal" (oSystem opts0)
       espHost = oHost opts0 == Just "esp-idf" -- the posix system on an ESP-IDF board (docs/2026-09-23-ESP-IDF.md)
       opts = opts0 {oBuiltin = profile == "builtin", oSol = oSol opts0 || profile == "sol", oNoInline = oNoInline opts0 || envNoInline}
+  when (oA64 opts && envBackend == Nothing && not checkOnly && not (oStdCheck opts) && not (oSol opts)) $
+    refuse "the AArch64 legacy backend has been retired; unset FPR_TYPED_IR_BACKEND or select mixed or 1"
   -- the posix system's hosts: this machine (unix, the default) and esp-idf
   case oHost opts0 of
     Just h | h /= "esp-idf" -> refuse ("--host=" ++ h ++ ": the posix system's hosts are unix (this machine, the default) and esp-idf")
@@ -990,8 +989,9 @@ compileWithInterface accepted = do
                               else Nothing,
                 nmSelfLoops = envTirLoops, nmForwardParams = envTirForward,
                 nmTune = Tune envTirEntryArgs envTirWrap envTirLinkPairs, nmSplitEntry = envTirSplit }
-          -- strict mode: a named function (or any) that fell back is an error
-          strictCheck what fallbacks = case envStrict of
+          -- A64 has no translator: even a named strict subset cannot permit
+          -- another function or kernel to fall back to shared-RISC text.
+          strictCheck what fallbacks = case if a64 then StrictAll else envStrict of
             StrictOff -> pure ()
             StrictAll | null fallbacks -> pure ()
                       | otherwise -> strictFail what fallbacks
@@ -1002,12 +1002,12 @@ compileWithInterface accepted = do
             hPutStrLn stderr ("typed-ir strict: " ++ what ++ ": " ++ show (length fallbacks) ++ " function(s) did not take the native backend:")
             mapM_ (\(n, r) -> hPutStrLn stderr ("  " ++ n ++ ": " ++ r)) fallbacks
             exitFailure
-          -- hosted posix AArch64 reads its hart from x28 too (runtime/fpr.h):
-          -- a thread-local cannot follow an actor that migrates between harts
+          directCheck what emission = do
+            strictCheck what (emFallbacks emission)
+            case (a64, emDirectData emission) of
+              (True, Nothing) -> refuse ("AArch64 " ++ what ++ " requires legacy translation, which has been retired")
+              _ -> pure ()
           lower0 | espHost = espTls
-                | a64 && qapp = deTlsQosAppA64 a64mac qsingle . lowerA64WithOptions envA64Guards envA64Pairs a64mac
-                | a64 && oBase opts = deTlsQosAppA64 a64mac False . lowerA64WithOptions envA64Guards envA64Pairs a64mac
-                | a64 = lowerA64WithOptions envA64Guards envA64Pairs a64mac
                 | x64 && qapp = deTlsQosApp . lowerX64
                 | x64 = lowerX64
                 | qapp = lowerQosRV64
@@ -1024,25 +1024,27 @@ compileWithInterface accepted = do
           -- every distinct lowering its own cache tag: a QOS app on Apple Silicon
           -- and a hosted posix program once shared "a64macr" while generating
           -- different code, and hosted AArch64 now reads its hart from x28
-          tname0 = if qsingle then "qa64singler" ++ show a64Rev
-                  else if a64mac && qapp then "qa64macr" ++ show a64Rev
-                  else if a64mac then (if oPlugin opts && oBase opts then "module-" else "") ++ "a64macx28r" ++ show a64Rev
-                  else if a64 && qapp then "qa64r" ++ show a64Rev
-                  else if a64 then "a64x28r" ++ show a64Rev
+          tname0 = if qsingle then "qa64singler" ++ show a64InterfaceRev
+                  else if a64mac && qapp then "qa64macr" ++ show a64InterfaceRev
+                  else if a64mac then (if oPlugin opts && oBase opts then "module-" else "") ++ "a64macx28r" ++ show a64InterfaceRev
+                  else if a64 && qapp then "qa64r" ++ show a64InterfaceRev
+                  else if a64 then "a64x28r" ++ show a64InterfaceRev
                   else if x64 && qapp then "qx64r" ++ show x64Rev
                   else if x64 then "x64r" ++ show x64Rev
                   else if espHost then "rv32-idftls1"
                   else if qapp then "qrv64r" ++ show rv64HostRev
                   else if oBase opts then "rv64posixr" ++ show rv64HostRev
                   else tgtName tgt
-          tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0 ++ (if a64 && envA64Guards then "-fitguards" else "") ++ (if a64 && envA64Pairs then "-framepairs" else "")
+          tname = (if oBase opts && oPlugin opts then "posix-module-" else "") ++ tname0
           -- A root can constrain a global foreign primitive used inside an
           -- unchanged imported unit. Cache that contract context as well as
           -- source/prelude/shape identity so another root cannot reuse raw calls.
           contractHash = hashAST [t | t@(TSig n _ _) <- tops, M.member n preTab]
+          -- A separate native-only cache policy prevents old fallback units
+          -- bypassing directCheck, while tname retains module ABI identity.
           backendTag = case envBackend of
             Nothing -> ""
-            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev) ++ (if g == PerFunction then "mixed" else "") ++ (if envTirLoops then "" else "-noloops") ++ (if envTirShallow then "-shallow" else "") ++ (if envTirForward then "-forward" else "") ++ (if envTirEntryArgs then "-entryargs" else "") ++ (if envTirSplit then "-split" else "") ++ (if envTirWrap then "-wrap" else "") ++ (if envTirLinkPairs then "" else "-nolinkpairs") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
+            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev) ++ (if a64 then "-native1" else "") ++ (if g == PerFunction then "mixed" else "") ++ (if envTirLoops then "" else "-noloops") ++ (if envTirShallow then "-shallow" else "") ++ (if envTirForward then "-forward" else "") ++ (if envTirEntryArgs then "-entryargs" else "") ++ (if envTirSplit then "-split" else "") ++ (if envTirWrap then "-wrap" else "") ++ (if envTirLinkPairs then "" else "-nolinkpairs") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
           fnv = foldl (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) (14695981039346656037 :: Word64)
           tag = "g" ++ show codegenRev ++ backendTag ++ (if envCostedRegisters then "-costedregs" else "") ++ (if envCompactFrames then "-compactframes" else "") ++ (if envRetainedRegisters then "-retainedregs" else "") ++ (if envSelfLoops then "-selfloops" else "") ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
@@ -1116,7 +1118,7 @@ compileWithInterface accepted = do
                       Just dat -> moduleFinal (unlines (["# typed IR: no translation"] ++ emNative emission ++ dat))
                       Nothing -> lower asm0 ++ moduleFinal (unlines (emNative emission))
                 mapM_ putStrLn vnotes
-                strictCheck ("unit " ++ takeFileName path) (emFallbacks emission)
+                directCheck ("unit " ++ takeFileName path) emission
                 -- written beside it and renamed whole: a build running at the
                 -- same time (check_base runs many) finds the unit complete or
                 -- absent, never half-written and taken as cached
@@ -1267,9 +1269,9 @@ compileWithInterface accepted = do
                                    ++ dataSyntax directFormat (lines conTab))) ++ unlines (concat tramps)
             Nothing -> lower (rootAsm0 ++ conTab) ++ unlines (concat tramps) ++ moduleFinal (unlines (emNative rootEmission))
           directFormat = if a64mac then MachO else ELF
-      applyReport "root" rootAsm
       mapM_ putStrLn rootVNotes
-      strictCheck "root" (emFallbacks rootEmission)
+      directCheck "root" rootEmission
+      applyReport "root" rootAsm
       writeFile out rootAsm
       wcetSummary "root" rootAsm
       -- the link list: everything the root's image needs beyond out itself

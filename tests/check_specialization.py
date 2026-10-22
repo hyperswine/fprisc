@@ -52,7 +52,8 @@ def main():
         for target in ('rv64', 'rv32', 'a64', 'x64'):
             out = tmp / f'{target}.s'
             p = run([FPR, 'compile', f'--target={target}',
-                     'tests/base/specialization_alloc.fpr', out], {**env, 'FPRC_APPLY': '1', 'FPR_NO_SPEC': '0'})
+                     'tests/base/specialization_alloc.fpr', out], {**env, 'FPRC_APPLY': '1', 'FPR_NO_SPEC': '0',
+                     **({'FPR_TYPED_IR_BACKEND':'mixed'} if target=='a64' else {})})
             assert 'known-partial=0' in p.stderr, p.stderr
             asm = out.read_text()
             assert '.mono' in asm or '_2emono' in asm, target

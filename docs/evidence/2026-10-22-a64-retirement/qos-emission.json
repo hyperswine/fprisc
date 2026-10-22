@@ -1,0 +1,1306 @@
+{
+  "target": "qa64mac",
+  "mode": "default, plugin roots",
+  "qos_root": "/Users/jasonqin/Documents/GitHub/qos-typed-ir-pin",
+  "compiler": "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/fprc",
+  "compiler_sha256": "32910f7da1fc8005c7379ca347531ea8a0c4b4993e44d1ec1c877ff6290c7c47",
+  "elapsed_s": 495.7,
+  "counts": {
+    "frontend_exception": 1,
+    "frontend_refusal": 49,
+    "native": 198
+  },
+  "results": [
+    {
+      "source": "programs/dungeon.fpr",
+      "status": "native",
+      "units": 25
+    },
+    {
+      "source": "programs/interactive_desktop_gl.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "programs/liveboard.fpr",
+      "status": "native",
+      "units": 43
+    },
+    {
+      "source": "programs/main.fpr",
+      "status": "native",
+      "units": 48
+    },
+    {
+      "source": "programs/mods/appclient.fpr",
+      "status": "native",
+      "units": 10
+    },
+    {
+      "source": "programs/mods/appjobs.fpr",
+      "status": "native",
+      "units": 17
+    },
+    {
+      "source": "programs/mods/appkit.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/apppolicy.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/appsep.fpr",
+      "status": "native",
+      "units": 4
+    },
+    {
+      "source": "programs/mods/appsession.fpr",
+      "status": "native",
+      "units": 19
+    },
+    {
+      "source": "programs/mods/appview.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/appwire.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/arcsvc.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/bbspi.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/blockep.fpr",
+      "status": "frontend_exception",
+      "returncode": 1,
+      "diagnostic": "fprc: Prelude.head: empty list\nCallStack (from HasCallStack):\n  error, called at libraries/base/GHC/List.hs:2004:3 in base:GHC.List\n  errorEmptyList, called at libraries/base/GHC/List.hs:90:11 in base:GHC.List\n  badHead, called at libraries/base/GHC/List.hs:84:28 in base:GHC.List\n  head, called at compiler/Exhaust.hs:191:52 in fp-risc-0.12.0-inplace-fpr:Exhaust\n",
+      "check_only_diagnostic": "fprc: Prelude.head: empty list\nCallStack (from HasCallStack):\n  error, called at libraries/base/GHC/List.hs:2004:3 in base:GHC.List\n  errorEmptyList, called at libraries/base/GHC/List.hs:90:11 in base:GHC.List\n  badHead, called at libraries/base/GHC/List.hs:84:28 in base:GHC.List\n  head, called at compiler/Exhaust.hs:191:52 in fp-risc-0.12.0-inplace-fpr:Exhaust\n"
+    },
+    {
+      "source": "programs/mods/browserapp.fpr",
+      "status": "native",
+      "units": 22
+    },
+    {
+      "source": "programs/mods/cliapp.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/clockapp.fpr",
+      "status": "native",
+      "units": 22
+    },
+    {
+      "source": "programs/mods/coreutil.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/diskapp.fpr",
+      "status": "native",
+      "units": 22
+    },
+    {
+      "source": "programs/mods/docsdata.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/dungeonrules.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "programs/mods/editapp.fpr",
+      "status": "native",
+      "units": 41
+    },
+    {
+      "source": "programs/mods/editbuf.fpr",
+      "status": "native",
+      "units": 2
+    },
+    {
+      "source": "programs/mods/editorcontrol.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/editorpolicy.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/editorpreferences.fpr",
+      "status": "native",
+      "units": 4
+    },
+    {
+      "source": "programs/mods/editorstate.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/endpointstate.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/ep.fpr",
+      "status": "native",
+      "units": 3
+    },
+    {
+      "source": "programs/mods/epdeadline.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/epservice.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/fileaccesspolicy.fpr",
+      "status": "native",
+      "units": 2
+    },
+    {
+      "source": "programs/mods/filepolicy.fpr",
+      "status": "native",
+      "units": 5
+    },
+    {
+      "source": "programs/mods/files.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/fontm.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/fprlive.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/glsvc.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/graphics.fpr",
+      "status": "native",
+      "units": 5
+    },
+    {
+      "source": "programs/mods/guishell.fpr",
+      "status": "native",
+      "units": 47
+    },
+    {
+      "source": "programs/mods/helloapp.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/livejs.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "programs/mods/liveview.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/logsapp.fpr",
+      "status": "native",
+      "units": 22
+    },
+    {
+      "source": "programs/mods/manifest.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/matrixkpd.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/monitorapp.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/oled.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/panejobs.fpr",
+      "status": "native",
+      "units": 8
+    },
+    {
+      "source": "programs/mods/panemvu.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/persist.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/plug.fpr",
+      "status": "native",
+      "units": 4
+    },
+    {
+      "source": "programs/mods/pnotes.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/policytext.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "programs/mods/preferencecontrol.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/preferencehistory.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "programs/mods/preferencestore.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/procapp.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/qaimg.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "programs/mods/qar.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/qlog.fpr",
+      "status": "native",
+      "units": 8
+    },
+    {
+      "source": "programs/mods/qsys.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/runpolicy.fpr",
+      "status": "native",
+      "units": 2
+    },
+    {
+      "source": "programs/mods/runprog.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/scene2d.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/scrolltext.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/services.fpr",
+      "status": "native",
+      "units": 21
+    },
+    {
+      "source": "programs/mods/sfx.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/shellinput.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/shelllayout.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/svc.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/sysep.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/termapp.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/terminalpreferences.fpr",
+      "status": "native",
+      "units": 3
+    },
+    {
+      "source": "programs/mods/timefmt.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/timer.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/ttp229.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/tui.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mods/uart.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "programs/mouse_desktop_gl.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "programs/pos1.fpr",
+      "status": "native",
+      "units": 33
+    },
+    {
+      "source": "programs/system.fpr",
+      "status": "native",
+      "units": 26
+    },
+    {
+      "source": "programs/terra2.fpr",
+      "status": "native",
+      "units": 29
+    },
+    {
+      "source": "programs/uiapp.fpr",
+      "status": "native",
+      "units": 10
+    },
+    {
+      "source": "programs/voxel-interactive.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "tests/admissionnative.fpr",
+      "status": "native",
+      "units": 13
+    },
+    {
+      "source": "tests/appa.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/appb.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/appidnative.fpr",
+      "status": "native",
+      "units": 15
+    },
+    {
+      "source": "tests/appidproc.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/appjobs.fpr",
+      "status": "native",
+      "units": 18
+    },
+    {
+      "source": "tests/apppolicy.fpr",
+      "status": "native",
+      "units": 21
+    },
+    {
+      "source": "tests/apps.fpr",
+      "status": "native",
+      "units": 16
+    },
+    {
+      "source": "tests/appsession.fpr",
+      "status": "native",
+      "units": 48
+    },
+    {
+      "source": "tests/appsessionmemory.fpr",
+      "status": "native",
+      "units": 26
+    },
+    {
+      "source": "tests/arcaudit.fpr",
+      "status": "native",
+      "units": 2
+    },
+    {
+      "source": "tests/arena.fpr",
+      "status": "frontend_refusal",
+      "returncode": 1,
+      "diagnostic": ""
+    },
+    {
+      "source": "tests/bigarena.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/blocklifecycle.fpr",
+      "status": "native",
+      "units": 6
+    },
+    {
+      "source": "tests/blocklifecyclep.fpr",
+      "status": "native",
+      "units": 5
+    },
+    {
+      "source": "tests/blockmemory.fpr",
+      "status": "native",
+      "units": 5
+    },
+    {
+      "source": "tests/blocknamespace.fpr",
+      "status": "native",
+      "units": 10
+    },
+    {
+      "source": "tests/blockportable.fpr",
+      "status": "native",
+      "units": 11
+    },
+    {
+      "source": "tests/blockservice.fpr",
+      "status": "native",
+      "units": 9
+    },
+    {
+      "source": "tests/capsecho.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/coreutil.fpr",
+      "status": "native",
+      "units": 2
+    },
+    {
+      "source": "tests/deep.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/devpublication.fpr",
+      "status": "native",
+      "units": 28
+    },
+    {
+      "source": "tests/diskclaimrace.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/disknative.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/diskprogress.fpr",
+      "status": "native",
+      "units": 3
+    },
+    {
+      "source": "tests/diskreclaimcancel.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/diskresetcancel.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/diskstall.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/diskstallp.fpr",
+      "status": "native",
+      "units": 11
+    },
+    {
+      "source": "tests/dungeon.fpr",
+      "status": "native",
+      "units": 2
+    },
+    {
+      "source": "tests/editbuf.fpr",
+      "status": "native",
+      "units": 3
+    },
+    {
+      "source": "tests/editor.fpr",
+      "status": "native",
+      "units": 15
+    },
+    {
+      "source": "tests/editorpolicy.fpr",
+      "status": "native",
+      "units": 42
+    },
+    {
+      "source": "tests/editorpolicyprocess.fpr",
+      "status": "native",
+      "units": 46
+    },
+    {
+      "source": "tests/editorstate.fpr",
+      "status": "native",
+      "units": 42
+    },
+    {
+      "source": "tests/epecho.fpr",
+      "status": "native",
+      "units": 5
+    },
+    {
+      "source": "tests/epmemory.fpr",
+      "status": "native",
+      "units": 5
+    },
+    {
+      "source": "tests/epproc.fpr",
+      "status": "native",
+      "units": 4
+    },
+    {
+      "source": "tests/errornative.fpr",
+      "status": "native",
+      "units": 13
+    },
+    {
+      "source": "tests/errorproc.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/failproc.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/filepolicy.fpr",
+      "status": "native",
+      "units": 41
+    },
+    {
+      "source": "tests/filesreclaim.fpr",
+      "status": "native",
+      "units": 35
+    },
+    {
+      "source": "tests/filesshutdown.fpr",
+      "status": "native",
+      "units": 11
+    },
+    {
+      "source": "tests/filesshutdownactive.fpr",
+      "status": "native",
+      "units": 12
+    },
+    {
+      "source": "tests/filessvc.fpr",
+      "status": "native",
+      "units": 22
+    },
+    {
+      "source": "tests/gfxapps.fpr",
+      "status": "native",
+      "units": 32
+    },
+    {
+      "source": "tests/gfxheadless.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/gfxkeys.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/gfxmemory.fpr",
+      "status": "native",
+      "units": 6
+    },
+    {
+      "source": "tests/gfxmesh.fpr",
+      "status": "native",
+      "units": 11
+    },
+    {
+      "source": "tests/gfxshare.fpr",
+      "status": "native",
+      "units": 6
+    },
+    {
+      "source": "tests/gfxsmoke.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/gl2d.fpr",
+      "status": "native",
+      "units": 9
+    },
+    {
+      "source": "tests/gltext.fpr",
+      "status": "native",
+      "units": 7
+    },
+    {
+      "source": "tests/growlog.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/guishell.fpr",
+      "status": "native",
+      "units": 48
+    },
+    {
+      "source": "tests/hostedtimers.fpr",
+      "status": "native",
+      "units": 8
+    },
+    {
+      "source": "tests/hostlog.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/inboxproc.fpr",
+      "status": "native",
+      "units": 4
+    },
+    {
+      "source": "tests/inputcap.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/kbdread.fpr",
+      "status": "native",
+      "units": 10
+    },
+    {
+      "source": "tests/kvlarge.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/kvlargenative.fpr",
+      "status": "native",
+      "units": 14
+    },
+    {
+      "source": "tests/layoutpi.fpr",
+      "status": "native",
+      "units": 48
+    },
+    {
+      "source": "tests/lingerproc.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/livereload.fpr",
+      "status": "native",
+      "units": 27
+    },
+    {
+      "source": "tests/loaderfail.fpr",
+      "status": "native",
+      "units": 16
+    },
+    {
+      "source": "tests/logcapmemory.fpr",
+      "status": "native",
+      "units": 35
+    },
+    {
+      "source": "tests/logstorm.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/mailboxnative.fpr",
+      "status": "native",
+      "units": 13
+    },
+    {
+      "source": "tests/mailboxproc.fpr",
+      "status": "native",
+      "units": 7
+    },
+    {
+      "source": "tests/mainmemory.fpr",
+      "status": "native",
+      "units": 48
+    },
+    {
+      "source": "tests/mainprofile.fpr",
+      "status": "native",
+      "units": 48
+    },
+    {
+      "source": "tests/mainreliability.fpr",
+      "status": "native",
+      "units": 48
+    },
+    {
+      "source": "tests/mathbad.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/mathboundbad.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/mathcertv1.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/mathcertv2.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/mathcontractbad.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/mathopaquebad.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/mathother.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/mathspecv1.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/mathspecv2.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/mathtypebad.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/mathv1.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/mathv2.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/memoryproc.fpr",
+      "status": "native",
+      "units": 3
+    },
+    {
+      "source": "tests/moduleinterfaces.fpr",
+      "status": "native",
+      "units": 27
+    },
+    {
+      "source": "tests/music.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/mvugame.fpr",
+      "status": "native",
+      "units": 3
+    },
+    {
+      "source": "tests/mvulat.fpr",
+      "status": "native",
+      "units": 3
+    },
+    {
+      "source": "tests/mvutick.fpr",
+      "status": "native",
+      "units": 3
+    },
+    {
+      "source": "tests/mvuweb.fpr",
+      "status": "native",
+      "units": 15
+    },
+    {
+      "source": "tests/native-netowner.fpr",
+      "status": "native",
+      "units": 15
+    },
+    {
+      "source": "tests/nativeabi.fpr",
+      "status": "native",
+      "units": 2
+    },
+    {
+      "source": "tests/nativeimage.fpr",
+      "status": "native",
+      "units": 13
+    },
+    {
+      "source": "tests/nativeinbox.fpr",
+      "status": "native",
+      "units": 14
+    },
+    {
+      "source": "tests/nativeintegrity.fpr",
+      "status": "native",
+      "units": 13
+    },
+    {
+      "source": "tests/nativeowner.fpr",
+      "status": "native",
+      "units": 15
+    },
+    {
+      "source": "tests/nativerefusal.fpr",
+      "status": "native",
+      "units": 14
+    },
+    {
+      "source": "tests/netactor.fpr",
+      "status": "native",
+      "units": 4
+    },
+    {
+      "source": "tests/netactorprocess.fpr",
+      "status": "native",
+      "units": 4
+    },
+    {
+      "source": "tests/netactorstall.fpr",
+      "status": "native",
+      "units": 4
+    },
+    {
+      "source": "tests/netactorstart.fpr",
+      "status": "native",
+      "units": 4
+    },
+    {
+      "source": "tests/netorphan.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/netpolicy.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/netstall.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/nettransport.fpr",
+      "status": "native",
+      "units": 4
+    },
+    {
+      "source": "tests/notesed1.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/notesed2.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/notesedbad.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/panemvu.fpr",
+      "status": "native",
+      "units": 48
+    },
+    {
+      "source": "tests/panicpersist.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/pathnotes.fpr",
+      "status": "native",
+      "units": 23
+    },
+    {
+      "source": "tests/placeuaf.fpr",
+      "status": "native",
+      "units": 13
+    },
+    {
+      "source": "tests/plugbounds.fpr",
+      "status": "native",
+      "units": 5
+    },
+    {
+      "source": "tests/plughello.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/plugimports.fpr",
+      "status": "native",
+      "units": 13
+    },
+    {
+      "source": "tests/plugmini.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/plugneeds.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/portabledurable.fpr",
+      "status": "native",
+      "units": 9
+    },
+    {
+      "source": "tests/portableshutdown.fpr",
+      "status": "native",
+      "units": 13
+    },
+    {
+      "source": "tests/pos.fpr",
+      "status": "native",
+      "units": 24
+    },
+    {
+      "source": "tests/powercut.fpr",
+      "status": "native",
+      "units": 17
+    },
+    {
+      "source": "tests/preferences.fpr",
+      "status": "native",
+      "units": 43
+    },
+    {
+      "source": "tests/preferencespersistent.fpr",
+      "status": "native",
+      "units": 56
+    },
+    {
+      "source": "tests/preferencesrecovery.fpr",
+      "status": "native",
+      "units": 55
+    },
+    {
+      "source": "tests/qar.fpr",
+      "status": "native",
+      "units": 2
+    },
+    {
+      "source": "tests/qdisk.fpr",
+      "status": "native",
+      "units": 9
+    },
+    {
+      "source": "tests/qdisk2.fpr",
+      "status": "native",
+      "units": 9
+    },
+    {
+      "source": "tests/qload.fpr",
+      "status": "native",
+      "units": 13
+    },
+    {
+      "source": "tests/qlogblock.fpr",
+      "status": "native",
+      "units": 12
+    },
+    {
+      "source": "tests/qlogmemory.fpr",
+      "status": "native",
+      "units": 11
+    },
+    {
+      "source": "tests/qlogowner.fpr",
+      "status": "native",
+      "units": 12
+    },
+    {
+      "source": "tests/qpublication.fpr",
+      "status": "native",
+      "units": 26
+    },
+    {
+      "source": "tests/qsys.fpr",
+      "status": "native",
+      "units": 35
+    },
+    {
+      "source": "tests/qsysfail.fpr",
+      "status": "native",
+      "units": 35
+    },
+    {
+      "source": "tests/runprog.fpr",
+      "status": "native",
+      "units": 17
+    },
+    {
+      "source": "tests/scrolltext.fpr",
+      "status": "native",
+      "units": 4
+    },
+    {
+      "source": "tests/selfhost.fpr",
+      "status": "native",
+      "units": 20
+    },
+    {
+      "source": "tests/shelllayout.fpr",
+      "status": "native",
+      "units": 53
+    },
+    {
+      "source": "tests/slowproc.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/storagebudgets.fpr",
+      "status": "native",
+      "units": 15
+    },
+    {
+      "source": "tests/storagedeadlines.fpr",
+      "status": "native",
+      "units": 16
+    },
+    {
+      "source": "tests/storageprotocol.fpr",
+      "status": "native",
+      "units": 40
+    },
+    {
+      "source": "tests/storeownerprobe.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/storeprobe.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/storerace.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/storerpc.fpr",
+      "status": "native",
+      "units": 6
+    },
+    {
+      "source": "tests/svcurl.fpr",
+      "status": "native",
+      "units": 10
+    },
+    {
+      "source": "tests/sysbad.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/sysdisk.fpr",
+      "status": "native",
+      "units": 16
+    },
+    {
+      "source": "tests/sysed1.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/sysed2.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/timer.fpr",
+      "status": "native",
+      "units": 5
+    },
+    {
+      "source": "tests/timerroute.fpr",
+      "status": "native",
+      "units": 10
+    },
+    {
+      "source": "tests/tuiframes.fpr",
+      "status": "native",
+      "units": 2
+    },
+    {
+      "source": "tests/uartroute.fpr",
+      "status": "native",
+      "units": 10
+    },
+    {
+      "source": "tests/uartsvc.fpr",
+      "status": "native",
+      "units": 5
+    },
+    {
+      "source": "tests/vectorproc.fpr",
+      "status": "native",
+      "units": 1
+    },
+    {
+      "source": "tests/virtio.fpr",
+      "status": "native",
+      "units": 1
+    }
+  ]
+}

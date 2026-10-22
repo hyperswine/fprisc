@@ -61,7 +61,8 @@ def main():
                 source=tmp/'workers32.fpr'
                 source.write_text((ROOT/'tests/base/workers.fpr').read_text().replace('4611686018427387903','1073741823').replace('1099511627776','1048576'))
             run([ROOT/'fpr','compile','--no-inline','--target='+target,source,out],
-                dict(env,FPR_NO_FIELD_WORKERS='0',FPR_NO_SCALAR_WORKERS='0'))
+                dict(env,FPR_NO_FIELD_WORKERS='0',FPR_NO_SCALAR_WORKERS='0',
+                     **({'FPR_TYPED_IR_BACKEND':'mixed'} if target=='a64' else {})))
             asm=out.read_text()
             present='# fn $worker.' in asm
             assert present==(target!='rv32'),target

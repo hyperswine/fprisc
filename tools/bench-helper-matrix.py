@@ -29,8 +29,7 @@ def main():
                FPR_HARTS="1", XDG_CACHE_HOME=str(out / "cache"))
     for key in list(env):
         if key.startswith("FPR_NO_") or key in (
-            "FPR_FOREIGN", "FPR_CC", "FPR_COST_PROBE", "FPR_A64_FIT_GUARDS",
-            "FPR_A64_FRAME_PAIRS",
+            "FPR_FOREIGN", "FPR_CC", "FPR_COST_PROBE",
             "FPR_SELF_LOOPS", "FPR_RETAINED_REGISTERS",
             "FPR_COSTED_REGISTERS", "FPR_COMPACT_FRAMES"):
             env.pop(key)

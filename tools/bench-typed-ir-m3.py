@@ -2,33 +2,10 @@
 """The M3 investment review's paired measurements (docs/2026-10-21-TYPED-IR-M3.md,
 docs/2026-10-20-TYPED-NATIVE-IR-PLAN.md "M3 investment review").
 
-Variants, every unrelated setting fixed (one hart, no inherited FPR_ switch):
-  legacy        the legacy generator with its defaults
-  legacy-best   the best validated legacy opt-in combination
-                (FPR_COSTED_REGISTERS=1 FPR_COMPACT_FRAMES=1 FPR_SELF_LOOPS=1
-                 FPR_A64_FRAME_PAIRS=1, docs/2026-10-20-FRAME-PLACEMENT-AND-CALL-COSTS.md)
-  typed-ir      FPR_TYPED_IR_BACKEND=mixed: every function the scalar
-                lowering accepts goes through the typed-IR backend with M3's
-                allocator, the rest stays legacy (default settings)
-  typed-ir-noloop  the same with FPR_TYPED_IR_SELF_LOOPS=0 (the loop form's
-                separate switch)
-  typed-ir-best the backend for the functions it covers and the best legacy
-                combination for the rest (the functions the scalar lowering
-                refuses stay legacy, and their legacy opt-ins are unrelated
-                settings that a fair comparison keeps equal)
-
-Workloads: fib, sum, pipeline, records (internal CLOCK_MONOTONIC; record
-construction/free excluded) and helpers, sha (tests/bench, process wall time
-including startup).  Every binary is built before anything is timed; one
-warm-up run per binary; then --runs rounds, each running every binary once
-in an order that rotates by one each round and reverses every other block.
-Every output is checked against the expected value.  Compile time (wall,
-warm prelude cache), peak compiler memory (maximum resident set size of the
-build) and code size (executable bytes, __TEXT bytes, native-function count
-and coverage from the -v notes) are recorded per build.  Raw samples,
-hashes and flags go to <output>/results.json; <output>/summary.md holds the
-tables with paired statistics and a seeded bootstrap interval of the median
-ratio."""
+Variants cover the typed backend's entry, frame-link and allocation settings.
+Historical legacy comparisons are reproducible from the pre-retirement revision;
+this AArch64-only driver no longer requests that retired backend.
+"""
 import argparse
 import hashlib
 import json
@@ -45,8 +22,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 VARIANTS = {
-    "legacy": {"FPR_TYPED_IR_BACKEND": "legacy"},
-    "legacy-best": {"FPR_TYPED_IR_BACKEND": "legacy", "FPR_COSTED_REGISTERS": "1", "FPR_COMPACT_FRAMES": "1", "FPR_SELF_LOOPS": "1", "FPR_A64_FRAME_PAIRS": "1"},
     "typed-ir": {"FPR_TYPED_IR_BACKEND": "mixed"},
     "typed-ir-forward": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_FORWARD_PARAMS": "1"},
     "typed-ir-entry": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_FORWARD_PARAMS": "1", "FPR_TYPED_IR_SHALLOW_STACK": "1"},
@@ -58,8 +33,6 @@ VARIANTS = {
     "typed-ir-args-split": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_ENTRY_ARGS": "1", "FPR_TYPED_IR_SPLIT_ENTRY": "1"},
     "typed-ir-args-split-wrap": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_ENTRY_ARGS": "1", "FPR_TYPED_IR_SPLIT_ENTRY": "1", "FPR_TYPED_IR_SHRINK_WRAP": "1"},
     "typed-ir-all": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_ENTRY_ARGS": "1", "FPR_TYPED_IR_SPLIT_ENTRY": "1", "FPR_TYPED_IR_SHRINK_WRAP": "1", "FPR_TYPED_IR_LINK_PAIRS": "1"},
-    # the backend for what it covers, the best legacy combination for the rest
-    "typed-ir-best": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_COSTED_REGISTERS": "1", "FPR_COMPACT_FRAMES": "1", "FPR_SELF_LOOPS": "1", "FPR_A64_FRAME_PAIRS": "1"},
 }
 INTERNAL = {
     "fib": ("fib : unsafe Int -> Int .\nfib n = if n < 2 then n else fib (n - 1) + fib (n - 2).\n", "fib 35", 9227465),
@@ -86,6 +59,9 @@ def main():
     if platform.machine() not in ("arm64", "aarch64"):
         ap.error("this experiment requires native AArch64 (the typed-IR backend's host target here)")
     variants = [v for v in args.variants.split(",") if v]
+    unknown = set(variants) - VARIANTS.keys()
+    if unknown:
+        ap.error("unknown or retired variants: " + ", ".join(sorted(unknown)))
     workloads = [w for w in args.workloads.split(",") if w]
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
@@ -93,7 +69,7 @@ def main():
     base = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), FPR_HARTS="1")
     for key in list(base):
         if key.startswith("FPR_NO_") or key.startswith("FPR_TYPED_IR") or key in (
-                "FPR_FOREIGN", "FPR_CC", "FPR_COST_PROBE", "FPR_A64_FIT_GUARDS", "FPR_A64_FRAME_PAIRS",
+                "FPR_FOREIGN", "FPR_CC", "FPR_COST_PROBE",
                 "FPR_SELF_LOOPS", "FPR_RETAINED_REGISTERS", "FPR_COSTED_REGISTERS", "FPR_COMPACT_FRAMES"):
             base.pop(key)
 

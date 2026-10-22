@@ -20,13 +20,13 @@ with tempfile.TemporaryDirectory(prefix='fpr-regs-') as d:
     run(args,env);outputs.append(run([exe],env))
    assert outputs[0]==outputs[1]==outputs[2],(fixture,outputs)
  # Confirm the optimization actually ran; otherwise equivalence is vacuous.
- for target in ('rv64','a64','x64'):
+ for target in ('rv64','x64'):
   for no_regs in ('0','1'):
    asm=tmp/f'{target}{no_regs}.s'
    run(['./fpr',f'--target={target}',f'--prelude={ROOT}/core/prelude.fpr',
         'tests/bench/nbody.fpr',asm],{**ENV,'FPR_TYPED_IR_BACKEND':'legacy','FPR_NO_REGISTERS':no_regs}) # markers are legacy text
    text=asm.read_text()
-   marker={'rv64':r'\bs[1-5]\b','a64':r'\bx(?:19|20|21|22|23)\b','x64':r'%(?:rbx|r12|r13|r14|r15)\b'}[target]
+   marker={'rv64':r'\bs[1-5]\b','x64':r'%(?:rbx|r12|r13|r14|r15)\b'}[target]
    assert bool(re.search(marker,text))==(no_regs=='0'),(target,no_regs)
  # Execute a register-heavy generated x64 body against an independent C sum.
  source=tmp/'hot.fpr'
@@ -70,4 +70,4 @@ int main(void) {
   run([shutil.which('clang') or 'cc',*(['-arch','x86_64'] if mac else []),'-O2',leaf,harness,'-o',exe],ENV)
   print(run([*(['arch','-x86_64'] if rosetta else []),exe],ENV).strip())
  else:print('x64 register-heavy execution: SKIP (needs x64 or Rosetta)')
- print('Registers: differential fixtures, warm-cache mode separation and three-backend emission: PASS')
+ print('Registers: differential fixtures, warm-cache mode separation and RV64/x64 legacy emission: PASS')

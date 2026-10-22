@@ -56,7 +56,7 @@
 --     order are the primitive's.
 module Codegen.Target.A64
   ( A64Config (..), ObjectFormat (..), HartAccess (..), NativeFn (..),
-    a64SelectionRev, emitFnA64, a64RegisterFile, mangleName, functionSymbol,
+    a64InterfaceRev, a64SelectionRev, emitFnA64, a64RegisterFile, mangleName, functionSymbol,
     placement, allocConfig,
   ) where
 
@@ -76,10 +76,16 @@ import qualified Data.Set as S
 import Data.Word (Word64)
 import Codegen.Target.Common
 
+-- Preserve existing module contract identities across translator retirement.
+-- This ABI tag was formerly owned by the translator; cache/selection policy
+-- changes have their own version and must not invalidate compatible modules.
+a64InterfaceRev :: Int
+a64InterfaceRev = 15
+
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 17 -- typed column memory and kernel arithmetic; prior: 16: posix modules reach external symbols through the GOT; 15: units with no legacy code skip translation; 14: in-place constructor reuse; 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
+a64SelectionRev = 20 -- generic HAL partial/opaque application; prior 19: inferred boxed I64 operators; prior 18: inference-generated vector runtime entries; prior 17: typed column memory and kernel arithmetic; prior: 16: posix modules reach external symbols through the GOT; 15: units with no legacy code skip translation; 14: in-place constructor reuse; 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
 
 -- how generated code reaches the hart block
 data HartAccess

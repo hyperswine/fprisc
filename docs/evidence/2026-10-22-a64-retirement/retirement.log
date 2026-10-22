@@ -1,0 +1,5 @@
+A64 retirement: unsupported foreign calls refused by name in default/whole/named-strict modes on all five targets PASS
+A64 retirement: five targets, native-only root/imports, whole/mixed warm caches, all rollback aliases refused; RV/x64 rollback retained PASS
+A64 retirement: populated executable cache cannot bypass rollback refusal PASS
+Typed inference runtime entries: imported polymorphic fromList/map, Int/F64/boxed columns, strict native emission, one/four harts PASS
+Typed HAL application: actual C PAP arity, partial and opaque calls, strict native emission, one/four harts PASS

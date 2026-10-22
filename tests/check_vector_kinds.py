@@ -9,7 +9,7 @@ def run(args, env=None, ok=True):
     # checks above/below retain the selected backend; typed emission has its
     # independent no-translation oracle in check_typed_ir_kernels.py.
     if str(args[0]).endswith('fprc'):
-        mode['FPR_TYPED_IR_BACKEND']='legacy'
+        mode['FPR_TYPED_IR_BACKEND']='mixed' if '--target=a64' in args else 'legacy'
         mode.pop('FPR_TYPED_IR_STRICT',None)
     p=subprocess.run(list(map(str,args)),cwd=ROOT,env=mode,capture_output=True,text=True,timeout=240)
     if ok: assert p.returncode==0,(args,p.stdout,p.stderr)
@@ -38,27 +38,27 @@ with tempfile.TemporaryDirectory(prefix='fpr-vector-kinds-') as d:
     assert result.stdout==''.join(f'simd: {n} {format(1.5*n*(n+1)/2+n,"g")}\n' for n in range(99,-1,-1)),result.stdout
     # Emission gates assert selected plans, not merely a green generic fallback.
     asm=tmp/'kinds.s'
-    run(['./fprc','--profile=base','--target=a64','tests/base/veckinds.fpr',asm])
+    run(['./fprc','--profile=base','--target=rv64','tests/base/veckinds.fpr',asm])
     text=asm.read_text()
     assert '([KD,KD,KD,KD,KD],KD)' in text and '([KD,KI,KD,KI,KD,KD],KD)' in text,text[-15000:]
     assert 'mixed scalar pipeline: map affine -> filter above -> fold sumFloat' in text
     # the Int map/map pair (`plus`) fuses although Int + traps on overflow:
     # the 2026-10-13 relaxation (docs/2026-10-03-FUSION-EFFECT-ORDER.md)
     assert re.search(r'mixed scalar pipeline: map _vfuse_.* -> filter _vfuse_',text),text[-15000:]
-    run(['./fprc','--profile=base','--target=a64','tests/base/veckinds.fpr',asm],{'FPR_NO_VEC_FUSE':'1'})
+    run(['./fprc','--profile=base','--target=rv64','tests/base/veckinds.fpr',asm],{'FPR_NO_VEC_FUSE':'1'})
     text=asm.read_text()
     assert '([KD,KD,KD],KD)' in text and '([KD,KI,KD,KI,KD,KD],KD)' in text
     assert 'mixed scalar pipeline:' not in text
     run(['./fprc','--profile=base','--target=a64','tests/base/vecsimd.fpr',asm])
     text=asm.read_text()
-    assert text.count('[NEON 2 lanes]')==1 and 'fmul v' in text and '.2d' in text
-    assert 'Vec.map specialized on _vfuse_' in text
+    assert 'ldr q16, [' in text and re.search(r'fmul v\d+\.2d',text)
+    assert '# typed IR: no translation' in text and '[NEON 2 lanes]' not in text
     ints=tmp/'ints.s'
     run(['./fprc','--profile=base','--target=a64','tests/base/vecsimd_int.fpr',ints])
-    assert '[NEON 2 lanes]' in ints.read_text() and re.search(r'add v\d+\.2d',ints.read_text())
+    assert 'ldr q16, [' in ints.read_text() and re.search(r'add v\d+\.2d',ints.read_text())
     scalar=tmp/'scalar.s'
     run(['./fprc','--profile=base','--target=a64','tests/base/vecsimd.fpr',scalar],{'FPR_NO_VEC_SIMD':'1'})
-    assert '[NEON' not in scalar.read_text()
+    assert 'ldr q16, [' not in scalar.read_text() and not re.search(r'fmul v\d+\.2d',scalar.read_text())
     # Native IEEE/int failures must keep their original visitation order.
     for source in ('vecfuse_effects.fpr','vecfuse_fail.fpr','vecfuse_capture.fpr'):
         outputs=[]

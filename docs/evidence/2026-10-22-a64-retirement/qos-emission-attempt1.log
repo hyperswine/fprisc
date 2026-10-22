@@ -1,0 +1,20 @@
+20/248 programs/mods/diskapp.fpr: native
+40/248 programs/mods/guishell.fpr: native
+60/248 programs/mods/qar.fpr: frontend_refusal
+80/248 programs/mouse_desktop_gl.fpr: native
+82/248 programs/system.fpr: native_failure
+90/248 tests/appidproc.fpr: native_failure
+100/248 tests/blocklifecyclep.fpr: native
+120/248 tests/editorpolicyprocess.fpr: native
+140/248 tests/gl2d.fpr: native
+149/248 tests/kvlarge.fpr: native_failure
+160/248 tests/mainprofile.fpr: native
+180/248 tests/mvuweb.fpr: native
+200/248 tests/panicpersist.fpr: native
+203/248 tests/plugbounds.fpr: native_failure
+220/248 tests/qlogmemory.fpr: native
+233/248 tests/storeownerprobe.fpr: native_failure
+234/248 tests/storeprobe.fpr: native_failure
+235/248 tests/storerace.fpr: native_failure
+240/248 tests/sysed1.fpr: native
+{"compiler_error": 1, "frontend_refusal": 49, "native": 191, "native_failure": 7}

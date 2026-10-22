@@ -48,7 +48,7 @@ def main():
                         return p.returncode,p.stdout,p.stderr
                     ledger=check_execution(run,off=='0')
                     print(f'reuse disabled={off} inline-disabled={no_inline} registers-disabled={no_regs}: {ledger["alloc_requests"]} allocations PASS',flush=True)
-        for target in ('rv64','a64','x64','rv32'):
+        for target in ('rv64','x64','rv32'):
             for off in ('0','1'):
                 asm=tmp/'reuse.s'
                 # the legacy emitter's marker; the typed backend's native
@@ -63,5 +63,5 @@ def main():
                          '--with',ROOT/'tests/bench/costprobe.c',
                          '--with',ROOT/'tests/bench/workers_clock.c','cost'],mode).stdout
             assert json.loads(out.splitlines()[-1])['alloc_requests']==(20000 if off=='1' else 10000),out
-        print('Fresh reuse: native values, alias/child preservation, field failure order, 1/4 harts, allocation ratchet, warm caches and four-target emission PASS')
+        print('Fresh reuse: native values, alias/child preservation, field failure order, 1/4 harts, allocation ratchet, warm caches and RV64/x64/RV32 legacy emission PASS')
 if __name__=='__main__': main()

@@ -82,7 +82,7 @@ jobs:
 
       - name: check_base (the typed backend is the default)
         run: python3 -u tests/check_base.py --skip-typed-ir-native
-      - name: check_base with the legacy backend (the rollback)
+      - name: check_base with the x64/RISC-V legacy rollback
         env:
           FPR_TYPED_IR_BACKEND: legacy
         run: python3 -u tests/check_base.py --skip-typed-ir-native
@@ -96,7 +96,6 @@ jobs:
           FPR_COSTED_REGISTERS: "1"
           FPR_COMPACT_FRAMES: "1"
           FPR_SELF_LOOPS: "1"
-          FPR_A64_FRAME_PAIRS: "1"
         run: |
           python3 -u tests/check_self_loops.py
           python3 -u tests/check_workers.py

@@ -42,7 +42,6 @@ executable fpr
   if flag(dev)
     ghc-options:      -O0
   other-modules:
-      A64
       Arc
       Build
       RV64
