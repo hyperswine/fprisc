@@ -45,18 +45,45 @@ def main():
                 return p.returncode,p.stdout,p.stderr
             check_execution(execute)
             print(f'hosted typed pipeline: Int/F64/F32, eight arguments, boxed fallback, effects and traps; inline-disabled={inline} PASS',flush=True)
-        unsupported=tmp/'unsupported.fpr'
-        unsupported.write_text('unsafe base.\nsmall : F32 -> F32 .\nsmall x = x + 1f.\nmain = Vec.free (Vec.map small (Vec.fromList [2f])).\n')
-        refused=subprocess.run([str(ROOT/'fpr'),'compile','--target=x64',str(unsupported),str(tmp/'unsupported.s')],
-                               cwd=ROOT,env=dict(env,FPR_TYPED_IR_STRICT='all'),capture_output=True,text=True,timeout=120)
-        assert refused.returncode!=0 and 'typed column kernels currently support' in refused.stderr,(refused.stdout,refused.stderr)
-        print('strict mode rejects unsupported F32 kernel instead of hiding legacy emission PASS',flush=True)
-        check_targets(env,tmp,args,FIX/'kernels.fpr',(FIX/'kernel_oracle.c').read_text(),5,4)
+        # No kernel plan is refused by name any more (F32, mapAs, write-back, record,
+        # NEON and RVV shapes all lower); strict mode still reports compiler errors
+        # and unbounded segments. The builders' own refusals are KernelIR.hs's.
+        check_targets(env,tmp,args,FIX/'kernels.fpr',(FIX/'kernel_oracle.c').read_text(),6,4)
         run([ROOT/'fpr','build',FIX/'record_kernels.fpr','-o',exe],dict(env,FPR_TYPED_IR_STRICT='all'))
         for harts in ('1','4'):
             assert run([exe],dict(env,FPR_HARTS=harts))=='92359\n'
         print('typed record kernels: hosted result, one/four harts PASS',flush=True)
         support=(FIX/'kernel_oracle.c').read_text().split('extern V fpr_fn_probeDiv')[0]
+        run([ROOT/'fpr','build',FIX/'f32_kernels.fpr','-o',exe],dict(env,FPR_TYPED_IR_STRICT='all'))
+        for harts in ('1','4'):
+            assert run([exe],dict(env,FPR_HARTS=harts))=='14881\n'
+        print('typed F32 kernels: hosted result, one/four harts PASS',flush=True)
+        check_targets(env,tmp,args,FIX/'f32_kernels.fpr',support+(FIX/'f32_oracle.c').read_text(),3,0,floating=True)
+        run([ROOT/'fpr','build',FIX/'pairsum_kernels.fpr','-o',exe],dict(env,FPR_TYPED_IR_STRICT='all'))
+        for harts in ('1','4'):
+            assert run([exe],dict(env,FPR_HARTS=harts))=='1498505\n'
+        print('typed pair-sum fold: hosted result (the GPU hook declines), one/four harts PASS',flush=True)
+        check_targets(env,tmp,args,FIX/'pairsum_kernels.fpr',support+(FIX/'pairsum_oracle.c').read_text(),1,0)
+        # mapAs and the write-back fold: hosted, legacy and typed agree; the
+        # typed root names both kernels and no legacy loop
+        legacy={k:v for k,v in env.items() if k!='FPR_TYPED_IR_BACKEND'}
+        outputs=[]
+        for mode in (legacy,dict(env,FPR_TYPED_IR_STRICT='all')):
+            run([ROOT/'fpr','build',FIX/'mapas_kernels.fpr','-o',exe],mode)
+            outputs.append(run([exe],dict(mode,FPR_HARTS='4')))
+        assert outputs[0]==outputs[1] and outputs[0].split()==['45','97','90'],outputs
+        asm=tmp/'mapas.s'
+        run([ROOT/'fpr','compile','--target=a64',FIX/'mapas_kernels.fpr',asm],dict(env,FPR_TYPED_IR_STRICT='all'))
+        text=asm.read_text()
+        assert '$vkernel:fpr_vspec_mapAs' in text and '$vkernel:fpr_vspec_wfold' in text,text[-3000:]
+        assert 'direct scalar kernel' not in text and 'write-back fold:' not in text
+        print('typed mapAs and write-back fold: hosted agreement with legacy, typed kernels named PASS',flush=True)
+        # NEON: the two-lane body on A64, scalar tails; its hosted IEEE reference is check_vector_kinds
+        for fixture,lanes in (('vecsimd.fpr',r'fmul v\d+\.2d'),('vecsimd_int.fpr',r'add v\d+\.2d')):
+            run([ROOT/'fpr','compile','--target=a64',ROOT/'tests/base'/fixture,asm],dict(env,FPR_TYPED_IR_STRICT='all'))
+            text=asm.read_text()
+            assert 'ldr q16, [' in text and re.search(lanes,text) and '[NEON 2 lanes]' not in text,fixture
+        print('typed NEON pairs: emitted for the Int and F64 SIMD fixtures under strict mode PASS',flush=True)
         check_targets(env,tmp,args,FIX/'record_kernels.fpr',support+(FIX/'record_oracle.c').read_text(),5,1)
         run([ROOT/'fpr','build',FIX/'record_float_kernels.fpr','-o',exe],dict(env,FPR_TYPED_IR_STRICT='all'))
         for harts in ('1','4'):

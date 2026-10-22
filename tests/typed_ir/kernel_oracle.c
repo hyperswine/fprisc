@@ -68,7 +68,7 @@ V fpr_vec_filter(V h,V v) { (void)h; (void)v; fallbacks++; return 123; }
 V fpr_vec_fold(V h,V z,V v) { (void)h; (void)z; (void)v; fallbacks++; return 123; }
 typedef struct { V cap,*base; } Col;
 typedef struct { uint32_t tid,rep; V len,tidEl,varEl,ncols; uint8_t *kinds; Col **cols; } Vec;
-extern V fpr_fn_probeDiv(V,V),fpr_fn_probeMap(V,V),fpr_fn_probeFilter(V,V),fpr_fn_probeFold(V,V,V),fpr_fn_probePipe(V,V,V,V,V);
+extern V fpr_fn_probeDiv(V,V),fpr_fn_probeMap(V,V),fpr_fn_probeFilter(V,V),fpr_fn_probeFold(V,V,V),fpr_fn_probePipe(V,V,V,V,V),fpr_fn_probeWfold(V,V);
 int main(void) {
 #ifdef __riscv
     __asm__ volatile("mv tp,%0" :: "r"(hart) : "memory");
@@ -106,6 +106,11 @@ int main(void) {
         v.len=n; for(int i=0;i<n;i++) cells[i]=i-20;
         CHECK(fpr_fn_probeDiv(tag(-3),(V)&v)==(V)&v);
         for(int i=0;i<n;i++) CHECK(cells[i]==(i-20)/-3);
+        /* the write-back fold: the map's stores stay, the fold sees them */
+        v.len=n; for(int i=0;i<n;i++) cells[i]=i-20;
+        pair=fpr_fn_probeWfold(tag(7),(V)&v);
+        sum=7; for(int i=0;i<n;i++) { CHECK(cells[i]==i-19); sum+=i-19; }
+        CHECK(v.len==n && *(V*)((char*)pair+8)==tag(sum) && *(V*)((char*)pair+8+sizeof(V))==(V)&v);
     }
     Vec bad={9006,2,5,0,0,1,0,0};
     CHECK(fpr_fn_probeMap(tag(1),(V)&bad)==123);
@@ -114,6 +119,6 @@ int main(void) {
     CHECK(fpr_fn_probeFilter((V)&fpr_unit,(V)&bad)==123);
     CHECK(fpr_fn_probeFold(tag(2),(V)&fpr_unit,(V)&bad)==123);
     CHECK(fallbacks==4 && yields>1000);
-    say("TYPED_KERNEL_PASS 700 cases: map/filter/fold/fusion, empty columns, guard fallbacks, hostile yields\n");
+    say("TYPED_KERNEL_PASS 700 cases: map/filter/fold/fusion/write-back fold, empty columns, guard fallbacks, hostile yields\n");
     return 0;
 }

@@ -1,0 +1,10 @@
+unsafe base.
+toF x = F64.ofInt x.
+half x = x * 2.
+plus a x = a + x.
+probeConvert v = Vec.map toF v.
+probeWfold z v = Vec.fold plus z (Vec.map half v).
+sumF : F64 -> F64 -> F64 .
+sumF acc x = acc + x.
+sumI acc x = acc + x.
+main = v = Vec.iota 10; w = probeConvert v; (s, u) = Vec.fold sumF 0.0 w; _ = Vec.free u; (t, x) = probeWfold 7 (Vec.iota 10); (t2, y) = Vec.fold sumI 0 x; _ = Vec.free y; print "{F64.str s} {t} {t2}".

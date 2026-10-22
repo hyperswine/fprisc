@@ -136,6 +136,12 @@ select cfg fn = do
       OStore _ a n v -> storeAt stWord (vreg a) (vreg v) (fromIntegral n)
       OStackCheck -> lift (Left "RV64: misplaced stack check")
       OSafepoint -> entry False True
+      OSafepointN n -> do
+        Label l <- freshLabel
+        emit ((plain "tick.n" [] [OI (fromIntegral n)])
+          {siImplicitDefs = map p ["t3","t4","t5","sp"], siImplicitUses = [p "tp"],
+           siClobbers = callers, siNote = l, siCalls = [Call "fpr_fuel_exhausted" True False]})
+      OSimdPair {} -> lift (Left "a NEON pair on RISC-V")
       _ -> case result of
         Nothing -> lift (Left "compiler error: RV64 instruction lacks result")
         Just (v,_) -> value (vreg v) op
@@ -217,6 +223,12 @@ select cfg fn = do
       OBit op a b -> rr (case op of BAnd -> "and"; BOr -> "or"; BXor -> "xor") d (vreg a) (vreg b)
       OFloatBin o a b -> rr ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) d (vreg a) (vreg b)
       OFloatCmp o a b -> rr ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) d (vreg a) (vreg b)
+      OFloat32Bin o a b -> rr ("fbin32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) d (vreg a) (vreg b)
+      OFloat32Cmp o a b -> rr ("fcmp32." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) d (vreg a) (vreg b)
+      -- RISC-V V: v8 the lanes, v9/v10 reductions; t4..t6 scratch (declared)
+      ORvvVlMax -> emit (plain "rvv.vlmax" [anyV d] [])
+      ORvvLanes a n -> emit ((plain "rvv.lanes" [anyV d] [anyV (vreg a), anyV (vreg n), OI (rvvLaneBound (cfgWidth cfg))]) {siImplicitDefs = map p ["t4","t5","t6"]})
+      ORvvSumLoaded acc -> emit ((plain "rvv.sum" [anyV d] [anyV (vreg acc)]) {siImplicitDefs = [p "t5"]})
       OShift op a b -> do
         x <- boxed (vreg a); y <- boxed (vreg b); t <- fresh
         call (if op == Shl then "fpr_g_BITSHIFTL_call2" else "fpr_g_BITSHIFTR_call2") False True [x,y] (Just t) False
@@ -320,7 +332,9 @@ render cfg fn ly restores (I i) = map (\s -> if last s == ':' then s else "    "
       HartTls -> ["lui t3, %tprel_hi(fpr_posix_hart)", "add t3, t3, tp, %tprel_add(fpr_posix_hart)", ld ++ " t3, %tprel_lo(fpr_posix_hart)(t3)"]
     l suffix = local fn (Label (siNote i ++ suffix))
     stack = [ld ++ " t5, " ++ show (57*w) ++ "(t3)", "sub t4, sp, t5", ld ++ " t5, " ++ show (58*w) ++ "(t3)", "bltu t4, t5, " ++ l "_stk", "call fpr_stack_grow", "beqz a0, " ++ l "_same", "mv sp, a0", l "_same" ++ ":"] ++ hart ++ [l "_stk" ++ ":"]
-    tick = [ld ++ " t4, 0(t3)", "addi t4, t4, -1", stWord ++ " t4, 0(t3)", "bgtz t4, " ++ l "_fuel", "call fpr_fuel_exhausted", l "_fuel" ++ ":"]
+    tick = tickN 1
+    tickN n = [ld ++ " t4, 0(t3)", "addi t4, t4, -" ++ show n, stWord ++ " t4, 0(t3)", "bgtz t4, " ++ l "_fuel", "call fpr_fuel_exhausted", l "_fuel" ++ ":"]
+    ew = if cfgWidth cfg == W32 then "32" else "64"
     go op ds us = case (op,ds,us) of
       ("params",_,[]) -> []
       ("load.slot",[d],[OF ref 0]) -> memory ld (r d) "s0" (off ref)
@@ -349,7 +363,24 @@ render cfg fn ly restores (I i) = map (\s -> if last s == ':' then s else "    "
       ("entry.check.tick",[],[]) -> hart ++ stack ++ tick
       ("entry.check",[],[]) -> hart ++ stack
       ("entry.tick",[],[]) -> hart ++ tick
+      ("tick.n",[],[OI n]) -> hart ++ tickN n
+      ("rvv.vlmax",[d],[]) -> ["vsetvli " ++ r d ++ ", x0, e" ++ ew ++ ", m1, ta, ma"]
+      ("rvv.lanes",[d],[a,n,OI bound]) ->
+        ["vsetvli t4, " ++ r n ++ ", e" ++ ew ++ ", m1, ta, ma", "vle" ++ ew ++ ".v v8, (" ++ r a ++ ")",
+         "vredmax.vs v9, v8, v8", "vredmin.vs v10, v8, v8",
+         "vmv.x.s t5, v9", "li t6, " ++ show bound, "slt " ++ r d ++ ", t5, t6",
+         "vmv.x.s t5, v10", "li t6, " ++ show (negate bound), "slt t5, t6, t5",
+         "and " ++ r d ++ ", " ++ r d ++ ", t5"]
+      ("rvv.sum",[d],[acc]) -> ["vmv.s.x v9, x0", "vredsum.vs v9, v8, v9", "vmv.x.s t5, v9", "add " ++ r d ++ ", " ++ r acc ++ ", t5"]
       -- F64 on the bits through ft0/ft1, as the legacy inline table does
+      -- F32: the legacy genU forms (fmv.x.w sign-extends; the runtime reads the low 32 bits)
+      (o,[d],[a,b]) | Just f <- stripPrefix "fbin32." o ->
+        ["fmv.w.x ft0, " ++ r a, "fmv.w.x ft1, " ++ r b, "f" ++ f ++ ".s ft0, ft0, ft1", "fmv.x.w " ++ r d ++ ", ft0"]
+      (o,[d],[a,b]) | Just c <- stripPrefix "fcmp32." o ->
+        ["fmv.w.x ft0, " ++ r a, "fmv.w.x ft1, " ++ r b] ++ case c of
+          "lt" -> ["flt.s " ++ r d ++ ", ft0, ft1"]; "gt" -> ["flt.s " ++ r d ++ ", ft1, ft0"]
+          "le" -> ["fle.s " ++ r d ++ ", ft0, ft1"]; "ge" -> ["fle.s " ++ r d ++ ", ft1, ft0"]
+          "eq" -> ["feq.s " ++ r d ++ ", ft0, ft1"]; _ -> ["feq.s " ++ r d ++ ", ft0, ft1", "xori " ++ r d ++ ", " ++ r d ++ ", 1"]
       (o,[d],[a,b]) | Just f <- stripPrefix "fbin." o ->
         ["fmv.d.x ft0, " ++ r a, "fmv.d.x ft1, " ++ r b, "f" ++ f ++ ".d ft0, ft0, ft1", "fmv.x.d " ++ r d ++ ", ft0"]
       (o,[d],[a,b]) | Just c <- stripPrefix "fcmp." o ->

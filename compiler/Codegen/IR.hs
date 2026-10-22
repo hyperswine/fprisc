@@ -25,7 +25,7 @@
 -- (Codegen.Eval) is the executable statement of these semantics.
 module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
-    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), Callee (..), CalleeKind (..), isForeign,
+    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
     intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
@@ -66,6 +66,23 @@ data BitOp = BAnd | BOr | BXor deriving (Eq, Ord, Show, Enum, Bounded)
 -- F64 arithmetic on IEEE binary64 bits held in a TVal (the 64-bit V ABI's
 -- float representation): IEEE semantics, no trap, no fused multiply-add
 data FloatOp = FAdd | FSub | FMul | FDiv deriving (Eq, Ord, Show, Enum, Bounded)
+
+-- A two-lane SIMD map body: the lane, a literal (an Int, or an F64's bits)
+-- and the operations NEON applies to both lanes at once (Target.A64).
+data SimdExpr = SLane | SConst Integer | SInt ArithOp SimdExpr SimdExpr | SFloat FloatOp SimdExpr SimdExpr
+  deriving (Eq, Ord, Show)
+
+-- The RISC-V V sum strip (Kernel.rvvPrefix): at most 64 lanes a strip, each
+-- lane within the lane bound, the accumulator within the acc bound, so no
+-- prefix of the strip can leave the Int range: 64 * 2^(bits-14) = 2^(bits-8)
+-- and the acc bound keeps 2^(bits-8) of headroom below the limits.
+rvvLaneBound, rvvAccBound :: Width -> Integer
+rvvLaneBound w = 2 ^ (intBits w - 14)
+rvvAccBound w = 2 ^ (intBits w - 1) - 2 ^ (intBits w - 8)
+
+intBits :: Width -> Int
+intBits W32 = 31
+intBits W64 = 63
 
 -- BITSHIFTL / BITSHIFTR (runtime/bits.c h_shiftl, h_shiftr): the 64-bit
 -- shift of the untagged value, wrapped to the 63-bit Int (`wrap63`); a
@@ -128,6 +145,13 @@ data Op
   | OBits Integer -- TVal: a raw 64-bit word, signed form (an F64 literal's IEEE bits, as the legacy generator splices them)
   | OFloatBin FloatOp VId VId -- TVal TVal -> TVal: F64 arithmetic on the bits, inline (Codegen.inlineTable F64.+ - * /)
   | OFloatCmp CmpOp VId VId -- TVal TVal -> TPred: F64 ordered comparison (false on a NaN), != is its negation (true on a NaN)
+  | OFloat32Bin FloatOp VId VId -- TVal TVal -> TVal: F32 arithmetic on the low 32 bits of the word (the runtime's F32 word), inline (the legacy genU F32.+ - * /)
+  | OFloat32Cmp CmpOp VId VId -- TVal TVal -> TPred: F32 ordered comparison, as OFloatCmp
+  | OSafepointN Int -- n fuel ticks at once: a NEON pair charges both elements' callback entry ticks, as the legacy kernel does
+  | OSimdPair Bool SimdExpr VId -- TAddr: the two Int (True) or F64 (False) lanes at the address, mapped in place through the expression (A64 NEON, one 128-bit register); an Int lane that leaves the 63-bit range traps with the kernel diagnostic
+  | ORvvVlMax -- :: TInt; RISC-V V: the lanes one vector register holds at the word's element width (vsetvli x0)
+  | ORvvLanes VId VId -- TAddr, TInt n -> TPred: RISC-V V: vl = n, the n Int lanes at the address loaded into the vector unit, true when every lane is within rvvLaneBound; the lanes stay loaded for ORvvSumLoaded, which follows with no other vector operation between
+  | ORvvSumLoaded VId -- TInt acc -> TInt: acc plus the lanes ORvvLanes loaded (vredsum), unchecked: the builder proved the bound
   | OCall Callee [VId] -- calleeParams -> calleeResult; clobbers every caller-saved register; any effect
   | OSafepoint -- the fuel tick: a runtime call that may deschedule the actor
   | OStackCheck -- the entry headroom check: a runtime call that may move sp to a new segment
@@ -211,9 +235,16 @@ opEffect = \case
   OBits _ -> Pure
   OFloatBin _ _ _ -> Pure
   OFloatCmp _ _ _ -> Pure
+  OFloat32Bin _ _ _ -> Pure
+  OFloat32Cmp _ _ _ -> Pure
   OCall _ _ -> AnyEffect
   OSafepoint -> RuntimeCall
   OStackCheck -> RuntimeCall
+  OSafepointN _ -> RuntimeCall
+  OSimdPair _ _ _ -> Writes
+  ORvvVlMax -> Pure
+  ORvvLanes _ _ -> Reads
+  ORvvSumLoaded _ -> Reads
 
 opUses :: Op -> [VId]
 opUses = \case
@@ -249,9 +280,16 @@ opUses = \case
   OBits _ -> []
   OFloatBin _ a b -> [a, b]
   OFloatCmp _ a b -> [a, b]
+  OFloat32Bin _ a b -> [a, b]
+  OFloat32Cmp _ a b -> [a, b]
   OCall _ as -> as
   OSafepoint -> []
   OStackCheck -> []
+  OSafepointN _ -> []
+  OSimdPair _ _ a -> [a]
+  ORvvVlMax -> []
+  ORvvLanes a n -> [a, n]
+  ORvvSumLoaded a -> [a]
 
 termUses :: Term -> [VId]
 termUses = \case
@@ -297,9 +335,16 @@ mapOpUses f = \case
   OBits n -> OBits n
   OFloatBin o a b -> OFloatBin o (f a) (f b)
   OFloatCmp o a b -> OFloatCmp o (f a) (f b)
+  OFloat32Bin o a b -> OFloat32Bin o (f a) (f b)
+  OFloat32Cmp o a b -> OFloat32Cmp o (f a) (f b)
   OCall c as -> OCall c (map f as)
   OSafepoint -> OSafepoint
   OStackCheck -> OStackCheck
+  OSafepointN n -> OSafepointN n
+  OSimdPair i e a -> OSimdPair i e (f a)
+  ORvvVlMax -> ORvvVlMax
+  ORvvLanes a n -> ORvvLanes (f a) (f n)
+  ORvvSumLoaded a -> ORvvSumLoaded (f a)
 
 mapTermUses :: (VId -> VId) -> Term -> Term
 mapTermUses f = \case

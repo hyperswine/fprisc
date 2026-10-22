@@ -4,7 +4,7 @@
 import Codegen
 import qualified Codegen.Kernel as K
 import KernelKinds (Kind(..))
-import Codegen.IR (Width(..))
+import Codegen.IR (Width(..), ArithOp(..))
 import Codegen.Policy (m2Policy, Policy(..), Profile(..))
 import Codegen.Target.RV (RVHart(..))
 import Codegen.Target.A64 (ObjectFormat(..), HartAccess(..))
@@ -34,8 +34,16 @@ main = do
     unless ("fpr_vspec_map_inc" `isInfixOf` emAsm out)
       (error "legacy caller did not reference the native kernel")
   putStrLn "Typed kernel emission: legacy-only callers retain their native kernel on all four selectors PASS"
-  let floatRecord = K.RecordKernel "float-record" "original" [] False (-1,-1) [(0,KD)] (K.RecordFold "dual" KD)
+  let floatRecord = K.RecordKernel "float-record" "original" [] False (-1,-1) [(0,KD)] (K.RecordFold "dual" KD) False
   case K.lowerRecordKernel (m2Policy {polProfile=Rv32}) M.empty floatRecord of
     Left "RV32 float record columns use boxed values" -> pure ()
     other -> error ("RV32 float record lowering must refuse boxed columns: " ++ show other)
   putStrLn "Typed record builder: explicit RV32 boxed-float refusal PASS"
+  -- the new forms refuse the shapes their proofs do not cover
+  let refused what = case what of Left _ -> pure (); Right _ -> error "a builder accepted a shape outside its proof"
+  refused (K.lowerKernel m2Policy M.empty (K.Kernel "pair" [KI] KI Nothing [K.Stage "map" "f" [0]] (Just (K.SInt Add K.SLane (K.SConst 1),0)) False))
+  refused (K.lowerKernel m2Policy M.empty (K.Kernel "pair" [] KI Nothing [K.Stage "map" "f" []] (Just (K.SInt Mul K.SLane (K.SConst 2),0)) False))
+  refused (K.lowerKernel m2Policy M.empty (K.Kernel "strip" [KI,KI] KI (Just (1,KI)) [K.Stage "fold" "f" [0]] Nothing True))
+  refused (K.lowerRecordKernel m2Policy M.empty (K.RecordKernel "gpu" "f" [] False (-1,-1) [(0,KI),(2,KI)] (K.RecordFold "dual" KI) True))
+  refused (K.lowerMapAsKernel m2Policy (K.MapAsKernel "as" "f" 8 "d"))
+  putStrLn "Typed kernel builders: a captured or two-op SIMD pair, a captured RVV sum, a GPU pair sum off columns 0 and 1, and an eight-capture mapAs are refused PASS"

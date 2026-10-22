@@ -11,7 +11,7 @@ import Codegen.Lower (lowerFn, lowerProgram, Prim (..))
 import Codegen.Policy (m2Policy, Policy (..), Profile (..))
 import Codegen.Simplify (simplifyFn, simplifyProgram)
 import Codegen.Split (splitEntryValues)
-import Codegen.Verify (verifyFn, verifyProgram, verifyProgramWidth, opSignature)
+import Codegen.Verify (verifyFn, verifyProgram, verifyProgramWidth, opSignature, simdExprOk)
 import Control.Monad (unless)
 import Data.List (isInfixOf)
 import qualified Data.Map.Strict as M
@@ -80,6 +80,19 @@ main = do
   check "load rejects tagged base" (case opSignature (const (Right TVal)) (OLoad TInt (VId 0) 0) of Left _ -> True; _ -> False)
   check "load rejects float-register representation" (case opSignature memTypes (OLoad TF64 (VId 0) 0) of Left _ -> True; _ -> False)
   check "store rejects mismatched value" (case opSignature memTypes (OStore TAddr (VId 0) 0 (VId 1)) of Left _ -> True; _ -> False)
+  -- SIMD pair bodies: an Int body is one + or - over the lane and literals,
+  -- an F64 body + - * only, within the 15 scratch registers
+  check "SIMD int body of one op" (simdExprOk True (SInt Add SLane (SConst 1)) == Right ())
+  check "SIMD int body refuses two ops" (either (const True) (const False) (simdExprOk True (SInt Add (SInt Add SLane (SConst 1)) (SConst 2))))
+  check "SIMD int body refuses a multiply" (either (const True) (const False) (simdExprOk True (SInt Mul SLane (SConst 2))))
+  check "SIMD float body" (simdExprOk False (SFloat FMul (SFloat FAdd SLane (SConst 3)) SLane) == Right ())
+  check "SIMD float body refuses division" (either (const True) (const False) (simdExprOk False (SFloat FDiv SLane (SConst 3))))
+  check "SIMD float body refuses an Int op" (either (const True) (const False) (simdExprOk False (SInt Add SLane (SConst 3))))
+  check "SIMD register budget" (either (const True) (const False) (simdExprOk False (iterate (\e -> SFloat FAdd e (SConst 1)) SLane !! 16)))
+  check "SIMD register budget edge" (simdExprOk False (iterate (\e -> SFloat FAdd e SLane) SLane !! 15) == Right ())
+  check "counted safepoint charges" (either (const True) (const False) (opSignature memTypes (OSafepointN 0)))
+  check "SIMD pair signature" (opSignature memTypes (OSimdPair True (SInt Add SLane (SConst 1)) (VId 0)) == Right Nothing)
+  check "RVV lanes signature" (opSignature (\v -> Right (if v == VId 0 then TAddr else TInt)) (ORvvLanes (VId 0) (VId 1)) == Right (Just TPred))
   -- the verifier
   check "a well-formed function verifies" (verifyFn M.empty good == Right ())
   expectRefusal "missing entry" "entry block missing" (verifyFn M.empty good {fnEntry = BId 9})

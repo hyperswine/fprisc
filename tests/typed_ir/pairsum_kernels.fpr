@@ -1,0 +1,9 @@
+unsafe base.
+Pair = { a:Int, b:Int }.
+samplePair b = {a=b, b=2*b}.
+pairStep acc r = acc + r.a + r.b.
+probePairSum seed v = Vec.fold pairStep seed v.
+fill : (Vector Pair) -> (i:Int | measure(n-i)) -> (n:Int) -> (Vector Pair).
+fill v i n | i >= n = v.
+fill v i n = fill (Vec.push (samplePair i) v) (i+1) n.
+main = v = fill (Vec.new Unit) 0 1000; (s,z) = probePairSum 5 v; _ = Vec.free z; print s.

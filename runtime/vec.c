@@ -715,6 +715,14 @@ __attribute__((weak)) int fpr_gpu_vec_fold_pair_sum(void *col0, void *col1,
   return 0;
 }
 
+/* The typed fold kernel's form of the hook: the tagged Int sum when the
+   hook took the fold, 0 (not an Int) when it declined. */
+V fpr_gpu_vec_fold_pair_sum_tagged(void *col0, void *col1, uw len, sw seed) {
+  sw out;
+  if (!fpr_gpu_vec_fold_pair_sum(col0, col1, len, seed, &out)) return 0;
+  return (V)(((uw)out << 1) | 1);
+}
+
 static int gpu_axpb_exact(vec_t *x, sw a, sw b) {
   if (x->len < 65536 || a < INT32_MIN || a > INT32_MAX ||
       b < INT32_MIN || b > INT32_MAX)

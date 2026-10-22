@@ -7,7 +7,7 @@
 -- operation signatures and result types, terminators and their edges,
 -- block-argument counts and types, reachability, and dominance of every
 -- use by its definition.
-module Codegen.Verify (verifyFn, verifyProgram, verifyProgramWidth, opSignature) where
+module Codegen.Verify (verifyFn, verifyProgram, verifyProgramWidth, opSignature, simdExprOk) where
 
 import Codegen.IR
 import Control.Monad (forM_, unless, when)
@@ -73,6 +73,8 @@ opSignature tyOf = \case
     pure (Just TVal)
   OFloatBin _ a b -> expect a TVal >> expect b TVal >> pure (Just TVal)
   OFloatCmp _ a b -> expect a TVal >> expect b TVal >> pure (Just TPred)
+  OFloat32Bin _ a b -> expect a TVal >> expect b TVal >> pure (Just TVal)
+  OFloat32Cmp _ a b -> expect a TVal >> expect b TVal >> pure (Just TPred)
   OCall c as -> do
     when (length as /= length (calleeParams c)) $
       Left ("call " ++ calleeName c ++ ": " ++ show (length as) ++ " arguments for " ++ show (length (calleeParams c)) ++ " parameters")
@@ -80,6 +82,13 @@ opSignature tyOf = \case
     mapM_ (uncurry expect) (zip as (calleeParams c))
     pure (Just (calleeResult c))
   OSafepoint -> pure Nothing
+  OSafepointN n -> do
+    unless (n >= 1) (Left "a counted safepoint charges at least one tick")
+    pure Nothing
+  OSimdPair int e a -> expect a TAddr >> simdExprOk int e >> pure Nothing
+  ORvvVlMax -> pure (Just TInt)
+  ORvvLanes a n -> expect a TAddr >> expect n TInt >> pure (Just TPred)
+  ORvvSumLoaded acc -> expect acc TInt >> pure (Just TInt)
   OStackCheck -> pure Nothing
   where
     memory t a n = do
@@ -195,3 +204,20 @@ verifyProgramWidth width program = do
       _ -> pure ()
   where
     aligned n = unless (n `mod` (widthBits width `div` 8) == 0) (Left "unaligned word memory operation")
+
+-- A SIMD pair body: at most the 15 scratch vector registers (v17..v31); an
+-- Int body is exactly one + or - over the lane and literals (the stored
+-- lanes' 63-bit fit is then the whole overflow test, as the legacy NEON
+-- gate argues); an F64 body uses + - * only.
+simdExprOk :: Bool -> SimdExpr -> Either String ()
+simdExprOk int e = do
+  unless (registers e <= 15) (Left "a SIMD pair expression needs more than the 15 scratch vector registers")
+  if int
+    then case e of
+      SInt op x y | op `elem` [Add, Sub], leaf x, leaf y -> pure ()
+      _ -> Left "an Int SIMD pair is exactly one + or - over the lane and literals"
+    else unless (floatOnly e) (Left "an F64 SIMD pair uses F64 + - * over the lane and literals")
+  where
+    registers = \case SLane -> 0 :: Int; SConst _ -> 1; SInt _ x y -> 1 + registers x + registers y; SFloat _ x y -> 1 + registers x + registers y
+    leaf = \case SLane -> True; SConst _ -> True; _ -> False
+    floatOnly = \case SLane -> True; SConst _ -> True; SFloat op x y -> op /= FDiv && floatOnly x && floatOnly y; SInt {} -> False

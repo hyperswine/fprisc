@@ -57,8 +57,15 @@ dumpFn fn =
       OBits n -> "bits " ++ show n
       OFloatBin o a b -> "fbin " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ value a ++ ", " ++ value b
       OFloatCmp o a b -> "fcmp " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
+      OFloat32Bin o a b -> "fbin32 " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ value a ++ ", " ++ value b
+      OFloat32Cmp o a b -> "fcmp32 " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
       OCall c as -> "call " ++ callee c ++ args as
       OSafepoint -> "safepoint"
+      OSafepointN n -> "safepoint x" ++ show n
+      OSimdPair int e a -> "simd.pair " ++ (if int then "int " else "f64 ") ++ simdText e ++ " " ++ value a
+      ORvvVlMax -> "rvv.vlmax"
+      ORvvLanes a n -> "rvv.lanes " ++ value a ++ " " ++ value n
+      ORvvSumLoaded acc -> "rvv.sum " ++ value acc
       OStackCheck -> "stackcheck"
     term = \case
       TRet v -> "ret " ++ value v
@@ -79,3 +86,10 @@ dumpFn fn =
       TPred -> "pred"
       TAddr -> "addr"
       TF64 -> "f64"
+
+simdText :: SimdExpr -> String
+simdText = \case
+  SLane -> "lane"
+  SConst n -> show n
+  SInt o x y -> "(" ++ simdText x ++ " " ++ (case o of Add -> "+"; Sub -> "-"; Mul -> "*"; Div -> "/") ++ " " ++ simdText y ++ ")"
+  SFloat o x y -> "(" ++ simdText x ++ " " ++ (case o of FAdd -> "f+"; FSub -> "f-"; FMul -> "f*"; FDiv -> "f/") ++ " " ++ simdText y ++ ")"

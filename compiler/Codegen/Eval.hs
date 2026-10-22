@@ -12,7 +12,7 @@ module Codegen.Eval (RV (..), Event (..), Failure (..), Outcome (..), evalProgra
 
 import Codegen.IR
 import Codegen.Target.Common (utf8Bytes)
-import Control.Monad (foldM, when, unless)
+import Control.Monad (foldM, when, unless, replicateM_)
 import Data.Bits (shiftL, shiftR, xor, (.&.), (.|.))
 import Control.Monad.Except
 import Control.Monad.State.Strict
@@ -182,6 +182,8 @@ callFn width program name args = do
         OBits _ -> stuck "a raw-bits constant (an F64 literal): the evaluator models no floats"
         OFloatBin _ _ _ -> stuck "an inline F64 operation: the evaluator models no floats (F64 values come from C entries it does not model either)"
         OFloatCmp _ _ _ -> stuck "an inline F64 comparison: the evaluator models no floats"
+        OFloat32Bin _ _ _ -> stuck "an inline F32 operation: the evaluator models no floats"
+        OFloat32Cmp _ _ _ -> stuck "an inline F32 comparison: the evaluator models no floats"
         OCall c as -> do
           args' <- mapM (look env) as
           when (isForeign c) (stuck ("a foreign call to " ++ calleeName c ++ ": the evaluator models no C"))
@@ -189,6 +191,11 @@ callFn width program name args = do
           r <- callFn width program (calleeName c) args'
           pure (Just r)
         OSafepoint -> event (EvSafepoint (fnName fn)) >> pure Nothing
+        OSafepointN n -> replicateM_ n (event (EvSafepoint (fnName fn))) >> pure Nothing
+        OSimdPair {} -> stuck "a NEON pair over unmanaged memory is outside the Core evaluator"
+        ORvvVlMax -> stuck "the vector length is a machine fact outside the Core evaluator"
+        ORvvLanes _ _ -> stuck "vector lanes over unmanaged memory are outside the Core evaluator"
+        ORvvSumLoaded _ -> stuck "vector lanes over unmanaged memory are outside the Core evaluator"
         OStackCheck -> event (EvStackCheck (fnName fn)) >> pure Nothing
       look env v = maybe (stuck ("no value " ++ show v)) pure (M.lookup v env)
       int env v = look env v >>= \case VInt n -> pure n; x -> stuck ("an Int was needed, found " ++ show x)

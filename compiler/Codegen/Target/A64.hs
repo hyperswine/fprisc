@@ -360,6 +360,11 @@ selectInstr :: A64Config -> M.Map VId Ty -> Instr -> Se ()
 selectInstr _ _ (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
+  OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq False True l) {siOp = "tick.n", siUses = [OI (fromIntegral n)]})
+  OSimdPair int e a -> simdPair int e (vreg a)
+  ORvvVlMax -> refuse "a RISC-V vector length on A64"
+  ORvvLanes _ _ -> refuse "RISC-V vector lanes on A64"
+  ORvvSumLoaded _ -> refuse "a RISC-V vector sum on A64"
   OAddress v -> def (\r -> emitI (mov r (vreg v)))
   OIndex a i -> def $ \r -> do
     offset <- freshV False
@@ -459,6 +464,8 @@ selectInstr _ _ (Instr d op) = case op of
   -- register is allocated; AAPCS lets a call clobber them anyway)
   OFloatBin o a b -> def (\r -> emitI (rrr ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) r (vreg a) (vreg b)))
   OFloatCmp o a b -> def (\r -> emitI ((rrr ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) r (vreg a) (vreg b)) {siFlags = FlagsDef}))
+  OFloat32Bin o a b -> def (\r -> emitI (rrr ("fbin32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) r (vreg a) (vreg b)))
+  OFloat32Cmp o a b -> def (\r -> emitI ((rrr ("fcmp32." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) r (vreg a) (vreg b)) {siFlags = FlagsDef}))
   OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
     emitI (cmp (vreg a) (vreg b))
@@ -488,6 +495,41 @@ selectInstr _ _ (Instr d op) = case op of
       Just (v, _) -> k (vreg v)
       Nothing -> refuse ("internal: " ++ take 20 (show op) ++ " without a definition")
     cond = \case Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne"
+    -- the NEON pair: q16 holds the lanes, the expression's temporaries take
+    -- v17.. in evaluation order (the legacy neonExpr's allocation), the result
+    -- is stored back, and Int lanes are checked for the 63-bit fit (the whole
+    -- overflow test for one + or - on fitting operands)
+    simdPair int e base = do
+      trap <- freshL "lanes"
+      done <- freshL "lanesok"
+      emitI (plain "simd.ld" [] [any' base, OI 16])
+      (res, _) <- simdGo e (17 :: Int)
+      emitI (plain "simd.st" [] [any' base, OI (fromIntegral res)])
+      when int $ forM_ [0, 8] $ \off -> do
+        t <- freshV False
+        emitI (plain "load.field" [any' t] [any' base, OI off])
+        n <- freshV False
+        emitI (rri "sbfx63" n t 0)
+        emitI (cmp n t)
+        emitI (bcond "ne" trap)
+      emitI (jump done)
+      emitL trap
+      emitI (call "fpr_int_overflow_kernel" False True [] Nothing)
+      emitL done
+    simdGo e next = case e of
+      SLane -> pure (16, next)
+      SConst n -> do
+        t <- freshV False
+        emitI (li t n)
+        emitI (plain "simd.dup" [] [any' t, OI (fromIntegral next)])
+        pure (next, next + 1)
+      SInt o x y -> simdBinary (case o of Add -> "simd.add"; Sub -> "simd.sub"; Mul -> "simd.mul"; Div -> "simd.div") x y next
+      SFloat o x y -> simdBinary (case o of FAdd -> "simd.fadd"; FSub -> "simd.fsub"; FMul -> "simd.fmul"; FDiv -> "simd.fdiv") x y next
+    simdBinary name x y next = do
+      (rx, n1) <- simdGo x next
+      (ry, n2) <- simdGo y n1
+      emitI (plain name [] [OI (fromIntegral n2), OI (fromIntegral rx), OI (fromIntegral ry)])
+      pure (n2, n2 + 1)
     -- checked Int arithmetic: the legacy worker sequences (Codegen.inlineTable,
     -- ScalarChecked): the fast path computes and checks the 63-bit fit, the
     -- slow path retags the ORIGINAL operands and re-enters the C primitive,
@@ -786,6 +828,7 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
     reg = \case
       OP p -> phys p
       o -> error ("A64 render: an unplaced operand " ++ show o)
+    wreg o = 'w' : drop 1 (reg o)
     imm = \case
       OI n -> n
       o -> error ("A64 render: not an immediate " ++ show o)
@@ -836,6 +879,18 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
       ("entry.check.tick", _, _) -> hartRead ++ stackCheck ++ tick
       ("entry.check", _, _) -> hartRead ++ stackCheck
       ("entry.tick", _, _) -> hartRead ++ tick
+      ("tick.n", _, [OI n]) -> hartRead ++ tickN n
+      ("simd.ld", [], [base, OI n]) -> ["ldr q" ++ show n ++ ", [" ++ reg base ++ "]"]
+      ("simd.st", [], [base, OI n]) -> ["str q" ++ show n ++ ", [" ++ reg base ++ "]"]
+      ("simd.dup", [], [src, OI n]) -> ["dup v" ++ show n ++ ".2d, " ++ reg src]
+      (o, [], [OI d, OI a, OI b]) | Just inst <- stripPrefix "simd." o -> [inst ++ " v" ++ show d ++ ".2d, v" ++ show a ++ ".2d, v" ++ show b ++ ".2d"]
+      -- F32: the low 32 bits of the word; fmov w<-s zero-extends, as the
+      -- legacy translation of fmv.x.w does
+      (o, [d], [a, b]) | Just f <- stripPrefix "fbin32." o ->
+        ["fmov s16, " ++ wreg a, "fmov s17, " ++ wreg b, "f" ++ f ++ " s16, s16, s17", "fmov " ++ wreg d ++ ", s16"]
+      (o, [d], [a, b]) | Just c <- stripPrefix "fcmp32." o ->
+        ["fmov s16, " ++ wreg a, "fmov s17, " ++ wreg b, "fcmp s16, s17",
+         "cset " ++ reg d ++ ", " ++ (case c of "lt" -> "mi"; "le" -> "ls"; "gt" -> "gt"; "ge" -> "ge"; "eq" -> "eq"; _ -> "ne")]
       (o, [d], [a, b]) | Just f <- stripPrefix "fbin." o ->
         ["fmov d16, " ++ reg a, "fmov d17, " ++ reg b, "f" ++ f ++ " d16, d16, d17", "fmov " ++ reg d ++ ", d16"]
       -- the conditions are false when unordered except ne (feq negated)
@@ -878,9 +933,10 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
         ++ parkArgs "ldr" "ldur"
         ++ hartRead -- the call clobbered x9
         ++ [lbl (Label (base ++ "_stk")) ++ ":"]
-    tick =
+    tick = tickN 1
+    tickN n =
       [ "ldur x10, [x9, #0]",
-        "sub x10, x10, #1",
+        "sub x10, x10, #" ++ show n,
         "stur x10, [x9, #0]",
         "cmp x10, #0",
         "b.gt " ++ lbl (Label (base ++ "_fuel"))

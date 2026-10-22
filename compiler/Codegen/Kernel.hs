@@ -1,7 +1,7 @@
 -- Column kernels are ordinary typed CFGs. No target registers or assembly
 -- enter this module. The only memory operations follow descriptor guards;
 -- the hosted/loaded-app profiles have non-moving storage across safepoints.
-module Codegen.Kernel (Kernel(..), Stage(..), RecordKernel(..), RecordOp(..), kernelCallbacks, lowerKernel, lowerRecordKernel) where
+module Codegen.Kernel (Kernel(..), Stage(..), RecordKernel(..), RecordOp(..), MapAsKernel(..), SimdExpr(..), kernelCallbacks, lowerKernel, lowerRecordKernel, lowerMapAsKernel) where
 
 import Codegen.IR
 import Codegen.Target.Common (mangleName)
@@ -18,8 +18,14 @@ import qualified Data.Map.Strict as M
 data Stage = Stage String Name [Int] deriving Show
 data Kernel = Kernel
   { kernelSymbol :: String, kernelCaptures :: [Kind], kernelElement :: Kind,
-    kernelAccumulator :: Maybe (Int, Kind), kernelStages :: [Stage]
+    kernelAccumulator :: Maybe (Int, Kind), kernelStages :: [Stage],
+    kernelSimd :: Maybe (SimdExpr, Int), -- a capture-free map's two-lane body (A64 NEON) and its callback entry ticks
+    kernelRvvSum :: Bool -- a capture-free Int sum fold strip-mined on RISC-V V
   } deriving Show
+
+-- the runtime's column kind descriptor byte (vec.c: 'i' 1, 'd' 3, 's' 7, boxed 0)
+kindByteOf :: Kind -> Integer
+kindByteOf k = case k of KI -> 1; KD -> 3; KS -> 7; KB -> 0
 
 callbackSymbol :: Name -> String
 callbackSymbol n = "fpr_tkfn_" ++ mangleName n
@@ -92,12 +98,21 @@ callback program name args
 lowerKernel :: Policy -> Program -> Kernel -> Either String Fn
 lowerKernel policy callbacks k = do
   validatePolicy policy
-  unless (kernelElement k `elem` [KI,KD] && all (`elem` [KI,KD,KB]) (kernelCaptures k))
-    (Left "typed column kernels currently support Int/F64 elements and Int/F64/Bool captures")
-  unless (policyWidth policy == W64 || (kernelElement k == KI && all (/= KD) (kernelCaptures k)))
+  unless (kernelElement k `elem` [KI,KD,KS] && all (`elem` [KI,KD,KS,KB]) (kernelCaptures k))
+    (Left "typed column kernels currently support Int/F64/F32 elements and Int/F64/F32/Bool captures")
+  unless (policyWidth policy == W64 || (kernelElement k == KI && all (`notElem` [KD,KS]) (kernelCaptures k)))
     (Left "RV32 float columns use boxed values")
   unless (not (null stages) && all (\(Stage op _ _) -> op `elem` ["map","filter","fold"]) stages)
     (Left "unsupported typed kernel stages")
+  case kernelSimd k of
+    Just (expr,_) -> do
+      unless ([op | Stage op _ _ <- stages] == ["map"] && null (kernelCaptures k) && kernelElement k `elem` [KI,KD])
+        (Left "a SIMD pair body needs a capture-free single map over Int or F64")
+      checked (simdExprOk (kernelElement k == KI) expr)
+    Nothing -> pure ()
+  when (kernelRvvSum k) $
+    unless ([op | Stage op _ _ <- stages] == ["fold"] && kernelCaptures k == [KI] && kernelElement k == KI && kernelAccumulator k == Just (0,KI))
+      (Left "an RVV sum strip needs a capture-free Int fold")
   let ps = [(VId i,TVal) | i <- [0..length (kernelCaptures k)]]
       initial = Build (length ps) 1 (BId 0) ps [] []
       Build _ _ _ _ _ blocks = execState (build (map fst ps)) initial
@@ -133,7 +148,7 @@ lowerKernel policy callbacks k = do
       addr <- value TAddr (OAddress vec)
       kinds <- load TAddr addr (8+4*w)
       kind <- value TInt (OLoadByte kinds 0)
-      want <- constant (if kernelElement k == KI then 1 else 3)
+      want <- constant (kindByteOf (kernelElement k))
       value TPred (OCmp Eq kind want) >>= assertGuard fallback
       count <- load TInt addr 8
       zero <- constant 0; one <- constant 1
@@ -147,7 +162,11 @@ lowerKernel policy callbacks k = do
       col <- load TAddr cols 0
       base <- load TAddr col w
       i <- fresh TInt; kept <- fresh TInt; acc <- fresh TVal
-      end (TBr loop [zero,zero,acc0])
+      (iStart,accStart) <- case (kernelSimd k, kernelRvvSum k) of
+        (Just simd,_) -> simdPrefix base count zero acc0 simd
+        (_,True) -> rvvPrefix base count zero acc0
+        _ -> pure (zero,acc0)
+      end (TBr loop [iStart,iStart,accStart])
       begin loop [i,kept,acc]
       more <- value TPred (OCmp Lt (fst i) count)
       end (TCondBr more body [] done [fst acc,fst kept])
@@ -196,6 +215,75 @@ lowerKernel policy callbacks k = do
                   _ -> [v])
             value TVal (OCall (Callee ("Vec."++op) (Foreign ("fpr_vec_"++op)) (replicate (length inputs) TVal) TVal) inputs)
       foldM generic vec stages >>= end . TRet
+    -- the NEON pair loop ahead of the scalar loop: two lanes a step while two
+    -- remain, each step charged both elements' entry ticks (the legacy kernel's
+    -- specFuelN); the scalar loop takes the tail from where the pairs stopped
+    simdPrefix base count zero acc0 (expr,ticks) = do
+      pairLoop <- label; pairBody <- label; after <- label
+      i2 <- fresh TInt
+      end (TBr pairLoop [zero])
+      begin pairLoop [i2]
+      remaining <- value TInt (OKernelArith Sub count (fst i2))
+      two <- constant 2
+      enough <- value TPred (OCmp Ge remaining two)
+      end (TCondBr enough pairBody [] after [])
+      begin pairBody []
+      effect (OSafepointN (2*(ticks+1)))
+      cursor <- value TAddr (OIndex base (fst i2))
+      effect (OSimdPair (kernelElement k == KI) expr cursor)
+      i2' <- value TInt (OKernelArith Add (fst i2) two)
+      end (TBr pairLoop [i2'])
+      begin after []
+      pure (fst i2, acc0)
+    -- the RISC-V V strip loop for an Int sum: up to 64 lanes a strip, the
+    -- lanes loaded and bound-checked (rvvLaneBound) and the accumulator kept
+    -- away from the Int limits (rvvAccBound), so no prefix of the strip can
+    -- overflow and the reduction is exactly the scalar fold; any strip that
+    -- fails a bound hands the REST of the vector to the scalar loop, whose
+    -- checked adds trap in source order
+    rvvPrefix base count zero acc0 = do
+      vl0 <- value TInt ORvvVlMax
+      cap <- constant 64
+      useVl <- label; useCap <- label; haveMax <- label
+      vmax <- fresh TInt
+      capLt <- value TPred (OCmp Lt vl0 cap)
+      end (TCondBr capLt useVl [] useCap [])
+      begin useVl []; end (TBr haveMax [vl0])
+      begin useCap []; end (TBr haveMax [cap])
+      begin haveMax [vmax]
+      stripLoop <- label; stripBody <- label; pickRem <- label; pickMax <- label; picked <- label
+      c1 <- label; c2 <- label; fast <- label; after <- label
+      i3 <- fresh TInt; acc3 <- fresh TVal; n <- fresh TInt; iOut <- fresh TInt; accOut <- fresh TVal
+      end (TBr stripLoop [zero,acc0])
+      begin stripLoop [i3,acc3]
+      remaining <- value TInt (OKernelArith Sub count (fst i3))
+      more <- value TPred (OCmp Gt remaining zero)
+      end (TCondBr more stripBody [] after [fst i3,fst acc3])
+      begin stripBody []
+      effect OSafepoint
+      small <- value TPred (OCmp Lt remaining (fst vmax))
+      end (TCondBr small pickRem [] pickMax [])
+      begin pickRem []; end (TBr picked [remaining])
+      begin pickMax []; end (TBr picked [fst vmax])
+      begin picked [n]
+      cursor <- value TAddr (OIndex base (fst i3))
+      ok <- value TPred (ORvvLanes cursor (fst n))
+      rawAcc <- value TInt (OUntag (fst acc3))
+      hi <- constant (rvvAccBound (policyWidth policy)); lo <- constant (negate (rvvAccBound (policyWidth policy)))
+      below <- value TPred (OCmp Lt rawAcc hi)
+      above <- value TPred (OCmp Gt rawAcc lo)
+      end (TCondBr ok c1 [] after [fst i3,fst acc3])
+      begin c1 []
+      end (TCondBr below c2 [] after [fst i3,fst acc3])
+      begin c2 []
+      end (TCondBr above fast [] after [fst i3,fst acc3])
+      begin fast []
+      total <- value TInt (ORvvSumLoaded rawAcc)
+      tagged <- value TVal (OTag total)
+      i3' <- value TInt (OKernelArith Add (fst i3) (fst n))
+      end (TBr stripLoop [i3',tagged])
+      begin after [iOut,accOut]
+      pure (fst iOut, fst accOut)
 
 
 -- A record plan describes the dualized callbacks, never architecture details.
@@ -210,7 +298,8 @@ data RecordKernel = RecordKernel
   { recordSymbol :: String, recordOriginal :: Name,
     recordCaptures :: [Kind], recordHasCapture :: Bool,
     recordShape :: (Int,Int), recordColumns :: [(Int,Kind)],
-    recordOperation :: RecordOp
+    recordOperation :: RecordOp,
+    recordGpuPairSum :: Bool -- a capture-free Int fold of acc + column 0 + column 1: offered to the GPU hook first (vec.c fpr_gpu_vec_fold_pair_sum)
   } deriving Show
 
 lowerRecordKernel :: Policy -> Program -> RecordKernel -> Either String Fn
@@ -223,10 +312,13 @@ lowerRecordKernel policy callbacks k = do
       (map fst columns == [0..length fields-1] && all (\(_,ps,cs) -> all (>=0) ps && all (`elem` map fst columns) cs) fields)
       (Left "invalid typed record map field plan")
     _ -> pure ()
-  unless (all (`elem` [KI,KD]) (map snd columns ++ accumulatorKinds) &&
-          all (`elem` [KI,KD,KB]) (recordCaptures k))
-    (Left "typed record kernels currently support Int/F64 columns and Int/F64/Bool captures")
-  unless (policyWidth policy == W64 || KD `notElem` (map snd columns ++ accumulatorKinds ++ recordCaptures k))
+  unless (all (`elem` [KI,KD,KS]) (map snd columns ++ accumulatorKinds) &&
+          all (`elem` [KI,KD,KS,KB]) (recordCaptures k))
+    (Left "typed record kernels currently support Int/F64/F32 columns and Int/F64/F32/Bool captures")
+  when (recordGpuPairSum k) $
+    unless (null (recordCaptures k) && map fst columns == [0,1] && accumulatorKinds == [KI] && all ((== KI) . snd) columns)
+      (Left "the GPU pair sum needs a capture-free Int fold over columns 0 and 1")
+  unless (policyWidth policy == W64 || all (`notElem` [KD,KS]) (map snd columns ++ accumulatorKinds ++ recordCaptures k))
     (Left "RV32 float record columns use boxed values")
   let argc = case operation of RecordMap _ -> 2; _ -> length (recordCaptures k) + length accumulatorKinds + 1
       ps = [(VId i,TVal) | i <- [0..argc-1]]
@@ -287,7 +379,7 @@ lowerRecordKernel policy callbacks k = do
         -- independent of target load-immediate limits.
         ptr <- at kinds (n `div` w)
         kind <- value TInt (OLoadByte ptr (n `mod` w))
-        equal fallback kind (if ty == KI then 1 else 3)
+        equal fallback kind (kindByteOf ty)
       count <- load TInt addr 8
       zero <- constant 0; one <- constant 1
       acc0 <- case operation of RecordFold _ _ -> pure (args !! capCount); _ -> value TVal (ONullary 0 0)
@@ -299,6 +391,15 @@ lowerRecordKernel policy callbacks k = do
       cols <- load TAddr addr (8+5*w)
       bases <- M.fromList <$> forM columns (\(n,_) -> do idx <- constant (fromIntegral n); b <- baseAt cols idx; pure (n,b))
       i <- fresh TInt; kept <- fresh TInt; acc <- fresh TVal
+      -- the GPU hook answers a tagged Int when it took the fold, 0 when it declined
+      when (recordGpuPairSum k) $ do
+        seed <- value TInt (OUntag acc0)
+        answer <- value TVal (OCall (Callee "fpr_gpu_vec_fold_pair_sum_tagged" (Foreign "fpr_gpu_vec_fold_pair_sum_tagged") [TAddr,TAddr,TInt,TInt] TVal)
+                                [bases M.! 0, bases M.! 1, count, seed])
+        taken <- value TPred (OIsInt answer)
+        cpu <- label
+        end (TCondBr taken done [answer,zero] cpu [])
+        begin cpu []
       end (TBr loop [zero,zero,acc0])
       begin loop [i,kept,acc]
       more <- value TPred (OCmp Lt (fst i) count)
@@ -364,3 +465,92 @@ lowerRecordKernel policy callbacks k = do
             RecordFilter _ -> ("filter",[closure,vec])
             RecordMap _ -> ("map",[closure,vec])
       value TVal (OCall (Callee ("Vec."++op) (Foreign ("fpr_vec_"++op)) (replicate (length inputs) TVal) TVal) inputs) >>= end . TRet
+
+
+-- Vec.mapAs layout f v: a layout-changing map. The output vector is built
+-- by the runtime (Vec.new or Vec.newAs layout, then one push per element),
+-- the callback is the ORDINARY tagged function (its own messages, its own
+-- fuel tick), and the input is freed at the end: the legacy
+-- `Vec.mapAs direct scalar kernel`. Int, boxed and float inputs are read as
+-- one word; an Int word is tagged on the way in. No callback is cloned.
+data MapAsKernel = MapAsKernel
+  { mapAsSymbol :: String, mapAsOriginal :: Name, mapAsCaptures :: Int, mapAsLayout :: String }
+  deriving Show
+
+lowerMapAsKernel :: Policy -> MapAsKernel -> Either String Fn
+lowerMapAsKernel policy k = do
+  validatePolicy policy
+  unless (mapAsCaptures k >= 0 && mapAsCaptures k <= 7) (Left "typed mapAs kernels take at most seven captures")
+  let argc = mapAsCaptures k + 1
+      ps = [(VId i,TVal) | i <- [0..argc-1]]
+      Build _ _ _ _ _ blocks = execState (build (map fst ps)) (Build argc 1 (BId 0) ps [] [])
+      fn = Fn ("$vkernel:" ++ mapAsSymbol k) (map (('a':) . show) [0..argc-1]) TVal (BId 0) (reverse blocks)
+  checked (verifyProgramWidth (policyWidth policy) (M.singleton (fnName fn) fn))
+  (simplified,_) <- checked (simplifyFn M.empty fn)
+  checked (verifyProgramWidth (policyWidth policy) (M.singleton (fnName fn) simplified))
+  pure simplified
+  where
+    checked = either (Left . ("compiler error: " ++)) Right
+    w = if policyWidth policy == W32 then 4 else 8
+    hal name arity = Callee name (Foreign ("fpr_g_" ++ mangleName name ++ "_call" ++ show arity)) (replicate arity TVal) TVal
+    build args = do
+      effect OStackCheck
+      effect OSafepoint
+      fallback <- label
+      let caps = init args; vec = last args
+      -- an Int (1), boxed (2) or float (4) column; a record vector goes generic
+      isInt <- value TPred (OTagTest 9006 1 vec)
+      ready <- label; boxedTest <- label; floatTest <- label
+      end (TCondBr isInt ready [] boxedTest [])
+      begin boxedTest []
+      isBoxed <- value TPred (OTagTest 9006 2 vec)
+      end (TCondBr isBoxed ready [] floatTest [])
+      begin floatTest []
+      value TPred (OTagTest 9006 4 vec) >>= assertGuard fallback
+      end (TBr ready [])
+      begin ready []
+      addr <- value TAddr (OAddress vec)
+      count <- load TInt addr 8
+      out0 <- if null (mapAsLayout k)
+        then do unit <- value TVal (ONullary 0 0); value TVal (OCall (hal "Vec.new" 1) [unit])
+        else do spec <- value TVal (OString (mapAsLayout k)); value TVal (OCall (hal "Vec.newAs" 1) [spec])
+      zero <- constant 0; one <- constant 1
+      setup <- label; loop <- label; body <- label; done <- label
+      tagIt <- label; rawIt <- label; joined <- label
+      resultOut <- fresh TVal
+      empty <- value TPred (OCmp Eq count zero)
+      end (TCondBr empty done [out0] setup [])
+      begin setup []
+      cols <- load TAddr addr (8+5*w)
+      col0 <- load TAddr cols 0
+      base <- load TAddr col0 w
+      i <- fresh TInt; out <- fresh TVal
+      end (TBr loop [zero,out0])
+      begin loop [i,out]
+      more <- value TPred (OCmp Lt (fst i) count)
+      end (TCondBr more body [] done [fst out])
+      begin body []
+      effect OSafepoint
+      cursor <- value TAddr (OIndex base (fst i))
+      end (TCondBr isInt tagIt [] rawIt [])
+      begin tagIt []
+      raw <- load TInt cursor 0
+      tagged <- value TVal (OTag raw)
+      end (TBr joined [tagged])
+      begin rawIt []
+      word <- load TVal cursor 0
+      end (TBr joined [word])
+      element <- fresh TVal
+      begin joined [element]
+      mapped <- value TVal (OCall (Callee (mapAsOriginal k) Local (replicate (length args) TVal) TVal) (caps ++ [fst element]))
+      out' <- value TVal (OCall (hal "Vec.push" 2) [mapped,fst out])
+      i' <- value TInt (OKernelArith Add (fst i) one)
+      end (TBr loop [i',out'])
+      begin done [resultOut]
+      _ <- value TVal (OCall (hal "Vec.free" 1) [vec])
+      end (TRet (fst resultOut))
+      begin fallback []
+      fun <- value TVal (OFunValue (mapAsOriginal k))
+      closure <- foldM (\h a -> value TVal (OApply h [a])) fun caps
+      spec <- value TVal (OString (mapAsLayout k))
+      value TVal (OCall (hal "Vec.mapAs" 3) [spec,closure,vec]) >>= end . TRet

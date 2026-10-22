@@ -7,5 +7,8 @@ probeDiv c v = Vec.map (quotient c) v.
 probeMap c v = Vec.map (inc c) v.
 probeFilter c v = Vec.filter (above c) v.
 probeFold c z v = Vec.fold (weighted c) z v.
+incOne x = x + 1.
+plus a x = a + x.
+probeWfold z v = Vec.fold plus z (Vec.map incOne v).
 probePipe c d e z v = Vec.fold (weighted e) z (Vec.filter (above d) (Vec.map (inc c) v)).
 main = (answer,v) = probePipe 1 500 2 7 (Vec.iota 1000); _ = Vec.free v; print answer.

@@ -45,7 +45,7 @@ import Numeric (showHex)
 import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, isJust)
 import Peephole (peepholeFor)
-import Codegen.IR (Fn (..), Block (..), Width)
+import Codegen.IR (Fn (..), Block (..), Width, ArithOp (..), FloatOp (..))
 import qualified Codegen.Kernel as K
 import Codegen.Lower (lowerProgram, Prim (..))
 import Codegen.Simplify (simplifyProgram)
@@ -3343,21 +3343,44 @@ genUWithSlots tgt prog uset load save = go
 -- specialized loop emission
 --------------------------------------------------------------------------------
 
--- Scalar, fused and record column plans share the typed CFG builder.
--- Layout conversion, write-back folds and SIMD retain explicit legacy reasons.
-hasNeonKernel :: Target -> Prog -> SpecPlan -> Bool
-hasNeonKernel tgt prog p = isJust $ do
+-- Every plan shares the typed CFG builder; a capture-free straight-line map
+-- also gets the NEON two-lane body under the legacy gate (neonExpr's), and
+-- an Int sum fold the RVV strip under --rvv.
+simdPlan :: Target -> Prog -> SpecPlan -> Maybe (K.SimdExpr, Int)
+simdPlan tgt prog p = do
   if tgtSimd tgt && spOp p == "map" && spCaps p == 0 then Just () else Nothing
   ([prm],b) <- M.lookup (spFn p) prog
-  (body,_) <- expandKernel prog 12 b
+  (body,ticks) <- expandKernel prog 12 b
   kind <- case spKinds p of Just ([kind],out) | kind == out -> Just kind; _ -> Nothing
   if kind == KI && not (singleIntOp prm body) then Nothing else Just ()
-  neonExpr kind (M.singleton prm "v16") 17 body
+  expr <- simdExprOf kind prm body
+  pure (expr, ticks)
+
+-- neonExpr's shape as an IR expression: the lane, literals, + - (Int) or
+-- F64 + - *, within the 15 scratch registers
+simdExprOf :: Kind -> String -> Core -> Maybe K.SimdExpr
+simdExprOf kind prm body = evalStateT (go (M.singleton prm K.SLane) body) (0 :: Int)
+  where
+    reg = do n <- get; if n >= 15 then lift Nothing else put (n+1)
+    go env e | Just bits <- floatLitBits e, kind == KD = reg >> pure (K.SConst bits)
+    go env (CInt n) | kind == KI = reg >> pure (K.SConst n)
+    go env (CVar n) = lift (M.lookup n env)
+    go env (CLet x a b) = do v <- go env a; go (M.insert x v env) b
+    go env e | (CVar op,[a,b]) <- spineOf e = do
+      x <- go env a; y <- go env b; reg
+      case (kind, op) of
+        (KI,"+") -> pure (K.SInt Add x y)
+        (KI,"-") -> pure (K.SInt Sub x y)
+        (KD,"F64.+") -> pure (K.SFloat FAdd x y)
+        (KD,"F64.-") -> pure (K.SFloat FSub x y)
+        (KD,"F64.*") -> pure (K.SFloat FMul x y)
+        _ -> lift Nothing
+    go _ _ = lift Nothing
 
 typedKernelPlan :: String -> SpecPlan -> Either String K.Kernel
 typedKernelPlan sym p
   | Just pipeline <- spPipe p = Right (K.Kernel sym (planCapKinds p) (pipeElement pipeline)
-      (pipeAccumulator pipeline) [K.Stage op f caps | (op,f,caps) <- pipeStages pipeline])
+      (pipeAccumulator pipeline) [K.Stage op f caps | (op,f,caps) <- pipeStages pipeline] Nothing False)
   | spOp p `elem` ["map","filter","fold"], spScalar p,
     spSoa p == Nothing, spMv p == Nothing =
       let k = spCaps p
@@ -3366,7 +3389,11 @@ typedKernelPlan sym p
           accKind = case spKinds p of Just (ks,_) -> ks !! k; _ -> KI
           folding = spOp p == "fold"
        in Right (K.Kernel sym (kinds ++ [accKind | folding]) element
-            (if folding then Just (k,accKind) else Nothing) [K.Stage (spOp p) (spFn p) [0..k-1]])
+            (if folding then Just (k,accKind) else Nothing) [K.Stage (spOp p) (spFn p) [0..k-1]] Nothing False)
+  -- the write-back fold Vec.fold f z (Vec.map g v): one pass that stores
+  -- g(el) and folds f over it, the pipeline shape with map then fold
+  | Just g <- wfoldG p, Just (ks,_) <- spKinds p, spScalar p =
+      Right (K.Kernel sym [head ks] (last ks) (Just (0,head ks)) [K.Stage "map" g [], K.Stage "fold" (spFn p) []] Nothing False)
   | otherwise = Left ("typed " ++ spOp p ++ " record/SIMD kernel not implemented")
 
 -- Reuse the planner's column duals as ordinary Core functions, so callback
@@ -3375,20 +3402,21 @@ typedRecordPlan :: Target -> Prog -> String -> SpecPlan -> Either String (K.Reco
 typedRecordPlan tgt prog sym p
   | Just mp <- spMv p, Just sigs <- mvKinds mp = do
       let kinds = concat [out:ks | (ks,out) <- sigs]
-      unless (all (`elem` [KI,KD]) kinds) (Left "typed record map supports Int/F64 fields")
-      when (tgtW tgt == 4 && KD `elem` kinds) (Left "RV32 float record columns use boxed values")
+      unless (all (`elem` [KI,KD,KS]) kinds) (Left "typed record map supports Int/F64/F32 fields")
+      when (tgtW tgt == 4 && any (`elem` kinds) [KD,KS]) (Left "RV32 float record columns use boxed values")
       let fields = [(dual ++ "_" ++ show i,ms,cs,body) | (i,((ms,cs),body)) <- zip [0::Int ..] (mvFields mp)]
           defs = M.fromList [(f,body) | (f,_,_,body) <- fields]
           hasCap = maybe False ((==2) . length . fst) (M.lookup (spFn p) prog)
       pure (K.RecordKernel sym (spFn p) [] hasCap (mvTid mp) (zip [0..] (map snd sigs))
-            (K.RecordMap [(f,ms,cs) | (f,ms,cs,_) <- fields]),defs)
+            (K.RecordMap [(f,ms,cs) | (f,ms,cs,_) <- fields]) False,defs)
   | Just (cs,ps,b,shape) <- spSoa p, Just (ks,out) <- spKinds p,
     spOp p `elem` ["fold","rfilter"] =
       let foldOp = spOp p == "fold"
           ncaps = spCaps p
           columnKinds = drop (ncaps + if foldOp then 1 else 0) ks
           op = if foldOp then K.RecordFold dual out else K.RecordFilter dual
-       in Right (K.RecordKernel sym (spFn p) (take ncaps ks) False shape (zip cs columnKinds) op,
+       in Right (K.RecordKernel sym (spFn p) (take ncaps ks) False shape (zip cs columnKinds) op
+                   (foldOp && ncaps == 0 && isGpuPairSum p),
                  M.singleton dual (ps,b))
   | otherwise = Left ("typed " ++ spOp p ++ " record/SIMD kernel not implemented")
   where dual = "$record:" ++ sym
@@ -3401,14 +3429,17 @@ emitSpecs prog = do
   ext <- gets cgExt
   exps <- gets cgExports
   let native pair@(sym,p) = case tgtNative tgt of
-        Just nm | Just backend <- nmBackend nm, not rvv -> do
-          when (hasNeonKernel tgt prog p) (Left "NEON map retained until typed SIMD lowering")
-          (builder, extra, roots) <- if isJust (spSoa p) || isJust (spMv p)
+        Just nm | Just backend <- nmBackend nm -> do
+          (builder, extra, roots) <- case stripPrefix "mapAs@" (spOp p) of
+           Just layout -> pure (const (K.lowerMapAsKernel (tgtPolicy tgt) (K.MapAsKernel sym (spFn p) (spCaps p) layout)), M.empty, [])
+           Nothing -> if isJust (spSoa p) || isJust (spMv p)
             then do
               (kernel,defs) <- typedRecordPlan tgt prog sym p
               pure (\callbacks -> K.lowerRecordKernel (tgtPolicy tgt) callbacks kernel, defs, M.keys defs)
             else do
-              kernel <- typedKernelPlan sym p
+              kernel0 <- typedKernelPlan sym p
+              let kernel = kernel0 {K.kernelSimd = simdPlan tgt prog p,
+                                    K.kernelRvvSum = rvv && spRvv p == Just RvvFoldSum && spScalar p && spCaps p == 0}
               pure (\callbacks -> K.lowerKernel (tgtPolicy tgt)
                       (if isJust (spPipe p) && not (tgtPipelineInline tgt) then M.empty else callbacks) kernel,
                     M.empty, [f | K.Stage _ f _ <- K.kernelStages kernel])
@@ -3423,7 +3454,7 @@ emitSpecs prog = do
           if any ((== Nothing) . rSegMax . nfReport) nfs
             then Left "native-insns-v1 is UNBOUNDED"
             else Right nfs
-        _ -> Left "typed backend unavailable or explicit RVV mode"
+        _ -> Left "typed backend unavailable"
       results = [(pair,native pair) | pair <- requested]
       errors = [sym ++ ": " ++ e | ((sym,_),Left e) <- results, "compiler error:" `isPrefixOf` e]
       specs = if null errors then [pair | (pair,Left _) <- results]

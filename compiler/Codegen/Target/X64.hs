@@ -250,6 +250,11 @@ selectInstr :: X64Config -> M.Map VId Ty -> Instr -> Se ()
 selectInstr _ _ (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
+  OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq False True l) {siOp = "tick.n", siUses = [OI (fromIntegral n)]})
+  OSimdPair {} -> refuse "a NEON pair on x86-64"
+  ORvvVlMax -> refuse "a RISC-V vector length on x86-64"
+  ORvvLanes _ _ -> refuse "RISC-V vector lanes on x86-64"
+  ORvvSumLoaded _ -> refuse "a RISC-V vector sum on x86-64"
   OAddress v -> def (\r -> emitI (mov r (vreg v)))
   OIndex a i -> def $ \r -> do
     offset <- freshV False
@@ -347,6 +352,8 @@ selectInstr _ _ (Instr d op) = case op of
   -- caller-saved; no float register is allocated)
   OFloatBin o a b -> def (\r -> emitI (plain ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [any' r] [any' (vreg a), any' (vreg b)]))
   OFloatCmp o a b -> def (\r -> emitI ((plain ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
+  OFloat32Bin o a b -> def (\r -> emitI (plain ("fbin32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [any' r] [any' (vreg a), any' (vreg b)]))
+  OFloat32Cmp o a b -> def (\r -> emitI ((plain ("fcmp32." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
   OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
     emitI (cmp (vreg a) (vreg b))
@@ -623,6 +630,12 @@ renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i
       ("ldrsw",[d],[s,n]) -> ["movslq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
       ("movslq",[d],[s,n]) -> ["movslq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
       ("sext63",[d],[_,_]) -> ["shlq $1, " ++ reg d, "sarq $1, " ++ reg d]
+      -- F32 on the low 32 bits: movd to a 32-bit register zero-extends
+      (o,[d],[a,b]) | Just f <- stripPrefix "fbin32." o ->
+        ["movd " ++ word32 a ++ ", %xmm14", "movd " ++ word32 b ++ ", %xmm15", f ++ "ss %xmm15, %xmm14", "movd %xmm14, " ++ word32 d]
+      (o,[d],[a,b]) | Just c <- stripPrefix "fcmp32." o ->
+        let (x, y, p) = case c of "lt" -> (a, b, "lt"); "le" -> (a, b, "le"); "gt" -> (b, a, "lt"); "ge" -> (b, a, "le"); "eq" -> (a, b, "eq"); _ -> (a, b, "neq")
+         in ["movd " ++ word32 x ++ ", %xmm14", "movd " ++ word32 y ++ ", %xmm15", "cmp" ++ p ++ "ss %xmm15, %xmm14", "movd %xmm14, " ++ word32 d, "andq $1, " ++ reg d]
       (o,[d],[a,b]) | Just f <- stripPrefix "fbin." o ->
         ["movq " ++ reg a ++ ", %xmm14", "movq " ++ reg b ++ ", %xmm15", f ++ "sd %xmm15, %xmm14", "movq %xmm14, " ++ reg d]
       -- cmp<pred>sd leaves all-ones or zero: exact NaN behaviour (ordered
@@ -654,6 +667,7 @@ renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i
       ("entry.check.tick",_,_) -> hartRead ++ stackCheck ++ tick
       ("entry.check",_,_) -> hartRead ++ stackCheck
       ("entry.tick",_,_) -> hartRead ++ tick
+      ("tick.n",_,[OI n]) -> hartRead ++ tickN n
       _ -> error ("X64 render: no form for " ++ show (op,ds,us))
     -- the callee-saved registers come back first (rbp-relative, so after a
     -- stack-segment change they still read the frame they were saved in)
@@ -667,5 +681,6 @@ renderItem ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i
       ++ parkArgs True ++ call "fpr_stack_grow"
       ++ ["testq %rax, %rax", "jz " ++ lbl (Label (base ++ "_same")), "leaq -8(%rax), %rsp", lbl (Label (base ++ "_same")) ++ ":"]
       ++ parkArgs False ++ hartRead ++ [lbl (Label (base ++ "_stk")) ++ ":"]
-    tick = ["subq $1, (%r10)", "cmpq $0, (%r10)", "jg " ++ lbl (Label (base ++ "_fuel"))]
+    tick = tickN 1
+    tickN n = ["subq $" ++ show n ++ ", (%r10)", "cmpq $0, (%r10)", "jg " ++ lbl (Label (base ++ "_fuel"))]
       ++ parkArgs True ++ call "fpr_fuel_exhausted" ++ parkArgs False ++ [lbl (Label (base ++ "_fuel")) ++ ":"]

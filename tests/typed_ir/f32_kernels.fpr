@@ -1,0 +1,14 @@
+unsafe base.
+scale : F32 -> F32 -> F32 .
+scale c x = x * c + 0.5f.
+above : F32 -> F32 -> Bool .
+above c x = x > c.
+total : F32 -> F32 -> F32 -> F32 .
+total c acc x = acc + x * c.
+probeMap c v = Vec.map (scale c) v.
+probeFilter c v = Vec.filter (above c) v.
+probeFold c z v = Vec.fold (total c) z v.
+fill : (Vector F32) -> (i:Int | measure(n-i)) -> (n:Int) -> (Vector F32).
+fill v i n | i >= n = v.
+fill v i n = fill (Vec.push (F32.ofInt i) v) (i+1) n.
+main = v = fill (Vec.new Unit) 0 100; w = probeMap 1.5f v; x = probeFilter 10f w; (s,z) = probeFold 2f 1f x; _ = Vec.free z; print (F32.str s).

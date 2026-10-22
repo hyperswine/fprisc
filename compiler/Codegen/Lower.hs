@@ -152,7 +152,8 @@ inlineFloat cx env h args =
   isPrim cx env h && polFloatInline (cxPolicy cx) && policyWidth (cxPolicy cx) == W64
     && case args of
       [CInt _, CInt _] | h == "f64frombits" -> True
-      [_, _] -> M.member h floatBinOps || M.member h floatCmpOps
+      [CInt _] | h == "f32frombits" -> True
+      [_, _] -> M.member h floatBinOps || M.member h floatCmpOps || M.member h float32BinOps || M.member h float32CmpOps
       _ -> False
 
 -- the F64 operators the legacy generator expands inline on the 64-bit word
@@ -161,6 +162,13 @@ floatBinOps = M.fromList [("F64.+", FAdd), ("F64.-", FSub), ("F64.*", FMul), ("F
 
 floatCmpOps :: M.Map String CmpOp
 floatCmpOps = M.fromList [("F64.<", Lt), ("F64.>", Gt), ("F64.<=", Le), ("F64.>=", Ge), ("F64.==", Eq), ("F64.!=", Ne)]
+
+-- the F32 operators the legacy unboxed clones expand inline (fmv.w.x, fadd.s ...)
+float32BinOps :: M.Map String FloatOp
+float32BinOps = M.fromList [("F32.+", FAdd), ("F32.-", FSub), ("F32.*", FMul), ("F32./", FDiv)]
+
+float32CmpOps :: M.Map String CmpOp
+float32CmpOps = M.fromList [("F32.<", Lt), ("F32.>", Gt), ("F32.<=", Le), ("F32.>=", Ge), ("F32.==", Eq), ("F32.!=", Ne)]
 
 -- the bitwise primitives the legacy inline table expands (runtime/bits.c);
 -- a declared HAL name of arity two, never shadowed, is the operation
@@ -467,6 +475,23 @@ lowerVal cx env = \case
           x <- lowerVal cx env a >>= asVal
           y <- lowerVal cx env b >>= asVal
           p <- emit TPred (OFloatCmp o x y)
+          pure (p, TPred)
+      -- an F32 literal is its 32 bits in the word (Codegen.floatLitBits: `li` of the bits)
+      | isPrim cx env h, h == "f32frombits", polFloatInline (cxPolicy cx), policyWidth (cxPolicy cx) == W64,
+        [CInt b] <- args -> do
+          v <- emit TVal (OBits (b `mod` (2 ^ (32 :: Int))))
+          pure (v, TVal)
+      | isPrim cx env h, polFloatInline (cxPolicy cx), policyWidth (cxPolicy cx) == W64,
+        Just o <- M.lookup h float32BinOps, [a, b] <- args -> do
+          x <- lowerVal cx env a >>= asVal
+          y <- lowerVal cx env b >>= asVal
+          v <- emit TVal (OFloat32Bin o x y)
+          pure (v, TVal)
+      | isPrim cx env h, polFloatInline (cxPolicy cx), policyWidth (cxPolicy cx) == W64,
+        Just o <- M.lookup h float32CmpOps, [a, b] <- args -> do
+          x <- lowerVal cx env a >>= asVal
+          y <- lowerVal cx env b >>= asVal
+          p <- emit TPred (OFloat32Cmp o x y)
           pure (p, TPred)
       | isPrim cx env h, h == "strlen", [a] <- args, Just (Prim 1 _ _) <- M.lookup h (cxHal cx) -> do
           str <- lowerVal cx env a >>= asVal
