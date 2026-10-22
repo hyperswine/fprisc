@@ -1,0 +1,14 @@
+# Mini stack register based VM meant to work with Builtin-BareMetal profile for FP-RISC
+# The design:
+# r0-r7: general purpose registers
+# r8: stack pointer
+# r9: PC
+# r10: flags -- meant to be reserved right now
+
+# Meant to be a full language and DSL within FP-RISC.
+# So it has its own parser and compiles to Stax Bytecode
+# Which runs on the Stax VM.
+
+# The memory:
+# The stack is a fixed size of N bytes parameterized by the entry point
+# There is no routines, and no heap. The stack is the only memory available to the program.
