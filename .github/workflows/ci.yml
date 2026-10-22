@@ -12,7 +12,9 @@
 # check_raw, and the RV64 Linux suite cross-built with
 # riscv64-linux-gnu-gcc and run under qemu-user.
 # check_raw also covers builtin images with the installed bare-metal tools.
-# Not covered: physical boards and macOS/AArch64 hosts.
+# Also covered: Tang Nano RV32 Base examples/custom programs in QEMU,
+# RV32/RV64 argument regressions and both repositories' preset gates.
+# Not covered: physical boards, vendor synthesis, macOS/AArch64 hosts.
 name: ci
 
 on:
@@ -49,6 +51,12 @@ jobs:
             gcc-riscv64-linux-gnu libc6-dev-riscv64-cross qemu-user \
             gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf qemu-system-misc
       - uses: actions/checkout@v4
+      - name: matching SimpleRisc preset
+        uses: actions/checkout@v4
+        with:
+          repository: hyperswine/simple-risc
+          ref: 8479466ba159ebaf4faf035502dfc3b6354b2083
+          path: .ci/simple-risc
       - name: cabal build (Linux x86-64)
         run: |
           cabal update
@@ -79,6 +87,37 @@ jobs:
         run: |
           python3 -u tests/check_rv64_linux.py --typed-ir --cc riscv64-linux-gnu-gcc \
             --output "$RUNNER_TEMP/rv64-typed" --runner 'qemu-riscv64 -L /usr/riscv64-linux-gnu'
+
+      - name: Tang Nano preset and protocol gates
+        env:
+          SIMPLE_RISC_ROOT: .ci/simple-risc
+        run: |
+          python3 -m unittest discover -s tests -p test_tangnano20k_examples.py
+          python3 -m unittest discover -s .ci/simple-risc/boards/tangnano20k/sdram -p test_preset_manifest.py
+          python3 tests/check_tangnano20k_virtual.py
+      - name: Tang Nano SoftFloat (RV32 and RV64)
+        run: |
+          FPR_PRESET=fprisc-48 machine/tangnano20k/build-softfloat.sh
+          FPR_XLEN=64 machine/tangnano20k/build-softfloat.sh
+      - name: Tang Nano examples and custom programs (QEMU)
+        run: |
+          python3 -u tools/run_tangnano20k_examples.py --target qemu
+          python3 -u tests/check_tangnano20k_program.py
+      - name: Tang Nano argument limits and GC roots (RV32/RV64 QEMU)
+        run: python3 -u tests/check_tangnano20k_args.py
+      - name: Tang Nano results and failure logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tangnano-qemu-evidence
+          if-no-files-found: warn
+          path: |
+            build/tangnano20k-examples/**/*.json
+            build/tangnano20k-examples/**/*.log
+            build/tangnano20k-program-check/**/*.json
+            build/tangnano20k-program-check/**/*.log
+            build/tangnano20k-args/**/*.json
+            build/tangnano20k-args/**/*.log
 
       - name: check_base (the typed backend is the default)
         run: python3 -u tests/check_base.py --skip-typed-ir-native

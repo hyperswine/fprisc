@@ -61,12 +61,18 @@ For the recommended RV32 configuration:
 
 ```bash
 python3 tools/run_tangnano20k_examples.py --target qemu
+python3 tools/run_tangnano20k_examples.py --program examples/wc.fpr \
+  --root /path/to/files --arg=notes.txt --arg='two words.txt'
 FPR_PRESET=fprisc-48 machine/tangnano20k/build.sh examples/wc.fpr build/tangnano20k-wc
 python3 tools/run_tangnano20k_base.py build/tangnano20k-wc/base.bin \
   --freq-mhz 48 --root /path/to/files --arg=notes.txt --arg='two words.txt'
 ```
 
 The uploader requires the matching 48 MHz FPGA image already loaded.
+The unified runner's `--program` mode instead handles compilation and execution;
+with `--target board --fpga-manifest PATH` it also loads the verified FPGA image.
+It accepts repeated `--input` lines, explicit `--env NAME=VALUE` entries and a
+positive `--timeout`. Its default target is QEMU.
 `--arg=` preserves an empty argument and `--arg=-n` preserves a leading dash.
 At most 256 arguments and 65,536 encoded bytes (including lengths) are allowed.
 Arguments are UTF-8, exclude NUL, and are never interpreted by a shell.

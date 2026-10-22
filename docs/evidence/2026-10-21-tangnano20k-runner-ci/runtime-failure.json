@@ -1,0 +1,56 @@
+{
+  "preset": "fprisc-48",
+  "target": "qemu",
+  "mode": "program",
+  "passed": false,
+  "suite_complete": false,
+  "repository": {
+    "revision": "d85ec9f7b713f53298eb4f11e45f69f9bdf41e1a",
+    "diff_sha256": "870aad8ed548c05c6055fea190f7a6783f15bb3ad89e01aaa3658ddd87f3f45e"
+  },
+  "cases": [
+    {
+      "name": "program",
+      "passed": false,
+      "build": {
+        "preset": "fprisc-48",
+        "repository": {
+          "revision": "d85ec9f7b713f53298eb4f11e45f69f9bdf41e1a",
+          "diff_sha256": "870aad8ed548c05c6055fea190f7a6783f15bb3ad89e01aaa3658ddd87f3f45e"
+        },
+        "program": {
+          "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/runtime-failure.fpr",
+          "sha256": "d49bd69ffe1ab3f95c1b5219e0fd82f22d070b0d34d5e528965910d35abbc842"
+        },
+        "compiler_sha256": "692a8b4e6e26aeb14832814e9cc0d381f864ff6bc32b33b849b00e7f3273a577",
+        "gcc": "riscv64-unknown-elf-gcc (g04696df09) 14.2.0",
+        "configuration": {
+          "xlen": 32,
+          "compressed": true,
+          "cpu_mhz": 48,
+          "gc": true,
+          "gc_stress": 0,
+          "qemu": true
+        },
+        "artifacts": {
+          "base.s": "8137a0b5f2958a0706605c4c73d8bfa83d52915fc37e28eb9c5b47e3bc73edac",
+          "base.elf": "becaffe610cc30a47b83b9f6c85d33ac77c4fe1ed77c0677158196227944bbf5",
+          "base.bin": "e73e80c2e6a4fce99b08f39d361fe57a7f657ffb16eba6ba711dc02cef120fd1"
+        },
+        "units": {
+          "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/runtime-failure/program/units/prelude-b2084da22e6a-g55-nof64rt3pc5-c09612b07b5ec-rv32.s": "b0f7dc33e6fe6f4003b59e51074cf9e681c3f17603bf734c3d5be54259ff9317"
+        },
+        "softfloat_sha256": "f69819701432f08324fc525acba5c5e6515547fe641e72d0dae7230a53204ac8"
+      }
+    }
+  ],
+  "invocation": {
+    "source": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/runtime-failure.fpr",
+    "root": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-program-check/qemu/runtime-failure/files",
+    "arguments": [],
+    "input_lines": [],
+    "environment": {},
+    "timeout": 120.0
+  },
+  "error": "(1, 'Base panic: EXPECTED FAILURE\\nHEAP live=0 peak=0 requests=0 requested=0 collections=0 reclaimed=0\\nFPR EXIT 1\\n', '')"
+}

@@ -1,0 +1,7 @@
+autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure
+autodrop: irqRouteStart: inserted `drop _autodrop_root_irqRouteStart_0` into 2 case arm(s)
+autodrop: logStart: inserted `drop _autodrop_root_logStart_0` into 2 case arm(s)
+autodrop: parWorker: inserted `drop _autodrop_root_parWorker_0` into 1 case arm(s)
+precond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps
+=== TYPE ERRORS ===
+  * in main: unbound name: noSuchName
