@@ -1,0 +1,12 @@
+unsafe base.
+FloatRow = {i:Int,x:F64,y:F64}.
+sampleFloat n = {i=n,x=1.5,y=2.25}.
+moveFloat : FloatRow -> FloatRow -> FloatRow.
+moveFloat c r = {i=r.i+c.i,x=r.y*c.x,y=r.x+c.y}.
+keepFloat r = r.i > 3.
+foldFloat : F64 -> Int -> F64 -> FloatRow -> F64.
+foldFloat scale threshold acc r = acc + r.x*scale + (if r.i > threshold then r.y else 0.0).
+probeFloatMap c v = Vec.map (moveFloat c) v.
+probeFloatFilter v = Vec.filter keepFloat v.
+probeFloatFold scale threshold seed v = Vec.fold (foldFloat scale threshold) seed v.
+main = v=Vec.push (sampleFloat 3) (Vec.push (sampleFloat 1) (Vec.new Unit)); w=probeFloatMap (sampleFloat 2) v; x=probeFloatFilter w; (s,z)=probeFloatFold 2.0 4 7.0 x; _=Vec.free z; print s.

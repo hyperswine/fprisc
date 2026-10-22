@@ -1,0 +1,21 @@
+unsafe base.
+R9 = { f0:Int, f1:Int, f2:Int, f3:Int, f4:Int, f5:Int, f6:Int, f7:Int, f8:Int }.
+sampleRow b = { f0=b+0, f1=b+1, f2=b+2, f3=b+3, f4=b+4, f5=b+5, f6=b+6, f7=b+7, f8=b+8 }.
+total r = r.f0 + r.f1 + r.f2 + r.f3 + r.f4 + r.f5 + r.f6 + r.f7 + r.f8.
+rotate : R9 -> R9.
+rotate r = { f0=total r, f1=r.f0, f2=r.f1, f3=r.f2, f4=r.f3, f5=r.f4, f6=r.f5, f7=r.f6, f8=r.f7 }.
+capture : R9 -> R9 -> R9.
+capture c r = { f0=c.f0*r.f8+c.f1, f1=r.f1, f2=r.f2, f3=r.f3, f4=r.f4, f5=r.f5, f6=r.f6, f7=r.f7, f8=r.f8 }.
+keepRecord r = total r > 400.
+step scale bias acc r = acc + scale * (r.f0 + r.f1 + r.f2 + r.f3 + r.f4 + r.f5 + r.f6 + r.f7 + r.f8) + bias.
+probeRecordMap v = Vec.map rotate v.
+probeRecordCaptured c v = Vec.map (capture c) v.
+probeRecordFilter v = Vec.filter keepRecord v.
+probeRecordFold scale bias seed v = Vec.fold (step scale bias) seed v.
+fill : (Vector R9) -> (i:Int | measure(n-i)) -> (n:Int) -> (Vector R9).
+fill v i n | i >= n = v.
+fill v i n = fill (Vec.push (sampleRow i) v) (i+1) n.
+main = v=fill (Vec.new Unit) 0 100; w=probeRecordMap v; x=probeRecordCaptured (sampleRow 2) w; y=probeRecordFilter x; (s,z)=probeRecordFold 2 3 7 y; _=Vec.free z; print s.
+WideRow = { z0:Int,z1:Int,z2:Int,z3:Int,z4:Int,z5:Int,z6:Int,z7:Int,z8:Int,z9:Int,z10:Int,z11:Int,z12:Int,z13:Int,z14:Int,z15:Int,z16:Int,z17:Int,z18:Int,z19:Int,z20:Int,z21:Int,z22:Int,z23:Int,z24:Int,z25:Int,z26:Int,z27:Int,z28:Int,z29:Int,z30:Int,z31:Int,z32:Int,z33:Int,z34:Int,z35:Int,z36:Int,z37:Int,z38:Int,z39:Int,z40:Int,z41:Int,z42:Int,z43:Int,z44:Int,z45:Int,z46:Int,z47:Int,z48:Int,z49:Int,z50:Int,z51:Int,z52:Int,z53:Int,z54:Int,z55:Int,z56:Int,z57:Int,z58:Int,z59:Int,z60:Int,z61:Int,z62:Int,z63:Int,z64:Int,z65:Int,z66:Int,z67:Int,z68:Int,z69:Int,z70:Int,z71:Int,z72:Int,z73:Int,z74:Int,z75:Int,z76:Int,z77:Int,z78:Int,z79:Int,z80:Int,z81:Int,z82:Int,z83:Int,z84:Int,z85:Int,z86:Int,z87:Int,z88:Int,z89:Int,z90:Int,z91:Int,z92:Int,z93:Int,z94:Int,z95:Int,z96:Int,z97:Int,z98:Int,z99:Int,z100:Int,z101:Int,z102:Int,z103:Int,z104:Int,z105:Int,z106:Int,z107:Int,z108:Int,z109:Int,z110:Int,z111:Int,z112:Int,z113:Int,z114:Int,z115:Int,z116:Int,z117:Int,z118:Int,z119:Int,z120:Int,z121:Int,z122:Int,z123:Int,z124:Int,z125:Int,z126:Int,z127:Int,z128:Int,z129:Int,z130:Int,z131:Int,z132:Int,z133:Int,z134:Int,z135:Int,z136:Int,z137:Int,z138:Int,z139:Int,z140:Int,z141:Int,z142:Int,z143:Int,z144:Int,z145:Int,z146:Int,z147:Int,z148:Int,z149:Int,z150:Int,z151:Int,z152:Int,z153:Int,z154:Int,z155:Int,z156:Int,z157:Int,z158:Int,z159:Int,z160:Int,z161:Int,z162:Int,z163:Int,z164:Int,z165:Int,z166:Int,z167:Int,z168:Int,z169:Int,z170:Int,z171:Int,z172:Int,z173:Int,z174:Int,z175:Int,z176:Int,z177:Int,z178:Int,z179:Int,z180:Int,z181:Int,z182:Int,z183:Int,z184:Int,z185:Int,z186:Int,z187:Int,z188:Int,z189:Int,z190:Int,z191:Int,z192:Int,z193:Int,z194:Int,z195:Int,z196:Int,z197:Int,z198:Int,z199:Int,z200:Int,z201:Int,z202:Int,z203:Int,z204:Int,z205:Int,z206:Int,z207:Int,z208:Int,z209:Int,z210:Int,z211:Int,z212:Int,z213:Int,z214:Int,z215:Int,z216:Int,z217:Int,z218:Int,z219:Int,z220:Int,z221:Int,z222:Int,z223:Int,z224:Int,z225:Int,z226:Int,z227:Int,z228:Int,z229:Int,z230:Int,z231:Int,z232:Int,z233:Int,z234:Int,z235:Int,z236:Int,z237:Int,z238:Int,z239:Int,z240:Int,z241:Int,z242:Int,z243:Int,z244:Int,z245:Int,z246:Int,z247:Int,z248:Int,z249:Int,z250:Int,z251:Int,z252:Int,z253:Int,z254:Int,z255:Int,z256:Int,z257:Int,z258:Int,z259:Int,z260:Int,z261:Int,z262:Int,z263:Int,z264:Int,z265:Int,z266:Int,z267:Int,z268:Int,z269:Int,z270:Int,z271:Int,z272:Int,z273:Int,z274:Int,z275:Int,z276:Int,z277:Int,z278:Int,z279:Int,z280:Int,z281:Int,z282:Int,z283:Int,z284:Int,z285:Int,z286:Int,z287:Int,z288:Int,z289:Int,z290:Int,z291:Int,z292:Int,z293:Int,z294:Int,z295:Int,z296:Int,z297:Int,z298:Int,z299:Int }.
+keepLast r = r.z299 > 0.
+probeLastFilter v = Vec.filter keepLast v.

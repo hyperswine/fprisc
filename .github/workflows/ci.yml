@@ -17,7 +17,7 @@ name: ci
 
 on:
   push:
-    branches: [main, codex/a64-overflow-checks-20261020, codex/typed-ir-migration-20261022]
+    branches: [main, typed-ir-retire, codex/a64-overflow-checks-20261020, codex/typed-ir-migration-20261022]
   pull_request:
   workflow_dispatch:
 

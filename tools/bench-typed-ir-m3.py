@@ -17,8 +17,8 @@ Variants, every unrelated setting fixed (one hart, no inherited FPR_ switch):
                 refuses stay legacy, and their legacy opt-ins are unrelated
                 settings that a fair comparison keeps equal)
 
-Workloads: fib, sum, pipeline (internal CLOCK_MONOTONIC, the sources of
-tools/bench-a64-guards.py) and helpers, sha (tests/bench, process wall time
+Workloads: fib, sum, pipeline, records (internal CLOCK_MONOTONIC; record
+construction/free excluded) and helpers, sha (tests/bench, process wall time
 including startup).  Every binary is built before anything is timed; one
 warm-up run per binary; then --runs rounds, each running every binary once
 in an order that rotates by one each round and reverses every other block.
@@ -66,6 +66,10 @@ INTERNAL = {
     "sum": ("loop : unsafe Int -> Int -> Int .\nloop n a = if n == 0 then a else loop (n - 1) (a + n).\n", "loop 10000000 0", 50000005000000),
     "pipeline": ("inc x = x + 1.\nabove x = x > 500000.\nweighted a x = a + 2 * x.\n", "0", 750000500007),
 }
+# Reuse the independently checked record workload, excluding hosted main.
+INTERNAL["records"] = ((ROOT / "tests/typed_ir/record_kernels.fpr").read_text()
+    .split("main =")[0].replace("unsafe base.\n", ""), "0",
+    7 + sum(2*(10*i+45)+3 for i in range(100000) if 10*i+45 > 400))
 WALL = ["helpers", "sha", "floatcmp", "nbody"]
 
 
@@ -109,6 +113,11 @@ def main():
             body = ("v = Vec.iota 1000000; _ = Bench.start Unit;\n"
                     "  (value, v) = Vec.fold weighted 7 (Vec.filter above (Vec.map inc v));\n"
                     "  ns = Bench.elapsed Unit; _ = Vec.free v;\n"
+                    '  print "{value} {ns}".\n')
+        if name == "records":
+            body = ("v = fill (Vec.new Unit) 0 100000; c = sampleRow 2; _ = Bench.start Unit;\n"
+                    "  w = probeRecordMap v; x = probeRecordCaptured c w; y = probeRecordFilter x;\n"
+                    "  (value,z) = probeRecordFold 2 3 7 y; ns = Bench.elapsed Unit; _ = Vec.free z;\n"
                     '  print "{value} {ns}".\n')
         src.write_text("unsafe base.\nBench.start : Unit -> Unit .\nBench.elapsed : Unit -> Int .\n" + defs + "main =\n  " + body)
         sources[name] = (src, expected, [str(clock)])

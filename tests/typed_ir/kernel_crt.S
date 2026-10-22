@@ -5,6 +5,10 @@ _start:
     la sp, _stack_top
     la t0, trap
     csrw mtvec, t0
+#ifdef __riscv_flen
+    li t0, 0x6000
+    csrs mstatus, t0
+#endif
     call main
     tail oracle_finish
 .balign 4

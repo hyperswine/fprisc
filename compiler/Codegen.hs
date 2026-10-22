@@ -33,7 +33,7 @@ module Codegen (emitProgram, emitProgramWith, Emission (..), NativeMode (..), Na
 
 import Modules (ModExport (..))
 
-import Control.Monad (when)
+import Control.Monad (when, unless)
 import Control.Monad.State.Strict
 import Data.Graph (SCC(..), stronglyConnComp)
 import Data.Bits (shiftR, (.&.))
@@ -69,7 +69,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 70 -- typed column kernels and callback clones, with kernel-specific checked arithmetic
+codegenRev = 71 -- typed record/SoA map, filter and fold kernels
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -3343,8 +3343,8 @@ genUWithSlots tgt prog uset load save = go
 -- specialized loop emission
 --------------------------------------------------------------------------------
 
--- Scalar and fused single-column plans share the typed CFG builder. Record
--- layouts, write-back folds and SIMD kernels retain explicit legacy reasons.
+-- Scalar, fused and record column plans share the typed CFG builder.
+-- Layout conversion, write-back folds and SIMD retain explicit legacy reasons.
 hasNeonKernel :: Target -> Prog -> SpecPlan -> Bool
 hasNeonKernel tgt prog p = isJust $ do
   if tgtSimd tgt && spOp p == "map" && spCaps p == 0 then Just () else Nothing
@@ -3369,6 +3369,30 @@ typedKernelPlan sym p
             (if folding then Just (k,accKind) else Nothing) [K.Stage (spOp p) (spFn p) [0..k-1]])
   | otherwise = Left ("typed " ++ spOp p ++ " record/SIMD kernel not implemented")
 
+-- Reuse the planner's column duals as ordinary Core functions, so callback
+-- lowering, checked arithmetic, allocation and target selection stay shared.
+typedRecordPlan :: Target -> Prog -> String -> SpecPlan -> Either String (K.RecordKernel, Prog)
+typedRecordPlan tgt prog sym p
+  | Just mp <- spMv p, Just sigs <- mvKinds mp = do
+      let kinds = concat [out:ks | (ks,out) <- sigs]
+      unless (all (`elem` [KI,KD]) kinds) (Left "typed record map supports Int/F64 fields")
+      when (tgtW tgt == 4 && KD `elem` kinds) (Left "RV32 float record columns use boxed values")
+      let fields = [(dual ++ "_" ++ show i,ms,cs,body) | (i,((ms,cs),body)) <- zip [0::Int ..] (mvFields mp)]
+          defs = M.fromList [(f,body) | (f,_,_,body) <- fields]
+          hasCap = maybe False ((==2) . length . fst) (M.lookup (spFn p) prog)
+      pure (K.RecordKernel sym (spFn p) [] hasCap (mvTid mp) (zip [0..] (map snd sigs))
+            (K.RecordMap [(f,ms,cs) | (f,ms,cs,_) <- fields]),defs)
+  | Just (cs,ps,b,shape) <- spSoa p, Just (ks,out) <- spKinds p,
+    spOp p `elem` ["fold","rfilter"] =
+      let foldOp = spOp p == "fold"
+          ncaps = spCaps p
+          columnKinds = drop (ncaps + if foldOp then 1 else 0) ks
+          op = if foldOp then K.RecordFold dual out else K.RecordFilter dual
+       in Right (K.RecordKernel sym (spFn p) (take ncaps ks) False shape (zip cs columnKinds) op,
+                 M.singleton dual (ps,b))
+  | otherwise = Left ("typed " ++ spOp p ++ " record/SIMD kernel not implemented")
+  where dual = "$record:" ++ sym
+
 emitSpecs :: Prog -> G [String]
 emitSpecs prog = do
   requested <- M.elems <$> gets cgSpecs
@@ -3379,13 +3403,22 @@ emitSpecs prog = do
   let native pair@(sym,p) = case tgtNative tgt of
         Just nm | Just backend <- nmBackend nm, not rvv -> do
           when (hasNeonKernel tgt prog p) (Left "NEON map retained until typed SIMD lowering")
-          kernel <- typedKernelPlan sym p
-          let names = S.toList (spClosure p) ++ [f | K.Stage _ f _ <- K.kernelStages kernel]
-              chosen = M.filterWithKey (\n _ -> n `elem` names) prog
-              (loweredCallbacks, failures) = lowerProgram (tgtPolicy tgt) M.empty prog chosen ext (foreignEntries tgt)
+          (builder, extra, roots) <- if isJust (spSoa p) || isJust (spMv p)
+            then do
+              (kernel,defs) <- typedRecordPlan tgt prog sym p
+              pure (\callbacks -> K.lowerRecordKernel (tgtPolicy tgt) callbacks kernel, defs, M.keys defs)
+            else do
+              kernel <- typedKernelPlan sym p
+              pure (\callbacks -> K.lowerKernel (tgtPolicy tgt)
+                      (if isJust (spPipe p) && not (tgtPipelineInline tgt) then M.empty else callbacks) kernel,
+                    M.empty, [f | K.Stage _ f _ <- K.kernelStages kernel])
+          let names = S.toList (spClosure p) ++ roots
+              available = M.union extra prog
+              chosen = M.filterWithKey (\n _ -> n `elem` names) available
+              (loweredCallbacks, failures) = lowerProgram (tgtPolicy tgt) M.empty available chosen ext (foreignEntries tgt)
               callbacks = K.kernelCallbacks loweredCallbacks
           when (not (null failures)) (Left ("callback lowering: " ++ show failures))
-          fn <- K.lowerKernel (tgtPolicy tgt) (if isJust (spPipe p) && not (tgtPipelineInline tgt) then M.empty else callbacks) kernel
+          fn <- builder callbacks
           nfs <- mapM (\f -> emitNative tgt nm (S.insert (fnName f) exps) backend f) (fn : M.elems callbacks)
           if any ((== Nothing) . rSegMax . nfReport) nfs
             then Left "native-insns-v1 is UNBOUNDED"

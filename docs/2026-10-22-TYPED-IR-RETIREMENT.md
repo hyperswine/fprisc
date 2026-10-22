@@ -6,6 +6,9 @@ Branch `typed-ir-retire`.
 
 Update after `8a5de33`: [typed scalar and fused column kernels](2026-10-22-TYPED-COLUMN-KERNELS.md)
 now replace part of the legacy kernel emitter across all four direct targets.
+Update after `6951653`: [record/SoA map, filter and fold](2026-10-22-TYPED-RECORD-KERNELS.md)
+also lower through the typed CFG on supported numeric layouts.
+
 The tables below describe the inventory at `8a5de33`; the linked record gives
 the current support boundary and the user-approved retirement acceptance.
 

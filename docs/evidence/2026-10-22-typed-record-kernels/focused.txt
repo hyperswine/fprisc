@@ -1,0 +1,8 @@
+Vector kinds: float captures, mixed record fold, captured map/map and filter/filter, strict order and 100 SIMD tails PASS
+A64 NEON execution: native host and C IEEE reference PASS
+x64 raGuard: top-word ra frames accepted; misplaced or overwritten ra refused: PASS
+Vector fallback frames: ra in the top word across 7 fixtures (49 Vec frames), x64 lowering accepts them, fallbacks run (fallback frames: ok 5 cap 27 43): PASS
+Vector descriptors: record widths 2, 4, 8, 9, 32, 65 and 128 through the whole surface and the deep copier, an inferred float-record layout, singleton rows: PASS
+Record maps over two shapes that share field names read their own columns, in place: PASS
+Vector kernels: captured map/filter, wide record map and record filter run in place with no declines; RV64/RV32/x64 emit: PASS
+check_base: 5 jobs in 30 s on 4 worker(s)

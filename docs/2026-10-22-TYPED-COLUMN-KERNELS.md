@@ -4,6 +4,10 @@ Date: 2026-10-22. Base: `8a5de33`, branch `typed-ir-retire`.
 This record supersedes the statement that all vector kernel bodies are legacy
 in the [retirement inventory](2026-10-22-TYPED-IR-RETIREMENT.md).
 
+Update after `6951653`: [typed record/SoA kernels](2026-10-22-TYPED-RECORD-KERNELS.md)
+now cover the numeric record map/filter/fold plans. The evidence and table
+below describe the first scalar-column increment.
+
 ## Acceptance for the remaining migration
 
 The requested acceptance criterion is working major features on AArch64,

@@ -68,7 +68,10 @@ with tempfile.TemporaryDirectory(prefix='fpr-vector-limits-') as directory:
         run(['./fprc','--profile=base','--target='+target,'tests/base/veclimits.fpr',asm])
         text=asm.read_text()
         assert 'Vec.mapAs direct scalar kernel on toFloat' in text, target
-        assert 'Vec.fold specialized on rstep' in text, target
+        # Both backends must retain the specialization. Typed record kernels
+        # have a CFG header rather than the legacy emitter's comment.
+        assert ('Vec.fold specialized on rstep' in text or
+                '# fn $vkernel:fpr_vspec_fold_rstep ' in text), target
         if target == 'x64':
             run(['clang','--target=x86_64-linux-gnu','-c',asm,'-o',tmp/'x64.o'])
     run(['./fprc','--profile=base','--target=rv32','tests/base/veccaps_fold.fpr',tmp/'rv32.s'])

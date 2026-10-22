@@ -27,7 +27,9 @@ not a prerequisite for retiring a supported hosted path. Keep exact execution
 and performance evidence with each promotion, and preserve a named path for
 remaining unsupported consumers. The [typed column kernel implementation
 record](2026-10-22-TYPED-COLUMN-KERNELS.md) tracks the current increment and
-remaining kernel/profile exclusions. Historical milestone gates below retain
+remaining kernel/profile exclusions. The next [record/SoA increment](2026-10-22-TYPED-RECORD-KERNELS.md)
+adds numeric record maps, stable all-column filters and captured folds through
+the same typed CFG and four direct selectors. Historical milestone gates below retain
 their original context; this is the current retirement acceptance criterion.
 
 ## Goal and relationship to the performance work

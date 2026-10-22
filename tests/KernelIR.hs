@@ -2,6 +2,8 @@
 -- kernel that a legacy caller references. This boundary is independent of
 -- source type checking: hostValue models a legacy-only HAL value.
 import Codegen
+import qualified Codegen.Kernel as K
+import KernelKinds (Kind(..))
 import Codegen.IR (Width(..))
 import Codegen.Policy (m2Policy, Policy(..), Profile(..))
 import Codegen.Target.RV (RVHart(..))
@@ -32,3 +34,8 @@ main = do
     unless ("fpr_vspec_map_inc" `isInfixOf` emAsm out)
       (error "legacy caller did not reference the native kernel")
   putStrLn "Typed kernel emission: legacy-only callers retain their native kernel on all four selectors PASS"
+  let floatRecord = K.RecordKernel "float-record" "original" [] False (-1,-1) [(0,KD)] (K.RecordFold "dual" KD)
+  case K.lowerRecordKernel (m2Policy {polProfile=Rv32}) M.empty floatRecord of
+    Left "RV32 float record columns use boxed values" -> pure ()
+    other -> error ("RV32 float record lowering must refuse boxed columns: " ++ show other)
+  putStrLn "Typed record builder: explicit RV32 boxed-float refusal PASS"
