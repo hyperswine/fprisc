@@ -37,12 +37,9 @@ def main():
             assert re.search(r'\.L(?:float\d+|tir_float32_[0-9a-f]+):\n\s*\.long 9004\n\s*\.long 6\n\s*\.word 32', assembly), 'F32 literal must use static word box'
             assert 'call fpr_f64_from_bits32' not in assembly and 'call fpr_f32_from_bits32' not in assembly, 'literal allocation leaked'
             assert 'software-float mode' in diagnostic, diagnostic
-            if os.environ.get('FPR_TYPED_IR_BACKEND','mixed') not in ('legacy','off','0'):
-                headers=re.findall(r'^# fn ([^\n]+)',assembly,re.M)
-                assert headers and all('typed-ir rv32' in h for h in headers),'float boxing escaped native coverage'
-                assert '# fn $vkernel:' in assembly, 'typed integer kernels disabled'
-            else:
-                assert '# ---- Vec specializations' in assembly, 'integer kernels disabled'
+            headers=re.findall(r'^# fn ([^\n]+)',assembly,re.M)
+            assert headers and all('typed-ir rv32' in h for h in headers),'float boxing escaped native coverage'
+            assert '# fn $vkernel:' in assembly, 'typed integer kernels disabled'
             assert not re.search(r'^\s*(?:f(?:add|sub|mul|div|sqrt|mv|cvt|eq|lt|le)\.|fl[wd]\s|fs[wd]\s)',
                                  assembly, re.MULTILINE), 'native float instruction leaked'
             compile_(ROOT / 'tests/tangnano20k_rv32_numeric.fpr', target, no_float=disabled)
@@ -62,7 +59,9 @@ def main():
         outside = out / 'outside.fpr'
         outside.write_text('profile base.\nmain = print "{1073741824}".\n')
         refusal = compile_(outside, out / 'outside.s', succeeds=False)
-        assert 'does not fit a tagged rv32 word' in refusal, refusal
+        assert ('does not fit a tagged rv32 word' in refusal or
+                ('typed-ir strict: root:' in refusal and
+                 'main: the literal 1073741824 does not fit an Int' in refusal)), refusal
         f32 = out / 'builtin-f32.fpr'
         f32.write_text('profile builtin.\nmain = F32.toInt 1f.\n')
         refusal = compile_(f32, out / 'builtin-f32.s', succeeds=False)

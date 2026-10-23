@@ -1,0 +1,2 @@
+RV32 production actor runtime: 512 held values, 80 nested frames, 32KiB first stack, forced yields PASS
+RV64 production actor runtime: 512 held values, 80 nested frames, 32KiB first stack, forced yields PASS

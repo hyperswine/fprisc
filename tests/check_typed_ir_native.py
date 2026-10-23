@@ -283,10 +283,11 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     print('cache transitions: ' + '/'.join(mode for mode in modes) + ' PASS')
     # Strict mode names a real selection refusal. All supported ownership
     # profiles are admitted now; arity spilling also handles >64 parameters.
-    # Keep 200 call results live so the bare-metal hosted frame exceeds 1 KiB.
+    # An out-of-range tagged Int remains a named lowering refusal; large
+    # RISC-V frames now reserve room before their first frame write.
     refused_source = tmp / 'refused.fpr'
-    refused_source.write_text('idn x = x + 1.\nwide x = [' + ', '.join('idn x' for _ in range(200)) + '].\nmain = wide 1.\n')
-    p = subprocess.run(['./fpr', '--system=bare-metal', '--target=rv64', '--no-inline', refused_source, tmp / 'refused.s'], cwd=ROOT, env={**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'wide'}, capture_output=True, text=True, timeout=600)
+    refused_source.write_text('wide x = x + 2147483648.\nmain = wide 1.\n')
+    p = subprocess.run(['./fpr', '--system=bare-metal', '--target=rv32', '--no-inline', refused_source, tmp / 'refused.s'], cwd=ROOT, env={**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'wide'}, capture_output=True, text=True, timeout=600)
     assert p.returncode != 0 and 'typed-ir strict' in p.stderr and '\n  wide: ' in p.stderr, (p.returncode, p.stderr[-800:])
     # mixed mode on the M1 root fixture: scalar functions and main native
     mixed = {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'fib,sum,addovf,divz,even,odd,clamp,boolEq,boolNe,boolResult'}
@@ -308,10 +309,10 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
         body = on_t[on_t.index(f'# fn {fn} (arity'):]
         body = body[:body.index('\n\n')]
         assert f'# native-insns-v1: {fn} segmax=' in body and 'UNBOUNDED' not in body and '# wcet:' not in body, fn
-    assert on_t.count('# wcet: ') == len(re.findall(r'^# fn ', on_t, re.M)) - len(native_fns), 'legacy functions keep their legacy bound'
-    # FPRC_WCET reports the two metrics apart
-    wlog = run(['./fpr', f'--target={"a64mac" if BACKEND == "a64" else "x64"}', f'--prelude={ROOT}/core/prelude.fpr', 'tests/typed_ir/scalar.fpr', tmp / 'w.s'], {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPRC_WCET': '1'})
-    assert '[native-insns-v1] root: 22 function(s)' in wlog and 'not in this bound' in wlog, wlog[-1500:]
+    assert '# wcet:' not in on_t and len(native_fns)==len(re.findall(r'^# fn ',on_t,re.M)), 'all emitted functions must carry the native metric'
+    # Only the selected native instruction metric is reported.
+    wlog = run(['./fpr', f'--target={"a64mac" if BACKEND == "a64" else "x64"}', f'--prelude={ROOT}/core/prelude.fpr', 'tests/typed_ir/scalar.fpr', tmp / 'w.s'], {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPRC_NATIVE_INSNS': '1'})
+    assert '[native-insns-v1] root: 22 function(s)' in wlog and '[wcet]' not in wlog, wlog[-1500:]
     # the Mach-O TLV variant (a64mac without --base) and the ELF variant assemble
     clang = shutil.which('clang')
     if clang and BACKEND == 'a64':

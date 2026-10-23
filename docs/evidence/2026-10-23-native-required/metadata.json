@@ -1,0 +1,17 @@
+{
+  "codegen_rev": 87,
+  "compiler_sha256": "65694c2844256957f5d9646029b9bc6035a19ee3c08346e8370dca20917aeace",
+  "base_sweep": {
+    "jobs": 123,
+    "seconds": 550,
+    "workers": 4,
+    "exit": 0
+  },
+  "sources_sha256": {
+    "compiler/Codegen.hs": "1ea434910745973fab3b387751abceef7a3c47193105a86ab41bf98d8646f7cb",
+    "compiler/Compile.hs": "c465bb6a0799035ca8aa1919ccc64904b7daff377d912e4d4900c79a92b5fce5",
+    "tests/check_native_required.py": "691326f277bb17e7b0bc968fb3bbdde4562ff0fe8684bde657175ae644933ba8"
+  },
+  "base_commit": "042a6d8a00b47bf0ab84dfdb4bfccec766febbba",
+  "remaining": "Explicit RV rollback modes and legacy generator still present; no main sync."
+}

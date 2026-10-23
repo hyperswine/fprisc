@@ -1,0 +1,27 @@
+Remaining production paths after sized RISC-V frames (codegen 84)
+
+1. A64 emitFnA64 still refuses layouts above 32768 bytes; X64 emitFnX64
+   does the same. Both must reserve the full frame before writes and restore
+   the original SP on return/tail. A64 must also preserve the link and all
+   incoming arguments through Mach-O TLV lookup; X64 must account for the
+   incoming stack return address and its two TLS argument cells. Sized memory
+   ABI 3 provides the runtime operation; no context-save change is required.
+2. emitSpecs still emits typed native results or falls back to compileUFn /
+   emitSpec. Audit every planner output, then remove the fallback branch only
+   when all source-reachable plans are covered. Do not count invalid synthetic
+   plans or the already-disabled RVV map as missing supported shapes.
+3. Record dual arities are already capped by each planner at 8+spillCells
+   (soaDualCaps, soaDualPred, dualField). Larger arbitrary source records use
+   generic row callbacks; they do not prove a >64-argument legacy kernel gap.
+4. compileFn, compileUFn, emitSpec and Peephole remain reachable from explicit
+   legacy modes. Native data currently shares emitProgramWith top's static
+   PAP/nullary/string/module-table construction. Give that data independent
+   ownership before removing the stateful legacy renderer.
+5. Compile.hs still imports RV64 lowerPosixRV64/lowerQosRV64 and contains
+   espTls for fallback text. Native selectors already own the hart reads and
+   entry contracts; keep native PIC/GOT module behavior when deleting passes.
+6. Final deletion must also remove old # wcet reports, legacy switch tests,
+   package/module lists and cache identities. Preserve independent execution,
+   exact traps, ABI/ownership, default benchmark and platform acceptance.
+
+No remaining item above was implemented by this sized-frame increment.

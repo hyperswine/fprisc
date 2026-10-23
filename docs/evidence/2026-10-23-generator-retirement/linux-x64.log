@@ -1,0 +1,36 @@
+Loaded package environment from /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/dist-newstyle/tmp/environment.-55601/.ghc.environment.aarch64-darwin-9.8.2
+[ 1 of 13] Compiling Codegen.Bounds   ( compiler/Codegen/Bounds.hs, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/ghc/Codegen/Bounds.o )
+[ 2 of 13] Compiling Codegen.Frame    ( compiler/Codegen/Frame.hs, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/ghc/Codegen/Frame.o )
+[ 3 of 13] Compiling Codegen.IR       ( compiler/Codegen/IR.hs, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/ghc/Codegen/IR.o )
+[ 4 of 13] Compiling Codegen.Policy   ( compiler/Codegen/Policy.hs, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/ghc/Codegen/Policy.o )
+[ 5 of 13] Compiling Codegen.Selected ( compiler/Codegen/Selected.hs, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/ghc/Codegen/Selected.o )
+[ 6 of 13] Compiling Codegen.Place    ( compiler/Codegen/Place.hs, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/ghc/Codegen/Place.o )
+[ 7 of 13] Compiling Codegen.Liveness ( compiler/Codegen/Liveness.hs, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/ghc/Codegen/Liveness.o )
+[ 8 of 13] Compiling Codegen.Allocate ( compiler/Codegen/Allocate.hs, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/ghc/Codegen/Allocate.o )
+[ 9 of 13] Compiling Codegen.Target.Common ( compiler/Codegen/Target/Common.hs, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/ghc/Codegen/Target/Common.o )
+[10 of 13] Compiling Codegen.Target.X64 ( compiler/Codegen/Target/X64.hs, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/ghc/Codegen/Target/X64.o )
+[11 of 13] Compiling Codegen.Verify   ( compiler/Codegen/Verify.hs, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/ghc/Codegen/Verify.o )
+[12 of 13] Compiling Main             ( tests/EmitX64Frames.hs, /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/ghc/Main.o )
+[13 of 13] Linking /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/emit
+ld: warning: -U option is redundant when using -undefined dynamic_lookup
+
+# fn large (arity 64) typed-ir x64 frame=72032 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=36068 regs=27014 spills=9054 slots=8995 reloads=17290 stores=9054 copies=9715 crossing=9064 loops=0
+# fn tailLarge (arity 64) typed-ir x64 frame=40032 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=20068 regs=15014 spills=5054 slots=4995 reloads=9600 stores=5054 copies=5406 crossing=5064 loops=0
+# fn loopLarge (arity 64) typed-ir x64 frame=40544 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=20077 regs=15018 spills=5059 slots=5059 reloads=9605 stores=5059 copies=5402 crossing=5064 loops=1
+
+fpr build: kept /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/cache/fpr/build/actor-60389.s
+fpr build: /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/actor-1-stack131056
+
+Linux x64/QEMU: 9000 held fields, nine nested frames, exact data, forced yields; 1 hart(s), default first stack PASS
+fpr build: kept /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/cache/fpr/build/actor-61647.s
+fpr build: /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/actor-1-stack32752
+
+Linux x64/QEMU: 9000 held fields, nine nested frames, exact data, forced yields; 1 hart(s), 32KiB first stack PASS
+fpr build: kept /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/cache/fpr/build/actor-61740.s
+fpr build: /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/actor-4-stack131056
+
+Linux x64/QEMU: 9000 held fields, nine nested frames, exact data, forced yields; 4 hart(s), default first stack PASS
+fpr build: kept /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/cache/fpr/build/actor-63506.s
+fpr build: /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/linux-typed-retirement/x64/actor-4-stack32752
+
+Linux x64/QEMU: 9000 held fields, nine nested frames, exact data, forced yields; 4 hart(s), 32KiB first stack PASS

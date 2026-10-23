@@ -1,0 +1,54 @@
+Typed IR verifier: a well-formed function accepted, 24 malformations refused by name PASS
+Typed IR bit operations and shifts: lowered as declared HAL names, bits.c semantics, exact trap text and order PASS
+Typed IR dead arms, nullary definitions, function/HAL/primitive values, whole-program lookups: lowered, verified, evaluated with the legacy trap text PASS
+Typed IR generic application: local, partial, over-saturated and computed heads through the runtime's apply, traps by name PASS
+Typed IR HAL application: partial and opaque-arity calls use verified function-object application PASS
+Typed IR simplification: conversion pairs folded, Bool joins threaded, pure operations shared per block, dead pure definitions dropped; evaluator results, traps and events unchanged on every fixture PASS
+Typed IR worker metadata: ordered mixed parameters, renaming, Bool equality/aliases, missing and malformed signatures PASS
+Typed IR lowering: the generator's fib and sum shapes lower, verify, dump stably and evaluate to reference answers, exact traps and structural tick counts; unsupported forms are refused by name PASS
+a64: coverage 22/22 functions; main lowers with aggregate/string coverage; 11 evaluations equal the host reference
+x64: coverage 22/22 functions; main lowers with aggregate/string coverage; 11 evaluations equal the host reference
+rv64: coverage 22/22 functions; main lowers with aggregate/string coverage; 11 evaluations equal the host reference
+Typed IR M1: a64/x64/rv64 portable lowering, deterministic dumps, native value/trap parity, structural tick counts, independent Bool oracle and worker cache transitions, report leaves emission unchanged: PASS
+
+check_base: FAILED: tests/check_typed_ir_a64.py
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 162, in _work
+    fn(tmp)
+    ~~^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 105, in job
+    print(run(['python3', path], timeout=timeout).stdout, end='')
+          ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 73, in run
+    raise AssertionError(f'{args}: exit {p.returncode}, expected {expected}\n{out}\n{err}')
+AssertionError: ['python3', 'tests/check_typed_ir_a64.py']: exit 1, expected 0
+SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, sized A64 frames and explicit profile/x64 limits, shrink-wrap placement and refusals: PASS
+AllocIR: live ranges over block parameters, loops and calls; budget, spills and shared slots; staged fixed operands through a swap; tied copies; a tied destination never on a fixed operand's register; dead definitions; float refusal; the physical-liveness oracle; determinism: PASS
+whole unit: scalarlib 267/267 native under strict mode; 73 calls equal independent arithmetic and the host reference; C calls native code and is called back; deep recursion crossed 6 segments
+allocation facts: pressure spills 5 of 15 crossing; wide spills 16; fib and sum spill nothing
+one and four harts: PASS
+cache transitions: mixed/1/mixed/1/mixed PASS
+mixed mode on the M1 fixture: PASS
+
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_a64.py", line 7, in <module>
+    runpy.run_path(str(Path(__file__).with_name('check_typed_ir_native.py')), run_name='__main__')
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen runpy>", line 292, in run_path
+  File "<frozen runpy>", line 97, in _run_module_code
+  File "<frozen runpy>", line 87, in _run_code
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_native.py", line 315, in <module>
+    assert '[native-insns-v1] root: 22 function(s)' in wlog and 'not in this bound' in wlog, wlog[-1500:]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: saved=x19,x20 values=14 regs=14 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=2 loops=0, native-insns-v1 segmax=41 exittail=20 ccalls=2)
+typed-ir-backend: even native (frame 32 shallow=no saved=x19,x20 values=37 regs=37 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=2 loops=1, native-insns-v1 segmax=50 exittail=18 ccalls=4)
+typed-ir-backend: fib native (frame 32 shallow=no saved=x19,x20 values=46 regs=46 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=3 loops=0, native-insns-v1 segmax=40 exittail=18 ccalls=4)
+typed-ir-backend: main native (frame 32 shallow=no saved=x19 values=45 regs=45 spills=0 slots=0 reloads=0 stores=0 copies=5 crossing=1 loops=0, native-insns-v1 segmax=64 exittail=6 ccalls=5)
+typed-ir-backend: odd native (frame 32 shallow=no saved=x19,x20 values=37 regs=37 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=2 loops=1, native-insns-v1 segmax=50 exittail=18 ccalls=4)
+typed-ir-backend: sum native (frame 48 shallow=no saved=x19,x20,x21,x22 values=44 regs=44 spills=0 slots=0 reloads=0 stores=0 copies=4 crossing=4 loops=1, native-insns-v1 segmax=70 exittail=30 ccalls=4)
+unit /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-typed-ir-a64-4j5tub_6/units/prelude-b2084da22e6a-g89-tirbe23-native1mixed-fpregsrt3pc5-c09612b07b5ec-a64macx28r16.s (cached)
+wrote /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-typed-ir-a64-4j5tub_6/w.s (42 supercombinators, linearity OK)
+assumed external symbols (the fpr_g_ HAL/runtime contract):
+  Sys.args
+
+

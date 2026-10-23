@@ -1,0 +1,24 @@
+{
+  "codegen_rev_tested": 86,
+  "base_sweep": {
+    "jobs": 123,
+    "seconds": 629,
+    "workers": 4,
+    "exit": 0
+  },
+  "source_hashes_sha256": {
+    "compiler/Codegen/Target/A64.hs": "2d2dae9ffff50164264b1812ea1e6b3e3068cb326a75f459be1c5038dacc6556",
+    "compiler/Codegen/Target/X64.hs": "e94e946067f15d07a64f7b19053fcc3e9328eb0ecf8e97a688705164ad7053ed",
+    "compiler/Codegen/Target/RV.hs": "0ac7c52985a7102145be177631d2917d945e8d3005fcdc5bf1d4732edc648b11",
+    "runtime/fpr.h": "b5cba4c20a384b54e2d1a7ea16a490a54d2b0b3383abbe9dac2b8d622962427c",
+    "runtime/actors.c": "1f6dd7850072e9846d1e537bf6d2b269f0bac87b32c4a0e9d495238d9fe09f16",
+    "tests/typed_ir/actor_frames.c": "5b3d0bbbe6bed0557bd2e4642cf8a5ec133770fe051849fa7f826860eb141af6",
+    "tests/check_typed_ir_a64_frames.py": "4d2ae97a0815ff954237cf7cb5d047f90d3390c31f39b0aa414bc0903e2488db",
+    "tests/check_typed_ir_x64_frames.py": "26f94db1b7384fac32401c038ec98857dc46bcf308a4119b393413a4bf3ea6f5"
+  },
+  "limits": [
+    "Linux x64 actor execution added for CI but skipped locally on macOS A64",
+    "No hosted CI or P4 run claimed",
+    "A later codegen87 increment now requires native coverage by default; its sweep is separate"
+  ]
+}

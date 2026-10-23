@@ -34,7 +34,7 @@
 --     arguments into the parameters, then a jump to a label placed after
 --     the stack check and before the fuel tick, so the frame and the saved
 --     registers are kept and the tick still runs once per iteration (the
---     legacy FPR_SELF_LOOPS form, docs/2026-10-19-REGISTER-ALLOCATION.md
+--     retired text generator form, docs/2026-10-19-REGISTER-ALLOCATION.md
 --     3.4); the entry sequence's two calls keep their declared clobbers.
 --
 -- The scan is the classic one (Poletto and Sarkar) with an access-count
@@ -308,16 +308,19 @@ loopForm cfg here fn = case acSelfLoop cfg of
   where
     loopLabel = Label "m3loop"
     params = sfParams fn
-    -- the parameters that arrive through a cell (x86-64's seventh and
-    -- eighth): the arrival loads them from a symbol, and the selector
-    -- stages the matching arguments of a self call into that symbol just
-    -- before the transfer (`store.cell`): those stores carry the arguments
-    cells = [(p, sym) | i <- acArrival cfg params, OV p _ <- siDefs i, OS sym <- siUses i]
+    -- Parameters beyond the register bank arrive through named TLS cells
+    -- (x64's seventh/eighth) or indexed hart cells (arguments 9..64 on all
+    -- targets). Recover their staged values before replacing a self tail.
+    cellKey (OS _) = True
+    cellKey (OI _) = True
+    cellKey _ = False
+    cells = [(p,key) | i <- acArrival cfg params, siOp i `elem` ["load.cell","load.spill"],
+                       OV p _ <- siDefs i, key <- siUses i, cellKey key]
     nfixed = length params - length cells
     isSelf self i = siOp i == "tailjump" && take 1 (siUses i) == [OS self] && length [() | OV _ (Fix _) <- siUses i] == nfixed
     selfCalls self = [i | I i <- sfBody fn, isSelf self i]
     isCellStore i sym = null (siDefs i) && null (siCalls i) && siControl i == Next && case siUses i of
-      [OV _ _, OS s] -> s == sym
+      [OV _ _, key] -> key == sym && siOp i == (case sym of OS _ -> "store.cell"; _ -> "store.spill")
       _ -> False
     maxV = maximum (0 : [n | VReg n <- params] ++ [n | I i <- sfBody fn, (VReg n, _) <- instrVRegs i]) + 1
     -- the entry pseudo is the first instruction of the body (after the
@@ -344,7 +347,7 @@ loopForm cfg here fn = case acSelfLoop cfg of
                 (I st : before) | isCellStore st sym -> do
                   (vs, remaining) <- takeCells more before
                   pure ([v | OV v _ <- siUses st] ++ vs, remaining)
-                _ -> Left (here ++ "a self tail call without the staged cell argument " ++ sym)
+                _ -> Left (here ++ "a self tail call without the staged cell argument " ++ show sym)
           (cellArgs, acc1) <- takeCells (reverse cells) acc
           let args = fixedArgs ++ reverse cellArgs
           when (length args /= length params) (Left (here ++ "a self tail call with the wrong number of arguments"))

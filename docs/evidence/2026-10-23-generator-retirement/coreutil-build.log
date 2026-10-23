@@ -1,0 +1,12 @@
+use: C resolves to "../programs/mods/coreutil#f76f5f70a288122c"  (pin it to freeze this exact code)
+autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure
+autodrop: irqRouteStart: inserted `drop _autodrop_root_irqRouteStart_0` into 2 case arm(s)
+autodrop: logStart: inserted `drop _autodrop_root_logStart_0` into 2 case arm(s)
+autodrop: parWorker: inserted `drop _autodrop_root_parWorker_0` into 1 case arm(s)
+precond: 7 obligations: 5 discharged, 0 runtime-checked, 2 builtin traps
+=== TYPE ERRORS ===
+  * /Users/jasonqin/Documents/GitHub/qos/programs/mods/coreutil.fpr:61:13: in parseNatCh@f76f5f70a288122c: case: the arm for False can never match -- the arms before it already cover it (a `case` nested in a non-final arm takes the arms after it; parenthesize it)
+  * /Users/jasonqin/Documents/GitHub/qos/programs/mods/coreutil.fpr:59: in parseNatCh@f76f5f70a288122c: case: not exhaustive -- no arm matches False
+  * tests/coreutil.fpr:15:13: in parseBounds: case scrutinee: cannot unify Result r115 p115 with Bool
+  * tests/coreutil.fpr:14: in parseBounds: case: not exhaustive -- no arm matches Err
+make: *** [build/coreutil-bounds/qosapp-a64.s] Error 1

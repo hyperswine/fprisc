@@ -1,0 +1,23 @@
+{
+  "retired_files_absent": {
+    "A64.hs": true,
+    "X64.hs": true,
+    "RV64.hs": true,
+    "Peephole.hs": true
+  },
+  "live_code_references": {
+    "import Peephole": [],
+    "import RV64": [],
+    "wcetAnnotate": [],
+    "compactFrameSlots": [],
+    "FPR_SELF_LOOPS": [],
+    "FPR_COSTED_REGISTERS": [],
+    "FPR_COMPACT_FRAMES": [],
+    "FPR_RETAINED_REGISTERS": [],
+    "FPR_NO_REGISTERS": [],
+    "FPR_NO_RV32_FAST": [],
+    "FPRC_WCET": [],
+    "emAsm": [],
+    "emDirectData": []
+  }
+}

@@ -1,0 +1,27 @@
+RV ACTOR FRAMES HOLD
+FPR EXIT 0
+QEMU fixed stack depth=5, 512 live values: PASS
+PRE_FRAME_REFUSAL
+Base panic: Base: 64 KiB stack exhausted
+FPR EXIT 1
+QEMU fixed stack depth=80, 512 live values: PASS
+PASS: board UART diagnostic
+Physical image sha256=63ae64984103826377ba658af8db6ae9a028eed2d8f5cd817216935e0cdcff53
+RV ACTOR FRAMES HOLD
+FPR EXIT 0
+DONE
+Physical fixed-stack fitting frame: PASS
+Physical image sha256=3df287c94ecd270baa69fc02cbb5871518cb7d112eaf17a4792c97905250156f
+PRE_FRAME_REFUSAL
+Base panic: Base: 64 KiB stack exhausted
+FPR EXIT 1
+DONE
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tools/run_tangnano20k_base.py", line 149, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tools/run_tangnano20k_base.py", line 141, in main
+    if b'FPR EXIT 0\n' not in output:raise ValueError('CPU halted without successful runtime exit')
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: CPU halted without successful runtime exit
+Physical fixed-stack pre-frame refusal: PASS

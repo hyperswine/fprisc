@@ -1,0 +1,5 @@
+Loaded package environment from /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/dist-newstyle/tmp/environment.-93072/.ghc.environment.aarch64-darwin-9.8.2
+[29 of 30] Compiling Main             ( tests/NativeData.hs, /private/tmp/fpr-native-data-parity/objects/Main.o ) [Source file changed]
+[30 of 30] Linking /private/tmp/fpr-native-data-parity/oracle [Objects changed]
+ld: warning: -U option is redundant when using -undefined dynamic_lookup
+Native static data: exact prior text for RV32/RV64/A64 Mach-O/x64/ARC, weak/strong visibility, PAP arity, module schema/strings, UTF-8/raw bytes and elided native nullaries PASS

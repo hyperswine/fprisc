@@ -1,0 +1,137 @@
+Resolving dependencies...
+Loaded package environment from /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/dist-newstyle/tmp/environment.-94357/.ghc.environment.aarch64-darwin-9.8.2
+[ 1 of 14] Compiling Codegen.Bounds   ( compiler/Codegen/Bounds.hs, /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-data-0h23vrlc/Codegen/Bounds.o )
+
+compiler/Codegen/Bounds.hs:74:14: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+   |
+74 |     prefix = head [p | n <- [0 :: Int ..], let p = "%bound" ++ show n ++ ":",
+   |              ^^^^
+
+compiler/Codegen/Bounds.hs:113:22: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+113 |             let r1 = head (bRuns b)
+    |                      ^^^^
+
+compiler/Codegen/Bounds.hs:150:26: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+150 |                 let r1 = head (bRuns b)
+    |                          ^^^^
+[ 2 of 14] Compiling Codegen.Frame    ( compiler/Codegen/Frame.hs, /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-data-0h23vrlc/Codegen/Frame.o )
+[ 3 of 14] Compiling Codegen.IR       ( compiler/Codegen/IR.hs, /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-data-0h23vrlc/Codegen/IR.o )
+[ 4 of 14] Compiling Codegen.Policy   ( compiler/Codegen/Policy.hs, /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-data-0h23vrlc/Codegen/Policy.o )
+
+compiler/Codegen/Policy.hs:72:3: warning: [GHC-53633] [-Woverlapping-patterns]
+    Pattern match is redundant
+    In a case alternative: other -> ...
+   |
+72 |   other -> Left ("the " ++ profileName other ++ " profile has no typed-IR native lowering in M2")
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5 of 14] Compiling Codegen.Selected ( compiler/Codegen/Selected.hs, /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-data-0h23vrlc/Codegen/Selected.o )
+[ 6 of 14] Compiling Codegen.Target.Common ( compiler/Codegen/Target/Common.hs, /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-data-0h23vrlc/Codegen/Target/Common.o )
+[ 7 of 14] Compiling FPRISC           ( compiler/FPRISC.hs, /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-data-0h23vrlc/FPRISC.o )
+
+compiler/FPRISC.hs:179:20: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+179 |     [s] | isLower (head s) -> pure s
+    |                    ^^^^
+
+compiler/FPRISC.hs:200:24: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+200 |     (s : _) | isUpper (head s) -> pure (intercalate "." segs)
+    |                        ^^^^
+
+compiler/FPRISC.hs:459:20: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+459 |     [s] | isLower (head s) -> pure (SVar s)
+    |                    ^^^^
+
+compiler/FPRISC.hs:460:27: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+460 |     (s : rest) | isLower (head s) -> pure (SProj (SVar s) rest)
+    |                           ^^^^
+
+compiler/FPRISC.hs:1180:26: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1180 |       let cap = toUpper (head f) : tail f
+     |                          ^^^^
+
+compiler/FPRISC.hs:1180:36: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘tail’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Replace it with drop 1, or use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1180 |       let cap = toUpper (head f) : tail f
+     |                                    ^^^^
+
+compiler/FPRISC.hs:1608:20: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1608 |           isUpper (head root),
+     |                    ^^^^
+
+compiler/FPRISC.hs:1616:34: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1616 |         | not (null p), isUpper (head p), '.' `notElem` p,
+     |                                  ^^^^
+
+compiler/FPRISC.hs:2001:25: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+2001 |   let roots = nub (map (head . fst) assigns)
+     |                         ^^^^
+
+compiler/FPRISC.hs:2019:51: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+2019 |           case [(path, e) | (path, e) <- assigns, head path == f] of
+     |                                                   ^^^^
+
+compiler/FPRISC.hs:2023:34: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘tail’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Replace it with drop 1, or use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+2023 |               let subAssigns = [(tail p, e) | (p, e) <- deeper]
+     |                                  ^^^^
+[ 8 of 14] Compiling Home             ( compiler/Home.hs, /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-data-0h23vrlc/Home.o )
+[ 9 of 14] Compiling KernelKinds      ( compiler/KernelKinds.hs, /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-data-0h23vrlc/KernelKinds.o )
+[10 of 14] Compiling Modules          ( compiler/Modules.hs, /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-data-0h23vrlc/Modules.o )
+[11 of 14] Compiling Workers          ( compiler/Workers.hs, /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-data-0h23vrlc/Workers.o )
+[12 of 14] Compiling Codegen.NativeData ( compiler/Codegen/NativeData.hs, /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-data-0h23vrlc/Codegen/NativeData.o )
+[13 of 14] Compiling Main             ( tests/NativeData.hs, /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-data-0h23vrlc/Main.o )
+[14 of 14] Linking /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-data-0h23vrlc/native-data
+ld: warning: -U option is redundant when using -undefined dynamic_lookup
+Native static data: exact prior text for RV32/RV64/A64 Mach-O/x64/ARC, weak/strong visibility, PAP arity, module schema/strings, UTF-8/raw bytes and elided native nullaries PASS

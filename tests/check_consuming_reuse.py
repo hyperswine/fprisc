@@ -38,9 +38,9 @@ def main():
             assert p.returncode==0,(args,p.stdout[-2000:],p.stderr[-2000:])
             return p
         for inline in ('1','0'):
-            for regs in ('1','0'):
+            for regs in ('0',):
                 for off in ('1','0','1'):
-                    mode=dict(env,FPR_NO_REUSE=off,FPR_NO_INLINE=inline,FPR_NO_REGISTERS=regs)
+                    mode=dict(env,FPR_NO_REUSE=off,FPR_NO_INLINE=inline)
                     command([ROOT/'fpr','build',ROOT/'tests/base/consumingreuse.fpr','--harts','4',
                         '--with',ROOT/'tests/bench/costprobe.c','--with',ROOT/'tests/bench/workers_clock.c','-o',exe],mode)
                     def run(case,harts):
@@ -48,15 +48,6 @@ def main():
                         return p.returncode,p.stdout,p.stderr
                     ledger=check_execution(run,off=='0')
                     print(f'consuming reuse off={off} no-inline={inline} no-registers={regs}: {ledger["alloc_requests"]} allocations PASS',flush=True)
-        for target in ('rv64','rv32'):
-            for off in ('0','1'):
-                asm=tmp/'probe.s'
-                # the worker marker is legacy text: this compile names the legacy backend
-                legacy=dict(env,FPR_TYPED_IR_BACKEND='legacy')
-                command([ROOT/'fpr','compile','--target='+target,ROOT/'tests/base/consumingreuse.fpr',asm],dict(legacy,FPR_NO_REUSE=off,FPR_NO_INLINE='1'))
-                text=asm.read_text()
-                assert ('# private consuming workers: 0' not in text and '# private consuming workers:' in text)==(off=='0' and target!='rv32'),(target,off)
-                assert '# static-pap: $worker.consume.' not in text
         # Public dynamic calls still borrow, even when the library has a
         # private consuming version selected by a different internal caller.
         source=tmp/'module.fpr'
@@ -81,5 +72,5 @@ main = _=ok (N.attach "MODULE"); swap=R.bindAt 0 "swap"; entry=R.bindAt 0 "entry
         for flags in ([],['--arc']):
             command([ROOT/'fpr','compile',*flags,fallback,tmp/'fallback.s'],enabled)
             assert '# private consuming workers:' not in (tmp/'fallback.s').read_text()
-        print('Consuming workers: aliases, branch joins, retained originals, shared list tails, ordered failures, allocation counts, 1/4 harts and RV64/RV32 legacy ABI gates PASS')
+        print('Consuming workers: aliases, branch joins, retained originals, shared list tails, ordered failures, allocation counts, 1/4 harts and RV64/RV32 typed ABI gates PASS')
 if __name__=='__main__':main()

@@ -1,0 +1,454 @@
+Resolving dependencies...
+Build profile: -w ghc-9.8.2 -O1
+In order, the following will be built (use -v for more details):
+ - fp-risc-0.12.0 (exe:fpr) (first run)
+Configuring executable 'fpr' for fp-risc-0.12.0...
+Preprocessing executable 'fpr' for fp-risc-0.12.0...
+Building executable 'fpr' for fp-risc-0.12.0...
+[ 1 of 70] Compiling Codegen.Bounds   ( compiler/Codegen/Bounds.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Bounds.o )
+
+compiler/Codegen/Bounds.hs:74:14: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+   |
+74 |     prefix = head [p | n <- [0 :: Int ..], let p = "%bound" ++ show n ++ ":",
+   |              ^^^^
+
+compiler/Codegen/Bounds.hs:113:22: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+113 |             let r1 = head (bRuns b)
+    |                      ^^^^
+
+compiler/Codegen/Bounds.hs:150:26: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+150 |                 let r1 = head (bRuns b)
+    |                          ^^^^
+[ 2 of 70] Compiling Codegen.Frame    ( compiler/Codegen/Frame.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Frame.o )
+[ 3 of 70] Compiling Codegen.IR       ( compiler/Codegen/IR.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/IR.o )
+[ 4 of 70] Compiling Codegen.Dump     ( compiler/Codegen/Dump.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Dump.o )
+[ 5 of 70] Compiling Codegen.Policy   ( compiler/Codegen/Policy.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Policy.o )
+
+compiler/Codegen/Policy.hs:72:3: warning: [GHC-53633] [-Woverlapping-patterns]
+    Pattern match is redundant
+    In a case alternative: other -> ...
+   |
+72 |   other -> Left ("the " ++ profileName other ++ " profile has no typed-IR native lowering in M2")
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 6 of 70] Compiling Codegen.Selected ( compiler/Codegen/Selected.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Selected.o )
+[ 7 of 70] Compiling Codegen.Place    ( compiler/Codegen/Place.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Place.o )
+[ 8 of 70] Compiling Codegen.Liveness ( compiler/Codegen/Liveness.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Liveness.o )
+[ 9 of 70] Compiling Codegen.Allocate ( compiler/Codegen/Allocate.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Allocate.o )
+
+compiler/Codegen/Allocate.hs:206:19: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+206 |           let k = head [k' | OV d (Tied k') <- siDefs i, d == v]
+    |                   ^^^^
+
+compiler/Codegen/Allocate.hs:365:28: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+365 |             let (d, src) = head ms
+    |                            ^^^^
+
+compiler/Codegen/Allocate.hs:367:93: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘tail’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Replace it with drop 1, or use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+367 |              in vmove t src : go ((d, t) : [(d2, if s2 == src then t else s2) | (d2, s2) <- tail ms])
+    |                                                                                             ^^^^
+
+compiler/Codegen/Allocate.hs:494:28: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+494 |               let (_, s) = head pending
+    |                            ^^^^
+
+compiler/Codegen/Allocate.hs:523:17: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+523 |       name' p = head [r | (r, n) <- M.toList key, n == p]
+    |                 ^^^^
+[10 of 70] Compiling Codegen.Split    ( compiler/Codegen/Split.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Split.o )
+[11 of 70] Compiling Codegen.Target.Common ( compiler/Codegen/Target/Common.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Target/Common.o )
+[12 of 70] Compiling Codegen.Target.A64 ( compiler/Codegen/Target/A64.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Target/A64.o )
+
+compiler/Codegen/Target/A64.hs:345:17: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+345 | entryBlock fn = head [b | b <- fnBlocks fn, bId b == fnEntry fn]
+    |                 ^^^^
+
+compiler/Codegen/Target/A64.hs:674:22: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+674 |         let (d, s) = head ms
+    |                      ^^^^
+
+compiler/Codegen/Target/A64.hs:677:69: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘tail’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Replace it with drop 1, or use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+677 |         go ((d, t) : [(d', if s' == s then t else s') | (d', s') <- tail ms])
+    |                                                                     ^^^^
+
+compiler/Codegen/Target/A64.hs:1135:43: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1135 |        in ("movz " ++ d ++ ", #" ++ show (head hws))
+     |                                           ^^^^
+
+compiler/Codegen/Target/A64.hs:1136:88: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘tail’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Replace it with drop 1, or use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1136 |             : ["movk " ++ d ++ ", #" ++ show h ++ ", lsl #" ++ show s | (h, s) <- zip (tail hws) [16 :: Int, 32, 48], h /= 0]
+     |                                                                                        ^^^^
+[13 of 70] Compiling Codegen.Eval     ( compiler/Codegen/Eval.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Eval.o )
+[14 of 70] Compiling Codegen.Target.RV ( compiler/Codegen/Target/RV.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Target/RV.o )
+[15 of 70] Compiling Codegen.Target.X64 ( compiler/Codegen/Target/X64.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Target/X64.o )
+
+compiler/Codegen/Target/X64.hs:233:17: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+233 | entryBlock fn = head [b | b <- fnBlocks fn, bId b == fnEntry fn]
+    |                 ^^^^
+
+compiler/Codegen/Target/X64.hs:546:22: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+546 |         let (d, s) = head ms
+    |                      ^^^^
+
+compiler/Codegen/Target/X64.hs:549:69: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘tail’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Replace it with drop 1, or use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+549 |         go ((d, t) : [(d', if s' == s then t else s') | (d', s') <- tail ms])
+    |                                                                     ^^^^
+[16 of 70] Compiling Codegen.Verify   ( compiler/Codegen/Verify.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Verify.o )
+[17 of 70] Compiling Codegen.Simplify ( compiler/Codegen/Simplify.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Simplify.o )
+[18 of 70] Compiling FPRISC           ( compiler/FPRISC.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/FPRISC.o )
+
+compiler/FPRISC.hs:179:20: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+179 |     [s] | isLower (head s) -> pure s
+    |                    ^^^^
+
+compiler/FPRISC.hs:200:24: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+200 |     (s : _) | isUpper (head s) -> pure (intercalate "." segs)
+    |                        ^^^^
+
+compiler/FPRISC.hs:459:20: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+459 |     [s] | isLower (head s) -> pure (SVar s)
+    |                    ^^^^
+
+compiler/FPRISC.hs:460:27: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+460 |     (s : rest) | isLower (head s) -> pure (SProj (SVar s) rest)
+    |                           ^^^^
+
+compiler/FPRISC.hs:1180:26: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1180 |       let cap = toUpper (head f) : tail f
+     |                          ^^^^
+
+compiler/FPRISC.hs:1180:36: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘tail’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Replace it with drop 1, or use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1180 |       let cap = toUpper (head f) : tail f
+     |                                    ^^^^
+
+compiler/FPRISC.hs:1608:20: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1608 |           isUpper (head root),
+     |                    ^^^^
+
+compiler/FPRISC.hs:1616:34: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1616 |         | not (null p), isUpper (head p), '.' `notElem` p,
+     |                                  ^^^^
+
+compiler/FPRISC.hs:2001:25: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+2001 |   let roots = nub (map (head . fst) assigns)
+     |                         ^^^^
+
+compiler/FPRISC.hs:2019:51: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+2019 |           case [(path, e) | (path, e) <- assigns, head path == f] of
+     |                                                   ^^^^
+
+compiler/FPRISC.hs:2023:34: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘tail’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Replace it with drop 1, or use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+2023 |               let subAssigns = [(tail p, e) | (p, e) <- deeper]
+     |                                  ^^^^
+[19 of 70] Compiling Exhaust          ( compiler/Exhaust.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Exhaust.o )
+
+compiler/Exhaust.hs:115:26: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+115 |     arity = length (fst (head cls))
+    |                          ^^^^
+
+compiler/Exhaust.hs:143:27: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+143 |       HInt _ : _ -> PInt (head [i | i <- [0 ..], HInt i `notElem` heads])
+    |                           ^^^^
+
+compiler/Exhaust.hs:144:27: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+144 |       HStr _ : _ -> PStr (head [s | s <- "" : ["x" ++ replicate k '\'' | k <- [0 ..]], HStr s `notElem` heads])
+    |                           ^^^^
+
+compiler/Exhaust.hs:191:52: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+191 |     let heads = nub (mapMaybe (fmap fst . headOf . head) rows)
+    |                                                    ^^^^
+[20 of 70] Compiling Home             ( compiler/Home.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Home.o )
+[21 of 70] Compiling Inline           ( compiler/Inline.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Inline.o )
+[22 of 70] Compiling KernelKinds      ( compiler/KernelKinds.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/KernelKinds.o )
+[23 of 70] Compiling Codegen.Kernel   ( compiler/Codegen/Kernel.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Kernel.o )
+[24 of 70] Compiling Manifest         ( compiler/Manifest.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Manifest.o )
+
+compiler/Manifest.hs:73:54: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+   |
+73 |     quoted t = let u = trim t in if length u >= 2 && head u == '"' && last u == '"' then init (tail u) else u
+   |                                                      ^^^^
+
+compiler/Manifest.hs:73:96: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘tail’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Replace it with drop 1, or use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+   |
+73 |     quoted t = let u = trim t in if length u >= 2 && head u == '"' && last u == '"' then init (tail u) else u
+   |                                                                                                ^^^^
+[25 of 70] Compiling Modules          ( compiler/Modules.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Modules.o )
+[26 of 70] Compiling Mono             ( compiler/Mono.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Mono.o )
+[27 of 70] Compiling Precond          ( compiler/Precond.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Precond.o )
+[28 of 70] Compiling Representation   ( compiler/Representation.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Representation.o )
+[29 of 70] Compiling Interrupt        ( compiler/Interrupt.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Interrupt.o )
+[30 of 70] Compiling Arc              ( compiler/Arc.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Arc.o )
+[31 of 70] Compiling Reuse            ( compiler/Reuse.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Reuse.o )
+[32 of 70] Compiling Safety           ( compiler/Safety.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Safety.o )
+[33 of 70] Compiling Cost             ( compiler/Cost.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Cost.o )
+[34 of 70] Compiling Sol.Diagnostic   ( compiler/Sol/Diagnostic.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Diagnostic.o )
+[35 of 70] Compiling Sol.Lang         ( compiler/Sol/Lang.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Lang.o )
+[36 of 70] Compiling Sol.Bytecode     ( compiler/Sol/Bytecode.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Bytecode.o )
+[37 of 70] Compiling Sol.JitCore      ( compiler/Sol/JitCore.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/JitCore.o )
+
+compiler/Sol/JitCore.hs:295:54: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+295 |       CVar v | S.member v es -> if scalar then Just (head colTys, []) else Nothing
+    |                                                      ^^^^
+[38 of 70] Compiling Sol.KIR          ( compiler/Sol/KIR.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/KIR.o )
+[39 of 70] Compiling Sol.AsmX64       ( compiler/Sol/AsmX64.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/AsmX64.o )
+[40 of 70] Compiling Sol.AsmA64       ( compiler/Sol/AsmA64.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/AsmA64.o )
+
+compiler/Sol/AsmA64.hs:53:13: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+   |
+53 |    in movz (head hs) : [movk hk | hk@(h, _) <- tail hs, h /= 0]
+   |             ^^^^
+
+compiler/Sol/AsmA64.hs:53:48: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘tail’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Replace it with drop 1, or use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+   |
+53 |    in movz (head hs) : [movk hk | hk@(h, _) <- tail hs, h /= 0]
+   |                                                ^^^^
+[41 of 70] Compiling Sol.HandJIT      ( compiler/Sol/HandJIT.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/HandJIT.o )
+[42 of 70] Compiling Sol.Gpu          ( compiler/Sol/Gpu.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Gpu.o )
+[43 of 70] Compiling Sol.Native       ( compiler/Sol/Native.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Native.o )
+[44 of 70] Compiling Sol.Preamble     ( compiler/Sol/Preamble.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Preamble.o )
+[45 of 70] Compiling Sol.Startup      ( compiler/Sol/Startup.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Startup.o )
+[46 of 70] Compiling Sol.Cache        ( compiler/Sol/Cache.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Cache.o )
+[47 of 70] Compiling Sol.Txn          ( compiler/Sol/Txn.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Txn.o )
+[48 of 70] Compiling Sol.Mod          ( compiler/Sol/Mod.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Mod.o )
+
+compiler/Sol/Mod.hs:102:22: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+102 |         _ -> mkPath (head cands)
+    |                      ^^^^
+[49 of 70] Compiling Sol.Val          ( compiler/Sol/Val.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Val.o )
+
+compiler/Sol/Val.hs:357:22: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+357 |         RScalar _ -> head fs
+    |                      ^^^^
+[50 of 70] Compiling Sol.WebAssets    ( compiler/Sol/WebAssets.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/WebAssets.o )
+[51 of 70] Compiling Sol.Web          ( compiler/Sol/Web.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Web.o )
+[52 of 70] Compiling Sol.VM           ( compiler/Sol/VM.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/VM.o )
+[53 of 70] Compiling Sol.Width        ( compiler/Sol/Width.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Width.o )
+[54 of 70] Compiling StdCheck         ( compiler/StdCheck.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/StdCheck.o )
+[55 of 70] Compiling StdBridge        ( compiler/StdBridge.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/StdBridge.o )
+[56 of 70] Compiling Struct           ( compiler/Struct.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Struct.o )
+[57 of 70] Compiling Infer            ( compiler/Infer.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Infer.o )
+[58 of 70] Compiling Sol.Infer        ( compiler/Sol/Infer.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Infer.o )
+[59 of 70] Compiling Sol.Main         ( compiler/Sol/Main.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Sol/Main.o )
+[60 of 70] Compiling ReceiveTurns     ( compiler/ReceiveTurns.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/ReceiveTurns.o )
+[61 of 70] Compiling Target           ( compiler/Target.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Target.o )
+[62 of 70] Compiling Workers          ( compiler/Workers.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Workers.o )
+[63 of 70] Compiling Codegen.NativeData ( compiler/Codegen/NativeData.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/NativeData.o )
+[64 of 70] Compiling Codegen.Lower    ( compiler/Codegen/Lower.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Lower.o )
+[65 of 70] Compiling Codegen          ( compiler/Codegen.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen.o )
+
+compiler/Codegen.hs:287:77: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+287 |             frameOf nf = case dropWhile (not . isPrefixOf "frame=") (words (head (nfLines nf))) of (f : rest) -> unwords (drop 6 f : rest); [] -> "?"
+    |                                                                             ^^^^
+
+compiler/Codegen.hs:851:51: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+851 |       plan=SpecPlan ("pipeline@"++show pipeline) (head names) True cl Nothing Nothing Nothing
+    |                                                   ^^^^
+
+compiler/Codegen.hs:1619:28: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1619 |       Right (K.Kernel sym [head ks] (last ks) (Just (0,head ks)) [K.Stage "map" g [], K.Stage "fold" (spFn p) []] Nothing False)
+     |                            ^^^^
+
+compiler/Codegen.hs:1619:56: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1619 |       Right (K.Kernel sym [head ks] (last ks) (Just (0,head ks)) [K.Stage "map" g [], K.Stage "fold" (spFn p) []] Nothing False)
+     |                                                        ^^^^
+[66 of 70] Compiling Publish          ( compiler/Publish.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Publish.o )
+[67 of 70] Compiling Compile          ( compiler/Compile.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Compile.o )
+
+compiler/Compile.hs:1347:47: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1347 |               n = takeWhile (/= '@') (drop 4 (head [w | w <- args, "%fs:" `isPrefixOf` w]))
+     |                                               ^^^^
+
+compiler/Compile.hs:1352:40: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1352 |                          | otherwise = head xs : replace (tail xs)
+     |                                        ^^^^
+
+compiler/Compile.hs:1352:59: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘tail’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Replace it with drop 1, or use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1352 |                          | otherwise = head xs : replace (tail xs)
+     |                                                           ^^^^
+[68 of 70] Compiling Commit           ( compiler/Commit.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Commit.o )
+[69 of 70] Compiling Build            ( compiler/Build.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Build.o )
+[70 of 70] Compiling Main             ( compiler/Main.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Main.o )
+
+compiler/Main.hs:96:23: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+   |
+96 |       | not (null a), head a /= '-', '/' `notElem` a, '.' `notElem` a ->
+   |                       ^^^^
+[71 of 71] Linking dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr
+ld: warning: -U option is redundant when using -undefined dynamic_lookup

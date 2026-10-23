@@ -1,0 +1,35 @@
+
+check_base: FAILED: tests/check_typed_ir.py
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 162, in _work
+    fn(tmp)
+    ~~^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 105, in job
+    print(run(['python3', path], timeout=timeout).stdout, end='')
+          ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 73, in run
+    raise AssertionError(f'{args}: exit {p.returncode}, expected {expected}\n{out}\n{err}')
+AssertionError: ['python3', 'tests/check_typed_ir.py']: exit 1, expected 0
+Typed IR verifier: a well-formed function accepted, 24 malformations refused by name PASS
+Typed IR bit operations and shifts: lowered as declared HAL names, bits.c semantics, exact trap text and order PASS
+Typed IR dead arms, nullary definitions, function/HAL/primitive values, whole-program lookups: lowered, verified, evaluated with the legacy trap text PASS
+Typed IR generic application: local, partial, over-saturated and computed heads through the runtime's apply, traps by name PASS
+Typed IR HAL application: partial and opaque-arity calls use verified function-object application PASS
+Typed IR simplification: conversion pairs folded, Bool joins threaded, pure operations shared per block, dead pure definitions dropped; evaluator results, traps and events unchanged on every fixture PASS
+Typed IR worker metadata: ordered mixed parameters, renaming, Bool equality/aliases, missing and malformed signatures PASS
+Typed IR lowering: the generator's fib and sum shapes lower, verify, dump stably and evaluate to reference answers, exact traps and structural tick counts; unsupported forms are refused by name PASS
+a64: coverage 22/22 functions; main lowers with aggregate/string coverage; 11 evaluations equal the host reference
+x64: coverage 22/22 functions; main lowers with aggregate/string coverage; 11 evaluations equal the host reference
+rv64: coverage 22/22 functions; main lowers with aggregate/string coverage; 11 evaluations equal the host reference
+
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir.py", line 110, in <module>
+    assert 'typed-ir: not available on rv32' in note32, note32[-500:]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: s4 values=26 regs=26 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=4 loops=1, native-insns-v1 segmax=57 exittail=26 ccalls=4)
+unit /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-typed-ir-awy341sk/units/prelude-b2084da22e6a-g89-tirberv32-22mixedrt3pc5-c09612b07b5ec-rv32.s (267 supercombinators)
+wrote /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-typed-ir-awy341sk/rv32.s (42 supercombinators, linearity OK)
+assumed external symbols (the fpr_g_ HAL/runtime contract):
+  Sys.args
+
+

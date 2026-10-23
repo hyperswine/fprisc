@@ -105,7 +105,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-ir-') as d:
     assert dumps['a64'] == dumps['x64'] == dumps['rv64'], 'the dump differs between targets'
     again = run(['./fpr', '--target=a64', f'--prelude={ROOT}/core/prelude.fpr', FIXTURE, tmp / 'again.s'], {**ENV, 'FPR_TYPED_IR': 'dump'})
     assert '\n'.join(l for l in again.splitlines() if l.startswith('typed-ir: | ')) == dumps['a64'], 'the dump differs between runs'
-    # rv32 says it is out of M1's scope rather than lowering with the wrong Int range
+    # RV32 now has its own width-aware lowering and diagnostic report.
     note32 = run(['./fpr', '--target=rv32', f'--prelude={ROOT}/core/prelude.fpr', FIXTURE, tmp / 'rv32.s'], {**ENV, 'FPR_TYPED_IR': '1'})
-    assert 'typed-ir: not available on rv32' in note32, note32[-500:]
+    assert 'typed-ir: coverage ' in note32 and 'not available on rv32' not in note32,note32[-500:]
+    assert 'typed-ir rv32' in (tmp/'rv32.s').read_text()
 print('Typed IR M1: a64/x64/rv64 portable lowering, deterministic dumps, native value/trap parity, structural tick counts, independent Bool oracle and worker cache transitions, report leaves emission unchanged: PASS')

@@ -1,0 +1,25 @@
+== the page
+  FAIL  GET /: 200
+  FAIL  page: lv-root + __LV__ seed
+  FAIL  page: the fprlive client
+  FAIL  page: generated CSS incl. the input field rule
+  FAIL  page: content-length
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/qos/qos/tests-host/fprlive-check.py", line 761, in <module>
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.0_1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/asyncio/runners.py", line 205, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.0_1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/asyncio/runners.py", line 128, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.0_1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/asyncio/base_events.py", line 724, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/qos/qos/tests-host/fprlive-check.py", line 738, in main
+    await leg_page()
+  File "/Users/jasonqin/Documents/GitHub/qos/qos/tests-host/fprlive-check.py", line 294, in leg_page
+    body = page.split("\r\n\r\n", 1)[1]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+IndexError: list index out of range

@@ -162,8 +162,6 @@ def main():
     parser.add_argument('--typed-ir', action='store_true', help='exercise direct typed RV64 in mixed mode')
     parser.add_argument('--execute-only', action='store_true')
     args = parser.parse_args()
-    if not args.typed_ir:
-        os.environ['FPR_TYPED_IR_BACKEND'] = 'legacy'
     if args.typed_ir:
         os.environ['FPR_TYPED_IR_BACKEND'] = 'mixed'
         if args.output:

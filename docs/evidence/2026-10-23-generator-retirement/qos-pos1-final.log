@@ -1,0 +1,10 @@
+  S9 the example
+  guards
+  S10.1 the last-unit race
+  S10.7 log vs cache
+  inventory and admin
+  S10.6 delta correctness
+  S10.2 crash windows
+  0 of 4 checkouts landed before the kill
+  S10.5 bounded lists
+pos1-check: ALL LEGS PASS (the example, guards, the last-unit race, void twice, rebuild, admin sets, 12 deltas / 1 reshape, 4 crash windows, 300 receipts against a 50-row page)

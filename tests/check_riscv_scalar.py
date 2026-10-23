@@ -113,9 +113,8 @@ def compile_image(out, bits, source, env, compressed=False):
          # and formatting paths need its width/ABI-matched soft-float helpers.
          'runtime/bits.c', 'machine/virt/memshim.c', asm, *units, *softfloat, *([] if softfloat else ['-lgcc']), '-o', image], env)
     text = asm.read_text()
-    if env.get('FPR_TYPED_IR_BACKEND','mixed') not in ('legacy','off','0'):
-        headers=re.findall(r'^# fn ([^\n]+)',text,re.M)
-        assert headers and all('typed-ir rv'+str(bits) in h for h in headers),'builtin fallback escaped native coverage'
+    headers=re.findall(r'^# fn ([^\n]+)',text,re.M)
+    assert headers and all('typed-ir rv'+str(bits) in h for h in headers),'builtin fallback escaped native coverage'
     if bits == 32:
         assert not re.search(r'^\s+(?:ld|sd|lwu|f(?:add|mul|sub|div|mv|ld|sd|eq|lt|le|sqrt)[a-z.]*)\s', text, re.M), 'RV64/FPU instruction in RV32 output'
         for count in re.findall(r'^\s+s[rl][al]i\s+\w+,\s*\w+,\s*(\d+)', text, re.M):
@@ -154,8 +153,8 @@ def main():
         for bits in widths:
             out = root / str(bits); out.mkdir(); setup(out, bits)
             outputs = []; caches = []
-            for slow, indexed in ((False, True), (True, False), (False, False), (False, True)):
-                env = {**ENV, 'FPR_NO_RV32_FAST': str(int(slow)), 'FPR_NO_INDEXED_MEMORY': str(int(not indexed))}
+            for slow, indexed in ((False, True), (False, False), (False, True)):
+                env = {**ENV, 'FPR_NO_INDEXED_MEMORY': str(int(not indexed))}
                 image, info = compile_image(out, bits, 'tests/builtin_scalar_fast.fpr', env)
                 outputs.append(execute(bits, image))
                 caches.append(info['unit_cache'])
@@ -168,7 +167,7 @@ def main():
                         assert body and 'fpr_g_Addr_x2eadd_call2' in body[1], ('unsafe fusion', bits, function)
                 metrics[f'rv{bits}-slow{int(slow)}-indexed{int(indexed)}'] = info
             assert len(set(outputs)) == 1, (bits, outputs)
-            assert caches[0] and caches[0] == caches[3] and caches[0] != caches[1] and caches[0] != caches[2], ('unit-cache mode separation', bits, caches)
+            assert caches[0] and caches[0] == caches[2] and caches[0] != caches[1], ('unit-cache mode separation', bits, caches)
             image, info = compile_image(out, bits, 'tests/builtin_scalar_fast.fpr', ENV, compressed=True)
             assert execute(bits, image) == outputs[0]
             disassembly = run(['riscv64-unknown-elf-objdump', '-d', image])
@@ -180,9 +179,9 @@ def main():
             shadow_expected = ('7\n7\nUSER ADD\n55\nUSER LT\nVALUE FALSE\n'
                                'USER LT\nCONDITION FALSE\n11\n')
             for no_inline in (False, True):
-                for slow in (False, True):
+                for slow in (False,):
                     env = {**ENV, 'FPR_NO_INLINE': str(int(no_inline)),
-                           'FPR_NO_RV32_FAST': str(int(slow)), 'FPR_NO_INDEXED_MEMORY': '0'}
+                           'FPR_NO_INDEXED_MEMORY': '0'}
                     image, _ = compile_image(out, bits, 'tests/builtin_scalar_shadow.fpr', env)
                     assert execute(bits, image) == shadow_expected, (bits, no_inline, slow)
                     if no_inline:
@@ -203,12 +202,12 @@ def main():
             ):
                 source = out / f'{name}.fpr';source.write_text(f'profile builtin.\nmain = {expr}.\n')
                 for slow in (False, True):
-                    env = {**ENV, 'FPR_NO_RV32_FAST': str(int(slow)), 'FPR_NO_INDEXED_MEMORY': str(int(slow))}
+                    env = {**ENV, 'FPR_NO_INDEXED_MEMORY': str(int(slow))}
                     image, _ = compile_image(out, bits, source, env)
                     assert message in execute(bits, image, 1), (bits, name, slow)
             for bench in ('sieve', 'sort', 'matrix', 'compute'):
                 for slow in (False, True):
-                    env = {**ENV, 'FPR_NO_RV32_FAST': str(int(slow)), 'FPR_NO_INDEXED_MEMORY': str(int(slow))}
+                    env = {**ENV, 'FPR_NO_INDEXED_MEMORY': str(int(slow))}
                     _, info = compile_image(out, bits, f'tests/tangnano20k_stress/{bench}.fpr', env)
                     metrics[f'rv{bits}-{bench}-slow{int(slow)}'] = info
         print(json.dumps(metrics, indent=2))

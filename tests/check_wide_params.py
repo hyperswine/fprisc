@@ -1,18 +1,8 @@
 #!/usr/bin/env python3
-"""Params 7 and 8 under register promotion, on every backend.
+"""Typed parameters 7 and 8: RV64 emission, x64 TLS cells and hosted values.
 
-Register promotion (Codegen registerSlots) can keep a function's 7th/8th
-parameter in a saved register, so the RV64 prologue reads it with
-`mv sN, a6` / `mv sN, a7` instead of `sd a6, slot`.  X64.hs used to lower
-only the `sd` form and stopped with "X64: a6 -- arity <= 6", which is what
-kept most QOS Portable apps from building on x86-64.
-
-Checks, for tests/base/wideparams.fpr:
-  * the promotion really happens (the RV64 emission has the `mv` shapes);
-  * legacy rv64 and typed x64 emission succeeds with promotion on and off;
-  * the x64 prologue reads the TLS cells into a saved register;
-  * the program built for this host prints the reference values with
-    promotion on and off.
+The program's expected result is calculated independently in Python. The x64
+emission must read both ABI cells, and every emitted function is typed native.
 """
 import os, platform, re, subprocess, tempfile
 from pathlib import Path
@@ -38,24 +28,16 @@ def run(args, env):
 
 with tempfile.TemporaryDirectory(prefix='fpr-wide-') as d:
     tmp = Path(d)
-    for no_regs in ('0', '1'):
-        env = {**ENV, 'FPR_NO_REGISTERS': no_regs}
-        asm = {}
-        for target in ('rv64', 'x64'):
-            out = tmp / f'{target}{no_regs}.s'
-            # promotion markers are legacy text: this compile names the legacy backend
-            legacy = dict(env, FPR_TYPED_IR_BACKEND='legacy' if target == 'rv64' else 'mixed')
-            run(['./fpr', f'--target={target}', f'--prelude={ROOT}/core/prelude.fpr', FIXTURE, out], legacy)
-            asm[target] = out.read_text()
-        promoted = {r: bool(re.search(rf'^\s*mv s\d+, {r}$', asm['rv64'], re.M)) for r in ('a6', 'a7')}
-        if no_regs == '0':
-            assert promoted == {'a6': True, 'a7': True}, ('promotion did not reach params 7/8; the check is vacuous', promoted)
-            for cell in ('fpr_x64_a6', 'fpr_x64_a7'):
-                assert re.search(rf'movq %fs:{cell}@tpoff, %(?:rbx|r12|r13|r14|r15)\b', asm['x64']), cell
-        else:
-            assert promoted == {'a6': False, 'a7': False}, promoted
-        exe = tmp / f'wide{no_regs}'
-        run(['./fpr', 'build', FIXTURE, '-o', exe], env)
-        got = run([exe], env).strip()
-        assert got == EXPECT, (no_regs, got, EXPECT)
-    print(f'wide params: 7th/8th params promoted to saved registers emit on legacy rv64/typed x64 and run on {platform.machine()} ({EXPECT}): PASS')
+    env=ENV
+    for target in ('rv64','x64'):
+        out=tmp/(target+'.s')
+        run(['./fpr',f'--target={target}',f'--prelude={ROOT}/core/prelude.fpr',FIXTURE,out],env)
+        text=out.read_text()
+        assert text.startswith('# typed IR: no translation') and '# wcet:' not in text
+        if target=='x64':
+            for cell in ('fpr_x64_a6','fpr_x64_a7'):
+                assert re.search(rf'movq %fs:{cell}@tpoff, %\w+',text),cell
+    exe=tmp/'wide'
+    run(['./fpr','build',FIXTURE,'-o',exe],env)
+    got=run([exe],env).strip();assert got==EXPECT,(got,EXPECT)
+    print(f'Wide parameters: RV64/x64 typed emission, argument cells 7/8 and hosted results ({EXPECT}) PASS')

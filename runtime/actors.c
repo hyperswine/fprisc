@@ -482,18 +482,37 @@ static void stk_release_all(acb_t *a) {
 }
 
 static uw stack_grow_at(uw sp);
+static uw stack_reserve_at(uw sp, uw bytes);
 uw fpr_stack_grow(void) {
   uw sp = (uw)__builtin_frame_address(0);
   /* a loaded process's actors are the PLANE's: its scheduler grows them */
   if (fpr_plane_memory) return fpr_plane_memory->stack_grow(sp);
   return stack_grow_at(sp);
 }
-static uw stack_grow_at(uw sp) {
+uw fpr_stack_reserve(uw sp, uw bytes) {
+  if (fpr_plane_memory) {
+    if (fpr_plane_memory->abi != FPR_PLANE_MEMORY_ABI || !fpr_plane_memory->stack_reserve)
+      fpr_cpanic("plane memory ABI mismatch: sized stack reservation unavailable");
+    return fpr_plane_memory->stack_reserve(sp, bytes);
+  }
+  return stack_reserve_at(sp, bytes);
+}
+static uw stack_grow_at(uw sp) { return stack_reserve_at(sp, 0); }
+static uw stack_reserve_at(uw sp, uw bytes) {
   fpr_hart_t *h = fpr_hart();
   acb_t *a = h ? h->current : 0;
   if (!a || !a->stack) { /* the hart loop, a boot stack: not ours to grow */
+    if (bytes) fpr_cpanic("stack reservation requires an actor-owned stack");
     if (h) { h->stk_lo = 0; h->stk_span = ~(uw)0; }
     return 0;
+  }
+  /* Reject a sized foreign-stack request before considering any live
+   * segment for reclamation. The entry shim passes its actual pre-frame SP. */
+  if (bytes) {
+    int known = sp >= (uw)a->stack && sp <= (uw)a->stack + a->stack_sz;
+    for (stkseg_t *g = a->segs; !known && g; g = g->prev)
+      known = sp >= (uw)g->lo && sp < (uw)g->lo + g->size;
+    if (!known) fpr_cpanic("stack reservation requires an actor-owned stack");
   }
   /* segments sp has left are dead: pop them, the largest stays warm.  The
    * watched segment is the one being popped, and freeing writes its bottom
@@ -509,22 +528,41 @@ static uw stack_grow_at(uw sp) {
   }
   char *lo = a->segs ? a->segs->lo : (char *)a->stack;
   uw size = a->segs ? a->segs->size : a->stack_sz;
-  if (sp < (uw)lo || sp >= (uw)lo + size) { /* a stack we do not know (a foreign caller's) */
+  if (sp < (uw)lo || sp > (uw)lo + size || (!bytes && sp == (uw)lo + size)) {
+    if (bytes) fpr_cpanic("stack reservation requires an actor-owned stack");
     h->stk_lo = 0; h->stk_span = ~(uw)0;
     return 0;
   }
   stk_window(a, h, lo, size);
-  if (sp - a->stk_lo < a->stk_span) return 0; /* room after all */
-  /* a new segment, double the last */
-  uw want = 2 * size - sizeof(uw); /* the buddy adds its header back: exactly the next order */
-  if (a->stack_sz + a->stk_total + 2 * size > fpr_stack_max) {
+  if (bytes <= sp - (uw)lo && sp - bytes - a->stk_lo < a->stk_span) return 0;
+  /* Every sized request includes C headroom and the top segment header.
+   * Round before allocation: a large frame can need more than one doubling.
+   * No subtraction, rounding or actor-total calculation may wrap. */
+  const uw max = ~(uw)0;
+  if (bytes > max - FPR_STACK_HEADROOM - sizeof(stkseg_t) - 31 || size > (max - sizeof(uw))/2)
+    fpr_panic_stack("stack overflow -- reservation exceeds the address range: ", bytes >> 10);
+  uw minimum = bytes + FPR_STACK_HEADROOM + sizeof(stkseg_t) + 31;
+  uw capacity = 1;
+  while (capacity < size + sizeof(uw)) {
+    if (capacity > max/2) fpr_panic_stack("stack overflow -- reservation exceeds the address range: ", bytes >> 10);
+    capacity *= 2;
+  }
+  if (capacity > max/2) fpr_panic_stack("stack overflow -- reservation exceeds the address range: ", bytes >> 10);
+  capacity *= 2;
+  while (capacity - sizeof(uw) < minimum) {
+    if (capacity > max/2) fpr_panic_stack("stack overflow -- reservation exceeds the address range: ", bytes >> 10);
+    capacity *= 2;
+  }
+  uw want = capacity - sizeof(uw);
+  if (a->stack_sz > fpr_stack_max || a->stk_total > fpr_stack_max - a->stack_sz ||
+      want > fpr_stack_max - a->stack_sz - a->stk_total) {
     h->stk_lo = 0; h->stk_span = ~(uw)0; /* the panic path runs on what is left */
     fpr_panic_stack("stack overflow -- the actor's stack reached its ceiling, fpr_stack_max, at ", (a->stack_sz + a->stk_total) >> 10);
   }
   stkseg_t *g = 0;
   char *nlo;
   uw nsz;
-  if (a->spare && a->spare->size >= 2 * size) {
+  if (a->spare && a->spare->size >= want && a->spare->size <= fpr_stack_max - a->stack_sz - a->stk_total) {
     nlo = a->spare->lo; nsz = a->spare->size; a->spare = 0;
   } else {
     nlo = (char *)fpr_charge(big_block_d(want, 1));
@@ -533,6 +571,10 @@ static uw stack_grow_at(uw sp) {
       fpr_panic_stack("stack overflow -- no memory to grow the actor's stack by ", want >> 10);
     }
     nsz = big_block_size(nlo, want);
+    if (nsz > fpr_stack_max - a->stack_sz - a->stk_total) {
+      if (fpr_mem_own) fpr_mem_give(nlo);
+      fpr_panic_stack("stack overflow -- rounded segment exceeds the actor ceiling: ", nsz >> 10);
+    }
     hal_stack_guard(nlo, nsz);
   }
   g = (stkseg_t *)((uw)(nlo + nsz - sizeof(stkseg_t)) & ~(uw)15);
@@ -3520,6 +3562,7 @@ void fpr_plane_export(fpr_plane_actors_t *actors, fpr_plane_memory_t *memory) {
   memory->slab_release = fpr_slab_release;
   memory->pool_reset = fpr_pool_reset_c;
   memory->stack_grow = stack_grow_at;
+  memory->stack_reserve = stack_reserve_at;
   memory->heap_lo = fpr_heap_lo;
   memory->heap_hi = fpr_heap_hi;
   fpr_memory_scopes_export(memory);
@@ -3621,7 +3664,7 @@ void *fpr_charge(void *blk) {
   fpr_hart_t *h = fpr_hart();
   acb_t *a = h ? h->current : 0;
   pidpol_t *p = a ? a->pol : 0;
-  if (!p || !p->budget || ((uw)p >> 56)) return blk;
+  if (!p || !p->budget || ((uw)p >> (8 * (sizeof(uw) - 1)))) return blk;
   if (!fpr_buddy_uncharge) fpr_buddy_uncharge = pol_uncharge;
   uw bytes = buddy_block_usable_size(blk) + sizeof(uw); /* the whole block, as it goes home */
   if (__atomic_add_fetch(&p->charged, bytes, __ATOMIC_ACQ_REL) > p->budget) {

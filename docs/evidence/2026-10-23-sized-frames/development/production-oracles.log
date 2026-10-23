@@ -1,0 +1,22 @@
+RV32 loops=0: # fn large (arity 64) typed-ir rv32 frame=36016 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=36068 regs=27026 spills=9042 slots=8989 reloads=16438 stores=9042 copies=1570 crossing=9064 loops=0
+# fn tailLarge (arity 64) typed-ir rv32 frame=2064 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=2116 regs=1562 spills=554 slots=501 reloads=925 stores=554 copies=107 crossing=576 loops=0
+# fn loopLarge (arity 64) typed-ir rv32 frame=2320 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=2127 regs=1562 spills=565 slots=565 reloads=989 stores=565 copies=104 crossing=576 loops=0
+RV_SIZED_FRAMES_PASS 64 arguments, fast/same/new stacks, return/tail, callee saves, self loop
+RV32 loops=1: # fn large (arity 64) typed-ir rv32 frame=36016 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=36068 regs=27026 spills=9042 slots=8989 reloads=16438 stores=9042 copies=1570 crossing=9064 loops=0
+# fn tailLarge (arity 64) typed-ir rv32 frame=2064 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=2116 regs=1562 spills=554 slots=501 reloads=925 stores=554 copies=107 crossing=576 loops=0
+# fn loopLarge (arity 64) typed-ir rv32 frame=2320 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=2127 regs=1562 spills=565 slots=565 reloads=936 stores=565 copies=96 crossing=576 loops=1
+RV_SIZED_FRAMES_PASS 64 arguments, fast/same/new stacks, return/tail, callee saves, self loop
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_rv_frames.py", line 85, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_rv_frames.py", line 83, in main
+    actor_runtime(out,env,width)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_rv_frames.py", line 33, in actor_runtime
+    asm=out/('actor-'+width+'.s');run([ROOT/'fpr','compile','--system=bare-metal','--target=rv'+width,source,asm],mode)
+                                  ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_rv.py", line 19, in run
+    assert p.returncode == 0, (args, p.returncode, p.stdout[-3000:], p.stderr[-4000:])
+           ^^^^^^^^^^^^^^^^^
+AssertionError: ([PosixPath('/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/fpr'), 'compile', '--system=bare-metal', '--target=rv32', PosixPath('/private/tmp/fpr-sized-frames-production/actor-32.fpr'), PosixPath('/private/tmp/fpr-sized-frames-production/actor-32.s')], 1, 'autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nautodrop: irqRouteStart: inserted `drop _autodrop_root_irqRouteStart_0` into 2 case arm(s)\nautodrop: logStart: inserted `drop _autodrop_root_logStart_0` into 2 case arm(s)\nautodrop: parWorker: inserted `drop _autodrop_root_parWorker_0` into 1 case arm(s)\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\n=== TYPE ERRORS ===\n  * /private/tmp/fpr-sized-frames-production/actor-32.fpr:7:9050: in large: application of n: cannot unify Int with Int -> r133\n', '')

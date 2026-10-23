@@ -1,0 +1,6 @@
+SHA-256: contiguous/disjoint spans, empty inputs and padding/block boundaries match hashlib HOLDS
+Native integrity/ABI/vector process: virtio 1, 1 hart(s) HOLDS
+Native integrity/ABI/vector process: virtio 1, 2 hart(s) HOLDS
+Native integrity/ABI/vector process: virtio 2, 1 hart(s) HOLDS
+Native integrity/ABI/vector process: virtio 2, 2 hart(s) HOLDS
+Production placement object has no test allocation counter HOLDS

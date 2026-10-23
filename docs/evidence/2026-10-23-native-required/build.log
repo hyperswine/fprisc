@@ -1,0 +1,86 @@
+Build profile: -w ghc-9.8.2 -O1
+In order, the following will be built (use -v for more details):
+ - fp-risc-0.12.0 (exe:fpr) (file compiler/Compile.hs changed)
+Preprocessing executable 'fpr' for fp-risc-0.12.0...
+Building executable 'fpr' for fp-risc-0.12.0...
+[66 of 71] Compiling Codegen          ( compiler/Codegen.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen.o ) [Source file changed]
+
+compiler/Codegen.hs:252:24: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+252 |        in if null t || head t == '#'
+    |                        ^^^^
+
+compiler/Codegen.hs:258:22: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+258 |                   if head t == '.'
+    |                      ^^^^
+
+compiler/Codegen.hs:323:22: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+323 |             let r1 = head (wRuns b)
+    |                      ^^^^
+
+compiler/Codegen.hs:355:30: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+355 |       entry <- maxFrom (fst (head bmap))
+    |                              ^^^^
+
+compiler/Codegen.hs:548:77: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+548 |             frameOf nf = case dropWhile (not . isPrefixOf "frame=") (words (head (nfLines nf))) of (f : rest) -> unwords (drop 6 f : rest); [] -> "?"
+    |                                                                             ^^^^
+
+compiler/Codegen.hs:2405:51: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+2405 |       plan=SpecPlan ("pipeline@"++show pipeline) (head names) True cl Nothing Nothing Nothing
+     |                                                   ^^^^
+
+compiler/Codegen.hs:3404:28: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+3404 |       Right (K.Kernel sym [head ks] (last ks) (Just (0,head ks)) [K.Stage "map" g [], K.Stage "fold" (spFn p) []] Nothing False)
+     |                            ^^^^
+
+compiler/Codegen.hs:3404:56: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+3404 |       Right (K.Kernel sym [head ks] (last ks) (Just (0,head ks)) [K.Stage "map" g [], K.Stage "fold" (spFn p) []] Nothing False)
+     |                                                        ^^^^
+[67 of 71] Compiling Publish          ( compiler/Publish.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Publish.o ) [Codegen changed]
+[68 of 71] Compiling Compile          ( compiler/Compile.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Compile.o ) [Source file changed]
+
+compiler/Compile.hs:1006:48: error: [GHC-88464]
+    Variable not in scope: isJust :: Maybe NativeBackend -> Bool
+    Suggested fixes:
+      • Perhaps use data constructor ‘Just’ (imported from Prelude)
+      • Add ‘isJust’ to the import list in the import of ‘Data.Maybe’
+        (at compiler/Compile.hs:4:1-29).
+     |
+1006 |           strictCheck what fallbacks = case if isJust (tgtNative tgt >>= nmBackend) then StrictAll else envStrict of
+     |                                                ^^^^^^
+Error: [Cabal-7125]
+Failed to build exe:fpr from fp-risc-0.12.0.
+
+make: *** [fpr] Error 1

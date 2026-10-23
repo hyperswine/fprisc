@@ -1,0 +1,19 @@
+RV64 Unix/QOS/module lowering, flag order and warm-cache isolation PASS
+Built 17 execution cases through fpr build --target=linux-riscv64
+hello-h1 PASS
+hello-h4 PASS
+float-h1 PASS
+float-h4 PASS
+vectors-h1 PASS
+vectors-h4 PASS
+actors-h1 PASS
+actors-h4 PASS
+sleepwake-h1 PASS
+sleepwake-h4 PASS
+sleepwait-h1 PASS
+sleepwait-h4 PASS
+lines-h1 PASS
+lines-h4 PASS
+context-h1 PASS
+module-host-h1 PASS
+module-host-h4 PASS

@@ -1,0 +1,101 @@
+Build profile: -w ghc-9.8.2 -O1
+In order, the following will be built (use -v for more details):
+ - fp-risc-0.12.0 (exe:fpr) (file compiler/Codegen/Target/RV.hs changed)
+Preprocessing executable 'fpr' for fp-risc-0.12.0...
+Building executable 'fpr' for fp-risc-0.12.0...
+[14 of 71] Compiling Codegen.Target.RV ( compiler/Codegen/Target/RV.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Target/RV.o ) [Source file changed]
+[66 of 71] Compiling Codegen          ( compiler/Codegen.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen.o ) [Source file changed]
+
+compiler/Codegen.hs:252:24: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+252 |        in if null t || head t == '#'
+    |                        ^^^^
+
+compiler/Codegen.hs:258:22: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+258 |                   if head t == '.'
+    |                      ^^^^
+
+compiler/Codegen.hs:323:22: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+323 |             let r1 = head (wRuns b)
+    |                      ^^^^
+
+compiler/Codegen.hs:355:30: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+355 |       entry <- maxFrom (fst (head bmap))
+    |                              ^^^^
+
+compiler/Codegen.hs:548:77: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+548 |             frameOf nf = case dropWhile (not . isPrefixOf "frame=") (words (head (nfLines nf))) of (f : rest) -> unwords (drop 6 f : rest); [] -> "?"
+    |                                                                             ^^^^
+
+compiler/Codegen.hs:2405:51: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+2405 |       plan=SpecPlan ("pipeline@"++show pipeline) (head names) True cl Nothing Nothing Nothing
+     |                                                   ^^^^
+
+compiler/Codegen.hs:3404:28: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+3404 |       Right (K.Kernel sym [head ks] (last ks) (Just (0,head ks)) [K.Stage "map" g [], K.Stage "fold" (spFn p) []] Nothing False)
+     |                            ^^^^
+
+compiler/Codegen.hs:3404:56: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+3404 |       Right (K.Kernel sym [head ks] (last ks) (Just (0,head ks)) [K.Stage "map" g [], K.Stage "fold" (spFn p) []] Nothing False)
+     |                                                        ^^^^
+[67 of 71] Compiling Publish          ( compiler/Publish.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Publish.o ) [Codegen changed]
+[68 of 71] Compiling Compile          ( compiler/Compile.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Compile.o ) [Codegen changed]
+
+compiler/Compile.hs:1407:47: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1407 |               n = takeWhile (/= '@') (drop 4 (head [w | w <- args, "%fs:" `isPrefixOf` w]))
+     |                                               ^^^^
+
+compiler/Compile.hs:1412:40: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1412 |                          | otherwise = head xs : replace (tail xs)
+     |                                        ^^^^
+
+compiler/Compile.hs:1412:59: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘tail’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Replace it with drop 1, or use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+     |
+1412 |                          | otherwise = head xs : replace (tail xs)
+     |                                                           ^^^^
+[70 of 71] Compiling Build            ( compiler/Build.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Build.o ) [Codegen changed]
+[72 of 72] Linking dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr [Objects changed]
+ld: warning: -U option is redundant when using -undefined dynamic_lookup
+ln -sf fpr fprc

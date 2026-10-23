@@ -1,0 +1,5 @@
+Loaded package environment from /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/dist-newstyle/tmp/environment.-7909/.ghc.environment.aarch64-darwin-9.8.2
+[12 of 13] Compiling Main             ( tests/SelectedIR.hs, build/ghc-tests/a64/Main.o ) [Source file changed]
+[13 of 13] Linking build/ghc-tests/a64/SelectedIR [Objects changed]
+ld: warning: -U option is redundant when using -undefined dynamic_lookup
+SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, sized A64 frames and explicit profile/x64 limits, shrink-wrap placement and refusals: PASS

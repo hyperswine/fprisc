@@ -1,0 +1,13 @@
+typed-ir: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-workers: strict direct coverage 30 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-workers: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-no-loops: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=False
+Rosetta x86-64 typed-ir-no-loops: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-shallow: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-shallow: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-forward: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-forward: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-entry: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-entry: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+x64 scalar/ABI probes: 6.21s including compilation/linking; Linux TLS and scheduler are substituted

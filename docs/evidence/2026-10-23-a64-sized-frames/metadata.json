@@ -1,0 +1,18 @@
+{
+  "base_commit": "042a6d8a00b47bf0ab84dfdb4bfccec766febbba",
+  "codegen_rev": 85,
+  "a64_selection_rev": 23,
+  "compiler_sha256": "288dcc244728090f55f205f0e13addb8a8f066e78e6fa0bfda3a1a6e99e3a214",
+  "sources_sha256": {
+    "compiler/Codegen.hs": "d474838d4ad48be7446943f3add1ffcf8bc357345a31b38e92207d347b568648",
+    "compiler/Codegen/Target/A64.hs": "2d2dae9ffff50164264b1812ea1e6b3e3068cb326a75f459be1c5038dacc6556",
+    "runtime/actors.c": "1f6dd7850072e9846d1e537bf6d2b269f0bac87b32c4a0e9d495238d9fe09f16",
+    "runtime/fpr.h": "b5cba4c20a384b54e2d1a7ea16a490a54d2b0b3383abbe9dac2b8d622962427c",
+    "tests/SelectedIR.hs": "0ccd28597bed16e26e2d562e8a50bed46b3e695b65559ae2e28857510e4ed6eb",
+    "tests/EmitA64Frames.hs": "093a91b9363db8e539fe580cfdbd482c53ebbb89bc4c3dac6bd4042de3287de2",
+    "tests/check_typed_ir_a64_frames.py": "1e445395f94f1a3d737f66f689176926d38b3486782fdd6450c2e97df71e2bc3"
+  },
+  "integrated_exit": 0,
+  "full_sweep": "pending after remaining backend work",
+  "scope": "native macOS A64 plus ELF assembly; real actor runtime one/four harts; no Linux execution, P4 or hosted CI claim"
+}

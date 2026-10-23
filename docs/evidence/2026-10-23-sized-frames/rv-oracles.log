@@ -1,0 +1,16 @@
+RV32 loops=0: # fn large (arity 64) typed-ir rv32 frame=36016 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=36068 regs=27026 spills=9042 slots=8989 reloads=16438 stores=9042 copies=1570 crossing=9064 loops=0
+# fn tailLarge (arity 64) typed-ir rv32 frame=2064 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=2116 regs=1562 spills=554 slots=501 reloads=925 stores=554 copies=107 crossing=576 loops=0
+# fn loopLarge (arity 64) typed-ir rv32 frame=2320 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=2127 regs=1562 spills=565 slots=565 reloads=989 stores=565 copies=104 crossing=576 loops=0
+RV_SIZED_FRAMES_PASS 64 arguments, fast/same/new stacks, return/tail, callee saves, self loop
+RV32 loops=1: # fn large (arity 64) typed-ir rv32 frame=36016 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=36068 regs=27026 spills=9042 slots=8989 reloads=16438 stores=9042 copies=1570 crossing=9064 loops=0
+# fn tailLarge (arity 64) typed-ir rv32 frame=2064 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=2116 regs=1562 spills=554 slots=501 reloads=925 stores=554 copies=107 crossing=576 loops=0
+# fn loopLarge (arity 64) typed-ir rv32 frame=2320 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=2127 regs=1562 spills=565 slots=565 reloads=936 stores=565 copies=96 crossing=576 loops=1
+RV_SIZED_FRAMES_PASS 64 arguments, fast/same/new stacks, return/tail, callee saves, self loop
+RV64 loops=0: # fn large (arity 64) typed-ir rv64 frame=72032 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=36068 regs=27026 spills=9042 slots=8989 reloads=16438 stores=9042 copies=1570 crossing=9064 loops=0
+# fn tailLarge (arity 64) typed-ir rv64 frame=4128 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=2116 regs=1562 spills=554 slots=501 reloads=925 stores=554 copies=107 crossing=576 loops=0
+# fn loopLarge (arity 64) typed-ir rv64 frame=4640 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=2127 regs=1562 spills=565 slots=565 reloads=989 stores=565 copies=104 crossing=576 loops=0
+RV_SIZED_FRAMES_PASS 64 arguments, fast/same/new stacks, return/tail, callee saves, self loop
+RV64 loops=1: # fn large (arity 64) typed-ir rv64 frame=72032 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=36068 regs=27026 spills=9042 slots=8989 reloads=16438 stores=9042 copies=1570 crossing=9064 loops=0
+# fn tailLarge (arity 64) typed-ir rv64 frame=4128 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=2116 regs=1562 spills=554 slots=501 reloads=925 stores=554 copies=107 crossing=576 loops=0
+# fn loopLarge (arity 64) typed-ir rv64 frame=4640 reserve=yes shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11 values=2127 regs=1562 spills=565 slots=565 reloads=936 stores=565 copies=96 crossing=576 loops=1
+RV_SIZED_FRAMES_PASS 64 arguments, fast/same/new stacks, return/tail, callee saves, self loop

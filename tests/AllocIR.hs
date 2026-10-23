@@ -276,6 +276,17 @@ main = do
   either (error . ("FAIL: loop form oracle: " ++)) pure (checkAllocation loopCfg "loop form" (alBody la))
   na <- either (error . ("FAIL: no loop form: " ++)) pure (allocateFn plainCfg swapLoop)
   check "without the switch the self tail call stays a transfer" (stLoops (alStats na) == 0 && "tailjump" `elem` [siOp i | I i <- alBody na])
+  let indexedCfg = loopCfg {acArrival = \ps ->
+        plain "params" (zipWith (\p q -> OV p (Fix q)) (take 2 ps) [a0,a1]) [] :
+        [plain "load.spill" [OV p (Any GPR)] [OI n] | (p,n) <- zip (drop 2 ps) [0..]]}
+      cell n x = I (plain "store.spill" [] [gpr x,OI n])
+      indexedLoop = fn (map v [0..3])
+        [I entry,I (branchz 0 "done"),cell 0 3,cell 1 2,I (tailSelf [1,0]),ILabel (Label "done"),I (ret 0)]
+  ia <- either (error . ("FAIL: indexed-cell loop: "++)) pure (allocateFn indexedCfg indexedLoop)
+  check "indexed hart cells participate in a self loop" (stLoops (alStats ia)==1 && "store.spill" `notElem` [siOp i|I i<-alBody ia])
+  either (error . ("FAIL: indexed-cell loop oracle: "++)) pure (checkAllocation indexedCfg "indexed-cell loop" (alBody ia))
+  refused "missing staged indexed argument" "staged cell argument"
+    (allocateFn indexedCfg indexedLoop {sfBody=filter (/=cell 1 2) (sfBody indexedLoop)})
   -- determinism
   pb <- either (error . ("FAIL: pressure again: " ++)) pure (allocateFn plainCfg pressure)
   check "allocation is deterministic" (alBody pa == alBody pb && alSaved pa == alSaved pb)

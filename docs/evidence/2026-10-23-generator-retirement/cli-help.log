@@ -1,0 +1,19 @@
+fpr — the merged FP-RISC tool (one frontend, multiple execution profiles)
+
+  fpr build <prog.fpr> [-o out] [--module]          an executable for this machine (the posix system)
+  fpr run <prog.fpr> [args...]           build and run it; a `profile sol.` program runs on the VM
+  fpr compile [flags] <in.fpr> <out.s>   AOT for a --system (bare-metal | qos-native | qos-portable | posix [--host=unix|esp-idf])
+    the file declares its profile: `profile builtin|base|extbase|sol.` (docs/2026-09-19-PROFILES.md)
+    --profile=builtin --arc             the raw ABI with first-order automatic ARC
+  fpr compile --target=bytecode <f>      the VM as a target: bytecode listing
+  fpr sol <script.sol> [args]            HostedBytecode profile (the sol VM)
+  fpr stdcheck <file.fpr>                the std proof pass
+  fpr commit <file.fpr> [--major]        mint an immutable version into .fpr/
+  fpr versions [name]                    list committed versions (use "name#hash")
+  fpr publish <module.fpr>              publish an immutable host module; --stored NAME uses a commit
+  fpr watch <module.fpr> [--once]        publish on saves; --module NAME launches an app
+  fpr push <name>                        push committed versions to a pkgstore
+  fpr pull <name>[.vX.Y]                 fetch a version into .fpr/store (PKGSTORE_URL)
+
+bare flags/files (no subcommand) fall through to `compile` for fprc compatibility
+

@@ -69,19 +69,8 @@ def main():
             assert '# static-pap: $worker.' not in asm,target
             assert '# fn $worker.scalar.poly' not in asm,target
             assert '# fn $worker.fields.escapeLoop' not in asm,target
-            assert not re.search(r'# wcet: \$worker\..*segmax=UNBOUNDED',asm),target
+            assert not re.search(r'# native-insns-v1: \$worker\..*segmax=UNBOUNDED',asm),target
         print('Workers: A64/RV64/x64 emission, RV32 fallback, private entries and bounded fuel segments PASS')
-        # Raw literal arguments must use immediates, not a staging slot.
-        # The arithmetic/overflow C oracle above checks values; this witness
-        # ensures a correct but unoptimized fallback cannot pass unnoticed.
-        # The witness reads legacy RISC-V text, so it names the legacy backend.
-        direct=tmp/'direct-literals.s'
-        legacy=dict(env,FPR_TYPED_IR_BACKEND='legacy')
-        run([ROOT/'fpr','compile','--target=rv64',ROOT/'tests/bench/fib.fpr',direct],legacy)
-        body=direct.read_text().split('# fn $worker.scalar.fib (arity 1)',1)[1].split('# wcet:',1)[0]
-        assert '    li a1, 1\n' in body and '    li a1, 2\n' in body,body
-        assert not re.search(r'    li a0, [12]\n    (?:sd|mv s[1-5])',body),body
-        print('Workers: raw literal call operands load directly without staging PASS')
         builtin=tmp/'builtin.fpr'; out=tmp/'builtin.s'
         builtin.write_text('profile builtin.\nloop n a = if n == 0 then a else loop (n - 1) (a + n).\nmain = loop 100 0.\n')
         run([ROOT/'fpr','compile','--target=rv64',builtin,out],env)

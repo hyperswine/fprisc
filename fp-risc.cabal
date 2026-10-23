@@ -44,12 +44,12 @@ executable fpr
   other-modules:
       Arc
       Build
-      RV64
       Publish
       Representation
       Interrupt
       Codegen
       Codegen.Kernel
+      Codegen.NativeData
       Codegen.IR
       Codegen.Verify
       Codegen.Dump
@@ -81,7 +81,6 @@ executable fpr
       ReceiveTurns
       Mono
       Modules
-      Peephole
       Precond
       Safety
       Cost

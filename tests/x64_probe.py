@@ -31,9 +31,7 @@ def environment(cache):
     env = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT),
                XDG_CACHE_HOME=str(cache), FPR_NO_INLINE='1',
                FPR_NO_FIELD_WORKERS='1', FPR_NO_SCALAR_WORKERS='1',
-               FPR_NO_REGISTERS='1', FPR_RETAINED_REGISTERS='0',
-               FPR_COSTED_REGISTERS='0', FPR_COMPACT_FRAMES='0',
-               FPR_SELF_LOOPS='0', FPR_TYPED_IR_SELF_LOOPS='1')
+               FPR_TYPED_IR_SELF_LOOPS='1')
     env.pop('FPR_FOREIGN', None)
     env.pop('FPR_TYPED_IR', None)
     env['FPR_TYPED_IR_BACKEND'] = 'mixed'

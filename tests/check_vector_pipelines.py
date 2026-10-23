@@ -34,13 +34,6 @@ def check_execution(run):
         assert 'zero' in (out+err).lower(),(out,err)
 
 def command(args,env):
-    if 'compile' in args:
-        # Static assertions below describe legacy pipeline assembly. Runtime
-        # differentials keep the selected backend; typed CFGs have their own
-        # four-target execution gate in check_typed_ir_kernels.py.
-        env=dict(env)
-        env['FPR_TYPED_IR_BACKEND']='legacy'
-        env.pop('FPR_TYPED_IR_STRICT',None)
     p=subprocess.run(list(map(str,args)),cwd=ROOT,env=env,capture_output=True,text=True,timeout=300)
     assert p.returncode==0,(args,p.stdout[-1200:],p.stderr[-3000:])
     return p
@@ -51,9 +44,9 @@ def main():
         base=dict(os.environ,FPR_HOME=str(ROOT),FPR_PATH=str(ROOT),XDG_CACHE_HOME=str(tmp/'cache'))
         base.pop('FPR_FOREIGN',None)
         for no_inline in ('0','1'):
-            for no_regs in ('0','1'):
+            for no_regs in ('0',):
                 for no_fuse,no_pipe_inline in [('1','0'),('0','1'),('0','0'),('1','0')]:
-                    env=dict(base,FPR_NO_INLINE=no_inline,FPR_NO_REGISTERS=no_regs,FPR_NO_VEC_FUSE=no_fuse,FPR_NO_PIPELINE_INLINE=no_pipe_inline)
+                    env=dict(base,FPR_NO_INLINE=no_inline,FPR_NO_VEC_FUSE=no_fuse,FPR_NO_PIPELINE_INLINE=no_pipe_inline)
                     exe=tmp/'pipeline'
                     command([ROOT/'fpr','build',FIXTURE,'--harts','4','--with',ROOT/'tests/bench/workers_clock.c','--with',ROOT/'tests/base/floatprobe.c','-o',exe],env)
                     def run(case,harts):
@@ -66,12 +59,7 @@ def main():
                 out=tmp/f'{target}-{off}-{no_pipe_inline}.s'
                 command([ROOT/'fpr','compile','--target='+target,FIXTURE,out],dict(base,FPR_NO_VEC_FUSE=off,FPR_NO_PIPELINE_INLINE=no_pipe_inline))
                 asm=out.read_text()
-                if off=='0':
-                    assert ('# inline pipeline callback' in asm)==(no_pipe_inline=='0'),target
-                    assert '# mixed scalar pipeline: map plus -> filter above -> fold weighted' in asm,target
-                    assert '# mixed scalar pipeline: map floatPlus -> filter floatAbove -> fold floatSum' in asm or target=='rv32',target
-                else: assert '# mixed scalar pipeline:' not in asm,target
-                assert 'mixed scalar pipeline: map noisy' not in asm
-                assert 'mixed scalar pipeline: map divide' not in asm
-        print('mixed scalar pipelines: native differential, 1/4 harts, returns/compaction, floats, captures, effects/traps and RV64/RV32 legacy emission PASS')
+                assert asm.startswith('# typed IR: no translation') and '# wcet:' not in asm
+                assert ('$vkernel:fpr_vspec_pipe' in asm)==(off=='0'),target
+        print('mixed scalar pipelines: native differential, 1/4 harts, returns/compaction, floats, captures, effects/traps and RV64/RV32 typed emission PASS')
 if __name__=='__main__': main()

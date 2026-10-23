@@ -56,11 +56,10 @@ def references():
     }
 
 
-def compile_program(name, directory, ram='bram', compressed=False, legacy=False, baseline_heap=None):
+def compile_program(name, directory, ram='bram', compressed=False, no_indexed=False, baseline_heap=None):
     image = directory / name / 'program.elf'
     environment = dict(os.environ)
-    environment.update(FPR_NO_RV32_FAST=str(int(legacy)),
-                       FPR_NO_INDEXED_MEMORY=str(int(legacy)))
+    environment.update(FPR_NO_INDEXED_MEMORY=str(int(no_indexed)))
     extra = []
     if baseline_heap:
         image.parent.mkdir(parents=True, exist_ok=True)
@@ -123,7 +122,7 @@ def main():
     parser.add_argument('--repeat', type=int, default=1)
     parser.add_argument('--ram', choices=['bram','sdram'], default='bram')
     parser.add_argument('--compressed', action='store_true', help='requires a compressed-capable FPGA image')
-    parser.add_argument('--legacy-codegen', action='store_true', help='same compiler with RV32 fast paths and indexed fusion disabled')
+    parser.add_argument('--no-indexed-memory', action='store_true', help='disable native indexed memory fusion')
     parser.add_argument('--baseline-heap-ref', help='compare against the C heap at this local git revision')
     parser.add_argument('--only', choices=['sieve','sort','matrix','tree','tree_large','tree_near','tree_limit','compute'])
     parser.add_argument('--report', type=Path, default=ROOT / 'build/tangnano20k-stress/results.json')
@@ -143,9 +142,9 @@ def main():
         parser.error('tree_limit is a 64 KiB BRAM exhaustion fixture')
     programs = {}
     for name in names:
-        mode = args.ram + ('-c' if args.compressed else '-im') + ('-legacy' if args.legacy_codegen else '-fast')
+        mode = args.ram + ('-c' if args.compressed else '-im') + ('-noidx' if args.no_indexed_memory else '-fast')
         image, heap = compile_program(name, ROOT / 'build/tangnano20k-stress' / mode,
-                                      args.ram, args.compressed, args.legacy_codegen, args.baseline_heap_ref)
+                                      args.ram, args.compressed, args.no_indexed_memory, args.baseline_heap_ref)
         programs[name] = (image, heap)
         print(f'Built {name}: image {len(image)} B; heap {heap} B; workload {refs[name][1]} B', flush=True)
     baud = round(args.freq_mhz*1e6/868)
@@ -174,7 +173,7 @@ def main():
         args.report.write_text(json.dumps({'finished_at':datetime.now(timezone.utc).isoformat(),
                                           'frequency_mhz':args.freq_mhz, 'complete':complete,
                                           'ram':args.ram, 'compressed':args.compressed,
-                                          'legacy_codegen':args.legacy_codegen, 'baseline_heap_ref':args.baseline_heap_ref,
+                                          'no_indexed_memory':args.no_indexed_memory, 'baseline_heap_ref':args.baseline_heap_ref,
                                           'requested_runs':len(names)*args.repeat, 'passed_runs':rows}, indent=2)+'\n')
     print(f'PASS: {len(rows)} physical FP-RISC workload runs at {args.freq_mhz:g} MHz')
 

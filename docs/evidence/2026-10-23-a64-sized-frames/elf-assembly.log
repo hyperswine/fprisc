@@ -1,0 +1,12 @@
+# fn large (arity 64) typed-ir a64 frame=72032 reserve=yes shallow=no saved=x19,x20,x21,x22,x23,x24,x25,x26,x27 values=36068 regs=27022 spills=9046 slots=8991 reloads=16722 stores=9046 copies=1286 crossing=9064 loops=0
+# fn tailLarge (arity 64) typed-ir a64 frame=40032 reserve=yes shallow=no saved=x19,x20,x21,x22,x23,x24,x25,x26,x27 values=20068 regs=15022 spills=5046 slots=4991 reloads=9281 stores=5046 copies=727 crossing=5064 loops=0
+# fn loopLarge (arity 64) typed-ir a64 frame=40544 reserve=yes shallow=no saved=x19,x20,x21,x22,x23,x24,x25,x26,x27 values=20077 regs=15022 spills=5055 slots=5055 reloads=9290 stores=5055 copies=718 crossing=5064 loops=1
+ELF global large-frame assembly PASS
+# fn large (arity 64) typed-ir a64 frame=72032 reserve=yes shallow=no saved=x19,x20,x21,x22,x23,x24,x25,x26,x27 values=36068 regs=27022 spills=9046 slots=8991 reloads=16722 stores=9046 copies=1286 crossing=9064 loops=0
+# fn tailLarge (arity 64) typed-ir a64 frame=40032 reserve=yes shallow=no saved=x19,x20,x21,x22,x23,x24,x25,x26,x27 values=20068 regs=15022 spills=5046 slots=4991 reloads=9281 stores=5046 copies=727 crossing=5064 loops=0
+# fn loopLarge (arity 64) typed-ir a64 frame=40544 reserve=yes shallow=no saved=x19,x20,x21,x22,x23,x24,x25,x26,x27 values=20077 regs=15022 spills=5055 slots=5055 reloads=9290 stores=5055 copies=718 crossing=5064 loops=1
+ELF x28 large-frame assembly PASS
+# fn large (arity 64) typed-ir a64 frame=72032 reserve=yes shallow=no saved=x19,x20,x21,x22,x23,x24,x25,x26,x27 values=36068 regs=27022 spills=9046 slots=8991 reloads=16722 stores=9046 copies=1286 crossing=9064 loops=0
+# fn tailLarge (arity 64) typed-ir a64 frame=40032 reserve=yes shallow=no saved=x19,x20,x21,x22,x23,x24,x25,x26,x27 values=20068 regs=15022 spills=5046 slots=4991 reloads=9281 stores=5046 copies=727 crossing=5064 loops=0
+# fn loopLarge (arity 64) typed-ir a64 frame=40544 reserve=yes shallow=no saved=x19,x20,x21,x22,x23,x24,x25,x26,x27 values=20077 regs=15022 spills=5055 slots=5055 reloads=9290 stores=5055 copies=718 crossing=5064 loops=1
+ELF tls large-frame assembly PASS

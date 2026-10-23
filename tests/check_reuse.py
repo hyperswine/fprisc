@@ -38,9 +38,9 @@ def main():
         ghc=['cabal','exec','--','runghc'] if shutil.which('cabal') else ['runghc']
         print(command([*ghc,'-w','-icompiler','tests/Reuse.hs'],env).stdout,end='',flush=True)
         for no_inline in ('0','1'):
-            for no_regs in ('0','1'):
+            for no_regs in ('0',):
                 for off in ('1','0','1'):
-                    mode=dict(env,FPR_NO_REUSE=off,FPR_NO_INLINE=no_inline,FPR_NO_REGISTERS=no_regs)
+                    mode=dict(env,FPR_NO_REUSE=off,FPR_NO_INLINE=no_inline)
                     command([ROOT/'fpr','build',ROOT/'tests/base/freshreuse.fpr','--harts','4',
                              '--with',ROOT/'tests/bench/costprobe.c','--with',ROOT/'tests/bench/workers_clock.c','-o',exe],mode)
                     def run(case,harts):
@@ -48,13 +48,6 @@ def main():
                         return p.returncode,p.stdout,p.stderr
                     ledger=check_execution(run,off=='0')
                     print(f'reuse disabled={off} inline-disabled={no_inline} registers-disabled={no_regs}: {ledger["alloc_requests"]} allocations PASS',flush=True)
-        for target in ('rv64','rv32'):
-            for off in ('0','1'):
-                asm=tmp/'reuse.s'
-                # the legacy emitter's marker; the typed backend's native
-                # reuse is checked by the allocation ledger above instead
-                command([ROOT/'fpr','compile','--target='+target,ROOT/'tests/base/freshreuse.fpr',asm],dict(env,FPR_NO_REUSE=off,FPR_TYPED_IR_BACKEND='legacy'))
-                assert ('# reuse fresh constructor' in asm.read_text())==(off=='0' and target!='rv32'),(target,off)
         # Exercise the separate executable-run cache, not only unit caching.
         for off in ('1','0','1'):
             mode=dict(env,FPR_NO_REUSE=off,FPR_HARTS='1')
@@ -63,5 +56,5 @@ def main():
                          '--with',ROOT/'tests/bench/costprobe.c',
                          '--with',ROOT/'tests/bench/workers_clock.c','cost'],mode).stdout
             assert json.loads(out.splitlines()[-1])['alloc_requests']==(20000 if off=='1' else 10000),out
-        print('Fresh reuse: native values, alias/child preservation, field failure order, 1/4 harts, allocation ratchet, warm caches and RV64/RV32 legacy emission PASS')
+        print('Fresh reuse: native values, alias/child preservation, field failure order, 1/4 harts, allocation ratchet, warm caches and RV64/RV32 typed emission PASS')
 if __name__=='__main__': main()

@@ -19,7 +19,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 18 -- native RVV startup and plain bare-metal plugins
+rvSelectionRev = 22 -- byte access has no alignment slow path
 
 -- Native startup, shared by every RVV unit. The runtime calls the surviving
 -- COMDAT definition on each hart; ordinary builds retain its weak no-op.
@@ -365,9 +365,9 @@ select cfg fn = do
               "$arc.wordbitTest" -> do t <- fresh; rr "srl" t a count; ri "andi" t t 1; bool t
               _ -> do one <- fresh; li one 1; mask <- fresh; rr "sll" mask one count
                       if n == "$arc.wordbitClear" then ri "xori" mask mask (-1) >> rr "and" d a mask else rr "or" d a mask)
-          (n,[a]) | Just (op,alignment,small) <- M.lookup n reads -> yes (guarded (aligned a alignment) $ do
+          (n,[a]) | Just (op,alignment,small) <- M.lookup n reads -> yes (memoryGuard a alignment $ do
             if small then do t <- fresh; loadAt op t a 0; tagged t d else loadAt op d a 0)
-          (n,[a,b]) | Just (op,alignment,small) <- M.lookup n writes -> yes (guarded (aligned a alignment) $ do
+          (n,[a,b]) | Just (op,alignment,small) <- M.lookup n writes -> yes (memoryGuard a alignment $ do
             v <- if small then do t <- fresh; ri "srai" t b 1; pure t else pure b
             storeAt op a v 0; address d "fpr_unit")
           ("$arc.memfence",[_]) -> yes (emit (plain "fence" [] []) >> address d "fpr_unit")
@@ -380,6 +380,11 @@ select cfg fn = do
         guarded check body = do slow <- freshLabel; done <- freshLabel
                                 check slow; body; jump done; mark slow
                                 call (calleeSym c) False True vs (Just d) False; mark done
+        -- Every byte address is aligned. Emitting even an unreachable slow
+        -- call requires a nonexistent adapter when this is a RAW library
+        -- linked into the hosted runtime (machine/virt/rawunit.c).
+        memoryGuard _ 0 body = body
+        memoryGuard a mask body = guarded (aligned a mask) body
         aligned a mask slow = when (mask /= 0) $ do t <- fresh; ri "andi" t a mask; branch t slow
         intBinary = M.fromList [("$arc."++n,op) | (n,op)<-[("add","add"),("sub","sub"),("mul","mul"),("div","div")]]
         intCompare = M.fromList [("$arc."++n,"cmp."++n) | n<-["lt","gt","le","ge"]]
@@ -409,10 +414,11 @@ emitFnRV cfg fn = do
   allocation <- checked (allocateFn ac sf)
   checked (checkAllocation ac (fnName fn) (alBody allocation))
   let saveObjects = [frameObj (-n-1) (wordBytes cfg) (wordBytes cfg) (SavedRegister r) False | (n,Phys r) <- zip [0..] (alSaved allocation)]
-      ly = layout (2 * wordBytes cfg) 16 (saveObjects ++ alSlots allocation)
+      objects = saveObjects ++ alSlots allocation
+      ordinary = layout (2 * wordBytes cfg) 16 objects
+      large = polStackCheck (cfgPolicy cfg) /= StackStatic && lyBytes ordinary > 1024
+      ly = if large then layout (3 * wordBytes cfg) 16 objects else ordinary
       (shallow, body) = shallowEntry (polStackCheck (cfgPolicy cfg)) (lyBytes ly) (alBody allocation)
-  let ceiling = if cfgHart cfg `elem` [HartTls, HartTlsIe, HartQos, HartTlsEsp] then 32768 else 1024
-  when (polStackCheck (cfgPolicy cfg) /= StackStatic && lyBytes ly > ceiling) (Left ("RISC-V frame exceeds the profile ceiling of " ++ show ceiling ++ " bytes"))
   let reg (Phys r) = r
       off ref = toInteger (lyOffset ly M.! ref)
       w = toInteger (wordBytes cfg)
@@ -421,12 +427,16 @@ emitFnRV cfg fn = do
       saves = concat [memory stWord r "s0" (off (foRef o)) | o <- saveObjects, SavedRegister r <- [foKind o]]
       restores = concat [memory ld r "s0" (off (foRef o)) | o <- saveObjects, SavedRegister r <- [foKind o]]
       n = toInteger (lyBytes ly)
-      prologue = adjust "sp" "sp" (-n) ++ memory stWord "ra" "sp" (n-w) ++ memory stWord "s0" "sp" (n-2*w) ++ adjust "s0" "sp" n ++ saves
-      rendered = [(it, render cfg fn ly restores it) | it <- body]
-      report = analyse (TIns (instructionCost prologue) FNext False 0 : concatMap token rendered)
+      prologue = (if large then reserveFrame cfg fn n (length (sfParams sf)) (cfgHart cfg /= HartTp && lyBytes ordinary <= 32768) else [])
+        ++ adjust "sp" "sp" (-n) ++ memory stWord "ra" "sp" (n-w) ++ memory stWord "s0" "sp" (n-2*w)
+        ++ adjust "s0" "sp" n ++ (if large then memory stWord "t3" "s0" (-3*w) else []) ++ saves
+      rendered = [(it, render cfg fn ly large restores it) | it <- body]
+      -- The reserve call is in the entry ABI shim, before allocated values
+      -- exist. It stages/restores every incoming parameter and the link.
+      report = analyse (TIns (instructionCost prologue) FNext False (if large then 1 else 0) : concatMap token rendered)
       name = fnName fn
       header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sf)) ++ ") typed-ir rv" ++ show (widthBits (cfgWidth cfg)) ++ " frame=" ++ show n
-                 ++ (if shallow then " shallow=yes" else " shallow=no") ++ " saved="
+                 ++ (if large then " reserve=yes" else "") ++ (if shallow then " shallow=yes" else " shallow=no") ++ " saved="
                  ++ (if null (alSaved allocation) then "none" else intercalate "," (map reg (alSaved allocation))) ++ " " ++ statsLine (alStats allocation)]
           ++ ["    .section .text." ++ functionSymbol name ++ ",\"ax\",@progbits" | polProfile (cfgPolicy cfg) == BuiltinArc]
           ++ ["    .balign 4" | polProfile (cfgPolicy cfg) == BuiltinArc]
@@ -447,9 +457,54 @@ adjust d s n | n >= -2048 && n <= 2047 = ["addi " ++ d ++ ", " ++ s ++ ", " ++ s
 memory :: String -> String -> String -> Integer -> [String]
 memory op r base n | n >= -2048 && n <= 2047 = [op ++ " " ++ r ++ ", " ++ show n ++ "(" ++ base ++ ")"]
                    | otherwise = adjust "t6" base n ++ [op ++ " " ++ r ++ ", 0(t6)"]
-render :: RVConfig -> Fn -> Layout -> [String] -> Item -> [String]
-render _ fn _ _ (ILabel l) = [local fn l ++ ":"]
-render cfg fn ly restores (I i) = map (\s -> if last s == ':' then s else "    " ++ s) (go (siOp i) (siDefs i) (siUses i))
+-- A large entry checks its full decrement while SP is still untouched. On
+-- a miss, only a bounded staging frame is written on the caller's headroom.
+-- All 64 possible parameters, including the hart cells, survive the C call.
+reserveFrame :: RVConfig -> Fn -> Integer -> Int -> Bool -> [String]
+reserveFrame cfg fn bytes argc foreignWindow =
+  ["li t5, " ++ show bytes, "bltu sp, t5, " ++ slow]
+  ++ hartRead cfg ++ memory ld "t5" "t3" (57*w)
+  -- A zero low bound is the existing runtime's unchecked foreign-stack
+  -- window. Preserve the previously admitted TLS/QOS ceiling there; new
+  -- sizes require an explicit bounded window or an actor-owned reserve.
+  ++ ["beqz t5, " ++ if foreignWindow then fast else slow] ++ adjust "t4" "sp" (-bytes)
+  ++ ["sub t4, t4, t5"] ++ memory ld "t5" "t3" (58*w)
+  ++ ["bltu t4, t5, " ++ fast, slow ++ ":"]
+  ++ adjust "sp" "sp" (-stageBytes)
+  ++ concat [memory st reg "sp" (fromIntegral i*w) | (i,reg) <- zip [0..] (take argc (map (("a"++) . show) [0..7::Int]))]
+  ++ hartRead cfg
+  ++ concat [memory ld "t4" "t3" (fromIntegral (i-7)*w) ++ memory st "t4" "sp" (fromIntegral i*w) | i <- [8..argc-1]]
+  ++ memory st "ra" "sp" (fromIntegral argc*w)
+  ++ adjust "a0" "sp" stageBytes ++ ["li a1, " ++ show bytes, "call fpr_stack_reserve", "mv t5, a0"]
+  ++ hartRead cfg
+  ++ concat [memory ld "t4" "sp" (fromIntegral i*w) ++ memory st "t4" "t3" (fromIntegral (i-7)*w) | i <- [8..argc-1]]
+  ++ concat [memory ld reg "sp" (fromIntegral i*w) | (i,reg) <- zip [0..] (take argc (map (("a"++) . show) [0..7::Int]))]
+  ++ memory ld "ra" "sp" (fromIntegral argc*w)
+  ++ adjust "t3" "sp" stageBytes
+  ++ ["beqz t5, " ++ same, "mv sp, t5", "j " ++ ready, same ++ ":", "mv sp, t3", "j " ++ ready,
+      fast ++ ":", "mv t3, sp", ready ++ ":"]
+  where
+    w = toInteger (wordBytes cfg)
+    ld = if cfgWidth cfg == W32 then "lw" else "ld"
+    st = if cfgWidth cfg == W32 then "sw" else "sd"
+    stageBytes = ((fromIntegral (argc+1)*w+15) `div` 16)*16
+    slow = local fn (Label "reserve_slow")
+    fast = local fn (Label "reserve_fast")
+    same = local fn (Label "reserve_same")
+    ready = local fn (Label "reserve_ready")
+
+hartRead :: RVConfig -> [String]
+hartRead cfg = case cfgHart cfg of
+  HartTp -> ["mv t3, tp"]
+  HartTls -> ["lui t3, %tprel_hi(fpr_posix_hart)", "add t3, t3, tp, %tprel_add(fpr_posix_hart)", ld ++ " t3, %tprel_lo(fpr_posix_hart)(t3)"]
+  HartTlsIe -> ["la.tls.ie t3, fpr_posix_hart", "add t3, t3, tp", ld ++ " t3, 0(t3)"]
+  HartQos -> ["lla t3, fpr_g_tlsoff", ld ++ " t3, 0(t3)", "add t3, t3, tp", ld ++ " t3, 0(t3)"]
+  HartTlsEsp -> ["lui t3, %tprel_hi(fpr_esp_hart)", "add t3, t3, tp, %tprel_add(fpr_esp_hart)", ld ++ " t3, %tprel_lo(fpr_esp_hart)(t3)"]
+  where ld = if cfgWidth cfg == W32 then "lw" else "ld"
+
+render :: RVConfig -> Fn -> Layout -> Bool -> [String] -> Item -> [String]
+render _ fn _ _ _ (ILabel l) = [local fn l ++ ":"]
+render cfg fn ly large restores (I i) = map (\s -> if last s == ':' then s else "    " ++ s) (go (siOp i) (siDefs i) (siUses i))
   where
     r (OP (Phys name)) = name
     r o = error ("RV64 unplaced operand " ++ show o)
@@ -459,13 +514,8 @@ render cfg fn ly restores (I i) = map (\s -> if last s == ':' then s else "    "
     w = toInteger (wordBytes cfg)
     ld = if cfgWidth cfg == W32 then "lw" else "ld"
     stWord = if cfgWidth cfg == W32 then "sw" else "sd"
-    epilogue = restores ++ ["mv t3, s0"] ++ memory ld "ra" "s0" (-w) ++ memory ld "s0" "s0" (-2*w) ++ ["mv sp, t3"]
-    hart = case cfgHart cfg of
-      HartTp -> ["mv t3, tp"]
-      HartTls -> ["lui t3, %tprel_hi(fpr_posix_hart)", "add t3, t3, tp, %tprel_add(fpr_posix_hart)", ld ++ " t3, %tprel_lo(fpr_posix_hart)(t3)"]
-      HartTlsIe -> ["la.tls.ie t3, fpr_posix_hart", "add t3, t3, tp", ld ++ " t3, 0(t3)"]
-      HartQos -> ["lla t3, fpr_g_tlsoff", ld ++ " t3, 0(t3)", "add t3, t3, tp", ld ++ " t3, 0(t3)"]
-      HartTlsEsp -> ["lui t3, %tprel_hi(fpr_esp_hart)", "add t3, t3, tp, %tprel_add(fpr_esp_hart)", ld ++ " t3, %tprel_lo(fpr_esp_hart)(t3)"]
+    epilogue = restores ++ ["mv t3, s0"] ++ memory ld "ra" "s0" (-w) ++ memory ld "s0" "s0" (-2*w) ++ (if large then memory ld "sp" "t3" (-3*w) else ["mv sp, t3"])
+    hart = hartRead cfg
     l suffix = local fn (Label (siNote i ++ suffix))
     stack = [ld ++ " t5, " ++ show (57*w) ++ "(t3)", "sub t4, sp, t5", ld ++ " t5, " ++ show (58*w) ++ "(t3)", "bltu t4, t5, " ++ l "_stk", "call fpr_stack_grow", "beqz a0, " ++ l "_same", "mv sp, a0", l "_same" ++ ":"] ++ hart ++ [l "_stk" ++ ":"]
     tick = tickN 1

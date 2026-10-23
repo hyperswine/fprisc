@@ -1,0 +1,26 @@
+x64 retirement: unsupported foreign calls refused by name in default/whole/named-strict modes on both targets PASS
+x64 retirement: two targets, native-only root/imports, whole/mixed warm caches, all rollback aliases refused; all targets typed-only PASS
+A64 retirement: unsupported foreign calls refused by name in default/whole/named-strict modes on all five targets PASS
+A64 retirement: five targets, native-only root/imports, whole/mixed warm caches, all rollback aliases refused; all targets typed-only PASS
+A64 retirement: populated executable cache cannot bypass rollback refusal PASS
+Typed inference runtime entries: imported polymorphic fromList/map, Int/F64/boxed columns, strict native emission, one/four harts PASS
+Typed HAL application: actual C PAP arity, partial and opaque calls, strict native emission, one/four harts PASS
+Native constants: elided constructors, unique definitions, unused constructors, shadowing, Base and canonical Unit PASS
+Typed self loops=0: cycles of 2/7/8/63 arguments, effects, fuel, stacks, fairness, 1/4 harts and RV32/RV64 emission PASS
+Typed self loops=1: cycles of 2/7/8/63 arguments, effects, fuel, stacks, fairness, 1/4 harts and RV32/RV64 emission PASS
+FPR_TYPED_IR_SELF_LOOPS=0 RV64/QEMU: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+FPR_TYPED_IR_SELF_LOOPS=1 RV64/QEMU: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+Vector kinds: float captures, mixed record fold, captured map/map and filter/filter, strict order and 100 SIMD tails PASS
+A64 NEON execution: native host and C IEEE reference PASS
+pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=1: PASS
+pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=1: PASS
+pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+mixed scalar pipelines: native differential, 1/4 harts, returns/compaction, floats, captures, effects/traps and RV64/RV32 typed emission PASS
+Wide parameters: RV64/x64 typed emission, argument cells 7/8 and hosted results (wide: 231 418 45728349311) PASS
+Vector fallback calls: complete RV64/x64 typed code across 7 fixtures, typed x64 emits without translation, fallbacks run (fallback frames: ok 5 cap 27 43): PASS
+check_base: 8 jobs in 23 s on 4 worker(s)

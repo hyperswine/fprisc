@@ -232,3 +232,5 @@ they began.
 - [Native metric consumer migration](2026-10-23-NATIVE-METRIC-CONSUMER.md): complete typed closure audits, separate instruction and runtime-call-site ratchets, QOS's new baseline, and explicit timing/composition limits.
 
 - [Typed RV32 float constants](2026-10-23-TYPED-RV32-FLOAT-CONSTANTS.md): explicit immutable numeric leaves, all-native boxed Base floats, independent bit/pooling oracles, real software-runtime and Tang Nano execution, and paired guest work.
+
+- [Typed native generator retirement](2026-10-23-TYPED-GENERATOR-RETIREMENT.md) - exclusive typed scalar/kernel/data generation, removed modes and final acceptance evidence.

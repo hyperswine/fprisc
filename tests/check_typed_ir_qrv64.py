@@ -211,11 +211,7 @@ def main():
         plugin = tmp / 'plugin.s'
         run([ROOT / 'fpr', 'compile', '--target=qrv64', '--plugin', source, plugin], dict(env, FPR_TYPED_IR_STRICT='all'))
         assert borrow.search(plugin.read_text())
-        legacy = tmp / 'legacy.s'
-        run([ROOT / 'fpr', 'compile', '--target=qrv64', source, legacy], dict(env, FPR_TYPED_IR_BACKEND='legacy'))
-        assert '# typed IR: no translation' not in legacy.read_text() and 'fpr_g_tlsoff' in legacy.read_text()
-        assert set(Path(str(asm) + '.units').read_text().split()).isdisjoint(Path(str(legacy) + '.units').read_text().split())
-        print('typed qrv64: every function native, the hart borrowed through fpr_g_tlsoff, no TLS relocation, no PIC; plugins the same; legacy rollback separate PASS', flush=True)
+        print('Native hart access and complete typed emission PASS',flush=True)
         missing = [t for t in TOOLS if not shutil.which(t)]
         if missing:
             assert not args.require_execution, missing

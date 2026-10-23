@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Differential register promotion across observable effects and call boundaries."""
+"""Typed allocation across observable effects, calls and inliner modes."""
 import os,re,subprocess,tempfile,platform,shutil
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
@@ -11,28 +11,18 @@ def run(args,env):
 with tempfile.TemporaryDirectory(prefix='fpr-regs-') as d:
  tmp=Path(d)
  for fixture in ('inlining','slotprims','cafalias','floatinline'):
+  outputs=[]
   for no_inline in ('0','1'):
-   outputs=[]
-   for no_regs in ('0','1','0'):
-    env={**ENV,'FPR_NO_INLINE':no_inline,'FPR_NO_REGISTERS':no_regs}
-    exe=tmp/'probe';args=['./fpr','build',f'tests/base/{fixture}.fpr','-o',exe]
-    if fixture=='floatinline':args+=['--with','tests/base/floatprobe.c']
-    run(args,env);outputs.append(run([exe],env))
-   assert outputs[0]==outputs[1]==outputs[2],(fixture,outputs)
- # Confirm the optimization actually ran; otherwise equivalence is vacuous.
- for target in ('rv64',):
-  for no_regs in ('0','1'):
-   asm=tmp/f'{target}{no_regs}.s'
-   run(['./fpr',f'--target={target}',f'--prelude={ROOT}/core/prelude.fpr',
-        'tests/bench/nbody.fpr',asm],{**ENV,'FPR_TYPED_IR_BACKEND':'legacy','FPR_NO_REGISTERS':no_regs}) # markers are legacy text
-   text=asm.read_text()
-   marker=r'\bs[1-5]\b'
-   assert bool(re.search(marker,text))==(no_regs=='0'),(target,no_regs)
+   env={**ENV,'FPR_NO_INLINE':no_inline}
+   exe=tmp/'probe';args=['./fpr','build',f'tests/base/{fixture}.fpr','-o',exe]
+   if fixture=='floatinline':args+=['--with','tests/base/floatprobe.c']
+   run(args,env);outputs.append(run([exe],env))
+  assert outputs[0]==outputs[1],(fixture,outputs)
  # Execute a register-heavy generated x64 body against an independent C sum.
  source=tmp/'hot.fpr'
  source.write_text('hot a b c d e = a*b + c*d + e*a + b*c + d*e + a*c + b*d + c*e + d*a + e*b + a*b + c*d + e*a + b*c + d*e + a*c + b*d + c*e + d*a + e*b.\nmain = Unit.\n')
  asm=tmp/'hot.s'
- run(['./fpr','--target=x64',f'--prelude={ROOT}/core/prelude.fpr',source,asm],{**ENV,'FPR_TYPED_IR_BACKEND':'mixed','FPR_NO_REGISTERS':'0'}) # typed allocation, lifted into a C harness
+ run(['./fpr','--target=x64',f'--prelude={ROOT}/core/prelude.fpr',source,asm],{**ENV,'FPR_TYPED_IR_BACKEND':'mixed'}) # typed allocation, lifted into a C harness
  text=asm.read_text()
  match=re.search(r'(?ms)^\s*\.globl fpr_fn_hot\n.*?(?=^# native-insns-v1:|^# fn |\Z)',text)
  assert match and re.search(r'%(?:rbx|r12|r13|r14|r15)\b',match.group())
@@ -71,4 +61,4 @@ int main(void) {
   run([shutil.which('clang') or 'cc',*(['-arch','x86_64'] if mac else []),'-O2',leaf,harness,'-o',exe],ENV)
   print(run([*(['arch','-x86_64'] if rosetta else []),exe],ENV).strip())
  else:print('x64 register-heavy execution: SKIP (needs x64 or Rosetta)')
- print('Registers: differential fixtures, warm-cache mode separation and RV64 legacy emission: PASS')
+ print('Registers: differential fixtures, inliner parity and typed allocation: PASS')

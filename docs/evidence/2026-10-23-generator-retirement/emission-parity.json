@@ -1,0 +1,128 @@
+{
+  "compiler_sha256": {
+    "/private/tmp/fpr-native-data-g88": "0d2efda480e1307eb85dc3c794630776c4412fc006f9e6a5ebde6ccba2ba3846",
+    "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/fpr": "542309b031b966e2114c9918eb42b231e2df5472318d2c4b71a91f83e30ffcbf"
+  },
+  "cases": [
+    {
+      "target": "rv32",
+      "fixture": "scalar",
+      "functions": 285,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "rv32",
+      "fixture": "record_kernels",
+      "functions": 307,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "rv32",
+      "fixture": "record_float_kernels",
+      "functions": 278,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "rv32",
+      "fixture": "f32_kernels",
+      "functions": 276,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "rv32",
+      "fixture": "mapas_kernels",
+      "functions": 281,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "rv64",
+      "fixture": "scalar",
+      "functions": 289,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "rv64",
+      "fixture": "record_kernels",
+      "functions": 307,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "rv64",
+      "fixture": "record_float_kernels",
+      "functions": 284,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "rv64",
+      "fixture": "f32_kernels",
+      "functions": 282,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "rv64",
+      "fixture": "mapas_kernels",
+      "functions": 283,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "a64mac",
+      "fixture": "scalar",
+      "functions": 289,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "a64mac",
+      "fixture": "record_kernels",
+      "functions": 307,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "a64mac",
+      "fixture": "record_float_kernels",
+      "functions": 284,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "a64mac",
+      "fixture": "f32_kernels",
+      "functions": 282,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "a64mac",
+      "fixture": "mapas_kernels",
+      "functions": 283,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "x64",
+      "fixture": "scalar",
+      "functions": 289,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "x64",
+      "fixture": "record_kernels",
+      "functions": 307,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "x64",
+      "fixture": "record_float_kernels",
+      "functions": 284,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "x64",
+      "fixture": "f32_kernels",
+      "functions": 282,
+      "result": "byte-identical selected function text"
+    },
+    {
+      "target": "x64",
+      "fixture": "mapas_kernels",
+      "functions": 283,
+      "result": "byte-identical selected function text"
+    }
+  ]
+}

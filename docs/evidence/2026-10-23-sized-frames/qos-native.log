@@ -1,0 +1,2 @@
+native-insns-v1 ratchet holds: 312 <= 312 target instructions per function segment (rv64, 1669 functions, 27 files)
+runtime call sites: max/function 67 <= 67; total 7763; runtime time bound and call/return composition unprovided

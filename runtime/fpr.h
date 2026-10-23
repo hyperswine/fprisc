@@ -199,7 +199,7 @@ void fpr_bkt_put(void **b);
 #define FPR_NATIVE_ABI 6u /* QOS and other hosted layouts remain v6. */
 #endif
 #define FPR_PLANE_ACTORS_ABI 3u /* v3: opt-in transactional spawn_inbox; v2: receive_from_now */
-#define FPR_PLANE_MEMORY_ABI 2u /* v2: shared scratch region execution appended */
+#define FPR_PLANE_MEMORY_ABI 3u /* v3: sized stack reservation before a generated frame */
 typedef struct fpr_plane_actors {
   uw abi;                             /* FPR_PLANE_ACTORS_ABI of the exporter */
   V (*send_as)(uw sender_key, V target, V m);
@@ -236,6 +236,7 @@ typedef struct fpr_plane_memory {
   V (*arena)(V f);                    /* scopes, transfers and ARC share one allocator */
   V (*loop)(V state, V f);
   V (*loop_with)(V vec, V state, V f);
+  uw (*stack_reserve)(uw sp, uw bytes); /* pre-frame SP; frame bytes plus runtime headroom */
 } fpr_plane_memory_t;
 extern fpr_plane_actors_t *fpr_plane_actors; /* NULL = this image is the plane */
 extern fpr_plane_memory_t *fpr_plane_memory; /* NULL = this image owns its heap */
@@ -855,6 +856,7 @@ uint64_t hal_mtime(void); /* hal.c: the machine timer (actors.c has the weak zer
  * fpr_stack_max is the POLICY ceiling on one actor's stack, all segments
  * together: run-away recursion is a named panic, not the machine's memory. */
 uw fpr_stack_grow(void);
+uw fpr_stack_reserve(uw sp, uw bytes); /* raw entry SP and raw frame size; 0 = current stack fits */
 extern uw fpr_stack_max;
 void hal_stack_guard(void *lo, uw size);
 void hal_stack_unguard(void *lo, uw size);

@@ -21,7 +21,7 @@ spec.loader.exec_module(scalar)
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--fixtures-dir', type=Path, default=ROOT / 'tests/tangnano20k_stress')
 args = parser.parse_args()
-environment = {**scalar.ENV, 'FPR_NO_RV32_FAST': '0', 'FPR_NO_INDEXED_MEMORY': '0'}
+environment = {**scalar.ENV, 'FPR_NO_INDEXED_MEMORY': '0'}
 rows = []
 with tempfile.TemporaryDirectory(prefix='fpr-bram-bounds-') as temp:
     directory = Path(temp)

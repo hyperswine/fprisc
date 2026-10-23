@@ -1,0 +1,16 @@
+# fn large (arity 64) typed-ir x64 frame=72032 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=36068 regs=27014 spills=9054 slots=8995 reloads=17290 stores=9054 copies=9715 crossing=9064 loops=0
+# fn tailLarge (arity 64) typed-ir x64 frame=40032 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=20068 regs=15014 spills=5054 slots=4995 reloads=9600 stores=5054 copies=5406 crossing=5064 loops=0
+# fn loopLarge (arity 64) typed-ir x64 frame=40544 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=20077 regs=15018 spills=5059 slots=5059 reloads=9664 stores=5059 copies=5407 crossing=5064 loops=0
+Rosetta x86-64 tls loops=0: X64_SIZED_FRAMES_PASS 64 arguments, fast/same/new stacks, return/tail, callee saves, self loop
+# fn large (arity 64) typed-ir x64 frame=72032 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=36068 regs=27014 spills=9054 slots=8995 reloads=17290 stores=9054 copies=9715 crossing=9064 loops=0
+# fn tailLarge (arity 64) typed-ir x64 frame=40032 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=20068 regs=15014 spills=5054 slots=4995 reloads=9600 stores=5054 copies=5406 crossing=5064 loops=0
+# fn loopLarge (arity 64) typed-ir x64 frame=40544 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=20077 regs=15018 spills=5059 slots=5059 reloads=9605 stores=5059 copies=5402 crossing=5064 loops=1
+Rosetta x86-64 tls loops=1: X64_SIZED_FRAMES_PASS 64 arguments, fast/same/new stacks, return/tail, callee saves, self loop
+# fn large (arity 64) typed-ir x64 frame=72032 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=36068 regs=27014 spills=9054 slots=8995 reloads=17290 stores=9054 copies=9715 crossing=9064 loops=0
+# fn tailLarge (arity 64) typed-ir x64 frame=40032 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=20068 regs=15014 spills=5054 slots=4995 reloads=9600 stores=5054 copies=5406 crossing=5064 loops=0
+# fn loopLarge (arity 64) typed-ir x64 frame=40544 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=20077 regs=15018 spills=5059 slots=5059 reloads=9664 stores=5059 copies=5407 crossing=5064 loops=0
+Rosetta x86-64 borrow loops=0: X64_SIZED_FRAMES_PASS 64 arguments, fast/same/new stacks, return/tail, callee saves, self loop
+# fn large (arity 64) typed-ir x64 frame=72032 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=36068 regs=27014 spills=9054 slots=8995 reloads=17290 stores=9054 copies=9715 crossing=9064 loops=0
+# fn tailLarge (arity 64) typed-ir x64 frame=40032 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=20068 regs=15014 spills=5054 slots=4995 reloads=9600 stores=5054 copies=5406 crossing=5064 loops=0
+# fn loopLarge (arity 64) typed-ir x64 frame=40544 reserve=yes shallow=no saved=rbx,r12,r13,r14,r15 values=20077 regs=15018 spills=5059 slots=5059 reloads=9605 stores=5059 copies=5402 crossing=5064 loops=1
+Rosetta x86-64 borrow loops=1: X64_SIZED_FRAMES_PASS 64 arguments, fast/same/new stacks, return/tail, callee saves, self loop

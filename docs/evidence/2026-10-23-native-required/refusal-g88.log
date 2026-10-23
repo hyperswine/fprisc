@@ -1,0 +1,2 @@
+RV32: native coverage required in default/mixed/whole/named/empty-strict modes; unsupported foreign ABI names main before output; valid root and units entirely native PASS
+RV64: native coverage required in default/mixed/whole/named/empty-strict modes; unsupported foreign ABI names main before output; valid root and units entirely native PASS

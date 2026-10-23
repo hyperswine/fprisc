@@ -28,13 +28,11 @@ def build(source, image, directory, heap=16384, extra=()):
 
 
 def tail_loop(asm,name):
-    if os.environ.get('FPR_TYPED_IR_BACKEND','mixed') in ('legacy','off','0'):
-        assert 'j fpr_fn_'+name in asm
-    else:
-        body=re.search(r'^# fn '+name+r' .*?(?=^# native-insns-v1:)',asm,re.M|re.S)
-        assert body and 'loops=1' in body[0] and 'j .Ltir_'+name+'_m3loop' in body[0], 'ARC lost frame-reusing tail recursion'
-        headers=re.findall(r'^# fn (.*)',asm,re.M)
-        assert headers and all('typed-ir rv64' in h for h in headers),'ARC escaped native coverage'
+    body=re.search(r'^# fn '+name+r' .*?(?=^# native-insns-v1:)',asm,re.M|re.S)
+    assert body and 'loops=1' in body[0] and 'j .Ltir_'+name+'_m3loop' in body[0], 'ARC lost frame-reusing tail recursion'
+    headers=re.findall(r'^# fn (.*)',asm,re.M)
+    assert headers and all('typed-ir rv64' in h for h in headers),'ARC escaped native coverage'
+
 
 
 run(['make', 'fpr'], timeout=300)

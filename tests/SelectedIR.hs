@@ -232,7 +232,8 @@ main = do
     check (target ++ " forwarding needs no callee-save parking") ("forward=yes saved=none" `isInfixOf` asm)
     check (target ++ " forwarding retains both slow calls") ("fpr_stack_grow" `isInfixOf` asm && "fpr_fuel_exhausted" `isInfixOf` asm)
     check (target ++ " forwarding keeps its native bound") (rSegMax (nfReport result) /= Nothing)
-  -- the frame ceiling is a named refusal, never a silent overflow of the headroom
+  -- X64 keeps its explicit frame refusal; growable A64 entries now reserve
+  -- their complete frame. Neither may silently overflow the headroom.
   -- 4200 values live at once (every constant is consumed only after all
   -- are defined): more than the budget and the caller-saved pool, so they
   -- spill to 4200 distinct slots, beyond the 32768-byte ceiling
@@ -242,8 +243,16 @@ main = do
               ++ [Instr (Just (VId n, TInt)) (OConstInt (fromIntegral n)) | n <- [0 .. 4199]]
               ++ [Instr (Just (VId (4200 + n), TVal)) (OTag (VId n)) | n <- [0 .. 4199]])
             (TRet (VId 8399)) ]
-  refused "x64 frame beyond the ceiling" "ceiling" (X64.emitFnX64 (X64.X64Config m2Policy S.empty False True False noTune X64.HartTls) wide)
-  refused "a frame beyond the ceiling" "ceiling" (emitFnA64 cfg wide)
+  wideX64 <- either (error . ("FAIL: sized x64 frame: " ++)) pure
+    (X64.emitFnX64 (X64.X64Config m2Policy S.empty False True False noTune X64.HartTls) wide)
+  check "sized x64 frame reserves before entry" ("reserve=yes" `isInfixOf` unlines (nfLines wideX64) &&
+    "call fpr_stack_reserve" `isInfixOf` unlines (nfLines wideX64) && rSegMax (nfReport wideX64) /= Nothing)
+  wideA64 <- either (error . ("FAIL: sized A64 frame: " ++)) pure (emitFnA64 cfg wide)
+  check "sized A64 frame reserves before entry" ("reserve=yes" `isInfixOf` unlines (nfLines wideA64) &&
+    "bl _fpr_stack_reserve" `isInfixOf` unlines (nfLines wideA64) && rSegMax (nfReport wideA64) /= Nothing)
+  let staticWide = wide {fnBlocks = [b {bInstrs = drop 2 (bInstrs b)} | b <- fnBlocks wide]}
+      staticCfg = cfg {cfgPolicy = m2Policy {polProfile=Builtin,polFuel=False,polStackCheck=StackStatic}}
+  refused "A64 builtin profile remains RISC-V-only" "builtin native lowering requires RISC-V" (emitFnA64 staticCfg staticWide)
   forM_ [("one", nf)] $ \(n, f) -> check ("no legacy bound label on " ++ n) (not ("# wcet:" `isInfixOf` unlines (nfLines f)))
   -- FPR_TYPED_IR_SHRINK_WRAP (docs/2026-10-22-TYPED-IR-FIB.md) on hand-built
   -- physical streams: s1 is a saved register
@@ -274,4 +283,4 @@ main = do
     (shrinkWrap [s1] [ I (op "entry" [] []), I (br "join"), I (op "mv" [s1] [Phys "x0"]), I callS,
                        ILabel (Label "join"), I ret' ] == Nothing)
   check "no saved register, no change" (shrinkWrap [] arms == Nothing)
-  putStrLn "SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, frame ceilings, shrink-wrap placement and refusals: PASS"
+  putStrLn "SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, sized A64 frames and explicit profile/x64 limits, shrink-wrap placement and refusals: PASS"

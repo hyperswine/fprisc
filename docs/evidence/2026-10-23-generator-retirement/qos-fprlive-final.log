@@ -1,0 +1,32 @@
+== the page
+  FAIL  page: generated CSS incl. the input field rule
+  GET /: 15202 bytes, CSS + seed + client
+== the browser's protocol: two cashiers, one register
+  rtt over 7 events: median 4.31 ms, max 17.94 ms
+  flow: login/buy/checkout/restock/sold-out/logout/reconnect all as expected
+== hostile input through the app's own messages
+  input: markup names are text, bad numbers refused, junk frames ignored, ceilings hold
+== frames the browser would never send
+  frames: RFC close codes for binary/fragment/unmasked/rsv/oversize; slow, coalesced, and 16-bit frames parse
+== malformed HTTP
+  http: 404/400/431 where due, slow heads served, TLS hello refused
+== many sessions: an actor per connection
+  64 websockets opened in 0.38s
+  qosp RSS 0 -> 0 KiB: ~0 KiB per live session (actor stack + pool slabs + state)
+  RSS after all 64 closed: 0 KiB (stacks and slabs return to the free lists)
+== rapid fire: three cashiers, the store's invariants after every burst
+  180 events from 3 sockets in 8 ms (22684 ev/s), 19 receipts; fulls/deltas per client: [(2, 83), (2, 81), (2, 84)]
+  qosp RSS 0 -> 0 KiB over 720 events, 44 receipts on the disk record
+  (the growth is the receipt log, which is real state; a constant-state soak -- buy/void, no receipts -- holds flat: 14 MiB steady over 10k events)
+== a client that never reads: does anyone else feel it?
+== persistence: quit, restart on the same disk
+  result: fprlive: server closed after 2886 event(s), 88 session(s); qosp exit 0
+== rough edges noted
+  [design] notes are state, not events: a second identical refusal produces no push, so the screen cannot flash again; an app wanting that puts a nonce in the note
+  [note] JSON \u escapes decode to UTF-8 for the BMP only; surrogate pairs (emoji) become ?? -- the client sends raw UTF-8 for those, so only hand-made clients see it
+  [note] HTTP header lookup is case-sensitive (Sec-WebSocket-Key only); browsers are fine, hand-written clients must match
+  [edge] no read timeout: a peer that sends half a request head (or nothing) holds one of the 8 connection slots until it goes away (the slot is then freed: the net tier reports EOF as an empty read)
+  [measure] ~0 KiB of process memory per live session at 64 sessions; the runtime's fixed per-actor stack and first pool slab dominate, the session itself is ~10 KB
+  [edge] a peer that stops reading is dropped once 256 KiB is queued for it (QOS_NET_TXCAP); until then its actor alone carries the backlog
+fprlive-check: 1 FAILURE(S)
+  - page: generated CSS incl. the input field rule

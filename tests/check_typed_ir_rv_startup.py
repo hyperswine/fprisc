@@ -159,19 +159,6 @@ def main():
                     hook.write_text(othertext[:othertext.index('    .section .rodata')])
                     extra=[hook]
                 if vector:
-                    # Until rollback retirement, mixed and all-legacy units must
-                    # also have exactly one startup hook in the assembled unit.
-                    for backend in ('legacy','mixed'):
-                        probe=tmp/(backend+'.s')
-                        src=tmp/(backend+'.fpr')
-                        src.write_text(RVV + ('wideFrame x = ['+', '.join('plus x 1' for _ in range(300))+'].\n' if backend=='mixed' else ''))
-                        mode=dict(env,FPR_TYPED_IR_BACKEND=backend,FPR_TYPED_IR_STRICT='probe' if backend=='mixed' else '')
-                        run([*command,src,probe],mode)
-                        code=probe.read_text()
-                        assert code.count('fpr_rvv_enable:')==1
-                        assert '# typed IR: no translation' not in code
-                        run(['riscv64-unknown-elf-gcc','-march=rv'+width+'imv_zicsr_zifencei',
-                             '-mabi='+('ilp32' if width=='32' else 'lp64'),'-c',probe,'-o',tmp/'rollback.o'],env)
                     # Executable routing also emits the native preamble.
                     src=tmp/'executable.fpr';src.write_text(RVV.replace('unsafe module.','unsafe base.')+'main = Unit.\n')
                     executable=tmp/'executable.s'

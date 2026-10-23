@@ -67,10 +67,8 @@ def main():
         check_targets(env,tmp,args,FIX/'pairsum_kernels.fpr',support+(FIX/'pairsum_oracle.c').read_text(),1,0)
         # mapAs and the write-back fold: hosted, legacy and typed agree; the
         # typed root names both kernels and no legacy loop
-        legacy=dict(env,FPR_TYPED_IR_BACKEND='legacy')
         outputs=[]
         modes = [dict(env,FPR_TYPED_IR_STRICT='all')]
-        if platform.machine() not in ('arm64','aarch64','x86_64','AMD64'): modes.insert(0,legacy)
         for mode in modes:
             run([ROOT/'fpr','build',FIX/'mapas_kernels.fpr','-o',exe],mode)
             outputs.append(run([exe],dict(mode,FPR_HARTS='4')))

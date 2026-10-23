@@ -188,12 +188,7 @@ def main():
         for name, body in chosen.items():
             assert form.search(body) and 'fpr_posix_hart' not in body and not re.search(r'\bmv\s+t\d,\s*tp\b', body), name
         assert 'fpr_posix_hart' not in whole and not re.search(r'\bmv\s+t\d,\s*tp\b', whole)
-        legacy = tmp / 'legacy.s'
-        run([ROOT / 'fpr', 'compile', '--system=posix', '--host=esp-idf', '--target=rv32', source, legacy],
-            dict(env, FPR_TYPED_IR_BACKEND='legacy'))
-        assert '# typed IR: no translation' not in legacy.read_text() and '%tprel_hi(fpr_esp_hart)' in legacy.read_text()
-        assert set(Path(str(asm) + '.units').read_text().split()).isdisjoint(Path(str(legacy) + '.units').read_text().split())
-        print('typed ESP-IDF: every function native, the hart from fpr_esp_hart local-exec on the 32-bit word, legacy rollback separate PASS', flush=True)
+        print('Native hart access and complete typed emission PASS',flush=True)
         missing = [t for t in TOOLS if not shutil.which(t)]
         if missing:
             assert not args.require_execution, missing

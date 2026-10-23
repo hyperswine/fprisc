@@ -3,13 +3,13 @@
 The goal is to use the typed IR and native selectors for every supported
 native profile and remove the previous RISC-V text generator, its
 translation/lowering passes, peephole optimizer and legacy-only modes.
-A64.hs and X64.hs are already deleted. Retiring those translators is an
-achieved milestone; completing all profiles is the remaining goal.
+A64.hs and X64.hs are already deleted. The remaining scalar/kernel generator and translation adapters are now removed;
+all supported native profiles use typed lowering and selection.
 
 Work continues in `fprisc-typed-ir-next`, branch `typed-ir-retire`, from
-`98abc0c`. Existing compatibility paths remain until their replacement's
-correctness and platform gates pass. Removing a profile or silently
-switching its ownership model does not count as migration.
+`98abc0c`. The final acceptance record is
+[typed generator retirement](2026-10-23-TYPED-GENERATOR-RETIREMENT.md).
+Profiles retain their allocation, stack, root and ownership contracts.
 
 ## Milestones
 
@@ -26,7 +26,8 @@ switching its ownership model does not count as migration.
 | Builtin ARC, RV64 | [Implemented](2026-10-23-TYPED-ARC.md), 115 Base jobs, strict QEMU execution and 31 paired measurements passed | Preserve consuming/borrowing adapters, alias-result retains, object layout and section/link behavior; QEMU-virt ownership/raw/interrupt/export gates and paired guest work |
 | RV32 Base numeric constants | [Implemented](2026-10-23-TYPED-RV32-FLOAT-CONSTANTS.md), 117 Base jobs, strict QEMU and physical Tang Nano bit/numeric suites passed | Preserve boxed F64/F32 layouts and all IEEE bits, pooling, software/vector runtime behavior and integer boundaries |
 | Plain RV plugins and RVV startup | [Implemented](2026-10-23-TYPED-RV-STARTUP.md): typed routing and native COMDAT startup, RV32/RV64 QEMU oracles; 118 Base jobs passed | Strict closure/data, exported PAP/args, VLEN 128/256/512, hostile yields, scalar overflow fallback and the full Base sweep |
-| Final legacy deletion | Open | No production caller of legacy generation, relocation/lowering, peephole or modes; full fresh acceptance sweeps and clean build/install checks |
+| Oversized generated frames | [All three backends implemented](evidence/2026-10-23-native-sized-frames-final/README.md), 123 Base jobs passed; RISC-V also has QOS relocated-process and physical fixed-stack gates | Complete-frame reservation before writes, exact return/tail SP, all 64 arguments, hostile calls, actor ceilings, plane ABI; Linux x64 and native Linux A64 production-runtime execution also pass locally |
+| Final legacy deletion | [Implemented and locally accepted](2026-10-23-TYPED-GENERATOR-RETIREMENT.md): 123 Base jobs, QOS 155 pass / 0 fail / 7 registered skips, both supplemental WebSocket suites pass | No production caller of legacy generation, relocation/lowering, peephole or modes; full fresh acceptance sweeps and clean build/install checks |
 
 ## Order of implementation
 
@@ -65,8 +66,9 @@ switching its ownership model does not count as migration.
   or retired environment modes. Packaging, bootstrap and cache identities
   use only the replacement code.
 
-This page records the goal and its acceptance conditions; it does not claim
-that the open milestones or unavailable platform gates have passed.
+The migration implementation and local acceptance are complete. The remaining
+fused SIMD, additional FP pools and dynamic-width compaction are performance
+follow-ups. No physical P4 or unexecuted platform gate is claimed.
 
 
 ## Profile work located in the current source
@@ -104,13 +106,16 @@ execution gates. The remaining production-caller audit must include oversized
 hosted frames and typed-kernel selection refusals, as well as explicit legacy
 modes. The old RVV map template is already disabled by its checked-overflow
 gate; it is dormant deletion material, not a missing supported native shape.
-The current bare-metal hosted RV selector still refuses frames above its
-1 KiB ceiling, and `emitSpecs` still has a legacy branch for declined plans.
-Those paths must receive a complete typed replacement or an independently
-justified existing contract boundary before the old generator is removed.
+The RISC-V selector now reserves complete large frames through the versioned
+runtime contract; A64 and x64 now have matching implementations, validated by
+the combined 123-job sweep at their recorded platform scope. Codegen 87 passed its complete native-required sweep. Codegen 89 removes the
+old scalar and kernel renderers, host translation passes and peephole path;
+static data has an independent native owner. Its fresh Base and QOS sweeps pass at their documented scope, together with
+Linux runtime, packaging, WebSocket and physical Tang acceptance. Dependency
+skips and the unavailable P4 are explicit in the final evidence record.
 
 QOS's `check-all.sh` now invokes `tools/native-insns-ratchet.py` on
 `programs/system.fpr` with independent ceilings of 312 native instructions
 per function segment and 67 runtime call sites per function. The old script
-is deleted. The current compiler still emits legacy rows for rollback users;
-those annotations and summary modes must disappear with their generator.
+is deleted. Codegen 89 removes legacy annotations and rollback modes. Its summary switch
+is `FPRC_NATIVE_INSNS=1`; no runtime timing or composition proof is implied.

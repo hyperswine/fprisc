@@ -10,6 +10,11 @@ make stdcheck
 make bare-metal PROG=tests/fmath.fpr
 ```
 
+Native AOT compilation uses verified typed IR and direct RV32/RV64, AArch64 and x64
+selectors. The RISC-V text generator and translators are retired in the current
+migration candidate. See the [retirement acceptance record](docs/2026-10-23-TYPED-GENERATOR-RETIREMENT.md)
+for validation scope and runtime ABI changes.
+
 The compiler needs GHC and the dependencies declared in `fp-risc.cabal` (normally
 resolved with Cabal), plus pkg-config, libgit2 >= 1.9 and libarchive >= 3.6 for
 native hosted automation. On macOS install `pkg-config libgit2 libarchive` with

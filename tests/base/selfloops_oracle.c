@@ -15,9 +15,7 @@ static void puts(const char *p) {
 #include <stdio.h>
 #endif
 static intptr_t hart[64] = {[58] = -1};
-#ifndef FPR_ORACLE_RV64
 void *fpr_stack_grow(void) { __builtin_trap(); }
-#endif
 void *probe_hart = hart;
 static unsigned yields;
 static uintptr_t first_sp;
@@ -27,11 +25,21 @@ void fpr_fuel_exhausted(void) {
     else first_sp = sp;
     hart[0] = 7;
 }
+#ifdef FPR_ORACLE_RV64
+/* The RV selector uses checked C primitives for these operations. The
+   fixture's bounded inputs cannot overflow, so reference arithmetic is exact. */
+static struct { uint32_t tid,var; } truth={1,1}, falsity={1,0};
+intptr_t fpr_prim_fn__x2b(intptr_t a,intptr_t b) { return 2*((a>>1)+(b>>1))+1; }
+intptr_t fpr_prim_fn__x2d(intptr_t a,intptr_t b) { return 2*((a>>1)-(b>>1))+1; }
+intptr_t fpr_prim_fn__x2a(intptr_t a,intptr_t b) { return 2*((a>>1)*(b>>1))+1; }
+intptr_t fpr_prim_fn__x3d_x3d(intptr_t a,intptr_t b) { return (intptr_t)(a==b?&truth:&falsity); }
+#else
 #define TRAP(name) intptr_t name(intptr_t a, intptr_t b) { (void)a; (void)b; __builtin_trap(); }
 TRAP(fpr_prim_fn__x2b)
 TRAP(fpr_prim_fn__x2d)
 TRAP(fpr_prim_fn__x2a)
 TRAP(fpr_prim_fn__x3d_x3d)
+#endif
 extern intptr_t fpr_fn_rotate2(intptr_t, intptr_t, intptr_t);
 int main(void) {
 #ifdef FPR_ORACLE_RV64

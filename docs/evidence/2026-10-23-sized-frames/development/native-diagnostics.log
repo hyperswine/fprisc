@@ -1,0 +1,17 @@
+SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, frame ceilings, shrink-wrap placement and refusals: PASS
+AllocIR: live ranges over block parameters, loops and calls; budget, spills and shared slots; staged fixed operands through a swap; tied copies; a tied destination never on a fixed operand's register; dead definitions; float refusal; the physical-liveness oracle; determinism: PASS
+whole unit: scalarlib 267/267 native under strict mode; 73 calls equal independent arithmetic and the host reference; C calls native code and is called back; deep recursion crossed 6 segments
+allocation facts: pressure spills 5 of 15 crossing; wide spills 16; fib and sum spill nothing
+one and four harts: PASS
+cache transitions: mixed/1/mixed/1/mixed PASS
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_a64.py", line 7, in <module>
+    runpy.run_path(str(Path(__file__).with_name('check_typed_ir_native.py')), run_name='__main__')
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen runpy>", line 292, in run_path
+  File "<frozen runpy>", line 97, in _run_module_code
+  File "<frozen runpy>", line 87, in _run_code
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_native.py", line 291, in <module>
+    assert p.returncode != 0 and 'typed-ir strict' in p.stderr and '\n  wide: ' in p.stderr, (p.returncode, p.stderr[-800:])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: (1, 'fpr: int literal 2147483648 does not fit a tagged rv32 word\nCallStack (from HasCallStack):\n  error, called at compiler/Codegen.hs:1999:24 in fp-risc-0.12.0-inplace-fpr:Codegen\n')

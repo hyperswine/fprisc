@@ -18,8 +18,6 @@ def main():
                    XDG_CACHE_HOME=str(tmp / "cache"), FPR_NO_INLINE="1",
                    FPR_NO_SCALAR_WORKERS="1", FPR_NO_FIELD_WORKERS="1")
         env.pop("FPR_FOREIGN", None)
-        # FPR_SELF_LOOPS is a legacy-emission switch: this check names the legacy backend
-        env["FPR_TYPED_IR_BACKEND"] = "legacy"
         source = tmp / "probe.fpr"
         source.write_text(fixture()[0])
         crt = tmp / "crt.s"
@@ -60,12 +58,12 @@ SECTIONS {
         for enabled in ("0", "1"):
             assembly = tmp / "probe.s"
             run([ROOT / "fpr", "compile", "--target=rv64", source, assembly],
-                dict(env, FPR_SELF_LOOPS=enabled))
-            match = re.search(r"(?ms)^\s*\.globl fpr_fn_rotate2\n.*?(?=^# wcet:)",
+                dict(env, FPR_TYPED_IR_SELF_LOOPS=enabled))
+            match = re.search(r"(?ms)^\s*\.globl fpr_fn_rotate2\n.*?(?=^# native-insns-v1:)",
                               assembly.read_text())
             assert match
             selected = ".text\n" + match[0]
-            assert bool(re.search(r"^\.Lself\d+:", selected, re.M)) == (enabled == "1")
+            assert bool(re.search(r"^\.Ltir_rotate2_m3loop:", selected, re.M)) == (enabled == "1")
             assembly.write_text(selected)
             exe = tmp / "oracle.elf"
             run(["riscv64-unknown-elf-gcc", "-march=rv64im_zicsr_zifencei",
@@ -76,7 +74,7 @@ SECTIONS {
             output = run(["qemu-system-riscv64", "-machine", "virt", "-smp", "1",
                           "-m", "16M", "-nographic", "-bios", "none", "-kernel", exe], env)
             assert "2100 C-reference" in output and "PASS" in output, output
-            print(f"FPR_SELF_LOOPS={enabled} RV64/QEMU: " + output.strip(), flush=True)
+            print(f"FPR_TYPED_IR_SELF_LOOPS={enabled} RV64/QEMU: " + output.strip(), flush=True)
 
 if __name__ == "__main__":
     main()

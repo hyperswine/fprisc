@@ -1,0 +1,116 @@
+[36m[qos][0m warning: fprisc at 042a6d8a00b4, releases pin afebff101790; 57 tracked file(s) modified -- these results are not the release pin's (set QOS_ALLOW_COMPILER_DRIFT=1 to silence)
+[36m[qos][0m fpr (compiler; no-op when fresh)
+[36m[qos][0m qos-app tests/coreutil.fpr -> .qos/coreutil.qa
+[36m[qos][0m qosp (portable host; no-op when fresh)
+[36m[qos][0m qosp: tests/coreutil.fpr
+qosp: hosting coreutil (10 harts, abi v22)
+[host] qosp: hosting coreutil (10 harts, abi v22)
+
+[qos] coreutil => coreutil: OK
+[36m[qos][0m expect: found 'coreutil: OK'
+[36m[qos][0m total 5.7s
+use: C resolves to "../programs/mods/coreutil#93838cbbffd72340"  (pin it to freeze this exact code)
+autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure
+autodrop: irqRouteStart: inserted `drop _autodrop_root_irqRouteStart_0` into 2 case arm(s)
+autodrop: logStart: inserted `drop _autodrop_root_logStart_0` into 2 case arm(s)
+autodrop: parWorker: inserted `drop _autodrop_root_parWorker_0` into 1 case arm(s)
+precond: 7 obligations: 5 discharged, 0 runtime-checked, 2 builtin traps
+linear types: Handle Vector SString
+# private workers: fields=0 scalar=0
+# private consuming workers: 0
+typed-ir-backend: native 30/30 functions (per-function)
+typed-ir-backend: and2@93838cbbffd72340 native (frame 32 shallow=no saved=s1,s2 values=4 regs=4 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=2 loops=0, native-insns-v1 segmax=24 exittail=12 ccalls=1)
+typed-ir-backend: concat@93838cbbffd72340 native (frame 32 shallow=no saved=s1 values=23 regs=23 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=1 loops=2, native-insns-v1 segmax=93 exittail=92 ccalls=1)
+typed-ir-backend: concat@93838cbbffd72340_fb_84 native (frame 32 shallow=no saved=s1,s2 values=21 regs=21 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=2 loops=2, native-insns-v1 segmax=95 exittail=93 ccalls=1)
+typed-ir-backend: concatPairs@93838cbbffd72340 native (frame 48 shallow=no saved=s1,s2,s3,s4 values=22 regs=22 spills=0 slots=0 reloads=0 stores=0 copies=8 crossing=4 loops=1, native-insns-v1 segmax=72 exittail=0 ccalls=3)
+typed-ir-backend: concatPairs@93838cbbffd72340_fb_87 native (frame 32 shallow=no saved=s1,s2 values=8 regs=8 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=2 loops=0, native-insns-v1 segmax=39 exittail=32 ccalls=2)
+typed-ir-backend: concatPairs@93838cbbffd72340_fb_88 native (frame 48 shallow=no saved=s1,s2,s3 values=31 regs=31 spills=0 slots=0 reloads=0 stores=0 copies=4 crossing=3 loops=0, native-insns-v1 segmax=65 exittail=32 ccalls=4)
+typed-ir-backend: joinSep@93838cbbffd72340 native (frame 64 shallow=no saved=s1,s2,s3,s4,s5,s6 values=24 regs=24 spills=0 slots=0 reloads=0 stores=0 copies=5 crossing=6 loops=1, native-insns-v1 segmax=65 exittail=60 ccalls=4)
+typed-ir-backend: joinWith@93838cbbffd72340 native (frame 48 shallow=no saved=s1,s2,s3 values=39 regs=39 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=5 loops=0, native-insns-v1 segmax=96 exittail=94 ccalls=3)
+typed-ir-backend: lines@93838cbbffd72340 native (frame 32 shallow=no saved=s1,s2 values=9 regs=9 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=2 loops=0, native-insns-v1 segmax=27 exittail=0 ccalls=2)
+typed-ir-backend: linesCh@93838cbbffd72340 native (frame 64 shallow=no saved=s1,s2,s3,s4,s5 values=22 regs=22 spills=0 slots=0 reloads=0 stores=0 copies=16 crossing=6 loops=0, native-insns-v1 segmax=55 exittail=0 ccalls=5)
+typed-ir-backend: linesEnd@93838cbbffd72340 native (frame 32 shallow=no saved=s1,s2 values=11 regs=11 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=2 loops=0, native-insns-v1 segmax=37 exittail=37 ccalls=3)
+typed-ir-backend: linesGo@93838cbbffd72340 native (frame 64 shallow=no saved=s1,s2,s3,s4,s5 values=24 regs=24 spills=0 slots=0 reloads=0 stores=0 copies=10 crossing=5 loops=0, native-insns-v1 segmax=40 exittail=40 ccalls=4)
+typed-ir-backend: linesNl@93838cbbffd72340 native (frame 48 shallow=no saved=s1,s2,s3,s4 values=35 regs=35 spills=0 slots=0 reloads=0 stores=0 copies=10 crossing=5 loops=0, native-insns-v1 segmax=48 exittail=39 ccalls=5)
+typed-ir-backend: listAppend@93838cbbffd72340 native (frame 48 shallow=no saved=s1,s2,s3 values=14 regs=14 spills=0 slots=0 reloads=0 stores=0 copies=5 crossing=4 loops=0, native-insns-v1 segmax=38 exittail=38 ccalls=2)
+typed-ir-backend: listLen@93838cbbffd72340 native (frame 32 shallow=no saved=s1 values=21 regs=21 spills=0 slots=0 reloads=0 stores=0 copies=4 crossing=2 loops=0, native-insns-v1 segmax=44 exittail=44 ccalls=2)
+typed-ir-backend: not1@93838cbbffd72340 native (frame 32 shallow=no saved=s1 values=4 regs=4 spills=0 slots=0 reloads=0 stores=0 copies=1 crossing=1 loops=0, native-insns-v1 segmax=22 exittail=11 ccalls=1)
+typed-ir-backend: or2@93838cbbffd72340 native (frame 32 shallow=no saved=s1,s2 values=4 regs=4 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=2 loops=0, native-insns-v1 segmax=24 exittail=12 ccalls=1)
+typed-ir-backend: parseDigits@93838cbbffd72340 native (frame 32 shallow=no saved=s1,s2 values=8 regs=8 spills=0 slots=0 reloads=0 stores=0 copies=4 crossing=2 loops=0, native-insns-v1 segmax=26 exittail=0 ccalls=2)
+typed-ir-backend: parseDigitsAt@93838cbbffd72340 native (frame 32 shallow=no saved=s1,s2 values=9 regs=9 spills=0 slots=0 reloads=0 stores=0 copies=5 crossing=2 loops=0, native-insns-v1 segmax=26 exittail=0 ccalls=2)
+typed-ir-backend: parseDigitsCh@93838cbbffd72340 native (frame 80 shallow=no saved=s1,s2,s3,s4,s5,s6,s7 values=44 regs=44 spills=0 slots=0 reloads=0 stores=0 copies=11 crossing=9 loops=0, native-insns-v1 segmax=81 exittail=17 ccalls=5)
+typed-ir-backend: parseDigitsGo@93838cbbffd72340 native (frame 48 shallow=no saved=s1,s2,s3,s4 values=14 regs=14 spills=0 slots=0 reloads=0 stores=0 copies=10 crossing=4 loops=0, native-insns-v1 segmax=29 exittail=16 ccalls=2)
+typed-ir-backend: parseNat@93838cbbffd72340 native (frame 32 shallow=no saved=s1,s2 values=17 regs=17 spills=0 slots=0 reloads=0 stores=0 copies=5 crossing=3 loops=0, native-insns-v1 segmax=42 exittail=36 ccalls=4)
+typed-ir-backend: parseNatCh@93838cbbffd72340 native (frame 80 shallow=no saved=s1,s2,s3,s4,s5,s6,s7 values=80 regs=80 spills=0 slots=0 reloads=0 stores=0 copies=13 crossing=12 loops=0, native-insns-v1 segmax=132 exittail=41 ccalls=11)
+typed-ir-backend: parseNatGo@93838cbbffd72340 native (frame 48 shallow=no saved=s1,s2,s3,s4 values=18 regs=18 spills=0 slots=0 reloads=0 stores=0 copies=9 crossing=4 loops=0, native-insns-v1 segmax=38 exittail=38 ccalls=3)
+typed-ir-backend: revS@93838cbbffd72340 native (frame 48 shallow=no saved=s1,s2,s3,s4 values=18 regs=18 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=4 loops=1, native-insns-v1 segmax=65 exittail=60 ccalls=3)
+typed-ir-backend: strEq@93838cbbffd72340 native (frame 48 shallow=no saved=s1,s2,s3 values=15 regs=15 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=4 loops=0, native-insns-v1 segmax=39 exittail=22 ccalls=4)
+typed-ir-backend: strEqGo@93838cbbffd72340 native (frame 64 shallow=no saved=s1,s2,s3,s4,s5,s6 values=29 regs=29 spills=0 slots=0 reloads=0 stores=0 copies=6 crossing=6 loops=1, native-insns-v1 segmax=50 exittail=36 ccalls=4)
+typed-ir-backend: wordAt@93838cbbffd72340 native (frame 48 shallow=no saved=s1,s2,s3 values=4 regs=4 spills=0 slots=0 reloads=0 stores=0 copies=6 crossing=3 loops=0, native-insns-v1 segmax=26 exittail=0 ccalls=1)
+typed-ir-backend: wordCh@93838cbbffd72340 native (frame 80 shallow=no saved=s1,s2,s3,s4,s5,s6,s7 values=41 regs=41 spills=0 slots=0 reloads=0 stores=0 copies=13 crossing=9 loops=0, native-insns-v1 segmax=64 exittail=64 ccalls=8)
+typed-ir-backend: wordGo@93838cbbffd72340 native (frame 48 shallow=no saved=s1,s2,s3,s4 values=18 regs=18 spills=0 slots=0 reloads=0 stores=0 copies=9 crossing=4 loops=0, native-insns-v1 segmax=45 exittail=45 ccalls=3)
+# private workers: fields=0 scalar=0
+# private consuming workers: 0
+typed-ir-backend: native 7/7 functions (per-function)
+typed-ir-backend: collections native (frame 64 shallow=no saved=s1,s2,s3,s4,s5,s6 values=48 regs=48 spills=0 slots=0 reloads=0 stores=0 copies=14 crossing=9 loops=0, native-insns-v1 segmax=48 exittail=18 ccalls=9)
+typed-ir-backend: compatibility native (frame 32 shallow=no saved=s1,s2 values=51 regs=51 spills=0 slots=0 reloads=0 stores=0 copies=9 crossing=3 loops=0, native-insns-v1 segmax=37 exittail=32 ccalls=7)
+typed-ir-backend: main native (frame 16 shallow=no saved=none values=2 regs=2 spills=0 slots=0 reloads=0 stores=0 copies=0 crossing=0 loops=0, native-insns-v1 segmax=20 exittail=0 ccalls=1)
+typed-ir-backend: parseBad native (frame 32 shallow=no saved=s1 values=8 regs=8 spills=0 slots=0 reloads=0 stores=0 copies=1 crossing=1 loops=0, native-insns-v1 segmax=37 exittail=37 ccalls=2)
+typed-ir-backend: parseBounds native (frame 32 shallow=no saved=s1 values=30 regs=30 spills=0 slots=0 reloads=0 stores=0 copies=4 crossing=2 loops=0, native-insns-v1 segmax=53 exittail=50 ccalls=11)
+typed-ir-backend: parseOk native (frame 32 shallow=no saved=s1 values=24 regs=24 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=2 loops=0, native-insns-v1 segmax=54 exittail=54 ccalls=5)
+typed-ir-backend: parseOverflow native (frame 32 shallow=no saved=s1 values=8 regs=8 spills=0 slots=0 reloads=0 stores=0 copies=1 crossing=1 loops=0, native-insns-v1 segmax=37 exittail=37 ccalls=2)
+unit /Users/jasonqin/Documents/GitHub/qos/build/units/prelude-a5a8a1130833-g89-tirberv64-22mixedrt3pc5-c09612b07b5ec-rv64.s (cached)
+unit /Users/jasonqin/Documents/GitHub/qos/build/units/u-93838cbbffd7-pa5a8a113-s323128cc-g89-tirberv64-22mixedrt3pc5-c09612b07b5ec-rv64.s (54 supercombinators)
+wrote /Users/jasonqin/Documents/GitHub/qos/build/prog.s (31 supercombinators, linearity OK)
+module table: 34 remote-callable exports
+assumed external symbols (the fpr_g_ HAL/runtime contract):
+  intMax
+/Users/jasonqin/Documents/GitHub/qos/hal/virt/net.c:41:12: warning: 'htonl32' defined but not used [-Wunused-function]
+   41 | static u32 htonl32(u32 v) {
+      |            ^~~~~~~
+/Users/jasonqin/Documents/GitHub/qos/hal/virt/net.c:40:12: warning: 'htons16' defined but not used [-Wunused-function]
+   40 | static u16 htons16(u16 v) { return (u16)((v << 8) | (v >> 8)); }
+      |            ^~~~~~~
+/Users/jasonqin/Documents/GitHub/qos/hal/virt/net.c:39:12: warning: 'neq' defined but not used [-Wunused-function]
+   39 | static int neq(const u8 *a, const u8 *b, u32 n) { while (n--) if (*a++ != *b++) return 0; return 1; }
+      |            ^~~
+runtime/runtime.c: In function 'msg_copy_held_in':
+runtime/runtime.c:1160:3: warning: missing initializer for field 'novec' of 'dctx_t' [-Wmissing-field-initializers]
+ 1160 |   dctx_t c = {sl->hp, sl};
+      |   ^~~~~~
+runtime/runtime.c:753:15: note: 'novec' declared here
+  753 |   const char *novec; /* set: a Vector in the graph is refused by this name
+      |               ^~~~~
+runtime/runtime.c: In function 'fpr_entry_copy_try':
+runtime/runtime.c:1191:3: warning: missing initializer for field 'novec' of 'dctx_t' [-Wmissing-field-initializers]
+ 1191 |   dctx_t c = {sl->hp, sl};
+      |   ^~~~~~
+runtime/runtime.c:753:15: note: 'novec' declared here
+  753 |   const char *novec; /* set: a Vector in the graph is refused by this name
+      |               ^~~~~
+runtime/runtime.c: At top level:
+runtime/runtime.c:2802:13: warning: 'rfields' defined but not used [-Wunused-function]
+ 2802 | static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
+      |             ^~~~~~~
+In function 'rows',
+    inlined from 'count_rows' at runtime/mod.c:72:22,
+    inlined from 'tab_rows' at runtime/mod.c:133:46:
+runtime/mod.c:66:33: warning: array subscript 1 is outside array bounds of 'const uw[1]' {aka 'const long unsigned int[1]'} [-Warray-bounds=]
+   66 |   if (tab[0] != MOD_MAGIC || tab[1] != MOD_SCHEMA)
+      |                              ~~~^~~
+runtime/mod.c: In function 'tab_rows':
+runtime/mod.c:26:32: note: at offset 8 into object 'fpr_modtab' of size 8
+   26 | __attribute__((weak)) const uw fpr_modtab[1] = {0};
+      |                                ^~~~~~~~~~
+In function 'rows',
+    inlined from 'tab_rows' at runtime/mod.c:135:12:
+runtime/mod.c:66:33: warning: array subscript 1 is outside array bounds of 'const uw[1]' {aka 'const long unsigned int[1]'} [-Warray-bounds=]
+   66 |   if (tab[0] != MOD_MAGIC || tab[1] != MOD_SCHEMA)
+      |                              ~~~^~~
+runtime/mod.c: In function 'tab_rows':
+runtime/mod.c:26:32: note: at offset 8 into object 'fpr_modtab' of size 8
+   26 | __attribute__((weak)) const uw fpr_modtab[1] = {0};
+      |                                ^~~~~~~~~~
+/opt/homebrew/Cellar/riscv-gnu-toolchain/main/lib/gcc/riscv64-unknown-elf/14.2.0/../../../../riscv64-unknown-elf/bin/ld: warning: /Users/jasonqin/Documents/GitHub/qos/image.elf has a LOAD segment with RWX permissions
+
+[fpr] main => coreutil: OK

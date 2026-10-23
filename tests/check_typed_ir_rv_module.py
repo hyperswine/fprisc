@@ -195,13 +195,7 @@ def main():
             assert 'la.tls.ie t3, fpr_posix_hart' in body and 'tprel' not in body and not re.search(r'\bmv\s+t\d,\s*tp\b', body), name
         assert re.search(r'^\s*lla\s+\w+,\s*\.L', text, re.M), 'a unit-local label stays PC-relative under .option pic'
         assert not re.search(r'^\s*j\s+(?!\.L)\S+', whole, re.M), 'no short jumps to external symbols'
-        # the legacy rollback keeps its own forms and a separate unit identity
-        legacy = tmp / 'legacy.s'
-        run([ROOT / 'fpr', 'compile', '--system=posix', '--target=rv64', '--plugin', source, legacy],
-            dict(env, FPR_TYPED_IR_BACKEND='legacy'))
-        assert '# typed IR: no translation' not in legacy.read_text()
-        assert set(Path(str(asm) + '.units').read_text().split()).isdisjoint(Path(str(legacy) + '.units').read_text().split())
-        print('typed RV64 module: every function native, la.tls.ie hart, .option pic, local labels PC-relative, legacy rollback separate PASS', flush=True)
+        print('Native hart access and complete typed emission PASS',flush=True)
         missing = [t for t in TOOLS if not shutil.which(t)]
         if missing:
             assert not args.require_execution, missing

@@ -100,22 +100,25 @@ def main():
                 assert len(wrappers) == 2 and all("forward=yes saved=none" in t for t in wrappers), wrappers
             assert 'UNBOUNDED' not in text
             assert all(cell in selected for cell in (('%fs:8(', '%fs:16(') if qos else ('%fs:fpr_x64_a6@tpoff', '%fs:fpr_x64_a7@tpoff')))
-            # arguments 9 and 64 through the hart spill cells: the caller's
-            # stores and the arrival's loads name the first and last cell
+            # Arguments 9 and 64 arrive through the first and last hart cells.
+            # Self-loop parallel copies remove the outgoing cell stores;
+            # without that optimization, both stores must still be present.
             # (the merge with M3: the arrival loads each cell into the
             # parameter's allocated register, docs/2026-10-21-TYPED-IR-MERGE.md)
             rotate63 = next(body for title, body in bodies if title.startswith('rotate63 '))
             # (the caller's store goes through %r11 when the value itself
             # was reloaded into %r10, the allocator's first scratch)
-            assert re.search(r'movq %fs:0\(%r1[01]\), %r1[01]' if qos else r'movq %fs:fpr_posix_hart@tpoff, %r1[01]', rotate63) and re.search(r', 8\(%r1[01]\)', rotate63) and re.search(r', 448\(%r1[01]\)', rotate63), rotate63[:600]
+            looped = mode['FPR_TYPED_IR_SELF_LOOPS'] != '0'
+            stores = [bool(re.search(r', '+str(offset)+r'\(%r1[01]\)',rotate63)) for offset in (8,448)]
+            assert stores == [not looped,not looped], rotate63[:600]
             assert re.search(r'movq 8\(%(\w+)\), %\1', rotate63) and re.search(r'movq 448\(%(\w+)\), %\1', rotate63), rotate63[:600]
             assert 'cqto' in selected and 'imulq' in selected
             headers = {title.split()[0]: title for title, _ in bodies if 'typed-ir x64' in title}
             spills = int(re.search(r'spills=(\d+)', headers['pressure']).group(1))
             assert spills >= 7, headers['pressure']  # twelve values across a call, five budget registers
             assert all(s in ('none', 'rbx', 'r12', 'r13', 'r14', 'r15') for t in headers.values() for s in re.search(r'saved=(\S+)', t).group(1).split(',')), headers
-            looped = mode['FPR_TYPED_IR_SELF_LOOPS'] != '0'
-            assert int(re.search(r'loops=(\d+)', headers['rotate6']).group(1)) == int(looped), headers['rotate6']
+            for width in (6,7,8,63):
+                assert int(re.search(r'loops=(\d+)',headers['rotate'+str(width)]).group(1)) == int(looped),headers['rotate'+str(width)]
             print(f'{name}: strict direct coverage {len(native_names)} functions; including arities 9 and 64; pressure spills {spills}; rotate6 loop={looped}', flush=True)
             assert ('fpr_fn__x24worker_x2escalar_x2e' in selected) == (mode['FPR_NO_SCALAR_WORKERS'] == '0')
             if shutil.which('clang'):

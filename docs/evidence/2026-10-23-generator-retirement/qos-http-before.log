@@ -1,0 +1,4 @@
+before elapsed 2.01 TimeoutError
+before elapsed 4.03 TimeoutError
+before elapsed 6.03 TimeoutError
+before elapsed 7.05 response b'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 15203\r\nConnection: close\r\n\r\n<!doctype html'

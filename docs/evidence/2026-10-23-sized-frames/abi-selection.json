@@ -1,0 +1,18 @@
+{
+  "hosted-a64": {
+    "FPR_NATIVE_ABI": 7,
+    "FPR_PLANE_ACTORS_ABI": 3,
+    "FPR_PLANE_MEMORY_ABI": 3
+  },
+  "qos-a64": {
+    "FPR_NATIVE_ABI": 6,
+    "FPR_PLANE_ACTORS_ABI": 3,
+    "FPR_PLANE_MEMORY_ABI": 3
+  },
+  "rv64": {
+    "FPR_NATIVE_ABI": 6,
+    "FPR_PLANE_ACTORS_ABI": 3,
+    "FPR_PLANE_MEMORY_ABI": 3
+  },
+  "qos-packaging-helper": "6 3 3"
+}

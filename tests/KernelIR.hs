@@ -1,6 +1,5 @@
--- Emission regression: whole-unit scalar fallback must not discard a native
--- kernel that a legacy caller references. This boundary is independent of
--- source type checking: hostValue models a legacy-only HAL value.
+-- Whole-unit refusals must not expose partial native code. Complete units
+-- retain every requested native kernel on each selector.
 import Codegen
 import qualified Codegen.Kernel as K
 import KernelKinds (Kind(..))
@@ -28,12 +27,13 @@ main = do
         target = base {tgtNative=Just mode}
         out = emitProgramWith target False True [] M.empty S.empty S.empty program
     unless (null (emNativeNames out) && any ((=="opaque") . fst) (emFallbacks out))
-      (error "probe failed to force whole-unit scalar fallback")
-    unless ("fpr_vspec_map_inc:" `isInfixOf` unlines (emNative out))
-      (error ("native kernel lost under legacy-only callers: " ++ show backend))
-    unless ("fpr_vspec_map_inc" `isInfixOf` emAsm out)
-      (error "legacy caller did not reference the native kernel")
-  putStrLn "Typed kernel emission: legacy-only callers retain their native kernel on all four selectors PASS"
+      (error "probe failed to force whole-unit refusal")
+    unless (null (emNativeNames out) && not ("fpr_vspec_map_inc:" `isInfixOf` unlines (emNative out)))
+      (error ("refused whole unit unexpectedly emitted a kernel: " ++ show backend))
+    let supported=emitProgramWith target False True [] M.empty S.empty S.empty (M.delete "opaque" program)
+    unless (null (emFallbacks supported) && "fpr_vspec_map_inc:" `isInfixOf` unlines (emNative supported))
+      (error "supported whole unit failed to emit its native kernel")
+  putStrLn "Typed kernel emission: unsupported whole units refused; complete units retain kernels on all four selectors PASS"
   let floatRecord = K.RecordKernel "float-record" "original" [] False (-1,-1) [(0,KD)] (K.RecordFold "dual" KD) False
   case K.lowerRecordKernel (m2Policy {polProfile=Rv32}) M.empty floatRecord of
     Left "RV32 float record columns use boxed values" -> pure ()

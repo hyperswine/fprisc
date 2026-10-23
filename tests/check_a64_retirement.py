@@ -56,7 +56,7 @@ def main():
                 before = asm.read_bytes()
                 p = run([ROOT / 'fprc', '--target=' + target, src, asm],
                         dict(env, FPR_TYPED_IR_BACKEND=backend), 1)
-                assert 'AArch64 legacy backend has been retired' in p.stderr, p.stderr
+                assert 'legacy backend has been retired on every target' in p.stderr, p.stderr
                 assert asm.read_bytes() == before
             # Cache policy changes do not change compatible module contracts.
             run([ROOT / 'fprc', '--target=' + target, '--plugin', src, asm], env)
@@ -67,12 +67,6 @@ def main():
                       if 'fpr-interface-1/' in s]
             assert stamps and all('/' + interface_targets[target] + '/hardfloat=False/' in s
                                   for s in stamps), (target, stamps)
-        # The other translators/generators still own their rollback path.
-        for target in ('rv64', 'rv32'):
-            asm = tmp / (target + '.s')
-            run([ROOT / 'fprc', '--target=' + target, src, asm],
-                dict(env, FPR_TYPED_IR_BACKEND='legacy'))
-            assert '# wcet:' in asm.read_text() and 'typed-ir ' not in asm.read_text()
         # A 65-argument foreign call has no native ABI lowering. It used to
         # select the legacy path: default mode must now refuse it before
         # writing assembly, even when strict mode names some other function.
@@ -88,14 +82,14 @@ def main():
                 assert 'typed-ir strict: root:' in p.stderr and '\n  main: ' in p.stderr, p.stderr
                 assert 'Wide.call' in p.stderr and not asm.exists()
         print('A64 retirement: unsupported foreign calls refused by name in default/whole/named-strict modes on all five targets PASS', flush=True)
-        print('A64 retirement: five targets, native-only root/imports, whole/mixed warm caches, all rollback aliases refused; RV rollback retained PASS', flush=True)
+        print('A64 retirement: five targets, native-only root/imports, whole/mixed warm caches, all rollback aliases refused; all targets typed-only PASS', flush=True)
         if platform.machine() in ('arm64', 'aarch64'):
             # Exercise the executable cache too, before the compiler is called.
             assert run([ROOT / 'fpr', 'run', src], env).stdout == '42\n'
             for backend in ('legacy', '0', 'off'):
                 p = run([ROOT / 'fpr', 'run', src],
                         dict(env, FPR_TYPED_IR_BACKEND=backend), 1)
-                assert 'AArch64 legacy backend has been retired' in p.stdout + p.stderr
+                assert 'legacy backend has been retired on every target' in p.stdout + p.stderr
             assert run([ROOT / 'fpr', 'run', src], env).stdout == '42\n'
             print('A64 retirement: populated executable cache cannot bypass rollback refusal PASS', flush=True)
         # Imported polymorphic layout evidence introduces hidden runtime

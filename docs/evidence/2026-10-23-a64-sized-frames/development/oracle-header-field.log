@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "<stdin>", line 7, in <module>
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_a64_frames.py", line 64, in production_runtime
+    run([ROOT/'fpr','build',source,'--harts',harts,'--with',support,'--with',asm,'-o',exe],mode)
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_rv.py", line 19, in run
+    assert p.returncode == 0, (args, p.returncode, p.stdout[-3000:], p.stderr[-4000:])
+           ^^^^^^^^^^^^^^^^^
+AssertionError: ([PosixPath('/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/fpr'), 'build', PosixPath('/private/tmp/fpr-a64-sized-real-runtime/actor.fpr'), '--harts', 1, '--with', PosixPath('/private/tmp/fpr-a64-sized-real-runtime/actor.c'), '--with', PosixPath('/private/tmp/fpr-a64-sized-real-runtime/actor-frames.s'), '-o', PosixPath('/private/tmp/fpr-a64-sized-real-runtime/actor-1')], 1, '', '/private/tmp/fpr-a64-sized-real-runtime/actor.c:5:19: error: call to undeclared function \'VAR\'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]\n    5 |  if(TID(p)!=42 || VAR(p)!=9000)fpr_cpanic("large actor frame object header");\n      |                   ^\n1 error generated.\nfpr build: cc failed\n')

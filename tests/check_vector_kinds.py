@@ -5,12 +5,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 def run(args, env=None, ok=True):
     mode={**os.environ,**(env or {})}
-    # These assembly assertions inspect legacy plan/SIMD comments. Runtime
-    # checks above/below retain the selected backend; typed emission has its
-    # independent no-translation oracle in check_typed_ir_kernels.py.
-    if str(args[0]).endswith('fprc'):
-        mode['FPR_TYPED_IR_BACKEND']='mixed' if '--target=a64' in args else 'legacy'
-        mode.pop('FPR_TYPED_IR_STRICT',None)
     p=subprocess.run(list(map(str,args)),cwd=ROOT,env=mode,capture_output=True,text=True,timeout=240)
     if ok: assert p.returncode==0,(args,p.stdout,p.stderr)
     return p
@@ -40,15 +34,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-vector-kinds-') as d:
     asm=tmp/'kinds.s'
     run(['./fprc','--profile=base','--target=rv64','tests/base/veckinds.fpr',asm])
     text=asm.read_text()
-    assert '([KD,KD,KD,KD,KD],KD)' in text and '([KD,KI,KD,KI,KD,KD],KD)' in text,text[-15000:]
-    assert 'mixed scalar pipeline: map affine -> filter above -> fold sumFloat' in text
-    # the Int map/map pair (`plus`) fuses although Int + traps on overflow:
-    # the 2026-10-13 relaxation (docs/2026-10-03-FUSION-EFFECT-ORDER.md)
-    assert re.search(r'mixed scalar pipeline: map _vfuse_.* -> filter _vfuse_',text),text[-15000:]
-    run(['./fprc','--profile=base','--target=rv64','tests/base/veckinds.fpr',asm],{'FPR_NO_VEC_FUSE':'1'})
-    text=asm.read_text()
-    assert '([KD,KD,KD],KD)' in text and '([KD,KI,KD,KI,KD,KD],KD)' in text
-    assert 'mixed scalar pipeline:' not in text
+    assert '# typed IR: no translation' in text and '$vkernel:' in text
     run(['./fprc','--profile=base','--target=a64','tests/base/vecsimd.fpr',asm])
     text=asm.read_text()
     assert 'ldr q16, [' in text and re.search(r'fmul v\d+\.2d',text)

@@ -89,7 +89,7 @@ a64HostedInterfaceRev = 16
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 22 -- captured NEON maps; prior: hosted FP pool and comparison/F32 trees; prior: generic HAL partial/opaque application; prior 19: inferred boxed I64 operators; prior 18: inference-generated vector runtime entries; prior 17: typed column memory and kernel arithmetic; prior: 16: posix modules reach external symbols through the GOT; 15: units with no legacy code skip translation; 14: in-place constructor reuse; 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
+a64SelectionRev = 23 -- sized frames; prior: captured NEON, FP pool, comparison/F32 trees
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -808,9 +808,11 @@ emitFnA64 cfg fn = do
   either (\e -> Left ("compiler error: " ++ e)) Right (checkAllocation ac (fnName fn) (alBody alloc))
   let saves = savedObjs (alSaved alloc)
       objs = saves ++ alSlots alloc ++ entrySlots
-      ly = layout 16 16 objs
+      ordinary = layout 16 16 objs
+      large = polStackCheck (cfgPolicy cfg) /= StackStatic && lyBytes ordinary > frameCeiling
+      ly = if large then layout 24 16 objs else ordinary
       (shallow, allocatedBody) = shallowEntry (polStackCheck (cfgPolicy cfg)) (lyBytes ly) (alBody alloc)
-  when (lyBytes ly > frameCeiling) $
+  when (not large && lyBytes ly > frameCeiling) $
     Left ("a frame of " ++ show (lyBytes ly) ++ " bytes exceeds the " ++ show frameCeiling ++ "-byte ceiling (half the runtime's stack headroom)")
   let name = fnName fn
       sym = functionSymbol name
@@ -826,16 +828,20 @@ emitFnA64 cfg fn = do
             Nothing -> saveItems ++ allocatedBody
             Just items -> concatMap (\it -> case it of I s | siOp s == "saves.here" -> saveItems; _ -> [it]) items
       restores = concatMap (uncurry (pairAccess "ldp" "ldr")) pairs
-      rendered = map (\it -> (it, renderItem cfg ly name pairs restores it)) body
-      toks = concatMap (uncurry tokOf) rendered
+      reserve = if large then reserveFrame cfg name (toInteger (lyBytes ly)) (length (sfParams sel)) else []
+      rendered = map (\it -> (it, renderItem cfg ly large name pairs restores it)) body
+      toks = [TIns (length (filter isInstruction reserve)) FNext False
+                (1 + if cfgHart cfg == HartTlvMachO then 3 else 0) | large]
+             ++ concatMap (uncurry tokOf) rendered
       report = analyse toks
       header =
         ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir a64 frame=" ++ show (lyBytes ly)
+           ++ (if large then " reserve=yes" else "")
            ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ (if wrapped == Nothing then "" else " wrapped=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," (map phys ps)) ++ " " ++ statsLine (alStats alloc)]
           ++ ["    " ++ visibility ++ " " ++ gsym cfg sym | S.member name (cfgExports cfg)]
           ++ [gsym cfg sym ++ ":"]
       visibility = if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl"
-      lines' = header ++ concatMap snd rendered ++ [reportLine name report, ""]
+      lines' = header ++ map (\s -> if last s == ':' then s else "    " ++ s) reserve ++ concatMap snd rendered ++ [reportLine name report, ""]
   pure (NativeFn name lines' report (S.toList nulls) (S.toList strs) [])
   where
     tokOf (ILabel (Label l)) _ = [TLabel l]
@@ -895,9 +901,39 @@ local cfg fname (Label l) = gsym cfg (".Ltir_" ++ mangleName fname ++ "_" ++ l)
 phys :: Phys -> String
 phys (Phys p) = p
 
-renderItem :: A64Config -> Layout -> String -> [([String], Integer)] -> [String] -> Item -> [String]
-renderItem cfg _ fname _ _ (ILabel l) = [local cfg fname l ++ ":"]
-renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
+-- No allocated value exists yet: only incoming words and the link must
+-- survive reservation. x17 carries the original SP into the full prologue.
+-- The TLV lookup uses its documented preservation ABI (all but x0/x16/x17),
+-- and hartReadFor parks x0 and the link around that lookup itself.
+reserveFrame :: A64Config -> String -> Integer -> Int -> [String]
+reserveFrame cfg name bytes argc =
+  ["mov x10, sp"] ++ movImm "x11" bytes
+  ++ ["cmp x10, x11", "b.lo " ++ slow, "sub x10, x10, x11"]
+  ++ hartReadFor cfg
+  ++ ["ldr x11, [x9, #456]", "cbz x11, " ++ slow,
+      "sub x10, x10, x11", "ldr x11, [x9, #464]", "cmp x10, x11", "b.lo " ++ fast,
+      slow ++ ":", "sub sp, sp, #" ++ show stageBytes]
+  ++ concat [mem "str" ("x"++show i) "sp" (8*fromIntegral i) | i <- [0..min argc 8-1]]
+  ++ mem "str" "x30" "sp" (8*fromIntegral argc)
+  ++ hartReadFor cfg
+  ++ concat [mem "ldr" "x11" "x9" (8*fromIntegral (i-7)) ++ mem "str" "x11" "sp" (8*fromIntegral i) | i <- [8..argc-1]]
+  ++ ["add x0, sp, #" ++ show stageBytes] ++ movImm "x1" bytes
+  ++ ["bl " ++ gsym cfg "fpr_stack_reserve", "mov x10, x0"]
+  ++ hartReadFor cfg
+  ++ concat [mem "ldr" "x11" "sp" (8*fromIntegral i) ++ mem "str" "x11" "x9" (8*fromIntegral (i-7)) | i <- [8..argc-1]]
+  ++ concat [mem "ldr" ("x"++show i) "sp" (8*fromIntegral i) | i <- [0..min argc 8-1]]
+  ++ mem "ldr" "x30" "sp" (8*fromIntegral argc)
+  ++ ["add x17, sp, #" ++ show stageBytes, "cbz x10, " ++ same, "mov sp, x10", "b " ++ ready,
+      same ++ ":", "mov sp, x17", "b " ++ ready, fast ++ ":", "mov x17, sp", ready ++ ":"]
+  where
+    stageBytes = ((fromIntegral (argc+1)*8+15) `div` 16)*16 :: Integer
+    mem op = ldst op (if op=="ldr" then "ldur" else "stur")
+    label s = local cfg name (Label ("reserve_"++s))
+    slow=label "slow";fast=label "fast";same=label "same";ready=label "ready"
+
+renderItem :: A64Config -> Layout -> Bool -> String -> [([String], Integer)] -> [String] -> Item -> [String]
+renderItem cfg _ _ fname _ _ (ILabel l) = [local cfg fname l ++ ":"]
+renderItem cfg ly large fname pairs restores (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
   where
     indent l = if last l == ':' then l else "    " ++ l -- a pseudo's internal labels stand in column one
     lbl = local cfg fname
@@ -1005,15 +1041,19 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
     linkPaired = tuneLinkPairs (cfgTune cfg) && lyBytes ly - 16 <= 504
     enter =
       let n = fromIntegral (lyBytes ly) :: Integer
-       in (if n < 4096 then ["sub sp, sp, #" ++ show n] else movImm "x16" n ++ ["sub sp, sp, x16"])
+       in if large then movImm "x16" n ++
+            ["sub sp, sp, x16", "add x16, sp, x16", "stur x30, [x16, #-8]",
+             "stur x29, [x16, #-16]", "mov x29, x16", "stur x17, [x29, #-24]"]
+          else (if n < 4096 then ["sub sp, sp, #" ++ show n] else movImm "x16" n ++ ["sub sp, sp, x16"])
             ++ (if linkPaired then ["stp x29, x30, [sp, #" ++ show (n - 16) ++ "]"]
                 else ldst "str" "stur" "x30" "sp" (n - 8) ++ ldst "str" "stur" "x29" "sp" (n - 16))
             ++ (if n < 4096 then ["add x29, sp, #" ++ show n] else ["add x29, sp, x16"])
     -- the callee-saved registers come back first (x29-relative, so after a
     -- stack-segment change they still read the frame they were saved in)
     epilogue = (if siNote i == "norestore" then [] else restores)
-      ++ (if linkPaired then ["mov x9, x29", "ldp x29, x30, [x9, #-16]", "mov sp, x9"]
-          else ["ldur x30, [x29, #-8]", "mov x9, x29", "ldur x29, [x29, #-16]", "mov sp, x9"])
+      ++ (if linkPaired then ["mov x9, x29", "ldp x29, x30, [x9, #-16]"]
+          else ["ldur x30, [x29, #-8]", "mov x9, x29", "ldur x29, [x29, #-16]"])
+      ++ ["ldur x9, [x9, #-24]" | large] ++ ["mov sp, x9"]
     base = siNote i
     parkArgs scaled unscaled = concat
       [ldst scaled unscaled (reg o) "x29" (fromIntegral (lyOffset ly M.! FrameRef (entrySlot n)))
@@ -1047,32 +1087,35 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
         lbl (Label (base ++ "_fuel")) ++ ":"
       ]
     -- x9 <- the hart block (A64.hs `mv rd, tp` and deTlsQosAppA64)
-    hartRead = case cfgHart cfg of
-      HartX28 -> ["mov x9, x28"]
-      HartGlobal -> case cfgFormat cfg of
-        MachO -> ["adrp x9, " ++ gsym cfg "fpr_posix_hart" ++ "@PAGE", "ldr x9, [x9, " ++ gsym cfg "fpr_posix_hart" ++ "@PAGEOFF]"]
-        ELF -> ["adrp x9, fpr_posix_hart", "ldr x9, [x9, #:lo12:fpr_posix_hart]"]
-      HartTlvMachO ->
-        [ "sub sp, sp, #16",
-          "stp x0, x30, [sp]",
-          "adrp x0, _fpr_posix_hart@TLVPPAGE",
-          "ldr x0, [x0, _fpr_posix_hart@TLVPPAGEOFF]",
-          "ldr x16, [x0]",
-          "blr x16",
-          "ldr x17, [x0]",
-          "ldp x0, x30, [sp]",
-          "add sp, sp, #16",
-          "mov x9, x17"
-        ]
-      HartTlsElf ->
-        [ "mrs x9, tpidr_el0",
-          "add x9, x9, :tprel_hi12:fpr_posix_hart",
-          "add x9, x9, :tprel_lo12_nc:fpr_posix_hart",
-          "ldr x9, [x9]"
-        ]
+    hartRead = hartReadFor cfg
     address d s = case cfgFormat cfg of
       MachO -> let g = gsym cfg s in ["adrp " ++ d ++ ", " ++ g ++ "@PAGE", "add " ++ d ++ ", " ++ d ++ ", " ++ g ++ "@PAGEOFF"]
       ELF -> ["adrp " ++ d ++ ", " ++ s, "add " ++ d ++ ", " ++ d ++ ", :lo12:" ++ s]
+
+hartReadFor :: A64Config -> [String]
+hartReadFor cfg = case cfgHart cfg of
+  HartX28 -> ["mov x9, x28"]
+  HartGlobal -> case cfgFormat cfg of
+    MachO -> ["adrp x9, " ++ gsym cfg "fpr_posix_hart" ++ "@PAGE", "ldr x9, [x9, " ++ gsym cfg "fpr_posix_hart" ++ "@PAGEOFF]"]
+    ELF -> ["adrp x9, fpr_posix_hart", "ldr x9, [x9, #:lo12:fpr_posix_hart]"]
+  HartTlvMachO ->
+    [ "sub sp, sp, #16",
+      "stp x0, x30, [sp]",
+      "adrp x0, _fpr_posix_hart@TLVPPAGE",
+      "ldr x0, [x0, _fpr_posix_hart@TLVPPAGEOFF]",
+      "ldr x16, [x0]",
+      "blr x16",
+      "ldr x17, [x0]",
+      "ldp x0, x30, [sp]",
+      "add sp, sp, #16",
+      "mov x9, x17"
+    ]
+  HartTlsElf ->
+    [ "mrs x9, tpidr_el0",
+      "add x9, x9, :tprel_hi12:fpr_posix_hart",
+      "add x9, x9, :tprel_lo12_nc:fpr_posix_hart",
+      "ldr x9, [x9]"
+    ]
 
 -- a word load/store at base+off: unscaled within +-256, scaled when
 -- positive and a multiple of 8 within the 12-bit field, otherwise through

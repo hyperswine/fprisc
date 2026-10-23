@@ -70,8 +70,12 @@ jobs:
       - run: echo "FPR_HOME=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
       - name: Typed IR direct backends (Linux x86-64)
         run: |
+          python3 -u tests/check_native_data.py
+          python3 -u tests/check_native_required.py
           python3 -u tests/check_typed_ir_a64.py
+          python3 -u tests/check_typed_ir_a64_frames.py
           python3 -u tests/check_typed_ir_x64.py --require-execution
+          python3 -u tests/check_typed_ir_x64_frames.py
           python3 -u tests/check_typed_ir_x64.py --require-execution --entry-optimizations
           python3 -u tests/check_typed_ir_aggregates.py
           python3 -u tests/check_typed_ir_coverage.py
@@ -83,6 +87,8 @@ jobs:
           python3 -u tests/check_typed_ir_rv.py --width 64 --require-execution
           python3 -u tests/check_typed_ir_rv_module.py --require-execution
           python3 -u tests/check_typed_ir_rv_startup.py --require-execution
+          python3 -u tests/check_typed_ir_rv_frames.py --require-execution
+          python3 -u tests/check_stack_reservation.py
           python3 -u tests/check_typed_ir_qrv64.py --require-execution
           python3 -u tests/check_typed_ir_esp.py --require-execution
           python3 -u tests/check_typed_ir_builtin.py --require-execution
@@ -106,7 +112,9 @@ jobs:
           FPR_PRESET=fprisc-48 machine/tangnano20k/build-softfloat.sh
           FPR_XLEN=64 machine/tangnano20k/build-softfloat.sh
       - name: Typed RV32 float constants and software runtime
-        run: python3 -u tests/check_rv32_float_constants.py --require-execution
+        run: |
+          python3 -u tests/check_rv32_float_constants.py --require-execution
+          python3 -u tests/check_fixed_stack_reservation.py --require-execution
       - name: Tang Nano examples and custom programs (QEMU)
         run: |
           python3 -u tools/run_tangnano20k_examples.py --target qemu
@@ -129,7 +137,7 @@ jobs:
 
       - name: check_base (the typed backend is the default)
         run: python3 -u tests/check_base.py --skip-typed-ir-native
-      - name: RISC-V legacy rollback
+      - name: Typed RISC-V self loops and C fuel oracle
         run: python3 -u tests/check_self_loop_rv64.py
       # check_raw also boots builtin/raw images on qemu-system-riscv64
       - name: check_i32, check_raw

@@ -11,6 +11,11 @@ fpr_plane_memory_t *fpr_plane_memory;
 volatile int fpr_is_process;
 int fpr_mem_own;
 uw fpr_stack_grow(void){fpr_cpanic("Base: 64 KiB stack exhausted");return 0;}
+uw fpr_stack_reserve(uw sp,uw bytes){
+ fpr_hart_t *h=fpr_hart();
+ if(h && bytes<=sp && sp-bytes-h->stk_lo<h->stk_span)return 0;
+ return fpr_stack_grow(); /* a fixed-stack host refuses before any frame write */
+}
 void fpr_actor_fail(const char *why){fpr_cpanic(why);for(;;){}}
 uw fpr_actor_is_program(void){return 1;}
 /* Same identities as the shared runtime's bootstrap thread, not actors. */

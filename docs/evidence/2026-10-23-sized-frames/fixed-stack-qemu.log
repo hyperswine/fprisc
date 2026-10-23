@@ -1,0 +1,7 @@
+RV ACTOR FRAMES HOLD
+FPR EXIT 0
+QEMU fixed stack depth=5, 512 live values: PASS
+PRE_FRAME_REFUSAL
+Base panic: Base: 64 KiB stack exhausted
+FPR EXIT 1
+QEMU fixed stack depth=80, 512 live values: PASS

@@ -30,7 +30,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 21 -- SSE2 map pairs; prior: comparison and F32 trees; prior: QOS borrowed TLS hart/argument cells; prior 18: generic HAL partial/opaque application; prior 17: inferred boxed I64 operators; prior 16: inference-generated vector runtime entries; prior 15: typed column memory and kernel arithmetic; prior: 14: posix modules reach external symbols through the GOT; 13: units with no legacy code skip translation; 12: in-place constructor reuse; 11: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 10: aggregate and string selection; prior: the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
+x64SelectionRev = 22 -- sized frames; prior: SSE2, comparison/F32 trees, QOS borrowed TLS cells
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -627,24 +627,28 @@ emitFnX64 cfg fn = do
   either (Left . ("compiler error: " ++)) Right (checkAllocation ac (fnName fn) (alBody alloc))
   let saves = savedObjs (alSaved alloc)
       objs = saves ++ alSlots alloc ++ entrySlots
-      ly = layout 16 16 objs
+      ordinary = layout 16 16 objs
+      large = polStackCheck (cfgPolicy cfg) /= StackStatic && lyBytes ordinary > 32768
+      ly = if large then layout 24 16 objs else ordinary
       (shallow, allocatedBody) = shallowEntry (polStackCheck (cfgPolicy cfg)) (lyBytes ly) (alBody alloc)
-  when (lyBytes ly > 32768) $ Left ("a frame of " ++ show (lyBytes ly) ++ " bytes exceeds the 32768-byte ceiling (half the runtime's stack headroom)")
+  when (not large && lyBytes ly > 32768) $ Left ("a frame of " ++ show (lyBytes ly) ++ " bytes exceeds the 32768-byte ceiling (half the runtime's stack headroom)")
   let name = fnName fn
       sym = functionSymbol name
       saveOff o = show (M.findWithDefault (error "X64: a saved register without an offset") (foRef o) (lyOffset ly)) ++ "(%rbp)"
       saveLines = ["movq %" ++ p ++ ", " ++ saveOff o | o <- saves, SavedRegister p <- [foKind o]]
       restores = ["movq " ++ saveOff o ++ ", %" ++ p | o <- saves, SavedRegister p <- [foKind o]]
-      body = I ((plain "enter" [] []) {siImplicitDefs = map r ["rsp", "rbp"]})
+      body = I ((plain "enter" [] []) {siImplicitDefs = map r (["rsp", "rbp"] ++ [p | large,p <- ["rax","r11"]])})
         : [I (plain "save" [] []) | not (null saves)]
         ++ allocatedBody
-      rendered = [(it, renderItem (cfgHart cfg) ly name saveLines restores it) | it <- body]
-      report = analyse (concatMap (uncurry tokOf) rendered)
+      reserve = if large then reserveFrame (cfgHart cfg) name (toInteger (lyBytes ly)) (length (sfParams sel)) else []
+      rendered = [(it, renderItem (cfgHart cfg) ly large name saveLines restores it) | it <- body]
+      report = analyse ([TIns (length (filter isInstruction reserve)) FNext False 1 | large] ++ concatMap (uncurry tokOf) rendered)
       visibility = if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl"
       header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir x64 frame=" ++ show (lyBytes ly)
+                  ++ (if large then " reserve=yes" else "")
                   ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
         ++ ["    " ++ visibility ++ " " ++ sym | S.member name (cfgExports cfg)] ++ [sym ++ ":"]
-  pure (NativeFn name (header ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList nulls) (S.toList strs) [])
+  pure (NativeFn name (header ++ map (\s -> if last s==':' then s else "    "++s) reserve ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList nulls) (S.toList strs) [])
   where
     tokOf (ILabel (Label l)) _ = [TLabel l]
     tokOf (I i) ls = [TIns
@@ -658,9 +662,56 @@ emitFnX64 cfg fn = do
 local :: String -> Label -> String
 local fname (Label l) = ".Ltir_" ++ mangleName fname ++ "_" ++ l
 
-renderItem :: X64Hart -> Layout -> String -> [String] -> [String] -> Item -> [String]
-renderItem _ _ fname _ _ (ILabel l) = [local fname l ++ ":"]
-renderItem hart ly fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
+-- The caller's return PC remains on the original stack. A new segment gets
+-- a copy for the ordinary frame header, while the third header word restores
+-- the original entry RSP on every return or tail transfer. Include that PC
+-- word in the new-top reservation. The staging frame aligns RSP for C.
+reserveFrame :: X64Hart -> String -> Integer -> Int -> [String]
+reserveFrame hart name bytes argc =
+  ["movabsq $" ++ show (bytes+8) ++ ", %r11", "cmpq %r11, %rsp", "jb " ++ slow,
+   "negq %r11", "addq %rsp, %r11"] ++ loadCellFor hart "fpr_posix_hart" "%r10"
+  ++ ["cmpq $0, 456(%r10)", "je " ++ slow, "subq 456(%r10), %r11",
+      "cmpq 464(%r10), %r11", "jb " ++ fast, slow ++ ":", "subq $" ++ show stageBytes ++ ", %rsp"]
+  ++ ["movq %" ++ reg ++ ", " ++ slot i | (i,Phys reg) <- zip [0..] (take argc argRegs)]
+  ++ concat [loadCellFor hart cell "%r10" ++ ["movq %r10, " ++ slot i] | (i,cell) <- named]
+  ++ loadCellFor hart "fpr_posix_hart" "%r10"
+  ++ concat [["movq " ++ show (8*(i-7)) ++ "(%r10), %r11", "movq %r11, " ++ slot i] | i <- [8..argc-1]]
+  ++ ["leaq " ++ show stageBytes ++ "(%rsp), %rdi", "movabsq $" ++ show (bytes+8) ++ ", %rsi",
+      "call fpr_stack_reserve"]
+  ++ loadCellFor hart "fpr_posix_hart" "%r10"
+  ++ concat [["movq " ++ slot i ++ ", %r11", "movq %r11, " ++ show (8*(i-7)) ++ "(%r10)"] | i <- [8..argc-1]]
+  ++ concat [["movq " ++ slot i ++ ", %r11"] ++ storeCellFor hart cell "%r11" | (i,cell) <- named]
+  ++ ["movq " ++ slot i ++ ", %" ++ reg | (i,Phys reg) <- zip [0..] (take argc argRegs)]
+  ++ ["leaq " ++ show stageBytes ++ "(%rsp), %r10", "testq %rax, %rax", "jz " ++ same,
+      "movq (%r10), %r11", "movq %r11, -8(%rax)", "leaq -8(%rax), %rsp", "jmp " ++ ready,
+      same ++ ":", "movq %r10, %rsp", "jmp " ++ ready, fast ++ ":", "movq %rsp, %r10", ready ++ ":"]
+  where
+    stageBytes = ((argc*8+15) `div` 16)*16+8
+    slot i = show (i*8) ++ "(%rsp)"
+    named = take (max 0 (argc-6)) [(6,"fpr_x64_a6"),(7,"fpr_x64_a7")]
+    label s = local name (Label ("reserve_"++s))
+    slow=label "slow";fast=label "fast";same=label "same";ready=label "ready"
+
+cellOff :: String -> String
+cellOff "fpr_posix_hart" = "0"
+cellOff "fpr_x64_a6" = "8"
+cellOff "fpr_x64_a7" = "16"
+cellOff cell = error ("X64: unknown borrowed cell " ++ cell)
+loadCellFor :: X64Hart -> String -> String -> [String]
+loadCellFor hart cell dst = case hart of
+  HartTls -> ["movq %fs:" ++ cell ++ "@tpoff, " ++ dst]
+  HartBorrow -> ["movq fpr_g_tlsoff(%rip), " ++ dst,
+                 "movq %fs:" ++ cellOff cell ++ "(" ++ dst ++ "), " ++ dst]
+storeCellFor :: X64Hart -> String -> String -> [String]
+storeCellFor hart cell src = case hart of
+  HartTls -> ["movq " ++ src ++ ", %fs:" ++ cell ++ "@tpoff"]
+  HartBorrow -> let scratch = if src == "%r10" then "%r11" else "%r10" in
+    ["movq fpr_g_tlsoff(%rip), " ++ scratch,
+     "movq " ++ src ++ ", %fs:" ++ cellOff cell ++ "(" ++ scratch ++ ")"]
+
+renderItem :: X64Hart -> Layout -> Bool -> String -> [String] -> [String] -> Item -> [String]
+renderItem _ _ _ fname _ _ (ILabel l) = [local fname l ++ ":"]
+renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
   where
     indent l = if last l == ':' then l else "    " ++ l
     lbl = local fname
@@ -678,7 +729,10 @@ renderItem hart ly fname saveLines restores (I i) = map indent (go (siOp i) (siD
     call sym = ["subq $8, %rsp", "call " ++ sym, "addq $8, %rsp"]
     go op ds us = case (op,ds,us) of
       ("enter",[],[]) ->
-        ["subq $" ++ show (lyBytes ly) ++ ", %rsp",
+        if large then ["movq %rbp, %rax", "movabsq $" ++ show (lyBytes ly) ++ ", %r11",
+                       "subq %r11, %rsp", "leaq 8(%rsp,%r11), %rbp",
+                       "movq %rax, -16(%rbp)", "movq %r10, -24(%rbp)"]
+        else ["subq $" ++ show (lyBytes ly) ++ ", %rsp",
          "movq %rbp, " ++ show (lyBytes ly - 8) ++ "(%rsp)",
          "leaq " ++ show (lyBytes ly + 8) ++ "(%rsp), %rbp"]
       ("save",[],[]) -> saveLines
@@ -763,22 +817,12 @@ renderItem hart ly fname saveLines restores (I i) = map indent (go (siOp i) (siD
       _ -> error ("X64 render: no form for " ++ show (op,ds,us))
     -- the callee-saved registers come back first (rbp-relative, so after a
     -- stack-segment change they still read the frame they were saved in)
-    epilogue = restores ++ ["movq %rbp, %r11", "movq -16(%rbp), %rbp", "leaq -8(%r11), %rsp"]
+    epilogue = restores ++ ["movq %rbp, %r11", "movq -16(%rbp), %rbp"]
+      ++ [if large then "movq -24(%r11), %rsp" else "leaq -8(%r11), %rsp"]
     -- QOS publishes the host TLS displacement, shared by all hart threads.
     -- The borrow block is {hart, a6, a7}; never use the app's ELF TLS offsets.
-    cellOff "fpr_posix_hart" = "0"
-    cellOff "fpr_x64_a6" = "8"
-    cellOff "fpr_x64_a7" = "16"
-    cellOff cell = error ("X64: unknown borrowed cell " ++ cell)
-    loadCell cell dst = case hart of
-      HartTls -> ["movq %fs:" ++ cell ++ "@tpoff, " ++ dst]
-      HartBorrow -> ["movq fpr_g_tlsoff(%rip), " ++ dst,
-                     "movq %fs:" ++ cellOff cell ++ "(" ++ dst ++ "), " ++ dst]
-    storeCell cell src = case hart of
-      HartTls -> ["movq " ++ src ++ ", %fs:" ++ cell ++ "@tpoff"]
-      HartBorrow -> let scratch = if src == "%r10" then "%r11" else "%r10" in
-        ["movq fpr_g_tlsoff(%rip), " ++ scratch,
-         "movq " ++ src ++ ", %fs:" ++ cellOff cell ++ "(" ++ scratch ++ ")"]
+    loadCell = loadCellFor hart
+    storeCell = storeCellFor hart
     hartRead = loadCell "fpr_posix_hart" "%r10"
     base = siNote i
     parkArgs save = ["movq " ++ (if save then reg o ++ ", " ++ slot ref else slot ref ++ ", " ++ reg o)

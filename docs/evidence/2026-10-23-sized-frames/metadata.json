@@ -1,0 +1,72 @@
+{
+  "base_commit": "042a6d8a00b47bf0ab84dfdb4bfccec766febbba",
+  "codegen_rev": 84,
+  "rv_selection_rev": 22,
+  "plane_memory_abi": 3,
+  "compiler_sha256": "7914d0e0e70a830c27e0c1b10e672f8d6820fdc1744c6c6067c3526ec7901496",
+  "sources_sha256": {
+    ".github/workflows/ci.yml": "bdce4bb821d410096b40aaed83b197a25e7d107c8c1183604dd3a7739050aa17",
+    "compiler/Codegen.hs": "8bfdb278edbfbac97b8f2d7cd3d1ce04fb2e3ff13fd618cc60e4132bf66fec42",
+    "compiler/Codegen/Allocate.hs": "bf5ffb4a126a1b867b2b1e647ce8a867bf9e4ccaf647913e36e3888565884c33",
+    "compiler/Codegen/Target/RV.hs": "0ac7c52985a7102145be177631d2917d945e8d3005fcdc5bf1d4732edc648b11",
+    "compiler/Compile.hs": "d41ec471c3f99e6f536fa283ab619bf93252adf474ea5a3f0063e906459077a3",
+    "docs/2026-10-23-TYPED-IR-COMPLETION.md": "2111ee1e8ff8a55a5b051ddb62b896b9f98ddca397830a7d55c4f011a44cdaf0",
+    "docs/2026-10-23-TYPED-SIZED-FRAMES.md": "ddff62719ca12fcac7ab8b5827e316590522a1c172a899affb1ae42631cb5838",
+    "machine/tangnano20k/unsupported.c": "32bceeb4eed0c20ac2aad0f4c8c091fc97e8629be13440416f943986b5ba7ae5",
+    "runtime/actors.c": "1f6dd7850072e9846d1e537bf6d2b269f0bac87b32c4a0e9d495238d9fe09f16",
+    "runtime/fpr.h": "b5cba4c20a384b54e2d1a7ea16a490a54d2b0b3383abbe9dac2b8d622962427c",
+    "tests/AllocIR.hs": "b123f004dd91e817eadf4f80612ee4786c2d5df8cd8a7ce94299370a853bf380",
+    "tests/EmitRVFrames.hs": "fb9aef3d74f55c3ec037a0904d573f2f05d356cd8cebbaaf1817f3773038cd91",
+    "tests/EmitRVMixedStartup.hs": "2298cb52cca62987dee96170deeb9ab193ca82e5ca7ddb94ffda68337118e56f",
+    "tests/check_base.py": "f392994048440d88bb3a293321fa97308cbb8a4f4b133c2498dfee8b1be96099",
+    "tests/check_fixed_stack_reservation.py": "7caadaeee8cf46967b6aaae87bf7c9c9f123945b83c7943f2212f85a73d821fe",
+    "tests/check_rv32_base_codegen.py": "ebd8e4c9fded072a85fa0de22b73674f9ed42e0f878994e4ee4fd221112cd116",
+    "tests/check_rv32_float_constants.py": "635a03f3c85b1c91f8df7576686fd36ca6bbc6ca61fa3247d01d3e3c6069413d",
+    "tests/check_stack_reservation.py": "da7de236d9d8248df189e6662a891d009d420710f7f286743598fe1c451709c4",
+    "tests/check_typed_ir_arc.py": "afccc676ca22a66e063eb780e8720549f3e102ec3bc018a63845e355878f1c8a",
+    "tests/check_typed_ir_native.py": "0c210c0e984313b268203f4837a420152a68a4742e6cb96d4e6627fcf50f1c5f",
+    "tests/check_typed_ir_rv_frames.py": "82474312b2981f3040c32510e70a7bb981f66b537a6c01bbda1308d84e89c734",
+    "tests/check_typed_ir_rv_startup.py": "260923d741132d91218547e01cab2c1fbb9d78a8904681ce1d6d4b374414d92d",
+    "tests/check_x64_scalar.py": "55173060b6546a030ce862967616d4af92dde2d50964ee65053172817a286889",
+    "tests/typed_ir/runtime_reserve.c": "6d19f853a335308a19007e0e917ca2585387c6fa271f11014aeaae1f8270ee00",
+    "tests/typed_ir/rv_frames_oracle.c": "5da891df11560f570cdd072e1e0c6a2eeeb5710003a592edf57b0482db7726a4",
+    "tools/bench-rv-frames.py": "0554a4698a71ef15f1d2086e44a1e81fe18ff7fadeb46ae02464f32cbaff5364"
+  },
+  "qos_base_commit": "6879da951827ef34c04841052921fcd9a0311c47",
+  "qos_sources_sha256": {
+    "tools/build-process-app.sh": "56ebec0c24b5dd8598d0cb701d7d02d86776e987daeb4c677c9823db390ef521",
+    "tools/native-integrity-check.py": "b19ec5bee9a91dda741f1498936153fba1e0a5b5ca61a506c76f8af151e5f035",
+    "tools/native-abis.py": "c4f8fd32e929649b7f0baf644ab62a871bbe7766adb03ebaf9d8eb309e7c46e6"
+  },
+  "physical_scope": "Configured 48MHz RV32 Tang Nano; RAM uploads; codegen83 with same sized-frame implementation. Raw-byte-only change is builtin ARC, not this Base path.",
+  "physical_compiler_sha256": "9c2e2f36d70c3f25a647ec41936046edc4f46990dfa000371aa9d179670c5655",
+  "physical_images_sha256": {
+    "5": "63ae64984103826377ba658af8db6ae9a028eed2d8f5cd817216935e0cdcff53",
+    "80": "3df287c94ecd270baa69fc02cbb5871518cb7d112eaf17a4792c97905250156f"
+  },
+  "paired_result": "paired-g84.json",
+  "limitations": [
+    "Full goal remains active",
+    "Main and remotes unchanged",
+    "No hosted CI, P4 or native x64 proof",
+    "Guest instructions are not elapsed time"
+  ],
+  "base_sweep": {
+    "jobs": 121,
+    "seconds": 567,
+    "workers": 4,
+    "exit": 0
+  },
+  "qos_integrity": {
+    "virtio": [
+      1,
+      2
+    ],
+    "harts": [
+      1,
+      2
+    ],
+    "previous_memory_abi": 2,
+    "exit": 0
+  }
+}

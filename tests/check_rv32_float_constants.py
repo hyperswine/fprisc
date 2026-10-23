@@ -10,7 +10,7 @@ def run(cmd,env,timeout=180):
     assert p.returncode==0,(cmd,p.returncode,p.stdout[-2000:],p.stderr[-4000:])
     return p.stdout.replace('\r\n','\n')
 
-def build(source,out,env,*,compiler=None,extra=None,compressed=False,physical=False):
+def build(source,out,env,*,compiler=None,extra=None,compressed=False,physical=False,ldflags=()):
     out.mkdir(parents=True,exist_ok=True)
     asm=out/'base.s';compiler=compiler or ROOT/'fpr'
     run([compiler,'compile','--system=bare-metal','--profile=base','--target=rv32',
@@ -34,6 +34,7 @@ def build(source,out,env,*,compiler=None,extra=None,compressed=False,physical=Fa
          '-I'+str(soft/'source/include'),'machine/tangnano20k/softfloat.c',asm,*units,library,'-lgcc','-o',elf]
     if not physical:cmd.insert(1,'-DFPR_TANGNANO_QEMU')
     if extra:cmd[1:1]=['-Wl,--wrap=fpr_fn_main',str(extra)]
+    cmd[1:1]=list(ldflags)
     run(cmd,env)
     run([sys.executable,ROOT/'tools/check_tangnano20k_isa.py',elf,'--xlen','32',*(['--compressed'] if compressed else [])],env)
     return elf

@@ -1,0 +1,27 @@
+SHA-256: contiguous/disjoint spans, empty inputs and padding/block boundaries match hashlib HOLDS
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/qos/tools/native-integrity-check.py", line 128, in <module>
+    args.output.mkdir(parents=True,exist_ok=True);check(args.output.resolve(),args.hash_only)
+                                                  ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/qos/tools/native-integrity-check.py", line 120, in check
+    if not hash_only: native_checks(out)
+                      ~~~~~~~~~~~~~^^^^^
+  File "/Users/jasonqin/Documents/GitHub/qos/tools/native-integrity-check.py", line 108, in native_checks
+    assert 'PANIC' not in log and 'FAILED' not in log,log
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: [blk] virtio-blk v1 slot 7, 4096 pages of 4096 bytes
+nativeintegrity: BadImage refused=False
+nativeintegrity: BadReloc refused=False
+nativeintegrity: BadImport refused=False
+nativeintegrity: NoSha refused=False
+nativeintegrity: NoRelSha refused=False
+nativeintegrity: OldAbi refused=True
+nativeintegrity: OldActors refused=False
+nativeintegrity: OldMemory refused=False
+nativeintegrity: LegacyActors refused=False
+nativeintegrity: LegacyMemory refused=False
+nativeintegrity: NoPlane refused=False
+nativeintegrity: WithImport refused=False
+
+[fpr] main => nativeintegrity: process=[native runtime ABI mismatch: rebuild the process with tools/build-process-app.sh] images=0 allocations=0 FAILED
+
