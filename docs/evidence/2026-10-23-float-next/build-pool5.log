@@ -1,0 +1,28 @@
+Build profile: -w ghc-9.8.2 -O1
+In order, the following will be built (use -v for more details):
+ - fp-risc-0.12.0 (exe:fpr) (file compiler/Codegen/Target/A64.hs changed)
+Preprocessing executable 'fpr' for fp-risc-0.12.0...
+Building executable 'fpr' for fp-risc-0.12.0...
+[12 of 71] Compiling Codegen.Target.A64 ( compiler/Codegen/Target/A64.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Target/A64.o ) [Source file changed]
+
+compiler/Codegen/Target/A64.hs:768:7: error: [GHC-39999]
+    • No instance for ‘MonadFail Data.Functor.Identity.Identity’
+        arising from a do statement
+        with the failable pattern ‘t@(OV w _)’
+    • In a stmt of a 'do' block: t@(OV w _) <- fresh GPR
+      In the expression:
+        do t@(OV w _) <- fresh GPR
+           pure ([I (plain "fmov" [...] [...])], OV w constraint)
+      In an equation for ‘asWord’:
+          asWord o@(OV v constraint)
+            | S.member v floats
+            = do t@(OV w _) <- fresh GPR
+                 pure ([I (plain "fmov" ... ...)], OV w constraint)
+            | otherwise = pure ([], o)
+    |
+768 |       t@(OV w _) <- fresh GPR
+    |       ^^^^^^^^^^^^^^^^^^^^^^^
+Error: [Cabal-7125]
+Failed to build exe:fpr from fp-risc-0.12.0.
+
+make: *** [fpr] Error 1

@@ -25,7 +25,7 @@
 -- (Codegen.Eval) is the executable statement of these semantics.
 module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
-    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
+    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScheduleAt, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
     intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
@@ -103,10 +103,11 @@ ftreeRegisters (FNode _ x y) = max (ftreeRegisters x) (1 + ftreeRegisters y)
 data FloatStep = FSLeaf VId Int | FSNode FloatOp Int deriving (Eq, Ord, Show)
 
 ftreeSchedule :: FloatTree -> ([FloatStep], Int)
-ftreeSchedule t = (go 0 t, 0)
-  where
-    go n (FLeaf v) = [FSLeaf v n]
-    go n (FNode o x y) = go n x ++ go (n + 1) y ++ [FSNode o n]
+ftreeSchedule t = (ftreeScheduleAt 0 t, 0)
+
+ftreeScheduleAt :: Int -> FloatTree -> [FloatStep]
+ftreeScheduleAt n (FLeaf v) = [FSLeaf v n]
+ftreeScheduleAt n (FNode o x y) = ftreeScheduleAt n x ++ ftreeScheduleAt (n + 1) y ++ [FSNode o n]
 
 -- The RISC-V V sum strip (Kernel.rvvPrefix): at most 64 lanes a strip, each
 -- lane within the lane bound, the accumulator within the acc bound, so no
@@ -182,6 +183,9 @@ data Op
   | OFloatBin FloatOp VId VId -- TVal TVal -> TVal: F64 arithmetic on the bits, inline (Codegen.inlineTable F64.+ - * /)
   | OFloatCmp CmpOp VId VId -- TVal TVal -> TPred: F64 ordered comparison (false on a NaN), != is its negation (true on a NaN)
   | OFloatTree FloatTree -- TVal leaves -> TVal: a tree of F64 operations in the scratch floating-point registers, one move in per leaf, one out (Simplify.fuseFloatTrees)
+  | OFloatCmpTree CmpOp FloatTree FloatTree -- TVal leaves -> TPred, scratch roots 0/1
+  | OFloat32Tree FloatTree -- F32 operations, rounded at every node
+  | OFloat32CmpTree CmpOp FloatTree FloatTree
   | OFloat32Bin FloatOp VId VId -- TVal TVal -> TVal: F32 arithmetic on the low 32 bits of the word (the runtime's F32 word), inline (the legacy genU F32.+ - * /)
   | OFloat32Cmp CmpOp VId VId -- TVal TVal -> TPred: F32 ordered comparison, as OFloatCmp
   | OSafepointN Int -- n fuel ticks at once: a NEON pair charges both elements' callback entry ticks, as the legacy kernel does
@@ -272,6 +276,9 @@ opEffect = \case
   OBits _ -> Pure
   OFloatBin _ _ _ -> Pure
   OFloatCmp _ _ _ -> Pure
+  OFloatCmpTree _ _ _ -> Pure
+  OFloat32CmpTree _ _ _ -> Pure
+  OFloat32Tree _ -> Pure
   OFloatTree _ -> Pure
   OFloat32Bin _ _ _ -> Pure
   OFloat32Cmp _ _ _ -> Pure
@@ -318,6 +325,9 @@ opUses = \case
   OBits _ -> []
   OFloatBin _ a b -> [a, b]
   OFloatCmp _ a b -> [a, b]
+  OFloatCmpTree _ a b -> ftreeLeaves a ++ ftreeLeaves b
+  OFloat32CmpTree _ a b -> ftreeLeaves a ++ ftreeLeaves b
+  OFloat32Tree t -> ftreeLeaves t
   OFloatTree t -> ftreeLeaves t
   OFloat32Bin _ a b -> [a, b]
   OFloat32Cmp _ a b -> [a, b]
@@ -374,6 +384,9 @@ mapOpUses f = \case
   OBits n -> OBits n
   OFloatBin o a b -> OFloatBin o (f a) (f b)
   OFloatCmp o a b -> OFloatCmp o (f a) (f b)
+  OFloatCmpTree o a b -> OFloatCmpTree o (ftreeMap f a) (ftreeMap f b)
+  OFloat32CmpTree o a b -> OFloat32CmpTree o (ftreeMap f a) (ftreeMap f b)
+  OFloat32Tree t -> OFloat32Tree (ftreeMap f t)
   OFloatTree t -> OFloatTree (ftreeMap f t)
   OFloat32Bin o a b -> OFloat32Bin o (f a) (f b)
   OFloat32Cmp o a b -> OFloat32Cmp o (f a) (f b)

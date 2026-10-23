@@ -1,0 +1,857 @@
+diff --git a/compiler/Build.hs b/compiler/Build.hs
+index 6285294..4e50151 100644
+--- a/compiler/Build.hs
++++ b/compiler/Build.hs
+@@ -311,7 +311,7 @@ runKey p = do
+   stamps <- mapM stamp (self : (home </> "core" </> "prelude.fpr") : rtFiles ++ pWith p)
+   bodies <- mapM readFileStrict srcs
+   foreignDecls <- lookupEnv "FPR_FOREIGN"
+-  modes <- mapM lookupEnv ["FPR_COSTED_REGISTERS", "FPR_COMPACT_FRAMES", "FPR_RETAINED_REGISTERS", "FPR_SELF_LOOPS", "FPR_NO_PIPELINE_INLINE", "FPR_NO_REUSE", "FPR_NO_VEC_FUSE", "FPR_NO_VEC_SIMD", "FPR_NO_SCALAR_WORKERS", "FPR_NO_FIELD_WORKERS", "FPR_COST_PROBE", "FPR_NO_REGISTERS", "FPR_NO_F64_INLINE", "FPR_NO_INLINE", "FPR_NO_VEC_PEEK", "FPR_NO_SPEC", "FPR_NO_RV32_FAST", "FPR_NO_INDEXED_MEMORY", "FPR_TYPED_IR_BACKEND", "FPR_TYPED_IR_STRICT", "FPR_TYPED_IR_SELF_LOOPS", "FPR_TYPED_IR_SHALLOW_STACK", "FPR_TYPED_IR_FORWARD_PARAMS", "FPR_TYPED_IR_ENTRY_ARGS", "FPR_TYPED_IR_SPLIT_ENTRY", "FPR_TYPED_IR_SHRINK_WRAP", "FPR_TYPED_IR_LINK_PAIRS"]
++  modes <- mapM lookupEnv ["FPR_COSTED_REGISTERS", "FPR_COMPACT_FRAMES", "FPR_RETAINED_REGISTERS", "FPR_SELF_LOOPS", "FPR_NO_PIPELINE_INLINE", "FPR_NO_REUSE", "FPR_NO_VEC_FUSE", "FPR_NO_VEC_SIMD", "FPR_NO_SCALAR_WORKERS", "FPR_NO_FIELD_WORKERS", "FPR_COST_PROBE", "FPR_NO_REGISTERS", "FPR_NO_F64_INLINE", "FPR_NO_INLINE", "FPR_NO_VEC_PEEK", "FPR_NO_SPEC", "FPR_NO_RV32_FAST", "FPR_NO_INDEXED_MEMORY", "FPR_TYPED_IR_BACKEND", "FPR_TYPED_IR_STRICT", "FPR_TYPED_IR_SELF_LOOPS", "FPR_TYPED_IR_FP_POOL", "FPR_TYPED_IR_SHALLOW_STACK", "FPR_TYPED_IR_FORWARD_PARAMS", "FPR_TYPED_IR_ENTRY_ARGS", "FPR_TYPED_IR_SPLIT_ENTRY", "FPR_TYPED_IR_SHRINK_WRAP", "FPR_TYPED_IR_LINK_PAIRS"]
+   let text = unlines (srcs ++ bodies ++ stamps ++ [show (pHarts p), show (pCC p), unwords (pCFlags p ++ pLink p), show foreignDecls, show modes])
+   pure (showHex (fnv64 text) "")
+   where
+diff --git a/compiler/Codegen.hs b/compiler/Codegen.hs
+index 12e5867..486356e 100644
+--- a/compiler/Codegen.hs
++++ b/compiler/Codegen.hs
+@@ -69,7 +69,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
+ -- bump on ANY change to emitted code: it keys the build/units cache
+ -- (a unit's content hash names its SOURCE, not its compilation)
+ codegenRev :: Int
+-codegenRev = 71 -- typed record/SoA map, filter and fold kernels
++codegenRev = 72 -- F64 comparison trees, F32 trees and hosted A64 FP allocation
+ 
+ -- Target word parameterization: everything the emitted assembly does
+ -- that depends on XLEN funnels through these five fields.  The value
+diff --git a/compiler/Codegen/Allocate.hs b/compiler/Codegen/Allocate.hs
+index 0f70710..9529713 100644
+--- a/compiler/Codegen/Allocate.hs
++++ b/compiler/Codegen/Allocate.hs
+@@ -12,9 +12,9 @@
+ --     set the scheduler's context switch preserves: x19..x27 on AArch64,
+ --     rbx and r12..r15 on x86-64) or in a frame slot, never anywhere else;
+ --     a value that crosses no such point may take a caller-saved register;
+---   * no float register is ever allocated (M3 has no float values; the
+---     register says the context switch saves none, so a float pool would
+---     have to be caller-saved only, which a later milestone decides);
++--   * each value keeps its register class. A floating-point bank is
++--     admitted only when the target supplies it; floats crossing calls
++--     require the same scheduler-preserved budget as integer values;
+ --   * a value never sits in a register an instruction inside its live range
+ --     names for another purpose (a fixed operand, an implicit use or
+ --     definition, a clobber); fixed operands are met by copies around the
+@@ -122,11 +122,16 @@ allocateFn cfg fn = do
+       instrs = lvInstrs lv
+       byPos = IM.fromList instrs
+       ivs = lvIntervals lv
+-  -- no float values: refused by name rather than placed wrongly
+-  forM_ instrs $ \(_, i) -> forM_ (instrVRegs i) $ \(v, c) -> case c of
+-    Any FPR -> Left (here ++ show v ++ ": float registers are not allocated in M3")
+-    Fix p | acClassOf cfg p == Just FPR -> Left (here ++ show v ++ ": float registers are not allocated in M3")
+-    _ -> pure ()
++  -- A class is admitted only when the target supplies its register bank.
++  let classOfConstraint (Any c) = Just c
++      classOfConstraint (Fix r) = acClassOf cfg r
++      classOfConstraint (Tied _) = Nothing
++      classes = M.fromList [(v,c) | (_,i) <- instrs, (v,k) <- instrVRegs i, Just c <- [classOfConstraint k]]
++  forM_ [(v,c) | (_,i) <- instrs, (v,k) <- instrVRegs i, Just c <- [classOfConstraint k]] $ \(v,c) ->
++    unless (any ((== Just c) . acClassOf cfg) (acCalleeSaved cfg ++ acCallerSaved cfg)) $
++      Left (here ++ show v ++ ": float registers are not allocated by this target")
++  forM_ [(v,c) | (_,i) <- instrs, (v,k) <- instrVRegs i, Just c <- [classOfConstraint k]] $ \(v,c) ->
++    unless (M.lookup v classes == Just c) (Left (here ++ show v ++ ": inconsistent register classes") )
+   when (length (acScratch cfg) < 2) (Left (here ++ "fewer than two scratch registers"))
+   let liveAt p = fromMaybe (IS.empty, IS.empty) (IM.lookup p (lvLive lv))
+       vn (VReg n) = n
+@@ -193,8 +198,8 @@ allocateFn cfg fn = do
+         Nothing -> False
+       prefs v iv =
+         let forb = forbidden v iv
+-            callee = filter (`S.notMember` forb) (acCalleeSaved cfg)
+-            caller = filter (`S.notMember` forb) (acCallerSaved cfg)
++            callee = filter (\r -> S.notMember r forb && acClassOf cfg r == M.lookup v classes) (acCalleeSaved cfg)
++            caller = filter (\r -> S.notMember r forb && acClassOf cfg r == M.lookup v classes) (acCallerSaved cfg)
+          in if crossesCallV v then callee else if crossesClobberV v then callee ++ caller else caller ++ callee
+       tiedOtherUses v p = case IM.lookup p byPos of
+         Just i | not (null [() | OV d (Tied _) <- siDefs i, d == v]) ->
+@@ -391,10 +396,10 @@ rewrite cfg here locOf _ i = do
+               l <- locUse u
+               case c of
+                 Fix r -> pure (acc ++ [OP r], pool, pre ++ [(PR r, toPlace l)])
+-                Any _ -> case l of
++                Any cls -> case l of
+                   InReg r -> pure (acc ++ [OP r], pool, pre)
+-                  InSlot s -> case pool of
+-                    (sc : rest) -> pure (acc ++ [OP sc], rest, pre ++ [(PR sc, PS s)])
++                  InSlot s -> case filter ((== Just cls) . acClassOf cfg) pool of
++                    (sc : _) -> pure (acc ++ [OP sc], filter (/= sc) pool, pre ++ [(PR sc, PS s)])
+                     [] -> Left (here ++ siOp i ++ ": no scratch register free for a reload")
+                 Tied _ -> Left (here ++ siOp i ++ ": a tied use operand")
+         _ -> pure (acc ++ [o], pool, pre)
+@@ -429,13 +434,13 @@ rewrite cfg here locOf _ i = do
+             Just (InReg r') | r' /= r -> [(PR r', PR r)]
+             Just (InSlot s) -> [(PS s, PR r)]
+             _ -> [])
+-          Any _ -> case locOf d of
++          Any cls -> case locOf d of
+             Just (InReg r) -> pure (acc ++ [OP r], pool, post)
+-            Just (InSlot s) -> case pool of
+-              (sc : rest) -> pure (acc ++ [OP sc], rest, post ++ [(PS s, PR sc)])
++            Just (InSlot s) -> case filter ((== Just cls) . acClassOf cfg) pool of
++              (sc : _) -> pure (acc ++ [OP sc], filter (/= sc) pool, post ++ [(PS s, PR sc)])
+               [] -> Left (here ++ siOp i ++ ": no scratch register free for a spilled definition")
+-            Nothing -> case pool of -- dead: written and dropped
+-              (sc : rest) -> pure (acc ++ [OP sc], rest, post)
++            Nothing -> case filter ((== Just cls) . acClassOf cfg) pool of -- dead: written and dropped
++              (sc : _) -> pure (acc ++ [OP sc], filter (/= sc) pool, post)
+               [] -> Left (here ++ siOp i ++ ": no scratch register free for a dead definition")
+         _ -> pure (acc ++ [o], pool, post)
+   (defs', _, post) <- foldlM dstep ([], defPool, []) (siDefs i)
+@@ -484,7 +489,7 @@ resolveCopies cfg here raw = do
+               -- every destination is a source: a cycle (sources are all registers)
+               let (_, s) = head pending
+                   used = S.fromList ([d' | (d', _) <- pending] ++ sources)
+-               in case [t | t <- acScratch cfg, S.notMember t used] of
++               in case [t | t <- acScratch cfg, S.notMember t used, case s of PR sr -> acClassOf cfg t == acClassOf cfg sr; _ -> False] of
+                     (t : _) -> case s of
+                       PR sr ->
+                         let pending' = [(d', if s' == PR sr then PR t else s') | (d', s') <- pending]
+@@ -497,8 +502,8 @@ resolveCopies cfg here raw = do
+ -- The independent oracle over the physical stream: liveness of physical
+ -- registers, then (1) no clobbered register is live out of the
+ -- instruction that clobbers it, (2) nothing outside the preserved set is
+--- live across an instruction with a call, (3) no float register is live
+--- across a call.  The arrival's registers are the function's live-in set
++-- live across an instruction with a call, (3) float registers crossing a
++-- call belong to the explicitly preserved bank.  The arrival's registers are the function's live-in set
+ -- and are expected; a register live into the function that no instruction
+ -- defines is reported unless it is preserved (the hart register, sp, fp).
+ checkAllocation :: AllocConfig -> String -> [Item] -> Either String ()
+@@ -519,7 +524,7 @@ checkAllocation cfg name items = do
+     unless (null (siCalls i)) $ do
+       let across = [p | p <- IS.toList out, IS.notMember p (IS.fromList (defsOf i)), IS.notMember p preserved]
+       unless (null across) $ Left (where' ++ "live across a call outside the preserved set: " ++ show (map name' across))
+-      let floats = [p | p <- IS.toList out, acClassOf cfg (name' p) == Just FPR]
++      let floats = [p | p <- IS.toList out, acClassOf cfg (name' p) == Just FPR, IS.notMember p preserved]
+       unless (null floats) $ Left (where' ++ "a float register is live across a call")
+   -- registers live into the function: the arrival's and the preserved ones only
+   case sets of
+diff --git a/compiler/Codegen/Dump.hs b/compiler/Codegen/Dump.hs
+index 0909e9c..84b5f7f 100644
+--- a/compiler/Codegen/Dump.hs
++++ b/compiler/Codegen/Dump.hs
+@@ -57,6 +57,9 @@ dumpFn fn =
+       OBits n -> "bits " ++ show n
+       OFloatBin o a b -> "fbin " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ value a ++ ", " ++ value b
+       OFloatCmp o a b -> "fcmp " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
++      OFloatCmpTree o a b -> "fcmp-tree " ++ cmpSymbol o ++ " " ++ ftreeText a ++ ", " ++ ftreeText b
++      OFloat32CmpTree o a b -> "fcmp32-tree " ++ cmpSymbol o ++ " " ++ ftreeText a ++ ", " ++ ftreeText b
++      OFloat32Tree t -> "ftree32 " ++ ftreeText t
+       OFloatTree t -> "ftree " ++ ftreeText t
+       OFloat32Bin o a b -> "fbin32 " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ value a ++ ", " ++ value b
+       OFloat32Cmp o a b -> "fcmp32 " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
+diff --git a/compiler/Codegen/Eval.hs b/compiler/Codegen/Eval.hs
+index a707450..020e15b 100644
+--- a/compiler/Codegen/Eval.hs
++++ b/compiler/Codegen/Eval.hs
+@@ -182,6 +182,9 @@ callFn width program name args = do
+         OBits _ -> stuck "a raw-bits constant (an F64 literal): the evaluator models no floats"
+         OFloatBin _ _ _ -> stuck "an inline F64 operation: the evaluator models no floats (F64 values come from C entries it does not model either)"
+         OFloatCmp _ _ _ -> stuck "an inline F64 comparison: the evaluator models no floats"
++        OFloatCmpTree {} -> stuck "a comparison tree: the evaluator models no floats"
++        OFloat32CmpTree {} -> stuck "a comparison tree: the evaluator models no floats"
++        OFloat32Tree _ -> stuck "an F32 tree: the evaluator models no floats"
+         OFloatTree _ -> stuck "a float tree: the evaluator models no floats"
+         OFloat32Bin _ _ _ -> stuck "an inline F32 operation: the evaluator models no floats"
+         OFloat32Cmp _ _ _ -> stuck "an inline F32 comparison: the evaluator models no floats"
+diff --git a/compiler/Codegen/IR.hs b/compiler/Codegen/IR.hs
+index af7e85e..c695189 100644
+--- a/compiler/Codegen/IR.hs
++++ b/compiler/Codegen/IR.hs
+@@ -25,7 +25,7 @@
+ -- (Codegen.Eval) is the executable statement of these semantics.
+ module Codegen.IR
+   ( Name, VId (..), BId (..), Width (..), Ty (..),
+-    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
++    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScheduleAt, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
+     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
+     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
+     intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
+@@ -103,10 +103,11 @@ ftreeRegisters (FNode _ x y) = max (ftreeRegisters x) (1 + ftreeRegisters y)
+ data FloatStep = FSLeaf VId Int | FSNode FloatOp Int deriving (Eq, Ord, Show)
+ 
+ ftreeSchedule :: FloatTree -> ([FloatStep], Int)
+-ftreeSchedule t = (go 0 t, 0)
+-  where
+-    go n (FLeaf v) = [FSLeaf v n]
+-    go n (FNode o x y) = go n x ++ go (n + 1) y ++ [FSNode o n]
++ftreeSchedule t = (ftreeScheduleAt 0 t, 0)
++
++ftreeScheduleAt :: Int -> FloatTree -> [FloatStep]
++ftreeScheduleAt n (FLeaf v) = [FSLeaf v n]
++ftreeScheduleAt n (FNode o x y) = ftreeScheduleAt n x ++ ftreeScheduleAt (n + 1) y ++ [FSNode o n]
+ 
+ -- The RISC-V V sum strip (Kernel.rvvPrefix): at most 64 lanes a strip, each
+ -- lane within the lane bound, the accumulator within the acc bound, so no
+@@ -182,6 +183,9 @@ data Op
+   | OFloatBin FloatOp VId VId -- TVal TVal -> TVal: F64 arithmetic on the bits, inline (Codegen.inlineTable F64.+ - * /)
+   | OFloatCmp CmpOp VId VId -- TVal TVal -> TPred: F64 ordered comparison (false on a NaN), != is its negation (true on a NaN)
+   | OFloatTree FloatTree -- TVal leaves -> TVal: a tree of F64 operations in the scratch floating-point registers, one move in per leaf, one out (Simplify.fuseFloatTrees)
++  | OFloatCmpTree CmpOp FloatTree FloatTree -- TVal leaves -> TPred, scratch roots 0/1
++  | OFloat32Tree FloatTree -- F32 operations, rounded at every node
++  | OFloat32CmpTree CmpOp FloatTree FloatTree
+   | OFloat32Bin FloatOp VId VId -- TVal TVal -> TVal: F32 arithmetic on the low 32 bits of the word (the runtime's F32 word), inline (the legacy genU F32.+ - * /)
+   | OFloat32Cmp CmpOp VId VId -- TVal TVal -> TPred: F32 ordered comparison, as OFloatCmp
+   | OSafepointN Int -- n fuel ticks at once: a NEON pair charges both elements' callback entry ticks, as the legacy kernel does
+@@ -272,6 +276,9 @@ opEffect = \case
+   OBits _ -> Pure
+   OFloatBin _ _ _ -> Pure
+   OFloatCmp _ _ _ -> Pure
++  OFloatCmpTree _ _ _ -> Pure
++  OFloat32CmpTree _ _ _ -> Pure
++  OFloat32Tree _ -> Pure
+   OFloatTree _ -> Pure
+   OFloat32Bin _ _ _ -> Pure
+   OFloat32Cmp _ _ _ -> Pure
+@@ -318,6 +325,9 @@ opUses = \case
+   OBits _ -> []
+   OFloatBin _ a b -> [a, b]
+   OFloatCmp _ a b -> [a, b]
++  OFloatCmpTree _ a b -> ftreeLeaves a ++ ftreeLeaves b
++  OFloat32CmpTree _ a b -> ftreeLeaves a ++ ftreeLeaves b
++  OFloat32Tree t -> ftreeLeaves t
+   OFloatTree t -> ftreeLeaves t
+   OFloat32Bin _ a b -> [a, b]
+   OFloat32Cmp _ a b -> [a, b]
+@@ -374,6 +384,9 @@ mapOpUses f = \case
+   OBits n -> OBits n
+   OFloatBin o a b -> OFloatBin o (f a) (f b)
+   OFloatCmp o a b -> OFloatCmp o (f a) (f b)
++  OFloatCmpTree o a b -> OFloatCmpTree o (ftreeMap f a) (ftreeMap f b)
++  OFloat32CmpTree o a b -> OFloat32CmpTree o (ftreeMap f a) (ftreeMap f b)
++  OFloat32Tree t -> OFloat32Tree (ftreeMap f t)
+   OFloatTree t -> OFloatTree (ftreeMap f t)
+   OFloat32Bin o a b -> OFloat32Bin o (f a) (f b)
+   OFloat32Cmp o a b -> OFloat32Cmp o (f a) (f b)
+diff --git a/compiler/Codegen/Simplify.hs b/compiler/Codegen/Simplify.hs
+index fbe047c..3385e57 100644
+--- a/compiler/Codegen/Simplify.hs
++++ b/compiler/Codegen/Simplify.hs
+@@ -185,23 +185,28 @@ fuseFloatTrees fn = fn {fnBlocks = map blk (fnBlocks fn)}
+   where
+     uses = M.fromListWith (+) [(v, 1 :: Int) | b <- fnBlocks fn, v <- concatMap (\(Instr _ op) -> opUses op) (bInstrs b) ++ termUses (bTerm b)]
+     once v = M.lookup v uses == Just 1
+-    blk b = b {bInstrs = go M.empty (bInstrs b)}
+-    go _ [] = []
+-    go cands (Instr (Just (v, ty)) op : rest)
+-      | Just (tree, fused) <- treeOf cands op =
+-          let op' = if fused then OFloatTree tree else op
+-              cands' = if once v then M.insert v tree cands else cands
+-           in Instr (Just (v, ty)) op' : go cands' rest
+-    go cands (i : rest) = i : go cands rest
+-    -- the operation as a tree over the block's single-use float results; the
+-    -- flag says whether any leaf was replaced by its definition
+-    treeOf cands (OFloatBin o a b) = Just (fuse cands o a b)
+-    treeOf cands (OFloatTree (FNode o x y)) = Just (fuseTrees cands o x y)
+-    treeOf _ _ = Nothing
+-    fuse cands o a b = fuseTrees cands o (FLeaf a) (FLeaf b)
+-    fuseTrees cands o x y =
+-      let x' = graft cands x; y' = graft cands y
+-          whole = FNode o x' y'
+-       in if ftreeRegisters whole <= ftreeScratch && whole /= FNode o x y then (whole, True) else (FNode o x y, False)
++    blk b = b {bInstrs = go M.empty M.empty (bInstrs b)}
++    go _ _ [] = []
++    go ds ss (Instr (Just (v, ty)) op : rest)
++      | Just (single, tree, fused) <- treeOf ds ss op =
++          let op' = if fused then (if single then OFloat32Tree else OFloatTree) tree else op
++              add m = if once v then M.insert v tree m else m
++           in Instr (Just (v, ty)) op' : go (if single then ds else add ds) (if single then add ss else ss) rest
++      | Just op' <- comparison ds ss op = Instr (Just (v, ty)) op' : go ds ss rest
++    go ds ss (i@(Instr _ op) : rest) = i : (if opEffect op == Pure then go ds ss else go M.empty M.empty) rest
++    treeOf ds _ (OFloatBin o a b) = Just (False, fst (fuse ds o a b), snd (fuse ds o a b))
++    treeOf _ ss (OFloat32Bin o a b) = Just (True, fst (fuse ss o a b), snd (fuse ss o a b))
++    treeOf _ _ _ = Nothing
++    comparison ds _ (OFloatCmp o a b) = cmp ds (OFloatCmpTree o) a b
++    comparison _ ss (OFloat32Cmp o a b) = cmp ss (OFloat32CmpTree o) a b
++    comparison _ _ _ = Nothing
++    cmp cands ctor a b =
++      let x = graft cands (FLeaf a); y = graft cands (FLeaf b)
++       in if (x /= FLeaf a || y /= FLeaf b) && max (ftreeRegisters x) (1 + ftreeRegisters y) <= ftreeScratch
++          then Just (ctor x y) else Nothing
++    fuse cands o a b =
++      let whole = FNode o (graft cands (FLeaf a)) (graft cands (FLeaf b))
++          original = FNode o (FLeaf a) (FLeaf b)
++       in if ftreeRegisters whole <= ftreeScratch && whole /= original then (whole, True) else (original, False)
+     graft cands (FLeaf v) = M.findWithDefault (FLeaf v) v cands
+     graft cands (FNode o x y) = FNode o (graft cands x) (graft cands y)
+diff --git a/compiler/Codegen/Target/A64.hs b/compiler/Codegen/Target/A64.hs
+index 70cb284..5c6d78a 100644
+--- a/compiler/Codegen/Target/A64.hs
++++ b/compiler/Codegen/Target/A64.hs
+@@ -56,7 +56,7 @@
+ --     order are the primitive's.
+ module Codegen.Target.A64
+   ( A64Config (..), ObjectFormat (..), HartAccess (..), NativeFn (..),
+-    a64InterfaceRev, a64SelectionRev, emitFnA64, a64RegisterFile, mangleName, functionSymbol,
++    a64InterfaceRev, a64HostedInterfaceRev, a64SelectionRev, emitFnA64, a64RegisterFile, mangleName, functionSymbol,
+     placement, allocConfig,
+   ) where
+ 
+@@ -82,10 +82,14 @@ import Codegen.Target.Common
+ a64InterfaceRev :: Int
+ a64InterfaceRev = 15
+ 
++-- Hosted context now preserves d8..d15; old hosts must refuse new modules.
++a64HostedInterfaceRev :: Int
++a64HostedInterfaceRev = 16
++
+ -- bump when the selection, placement, layout or rendering changes what is
+ -- emitted (a unit-cache and run-cache identity component)
+ a64SelectionRev :: Int
+-a64SelectionRev = 20 -- generic HAL partial/opaque application; prior 19: inferred boxed I64 operators; prior 18: inference-generated vector runtime entries; prior 17: typed column memory and kernel arithmetic; prior: 16: posix modules reach external symbols through the GOT; 15: units with no legacy code skip translation; 14: in-place constructor reuse; 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
++a64SelectionRev = 21 -- hosted FP pool and comparison/F32 trees; prior: generic HAL partial/opaque application; prior 19: inferred boxed I64 operators; prior 18: inference-generated vector runtime entries; prior 17: typed column memory and kernel arithmetic; prior: 16: posix modules reach external symbols through the GOT; 15: units with no legacy code skip translation; 14: in-place constructor reuse; 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
+ 
+ -- how generated code reaches the hart block
+ data HartAccess
+@@ -124,7 +128,7 @@ a64RegisterFile = RegisterFile classOf reserved
+ -- what a C call destroys (AAPCS64 caller-saved integer registers and the
+ -- link register); x18 is the platform register and never holds a value
+ callerSaved :: [Phys]
+-callerSaved = map x ([0 .. 17] ++ [30])
++callerSaved = map x ([0 .. 17] ++ [30]) ++ map (Phys . ("d" ++) . show) ([0..7] ++ [16..31 :: Int])
+ 
+ -- the placement's scratch: caller-saved registers the runtime ABI leaves
+ -- free and the expansions do not use (x16/x17 are the expansions')
+@@ -471,12 +475,28 @@ selectInstr _ _ (Instr d op) = case op of
+   OFloatBin o a b -> def (\r -> emitI (rrr ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) r (vreg a) (vreg b)))
+   OFloatCmp o a b -> def (\r -> emitI ((rrr ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) r (vreg a) (vreg b)) {siFlags = FlagsDef}))
+   OFloat32Bin o a b -> def (\r -> emitI (rrr ("fbin32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) r (vreg a) (vreg b)))
++  OFloatCmpTree o x y -> def (\r -> do
++    forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
++      FSLeaf v n -> emitI (plain "ftree.leaf" [] [any' (vreg v), OI (fromIntegral n)])
++      FSNode f n -> emitI (plain ("ftree." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
++    emitI ((plain ("ftree.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] []) {siFlags = FlagsDef}))
++  OFloat32CmpTree o x y -> def (\r -> do
++    forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
++      FSLeaf v n -> emitI (plain "ftree32.leaf" [] [any' (vreg v), OI (fromIntegral n)])
++      FSNode f n -> emitI (plain ("ftree32." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
++    emitI ((plain ("ftree32.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] []) {siFlags = FlagsDef}))
+   OFloatTree t -> def (\r -> do
+     let (steps, root) = ftreeSchedule t
+     forM_ steps $ \case
+       FSLeaf v n -> emitI (plain "ftree.leaf" [] [any' (vreg v), OI (fromIntegral n)])
+       FSNode o n -> emitI (plain ("ftree." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
+     emitI (plain "ftree.out" [any' r] [OI (fromIntegral root)]))
++  OFloat32Tree t -> def (\r -> do
++    let (steps, root) = ftreeSchedule t
++    forM_ steps $ \case
++      FSLeaf v n -> emitI (plain "ftree32.leaf" [] [any' (vreg v), OI (fromIntegral n)])
++      FSNode o n -> emitI (plain ("ftree32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
++    emitI (plain "ftree32.out" [any' r] [OI (fromIntegral root)]))
+   OFloat32Cmp o a b -> def (\r -> emitI ((rrr ("fcmp32." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) r (vreg a) (vreg b)) {siFlags = FlagsDef}))
+   OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
+   OCmp o a b -> def $ \r -> do
+@@ -709,15 +729,15 @@ placement managed =
+ allocConfig :: Maybe String -> S.Set VReg -> AllocConfig
+ allocConfig self managed =
+   AllocConfig
+-    { acCalleeSaved = calleeBudget,
+-      acCallerSaved = callerPool,
+-      acScratch = allocScratch,
++    { acCalleeSaved = calleeBudget ++ map (Phys . ("d" ++) . show) [8..15 :: Int],
++      acCallerSaved = callerPool ++ map (Phys . ("d" ++) . show) [2..7 :: Int],
++      acScratch = allocScratch ++ [Phys "d0", Phys "d1"],
+       acPreserved = [x 29, Phys "sp", x 28],
+       -- x0..x7, then the ninth and later from the hart spill cells
+       acArrival = \params -> plain "params" (zipWith fix (take 8 params) (map x [0 ..])) [] : zipWith loadSpill (drop 8 params) [0 ..],
+       acLoad = \p ref -> plain "ldr" [OP p] [OF ref 0],
+       acStore = \p ref -> plain "str" [] [OP p, OF ref 0],
+-      acMove = \d s' -> plain "mov" [OP d] [OP s'],
++      acMove = \d s' -> plain (if rfClassOf a64RegisterFile d == Just FPR || rfClassOf a64RegisterFile s' == Just FPR then "fmov" else "mov") [OP d] [OP s'],
+       acSlot = \n v -> frameObj n 8 8 (SpillSlot n) (S.member v managed),
+       -- every A64 form with a definition and register uses is one
+       -- instruction, or writes only its own definition (la: adrp then add);
+@@ -729,6 +749,43 @@ allocConfig self managed =
+       acSelfLoop = self
+     }
+ 
++-- Floating results have their own virtual register class. Function/block
++-- parameters keep the word ABI; non-float uses receive a bit-preserving move.
++-- Tree scratch d16..d23 and SIMD scratch are disjoint from the pool d8..d15.
++floatPool :: SFn -> SFn
++floatPool fn = fn {sfBody = evalState (concat <$> mapM item (sfBody fn)) start}
++  where
++    floats = S.fromList [v | I i <- sfBody fn, floatingDef (siOp i), OV v _ <- siDefs i]
++    floatingDef op = any (\p -> take (length p) op == p) ["fbin.","fbin32."] || op `elem` ["ftree.out","ftree32.out"]
++    start = 1 + maximum (0 : [n | I i <- sfBody fn, OV (VReg n) _ <- siDefs i ++ siUses i])
++    fresh :: RegClass -> State Int Operand
++    fresh cls = do n <- get; put (n+1); pure (OV (VReg n) (Any cls))
++    fp v = OV v (Any FPR)
++    asFloat o@(OV v _) | S.member v floats = pure ([], fp v)
++                      | otherwise = do t <- fresh FPR; pure ([I (plain "fmov" [t] [o])], t)
++    asFloat _ = error "A64 float pool: non-register float operand"
++    asWord o@(OV v constraint) | S.member v floats = do
++      t <- fresh GPR
++      let use = case t of OV w _ -> OV w constraint; _ -> error "A64 pool: invalid fresh operand"
++      pure ([I (plain "fmov" [t] [fp v])], use)
++                     | otherwise = pure ([],o)
++    asWord o = pure ([],o)
++    item (ILabel l) = pure [ILabel l]
++    item (I i)
++      | Just op <- lookupPrefix (siOp i) [("fbin.","pool.bin64."),("fbin32.","pool.bin32."),("fcmp.","pool.cmp64."),("fcmp32.","pool.cmp32.")] = do
++          args <- mapM asFloat (siUses i)
++          pure (concatMap fst args ++ [I i {siOp=op,siDefs=map def (siDefs i),siUses=map snd args}])
++      | siOp i `elem` ["ftree.out","ftree32.out"] = pure [I i {siOp="pool." ++ siOp i,siDefs=map def (siDefs i)}]
++      | siOp i `elem` ["ftree.leaf","ftree32.leaf"], OV v _ : rest <- siUses i, S.member v floats =
++          pure [I i {siOp="pool." ++ siOp i,siUses=fp v:rest}]
++      | otherwise = do
++          args <- mapM asWord (siUses i)
++          pure (concatMap fst args ++ [I i {siUses=map snd args}])
++    def (OV v _) | S.member v floats = fp v
++    def o = o
++    lookupPrefix _ [] = Nothing
++    lookupPrefix op ((old,new):rest) = case stripPrefix old op of Just tail' -> Just (new++tail'); Nothing -> lookupPrefix op rest
++
+ -- the saved callee-saved registers as frame objects, one word each,
+ -- adjacent in creation order so the renderer can pair them
+ savedObjs :: [Phys] -> [FrameObj]
+@@ -737,9 +794,12 @@ savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) Fa
+ emitFnA64 :: A64Config -> Fn -> Either String NativeFn
+ emitFnA64 cfg fn = do
+   (sel0, managed, nulls, strs) <- select cfg fn
+-  let (sel, entrySlots) = forwardEntry (cfgForwardParams cfg && cfgHart cfg /= HartTlvMachO) (tuneEntryArgs (cfgTune cfg)) (map x [0..7]) fn sel0
++  let pooled = if polProfile (cfgPolicy cfg) == QosApp || not (tuneFpPool (cfgTune cfg)) then sel0 else floatPool sel0
++      fpValues = S.fromList [v | I i <- sfBody pooled, OV v (Any FPR) <- siDefs i ++ siUses i]
++      poolManaged = S.difference managed fpValues
++      (sel, entrySlots) = forwardEntry (cfgForwardParams cfg && cfgHart cfg /= HartTlvMachO) (tuneEntryArgs (cfgTune cfg)) (map x [0..7]) fn pooled
+   either (\e -> Left ("compiler error: " ++ e)) Right (checkFn a64RegisterFile sel)
+-  let ac = allocConfig (if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing) managed
++  let ac = allocConfig (if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing) poolManaged
+   alloc <- either (\e -> Left ("compiler error: " ++ e)) Right (allocateFn ac sel)
+   either (\e -> Left ("compiler error: " ++ e)) Right (checkAllocation ac (fnName fn) (alBody alloc))
+   let saves = savedObjs (alSaved alloc)
+@@ -804,7 +864,7 @@ savePairs ly = go
+     off o = fromIntegral (M.findWithDefault (error "A64: a saved register without an offset") (foRef o) (lyOffset ly)) :: Integer
+     nameOf o = case foKind o of SavedRegister p -> p; _ -> error "A64: not a saved register"
+     go (a : b : rest)
+-      | off b == off a - 8, pairable (off b) = ([nameOf b, nameOf a], off b) : go rest
++      | off b == off a - 8, pairable (off b), take 1 (nameOf a) == take 1 (nameOf b) = ([nameOf b, nameOf a], off b) : go rest
+     go (a : rest) = ([nameOf a], off a) : go rest
+     go [] = []
+     pairable o = o >= -512 && o <= 504 && o `mod` 8 == 0
+@@ -840,6 +900,8 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
+     reg = \case
+       OP p -> phys p
+       o -> error ("A64 render: an unplaced operand " ++ show o)
++    sreg o = "s" ++ drop 1 (reg o)
++    fpcond c = case c of "lt" -> "mi"; "le" -> "ls"; "gt" -> "gt"; "ge" -> "ge"; "eq" -> "eq"; _ -> "ne"
+     wreg o = 'w' : drop 1 (reg o)
+     imm = \case
+       OI n -> n
+@@ -900,9 +962,27 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
+       -- legacy translation of fmv.x.w does
+       -- a float tree, one step an instruction: scratch d16.., a node in its
+       -- left subtree's register
++      (o, [d], []) | Just c <- stripPrefix "ftree.cmp." o ->
++        ["fcmp d16, d17", "cset " ++ reg d ++ ", " ++ (case c of "lt" -> "mi"; "le" -> "ls"; "gt" -> "gt"; "ge" -> "ge"; "eq" -> "eq"; _ -> "ne")]
++      (o, [d], []) | Just c <- stripPrefix "ftree32.cmp." o ->
++        ["fcmp s16, s17", "cset " ++ reg d ++ ", " ++ (case c of "lt" -> "mi"; "le" -> "ls"; "gt" -> "gt"; "ge" -> "ge"; "eq" -> "eq"; _ -> "ne")]
++      ("fmov", [d], [src]) -> ["fmov " ++ reg d ++ ", " ++ reg src]
++      ("pool.ftree.leaf", [], [src, OI n]) -> ["fmov d" ++ show (16+n) ++ ", " ++ reg src]
++      ("pool.ftree32.leaf", [], [src, OI n]) -> ["fmov s" ++ show (16+n) ++ ", " ++ sreg src]
++      ("pool.ftree.out", [d], [OI n]) -> ["fmov " ++ reg d ++ ", d" ++ show (16+n)]
++      ("pool.ftree32.out", [d], [OI n]) -> ["fmov " ++ sreg d ++ ", s" ++ show (16+n)]
++      (o, [d], [a,b]) | Just f <- stripPrefix "pool.bin64." o -> ["f" ++ f ++ " " ++ reg d ++ ", " ++ reg a ++ ", " ++ reg b]
++      (o, [d], [a,b]) | Just f <- stripPrefix "pool.bin32." o -> ["f" ++ f ++ " " ++ sreg d ++ ", " ++ sreg a ++ ", " ++ sreg b]
++      (o, [d], [a,b]) | Just c <- stripPrefix "pool.cmp64." o ->
++        ["fcmp " ++ reg a ++ ", " ++ reg b, "cset " ++ reg d ++ ", " ++ fpcond c]
++      (o, [d], [a,b]) | Just c <- stripPrefix "pool.cmp32." o ->
++        ["fcmp " ++ sreg a ++ ", " ++ sreg b, "cset " ++ reg d ++ ", " ++ fpcond c]
+       ("ftree.leaf", [], [x, OI n]) -> ["fmov d" ++ show (16 + n) ++ ", " ++ reg x]
+       ("ftree.out", [d], [OI n]) -> ["fmov " ++ reg d ++ ", d" ++ show (16 + n)]
+       (o, [], [OI n]) | Just inst <- stripPrefix "ftree." o -> ["f" ++ inst ++ " d" ++ show (16 + n) ++ ", d" ++ show (16 + n) ++ ", d" ++ show (17 + n)]
++      ("ftree32.leaf", [], [x, OI n]) -> ["fmov s" ++ show (16 + n) ++ ", " ++ wreg x]
++      ("ftree32.out", [d], [OI n]) -> ["fmov " ++ wreg d ++ ", s" ++ show (16 + n)]
++      (o, [], [OI n]) | Just inst <- stripPrefix "ftree32." o -> ["f" ++ inst ++ " s" ++ show (16 + n) ++ ", s" ++ show (16 + n) ++ ", s" ++ show (17 + n)]
+       (o, [d], [a, b]) | Just f <- stripPrefix "fbin32." o ->
+         ["fmov s16, " ++ wreg a, "fmov s17, " ++ wreg b, "f" ++ f ++ " s16, s16, s17", "fmov " ++ wreg d ++ ", s16"]
+       (o, [d], [a, b]) | Just c <- stripPrefix "fcmp32." o ->
+diff --git a/compiler/Codegen/Target/Common.hs b/compiler/Codegen/Target/Common.hs
+index 76d9128..5dd8eec 100644
+--- a/compiler/Codegen/Target/Common.hs
++++ b/compiler/Codegen/Target/Common.hs
+@@ -266,9 +266,10 @@ shrinkWrap saved items
+ data Tune = Tune
+   { tuneEntryArgs :: Bool, -- FPR_TYPED_IR_ENTRY_ARGS: parameters stay in their registers through the entry
+     tuneShrinkWrap :: Bool, -- FPR_TYPED_IR_SHRINK_WRAP: callee saves at a dominating, acyclic block
++    tuneFpPool :: Bool, -- hosted A64 d8..d15, preserved by its actor context
+     tuneLinkPairs :: Bool -- FPR_TYPED_IR_LINK_PAIRS (on unless 0): the frame link as one stp/ldp
+   }
+   deriving (Eq, Show)
+ 
+ noTune :: Tune
+-noTune = Tune False False False
++noTune = Tune False False False False
+diff --git a/compiler/Codegen/Target/RV.hs b/compiler/Codegen/Target/RV.hs
+index 374c261..5ea4169 100644
+--- a/compiler/Codegen/Target/RV.hs
++++ b/compiler/Codegen/Target/RV.hs
+@@ -19,7 +19,7 @@ import qualified Data.Map.Strict as M
+ import qualified Data.Set as S
+ 
+ rvSelectionRev :: Int
+-rvSelectionRev = 13 -- 13: the ESP-IDF host (the hart in fpr_esp_hart, local-exec, the 32-bit word); prior: 12: 12: QOS RISC-V apps and plugins: the hart borrowed through fpr_g_tlsoff; prior: 11: 11: posix modules: the hart through initial-exec TLS (la.tls.ie), local labels PC-relative under .option pic; prior: 10: generic HAL partial/opaque application; prior 9: inferred boxed I64 operators; prior 8: inference-generated vector runtime entries; prior 7: typed column memory and kernel arithmetic; prior: 6: an ESP-IDF host keeps the legacy generator (its hart is fpr_esp_hart); 5: units with no legacy code skip translation; 4: in-place constructor reuse; 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
++rvSelectionRev = 14 -- comparison and F32 trees; prior: 13: the ESP-IDF host (the hart in fpr_esp_hart, local-exec, the 32-bit word); prior: 12: 12: QOS RISC-V apps and plugins: the hart borrowed through fpr_g_tlsoff; prior: 11: 11: posix modules: the hart through initial-exec TLS (la.tls.ie), local labels PC-relative under .option pic; prior: 10: generic HAL partial/opaque application; prior 9: inferred boxed I64 operators; prior 8: inference-generated vector runtime entries; prior 7: typed column memory and kernel arithmetic; prior: 6: an ESP-IDF host keeps the legacy generator (its hart is fpr_esp_hart); 5: units with no legacy code skip translation; 4: in-place constructor reuse; 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
+ 
+ -- HartTp: the hart pointer is tp (bare metal, QOS); HartTls: the posix
+ -- runtime's thread-local cell, local-exec (an executable); HartTlsIe: the
+@@ -232,12 +232,28 @@ select cfg fn = do
+       OFloatBin o a b -> rr ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) d (vreg a) (vreg b)
+       OFloatCmp o a b -> rr ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) d (vreg a) (vreg b)
+       OFloat32Bin o a b -> rr ("fbin32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) d (vreg a) (vreg b)
++      OFloatCmpTree o x y -> do
++        forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
++          FSLeaf v n -> emit (plain "ftree.leaf" [] [anyV (vreg v), OI (fromIntegral n)])
++          FSNode f n -> emit (plain ("ftree." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
++        emit (plain ("ftree.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [anyV d] [])
++      OFloat32CmpTree o x y -> do
++        forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
++          FSLeaf v n -> emit (plain "ftree32.leaf" [] [anyV (vreg v), OI (fromIntegral n)])
++          FSNode f n -> emit (plain ("ftree32." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
++        emit (plain ("ftree32.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [anyV d] [])
+       OFloatTree t -> do
+         let (steps, root) = ftreeSchedule t
+         forM_ steps $ \step -> case step of
+           FSLeaf v n -> emit (plain "ftree.leaf" [] [anyV (vreg v), OI (fromIntegral n)])
+           FSNode o n -> emit (plain ("ftree." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
+         emit (plain "ftree.out" [anyV d] [OI (fromIntegral root)])
++      OFloat32Tree t -> do
++        let (steps, root) = ftreeSchedule t
++        forM_ steps $ \step -> case step of
++          FSLeaf v n -> emit (plain "ftree32.leaf" [] [anyV (vreg v), OI (fromIntegral n)])
++          FSNode o n -> emit (plain ("ftree32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
++        emit (plain "ftree32.out" [anyV d] [OI (fromIntegral root)])
+       OFloat32Cmp o a b -> rr ("fcmp32." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) d (vreg a) (vreg b)
+       -- RISC-V V: v8 the lanes, v9/v10 reductions; t4..t6 scratch (declared)
+       ORvvVlMax -> emit (plain "rvv.vlmax" [anyV d] [])
+@@ -395,9 +411,20 @@ render cfg fn ly restores (I i) = map (\s -> if last s == ':' then s else "    "
+       -- F64 on the bits through ft0/ft1, as the legacy inline table does
+       -- F32: the legacy genU forms (fmv.x.w sign-extends; the runtime reads the low 32 bits)
+       -- a float tree, one step an instruction: scratch ft0..ft7
++      (o, [d], []) | Just c <- stripPrefix "ftree.cmp." o -> case c of
++        "lt" -> ["flt.d " ++ r d ++ ", ft0, ft1"]; "gt" -> ["flt.d " ++ r d ++ ", ft1, ft0"]
++        "le" -> ["fle.d " ++ r d ++ ", ft0, ft1"]; "ge" -> ["fle.d " ++ r d ++ ", ft1, ft0"]
++        "eq" -> ["feq.d " ++ r d ++ ", ft0, ft1"]; _ -> ["feq.d " ++ r d ++ ", ft0, ft1", "xori " ++ r d ++ ", " ++ r d ++ ", 1"]
++      (o, [d], []) | Just c <- stripPrefix "ftree32.cmp." o -> case c of
++        "lt" -> ["flt.s " ++ r d ++ ", ft0, ft1"]; "gt" -> ["flt.s " ++ r d ++ ", ft1, ft0"]
++        "le" -> ["fle.s " ++ r d ++ ", ft0, ft1"]; "ge" -> ["fle.s " ++ r d ++ ", ft1, ft0"]
++        "eq" -> ["feq.s " ++ r d ++ ", ft0, ft1"]; _ -> ["feq.s " ++ r d ++ ", ft0, ft1", "xori " ++ r d ++ ", " ++ r d ++ ", 1"]
+       ("ftree.leaf",[],[x,OI n]) -> ["fmv.d.x ft" ++ show n ++ ", " ++ r x]
+       ("ftree.out",[d],[OI n]) -> ["fmv.x.d " ++ r d ++ ", ft" ++ show n]
+       (o,[],[OI n]) | Just inst <- stripPrefix "ftree." o -> ["f" ++ inst ++ ".d ft" ++ show n ++ ", ft" ++ show n ++ ", ft" ++ show (n + 1)]
++      ("ftree32.leaf",[],[x,OI n]) -> ["fmv.w.x ft" ++ show n ++ ", " ++ r x]
++      ("ftree32.out",[d],[OI n]) -> ["fmv.x.w " ++ r d ++ ", ft" ++ show n]
++      (o,[],[OI n]) | Just inst <- stripPrefix "ftree32." o -> ["f" ++ inst ++ ".s ft" ++ show n ++ ", ft" ++ show n ++ ", ft" ++ show (n + 1)]
+       (o,[d],[a,b]) | Just f <- stripPrefix "fbin32." o ->
+         ["fmv.w.x ft0, " ++ r a, "fmv.w.x ft1, " ++ r b, "f" ++ f ++ ".s ft0, ft0, ft1", "fmv.x.w " ++ r d ++ ", ft0"]
+       (o,[d],[a,b]) | Just c <- stripPrefix "fcmp32." o ->
+diff --git a/compiler/Codegen/Target/X64.hs b/compiler/Codegen/Target/X64.hs
+index b1e9ab8..bea584e 100644
+--- a/compiler/Codegen/Target/X64.hs
++++ b/compiler/Codegen/Target/X64.hs
+@@ -30,7 +30,7 @@ import qualified Data.Map.Strict as M
+ import qualified Data.Set as S
+ 
+ x64SelectionRev :: Int
+-x64SelectionRev = 19 -- QOS borrowed TLS hart/argument cells; prior 18: generic HAL partial/opaque application; prior 17: inferred boxed I64 operators; prior 16: inference-generated vector runtime entries; prior 15: typed column memory and kernel arithmetic; prior: 14: posix modules reach external symbols through the GOT; 13: units with no legacy code skip translation; 12: in-place constructor reuse; 11: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 10: aggregate and string selection; prior: the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
++x64SelectionRev = 20 -- comparison and F32 trees; prior: QOS borrowed TLS hart/argument cells; prior 18: generic HAL partial/opaque application; prior 17: inferred boxed I64 operators; prior 16: inference-generated vector runtime entries; prior 15: typed column memory and kernel arithmetic; prior: 14: posix modules reach external symbols through the GOT; 13: units with no legacy code skip translation; 12: in-place constructor reuse; 11: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 10: aggregate and string selection; prior: the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
+ 
+ -- Module ABI identity is independent of native selector/cache revisions.
+ x64InterfaceRev :: Int
+@@ -361,12 +361,28 @@ selectInstr _ _ (Instr d op) = case op of
+   OFloatBin o a b -> def (\r -> emitI (plain ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [any' r] [any' (vreg a), any' (vreg b)]))
+   OFloatCmp o a b -> def (\r -> emitI ((plain ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
+   OFloat32Bin o a b -> def (\r -> emitI (plain ("fbin32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [any' r] [any' (vreg a), any' (vreg b)]))
++  OFloatCmpTree o x y -> def (\r -> do
++    forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
++      FSLeaf v n -> emitI (plain "ftree.leaf" [] [any' (vreg v), OI (fromIntegral n)])
++      FSNode f n -> emitI (plain ("ftree." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
++    emitI ((plain ("ftree.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] []) {siFlags = FlagsDef}))
++  OFloat32CmpTree o x y -> def (\r -> do
++    forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
++      FSLeaf v n -> emitI (plain "ftree32.leaf" [] [any' (vreg v), OI (fromIntegral n)])
++      FSNode f n -> emitI (plain ("ftree32." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
++    emitI ((plain ("ftree32.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] []) {siFlags = FlagsDef}))
+   OFloatTree t -> def (\r -> do
+     let (steps, root) = ftreeSchedule t
+     forM_ steps $ \case
+       FSLeaf v n -> emitI (plain "ftree.leaf" [] [any' (vreg v), OI (fromIntegral n)])
+       FSNode o n -> emitI (plain ("ftree." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
+     emitI (plain "ftree.out" [any' r] [OI (fromIntegral root)]))
++  OFloat32Tree t -> def (\r -> do
++    let (steps, root) = ftreeSchedule t
++    forM_ steps $ \case
++      FSLeaf v n -> emitI (plain "ftree32.leaf" [] [any' (vreg v), OI (fromIntegral n)])
++      FSNode o n -> emitI (plain ("ftree32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
++    emitI (plain "ftree32.out" [any' r] [OI (fromIntegral root)]))
+   OFloat32Cmp o a b -> def (\r -> emitI ((plain ("fcmp32." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
+   OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
+   OCmp o a b -> def $ \r -> do
+@@ -647,9 +663,18 @@ renderItem hart ly fname saveLines restores (I i) = map indent (go (siOp i) (siD
+       -- F32 on the low 32 bits: movd to a 32-bit register zero-extends
+       -- a float tree, one step an instruction: scratch %xmm8.., the
+       -- two-operand forms leave a node's value in its left subtree's register
++      (o, [d], []) | Just c <- stripPrefix "ftree.cmp." o ->
++        let (x, y, pred') = case c of "lt" -> ("%xmm8", "%xmm9", "lt"); "le" -> ("%xmm8", "%xmm9", "le"); "gt" -> ("%xmm9", "%xmm8", "lt"); "ge" -> ("%xmm9", "%xmm8", "le"); "eq" -> ("%xmm8", "%xmm9", "eq"); _ -> ("%xmm8", "%xmm9", "neq")
++         in ["cmp" ++ pred' ++ "sd " ++ y ++ ", " ++ x, "movq " ++ x ++ ", " ++ reg d, "andq $1, " ++ reg d]
++      (o, [d], []) | Just c <- stripPrefix "ftree32.cmp." o ->
++        let (x, y, pred') = case c of "lt" -> ("%xmm8", "%xmm9", "lt"); "le" -> ("%xmm8", "%xmm9", "le"); "gt" -> ("%xmm9", "%xmm8", "lt"); "ge" -> ("%xmm9", "%xmm8", "le"); "eq" -> ("%xmm8", "%xmm9", "eq"); _ -> ("%xmm8", "%xmm9", "neq")
++         in ["cmp" ++ pred' ++ "ss " ++ y ++ ", " ++ x, "movd " ++ x ++ ", " ++ word32 d, "andq $1, " ++ reg d]
+       ("ftree.leaf",[],[x,OI n]) -> ["movq " ++ reg x ++ ", %xmm" ++ show (8 + n)]
+       ("ftree.out",[d],[OI n]) -> ["movq %xmm" ++ show (8 + n) ++ ", " ++ reg d]
+       (o,[],[OI n]) | Just inst <- stripPrefix "ftree." o -> [inst ++ "sd %xmm" ++ show (9 + n) ++ ", %xmm" ++ show (8 + n)]
++      ("ftree32.leaf",[],[x,OI n]) -> ["movd " ++ word32 x ++ ", %xmm" ++ show (8 + n)]
++      ("ftree32.out",[d],[OI n]) -> ["movd %xmm" ++ show (8 + n) ++ ", " ++ word32 d]
++      (o,[],[OI n]) | Just inst <- stripPrefix "ftree32." o -> [inst ++ "ss %xmm" ++ show (9 + n) ++ ", %xmm" ++ show (8 + n)]
+       (o,[d],[a,b]) | Just f <- stripPrefix "fbin32." o ->
+         ["movd " ++ word32 a ++ ", %xmm14", "movd " ++ word32 b ++ ", %xmm15", f ++ "ss %xmm15, %xmm14", "movd %xmm14, " ++ word32 d]
+       (o,[d],[a,b]) | Just c <- stripPrefix "fcmp32." o ->
+diff --git a/compiler/Codegen/Verify.hs b/compiler/Codegen/Verify.hs
+index 95a8caf..28fda70 100644
+--- a/compiler/Codegen/Verify.hs
++++ b/compiler/Codegen/Verify.hs
+@@ -78,6 +78,13 @@ opSignature tyOf = \case
+     unless (ftreeRegisters t <= ftreeScratch) (Left ("a float tree needs " ++ show (ftreeRegisters t) ++ " scratch registers, " ++ show ftreeScratch ++ " exist"))
+     mapM_ (`expect` TVal) (ftreeLeaves t)
+     pure (Just TVal)
++  OFloat32Tree t -> do
++    case t of FNode {} -> pure (); FLeaf _ -> Left "a float tree is at least one operation"
++    unless (ftreeRegisters t <= ftreeScratch) (Left ("a float tree needs " ++ show (ftreeRegisters t) ++ " scratch registers, " ++ show ftreeScratch ++ " exist"))
++    mapM_ (`expect` TVal) (ftreeLeaves t)
++    pure (Just TVal)
++  OFloatCmpTree _ a b -> checkTrees a b
++  OFloat32CmpTree _ a b -> checkTrees a b
+   OFloat32Bin _ a b -> expect a TVal >> expect b TVal >> pure (Just TVal)
+   OFloat32Cmp _ a b -> expect a TVal >> expect b TVal >> pure (Just TPred)
+   OCall c as -> do
+@@ -96,6 +103,11 @@ opSignature tyOf = \case
+   ORvvSumLoaded acc -> expect acc TInt >> pure (Just TInt)
+   OStackCheck -> pure Nothing
+   where
++    checkTrees a b = do
++      let budget = max (ftreeRegisters a) (1 + ftreeRegisters b)
++      unless (budget <= ftreeScratch) (Left "a comparison tree exceeds the scratch register budget")
++      mapM_ (`expect` TVal) (ftreeLeaves a ++ ftreeLeaves b)
++      pure (Just TPred)
+     memory t a n = do
+       unless (t `elem` [TInt,TVal,TAddr]) (Left "unsupported memory representation")
+       unless (n >= 0 && n <= 255) (Left "memory offset outside portable displacement range")
+diff --git a/compiler/Compile.hs b/compiler/Compile.hs
+index c671c14..f643a53 100644
+--- a/compiler/Compile.hs
++++ b/compiler/Compile.hs
+@@ -13,7 +13,7 @@ import Codegen.Target.Common (Tune (..), dataSyntax)
+ import Codegen (Target, codegenRev, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtSelfLoops, tgtRetainedRegisters, tgtCostedRegisters, tgtCompactFrames, tgtTypedIr, tgtPolicy, tgtNative, normArc)
+ import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth)
+ import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
+-import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64InterfaceRev, a64SelectionRev)
++import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
+ import Data.Char (isAlphaNum, isAscii, ord)
+ import Numeric (showHex)
+ import Data.Bits (xor)
+@@ -448,6 +448,7 @@ compileWithInterface accepted = do
+   envTirSplit <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_SPLIT_ENTRY"
+   envTirWrap <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_SHRINK_WRAP"
+   -- on unless 0: measured a pure win (docs/2026-10-22-TYPED-IR-FIB.md)
++  envTirFpPool <- (/= Just "0") <$> lookupEnv "FPR_TYPED_IR_FP_POOL"
+   envTirLinkPairs <- (/= Just "0") <$> lookupEnv "FPR_TYPED_IR_LINK_PAIRS"
+   envRetainedRegisters <- (== Just "1") <$> lookupEnv "FPR_RETAINED_REGISTERS"
+   envNoRegisters <- (== Just "1") <$> lookupEnv "FPR_NO_REGISTERS"
+@@ -996,7 +997,7 @@ compileWithInterface accepted = do
+                                              (if espHost then RV.HartTlsEsp else if qapp then RV.HartQos else if oBase opts && oPlugin opts then RV.HartTlsIe else if oBase opts then RV.HartTls else RV.HartTp))
+                               else Nothing,
+                 nmSelfLoops = envTirLoops, nmForwardParams = envTirForward,
+-                nmTune = Tune envTirEntryArgs envTirWrap envTirLinkPairs, nmSplitEntry = envTirSplit }
++                nmTune = Tune envTirEntryArgs envTirWrap envTirFpPool envTirLinkPairs, nmSplitEntry = envTirSplit }
+           -- A64/x64 have no translator: even a named strict subset cannot permit
+           -- another function or kernel to fall back to shared-RISC text.
+           strictCheck what fallbacks = case if a64 || x64 then StrictAll else envStrict of
+@@ -1034,9 +1035,9 @@ compileWithInterface accepted = do
+           -- different code, and hosted AArch64 now reads its hart from x28
+           tname0 = if qsingle then "qa64singler" ++ show a64InterfaceRev
+                   else if a64mac && qapp then "qa64macr" ++ show a64InterfaceRev
+-                  else if a64mac then (if oPlugin opts && oBase opts then "module-" else "") ++ "a64macx28r" ++ show a64InterfaceRev
++                  else if a64mac then (if oPlugin opts && oBase opts then "module-" else "") ++ "a64macx28r" ++ show a64HostedInterfaceRev
+                   else if a64 && qapp then "qa64r" ++ show a64InterfaceRev
+-                  else if a64 then "a64x28r" ++ show a64InterfaceRev
++                  else if a64 then "a64x28r" ++ show a64HostedInterfaceRev
+                   else if x64 && qapp then "qx64r" ++ show x64InterfaceRev
+                   else if x64 then "x64r" ++ show x64InterfaceRev
+                   else if espHost then "rv32-idftls1"
+@@ -1052,7 +1053,7 @@ compileWithInterface accepted = do
+           -- bypassing directCheck, while tname retains module ABI identity.
+           backendTag = case envBackend of
+             Nothing -> ""
+-            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev) ++ (if a64 || x64 then "-native1" else "") ++ (if g == PerFunction then "mixed" else "") ++ (if envTirLoops then "" else "-noloops") ++ (if envTirShallow then "-shallow" else "") ++ (if envTirForward then "-forward" else "") ++ (if envTirEntryArgs then "-entryargs" else "") ++ (if envTirSplit then "-split" else "") ++ (if envTirWrap then "-wrap" else "") ++ (if envTirLinkPairs then "" else "-nolinkpairs") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
++            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev) ++ (if a64 || x64 then "-native1" else "") ++ (if g == PerFunction then "mixed" else "") ++ (if a64 && not qapp && envTirFpPool then "-fpregs" else "") ++ (if envTirLoops then "" else "-noloops") ++ (if envTirShallow then "-shallow" else "") ++ (if envTirForward then "-forward" else "") ++ (if envTirEntryArgs then "-entryargs" else "") ++ (if envTirSplit then "-split" else "") ++ (if envTirWrap then "-wrap" else "") ++ (if envTirLinkPairs then "" else "-nolinkpairs") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
+           fnv = foldl (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) (14695981039346656037 :: Word64)
+           tag = "g" ++ show codegenRev ++ backendTag ++ (if envCostedRegisters then "-costedregs" else "") ++ (if envCompactFrames then "-compactframes" else "") ++ (if envRetainedRegisters then "-retainedregs" else "") ++ (if envSelfLoops then "-selfloops" else "") ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
+           unitDir = takeDirectory out </> "units"
+diff --git a/machine/unix/ctx_a64.S b/machine/unix/ctx_a64.S
+index 638a41a..43e6b95 100644
+--- a/machine/unix/ctx_a64.S
++++ b/machine/unix/ctx_a64.S
+@@ -1,8 +1,7 @@
+ /* ctx_a64.S — fpr_ctx_switch for AArch64 AAPCS64.  x0=save x1=load.
+  * Layout: 0 = resume pc, 1 = sp, 4..12 = x19..x27, 14 = x29 (slot 13
+- * is padding); d8-d15 are deliberately NOT saved (ctx[] is 16 words;
+- * the runtime's switch paths do no FP, matching virt ctx.S's
+- * integer-only contract).
++ * is padding). Hosted contexts add d8-d15 in slots 16..23. QOS apps
++ * retain their 16-word integer context until their host contract moves.
+  *
+  * x28 is DELIBERATELY NOT in the frame: under the QOS-app
+  * convention x28 is the hosted world's tp -- the hart pointer, set
+@@ -33,6 +32,12 @@ SYM(fpr_ctx_switch):
+     stp x25, x26, [x0, #80]
+     str x27, [x0, #96]         // x28 stays live: it is the hart register
+     str x29, [x0, #112]
++#ifndef FPR_QOSAPP
++    stp d8, d9, [x0, #128]
++    stp d10, d11, [x0, #144]
++    stp d12, d13, [x0, #160]
++    stp d14, d15, [x0, #176]
++#endif
+ 
+     ldr x9,  [x1, #8]
+     mov sp, x9
+@@ -42,5 +47,11 @@ SYM(fpr_ctx_switch):
+     ldp x25, x26, [x1, #80]
+     ldr x27, [x1, #96]         // x28 stays live: it is the hart register
+     ldr x29, [x1, #112]
++#ifndef FPR_QOSAPP
++    ldp d8, d9, [x1, #128]
++    ldp d10, d11, [x1, #144]
++    ldp d12, d13, [x1, #160]
++    ldp d14, d15, [x1, #176]
++#endif
+     ldr x30, [x1, #0]
+     ret
+diff --git a/runtime/fpr.h b/runtime/fpr.h
+index fc3d8dd..ffe2aaa 100644
+--- a/runtime/fpr.h
++++ b/runtime/fpr.h
+@@ -193,7 +193,11 @@ void fpr_bkt_put(void **b);
+  * Every operation here still speaks in tagged values (V): the tables
+  * bind one FP-RISC runtime to another.  A plain-word API for other
+  * languages is the next step, not this one. */
+-#define FPR_NATIVE_ABI 6u /* v6: actor scratch-scope cleanup chain; v5: plane table split carried by boot block; v4: boot network-owner callback; v3: module table schema; v2: vector recipe metadata */
++#if defined(FPR_POSIX) && defined(__aarch64__) && !defined(FPR_QOSAPP)
++#define FPR_NATIVE_ABI 7u /* hosted A64 context and hart layout include d8..d15 */
++#else
++#define FPR_NATIVE_ABI 6u /* QOS and other hosted layouts remain v6. */
++#endif
+ #define FPR_PLANE_ACTORS_ABI 3u /* v3: opt-in transactional spawn_inbox; v2: receive_from_now */
+ #define FPR_PLANE_MEMORY_ABI 2u /* v2: shared scratch region execution appended */
+ typedef struct fpr_plane_actors {
+@@ -326,6 +330,8 @@ extern void (*fpr_buddy_uncharge)(uw tag, uw bytes); /* a charged block went hom
+ #ifndef FPR_CTX_WORDS
+ #if defined(FPR_POSIX) && defined(__riscv) && __riscv_xlen == 64
+ #define FPR_CTX_WORDS 29 /* integer state, fs0..fs11, fcsr */
++#elif defined(FPR_POSIX) && defined(__aarch64__) && !defined(FPR_QOSAPP)
++#define FPR_CTX_WORDS 24 /* hosted integer state plus d8..d15 */
+ #else
+ #define FPR_CTX_WORDS 16
+ #endif
+diff --git a/tests/TypedIR.hs b/tests/TypedIR.hs
+index 83ed115..2614a17 100644
+--- a/tests/TypedIR.hs
++++ b/tests/TypedIR.hs
+@@ -12,7 +12,7 @@ import Codegen.Policy (m2Policy, Policy (..), Profile (..))
+ import Codegen.Simplify (simplifyFn, simplifyProgram)
+ import Codegen.Split (splitEntryValues)
+ import Codegen.Verify (verifyFn, verifyProgram, verifyProgramWidth, opSignature, simdExprOk)
+-import Control.Monad (unless)
++import Control.Monad (unless, forM_)
+ import Data.List (isInfixOf)
+ import qualified Data.Map.Strict as M
+ import FPRISC (Core (..))
+@@ -117,6 +117,23 @@ main = do
+   check "float tree signature" (opSignature fval (OFloatTree (FNode FAdd (FLeaf (VId 0)) (FLeaf (VId 1)))) == Right (Just TVal))
+   check "float tree budget" (either (const True) (const False) (opSignature fval (OFloatTree (iterate (\t -> FNode FAdd (FLeaf (VId 0)) t) (FLeaf (VId 1)) !! 8))))
+   check "float tree registers" (ftreeRegisters (FNode FAdd (FNode FMul (FLeaf (VId 0)) (FLeaf (VId 1))) (FLeaf (VId 2))) == 2)
++  let cmpChain = Fn "cmpChain" ["a","b","c"] TPred (BId 0)
++        [Block (BId 0) [(VId 0,TVal),(VId 1,TVal),(VId 2,TVal)]
++          [Instr (Just (VId 3,TVal)) (OFloatBin FMul (VId 0) (VId 1)),
++           Instr (Just (VId 4,TVal)) (OFloatBin FAdd (VId 3) (VId 2)),
++           Instr (Just (VId 5,TPred)) (OFloatCmp Lt (VId 4) (VId 0))] (TRet (VId 5))]
++      to32 (Instr d (OFloatBin o a b)) = Instr d (OFloat32Bin o a b)
++      to32 (Instr d (OFloatCmp o a b)) = Instr d (OFloat32Cmp o a b)
++      to32 i = i
++      cmp32 = cmpChain {fnBlocks=[b {bInstrs=map to32 (bInstrs b)} | b<-fnBlocks cmpChain]}
++  forM_ [(cmpChain,False),(cmp32,True)] $ \(input,single) -> case simplifyFn M.empty input of
++    Right (f,_) -> check "comparison absorbs its arithmetic tree at the matching precision"
++      (length [() | b<-fnBlocks f,Instr _ op<-bInstrs b, case op of OFloatCmpTree {} -> not single; OFloat32CmpTree {} -> single; _ -> False] == 1
++       && sum (map (length . bInstrs) (fnBlocks f)) == 1)
++    Left e -> error e
++  check "F32 tree signature" (opSignature fval (OFloat32Tree (FNode FMul (FLeaf (VId 0)) (FLeaf (VId 1)))) == Right (Just TVal))
++  check "comparison accounts for the live left root in the right tree budget"
++    (either (const True) (const False) (opSignature fval (OFloatCmpTree Eq (FLeaf (VId 0)) (iterate (\t -> FNode FAdd (FLeaf (VId 0)) t) (FLeaf (VId 1)) !! 7))))
+   -- the verifier
+   check "a well-formed function verifies" (verifyFn M.empty good == Right ())
+   expectRefusal "missing entry" "entry block missing" (verifyFn M.empty good {fnEntry = BId 9})
+diff --git a/tests/check_a64_retirement.py b/tests/check_a64_retirement.py
+index 045a80c..f07629a 100644
+--- a/tests/check_a64_retirement.py
++++ b/tests/check_a64_retirement.py
+@@ -26,7 +26,7 @@ def main():
+         src = tmp / 'probe.fpr'
+         src.write_text('inc n = n + 1.\nmain = print (inc 41).\n')
+         targets = ('a64', 'a64mac', 'qa64', 'qa64single', 'qa64mac')
+-        interface_targets = dict(zip(targets, ('a64x28r15', 'a64macx28r15',
++        interface_targets = dict(zip(targets, ('a64x28r16', 'a64macx28r16',
+                                               'qa64r15', 'qa64singler15', 'qa64macr15')))
+         for target in targets:
+             seen = {}
+diff --git a/tests/check_base.py b/tests/check_base.py
+index c26752f..456d51a 100755
+--- a/tests/check_base.py
++++ b/tests/check_base.py
+@@ -272,6 +272,8 @@ script('tests/check_typed_ir_a64.py', 1200)
+ script('tests/check_typed_ir_x64.py', 1200)
+ script('tests/check_typed_ir_kernels.py', 1200)
+ script('tests/check_x64_retirement.py', 300)
++script('tests/check_float_trees.py', 300)
++script('tests/check_a64_fp_pool.py', 600)
+ script('tests/check_a64_retirement.py', 600)
+ script('tests/check_self_loops.py', 600, lock='cabal')
+ script('tests/check_retained_registers.py', 600)
+diff --git a/tools/bench-typed-ir-m3.py b/tools/bench-typed-ir-m3.py
+index cec9640..8e10efe 100644
+--- a/tools/bench-typed-ir-m3.py
++++ b/tools/bench-typed-ir-m3.py
+@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
+ 
+ VARIANTS = {
+     "typed-ir": {"FPR_TYPED_IR_BACKEND": "mixed"},
++    "typed-ir-trees": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_FP_POOL": "0"},
+     "typed-ir-forward": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_FORWARD_PARAMS": "1"},
+     "typed-ir-entry": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_FORWARD_PARAMS": "1", "FPR_TYPED_IR_SHALLOW_STACK": "1"},
+     "typed-ir-shallow": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_SHALLOW_STACK": "1"},
+@@ -43,6 +44,16 @@ INTERNAL = {
+ INTERNAL["records"] = ((ROOT / "tests/typed_ir/record_kernels.fpr").read_text()
+     .split("main =")[0].replace("unsafe base.\n", ""), "0",
+     7 + sum(2*(10*i+45)+3 for i in range(100000) if 10*i+45 > 400))
++for bits in (64, 32):
++    name = "cmpchain64" if bits == 64 else "f32trees"
++    defs = (f"loopFloat{bits} : unsafe Int -> F{bits} -> Int -> Int .\n"
++            f"loopFloat{bits} n x count = if n == 0 then count else\n"
++            "  good = if (x * 2.0 + 0.25) / (x - 0.125) > x then 1 else 0;\n"
++            f"  loopFloat{bits} (n - 1) (0.0 - x) (count + good).\n")
++    if bits == 32:
++        defs = re.sub(r"(\d+\.\d+)", r"\1f", defs)
++    INTERNAL[name] = (defs, f"loopFloat{bits} 3000000 0.5{'f' if bits == 32 else ''} 0", 3000000)
++
+ WALL = ["helpers", "sha", "floatcmp", "nbody"]
+ 
+ 

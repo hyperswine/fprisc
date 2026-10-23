@@ -193,7 +193,11 @@ void fpr_bkt_put(void **b);
  * Every operation here still speaks in tagged values (V): the tables
  * bind one FP-RISC runtime to another.  A plain-word API for other
  * languages is the next step, not this one. */
-#define FPR_NATIVE_ABI 6u /* v6: actor scratch-scope cleanup chain; v5: plane table split carried by boot block; v4: boot network-owner callback; v3: module table schema; v2: vector recipe metadata */
+#if defined(FPR_POSIX) && defined(__aarch64__) && !defined(FPR_QOSAPP)
+#define FPR_NATIVE_ABI 7u /* hosted A64 context and hart layout include d8..d15 */
+#else
+#define FPR_NATIVE_ABI 6u /* QOS and other hosted layouts remain v6. */
+#endif
 #define FPR_PLANE_ACTORS_ABI 3u /* v3: opt-in transactional spawn_inbox; v2: receive_from_now */
 #define FPR_PLANE_MEMORY_ABI 2u /* v2: shared scratch region execution appended */
 typedef struct fpr_plane_actors {
@@ -326,6 +330,8 @@ extern void (*fpr_buddy_uncharge)(uw tag, uw bytes); /* a charged block went hom
 #ifndef FPR_CTX_WORDS
 #if defined(FPR_POSIX) && defined(__riscv) && __riscv_xlen == 64
 #define FPR_CTX_WORDS 29 /* integer state, fs0..fs11, fcsr */
+#elif defined(FPR_POSIX) && defined(__aarch64__) && !defined(FPR_QOSAPP)
+#define FPR_CTX_WORDS 24 /* hosted integer state plus d8..d15 */
 #else
 #define FPR_CTX_WORDS 16
 #endif

@@ -13,7 +13,7 @@ import Codegen.Target.Common (Tune (..), dataSyntax)
 import Codegen (Target, codegenRev, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtRegisters, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtSelfLoops, tgtRetainedRegisters, tgtCostedRegisters, tgtCompactFrames, tgtTypedIr, tgtPolicy, tgtNative, normArc)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
-import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64InterfaceRev, a64SelectionRev)
+import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
 import Data.Char (isAlphaNum, isAscii, ord)
 import Numeric (showHex)
 import Data.Bits (xor)
@@ -447,6 +447,8 @@ compileWithInterface accepted = do
   envTirEntryArgs <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_ENTRY_ARGS"
   envTirSplit <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_SPLIT_ENTRY"
   envTirWrap <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_SHRINK_WRAP"
+  -- Hosted A64 pool is on unless 0; QOS retains its integer context.
+  envTirFpPool <- (/= Just "0") <$> lookupEnv "FPR_TYPED_IR_FP_POOL"
   -- on unless 0: measured a pure win (docs/2026-10-22-TYPED-IR-FIB.md)
   envTirLinkPairs <- (/= Just "0") <$> lookupEnv "FPR_TYPED_IR_LINK_PAIRS"
   envRetainedRegisters <- (== Just "1") <$> lookupEnv "FPR_RETAINED_REGISTERS"
@@ -996,7 +998,7 @@ compileWithInterface accepted = do
                                              (if espHost then RV.HartTlsEsp else if qapp then RV.HartQos else if oBase opts && oPlugin opts then RV.HartTlsIe else if oBase opts then RV.HartTls else RV.HartTp))
                               else Nothing,
                 nmSelfLoops = envTirLoops, nmForwardParams = envTirForward,
-                nmTune = Tune envTirEntryArgs envTirWrap envTirLinkPairs, nmSplitEntry = envTirSplit }
+                nmTune = Tune envTirEntryArgs envTirWrap envTirFpPool envTirLinkPairs, nmSplitEntry = envTirSplit }
           -- A64/x64 have no translator: even a named strict subset cannot permit
           -- another function or kernel to fall back to shared-RISC text.
           strictCheck what fallbacks = case if a64 || x64 then StrictAll else envStrict of
@@ -1034,9 +1036,9 @@ compileWithInterface accepted = do
           -- different code, and hosted AArch64 now reads its hart from x28
           tname0 = if qsingle then "qa64singler" ++ show a64InterfaceRev
                   else if a64mac && qapp then "qa64macr" ++ show a64InterfaceRev
-                  else if a64mac then (if oPlugin opts && oBase opts then "module-" else "") ++ "a64macx28r" ++ show a64InterfaceRev
+                  else if a64mac then (if oPlugin opts && oBase opts then "module-" else "") ++ "a64macx28r" ++ show a64HostedInterfaceRev
                   else if a64 && qapp then "qa64r" ++ show a64InterfaceRev
-                  else if a64 then "a64x28r" ++ show a64InterfaceRev
+                  else if a64 then "a64x28r" ++ show a64HostedInterfaceRev
                   else if x64 && qapp then "qx64r" ++ show x64InterfaceRev
                   else if x64 then "x64r" ++ show x64InterfaceRev
                   else if espHost then "rv32-idftls1"
@@ -1052,7 +1054,7 @@ compileWithInterface accepted = do
           -- bypassing directCheck, while tname retains module ABI identity.
           backendTag = case envBackend of
             Nothing -> ""
-            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev) ++ (if a64 || x64 then "-native1" else "") ++ (if g == PerFunction then "mixed" else "") ++ (if envTirLoops then "" else "-noloops") ++ (if envTirShallow then "-shallow" else "") ++ (if envTirForward then "-forward" else "") ++ (if envTirEntryArgs then "-entryargs" else "") ++ (if envTirSplit then "-split" else "") ++ (if envTirWrap then "-wrap" else "") ++ (if envTirLinkPairs then "" else "-nolinkpairs") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
+            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev) ++ (if a64 || x64 then "-native1" else "") ++ (if g == PerFunction then "mixed" else "") ++ (if a64 && not qapp && envTirFpPool then "-fpregs" else "") ++ (if envTirLoops then "" else "-noloops") ++ (if envTirShallow then "-shallow" else "") ++ (if envTirForward then "-forward" else "") ++ (if envTirEntryArgs then "-entryargs" else "") ++ (if envTirSplit then "-split" else "") ++ (if envTirWrap then "-wrap" else "") ++ (if envTirLinkPairs then "" else "-nolinkpairs") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
           fnv = foldl (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) (14695981039346656037 :: Word64)
           tag = "g" ++ show codegenRev ++ backendTag ++ (if envCostedRegisters then "-costedregs" else "") ++ (if envCompactFrames then "-compactframes" else "") ++ (if envRetainedRegisters then "-retainedregs" else "") ++ (if envSelfLoops then "-selfloops" else "") ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoRv32Fast then "-slow32" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ (if envNoRegisters then "-noregs" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"

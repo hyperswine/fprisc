@@ -1,0 +1,4 @@
+A64 FP context: 10000 round trips preserve all d8-d15 bit patterns PASS
+A64 FP context: integer-only switch negative control fails as required PASS
+A64 FP pool: 12 live values across forced yields, recursive calls/stack growth and 1 harts PASS
+A64 FP pool: 12 live values across forced yields, recursive calls/stack growth and 4 harts PASS

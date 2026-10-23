@@ -1,0 +1,11 @@
+unsafe base.
+Fp.pause : Unit -> Unit.
+hold : unsafe Int -> F64 -> F64.
+hold n x = if n == 0 then 0.0 else
+ a=x+1.0; b=x+2.0; c=x+3.0; d=x+4.0; e=x+5.0; f=x+6.0;
+ g=x+7.0; h=x+8.0; i=x+9.0; j=x+10.0; k=x+11.0; l=x+12.0;
+ _=Fp.pause Unit;
+ a+b+c+d+e+f+g+h+i+j+k+l+hold (n - 1) x.
+worker parent x me = result = hold 2000 x; _ = send parent "{result}"; Unit.
+main = me=myself 0; a=spawn (worker me 0.25); b=spawn (worker me 0.5);
+ first=receiveFrom me a; second=receiveFrom me b; print "{first} {second}".

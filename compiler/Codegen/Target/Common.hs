@@ -266,9 +266,10 @@ shrinkWrap saved items
 data Tune = Tune
   { tuneEntryArgs :: Bool, -- FPR_TYPED_IR_ENTRY_ARGS: parameters stay in their registers through the entry
     tuneShrinkWrap :: Bool, -- FPR_TYPED_IR_SHRINK_WRAP: callee saves at a dominating, acyclic block
+    tuneFpPool :: Bool, -- hosted A64 d8..d15, preserved by its actor context
     tuneLinkPairs :: Bool -- FPR_TYPED_IR_LINK_PAIRS (on unless 0): the frame link as one stp/ldp
   }
   deriving (Eq, Show)
 
 noTune :: Tune
-noTune = Tune False False False
+noTune = Tune False False False False

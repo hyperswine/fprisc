@@ -19,7 +19,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 13 -- 13: the ESP-IDF host (the hart in fpr_esp_hart, local-exec, the 32-bit word); prior: 12: 12: QOS RISC-V apps and plugins: the hart borrowed through fpr_g_tlsoff; prior: 11: 11: posix modules: the hart through initial-exec TLS (la.tls.ie), local labels PC-relative under .option pic; prior: 10: generic HAL partial/opaque application; prior 9: inferred boxed I64 operators; prior 8: inference-generated vector runtime entries; prior 7: typed column memory and kernel arithmetic; prior: 6: an ESP-IDF host keeps the legacy generator (its hart is fpr_esp_hart); 5: units with no legacy code skip translation; 4: in-place constructor reuse; 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
+rvSelectionRev = 14 -- comparison and F32 trees; prior: 13: the ESP-IDF host (the hart in fpr_esp_hart, local-exec, the 32-bit word); prior: 12: 12: QOS RISC-V apps and plugins: the hart borrowed through fpr_g_tlsoff; prior: 11: 11: posix modules: the hart through initial-exec TLS (la.tls.ie), local labels PC-relative under .option pic; prior: 10: generic HAL partial/opaque application; prior 9: inferred boxed I64 operators; prior 8: inference-generated vector runtime entries; prior 7: typed column memory and kernel arithmetic; prior: 6: an ESP-IDF host keeps the legacy generator (its hart is fpr_esp_hart); 5: units with no legacy code skip translation; 4: in-place constructor reuse; 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
 
 -- HartTp: the hart pointer is tp (bare metal, QOS); HartTls: the posix
 -- runtime's thread-local cell, local-exec (an executable); HartTlsIe: the
@@ -232,12 +232,28 @@ select cfg fn = do
       OFloatBin o a b -> rr ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) d (vreg a) (vreg b)
       OFloatCmp o a b -> rr ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) d (vreg a) (vreg b)
       OFloat32Bin o a b -> rr ("fbin32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) d (vreg a) (vreg b)
+      OFloatCmpTree o x y -> do
+        forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
+          FSLeaf v n -> emit (plain "ftree.leaf" [] [anyV (vreg v), OI (fromIntegral n)])
+          FSNode f n -> emit (plain ("ftree." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
+        emit (plain ("ftree.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [anyV d] [])
+      OFloat32CmpTree o x y -> do
+        forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
+          FSLeaf v n -> emit (plain "ftree32.leaf" [] [anyV (vreg v), OI (fromIntegral n)])
+          FSNode f n -> emit (plain ("ftree32." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
+        emit (plain ("ftree32.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [anyV d] [])
       OFloatTree t -> do
         let (steps, root) = ftreeSchedule t
         forM_ steps $ \step -> case step of
           FSLeaf v n -> emit (plain "ftree.leaf" [] [anyV (vreg v), OI (fromIntegral n)])
           FSNode o n -> emit (plain ("ftree." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
         emit (plain "ftree.out" [anyV d] [OI (fromIntegral root)])
+      OFloat32Tree t -> do
+        let (steps, root) = ftreeSchedule t
+        forM_ steps $ \step -> case step of
+          FSLeaf v n -> emit (plain "ftree32.leaf" [] [anyV (vreg v), OI (fromIntegral n)])
+          FSNode o n -> emit (plain ("ftree32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
+        emit (plain "ftree32.out" [anyV d] [OI (fromIntegral root)])
       OFloat32Cmp o a b -> rr ("fcmp32." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) d (vreg a) (vreg b)
       -- RISC-V V: v8 the lanes, v9/v10 reductions; t4..t6 scratch (declared)
       ORvvVlMax -> emit (plain "rvv.vlmax" [anyV d] [])
@@ -395,9 +411,20 @@ render cfg fn ly restores (I i) = map (\s -> if last s == ':' then s else "    "
       -- F64 on the bits through ft0/ft1, as the legacy inline table does
       -- F32: the legacy genU forms (fmv.x.w sign-extends; the runtime reads the low 32 bits)
       -- a float tree, one step an instruction: scratch ft0..ft7
+      (o, [d], []) | Just c <- stripPrefix "ftree.cmp." o -> case c of
+        "lt" -> ["flt.d " ++ r d ++ ", ft0, ft1"]; "gt" -> ["flt.d " ++ r d ++ ", ft1, ft0"]
+        "le" -> ["fle.d " ++ r d ++ ", ft0, ft1"]; "ge" -> ["fle.d " ++ r d ++ ", ft1, ft0"]
+        "eq" -> ["feq.d " ++ r d ++ ", ft0, ft1"]; _ -> ["feq.d " ++ r d ++ ", ft0, ft1", "xori " ++ r d ++ ", " ++ r d ++ ", 1"]
+      (o, [d], []) | Just c <- stripPrefix "ftree32.cmp." o -> case c of
+        "lt" -> ["flt.s " ++ r d ++ ", ft0, ft1"]; "gt" -> ["flt.s " ++ r d ++ ", ft1, ft0"]
+        "le" -> ["fle.s " ++ r d ++ ", ft0, ft1"]; "ge" -> ["fle.s " ++ r d ++ ", ft1, ft0"]
+        "eq" -> ["feq.s " ++ r d ++ ", ft0, ft1"]; _ -> ["feq.s " ++ r d ++ ", ft0, ft1", "xori " ++ r d ++ ", " ++ r d ++ ", 1"]
       ("ftree.leaf",[],[x,OI n]) -> ["fmv.d.x ft" ++ show n ++ ", " ++ r x]
       ("ftree.out",[d],[OI n]) -> ["fmv.x.d " ++ r d ++ ", ft" ++ show n]
       (o,[],[OI n]) | Just inst <- stripPrefix "ftree." o -> ["f" ++ inst ++ ".d ft" ++ show n ++ ", ft" ++ show n ++ ", ft" ++ show (n + 1)]
+      ("ftree32.leaf",[],[x,OI n]) -> ["fmv.w.x ft" ++ show n ++ ", " ++ r x]
+      ("ftree32.out",[d],[OI n]) -> ["fmv.x.w " ++ r d ++ ", ft" ++ show n]
+      (o,[],[OI n]) | Just inst <- stripPrefix "ftree32." o -> ["f" ++ inst ++ ".s ft" ++ show n ++ ", ft" ++ show n ++ ", ft" ++ show (n + 1)]
       (o,[d],[a,b]) | Just f <- stripPrefix "fbin32." o ->
         ["fmv.w.x ft0, " ++ r a, "fmv.w.x ft1, " ++ r b, "f" ++ f ++ ".s ft0, ft0, ft1", "fmv.x.w " ++ r d ++ ", ft0"]
       (o,[d],[a,b]) | Just c <- stripPrefix "fcmp32." o ->

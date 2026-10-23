@@ -26,7 +26,7 @@ def main():
         src = tmp / 'probe.fpr'
         src.write_text('inc n = n + 1.\nmain = print (inc 41).\n')
         targets = ('a64', 'a64mac', 'qa64', 'qa64single', 'qa64mac')
-        interface_targets = dict(zip(targets, ('a64x28r15', 'a64macx28r15',
+        interface_targets = dict(zip(targets, ('a64x28r16', 'a64macx28r16',
                                               'qa64r15', 'qa64singler15', 'qa64macr15')))
         for target in targets:
             seen = {}

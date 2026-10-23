@@ -1,0 +1,15 @@
+SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, frame ceilings, shrink-wrap placement and refusals: PASS
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_a64.py", line 7, in <module>
+    runpy.run_path(str(Path(__file__).with_name('check_typed_ir_native.py')), run_name='__main__')
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen runpy>", line 292, in run_path
+  File "<frozen runpy>", line 97, in _run_module_code
+  File "<frozen runpy>", line 87, in _run_code
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_native.py", line 75, in <module>
+    print(run([f'./{out}/{unit}']), end='', flush=True)
+          ~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_native.py", line 37, in run
+    assert p.returncode == expected, (args, p.returncode, p.stdout[-3000:], p.stderr[-3000:])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: (['./build/ghc-tests/a64/AllocIR'], 1, '', 'AllocIR: FAIL: a float operand: refused for another reason: allocate probe: VReg 0: inconsistent register classes\nCallStack (from HasCallStack):\n  error, called at tests/AllocIR.hs:36:15 in main:Main\n')

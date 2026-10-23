@@ -1,0 +1,22 @@
+
+check_base: FAILED: tests/check_typed_ir.py
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 162, in _work
+    fn(tmp)
+    ~~^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 105, in job
+    print(run(['python3', path], timeout=timeout).stdout, end='')
+          ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 73, in run
+    raise AssertionError(f'{args}: exit {p.returncode}, expected {expected}\n{out}\n{err}')
+AssertionError: ['python3', 'tests/check_typed_ir.py']: exit 1, expected 0
+
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir.py", line 33, in <module>
+    run(['make', 'fpr'])
+    ~~~^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir.py", line 30, in run
+    assert p.returncode == expected, (args, p.returncode, p.stdout[-3000:], p.stderr[-3000:])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: (['make', 'fpr'], 2, "Build profile: -w ghc-9.8.2 -O1\nIn order, the following will be built (use -v for more details):\n - fp-risc-0.12.0 (exe:fpr) (file compiler/Codegen/Target/A64.hs changed)\nPreprocessing executable 'fpr' for fp-risc-0.12.0...\nBuilding executable 'fpr' for fp-risc-0.12.0...\n[12 of 71] Compiling Codegen.Target.A64 ( compiler/Codegen/Target/A64.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Target/A64.o ) [Source file changed]\n", '\ncompiler/Codegen/Target/A64.hs:768:7: error: [GHC-39999]\n    • No instance for ‘MonadFail Data.Functor.Identity.Identity’\n        arising from a do statement\n        with the failable pattern ‘t@(OV w _)’\n    • In a stmt of a \'do\' block: t@(OV w _) <- fresh GPR\n      In the expression:\n        do t@(OV w _) <- fresh GPR\n           pure ([I (plain "fmov" [...] [...])], OV w constraint)\n      In an equation for ‘asWord’:\n          asWord o@(OV v constraint)\n            | S.member v floats\n            = do t@(OV w _) <- fresh GPR\n                 pure ([I (plain "fmov" ... ...)], OV w constraint)\n            | otherwise = pure ([], o)\n    |\n768 |       t@(OV w _) <- fresh GPR\n    |       ^^^^^^^^^^^^^^^^^^^^^^^\nError: [Cabal-7125]\nFailed to build exe:fpr from fp-risc-0.12.0.\n\nmake: *** [fpr] Error 1\n')
+

@@ -57,6 +57,9 @@ dumpFn fn =
       OBits n -> "bits " ++ show n
       OFloatBin o a b -> "fbin " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ value a ++ ", " ++ value b
       OFloatCmp o a b -> "fcmp " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
+      OFloatCmpTree o a b -> "fcmp-tree " ++ cmpSymbol o ++ " " ++ ftreeText a ++ ", " ++ ftreeText b
+      OFloat32CmpTree o a b -> "fcmp32-tree " ++ cmpSymbol o ++ " " ++ ftreeText a ++ ", " ++ ftreeText b
+      OFloat32Tree t -> "ftree32 " ++ ftreeText t
       OFloatTree t -> "ftree " ++ ftreeText t
       OFloat32Bin o a b -> "fbin32 " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ value a ++ ", " ++ value b
       OFloat32Cmp o a b -> "fcmp32 " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b

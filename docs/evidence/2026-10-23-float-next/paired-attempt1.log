@@ -1,0 +1,39 @@
+built cmpchain64-baseline: 0.50s, rss 93552640, native 2 / legacy 0 in the root
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tools/bench-typed-ir-m3.py", line 258, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tools/bench-typed-ir-m3.py", line 134, in main
+    _, err = run(cmd, env)
+             ~~~^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tools/bench-typed-ir-m3.py", line 92, in run
+    raise RuntimeError(f"{cmd}: {p.returncode}\n{p.stdout[-3000:]}\n{p.stderr[-3000:]}")
+RuntimeError: ['/usr/bin/time', '-l', '/private/tmp/fpr-float-next-baseline', 'build', '/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/docs/evidence/2026-10-23-float-next/paired/f32trees.fpr', '--harts', '1', '--keep', '-v', '-o', '/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/docs/evidence/2026-10-23-float-next/paired/f32trees-baseline', '--with', '/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/bench/workers_clock.c']: 1
+autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure
+autodrop: irqRouteStart: inserted `drop _autodrop_root_irqRouteStart_0` into 2 case arm(s)
+autodrop: logStart: inserted `drop _autodrop_root_logStart_0` into 2 case arm(s)
+autodrop: parWorker: inserted `drop _autodrop_root_parWorker_0` into 1 case arm(s)
+precond: 7 obligations: 4 discharged, 0 runtime-checked, 3 builtin traps
+=== TYPE ERRORS ===
+  * /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/docs/evidence/2026-10-23-float-next/paired/f32trees.fpr:4: in loopFloat32: declared type of loopFloat32: cannot unify F32 with F64
+  * /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/docs/evidence/2026-10-23-float-next/paired/f32trees.fpr:9:33: in main: application of loopFloat32: cannot unify F32 with F64
+
+        0.06 real         0.04 user         0.01 sys
+            91488256  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+               11522  page reclaims
+                   3  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   1  voluntary context switches
+                 205  involuntary context switches
+           171991235  instructions retired
+            51384732  cycles elapsed
+            75727328  peak memory footprint
+

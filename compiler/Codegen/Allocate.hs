@@ -12,9 +12,9 @@
 --     set the scheduler's context switch preserves: x19..x27 on AArch64,
 --     rbx and r12..r15 on x86-64) or in a frame slot, never anywhere else;
 --     a value that crosses no such point may take a caller-saved register;
---   * no float register is ever allocated (M3 has no float values; the
---     register says the context switch saves none, so a float pool would
---     have to be caller-saved only, which a later milestone decides);
+--   * each value keeps its register class. A floating-point bank is
+--     admitted only when the target supplies it; floats crossing calls
+--     require the same scheduler-preserved budget as integer values;
 --   * a value never sits in a register an instruction inside its live range
 --     names for another purpose (a fixed operand, an implicit use or
 --     definition, a clobber); fixed operands are met by copies around the
@@ -122,11 +122,16 @@ allocateFn cfg fn = do
       instrs = lvInstrs lv
       byPos = IM.fromList instrs
       ivs = lvIntervals lv
-  -- no float values: refused by name rather than placed wrongly
-  forM_ instrs $ \(_, i) -> forM_ (instrVRegs i) $ \(v, c) -> case c of
-    Any FPR -> Left (here ++ show v ++ ": float registers are not allocated in M3")
-    Fix p | acClassOf cfg p == Just FPR -> Left (here ++ show v ++ ": float registers are not allocated in M3")
-    _ -> pure ()
+  -- A class is admitted only when the target supplies its register bank.
+  let classOfConstraint (Any c) = Just c
+      classOfConstraint (Fix r) = acClassOf cfg r
+      classOfConstraint (Tied _) = Nothing
+      classes = M.fromList [(v,c) | (_,i) <- instrs, (v,k) <- instrVRegs i, Just c <- [classOfConstraint k]]
+  forM_ [(v,c) | (_,i) <- instrs, (v,k) <- instrVRegs i, Just c <- [classOfConstraint k]] $ \(v,c) ->
+    unless (any ((== Just c) . acClassOf cfg) (acCalleeSaved cfg ++ acCallerSaved cfg)) $
+      Left (here ++ show v ++ ": float registers are not allocated by this target")
+  forM_ [(v,c) | (_,i) <- instrs, (v,k) <- instrVRegs i, Just c <- [classOfConstraint k]] $ \(v,c) ->
+    unless (M.lookup v classes == Just c) (Left (here ++ show v ++ ": inconsistent register classes") )
   when (length (acScratch cfg) < 2) (Left (here ++ "fewer than two scratch registers"))
   let liveAt p = fromMaybe (IS.empty, IS.empty) (IM.lookup p (lvLive lv))
       vn (VReg n) = n
@@ -193,8 +198,8 @@ allocateFn cfg fn = do
         Nothing -> False
       prefs v iv =
         let forb = forbidden v iv
-            callee = filter (`S.notMember` forb) (acCalleeSaved cfg)
-            caller = filter (`S.notMember` forb) (acCallerSaved cfg)
+            callee = filter (\r -> S.notMember r forb && acClassOf cfg r == M.lookup v classes) (acCalleeSaved cfg)
+            caller = filter (\r -> S.notMember r forb && acClassOf cfg r == M.lookup v classes) (acCallerSaved cfg)
          in if crossesCallV v then callee else if crossesClobberV v then callee ++ caller else caller ++ callee
       tiedOtherUses v p = case IM.lookup p byPos of
         Just i | not (null [() | OV d (Tied _) <- siDefs i, d == v]) ->
@@ -391,10 +396,10 @@ rewrite cfg here locOf _ i = do
               l <- locUse u
               case c of
                 Fix r -> pure (acc ++ [OP r], pool, pre ++ [(PR r, toPlace l)])
-                Any _ -> case l of
+                Any cls -> case l of
                   InReg r -> pure (acc ++ [OP r], pool, pre)
-                  InSlot s -> case pool of
-                    (sc : rest) -> pure (acc ++ [OP sc], rest, pre ++ [(PR sc, PS s)])
+                  InSlot s -> case filter ((== Just cls) . acClassOf cfg) pool of
+                    (sc : _) -> pure (acc ++ [OP sc], filter (/= sc) pool, pre ++ [(PR sc, PS s)])
                     [] -> Left (here ++ siOp i ++ ": no scratch register free for a reload")
                 Tied _ -> Left (here ++ siOp i ++ ": a tied use operand")
         _ -> pure (acc ++ [o], pool, pre)
@@ -429,13 +434,13 @@ rewrite cfg here locOf _ i = do
             Just (InReg r') | r' /= r -> [(PR r', PR r)]
             Just (InSlot s) -> [(PS s, PR r)]
             _ -> [])
-          Any _ -> case locOf d of
+          Any cls -> case locOf d of
             Just (InReg r) -> pure (acc ++ [OP r], pool, post)
-            Just (InSlot s) -> case pool of
-              (sc : rest) -> pure (acc ++ [OP sc], rest, post ++ [(PS s, PR sc)])
+            Just (InSlot s) -> case filter ((== Just cls) . acClassOf cfg) pool of
+              (sc : _) -> pure (acc ++ [OP sc], filter (/= sc) pool, post ++ [(PS s, PR sc)])
               [] -> Left (here ++ siOp i ++ ": no scratch register free for a spilled definition")
-            Nothing -> case pool of -- dead: written and dropped
-              (sc : rest) -> pure (acc ++ [OP sc], rest, post)
+            Nothing -> case filter ((== Just cls) . acClassOf cfg) pool of -- dead: written and dropped
+              (sc : _) -> pure (acc ++ [OP sc], filter (/= sc) pool, post)
               [] -> Left (here ++ siOp i ++ ": no scratch register free for a dead definition")
         _ -> pure (acc ++ [o], pool, post)
   (defs', _, post) <- foldlM dstep ([], defPool, []) (siDefs i)
@@ -484,7 +489,7 @@ resolveCopies cfg here raw = do
               -- every destination is a source: a cycle (sources are all registers)
               let (_, s) = head pending
                   used = S.fromList ([d' | (d', _) <- pending] ++ sources)
-               in case [t | t <- acScratch cfg, S.notMember t used] of
+               in case [t | t <- acScratch cfg, S.notMember t used, case s of PR sr -> acClassOf cfg t == acClassOf cfg sr; _ -> False] of
                     (t : _) -> case s of
                       PR sr ->
                         let pending' = [(d', if s' == PR sr then PR t else s') | (d', s') <- pending]
@@ -497,8 +502,8 @@ resolveCopies cfg here raw = do
 -- The independent oracle over the physical stream: liveness of physical
 -- registers, then (1) no clobbered register is live out of the
 -- instruction that clobbers it, (2) nothing outside the preserved set is
--- live across an instruction with a call, (3) no float register is live
--- across a call.  The arrival's registers are the function's live-in set
+-- live across an instruction with a call, (3) float registers crossing a
+-- call belong to the explicitly preserved bank.  The arrival's registers are the function's live-in set
 -- and are expected; a register live into the function that no instruction
 -- defines is reported unless it is preserved (the hart register, sp, fp).
 checkAllocation :: AllocConfig -> String -> [Item] -> Either String ()
@@ -519,7 +524,7 @@ checkAllocation cfg name items = do
     unless (null (siCalls i)) $ do
       let across = [p | p <- IS.toList out, IS.notMember p (IS.fromList (defsOf i)), IS.notMember p preserved]
       unless (null across) $ Left (where' ++ "live across a call outside the preserved set: " ++ show (map name' across))
-      let floats = [p | p <- IS.toList out, acClassOf cfg (name' p) == Just FPR]
+      let floats = [p | p <- IS.toList out, acClassOf cfg (name' p) == Just FPR, IS.notMember p preserved]
       unless (null floats) $ Left (where' ++ "a float register is live across a call")
   -- registers live into the function: the arrival's and the preserved ones only
   case sets of

@@ -1,0 +1,12 @@
+A64 FP context: 10000 round trips preserve all d8-d15 bit patterns PASS
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_a64_fp_pool.py", line 23, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_a64_fp_pool.py", line 15, in main
+    asm=tmp/'pool.s';run([ROOT/'fprc','--target=a64','--system=posix',ROOT/'tests/base/fp_pool.fpr',asm],env)
+                     ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/x64_probe.py", line 15, in run
+    assert p.returncode == 0, (args, p.returncode, p.stdout[-4000:], p.stderr[-4000:])
+           ^^^^^^^^^^^^^^^^^
+AssertionError: ([PosixPath('/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/fprc'), '--target=a64', '--system=posix', PosixPath('/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/base/fp_pool.fpr'), PosixPath('/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-a64-fp-6jsdmybr/pool.s')], 1, 'autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure\nautodrop: irqRouteStart: inserted `drop _autodrop_root_irqRouteStart_0` into 2 case arm(s)\nautodrop: logStart: inserted `drop _autodrop_root_logStart_0` into 2 case arm(s)\nautodrop: parWorker: inserted `drop _autodrop_root_parWorker_0` into 1 case arm(s)\nprecond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps\n=== TYPE ERRORS ===\n  * /Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/base/fp_pool.fpr:5:2: in hold: application of n: cannot unify Int with Int -> b96\n', '')

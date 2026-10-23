@@ -245,6 +245,15 @@ main = do
   let dead = fn [v 0, v 1] [I (add 2 0 1), I (add 3 1 1), I (ret 2)]
   da <- either (error . ("FAIL: dead: " ++)) pure (allocateFn plainCfg dead)
   check "a dead definition has no range, no slot and no store" (stValues (alStats da) == 3 && stSpillStores (alStats da) == 0 && M.notMember (v 3) (alLocs da))
+  -- A supplied FP bank may carry a value across a call; word and FP
+  -- classes remain separate, and the physical oracle checks preservation.
+  let fpCfg = plainCfg {acCalleeSaved=f0:acCalleeSaved plainCfg}
+      fpFn = fn [] [I (plain "fconst" [OV (v 0) (Any FPR)] []),
+                    I ((plain "call" [] [OS "g"]) {siClobbers=clobbered,siCalls=[Call "g" True False]}),
+                    I (plain "bits" [gpr 1] [OV (v 0) (Any FPR)]), I (ret 1)]
+  fpa <- either error pure (allocateFn fpCfg fpFn)
+  check "FP values across calls use the supplied preserved bank" (M.lookup (v 0) (alLocs fpa)==Just (InReg f0))
+  either error pure (checkAllocation fpCfg "fp" (alBody fpa))
   -- refusals
   refused "a float operand" "float registers are not allocated" (allocateFn plainCfg (fn [v 0, v 1] [I (plain "fadd" [OV (v 2) (Any FPR)] [OV (v 0) (Any FPR)]), I (ret 2)]))
   refused "the oracle: a caller-saved register live across a call"

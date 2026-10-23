@@ -30,7 +30,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 19 -- QOS borrowed TLS hart/argument cells; prior 18: generic HAL partial/opaque application; prior 17: inferred boxed I64 operators; prior 16: inference-generated vector runtime entries; prior 15: typed column memory and kernel arithmetic; prior: 14: posix modules reach external symbols through the GOT; 13: units with no legacy code skip translation; 12: in-place constructor reuse; 11: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 10: aggregate and string selection; prior: the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
+x64SelectionRev = 20 -- comparison and F32 trees; prior: QOS borrowed TLS hart/argument cells; prior 18: generic HAL partial/opaque application; prior 17: inferred boxed I64 operators; prior 16: inference-generated vector runtime entries; prior 15: typed column memory and kernel arithmetic; prior: 14: posix modules reach external symbols through the GOT; 13: units with no legacy code skip translation; 12: in-place constructor reuse; 11: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 10: aggregate and string selection; prior: the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -361,12 +361,28 @@ selectInstr _ _ (Instr d op) = case op of
   OFloatBin o a b -> def (\r -> emitI (plain ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [any' r] [any' (vreg a), any' (vreg b)]))
   OFloatCmp o a b -> def (\r -> emitI ((plain ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
   OFloat32Bin o a b -> def (\r -> emitI (plain ("fbin32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [any' r] [any' (vreg a), any' (vreg b)]))
+  OFloatCmpTree o x y -> def (\r -> do
+    forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
+      FSLeaf v n -> emitI (plain "ftree.leaf" [] [any' (vreg v), OI (fromIntegral n)])
+      FSNode f n -> emitI (plain ("ftree." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
+    emitI ((plain ("ftree.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] []) {siFlags = FlagsDef}))
+  OFloat32CmpTree o x y -> def (\r -> do
+    forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
+      FSLeaf v n -> emitI (plain "ftree32.leaf" [] [any' (vreg v), OI (fromIntegral n)])
+      FSNode f n -> emitI (plain ("ftree32." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
+    emitI ((plain ("ftree32.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] []) {siFlags = FlagsDef}))
   OFloatTree t -> def (\r -> do
     let (steps, root) = ftreeSchedule t
     forM_ steps $ \case
       FSLeaf v n -> emitI (plain "ftree.leaf" [] [any' (vreg v), OI (fromIntegral n)])
       FSNode o n -> emitI (plain ("ftree." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
     emitI (plain "ftree.out" [any' r] [OI (fromIntegral root)]))
+  OFloat32Tree t -> def (\r -> do
+    let (steps, root) = ftreeSchedule t
+    forM_ steps $ \case
+      FSLeaf v n -> emitI (plain "ftree32.leaf" [] [any' (vreg v), OI (fromIntegral n)])
+      FSNode o n -> emitI (plain ("ftree32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
+    emitI (plain "ftree32.out" [any' r] [OI (fromIntegral root)]))
   OFloat32Cmp o a b -> def (\r -> emitI ((plain ("fcmp32." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
   OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
@@ -647,9 +663,18 @@ renderItem hart ly fname saveLines restores (I i) = map indent (go (siOp i) (siD
       -- F32 on the low 32 bits: movd to a 32-bit register zero-extends
       -- a float tree, one step an instruction: scratch %xmm8.., the
       -- two-operand forms leave a node's value in its left subtree's register
+      (o, [d], []) | Just c <- stripPrefix "ftree.cmp." o ->
+        let (x, y, pred') = case c of "lt" -> ("%xmm8", "%xmm9", "lt"); "le" -> ("%xmm8", "%xmm9", "le"); "gt" -> ("%xmm9", "%xmm8", "lt"); "ge" -> ("%xmm9", "%xmm8", "le"); "eq" -> ("%xmm8", "%xmm9", "eq"); _ -> ("%xmm8", "%xmm9", "neq")
+         in ["cmp" ++ pred' ++ "sd " ++ y ++ ", " ++ x, "movq " ++ x ++ ", " ++ reg d, "andq $1, " ++ reg d]
+      (o, [d], []) | Just c <- stripPrefix "ftree32.cmp." o ->
+        let (x, y, pred') = case c of "lt" -> ("%xmm8", "%xmm9", "lt"); "le" -> ("%xmm8", "%xmm9", "le"); "gt" -> ("%xmm9", "%xmm8", "lt"); "ge" -> ("%xmm9", "%xmm8", "le"); "eq" -> ("%xmm8", "%xmm9", "eq"); _ -> ("%xmm8", "%xmm9", "neq")
+         in ["cmp" ++ pred' ++ "ss " ++ y ++ ", " ++ x, "movd " ++ x ++ ", " ++ word32 d, "andq $1, " ++ reg d]
       ("ftree.leaf",[],[x,OI n]) -> ["movq " ++ reg x ++ ", %xmm" ++ show (8 + n)]
       ("ftree.out",[d],[OI n]) -> ["movq %xmm" ++ show (8 + n) ++ ", " ++ reg d]
       (o,[],[OI n]) | Just inst <- stripPrefix "ftree." o -> [inst ++ "sd %xmm" ++ show (9 + n) ++ ", %xmm" ++ show (8 + n)]
+      ("ftree32.leaf",[],[x,OI n]) -> ["movd " ++ word32 x ++ ", %xmm" ++ show (8 + n)]
+      ("ftree32.out",[d],[OI n]) -> ["movd %xmm" ++ show (8 + n) ++ ", " ++ word32 d]
+      (o,[],[OI n]) | Just inst <- stripPrefix "ftree32." o -> [inst ++ "ss %xmm" ++ show (9 + n) ++ ", %xmm" ++ show (8 + n)]
       (o,[d],[a,b]) | Just f <- stripPrefix "fbin32." o ->
         ["movd " ++ word32 a ++ ", %xmm14", "movd " ++ word32 b ++ ", %xmm15", f ++ "ss %xmm15, %xmm14", "movd %xmm14, " ++ word32 d]
       (o,[d],[a,b]) | Just c <- stripPrefix "fcmp32." o ->

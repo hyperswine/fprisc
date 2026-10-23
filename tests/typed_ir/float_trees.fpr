@@ -1,0 +1,30 @@
+unsafe base.
+chain64 : F64 -> F64 -> F64 -> F64.
+chain64 a b c = (a*b+c)/(b-c).
+chain32 : F32 -> F32 -> F32 -> F32.
+chain32 a b c = (a*b+c)/(b-c).
+cmp64lt : F64 -> F64 -> F64 -> Bool.
+cmp64lt a b c = (a*b+c) < ((c-a)/(b+c)).
+cmp64le : F64 -> F64 -> F64 -> Bool.
+cmp64le a b c = (a*b+c) <= ((c-a)/(b+c)).
+cmp64gt : F64 -> F64 -> F64 -> Bool.
+cmp64gt a b c = (a*b+c) > ((c-a)/(b+c)).
+cmp64ge : F64 -> F64 -> F64 -> Bool.
+cmp64ge a b c = (a*b+c) >= ((c-a)/(b+c)).
+cmp64eq : F64 -> F64 -> F64 -> Bool.
+cmp64eq a b c = (a*b+c) == ((c-a)/(b+c)).
+cmp64ne : F64 -> F64 -> F64 -> Bool.
+cmp64ne a b c = (a*b+c) != ((c-a)/(b+c)).
+cmp32lt : F32 -> F32 -> F32 -> Bool.
+cmp32lt a b c = (a*b+c) < ((c-a)/(b+c)).
+cmp32le : F32 -> F32 -> F32 -> Bool.
+cmp32le a b c = (a*b+c) <= ((c-a)/(b+c)).
+cmp32gt : F32 -> F32 -> F32 -> Bool.
+cmp32gt a b c = (a*b+c) > ((c-a)/(b+c)).
+cmp32ge : F32 -> F32 -> F32 -> Bool.
+cmp32ge a b c = (a*b+c) >= ((c-a)/(b+c)).
+cmp32eq : F32 -> F32 -> F32 -> Bool.
+cmp32eq a b c = (a*b+c) == ((c-a)/(b+c)).
+cmp32ne : F32 -> F32 -> F32 -> Bool.
+cmp32ne a b c = (a*b+c) != ((c-a)/(b+c)).
+main = Unit.

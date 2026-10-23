@@ -1,0 +1,117 @@
+Build profile: -w ghc-9.8.2 -O1
+In order, the following will be built (use -v for more details):
+ - fp-risc-0.12.0 (exe:fpr) (file compiler/Compile.hs changed)
+Preprocessing executable 'fpr' for fp-risc-0.12.0...
+Building executable 'fpr' for fp-risc-0.12.0...
+[ 9 of 71] Compiling Codegen.Allocate ( compiler/Codegen/Allocate.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Allocate.o ) [Source file changed]
+
+compiler/Codegen/Allocate.hs:206:19: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+206 |           let k = head [k' | OV d (Tied k') <- siDefs i, d == v]
+    |                   ^^^^
+
+compiler/Codegen/Allocate.hs:361:28: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+361 |             let (d, src) = head ms
+    |                            ^^^^
+
+compiler/Codegen/Allocate.hs:363:93: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘tail’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Replace it with drop 1, or use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+363 |              in vmove t src : go ((d, t) : [(d2, if s2 == src then t else s2) | (d2, s2) <- tail ms])
+    |                                                                                             ^^^^
+
+compiler/Codegen/Allocate.hs:490:28: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+490 |               let (_, s) = head pending
+    |                            ^^^^
+
+compiler/Codegen/Allocate.hs:519:17: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+519 |       name' p = head [r | (r, n) <- M.toList key, n == p]
+    |                 ^^^^
+[12 of 71] Compiling Codegen.Target.A64 ( compiler/Codegen/Target/A64.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Target/A64.o ) [Source file changed]
+
+compiler/Codegen/Target/A64.hs:760:63: error: [GHC-88464]
+    Variable not in scope: instrDefs :: SInstr -> [VReg]
+    |
+760 |     start = 1 + maximum (0 : [n | I i <- sfBody fn, VReg n <- instrDefs i ++ instrUses i])
+    |                                                               ^^^^^^^^^
+
+compiler/Codegen/Target/A64.hs:760:78: error: [GHC-88464]
+    Variable not in scope: instrUses :: SInstr -> [VReg]
+    |
+760 |     start = 1 + maximum (0 : [n | I i <- sfBody fn, VReg n <- instrDefs i ++ instrUses i])
+    |                                                                              ^^^^^^^^^
+
+compiler/Codegen/Target/A64.hs:761:5: error: [GHC-80003]
+    • Non type-variable argument in the constraint: MonadState Int m
+    • When checking the inferred type
+        fresh :: forall {m :: * -> *}.
+                 MonadState Int m =>
+                 RegClass -> m Operand
+      In an equation for ‘floatPool’:
+          floatPool fn
+            = fn {sfBody = evalState (concat <$> mapM item (sfBody fn)) start}
+            where
+                floats
+                  = S.fromList
+                      [v | I i <- sfBody fn, floatingDef (siOp i), OV v _ <- siDefs i]
+                floatingDef op
+                  = any (\ p -> take (length p) op == p) ["fbin.", ....]
+                      || op `elem` ["ftree.out", ....]
+                start
+                  = 1 + maximum
+                          (0 : [n | I i <- sfBody fn, VReg n <- instrDefs i ++ instrUses i])
+                fresh cls
+                  = do n <- get
+                       ....
+                ....
+    Suggested fix: Perhaps you intended to use FlexibleContexts
+    |
+761 |     fresh cls = do n <- get; put (n+1); pure (OV (VReg n) (Any cls))
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[14 of 71] Compiling Codegen.Target.RV ( compiler/Codegen/Target/RV.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Target/RV.o ) [Source file changed]
+[15 of 71] Compiling Codegen.Target.X64 ( compiler/Codegen/Target/X64.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Target/X64.o ) [Source file changed]
+
+compiler/Codegen/Target/X64.hs:232:17: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+232 | entryBlock fn = head [b | b <- fnBlocks fn, bId b == fnEntry fn]
+    |                 ^^^^
+
+compiler/Codegen/Target/X64.hs:503:22: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘head’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+503 |         let (d, s) = head ms
+    |                      ^^^^
+
+compiler/Codegen/Target/X64.hs:506:69: warning: [GHC-63394] [-Wx-partial]
+    In the use of ‘tail’
+    (imported from Prelude, but defined in GHC.List):
+    "This is a partial function, it throws an error on empty lists. Replace it with drop 1, or use pattern matching or Data.List.uncons instead. Consider refactoring to use Data.List.NonEmpty."
+    |
+506 |         go ((d, t) : [(d', if s' == s then t else s') | (d', s') <- tail ms])
+    |                                                                     ^^^^
+Error: [Cabal-7125]
+Failed to build exe:fpr from fp-risc-0.12.0.
+
+make: *** [fpr] Error 1

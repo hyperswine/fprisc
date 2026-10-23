@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 VARIANTS = {
     "typed-ir": {"FPR_TYPED_IR_BACKEND": "mixed"},
+    "typed-ir-trees": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_FP_POOL": "0"},
     "typed-ir-forward": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_FORWARD_PARAMS": "1"},
     "typed-ir-entry": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_FORWARD_PARAMS": "1", "FPR_TYPED_IR_SHALLOW_STACK": "1"},
     "typed-ir-shallow": {"FPR_TYPED_IR_BACKEND": "mixed", "FPR_TYPED_IR_SHALLOW_STACK": "1"},
@@ -43,6 +44,16 @@ INTERNAL = {
 INTERNAL["records"] = ((ROOT / "tests/typed_ir/record_kernels.fpr").read_text()
     .split("main =")[0].replace("unsafe base.\n", ""), "0",
     7 + sum(2*(10*i+45)+3 for i in range(100000) if 10*i+45 > 400))
+for bits in (64, 32):
+    name = "cmpchain64" if bits == 64 else "f32trees"
+    defs = (f"loopFloat{bits} : unsafe Int -> F{bits} -> Int -> Int .\n"
+            f"loopFloat{bits} n x count = if n == 0 then count else\n"
+            "  good = if (x * 2.0 + 0.25) / (x - 0.125) > x then 1 else 0;\n"
+            f"  loopFloat{bits} (n - 1) (0.0 - x) (count + good).\n")
+    if bits == 32:
+        defs = re.sub(r"(\d+\.\d+)", r"\1f", defs)
+    INTERNAL[name] = (defs, f"loopFloat{bits} 3000000 0.5{'f' if bits == 32 else ''} 0", 3000000)
+
 WALL = ["helpers", "sha", "floatcmp", "nbody"]
 
 
@@ -70,6 +81,7 @@ def main():
     out.mkdir(parents=True, exist_ok=False)
     compiler = args.compiler.resolve()
     compiler_for = lambda variant: args.against.resolve() if variant == "baseline" and args.against is not None else compiler
+    compiler_identities = {v: {"path": str(compiler_for(v)), "sha256": hashlib.sha256(compiler_for(v).read_bytes()).hexdigest()} for v in variants}
     base = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), FPR_HARTS="1")
     for key in list(base):
         if key.startswith("FPR_NO_") or key.startswith("FPR_TYPED_IR") or key in (
@@ -181,6 +193,7 @@ def main():
     result = {
         "revision": run(["git", "rev-parse", "HEAD"], base)[0].strip(),
         "compiler_sha256": digest(compiler),
+        "compiler_variants": compiler_identities,
         "working_tree_status": dirty,
         "source_patch_sha256": hashlib.sha256(patch.encode()).hexdigest(),
         "platform": platform.platform(),

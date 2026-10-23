@@ -94,3 +94,10 @@ under QEMU) but not timed.
   is on its path; a workload that drops most rows would measure it.
 - The earlier pipeline gap against legacy-best closed when the kernels
   went typed (the kernel pages); nothing to chase there.
+
+## Comparison trees, F32 trees and the AArch64 pool
+
+The [next performance pass](2026-10-23-FLOAT-TREES-POOL.md) extends trees
+to comparisons and F32 on all three 64-bit backends, and adds hosted AArch64
+FP allocation across safepoints. Its separate 31-round comparison measures
+nbody at 0.901 of this page's final compiler, with 112 Base checks passing.

@@ -1,0 +1,39 @@
+{
+  "starting_revision": "ae507dc58fda0073b6e95445dc6211d802f7ca9e",
+  "baseline_compiler_sha256": "2052f3e0c52c07efe85a91dde60ba82757f1b73beb55b0299320d8fb79c41b3e",
+  "measured_compiler_sha256": "b6e4bc69e5a51fd76ebd6a93297f6aec4c766702ed1898470961fdff4d6d4938",
+  "final_compiler_sha256": "1c17c1f3c1295cf7bf1f19daace873c2c34046f79a08dd20a77cea8d385d04b8",
+  "comparisons": "F64 compare chains and F32 trees: typed-ir-trees vs baseline; A64 pool: typed-ir vs typed-ir-trees. All variants compile against the same current runtime/context sources.",
+  "pool_scope": "hosted AArch64, QOS excluded",
+  "abi": "Hosted AArch64 native ABI 7, module interface rev16, context 24 words; QOS retains ABI6, interface15, context16.",
+  "validation": {
+    "base_jobs": 112,
+    "base_exit_code": 0,
+    "base_log": "base-final.log",
+    "tree_oracle_triples_per_precision": 5427,
+    "tree_targets": [
+      "qa64mac (native AArch64)",
+      "x64 (Rosetta)",
+      "rv64 (QEMU)"
+    ],
+    "context_round_trips": 10000,
+    "context_negative_control": "integer-only switch fails as required",
+    "pool_actor_harts": [
+      1,
+      4
+    ]
+  },
+  "timing_scope": "31 paired rounds, one macOS AArch64 host and one hart; compiler comparison uses identical new runtime/context for all variants; old-context scheduling overhead not measured.",
+  "context_timing": {
+    "runs": 31,
+    "round_trips_per_sample": 10000000,
+    "median_paired_ratio": 1.1743920254361089,
+    "ci95": [
+      1.173076096764491,
+      1.1756242465989324
+    ],
+    "median_extra_ns_per_switch": 1.0147,
+    "scope": "Direct hot switch, identical 24-word arrays, integer-only vs d8..d15 save/restore. Excludes scheduler and hart-layout cache effects.",
+    "results": "context-paired-results.json"
+  }
+}

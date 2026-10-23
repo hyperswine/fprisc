@@ -12,7 +12,7 @@ import Codegen.Policy (m2Policy, Policy (..), Profile (..))
 import Codegen.Simplify (simplifyFn, simplifyProgram)
 import Codegen.Split (splitEntryValues)
 import Codegen.Verify (verifyFn, verifyProgram, verifyProgramWidth, opSignature, simdExprOk)
-import Control.Monad (unless)
+import Control.Monad (unless, forM_)
 import Data.List (isInfixOf)
 import qualified Data.Map.Strict as M
 import FPRISC (Core (..))
@@ -117,6 +117,23 @@ main = do
   check "float tree signature" (opSignature fval (OFloatTree (FNode FAdd (FLeaf (VId 0)) (FLeaf (VId 1)))) == Right (Just TVal))
   check "float tree budget" (either (const True) (const False) (opSignature fval (OFloatTree (iterate (\t -> FNode FAdd (FLeaf (VId 0)) t) (FLeaf (VId 1)) !! 8))))
   check "float tree registers" (ftreeRegisters (FNode FAdd (FNode FMul (FLeaf (VId 0)) (FLeaf (VId 1))) (FLeaf (VId 2))) == 2)
+  let cmpChain = Fn "cmpChain" ["a","b","c"] TPred (BId 0)
+        [Block (BId 0) [(VId 0,TVal),(VId 1,TVal),(VId 2,TVal)]
+          [Instr (Just (VId 3,TVal)) (OFloatBin FMul (VId 0) (VId 1)),
+           Instr (Just (VId 4,TVal)) (OFloatBin FAdd (VId 3) (VId 2)),
+           Instr (Just (VId 5,TPred)) (OFloatCmp Lt (VId 4) (VId 0))] (TRet (VId 5))]
+      to32 (Instr d (OFloatBin o a b)) = Instr d (OFloat32Bin o a b)
+      to32 (Instr d (OFloatCmp o a b)) = Instr d (OFloat32Cmp o a b)
+      to32 i = i
+      cmp32 = cmpChain {fnBlocks=[b {bInstrs=map to32 (bInstrs b)} | b<-fnBlocks cmpChain]}
+  forM_ [(cmpChain,False),(cmp32,True)] $ \(input,single) -> case simplifyFn M.empty input of
+    Right (f,_) -> check "comparison absorbs its arithmetic tree at the matching precision"
+      (length [() | b<-fnBlocks f,Instr _ op<-bInstrs b, case op of OFloatCmpTree {} -> not single; OFloat32CmpTree {} -> single; _ -> False] == 1
+       && sum (map (length . bInstrs) (fnBlocks f)) == 1)
+    Left e -> error e
+  check "F32 tree signature" (opSignature fval (OFloat32Tree (FNode FMul (FLeaf (VId 0)) (FLeaf (VId 1)))) == Right (Just TVal))
+  check "comparison accounts for the live left root in the right tree budget"
+    (either (const True) (const False) (opSignature fval (OFloatCmpTree Eq (FLeaf (VId 0)) (iterate (\t -> FNode FAdd (FLeaf (VId 0)) t) (FLeaf (VId 1)) !! 7))))
   -- the verifier
   check "a well-formed function verifies" (verifyFn M.empty good == Right ())
   expectRefusal "missing entry" "entry block missing" (verifyFn M.empty good {fnEntry = BId 9})

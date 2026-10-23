@@ -78,6 +78,13 @@ opSignature tyOf = \case
     unless (ftreeRegisters t <= ftreeScratch) (Left ("a float tree needs " ++ show (ftreeRegisters t) ++ " scratch registers, " ++ show ftreeScratch ++ " exist"))
     mapM_ (`expect` TVal) (ftreeLeaves t)
     pure (Just TVal)
+  OFloat32Tree t -> do
+    case t of FNode {} -> pure (); FLeaf _ -> Left "a float tree is at least one operation"
+    unless (ftreeRegisters t <= ftreeScratch) (Left ("a float tree needs " ++ show (ftreeRegisters t) ++ " scratch registers, " ++ show ftreeScratch ++ " exist"))
+    mapM_ (`expect` TVal) (ftreeLeaves t)
+    pure (Just TVal)
+  OFloatCmpTree _ a b -> checkTrees a b
+  OFloat32CmpTree _ a b -> checkTrees a b
   OFloat32Bin _ a b -> expect a TVal >> expect b TVal >> pure (Just TVal)
   OFloat32Cmp _ a b -> expect a TVal >> expect b TVal >> pure (Just TPred)
   OCall c as -> do
@@ -96,6 +103,11 @@ opSignature tyOf = \case
   ORvvSumLoaded acc -> expect acc TInt >> pure (Just TInt)
   OStackCheck -> pure Nothing
   where
+    checkTrees a b = do
+      let budget = max (ftreeRegisters a) (1 + ftreeRegisters b)
+      unless (budget <= ftreeScratch) (Left "a comparison tree exceeds the scratch register budget")
+      mapM_ (`expect` TVal) (ftreeLeaves a ++ ftreeLeaves b)
+      pure (Just TPred)
     memory t a n = do
       unless (t `elem` [TInt,TVal,TAddr]) (Left "unsupported memory representation")
       unless (n >= 0 && n <= 255) (Left "memory offset outside portable displacement range")

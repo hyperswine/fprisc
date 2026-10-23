@@ -1,8 +1,7 @@
 /* ctx_a64.S — fpr_ctx_switch for AArch64 AAPCS64.  x0=save x1=load.
  * Layout: 0 = resume pc, 1 = sp, 4..12 = x19..x27, 14 = x29 (slot 13
- * is padding); d8-d15 are deliberately NOT saved (ctx[] is 16 words;
- * the runtime's switch paths do no FP, matching virt ctx.S's
- * integer-only contract).
+ * is padding). Hosted contexts add d8-d15 in slots 16..23. QOS apps
+ * retain their 16-word integer context until their host contract moves.
  *
  * x28 is DELIBERATELY NOT in the frame: under the QOS-app
  * convention x28 is the hosted world's tp -- the hart pointer, set
@@ -33,6 +32,12 @@ SYM(fpr_ctx_switch):
     stp x25, x26, [x0, #80]
     str x27, [x0, #96]         // x28 stays live: it is the hart register
     str x29, [x0, #112]
+#ifndef FPR_QOSAPP
+    stp d8, d9, [x0, #128]
+    stp d10, d11, [x0, #144]
+    stp d12, d13, [x0, #160]
+    stp d14, d15, [x0, #176]
+#endif
 
     ldr x9,  [x1, #8]
     mov sp, x9
@@ -42,5 +47,11 @@ SYM(fpr_ctx_switch):
     ldp x25, x26, [x1, #80]
     ldr x27, [x1, #96]         // x28 stays live: it is the hart register
     ldr x29, [x1, #112]
+#ifndef FPR_QOSAPP
+    ldp d8, d9, [x1, #128]
+    ldp d10, d11, [x1, #144]
+    ldp d12, d13, [x1, #160]
+    ldp d14, d15, [x1, #176]
+#endif
     ldr x30, [x1, #0]
     ret

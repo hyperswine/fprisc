@@ -1,0 +1,12 @@
+A64 FP context: 10000 round trips preserve all d8-d15 bit patterns PASS
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_a64_fp_pool.py", line 23, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_a64_fp_pool.py", line 19, in main
+    exe=tmp/'pool';run([ROOT/'fpr','build',ROOT/'tests/base/fp_pool.fpr','--with',ROOT/'tests/base/fp_pool.c','-o',exe],env)
+                   ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/x64_probe.py", line 15, in run
+    assert p.returncode == 0, (args, p.returncode, p.stdout[-4000:], p.stderr[-4000:])
+           ^^^^^^^^^^^^^^^^^
+AssertionError: ([PosixPath('/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/fpr'), 'build', PosixPath('/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/base/fp_pool.fpr'), '--with', PosixPath('/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/base/fp_pool.c'), '-o', PosixPath('/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-a64-fp-kmpsvft6/pool')], 1, '', "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/base/fp_pool.c:2:79: error: use of undeclared identifier 'UNIT'\n    2 | static V pause_fp(V u){(void)u;fpr_hart()->fuel=0;fpr_fuel_exhausted();return UNIT;}\n      |                                                                               ^~~~\n1 error generated.\nfpr build: cc failed\n")

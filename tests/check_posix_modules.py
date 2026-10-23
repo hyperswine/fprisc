@@ -23,7 +23,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-host-modules-') as directory:
         run([FPR,'build',src,'--module','-o',mods[name]])
     # Real loader failures before publication, with controlled shared objects.
     rev = re.search(r'codegenRev = (\d+)', (ROOT/'compiler/Codegen.hs').read_text()).group(1)
-    nabi = re.search(r'#define FPR_NATIVE_ABI (\d+)u', (ROOT/'runtime/fpr.h').read_text()).group(1)
+    macros = run(['cc','-DFPR_POSIX','-dM','-E','-include',ROOT/'runtime/fpr.h','-x','c','/dev/null'])
+    nabi = re.search(r'#define FPR_NATIVE_ABI (\d+)u', macros).group(1)
     badlibs = {}
     for name, body in {
         'metadata':'int unrelated = 1;',

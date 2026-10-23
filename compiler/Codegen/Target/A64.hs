@@ -56,7 +56,7 @@
 --     order are the primitive's.
 module Codegen.Target.A64
   ( A64Config (..), ObjectFormat (..), HartAccess (..), NativeFn (..),
-    a64InterfaceRev, a64SelectionRev, emitFnA64, a64RegisterFile, mangleName, functionSymbol,
+    a64InterfaceRev, a64HostedInterfaceRev, a64SelectionRev, emitFnA64, a64RegisterFile, mangleName, functionSymbol,
     placement, allocConfig,
   ) where
 
@@ -82,10 +82,14 @@ import Codegen.Target.Common
 a64InterfaceRev :: Int
 a64InterfaceRev = 15
 
+-- Hosted context now preserves d8..d15; old hosts must refuse new modules.
+a64HostedInterfaceRev :: Int
+a64HostedInterfaceRev = 16
+
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 20 -- generic HAL partial/opaque application; prior 19: inferred boxed I64 operators; prior 18: inference-generated vector runtime entries; prior 17: typed column memory and kernel arithmetic; prior: 16: posix modules reach external symbols through the GOT; 15: units with no legacy code skip translation; 14: in-place constructor reuse; 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
+a64SelectionRev = 21 -- hosted FP pool and comparison/F32 trees; prior: generic HAL partial/opaque application; prior 19: inferred boxed I64 operators; prior 18: inference-generated vector runtime entries; prior 17: typed column memory and kernel arithmetic; prior: 16: posix modules reach external symbols through the GOT; 15: units with no legacy code skip translation; 14: in-place constructor reuse; 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -124,7 +128,7 @@ a64RegisterFile = RegisterFile classOf reserved
 -- what a C call destroys (AAPCS64 caller-saved integer registers and the
 -- link register); x18 is the platform register and never holds a value
 callerSaved :: [Phys]
-callerSaved = map x ([0 .. 17] ++ [30])
+callerSaved = map x ([0 .. 17] ++ [30]) ++ map (Phys . ("d" ++) . show) ([0..7] ++ [16..31 :: Int])
 
 -- the placement's scratch: caller-saved registers the runtime ABI leaves
 -- free and the expansions do not use (x16/x17 are the expansions')
@@ -471,12 +475,28 @@ selectInstr _ _ (Instr d op) = case op of
   OFloatBin o a b -> def (\r -> emitI (rrr ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) r (vreg a) (vreg b)))
   OFloatCmp o a b -> def (\r -> emitI ((rrr ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) r (vreg a) (vreg b)) {siFlags = FlagsDef}))
   OFloat32Bin o a b -> def (\r -> emitI (rrr ("fbin32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) r (vreg a) (vreg b)))
+  OFloatCmpTree o x y -> def (\r -> do
+    forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
+      FSLeaf v n -> emitI (plain "ftree.leaf" [] [any' (vreg v), OI (fromIntegral n)])
+      FSNode f n -> emitI (plain ("ftree." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
+    emitI ((plain ("ftree.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] []) {siFlags = FlagsDef}))
+  OFloat32CmpTree o x y -> def (\r -> do
+    forM_ (ftreeScheduleAt 0 x ++ ftreeScheduleAt 1 y) $ \case
+      FSLeaf v n -> emitI (plain "ftree32.leaf" [] [any' (vreg v), OI (fromIntegral n)])
+      FSNode f n -> emitI (plain ("ftree32." ++ (case f of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
+    emitI ((plain ("ftree32.cmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] []) {siFlags = FlagsDef}))
   OFloatTree t -> def (\r -> do
     let (steps, root) = ftreeSchedule t
     forM_ steps $ \case
       FSLeaf v n -> emitI (plain "ftree.leaf" [] [any' (vreg v), OI (fromIntegral n)])
       FSNode o n -> emitI (plain ("ftree." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
     emitI (plain "ftree.out" [any' r] [OI (fromIntegral root)]))
+  OFloat32Tree t -> def (\r -> do
+    let (steps, root) = ftreeSchedule t
+    forM_ steps $ \case
+      FSLeaf v n -> emitI (plain "ftree32.leaf" [] [any' (vreg v), OI (fromIntegral n)])
+      FSNode o n -> emitI (plain ("ftree32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
+    emitI (plain "ftree32.out" [any' r] [OI (fromIntegral root)]))
   OFloat32Cmp o a b -> def (\r -> emitI ((rrr ("fcmp32." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) r (vreg a) (vreg b)) {siFlags = FlagsDef}))
   OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
@@ -709,15 +729,15 @@ placement managed =
 allocConfig :: Maybe String -> S.Set VReg -> AllocConfig
 allocConfig self managed =
   AllocConfig
-    { acCalleeSaved = calleeBudget,
-      acCallerSaved = callerPool,
-      acScratch = allocScratch,
+    { acCalleeSaved = calleeBudget ++ map (Phys . ("d" ++) . show) [8..15 :: Int],
+      acCallerSaved = callerPool ++ map (Phys . ("d" ++) . show) [2..7 :: Int],
+      acScratch = allocScratch ++ [Phys "d0", Phys "d1"],
       acPreserved = [x 29, Phys "sp", x 28],
       -- x0..x7, then the ninth and later from the hart spill cells
       acArrival = \params -> plain "params" (zipWith fix (take 8 params) (map x [0 ..])) [] : zipWith loadSpill (drop 8 params) [0 ..],
       acLoad = \p ref -> plain "ldr" [OP p] [OF ref 0],
       acStore = \p ref -> plain "str" [] [OP p, OF ref 0],
-      acMove = \d s' -> plain "mov" [OP d] [OP s'],
+      acMove = \d s' -> plain (if rfClassOf a64RegisterFile d == Just FPR || rfClassOf a64RegisterFile s' == Just FPR then "fmov" else "mov") [OP d] [OP s'],
       acSlot = \n v -> frameObj n 8 8 (SpillSlot n) (S.member v managed),
       -- every A64 form with a definition and register uses is one
       -- instruction, or writes only its own definition (la: adrp then add);
@@ -729,6 +749,43 @@ allocConfig self managed =
       acSelfLoop = self
     }
 
+-- Floating results have their own virtual register class. Function/block
+-- parameters keep the word ABI; non-float uses receive a bit-preserving move.
+-- Tree scratch d16..d23 and SIMD scratch are disjoint from the pool d2..d15.
+floatPool :: SFn -> SFn
+floatPool fn = fn {sfBody = evalState (concat <$> mapM item (sfBody fn)) start}
+  where
+    floats = S.fromList [v | I i <- sfBody fn, floatingDef (siOp i), OV v _ <- siDefs i]
+    floatingDef op = any (\p -> take (length p) op == p) ["fbin.","fbin32."] || op `elem` ["ftree.out","ftree32.out"]
+    start = 1 + maximum (0 : [n | I i <- sfBody fn, OV (VReg n) _ <- siDefs i ++ siUses i])
+    fresh :: RegClass -> State Int Operand
+    fresh cls = do n <- get; put (n+1); pure (OV (VReg n) (Any cls))
+    fp v = OV v (Any FPR)
+    asFloat o@(OV v _) | S.member v floats = pure ([], fp v)
+                      | otherwise = do t <- fresh FPR; pure ([I (plain "fmov" [t] [o])], t)
+    asFloat _ = error "A64 float pool: non-register float operand"
+    asWord o@(OV v constraint) | S.member v floats = do
+      t <- fresh GPR
+      let use = case t of OV w _ -> OV w constraint; _ -> error "A64 pool: invalid fresh operand"
+      pure ([I (plain "fmov" [t] [fp v])], use)
+                     | otherwise = pure ([],o)
+    asWord o = pure ([],o)
+    item (ILabel l) = pure [ILabel l]
+    item (I i)
+      | Just op <- lookupPrefix (siOp i) [("fbin.","pool.bin64."),("fbin32.","pool.bin32."),("fcmp.","pool.cmp64."),("fcmp32.","pool.cmp32.")] = do
+          args <- mapM asFloat (siUses i)
+          pure (concatMap fst args ++ [I i {siOp=op,siDefs=map def (siDefs i),siUses=map snd args}])
+      | siOp i `elem` ["ftree.out","ftree32.out"] = pure [I i {siOp="pool." ++ siOp i,siDefs=map def (siDefs i)}]
+      | siOp i `elem` ["ftree.leaf","ftree32.leaf"], OV v _ : rest <- siUses i, S.member v floats =
+          pure [I i {siOp="pool." ++ siOp i,siUses=fp v:rest}]
+      | otherwise = do
+          args <- mapM asWord (siUses i)
+          pure (concatMap fst args ++ [I i {siUses=map snd args}])
+    def (OV v _) | S.member v floats = fp v
+    def o = o
+    lookupPrefix _ [] = Nothing
+    lookupPrefix op ((old,new):rest) = case stripPrefix old op of Just tail' -> Just (new++tail'); Nothing -> lookupPrefix op rest
+
 -- the saved callee-saved registers as frame objects, one word each,
 -- adjacent in creation order so the renderer can pair them
 savedObjs :: [Phys] -> [FrameObj]
@@ -737,9 +794,12 @@ savedObjs saved = [FrameObj (FrameRef (negate (k + 1))) 8 8 (SavedRegister p) Fa
 emitFnA64 :: A64Config -> Fn -> Either String NativeFn
 emitFnA64 cfg fn = do
   (sel0, managed, nulls, strs) <- select cfg fn
-  let (sel, entrySlots) = forwardEntry (cfgForwardParams cfg && cfgHart cfg /= HartTlvMachO) (tuneEntryArgs (cfgTune cfg)) (map x [0..7]) fn sel0
+  let pooled = if polProfile (cfgPolicy cfg) == QosApp || not (tuneFpPool (cfgTune cfg)) then sel0 else floatPool sel0
+      fpValues = S.fromList [v | I i <- sfBody pooled, OV v (Any FPR) <- siDefs i ++ siUses i]
+      poolManaged = S.difference managed fpValues
+      (sel, entrySlots) = forwardEntry (cfgForwardParams cfg && cfgHart cfg /= HartTlvMachO) (tuneEntryArgs (cfgTune cfg)) (map x [0..7]) fn pooled
   either (\e -> Left ("compiler error: " ++ e)) Right (checkFn a64RegisterFile sel)
-  let ac = allocConfig (if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing) managed
+  let ac = allocConfig (if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing) poolManaged
   alloc <- either (\e -> Left ("compiler error: " ++ e)) Right (allocateFn ac sel)
   either (\e -> Left ("compiler error: " ++ e)) Right (checkAllocation ac (fnName fn) (alBody alloc))
   let saves = savedObjs (alSaved alloc)
@@ -804,7 +864,7 @@ savePairs ly = go
     off o = fromIntegral (M.findWithDefault (error "A64: a saved register without an offset") (foRef o) (lyOffset ly)) :: Integer
     nameOf o = case foKind o of SavedRegister p -> p; _ -> error "A64: not a saved register"
     go (a : b : rest)
-      | off b == off a - 8, pairable (off b) = ([nameOf b, nameOf a], off b) : go rest
+      | off b == off a - 8, pairable (off b), take 1 (nameOf a) == take 1 (nameOf b) = ([nameOf b, nameOf a], off b) : go rest
     go (a : rest) = ([nameOf a], off a) : go rest
     go [] = []
     pairable o = o >= -512 && o <= 504 && o `mod` 8 == 0
@@ -840,6 +900,8 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
     reg = \case
       OP p -> phys p
       o -> error ("A64 render: an unplaced operand " ++ show o)
+    sreg o = "s" ++ drop 1 (reg o)
+    fpcond c = case c of "lt" -> "mi"; "le" -> "ls"; "gt" -> "gt"; "ge" -> "ge"; "eq" -> "eq"; _ -> "ne"
     wreg o = 'w' : drop 1 (reg o)
     imm = \case
       OI n -> n
@@ -900,9 +962,27 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
       -- legacy translation of fmv.x.w does
       -- a float tree, one step an instruction: scratch d16.., a node in its
       -- left subtree's register
+      (o, [d], []) | Just c <- stripPrefix "ftree.cmp." o ->
+        ["fcmp d16, d17", "cset " ++ reg d ++ ", " ++ (case c of "lt" -> "mi"; "le" -> "ls"; "gt" -> "gt"; "ge" -> "ge"; "eq" -> "eq"; _ -> "ne")]
+      (o, [d], []) | Just c <- stripPrefix "ftree32.cmp." o ->
+        ["fcmp s16, s17", "cset " ++ reg d ++ ", " ++ (case c of "lt" -> "mi"; "le" -> "ls"; "gt" -> "gt"; "ge" -> "ge"; "eq" -> "eq"; _ -> "ne")]
+      ("fmov", [d], [src]) -> ["fmov " ++ reg d ++ ", " ++ reg src]
+      ("pool.ftree.leaf", [], [src, OI n]) -> ["fmov d" ++ show (16+n) ++ ", " ++ reg src]
+      ("pool.ftree32.leaf", [], [src, OI n]) -> ["fmov s" ++ show (16+n) ++ ", " ++ sreg src]
+      ("pool.ftree.out", [d], [OI n]) -> ["fmov " ++ reg d ++ ", d" ++ show (16+n)]
+      ("pool.ftree32.out", [d], [OI n]) -> ["fmov " ++ sreg d ++ ", s" ++ show (16+n)]
+      (o, [d], [a,b]) | Just f <- stripPrefix "pool.bin64." o -> ["f" ++ f ++ " " ++ reg d ++ ", " ++ reg a ++ ", " ++ reg b]
+      (o, [d], [a,b]) | Just f <- stripPrefix "pool.bin32." o -> ["f" ++ f ++ " " ++ sreg d ++ ", " ++ sreg a ++ ", " ++ sreg b]
+      (o, [d], [a,b]) | Just c <- stripPrefix "pool.cmp64." o ->
+        ["fcmp " ++ reg a ++ ", " ++ reg b, "cset " ++ reg d ++ ", " ++ fpcond c]
+      (o, [d], [a,b]) | Just c <- stripPrefix "pool.cmp32." o ->
+        ["fcmp " ++ sreg a ++ ", " ++ sreg b, "cset " ++ reg d ++ ", " ++ fpcond c]
       ("ftree.leaf", [], [x, OI n]) -> ["fmov d" ++ show (16 + n) ++ ", " ++ reg x]
       ("ftree.out", [d], [OI n]) -> ["fmov " ++ reg d ++ ", d" ++ show (16 + n)]
       (o, [], [OI n]) | Just inst <- stripPrefix "ftree." o -> ["f" ++ inst ++ " d" ++ show (16 + n) ++ ", d" ++ show (16 + n) ++ ", d" ++ show (17 + n)]
+      ("ftree32.leaf", [], [x, OI n]) -> ["fmov s" ++ show (16 + n) ++ ", " ++ wreg x]
+      ("ftree32.out", [d], [OI n]) -> ["fmov " ++ wreg d ++ ", s" ++ show (16 + n)]
+      (o, [], [OI n]) | Just inst <- stripPrefix "ftree32." o -> ["f" ++ inst ++ " s" ++ show (16 + n) ++ ", s" ++ show (16 + n) ++ ", s" ++ show (17 + n)]
       (o, [d], [a, b]) | Just f <- stripPrefix "fbin32." o ->
         ["fmov s16, " ++ wreg a, "fmov s17, " ++ wreg b, "f" ++ f ++ " s16, s16, s17", "fmov " ++ wreg d ++ ", s16"]
       (o, [d], [a, b]) | Just c <- stripPrefix "fcmp32." o ->

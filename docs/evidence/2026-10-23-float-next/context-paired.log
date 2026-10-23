@@ -1,0 +1,47 @@
+1/31: {'integer': 121951000, 'fp': 167425000}
+2/31: {'integer': 120032000, 'fp': 143627000}
+3/31: {'fp': 136185000, 'integer': 120096000}
+4/31: {'fp': 136519000, 'integer': 116037000}
+5/31: {'integer': 116216000, 'fp': 136241000}
+6/31: {'fp': 136180000, 'integer': 116110000}
+7/31: {'integer': 116152000, 'fp': 136481000}
+8/31: {'fp': 136618000, 'integer': 118995000}
+9/31: {'integer': 115742000, 'fp': 142422000}
+10/31: {'integer': 116135000, 'fp': 136321000}
+11/31: {'integer': 116271000, 'fp': 136323000}
+12/31: {'fp': 136954000, 'integer': 116212000}
+13/31: {'integer': 116424000, 'fp': 136661000}
+14/31: {'integer': 116395000, 'fp': 136794000}
+15/31: {'fp': 136761000, 'integer': 116561000}
+16/31: {'integer': 116642000, 'fp': 136660000}
+17/31: {'fp': 136755000, 'integer': 116754000}
+18/31: {'fp': 136664000, 'integer': 116370000}
+19/31: {'fp': 136644000, 'integer': 116616000}
+20/31: {'integer': 116140000, 'fp': 136537000}
+21/31: {'integer': 116181000, 'fp': 139065000}
+22/31: {'fp': 136390000, 'integer': 116315000}
+23/31: {'fp': 136536000, 'integer': 116074000}
+24/31: {'fp': 136516000, 'integer': 116320000}
+25/31: {'integer': 116365000, 'fp': 136505000}
+26/31: {'fp': 136620000, 'integer': 116152000}
+27/31: {'fp': 136541000, 'integer': 116180000}
+28/31: {'integer': 116418000, 'fp': 137979000}
+29/31: {'integer': 116237000, 'fp': 136666000}
+30/31: {'integer': 116214000, 'fp': 136549000}
+31/31: {'fp': 136593000, 'integer': 116619000}
+{
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "runs": 31,
+  "round_trips": 10000000,
+  "scope": "Paired cost of adding d8..d15 to the hosted A64 context switch.\n\nMeasures direct hot-context switches, excluding scheduler/GC and hart-layout\ncache effects. Both variants use identical 24-word storage to isolate the\nsave/restore instructions. The integer variant uses FPR_QOSAPP's old sequence.\n",
+  "median_paired_ratio": 1.1743920254361089,
+  "ci95": [
+    1.173076096764491,
+    1.1756242465989324
+  ],
+  "median_extra_ns_per_switch": 1.0147,
+  "median_ns_per_switch": {
+    "integer": 5.81575,
+    "fp": 6.8309
+  }
+}

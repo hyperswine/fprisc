@@ -1,0 +1,10 @@
+
+tests/TypedIR.hs:129:3: error: [GHC-88464]
+    Variable not in scope:
+      forM_ :: [(Fn, Bool)] -> ((Fn, Bool) -> IO ()) -> IO a0
+    Suggested fix:
+      Add ‘forM_’ to the import list in the import of ‘Control.Monad’
+      (at tests/TypedIR.hs:15:1-29).
+    |
+129 |   forM_ [(cmpChain,False),(cmp32,True)] $ \(input,single) -> case simplifyFn M.empty input of
+    |   ^^^^^
