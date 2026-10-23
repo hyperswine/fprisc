@@ -69,7 +69,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 77 -- boxed RV32 float constants; prior: builtin ARC/raw lowering
+codegenRev = 78 -- native RVV startup and plain bare-metal plugin selection
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -639,6 +639,7 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
       -- objects go through cgNulls into the legacy rodata)
       nativeStrings = M.elems (M.fromList [(stringLabel str, str) | nf <- M.elems nativeFns ++ cgNativeKernels st, str <- nfStrings nf])
       nativeFloats = S.toList (S.fromList (concatMap nfBoxedFloats (M.elems nativeFns ++ cgNativeKernels st)))
+      nativeRvv = rvv && isJust (tgtNative tgt >>= nmBackend) && cgLegacyEmpty st
       nativeFormat = case tgtNative tgt >>= nmBackend of
         Just (DirectA64 fmt _) -> fmt
         _ -> ELF
@@ -647,15 +648,14 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
           emNotes = reverse (cgVNotes st) ++ typedIrNotes (if tgtW tgt == 8 then tgtTypedIr tgt else Nothing) (tgtPolicy tgt) workerSigs ext (foreignEntries tgt) prog emitted
             ++ ["typed-ir: not available on " ++ tgtName tgt ++ " (M1 lowers the 64-bit targets)" | tgtW tgt /= 8, Just _ <- [tgtTypedIr tgt]]
             ++ nativeNotes,
-          emNative = if M.null nativeFns && null (cgNativeKernels st) then [] else
-            ["    .text", "    .balign 4", ""] ++ concatMap nfLines (M.elems nativeFns ++ cgNativeKernels st)
+          emNative = if M.null nativeFns && null (cgNativeKernels st) && not nativeRvv then [] else
+            RV.rvvPreamble nativeRvv ++ ["    .text", "    .balign 4", ""] ++ concatMap nfLines (M.elems nativeFns ++ cgNativeKernels st)
               ++ (if null nativeStrings then [] else rodataDirective nativeFormat : concatMap (stringObjectWidth (policyWidth (tgtPolicy tgt)) nativeFormat) nativeStrings)
               ++ (if null nativeFloats then [] else rodataDirective nativeFormat : concatMap (uncurry boxedFloatObject) nativeFloats),
           emNativeNames = M.keys nativeFns,
           emFallbacks = nativeFallbacks ++ cgKernelFallbacks st,
-          -- no legacy function or kernel, no vector init: nothing for a
-          -- translator to do but data spelling
-          emDirectData = if isJust (tgtNative tgt >>= nmBackend) && cgLegacyEmpty st && not rvv
+          -- No legacy function or kernel: startup and data have native owners.
+          emDirectData = if isJust (tgtNative tgt >>= nmBackend) && cgLegacyEmpty st
                            then Just (dataSyntax nativeFormat dat) else Nothing
         }
   where
@@ -744,29 +744,9 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
               "    " ++ tgtDir tgt ++ " fpr_obj_" ++ mangle (meQual me),
               "    " ++ tgtDir tgt ++ " " ++ il
             ]
-    -- with --rvv the runtime calls this (weak hook from fpr_rt_init) to
-    -- turn the vector unit on: mstatus.VS = Initial (01 << 9).  Emitted
-    -- here so images built WITHOUT --rvv never touch mstatus.VS and run
-    -- on V-less cores untouched.
-    rvvInit
-      | not rvv = []
-      | otherwise =
-          -- COMDAT group: every --rvv unit carries this identical
-          -- definition and the linker keeps exactly ONE -- the fix for
-          -- the audit's multiple-definition failure (program + prelude
-          -- + every module unit each used to emit a strong copy).  The
-          -- surviving strong symbol still overrides runtime.c's weak
-          -- no-op, so V-less builds never touch mstatus.VS.
-          [ "    .section .text.fpr_rvv_enable,\"axG\",@progbits,fpr_rvv_enable,comdat",
-            "    .balign 4",
-            "    .globl fpr_rvv_enable",
-            "fpr_rvv_enable:",
-            "    li t0, 0x600", -- VS field, both bits: Dirty (safe superset)
-            "    csrs mstatus, t0",
-            "    ret",
-            "    .text",
-            ""
-          ]
+    -- The rollback path shares the native target's startup spelling until
+    -- its remaining callers are retired.
+    rvvInit = drop 1 (RV.rvvPreamble rvv)
     -- static PAP object per global with arity > 0: a "function value"
     -- is just this object's address (code ptr + arity + no args yet)
     objFor (n, (ps, _))

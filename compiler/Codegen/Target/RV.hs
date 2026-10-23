@@ -3,7 +3,7 @@
 -- consumed here. Checked arithmetic initially uses the exact C primitives;
 -- the shared allocator handles calls, spills, parallel arguments and loops.
 module Codegen.Target.RV
-  ( RVConfig (..), RVHart (..), rvSelectionRev, emitFnRV ) where
+  ( RVConfig (..), RVHart (..), rvSelectionRev, rvvPreamble, emitFnRV ) where
 
 import Codegen.Allocate
 import Codegen.Bounds
@@ -19,7 +19,23 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 17 -- boxed RV32 float constants; prior: ARC constructor metadata and function sections
+rvSelectionRev = 18 -- native RVV startup and plain bare-metal plugins
+
+-- Native startup, shared by every RVV unit. The runtime calls the surviving
+-- COMDAT definition on each hart; ordinary builds retain its weak no-op.
+-- VS=Dirty (both bits) permits vector instructions from machine mode.
+rvvPreamble :: Bool -> [String]
+rvvPreamble False = []
+rvvPreamble True =
+  [ "    .option arch, +v",
+    "    .section .text.fpr_rvv_enable,\"axG\",@progbits,fpr_rvv_enable,comdat",
+    "    .balign 4",
+    "    .globl fpr_rvv_enable",
+    "fpr_rvv_enable:",
+    "    li t0, 0x600",
+    "    csrs mstatus, t0",
+    "    ret",
+    "    .text", "" ]
 
 -- HartTp: the hart pointer is tp (bare metal, QOS); HartTls: the posix
 -- runtime's thread-local cell, local-exec (an executable); HartTlsIe: the

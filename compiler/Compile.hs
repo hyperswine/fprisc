@@ -987,13 +987,14 @@ compileWithInterface accepted = do
                               else if x64 then Just (if qapp then DirectQX64 else DirectX64)
                               -- a posix module (--module on rv64) reads the hart through
                               -- initial-exec TLS and is assembled under .option pic
-                              -- (docs/2026-10-23-TYPED-RV64-MODULES.md); QOS plugins stay refused
+                              -- (docs/2026-10-23-TYPED-RV64-MODULES.md). Plain bare-metal
+                              -- plugins retain tp, just like bare-metal executables.
                               -- a QOS RISC-V app or plugin (qrv64) borrows the host's hart cell through
                               -- fpr_g_tlsoff (docs/2026-10-23-TYPED-QRV64.md)
                               -- the ESP-IDF host (rv32) keeps its hart in fpr_esp_hart
                               -- (docs/2026-10-23-TYPED-QRV64.md)
                               else if not a64 && not x64 && tgtName (oTarget opts) `elem` ["rv32", "rv64"]
-                                      && (not qapp || tgtName (oTarget opts) == "rv64") && (not (oPlugin opts) || oBase opts || qapp)
+                                      && (not qapp || tgtName (oTarget opts) == "rv64")
                                 then Just (DirectRV (policyWidth irPolicy)
                                              (if espHost then RV.HartTlsEsp else if qapp then RV.HartQos else if oBase opts && oPlugin opts then RV.HartTlsIe else if oBase opts then RV.HartTls else RV.HartTp))
                               else Nothing,

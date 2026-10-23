@@ -1,0 +1,13 @@
+Native RVV startup now belongs to compiler/Codegen/Target/RV.hs:rvvPreamble.
+Fully-native functions/kernels plus RVV now permit emDirectData.
+Plain bare-metal RV plugins select DirectRV/HartTp; posix/QOS hart forms remain distinct.
+
+Dormant legacy vector-map code is not a remaining production consumer:
+compiler/Codegen.hs:rvvMapInner immediately executes Nothing before compileV.
+Its comment cites checked Int overflow as the disabling gate. Maps stay scalar in both paths.
+
+Still live: frame resource refusals (RV bare-metal 1024 bytes, hosted 32768),
+emitSpecs declined-plan fallback, explicit legacy environment modes, old
+bound rows/peephole and target lowering for those remaining legacy consumers.
+Runtime headroom is min(STACK_SZ/2,64KiB); ESP's first stack is smaller.
+No frame cap is relaxed by this increment.

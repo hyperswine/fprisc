@@ -1,0 +1,14 @@
+RV32 plugin: strict native closure, data, cold/warm PASS
+RV32 plugin PAP/table, args 9: QEMU execution PASS
+RV32 RVV: strict native closure, data, cold/warm PASS
+RV32 RVV VLEN=128: QEMU execution PASS
+RV32 RVV VLEN=256: QEMU execution PASS
+RV32 RVV VLEN=512: QEMU execution PASS
+RV32 RVV unsafe lane strip falls back to scalar checked overflow PASS
+RV64 plugin: strict native closure, data, cold/warm PASS
+RV64 plugin PAP/table, args 9: QEMU execution PASS
+RV64 RVV: strict native closure, data, cold/warm PASS
+RV64 RVV VLEN=128: QEMU execution PASS
+RV64 RVV VLEN=256: QEMU execution PASS
+RV64 RVV VLEN=512: QEMU execution PASS
+RV64 RVV unsafe lane strip falls back to scalar checked overflow PASS

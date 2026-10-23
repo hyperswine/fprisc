@@ -1,0 +1,14 @@
+{
+  "base_commit": "1185b2af93cb168907ec0f05d036bc55e54a50ea",
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "compiler_sha256": "1babd65bb045a5997f0c60f2276f13cfbce92797e71beb65ed130c394eb2dc75",
+  "sources_sha256": {
+    "compiler/Codegen.hs": "9a84bbd26728ac3e3c275bcfd9bb4956e0ce9e84895dd0ce00dce5de75351bad",
+    "compiler/Codegen/Target/RV.hs": "2ed2d69119a591d0efda3f6d1077593c328470a9e0b0b188756f838b60a71f74",
+    "compiler/Compile.hs": "0c6beb45fe02e697fad5ea85a73a2d1bc1e678225405a2aab9d203746ea259c7",
+    "tests/check_typed_ir_rv_startup.py": "9260444cd9bf12574c5eac89ef0dde5988f8699700034366ec6037013f407105"
+  },
+  "qemu": "QEMU emulator version 11.1.2",
+  "gcc": "riscv64-unknown-elf-gcc (g04696df09) 14.2.0",
+  "scope": "Local strict emission and static freestanding QEMU execution; no hosted CI, dynamic loader or physical RVV claim"
+}
