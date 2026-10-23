@@ -57,7 +57,7 @@ import qualified Codegen.Target.RV as RV
 import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat (..), emitFnA64)
 import Codegen.Target.Common (rodataDirective, stringLabel, stringObjectWidth, dataSyntax)
 import Codegen.Bounds (Report (..))
-import Codegen.Verify (verifyProgram, verifyProgramWidth)
+import Codegen.Verify (verifyProgram, verifyProgramWidth, simdExprOk)
 import Codegen.Dump (dumpFn)
 import Codegen.Eval (Outcome (..), Failure (..), Event (..), RV (..), evalProgramWidth)
 import KernelKinds (Kind(..), signature)
@@ -69,7 +69,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 72 -- F64 comparison trees, F32 trees and hosted A64 FP allocation
+codegenRev = 73 -- captured NEON maps; prior: F64 comparison trees, F32 trees and hosted A64 FP allocation
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -3351,28 +3351,33 @@ genUWithSlots tgt prog uset load save = go
 -- specialized loop emission
 --------------------------------------------------------------------------------
 
--- Every plan shares the typed CFG builder; a capture-free straight-line map
--- also gets the NEON two-lane body under the legacy gate (neonExpr's), and
--- an Int sum fold the RVV strip under --rvv.
+-- Every plan shares the typed CFG builder. A single straight-line map also
+-- gets a NEON body when its captures match the lane kind and the checked
+-- expression fits the SIMD proof and scratch budget.
 simdPlan :: Target -> Prog -> SpecPlan -> Maybe (K.SimdExpr, Int)
 simdPlan tgt prog p = do
-  if tgtSimd tgt && spOp p == "map" && spCaps p == 0 then Just () else Nothing
-  ([prm],b) <- M.lookup (spFn p) prog
+  if tgtSimd tgt && spOp p == "map" then Just () else Nothing
+  (params,b) <- M.lookup (spFn p) prog
+  if length params == spCaps p + 1 then Just () else Nothing
   (body,ticks) <- expandKernel prog 12 b
-  kind <- case spKinds p of Just ([kind],out) | kind == out -> Just kind; _ -> Nothing
-  if kind == KI && not (singleIntOp prm body) then Nothing else Just ()
-  expr <- simdExprOf kind prm body
-  pure (expr, ticks)
+  kind <- case spKinds p of
+    Just (ks,out) | out `elem` [KI,KD], length ks == length params, all (==out) ks -> Just out
+    _ -> Nothing
+  expr <- simdExprOf kind (init params) (last params) body
+  either (const Nothing) (const (Just (expr,ticks))) (simdExprOk (kind == KI) expr)
 
--- neonExpr's shape as an IR expression: the lane, literals, + - (Int) or
--- F64 + - *, within the 15 scratch registers
-simdExprOf :: Kind -> String -> Core -> Maybe K.SimdExpr
-simdExprOf kind prm body = evalStateT (go (M.singleton prm K.SLane) body) (0 :: Int)
+-- The lane, matching scalar captures and literals, with Int + - or F64 + - *.
+simdExprOf :: Kind -> [String] -> String -> Core -> Maybe K.SimdExpr
+simdExprOf kind caps prm body = evalStateT (go env0 body) (0 :: Int)
   where
+    env0 = M.insert prm K.SLane (M.fromList (zip caps (map K.SCapture [0..])))
     reg = do n <- get; if n >= 15 then lift Nothing else put (n+1)
     go env e | Just bits <- floatLitBits e, kind == KD = reg >> pure (K.SConst bits)
     go env (CInt n) | kind == KI = reg >> pure (K.SConst n)
-    go env (CVar n) = lift (M.lookup n env)
+    go env (CVar n) = do
+      e <- lift (M.lookup n env)
+      case e of K.SCapture _ -> reg; _ -> pure ()
+      pure e
     go env (CLet x a b) = do v <- go env a; go (M.insert x v env) b
     go env e | (CVar op,[a,b]) <- spineOf e = do
       x <- go env a; y <- go env b; reg

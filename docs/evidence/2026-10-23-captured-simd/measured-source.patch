@@ -1,0 +1,419 @@
+diff --git a/compiler/Codegen.hs b/compiler/Codegen.hs
+index 486356e..309f017 100644
+--- a/compiler/Codegen.hs
++++ b/compiler/Codegen.hs
+@@ -57,7 +57,7 @@ import qualified Codegen.Target.RV as RV
+ import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat (..), emitFnA64)
+ import Codegen.Target.Common (rodataDirective, stringLabel, stringObjectWidth, dataSyntax)
+ import Codegen.Bounds (Report (..))
+-import Codegen.Verify (verifyProgram, verifyProgramWidth)
++import Codegen.Verify (verifyProgram, verifyProgramWidth, simdExprOk)
+ import Codegen.Dump (dumpFn)
+ import Codegen.Eval (Outcome (..), Failure (..), Event (..), RV (..), evalProgramWidth)
+ import KernelKinds (Kind(..), signature)
+@@ -69,7 +69,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
+ -- bump on ANY change to emitted code: it keys the build/units cache
+ -- (a unit's content hash names its SOURCE, not its compilation)
+ codegenRev :: Int
+-codegenRev = 72 -- F64 comparison trees, F32 trees and hosted A64 FP allocation
++codegenRev = 73 -- captured NEON maps; prior: F64 comparison trees, F32 trees and hosted A64 FP allocation
+ 
+ -- Target word parameterization: everything the emitted assembly does
+ -- that depends on XLEN funnels through these five fields.  The value
+@@ -3351,28 +3351,33 @@ genUWithSlots tgt prog uset load save = go
+ -- specialized loop emission
+ --------------------------------------------------------------------------------
+ 
+--- Every plan shares the typed CFG builder; a capture-free straight-line map
+--- also gets the NEON two-lane body under the legacy gate (neonExpr's), and
+--- an Int sum fold the RVV strip under --rvv.
++-- Every plan shares the typed CFG builder. A single straight-line map also
++-- gets a NEON body when its captures match the lane kind and the checked
++-- expression fits the SIMD proof and scratch budget.
+ simdPlan :: Target -> Prog -> SpecPlan -> Maybe (K.SimdExpr, Int)
+ simdPlan tgt prog p = do
+-  if tgtSimd tgt && spOp p == "map" && spCaps p == 0 then Just () else Nothing
+-  ([prm],b) <- M.lookup (spFn p) prog
++  if tgtSimd tgt && spOp p == "map" then Just () else Nothing
++  (params,b) <- M.lookup (spFn p) prog
++  if length params == spCaps p + 1 then Just () else Nothing
+   (body,ticks) <- expandKernel prog 12 b
+-  kind <- case spKinds p of Just ([kind],out) | kind == out -> Just kind; _ -> Nothing
+-  if kind == KI && not (singleIntOp prm body) then Nothing else Just ()
+-  expr <- simdExprOf kind prm body
+-  pure (expr, ticks)
+-
+--- neonExpr's shape as an IR expression: the lane, literals, + - (Int) or
+--- F64 + - *, within the 15 scratch registers
+-simdExprOf :: Kind -> String -> Core -> Maybe K.SimdExpr
+-simdExprOf kind prm body = evalStateT (go (M.singleton prm K.SLane) body) (0 :: Int)
++  kind <- case spKinds p of
++    Just (ks,out) | out `elem` [KI,KD], length ks == length params, all (==out) ks -> Just out
++    _ -> Nothing
++  expr <- simdExprOf kind (init params) (last params) body
++  either (const Nothing) (const (Just (expr,ticks))) (simdExprOk (kind == KI) expr)
++
++-- The lane, matching scalar captures and literals, with Int + - or F64 + - *.
++simdExprOf :: Kind -> [String] -> String -> Core -> Maybe K.SimdExpr
++simdExprOf kind caps prm body = evalStateT (go env0 body) (0 :: Int)
+   where
++    env0 = M.insert prm K.SLane (M.fromList (zip caps (map K.SCapture [0..])))
+     reg = do n <- get; if n >= 15 then lift Nothing else put (n+1)
+     go env e | Just bits <- floatLitBits e, kind == KD = reg >> pure (K.SConst bits)
+     go env (CInt n) | kind == KI = reg >> pure (K.SConst n)
+-    go env (CVar n) = lift (M.lookup n env)
++    go env (CVar n) = do
++      e <- lift (M.lookup n env)
++      case e of K.SCapture _ -> reg; _ -> pure ()
++      pure e
+     go env (CLet x a b) = do v <- go env a; go (M.insert x v env) b
+     go env e | (CVar op,[a,b]) <- spineOf e = do
+       x <- go env a; y <- go env b; reg
+diff --git a/compiler/Codegen/Dump.hs b/compiler/Codegen/Dump.hs
+index 84b5f7f..0aa4338 100644
+--- a/compiler/Codegen/Dump.hs
++++ b/compiler/Codegen/Dump.hs
+@@ -66,7 +66,7 @@ dumpFn fn =
+       OCall c as -> "call " ++ callee c ++ args as
+       OSafepoint -> "safepoint"
+       OSafepointN n -> "safepoint x" ++ show n
+-      OSimdPair int e a -> "simd.pair " ++ (if int then "int " else "f64 ") ++ simdText e ++ " " ++ value a
++      OSimdPair int e caps a -> "simd.pair " ++ (if int then "int " else "f64 ") ++ simdText e ++ " captures=[" ++ unwords (map value caps) ++ "] " ++ value a
+       ORvvVlMax -> "rvv.vlmax"
+       ORvvLanes a n -> "rvv.lanes " ++ value a ++ " " ++ value n
+       ORvvSumLoaded acc -> "rvv.sum " ++ value acc
+@@ -94,6 +94,7 @@ dumpFn fn =
+ simdText :: SimdExpr -> String
+ simdText = \case
+   SLane -> "lane"
++  SCapture n -> "capture" ++ show n
+   SConst n -> show n
+   SInt o x y -> "(" ++ simdText x ++ " " ++ (case o of Add -> "+"; Sub -> "-"; Mul -> "*"; Div -> "/") ++ " " ++ simdText y ++ ")"
+   SFloat o x y -> "(" ++ simdText x ++ " " ++ (case o of FAdd -> "f+"; FSub -> "f-"; FMul -> "f*"; FDiv -> "f/") ++ " " ++ simdText y ++ ")"
+diff --git a/compiler/Codegen/IR.hs b/compiler/Codegen/IR.hs
+index c695189..4c5fb21 100644
+--- a/compiler/Codegen/IR.hs
++++ b/compiler/Codegen/IR.hs
+@@ -25,7 +25,7 @@
+ -- (Codegen.Eval) is the executable statement of these semantics.
+ module Codegen.IR
+   ( Name, VId (..), BId (..), Width (..), Ty (..),
+-    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScheduleAt, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
++    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), simdCaptures, ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScheduleAt, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
+     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
+     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
+     intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
+@@ -69,9 +69,15 @@ data FloatOp = FAdd | FSub | FMul | FDiv deriving (Eq, Ord, Show, Enum, Bounded)
+ 
+ -- A two-lane SIMD map body: the lane, a literal (an Int, or an F64's bits)
+ -- and the operations NEON applies to both lanes at once (Target.A64).
+-data SimdExpr = SLane | SConst Integer | SInt ArithOp SimdExpr SimdExpr | SFloat FloatOp SimdExpr SimdExpr
++data SimdExpr = SLane | SCapture Int | SConst Integer | SInt ArithOp SimdExpr SimdExpr | SFloat FloatOp SimdExpr SimdExpr
+   deriving (Eq, Ord, Show)
+ 
++simdCaptures :: SimdExpr -> [Int]
++simdCaptures (SCapture n) = [n]
++simdCaptures (SInt _ a b) = simdCaptures a ++ simdCaptures b
++simdCaptures (SFloat _ a b) = simdCaptures a ++ simdCaptures b
++simdCaptures _ = []
++
+ -- A tree of F64 operations over the bits of its leaves, computed in the
+ -- target's scratch floating-point registers with one move in per leaf and
+ -- one move out: the fused form of a chain of single-use OFloatBin results
+@@ -189,7 +195,7 @@ data Op
+   | OFloat32Bin FloatOp VId VId -- TVal TVal -> TVal: F32 arithmetic on the low 32 bits of the word (the runtime's F32 word), inline (the legacy genU F32.+ - * /)
+   | OFloat32Cmp CmpOp VId VId -- TVal TVal -> TPred: F32 ordered comparison, as OFloatCmp
+   | OSafepointN Int -- n fuel ticks at once: a NEON pair charges both elements' callback entry ticks, as the legacy kernel does
+-  | OSimdPair Bool SimdExpr VId -- TAddr: the two Int (True) or F64 (False) lanes at the address, mapped in place through the expression (A64 NEON, one 128-bit register); an Int lane that leaves the 63-bit range traps with the kernel diagnostic
++  | OSimdPair Bool SimdExpr [VId] VId -- TAddr: the two Int (True) or F64 (False) lanes at the address, mapped in place through the expression (A64 NEON, one 128-bit register); an Int lane that leaves the 63-bit range traps with the kernel diagnostic
+   | ORvvVlMax -- :: TInt; RISC-V V: the lanes one vector register holds at the word's element width (vsetvli x0)
+   | ORvvLanes VId VId -- TAddr, TInt n -> TPred: RISC-V V: vl = n, the n Int lanes at the address loaded into the vector unit, true when every lane is within rvvLaneBound; the lanes stay loaded for ORvvSumLoaded, which follows with no other vector operation between
+   | ORvvSumLoaded VId -- TInt acc -> TInt: acc plus the lanes ORvvLanes loaded (vredsum), unchecked: the builder proved the bound
+@@ -286,7 +292,7 @@ opEffect = \case
+   OSafepoint -> RuntimeCall
+   OStackCheck -> RuntimeCall
+   OSafepointN _ -> RuntimeCall
+-  OSimdPair _ _ _ -> Writes
++  OSimdPair _ _ _ _ -> Writes
+   ORvvVlMax -> Pure
+   ORvvLanes _ _ -> Reads
+   ORvvSumLoaded _ -> Reads
+@@ -335,7 +341,7 @@ opUses = \case
+   OSafepoint -> []
+   OStackCheck -> []
+   OSafepointN _ -> []
+-  OSimdPair _ _ a -> [a]
++  OSimdPair _ _ caps a -> a:caps
+   ORvvVlMax -> []
+   ORvvLanes a n -> [a, n]
+   ORvvSumLoaded a -> [a]
+@@ -394,7 +400,7 @@ mapOpUses f = \case
+   OSafepoint -> OSafepoint
+   OStackCheck -> OStackCheck
+   OSafepointN n -> OSafepointN n
+-  OSimdPair i e a -> OSimdPair i e (f a)
++  OSimdPair i e caps a -> OSimdPair i e (map f caps) (f a)
+   ORvvVlMax -> ORvvVlMax
+   ORvvLanes a n -> ORvvLanes (f a) (f n)
+   ORvvSumLoaded a -> ORvvSumLoaded (f a)
+diff --git a/compiler/Codegen/Kernel.hs b/compiler/Codegen/Kernel.hs
+index 754b365..e12d1d9 100644
+--- a/compiler/Codegen/Kernel.hs
++++ b/compiler/Codegen/Kernel.hs
+@@ -19,7 +19,7 @@ data Stage = Stage String Name [Int] deriving Show
+ data Kernel = Kernel
+   { kernelSymbol :: String, kernelCaptures :: [Kind], kernelElement :: Kind,
+     kernelAccumulator :: Maybe (Int, Kind), kernelStages :: [Stage],
+-    kernelSimd :: Maybe (SimdExpr, Int), -- a capture-free map's two-lane body (A64 NEON) and its callback entry ticks
++    kernelSimd :: Maybe (SimdExpr, Int), -- a map's two-lane body with same-kind captures (A64 NEON) and its callback entry ticks
+     kernelRvvSum :: Bool -- a capture-free Int sum fold strip-mined on RISC-V V
+   } deriving Show
+ 
+@@ -106,8 +106,10 @@ lowerKernel policy callbacks k = do
+     (Left "unsupported typed kernel stages")
+   case kernelSimd k of
+     Just (expr,_) -> do
+-      unless ([op | Stage op _ _ <- stages] == ["map"] && null (kernelCaptures k) && kernelElement k `elem` [KI,KD])
+-        (Left "a SIMD pair body needs a capture-free single map over Int or F64")
++      unless ([op | Stage op _ _ <- stages] == ["map"] && all (== kernelElement k) (kernelCaptures k) && kernelElement k `elem` [KI,KD] && policyWidth policy == W64)
++        (Left "a SIMD pair body needs a single map over Int or F64 with matching captures on a 64-bit word")
++      unless (all (\n -> n >= 0 && n < length (kernelCaptures k)) (simdCaptures expr))
++        (Left "SIMD capture index outside the kernel captures")
+       checked (simdExprOk (kernelElement k == KI) expr)
+     Nothing -> pure ()
+   when (kernelRvvSum k) $
+@@ -163,7 +165,7 @@ lowerKernel policy callbacks k = do
+       base <- load TAddr col w
+       i <- fresh TInt; kept <- fresh TInt; acc <- fresh TVal
+       (iStart,accStart) <- case (kernelSimd k, kernelRvvSum k) of
+-        (Just simd,_) -> simdPrefix base count zero acc0 simd
++        (Just simd,_) -> simdPrefix args base count zero acc0 simd
+         (_,True) -> rvvPrefix base count zero acc0
+         _ -> pure (zero,acc0)
+       end (TBr loop [iStart,iStart,accStart])
+@@ -218,7 +220,9 @@ lowerKernel policy callbacks k = do
+     -- the NEON pair loop ahead of the scalar loop: two lanes a step while two
+     -- remain, each step charged both elements' entry ticks (the legacy kernel's
+     -- specFuelN); the scalar loop takes the tail from where the pairs stopped
+-    simdPrefix base count zero acc0 (expr,ticks) = do
++    simdPrefix args base count zero acc0 (expr,ticks) = do
++      caps <- forM (take (length (kernelCaptures k)) args) $ \a ->
++        if kernelElement k == KI then value TInt (OUntag a) else pure a
+       pairLoop <- label; pairBody <- label; after <- label
+       i2 <- fresh TInt
+       end (TBr pairLoop [zero])
+@@ -230,7 +234,7 @@ lowerKernel policy callbacks k = do
+       begin pairBody []
+       effect (OSafepointN (2*(ticks+1)))
+       cursor <- value TAddr (OIndex base (fst i2))
+-      effect (OSimdPair (kernelElement k == KI) expr cursor)
++      effect (OSimdPair (kernelElement k == KI) expr caps cursor)
+       i2' <- value TInt (OKernelArith Add (fst i2) two)
+       end (TBr pairLoop [i2'])
+       begin after []
+diff --git a/compiler/Codegen/Target/A64.hs b/compiler/Codegen/Target/A64.hs
+index 4f744ea..eab2da8 100644
+--- a/compiler/Codegen/Target/A64.hs
++++ b/compiler/Codegen/Target/A64.hs
+@@ -89,7 +89,7 @@ a64HostedInterfaceRev = 16
+ -- bump when the selection, placement, layout or rendering changes what is
+ -- emitted (a unit-cache and run-cache identity component)
+ a64SelectionRev :: Int
+-a64SelectionRev = 21 -- hosted FP pool and comparison/F32 trees; prior: generic HAL partial/opaque application; prior 19: inferred boxed I64 operators; prior 18: inference-generated vector runtime entries; prior 17: typed column memory and kernel arithmetic; prior: 16: posix modules reach external symbols through the GOT; 15: units with no legacy code skip translation; 14: in-place constructor reuse; 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
++a64SelectionRev = 22 -- captured NEON maps; prior: hosted FP pool and comparison/F32 trees; prior: generic HAL partial/opaque application; prior 19: inferred boxed I64 operators; prior 18: inference-generated vector runtime entries; prior 17: typed column memory and kernel arithmetic; prior: 16: posix modules reach external symbols through the GOT; 15: units with no legacy code skip translation; 14: in-place constructor reuse; 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
+ 
+ -- how generated code reaches the hart block
+ data HartAccess
+@@ -371,7 +371,7 @@ selectInstr _ _ (Instr d op) = case op of
+   OStackCheck -> refuse "internal: a stack check reached selection"
+   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
+   OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq False True l) {siOp = "tick.n", siUses = [OI (fromIntegral n)]})
+-  OSimdPair int e a -> simdPair int e (vreg a)
++  OSimdPair int e caps a -> simdPair int e (map vreg caps) (vreg a)
+   ORvvVlMax -> refuse "a RISC-V vector length on A64"
+   ORvvLanes _ _ -> refuse "RISC-V vector lanes on A64"
+   ORvvSumLoaded _ -> refuse "a RISC-V vector sum on A64"
+@@ -531,11 +531,11 @@ selectInstr _ _ (Instr d op) = case op of
+     -- v17.. in evaluation order (the legacy neonExpr's allocation), the result
+     -- is stored back, and Int lanes are checked for the 63-bit fit (the whole
+     -- overflow test for one + or - on fitting operands)
+-    simdPair int e base = do
++    simdPair int e caps base = do
+       trap <- freshL "lanes"
+       done <- freshL "lanesok"
+       emitI (plain "simd.ld" [] [any' base, OI 16])
+-      (res, _) <- simdGo e (17 :: Int)
++      (res, _) <- simdGo caps e (17 :: Int)
+       emitI (plain "simd.st" [] [any' base, OI (fromIntegral res)])
+       when int $ forM_ [0, 8] $ \off -> do
+         t <- freshV False
+@@ -548,18 +548,21 @@ selectInstr _ _ (Instr d op) = case op of
+       emitL trap
+       emitI (call "fpr_int_overflow_kernel" False True [] Nothing)
+       emitL done
+-    simdGo e next = case e of
++    simdGo caps e next = case e of
+       SLane -> pure (16, next)
++      SCapture n -> do
++        emitI (plain "simd.dup" [] [any' (caps !! n), OI (fromIntegral next)])
++        pure (next, next + 1)
+       SConst n -> do
+         t <- freshV False
+         emitI (li t n)
+         emitI (plain "simd.dup" [] [any' t, OI (fromIntegral next)])
+         pure (next, next + 1)
+-      SInt o x y -> simdBinary (case o of Add -> "simd.add"; Sub -> "simd.sub"; Mul -> "simd.mul"; Div -> "simd.div") x y next
+-      SFloat o x y -> simdBinary (case o of FAdd -> "simd.fadd"; FSub -> "simd.fsub"; FMul -> "simd.fmul"; FDiv -> "simd.fdiv") x y next
+-    simdBinary name x y next = do
+-      (rx, n1) <- simdGo x next
+-      (ry, n2) <- simdGo y n1
++      SInt o x y -> simdBinary caps (case o of Add -> "simd.add"; Sub -> "simd.sub"; Mul -> "simd.mul"; Div -> "simd.div") x y next
++      SFloat o x y -> simdBinary caps (case o of FAdd -> "simd.fadd"; FSub -> "simd.fsub"; FMul -> "simd.fmul"; FDiv -> "simd.fdiv") x y next
++    simdBinary caps name x y next = do
++      (rx, n1) <- simdGo caps x next
++      (ry, n2) <- simdGo caps y n1
+       emitI (plain name [] [OI (fromIntegral n2), OI (fromIntegral rx), OI (fromIntegral ry)])
+       pure (n2, n2 + 1)
+     -- checked Int arithmetic: the legacy worker sequences (Codegen.inlineTable,
+diff --git a/compiler/Codegen/Verify.hs b/compiler/Codegen/Verify.hs
+index 28fda70..f3b4a38 100644
+--- a/compiler/Codegen/Verify.hs
++++ b/compiler/Codegen/Verify.hs
+@@ -97,7 +97,12 @@ opSignature tyOf = \case
+   OSafepointN n -> do
+     unless (n >= 1) (Left "a counted safepoint charges at least one tick")
+     pure Nothing
+-  OSimdPair int e a -> expect a TAddr >> simdExprOk int e >> pure Nothing
++  OSimdPair int e caps a -> do
++    expect a TAddr
++    mapM_ (`expect` (if int then TInt else TVal)) caps
++    unless (all (\n -> n >= 0 && n < length caps) (simdCaptures e)) (Left "SIMD capture index outside its operand list")
++    simdExprOk int e
++    pure Nothing
+   ORvvVlMax -> pure (Just TInt)
+   ORvvLanes a n -> expect a TAddr >> expect n TInt >> pure (Just TPred)
+   ORvvSumLoaded acc -> expect acc TInt >> pure (Just TInt)
+@@ -223,7 +228,7 @@ verifyProgramWidth width program = do
+     aligned n = unless (n `mod` (widthBits width `div` 8) == 0) (Left "unaligned word memory operation")
+ 
+ -- A SIMD pair body: at most the 15 scratch vector registers (v17..v31); an
+--- Int body is exactly one + or - over the lane and literals (the stored
++-- Int body is exactly one + or - over the lane, captures and literals (the stored
+ -- lanes' 63-bit fit is then the whole overflow test, as the legacy NEON
+ -- gate argues); an F64 body uses + - * only.
+ simdExprOk :: Bool -> SimdExpr -> Either String ()
+@@ -232,9 +237,9 @@ simdExprOk int e = do
+   if int
+     then case e of
+       SInt op x y | op `elem` [Add, Sub], leaf x, leaf y -> pure ()
+-      _ -> Left "an Int SIMD pair is exactly one + or - over the lane and literals"
+-    else unless (floatOnly e) (Left "an F64 SIMD pair uses F64 + - * over the lane and literals")
++      _ -> Left "an Int SIMD pair is exactly one + or - over the lane, captures and literals"
++    else unless (floatOnly e) (Left "an F64 SIMD pair uses F64 + - * over the lane, captures and literals")
+   where
+-    registers = \case SLane -> 0 :: Int; SConst _ -> 1; SInt _ x y -> 1 + registers x + registers y; SFloat _ x y -> 1 + registers x + registers y
+-    leaf = \case SLane -> True; SConst _ -> True; _ -> False
+-    floatOnly = \case SLane -> True; SConst _ -> True; SFloat op x y -> op /= FDiv && floatOnly x && floatOnly y; SInt {} -> False
++    registers = \case SLane -> 0 :: Int; SCapture _ -> 1; SConst _ -> 1; SInt _ x y -> 1 + registers x + registers y; SFloat _ x y -> 1 + registers x + registers y
++    leaf = \case SLane -> True; SCapture _ -> True; SConst _ -> True; _ -> False
++    floatOnly = \case SLane -> True; SCapture _ -> True; SConst _ -> True; SFloat op x y -> op /= FDiv && floatOnly x && floatOnly y; SInt {} -> False
+diff --git a/tests/KernelIR.hs b/tests/KernelIR.hs
+index 537fbef..cc6b9ba 100644
+--- a/tests/KernelIR.hs
++++ b/tests/KernelIR.hs
+@@ -39,11 +39,18 @@ main = do
+     Left "RV32 float record columns use boxed values" -> pure ()
+     other -> error ("RV32 float record lowering must refuse boxed columns: " ++ show other)
+   putStrLn "Typed record builder: explicit RV32 boxed-float refusal PASS"
++  let captured = K.Kernel "pair" [KI] KI Nothing [K.Stage "map" "f" [0]] (Just (K.SInt Add K.SLane (K.SCapture 0),0)) False
++  case K.lowerKernel m2Policy M.empty captured of
++    Right _ -> pure ()
++    Left msg -> error ("captured SIMD builder refused: " ++ msg)
++  putStrLn "Typed SIMD builder: matching Int captures admitted PASS"
+   -- the new forms refuse the shapes their proofs do not cover
+   let refused what = case what of Left _ -> pure (); Right _ -> error "a builder accepted a shape outside its proof"
+-  refused (K.lowerKernel m2Policy M.empty (K.Kernel "pair" [KI] KI Nothing [K.Stage "map" "f" [0]] (Just (K.SInt Add K.SLane (K.SConst 1),0)) False))
++  refused (K.lowerKernel m2Policy M.empty (K.Kernel "pair" [KD] KI Nothing [K.Stage "map" "f" [0]] (Just (K.SInt Add K.SLane (K.SConst 1),0)) False))
+   refused (K.lowerKernel m2Policy M.empty (K.Kernel "pair" [] KI Nothing [K.Stage "map" "f" []] (Just (K.SInt Mul K.SLane (K.SConst 2),0)) False))
++  refused (K.lowerKernel m2Policy M.empty captured {K.kernelSimd=Just (K.SInt Add K.SLane (K.SCapture 1),0)})
++  refused (K.lowerKernel (m2Policy {polProfile=Rv32}) M.empty captured)
+   refused (K.lowerKernel m2Policy M.empty (K.Kernel "strip" [KI,KI] KI (Just (1,KI)) [K.Stage "fold" "f" [0]] Nothing True))
+   refused (K.lowerRecordKernel m2Policy M.empty (K.RecordKernel "gpu" "f" [] False (-1,-1) [(0,KI),(2,KI)] (K.RecordFold "dual" KI) True))
+   refused (K.lowerMapAsKernel m2Policy (K.MapAsKernel "as" "f" 8 "d"))
+-  putStrLn "Typed kernel builders: a captured or two-op SIMD pair, a captured RVV sum, a GPU pair sum off columns 0 and 1, and an eight-capture mapAs are refused PASS"
++  putStrLn "Typed kernel builders: a mixed-capture or invalid-op SIMD pair, a captured RVV sum, a GPU pair sum off columns 0 and 1, and an eight-capture mapAs are refused PASS"
+diff --git a/tests/TypedIR.hs b/tests/TypedIR.hs
+index 2614a17..acd584c 100644
+--- a/tests/TypedIR.hs
++++ b/tests/TypedIR.hs
+@@ -80,7 +80,7 @@ main = do
+   check "load rejects tagged base" (case opSignature (const (Right TVal)) (OLoad TInt (VId 0) 0) of Left _ -> True; _ -> False)
+   check "load rejects float-register representation" (case opSignature memTypes (OLoad TF64 (VId 0) 0) of Left _ -> True; _ -> False)
+   check "store rejects mismatched value" (case opSignature memTypes (OStore TAddr (VId 0) 0 (VId 1)) of Left _ -> True; _ -> False)
+-  -- SIMD pair bodies: an Int body is one + or - over the lane and literals,
++  -- SIMD pair bodies: one checked Int + or -, or an F64 tree, with captures,
+   -- an F64 body + - * only, within the 15 scratch registers
+   check "SIMD int body of one op" (simdExprOk True (SInt Add SLane (SConst 1)) == Right ())
+   check "SIMD int body refuses two ops" (either (const True) (const False) (simdExprOk True (SInt Add (SInt Add SLane (SConst 1)) (SConst 2))))
+@@ -91,7 +91,15 @@ main = do
+   check "SIMD register budget" (either (const True) (const False) (simdExprOk False (iterate (\e -> SFloat FAdd e (SConst 1)) SLane !! 16)))
+   check "SIMD register budget edge" (simdExprOk False (iterate (\e -> SFloat FAdd e SLane) SLane !! 15) == Right ())
+   check "counted safepoint charges" (either (const True) (const False) (opSignature memTypes (OSafepointN 0)))
+-  check "SIMD pair signature" (opSignature memTypes (OSimdPair True (SInt Add SLane (SConst 1)) (VId 0)) == Right Nothing)
++  check "SIMD pair signature" (opSignature memTypes (OSimdPair True (SInt Add SLane (SConst 1)) [] (VId 0)) == Right Nothing)
++  let capTypes v = Right (if v == VId 0 then TAddr else TInt)
++      capOp = OSimdPair True (SInt Sub (SCapture 0) SLane) [VId 1] (VId 0)
++  check "SIMD captured pair signature" (opSignature capTypes capOp == Right Nothing)
++  check "SIMD captures participate in SSA uses" (opUses capOp == [VId 0,VId 1])
++  check "SIMD capture uses are substituted" (opUses (mapOpUses (\(VId v) -> VId (v+2)) capOp) == [VId 2,VId 3])
++  check "SIMD capture rejects the wrong raw representation" (either (const True) (const False) (opSignature (const (Right TAddr)) capOp))
++  check "SIMD capture rejects an out-of-range index" (either (const True) (const False) (opSignature capTypes (OSimdPair True (SInt Add SLane (SCapture 1)) [VId 1] (VId 0))))
++  check "SIMD capture rejects a negative index" (either (const True) (const False) (opSignature capTypes (OSimdPair True (SInt Add SLane (SCapture (-1))) [VId 1] (VId 0))))
+   check "RVV lanes signature" (opSignature (\v -> Right (if v == VId 0 then TAddr else TInt)) (ORvvLanes (VId 0) (VId 1)) == Right (Just TPred))
+   -- float trees: a chain of single-use F64 operations fuses; a result used
+   -- twice keeps its definition; the scratch-register budget is respected
+diff --git a/tests/check_base.py b/tests/check_base.py
+index 456d51a..4512d1f 100755
+--- a/tests/check_base.py
++++ b/tests/check_base.py
+@@ -273,6 +273,7 @@ script('tests/check_typed_ir_x64.py', 1200)
+ script('tests/check_typed_ir_kernels.py', 1200)
+ script('tests/check_x64_retirement.py', 300)
+ script('tests/check_float_trees.py', 300)
++script('tests/check_captured_simd.py', 300)
+ script('tests/check_a64_fp_pool.py', 600)
+ script('tests/check_a64_retirement.py', 600)
+ script('tests/check_self_loops.py', 600, lock='cabal')
+diff --git a/tools/bench-typed-ir-m3.py b/tools/bench-typed-ir-m3.py
+index f6b2be1..34739de 100644
+--- a/tools/bench-typed-ir-m3.py
++++ b/tools/bench-typed-ir-m3.py
+@@ -54,6 +54,9 @@ for bits in (64, 32):
+         defs = re.sub(r"(\d+\.\d+)", r"\1f", defs)
+     INTERNAL[name] = (defs, f"loopFloat{bits} 3000000 0.5{'f' if bits == 32 else ''} 0", 3000000)
+ 
++INTERNAL["simdintmap"] = ("inc c x = x + c.\nsumInt a x = a + x.\n", "0", 1499999500000)
++INTERNAL["simdf64map"] = ("affine : F64 -> F64 -> F64 -> F64 .\naffine a b x = x * a + b.\nsumFloat : F64 -> F64 -> F64 .\nsumFloat a x = a + x.\nfill : unsafe Int -> Vector F64 -> Vector F64 .\nfill n v = if n == 0 then v else fill (n - 1) (Vec.push (F64.ofInt (n - 1)) v).\n", "0", 1)
++
+ WALL = ["helpers", "sha", "floatcmp", "nbody"]
+ 
+ 
+@@ -111,6 +114,18 @@ def main():
+                     "  w = probeRecordMap v; x = probeRecordCaptured c w; y = probeRecordFilter x;\n"
+                     "  (value,z) = probeRecordFold 2 3 7 y; ns = Bench.elapsed Unit; _ = Vec.free z;\n"
+                     '  print "{value} {ns}".\n')
++        if name == "simdintmap":
++            body = ("v = Vec.iota 1000000; (n,v) = Vec.len v; _ = Bench.start Unit;\n"
++                    "  w = Vec.map (inc n) v; ns = Bench.elapsed Unit;\n"
++                    "  (value,z) = Vec.fold sumInt 0 w; _ = Vec.free z;\n"
++                    '  print "{value} {ns}".\n')
++        if name == "simdf64map":
++            body = ("v = fill 1000000 (Vec.new Unit); (n,v) = Vec.len v;\n"
++                    "  a = F64.ofInt (n / 500000); b = F64.ofInt (n / 250000); _ = Bench.start Unit;\n"
++                    "  w = Vec.map (affine a b) v; ns = Bench.elapsed Unit;\n"
++                    "  (total,z) = Vec.fold sumFloat 0.0 w; _ = Vec.free z;\n"
++                    "  value = if total == 1000003000000.0 then 1 else 0;\n"
++                    '  print "{value} {ns}".\n')
+         src.write_text("unsafe base.\nBench.start : Unit -> Unit .\nBench.elapsed : Unit -> Int .\n" + defs + "main =\n  " + body)
+         sources[name] = (src, expected, [str(clock)])
+     for name in WALL:

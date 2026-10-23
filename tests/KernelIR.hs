@@ -39,11 +39,18 @@ main = do
     Left "RV32 float record columns use boxed values" -> pure ()
     other -> error ("RV32 float record lowering must refuse boxed columns: " ++ show other)
   putStrLn "Typed record builder: explicit RV32 boxed-float refusal PASS"
+  let captured = K.Kernel "pair" [KI] KI Nothing [K.Stage "map" "f" [0]] (Just (K.SInt Add K.SLane (K.SCapture 0),0)) False
+  case K.lowerKernel m2Policy M.empty captured of
+    Right _ -> pure ()
+    Left msg -> error ("captured SIMD builder refused: " ++ msg)
+  putStrLn "Typed SIMD builder: matching Int captures admitted PASS"
   -- the new forms refuse the shapes their proofs do not cover
   let refused what = case what of Left _ -> pure (); Right _ -> error "a builder accepted a shape outside its proof"
-  refused (K.lowerKernel m2Policy M.empty (K.Kernel "pair" [KI] KI Nothing [K.Stage "map" "f" [0]] (Just (K.SInt Add K.SLane (K.SConst 1),0)) False))
+  refused (K.lowerKernel m2Policy M.empty (K.Kernel "pair" [KD] KI Nothing [K.Stage "map" "f" [0]] (Just (K.SInt Add K.SLane (K.SConst 1),0)) False))
   refused (K.lowerKernel m2Policy M.empty (K.Kernel "pair" [] KI Nothing [K.Stage "map" "f" []] (Just (K.SInt Mul K.SLane (K.SConst 2),0)) False))
+  refused (K.lowerKernel m2Policy M.empty captured {K.kernelSimd=Just (K.SInt Add K.SLane (K.SCapture 1),0)})
+  refused (K.lowerKernel (m2Policy {polProfile=Rv32}) M.empty captured)
   refused (K.lowerKernel m2Policy M.empty (K.Kernel "strip" [KI,KI] KI (Just (1,KI)) [K.Stage "fold" "f" [0]] Nothing True))
   refused (K.lowerRecordKernel m2Policy M.empty (K.RecordKernel "gpu" "f" [] False (-1,-1) [(0,KI),(2,KI)] (K.RecordFold "dual" KI) True))
   refused (K.lowerMapAsKernel m2Policy (K.MapAsKernel "as" "f" 8 "d"))
-  putStrLn "Typed kernel builders: a captured or two-op SIMD pair, a captured RVV sum, a GPU pair sum off columns 0 and 1, and an eight-capture mapAs are refused PASS"
+  putStrLn "Typed kernel builders: a mixed-capture or invalid-op SIMD pair, a captured RVV sum, a GPU pair sum off columns 0 and 1, and an eight-capture mapAs are refused PASS"

@@ -1,0 +1,4 @@
+Typed kernel emission: legacy-only callers retain their native kernel on all four selectors PASS
+Typed record builder: explicit RV32 boxed-float refusal PASS
+Typed SIMD builder: matching Int captures admitted PASS
+Typed kernel builders: a mixed-capture or invalid-op SIMD pair, a captured RVV sum, a GPU pair sum off columns 0 and 1, and an eight-capture mapAs are refused PASS

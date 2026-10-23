@@ -19,7 +19,7 @@ data Stage = Stage String Name [Int] deriving Show
 data Kernel = Kernel
   { kernelSymbol :: String, kernelCaptures :: [Kind], kernelElement :: Kind,
     kernelAccumulator :: Maybe (Int, Kind), kernelStages :: [Stage],
-    kernelSimd :: Maybe (SimdExpr, Int), -- a capture-free map's two-lane body (A64 NEON) and its callback entry ticks
+    kernelSimd :: Maybe (SimdExpr, Int), -- a map's two-lane body with same-kind captures (A64 NEON) and its callback entry ticks
     kernelRvvSum :: Bool -- a capture-free Int sum fold strip-mined on RISC-V V
   } deriving Show
 
@@ -106,8 +106,10 @@ lowerKernel policy callbacks k = do
     (Left "unsupported typed kernel stages")
   case kernelSimd k of
     Just (expr,_) -> do
-      unless ([op | Stage op _ _ <- stages] == ["map"] && null (kernelCaptures k) && kernelElement k `elem` [KI,KD])
-        (Left "a SIMD pair body needs a capture-free single map over Int or F64")
+      unless ([op | Stage op _ _ <- stages] == ["map"] && all (== kernelElement k) (kernelCaptures k) && kernelElement k `elem` [KI,KD] && policyWidth policy == W64)
+        (Left "a SIMD pair body needs a single map over Int or F64 with matching captures on a 64-bit word")
+      unless (all (\n -> n >= 0 && n < length (kernelCaptures k)) (simdCaptures expr))
+        (Left "SIMD capture index outside the kernel captures")
       checked (simdExprOk (kernelElement k == KI) expr)
     Nothing -> pure ()
   when (kernelRvvSum k) $
@@ -163,7 +165,7 @@ lowerKernel policy callbacks k = do
       base <- load TAddr col w
       i <- fresh TInt; kept <- fresh TInt; acc <- fresh TVal
       (iStart,accStart) <- case (kernelSimd k, kernelRvvSum k) of
-        (Just simd,_) -> simdPrefix base count zero acc0 simd
+        (Just simd,_) -> simdPrefix args base count zero acc0 simd
         (_,True) -> rvvPrefix base count zero acc0
         _ -> pure (zero,acc0)
       end (TBr loop [iStart,iStart,accStart])
@@ -218,7 +220,9 @@ lowerKernel policy callbacks k = do
     -- the NEON pair loop ahead of the scalar loop: two lanes a step while two
     -- remain, each step charged both elements' entry ticks (the legacy kernel's
     -- specFuelN); the scalar loop takes the tail from where the pairs stopped
-    simdPrefix base count zero acc0 (expr,ticks) = do
+    simdPrefix args base count zero acc0 (expr,ticks) = do
+      caps <- forM (take (length (kernelCaptures k)) args) $ \a ->
+        if kernelElement k == KI then value TInt (OUntag a) else pure a
       pairLoop <- label; pairBody <- label; after <- label
       i2 <- fresh TInt
       end (TBr pairLoop [zero])
@@ -230,7 +234,7 @@ lowerKernel policy callbacks k = do
       begin pairBody []
       effect (OSafepointN (2*(ticks+1)))
       cursor <- value TAddr (OIndex base (fst i2))
-      effect (OSimdPair (kernelElement k == KI) expr cursor)
+      effect (OSimdPair (kernelElement k == KI) expr caps cursor)
       i2' <- value TInt (OKernelArith Add (fst i2) two)
       end (TBr pairLoop [i2'])
       begin after []

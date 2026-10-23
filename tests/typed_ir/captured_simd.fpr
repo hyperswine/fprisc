@@ -1,0 +1,29 @@
+unsafe base.
+addCap c x = x + c.
+subCap c x = x - c.
+rsubCap c x = c - x.
+affineCap : F64 -> F64 -> F64 -> F64 .
+affineCap a b x = x * a + b.
+wideCap : F64 -> F64 -> F64 -> F64 -> F64 -> F64 -> F64 -> F64 -> F64 .
+wideCap a b c d e f g x = x * a + b - c + d - e + f - g.
+heavyCap : F64 -> F64 -> F64 -> F64 .
+heavyCap a b x = t = x * a + b; u = t * t + t; u * u + u.
+probeHeavy a b v = Vec.map (heavyCap a b) v.
+mixedCap : Int -> F64 -> F64 .
+mixedCap c x = x + F64.ofInt c.
+longCap c x = (x + c) - c.
+probeAdd c v = Vec.map (addCap c) v.
+probeSub c v = Vec.map (subCap c) v.
+probeRsub c v = Vec.map (rsubCap c) v.
+probeAffine a b v = Vec.map (affineCap a b) v.
+probeWide a b c d e f g v = Vec.map (wideCap a b c d e f g) v.
+probeMixed c v = Vec.map (mixedCap c) v.
+probeLong c v = Vec.map (longCap c) v.
+plus a x = a + x.
+main =
+  v = probeAdd 7 (Vec.iota 1000);
+  w = probeSub 3 v;
+  x = probeRsub 5 w;
+  (answer,z) = Vec.fold plus 0 x;
+  _ = Vec.free z;
+  print answer.

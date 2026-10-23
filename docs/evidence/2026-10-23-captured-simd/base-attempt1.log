@@ -1,0 +1,3 @@
+usage: check_base.py [-h] [-j JOBS] [--serial] [--times] [--only TEXT]
+                     [--skip-typed-ir-native]
+check_base.py: error: unrecognized arguments: --workers 4

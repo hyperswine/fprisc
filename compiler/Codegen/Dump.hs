@@ -66,7 +66,7 @@ dumpFn fn =
       OCall c as -> "call " ++ callee c ++ args as
       OSafepoint -> "safepoint"
       OSafepointN n -> "safepoint x" ++ show n
-      OSimdPair int e a -> "simd.pair " ++ (if int then "int " else "f64 ") ++ simdText e ++ " " ++ value a
+      OSimdPair int e caps a -> "simd.pair " ++ (if int then "int " else "f64 ") ++ simdText e ++ " captures=[" ++ unwords (map value caps) ++ "] " ++ value a
       ORvvVlMax -> "rvv.vlmax"
       ORvvLanes a n -> "rvv.lanes " ++ value a ++ " " ++ value n
       ORvvSumLoaded acc -> "rvv.sum " ++ value acc
@@ -94,6 +94,7 @@ dumpFn fn =
 simdText :: SimdExpr -> String
 simdText = \case
   SLane -> "lane"
+  SCapture n -> "capture" ++ show n
   SConst n -> show n
   SInt o x y -> "(" ++ simdText x ++ " " ++ (case o of Add -> "+"; Sub -> "-"; Mul -> "*"; Div -> "/") ++ " " ++ simdText y ++ ")"
   SFloat o x y -> "(" ++ simdText x ++ " " ++ (case o of FAdd -> "f+"; FSub -> "f-"; FMul -> "f*"; FDiv -> "f/") ++ " " ++ simdText y ++ ")"

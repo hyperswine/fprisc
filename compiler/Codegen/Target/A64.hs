@@ -89,7 +89,7 @@ a64HostedInterfaceRev = 16
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 21 -- hosted FP pool and comparison/F32 trees; prior: generic HAL partial/opaque application; prior 19: inferred boxed I64 operators; prior 18: inference-generated vector runtime entries; prior 17: typed column memory and kernel arithmetic; prior: 16: posix modules reach external symbols through the GOT; 15: units with no legacy code skip translation; 14: in-place constructor reuse; 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
+a64SelectionRev = 22 -- captured NEON maps; prior: hosted FP pool and comparison/F32 trees; prior: generic HAL partial/opaque application; prior 19: inferred boxed I64 operators; prior 18: inference-generated vector runtime entries; prior 17: typed column memory and kernel arithmetic; prior: 16: posix modules reach external symbols through the GOT; 15: units with no legacy code skip translation; 14: in-place constructor reuse; 13: loaded QOS apps (x28 or the global hart cell); 12: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 11: 11: the frame link as one stp/ldp by default (FPR_TYPED_IR_LINK_PAIRS=0 for the two stores); prior 10: aggregate and string selection; prior: the merge (7, then 8: store.spill never overwrites its own value): M3's allocation (3) with coverage's widened selection (6); parameters 9.. arrive by load.spill
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -371,7 +371,7 @@ selectInstr _ _ (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
   OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq False True l) {siOp = "tick.n", siUses = [OI (fromIntegral n)]})
-  OSimdPair int e a -> simdPair int e (vreg a)
+  OSimdPair int e caps a -> simdPair int e (map vreg caps) (vreg a)
   ORvvVlMax -> refuse "a RISC-V vector length on A64"
   ORvvLanes _ _ -> refuse "RISC-V vector lanes on A64"
   ORvvSumLoaded _ -> refuse "a RISC-V vector sum on A64"
@@ -531,11 +531,11 @@ selectInstr _ _ (Instr d op) = case op of
     -- v17.. in evaluation order (the legacy neonExpr's allocation), the result
     -- is stored back, and Int lanes are checked for the 63-bit fit (the whole
     -- overflow test for one + or - on fitting operands)
-    simdPair int e base = do
+    simdPair int e caps base = do
       trap <- freshL "lanes"
       done <- freshL "lanesok"
       emitI (plain "simd.ld" [] [any' base, OI 16])
-      (res, _) <- simdGo e (17 :: Int)
+      (res, _) <- simdGo caps e (17 :: Int)
       emitI (plain "simd.st" [] [any' base, OI (fromIntegral res)])
       when int $ forM_ [0, 8] $ \off -> do
         t <- freshV False
@@ -548,18 +548,21 @@ selectInstr _ _ (Instr d op) = case op of
       emitL trap
       emitI (call "fpr_int_overflow_kernel" False True [] Nothing)
       emitL done
-    simdGo e next = case e of
+    simdGo caps e next = case e of
       SLane -> pure (16, next)
+      SCapture n -> do
+        emitI (plain "simd.dup" [] [any' (caps !! n), OI (fromIntegral next)])
+        pure (next, next + 1)
       SConst n -> do
         t <- freshV False
         emitI (li t n)
         emitI (plain "simd.dup" [] [any' t, OI (fromIntegral next)])
         pure (next, next + 1)
-      SInt o x y -> simdBinary (case o of Add -> "simd.add"; Sub -> "simd.sub"; Mul -> "simd.mul"; Div -> "simd.div") x y next
-      SFloat o x y -> simdBinary (case o of FAdd -> "simd.fadd"; FSub -> "simd.fsub"; FMul -> "simd.fmul"; FDiv -> "simd.fdiv") x y next
-    simdBinary name x y next = do
-      (rx, n1) <- simdGo x next
-      (ry, n2) <- simdGo y n1
+      SInt o x y -> simdBinary caps (case o of Add -> "simd.add"; Sub -> "simd.sub"; Mul -> "simd.mul"; Div -> "simd.div") x y next
+      SFloat o x y -> simdBinary caps (case o of FAdd -> "simd.fadd"; FSub -> "simd.fsub"; FMul -> "simd.fmul"; FDiv -> "simd.fdiv") x y next
+    simdBinary caps name x y next = do
+      (rx, n1) <- simdGo caps x next
+      (ry, n2) <- simdGo caps y n1
       emitI (plain name [] [OI (fromIntegral n2), OI (fromIntegral rx), OI (fromIntegral ry)])
       pure (n2, n2 + 1)
     -- checked Int arithmetic: the legacy worker sequences (Codegen.inlineTable,

@@ -97,7 +97,12 @@ opSignature tyOf = \case
   OSafepointN n -> do
     unless (n >= 1) (Left "a counted safepoint charges at least one tick")
     pure Nothing
-  OSimdPair int e a -> expect a TAddr >> simdExprOk int e >> pure Nothing
+  OSimdPair int e caps a -> do
+    expect a TAddr
+    mapM_ (`expect` (if int then TInt else TVal)) caps
+    unless (all (\n -> n >= 0 && n < length caps) (simdCaptures e)) (Left "SIMD capture index outside its operand list")
+    simdExprOk int e
+    pure Nothing
   ORvvVlMax -> pure (Just TInt)
   ORvvLanes a n -> expect a TAddr >> expect n TInt >> pure (Just TPred)
   ORvvSumLoaded acc -> expect acc TInt >> pure (Just TInt)
@@ -223,7 +228,7 @@ verifyProgramWidth width program = do
     aligned n = unless (n `mod` (widthBits width `div` 8) == 0) (Left "unaligned word memory operation")
 
 -- A SIMD pair body: at most the 15 scratch vector registers (v17..v31); an
--- Int body is exactly one + or - over the lane and literals (the stored
+-- Int body is exactly one + or - over the lane, captures and literals (the stored
 -- lanes' 63-bit fit is then the whole overflow test, as the legacy NEON
 -- gate argues); an F64 body uses + - * only.
 simdExprOk :: Bool -> SimdExpr -> Either String ()
@@ -232,9 +237,9 @@ simdExprOk int e = do
   if int
     then case e of
       SInt op x y | op `elem` [Add, Sub], leaf x, leaf y -> pure ()
-      _ -> Left "an Int SIMD pair is exactly one + or - over the lane and literals"
-    else unless (floatOnly e) (Left "an F64 SIMD pair uses F64 + - * over the lane and literals")
+      _ -> Left "an Int SIMD pair is exactly one + or - over the lane, captures and literals"
+    else unless (floatOnly e) (Left "an F64 SIMD pair uses F64 + - * over the lane, captures and literals")
   where
-    registers = \case SLane -> 0 :: Int; SConst _ -> 1; SInt _ x y -> 1 + registers x + registers y; SFloat _ x y -> 1 + registers x + registers y
-    leaf = \case SLane -> True; SConst _ -> True; _ -> False
-    floatOnly = \case SLane -> True; SConst _ -> True; SFloat op x y -> op /= FDiv && floatOnly x && floatOnly y; SInt {} -> False
+    registers = \case SLane -> 0 :: Int; SCapture _ -> 1; SConst _ -> 1; SInt _ x y -> 1 + registers x + registers y; SFloat _ x y -> 1 + registers x + registers y
+    leaf = \case SLane -> True; SCapture _ -> True; SConst _ -> True; _ -> False
+    floatOnly = \case SLane -> True; SCapture _ -> True; SConst _ -> True; SFloat op x y -> op /= FDiv && floatOnly x && floatOnly y; SInt {} -> False

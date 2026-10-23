@@ -80,7 +80,7 @@ main = do
   check "load rejects tagged base" (case opSignature (const (Right TVal)) (OLoad TInt (VId 0) 0) of Left _ -> True; _ -> False)
   check "load rejects float-register representation" (case opSignature memTypes (OLoad TF64 (VId 0) 0) of Left _ -> True; _ -> False)
   check "store rejects mismatched value" (case opSignature memTypes (OStore TAddr (VId 0) 0 (VId 1)) of Left _ -> True; _ -> False)
-  -- SIMD pair bodies: an Int body is one + or - over the lane and literals,
+  -- SIMD pair bodies: one checked Int + or -, or an F64 tree, with captures,
   -- an F64 body + - * only, within the 15 scratch registers
   check "SIMD int body of one op" (simdExprOk True (SInt Add SLane (SConst 1)) == Right ())
   check "SIMD int body refuses two ops" (either (const True) (const False) (simdExprOk True (SInt Add (SInt Add SLane (SConst 1)) (SConst 2))))
@@ -91,7 +91,15 @@ main = do
   check "SIMD register budget" (either (const True) (const False) (simdExprOk False (iterate (\e -> SFloat FAdd e (SConst 1)) SLane !! 16)))
   check "SIMD register budget edge" (simdExprOk False (iterate (\e -> SFloat FAdd e SLane) SLane !! 15) == Right ())
   check "counted safepoint charges" (either (const True) (const False) (opSignature memTypes (OSafepointN 0)))
-  check "SIMD pair signature" (opSignature memTypes (OSimdPair True (SInt Add SLane (SConst 1)) (VId 0)) == Right Nothing)
+  check "SIMD pair signature" (opSignature memTypes (OSimdPair True (SInt Add SLane (SConst 1)) [] (VId 0)) == Right Nothing)
+  let capTypes v = Right (if v == VId 0 then TAddr else TInt)
+      capOp = OSimdPair True (SInt Sub (SCapture 0) SLane) [VId 1] (VId 0)
+  check "SIMD captured pair signature" (opSignature capTypes capOp == Right Nothing)
+  check "SIMD captures participate in SSA uses" (opUses capOp == [VId 0,VId 1])
+  check "SIMD capture uses are substituted" (opUses (mapOpUses (\(VId v) -> VId (v+2)) capOp) == [VId 2,VId 3])
+  check "SIMD capture rejects the wrong raw representation" (either (const True) (const False) (opSignature (const (Right TAddr)) capOp))
+  check "SIMD capture rejects an out-of-range index" (either (const True) (const False) (opSignature capTypes (OSimdPair True (SInt Add SLane (SCapture 1)) [VId 1] (VId 0))))
+  check "SIMD capture rejects a negative index" (either (const True) (const False) (opSignature capTypes (OSimdPair True (SInt Add SLane (SCapture (-1))) [VId 1] (VId 0))))
   check "RVV lanes signature" (opSignature (\v -> Right (if v == VId 0 then TAddr else TInt)) (ORvvLanes (VId 0) (VId 1)) == Right (Just TPred))
   -- float trees: a chain of single-use F64 operations fuses; a result used
   -- twice keeps its definition; the scratch-register budget is respected

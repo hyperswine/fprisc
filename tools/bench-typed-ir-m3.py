@@ -54,6 +54,9 @@ for bits in (64, 32):
         defs = re.sub(r"(\d+\.\d+)", r"\1f", defs)
     INTERNAL[name] = (defs, f"loopFloat{bits} 3000000 0.5{'f' if bits == 32 else ''} 0", 3000000)
 
+INTERNAL["simdintmap"] = ("inc c x = x + c.\nsumInt a x = a + x.\n", "0", 1499999500000)
+INTERNAL["simdf64map"] = ("affine : F64 -> F64 -> F64 -> F64 .\naffine a b x = x * a + b.\nsumFloat : F64 -> F64 -> F64 .\nsumFloat a x = a + x.\nfill : unsafe Int -> Vector F64 -> Vector F64 .\nfill n v = if n == 0 then v else fill (n - 1) (Vec.push (F64.ofInt (n - 1)) v).\n", "0", 1)
+
 WALL = ["helpers", "sha", "floatcmp", "nbody"]
 
 
@@ -110,6 +113,18 @@ def main():
             body = ("v = fill (Vec.new Unit) 0 100000; c = sampleRow 2; _ = Bench.start Unit;\n"
                     "  w = probeRecordMap v; x = probeRecordCaptured c w; y = probeRecordFilter x;\n"
                     "  (value,z) = probeRecordFold 2 3 7 y; ns = Bench.elapsed Unit; _ = Vec.free z;\n"
+                    '  print "{value} {ns}".\n')
+        if name == "simdintmap":
+            body = ("v = Vec.iota 1000000; (n,v) = Vec.len v; _ = Bench.start Unit;\n"
+                    "  w = Vec.map (inc n) v; ns = Bench.elapsed Unit;\n"
+                    "  (value,z) = Vec.fold sumInt 0 w; _ = Vec.free z;\n"
+                    '  print "{value} {ns}".\n')
+        if name == "simdf64map":
+            body = ("v = fill 1000000 (Vec.new Unit); (n,v) = Vec.len v;\n"
+                    "  a = F64.ofInt (n / 500000); b = F64.ofInt (n / 250000); _ = Bench.start Unit;\n"
+                    "  w = Vec.map (affine a b) v; ns = Bench.elapsed Unit;\n"
+                    "  (total,z) = Vec.fold sumFloat 0.0 w; _ = Vec.free z;\n"
+                    "  value = if total == 1000003000000.0 then 1 else 0;\n"
                     '  print "{value} {ns}".\n')
         src.write_text("unsafe base.\nBench.start : Unit -> Unit .\nBench.elapsed : Unit -> Int .\n" + defs + "main =\n  " + body)
         sources[name] = (src, expected, [str(clock)])

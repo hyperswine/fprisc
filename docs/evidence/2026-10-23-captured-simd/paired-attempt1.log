@@ -1,0 +1,32 @@
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tools/bench-typed-ir-m3.py", line 277, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tools/bench-typed-ir-m3.py", line 152, in main
+    _, err = run(cmd, env)
+             ~~~^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tools/bench-typed-ir-m3.py", line 98, in run
+    raise RuntimeError(f"{cmd}: {p.returncode}\n{p.stdout[-3000:]}\n{p.stderr[-3000:]}")
+RuntimeError: ['/usr/bin/time', '-l', '/private/tmp/fpr-captured-simd-baseline', 'build', '/private/tmp/fpr-captured-simd-paired/simdintmap.fpr', '--harts', '1', '--keep', '-v', '-o', '/private/tmp/fpr-captured-simd-paired/simdintmap-baseline', '--with', '/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/bench/workers_clock.c']: 1
+autodrop: sysIrqBind: inserted `drop _autodrop_root_sysIrqBind_0` after destructure
+autodrop: irqRouteStart: inserted `drop _autodrop_root_irqRouteStart_0` into 2 case arm(s)
+autodrop: logStart: inserted `drop _autodrop_root_logStart_0` into 2 case arm(s)
+autodrop: parWorker: inserted `drop _autodrop_root_parWorker_0` into 1 case arm(s)
+precond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps
+linear types: Handle Vector SString
+typed-ir-kernel: fpr_vspec_fold_sumInt native
+typed-ir-kernel: fpr_vspec_map_inc native
+typed-ir-backend: native 3/3 functions (per-function)
+typed-ir-backend: inc native (frame 32 shallow=no saved=x19,x20 values=14 regs=14 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=2 loops=0, native-insns-v1 segmax=23 exittail=19 ccalls=2)
+typed-ir-backend: main native (frame 48 shallow=no saved=x19,x20,x21 values=25 regs=25 spills=0 slots=0 reloads=0 stores=0 copies=15 crossing=7 loops=0, native-insns-v1 segmax=32 exittail=32 ccalls=12)
+typed-ir-backend: sumInt native (frame 32 shallow=no saved=x19,x20 values=14 regs=14 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=2 loops=0, native-insns-v1 segmax=23 exittail=19 ccalls=2)
+unit /private/tmp/fpr-captured-simd-paired/cache/baseline/fpr/build/units/prelude-b2084da22e6a-g72-tirbe21-native1mixed-fpregsrt3pc5-c09612b07b5ec-a64macx28r16.s (cached)
+wrote /private/tmp/fpr-captured-simd-paired/cache/baseline/fpr/build/simdintmap-69455.s (27 supercombinators, linearity OK)
+assumed external symbols (the fpr_g_ HAL/runtime contract):
+  $vec.len Bench.elapsed Bench.start Vec.fold Vec.free Vec.iota Vec.map
+
+fpr build: kept /private/tmp/fpr-captured-simd-paired/cache/baseline/fpr/build/simdintmap-69455.s
+fpr build: /private/tmp/fpr-captured-simd-paired/simdintmap-baseline
+        0.51 real         0.50 user         0.05 sys
+time: sysctl kern.clockrate: Operation not permitted
+

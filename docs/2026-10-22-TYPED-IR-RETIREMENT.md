@@ -16,6 +16,9 @@ with `FPR_TYPED_IR_BACKEND=legacy` as the rollback; the answer below's first
 two conditions are met, and the translators now serve only the rollback and
 the x86-64 QOS apps.
 
+The [complete migration goal](2026-10-23-TYPED-IR-COMPLETION.md) now includes
+replacing builtin/GC/ARC consumers and deleting the remaining generator.
+
 The tables below describe the inventory at `8a5de33`; the linked record gives
 the current support boundary and the user-approved retirement acceptance.
 

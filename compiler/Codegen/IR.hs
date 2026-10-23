@@ -25,7 +25,7 @@
 -- (Codegen.Eval) is the executable statement of these semantics.
 module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
-    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScheduleAt, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
+    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), simdCaptures, ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScheduleAt, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
     intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
@@ -67,10 +67,16 @@ data BitOp = BAnd | BOr | BXor deriving (Eq, Ord, Show, Enum, Bounded)
 -- float representation): IEEE semantics, no trap, no fused multiply-add
 data FloatOp = FAdd | FSub | FMul | FDiv deriving (Eq, Ord, Show, Enum, Bounded)
 
--- A two-lane SIMD map body: the lane, a literal (an Int, or an F64's bits)
--- and the operations NEON applies to both lanes at once (Target.A64).
-data SimdExpr = SLane | SConst Integer | SInt ArithOp SimdExpr SimdExpr | SFloat FloatOp SimdExpr SimdExpr
+-- A two-lane SIMD map body: the lane, indexed scalar captures, literals
+-- (an Int or F64 bits), and operations applied to both lanes (Target.A64).
+data SimdExpr = SLane | SCapture Int | SConst Integer | SInt ArithOp SimdExpr SimdExpr | SFloat FloatOp SimdExpr SimdExpr
   deriving (Eq, Ord, Show)
+
+simdCaptures :: SimdExpr -> [Int]
+simdCaptures (SCapture n) = [n]
+simdCaptures (SInt _ a b) = simdCaptures a ++ simdCaptures b
+simdCaptures (SFloat _ a b) = simdCaptures a ++ simdCaptures b
+simdCaptures _ = []
 
 -- A tree of F64 operations over the bits of its leaves, computed in the
 -- target's scratch floating-point registers with one move in per leaf and
@@ -189,7 +195,7 @@ data Op
   | OFloat32Bin FloatOp VId VId -- TVal TVal -> TVal: F32 arithmetic on the low 32 bits of the word (the runtime's F32 word), inline (the legacy genU F32.+ - * /)
   | OFloat32Cmp CmpOp VId VId -- TVal TVal -> TPred: F32 ordered comparison, as OFloatCmp
   | OSafepointN Int -- n fuel ticks at once: a NEON pair charges both elements' callback entry ticks, as the legacy kernel does
-  | OSimdPair Bool SimdExpr VId -- TAddr: the two Int (True) or F64 (False) lanes at the address, mapped in place through the expression (A64 NEON, one 128-bit register); an Int lane that leaves the 63-bit range traps with the kernel diagnostic
+  | OSimdPair Bool SimdExpr [VId] VId -- raw captures (TInt or F64 bits), TAddr: the two Int (True) or F64 (False) lanes at the address, mapped in place through the expression (A64 NEON, one 128-bit register); an Int lane that leaves the 63-bit range traps with the kernel diagnostic
   | ORvvVlMax -- :: TInt; RISC-V V: the lanes one vector register holds at the word's element width (vsetvli x0)
   | ORvvLanes VId VId -- TAddr, TInt n -> TPred: RISC-V V: vl = n, the n Int lanes at the address loaded into the vector unit, true when every lane is within rvvLaneBound; the lanes stay loaded for ORvvSumLoaded, which follows with no other vector operation between
   | ORvvSumLoaded VId -- TInt acc -> TInt: acc plus the lanes ORvvLanes loaded (vredsum), unchecked: the builder proved the bound
@@ -286,7 +292,7 @@ opEffect = \case
   OSafepoint -> RuntimeCall
   OStackCheck -> RuntimeCall
   OSafepointN _ -> RuntimeCall
-  OSimdPair _ _ _ -> Writes
+  OSimdPair _ _ _ _ -> Writes
   ORvvVlMax -> Pure
   ORvvLanes _ _ -> Reads
   ORvvSumLoaded _ -> Reads
@@ -335,7 +341,7 @@ opUses = \case
   OSafepoint -> []
   OStackCheck -> []
   OSafepointN _ -> []
-  OSimdPair _ _ a -> [a]
+  OSimdPair _ _ caps a -> a:caps
   ORvvVlMax -> []
   ORvvLanes a n -> [a, n]
   ORvvSumLoaded a -> [a]
@@ -394,7 +400,7 @@ mapOpUses f = \case
   OSafepoint -> OSafepoint
   OStackCheck -> OStackCheck
   OSafepointN n -> OSafepointN n
-  OSimdPair i e a -> OSimdPair i e (f a)
+  OSimdPair i e caps a -> OSimdPair i e (map f caps) (f a)
   ORvvVlMax -> ORvvVlMax
   ORvvLanes a n -> ORvvLanes (f a) (f n)
   ORvvSumLoaded a -> ORvvSumLoaded (f a)

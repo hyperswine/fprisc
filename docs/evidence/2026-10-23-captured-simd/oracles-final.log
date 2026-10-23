@@ -1,0 +1,7 @@
+Captured NEON emission and scalar boundaries PASS; scalar=False
+CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 70942 hostile yields
+Captured Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=False
+Captured NEON emission and scalar boundaries PASS; scalar=True
+CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 106725 hostile yields
+Captured Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=True
+Captured SIMD: real hosted runtime, 1/4 harts PASS

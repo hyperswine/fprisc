@@ -219,3 +219,6 @@ they began.
 - [Typed IR performance pass: float trees](2026-10-23-TYPED-IR-PERF.md): single-use F64 chains fuse into one `OFloatTree` evaluated in the scratch FP registers (`d16..`, `%xmm8..`, `ft0..`), one move in per leaf and one out; nbody 0.655 of the previous typed build in 31 paired rounds (the driver's new `--against`); everything else within noise.
 
 - [Comparison/F32 trees and hosted AArch64 FP pool](2026-10-23-FLOAT-TREES-POOL.md): comparison trees on A64/x64/RV64, F32 trees with per-node rounding, hosted d8..d15 across safepoints; 112 Base checks; 31 paired rounds show nbody about 10% faster, F32 trees 0.8%, comparison chains neutral. Hosted A64 context ABI moves to 7; QOS retains ABI 6.
+
+- [Complete typed IR migration goal](2026-10-23-TYPED-IR-COMPLETION.md): all native profiles, ownership/root contracts, native instruction accounting and final legacy deletion, with explicit acceptance gates.
+- [Captured NEON maps](2026-10-23-CAPTURED-SIMD.md): matching Int/F64 captures, seven-argument pressure and hostile-yield oracles; 31 paired rounds show 57%/60% less targeted map time.

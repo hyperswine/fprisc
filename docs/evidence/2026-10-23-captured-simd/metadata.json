@@ -1,0 +1,22 @@
+{
+  "starting_revision": "98abc0c7d790ae1e90faa6a6a6639739d702a0d1",
+  "baseline_compiler_sha256": "203ee517682065321b2b9290b532bf84ddce6e7a1c93736f37e74de6b1ea18dd",
+  "measured_compiler_sha256": "bc354a9b74426132e00b206fd10437c26295dbbc59a07afe88dd8efeba7663ff",
+  "final_compiler_sha256": "bc354a9b74426132e00b206fd10437c26295dbbc59a07afe88dd8efeba7663ff",
+  "scope": "Matching-type captured AArch64 NEON maps; other targets and unsupported shapes retain scalar typed kernels. No runtime context/ABI change.",
+  "measurement": "31 paired rounds, one native AArch64 macOS host, one hart, identical runtime. Internal map timers exclude vector construction and result fold; every output checked.",
+  "oracle_cases_per_mode": 6729,
+  "overflow_cases_per_mode": 6,
+  "hosted_harts": [
+    1,
+    4
+  ],
+  "base_validation": {
+    "jobs": 113,
+    "exit_code": 0,
+    "workers": 4,
+    "log": "base-final.log",
+    "note": "Full sweep ran initial 6714-case captured oracle; focused final oracle adds tagged-Int limit and exact logical-fuel cases (6729 cases per mode). Production code is the same."
+  },
+  "logical_fuel_check": "66 vector lengths match scalar charge exactly, SIMD on and off"
+}
