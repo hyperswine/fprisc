@@ -30,7 +30,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 20 -- comparison and F32 trees; prior: QOS borrowed TLS hart/argument cells; prior 18: generic HAL partial/opaque application; prior 17: inferred boxed I64 operators; prior 16: inference-generated vector runtime entries; prior 15: typed column memory and kernel arithmetic; prior: 14: posix modules reach external symbols through the GOT; 13: units with no legacy code skip translation; 12: in-place constructor reuse; 11: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 10: aggregate and string selection; prior: the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
+x64SelectionRev = 21 -- SSE2 map pairs; prior: comparison and F32 trees; prior: QOS borrowed TLS hart/argument cells; prior 18: generic HAL partial/opaque application; prior 17: inferred boxed I64 operators; prior 16: inference-generated vector runtime entries; prior 15: typed column memory and kernel arithmetic; prior: 14: posix modules reach external symbols through the GOT; 13: units with no legacy code skip translation; 12: in-place constructor reuse; 11: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 10: aggregate and string selection; prior: the merge (6, then 7: store.spill never overwrites its own value; 8: a tied destination never takes a fixed operand's register): M3's allocation (2) with coverage's widened selection (5); parameters 9.. arrive by load.spill
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -259,7 +259,9 @@ selectInstr _ _ (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
   OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq False True l) {siOp = "tick.n", siUses = [OI (fromIntegral n)]})
-  OSimdPair {} -> refuse "a NEON pair on x86-64"
+  OSimdPair int e caps a -> do
+    when (simdRegisters e > 7) (refuse "an SSE2 pair exceeds seven scratch temporaries")
+    simdPair int e (map vreg caps) (vreg a)
   ORvvVlMax -> refuse "a RISC-V vector length on x86-64"
   ORvvLanes _ _ -> refuse "RISC-V vector lanes on x86-64"
   ORvvSumLoaded _ -> refuse "a RISC-V vector sum on x86-64"
@@ -412,6 +414,46 @@ selectInstr _ _ (Instr d op) = case op of
       Just (v, _) -> k (vreg v)
       Nothing -> refuse ("internal: " ++ take 20 (show op) ++ " without a definition")
     cond = \case Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne"
+    -- xmm8 holds two lanes; xmm9..xmm15 are expression temporaries.
+    -- Every selected broadcast has one word operand, keeping reloads bounded.
+    simdPair int e caps base = do
+      trap <- freshL "lanes"
+      done <- freshL "lanesok"
+      emitI (plain "simd.ld" [] [any' base, OI 8])
+      (res,_) <- simdGo caps e (9 :: Int)
+      emitI (plain "simd.st" [] [any' base, OI (fromIntegral res)])
+      when int $ forM_ [0,8] $ \off -> do
+        t <- freshV False
+        emitI (plain "load.field" [any' t] [any' base, OI off])
+        fit t trap
+      emitI (jump done)
+      emitL trap
+      emitCall "fpr_int_overflow_kernel" False True [] Nothing
+      emitL done
+    simdGo caps e next = case e of
+      SLane -> pure (8,next)
+      SCapture n -> do
+        emitI (plain "simd.dup" [] [any' (caps !! n), OI (fromIntegral next)])
+        pure (next,next+1)
+      SConst n -> do
+        t <- freshV False
+        emitI (li t n)
+        emitI (plain "simd.dup" [] [any' t, OI (fromIntegral next)])
+        pure (next,next+1)
+      SInt op a b -> case op of
+        Add -> simdBinary caps "simd.add" a b next
+        Sub -> simdBinary caps "simd.sub" a b next
+        _ -> refuse "an SSE2 Int pair supports only add/subtract"
+      SFloat op a b -> case op of
+        FAdd -> simdBinary caps "simd.fadd" a b next
+        FSub -> simdBinary caps "simd.fsub" a b next
+        FMul -> simdBinary caps "simd.fmul" a b next
+        FDiv -> refuse "an SSE2 pair division is outside the SIMD proof"
+    simdBinary caps op a b next = do
+      (ra,n1) <- simdGo caps a next
+      (rb,n2) <- simdGo caps b n1
+      emitI (plain op [] [OI (fromIntegral n2),OI (fromIntegral ra),OI (fromIntegral rb)])
+      pure (n2,n2+1)
     -- checked Int arithmetic: the legacy worker sequences (Codegen.inlineTable,
     -- ScalarChecked): the fast path computes and checks the 63-bit fit, the
     -- slow path retags the ORIGINAL operands and re-enters the C primitive,
@@ -660,6 +702,11 @@ renderItem hart ly fname saveLines restores (I i) = map indent (go (siOp i) (siD
       ("ldrsw",[d],[s,n]) -> ["movslq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
       ("movslq",[d],[s,n]) -> ["movslq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
       ("sext63",[d],[_,_]) -> ["shlq $1, " ++ reg d, "sarq $1, " ++ reg d]
+      ("simd.ld",[],[base,OI n]) -> ["movdqu (" ++ reg base ++ "), %xmm" ++ show n]
+      ("simd.st",[],[base,OI n]) -> ["movdqu %xmm" ++ show n ++ ", (" ++ reg base ++ ")"]
+      ("simd.dup",[],[src,OI n]) -> ["movq " ++ reg src ++ ", %xmm" ++ show n,"punpcklqdq %xmm" ++ show n ++ ", %xmm" ++ show n]
+      (o,[],[OI d,OI a,OI b]) | Just inst <- lookup o [("simd.add","paddq"),("simd.sub","psubq"),("simd.fadd","addpd"),("simd.fsub","subpd"),("simd.fmul","mulpd")] ->
+        ["movdqa %xmm" ++ show a ++ ", %xmm" ++ show d,inst ++ " %xmm" ++ show b ++ ", %xmm" ++ show d]
       -- F32 on the low 32 bits: movd to a 32-bit register zero-extends
       -- a float tree, one step an instruction: scratch %xmm8.., the
       -- two-operand forms leave a node's value in its left subtree's register

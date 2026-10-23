@@ -212,6 +212,15 @@ main = do
   check "direct x64: SysV parameter moved to rbx, rbx saved, TLS hart" ("movq %rbx, -24(%rbp)\n    movq %rdi, %rbx\n" `isInfixOf` xt && "%fs:fpr_posix_hart@tpoff" `isInfixOf` xt && "saved=rbx " `isInfixOf` xt)
   check "direct x64: aligned primitive call" ("subq $8, %rsp\n    call fpr_prim_fn__x2d\n    addq $8, %rsp" `isInfixOf` xt)
   check "direct x64: frame-based return and native bound" ("leaq -8(%r11), %rsp\n    ret" `isInfixOf` xt && rSegMax (nfReport nfx) /= Nothing)
+  let pairFn n = Fn "pair" ["base"] TVal (BId 0)
+        [Block (BId 0) [(VId 0,TAddr)]
+          [Instr Nothing OStackCheck, Instr Nothing OSafepoint,
+           Instr Nothing (OSimdPair False (iterate (\e -> SFloat FAdd e SLane) SLane !! n) [] (VId 0)),
+           Instr (Just (VId 1,TVal)) (ONullary 0 0)] (TRet (VId 1))]
+      pairCfg = X64.X64Config m2Policy S.empty False True False noTune X64.HartTls
+  pair7 <- either error pure (X64.emitFnX64 pairCfg (pairFn 7))
+  check "SSE2 pair uses its last reserved temporary" ("addpd %xmm8, %xmm15" `isInfixOf` unlines (nfLines pair7))
+  refused "SSE2 pair exceeds reserved bank" "seven scratch temporaries" (X64.emitFnX64 pairCfg (pairFn 8))
   let wrapper = Fn "wrapper" ["a", "b"] TVal (BId 0)
         [Block (BId 0) [(VId 0, TVal), (VId 1, TVal)]
           [Instr Nothing OStackCheck, Instr Nothing OSafepoint]

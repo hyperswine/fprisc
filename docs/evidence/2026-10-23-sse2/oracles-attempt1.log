@@ -1,0 +1,18 @@
+qa64mac SIMD emission, scratch budget and scalar boundaries PASS; scalar=False
+qa64mac: CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 70942 hostile yields
+qa64mac Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=False
+qa64mac SIMD emission, scratch budget and scalar boundaries PASS; scalar=True
+qa64mac: CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 106725 hostile yields
+qa64mac Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=True
+x64 SIMD emission, scratch budget and scalar boundaries PASS; scalar=False
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_captured_simd.py", line 63, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_captured_simd.py", line 53, in main
+    build([]);out=run([*runner,exe],mode);assert 'CAPTURED_SIMD_PASS' in out,out
+                  ~~~^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/x64_probe.py", line 15, in run
+    assert p.returncode == 0, (args, p.returncode, p.stdout[-4000:], p.stderr[-4000:])
+           ^^^^^^^^^^^^^^^^^
+AssertionError: (['arch', '-x86_64', PosixPath('/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-captured-simd-g2kmjutw/oracle')], -11, '', '')

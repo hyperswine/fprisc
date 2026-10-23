@@ -222,3 +222,5 @@ they began.
 
 - [Complete typed IR migration goal](2026-10-23-TYPED-IR-COMPLETION.md): all native profiles, ownership/root contracts, native instruction accounting and final legacy deletion, with explicit acceptance gates.
 - [Captured NEON maps](2026-10-23-CAPTURED-SIMD.md): matching Int/F64 captures, seven-argument pressure and hostile-yield oracles; 31 paired rounds show 57%/60% less targeted map time.
+
+- [Typed x64 SSE2 map pairs](2026-10-23-SSE2-PAIRS.md): shared Int/F64 lane expressions, seven-temporary budget, x64/qx64 Rosetta correctness and paired timings; scalar fallbacks and fuel preserved.

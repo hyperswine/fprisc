@@ -19,7 +19,7 @@ data Stage = Stage String Name [Int] deriving Show
 data Kernel = Kernel
   { kernelSymbol :: String, kernelCaptures :: [Kind], kernelElement :: Kind,
     kernelAccumulator :: Maybe (Int, Kind), kernelStages :: [Stage],
-    kernelSimd :: Maybe (SimdExpr, Int), -- a map's two-lane body with same-kind captures (A64 NEON) and its callback entry ticks
+    kernelSimd :: Maybe (SimdExpr, Int), -- a map's two-lane body with same-kind captures (NEON/SSE2) and its callback entry ticks
     kernelRvvSum :: Bool -- a capture-free Int sum fold strip-mined on RISC-V V
   } deriving Show
 
@@ -217,7 +217,7 @@ lowerKernel policy callbacks k = do
                   _ -> [v])
             value TVal (OCall (Callee ("Vec."++op) (Foreign ("fpr_vec_"++op)) (replicate (length inputs) TVal) TVal) inputs)
       foldM generic vec stages >>= end . TRet
-    -- the NEON pair loop ahead of the scalar loop: two lanes a step while two
+    -- the SIMD pair loop ahead of the scalar loop: two lanes a step while two
     -- remain, each step charged both elements' entry ticks (the legacy kernel's
     -- specFuelN); the scalar loop takes the tail from where the pairs stopped
     simdPrefix args base count zero acc0 (expr,ticks) = do

@@ -19,7 +19,7 @@ switching its ownership model does not count as migration.
 | Hosted scalar and kernel lowering | Default, including loaded QOS apps, RV64 modules and ESP-IDF hart access | Keep strict coverage and independent execution checks green; complete real platform acceptance |
 | Float trees and FP allocation | F64/F32 arithmetic/comparison trees on A64/x64/RV64; hosted A64 pool across safepoints | 112 Base jobs and paired measurements recorded; extend pools only with target context contracts |
 | Captured SIMD maps | Implemented: [matching Int/F64 captures on A64](2026-10-23-CAPTURED-SIMD.md), 113 Base jobs passed | Independent C, scalar parity, tails, overflow, hostile yields, real actor runtime, paired measurements |
-| Fused SIMD pipelines and x64 pairs | Open | Stable filtering, source-order failures, fuel bounds, scalar tails; native A64 and x64 execution oracles |
+| Fused SIMD pipelines and x64 pairs | [x64 SSE2 pairs implemented](2026-10-23-SSE2-PAIRS.md), 113 Base jobs passed; fused pipelines open | Stable filtering, source-order failures, fuel bounds, scalar tails; native A64 and x64 execution oracles |
 | Filter compaction | Open | A discard-heavy benchmark, fewer directory/base loads, stable rows and all columns preserved, paired measurements |
 | Native instruction accounting | Open | QOS ratchet/admission consumers use `native-insns-v1`; refuse absent or unbounded coverage; document runtime-call costs separately |
 | Builtin manual/GC profiles, RV32/RV64 | Open | Explicit allocator, root, raw-word and no-fuel policies; full function/data/kernel coverage; QEMU and supported board suites |
@@ -28,8 +28,8 @@ switching its ownership model does not count as migration.
 
 ## Order of implementation
 
-1. Captured NEON maps are complete. Add x64 pairs and fused map/filter
-   SIMD with separate proofs for checked integer operations and stable
+1. Captured NEON maps and x64 SSE2 pairs are implemented. Add fused
+   map/filter SIMD with separate proofs for checked integer operations and stable
    compaction. SIMD improvements are bounded increments; they must not
    delay the ownership/profile migration indefinitely.
 2. Finish the filter-compaction pass using a workload that actually moves

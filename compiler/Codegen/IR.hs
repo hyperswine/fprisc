@@ -25,7 +25,7 @@
 -- (Codegen.Eval) is the executable statement of these semantics.
 module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
-    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), simdCaptures, ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScheduleAt, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
+    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), simdCaptures, simdRegisters, ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScheduleAt, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
     intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
@@ -68,7 +68,7 @@ data BitOp = BAnd | BOr | BXor deriving (Eq, Ord, Show, Enum, Bounded)
 data FloatOp = FAdd | FSub | FMul | FDiv deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- A two-lane SIMD map body: the lane, indexed scalar captures, literals
--- (an Int or F64 bits), and operations applied to both lanes (Target.A64).
+-- (an Int or F64 bits), and operations applied to both lanes (NEON/SSE2).
 data SimdExpr = SLane | SCapture Int | SConst Integer | SInt ArithOp SimdExpr SimdExpr | SFloat FloatOp SimdExpr SimdExpr
   deriving (Eq, Ord, Show)
 
@@ -77,6 +77,14 @@ simdCaptures (SCapture n) = [n]
 simdCaptures (SInt _ a b) = simdCaptures a ++ simdCaptures b
 simdCaptures (SFloat _ a b) = simdCaptures a ++ simdCaptures b
 simdCaptures _ = []
+
+-- Monotonic expression temporaries, excluding the dedicated lane register.
+simdRegisters :: SimdExpr -> Int
+simdRegisters SLane = 0
+simdRegisters (SCapture _) = 1
+simdRegisters (SConst _) = 1
+simdRegisters (SInt _ a b) = 1 + simdRegisters a + simdRegisters b
+simdRegisters (SFloat _ a b) = 1 + simdRegisters a + simdRegisters b
 
 -- A tree of F64 operations over the bits of its leaves, computed in the
 -- target's scratch floating-point registers with one move in per leaf and
@@ -194,8 +202,8 @@ data Op
   | OFloat32CmpTree CmpOp FloatTree FloatTree
   | OFloat32Bin FloatOp VId VId -- TVal TVal -> TVal: F32 arithmetic on the low 32 bits of the word (the runtime's F32 word), inline (the legacy genU F32.+ - * /)
   | OFloat32Cmp CmpOp VId VId -- TVal TVal -> TPred: F32 ordered comparison, as OFloatCmp
-  | OSafepointN Int -- n fuel ticks at once: a NEON pair charges both elements' callback entry ticks, as the legacy kernel does
-  | OSimdPair Bool SimdExpr [VId] VId -- raw captures (TInt or F64 bits), TAddr: the two Int (True) or F64 (False) lanes at the address, mapped in place through the expression (A64 NEON, one 128-bit register); an Int lane that leaves the 63-bit range traps with the kernel diagnostic
+  | OSafepointN Int -- n fuel ticks at once: a SIMD pair charges both elements' callback entry ticks, as the legacy kernel does
+  | OSimdPair Bool SimdExpr [VId] VId -- raw captures (TInt or F64 bits), TAddr: the two Int (True) or F64 (False) lanes at the address, mapped in place through the expression (NEON/SSE2, one 128-bit register); an Int lane that leaves the 63-bit range traps with the kernel diagnostic
   | ORvvVlMax -- :: TInt; RISC-V V: the lanes one vector register holds at the word's element width (vsetvli x0)
   | ORvvLanes VId VId -- TAddr, TInt n -> TPred: RISC-V V: vl = n, the n Int lanes at the address loaded into the vector unit, true when every lane is within rvvLaneBound; the lanes stay loaded for ORvvSumLoaded, which follows with no other vector operation between
   | ORvvSumLoaded VId -- TInt acc -> TInt: acc plus the lanes ORvvLanes loaded (vredsum), unchecked: the builder proved the bound

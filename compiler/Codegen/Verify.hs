@@ -233,13 +233,12 @@ verifyProgramWidth width program = do
 -- gate argues); an F64 body uses + - * only.
 simdExprOk :: Bool -> SimdExpr -> Either String ()
 simdExprOk int e = do
-  unless (registers e <= 15) (Left "a SIMD pair expression needs more than the 15 scratch vector registers")
+  unless (simdRegisters e <= 15) (Left "a SIMD pair expression needs more than the 15 scratch vector registers")
   if int
     then case e of
       SInt op x y | op `elem` [Add, Sub], leaf x, leaf y -> pure ()
       _ -> Left "an Int SIMD pair is exactly one + or - over the lane, captures and literals"
     else unless (floatOnly e) (Left "an F64 SIMD pair uses F64 + - * over the lane, captures and literals")
   where
-    registers = \case SLane -> 0 :: Int; SCapture _ -> 1; SConst _ -> 1; SInt _ x y -> 1 + registers x + registers y; SFloat _ x y -> 1 + registers x + registers y
     leaf = \case SLane -> True; SCapture _ -> True; SConst _ -> True; _ -> False
     floatOnly = \case SLane -> True; SCapture _ -> True; SConst _ -> True; SFloat op x y -> op /= FDiv && floatOnly x && floatOnly y; SInt {} -> False

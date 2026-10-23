@@ -1,0 +1,29 @@
+{
+  "starting_revision": "662c3a1",
+  "compiler_sha256": {
+    "baseline": "bc354a9b74426132e00b206fd10437c26295dbbc59a07afe88dd8efeba7663ff",
+    "sse2": "961452f430b7f0296157868eea5e91f1caddfb88bdd5f4616eb74465dd0a1704"
+  },
+  "final_compiler_sha256": "9a17ca6782dacae642ab23525c8a66a405a6a4bb06e4a26fdfddd58d010089d2",
+  "scope": "x64/qx64 SSE2 pairs, no runtime ABI change; A64 retains existing NEON bank",
+  "execution": "Rosetta x86-64",
+  "oracle_cases_per_target_mode": 6729,
+  "overflow_cases_per_target_mode": 6,
+  "targets": [
+    "qa64mac",
+    "x64",
+    "qx64"
+  ],
+  "simd_modes": [
+    "on",
+    "off"
+  ],
+  "base_validation": {
+    "jobs": 113,
+    "workers": 4,
+    "seconds": 368,
+    "exit_code": 0,
+    "log": "base-final.log"
+  },
+  "source_patch": "final-source.patch (tracked source snapshot after measurement; later production changes were comments only)"
+}

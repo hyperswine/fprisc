@@ -45,7 +45,7 @@ import Numeric (showHex)
 import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, isJust)
 import Peephole (peepholeFor)
-import Codegen.IR (Fn (..), Block (..), Width, ArithOp (..), FloatOp (..))
+import Codegen.IR (Fn (..), Block (..), Width, ArithOp (..), FloatOp (..), simdRegisters)
 import qualified Codegen.Kernel as K
 import Codegen.Lower (lowerProgram, Prim (..))
 import Codegen.Simplify (simplifyProgram)
@@ -69,7 +69,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 73 -- captured NEON maps; prior: F64 comparison trees, F32 trees and hosted A64 FP allocation
+codegenRev = 74 -- x64 SSE2 map pairs; prior: captured NEON maps; prior: F64 comparison trees, F32 trees and hosted A64 FP allocation
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -87,7 +87,7 @@ data Target = Target
                         -- constructor stubs, $arc.mainManaged) are emitted
                         -- .weak so a program unit's copies win at link
     tgtRegisters :: Bool, -- promote private frame slots into preserved registers
-    tgtSimd :: Bool, -- A64 NEON, scalar fallback/tails remain available
+    tgtSimd :: Bool, -- A64 NEON/x64 SSE2, scalar fallback/tails remain available
     tgtFusion :: Bool, -- differential switch for pipeline passes
     tgtFloatInline :: Bool, -- F64 fast paths; false keeps the C primitives for differential checks
     tgtScalarFast :: Bool, -- differential old RV32 slot/primitive path
@@ -3364,6 +3364,8 @@ simdPlan tgt prog p = do
     Just (ks,out) | out `elem` [KI,KD], length ks == length params, all (==out) ks -> Just out
     _ -> Nothing
   expr <- simdExprOf kind (init params) (last params) body
+  let budget = case tgtNative tgt >>= nmBackend of Just DirectX64 -> 7; Just DirectQX64 -> 7; _ -> 15
+  if simdRegisters expr <= budget then Just () else Nothing
   either (const Nothing) (const (Just (expr,ticks))) (simdExprOk (kind == KI) expr)
 
 -- The lane, matching scalar captures and literals, with Int + - or F64 + - *.

@@ -1,0 +1,19 @@
+qa64mac SIMD emission, scratch budget and scalar boundaries PASS; scalar=False
+qa64mac: CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 70942 hostile yields
+qa64mac Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=False
+qa64mac SIMD emission, scratch budget and scalar boundaries PASS; scalar=True
+qa64mac: CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 106725 hostile yields
+qa64mac Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=True
+x64 SIMD emission, scratch budget and scalar boundaries PASS; scalar=False
+x64: CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 74570 hostile yields
+x64 Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=False
+x64 SIMD emission, scratch budget and scalar boundaries PASS; scalar=True
+x64: CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 106725 hostile yields
+x64 Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=True
+qx64 SIMD emission, scratch budget and scalar boundaries PASS; scalar=False
+qx64: CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 74570 hostile yields
+qx64 Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=False
+qx64 SIMD emission, scratch budget and scalar boundaries PASS; scalar=True
+qx64: CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 106725 hostile yields
+qx64 Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=True
+Captured SIMD: real hosted runtime, 1/4 harts PASS
