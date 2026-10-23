@@ -180,6 +180,7 @@ callFn width program name args = do
           y <- val env b
           pure (Just (VPred ((x == y) == eq)))
         OBits _ -> stuck "a raw-bits constant (an F64 literal): the evaluator models no floats"
+        OBoxedFloat _ _ -> stuck "a boxed float constant: the evaluator models no floats"
         OFloatBin _ _ _ -> stuck "an inline F64 operation: the evaluator models no floats (F64 values come from C entries it does not model either)"
         OFloatCmp _ _ _ -> stuck "an inline F64 comparison: the evaluator models no floats"
         OFloatCmpTree {} -> stuck "a comparison tree: the evaluator models no floats"

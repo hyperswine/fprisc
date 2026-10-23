@@ -28,6 +28,7 @@ dumpFn fn =
       OConstInt n -> "const " ++ show n
       ONullary t v -> "nullary " ++ show t ++ " " ++ show v
       OString s -> "string " ++ show s
+      OBoxedFloat width bits -> "boxed-float" ++ show (widthBits width) ++ " " ++ show bits
       OMake t c fs -> "make " ++ show t ++ ":" ++ show c ++ args fs
       OReuse t c r fs -> "reuse " ++ value r ++ " as " ++ show t ++ ":" ++ show c ++ args fs
       OAddress v -> "address " ++ value v

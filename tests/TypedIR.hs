@@ -92,6 +92,20 @@ main = do
   case lowerFn builtin64 M.empty M.empty M.empty M.empty "bare" (["x"],CVar "x") of
     Right f -> check "builtin lowering adds no hosted stack/fuel obligations" (all (null . bInstrs) (fnBlocks f))
     Left msg -> error msg
+  let rv32 = m2Policy {polProfile=Rv32,polFloatInline=False}
+      float64 = CApp (CApp (CVar "f64frombits") (CInt 4293918720)) (CInt 7)
+      float32 = CApp (CVar "f32frombits") (CInt 4294967295)
+  forM_ [("boxed64",float64,W64,18442240474082181127),("boxed32",float32,W32,4294967295)] $ \(name,body,width,bits) ->
+    case lowerFn rv32 M.empty M.empty M.empty M.empty name ([],body) of
+      Left why -> error why
+      Right fn -> do
+        check "RV32 float payload is not lowered through a tagged Int" (OBoxedFloat width bits `elem` [op | b<-fnBlocks fn, Instr _ op<-bInstrs b])
+        check "boxed float representation is width-specific" (verifyProgramWidth W32 (M.singleton name fn)==Right () && either (const True) (const False) (verifyProgramWidth W64 (M.singleton name fn)))
+  check "boxed float verifier rejects payload truncation" (all (either (const True) (const False) . opSignature (const (Right TVal))) [OBoxedFloat W32 (-1),OBoxedFloat W32 4294967296,OBoxedFloat W64 18446744073709551616])
+  let shadow = M.singleton "f32frombits" (["bits"],CVar "bits")
+  case lowerFn rv32 M.empty shadow M.empty M.empty "shadow" ([],CApp (CVar "f32frombits") (CInt 37)) of
+    Left why -> error why
+    Right fn -> check "float literal recognition respects primitive shadowing" (all (\op -> case op of OBoxedFloat {} -> False; _ -> True) [op | b<-fnBlocks fn, Instr _ op<-bInstrs b])
   -- SIMD pair bodies: one checked Int + or -, or an F64 tree, with captures,
   -- an F64 body + - * only, within the 15 scratch registers
   check "SIMD int body of one op" (simdExprOk True (SInt Add SLane (SConst 1)) == Right ())

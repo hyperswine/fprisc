@@ -1,0 +1,2 @@
+PASS: RV32 static float literal boxes and generic float callbacks, integer kernels retained, cold/warm
+PASS: Int31, Word32 and wrapping I32 compile; mixed I32/Int, oversized Int and Builtin F32 refused

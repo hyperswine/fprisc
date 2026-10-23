@@ -1,0 +1,80 @@
+rv32 tests/typed_ir/kernels.fpr exit 0 translation-free True legacy functions 0
+rv32 tests/typed_ir/record_kernels.fpr exit 0 translation-free True legacy functions 0
+rv32 tests/typed_ir/record_float_kernels.fpr exit 1 translation-free False legacy functions 0
+typed-ir-backend: foldFloat native (frame 32 shallow=no saved=s1,s2,s3,s4 values=19 regs=19 spills=0 slots=0 reloads=0 stores=0 copies=10 crossing=5 loops=0, native-insns-v1 segmax=41 exittail=41 ccalls=5)
+typed-ir-backend: keepFloat native (frame 16 shallow=no saved=s1 values=6 regs=6 spills=0 slots=0 reloads=0 stores=0 copies=1 crossing=1 loops=0, native-insns-v1 segmax=22 exittail=21 ccalls=1)
+typed-ir-backend: lifted_18 native (frame 16 shallow=no saved=none values=1 regs=1 spills=0 slots=0 reloads=0 stores=0 copies=0 crossing=0 loops=0, native-insns-v1 segmax=20 exittail=8 ccalls=2)
+typed-ir-backend: moveFloat native (frame 32 shallow=no saved=s1,s2,s3,s4 values=24 regs=24 spills=0 slots=0 reloads=0 stores=0 copies=4 crossing=5 loops=0, native-insns-v1 segmax=63 exittail=63 ccalls=5)
+typed-ir-backend: probeFloatFilter native (frame 16 shallow=no saved=s1 values=1 regs=1 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=1 loops=0, native-insns-v1 segmax=22 exittail=0 ccalls=1)
+typed-ir-backend: probeFloatFold native (frame 32 shallow=no saved=s1,s2,s3,s4 values=6 regs=6 spills=0 slots=0 reloads=0 stores=0 copies=6 crossing=4 loops=0, native-insns-v1 segmax=33 exittail=33 ccalls=3)
+typed-ir-backend: probeFloatMap native (frame 16 shallow=no saved=s1,s2 values=4 regs=4 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=2 loops=0, native-insns-v1 segmax=28 exittail=28 ccalls=3)
+typed-ir-backend: main fallback: the literal 1073872896 does not fit an Int
+typed-ir-backend: sampleFloat fallback: the literal 1073872896 does not fit an Int
+typed-ir strict: root: 2 function(s) did not take the native backend:
+  main: the literal 1073872896 does not fit an Int
+  sampleFloat: the literal 1073872896 does not fit an Int
+rv32 tests/typed_ir/mapas_kernels.fpr exit 0 translation-free True legacy functions 0
+rv32 tests/typed_ir/f32_kernels.fpr exit 1 translation-free False legacy functions 0
+typed-ir-backend: native 8/9 functions (per-function)
+typed-ir-backend: above native (frame 16 shallow=no saved=s1,s2 values=2 regs=2 spills=0 slots=0 reloads=0 stores=0 copies=4 crossing=2 loops=0, native-insns-v1 segmax=24 exittail=10 ccalls=2)
+typed-ir-backend: fill native (frame 32 shallow=no saved=s1,s2,s3,s4 values=18 regs=18 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=4 loops=1, native-insns-v1 segmax=41 exittail=16 ccalls=4)
+typed-ir-backend: lifted_19 native (frame 16 shallow=no saved=none values=1 regs=1 spills=0 slots=0 reloads=0 stores=0 copies=0 crossing=0 loops=0, native-insns-v1 segmax=20 exittail=8 ccalls=2)
+typed-ir-backend: probeFilter native (frame 16 shallow=no saved=s1,s2 values=4 regs=4 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=2 loops=0, native-insns-v1 segmax=28 exittail=28 ccalls=3)
+typed-ir-backend: probeFold native (frame 32 shallow=no saved=s1,s2,s3 values=5 regs=5 spills=0 slots=0 reloads=0 stores=0 copies=5 crossing=3 loops=0, native-insns-v1 segmax=30 exittail=30 ccalls=3)
+typed-ir-backend: probeMap native (frame 16 shallow=no saved=s1,s2 values=4 regs=4 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=2 loops=0, native-insns-v1 segmax=28 exittail=28 ccalls=3)
+typed-ir-backend: scale native (frame 16 shallow=no saved=s1,s2 values=7 regs=7 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=3 loops=0, native-insns-v1 segmax=27 exittail=27 ccalls=4)
+typed-ir-backend: total native (frame 32 shallow=no saved=s1,s2,s3 values=4 regs=4 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=3 loops=0, native-insns-v1 segmax=26 exittail=15 ccalls=3)
+typed-ir-backend: main fallback: the literal 1092616192 does not fit an Int
+typed-ir strict: root: 1 function(s) did not take the native backend:
+  main: the literal 1092616192 does not fit an Int
+rv32 tests/base/veccaps_fold.fpr exit 0 translation-free True legacy functions 0
+rv32 tests/base/veclimits.fpr exit 1 translation-free False legacy functions 0
+typed-ir-backend: lifted_80 native (frame 16 shallow=no saved=none values=1 regs=1 spills=0 slots=0 reloads=0 stores=0 copies=0 crossing=0 loops=0, native-insns-v1 segmax=20 exittail=8 ccalls=2)
+typed-ir-backend: lifted_81 native (frame 16 shallow=no saved=s1,s2 values=17 regs=17 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=2 loops=0, native-insns-v1 segmax=68 exittail=68 ccalls=3)
+typed-ir-backend: receiveR native (frame 16 shallow=no saved=s1 values=1 regs=1 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=1 loops=0, native-insns-v1 segmax=22 exittail=8 ccalls=2)
+typed-ir-backend: rstep native (frame 32 shallow=no saved=s1,s2,s3,s4 values=93 regs=93 spills=0 slots=0 reloads=0 stores=0 copies=10 crossing=6 loops=0, native-insns-v1 segmax=115 exittail=115 ccalls=12)
+typed-ir-backend: step native (frame 32 shallow=no saved=s1,s2,s3,s4 values=28 regs=28 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=5 loops=0, native-insns-v1 segmax=39 exittail=39 ccalls=4)
+typed-ir-backend: toFloat native (frame 16 shallow=no saved=s1 values=1 regs=1 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=1 loops=0, native-insns-v1 segmax=22 exittail=8 ccalls=2)
+typed-ir-backend: wrap native (frame 16 shallow=no saved=s1,s2 values=3 regs=3 spills=0 slots=0 reloads=0 stores=0 copies=5 crossing=2 loops=0, native-insns-v1 segmax=24 exittail=13 ccalls=3)
+typed-ir-backend: lifted_77 fallback: the literal 1074921472 does not fit an Int
+typed-ir-backend: main fallback: the literal 1074003968 does not fit an Int
+typed-ir strict: root: 2 function(s) did not take the native backend:
+  lifted_77: the literal 1074921472 does not fit an Int
+  main: the literal 1074003968 does not fit an Int
+rv32 tests/wideabi.fpr exit 0 translation-free True legacy functions 0
+rv64 tests/typed_ir/kernels.fpr exit 0 translation-free True legacy functions 0
+rv64 tests/typed_ir/record_kernels.fpr exit 0 translation-free True legacy functions 0
+rv64 tests/typed_ir/record_float_kernels.fpr exit 0 translation-free True legacy functions 0
+rv64 tests/typed_ir/mapas_kernels.fpr exit 0 translation-free True legacy functions 0
+rv64 tests/typed_ir/f32_kernels.fpr exit 0 translation-free True legacy functions 0
+rv64 tests/base/veccaps_fold.fpr exit 0 translation-free True legacy functions 0
+rv64 tests/base/veclimits.fpr exit 0 translation-free True legacy functions 0
+rv64 tests/wideabi.fpr exit 0 translation-free True legacy functions 0
+rv64 ['--plugin'] exit 1 translation-free False
+autodrop: irqRouteStart: inserted `drop _autodrop_root_irqRouteStart_0` into 2 case arm(s)
+autodrop: logStart: inserted `drop _autodrop_root_logStart_0` into 2 case arm(s)
+autodrop: parWorker: inserted `drop _autodrop_root_parWorker_0` into 1 case arm(s)
+precond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps
+linear types: Handle Vector SString
+typed-ir strict: root: 2 function(s) did not take the native backend:
+  main: no typed-IR native backend for rv64 (M2 emits AArch64 and x86-64)
+  plus: no typed-IR native backend for rv64 (M2 emits AArch64 and x86-64)
+rv32 ['--plugin'] exit 1 translation-free False
+autodrop: irqRouteStart: inserted `drop _autodrop_root_irqRouteStart_0` into 2 case arm(s)
+autodrop: logStart: inserted `drop _autodrop_root_logStart_0` into 2 case arm(s)
+autodrop: parWorker: inserted `drop _autodrop_root_parWorker_0` into 1 case arm(s)
+precond: 6 obligations: 4 discharged, 0 runtime-checked, 2 builtin traps
+linear types: Handle Vector SString
+typed-ir strict: root: 2 function(s) did not take the native backend:
+  main: no typed-IR native backend for rv32 (M2 emits AArch64 and x86-64)
+  plus: no typed-IR native backend for rv32 (M2 emits AArch64 and x86-64)
+rv64 ['--rvv'] exit 0 translation-free False
+rv32 ['--system=qos-portable'] exit 1 translation-free False
+  wireListGo: this native target requires the 64-bit word policy
+  wireMap: this native target requires the 64-bit word policy
+  wireRev: this native target requires the 64-bit word policy
+  wireToBool: this native target requires the 64-bit word policy
+  wireToInt: this native target requires the 64-bit word policy
+  wireToList: this native target requires the 64-bit word policy
+  wireToStr: this native target requires the 64-bit word policy
+  zipV: this native target requires the 64-bit word policy

@@ -24,6 +24,7 @@ switching its ownership model does not count as migration.
 | Native instruction accounting | [Consumer migrated](2026-10-23-NATIVE-METRIC-CONSUMER.md): complete native closure audit, instruction/call-site ceilings; 116 Base jobs and focused QOS gates passed | QOS uses `native-insns-v1`; absent/unbounded coverage fails; runtime time and call/return composition remain explicitly unprovided |
 | Builtin manual/GC profiles, RV32/RV64 | [Implemented](2026-10-23-TYPED-BUILTIN.md), 114 Base jobs, QEMU and physical Tang Nano checks passed | Explicit allocator, root, raw-word and no-fuel policies; full function/data/kernel coverage; QEMU and supported board suites |
 | Builtin ARC, RV64 | [Implemented](2026-10-23-TYPED-ARC.md), 115 Base jobs, strict QEMU execution and 31 paired measurements passed | Preserve consuming/borrowing adapters, alias-result retains, object layout and section/link behavior; QEMU-virt ownership/raw/interrupt/export gates and paired guest work |
+| RV32 Base numeric constants | [Implemented](2026-10-23-TYPED-RV32-FLOAT-CONSTANTS.md), 117 Base jobs, strict QEMU and physical Tang Nano bit/numeric suites passed | Preserve boxed F64/F32 layouts and all IEEE bits, pooling, software/vector runtime behavior and integer boundaries |
 | Final legacy deletion | Open | No production caller of legacy generation, relocation/lowering, peephole or modes; full fresh acceptance sweeps and clean build/install checks |
 
 ## Order of implementation
@@ -91,8 +92,15 @@ reports; hosted admission still requires bounded preemption segments.
 ARC/interrupt selection preserves that distinction and the existing
 interrupt restrictions. Final legacy removal must keep these gates.
 
-The remaining production-caller audit must include oversized hosted frames
-and typed-kernel selection refusals, as well as explicit legacy modes.
+The production-caller audit found RV32 float literal payloads being treated
+as tagged Ints. The [typed constant increment](2026-10-23-TYPED-RV32-FLOAT-CONSTANTS.md)
+replaces that fallback with explicit immutable boxed numeric leaves and native
+data emission. Its 128-pattern bit/layout/pooling oracle and complete numeric
+suite pass on the physical Tang Nano as well as QEMU.
+
+The remaining production-caller audit must include plain RISC-V plugins,
+RVV startup emission, oversized hosted frames and typed-kernel selection
+refusals, as well as explicit legacy modes.
 The current bare-metal hosted RV selector still refuses frames above its
 1 KiB ceiling, and `emitSpecs` still has a legacy branch for declined plans.
 Those paths must receive a complete typed replacement or an independently

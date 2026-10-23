@@ -22,6 +22,9 @@ opSignature tyOf = \case
     pure (Just TInt)
   ONullary _ _ -> pure (Just TVal)
   OString _ -> pure (Just TVal)
+  OBoxedFloat width bits -> do
+    unless (bits >= 0 && bits < 2 ^ widthBits width) (Left "a boxed float has out-of-range IEEE bits")
+    pure (Just TVal)
   OMake tid variant fields -> do
     when (tid < 0 || variant < 0 || toInteger tid > 2147483647 || toInteger variant > 2147483647) (Left "constructor header is outside signed 32-bit layout")
     when (null fields) (Left "an empty constructor uses nullary")
@@ -223,6 +226,7 @@ verifyProgramWidth width program = do
       OLoad _ _ n -> aligned n
       OStore _ _ n _ -> aligned n
       OConstInt n -> unless (intFitsWidth width n) (Left ("verify " ++ fnName fn ++ ": literal exceeds " ++ show width ++ " Int range"))
+      OBoxedFloat _ _ -> unless (width == W32) (Left "boxed float constants require the 32-bit word policy")
       _ -> pure ()
   where
     aligned n = unless (n `mod` (widthBits width `div` 8) == 0) (Left "unaligned word memory operation")

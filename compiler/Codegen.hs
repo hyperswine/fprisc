@@ -55,7 +55,7 @@ import Codegen.Policy (Policy (..), m2Policy, policyWidth)
 import qualified Codegen.Target.X64 as X64
 import qualified Codegen.Target.RV as RV
 import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat (..), emitFnA64)
-import Codegen.Target.Common (rodataDirective, stringLabel, stringObjectWidth, dataSyntax)
+import Codegen.Target.Common (rodataDirective, stringLabel, stringObjectWidth, dataSyntax, boxedFloatObject)
 import Codegen.Bounds (Report (..))
 import Codegen.Verify (verifyProgram, verifyProgramWidth, simdExprOk)
 import Codegen.Dump (dumpFn)
@@ -69,7 +69,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 76 -- builtin ARC/raw lowering; prior: builtin manual/GC fixed-stack lowering
+codegenRev = 77 -- boxed RV32 float constants; prior: builtin ARC/raw lowering
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -638,6 +638,7 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
       -- objects it names (one per distinct text; the unit-local nullary
       -- objects go through cgNulls into the legacy rodata)
       nativeStrings = M.elems (M.fromList [(stringLabel str, str) | nf <- M.elems nativeFns ++ cgNativeKernels st, str <- nfStrings nf])
+      nativeFloats = S.toList (S.fromList (concatMap nfBoxedFloats (M.elems nativeFns ++ cgNativeKernels st)))
       nativeFormat = case tgtNative tgt >>= nmBackend of
         Just (DirectA64 fmt _) -> fmt
         _ -> ELF
@@ -648,7 +649,8 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
             ++ nativeNotes,
           emNative = if M.null nativeFns && null (cgNativeKernels st) then [] else
             ["    .text", "    .balign 4", ""] ++ concatMap nfLines (M.elems nativeFns ++ cgNativeKernels st)
-              ++ (if null nativeStrings then [] else rodataDirective nativeFormat : concatMap (stringObjectWidth (policyWidth (tgtPolicy tgt)) nativeFormat) nativeStrings),
+              ++ (if null nativeStrings then [] else rodataDirective nativeFormat : concatMap (stringObjectWidth (policyWidth (tgtPolicy tgt)) nativeFormat) nativeStrings)
+              ++ (if null nativeFloats then [] else rodataDirective nativeFormat : concatMap (uncurry boxedFloatObject) nativeFloats),
           emNativeNames = M.keys nativeFns,
           emFallbacks = nativeFallbacks ++ cgKernelFallbacks st,
           -- no legacy function or kernel, no vector init: nothing for a

@@ -1,0 +1,2 @@
+record_float_kernels: all native, no translation PASS
+f32_kernels: all native, no translation PASS

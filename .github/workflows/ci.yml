@@ -104,6 +104,8 @@ jobs:
         run: |
           FPR_PRESET=fprisc-48 machine/tangnano20k/build-softfloat.sh
           FPR_XLEN=64 machine/tangnano20k/build-softfloat.sh
+      - name: Typed RV32 float constants and software runtime
+        run: python3 -u tests/check_rv32_float_constants.py --require-execution
       - name: Tang Nano examples and custom programs (QEMU)
         run: |
           python3 -u tools/run_tangnano20k_examples.py --target qemu

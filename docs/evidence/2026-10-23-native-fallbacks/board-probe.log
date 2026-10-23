@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tools/run_tangnano20k_base.py", line 149, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tools/run_tangnano20k_base.py", line 109, in main
+    fd=open_port(a.port,round(a.freq_mhz*1e6/868));started=False
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tools/run_simple_risc.py", line 31, in open_port
+    fd = os.open(port, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+PermissionError: [Errno 1] Operation not permitted: '/dev/cu.usbserial-20250303171'

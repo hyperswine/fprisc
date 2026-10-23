@@ -33,11 +33,16 @@ def main():
             diagnostic = compile_(ROOT / 'tests/tangnano20k_rv32_numeric.fpr', target,
                                   no_float=disabled)
             assembly = '\n'.join(path.read_text() for path in target.parent.rglob('*.s'))
-            assert re.search(r'\.Lfloat\d+:\n\s*\.long 9004\n\s*\.long 5\n\s*\.quad 64', assembly), 'F64 literal must use static wide box'
-            assert re.search(r'\.Lfloat\d+:\n\s*\.long 9004\n\s*\.long 6\n\s*\.word 32', assembly), 'F32 literal must use static word box'
+            assert re.search(r'\.L(?:float\d+|tir_float64_[0-9a-f]+):\n\s*\.long 9004\n\s*\.long 5\n\s*\.quad 64', assembly), 'F64 literal must use static wide box'
+            assert re.search(r'\.L(?:float\d+|tir_float32_[0-9a-f]+):\n\s*\.long 9004\n\s*\.long 6\n\s*\.word 32', assembly), 'F32 literal must use static word box'
             assert 'call fpr_f64_from_bits32' not in assembly and 'call fpr_f32_from_bits32' not in assembly, 'literal allocation leaked'
             assert 'software-float mode' in diagnostic, diagnostic
-            assert '# ---- Vec specializations' in assembly, 'integer kernels disabled'
+            if os.environ.get('FPR_TYPED_IR_BACKEND','mixed') not in ('legacy','off','0'):
+                headers=re.findall(r'^# fn ([^\n]+)',assembly,re.M)
+                assert headers and all('typed-ir rv32' in h for h in headers),'float boxing escaped native coverage'
+                assert '# fn $vkernel:' in assembly, 'typed integer kernels disabled'
+            else:
+                assert '# ---- Vec specializations' in assembly, 'integer kernels disabled'
             assert not re.search(r'^\s*(?:f(?:add|sub|mul|div|sqrt|mv|cvt|eq|lt|le)\.|fl[wd]\s|fs[wd]\s)',
                                  assembly, re.MULTILINE), 'native float instruction leaked'
             compile_(ROOT / 'tests/tangnano20k_rv32_numeric.fpr', target, no_float=disabled)

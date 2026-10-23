@@ -644,7 +644,7 @@ emitFnX64 cfg fn = do
       header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir x64 frame=" ++ show (lyBytes ly)
                   ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
         ++ ["    " ++ visibility ++ " " ++ sym | S.member name (cfgExports cfg)] ++ [sym ++ ":"]
-  pure (NativeFn name (header ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList nulls) (S.toList strs))
+  pure (NativeFn name (header ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList nulls) (S.toList strs) [])
   where
     tokOf (ILabel (Label l)) _ = [TLabel l]
     tokOf (I i) ls = [TIns

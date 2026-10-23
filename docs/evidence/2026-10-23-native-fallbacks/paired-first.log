@@ -1,0 +1,24 @@
+Paired round 1/3
+Paired round 2/3
+Paired round 3/3
+{
+  "compiler_sha256": {
+    "before": "e1b5ecc350de33ad2410fbae0bdbfda6c528f3088913b6d0ffe583745d05fb49",
+    "typed": "4d9a97eb6ce23341fe3c55c3a556ae4b76d5e68b13d7abfbdaf82502bbf554a9"
+  },
+  "scope": "Paired RV32 numeric guest instruction counts, before/default versus strict typed.\nIncludes real software arithmetic, vectors and runtime work inside main.\nNot physical elapsed time.\n",
+  "runs": 3,
+  "samples_guest_insns": {
+    "before": [
+      97745,
+      97745,
+      97745
+    ],
+    "typed": [
+      95502,
+      95502,
+      95502
+    ]
+  },
+  "ratio": 0.9770525346565042
+}

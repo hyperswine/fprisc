@@ -1,0 +1,10 @@
+PASS: RV32 static float literal boxes and generic float callbacks, integer kernels retained, cold/warm
+PASS: Int31, Word32 and wrapping I32 compile; mixed I32/Int, oversized Int and Builtin F32 refused
+RV32 bits, numeric leaf layout/alignment, repeated addresses, zero allocations: 128 IEEE patterns, no-inline-float=0 PASS
+RV32 bits, numeric leaf layout/alignment, repeated addresses, zero allocations: 128 IEEE patterns, no-inline-float=1 PASS
+tangnano20k_rv32_numeric: real RV32IM runtime/software arithmetic/vector ABI PASS
+typed_ir/record_float_kernels: real RV32IM runtime/software arithmetic/vector ABI PASS
+typed_ir/f32_kernels: real RV32IM runtime/software arithmetic/vector ABI PASS
+tangnano20k_rv32_numeric: real RV32IMC runtime/software arithmetic/vector ABI PASS
+typed_ir/record_float_kernels: real RV32IMC runtime/software arithmetic/vector ABI PASS
+typed_ir/f32_kernels: real RV32IMC runtime/software arithmetic/vector ABI PASS

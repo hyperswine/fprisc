@@ -149,12 +149,16 @@ cmpOps = M.fromList [("<", Lt), (">", Gt), ("<=", Le), (">=", Ge), ("==", Eq), (
 -- position too it is a value, never a tail call of the C entry
 inlineFloat :: Cx -> Env -> Name -> [Core] -> Bool
 inlineFloat cx env h args =
-  isPrim cx env h && polFloatInline (cxPolicy cx) && policyWidth (cxPolicy cx) == W64
-    && case args of
+  isPrim cx env h && ((policyWidth (cxPolicy cx) == W32 && literal)
+    || (polFloatInline (cxPolicy cx) && policyWidth (cxPolicy cx) == W64 && case args of
       [CInt _, CInt _] | h == "f64frombits" -> True
       [CInt _] | h == "f32frombits" -> True
       [_, _] -> M.member h floatBinOps || M.member h floatCmpOps || M.member h float32BinOps || M.member h float32CmpOps
-      _ -> False
+      _ -> False))
+  where literal = case (h,args) of
+          ("f64frombits",[CInt _,CInt _]) -> True
+          ("f32frombits",[CInt _]) -> True
+          _ -> False
 
 -- the F64 operators the legacy generator expands inline on the 64-bit word
 floatBinOps :: M.Map String FloatOp
@@ -475,6 +479,10 @@ lowerVal cx env = \case
       -- the values stay IEEE bits in TVal, nothing new crosses a call
       -- an F64 literal: its bits, as the legacy generator splices them
       -- (Codegen.floatLitBits), instead of a runtime f64frombits call
+      | isPrim cx env h, policyWidth (cxPolicy cx) == W32,
+        h == "f64frombits", [CInt hi, CInt lo] <- args -> boxedFloat W64 (hi*4294967296 + lo `mod` 4294967296)
+      | isPrim cx env h, policyWidth (cxPolicy cx) == W32,
+        h == "f32frombits", [CInt bits] <- args -> boxedFloat W32 bits
       | isPrim cx env h, h == "f64frombits", polFloatInline (cxPolicy cx), policyWidth (cxPolicy cx) == W64,
         [CInt hi, CInt lo] <- args -> do
           let bits = ((hi * 4294967296) + (lo `mod` 4294967296)) `mod` (2 ^ (64 :: Int))
@@ -561,6 +569,7 @@ lowerVal cx env = \case
       v <- emit TVal (OApply f as)
       pure (v, TVal)
     symbolValue sym = (\x -> (x, TVal)) <$> emit TVal (OSymbol sym)
+    boxedFloat width bits = (\x -> (x,TVal)) <$> emit TVal (OBoxedFloat width (bits `mod` (2 ^ widthBits width)))
     arith o a b = do
       x <- lowerVal cx env a >>= asInt
       y <- lowerVal cx env b >>= asInt

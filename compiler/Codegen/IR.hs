@@ -167,6 +167,7 @@ data Op
   = OConstInt Integer -- :: TInt; the literal fits the Int range
   | ONullary Int Int -- :: TVal; the immortal object of a nullary constructor (typeid, variant)
   | OString String -- immortal byte-string object, same encoding as the source literal
+  | OBoxedFloat Width Integer -- TVal: an immortal RV32 numeric leaf; IEEE width and unsigned bits (not an Int payload)
   | OMake Int Int [VId] -- allocate an immutable constructor with tagged fields
   | OReuse Int Int VId [VId] -- overwrite the fields of a constructor the program owns uniquely (Reuse.reuseFresh proved it), answer it: the legacy `# reuse fresh constructor`; every field is evaluated before the first store
   | OAddress VId -- TVal -> TAddr; internal lowering, after the object/representation guard
@@ -261,6 +262,7 @@ opEffect = \case
   OConstInt _ -> Pure
   ONullary _ _ -> Pure
   OString _ -> Pure
+  OBoxedFloat _ _ -> Pure
   OMake _ _ _ -> RuntimeCall
   OReuse _ _ _ _ -> Writes
   OAddress _ -> Pure
@@ -310,6 +312,7 @@ opUses = \case
   OConstInt _ -> []
   ONullary _ _ -> []
   OString _ -> []
+  OBoxedFloat _ _ -> []
   OMake _ _ fs -> fs
   OReuse _ _ r fs -> r : fs
   OAddress v -> [v]
@@ -369,6 +372,7 @@ mapOpUses f = \case
   OConstInt n -> OConstInt n
   ONullary t v -> ONullary t v
   OString s -> OString s
+  OBoxedFloat width bits -> OBoxedFloat width bits
   OMake t v fs -> OMake t v (map f fs)
   OReuse t v r fs -> OReuse t v (f r) (map f fs)
   OAddress v -> OAddress (f v)

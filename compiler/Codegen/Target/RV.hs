@@ -19,7 +19,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 16 -- ARC constructor metadata and function sections; prior: builtin fixed-stack/no-fuel profiles
+rvSelectionRev = 17 -- boxed RV32 float constants; prior: ARC constructor metadata and function sections
 
 -- HartTp: the hart pointer is tp (bare metal, QOS); HartTls: the posix
 -- runtime's thread-local cell, local-exec (an executable); HartTlsIe: the
@@ -55,7 +55,7 @@ label :: BId -> Label
 label (BId n) = Label ("b" ++ show n)
 
 -- A function-local builder. Every temporary is an ordinary selected value.
-data Sel = Sel { nextV :: Int, nextL :: Int, items :: [Item], nulls :: S.Set (Int, Int), strings :: S.Set String }
+data Sel = Sel { nextV :: Int, nextL :: Int, items :: [Item], nulls :: S.Set (Int, Int), strings :: S.Set String, boxedFloats :: S.Set (Width,Integer) }
 type S = StateT Sel (Either String)
 emit :: SInstr -> S ()
 emit i = modify (\s -> s {items = I i : items s})
@@ -121,7 +121,7 @@ select cfg fn = do
       managed = S.fromList [vreg v | (v,TVal) <- defs]
       start = 1 + maximum (0 : [n | (VId n,_) <- defs])
   unless (all ((`elem` [TVal,TInt,TPred,TAddr]) . snd) defs) (Left "RV64: a raw or float-register value is not legalized")
-  (_, st) <- runStateT (mapM_ block (fnBlocks fn)) (Sel start 0 [] S.empty S.empty)
+  (_, st) <- runStateT (mapM_ block (fnBlocks fn)) (Sel start 0 [] S.empty S.empty S.empty)
   pure (SFn (fnName fn) params (reverse (items st)), managed, st)
   where
     w = toInteger (wordBytes cfg)
@@ -173,6 +173,10 @@ select cfg fn = do
           _ -> modify (\s -> s {nulls = S.insert (t,v) (nulls s)}) >> pure (".Lnul_" ++ show t ++ "_" ++ show v)
         address d sym
       OString s -> modify (\st -> st {strings = S.insert s (strings st)}) >> address d (stringLabel s)
+      OBoxedFloat width bits -> do
+        unless (cfgWidth cfg == W32) (lift (Left "boxed float constants require RV32"))
+        modify (\st -> st {boxedFloats = S.insert (width,bits) (boxedFloats st)})
+        address d (boxedFloatLabel width bits)
       OSymbol s -> address d s
       OFunValue n -> address d ("fpr_obj_" ++ mangleName n)
       OTag v -> do t <- fresh; ri "slli" t (vreg v) 1; ri "ori" d t 1
@@ -412,7 +416,7 @@ emitFnRV cfg fn = do
           ++ ["    .balign 4" | polProfile (cfgPolicy cfg) == BuiltinArc]
           ++ ["    " ++ (if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl") ++ " " ++ functionSymbol name | S.member name (cfgExports cfg)]
           ++ [functionSymbol name ++ ":"]
-  pure (NativeFn name (header ++ map ("    " ++) prologue ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList (nulls st)) (S.toList (strings st)))
+  pure (NativeFn name (header ++ map ("    " ++) prologue ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList (nulls st)) (S.toList (strings st)) (S.toList (boxedFloats st)))
   where
     token (ILabel (Label l),_) = [TLabel l]
     token (I i,ls) = [TIns (instructionCost ls)

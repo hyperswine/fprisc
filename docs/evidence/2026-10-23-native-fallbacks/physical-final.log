@@ -1,0 +1,20 @@
+PASS: RV32 static float literal boxes and generic float callbacks, integer kernels retained, cold/warm
+PASS: Int31, Word32 and wrapping I32 compile; mixed I32/Int, oversized Int and Builtin F32 refused
+RV32 bits, numeric leaf layout/alignment, repeated addresses, zero allocations: 128 IEEE patterns, no-inline-float=0 PASS
+RV32 bits, numeric leaf layout/alignment, repeated addresses, zero allocations: 128 IEEE patterns, no-inline-float=1 PASS
+tangnano20k_rv32_numeric: real RV32IM runtime/software arithmetic/vector ABI PASS
+typed_ir/record_float_kernels: real RV32IM runtime/software arithmetic/vector ABI PASS
+typed_ir/f32_kernels: real RV32IM runtime/software arithmetic/vector ABI PASS
+tangnano20k_rv32_numeric: real RV32IMC runtime/software arithmetic/vector ABI PASS
+typed_ir/record_float_kernels: real RV32IMC runtime/software arithmetic/vector ABI PASS
+typed_ir/f32_kernels: real RV32IMC runtime/software arithmetic/vector ABI PASS
+Physical bits image sha256=ca26980ac00684ab968ea61b4cbbce0517b915cac7bf6deabcc474376b41cf35
+Physical RV32 bits oracle: RV32 FLOAT CONSTANTS HOLD
+FPR EXIT 0
+DONE
+Physical numeric image sha256=7648eca0bd77fb676595ede66d2c1a23c2bd0479bb2c89ddf4435f8bb4b5a2f8
+Physical RV32 numeric oracle: NUMERIC I64 HOLDS
+NUMERIC FLOAT HOLDS
+RV32 BASE NUMERIC HOLDS
+FPR EXIT 0
+DONE

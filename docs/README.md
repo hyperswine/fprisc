@@ -230,3 +230,5 @@ they began.
 - [Typed builtin ARC/raw](2026-10-23-TYPED-ARC.md): ownership adapters, constructor metadata, self-hosted allocator, checked raw/Int selection, interrupt and export gates, independent oracles and paired guest work.
 
 - [Native metric consumer migration](2026-10-23-NATIVE-METRIC-CONSUMER.md): complete typed closure audits, separate instruction and runtime-call-site ratchets, QOS's new baseline, and explicit timing/composition limits.
+
+- [Typed RV32 float constants](2026-10-23-TYPED-RV32-FLOAT-CONSTANTS.md): explicit immutable numeric leaves, all-native boxed Base floats, independent bit/pooling oracles, real software-runtime and Tang Nano execution, and paired guest work.

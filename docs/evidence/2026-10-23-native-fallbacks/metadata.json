@@ -1,0 +1,51 @@
+{
+  "starting_revision": "afebff1",
+  "compiler_sha256": "4d9a97eb6ce23341fe3c55c3a556ae4b76d5e68b13d7abfbdaf82502bbf554a9",
+  "codegen_revision": 77,
+  "rv_selection_revision": 17,
+  "scope": "RV32 Base boxed float constants; runtime/context ABIs unchanged; Builtin RV32 numeric refusals preserved.",
+  "paired_guest_work": {
+    "pairs": 31,
+    "before": 97745,
+    "typed": 95502,
+    "ratio": 0.9770525346565042,
+    "note": "Previous default mixed compiler versus strict typed; real numeric software runtime in main, deterministic QEMU icount. Not physical timing."
+  },
+  "physical": {
+    "port": "/dev/cu.usbserial-20250303171",
+    "frequency_mhz": 48,
+    "passed": [
+      "128 IEEE bit/layout/pooling patterns",
+      "full I64/F64/F32/vector numeric suite"
+    ],
+    "application_sha256": {
+      "bits": "ca26980ac00684ab968ea61b4cbbce0517b915cac7bf6deabcc474376b41cf35",
+      "numeric": "7648eca0bd77fb676595ede66d2c1a23c2bd0479bb2c89ddf4435f8bb4b5a2f8"
+    },
+    "note": "RAM loader on already configured board; FPGA not programmed or read back."
+  },
+  "softfloat_library": {
+    "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-softfloat/build/Linux-RISCV32-GCC/softfloat.a",
+    "sha256": "f69819701432f08324fc525acba5c5e6515547fe641e72d0dae7230a53204ac8",
+    "access": "existing sibling archive reused read-only"
+  },
+  "base_validation": {
+    "result": "PASS",
+    "jobs": 117,
+    "seconds": 480,
+    "workers": 4,
+    "exit_code": 0
+  },
+  "hosted_ci": "required execution step configured; not run in this milestone",
+  "before_default_root": {
+    "native_functions": 16,
+    "legacy_functions": [
+      "main",
+      "scale32"
+    ]
+  },
+  "typed_root": {
+    "native_functions": 18,
+    "legacy_functions": []
+  }
+}

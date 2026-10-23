@@ -836,7 +836,7 @@ emitFnA64 cfg fn = do
           ++ [gsym cfg sym ++ ":"]
       visibility = if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl"
       lines' = header ++ concatMap snd rendered ++ [reportLine name report, ""]
-  pure (NativeFn name lines' report (S.toList nulls) (S.toList strs))
+  pure (NativeFn name lines' report (S.toList nulls) (S.toList strs) [])
   where
     tokOf (ILabel (Label l)) _ = [TLabel l]
     tokOf (I i) ls =

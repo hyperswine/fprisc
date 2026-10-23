@@ -3,7 +3,8 @@
 module Codegen.Target.Common
   ( ObjectFormat (..), NativeFn (..), mangleName, functionSymbol,
     stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry,
-    forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune, dataSyntax ) where
+    forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune, dataSyntax,
+    boxedFloatLabel, boxedFloatObject ) where
 import Codegen.Bounds (Report)
 import Codegen.IR (Name)
 import qualified Codegen.IR as IR
@@ -84,7 +85,8 @@ data NativeFn = NativeFn
     nfLines :: [String], -- the assembly, header comment through the bound line
     nfReport :: Report,
     nfNullaries :: [(Int, Int)], -- the unit-local nullary objects referenced
-    nfStrings :: [String] -- the string literals referenced (an unreachable arm's reason); the unit emits one object per distinct text, `stringLabel`
+    nfStrings :: [String], -- the string literals referenced (an unreachable arm's reason); the unit emits one object per distinct text, `stringLabel`
+    nfBoxedFloats :: [(IR.Width,Integer)] -- RV32 immutable numeric leaves, emitted once per IEEE width/bit pattern
   }
 
 -- the symbol encoding of Codegen.mangle (ASCII alphanumerics stay, every
@@ -101,6 +103,20 @@ mangleName = concatMap enc
 functionSymbol :: Name -> String
 functionSymbol n | Just sym <- stripPrefix "$vkernel:" n = sym
 functionSymbol n = "fpr_fn_" ++ mangleName n
+
+boxedFloatLabel :: IR.Width -> Integer -> String
+boxedFloatLabel width bits = ".Ltir_float" ++ show (IR.widthBits width) ++ "_" ++ showHex bits ""
+
+-- runtime/fpr.h: boxed F64 is fpr_num64_t (uint64 length and value),
+-- boxed F32 is RV32 bits_t (word-sized length and value). Both are opaque
+-- T_BITS leaves to generic walkers. No runtime allocation is needed.
+boxedFloatObject :: IR.Width -> Integer -> [String]
+boxedFloatObject width bits =
+  ["    .balign 8",boxedFloatLabel width bits ++ ":","    .long 9004",
+   "    .long " ++ (if width == IR.W64 then "5" else "6"),
+   "    " ++ directive ++ " " ++ show (IR.widthBits width),
+   "    " ++ directive ++ " " ++ show bits,""]
+  where directive = if width == IR.W64 then ".quad" else ".word"
 
 -- the unit-local label of a string literal the native text names: by the
 -- text's FNV-1a hash, so two functions naming one text share one object
