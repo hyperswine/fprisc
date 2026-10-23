@@ -25,7 +25,7 @@
 -- (Codegen.Eval) is the executable statement of these semantics.
 module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
-    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), ftreeLeaves, ftreeMap, ftreeRegisters, ftreeEncode, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
+    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), FloatStep (..), ftreeLeaves, ftreeMap, ftreeRegisters, ftreeSchedule, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
     intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
@@ -96,11 +96,17 @@ ftreeRegisters :: FloatTree -> Int
 ftreeRegisters (FLeaf _) = 1
 ftreeRegisters (FNode _ x y) = max (ftreeRegisters x) (1 + ftreeRegisters y)
 
--- the shape as a prefix string (leaves in ftreeLeaves order), the selected
--- instruction's name carries it to the renderer
-ftreeEncode :: FloatTree -> String
-ftreeEncode (FLeaf _) = "l"
-ftreeEncode (FNode o x y) = (case o of FAdd -> '+'; FSub -> '-'; FMul -> '*'; FDiv -> '/') : ftreeEncode x ++ ftreeEncode y
+-- The evaluation of a tree as steps, each one selected instruction with at
+-- most one integer operand (an allocator reloads a bounded number of
+-- spilled operands per instruction): a leaf moved into scratch register n,
+-- a node computed in register n from n and n+1, and the root moved out.
+data FloatStep = FSLeaf VId Int | FSNode FloatOp Int deriving (Eq, Ord, Show)
+
+ftreeSchedule :: FloatTree -> ([FloatStep], Int)
+ftreeSchedule t = (go 0 t, 0)
+  where
+    go n (FLeaf v) = [FSLeaf v n]
+    go n (FNode o x y) = go n x ++ go (n + 1) y ++ [FSNode o n]
 
 -- The RISC-V V sum strip (Kernel.rvvPrefix): at most 64 lanes a strip, each
 -- lane within the lane bound, the accumulator within the acc bound, so no

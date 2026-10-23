@@ -471,7 +471,12 @@ selectInstr _ _ (Instr d op) = case op of
   OFloatBin o a b -> def (\r -> emitI (rrr ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) r (vreg a) (vreg b)))
   OFloatCmp o a b -> def (\r -> emitI ((rrr ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) r (vreg a) (vreg b)) {siFlags = FlagsDef}))
   OFloat32Bin o a b -> def (\r -> emitI (rrr ("fbin32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) r (vreg a) (vreg b)))
-  OFloatTree t -> def (\r -> emitI (plain ("ftree." ++ ftreeEncode t) [any' r] (map (any' . vreg) (ftreeLeaves t))))
+  OFloatTree t -> def (\r -> do
+    let (steps, root) = ftreeSchedule t
+    forM_ steps $ \case
+      FSLeaf v n -> emitI (plain "ftree.leaf" [] [any' (vreg v), OI (fromIntegral n)])
+      FSNode o n -> emitI (plain ("ftree." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [] [OI (fromIntegral n)])
+    emitI (plain "ftree.out" [any' r] [OI (fromIntegral root)]))
   OFloat32Cmp o a b -> def (\r -> emitI ((rrr ("fcmp32." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) r (vreg a) (vreg b)) {siFlags = FlagsDef}))
   OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
@@ -893,16 +898,11 @@ renderItem cfg ly fname pairs restores (I i) = map indent (go (siOp i) (siDefs i
       (o, [], [OI d, OI a, OI b]) | Just inst <- stripPrefix "simd." o -> [inst ++ " v" ++ show d ++ ".2d, v" ++ show a ++ ".2d, v" ++ show b ++ ".2d"]
       -- F32: the low 32 bits of the word; fmov w<-s zero-extends, as the
       -- legacy translation of fmv.x.w does
-      -- a float tree: leaves moved into d16.. as met, each node computed in
-      -- its left subtree's register, the root moved out
-      (o, [d], leaves) | Just code <- stripPrefix "ftree." o ->
-        let step n (l : rest) xs | l == 'l', (x : xs') <- xs = (["fmov d" ++ show n ++ ", " ++ reg x], rest, xs')
-            step n (c : rest) xs = let (lx, rest1, xs1) = step n rest xs; (ly, rest2, xs2) = step (n + 1) rest1 xs1
-                                       inst = case c of '+' -> "fadd"; '-' -> "fsub"; '*' -> "fmul"; _ -> "fdiv"
-                                    in (lx ++ ly ++ [inst ++ " d" ++ show n ++ ", d" ++ show n ++ ", d" ++ show (n + 1)], rest2, xs2)
-            step _ [] _ = error "A64 render: a float tree without a shape"
-            (body, _, _) = step (16 :: Int) code leaves
-         in body ++ ["fmov " ++ reg d ++ ", d16"]
+      -- a float tree, one step an instruction: scratch d16.., a node in its
+      -- left subtree's register
+      ("ftree.leaf", [], [x, OI n]) -> ["fmov d" ++ show (16 + n) ++ ", " ++ reg x]
+      ("ftree.out", [d], [OI n]) -> ["fmov " ++ reg d ++ ", d" ++ show (16 + n)]
+      (o, [], [OI n]) | Just inst <- stripPrefix "ftree." o -> ["f" ++ inst ++ " d" ++ show (16 + n) ++ ", d" ++ show (16 + n) ++ ", d" ++ show (17 + n)]
       (o, [d], [a, b]) | Just f <- stripPrefix "fbin32." o ->
         ["fmov s16, " ++ wreg a, "fmov s17, " ++ wreg b, "f" ++ f ++ " s16, s16, s17", "fmov " ++ wreg d ++ ", s16"]
       (o, [d], [a, b]) | Just c <- stripPrefix "fcmp32." o ->

@@ -26,8 +26,14 @@ floating-point registers with one move in per leaf and one move out:
 | x86-64 | `%xmm8..%xmm15` | `addsd %xmm(n+1), %xmm(n)` |
 | RV64 | `ft0..ft7` | `fadd.d ftn, ftn, ftn+1` |
 
-A node computes its left subtree in register n and its right in n+1, so a
-tree needs `ftreeRegisters` of the eight (`max (regs left) (1 + regs
+A tree is selected as one instruction per step (a leaf moved in, a node,
+the root moved out): the first form, one instruction with every leaf as an
+operand, failed x86-64's allocator, which can reload at most two spilled
+operands for one instruction (`tests/float.fpr`'s 18-leaf sum). The
+floating-point registers carry the value between the steps; nothing the
+allocator inserts between them touches those registers. A node computes
+its left subtree in register n and its right in n+1, so a tree needs
+`ftreeRegisters` of the eight (`max (regs left) (1 + regs
 right)`); the verifier refuses a bigger tree and the pass never builds one
 (the chain stays apart at that point). A result used twice, or used in
 another block, keeps its own definition: only single uses in the same
@@ -71,6 +77,8 @@ separate sessions had shown fib 5% slower, which is why the paired form was
 added to the driver rather than trusted). The legacy generator's nbody was
 0.896 of legacy-best before this pass (the kernels page); against that
 historical number the typed backend is now at about 0.59.
+
+The step-per-instruction form, re-measured on nbody and floatcmp alone: 0.6537 (31/31) and 0.9990.
 
 This is one host and one hart; x86-64 and RISC-V trees are checked for
 values (Rosetta's 1,280 pairs, the kernel oracles' mixed Int/F64 records
