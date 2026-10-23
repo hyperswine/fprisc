@@ -23,7 +23,13 @@ if [[ "$xlen" == 32 ]]; then
  sed -i.bak '/^#define SOFTFLOAT_INTRINSIC_INT128 /d' "$target/platform.h"
  rm -f "$target/platform.h.bak"
 fi
+# A bare toolchain whose libc is picolibc (Debian's gcc-riscv64-unknown-elf
+# with picolibc-riscv64-unknown-elf) has no C headers on its default path:
+# the specs file supplies them. A newlib toolchain answers the bare name.
+specs="$(riscv64-unknown-elf-gcc -print-file-name=picolibc.specs)"
+libc=""
+if [[ "$specs" == /* && -f "$specs" ]]; then libc=" --specs=picolibc.specs"; fi
 make -C "$target" clean
 make -C "$target" -j4 \
- 'CC=riscv64-unknown-elf-gcc -mcmodel=medany -ffunction-sections -fdata-sections -ffreestanding -fno-builtin'  \
+ "CC=riscv64-unknown-elf-gcc -mcmodel=medany -ffunction-sections -fdata-sections -ffreestanding -fno-builtin$libc"  \
  MARCH="rv${xlen}im" MABI="$abi" 'MAKELIB=riscv64-unknown-elf-ar crs $@'
