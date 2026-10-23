@@ -23,7 +23,7 @@ switching its ownership model does not count as migration.
 | Filter compaction | Open | A discard-heavy benchmark, fewer directory/base loads, stable rows and all columns preserved, paired measurements |
 | Native instruction accounting | Open | QOS ratchet/admission consumers use `native-insns-v1`; refuse absent or unbounded coverage; document runtime-call costs separately |
 | Builtin manual/GC profiles, RV32/RV64 | [Implemented](2026-10-23-TYPED-BUILTIN.md), 114 Base jobs, QEMU and physical Tang Nano checks passed | Explicit allocator, root, raw-word and no-fuel policies; full function/data/kernel coverage; QEMU and supported board suites |
-| Builtin ARC, RV64 | Open | Preserve consuming/borrowing adapters, alias-result retains, object layout and section/link behavior; ownership and hardware oracles |
+| Builtin ARC, RV64 | [Implemented](2026-10-23-TYPED-ARC.md), 115 Base jobs, strict QEMU execution and 31 paired measurements passed | Preserve consuming/borrowing adapters, alias-result retains, object layout and section/link behavior; QEMU-virt ownership/raw/interrupt/export gates and paired guest work |
 | Final legacy deletion | Open | No production caller of legacy generation, relocation/lowering, peephole or modes; full fresh acceptance sweeps and clean build/install checks |
 
 ## Order of implementation
@@ -37,9 +37,9 @@ switching its ownership model does not count as migration.
 3. Move QOS's legacy instruction ratchet to the selected/native metric.
    Instruction counts are not a hardware-time WCET certificate. Preserve
    explicit treatment of unknown runtime-call costs and unbounded paths.
-4. Manual/GC RV32 and RV64 profiles are now admitted with explicit
-   fixed-stack/no-fuel contracts. Continue with ARC/raw ownership, layout,
-   interrupt and export behavior before retiring the remaining generator.
+4. Manual/GC RV32 and RV64 profiles and builtin RV64 ARC/raw now have
+   explicit fixed-stack/no-fuel contracts. Preserve their ownership, root,
+   layout, interrupt and export gates while removing legacy production paths.
 5. Inventory and remove remaining legacy production entry points and
    their tests' obsolete text assertions. Keep equivalent behavioral
    tests. Delete the generator and peephole only when the inventory is
@@ -72,12 +72,12 @@ The [manual/GC profile increment](2026-10-23-TYPED-BUILTIN.md) replaces
 hosted entry assumptions with `StackStatic` and no actor fuel on RV32/RV64.
 Generated roots have QEMU negative controls and physical Tang Nano results.
 
-ARC constructor allocation currently calls `fpr_builtin_alloc_adt(bytes,
-fields)` in the legacy generator; the typed RV `OMake` uses `fpr_alloc`.
-The field metadata and consuming adapters in `machine/builtin/arc.c` must
-be preserved. ARC also analyzes imported representations together and uses
-separate function/object sections for linking. The raw/interrupt checks in
-`tests/check_raw.py` provide executable acceptance cases for those contracts.
+The [ARC/raw increment](2026-10-23-TYPED-ARC.md) selects
+`fpr_builtin_alloc_adt(bytes, fields)` for typed ARC constructors, preserves
+the field metadata and consuming adapters in `machine/builtin/arc.c`, and
+keeps separate function/object sections for linking. Imported representations
+are still analyzed together. The aggregate ARC gate runs raw/interrupt,
+layout and export checks, plus independent arithmetic and metadata controls.
 
 Conservative GC is single-threaded and nonmoving. Its port captures all
 registers before root scanning (`machine/builtin/builtin.h`); stack and
@@ -87,5 +87,18 @@ stack map or ownership assumption does not replace them.
 
 Builtin loops without actor fuel now retain honest `UNBOUNDED` native
 reports; hosted admission still requires bounded preemption segments.
-ARC/interrupt migration must preserve that distinction and the existing
-interrupt restrictions.
+ARC/interrupt selection preserves that distinction and the existing
+interrupt restrictions. Final legacy removal must keep these gates.
+
+The remaining production-caller audit must include oversized hosted frames
+and typed-kernel selection refusals, as well as explicit legacy modes.
+The current bare-metal hosted RV selector still refuses frames above its
+1 KiB ceiling, and `emitSpecs` still has a legacy branch for declined plans.
+Those paths must receive a complete typed replacement or an independently
+justified existing contract boundary before the old generator is removed.
+
+QOS's current `check-all.sh` invokes `tools/wcet-ratchet.sh` on
+`programs/system.fpr` with the old 200-IR-instruction ceiling. The ratchet
+reads only `# wcet:` rows. Migrating it requires a fresh native ceiling,
+complete annotation coverage checks and explicit runtime-call accounting;
+renaming the old number would not preserve its acceptance contract.

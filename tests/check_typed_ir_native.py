@@ -281,12 +281,13 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     assert seen[0] == seen[2] == seen[4], seen
     assert seen[1] == seen[3] and len(set(seen)) == 2, seen
     print('cache transitions: ' + '/'.join(mode for mode in modes) + ' PASS')
-    # strict mode names the function that fell back: builtin ARC remains
-    # a separate ownership contract from the admitted manual/GC profile
+    # Strict mode names a real selection refusal. All supported ownership
+    # profiles are admitted now; arity spilling also handles >64 parameters.
+    # Keep 200 call results live so the bare-metal hosted frame exceeds 1 KiB.
     refused_source = tmp / 'refused.fpr'
-    refused_source.write_text('profile builtin.\nmain = Unit.\n')
-    p = subprocess.run(['./fpr', '--target=rv64', '--arc', refused_source, tmp / 'refused.s'], cwd=ROOT, env={**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'main'}, capture_output=True, text=True, timeout=600)
-    assert p.returncode != 0 and 'typed-ir strict' in p.stderr and '\n  main: ' in p.stderr, (p.returncode, p.stderr[-800:])
+    refused_source.write_text('idn x = x + 1.\nwide x = [' + ', '.join('idn x' for _ in range(200)) + '].\nmain = wide 1.\n')
+    p = subprocess.run(['./fpr', '--system=bare-metal', '--target=rv64', '--no-inline', refused_source, tmp / 'refused.s'], cwd=ROOT, env={**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'wide'}, capture_output=True, text=True, timeout=600)
+    assert p.returncode != 0 and 'typed-ir strict' in p.stderr and '\n  wide: ' in p.stderr, (p.returncode, p.stderr[-800:])
     # mixed mode on the M1 root fixture: scalar functions and main native
     mixed = {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'fib,sum,addovf,divz,even,odd,clamp,boolEq,boolNe,boolResult'}
     mexe = tmp / 'scalar-mixed'

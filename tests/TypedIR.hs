@@ -82,8 +82,10 @@ main = do
   check "store rejects mismatched value" (case opSignature memTypes (OStore TAddr (VId 0) 0 (VId 1)) of Left _ -> True; _ -> False)
   let builtin64 = m2Policy {polProfile=Builtin,polFuel=False,polStackCheck=StackStatic}
       builtin32 = builtin64 {polProfile=Builtin32}
+      builtinArc = builtin64 {polProfile=BuiltinArc}
   check "builtin policies have explicit word widths" (policyWidth builtin64==W64 && policyWidth builtin32==W32)
   check "builtin policies require fixed stacks and no actor fuel" (validatePolicy builtin64==Right () && validatePolicy builtin32==Right ()
+    && validatePolicy builtinArc==Right ()
     && either (const True) (const False) (validatePolicy builtin64 {polFuel=True})
     && either (const True) (const False) (validatePolicy builtin64 {polStackCheck=StackCheckEveryEntry}))
   check "hosted policies cannot omit stack-growth checks" (all (either (const True) (const False) . validatePolicy) [m2Policy {polProfile=p,polStackCheck=StackStatic} | p<-[HostedBase,QosApp,Rv32]])

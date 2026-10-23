@@ -1,0 +1,8 @@
+10,000 allocation-free word steps; mixed managed/raw fields; F32/F64: PASS
+Raw main results, float graphs and raw-field rendering: PASS
+Float-field equality preserves NaN and signed-zero semantics: PASS
+Imported function shares raw calling convention: PASS
+Conflicting representation instantiations rejected: PASS
+All GPR/FPR state and fcsr restored; 1,000 resumed interrupts with ARC work: PASS
+Handler allocation/control restrictions checked through helper calls: PASS
+Synchronous fault within handler reaches fatal emergency stack: PASS

@@ -1,0 +1,34 @@
+{
+  "starting_revision": "17a70ac",
+  "compiler_sha256": "e1b5ecc350de33ad2410fbae0bdbfda6c528f3088913b6d0ffe583745d05fb49",
+  "codegen_revision": 76,
+  "rv_selection_revision": 16,
+  "scope": "Builtin RV64 ARC/raw and self-hosted heap; fixed stack/no fuel; runtime ABI unchanged.",
+  "measurement": {
+    "pairs": 31,
+    "legacy_guest_instructions": 1537312028,
+    "typed_guest_instructions": 1424802054,
+    "ratio": 0.9268138335284006,
+    "note": "Deterministic QEMU icount guest work, real ARC runtime and self-hosted heap; not physical elapsed time."
+  },
+  "legacy_execution": "legacy-final.log",
+  "base_validation": {
+    "result": "PASS",
+    "jobs": 115,
+    "seconds": 382,
+    "workers": 4,
+    "exit_code": 0,
+    "log": "base-final.log"
+  },
+  "platform_scope": "RV64 QEMU-virt and native ASan/UBSan; no physical RV64 ARC execution or hosted CI run.",
+  "measured_native_function_counts": {
+    "builtin.s": 26,
+    "heap.s": 135
+  },
+  "typed_execution": {
+    "job": "tests/check_typed_ir_arc.py",
+    "log": "base-final.log",
+    "negative_control": "missing constructor field metadata fails the ownership runtime",
+    "independent_checks": 879
+  }
+}

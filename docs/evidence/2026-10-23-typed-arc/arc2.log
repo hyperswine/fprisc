@@ -1,0 +1,6 @@
+10,000 sharing/escape cycles in 16 KiB; zero live allocations; tail calls: PASS
+Returned 6,000-node graph released without recursive destruction: PASS
+Nullary tail recursion with effectful termination: PASS
+Cross-unit ownership and separate ARC compilation, including rebuild: PASS
+Function values, indirect/partial calls and explicit RC rejected: PASS
+Exact layouts, shared edges and 12,000-node drops under ASan/UBSan: PASS

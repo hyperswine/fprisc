@@ -1,0 +1,105 @@
+Paired round 1/31
+Paired round 2/31
+Paired round 3/31
+Paired round 4/31
+Paired round 5/31
+Paired round 6/31
+Paired round 7/31
+Paired round 8/31
+Paired round 9/31
+Paired round 10/31
+Paired round 11/31
+Paired round 12/31
+Paired round 13/31
+Paired round 14/31
+Paired round 15/31
+Paired round 16/31
+Paired round 17/31
+Paired round 18/31
+Paired round 19/31
+Paired round 20/31
+Paired round 21/31
+Paired round 22/31
+Paired round 23/31
+Paired round 24/31
+Paired round 25/31
+Paired round 26/31
+Paired round 27/31
+Paired round 28/31
+Paired round 29/31
+Paired round 30/31
+Paired round 31/31
+{
+  "compiler_sha256": "e1b5ecc350de33ad2410fbae0bdbfda6c528f3088913b6d0ffe583745d05fb49",
+  "scope": "Paired QEMU guest work for legacy/typed ARC, using the real FP-RISC heap.\nDeterministic guest instruction counts, not physical elapsed-time speedups.\n",
+  "runs": 31,
+  "samples_guest_insns": {
+    "legacy": [
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028,
+      1537312028
+    ],
+    "mixed": [
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054,
+      1424802054
+    ]
+  },
+  "ratio": 0.9268138335284006
+}

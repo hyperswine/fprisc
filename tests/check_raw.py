@@ -64,6 +64,26 @@ with tempfile.TemporaryDirectory(prefix='fpr-raw-') as temp:
     assert (tmp/'builtin.s.units').read_text() == '', 'ARC must analyze imported representations together'
     print('Imported function shares raw calling convention: PASS')
 
+    # The direct raw paths must retain the checked adapters' boundary behavior.
+    for name,expression,message in [
+        ('negative-shift','Word.shl (Word.fromInt 1) (0 - 1)','shift out of range'),
+        ('wide-shift','Word.shr (Word.fromInt 1) 64','shift out of range'),
+        ('bit-index','Word.bitSet (Word.fromInt 0) 64','shift out of range'),
+        ('read16-align','Mem.read16 (Addr.fromWord (Word.fromInt 2164260865))','unaligned access'),
+        ('read32-align','Mem.read32 (Addr.fromWord (Word.fromInt 2164260866))','unaligned access'),
+        ('readWord-align','Mem.readWord (Addr.fromWord (Word.fromInt 2164260868))','unaligned access'),
+        ('writeWord-align','Mem.writeWord (Addr.fromWord (Word.fromInt 2164260865)) (Word.fromInt 1)','unaligned access'),
+        ('add-overflow','intMax Unit + 1','Int overflow'),
+        ('sub-overflow','intMin Unit - 1','Int overflow'),
+        ('mul-overflow','intMax Unit * 3','Int overflow'),
+        ('div-overflow','intMin Unit / (0 - 1)','Int overflow'),
+        ('div-zero','37 / 0','division by zero'),
+    ]:
+        source=tmp/f'{name}.fpr';source.write_text(f'main = {expression}.\n')
+        build(source)
+        assert message in boot(1)
+    print('Raw shift/bit/alignment and checked Int overflow/division failures retain adapter diagnostics: PASS')
+
     source = tmp/'bad-representation.fpr'
     source.write_text('identity x = x.\nmain = _ = identity 1; identity (Word.fromInt 1).\n')
     output = run(['./fprc', '--profile=bare-metal-builtin', '--arc', source, tmp/'bad.s'], 1)

@@ -1,0 +1,4 @@
+Offsets, natural alignment, U8/U16/U32, a pinned field, null/eq/index; no accessor in the image: PASS
+Nominal: an Addr is not a Node, a Task is not a Node, a setter takes its field's type: PASS
+Refused by name: a misaligned pin, a field declared twice, a field that collides with a helper: PASS
+Free: no accessor call remains, and each function is no larger than its hand-written twin: PASS

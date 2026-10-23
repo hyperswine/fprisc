@@ -69,7 +69,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 75 -- builtin manual/GC fixed-stack lowering; prior: x64 SSE2 map pairs; prior: captured NEON maps; prior: F64 comparison trees, F32 trees and hosted A64 FP allocation
+codegenRev = 76 -- builtin ARC/raw lowering; prior: builtin manual/GC fixed-stack lowering
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -571,7 +571,12 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
                               : ["typed-ir-backend: " ++ n ++ " fallback: " ++ r | (n, r) <- reasons]
                           )
   where
-    (lowered0, loweringFailures) = lowerProgram (tgtPolicy tgt) sigs prog eligible ext (M.union kernelPrims (foreignEntries tgt))
+    (lowered0, loweringFailures) = lowerProgram (tgtPolicy tgt) sigs lookupProg eligible ext (M.union kernelPrims (foreignEntries tgt))
+    -- The same Core equivalences the ownership-aware generator uses,
+    -- before typed lowering. In particular a nullary constructor remains
+    -- an immortal object, while effectful nullary definitions remain calls.
+    normalizedArc (ps,b) = (ps,normIn (S.fromList ps) b)
+    lookupProg = if tgtArc tgt then M.map normalizedArc prog else prog
     -- The direct backend must not silently replace an enabled specialized
     -- column loop with generic per-element apply.  A specialisation site is
     -- rewritten into a call of the kernel the legacy specialiser emits for
@@ -581,8 +586,10 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
     -- (docs/2026-10-22-TYPED-IR-KERNELS.md).  Same gates as genT.
     rewritten = if spec then M.map (\(ps, b) -> let (b', ks) = kernelSites (S.fromList ps) b in ((ps, b'), ks)) emitted else M.map (\d -> (d, [])) emitted
     eligible = M.map prepare (M.map fst rewritten)
-    prepare (ps,b) = (ps, if tgtIndexedMemory tgt && not (tgtFuel tgt || tgtArc tgt)
-      then indexedMemory (M.keysSet prog `S.union` M.keysSet ext) (S.fromList ps) b else b)
+    prepare def@(ps,b)
+      | tgtArc tgt = normalizedArc def
+      | otherwise = (ps, if tgtIndexedMemory tgt && not (tgtFuel tgt || tgtArc tgt)
+          then indexedMemory (M.keysSet prog `S.union` M.keysSet ext) (S.fromList ps) b else b)
     failures = loweringFailures
     kernelPrims = M.fromList [(kernelName sym, Prim (length args) (Just sym) Nothing) | (_, ks) <- M.elems rewritten, (sym, _, args) <- ks]
     kernelsOf accepted = M.toList (M.fromList [(sym, plan) | (n, (_, ks)) <- M.toList rewritten, M.member n accepted, (sym, plan, _) <- ks])

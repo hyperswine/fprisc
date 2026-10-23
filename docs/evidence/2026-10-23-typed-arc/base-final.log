@@ -1,0 +1,509 @@
+Typed IR verifier: a well-formed function accepted, 24 malformations refused by name PASS
+Typed IR bit operations and shifts: lowered as declared HAL names, bits.c semantics, exact trap text and order PASS
+Typed IR dead arms, nullary definitions, function/HAL/primitive values, whole-program lookups: lowered, verified, evaluated with the legacy trap text PASS
+Typed IR generic application: local, partial, over-saturated and computed heads through the runtime's apply, traps by name PASS
+Typed IR HAL application: partial and opaque-arity calls use verified function-object application PASS
+Typed IR simplification: conversion pairs folded, Bool joins threaded, pure operations shared per block, dead pure definitions dropped; evaluator results, traps and events unchanged on every fixture PASS
+Typed IR worker metadata: ordered mixed parameters, renaming, Bool equality/aliases, missing and malformed signatures PASS
+Typed IR lowering: the generator's fib and sum shapes lower, verify, dump stably and evaluate to reference answers, exact traps and structural tick counts; unsupported forms are refused by name PASS
+a64: coverage 22/22 functions; main lowers with aggregate/string coverage; 11 evaluations equal the host reference
+x64: coverage 22/22 functions; main lowers with aggregate/string coverage; 11 evaluations equal the host reference
+rv64: coverage 22/22 functions; main lowers with aggregate/string coverage; 11 evaluations equal the host reference
+Typed IR M1: a64/x64/rv64 portable lowering, deterministic dumps, native value/trap parity, structural tick counts, independent Bool oracle and worker cache transitions, report leaves emission unchanged: PASS
+SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, frame ceilings, shrink-wrap placement and refusals: PASS
+AllocIR: live ranges over block parameters, loops and calls; budget, spills and shared slots; staged fixed operands through a swap; tied copies; a tied destination never on a fixed operand's register; dead definitions; float refusal; the physical-liveness oracle; determinism: PASS
+whole unit: scalarlib 267/267 native under strict mode; 73 calls equal independent arithmetic and the host reference; C calls native code and is called back; deep recursion crossed 6 segments
+allocation facts: pressure spills 5 of 15 crossing; wide spills 16; fib and sum spill nothing
+one and four harts: PASS
+cache transitions: mixed/1/mixed/1/mixed PASS
+mixed mode on the M1 fixture: PASS
+Mach-O TLV and ELF variants assemble with clang: PASS
+Typed IR M2 (a64): selected vocabulary, whole-unit and mixed native emission with exact results and traps, C interoperability, segment growth, harts, cache transitions, strict mode, bounds: PASS
+SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, frame ceilings, shrink-wrap placement and refusals: PASS
+AllocIR: live ranges over block parameters, loops and calls; budget, spills and shared slots; staged fixed operands through a swap; tied copies; a tied destination never on a fixed operand's register; dead definitions; float refusal; the physical-liveness oracle; determinism: PASS
+Typed IR M2 x64 execution: SKIP (portable-only requested or nonmatching native host); shared selected-IR checks passed
+Typed kernel emission: legacy-only callers retain their native kernel on all four selectors PASS
+Typed record builder: explicit RV32 boxed-float refusal PASS
+Typed SIMD builder: matching Int captures admitted PASS
+Typed kernel builders: a mixed-capture or invalid-op SIMD pair, a captured RVV sum, a GPU pair sum off columns 0 and 1, and an eight-capture mapAs are refused PASS
+typed kernels: hosted result, one/four harts PASS
+hosted typed pipeline: Int/F64/F32, eight arguments, boxed fallback, effects and traps; inline-disabled=0 PASS
+hosted typed pipeline: Int/F64/F32, eight arguments, boxed fallback, effects and traps; inline-disabled=1 PASS
+a64: 6 typed kernel CFGs; no legacy assembly PASS
+x64: 6 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 700 cases: map/filter/fold/fusion/write-back fold, empty columns, guard fallbacks, hostile yields
+x64: 4 checked arithmetic trap cases PASS
+qx64: 6 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 700 cases: map/filter/fold/fusion/write-back fold, empty columns, guard fallbacks, hostile yields
+qx64: 4 checked arithmetic trap cases PASS
+rv64: 6 typed kernel CFGs; no legacy assembly PASS
+rv64: TYPED_KERNEL_PASS 700 cases: map/filter/fold/fusion/write-back fold, empty columns, guard fallbacks, hostile yields
+rv64: 4 checked arithmetic trap cases PASS
+rv32: 6 typed kernel CFGs; no legacy assembly PASS
+rv32: TYPED_KERNEL_PASS 700 cases: map/filter/fold/fusion/write-back fold, empty columns, guard fallbacks, hostile yields
+rv32: 4 checked arithmetic trap cases PASS
+typed record kernels: hosted result, one/four harts PASS
+typed F32 kernels: hosted result, one/four harts PASS
+a64: 3 typed kernel CFGs; no legacy assembly PASS
+x64: 3 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 700 F32 cases: map, filter, fold, empty columns, guard fallbacks, hostile yields
+qx64: 3 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 700 F32 cases: map, filter, fold, empty columns, guard fallbacks, hostile yields
+rv64: 3 typed kernel CFGs; no legacy assembly PASS
+rv64: TYPED_KERNEL_PASS 700 F32 cases: map, filter, fold, empty columns, guard fallbacks, hostile yields
+typed pair-sum fold: hosted result (the GPU hook declines), one/four harts PASS
+a64: 1 typed kernel CFGs; no legacy assembly PASS
+x64: 1 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 100 pair-sum folds: the GPU hook's answer once, the CPU strip otherwise, guard fallback
+qx64: 1 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 100 pair-sum folds: the GPU hook's answer once, the CPU strip otherwise, guard fallback
+rv64: 1 typed kernel CFGs; no legacy assembly PASS
+rv64: TYPED_KERNEL_PASS 100 pair-sum folds: the GPU hook's answer once, the CPU strip otherwise, guard fallback
+rv32: 1 typed kernel CFGs; no legacy assembly PASS
+rv32: TYPED_KERNEL_PASS 100 pair-sum folds: the GPU hook's answer once, the CPU strip otherwise, guard fallback
+typed mapAs and write-back fold: independent hosted answers, typed kernels named PASS
+typed NEON pairs: emitted for the Int and F64 SIMD fixtures under strict mode PASS
+a64: 5 typed kernel CFGs; no legacy assembly PASS
+x64: 5 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 1500 record cases: simultaneous/captured map, 9/64/300-column filter, captured fold, empty, guards, hostile yields
+x64: 1 checked arithmetic trap cases PASS
+qx64: 5 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 1500 record cases: simultaneous/captured map, 9/64/300-column filter, captured fold, empty, guards, hostile yields
+qx64: 1 checked arithmetic trap cases PASS
+rv64: 5 typed kernel CFGs; no legacy assembly PASS
+rv64: TYPED_KERNEL_PASS 1500 record cases: simultaneous/captured map, 9/64/300-column filter, captured fold, empty, guards, hostile yields
+rv64: 1 checked arithmetic trap cases PASS
+rv32: 5 typed kernel CFGs; no legacy assembly PASS
+rv32: TYPED_KERNEL_PASS 1500 record cases: simultaneous/captured map, 9/64/300-column filter, captured fold, empty, guards, hostile yields
+rv32: 1 checked arithmetic trap cases PASS
+a64: 3 typed kernel CFGs; no legacy assembly PASS
+x64: 3 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 500 mixed Int/F64 record cases: captured map, stable filter, captured fold, empty, hostile yields
+qx64: 3 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 500 mixed Int/F64 record cases: captured map, stable filter, captured fold, empty, hostile yields
+rv64: 3 typed kernel CFGs; no legacy assembly PASS
+rv64: TYPED_KERNEL_PASS 500 mixed Int/F64 record cases: captured map, stable filter, captured fold, empty, hostile yields
+x64 retirement: unsupported foreign calls refused by name in default/whole/named-strict modes on both targets PASS
+x64 retirement: two targets, native-only root/imports, whole/mixed warm caches, all rollback aliases refused; RV rollback retained PASS
+qa64mac: float trees: 5427 F64/F32 triples, six comparisons, exact rounding/signed-zero and NaN rules: 0 mismatches
+x64: float trees: 5427 F64/F32 triples, six comparisons, exact rounding/signed-zero and NaN rules: 0 mismatches
+rv64: FLOAT_TREE_PASS
+qa64mac SIMD emission, scratch budget and scalar boundaries PASS; scalar=False
+qa64mac: CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 70942 hostile yields
+qa64mac Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=False
+qa64mac SIMD emission, scratch budget and scalar boundaries PASS; scalar=True
+qa64mac: CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 106725 hostile yields
+qa64mac Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=True
+x64 SIMD emission, scratch budget and scalar boundaries PASS; scalar=False
+x64: CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 74570 hostile yields
+x64 Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=False
+x64 SIMD emission, scratch budget and scalar boundaries PASS; scalar=True
+x64: CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 106725 hostile yields
+x64 Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=True
+qx64 SIMD emission, scratch budget and scalar boundaries PASS; scalar=False
+qx64: CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 74570 hostile yields
+qx64 Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=False
+qx64 SIMD emission, scratch budget and scalar boundaries PASS; scalar=True
+qx64: CAPTURED_SIMD_PASS 6729 cases: Int/F64, seven captures, tails, canaries, IEEE edges/randoms, fallbacks, 106725 hostile yields
+qx64 Int overflow: first/second lane, add/sub/reverse-sub PASS; scalar=True
+Captured SIMD: real hosted runtime, 1/4 harts PASS
+RV32: TYPED_BUILTIN_GC_PASS: 12 live roots, recursive frames, 12 arguments, allocation-stress collection
+RV32: missing generated register/stack roots fail the oracle PASS
+RV64: TYPED_BUILTIN_GC_PASS: 12 live roots, recursive frames, 12 arguments, allocation-stress collection
+RV64: missing generated register/stack roots fail the oracle PASS
+10,000 sharing/escape cycles in 16 KiB; zero live allocations; tail calls: PASS
+Returned 6,000-node graph released without recursive destruction: PASS
+Nullary tail recursion with effectful termination: PASS
+Cross-unit ownership and separate ARC compilation, including rebuild: PASS
+Function values, indirect/partial calls and explicit RC rejected: PASS
+Exact layouts, shared edges and 12,000-node drops under ASan/UBSan: PASS
+10,000 allocation-free word steps; mixed managed/raw fields; F32/F64: PASS
+Raw main results, float graphs and raw-field rendering: PASS
+Float-field equality preserves NaN and signed-zero semantics: PASS
+Imported function shares raw calling convention: PASS
+Raw shift/bit/alignment and checked Int overflow/division failures retain adapter diagnostics: PASS
+Conflicting representation instantiations rejected: PASS
+All GPR/FPR state and fcsr restored; 1,000 resumed interrupts with ARC work: PASS
+Handler allocation/control restrictions checked through helper calls: PASS
+Synchronous fault within handler reaches fatal emergency stack: PASS
+Offsets, natural alignment, U8/U16/U32, a pinned field, null/eq/index; no accessor in the image: PASS
+Nominal: an Addr is not a Node, a Task is not a Node, a setter takes its field's type: PASS
+Refused by name: a misaligned pin, a field declared twice, a field that collides with a helper: PASS
+Free: no accessor call remains, and each function is no larger than its hand-written twin: PASS
+Library unit: qualified names, weak shared stubs, C entries with the declared contract: PASS
+Refusals: unsigned export, managed type at the boundary, computed symbol name: PASS
+C -> FP-RISC across every boundary type, a library beside a program, Addr.symbol resolved by the linker: PASS
+The allocator in FP-RISC: 10,000 ARC cycles, raw fields, machine primitives, a 6,000-node release, exhaustion refused by name: PASS
+Negative control: missing constructor field metadata fails the real ownership runtime PASS
+Independent Python word/Int oracle: 879 checks, every shift/bit index, wrapping, high bits and checked arithmetic PASS
+A64 FP context: 10000 round trips preserve all d8-d15 bit patterns PASS
+A64 FP context: integer-only switch negative control fails as required PASS
+A64 FP pool: 12 live values across forced yields, recursive calls/stack growth and 1 harts PASS
+A64 FP pool: 12 live values across forced yields, recursive calls/stack growth and 4 harts PASS
+A64 retirement: unsupported foreign calls refused by name in default/whole/named-strict modes on all five targets PASS
+A64 retirement: five targets, native-only root/imports, whole/mixed warm caches, all rollback aliases refused; RV rollback retained PASS
+A64 retirement: populated executable cache cannot bypass rollback refusal PASS
+Typed inference runtime entries: imported polymorphic fromList/map, Int/F64/boxed columns, strict native emission, one/four harts PASS
+Typed HAL application: actual C PAP arity, partial and opaque calls, strict native emission, one/four harts PASS
+Self loops: WCET reset boundaries, unbounded negative controls and loop-carried slot values PASS
+Nullary constants: lowering-created Unit, elided functions, unique definitions, unused constructors, shadowing and Base boundary PASS
+Self loops: RV64/RV32 emission, builtin boundary and unit caches PASS
+Self loops: SHA and imported units, 640 finite WCET bounds, no per-function increase PASS
+Retained registers: RV64 emission, RV32/builtin boundaries and unit caches PASS
+Frame compaction: preserved values/register saves, dense layout, escaping/computed/deep frame fallback PASS
+Frame placement: RV64 fuel bounds, RV32 boundary PASS; deep frame 80 -> 32 bytes
+Rosetta x86-64 FPR_TYPED_IR_SELF_LOOPS=0: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+Rosetta x86-64 FPR_TYPED_IR_SELF_LOOPS=1: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+typed-ir: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-workers: strict direct coverage 30 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-workers: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-no-loops: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=False
+Rosetta x86-64 typed-ir-no-loops: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-shallow: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-shallow: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-forward: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-forward: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-entry: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-entry: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+x64 scalar/ABI probes: 5.82s including compilation/linking; Linux TLS and scheduler are substituted
+typed-ir: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-workers: strict direct coverage 30 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-workers: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-no-loops: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=False
+Rosetta x86-64 typed-ir-no-loops: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-shallow: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-shallow: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-forward: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-forward: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+typed-ir-entry: strict direct coverage 26 functions; including arities 9 and 64; pressure spills 9; rotate6 loop=True
+Rosetta x86-64 typed-ir-entry: 32114 C-reference cases, 13 exact slow-path traps, foreign Bools, 7/8-argument non-tail calls, 7/8/9/64-argument rotations, register pressure across calls and in straight lines, a nullary definition, a dead arm reached, 22 generic applications, callee saves/alignment/volatile clobbers PASS
+x64 scalar/ABI probes: 5.98s including compilation/linking; Linux TLS and scheduler are substituted
+FPR_SELF_LOOPS=0 RV64/QEMU: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+FPR_SELF_LOOPS=1 RV64/QEMU: self loop: 2100 C-reference argument permutations, exact fuel resets and flat stack PASS
+RV64 Unix/QOS/module lowering, flag order and warm-cache isolation PASS
+typed RV64 module: every function native, la.tls.ie hart, .option pic, local labels PC-relative, legacy rollback separate PASS
+typed RV64 module assembles: R_RISCV_TLS_GOT_HI20 for the hart, R_RISCV_CALL_PLT for calls, no TPREL PASS
+typed RV64 module executes under QEMU: 1,805 cases through the initial-exec hart cell, a HAL import, a string, fuel yields PASS
+typed qrv64: every function native, the hart borrowed through fpr_g_tlsoff, no TLS relocation, no PIC; plugins the same; legacy rollback separate PASS
+typed qrv64 executes under QEMU: 2,125 cases through the borrowed hart cell, the displacement moved at every fuel yield, nine-argument spills, a string, F64 PASS
+typed ESP-IDF: every function native, the hart from fpr_esp_hart local-exec on the 32-bit word, legacy rollback separate PASS
+typed ESP-IDF executes under QEMU (rv32): 2,105 cases through the local-exec hart cell, nine-argument spills, a string, fuel yields PASS
+Byte Strings: all values, zero allocations, actor lifetime and refusals (1 workers) PASS
+Foreign image: byte Strings survive poisoning/unload (1 workers) PASS
+Byte Strings: all values, zero allocations, actor lifetime and refusals (4 workers) PASS
+Foreign image: byte Strings survive poisoning/unload (4 workers) PASS
+View construction: byte-identical CSS, classes, render frames and cached fragments (1 workers) PASS; bytes=125308 sha256=9119d98d67cab660377e5ac554473a30a10620a7866d326b907a600958e799cd
+View construction: byte-identical CSS, classes, render frames and cached fragments (4 workers) PASS; bytes=125308 sha256=9119d98d67cab660377e5ac554473a30a10620a7866d326b907a600958e799cd
+prefix-cost: {"baseline": {"alloc_bytes": 48000, "alloc_requests": 1000, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "candidate": {"alloc_bytes": 0, "alloc_requests": 0, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}
+stage-cost: {"baseline": {"alloc_bytes": 1841904, "alloc_requests": 8488, "buddy_allocs": 4, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "candidate": {"alloc_bytes": 394224, "alloc_requests": 7468, "buddy_allocs": 1, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}
+class-cost: {"baseline": {"alloc_bytes": 2290240, "alloc_requests": 7206, "buddy_allocs": 6, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "candidate": {"alloc_bytes": 349648, "alloc_requests": 6953, "buddy_allocs": 2, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}
+tree-cost: {"baseline": {"alloc_bytes": 2467728, "alloc_requests": 39789, "buddy_allocs": 6, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "candidate": {"alloc_bytes": 1579152, "alloc_requests": 31562, "buddy_allocs": 4, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}
+inbox: one/four harts HOLDS
+inboxshared: one/four harts HOLDS
+inboxownership: one/four harts HOLDS
+inboxkill: one/four harts HOLDS
+inboxadmission: one/four harts HOLDS
+Production actor runtime has no inbox fault hook dependency HOLDS
+commit unannotated argument/result: refusal leaves store unchanged; explicit major PASS
+commit polymorphic restriction: refusal leaves store unchanged; explicit major PASS
+commit variable correlation: refusal leaves store unchanged; explicit major PASS
+commit record requirement: refusal leaves store unchanged; explicit major PASS
+commit constant representation: refusal leaves store unchanged; explicit major PASS
+commit precondition: refusal leaves store unchanged; explicit major PASS
+commit unsafe marker: refusal leaves store unchanged; explicit major PASS
+commit resource bound: refusal leaves store unchanged; explicit major PASS
+commit nominal version: refusal leaves store unchanged; explicit major PASS
+commit linear declaration: refusal leaves store unchanged; explicit major PASS
+commit alpha normalization, sorted rows, export additions and no-op: PASS
+commit type error and missing/malformed prior blob: refusal before writes PASS
+commit refused new pinned dependency: no closure blob publication PASS
+commit checked pinned closure from store, no scratch dependency: PASS
+commit contract identity ignores diagnostic source positions: PASS
+publication: images, cursor, one/four harts, compile/type/link refusal, watch recovery PASS
+Watch app: 1 hart(s), store commit -> publication -> live MVU, refusal/recovery/state/old closure/exit PASS
+Watch app: 4 hart(s), store commit -> publication -> live MVU, refusal/recovery/state/old closure/exit PASS
+Watch app termination: application reaped and temporary executable removed PASS
+Watch app startup: missing subscription and invalid app refused without temporary executable/lock leaks PASS
+Live runner: 1 hart(s), interactive input, binding rollback, compatible state retention, invalid root refusal, checked cold restart PASS
+Live runner: 4 hart(s), interactive input, binding rollback, compatible state retention, invalid root refusal, checked cold restart PASS
+Live runner startup: missing export refuses binding and removes initial table PASS
+PASS harts=1: delayed writer finishes before close; stuck writer retires within budget; fresh HTTP clean
+PASS harts=4: delayed writer finishes before close; stuck writer retires within budget; fresh HTTP clean
+reload notice: opt-in, UTC text, deadline, replacement and stable view PASS
+POS reload: 1 hart(s), two live sockets/cashiers/carts, checkout policy changes, receipt history, invalid/incompatible refusal, recovery, reload notice enabled=True and log rebuild PASS
+POS reload: 4 hart(s), two live sockets/cashiers/carts, checkout policy changes, receipt history, invalid/incompatible refusal, recovery, reload notice enabled=False and log rebuild PASS
+POS ordinary run: static pricing works without a publication journal PASS
+POSIX real modules: one/four harts, scoped swap/refusals/old functions/clock PASS
+POSIX live MVU: real module replacement/refusal/state/render/pacing on one/four harts PASS
+POSIX x64: root/imports/TLS/9-argument spill, ELF shared object without text relocations PASS
+POSIX a64: root/imports/TLS/9-argument spill, ELF shared object without text relocations PASS
+POSIX rv64 artifact check SKIPPED: clang has no RISC-V backend; use a Linux RV64 cross compiler with check_rv64_linux.py
+Owned watcher owned: one/four harts, cleanup and subscriptions PASS
+Owned watcher initialquit: one/four harts, cleanup and subscriptions PASS
+Owned watcher refused: one/four harts, cleanup and subscriptions PASS
+Sys.loop: one million value-state turns, 64 MiB heap, one/four harts PASS
+Sys.loop / Sys.arena bare actor handle: identity and liveness PASS
+Nested Sys.arena / Sys.loop / Sys.loopWith cancellation: one/four harts PASS
+Sys.loop initial-vector: named refusal PASS
+Sys.loop captured-vector: named refusal PASS
+Sys.loop returned-vector: named refusal PASS
+automatic receive turns: million messages, one/four harts, 64 MiB PASS
+automatic receive turns: zero args, shared joins, dead state and strict effects PASS
+automatic receive turns: concrete MVU text protocol and root ownership PASS
+automatic receive turns: ordered typed ports, deduplication and ownership PASS
+automatic receive turns: opt-out baseline reproduces growth PASS
+automatic receive turns: mutual recursion, nominal state, case branches and strictness PASS
+automatic receive turns: imported helper receives, arity spill and cache isolation PASS
+automatic receive turns: cancellation releases transferred closures PASS
+automatic receive turns: functional-result reported unchanged PASS
+automatic receive turns: mutable reported unchanged PASS
+automatic receive turns: non-tail reported unchanged PASS
+automatic receive turns: functional reported unchanged PASS
+automatic receive turns: managed reported unchanged PASS
+MVU reload runner: one/four harts PASS
+MVU reload observe: one/four harts PASS
+MVU reload legacy: one/four harts PASS
+MVU reload liveapp: one/four harts PASS
+MVU reload legacyapp: one/four harts PASS
+MVU reload baseline: one/four harts PASS
+MVU reload productiontick: one/four harts PASS
+MVU reload default-boundaries: one/four harts PASS
+MVU reload scoped-alias: one/four harts PASS
+MVU default: caller lifetime and bounded 20000-frame state, one/four harts PASS
+MVU event port: 20000 FIFO batches and released roots, one/four harts PASS
+MVU service failures: request refusal, service/worker death, cleanup and subsequent run, one/four harts PASS
+deadlines: one/four harts PASS
+taskfailure: one/four harts PASS
+mvudeadlines: one/four harts PASS
+mvuretained: one/four harts PASS
+par2: failed worker ends its join by name PASS
+Sol: selective empty/live-deadline/dead contracts PASS
+actor reap: detached cleanup can re-enter admission PASS
+eight ideal programs build; their declared bounds are proven
+wc output and read failures match the original
+report data, console and input/write failures match the original
+todo event trace, rows, UTF-8 backspace, the durable list and an unopenable store match
+service live HTTP routes, store, digests, shutdown and invalid configuration match
+linear buffer parity and map/filter/fold; guarded transitions and measured replay agree with independent references
+linear reuse/aliasing, broken buffer contracts, nondecreasing replay/build and insufficient replay bounds are refused
+five violated preconditions panic; insufficient work and nondecreasing recursion are refused
+ideal examples: all checks passed
+Higher-order contracts: native + Sol aliases, callbacks, records, returns, partials, guards, imports, order, rollback and linear ownership HOLD; direct budgets prove and checked costs remain visible
+Contract rewrites: selected operators, guards and imported unit calls retain contracts in native/Sol; native cache context is isolated; direct budgets still prove
+1 hart(s): printer ownership: fragmented frames, failure cleanup, bounded snapshots, quotas, stale/wrong owner and actor death PASS
+4 hart(s): printer ownership: fragmented frames, failure cleanup, bounded snapshots, quotas, stale/wrong owner and actor death PASS
+12 lost/stale/duplicated connection, client and buffer owners refused
+eight scalar work/allocation bounds PROVEN; maximum frame/read/chunk arithmetic agrees
+insufficient work and owner-cell allocation budgets refused
+303 independent capacity/chunk/backoff reference cases agree
+Sol inferred linearity: 8 checks passed
+record-duplicate-owned-field: refused by native and Sol
+record-literal-double: refused by native and Sol
+record-projection-double: refused by native and Sol
+record-pattern-double: refused by native and Sol
+record-update-stale: refused by native and Sol
+record-alias-double: refused by native and Sol
+record-projection-residual: refused by native and Sol
+record-nested-projection-residual: refused by native and Sol
+record-pattern-residual: refused by native and Sol
+record-update-overwrite-owner: refused by native and Sol
+record-nested-update-overwrite-owner: refused by native and Sol
+record-metadata-loses-owner: refused by native and Sol
+record-open-row-residual: refused by native and Sol
+record-inferred-return-double: refused by native and Sol
+case-result-closure-double: refused by native and Sol
+guard-created-owner-double: refused by native and Sol
+guard-created-owner-lost: refused by native and Sol
+guard-created-owner-fallthrough: refused by native and Sol
+record-one-owner-projection: single-use result agrees in native and Sol
+record-complete-two-owner-pattern: single-use result agrees in native and Sol
+record-metadata-update-transfer: single-use result agrees in native and Sol
+record-alias-once: single-use result agrees in native and Sol
+record-pattern-ignores-metadata: single-use result agrees in native and Sol
+record-nested-single-owner: single-use result agrees in native and Sol
+record-nested-projection-path: single-use result agrees in native and Sol
+record-nested-metadata-update: single-use result agrees in native and Sol
+record-inferred-return-once: single-use result agrees in native and Sol
+guard-created-owner-once: single-use result agrees in native and Sol
+case-result-linear-closure-once: single-use result agrees in native and Sol
+29 structural/control-flow ownership cases PASS
+42 generic ownership cases (polymorphic functions and containers, native and Sol) PASS
+POS core: independent quantity/cash/restock oracle, full Int boundaries, one/four harts: PASS
+POS app: checkout, stock, receipt totals, change and ordinary refusals: PASS
+POS core: six scalar work/allocation declarations proved: PASS
+POS core: direct, aliased and mapped invalid contracts refuse by name: PASS
+Pagination: 2286 independent-reference cases on 1/4 harts, including tagged Int extrema; constant budgets prove
+Pagination: invalid internal size/count fail with named contracts; insufficient work/allocation bounds fail compilation
+Inventory: actual projection keeps sorted page contents, empty/shrunk/late/negative requests, and historical config normalization on 1/4 harts
+Typed Vector: 14 element/layout/ownership refusal paths PASS
+Typed Vector: generic identity, same-element generic map, Int/F64/tuple/String/Bool maps and inferred float constructors PASS
+Typed Vector: HostedBytecode rejects mixed elements and executes a type-changing map PASS
+Vector limits: generic/imported/recursive layouts, nested float records and copies, captured/wide folds, direct type-changing map and ordered failure; 64-bit layouts and RV32 integer fold emission PASS
+Vector kinds: float captures, mixed record fold, captured map/map and filter/filter, strict order and 100 SIMD tails PASS
+A64 NEON execution: native host and C IEEE reference PASS
+pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=1: PASS
+pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=0 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=0 registers-disabled=1 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=0 registers-disabled=1 fusion-disabled=0 pipeline-inline-disabled=1: PASS
+pipeline inline-disabled=0 registers-disabled=1 fusion-disabled=0 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=0 registers-disabled=1 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=1: PASS
+pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=0 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=0 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=0 pipeline-inline-disabled=1: PASS
+pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=0 pipeline-inline-disabled=0: PASS
+pipeline inline-disabled=1 registers-disabled=1 fusion-disabled=1 pipeline-inline-disabled=0: PASS
+mixed scalar pipelines: native differential, 1/4 harts, returns/compaction, floats, captures, effects/traps and RV64/RV32 legacy emission PASS
+Fresh reuse: nonescape, last-use, shape, branch, shadow and size proof checks PASS
+reuse disabled=1 inline-disabled=0 registers-disabled=0: 20000 allocations PASS
+reuse disabled=0 inline-disabled=0 registers-disabled=0: 10000 allocations PASS
+reuse disabled=1 inline-disabled=0 registers-disabled=0: 20000 allocations PASS
+reuse disabled=1 inline-disabled=0 registers-disabled=1: 20000 allocations PASS
+reuse disabled=0 inline-disabled=0 registers-disabled=1: 10000 allocations PASS
+reuse disabled=1 inline-disabled=0 registers-disabled=1: 20000 allocations PASS
+reuse disabled=1 inline-disabled=1 registers-disabled=0: 20000 allocations PASS
+reuse disabled=0 inline-disabled=1 registers-disabled=0: 10000 allocations PASS
+reuse disabled=1 inline-disabled=1 registers-disabled=0: 20000 allocations PASS
+reuse disabled=1 inline-disabled=1 registers-disabled=1: 20000 allocations PASS
+reuse disabled=0 inline-disabled=1 registers-disabled=1: 10000 allocations PASS
+reuse disabled=1 inline-disabled=1 registers-disabled=1: 20000 allocations PASS
+Fresh reuse: native values, alias/child preservation, field failure order, 1/4 harts, allocation ratchet, warm caches and RV64/RV32 legacy emission PASS
+consuming reuse off=1 no-inline=1 no-registers=1: 20000 allocations PASS
+consuming reuse off=0 no-inline=1 no-registers=1: 10000 allocations PASS
+consuming reuse off=1 no-inline=1 no-registers=1: 20000 allocations PASS
+consuming reuse off=1 no-inline=1 no-registers=0: 20000 allocations PASS
+consuming reuse off=0 no-inline=1 no-registers=0: 10000 allocations PASS
+consuming reuse off=1 no-inline=1 no-registers=0: 20000 allocations PASS
+consuming reuse off=1 no-inline=0 no-registers=1: 20000 allocations PASS
+consuming reuse off=0 no-inline=0 no-registers=1: 10000 allocations PASS
+consuming reuse off=1 no-inline=0 no-registers=1: 20000 allocations PASS
+consuming reuse off=1 no-inline=0 no-registers=0: 20000 allocations PASS
+consuming reuse off=0 no-inline=0 no-registers=0: 10000 allocations PASS
+consuming reuse off=1 no-inline=0 no-registers=0: 20000 allocations PASS
+Consuming workers: aliases, branch joins, retained originals, shared list tails, ordered failures, allocation counts, 1/4 harts and RV64/RV32 legacy ABI gates PASS
+x64: 6 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 700 cases: map/filter/fold/fusion/write-back fold, empty columns, guard fallbacks, hostile yields
+x64: 4 checked arithmetic trap cases PASS
+qx64: 6 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 700 cases: map/filter/fold/fusion/write-back fold, empty columns, guard fallbacks, hostile yields
+qx64: 4 checked arithmetic trap cases PASS
+x64: 5 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 1500 record cases: simultaneous/captured map, 9/64/300-column filter, captured fold, empty, guards, hostile yields
+x64: 1 checked arithmetic trap cases PASS
+qx64: 5 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 1500 record cases: simultaneous/captured map, 9/64/300-column filter, captured fold, empty, guards, hostile yields
+qx64: 1 checked arithmetic trap cases PASS
+x64: 3 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 500 mixed Int/F64 record cases: captured map, stable filter, captured fold, empty, hostile yields
+qx64: 3 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 500 mixed Int/F64 record cases: captured map, stable filter, captured fold, empty, hostile yields
+x64: 3 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 700 F32 cases: map, filter, fold, empty columns, guard fallbacks, hostile yields
+qx64: 3 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 700 F32 cases: map, filter, fold, empty columns, guard fallbacks, hostile yields
+x64: 1 typed kernel CFGs; no legacy assembly PASS
+x64: TYPED_KERNEL_PASS 100 pair-sum folds: the GPU hook's answer once, the CPU strip otherwise, guard fallback
+qx64: 1 typed kernel CFGs; no legacy assembly PASS
+qx64: TYPED_KERNEL_PASS 100 pair-sum folds: the GPU hook's answer once, the CPU strip otherwise, guard fallback
+wide params: 7th/8th params promoted to saved registers emit on legacy rv64/typed x64 and run on arm64 (wide: 231 418 45728349311): PASS
+Vector fallback frames: ra in the top word across 7 fixtures (49 Vec frames), typed x64 emits without translation, fallbacks run (fallback frames: ok 5 cap 27 43): PASS
+Safety allow-list: all 96 std modules listed, none stale: PASS
+Specialization Core: recursive groups, shadowing, dynamic callbacks, imported lifts, bounded growth: PASS
+Specialization: native/Sol differential + warm mode caches, effects/panics, 64,000 -> 0 callback bytes, RV64/RV32/A64/x64 emission: PASS
+Workers Core: admission, public arity, shadowing, escaping values, unknown kinds, vector tier and clone budget PASS
+Workers: native 1/4-worker differential, independent switches/inliner, warm caches, dynamic entry and exact failure reasons PASS
+{"allocations": {"0:0:0:combined-cost": {"alloc_bytes": 0, "alloc_requests": 0, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:0:0:pair-cost": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:0:0:record-cost": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:0:0:scalar-cost": {"alloc_bytes": 0, "alloc_requests": 0, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:0:1:combined-cost": {"alloc_bytes": 0, "alloc_requests": 0, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:0:1:pair-cost": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:0:1:record-cost": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:0:1:scalar-cost": {"alloc_bytes": 0, "alloc_requests": 0, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:1:0:combined-cost": {"alloc_bytes": 480048, "alloc_requests": 10001, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:1:0:pair-cost": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:1:0:record-cost": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:1:0:scalar-cost": {"alloc_bytes": 0, "alloc_requests": 0, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:1:1:combined-cost": {"alloc_bytes": 480048, "alloc_requests": 10001, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:1:1:pair-cost": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:1:1:record-cost": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "0:1:1:scalar-cost": {"alloc_bytes": 0, "alloc_requests": 0, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:0:0:combined-cost": {"alloc_bytes": 0, "alloc_requests": 0, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:0:0:pair-cost": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:0:0:record-cost": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:0:0:scalar-cost": {"alloc_bytes": 0, "alloc_requests": 0, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:0:1:combined-cost": {"alloc_bytes": 0, "alloc_requests": 0, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:0:1:pair-cost": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:0:1:record-cost": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:0:1:scalar-cost": {"alloc_bytes": 0, "alloc_requests": 0, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:1:0:combined-cost": {"alloc_bytes": 480048, "alloc_requests": 10001, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:1:0:pair-cost": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:1:0:record-cost": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:1:0:scalar-cost": {"alloc_bytes": 0, "alloc_requests": 0, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:1:1:combined-cost": {"alloc_bytes": 480048, "alloc_requests": 10001, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:1:1:pair-cost": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:1:1:record-cost": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "1:1:1:scalar-cost": {"alloc_bytes": 0, "alloc_requests": 0, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}, "panic_reasons": {"add-overflow": "Int overflow: 4611686018427387903 + 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps", "bad-pair": "no matching clause for pairSum", "div-overflow": "Int overflow: -4611686018427387904 / -1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps", "division-zero": "division by zero", "field-panic": "field panic", "mul-overflow": "Int overflow: 1099511627776 * 1099511627776 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps", "sub-overflow": "Int overflow: -4611686018427387904 - 1 does not fit an Int (-4611686018427387904..4611686018427387903); I64 is the type that wraps"}}
+Workers: A64/RV64/x64 emission, RV32 fallback, private entries and bounded fuel segments PASS
+Workers: raw literal call operands load directly without staging PASS
+Workers: optimized shared module called by general-ABI host PASS
+wide workers inline-disabled=0 fields-disabled=1 scalar-disabled=1: PASS
+wide workers inline-disabled=0 fields-disabled=0 scalar-disabled=1: PASS
+wide workers inline-disabled=0 fields-disabled=1 scalar-disabled=0: PASS
+wide workers inline-disabled=0 fields-disabled=0 scalar-disabled=0: PASS
+wide workers inline-disabled=0 fields-disabled=1 scalar-disabled=1: PASS
+wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=1: PASS
+wide workers inline-disabled=1 fields-disabled=0 scalar-disabled=1: PASS
+wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=0: PASS
+wide workers inline-disabled=1 fields-disabled=0 scalar-disabled=0: PASS
+wide workers inline-disabled=1 fields-disabled=1 scalar-disabled=1: PASS
+wide workers optimized shared module called by general ABI host: PASS
+wide workers native differential, allocation, effects, actor ownership, stack, 64-argument boundary and four-target emission: PASS
+{"0:0:0": {"record16:1": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record16:4": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:1": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:4": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:1": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:4": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:1": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:4": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:1": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:4": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:1": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:4": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:1": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:4": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:1": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:4": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:1": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:4": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:1": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:4": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}, "0:0:1": {"record16:1": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record16:4": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:1": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:4": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:1": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:4": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:1": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:4": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:1": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:4": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:1": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:4": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:1": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:4": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:1": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:4": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:1": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:4": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:1": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:4": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}, "0:1:0": {"record16:1": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record16:4": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:1": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:4": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:1": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:4": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:1": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:4": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:1": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:4": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:1": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:4": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:1": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:4": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:1": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:4": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:1": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:4": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:1": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:4": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}, "0:1:1": {"record16:1": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record16:4": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:1": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:4": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:1": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:4": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:1": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:4": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:1": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:4": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:1": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:4": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:1": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:4": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:1": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:4": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:1": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:4": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:1": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:4": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}, "1:0:0": {"record16:1": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record16:4": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:1": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:4": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:1": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:4": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:1": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:4": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:1": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:4": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:1": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:4": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:1": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:4": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:1": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:4": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:1": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:4": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:1": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:4": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}, "1:0:1": {"record16:1": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record16:4": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:1": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:4": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:1": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:4": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:1": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:4": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:1": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:4": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:1": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:4": {"alloc_bytes": 160, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:1": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:4": {"alloc_bytes": 48, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:1": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:4": {"alloc_bytes": 64, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:1": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:4": {"alloc_bytes": 528, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:1": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:4": {"alloc_bytes": 96, "alloc_requests": 1, "buddy_allocs": 0, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}, "1:1:0": {"record16:1": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record16:4": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:1": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:4": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:1": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:4": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:1": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:4": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:1": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:4": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:1": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:4": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:1": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:4": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:1": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:4": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:1": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:4": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:1": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:4": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}, "1:1:1": {"record16:1": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record16:4": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:1": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record3:4": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:1": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record4:4": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:1": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record63:4": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:1": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "record8:4": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:1": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple16:4": {"alloc_bytes": 1600320, "alloc_requests": 10002, "buddy_allocs": 5, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:1": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple3:4": {"alloc_bytes": 480096, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:1": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple4:4": {"alloc_bytes": 640128, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:1": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple63:4": {"alloc_bytes": 5281056, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:1": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple64:4": {"alloc_bytes": 5441088, "alloc_requests": 10002, "buddy_allocs": 12, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:1": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}, "tuple8:4": {"alloc_bytes": 960192, "alloc_requests": 10002, "buddy_allocs": 3, "buddy_frees": 0, "copies": 0, "copy_bytes": 0, "message_slabs": 0, "turns": 0}}}
+1 harts: admission: rollback=True cancelled=True cancel-returned=True memory=1073740800/1073740800 refusals=306 next=42 HOLDS
+4 harts: admission: rollback=True cancelled=True cancel-returned=True memory=1073740800/1073740800 refusals=306 next=42 HOLDS
+Initial actor admission: all six rollback phases; no publication, bounded reserve reuse, cancellation and late replies, later spawn; production fault hook absent: PASS
+String order, search and parse in FP-RISC: the C primitives' answers, edge cases and overflow included: PASS
+Confined processes: a budget ends a runaway heap and stack, a refused capability is named, killPid ends a process whole: PASS
+A loop state holding a list that ends in a heap nil (a primitive's, another process's) turns and ends: PASS
+Bit ops: an index or shift outside 0..63 is a named panic, inline and as a value: PASS
+Int overflow: + - * / trap by name with the operands, inline, in C, in scalar and NEON kernels and in a fold; chr and Sys.exit refuse out of range: PASS
+Panic: a 310-byte error message is printed whole: PASS
+Interrupt routing in FP-RISC: bind and unbind your own sources, another actor's refused by name: PASS
+A dead interrupt owner: its binding is dropped and its source acked; the next binder receives it: PASS
+Logs as an actor: 505-byte lines kept whole, rings sized at run time, C-staged lines counted, echo rate-limited: PASS
+Logging: owned snapshots and bounded rings release message roots on one/four harts: PASS
+A dead log actor: puts go C's way, Sys.logSeq/logSnap/logKeep answer instead of halting: PASS
+Killing a blocked actor reclaims it: 1500 kills stay under 32 MiB on one and four harts (was about 100 MB): PASS
+Mail queued on a dead actor is released, and so is its result: 900 deaths with 49 KiB unread each stay under 16 MiB on one and four harts (was about 47 MB): PASS
+Autodrop covers the direct destructure and the Result-wrapped receive: 6,000 receives stay under 32 MiB each way (was 128 KiB a receive): PASS
+Autodrop covers a body that IS the bare `case receive ... of`: 100,000 pingpong messages and 1,000 Result-wrapped receives end with zero live Arc entries on one and four harts (was one entry per message): PASS
+Fixed heap: admission, local reset, exhaustion, escaped lifetime and child-only failure: PASS
+Vector fusion: printing or failing element functions keep their pass order (and the decline is reported); pure F64 and Int pairs fuse in place: PASS
+Vector descriptors: record widths 2, 4, 8, 9, 32, 65 and 128 through the whole surface and the deep copier, an inferred float-record layout, singleton rows: PASS
+Record maps over two shapes that share field names read their own columns, in place: PASS
+Vector kernels: captured map/filter, wide record map and record filter run in place with no declines; RV64/RV32/x64 emit: PASS
+Process: argv, environment, Sys.exit, the exit status is main's Int: PASS
+Streams and files: readLine to EOF, stderr, write/append/read/exists: PASS
+Panics exit 1 by name; actors on two pthread harts and std modules run unchanged: PASS
+Stacks grow (200,000 plain frames); run-away recursion is a named panic at the ceiling, exit 1: PASS
+Sleeping while messages arrive (the poller shape), four times: the hart never spins: PASS
+An actor waiting 3 s on a sleeping actor is not a deadlock: PASS
+The heap grows with the program (577 MiB live); capped by FPR_HEAP_MB it is a named panic: PASS
+A 100-parameter function and a 20-tuple (built, matched, compared, printed): PASS
+The specialized float Vec.filter compiles and runs on AArch64 (tests/fvec2): PASS
+A zero-arity global bound to _ or aliased runs once per binding: PASS
+Inline primitive fast paths agree with C on 225 pairs, 64 shift counts and raw bytes; out of range is still the named panic: PASS
+Inlining changes nothing observable: argument order, CAF arguments, function-valued parameters, shadowing, mutual recursion: PASS
+Register-held slots preserve calls, effects, branches, tail calls and warm-cache modes: PASS
+Frames count the argument slots of direct primitive calls (nested strJoin/substr): PASS
+F64 arithmetic/comparisons and literal splices agree with the C reference: PASS
+External request cleanup runs when a parked actor is killed: PASS
+Runtime ledgers: exact primitive baseline, paired automatic-turn overhead; ordinary builds have no increments: PASS
+fpr_actor_fail: the failing actor ends alone with a logged reason, its caller hears Err dead actor and the reason: PASS
+Sys.loopWith: 1,000 and 20,000 steps of a double-buffered frame loop grow the caller pool by the same 288 B; a moved vector and a Vector in the state are refused: PASS
+Scratch arenas restore actor-owned pools across observed migration: PASS
+Code publication: remote dispatch fences every new generation: PASS
+Checked module interfaces: schema/root scope/refusals/rollback PASS
+Process images: a static crossing to another process is copied and outlives the image; a function into it is refused: PASS
+Vector reads taken apart at once build no pair: 2,000 reads 96 B (was 96,096), the same values, the same out-of-range panic: PASS
+Every position is 0-based: first/last index and -1 for not found, native and Sol agree; index -1 and len panic by name: PASS
+receiveFromRes: a dead sender is an answer; 3,000 reply-then-exit and exit-silently rounds on 1, 4 and 8 harts: PASS
+a trap ends the actor, not the machine: error, Int overflow, division by zero and a refused value (charAt past the end, chr of a non-byte, ! past the end) on a worker are its death with the reason for its watchers; a kill says killed; the program goes on (1 and 4 harts): PASS
+Channel claim preserves a queued Result; Task.map SHA stress: 12 runs per inliner setting on 10 harts, six concurrent: PASS
+fpr run passes arguments and status through; -v shows the compiler; the runtime is cached: PASS
+A server out of descriptors says so and keeps serving (std/tcp accept loop): PASS
+The job broker: host work off the harts, in order, three actors at once (std/job): PASS
+A primitive-built list survives send (the heap nil is a leaf to the copier): PASS
+I64: wrapping 64-bit arithmetic, unsigned views, conversions, parse, structures, send, and no implicit mixing with Int: PASS
+check_base: 115 jobs in 382 s on 4 worker(s)
+    129.2 s  tests/check_mvu_reload.py
+    129.0 s  examples/ideal/check.py
+     75.8 s  tests/check_pos_reload.py
+     72.4 s  tests/check_wide_workers.py
+     70.5 s  tests/check_typed_ir_arc.py
+     69.7 s  tests/check_typed_ir_kernels.py
+     45.6 s  tests/check_pos_core.py
+     35.4 s  runtime_costs
+     34.2 s  tests/check_higher_order_contracts.py
+     33.8 s  tests/check_pagination.py
+     33.3 s  tests/check_inbox.py
+     29.6 s  tests/check_live_runner.py
+     29.5 s  tests/check_vector_pipelines.py
+     28.7 s  tests/check_watch_app.py
+     28.2 s  tests/check_typed_ir_a64.py

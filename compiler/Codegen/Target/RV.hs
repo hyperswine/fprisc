@@ -19,7 +19,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 15 -- builtin fixed-stack/no-fuel profiles; prior: comparison and F32 trees; prior: 13: the ESP-IDF host (the hart in fpr_esp_hart, local-exec, the 32-bit word); prior: 12: 12: QOS RISC-V apps and plugins: the hart borrowed through fpr_g_tlsoff; prior: 11: 11: posix modules: the hart through initial-exec TLS (la.tls.ie), local labels PC-relative under .option pic; prior: 10: generic HAL partial/opaque application; prior 9: inferred boxed I64 operators; prior 8: inference-generated vector runtime entries; prior 7: typed column memory and kernel arithmetic; prior: 6: an ESP-IDF host keeps the legacy generator (its hart is fpr_esp_hart); 5: units with no legacy code skip translation; 4: in-place constructor reuse; 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
+rvSelectionRev = 16 -- ARC constructor metadata and function sections; prior: builtin fixed-stack/no-fuel profiles
 
 -- HartTp: the hart pointer is tp (bare metal, QOS); HartTls: the posix
 -- runtime's thread-local cell, local-exec (an executable); HartTlsIe: the
@@ -192,7 +192,11 @@ select cfg fn = do
         loadAt "lw" actual (vreg v) 4; li want (fromIntegral variant); rr "cmp.eq" d actual want; jump done
         mark miss; li d 0; mark done
       OMake t variant fs -> do
-        size <- fresh; li size (8 + w * fromIntegral (length fs)); call "fpr_alloc" False True [size] (Just d) False
+        size <- fresh; li size (8 + w * fromIntegral (length fs))
+        if polProfile (cfgPolicy cfg) == BuiltinArc then do
+          fields <- fresh; li fields (fromIntegral (length fs))
+          call "fpr_builtin_alloc_adt" False True [size,fields] (Just d) False
+        else call "fpr_alloc" False True [size] (Just d) False
         forM_ [(0,t),(4,variant)] $ \(off,n) -> do h <- fresh; li h (fromIntegral n); storeAt "sw" d h off
         forM_ (zip [0..] fs) $ \(n,v) -> storeAt stWord d (vreg v) (8+w*n)
       OReuse _ _ root fs -> do
@@ -270,7 +274,9 @@ select cfg fn = do
       OEqVal eq a b -> do
         t <- fresh; call ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!=")) False True [vreg a,vreg b] (Just t) False
         loadAt "lw" d t 4
-      OCall c vs -> call (calleeSym c) (polFuel (cfgPolicy cfg) && not (isForeign c)) (isForeign c) (map vreg vs) (Just d) False
+      OCall c vs -> do
+        inlined <- rawAdapter c (map vreg vs) d
+        unless inlined (call (calleeSym c) (polFuel (cfgPolicy cfg) && not (isForeign c)) (isForeign c) (map vreg vs) (Just d) False)
       OApply f vs -> do
         forM_ (f:vs) $ \v -> emit ((plain "push" [] [anyV (vreg v)]) {siImplicitDefs = [p "sp"]})
         emit ((plain "applyn" [fixed d (p "a0")] [OI (fromIntegral (length vs))])
@@ -284,10 +290,82 @@ select cfg fn = do
       TBr bid vs | bid == fnEntry fn -> call (functionSymbol (fnName fn)) (polFuel (cfgPolicy cfg)) False (map vreg vs) Nothing True
                  | otherwise -> edge bid vs
       TCondBr v yes ys no ns -> do l <- freshLabel; branch (vreg v) l; edge no ns; mark l; edge yes ys
-      TTailCall c vs -> call (calleeSym c) (polFuel (cfgPolicy cfg) && not (isForeign c)) (isForeign c) (map vreg vs) Nothing True
+      TTailCall c vs -> do
+        d <- fresh
+        inlined <- rawAdapter c (map vreg vs) d
+        if inlined then emit ((plain "ret" [] [fixed d (p "a0")]) {siImplicitDefs = map p ["sp","s0","ra","t3"], siControl = Return})
+        else call (calleeSym c) (polFuel (cfgPolicy cfg) && not (isForeign c)) (isForeign c) (map vreg vs) Nothing True
       TUnreachable s -> do
         modify (\st -> st {strings = S.insert s (strings st)})
         emit ((plain "panic" [] [OS (stringLabel s)]) {siImplicitDefs = [p "a0"], siClobbers = callers, siControl = Return, siCalls = [Call "fpr_panic" False True]})
+
+    -- The ARC representation pass has proved Word/Addr are raw bits and
+    -- Ints tagged. These non-owning adapters can be selected directly.
+    -- Memory and shift guards call the audited adapter with the original
+    -- arguments on failure, preserving its diagnostic and volatile behavior.
+    -- Managed operands retain their consuming calls. Tagged immediates
+    -- need no retain/release, exactly as both builtin heaps specify.
+    rawAdapter c vs d
+      | polProfile (cfgPolicy cfg) /= BuiltinArc || not (isForeign c) = pure False
+      | otherwise = case (calleeName c,vs) of
+          (n,[a]) | n `elem` ["$arc.retain","$arc.release"] -> yes (guarded (\slow -> do
+            bit <- fresh; ri "andi" bit a 1; bad <- fresh; ri "xori" bad bit 1; branch bad slow) $
+              if n=="$arc.retain" then emit (plain "mv" [anyV d] [anyV a]) else address d "fpr_unit")
+          (n,[a,b]) | Just op <- M.lookup n intBinary -> yes (do
+            x <- fresh; y <- fresh; result <- fresh
+            ri "srai" x a 1; ri "srai" y b 1
+            guarded (\slow -> do
+              when (op=="div") $ do z <- fresh; li z 0; zero <- fresh; rr "cmp.eq" zero y z; branch zero slow
+              rr op result x y
+              when (op=="mul") $ do
+                hi <- fresh; sign <- fresh; rr "mulh" hi x y; ri "srai" sign result 63
+                bad <- fresh; rr "cmp.ne" bad hi sign; branch bad slow
+              fit <- fresh; ri "slli" fit result 1; ri "srai" fit fit 1
+              bad <- fresh; rr "cmp.ne" bad fit result; branch bad slow) (tagged result d))
+          (n,[a,b]) | Just op <- M.lookup n intCompare -> yes (do t <- fresh; rr op t a b; bool t)
+          (n,[a,b]) | n `elem` ["$arc.eq","$arc.ne"] -> yes (guarded (\slow -> do
+            both <- fresh; ri "andi" both a 1; bit <- fresh; ri "andi" bit b 1
+            rr "and" both both bit; bad <- fresh; ri "xori" bad both 1; branch bad slow) $ do
+              t <- fresh; rr (if n=="$arc.eq" then "cmp.eq" else "cmp.ne") t a b; bool t)
+          (n,[a,b]) | Just op <- M.lookup n wordBinary -> yes (rr op d a b)
+          ("$arc.wordnot",[a]) -> yes (ri "xori" d a (-1))
+          ("$arc.wordfromInt",[a]) -> yes (ri "srai" d a 1)
+          ("$arc.wordtoInt",[a]) -> yes (tagged a d)
+          ("$arc.wordbits",[_]) -> yes (li d 129)
+          (n,[a]) | n `elem` ["$arc.addrfromWord","$arc.addrtoWord"] -> yes (emit (plain "mv" [anyV d] [anyV a]))
+          ("$arc.addrnull",[_]) -> yes (li d 0)
+          ("$arc.addradd",[a,b]) -> yes (do t <- fresh; ri "srai" t b 1; rr "add" d a t)
+          (n,[a,b]) | n `elem` ["$arc.wordeq","$arc.addreq","$arc.rawEq","$arc.rawNe"] -> yes (do
+            t <- fresh; rr (if n == "$arc.rawNe" then "cmp.ne" else "cmp.eq") t a b; bool t)
+          (n,[a,b]) | n `elem` ["$arc.wordshl","$arc.wordshr","$arc.wordbitSet","$arc.wordbitClear","$arc.wordbitTest"] -> yes (do
+            count <- fresh; ri "srai" count b 1
+            guarded (\slow -> do limit <- fresh; li limit 64; valid <- fresh; rr "sltu" valid count limit; bad <- fresh; ri "xori" bad valid 1; branch bad slow) $ case n of
+              "$arc.wordshl" -> rr "sll" d a count
+              "$arc.wordshr" -> rr "srl" d a count
+              "$arc.wordbitTest" -> do t <- fresh; rr "srl" t a count; ri "andi" t t 1; bool t
+              _ -> do one <- fresh; li one 1; mask <- fresh; rr "sll" mask one count
+                      if n == "$arc.wordbitClear" then ri "xori" mask mask (-1) >> rr "and" d a mask else rr "or" d a mask)
+          (n,[a]) | Just (op,alignment,small) <- M.lookup n reads -> yes (guarded (aligned a alignment) $ do
+            if small then do t <- fresh; loadAt op t a 0; tagged t d else loadAt op d a 0)
+          (n,[a,b]) | Just (op,alignment,small) <- M.lookup n writes -> yes (guarded (aligned a alignment) $ do
+            v <- if small then do t <- fresh; ri "srai" t b 1; pure t else pure b
+            storeAt op a v 0; address d "fpr_unit")
+          ("$arc.memfence",[_]) -> yes (emit (plain "fence" [] []) >> address d "fpr_unit")
+          _ -> pure False
+      where
+        yes action = action >> pure True
+        tagged a result = do t <- fresh; ri "slli" t a 1; ri "ori" result t 1
+        bool t = do yesLabel <- freshLabel; done <- freshLabel; branch t yesLabel
+                    address d "fpr_false"; jump done; mark yesLabel; address d "fpr_true"; mark done
+        guarded check body = do slow <- freshLabel; done <- freshLabel
+                                check slow; body; jump done; mark slow
+                                call (calleeSym c) False True vs (Just d) False; mark done
+        aligned a mask slow = when (mask /= 0) $ do t <- fresh; ri "andi" t a mask; branch t slow
+        intBinary = M.fromList [("$arc."++n,op) | (n,op)<-[("add","add"),("sub","sub"),("mul","mul"),("div","div")]]
+        intCompare = M.fromList [("$arc."++n,"cmp."++n) | n<-["lt","gt","le","ge"]]
+        wordBinary = M.fromList [("$arc.word"++n,op) | (n,op)<-[("add","add"),("sub","sub"),("and","and"),("or","or"),("xor","xor")]]
+        reads = M.fromList [("$arc.memread"++n,(op,mask,small)) | (n,op,mask,small)<-[("8","lbu",0,True),("16","lhu",1,True),("32","lwu",3,False),("Word","ld",7,False)]]
+        writes = M.fromList [("$arc.memwrite"++n,(op,mask,small)) | (n,op,mask,small)<-[("8","sb",0,True),("16","sh",1,True),("32","sw",3,False),("Word","sd",7,False)]]
 
 allocConfig :: RVConfig -> Fn -> S.Set VReg -> AllocConfig
 allocConfig cfg fn managed = AllocConfig
@@ -330,6 +408,8 @@ emitFnRV cfg fn = do
       header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sf)) ++ ") typed-ir rv" ++ show (widthBits (cfgWidth cfg)) ++ " frame=" ++ show n
                  ++ (if shallow then " shallow=yes" else " shallow=no") ++ " saved="
                  ++ (if null (alSaved allocation) then "none" else intercalate "," (map reg (alSaved allocation))) ++ " " ++ statsLine (alStats allocation)]
+          ++ ["    .section .text." ++ functionSymbol name ++ ",\"ax\",@progbits" | polProfile (cfgPolicy cfg) == BuiltinArc]
+          ++ ["    .balign 4" | polProfile (cfgPolicy cfg) == BuiltinArc]
           ++ ["    " ++ (if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl") ++ " " ++ functionSymbol name | S.member name (cfgExports cfg)]
           ++ [functionSymbol name ++ ":"]
   pure (NativeFn name (header ++ map ("    " ++) prologue ++ concatMap snd rendered ++ [reportLine name report, ""]) report (S.toList (nulls st)) (S.toList (strings st)))
@@ -385,13 +465,14 @@ render cfg fn ly restores (I i) = map (\s -> if last s == ':' then s else "    "
       ("la",[d],[OS sym]) -> [(if cfgHart cfg == HartTlsIe && ".L" `isPrefixOf` sym then "lla " else "la ") ++ r d ++ ", " ++ sym]
       ("mv",[d],[v]) -> ["mv " ++ r d ++ ", " ++ r v]
       (o,[d],[v,n]) | o `elem` ["slli","srai","andi","ori","xori"] -> [o ++ " " ++ r d ++ ", " ++ r v ++ ", " ++ show (num n)]
-      (o,[d],[a,b]) | o `elem` ["add","sub","mul","mulh","div","and","or","xor"] -> [o ++ " " ++ r d ++ ", " ++ r a ++ ", " ++ r b]
+      (o,[d],[a,b]) | o `elem` ["add","sub","mul","mulh","div","and","or","xor","sltu","sll","srl"] -> [o ++ " " ++ r d ++ ", " ++ r a ++ ", " ++ r b]
       (o,[d],[a,b]) | o `elem` ["cmp.eq","cmp.ne"] -> ["xor " ++ r d ++ ", " ++ r a ++ ", " ++ r b, (if o == "cmp.eq" then "seqz " else "snez ") ++ r d ++ ", " ++ r d]
       (o,[d],[a,b]) | o `elem` ["cmp.lt","cmp.gt","cmp.le","cmp.ge"] ->
         let (x,y) = if o `elem` ["cmp.gt","cmp.le"] then (b,a) else (a,b)
          in ["slt " ++ r d ++ ", " ++ r x ++ ", " ++ r y] ++ ["xori " ++ r d ++ ", " ++ r d ++ ", 1" | o `elem` ["cmp.le","cmp.ge"]]
-      (o,[d],[base,n]) | o `elem` ["ld","lw","lbu"] -> memory o (r d) (r base) (num n)
-      (o,[],[base,v,n]) | o `elem` ["sd","sw"] -> memory o (r v) (r base) (num n)
+      (o,[d],[base,n]) | o `elem` ["ld","lw","lbu","lhu","lwu"] -> memory o (r d) (r base) (num n)
+      (o,[],[base,v,n]) | o `elem` ["sd","sw","sh","sb"] -> memory o (r v) (r base) (num n)
+      ("fence",[],[]) -> ["fence iorw, iorw"]
       ("bnez",[],[v,OL l']) -> ["bnez " ++ r v ++ ", " ++ local fn l']
       (o,[],[OL l']) | o `elem` ["j","jump.loop"] -> ["j " ++ local fn l']
       ("call",_,OS sym:_) -> ["call " ++ sym]

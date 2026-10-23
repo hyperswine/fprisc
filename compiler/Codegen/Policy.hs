@@ -6,7 +6,7 @@
 --
 -- Hosted profiles retain actor fuel and growable stacks. Builtin profiles
 -- use a fixed stack with manual ownership or nonmoving conservative GC.
--- ARC remains a separate ownership contract until its lowering is admitted.
+-- ARC uses the same fixed-stack contract after explicit ownership lowering.
 module Codegen.Policy
   ( Profile (..), StackPolicy (..), Policy (..), m2Policy, validatePolicy, profileName, policyWidth,
   ) where
@@ -65,6 +65,7 @@ validatePolicy p = if polProfile p `elem` [HostedBase,QosApp,Rv32] && polStackCh
     | otherwise -> Right ()
   Builtin -> builtin
   Builtin32 -> builtin
+  BuiltinArc -> builtin
   Rv32
     | polFuel p -> Right ()
     | otherwise -> Left "RV32 builtin ownership/allocator policy is not implemented"

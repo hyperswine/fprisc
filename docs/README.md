@@ -226,3 +226,5 @@ they began.
 - [Typed x64 SSE2 map pairs](2026-10-23-SSE2-PAIRS.md): shared Int/F64 lane expressions, seven-temporary budget, x64/qx64 Rosetta correctness and paired timings; scalar fallbacks and fuel preserved.
 
 - [Typed builtin manual/GC profiles](2026-10-23-TYPED-BUILTIN.md): RV32/RV64 fixed stacks and no actor fuel, shared indexed-memory rewrite, generated roots through real GC with negative controls, and physical Tang Nano checks. ARC remains separate.
+
+- [Typed builtin ARC/raw](2026-10-23-TYPED-ARC.md): ownership adapters, constructor metadata, self-hosted allocator, checked raw/Int selection, interrupt and export gates, independent oracles and paired guest work.

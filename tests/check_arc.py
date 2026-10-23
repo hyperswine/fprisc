@@ -27,6 +27,16 @@ def build(source, image, directory, heap=16384, extra=()):
          f'PROG={source}', f'IMAGE={image}', f'BUILD={directory}', *extra])
 
 
+def tail_loop(asm,name):
+    if os.environ.get('FPR_TYPED_IR_BACKEND','mixed') in ('legacy','off','0'):
+        assert 'j fpr_fn_'+name in asm
+    else:
+        body=re.search(r'^# fn '+name+r' .*?(?=^# native-insns-v1:)',asm,re.M|re.S)
+        assert body and 'loops=1' in body[0] and 'j .Ltir_'+name+'_m3loop' in body[0], 'ARC lost frame-reusing tail recursion'
+        headers=re.findall(r'^# fn (.*)',asm,re.M)
+        assert headers and all('typed-ir rv64' in h for h in headers),'ARC escaped native coverage'
+
+
 run(['make', 'fpr'], timeout=300)
 with tempfile.TemporaryDirectory(prefix='fpr-arc-') as temp:
     tmp = Path(temp)
@@ -34,7 +44,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-arc-') as temp:
     build('tests/builtin_arc.fpr', image, tmp)
     assert 'AUTOMATIC ARC HOLDS' in boot(image)
     asm = (tmp / 'builtin.s').read_text()
-    assert 'j fpr_fn_loop' in asm, 'ARC lost tail-call elimination'
+    tail_loop(asm,'loop')
     symbols = run(['riscv64-unknown-elf-nm', image])
     assert not re.search(r'\b(?:fpr_apply\w*|fpr_\w*(?:actor|sched|fuel)\w*)\b', symbols)
     print('10,000 sharing/escape cycles in 16 KiB; zero live allocations; tail calls: PASS')
@@ -57,7 +67,7 @@ with tempfile.TemporaryDirectory(prefix='fpr-arc-') as temp:
         '_ = Mem.write32 p (Word.fromInt 10000); again.\n')
     build(nullary, image, tmp)
     boot(image)
-    assert 'j fpr_fn_again' in (tmp/'builtin.s').read_text()
+    tail_loop((tmp/'builtin.s').read_text(),'again')
     print('Nullary tail recursion with effectful termination: PASS')
 
     prelude = tmp / 'prelude.fpr' 

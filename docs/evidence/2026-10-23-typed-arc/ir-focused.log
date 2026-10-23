@@ -1,0 +1,29 @@
+
+check_base: FAILED: tests/check_typed_ir.py
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 162, in _work
+    fn(tmp)
+    ~~^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 105, in job
+    print(run(['python3', path], timeout=timeout).stdout, end='')
+          ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_base.py", line 73, in run
+    raise AssertionError(f'{args}: exit {p.returncode}, expected {expected}\n{out}\n{err}')
+AssertionError: ['python3', 'tests/check_typed_ir.py']: exit 1, expected 0
+Typed IR verifier: a well-formed function accepted, 24 malformations refused by name PASS
+Typed IR bit operations and shifts: lowered as declared HAL names, bits.c semantics, exact trap text and order PASS
+Typed IR dead arms, nullary definitions, function/HAL/primitive values, whole-program lookups: lowered, verified, evaluated with the legacy trap text PASS
+Typed IR generic application: local, partial, over-saturated and computed heads through the runtime's apply, traps by name PASS
+Typed IR HAL application: partial and opaque-arity calls use verified function-object application PASS
+Typed IR simplification: conversion pairs folded, Bool joins threaded, pure operations shared per block, dead pure definitions dropped; evaluator results, traps and events unchanged on every fixture PASS
+Typed IR worker metadata: ordered mixed parameters, renaming, Bool equality/aliases, missing and malformed signatures PASS
+Typed IR lowering: the generator's fib and sum shapes lower, verify, dump stably and evaluate to reference answers, exact traps and structural tick counts; unsupported forms are refused by name PASS
+
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir.py", line 46, in <module>
+    run(['./fpr', 'build', FIXTURE, '-o', exe])
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir.py", line 30, in run
+    assert p.returncode == expected, (args, p.returncode, p.stdout[-3000:], p.stderr[-3000:])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: (['./fpr', 'build', 'tests/typed_ir/scalar.fpr', '-o', PosixPath('/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-typed-ir-osh4_xix/scalar')], 1, '', 'fpr: /Users/jasonqin/.cache/fpr/build/scalar-32600.s.log: openFile: permission denied (Operation not permitted)\n')

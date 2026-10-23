@@ -85,6 +85,7 @@ jobs:
           python3 -u tests/check_typed_ir_qrv64.py --require-execution
           python3 -u tests/check_typed_ir_esp.py --require-execution
           python3 -u tests/check_typed_ir_builtin.py --require-execution
+          python3 -u tests/check_typed_ir_arc.py --require-execution
       - name: Typed IR RV64 Linux (TLS and actor runtime)
         env:
           FPR_TYPED_IR_BACKEND: mixed

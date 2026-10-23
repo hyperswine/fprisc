@@ -17,7 +17,7 @@ module Codegen.Lower (lowerFn, lowerProgram, Reason, Prim (..)) where
 
 import Codegen.IR
 import Codegen.Policy
-import Codegen.Target.Common (mangleName)
+import Codegen.Target.Common (mangleName, functionSymbol)
 import Control.Monad (when)
 import Control.Monad.Except (ExceptT, catchError, runExceptT, throwError)
 import Control.Monad.State.Strict
@@ -240,6 +240,12 @@ calleeOf cx h n
   | Just (ps, _) <- M.lookup h (cxProg cx), length ps == n =
       let (pts, r) = M.findWithDefault (map (const TVal) ps, TVal) h (cxSigs cx)
        in Just (Callee h Local pts r)
+  -- Ownership lowering introduces a closed set of consuming C adapters.
+  -- Local source definitions still win; these calls have runtime costs,
+  -- and never become generated-code fuel boundaries.
+  | polProfile (cxPolicy cx) == BuiltinArc, "$arc." `isPrefixOf` h,
+    Just a <- M.lookup h (cxExt cx), a == n =
+      Just (Callee h (Foreign (functionSymbol h)) (replicate n TVal) TVal)
   | Just a <- M.lookup h (cxExt cx), a == n = Just (Callee h Imported (replicate n TVal) TVal)
   -- a primitive with a direct C entry: the legacy generator's
   -- `call fpr_prim_fn_<name>` for a core primitive and `call
@@ -316,6 +322,11 @@ lowerTail cx env expr = ended (go expr) >> pure ()
     -- a dead arm: exhaustiveness proved it unreachable; the legacy generator
     -- emits the trap there (`la a0, <str>; call fpr_panic`) and so does the IR
     CErr msg -> close (TUnreachable msg)
+    CVar h | polProfile (cxPolicy cx) == BuiltinArc,
+      not (case M.lookup h (cxProg cx) of Just ([],CMk _ _ []) -> True; _ -> False),
+      M.notMember h env, Just c <- calleeOf cx h 0 ->
+      if h == cxSelf cx then close (TBr (cxEntry cx) [])
+      else close (TTailCall c [])
     e
       | (CVar h, args@(_ : _)) <- spineOf e,
         M.notMember h env,
@@ -361,6 +372,7 @@ lowerVal :: Cx -> Env -> Core -> L (VId, Ty)
 lowerVal cx env = \case
   CVar x
     | Just r <- M.lookup x env -> pure r
+    | polProfile (cxPolicy cx) == BuiltinArc, "$sym." `isPrefixOf` x -> symbolValue (drop 5 x)
     | Just ([], CMk t v []) <- M.lookup x (cxProg cx) -> nullary t v
     -- a nullary definition is evaluated by a call (the legacy `call fpr_fn_<x>`)
     | Just ([], _) <- M.lookup x (cxProg cx) -> callValue (Callee x Local [] TVal)

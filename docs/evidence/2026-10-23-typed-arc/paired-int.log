@@ -1,0 +1,21 @@
+Paired round 1/3
+Paired round 2/3
+Paired round 3/3
+{
+  "compiler_sha256": "7cb6b60fbedc4d2855c038a4adf30c0f9445af099306e8c8fad489a9c1830b4f",
+  "scope": "Paired QEMU guest work for legacy/typed ARC, using the real FP-RISC heap.\nDeterministic guest instruction counts, not physical elapsed-time speedups.\n",
+  "runs": 3,
+  "samples_guest_insns": {
+    "legacy": [
+      1537312028,
+      1537312028,
+      1537312028
+    ],
+    "mixed": [
+      2174972634,
+      2174972634,
+      2174972634
+    ]
+  },
+  "ratio": 1.4147893169284433
+}
