@@ -19,13 +19,17 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 11 -- 11: posix modules: the hart through initial-exec TLS (la.tls.ie), local labels PC-relative under .option pic; prior: 10: generic HAL partial/opaque application; prior 9: inferred boxed I64 operators; prior 8: inference-generated vector runtime entries; prior 7: typed column memory and kernel arithmetic; prior: 6: an ESP-IDF host keeps the legacy generator (its hart is fpr_esp_hart); 5: units with no legacy code skip translation; 4: in-place constructor reuse; 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
+rvSelectionRev = 13 -- 13: the ESP-IDF host (the hart in fpr_esp_hart, local-exec, the 32-bit word); prior: 12: 12: QOS RISC-V apps and plugins: the hart borrowed through fpr_g_tlsoff; prior: 11: 11: posix modules: the hart through initial-exec TLS (la.tls.ie), local labels PC-relative under .option pic; prior: 10: generic HAL partial/opaque application; prior 9: inferred boxed I64 operators; prior 8: inference-generated vector runtime entries; prior 7: typed column memory and kernel arithmetic; prior: 6: an ESP-IDF host keeps the legacy generator (its hart is fpr_esp_hart); 5: units with no legacy code skip translation; 4: in-place constructor reuse; 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
 
 -- HartTp: the hart pointer is tp (bare metal, QOS); HartTls: the posix
 -- runtime's thread-local cell, local-exec (an executable); HartTlsIe: the
 -- same cell through initial-exec TLS, the GOT entry a loaded posix module
 -- resolves against its host's cell (RV64.lowerPosixRV64's shared form)
-data RVHart = HartTp | HartTls | HartTlsIe deriving (Eq, Show)
+-- HartQos: a loaded QOS app or plugin borrows the host's thread-local cell
+-- through the displacement QOS publishes in fpr_g_tlsoff (RV64.lowerQosRV64)
+-- HartTlsEsp: the ESP-IDF host's thread-local cell (fpr_esp_hart), local-exec
+-- on the 32-bit word (Compile.espTls's form)
+data RVHart = HartTp | HartTls | HartTlsIe | HartQos | HartTlsEsp deriving (Eq, Show)
 data RVConfig = RVConfig
   { cfgWidth :: Width, cfgPolicy :: Policy, cfgHart :: RVHart, cfgExports :: S.Set String,
     cfgWeak :: Bool, cfgSelfLoops :: Bool }
@@ -284,7 +288,7 @@ emitFnRV cfg fn = do
   let saveObjects = [frameObj (-n-1) (wordBytes cfg) (wordBytes cfg) (SavedRegister r) False | (n,Phys r) <- zip [0..] (alSaved allocation)]
       ly = layout (2 * wordBytes cfg) 16 (saveObjects ++ alSlots allocation)
       (shallow, body) = shallowEntry (polStackCheck (cfgPolicy cfg)) (lyBytes ly) (alBody allocation)
-  let ceiling = if cfgHart cfg `elem` [HartTls, HartTlsIe] then 32768 else 1024
+  let ceiling = if cfgHart cfg `elem` [HartTls, HartTlsIe, HartQos, HartTlsEsp] then 32768 else 1024
   when (lyBytes ly > ceiling) (Left ("RISC-V frame exceeds the profile ceiling of " ++ show ceiling ++ " bytes"))
   let reg (Phys r) = r
       off ref = toInteger (lyOffset ly M.! ref)
@@ -335,6 +339,8 @@ render cfg fn ly restores (I i) = map (\s -> if last s == ':' then s else "    "
       HartTp -> ["mv t3, tp"]
       HartTls -> ["lui t3, %tprel_hi(fpr_posix_hart)", "add t3, t3, tp, %tprel_add(fpr_posix_hart)", ld ++ " t3, %tprel_lo(fpr_posix_hart)(t3)"]
       HartTlsIe -> ["la.tls.ie t3, fpr_posix_hart", "add t3, t3, tp", ld ++ " t3, 0(t3)"]
+      HartQos -> ["lla t3, fpr_g_tlsoff", ld ++ " t3, 0(t3)", "add t3, t3, tp", ld ++ " t3, 0(t3)"]
+      HartTlsEsp -> ["lui t3, %tprel_hi(fpr_esp_hart)", "add t3, t3, tp, %tprel_add(fpr_esp_hart)", ld ++ " t3, %tprel_lo(fpr_esp_hart)(t3)"]
     l suffix = local fn (Label (siNote i ++ suffix))
     stack = [ld ++ " t5, " ++ show (57*w) ++ "(t3)", "sub t4, sp, t5", ld ++ " t5, " ++ show (58*w) ++ "(t3)", "bltu t4, t5, " ++ l "_stk", "call fpr_stack_grow", "beqz a0, " ++ l "_same", "mv sp, a0", l "_same" ++ ":"] ++ hart ++ [l "_stk" ++ ":"]
     tick = tickN 1

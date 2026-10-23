@@ -99,9 +99,9 @@ On AArch64 (Mach-O, this Mac), with `FPR_TYPED_IR_BACKEND=mixed`:
 |---|---|---|---|
 | Fused vector kernels (`emitSpecs`: map, filter, fold, write-back fold, record SoA, matrix-vector, pipelines; the unboxed `fpr_ufn_` clones; NEON lanes on A64, RVV on RISC-V) | typed kernels in the IR, with vector operations, at the legacy kernels' speed | both translators, for any unit with a kernel | the largest item: about 1,000 lines of hand-written kernel text and its NEON forms |
 | The default | promotion per target with a rollback switch, and the tests that pin legacy behaviour moved to name the legacy backend explicitly | the translators for every build that does not opt in | the decision; the Base suite's test sweep is done on this branch (twelve scripts, above); scripts outside the Base suite are not swept |
-| x86-64 and RISC-V QOS apps (`qx64`, `qrv64`) | the host's TLS offset cell for the hart (and x86-64's argument cells 7 and 8) | `X64.hs` for QOS x86-64 apps; the RISC-V generator for QOS RISC-V apps | small, but untestable here (no x86-64 or RISC-V QOS run environment) |
+| x86-64 and RISC-V QOS apps (`qx64`, `qrv64`) | done: `qx64` in the [x86-64 retirement](2026-10-23-X64-RETIREMENT.md), `qrv64` in [typed QOS RISC-V apps](2026-10-23-TYPED-QRV64.md) | nothing | 0 (no RISC-V QOS run environment here: emission and QEMU oracles) |
 | Builtin and ARC profiles (bare metal, Tang Nano, drivers) | a typed lowering of their ownership, allocator and root contracts | the RISC-V generator | large; a separate project |
-| ESP-IDF host (RV32 P4) | its own hart read (`fpr_esp_hart`) | the RISC-V generator | small, testable only on the board |
+| ESP-IDF host (RV32 P4) | done: [typed ESP-IDF](2026-10-23-TYPED-QRV64.md) (QEMU oracle; the board not run) | nothing | 0 |
 | RISC-V posix modules (`--module` on rv64) | done: [typed RV64 modules](2026-10-23-TYPED-RV64-MODULES.md) | nothing | 0 |
 | Legacy opt-in modes (self loops, retained and costed registers, compact frames, frame pairs, fit guards), `Peephole.hs`, the `# wcet:` bound | nothing: they exist only for legacy emission | themselves | retire with the generator's users; QOS documents the `# wcet:` metric, and its admission contract needs the native metric's migration first |
 
