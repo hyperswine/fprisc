@@ -336,6 +336,13 @@ lowerRecordKernel policy callbacks k = do
     checked = either (Left . ("compiler error: " ++)) Right
     columns = recordColumns k
     operation = recordOperation k
+    -- The descriptor guarantees at least the highest predicate column. Cache
+    -- a bounded prefix of those bases once, even when the predicate reads a
+    -- sparse subset. Wider/unknown columns retain the dynamic fuel loop.
+    cachedColumnCount = case operation of
+      RecordFilter _ -> min 16 (1 + maximum (map fst columns))
+      _ -> 0
+    baseIndices = M.keys (M.fromList [(n,()) | n <- map fst columns ++ [0..cachedColumnCount-1]])
     accumulatorKinds = case operation of RecordFold _ ty -> [ty]; _ -> []
     w = if policyWidth policy == W32 then 4 else 8
     indexed a i = value TAddr (OIndex a i)
@@ -393,7 +400,7 @@ lowerRecordKernel policy callbacks k = do
       end (TCondBr empty done [acc0,zero] setup [])
       begin setup []
       cols <- load TAddr addr (8+5*w)
-      bases <- M.fromList <$> forM columns (\(n,_) -> do idx <- constant (fromIntegral n); b <- baseAt cols idx; pure (n,b))
+      bases <- M.fromList <$> forM baseIndices (\n -> do idx <- constant (fromIntegral n); b <- baseAt cols idx; pure (n,b))
       i <- fresh TInt; kept <- fresh TInt; acc <- fresh TVal
       -- the GPU hook answers a tagged Int when it took the fold, 0 when it declined
       when (recordGpuPairSum k) $ do
@@ -430,11 +437,25 @@ lowerRecordKernel policy callbacks k = do
         RecordFilter f -> do
           out <- callback callbacks f (map ((values M.!) . fst) columns)
           keep <- value TPred (OTruth out)
-          copy <- label; copyLoop <- label; copyBody <- label; copied <- label
+          copy <- label; copyPrefix <- label; copyLoop <- label; copyBody <- label; copied <- label
           end (TCondBr keep copy [] next [fst kept,fst acc])
           begin copy []
           same <- value TPred (OCmp Eq (fst i) (fst kept))
-          end (TCondBr same copied [] copyLoop [zero])
+          end (TCondBr same copied [] copyPrefix [])
+          begin copyPrefix []
+          -- Copy all cached columns, including fields unused by the predicate.
+          -- Pay this bounded strip's column ticks before its ordered stores.
+          -- No callback or checked arithmetic occurs inside the strip; the
+          -- fixed cap keeps its selected segment finite. Unknown tail columns
+          -- still yield individually in the dynamic loop below.
+          when (polFuel policy) (effect (OSafepointN cachedColumnCount))
+          forM_ [0..cachedColumnCount-1] $ \n -> do
+            src <- indexed (bases M.! n) (fst i)
+            dst <- indexed (bases M.! n) (fst kept)
+            word <- load TVal src 0
+            effect (OStore TVal dst 0 word)
+          firstDynamic <- constant (fromIntegral cachedColumnCount)
+          end (TBr copyLoop [firstDynamic])
           j <- fresh TInt
           begin copyLoop [j]
           moreCols <- value TPred (OCmp Lt (fst j) ncols)

@@ -7,6 +7,21 @@ static V cells[300][100], expected[300][100];
 static uint8_t kinds[300];
 static Col col[300];
 static Col *cols[300];
+/* Unread fields are opaque words, even when their kinds advertise F64/F32
+   or boxed data. Preserve signed zero, NaNs, extrema and pointer-like bits. */
+static V opaque_cell(int c,int i) {
+    uintptr_t n=(uintptr_t)((unsigned)(c+1)*0x9e3779b9U) ^ (unsigned)(i+17);
+    switch((c+i)%8) {
+    case 0: return 0;
+    case 1: return (V)UINTPTR_MAX;
+    case 2: return (V)((uintptr_t)1 << (8*sizeof(V)-1));
+    case 3: return (V)(UINT64_C(0x7ff800007fc00000) | n);
+    case 4: return (V)&fpr_true;
+    case 5: return (V)(UINT32_C(0x7fc00001) | (unsigned)i);
+    case 6: return (V)UINT32_C(0x80000000);
+    default: return (V)n;
+    }
+}
 int main(void) {
 #ifdef __riscv
     __asm__ volatile("mv tp,%0" :: "r"(hart) : "memory");
@@ -58,16 +73,20 @@ int main(void) {
         CHECK(*(V*)((char*)pair+8+sizeof(V))==(V)&v);
         cases++;
     }
-    /* A predicate that reads column 299 exercises both a large directory
-       index and a kind byte beyond the IR's immediate displacement range. */
+    /* Canonical field order is lexical: z299 is physical column 222 among
+       z0..z299. Distinct unread-field payloads catch a wrong field index as
+       well as corrupted copies, across a wide directory and kind offset. */
+    const int predicate_col=222;
     for(int c=0;c<300;c++) {
-        kinds[c]=1;col[c]=(Col){100,cells[c]};cols[c]=&col[c];
-        for(int i=0;i<5;i++) cells[c][i]=i-2;
+        kinds[c]=c==predicate_col?1:(c%4==0?0:c%4==1?1:c%4==2?3:7);
+        col[c]=(Col){100,cells[c]};cols[c]=&col[c];
+        for(int i=0;i<5;i++) cells[c][i]=c==predicate_col?i-2:opaque_cell(c,i);
     }
     Vec wide={9006,3,5,shape,variant,300,kinds,cols};
     CHECK(fpr_fn_probeLastFilter((V)&wide)==(V)&wide && wide.len==2);
-    for(int c=0;c<300;c++) CHECK(cells[c][0]==1 && cells[c][1]==2);
+    for(int c=0;c<300;c++) CHECK(cells[c][0]==(c==predicate_col?1:opaque_cell(c,3)) && cells[c][1]==(c==predicate_col?2:opaque_cell(c,4)));
     /* Reject bad descriptors before dereferencing the absent column table. */
+    for(int c=0;c<9;c++) kinds[c]=1;
     Vec bad={9006,2,5,shape,variant,9,0,0};
     CHECK(fpr_fn_probeRecordFilter((V)&bad)==123);
     bad.rep=3;bad.tidEl=shape+1;

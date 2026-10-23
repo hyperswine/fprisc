@@ -44,6 +44,18 @@ INTERNAL = {
 INTERNAL["records"] = ((ROOT / "tests/typed_ir/record_kernels.fpr").read_text()
     .split("main =")[0].replace("unsafe base.\n", ""), "0",
     7 + sum(2*(10*i+45)+3 for i in range(100000) if 10*i+45 > 400))
+# Discard nine rows out of ten, with moved survivors throughout the input.
+# The old record workload mostly kept rows and hid the compaction costs.
+INTERNAL["recordcompact"] = (INTERNAL["records"][0].replace(
+    "keepRecord r = total r > 400.",
+    "keepRecord r = t = total r; t - 90 * (t / 90) >= 81."), "0",
+    7 + sum(2*(9*i+36)+3 for i in range(1000000) if i % 10 == 5))
+
+INTERNAL["recordcompactlast"] = (INTERNAL["records"][0].replace(
+    "keepRecord r = total r > 400.",
+    "keepRecord r = (r.f8 / 10) * 10 == r.f8."), "0",
+    7 + sum(2*(9*i+36)+3 for i in range(1000000) if i % 10 == 2))
+
 for bits in (64, 32):
     name = "cmpchain64" if bits == 64 else "f32trees"
     defs = (f"loopFloat{bits} : unsafe Int -> F{bits} -> Int -> Int .\n"
@@ -114,6 +126,11 @@ def main():
                     "  w = probeRecordMap v; x = probeRecordCaptured c w; y = probeRecordFilter x;\n"
                     "  (value,z) = probeRecordFold 2 3 7 y; ns = Bench.elapsed Unit; _ = Vec.free z;\n"
                     '  print "{value} {ns}".\n')
+        if name.startswith("recordcompact"):
+            body = ("v = fill (Vec.new Unit) 0 1000000; _ = Bench.start Unit;\n"
+                    "  y = probeRecordFilter v; ns = Bench.elapsed Unit;\n"
+                    "  (value,z) = probeRecordFold 2 3 7 y; _ = Vec.free z;\n"
+                    '  print "{value} {ns}".\n')
         if name == "simdintmap":
             body = ("v = Vec.iota 1000000; (n,v) = Vec.len v; _ = Bench.start Unit;\n"
                     "  w = Vec.map (inc n) v; ns = Bench.elapsed Unit;\n"
@@ -149,7 +166,7 @@ def main():
             for x in extra:
                 cmd += ["--with", x]
             t0 = time.perf_counter()
-            _, err = run(cmd, env)
+            _, err = run(cmd, dict(env, FPR_TYPED_IR_STRICT="all") if name.startswith("recordcompact") else env)
             wall = time.perf_counter() - t0
             m = re.search(r"(\d+)\s+maximum resident set size", err)
             rss = int(m.group(1)) if m else None
@@ -158,6 +175,8 @@ def main():
             notes = [l for l in err.splitlines() if l.startswith("typed-ir-backend: ")]
             native_fns = re.findall(r"^# fn (\S+) \(arity \d+\) typed-ir a64", asm_text, re.M)
             legacy_fns = re.findall(r"^# fn (\S+) \(arity \d+\)(?! typed-ir)", asm_text, re.M)
+            if name.startswith("recordcompact"):
+                assert not legacy_fns and "# typed IR: no translation" in asm_text, "record compaction benchmark must be entirely native"
             size_out, _ = run(["size", exe], env)
             text_bytes = int(size_out.splitlines()[1].split()[0])
             builds[(name, variant)] = {
@@ -215,7 +234,12 @@ def main():
         "cc": run(["cc", "--version"], base)[0].splitlines()[0],
         "protocol": {"runs": args.runs, "warmups": 1, "harts": 1,
                      "order": "rotating by one each round, reversed every other block",
-                     "internal_timers": list(INTERNAL), "process_wall_timers": WALL,
+                     "internal_timers": [w for w in workloads if w in INTERNAL],
+                     "process_wall_timers": [w for w in workloads if w in WALL],
+                     "record_compaction": {w: {"input_rows": 1000000, "kept_rows": 100000,
+                                       "keep_pattern": "input index % 10 == " + ("2" if w.endswith("last") else "5"),
+                                       "timed": "filter only; fill and independent fold verification excluded"}
+                                       for w in workloads if w.startswith("recordcompact")},
                      "limits": "host background work and frequency uncontrolled; no energy measurement; "
                                "mixed-mode coverage is recorded per build; speedups cannot be attributed to one pass without a separate comparison"},
         "variants": {v: VARIANTS[v] for v in variants},

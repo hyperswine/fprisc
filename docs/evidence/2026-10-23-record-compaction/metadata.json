@@ -1,0 +1,29 @@
+{
+  "starting_commit": "bcd523d7130370f02498b45ce023bfef174ed5cc",
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "codegen_revision": 80,
+  "compiler_sha256": "88f8b2e55718dcb4f291579d90e7cdf56709fa5491451b5132ec3f07700e209d",
+  "baseline_compiler_sha256": "1babd65bb045a5997f0c60f2276f13cfbce92797e71beb65ed130c394eb2dc75",
+  "sources_sha256": {
+    "compiler/Codegen.hs": "c49698c258469c5e567af40e84f3ecb7c74b6cde18465a83dfc017a4a2e37602",
+    "compiler/Codegen/IR.hs": "5728da907964b3dacfdfb5ba64e607e0bdbec3b4a29265d4c7b5d4a8d158a83e",
+    "compiler/Codegen/Kernel.hs": "10d0196444424890563ca2bb15365838146803d6f4326851e29075a25db66efc",
+    "tests/typed_ir/record_oracle.c": "b2e47cf7744e9adc2513099c97a28b9879ee09a4a5fe04a82bd63942c9988e06",
+    "tools/bench-typed-ir-m3.py": "5029c0ea283cc2feaa799e1c30d32681f294feacabe3413272a4ead9c9dc123e"
+  },
+  "scope": "Bounded prefix, at most 16 bases; unknown dynamic tail unchanged. Local AArch64 timings, independent x64/RV oracles, complete Base and QOS native metric gates. No physical or hosted CI result claimed.",
+  "base_validation": {
+    "jobs": 118,
+    "seconds": 445,
+    "workers": 4,
+    "exit_code": 0
+  },
+  "qos_native_validation": {
+    "functions": 1669,
+    "files": 27,
+    "segmax": 312,
+    "runtime_call_sites_max": 67,
+    "exit_code": 0
+  },
+  "kernel_final_validation": "Current 1500-case opaque-field oracle and all other kernel cases passed within the complete Base sweep"
+}

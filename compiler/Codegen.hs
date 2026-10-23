@@ -69,7 +69,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 78 -- native RVV startup and plain bare-metal plugin selection
+codegenRev = 80 -- fuel-counted record compaction strips with hoisted column bases
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value

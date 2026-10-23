@@ -1,0 +1,52 @@
+Remaining frame fallback audit - NOT IMPLEMENTED by this increment
+
+Source facts:
+- RV.emitFnRV refuses >1024 bytes with HartTp, >32768 with other hosted
+  hart forms. A64 and X64 refuse >32768. StackStatic builtin RV bypasses it.
+- All current prologues decrement SP and write the frame before entry.check.
+  Raising/removing the cap cannot make an arbitrary large frame safe.
+- actors.c uses min(STACK_SZ/2,64KiB) headroom. ESP's first segment is 64KiB,
+  so even the existing 32768-byte ESP selector ceiling needs attention.
+- The runtime does not move live frames. fpr_stack_grow returns a fresh SP;
+  locals stay relative to the old FP, and returns restore the old stack.
+- stack_grow_at(sp) returns 0 for foreign/unknown stacks. Passing sp-N to
+  fake exhaustion is wrong: it can trigger that unknown-stack path.
+- Actor 0 has a real buddy stack too (fpr_actors_init); the hart boot stack
+  is the scheduler's, not the FP-RISC main stack.
+- fpr_plane_memory_t ABI is currently 2, with stack_grow(sp). A sized reserve
+  operation needs a coordinated plane export/app-side/ABI acceptance change.
+
+Proposed next implementation:
+- Add a real stack_reserve(sp_before_frame, required_bytes), choosing/reusing
+  a segment large enough for frame plus C headroom and segment metadata,
+  with overflow, actor ceiling and exhaustion checks. Keep existing grow's
+  lazy segment reclamation and preserve its old zero-reservation behavior.
+- For large frames, check room BEFORE the full decrement or any frame store.
+  A fast precheck can avoid a C call when the current segment has room.
+- On slow path, stage incoming register arguments and original link state in
+  a bounded small frame, call reserve, restore inputs, then construct the
+  full frame on the selected stack. Ordinary C preserves callee-saved GPRs
+  and A64 low d8-d15; no live arguments may be lost at this call.
+- Save original entry SP in an extra frame-header word, separately from FP.
+  Large-frame return and tail transfer must restore that SP, old FP/link and
+  callee-saved state. A self-loop must reuse this frame, not reserve again.
+- A64/RV FP is currently entry SP; x64 FP is entry SP+8, its call-alignment
+  bias is 8, and its incoming return address is already at entry SP. Preserve
+  x64's synthetic link/unwind layout if selecting a different segment.
+- Reflect helper calls and all prologue instructions in native reports;
+  allocation checking alone does not account for an unmodelled C call.
+- Treat initialized actor stacks and foreign stack callers explicitly;
+  never assume an unknown stack has arbitrary headroom. Builtin StackStatic
+  must retain its existing manual/GC/ARC C ABI and no-fuel policy.
+
+Required acceptance before deleting caps/fallback:
+- Real large (>first segment/headroom) frames and nested recursion on native
+  A64, x64 and RV32/RV64, including live values, >8 args, self loops and tails.
+- Hostile slow-path register clobbers; exact restoration and finite selected
+  reports; independent bounds/allocation validation and refusal controls.
+- Real actor growth/reuse/reaping, stack ceiling/exhaustion and guarded pages.
+- Posix modules, QOS plane/version refusal/loading, ESP's smaller first stack,
+  physical board scope, paired fast-path/large-frame performance and sweeps.
+- Replace the current strict-mode test's deliberate 200-value/1KiB refusal
+  with a real remaining boundary after support is implemented; do not merely
+  delete the named-refusal coverage or turn supported input into a refusal.

@@ -203,7 +203,7 @@ data Op
   | OFloat32CmpTree CmpOp FloatTree FloatTree
   | OFloat32Bin FloatOp VId VId -- TVal TVal -> TVal: F32 arithmetic on the low 32 bits of the word (the runtime's F32 word), inline (the legacy genU F32.+ - * /)
   | OFloat32Cmp CmpOp VId VId -- TVal TVal -> TPred: F32 ordered comparison, as OFloatCmp
-  | OSafepointN Int -- n fuel ticks at once: a SIMD pair charges both elements' callback entry ticks, as the legacy kernel does
+  | OSafepointN Int -- n fuel ticks before a bounded SIMD pair or callback-free compaction strip
   | OSimdPair Bool SimdExpr [VId] VId -- raw captures (TInt or F64 bits), TAddr: the two Int (True) or F64 (False) lanes at the address, mapped in place through the expression (NEON/SSE2, one 128-bit register); an Int lane that leaves the 63-bit range traps with the kernel diagnostic
   | ORvvVlMax -- :: TInt; RISC-V V: the lanes one vector register holds at the word's element width (vsetvli x0)
   | ORvvLanes VId VId -- TAddr, TInt n -> TPred: RISC-V V: vl = n, the n Int lanes at the address loaded into the vector unit, true when every lane is within rvvLaneBound; the lanes stay loaded for ORvvSumLoaded, which follows with no other vector operation between

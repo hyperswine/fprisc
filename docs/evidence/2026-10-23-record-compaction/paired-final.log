@@ -1,0 +1,64 @@
+built recordcompact-baseline: 1.06s, rss 141000704, native 36 / legacy 0 in the root
+built records-baseline: 0.71s, rss 94814208, native 36 / legacy 0 in the root
+built recordcompact-typed-ir: 1.02s, rss 141033472, native 36 / legacy 0 in the root
+built records-typed-ir: 0.65s, rss 94830592, native 36 / legacy 0 in the root
+round 1/31
+round 2/31
+round 3/31
+round 4/31
+round 5/31
+round 6/31
+round 7/31
+round 8/31
+round 9/31
+round 10/31
+round 11/31
+round 12/31
+round 13/31
+round 14/31
+round 15/31
+round 16/31
+round 17/31
+round 18/31
+round 19/31
+round 20/31
+round 21/31
+round 22/31
+round 23/31
+round 24/31
+round 25/31
+round 26/31
+round 27/31
+round 28/31
+round 29/31
+round 30/31
+round 31/31
+# M3 paired measurements
+
+revision bcd523d7130370f02498b45ce023bfef174ed5cc, compiler sha256 88f8b2e55718, macOS-27.0.1-arm64-arm-64bit-Mach-O
+31 rounds; internal timers: recordcompact, records; process wall:
+
+## typed-ir against baseline
+
+| workload | timer | baseline median ms | typed-ir median ms | median of paired ratios | 95% bootstrap CI | faster pairs |
+|---|---|---:|---:|---:|---:|---:|
+| recordcompact | internal | 12.490 | 12.345 | 0.9813 | 0.9647..1.0126 | 19/31 |
+| recordcompact | wall | 54.484 | 54.191 | 1.0028 | 0.9916..1.0075 | 15/31 |
+| records | internal | 8.940 | 8.317 | 0.9318 | 0.9253..0.9379 | 31/31 |
+| records | wall | 17.871 | 17.159 | 0.9650 | 0.9551..0.9685 | 29/31 |
+
+## Builds
+
+| build | compile wall s | compiler max RSS MiB | binary bytes | __TEXT bytes | native functions in the root | legacy functions in the root |
+|---|---:|---:|---:|---:|---:|---:|
+| recordcompact-baseline | 1.06 | 134.5 | 471288 | 311296 | 36 | 0 |
+| records-baseline | 0.71 | 90.4 | 470928 | 311296 | 36 | 0 |
+| recordcompact-typed-ir | 1.02 | 134.5 | 471288 | 311296 | 36 | 0 |
+| records-typed-ir | 0.65 | 90.4 | 470928 | 311296 | 36 | 0 |
+
+## Coverage under the backend (root unit)
+
+- recordcompact-baseline: capture, fill, keepRecord, main, probeRecordCaptured, probeRecordFilter, probeRecordFold, probeRecordMap, rotate, sampleRow, step, total, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5ffold_x5fstep, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f0, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f1, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f2, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f3, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f4, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f5, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f6, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f7, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f8, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f0, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f1, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f2, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f3, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f4, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f5, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f6, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f7, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f8, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5frfilter_x5fkeepRecord, $vkernel:fpr_vspec_fold_step, $vkernel:fpr_vspec_mvmap_capture, $vkernel:fpr_vspec_mvmap_rotate, $vkernel:fpr_vspec_rfilter_keepRecord
+- records-baseline: capture, fill, keepRecord, main, probeRecordCaptured, probeRecordFilter, probeRecordFold, probeRecordMap, rotate, sampleRow, step, total, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5ffold_x5fstep, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f0, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f1, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f2, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f3, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f4, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f5, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f6, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f7, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f8, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f0, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f1, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f2, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f3, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f4, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f5, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f6, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f7, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f8, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5frfilter_x5fkeepRecord, $vkernel:fpr_vspec_fold_step, $vkernel:fpr_vspec_mvmap_capture, $vkernel:fpr_vspec_mvmap_rotate, $vkernel:fpr_vspec_rfilter_keepRecord
+- recordcompact-typed-ir: capture, fill, keepRecord, main, probeRecordCaptured, probeRecordFilter, probeRecordFold, probeRecordMap, rotate, sampleRow, step, total, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5ffold_x5fstep, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f0, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f1, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f2, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f3, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f4, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f5, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f6, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f7, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f8, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f0, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f1, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f2, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f3, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f4, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f5, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f6, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f7, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f8, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5frfilter_x5fkeepRecord, $vkernel:fpr_vspec_fold_step, $vkernel:fpr_vspec_mvmap_capture, $vkernel:fpr_vspec_mvmap_rotate, $vkernel:fpr_vspec_rfilter_keepRecord
+- records-typed-ir: capture, fill, keepRecord, main, probeRecordCaptured, probeRecordFilter, probeRecordFold, probeRecordMap, rotate, sampleRow, step, total, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5ffold_x5fstep, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f0, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f1, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f2, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f3, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f4, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f5, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f6, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f7, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5fcapture_x5f8, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f0, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f1, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f2, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f3, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f4, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f5, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f6, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f7, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5fmvmap_x5frotate_x5f8, $vkernel:fpr_tkfn__x24record_x3afpr_x5fvspec_x5frfilter_x5fkeepRecord, $vkernel:fpr_vspec_fold_step, $vkernel:fpr_vspec_mvmap_capture, $vkernel:fpr_vspec_mvmap_rotate, $vkernel:fpr_vspec_rfilter_keepRecord
