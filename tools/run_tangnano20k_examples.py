@@ -134,8 +134,11 @@ def main():
     env = {**os.environ, 'FPR_PRESET': 'fprisc-48', 'FPR_QEMU': str(int(args.target == 'qemu')),
            'FPR_HEAP_REPORT': '1'}
     report = dict(preset='fprisc-48', target=args.target, mode=mode, passed=False,
-                  suite_complete=False, repository=repository(ROOT), cases=[])
-    # Invalidate a previous pass before any work, including interrupted runs.
+                  suite_complete=False, repository=None, cases=[])
+    # Invalidate a previous pass before any work, including interrupted runs
+    # and the identity lookup below (git can refuse a container's checkout).
+    (out / 'results.json').write_text(json.dumps(report, indent=2) + '\n')
+    report['repository'] = repository(ROOT)
     (out / 'results.json').write_text(json.dumps(report, indent=2) + '\n')
     try:
         require(math.isfinite(args.timeout) and args.timeout > 0, '--timeout must be finite and positive')

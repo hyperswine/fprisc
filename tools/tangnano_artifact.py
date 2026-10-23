@@ -15,8 +15,15 @@ def sha(path):
 
 
 def repository(root):
-    return {'revision': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(),
-            'diff_sha256': hashlib.sha256(subprocess.check_output(['git', 'diff', 'HEAD'], cwd=root)).hexdigest()}
+    """The checkout's revision and the SHA-256 of its diff. A checkout git cannot
+    read (a container owned by another user, no .git) is reported as such, never
+    raised: a runner must invalidate its report before any identity lookup."""
+    try:
+        return {'revision': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True, stderr=subprocess.STDOUT).strip(),
+                'diff_sha256': hashlib.sha256(subprocess.check_output(['git', 'diff', 'HEAD'], cwd=root, stderr=subprocess.STDOUT)).hexdigest()}
+    except (subprocess.CalledProcessError, OSError) as e:
+        detail = e.output.decode(errors='replace').strip() if isinstance(getattr(e, 'output', None), bytes) else str(getattr(e, 'output', None) or e)
+        return {'revision': None, 'diff_sha256': None, 'error': detail[-400:]}
 
 
 def main():
