@@ -4,7 +4,7 @@
   "compiler_sha256": "542309b031b966e2114c9918eb42b231e2df5472318d2c4b71a91f83e30ffcbf",
   "pre_deletion_compiler_sha256": "0d2efda480e1307eb85dc3c794630776c4412fc006f9e6a5ebde6ccba2ba3846",
   "source_sha256": {
-    ".github/workflows/ci.yml": "1f85735cd9fe2eb5094b0969f05713814987a362e01d8367615a8592d961c88a",
+    ".github/workflows/ci.yml": "e5f23b6b0b32fe4aa005ace5a0dfa682fa466e8dd3e261fae24139e90ef5a6b9",
     "compiler/Arc.hs": "281369aadb300958f3d86f6bb52f4426a964d6047962ff17e1cd2d92ee5cb520",
     "compiler/Build.hs": "da04fc3005f4f15c2d8c1a818206ae40d44f1d4c5f4886f5be710ef81e0d7fa6",
     "compiler/Codegen/Allocate.hs": "4c755da8d9a1d680a942b2d6495ef0bf69d346b0cde00da5fcfc1ab4f5da7e96",
@@ -247,5 +247,11 @@
     "qos/tests-host/pos1-check.py": "443d0df9361c5afb33fb10df8efe867c86900811331b34815c7c7a76be818de3"
   },
   "package_sha256": "67ecaeba2b9672e4d25aaa54faf9b8e8b7131c21e03dffb99e8ac994cc4a6f90",
-  "clean_compiler_sha256": "97cb83559bd25d29b3802eb726089c03a8e0343bf4569592954ab894af473dbb"
+  "clean_compiler_sha256": "97cb83559bd25d29b3802eb726089c03a8e0343bf4569592954ab894af473dbb",
+  "hosted_ci_dependency_repair": {
+    "failed_run": 39964023156,
+    "cause": "libclang_rt.asan_static.a and libclang_rt.asan.a absent from the no-recommends runner image",
+    "fix": "install libclang-rt-dev alongside clang; retain the ASan/UBSan heap oracle",
+    "production_source_changed": false
+  }
 }
