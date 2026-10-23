@@ -10,11 +10,18 @@
  * SysV has no callee-saved xmm registers, so integer state is the
  * whole contract.  Resuming jmp's to the saved pc with the saved rsp:
  * indistinguishable from fpr_ctx_switch having returned normally.
+ *
+ * Mach-O (macOS x86-64) spells C symbols with a leading underscore.
  */
+#ifdef __APPLE__
+#define SYM(x) _##x
+#else
+#define SYM(x) x
+#endif
     .text
     .balign 16
-    .globl fpr_ctx_switch
-fpr_ctx_switch:
+    .globl SYM(fpr_ctx_switch)
+SYM(fpr_ctx_switch):
     movq (%rsp), %rax          # caller's resume pc
     movq %rax,  0(%rdi)
     leaq 8(%rsp), %rax         # caller's sp once we "return"

@@ -234,3 +234,5 @@ they began.
 - [Typed RV32 float constants](2026-10-23-TYPED-RV32-FLOAT-CONSTANTS.md): explicit immutable numeric leaves, all-native boxed Base floats, independent bit/pooling oracles, real software-runtime and Tang Nano execution, and paired guest work.
 
 - [Typed native generator retirement](2026-10-23-TYPED-GENERATOR-RETIREMENT.md) - exclusive typed scalar/kernel/data generation, removed modes and final acceptance evidence.
+
+- [macOS x86-64 target](2026-10-24-X64-MACOS.md): Mach-O typed x64 output with Darwin TLV hart and argument cells, `--target=x64mac` and `fpr build --target=macos-x86_64`; Rosetta parity with AArch64 and the descriptor call's measured cost.

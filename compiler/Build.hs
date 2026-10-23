@@ -55,11 +55,11 @@ data Plan = Plan
     pCost :: Bool, -- --cost: print the root functions' work/alloc equations
     pManifest :: Maybe String, -- --manifest=FILE: judge them against a target manifest (passed through)
     pRest :: [String],
-    pTarget :: Maybe (String, String) -- --target=linux-aarch64|linux-x86_64|linux-riscv64: a cross build (os, arch); Nothing is this machine
+    pTarget :: Maybe (String, String) -- --target=linux-aarch64|linux-x86_64|linux-riscv64|macos-x86_64: a cross build (os, arch); Nothing is this machine
   }
 
 usage :: String
-usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep] [--module]\n                 [--target=linux-aarch64|linux-x86_64|linux-riscv64 --cc CROSS-GCC]\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --host=esp-idf [-o dir] [--port P] [-v]"
+usage = "usage: fpr build <prog.fpr> [-o out] [--harts N] [--cc CC] [-v] [--keep] [--module]\n                 [--target=linux-aarch64|linux-x86_64|linux-riscv64 --cc CROSS-GCC]\n                 [--target=macos-x86_64]  (on a Mac: x86-64 Mach-O, runs under Rosetta)\n                 [--with hal.c]... [--cflag F]... [--link F]...\n       fpr run <prog.fpr> [args...]\n       fpr build|run <prog.fpr> --host=esp-idf [-o dir] [--port P] [-v]"
 
 -- The hart CAP compiled in is this machine's processor count (it was a flat 2,
 -- so a server on a ten-core machine ran on two threads).  The running program
@@ -86,6 +86,7 @@ plan args = do
     go p ("--target=linux-aarch64" : rest) = go p {pTarget = Just ("linux", "aarch64")} rest
     go p ("--target=linux-x86_64" : rest) = go p {pTarget = Just ("linux", "x86_64")} rest
     go p ("--target=linux-riscv64" : rest) = go p {pTarget = Just ("linux", "riscv64")} rest
+    go p ("--target=macos-x86_64" : rest) = go p {pTarget = Just ("darwin", "x86_64")} rest
     go p ("--system=posix" : rest) = go p rest -- the only system these commands build
     go p ("--host=unix" : rest) = go p {pHost = "unix"} rest
     go p ("--host=esp-idf" : rest) = go p {pHost = "esp-idf"} rest
@@ -113,10 +114,16 @@ build p = do
         Nothing -> []
         Just (_, "aarch64") -> ["--target=a64"]
         Just (_, "riscv64") -> ["--target=rv64"]
+        Just ("darwin", "x86_64") -> ["--target=x64mac"]
         Just _ -> ["--target=x64"]
-  when (pTarget p /= Nothing && pCC p == Nothing) $ hPutStrLn stderr "fpr build: a --target cross build needs --cc (e.g. --cc aarch64-linux-gnu-gcc)" >> exitFailure
-  when (pTarget p /= Nothing && pModule p && tArch /= "riscv64") $
-    hPutStrLn stderr "fpr build: cross-built modules currently support linux-riscv64 only" >> exitFailure
+      -- a Mac builds the other Mac architecture with its own clang: -arch
+      -- picks the target, and the SDK is the same (docs/2026-10-24-X64-MACOS.md)
+      macCross = tOS == "darwin" && System.Info.os == "darwin" && tArch /= System.Info.arch
+      archFlags = if macCross then ["-arch", tArch] else []
+  when (macCross && tArch /= "x86_64") $ hPutStrLn stderr "fpr build: the only other Mac architecture built is macos-x86_64" >> exitFailure
+  when (pTarget p /= Nothing && pCC p == Nothing && not (tOS == "darwin" && System.Info.os == "darwin")) $ hPutStrLn stderr "fpr build: a --target cross build needs --cc (e.g. --cc aarch64-linux-gnu-gcc)" >> exitFailure
+  when (pTarget p /= Nothing && pModule p && tArch /= "riscv64" && tOS /= "darwin") $
+    hPutStrLn stderr "fpr build: cross-built modules currently support linux-riscv64 and macos-x86_64 only" >> exitFailure
   let prelude = home </> "core" </> "prelude.fpr"
       runtime = home </> "runtime" -- the language runtime
       machine = home </> "machine" -- the machine layer under it, one per system (docs/2026-09-19-HAL.md)
@@ -184,7 +191,7 @@ build p = do
         "aarch64" -> ["-ffixed-x27", "-ffixed-x28", "-DFPR_HART_X28"]
         "riscv64" -> ["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany"]
         _ -> []
-      cflags = ["-O2", "-w", "-DFPR_POSIX", "-DFPR_POSIX_CODEGEN_REV=" ++ show codegenRev, "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed ++ ["-DFPR_COST_PROBE" | costProbe]
+      cflags = archFlags ++ ["-O2", "-w", "-DFPR_POSIX", "-DFPR_POSIX_CODEGEN_REV=" ++ show codegenRev, "-DFPR_NHARTS=" ++ show (pHarts p), "-I" ++ runtime, "-I" ++ machine </> "posix", "-I" ++ machine </> "unix"] ++ fixed ++ ["-DFPR_COST_PROBE" | costProbe]
       linux = if tOS == "linux" then ["-no-pie", "-Wl,-z,noexecstack"] else []
       -- the runtime's objects are cached per hart count, rebuilt only
       -- when their source is newer: a warm build compiles the program

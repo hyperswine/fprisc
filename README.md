@@ -74,6 +74,10 @@ Cross-build Linux RISC-V programs with `fpr build prog.fpr
 same command with `--module`. See [Linux RV64 support](docs/2026-10-14-LINUX-RV64.md)
 for the ABI, QOS images and hardware checks.
 
+On any Mac, `fpr build prog.fpr --target=macos-x86_64` builds an x86-64
+Mach-O executable or module with the system clang; Apple Silicon runs it
+under Rosetta. See [macOS x86-64](docs/2026-10-24-X64-MACOS.md).
+
 The same system runs on an ESP32-P4: `fpr run prog.fpr --host=esp-idf`
 builds the program as an ESP-IDF application, flashes it, and is its console,
 with the same files, sockets, poller and std modules, and `std/wifi`,

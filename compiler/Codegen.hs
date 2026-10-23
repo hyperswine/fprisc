@@ -86,7 +86,7 @@ data Granularity
 
 data Strict = StrictOff | StrictAll | StrictNames [String] deriving (Eq, Show)
 
-data NativeBackend = DirectA64 ObjectFormat HartAccess | DirectX64 | DirectQX64 | DirectRV Width RV.RVHart deriving (Show)
+data NativeBackend = DirectA64 ObjectFormat HartAccess | DirectX64 ObjectFormat | DirectQX64 | DirectRV Width RV.RVHart deriving (Show)
 
 data NativeMode = NativeMode
   { nmGranularity :: Granularity,
@@ -267,7 +267,7 @@ emitNative tgt nm exps backend = case backend of
   DirectA64 fmt hart -> emitFnA64 (A64Config fmt hart (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm))
   DirectQX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) X64.HartBorrow)
   DirectRV width hart -> RV.emitFnRV (RV.RVConfig width (tgtPolicy tgt) hart exps (tgtWeak tgt) (nmSelfLoops nm))
-  DirectX64 -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) X64.HartTls)
+  DirectX64 fmt -> X64.emitFnX64 (X64.X64Config (tgtPolicy tgt) exps (tgtWeak tgt) (nmSelfLoops nm) (nmForwardParams nm) (nmTune nm) (if fmt == MachO then X64.HartTlvMachO else X64.HartTls))
 
 nativeSelect :: Target -> Bool -> NativeMode -> ScalarSignatures -> M.Map String Int -> S.Set String -> Prog -> Prog -> ([(String, SpecPlan)], M.Map String NativeFn, [(String, String)], [String])
 nativeSelect tgt spec nm sigs ext exps prog emitted =
@@ -375,7 +375,7 @@ emitProgramWith tgt rvv spec exports ext exps elide prog0 =
       allFns = M.elems nativeFns ++ kernels
       strings = M.elems (M.fromList [(stringLabel str,str) | nf <- allFns,str <- nfStrings nf])
       floats = S.toList (S.fromList (concatMap nfBoxedFloats allFns))
-      format = case nmBackend nm of Just (DirectA64 fmt _) -> fmt; _ -> ELF
+      format = case nmBackend nm of Just (DirectA64 fmt _) -> fmt; Just (DirectX64 fmt) -> fmt; _ -> ELF
       nativeText = RV.rvvPreamble rvv ++ ["    .text","    .balign 4",""] ++ concatMap nfLines allFns
         ++ (if null strings then [] else rodataDirective format : concatMap (stringObjectWidth (policyWidth (tgtPolicy tgt)) format) strings)
         ++ (if null floats then [] else rodataDirective format : concatMap (uncurry boxedFloatObject) floats)
@@ -1572,7 +1572,7 @@ simdPlan tgt prog p = do
     Just (ks,out) | out `elem` [KI,KD], length ks == length params, all (==out) ks -> Just out
     _ -> Nothing
   expr <- simdExprOf kind (init params) (last params) body
-  let budget = case tgtNative tgt >>= nmBackend of Just DirectX64 -> 7; Just DirectQX64 -> 7; _ -> 15
+  let budget = case tgtNative tgt >>= nmBackend of Just (DirectX64 _) -> 7; Just DirectQX64 -> 7; _ -> 15
   if simdRegisters expr <= budget then Just () else Nothing
   either (const Nothing) (const (Just (expr,ticks))) (simdExprOk (kind == KI) expr)
 

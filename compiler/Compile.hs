@@ -66,6 +66,7 @@ data Opts = Opts
     oA64 :: Bool, -- select the direct typed AArch64 backend
     oA64Mac :: Bool, -- AArch64 with Mach-O syntax (macOS): _sym, @PAGE, TLV
     oX64 :: Bool, -- lower it to x86-64 (SysV) instead
+    oX64Mac :: Bool, -- x86-64 with Mach-O syntax (macOS): _sym, L locals, TLV cells
     oQosApp :: Bool, -- qx64: QOS-x86_64 app image (plain-global cells, no TLS)
     oQosSingle :: Bool, -- qa64single: global hart cell for hosts without TP-relative TLS
     oPlugin :: Bool, -- emit root binds in fpr_modtab for a loadable plugin
@@ -93,7 +94,7 @@ dedupeUnits = go S.empty
       | otherwise = (h, u) : go (S.insert h seen) r
 
 parseArgs :: [String] -> Opts
-parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothing Nothing False False False [] False False False False False False False False False False Nothing False [] [] False False Nothing)
+parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothing Nothing False False False [] False False False False False False False False False False False Nothing False [] [] False False Nothing)
   where
     -- profile aliases (Target.hs): the AOT profiles resolved to their
     -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
@@ -142,8 +143,9 @@ parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothin
     step o "--target=rv64" = o {oTarget = rv64, oTargetFlag = True}
     step o "--target=a64" = o {oTarget = rv64, oA64 = True, oTargetFlag = True} -- direct typed ELF output
     step o "--target=a64mac" = o {oTarget = rv64, oA64 = True, oA64Mac = True, oTargetFlag = True} -- direct typed Mach-O output
-    step o "--target=x64" = o {oTarget = rv64, oX64 = True, oTargetFlag = True} -- likewise
-    step o "--target=qx64" = o {oTarget = rv64, oX64 = True, oQosApp = True, oTargetFlag = True} -- QOS-x86_64
+    step o "--target=x64" = o {oTarget = rv64, oX64 = True, oX64Mac = False, oTargetFlag = True} -- likewise
+    step o "--target=x64mac" = o {oTarget = rv64, oX64 = True, oX64Mac = True, oTargetFlag = True} -- Mach-O x86-64 (an Intel Mac, or Rosetta)
+    step o "--target=qx64" = o {oTarget = rv64, oX64 = True, oX64Mac = False, oQosApp = True, oTargetFlag = True} -- QOS-x86_64
     step o "--target=qrv64" = o {oTarget = rv64, oA64 = False, oA64Mac = False, oX64 = False, oQosApp = True, oTargetFlag = True} -- Linux QOS-RISC-V
     step o "--target=qa64" = o {oTarget = rv64, oA64 = True, oQosApp = True, oTargetFlag = True} -- QOS-aarch64
     step o "--target=qa64single" = o {oTarget = rv64, oA64 = True, oQosApp = True, oQosSingle = True, oTargetFlag = True} -- QOS-aarch64, global hart cell
@@ -179,6 +181,7 @@ resolveHost o
   | otherwise = case (System.Info.os, System.Info.arch) of
       ("darwin", "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True, oA64Mac = True}
       (_, "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True}
+      ("darwin", "x86_64") -> o {oTarget = rv64, oBase = True, oX64 = True, oX64Mac = True}
       (_, "x86_64") -> o {oTarget = rv64, oBase = True, oX64 = True}
       ("linux", "riscv64") -> o {oTarget = rv64, oBase = True, oHardFloat = True}
       (os', arch') -> error ("--system=posix: no hosted lowering for " ++ os' ++ "/" ++ arch' ++ " (x86_64, aarch64 and Linux riscv64 are supported)")
@@ -397,7 +400,7 @@ compileWithInterface accepted = do
     if ok then exitSuccess else exitFailure
   (inp, out) <- case oFiles opts0 of
     [i, o] -> pure (i, o)
-    _ -> putStrLn "usage: fprc [--system=posix|bare-metal|qos-native|qos-portable] [--host=unix|esp-idf] [--profile=builtin|base|extbase|sol] [--arc] [--target=rv32|rv64|a64|a64mac|x64|qx64|qrv64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
+    _ -> putStrLn "usage: fprc [--system=posix|bare-metal|qos-native|qos-portable] [--host=unix|esp-idf] [--profile=builtin|base|extbase|sol] [--arc] [--target=rv32|rv64|a64|a64mac|x64|x64mac|qx64|qrv64|qa64|qa64single|qa64mac] [--plugin] [--rvv] [--stdcheck] [--prelude=FILE] <in.fpr> <out.s>" >> exitFailure >> pure ("", "")
   (rootSrc0, rootTopsParsed) <- parseFileSrc inp
   -- the PROFILE is the file's: `profile base.` (or `unsafe base.`), a
   -- .sol file is sol; the flag serves a file that says nothing, and
@@ -944,6 +947,7 @@ compileWithInterface accepted = do
           a64 = oA64 opts
           a64mac = oA64Mac opts
           x64 = oX64 opts
+          x64mac = oX64Mac opts
           qapp = oQosApp opts
           qsingle = oQosSingle opts
           -- the profile the typed-IR lowering states; everything but hosted
@@ -972,7 +976,7 @@ compileWithInterface accepted = do
                               -- global cell under qa64single (docs/2026-10-22-TYPED-IR-QOS.md)
                               else if a64 && qapp
                                 then Just (DirectA64 (if a64mac then MachO else ELF) (if oQosSingle opts then HartGlobal else HartX28))
-                              else if x64 then Just (if qapp then DirectQX64 else DirectX64)
+                              else if x64 then Just (if qapp then DirectQX64 else DirectX64 (if x64mac then MachO else ELF))
                               -- a posix module (--module on rv64) reads the hart through
                               -- initial-exec TLS and is assembled under .option pic
                               -- (docs/2026-10-23-TYPED-RV64-MODULES.md). Plain bare-metal
@@ -1003,7 +1007,7 @@ compileWithInterface accepted = do
           -- alone, so it also covers the typed backend's text and a
           -- translation-free unit (docs/2026-10-22-TYPED-IR-RETIREMENT.md)
           moduleFinal = if oBase opts && oPlugin opts
-                          then (if a64 || x64 then id else \t -> if null t then t else "    .option pic\n" ++ t) . posixPic a64 a64mac
+                          then (if a64 || x64 then id else \t -> if null t then t else "    .option pic\n" ++ t) . posixPic a64 (a64mac || x64mac)
                           else id
           rvv = oRvv opts && not a64 && not x64 -- no RVV lowering in the PoCs
           spec = True -- x64 lowers the extra saved registers through its shadow bank
@@ -1016,6 +1020,7 @@ compileWithInterface accepted = do
                   else if a64 && qapp then "qa64r" ++ show a64InterfaceRev
                   else if a64 then "a64x28r" ++ show a64HostedInterfaceRev
                   else if x64 && qapp then "qx64r" ++ show x64InterfaceRev
+                  else if x64mac then (if oPlugin opts && oBase opts then "module-" else "") ++ "x64macr" ++ show x64InterfaceRev
                   else if x64 then "x64r" ++ show x64InterfaceRev
                   else if espHost then "rv32-idftls1"
                   else if qapp then "qrv64r" ++ show RV.rvSelectionRev
@@ -1247,7 +1252,7 @@ compileWithInterface accepted = do
                   ++ [ "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "    " ++ dir ++ " 0", "" ]
       let rootAsm = moduleFinal (unlines (["# typed IR: no translation"] ++ emNative rootEmission ++ emData rootEmission
                                    ++ dataSyntax directFormat (lines conTab))) ++ unlines (concat tramps)
-          directFormat = if a64mac then MachO else ELF
+          directFormat = if a64mac || x64mac then MachO else ELF
       directCheck "root" rootEmission
       mapM_ putStrLn rootVNotes
       applyReport "root" rootAsm

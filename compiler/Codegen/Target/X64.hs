@@ -8,7 +8,9 @@
 -- copy-cycle scratch; the budget registers a function uses are saved in
 -- the prologue and restored before every return and tail transfer.
 -- ABI: SysV first six arguments, private TLS cells seven/eight, result rax;
--- hosted uses ELF TLS; QOS borrows {hart, a6, a7} through fpr_g_tlsoff.
+-- hosted uses ELF TLS; QOS borrows {hart, a6, a7} through fpr_g_tlsoff;
+-- macOS uses Mach-O syntax and reaches each cell through its Darwin TLV
+-- descriptor (HartTlvMachO, docs/2026-10-24-X64-MACOS.md).
 -- legacy frame pointer = entry rsp + 8, return address fp-8, saved rbp fp-16.
 -- Parameters are parked before any entry check/tick, and rsp is restored
 -- from rbp at exit so stack-segment growth remains compatible with legacy.
@@ -36,7 +38,20 @@ x64SelectionRev = 22 -- sized frames; prior: SSE2, comparison/F32 trees, QOS bor
 x64InterfaceRev :: Int
 x64InterfaceRev = 10
 
-data X64Hart = HartTls | HartBorrow deriving (Eq, Show)
+data X64Hart = HartTls | HartBorrow | HartTlvMachO deriving (Eq, Show)
+
+-- Mach-O is the only object format that reads its cells through TLV
+-- descriptors, so the hart form names the format as well.
+x64Format :: X64Hart -> ObjectFormat
+x64Format = \case HartTlvMachO -> MachO; _ -> ELF
+
+-- a C-visible symbol: Mach-O prefixes the underscore, and a .L local label
+-- takes Mach-O's private prefix L (as Common.dataSyntax spells the data)
+gsym :: X64Hart -> String -> String
+gsym hart s = case x64Format hart of
+  MachO | take 2 s == ".L" -> drop 1 s
+        | otherwise -> '_' : s
+  ELF -> s
 
 data X64Config = X64Config
   { cfgPolicy :: Policy, cfgExports :: S.Set String, cfgWeak :: Bool,
@@ -633,7 +648,7 @@ emitFnX64 cfg fn = do
       (shallow, allocatedBody) = shallowEntry (polStackCheck (cfgPolicy cfg)) (lyBytes ly) (alBody alloc)
   when (not large && lyBytes ly > 32768) $ Left ("a frame of " ++ show (lyBytes ly) ++ " bytes exceeds the 32768-byte ceiling (half the runtime's stack headroom)")
   let name = fnName fn
-      sym = functionSymbol name
+      sym = gsym (cfgHart cfg) (functionSymbol name)
       saveOff o = show (M.findWithDefault (error "X64: a saved register without an offset") (foRef o) (lyOffset ly)) ++ "(%rbp)"
       saveLines = ["movq %" ++ p ++ ", " ++ saveOff o | o <- saves, SavedRegister p <- [foKind o]]
       restores = ["movq " ++ saveOff o ++ ", %" ++ p | o <- saves, SavedRegister p <- [foKind o]]
@@ -643,7 +658,7 @@ emitFnX64 cfg fn = do
       reserve = if large then reserveFrame (cfgHart cfg) name (toInteger (lyBytes ly)) (length (sfParams sel)) else []
       rendered = [(it, renderItem (cfgHart cfg) ly large name saveLines restores it) | it <- body]
       report = analyse ([TIns (length (filter isInstruction reserve)) FNext False 1 | large] ++ concatMap (uncurry tokOf) rendered)
-      visibility = if cfgWeak cfg && '@' `notElem` name then ".weak" else ".globl"
+      visibility = if cfgWeak cfg && '@' `notElem` name then (if x64Format (cfgHart cfg) == MachO then ".weak_definition" else ".weak") else ".globl"
       header = ["# fn " ++ name ++ " (arity " ++ show (length (sfParams sel)) ++ ") typed-ir x64 frame=" ++ show (lyBytes ly)
                   ++ (if large then " reserve=yes" else "")
                   ++ (if shallow then " shallow=yes" else " shallow=no") ++ (if null entrySlots then "" else " forward=yes") ++ " saved=" ++ (case alSaved alloc of [] -> "none"; ps -> intercalate "," [p | Phys p <- ps]) ++ " " ++ statsLine (alStats alloc)]
@@ -659,8 +674,8 @@ emitFnX64 cfg fn = do
     isInstruction l = case dropWhile (== ' ') l of
       "" -> False; '#':_ -> False; '.':_ -> False; t -> last t /= ':'
 
-local :: String -> Label -> String
-local fname (Label l) = ".Ltir_" ++ mangleName fname ++ "_" ++ l
+local :: X64Hart -> String -> Label -> String
+local hart fname (Label l) = gsym hart (".Ltir_" ++ mangleName fname ++ "_" ++ l)
 
 -- The caller's return PC remains on the original stack. A new segment gets
 -- a copy for the ordinary frame header, while the third header word restores
@@ -677,7 +692,7 @@ reserveFrame hart name bytes argc =
   ++ loadCellFor hart "fpr_posix_hart" "%r10"
   ++ concat [["movq " ++ show (8*(i-7)) ++ "(%r10), %r11", "movq %r11, " ++ slot i] | i <- [8..argc-1]]
   ++ ["leaq " ++ show stageBytes ++ "(%rsp), %rdi", "movabsq $" ++ show (bytes+8) ++ ", %rsi",
-      "call fpr_stack_reserve"]
+      "call " ++ gsym hart "fpr_stack_reserve"]
   ++ loadCellFor hart "fpr_posix_hart" "%r10"
   ++ concat [["movq " ++ slot i ++ ", %r11", "movq %r11, " ++ show (8*(i-7)) ++ "(%r10)"] | i <- [8..argc-1]]
   ++ concat [["movq " ++ slot i ++ ", %r11"] ++ storeCellFor hart cell "%r11" | (i,cell) <- named]
@@ -689,7 +704,7 @@ reserveFrame hart name bytes argc =
     stageBytes = ((argc*8+15) `div` 16)*16+8
     slot i = show (i*8) ++ "(%rsp)"
     named = take (max 0 (argc-6)) [(6,"fpr_x64_a6"),(7,"fpr_x64_a7")]
-    label s = local name (Label ("reserve_"++s))
+    label s = local hart name (Label ("reserve_"++s))
     slow=label "slow";fast=label "fast";same=label "same";ready=label "ready"
 
 cellOff :: String -> String
@@ -702,19 +717,40 @@ loadCellFor hart cell dst = case hart of
   HartTls -> ["movq %fs:" ++ cell ++ "@tpoff, " ++ dst]
   HartBorrow -> ["movq fpr_g_tlsoff(%rip), " ++ dst,
                  "movq %fs:" ++ cellOff cell ++ "(" ++ dst ++ "), " ++ dst]
+  HartTlvMachO -> tlvSave ++ tlvAddress cell
+    ++ ["movq (%rax), %rax", "movq %rax, (%rsp)"] ++ tlvRestore ++ ["movq (%rsp), " ++ dst, "leaq 32(%rsp), %rsp"]
 storeCellFor :: X64Hart -> String -> String -> [String]
 storeCellFor hart cell src = case hart of
   HartTls -> ["movq " ++ src ++ ", %fs:" ++ cell ++ "@tpoff"]
   HartBorrow -> let scratch = if src == "%r10" then "%r11" else "%r10" in
     ["movq fpr_g_tlsoff(%rip), " ++ scratch,
      "movq " ++ src ++ ", %fs:" ++ cellOff cell ++ "(" ++ scratch ++ ")"]
+  HartTlvMachO -> tlvSave ++ ["movq " ++ src ++ ", (%rsp)"] ++ tlvAddress cell
+    ++ ["movq (%rsp), %rdi", "movq %rdi, (%rax)"] ++ tlvRestore ++ ["leaq 32(%rsp), %rsp"]
+
+-- Darwin x86-64 thread-local variables are reached through a descriptor:
+-- `movq _v@TLVP(%rip), %rdi; call *(%rdi)` returns the variable's address
+-- in %rax for the calling thread, and the thunk preserves every register
+-- but %rax and the flags (the contract clang relies on). Cell accesses
+-- occur only at arrival, around calls and in the entry sequence, never
+-- inside a flags window. Each access keeps rax, rdi and rbx in a 32-byte
+-- block below rsp (slot 0 carries the value), and aligns rsp for the call
+-- through rbx, since the entry sequence and the reservation stage run at
+-- different alignments. Generated code keeps nothing below rsp.
+tlvSave, tlvRestore :: [String]
+tlvSave = ["leaq -32(%rsp), %rsp", "movq %rax, 24(%rsp)", "movq %rdi, 16(%rsp)", "movq %rbx, 8(%rsp)"]
+tlvRestore = ["movq 8(%rsp), %rbx", "movq 16(%rsp), %rdi", "movq 24(%rsp), %rax"]
+tlvAddress :: String -> [String]
+tlvAddress cell =
+  ["movq %rsp, %rbx", "andq $-16, %rsp", "movq " ++ gsym HartTlvMachO cell ++ "@TLVP(%rip), %rdi",
+   "call *(%rdi)", "movq %rbx, %rsp"]
 
 renderItem :: X64Hart -> Layout -> Bool -> String -> [String] -> [String] -> Item -> [String]
-renderItem _ _ _ fname _ _ (ILabel l) = [local fname l ++ ":"]
+renderItem hart _ _ fname _ _ (ILabel l) = [local hart fname l ++ ":"]
 renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOp i) (siDefs i) (siUses i))
   where
     indent l = if last l == ':' then l else "    " ++ l
-    lbl = local fname
+    lbl = local hart fname
     reg = \case OP (Phys p) -> '%' : p; o -> error ("X64 render: unplaced operand " ++ show o)
     byte o = case reg o of
       "%rax" -> "%al"; "%rcx" -> "%cl"; "%rdx" -> "%dl"; "%rsi" -> "%sil"; "%rdi" -> "%dil"; "%rbx" -> "%bl"
@@ -726,7 +762,7 @@ renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOp i
     imm = \case OI n -> show n; o -> error ("X64 render: not an immediate " ++ show o)
     slot ref = show (M.findWithDefault (error "X64 render: missing frame object") ref (lyOffset ly)) ++ "(%rbp)"
     cc = \case "eq" -> "e"; "ne" -> "ne"; "lt" -> "l"; "gt" -> "g"; "le" -> "le"; "ge" -> "ge"; "o" -> "o"; "hs" -> "ae"; c -> error ("X64 condition " ++ c)
-    call sym = ["subq $8, %rsp", "call " ++ sym, "addq $8, %rsp"]
+    call sym = ["subq $8, %rsp", "call " ++ gsym hart sym, "addq $8, %rsp"]
     go op ds us = case (op,ds,us) of
       ("enter",[],[]) ->
         if large then ["movq %rbp, %rax", "movabsq $" ++ show (lyBytes ly) ++ ", %r11",
@@ -749,7 +785,7 @@ renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOp i
       ("load.spill",[d],[OI j]) -> loadCell "fpr_posix_hart" (reg d) ++ ["movq " ++ show (8 * (1 + j)) ++ "(" ++ reg d ++ "), " ++ reg d]
       ("movq",[d],[s]) -> ["movq " ++ reg s ++ ", " ++ reg d]
       ("li",[d],[n]) -> ["movabsq $" ++ imm n ++ ", " ++ reg d]
-      ("la",[d],[OS s]) -> ["leaq " ++ s ++ "(%rip), " ++ reg d]
+      ("la",[d],[OS s]) -> ["leaq " ++ gsym hart s ++ "(%rip), " ++ reg d]
       ("load.byte",[d],[base,n]) -> ["movzbq " ++ imm n ++ "(" ++ reg base ++ "), " ++ reg d]
       ("load.field",[d],[base,n]) -> ["movq " ++ imm n ++ "(" ++ reg base ++ "), " ++ reg d]
       ("store.field",[],[base,value,n]) -> ["movq " ++ reg value ++ ", " ++ imm n ++ "(" ++ reg base ++ ")"]
@@ -807,9 +843,9 @@ renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOp i
       ("push",[],[v]) -> ["subq $16, %rsp", "movq " ++ reg v ++ ", (%rsp)"]
       ("applyn",[_],[OI n]) -> ["movq %rsp, %rdx", "movq $" ++ show n ++ ", %rsi", "movq " ++ show (16 * n) ++ "(%rsp), %rdi"]
         ++ call "fpr_applyN" ++ ["addq $" ++ show (16 * (n + 1)) ++ ", %rsp"]
-      ("panic",[],[OS s]) -> ("leaq " ++ s ++ "(%rip), %rdi") : call "fpr_panic"
+      ("panic",[],[OS s]) -> ("leaq " ++ gsym hart s ++ "(%rip), %rdi") : call "fpr_panic"
       ("ret",[],[_]) -> epilogue ++ ["ret"]
-      ("tailjump",[],OS s:_) -> epilogue ++ ["jmp " ++ s]
+      ("tailjump",[],OS s:_) -> epilogue ++ ["jmp " ++ gsym hart s]
       ("entry.check.tick",_,_) -> hartRead ++ stackCheck ++ tick
       ("entry.check",_,_) -> hartRead ++ stackCheck
       ("entry.tick",_,_) -> hartRead ++ tick
