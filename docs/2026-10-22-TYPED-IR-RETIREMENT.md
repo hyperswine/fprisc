@@ -102,7 +102,7 @@ On AArch64 (Mach-O, this Mac), with `FPR_TYPED_IR_BACKEND=mixed`:
 | x86-64 and RISC-V QOS apps (`qx64`, `qrv64`) | the host's TLS offset cell for the hart (and x86-64's argument cells 7 and 8) | `X64.hs` for QOS x86-64 apps; the RISC-V generator for QOS RISC-V apps | small, but untestable here (no x86-64 or RISC-V QOS run environment) |
 | Builtin and ARC profiles (bare metal, Tang Nano, drivers) | a typed lowering of their ownership, allocator and root contracts | the RISC-V generator | large; a separate project |
 | ESP-IDF host (RV32 P4) | its own hart read (`fpr_esp_hart`) | the RISC-V generator | small, testable only on the board |
-| RISC-V posix modules (`--module` on rv64) | the typed RISC-V module emitter | the RISC-V generator | small to medium |
+| RISC-V posix modules (`--module` on rv64) | done: [typed RV64 modules](2026-10-23-TYPED-RV64-MODULES.md) | nothing | 0 |
 | Legacy opt-in modes (self loops, retained and costed registers, compact frames, frame pairs, fit guards), `Peephole.hs`, the `# wcet:` bound | nothing: they exist only for legacy emission | themselves | retire with the generator's users; QOS documents the `# wcet:` metric, and its admission contract needs the native metric's migration first |
 
 ## The answer today

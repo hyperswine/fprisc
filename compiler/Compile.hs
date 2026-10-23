@@ -983,8 +983,11 @@ compileWithInterface accepted = do
                               else if a64 && qapp
                                 then Just (DirectA64 (if a64mac then MachO else ELF) (if oQosSingle opts then HartGlobal else HartX28))
                               else if x64 then Just (if qapp then DirectQX64 else DirectX64)
-                              else if not a64 && not x64 && not qapp && not (oPlugin opts) && not espHost && tgtName (oTarget opts) `elem` ["rv32", "rv64"]
-                                then Just (DirectRV (policyWidth irPolicy) (if oBase opts then RV.HartTls else RV.HartTp))
+                              -- a posix module (--module on rv64) reads the hart through
+                              -- initial-exec TLS and is assembled under .option pic
+                              -- (docs/2026-10-23-TYPED-RV64-MODULES.md); QOS plugins stay refused
+                              else if not a64 && not x64 && not qapp && (not (oPlugin opts) || oBase opts) && not espHost && tgtName (oTarget opts) `elem` ["rv32", "rv64"]
+                                then Just (DirectRV (policyWidth irPolicy) (if oBase opts && oPlugin opts then RV.HartTlsIe else if oBase opts then RV.HartTls else RV.HartTp))
                               else Nothing,
                 nmSelfLoops = envTirLoops, nmForwardParams = envTirForward,
                 nmTune = Tune envTirEntryArgs envTirWrap envTirLinkPairs, nmSplitEntry = envTirSplit }
@@ -1015,7 +1018,9 @@ compileWithInterface accepted = do
           -- the pass works on target syntax and leaves its own output
           -- alone, so it also covers the typed backend's text and a
           -- translation-free unit (docs/2026-10-22-TYPED-IR-RETIREMENT.md)
-          moduleFinal = if oBase opts && oPlugin opts then posixPic a64 a64mac else id
+          moduleFinal = if oBase opts && oPlugin opts
+                          then (if a64 || x64 then id else \t -> if null t then t else "    .option pic\n" ++ t) . posixPic a64 a64mac
+                          else id
           rvv = oRvv opts && not a64 && not x64 -- no RVV lowering in the PoCs
           spec = True -- x64 lowers the extra saved registers through its shadow bank
           -- every distinct lowering its own cache tag: a QOS app on Apple Silicon

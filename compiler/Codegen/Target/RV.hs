@@ -14,14 +14,18 @@ import Codegen.Selected
 import Codegen.Target.Common
 import Control.Monad (forM_, unless, when)
 import Control.Monad.State.Strict
-import Data.List (intercalate, stripPrefix)
+import Data.List (isPrefixOf, intercalate, stripPrefix)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 10 -- generic HAL partial/opaque application; prior 9: inferred boxed I64 operators; prior 8: inference-generated vector runtime entries; prior 7: typed column memory and kernel arithmetic; prior: 6: an ESP-IDF host keeps the legacy generator (its hart is fpr_esp_hart); 5: units with no legacy code skip translation; 4: in-place constructor reuse; 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
+rvSelectionRev = 11 -- 11: posix modules: the hart through initial-exec TLS (la.tls.ie), local labels PC-relative under .option pic; prior: 10: generic HAL partial/opaque application; prior 9: inferred boxed I64 operators; prior 8: inference-generated vector runtime entries; prior 7: typed column memory and kernel arithmetic; prior: 6: an ESP-IDF host keeps the legacy generator (its hart is fpr_esp_hart); 5: units with no legacy code skip translation; 4: in-place constructor reuse; 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
 
-data RVHart = HartTp | HartTls deriving (Eq, Show)
+-- HartTp: the hart pointer is tp (bare metal, QOS); HartTls: the posix
+-- runtime's thread-local cell, local-exec (an executable); HartTlsIe: the
+-- same cell through initial-exec TLS, the GOT entry a loaded posix module
+-- resolves against its host's cell (RV64.lowerPosixRV64's shared form)
+data RVHart = HartTp | HartTls | HartTlsIe deriving (Eq, Show)
 data RVConfig = RVConfig
   { cfgWidth :: Width, cfgPolicy :: Policy, cfgHart :: RVHart, cfgExports :: S.Set String,
     cfgWeak :: Bool, cfgSelfLoops :: Bool }
@@ -280,7 +284,7 @@ emitFnRV cfg fn = do
   let saveObjects = [frameObj (-n-1) (wordBytes cfg) (wordBytes cfg) (SavedRegister r) False | (n,Phys r) <- zip [0..] (alSaved allocation)]
       ly = layout (2 * wordBytes cfg) 16 (saveObjects ++ alSlots allocation)
       (shallow, body) = shallowEntry (polStackCheck (cfgPolicy cfg)) (lyBytes ly) (alBody allocation)
-  let ceiling = if cfgHart cfg == HartTls then 32768 else 1024
+  let ceiling = if cfgHart cfg `elem` [HartTls, HartTlsIe] then 32768 else 1024
   when (lyBytes ly > ceiling) (Left ("RISC-V frame exceeds the profile ceiling of " ++ show ceiling ++ " bytes"))
   let reg (Phys r) = r
       off ref = toInteger (lyOffset ly M.! ref)
@@ -330,6 +334,7 @@ render cfg fn ly restores (I i) = map (\s -> if last s == ':' then s else "    "
     hart = case cfgHart cfg of
       HartTp -> ["mv t3, tp"]
       HartTls -> ["lui t3, %tprel_hi(fpr_posix_hart)", "add t3, t3, tp, %tprel_add(fpr_posix_hart)", ld ++ " t3, %tprel_lo(fpr_posix_hart)(t3)"]
+      HartTlsIe -> ["la.tls.ie t3, fpr_posix_hart", "add t3, t3, tp", ld ++ " t3, 0(t3)"]
     l suffix = local fn (Label (siNote i ++ suffix))
     stack = [ld ++ " t5, " ++ show (57*w) ++ "(t3)", "sub t4, sp, t5", ld ++ " t5, " ++ show (58*w) ++ "(t3)", "bltu t4, t5, " ++ l "_stk", "call fpr_stack_grow", "beqz a0, " ++ l "_same", "mv sp, a0", l "_same" ++ ":"] ++ hart ++ [l "_stk" ++ ":"]
     tick = tickN 1
@@ -342,7 +347,10 @@ render cfg fn ly restores (I i) = map (\s -> if last s == ':' then s else "    "
       ("load.spill",[d],[n]) -> hart ++ memory ld (r d) "t3" (w*(1+num n))
       ("store.spill",[],[v,n]) -> hart ++ memory stWord (r v) "t3" (w*(1+num n))
       ("li",[d],[n]) -> ["li " ++ r d ++ ", " ++ show (num n)]
-      ("la",[d],[OS sym]) -> ["la " ++ r d ++ ", " ++ sym]
+      -- a module's unit is assembled under .option pic: `la` of an external
+      -- symbol goes through the GOT (interposable), a unit-local label stays
+      -- PC-relative (`lla`), as the A64 module pass keeps local labels
+      ("la",[d],[OS sym]) -> [(if cfgHart cfg == HartTlsIe && ".L" `isPrefixOf` sym then "lla " else "la ") ++ r d ++ ", " ++ sym]
       ("mv",[d],[v]) -> ["mv " ++ r d ++ ", " ++ r v]
       (o,[d],[v,n]) | o `elem` ["slli","srai","andi","ori","xori"] -> [o ++ " " ++ r d ++ ", " ++ r v ++ ", " ++ show (num n)]
       (o,[d],[a,b]) | o `elem` ["add","sub","mul","mulh","div","and","or","xor"] -> [o ++ " " ++ r d ++ ", " ++ r a ++ ", " ++ r b]

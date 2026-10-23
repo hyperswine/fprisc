@@ -32,6 +32,7 @@ TYPED_REQUIRED = {
     'sleepwait': ('main', 'waiter'),
     'lines': ('main', 'loop'),
     'module-host': ('main', 'run'),
+    'module': ('hartOK', 'mathOp', 'floatOp'),
 }
 
 
@@ -108,8 +109,9 @@ def build(output, cc):
     module.write_text('unsafe module.\nnativeHart : Unit -> Bool.\nhartOK u = nativeHart u.\nmathOp : Int -> Int.\nmathOp x = x * 3.\nfloatOp : F64 -> F64.\nfloatOp x = x * 2.0.\n')
     helper = output / 'module-helper.c'
     helper.write_text('#include "fpr.h"\nstatic V h_nativeHart(V u) { (void)u; return BOOL(fpr_hart() != 0); }\nFPR_FN(fpr_g_nativeHart, h_nativeHart, 1);\n')
-    command([FPR, 'build', module, '--target=linux-riscv64', '--cc', cc,
-             '--module', '--with', helper, '-o', output / 'math.so'])
+    log = command([FPR, 'build', module, '--target=linux-riscv64', '--cc', cc,
+                   '--module', '--with', helper, '-o', output / 'math.so', '-v'])
+    require_native('module', log)
     host = output / 'module-host.fpr'
     host.write_text('''unsafe base.
 N = use "std/native".
@@ -168,8 +170,7 @@ def main():
             os.environ['XDG_CACHE_HOME'] = str(args.output.resolve() / 'cache')
     if not args.execute_only:
         with tempfile.TemporaryDirectory(prefix='fpr-rv64-lowering-') as tmp:
-            if not args.typed_ir:
-                lowering(Path(tmp))
+            lowering(Path(tmp)) # the forms hold for the typed backend and the legacy rollback alike
         if args.cc:
             if not args.output:
                 parser.error('--cc requires --output')
