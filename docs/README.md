@@ -228,3 +228,5 @@ they began.
 - [Typed builtin manual/GC profiles](2026-10-23-TYPED-BUILTIN.md): RV32/RV64 fixed stacks and no actor fuel, shared indexed-memory rewrite, generated roots through real GC with negative controls, and physical Tang Nano checks. ARC remains separate.
 
 - [Typed builtin ARC/raw](2026-10-23-TYPED-ARC.md): ownership adapters, constructor metadata, self-hosted allocator, checked raw/Int selection, interrupt and export gates, independent oracles and paired guest work.
+
+- [Native metric consumer migration](2026-10-23-NATIVE-METRIC-CONSUMER.md): complete typed closure audits, separate instruction and runtime-call-site ratchets, QOS's new baseline, and explicit timing/composition limits.

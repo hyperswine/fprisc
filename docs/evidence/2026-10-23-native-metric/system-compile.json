@@ -1,0 +1,274 @@
+{
+  "metric": "native-insns-v1",
+  "scope": "per-function selected segments over root plus every linked unit",
+  "target": "rv64",
+  "files": [
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/program.s",
+      "sha256": "04b159cc935c7e596f90111c3151cb3301a4bea446bab39a02e8a0fc75c2f0d7",
+      "functions": 218
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/prelude-a5a8a1130833-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "5cb7ad9be0610d74c302b99c9de05e5e2a7252494728fd6a2eff6c7b0ac0b070",
+      "functions": 267
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-72f59195cb10-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "fa32fe210513295ebd2f687f7af0617a38b1328baef518e0465b4b603a85ac8c",
+      "functions": 44
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-201a0e9bf98a-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "63f1e91d319a0d238d800949068080ada927d7e0d9d6f2b801bc3c82639c3419",
+      "functions": 43
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-b721f8e9d5e0-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "571b82f8009808295449498698971c637ee8db6f269a20452927cebb5f910bdc",
+      "functions": 10
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-bd295a609815-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "efda76c415cd4222c977cf2c61988b1ed62ea111b1b68b2eb19f0b6b5d9a67b6",
+      "functions": 27
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-00b87d7442c6-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "f86734c078ed2f98af237c4250331755bf703bb3786fa4a97c5a5e7d354ffbb0",
+      "functions": 30
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-c66ad65e68dd-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "b235b01fa44fb5d27905fc8d784146c74fdacc708d54e260aebe5d75a5cd38f9",
+      "functions": 96
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-08a8ecf9d7c5-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "0bab39e1f4e95f2eaab9afa51fefdce3cafd11d38f32687a48f49bb474de541f",
+      "functions": 9
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-e8bce05a1ddf-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "f81294c9da74a368c80e7ab35e78b1aab583dd4ea6d2b804137ebec6b597305c",
+      "functions": 29
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-5a59a9be2244-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "e1c67d91012261974c0b08541dbedb6ed38984f6733c5018c4e21a67a85e172f",
+      "functions": 45
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-0a3c70f7e232-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "9d8546f51d886798c6b30de123421b17966dc2a804e6b769818ce040ef22ada2",
+      "functions": 10
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-bf624a30b7d2-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "383c2f933b7b66e3d58dec01c8d7c96111b9ae0ac8241ad8664a658ab6091960",
+      "functions": 38
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-24be2376605c-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "b018ed522444368dd10b2428f78fe260679b4d77eae43e2011f98bcfd9a7310c",
+      "functions": 24
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-7022992c8e4a-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "d8a73186bdd1ada8998bfb0aff82012f945bb02332cbe25f32ec9ea46ba7c6d8",
+      "functions": 304
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-75479fb6d5f3-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "a13e529ed7227dc10ef3093e3c225d9bd1257fa74eb3c4f37a8eb364a6aa9395",
+      "functions": 32
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-ebca87780990-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "16ddaadb8c0b1e53d45872aa1c1ae8d4a2205e7c6a919bab55bbe5c4adf88f6a",
+      "functions": 54
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-39dff276efd6-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "680721d222abffc2cf3590926c99c8f60d91415b70ee4bbfe307a4086500b147",
+      "functions": 2
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-38fa906125d4-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "3ae1ee53c7318944aeea8fb4d7378b465678da3084de18edb54361d420b6c15c",
+      "functions": 20
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-af7fad6c6e99-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "170ecfa3e576b25e50f7a7986d4b20e633cb0a4a8a7302bd9ee7a785aaec86f9",
+      "functions": 100
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-cdee34460c2a-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "0c7d12d4f53387ffeca3507a1e9ff3f3f3eee5e7f63731493095dc4078925aa1",
+      "functions": 49
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-615ea5947fe1-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "a33bccbdd52a1ed4a9725ffcb26bfac4c5825a0679676437c4c501a351b33345",
+      "functions": 7
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-8b4ffa1467ca-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "2492b3fa8e7f76a7428ee4dbdb9f59aafbfa2542e47637942bdd4c036c809bc9",
+      "functions": 91
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-84826bc9e8dd-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "80f607ce02a2d8010a80e9a5b10e71b68b41f329b14b509ac323676e8d294ae2",
+      "functions": 47
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-6e7bea28db71-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "9de28cb573e809e0057da4e4d382c88aec80a329e1a1eeaa22a5d787c9577aaa",
+      "functions": 21
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-464ca3ee0d89-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "c10e157537fdb394920f3862c9d392c7e3a9bb632cfad85a33c8049b6812798e",
+      "functions": 32
+    },
+    {
+      "path": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-a8f7ee14e1ef-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s",
+      "sha256": "bb4e09d2cfa79caaca738bdde76a7957f163b998b23c01f7e8454ce121cbe903",
+      "functions": 20
+    }
+  ],
+  "functions": 1669,
+  "segmax": 312,
+  "exittail_max": 256,
+  "runtime_call_sites_max_per_function": 67,
+  "runtime_call_sites_total": 7763,
+  "runtime_time_bound": "unprovided",
+  "call_return_composition": "unprovided",
+  "elapsed_time_certificate": false,
+  "worst_segments": [
+    {
+      "name": "dispatch@cdee34460c2ad81a",
+      "segmax": 312,
+      "exittail": 32,
+      "ccalls": 6,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-cdee34460c2a-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s"
+    },
+    {
+      "name": "handle@8b4ffa1467ca03a5",
+      "segmax": 301,
+      "exittail": 256,
+      "ccalls": 25,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-8b4ffa1467ca-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s"
+    },
+    {
+      "name": "par2",
+      "segmax": 230,
+      "exittail": 230,
+      "ccalls": 20,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/prelude-a5a8a1130833-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s"
+    },
+    {
+      "name": "$receive.local.kHold@ebca877809908b0f",
+      "segmax": 208,
+      "exittail": 208,
+      "ccalls": 12,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-ebca87780990-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s"
+    },
+    {
+      "name": "hbufs@af7fad6c6e992699",
+      "segmax": 206,
+      "exittail": 40,
+      "ccalls": 5,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-af7fad6c6e99-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s"
+    },
+    {
+      "name": "vbuild@af7fad6c6e992699",
+      "segmax": 206,
+      "exittail": 12,
+      "ccalls": 4,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-af7fad6c6e99-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s"
+    },
+    {
+      "name": "$receive.turn.logPutTo",
+      "segmax": 184,
+      "exittail": 184,
+      "ccalls": 12,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/prelude-a5a8a1130833-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s"
+    },
+    {
+      "name": "wireDigits",
+      "segmax": 183,
+      "exittail": 43,
+      "ccalls": 22,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/prelude-a5a8a1130833-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s"
+    }
+  ],
+  "worst_runtime_call_sites": [
+    {
+      "name": "viaNamespace@84826bc9e8ddb4b5",
+      "segmax": 105,
+      "exittail": 60,
+      "ccalls": 67,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-84826bc9e8dd-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s"
+    },
+    {
+      "name": "viaNamespaceUntil@84826bc9e8ddb4b5",
+      "segmax": 105,
+      "exittail": 60,
+      "ccalls": 67,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-84826bc9e8dd-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s"
+    },
+    {
+      "name": "main",
+      "segmax": 126,
+      "exittail": 88,
+      "ccalls": 47,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/program.s"
+    },
+    {
+      "name": "launcherHdrW",
+      "segmax": 124,
+      "exittail": 0,
+      "ccalls": 44,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/program.s"
+    },
+    {
+      "name": "operation@464ca3ee0d89bc64",
+      "segmax": 145,
+      "exittail": 78,
+      "ccalls": 36,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-464ca3ee0d89-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s"
+    },
+    {
+      "name": "aStats2@7022992c8e4a9fba",
+      "segmax": 146,
+      "exittail": 146,
+      "ccalls": 29,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-7022992c8e4a-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s"
+    },
+    {
+      "name": "lKey",
+      "segmax": 115,
+      "exittail": 115,
+      "ccalls": 29,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/program.s"
+    },
+    {
+      "name": "actor@6e7bea28db71815a",
+      "segmax": 80,
+      "exittail": 49,
+      "ccalls": 25,
+      "file": "/private/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-native-insns-uu1rgdm0/units/u-6e7bea28db71-pa5a8a113-s4aa12b10-g76-tirberv64-16mixed-strictallrt3pc5-c09612b07b5ec-rv64.s"
+    }
+  ],
+  "compiler": {
+    "path": "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/fpr",
+    "sha256": "e1b5ecc350de33ad2410fbae0bdbfda6c528f3088913b6d0ffe583745d05fb49"
+  },
+  "source": "/Users/jasonqin/Documents/GitHub/qos/programs/system.fpr",
+  "ceiling": 312,
+  "runtime_call_sites_ceiling": 67,
+  "result": "PASS"
+}

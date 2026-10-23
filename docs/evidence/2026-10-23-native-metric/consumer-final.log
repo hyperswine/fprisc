@@ -1,0 +1,3 @@
+Native consumer: closure/space paths, all target aliases, symbols, metadata and 24 refusal controls PASS
+CLI: independent instruction/call-site ceilings and stale success replacement PASS
+Real strict typed compilation: 269 functions, 2 files PASS

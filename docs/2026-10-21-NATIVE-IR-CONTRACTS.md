@@ -176,6 +176,20 @@ For the new path:
 This is a compatibility strategy, not an implemented bounds pass. Neither
 portable IR operation counts nor evaluator tick totals establish native WCET.
 
+### 2026-10-23 consumer migration
+
+The selected bounds pass and [native consumer gate](2026-10-23-NATIVE-METRIC-CONSUMER.md)
+are now implemented. QOS's executable ratchet consumes complete
+`native-insns-v1` coverage with separate instruction and runtime-call-site
+ceilings. Missing, malformed, legacy or unbounded input fails. The old
+shared-RISC ratchet script is removed; rollback annotations remain until
+their generator retires. The historical embedded QOS help text is preserved
+as an archived module, and a new living QOS admission reference supersedes it.
+
+These are per-function regression bounds. Runtime time and cross-function
+call/return composition are explicitly unprovided, so the maximum individual
+row is not a global between-safepoints or elapsed-time certificate.
+
 ## Selection, diagnostics and cache identity
 
 `FPR_TYPED_IR` currently observes freshly emitted units; a cached unit may

@@ -1,0 +1,12 @@
+test_a_skip_is_visible_and_strict_mode_fails (test_check_all.SweepVerdicts.test_a_skip_is_visible_and_strict_mode_fails) ... ok
+test_float_build_and_output_are_both_required (test_check_all.SweepVerdicts.test_float_build_and_output_are_both_required) ... ok
+test_holes_expected_refusals_pass_but_missing_diagnostics_fail (test_check_all.SweepVerdicts.test_holes_expected_refusals_pass_but_missing_diagnostics_fail) ... ok
+test_jit_requires_matching_output_and_successful_producers (test_check_all.SweepVerdicts.test_jit_requires_matching_output_and_successful_producers) ... ok
+test_native_instruction_gate_status_is_required (test_check_all.SweepVerdicts.test_native_instruction_gate_status_is_required) ... ok
+test_summary_counts_pass_fail_and_skip (test_check_all.SweepVerdicts.test_summary_counts_pass_fail_and_skip) ... ok
+test_transaction_requires_expected_panic_and_no_partial_write (test_check_all.SweepVerdicts.test_transaction_requires_expected_panic_and_no_partial_write) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 2.140s
+
+OK

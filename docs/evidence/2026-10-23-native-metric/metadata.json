@@ -1,0 +1,30 @@
+{
+  "starting_revision": "50dbc3d",
+  "compiler_sha256": "e1b5ecc350de33ad2410fbae0bdbfda6c528f3088913b6d0ffe583745d05fb49",
+  "consumer_sha256": "ec39a633056967e7663294163db8d9d0a788ffa79f048155b80b972734855045",
+  "codegen_revision": 76,
+  "emitted_code_changes": false,
+  "base_validation": {
+    "result": "PASS",
+    "jobs": 116,
+    "seconds": 365,
+    "workers": 4,
+    "exit_code": 0
+  },
+  "consumer_controls": 24,
+  "real_compile_test": {
+    "functions": 269,
+    "files": 2
+  },
+  "qos_starting_revision": "e671e18242b97e02fcb09580b4b58569a14e207c",
+  "qos_focused_validation": [
+    "system native gate",
+    "independent real instruction/call-site regressions",
+    "7 sweep-verdict tests",
+    "graphics-independent compile suite"
+  ],
+  "qos_full_sweep": "not run for this milestone",
+  "physical_and_hosted_ci": "not run for this milestone",
+  "cold_warm_audit": "27 of 27 assembly hashes match; all summary counts identical",
+  "scope": "Per-function native instruction and static runtime-call-site regression gates; no runtime time or call/return composition certificate."
+}

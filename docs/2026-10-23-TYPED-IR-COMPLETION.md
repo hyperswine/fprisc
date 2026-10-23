@@ -21,7 +21,7 @@ switching its ownership model does not count as migration.
 | Captured SIMD maps | Implemented: [matching Int/F64 captures on A64](2026-10-23-CAPTURED-SIMD.md), 113 Base jobs passed | Independent C, scalar parity, tails, overflow, hostile yields, real actor runtime, paired measurements |
 | Fused SIMD pipelines and x64 pairs | [x64 SSE2 pairs implemented](2026-10-23-SSE2-PAIRS.md), 113 Base jobs passed; fused pipelines open | Stable filtering, source-order failures, fuel bounds, scalar tails; native A64 and x64 execution oracles |
 | Filter compaction | Open | A discard-heavy benchmark, fewer directory/base loads, stable rows and all columns preserved, paired measurements |
-| Native instruction accounting | Open | QOS ratchet/admission consumers use `native-insns-v1`; refuse absent or unbounded coverage; document runtime-call costs separately |
+| Native instruction accounting | [Consumer migrated](2026-10-23-NATIVE-METRIC-CONSUMER.md): complete native closure audit, instruction/call-site ceilings; 116 Base jobs and focused QOS gates passed | QOS uses `native-insns-v1`; absent/unbounded coverage fails; runtime time and call/return composition remain explicitly unprovided |
 | Builtin manual/GC profiles, RV32/RV64 | [Implemented](2026-10-23-TYPED-BUILTIN.md), 114 Base jobs, QEMU and physical Tang Nano checks passed | Explicit allocator, root, raw-word and no-fuel policies; full function/data/kernel coverage; QEMU and supported board suites |
 | Builtin ARC, RV64 | [Implemented](2026-10-23-TYPED-ARC.md), 115 Base jobs, strict QEMU execution and 31 paired measurements passed | Preserve consuming/borrowing adapters, alias-result retains, object layout and section/link behavior; QEMU-virt ownership/raw/interrupt/export gates and paired guest work |
 | Final legacy deletion | Open | No production caller of legacy generation, relocation/lowering, peephole or modes; full fresh acceptance sweeps and clean build/install checks |
@@ -34,9 +34,10 @@ switching its ownership model does not count as migration.
    delay the ownership/profile migration indefinitely.
 2. Finish the filter-compaction pass using a workload that actually moves
    rows. Keep the dynamic-width loop fuel-bounded.
-3. Move QOS's legacy instruction ratchet to the selected/native metric.
-   Instruction counts are not a hardware-time WCET certificate. Preserve
-   explicit treatment of unknown runtime-call costs and unbounded paths.
+3. QOS's instruction ratchet now uses the selected/native metric. Keep its
+   closure and failure controls green. Remove obsolete annotation/reporting
+   code with the last legacy generator users. Runtime time and interprocedural
+   composition still require separate proofs before any latency certificate.
 4. Manual/GC RV32 and RV64 profiles and builtin RV64 ARC/raw now have
    explicit fixed-stack/no-fuel contracts. Preserve their ownership, root,
    layout, interrupt and export gates while removing legacy production paths.
@@ -97,8 +98,8 @@ The current bare-metal hosted RV selector still refuses frames above its
 Those paths must receive a complete typed replacement or an independently
 justified existing contract boundary before the old generator is removed.
 
-QOS's current `check-all.sh` invokes `tools/wcet-ratchet.sh` on
-`programs/system.fpr` with the old 200-IR-instruction ceiling. The ratchet
-reads only `# wcet:` rows. Migrating it requires a fresh native ceiling,
-complete annotation coverage checks and explicit runtime-call accounting;
-renaming the old number would not preserve its acceptance contract.
+QOS's `check-all.sh` now invokes `tools/native-insns-ratchet.py` on
+`programs/system.fpr` with independent ceilings of 312 native instructions
+per function segment and 67 runtime call sites per function. The old script
+is deleted. The current compiler still emits legacy rows for rollback users;
+those annotations and summary modes must disappear with their generator.
