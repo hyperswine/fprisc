@@ -235,4 +235,6 @@ they began.
 
 - [Typed native generator retirement](2026-10-23-TYPED-GENERATOR-RETIREMENT.md) - exclusive typed scalar/kernel/data generation, removed modes and final acceptance evidence.
 
+- [Cost-sized regions](2026-10-23-COST-SIZED-REGIONS.md): proposal for one Base memory model: every allocation in a region with a `Static n | Dynamic n` capacity like a mailbox, survivors copied out (sound by value semantics) or moved if linear, boundaries placed and sized by the cost pass, messages that die with their turn, frozen shared regions in place of the per-value ARC table; worked through pingpong, `serve`, swarm's keeper, the Tang Nano classifier and `std/mvu`, with alternatives and a staged plan.
+
 - [macOS x86-64 target](2026-10-24-X64-MACOS.md): Mach-O typed x64 output with Darwin TLV hart and argument cells, `--target=x64mac` and `fpr build --target=macos-x86_64`; Rosetta parity with AArch64 and the descriptor call's measured cost.
