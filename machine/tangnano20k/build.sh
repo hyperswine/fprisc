@@ -34,7 +34,12 @@ if [[ ! -f "$library" ]]; then
 fi
 # The compiler's unit list contains one pathname per line; quote every one.
 units=();while IFS= read -r unit;do [[ -z "$unit" ]] || units+=("$unit");done < "$out/base.s.units"
-riscv64-unknown-elf-gcc -march="$march" -mabi="$abi" -mcmodel=medany -Os \
+# a bare toolchain whose libc is picolibc (Debian) keeps its C headers behind
+# the specs file; a newlib toolchain answers the bare name and needs nothing
+specs="$(riscv64-unknown-elf-gcc -print-file-name=picolibc.specs)"
+libc=()
+if [[ "$specs" == /* && -f "$specs" ]]; then libc=(--specs=picolibc.specs); fi
+riscv64-unknown-elf-gcc -march="$march" -mabi="$abi" -mcmodel=medany -Os ${libc[@]+"${libc[@]}"} \
  -ffreestanding -nostdlib -nostartfiles -fno-builtin -DFPR_NHARTS=1 -DFPR_BUILTIN ${uart[@]+"${uart[@]}"} ${diagnostics[@]+"${diagnostics[@]}"} ${gc[@]+"${gc[@]}"} \
  -DFPR_SIMPLE_RISC -DFPR_CPU_MHZ="$freq" -DFPR_BUILTIN_HEAP_MAX_BYTES=8388608 -ffunction-sections -fdata-sections \
  -Wl,--gc-sections -Wl,--no-warn-rwx-segments -I runtime -I machine/builtin \
