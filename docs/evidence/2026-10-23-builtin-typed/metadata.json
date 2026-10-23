@@ -1,0 +1,49 @@
+{
+  "starting_revision": "1fe219f",
+  "measured_compilers": {
+    "baseline": "9a17ca6782dacae642ab23525c8a66a405a6a4bb06e4a26fdfddd58d010089d2",
+    "typed": "58254337e29568eb4ab6b479dcf7667f1942dfa1a5f23738909ab54f280acc29"
+  },
+  "final_compilers": {
+    "baseline": "9a17ca6782dacae642ab23525c8a66a405a6a4bb06e4a26fdfddd58d010089d2",
+    "typed": "3def857f369bb04af17d1c046b78d2312e98c3b089efa65edcf2e28eecb9254e"
+  },
+  "scope": "Builtin manual and conservative-GC policies, RV32/RV64; fixed stack, no actor fuel; ARC remains refused.",
+  "guest_instruction_ratios": {
+    "32": 0.8089166144161217,
+    "64": 0.8284620661943305
+  },
+  "measurement": "31 paired deterministic QEMU icount rounds plus a 3-pair check after unrelated indexed-memory lowering changes; guest instruction counts identical. Not physical elapsed time.",
+  "physical": {
+    "port": "/dev/cu.usbserial-20250303171",
+    "frequency_mhz": 48,
+    "gc_runs": 3,
+    "gc_log": "gc-board-final.log",
+    "manual_runtime_log": "board-manual.log",
+    "loader_probe": "board-probe.log",
+    "note": "Used already configured board via its UART loader; FPGA bitstream was not reprogrammed/read back in this run."
+  },
+  "base_validation": {
+    "result": "PASS",
+    "jobs": 114,
+    "seconds": 352,
+    "workers": 4,
+    "exit_code": 0,
+    "log": "base-final.log",
+    "scope": "Local full Base sweep; hosted CI not run in this milestone."
+  },
+  "softfloat_library": {
+    "path": "/Users/jasonqin/Documents/GitHub/fprisc/build/tangnano20k-softfloat/build/Linux-RISCV64-GCC/softfloat.a",
+    "sha256": "382fb0db040264888bdbd172493e713e1249cac15bef1bf1c3d1cc388dc34ebc"
+  },
+  "final_compiler_sha256": "3def857f369bb04af17d1c046b78d2312e98c3b089efa65edcf2e28eecb9254e",
+  "physical_artifacts": {
+    "typed_gc32": {
+      "sha256": "280e764638ffa5a12acc2100afd50cad1265792b7661dd6bae163823082d354b",
+      "scope": "Initial standalone physical GC run; the later three script runs rebuilt temporary images."
+    },
+    "manual_runtime32": {
+      "sha256": "7de090a8a7e7dd949785d720da0abd29f191a261c4c93089f9f888685c93a4e8"
+    }
+  }
+}

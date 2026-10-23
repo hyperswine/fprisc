@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_builtin.py", line 31, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_builtin.py", line 22, in main
+    assert 'segmax=UNBOUNDED' in text,'no-fuel loops must retain honest native reports'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: no-fuel loops must retain honest native reports

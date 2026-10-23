@@ -1,0 +1,21 @@
+profile builtin.
+Cell = Type (Cell value).
+GC.stress : Unit -> Unit .
+GC.report : Int -> Unit .
+get c = case c of Cell n -> n.
+hold n =
+  a = Cell (n + 1); b = Cell (n + 2); c = Cell (n + 3); d = Cell (n + 4);
+  e = Cell (n + 5); f = Cell (n + 6); g = Cell (n + 7); h = Cell (n + 8);
+  i = Cell (n + 9); j = Cell (n + 10); k = Cell (n + 11); l = Cell (n + 12);
+  _ = GC.stress Unit;
+  get a + get b + get c + get d + get e + get f + get g + get h + get i + get j + get k + get l.
+deep n =
+  root = Cell n;
+  _ = GC.stress Unit;
+  rest = if n == 0 then 0 else deep (n - 1);
+  get root + rest.
+tailcount n a = if n == 0 then a else tailcount (n - 1) (a + 1).
+wide a b c d e f g h i j k l = a+b+c+d+e+f+g+h+i+j+k+l.
+main =
+  answer = hold 7 + deep 100 + wide 1 2 3 4 5 6 7 8 9 10 11 12 + tailcount 1000 0;
+  GC.report answer.

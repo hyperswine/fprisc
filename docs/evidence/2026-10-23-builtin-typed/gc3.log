@@ -1,0 +1,2 @@
+RV32: TYPED_BUILTIN_GC_PASS: 12 live roots, recursive frames, 12 arguments, allocation-stress collection
+RV64: TYPED_BUILTIN_GC_PASS: 12 live roots, recursive frames, 12 arguments, allocation-stress collection

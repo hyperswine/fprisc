@@ -1,0 +1,4 @@
+RV32: TYPED_BUILTIN_GC_PASS: 12 live roots, recursive frames, 12 arguments, allocation-stress collection
+RV32: missing generated register/stack roots fail the oracle PASS
+RV64: TYPED_BUILTIN_GC_PASS: 12 live roots, recursive frames, 12 arguments, allocation-stress collection
+RV64: missing generated register/stack roots fail the oracle PASS

@@ -17,6 +17,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 ENV = {**os.environ, 'FPR_HOME': str(ROOT), 'FPR_PATH': str(ROOT)}
 ENV.pop('FPR_FOREIGN', None)
+ENV.setdefault('FPR_TYPED_IR_BACKEND','mixed')
 
 
 def run(args, env=ENV, expected=0, timeout=180):
@@ -91,6 +92,14 @@ def compile_image(out, bits, source, env, compressed=False):
     run(['./fprc', '--system=bare-metal', '--profile=builtin', f'--target=rv{bits}', source, asm], env)
     units = asm.with_suffix('.s.units').read_text().splitlines()
     image = out / 'program.elf'
+    # An explicit bridge keeps IM-only coverage available on toolchains
+    # whose RV64 libgcc multilibs require F/D, A or C instructions.
+    softfloat=[]
+    if bits==64 and env.get('FPR_SOFTFLOAT_ROOT'):
+        sfroot=Path(env['FPR_SOFTFLOAT_ROOT'])
+        library=sfroot/'build/Linux-RISCV64-GCC/softfloat.a'
+        assert library.exists(),'build the RV64 SoftFloat archive before running this gate'
+        softfloat=['-I'+str(sfroot/'source/include'),'machine/tangnano20k/softfloat.c',str(library)]
     run(['riscv64-unknown-elf-gcc', f'-march=rv{bits}im' + ('c' if compressed else '') + '_zicsr_zifencei',
          '-mabi=ilp32' if bits == 32 else '-mabi=lp64', '-mcmodel=medany', '-Os',
          '-ffreestanding', '-nostdlib', '-nostartfiles', '-fno-builtin',
@@ -102,8 +111,11 @@ def compile_image(out, bits, source, env, compressed=False):
          'machine/builtin/tangnano20k/machine.c', 'runtime/runtime.c',
          # -nostdlib also suppresses libgcc. The runtime's scalar equality
          # and formatting paths need its width/ABI-matched soft-float helpers.
-         'runtime/bits.c', 'machine/virt/memshim.c', asm, *units, '-lgcc', '-o', image], env)
+         'runtime/bits.c', 'machine/virt/memshim.c', asm, *units, *softfloat, *([] if softfloat else ['-lgcc']), '-o', image], env)
     text = asm.read_text()
+    if env.get('FPR_TYPED_IR_BACKEND','mixed') not in ('legacy','off','0'):
+        headers=re.findall(r'^# fn ([^\n]+)',text,re.M)
+        assert headers and all('typed-ir rv'+str(bits) in h for h in headers),'builtin fallback escaped native coverage'
     if bits == 32:
         assert not re.search(r'^\s+(?:ld|sd|lwu|f(?:add|mul|sub|div|mv|ld|sd|eq|lt|le|sqrt)[a-z.]*)\s', text, re.M), 'RV64/FPU instruction in RV32 output'
         for count in re.findall(r'^\s+s[rl][al]i\s+\w+,\s*\w+,\s*(\d+)', text, re.M):
@@ -119,8 +131,8 @@ def compile_image(out, bits, source, env, compressed=False):
                for part in arch[1].split('_')), ('unexpected ISA/library requirement', arch[1])
     return image, {'instructions': len(re.findall(r'^    [a-z][a-z0-9.]*\s', text, re.M)),
                    'text_bytes': int(size[0]),
-                   'indexed_calls': len(re.findall(r'\b(?:call|j) fpr_prim_fn__x24mem_x2e', text)),
-                   'addr_add_calls': len(re.findall(r'\b(?:call|j) fpr_g_Addr_x2eadd_call2', text)),
+                   'indexed_calls': len(re.findall(r'\b(?:call|j|tail) fpr_prim_fn__x24mem_x2e', text)),
+                   'addr_add_calls': len(re.findall(r'\b(?:call|j|tail) fpr_g_Addr_x2eadd_call2', text)),
                    'unit_cache': [Path(u).name for u in units]}
 
 
@@ -152,7 +164,7 @@ def main():
                     assert info['indexed_calls'] > 0, ('fusion did not run', bits)
                     asm = (out / 'program.s').read_text()
                     for function in ('escaped', 'writeEffect'):
-                        body = re.search(rf'(?ms)^fpr_fn_{function}:\n(.*?)(?=^# wcet:)', asm)
+                        body = re.search(rf'(?ms)^fpr_fn_{function}:\n(.*?)(?=^# (?:wcet|native-insns-v1):)', asm)
                         assert body and 'fpr_g_Addr_x2eadd_call2' in body[1], ('unsafe fusion', bits, function)
                 metrics[f'rv{bits}-slow{int(slow)}-indexed{int(indexed)}'] = info
             assert len(set(outputs)) == 1, (bits, outputs)
@@ -176,7 +188,7 @@ def main():
                     if no_inline:
                         asm = (out / 'program.s').read_text()
                         for symbol in ('charAt', '_x2b', '_x3c'):
-                            assert re.search(r'\b(?:call|j) fpr_fn_' + symbol + r'\b', asm), ('shadowed call vanished', bits, symbol)
+                            assert re.search(r'\b(?:call|j|tail) fpr_fn_' + symbol + r'\b', asm), ('shadowed call vanished', bits, symbol)
             for name, expr, message in (
                 ('add', 'intMax Unit + 1', 'Int overflow'),
                 ('sub', 'intMin Unit - 1', 'Int overflow'),

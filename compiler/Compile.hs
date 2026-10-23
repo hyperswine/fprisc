@@ -961,13 +961,13 @@ compileWithInterface accepted = do
           -- the profile the typed-IR lowering states; everything but hosted
           -- Base is refused by name (Codegen.Policy)
           irPolicy = Policy
-            { polProfile = if tgtName (oTarget opts) == "rv32" then Rv32
-                           else if oArc opts then BuiltinArc
-                           else if oBuiltin opts then Builtin
+            { polProfile = if oArc opts then BuiltinArc
+                           else if oBuiltin opts then (if tgtName (oTarget opts) == "rv32" then Builtin32 else Builtin)
+                           else if tgtName (oTarget opts) == "rv32" then Rv32
                            else if qapp then QosApp
                            else HostedBase,
               polFuel = not (oBuiltin opts),
-              polStackCheck = if envTirShallow then StackCheckLegacyShallow else StackCheckEveryEntry,
+              polStackCheck = if oBuiltin opts then StackStatic else if envTirShallow then StackCheckLegacyShallow else StackCheckEveryEntry,
               polFloatInline = not envNoFloatInline }
           -- direct backends: the AArch64 hart read follows the
           -- legacy lowering (x28 under fpr build, the TLV cell on a64mac

@@ -328,6 +328,7 @@ loopForm cfg here fn = case acSelfLoop cfg of
             pure (labels ++ [I (half e "entry.check" [c | c <- siCalls e, not (callSafepoint c)]), ILabel loopLabel, I (half e "entry.tick" [c | c <- siCalls e, callSafepoint c])] ++ rest)
         | siOp e == "entry.tick" -> pure (labels ++ [ILabel loopLabel, I e] ++ rest)
         | siOp e == "entry.check" -> pure (labels ++ [I e, ILabel loopLabel] ++ rest)
+        | siOp e == "entry.static" -> pure (labels ++ [I e, ILabel loopLabel] ++ rest)
       _ -> Left (here ++ "a self tail call in a function without an entry sequence")
     isInstr = \case I _ -> True; _ -> False
     half e op calls = e {siOp = op, siCalls = calls}

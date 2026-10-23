@@ -1,0 +1,187 @@
+{
+  "rv32-slow0-indexed1": {
+    "instructions": 2473,
+    "text_bytes": 34512,
+    "indexed_calls": 17,
+    "addr_add_calls": 4,
+    "unit_cache": [
+      "u-280f522c4a36-p09612b07-s09612b07-g75rt3pc5-c09612b07b5ec-rv32-builtin.s"
+    ]
+  },
+  "rv32-slow1-indexed0": {
+    "instructions": 2205,
+    "text_bytes": 33340,
+    "indexed_calls": 0,
+    "addr_add_calls": 21,
+    "unit_cache": [
+      "u-280f522c4a36-p09612b07-s09612b07-g75-slow32-noidxrt3pc5-c09612b07b5ec-rv32-builtin.s"
+    ]
+  },
+  "rv32-slow0-indexed0": {
+    "instructions": 2542,
+    "text_bytes": 34604,
+    "indexed_calls": 0,
+    "addr_add_calls": 21,
+    "unit_cache": [
+      "u-280f522c4a36-p09612b07-s09612b07-g75-noidxrt3pc5-c09612b07b5ec-rv32-builtin.s"
+    ]
+  },
+  "rv32-compressed": {
+    "instructions": 2473,
+    "text_bytes": 29348,
+    "indexed_calls": 17,
+    "addr_add_calls": 4,
+    "unit_cache": [
+      "u-280f522c4a36-p09612b07-s09612b07-g75rt3pc5-c09612b07b5ec-rv32-builtin.s"
+    ]
+  },
+  "rv32-sieve-slow0": {
+    "instructions": 927,
+    "text_bytes": 24660,
+    "indexed_calls": 7,
+    "addr_add_calls": 0,
+    "unit_cache": []
+  },
+  "rv32-sieve-slow1": {
+    "instructions": 1039,
+    "text_bytes": 25232,
+    "indexed_calls": 0,
+    "addr_add_calls": 7,
+    "unit_cache": []
+  },
+  "rv32-sort-slow0": {
+    "instructions": 1624,
+    "text_bytes": 27720,
+    "indexed_calls": 12,
+    "addr_add_calls": 0,
+    "unit_cache": []
+  },
+  "rv32-sort-slow1": {
+    "instructions": 1397,
+    "text_bytes": 27020,
+    "indexed_calls": 0,
+    "addr_add_calls": 12,
+    "unit_cache": []
+  },
+  "rv32-matrix-slow0": {
+    "instructions": 1653,
+    "text_bytes": 27804,
+    "indexed_calls": 9,
+    "addr_add_calls": 0,
+    "unit_cache": []
+  },
+  "rv32-matrix-slow1": {
+    "instructions": 1221,
+    "text_bytes": 26128,
+    "indexed_calls": 0,
+    "addr_add_calls": 9,
+    "unit_cache": []
+  },
+  "rv32-compute-slow0": {
+    "instructions": 701,
+    "text_bytes": 22680,
+    "indexed_calls": 0,
+    "addr_add_calls": 0,
+    "unit_cache": []
+  },
+  "rv32-compute-slow1": {
+    "instructions": 611,
+    "text_bytes": 22304,
+    "indexed_calls": 0,
+    "addr_add_calls": 0,
+    "unit_cache": []
+  },
+  "rv64-slow0-indexed1": {
+    "instructions": 2473,
+    "text_bytes": 23232,
+    "indexed_calls": 17,
+    "addr_add_calls": 4,
+    "unit_cache": [
+      "u-280f522c4a36-p09612b07-s09612b07-g75rt3pc5-c09612b07b5ec-rv64-builtin.s"
+    ]
+  },
+  "rv64-slow1-indexed0": {
+    "instructions": 2542,
+    "text_bytes": 23328,
+    "indexed_calls": 0,
+    "addr_add_calls": 21,
+    "unit_cache": [
+      "u-280f522c4a36-p09612b07-s09612b07-g75-slow32-noidxrt3pc5-c09612b07b5ec-rv64-builtin.s"
+    ]
+  },
+  "rv64-slow0-indexed0": {
+    "instructions": 2542,
+    "text_bytes": 23328,
+    "indexed_calls": 0,
+    "addr_add_calls": 21,
+    "unit_cache": [
+      "u-280f522c4a36-p09612b07-s09612b07-g75-noidxrt3pc5-c09612b07b5ec-rv64-builtin.s"
+    ]
+  },
+  "rv64-compressed": {
+    "instructions": 2473,
+    "text_bytes": 18906,
+    "indexed_calls": 17,
+    "addr_add_calls": 4,
+    "unit_cache": [
+      "u-280f522c4a36-p09612b07-s09612b07-g75rt3pc5-c09612b07b5ec-rv64-builtin.s"
+    ]
+  },
+  "rv64-sieve-slow0": {
+    "instructions": 927,
+    "text_bytes": 13124,
+    "indexed_calls": 7,
+    "addr_add_calls": 0,
+    "unit_cache": []
+  },
+  "rv64-sieve-slow1": {
+    "instructions": 954,
+    "text_bytes": 13248,
+    "indexed_calls": 0,
+    "addr_add_calls": 7,
+    "unit_cache": []
+  },
+  "rv64-sort-slow0": {
+    "instructions": 1624,
+    "text_bytes": 16236,
+    "indexed_calls": 12,
+    "addr_add_calls": 0,
+    "unit_cache": []
+  },
+  "rv64-sort-slow1": {
+    "instructions": 1669,
+    "text_bytes": 16412,
+    "indexed_calls": 0,
+    "addr_add_calls": 12,
+    "unit_cache": []
+  },
+  "rv64-matrix-slow0": {
+    "instructions": 1653,
+    "text_bytes": 16320,
+    "indexed_calls": 9,
+    "addr_add_calls": 0,
+    "unit_cache": []
+  },
+  "rv64-matrix-slow1": {
+    "instructions": 1690,
+    "text_bytes": 16456,
+    "indexed_calls": 0,
+    "addr_add_calls": 9,
+    "unit_cache": []
+  },
+  "rv64-compute-slow0": {
+    "instructions": 701,
+    "text_bytes": 11088,
+    "indexed_calls": 0,
+    "addr_add_calls": 0,
+    "unit_cache": []
+  },
+  "rv64-compute-slow1": {
+    "instructions": 701,
+    "text_bytes": 11088,
+    "indexed_calls": 0,
+    "addr_add_calls": 0,
+    "unit_cache": []
+  }
+}
+RV32/RV64 scalar semantics, primitive shadowing, overflow/refusals, cache isolation and indexed memory: PASS

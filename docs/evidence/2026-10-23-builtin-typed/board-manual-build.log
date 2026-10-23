@@ -1,0 +1,56 @@
+./fprc --system=bare-metal --profile=builtin --target=rv32  tests/builtin_tangnano20k.fpr /private/tmp/fpr-builtin-board/manual/builtin.s
+typed-ir-backend: native 19/19 functions (per-function)
+typed-ir-backend: Cons native (frame 16 shallow=no saved=s1,s2 values=6 regs=6 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=2 loops=0, native-insns-v1 segmax=45 exittail=45 ccalls=1)
+typed-ir-backend: Err native (frame 16 shallow=no saved=s1 values=5 regs=5 spills=0 slots=0 reloads=0 stores=0 copies=1 crossing=1 loops=0, native-insns-v1 segmax=41 exittail=41 ccalls=1)
+typed-ir-backend: False native (frame 16 shallow=no saved=none values=1 regs=1 spills=0 slots=0 reloads=0 stores=0 copies=0 crossing=0 loops=0, native-insns-v1 segmax=11 exittail=11 ccalls=0)
+typed-ir-backend: Nil native (frame 16 shallow=no saved=none values=1 regs=1 spills=0 slots=0 reloads=0 stores=0 copies=0 crossing=0 loops=0, native-insns-v1 segmax=11 exittail=11 ccalls=0)
+typed-ir-backend: Node native (frame 16 shallow=no saved=s1,s2 values=6 regs=6 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=2 loops=0, native-insns-v1 segmax=45 exittail=45 ccalls=1)
+typed-ir-backend: Ok native (frame 16 shallow=no saved=s1 values=5 regs=5 spills=0 slots=0 reloads=0 stores=0 copies=1 crossing=1 loops=0, native-insns-v1 segmax=41 exittail=41 ccalls=1)
+typed-ir-backend: True native (frame 16 shallow=no saved=none values=1 regs=1 spills=0 slots=0 reloads=0 stores=0 copies=0 crossing=0 loops=0, native-insns-v1 segmax=11 exittail=11 ccalls=0)
+typed-ir-backend: Tup2 native (frame 16 shallow=no saved=s1,s2 values=6 regs=6 spills=0 slots=0 reloads=0 stores=0 copies=2 crossing=2 loops=0, native-insns-v1 segmax=45 exittail=45 ccalls=1)
+typed-ir-backend: Tup3 native (frame 32 shallow=no saved=s1,s2,s3 values=7 regs=7 spills=0 slots=0 reloads=0 stores=0 copies=3 crossing=3 loops=0, native-insns-v1 segmax=49 exittail=49 ccalls=1)
+typed-ir-backend: Tup4 native (frame 32 shallow=no saved=s1,s2,s3,s4 values=8 regs=8 spills=0 slots=0 reloads=0 stores=0 copies=4 crossing=4 loops=0, native-insns-v1 segmax=53 exittail=53 ccalls=1)
+typed-ir-backend: Tup5 native (frame 32 shallow=no saved=s1,s2,s3,s4,s5 values=9 regs=9 spills=0 slots=0 reloads=0 stores=0 copies=5 crossing=5 loops=0, native-insns-v1 segmax=57 exittail=57 ccalls=1)
+typed-ir-backend: Tup6 native (frame 32 shallow=no saved=s1,s2,s3,s4,s5,s6 values=10 regs=10 spills=0 slots=0 reloads=0 stores=0 copies=6 crossing=6 loops=0, native-insns-v1 segmax=61 exittail=61 ccalls=1)
+typed-ir-backend: Tup7 native (frame 48 shallow=no saved=s1,s2,s3,s4,s5,s6,s7 values=11 regs=11 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=7 loops=0, native-insns-v1 segmax=65 exittail=65 ccalls=1)
+typed-ir-backend: Tup8 native (frame 48 shallow=no saved=s1,s2,s3,s4,s5,s6,s7,s8 values=12 regs=12 spills=0 slots=0 reloads=0 stores=0 copies=8 crossing=8 loops=0, native-insns-v1 segmax=69 exittail=69 ccalls=1)
+typed-ir-backend: Unit native (frame 16 shallow=no saved=none values=1 regs=1 spills=0 slots=0 reloads=0 stores=0 copies=0 crossing=0 loops=0, native-insns-v1 segmax=11 exittail=11 ccalls=0)
+typed-ir-backend: check native (frame 16 shallow=no saved=none values=4 regs=4 spills=0 slots=0 reloads=0 stores=0 copies=0 crossing=0 loops=0, native-insns-v1 segmax=15 exittail=15 ccalls=1)
+typed-ir-backend: main native (frame 32 shallow=no saved=s1,s2,s3 values=161 regs=161 spills=0 slots=0 reloads=0 stores=0 copies=36 crossing=11 loops=0, native-insns-v1 segmax=440 exittail=440 ccalls=49)
+typed-ir-backend: stress native (frame 32 shallow=no saved=s1,s2,s3 values=27 regs=27 spills=0 slots=0 reloads=0 stores=0 copies=5 crossing=4 loops=1, native-insns-v1 segmax=UNBOUNDED exittail=UNBOUNDED ccalls=6)
+typed-ir-backend: sum native (frame 32 shallow=no saved=s1,s2,s3,s4 values=26 regs=26 spills=0 slots=0 reloads=0 stores=0 copies=7 crossing=4 loops=1, native-insns-v1 segmax=UNBOUNDED exittail=UNBOUNDED ccalls=3)
+wrote /private/tmp/fpr-builtin-board/manual/builtin.s (19 supercombinators, linearity OK)
+assumed external symbols (the fpr_g_ HAL/runtime contract):
+  Addr.add Mem.alloc Mem.fence Mem.free Mem.liveAllocations Mem.read16 Mem.read8 Mem.readWord Mem.realloc Mem.write16 Mem.write8 Mem.writeWord Rc.release Rc.retain Word.add Word.bits Word.eq Word.fromInt Word.mask Word.not Word.shl Word.shr Word.toInt
+riscv64-unknown-elf-gcc -march=rv32im_zicsr_zifencei -mabi=ilp32 -mcmodel=medany -ffreestanding -nostdlib -nostartfiles -Os -Wall -Wextra -fno-builtin -fno-stack-protector -DFPR_SIMPLE_RISC -UFPR_NHARTS -DFPR_NHARTS=1 -DFPR_BUILTIN -DFPR_BUILTIN_HEAP_MAX_BYTES=65536 -ffunction-sections -fdata-sections \
+	  -Wl,--gc-sections -T machine/builtin/tangnano20k/link.ld -Iruntime -Imachine/builtin \
+	  machine/builtin/tangnano20k/crt0.S machine/builtin/tangnano20k/board.c machine/builtin/tangnano20k/machine.c machine/builtin/heap.c machine/builtin/unsafe.c runtime/runtime.c runtime/i32.c runtime/bits.c machine/virt/memshim.c /private/tmp/fpr-builtin-board/manual/builtin.s $(cat /private/tmp/fpr-builtin-board/manual/builtin.s.units)  /opt/homebrew/Cellar/riscv-gnu-toolchain/main/lib/gcc/riscv64-unknown-elf/14.2.0/rv32im/ilp32/libgcc.a -o /private/tmp/fpr-builtin-board/manual/program.elf
+runtime/runtime.c: In function 'msg_copy_held_in':
+runtime/runtime.c:1160:3: warning: missing initializer for field 'novec' of 'dctx_t' [-Wmissing-field-initializers]
+ 1160 |   dctx_t c = {sl->hp, sl};
+      |   ^~~~~~
+runtime/runtime.c:753:15: note: 'novec' declared here
+  753 |   const char *novec; /* set: a Vector in the graph is refused by this name
+      |               ^~~~~
+runtime/runtime.c: In function 'fpr_entry_copy_try':
+runtime/runtime.c:1191:3: warning: missing initializer for field 'novec' of 'dctx_t' [-Wmissing-field-initializers]
+ 1191 |   dctx_t c = {sl->hp, sl};
+      |   ^~~~~~
+runtime/runtime.c:753:15: note: 'novec' declared here
+  753 |   const char *novec; /* set: a Vector in the graph is refused by this name
+      |               ^~~~~
+runtime/runtime.c: At top level:
+runtime/runtime.c:2802:13: warning: 'rfields' defined but not used [-Wunused-function]
+ 2802 | static void rfields(V obj, int n) { /* "<t.v f1 f2>" tail */
+      |             ^~~~~~~
+runtime/runtime.c:2196:13: warning: 'pdec' defined but not used [-Wunused-function]
+ 2196 | static void pdec(uw u) {
+      |             ^~~~
+runtime/runtime.c:271:14: warning: 'bucket_take' defined but not used [-Wunused-function]
+  271 | static void *bucket_take(fpr_pool_t *pool, uw idx) {
+      |              ^~~~~~~~~~~
+/opt/homebrew/Cellar/riscv-gnu-toolchain/main/lib/gcc/riscv64-unknown-elf/14.2.0/../../../../riscv64-unknown-elf/bin/ld: warning: /private/tmp/fpr-builtin-board/manual/program.elf has a LOAD segment with RWX permissions
+riscv64-unknown-elf-objcopy -O binary /private/tmp/fpr-builtin-board/manual/program.elf /private/tmp/fpr-builtin-board/manual/program.bin
+riscv64-unknown-elf-size /private/tmp/fpr-builtin-board/manual/program.elf
+   text	   data	    bss	    dec	    hex	filename
+  24564	      0	   5084	  29648	   73d0	/private/tmp/fpr-builtin-board/manual/program.elf

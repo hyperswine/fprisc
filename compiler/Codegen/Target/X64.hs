@@ -218,6 +218,7 @@ nullarySymbol t v = case (t, v) of
 select :: X64Config -> Fn -> Either String (SFn, S.Set VReg, S.Set (Int, Int), S.Set String)
 select cfg fn = do
   validatePolicy (cfgPolicy cfg)
+  when (polProfile (cfgPolicy cfg) `elem` [Builtin,Builtin32,BuiltinArc]) (Left "builtin native lowering requires RISC-V")
   unless (policyWidth (cfgPolicy cfg) == W64) (Left "this native target requires the 64-bit word policy")
   let maxV = maximum (0 : [n | b <- fnBlocks fn, (VId n, _) <- blockDefs b]) + 1
       tyMap = M.fromList (concatMap blockDefs (fnBlocks fn))

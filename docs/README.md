@@ -224,3 +224,5 @@ they began.
 - [Captured NEON maps](2026-10-23-CAPTURED-SIMD.md): matching Int/F64 captures, seven-argument pressure and hostile-yield oracles; 31 paired rounds show 57%/60% less targeted map time.
 
 - [Typed x64 SSE2 map pairs](2026-10-23-SSE2-PAIRS.md): shared Int/F64 lane expressions, seven-temporary budget, x64/qx64 Rosetta correctness and paired timings; scalar fallbacks and fuel preserved.
+
+- [Typed builtin manual/GC profiles](2026-10-23-TYPED-BUILTIN.md): RV32/RV64 fixed stacks and no actor fuel, shared indexed-memory rewrite, generated roots through real GC with negative controls, and physical Tang Nano checks. ARC remains separate.

@@ -22,7 +22,7 @@ switching its ownership model does not count as migration.
 | Fused SIMD pipelines and x64 pairs | [x64 SSE2 pairs implemented](2026-10-23-SSE2-PAIRS.md), 113 Base jobs passed; fused pipelines open | Stable filtering, source-order failures, fuel bounds, scalar tails; native A64 and x64 execution oracles |
 | Filter compaction | Open | A discard-heavy benchmark, fewer directory/base loads, stable rows and all columns preserved, paired measurements |
 | Native instruction accounting | Open | QOS ratchet/admission consumers use `native-insns-v1`; refuse absent or unbounded coverage; document runtime-call costs separately |
-| Builtin manual/GC profiles, RV32/RV64 | Open | Explicit allocator, root, raw-word and no-fuel policies; full function/data/kernel coverage; QEMU and supported board suites |
+| Builtin manual/GC profiles, RV32/RV64 | [Implemented](2026-10-23-TYPED-BUILTIN.md), 114 Base jobs, QEMU and physical Tang Nano checks passed | Explicit allocator, root, raw-word and no-fuel policies; full function/data/kernel coverage; QEMU and supported board suites |
 | Builtin ARC, RV64 | Open | Preserve consuming/borrowing adapters, alias-result retains, object layout and section/link behavior; ownership and hardware oracles |
 | Final legacy deletion | Open | No production caller of legacy generation, relocation/lowering, peephole or modes; full fresh acceptance sweeps and clean build/install checks |
 
@@ -37,9 +37,9 @@ switching its ownership model does not count as migration.
 3. Move QOS's legacy instruction ratchet to the selected/native metric.
    Instruction counts are not a hardware-time WCET certificate. Preserve
    explicit treatment of unknown runtime-call costs and unbounded paths.
-4. Admit builtin profiles individually. Begin with manual RV64, then
-   conservative GC/root preservation, RV32 legalization and ARC. Review
-   the actual runtime contracts before reusing hosted lowering.
+4. Manual/GC RV32 and RV64 profiles are now admitted with explicit
+   fixed-stack/no-fuel contracts. Continue with ARC/raw ownership, layout,
+   interrupt and export behavior before retiring the remaining generator.
 5. Inventory and remove remaining legacy production entry points and
    their tests' obsolete text assertions. Keep equivalent behavioral
    tests. Delete the generator and peephole only when the inventory is
@@ -68,11 +68,9 @@ that the open milestones or unavailable platform gates have passed.
 
 ## Profile work located in the current source
 
-Builtin admission is more than removing the policy refusal. In the current
-source, `Codegen.Lower` always inserts `OStackCheck`, and the RV selector
-requires hosted stack/fuel obligations at entry. Builtin has a static stack
-and no actor fuel; its explicit policy must remove those dependencies rather
-than linking dummy hosted runtime entries.
+The [manual/GC profile increment](2026-10-23-TYPED-BUILTIN.md) replaces
+hosted entry assumptions with `StackStatic` and no actor fuel on RV32/RV64.
+Generated roots have QEMU negative controls and physical Tang Nano results.
 
 ARC constructor allocation currently calls `fpr_builtin_alloc_adt(bytes,
 fields)` in the legacy generator; the typed RV `OMake` uses `fpr_alloc`.
@@ -84,12 +82,10 @@ separate function/object sections for linking. The raw/interrupt checks in
 Conservative GC is single-threaded and nonmoving. Its port captures all
 registers before root scanning (`machine/builtin/builtin.h`); stack and
 register roots, interior pointers, and allocator-private metadata have
-explicit scanning rules. Verify those rules against allocated native frames
-and calls before admitting the GC profile. A hosted stack map or ownership
-assumption cannot replace them.
+explicit scanning rules. The generated-frame and call tests now validate those rules; a hosted
+stack map or ownership assumption does not replace them.
 
-Builtin loops without actor fuel also need an honest interpretation of
-native bounds. A hosted preemption bound cannot be fabricated by inserting
-synthetic ticks into a no-fuel profile. Preserve the existing interrupt
-contract and report unknown/unbounded native segments explicitly under the
-appropriate profile policy.
+Builtin loops without actor fuel now retain honest `UNBOUNDED` native
+reports; hosted admission still requires bounded preemption segments.
+ARC/interrupt migration must preserve that distinction and the existing
+interrupt restrictions.

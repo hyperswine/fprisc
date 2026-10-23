@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_riscv_scalar.py", line 223, in <module>
+    main()
+    ~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_riscv_scalar.py", line 162, in main
+    image, info = compile_image(out, bits, 'tests/builtin_scalar_fast.fpr', env)
+                  ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_riscv_scalar.py", line 104, in compile_image
+    run(['bash','machine/tangnano20k/build-softfloat.sh'],{**env,'FPR_XLEN':'64'},timeout=600)
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_riscv_scalar.py", line 26, in run
+    assert p.returncode == expected, (args, p.returncode, p.stdout, p.stderr)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: (['bash', 'machine/tangnano20k/build-softfloat.sh'], 128, '', "Cloning into '/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/build/tangnano20k-softfloat'...\nfatal: unable to access 'https://github.com/ucb-bar/berkeley-softfloat-3.git/': Could not resolve host: github.com\n")

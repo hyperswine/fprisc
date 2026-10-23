@@ -8,7 +8,7 @@ import Codegen.Dump (dumpFn)
 import Codegen.Eval
 import Codegen.IR
 import Codegen.Lower (lowerFn, lowerProgram, Prim (..))
-import Codegen.Policy (m2Policy, Policy (..), Profile (..))
+import Codegen.Policy (m2Policy, Policy (..), Profile (..), StackPolicy (..), policyWidth, validatePolicy)
 import Codegen.Simplify (simplifyFn, simplifyProgram)
 import Codegen.Split (splitEntryValues)
 import Codegen.Verify (verifyFn, verifyProgram, verifyProgramWidth, opSignature, simdExprOk)
@@ -80,6 +80,16 @@ main = do
   check "load rejects tagged base" (case opSignature (const (Right TVal)) (OLoad TInt (VId 0) 0) of Left _ -> True; _ -> False)
   check "load rejects float-register representation" (case opSignature memTypes (OLoad TF64 (VId 0) 0) of Left _ -> True; _ -> False)
   check "store rejects mismatched value" (case opSignature memTypes (OStore TAddr (VId 0) 0 (VId 1)) of Left _ -> True; _ -> False)
+  let builtin64 = m2Policy {polProfile=Builtin,polFuel=False,polStackCheck=StackStatic}
+      builtin32 = builtin64 {polProfile=Builtin32}
+  check "builtin policies have explicit word widths" (policyWidth builtin64==W64 && policyWidth builtin32==W32)
+  check "builtin policies require fixed stacks and no actor fuel" (validatePolicy builtin64==Right () && validatePolicy builtin32==Right ()
+    && either (const True) (const False) (validatePolicy builtin64 {polFuel=True})
+    && either (const True) (const False) (validatePolicy builtin64 {polStackCheck=StackCheckEveryEntry}))
+  check "hosted policies cannot omit stack-growth checks" (all (either (const True) (const False) . validatePolicy) [m2Policy {polProfile=p,polStackCheck=StackStatic} | p<-[HostedBase,QosApp,Rv32]])
+  case lowerFn builtin64 M.empty M.empty M.empty M.empty "bare" (["x"],CVar "x") of
+    Right f -> check "builtin lowering adds no hosted stack/fuel obligations" (all (null . bInstrs) (fnBlocks f))
+    Left msg -> error msg
   -- SIMD pair bodies: one checked Int + or -, or an F64 tree, with captures,
   -- an F64 body + - * only, within the 15 scratch registers
   check "SIMD int body of one op" (simdExprOk True (SInt Add SLane (SConst 1)) == Right ())

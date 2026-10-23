@@ -1,0 +1,9 @@
+Build profile: -w ghc-9.8.2 -O1
+In order, the following will be built (use -v for more details):
+ - fp-risc-0.12.0 (exe:fpr) (file compiler/Codegen/Target/RV.hs changed)
+Preprocessing executable 'fpr' for fp-risc-0.12.0...
+Building executable 'fpr' for fp-risc-0.12.0...
+[14 of 71] Compiling Codegen.Target.RV ( compiler/Codegen/Target/RV.hs, dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr-tmp/Codegen/Target/RV.o ) [Source file changed]
+[72 of 72] Linking dist-newstyle/build/aarch64-osx/ghc-9.8.2/fp-risc-0.12.0/x/fpr/build/fpr/fpr [Objects changed]
+ld: warning: -U option is redundant when using -undefined dynamic_lookup
+ln -sf fpr fprc

@@ -1,0 +1,1 @@
+/opt/homebrew/Cellar/riscv-gnu-toolchain/main/lib/gcc/riscv64-unknown-elf/14.2.0/../../../../riscv64-unknown-elf/bin/ld: warning: /private/tmp/fpr-builtin-board/program.elf has a LOAD segment with RWX permissions

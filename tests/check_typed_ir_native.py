@@ -281,11 +281,11 @@ with tempfile.TemporaryDirectory(prefix=f'fpr-typed-ir-{BACKEND}-') as d:
     assert seen[0] == seen[2] == seen[4], seen
     assert seen[1] == seen[3] and len(set(seen)) == 2, seen
     print('cache transitions: ' + '/'.join(mode for mode in modes) + ' PASS')
-    # strict mode names the function that fell back: the builtin profile has
-    # no typed lowering (QOS RISC-V apps have one since 2026-10-23)
+    # strict mode names the function that fell back: builtin ARC remains
+    # a separate ownership contract from the admitted manual/GC profile
     refused_source = tmp / 'refused.fpr'
     refused_source.write_text('profile builtin.\nmain = Unit.\n')
-    p = subprocess.run(['./fpr', '--target=rv64', f'--prelude={ROOT}/core/prelude.fpr', refused_source, tmp / 'refused.s'], cwd=ROOT, env={**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'main'}, capture_output=True, text=True, timeout=600)
+    p = subprocess.run(['./fpr', '--target=rv64', '--arc', refused_source, tmp / 'refused.s'], cwd=ROOT, env={**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'main'}, capture_output=True, text=True, timeout=600)
     assert p.returncode != 0 and 'typed-ir strict' in p.stderr and '\n  main: ' in p.stderr, (p.returncode, p.stderr[-800:])
     # mixed mode on the M1 root fixture: scalar functions and main native
     mixed = {**ENV, 'FPR_TYPED_IR_BACKEND': 'mixed', 'FPR_TYPED_IR_STRICT': 'fib,sum,addovf,divz,even,odd,clamp,boolEq,boolNe,boolResult'}

@@ -1,0 +1,3 @@
+RV32 link, ISA, CSR code generation, memory bounds and ARC refusals: PASS
+UART host success, unexpected halt, panic and timeout: PASS
+Physical FPGA tests: SKIPPED (supply --port)

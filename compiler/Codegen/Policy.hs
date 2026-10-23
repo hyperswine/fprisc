@@ -4,11 +4,9 @@
 -- "Core coverage and representation evidence": scheduler fuel, stack checks
 -- and raw/ARC conventions cannot be inferred from the ISA alone).
 --
--- M2 implements one profile: hosted Base (the actor runtime on posix, fuel
--- on, a stack check at every entry).  The other profiles are named here so
--- that a request for them is refused by name rather than lowered under the
--- wrong contract; each gets its own register and tests before it is
--- admitted (the plan's M4).
+-- Hosted profiles retain actor fuel and growable stacks. Builtin profiles
+-- use a fixed stack with manual ownership or nonmoving conservative GC.
+-- ARC remains a separate ownership contract until its lowering is admitted.
 module Codegen.Policy
   ( Profile (..), StackPolicy (..), Policy (..), m2Policy, validatePolicy, profileName, policyWidth,
   ) where
@@ -18,6 +16,7 @@ import Codegen.IR (Width (..))
 data Profile
   = HostedBase -- the actor runtime on a hosted OS: fuel, growable stacks, no moving collector
   | Builtin -- the bare-metal profile: no fuel, its own allocator and root scans
+  | Builtin32 -- builtin with a 32-bit word, fixed stack, no actor fuel
   | BuiltinArc -- builtin with compiler ARC: consuming/borrowing calls, alias retains
   | QosApp -- a loaded QOS app: the plane's allocation, scheduling and stack growth
   | Rv32 -- the 32-bit word: Int is signed 31-bit, every width needs legalization
@@ -25,6 +24,7 @@ data Profile
 
 data StackPolicy
   = StackCheckEveryEntry -- every function entry checks its headroom (M2's choice; the M0 register allows it)
+  | StackStatic -- builtin fixed stack; no hosted growth call
   | StackCheckLegacyShallow -- the legacy rule: skip the check when the frame is small and no generated function is called
   deriving (Eq, Ord, Show)
 
@@ -43,13 +43,16 @@ profileName :: Profile -> String
 profileName = \case
   HostedBase -> "hosted Base"
   Builtin -> "builtin"
+  Builtin32 -> "builtin RV32"
   BuiltinArc -> "builtin with ARC"
   QosApp -> "QOS app"
   Rv32 -> "rv32"
 
--- what M2 implements; everything else is refused by name
+-- Admit each runtime contract explicitly.
 validatePolicy :: Policy -> Either String ()
-validatePolicy p = case polProfile p of
+validatePolicy p = if polProfile p `elem` [HostedBase,QosApp,Rv32] && polStackCheck p == StackStatic
+  then Left "a hosted profile requires stack-growth checks"
+  else case polProfile p of
   HostedBase
     | not (polFuel p) -> Left "the hosted Base profile without fuel is not a supported policy"
     | otherwise -> Right ()
@@ -60,12 +63,18 @@ validatePolicy p = case polProfile p of
   QosApp
     | not (polFuel p) -> Left "a QOS app without fuel is not a supported policy"
     | otherwise -> Right ()
+  Builtin -> builtin
+  Builtin32 -> builtin
   Rv32
     | polFuel p -> Right ()
     | otherwise -> Left "RV32 builtin ownership/allocator policy is not implemented"
   other -> Left ("the " ++ profileName other ++ " profile has no typed-IR native lowering in M2")
+  where
+    builtin
+      | polFuel p = Left "builtin code has no actor fuel"
+      | polStackCheck p /= StackStatic = Left "builtin code requires the fixed-stack policy"
+      | otherwise = Right ()
 
--- The existing RV32 profile is the Base runtime with a 32-bit word.
--- Builtin/ARC and loaded QOS apps remain separate, refused contracts.
+-- Word width is separate from the fixed/growable-stack distinction.
 policyWidth :: Policy -> Width
-policyWidth p = if polProfile p == Rv32 then W32 else W64
+policyWidth p = if polProfile p `elem` [Rv32,Builtin32] then W32 else W64

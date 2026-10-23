@@ -223,7 +223,7 @@ lowerFn policy sigs prog ext hal name (params, body)
       -- fuel tick, both after the parameters are the entry's values
       -- Keep the obligation explicit until native frame layout can prove
       -- the shallow-entry exemption. Lowering cannot know the frame size.
-      emitDo OStackCheck
+      when (polStackCheck policy /= StackStatic) (emitDo OStackCheck)
       when (polFuel policy) (emitDo OSafepoint)
       let cx = Cx prog ext hal policy name entry ptys rty sigs
           env = M.fromList (zip params (zip pvs ptys))
@@ -248,6 +248,11 @@ calleeOf cx h n
   -- ($arc.*, $scalar.*, the integer operators) are not calls there and stay
   -- refused here
   | M.notMember h (cxProg cx), Just (Prim a (Just sym) _) <- M.lookup h (cxHal cx), a == n, kernelPrefix `isPrefixOf` h = Just (Callee h (Generated sym) (replicate n TVal) TVal)
+  -- Private indexed accesses are checked C entries in the manual builtin
+  -- runtime, produced only after the address-identity proof in Codegen.
+  | polProfile (cxPolicy cx) `elem` [Builtin,Builtin32], "$mem." `isPrefixOf` h,
+    M.notMember h (cxProg cx), Just (Prim a (Just sym) _) <- M.lookup h (cxHal cx), a == n =
+      Just (Callee h (Foreign sym) (replicate n TVal) TVal)
   | M.notMember h (cxProg cx), Just (Prim a (Just sym) _) <- M.lookup h (cxHal cx), a == n, foreignName h = Just (Callee h (Foreign sym) (replicate n TVal) TVal)
   | otherwise = Nothing
 
@@ -512,7 +517,7 @@ lowerVal cx env = \case
       | isPrim cx env h, scalarPrefix `isPrefixOf` h, Just o <- M.lookup (drop (length scalarPrefix) h) arithOps, [a, b] <- args -> arith o a b
       | isPrim cx env h, scalarPrefix `isPrefixOf` h, Just o <- M.lookup (drop (length scalarPrefix) h) cmpOps, [a, b] <- args -> compare' o a b
       -- an inlined callee's entry safepoint (Inline.hs); its value is Unit
-      | h == "$fuel", [_] <- args -> emitDo OSafepoint >> nullary 0 0
+      | h == "$fuel", [_] <- args -> when (polFuel (cxPolicy cx)) (emitDo OSafepoint) >> nullary 0 0
       -- a saturated known call
       | M.notMember h env, Just c <- calleeOf cx h (length args) -> do
           as <- mapM (lowerVal cx env) args

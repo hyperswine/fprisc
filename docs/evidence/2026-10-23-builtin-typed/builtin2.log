@@ -1,0 +1,5 @@
+Standalone QEMU program and scheduler-free link: PASS
+Invalid shifts, mask, size and alignment: PASS
+Type rejection, RV32 manual support and ARC/RVV refusals: PASS
+Profile-specific module caches and explicit prelude: PASS
+Heap, reallocation, sharing and error paths under ASan/UBSan: PASS

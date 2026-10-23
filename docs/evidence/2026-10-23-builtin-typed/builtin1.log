@@ -1,0 +1,17 @@
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_builtin.py", line 33, in <module>
+    build('tests/builtin.fpr', image, tmp)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_builtin.py", line 26, in build
+    run(['make', 'bare-metal-builtin', f'PROG={source}', f'IMAGE={image}', f'BUILD={directory}'])
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_builtin.py", line 16, in run
+    raise AssertionError(f'{args}: exit {p.returncode}\n{p.stdout}\n{p.stderr}')
+AssertionError: ['make', 'bare-metal-builtin', 'PROG=tests/builtin.fpr', 'IMAGE=/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-builtin-qpvhzxh7/test.elf', 'BUILD=/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-builtin-qpvhzxh7']: exit 2
+./fprc --system=bare-metal --profile=builtin   tests/builtin.fpr /var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-builtin-qpvhzxh7/builtin.s
+
+fprc: typed-ir backend: stress: compiler error: allocate stress: a self tail call in a function without an entry sequence; sum: compiler error: allocate sum: a self tail call in a function without an entry sequence
+CallStack (from HasCallStack):
+  error, called at compiler/Codegen.hs:551:20 in fp-risc-0.12.0-inplace-fpr:Codegen
+make: *** [bare-metal-builtin] Error 1
+

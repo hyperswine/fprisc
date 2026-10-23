@@ -1,0 +1,9 @@
+RV32: TYPED_BUILTIN_GC_PASS: 12 live roots, recursive frames, 12 arguments, allocation-stress collection
+Traceback (most recent call last):
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_builtin.py", line 42, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/Users/jasonqin/Documents/GitHub/fprisc-typed-ir-next/tests/check_typed_ir_builtin.py", line 39, in main
+    assert bad.returncode!=0 and 'GENERATED GC CHECK FAILED' in bad.stdout,(bad.returncode,bad.stdout,bad.stderr)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: (1, 'GENERATED GC FAILURE\n', '')

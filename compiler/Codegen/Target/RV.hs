@@ -19,7 +19,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 14 -- comparison and F32 trees; prior: 13: the ESP-IDF host (the hart in fpr_esp_hart, local-exec, the 32-bit word); prior: 12: 12: QOS RISC-V apps and plugins: the hart borrowed through fpr_g_tlsoff; prior: 11: 11: posix modules: the hart through initial-exec TLS (la.tls.ie), local labels PC-relative under .option pic; prior: 10: generic HAL partial/opaque application; prior 9: inferred boxed I64 operators; prior 8: inference-generated vector runtime entries; prior 7: typed column memory and kernel arithmetic; prior: 6: an ESP-IDF host keeps the legacy generator (its hart is fpr_esp_hart); 5: units with no legacy code skip translation; 4: in-place constructor reuse; 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
+rvSelectionRev = 15 -- builtin fixed-stack/no-fuel profiles; prior: comparison and F32 trees; prior: 13: the ESP-IDF host (the hart in fpr_esp_hart, local-exec, the 32-bit word); prior: 12: 12: QOS RISC-V apps and plugins: the hart borrowed through fpr_g_tlsoff; prior: 11: 11: posix modules: the hart through initial-exec TLS (la.tls.ie), local labels PC-relative under .option pic; prior: 10: generic HAL partial/opaque application; prior 9: inferred boxed I64 operators; prior 8: inference-generated vector runtime entries; prior 7: typed column memory and kernel arithmetic; prior: 6: an ESP-IDF host keeps the legacy generator (its hart is fpr_esp_hart); 5: units with no legacy code skip translation; 4: in-place constructor reuse; 3: inline F64 arithmetic and comparisons, kernel calls by symbol; prior 2:
 
 -- HartTp: the hart pointer is tp (bare metal, QOS); HartTls: the posix
 -- runtime's thread-local cell, local-exec (an executable); HartTlsIe: the
@@ -133,18 +133,21 @@ select cfg fn = do
       if bId b == fnEntry fn then do
         let stack = any (\(Instr _ op) -> op == OStackCheck) prefix
             fuel = any (\(Instr _ op) -> op == OSafepoint) prefix
-        unless (stack && fuel) (lift (Left "RV64: hosted entry lacks stack/fuel obligations"))
-        entry stack fuel
+        let wantStack = polStackCheck (cfgPolicy cfg) /= StackStatic
+            wantFuel = polFuel (cfgPolicy cfg)
+        unless (stack == wantStack && fuel == wantFuel) (lift (Left "RISC-V entry disagrees with the profile stack/fuel obligations"))
+        if stack || fuel then entry stack fuel else emit (plain "entry.static" [] [])
       else forM_ prefix $ \(Instr _ op) -> case op of
-        OSafepoint -> entry False True
+        OSafepoint -> if polFuel (cfgPolicy cfg) then entry False True else lift (Left "a no-fuel profile contains a safepoint")
         _ -> lift (Left "RV64: non-entry stack check")
       mapM_ instruction rest
       terminator b
     instruction (Instr result op) = case op of
       OStore _ a n v -> storeAt stWord (vreg a) (vreg v) (fromIntegral n)
       OStackCheck -> lift (Left "RV64: misplaced stack check")
-      OSafepoint -> entry False True
+      OSafepoint -> if polFuel (cfgPolicy cfg) then entry False True else lift (Left "a no-fuel profile contains a safepoint")
       OSafepointN n -> do
+        unless (polFuel (cfgPolicy cfg)) (lift (Left "a no-fuel profile contains a counted safepoint"))
         Label l <- freshLabel
         emit ((plain "tick.n" [] [OI (fromIntegral n)])
           {siImplicitDefs = map p ["t3","t4","t5","sp"], siImplicitUses = [p "tp"],
@@ -267,7 +270,7 @@ select cfg fn = do
       OEqVal eq a b -> do
         t <- fresh; call ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!=")) False True [vreg a,vreg b] (Just t) False
         loadAt "lw" d t 4
-      OCall c vs -> call (calleeSym c) (not (isForeign c)) (isForeign c) (map vreg vs) (Just d) False
+      OCall c vs -> call (calleeSym c) (polFuel (cfgPolicy cfg) && not (isForeign c)) (isForeign c) (map vreg vs) (Just d) False
       OApply f vs -> do
         forM_ (f:vs) $ \v -> emit ((plain "push" [] [anyV (vreg v)]) {siImplicitDefs = [p "sp"]})
         emit ((plain "applyn" [fixed d (p "a0")] [OI (fromIntegral (length vs))])
@@ -278,10 +281,10 @@ select cfg fn = do
     edge bid vs = parallel (zip (targetParams bid) (map vreg vs)) >> jump (label bid)
     terminator b = case bTerm b of
       TRet v -> emit ((plain "ret" [] [fixed (vreg v) (p "a0")]) {siImplicitDefs = map p ["sp","s0","ra","t3"], siControl = Return})
-      TBr bid vs | bid == fnEntry fn -> call (functionSymbol (fnName fn)) True False (map vreg vs) Nothing True
+      TBr bid vs | bid == fnEntry fn -> call (functionSymbol (fnName fn)) (polFuel (cfgPolicy cfg)) False (map vreg vs) Nothing True
                  | otherwise -> edge bid vs
       TCondBr v yes ys no ns -> do l <- freshLabel; branch (vreg v) l; edge no ns; mark l; edge yes ys
-      TTailCall c vs -> call (calleeSym c) (not (isForeign c)) (isForeign c) (map vreg vs) Nothing True
+      TTailCall c vs -> call (calleeSym c) (polFuel (cfgPolicy cfg) && not (isForeign c)) (isForeign c) (map vreg vs) Nothing True
       TUnreachable s -> do
         modify (\st -> st {strings = S.insert s (strings st)})
         emit ((plain "panic" [] [OS (stringLabel s)]) {siImplicitDefs = [p "a0"], siClobbers = callers, siControl = Return, siCalls = [Call "fpr_panic" False True]})
@@ -311,7 +314,7 @@ emitFnRV cfg fn = do
       ly = layout (2 * wordBytes cfg) 16 (saveObjects ++ alSlots allocation)
       (shallow, body) = shallowEntry (polStackCheck (cfgPolicy cfg)) (lyBytes ly) (alBody allocation)
   let ceiling = if cfgHart cfg `elem` [HartTls, HartTlsIe, HartQos, HartTlsEsp] then 32768 else 1024
-  when (lyBytes ly > ceiling) (Left ("RISC-V frame exceeds the profile ceiling of " ++ show ceiling ++ " bytes"))
+  when (polStackCheck (cfgPolicy cfg) /= StackStatic && lyBytes ly > ceiling) (Left ("RISC-V frame exceeds the profile ceiling of " ++ show ceiling ++ " bytes"))
   let reg (Phys r) = r
       off ref = toInteger (lyOffset ly M.! ref)
       w = toInteger (wordBytes cfg)
@@ -369,6 +372,7 @@ render cfg fn ly restores (I i) = map (\s -> if last s == ':' then s else "    "
     tickN n = [ld ++ " t4, 0(t3)", "addi t4, t4, -" ++ show n, stWord ++ " t4, 0(t3)", "bgtz t4, " ++ l "_fuel", "call fpr_fuel_exhausted", l "_fuel" ++ ":"]
     ew = if cfgWidth cfg == W32 then "32" else "64"
     go op ds us = case (op,ds,us) of
+      ("entry.static",[],[]) -> []
       ("params",_,[]) -> []
       ("load.slot",[d],[OF ref 0]) -> memory ld (r d) "s0" (off ref)
       ("store.slot",[],[v,OF ref 0]) -> memory stWord (r v) "s0" (off ref)

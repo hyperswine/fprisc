@@ -130,8 +130,8 @@ lowerKernel policy callbacks k = do
     w = if policyWidth policy == W32 then 4 else 8
     elemTy = if kernelElement k == KI then TInt else TVal
     build args = do
-      effect OStackCheck
-      effect OSafepoint
+      when (polStackCheck policy /= StackStatic) (effect OStackCheck)
+      when (polFuel policy) (effect OSafepoint)
       fallback <- label
       -- Integer captures/accumulator have runtime guards, like the legacy
       -- kernel; float captures rely on the checked callback signature.
@@ -232,7 +232,7 @@ lowerKernel policy callbacks k = do
       enough <- value TPred (OCmp Ge remaining two)
       end (TCondBr enough pairBody [] after [])
       begin pairBody []
-      effect (OSafepointN (2*(ticks+1)))
+      when (polFuel policy) (effect (OSafepointN (2*(ticks+1))))
       cursor <- value TAddr (OIndex base (fst i2))
       effect (OSimdPair (kernelElement k == KI) expr caps cursor)
       i2' <- value TInt (OKernelArith Add (fst i2) two)
@@ -264,7 +264,7 @@ lowerKernel policy callbacks k = do
       more <- value TPred (OCmp Gt remaining zero)
       end (TCondBr more stripBody [] after [fst i3,fst acc3])
       begin stripBody []
-      effect OSafepoint
+      when (polFuel policy) (effect OSafepoint)
       small <- value TPred (OCmp Lt remaining (fst vmax))
       end (TCondBr small pickRem [] pickMax [])
       begin pickRem []; end (TBr picked [remaining])
@@ -362,8 +362,8 @@ lowerRecordKernel policy callbacks k = do
       if ty == KI then load TInt cursor 0 >>= value TVal . OTag
                   else load TVal cursor 0
     build args = do
-      effect OStackCheck
-      effect OSafepoint
+      when (polStackCheck policy /= StackStatic) (effect OStackCheck)
+      when (polFuel policy) (effect OSafepoint)
       fallback <- label
       let vec = last args
           capCount = length (recordCaptures k)
@@ -409,7 +409,7 @@ lowerRecordKernel policy callbacks k = do
       more <- value TPred (OCmp Lt (fst i) count)
       end (TCondBr more body [] done [fst acc,fst kept])
       begin body []
-      effect OSafepoint
+      when (polFuel policy) (effect OSafepoint)
       values <- M.fromList <$> forM columns (\col@(n,_) -> do v <- readColumn bases (fst i) col; pure (n,v))
       nextKept <- fresh TInt; nextAcc <- fresh TVal
       case operation of
@@ -441,7 +441,7 @@ lowerRecordKernel policy callbacks k = do
           end (TCondBr moreCols copyBody [] copied [])
           begin copyBody []
           -- The width is dynamic, so keep this inner loop fuel-bounded too.
-          effect OSafepoint
+          when (polFuel policy) (effect OSafepoint)
           base <- baseAt cols (fst j)
           src <- indexed base (fst i); dst <- indexed base (fst kept)
           word <- load TVal src 0
@@ -498,8 +498,8 @@ lowerMapAsKernel policy k = do
     w = if policyWidth policy == W32 then 4 else 8
     hal name arity = Callee name (Foreign ("fpr_g_" ++ mangleName name ++ "_call" ++ show arity)) (replicate arity TVal) TVal
     build args = do
-      effect OStackCheck
-      effect OSafepoint
+      when (polStackCheck policy /= StackStatic) (effect OStackCheck)
+      when (polFuel policy) (effect OSafepoint)
       fallback <- label
       let caps = init args; vec = last args
       -- an Int (1), boxed (2) or float (4) column; a record vector goes generic
@@ -534,7 +534,7 @@ lowerMapAsKernel policy k = do
       more <- value TPred (OCmp Lt (fst i) count)
       end (TCondBr more body [] done [fst out])
       begin body []
-      effect OSafepoint
+      when (polFuel policy) (effect OSafepoint)
       cursor <- value TAddr (OIndex base (fst i))
       end (TCondBr isInt tagIt [] rawIt [])
       begin tagIt []

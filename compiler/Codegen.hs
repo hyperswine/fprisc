@@ -51,7 +51,7 @@ import Codegen.Lower (lowerProgram, Prim (..))
 import Codegen.Simplify (simplifyProgram)
 import Codegen.Split (splitEntryValues)
 import Codegen.Target.Common (Tune (..))
-import Codegen.Policy (Policy, m2Policy, policyWidth)
+import Codegen.Policy (Policy (..), m2Policy, policyWidth)
 import qualified Codegen.Target.X64 as X64
 import qualified Codegen.Target.RV as RV
 import Codegen.Target.A64 (A64Config (..), HartAccess, NativeFn (..), ObjectFormat (..), emitFnA64)
@@ -69,7 +69,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 74 -- x64 SSE2 map pairs; prior: captured NEON maps; prior: F64 comparison trees, F32 trees and hosted A64 FP allocation
+codegenRev = 75 -- builtin manual/GC fixed-stack lowering; prior: x64 SSE2 map pairs; prior: captured NEON maps; prior: F64 comparison trees, F32 trees and hosted A64 FP allocation
 
 -- Target word parameterization: everything the emitted assembly does
 -- that depends on XLEN funnels through these five fields.  The value
@@ -546,7 +546,7 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
             -- the header's layout and allocation facts: `frame=N saved=... values=... spills=...` (M3)
             frameOf nf = case dropWhile (not . isPrefixOf "frame=") (words (head (nfLines nf))) of (f : rest) -> unwords (drop 6 f : rest); [] -> "?"
             bound = maybe "UNBOUNDED" show
-            unbounded = [n | (n, nf) <- M.toList accepted, rSegMax (nfReport nf) == Nothing]
+            unbounded = [n | polFuel (tgtPolicy tgt), (n, nf) <- M.toList accepted, rSegMax (nfReport nf) == Nothing]
          in if not (null errors)
               then error ("typed-ir backend: " ++ intercalate "; " errors)
               else case nmGranularity nm of
@@ -580,7 +580,9 @@ nativeSelect tgt spec nm sigs ext exps prog emitted =
     -- while supported kernels are independently lowered to typed CFGs;
     -- (docs/2026-10-22-TYPED-IR-KERNELS.md).  Same gates as genT.
     rewritten = if spec then M.map (\(ps, b) -> let (b', ks) = kernelSites (S.fromList ps) b in ((ps, b'), ks)) emitted else M.map (\d -> (d, [])) emitted
-    eligible = M.map fst rewritten
+    eligible = M.map prepare (M.map fst rewritten)
+    prepare (ps,b) = (ps, if tgtIndexedMemory tgt && not (tgtFuel tgt || tgtArc tgt)
+      then indexedMemory (M.keysSet prog `S.union` M.keysSet ext) (S.fromList ps) b else b)
     failures = loweringFailures
     kernelPrims = M.fromList [(kernelName sym, Prim (length args) (Just sym) Nothing) | (_, ks) <- M.elems rewritten, (sym, _, args) <- ks]
     kernelsOf accepted = M.toList (M.fromList [(sym, plan) | (n, (_, ks)) <- M.toList rewritten, M.member n accepted, (sym, plan, _) <- ks])
@@ -3466,7 +3468,7 @@ emitSpecs prog = do
           when (not (null failures)) (Left ("callback lowering: " ++ show failures))
           fn <- builder callbacks
           nfs <- mapM (\f -> emitNative tgt nm (S.insert (fnName f) exps) backend f) (fn : M.elems callbacks)
-          if any ((== Nothing) . rSegMax . nfReport) nfs
+          if polFuel (tgtPolicy tgt) && any ((== Nothing) . rSegMax . nfReport) nfs
             then Left "native-insns-v1 is UNBOUNDED"
             else Right nfs
         _ -> Left "typed backend unavailable"

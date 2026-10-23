@@ -1,0 +1,41 @@
+paired round 1/3
+paired round 2/3
+paired round 3/3
+{
+  "compiler_sha256": {
+    "baseline": "9a17ca6782dacae642ab23525c8a66a405a6a4bb06e4a26fdfddd58d010089d2",
+    "typed": "3def857f369bb04af17d1c046b78d2312e98c3b089efa65edcf2e28eecb9254e"
+  },
+  "runs": 3,
+  "scope": "Paired deterministic QEMU guest instruction counts for builtin/GC codegen.\nThis is emitted guest work, not physical RISC-V elapsed time.\n",
+  "samples_guest_insns": {
+    "32": {
+      "baseline": [
+        71271984,
+        71271984,
+        71271984
+      ],
+      "typed": [
+        57653092,
+        57653092,
+        57653092
+      ]
+    },
+    "64": {
+      "baseline": [
+        75192482,
+        75192482,
+        75192482
+      ],
+      "typed": [
+        62294119,
+        62294119,
+        62294119
+      ]
+    }
+  },
+  "ratios": {
+    "32": 0.8089166144161217,
+    "64": 0.8284620661943305
+  }
+}
