@@ -59,3 +59,16 @@ and scope in the adjacent dated evidence directories.
 of their APIs, switches or instruction bounds. Performance follow-ups such as
 fused SIMD pipelines, other targets' FP pools and dynamic-width compaction do not
 provide missing functionality for any retired generator consumer.
+
+Hosted integration then exposed two test-environment omissions. Run 39964023156
+passed the native Linux x64 and RISC-V frame/runtime/oracle gates, then lacked
+Clang sanitizer libraries for the ARC heap test. Installing `libclang-rt-dev`
+preserved that check. Run 39966926661 passed ARC and the RV64 Linux runtime,
+then exposed missing Picolibc specs in the new direct RV32 test builder. The
+builder now matches the existing Tang `build.sh` discovery. The full numeric/
+float and fixed-stack suites pass with local newlib (`rv32-builder-newlib.log`,
+`rv32-builder-fixed-stack.log`), and the exact three formerly failing C sources
+pass with Debian's actual Picolibc toolchain (`rv32-builder-debian.log`). The
+disposable Debian container was removed. These repairs change CI/test plumbing,
+not compiler/runtime sources; the prior complete local sweeps retain their scope.
+The failed hosted logs remain under `development/` and are not passing runs.

@@ -4,7 +4,7 @@
   "compiler_sha256": "542309b031b966e2114c9918eb42b231e2df5472318d2c4b71a91f83e30ffcbf",
   "pre_deletion_compiler_sha256": "0d2efda480e1307eb85dc3c794630776c4412fc006f9e6a5ebde6ccba2ba3846",
   "source_sha256": {
-    ".github/workflows/ci.yml": "e5f23b6b0b32fe4aa005ace5a0dfa682fa466e8dd3e261fae24139e90ef5a6b9",
+    ".github/workflows/ci.yml": "c968ba734413f9ff7fead711054d96127a3cc7d1415ca419c1d9243a35d586b4",
     "compiler/Arc.hs": "281369aadb300958f3d86f6bb52f4426a964d6047962ff17e1cd2d92ee5cb520",
     "compiler/Build.hs": "da04fc3005f4f15c2d8c1a818206ae40d44f1d4c5f4886f5be710ef81e0d7fa6",
     "compiler/Codegen/Allocate.hs": "4c755da8d9a1d680a942b2d6495ef0bf69d346b0cde00da5fcfc1ab4f5da7e96",
@@ -101,7 +101,7 @@
     "tests/check_reuse.py": "80ef0abcbbae0338fcc59827a64ee4b62945f94c334fce57b4a6a05a7366a8bd",
     "tests/check_riscv_scalar.py": "9e42b9832e2263cf7006fd7f59e997a82d20b888b809824b4c896ed0130907bf",
     "tests/check_rv32_base_codegen.py": "92da26e274ee5ea07e803d3611df8d6ca19dcb7ad52d4e3062dfb24a4d307a73",
-    "tests/check_rv32_float_constants.py": "635a03f3c85b1c91f8df7576686fd36ca6bbc6ca61fa3247d01d3e3c6069413d",
+    "tests/check_rv32_float_constants.py": "1deb1515f6d42c07b1f6e35c1dfb2b49ee6f0c025f97358a787006ad0f6d849e",
     "tests/check_rv64_linux.py": "c951e7d8d4a17b2f78f46e35bb2e866e574e83bfac493e2f84527e91a8a565da",
     "tests/check_self_loop_rv64.py": "d6ec82ec6e6d86c70a28e80e9d03dcf601f25d72005bdf12676206746b797cdc",
     "tests/check_self_loops.py": "d9419fc12f8f2fa60128e5b52e4952eb2351d46581c71702a5c4c09c8ec88f98",
@@ -253,5 +253,15 @@
     "cause": "libclang_rt.asan_static.a and libclang_rt.asan.a absent from the no-recommends runner image",
     "fix": "install libclang-rt-dev alongside clang; retain the ASan/UBSan heap oracle",
     "production_source_changed": false
+  },
+  "hosted_ci_test_builder_repair": {
+    "failed_run": 39966926661,
+    "cause": "Direct RV32 test builder omitted Debian Picolibc specs; string.h unavailable",
+    "fix": "Match machine/tangnano20k/build.sh specs discovery; move the RV32 gate earlier",
+    "production_source_changed": false,
+    "focused_newlib_numeric_float_suite_exit": 0,
+    "focused_fixed_stack_exit": 0,
+    "debian_real_headers_exit": 0,
+    "debian_container_removed_after_check": true
   }
 }

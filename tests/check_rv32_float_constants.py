@@ -32,6 +32,10 @@ def build(source,out,env,*,compiler=None,extra=None,compressed=False,physical=Fa
          'machine/builtin/unsafe.c','machine/builtin/tangnano20k/machine.c','runtime/i32.c','runtime/bits.c',
          'runtime/vec.c','runtime/sstr.c','runtime/mod.c','machine/virt/memshim.c',
          '-I'+str(soft/'source/include'),'machine/tangnano20k/softfloat.c',asm,*units,library,'-lgcc','-o',elf]
+    # Debian's bare GCC exposes libc headers through Picolibc's specs, as
+    # machine/tangnano20k/build.sh does; newlib toolchains need no override.
+    specs=Path(run(['riscv64-unknown-elf-gcc','-print-file-name=picolibc.specs'],env).strip())
+    if specs.is_absolute() and specs.is_file():cmd.insert(1,'--specs=picolibc.specs')
     if not physical:cmd.insert(1,'-DFPR_TANGNANO_QEMU')
     if extra:cmd[1:1]=['-Wl,--wrap=fpr_fn_main',str(extra)]
     cmd[1:1]=list(ldflags)

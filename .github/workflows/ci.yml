@@ -68,6 +68,14 @@ jobs:
       # in a container job ${{ github.workspace }} is the HOST's path;
       # $GITHUB_WORKSPACE is the one the container sees
       - run: echo "FPR_HOME=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: Tang Nano SoftFloat (RV32 and RV64)
+        run: |
+          FPR_PRESET=fprisc-48 machine/tangnano20k/build-softfloat.sh
+          FPR_XLEN=64 machine/tangnano20k/build-softfloat.sh
+      - name: Typed RV32 float constants and software runtime
+        run: |
+          python3 -u tests/check_rv32_float_constants.py --require-execution
+          python3 -u tests/check_fixed_stack_reservation.py --require-execution
       - name: Typed IR direct backends (Linux x86-64)
         run: |
           python3 -u tests/check_native_data.py
@@ -107,14 +115,6 @@ jobs:
           python3 -m unittest discover -s tests -p test_tangnano20k_examples.py
           python3 -m unittest discover -s .ci/simple-risc/boards/tangnano20k/sdram -p test_preset_manifest.py
           python3 tests/check_tangnano20k_virtual.py
-      - name: Tang Nano SoftFloat (RV32 and RV64)
-        run: |
-          FPR_PRESET=fprisc-48 machine/tangnano20k/build-softfloat.sh
-          FPR_XLEN=64 machine/tangnano20k/build-softfloat.sh
-      - name: Typed RV32 float constants and software runtime
-        run: |
-          python3 -u tests/check_rv32_float_constants.py --require-execution
-          python3 -u tests/check_fixed_stack_reservation.py --require-execution
       - name: Tang Nano examples and custom programs (QEMU)
         run: |
           python3 -u tools/run_tangnano20k_examples.py --target qemu

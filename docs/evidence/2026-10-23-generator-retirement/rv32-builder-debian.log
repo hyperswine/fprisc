@@ -1,0 +1,10 @@
+Unable to find image 'debian:trixie' locally
+trixie: Pulling from library/debian
+229b15d70222: Pulling fs layer
+229b15d70222: Download complete
+ffee28b818fe: Download complete
+229b15d70222: Pull complete
+Digest: sha256:4c25275446ca371766b8b093c696782eabce06263fccacb8d5d813b3dc44b308
+Status: Downloaded newer image for debian:trixie
+Picolibc specs: /usr/lib/gcc/riscv64-unknown-elf/14.2.0/picolibc.specs
+DEBIAN_PICOLIBC_HEADERS_PASS
