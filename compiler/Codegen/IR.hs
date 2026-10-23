@@ -25,7 +25,7 @@
 -- (Codegen.Eval) is the executable statement of these semantics.
 module Codegen.IR
   ( Name, VId (..), BId (..), Width (..), Ty (..),
-    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
+    ArithOp (..), CmpOp (..), BitOp (..), ShiftOp (..), FloatOp (..), SimdExpr (..), FloatTree (..), ftreeLeaves, ftreeMap, ftreeRegisters, ftreeEncode, ftreeScratch, rvvLaneBound, rvvAccBound, intBits, Callee (..), CalleeKind (..), isForeign,
     Op (..), Instr (..), Term (..), Block (..), Fn (..), Program,
     Effect (..), opEffect, opUses, termUses, termSuccs, blockDefs, mapOpUses, mapTermUses,
     intMin, intMax, intFits64, intBounds, intFitsWidth, widthBits, wrapInt, arithSymbol, cmpSymbol, bitName, shiftName, wrap63, arityCeiling,
@@ -71,6 +71,36 @@ data FloatOp = FAdd | FSub | FMul | FDiv deriving (Eq, Ord, Show, Enum, Bounded)
 -- and the operations NEON applies to both lanes at once (Target.A64).
 data SimdExpr = SLane | SConst Integer | SInt ArithOp SimdExpr SimdExpr | SFloat FloatOp SimdExpr SimdExpr
   deriving (Eq, Ord, Show)
+
+-- A tree of F64 operations over the bits of its leaves, computed in the
+-- target's scratch floating-point registers with one move in per leaf and
+-- one move out: the fused form of a chain of single-use OFloatBin results
+-- (Simplify.fuseFloatTrees). Evaluating a node computes its left subtree in
+-- register n and its right in n+1, so a tree needs ftreeRegisters of the
+-- ftreeScratch registers every target reserves (d16.., xmm8.., ft0..).
+data FloatTree = FLeaf VId | FNode FloatOp FloatTree FloatTree
+  deriving (Eq, Ord, Show)
+
+ftreeScratch :: Int
+ftreeScratch = 8
+
+ftreeLeaves :: FloatTree -> [VId]
+ftreeLeaves (FLeaf v) = [v]
+ftreeLeaves (FNode _ x y) = ftreeLeaves x ++ ftreeLeaves y
+
+ftreeMap :: (VId -> VId) -> FloatTree -> FloatTree
+ftreeMap f (FLeaf v) = FLeaf (f v)
+ftreeMap f (FNode o x y) = FNode o (ftreeMap f x) (ftreeMap f y)
+
+ftreeRegisters :: FloatTree -> Int
+ftreeRegisters (FLeaf _) = 1
+ftreeRegisters (FNode _ x y) = max (ftreeRegisters x) (1 + ftreeRegisters y)
+
+-- the shape as a prefix string (leaves in ftreeLeaves order), the selected
+-- instruction's name carries it to the renderer
+ftreeEncode :: FloatTree -> String
+ftreeEncode (FLeaf _) = "l"
+ftreeEncode (FNode o x y) = (case o of FAdd -> '+'; FSub -> '-'; FMul -> '*'; FDiv -> '/') : ftreeEncode x ++ ftreeEncode y
 
 -- The RISC-V V sum strip (Kernel.rvvPrefix): at most 64 lanes a strip, each
 -- lane within the lane bound, the accumulator within the acc bound, so no
@@ -145,6 +175,7 @@ data Op
   | OBits Integer -- TVal: a raw 64-bit word, signed form (an F64 literal's IEEE bits, as the legacy generator splices them)
   | OFloatBin FloatOp VId VId -- TVal TVal -> TVal: F64 arithmetic on the bits, inline (Codegen.inlineTable F64.+ - * /)
   | OFloatCmp CmpOp VId VId -- TVal TVal -> TPred: F64 ordered comparison (false on a NaN), != is its negation (true on a NaN)
+  | OFloatTree FloatTree -- TVal leaves -> TVal: a tree of F64 operations in the scratch floating-point registers, one move in per leaf, one out (Simplify.fuseFloatTrees)
   | OFloat32Bin FloatOp VId VId -- TVal TVal -> TVal: F32 arithmetic on the low 32 bits of the word (the runtime's F32 word), inline (the legacy genU F32.+ - * /)
   | OFloat32Cmp CmpOp VId VId -- TVal TVal -> TPred: F32 ordered comparison, as OFloatCmp
   | OSafepointN Int -- n fuel ticks at once: a NEON pair charges both elements' callback entry ticks, as the legacy kernel does
@@ -235,6 +266,7 @@ opEffect = \case
   OBits _ -> Pure
   OFloatBin _ _ _ -> Pure
   OFloatCmp _ _ _ -> Pure
+  OFloatTree _ -> Pure
   OFloat32Bin _ _ _ -> Pure
   OFloat32Cmp _ _ _ -> Pure
   OCall _ _ -> AnyEffect
@@ -280,6 +312,7 @@ opUses = \case
   OBits _ -> []
   OFloatBin _ a b -> [a, b]
   OFloatCmp _ a b -> [a, b]
+  OFloatTree t -> ftreeLeaves t
   OFloat32Bin _ a b -> [a, b]
   OFloat32Cmp _ a b -> [a, b]
   OCall _ as -> as
@@ -335,6 +368,7 @@ mapOpUses f = \case
   OBits n -> OBits n
   OFloatBin o a b -> OFloatBin o (f a) (f b)
   OFloatCmp o a b -> OFloatCmp o (f a) (f b)
+  OFloatTree t -> OFloatTree (ftreeMap f t)
   OFloat32Bin o a b -> OFloat32Bin o (f a) (f b)
   OFloat32Cmp o a b -> OFloat32Cmp o (f a) (f b)
   OCall c as -> OCall c (map f as)

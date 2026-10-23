@@ -182,6 +182,7 @@ callFn width program name args = do
         OBits _ -> stuck "a raw-bits constant (an F64 literal): the evaluator models no floats"
         OFloatBin _ _ _ -> stuck "an inline F64 operation: the evaluator models no floats (F64 values come from C entries it does not model either)"
         OFloatCmp _ _ _ -> stuck "an inline F64 comparison: the evaluator models no floats"
+        OFloatTree _ -> stuck "a float tree: the evaluator models no floats"
         OFloat32Bin _ _ _ -> stuck "an inline F32 operation: the evaluator models no floats"
         OFloat32Cmp _ _ _ -> stuck "an inline F32 comparison: the evaluator models no floats"
         OCall c as -> do

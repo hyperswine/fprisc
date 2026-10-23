@@ -57,6 +57,7 @@ dumpFn fn =
       OBits n -> "bits " ++ show n
       OFloatBin o a b -> "fbin " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ value a ++ ", " ++ value b
       OFloatCmp o a b -> "fcmp " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
+      OFloatTree t -> "ftree " ++ ftreeText t
       OFloat32Bin o a b -> "fbin32 " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ value a ++ ", " ++ value b
       OFloat32Cmp o a b -> "fcmp32 " ++ cmpSymbol o ++ " " ++ value a ++ ", " ++ value b
       OCall c as -> "call " ++ callee c ++ args as
@@ -93,3 +94,7 @@ simdText = \case
   SConst n -> show n
   SInt o x y -> "(" ++ simdText x ++ " " ++ (case o of Add -> "+"; Sub -> "-"; Mul -> "*"; Div -> "/") ++ " " ++ simdText y ++ ")"
   SFloat o x y -> "(" ++ simdText x ++ " " ++ (case o of FAdd -> "f+"; FSub -> "f-"; FMul -> "f*"; FDiv -> "f/") ++ " " ++ simdText y ++ ")"
+
+ftreeText :: FloatTree -> String
+ftreeText (FLeaf v) = "v" ++ show (let VId n = v in n)
+ftreeText (FNode o x y) = "(" ++ ftreeText x ++ " " ++ (case o of FAdd -> "+"; FSub -> "-"; FMul -> "*"; FDiv -> "/") ++ " " ++ ftreeText y ++ ")"

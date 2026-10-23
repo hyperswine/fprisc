@@ -40,7 +40,8 @@ passes :: [(String, Fn -> Fn)]
 passes =
   [ ("fold-conversions", dropDeadPure . foldConversions),
     ("branch-on-comparison", dropDeadPure . threadBooleanJoins),
-    ("share-pure-in-block", dropDeadPure . sharePureInBlock)
+    ("share-pure-in-block", dropDeadPure . sharePureInBlock),
+    ("fuse-float-trees", dropDeadPure . fuseFloatTrees)
   ]
 
 -- the simplified function and the number of instructions it lost
@@ -170,3 +171,37 @@ sharePureInBlock fn =
         Just w -> resolve m w
         Nothing -> v
    in substitute sub fn
+
+-- A chain of F64 operations whose intermediate results are used once, in the
+-- same block, becomes one OFloatTree: the value stays in the floating-point
+-- registers between the operations instead of moving out and back in at
+-- each one. Only the consumer's own operation gains leaves, so a result
+-- used elsewhere keeps its definition; a tree that would need more scratch
+-- registers than the targets reserve stays apart. The operations are pure,
+-- their leaves are defined before the chain's first operation, so folding
+-- a definition into its later consumer changes no value and no order.
+fuseFloatTrees :: Fn -> Fn
+fuseFloatTrees fn = fn {fnBlocks = map blk (fnBlocks fn)}
+  where
+    uses = M.fromListWith (+) [(v, 1 :: Int) | b <- fnBlocks fn, v <- concatMap (\(Instr _ op) -> opUses op) (bInstrs b) ++ termUses (bTerm b)]
+    once v = M.lookup v uses == Just 1
+    blk b = b {bInstrs = go M.empty (bInstrs b)}
+    go _ [] = []
+    go cands (Instr (Just (v, ty)) op : rest)
+      | Just (tree, fused) <- treeOf cands op =
+          let op' = if fused then OFloatTree tree else op
+              cands' = if once v then M.insert v tree cands else cands
+           in Instr (Just (v, ty)) op' : go cands' rest
+    go cands (i : rest) = i : go cands rest
+    -- the operation as a tree over the block's single-use float results; the
+    -- flag says whether any leaf was replaced by its definition
+    treeOf cands (OFloatBin o a b) = Just (fuse cands o a b)
+    treeOf cands (OFloatTree (FNode o x y)) = Just (fuseTrees cands o x y)
+    treeOf _ _ = Nothing
+    fuse cands o a b = fuseTrees cands o (FLeaf a) (FLeaf b)
+    fuseTrees cands o x y =
+      let x' = graft cands x; y' = graft cands y
+          whole = FNode o x' y'
+       in if ftreeRegisters whole <= ftreeScratch && whole /= FNode o x y then (whole, True) else (FNode o x y, False)
+    graft cands (FLeaf v) = M.findWithDefault (FLeaf v) v cands
+    graft cands (FNode o x y) = FNode o (graft cands x) (graft cands y)

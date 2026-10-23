@@ -51,6 +51,7 @@ def main():
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--runs", type=int, default=31)
     ap.add_argument("--compiler", type=Path, default=ROOT / "fpr")
+    ap.add_argument("--against", type=Path, help="a second compiler binary, measured in the same rounds as the variant 'baseline' with typed-ir's settings (a before/after comparison of two builds of the compiler)")
     ap.add_argument("--variants", default=",".join(VARIANTS), help="comma-separated subset")
     ap.add_argument("--workloads", default=",".join(list(INTERNAL) + WALL))
     args = ap.parse_args()
@@ -59,6 +60,8 @@ def main():
     if platform.machine() not in ("arm64", "aarch64"):
         ap.error("this experiment requires native AArch64 (the typed-IR backend's host target here)")
     variants = [v for v in args.variants.split(",") if v]
+    if args.against is not None:
+        VARIANTS["baseline"] = dict(VARIANTS["typed-ir"])
     unknown = set(variants) - VARIANTS.keys()
     if unknown:
         ap.error("unknown or retired variants: " + ", ".join(sorted(unknown)))
@@ -66,6 +69,7 @@ def main():
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
     compiler = args.compiler.resolve()
+    compiler_for = lambda variant: args.against.resolve() if variant == "baseline" and args.against is not None else compiler
     base = dict(os.environ, FPR_HOME=str(ROOT), FPR_PATH=str(ROOT), FPR_HARTS="1")
     for key in list(base):
         if key.startswith("FPR_NO_") or key.startswith("FPR_TYPED_IR") or key in (
@@ -109,12 +113,12 @@ def main():
     for variant in variants:
         env = dict(base, XDG_CACHE_HOME=str(out / "cache" / variant), **VARIANTS[variant])
         t0 = time.perf_counter()
-        run([compiler, "build", warm, "--harts", "1", "-o", out / f"warm-{variant}"], env)
+        run([compiler_for(variant), "build", warm, "--harts", "1", "-o", out / f"warm-{variant}"], env)
         prelude_s = time.perf_counter() - t0
         for name in workloads:
             src, expected, extra = sources[name]
             exe = out / f"{name}-{variant}"
-            cmd = ["/usr/bin/time", "-l", str(compiler), "build", str(src), "--harts", "1", "--keep", "-v", "-o", str(exe)]
+            cmd = ["/usr/bin/time", "-l", str(compiler_for(variant)), "build", str(src), "--harts", "1", "--keep", "-v", "-o", str(exe)]
             for x in extra:
                 cmd += ["--with", x]
             t0 = time.perf_counter()
@@ -216,7 +220,7 @@ def summarise(result, workloads, variants):
     rng = random.Random(20261021)
     lines = ["# M3 paired measurements", "", f"revision {result['revision']}, compiler sha256 {result['compiler_sha256'][:12]}, {result['platform']}",
              f"{result['protocol']['runs']} rounds; internal timers: {', '.join(result['protocol']['internal_timers'])}; process wall: {', '.join(result['protocol']['process_wall_timers'])}", ""]
-    for against in [v for v in ("legacy", "legacy-best", "typed-ir") if v in variants]:
+    for against in [v for v in ("legacy", "legacy-best", "baseline", "typed-ir") if v in variants]:
         for subject in [v for v in variants if v.startswith("typed-ir") and v != against]:
             lines += [f"## {subject} against {against}", "",
                       "| workload | timer | " + against + " median ms | " + subject + " median ms | median of paired ratios | 95% bootstrap CI | faster pairs |",

@@ -361,6 +361,7 @@ selectInstr _ _ (Instr d op) = case op of
   OFloatBin o a b -> def (\r -> emitI (plain ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [any' r] [any' (vreg a), any' (vreg b)]))
   OFloatCmp o a b -> def (\r -> emitI ((plain ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
   OFloat32Bin o a b -> def (\r -> emitI (plain ("fbin32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) [any' r] [any' (vreg a), any' (vreg b)]))
+  OFloatTree t -> def (\r -> emitI (plain ("ftree." ++ ftreeEncode t) [any' r] (map (any' . vreg) (ftreeLeaves t))))
   OFloat32Cmp o a b -> def (\r -> emitI ((plain ("fcmp32." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) [any' r] [any' (vreg a), any' (vreg b)]) {siFlags = FlagsDef}))
   OShift o a b -> def (\r -> shift o r (vreg a) (vreg b))
   OCmp o a b -> def $ \r -> do
@@ -639,6 +640,16 @@ renderItem hart ly fname saveLines restores (I i) = map indent (go (siOp i) (siD
       ("movslq",[d],[s,n]) -> ["movslq " ++ imm n ++ "(" ++ reg s ++ "), " ++ reg d]
       ("sext63",[d],[_,_]) -> ["shlq $1, " ++ reg d, "sarq $1, " ++ reg d]
       -- F32 on the low 32 bits: movd to a 32-bit register zero-extends
+      -- a float tree in %xmm8..: the two-operand forms leave each node's
+      -- value in its left subtree's register
+      (o,[d],leaves) | Just code <- stripPrefix "ftree." o ->
+        let step n (l : rest) xs | l == 'l', (x : xs') <- xs = (["movq " ++ reg x ++ ", %xmm" ++ show n], rest, xs')
+            step n (c : rest) xs = let (lx, rest1, xs1) = step n rest xs; (ly, rest2, xs2) = step (n + 1) rest1 xs1
+                                       inst = case c of '+' -> "addsd"; '-' -> "subsd"; '*' -> "mulsd"; _ -> "divsd"
+                                    in (lx ++ ly ++ [inst ++ " %xmm" ++ show (n + 1) ++ ", %xmm" ++ show n], rest2, xs2)
+            step _ [] _ = error "X64 render: a float tree without a shape"
+            (body, _, _) = step (8 :: Int) code leaves
+         in body ++ ["movq %xmm8, " ++ reg d]
       (o,[d],[a,b]) | Just f <- stripPrefix "fbin32." o ->
         ["movd " ++ word32 a ++ ", %xmm14", "movd " ++ word32 b ++ ", %xmm15", f ++ "ss %xmm15, %xmm14", "movd %xmm14, " ++ word32 d]
       (o,[d],[a,b]) | Just c <- stripPrefix "fcmp32." o ->

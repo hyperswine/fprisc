@@ -232,6 +232,7 @@ select cfg fn = do
       OFloatBin o a b -> rr ("fbin." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) d (vreg a) (vreg b)
       OFloatCmp o a b -> rr ("fcmp." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) d (vreg a) (vreg b)
       OFloat32Bin o a b -> rr ("fbin32." ++ (case o of FAdd -> "add"; FSub -> "sub"; FMul -> "mul"; FDiv -> "div")) d (vreg a) (vreg b)
+      OFloatTree t -> emit (plain ("ftree." ++ ftreeEncode t) [anyV d] (map (anyV . vreg) (ftreeLeaves t)))
       OFloat32Cmp o a b -> rr ("fcmp32." ++ (case o of Lt -> "lt"; Gt -> "gt"; Le -> "le"; Ge -> "ge"; Eq -> "eq"; Ne -> "ne")) d (vreg a) (vreg b)
       -- RISC-V V: v8 the lanes, v9/v10 reductions; t4..t6 scratch (declared)
       ORvvVlMax -> emit (plain "rvv.vlmax" [anyV d] [])
@@ -388,6 +389,15 @@ render cfg fn ly restores (I i) = map (\s -> if last s == ':' then s else "    "
       ("rvv.sum",[d],[acc]) -> ["vmv.s.x v9, x0", "vredsum.vs v9, v8, v9", "vmv.x.s t5, v9", "add " ++ r d ++ ", " ++ r acc ++ ", t5"]
       -- F64 on the bits through ft0/ft1, as the legacy inline table does
       -- F32: the legacy genU forms (fmv.x.w sign-extends; the runtime reads the low 32 bits)
+      -- a float tree in ft0..ft7
+      (o,[d],leaves) | Just code <- stripPrefix "ftree." o ->
+        let step n (l : rest) xs | l == 'l', (x : xs') <- xs = (["fmv.d.x ft" ++ show n ++ ", " ++ r x], rest, xs')
+            step n (c : rest) xs = let (lx, rest1, xs1) = step n rest xs; (ly, rest2, xs2) = step (n + 1) rest1 xs1
+                                       inst = case c of '+' -> "fadd.d"; '-' -> "fsub.d"; '*' -> "fmul.d"; _ -> "fdiv.d"
+                                    in (lx ++ ly ++ [inst ++ " ft" ++ show n ++ ", ft" ++ show n ++ ", ft" ++ show (n + 1)], rest2, xs2)
+            step _ [] _ = error "RV64 render: a float tree without a shape"
+            (body, _, _) = step (0 :: Int) code leaves
+         in body ++ ["fmv.x.d " ++ r d ++ ", ft0"]
       (o,[d],[a,b]) | Just f <- stripPrefix "fbin32." o ->
         ["fmv.w.x ft0, " ++ r a, "fmv.w.x ft1, " ++ r b, "f" ++ f ++ ".s ft0, ft0, ft1", "fmv.x.w " ++ r d ++ ", ft0"]
       (o,[d],[a,b]) | Just c <- stripPrefix "fcmp32." o ->

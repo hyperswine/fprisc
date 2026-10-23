@@ -93,6 +93,30 @@ main = do
   check "counted safepoint charges" (either (const True) (const False) (opSignature memTypes (OSafepointN 0)))
   check "SIMD pair signature" (opSignature memTypes (OSimdPair True (SInt Add SLane (SConst 1)) (VId 0)) == Right Nothing)
   check "RVV lanes signature" (opSignature (\v -> Right (if v == VId 0 then TAddr else TInt)) (ORvvLanes (VId 0) (VId 1)) == Right (Just TPred))
+  -- float trees: a chain of single-use F64 operations fuses; a result used
+  -- twice keeps its definition; the scratch-register budget is respected
+  let fval = \v -> Right TVal
+      chain = Fn "chain" ["a", "b", "c"] TVal (BId 0)
+        [ Block (BId 0) [(VId 0, TVal), (VId 1, TVal), (VId 2, TVal)]
+            [ Instr Nothing OStackCheck
+            , Instr (Just (VId 3, TVal)) (OFloatBin FMul (VId 0) (VId 1))
+            , Instr (Just (VId 4, TVal)) (OFloatBin FAdd (VId 3) (VId 2))
+            , Instr (Just (VId 5, TVal)) (OFloatBin FSub (VId 4) (VId 0)) ]
+            (TRet (VId 5)) ]
+      shared = chain {fnBlocks = [ b {bInstrs = bInstrs b ++ [Instr (Just (VId 6, TVal)) (OFloatBin FAdd (VId 3) (VId 3))], bTerm = TRet (VId 6)} | b <- fnBlocks chain ]}
+      treesOf f = [t | b <- fnBlocks f, Instr _ (OFloatTree t) <- bInstrs b]
+      binsOf f = length [() | b <- fnBlocks f, Instr _ (OFloatBin {}) <- bInstrs b]
+  case simplifyFn M.empty chain of
+    Right (f, _) -> do
+      check "float chain fuses into one tree" (treesOf f == [FNode FSub (FNode FAdd (FNode FMul (FLeaf (VId 0)) (FLeaf (VId 1))) (FLeaf (VId 2))) (FLeaf (VId 0))] && binsOf f == 0)
+      check "the fused function verifies" (verifyFn M.empty f == Right ())
+    Left e -> error ("FAIL: float chain: " ++ e)
+  case simplifyFn M.empty shared of
+    Right (f, _) -> check "a twice-used float result keeps its definition" (binsOf f >= 1 && all (\t -> ftreeLeaves t /= [VId 0, VId 1]) (treesOf f) || binsOf f == 3)
+    Left e -> error ("FAIL: shared float: " ++ e)
+  check "float tree signature" (opSignature fval (OFloatTree (FNode FAdd (FLeaf (VId 0)) (FLeaf (VId 1)))) == Right (Just TVal))
+  check "float tree budget" (either (const True) (const False) (opSignature fval (OFloatTree (iterate (\t -> FNode FAdd (FLeaf (VId 0)) t) (FLeaf (VId 1)) !! 8))))
+  check "float tree registers" (ftreeRegisters (FNode FAdd (FNode FMul (FLeaf (VId 0)) (FLeaf (VId 1))) (FLeaf (VId 2))) == 2)
   -- the verifier
   check "a well-formed function verifies" (verifyFn M.empty good == Right ())
   expectRefusal "missing entry" "entry block missing" (verifyFn M.empty good {fnEntry = BId 9})

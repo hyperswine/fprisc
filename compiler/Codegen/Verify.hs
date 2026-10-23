@@ -73,6 +73,11 @@ opSignature tyOf = \case
     pure (Just TVal)
   OFloatBin _ a b -> expect a TVal >> expect b TVal >> pure (Just TVal)
   OFloatCmp _ a b -> expect a TVal >> expect b TVal >> pure (Just TPred)
+  OFloatTree t -> do
+    case t of FNode {} -> pure (); FLeaf _ -> Left "a float tree is at least one operation"
+    unless (ftreeRegisters t <= ftreeScratch) (Left ("a float tree needs " ++ show (ftreeRegisters t) ++ " scratch registers, " ++ show ftreeScratch ++ " exist"))
+    mapM_ (`expect` TVal) (ftreeLeaves t)
+    pure (Just TVal)
   OFloat32Bin _ a b -> expect a TVal >> expect b TVal >> pure (Just TVal)
   OFloat32Cmp _ a b -> expect a TVal >> expect b TVal >> pure (Just TPred)
   OCall c as -> do
