@@ -1,0 +1,100 @@
+# Printer-specific persistent sessions. The generic Ed25519 challenge policy
+# stays in std/sessionauth; only token digests and absolute expiries reach disk.
+unsafe base.
+Auth = use "std/sessionauth".
+A = use "std/actor".
+C = use "std/clock".
+D = use "std/digest".
+E = use "std/encoding".
+F = use "std/file".
+J = use "std/json".
+L = use "std/list".
+M = use "std/map".
+O = use "std/option".
+S = use "std/string".
+PT = use "std/printertelemetry".
+limits = {Auth.defaults | sessionMs = 2592000000}.
+Stored = {digest : String, origin : String, expiresMs : Int}.
+Running = {policy : Auth.State, entries : List Stored, problem : Bool}.
+wall u = C.now Unit * 1000.
+fingerprint keys = D.sha256 (J.render (J.strings (L.sortWith S.compare (L.map (fn key -> E.hex key.public) keys)))).
+hex value = strlen value == 64 and S.toLower value == value and (case E.fromHex value of Ok bytes -> strlen bytes == 32 | _ -> False).
+fields value = case J.asObject value of O.Some map -> M.keys map | _ -> Nil.
+integer name value = O.withDefault 0 (O.andThen J.asInt (J.field name value)).
+row value = {digest = Auth.text "digest" value, origin = Auth.text "origin" value, expiresMs = integer "expires_ms" value}.
+validRow value =
+  r = row value;
+  fields value == ["digest", "expires_ms", "origin"] and hex r.digest and r.expiresMs > 0 and
+    strlen r.origin <= 512 and (S.startsWith "https://" r.origin or S.startsWith "http://" r.origin) and
+    L.all (fn i -> charAt r.origin i > 32 and charAt r.origin i < 127) (L.range 0 (strlen r.origin - 1)).
+active cfg at rows = L.filter (fn r -> r.expiresMs > at and r.expiresMs <= at + cfg.sessionMs) rows.
+decode cfg expected at raw =
+  if strlen raw > 1048576 or not (PT.scan raw 0 0 False False) then Err "session store exceeds size/depth bound" else
+  case J.parse raw of Err _ -> Err "invalid session store JSON" | Ok value ->
+    storedKeys = Auth.text "allowlist" value;
+    if fields value != ["allowlist", "schema", "sessions"] or integer "schema" value != 1 or not (hex storedKeys) then Err "invalid session store schema" else
+    case O.andThen J.asList (J.field "sessions" value) of O.None -> Err "invalid session records" | O.Some rows ->
+      if L.length rows > cfg.sessions or not (L.all validRow rows) then Err "invalid or excessive session records" else
+      entries = L.map row rows;
+      if L.length (L.unique (L.map (fn r -> r.digest) entries)) != L.length entries then Err "duplicate session digest" else
+      Ok (if storedKeys == expected then active cfg at entries else Nil).
+encoded expected entries = J.render (J.object [("schema", J.Integer 1), ("allowlist", J.Text expected),
+  ("sessions", J.Sequence (L.map (fn r -> J.object [("digest", J.Text r.digest), ("origin", J.Text r.origin), ("expires_ms", J.Integer r.expiresMs)]) entries))]).
+# A single actor owns the snapshot. A login/logout is acknowledged only after
+# atomic replacement succeeds. No backup can resurrect a revoked session.
+# Deployment supplies a private directory and umask 077. No fsync guarantee.
+save path expected entries =
+  raw = encoded expected entries;
+  if strlen raw > 1048576 then Err "session store exceeds size bound" else
+  case F.writeText "{path}.tmp" raw of Err _ -> Err "cannot write session store" | Ok _ ->
+  case F.rename "{path}.tmp" path of Err _ -> Err "cannot replace session store" | Ok _ -> Ok Unit.
+load path cfg expected at =
+  if F.exists path then
+    case F.info path of Err _ -> Err "cannot inspect session store" | Ok info ->
+      if info.kind != "file" or info.size > 1048576 then Err "invalid session store file" else
+      case F.readText path of Err _ -> Err "cannot read session store" | Ok raw -> decode cfg expected at raw
+  else if F.exists "{path}.tmp" then Err "incomplete session store; preserve and inspect it" else Ok Nil.
+restore mono at entries = {Auth.initial | sessions = L.map (fn r -> {digest = r.digest, origin = r.origin, until = mono + r.expiresMs - at}) entries}.
+prune cfg at mono current =
+  policy = Auth.prune mono current.policy;
+  liveOrigins = M.fromList S.compare (L.map (fn s -> (s.digest, s.origin)) policy.sessions);
+  entries = L.filter (fn r -> M.get r.digest liveOrigins == O.Some r.origin) (active cfg at current.entries);
+  storedOrigins = M.fromList S.compare (L.map (fn r -> (r.digest, r.origin)) entries);
+  {current | entries = entries, policy = {policy | sessions = L.filter (fn s -> M.get s.digest storedOrigins == O.Some s.origin) policy.sessions}}.
+dispatch path expected cfg keys command current =
+  # A failed persistence operation makes all authorization fail closed. A new
+  # challenge or logout may recover only after the current snapshot is saved.
+  recovered = if not current.problem then True else case command of
+    Auth.Challenge _ _ -> (case save path expected current.entries of Ok _ -> True | _ -> False)
+  | Auth.Logout _ -> (case save path expected current.entries of Ok _ -> True | _ -> False)
+  | _ -> False;
+  if not recovered then (Auth.Refused, current) else
+  (reply, policy) = Auth.dispatch cfg keys command current.policy;
+  next = {current | policy = policy, problem = False};
+  case reply of
+    Auth.SessionReady token ->
+      entry = {digest = D.sha256 token, origin = (case command of Auth.Verify origin _ _ _ -> origin | _ -> ""), expiresMs = wall Unit + cfg.sessionMs};
+      entries = entry :: current.entries;
+      (case save path expected entries of
+        Ok _ -> (reply, {next | entries = entries})
+      | Err _ -> (Auth.Refused, {next | policy = Auth.logout token policy, problem = True}))
+  | _ -> (case command of
+      Auth.Logout token ->
+        entries = L.filter (fn r -> r.digest != D.sha256 token) current.entries;
+        (case save path expected entries of Ok _ -> (reply, {next | entries = entries}) | Err _ -> (Auth.Refused, {next | entries = entries, problem = True}))
+    | _ -> (reply, next)).
+step path expected cfg keys me current =
+  message = receive me;
+  (from, id, borrowed) = message;
+  command = keep borrowed;
+  _ = drop message;
+  (reply, next) = dispatch path expected cfg keys command (prune cfg (wall Unit) (Auth.now Unit) current);
+  _ = A.reply (from, id) reply;
+  (True, next).
+start path cfg keys =
+  expected = fingerprint keys;
+  at = wall Unit;
+  case load path cfg expected at of Err why -> Err why | Ok entries ->
+    case save path expected entries of Err why -> Err why | Ok _ ->
+      initial = {policy = restore (Auth.now Unit) at entries, entries = entries, problem = False};
+      Ok (A.spawnWith (A.Static 64) (fn me -> _ = Sys.loop initial (step path expected cfg keys me); Unit)).

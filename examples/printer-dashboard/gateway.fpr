@@ -77,7 +77,7 @@ post cfg expected req conn = if header "origin" req != expected or header "conte
     else if req.path == "/auth/logout" then
       if not (J.equal value (J.object Nil)) then text 400 "Empty object required\n" conn else
       (case Auth.call cfg.auth (Auth.Logout (cookie cookieName req)) of
-        Ok _ -> json 200 (J.object [("ok", J.Boolean True)]) [setCookie cookieName "" 0 expected, setCookie bindingName "" 0 expected] conn
+        Ok (Auth.Authorized True) -> json 200 (J.object [("ok", J.Boolean True)]) [setCookie cookieName "" 0 expected, setCookie bindingName "" 0 expected] conn
       | _ -> text 503 "Authentication unavailable\n" conn)
     else
       fields = case J.asObject value of O.Some map -> M.keys map | _ -> Nil;

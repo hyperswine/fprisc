@@ -2,6 +2,7 @@
 unsafe base.
 Gateway = use "printer-dashboard/gateway".
 Auth = use "std/sessionauth".
+AuthService = use "printer-dashboard/authservice".
 Registry = use "printer-dashboard/registry".
 Camera = use "printer-dashboard/cameraservice".
 Frame = use "printer-dashboard/cameraframe".
@@ -124,14 +125,15 @@ exportAssets path =
   _ = need (F.writeText "{path}/printer_login.html" (Login.html Unit));
   print "generated printer browser assets".
 main =
-  defaults = J.object [("port", J.Integer 6730), ("address", J.Text "127.0.0.1"), ("origin", J.Text "https://3dprint.cswine.cloud"), ("auth", J.Text "examples/printer-dashboard/auth.json"), ("config", J.Text ""), ("credentials-env-file", J.Text ""), ("store", J.Text "printer-native.kvlog"), ("maintenance-store", J.Text ""), ("demo", J.Boolean False), ("export-assets", J.Text "")];
+  defaults = J.object [("port", J.Integer 6730), ("address", J.Text "127.0.0.1"), ("origin", J.Text "https://3dprint.cswine.cloud"), ("auth", J.Text "examples/printer-dashboard/auth.json"), ("config", J.Text ""), ("credentials-env-file", J.Text ""), ("store", J.Text "printer-native.kvlog"), ("maintenance-store", J.Text ""), ("session-store", J.Text ""), ("demo", J.Boolean False), ("export-assets", J.Text "")];
   v = need (Config.load {defaults = defaults, file = O.None, envPrefix = "PRINTER_HOST_", args = P.args Unit});
   if text "export-assets" v != "" then exportAssets (text "export-assets" v) else run v.
 run v =
   demo = O.withDefault False (O.andThen J.asBool (J.field "demo" v));
   keyValues = readJson (text "auth" v);
   keys = need (Auth.loadKeys keyValues);
-  auth = Auth.start Auth.defaults keys;
+  authLimits = AuthService.limits;
+  auth = need (AuthService.start (field (text "store" v + ".sessions.json") "session-store" v) authLimits keys);
   demoValues = J.Sequence [J.object [("id", J.Text "demo"), ("name", J.Text "Native demo printer"), ("model", J.Text "P1S"), ("location", J.Text "Workshop")]];
   printers = rows (if demo then demoValues else readJson (text "config" v)) demo;
   codes = credentials (text "credentials-env-file" v) (L.map (fn row -> row.codeEnv) printers);
@@ -155,6 +157,6 @@ run v =
        same = (fn a b -> a == b), cache = Unit, view = (fn sid m cache -> (View.view 1000 sid m, Unit)), css = View.css};
     Unit);
   viewPort = case receiveFromRes parent view of Ok port -> port | Err _ -> P.fail 2 "printer host: view unavailable";
-  Gateway.run {address = text "address" v, port = integer 6730 "port" v, origin = text "origin" v, auth = auth, authLimits = Auth.defaults,
+  Gateway.run {address = text "address" v, port = integer 6730 "port" v, origin = text "origin" v, auth = auth, authLimits = authLimits,
     loginHtml = Login.html Unit, loginScript = LoginProgram.src Unit, sessionScript = SessionProgram.src Unit,
     viewPort = viewPort, cameras = cameras, snapshot = (fn u -> notes = Care.get care; Registry.merge (Registry.get registry) (J.object [("maintenance",Care.value notes.state),("maintenance_problem",J.Text notes.problem)])), peer = "", owner = parent}.
