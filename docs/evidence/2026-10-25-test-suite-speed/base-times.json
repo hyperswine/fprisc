@@ -1,0 +1,2931 @@
+{
+  "seconds": 559.9958128749859,
+  "workers": 4,
+  "reused": [],
+  "jobs": [
+    {
+      "name": "tests/test_check_registry.py",
+      "status": "ok",
+      "seconds": 0.1767073750961572,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/test_check_registry.py"
+          ],
+          "seconds": 0.17257566703483462
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir.py",
+      "status": "ok",
+      "seconds": 13.515166125027463,
+      "lock_wait_seconds": 6.668269634246826e-07,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir.py"
+          ],
+          "seconds": 13.512616000138223
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_a64.py",
+      "status": "ok",
+      "seconds": 47.15504437498748,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_a64.py"
+          ],
+          "seconds": 47.1519822080154
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_x64.py",
+      "status": "ok",
+      "seconds": 19.618915708968416,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_x64.py"
+          ],
+          "seconds": 19.615951834013686
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_kernels.py",
+      "status": "ok",
+      "seconds": 190.31713758292608,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_kernels.py"
+          ],
+          "seconds": 190.31400791695341
+        }
+      ]
+    },
+    {
+      "name": "tests/check_x64_retirement.py",
+      "status": "ok",
+      "seconds": 4.551072583999485,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_x64_retirement.py"
+          ],
+          "seconds": 4.547662457916886
+        }
+      ]
+    },
+    {
+      "name": "tests/check_float_trees.py",
+      "status": "ok",
+      "seconds": 2.566985083045438,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_float_trees.py"
+          ],
+          "seconds": 2.56409875000827
+        }
+      ]
+    },
+    {
+      "name": "tests/check_captured_simd.py",
+      "status": "ok",
+      "seconds": 25.629153083078563,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_captured_simd.py"
+          ],
+          "seconds": 25.626280083088204
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_builtin.py",
+      "status": "ok",
+      "seconds": 1.6566870829556137,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_builtin.py"
+          ],
+          "seconds": 1.6544876659754664
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_arc.py",
+      "status": "ok",
+      "seconds": 83.4165237499401,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_arc.py"
+          ],
+          "seconds": 83.41364050004631
+        }
+      ]
+    },
+    {
+      "name": "tests/check_native_insns_ratchet.py",
+      "status": "ok",
+      "seconds": 0.8139225409831852,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_native_insns_ratchet.py"
+          ],
+          "seconds": 0.8109831248875707
+        }
+      ]
+    },
+    {
+      "name": "tests/check_rv32_float_constants.py",
+      "status": "ok",
+      "seconds": 20.53702237503603,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_rv32_float_constants.py"
+          ],
+          "seconds": 20.5344144590199
+        }
+      ]
+    },
+    {
+      "name": "tests/check_a64_fp_pool.py",
+      "status": "ok",
+      "seconds": 5.360168333165348,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_a64_fp_pool.py"
+          ],
+          "seconds": 5.357929332880303
+        }
+      ]
+    },
+    {
+      "name": "tests/check_a64_retirement.py",
+      "status": "ok",
+      "seconds": 19.130981334019452,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_a64_retirement.py"
+          ],
+          "seconds": 19.12711524986662
+        }
+      ]
+    },
+    {
+      "name": "tests/check_self_loops.py",
+      "status": "ok",
+      "seconds": 12.099030875135213,
+      "lock_wait_seconds": 5.00120222568512e-07,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_self_loops.py"
+          ],
+          "seconds": 12.095523459138349
+        }
+      ]
+    },
+    {
+      "name": "tests/check_self_loop_x64.py",
+      "status": "ok",
+      "seconds": 1.8062439588829875,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_self_loop_x64.py"
+          ],
+          "seconds": 1.8040800420567393
+        }
+      ]
+    },
+    {
+      "name": "tests/check_x64_scalar.py",
+      "status": "ok",
+      "seconds": 6.448494749842212,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_x64_scalar.py"
+          ],
+          "seconds": 6.445956208044663
+        }
+      ]
+    },
+    {
+      "name": "tests/check_x64_qos.py",
+      "status": "ok",
+      "seconds": 6.7078602919355035,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_x64_qos.py"
+          ],
+          "seconds": 6.704938417067751
+        }
+      ]
+    },
+    {
+      "name": "tests/check_x64_macos.py",
+      "status": "ok",
+      "seconds": 24.516831582877785,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_x64_macos.py"
+          ],
+          "seconds": 24.514460832811892
+        }
+      ]
+    },
+    {
+      "name": "tests/check_self_loop_rv64.py",
+      "status": "ok",
+      "seconds": 1.1642410831991583,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_self_loop_rv64.py"
+          ],
+          "seconds": 1.1619693329557776
+        }
+      ]
+    },
+    {
+      "name": "tests/check_rv64_linux.py",
+      "status": "ok",
+      "seconds": 3.016600833972916,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_rv64_linux.py"
+          ],
+          "seconds": 3.0141070000827312
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_rv_module.py",
+      "status": "ok",
+      "seconds": 0.7010781250428408,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_rv_module.py"
+          ],
+          "seconds": 0.6986586668062955
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_rv_startup.py",
+      "status": "ok",
+      "seconds": 39.425590666010976,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_rv_startup.py"
+          ],
+          "seconds": 39.42326999991201
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_rv_frames.py",
+      "status": "ok",
+      "seconds": 87.89582083304413,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_rv_frames.py"
+          ],
+          "seconds": 87.8931592500303
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_a64_frames.py",
+      "status": "ok",
+      "seconds": 236.94762020814233,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_a64_frames.py"
+          ],
+          "seconds": 236.94475808390416
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_x64_frames.py",
+      "status": "ok",
+      "seconds": 64.76781979110092,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_x64_frames.py"
+          ],
+          "seconds": 64.76458583306521
+        }
+      ]
+    },
+    {
+      "name": "tests/check_native_data.py",
+      "status": "ok",
+      "seconds": 27.426073792157695,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_native_data.py"
+          ],
+          "seconds": 27.417844332987443
+        }
+      ]
+    },
+    {
+      "name": "tests/check_native_required.py",
+      "status": "ok",
+      "seconds": 3.5723764169961214,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_native_required.py"
+          ],
+          "seconds": 3.5690969158895314
+        }
+      ]
+    },
+    {
+      "name": "tests/check_stack_reservation.py",
+      "status": "ok",
+      "seconds": 8.538486832985654,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_stack_reservation.py"
+          ],
+          "seconds": 8.535909958882257
+        }
+      ]
+    },
+    {
+      "name": "tests/check_fixed_stack_reservation.py",
+      "status": "ok",
+      "seconds": 26.868498290888965,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_fixed_stack_reservation.py"
+          ],
+          "seconds": 26.865047625033185
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_qrv64.py",
+      "status": "ok",
+      "seconds": 1.0898980000056326,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_qrv64.py"
+          ],
+          "seconds": 1.0872619999572635
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_ir_esp.py",
+      "status": "ok",
+      "seconds": 0.8642388749867678,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_ir_esp.py"
+          ],
+          "seconds": 0.861300750169903
+        }
+      ]
+    },
+    {
+      "name": "tests/check_byte_strings.py",
+      "status": "ok",
+      "seconds": 5.86527308402583,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_byte_strings.py"
+          ],
+          "seconds": 5.861183833098039
+        }
+      ]
+    },
+    {
+      "name": "tests/check_view_construction.py",
+      "status": "ok",
+      "seconds": 15.155767458025366,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_view_construction.py"
+          ],
+          "seconds": 15.152612500125542
+        }
+      ]
+    },
+    {
+      "name": "tests/check_inbox.py",
+      "status": "ok",
+      "seconds": 35.279791166773066,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_inbox.py"
+          ],
+          "seconds": 35.27637454099022
+        }
+      ]
+    },
+    {
+      "name": "tests/check_check_only.py",
+      "status": "ok",
+      "seconds": 1.3311387500725687,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_check_only.py"
+          ],
+          "seconds": 1.3283719159662724
+        }
+      ]
+    },
+    {
+      "name": "tests/check_commit_interfaces.py",
+      "status": "ok",
+      "seconds": 6.17552658286877,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_commit_interfaces.py"
+          ],
+          "seconds": 6.172908667009324
+        }
+      ]
+    },
+    {
+      "name": "tests/check_publication.py",
+      "status": "ok",
+      "seconds": 12.832209125161171,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_publication.py"
+          ],
+          "seconds": 12.82936366694048
+        }
+      ]
+    },
+    {
+      "name": "tests/check_watch_app.py",
+      "status": "ok",
+      "seconds": 28.500070000067353,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_watch_app.py"
+          ],
+          "seconds": 28.49822450010106
+        }
+      ]
+    },
+    {
+      "name": "tests/check_live_runner.py",
+      "status": "ok",
+      "seconds": 28.34374799998477,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_live_runner.py"
+          ],
+          "seconds": 28.341154291993007
+        }
+      ]
+    },
+    {
+      "name": "tests/check_live_writer_lifetime.py",
+      "status": "ok",
+      "seconds": 13.250499042216688,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_live_writer_lifetime.py"
+          ],
+          "seconds": 13.248552459059283
+        }
+      ]
+    },
+    {
+      "name": "tests/check_pos_reload.py",
+      "status": "ok",
+      "seconds": 83.04078204091638,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_pos_reload.py"
+          ],
+          "seconds": 83.03398737497628
+        }
+      ]
+    },
+    {
+      "name": "tests/check_posix_modules.py",
+      "status": "ok",
+      "seconds": 7.971101500093937,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_posix_modules.py"
+          ],
+          "seconds": 7.968803666997701
+        }
+      ]
+    },
+    {
+      "name": "tests/check_posix_pic.py",
+      "status": "ok",
+      "seconds": 1.937945958925411,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_posix_pic.py"
+          ],
+          "seconds": 1.9351608329452574
+        }
+      ]
+    },
+    {
+      "name": "tests/check_owned_watchers.py",
+      "status": "ok",
+      "seconds": 5.414115041960031,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_owned_watchers.py"
+          ],
+          "seconds": 5.411472582956776
+        }
+      ]
+    },
+    {
+      "name": "tests/check_loop_state.py",
+      "status": "ok",
+      "seconds": 6.74711775011383,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_loop_state.py"
+          ],
+          "seconds": 6.743757792050019
+        }
+      ]
+    },
+    {
+      "name": "tests/check_receive_turns.py",
+      "status": "ok",
+      "seconds": 19.637740625068545,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_receive_turns.py"
+          ],
+          "seconds": 19.63510112510994
+        }
+      ]
+    },
+    {
+      "name": "tests/check_mvu_reload.py",
+      "status": "ok",
+      "seconds": 136.17672958318144,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_mvu_reload.py"
+          ],
+          "seconds": 136.1726224590093
+        }
+      ]
+    },
+    {
+      "name": "tests/check_deadlines.py",
+      "status": "ok",
+      "seconds": 10.665597290964797,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_deadlines.py"
+          ],
+          "seconds": 10.66297887521796
+        }
+      ]
+    },
+    {
+      "name": "tests/check_actor_reap.py",
+      "status": "ok",
+      "seconds": 0.7700380829628557,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_actor_reap.py"
+          ],
+          "seconds": 0.7674133749678731
+        }
+      ]
+    },
+    {
+      "name": "examples/ideal/check.py",
+      "status": "ok",
+      "seconds": 149.35339887510054,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "examples/ideal/check.py"
+          ],
+          "seconds": 149.34931108308956
+        }
+      ]
+    },
+    {
+      "name": "tests/check_higher_order_contracts.py",
+      "status": "ok",
+      "seconds": 45.96139637497254,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_higher_order_contracts.py"
+          ],
+          "seconds": 45.958821250125766
+        }
+      ]
+    },
+    {
+      "name": "tests/check_contract_rewrites.py",
+      "status": "ok",
+      "seconds": 13.071193958166987,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_contract_rewrites.py"
+          ],
+          "seconds": 13.068479625042528
+        }
+      ]
+    },
+    {
+      "name": "tests/check_printer_ownership.py",
+      "status": "ok",
+      "seconds": 25.209458832861856,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_printer_ownership.py"
+          ],
+          "seconds": 25.20684179197997
+        }
+      ]
+    },
+    {
+      "name": "tools/sol-linearity-check.py",
+      "status": "ok",
+      "seconds": 0.5228987091686577,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/sol-linearity-check.py"
+          ],
+          "seconds": 0.5201770002022386
+        }
+      ]
+    },
+    {
+      "name": "tests/check_structural_ownership.py",
+      "status": "ok",
+      "seconds": 16.925539332907647,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_structural_ownership.py"
+          ],
+          "seconds": 16.922201875131577
+        }
+      ]
+    },
+    {
+      "name": "tests/check_generic_ownership.py",
+      "status": "ok",
+      "seconds": 18.46668929210864,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_generic_ownership.py"
+          ],
+          "seconds": 18.46298720804043
+        }
+      ]
+    },
+    {
+      "name": "tests/check_pos_core.py",
+      "status": "ok",
+      "seconds": 53.00320408283733,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_pos_core.py"
+          ],
+          "seconds": 52.99836916709319
+        }
+      ]
+    },
+    {
+      "name": "tests/check_pagination.py",
+      "status": "ok",
+      "seconds": 38.30558416596614,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_pagination.py"
+          ],
+          "seconds": 38.30302562494762
+        }
+      ]
+    },
+    {
+      "name": "tests/check_typed_vectors.py",
+      "status": "ok",
+      "seconds": 3.165834499988705,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_typed_vectors.py"
+          ],
+          "seconds": 3.1592682090122253
+        }
+      ]
+    },
+    {
+      "name": "tests/check_vector_limits.py",
+      "status": "ok",
+      "seconds": 14.34215341694653,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_vector_limits.py"
+          ],
+          "seconds": 14.338560000061989
+        }
+      ]
+    },
+    {
+      "name": "tests/check_vector_kinds.py",
+      "status": "ok",
+      "seconds": 23.942416125210002,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_vector_kinds.py"
+          ],
+          "seconds": 23.94021812500432
+        }
+      ]
+    },
+    {
+      "name": "tests/check_vector_pipelines.py",
+      "status": "ok",
+      "seconds": 18.867307292064652,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_vector_pipelines.py"
+          ],
+          "seconds": 18.864636917132884
+        }
+      ]
+    },
+    {
+      "name": "tests/check_reuse.py",
+      "status": "ok",
+      "seconds": 15.95610245806165,
+      "lock_wait_seconds": 7.080379873514175e-07,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_reuse.py"
+          ],
+          "seconds": 15.952796874800697
+        }
+      ]
+    },
+    {
+      "name": "tests/check_consuming_reuse.py",
+      "status": "ok",
+      "seconds": 13.020692458143458,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_consuming_reuse.py"
+          ],
+          "seconds": 13.01791433407925
+        }
+      ]
+    },
+    {
+      "name": "tests/check_x64_vectors.py",
+      "status": "ok",
+      "seconds": 9.523255416890606,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_x64_vectors.py"
+          ],
+          "seconds": 9.52070725010708
+        }
+      ]
+    },
+    {
+      "name": "tests/check_wide_params.py",
+      "status": "ok",
+      "seconds": 1.7737947499845177,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_wide_params.py"
+          ],
+          "seconds": 1.7692648340016603
+        }
+      ]
+    },
+    {
+      "name": "tests/check_vector_fallback_frames.py",
+      "status": "ok",
+      "seconds": 3.8906771671026945,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_vector_fallback_frames.py"
+          ],
+          "seconds": 3.8881651249248534
+        }
+      ]
+    },
+    {
+      "name": "tests/check_trust.py",
+      "status": "ok",
+      "seconds": 0.028613833943381906,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_trust.py"
+          ],
+          "seconds": 0.025603707879781723
+        }
+      ]
+    },
+    {
+      "name": "tests/check_specialization.py",
+      "status": "ok",
+      "seconds": 21.45800174982287,
+      "lock_wait_seconds": 1.00000761449337e-06,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_specialization.py"
+          ],
+          "seconds": 21.455107957823202
+        }
+      ]
+    },
+    {
+      "name": "tests/check_workers.py",
+      "status": "ok",
+      "seconds": 24.64669108297676,
+      "lock_wait_seconds": 1.9171275198459625e-06,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_workers.py"
+          ],
+          "seconds": 24.644069959176704
+        }
+      ]
+    },
+    {
+      "name": "tests/check_wide_workers.py",
+      "status": "ok",
+      "seconds": 80.95123879099265,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_wide_workers.py"
+          ],
+          "seconds": 80.9489652919583
+        }
+      ]
+    },
+    {
+      "name": "admission",
+      "status": "ok",
+      "seconds": 18.3513459591195,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_admission.py"
+          ],
+          "seconds": 18.348463541129604
+        }
+      ]
+    },
+    {
+      "name": "strprims",
+      "status": "ok",
+      "seconds": 0.8968571659643203,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/strprims.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/73-strprims/strprims"
+          ],
+          "seconds": 0.6542848339304328
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/73-strprims/strprims"
+          ],
+          "seconds": 0.23892879113554955
+        }
+      ]
+    },
+    {
+      "name": "confine",
+      "status": "ok",
+      "seconds": 1.0873109579551965,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/confine.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/74-confine/confine"
+          ],
+          "seconds": 0.7669331661891192
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/74-confine/confine"
+          ],
+          "seconds": 0.31663704197853804
+        }
+      ]
+    },
+    {
+      "name": "heapnil",
+      "status": "ok",
+      "seconds": 0.8836144171655178,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/heapnil.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/75-heapnil/heapnil"
+          ],
+          "seconds": 0.6525301251094788
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/75-heapnil/heapnil"
+          ],
+          "seconds": 0.22688774997368455
+        }
+      ]
+    },
+    {
+      "name": "bitrange",
+      "status": "ok",
+      "seconds": 0.8460473329760134,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/bitrange.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/76-bitrange/bitrange"
+          ],
+          "seconds": 0.6056643750052899
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/76-bitrange/bitrange",
+            "63",
+            "value"
+          ],
+          "seconds": 0.22723775007762015
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/76-bitrange/bitrange",
+            "64",
+            "inline"
+          ],
+          "seconds": 0.0037630421575158834
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/76-bitrange/bitrange",
+            "-1",
+            "value"
+          ],
+          "seconds": 0.0036742500960826874
+        }
+      ]
+    },
+    {
+      "name": "intovf",
+      "status": "ok",
+      "seconds": 1.0105489159468561,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/intovf.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/77-intovf/intovf"
+          ],
+          "seconds": 0.6784292499069124
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/77-intovf/intovf"
+          ],
+          "seconds": 0.2442599160131067
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/77-intovf/intovf"
+          ],
+          "seconds": 0.004224458942189813
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/77-intovf/intovf",
+            "add"
+          ],
+          "seconds": 0.008304499788209796
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/77-intovf/intovf",
+            "sub"
+          ],
+          "seconds": 0.004480333067476749
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/77-intovf/intovf",
+            "mul"
+          ],
+          "seconds": 0.007873208960518241
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/77-intovf/intovf",
+            "mulsmall"
+          ],
+          "seconds": 0.004608541959896684
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/77-intovf/intovf",
+            "div"
+          ],
+          "seconds": 0.004375082906335592
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/77-intovf/intovf",
+            "neg"
+          ],
+          "seconds": 0.006085708038881421
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/77-intovf/intovf",
+            "kernel"
+          ],
+          "seconds": 0.004129666835069656
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/77-intovf/intovf",
+            "kernel2"
+          ],
+          "seconds": 0.005144708789885044
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/77-intovf/intovf",
+            "fold"
+          ],
+          "seconds": 0.004186541074886918
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/77-intovf/intovf",
+            "chr"
+          ],
+          "seconds": 0.005568916909396648
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/77-intovf/intovf",
+            "exit"
+          ],
+          "seconds": 0.004038000013679266
+        }
+      ]
+    },
+    {
+      "name": "longpanic",
+      "status": "ok",
+      "seconds": 0.7974080420099199,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/longpanic.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/78-longpanic/longpanic"
+          ],
+          "seconds": 0.5622602079529315
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/78-longpanic/longpanic"
+          ],
+          "seconds": 0.23206495796330273
+        }
+      ]
+    },
+    {
+      "name": "irqroute",
+      "status": "ok",
+      "seconds": 0.8241055000107735,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/irqroute.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/79-irqroute/irqroute"
+          ],
+          "seconds": 0.5627605831250548
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/79-irqroute/irqroute"
+          ],
+          "seconds": 0.24693691707216203
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/79-irqroute/irqroute",
+            "other"
+          ],
+          "seconds": 0.004140417091548443
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/79-irqroute/irqroute",
+            "steal"
+          ],
+          "seconds": 0.003935541026294231
+        }
+      ]
+    },
+    {
+      "name": "irqdead",
+      "status": "ok",
+      "seconds": 0.8992857909761369,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/irqdead.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/80-irqdead/irqdead"
+          ],
+          "seconds": 0.5542687079869211
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/80-irqdead/irqdead"
+          ],
+          "seconds": 0.34175320784561336
+        }
+      ]
+    },
+    {
+      "name": "logplane",
+      "status": "ok",
+      "seconds": 0.8579999159555882,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/logplane.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/81-logplane/logplane"
+          ],
+          "seconds": 0.5517147921491414
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/81-logplane/logplane"
+          ],
+          "seconds": 0.30339566711336374
+        }
+      ]
+    },
+    {
+      "name": "logdead",
+      "status": "ok",
+      "seconds": 1.5943602079059929,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/logdead.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/82-logdead/logdead"
+          ],
+          "seconds": 0.5192014998756349
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/82-logdead/logdead"
+          ],
+          "seconds": 0.2682677088305354
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/logmemory.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/82-logdead/logmemory"
+          ],
+          "seconds": 0.5559650829527527
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/82-logdead/logmemory"
+          ],
+          "seconds": 0.23684058408252895
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/82-logdead/logmemory"
+          ],
+          "seconds": 0.006235082866623998
+        }
+      ]
+    },
+    {
+      "name": "killblocked",
+      "status": "ok",
+      "seconds": 1.275744125014171,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/killblocked.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/83-killblocked/killblocked"
+          ],
+          "seconds": 0.5379620830062777
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/83-killblocked/killblocked"
+          ],
+          "seconds": 0.5133842499926686
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/83-killblocked/killblocked"
+          ],
+          "seconds": 0.22005458385683596
+        }
+      ]
+    },
+    {
+      "name": "deadmail",
+      "status": "ok",
+      "seconds": 1.3120421250350773,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/deadmail.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/84-deadmail/deadmail"
+          ],
+          "seconds": 0.5552036250010133
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/84-deadmail/deadmail"
+          ],
+          "seconds": 0.5032584997825325
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/84-deadmail/deadmail"
+          ],
+          "seconds": 0.24912662501446903
+        }
+      ]
+    },
+    {
+      "name": "autodrop2",
+      "status": "ok",
+      "seconds": 1.2869867919944227,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/autodrop2.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/85-autodrop2/autodrop2"
+          ],
+          "seconds": 0.5475105000659823
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/85-autodrop2/autodrop2"
+          ],
+          "seconds": 0.7371622498612851
+        }
+      ]
+    },
+    {
+      "name": "autodrop3",
+      "status": "ok",
+      "seconds": 0.9034540001302958,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "-v",
+            "tests/base/autodrop3.fpr",
+            "--with",
+            "tests/arc_churn/arcprobe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/86-autodrop3/autodrop3"
+          ],
+          "seconds": 0.5777966249734163
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/86-autodrop3/autodrop3"
+          ],
+          "seconds": 0.28015100001357496
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/86-autodrop3/autodrop3"
+          ],
+          "seconds": 0.040841792011633515
+        }
+      ]
+    },
+    {
+      "name": "fixedheap",
+      "status": "ok",
+      "seconds": 1.2375760001596063,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/fixedheap.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/87-fixedheap/fixedheap"
+          ],
+          "seconds": 0.7954870839603245
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/87-fixedheap/fixedheap"
+          ],
+          "seconds": 0.332211707951501
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/87-fixedheap/fixedheap"
+          ],
+          "seconds": 0.10534237511456013
+        }
+      ]
+    },
+    {
+      "name": "vecfuse",
+      "status": "ok",
+      "seconds": 1.5970139161217958,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "-v",
+            "tests/base/vecfuse_effects.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/88-vecfuse/vfe"
+          ],
+          "seconds": 0.5662064589560032
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/88-vecfuse/vfe"
+          ],
+          "seconds": 0.25412858300842345
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/vecfuse_fail.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/88-vecfuse/vff"
+          ],
+          "seconds": 0.5317583750002086
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/88-vecfuse/vff"
+          ],
+          "seconds": 0.2394546668510884
+        }
+      ]
+    },
+    {
+      "name": "vecwide",
+      "status": "ok",
+      "seconds": 10.712142792064697,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/vecwide.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/89-vecwide/vecwide"
+          ],
+          "seconds": 10.465999124804512
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/89-vecwide/vecwide"
+          ],
+          "seconds": 0.24326379201374948
+        }
+      ]
+    },
+    {
+      "name": "vecshape",
+      "status": "ok",
+      "seconds": 0.8581757079809904,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/vecshape.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/90-vecshape/vecshape"
+          ],
+          "seconds": 0.630949666025117
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/90-vecshape/vecshape"
+          ],
+          "seconds": 0.22474212502129376
+        }
+      ]
+    },
+    {
+      "name": "veccaps",
+      "status": "ok",
+      "seconds": 2.2553011670242995,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "-v",
+            "tests/base/veccaps.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/91-veccaps/veccaps"
+          ],
+          "seconds": 0.7501038750633597
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/91-veccaps/veccaps"
+          ],
+          "seconds": 0.2304433339741081
+        },
+        {
+          "command": [
+            "./fprc",
+            "--profile=base",
+            "--target=rv64",
+            "tests/base/veccaps.fpr",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/91-veccaps/veccaps-rv64.s"
+          ],
+          "seconds": 0.4347062499728054
+        },
+        {
+          "command": [
+            "./fprc",
+            "--profile=base",
+            "--target=rv32",
+            "tests/base/veccaps.fpr",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/91-veccaps/veccaps-rv32.s"
+          ],
+          "seconds": 0.41383837489411235
+        },
+        {
+          "command": [
+            "./fprc",
+            "--profile=base",
+            "--target=x64",
+            "tests/base/veccaps.fpr",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/91-veccaps/veccaps-x64.s"
+          ],
+          "seconds": 0.4187987500336021
+        }
+      ]
+    },
+    {
+      "name": "process",
+      "status": "ok",
+      "seconds": 2.3427206249907613,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/hello.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/92-process/hello"
+          ],
+          "seconds": 0.560842749895528
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/92-process/hello"
+          ],
+          "seconds": 0.24424395919777453
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/args.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/92-process/args"
+          ],
+          "seconds": 0.5224088330287486
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/92-process/args",
+            "one",
+            "two"
+          ],
+          "seconds": 0.262886666925624
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/status.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/92-process/status"
+          ],
+          "seconds": 0.49767479207366705
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/92-process/status"
+          ],
+          "seconds": 0.24104520794935524
+        }
+      ]
+    },
+    {
+      "name": "streams",
+      "status": "ok",
+      "seconds": 1.5317775839939713,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/lines.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/93-streams/lines"
+          ],
+          "seconds": 0.5011752089485526
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/93-streams/lines"
+          ],
+          "seconds": 0.27032495895400643
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/files.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/93-streams/files"
+          ],
+          "seconds": 0.5101433340460062
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/93-streams/files"
+          ],
+          "seconds": 0.24490108317695558
+        }
+      ]
+    },
+    {
+      "name": "panic_actors_std",
+      "status": "ok",
+      "seconds": 2.468613750068471,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/panic.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/94-panic_actors_std/panic"
+          ],
+          "seconds": 0.5273892499972135
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/94-panic_actors_std/panic"
+          ],
+          "seconds": 0.23584854207001626
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/actors.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/94-panic_actors_std/actors"
+          ],
+          "seconds": 0.5921510830521584
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/94-panic_actors_std/actors"
+          ],
+          "seconds": 0.24921045801602304
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/stduse.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/94-panic_actors_std/stduse"
+          ],
+          "seconds": 0.6082958749029785
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/94-panic_actors_std/stduse"
+          ],
+          "seconds": 0.24598624999634922
+        }
+      ]
+    },
+    {
+      "name": "stacks",
+      "status": "ok",
+      "seconds": 0.7974008340388536,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/overflow.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/95-stacks/overflow"
+          ],
+          "seconds": 0.5410143749322742
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/95-stacks/overflow"
+          ],
+          "seconds": 0.25315883313305676
+        }
+      ]
+    },
+    {
+      "name": "sleepwake",
+      "status": "ok",
+      "seconds": 6.869472624966875,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/sleepwake.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/96-sleepwake/sleepwake"
+          ],
+          "seconds": 0.5776416668668389
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/96-sleepwake/sleepwake"
+          ],
+          "seconds": 1.743736624950543
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/96-sleepwake/sleepwake"
+          ],
+          "seconds": 1.5123031251132488
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/96-sleepwake/sleepwake"
+          ],
+          "seconds": 1.513845499837771
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/96-sleepwake/sleepwake"
+          ],
+          "seconds": 1.5154720828868449
+        }
+      ]
+    },
+    {
+      "name": "sleepwait",
+      "status": "ok",
+      "seconds": 3.7487087920308113,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/sleepwait.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/97-sleepwait/sleepwait"
+          ],
+          "seconds": 0.5072319998871535
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/97-sleepwait/sleepwait"
+          ],
+          "seconds": 3.238754417048767
+        }
+      ]
+    },
+    {
+      "name": "bigheap",
+      "status": "ok",
+      "seconds": 0.8716155420988798,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/bigheap.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/98-bigheap/bigheap"
+          ],
+          "seconds": 0.5021127918735147
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/98-bigheap/bigheap"
+          ],
+          "seconds": 0.3538533749524504
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/98-bigheap/bigheap"
+          ],
+          "seconds": 0.011715791886672378
+        }
+      ]
+    },
+    {
+      "name": "wide",
+      "status": "ok",
+      "seconds": 0.9430904590990394,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/wide.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/99-wide/wide"
+          ],
+          "seconds": 0.6952793330419809
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/99-wide/wide"
+          ],
+          "seconds": 0.24538274994120002
+        }
+      ]
+    },
+    {
+      "name": "fvec2",
+      "status": "ok",
+      "seconds": 0.7756802081130445,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/fvec2.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/100-fvec2/fvec2"
+          ],
+          "seconds": 0.5305820829235017
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/100-fvec2/fvec2"
+          ],
+          "seconds": 0.24257429200224578
+        }
+      ]
+    },
+    {
+      "name": "cafalias",
+      "status": "ok",
+      "seconds": 0.7315484171267599,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/cafalias.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/101-cafalias/cafalias"
+          ],
+          "seconds": 0.49075650004670024
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/101-cafalias/cafalias"
+          ],
+          "seconds": 0.23852441692724824
+        }
+      ]
+    },
+    {
+      "name": "inlineprims",
+      "status": "ok",
+      "seconds": 2.280762250069529,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/inlineprims.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/102-inlineprims/inlineprims"
+          ],
+          "seconds": 0.5589105419348925
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/102-inlineprims/inlineprims"
+          ],
+          "seconds": 0.24033087491989136
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/102-inlineprims/c0.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/102-inlineprims/c0"
+          ],
+          "seconds": 0.4900217498652637
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/102-inlineprims/c0"
+          ],
+          "seconds": 0.26105104200541973
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/102-inlineprims/cm1.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/102-inlineprims/cm1"
+          ],
+          "seconds": 0.49632258294150233
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/102-inlineprims/cm1"
+          ],
+          "seconds": 0.2250573339406401
+        }
+      ]
+    },
+    {
+      "name": "inlining",
+      "status": "ok",
+      "seconds": 1.5177572090178728,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/inlining.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/103-inlining/inl1"
+          ],
+          "seconds": 0.5356733750086278
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/103-inlining/inl1"
+          ],
+          "seconds": 0.24814162496477365
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/inlining.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/103-inlining/inl0"
+          ],
+          "seconds": 0.4885117500089109
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/103-inlining/inl0"
+          ],
+          "seconds": 0.24001712491735816
+        }
+      ]
+    },
+    {
+      "name": "registers",
+      "status": "ok",
+      "seconds": 7.960422999924049,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_registers.py"
+          ],
+          "seconds": 7.958523708861321
+        }
+      ]
+    },
+    {
+      "name": "slotprims",
+      "status": "ok",
+      "seconds": 0.8370360829867423,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/slotprims.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/105-slotprims/slotprims"
+          ],
+          "seconds": 0.5204669579397887
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/105-slotprims/slotprims"
+          ],
+          "seconds": 0.31387220812030137
+        }
+      ]
+    },
+    {
+      "name": "float_inline",
+      "status": "ok",
+      "seconds": 4.806901165982708,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_float_inline.py"
+          ],
+          "seconds": 4.8049834170378745
+        }
+      ]
+    },
+    {
+      "name": "cleanup",
+      "status": "ok",
+      "seconds": 1.2013859159778804,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/cleanup.fpr",
+            "--with",
+            "tests/base/cleanup_probe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/107-cleanup/cleanup"
+          ],
+          "seconds": 0.5409242499154061
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/107-cleanup/cleanup"
+          ],
+          "seconds": 0.637173666851595
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/107-cleanup/cleanup"
+          ],
+          "seconds": 0.018144208937883377
+        }
+      ]
+    },
+    {
+      "name": "runtime_costs",
+      "status": "ok",
+      "seconds": 29.652861291076988,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tools/runtime-costs.py",
+            "--quick",
+            "--runs",
+            "1"
+          ],
+          "seconds": 29.650020874803886
+        }
+      ]
+    },
+    {
+      "name": "actorfail",
+      "status": "ok",
+      "seconds": 0.8961235419847071,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/actorfail.fpr",
+            "--with",
+            "tests/base/actorfail_probe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/109-actorfail/actorfail"
+          ],
+          "seconds": 0.5701822079718113
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/109-actorfail/actorfail"
+          ],
+          "seconds": 0.31233283411711454
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/109-actorfail/actorfail"
+          ],
+          "seconds": 0.008162959013134241
+        }
+      ]
+    },
+    {
+      "name": "loopwith",
+      "status": "ok",
+      "seconds": 3.0767880000639707,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/loopwith.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/110-loopwith/loopwith"
+          ],
+          "seconds": 0.6317020421847701
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/110-loopwith/loopwith"
+          ],
+          "seconds": 0.7021950830239803
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/110-loopwith/lwgrow.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/110-loopwith/lwgrow"
+          ],
+          "seconds": 0.5656169590074569
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/110-loopwith/lwgrow"
+          ],
+          "seconds": 0.23888799990527332
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/110-loopwith/lwstate.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/110-loopwith/lwstate"
+          ],
+          "seconds": 0.636411749990657
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/110-loopwith/lwstate"
+          ],
+          "seconds": 0.29195458302274346
+        }
+      ]
+    },
+    {
+      "name": "arena_migration",
+      "status": "ok",
+      "seconds": 1.4042960829101503,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_arena_migration.py"
+          ],
+          "seconds": 1.4014302499126643
+        }
+      ]
+    },
+    {
+      "name": "codepublish",
+      "status": "ok",
+      "seconds": 0.9132306249812245,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/codepublish.fpr",
+            "--with",
+            "tests/base/codepublish_probe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/112-codepublish/codepublish"
+          ],
+          "seconds": 0.5974489168729633
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/112-codepublish/codepublish"
+          ],
+          "seconds": 0.3119111252017319
+        }
+      ]
+    },
+    {
+      "name": "modinterface",
+      "status": "ok",
+      "seconds": 0.9935705419629812,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/modinterface.fpr",
+            "--with",
+            "tests/base/modinterface_probe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/113-modinterface/modinterface"
+          ],
+          "seconds": 0.7482172499876469
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/113-modinterface/modinterface"
+          ],
+          "seconds": 0.24204449984245002
+        }
+      ]
+    },
+    {
+      "name": "images",
+      "status": "ok",
+      "seconds": 0.9063146670814604,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/images.fpr",
+            "--with",
+            "tests/base/images_probe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/114-images/images"
+          ],
+          "seconds": 0.6198224578984082
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/114-images/images"
+          ],
+          "seconds": 0.27602520887739956
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/114-images/images"
+          ],
+          "seconds": 0.0049528751987963915
+        }
+      ]
+    },
+    {
+      "name": "vecpeek",
+      "status": "ok",
+      "seconds": 2.5184606248512864,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/vecpeek.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/115-vecpeek/vp1"
+          ],
+          "seconds": 0.6014659588690847
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/115-vecpeek/vp1"
+          ],
+          "seconds": 0.24183645914308727
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/vecpeek.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/115-vecpeek/vp2"
+          ],
+          "seconds": 0.6213202080689371
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/115-vecpeek/vp2"
+          ],
+          "seconds": 0.23086929181590676
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/115-vecpeek/vp3.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/115-vecpeek/vp3"
+          ],
+          "seconds": 0.5741650841664523
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/115-vecpeek/vp3"
+          ],
+          "seconds": 0.23929591616615653
+        }
+      ]
+    },
+    {
+      "name": "zerobased",
+      "status": "ok",
+      "seconds": 4.157880499958992,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/zerobased.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/116-zerobased/zerobased"
+          ],
+          "seconds": 0.5860882080160081
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/116-zerobased/zerobased"
+          ],
+          "seconds": 0.23267820803448558
+        },
+        {
+          "command": [
+            "./fpr",
+            "sol",
+            "tests/base/zerobased.fpr"
+          ],
+          "seconds": 0.05131766595877707
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/116-zerobased/zb1.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/116-zerobased/zb1"
+          ],
+          "seconds": 0.578707167180255
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/116-zerobased/zb1"
+          ],
+          "seconds": 0.2319089169614017
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/116-zerobased/zb2.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/116-zerobased/zb2"
+          ],
+          "seconds": 0.593960375059396
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/116-zerobased/zb2"
+          ],
+          "seconds": 0.23368291603401303
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/116-zerobased/zb3.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/116-zerobased/zb3"
+          ],
+          "seconds": 0.5900867090094835
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/116-zerobased/zb3"
+          ],
+          "seconds": 0.2385548329912126
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/116-zerobased/zb4.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/116-zerobased/zb4"
+          ],
+          "seconds": 0.5691978330723941
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/116-zerobased/zb4"
+          ],
+          "seconds": 0.23426624992862344
+        }
+      ]
+    },
+    {
+      "name": "deadpeer",
+      "status": "ok",
+      "seconds": 4.316559541970491,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/deadpeer.fpr",
+            "--harts",
+            "8",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/117-deadpeer/deadpeer"
+          ],
+          "seconds": 2.8402112908661366
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/117-deadpeer/deadpeer"
+          ],
+          "seconds": 0.5937237918842584
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/117-deadpeer/deadpeer"
+          ],
+          "seconds": 0.4187281250488013
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/117-deadpeer/deadpeer"
+          ],
+          "seconds": 0.4565227080602199
+        }
+      ]
+    },
+    {
+      "name": "deathwhy",
+      "status": "ok",
+      "seconds": 0.9162935831118375,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/deathwhy.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/118-deathwhy/deathwhy"
+          ],
+          "seconds": 0.6106713330373168
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/118-deathwhy/deathwhy"
+          ],
+          "seconds": 0.2663630419410765
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/118-deathwhy/deathwhy"
+          ],
+          "seconds": 0.03462633304297924
+        }
+      ]
+    },
+    {
+      "name": "actor_claim",
+      "status": "ok",
+      "seconds": 0.7652136248070747,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "python3",
+            "tests/check_actor_claim.py"
+          ],
+          "seconds": 0.7631469168700278
+        }
+      ]
+    },
+    {
+      "name": "taskstress",
+      "status": "ok",
+      "seconds": 8.484773958101869,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/taskstress.fpr",
+            "--harts",
+            "10",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/120-taskstress/taskstress-0"
+          ],
+          "seconds": 2.804075582884252
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/120-taskstress/taskstress-0"
+          ],
+          "seconds": 0.5097602498717606
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/120-taskstress/taskstress-0"
+          ],
+          "seconds": 0.23779087513685226
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/taskstress.fpr",
+            "--harts",
+            "10",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/120-taskstress/taskstress-1"
+          ],
+          "seconds": 2.419298707973212
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/120-taskstress/taskstress-1"
+          ],
+          "seconds": 0.5205692080780864
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/120-taskstress/taskstress-1"
+          ],
+          "seconds": 0.23381108394823968
+        }
+      ]
+    },
+    {
+      "name": "fpr_run",
+      "status": "ok",
+      "seconds": 1.4862407920882106,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "run",
+            "tests/base/args.fpr",
+            "x",
+            "y"
+          ],
+          "seconds": 0.8821344580501318
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/hello.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/121-fpr_run/hello2",
+            "-v"
+          ],
+          "seconds": 0.600175041006878
+        }
+      ]
+    },
+    {
+      "name": "descriptors",
+      "status": "ok",
+      "seconds": 3.4957687919959426,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "machine/esp-idf/examples/load.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/122-descriptors/load"
+          ],
+          "seconds": 2.221339500043541
+        }
+      ]
+    },
+    {
+      "name": "job_broker",
+      "status": "ok",
+      "seconds": 1.6578885419294238,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/job.fpr",
+            "--with",
+            "tests/base/job_probe.c",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/123-job_broker/job"
+          ],
+          "seconds": 1.3434932499658316
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/123-job_broker/job"
+          ],
+          "seconds": 0.30956700001843274
+        }
+      ]
+    },
+    {
+      "name": "sendmem",
+      "status": "ok",
+      "seconds": 1.4698250000365078,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/sendmem.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/124-sendmem/sendmem"
+          ],
+          "seconds": 1.229389209067449
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/124-sendmem/sendmem"
+          ],
+          "seconds": 0.23723358288407326
+        }
+      ]
+    },
+    {
+      "name": "i64",
+      "status": "ok",
+      "seconds": 2.5902683748863637,
+      "lock_wait_seconds": 0,
+      "commands": [
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/i64.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/125-i64/i64"
+          ],
+          "seconds": 1.3447257501538843
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/125-i64/i64"
+          ],
+          "seconds": 0.24387445906177163
+        },
+        {
+          "command": [
+            "./fpr",
+            "build",
+            "tests/base/i64_divzero.fpr",
+            "-o",
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/125-i64/i64dz"
+          ],
+          "seconds": 0.5379794167820364
+        },
+        {
+          "command": [
+            "/var/folders/rd/0pnnmwhx69qdhg4mf34ltqnh0000gn/T/fpr-base-_bqo81w_/125-i64/i64dz"
+          ],
+          "seconds": 0.231219083070755
+        }
+      ]
+    }
+  ]
+}

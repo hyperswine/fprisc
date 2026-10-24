@@ -1,0 +1,32 @@
+unsafe base.
+Store = use "../examples/printer-dashboard/authservice".
+Auth = use "../std/sessionauth".
+D = use "../std/digest".
+J = use "../std/json".
+check why yes = if yes then Unit else error "session persistence: {why}".
+main =
+  cfg = Store.limits;
+  generic = Auth.defaults;
+  _ = check "30-day printer policy without changing generic defaults" (cfg.sessionMs == 30 * 24 * 60 * 60 * 1000 and generic.sessionMs == 28800000);
+  at = 1800000000000;
+  token = "synthetic-session-token-with-at-least-32-characters";
+  scope = D.sha256 "synthetic-allowlist";
+  entry = {digest = D.sha256 token, origin = "https://print.example", expiresMs = at + cfg.sessionMs};
+  raw = Store.encoded scope [entry];
+  _ = check "round trip without bearer" (Store.decode cfg scope at raw == Ok [entry]);
+  _ = check "expired sessions cannot restore at exact boundary" (Store.decode cfg scope entry.expiresMs raw == Ok Nil);
+  _ = check "restart cannot reset absolute expiry" (Store.decode cfg scope (at + cfg.sessionMs - 1) raw == Ok [entry]);
+  aged = Store.restore 500 (at + 9 * 60 * 60 * 1000) [entry];
+  _ = check "restored session remains valid beyond old eight-hour cutoff" (Auth.valid (500 + 15 * 24 * 60 * 60 * 1000) token "https://print.example" aged);
+  state = Store.restore 500 (at + cfg.sessionMs - 1) [entry];
+  _ = check "remaining millisecond, not another 30 days" (Auth.valid 500 token "https://print.example" state and not (Auth.valid 501 token "https://print.example" state));
+  _ = check "origin is still bound" (not (Auth.valid 500 token "https://other.example" state));
+  _ = check "allowlist change revokes restored sessions" (Store.decode cfg (D.sha256 "changed") at raw == Ok Nil);
+  _ = check "future timestamp cannot exceed configured maximum" (Store.decode cfg scope (at - 1) raw == Ok Nil);
+  _ = check "duplicate digest refuses entire store" (case Store.decode cfg scope at (Store.encoded scope [entry,entry]) of Err _ -> True | _ -> False);
+  bad = {entry | digest = token};
+  _ = check "a bearer is not a valid persisted digest" (case Store.decode cfg scope at (Store.encoded scope [bad]) of Err _ -> True | _ -> False);
+  _ = check "truncated store fails closed" (case Store.decode cfg scope at "[1" of Err _ -> True | _ -> False);
+  _ = check "unknown schema fails closed" (case Store.decode cfg scope at (J.render (J.object [("schema", J.Integer 2), ("allowlist", J.Text scope), ("sessions", J.Sequence Nil)])) of Err _ -> True | _ -> False);
+  _ = print "persistent auth policy: 30 days, absolute expiry, restart conversion, origin, allowlist revocation and malformed-store refusal PASS";
+  0.

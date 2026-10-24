@@ -32,6 +32,7 @@ class Host:
             'public_key': self.key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()}]))
         self.child = subprocess.Popen([str(binary), '--demo', '--port=0',
             '--auth=' + str(allow), '--origin=https://print.example',
+            '--store=' + str(directory / 'view.kvlog'),
             '--maintenance-store=' + str(self.store)], cwd=ROOT,
             env={**os.environ, 'PATH': '/nonexistent', 'FPR_HARTS': str(harts)},
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

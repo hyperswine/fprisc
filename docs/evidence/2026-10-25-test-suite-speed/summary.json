@@ -1,0 +1,23 @@
+{
+  "validation": {
+    "base_jobs": 126,
+    "base_status": "all ok",
+    "base_seconds": 560.0,
+    "workers": 4,
+    "concurrent_work": "independent frame-emission parity run; not a clean performance baseline",
+    "frame_emission_variants_byte_identical": 16,
+    "concurrent_helper_builds": 1,
+    "concurrent_helper_reuses": 1,
+    "hosted_ci_rerun": false
+  },
+  "coverage": {
+    "explicit_ci_configurations": 31,
+    "base_configurations_covered": 21,
+    "additional_duplicate_jobs_removed": 19
+  },
+  "limits": [
+    "Local sweep permits registered missing-tool/nonmatching-host skips.",
+    "The checkout advanced from a6043da to ff96204 during work; concurrent printer edits were preserved.",
+    "Earlier module-check changes remain uncommitted alongside this work."
+  ]
+}

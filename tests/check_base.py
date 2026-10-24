@@ -16,8 +16,10 @@ stops the others and is reported by name with its output.
   python3 tests/check_base.py --times    # the slowest jobs, on stderr
   python3 tests/check_base.py --only taskstress --only check_trust"""
 from pathlib import Path
-import argparse, io, os, re, signal, subprocess, sys, tempfile, threading, time, traceback
+import argparse, io, json, os, re, signal, subprocess, sys, tempfile, threading, time, traceback
 from concurrent.futures import ThreadPoolExecutor
+from check_registry import BASE
+from check_ci import covered_base
 ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
 
@@ -52,6 +54,7 @@ def run(args, expected=0, timeout=120, stdin=None, env=None):
                          env=None if env is None else {**os.environ, **env}, start_new_session=True)
     with _live_lock:
         _live.add(p)
+    began = time.monotonic()
     try:
         try:
             out, err = p.communicate(stdin, timeout=timeout)
@@ -67,6 +70,9 @@ def run(args, expected=0, timeout=120, stdin=None, env=None):
     finally:
         with _live_lock:
             _live.discard(p)
+        if hasattr(_local, 'commands'):
+            _local.commands.append({'command': [str(a) for a in args],
+                                    'seconds': time.monotonic() - began})
     if _abort.is_set():
         raise Cancelled()
     if p.returncode != expected:
@@ -97,13 +103,13 @@ def case(fn):
     return fn
 
 
-def script(path, timeout, alone=False, lock=None):
-    """A sub-check script as one job.  alone: it times something, so it runs
-    with nothing else on the machine.  lock: jobs naming the same lock never
-    run at once (the cabal ones share this checkout's dist-newstyle)."""
+def script(check):
+    """A registered sub-check as one job. Timing jobs run alone; jobs naming
+    the same lock never run at once (Cabal shares dist-newstyle)."""
     def job(tmp):
-        print(run(['python3', path], timeout=timeout).stdout, end='')
-    JOBS.append((path, job, {'alone': alone, 'lock': lock}))
+        print(run(['python3', check.path, *check.args], timeout=check.timeout,
+                  env=dict(check.env)).stdout, end='')
+    JOBS.append((check.id, job, {'alone': check.alone, 'lock': check.lock}))
 
 
 def build(prog, name, *flags):
@@ -151,11 +157,13 @@ def _work(i, tmp_root):
     lock = _locks.setdefault(options.get('lock'), threading.Lock()) if options.get('lock') else None
     tmp = tmp_root / f'{i:02d}-{Path(name).stem}'
     tmp.mkdir()
-    _local.out, _local.tmp = io.StringIO(), tmp
+    _local.out, _local.tmp, _local.commands = io.StringIO(), tmp, []
     began = time.monotonic()
+    lock_wait = 0
     try:
         if lock:
             lock.acquire()
+            lock_wait = time.monotonic() - began
         try:
             if _abort.is_set():
                 raise Cancelled()
@@ -177,8 +185,22 @@ def _work(i, tmp_root):
             _kill_all()
     finally:
         out = _local.out.getvalue()
-        del _local.out, _local.tmp
-    return status, out, why, time.monotonic() - began
+        commands = _local.commands
+        del _local.out, _local.tmp, _local.commands
+    return status, out, why, time.monotonic() - began, lock_wait, commands
+
+
+def write_timings(path, results, workers, began, reused):
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        'seconds': time.monotonic() - began, 'workers': workers,
+        'reused': sorted(reused),
+        'jobs': [{'name': JOBS[i][0], 'status': r[0], 'seconds': r[3],
+                  'lock_wait_seconds': r[4], 'commands': r[5]}
+                 for i, r in enumerate(results) if r is not None],
+    }, indent=2) + '\n')
 
 
 def main():
@@ -188,13 +210,23 @@ def main():
     ap.add_argument('--serial', action='store_true', help='one job at a time, in order (-j 1)')
     ap.add_argument('--times', action='store_true', help='print the slowest jobs on stderr')
     ap.add_argument('--only', action='append', metavar='TEXT', help='only the jobs whose name contains TEXT (repeatable)')
-    ap.add_argument('--skip-typed-ir-native', action='store_true',
-                    help='CI only: direct-backend suites already passed in a preceding explicit step')
+    ap.add_argument('--completed', type=Path, help='reuse successful CI configurations from check_ci.py results')
+    ap.add_argument('--timings-json', type=Path, help='write per-job elapsed/lock/command timings (including failures)')
+    ap.add_argument('--list', action='store_true', help='list selected jobs without building or running')
     a = ap.parse_args()
-    if a.skip_typed_ir_native:
-        JOBS[:] = [j for j in JOBS if j[0] not in TYPED_IR_NATIVE]
+    reused = set()
+    if a.completed:
+        try:
+            reused = covered_base(a.completed)
+        except (ValueError, OSError, KeyError) as exc:
+            ap.error(str(exc))
+        JOBS[:] = [j for j in JOBS if j[0] not in reused]
+        print(f'check_base: reusing {len(reused)} completed configurations', file=sys.stderr)
     if a.only:
         JOBS[:] = [j for j in JOBS if any(t in j[0] for t in a.only)]
+    if a.list:
+        print('\n'.join(j[0] for j in JOBS))
+        return
     began = time.monotonic()
     if a.serial:
         workers = 1
@@ -232,7 +264,7 @@ def main():
             for i in range(len(JOBS)):
                 if results[i] is None:
                     results[i] = futures[i].result()
-                status, out, why, _ = results[i]
+                status, out, why, *_ = results[i]
                 if status != 'ok':
                     failed = i
                     break
@@ -248,17 +280,22 @@ def main():
             _abort.set()
             _kill_all()
             pool.shutdown(wait=True, cancel_futures=True)
+            for i, future in futures.items():
+                if results[i] is None and not future.cancelled():
+                    results[i] = future.result()
             culprit = _first_failure[0] if _first_failure else failed
             if results[culprit] is None:
                 results[culprit] = futures[culprit].result()
             name = JOBS[culprit][0]
-            status, out, why, _ = results[culprit]
+            status, out, why, *_ = results[culprit]
             sys.stderr.write(f'\ncheck_base: FAILED: {name}\n')
             if out:
                 sys.stderr.write(f'--- {name}: its output before the failure\n{out}')
             sys.stderr.write(why or f'{name}: {status}\n')
+            write_timings(a.timings_json, results, workers, began, reused)
             sys.exit(1)
         pool.shutdown(wait=True)
+    write_timings(a.timings_json, results, workers, began, reused)
     took = time.monotonic() - began
     print(f'check_base: {len(JOBS)} jobs in {took:.0f} s on {workers} worker(s)', file=sys.stderr)
     if a.times:
@@ -266,77 +303,8 @@ def main():
             print(f'  {t:7.1f} s  {name}', file=sys.stderr)
 
 # ---- the sub-check scripts, each one job; its stdout is printed whole
-script('tests/check_typed_ir.py', 900, lock='cabal')
-TYPED_IR_NATIVE = ('tests/check_typed_ir_a64.py', 'tests/check_typed_ir_x64.py')
-script('tests/check_typed_ir_a64.py', 1200)
-script('tests/check_typed_ir_x64.py', 1200)
-script('tests/check_typed_ir_kernels.py', 1200)
-script('tests/check_x64_retirement.py', 300)
-script('tests/check_float_trees.py', 300)
-script('tests/check_captured_simd.py', 300)
-script('tests/check_typed_ir_builtin.py', 300)
-script('tests/check_typed_ir_arc.py', 600)
-script('tests/check_native_insns_ratchet.py', 300)
-script('tests/check_rv32_float_constants.py', 300)
-script('tests/check_a64_fp_pool.py', 600)
-script('tests/check_a64_retirement.py', 600)
-script('tests/check_self_loops.py', 600, lock='cabal')
-script('tests/check_self_loop_x64.py', 300)
-script('tests/check_x64_scalar.py', 300)
-script('tests/check_x64_qos.py', 300)
-script('tests/check_x64_macos.py', 900)
-script('tests/check_self_loop_rv64.py', 600)
-script('tests/check_rv64_linux.py', 120)
-script('tests/check_typed_ir_rv_module.py', 600)
-script('tests/check_typed_ir_rv_startup.py', 600)
-script('tests/check_typed_ir_rv_frames.py', 1200)
-script('tests/check_typed_ir_a64_frames.py', 1200)
-script('tests/check_typed_ir_x64_frames.py', 1200)
-script('tests/check_native_data.py', 300)
-script('tests/check_native_required.py', 300)
-script('tests/check_stack_reservation.py', 600)
-script('tests/check_fixed_stack_reservation.py', 600)
-script('tests/check_typed_ir_qrv64.py', 600)
-script('tests/check_typed_ir_esp.py', 600)
-script('tests/check_byte_strings.py', 300)
-script('tests/check_view_construction.py', 600)
-script('tests/check_inbox.py', 300)
-script('tests/check_commit_interfaces.py', 300)
-script('tests/check_publication.py', 600)
-script('tests/check_watch_app.py', 600)
-script('tests/check_live_runner.py', 600)
-script('tests/check_live_writer_lifetime.py', 300, alone=True)
-script('tests/check_pos_reload.py', 1800)  # three cold POS app builds
-script('tests/check_posix_modules.py', 600)
-script('tests/check_posix_pic.py', 300)
-script('tests/check_owned_watchers.py', 300)
-script('tests/check_loop_state.py', 300)
-script('tests/check_receive_turns.py', 600)
-script('tests/check_mvu_reload.py', 600)
-script('tests/check_deadlines.py', 300)
-script('tests/check_actor_reap.py', 120)
-script('examples/ideal/check.py', 600)
-script('tests/check_higher_order_contracts.py', 600)
-script('tests/check_contract_rewrites.py', 600)
-script('tests/check_printer_ownership.py', 600)
-script('tools/sol-linearity-check.py', 300)
-script('tests/check_structural_ownership.py', 300)
-script('tests/check_generic_ownership.py', 600)
-script('tests/check_pos_core.py', 300)
-script('tests/check_pagination.py', 300)
-script('tests/check_typed_vectors.py', 300)
-script('tests/check_vector_limits.py', 300)
-script('tests/check_vector_kinds.py', 300)
-script('tests/check_vector_pipelines.py', 600)
-script('tests/check_reuse.py', 600, lock='cabal')
-script('tests/check_consuming_reuse.py', 600)
-script('tests/check_x64_vectors.py', 300)
-script('tests/check_wide_params.py', 300)
-script('tests/check_vector_fallback_frames.py', 600)
-script('tests/check_trust.py', 60)
-script('tests/check_specialization.py', 300, lock='cabal')
-script('tests/check_workers.py', 300, lock='cabal')
-script('tests/check_wide_workers.py', 600)
+for check in BASE:
+    script(check)
 
 # ---- the base checks proper, one job per case; each builds in its own tmp
 

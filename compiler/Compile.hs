@@ -553,9 +553,10 @@ compileWithInterface accepted = do
   when (nEvals > 0 && any isMain rootTops0) $ do
     hPutStrLn stderr "error: both `main` and top-level `>` statements -- the `>` list IS main in the sol view"
     exitFailure
-  -- a program starts at `main`; without one the link used to fail on an
-  -- undefined symbol, which is the linker's word for a compiler's fact
-  when (nEvals == 0 && not (oPlugin opts) && not (oLib opts) && not (any isMain rootTops0)) $ do
+  -- An executable starts at `main`. Check-only also serves editors opening
+  -- library/source modules: check their definitions normally, without an
+  -- executable entry point or the qualification introduced by --lib.
+  when (not checkOnly && nEvals == 0 && not (oPlugin opts) && not (oLib opts) && not (any isMain rootTops0)) $ do
     hPutStrLn stderr ("error: " ++ inp ++ " has no `main` (a program starts at main; a library unit is built with --module)")
     exitFailure
   lr <- loadProgram preludeTops inp rootTops

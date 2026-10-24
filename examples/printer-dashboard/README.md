@@ -250,12 +250,46 @@ a guarantee of immediate memory erasure.
 
 Challenges expire after 60 seconds, are one-use even on failure, and bind to
 the origin and an HttpOnly browser cookie. There is a bounded challenge rate
-and bounded in-memory state. Verified logins receive an eight-hour HttpOnly,
-SameSite=Strict cookie (Secure on HTTPS). Sign out revokes that session;
+and bounded in-memory state. Verified logins receive a **30-day** HttpOnly,
+SameSite=Strict cookie (Secure on HTTPS). The private key is needed only for
+login; subsequent requests use this persistent browser cookie. Sign out revokes that session;
 already-open WebSockets and camera feeds check revocation while streaming.
 Other tabs redirect to login on their next session check (up to 15 seconds).
-Restarting the bridge expires all sessions. Change the public allowlist and
-restart to add or revoke devices.
+Sessions survive application restarts without extending their original expiry.
+Changing the authorized public-key set and restarting revokes all saved sessions.
+Clearing browser site data also requires a fresh login.
+
+The printer-specific service is `authservice.fpr`; the generic
+`std/sessionauth` default remains eight hours for other consumers. Only SHA-256
+token digests, origins and absolute expiry timestamps are persisted, with a
+fingerprint of the allowed public-key set. No login private key or bearer token
+is saved on the server. Challenges and rate-limit counters remain ephemeral.
+Use `--session-store=/private/path/sessions.json` to select the snapshot; otherwise
+it is `<store>.sessions.json`. Keep its directory private and run with umask 077
+(the deployed LaunchDaemon already does this). Login and sign-out are acknowledged
+only after atomic snapshot replacement. There is no fsync/power-loss guarantee
+and no backup that could restore revoked sessions. An unreadable, malformed,
+oversized or incomplete session store fails closed; preserve it for inspection
+and reset only this auth file to force fresh logins, not the maintenance log.
+A failed write returns HTTP 503, distinct from an expired/revoked session (401),
+and leaves the browser cookie intact. Ordinary session checks can save the
+current state and recover automatically after storage is repaired; pending
+revocations must be persisted before access resumes. Restart restoration uses the wall-clock expiry converted
+to a remaining monotonic duration; it never grants another full 30 days.
+
+The initial deployment of this change requires one final login because the old
+eight-hour sessions existed only in process memory and cannot be migrated.
+Focused acceptance:
+
+```sh
+python3 tests/check_printer_sessions.py --binary=build/printer-host
+```
+
+This tests synthetic sessions on one/four harts: the 30-day cookie/security
+flags, digest-only storage/mode, restart survival, one-use challenges across
+restart, logout durability, write-failure refusal/recovery, allowlist revocation,
+expired sessions and corrupt snapshots. `tests/sessionauthstore_policy.fpr`
+additionally checks exact expiry boundaries and restart conversion.
 
 WebCrypto signing needs a current browser supporting Ed25519 and HTTPS, or
 localhost. For the public proxy launch with

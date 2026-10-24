@@ -2,6 +2,7 @@
 """x64 sized-frame ABI execution on Intel/Rosetta, with modeled TLS cells."""
 import argparse,platform,re,shutil,tempfile
 from pathlib import Path
+from frame_emitter import build_emitter
 from x64_probe import ROOT,adapt,borrowed_oracle,environment,host,link,run
 
 def shim():
@@ -25,8 +26,7 @@ def main():
  with tempfile.TemporaryDirectory(prefix='fpr-x64-frames-') as d:
   out=a.keep_dir or Path(d);out.mkdir(parents=True,exist_ok=True);env=environment(out/'cache')
   run(['make','fpr'],env)
-  emitter=out/'emit';obj=out/'ghc';obj.mkdir(exist_ok=True)
-  run(['cabal','exec','--','ghc','-O1','-w','-icompiler','-outputdir',obj,'tests/EmitX64Frames.hs','-o',emitter],env)
+  emitter=build_emitter(env)
   c=(ROOT/'tests/typed_ir/rv_frames_oracle.c').read_text()
   c=c.replace('static V hart[64];','static V hart[64]; void *probe_hart=hart; V probe_a6,probe_a7;')
   c=c.replace('V,V,V,V,V,V,V,V','V,V,V,V,V,V')
@@ -58,7 +58,7 @@ __attribute__((noreturn)) void oracle_finish(int code){if(code)fprintf(stderr,"x
    source.write_text(code)
    for loops in ('0','1'):
     asm=out/f'frames-{hart}-{loops}.s'
-    print(run([emitter,hart,loops,asm],env),end='',flush=True)
+    print(run([emitter,'x64',hart,loops,asm],env),end='',flush=True)
     assert asm.read_text().count('reserve=yes')==3
     if shutil.which('clang'):
      run(['clang','-target','x86_64-unknown-linux-gnu','-c',asm,'-o',asm.with_suffix('.o')],env)
@@ -70,7 +70,7 @@ __attribute__((noreturn)) void oracle_finish(int code){if(code)fprintf(stderr,"x
   if not mac and platform.machine() in ('x86_64','AMD64'):
    source=out/'actor.fpr';source.write_text('unsafe base.\nReserve.deep : Unit -> Int.\n'
     'main = if Reserve.deep Unit == 9 then print "X64 ACTOR FRAMES HOLD" else error "nested frame count".\n')
-   asm=out/'actor-frames.s';run([emitter,'tls','1',asm],env)
+   asm=out/'actor-frames.s';run([emitter,'x64','tls','1',asm],env)
    for harts in (1,4):
     exe=out/f'actor-{harts}'
     run([ROOT/'fpr','build',source,'--harts',harts,'--with',ROOT/'tests/typed_ir/actor_frames.c','--with',asm,'-o',exe],env)

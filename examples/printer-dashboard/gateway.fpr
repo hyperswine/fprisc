@@ -77,7 +77,7 @@ post cfg expected req conn = if header "origin" req != expected or header "conte
     else if req.path == "/auth/logout" then
       if not (J.equal value (J.object Nil)) then text 400 "Empty object required\n" conn else
       (case Auth.call cfg.auth (Auth.Logout (cookie cookieName req)) of
-        Ok _ -> json 200 (J.object [("ok", J.Boolean True)]) [setCookie cookieName "" 0 expected, setCookie bindingName "" 0 expected] conn
+        Ok (Auth.Authorized True) -> json 200 (J.object [("ok", J.Boolean True)]) [setCookie cookieName "" 0 expected, setCookie bindingName "" 0 expected] conn
       | _ -> text 503 "Authentication unavailable\n" conn)
     else
       fields = case J.asObject value of O.Some map -> M.keys map | _ -> Nil;
@@ -88,7 +88,15 @@ post cfg expected req conn = if header "origin" req != expected or header "conte
         Ok (Auth.SessionReady token) -> json 200 (J.object [("ok", J.Boolean True)]) [setCookie cookieName token (cfg.authLimits.sessionMs / 1000) expected, setCookie bindingName "" 0 expected] conn
       | _ -> json 400 (J.object [("error", J.Text "Sign in failed. Check your key, or request a fresh challenge.")]) [setCookie bindingName "" 0 expected] conn).
 M = use "std/map".
-alive cfg token expected = Auth.authorized cfg.auth token expected.
+# A refused/timed-out actor call is an outage, not evidence of an expired key
+# login. Only an explicit negative session check may send HTTP 401.
+authResult reply = case reply of Ok (Auth.Authorized yes) -> Ok yes | _ -> Err "Authentication unavailable".
+authorization cfg token expected = authResult (Auth.call cfg.auth (Auth.Valid token expected)).
+alive cfg token expected = authorization cfg token expected == Ok True.
+gated cfg token expected action conn = case authorization cfg token expected of
+    Ok True -> action conn
+  | Ok False -> text 401 "Sign in required\n" conn
+  | Err _ -> text 503 "Authentication temporarily unavailable; retry shortly\n" conn.
 # One owning actor alternates both directions. No unbounded byte queue or
 # sibling writer shares a checked connection. Session checks continue while idle.
 relayStep cfg token expected state =
@@ -138,10 +146,13 @@ proxy cfg token expected port target cameraGate req client = case DNS.create 1 o
             | Ok (header, pending) ->
                 good = if websocket then S.startsWith "HTTP/1.1 101 " header else S.startsWith "HTTP/1.1 200 " header;
                 if not good then (text 503 "Native service refused\n" client, u2) else
-                if not (alive cfg token expected) then (text 401 "Sign in required\n" client, u2) else
-                (written, c1) = T.writeAll (budget 1500) "{header}\r\n\r\n{pending}" client;
-                case written of Err _ -> (c1, u2) | Ok _ ->
-                  Sys.loop (c1, u2) (relayStep cfg token expected);
+                case authorization cfg token expected of
+                  Err _ -> (text 503 "Authentication temporarily unavailable; retry shortly\n" client, u2)
+                | Ok False -> (text 401 "Sign in required\n" client, u2)
+                | Ok True ->
+                    (written, c1) = T.writeAll (budget 1500) "{header}\r\n\r\n{pending}" client;
+                    case written of Err _ -> (c1, u2) | Ok _ ->
+                      Sys.loop (c1, u2) (relayStep cfg token expected);
             _ = T.close finalUpstream;
             finalClient;
       _ = DNS.close pool;
@@ -159,10 +170,12 @@ handle cfg raw peer me = case Sock.adopt 16384 (ST.Stream raw) of
         if req.method != "GET" then text 405 "Read-only dashboard\n" c1 else
         if req.path == "/health" then text 200 "ok\n" c1 else
         if req.path == "/auth/login.js" then response 200 "text/javascript; charset=utf-8" cfg.loginScript Nil c1 else
-        if not (alive cfg token expected) then
+        case authorization cfg token expected of
+          Err _ -> text 503 "Authentication temporarily unavailable; retry shortly\n" c1
+        | Ok False ->
           if req.path == "/" then response 200 "text/html; charset=utf-8" cfg.loginHtml [("content-security-policy", "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")] c1
           else text 401 "Sign in required\n" c1
-        else if req.path == "/auth/session" then json 200 (J.object [("ok", J.Boolean True)]) Nil c1
+        | Ok True -> if req.path == "/auth/session" then json 200 (J.object [("ok", J.Boolean True)]) Nil c1
         else if req.path == "/auth/session.js" then response 200 "text/javascript; charset=utf-8" cfg.sessionScript Nil c1
         else if req.path == "/api/status" then
           value = cfg.snapshot Unit;
@@ -172,8 +185,7 @@ handle cfg raw peer me = case Sock.adopt 16384 (ST.Stream raw) of
           q = {method = "GET", url = "http://127.0.0.1:{cfg.viewPort}/", headers = Nil, body = ""};
           (case HC.request {HC.defaults | bodyBytes = 2097152, timeoutMs = 3000} q of
             Err _ -> text 503 "View unavailable\n" c1
-          | Ok r -> if not (alive cfg token expected) then text 401 "Sign in required\n" c1 else
-              response 200 "text/html; charset=utf-8" r.body Nil c1)
+          | Ok r -> gated cfg token expected (response 200 "text/html; charset=utf-8" r.body Nil) c1)
         else if req.path == "/ws" then proxy local token expected cfg.viewPort req.target "" req c1
         else (case L.find (fn camera -> req.path == "/camera/{camera.id}.mjpg") cfg.cameras of
           O.Some camera -> proxy local token expected camera.port "/stream" camera.gate req c1

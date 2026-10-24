@@ -3,8 +3,8 @@
 # Debian trixie container: fp-risc.cabal needs libgit2 >= 1.9
 # (pkgconfig-depends), which Ubuntu 24.04 does not ship; trixie's GHC
 # 9.6 and its libghc-* packages provide the Haskell dependencies.
-# One job: building the compiler dominates, and the checks
-# all need the same tree.
+# One compiler build; check_registry.py owns the distinct CI configurations.
+# Successful source-bound receipts let Base reuse their coverage.
 #
 # Covered: tests/check_base.py (the umbrella: hosted x86-64 builds and
 # runs, the x64 lowering checks, typed vectors, POSIX modules, clang
@@ -73,41 +73,13 @@ jobs:
           FPR_PRESET=fprisc-48 machine/tangnano20k/build-softfloat.sh
           FPR_XLEN=64 machine/tangnano20k/build-softfloat.sh
       - name: Typed RV32 float constants and software runtime
-        run: |
-          python3 -u tests/check_rv32_float_constants.py --require-execution
-          python3 -u tests/check_fixed_stack_reservation.py --require-execution
+        run: python3 -u tests/check_ci.py --group rv32-runtime --results "$RUNNER_TEMP/check-results.json" --output "$RUNNER_TEMP/fpr-ci"
       - name: Typed IR direct backends (Linux x86-64)
-        run: |
-          python3 -u tests/check_native_data.py
-          python3 -u tests/check_native_required.py
-          python3 -u tests/check_typed_ir_a64.py
-          python3 -u tests/check_typed_ir_a64_frames.py
-          python3 -u tests/check_typed_ir_x64.py --require-execution
-          python3 -u tests/check_typed_ir_x64_frames.py
-          python3 -u tests/check_typed_ir_x64.py --require-execution --entry-optimizations
-          python3 -u tests/check_typed_ir_aggregates.py
-          python3 -u tests/check_typed_ir_coverage.py
-          python3 -u tests/check_typed_ir_kernels.py --require-execution
-          python3 -u tests/check_typed_ir_bench.py
+        run: python3 -u tests/check_ci.py --group native --results "$RUNNER_TEMP/check-results.json" --output "$RUNNER_TEMP/fpr-ci"
       - name: Typed IR direct RISC-V (QEMU independent oracles)
-        run: |
-          python3 -u tests/check_typed_ir_rv.py --width 32 --require-execution
-          python3 -u tests/check_typed_ir_rv.py --width 64 --require-execution
-          python3 -u tests/check_typed_ir_rv_module.py --require-execution
-          python3 -u tests/check_typed_ir_rv_startup.py --require-execution
-          python3 -u tests/check_typed_ir_rv_frames.py --require-execution
-          python3 -u tests/check_stack_reservation.py
-          python3 -u tests/check_typed_ir_qrv64.py --require-execution
-          python3 -u tests/check_typed_ir_esp.py --require-execution
-          python3 -u tests/check_typed_ir_builtin.py --require-execution
-          python3 -u tests/check_typed_ir_arc.py --require-execution
+        run: python3 -u tests/check_ci.py --group riscv --results "$RUNNER_TEMP/check-results.json" --output "$RUNNER_TEMP/fpr-ci"
       - name: Typed IR RV64 Linux (TLS and actor runtime)
-        env:
-          FPR_TYPED_IR_BACKEND: mixed
-        run: |
-          python3 -u tests/check_rv64_linux.py --typed-ir --cc riscv64-linux-gnu-gcc \
-            --output "$RUNNER_TEMP/rv64-typed" --runner 'qemu-riscv64 -L /usr/riscv64-linux-gnu'
-
+        run: python3 -u tests/check_ci.py --group rv64-typed --results "$RUNNER_TEMP/check-results.json" --output "$RUNNER_TEMP/fpr-ci"
       - name: Tang Nano preset and protocol gates
         env:
           SIMPLE_RISC_ROOT: .ci/simple-risc
@@ -135,21 +107,18 @@ jobs:
             build/tangnano20k-args/**/*.json
             build/tangnano20k-args/**/*.log
 
+      - name: Additional host and RV64 runtime configurations
+        run: python3 -u tests/check_ci.py --group host-extra --results "$RUNNER_TEMP/check-results.json" --output "$RUNNER_TEMP/fpr-ci"
+      - name: All explicit configurations passed
+        run: python3 tests/check_ci.py --verify --results "$RUNNER_TEMP/check-results.json"
       - name: check_base (the typed backend is the default)
-        run: python3 -u tests/check_base.py --skip-typed-ir-native
-      - name: Typed RISC-V self loops and C fuel oracle
-        run: python3 -u tests/check_self_loop_rv64.py
-      # check_raw also boots builtin/raw images on qemu-system-riscv64
-      - name: check_i32, check_raw
-        run: |
-          python3 -u tests/check_i32.py
-          python3 -u tests/check_raw.py
-      - name: Typed loop, worker and register behavior (native x86-64)
-        run: |
-          python3 -u tests/check_self_loops.py
-          python3 -u tests/check_workers.py
-          python3 -u tests/check_registers.py
-      - name: RV64 Linux (cross-built, qemu-user)
-        run: |
-          python3 -u tests/check_rv64_linux.py --cc riscv64-linux-gnu-gcc \
-            --output "$RUNNER_TEMP/rv64" --runner 'qemu-riscv64 -L /usr/riscv64-linux-gnu'
+        run: python3 -u tests/check_base.py --completed "$RUNNER_TEMP/check-results.json" --timings-json "$RUNNER_TEMP/base-times.json" --times
+      - name: Suite timing and coverage records
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-timings
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/check-results.json
+            ${{ runner.temp }}/base-times.json
