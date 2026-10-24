@@ -63,6 +63,10 @@ posix`.  See [docs/2026-09-19-PROFILES.md](docs/2026-09-19-PROFILES.md) for the 
 ./fpr run tests/base/args.fpr one two
 ```
 
+For editor-style validation, `fpr compile --system=posix --check-only file.fpr
+out.s` checks definitions and imports without generating output or requiring
+`main`. Executable compilation and `fpr build` still require an entry point.
+
 `fpr build` makes an ordinary executable for the host (x86-64 or AArch64
 on Linux/macOS, or RV64GC/LP64D on Linux): the same core runtime as bare metal, with libc as the board
 (`machine/posix`).  A program gets the command line, the environment, stdin,
