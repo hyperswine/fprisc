@@ -103,3 +103,10 @@ proof for all compiler workloads. Retained source facts and the old untyped
 lowering coexist during migration. The typed-Core consumer should replace that
 duplication; it must not silently discard the preserved facts to recover space.
 Records: `/private/tmp/fpr-evidence-parent-perf{.log,/results.json}`.
+
+## Follow-up consumer
+
+[The first native typed-Core lowerer](2026-10-25-TYPED-CORE-LOWERING.md) now
+consumes these facts for its covered expression forms and verifies types,
+scope identities and ownership-shape consistency. The rest of source lowering
+and the transformations after its explicit erasure boundary are still pending.

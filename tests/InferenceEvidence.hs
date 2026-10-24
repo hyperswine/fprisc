@@ -90,15 +90,15 @@ main = do
       (ids,b0)=E.bindNames E.ClauseParameter (Just "f") (M.singleton "x" sc) (E.emptyBuilder ns)
       uid=ids M.! "x"
       (eid,b1)=E.beginExpr (Just "f") Nothing (SVar "x") ids (Just (E.LocalReference "x" uid)) b0
-      b2=E.endExpr eid (TC "Int") b1
+      b2=E.endExpr eid (TC "Int") (SVar "x") b1
       accepted b=case E.sealEvidence (const LU) b of Right _->True; _->False
   check "well-scoped facts accepted" (accepted b2)
   check "unfinished facts refused" (not (accepted b1))
   let (out,b3)=E.beginExpr (Just "f") Nothing (SVar "x") M.empty (Just (E.LocalReference "x" uid)) b0
-  check "out-of-scope reference refused" (not (accepted (E.endExpr out (TC "Int") b3)))
+  check "out-of-scope reference refused" (not (accepted (E.endExpr out (TC "Int") (SVar "x") b3)))
   let (cross,b4)=E.beginExpr (Just "other") Nothing (SVar "x") ids (Just (E.LocalReference "x" uid)) b0
-  check "cross-owner reference refused" (not (accepted (E.endExpr cross (TC "Int") b4)))
+  check "cross-owner reference refused" (not (accepted (E.endExpr cross (TC "Int") (SVar "x") b4)))
   let foreignId=BinderId (Namespace "different") 0
       (wrong,b5)=E.beginExpr (Just "f") Nothing (SVar "x") (M.singleton "x" foreignId) (Just (E.LocalReference "x" foreignId)) b0
-  check "cross-unit reference refused" (not (accepted (E.endExpr wrong (TC "Int") b5)))
+  check "cross-unit reference refused" (not (accepted (E.endExpr wrong (TC "Int") (SVar "x") b5)))
   putStrLn "Inference evidence: zonked types, lexical identities, source/type shapes, compatibility projection and malformed-scope refusals passed"

@@ -15,10 +15,10 @@ import qualified Data.Set as S
 withExprEvidence :: ICtx -> SExpr -> I (Type,SExpr) -> I (Type,SExpr)
 withExprEvidence ctx source action = do
   token <- open
-  result@(ty,_) <- action
+  result@(ty,rewritten) <- action
   case token of
     Nothing -> pure ()
-    Just uid -> modify (\s -> s {iEvidenceBuilder=fmap (E.endExpr uid ty) (iEvidenceBuilder s)})
+    Just uid -> modify (\s -> s {iEvidenceBuilder=fmap (E.endExpr uid ty rewritten) (iEvidenceBuilder s)})
   pure result
   where
     open = do

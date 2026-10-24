@@ -7,7 +7,7 @@ module Infer.Evidence
     Builder, emptyBuilder, currentExpression, bindNames, refineName, beginExpr, endExpr,
     mapBuilderTypesM, sealEvidence ) where
 import Core.Identity
-import Frontend.Syntax (SExpr)
+import Frontend.Syntax (SExpr(..))
 import Type.Syntax (Type, Scheme(..))
 import Ownership.Shape (LShape)
 import qualified Data.Map.Strict as M
@@ -25,6 +25,7 @@ data BinderFact = BinderFact
 data ExprFact = ExprFact
   { expressionIdentity :: ExprId, expressionOwner :: Maybe String,
     expressionOffset :: Maybe Int, expressionSource :: SExpr,
+    expressionRewritten :: SExpr,
     expressionType :: Type, expressionTypeShape :: LShape,
     expressionReference :: Maybe Reference,
     expressionScope :: M.Map String BinderId,
@@ -45,7 +46,7 @@ evidenceRoots (Evidence _ _ _ roots) = roots
 -- does not retain an entire historical inference state through a lazy selector.
 data PendingBinder = PendingBinder !BinderId String !(Maybe String) !BindingRole !Scheme
 data PendingExpr = PendingExpr !ExprId !(Maybe String) !(Maybe Int) !SExpr
-  !(M.Map String BinderId) !(Maybe Reference) !(Maybe Type) [ExprId]
+  !(M.Map String BinderId) !(Maybe Reference) !(Maybe (Type,SExpr)) [ExprId]
 data Builder = Builder Namespace Int Int (IM.IntMap PendingBinder)
   (IM.IntMap PendingExpr) [ExprId] [ExprId] [String]
 
@@ -85,11 +86,11 @@ beginExpr owner off source scope ref (Builder ns nb next bs es stack roots issue
       roots' = case stack of [] -> uid:roots; _ -> roots
   in (uid,Builder ns nb (next+1) bs (IM.insert next node es') (uid:stack) roots' issues)
 
-endExpr :: ExprId -> Type -> Builder -> Builder
-endExpr uid@(ExprId wanted key) ty (Builder ns nb ne bs es stack roots issues) =
+endExpr :: ExprId -> Type -> SExpr -> Builder -> Builder
+endExpr uid@(ExprId wanted key) ty rewritten (Builder ns nb ne bs es stack roots issues) =
   case (stack, IM.lookup key es) of
     (top:rest,Just (PendingExpr i o p s env r Nothing kids)) | top==uid && wanted==ns ->
-      Builder ns nb ne bs (IM.insert key (PendingExpr i o p s env r (Just ty) kids) es) rest roots issues
+      Builder ns nb ne bs (IM.insert key (PendingExpr i o p s env r (Just (ty,rewritten)) kids) es) rest roots issues
     _ -> Builder ns nb ne bs es stack roots ("unbalanced expression evidence":issues)
 
 mapBuilderTypesM :: Monad m => (Type -> m Type) -> (Scheme -> m Scheme) -> Builder -> m Builder
@@ -102,7 +103,7 @@ mapBuilderTypesM solve solveScheme (Builder ns nb ne bs es stack roots issues) =
     reference (GlobalReference n sc) = GlobalReference n <$> solveScheme sc
     reference r = pure r
     expr (PendingExpr i o p s env r t kids) =
-      PendingExpr i o p s env <$> traverse reference r <*> traverse solve t <*> pure kids
+      PendingExpr i o p s env <$> traverse reference r <*> traverse (\(ty,rw) -> (\t' -> (t',rw)) <$> solve ty) t <*> pure kids
 
 sealEvidence :: (Type -> LShape) -> Builder -> Either String Evidence
 sealEvidence shape (Builder ns _ _ bs es stack roots issues) = do
@@ -114,10 +115,12 @@ sealEvidence shape (Builder ns _ _ bs es stack roots issues) = do
     binder (PendingBinder uid name owner role sc@(Forall _ _ ty)) =
       pure (BinderFact uid name owner role sc (shape ty))
     expr (PendingExpr uid owner off source scope ref typ kids) = do
-      ty <- maybe (Left "expression is missing its checked type") Right typ
+      (ty,rewritten) <- maybe (Left "expression is missing its checked type") Right typ
       case ref of
         Just (MissingReference name) -> Left ("unresolved checked reference " ++ name)
         Just (LocalReference name bid@(BinderId bns key)) -> do
+          unless (case source of SVar spelling -> spelling==name; _ -> False)
+            (Left "checked reference disagrees with its source variable")
           unless (bns==ns && M.lookup name scope==Just bid)
             (Left ("out-of-scope checked reference " ++ name))
           case IM.lookup key bs of
@@ -127,6 +130,6 @@ sealEvidence shape (Builder ns _ _ bs es stack roots issues) = do
             Nothing -> Left ("absent checked binder " ++ name)
         _ -> pure ()
       mapM_ child kids
-      pure (ExprFact uid owner off source ty (shape ty) ref scope (reverse kids))
+      pure (ExprFact uid owner off source rewritten ty (shape ty) ref scope (reverse kids))
     child (ExprId childNs key) = unless (childNs==ns && IM.member key es)
       (Left "absent checked child expression")

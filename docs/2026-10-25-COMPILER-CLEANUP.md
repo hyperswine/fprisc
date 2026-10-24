@@ -15,8 +15,8 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Inference producer implemented; typed-Core consumer pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
-| Checked pipeline products and lint | Structural pass result implemented; type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
+| Typed, uniquely named Core | Initial native expression consumer implemented; full lowering and transformation migration pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Checked pipeline products and lint | Structural pass result and initial typed desugaring product implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Pending beyond local OptimizationOptions | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Diagnostics owner separated; typed diagnostics/spans still pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
@@ -106,3 +106,17 @@ byte-identical to the saved pre-frontend baseline, including cache keys; Sol
 argument/shared-language and bounded self/mutual tail-call checks passed. The
 historical register-allocation design now identifies its old pipeline and links
 to the current native owners.
+
+## First typed expression consumer
+
+[Typed-Core lowering](2026-10-25-TYPED-CORE-LOWERING.md) now constructs and
+verifies typed expressions on the native desugaring path for its covered
+source forms. It retains local identities, types and ownership shapes up to
+an explicit erasure boundary before closure lifting. Full aggregate/pattern
+lowering, specialization and typed transformations remain required; the bridge
+is a migration stage, not the requested final architecture.
+
+Validation: all 134 Base jobs passed in 420.73 seconds on six workers with no
+reused CI coverage; 128 fresh emission/unit-key comparisons, parser/cache
+compatibility and Sol compatibility/tail-call checks passed. The goal remains
+active across the erasure boundary and all other pending table entries.

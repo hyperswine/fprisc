@@ -419,21 +419,28 @@ matchFields scrut ps ok fail' = go (zip [0 ..] ps)
       matchPat (CProj i scrut) p inner fail'
 
 compileTop :: [STop] -> D Prog
-compileTop tops = do
+compileTop = compileTopBy compileGroup
+
+-- A stage may supply a checked group lowerer while retaining the same
+-- constructor stubs, source grouping and fresh-name order.
+compileTopBy :: ((Name, [([SPat], [SGuard], SExpr)]) -> D (Name, ([Name], Core))) -> [STop] -> D Prog
+compileTopBy lowerGroup tops = do
+  conGlobals <- constructorStubs
+  binds <- mapM lowerGroup (groupClauses tops)
+  pure (M.union (M.fromList binds) conGlobals)
+
+constructorStubs :: D Prog
+constructorStubs = do
   cons <- gets dCons
-  let conGlobals = [(c, (params, CMk tid var (map CVar params))) | (c, (tid, var, ar)) <- M.toList cons, let params = ["x" ++ show i | i <- [1 .. ar]]]
-  binds <- mapM compileGroup (groupClauses [b | b@TBind {} <- tops])
-  pure (M.fromList (conGlobals ++ binds))
-  where
-    -- EVERY clause of a name, in source order, wherever it sits: the
-    -- inferencer (Infer.clausesOf) already reads a function that way,
-    -- and a contiguous-run grouping here let a definition dropped
-    -- between two clauses of `key` silently discard the earlier ones
-    -- (M.fromList kept the last run) -- a well-typed program that
-    -- ignored half its keys.  One rule for both passes now.
-    groupClauses bs =
-      [ (n, [(ps, g, b) | TBind n' ps g b <- bs, n' == n])
-      | n <- nub [n | TBind n _ _ _ <- bs] ]
+  pure (M.fromList [(c, (params, CMk tid var (map CVar params)))
+       | (c, (tid, var, ar)) <- M.toList cons, let params = ["x" ++ show i | i <- [1 .. ar]]])
+
+-- EVERY clause of a name, in source order, wherever it sits. Inference reads
+-- a function that way too; contiguous grouping silently discarded clauses.
+groupClauses :: [STop] -> [(Name,[([SPat],[SGuard],SExpr)])]
+groupClauses tops =
+  [ (n, [(ps,g,b) | TBind n' ps g b <- tops, n'==n])
+  | n <- nub [n | TBind n _ _ _ <- tops] ]
 
 compileGroup :: (Name, [([SPat], [SGuard], SExpr)]) -> D (Name, ([Name], Core))
 compileGroup (n, clauses@((ps0, _, _) : _)) = do

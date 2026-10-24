@@ -29,7 +29,7 @@
 --   * some HAL builtins still have generous schemes; vectors preserve
 --     their element type throughout inference
 
-module Infer (module Infer, module Type.Syntax, module Infer.State, module Infer.Result, module Infer.Elaboration) where
+module Infer (module Infer, module Type.Syntax, module Infer.State, module Infer.Result, module Infer.Elaboration, module Ownership.TypeShape) where
 
 import Control.DeepSeq (force)
 import Control.Monad (foldM, forM, forM_, unless, when, zipWithM, zipWithM_)
@@ -47,6 +47,7 @@ import Frontend.Syntax
 import Frontend.Traverse
 import Frontend.Linearity
 import Ownership.Shape
+import Ownership.TypeShape
 import Type.Syntax
 import Infer.State
 import Infer.Result
@@ -892,8 +893,6 @@ aotProf = IProf builtinEnv False False True True
 --   unconstrained -> DEFAULTS to Int (Julia-style numeric default)
 -- Inference marks each site (SBin "op#N#+") and resolveSites rewrites.
 
-markerPrefix :: String
-markerPrefix = "op#"
 
 newSite :: Name -> Type -> I Int
 newSite op t = do
@@ -1575,101 +1574,11 @@ prepareVectorEvidence binds = do
     stmt (SBind _ _ a) = markerIds a
     stmt (SBindPat _ a) = markerIds a
 
--- rewrite the markers by the decided targets
-applySites :: S.Set Name -> IM.IntMap OpTarget -> SExpr -> SExpr
-applySites globals tgts = go
-  where
-    -- Operator/layout resolution happens after the precondition pass.
-    -- A newly selected global therefore needs its checked function entry,
-    -- just as a source function value does. Inspect the actual inference
-    -- inputs so standalone unit resolution selects only available entries.
-    checked g = let entry = checkedName g 0
-                 in if entry `S.member` globals then entry else g
-    call g = SApp (SVar (checked g))
-    go = \case
-      -- str! sites wrap an ARGUMENT: op#N#str! applied to e.  OpPrim ""
-      -- strips the wrapper; OpPrim "F64.str" wraps the rendering prim.
-      SApp (SVar op) a
-        | Just rest <- stripPrefix markerPrefix op,
-          (num, '#' : _) <- break (== '#') rest,
-          Just tgt <- IM.lookup (read num) tgts ->
-            case tgt of
-              OpPrim "" -> go a
-              OpPrim o -> call o (go a)
-              OpDictionary es -> foldl SApp (go a) es
-              OpVecDynamic name desc -> case name of
-                "Vec.new" -> SLam ["?vecUnit"] (call "Vec.newAs" desc)
-                "Vec.fromList" -> call "Vec.fromListAs" desc
-                "Vec.map" -> call "Vec.mapAs" desc
-                _ -> go a
-              OpVecLayout name spec ->
-                let desc = SStrI [SegStr spec]
-                 in case name of
-                      "Vec.new" | null spec -> go a
-                                | otherwise -> SLam ["?vecUnit"] (call "Vec.newAs" desc)
-                      "Vec.fromList" | null spec -> go a
-                                     | otherwise -> call "Vec.fromListAs" desc
-                      "Vec.map" -> call "Vec.mapAs" desc
-                      _ -> go a
-              _ -> go a
-      SBin op a b
-        | Just rest <- stripPrefix markerPrefix op,
-          (num, '#' : _rawOp) <- break (== '#') rest,
-          Just tgt <- IM.lookup (read num) tgts ->
-            case tgt of
-              OpPrim o -> SBin o (go a) (go b)
-              OpGlobal g -> SApp (call g (go a)) (go b)
-              OpProj s o -> SApp (SApp (SProj (SVar s) [o]) (go a)) (go b)
-        | otherwise -> SBin op (go a) (go b)
-      SMark o e -> SMark o (go e)
-      SApp a b -> SApp (go a) (go b)
-      SLam ps b -> SLam ps (go b)
-      SBlock stmts fin -> SBlock (map goS stmts) (go fin)
-      SCase s as -> SCase (go s) [(p, go e) | (p, e) <- as]
-      SProj e p -> SProj (go e) p
-      SRec fs -> SRec [(n, go e) | (n, e) <- fs]
-      SUpd m as -> SUpd (go m) [(p, go e) | (p, e) <- as]
-      STup es -> STup (map go es)
-      SList es -> SList (map go es)
-      SStrI segs -> SStrI [seg s | s <- segs]
-      o -> o
-    goS (SBind n ps e) = SBind n ps (go e)
-    goS (SBindPat p e) = SBindPat p (go e)
-    seg (SegExpr e) = SegExpr (go e)
-    seg o = o
-
 -- ---- top-level driver -------------------------------------------------------
 
 -- infer all top-level bindings; returns errors (empty = well-typed)
 typecheck :: Sigs -> Structs -> [STop] -> [String]
 typecheck sigs structs tops = let (e, _, _, _, _) = inferTops sigs structs tops in e
-
--- Infer.Type -> LShape, mirroring FPRISC.shapeOfTy's rules on the
--- inference-side type language: a linear-named TC is LL, a type variable
--- is symbolic (LVar: instantiated at each call, constrained by the body),
--- a generic type keeps its arguments' shapes (LCon), tuples/records
--- preserve their fields.  Functional types are LU: callable capture and
--- call multiplicity remain required compiler work (see the ownership audit).
-linShapeT :: [Name] -> Type -> LShape
-linShapeT linNs = go
-  where
-    go t = case t of
-      TTupT ts -> LTupS (map go ts)
-      TRec row -> let (fs, open) = fields row in LRecS fs open
-      TC n | n `elem` linNs -> LL
-      TV v -> LVar ('?' : show v)
-      TAp _ _ ->
-        let (h, as) = unroll t []
-         in case h of
-              TC n | n `elem` linNs -> lown n (map go as)
-              TC n -> lcon n (map go as)
-              _ -> if any (isLin . go) as then LL else LU
-      _ -> LU
-    unroll (TAp f a) acc = unroll f (a : acc)
-    unroll h acc = (h, acc)
-    fields (RExt f t r) = let (fs, open) = fields r in ((f, go t) : fs, open)
-    fields RNil = ([], False)
-    fields (RV _) = ([], True)
 
 -- the BUILTIN prims' linearity shapes, derived from builtinEnv itself
 -- so this table can never drift from the types: Vec.push consumes and
