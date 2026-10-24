@@ -1,0 +1,138 @@
+[
+  {
+    "target": "A64",
+    "mode": [
+      "elf",
+      "tls",
+      "0"
+    ],
+    "sha256": "5ddf12f55cfabc83d3e4ef44c8ae4f7690051d8fec1a024443b147f769671c98"
+  },
+  {
+    "target": "A64",
+    "mode": [
+      "elf",
+      "tls",
+      "1"
+    ],
+    "sha256": "f490862a798f7b09915f6bf2c21259e3a71a6452dc5919b0a2e5a7820b98e33d"
+  },
+  {
+    "target": "A64",
+    "mode": [
+      "mac",
+      "tlv",
+      "0"
+    ],
+    "sha256": "31e4fa88cb19633ec4328af25a44741870d74de74e4184f18865fcafa6512231"
+  },
+  {
+    "target": "A64",
+    "mode": [
+      "mac",
+      "tlv",
+      "1"
+    ],
+    "sha256": "fa6037ec33a5427ed4d80d8d4147df64e7fe1d0f2c872ac5f9e1bc7322da754f"
+  },
+  {
+    "target": "A64",
+    "mode": [
+      "mac",
+      "global",
+      "0"
+    ],
+    "sha256": "abfe1faee299b122bb3efdf5a50b08b4e2ddd1ed895a82780c5f8c6bb5ee01f9"
+  },
+  {
+    "target": "A64",
+    "mode": [
+      "mac",
+      "global",
+      "1"
+    ],
+    "sha256": "2a9120f3cb26b7dd074af84f43f5bbc047f7e27e2235b8b7c67ba896c983f139"
+  },
+  {
+    "target": "A64",
+    "mode": [
+      "mac",
+      "x28",
+      "0"
+    ],
+    "sha256": "5bf5a831f3f8823506f63c726bf39c34a36128d483d90ea73f72991cb38dc819"
+  },
+  {
+    "target": "A64",
+    "mode": [
+      "mac",
+      "x28",
+      "1"
+    ],
+    "sha256": "ffb30416599ef8402ed6bf0b9259786d71b5763352b67691976f156339e3f4db"
+  },
+  {
+    "target": "X64",
+    "mode": [
+      "tls",
+      "0"
+    ],
+    "sha256": "5074ff30e24d675081dca0cd67f7eb7b6256f747ad015bae5195b08d4b4bb404"
+  },
+  {
+    "target": "X64",
+    "mode": [
+      "tls",
+      "1"
+    ],
+    "sha256": "8ea144c63e71f89159f0aa21cb45f685cad68421ca2dc4001952f3d4155661c2"
+  },
+  {
+    "target": "X64",
+    "mode": [
+      "borrow",
+      "0"
+    ],
+    "sha256": "83507e39654839b2d90a9970a348eed1c3d9ed1b933f374d019c2aa9a7061a91"
+  },
+  {
+    "target": "X64",
+    "mode": [
+      "borrow",
+      "1"
+    ],
+    "sha256": "75a8e27f71244f8308d0b55d95a591c3ed1569443b55341cfb919d3922c10935"
+  },
+  {
+    "target": "RV",
+    "mode": [
+      "32",
+      "0"
+    ],
+    "sha256": "b1cb51d9ea56c21bc6f6f711bf2326ee5530cd675e6c05b34fcb80b896390975"
+  },
+  {
+    "target": "RV",
+    "mode": [
+      "32",
+      "1"
+    ],
+    "sha256": "20c7dff7ea3b2cbf0c8e9c5d8f022d63e9a3b530436aac8d65ac6a3784fa674f"
+  },
+  {
+    "target": "RV",
+    "mode": [
+      "64",
+      "0"
+    ],
+    "sha256": "6e39cbec72c6a222d5419c468e98ae2022005b1d62b47db503d2a748e5ec18b3"
+  },
+  {
+    "target": "RV",
+    "mode": [
+      "64",
+      "1"
+    ],
+    "sha256": "2ce1dd1b98bbf304c073aa4fa9a2a6995ff64fe6f85bb69ce23aa9ab5e538774"
+  }
+]

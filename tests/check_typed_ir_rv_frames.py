@@ -2,6 +2,7 @@
 """Independent RISC-V large-frame ABI oracle; real runtime acceptance is separate."""
 import argparse,os,re,shutil,subprocess,tempfile
 from pathlib import Path
+from frame_emitter import build_emitter
 from check_typed_ir_rv import ROOT,run
 FIX=ROOT/'tests/typed_ir'
 
@@ -81,12 +82,11 @@ def main():
  run(['make','fpr'],env)
  with tempfile.TemporaryDirectory(prefix='fpr-rv-frames-') as temp:
   out=a.keep_dir or Path(temp);out.mkdir(parents=True,exist_ok=True)
-  exe=out/'emit-frames';obj=out/'ghc';obj.mkdir(exist_ok=True)
-  run(['cabal','exec','--','ghc','-O1','-w','-icompiler','-outputdir',obj,'tests/EmitRVFrames.hs','-o',exe],env)
+  exe=build_emitter(env)
   for width in ('32','64'):
    for loops in ('0','1'):
     asm=out/f'frames-{width}-{loops}.s'
-    report=run([exe,width,loops,asm],env)
+    report=run([exe,'rv',width,loops,asm],env)
     headers=re.findall(r'^# fn .*$',asm.read_text(),re.M);assert len(headers)==3 and all('reserve=yes' in h for h in headers),headers
     assert not re.search(r'native-insns-v1:.*UNBOUNDED',asm.read_text())
     crtfile=out/'crt.S';crtfile.write_text(crt(width));image=out/f'frames-{width}-{loops}.elf'

@@ -1,3 +1,5 @@
+module EmitX64Frames (main) where
+
 -- Direct IR entry/return oracle. Large objects keep every input-derived value
 -- live until allocation; no text generator or source optimization is involved.
 import qualified Codegen.IR as I

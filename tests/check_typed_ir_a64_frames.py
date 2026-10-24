@@ -2,6 +2,7 @@
 """Native A64 large-frame ABI oracle, independent of the actor runtime."""
 import argparse,os,platform,shutil,tempfile
 from pathlib import Path
+from frame_emitter import build_emitter
 from check_typed_ir_rv import ROOT,run
 
 def shim(mac,hart):
@@ -30,7 +31,7 @@ def production_runtime(out,env,emitter):
  source.write_text('unsafe base.\nReserve.deep : Unit -> Int.\n'
   'main = if Reserve.deep Unit == 9 then print "A64 ACTOR FRAMES HOLD" else error "nested frame count".\n')
  asm=out/'actor-frames.s'
- run([emitter,'mac' if platform.system()=='Darwin' else 'elf','x28','1',asm],env)
+ run([emitter,'a64','mac' if platform.system()=='Darwin' else 'elf','x28','1',asm],env)
  support=ROOT/'tests/typed_ir/actor_frames.c'
  mode=dict(env,FPR_TYPED_IR_BACKEND='mixed',FPR_TYPED_IR_STRICT='all',FPR_NO_INLINE='1',
            FPR_NO_SCALAR_WORKERS='1',FPR_NO_FIELD_WORKERS='1',FPR_NO_REUSE='1',XDG_CACHE_HOME=str(out/'cache'))
@@ -50,12 +51,12 @@ def main():
  env={k:v for k,v in os.environ.items() if not k.startswith('FPR_')};env.update(FPR_HOME=str(ROOT),FPR_PATH=str(ROOT))
  run(['make','fpr'],env)
  with tempfile.TemporaryDirectory(prefix='fpr-a64-frames-') as d:
-  out=args.keep_dir or Path(d);out.mkdir(parents=True,exist_ok=True);obj=out/'ghc';obj.mkdir(exist_ok=True);emitter=out/'emit'
-  run(['cabal','exec','--','ghc','-O1','-w','-icompiler','-outputdir',obj,'tests/EmitA64Frames.hs','-o',emitter],env)
+  out=args.keep_dir or Path(d);out.mkdir(parents=True,exist_ok=True)
+  emitter=build_emitter(env)
   if shutil.which('clang'):
    for fmt,hart,target in [('elf','tls','aarch64-unknown-linux-gnu'),('mac','tlv','arm64-apple-macos11')]:
     asm=out/('cross-'+fmt+'.s')
-    run([emitter,fmt,hart,'1',asm],env)
+    run([emitter,'a64',fmt,hart,'1',asm],env)
     run(['clang','-target',target,'-c',asm,'-o',asm.with_suffix('.o')],env)
     print(f'A64 {fmt} {hart} large-frame assembly PASS',flush=True)
   if not native:
@@ -79,7 +80,7 @@ __attribute__((noreturn)) void oracle_finish(int code){if(code)fprintf(stderr,"A
    wrapper=out/(hart+'.s');wrapper.write_text(shim(mac,hart))
    for loops in ('0','1'):
     asm=out/f'frames-{hart}-{loops}.s'
-    print(run([emitter,'mac' if mac else 'elf',hart,loops,asm],env),end='',flush=True)
+    print(run([emitter,'a64','mac' if mac else 'elf',hart,loops,asm],env),end='',flush=True)
     assert asm.read_text().count('reserve=yes')==3
     exe=out/f'oracle-{hart}-{loops}'
     run(['cc','-O2','-fno-omit-frame-pointer',*(['-DSELF_LOOPS'] if loops=='1' else []),source,wrapper,asm,'-o',exe],env)
