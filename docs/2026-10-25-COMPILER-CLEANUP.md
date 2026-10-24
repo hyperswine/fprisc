@@ -82,3 +82,9 @@ explicitly checked-out repository paths. A local different-owner reproduction
 failed before the exact-path trust and succeeded after it; hosted CI then moved
 past that step into native backend validation. This fixes infrastructure, not a
 compiler or runtime behavior.
+
+The same hosted run then passed native/RISC-V checks but failed the classifier
+suite's obsolete collector assertion. [The region gate repair](2026-10-25-CI-REGION-GATE.md)
+records the actual counters, the replacement contract, negative tests and the
+fresh RV32 QEMU run. Neither CI repair changes runtime semantics. Hosted CI for
+the final checkpoint still needs to pass before the overall goal can finish.

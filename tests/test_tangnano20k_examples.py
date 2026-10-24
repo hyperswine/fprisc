@@ -1,4 +1,5 @@
 """Preset conflicts and failure controls for the unified example runner."""
+import copy
 import json
 import os
 from pathlib import Path
@@ -9,7 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
-from run_tangnano20k_examples import FPGA_CONFIG, fpga_image, validate_case
+from run_tangnano20k_examples import FPGA_CONFIG, fpga_image, validate_case, validate_classifier
 from tangnano_artifact import sha
 
 
@@ -101,6 +102,32 @@ class ExampleGate(unittest.TestCase):
             (root / 'impl/pnr/sdram_test.fs').write_text('corrupted')
             with self.assertRaisesRegex(ValueError, 'hash mismatch'):
                 fpga_image(path)
+
+    def test_classifier_region_summary_and_refusals(self):
+        # The real CI summary after collector retirement: one exit sample,
+        # substantial reclamation and an all-run peak below the actual budget.
+        valid = dict(passed=True, elapsed_us_runs=[12000000] * 10,
+                     usable_heap_block_bytes=8052496,
+                     heap_samples=[dict(live=1254336, peak=2532832,
+                                        regions=25321, reclaimed=183472640)])
+        validate_classifier(valid)
+        mutations = [
+            lambda r: r.update(passed=False),
+            lambda r: r.update(elapsed_us_runs=[12000000] * 9),
+            lambda r: r.update(heap_samples=[]),
+            lambda r: r.update(usable_heap_block_bytes=0),
+            lambda r: r['heap_samples'][0].update(peak=8052497),
+            lambda r: r['heap_samples'][0].update(live=0, peak=0),
+            lambda r: r['heap_samples'][0].update(live=2532833),
+            lambda r: r['heap_samples'][0].update(regions=9),
+            lambda r: r['heap_samples'][0].update(reclaimed=80524960),
+            lambda r: r['heap_samples'][0].pop('regions'),
+        ]
+        for mutate in mutations:
+            bad = copy.deepcopy(valid)
+            mutate(bad)
+            with self.assertRaises(ValueError):
+                validate_classifier(bad)
 
     def test_exit_alone_and_wrong_results_do_not_pass(self):
         with tempfile.TemporaryDirectory() as temp:

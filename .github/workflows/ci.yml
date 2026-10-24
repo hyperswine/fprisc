@@ -97,7 +97,7 @@ jobs:
         run: |
           python3 -u tools/run_tangnano20k_examples.py --target qemu
           python3 -u tests/check_tangnano20k_program.py
-      - name: Tang Nano argument limits and GC roots (RV32/RV64 QEMU)
+      - name: Tang Nano argument limits (RV32/RV64 QEMU)
         run: python3 -u tests/check_tangnano20k_args.py
       - name: Tang Nano results and failure logs
         if: always()

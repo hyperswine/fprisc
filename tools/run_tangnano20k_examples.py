@@ -40,6 +40,33 @@ def require(condition, message):
         raise ValueError(message)
 
 
+
+def validate_classifier(execution, repeats=10):
+    """Exact iterations within the admitted heap, with region reclamation.
+
+    The region runtime emits one cumulative summary at exit. Its peak covers
+    the entire run; periodic collector samples/collection counts no longer exist.
+    """
+    require(execution.get('passed') is True
+            and len(execution.get('elapsed_us_runs', [])) == repeats,
+            'classifier did not complete ten exact iterations')
+    samples = execution.get('heap_samples', [])
+    limit = execution.get('usable_heap_block_bytes')
+    require(type(limit) is int and limit > 0 and bool(samples),
+            'classifier is missing its heap budget or region summary')
+    for sample in samples:
+        require(all(type(sample.get(key)) is int and sample[key] >= 0
+                    for key in ('live', 'peak', 'regions', 'reclaimed')),
+                'classifier region summary has missing or invalid counters')
+        require(sample['live'] <= sample['peak'] <= limit,
+                'classifier exceeded its usable heap budget')
+    require(samples[-1]['peak'] > 0,
+            'classifier is missing allocation peak instrumentation')
+    require(samples[-1]['regions'] >= repeats
+            and samples[-1]['reclaimed'] > repeats * limit,
+            'classifier region reclamation gate failed')
+
+
 def run(command, log, env, timeout=180):
     try:
         result = subprocess.run([str(x) for x in command], cwd=ROOT, env=env,
@@ -209,14 +236,7 @@ def main():
                 run(command, directory / 'run.log', env, 900)
                 detail = json.loads((directory / 'results.json').read_text())
                 execution = detail['executions']['qemu' if args.target == 'qemu' else 'board']
-                require(execution['passed'] and len(execution['elapsed_us_runs']) == 10,
-                        'classifier did not complete ten exact iterations')
-                samples = execution['heap_samples']
-                limit = execution['usable_heap_block_bytes']
-                require(len(samples) > 2 and all(s['peak'] <= limit for s in samples)
-                        and max(s['live'] for s in samples[:-1]) < 1024 * 1024
-                        and samples[-1]['reclaimed'] > 10 * limit and samples[-1]['collections'] >= 10,
-                        'classifier heap/reclamation gate failed')
+                validate_classifier(execution)
                 case['classifier_report'] = str(directory / 'results.json')
             else:
                 run(['machine/tangnano20k/build.sh', SOURCES[name], directory], directory / 'build.log', env)
