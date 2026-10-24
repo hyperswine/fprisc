@@ -42,14 +42,20 @@ FP-RISC semantics. The board C code supplies allocation, UART and ABI mechanisms
 | Stream files, directory APIs, watch-open | `Err` with a named unavailable capability |
 | Actors, IRQ routing, polling/watch operations without a Result error channel | Named panic / failing exit |
 | Selective nonblocking `receiveFromNow` | Named unavailable `Err`; no actor or mailbox is fabricated |
-| Temporary reclamation | Opt-in `FPR_GC=1`: single-threaded nonmoving conservative collector |
+| Temporary reclamation | Compiler-placed regions in the heap: loops, costly calls, `Sys.loop`, `Sys.arena`; no collector |
 | Unlisted primitives | Link failure; never automatic success stubs |
 
 The allocator is the single-threaded indexed coalescing C heap described in
-[the heap record](../../docs/2026-10-16-BUILTIN-HEAP.md). By default, Base's temporary
-allocations are not automatically reclaimed. `FPR_GC=1` adds collection on
-allocation pressure; the [reclamation report](../../docs/2026-10-20-TANGNANO20K-GC.md)
-records its root contract and repeated 512-row classifier acceptance. The
+[the heap record](../../docs/2026-10-16-BUILTIN-HEAP.md). Base's temporaries are
+reclaimed by regions the compiler places: a pure loop resets its region each
+time it has allocated 64 KiB, and a call whose allocation grows with its input
+runs in a region that opens once the call has allocated 4 KiB and closes when
+it returns, copying the result out. A region is a list of its blocks threaded
+through the block header, so it costs nothing per allocation, and its reset
+frees only its own blocks. Vector storage is never in a region and is freed by
+its one owner. The conservative collector (`FPR_GC=1`) that did this from
+2026-10-20 to 2026-10-24 is gone; see
+[the regions record](../../docs/2026-10-25-REGIONS-LOOPS-CALLS.md). The
 documented desktop WASM suite peaks around 100 MB and does not fit this board.
 Full Base scheduling and the full WASM suite are not claimed.
 
@@ -129,37 +135,27 @@ bit operations and checked numeric conversions. `I32.toInt`/`toIntU` return
 RV32 floating literals are immutable static boxes, and floating arithmetic
 uses runtime boxes and generic vector callbacks. Integer vector kernels remain
 enabled. This changes allocation costs: the 128/64-row classifier passes,
-while 512/128 rows with 16 bins exhaust the current 8 MiB heap without
-collection. With `FPR_GC=1`, the latter configuration passes ten repetitions
-in one process on the RV32 board at CPU/SDRAM 48/48 MHz. The 72/54 MHz
-image produces intermittent wrong results with this larger regression and is
-not accepted for this workload. See [the original RV32 port record](../../docs/2026-10-18-RV32-BASE.md)
-and [the reclamation follow-up](../../docs/2026-10-20-TANGNANO20K-GC.md).
+while 512/128 rows with 16 bins exhausted the 8 MiB heap in the first
+iteration before regions. With regions, that configuration passes ten
+repetitions in one process in QEMU with a peak of 2.66 MB; the board itself
+has not been rerun since the collector's removal. The collector-era board
+results (ten repetitions at CPU/SDRAM 48/48 MHz; the 72/54 MHz image rejected
+for intermittent wrong results) are in [the reclamation follow-up](../../docs/2026-10-20-TANGNANO20K-GC.md).
+See also [the original RV32 port record](../../docs/2026-10-18-RV32-BASE.md).
 
-### Optional temporary reclamation
+### Heap report
 
 ```bash
-FPR_XLEN=32 FPR_RVC=1 FPR_CPU_MHZ=48 FPR_GC=1 \
-  machine/tangnano20k/build.sh tests/tangnano20k_dtree.fpr "$PWD/build/tangnano20k-gc"
+FPR_XLEN=32 FPR_RVC=1 FPR_CPU_MHZ=48 FPR_HEAP_REPORT=1 \
+  machine/tangnano20k/build.sh tests/tangnano20k_dtree.fpr "$PWD/build/tangnano20k-dtree"
 ```
 
-`FPR_GC=1` saves the integer registers and scans the active stack, static
-application data and reachable heap blocks. It does not move objects or
-change their representation. It supports the current single-threaded,
-soft-float IM/IMC host; it is separate from compiler ARC and is off by default.
-Pointers must remain visible in naturally aligned machine-word slots or
-registers. Interior payload and one-past-end pointers are recognized. Packed
-or encoded pointers, roots in external/device memory, and concurrent heap
-access are outside this mode's contract. Ordinary explicit frees still apply;
-collection does not repair use-after-free. Conservative false positives can
-retain dead data, and collection pauses are not bounded for real-time use.
-
-`FPR_HEAP_REPORT=1` prints allocation residency/churn at exit and after each
-collection. Residency includes allocator headers and padding, excludes the
-bitmap, and does not equal the live language payload. Cumulative counters
-have machine-word width. `FPR_GC_STRESS=N` requires `FPR_GC=1` and collects
-every N allocations for root-liveness tests; leave it unset for ordinary use.
-No GC or statistics work is added to the default manual heap allocation path.
+`FPR_HEAP_REPORT=1` prints allocation residency and churn at exit: live and
+peak bytes, requests, requested bytes, `regions=` opened and `reclaimed=` bytes
+freed by region resets and closes. Residency includes allocator headers and
+padding, excludes the bitmap, and does not equal the live language payload.
+Cumulative counters have machine-word width. `FPR_GC=1` and `FPR_GC_STRESS`
+are refused by name.
 
 On RV32, `Sys.mtime` returns 10 MHz ticks modulo 2^30 (about 107.37 seconds),
 and `Sys.timeUs` returns host microseconds modulo 2^30 (about 17.90 minutes),

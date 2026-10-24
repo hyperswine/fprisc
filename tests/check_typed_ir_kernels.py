@@ -102,10 +102,16 @@ def check_targets(env,tmp,args,fixture,oracle_source,kernel_count,trap_count,flo
         assert '# typed IR: no translation' in text,target
         assert 'fpr_ufn_' not in text,target
         bodies=re.findall(r'(?ms)^# fn ([^\n]+)\n(.*?)(?=^# (?:wcet|native-insns-v1):)',text)
-        # The fixture's filler and lifted layout constructor belong only to
-        # hosted main; the C oracle constructs descriptors independently.
+        # The fixture's filler (with its loop region's inner and cycle
+        # functions) and lifted layout constructor belong only to hosted
+        # main; the C oracle constructs descriptors independently.
+        def own(name):
+            base=name.split()[0]
+            for pre in ('$loop.in.','$loop.cycle.'):
+                if base.startswith(pre): base=base[len(pre):]
+            return base
         chosen=[(name,body) for name,body in bodies
-                if name.split()[0] not in ('main','fill') and not name.startswith('lifted_')]
+                if own(name) not in ('main','fill') and not name.startswith('lifted_')]
         kernels=[name for name,_ in chosen if name.startswith('$vkernel:fpr_vspec_')]
         assert len(kernels)==kernel_count,(target,kernels)
         print(f'{target}: {kernel_count} typed kernel CFGs; no legacy assembly PASS',flush=True)

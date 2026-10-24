@@ -19,7 +19,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 rvSelectionRev :: Int
-rvSelectionRev = 22 -- byte access has no alignment slow path
+rvSelectionRev = 26 -- the hart-cell load (loop region clock); prior: byte access has no alignment slow path
 
 -- Native startup, shared by every RVV unit. The runtime calls the surviving
 -- COMDAT definition on each hart; ordinary builds retain its weak no-op.
@@ -182,6 +182,15 @@ select cfg fn = do
       OLoadByte a n -> loadAt "lbu" d (vreg a) (fromIntegral n)
       OStore {} -> lift (Left "compiler error: a store has a result")
       OConstInt n -> li d n
+      OHartCell j -> emit ((plain "load.spill" [anyV d] [OI (fromIntegral j)]) {siImplicitDefs = map p ["t3","t4"]})
+      ORegionRoom mark -> do
+        clock <- fresh; used <- fresh; scaled <- fresh; limit <- fresh; untagged <- fresh
+        emit ((plain "load.spill" [anyV clock] [OI 58]) {siImplicitDefs = map p ["t3","t4"]})
+        ri "srai" untagged (vreg mark) 1 -- the mark is a tagged Int
+        rr "sub" used clock untagged
+        ri "slli" scaled used 3
+        li limit (65536 * 8)
+        rr "sltu" d scaled limit
       OBits n -> li d n
       ONullary t v -> do
         sym <- case (t,v) of

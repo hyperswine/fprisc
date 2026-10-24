@@ -101,6 +101,8 @@ callFn width program name args = do
         OLoadByte _ _ -> stuck "unmanaged memory is outside the Core evaluator"
         OStore _ _ _ _ -> stuck "unmanaged memory is outside the Core evaluator"
         OConstInt n -> pure (Just (VInt n))
+        OHartCell _ -> pure (Just (VInt 0)) -- the evaluator allocates nothing: the clock never moves
+        ORegionRoom _ -> pure (Just (VPred True))
         ONullary t v -> pure (Just (VVal (RObj t v [])))
         OString s -> pure (Just (VVal (RString (utf8Bytes s))))
         OMake tid variant fields -> do

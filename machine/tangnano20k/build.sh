@@ -13,15 +13,13 @@ if [[ "$xlen" == 32 && $# == 0 ]];then prog=tests/tangnano20k_rv32_host.fpr;fi
 case "$rvc" in 0) march=rv${xlen}im_zicsr_zifencei;; 1) march=rv${xlen}imc_zicsr_zifencei;; *) echo 'FPR_RVC must be 0 or 1' >&2;exit 1;; esac
 uart=()
 diagnostics=()
-gc=()
-case "${FPR_GC:-0}" in 0) ;; 1) gc=(-DFPR_BUILTIN_GC machine/tangnano20k/gc_registers.S machine/tangnano20k/gc_roots.c);; *) echo 'FPR_GC must be 0 or 1' >&2;exit 1;; esac
-case "${FPR_HEAP_REPORT:-0}" in 0) ;; 1) diagnostics=(-DFPR_HEAP_REPORT -DFPR_BUILTIN_HEAP_STATS);; *) echo 'FPR_HEAP_REPORT must be 0 or 1' >&2;exit 1;; esac
-if [[ -n "${FPR_GC_STRESS:-}" ]];then
-  if [[ "${FPR_GC:-0}" != 1 || ! "$FPR_GC_STRESS" =~ ^[1-9][0-9]{0,5}$ ]];then
-    echo 'FPR_GC_STRESS needs FPR_GC=1 and an interval in 1..999999' >&2;exit 1
-  fi
-  gc+=(-DFPR_BUILTIN_GC_STRESS="$FPR_GC_STRESS")
+# The conservative collector (FPR_GC) is gone: the heap reclaims by regions the
+# compiler places (docs/2026-10-25-REGIONS-LOOPS-CALLS.md).  Refused by name, so
+# an old command line says why instead of building something else.
+if [[ "${FPR_GC:-0}" != 0 || -n "${FPR_GC_STRESS:-}" ]];then
+  echo 'FPR_GC was removed: the Base heap reclaims by compiler-placed regions (docs/2026-10-25-REGIONS-LOOPS-CALLS.md)' >&2;exit 1
 fi
+case "${FPR_HEAP_REPORT:-0}" in 0) ;; 1) diagnostics=(-DFPR_HEAP_REPORT -DFPR_BUILTIN_HEAP_STATS);; *) echo 'FPR_HEAP_REPORT must be 0 or 1' >&2;exit 1;; esac
 case "${FPR_QEMU:-0}" in 0) ;; 1) uart=(-DFPR_TANGNANO_QEMU);; *) echo 'FPR_QEMU must be 0 or 1' >&2;exit 1;; esac
 mkdir -p "$out"
 # A failed rebuild must not leave a previous successful manifest behind.
@@ -40,7 +38,7 @@ specs="$(riscv64-unknown-elf-gcc -print-file-name=picolibc.specs)"
 libc=()
 if [[ "$specs" == /* && -f "$specs" ]]; then libc=(--specs=picolibc.specs); fi
 riscv64-unknown-elf-gcc -march="$march" -mabi="$abi" -mcmodel=medany -Os ${libc[@]+"${libc[@]}"} \
- -ffreestanding -nostdlib -nostartfiles -fno-builtin -DFPR_NHARTS=1 -DFPR_BUILTIN ${uart[@]+"${uart[@]}"} ${diagnostics[@]+"${diagnostics[@]}"} ${gc[@]+"${gc[@]}"} \
+ -ffreestanding -nostdlib -nostartfiles -fno-builtin -DFPR_NHARTS=1 -DFPR_BUILTIN ${uart[@]+"${uart[@]}"} ${diagnostics[@]+"${diagnostics[@]}"} \
  -DFPR_SIMPLE_RISC -DFPR_CPU_MHZ="$freq" -DFPR_BUILTIN_HEAP_MAX_BYTES=8388608 -ffunction-sections -fdata-sections \
  -Wl,--gc-sections -Wl,--no-warn-rwx-segments -I runtime -I machine/builtin \
  -T machine/tangnano20k/link.ld machine/tangnano20k/crt0.S machine/tangnano20k/base.c \

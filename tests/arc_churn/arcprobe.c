@@ -9,6 +9,11 @@ uw fpr_arc_hwm(void);
 uw fpr_arc_live(void);
 uw fpr_arc_used(void);
 uw fpr_rx_grows_count(void);
+uw fpr_region_opens_count(void);
+uw fpr_region_cycles_count(void);
+uw fpr_region_call_opens_count(void);
+uw fpr_region_adoptions_count(void);
+uw fpr_pend_grows_count(void);
 uw fpr_rx_hwm(void);
 static V cap(V u)   { (void)u; return TAG((sw)fpr_arc_cap()); }
 static V grows(V u) { (void)u; return TAG((sw)fpr_arc_grows_count()); }
@@ -16,6 +21,11 @@ static V compactions(V u) { (void)u; return TAG((sw)fpr_arc_compactions_count())
 static V hwm(V u)   { (void)u; return TAG((sw)fpr_arc_hwm()); }
 static V live(V u)  { (void)u; return TAG((sw)fpr_arc_live()); }
 static V used(V u)  { (void)u; return TAG((sw)fpr_arc_used()); }
+static V regionOpens(V u) { (void)u; return TAG((sw)fpr_region_opens_count()); }
+static V regionCycles(V u) { (void)u; return TAG((sw)fpr_region_cycles_count()); }
+static V pendGrows(V u) { (void)u; return TAG((sw)fpr_pend_grows_count()); }
+static V adoptions(V u) { (void)u; return TAG((sw)fpr_region_adoptions_count()); }
+static V callOpens(V u) { (void)u; return TAG((sw)fpr_region_call_opens_count()); }
 static V rxGrows(V u) { (void)u; return TAG((sw)fpr_rx_grows_count()); }
 static V rxHwm(V u) { (void)u; return TAG((sw)fpr_rx_hwm()); }
 static uw drops(int hit) {
@@ -40,6 +50,11 @@ FPR_FN(fpr_g_Arc_x2ehwm, hwm, 1);
 FPR_FN(fpr_g_Arc_x2elive, live, 1);
 FPR_FN(fpr_g_Arc_x2eused, used, 1);
 FPR_FN(fpr_g_Arc_x2erxGrows, rxGrows, 1);
+FPR_FN(fpr_g_Arc_x2eregionOpens, regionOpens, 1);
+FPR_FN(fpr_g_Arc_x2eregionCycles, regionCycles, 1);
+FPR_FN(fpr_g_Arc_x2ecallOpens, callOpens, 1);
+FPR_FN(fpr_g_Arc_x2eadoptions, adoptions, 1);
+FPR_FN(fpr_g_Arc_x2ependGrows, pendGrows, 1);
 FPR_FN(fpr_g_Arc_x2erxHwm, rxHwm, 1);
 FPR_FN(fpr_g_Arc_x2edropHits, dropHits, 1);
 FPR_FN(fpr_g_Arc_x2edropMisses, dropMisses, 1);

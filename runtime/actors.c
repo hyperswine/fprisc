@@ -248,6 +248,7 @@ typedef struct fpr_acb {
 #endif
   struct fpr_scope *scopes; /* active scratch regions on this actor's stack */
   fpr_rx_t rx; /* the message roots this actor took in the current turn (fpr.h) */
+  fpr_pends_t pends; /* pending call regions (fpr.h) */
 } acb_t;
 #define TR(a, code) do { (a)->tr[(a)->tr_i++ % 16] = (uint8_t)((code) * 8 + (fpr_hart() ? fpr_hart()->id : 7)); } while (0)
 
@@ -298,6 +299,7 @@ fpr_pool_t *fpr_acb_pool(struct fpr_acb *a) { return &a->pool; }
 struct fpr_pool **fpr_acb_override_slot(struct fpr_acb *a) { return &a->pool_override; }
 struct fpr_scope **fpr_acb_scope_slot(struct fpr_acb *a) { return &a->scopes; }
 fpr_rx_t *fpr_acb_rx(struct fpr_acb *a) { return &a->rx; }
+fpr_pends_t *fpr_acb_pends(struct fpr_acb *a) { return &a->pends; }
 
 /* big raw blocks (stacks, acbs, rings): the memory actor's buddy on an
  * image that owns one (fpr_mem_own -- a machine boot, the qosp app);
@@ -899,6 +901,7 @@ static void reap(acb_t *a) {
   }
   if (a->ch) chb_drain(a->ch); /* mail it never read: released, not stranded (holds park below) */
   fpr_rx_reclaim(a); /* the roots of a turn it never finished (killed, or trapped) */
+  fpr_pends_reclaim(a); /* the call regions of a call it never left */
   /* Bounded producers cannot pass their locked death check now. The drained
    * limbo rings are empty and never dereference charges again before init. */
   inbox_charges_put(a->inbox_charges); a->inbox_charges = 0;
@@ -2260,6 +2263,7 @@ void fpr_actors_init(void) { /* hart 0, before fpr_smp_go */
   main_acb.resources = 0;
   main_acb.scopes = 0;
   main_acb.rx.roots = 0; main_acb.rx.n = 0; main_acb.rx.cap = 0; main_acb.rx.block = 0;
+  main_acb.pends.v = 0; main_acb.pends.n = 0; main_acb.pends.cap = 0; main_acb.pends.block = 0;
   ledger_push(&main_acb);
   uw stk_sz = 0;
   char *stk = (char *)stack_block(&stk_sz);
@@ -2347,6 +2351,7 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
   a->pool_override = 0;
   a->scopes = 0;
   a->rx.roots = 0; a->rx.n = 0; a->rx.cap = 0; a->rx.block = 0;
+  a->pends.v = 0; a->pends.n = 0; a->pends.cap = 0; a->pends.block = 0;
   a->reaping = 0;
   a->dp_n = 0;
   a->msg_slab = 0;

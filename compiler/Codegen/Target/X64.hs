@@ -32,7 +32,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 x64SelectionRev :: Int
-x64SelectionRev = 22 -- sized frames; prior: SSE2, comparison/F32 trees, QOS borrowed TLS cells
+x64SelectionRev = 26 -- the hart-cell load (loop region clock); sized frames; prior: SSE2, comparison/F32 trees, QOS borrowed TLS cells
 
 -- Module ABI identity is independent of native selector/cache revisions.
 x64InterfaceRev :: Int
@@ -290,6 +290,18 @@ selectInstr _ _ (Instr d op) = case op of
   OLoadByte a n -> def (\r -> emitI (plain "load.byte" [any' r] [any' (vreg a), OI (fromIntegral n)]))
   OStore _ a n v -> emitI (plain "store.field" [] [any' (vreg a), any' (vreg v), OI (fromIntegral n)])
   OConstInt n -> def (\r -> emitI (li r n))
+  OHartCell j -> def (\r -> emitI (plain "load.spill" [any' r] [OI (fromIntegral j)]))
+  ORegionRoom mark -> def $ \r -> do
+    clock <- freshV False
+    used <- freshV False
+    scaled <- freshV False
+    untagged <- freshV False
+    emitI (plain "load.spill" [any' clock] [OI 58])
+    emitI (rri "asr" untagged (vreg mark) 1) -- the mark is a tagged Int
+    emitI (rrr "sub" used clock untagged)
+    emitI (rri "lsl" scaled used 3)
+    emitI (cmpi scaled (65536 * 8))
+    emitI (cset "lo" r)
   OBits n -> def (\r -> emitI (li r n))
   ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
   OString text -> def $ \rd -> do
@@ -573,6 +585,7 @@ selectTerm _ fn b = case bTerm b of
         parallelMoves (zip (paramsOf target) (map vreg as))
         emitI (jump (blockLabel target))
   TCondBr p t as e bs
+    | null as && null bs, Just e == nextBlock -> emitI (cbnz (vreg p) (blockLabel t))
     | null as && null bs -> do
         emitI (cbnz (vreg p) (blockLabel t))
         emitI (jump (blockLabel e))
@@ -595,6 +608,9 @@ selectTerm _ fn b = case bTerm b of
              {siImplicitDefs = map r ["rdi", "rsp"], siClobbers = callerSaved, siControl = Return, siCalls = [Call "fpr_panic" False True]})
   where
     paramsOf bid = [vreg v | blk <- fnBlocks fn, bId blk == bid, (v, _) <- bParams blk]
+    nextBlock = case dropWhile ((/= bId b) . bId) (fnBlocks fn) of
+      (_ : n : _) -> Just (bId n)
+      _ -> Nothing
 
 -- ---- placement, frame layout and rendering ------------------------------
 placement :: S.Set VReg -> Placement
@@ -761,7 +777,7 @@ renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOp i
       p -> p ++ "d"
     imm = \case OI n -> show n; o -> error ("X64 render: not an immediate " ++ show o)
     slot ref = show (M.findWithDefault (error "X64 render: missing frame object") ref (lyOffset ly)) ++ "(%rbp)"
-    cc = \case "eq" -> "e"; "ne" -> "ne"; "lt" -> "l"; "gt" -> "g"; "le" -> "le"; "ge" -> "ge"; "o" -> "o"; "hs" -> "ae"; c -> error ("X64 condition " ++ c)
+    cc = \case "eq" -> "e"; "ne" -> "ne"; "lt" -> "l"; "gt" -> "g"; "le" -> "le"; "ge" -> "ge"; "o" -> "o"; "hs" -> "ae"; "lo" -> "b"; c -> error ("X64 condition " ++ c)
     call sym = ["subq $8, %rsp", "call " ++ gsym hart sym, "addq $8, %rsp"]
     go op ds us = case (op,ds,us) of
       ("enter",[],[]) ->

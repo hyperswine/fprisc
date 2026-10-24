@@ -25,7 +25,7 @@
 -- structurally is `len p`.  Arguments to callees substitute into the
 -- callee's equation when they are linear in the caller's parameters;
 -- anything else is the opaque `?`.
-module Cost (Cost (..), CostEq (..), Declared (..), Verdict (..), costProgram, declaredBounds, checkBounds, checkBoundsWith, renderVerdict, substCoefs, coefsIn, resolvePrims, evalConst, omegas, prettyCost, prettyIn, renderReport, hasOmega, primAllocates) where
+module Cost (Cost (..), CostEq (..), Declared (..), Verdict (..), costProgram, declaredBounds, checkBounds, checkBoundsWith, renderVerdict, substCoefs, coefsIn, resolvePrims, evalConst, omegas, prettyCost, prettyIn, renderReport, hasOmega, primAllocates, allocGrows) where
 
 import Data.Graph (SCC (..), stronglyConnComp)
 import Data.List (intercalate, nub, sort)
@@ -243,6 +243,13 @@ primAllocates n arity = case primCostOf n (replicate arity (CO "?")) of
   Nothing -> Nothing
   Just (_, a) -> Just (simp a /= CN 0)
 
+-- | A function's allocation is not a constant the pass can name: it grows
+-- with a parameter, or the pass cannot see it (opaque).  The call-region
+-- rule (docs/2026-10-25-REGIONS-LOOPS-CALLS.md) wraps such calls; a constant
+-- allocation never fills the slab a region needs before it opens.
+allocGrows :: (String -> Bool) -> CostEq -> Bool
+allocGrows growing (CostEq _ a _ _) = let a' = simp a in mentionsParams a' || any growing (omegas a')
+
 primCostOf :: Name -> [Cost] -> Maybe (Cost, Cost)
 primCostOf g lens
   | g `elem` ["+", "-", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=", "and", "or", "not", "and2", "or2", "neg"] = unit
@@ -332,7 +339,14 @@ costProgram measures declared prog = M.mapWithKey (\n e -> (e, effective n e)) f
                     (w, a, l) = perCall n
                  in (n, CostEq (simp (CMul [calls, w])) (simp (CMul [calls, a])) (simp (CMul [calls, l])) (ceSteps (bodies M.! n)))
            in foldr (\(n, e) acc -> M.insert n e acc) done (map eqFor ms)
-        Nothing -> foldr (\n acc -> M.insert n (opaqueEq n) acc) done ns
+        -- unmeasured recursion: the call count is unknown, so work is opaque,
+        -- but a group none of whose bodies allocates per call allocates
+        -- nothing however often it runs (a list walk, a search)
+        Nothing ->
+          let grp = S.fromList ns
+              allocFree = all (\n -> simp (ceAlloc (plain done grp n)) == CN 0) ns
+              eqOf n = if allocFree then CostEq (CO n) (CN 0) (CO n) [] else opaqueEq n
+           in foldr (\n acc -> M.insert n (eqOf n) acc) done ns
     opaqueEq n = CostEq (CO n) (CO n) (CO n) []
 
     -- the measure as a cost over this function's CORE parameter names

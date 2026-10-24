@@ -20,16 +20,16 @@
 --   * the notes say which rule placed each boundary; --cost prints them.
 module ReceiveTurns (receiveTurns) where
 
-import Data.List (intercalate, foldl')
+import Data.List (intercalate, foldl', isPrefixOf)
 import Data.Graph (SCC (..), stronglyConnComp)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import FPRISC
 import Infer (Type (..), Row (..))
-import Cost (primAllocates)
+import Cost (primAllocates, allocGrows, CostEq)
 
-receiveTurns :: Bool -> M.Map Name Type -> [STop] -> Prog -> S.Set Name -> Prog -> (Prog, [String])
-receiveTurns loopRegions types tops context joins prog = (M.union rewritten prog, notes)
+receiveTurns :: Bool -> Bool -> M.Map Name (CostEq, CostEq) -> M.Map Name Type -> [STop] -> Prog -> S.Set Name -> Prog -> (Prog, [String])
+receiveTurns loopRegions callRegionsOn contextEqs types tops context joins prog = (final, notes ++ callNotes)
   where
     refs ps = S.fromList . filter (`notElem` ps) . freeVars
     edges p = M.map (uncurry refs) p
@@ -44,7 +44,7 @@ receiveTurns loopRegions types tops context joins prog = (M.union rewritten prog
           external = reaches (edges context) seeds `S.intersection` M.keysSet types
        in reaches (edges prog) (seeds `S.union` external)
     receivers = effect ["receive", "receiveFrom", "receiveRes", "receiveNow", "receiveFromRes", "receiveFromNow"]
-    managed = effect ["Sys.poolReset", "Sys.arena", "Sys.loop", "Sys.loopWith", "$receiveLoop", "$turnLoop"]
+    managed = effect ["Sys.poolReset", "Sys.arena", "Sys.loop", "Sys.loopWith", "$receiveLoop", "$loopLeave"]
     recGroups = [ns | CyclicSCC ns <- stronglyConnComp
                   [(n, n, S.toList (refs ps b `S.intersection` M.keysSet prog)) | (n,(ps,b)) <- M.toList prog]]
     receiveGroups = [ns | ns <- recGroups, any (`S.member` receivers) ns]
@@ -61,9 +61,12 @@ receiveTurns loopRegions types tops context joins prog = (M.union rewritten prog
     -- the closure is one): those lines carry a "(declined)" tag the driver
     -- prints only under FPR_RECEIVE_NOTES, with a count under --cost
     notes = [(if isPure ns then (if isLeft r then "turn-regions (declined): " else if loopRegions then "turn-regions: " else "turn-regions (candidate): ") else "receive-turns: ") ++ unwords ns ++ ": "
-              ++ either id (const (if isPure ns then (if loopRegions then "self tail call boundary: automatic turn regions" else "self tail call boundary, not placed (FPR_LOOP_REGIONS=1)") else "automatic value-state turn regions")) r
+              ++ either id (const (if isPure ns then (if loopRegions then "loop region at the self tail call (opens after a slab, resets per slab)" else "loop region not placed (FPR_NO_LOOP_REGIONS=1)") else "automatic value-state turn regions")) r
             | (ns,r) <- zip groups results]
-    -- off by default, a pure group that qualifies is reported and left as it is
+    turned = M.union rewritten prog
+    -- the loops that got a region: a call into one needs no call region
+    loopEntries = S.fromList (concat [ns | (ns, Right _) <- zip groups results, isPure ns, loopRegions])
+    (final, callNotes) = if callRegionsOn then callRegions turned else (turned, [])
     isLeft = either (const True) (const False)
     -- does an iteration of n allocate SCRATCH?  Counted: on a path that ends
     -- in a call into the group, every allocation except the constructors
@@ -120,6 +123,86 @@ receiveTurns loopRegions types tops context joins prog = (M.union rewritten prog
             CTagEq _ _ x -> rawAlloc bound x
             CProj _ x -> rawAlloc bound x
             _ -> False
+    -- ---- call regions (rule 3 of the proposal) ----------------------------
+    -- A saturated call to a function outside the caller's recursive group
+    -- whose allocation grows with its input or cannot be named (Cost) and
+    -- whose result is a copyable value gets a pending region: $callPend
+    -- before the call, $callLeave after.  Nothing happens unless the call
+    -- uses a slab of the pool it started in; then the allocator opens the
+    -- region and $callLeave copies the result out.  The copy costs at most
+    -- the result, once per wrapped call: a call into the caller's own
+    -- recursive group is never wrapped, so no copy compounds with recursion
+    -- (the proposal's rule 4); the threshold rule 3 left open is the slab.
+    -- Not around a call into a loop with a region of its own.
+    -- the whole program's equations (computed once, Compile.hs): a call into
+    -- another unit is judged by its callee's own cost, by source name
+    callEqs = contextEqs
+    -- an opaque allocation grows when it stands for unverified recursion (a
+    -- function of the program) or an unknown argument ("?..."); an
+    -- undeclared primitive is a constant (I64 boxing, a string op's result)
+    growingOmega nm = M.member nm prog || M.member nm context || take 1 nm == "?"
+    sccIx = M.fromList [(n, i) | (i, c) <- zip [0 :: Int ..] (stronglyConnComp [(n, n, S.toList (refs ps b `S.intersection` M.keysSet prog)) | (n, (ps, b)) <- M.toList prog]), n <- flat c]
+      where flat (AcyclicSCC n) = [n]; flat (CyclicSCC ns) = ns
+    costly g arity = case (M.lookup g prog `orElse` M.lookup g context, M.lookup g types, M.lookup g callEqs) of
+      (Just (ps, _), Just ty, Just (_, eq)) | length ps == arity, take 1 g /= "$" ->
+        let (as, r) = split arity ty
+         in length as == arity && value S.empty r && allocGrows growingOmega eq && S.notMember g loopEntries
+      _ -> False
+    callRegions p = (M.mapWithKey site p, [ "call-regions: " ++ n ++ ": " ++ show k ++ " call(s) under a pending region"
+                                          | (n, k) <- M.toList counts, k > 0 ])
+      where
+        -- every function, the loop bodies included: a costly call inside a loop
+        -- is where a region pays most (dtree's `run` inside repeatRuns); the
+        -- loop's own boundary only reclaims per slab of its iteration.  Not the
+        -- compiler's own `$` helpers, whose calls are the region bookkeeping.
+        eligible n = (take 1 n /= "$" || "$loop.in." `isPrefixOf` n) && M.member n prog
+        rewritten' = M.mapWithKey (\n (ps, b) -> if eligible n then let (b', k) = wrap n (S.fromList ps) 0 b in ((ps, b'), k) else ((ps, b), 0)) p
+        site n _ = fst (rewritten' M.! n)
+        counts = M.map snd rewritten'
+        sameGroup a b = case (M.lookup a sccIx, M.lookup b sccIx) of (Just x, Just y) -> x == y; _ -> False
+        -- wrap: (expression, sites so far) -> (expression', sites)
+        wrap n bound k e = case spine e of
+          (CVar g, as@(_ : _)) | S.notMember g bound, not (sameGroup n g), costly g (length as) ->
+            -- the arguments are evaluated inside the pending region, as part
+            -- of the call: a trip moves only later allocations to the arena,
+            -- and the arguments die with the call (unbound, so the field
+            -- workers still see a literal constructor argument)
+            let (as', k') = wrapList n bound k as
+                tok = "$call." ++ show k' ++ ".t"
+                callE = foldl CApp (CVar g) as'
+             in (CLet tok (CApp (CVar "$callPend") (CInt 0)) (CApp (CApp (CVar "$callLeave") (CVar tok)) callE), k' + 1)
+          _ -> case e of
+            CApp a b' -> let (a', k1) = wrap n bound k a; (b2, k2) = wrap n bound k1 b' in (CApp a' b2, k2)
+            CLam xs b' -> let (b2, k1) = wrap n (bound `S.union` S.fromList xs) k b' in (CLam xs b2, k1)
+            CLet x a b' -> let (a', k1) = wrap n bound k a; (b2, k2) = wrap n (S.insert x bound) k1 b' in (CLet x a' b2, k2)
+            CIf c t f -> let (c', k1) = wrap n bound k c; (t', k2) = wrap n bound k1 t; (f', k3) = wrap n bound k2 f in (CIf c' t' f', k3)
+            CMk a b' fs -> let (fs', k1) = wrapList n bound k fs in (CMk a b' fs', k1)
+            CTagEq a b' x -> let (x', k1) = wrap n bound k x in (CTagEq a b' x', k1)
+            CProj i x -> let (x', k1) = wrap n bound k x in (CProj i x', k1)
+            _ -> (e, k)
+        wrapList n bound k = foldl (\(acc, kk) x -> let (x', kk') = wrap n bound kk x in (acc ++ [x'], kk')) ([], k)
+    -- A pure group needs a back-edge test only where every cycle passes: its
+    -- members called from outside the group (in this program or, by source
+    -- name, the whole program), then as few more as break every remaining
+    -- cycle of the group's own call graph.  The other members keep their
+    -- small bodies, so the inliner can still merge a mutual pair (vecread's
+    -- sumAt/sumAt1) into one loop.  A member another unit calls that is not a
+    -- boundary is reached through its original definition, which this pass
+    -- leaves in place: correct, without the region.
+    pureBoundaries ns = complete (S.fromList [n | n <- ns, calledFromOutside n] S.\\ joins)
+      where
+        group = S.fromList ns
+        localGraph = M.fromList [(n, S.toList ((edges prog M.! n) `S.intersection` group)) | n <- ns]
+        calledFromOutside n =
+          or [S.member n refsG | (g, refsG) <- M.toList (edges prog), S.notMember g group]
+            || (M.member n types && or [S.member n refsG | (g, refsG) <- M.toList (edges context), S.notMember g group, M.member g types])
+        complete bs =
+          let rest = [n | n <- ns, S.notMember n bs]
+              cyclic = [c | CyclicSCC c <- stronglyConnComp [(n, n, filter (`S.notMember` bs) (localGraph M.! n)) | n <- rest]]
+           in case cyclic of
+                [] -> if S.null bs then S.fromList (take 1 ns) else bs
+                (c : _) -> complete (S.insert (pickOf c) bs)
+        pickOf c = case [n | n <- c, S.notMember n joins] of (n : _) -> n; [] -> head c
     -- loop-invariant parameter slots of a group: (function, index) classes
     -- joined by every call inside the group that passes a caller's own
     -- parameter; a class any call feeds with anything else is variable.
@@ -199,7 +282,7 @@ receiveTurns loopRegions types tops context joins prog = (M.union rewritten prog
     -- Follow private joins here because a clause fallback can contain the
     -- receive belonging to its source function.
     entries ns
-      | isPure ns = S.fromList ns S.\\ joins
+      | isPure ns = pureBoundaries ns
       | otherwise = close seeds S.\\ joins
       where
         group = S.fromList ns
@@ -215,6 +298,9 @@ receiveTurns loopRegions types tops context joins prog = (M.union rewritten prog
                                      else "state/result is mutable, functional, polymorphic or lacks type evidence; unchanged (") ++ intercalate "; " problems ++ ")"
                                      ++ (if S.null invariant then "" else "; invariant: " ++ unwords [n ++ "#" ++ show (i + 1) | (n, i) <- S.toList invariant]))
       | any (\n -> length (fst (prog M.! n)) > 64) ns = Left "requires at most 64 parameters after arity spilling; unchanged"
+      | isPure ns = do
+          bodies <- mapM (\n -> let (ps,b) = prog M.! n in (,) n <$> loopE (S.fromList ps) b) ns
+          pure (M.fromList (concatMap pureMake bodies))
       | otherwise = do
           bodies <- mapM (\n -> let (ps,b) = prog M.! n in (,) n <$> tailE (S.fromList ps) b) ns
           pure (M.fromList (concatMap make bodies))
@@ -244,6 +330,54 @@ receiveTurns loopRegions types tops context joins prog = (M.union rewritten prog
                  in Right (foldr (\(v,a) b -> CLet v a b) next (zip saved args))
             | not (mentions bound e) -> Right (CMk 4 0 [CMk 1 0 [], e])
             | otherwise -> Left "non-tail, partial or escaping recursive call; unchanged"
+        -- A PURE loop keeps its tail calls as tail calls (the typed IR makes a
+        -- self tail call a jump): each member gets an inner version with two
+        -- more parameters, the pool mark and the activation's sequence
+        -- number, and a tail call to a boundary member tests the mark first.
+        -- Only when a slab has been allocated since does the cold branch run:
+        -- $regionCycle opens the region (first time) or copies the changing
+        -- arguments out and resets it, and the mark is read again.  The
+        -- entry takes a sequence number and a mark; $loopLeave closes the
+        -- region, if one opened, copying the result out.  Invariant arguments
+        -- are passed as they are: they were built before the loop, outside
+        -- every region it opens.
+        inName n = "$loop.in." ++ n
+        loopE bound = \case
+          CLet x a b | not (mentions bound a) -> CLet x a <$> loopE (S.insert x bound) b
+          CIf c t f | not (mentions bound c) -> CIf c <$> loopE bound t <*> loopE bound f
+          e | (CVar g, args) <- spine e,
+              g `S.member` group, g `S.notMember` bound,
+              length args == length (fst (prog M.! g)),
+              not (any (mentions bound) args) ->
+                -- a direct tail call evaluates its arguments strictly, left to
+                -- right, as it did: no binding needed (the receive trampoline
+                -- binds them because its call is delayed inside a closure)
+                Right (foldl CApp (CVar (inName g)) (args ++ [CVar "$loop.mark", CVar "$loop.seq"]))
+            | not (mentions bound e) -> Right e
+            | otherwise -> Left "non-tail, partial or escaping recursive call; unchanged"
+        -- the test sits at a boundary member's entry, every call to it a plain
+        -- tail call: the members stay small (a mutual pair still merges into
+        -- one loop), and the cold path is a function of its own
+        cycName n = "$loop.cycle." ++ n
+        pureMake (n,b) =
+          let ps = fst (prog M.! n)
+              extra = ["$loop.mark", "$loop.seq"]
+              vars = [i | (i, p) <- zip [0 :: Int ..] ps, p `elem` kept n, not (S.member (n, i) invariant)]
+              slot i = case lookup i (zip vars [0 :: Int ..]) of
+                Nothing -> CVar (ps !! i)
+                Just k -> if length vars == 1 then CVar "$loop.packed" else CProj k (CVar "$loop.packed")
+              cycBody = CLet "$loop.packed" (CApp (CApp (CVar "$regionCycle") (CVar "$loop.seq")) (pack [CVar (ps !! i) | i <- vars]))
+                          (CLet "$loop.mark2" (CApp (CVar "$regionMark") (CInt 0))
+                            (foldl CApp (CVar (inName n)) ([slot i | i <- [0 .. length ps - 1]] ++ [CVar "$loop.mark2", CVar "$loop.seq"])))
+              tested = CIf (CApp (CVar "$regionRoom") (CVar "$loop.mark")) b
+                         (foldl CApp (CVar (cycName n)) (map CVar (ps ++ extra)))
+              inner = (inName n, (ps ++ extra, if n `S.member` boundaries then tested else b))
+              cycle = (cycName n, (ps ++ extra, cycBody))
+              entryE = CLet "$loop.seq.0" (CApp (CVar "$regionSeq") (CInt 0))
+                         (CLet "$loop.mark.0" (CApp (CVar "$regionMark") (CInt 0))
+                           (CApp (CApp (CVar "$loopLeave") (CVar "$loop.seq.0"))
+                             (foldl CApp (CVar (inName n)) (map CVar ps ++ [CVar "$loop.mark.0", CVar "$loop.seq.0"]))))
+           in if n `S.member` boundaries then [(n, (ps, entryE)), inner, cycle] else [inner]
         make (n,b)
           -- A generated join is ordinary control flow INSIDE this turn,
           -- never a copied continuation. This preserves the shared DAG and
@@ -261,11 +395,7 @@ receiveTurns loopRegions types tops context joins prog = (M.union rewritten prog
                   -- the runtime frees the thunk and, when the stub packed
                   -- two or more live parameters, the tuple it made for them
                   -- (runtime.c g_receive_loop): the count says which
-                  -- a pure group's region is Dynamic, one slab: $turnLoop
-                  -- copies the state out only when a slab of scratch has
-                  -- accumulated; a receive loop's turn ends every message
-                  entry = if isPure ns then "$turnLoop" else "$receiveLoop"
-               in [(n, (ps, CApp (CApp (CVar entry) thunk) (CInt (fromIntegral (length ks))))),
+               in [(n, (ps, CApp (CApp (CVar "$receiveLoop") thunk) (CInt (fromIntegral (length ks))))),
                    (helper n, (["$receive.state", "$receive.unit"], unpacked))]
 
     -- Only live, closed first-order values cross a turn. Unknown captures
@@ -384,3 +514,7 @@ pack :: [Core] -> Core
 pack [] = CInt 0 -- Unit: a capture-free step still stays delayed.
 pack [x] = x
 pack xs = CMk (case length xs of 2 -> 4; 3 -> 5; n | n <= 8 -> n + 6; n -> tupWideBase + n) 0 xs
+
+orElse :: Maybe a -> Maybe a -> Maybe a
+orElse (Just x) _ = Just x
+orElse Nothing y = y

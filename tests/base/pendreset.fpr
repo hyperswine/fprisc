@@ -1,0 +1,31 @@
+# Pending call regions nested deeper than the inline eight, across a
+# Sys.poolReset (docs/2026-10-25-REGIONS-LOOPS-CALLS.md).  The pend stack used
+# to grow into the actor's own pool; a reset freed that memory under it, the
+# next allocations reused it, and the next nested calls wrote their pends into
+# live cells (QOS's tidy loops: "call region: a nested region is still open",
+# "strlen: not a string").  It grows into a buddy block now.
+unsafe base.
+Arc.pendGrows : Unit -> Int .
+mkList : Int -> List Int -> List Int .
+mkList n acc = if n == 0 then acc else mkList (n - 1) (n :: acc).
+sumL : List Int -> Int -> Int .
+sumL xs k = case xs of Nil -> k | x :: r -> sumL r (k + x).
+# ten distinct callers, each a costly call of the next: ten pends at once
+d10 n = sumL (mkList n Nil) 0.
+d9 n = d10 n + 1.
+d8 n = d9 n + 1.
+d7 n = d8 n + 1.
+d6 n = d7 n + 1.
+d5 n = d6 n + 1.
+d4 n = d5 n + 1.
+d3 n = d4 n + 1.
+d2 n = d3 n + 1.
+d1 n = d2 n + 1.
+main =
+  a = d1 1000;
+  grew = Arc.pendGrows Unit;
+  _ = Sys.poolReset 0;
+  keep = mkList 20000 Nil;
+  b = d1 1000;
+  c = sumL keep 0;
+  print "pendreset: {a} {b} {c}, pend stack grew {case grew > 0 of True -> "yes" | False -> "no"}".

@@ -211,6 +211,11 @@ data Op
   | OCall Callee [VId] -- calleeParams -> calleeResult; clobbers every caller-saved register; any effect
   | OSafepoint -- the fuel tick: a runtime call that may deschedule the actor
   | OStackCheck -- the entry headroom check: a runtime call that may move sp to a new segment
+  | OHartCell Int -- :: TInt; the raw word of the hart block at W*(1+j), the spill cells' addressing: j = 58 is the
+                  -- allocation clock a loop region's back edge reads (fpr.h region_bytes; docs/2026-10-25-REGIONS-LOOPS-CALLS.md)
+  | ORegionRoom VId -- TVal mark (a tagged Int; each target untags it, A64 inside the subtract) -> TPred: has the hart's allocation clock (cell 58) moved LESS than a region's slab, 64 KiB,
+                    -- past the mark, modulo the tagged Int range?  ((clock - mark) << 3) <u (65536 << 3): the loop region's
+                    -- back edge, true on the hot path so the hot body is the branch's fall-through
   deriving (Eq, Ord, Show)
 
 -- an instruction defines at most one value
@@ -306,10 +311,14 @@ opEffect = \case
   ORvvVlMax -> Pure
   ORvvLanes _ _ -> Reads
   ORvvSumLoaded _ -> Reads
+  OHartCell _ -> Reads -- the hart is per hart: an actor that migrates reads another, never hoisted
+  ORegionRoom _ -> Reads
 
 opUses :: Op -> [VId]
 opUses = \case
   OConstInt _ -> []
+  OHartCell _ -> []
+  ORegionRoom m -> [m]
   ONullary _ _ -> []
   OString _ -> []
   OBoxedFloat _ _ -> []
@@ -370,6 +379,8 @@ termUses = \case
 mapOpUses :: (VId -> VId) -> Op -> Op
 mapOpUses f = \case
   OConstInt n -> OConstInt n
+  OHartCell j -> OHartCell j
+  ORegionRoom m -> ORegionRoom (f m)
   ONullary t v -> ONullary t v
   OString s -> OString s
   OBoxedFloat width bits -> OBoxedFloat width bits

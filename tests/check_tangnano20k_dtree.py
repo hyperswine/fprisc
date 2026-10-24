@@ -236,7 +236,7 @@ def main():
     environment = {**os.environ, 'FPR_RVC': '1', 'FPR_XLEN': str(args.xlen), 'FPR_QEMU': str(int(args.qemu)), 'FPR_CPU_MHZ': str(args.freq_mhz),
                    'FPR_SOFTFLOAT_ROOT': os.environ.get('FPR_SOFTFLOAT_ROOT', str(ROOT / 'build/tangnano20k-softfloat'))}
     report['build_options']={key:environment.get(key,'0') for key in
-                            ('FPR_XLEN','FPR_RVC','FPR_QEMU','FPR_CPU_MHZ','FPR_GC','FPR_HEAP_REPORT','FPR_GC_STRESS')}
+                            ('FPR_XLEN','FPR_RVC','FPR_QEMU','FPR_CPU_MHZ','FPR_HEAP_REPORT')}
     try:
         if args.native:
             output, _ = execute([source_root / 'fpr', 'build', fixture, '-o', out / 'native'], source_root, environment, 180)

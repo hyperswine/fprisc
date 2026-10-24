@@ -46,6 +46,10 @@ opSignature tyOf = \case
     expect obj TVal
     pure (Just TVal)
   OStrLen str -> expect str TVal >> pure (Just TInt)
+  ORegionRoom m -> expect m TVal >> pure (Just TPred)
+  OHartCell j -> do
+    when (j < 0 || j > 63) (Left "hart cell outside the hart block's addressed words")
+    pure (Just TInt)
   OCharAt str index -> expect str TVal >> expect index TInt >> pure (Just TInt)
   OTag v -> expect v TInt >> pure (Just TVal)
   OUntag v -> expect v TVal >> pure (Just TInt)

@@ -23,6 +23,7 @@
 
 module Inline (inlineSmall, inlineWith, vecPeek) where
 
+import Data.List (isInfixOf, isSuffixOf)
 import Control.Monad (foldM)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
@@ -178,6 +179,12 @@ spineOf = go []
 size :: Core -> Int
 size = \case
   CLet _ (CVar _) b -> size b
+  -- a loop region's bookkeeping (ReceiveTurns, docs/2026-10-25-REGIONS-LOOPS-CALLS.md):
+  -- the mark and sequence number passed along, and the strict binding of a
+  -- tail call's arguments, are registers, not code; they must not tip a
+  -- member over the limit that lets a mutual pair merge into one loop
+  CApp a (CVar v) | regionParam v -> size a
+  CLet x a b | "$loop.arg." `isInfixOf` x -> size a + size b
   CApp a b -> 1 + size a + size b
   CLam _ b -> 1 + size b
   CLet _ a b -> 1 + size a + size b
@@ -301,3 +308,6 @@ vecPeek = M.map (\(ps, b) -> (ps, peek b))
       CTagEq _ _ e -> mentions n e
       CProj _ e -> mentions n e
       _ -> False
+
+regionParam :: Name -> Bool
+regionParam v = "$loop.mark" `isSuffixOf` v || "$loop.seq" `isSuffixOf` v || "$loop.mark2" `isSuffixOf` v

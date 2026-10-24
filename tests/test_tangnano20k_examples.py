@@ -68,7 +68,7 @@ class ExampleGate(unittest.TestCase):
         runtime = ROOT / 'machine/tangnano20k/preset.sh'
         hardware = Path(os.environ.get('SIMPLE_RISC_ROOT', ROOT.parent / 'simple-risc')) / 'boards/tangnano20k/sdram/preset.sh'
         for script, key, options in (
-            (runtime, 'FPR_PRESET', {'FPR_XLEN': '64', 'FPR_CPU_MHZ': '72', 'FPR_RVC': '0', 'FPR_GC': '0', 'FPR_GC_STRESS': '1'}),
+            (runtime, 'FPR_PRESET', {'FPR_XLEN': '64', 'FPR_CPU_MHZ': '72', 'FPR_RVC': '0'}),
             (hardware, 'SDRAM_PRESET', {'SDRAM_FREQ_MHZ': '54', 'SDRAM_CPU_FREQ_MHZ': '72',
                                       'SDRAM_RVC': '0', 'SDRAM_PHASE_DEGREES': '90',
                                       'SDRAM_CACHE_LINE_BITS': '7', 'SDRAM_RTL_FILE': '/tmp/stale.v'})):

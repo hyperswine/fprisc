@@ -194,9 +194,9 @@ void fpr_bkt_put(void **b);
  * bind one FP-RISC runtime to another.  A plain-word API for other
  * languages is the next step, not this one. */
 #if defined(FPR_POSIX) && defined(__aarch64__) && !defined(FPR_QOSAPP)
-#define FPR_NATIVE_ABI 8u /* hosted A64 context and hart layout include d8..d15; the acb's received-root list */
+#define FPR_NATIVE_ABI 9u /* hosted A64 context and hart layout include d8..d15; the acb's received-root list; the hart's region clock (cell 58) and the acb's pending call regions (REGIONS-LOOPS-CALLS) */
 #else
-#define FPR_NATIVE_ABI 7u /* QOS and other hosted layouts: v6 plus the acb's received-root list (REGIONS-STAGE1) */
+#define FPR_NATIVE_ABI 8u /* QOS and other hosted layouts: v6 plus the acb's received-root list (REGIONS-STAGE1), the hart's region clock and the acb's pending call regions (REGIONS-LOOPS-CALLS) */
 #endif
 #define FPR_PLANE_ACTORS_ABI 3u /* v3: opt-in transactional spawn_inbox; v2: receive_from_now */
 #define FPR_PLANE_MEMORY_ABI 4u /* v4: loop_turn, the compiler-placed turn that moves owned Vectors; v3: sized stack reservation before a generated frame */
@@ -237,9 +237,6 @@ typedef struct fpr_plane_memory {
   V (*loop)(V state, V f);
   V (*loop_with)(V vec, V state, V f);
   V (*loop_turn)(V state, V f);       /* v4: g_loop with owned Vectors moved, not refused (REGIONS-STAGE2) */
-  V (*loop_region)(V state, V f);     /* v4: the same with a Dynamic region of one slab: the state is
-                                       * copied out and the region reset only when a slab's worth of
-                                       * scratch has accumulated (pure self-tail-call loops) */
   uw (*stack_reserve)(uw sp, uw bytes); /* pre-frame SP; frame bytes plus runtime headroom */
 } fpr_plane_memory_t;
 extern fpr_plane_actors_t *fpr_plane_actors; /* NULL = this image is the plane */
@@ -333,6 +330,34 @@ void fpr_rx_release_outer(struct fpr_acb *a);     /* runtime.c: Sys.poolReset: t
 void fpr_rx_reclaim(struct fpr_acb *a);           /* runtime.c: the actor ends: release all, free the block */
 uw fpr_rx_grows_count(void);
 uw fpr_rx_hwm(void);
+
+/* ---- compiler-placed regions (docs/2026-10-25-REGIONS-LOOPS-CALLS.md) ----
+ * A pure loop marks its pool on entry and tests the mark at its back edge;
+ * the region opens, lazily, the first time a slab's worth (FPR_REGION_SLAB)
+ * has been allocated since, and from then on the loop's changing arguments
+ * are copied out and the region reset each time another slab has been used.
+ * A costly call pushes a PENDING region: nothing happens unless the call
+ * allocates a slab directly in the pool it started in, in which case the
+ * allocator's slab-refill path opens the region on the spot; the call's
+ * (bounded) result is copied out when it returns.  The pending stack is
+ * per actor, starts inline and doubles (counted: fpr_pend_grows_count). */
+#ifndef FPR_REGION_SLAB
+#define FPR_REGION_SLAB ((uw)64 * 1024) /* a buddy block, the allocator's floor; Codegen ORegionRoom's 65536 */
+#endif
+typedef struct fpr_pend { uw seq; struct fpr_pool *pool; uw mark; struct fpr_scope *scope; } fpr_pend_t;
+#define FPR_PEND_INLINE 8
+/* past the inline eight the stack grows into a buddy block (as fpr_rx_t),
+ * never the actor's pool: Sys.poolReset frees that pool in place, and the
+ * stack outlives every reset (it held garbage entries once, in QOS's tidy
+ * loops: "call region: a nested region is still open") */
+typedef struct fpr_pends { fpr_pend_t *v; uw n, cap; fpr_slab_t *block; fpr_pend_t v0[FPR_PEND_INLINE]; } fpr_pends_t;
+void fpr_pends_reclaim(struct fpr_acb *a);       /* runtime.c: the actor ends: free the block */
+fpr_pends_t *fpr_acb_pends(struct fpr_acb *a);    /* actors.c: &a->pends */
+uw fpr_pend_grows_count(void);
+uw fpr_region_opens_count(void);   /* loop regions opened (lazily, at a back edge) */
+uw fpr_region_cycles_count(void);  /* loop region resets after the first open */
+uw fpr_region_call_opens_count(void); /* call regions the allocator opened */
+uw fpr_region_adoptions_count(void); /* regions closed by handing their slabs to the enclosing pool */
 void fpr_pool_reclaim(struct fpr_acb *a);    /* runtime.c: death teardown */
 void *buddy_alloc(uw bytes);                 /* buddy.c */
 void *buddy_realloc(void *p, uw bytes);      /* grow/shrink; in-place when
@@ -389,6 +414,12 @@ typedef struct {
    * need; 0 / ~0 means "not an actor's stack: never grow".  MUST stay at
    * offsets W*57 and W*58: generated code reads them tp-relative. */
   uw stk_lo, stk_span;
+  /* bytes this hart's allocator has bumped, bulk storage aside: the clock a
+   * loop region's back edge reads, inline, as hart cell 58 (W*59: Codegen
+   * Lower.regionCell; docs/2026-10-25-REGIONS-LOOPS-CALLS.md).  A migrated
+   * actor reads another hart's clock, which can only make a reset early,
+   * never put one off for ever. */
+  uw region_bytes;
   uw id;
   fpr_pool_t pool;                /* boot/hart-loop allocs (pre-actor, never freed) */
   struct fpr_acb *current;        /* running actor, 0 = in the hart loop */
@@ -446,6 +477,8 @@ typedef struct {
  * spillRef or move argspill back. */
 _Static_assert(__builtin_offsetof(fpr_hart_t, argspill) == sizeof(sw),
                "argspill must sit at offset W (tp-relative, Codegen.hs)");
+_Static_assert(__builtin_offsetof(fpr_hart_t, region_bytes) == sizeof(sw) * (3 + FPR_ARGSPILL),
+               "region_bytes must follow stk_lo/stk_span: hart cell 58 (Lower.regionCell)");
 _Static_assert(__builtin_offsetof(fpr_hart_t, stk_lo) == sizeof(sw) * (1 + FPR_ARGSPILL) &&
                __builtin_offsetof(fpr_hart_t, stk_span) == sizeof(sw) * (2 + FPR_ARGSPILL),
                "stk_lo/stk_span must follow the spill cells (Codegen.hs stackCheck)");

@@ -6,6 +6,9 @@
  * extern that hal.c (or any other module) satisfies at link time.
  */
 #include "fpr.h"
+#ifdef FPR_BUILTIN
+#include "builtin.h" /* the heap's region operations (machine/builtin/heap.c) */
+#endif
 #include "i32.h"
 #include "vec_layout.h" /* the deep copier lays vectors into slabs */
 #ifdef FPR_QOSAPP
@@ -475,7 +478,8 @@ void fpr_bkt_put(void **b) {
 
 #ifndef FPR_BUILTIN
 static fpr_pool_t *base_pool(fpr_hart_t *h) { return h->current ? fpr_acb_pool(h->current) : &h->pool; }
-static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes) {
+static int region_trip(fpr_hart_t *h, fpr_pool_t *pool); /* below, with the regions */
+static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes, int bulk) {
   uw total = (((raw_bytes + 15) & ~(uw)15)) + 16;
   FPR_COST_ADD(h, cost_alloc_requests, 1);
   FPR_COST_ADD(h, cost_alloc_bytes, total);
@@ -523,6 +527,9 @@ static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes) {
   }
   fpr_slab_t *sl = pool->cur;
   if (!sl || total > (uw)(sl->end - sl->hp)) {
+    /* the slab refill: a pending call region whose call has used a slab of
+     * this pool opens here, and the allocation goes to its arena instead */
+    if (!bulk && region_trip(h, pool)) return alloc_in(h, cur_pool(h), raw_bytes, 0);
     if (pool->fixed_heap) fpr_actor_fail("fixed heap: local grant exhausted");
     uw want = total + sizeof(fpr_slab_t);
     /* A pool's slabs START SMALL AND DOUBLE, to SLAB_SZ: the first is one
@@ -611,6 +618,7 @@ static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes) {
   char *p = sl->hp;
   sl->hp += total;
   pool->allocated += total;
+  if (!bulk) h->region_bytes += total;
   *(uw *)p = total;
   *(fpr_slab_t **)(p + 8) = sl;
   { /* pad zeroing, same reason as the bucket path */
@@ -619,9 +627,9 @@ static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes) {
   }
   return (V)(p + 16);
 }
-V fpr_alloc(V raw_bytes) { fpr_hart_t *h = fpr_hart(); return alloc_in(h, cur_pool(h), raw_bytes); }
+V fpr_alloc(V raw_bytes) { fpr_hart_t *h = fpr_hart(); return alloc_in(h, cur_pool(h), raw_bytes, 0); }
 /* a Vector's storage: the base pool, never a turn's arena (fpr.h) */
-V fpr_alloc_bulk(V raw_bytes) { fpr_hart_t *h = fpr_hart(); return alloc_in(h, base_pool(h), raw_bytes); }
+V fpr_alloc_bulk(V raw_bytes) { fpr_hart_t *h = fpr_hart(); return alloc_in(h, base_pool(h), raw_bytes, 1); }
 
 /* called ONLY from the ARC drop path, under arc_lock -- which is what
  * makes reading slab->owner race-free against death teardown (also
@@ -766,6 +774,8 @@ typedef struct {
   int movevec;       /* a compiler-placed turn's state: a Vector this actor's
                       * base pool owns, raw columns only, crosses by handle
                       * (vec_movable_here); every other Vector is copied */
+  int released;      /* a movevec copy copied some Vector (not moved): the old
+                      * state's Vectors are released after the copy */
 } dctx_t;
 /* a Vector that may cross a turn boundary by handle: its header is in this
  * actor's base pool (so every piece is, vec.c allocates bulk there and a
@@ -775,7 +785,11 @@ typedef struct {
 static fpr_slab_t *slab_of(V v);
 static int vec_movable_here(V v) {
 #ifdef FPR_BUILTIN
-  (void)v; return 0;
+  /* the builtin heap: bulk pieces are untracked, outliving every region */
+  if (!fpr_builtin_untracked(v)) return 0;
+  vec_t *bx = (vec_t *)v;
+  for (uw k = 0; k < bx->ncols; k++) if (!VK_RAW(bx->kinds[k])) return 0;
+  return 1;
 #else
   fpr_hart_t *h = fpr_hart();
   if (!h) return 0;
@@ -1001,6 +1015,7 @@ static V dc_dup(V v, dctx_t *c) {
   switch (h->tid) {
     case T_VEC: {
       if (c && c->movevec && vec_movable_here(v)) return v; /* the handle crosses; the storage stays put */
+      if (c && c->movevec) c->released = 1; /* copied: the boundary releases the original after the copy */
       if (c->novec) fpr_cpanic(c->novec);
       /* the whole vector -- header, col_t's, column spans -- lands in
        * the message slab: one message = one slab, vectors included.
@@ -1329,6 +1344,52 @@ static V kp_dup(V v) {
     }
   }
 }
+/* kp_dup's walk without the copy: does copying v cost at least *left bytes?
+ * Counts what kp_dup would allocate (a cell each time it is reached, a moved
+ * Vector nothing) and stops as soon as the answer is yes, so the walk never
+ * goes further than the bytes it asks about. */
+static int kp_reaches(V v, uw *left) {
+  for (;;) {
+    if (ISINT(v) || !v || !fpr_in_heap(v)) return 0;
+    hdr_t *h = (hdr_t *)v;
+    if (h->tid == T_ACTOR || h->tid == T_SSTR) return 0; /* shared; refused by the copy */
+    if (h->tid == T_VEC) {
+      fpr_hart_t *mh = fpr_hart();
+      if (mh && mh->copy_movevec && vec_movable_here(v)) return 0;
+      vec_t *x = (vec_t *)v;
+      uw n = dc_cellsz(sizeof(vec_t));
+      for (uw k = 0; k < x->ncols; k++) if (x->cols[k]) n += dc_cellsz(sizeof(col_t)) + dc_cellsz(x->len * sizeof(uw));
+      if (n >= *left) return 1;
+      *left -= n;
+      for (uw k = 0; k < x->ncols; k++)
+        if (x->cols[k] && !VK_RAW(x->kinds[k]))
+          for (uw i = 0; i < x->len; i++) if (kp_reaches((V)x->cols[k]->base[i], left)) return 1;
+      return 0;
+    }
+    uw total = *(uw *)((char *)v - 16);
+    if (total >= *left) return 1;
+    *left -= total;
+    switch (h->tid) {
+      case T_STR: case T_BITS: case T_DEVICE: case T_REGISTER: return 0;
+      case T_PAP: {
+        pap_t *pp = (pap_t *)v;
+        for (uw i = 0; i < pp->nargs; i++) if (kp_reaches((V)pp->args[i], left)) return 1;
+        return 0;
+      }
+      case T_LIST:
+        if (h->var != 1) return 0;
+        if (kp_reaches(*(V *)((char *)v + 8), left)) return 1;
+        v = *(V *)((char *)v + 8 + sizeof(uw)); /* the spine iteratively, as kp_dup */
+        continue;
+      default: {
+        uw nf = (total - 16 - 8) / sizeof(uw);
+        V *f = (V *)((char *)v + 8);
+        for (uw i = 0; i < nf; i++) if (kp_reaches(f[i], left)) return 1;
+        return 0;
+      }
+    }
+  }
+}
 static V g_keep(V v) { return kp_dup(v); }
 FPR_FN(fpr_g_keep, g_keep, 1);
 
@@ -1390,6 +1451,43 @@ static int has_vec(V v) {
   }
 }
 
+/* a boundary's old state dies: every Vector in it that the copy COPIED (one
+ * not movable here) is released, the moved ones live on in the new state.
+ * Vectors are linear: the dying state is their one owner. */
+static int vec_movable_here(V v);
+static void vec_release_in(V v) {
+  if (ISINT(v) || !v || !fpr_in_heap(v)) return;
+  hdr_t *h = (hdr_t *)v;
+  switch (h->tid) {
+    case T_VEC: if (!vec_movable_here(v)) fpr_vec_release(v); return;
+    case T_ACTOR: case T_STR: case T_BITS: case T_DEVICE: case T_REGISTER:
+    case T_SSTR: return;
+    case T_PAP: {
+      pap_t *p = (pap_t *)v;
+      for (uw i = 0; i < p->nargs; i++) vec_release_in((V)p->args[i]);
+      return;
+    }
+    case T_LIST: {
+      V c = v;
+      while (!ISINT(c) && fpr_in_heap(c) && TID(c) == T_LIST &&
+             ((hdr_t *)c)->var == 1) {
+        vec_release_in(*(V *)((char *)c + 8));
+        c = *(V *)((char *)c + 8 + sizeof(uw));
+      }
+      if (!ISINT(c) && c && fpr_in_heap(c) && TID(c) == T_LIST) return;
+      vec_release_in(c);
+      return;
+    }
+    default: {
+      uw total = *(uw *)((char *)v - 16);
+      uw nf = (total - 16 - 8) / sizeof(uw);
+      V *f = (V *)((char *)v + 8);
+      for (uw i = 0; i < nf; i++) vec_release_in(f[i]);
+      return;
+    }
+  }
+}
+
 static void arena_open(struct fpr_pool **slot, fpr_pool_t *ap) {
   if (cur_pool(fpr_hart())->fixed_heap)
     fpr_actor_fail("fixed heap: scratch arenas require separate admission");
@@ -1410,7 +1508,7 @@ static void arena_close(struct fpr_pool **slot, fpr_pool_t *ap, struct fpr_pool 
     sl = nx;
   }
   fpr_unlock(&arc_lock);
-  fpr_bkt_put(ap->buckets);
+  if (ap->buckets) fpr_bkt_put(ap->buckets); /* a compiler region has none */
   *slot = prev;
 }
 /* TURN END, the arena staying open for the next turn: everything
@@ -1448,7 +1546,7 @@ static void arena_reset(fpr_pool_t *ap) {
   /* nothing pushes after the unlock: a clean slab had no promoted object
    * to drop, an orphaned one is owned by no pool.  A turn that freed
    * nothing leaves the heads as the last zeroing left them. */
-  if (pushed) __builtin_memset(ap->buckets, 0, FPR_NBUCKETS * sizeof(void *));
+  if (pushed && ap->buckets) __builtin_memset(ap->buckets, 0, FPR_NBUCKETS * sizeof(void *));
 }
 static void no_vec_out(V r, const char *who) {
   if (has_vec(r))
@@ -1476,6 +1574,11 @@ struct fpr_scope {
   fpr_slab_t *spare;
   uw rx_mark; /* the actor's received-root count at entry: the roots above it
                * were taken inside this region and die at its boundary */
+  /* a compiler-placed region (fpr.h): heap-allocated in the base pool, its
+   * arena inside it; 0 seq for the stack scopes of Sys.arena/loop/loopWith */
+  uw seq;
+  struct fpr_pool *prev_override;
+  fpr_pool_t ap;
 };
 static struct fpr_scope *bootstrap_scopes[FPR_NHARTS];
 static struct fpr_scope **scope_push(struct fpr_scope *scope) {
@@ -1487,8 +1590,18 @@ static struct fpr_scope **scope_push(struct fpr_scope *scope) {
   scope->held = 0;
   scope->spare = 0;
   scope->rx_mark = h->current ? fpr_acb_rx(h->current)->n : 0;
+  scope->seq = 0;
+  scope->prev_override = 0;
   *head = scope;
   return head;
+}
+/* a scope leaves the chain from wherever it is: the copy out of a closing
+ * region allocates in the enclosing pool, and that allocation can open a
+ * pending call region (region_trip), whose scope then sits ABOVE the one
+ * closing.  It belongs to the enclosing call and stays; only `scope` goes. */
+static void scope_unlink(struct fpr_scope **head, struct fpr_scope *scope) {
+  for (struct fpr_scope **at = head; *at; at = &(*at)->previous)
+    if (*at == scope) { *at = scope->previous; return; }
 }
 /* a turn boundary: the next state (or the arena's result) has just been copied
  * out, so the message roots this region's turn took have no reader left */
@@ -1534,10 +1647,14 @@ static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int m
   sl->pushed = 0;
   h = fpr_hart();
   if (h) h->copy_pid = pid;
-  dctx_t c = {sl->hp, sl, novec, movevec};
+  dctx_t c = {sl->hp, sl, novec, movevec, 0};
   V r = dc_dup(v, &c);
   sl->hp = c.hp;
   scope->spare = 0; /* it is the state now; transfer_retire brings it back */
+  /* the old state dies with this boundary; a Vector of it that had to be
+   * COPIED (boxed columns, or not this actor's) is linear, so its one owner
+   * releases the original's storage here instead of leaking it */
+  if (c.released) vec_release_in(v);
   return r;
 }
 static V transfer_copy(V v, struct fpr_scope *scope, const char *novec) { return transfer_copy_in(v, scope, novec, 0); }
@@ -1563,12 +1680,277 @@ static void scope_release(struct fpr_scope *scope) {
   if (scope->spare) { slab_free_ownerless(scope->spare); scope->spare = 0; }
 }
 
+#ifndef FPR_BUILTIN
+/* ---- compiler-placed regions (fpr.h; docs/2026-10-25-REGIONS-LOOPS-CALLS.md)
+ * The scope of a compiler region lives in the base pool (it outlives the C
+ * frame that opens it: a back edge or the allocator); its arena has no bucket
+ * array (a freed cell waits for the reset, which is a region's nature) and
+ * takes its first slab on its first allocation.  Regions nest LIFO with the
+ * stack scopes of Sys.arena/loop/loopWith: the compiler closes each before
+ * its opener returns.  In a loaded process image (fpr_plane_memory) these
+ * are no regions at all: the plane predates them, and the program runs as it
+ * did before stage 2 -- correct, without the reclamation. */
+#define REGION_MASK (((uw)1 << (sizeof(uw) * 8 - 3)) - 1) /* fits a tagged Int */
+static uw region_opens, region_cycles, region_call_opens, pend_grows;
+uw fpr_region_opens_count(void) { return __atomic_load_n(&region_opens, __ATOMIC_RELAXED); }
+uw fpr_region_cycles_count(void) { return __atomic_load_n(&region_cycles, __ATOMIC_RELAXED); }
+uw fpr_region_call_opens_count(void) { return __atomic_load_n(&region_call_opens, __ATOMIC_RELAXED); }
+uw fpr_pend_grows_count(void) { return __atomic_load_n(&pend_grows, __ATOMIC_RELAXED); }
+static uw region_seq_next[FPR_NHARTS];
+static fpr_pends_t boot_pends[FPR_NHARTS];
+static fpr_pends_t *pends_of(fpr_hart_t *h) { return h->current ? fpr_acb_pends(h->current) : &boot_pends[h->id]; }
+static struct fpr_scope **scope_head(fpr_hart_t *h) {
+  return h->current ? fpr_acb_scope_slot(h->current) : &bootstrap_scopes[h->id];
+}
+/* open a compiler region now: its scope at the chain's head, its arena the
+ * actor's current pool from here on */
+static struct fpr_scope *region_open(fpr_hart_t *h, uw seq) {
+  struct fpr_scope *sc = (struct fpr_scope *)alloc_in(h, base_pool(h), sizeof(struct fpr_scope), 1);
+  h = fpr_hart(); /* allocation can park; the actor can migrate */
+  struct fpr_scope **head = scope_head(h);
+  sc->previous = *head;
+  sc->held = 0; sc->spare = 0;
+  sc->rx_mark = h->current ? fpr_acb_rx(h->current)->n : 0;
+  sc->seq = seq;
+  struct fpr_pool **slot = override_slot(h);
+  sc->prev_override = *slot;
+  fpr_pool_init(&sc->ap, 0);
+  sc->arena = &sc->ap;
+  *head = sc;
+  *slot = (struct fpr_pool *)&sc->ap;
+  return sc;
+}
+/* close the region at the head: the result is copied into the pool that was
+ * current when it opened (an owned Vector moves), the arena and the transfer
+ * slabs go home, the scope is freed */
+/* a closing region whose result is at least as large as what it leaves
+ * behind: copying the result would cost as much as the memory the copy frees,
+ * so its slabs join the pool it closes into instead, the garbage with them
+ * (at most the result's size, and that pool's own to reclaim).  A builder
+ * called under a pending region, its whole allocation the list it returns,
+ * paid a copy of the list for nothing (tests/bench/strbuild.fpr, +15%).  A
+ * fixed-heap pool keeps its cap: never adopted into. */
+static uw region_adoptions, region_adopted_bytes;
+uw fpr_region_adoptions_count(void) { return __atomic_load_n(&region_adoptions, __ATOMIC_RELAXED); }
+static int region_adopt(fpr_hart_t *h, fpr_pool_t *ap, fpr_pool_t *into, V r) {
+  uw used = ap->allocated;
+  if (into->fixed_heap || !ap->cur || !used) return 0;
+  uw left = used - used / 2; /* the result is at least half of what was bumped */
+  h->copy_movevec = 1;
+  int big = kp_reaches(r, &left);
+  h->copy_movevec = 0;
+  if (!big) return 0;
+  fpr_lock(&arc_lock);
+  fpr_slab_t *last = 0;
+  for (fpr_slab_t *sl = ap->cur; sl; sl = sl->next) { sl->owner = into; last = sl; }
+  if (into->cur) { last->next = into->cur->next; into->cur->next = ap->cur; } /* behind its bump slab */
+  else into->cur = ap->cur;
+  into->allocated += used; /* an outer pending region counts it as its call's */
+  ap->cur = 0; ap->bigfree = 0; /* freed big blocks stay where they lie, as garbage */
+  fpr_unlock(&arc_lock);
+  __atomic_fetch_add(&region_adoptions, 1, __ATOMIC_RELAXED);
+  __atomic_fetch_add(&region_adopted_bytes, used, __ATOMIC_RELAXED);
+  return 1;
+}
+static V region_close(fpr_hart_t *h, struct fpr_scope *sc, V r) {
+  struct fpr_pool **slot = override_slot(h);
+  *slot = sc->prev_override;
+  /* a loop region that cycled holds its state in transfer slabs the result
+   * may point into: those close by copy */
+  if (!sc->held && !sc->spare && region_adopt(h, &sc->ap, cur_pool(h), r)) {
+    scope_release(sc);
+    scope_unlink(scope_head(h), sc);
+    fpr_free((V)sc);
+    return r;
+  }
+  h->copy_movevec = 1;
+  V out = kp_dup(r);
+  h = fpr_hart();
+  h->copy_movevec = 0;
+  vec_release_in(r);
+  struct fpr_pool *dummy = 0;
+  arena_close(&dummy, &sc->ap, 0);
+  scope_release(sc);
+  scope_unlink(scope_head(h), sc);
+  fpr_free((V)sc);
+  return out;
+}
+static V g_region_seq(V u) {
+  (void)u;
+  fpr_hart_t *h = fpr_hart();
+  uw n = ++region_seq_next[h->id];
+  return TAG((sw)(((n << 6) | h->id) & REGION_MASK)); /* unique across harts: the actor may migrate */
+}
+static V g_region_mark(V u) {
+  (void)u;
+  return TAG((sw)(fpr_hart()->region_bytes & REGION_MASK));
+}
+/* the back edge, every iteration: is there room left, has this hart bumped
+ * less than a slab since the mark?  The typed IR inlines it (ORegionRoom);
+ * this is its out-of-line form.  A plane-routed process never bumps here:
+ * its pool grows in the kernel, so its loops always have room, as they never
+ * had regions. */
+static V g_region_room(V mark) {
+  uw now = fpr_hart()->region_bytes & REGION_MASK;
+  return ((now - (uw)UNTAG(mark)) & REGION_MASK) < (uw)FPR_REGION_SLAB ? (V)&fpr_true : (V)&fpr_false;
+}
+/* the back edge tripped: the first time, the region opens (the state was
+ * built in the caller's pool, which outlives the loop: nothing to copy);
+ * after that the changing arguments are copied out and the region reset */
+static V g_region_cycle(V seqv, V packed) {
+  if (fpr_plane_memory) return packed;
+  fpr_hart_t *h = fpr_hart();
+  struct fpr_scope *sc = *scope_head(h);
+  uw seq = (uw)UNTAG(seqv);
+  if (!sc || sc->seq != seq) {
+    region_open(h, seq);
+    __atomic_fetch_add(&region_opens, 1, __ATOMIC_RELAXED);
+    return packed;
+  }
+  V t = transfer_copy_in(packed, sc, 0, 1);
+  scope_roots_die(sc);
+  arena_reset(&sc->ap);
+  transfer_retire(sc);
+  sc->held = t;
+  __atomic_fetch_add(&region_cycles, 1, __ATOMIC_RELAXED);
+  return t;
+}
+/* the loop returned: its region, if one opened, closes with the result */
+static V g_loop_leave(V seqv, V r) {
+  if (fpr_plane_memory) return r;
+  fpr_hart_t *h = fpr_hart();
+  struct fpr_scope *sc = *scope_head(h);
+  if (!sc || sc->seq != (uw)UNTAG(seqv)) return r;
+  return region_close(h, sc, r);
+}
+/* a costly call begins: a pending region, opened only if the call uses a
+ * slab of this pool (region_trip); the token is its depth, for the leave */
+static V g_call_pend(V u) {
+  (void)u;
+  if (fpr_plane_memory) return TAG(0);
+  fpr_hart_t *h = fpr_hart();
+  fpr_pends_t *ps = pends_of(h);
+  if (!ps->v) { ps->v = ps->v0; ps->cap = FPR_PEND_INLINE; ps->n = 0; ps->block = 0; }
+  if (ps->n == ps->cap) {
+    /* doubling, counted, into a buddy block (fpr.h says why not the pool) */
+    uw ncap = ps->cap * 2;
+    fpr_slab_t *sl = fpr_slab_new(ncap * sizeof(fpr_pend_t) + sizeof(fpr_slab_t)); /* may park */
+    if (!sl) fpr_exhausted("call region: no block for the pending regions");
+    h = fpr_hart();
+    ps = pends_of(h);
+    fpr_pend_t *nv = (fpr_pend_t *)(sl + 1);
+    __builtin_memcpy(nv, ps->v, ps->n * sizeof(fpr_pend_t));
+    if (ps->block) fpr_slab_release(ps->block);
+    ps->block = sl; ps->v = nv;
+    ps->cap = (uw)(sl->end - (char *)nv) / sizeof(fpr_pend_t);
+    __atomic_fetch_add(&pend_grows, 1, __ATOMIC_RELAXED);
+  }
+  fpr_pool_t *pool = cur_pool(h);
+  fpr_pend_t *e = &ps->v[ps->n++];
+  e->seq = 0; e->pool = (struct fpr_pool *)pool; e->mark = pool->allocated; e->scope = 0;
+  return TAG((sw)(ps->n - 1));
+}
+static V g_call_leave(V tok, V r) {
+  if (fpr_plane_memory) return r;
+  fpr_hart_t *h = fpr_hart();
+  fpr_pends_t *ps = pends_of(h);
+  if (!ps->n || ps->n - 1 != (uw)UNTAG(tok)) fpr_cpanic("call region: left out of order");
+  fpr_pend_t e = ps->v[--ps->n];
+  if (!e.scope) return r;
+  if (*scope_head(h) != e.scope) fpr_cpanic("call region: a nested region is still open");
+  return region_close(h, e.scope, r);
+}
+/* the allocator needs a new slab for `pool`: if the innermost pending call
+ * region started in this pool and has used a slab of it, open it now */
+static int region_trip(fpr_hart_t *h, fpr_pool_t *pool) {
+  if (fpr_plane_memory) return 0;
+  fpr_pends_t *ps = pends_of(h);
+  if (!ps->n) return 0;
+  fpr_pend_t *e = &ps->v[ps->n - 1];
+  if (e->scope || e->pool != (struct fpr_pool *)pool) return 0;
+  /* a Sys.poolReset since the pend restarted the gauge: count from there */
+  uw used = pool->allocated >= e->mark ? pool->allocated - e->mark : pool->allocated;
+  if (used < (uw)FPR_REGION_SLAB) return 0;
+  struct fpr_scope *sc = region_open(h, 0);
+  ps = pends_of(fpr_hart()); /* region_open may park */
+  ps->v[ps->n - 1].scope = sc;
+  __atomic_fetch_add(&region_call_opens, 1, __ATOMIC_RELAXED);
+  return 1;
+}
+#else /* FPR_BUILTIN: the builtin heap's regions (machine/builtin/heap.c) */
+#define REGION_MASK (((uw)1 << (sizeof(uw) * 8 - 3)) - 1)
+static uw region_seq_next;
+uw fpr_region_opens_count(void) { uw o, r; fpr_builtin_region_counts(&o, &r); return o; }
+uw fpr_region_cycles_count(void) { return 0; }
+uw fpr_region_call_opens_count(void) { return 0; }
+uw fpr_pend_grows_count(void) { return 0; }
+static uw region_adoptions;
+uw fpr_region_adoptions_count(void) { return region_adoptions; }
+/* adopt: a compiler-placed region whose result is at least as large as what
+ * it allocated since its last reset hands its blocks to the enclosing region
+ * instead of copying the result (region_adopt on the host says why); an
+ * explicit Sys.arena or Sys.loop always copies, as its programmer asked */
+static V region_close_builtin(V r, int adopt) {
+  void *tok = fpr_builtin_region_close_begin(); /* allocations go to the enclosing region */
+  fpr_hart_t *h = fpr_hart();
+  if (adopt) {
+    uw used = fpr_builtin_region_scratch(tok), left = used - used / 2;
+    h->copy_movevec = 1;
+    int big = used && kp_reaches(r, &left);
+    h->copy_movevec = 0;
+    if (big) { fpr_builtin_region_adopt(tok); region_adoptions++; return r; }
+  }
+  h->copy_movevec = 1;
+  V out = kp_dup(r);
+  h->copy_movevec = 0;
+  vec_release_in(r); /* before the lists go: a released Vector's boxed cells are in them */
+  fpr_builtin_region_close_end(tok);
+  return out;
+}
+static V g_region_seq(V u) { (void)u; return TAG((sw)((++region_seq_next) & REGION_MASK)); }
+static V g_region_mark(V u) { (void)u; return TAG((sw)(fpr_hart()->region_bytes & REGION_MASK)); }
+static V g_region_room(V mark) {
+  uw now = fpr_hart()->region_bytes & REGION_MASK;
+  return ((now - (uw)UNTAG(mark)) & REGION_MASK) < (uw)FPR_REGION_SLAB ? (V)&fpr_true : (V)&fpr_false;
+}
+static V g_region_cycle(V seqv, V packed) {
+  uw seq = (uw)UNTAG(seqv);
+  if (fpr_builtin_region_seq() != seq) { fpr_builtin_region_open(seq); return packed; }
+  fpr_builtin_region_cycle_begin();
+  fpr_hart_t *h = fpr_hart();
+  h->copy_movevec = 1;
+  V t = kp_dup(packed);
+  h->copy_movevec = 0;
+  vec_release_in(packed);
+  fpr_builtin_region_cycle_end();
+  return t;
+}
+static V g_loop_leave(V seqv, V r) {
+  if (fpr_builtin_region_seq() != (uw)UNTAG(seqv) || !seqv) return r;
+  return region_close_builtin(r, 1);
+}
+static V g_call_pend(V u) { (void)u; return TAG((sw)fpr_builtin_pend()); }
+static V g_call_leave(V tok, V r) {
+  if (!fpr_builtin_pend_pop((uw)UNTAG(tok))) return r;
+  return region_close_builtin(r, 1);
+}
+#endif
+FPR_FN(fpr_g__x24regionSeq, g_region_seq, 1);
+FPR_FN(fpr_g__x24regionMark, g_region_mark, 1);
+FPR_FN(fpr_g__x24regionRoom, g_region_room, 1);
+FPR_FN(fpr_g__x24regionCycle, g_region_cycle, 2);
+
+FPR_FN(fpr_g__x24loopLeave, g_loop_leave, 2);
+FPR_FN(fpr_g__x24callPend, g_call_pend, 1);
+FPR_FN(fpr_g__x24callLeave, g_call_leave, 2);
+
 static V g_arena(V f) {
   if (fpr_plane_memory) return fpr_plane_memory->arena(f);
 #ifdef FPR_BUILTIN
-  /* the builtin heap (machine/builtin/heap.c) has no pools: a region is the
-   * plain call, its allocations the heap's to free as ever (REGIONS-STAGE2) */
-  return fpr_apply(f, (V)&fpr_unit);
+  /* the builtin heap's region: the call's allocations die at its end, the
+   * result copied out first (machine/builtin/heap.c) */
+  if (!fpr_builtin_region_open(0)) return fpr_apply(f, (V)&fpr_unit); /* ARC builds: no regions */
+  return region_close_builtin(fpr_apply(f, (V)&fpr_unit), 0);
 #else
   /* Capture actor-owned storage, not its current hart: allocation and the
    * thunk may park, and a resumed actor can migrate before teardown. */
@@ -1591,7 +1973,7 @@ static V g_arena(V f) {
   /* copy the result into the CALLER's pool; free the transfer slab */
   V out = kp_dup(t);
   scope_release(&scope);
-  *head = scope.previous;
+  scope_unlink(head, &scope);
   return out;
 #endif
 }
@@ -1644,35 +2026,33 @@ static int vec_same(const vec_snap_t *sn, V v) {
 /* movevec: the compiler-placed turn ($receiveLoop): an owned Vector in the
  * state crosses by handle (vec_movable_here) instead of being refused; the
  * Sys.loop primitive keeps its contract (loopWith threads a buffer). */
-/* amortized: a pure self-tail-call loop's region is `Dynamic` with a capacity
- * of one slab, the allocator's floor (FPR_MSG_SLAB_SZ): the next state stays
- * in the arena, with the iteration's scratch, until the region has bumped a
- * slab's worth since its last reset; then the state is copied out and the
- * region reset.  The garbage is bounded by a slab plus the state, and the
- * copy is paid once per slab of scratch instead of once per iteration (a
- * boxed float per iteration made nbody three times slower with a turn each;
- * docs/2026-10-24-REGIONS-STAGE2.md).  A receive loop never amortizes: its
- * message dies at the turn's end, which needs the state copied out first. */
-static V g_loop_in(V s, V f, int movevec, int amortized) {
+static V g_loop_in(V s, V f, int movevec) {
   if (fpr_plane_memory) {
     if (!movevec) return fpr_plane_memory->loop(s, f);
-    if (fpr_plane_memory->abi < 4 || !fpr_plane_memory->loop_turn || !fpr_plane_memory->loop_region)
+    if (fpr_plane_memory->abi < 4 || !fpr_plane_memory->loop_turn)
       fpr_cpanic("receive loop: the memory plane predates turn regions with Vectors (rebuild the kernel)");
-    return amortized ? fpr_plane_memory->loop_region(s, f) : fpr_plane_memory->loop_turn(s, f);
+    return fpr_plane_memory->loop_turn(s, f);
   }
 #ifdef FPR_BUILTIN
-  /* no pools, no arena, no copy: the loop runs as written (the turn's
-   * garbage is the builtin heap's, as for every other call there) */
+  /* each turn in the builtin heap's region: the next state copied out, the
+   * turn's garbage freed (machine/builtin/heap.c) */
+  (void)movevec;
   { V state = s;
+  int regions = fpr_builtin_region_open(0);
   for (;;) {
     V r = fpr_apply(f, state);
     if (ISINT(r) || !fpr_in_heap(r) || TID(r) != T_TUP2)
       fpr_cpanic("Sys.loop: a step must return (continue, state)");
     V go = FPR_FLD(r, 0);
-    state = FPR_FLD(r, 1);
+    V nx = FPR_FLD(r, 1);
     if (ISINT(go) || !go || TID(go) != T_BOOL || ((hdr_t *)go)->var > 1)
       fpr_cpanic("Sys.loop: continue must be a Bool");
-    if (((hdr_t *)go)->var != 1) return state;
+    if (((hdr_t *)go)->var != 1) return regions ? region_close_builtin(nx, 0) : nx;
+    if (regions) {
+      fpr_builtin_region_cycle_begin();
+      state = kp_dup(nx);
+      fpr_builtin_region_cycle_end();
+    } else state = nx;
   } }
 #else
   if (!movevec) {
@@ -1688,7 +2068,6 @@ static V g_loop_in(V s, V f, int movevec, int amortized) {
   arena_open(slot, &ap);
   scope.arena = &ap;
   V state = s;
-  uw mark = ap.allocated; /* amortized: the region's bytes at its last reset */
   for (;;) {
     FPR_COST_ADD(fpr_hart(), cost_turns, 1);
     V r = fpr_apply(f, state);
@@ -1698,14 +2077,9 @@ static V g_loop_in(V s, V f, int movevec, int amortized) {
     if (ISINT(go) || !go || TID(go) != T_BOOL || ((hdr_t *)go)->var > 1)
       fpr_cpanic("Sys.loop: continue must be a Bool");
     int more = ((hdr_t *)go)->var == 1;
-    if (amortized && more && ap.allocated - mark < (uw)FPR_MSG_SLAB_SZ) {
-      state = nx; /* the state lives in the region with the scratch until the slab is full */
-      continue;
-    }
     V t = transfer_copy_in(nx, &scope, movevec ? 0 : "Sys.loop: the state may not hold a Vector (use Sys.loopWith)", movevec);
     scope_roots_die(&scope);
     arena_reset(&ap);
-    mark = ap.allocated;
     transfer_retire(&scope);
     state = scope.held = t;
     if (!more) break;
@@ -1716,13 +2090,12 @@ static V g_loop_in(V s, V f, int movevec, int amortized) {
   V out = kp_dup(state); /* into the caller's pool; an owned Vector stays where it is */
   { fpr_hart_t *fh = fpr_hart(); if (fh) fh->copy_movevec = 0; }
   scope_release(&scope);
-  *head = scope.previous;
+  scope_unlink(head, &scope);
   return out;
 #endif
 }
-static V g_loop(V s, V f) { return g_loop_in(s, f, 0, 0); }
-static V g_loop_turn(V s, V f) { return g_loop_in(s, f, 1, 0); }
-static V g_loop_region(V s, V f) { return g_loop_in(s, f, 1, 1); }
+static V g_loop(V s, V f) { return g_loop_in(s, f, 0); }
+static V g_loop_turn(V s, V f) { return g_loop_in(s, f, 1); }
 FPR_FN(fpr_g_Sys_x2eloop, g_loop, 2);
 
 /* Compiler-private tail-call trampoline. A checked receive SCC returns
@@ -1749,13 +2122,8 @@ static const pap0_t receive_step_fn = {T_PAP, 0, (uw)(uintptr_t)receive_step, 1,
  * `Clock.receiveWithin`, each `Poller` wait -- bumps them anew and leaks
  * them until the actor dies (112 bytes on a 64-bit host: tests/std/poller.fpr,
  * docs/2026-10-19-STD-SUITE-REPAIRS.md). */
-static V receive_loop_in(V thunk, V packed, int amortized);
-static V g_receive_loop(V thunk, V packed) { return receive_loop_in(thunk, packed, 0); }
-/* the compiler's boundary at a pure self tail call: the same trampoline over a
- * Dynamic region of one slab (g_loop_in amortized) */
-static V g_turn_loop(V thunk, V packed) { return receive_loop_in(thunk, packed, 1); }
-static V receive_loop_in(V thunk, V packed, int amortized) {
-  V out = g_loop_in(thunk, (V)&receive_step_fn, 1, amortized); /* the compiler's turn: owned Vectors move */
+static V g_receive_loop(V thunk, V packed) {
+  V out = g_loop_in(thunk, (V)&receive_step_fn, 1); /* the compiler's turn: owned Vectors move */
   if (!ISINT(thunk) && thunk && fpr_in_heap(thunk) && TID(thunk) == T_PAP) {
     pap_t *p = (pap_t *)thunk;
     if (p->nargs == 1 && ISINT(packed) && UNTAG(packed) > 1) {
@@ -1767,7 +2135,6 @@ static V receive_loop_in(V thunk, V packed, int amortized) {
   return out;
 }
 FPR_FN(fpr_g__x24receiveLoop, g_receive_loop, 2);
-FPR_FN(fpr_g__x24turnLoop, g_turn_loop, 2);
 
 static V g_loop_with(V vec, V s, V f) {
   if (fpr_plane_memory) return fpr_plane_memory->loop_with(vec, s, f);
@@ -1834,7 +2201,7 @@ static V g_loop_with(V vec, V s, V f) {
   tup->var = 0;
   *(V *)((char *)tup + 8) = out;
   *(V *)((char *)tup + 8 + sizeof(uw)) = vec;
-  *head = scope.previous;
+  scope_unlink(head, &scope);
   return (V)tup;
 #endif
 }
@@ -1847,7 +2214,6 @@ void fpr_memory_scopes_export(fpr_plane_memory_t *memory) {
   memory->arena = g_arena;
   memory->loop = g_loop;
   memory->loop_turn = g_loop_turn;
-  memory->loop_region = g_loop_region;
   memory->loop_with = g_loop_with;
 }
 
@@ -2318,6 +2684,11 @@ void fpr_rx_release_outer(struct fpr_acb *a) {
   for (uw j = k; j < r->n; j++) r->roots[j - k] = r->roots[j];
   r->n -= k;
   for (struct fpr_scope *sc = *fpr_acb_scope_slot(a); sc; sc = sc->previous) sc->rx_mark -= k;
+}
+void fpr_pends_reclaim(struct fpr_acb *a) {
+  fpr_pends_t *ps = fpr_acb_pends(a);
+  if (ps->block) { fpr_slab_release(ps->block); ps->block = 0; }
+  ps->v = 0; ps->n = 0; ps->cap = 0;
 }
 void fpr_rx_reclaim(struct fpr_acb *a) {
   fpr_rx_t *r = fpr_acb_rx(a);

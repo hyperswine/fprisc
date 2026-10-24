@@ -10,8 +10,5 @@ if [[ -n "${FPR_PRESET:-}" ]]; then
   fpr_preset_setting FPR_XLEN 32
   fpr_preset_setting FPR_RVC 1
   fpr_preset_setting FPR_CPU_MHZ 48
-  fpr_preset_setting FPR_GC 1
-  fpr_preset_setting FPR_GC_STRESS 0
-  unset FPR_GC_STRESS
   unset -f fpr_preset_setting
 fi

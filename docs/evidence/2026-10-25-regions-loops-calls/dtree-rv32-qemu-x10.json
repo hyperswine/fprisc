@@ -1,0 +1,75 @@
+{
+  "reference": {
+    "train_rows": 512,
+    "test_rows": 128,
+    "bins": 16,
+    "max_depth": 6,
+    "min_leaf": 5,
+    "nodes": 55,
+    "depth": 6,
+    "train": {
+      "hits": 481,
+      "rows": 512,
+      "digest": 354774,
+      "predictions_sha256": "dbc85e3a7188d43555e0876fc50dd901b15fa11c6da8ebda539e8580266f37a1"
+    },
+    "test": {
+      "hits": 116,
+      "rows": 128,
+      "digest": 434626,
+      "predictions_sha256": "9bc880f50defb44919cec07bff13fdfb9442287d88fa9e8b09300cc8100ef5c8"
+    },
+    "root": {
+      "column": 0,
+      "threshold": -0.12101956852711737
+    },
+    "entropy": "Independent Python math.log2; classifier uses its existing 48-step log2"
+  },
+  "source_sha256": "ae32e8681aa79aacd686cda5f0e954d56393c778fb68b8815e3567b0dc5eedec",
+  "classifier_sha256": "486a4abbd0876014555862a5bb70db6d4c0402e6e3f7f6193fbacb576750c791",
+  "compiler_sha256": "2501c6675ac8a48f783dea6a50d851331609d2927c9326dc79e464db83d6fe16",
+  "repeats": 10,
+  "executions": {
+    "qemu": {
+      "image_sha256": "31a2c9e73d2a25f0d7b263e2a68904607bf4b5fca75193056f7e3f9f005dce58",
+      "image_bytes": 160672,
+      "heap_arena_bytes": 8115904,
+      "heap_bitmap_bytes": 63408,
+      "usable_heap_block_bytes": 8052496,
+      "stack_bytes": 65536,
+      "frequency_mhz": 48,
+      "isa": "RV32IMC",
+      "passed": true,
+      "heap_samples": [
+        {
+          "live": 1254336,
+          "peak": 2532832,
+          "requests": 2359871,
+          "requested": 57546680,
+          "regions": 25321,
+          "reclaimed": 183472640
+        }
+      ],
+      "elapsed_us": 3371083,
+      "elapsed_us_runs": [
+        3509750,
+        3389979,
+        3391145,
+        3335083,
+        3371354,
+        3312520,
+        3346416,
+        3366229,
+        3360708,
+        3371083
+      ]
+    }
+  },
+  "build_options": {
+    "FPR_XLEN": "32",
+    "FPR_RVC": "1",
+    "FPR_QEMU": "1",
+    "FPR_CPU_MHZ": "48",
+    "FPR_HEAP_REPORT": "1"
+  }
+}

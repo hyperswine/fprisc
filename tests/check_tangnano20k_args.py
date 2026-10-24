@@ -39,14 +39,14 @@ def main():
         out = ROOT / f'build/tangnano20k-args/rv{xlen}'
         out.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, 'FPR_XLEN': str(xlen), 'FPR_RVC': '1',
-               'FPR_QEMU': '1', 'FPR_CPU_MHZ': '48', 'FPR_GC': '1', 'FPR_GC_STRESS': '1'}
+               'FPR_QEMU': '1', 'FPR_CPU_MHZ': '48'}
         env.pop('FPR_PRESET', None)
         build = subprocess.run(['machine/tangnano20k/build.sh', 'tests/tangnano20k_args.fpr', str(out)],
                                cwd=ROOT, env=env, capture_output=True, text=True, timeout=180)
         (out / 'build.log').write_text(build.stdout + build.stderr)
         assert build.returncode == 0, build.stdout + build.stderr
-        # The maximum count and frame exercise allocation under the production
-        # register/root adapter with collection before every allocation.
+        # The maximum count and frame exercise allocation on the region heap
+        # (docs/2026-10-25-REGIONS-LOOPS-CALLS.md; the collector is gone).
         for i, args in enumerate(cases):
             output = run_image(out / 'base.elf', out, 120, device=Device(out, args=args), xlen=xlen)
             (out / f'case-{i}.log').write_text(output)
@@ -63,7 +63,7 @@ def main():
                                expected_exit=1, xlen=xlen)
             (out / f'invalid-{i}.log').write_text(output)
             assert reason in output, output
-        print(f'RV{xlen}: arguments, limits, malformed/unsupported replies and GC roots PASS', flush=True)
+        print(f'RV{xlen}: arguments, limits, malformed/unsupported replies on the region heap PASS', flush=True)
 
 
 if __name__ == '__main__':

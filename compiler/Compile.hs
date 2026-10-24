@@ -460,9 +460,10 @@ compileWithInterface accepted = do
   envNoReuse <- (== Just "1") <$> lookupEnv "FPR_NO_REUSE"
   envNoSpec <- (== Just "1") <$> lookupEnv "FPR_NO_SPEC"
   envNoReceiveTurns <- (== Just "1") <$> lookupEnv "FPR_NO_RECEIVE_TURNS"
-  -- FPR_LOOP_REGIONS=1: a pure self tail call gets a Dynamic region too; off by
-  -- default, the trampoline costing a hot loop too much (REGIONS-STAGE2)
-  envLoopRegions <- (== Just "1") <$> lookupEnv "FPR_LOOP_REGIONS"
+  -- compiler-placed regions (docs/2026-10-25-REGIONS-LOOPS-CALLS.md): a pure
+  -- loop's back edge and a costly call; each can be switched off to compare
+  envLoopRegions <- (/= Just "1") <$> lookupEnv "FPR_NO_LOOP_REGIONS"
+  envCallRegions <- (/= Just "1") <$> lookupEnv "FPR_NO_CALL_REGIONS"
   envReceiveNotes <- (== Just "1") <$> lookupEnv "FPR_RECEIVE_NOTES"
   envApply <- (== Just "1") <$> lookupEnv "FPRC_APPLY"
   envNoInline <- (== Just "1") <$> lookupEnv "FPR_NO_INLINE"
@@ -744,8 +745,14 @@ compileWithInterface accepted = do
           compileRaw uts = let (p, st) = runState (compileTop uts >>= liftFix) (DEnv 0 consAll shapes [] [])
                             in (M.map (fmap eraseCast) p, S.fromList (dJoins st))
           turnContext = fst (compileRaw finalTops)
-          turnPass (p, joins) = if oBuiltin opts || oArc opts || envNoReceiveTurns then (p, [])
-                       else receiveTurns envLoopRegions (M.fromList interfaces) finalTops turnContext joins p
+          -- regions (the compiler-placed loop and call kinds) change no work
+          -- and no allocation: the cost report sees the program without them
+          -- the whole program's cost equations, once (lazy: only a build with
+          -- call regions on computes them)
+          contextEqs = Cost.costProgram (fst (measureCheck tops)) M.empty turnContext
+          turnPassWith regions (p, joins) = if oBuiltin opts || oArc opts || envNoReceiveTurns then (p, [])
+                       else receiveTurns (regions && envLoopRegions) (regions && envCallRegions) contextEqs (M.fromList interfaces) finalTops turnContext joins p
+          turnPass = turnPassWith True
           compileUnit = fst . turnPass . compileRaw
           -- tid collision check (fnv32 is probabilistic; fail LOUDLY)
           tidDecls =
@@ -801,7 +808,7 @@ compileWithInterface accepted = do
             Left err -> putStrLn ("=== MANIFEST: ERROR ===\n  * " ++ err) >> exitFailure
             Right m -> pure (Just m)
       when (oCost opts || declaredAny) $ do
-        let costProg = compileUnit finalTops
+        let costProg = fst (turnPassWith False (compileRaw finalTops))
             (measTable, _) = measureCheck tops
             surface = M.fromList [(n, [case p of PVar v -> v; PSig v _ -> v; _ -> "arg" ++ show i | (i, p) <- zip [1 :: Int ..] ps]) | TBind n ps _ _ <- firstClauses finalTops]
             firstClauses ts = M.elems (M.fromListWith (\_ old -> old) [(n, t) | t@(TBind n _ _ _) <- ts])
@@ -923,7 +930,7 @@ compileWithInterface accepted = do
             when (not envReceiveNotes && not (null declined)) $
               hPutStrLn stderr ("turn-regions: " ++ show (length declined) ++ " self-tail-call group(s) declined (unbounded or unproven state); FPR_RECEIVE_NOTES=1 lists them")
             when (not envLoopRegions && any ("turn-regions (candidate): " `isPrefixOf`) ns) $
-              hPutStrLn stderr "turn-regions: the candidates above are placed with FPR_LOOP_REGIONS=1 (off by default: the trampoline costs a hot loop too much; docs/2026-10-24-REGIONS-STAGE2.md)"
+              hPutStrLn stderr "turn-regions: the candidates above are not placed (FPR_NO_LOOP_REGIONS=1)"
           checkBuiltinWidth p = do
             when (oArc opts && any (coreHasName i32WidePrimitive . snd) (M.elems p)) $ do
               hPutStrLn stderr "I32 conversions with I64/F32/F64 currently require the manual ABI; --arc/--raw bridge ownership adapters are not implemented"
@@ -949,7 +956,7 @@ compileWithInterface accepted = do
               [ M.fromList [(n, length as) | TSig n (as, _) _ <- preludeE' ++ concatMap snd units' ++ root'],
                 M.map (\(Forall _ _ t) -> arrows t) builtinEnv,
                 -- the internal pair-free vector reads (Inline.vecPeek, vec.c)
-                M.fromList [("$vec.at", 2), ("$vec.get", 2), ("$vec.len", 1), ("$receiveLoop", 2), ("$turnLoop", 2)] ]
+                M.fromList [("$vec.at", 2), ("$vec.get", 2), ("$vec.len", 1), ("$receiveLoop", 2), ("$regionSeq", 1), ("$regionMark", 1), ("$regionRoom", 1), ("$regionCycle", 2), ("$loopLeave", 2), ("$callPend", 1), ("$callLeave", 2)] ]
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
           tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = not envNoFloatInline, tgtSimd=(oA64 opts || oX64 opts) && not envNoSimd, tgtFusion=not envNoFusion,
@@ -1047,7 +1054,7 @@ compileWithInterface accepted = do
             Nothing -> ""
             Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev) ++ (if a64 || x64 then "-native1" else "") ++ (if g == PerFunction then "mixed" else "") ++ (if a64 && not qapp && envTirFpPool then "-fpregs" else "") ++ (if envTirLoops then "" else "-noloops") ++ (if envTirShallow then "-shallow" else "") ++ (if envTirForward then "-forward" else "") ++ (if envTirEntryArgs then "-entryargs" else "") ++ (if envTirSplit then "-split" else "") ++ (if envTirWrap then "-wrap" else "") ++ (if envTirLinkPairs then "" else "-nolinkpairs") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
           fnv = foldl (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) (14695981039346656037 :: Word64)
-          tag = "g" ++ show codegenRev ++ backendTag ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
+          tag = "g" ++ show codegenRev ++ backendTag ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envLoopRegions then "" else "-nolr") ++ (if envCallRegions then "" else "-nocr") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit

@@ -528,6 +528,31 @@ def swarmkeeper(tmp):
     print('The swarm keeper is a turn: 10,000 ticks of 2,000 motes, Vectors moved across every boundary, resident memory flat on one and four harts: PASS')
 
 @case
+def regionnest(tmp):
+    # loop and call regions (docs/2026-10-25-REGIONS-LOOPS-CALLS.md): a loop
+    # resets per slab, a costly call's region opens when the call has used a
+    # slab, and an arena's copy-out may be what opens it (the scope chain
+    # bug the POS reload check found)
+    rn = tmp / 'regionnest'
+    run(['./fpr', 'build', 'tests/base/regionnest.fpr', '--with', 'tests/arc_churn/arcprobe.c', '-o', rn])
+    for harts in ('1', '4'):
+        p = run([rn], env={'FPR_HARTS': harts})
+        assert p.stdout == 'regionnest: 800000 cells through 40 arenas, built 45000150000 adopted, loop 19296732; call regions opened yes, loop region reset per slab; memory bounded\n', p.stdout + p.stderr
+    print('Loop regions reset per slab, call regions open when a call has used a slab, a builder\'s region is adopted whole, and an arena copying out under a pending call region keeps the chain: PASS')
+
+@case
+def pendreset(tmp):
+    # call regions nested past the pend stack's inline eight, across a
+    # Sys.poolReset: the grown stack must not live in the pool the reset
+    # frees (it did: QOS's tidy loops panicked; this program segfaulted)
+    pr = tmp / 'pendreset'
+    run(['./fpr', 'build', 'tests/base/pendreset.fpr', '--with', 'tests/arc_churn/arcprobe.c', '-o', pr])
+    for harts in ('1', '4'):
+        p = run([pr], env={'FPR_HARTS': harts})
+        assert p.stdout == 'pendreset: 500509 500509 200010000, pend stack grew yes\n', p.stdout + p.stderr
+    print('Ten nested call regions grow the pend stack outside the pool, and a Sys.poolReset under it leaves later cells intact: PASS')
+
+@case
 def fixedheap(tmp):
     # Fixed heap admission is independent of mailbox capacity; failures
     # belong to the child and escaped data delays grant reclamation.
@@ -814,7 +839,9 @@ def vecpeek(tmp):
     # value, and the 2,000 reads cost only the loops' two final pairs
     on = run([build('tests/base/vecpeek.fpr', 'vp1')]).stdout.splitlines()
     exe = tmp / 'vp2'
-    run(['./fpr', 'build', 'tests/base/vecpeek.fpr', '-o', exe], env={'FPR_NO_VEC_PEEK': '1'})
+    # the baseline counts the pairs, so no loop region may reclaim them (one
+    # resets inside the second loop: 82,960 bytes; docs/2026-10-25-REGIONS-LOOPS-CALLS.md)
+    run(['./fpr', 'build', 'tests/base/vecpeek.fpr', '-o', exe], env={'FPR_NO_VEC_PEEK': '1', 'FPR_NO_LOOP_REGIONS': '1', 'FPR_NO_CALL_REGIONS': '1'})
     off = run([exe]).stdout.splitlines()
     assert on[0] == off[0] == 'at 1499500 get 1499500 whole 70 shadow 3998', (on, off)
     assert on[1] == '2000 reads: 96 bytes' and off[1] == '2000 reads: 96096 bytes', (on, off)

@@ -27,8 +27,8 @@ static void raw(const char *s){while(*s)hal_putc(*s++);}
 static void heap_report(void) {
 #ifdef FPR_HEAP_REPORT
  fpr_builtin_heap_stats s;fpr_builtin_heap_get_stats(&s);
- const char *names[]={" live="," peak="," requests="," requested="," collections="," reclaimed="};
- uw values[]={s.live_bytes,s.peak_bytes,s.requests,s.requested_bytes,s.collections,s.reclaimed_bytes};
+ const char *names[]={" live="," peak="," requests="," requested="," regions="," reclaimed="};
+ uw values[]={s.live_bytes,s.peak_bytes,s.requests,s.requested_bytes,s.regions,s.reclaimed_bytes};
  raw("HEAP");
  for(unsigned i=0;i<6;i++){char buf[24];unsigned n=0;uw v=values[i];raw(names[i]);do{buf[n++]=(char)('0'+v%10);v/=10;}while(v);while(n)hal_putc(buf[--n]);}
  raw("\n");
@@ -38,13 +38,11 @@ __attribute__((noreturn)) void hal_poweroff(int code){heap_report();raw(code?"FP
 void fpr_cpanic_n(const char *s,uw n){raw("Base panic: ");for(uw i=0;i<n;i++)hal_putc(s[i]);hal_putc('\n');hal_poweroff(1);}
 void fpr_cpanic(const char *s){fpr_cpanic_n(s,strlen(s));}
 void fpr_builtin_main(void){
- fpr_set_tp(&fpr_harts[0]);fpr_harts[0].fuel=1000000;fpr_harts[0].stk_lo=(uw)_heap_end+4096;fpr_harts[0].stk_span=65536-4096;
+ fpr_set_tp(&fpr_harts[0]);fpr_builtin_heap_clock(&fpr_harts[0].region_bytes);fpr_harts[0].fuel=1000000;fpr_harts[0].stk_lo=(uw)_heap_end+4096;fpr_harts[0].stk_span=65536-4096;
  fpr_builtin_heap_init(_heap_start,_heap_end);(void)fpr_fn_main();hal_poweroff(0);
 }
 void fpr_fuel_exhausted(void){fpr_harts[0].fuel=1000000;}
-#ifdef FPR_BUILTIN_GC
-void fpr_tangnano_gc_report(void) { raw("GC "); heap_report(); }
-#endif
+
 static uint64_t cycles(void){
 #if __riscv_xlen == 32
  uint32_t hi,lo,end;

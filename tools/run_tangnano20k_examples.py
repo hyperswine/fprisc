@@ -162,7 +162,7 @@ def main():
         # Validate the preset before compiler builds, tool downloads or hardware
         # changes. The shell contract refuses conflicting inherited settings.
         run(['bash', '-c', 'source machine/tangnano20k/preset.sh'], out / 'preset.log', env)
-        env.update(FPR_XLEN='32', FPR_RVC='1', FPR_CPU_MHZ='48', FPR_GC='1')
+        env.update(FPR_XLEN='32', FPR_RVC='1', FPR_CPU_MHZ='48')
         bitstream = None
         if args.target == 'board':
             bitstream, report['fpga'] = fpga_image(args.fpga_manifest.resolve())

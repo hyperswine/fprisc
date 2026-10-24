@@ -89,7 +89,7 @@ a64HostedInterfaceRev = 16
 -- bump when the selection, placement, layout or rendering changes what is
 -- emitted (a unit-cache and run-cache identity component)
 a64SelectionRev :: Int
-a64SelectionRev = 23 -- sized frames; prior: captured NEON, FP pool, comparison/F32 trees
+a64SelectionRev = 27 -- the hart-cell load (loop region clock); sized frames; prior: captured NEON, FP pool, comparison/F32 trees
 
 -- how generated code reaches the hart block
 data HartAccess
@@ -385,6 +385,16 @@ selectInstr _ _ (Instr d op) = case op of
   OLoadByte a n -> def (\r -> emitI (plain "load.byte" [any' r] [any' (vreg a), OI (fromIntegral n)]))
   OStore _ a n v -> emitI (plain "store.field" [] [any' (vreg a), any' (vreg v), OI (fromIntegral n)])
   OConstInt n -> def (\r -> emitI (li r n))
+  OHartCell j -> def (\r -> emitI ((plain "load.spill" [any' r] [OI (fromIntegral j)]) {siImplicitDefs = [x 9, x 16, x 17]}))
+  ORegionRoom mark -> def $ \r -> do
+    clock <- freshV False
+    used <- freshV False
+    scaled <- freshV False
+    emitI ((plain "load.spill" [any' clock] [OI 58]) {siImplicitDefs = [x 9, x 16, x 17]})
+    emitI (rrr "sub.asr1" used clock (vreg mark)) -- the mark is a tagged Int: its value is word >> 1
+    emitI (rri "lsl" scaled used 3)
+    emitI (cmpi scaled (65536 * 8))
+    emitI (cset "lo" r)
   OBits n -> def (\r -> emitI (li r n))
   ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
   OString text -> def $ \rd -> do
@@ -687,6 +697,10 @@ selectTerm _ fn b = case bTerm b of
         parallelMoves (zip (paramsOf target) (map vreg as))
         emitI (jump (blockLabel target))
   TCondBr p t as e bs
+    -- the textually next block is reached by falling through: a hot path
+    -- laid out after its test takes no branch at all
+    | null as && null bs, Just e == next -> emitI (cbnz (vreg p) (blockLabel t))
+    | null as && null bs, Just t == next -> emitI (cbz (vreg p) (blockLabel e))
     | null as && null bs -> do
         emitI (cbnz (vreg p) (blockLabel t))
         emitI (jump (blockLabel e))
@@ -709,6 +723,9 @@ selectTerm _ fn b = case bTerm b of
     emitI ((plain "panic" [] [OS (stringLabel msg)])
              {siImplicitDefs = [x 0], siClobbers = callerSaved, siControl = Return, siCalls = [Call "fpr_panic" False True]})
   where
+    next = case dropWhile ((/= bId b) . bId) (fnBlocks fn) of
+      (_ : n : _) -> Just (bId n)
+      _ -> Nothing
     paramsOf bid = [vreg v | blk <- fnBlocks fn, bId blk == bid, (v, _) <- bParams blk]
 
 -- ---- placement, layout, rendering --------------------------------------
@@ -989,7 +1006,10 @@ renderItem cfg ly large fname pairs restores (I i) = map indent (go (siOp i) (si
       ("ret", [], [_]) -> epilogue ++ ["ret"]
       ("tailjump", [], OS s : _) -> epilogue ++ ["b " ++ gsym cfg s]
       ("store.spill", [], [s, OI j]) -> hartRead ++ ldst "str" "stur" (reg s) "x9" (8 * (1 + j))
-      ("load.spill", [d], [OI j]) -> hartRead ++ ldst "ldr" "ldur" (reg d) "x9" (8 * (1 + j))
+      ("load.spill", [d], [OI j]) -> case cfgHart cfg of
+        HartX28 -> ldst "ldr" "ldur" (reg d) "x28" (8 * (1 + j)) -- the hart register itself: no copy into x9
+        _ -> hartRead ++ ldst "ldr" "ldur" (reg d) "x9" (8 * (1 + j))
+      ("sub.asr1", [d], [a, b]) -> ["sub " ++ reg d ++ ", " ++ reg a ++ ", " ++ reg b ++ ", asr #1"]
       ("entry.check.tick", _, _) -> hartRead ++ stackCheck ++ tick
       ("entry.check", _, _) -> hartRead ++ stackCheck
       ("entry.tick", _, _) -> hartRead ++ tick

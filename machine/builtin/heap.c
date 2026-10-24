@@ -11,12 +11,17 @@
  */
 #include "builtin.h"
 #include <stdint.h>
-#if defined(FPR_BUILTIN_GC) && defined(__riscv)
-/* Private allocator pointers (bounds/free lists) are not application roots. */
-#define HEAP_STATE __attribute__((section(".bss.fpr_heap")))
-#else
+/* REGIONS (docs/2026-10-25-REGIONS-LOOPS-CALLS.md).  This heap has no
+ * collector: a value lives until its owner frees it or the region it was
+ * allocated in resets.  A region keeps an intrusive list of the blocks it
+ * allocated, threaded through `pending` (the link the ARC release worklist
+ * uses, never live at the same time: ARC builds open no regions), so a
+ * region costs no bytes per allocation and its reset walks only its own
+ * blocks.  A block's `used` says which it is: 1 untracked (no region was
+ * open, or bulk Vector storage, which outlives every region), 2 in a
+ * region's list, 3 in a list and already freed by its owner (the space
+ * waits for the reset; the live bit is gone, so a second free is refused). */
 #define HEAP_STATE
-#endif
 typedef struct block { uw size; struct block *prev, *next; uw used; uw fields; struct block *pending; const str_t *layout; uw alignment_padding; } block;
 _Static_assert((sizeof(block)+16)%16 == 0, "Builtin payload alignment");
 _Static_assert(sizeof(uw) == 4 || sizeof(uw) == 8, "Builtin heap requires RV32/RV64 words");
@@ -42,7 +47,7 @@ static block *bins[CLASS_ROWS][SUBS] HEAP_STATE;
 static unsigned char submap[CLASS_ROWS] HEAP_STATE;
 static uw firstmap HEAP_STATE, live_count HEAP_STATE;
 static unsigned char *live_map HEAP_STATE;
-#if defined(FPR_BUILTIN_HEAP_STATS) || defined(FPR_BUILTIN_GC)
+#if defined(FPR_BUILTIN_HEAP_STATS)
 static fpr_builtin_heap_stats statistics HEAP_STATE;
 #define HEAP_STAT(code) do { code; } while (0)
 #else
@@ -198,19 +203,90 @@ static block *available(uw size) {
   }
   return 0;
 }
-V fpr_alloc(V bytes) {
+/* ---- regions ---------------------------------------------------------- */
+typedef struct region {
+  struct region *up;
+  uw seq;            /* the loop activation that opened it; 0 for a call region */
+  block *scratch;    /* what the current turn allocated */
+  block *held;       /* the state the last reset copied out */
+  block *fresh;      /* the state a reset is copying out now */
+  block **target;    /* where a new block is linked: &scratch, or &fresh mid-copy */
+  uw bytes;          /* bytes allocated into scratch since the last reset */
+} region;
+static region *cur_region HEAP_STATE;
+static uw loose_bytes HEAP_STATE; /* non-bulk bytes allocated with no region open */
+typedef struct { uw mark; region *in; region *opened; } pend;
+static pend pend0[8] HEAP_STATE;
+static pend *pends HEAP_STATE;
+static uw npend HEAP_STATE, cappend HEAP_STATE;
+static uw region_opens HEAP_STATE, region_reclaimed HEAP_STATE;
+/* the hart's allocation clock (fpr.h region_bytes, the word a loop region's
+ * back edge reads inline): the host that owns the hart block names it once
+ * (machine/tangnano20k/base.c); a harness without one leaves it unset */
+static uw *clock_cell HEAP_STATE;
+void fpr_builtin_heap_clock(uw *cell) { clock_cell = cell; }
+static uw cur_bytes(void) { return cur_region ? cur_region->bytes : loose_bytes; }
+/* a call region opens once its call has allocated this much in the region it
+ * started in.  On the host the trip is a slab, the price of an open; here an
+ * open costs one small block (the region record) and the result's copy, so
+ * the trip is small: what a call leaves in its caller before it trips is
+ * garbage until the CALLER's region resets, and nested calls each leave that
+ * much (dtree's 30 entropy calls inside a split search).  At 4 KiB the open
+ * is under 3% of what the call allocated. */
+#ifndef FPR_BUILTIN_CALL_TRIP
+#define FPR_BUILTIN_CALL_TRIP ((uw)4096)
+#endif
+static V alloc_impl(V bytes, int bulk);
+static void physical_free(block *b);
+__attribute__((unused)) /* ARC builds open no regions */
+static region *region_push(uw seq) {
+  region *r = (region *)alloc_impl(sizeof(region), 1);
+  r->up = cur_region; r->seq = seq;
+  r->scratch = r->held = r->fresh = 0;
+  r->target = &r->scratch; r->bytes = 0;
+  cur_region = r;
+  region_opens++;
+  return r;
+}
+static void free_list(block *b) {
+  while (b) {
+    block *nx = b->pending; /* read first: the free may merge this header away */
+    if (b->used == 2) {
+      mark_live(payload(b), 0); live_count--;
+      HEAP_STAT(statistics.live_bytes -= b->size);
+    }
+    region_reclaimed += b->size;
+    physical_free(b);
+    b = nx;
+  }
+}
+static V alloc_impl(V bytes, int bulk) {
   if (bytes > UINTPTR_MAX - PREFIX - 15) fpr_cpanic("Builtin: allocation overflow");
   uw size = PREFIX + ((bytes + 15) & ~(uw)15);
   if (size == PREFIX) size += 16;
-#if defined(FPR_BUILTIN_GC) && defined(FPR_BUILTIN_GC_STRESS)
-  if (statistics.requests % FPR_BUILTIN_GC_STRESS == 0) fpr_builtin_gc_collect();
+#ifdef FPR_BUILTIN_ARC
+  (void)bulk; /* ARC builds open no regions: every block is untracked */
+#else
+  /* a pending call region whose call has used a slab here opens now */
+  if (!bulk && npend) {
+    pend *e = &pends[npend - 1];
+    if (!e->opened && e->in == cur_region && cur_bytes() - e->mark >= FPR_BUILTIN_CALL_TRIP) e->opened = region_push(0);
+  }
 #endif
   block *b = available(size);
-#ifdef FPR_BUILTIN_GC
-  if (!b && size <= high - low) { fpr_builtin_gc_collect(); b = available(size); }
-#endif
   if (!b) fpr_cpanic("Builtin: out of memory");
   remove_free(b); split(b, size); b->used = 1; b->fields = 0; b->pending = 0; b->layout = 0;
+#ifndef FPR_BUILTIN_ARC
+  if (!bulk) {
+    if (clock_cell) *clock_cell += b->size; /* the clock a loop region's back edge reads (hart cell 58) */
+    if (cur_region) {
+      b->used = 2;
+      b->pending = *cur_region->target;
+      *cur_region->target = b;
+      cur_region->bytes += b->size;
+    } else loose_bytes += b->size;
+  }
+#endif
   b->alignment_padding = 0;
   meta(b)[0] = b->size - sizeof(block); meta(b)[1] = 1;
   mark_live(payload(b), 1); live_count++;
@@ -220,6 +296,7 @@ V fpr_alloc(V bytes) {
   V p = payload(b); zero_words(p, b->size - PREFIX);
   return p;
 }
+V fpr_alloc(V bytes) { return alloc_impl(bytes, 0); }
 static void merge(block *b) {
   block *n = b->next;
   if (n && !n->used) {
@@ -233,7 +310,12 @@ void fpr_free(V v) {
   block *b = find(v);
   if (meta(b)[1] != 1) fpr_cpanic("Builtin: free of shared allocation");
   HEAP_STAT(statistics.live_bytes -= b->size);
-  mark_live(v, 0); live_count--; b->used = 0; merge(b);
+  mark_live(v, 0); live_count--;
+  if (b->used == 2) { b->used = 3; return; } /* in a region's list: its space waits for the reset */
+  physical_free(b);
+}
+static void physical_free(block *b) {
+  b->used = 0; merge(b);
   if (b->prev && !b->prev->used) {
     block *p = b->prev; remove_free(p);
     p->size += b->size; p->next = b->next;
@@ -242,8 +324,8 @@ void fpr_free(V v) {
   }
   insert_free(b);
 }
-V fpr_realloc(V v, V bytes) {
-  if (!v) return bytes ? fpr_alloc(bytes) : 0;
+static V realloc_impl(V v, V bytes, int bulk) {
+  if (!v) return bytes ? alloc_impl(bytes, bulk) : 0;
   block *b = find(v);
   if (meta(b)[1] != 1) fpr_cpanic("Builtin: realloc of shared allocation");
   if (!bytes) { fpr_free(v); return 0; }
@@ -252,7 +334,7 @@ V fpr_realloc(V v, V bytes) {
   uw old_capacity = b->size - PREFIX;
   uw size = PREFIX + ((bytes + 15) & ~(uw)15);
   if (b->next && !b->next->used && b->size + b->next->size >= size) {
-#if defined(FPR_BUILTIN_HEAP_STATS) || defined(FPR_BUILTIN_GC)
+#if defined(FPR_BUILTIN_HEAP_STATS)
     uw old_size = b->size;
 #endif
     merge(b); split(b, size);
@@ -262,11 +344,12 @@ V fpr_realloc(V v, V bytes) {
     zero_words(v + old_capacity, b->size - PREFIX - old_capacity);
     return v;
   }
-  V n = fpr_alloc(bytes);
+  V n = alloc_impl(bytes, bulk);
   copy_payload(n, v, b->size - PREFIX);
   block *m = find(n); m->fields = b->fields; m->layout = b->layout;
   fpr_free(v); return n;
 }
+V fpr_realloc(V v, V bytes) { return realloc_impl(v, bytes, 0); }
 /* Explicit owning references, not automatic compiler ARC. Constructors move
  * references into fields. Retain before reusing an owning reference. Float
  * payloads, cycles and custom raw-pointer objects are outside this API.
@@ -309,82 +392,8 @@ uw fpr_builtin_live_allocations(void) {
 }
 void fpr_builtin_heap_get_stats(fpr_builtin_heap_stats *out) {
   *out = (fpr_builtin_heap_stats){0}; HEAP_STAT(*out = statistics);
+  out->regions = region_opens; out->reclaimed_bytes = region_reclaimed;
 }
-#ifdef FPR_BUILTIN_GC
-#ifdef FPR_BUILTIN_ARC
-#error "Conservative collection and compiler ARC are separate ownership modes"
-#endif
-static block *gc_work HEAP_STATE;
-static int gc_active HEAP_STATE;
-/* Locate the preceding live payload through the bitmap, never through an
- * untrusted candidate's apparent header. A stale/interior integer is harmless.
- * Unlike find(), this deliberately accepts byte-interior payload pointers. */
-static block *gc_owner(uw v) {
-  if (v < low || v > high) return 0;
-  if (v < low + PREFIX) return 0;
-  uw bit = ((v == high ? v-1 : v)-low) >> 4, index = bit / WORD_BITS;
-  uw bits = ((const heap_word *)live_map)[index] & (~(uw)0 >> (WORD_BITS-1-bit%WORD_BITS));
-  while (!bits && index) bits = ((const heap_word *)live_map)[--index];
-  if (!bits) return 0;
-  uw start = low + ((index*WORD_BITS + log2_word(bits)) << 4);
-  block *b = (block *)(start-PREFIX);
-  return v-start <= b->size-PREFIX ? b : 0; /* include a one-past-end iterator */
-}
-static void gc_enqueue(block *b) {
-  if (b && b->used == 1) { b->used = 2; b->pending = gc_work; gc_work = b; }
-}
-static void gc_mark(uw v, int allocator_headers) {
-  if (allocator_headers && v >= low && v < high) {
-    /* C may keep only an address of a metadata field across fpr_alloc.
-     * Authenticate the following payload, at most PREFIX bytes away. */
-    for (uw p=(v+15)&~(uw)15; p<high && p-v<=PREFIX; p+=16) {
-      uw bit=(p-low)>>4;
-      if (live_map[bit>>3] & (1u<<(bit&7))) gc_enqueue((block *)(p-PREFIX));
-    }
-  }
-  /* A block header can ALSO be the preceding allocation's one-past-end
-   * pointer. Preserve both interpretations rather than choosing one. */
-  gc_enqueue(gc_owner(v));
-}
-void fpr_builtin_gc_begin(void) {
-  if (gc_active) fpr_cpanic("Builtin: reentrant collection");
-  gc_active = 1; gc_work = 0; statistics.collections++;
-}
-void fpr_builtin_gc_roots(const uw *begin, const uw *end, int allocator_headers) {
-  if (!gc_active || ((uw)begin % sizeof(uw)) || ((uw)end % sizeof(uw)) || (uw)end < (uw)begin)
-    fpr_cpanic("Builtin: invalid GC roots");
-  for (uw p = (uw)begin; p < (uw)end; p += sizeof(uw)) gc_mark(*(const heap_word *)p, allocator_headers);
-}
-void fpr_builtin_gc_end(void) {
-  if (!gc_active) fpr_cpanic("Builtin: collection not started");
-  while (gc_work) {
-    block *b = gc_work; gc_work = b->pending; b->pending = 0;
-    gc_mark((uw)b->layout, 0);
-    fpr_builtin_gc_roots((const uw *)payload(b), (const uw *)((uw)b+b->size), 0);
-  }
-  /* Sweep without recursive releases: cycles are reclaimed together. Rebuild
-   * free indices after marking so coalescing cannot invalidate the traversal. */
-  for (block *b = (block *)low; b; b = b->next) {
-    if (b->used == 2) b->used = 1;
-    else if (b->used) {
-      mark_live(payload(b), 0); live_count--; b->used = 0;
-      statistics.live_bytes -= b->size; statistics.reclaimed_bytes += b->size;
-    }
-  }
-  firstmap = 0;
-  for (unsigned f=0; f<CLASS_ROWS; f++) {
-    submap[f]=0; for (unsigned s=0;s<SUBS;s++) bins[f][s]=0;
-  }
-  for (block *b = (block *)low; b; b = b->next) if (!b->used) {
-    while (b->next && !b->next->used) {
-      block *n=b->next; b->size+=n->size; b->next=n->next;
-      if (b->next) b->next->prev=b;
-    }
-    insert_free(b);
-  }
-  gc_active = 0;
-}
-#endif
 /* Worklist lives in dead blocks themselves. No recursive C stack, allocation
  * or fixed queue capacity is needed to release arbitrarily deep acyclic data.
  * Queued blocks stay allocated until their fields have been visited.
@@ -426,6 +435,72 @@ char fpr_builtin_field_kind(V v,uw i) {
   if(i>=b->fields) fpr_cpanic("Builtin: field index out of range");
   return b->layout ? b->layout->bytes[i] : 't';
 }
-/* bulk storage is ordinary storage here: no pools, no turn arenas (fpr.h) */
-V fpr_alloc_bulk(V bytes) { return fpr_alloc(bytes); }
-V fpr_realloc_bulk(V v, V bytes) { return fpr_realloc(v, bytes); }
+/* bulk storage (a Vector's pieces) is never in a region: it outlives every
+ * reset, and its one owner frees it */
+V fpr_alloc_bulk(V bytes) { return alloc_impl(bytes, 1); }
+V fpr_realloc_bulk(V v, V bytes) { return realloc_impl(v, bytes, 1); }
+
+/* the region operations runtime.c's compiler-region primitives drive */
+int fpr_builtin_untracked(V v) { return find(v)->used == 1; }
+uw fpr_builtin_region_bytes(void) { return cur_bytes(); }
+uw fpr_builtin_region_seq(void) { return cur_region ? cur_region->seq : 0; }
+int fpr_builtin_region_open(uw seq) {
+#ifdef FPR_BUILTIN_ARC
+  (void)seq; return 0;
+#else
+  region_push(seq); return 1;
+#endif
+}
+/* a reset: the copy of the state the caller is about to make lands in a
+ * fresh list; then the turn's scratch and the previous state are freed */
+void fpr_builtin_region_cycle_begin(void) { cur_region->fresh = 0; cur_region->target = &cur_region->fresh; }
+void fpr_builtin_region_cycle_end(void) {
+  region *r = cur_region;
+  free_list(r->scratch); free_list(r->held);
+  r->held = r->fresh; r->fresh = 0; r->scratch = 0;
+  r->target = &r->scratch; r->bytes = 0;
+}
+/* a close: the caller copies its result into the enclosing region between
+ * begin and end; end frees what the closing region still holds */
+void *fpr_builtin_region_close_begin(void) { region *r = cur_region; cur_region = r->up; return r; }
+void fpr_builtin_region_close_end(void *token) {
+  region *r = (region *)token;
+  free_list(r->scratch); free_list(r->held);
+  fpr_free((V)r);
+}
+uw fpr_builtin_region_scratch(void *token) { return ((region *)token)->bytes; }
+static void adopt_list(block *b) {
+  while (b) {
+    block *nx = b->pending; /* read first: a free may merge this header away */
+    if (b->used == 3) { region_reclaimed += b->size; physical_free(b); }
+    else if (cur_region) {
+      b->pending = *cur_region->target; *cur_region->target = b;
+      cur_region->bytes += b->size;
+    } else { b->used = 1; b->pending = 0; loose_bytes += b->size; }
+    b = nx;
+  }
+}
+void fpr_builtin_region_adopt(void *token) {
+  region *r = (region *)token;
+  adopt_list(r->scratch); adopt_list(r->held);
+  fpr_free((V)r);
+}
+uw fpr_builtin_pend(void) {
+  if (!pends) { pends = pend0; cappend = 8; }
+  if (npend == cappend) { /* doubling, never a cap: deep call nesting just costs memory */
+    pend *nv = (pend *)alloc_impl(2 * cappend * sizeof(pend), 1);
+    for (uw i = 0; i < npend; i++) nv[i] = pends[i];
+    if (pends != pend0) fpr_free((V)pends);
+    pends = nv; cappend *= 2;
+  }
+  pend *e = &pends[npend++];
+  e->mark = cur_bytes(); e->in = cur_region; e->opened = 0;
+  return npend - 1;
+}
+void *fpr_builtin_pend_pop(uw tok) {
+  if (!npend || npend - 1 != tok) fpr_cpanic("call region: left out of order");
+  pend e = pends[--npend];
+  if (e.opened && e.opened != cur_region) fpr_cpanic("call region: a nested region is still open");
+  return e.opened;
+}
+void fpr_builtin_region_counts(uw *opens, uw *reclaimed) { *opens = region_opens; *reclaimed = region_reclaimed; }

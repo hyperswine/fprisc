@@ -119,6 +119,21 @@ emit t op = do
 emitDo :: Op -> L ()
 emitDo op = push (Instr Nothing op)
 
+-- the loop region's clock (runtime/fpr.h region_bytes, hart cell 58: directly
+-- after the spill cells and stk_lo/stk_span) masked to the tagged Int range;
+-- ORegionRoom compares it against a 64 KiB slab (runtime.c FPR_REGION_SLAB)
+regionCell :: Int
+regionCell = 58
+regionMask :: Cx -> Integer
+regionMask cx = 2 ^ (wordBits cx - 3) - 1
+wordBits :: Cx -> Int
+wordBits cx = if policyWidth (cxPolicy cx) == W32 then 32 else 64
+regionClock :: Cx -> L VId
+regionClock cx = do
+  raw <- emit TInt (OHartCell regionCell)
+  mask <- emit TInt (OConstInt (regionMask cx))
+  emit TInt (OBit BAnd raw mask)
+
 push :: Instr -> L ()
 push i = do
   cur <- gets stCur
@@ -538,6 +553,19 @@ lowerVal cx env = \case
       | isPrim cx env h, scalarPrefix `isPrefixOf` h, Just o <- M.lookup (drop (length scalarPrefix) h) cmpOps, [a, b] <- args -> compare' o a b
       -- an inlined callee's entry safepoint (Inline.hs); its value is Unit
       | h == "$fuel", [_] <- args -> when (polFuel (cxPolicy cx)) (emitDo OSafepoint) >> nullary 0 0
+      -- a loop region's mark and back-edge test (docs/2026-10-25-REGIONS-LOOPS-CALLS.md):
+      -- the hart's allocation clock is one hart-cell load; the test is a mask,
+      -- a subtraction that cannot overflow (both sides lie in [0, mask]) and a
+      -- compare against the region's slab.  No call: a hot loop pays three
+      -- or four instructions an iteration.  runtime.c REGION_MASK and
+      -- FPR_REGION_SLAB are the same numbers.
+      | h == "$regionMark", [_] <- args, M.notMember h env -> do
+          now <- regionClock cx
+          pure (now, TInt)
+      | h == "$regionRoom", [m] <- args, M.notMember h env -> do
+          mark <- lowerVal cx env m >>= asVal -- tagged: the target untags it in the test
+          p <- emit TPred (ORegionRoom mark)
+          pure (p, TPred)
       -- a saturated known call
       | M.notMember h env, Just c <- calleeOf cx h (length args) -> do
           as <- mapM (lowerVal cx env) args

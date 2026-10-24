@@ -4,12 +4,11 @@ MEMORY { RAM (rwx) : ORIGIN = 0x80000000, LENGTH = 8M }
 SECTIONS {
   .text : { KEEP(*(.text.entry)) *(.text .text.*) } > RAM
   .rodata : { *(.rodata .rodata.* .srodata .srodata.*) } > RAM
-  .data : { . = ALIGN(16); _gc_roots_start = .; *(.data .data.*) PROVIDE(__global_pointer$ = . + 0x800); *(.sdata .sdata.*) } > RAM
+  .data : { . = ALIGN(16); *(.data .data.*) PROVIDE(__global_pointer$ = . + 0x800); *(.sdata .sdata.*) } > RAM
   _image_end = .;
   ASSERT(_image_end - ORIGIN(RAM) <= 2M, "SDRAM loader currently supports 2 MiB images")
   .bss (NOLOAD) : {
     . = ALIGN(16); _bss_start = .;
-    _gc_heap_state_start = .; *(.bss.fpr_heap) . = ALIGN(16); _gc_heap_state_end = .;
     *(.bss .bss.* .sbss .sbss.* COMMON)
     . = ALIGN(16); _bss_end = .;
   } > RAM

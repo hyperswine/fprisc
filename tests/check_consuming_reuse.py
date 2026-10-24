@@ -17,13 +17,13 @@ left
 right
 {left = 2, right = 1}
 '''
-def check_execution(run,enabled):
+def check_execution(run,run_cost,enabled):
     for harts in (1,4):
         code,out,err=run('',harts)
         assert code==0 and out==EXPECTED,(code,out,err)
         code,out,err=run('bad',harts)
         assert code==1 and 'consume failure' in out+err and 'WRONG' not in out+err,(code,out,err)
-    code,out,err=run('cost',1)
+    code,out,err=run_cost('cost',1)
     assert code==0,(out,err)
     value,ledger=out.splitlines(); ledger=json.loads(ledger)
     assert value=='100020000' and ledger['alloc_requests']==(10000 if enabled else 20000),(value,ledger)
@@ -41,12 +41,18 @@ def main():
             for regs in ('0',):
                 for off in ('1','0','1'):
                     mode=dict(env,FPR_NO_REUSE=off,FPR_NO_INLINE=inline)
-                    command([ROOT/'fpr','build',ROOT/'tests/base/consumingreuse.fpr','--harts','4',
-                        '--with',ROOT/'tests/bench/costprobe.c','--with',ROOT/'tests/bench/workers_clock.c','-o',exe],mode)
-                    def run(case,harts):
-                        p=subprocess.run([str(exe)]+([case] if case else []),env=dict(mode,FPR_HARTS=str(harts)),capture_output=True,text=True,timeout=90)
-                        return p.returncode,p.stdout,p.stderr
-                    ledger=check_execution(run,off=='0')
+                    # values on the default build; the allocation ratchet on a
+                    # build without loop/call regions, whose own records and
+                    # state copies share the counted allocator (as check_reuse)
+                    for out,extra in ((exe,{}),(tmp/'probe-cost',{'FPR_NO_LOOP_REGIONS':'1','FPR_NO_CALL_REGIONS':'1'})):
+                        command([ROOT/'fpr','build',ROOT/'tests/base/consumingreuse.fpr','--harts','4',
+                            '--with',ROOT/'tests/bench/costprobe.c','--with',ROOT/'tests/bench/workers_clock.c','-o',out],dict(mode,**extra))
+                    def runner(path):
+                        def run(case,harts):
+                            p=subprocess.run([str(path)]+([case] if case else []),env=dict(mode,FPR_HARTS=str(harts)),capture_output=True,text=True,timeout=90)
+                            return p.returncode,p.stdout,p.stderr
+                        return run
+                    ledger=check_execution(runner(exe),runner(tmp/'probe-cost'),off=='0')
                     print(f'consuming reuse off={off} no-inline={inline} no-registers={regs}: {ledger["alloc_requests"]} allocations PASS',flush=True)
         # Public dynamic calls still borrow, even when the library has a
         # private consuming version selected by a different internal caller.

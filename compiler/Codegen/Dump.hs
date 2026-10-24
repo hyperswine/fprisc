@@ -26,6 +26,8 @@ dumpFn fn =
     instr (Instr (Just (v, t)) op) = value v ++ ": " ++ ty t ++ " = " ++ opText op
     opText = \case
       OConstInt n -> "const " ++ show n
+      OHartCell j -> "hart.cell " ++ show j
+      ORegionRoom m -> "region.room " ++ value m
       ONullary t v -> "nullary " ++ show t ++ " " ++ show v
       OString s -> "string " ++ show s
       OBoxedFloat width bits -> "boxed-float" ++ show (widthBits width) ++ " " ++ show bits

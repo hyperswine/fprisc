@@ -1,0 +1,43 @@
+# compiler-placed regions (docs/2026-10-25-REGIONS-LOOPS-CALLS.md): a pure
+# loop's region resets per 64 KiB; a costly call's pending region opens when
+# the call has used a slab.  The nested case: a Sys.arena inside a costly call
+# copies a large result out into the call's pool, and that copy is what fills
+# the slab, so the call region opens while the arena is closing.  The arena's
+# scope must leave the chain from under the new one (it used to overwrite the
+# chain's head and lose it: "call region: a nested region is still open").
+# A builder whose result is its whole allocation (mkList under a pending
+# region) closes by adoption: its blocks join the caller's pool, no copy; the
+# list must come back whole.
+# Only the pure loop's memory is asserted: `rounds` uses Sys.arena itself, so
+# it is no loop region, and a lazily opened call region leaves the copy made
+# before it opened (at most one slab of the base pool) behind each round.
+unsafe base.
+Arc.regionOpens : Unit -> Int .
+Arc.regionCycles : Unit -> Int .
+Arc.callOpens : Unit -> Int .
+Arc.adoptions : Unit -> Int .
+mkList : Int -> List Int -> List Int .
+mkList n acc = if n == 0 then acc else mkList (n - 1) (n :: acc).
+sumL : List Int -> Int -> Int .
+sumL xs k = case xs of Nil -> k | x :: r -> sumL r (k + x).
+lenL : List Int -> Int -> Int .
+lenL xs k = case xs of Nil -> k | x :: r -> lenL r (k + 1).
+# the arena builds n cells and its result, the whole list, is copied out
+viaArena : Int -> Int .
+viaArena n = lenL (Sys.arena (fn u -> mkList n Nil)) 0.
+rounds : Int -> Int -> Int .
+rounds k acc = if k == 0 then acc else rounds (k - 1) (acc + viaArena 20000).
+step : Int -> Int -> Int .
+step n acc = if n == 0 then acc else
+  s = "row {n}: {acc}";
+  step (n - 1) (acc + strlen s).
+freeKiB u = case Sys.memInfo 0 of _ :: f :: _ -> f | _ -> 0.
+main =
+  a = rounds 40 0;
+  adopted0 = Arc.adoptions Unit;
+  built = sumL (mkList 300000 Nil) 0;
+  adopted = Arc.adoptions Unit - adopted0;
+  before = freeKiB Unit;
+  b = step 1000000 0;
+  grew = before - freeKiB Unit;
+  print "regionnest: {a} cells through 40 arenas, built {built} {case adopted > 0 of True -> "adopted" | False -> "copied"}, loop {b}; call regions opened {case Arc.callOpens Unit > 0 of True -> "yes" | False -> "no"}, loop region reset {case Arc.regionCycles Unit > 100 of True -> "per slab" | False -> "rarely"}; memory {case grew < 16384 of True -> "bounded" | False -> "grew {grew} KiB"}".

@@ -35,8 +35,7 @@ def main():
                   compiler_sha256=sha(ROOT / 'fpr'),
                   gcc=subprocess.check_output(['riscv64-unknown-elf-gcc', '--version'], text=True).splitlines()[0],
                   configuration=dict(xlen=int(xlen), compressed=rvc == '1', cpu_mhz=int(frequency),
-                                     gc=os.environ.get('FPR_GC', '0') == '1',
-                                     gc_stress=int(os.environ.get('FPR_GC_STRESS', '0')),
+                                     reclamation='regions',
                                      qemu=os.environ.get('FPR_QEMU', '0') == '1'),
                   artifacts={name: sha(out / name) for name in ('base.s', 'base.elf', 'base.bin')},
                   units={str(p.resolve()): sha(p) for p in units})
