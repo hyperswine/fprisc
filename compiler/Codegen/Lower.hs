@@ -25,7 +25,7 @@ import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as M
 import KernelKinds (Kind (..))
 import Workers (ScalarSignatures)
-import FPRISC (Core (..), Prog)
+import Core.Syntax (Core (..), Prog)
 
 type Reason = String
 

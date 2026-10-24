@@ -10,7 +10,7 @@ import Inline (inlineSmall, inlineWith, vecPeek)
 import ReceiveTurns (receiveTurns)
 import qualified Codegen.Target.RV as RV
 import Codegen.Target.Common (Tune (..), dataSyntax)
-import Codegen (Target, codegenRev, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtTypedIr, tgtPolicy, tgtNative, normArc)
+import Codegen (Target, codegenRev, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtTypedIr, tgtPolicy, tgtNative)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
@@ -29,6 +29,7 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import FPRISC
+import Core.Opt.Normalize (normArc)
 import Infer (Scheme (..), Type (..), aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTops, inferTopsInterfaces)
 import Safety (measureCheck, safetyCheck, trustedLibraryPaths)
 import qualified Cost

@@ -3,7 +3,7 @@
 -- This deliberately rejects representation-polymorphic code until cloning is
 -- implemented. Unknowns default to managed only after all call sites agree.
 module Representation (represent, Kind, primitiveShape) where
-import FPRISC (Core(..), Prog)
+import Core.Syntax (Core(..), Prog)
 import Control.Monad (forM_, replicateM_, unless, zipWithM_)
 import Data.List (isPrefixOf)
 import Control.Monad.State.Strict

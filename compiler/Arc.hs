@@ -10,7 +10,7 @@ import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as M
 import Interrupt (checkInterrupt, checkRawUnit)
 import Representation (Kind, represent)
-import FPRISC (Core(..), Prog)
+import Core.Syntax (Core(..), Prog)
 
 -- Closed set of audited borrowed-input primitives with owned-result adapters.
 -- The third component names the generated C adapter, not the original ABI.

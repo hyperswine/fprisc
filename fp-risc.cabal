@@ -47,6 +47,15 @@ executable fpr
       Publish
       Representation
       Interrupt
+      Core.Syntax
+      Core.Utils
+      Core.Primitives
+      Core.Analysis.FusionSafety
+      Core.Opt.Normalize
+      Core.Opt.Fusion
+      Core.Opt.Vector
+      Core.Opt.Vector.Plan
+      Core.Opt.Pipeline
       Codegen
       Codegen.Kernel
       Codegen.NativeData

@@ -28,7 +28,7 @@ import Control.Monad (foldM)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import FPRISC (Core (..), Name, Prog)
+import Core.Syntax (Core (..), Name, Prog)
 
 -- | rounds, then the largest callee body (in Core nodes) worth inlining
 inlineSmall :: Int -> Int -> Prog -> Prog

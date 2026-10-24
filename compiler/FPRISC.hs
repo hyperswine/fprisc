@@ -13,7 +13,9 @@
 --   tagged product construction (typeid + variant id + fields),
 --   tag tests, positional projections, primitive references.
 
-module FPRISC where
+module FPRISC (module FPRISC, module Core.Syntax) where
+
+import Core.Syntax
 
 import Control.DeepSeq (NFData)
 import Data.Binary (Binary)
@@ -34,7 +36,6 @@ import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
-type Name = String
 
 --------------------------------------------------------------------------------
 -- Surface AST
@@ -125,21 +126,6 @@ data Ty
 -- Core AST
 --------------------------------------------------------------------------------
 
-data Core
-  = CVar Name
-  | CInt Integer
-  | CStr String
-  | CApp Core Core
-  | CLam [Name] Core
-  | CLet Name Core Core
-  | CIf Core Core Core
-  | CMk Int Int [Core]
-  | CTagEq Int Int Core
-  | CProj Int Core
-  | CErr String
-  deriving (Show, Eq, Ord, Generic, NFData, Binary)
-
-type Prog = M.Map Name ([Name], Core)
 
 --------------------------------------------------------------------------------
 -- Lexer
@@ -2027,31 +2013,6 @@ replaceJoin name target = go
       CProj i e -> CProj i (go e)
       e -> e
 
--- does `x` occur free in `e`?  Stops at the first occurrence, where
--- `freeVars` lists every one (and filters the list at every lambda).
-occurs :: Name -> Core -> Bool
-occurs x = \case
-  CVar n -> n == x
-  CApp a b -> occurs x a || occurs x b
-  CLam ps b -> x `notElem` ps && occurs x b
-  CLet y a b -> occurs x a || (y /= x && occurs x b)
-  CIf c t e -> occurs x c || occurs x t || occurs x e
-  CMk _ _ fs -> any (occurs x) fs
-  CTagEq _ _ e -> occurs x e
-  CProj _ e -> occurs x e
-  _ -> False
-
-freeVars :: Core -> [Name]
-freeVars = \case
-  CVar n -> [n]
-  CApp a b -> freeVars a ++ freeVars b
-  CLam ps b -> filter (`notElem` ps) (freeVars b)
-  CLet x a b -> freeVars a ++ filter (/= x) (freeVars b)
-  CIf c t e -> freeVars c ++ freeVars t ++ freeVars e
-  CMk _ _ fs -> concatMap freeVars fs
-  CTagEq _ _ e -> freeVars e
-  CProj _ e -> freeVars e
-  _ -> []
 
 liftFix :: Prog -> D Prog
 liftFix p = do

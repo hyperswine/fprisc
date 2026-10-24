@@ -1,7 +1,7 @@
 -- Kinds of the raw-word callback ABI, solved independently for every argument
 -- and result. Conflicts/unsupported Core decline to the ordinary tagged path.
 module KernelKinds (Kind(..), signature, signatureStrict) where
-import FPRISC (Core(..), Prog)
+import Core.Syntax (Core(..), Prog)
 import Control.Monad.State.Strict
 import Control.Monad (guard, zipWithM_)
 import qualified Data.Map.Strict as M

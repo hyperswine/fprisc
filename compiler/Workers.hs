@@ -2,7 +2,8 @@
 -- stay general. This pass runs after all source safety/ownership checking.
 module Workers (workerize, workerizeWithSignatures, ScalarSignatures, internalWorker, scalarPrimitives) where
 
-import FPRISC (Core(..), Prog)
+import Core.Primitives (scalarPrimitives)
+import Core.Syntax (Core(..), Prog)
 import KernelKinds (Kind(..), signatureStrict)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -14,9 +15,6 @@ prefix :: String
 prefix = "$worker."
 internalWorker :: String -> Bool
 internalWorker = isPrefixOf prefix
-scalarPrimitives :: [(String,Int)]
-scalarPrimitives = [("$scalar."++op,2) | op <- ops] ++
-                   [("$scalar.unbox",1),("$scalar.box",1),("$scalar.isInt",1)]
 ops :: [String]
 ops = ["+","-","*","/","==","!=","<",">","<=",">="]
 spine :: Core -> (Core,[Core])

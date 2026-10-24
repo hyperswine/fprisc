@@ -4,7 +4,7 @@
 -- retain the open-world callable ABI. Budgets always fall back to original calls.
 module Mono (specializeFunctions, qualifyAux, references) where
 
-import FPRISC (Core(..), Name, Prog, freeVars)
+import Core.Syntax (Core(..), Name, Prog, freeVars)
 import Data.Graph (SCC(..), stronglyConnComp)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M

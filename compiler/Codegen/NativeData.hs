@@ -6,7 +6,7 @@ module Codegen.NativeData (emitStaticData) where
 
 import Codegen.IR (Width(..),Name)
 import Codegen.Target.Common (ObjectFormat, dataSyntax, mangleName)
-import FPRISC (Core(..),Prog)
+import Core.Syntax (Core(..),Prog)
 import Modules (ModExport(..))
 import Workers (internalWorker)
 import Control.Monad.State.Strict

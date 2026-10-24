@@ -2,7 +2,7 @@
 -- on lifted Core before ownership instrumentation. Raw memory remains unsafe:
 -- the programmer must not touch the allocator, ARC objects or reserved stacks.
 module Interrupt (checkInterrupt, checkRawUnit) where
-import FPRISC (Core(..), Prog)
+import Core.Syntax (Core(..), Prog)
 import Representation (primitiveShape)
 import Control.Monad (foldM, unless)
 import Data.List (isPrefixOf)

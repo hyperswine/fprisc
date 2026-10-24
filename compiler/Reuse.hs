@@ -2,7 +2,7 @@
 -- Public calls remain borrowing. Only a fresh, nonescaping root can transfer
 -- ownership; last syntactic use of a borrowed value is never sufficient.
 module Reuse (reuseFresh, reuseProgram, reuseView) where
-import FPRISC (Core(..), Prog)
+import Core.Syntax (Core(..), Prog)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List (isPrefixOf)
