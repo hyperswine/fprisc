@@ -15,7 +15,7 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Typed, uniquely named Core | Inference producer implemented; typed-Core consumer pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
 | Checked pipeline products and lint | Structural pass result implemented; type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Pending beyond local OptimizationOptions | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
@@ -87,4 +87,22 @@ The same hosted run then passed native/RISC-V checks but failed the classifier
 suite's obsolete collector assertion. [The region gate repair](2026-10-25-CI-REGION-GATE.md)
 records the actual counters, the replacement contract, negative tests and the
 fresh RV32 QEMU run. Neither CI repair changes runtime semantics. Hosted CI for
-the final checkpoint still needs to pass before the overall goal can finish.
+`3be6efa` passed. Subsequent checkpoints still require their own hosted validation
+before the overall goal can finish.
+
+## Inference evidence stage
+
+[The checked handoff](2026-10-25-INFERENCE-EVIDENCE.md) retains final source
+types, local identities and scopes, declaration schemes, layout requirements
+and elaboration choices in a named result consumed by native compilation.
+It is a producer for typed lowering; source checking occurrences are not yet
+typed Core, generated Core is not annotated, and optimization does not yet
+preserve this evidence. The full typed-Core, options, diagnostics and codegen
+contract items remain active.
+
+Validation: all 133 Base jobs passed in 422.37 seconds with six workers and no
+reused CI coverage; 128 fresh root/dependent-unit emission comparisons remained
+byte-identical to the saved pre-frontend baseline, including cache keys; Sol
+argument/shared-language and bounded self/mutual tail-call checks passed. The
+historical register-allocation design now identifies its old pipeline and links
+to the current native owners.

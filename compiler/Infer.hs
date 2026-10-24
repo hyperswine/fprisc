@@ -29,8 +29,9 @@
 --   * some HAL builtins still have generous schemes; vectors preserve
 --     their element type throughout inference
 
-module Infer (module Infer, module Type.Syntax) where
+module Infer (module Infer, module Type.Syntax, module Infer.State, module Infer.Result, module Infer.Elaboration) where
 
+import Control.DeepSeq (force)
 import Control.Monad (foldM, forM, forM_, unless, when, zipWithM, zipWithM_)
 import Control.Monad.State.Strict
 import Data.Graph (SCC (..), stronglyConnComp)
@@ -47,46 +48,18 @@ import Frontend.Traverse
 import Frontend.Linearity
 import Ownership.Shape
 import Type.Syntax
+import Infer.State
+import Infer.Result
+import Infer.Elaboration
+import Infer.Trace
+import qualified Infer.Evidence as Evidence
+import Core.Identity (Namespace)
 import Precond (checkedName)
 import Struct (Sigs, Structs)
 
 -- ---- types ------------------------------------------------------------------
 
 -- ---- inference monad --------------------------------------------------------
-
-data IEnv = IEnv
-  { iFresh :: !Int,
-    iSub :: IM.IntMap Type, -- tvar solutions
-    iRSub :: IM.IntMap Row, -- rowvar solutions
-    iErrs :: [String],
-    iNotes :: [(Name, String)], -- pretty-printed inferred schemes
-    iHoles :: [(String, Type)], -- typed holes: ?name / ?? with site type
-    iHolesP :: [(String, String)], -- same, pretty (zonked at end)
-    iHoledCons :: S.Set (Name, Int), -- constructors with ?? fields: calls trap
-    iNextSite :: !Int,
-    iSites :: IM.IntMap (Name, Type), -- operator/layout sites awaiting resolution
-    iSiteMarks :: IM.IntMap (Maybe Int), -- retain their diagnostic anchors
-    iCarriers :: IM.IntMap (Name, Name), -- carrier var -> (param, sig)
-    iHere :: Maybe Int, -- spans step 3: the innermost enclosing SMark's
-                        -- source offset while inference walks under it;
-                        -- report stamps it into diagnostics as "@OFF~ "
-    iPairs :: IM.IntMap (Type, Type), -- operator sites whose operand types
-                                     -- were NOT unified eagerly (both concrete,
-                                     -- at least one user type): resolution may
-                                     -- pick a two-typed operator global
-    iVecPlans :: M.Map Name [Type], -- hidden layout requirements of native bindings
-    iVecRefs :: IM.IntMap [Type], -- requirements instantiated at each reference
-    iVecOwners :: IM.IntMap Name,
-    iDefTypes :: M.Map Name Type,
-    iInterfaces :: [(Name, Type)], -- zonked checked types for interface identity
-    iLinSigs :: [(Name, ([LShape], LShape))] -- INFERRED linearity shapes
-      -- per user bind (zonked types -> LShape): the linearity checker
-      -- consumes these for functions WITHOUT an explicit sig, closing
-      -- the audited hole where an unannotated function (main included)
-      -- could double-use a Vec because liSigs only knew declared TSigs
-  }
-
-type I = State IEnv
 
 freshT :: I Type
 freshT = do s <- get; put s {iFresh = iFresh s + 1}; pure (TV (iFresh s))
@@ -214,7 +187,14 @@ unifyRow ctx r1z r2z = do
 -- ---- schemes ----------------------------------------------------------------
 
 instantiate :: Scheme -> I Type
-instantiate (Forall tvs rvs t) = do
+instantiate sc = do
+  Forall _ _ t <- freshenScheme sc
+  pure t
+
+-- Also used in an isolated state when snapshotting evidence: quantified
+-- variables must be renamed away from the solver's metavariable namespace.
+freshenScheme :: Scheme -> I Scheme
+freshenScheme (Forall tvs rvs t) = do
   tm <- IM.fromList <$> mapM (\v -> (,) v <$> freshT) tvs
   rm <- IM.fromList <$> mapM (\v -> (,) v <$> freshR) rvs
   let goT = \case
@@ -228,7 +208,18 @@ instantiate (Forall tvs rvs t) = do
         RV v -> fromMaybe (RV v) (IM.lookup v rm)
         RExt lb ty r -> RExt lb (goT ty) (goR r)
         RNil -> RNil
-  pure (goT t)
+  pure (Forall [v | TV v <- IM.elems tm] [v | RV v <- IM.elems rm] (goT t))
+
+-- Snapshot free metavariables with the final solution while preserving
+-- quantifiers. The temporary fresh supply cannot change the checking run's
+-- counters, schemes, diagnostics or elaboration-site numbering.
+snapshotScheme :: Scheme -> I Scheme
+snapshotScheme sc = do
+  st <- get
+  let detached = force (evalState (do
+        Forall vs rs t <- freshenScheme sc
+        Forall vs rs <$> zonk t) st)
+  detached `seq` pure detached
 
 -- ---- declared signatures are a promise, and it is now checked -------------
 --
@@ -311,8 +302,6 @@ ftv = \case
       RV v -> (S.empty, S.singleton v)
       RExt _ t r -> ftv t <> ftvR r
       RNil -> mempty
-
-type TEnv = M.Map Name Scheme
 
 generalize :: TEnv -> Type -> I Scheme
 generalize env t0 = do
@@ -890,31 +879,8 @@ conTable cons =
 -- PROFILE'S TABLE types those (F64/F32 for AOT, Int-is-Numeric for
 -- sol), so the width sites resolve to plain ops under sol's table and
 -- the rewritten AST comes out exactly as sol's old engine produced.
-data IProf = IProf
-  { ipBuiltins :: TEnv, -- the profile's primitive surface
-    ipTopEvals :: Bool, -- infer + rewrite `> expr.` tops (HostedBytecode;
-                        -- the AOT driver handles TEval itself)
-    ipPathStr :: Bool, -- @Path literals type as String (HostedBytecode;
-                       -- AOT expands them structurally before inference)
-    ipVectorLayouts :: Bool, -- raw-bit native elements need static output layouts
-    ipMat4 :: Bool -- Mat4/Vec4 `*` elaboration -- only where the prelude
-                   -- defines mulMM/mulMV (the AOT tiers)
-  }
-
 aotProf :: IProf
 aotProf = IProf builtinEnv False False True True
-
-data ICtx = ICtx
-  { icEnv :: TEnv, -- values in scope
-    icCons :: TEnv, -- constructor schemes (for patterns)
-    icSigs :: Sigs,
-    icProf :: IProf,
-    icBound :: S.Set Name,
-    icEvidence :: M.Map Name Name
-  }
-
-extend :: TEnv -> ICtx -> ICtx
-extend e c = c {icEnv = M.union e (icEnv c), icBound = M.keysSet e `S.union` icBound c, icEvidence = foldr M.delete (icEvidence c) (M.keys e)}
 
 -- ---- operator resolution sites ----------------------------------------------
 --
@@ -933,7 +899,11 @@ newSite :: Name -> Type -> I Int
 newSite op t = do
   st <- get
   let n = iNextSite st
-  put st {iNextSite = n + 1, iSites = IM.insert n (op, t) (iSites st), iSiteMarks = IM.insert n (iHere st) (iSiteMarks st)}
+  let origins = case iEvidenceBuilder st >>= Evidence.currentExpression of
+        Just uid -> IM.insert n uid (iSiteExpressions st)
+        Nothing -> iSiteExpressions st
+  put st {iNextSite = n + 1, iSites = IM.insert n (op, t) (iSites st),
+          iSiteMarks = IM.insert n (iHere st) (iSiteMarks st), iSiteExpressions=origins}
   pure n
 
 -- carrier var of an in-scope `(s : Sig)` param: var id -> (param, sig)
@@ -972,7 +942,10 @@ recFields (TRec r) = go r
 recFields _ = Nothing
 
 inferE :: ICtx -> SExpr -> I (Type, SExpr)
-inferE ctx e0 = case e0 of
+inferE ctx e0 = withExprEvidence ctx e0 (inferERaw ctx e0)
+
+inferERaw :: ICtx -> SExpr -> I (Type, SExpr)
+inferERaw ctx e0 = case e0 of
   -- position wrapper: remember the statement we are inside (errors
   -- reported below it carry its offset), infer through, keep the mark
   SMark o e -> do
@@ -1070,7 +1043,8 @@ inferE ctx e0 = case e0 of
   SLam ps b -> do
     pvs <- mapM (const freshT) ps
     let env' = M.fromList (zip ps (map mono pvs))
-    (tb, b') <- inferE (extend env' ctx) b
+    bodyCtx <- extendScoped Evidence.LambdaParameter env' ctx
+    (tb, b') <- inferE bodyCtx b
     pure (foldr TFn tb pvs, SLam ps b')
   SBlock stmts fin -> do
     (stmts', fin', t) <- goBlock ctx stmts
@@ -1083,10 +1057,12 @@ inferE ctx e0 = case e0 of
         let generic = ipVectorLayouts (icProf c) && (not (null ps) || isLamE rhs)
             key = if generic then "$localVector." ++ n ++ "." ++ show startSite else n
             localCtx cx = if generic then cx {icEvidence=M.insert n key (icEvidence cx)} else cx
-            cRec = localCtx (extend (M.singleton n (mono a)) c)
+        cRec0 <- extendScoped Evidence.LocalBinding (M.singleton n (mono a)) c
+        let cRec = localCtx cRec0
         pvs <- mapM (const freshT) ps
         let env' = M.fromList (zip ps (map mono pvs))
-        (tb, rhs') <- inferE (extend env' cRec) rhs
+        rhsCtx <- extendScoped Evidence.ClauseParameter env' cRec
+        (tb, rhs') <- inferE rhsCtx rhs
         let t = foldr TFn tb pvs
         unify ("local " ++ n) a t
         sc <-
@@ -1098,13 +1074,15 @@ inferE ctx e0 = case e0 of
           tz <- zonk t
           modify (\st -> st {iDefTypes=M.insert key tz (iDefTypes st),
             iVecOwners=IM.union (iVecOwners st) (IM.fromList [(i,key) | i <- [startSite..endSite-1]])})
-        (rest', fin', tr) <- goBlock (localCtx (extend (M.singleton n sc) c)) rest
+        restCtx <- refineScoped n sc cRec
+        (rest', fin', tr) <- goBlock (localCtx restCtx) rest
         pure (SBind key ps rhs' : rest', fin', tr)
       goBlock c (SBindPat p rhs : rest) = do
         (tr, rhs') <- inferE c rhs
         (tp, benv) <- inferPat (icCons c) p
         unify "let pattern" tp tr
-        (rest', fin', tfin) <- goBlock (extend benv c) rest
+        restCtx <- extendScoped Evidence.PatternBinding benv c
+        (rest', fin', tfin) <- goBlock restCtx rest
         pure (SBindPat p rhs' : rest', fin', tfin)
       isLamE SLam {} = True
       isLamE _ = False
@@ -1114,7 +1092,8 @@ inferE ctx e0 = case e0 of
     arms' <- forM arms $ \(p, e) -> do
       (tp, benv) <- inferPat (icCons ctx) p
       unify "case scrutinee" tp ts
-      (te, e') <- inferE (extend benv ctx) e
+      armCtx <- extendScoped Evidence.PatternBinding benv ctx
+      (te, e') <- inferE armCtx e
       unify "case arm" te res
       pure (p, e')
     -- coverage (Exhaust): unreachable arms and non-exhaustive cases
@@ -1269,7 +1248,6 @@ inferBin ctx op a b = case op of
 
 -- ---- post-solve operator resolution -----------------------------------------
 
-data OpTarget = OpPrim Name | OpGlobal Name | OpVecLayout Name String | OpVecDynamic Name SExpr | OpDictionary [SExpr] | OpProj Name Name -- s.(+)
 
 -- head type constructor: Matrix -> "Matrix", Grid a b -> "Grid"
 headCon :: Type -> Maybe Name
@@ -1728,11 +1706,20 @@ inferTopsWith prof sigs structs tops =
 
 inferTopsInterfaces :: IProf -> Sigs -> Structs -> [STop] -> ([String], [(Name, String)], [(String, String)], [(Name, ([LShape], LShape))], [STop], [(Name, Type)])
 inferTopsInterfaces prof sigs structs tops =
-  let (tops', st) = runState run (IEnv 0 IM.empty IM.empty [] [] [] [] S.empty 0 IM.empty IM.empty IM.empty Nothing IM.empty M.empty IM.empty IM.empty M.empty [] [])
-   in (iErrs st, iNotes st, iHolesP st, iLinSigs st, tops', iInterfaces st)
+  let r = inferTopsResult Nothing prof sigs structs tops
+  in (inferenceErrors r, inferenceNotes r, inferenceHoles r,
+      inferenceLinearity r, inferenceTops r, inferenceInterfaces r)
+
+inferTopsChecked :: Namespace -> IProf -> Sigs -> Structs -> [STop] -> InferenceResult
+inferTopsChecked ns = inferTopsResult (Just ns)
+
+inferTopsResult :: Maybe Namespace -> IProf -> Sigs -> Structs -> [STop] -> InferenceResult
+inferTopsResult capture prof sigs structs tops =
+  let ((tops', proof, sites, schemes, layouts), st) = runState run (initialIEnv capture)
+  in resultFromState st tops' proof sites schemes layouts
   where
     aliases = M.fromList [(n, fs) | TShape n fs <- tops]
-    run :: I [STop]
+    run :: I ([STop], Either String (Maybe Evidence.Evidence), [ElaborationFact], M.Map Name Scheme, M.Map Name [Type])
     run = do
       cons <- (\u -> M.union u builtinCons') <$> consEnv aliases tops
       declared <- sigAnnEnv aliases tops
@@ -1769,7 +1756,7 @@ inferTopsInterfaces prof sigs structs tops =
       -- statement-offset stamp instead of a file:line:col
       rwEvals <- forM (zip [1 :: Int ..] evals) $ \(evi, e) -> do
         nerrs0 <- length <$> gets iErrs
-        r <- snd <$> inferE (ICtx env cons sigs prof S.empty M.empty) e
+        r <- snd <$> inferE (ICtx env cons sigs prof S.empty M.empty (Just ("<eval " ++ show evi ++ ">")) M.empty) e
         modify $ \st ->
           let (old, new) = splitAt nerrs0 (iErrs st)
            in st {iErrs = old ++ ["in <eval " ++ show evi ++ ">: " ++ m | m <- new]}
@@ -1852,7 +1839,29 @@ inferTopsInterfaces prof sigs structs tops =
             TSig n (ps,r) pre -> ((evs,bnds), TSig n (replicate (length (hidden n)) (TCon "String" []) ++ ps,r) (replicate (length (hidden n)) Nothing ++ pre))
             _ -> ((evs, bnds), t)
           (_, tops') = foldl' (\(st', acc) t -> let (st2, t') = rebuild st' t in (st2, acc ++ [t'])) ((rwEvals, fmap reverse rwMap), []) tops
-      pure tops'
+      errors <- gets iErrs
+      namedHoles <- gets (any (not . null . fst) . iHoles)
+      proof <- if null errors && not namedHoles
+        then finishEvidence zonk snapshotScheme (linShapeT linNs)
+        else pure (Left "program did not pass source typechecking")
+      sites <- case capture of
+        Nothing -> pure []
+        Just _ -> do
+          checkedSites <- gets iSites
+          marks <- gets iSiteMarks
+          origins <- gets iSiteExpressions
+          forM (IM.toList tgts) $ \(site,target) -> do
+            let (op,ty) = checkedSites IM.! site
+            solved <- zonk ty
+            pure (ElaborationFact site op solved target (maybe Nothing id (IM.lookup site marks))
+                    (IM.lookup site origins))
+      (schemes,layouts) <- case capture of
+        Just _ | null errors && not namedHoles -> do
+          schemes <- traverse snapshotScheme env
+          layouts <- gets iVecPlans >>= traverse (mapM zonk)
+          pure (schemes,layouts)
+        _ -> pure (M.empty,M.empty)
+      pure (tops',proof,sites,schemes,layouts)
     flat (AcyclicSCC n) = [n]
     flat (CyclicSCC ns) = ns
 
@@ -1878,7 +1887,8 @@ inferTopsInterfaces prof sigs structs tops =
           nerrs0 <- gets (length . iErrs)
           -- params: PSig gets its sig's record type; others infer
           (ptys, penvs) <- unzip <$> mapM (inferParam cons) ps
-          let ctx = ICtx (M.union (M.unions penvs) recEnv) cons sigs prof (M.keysSet (M.unions penvs)) M.empty
+          let baseCtx = ICtx recEnv cons sigs prof S.empty M.empty (Just n) M.empty
+          ctx <- extendScoped Evidence.ClauseParameter (M.unions penvs) baseCtx
           -- guards run left to right; a pattern guard's binds are in
           -- scope for the guards to its right and for the body
           (ctx2, g') <-
@@ -1892,7 +1902,8 @@ inferTopsInterfaces prof sigs structs tops =
                     (tg, ge') <- inferE cx ge
                     (tp, benv) <- inferPat cons p
                     unify ("pattern guard of " ++ n) tg tp
-                    pure (extend benv cx, acc ++ [GPat p ge'])
+                    nextCtx <- extendScoped Evidence.GuardBinding benv cx
+                    pure (nextCtx, acc ++ [GPat p ge'])
               )
               (ctx, [])
               g

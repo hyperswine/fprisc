@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase, DeriveGeneric, DeriveAnyClass #-}
 -- Checked type vocabulary, independent of the inference engine and either AST.
 -- Type-constructor names and row labels are textual; lexical term binders will
 -- acquire their own identities in Core. Existing Show output is diagnostic ABI.
@@ -6,6 +6,8 @@ module Type.Syntax
   (Type(..), Row(..), Scheme(..), tcon, tInt, tStr, tBool, tUnit, tAtom,
    tF64, tF32, tI64, tI32, tList, tVector, tSString, mentionsFloat) where
 import Data.List (foldl')
+import Control.DeepSeq (NFData)
+import GHC.Generics (Generic)
 
 data Type
   = TV Int
@@ -14,15 +16,15 @@ data Type
   | TFn Type Type
   | TRec Row
   | TTupT [Type]
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, NFData)
 
 data Row
   = RV Int
   | RNil
   | RExt String Type Row
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, NFData)
 
-data Scheme = Forall [Int] [Int] Type deriving (Show) -- tvars, rowvars
+data Scheme = Forall [Int] [Int] Type deriving (Show, Generic, NFData) -- tvars, rowvars
 
 tcon :: String -> [Type] -> Type
 tcon n = foldl' TAp (TC n)

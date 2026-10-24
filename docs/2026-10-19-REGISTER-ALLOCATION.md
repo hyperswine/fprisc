@@ -1,5 +1,14 @@
 # Register allocation in the base-profile generator
 
+Status update, 2026-10-25: **historical design and measurements**, describing
+the compiler at `3206b84`. The slot generator, RISC-to-A64/x64 translators,
+peephole and `# wcet:` pipeline described below have been
+[retired](2026-10-23-TYPED-GENERATOR-RETIREMENT.md). Current native allocation
+uses `Codegen.IR` and `Codegen.Selected`, then `Codegen.Liveness`,
+`Codegen.Allocate` and `Codegen.Frame`; `Codegen.Bounds` reports
+`native-insns-v1`. The old module paths and proposed rollout switches below
+remain as historical evidence, not instructions for the current compiler.
+
 Date: 2026-10-19. Kind: design, with the measured ceiling the design is
 bounded by. Answers items 4 and 5 of
 [SUGGESTIONS section 1.7](2026-09-30-SUGGESTIONS.md#17-order-of-work-and-how-to-know-it-worked)

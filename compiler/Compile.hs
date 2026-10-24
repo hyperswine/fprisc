@@ -29,6 +29,7 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Core.Syntax
+import Core.Identity (Namespace(..))
 import Core.Pretty
 import Frontend.Syntax
 import Frontend.Parser (program)
@@ -41,7 +42,8 @@ import Frontend.Diagnostics
 import Ownership.Shape
 import Core.Opt.Normalize (normArc)
 import Type.Syntax (Scheme(..), Type(..))
-import Infer (aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTops, inferTopsInterfaces)
+import Infer.Result
+import Infer (inferTopsChecked, aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTops, inferTopsInterfaces)
 import Safety (measureCheck, safetyCheck, trustedLibraryPaths)
 import qualified Cost
 import Manifest (Manifest (..), readManifest, renderNs)
@@ -696,7 +698,13 @@ compileWithInterface accepted = do
                   ++ " runtime-checked, " ++ show nTrap ++ " builtin traps")
       -- typecheck the merged expanded program; rewritten tops carry
       -- operator sites resolved to prims / Str.+ / s.(+)
-      let (terrs, notes, holes, linsigs, topsRW, interfaces) = inferTopsInterfaces aotProf sigs structs tops'
+      let inferred = inferTopsChecked (Namespace rootHash) aotProf sigs structs tops'
+          terrs = inferenceErrors inferred
+          notes = inferenceNotes inferred
+          holes = inferenceHoles inferred
+          linsigs = inferenceLinearity inferred
+          topsRW = inferenceTops inferred
+          interfaces = inferenceInterfaces inferred
       unless (null terrs) $ do
         putStrLn "=== TYPE ERRORS ==="
         mapM_ (putStrLn . ("  * " ++)) (anchored terrs)
@@ -711,6 +719,10 @@ compileWithInterface accepted = do
         mapM_ (\(n, t) -> putStrLn ("  * got into a typed hole, ?" ++ n ++ " : " ++ t)) named
         unless (null [t | (_, t) <- holes, False]) (pure ())
         exitFailure
+      case inferenceEvidence inferred of
+        Right (Just _) -> pure ()
+        Left reason -> hPutStrLn stderr ("compiler inference evidence: " ++ reason) >> exitFailure
+        Right Nothing -> hPutStrLn stderr "compiler inference evidence: capture missing" >> exitFailure
       unless (null [() | (n, _) <- holes, null n]) $
         mapM_ (\(_, t) -> putStrLn ("note: ?? hole (runtime trap) : " ++ t)) [h | h@(n, _) <- holes, null n]
       -- the safe/unsafe line (Safety.hs): recursion and unsafe-taint

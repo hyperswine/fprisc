@@ -98,6 +98,12 @@ executable fpr
       Home
       Exhaust
       Infer
+      Infer.State
+      Infer.Trace
+      Infer.Evidence
+      Infer.Result
+      Infer.Elaboration
+      Core.Identity
       Type.Syntax
       Inline
       ReceiveTurns
