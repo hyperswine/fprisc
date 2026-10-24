@@ -47,7 +47,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 90 -- autodrop retired: a received message dies with its turn (REGIONS-STAGE1)
+codegenRev = 91 -- self-tail-call boundaries, invariant and Vector state in turns (REGIONS-STAGE2)
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

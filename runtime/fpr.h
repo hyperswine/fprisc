@@ -199,7 +199,7 @@ void fpr_bkt_put(void **b);
 #define FPR_NATIVE_ABI 7u /* QOS and other hosted layouts: v6 plus the acb's received-root list (REGIONS-STAGE1) */
 #endif
 #define FPR_PLANE_ACTORS_ABI 3u /* v3: opt-in transactional spawn_inbox; v2: receive_from_now */
-#define FPR_PLANE_MEMORY_ABI 3u /* v3: sized stack reservation before a generated frame */
+#define FPR_PLANE_MEMORY_ABI 4u /* v4: loop_turn, the compiler-placed turn that moves owned Vectors; v3: sized stack reservation before a generated frame */
 typedef struct fpr_plane_actors {
   uw abi;                             /* FPR_PLANE_ACTORS_ABI of the exporter */
   V (*send_as)(uw sender_key, V target, V m);
@@ -236,6 +236,10 @@ typedef struct fpr_plane_memory {
   V (*arena)(V f);                    /* scopes, transfers and ARC share one allocator */
   V (*loop)(V state, V f);
   V (*loop_with)(V vec, V state, V f);
+  V (*loop_turn)(V state, V f);       /* v4: g_loop with owned Vectors moved, not refused (REGIONS-STAGE2) */
+  V (*loop_region)(V state, V f);     /* v4: the same with a Dynamic region of one slab: the state is
+                                       * copied out and the region reset only when a slab's worth of
+                                       * scratch has accumulated (pure self-tail-call loops) */
   uw (*stack_reserve)(uw sp, uw bytes); /* pre-frame SP; frame bytes plus runtime headroom */
 } fpr_plane_memory_t;
 extern fpr_plane_actors_t *fpr_plane_actors; /* NULL = this image is the plane */
@@ -413,6 +417,9 @@ typedef struct {
                              * (runtime.c msg_copy_in; appended) */
   fpr_lock_t bl_lock;       /* the backlog's lock: the owner for every
                              * change, a thief for a take (appended) */
+  uw copy_movevec;          /* a turn's state copy in progress: a Vector this
+                             * actor's base pool owns crosses by handle
+                             * (runtime.c transfer_copy; REGIONS-STAGE2; appended) */
 #ifdef FPR_COST_PROBE
   uint64_t cost_alloc_requests, cost_alloc_bytes;
   uint64_t cost_copies, cost_copy_bytes, cost_msg_slabs;
@@ -830,6 +837,12 @@ void fpr_ctx_fabricate(uw *ctx, void (*entry)(void), uw stack_top16,
                        fpr_hart_t *owner); /* ctx layer (virt/posix) */
 
 V fpr_alloc(V raw_bytes); /* runtime allocator; RAW byte count, not tagged */
+/* bulk storage (a Vector's header, directory and columns, runtime/vec.c):
+ * allocated in the actor's BASE pool whatever region is open, so an owned
+ * Vector survives a turn's reset and crosses the boundary by handle; it is
+ * linear, so its one owner frees it (docs/2026-10-24-REGIONS-STAGE2.md) */
+V fpr_alloc_bulk(V raw_bytes);
+V fpr_realloc_bulk(V v, V want);
 V fpr_realloc(V obj, V raw_bytes); /* grow to a new payload size (copy-based;
                                     * the freed block recycles exactly) */
 void fpr_free(V obj);     /* runtime-specific deallocation; not a recursive ADT drop */

@@ -38,6 +38,7 @@ fpr_pool_t *fpr_acb_pool(struct fpr_acb *p){(void)p;fpr_cpanic("Base: actor pool
 struct fpr_pool **fpr_acb_override_slot(struct fpr_acb *p){(void)p;fpr_cpanic("Base: actor arenas unavailable");return 0;}
 struct fpr_scope **fpr_acb_scope_slot(struct fpr_acb *p){(void)p;fpr_cpanic("Base: actor scopes unavailable");return 0;}
 fpr_slab_t **fpr_acb_msg_slot(struct fpr_acb *p){(void)p;fpr_cpanic("Base: actor message slabs unavailable");return 0;}
+fpr_rx_t *fpr_acb_rx(struct fpr_acb *p){(void)p;fpr_cpanic("Base: actor received roots unavailable");return 0;}
 size_t strlen(const char *p){size_t n=0;while(p[n])n++;return n;}
 // GCC's libatomic fallback, valid only for this single core without interrupts.
 int single_cas(volatile void *p,void *expected,unsigned long long value,int success,int failure) __asm__("__atomic_compare_exchange_8");

@@ -4,17 +4,32 @@
 -- This runs AFTER checking source types and BEFORE specialization/inlining.
 -- The private runtime protocol is existential: (True, next PAP) or
 -- (False, the original result). It is not a polymorphic source primitive.
+--
+-- Stage 2 of docs/2026-10-23-COST-SIZED-REGIONS.md (docs/2026-10-24-REGIONS-STAGE2.md)
+-- widens what becomes a turn:
+--   * a self tail call is a boundary too: a tail-recursive SCC that never
+--     receives gets the same trampoline when its iteration allocates (the
+--     cost pass's word on every primitive it calls; an unknown callee is
+--     assumed to) and every live parameter is of bounded size, so the copy
+--     out of the arguments cannot grow with the loop;
+--   * a live parameter that is loop-invariant (every call in the SCC passes
+--     the caller's own parameter in that slot) or function-typed needs no
+--     value evidence: it is copied as it is, and a Vector in it, or anywhere
+--     in the state, is MOVED by the runtime when this actor's base pool owns
+--     it (vec_movable_here) and copied otherwise;
+--   * the notes say which rule placed each boundary; --cost prints them.
 module ReceiveTurns (receiveTurns) where
 
-import Data.List (intercalate)
+import Data.List (intercalate, foldl')
 import Data.Graph (SCC (..), stronglyConnComp)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import FPRISC
 import Infer (Type (..), Row (..))
+import Cost (primAllocates)
 
-receiveTurns :: M.Map Name Type -> [STop] -> Prog -> S.Set Name -> Prog -> (Prog, [String])
-receiveTurns types tops context joins prog = (M.union rewritten prog, notes)
+receiveTurns :: Bool -> M.Map Name Type -> [STop] -> Prog -> S.Set Name -> Prog -> (Prog, [String])
+receiveTurns loopRegions types tops context joins prog = (M.union rewritten prog, notes)
   where
     refs ps = S.fromList . filter (`notElem` ps) . freeVars
     edges p = M.map (uncurry refs) p
@@ -29,15 +44,127 @@ receiveTurns types tops context joins prog = (M.union rewritten prog, notes)
           external = reaches (edges context) seeds `S.intersection` M.keysSet types
        in reaches (edges prog) (seeds `S.union` external)
     receivers = effect ["receive", "receiveFrom", "receiveRes", "receiveNow", "receiveFromRes", "receiveFromNow"]
-    managed = effect ["Sys.poolReset", "Sys.arena", "Sys.loop", "Sys.loopWith", "$receiveLoop"]
-    groups = [ns | CyclicSCC ns <- stronglyConnComp
-                  [(n, n, S.toList (refs ps b `S.intersection` M.keysSet prog)) | (n,(ps,b)) <- M.toList prog],
-                  any (`S.member` receivers) ns]
+    managed = effect ["Sys.poolReset", "Sys.arena", "Sys.loop", "Sys.loopWith", "$receiveLoop", "$turnLoop"]
+    recGroups = [ns | CyclicSCC ns <- stronglyConnComp
+                  [(n, n, S.toList (refs ps b `S.intersection` M.keysSet prog)) | (n,(ps,b)) <- M.toList prog]]
+    receiveGroups = [ns | ns <- recGroups, any (`S.member` receivers) ns]
+    -- a pure tail-recursive group is a boundary when its iteration allocates
+    -- (rule 2 of the proposal: the arguments are the state, the rest scratch)
+    pureGroups = [ns | ns <- recGroups, not (any (`S.member` receivers) ns), any (allocates (S.fromList ns)) ns]
+    groups = receiveGroups ++ pureGroups
+    pureSet = S.fromList (map S.fromList pureGroups)
+    isPure ns = S.member (S.fromList ns) pureSet
     membership = M.fromList [(n,S.fromList ns) | ns <- groups, n <- ns]
     results = map transform groups
-    rewritten = M.unions [p | Right p <- results]
-    notes = ["receive-turns: " ++ unwords ns ++ ": " ++ either id (const "automatic value-state turn regions") r
+    rewritten = M.unions [p | (ns, Right p) <- zip groups results, loopRegions || not (isPure ns)]
+    -- a declined pure group is noise in a --cost report (every list helper in
+    -- the closure is one): those lines carry a "(declined)" tag the driver
+    -- prints only under FPR_RECEIVE_NOTES, with a count under --cost
+    notes = [(if isPure ns then (if isLeft r then "turn-regions (declined): " else if loopRegions then "turn-regions: " else "turn-regions (candidate): ") else "receive-turns: ") ++ unwords ns ++ ": "
+              ++ either id (const (if isPure ns then (if loopRegions then "self tail call boundary: automatic turn regions" else "self tail call boundary, not placed (FPR_LOOP_REGIONS=1)") else "automatic value-state turn regions")) r
             | (ns,r) <- zip groups results]
+    -- off by default, a pure group that qualifies is reported and left as it is
+    isLeft = either (const True) (const False)
+    -- does an iteration of n allocate SCRATCH?  Counted: on a path that ends
+    -- in a call into the group, every allocation except the constructors
+    -- handed to that call as its arguments (they are the next state: copied
+    -- out by the turn, or unboxed by the field workers when the loop stays a
+    -- jump; counting them made every `loop n (a + n, b + 1)` a turn) and
+    -- everything on an exit path (allocated once, not per iteration).
+    -- Constructors with fields, closures and the primitives the cost pass
+    -- says allocate count; a call to a global outside the group that is not
+    -- a primitive is assumed to allocate.
+    allocates group n = let (ps, b) = prog M.! n in iterAlloc (S.fromList ps) b
+      where
+        groupCall bound e = case spine e of
+          (CVar g, as) | not (S.member g bound), S.member g group, not (null as) -> Just as
+          _ -> Nothing
+        reach bound e = case groupCall bound e of
+          Just _ -> True
+          Nothing -> case e of
+            CLet x a b' -> reach bound a || reach (S.insert x bound) b'
+            CIf c t f -> reach bound c || reach bound t || reach bound f
+            CApp a b' -> reach bound a || reach bound b'
+            CLam xs b' -> reach (bound `S.union` S.fromList xs) b'
+            CMk _ _ fs -> any (reach bound) fs
+            CTagEq _ _ x -> reach bound x
+            CProj _ x -> reach bound x
+            _ -> False
+        iterAlloc bound e = case groupCall bound e of
+          Just as -> any (argAlloc bound) as
+          Nothing -> case e of
+            CLet x a b' -> let bound' = S.insert x bound
+                            in (reach bound a && iterAlloc bound a)
+                               || (reach bound' b' && (rawAlloc bound a || iterAlloc bound' b'))
+            CIf c t f -> ((reach bound t || reach bound f) && rawAlloc bound c)
+                         || (reach bound t && iterAlloc bound t)
+                         || (reach bound f && iterAlloc bound f)
+            _ -> reach bound e && rawAlloc bound e
+        -- an argument of the recursive call: its constructors are the state
+        argAlloc bound e = case e of
+          CMk _ _ fs -> any (argAlloc bound) fs
+          _ -> rawAlloc bound e
+        rawAlloc bound e = case spine e of
+          (CVar g, as) | not (S.member g bound), not (null as) ->
+            if S.member g group then any (argAlloc bound) as
+            else case primAllocates g (length as) of
+              Just False -> any (rawAlloc bound) as
+              Just True -> True
+              Nothing -> True -- unknown code: assumed to allocate
+          _ -> case e of
+            CLet x a b' -> rawAlloc bound a || rawAlloc (S.insert x bound) b'
+            CIf c t f -> rawAlloc bound c || rawAlloc bound t || rawAlloc bound f
+            CApp a b' -> rawAlloc bound a || rawAlloc bound b'
+            CLam _ _ -> True
+            CMk _ _ fs -> not (null fs) || any (rawAlloc bound) fs
+            CTagEq _ _ x -> rawAlloc bound x
+            CProj _ x -> rawAlloc bound x
+            _ -> False
+    -- loop-invariant parameter slots of a group: (function, index) classes
+    -- joined by every call inside the group that passes a caller's own
+    -- parameter; a class any call feeds with anything else is variable.
+    invariants ns = S.fromList [slot | slot <- M.keys cls, S.member (rep slot) good]
+      where
+        group = S.fromList ns
+        -- a call's arguments, each resolved to the caller's parameter slot it
+        -- is (through the `let x = param` aliases Core binds the surface names
+        -- with), a global (a constant), or something else (variable)
+        calls = concat [callsIn n (M.fromList (zip ps [0 ..])) b | n <- ns, let (ps, b) = prog M.! n]
+        callsIn n alias e = case spine e of
+          (CVar g, as) | S.member g group, not (M.member g alias), length as == length (fst (prog M.! g)) ->
+            [(g, map (argKind alias) as)] ++ concatMap (callsIn n alias) as
+          _ -> case e of
+            CLet x a b' -> callsIn n alias a ++ callsIn n (case a of
+                             CVar y | Just j <- M.lookup y alias -> M.insert x j alias
+                             _ -> M.delete x alias) b'
+            CIf c t f -> concatMap (callsIn n alias) [c, t, f]
+            CApp a b' -> callsIn n alias a ++ callsIn n alias b'
+            CLam xs b' -> callsIn n (foldr M.delete alias xs) b'
+            CMk _ _ fs -> concatMap (callsIn n alias) fs
+            CTagEq _ _ x -> callsIn n alias x
+            CProj _ x -> callsIn n alias x
+            _ -> []
+          where
+            argKind al a = case a of
+              CVar x | Just j <- M.lookup x al -> Just (Just (n, j))
+                     | M.member x prog -> Just Nothing -- a global: a constant
+              _ -> Nothing
+        slots = [(n, i) | n <- ns, i <- [0 .. length (fst (prog M.! n)) - 1]]
+        -- union-find by a parent map, small groups: repeated path compression
+        -- is not worth the code
+        cls0 = M.fromList [(sl, sl) | sl <- slots]
+        (cls, variable) = foldl' step (cls0, S.empty) calls
+        step (c, var) (g, kinds) = foldl' one (c, var) (zip [0 ..] kinds)
+          where
+            one (c', v') (i, k) = case k of
+              Just (Just slot) -> (union c' (g, i) slot, v')
+              Just Nothing -> (c', v')
+              Nothing -> (c', S.insert (g, i) v')
+        find c sl = let p = c M.! sl in if p == sl then sl else find c p
+        union c a b = let ra = find c a; rb = find c b in if ra == rb then c else M.insert ra rb c
+        rep = find cls
+        variableReps = S.fromList (map rep (S.toList variable))
+        good = S.fromList [rep sl | sl <- slots] S.\\ variableReps
     -- Least fixed point: a parameter only forwarded into another dead slot
     -- need not cross the boundary. All argument expressions still execute;
     -- only a read of an already-bound local is effect-free to discard.
@@ -71,7 +198,9 @@ receiveTurns types tops context joins prog = (M.union rewritten prog, notes)
     -- the current turn: their temporary payloads are not persistent state.
     -- Follow private joins here because a clause fallback can contain the
     -- receive belonging to its source function.
-    entries ns = close seeds S.\\ joins
+    entries ns
+      | isPure ns = S.fromList ns S.\\ joins
+      | otherwise = close seeds S.\\ joins
       where
         group = S.fromList ns
         graph = edges prog
@@ -82,7 +211,9 @@ receiveTurns types tops context joins prog = (M.union rewritten prog, notes)
     transform ns
       | any (`S.member` managed) ns = Left "explicit region management; unchanged"
       | S.null boundaries = Left "no checked receive entry; unchanged"
-      | not (null problems) = Left ("state/result is mutable, functional, polymorphic or lacks type evidence; unchanged (" ++ intercalate "; " problems ++ ")")
+      | not (null problems) = Left ((if isPure ns then "state is unbounded, polymorphic or lacks type evidence; unchanged ("
+                                     else "state/result is mutable, functional, polymorphic or lacks type evidence; unchanged (") ++ intercalate "; " problems ++ ")"
+                                     ++ (if S.null invariant then "" else "; invariant: " ++ unwords [n ++ "#" ++ show (i + 1) | (n, i) <- S.toList invariant]))
       | any (\n -> length (fst (prog M.! n)) > 64) ns = Left "requires at most 64 parameters after arity spilling; unchanged"
       | otherwise = do
           bodies <- mapM (\n -> let (ps,b) = prog M.! n in (,) n <$> tailE (S.fromList ps) b) ns
@@ -90,7 +221,8 @@ receiveTurns types tops context joins prog = (M.union rewritten prog, notes)
       where
         group = S.fromList ns
         boundaries = entries ns
-        problems = concatMap typedProblems (S.toList boundaries)
+        invariant = invariants ns
+        problems = concatMap (typedProblems (isPure ns) invariant) (S.toList boundaries)
         helper n = (if n `S.member` boundaries then "$receive.turn." else "$receive.local.") ++ n
         mentions bound e = not . S.null $ (S.fromList (freeVars e) S.\\ bound) `S.intersection` group
         tailE bound = \case
@@ -129,21 +261,69 @@ receiveTurns types tops context joins prog = (M.union rewritten prog, notes)
                   -- the runtime frees the thunk and, when the stub packed
                   -- two or more live parameters, the tuple it made for them
                   -- (runtime.c g_receive_loop): the count says which
-               in [(n, (ps, CApp (CApp (CVar "$receiveLoop") thunk) (CInt (fromIntegral (length ks))))),
+                  -- a pure group's region is Dynamic, one slab: $turnLoop
+                  -- copies the state out only when a slab of scratch has
+                  -- accumulated; a receive loop's turn ends every message
+                  entry = if isPure ns then "$turnLoop" else "$receiveLoop"
+               in [(n, (ps, CApp (CApp (CVar entry) thunk) (CInt (fromIntegral (length ks))))),
                    (helper n, (["$receive.state", "$receive.unit"], unpacked))]
 
     -- Only live, closed first-order values cross a turn. Unknown captures
     -- still cannot smuggle a Vector into state; generated joins stay inside
     -- the current scratch arena. Nominal declarations are checked deeply.
-    typedProblems n = case M.lookup n types of
+    -- pure: a self-tail-call boundary wants BOUNDED live parameters (the
+    -- copy out of the arguments must not grow with the loop); a receive
+    -- loop takes any value type.  An invariant or function-typed parameter
+    -- needs no evidence: it is copied as it is, Vectors moved by the runtime.
+    typedProblems pure invariant n = case M.lookup n types of
       Just ty -> let ps = fst (prog M.! n)
                      (as,r) = split (length ps) ty
+                     ok = if pure then bounded S.empty else value S.empty
+                     -- a result that is one of the invariant parameters' own
+                     -- (polymorphic) types is the caller's value handed back:
+                     -- it needs no more evidence than the parameter did
+                     handedBack = case r of
+                       TV x -> or [case a of TV y -> x == y; _ -> False
+                                  | (i, a) <- zip [0 ..] as, S.member (n, i) invariant]
+                       _ -> False
                   in if length as /= length ps then [n ++ ": parameter arity lacks type evidence"] else
                      [n ++ ": live parameter " ++ show i ++ " has " ++ show a
-                      | (i,p,a) <- zip3 [1::Int ..] ps as, p `elem` kept n, not (value S.empty a)]
+                      | (i,p,a) <- zip3 [1::Int ..] ps as, p `elem` kept n, not (ok a),
+                        not (S.member (n, i - 1) invariant), not (isFn a)]
                      ++ [n ++ ": result has " ++ show r
-                        | not (value S.empty r || nonReturning n)]
+                        | not (value S.empty r || nonReturning n || handedBack)]
       Nothing -> [n ++ ": no checked source interface"]
+    isFn t = case t of TFn _ _ -> True; _ -> False
+    -- bounded: a value whose size does not depend on the loop: scalars,
+    -- handles, Vectors (moved by handle), and products of those; a List,
+    -- String or Result of unbounded parts may grow as the loop runs
+    bounded seen = \case
+      TTupT ts -> all (bounded seen) ts
+      TRec r -> boundedRow seen r
+      t -> case tySpine t of
+        (TC n,as)
+          | n `elem` ["Int","Bool","Unit","Atom","I64","Word","F64","I32"] -> null as
+          | n == "Vector" -> length as == 1
+          | n == "Result" -> length as == 2 && all (bounded seen) as
+          | Just fs <- M.lookup n shapes, null as, n `S.notMember` seen ->
+              all (fieldB (S.insert n seen) M.empty . snd) fs
+          | Just (vs,fields) <- M.lookup n decls,
+            length vs == length as, all (bounded seen) as ->
+              -- a recursive nominal (a Tree) is a value but not bounded: its
+              -- size is the data's, and copying it every iteration would grow
+              -- with the loop
+              n `S.notMember` seen && all (fieldB (S.insert n seen) (M.fromList (zip vs as))) fields
+        _ -> False
+    boundedRow seen = \case
+      RNil -> True
+      RExt _ t r -> bounded seen t && boundedRow seen r
+      _ -> False
+    fieldB seen subst = \case
+      TVarT n -> maybe False (bounded seen) (M.lookup n subst)
+      TCon n ts -> maybe False (bounded seen) (convert subst (TCon n ts))
+      TTup ts -> all (fieldB seen subst) ts
+      TRecT fs Nothing -> all (fieldB seen subst . snd) fs
+      _ -> False
     -- Check EVERY member, including untyped private joins: a source body
     -- ending at a join is not proof that the join itself cannot return.
     nonReturning n = let group = M.findWithDefault S.empty n membership
@@ -167,7 +347,8 @@ receiveTurns types tops context joins prog = (M.union rewritten prog, notes)
       TRec r -> row seen r
       t -> case tySpine t of
         (TC n,as)
-          | n `elem` ["Int","String","Bool","Unit","Atom","I64","Word"] -> null as
+          | n `elem` ["Int","String","Bool","Unit","Atom","I64","Word","F64","I32"] -> null as
+          | n == "Vector" -> length as == 1 -- moved by handle when owned here, copied otherwise (runtime.c)
           | n `elem` ["List","Result"] -> length as == (if n == "List" then 1 else 2) && all (value seen) as
           | Just fs <- M.lookup n shapes, null as, n `S.notMember` seen ->
               all (field (S.insert n seen) M.empty . snd) fs

@@ -426,3 +426,6 @@ char fpr_builtin_field_kind(V v,uw i) {
   if(i>=b->fields) fpr_cpanic("Builtin: field index out of range");
   return b->layout ? b->layout->bytes[i] : 't';
 }
+/* bulk storage is ordinary storage here: no pools, no turn arenas (fpr.h) */
+V fpr_alloc_bulk(V bytes) { return fpr_alloc(bytes); }
+V fpr_realloc_bulk(V v, V bytes) { return fpr_realloc(v, bytes); }

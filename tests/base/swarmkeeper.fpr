@@ -1,0 +1,27 @@
+# the swarm keeper (examples/swarm.fpr): an actor whose state is the swarm,
+# Vectors in a nominal type, answering one Step per tick.  Its loop is a
+# compiler-placed turn since stage 2 (docs/2026-10-24-REGIONS-STAGE2.md): the
+# tick's scratch dies with the turn and the swarm's Vectors cross the boundary
+# by handle, so resident memory stays flat over 10,000 ticks (the pool used to
+# grow by a tick's answer per tick: docs/2026-10-19-STD-SUITE-REPAIRS.md).
+unsafe base.
+Swarm = use "../../examples/swarm".
+AC = use "std/actor".
+freeKiB : Unit -> Int .
+freeKiB u = case Sys.memInfo 0 of _ :: f :: _ -> f | _ -> 0.
+ticks : unsafe Int -> Int -> Int -> Int -> Int .
+ticks me k n bites = if n == 0 then bites else
+  case AC.call me k (Swarm.Step 10240 3072 0 80 23) of
+    Ok a -> ticks me k (n - 1) (bites + a.bites)
+  | Err why -> error "swarmkeeper: {why}".
+main =
+  me = myself 0;
+  k = Swarm.startKeeper 0 2000 80 23;
+  _ = ticks me k 200 0;
+  _ = Sys.sleepUs 20000;
+  before = freeKiB Unit;
+  b = ticks me k 10000 0;
+  _ = Sys.sleepUs 20000;
+  grew = before - freeKiB Unit;
+  _ = AC.call me k Swarm.Stop;
+  print "swarmkeeper: 10000 ticks of 2000 motes, {b} bites; memory {case grew < 4096 of True -> "flat (under 4 MiB more)" | False -> "grew {grew} KiB"}".

@@ -460,6 +460,9 @@ compileWithInterface accepted = do
   envNoReuse <- (== Just "1") <$> lookupEnv "FPR_NO_REUSE"
   envNoSpec <- (== Just "1") <$> lookupEnv "FPR_NO_SPEC"
   envNoReceiveTurns <- (== Just "1") <$> lookupEnv "FPR_NO_RECEIVE_TURNS"
+  -- FPR_LOOP_REGIONS=1: a pure self tail call gets a Dynamic region too; off by
+  -- default, the trampoline costing a hot loop too much (REGIONS-STAGE2)
+  envLoopRegions <- (== Just "1") <$> lookupEnv "FPR_LOOP_REGIONS"
   envReceiveNotes <- (== Just "1") <$> lookupEnv "FPR_RECEIVE_NOTES"
   envApply <- (== Just "1") <$> lookupEnv "FPRC_APPLY"
   envNoInline <- (== Just "1") <$> lookupEnv "FPR_NO_INLINE"
@@ -742,7 +745,7 @@ compileWithInterface accepted = do
                             in (M.map (fmap eraseCast) p, S.fromList (dJoins st))
           turnContext = fst (compileRaw finalTops)
           turnPass (p, joins) = if oBuiltin opts || oArc opts || envNoReceiveTurns then (p, [])
-                       else receiveTurns (M.fromList interfaces) finalTops turnContext joins p
+                       else receiveTurns envLoopRegions (M.fromList interfaces) finalTops turnContext joins p
           compileUnit = fst . turnPass . compileRaw
           -- tid collision check (fnv32 is probabilistic; fail LOUDLY)
           tidDecls =
@@ -910,8 +913,17 @@ compileWithInterface accepted = do
                 bn = S.fromList ([fst3 b | b@(TBind {}) <- uts])
              in [t | t@(TBind n _ _ _) <- rw, S.member n bn]
                   ++ [t | t <- rw, not (isTBind t)]
-          reportTurns uts = when (envReceiveNotes || oCost opts) $
-            mapM_ (hPutStrLn stderr) (snd (turnPass (compileRaw uts)))
+          -- --cost: every boundary placed, by rule, and a count of the pure
+          -- groups declined; FPR_RECEIVE_NOTES=1 lists the declined ones too
+          -- (docs/2026-10-24-REGIONS-STAGE2.md)
+          reportTurns uts = when (envReceiveNotes || oCost opts) $ do
+            let ns = snd (turnPass (compileRaw uts))
+                declined = [n | n <- ns, "turn-regions (declined): " `isPrefixOf` n]
+            mapM_ (hPutStrLn stderr) (if envReceiveNotes then ns else filter (`notElem` declined) ns)
+            when (not envReceiveNotes && not (null declined)) $
+              hPutStrLn stderr ("turn-regions: " ++ show (length declined) ++ " self-tail-call group(s) declined (unbounded or unproven state); FPR_RECEIVE_NOTES=1 lists them")
+            when (not envLoopRegions && any ("turn-regions (candidate): " `isPrefixOf`) ns) $
+              hPutStrLn stderr "turn-regions: the candidates above are placed with FPR_LOOP_REGIONS=1 (off by default: the trampoline costs a hot loop too much; docs/2026-10-24-REGIONS-STAGE2.md)"
           checkBuiltinWidth p = do
             when (oArc opts && any (coreHasName i32WidePrimitive . snd) (M.elems p)) $ do
               hPutStrLn stderr "I32 conversions with I64/F32/F64 currently require the manual ABI; --arc/--raw bridge ownership adapters are not implemented"
@@ -937,7 +949,7 @@ compileWithInterface accepted = do
               [ M.fromList [(n, length as) | TSig n (as, _) _ <- preludeE' ++ concatMap snd units' ++ root'],
                 M.map (\(Forall _ _ t) -> arrows t) builtinEnv,
                 -- the internal pair-free vector reads (Inline.vecPeek, vec.c)
-                M.fromList [("$vec.at", 2), ("$vec.get", 2), ("$vec.len", 1), ("$receiveLoop", 2)] ]
+                M.fromList [("$vec.at", 2), ("$vec.get", 2), ("$vec.len", 1), ("$receiveLoop", 2), ("$turnLoop", 2)] ]
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
           tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = not envNoFloatInline, tgtSimd=(oA64 opts || oX64 opts) && not envNoSimd, tgtFusion=not envNoFusion,

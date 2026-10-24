@@ -514,6 +514,20 @@ def turnroots(tmp):
     print('A message dies with its turn: a serve store keeps 5,000 requests\' keys and values without keep, an arena and a poolReset release their received roots, on one and four harts: PASS')
 
 @case
+def swarmkeeper(tmp):
+    # stage 2 (docs/2026-10-24-REGIONS-STAGE2.md): the swarm keeper's loop, a
+    # Swarm of Vectors as its state, is a compiler-placed turn; the swarm's
+    # Vectors cross each boundary by handle and the tick's scratch dies with
+    # the turn, so 10,000 ticks leave resident memory flat
+    p = run(['./fpr', 'build', '--cost', 'tests/base/swarmkeeper.fpr', '-o', tmp / 'swarmkeeper'], timeout=300)
+    assert any(line.startswith('receive-turns: ') and 'keeper' in line.split(':')[1] and 'automatic value-state turn regions' in line
+               for line in (p.stdout + p.stderr).splitlines()), p.stdout + p.stderr  # the notes go to stderr
+    for harts in ('1', '4'):
+        q = run([tmp / 'swarmkeeper'], env={'FPR_HARTS': harts}, timeout=300)
+        assert q.stdout.startswith('swarmkeeper: 10000 ticks of 2000 motes') and 'flat' in q.stdout, q.stdout + q.stderr
+    print('The swarm keeper is a turn: 10,000 ticks of 2,000 motes, Vectors moved across every boundary, resident memory flat on one and four harts: PASS')
+
+@case
 def fixedheap(tmp):
     # Fixed heap admission is independent of mailbox capacity; failures
     # belong to the child and escaped data delays grant reclamation.

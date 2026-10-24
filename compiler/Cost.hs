@@ -25,7 +25,7 @@
 -- structurally is `len p`.  Arguments to callees substitute into the
 -- callee's equation when they are linear in the caller's parameters;
 -- anything else is the opaque `?`.
-module Cost (Cost (..), CostEq (..), Declared (..), Verdict (..), costProgram, declaredBounds, checkBounds, checkBoundsWith, renderVerdict, substCoefs, coefsIn, resolvePrims, evalConst, omegas, prettyCost, prettyIn, renderReport, hasOmega) where
+module Cost (Cost (..), CostEq (..), Declared (..), Verdict (..), costProgram, declaredBounds, checkBounds, checkBoundsWith, renderVerdict, substCoefs, coefsIn, resolvePrims, evalConst, omegas, prettyCost, prettyIn, renderReport, hasOmega, primAllocates) where
 
 import Data.Graph (SCC (..), stronglyConnComp)
 import Data.List (intercalate, nub, sort)
@@ -234,6 +234,15 @@ pp c = case c of
 -- 16 + len a + len b (sizeof str_t + bytes); substr is bounded by its
 -- source.  Anything applied that is neither a program global, a local,
 -- nor here is w(name): `str` renders any value, `print` is I/O.
+-- | Does a call to this primitive allocate?  Nothing: not a primitive the cost
+-- pass knows (a call into unknown code, assumed to allocate by ReceiveTurns'
+-- self-tail-call boundaries).  Just False: a primitive whose alloc is zero
+-- whatever its arguments (arithmetic, comparisons, projections).
+primAllocates :: Name -> Int -> Maybe Bool
+primAllocates n arity = case primCostOf n (replicate arity (CO "?")) of
+  Nothing -> Nothing
+  Just (_, a) -> Just (simp a /= CN 0)
+
 primCostOf :: Name -> [Cost] -> Maybe (Cost, Cost)
 primCostOf g lens
   | g `elem` ["+", "-", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=", "and", "or", "not", "and2", "or2", "neg"] = unit

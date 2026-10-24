@@ -474,9 +474,8 @@ void fpr_bkt_put(void **b) {
 }
 
 #ifndef FPR_BUILTIN
-V fpr_alloc(V raw_bytes) {
-  fpr_hart_t *h = fpr_hart();
-  fpr_pool_t *pool = cur_pool(h);
+static fpr_pool_t *base_pool(fpr_hart_t *h) { return h->current ? fpr_acb_pool(h->current) : &h->pool; }
+static V alloc_in(fpr_hart_t *h, fpr_pool_t *pool, V raw_bytes) {
   uw total = (((raw_bytes + 15) & ~(uw)15)) + 16;
   FPR_COST_ADD(h, cost_alloc_requests, 1);
   FPR_COST_ADD(h, cost_alloc_bytes, total);
@@ -620,6 +619,9 @@ V fpr_alloc(V raw_bytes) {
   }
   return (V)(p + 16);
 }
+V fpr_alloc(V raw_bytes) { fpr_hart_t *h = fpr_hart(); return alloc_in(h, cur_pool(h), raw_bytes); }
+/* a Vector's storage: the base pool, never a turn's arena (fpr.h) */
+V fpr_alloc_bulk(V raw_bytes) { fpr_hart_t *h = fpr_hart(); return alloc_in(h, base_pool(h), raw_bytes); }
 
 /* called ONLY from the ARC drop path, under arc_lock -- which is what
  * makes reading slab->owner race-free against death teardown (also
@@ -638,6 +640,15 @@ V fpr_realloc(V v, V want) {
   uw old = *(uw *)((char *)v - 16) - 16; /* payload capacity */
   if (old >= (uw)want) return v;
   V n = fpr_alloc(want);
+  __builtin_memcpy((void *)n, (void *)v, old);
+  fpr_free(v);
+  return n;
+}
+V fpr_realloc_bulk(V v, V want) {
+  if (!v) return fpr_alloc_bulk(want);
+  uw old = *(uw *)((char *)v - 16) - 16;
+  if (old >= (uw)want) return v;
+  V n = fpr_alloc_bulk(want);
   __builtin_memcpy((void *)n, (void *)v, old);
   fpr_free(v);
   return n;
@@ -752,7 +763,30 @@ typedef struct {
   fpr_slab_t *sl;
   const char *novec; /* set: a Vector in the graph is refused by this name
                       * (a turn's state: its storage IS the arena) */
+  int movevec;       /* a compiler-placed turn's state: a Vector this actor's
+                      * base pool owns, raw columns only, crosses by handle
+                      * (vec_movable_here); every other Vector is copied */
 } dctx_t;
+/* a Vector that may cross a turn boundary by handle: its header is in this
+ * actor's base pool (so every piece is, vec.c allocates bulk there and a
+ * turn's reset never touches it) and no column is boxed (a boxed element
+ * could live in the turn's arena).  Anything else -- a message's Vector in
+ * an ownerless slab, a boxed column -- is copied as before. */
+static fpr_slab_t *slab_of(V v);
+static int vec_movable_here(V v) {
+#ifdef FPR_BUILTIN
+  (void)v; return 0;
+#else
+  fpr_hart_t *h = fpr_hart();
+  if (!h) return 0;
+  fpr_pool_t *base = h->current ? fpr_acb_pool(h->current) : &h->pool;
+  fpr_slab_t *sl = slab_of(v);
+  if (!sl || sl->owner != base) return 0;
+  vec_t *x = (vec_t *)v;
+  for (uw k = 0; k < x->ncols; k++) if (!VK_RAW(x->kinds[k])) return 0;
+  return 1;
+#endif
+}
 
 /* a fresh cell's slab footprint: fpr_alloc's exact rounding + header */
 static uw dc_cellsz(uw raw) { return (((raw + 15) & ~(uw)15)) + 16; }
@@ -799,6 +833,7 @@ static uw dc_size(V v) {
   switch (h->tid) {
     case T_ACTOR: return 0; /* immortal acb: shared, not copied */
     case T_VEC: {
+      { fpr_hart_t *mh = fpr_hart(); if (mh && mh->copy_movevec && vec_movable_here(v)) return 0; } /* moved, not copied */
       vec_t *x = (vec_t *)v;
       uw n = dc_cellsz(sizeof(vec_t));
       if (x->shape_len) n += dc_cellsz(x->shape_len * sizeof(vec_shape_t));
@@ -965,6 +1000,7 @@ static V dc_dup(V v, dctx_t *c) {
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
     case T_VEC: {
+      if (c && c->movevec && vec_movable_here(v)) return v; /* the handle crosses; the storage stays put */
       if (c->novec) fpr_cpanic(c->novec);
       /* the whole vector -- header, col_t's, column spans -- lands in
        * the message slab: one message = one slab, vectors included.
@@ -1211,6 +1247,7 @@ static V kp_dup(V v) {
   hdr_t *h = (hdr_t *)v;
   switch (h->tid) {
     case T_VEC: {
+      { fpr_hart_t *mh = fpr_hart(); if (mh && mh->copy_movevec && vec_movable_here(v)) return v; } /* a turn's final state */
       vec_t *x = (vec_t *)v;
       vec_t *n = (vec_t *)fpr_alloc(sizeof(vec_t));
       n->tid = T_VEC;
@@ -1471,16 +1508,20 @@ static void slab_free_ownerless(fpr_slab_t *sl) {
  * it fits, else into a fresh slab; a Vector in it is refused by name during
  * the copy (its storage would go with the arena).  The slab being filled
  * sits in `spare` meanwhile, so an actor ended mid-copy still frees it. */
-static V transfer_copy(V v, struct fpr_scope *scope, const char *novec) {
+static V transfer_copy_in(V v, struct fpr_scope *scope, const char *novec, int movevec) {
   fpr_hart_t *h = fpr_hart();
   uw pid = fpr_current_pid();
-  if (h) h->copy_pid = pid;
+  if (h) { h->copy_pid = pid; h->copy_movevec = (uw)movevec; }
   uw need = dc_size(v);
+  if (h) h->copy_movevec = 0;
   FPR_COST_ADD(h, cost_copies, 1);
   FPR_COST_ADD(h, cost_copy_bytes, need);
   FPR_COST_ADD(h, cost_state_copies, 1);
   FPR_COST_ADD(h, cost_state_bytes, need);
-  if (!need) return dc_dup(v, 0); /* ints, statics, bare actor handles: no cell, so no Vector */
+  if (!need) { /* ints, statics, bare actor handles: no cell -- or the state IS a moved Vector */
+    if (movevec && !ISINT(v) && v && fpr_in_heap(v) && TID(v) == T_VEC && vec_movable_here(v)) return v;
+    return dc_dup(v, 0);
+  }
   fpr_slab_t *sl = scope->spare;
   if (!sl || slab_room(sl) < need) {
     if (sl) { scope->spare = 0; slab_free_ownerless(sl); }
@@ -1493,12 +1534,13 @@ static V transfer_copy(V v, struct fpr_scope *scope, const char *novec) {
   sl->pushed = 0;
   h = fpr_hart();
   if (h) h->copy_pid = pid;
-  dctx_t c = {sl->hp, sl, novec};
+  dctx_t c = {sl->hp, sl, novec, movevec};
   V r = dc_dup(v, &c);
   sl->hp = c.hp;
   scope->spare = 0; /* it is the state now; transfer_retire brings it back */
   return r;
 }
+static V transfer_copy(V v, struct fpr_scope *scope, const char *novec) { return transfer_copy_in(v, scope, novec, 0); }
 /* the state the turn just left behind: its slab becomes the spare when
  * nothing else references it.  The unlocked reads are sound as they were in
  * the old transfer_free: only this actor could promote from the slab, and a
@@ -1523,6 +1565,11 @@ static void scope_release(struct fpr_scope *scope) {
 
 static V g_arena(V f) {
   if (fpr_plane_memory) return fpr_plane_memory->arena(f);
+#ifdef FPR_BUILTIN
+  /* the builtin heap (machine/builtin/heap.c) has no pools: a region is the
+   * plain call, its allocations the heap's to free as ever (REGIONS-STAGE2) */
+  return fpr_apply(f, (V)&fpr_unit);
+#else
   /* Capture actor-owned storage, not its current hart: allocation and the
    * thunk may park, and a resumed actor can migrate before teardown. */
   struct fpr_pool **slot = override_slot(fpr_hart());
@@ -1546,6 +1593,7 @@ static V g_arena(V f) {
   scope_release(&scope);
   *head = scope.previous;
   return out;
+#endif
 }
 
 /* ---- Sys.loopWith: a loop whose every step is an arena --------------
@@ -1593,10 +1641,44 @@ static int vec_same(const vec_snap_t *sn, V v) {
 /* Sys.loop state step -> finalState. The value-only form of loopWith is
  * the default engine for library receive/frame loops. A callback cannot
  * smuggle mutable storage around the state check through a capture. */
-static V g_loop(V s, V f) {
-  if (fpr_plane_memory) return fpr_plane_memory->loop(s, f);
-  no_vec_out(s, "Sys.loop: the state may not hold a Vector (use Sys.loopWith)");
-  no_vec_out(f, "Sys.loop: the callback may not capture a Vector (use Sys.loopWith)");
+/* movevec: the compiler-placed turn ($receiveLoop): an owned Vector in the
+ * state crosses by handle (vec_movable_here) instead of being refused; the
+ * Sys.loop primitive keeps its contract (loopWith threads a buffer). */
+/* amortized: a pure self-tail-call loop's region is `Dynamic` with a capacity
+ * of one slab, the allocator's floor (FPR_MSG_SLAB_SZ): the next state stays
+ * in the arena, with the iteration's scratch, until the region has bumped a
+ * slab's worth since its last reset; then the state is copied out and the
+ * region reset.  The garbage is bounded by a slab plus the state, and the
+ * copy is paid once per slab of scratch instead of once per iteration (a
+ * boxed float per iteration made nbody three times slower with a turn each;
+ * docs/2026-10-24-REGIONS-STAGE2.md).  A receive loop never amortizes: its
+ * message dies at the turn's end, which needs the state copied out first. */
+static V g_loop_in(V s, V f, int movevec, int amortized) {
+  if (fpr_plane_memory) {
+    if (!movevec) return fpr_plane_memory->loop(s, f);
+    if (fpr_plane_memory->abi < 4 || !fpr_plane_memory->loop_turn || !fpr_plane_memory->loop_region)
+      fpr_cpanic("receive loop: the memory plane predates turn regions with Vectors (rebuild the kernel)");
+    return amortized ? fpr_plane_memory->loop_region(s, f) : fpr_plane_memory->loop_turn(s, f);
+  }
+#ifdef FPR_BUILTIN
+  /* no pools, no arena, no copy: the loop runs as written (the turn's
+   * garbage is the builtin heap's, as for every other call there) */
+  { V state = s;
+  for (;;) {
+    V r = fpr_apply(f, state);
+    if (ISINT(r) || !fpr_in_heap(r) || TID(r) != T_TUP2)
+      fpr_cpanic("Sys.loop: a step must return (continue, state)");
+    V go = FPR_FLD(r, 0);
+    state = FPR_FLD(r, 1);
+    if (ISINT(go) || !go || TID(go) != T_BOOL || ((hdr_t *)go)->var > 1)
+      fpr_cpanic("Sys.loop: continue must be a Bool");
+    if (((hdr_t *)go)->var != 1) return state;
+  } }
+#else
+  if (!movevec) {
+    no_vec_out(s, "Sys.loop: the state may not hold a Vector (use Sys.loopWith)");
+    no_vec_out(f, "Sys.loop: the callback may not capture a Vector (use Sys.loopWith)");
+  }
   struct fpr_pool **slot = override_slot(fpr_hart());
   struct fpr_pool *prev = *slot;
   struct fpr_scope scope;
@@ -1606,6 +1688,7 @@ static V g_loop(V s, V f) {
   arena_open(slot, &ap);
   scope.arena = &ap;
   V state = s;
+  uw mark = ap.allocated; /* amortized: the region's bytes at its last reset */
   for (;;) {
     FPR_COST_ADD(fpr_hart(), cost_turns, 1);
     V r = fpr_apply(f, state);
@@ -1614,21 +1697,32 @@ static V g_loop(V s, V f) {
     V go = FPR_FLD(r, 0), nx = FPR_FLD(r, 1);
     if (ISINT(go) || !go || TID(go) != T_BOOL || ((hdr_t *)go)->var > 1)
       fpr_cpanic("Sys.loop: continue must be a Bool");
-    V t = transfer_copy(nx, &scope, "Sys.loop: the state may not hold a Vector (use Sys.loopWith)");
     int more = ((hdr_t *)go)->var == 1;
+    if (amortized && more && ap.allocated - mark < (uw)FPR_MSG_SLAB_SZ) {
+      state = nx; /* the state lives in the region with the scratch until the slab is full */
+      continue;
+    }
+    V t = transfer_copy_in(nx, &scope, movevec ? 0 : "Sys.loop: the state may not hold a Vector (use Sys.loopWith)", movevec);
     scope_roots_die(&scope);
     arena_reset(&ap);
+    mark = ap.allocated;
     transfer_retire(&scope);
     state = scope.held = t;
     if (!more) break;
   }
   arena_close(slot, &ap, prev);
   scope.arena = 0;
-  V out = kp_dup(state);
+  { fpr_hart_t *fh = fpr_hart(); if (fh) fh->copy_movevec = (uw)movevec; }
+  V out = kp_dup(state); /* into the caller's pool; an owned Vector stays where it is */
+  { fpr_hart_t *fh = fpr_hart(); if (fh) fh->copy_movevec = 0; }
   scope_release(&scope);
   *head = scope.previous;
   return out;
+#endif
 }
+static V g_loop(V s, V f) { return g_loop_in(s, f, 0, 0); }
+static V g_loop_turn(V s, V f) { return g_loop_in(s, f, 1, 0); }
+static V g_loop_region(V s, V f) { return g_loop_in(s, f, 1, 1); }
 FPR_FN(fpr_g_Sys_x2eloop, g_loop, 2);
 
 /* Compiler-private tail-call trampoline. A checked receive SCC returns
@@ -1655,8 +1749,13 @@ static const pap0_t receive_step_fn = {T_PAP, 0, (uw)(uintptr_t)receive_step, 1,
  * `Clock.receiveWithin`, each `Poller` wait -- bumps them anew and leaks
  * them until the actor dies (112 bytes on a 64-bit host: tests/std/poller.fpr,
  * docs/2026-10-19-STD-SUITE-REPAIRS.md). */
-static V g_receive_loop(V thunk, V packed) {
-  V out = g_loop(thunk, (V)&receive_step_fn);
+static V receive_loop_in(V thunk, V packed, int amortized);
+static V g_receive_loop(V thunk, V packed) { return receive_loop_in(thunk, packed, 0); }
+/* the compiler's boundary at a pure self tail call: the same trampoline over a
+ * Dynamic region of one slab (g_loop_in amortized) */
+static V g_turn_loop(V thunk, V packed) { return receive_loop_in(thunk, packed, 1); }
+static V receive_loop_in(V thunk, V packed, int amortized) {
+  V out = g_loop_in(thunk, (V)&receive_step_fn, 1, amortized); /* the compiler's turn: owned Vectors move */
   if (!ISINT(thunk) && thunk && fpr_in_heap(thunk) && TID(thunk) == T_PAP) {
     pap_t *p = (pap_t *)thunk;
     if (p->nargs == 1 && ISINT(packed) && UNTAG(packed) > 1) {
@@ -1668,9 +1767,28 @@ static V g_receive_loop(V thunk, V packed) {
   return out;
 }
 FPR_FN(fpr_g__x24receiveLoop, g_receive_loop, 2);
+FPR_FN(fpr_g__x24turnLoop, g_turn_loop, 2);
 
 static V g_loop_with(V vec, V s, V f) {
   if (fpr_plane_memory) return fpr_plane_memory->loop_with(vec, s, f);
+#ifdef FPR_BUILTIN
+  { V state = s, v = vec;
+  for (;;) {
+    V r = fpr_apply(fpr_apply(f, state), v);
+    if (ISINT(r) || !fpr_in_heap(r) || TID(r) != T_TUP3)
+      fpr_cpanic("Sys.loopWith: a step must return (continue, state, vector)");
+    V go = FPR_FLD(r, 0);
+    state = FPR_FLD(r, 1); v = FPR_FLD(r, 2);
+    if (ISINT(go) || !go || TID(go) != T_BOOL || ((hdr_t *)go)->var > 1)
+      fpr_cpanic("Sys.loopWith: continue must be a Bool");
+    if (((hdr_t *)go)->var != 1) break;
+  }
+  hdr_t *tup = (hdr_t *)fpr_alloc(8 + 2 * sizeof(uw));
+  tup->tid = T_TUP2; tup->var = 0;
+  *(V *)((char *)tup + 8) = state;
+  *(V *)((char *)tup + 8 + sizeof(uw)) = v;
+  return (V)tup; }
+#else
   if (ISINT(vec) || !fpr_in_heap(vec) || TID(vec) != T_VEC)
     fpr_cpanic("Sys.loopWith: not a Vector");
   no_vec_out(s, "Sys.loopWith: the state may not hold a Vector "
@@ -1718,6 +1836,7 @@ static V g_loop_with(V vec, V s, V f) {
   *(V *)((char *)tup + 8 + sizeof(uw)) = vec;
   *head = scope.previous;
   return (V)tup;
+#endif
 }
 FPR_FN(fpr_g_Sys_x2eloopWith, g_loop_with, 3);
 FPR_FN(fpr_g_Sys_x2earena, g_arena, 1);
@@ -1727,6 +1846,8 @@ FPR_FN(fpr_g_Sys_x2earena, g_arena, 1);
 void fpr_memory_scopes_export(fpr_plane_memory_t *memory) {
   memory->arena = g_arena;
   memory->loop = g_loop;
+  memory->loop_turn = g_loop_turn;
+  memory->loop_region = g_loop_region;
   memory->loop_with = g_loop_with;
 }
 

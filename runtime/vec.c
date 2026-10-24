@@ -42,6 +42,11 @@
  * for floats (the documented v1 hazard, turned into an API instead of
  * a guess).  Vec.newAs declares the layout up front. */
 #include "vec_layout.h"
+/* every piece of a Vector -- header, directory, kinds, shape, columns -- is
+ * bulk storage: fpr_alloc_bulk, the actor's base pool whatever region is open,
+ * so an owned Vector survives a turn's reset and crosses its boundary by
+ * handle (docs/2026-10-24-REGIONS-STAGE2.md).  The tuples and records Vec
+ * operations RETURN are ordinary values and stay on fpr_alloc. */
 
 /* ---- column access ---------------------------------------------------- */
 
@@ -49,12 +54,12 @@ static inline uw *vl_slot(col_t *c, uw i) { return &c->base[i]; }
 
 static void col_grow(col_t *c) {
   uw ncap = c->cap ? c->cap * 2 : (uw)VL_B0;
-  c->base = (uw *)fpr_realloc((V)c->base, ncap * sizeof(uw));
+  c->base = (uw *)fpr_realloc_bulk((V)c->base, ncap * sizeof(uw));
   c->cap = ncap;
 }
 
 static col_t *col_new(void) {
-  col_t *c = (col_t *)fpr_alloc(sizeof(col_t));
+  col_t *c = (col_t *)fpr_alloc_bulk(sizeof(col_t));
   c->cap = 0;
   c->base = 0;
   return c;
@@ -89,7 +94,7 @@ static col_t *col_copy(col_t *c, uw len) {
   if (len) {
     uw cap = VL_B0;
     while (cap < len) cap *= 2;
-    n->base = (uw *)fpr_alloc(cap * sizeof(uw));
+    n->base = (uw *)fpr_alloc_bulk(cap * sizeof(uw));
     n->cap = cap;
     __builtin_memcpy(n->base, c->base, len * sizeof(uw));
   }
@@ -100,8 +105,8 @@ static col_t *col_copy(col_t *c, uw len) {
 static void vdir_alloc(vec_t *x, uw ncols) {
   if (ncols == 0 || ncols > ((uw)1 << 30) || ncols > ~(uw)0 / sizeof(col_t *)) fpr_cpanic("Vec: column count out of range");
   x->ncols = ncols;
-  x->cols = (col_t **)fpr_alloc(ncols * sizeof(col_t *));
-  x->kinds = (uint8_t *)fpr_alloc(VKINDS_BYTES(ncols));
+  x->cols = (col_t **)fpr_alloc_bulk(ncols * sizeof(col_t *));
+  x->kinds = (uint8_t *)fpr_alloc_bulk(VKINDS_BYTES(ncols));
   for (uw k = 0; k < VKINDS_BYTES(ncols); k++) x->kinds[k] = VK_BOX;
   for (uw k = 0; k < ncols; k++) x->cols[k] = 0;
 }
@@ -122,7 +127,7 @@ static int vhas_float(const vec_t *x) {
 static void vshape_like(vec_t *x, const vec_t *src) {
   x->shape_len = src->shape_len; x->shape = 0;
   if (src->shape_len) {
-    x->shape = (vec_shape_t *)fpr_alloc(src->shape_len * sizeof(vec_shape_t));
+    x->shape = (vec_shape_t *)fpr_alloc_bulk(src->shape_len * sizeof(vec_shape_t));
     __builtin_memcpy(x->shape, src->shape, src->shape_len * sizeof(vec_shape_t));
   }
 }
@@ -138,7 +143,7 @@ static void vdir_like(vec_t *x, const vec_t *src) {
   }
 }
 static vec_t *vcopy(vec_t *x) {
-  vec_t *n = (vec_t *)fpr_alloc(sizeof(vec_t));
+  vec_t *n = (vec_t *)fpr_alloc_bulk(sizeof(vec_t));
   n->tid = T_VEC;
   n->var = (uint32_t)VREP(x); /* rc 0: sole owner */
   n->len = x->len; n->eltid = x->eltid; n->elvar = x->elvar;
@@ -163,7 +168,7 @@ void fpr_vec_release(V v) { vfree((vec_t *)v); }
 
 static V h_new(V unit) {
   (void)unit;
-  vec_t *x = (vec_t *)fpr_alloc(sizeof(vec_t));
+  vec_t *x = (vec_t *)fpr_alloc_bulk(sizeof(vec_t));
   x->tid = T_VEC;
   x->var = VR_UNSET;
   x->len = 0;
@@ -290,7 +295,7 @@ static void tree_layout(vec_t *x, str_t *sp) {
     (void)layout_kind(sp->bytes[i]); leaves++;
   }
   vdir_alloc(x, leaves);
-  x->shape = (vec_shape_t *)fpr_alloc(sp->len * sizeof(vec_shape_t));
+  x->shape = (vec_shape_t *)fpr_alloc_bulk(sp->len * sizeof(vec_shape_t));
   uw *stack = (uw *)fpr_alloc(sp->len * sizeof(uw));
   uw depth=0, col=0, nodes=0, roots=0;
   for (uw i=0; i<sp->len; i++) {

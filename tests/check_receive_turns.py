@@ -168,25 +168,6 @@ main =
     print('automatic receive turns: cancellation releases transferred closures PASS')
 
     skips={
-        'functional-result':('''loop me n = case (n, 0) of
-    (0, 0) -> fn x -> x + 1
-  | other -> _ = send me n; got = receiveFrom me me; _ = drop got; loop me (n - 1).
-main = print (str ((loop (myself 0) 10) 4)).
-''','state/result is mutable, functional'),
-        'mutable':('''loop me n v =
-  _ = send me n;
-  got = receiveFrom me me;
-  _ = drop got;
-  if n == 0 then v else loop me (n - 1) v.
-main = Vec.free (loop (myself 0) 10 (Vec.iota 2)).
-''','state/result is mutable'),
-        'non-tail':('''loop me n =
-  _ = send me n;
-  got = receiveFrom me me;
-  _ = drop got;
-  if n == 0 then 0 else 1 + loop me (n - 1).
-main = print (str (loop (myself 0) 10)).
-''','non-tail, partial or escaping'),
         'functional':('''loop me f n =
   _ = send me n;
   got = receiveFrom me me;
@@ -194,6 +175,18 @@ main = print (str (loop (myself 0) 10)).
   if n == 0 then f n else loop me f (n - 1).
 main = print (str (loop (myself 0) (fn x -> x + 1) 10)).
 ''','state/result is mutable, functional'),
+        'functional-result':('''loop me n = case (n, 0) of
+    (0, 0) -> fn x -> x + 1
+  | other -> _ = send me n; got = receiveFrom me me; _ = drop got; loop me (n - 1).
+main = print (str ((loop (myself 0) 10) 4)).
+''','state/result is mutable, functional'),
+        'non-tail':('''loop me n =
+  _ = send me n;
+  got = receiveFrom me me;
+  _ = drop got;
+  if n == 0 then 0 else 1 + loop me (n - 1).
+main = print (str (loop (myself 0) 10)).
+''','non-tail, partial or escaping'),
         'managed':('''loop me n =
   _ = send me n;
   got = receiveFrom me me;
@@ -203,6 +196,26 @@ main = print (str (loop (myself 0) (fn x -> x + 1) 10)).
 main = print (str (loop (myself 0) 10)).
 ''','explicit region management'),
     }
+    # stage 2 (docs/2026-10-24-REGIONS-STAGE2.md): a Vector in the state is
+    # moved across the boundary by handle, and a loop-invariant parameter
+    # needs no value evidence: this loop is a turn now.  (`functional` below
+    # stays refused: its callback PARAMETER is fine since stage 2, but its
+    # result, whatever the callback returns, is unproven.)
+    widened={
+        'mutable':'''loop me n v =
+  _ = send me n;
+  got = receiveFrom me me;
+  _ = drop got;
+  if n == 0 then v else loop me (n - 1) v.
+main = Vec.free (loop (myself 0) 10 (Vec.iota 2)).
+''',
+    }
+    for name,body in widened.items():
+        exe,notes=build(source(name,body),name)
+        assert 'loop: automatic value-state turn regions' in notes,notes
+        p=run(exe)
+        assert p.returncode == 0,(name,p.stdout,p.stderr)
+        print('automatic receive turns:',name,'widened by stage 2, automatic PASS')
     for name,(body,reason) in skips.items():
         exe,notes=build(source(name,body),name)
         assert 'loop: '+reason in notes,notes
