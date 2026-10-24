@@ -1,0 +1,19 @@
+Gaussians are themselves a happy-path assumption because they make extreme events vanishingly rare.
+
+engineering practice of using, say, 50-70% of a component’s rated value by default. Bake this into your defaults so the optimistic number requires explicit opt-in, not the other way round.
+
+Inject discrete faults, not just noise: sensor dropout, stuck actuators, delayed messages, clock skew. Continuous noise and discrete failure are different failure surfaces
+
+once a failure mode is found, freeze its parameters as a permanent regression case
+
+“pessimism config” file that’s the one used in CI, and require a written justification to relax any value in it. That inverts the social pressure
+
+randomness alone under-tests, because bad regions are usually small; you want search pointed at failure plus defaults that assume the tail. For something like your glider or the recon UAV, the highest-leverage single move is probably domain randomization over CG position, thrust, gust profile, shrinking harness
+
+test harness is a collection of software, test scripts, stubs, drivers, and test data configured to run tests automatically
+
+gust profile in aerodynamics is the mathematical or graphical shape that describes how an atmospheric gust's velocity changes over time or distance as an aircraft flies into it
+
+propagate ranges instead of values, so the sim tells you the worst case inside the envelope rather than one trajectory.
+
+Do these for testing !
