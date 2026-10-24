@@ -48,7 +48,11 @@ import Data.Maybe (isNothing)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Word (Word64)
-import FPRISC
+import Core.Syntax (Name)
+import Frontend.Syntax
+import Frontend.Parser (program)
+import Frontend.Traverse (stripPosTops)
+import Frontend.Diagnostics (Anchors, Sources, bindAnchors)
 import Numeric (showHex)
 import Home (underHome)
 import System.Directory (canonicalizePath, doesFileExist)
@@ -94,10 +98,8 @@ data LoadResult = LoadResult
 hashAST :: [STop] -> String
 hashAST tops = pad (showHex h "")
   where
-    -- SPAN-PROOF (spans step 0): identity is the POSITIONLESS tree --
-    -- stripPosTops (FPRISC.hs) erases any future source-position node
-    -- before hashing, so spans can never churn a pinned hash.  Today
-    -- it is the identity: bit-compatible with every existing pin.
+    -- Frontend.Traverse erases parser marks only for identity. Diagnostic
+    -- positions can therefore improve without changing pinned module hashes.
     posless = stripPosTops tops
     -- precondition-free sigs print in the pre-contract shape so
     -- existing pinned module hashes stay valid (the AST is the same

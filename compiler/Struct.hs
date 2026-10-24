@@ -36,7 +36,9 @@ module Struct where
 import Data.List (foldl', intercalate, (\\))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import FPRISC
+import Core.Syntax (Name)
+import Frontend.Syntax
+import Frontend.Traverse (transformE)
 import Precond (checkedName)
 
 -- ---- tables -----------------------------------------------------------------

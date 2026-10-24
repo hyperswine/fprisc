@@ -24,7 +24,9 @@ module Sol.Infer (inferTops) where
 import Infer (IProf (..), TEnv, inferTopsWith, mono, scheme, sv)
 import Type.Syntax (Type(..), tBool, tInt, tList, tStr, tUnit, tcon)
 import qualified Data.Map.Strict as M
-import FPRISC (LShape, Name, STop)
+import Ownership.Shape (LShape)
+import Core.Syntax (Name)
+import Frontend.Syntax (STop)
 import Struct (Sigs, Structs)
 
 solProf :: IProf

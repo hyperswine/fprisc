@@ -41,7 +41,11 @@ import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import Exhaust (checkArms, checkClauses, siblingsOf)
-import FPRISC
+import Core.Syntax (Name)
+import Frontend.Syntax
+import Frontend.Traverse
+import Frontend.Linearity
+import Ownership.Shape
 import Type.Syntax
 import Precond (checkedName)
 import Struct (Sigs, Structs)

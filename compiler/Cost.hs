@@ -33,7 +33,8 @@ import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import Data.Ratio (denominator, numerator, (%))
-import FPRISC (Core (..), Name, Prog, SExpr (..), STop (..))
+import Core.Syntax (Core(..), Name, Prog)
+import Frontend.Syntax (SExpr(..), STop(..))
 import Safety (Measure (..), MeasureKind (..))
 
 data Cost

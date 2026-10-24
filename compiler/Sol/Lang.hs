@@ -23,6 +23,7 @@
 -- tools/dedup-ratchet.sh.
 module Sol.Lang (module Sol.Lang, module FPRISC) where
 
+-- This profile adapter preserves its public frontend compatibility exports.
 import FPRISC hiding (collectCons, collectShapes)
 import Data.List (foldl', nub, sort, sortOn, isPrefixOf)
 import qualified Data.Map.Strict as M

@@ -50,7 +50,9 @@ import Control.Monad.State.Strict
 import Data.List (foldl', isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import FPRISC
+import Core.Syntax (Name)
+import Frontend.Syntax
+import Frontend.Traverse (patVars, unmark)
 
 --------------------------------------------------------------------------------
 -- the precondition table (from TSig) + fragment validation

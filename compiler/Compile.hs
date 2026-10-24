@@ -28,7 +28,17 @@ import Data.List (intercalate, isPrefixOf)
 import qualified Data.List as List
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import FPRISC
+import Core.Syntax
+import Core.Pretty
+import Frontend.Syntax
+import Frontend.Parser (program)
+import Frontend.Desugar
+import Frontend.Paths
+import Frontend.Linearity
+import Frontend.Traverse
+import Frontend.Normalize
+import Frontend.Diagnostics
+import Ownership.Shape
 import Core.Opt.Normalize (normArc)
 import Type.Syntax (Scheme(..), Type(..))
 import Infer (aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTops, inferTopsInterfaces)

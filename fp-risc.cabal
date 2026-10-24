@@ -83,6 +83,18 @@ executable fpr
       Commit
       Compile
       FPRISC
+      Frontend.Syntax
+      Frontend.Lexer
+      Frontend.Parser
+      Frontend.Normalize
+      Frontend.MemoryLayout
+      Frontend.Paths
+      Frontend.Desugar
+      Core.Pretty
+      Frontend.Traverse
+      Frontend.Diagnostics
+      Ownership.Shape
+      Frontend.Linearity
       Home
       Exhaust
       Infer

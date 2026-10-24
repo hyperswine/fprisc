@@ -40,7 +40,9 @@ import Data.Graph (SCC (..), stronglyConnComp)
 import Data.List (intercalate, nub, isInfixOf, isPrefixOf, isSuffixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import FPRISC
+import Core.Syntax (Name)
+import Frontend.Syntax
+import Frontend.Traverse (patVars, unmark)
 import Precond (reservedEntry, splitMeasure)
 
 

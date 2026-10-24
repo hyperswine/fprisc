@@ -27,7 +27,8 @@ module Exhaust (Siblings, checkArms, checkClauses, siblingsOf) where
 import Data.List (nub)
 import qualified Data.Map.Strict as M
 import Data.Maybe (isNothing, listToMaybe, mapMaybe)
-import FPRISC (Name, SPat (..))
+import Core.Syntax (Name)
+import Frontend.Syntax (SPat(..))
 
 -- the constructors of a constructor's type, with their arities
 type Siblings = Name -> Maybe [(Name, Int)]

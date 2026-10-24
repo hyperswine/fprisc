@@ -28,6 +28,7 @@ def base(path, timeout, alone=False, lock=None):
 
 base('tests/test_check_registry.py', 60)
 base('tests/check_core_pipeline.py', 240, lock='cabal')
+base('tests/check_frontend.py', 240, lock='cabal')
 base('tests/check_typed_ir.py', 900, lock='cabal')
 base('tests/check_typed_ir_a64.py', 1200)
 base('tests/check_typed_ir_x64.py', 1200)

@@ -14,18 +14,19 @@ cache formats, or explicitly version and test any intentional changes.
 | Item | Status | Acceptance |
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
-| Independent type vocabulary | Implemented as the prerequisite below | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
+| Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
 | Typed, uniquely named Core | Pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
 | Checked pipeline products and lint | Structural pass result implemented; type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
-| Frontend ownership | Pending beyond extracted Core syntax | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
+| Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Pending beyond local OptimizationOptions | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
-| Structured diagnostics/spans | Pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
-| Typed codegen contracts | Vector operations/float widths implemented; remaining kernel stages and ISA instruction vocabulary pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
-| Validation ownership | Existing suites retained; focused Core checks added | Maintain invariant, golden/cache and evaluator/native differential checks without multiplying redundant builds |
-| Obsolete architecture descriptions and names | Pending | Re-anchor semantic references in current IR/evaluator/runtime; document supported switches and current owners |
+| Structured diagnostics/spans | Diagnostics owner separated; typed diagnostics/spans still pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
+| Typed codegen contracts | Vector operations/float widths implemented; remaining kernel stages, call-convention contracts and ISA instruction vocabulary pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
+| Validation ownership | Existing suites retained; focused Core and frontend compatibility checks added | Maintain invariant, golden/cache and evaluator/native differential checks without multiplying redundant builds |
+| Obsolete architecture descriptions and names | Module identity and frontend-owner references corrected; backend references/names still pending | Re-anchor semantic references in current IR/evaluator/runtime; document supported switches and current owners |
 
-The reviewed allocator-quality/foreign-ABI enhancements and the region runtime
-roadmap are separate work, not prerequisites for marking this cleanup complete.
+Allocator-quality improvements, new foreign-ABI capabilities and the region
+runtime roadmap are separate projects. Typing the existing call-convention
+contracts remains in scope for this cleanup.
 The goal remains active until the table is resolved and required validation is
 green. Finishing this first slice is not completion of the whole goal.
 
@@ -66,3 +67,18 @@ Local records: `/private/tmp/fpr-cleanup-integrated-build.log`,
 `/private/tmp/fpr-cleanup-integrated-base.{log,json}` and
 `/private/tmp/fpr-cleanup-sol-tail.log`. Hosted CI is requested by the push;
 no physical board validation is claimed for this cleanup.
+
+## Frontend ownership stage
+
+[Frontend ownership and compatibility](2026-10-25-FRONTEND-OWNERSHIP.md) records
+the extraction of FPRISC into owned modules and the independent ownership-shape
+vocabulary. It passed 132 Base jobs on six workers, 128 emission/unit comparisons,
+parser/cache ABI oracles and Sol checks. The full typed-Core/type-scope goal
+remains pending.
+
+The preceding CI job at `0f6df38` could not start its coverage runner because
+Git rejected container checkout ownership. Commit `04206f1` trusts only the two
+explicitly checked-out repository paths. A local different-owner reproduction
+failed before the exact-path trust and succeeded after it; hosted CI then moved
+past that step into native backend validation. This fixes infrastructure, not a
+compiler or runtime behavior.

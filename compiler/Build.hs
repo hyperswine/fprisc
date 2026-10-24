@@ -21,7 +21,7 @@ import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
 import qualified Compile
 import Codegen (codegenRev)
-import FPRISC (declaredProfile)
+import Frontend.Normalize (declaredProfile)
 import Home (fprHome)
 import qualified Sol.Main
 import Data.Bits (xor)

@@ -39,7 +39,9 @@ import Data.IORef (newIORef, readIORef)
 import Data.List (intercalate, isInfixOf, isPrefixOf, sort)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
-import FPRISC
+import Core.Syntax (Name)
+import Frontend.Syntax
+import Frontend.Traverse (stripPosTops)
 import Modules (ModUnit (..), loadModule)
 import System.Directory (copyFile, createDirectoryIfMissing, doesFileExist)
 import System.Exit (exitFailure)

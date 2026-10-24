@@ -1,0 +1,27 @@
+# Stable parser/cache fixture. It intentionally exercises syntax independently
+# of import resolution and typechecking.
+profile base.
+unsafe base.
+Other = use "other#0123456789abcdef".
+Alias = Other.Thing.
+Choice a = Type (No | Yes a).
+Handle 1 = Type Int.
+Row = {count : Int, label : String}.
+Style = {fg : Int}.
+Model = {ui : Style, count : Int}.
+Node = Layout { value : Int, next : Node, tag : U8, wide : U16 @ 24 }.
+Functor = Sig { map : (a -> b) -> t a -> t b }.
+Ops = Struct Functor { map = fn f x -> f x }.
+helper : (n : Int | n >= 0) -> {label : String | r} -> Int.
+helper 0 r = 1.
+helper n r | n > 0, Yes k <- Yes n =
+  a = (fn x -> x + k);
+  (first, second) = (1, 2);
+  rec = {count = first, label = "λ {second}"};
+  updated = {rec | count = a second};
+  items = [n, 42, -3];
+  raw = "plain\ntext";
+  fl = 1.25;
+  path = @Model.ui.fg;
+  case n of 0 -> first | k -> updated.count + k.
+> print (helper 2 {label = "go"}).

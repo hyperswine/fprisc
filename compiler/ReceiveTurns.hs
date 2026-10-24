@@ -24,7 +24,9 @@ import Data.List (intercalate, foldl', isPrefixOf)
 import Data.Graph (SCC (..), stronglyConnComp)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import FPRISC
+import Core.Syntax
+import Frontend.Syntax
+import Frontend.Desugar (tupWideBase)
 import Type.Syntax (Type (..), Row (..))
 import Cost (primAllocates, allocGrows, CostEq)
 

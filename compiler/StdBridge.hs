@@ -39,7 +39,8 @@ import Data.Char (toLower)
 import Data.List (isInfixOf, nub)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import FPRISC
+import Core.Syntax (Name)
+import Frontend.Syntax
 import qualified StdCheck as SC
 import Precond (splitMeasure)
 import Safety (Measure (..), MeasureKind (..), measureCheck)
