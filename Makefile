@@ -88,6 +88,9 @@ $(FPR_HOST_STAMP):
 	@rm -f build/.fpr-host-*
 	@touch $@
 
+# Every compiler module is an input, including nested Core/Type owners.
+FPR_COMPILER_HS := $(if $(wildcard compiler),$(shell find compiler -type f -name '*.hs'))
+
 # an INSTALLED tree (../.installed, written by `qos.py install`) ships
 # the binary: the rule is then a presence check, so `make qos-app` never
 # reaches for ghc through the fprc prerequisite
@@ -99,7 +102,7 @@ else ifneq ($(FPR_TOOLCHAIN),.)
 fpr:
 	$(MAKE) -C "$(FPR_TOOLCHAIN)" fpr
 else
-fpr: $(FPR_HOST_STAMP) compiler/*.hs compiler/Codegen/*.hs compiler/Codegen/Target/*.hs compiler/Sol/*.hs compiler/cbits/fsx.c compiler/cbits/vecgpu.c compiler/cbits/handjit.c compiler/cbits/native_git.c compiler/cbits/native_archive.c compiler/cbits/native_host.c fp-risc.cabal Makefile
+fpr: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/fsx.c compiler/cbits/vecgpu.c compiler/cbits/handjit.c compiler/cbits/native_git.c compiler/cbits/native_archive.c compiler/cbits/native_host.c fp-risc.cabal Makefile
 	@set -e; fresh=$$(mktemp ./.fpr.tmp.XXXXXX); trap 'rm -f "$$fresh"' 0; \
 	if command -v cabal >/dev/null 2>&1; then \
 	  $(NATIVE_PKG_ENV) cabal build exe:fpr; cp "$$(cabal list-bin fpr)" "$$fresh"; \
@@ -129,7 +132,7 @@ endif
 # equal to -O1).  Without cabal the classic ghc path builds each level
 # into its own build/ghc-* dir for the same reason.
 .PHONY: fpr-dev
-fpr-dev: $(FPR_HOST_STAMP) compiler/*.hs compiler/Codegen/*.hs compiler/Codegen/Target/*.hs compiler/Sol/*.hs compiler/cbits/*.c fp-risc.cabal Makefile
+fpr-dev: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/*.c fp-risc.cabal Makefile
 	@set -e; mkdir -p build; fresh=$$(mktemp ./.fpr.tmp.XXXXXX); trap 'rm -f "$$fresh"' 0; \
 	if command -v cabal >/dev/null 2>&1; then \
 	  $(NATIVE_PKG_ENV) cabal build exe:fpr -f dev --builddir=dist-dev; \
@@ -149,7 +152,7 @@ fpr-dev: $(FPR_HOST_STAMP) compiler/*.hs compiler/Codegen/*.hs compiler/Codegen/
 
 GHCOPT ?= -O2
 .PHONY: fpr-opt
-fpr-opt: $(FPR_HOST_STAMP) compiler/*.hs compiler/Codegen/*.hs compiler/Codegen/Target/*.hs compiler/Sol/*.hs compiler/cbits/*.c fp-risc.cabal Makefile
+fpr-opt: $(FPR_HOST_STAMP) $(FPR_COMPILER_HS) compiler/cbits/*.c fp-risc.cabal Makefile
 	@set -e; mkdir -p build; fresh=$$(mktemp ./.fpr.tmp.XXXXXX); trap 'rm -f "$$fresh"' 0; \
 	if command -v cabal >/dev/null 2>&1; then \
 	  $(NATIVE_PKG_ENV) cabal build exe:fpr --ghc-options="$(GHCOPT)" --builddir=dist-opt$(GHCOPT); \

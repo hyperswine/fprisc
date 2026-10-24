@@ -91,3 +91,21 @@ run above used the final fixed source/build and
 4. Separately split surface syntax/parser/desugaring/linearity, and consolidate
    compiler options/diagnostics. These need their own compatibility checks;
    moving all responsibilities into another large module would not help.
+
+## Sync and type-vocabulary prerequisite
+
+The cleanup was rebased onto main `0f6df38`, including the region stages and
+codegen revision 105. The revision-89 byte comparisons above record the first
+slice before that sync; the refactor does not override the new region ABI or
+cache revision. The updated memory status distinguishes those two snapshots.
+
+`Type.Syntax` now owns Type, Row, Scheme, primitive type constructors and the
+pure float-presence query. It depends on neither inference nor either AST;
+`Infer` reexports the vocabulary for compatibility. ReceiveTurns consumes the
+type model directly, and Compile/Sol separate model imports from inference
+operations. This removes a dependency cycle that would otherwise prevent Core
+from carrying checked source types. It does not yet annotate Core binders.
+
+Make's compiler inputs now include nested Haskell modules, so changing a Core
+or Type module alone rebuilds fpr. Validation after integration is recorded in
+the cleanup goal register.

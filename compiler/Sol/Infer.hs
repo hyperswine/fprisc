@@ -21,7 +21,8 @@
 -- docs/2026-08-29-MEMORY-V2-PLAN.md's "de-fork the frontend" item made real.
 module Sol.Infer (inferTops) where
 
-import Infer (IProf (..), TEnv, Type (..), inferTopsWith, mono, scheme, sv, tBool, tInt, tList, tStr, tUnit, tcon)
+import Infer (IProf (..), TEnv, inferTopsWith, mono, scheme, sv)
+import Type.Syntax (Type(..), tBool, tInt, tList, tStr, tUnit, tcon)
 import qualified Data.Map.Strict as M
 import FPRISC (LShape, Name, STop)
 import Struct (Sigs, Structs)

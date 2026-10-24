@@ -25,7 +25,7 @@ import Data.Graph (SCC (..), stronglyConnComp)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import FPRISC
-import Infer (Type (..), Row (..))
+import Type.Syntax (Type (..), Row (..))
 import Cost (primAllocates, allocGrows, CostEq)
 
 receiveTurns :: Bool -> Bool -> M.Map Name (CostEq, CostEq) -> M.Map Name Type -> [STop] -> Prog -> S.Set Name -> Prog -> (Prog, [String])

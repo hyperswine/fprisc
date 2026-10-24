@@ -86,6 +86,7 @@ executable fpr
       Home
       Exhaust
       Infer
+      Type.Syntax
       Inline
       ReceiveTurns
       Mono

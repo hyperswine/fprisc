@@ -30,7 +30,8 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import FPRISC
 import Core.Opt.Normalize (normArc)
-import Infer (Scheme (..), Type (..), aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTops, inferTopsInterfaces)
+import Type.Syntax (Scheme(..), Type(..))
+import Infer (aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTops, inferTopsInterfaces)
 import Safety (measureCheck, safetyCheck, trustedLibraryPaths)
 import qualified Cost
 import Manifest (Manifest (..), readManifest, renderNs)

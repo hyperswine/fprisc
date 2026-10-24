@@ -5,6 +5,37 @@ and the accompanying Core pipeline refactor. The runtime is unchanged by that
 refactor. This checks [the cost-sized regions proposal](2026-10-23-COST-SIZED-REGIONS.md)
 against current source; it does not claim that proposal has shipped.
 
+## Sync update: main at `0f6df38`
+
+The audit below was made at `97d6ad7`. Main advanced during the cleanup;
+its conclusions are historical and are superseded here where noted.
+
+- [Stage 0](2026-10-24-REGIONS-STAGE0.md) now records state-copy and turn
+  allocation measurements, including logbook/store scaling.
+- [Stage 1](2026-10-24-REGIONS-STAGE1.md) retires compiler `autoDrop` and
+  attaches received roots to runtime scope boundaries and actor cleanup.
+  The service/task paths no longer need their previous manual keeps.
+- [Stage 2](2026-10-24-REGIONS-STAGE2.md) adds self-tail boundaries and
+  invariant/function-state handling. Owned Vectors now cross compiler regions
+  by handle; their storage belongs to the actor base pool.
+- [Loop/call regions](2026-10-25-REGIONS-LOOPS-CALLS.md) are on by default,
+  with an inline `ORegionRoom` allocation-clock check and lazy pending call
+  regions. Large-result regions can hand over memory. The Tang Nano
+  conservative collector is removed; its heap now supports regions.
+
+The remaining model work is generational state copy-out and Dynamic
+shrink/compaction policies, proof-sized Static admission, frozen sharing,
+and the documented nested-scope case: loops that explicitly manage their own
+arenas currently decline loop-region placement. Precise ownership/type evidence
+and non-tail live-stack cases still require explicit treatment.
+
+The older QOS inventory below is also a pre-sync snapshot. Its before/after
+comparison proves the first cleanup did not change that old compiler's
+behavior; it does not establish coverage for the newly integrated region passes.
+The reporter's stdout/stderr interleaving defect is independent of those passes.
+
+## Historical audit at `97d6ad7`
+
 Actor pools, explicit `Sys.arena`, `Sys.loop`/`loopWith`, recognized receive-turn
 regions and constructor reuse already exist. The unified cost-sized region
 model remains proposed. The gaps below concern that migration, rather than a
@@ -66,7 +97,7 @@ until their replacement acceptance checks pass. There is no evidence here to
 justify deleting them as an architectural cleanup.
 
 The separate QOS checkout is `c507991` and was not modified. Its current
-[receive-turn coverage register](../../qos/docs/2026-10-12-RECEIVE-TURN-COVERAGE.md)
+[receive-turn coverage register](https://github.com/hyperswine/qos/blob/c507991/docs/2026-10-12-RECEIVE-TURN-COVERAGE.md)
 still lists those generic groups.
 
 Sources checked: `compiler/ReceiveTurns.hs`, `compiler/Cost.hs`,
