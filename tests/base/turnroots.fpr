@@ -1,0 +1,51 @@
+# a received message dies with the turn that took it: a `serve` store keeps
+# the keys and values of its requests in its state with no `keep` and no
+# `drop`; every request root is released at its turn's end, so 5,000 requests
+# leave no live Arc entry behind and bounded memory, and every key reads back
+# (docs/2026-10-24-REGIONS-STAGE1.md).  Also a receive inside a Sys.arena and
+# one outside any boundary followed by Sys.poolReset: both roots go.
+unsafe base.
+Map = use "std/map".
+Option = use "std/option".
+Q = Type (Put String String | Get String | Count).
+R = Type (Stored | Found String | Missing | Size Int).
+store st q = case q of
+    Put k v -> (Map.insert k v st, Stored)
+  | Get k -> (st, (case Map.get k st of Option.Some v -> Found v | Option.None -> Missing))
+  | Count -> (st, Size (Map.size st)).
+puts : unsafe Int -> Int -> Int -> Unit .
+puts me s n = if n == 0 then Unit else _ = ask me s (Put "key {n}" "value {n}"); puts me s (n - 1).
+checks : unsafe Int -> Int -> Int -> Int -> Int .
+checks me s n bad = if n == 0 then bad else
+  r = ask me s (Get "key {n}");
+  ok = (case r of Found v -> v == "value {n}" | _ -> False);
+  checks me s (n - 1) (if ok then bad else bad + 1).
+echo : Int -> Unit .
+echo self = (who, text) = receive self; _ = send who (strcat text "!"); echo self.
+freeKiB : Unit -> Int .
+freeKiB u = case Sys.memInfo 0 of _ :: f :: _ -> f | _ -> 0.
+main =
+  me = myself 0;
+  s = spawn (fn self -> serve self store Map.strings);
+  _ = puts me s 200;
+  bad0 = checks me s 200 0;
+  roots = arcLive 0;
+  before = freeKiB Unit;
+  _ = puts me s 5000;
+  bad = checks me s 5000 0;
+  loops = arcLive 0 - roots;
+  # a root received inside an arena dies at the arena's exit, the result copied out first
+  e = spawn echo;
+  inside = Sys.arena (fn u -> _ = send e (me, "arena"); receiveFrom me e);
+  arena = arcLive 0 - roots;
+  _ = if inside == "arena!" then Unit else error "turnroots: arena result lost";
+  # a root received outside every boundary dies at the actor's own reset
+  _ = send e (me, "reset");
+  t2 = receiveFrom me e;
+  held = arcLive 0 - roots;
+  _ = Sys.poolReset 0;
+  reset = arcLive 0 - roots;
+  n = (case ask me s Count of Size k -> k | _ -> 0);
+  retained = before - freeKiB Unit;
+  _ = kill s; _ = kill e;
+  print "turnroots: {n} keys kept without keep, {bad0 + bad} wrong, roots after loops {loops}, after arena {arena}, held {held} then reset {reset}, retained {case retained < 16384 of True -> "under 16 MiB" | False -> "{retained} KiB"}".

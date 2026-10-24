@@ -1,12 +1,12 @@
-# the drop law for a function whose WHOLE BODY is the bare `case <receive> of`
-# (no enclosing block).  Until 2026-10-19 autodrop's shapes 5 and 5b matched
-# the case only as a statement or as a block's final expression; a body that
-# IS the case (the bench ponger, the prelude's parWorker) was never visited,
-# and every message it received stayed a live Arc entry: 1,000,000 of them,
-# 101 MB resident, for tests/bench/pingpong.fpr.  Measured through the ARC
-# gauges of tests/arc_churn/arcprobe.c (`fpr build --with`).
-# docs/2026-10-19-AUTODROP-BARE-CASE.md
+# a received message dies with the turn that took it: no `drop` anywhere, by
+# the program or by the compiler (docs/2026-10-24-REGIONS-STAGE1.md).  Both
+# bodies here are the bare `case <receive> of` that autodrop missed until
+# 2026-10-19 (docs/2026-10-19-AUTODROP-BARE-CASE.md: 1,000,000 live Arc
+# entries, 101 MB resident, for tests/bench/pingpong.fpr); the ARC gauges come
+# from tests/arc_churn/arcprobe.c (`fpr build --with`), and rx_grows says no
+# actor ever held more roots in one turn than its inline list of eight.
 Arc.live : Unit -> Int .
+Arc.rxGrows : Unit -> Int .
 # shape 5, bare: the bench ponger, verbatim
 ponger : unsafe Int -> a .
 ponger self = case receive self of (who, n) -> send who (n + 1) >> ponger self.
@@ -28,4 +28,4 @@ main =
   p = spawn ponger;
   s = ping me p 100000 0;
   r = roundRes 1000 0;
-  print "autodrop3: pingpong {s} and {r} Result-wrapped: arc_live = {Arc.live Unit}".
+  print "autodrop3: pingpong {s} and {r} Result-wrapped: arc_live = {Arc.live Unit} rx_grows = {Arc.rxGrows Unit}".

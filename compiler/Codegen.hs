@@ -47,7 +47,7 @@ import FPRISC (Core (..), Prog, freeVars, occurs)
 -- bump on ANY change to emitted code: it keys the build/units cache
 -- (a unit's content hash names its SOURCE, not its compilation)
 codegenRev :: Int
-codegenRev = 89 -- exclusively typed scalar/kernel generation and native static data
+codegenRev = 90 -- autodrop retired: a received message dies with its turn (REGIONS-STAGE1)
 
 -- Target planning and native selection. The value
 -- representation is IDENTICAL on both targets modulo the word size W:

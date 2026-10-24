@@ -8,7 +8,38 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#ifdef FPR_COST_PROBE
+/* FPR_COST_REPORT=1 in a probe build: the whole process's ledger, one JSON
+ * line on stderr at exit, so a program needs no Cost.report call of its own
+ * (tools/regions-stage0.py reads it; docs/2026-10-24-REGIONS-STAGE0.md). */
+static void cost_report(void) {
+  const char *where = getenv("FPR_COST_REPORT");
+  if (!where || !*where) return;
+  /* "1": stderr; anything else is a file the line is appended to */
+  FILE *out = stderr;
+  if (where[0] != '1' || where[1]) { out = fopen(where, "a"); if (!out) return; }
+  uint64_t ar = 0, ab = 0, c = 0, cb = 0, ms = 0, t = 0, sc = 0, sb = 0, rx = 0;
+  for (uw i = 0; i < fpr_live_harts; i++) {
+    fpr_hart_t *h = &fpr_harts[i];
+    ar += h->cost_alloc_requests; ab += h->cost_alloc_bytes;
+    c += h->cost_copies; cb += h->cost_copy_bytes; ms += h->cost_msg_slabs;
+    t += h->cost_turns; sc += h->cost_state_copies; sb += h->cost_state_bytes;
+    rx += h->xr_recv_n;
+  }
+  fprintf(out, "[fpr cost] {\"alloc_requests\":%llu,\"alloc_bytes\":%llu,\"copies\":%llu,"
+          "\"copy_bytes\":%llu,\"message_slabs\":%llu,\"turns\":%llu,\"state_copies\":%llu,"
+          "\"state_bytes\":%llu,\"receives\":%llu,\"buddy_allocs\":%llu,\"buddy_frees\":%llu}\n",
+          (unsigned long long)ar, (unsigned long long)ab, (unsigned long long)c,
+          (unsigned long long)cb, (unsigned long long)ms, (unsigned long long)t,
+          (unsigned long long)sc, (unsigned long long)sb, (unsigned long long)rx,
+          (unsigned long long)fpr_cost_buddy_allocs, (unsigned long long)fpr_cost_buddy_frees);
+  if (out != stderr) fclose(out);
+}
+#endif
 void hal_poweroff(int code) {
+#ifdef FPR_COST_PROBE
+  cost_report();
+#endif
   fflush(stdout);
   fflush(stderr);
   exit(code);

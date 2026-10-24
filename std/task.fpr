@@ -24,15 +24,20 @@ start : unsafe Int -> Int -> (a -> b) -> List a -> Result (List b) String .
 start deadline limit f xs = if limit < 0 then Err "task: invalid concurrency limit" else
   me = myself 0;
   collector = spawn (join me deadline limit f xs);
-  case receiveFromRes me collector of
+  # the collector's answer is received inside a region of its own: the answer
+  # is copied out to the caller and the message dies at the region's end,
+  # whatever loop the caller is in (a batch must leave nothing behind)
+  Sys.arena (fn u -> case receiveFromRes me collector of
       Err why -> Err "task collector: {why}"
-    | Ok m -> answer = keep m; _ = drop m; answer.
+    | Ok m -> m).
 
 join parent deadline limit f xs self =
   _ = Sys.loop (xs, 0, Nil, 0, M.empty Ord.int) (joinStep self parent deadline limit f);
   Unit.
 # No completion or abandoned result is ever sent to the caller's general
-# inbox. Sys.loop also bounds scratch while repeatedly polling stalled work.
+# inbox. Sys.loop also bounds scratch while repeatedly polling stalled work,
+# and each completion it receives dies with the step that polled it; the
+# value kept in `done` is copied out with the state.
 joinStep me parent deadline limit f state =
   (xs, next, active, count, done) = state;
   if not (ownerAlive me parent) then
@@ -65,9 +70,7 @@ poll me active = case active of
         Err why -> if why == "empty" then poll me rest else Failed "worker {i}: {why}"
       | Ok m ->
           (index, value) = m;
-          result = if index == i then Ready w i (keep value) else Failed "worker {i}: invalid completion";
-          _ = drop m;
-          result.
+          if index == i then Ready w i value else Failed "worker {i}: invalid completion".
 remove : unsafe Int -> List (Int, Int) -> List (Int, Int) .
 remove worker active = case active of
     Nil -> Nil

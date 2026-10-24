@@ -23,6 +23,10 @@ static void claim_interleave(void *a, unsigned long key);
 /* take_at now links the quota-underflow invariant even for this unbounded
  * harness. Keep a real failing panic path rather than masking the invariant. */
 void fpr_cpanic(const char *why) { fprintf(stderr, "%s\n", why); abort(); }
+/* take_at records the taken root as the turn's (runtime.c owns the list);
+ * the harness has no turns, so the root is counted and nothing else */
+static uw rx_pushed;
+void fpr_rx_push(struct fpr_acb *a, V m) { (void)a; (void)m; rx_pushed++; }
 static acb_t winner, loser, previous;
 static int inject;
 static struct { hdr_t h; V value; } result = {{T_RESULT, 0}, 0};
@@ -57,6 +61,7 @@ int main(void) {
     winner.var = ST_DEAD;
     assert(chan_for(&a, (uw)&previous, 1) != &ch[0]); /* nonempty is never reclaimed */
     assert(take_at(&a, &ch[0], ch[0].rh) == (V)&result);
+    assert(rx_pushed == 7 * (uw)reclaimed + 1); /* every taken root joins the turn: seven takes a round */
     assert(!p_res(&a, 0));
     /* Middle removal in dedicated and shared rings keeps unrelated events,
      * including their sender tags, across free-running counter wraparound. */

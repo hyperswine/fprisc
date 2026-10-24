@@ -595,12 +595,12 @@ compileWithInterface accepted = do
         putStrLn "=== PATH LITERALS: ERRORS ==="
         mapM_ (putStrLn . ("  * " ++)) (anchored pathErrs)
         exitFailure
-      -- autodrop: mechanical discharge of the drop-what-you-receive law
-      -- (conservative destructure-then-dead shape; see FPRISC.autoDrop)
-      let (tops0S, asNotes) = aritySpill tops0R
+      -- A received message dies with its turn (docs/2026-10-24-REGIONS-STAGE1.md):
+      -- the runtime releases every root an actor took when the turn that
+      -- took it ends, so the compiler inserts no `drop` any more (the
+      -- autoDrop pass of docs/2026-08-25-MEMORY.md is retired).
+      let (tops0, asNotes) = aritySpill tops0R
       mapM_ putStrLn asNotes
-      let (tops0, adNotes) = autoDrop tops0S
-      mapM_ putStrLn adNotes
       -- ---- ML-style modules: expand sigs/structures, typecheck (HM +
       -- rows), resolve operators by operand type, monomorphize -----------
       -- The global sig table spans units (prelude sigs are visible
@@ -611,16 +611,14 @@ compileWithInterface accepted = do
           expandU uts = snd (expandStructs sigs uts)
           preludeExpErrs = fst (expandStructs sigs preludeTops)
           preludeE = expandU preludeTops
-          -- autodrop must reach the ASTs codegen actually consumes:
-          -- root codegen reads finalTops (derived from tops0, already
-          -- dropped above), but UNIT codegen reads units0 -- without
-          -- this, the pass reports insertions the emitted units never
-          -- contain (the mvutick +1 arcLive/frame leak).  root0 is
-          -- transformed too so root' -- used for cons/tid tables --
-          -- matches what the root emits.  Notes are dropped here:
-          -- the merged pass above already printed the same lines.
-          root' = expandU (fst (autoDrop (fst (aritySpill root0))))
-          units = [(h, expandU (fst (autoDrop (fst (aritySpill uts))))) | (h, uts) <- units0]
+          -- the same spilling reaches the ASTs codegen actually consumes:
+          -- root codegen reads finalTops (derived from tops0, spilled
+          -- above), but UNIT codegen reads units0; root0 is transformed
+          -- too so root' -- used for cons/tid tables -- matches what the
+          -- root emits.  Notes are dropped here: the pass above already
+          -- printed the same lines.
+          root' = expandU (fst (aritySpill root0))
+          units = [(h, expandU (fst (aritySpill uts))) | (h, uts) <- units0]
           tops = expandU tops0
       unless (null preludeExpErrs) $ do
         putStrLn "=== SIG/STRUCT: ERRORS ==="

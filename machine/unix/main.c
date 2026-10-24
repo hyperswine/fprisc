@@ -14,6 +14,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
+#ifdef FPR_COST_PROBE
+/* FPR_COST_REPORT (host.c cost_report) at SIGTERM too: the drivers that end
+ * a server with terminate() would otherwise lose the ledger */
+static void probe_term(int sig) { (void)sig; hal_poweroff(143); }
+#endif
 
 /* the hosted stand-in for tp (one per hart THREAD): generated x64 code
  * TLS-loads this where generated rv64 code reads tp.  On AArch64 the hart
@@ -86,6 +91,9 @@ int main(int argc, char **argv) {
     fpr_live_harts = (uw)n;
   }
   hal_fault_init();
+#ifdef FPR_COST_PROBE
+  signal(SIGTERM, probe_term); /* a terminated probe run still reports its ledger */
+#endif
   fpr_rt_init(); /* runtime: buddy, hart blocks, actor 0 */
   for (uintptr_t i = 1; i < fpr_live_harts; i++) {
     pthread_t t;

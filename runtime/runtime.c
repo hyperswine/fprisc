@@ -1437,6 +1437,8 @@ struct fpr_scope {
   fpr_pool_t *arena;
   V held;
   fpr_slab_t *spare;
+  uw rx_mark; /* the actor's received-root count at entry: the roots above it
+               * were taken inside this region and die at its boundary */
 };
 static struct fpr_scope *bootstrap_scopes[FPR_NHARTS];
 static struct fpr_scope **scope_push(struct fpr_scope *scope) {
@@ -1447,8 +1449,15 @@ static struct fpr_scope **scope_push(struct fpr_scope *scope) {
   scope->arena = 0;
   scope->held = 0;
   scope->spare = 0;
+  scope->rx_mark = h->current ? fpr_acb_rx(h->current)->n : 0;
   *head = scope;
   return head;
+}
+/* a turn boundary: the next state (or the arena's result) has just been copied
+ * out, so the message roots this region's turn took have no reader left */
+static void scope_roots_die(struct fpr_scope *scope) {
+  fpr_hart_t *h = fpr_hart(); /* re-read: the actor may have migrated */
+  if (h && h->current) fpr_rx_release(h->current, scope->rx_mark);
 }
 static uw slab_room(fpr_slab_t *sl) { return (uw)(sl->end - (char *)(sl + 1)); }
 /* an ownerless slab nothing references any more goes home (arc_lock: the
@@ -1469,6 +1478,8 @@ static V transfer_copy(V v, struct fpr_scope *scope, const char *novec) {
   uw need = dc_size(v);
   FPR_COST_ADD(h, cost_copies, 1);
   FPR_COST_ADD(h, cost_copy_bytes, need);
+  FPR_COST_ADD(h, cost_state_copies, 1);
+  FPR_COST_ADD(h, cost_state_bytes, need);
   if (!need) return dc_dup(v, 0); /* ints, statics, bare actor handles: no cell, so no Vector */
   fpr_slab_t *sl = scope->spare;
   if (!sl || slab_room(sl) < need) {
@@ -1527,6 +1538,7 @@ static V g_arena(V f) {
                                  "(their storage IS the arena) -- return scalars/trees, "
                                  "or build pool-owned vectors outside");
   scope.held = t;
+  scope_roots_die(&scope);
   arena_close(slot, &ap, prev);
   scope.arena = 0;
   /* copy the result into the CALLER's pool; free the transfer slab */
@@ -1604,6 +1616,7 @@ static V g_loop(V s, V f) {
       fpr_cpanic("Sys.loop: continue must be a Bool");
     V t = transfer_copy(nx, &scope, "Sys.loop: the state may not hold a Vector (use Sys.loopWith)");
     int more = ((hdr_t *)go)->var == 1;
+    scope_roots_die(&scope);
     arena_reset(&ap);
     transfer_retire(&scope);
     state = scope.held = t;
@@ -1687,6 +1700,7 @@ static V g_loop_with(V vec, V s, V f) {
                  "new vector)");
     V t = transfer_copy(nx, &scope, "Sys.loopWith: the state may not hold a Vector "
                                     "(thread the one buffer, keep the rest in it)");
+    scope_roots_die(&scope);
     int more = !ISINT(go) && TID(go) == T_BOOL && ((hdr_t *)go)->var == 1;
     arena_reset(&ap);
     transfer_retire(&scope);
@@ -1922,9 +1936,17 @@ void fpr_arc_incref(V v) {
   fpr_unlock(&arc_lock);
 }
 
+static void arc_decref_in(V v);
 void fpr_arc_decref(V v) {
   if (fpr_plane_memory) { fpr_plane_memory->arc_decref(v); return; }
   if (arc_by_value(v)) return;
+  /* a holder letting go of a root it received this turn: the turn's list
+   * forgets it, or the boundary would release it a second time */
+  fpr_hart_t *fh = fpr_hart();
+  if (fh && fh->current) fpr_rx_forget(fh->current, v);
+  arc_decref_in(v);
+}
+static void arc_decref_in(V v) {
   /* THE LOCK-FREE PRE-CHECK.  A value whose slab has never held a
    * promoted object has no entry: the lock would be taken only to find
    * nothing.  Sound because (1) only a holder of v drops it; (2) a
@@ -2018,6 +2040,7 @@ static V g_poolReset(V u) {
   if (fpr_plane_memory) { fpr_plane_memory->pool_reset(); return (V)&fpr_unit; }
   fpr_hart_t *h = fpr_hart();
   fpr_pool_t *pool = cur_pool(h);
+  if (h->current) fpr_rx_release_outer(h->current); /* the turn's received roots die with it */
   fpr_drop_drain_current(); /* soft death = end of frame: borrows are done */
   fpr_lock(&arc_lock);
   fpr_slab_t *sl = pool->cur;
@@ -2108,6 +2131,80 @@ int fpr_arc_movable_root(V v) {
 __attribute__((weak)) int fpr_hal_sleep_us(uw us) { (void)us; return 0; }
 
 uw fpr_arc_live(void) { return arc_live; }
+
+/* ---- the received roots of a turn (fpr.h fpr_rx_t) -------------------
+ * Owner-only: the actor itself pushes, forgets and releases; the reaper
+ * reclaims once the actor can no longer run.  No lock. */
+static uw rx_grows, rx_hwm;
+uw fpr_rx_grows_count(void) { return __atomic_load_n(&rx_grows, __ATOMIC_RELAXED); }
+uw fpr_rx_hwm(void) { return __atomic_load_n(&rx_hwm, __ATOMIC_RELAXED); }
+static void rx_inline(fpr_rx_t *r) { r->roots = r->rx0; r->cap = FPR_RX_INLINE; r->n = 0; r->block = 0; }
+void fpr_rx_push(struct fpr_acb *a, V m) {
+  if (!a || arc_by_value(m)) return; /* ints, statics, actor handles: nothing to release */
+  fpr_rx_t *r = fpr_acb_rx(a);
+  if (!r->roots) rx_inline(r);
+  if (r->n == r->cap) {
+    /* doubling, counted: a turn that receives more than the inline eight
+     * (a batch drain, or a receive loop the compiler did not recognise) */
+    uw ncap = r->cap * 2;
+    fpr_slab_t *sl = fpr_slab_new(ncap * sizeof(V) + sizeof(fpr_slab_t)); /* may park */
+    if (!sl) fpr_exhausted("receive: no block for the turn's received roots");
+    V *nb = (V *)(sl + 1);
+    __builtin_memcpy(nb, r->roots, r->n * sizeof(V));
+    if (r->block) fpr_slab_release(r->block);
+    r->block = sl;
+    r->roots = nb;
+    r->cap = (uw)(sl->end - (char *)nb) / sizeof(V);
+    __atomic_fetch_add(&rx_grows, 1, __ATOMIC_RELAXED);
+  }
+  r->roots[r->n++] = m;
+  uw hwm = __atomic_load_n(&rx_hwm, __ATOMIC_RELAXED);
+  while (r->n > hwm && !__atomic_compare_exchange_n(&rx_hwm, &hwm, r->n, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {}
+}
+void fpr_rx_release(struct fpr_acb *a, uw mark) {
+  fpr_rx_t *r = fpr_acb_rx(a);
+  while (r->n > mark) {
+    V m = r->roots[--r->n]; /* popped first: the decref must not forget it again */
+    if (fpr_plane_memory) fpr_plane_memory->arc_decref(m); else arc_decref_in(m);
+  }
+}
+void fpr_rx_forget(struct fpr_acb *a, V m) {
+  fpr_rx_t *r = fpr_acb_rx(a);
+  for (uw i = r->n; i-- > 0;) {
+    if (r->roots[i] != m) continue;
+    for (uw j = i + 1; j < r->n; j++) r->roots[j - 1] = r->roots[j]; /* order kept: the marks index it */
+    r->n--;
+    for (struct fpr_scope *sc = *fpr_acb_scope_slot(a); sc; sc = sc->previous)
+      if (sc->rx_mark > i) sc->rx_mark--;
+    return;
+  }
+}
+/* Sys.poolReset: the actor's own turn boundary.  The roots no open region
+ * owns -- those received outside every Sys.loop / arena scope, the ones a
+ * hand-written loop with an explicit reset holds -- die here; a region
+ * still open keeps the roots its current turn took (its state has not
+ * been copied out yet).  The marks move down with the list. */
+void fpr_rx_release_outer(struct fpr_acb *a) {
+  fpr_rx_t *r = fpr_acb_rx(a);
+  if (!r->roots || !r->n) return;
+  uw k = r->n;
+  for (struct fpr_scope *sc = *fpr_acb_scope_slot(a); sc; sc = sc->previous) k = sc->rx_mark; /* the oldest's */
+  if (!k) return;
+  for (uw i = k; i-- > 0;) {
+    V m = r->roots[i];
+    if (fpr_plane_memory) fpr_plane_memory->arc_decref(m); else arc_decref_in(m);
+  }
+  for (uw j = k; j < r->n; j++) r->roots[j - k] = r->roots[j];
+  r->n -= k;
+  for (struct fpr_scope *sc = *fpr_acb_scope_slot(a); sc; sc = sc->previous) sc->rx_mark -= k;
+}
+void fpr_rx_reclaim(struct fpr_acb *a) {
+  fpr_rx_t *r = fpr_acb_rx(a);
+  if (!r->roots) return;
+  fpr_rx_release(a, 0);
+  if (r->block) { fpr_slab_release(r->block); r->block = 0; }
+  rx_inline(r);
+}
 
 /* the CURRENT ACTOR's allocation gauge: bytes it has ever bumped from
  * its slabs (recycled-bucket hits do not re-count).  The per-hart

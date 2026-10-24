@@ -247,6 +247,7 @@ typedef struct fpr_acb {
   uint64_t probe_shipped, probe_drained; /* cross-hart latency stamps (XHART.md) */
 #endif
   struct fpr_scope *scopes; /* active scratch regions on this actor's stack */
+  fpr_rx_t rx; /* the message roots this actor took in the current turn (fpr.h) */
 } acb_t;
 #define TR(a, code) do { (a)->tr[(a)->tr_i++ % 16] = (uint8_t)((code) * 8 + (fpr_hart() ? fpr_hart()->id : 7)); } while (0)
 
@@ -296,6 +297,7 @@ void fpr_drop_drain_current(void) {
 fpr_pool_t *fpr_acb_pool(struct fpr_acb *a) { return &a->pool; }
 struct fpr_pool **fpr_acb_override_slot(struct fpr_acb *a) { return &a->pool_override; }
 struct fpr_scope **fpr_acb_scope_slot(struct fpr_acb *a) { return &a->scopes; }
+fpr_rx_t *fpr_acb_rx(struct fpr_acb *a) { return &a->rx; }
 
 /* big raw blocks (stacks, acbs, rings): the memory actor's buddy on an
  * image that owns one (fpr_mem_own -- a machine boot, the qosp app);
@@ -896,6 +898,7 @@ static void reap(acb_t *a) {
     r->release(r->arg);
   }
   if (a->ch) chb_drain(a->ch); /* mail it never read: released, not stranded (holds park below) */
+  fpr_rx_reclaim(a); /* the roots of a turn it never finished (killed, or trapped) */
   /* Bounded producers cannot pass their locked death check now. The drained
    * limbo rings are empty and never dereference charges again before init. */
   inbox_charges_put(a->inbox_charges); a->inbox_charges = 0;
@@ -1513,7 +1516,7 @@ static void dl_num(char **p, const char *e, uw u) {
 static void deadlock_dump(void) {
   for (acb_t *a = g_all; a; a = a->all_nx) {
     uint32_t st = __atomic_load_n(&a->var, __ATOMIC_ACQUIRE);
-    char buf[96], *p = buf, *e = buf + sizeof buf - 1;
+    char buf[128], *p = buf, *e = buf + sizeof buf - 1;
     dl_put(&p, e, "dl: actor "); dl_num(&p, e, a->id);
     dl_put(&p, e, " hart "); dl_num(&p, e, a->hart);
     dl_put(&p, e, a->pin ? " pinned" : " free");
@@ -1525,6 +1528,7 @@ static void deadlock_dump(void) {
     uw held = 0;
     if (a->ch) for (int i = 0; i < MAXSND; i++) if (a->ch[i].sender) held += ch_count(&a->ch[i]);
     dl_put(&p, e, " holds "); dl_num(&p, e, held);
+    dl_put(&p, e, " roots "); dl_num(&p, e, a->rx.n); /* received roots of its current turn */
     dl_put(&p, e, " parent "); dl_num(&p, e, a->parent);
     *p = 0;
     dl_out(buf, (uw)(p - buf));
@@ -1787,11 +1791,14 @@ static void trampoline(void) {
     fpr_exit(r);                /* normal boot: halts the machine */
   }
   V r = fpr_apply(a->entry, (V)a);
-  /* the body's result has no reader: release it.  A received message root
-   * returned as the result (`fn self -> receive self`) kept its whole
-   * message slab alive -- the slab goes home only when every root in it
-   * is dropped, so one undropped root pinned 49 drained neighbours
-   * (tests/base/deadmail.fpr).  A pool-local or by-value result is a no-op. */
+  /* the body has returned: the roots its last turn took die here (the
+   * ones received outside any loop boundary included), and the result has
+   * no reader, so it is released too.  A received message root returned as
+   * the result (`fn self -> receive self`) kept its whole message slab alive
+   * -- the slab goes home only when every root in it is dropped, so one
+   * undropped root pinned 49 drained neighbours (tests/base/deadmail.fpr).
+   * A pool-local or by-value result is a no-op. */
+  fpr_rx_release(a, 0);
   fpr_arc_decref(r);
   __atomic_store_n(&a->var, ST_DEAD, __ATOMIC_SEQ_CST);
   wake_watchers(a);
@@ -2189,6 +2196,7 @@ static V take_at(acb_t *a, chan_t *c, uint32_t k) {
     uw charge = rv->charge ? CHARGEAT(rv, k) : 0;
     __atomic_store_n(&c->rh, rh + 1, __ATOMIC_RELEASE); /* frees a slot */
     if (c->budget_owner) inbox_release(a, charge);
+    fpr_rx_push(a, m); /* the root dies with this turn (fpr.h fpr_rx_t) */
     return m;
   }
   /* shifting rewrites consumer-owned slots; a producer growing the
@@ -2205,6 +2213,7 @@ static V take_at(acb_t *a, chan_t *c, uint32_t k) {
   __atomic_store_n(&c->rh, rh + 1, __ATOMIC_RELEASE);
   fpr_unlock(&a->shlock);
   if (c->budget_owner) inbox_release(a, charge);
+  fpr_rx_push(a, m);
   return m;
 }
 
@@ -2250,6 +2259,7 @@ void fpr_actors_init(void) { /* hart 0, before fpr_smp_go */
   main_acb.why[0] = 0;
   main_acb.resources = 0;
   main_acb.scopes = 0;
+  main_acb.rx.roots = 0; main_acb.rx.n = 0; main_acb.rx.cap = 0; main_acb.rx.block = 0;
   ledger_push(&main_acb);
   uw stk_sz = 0;
   char *stk = (char *)stack_block(&stk_sz);
@@ -2336,6 +2346,7 @@ static V spawn_on_pid_cap_heap(uw hart, V f, uw pin, uw pid, uint32_t cap, uint3
   a->mem_reply = 0;
   a->pool_override = 0;
   a->scopes = 0;
+  a->rx.roots = 0; a->rx.n = 0; a->rx.cap = 0; a->rx.block = 0;
   a->reaping = 0;
   a->dp_n = 0;
   a->msg_slab = 0;
@@ -2808,6 +2819,7 @@ static V a_send_linear(V av, V m) {
   /* a move shares the value's statics too: across processes it copies,
    * so nothing it holds can outlive a process image (runtime.c) */
   int movable = fpr_arc_movable_root(m) && a->pid == fpr_current_pid();
+  if (movable && fpr_hart()->current) fpr_rx_forget(fpr_hart()->current, m); /* it leaves this turn */
   if (__atomic_load_n(&a->var, __ATOMIC_ACQUIRE) == ST_DEAD) {
     if (movable) fpr_arc_decref(m); /* the drop the receiver would have done */
     else if (!ISINT(m) && fpr_in_heap(m) && TID(m) == T_VEC)

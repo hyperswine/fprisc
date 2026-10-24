@@ -48,11 +48,12 @@ loadSettings args = Config.load {
 Query = Type (Get key | Put key value | Keys | Count).
 Reply = Type (Found value | Missing | Stored | Listing keys | Size n).
 
-# `serve` (the prelude's request loop) DROPS each request once it is answered,
-# so whatever the state holds on to must be the store's own copy: `keep`.
+# `serve` (the prelude's request loop) runs each request as one turn: the
+# request dies with the turn and the next state is copied out of it, so the
+# store may keep a request's key and value as they are.
 store state q = case q of
     Get k -> (state, (case Map.get k state of Option.Some v -> Found v | Option.None -> Missing))
-  | Put k v -> (Map.insert (keep k) (keep v) state, Stored)
+  | Put k v -> (Map.insert k v state, Stored)
   | Keys -> (state, Listing (Map.keys state))
   | Count -> (state, Size (Map.size state)).
 

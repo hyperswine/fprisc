@@ -194,9 +194,9 @@ void fpr_bkt_put(void **b);
  * bind one FP-RISC runtime to another.  A plain-word API for other
  * languages is the next step, not this one. */
 #if defined(FPR_POSIX) && defined(__aarch64__) && !defined(FPR_QOSAPP)
-#define FPR_NATIVE_ABI 7u /* hosted A64 context and hart layout include d8..d15 */
+#define FPR_NATIVE_ABI 8u /* hosted A64 context and hart layout include d8..d15; the acb's received-root list */
 #else
-#define FPR_NATIVE_ABI 6u /* QOS and other hosted layouts remain v6. */
+#define FPR_NATIVE_ABI 7u /* QOS and other hosted layouts: v6 plus the acb's received-root list (REGIONS-STAGE1) */
 #endif
 #define FPR_PLANE_ACTORS_ABI 3u /* v3: opt-in transactional spawn_inbox; v2: receive_from_now */
 #define FPR_PLANE_MEMORY_ABI 3u /* v3: sized stack reservation before a generated frame */
@@ -302,6 +302,33 @@ void fpr_vec_release(V v);               /* vec.c: universal vector free */
 fpr_pool_t *fpr_acb_pool(struct fpr_acb *a); /* actors.c: &a->pool */
 struct fpr_pool **fpr_acb_override_slot(struct fpr_acb *a); /* actors.c: the arena the actor is inside */
 struct fpr_scope **fpr_acb_scope_slot(struct fpr_acb *a); /* cancellation cleanup, before stack recycling */
+
+/* ---- the received roots of the current turn (docs/2026-10-24-REGIONS-STAGE1.md)
+ * Every message root an actor takes from its mailbox is recorded here until
+ * the turn that took it ends: a Sys.loop / Sys.loopWith / receive-loop turn
+ * boundary, a Sys.arena exit or the actor's own end releases them (the
+ * next state has been copied out by then, so nothing the actor keeps can
+ * point into the dying message).  A manual `drop` or a sendLinear move
+ * takes a root out early.  The list starts inline and doubles into a buddy
+ * block when a turn receives more than FPR_RX_INLINE roots; every doubling
+ * is counted (fpr_rx_grows_count) and the most roots one actor held at once
+ * is kept (fpr_rx_hwm): a receive outside any boundary holds its roots
+ * until the actor ends, visibly, never silently. */
+#define FPR_RX_INLINE 8
+typedef struct fpr_rx {
+  V *roots;       /* rx0, or the grown block's cells */
+  uw n, cap;
+  fpr_slab_t *block; /* the grown block (a slab in all but use), or 0 */
+  V rx0[FPR_RX_INLINE];
+} fpr_rx_t;
+fpr_rx_t *fpr_acb_rx(struct fpr_acb *a);         /* actors.c: &a->rx */
+void fpr_rx_push(struct fpr_acb *a, V m);         /* runtime.c: a root taken from the mailbox */
+void fpr_rx_release(struct fpr_acb *a, uw mark);  /* runtime.c: a turn ends; the roots above mark die */
+void fpr_rx_forget(struct fpr_acb *a, V m);       /* runtime.c: a drop or a move took the root out */
+void fpr_rx_release_outer(struct fpr_acb *a);     /* runtime.c: Sys.poolReset: the roots no open region owns die */
+void fpr_rx_reclaim(struct fpr_acb *a);           /* runtime.c: the actor ends: release all, free the block */
+uw fpr_rx_grows_count(void);
+uw fpr_rx_hwm(void);
 void fpr_pool_reclaim(struct fpr_acb *a);    /* runtime.c: death teardown */
 void *buddy_alloc(uw bytes);                 /* buddy.c */
 void *buddy_realloc(void *p, uw bytes);      /* grow/shrink; in-place when
@@ -401,6 +428,9 @@ typedef struct {
   uint64_t cost_turns; /* value-state turns run (Sys.loop, loopWith, the
                         * receive trampoline): the denominator of the
                         * per-turn ledgers (docs/2026-10-19-RECEIVE-TURN-ARENA.md) */
+  uint64_t cost_state_copies, cost_state_bytes; /* of cost_copies/cost_copy_bytes: the
+                        * transfer copies across a turn boundary -- the state's size,
+                        * as the regions plan measures it (docs/2026-10-24-REGIONS-STAGE0.md) */
 #endif
 } fpr_hart_t;
 

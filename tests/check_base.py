@@ -480,7 +480,7 @@ def autodrop2(tmp):
     # and kept a 128 KiB packing slab per message
     p = run([build('tests/base/autodrop2.fpr', 'autodrop2')])
     assert p.stdout == 'autodrop2: 3000 direct destructures cost under 32 MiB; 3000 Result-wrapped receives cost under 32 MiB\n', p.stdout + p.stderr
-    print('Autodrop covers the direct destructure and the Result-wrapped receive: 6,000 receives stay under 32 MiB each way (was 128 KiB a receive): PASS')
+    print('Received roots die with their turn on the direct destructure and the Result-wrapped receive: 6,000 receives stay under 32 MiB each way (was 128 KiB a receive): PASS')
 
 @case
 def autodrop3(tmp):
@@ -489,14 +489,29 @@ def autodrop3(tmp):
     # block's final expression, so the bench ponger leaked every message
     # (1,000,000 live Arc entries, 101 MB).  The ARC gauges come from the
     # arc_churn probe (docs/2026-10-19-AUTODROP-BARE-CASE.md)
+    # since 2026-10-24 the compiler inserts no drop at all: a received root
+    # dies with its turn (docs/2026-10-24-REGIONS-STAGE1.md), and the check
+    # is that the runtime's turn boundary releases every one of them
     ad3 = tmp / 'autodrop3'
     p = run(['./fpr', 'build', '-v', 'tests/base/autodrop3.fpr', '--with', 'tests/arc_churn/arcprobe.c', '-o', ad3])
-    assert 'autodrop: ponger: inserted `drop _autodrop_root_ponger_0` into 1 case arm(s)' in p.stdout, p.stdout + p.stderr
-    assert 'autodrop: takeRes: inserted `drop` into the Ok arm of a Result-wrapped receive' in p.stdout, p.stdout + p.stderr
+    assert 'autodrop:' not in p.stdout, p.stdout + p.stderr
     for harts in ('1', '4'):
         p = run([ad3], env={'FPR_HARTS': harts})
-        assert p.stdout == 'autodrop3: pingpong 5000150000 and 7000 Result-wrapped: arc_live = 0\n', p.stdout + p.stderr
-    print('Autodrop covers a body that IS the bare `case receive ... of`: 100,000 pingpong messages and 1,000 Result-wrapped receives end with zero live Arc entries on one and four harts (was one entry per message): PASS')
+        assert p.stdout == 'autodrop3: pingpong 5000150000 and 7000 Result-wrapped: arc_live = 0 rx_grows = 0\n', p.stdout + p.stderr
+    print('A received message dies with its turn, with no compiler-inserted drop: 100,000 pingpong messages and 1,000 Result-wrapped receives end with zero live Arc entries on one and four harts, and no actor held more than its inline eight roots: PASS')
+
+@case
+def turnroots(tmp):
+    # a received message dies with its turn (docs/2026-10-24-REGIONS-STAGE1.md):
+    # a `serve` store keeps request keys and values in its state with no keep
+    # and no drop and every one reads back; a root received inside an arena
+    # dies at its exit; one received outside every boundary dies at the
+    # actor's Sys.poolReset
+    tr = build('tests/base/turnroots.fpr', 'turnroots')
+    for harts in ('1', '4'):
+        p = run([tr], env={'FPR_HARTS': harts})
+        assert p.stdout == 'turnroots: 5000 keys kept without keep, 0 wrong, roots after loops 0, after arena 0, held 1 then reset 0, retained under 16 MiB\n', p.stdout + p.stderr
+    print('A message dies with its turn: a serve store keeps 5,000 requests\' keys and values without keep, an arena and a poolReset release their received roots, on one and four harts: PASS')
 
 @case
 def fixedheap(tmp):

@@ -782,22 +782,25 @@ parWorker self =
     (parent, f, a) -> send parent (Ok (f a)).
 
 # ---- the service shape, as ONE primitive ------------------------------------
-# Every hand-written receive/destructure/dispatch/reply/drop loop is this
-# function; the runtime-owned roots mean the drop can never go missing
-# again (the gfxServe crash-loop class is unwritable through serve).
-# The handler is pure: (state, request) in, (state, reply) out.  Replies
-# may reference anything -- send deep-copies, so even parts of the
-# request are safe to hand back (the copy happens BEFORE the drop).
-# `ask` is the calling half: send (me, q), wait for the reply from a.
+# Every hand-written receive/destructure/dispatch/reply loop is this
+# function.  Each request is one turn of a Sys.loop: the request dies with
+# the turn, and the next state is copied out of it, so a handler may keep
+# parts of the request in its state with no `keep` and no `drop`
+# (docs/2026-10-24-REGIONS-STAGE1.md).  The handler is pure: (state,
+# request) in, (state, reply) out.  Replies may reference anything -- send
+# deep-copies.  `ask` is the calling half: send (me, q), wait for the reply
+# from a.  The state may not hold a Vector (Sys.loop refuses it by name).
 
 serve : unsafe Int -> (st -> q -> (st, r)) -> st -> a.
 serve self h st =
-  m = receive self;
-  (rt, q) = m;
+  _ = Sys.loop st (serveTurn self h);
+  error "serve: the loop ended".
+serveTurn : unsafe Int -> (st -> q -> (st, r)) -> st -> (Bool, st).
+serveTurn self h st =
+  (rt, q) = receive self;
   (st2, r) = h st q;
   _ = send rt r;
-  _ = drop m;
-  serve self h st2.
+  (True, st2).
 
 ask : unsafe Int -> Int -> q -> r.
 ask me a q =
@@ -812,8 +815,8 @@ par2 h f a g b =
     | Err why -> _ = kill w; error "par2 admission: {why}";
   rb = g b;
   # the worker's reply is a received root: its payload is KEPT into this
-  # actor's pool, so the root may be dropped (autodrop does, at the arm's
-  # start) and the pair outlives the next receive
+  # actor's pool and the root dropped, so the pair outlives the turn that
+  # received it whatever the caller's loop shape
   case receiveFromRes me w of
       Ok message -> (case message of
           Ok ra -> owned = keep ra; _ = drop message; (owned, rb)
