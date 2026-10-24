@@ -57,6 +57,12 @@ jobs:
           repository: hyperswine/simple-risc
           ref: 8479466ba159ebaf4faf035502dfc3b6354b2083
           path: .ci/simple-risc
+      # checkout's action-local HOME differs from later container steps.
+      # Trust only the two repositories this job explicitly checked out.
+      - name: Git ownership inside the job container
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/.ci/simple-risc"
       - name: cabal build (Linux x86-64)
         run: |
           cabal update
