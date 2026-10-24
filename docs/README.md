@@ -239,4 +239,4 @@ they began.
 
 - [macOS x86-64 target](2026-10-24-X64-MACOS.md): Mach-O typed x64 output with Darwin TLV hart and argument cells, `--target=x64mac` and `fpr build --target=macos-x86_64`; Rosetta parity with AArch64 and the descriptor call's measured cost.
 
-- [POS v1 review](2026-10-24-POS1-REVIEW.md): reading review of `examples/pos1.fpr` at `712f24f`: role checks, PIN brute force, money parsing and validation, UTC days, GST-inclusive pricing and 5c cash rounding, card approval, journal durability, reconnect double-sale, pricing reload bounds, and the cloud-only deploy.
+- [POS v1 review](2026-10-24-POS1-REVIEW.md): reading review of `examples/pos1.fpr` at `712f24f`: role checks, PIN brute force, money parsing and validation, UTC days, GST-inclusive pricing and 5c cash rounding, card approval, journal durability, reconnect double-sale, pricing reload bounds, and the cloud-only deploy; plus a sandboxed path to card payments (Stripe Terminal's simulated reader, Square, Tyro) and the auth and Australian legal checklist for a first real shop.
