@@ -277,4 +277,6 @@ they began.
 
 - [macOS x86-64 target](2026-10-24-X64-MACOS.md): Mach-O typed x64 output with Darwin TLV hart and argument cells, `--target=x64mac` and `fpr build --target=macos-x86_64`; Rosetta parity with AArch64 and the descriptor call's measured cost.
 
+- [Rendered handlers](2026-10-24-RENDERED-HANDLERS.md): review of the Live event path at 712f24f (any page can send any message of the app's type, including internal completions; no render generation; per-element rebinding; one locals namespace; integer z-index; no native pointer input) and the proposed fix: content-addressed handler ids resolved against the session's last two render generations, then delegated dispatch, component targets, named layers and a UI IR.
+
 - [POS v1 review](2026-10-24-POS1-REVIEW.md): reading review of `examples/pos1.fpr` at `712f24f`: role checks, PIN brute force, money parsing and validation, UTC days, GST-inclusive pricing and 5c cash rounding, card approval, journal durability, reconnect double-sale, pricing reload bounds, and the cloud-only deploy; plus a sandboxed path to card payments (Stripe Terminal's simulated reader, Square, Tyro) and the auth and Australian legal checklist for a first real shop.
