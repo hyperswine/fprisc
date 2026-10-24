@@ -38,6 +38,26 @@ text k v = Option.withDefault "" (Option.andThen Json.asString (Json.field k v))
 integer k v = Option.withDefault 0 (Option.andThen Json.asInt (Json.field k v)).
 boolean k v = Option.withDefault False (Option.andThen Json.asBool (Json.field k v)).
 number k v = Option.withDefault "—" (Option.andThen Json.asReal (Json.field k v)).
+# Bounded decimal formatting, without converting telemetry through a float.
+# Temperatures use whole degrees; rates retain one useful decimal place.
+reading places k v = case Option.andThen Json.asReal (Json.field k v) of
+    Option.None -> "—"
+  | Option.Some raw ->
+      negative = S.startsWith "-" raw;
+      unsigned = if negative then S.dropLeft 1 raw else raw;
+      parts = S.split "." unsigned;
+      whole = case parts of first :: _ -> first | _ -> "";
+      fraction = case parts of [_ , f] -> f | _ -> "";
+      digits = S.left (places + 1) (fraction + "00");
+      if strlen raw > 24 or List.length parts > 2 or strlen whole > 9 or S.contains "e" (S.toLower raw) then "—" else
+      case (S.toInt whole, S.toInt digits) of
+        (Ok n, Ok d) ->
+          scale = if places == 0 then 1 else 10;
+          rounded = n * scale + d / 10 + (if d - (d / 10) * 10 >= 5 then 1 else 0);
+          sign = if negative and rounded != 0 then "-" else "";
+          tail = rounded - (rounded / scale) * scale;
+          "{sign}{rounded / scale}{(if tail == 0 then "" else ".{tail}")}"
+      | _ -> "—".
 values k v = Option.withDefault Nil (Option.andThen Json.asList (Json.field k v)).
 validPrinter p = strlen (text "id" p) > 0 and strlen (text "name" p) > 0.
 validSnapshot v = case Option.andThen Json.asList (Json.field "printers" v) of
@@ -87,7 +107,7 @@ age now at = if at <= 0 then "No report yet" else "{(if now > at then now - at e
 stale v = v.generated == 0 or v.now - v.generated > 5 or strlen v.issue > 0.
 link p v = if stale v then "STALE" else text "connection" p.
 pill attrs s = El "span" attrs [Txt s].
-metric title value suffix = El "div" Nil [El "dt" UI.term [Txt title], El "dd" UI.value [Dyn value, El "small" UI.unit [Txt suffix]]].
+metric title value suffix = El "div" UI.metric [El "dt" UI.term [Txt title], El "dd" UI.value [Dyn value, El "small" UI.unit [Txt suffix]]].
 row title value = El "div" Nil [El "dt" UI.rowTerm [Txt title], El "dd" UI.rowValue [Dyn value]].
 button label msg attrs = El "button" (G.send codec msg :: Att "type" "button" :: List.append UI.button attrs) [Txt label].
 printerAlert a = El "li" (List.append UI.printerAlert (UI.alertTone (text "severity" a)))
@@ -127,7 +147,7 @@ card v p =
     , El "div" (List.append UI.progress [Att "role" "progressbar", Att "aria-valuemin" "0", Att "aria-valuemax" "100", Att "aria-valuenow" (str progress), Att "aria-label" "Print progress"])
         [El "div" (UI.progressFill progress) Nil]
     , El "div" UI.progressLabel [Dyn "{progress}%", El "span" [UI.muted] [Dyn (text "layers" p)]]
-    , El "dl" UI.metrics [metric "Nozzle" (number "nozzle" p) "°C", metric "Bed" (number "bed" p) "°C", metric "Reports" (number "report_hz" p) "Hz"]
+    , El "dl" UI.metrics [metric "Nozzle" (reading 0 "nozzle" p) "°C", metric "Bed" (reading 0 "bed" p) "°C", metric "Reports" (reading 1 "report_hz" p) "Hz"]
     , El "div" UI.freshness [El "span" UI.pulse Nil, Txt "Last report ", Dyn (age v.now (integer "last_report" p)), Txt " · ", Dyn (text "wifi" p)]
     , El "div" UI.actions
         [button (if expanded then "Hide details ↑" else "View details ↓") (Expand id)
@@ -139,13 +159,13 @@ card v p =
         El "span" [UI.muted, UI.text 11] [Dyn "{List.length (List.filter (fn t -> t.printer == id and Care.isDue v.now t) v.care.tasks)} due · {List.length (List.filter (fn i -> i.printer == id and not i.resolved) v.care.issues)} open issues"]]
     , El "section" (Att "id" "details-{id}" :: UI.hidden (not expanded) :: UI.details)
         [El "dl" UI.detailGrid
-          [row "Nozzle target" (number "nozzle_target" p), row "Bed target" (number "bed_target" p), row "Print error" (text "error" p), row "Filament" (text "filament" p), row "Active spool" (text "filament_source" p), row "Reports received" (number "reports" p), row "Last report (UTC)" (text "last_report_iso" p)]
+          [row "Nozzle target" (reading 0 "nozzle_target" p + " °C"), row "Bed target" (reading 0 "bed_target" p + " °C"), row "Print error" (text "error" p), row "Filament" (text "filament" p), row "Active spool" (text "filament_source" p), row "Reports received" (number "reports" p), row "Last report (UTC)" (text "last_report_iso" p)]
         , El "p" UI.notice [Dyn (text "note" p)]
         , El "div" [UI.divider, UI.hidden (not camera)]
           [El "div" UI.cameraHeading [Txt "LIVE VIEW", El "span" [UI.muted] [Txt "Native camera cadence"]]
           , El "div" (List.append UI.cameraHost [Att "data-camera-id" id, Att "data-camera-on" (if camera and expanded then "true" else "false"), Att "aria-label" "Camera view from {text "name" p}"]) Nil
           , El "p" (Att "data-camera-status" id :: UI.footnote) [Txt "Camera is off"]
-          , El "p" UI.footnote [Txt "Stream: ", Dyn (text "camera_state" p), Txt " · ", Dyn (number "camera_hz" p), Txt " Hz · last frame ", Dyn (age v.now (integer "camera_last_frame" p))]
+          , El "p" UI.footnote [Txt "Stream: ", Dyn (text "camera_state" p), Txt " · ", Dyn (reading 1 "camera_hz" p), Txt " Hz · last frame ", Dyn (age v.now (integer "camera_last_frame" p))]
           , El "p" UI.footnote [Txt "Camera sleeps when this tab is hidden. A printer camera may update slowly; telemetry is the source of truth."]]]]).
 palette = {bg = G.Rgb 246 245 240, ink = G.Rgb 38 51 46, dim = G.Rgb 116 128 120,
   card = G.Rgb 255 254 250, panel = G.Rgb 255 254 250, line = G.Rgb 228 231 223}.

@@ -62,11 +62,13 @@ prune cfg at mono current =
   storedOrigins = M.fromList S.compare (L.map (fn r -> (r.digest, r.origin)) entries);
   {current | entries = entries, policy = {policy | sessions = L.filter (fn s -> M.get s.digest storedOrigins == O.Some s.origin) policy.sessions}}.
 dispatch path expected cfg keys command current =
-  # A failed persistence operation makes all authorization fail closed. A new
-  # challenge or logout may recover only after the current snapshot is saved.
+  # Failed persistence closes authorization until a successful checkpoint.
+  # Ordinary session checks may recover after repair without a fresh key login;
+  # checkpointing the current entries first also preserves pending revocations.
   recovered = if not current.problem then True else case command of
     Auth.Challenge _ _ -> (case save path expected current.entries of Ok _ -> True | _ -> False)
   | Auth.Logout _ -> (case save path expected current.entries of Ok _ -> True | _ -> False)
+  | Auth.Valid _ _ -> (case save path expected current.entries of Ok _ -> True | _ -> False)
   | _ -> False;
   if not recovered then (Auth.Refused, current) else
   (reply, policy) = Auth.dispatch cfg keys command current.policy;

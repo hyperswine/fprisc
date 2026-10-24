@@ -5,6 +5,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const os=require('node:os');
+const vm=require('node:vm');
 const {execFileSync,spawnSync,spawn}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
 const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'fpr-printer-styles-'));
@@ -38,19 +39,40 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'fpr-printer-styles-'));
     await route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1ioAAAAASUVORK5CYII=','base64')});});
   for (const harts of [1,4]) {
    const v=JSON.parse(execFileSync(bin,{encoding:'utf8',env:{...process.env,FPR_HARTS:String(harts)}}));
+   // Execute the actual generated session checker: transient failures retain
+   // the page/cookie; only a confirmed 401 returns the user to key login.
+   let checkSession,status=503,redirects=0;
+   vm.runInNewContext(v.session,{document:{hidden:false,addEventListener(){}},
+     setInterval(fn){checkSession=fn;},fetch:async()=>{if(status===0)throw Error('offline');return {status};},
+     location:{replace(){redirects++;}}});
+   await new Promise(resolve=>setImmediate(resolve));
+   assert.equal(redirects,0);
+   for(status of [0,503,200]){await checkSession();assert.equal(redirects,0);}
+   status=401;await checkSession();assert.equal(redirects,1);
    const markup=v.s.map((s,i)=>s+(i<v.d.length?'<span data-slot="'+i+'"></span>':'')).join('');
    await page.setContent('<!doctype html><head><style>'+v.css+'</style></head><body'+v.body+'><div id="lv-root">'+markup+'</div></body>');
    await page.locator('[data-slot]').evaluateAll((els,ds)=>{for(const e of els)e.textContent=ds[Number(e.dataset.slot)];},v.d);
    const selectors=await page.evaluate(()=>Array.from(document.styleSheets).flatMap(s=>Array.from(s.cssRules)).flatMap(r=>r.type===4?Array.from(r.cssRules):[r]).map(r=>r.selectorText));
    assert(selectors.length>100);
    assert(selectors.every(s=>/^\.fpr-u-[0-5]-[0-9a-f]+(?::focus-visible)?$/.test(s)),selectors.filter(s=>!/^\.fpr-u-/.test(s)));
-   for(const width of [1200,390]) {
+   assert.equal(await page.locator('article > dl dd').nth(0).innerText(),'220°C');
+   assert.equal(await page.locator('article > dl dd').nth(1).innerText(),'60°C');
+   assert.equal(await page.locator('article > dl dd').nth(2).innerText(),'0.3Hz');
+   for(const width of [1200,390,375,320]) {
     await page.setViewportSize({width,height:900});
     assert.equal(await page.locator('body').evaluate(e=>getComputedStyle(e).margin),'0px');
     assert.equal(await page.locator('body').evaluate(e=>e.scrollWidth),width,'no horizontal document overflow');
     assert.equal(await page.locator('h1').evaluate(e=>getComputedStyle(e).fontSize),width===1200?'48px':'38px');
     assert.equal(await page.locator('[aria-label="Printers"]').evaluate(e=>getComputedStyle(e).gridTemplateColumns.split(' ').length),width===1200?2:1);
     assert.equal(await page.locator('article').evaluate(e=>getComputedStyle(e).padding),width===1200?'26px':'22px');
+    assert(await page.locator('article > dl').evaluate(dl=>{
+      const cells=Array.from(dl.children).map(e=>e.getBoundingClientRect());
+      return Array.from(dl.querySelectorAll('dd')).every((dd,i)=>{
+        const box=dd.getBoundingClientRect();
+        const range=document.createRange();range.selectNodeContents(dd);
+        return Array.from(range.getClientRects()).every(r=>r.left>=box.left-.5 && r.right<=cells[i].right+.5);
+      });
+    }),'metric text and units stay inside their own grid column');
     const ratio=await page.locator('[role="progressbar"]').evaluate(e=>e.firstChild.getBoundingClientRect().width/e.getBoundingClientRect().width);
     assert(Math.abs(ratio-.37)<.003);
     const camera=await page.locator('[data-camera-id]').boundingBox();
@@ -147,4 +169,4 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'fpr-printer-styles-'));
   console.log('PASS actual native Live printer: generated body/media, per-tab camera, dynamic progress CSS, stable shadow/stream through telemetry and collapse cleanup; 1/4 harts');
   console.log('PASS printer presentation: generated local rules only, document ownership, wide/narrow layout, progress, camera geometry, keyboard focus, component isolation and generated media lifecycle (visibility, disconnect, failure, toggle, BFCache, detach); 1/4 harts');
  } finally {for(const child of children)if(child.exitCode===null&&child.signalCode===null)child.kill('SIGTERM');if(browser)await browser.close();fs.rmSync(tmp,{recursive:true,force:true});}
-})().catch(e=>{console.error(e);process.exitCode=1;});
+})().catch(e=>{if(e.stdout)console.error(e.stdout.toString());if(e.stderr)console.error(e.stderr.toString());console.error(e);process.exitCode=1;});

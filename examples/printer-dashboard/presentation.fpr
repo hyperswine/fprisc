@@ -49,8 +49,9 @@ progressFill n = [u [G.Height (G.Pct 100), G.Width (G.Pct (if n < 0 then 0 else 
   G.Background (G.Rgb 114 155 121), G.Radius (p 10)]].
 progressLabel = [flex, between, text 11, u [G.MarginTop (p 8), G.Numerals G.TabularNumerals]].
 metrics = [grid 3, u [G.Gap (p 12), G.MarginTop (p 26), G.MarginBottom (p 22)]].
+metric = [u [G.MinWidth (p 0)]].
 term = [text 11, muted, u [G.MarginBottom (p 8)]].
-value = [text 25, u [G.Numerals G.TabularNumerals, G.FontWeight 500]].
+value = [text 25, u [G.Numerals G.TabularNumerals, G.FontWeight 500, G.WordWrap G.WrapAnywhere], G.narrow [G.FontSize (p 20)]].
 unit = [text 11, muted, u [G.MarginLeft (p 4)]].
 freshness = [text 11, muted, flex, u [G.Gap (p 5), G.FlexWrap G.Wrap]].
 pulse = [u [G.Height (p 5), G.Width (p 5), G.Radius (G.Pct 50), G.Background (G.Rgb 162 178 157), G.MarginRight (p 3)]].

@@ -271,8 +271,10 @@ only after atomic snapshot replacement. There is no fsync/power-loss guarantee
 and no backup that could restore revoked sessions. An unreadable, malformed,
 oversized or incomplete session store fails closed; preserve it for inspection
 and reset only this auth file to force fresh logins, not the maintenance log.
-A failed write refuses authorization until a challenge/logout can save the
-current state again. Restart restoration uses the wall-clock expiry converted
+A failed write returns HTTP 503, distinct from an expired/revoked session (401),
+and leaves the browser cookie intact. Ordinary session checks can save the
+current state and recover automatically after storage is repaired; pending
+revocations must be persisted before access resumes. Restart restoration uses the wall-clock expiry converted
 to a remaining monotonic duration; it never grants another full 30 days.
 
 The initial deployment of this change requires one final login because the old

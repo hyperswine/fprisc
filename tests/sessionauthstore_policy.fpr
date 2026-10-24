@@ -16,6 +16,8 @@ main =
   _ = check "round trip without bearer" (Store.decode cfg scope at raw == Ok [entry]);
   _ = check "expired sessions cannot restore at exact boundary" (Store.decode cfg scope entry.expiresMs raw == Ok Nil);
   _ = check "restart cannot reset absolute expiry" (Store.decode cfg scope (at + cfg.sessionMs - 1) raw == Ok [entry]);
+  aged = Store.restore 500 (at + 9 * 60 * 60 * 1000) [entry];
+  _ = check "restored session remains valid beyond old eight-hour cutoff" (Auth.valid (500 + 15 * 24 * 60 * 60 * 1000) token "https://print.example" aged);
   state = Store.restore 500 (at + cfg.sessionMs - 1) [entry];
   _ = check "remaining millisecond, not another 30 days" (Auth.valid 500 token "https://print.example" state and not (Auth.valid 501 token "https://print.example" state));
   _ = check "origin is still bound" (not (Auth.valid 500 token "https://other.example" state));

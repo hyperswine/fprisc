@@ -24,7 +24,7 @@ is unchanged for other consumers.
   than issuing another month.
 - Sign-out is acknowledged only after the revocation is persisted. Existing
   WebSocket and camera streams still recheck session validity. Persistence
-  failures refuse authorization; a successful challenge/logout checkpoint can
+  failures refuse authorization; a successful session/challenge/logout checkpoint can
   recover after storage is repaired. Corrupt/oversized/incomplete snapshots
   refuse startup and are preserved for inspection. Atomic replacement is not
   an fsync/power-loss guarantee, and auth snapshots have no rollback backup.
@@ -87,3 +87,40 @@ failure, not a passing full suite.
 - Local evidence: ignored `build/printer-sessions-20261024/`, including the
   source patch/hashes, deployment record, live session restart check and public
   acceptance. No credentials, cookie values or login signatures are recorded.
+
+## 2026-10-25: mobile readings and reported early logout
+
+The live mini still ran the expected signed 30-day build (PID 56870 and the
+SHA-256 recorded above). Its three persisted sessions had approximately
+29-30 days remaining. This confirms the update was active; it does not identify
+which session belonged to the reporting mobile browser or establish why that
+browser showed login again. No historical auth-event evidence established that
+specific cause.
+
+The gateway did have a separate false-expiry path: `Auth.authorized` flattened
+RPC timeout/refusal into `False`, causing an HTTP 401 and a browser redirect to
+key login. It now sends 401 only for an explicit negative session result and
+503 for unavailable authentication. The cookie remains intact. After a failed
+store write, ordinary checks may checkpoint and recover automatically; pending
+revocations must be saved before access resumes. No private key is persisted.
+
+The cards now round temperatures and targets to whole degrees and report/camera
+rates to one decimal. The formatting uses bounded decimal arithmetic; raw API
+telemetry is unchanged. Narrow-screen metric text is smaller and confined to
+its grid column.
+
+Validation passed: generated Chromium view at widths 320/375/390/1200, decimal
+rounding cases, generated session checker retaining the page on offline/503
+and redirecting on 401, synthetic native sessions and maintenance on one/four
+harts, existing gateway demo/TLS-peer tests, and policy checks beyond the old
+eight-hour cutoff. Production checks verified the same login before and after
+deployment, preserved existing sessions/expiries and maintenance data, and
+confirmed persistent secure cookies and fitting metric columns at 320/375/390.
+These checks do not constitute a 30-day physical soak or reproduce the owner's
+specific mobile logout. No printer-control commands were sent.
+
+Release: `/Users/jq/printer-host/releases/ff96204-mobile-sessions-20261025`.
+Signed executable SHA-256:
+`89c239486c15c5590c072128865756150a5bb048e5f71b9e264da64de54e0e64`.
+Rollback: `/Users/jq/printer-host/rollback/mobile-sessions-20261024T183014Z`.
+Local evidence: ignored `build/printer-mobile-20261025/`.

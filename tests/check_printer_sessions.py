@@ -126,10 +126,20 @@ def check(binary, folder, harts):
         cookie = host.login()
         # Force an atomic-write failure without modifying the checked snapshot.
         blocked = host.sessions.with_suffix('.json.tmp')
+        proof, binding = host.proof()
+        blocked.mkdir()
+        assert host.request('/auth/verify', proof, binding)[0] == 400
+        for path in ('/auth/session', '/api/status', '/'):
+            status, headers, raw = host.request(path, cookie=cookie)
+            assert status == 503, 'auth outage incorrectly presented as an expired login'
+            assert not headers.get_all('set-cookie'), 'outage cleared a browser cookie'
+        blocked.rmdir()
+        assert host.request('/auth/session', cookie=cookie)[0] == 200, 'outage lost existing session'
         blocked.mkdir()
         assert host.request('/auth/logout', {}, cookie)[0] == 503, 'undurable logout acknowledged'
-        assert host.request('/api/status', cookie=cookie)[0] == 401, 'failed write left authorization open'
+        assert host.request('/api/status', cookie=cookie)[0] == 503, 'failed write left authorization open'
         blocked.rmdir()
+        assert host.request('/auth/session', cookie=cookie)[0] == 401, 'recovery resurrected pending logout'
         replacement = host.login()  # persists in-memory revocation before recovering
         host.stop()
         host.start()
