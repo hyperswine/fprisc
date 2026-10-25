@@ -21,6 +21,7 @@ import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
 import qualified Compile
 import Codegen (codegenRev)
+import qualified Compiler.Options as Options
 import Frontend.Normalize (declaredProfile)
 import Home (fprHome)
 import qualified Sol.Main
@@ -29,7 +30,7 @@ import Data.Time.Clock (UTCTime)
 import Data.Word (Word64)
 import Numeric (showHex)
 import System.Directory (XdgDirectory (..), makeAbsolute, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory, renameFile, getModificationTime, getTemporaryDirectory, getXdgDirectory, removeFile)
-import System.Environment (getExecutablePath, lookupEnv, withArgs)
+import System.Environment (getExecutablePath, withArgs)
 import qualified System.Environment
 import System.Exit (ExitCode (..), exitFailure, exitWith)
 import System.FilePath (dropExtension, takeBaseName, takeDirectory, takeExtension, takeFileName, (</>))
@@ -105,8 +106,9 @@ onlineCores = do
   pure (case r of Right out | [(n, _)] <- reads out, n > 0 -> n; _ -> 2)
 
 -- compile + link; the executable's path
-build :: Plan -> IO FilePath
-build p = do
+build :: Options.CompilerOptions -> Plan -> IO FilePath
+build configuration p = do
+  let driver = Options.driverOptions configuration
   home <- fprHome
   -- the machine the executable is FOR: this one, or a --target cross build
   let (tOS, tArch) = fromMaybe (System.Info.os, System.Info.arch) (pTarget p)
@@ -165,8 +167,8 @@ build p = do
   units <- words <$> readFile (asm ++ ".units")
   cc <- case pCC p of
     Just c -> pure c
-    Nothing -> fromMaybe "cc" <$> lookupEnv "FPR_CC"
-  costProbe <- (== Just "1") <$> lookupEnv "FPR_COST_PROBE"
+    Nothing -> pure (fromMaybe "cc" (Options.driverCC driver))
+  let costProbe = Options.driverCostProbe driver
   let ctx = case tArch of
         "aarch64" -> "ctx_a64.S"
         "riscv64" -> "ctx_rv64.S"
@@ -264,7 +266,8 @@ buildMain args = do
   when (pHost p == "esp-idf") $ espIdf "build.sh" p []
   prof <- profileOf (pSource p)
   when (prof == "sol") $ hPutStrLn stderr "fpr build: a sol program runs on the VM (`fpr run`, `fpr sol`); it is not built into an executable" >> exitFailure
-  out <- build p
+  configuration <- Options.readCompilerOptions
+  out <- build configuration p
   hPutStrLn stderr ("fpr build: " ++ out)
 
 runMain :: [String] -> IO ()
@@ -279,14 +282,13 @@ runMain args = do
   -- A program that has not changed is not compiled again: the executable is
   -- kept under a key of everything that made it (runKey), so a script starts
   -- as fast as it runs.  FPR_NO_RUN_CACHE=1 builds afresh into a temp file.
-  off <- lookupEnv "FPR_NO_RUN_CACHE"
-  exe <- case off of
-    Just v | not (null v) -> do
+  configuration <- Options.readCompilerOptions
+  exe <- if Options.driverNoRunCache (Options.driverOptions configuration) then do
       tmp <- getTemporaryDirectory
       pid <- getProcessID
-      build p {pOut = Just (tmp </> ("fpr-run-" ++ takeBaseName (pSource p) ++ "-" ++ show pid))}
-    _ -> do
-      key <- runKey p
+      build configuration p {pOut = Just (tmp </> ("fpr-run-" ++ takeBaseName (pSource p) ++ "-" ++ show pid))}
+    else do
+      key <- runKey configuration p
       cache <- getXdgDirectory XdgCache "fpr"
       let dir = cache </> "run"
           kept = dir </> (takeBaseName (pSource p) ++ "-" ++ key)
@@ -295,7 +297,7 @@ runMain args = do
       if have then pure kept else do
         pid <- getProcessID
         let fresh = kept ++ ".tmp" ++ show pid -- built beside it, renamed whole: two runs at once never see half a file
-        _ <- build p {pOut = Just fresh}
+        _ <- build configuration p {pOut = Just fresh}
         renameFile fresh kept
         pure kept
   -- BECOME the program rather than wait on it as a child: a signal sent to
@@ -308,8 +310,8 @@ runMain args = do
 -- `use`s (transitively, resolved as Modules.hs resolves them: beside the
 -- importer, then under the toolchain's home), the prelude, this compiler, the
 -- runtime's and the posix machine layer's sources, and the plan's flags.
-runKey :: Plan -> IO String
-runKey p = do
+runKey :: Options.CompilerOptions -> Plan -> IO String
+runKey configuration p = do
   home <- fprHome
   self <- getExecutablePath
   srcs <- closure home [] [pSource p]
@@ -317,9 +319,14 @@ runKey p = do
   rtFiles <- fmap concat (mapM listed rtDirs)
   stamps <- mapM stamp (self : (home </> "core" </> "prelude.fpr") : rtFiles ++ pWith p)
   bodies <- mapM readFileStrict srcs
-  foreignDecls <- lookupEnv "FPR_FOREIGN"
-  modes <- mapM lookupEnv ["FPR_NO_PIPELINE_INLINE", "FPR_NO_REUSE", "FPR_NO_VEC_FUSE", "FPR_NO_VEC_SIMD", "FPR_NO_SCALAR_WORKERS", "FPR_NO_FIELD_WORKERS", "FPR_COST_PROBE", "FPR_NO_F64_INLINE", "FPR_NO_INLINE", "FPR_NO_VEC_PEEK", "FPR_NO_SPEC", "FPR_NO_INDEXED_MEMORY", "FPR_NO_LOOP_REGIONS", "FPR_NO_CALL_REGIONS", "FPR_TYPED_IR_BACKEND", "FPR_TYPED_IR_STRICT", "FPR_TYPED_IR_SELF_LOOPS", "FPR_TYPED_IR_FP_POOL", "FPR_TYPED_IR_SHALLOW_STACK", "FPR_TYPED_IR_FORWARD_PARAMS", "FPR_TYPED_IR_ENTRY_ARGS", "FPR_TYPED_IR_SPLIT_ENTRY", "FPR_TYPED_IR_SHRINK_WRAP", "FPR_TYPED_IR_LINK_PAIRS"]
-  let text = unlines (srcs ++ bodies ++ stamps ++ [show (pHarts p), show (pCC p), unwords (pCFlags p ++ pLink p), show foreignDecls, show modes])
+  let driver = Options.driverOptions configuration
+      foreignDecls = Options.driverForeign driver
+      modes = Options.codegenCacheIdentity (Options.codegenOptions configuration)
+  foreignBodies <- mapM readFileStrict foreignDecls
+  let text = unlines (srcs ++ bodies ++ stamps ++ foreignBodies ++
+        [show (pHarts p), show (pCC p), show (Options.driverCC driver),
+         show (pTarget p), unwords (pCFlags p ++ pLink p),
+         show foreignDecls, show (Options.driverCostProbe driver), modes])
   pure (showHex (fnv64 text) "")
   where
     listed d = do

@@ -82,6 +82,8 @@ executable fpr
       Reuse
       Commit
       Compile
+      Compiler.Options
+      Compiler.CommandLine
       FPRISC
       Frontend.Syntax
       Frontend.Lexer

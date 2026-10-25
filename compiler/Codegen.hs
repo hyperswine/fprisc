@@ -12,6 +12,7 @@ module Codegen (emitProgram, emitProgramWith, Emission (..), NativeMode (..), Na
 -- convention; x64 uses its XMM shadow bank for s6..s11.
 
 import Modules (ModExport (..))
+import Compiler.Options (Granularity(..), Strict(..))
 
 import Control.Monad (when, unless)
 import Control.Monad.State.Strict (evalStateT,get,put,lift)
@@ -72,22 +73,13 @@ data Target = Target
     tgtFieldWorkers :: Bool,
     tgtPipelineInline :: Bool,
     tgtReuse :: Bool,
-    tgtTypedIr :: Maybe String, -- FPR_TYPED_IR: report the typed-IR lowering (M1); changes no emitted code
+    tgtTypedIr :: Maybe String, -- optional lowering report; does not change emitted code
     tgtHal :: M.Map String Int, -- primitive name -> arity (builtin schemes and
                         -- foreign declarations): a saturated call to one is
                         -- a direct `call fpr_g_<name>_call<n>` (fpr.h FPR_FN)
     tgtPolicy :: Policy, -- the profile the typed-IR lowering states (Codegen.Policy)
-    tgtNative :: Maybe NativeMode -- FPR_TYPED_IR_BACKEND: route units through the typed-IR native backend (M2)
+    tgtNative :: Maybe NativeMode -- native target plan; CLI compilation always supplies one
   }
-
--- Diagnostic selection granularity. Every CLI emission requires complete
--- native coverage; a refusal never selects a different generator.
-data Granularity
-  = WholeUnit -- collect unit-wide refusals before emission
-  | PerFunction -- collect each function's selection result
-  deriving (Eq, Show)
-
-data Strict = StrictOff | StrictAll | StrictNames [String] deriving (Eq, Show)
 
 data NativeBackend = DirectA64 ObjectFormat HartAccess | DirectX64 ObjectFormat | DirectQX64 | DirectRV Width RV.RVHart deriving (Show)
 
@@ -95,11 +87,11 @@ data NativeMode = NativeMode
   { nmGranularity :: Granularity,
     nmStrict :: Strict,
     nmTargetName :: String,
-    nmBackend :: Maybe NativeBackend, -- Nothing: the switch is on but this target has no direct backend yet
+    nmBackend :: Maybe NativeBackend, -- Nothing: no native implementation for this requested target
     nmForwardParams :: Bool, -- preserve forwarding arguments only on entry slow paths
     nmTune :: Tune, -- the fib experiments (docs/2026-10-22-TYPED-IR-FIB.md)
-    nmSplitEntry :: Bool, -- FPR_TYPED_IR_SPLIT_ENTRY: Codegen.Split before selection
-    nmSelfLoops :: Bool -- M3: self tail calls as loops in the native backends (FPR_TYPED_IR_SELF_LOOPS, on unless 0)
+    nmSplitEntry :: Bool, -- Codegen.Split before selection
+    nmSelfLoops :: Bool -- self tail calls as loops rather than frame re-entry
   }
   deriving (Show)
 

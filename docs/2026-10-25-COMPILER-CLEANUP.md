@@ -18,7 +18,7 @@ cache formats, or explicitly version and test any intentional changes.
 | Typed, uniquely named Core | Native expressions, aggregates, patterns and constructor entries implemented; dictionary/wrapper/specialization and transformation migration pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
 | Checked pipeline products and lint | Structural pass result and initial typed desugaring product implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
-| Typed compiler options | Pending beyond local OptimizationOptions | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
+| Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Diagnostics owner separated; typed diagnostics/spans still pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
 | Typed codegen contracts | Vector operations/float widths implemented; remaining kernel stages, call-convention contracts and ISA instruction vocabulary pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
 | Validation ownership | Existing suites retained; focused Core and frontend compatibility checks added | Maintain invariant, golden/cache and evaluator/native differential checks without multiplying redundant builds |
@@ -148,3 +148,23 @@ MVU suite, 128 fresh emission comparisons with explicit revision-only
 normalization, and Sol compatibility/tail-call checks passed. Hosted CI for
 the preceding `b983812` stage passed; each subsequent checkpoint still needs
 its own hosted result.
+
+## Shared options and command-line ownership
+
+[Compiler options and cache contracts](2026-10-25-COMPILER-OPTIONS.md) consolidates
+native environment controls and their cache renderers in `Compiler.Options`,
+and moves argument parsing/host resolution to `Compiler.CommandLine`. Lowering,
+unit caching and executable caching consume the same parsed controls. The
+executable cache now distinguishes receive-region modes and changed foreign
+contracts; the saved pre-fix compiler reproduces the stale-mode failure.
+
+Generated-unit key spellings and codegen revision 106 remain unchanged. The
+executable cache intentionally adopts the versioned canonical options identity.
+Report controls remain separate; compatibility aliases retain their tested
+defaults/refusals. Typed transformations, structured source diagnostics and
+machine/ABI contracts remain outstanding full-goal work.
+
+Validation: 135 Base jobs passed in 435.19 seconds on six workers with no
+reused CI coverage, alongside 128 fresh emission/unit-key comparisons, the
+pre-fix cache-bug reproduction, native mode/contract cache transitions and Sol
+compatibility/bounded-tail checks. The complete architecture goal stays active.

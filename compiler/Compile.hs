@@ -2,7 +2,6 @@ module Compile (compileMain, checkedInterface, parseFile) where
 
 import Data.List (sortBy)
 import Data.Maybe (fromMaybe,isJust)
-import System.Environment (lookupEnv)
 import System.IO (hClose, hPutStr, hPutStrLn, openTempFile, stderr)
 import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Mono (specializeFunctions, qualifyAux)
@@ -10,14 +9,12 @@ import Inline (inlineSmall, inlineWith, vecPeek)
 import ReceiveTurns (receiveTurns)
 import qualified Codegen.Target.RV as RV
 import Codegen.Target.Common (Tune (..), dataSyntax)
-import Codegen (Target, codegenRev, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, rv32, rv64, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtTypedIr, tgtPolicy, tgtNative)
+import Codegen (Target, codegenRev, emitProgramWith, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtTypedIr, tgtPolicy, tgtNative)
 import Codegen.Policy (Policy (..), Profile (..), StackPolicy (..), policyWidth)
 import Codegen.Target.X64 (x64InterfaceRev, x64SelectionRev)
 import Codegen.Target.A64 (ObjectFormat (..), HartAccess (..), a64HostedInterfaceRev, a64InterfaceRev, a64SelectionRev)
 import Data.Char (isAlphaNum, isAscii, ord)
 import Numeric (showHex)
-import Data.Bits (xor)
-import Data.Word (Word64)
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -29,6 +26,8 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Core.Syntax
+import qualified Compiler.Options as Options
+import Compiler.CommandLine
 import Core.Identity (Namespace(..))
 import Core.Pretty
 import Frontend.Syntax
@@ -48,7 +47,6 @@ import Infer (inferTopsChecked, aotProf, builtinEnv, builtinLinShapes, canonical
 import Safety (measureCheck, safetyCheck, trustedLibraryPaths)
 import qualified Cost
 import Manifest (Manifest (..), readManifest, renderNs)
-import System.Environment (lookupEnv)
 import Struct (erasePSig, expandStructs, sigTable, specialize, structTable)
 import Modules (LoadResult (..), ModExport (..), hashAST, loadProgram)
 import Precond (PreNote (..), PreStatus (..), applyPreconds, checkedName, preTable, renderNote, validatePre, validatePreUses)
@@ -65,38 +63,6 @@ import System.FilePath (takeDirectory, takeExtension, takeFileName, (</>))
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import Text.Megaparsec (errorBundlePretty, parse)
 
-data Opts = Opts
-  { oTarget :: Target,
-    oTargetFlag :: Bool, -- a --target= was given (so a host may not quietly replace it)
-    oBuiltin :: Bool,
-    oBase :: Bool, -- the posix SYSTEM: a hosted executable on this machine (machine/posix); the ISA is the build host's
-    oSystem :: Maybe String, -- --system=bare-metal|qos-native|qos-portable|posix (docs/2026-09-19-PROFILES.md)
-    oHost :: Maybe String, -- the posix system's HOST: Nothing is this machine (unix); Just "esp-idf" an ESP32 board (--host=)
-    oProfileFlag :: Maybe String, -- --profile=builtin|base|extbase|sol, when the file does not say
-    oArc :: Bool,
-    oRaw :: Bool, -- a RAW unit: allocation-free, no ownership instrumentation (Arc.lowerRaw)
-    oLib :: Bool, -- a LIBRARY unit: the file is compiled as an imported module (names qualified), no main, weak shared stubs
-    oExports :: [(String, String)], -- C-callable trampolines: (fpr function, C symbol)
-    oHardFloat :: Bool, -- exports follow the lp64d ABI (floats in fa0..); default lp64, soft
-    oA64 :: Bool, -- select the direct typed AArch64 backend
-    oA64Mac :: Bool, -- AArch64 with Mach-O syntax (macOS): _sym, @PAGE, TLV
-    oX64 :: Bool, -- lower it to x86-64 (SysV) instead
-    oX64Mac :: Bool, -- x86-64 with Mach-O syntax (macOS): _sym, L locals, TLV cells
-    oQosApp :: Bool, -- qx64: QOS-x86_64 app image (plain-global cells, no TLS)
-    oQosSingle :: Bool, -- qa64single: global hart cell for hosts without TP-relative TLS
-    oPlugin :: Bool, -- emit root binds in fpr_modtab for a loadable plugin
-    oRvv :: Bool,
-    oStdCheck :: Bool, -- run the std proof pass (StdBridge + StdCheck) and stop
-    oSol :: Bool, -- the HostedBytecode/sol VIEW of the one grammar: `>` top-level eval accepted (auto-on for .sol input)
-    oPrelude :: Maybe FilePath,
-    oNoSafety :: Bool,
-    oFiles :: [FilePath],
-    oForeign :: [FilePath], -- --foreign=FILE: the SYSTEM's primitive declarations (signatures only)
-    oNoInline :: Bool, -- --no-inline / FPR_NO_INLINE=1: base code keeps every call (debugging, WCET comparison)
-    oCost :: Bool, -- --cost: print every root function's work/alloc equations (Cost.hs), then continue
-    oManifest :: Maybe FilePath -- --manifest=FILE: judge the root functions against a target manifest (Manifest.hs)
-  }
-
 -- a module reached by two spellings (`ep` and `../programs/mods/ep`, a pin
 -- and a path) is ONE unit: its hash is its identity.  Listed twice it was
 -- compiled once (the cache) and linked twice (duplicate symbols, 2026-10-02).
@@ -107,111 +73,6 @@ dedupeUnits = go S.empty
     go seen ((h, u) : r)
       | S.member h seen = go seen r
       | otherwise = (h, u) : go (S.insert h seen) r
-
-parseArgs :: [String] -> Opts
-parseArgs = resolveHost . foldl step (Opts rv64 False False False Nothing Nothing Nothing False False False [] False False False False False False False False False False False Nothing False [] [] False False Nothing)
-  where
-    -- profile aliases (Target.hs): the AOT profiles resolved to their
-    -- default ISA for this build.  bare-metal -> rv64 (QEMU virt);
-    -- qos-native -> rv64 .qa is built by tools, so the alias maps the
-    -- codegen the same way; qos-portable -> qx64 (x86-64 build host).
-    -- hosted-bytecode is NOT an fprc target: that profile is the sol
-    -- executable (fp-risc/sol).
-    -- the SYSTEM: where the program runs (docs/2026-09-19-PROFILES.md).  bare-metal
-    -- and qos-native are rv64 (QEMU virt, the board); qos-portable is
-    -- an x86-64 QOS app image; posix is an executable for the host this
-    -- compiler was built on -- the rv64 emission is the IR, the
-    -- lowering is the host's ISA.
-    step o "--system=bare-metal" = o {oTarget = rv64, oSystem = Just "bare-metal"}
-    step o "--system=qos-native" = o {oTarget = rv64, oSystem = Just "qos-native"}
-    step o "--system=qos-portable" = o {oTarget = rv64, oX64 = if oTargetFlag o then oX64 o else True, oQosApp = True, oSystem = Just "qos-portable"}
-    -- posix runs on more than one kind of HOST (docs/2026-09-19-PROFILES.md): this
-    -- machine (--host=unix, the default: the ISA is the build host's), or an
-    -- ESP-IDF board (--host=esp-idf: rv32imafc code around which
-    -- machine/esp-idf/build.sh builds an IDF project).  The host decides the
-    -- ISA and the lowering, so it is resolved once every flag is read
-    -- (resolveHost): --system= and --host= may come in either order.
-    step o "--system=posix" = o {oSystem = Just "posix"}
-    -- the 1.x spelling of --system=posix --host=esp-idf, kept
-    step o "--system=esp-idf" = o {oSystem = Just "posix", oHost = Just "esp-idf"}
-    -- the PROFILE: what the program is written against.  The file says
-    -- it (`profile base.`); the flag is for files that do not.
-    step o "--profile=builtin" = o {oProfileFlag = Just "builtin"}
-    step o "--profile=base" = o {oProfileFlag = Just "base"}
-    step o "--profile=extbase" = o {oProfileFlag = Just "extbase"}
-    step o "--profile=sol" = o {oProfileFlag = Just "sol"}
-    -- the 1.x spellings, kept: a system and (for builtin) a profile at once
-    step o "--profile=bare-metal-builtin" = (step o "--system=bare-metal") {oProfileFlag = Just "builtin"}
-    step o "--profile=bare-metal" = step o "--system=bare-metal"
-    step o "--profile=qos-native" = step o "--system=qos-native"
-    step o "--profile=qos-portable" = step o "--system=qos-portable"
-    step o "--arc" = o {oArc = True}
-    step o "--cost" = o {oCost = True}
-    step o "--lib" = o {oLib = True}
-    step o "--raw" = o {oRaw = True}
-    step o "--float-abi=hard" = o {oHardFloat = True}
-    step o "--float-abi=soft" = o {oHardFloat = False}
-    step o "--stdcheck" = o {oStdCheck = True}
-    step o "--check-only" = o
-    step o "--sol" = o {oSol = True}
-    step o "--target=rv32" = o {oTarget = rv32, oTargetFlag = True}
-    step o "--target=rv64" = o {oTarget = rv64, oTargetFlag = True}
-    step o "--target=a64" = o {oTarget = rv64, oA64 = True, oTargetFlag = True} -- direct typed ELF output
-    step o "--target=a64mac" = o {oTarget = rv64, oA64 = True, oA64Mac = True, oTargetFlag = True} -- direct typed Mach-O output
-    step o "--target=x64" = o {oTarget = rv64, oX64 = True, oX64Mac = False, oTargetFlag = True} -- likewise
-    step o "--target=x64mac" = o {oTarget = rv64, oX64 = True, oX64Mac = True, oTargetFlag = True} -- Mach-O x86-64 (an Intel Mac, or Rosetta)
-    step o "--target=qx64" = o {oTarget = rv64, oX64 = True, oX64Mac = False, oQosApp = True, oTargetFlag = True} -- QOS-x86_64
-    step o "--target=qrv64" = o {oTarget = rv64, oA64 = False, oA64Mac = False, oX64 = False, oQosApp = True, oTargetFlag = True} -- Linux QOS-RISC-V
-    step o "--target=qa64" = o {oTarget = rv64, oA64 = True, oQosApp = True, oTargetFlag = True} -- QOS-aarch64
-    step o "--target=qa64single" = o {oTarget = rv64, oA64 = True, oQosApp = True, oQosSingle = True, oTargetFlag = True} -- QOS-aarch64, global hart cell
-    step o "--target=qa64mac" = o {oTarget = rv64, oA64 = True, oA64Mac = True, oQosApp = True, oTargetFlag = True} -- QOS app, Apple Silicon
-    step o "--plugin" = o {oPlugin = True}
-    step o "--rvv" = o {oRvv = True}
-    step o a
-      | "--prelude=" `isPrefixOf` a = o {oPrelude = Just (drop (length "--prelude=") a)}
-      | "--manifest=" `isPrefixOf` a = o {oManifest = Just (drop (length "--manifest=") a), oCost = True}
-      | "--foreign=" `isPrefixOf` a = o {oForeign = oForeign o ++ [drop (length "--foreign=") a]}
-      | "--host=" `isPrefixOf` a = let h = drop (length "--host=") a in o {oHost = if h == "unix" then Nothing else Just h}
-      | "--export=" `isPrefixOf` a = o {oExports = oExports o ++ exportSpecs (drop (length "--export=") a)}
-      | a == "--no-safety" = o {oNoSafety = True}
-      | a == "--no-inline" = o {oNoInline = True}
-      | otherwise = o {oFiles = oFiles o ++ [a]}
-
--- the posix system's host decides the ISA and the lowering: this machine's
--- (the hosted x64/a64 lowering of the rv64 emission), or rv32 for an ESP-IDF
--- board.  A --host= with no --system= means posix; a host the tree does not
--- have, or one asked for with another system, is refused in compileMain,
--- as is a --target= the esp-idf host cannot be (it is left as given here).
-resolveHost :: Opts -> Opts
-resolveHost o
-  | oSystem o == Nothing && oHost o /= Nothing = resolveHost o {oSystem = Just "posix"}
-  | oSystem o /= Just "posix" = o
-  | oHost o == Just "esp-idf" = if oTargetFlag o then o else o {oTarget = rv32}
-  | oHost o /= Nothing = o
-  -- an explicit hosted target (--target=a64 | x64) is a CROSS build: it wins over
-  -- this machine's lowering, so a Mac can emit ELF for a Linux server
-  | oTargetFlag o && (oA64 o || oX64 o || tgtName (oTarget o) == "rv64") =
-      o {oBase = True, oHardFloat = oHardFloat o || not (oA64 o || oX64 o)}
-  | oTargetFlag o = o
-  | otherwise = case (System.Info.os, System.Info.arch) of
-      ("darwin", "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True, oA64Mac = True}
-      (_, "aarch64") -> o {oTarget = rv64, oBase = True, oA64 = True}
-      ("darwin", "x86_64") -> o {oTarget = rv64, oBase = True, oX64 = True, oX64Mac = True}
-      (_, "x86_64") -> o {oTarget = rv64, oBase = True, oX64 = True}
-      ("linux", "riscv64") -> o {oTarget = rv64, oBase = True, oHardFloat = True}
-      (os', arch') -> error ("--system=posix: no hosted lowering for " ++ os' ++ "/" ++ arch' ++ " (x86_64, aarch64 and Linux riscv64 are supported)")
-
--- `--export=name,name:c_symbol,...`: an fpr function and the C symbol it
--- is callable as (default: the same name)
-exportSpecs :: String -> [(String, String)]
-exportSpecs = map one . filter (not . null) . splitOn ','
-  where
-    one spec = case break (== ':') spec of
-      (n, ':' : c) -> (n, c)
-      (n, _) -> (n, n)
-    splitOn c str = case break (== c) str of
-      (a, _ : rest) -> a : splitOn c rest
-      (a, []) -> [a]
 
 -- `Addr.symbol "name"` -> CVar "$sym.name": the address of a linker symbol,
 -- the builtin profile's `extern char name[]`.  Rewritten on lifted Core
@@ -401,8 +262,8 @@ compileWithInterface :: ([(Name, String)] -> IO ()) -> IO ()
 compileWithInterface accepted = do
   setLocaleEncoding utf8
   args <- getArgs
-  let checkOnly = "--check-only" `elem` args
-      opts0 = parseArgs args
+  let opts0 = parseCompileArguments args
+      checkOnly = oCheckOnly opts0
   -- --stdcheck: parse the single file and run the std proof pass
   -- (StdBridge lowers the checkable fragment into StdCheck's interval /
   -- measure / WCET engine); no code is generated.
@@ -430,61 +291,14 @@ compileWithInterface accepted = do
     (Just d, _) -> pure d
     (Nothing, Just f) -> pure f
     (Nothing, Nothing) -> pure "base"
-  envTypedIr <- lookupEnv "FPR_TYPED_IR"
-  -- All native targets use typed code generation. Keep the supported
-  -- selection spellings for diagnostic/cache compatibility; rollback aliases
-  -- fail before any output or cache entry can be used.
-  envBackendRaw <- lookupEnv "FPR_TYPED_IR_BACKEND"
-  envStrictRaw <- lookupEnv "FPR_TYPED_IR_STRICT"
-  envBackend <- case envBackendRaw of
-    Nothing -> pure (Just PerFunction)
-    Just "" -> pure (Just PerFunction)
-    Just "mixed" -> pure (Just PerFunction)
-    Just "1" -> pure (Just WholeUnit)
-    Just v | v `elem` ["legacy", "0", "off"] -> refuse "the legacy backend has been retired on every target; unset FPR_TYPED_IR_BACKEND or select mixed or 1"
-    Just other -> hPutStrLn stderr ("FPR_TYPED_IR_BACKEND=" ++ other ++ ": expected mixed (per function, the default), 1 (whole units) ") >> exitFailure
-  envStrict <- case envStrictRaw of
-    Nothing -> pure StrictOff
-    Just "" -> pure StrictOff
-    Just "all" -> pure StrictAll
-    Just names -> pure (StrictNames (filter (not . null) (splitOn ',' names)))
-  when (envStrict /= StrictOff && envBackend == Nothing) $
-    hPutStrLn stderr "FPR_TYPED_IR_STRICT needs FPR_TYPED_IR_BACKEND" >> exitFailure
-  -- FPR_TYPED_IR_SELF_LOOPS=0 keeps the native backends' self tail calls
-  -- as re-entries (M3's separate switch for the loop form; on otherwise)
-  envTirLoops <- (/= Just "0") <$> lookupEnv "FPR_TYPED_IR_SELF_LOOPS"
-  envTirForward <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_FORWARD_PARAMS"
-  envTirShallow <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_SHALLOW_STACK"
-  envTirEntryArgs <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_ENTRY_ARGS"
-  envTirSplit <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_SPLIT_ENTRY"
-  envTirWrap <- (== Just "1") <$> lookupEnv "FPR_TYPED_IR_SHRINK_WRAP"
-  -- Hosted A64 pool is on unless 0; QOS retains its integer context.
-  envTirFpPool <- (/= Just "0") <$> lookupEnv "FPR_TYPED_IR_FP_POOL"
-  -- on unless 0: measured a pure win (docs/2026-10-22-TYPED-IR-FIB.md)
-  envTirLinkPairs <- (/= Just "0") <$> lookupEnv "FPR_TYPED_IR_LINK_PAIRS"
-  envNoIndexed <- (== Just "1") <$> lookupEnv "FPR_NO_INDEXED_MEMORY"
-  envNoFloatInline <- (== Just "1") <$> lookupEnv "FPR_NO_F64_INLINE"
-  -- FPR_NO_VEC_PEEK=1: keep the (value, handle) pair of every vector read
-  -- (Inline.vecPeek off) -- the differential test's other half
-  envNoSimd <- (== Just "1") <$> lookupEnv "FPR_NO_VEC_SIMD"
-  envNoFusion <- (== Just "1") <$> lookupEnv "FPR_NO_VEC_FUSE"
-  envNoVecPeek <- (== Just "1") <$> lookupEnv "FPR_NO_VEC_PEEK"
-  envNoScalarWorkers <- (== Just "1") <$> lookupEnv "FPR_NO_SCALAR_WORKERS"
-  envNoFieldWorkers <- (== Just "1") <$> lookupEnv "FPR_NO_FIELD_WORKERS"
-  envNoPipelineInline <- (== Just "1") <$> lookupEnv "FPR_NO_PIPELINE_INLINE"
-  envNoReuse <- (== Just "1") <$> lookupEnv "FPR_NO_REUSE"
-  envNoSpec <- (== Just "1") <$> lookupEnv "FPR_NO_SPEC"
-  envNoReceiveTurns <- (== Just "1") <$> lookupEnv "FPR_NO_RECEIVE_TURNS"
-  -- compiler-placed regions (docs/2026-10-25-REGIONS-LOOPS-CALLS.md): a pure
-  -- loop's back edge and a costly call; each can be switched off to compare
-  envLoopRegions <- (/= Just "1") <$> lookupEnv "FPR_NO_LOOP_REGIONS"
-  envCallRegions <- (/= Just "1") <$> lookupEnv "FPR_NO_CALL_REGIONS"
-  envReceiveNotes <- (== Just "1") <$> lookupEnv "FPR_RECEIVE_NOTES"
-  envApply <- (== Just "1") <$> lookupEnv "FPRC_APPLY"
-  envNoInline <- (== Just "1") <$> lookupEnv "FPR_NO_INLINE"
+  configured <- Options.readCompilerOptions
+  let configuration = Options.disableInlining (oNoInline opts0) configured
+      codegen = Options.codegenOptions configuration
+      native = Options.nativeOptions codegen
+      diagnostic = Options.diagnosticOptions configuration
   let system = fromMaybe "bare-metal" (oSystem opts0)
       espHost = oHost opts0 == Just "esp-idf" -- the posix system on an ESP-IDF board (docs/2026-09-23-ESP-IDF.md)
-      opts = opts0 {oBuiltin = profile == "builtin", oSol = oSol opts0 || profile == "sol", oNoInline = oNoInline opts0 || envNoInline}
+      opts = opts0 {oBuiltin = profile == "builtin", oSol = oSol opts0 || profile == "sol", oNoInline = not (Options.cgInline codegen)}
   -- the posix system's hosts: this machine (unix, the default) and esp-idf
   case oHost opts0 of
     Just h | h /= "esp-idf" -> refuse ("--host=" ++ h ++ ": the posix system's hosts are unix (this machine, the default) and esp-idf")
@@ -542,7 +356,7 @@ compileWithInterface accepted = do
   -- every unit sees the names exactly as it saw the builtins.  docs/2026-09-19-HAL.md.
   -- FPR_FOREIGN (a path list, like FPR_PATH) names such files for every
   -- invocation in a tree that exports it; the flag adds to it
-  envForeign <- maybe [] (filter (not . null) . splitOn ':') <$> lookupEnv "FPR_FOREIGN"
+  let envForeign = Options.driverForeign (Options.driverOptions configuration)
   foreignTops <- fmap concat . forM (envForeign ++ oForeign opts) $ \f -> do
     ts <- parseFile f
     let strays = [n | TBind n _ _ _ <- ts]
@@ -691,8 +505,7 @@ compileWithInterface accepted = do
       -- per-obligation notes are telemetry, not signal: 100+ lines per
       -- compile buried the errors.  FPR_PRECOND_NOTES=1 restores them;
       -- the one-line summary below always prints.
-      verbosePre <- (== Just "1") <$> lookupEnv "FPR_PRECOND_NOTES"
-      when verbosePre $ mapM_ (putStrLn . renderNote) pnRoot
+      when (Options.diagPreconditions diagnostic) $ mapM_ (putStrLn . renderNote) pnRoot
       unless (null pnAll) $
         putStrLn ("precond: " ++ show (length pnAll) ++ " obligations: "
                   ++ show nDis ++ " discharged, " ++ show nRt
@@ -742,8 +555,7 @@ compileWithInterface accepted = do
         unless (null serrs) $ do
           putStrLn "=== SAFETY: the safe/unsafe line ==="
           mapM_ (putStrLn . ("  * " ++)) (anchored serrs)
-          sug <- lookupEnv "FPR_UNSAFE_SUGGEST"
-          when (sug == Just "1" && not (null ssug)) $ do
+          when (Options.diagUnsafeSuggest diagnostic && not (null ssug)) $ do
             putStrLn "-- paste-ready signatures (inferred types):"
             mapM_ (putStrLn . ("SUGGEST " ++)) ssug
           exitFailure
@@ -777,8 +589,8 @@ compileWithInterface accepted = do
           -- the whole program's cost equations, once (lazy: only a build with
           -- call regions on computes them)
           contextEqs = Cost.costProgram (fst (measureCheck tops)) M.empty turnContext
-          turnPassWith regions (p, joins) = if oBuiltin opts || oArc opts || envNoReceiveTurns then (p, [])
-                       else receiveTurns (regions && envLoopRegions) (regions && envCallRegions) contextEqs (M.fromList interfaces) finalTops turnContext joins p
+          turnPassWith regions (p, joins) = if oBuiltin opts || oArc opts || (not (Options.cgReceiveTurns codegen)) then (p, [])
+                       else receiveTurns (regions && (Options.cgLoopRegions codegen)) (regions && (Options.cgCallRegions codegen)) contextEqs (M.fromList interfaces) finalTops turnContext joins p
           turnPass = turnPassWith True
           compileUnit = fst . turnPass . compileRaw
           -- tid collision check (fnv32 is probabilistic; fail LOUDLY)
@@ -950,13 +762,13 @@ compileWithInterface accepted = do
           -- --cost: every boundary placed, by rule, and a count of the pure
           -- groups declined; FPR_RECEIVE_NOTES=1 lists the declined ones too
           -- (docs/2026-10-24-REGIONS-STAGE2.md)
-          reportTurns uts = when (envReceiveNotes || oCost opts) $ do
+          reportTurns uts = when ((Options.diagReceiveNotes diagnostic) || oCost opts) $ do
             let ns = snd (turnPass (compileRaw uts))
                 declined = [n | n <- ns, "turn-regions (declined): " `isPrefixOf` n]
-            mapM_ (hPutStrLn stderr) (if envReceiveNotes then ns else filter (`notElem` declined) ns)
-            when (not envReceiveNotes && not (null declined)) $
+            mapM_ (hPutStrLn stderr) (if (Options.diagReceiveNotes diagnostic) then ns else filter (`notElem` declined) ns)
+            when (not (Options.diagReceiveNotes diagnostic) && not (null declined)) $
               hPutStrLn stderr ("turn-regions: " ++ show (length declined) ++ " self-tail-call group(s) declined (unbounded or unproven state); FPR_RECEIVE_NOTES=1 lists them")
-            when (not envLoopRegions && any ("turn-regions (candidate): " `isPrefixOf`) ns) $
+            when (not (Options.cgLoopRegions codegen) && any ("turn-regions (candidate): " `isPrefixOf`) ns) $
               hPutStrLn stderr "turn-regions: the candidates above are not placed (FPR_NO_LOOP_REGIONS=1)"
           checkBuiltinWidth p = do
             when (oArc opts && any (coreHasName i32WidePrimitive . snd) (M.elems p)) $ do
@@ -986,8 +798,8 @@ compileWithInterface accepted = do
                 M.fromList [("$vec.at", 2), ("$vec.get", 2), ("$vec.len", 1), ("$receiveLoop", 2), ("$regionSeq", 1), ("$regionMark", 1), ("$regionRoom", 1), ("$regionCycle", 2), ("$loopLeave", 2), ("$callPend", 1), ("$callLeave", 2)] ]
           arrows (TFn _ r) = 1 + arrows r
           arrows _ = 0 :: Int
-          tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = not envNoFloatInline, tgtSimd=(oA64 opts || oX64 opts) && not envNoSimd, tgtFusion=not envNoFusion,
-                               tgtScalarFast = True, tgtIndexedMemory = not envNoIndexed, tgtScalarWorkers = not envNoScalarWorkers, tgtFieldWorkers = not envNoFieldWorkers, tgtPipelineInline = not envNoPipelineInline, tgtReuse = not envNoReuse, tgtTypedIr = envTypedIr, tgtPolicy = irPolicy, tgtNative = nativeMode}
+          tgt = (oTarget opts) {tgtFuel = not (oBuiltin opts), tgtArc = oArc opts, tgtWeak = oLib opts, tgtHal = halAr, tgtFloatInline = (Options.cgFloatInline codegen), tgtSimd=(oA64 opts || oX64 opts) && (Options.cgSimd codegen), tgtFusion=(Options.cgFusion codegen),
+                               tgtScalarFast = True, tgtIndexedMemory = (Options.cgIndexedMemory codegen), tgtScalarWorkers = (Options.cgScalarWorkers codegen), tgtFieldWorkers = (Options.cgFieldWorkers codegen), tgtPipelineInline = (Options.cgPipelineInline codegen), tgtReuse = (Options.cgReuse codegen), tgtTypedIr = (Options.diagTypedIr diagnostic), tgtPolicy = irPolicy, tgtNative = nativeMode}
           a64 = oA64 opts
           a64mac = oA64Mac opts
           x64 = oX64 opts
@@ -1003,16 +815,14 @@ compileWithInterface accepted = do
                            else if qapp then QosApp
                            else HostedBase,
               polFuel = not (oBuiltin opts),
-              polStackCheck = if oBuiltin opts then StackStatic else if envTirShallow then StackCheckLegacyShallow else StackCheckEveryEntry,
-              polFloatInline = not envNoFloatInline }
+              polStackCheck = if oBuiltin opts then StackStatic else if (Options.nativeShallowStack native) then StackCheckLegacyShallow else StackCheckEveryEntry,
+              polFloatInline = (Options.cgFloatInline codegen) }
           -- direct backends: the AArch64 hart read follows the
           -- target runtime ABI (x28 under fpr build, the TLV cell on a64mac
           -- without --base, local-exec TLS on a64 ELF)
-          nativeMode = case envBackend of
-            Nothing -> Nothing
-            Just g -> Just NativeMode
-              { nmGranularity = g,
-                nmStrict = envStrict,
+          nativeMode = Just NativeMode
+              { nmGranularity = Options.nativeGranularity native,
+                nmStrict = (Options.nativeStrict native),
                 nmTargetName = if x64 then "x64" else if a64 then "a64" else tgtName (oTarget opts),
                 nmBackend = if a64 && not qapp
                               then Just (DirectA64 (if a64mac then MachO else ELF) (if oBase opts then HartX28 else if a64mac then HartTlvMachO else HartTlsElf))
@@ -1034,8 +844,8 @@ compileWithInterface accepted = do
                                 then Just (DirectRV (policyWidth irPolicy)
                                              (if espHost then RV.HartTlsEsp else if qapp then RV.HartQos else if oBase opts && oPlugin opts then RV.HartTlsIe else if oBase opts then RV.HartTls else RV.HartTp))
                               else Nothing,
-                nmSelfLoops = envTirLoops, nmForwardParams = envTirForward,
-                nmTune = Tune envTirEntryArgs envTirWrap envTirFpPool envTirLinkPairs, nmSplitEntry = envTirSplit }
+                nmSelfLoops = (Options.nativeSelfLoops native), nmForwardParams = (Options.nativeForwardParams native),
+                nmTune = Tune (Options.nativeEntryArgs native) (Options.nativeShrinkWrap native) (Options.nativeFpPool native) (Options.nativeLinkPairs native), nmSplitEntry = (Options.nativeSplitEntry native) }
           -- Every selected backend owns the whole output. A named subset can
           -- no longer permit another function or kernel to bypass typed IR.
           strictCheck what fallbacks = unless (null fallbacks) (strictFail what fallbacks)
@@ -1077,18 +887,19 @@ compileWithInterface accepted = do
           contractHash = hashAST [t | t@(TSig n _ _) <- tops, M.member n preTab]
           -- A separate native-only cache policy prevents old fallback units
           -- bypassing directCheck, while tname retains module ABI identity.
-          backendTag = case envBackend of
-            Nothing -> ""
-            Just g -> "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev) ++ (if a64 || x64 then "-native1" else "") ++ (if g == PerFunction then "mixed" else "") ++ (if a64 && not qapp && envTirFpPool then "-fpregs" else "") ++ (if envTirLoops then "" else "-noloops") ++ (if envTirShallow then "-shallow" else "") ++ (if envTirForward then "-forward" else "") ++ (if envTirEntryArgs then "-entryargs" else "") ++ (if envTirSplit then "-split" else "") ++ (if envTirWrap then "-wrap" else "") ++ (if envTirLinkPairs then "" else "-nolinkpairs") ++ (case envStrict of StrictOff -> ""; StrictAll -> "-strictall"; StrictNames ns -> "-strict" ++ take 12 (showHex (fnv (intercalate "," ns)) ""))
-          fnv = foldl (\h c -> (h `xor` fromIntegral (fromEnum c)) * 1099511628211) (14695981039346656037 :: Word64)
-          tag = "g" ++ show codegenRev ++ backendTag ++ (if envNoPipelineInline then "-nopinline" else "") ++ (if envNoReuse then "-noreuse" else "") ++ (if envNoScalarWorkers then "-noscalar" else "") ++ (if envNoFieldWorkers then "-nofields" else "") ++ (if envNoIndexed then "-noidx" else "") ++ (if envNoReceiveTurns then "-nort" else "") ++ (if envLoopRegions then "" else "-nolr") ++ (if envCallRegions then "" else "-nocr") ++ (if envNoSpec then "-nospec" else "") ++ (if oNoInline opts then "-noinl" else "") ++ (if envNoFloatInline then "-nof64" else "") ++ (if envNoVecPeek then "-novp" else "") ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "") ++ (if envNoSimd then "-nosimd" else "") ++ (if envNoFusion then "-nofuse" else "") ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
+          backendTag = "-tirbe" ++ (if x64 then "x64-" ++ show x64SelectionRev else if a64 then show a64SelectionRev else tgtName (oTarget opts) ++ "-" ++ show RV.rvSelectionRev)
+            ++ (if a64 || x64 then "-native1" else "")
+            ++ Options.nativeOptionFlags (a64 && not qapp) native
+          tag = "g" ++ show codegenRev ++ backendTag ++ Options.optimizationFlags codegen
+            ++ "rt3pc5-c" ++ take 12 contractHash ++ "-" ++ tname ++ (if rvv then "-rvv" else "")
+            ++ Options.vectorOptionFlags codegen ++ (if oBuiltin opts then "-builtin" else "") ++ (if oArc opts then "-arc" ++ show arcRev else "")
           unitDir = takeDirectory out </> "units"
           -- --arc: lower ownership, then inline the small helpers at
           -- their sites (Inline.hs) before the generator sees the unit
           own prog = if oArc opts then do
                        lowered <- either (\e -> hPutStrLn stderr e >> exitFailure) (pure . inlineSmall 3 24) ((if oRaw opts then lowerRaw else lowerArc) sourceExt prog)
                        -- FPR_DUMP_CORE=name prints that function's Core as the generator sees it
-                       dump <- lookupEnv "FPR_DUMP_CORE"
+                       let dump = Options.diagCore diagnostic
                        forM_ [(n, d) | Just want <- [dump], (n, d) <- M.toList lowered, takeWhile (/= '@') n == want] $ \(n, d) ->
                          hPutStrLn stderr ("core " ++ n ++ ": " ++ show d ++ "\nnormalized: " ++ show (fmap normArc d))
                        pure lowered
@@ -1096,14 +907,14 @@ compileWithInterface accepted = do
                      -- saturated sites within the unit (Inline.hs), with
                      -- function-valued arguments substituted
                      else do
-                       let inl = (if oNoInline opts then id else inlineWith pureOutside 3 24) (if envNoVecPeek then prog else vecPeek prog)
-                       dump <- lookupEnv "FPR_DUMP_CORE"
+                       let inl = (if oNoInline opts then id else inlineWith pureOutside 3 24) (if (not (Options.cgVecPeek codegen)) then prog else vecPeek prog)
+                       let dump = Options.diagCore diagnostic
                        forM_ [(n, d) | Just want <- [dump], (n, d) <- M.toList inl, takeWhile (/= '@') n == want] $ \(n, d) ->
                          hPutStrLn stderr ("core " ++ n ++ ": " ++ show d)
                        pure inl
           pureOutside g = maybe False (> 0) (M.lookup g extFor) || maybe False (> 0) (M.lookup g halAr) || g `elem` corePrimNames
           corePrimNames = ["+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "strcat", "str", "String.len"]
-          mono ns ext p = if envNoSpec || oArc opts then p else specializeFunctions ns halAr ext p
+          mono ns ext p = if (not (Options.cgSpecialize codegen)) || oArc opts then p else specializeFunctions ns halAr ext p
           preludeResolved = resolveUnit preludeE'
           -- constructor stub ownership.  Every unit's Core holds a stub per
           -- constructor of the program (compileTop's conGlobals: the inliner
@@ -1127,7 +938,7 @@ compileWithInterface accepted = do
           importedCore = M.unions
             (qualifyAux ("$specaux.p" ++ take 12 preludeHash ++ ".") (bindNames preludeE' `S.union` allCons) (compileUnit preludeResolved)
              : [qualifyAux ("$specaux.u" ++ take 12 h ++ ".") (bindNames uts `S.union` allCons) (compileUnit (resolveUnit uts)) | (h,uts) <- units'])
-          applyReport label asm = when envApply $ hPutStrLn stderr
+          applyReport label asm = when (Options.diagApply diagnostic) $ hPutStrLn stderr
             ("apply " ++ label ++ ": dispatch=" ++ show (length [() | l <- lines asm, "fpr_apply" `List.isInfixOf` l, any (`List.isInfixOf` l) ["call ", "bl "]])
              ++ " known-partial=" ++ show (length [() | l <- lines asm, "# pap-create:" `List.isPrefixOf` l])
              ++ " static-descriptors=" ++ show (length [() | l <- lines asm, "# static-pap:" `List.isPrefixOf` l]))
@@ -1137,7 +948,7 @@ compileWithInterface accepted = do
             cached <- doesFileExist path
             if cached
               then do
-                when envApply (readFile path >>= applyReport (takeFileName path))
+                when (Options.diagApply diagnostic) (readFile path >>= applyReport (takeFileName path))
                 pure (path, "cached")
               else do
                 prog <- own (mono (takeFileName path) M.empty (compileUnit uts))
@@ -1154,7 +965,7 @@ compileWithInterface accepted = do
                 -- same time (check_base runs many) finds the unit complete or
                 -- absent, never half-written and taken as cached
                 length asm `seq` writeWhole path asm
-                nativeSummary ("unit " ++ takeFileName path) asm
+                nativeSummary (Options.diagNativeInsns diagnostic) ("unit " ++ takeFileName path) asm
                 applyReport (takeFileName path) asm
                 pure (path, show (M.size prog) ++ " supercombinators")
       createDirectoryIfMissing True unitDir
@@ -1243,7 +1054,7 @@ compileWithInterface accepted = do
         Left e -> hPutStrLn stderr ("error: " ++ e) >> exitFailure
         Right p -> pure p
       -- Imported private lifts are renamed into the root before cloning.
-      importedSym <- if envNoSpec || oArc opts then pure M.empty else case symbolize importedCore of
+      importedSym <- if (not (Options.cgSpecialize codegen)) || oArc opts then pure M.empty else case symbolize importedCore of
         Left e -> hPutStrLn stderr ("error: " ++ e) >> exitFailure
         Right p -> pure p
       rootProg <- own (mono ("root" ++ take 12 rootHash) importedSym rootProgSym)
@@ -1301,7 +1112,7 @@ compileWithInterface accepted = do
       mapM_ putStrLn rootVNotes
       applyReport "root" rootAsm
       writeFile out rootAsm
-      nativeSummary "root" rootAsm
+      nativeSummary (Options.diagNativeInsns diagnostic) "root" rootAsm
       -- the link list: everything the root's image needs beyond out itself
       writeFile (out ++ ".units") (unlines (map fst (preludeOut ++ unitOuts)))
       -- the ABI stamp half the compiler owns: mkqa folds this into the
@@ -1333,9 +1144,8 @@ writeWhole path text = do
 
 -- Target instruction distances between safepoints. This is not an elapsed
 -- time certificate or a bound on the bodies of runtime calls.
-nativeSummary :: String -> String -> IO ()
-nativeSummary what asm = do
-  enabled <- (== Just "1") <$> lookupEnv "FPRC_NATIVE_INSNS"
+nativeSummary :: Bool -> String -> String -> IO ()
+nativeSummary enabled what asm =
   when enabled $ do
     let label = "# native-insns-v1: "
         rows = [drop (length label) l | l <- lines asm,label `isPrefixOf` l]
