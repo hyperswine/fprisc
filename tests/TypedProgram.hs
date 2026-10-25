@@ -8,6 +8,7 @@ import Control.Monad.Identity (runIdentity)
 import Core.Identity
 import Core.Syntax
 import qualified Compiler.Native.Core as Native
+import qualified Compiler.Native.Linked as Linked
 import Compiler.DataLayout
 import Frontend.Desugar.Typed
 import Frontend.Desugar (collectCons,collectShapes,DEnv(..))
@@ -24,6 +25,7 @@ import qualified Codegen.Lower as Lower
 import qualified Codegen.Eval as Eval
 import Codegen.Policy (m2Policy)
 import Control.Monad (unless)
+import Data.List (isInfixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Text.Megaparsec (parse,errorBundlePretty)
@@ -71,6 +73,81 @@ main=do
     (answer erased "client" [Eval.RInt 10]==Right (Eval.RInt 12)
       && answer erased "call" [Eval.RInt 41]==Right (Eval.RInt 42))
   check "join metadata is owned by the emitted program" (Native.nativeJoins output `S.isSubsetOf` M.keysSet erased)
+  let (consumerSelection,consumer)=compile "linked" source (S.fromList ["client","call"])
+      (_,provider)=compile "linked" source (S.fromList ["provider","factory"])
+      rootArtifact=right (Linked.artifact Linked.RootArtifact (S.fromList ["client","call"]<>Native.nativeConstructors consumer) S.empty consumer)
+      providerId=Linked.DependencyArtifact "provider"
+      providerArtifact=right (Linked.artifact providerId (S.fromList ["provider","factory"]) (Native.nativeConstructors provider) provider)
+      linked=right (Linked.linkArtifacts [rootArtifact,providerArtifact])
+      linkedProjection=M.unions [M.withoutKeys (Native.nativeProgram (Linked.artifactCore a)) (Linked.artifactElided a)
+        | a<-M.elems (Linked.linkedArtifacts linked)]
+      rejects needle (Left reason)=needle `isInfixOf` reason
+      rejects _ _=False
+  check "linked artifacts retain actual typed code owners/contracts"
+    (M.size (Linked.linkedArtifacts linked)==2
+      && case M.lookup (Linked.ExportedSymbol "provider") (Linked.linkedSymbols linked) of
+        Just (Linked.SymbolOwner home (Linked.SourceDefinition "provider" _ 1))->home==providerId
+        _->False)
+  check "private code remains with its source artifact"
+    (not (null [() | (Linked.ArtifactSymbol home _,Linked.SymbolOwner _ (Linked.PrivateDefinition "factory" _ _))
+      <-M.toList (Linked.linkedSymbols linked),home==providerId]))
+  check "independent machine evaluation links checked artifact projections"
+    (answer linkedProjection "client" [Eval.RInt 10]==Right (Eval.RInt 12)
+      && answer linkedProjection "call" [Eval.RInt 41]==Right (Eval.RInt 42))
+  check "duplicate artifacts cannot be silently unioned"
+    (rejects "duplicate artifact identity" (Linked.linkArtifacts [rootArtifact,rootArtifact]))
+  check "elided constructor stubs require an emitted home"
+    (rejects "elided definition has no emitting owner" (Linked.linkArtifacts [providerArtifact]))
+  let hidden=right (Linked.artifact providerId S.empty (Native.nativeConstructors provider) provider)
+  check "a caller cannot reach another artifact's unexported source definition"
+    (rejects "cross-artifact reference to private symbol" (Linked.linkArtifacts [rootArtifact,hidden]))
+  let duplicate=right (Linked.artifact (Linked.DependencyArtifact "duplicate") (S.fromList ["provider","factory"])
+        (Native.nativeConstructors provider) provider)
+      duplicatePrivate=right (Linked.artifact (Linked.DependencyArtifact "duplicate") S.empty
+        (Native.nativeConstructors provider) provider)
+  check "exported symbols cannot acquire two emitting owners"
+    (rejects "symbol has more than one emitting artifact" (Linked.linkArtifacts [rootArtifact,providerArtifact,duplicate]))
+  check "local symbol scope cannot hide duplicated typed binder identities"
+    (rejects "binder identity shared by artifacts" (Linked.linkArtifacts [rootArtifact,providerArtifact,duplicatePrivate]))
+  let (_,otherNamespace)=compile "another-run" source (S.fromList ["provider","factory"])
+      otherArtifact=right (Linked.artifact providerId (S.fromList ["provider","factory"])
+        (Native.nativeConstructors otherNamespace) otherNamespace)
+      changedLayouts=(closedLayouts (Native.nativeClosed consumer)) {shapeLayouts=M.singleton ["unrelated"] 17}
+      changedNative=right (Native.compileSelection PreserveCallbacks changedLayouts consumerSelection)
+      changedArtifact=right (Linked.artifact Linked.RootArtifact (Linked.artifactExports rootArtifact) S.empty changedNative)
+  check "linked artifacts must share the checking namespace"
+    (rejects "different checking namespaces" (Linked.linkArtifacts [rootArtifact,otherArtifact]))
+  check "layout authority remains attached across artifacts"
+    (rejects "disagree on layout authority" (Linked.linkArtifacts [changedArtifact,providerArtifact]))
+  check "exports cannot claim absent definitions"
+    (rejects "export lacks an emitted definition" (Linked.artifact Linked.RootArtifact (S.singleton "absent") S.empty consumer))
+  check "source functions cannot borrow constructor elision authority"
+    (rejects "elision lacks generated constructor authority"
+      (Linked.artifact Linked.RootArtifact S.empty (S.singleton "client") consumer))
+  let (_,shadow)=compile "elision" "Box = Type Int. Box = Struct { value = 7 }." (S.fromList ["Box","Box.value"])
+  check "a shadowing source value cannot be elided using its constructor's layout"
+    (rejects "elision lacks generated constructor authority"
+      (Linked.artifact Linked.RootArtifact S.empty (S.singleton "Box") shadow))
+  let mismatch left rightSource=
+        let (_,p)=compile "mismatch" left (S.singleton "provider")
+            (_,c)=compile "mismatch" rightSource (S.singleton "client")
+            a=right (Linked.artifact Linked.RootArtifact (S.insert "client" (Native.nativeConstructors c)) S.empty c)
+            b=right (Linked.artifact providerId (S.singleton "provider") (Native.nativeConstructors p) p)
+        in Linked.linkArtifacts [a,b]
+  check "linking compares the provider's checked scheme with the imported declaration"
+    (rejects "imported calling scheme disagrees at provider"
+      (mismatch "provider = True." "provider = 1. client u = provider + u."))
+  check "equal logical arrows cannot conceal a cross-artifact physical-arity mismatch"
+    (rejects "imported physical arity disagrees at provider"
+      (mismatch "provider x = fn y -> x + y." "provider x y = x + y. client u = provider u 1."))
+  let (_,publicLocal)=compile "local-scope" "localValue = 1. result = localValue." (S.fromList ["localValue","result"])
+      (_,privateLocal)=compile "local-scope" "localValue = 2." (S.singleton "localValue")
+      publicArtifact=right (Linked.artifact Linked.RootArtifact (S.fromList ["localValue","result"]<>Native.nativeConstructors publicLocal) S.empty publicLocal)
+      privateArtifact=right (Linked.artifact providerId S.empty (Native.nativeConstructors privateLocal) privateLocal)
+      scopedSymbols=Linked.linkedSymbols (right (Linked.linkArtifacts [publicArtifact,privateArtifact]))
+  check "artifact-local spellings do not shadow an exported symbol in another artifact"
+    (M.member (Linked.ExportedSymbol "localValue") scopedSymbols
+      && M.member (Linked.ArtifactSymbol providerId "localValue") scopedSymbols)
   let make functions schemas arities=P.program (Namespace "invalid") (T.TypeContext [] M.empty) schemas arities functions
       x=binder "x" 0 "x" int
       identity=T.Function "id" [x] (ref x)

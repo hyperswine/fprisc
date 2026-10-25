@@ -2,7 +2,7 @@
 -- The native compatibility boundary. Checked semantic programs remain owned
 -- through layout/closing; only this adapter publishes erased Core downstream.
 module Compiler.Native.Core
-  (NativeCore,compileSelection,compileSelectionAt,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeFresh) where
+  (NativeCore,compileSelection,compileSelectionAt,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeConstructors,nativeFresh) where
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Program
 import Core.Typed.Pipeline
@@ -20,12 +20,13 @@ import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data NativeCore=NativeCore ClosedProgram Prog (S.Set String) (M.Map String String) Int
-nativeProgram (NativeCore _ p _ _ _)=p
-nativeJoins (NativeCore _ _ js _ _)=js
-nativeClosed (NativeCore p _ _ _ _)=p
-nativeCompatibility (NativeCore _ _ _ cs _)=cs
-nativeFresh (NativeCore _ _ _ _ n)=n
+data NativeCore=NativeCore ClosedProgram Prog (S.Set String) (M.Map String String) (S.Set String) Int
+nativeProgram (NativeCore _ p _ _ _ _)=p
+nativeJoins (NativeCore _ _ js _ _ _)=js
+nativeClosed (NativeCore p _ _ _ _ _)=p
+nativeCompatibility (NativeCore _ _ _ cs _ _)=cs
+nativeConstructors (NativeCore _ _ _ _ ns _)=ns
+nativeFresh (NativeCore _ _ _ _ _ n)=n
 
 compileSelection :: CallbackMode -> Layouts -> SourceSelection -> Either String NativeCore
 compileSelection=compileSelectionAt 0
@@ -49,7 +50,7 @@ compileSelectionAt first mode layouts selected=do
         <>S.fromList (Legacy.dJoins state)
       output=covered `M.union` fallback
   unless (all (noLambda . snd) (M.elems output)) (Left "native Core: implicit lambda remains at erasure boundary")
-  pure (NativeCore closed output joins (M.map compatibilityReason compatibility) (Legacy.dFresh state))
+  pure (NativeCore closed output joins (M.map compatibilityReason compatibility) (selectionConstructors selected) (Legacy.dFresh state))
 
 eraseClosed :: ClosedProgram -> Either String Prog
 eraseClosed closed=do

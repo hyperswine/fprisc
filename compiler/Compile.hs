@@ -6,6 +6,7 @@ import System.IO (hClose, hPutStr, hPutStrLn, openTempFile, stderr)
 import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
 import Core.Typed.Callback (CallbackMode(..))
 import qualified Compiler.Native.Core as NativeCore
+import qualified Compiler.Native.Linked as Linked
 import Compiler.DataLayout (Layouts(..))
 import Mono (specializeFunctions, qualifyAux)
 import Inline (inlineSmall, inlineWith, vecPeek)
@@ -583,14 +584,12 @@ compileWithInterface accepted = do
           consAll = M.unions (consPrelude : consRoot : map snd consUnits)
           shapes = collectShapes finalTops -- structural fnv ids: globally consistent
           nativeLayouts=Layouts consAll shapes
-          compileSelected mode selected=
-            let result=either error id (selected >>= NativeCore.compileSelection mode nativeLayouts)
-            in (M.map (fmap eraseCast) (NativeCore.nativeProgram result),NativeCore.nativeJoins result)
+          compileSelected mode selected=either error id (selected >>= NativeCore.compileSelection mode nativeLayouts)
+          projectNative result=(M.map (fmap eraseCast) (NativeCore.nativeProgram result),NativeCore.nativeJoins result)
           selectRoot uts=selectSpecialized (M.keysSet consAll) specialized (bindNames uts)
-          compileRaw uts=compileSelected PreserveCallbacks (selectRoot uts)
+          compileRaw uts=projectNative (compileSelected PreserveCallbacks (selectRoot uts))
           callbackMode=if Options.cgSpecialize codegen && not (oArc opts) then SpecializeCallbacks else PreserveCallbacks
-          compileActual uts=compileSelected callbackMode (selectRoot uts)
-          compileOwnedRaw unit=compileSelected callbackMode (selectUnit (M.keysSet consAll) unit)
+          nativeUnit unit=compileSelected callbackMode (selectUnit (M.keysSet consAll) unit)
           turnContext = fst (compileRaw finalTops)
           -- regions (the compiler-placed loop and call kinds) change no work
           -- and no allocation: the cost report sees the program without them
@@ -600,8 +599,6 @@ compileWithInterface accepted = do
           turnPassWith regions (p, joins) = if oBuiltin opts || oArc opts || (not (Options.cgReceiveTurns codegen)) then (p, [])
                        else receiveTurns (regions && (Options.cgLoopRegions codegen)) (regions && (Options.cgCallRegions codegen)) contextEqs (M.fromList interfaces) finalTops turnContext joins p
           turnPass = turnPassWith True
-          compileUnit = fst . turnPass . compileActual
-          compileOwned = fst . turnPass . compileOwnedRaw
           -- tid collision check (fnv32 is probabilistic; fail LOUDLY)
           tidDecls =
             [ (t, ownerT ++ "." ++ n)
@@ -937,17 +934,45 @@ compileWithInterface accepted = do
           rootCons = allCons `S.difference` rootElided
           preludeElided = allCons `S.difference` preludeCons
           unitElided h = allCons `S.difference` unitConsOf h
+          rootNames = S.fromList ([fst3 b | b@(TBind {}) <- root'])
+          rootLoweredNames = bindNames root''
+          unitNames = S.fromList (concat [[fst3 b | b@(TBind {}) <- uts] | (_, uts) <- units'])
+          preludeNames = bindNames preludeE'
+          rootProgTops =
+            [ t | t@(TBind n _ _ _) <- finalTops,
+                  S.member n rootLoweredNames
+                    || (not (S.member n unitNames) && not (S.member n preludeNames))
+            ]
+          rootNative=compileSelected callbackMode (selectRoot (if oArc opts then finalTops else rootProgTops))
+          artifactResults=
+            Linked.artifact Linked.RootArtifact
+              (if oArc opts then M.keysSet (NativeCore.nativeProgram rootNative) else bindNames root'' `S.union` rootCons)
+              (if oArc opts then S.empty else rootElided) rootNative
+            : [Linked.artifact (Linked.PreludeArtifact preludeHash) (bindNames preludeE' `S.union` preludeCons)
+                preludeElided (nativeUnit preludeChecked) | preludeEmitted]
+            ++ [Linked.artifact (Linked.DependencyArtifact h) (bindNames uts `S.union` unitConsOf h)
+                (unitElided h) (nativeUnit unit) | (h,uts,unit)<-checkedUnits,unitsEmitted]
+          linkedResult=sequence artifactResults >>= Linked.linkArtifacts
+          linked=either error id linkedResult
+          artifactOf key=Linked.linkedArtifacts linked M.! key
+          artifactRaw=projectNative . Linked.artifactCore
+          rootProgRaw=fst (turnPass (artifactRaw (artifactOf Linked.RootArtifact)))
           -- a constructor is global everywhere: a clone that references one
           -- links against the owner's symbol, so qualifyAux leaves the name
           importedCore = M.unions
-            (qualifyAux ("$specaux.p" ++ take 12 preludeHash ++ ".") (bindNames preludeE' `S.union` allCons) (compileOwned preludeChecked)
-             : [qualifyAux ("$specaux.u" ++ take 12 h ++ ".") (bindNames uts `S.union` allCons) (compileOwned unit) | (h,uts,unit)<-checkedUnits])
+            [qualifyAux (prefix key) (Linked.artifactExports a `S.union` allCons) (fst (turnPass (artifactRaw a)))
+              | (key,a)<-M.toList (Linked.linkedArtifacts linked),key/=Linked.RootArtifact]
+          prefix (Linked.PreludeArtifact h)="$specaux.p"++take 12 h++"."
+          prefix (Linked.DependencyArtifact h)="$specaux.u"++take 12 h++"."
+          prefix Linked.RootArtifact=error "native link: root is not an imported artifact"
           applyReport label asm = when (Options.diagApply diagnostic) $ hPutStrLn stderr
             ("apply " ++ label ++ ": dispatch=" ++ show (length [() | l <- lines asm, "fpr_apply" `List.isInfixOf` l, any (`List.isInfixOf` l) ["call ", "bl "]])
              ++ " known-partial=" ++ show (length [() | l <- lines asm, "# pap-create:" `List.isPrefixOf` l])
              ++ " static-descriptors=" ++ show (length [() | l <- lines asm, "# static-pap:" `List.isPrefixOf` l]))
-          emitUnit pathBase exps elide ext unit = do
-            let raw=compileOwnedRaw unit
+          emitUnit pathBase ext artifact = do
+            let raw=artifactRaw artifact
+                exps=Linked.artifactExports artifact
+                elide=Linked.artifactElided artifact
                 unitProgram=fst (turnPass raw)
                 path=pathBase++"-c"++coreCacheIdentity elide (CallArities ext halAr) unitProgram++"-"++tag++".s"
             reportTurns raw
@@ -975,6 +1000,10 @@ compileWithInterface accepted = do
                 nativeSummary (Options.diagNativeInsns diagnostic) ("unit " ++ takeFileName path) asm
                 applyReport (takeFileName path) asm
                 pure (path, show (M.size prog) ++ " supercombinators")
+      -- Validate the complete linked ownership/interface product before any
+      -- artifact is reused or emitted. Later legacy passes consume projections;
+      -- they do not replace the retained checked inputs with inferred evidence.
+      either (\reason->hPutStrLn stderr reason >> exitFailure) (const (pure ())) linkedResult
       createDirectoryIfMissing True unitDir
       -- prelude unit (unqualified names; the always-linked stdlib unit).
       -- The prelude is self-contained, so resolve its own operators.
@@ -982,8 +1011,7 @@ compileWithInterface accepted = do
         if oArc opts || null preludeTops
           then pure []
           else do
-            r <- emitUnit (unitDir </> ("prelude-" ++ take 12 preludeHash))
-                          (bindNames preludeE' `S.union` preludeCons) preludeElided extFor preludeChecked
+            r <- emitUnit (unitDir </> ("prelude-" ++ take 12 preludeHash)) extFor (artifactOf (Linked.PreludeArtifact preludeHash))
             pure [r]
       -- dep module units (hash-qualified; filename carries the prelude
       -- hash too -- unit code depends on prelude arities -- AND a hash of
@@ -995,24 +1023,12 @@ compileWithInterface accepted = do
       let shapesHash = hashAST [TShape (concat fs) [] | fs <- M.keys shapes]
       unitOuts <- forM (if oArc opts then [] else checkedUnits) $ \(h, uts, unit) ->
         emitUnit (unitDir </> ("u-" ++ take 12 h ++ "-p" ++ take 8 preludeHash ++ "-s" ++ take 8 shapesHash))
-                 (bindNames uts `S.union` unitConsOf h) (unitElided h) extFor unit
+                 extFor (artifactOf (Linked.DependencyArtifact h))
       -- the root: exports its own binds; modtab (all dep exports) lives
       -- here. Root codegen uses the FULLY specialized+resolved tops
       -- (finalTops), filtered to root's own names + any monomorphized
       -- clones (clones have no home unit; they ride with the root).
-      let rootNames = S.fromList ([fst3 b | b@(TBind {}) <- root'])
-          rootLoweredNames = bindNames root''
-          unitNames = S.fromList (concat [[fst3 b | b@(TBind {}) <- uts] | (_, uts) <- units'])
-          preludeNames = bindNames preludeE'
-          rootProgTops =
-            [ t | t@(TBind n _ _ _) <- finalTops,
-                  S.member n rootLoweredNames
-                    || (not (S.member n unitNames) && not (S.member n preludeNames))
-            ]
-          -- The raw ARC ABI needs one representation solution across imports.
-          -- Until signatures/layouts are serialized, do not reuse ARC unit code.
-          rootProgRaw = compileUnit (if oArc opts then finalTops else rootProgTops)
-          rootExports =
+      let rootExports =
             [ ModExport rootHash n n (length ps) ""
               | oPlugin opts,
                 TBind n ps _ _ <- rootProgTops, S.member n rootNames
@@ -1066,8 +1082,8 @@ compileWithInterface accepted = do
         Right p -> pure p
       rootProg <- own (mono ("root" ++ take 12 rootHash) importedSym rootProgSym)
       let rootEmission = emitProgramWith tgt rvv spec imageExports extFor
-                                     (if oArc opts then M.keysSet rootProg else bindNames root'' `S.union` rootCons)
-                                     (if oArc opts then S.empty else rootElided) rootProg
+                                     (if oArc opts then M.keysSet rootProg else Linked.artifactExports (artifactOf Linked.RootArtifact))
+                                     (Linked.artifactElided (artifactOf Linked.RootArtifact)) rootProg
           rootVNotes = emNotes rootEmission
       -- the C-callable entries: each export needs a declared signature
       -- over C-representable types, a function of that arity, <= 8 params

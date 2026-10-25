@@ -5,7 +5,7 @@ module Frontend.Desugar.Typed
   (CheckedPlans,prepareChecked,checkedNames,checkedDeclines,checkedCallArities,
    CheckedUnit,selectCheckedUnit,checkedUnitTops,checkedUnitNames,
    SpecializedSource,specializeCheckedSource,specializedTops,
-   SourceSelection,selectionProgram,selectionCompatibility,Compatibility,
+   SourceSelection,selectionProgram,selectionCompatibility,selectionConstructors,Compatibility,
    compatibilityClauses,compatibilityReason,selectUnit,selectSpecialized,selectClauses) where
 import Core.Identity
 import qualified Core.Typed.Syntax as T
@@ -350,9 +350,10 @@ prepareChecked result = do
 data Compatibility=Compatibility [([SPat],[SGuard],SExpr)] String
 compatibilityClauses (Compatibility cs _)=cs
 compatibilityReason (Compatibility _ why)=why
-data SourceSelection=SourceSelection Program.Program (M.Map String Compatibility)
-selectionProgram (SourceSelection p _)=p
-selectionCompatibility (SourceSelection _ cs)=cs
+data SourceSelection=SourceSelection Program.Program (M.Map String Compatibility) (S.Set String)
+selectionProgram (SourceSelection p _ _)=p
+selectionCompatibility (SourceSelection _ cs _)=cs
+selectionConstructors (SourceSelection _ _ ns)=ns
 
 selectUnit :: S.Set String -> CheckedUnit -> Either String SourceSelection
 selectUnit constructors (CheckedUnit plans tops _)=selectClauses constructors plans tops
@@ -406,7 +407,7 @@ assemble constructors plans schemas arities typed compatibility=do
       ownArities=M.map (length . T.functionParameters) functions `M.union` arities
   input<-Program.programWithAssumptions (planNamespace plans) (planTypes plans) schemas ownArities functions (planAssumptions plans)
   unless (S.null (M.keysSet functions `S.intersection` M.keysSet compatibility)) (Left "typed source: checked/compatibility owner collision")
-  pure (SourceSelection input compatibility)
+  pure (SourceSelection input compatibility (M.keysSet generated))
 
 constructorDefinition plans name=do
   let Namespace ns=planNamespace plans

@@ -16,7 +16,7 @@ cache formats, or explicitly version and test any intentional changes.
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
 | Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical closure calls and local callback cloning implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
-| Checked pipeline products and lint | Owned semantic/native program products, complete graph contracts, typed desugaring/closed products and checked unit ownership implemented; downstream pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
+| Checked pipeline products and lint | Owned semantic/native and linked artifact products, complete graph and imported interface contracts, typed desugaring/closed products and checked unit ownership implemented; downstream pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
@@ -478,3 +478,32 @@ retirement remain required. Region provenance, remaining source compatibility
 forms, later typed transformations, diagnostics and machine/call contracts also
 remain active full-goal work. This program handoff is a prerequisite and an actual
 native consumer, not completion of the requested cleanup.
+
+
+## Linked native input ownership
+
+[Linked native program ownership](2026-10-25-LINKED-NATIVE-PROGRAM.md) retains
+root/prelude/dependency typed artifacts, emitted exports/elisions, source
+calling schemes/physical arities and private code contracts in one checked
+product. Actual root/unit emission and imported specialization projections
+consume those retained owners. Exported and artifact-local symbols have distinct
+identities; constructor elision requires exact generated-stub provenance, even
+when a source value shares a constructor's name. Imported published interfaces,
+physical arities, layouts, exports and binder identities are checked before
+assembly reuse or emission.
+
+Validation: all 136 Base jobs passed in 589.73 seconds on five workers with a
+fresh cache and no reused CI coverage. The complete typed/native and registered
+RV QEMU gates, expanded linked-contract refusals and independent evaluator
+answers passed. All 128 fixed-binary root/dependent-unit emission and cache-key
+comparisons were byte-identical without normalization. Sol arguments,
+shared-language execution and 3,000,000-iteration self/mutual tail calls passed
+(peak 85 MB). Codegen revision 116 and the public ABI/cache formats are unchanged.
+Hosted validation for this checkpoint follows the push.
+
+This resolves the linked input-owner prerequisite from the preceding stage.
+Explicit private import declarations/visibility and stable closure/PAP identity
+are next requirements for typed global/imported callback specialization and
+`Mono` retirement. Region/cost provenance, remaining compatibility forms, later
+typed transformations, diagnostics and machine/call contracts remain required.
+The complete compiler cleanup goal remains active.

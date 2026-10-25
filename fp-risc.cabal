@@ -118,6 +118,7 @@ executable fpr
       Core.Typed.Pipeline
       Compiler.DataLayout
       Compiler.Native.Core
+      Compiler.Native.Linked
       Frontend.Desugar.Typed
       Core.Typed.Walk
       Core.Typed.Close
