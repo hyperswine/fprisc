@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 -- AArch64 operand banks and effects, before allocation and after placement.
 module Codegen.Target.A64.Forms (checkForms) where
+import qualified Codegen.Calling as Calling
 import Codegen.Selected
 import Codegen.Annotation
 import Codegen.Target.Forms
@@ -10,6 +11,7 @@ import Control.Monad (unless,forM_)
 
 checkForms rf owner items=do
   checkAnnotations ConditionalRestores owner items
+  Calling.checkTransfers Calling.AArch64 owner items
   forM_ [i | I i<-items] $ \i->do
     let bad why=Left ("selected a64 "++owner++" "++siOp i++": "++why)
         require why yes=unless yes (bad why)

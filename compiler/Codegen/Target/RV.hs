@@ -5,6 +5,8 @@
 module Codegen.Target.RV
   ( RVConfig (..), RVHart (..), rvSelectionRev, rvvPreamble, emitFnRV, emitFnRVWithSymbols ) where
 
+import qualified Codegen.Calling as Calling
+import Codegen.Calling (CallConvention(FprCall), FuelEntry(..), TransferResult(..))
 import Codegen.Allocate
 import Codegen.Bounds
 import Codegen.Frame
@@ -57,8 +59,8 @@ data RVConfig = RVConfig
 p :: String -> Phys
 p = Phys
 args, callers, saved, scratch :: [Phys]
-args = map (p . ("a" ++) . show) [0..7 :: Int]
-callers = args ++ map (p . ("t" ++) . show) [0..6 :: Int] ++ [p "ra"]
+args = Calling.argumentRegisters Calling.RiscV
+callers = Calling.callerClobbers Calling.RiscV
 saved = map (p . ("s" ++) . show) [1..11 :: Int]
 scratch = map p ["t0", "t1", "t2"]
 reserved :: [Phys]
@@ -105,18 +107,19 @@ loadAt op d base off = emit ((plain (O.RV op) [anyV d] [anyV base, OI off]) {siI
 storeAt :: R.Opcode -> VReg -> VReg -> Integer -> S ()
 storeAt op base value off = emit ((plain (O.RV op) [] [anyV base, anyV value, OI off]) {siImplicitDefs = [p "t6"]})
 
-stage :: [VReg] -> S ()
-stage vs = forM_ (zip [0..] (drop 8 vs)) $ \(n,v) ->
-  emit ((plain (O.Common O.StoreSpill) [] [anyV v, OI n]) {siImplicitDefs = map p ["t3","t4"]})
-call :: String -> Bool -> Bool -> [VReg] -> Maybe VReg -> Bool -> S ()
-call sym tick runtime vs result tailCall = do
-  stage vs
-  emit ((plain (if tailCall then O.Common O.TailJump else O.RV R.Call)
-    [fixed v (p "a0") | Just v <- [result]] (OS sym : zipWith fixed vs args))
-    {siClobbers = filter (\r -> r /= p "a0" || result == Nothing) callers,
-     siImplicitDefs = if tailCall then map p ["sp","s0","ra","t3"] else [],
-     siControl = if tailCall then Return else Next,
-     siCalls = [Call sym tick runtime]})
+stage :: CallConvention -> [VReg] -> S ()
+stage convention vs = do
+  staged <- lift (Calling.stagedArguments Calling.RiscV convention vs)
+  forM_ [(n,v) | (Calling.HartArgument n,v)<-staged] $ \(n,v) ->
+    emit ((plain (O.Common O.StoreSpill) [] [anyV v,OI (toInteger n)]) {siImplicitDefs=map p ["t3","t4"]})
+call :: String -> CallConvention -> [VReg] -> Maybe VReg -> Bool -> S ()
+call sym convention vs result tailCall = do
+  stage convention vs
+  selected <- lift (Calling.selectTransfer Calling.RiscV convention
+    (if tailCall then TailTransfer else maybe DiscardResult (const WordResult) result) sym vs result
+    ((plain (if tailCall then O.Common O.TailJump else O.RV R.Call) [] [])
+      {siImplicitDefs=if tailCall then map p ["sp","s0","ra","t3"] else []}))
+  emit selected
 calleeSym :: Callee -> String
 calleeSym c = case calleeKind c of Foreign s -> s; Generated s -> s; _ -> functionSymbol (calleeName c)
 entry :: Bool -> Bool -> S ()
@@ -143,6 +146,7 @@ select cfg fn = do
       params = [vreg v | b <- fnBlocks fn, bId b == fnEntry fn, (v,_) <- bParams b]
       managed = S.fromList [vreg v | (v,TVal) <- defs]
       start = 1 + maximum (0 : [n | (VId n,_) <- defs])
+  when (length params > arityCeiling) (Left ("arity above " ++ show arityCeiling))
   unless (all ((`elem` [TVal,TInt,TPred,TAddr]) . snd) defs) (Left "RV64: a raw or float-register value is not legalized")
   (_, st) <- runStateT (mapM_ block (fnBlocks fn)) (Sel start 0 [] S.empty S.empty S.empty)
   pure (SFn (fnName fn) params (reverse (items st)), managed, st)
@@ -231,16 +235,16 @@ select cfg fn = do
         size <- fresh; li size (8 + w * fromIntegral (length fs))
         if polProfile (cfgPolicy cfg) == BuiltinArc then do
           fields <- fresh; li fields (fromIntegral (length fs))
-          call "fpr_builtin_alloc_adt" False True [size,fields] (Just d) False
-        else call "fpr_alloc" False True [size] (Just d) False
+          call "fpr_builtin_alloc_adt" Calling.RuntimeCall [size,fields] (Just d) False
+        else call "fpr_alloc" Calling.RuntimeCall [size] (Just d) False
         forM_ [(0,t),(4,variant)] $ \(off,n) -> do h <- fresh; li h (fromIntegral n); storeAt R.Store32 d h off
         forM_ (zip [0..] fs) $ \(n,v) -> storeAt stWord d (vreg v) (8+w*n)
       OReuse _ _ root fs -> do
         forM_ (zip [0..] fs) $ \(n,v) -> storeAt stWord (vreg root) (vreg v) (8+w*n)
         emit (plain (O.RV R.Move) [anyV d] [anyV (vreg root)])
       OField n v -> loadAt ld d (vreg v) (8+w*fromIntegral n)
-      OStrLen s -> do t <- fresh; call "fpr_g_strlen_call1" False True [vreg s] (Just t) False; ri R.ShiftRightArithmeticImmediate d t 1
-      OCharAt s n -> do i <- boxed (vreg n); t <- fresh; call "fpr_g_charAt_call2" False True [vreg s,i] (Just t) False; ri R.ShiftRightArithmeticImmediate d t 1
+      OStrLen s -> do t <- fresh; call "fpr_g_strlen_call1" Calling.RuntimeCall [vreg s] (Just t) False; ri R.ShiftRightArithmeticImmediate d t 1
+      OCharAt s n -> do i <- boxed (vreg n); t <- fresh; call "fpr_g_charAt_call2" Calling.RuntimeCall [vreg s,i] (Just t) False; ri R.ShiftRightArithmeticImmediate d t 1
       OKernelArith op a b -> do
         slow <- freshLabel; zero <- freshLabel; done <- freshLabel
         result <- fresh
@@ -263,13 +267,13 @@ select cfg fn = do
         ri R.ShiftLeftImmediate shifted result 1; ri R.ShiftRightArithmeticImmediate fit shifted 1
         failUnlessEqual fit result
         emit (plain (O.RV R.Move) [anyV d] [anyV result]); jump done
-        mark slow; call "fpr_int_overflow_kernel" False True [] Nothing False
-        mark zero; call "fpr_div_zero_kernel" False True [] Nothing False
+        mark slow; call "fpr_int_overflow_kernel" Calling.RuntimeCall [] Nothing False
+        mark zero; call "fpr_div_zero_kernel" Calling.RuntimeCall [] Nothing False
         li d 0 -- unreachable after a noreturn trap
         mark done
       OArith op a b -> do
         x <- boxed (vreg a); y <- boxed (vreg b); t <- fresh
-        call ("fpr_prim_fn_" ++ mangleName (arithSymbol op)) False True [x,y] (Just t) False
+        call ("fpr_prim_fn_" ++ mangleName (arithSymbol op)) Calling.RuntimeCall [x,y] (Just t) False
         ri R.ShiftRightArithmeticImmediate d t 1
       OBit op a b -> rr (case op of BAnd -> R.And; BOr -> R.Or; BXor -> R.Xor) d (vreg a) (vreg b)
       OFloatBin o a b -> rr (R.FloatBinary O.Float64 o) d (vreg a) (vreg b)
@@ -304,15 +308,15 @@ select cfg fn = do
       ORvvSumLoaded acc -> emit ((plain (O.RV R.VectorSum) [anyV d] [anyV (vreg acc)]) {siImplicitDefs = [p "t5"]})
       OShift op a b -> do
         x <- boxed (vreg a); y <- boxed (vreg b); t <- fresh
-        call (if op == Shl then "fpr_g_BITSHIFTL_call2" else "fpr_g_BITSHIFTR_call2") False True [x,y] (Just t) False
+        call (if op == Shl then "fpr_g_BITSHIFTL_call2" else "fpr_g_BITSHIFTR_call2") Calling.RuntimeCall [x,y] (Just t) False
         ri R.ShiftRightArithmeticImmediate d t 1
       OCmp op a b -> rr (R.Compare op) d (vreg a) (vreg b)
       OEqVal eq a b -> do
-        t <- fresh; call ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!=")) False True [vreg a,vreg b] (Just t) False
+        t <- fresh; call ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!=")) Calling.RuntimeCall [vreg a,vreg b] (Just t) False
         loadAt R.Load32 d t 4
       OCall c vs -> do
         inlined <- rawAdapter c (map vreg vs) d
-        unless inlined (call (calleeSym c) (polFuel (cfgPolicy cfg) && not (isForeign c)) (isForeign c) (map vreg vs) (Just d) False)
+        unless inlined (call (calleeSym c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg vs) (Just d) False)
       OApply f vs -> do
         forM_ (f:vs) $ \v -> emit ((plain (O.RV R.Push) [] [anyV (vreg v)]) {siImplicitDefs = [p "sp"]})
         emit ((plain (O.RV R.ApplyN) [fixed d (p "a0")] [OI (fromIntegral (length vs))])
@@ -323,14 +327,14 @@ select cfg fn = do
     edge bid vs = parallel (zip (targetParams bid) (map vreg vs)) >> jump (label bid)
     terminator b = case bTerm b of
       TRet v -> emit ((plain (O.RV R.Ret) [] [fixed (vreg v) (p "a0")]) {siImplicitDefs = map p ["sp","s0","ra","t3"], siControl = Return})
-      TBr bid vs | bid == fnEntry fn -> call (functionSymbol (fnName fn)) (polFuel (cfgPolicy cfg)) False (map vreg vs) Nothing True
+      TBr bid vs | bid == fnEntry fn -> call (functionSymbol (fnName fn)) (Calling.nativeCall (cfgPolicy cfg)) (map vreg vs) Nothing True
                  | otherwise -> edge bid vs
       TCondBr v yes ys no ns -> do l <- freshLabel; branch (vreg v) l; edge no ns; mark l; edge yes ys
       TTailCall c vs -> do
         d <- fresh
         inlined <- rawAdapter c (map vreg vs) d
         if inlined then emit ((plain (O.RV R.Ret) [] [fixed d (p "a0")]) {siImplicitDefs = map p ["sp","s0","ra","t3"], siControl = Return})
-        else call (calleeSym c) (polFuel (cfgPolicy cfg) && not (isForeign c)) (isForeign c) (map vreg vs) Nothing True
+        else call (calleeSym c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg vs) Nothing True
       TUnreachable s -> do
         modify (\st -> st {strings = S.insert s (strings st)})
         emit ((plain (O.RV R.Panic) [] [OS (stringLabel s)]) {siImplicitDefs = [p "a0"], siClobbers = callers, siControl = Return, siCalls = [Call "fpr_panic" False True]})
@@ -395,7 +399,7 @@ select cfg fn = do
                     address d "fpr_false"; jump done; mark yesLabel; address d "fpr_true"; mark done
         guarded check body = do slow <- freshLabel; done <- freshLabel
                                 check slow; body; jump done; mark slow
-                                call (calleeSym c) False True vs (Just d) False; mark done
+                                call (calleeSym c) Calling.RuntimeCall vs (Just d) False; mark done
         -- Every byte address is aligned. Emitting even an unreachable slow
         -- call requires a nonexistent adapter when this is a RAW library
         -- linked into the hosted runtime (machine/virt/rawunit.c).
@@ -412,8 +416,9 @@ allocConfig :: RVConfig -> Fn -> S.Set VReg -> AllocConfig
 allocConfig cfg fn managed = AllocConfig
   { acCalleeSaved = saved, acCallerSaved = args, acScratch = scratch,
     acPreserved = map p ["sp","s0","gp","tp"], acClassOf = rfClassOf regFile,
-    acArrival = \vs -> plain (O.Common O.Params) (zipWith fixed (take 8 vs) args) [] :
-      [(plain (O.Common O.LoadSpill) [anyV v] [OI n]) {siImplicitDefs = map p ["t3","t4"]} | (n,v) <- zip [0..] (drop 8 vs)],
+    acArrival = \vs -> let placed=Calling.arrivalArguments Calling.RiscV vs
+      in plain (O.Common O.Params) [fixed v p | (Calling.ArgumentRegister p,v)<-placed] [] :
+        [(plain (O.Common O.LoadSpill) [anyV v] [OI (toInteger n)]) {siImplicitDefs=map p ["t3","t4"]} | (Calling.HartArgument n,v)<-placed],
     acLoad = \r ref -> (plain (O.RV R.FrameLoad) [OP r] [OF ref 0]) {siImplicitDefs = [p "t6"]},
     acStore = \r ref -> (plain (O.RV R.FrameStore) [] [OP r,OF ref 0]) {siImplicitDefs = [p "t6"]},
     acMove = \d s -> plain (O.RV R.Move) [OP d] [OP s],

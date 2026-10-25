@@ -2,6 +2,7 @@
 -- The selected x64 vocabulary has one operand/control contract. Check it
 -- before allocation and again after physical placement, before rendering.
 module Codegen.Target.X64.Forms (checkForms) where
+import qualified Codegen.Calling as Calling
 import Codegen.Selected
 import Codegen.Annotation
 import qualified Codegen.Opcode as O
@@ -10,6 +11,7 @@ import Control.Monad (unless,forM_)
 checkForms :: String -> [Item] -> Either String ()
 checkForms owner items=do
   checkAnnotations AlwaysRestores owner items
+  Calling.checkTransfers Calling.X86_64 owner items
   forM_ [i | I i<-items] $ \i->do
     let bad why=Left ("selected x64 "++owner++" "++siOp i++": "++why)
         require why yes=unless yes (bad why)
@@ -27,8 +29,8 @@ checkForms owner items=do
             O.TickN->null ds && matches [immediate] us
             O.TailJump->null ds && transfer us
             O.JumpLoop->null ds && matches [label] us
-            O.LoadCell->matches [word] ds && matches [symbol] us
-            O.StoreCell->null ds && matches [word,symbol] us
+            O.LoadCell->matches [word] ds && matches [argumentCell] us
+            O.StoreCell->null ds && matches [word,argumentCell] us
             O.LoadSpill->matches [word] ds && matches [immediate] us
             O.StoreSpill->null ds && matches [word,immediate] us
             O.Params->length ds<=6 && all word ds && null us
@@ -94,6 +96,7 @@ checkForms owner items=do
     word _=False
     immediate (OI _)=True;immediate _=False
     index lo hi (OI n)=n>=lo && n<=hi;index _ _ _=False
+    argumentCell (OC _)=True;argumentCell _=False
     symbol (OS _)=True;symbol _=False
     label (OL _)=True;label _=False
     frame (OF _ 0)=True;frame _=False

@@ -312,7 +312,7 @@ loopForm cfg here fn = case acSelfLoop cfg of
     -- Parameters beyond the register bank arrive through named TLS cells
     -- (x64's seventh/eighth) or indexed hart cells (arguments 9..64 on all
     -- targets). Recover their staged values before replacing a self tail.
-    cellKey (OS _) = True
+    cellKey (OC _) = True
     cellKey (OI _) = True
     cellKey _ = False
     cells = [(p,key) | i <- acArrival cfg params, siOpcode i `elem` map Opcode.Common [Opcode.LoadCell,Opcode.LoadSpill],
@@ -321,7 +321,7 @@ loopForm cfg here fn = case acSelfLoop cfg of
     isSelf self i = siOpcode i == Opcode.Common Opcode.TailJump && take 1 (siUses i) == [OS self] && length [() | OV _ (Fix _) <- siUses i] == nfixed
     selfCalls self = [i | I i <- sfBody fn, isSelf self i]
     isCellStore i sym = null (siDefs i) && null (siCalls i) && siControl i == Next && case siUses i of
-      [OV _ _, key] -> key == sym && siOpcode i == Opcode.Common (case sym of OS _ -> Opcode.StoreCell; _ -> Opcode.StoreSpill)
+      [OV _ _, key] -> key == sym && siOpcode i == Opcode.Common (case sym of OC _ -> Opcode.StoreCell; _ -> Opcode.StoreSpill)
       _ -> False
     maxV = maximum (0 : [n | VReg n <- params] ++ [n | I i <- sfBody fn, (VReg n, _) <- instrVRegs i]) + 1
     -- the entry pseudo is the first instruction of the body (after the

@@ -20,7 +20,7 @@ cache formats, or explicitly version and test any intentional changes.
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
-| Typed codegen contracts | Vector operations/float widths, symbol visibility/private imports, all native ISA selected operations, shared entry/transfer protocols and instruction annotation/accounting contracts implemented; remaining kernel stages and call-convention/symbol-role contracts pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
+| Typed codegen contracts | Vector operations/float widths, symbol visibility/private imports, all native ISA selected operations, shared entry protocols, instruction annotations/accounting and direct word-call/staging contracts implemented; remaining kernel stages, C export/embedded call boundaries and general symbol roles pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
 | Validation ownership | Existing suites retained; focused Core and frontend compatibility checks added | Maintain invariant, golden/cache and evaluator/native differential checks without multiplying redundant builds |
 | Obsolete architecture descriptions and names | Module identity and frontend-owner references corrected; backend references/names still pending | Re-anchor semantic references in current IR/evaluator/runtime; document supported switches and current owners |
 
@@ -686,6 +686,31 @@ configurations on eight targets. Final fixed-source Base validation passes all
 and unchanged timeouts. Sol compatibility and three-million-iteration
 self/mutual tail calls pass with an 85 MB peak. Revision 120 and physical ABIs
 remain unchanged. The preceding `9c12c6b` checkpoint passed hosted CI run
-40225611701; this stage needs its own hosted result after push. Existing call
+40225611701; the annotation checkpoint `4dc7acd` passed hosted CI run
+40228013834. Existing call
 conventions/symbol roles and all remaining table entries stay in the full
 active cleanup goal.
+
+## Explicit native word calling conventions (2026-10-26)
+
+[Native word call contracts](2026-10-26-CALLING-CONVENTIONS.md) separate generated
+entries from existing C runtime adapters and retain arity, fuel policy and result
+mode on every selected direct call/tail transfer. Shared ABI data drives
+selection and arrival; native checkers validate register/result placement,
+complete clobber sets, events and hart-cell staging before and after allocation.
+x64's private argument cells and renderer TLS roles use constructors rather
+than symbol strings. Missing/duplicate cells or staging across a call, safepoint
+or control boundary are refused.
+
+Existing C export trampolines, embedded call boundaries, general symbol roles,
+remaining kernel stages, later typed transformations, compatibility/layout
+forms and the other outstanding table entries remain full-goal work. This
+checkpoint does not complete the compiler cleanup. Final validation evidence
+is recorded on the stage page.
+
+All 167 root/unit outputs and cache identities are byte-identical across 85
+configurations on eight targets. The final fixed-source, fresh-cache Base sweep
+passes all 136 jobs in 584.39 seconds on six workers, with no reused coverage or
+timeout changes. Sol compatibility and three-million-iteration self/mutual tail
+calls pass with an 85 MB peak. Revision 120 and physical/runtime ABIs remain
+unchanged. Hosted validation of this stage is required after push.

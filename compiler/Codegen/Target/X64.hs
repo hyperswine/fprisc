@@ -17,6 +17,8 @@
 module Codegen.Target.X64
   ( X64Config (..), X64Hart (..), x64InterfaceRev, x64SelectionRev, emitFnX64, emitFnX64WithSymbols, x64RegisterFile, placement, allocConfig ) where
 
+import qualified Codegen.Calling as Calling
+import Codegen.Calling (CallConvention(FprCall), FuelEntry(..), TransferResult(..))
 import Codegen.Allocate
 import Codegen.Bounds (Flow (..), Report (..), Tok (..), analyse, reportLine)
 import Codegen.Frame
@@ -77,8 +79,8 @@ x64RegisterFile = RegisterFile classOf (map r ["rsp", "rbp", "r10", "r11"])
       | otherwise = Nothing
 
 callerSaved, argRegs, scratchPool, calleeBudget, callerPool, allocScratch :: [Phys]
-callerSaved = map r ["rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11"]
-argRegs = map r ["rdi", "rsi", "rdx", "rcx", "r8", "r9"]
+callerSaved = Calling.callerClobbers Calling.X86_64
+argRegs = Calling.argumentRegisters Calling.X86_64
 scratchPool = map r ["r8", "r9", "rsi", "rdi", "rcx", "rax", "rdx"]
 -- M3: the budget (docs/2026-10-19-REGISTER-ALLOCATION.md 3.3: s1..s5, what
 -- ctx_x64.S saves), the caller-saved pool, and the never-allocated scratch
@@ -181,31 +183,31 @@ divide d a b = (plain (O.X64 O.Divide) [fix d (r "rax")] [fix a (r "rax"), any' 
 -- spill cells (cell j at 8*(1+j) in the hart block, read into %r10 for
 -- each store); every argument is evaluated by now and no call separates
 -- these stores from the transfer, so the callee's prologue copies them
-stageArgs :: [VReg] -> Se ()
-stageArgs args = do
-  forM_ (zip [6 :: Int, 7] (take 2 (drop 6 args))) $ \(n,v) ->
-    emitI ((plain (O.Common O.StoreCell) [] [any' v, OS ("fpr_x64_a" ++ show n)]) {siImplicitDefs = [r "r10", r "r11"]})
-  forM_ (zip [0 :: Int ..] (drop 8 args)) $ \(j,v) ->
-    emitI ((plain (O.Common O.StoreSpill) [] [any' v, OI (fromIntegral j)]) {siImplicitDefs = [r "r10", r "r11"]})
+stageArgs :: CallConvention -> [VReg] -> Se ()
+stageArgs convention args = do
+  staged <- either refuse pure (Calling.stagedArguments Calling.X86_64 convention args)
+  forM_ [(cell,v) | (Calling.NamedArgument cell,v)<-staged] $ \(cell,v) ->
+    emitI ((plain (O.Common O.StoreCell) [] [any' v,OC cell]) {siImplicitDefs=[r "r10",r "r11"]})
+  forM_ [(j,v) | (Calling.HartArgument j,v)<-staged] $ \(j,v) ->
+    emitI ((plain (O.Common O.StoreSpill) [] [any' v,OI (toInteger j)]) {siImplicitDefs=[r "r10",r "r11"]})
 
-emitCall :: String -> Bool -> Bool -> [VReg] -> Maybe VReg -> Se ()
-emitCall sym safepoint runtime args res = do
-  stageArgs args
-  emitI $ (plain (O.X64 O.Call) [fix v (r "rax") | Just v <- [res]]
-    (OS sym : zipWith fix args argRegs))
-    {siClobbers = filter (\p -> p `notElem` [r "rax" | Just _ <- [res]]) callerSaved,
-     siImplicitDefs = [r "rsp"], siFlags = FlagsDef,
-     siCalls = [Call sym safepoint runtime]}
+emitCall :: String -> CallConvention -> [VReg] -> Maybe VReg -> Se ()
+emitCall sym convention args res = do
+  stageArgs convention args
+  selected <- either refuse pure (Calling.selectTransfer Calling.X86_64 convention
+    (maybe DiscardResult (const WordResult) res) sym args res
+    ((plain (O.X64 O.Call) [] []) {siImplicitDefs=[r "rsp"],siFlags=FlagsDef}))
+  emitI selected
 
 ret :: VReg -> SInstr
 ret v = (plain (O.X64 O.Ret) [] [fix v (r "rax")])
   {siImplicitDefs = map r ["r11", "rbp", "rsp"], siControl = Return}
-emitTail :: String -> Bool -> Bool -> [VReg] -> Se ()
-emitTail sym safepoint runtime args = do
-  stageArgs args
-  emitI $ (plain (O.Common O.TailJump) [] (OS sym : zipWith fix args argRegs))
-    {siImplicitDefs = map r ["r11", "rbp", "rsp"], siClobbers = callerSaved,
-     siControl = Return, siCalls = [Call sym safepoint runtime]}
+emitTail :: String -> CallConvention -> [VReg] -> Se ()
+emitTail sym convention args = do
+  stageArgs convention args
+  selected <- either refuse pure (Calling.selectTransfer Calling.X86_64 convention TailTransfer sym args Nothing
+    ((plain (O.Common O.TailJump) [] []) {siImplicitDefs=map r ["r11","rbp","rsp"]}))
+  emitI selected
 
 entrySeq :: Bool -> Bool -> Label -> SInstr
 entrySeq stack fuel (Label base) =
@@ -276,7 +278,7 @@ selectBlock cfg fn tyMap b = do
   selectTerm cfg fn b
 
 selectInstr :: X64Config -> M.Map VId Ty -> Instr -> Se ()
-selectInstr _ _ (Instr d op) = case op of
+selectInstr cfg _ (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
   OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq False True l) {siOpcode = O.Common O.TickN, siUses = [OI (fromIntegral n)]})
@@ -315,7 +317,7 @@ selectInstr _ _ (Instr d op) = case op of
   OMake tid variant fields -> def $ \rd -> do
     size <- freshV False
     emitI (li size (8 + 8 * fromIntegral (length fields)))
-    emitCall "fpr_alloc" False True [size] (Just rd)
+    emitCall "fpr_alloc" Calling.RuntimeCall [size] (Just rd)
     forM_ [(0, tid), (4, variant)] $ \(offset, value) -> do
       header <- freshV False
       emitI (li header (fromIntegral value))
@@ -330,7 +332,7 @@ selectInstr _ _ (Instr d op) = case op of
     emitI (plain (O.X64 O.LoadField) [any' rd] [any' (vreg obj), OI (8 + 8 * fromIntegral index)])
   OStrLen str -> def $ \rd -> do
     tagged <- freshV True
-    emitCall "fpr_g_strlen_call1" False True [vreg str] (Just tagged)
+    emitCall "fpr_g_strlen_call1" Calling.RuntimeCall [vreg str] (Just tagged)
     emitI (rri O.ShiftRightArithmeticImmediate rd tagged 1)
   OCharAt str index -> def $ \rd -> do
     shifted <- freshV False
@@ -338,7 +340,7 @@ selectInstr _ _ (Instr d op) = case op of
     taggedResult <- freshV True
     emitI (rri O.ShiftLeftImmediate shifted (vreg index) 1)
     emitI (rri O.OrImmediate taggedIndex shifted 1)
-    emitCall "fpr_g_charAt_call2" False True [vreg str, taggedIndex] (Just taggedResult)
+    emitCall "fpr_g_charAt_call2" Calling.RuntimeCall [vreg str, taggedIndex] (Just taggedResult)
     emitI (rri O.ShiftRightArithmeticImmediate rd taggedResult 1)
   OSymbol sym -> def (\r -> emitI (la r sym)) -- an immutable symbol address
   OFunValue n -> def (\r -> emitI (la r ("fpr_obj_" ++ mangleName n)))
@@ -436,12 +438,12 @@ selectInstr _ _ (Instr d op) = case op of
     emitI (jump done)
     emitL slow
     res <- freshV True
-    emitCall ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!=")) False True [vreg a, vreg b] (Just res)
+    emitCall ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!=")) Calling.RuntimeCall [vreg a, vreg b] (Just res)
     emitI (ldrsw r res 4)
     emitL done
   OCall c as -> do
     when (length as > arityCeiling) (refuse ("a call with more than " ++ show arityCeiling ++ " arguments"))
-    def (\r -> emitCall (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as) (Just r))
+    def (\r -> emitCall (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (Just r))
   where
     def k = case d of
       Just (v, _) -> k (vreg v)
@@ -461,7 +463,7 @@ selectInstr _ _ (Instr d op) = case op of
         fit t trap
       emitI (jump done)
       emitL trap
-      emitCall "fpr_int_overflow_kernel" False True [] Nothing
+      emitCall "fpr_int_overflow_kernel" Calling.RuntimeCall [] Nothing
       emitL done
     simdGo caps e next = case e of
       SLane -> pure (8,next)
@@ -512,10 +514,10 @@ selectInstr _ _ (Instr d op) = case op of
       if kernel then do
         zero <- freshL "kernelzero"
         when (o == Div) (emitI (cbz b zero))
-        emitCall "fpr_int_overflow_kernel" False True [] Nothing
+        emitCall "fpr_int_overflow_kernel" Calling.RuntimeCall [] Nothing
         when (o == Div) $ do
           emitL zero
-          emitCall "fpr_div_zero_kernel" False True [] Nothing
+          emitCall "fpr_div_zero_kernel" Calling.RuntimeCall [] Nothing
         -- Both entries are noreturn. Define the result on the impossible
         -- continuation as well so the allocation oracle needs no exception.
         emitI (li r 0)
@@ -529,7 +531,7 @@ selectInstr _ _ (Instr d op) = case op of
         emitI (rri O.ShiftLeftImmediate tb b 1)
         emitI (rri O.OrImmediate tb' tb 1)
         res <- freshV True
-        emitCall (primSymbol o) False True [ta', tb'] (Just res)
+        emitCall (primSymbol o) Calling.RuntimeCall [ta', tb'] (Just res)
         emitI (rri O.ShiftRightArithmeticImmediate r res 1)
       emitL done
     -- the 63-bit fit check: sign-extend the low 63 bits and compare
@@ -562,7 +564,7 @@ selectInstr _ _ (Instr d op) = case op of
       emitI (rri O.ShiftLeftImmediate tb b 1)
       emitI (rri O.OrImmediate tb' tb 1)
       res <- freshV True
-      emitCall ("fpr_g_" ++ mangleName (shiftName o) ++ "_call2") False True [ta', tb'] (Just res)
+      emitCall ("fpr_g_" ++ mangleName (shiftName o) ++ "_call2") Calling.RuntimeCall [ta', tb'] (Just res)
       emitI (rri O.ShiftRightArithmeticImmediate r res 1)
       emitL done
 
@@ -581,11 +583,11 @@ parallelMoves = go . filter (uncurry (/=))
         go ((d, t) : [(d', if s' == s then t else s') | (d', s') <- tail ms])
 
 selectTerm :: X64Config -> Fn -> Block -> Se ()
-selectTerm _ fn b = case bTerm b of
+selectTerm cfg fn b = case bTerm b of
   TRet v -> emitI (ret (vreg v))
   TBr target as
     | target == fnEntry fn -> -- a self tail transfer re-enters through the function symbol
-        emitTail (functionSymbol (fnName fn)) True False (map vreg as)
+        emitTail (functionSymbol (fnName fn)) (FprCall TicksFuel) (map vreg as)
     | otherwise -> do
         parallelMoves (zip (paramsOf target) (map vreg as))
         emitI (jump (blockLabel target))
@@ -604,7 +606,7 @@ selectTerm _ fn b = case bTerm b of
         emitI (jump (blockLabel t))
   TTailCall c as -> do
     when (length as > arityCeiling) (refuse ("a tail call with more than " ++ show arityCeiling ++ " arguments"))
-    emitTail (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as)
+    emitTail (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as)
   -- A reached dead arm calls fpr_panic with its reason. It does not
   -- return; the function's text ends here
   TUnreachable msg -> do
@@ -635,11 +637,10 @@ allocConfig self managed = AllocConfig
     acScratch = allocScratch,
     acPreserved = map r ["rbp", "rsp"],
     acArrival = \params ->
-      plain (O.Common O.Params) (zipWith fix (take 6 params) argRegs) []
-        : [plain (O.Common O.LoadCell) [OV p (Any GPR)] [OS ("fpr_x64_a" ++ show n)] | (n, p) <- take 2 (drop 6 (zip [0 :: Int ..] params))]
-        -- the ninth and later from the hart spill cells (cell j at 8*(1+j)),
-        -- the hart block read into the parameter's own register
-        ++ [plain (O.Common O.LoadSpill) [OV p (Any GPR)] [OI (fromIntegral j)] | (j, p) <- zip [0 :: Int ..] (drop 8 params)],
+      let placed=Calling.arrivalArguments Calling.X86_64 params
+      in plain (O.Common O.Params) [fix v p | (Calling.ArgumentRegister p,v)<-placed] []
+        : [plain (O.Common O.LoadCell) [any' v] [OC cell] | (Calling.NamedArgument cell,v)<-placed]
+        ++ [plain (O.Common O.LoadSpill) [any' v] [OI (toInteger j)] | (Calling.HartArgument j,v)<-placed],
     acLoad = \p ref -> plain (O.X64 O.FrameLoad) [OP p] [OF ref 0],
     acStore = \p ref -> plain (O.X64 O.FrameStore) [] [OP p, OF ref 0],
     acMove = \d s' -> plain (O.X64 O.Move) [OP d] [OP s'],
@@ -709,16 +710,16 @@ local hart fname (Label l) = gsym hart (".Ltir_" ++ mangleName fname ++ "_" ++ l
 reserveFrame :: X64Hart -> String -> Integer -> Int -> [String]
 reserveFrame hart name bytes argc =
   ["movabsq $" ++ show (bytes+8) ++ ", %r11", "cmpq %r11, %rsp", "jb " ++ slow,
-   "negq %r11", "addq %rsp, %r11"] ++ loadCellFor hart "fpr_posix_hart" "%r10"
+   "negq %r11", "addq %rsp, %r11"] ++ loadCellFor hart HartPointer "%r10"
   ++ ["cmpq $0, 456(%r10)", "je " ++ slow, "subq 456(%r10), %r11",
       "cmpq 464(%r10), %r11", "jb " ++ fast, slow ++ ":", "subq $" ++ show stageBytes ++ ", %rsp"]
   ++ ["movq %" ++ reg ++ ", " ++ slot i | (i,Phys reg) <- zip [0..] (take argc argRegs)]
   ++ concat [loadCellFor hart cell "%r10" ++ ["movq %r10, " ++ slot i] | (i,cell) <- named]
-  ++ loadCellFor hart "fpr_posix_hart" "%r10"
+  ++ loadCellFor hart HartPointer "%r10"
   ++ concat [["movq " ++ show (8*(i-7)) ++ "(%r10), %r11", "movq %r11, " ++ slot i] | i <- [8..argc-1]]
   ++ ["leaq " ++ show stageBytes ++ "(%rsp), %rdi", "movabsq $" ++ show (bytes+8) ++ ", %rsi",
       "call " ++ gsym hart "fpr_stack_reserve"]
-  ++ loadCellFor hart "fpr_posix_hart" "%r10"
+  ++ loadCellFor hart HartPointer "%r10"
   ++ concat [["movq " ++ slot i ++ ", %r11", "movq %r11, " ++ show (8*(i-7)) ++ "(%r10)"] | i <- [8..argc-1]]
   ++ concat [["movq " ++ slot i ++ ", %r11"] ++ storeCellFor hart cell "%r11" | (i,cell) <- named]
   ++ ["movq " ++ slot i ++ ", %" ++ reg | (i,Phys reg) <- zip [0..] (take argc argRegs)]
@@ -728,29 +729,32 @@ reserveFrame hart name bytes argc =
   where
     stageBytes = ((argc*8+15) `div` 16)*16+8
     slot i = show (i*8) ++ "(%rsp)"
-    named = take (max 0 (argc-6)) [(6,"fpr_x64_a6"),(7,"fpr_x64_a7")]
+    named = take (max 0 (argc-6)) [(6,ArgumentCell Calling.Argument7),(7,ArgumentCell Calling.Argument8)]
     label s = local hart name (Label ("reserve_"++s))
     slow=label "slow";fast=label "fast";same=label "same";ready=label "ready"
 
-cellOff :: String -> String
-cellOff "fpr_posix_hart" = "0"
-cellOff "fpr_x64_a6" = "8"
-cellOff "fpr_x64_a7" = "16"
-cellOff cell = error ("X64: unknown borrowed cell " ++ cell)
-loadCellFor :: X64Hart -> String -> String -> [String]
+-- The renderer receives roles, never strings to decode as protocol tags.
+data TlsCell = HartPointer | ArgumentCell Calling.ArgumentCell
+cellName :: TlsCell -> String
+cellName HartPointer="fpr_posix_hart"
+cellName (ArgumentCell cell)=Calling.cellSymbol cell
+cellOff :: TlsCell -> String
+cellOff HartPointer="0"
+cellOff (ArgumentCell cell)=show (Calling.cellOffset cell)
+loadCellFor :: X64Hart -> TlsCell -> String -> [String]
 loadCellFor hart cell dst = case hart of
-  HartTls -> ["movq %fs:" ++ cell ++ "@tpoff, " ++ dst]
+  HartTls -> ["movq %fs:" ++ cellName cell ++ "@tpoff, " ++ dst]
   HartBorrow -> ["movq fpr_g_tlsoff(%rip), " ++ dst,
                  "movq %fs:" ++ cellOff cell ++ "(" ++ dst ++ "), " ++ dst]
-  HartTlvMachO -> tlvSave ++ tlvAddress cell
+  HartTlvMachO -> tlvSave ++ tlvAddress (cellName cell)
     ++ ["movq (%rax), %rax", "movq %rax, (%rsp)"] ++ tlvRestore ++ ["movq (%rsp), " ++ dst, "leaq 32(%rsp), %rsp"]
-storeCellFor :: X64Hart -> String -> String -> [String]
+storeCellFor :: X64Hart -> TlsCell -> String -> [String]
 storeCellFor hart cell src = case hart of
-  HartTls -> ["movq " ++ src ++ ", %fs:" ++ cell ++ "@tpoff"]
+  HartTls -> ["movq " ++ src ++ ", %fs:" ++ cellName cell ++ "@tpoff"]
   HartBorrow -> let scratch = if src == "%r10" then "%r11" else "%r10" in
     ["movq fpr_g_tlsoff(%rip), " ++ scratch,
      "movq " ++ src ++ ", %fs:" ++ cellOff cell ++ "(" ++ scratch ++ ")"]
-  HartTlvMachO -> tlvSave ++ ["movq " ++ src ++ ", (%rsp)"] ++ tlvAddress cell
+  HartTlvMachO -> tlvSave ++ ["movq " ++ src ++ ", (%rsp)"] ++ tlvAddress (cellName cell)
     ++ ["movq (%rsp), %rdi", "movq %rdi, (%rax)"] ++ tlvRestore ++ ["leaq 32(%rsp), %rsp"]
 
 -- Darwin x86-64 thread-local variables are reached through a descriptor:
@@ -798,16 +802,16 @@ renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOpco
          "leaq " ++ show (lyBytes ly + 8) ++ "(%rsp), %rbp"]
       (O.X64 O.Save,[],[]) -> saveLines
       (O.Common O.Params,_,[]) -> [] -- the parameters are where the ABI put them
-      (O.Common O.LoadCell,[d],[OS cell]) -> loadCell cell (reg d)
+      (O.Common O.LoadCell,[d],[OC cell]) -> loadCell (ArgumentCell cell) (reg d)
       (O.X64 O.FrameLoad,[d],[OF ref 0]) -> ["movq " ++ slot ref ++ ", " ++ reg d]
       (O.X64 O.FrameStore,[],[s,OF ref 0]) -> ["movq " ++ reg s ++ ", " ++ slot ref]
-      (O.Common O.StoreCell,[],[s,OS cell]) -> storeCell cell (reg s)
+      (O.Common O.StoreCell,[],[s,OC cell]) -> storeCell (ArgumentCell cell) (reg s)
       -- the hart block in whichever scratch register the value is not in
       -- (a spilled value is reloaded into %r10, the allocator's first
       -- scratch: the merge, docs/2026-10-21-TYPED-IR-MERGE.md)
       (O.Common O.StoreSpill,[],[s,OI j]) -> let h = if reg s == "%r10" then "%r11" else "%r10" in
-        loadCell "fpr_posix_hart" h ++ ["movq " ++ reg s ++ ", " ++ show (8 * (1 + j)) ++ "(" ++ h ++ ")"]
-      (O.Common O.LoadSpill,[d],[OI j]) -> loadCell "fpr_posix_hart" (reg d) ++ ["movq " ++ show (8 * (1 + j)) ++ "(" ++ reg d ++ "), " ++ reg d]
+        loadCell HartPointer h ++ ["movq " ++ reg s ++ ", " ++ show (8 * (1 + j)) ++ "(" ++ h ++ ")"]
+      (O.Common O.LoadSpill,[d],[OI j]) -> loadCell HartPointer (reg d) ++ ["movq " ++ show (8 * (1 + j)) ++ "(" ++ reg d ++ "), " ++ reg d]
       (O.X64 O.Move,[d],[s]) -> ["movq " ++ reg s ++ ", " ++ reg d]
       (O.X64 O.Literal,[d],[n]) -> ["movabsq $" ++ imm n ++ ", " ++ reg d]
       (O.X64 O.Address,[d],[OS s]) -> ["leaq " ++ gsym hart s ++ "(%rip), " ++ reg d]
@@ -893,7 +897,7 @@ renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOpco
     -- The borrow block is {hart, a6, a7}; never use the app's ELF TLS offsets.
     loadCell = loadCellFor hart
     storeCell = storeCellFor hart
-    hartRead = loadCell "fpr_posix_hart" "%r10"
+    hartRead = loadCell HartPointer "%r10"
     parkArgs save = ["movq " ++ (if save then reg o ++ ", " ++ slot ref else slot ref ++ ", " ++ reg o)
       | (n, o) <- zip [0..] (siDefs i), let ref = FrameRef (entrySlot n)]
     stackCheck =

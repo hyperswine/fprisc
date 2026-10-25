@@ -65,7 +65,8 @@ the registered RV32/RV64 QEMU gates pass. No physical-board execution is claimed
 Local records use `/private/tmp/fpr-annotations-*.log` and the complete sweep's
 timing JSON. The preceding integrated native-opcode commit `9c12c6b` passed
 [hosted CI run 40225611701](https://github.com/hyperswine/fprisc/actions/runs/40225611701).
-This annotation stage requires its own hosted result after push.
+This annotation stage passed [hosted CI run 40228013834](https://github.com/hyperswine/fprisc/actions/runs/40228013834)
+at commit `4dc7acd`.
 
 Existing call conventions and symbol roles, later typed transformations,
 remaining compatibility forms/layout temporaries and source ranges/diagnostics

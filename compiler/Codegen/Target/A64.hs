@@ -60,6 +60,8 @@ module Codegen.Target.A64
     placement, allocConfig,
   ) where
 
+import qualified Codegen.Calling as Calling
+import Codegen.Calling (CallConvention(FprCall), FuelEntry(..), TransferResult(..))
 import Codegen.Allocate
 import Codegen.Bounds (Flow (..), Report (..), Tok (..), analyse, reportLine)
 import Codegen.Frame
@@ -132,7 +134,7 @@ a64RegisterFile = RegisterFile classOf reserved
 -- what a C call destroys (AAPCS64 caller-saved integer registers and the
 -- link register); x18 is the platform register and never holds a value
 callerSaved :: [Phys]
-callerSaved = map x ([0 .. 17] ++ [30]) ++ map (Phys . ("d" ++) . show) ([0..7] ++ [16..31 :: Int])
+callerSaved = Calling.callerClobbers Calling.AArch64
 
 -- the placement's scratch: caller-saved registers the runtime ABI leaves
 -- free and the expansions do not use (x16/x17 are the expansions')
@@ -248,50 +250,35 @@ cbnz r l = (plain (O.A64 A.BranchNonzero) [] [any' r, OL l]) {siControl = CondTo
 jump :: Label -> SInstr
 jump l = (plain (O.A64 A.Jump) [] [OL l]) {siControl = JumpTo l}
 
--- a direct call: arguments 1..8 fixed to x0..x7, the result to x0; the
--- callee destroys the caller-saved set; `safepoint` says its entry ticks.
--- Arguments beyond the eighth are in the hart spill cells by now
--- (`stageCells` precedes the call under the runtime word ABI)
-call :: String -> Bool -> Bool -> [VReg] -> Maybe VReg -> SInstr
-call sym safepoint runtime args res =
-  SInstr
-    { siOpcode = O.A64 A.Call,
-      siDefs = [fix r (x 0) | Just r <- [res]],
-      siUses = [OS sym] ++ zipWith fix (take 8 args) (map x [0 ..]),
-      siImplicitDefs = [],
-      siImplicitUses = [],
-      siClobbers = filter (\p -> p `notElem` [x 0 | Just _ <- [res]]) callerSaved,
-      siFlags = FlagsDef, -- nothing survives a call: the flags are destroyed too
-      siControl = Next,
-      siCalls = [Call sym safepoint runtime],
-      siAnnotation = NoAnnotation,
-      siAllocation = Nothing
-    }
+-- Direct calls use the checked entry convention for argument staging,
+-- result placement, clobbers and fuel/runtime accounting. Runtime C entries
+-- cannot acquire the private wide-argument cells of generated FP-RISC entries.
+call :: String -> CallConvention -> [VReg] -> Maybe VReg -> Se ()
+call sym convention args res = do
+  stageCells convention args
+  selected <- either refuse pure (Calling.selectTransfer Calling.AArch64 convention
+    (maybe DiscardResult (const WordResult) res) sym args res
+    ((plain (O.A64 A.Call) [] []) {siFlags=FlagsDef}))
+  emitI selected
 
 -- the return: x0 <- the value, then the epilogue
 ret :: VReg -> SInstr
 ret v = (plain (O.A64 A.Ret) [] [fix v (x 0)]) {siImplicitDefs = [x 9, x 29, x 30, Phys "sp"], siControl = Return}
 
--- a tail transfer: arguments 1..8 staged in x0..x7 (the rest in the
--- cells, stored before the teardown), the frame torn down, a jump
-tailJump :: String -> Bool -> Bool -> [VReg] -> SInstr
-tailJump sym safepoint runtime args =
-  (plain (O.Common O.TailJump) [] (OS sym : zipWith fix (take 8 args) (map x [0 ..])))
-    { siImplicitDefs = [x 9, x 29, x 30, Phys "sp"],
-      siClobbers = callerSaved,
-      siControl = Return,
-      siCalls = [Call sym safepoint runtime]
-    }
+tailJump :: String -> CallConvention -> [VReg] -> Se ()
+tailJump sym convention args = do
+  stageCells convention args
+  selected <- either refuse pure (Calling.selectTransfer Calling.AArch64 convention TailTransfer sym args Nothing
+    ((plain (O.Common O.TailJump) [] []) {siImplicitDefs=[x 9,x 29,x 30,Phys "sp"]}))
+  emitI selected
 
--- arguments 9.. of a call or transfer into the per-hart spill cells
--- (docs/2026-10-21-NATIVE-IR-CONTRACTS.md "Arguments 9-64": cell j at
--- W*(1+j) in the hart block, fuel at 0): the hart block is read into x9
--- for each store, after every argument is evaluated and with no call
--- between the stores and the transfer, so nothing can touch the cells
--- before the callee's prologue copies them
-stageCells :: [VReg] -> Se ()
-stageCells args = forM_ (zip [0 :: Int ..] (drop 8 args)) $ \(j, v) ->
-  emitI ((plain (O.Common O.StoreSpill) [] [any' v, OI (fromIntegral j)]) {siImplicitDefs = [x 9, x 16, x 17]})
+-- All values have been evaluated before staging. No call separates these
+-- stores from the transfer, so the callee copies them before its entry calls.
+stageCells :: CallConvention -> [VReg] -> Se ()
+stageCells convention args = do
+  staged <- either refuse pure (Calling.stagedArguments Calling.AArch64 convention args)
+  forM_ [(j,v) | (Calling.HartArgument j,v)<-staged] $ \(j,v) ->
+    emitI ((plain (O.Common O.StoreSpill) [] [any' v,OI (toInteger j)]) {siImplicitDefs=[x 9,x 16,x 17]})
 
 -- the arrival of parameter 9+j: cell j into the parameter's register,
 -- read before the entry sequence's calls can deschedule the actor (the
@@ -376,7 +363,7 @@ selectBlock cfg fn tyMap b = do
   selectTerm cfg fn b
 
 selectInstr :: A64Config -> M.Map VId Ty -> Instr -> Se ()
-selectInstr _ _ (Instr d op) = case op of
+selectInstr cfg _ (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
   OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
   OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq False True l) {siOpcode = O.Common O.TickN, siUses = [OI (fromIntegral n)]})
@@ -411,7 +398,7 @@ selectInstr _ _ (Instr d op) = case op of
   OMake tid variant fields -> def $ \rd -> do
     size <- freshV False
     emitI (li size (8 + 8 * fromIntegral (length fields)))
-    emitI (call "fpr_alloc" False True [size] (Just rd))
+    call "fpr_alloc" Calling.RuntimeCall [size] (Just rd)
     forM_ [(0, tid), (4, variant)] $ \(offset, value) -> do
       header <- freshV False
       emitI (li header (fromIntegral value))
@@ -426,7 +413,7 @@ selectInstr _ _ (Instr d op) = case op of
     emitI (plain (O.A64 A.LoadField) [any' rd] [any' (vreg obj), OI (8 + 8 * fromIntegral index)])
   OStrLen str -> def $ \rd -> do
     tagged <- freshV True
-    emitI (call "fpr_g_strlen_call1" False True [vreg str] (Just tagged))
+    call "fpr_g_strlen_call1" Calling.RuntimeCall [vreg str] (Just tagged)
     emitI (rri A.ShiftRightArithmeticImmediate rd tagged 1)
   OCharAt str index -> def $ \rd -> do
     shifted <- freshV False
@@ -434,7 +421,7 @@ selectInstr _ _ (Instr d op) = case op of
     taggedResult <- freshV True
     emitI (rri A.ShiftLeftImmediate shifted (vreg index) 1)
     emitI (rri A.OrImmediate taggedIndex shifted 1)
-    emitI (call "fpr_g_charAt_call2" False True [vreg str, taggedIndex] (Just taggedResult))
+    call "fpr_g_charAt_call2" Calling.RuntimeCall [vreg str, taggedIndex] (Just taggedResult)
     emitI (rri A.ShiftRightArithmeticImmediate rd taggedResult 1)
   OSymbol sym -> def (\r -> emitI (la r sym)) -- an immutable symbol address
   OFunValue n -> def (\r -> emitI (la r ("fpr_obj_" ++ mangleName n)))
@@ -534,13 +521,12 @@ selectInstr _ _ (Instr d op) = case op of
     emitI (jump done)
     emitL slow
     res <- freshV True
-    emitI (call ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!=")) False True [vreg a, vreg b] (Just res))
+    call ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!=")) Calling.RuntimeCall [vreg a, vreg b] (Just res)
     emitI (ldrsw r res 4)
     emitL done
   OCall c as -> do
     when (length as > arityCeiling) (refuse ("a call with more than " ++ show arityCeiling ++ " arguments"))
-    stageCells (map vreg as)
-    def (\r -> emitI (call (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as) (Just r)))
+    def (\r -> call (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as) (Just r))
   where
     def k = case d of
       Just (v, _) -> k (vreg v)
@@ -565,7 +551,7 @@ selectInstr _ _ (Instr d op) = case op of
         emitI (bcond O.NotEqual trap)
       emitI (jump done)
       emitL trap
-      emitI (call "fpr_int_overflow_kernel" False True [] Nothing)
+      call "fpr_int_overflow_kernel" Calling.RuntimeCall [] Nothing
       emitL done
     simdGo caps e next = case e of
       SLane -> pure (16, next)
@@ -632,10 +618,10 @@ selectInstr _ _ (Instr d op) = case op of
       if kernel then do
         zero <- freshL "kernelzero"
         when (o == Div) (emitI (cbz b zero))
-        emitI (call "fpr_int_overflow_kernel" False True [] Nothing)
+        call "fpr_int_overflow_kernel" Calling.RuntimeCall [] Nothing
         when (o == Div) $ do
           emitL zero
-          emitI (call "fpr_div_zero_kernel" False True [] Nothing)
+          call "fpr_div_zero_kernel" Calling.RuntimeCall [] Nothing
         -- Both entries are noreturn. Define the result on the impossible
         -- continuation as well so the allocation oracle needs no exception.
         emitI (li r 0)
@@ -649,7 +635,7 @@ selectInstr _ _ (Instr d op) = case op of
         emitI (rri A.ShiftLeftImmediate tb b 1)
         emitI (rri A.OrImmediate tb' tb 1)
         res <- freshV True
-        emitI (call (primSymbol o) False True [ta', tb'] (Just res))
+        call (primSymbol o) Calling.RuntimeCall [ta', tb'] (Just res)
         emitI (rri A.ShiftRightArithmeticImmediate r res 1)
       emitL done
     -- the 63-bit fit check: sign-extend the low 63 bits and compare
@@ -683,7 +669,7 @@ selectInstr _ _ (Instr d op) = case op of
       emitI (rri A.ShiftLeftImmediate tb b 1)
       emitI (rri A.OrImmediate tb' tb 1)
       res <- freshV True
-      emitI (call ("fpr_g_" ++ mangleName (shiftName o) ++ "_call2") False True [ta', tb'] (Just res))
+      call ("fpr_g_" ++ mangleName (shiftName o) ++ "_call2") Calling.RuntimeCall [ta', tb'] (Just res)
       emitI (rri A.ShiftRightArithmeticImmediate r res 1)
       emitL done
 
@@ -702,12 +688,11 @@ parallelMoves = go . filter (uncurry (/=))
         go ((d, t) : [(d', if s' == s then t else s') | (d', s') <- tail ms])
 
 selectTerm :: A64Config -> Fn -> Block -> Se ()
-selectTerm _ fn b = case bTerm b of
+selectTerm cfg fn b = case bTerm b of
   TRet v -> emitI (ret (vreg v))
   TBr target as
     | target == fnEntry fn -> do -- the self tail call: the legacy transfer re-enters the function through its symbol
-        stageCells (map vreg as)
-        emitI (tailJump (functionSymbol (fnName fn)) True False (map vreg as))
+        tailJump (functionSymbol (fnName fn)) (FprCall TicksFuel) (map vreg as)
     | otherwise -> do
         parallelMoves (zip (paramsOf target) (map vreg as))
         emitI (jump (blockLabel target))
@@ -729,8 +714,7 @@ selectTerm _ fn b = case bTerm b of
         emitI (jump (blockLabel t))
   TTailCall c as -> do
     when (length as > arityCeiling) (refuse ("a tail call with more than " ++ show arityCeiling ++ " arguments"))
-    stageCells (map vreg as)
-    emitI (tailJump (calleeSymbol c) (not (isForeign c)) (isForeign c) (map vreg as))
+    tailJump (calleeSymbol c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg as)
   -- a dead arm: the legacy trap if ever reached (`la a0, <str>; call
   -- fpr_panic`, which does not return); the function's text ends here
   TUnreachable msg -> do
@@ -770,7 +754,9 @@ allocConfig self managed =
       acScratch = allocScratch ++ [Phys "d0", Phys "d1"],
       acPreserved = [x 29, Phys "sp", x 28],
       -- x0..x7, then the ninth and later from the hart spill cells
-      acArrival = \params -> plain (O.Common O.Params) (zipWith fix (take 8 params) (map x [0 ..])) [] : zipWith loadSpill (drop 8 params) [0 ..],
+      acArrival = \params -> let placed=Calling.arrivalArguments Calling.AArch64 params
+        in plain (O.Common O.Params) [fix v p | (Calling.ArgumentRegister p,v)<-placed] []
+          : [loadSpill v j | (Calling.HartArgument j,v)<-placed],
       acLoad = \p ref -> plain (O.A64 A.FrameLoad) [OP p] [OF ref 0],
       acStore = \p ref -> plain (O.A64 A.FrameStore) [] [OP p, OF ref 0],
       acMove = \d s' -> plain (O.A64 (if rfClassOf a64RegisterFile d == Just FPR || rfClassOf a64RegisterFile s' == Just FPR then A.FloatMove else A.Move)) [OP d] [OP s'],

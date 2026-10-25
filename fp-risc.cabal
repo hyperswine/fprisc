@@ -70,6 +70,8 @@ executable fpr
       Codegen.Policy
       Codegen.Selected
       Codegen.Annotation
+      Codegen.Calling
+      Codegen.Calling.Types
       Codegen.Opcode
       Codegen.Opcode.Types
       Codegen.Opcode.X64

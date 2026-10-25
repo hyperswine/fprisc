@@ -40,6 +40,7 @@ module Codegen.Selected
     RegisterFile (..), plain, plainOpcode, siOp, checkFn, itemLabels, instrVRegs, operandVReg,
   ) where
 
+import Codegen.Calling.Types (Transfer, ArgumentCell)
 import Codegen.Frame (FrameRef)
 import qualified Codegen.Opcode as Op
 import Control.Monad (forM_, unless, when)
@@ -67,6 +68,7 @@ data Operand
   | OP Phys -- a named physical register (sp, the frame pointer, the hart register)
   | OI Integer -- an immediate
   | OS String -- a symbol: a function, a runtime entry, a data object, a TLS cell
+  | OC ArgumentCell -- a private x64 argument cell, not an arbitrary linker symbol
   | OL Label -- a function-local label
   | OF FrameRef Int -- a frame object plus a byte offset, symbolic until layout
   deriving (Eq, Ord, Show)
@@ -111,6 +113,7 @@ data SInstr = SInstr
     siControl :: Control,
     siCalls :: [Call], -- in order; empty for an ordinary instruction
     siAnnotation :: Annotation,
+    siTransfer :: Maybe Transfer, -- physical entry/argument/result contract for a direct transfer
     siAllocation :: Maybe AllocationEvent
   }
   deriving (Eq, Ord, Show)
@@ -135,7 +138,7 @@ plain :: String -> [Operand] -> [Operand] -> SInstr
 plain op = plainOpcode (Op.textOpcode op)
 
 plainOpcode :: Op.Opcode -> [Operand] -> [Operand] -> SInstr
-plainOpcode op ds us = SInstr op ds us [] [] [] FlagsNone Next [] NoAnnotation Nothing
+plainOpcode op ds us = SInstr op ds us [] [] [] FlagsNone Next [] NoAnnotation Nothing Nothing
 
 -- Diagnostic spelling only. Typed selectors/renderers use siOpcode.
 siOp :: SInstr -> String

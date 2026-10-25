@@ -8,6 +8,7 @@
 -- honours the constraints, the bound analysis finds the missing safepoint,
 -- and the AArch64 pipeline runs end to end on a hand-written function.
 -- Run: cabal exec -- runghc -w -icompiler tests/SelectedIR.hs
+import qualified Codegen.Calling as Calling
 import Codegen.Bounds
 import Codegen.Frame
 import Codegen.IR
@@ -88,10 +89,11 @@ align :: SInstr
 align = (plain "x64.callalign" [] []) {siImplicitDefs = [r "rsp"]}
 
 storeA6 :: SInstr
-storeA6 = plain "x64.store.cell" [] [gpr 0, OS "fpr_x64_a6"]
+storeA6 = plain "x64.store.cell" [] [gpr 0, OC Calling.Argument7]
 
 main :: IO ()
 main = do
+  callingContracts
   let nativeTick=(plainOpcode (Opcode.Common Opcode.EntryTick) [] [])
         {siAnnotation=EntryLabels (Label "annotation-entry"),siFlags=FlagsDef,
          siCalls=[Call "fpr_fuel_exhausted" True False]}
@@ -157,9 +159,9 @@ main = do
     (rvForms [I (rvOp ROp.Load32 [gpr 2] [gpr 0])])
   refused "RV float tree nodes remain within scratch registers" "opcode/operand"
     (rvForms [I (rvOp (ROp.TreeNode Opcode.Float32 FAdd) [] [OI 7])])
-  refused "RV call result must arrive in a0" "register bank"
+  refused "RV call result must arrive in a0" "result register"
     (rvForms [I ((rvOp ROp.Call [OV (v 2) (Fix (Phys "a1"))] [OS "callee"])
-      {siCalls=[Call "callee" False True]})])
+      {siCalls=[Call "callee" False True],siTransfer=Just (Calling.Transfer Calling.RuntimeCall 0 Calling.WordResult)})])
   refused "x64 cannot render an A64 operation" "opcode/operand"
     (checkForms "forms" [I aFloat])
   let typedMove=plainOpcode (Opcode.X64 Opcode.Move) [gpr 2] [gpr 0]
@@ -191,7 +193,7 @@ main = do
     (checkForms "typed" [I typedDivide {siImplicitDefs=[]}])
   refused "x64 arithmetic cannot lose its two-address tie" "register constraint"
     (checkForms "typed" [I typedAdd {siDefs=[gpr 2]}])
-  refused "x64 call metadata cannot silently disappear from bound accounting" "call metadata"
+  refused "x64 calls require a complete transfer contract" "missing transfer contract"
     (checkForms "typed" [I ((plainOpcode (Opcode.X64 Opcode.Call) [] [OS "target"]) {siFlags=FlagsDef})])
   let typedEntry=I ((plainOpcode (Opcode.Common Opcode.EntryCheckTick) [] [])
         {siAnnotation=EntryLabels (Label "typed-entry"),siFlags=FlagsDef,siCalls=[Call "fpr_stack_grow" False True,Call "fpr_fuel_exhausted" True False]})
@@ -398,3 +400,79 @@ main = do
                        ILabel (Label "join"), I ret' ] == Nothing)
   check "no saved register, no change" (shrinkWrap [] arms == Nothing)
   putStrLn "SelectedIR: x86-64 constraints and refusals, flag-neutral placement, frame layout, conditional-path bounds, A64 pipeline (Mach-O x28, ELF TLS, Mach-O TLV), direct x64 pipeline, sized A64 frames and explicit profile/x64 limits, shrink-wrap placement and refusals: PASS"
+
+-- The contract checker runs on both sides of allocation. These cases exercise
+-- the ABI boundaries independently of renderer spelling and allocation choices.
+callingContracts :: IO ()
+callingContracts = do
+  let native=Calling.FprCall Calling.TicksFuel
+      quiet=Calling.FprCall Calling.NoFuel
+      abiBank Calling.X86_64=map Phys ["rdi","rsi","rdx","rcx","r8","r9"]
+      abiBank Calling.AArch64=map (Phys . ("x"++) . show) [0::Int ..7]
+      abiBank Calling.RiscV=map (Phys . ("a"++) . show) [0::Int ..7]
+      transfers abi=Calling.checkTransfers abi "calling-test"
+      select abi convention result n= either error id (Calling.selectTransfer abi convention result "callee"
+        (map VReg [0..n-1]) (if result==Calling.WordResult then Just (VReg n) else Nothing)
+        (plainOpcode (if result==Calling.TailTransfer then Opcode.Common Opcode.TailJump else case abi of
+          Calling.X86_64->Opcode.X64 Opcode.Call
+          Calling.AArch64->Opcode.A64 AOp.Call
+          Calling.RiscV->Opcode.RV ROp.Call) [] []))
+      -- Hard-code the established cell positions rather than regenerating them
+      -- from the contract under test.
+      stores abi n= [I (plainOpcode (Opcode.Common Opcode.StoreCell) [] [gpr j,OC cell])
+                    | abi==Calling.X86_64,(j,cell)<-[(6,Calling.Argument7),(7,Calling.Argument8)],j<n]
+                 ++ [I (plainOpcode (Opcode.Common Opcode.StoreSpill) [] [gpr j,OI (toInteger (j-8))]) | j<-[8..n-1]]
+      physical i=i {siUses=map placed (siUses i),siDefs=map placed (siDefs i)}
+      placed (OV _ (Fix p))=OP p
+      placed other=other
+  check "logical callee kinds retain their ABI through lowering"
+    (all ((==Calling.FprWords) . calleeConvention) [Callee "a" Local [] TVal,Callee "b" Imported [] TVal,Callee "c" (Generated "entry") [] TVal]
+      && calleeConvention (Callee "d" (Foreign "c_entry") [] TVal)==Calling.CWords)
+  forM_ [Calling.X86_64,Calling.AArch64,Calling.RiscV] $ \abi->do
+    check "argument registers have the established ABI order" (Calling.argumentRegisters abi==abiBank abi)
+    forM_ [native,quiet] $ \convention->
+      forM_ [0,6,7,8,9,64] $ \n->
+        forM_ [Calling.WordResult,Calling.DiscardResult,Calling.TailTransfer] $ \result->do
+          let selected=select abi convention result n
+          check "native arity boundaries survive selection and physical placement"
+            (transfers abi (stores abi n++[I selected])==Right ()
+             && transfers abi (stores abi n++[I (physical selected)])==Right ())
+    let c=select abi Calling.RuntimeCall Calling.WordResult (length (abiBank abi))
+    check "supported runtime calls use the native register bank" (transfers abi [I c]==Right ())
+    refused "runtime C stack arguments are not private FPR cells" "unsupported argument count"
+      (Calling.argumentPlaces abi Calling.RuntimeCall (1+length (abiBank abi)))
+    refused "generated call cannot exceed the runtime arity ceiling" "unsupported argument count"
+      (Calling.argumentPlaces abi native 65)
+    refused "negative arity is not an empty signature" "unsupported argument count"
+      (Calling.argumentPlaces abi native (-1))
+    let wide=select abi native Calling.WordResult 9
+        staged=stores abi 9
+        small=select abi native Calling.WordResult 1
+    refused "wide calls cannot lose a cell store" "staged argument cells"
+      (transfers abi (drop 1 staged++[I wide]))
+    refused "duplicate argument cells are not accepted" "staged argument cells"
+      (transfers abi (staged++staged++[I wide]))
+    refused "staged arguments cannot cross a call" "staged argument cells"
+      (transfers abi (staged++[I c,I wide]))
+    refused "staged arguments cannot cross an entry safepoint" "staged argument cells"
+      (transfers abi (staged++[I ((plain "tick" [] []) {siCalls=[Call "tick" True False]}),I wide]))
+    refused "staged arguments cannot cross a branch label" "staged argument cells"
+      (transfers abi (staged++[ILabel (Label "elsewhere"),I wide]))
+    refused "fixed argument bank is authoritative" "argument register"
+      (transfers abi [I small {siUses=[OS "callee",gpr 0]}])
+    refused "clobbers cannot lose a volatile register" "clobber set"
+      (transfers abi [I small {siClobbers=drop 1 (siClobbers small)}])
+    refused "runtime accounting cannot replace a generated fuel event" "call event"
+      (transfers abi [I small {siCalls=[Call "callee" False True]}])
+    refused "transfer result mode agrees with control flow" "tail/return"
+      (transfers abi [I small {siControl=Return}])
+    refused "call contract cannot annotate arithmetic" "non-transfer"
+      (transfers abi [I small {siOpcode=Opcode.Common Opcode.Params}])
+    refused "a direct call cannot lose its convention" "missing transfer"
+      (transfers abi [I small {siTransfer=Nothing}])
+  refused "linker symbols cannot masquerade as x64 argument cells" "opcode/operand"
+    (checkForms "cells" [I (plainOpcode (Opcode.Common Opcode.LoadCell) [gpr 0] [OS "fpr_x64_a6"])])
+  check "borrowed x64 cells keep the runtime TLS block offsets"
+    (map Calling.cellOffset [Calling.Argument7,Calling.Argument8]==[8,16])
+  refused "returning result is not silently discarded" "inconsistent result"
+    (Calling.selectTransfer Calling.X86_64 native Calling.TailTransfer "callee" [] (Just (VReg 0)) (plain "call" [] []))

@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 -- RV32/RV64 selected operands. This ISA has no condition-flag dependency.
 module Codegen.Target.RV.Forms (checkForms) where
+import qualified Codegen.Calling as Calling
 import Codegen.Selected
 import Codegen.Annotation
 import Codegen.Target.Forms
@@ -10,6 +11,7 @@ import Control.Monad (unless,forM_)
 
 checkForms rf owner items=do
   checkAnnotations AlwaysRestores owner items
+  Calling.checkTransfers Calling.RiscV owner items
   forM_ [i | I i<-items] $ \i->do
     let bad why=Left ("selected RISC-V "++owner++" "++siOp i++": "++why)
         require why yes=unless yes (bad why)
