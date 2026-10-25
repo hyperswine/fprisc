@@ -7,6 +7,7 @@ import Type.Syntax (Type(..), Row(..), Scheme(..))
 import Control.Monad (unless, foldM)
 import Type.Relation
 import Data.List (nub,sort)
+import Compiler.VectorLayout (VectorBuilder(..),validLayout)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -159,6 +160,24 @@ verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
         require "match fallback type" (sameType (exprType e) (exprType fallback))
         check env u' fallback
       Fail _ -> pure used
+      LayoutLiteral spec -> do
+        case exprType e of
+          TLayout element->require "layout evidence descriptor/type" (validLayout element spec)
+          _->bad "layout evidence requires its element type"
+        pure used
+      VectorBuild builder evidence -> do
+        u<-check env used evidence
+        element<-case exprType evidence of TLayout t->pure t; _->bad "vector builder requires layout evidence"
+        let vector t=TAp (TC "Vector") t
+        case builder of
+          BuildEmpty->require "vector allocation layout/result type" (sameType (exprType e) (vector element))
+          BuildFromList->require "vector from-list layout/result type"
+            (sameType (exprType e) (TFn (TAp (TC "List") element) (vector element)))
+          BuildMap->case exprType e of
+            TFn (TFn input output) (TFn v result)->require "vector map layout/result type"
+              (sameType output element && sameType v (vector input) && sameType result (vector element))
+            _->bad "vector map function type"
+        pure u
       Note body -> do
         u <- check env used body
         require "note changes type" (sameType (exprType body) (exprType e))

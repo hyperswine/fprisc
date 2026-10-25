@@ -11,6 +11,7 @@ import Core.Identity
 import Type.Syntax (Type(..), Scheme(..))
 import Ownership.Shape (LShape)
 import qualified Data.Map.Strict as M
+import Compiler.VectorLayout (VectorBuilder)
 
 data Binder = Binder
   { binderId :: !BinderId, binderName :: String,
@@ -48,6 +49,8 @@ data Node
   | JoinCall CodeId [BinderId] [Expr]
   | MatchTail MatchStyle [Expr] [Alternative] Expr
   | Fail String
+  | LayoutLiteral String
+  | VectorBuild VectorBuilder Expr
   deriving (Show)
 -- Layout copies retain opaque row fields without inventing language types for
 -- them. Only replacements contain expressions, each with its checked type.

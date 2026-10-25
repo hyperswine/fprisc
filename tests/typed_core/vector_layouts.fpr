@@ -1,0 +1,31 @@
+unsafe base.
+make x = Vec.push x (Vec.new Unit).
+wrap x = make x.
+two x y = (Vec.push x (Vec.new Unit),Vec.push y (Vec.new Unit)).
+pair x y = (wrap x,wrap y).
+from xs = Vec.fromList xs.
+convert f v = Vec.map f v.
+capture x = fn u -> Vec.push x (Vec.new Unit).
+capturePair seed = build x = Vec.push (seed,x) (Vec.new Unit); (build 1,build True).
+local n = build x = Vec.push x (Vec.new Unit); build n.
+copies x n = if n == 0 then Vec.new Unit else Vec.push x (copies x (n - 1)).
+shadow from = from + 1.
+localShadow n = make = 7; make + n.
+explicit u = Vec.newAs "d".
+main =
+  (a,b) = two 2.5 8;
+  (x,a) = Vec.at 0 a; (y,b) = Vec.at 0 b;
+  _ = Vec.free a; _ = Vec.free b;
+  (a,b) = pair 3.5 9;
+  (p,a) = Vec.at 0 a; (q,b) = Vec.at 0 b;
+  _ = Vec.free a; _ = Vec.free b;
+  f = capture 4.5; (z,v) = Vec.at 0 (f Unit); _ = Vec.free v;
+  (va,vb) = capturePair 8.5;
+  ((na,ia),va) = Vec.at 0 va; ((nb,ib),vb) = Vec.at 0 vb;
+  _ = Vec.free va; _ = Vec.free vb;
+  (l,v) = Vec.at 0 (local "ok"); _ = Vec.free v;
+  (c,v) = Vec.at 2 (copies 5.5 3); _ = Vec.free v;
+  (s,v) = Vec.at 0 (from [6.5]); _ = Vec.free v;
+  (m,v) = Vec.at 0 (convert (fn n -> F64.ofInt n) (Vec.iota 2)); _ = Vec.free v;
+  v = Vec.push 7.5 (explicit Unit); (e,v) = Vec.at 0 v; _ = Vec.free v;
+  print "typed-layouts {x} {y} {p} {q} {z} {l} {c} {s} {m} {e} {shadow 10} {localShadow 2} {na} {ia} {nb} {ib}".

@@ -14,7 +14,47 @@ from x64_probe import adapt, borrowed_oracle, host, link, run
 ROOT=Path(__file__).resolve().parents[1]
 FIX=ROOT/'tests/typed_ir'
 
+def oracle_bodies(bodies, source):
+    """Retain C entry points and their actual assembly dependencies."""
+    symbols={}
+    for index,(name,body) in enumerate(bodies):
+        labels=re.findall(r'(?m)^(fpr_[A-Za-z0-9_]+):',body)
+        assert labels, ('no entry label',name)
+        for label in labels:
+            assert label not in symbols, ('duplicate entry label',label)
+            symbols[label]=index
+    pending=set(re.findall(r'\bfpr_fn_[A-Za-z0-9_]+(?=\s*\()',source))
+    assert pending and pending <= symbols.keys(), ('missing oracle entries',pending-symbols.keys())
+    selected=set()
+    while pending:
+        symbol=pending.pop()
+        index=symbols[symbol]
+        if index in selected:
+            continue
+        selected.add(index)
+        body=bodies[index][1]
+        references=set(re.findall(r'\bfpr_[A-Za-z0-9_]+',body))
+        references.update('fpr_fn_'+name for name in re.findall(r'\bfpr_obj_([A-Za-z0-9_]+)',body))
+        pending.update(references & symbols.keys())
+    return [body for index,body in enumerate(bodies) if index in selected]
+
+def check_oracle_scope():
+    fixture=[('probe (arity 1)','fpr_fn_probe:\n call fpr_fn_private\n la fpr_obj_callback\n'),
+             ('$typed_lifted_42 (arity 1)','fpr_fn_private:\n ret\n'),
+             ('$typed_recursive_9 (arity 1)','fpr_fn_callback:\n ret\n'),
+             ('main (arity 0)','fpr_fn_main:\n call fpr_fn_constructor\n'),
+             ('$typed_lifted_43 (arity 1)','fpr_fn_constructor:\n call fpr_g_Vec_newAs\n')]
+    chosen=oracle_bodies(fixture,'extern V fpr_fn_probe(V);')
+    assert [name for name,_ in chosen]==[name for name,_ in fixture[:3]]
+    try:
+        oracle_bodies(fixture,'extern V fpr_fn_missing(V);')
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError('missing C entry point was accepted')
+
 def main():
+    check_oracle_scope()
     ap=argparse.ArgumentParser()
     ap.add_argument('--require-execution',action='store_true',help='require x64 and both RV widths')
     args=ap.parse_args()
@@ -102,16 +142,10 @@ def check_targets(env,tmp,args,fixture,oracle_source,kernel_count,trap_count,flo
         assert '# typed IR: no translation' in text,target
         assert 'fpr_ufn_' not in text,target
         bodies=re.findall(r'(?ms)^# fn ([^\n]+)\n(.*?)(?=^# (?:wcet|native-insns-v1):)',text)
-        # The fixture's filler (with its loop region's inner and cycle
-        # functions) and lifted layout constructor belong only to hosted
-        # main; the C oracle constructs descriptors independently.
-        def own(name):
-            base=name.split()[0]
-            for pre in ('$loop.in.','$loop.cycle.'):
-                if base.startswith(pre): base=base[len(pre):]
-            return base
-        chosen=[(name,body) for name,body in bodies
-                if own(name) not in ('main','fill') and not name.startswith('lifted_')]
+        # The C oracle constructs descriptors independently. Keep the entry
+        # points it calls and their dependencies, regardless of private names;
+        # hosted main/fill/layout constructors are not standalone C roots.
+        chosen=oracle_bodies(bodies,oracle_source)
         kernels=[name for name,_ in chosen if name.startswith('$vkernel:fpr_vspec_')]
         assert len(kernels)==kernel_count,(target,kernels)
         print(f'{target}: {kernel_count} typed kernel CFGs; no legacy assembly PASS',flush=True)

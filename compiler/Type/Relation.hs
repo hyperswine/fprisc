@@ -13,6 +13,7 @@ sameType a b = key a == key b
       TAp x y -> TAp (key x) (key y)
       TFn x y -> TFn (key x) (key y)
       TTupT xs -> TTupT (map key xs)
+      TLayout x -> TLayout (key x)
       TRec r -> let (fs,tail')=fields r in TRec (foldr (uncurry RExt) tail' (sortOn fst fs))
       _ -> t
     fields (RExt n t rest) = let (fs,tail')=fields rest in ((n,key t):fs,tail')
@@ -37,6 +38,7 @@ instanceOf (Forall qs rs template) actual = case go M.empty M.empty template act
     go ts rows (TTupT xs) (TTupT ys) | length xs == length ys =
       foldM (\(t,r) (a,b) -> go t r a b) (ts,rows) (zip xs ys)
     go ts rows (TRec a) (TRec b) = row ts rows a b
+    go ts rows (TLayout a) (TLayout b) = go ts rows a b
     go ts rows a b | sameType a b = Just (ts,rows)
     go _ _ _ _ = Nothing
     row ts rows a b = do

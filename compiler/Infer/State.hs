@@ -8,6 +8,7 @@ import Struct (Sigs)
 import Diagnostic.Syntax (Diagnostic)
 import Source.Span (SourceOffset)
 import Infer.Pattern (PatternSite, PatternInfo)
+import Compiler.VectorLayout (LayoutContract)
 import qualified Infer.Evidence as Evidence
 import qualified Data.Map.Strict as M
 import qualified Data.IntMap.Strict as IM
@@ -44,6 +45,9 @@ data IEnv = IEnv
                                      -- at least one user type): resolution may
                                      -- pick a two-typed operator global
     iVecPlans :: M.Map Name [Type], -- hidden layout requirements of native bindings
+    iLocalLayoutSchemes :: M.Map Name Scheme,
+    iLocalLayoutBindings :: M.Map Name BinderId,
+    iLayoutContracts :: M.Map Name LayoutContract,
     iVecRefs :: IM.IntMap [Type], -- requirements instantiated at each reference
     iVecOwners :: IM.IntMap Name,
     iDefTypes :: M.Map Name Type,
@@ -94,6 +98,7 @@ initialIEnv capture = IEnv
     iSites=IM.empty, iSiteExpressions=IM.empty, iSiteMarks=IM.empty, iCarriers=IM.empty,
     iHere=Nothing, iCurrentOwner=Nothing, iSiteOwners=IM.empty, iPairs=IM.empty, iVecPlans=M.empty,
     iVecRefs=IM.empty, iVecOwners=IM.empty, iDefTypes=M.empty,
+    iLocalLayoutSchemes=M.empty, iLocalLayoutBindings=M.empty, iLayoutContracts=M.empty,
     iOperatorScopes=IM.empty, iCarrierChoices=IM.empty,
     iInterfaces=[], iEvidenceBuilder=Evidence.emptyBuilder <$> capture,
     iDeferredDeclarations=[], iLinSigs=[], iPatterns=M.empty, iBinderTargets=M.empty, iConstructorSchemes=M.empty }

@@ -121,6 +121,7 @@ executable fpr
       Frontend.Desugar.Checked
       Type.Syntax
       Type.Relation
+      Compiler.VectorLayout
       Inline
       ReceiveTurns
       Mono

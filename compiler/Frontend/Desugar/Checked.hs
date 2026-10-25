@@ -11,7 +11,8 @@ import qualified Core.Typed.Syntax as T
 import Core.Typed.Erase (Layout(..),eraseFunctionWith)
 import Core.Typed.Close
 import Core.Typed.Layout (planFunction,plannedFunction)
-import Core.Typed.Verify (instanceOf)
+import Core.Typed.Verify (instanceOf,sameType)
+import Compiler.VectorLayout
 import Core.Syntax (Core,Prog)
 import Type.Syntax (Type(..),Scheme(..))
 import Ownership.Shape (LShape(..))
@@ -34,12 +35,13 @@ import qualified Data.Set as S
 data PlanningProblem = Deferred String | Corrupt String
 
 data CheckedPlans = Plans Namespace T.TypeContext (M.Map String Plan) [(String,String)]
-data Plan = Plan [Clause] [([SPat],[SGuard],SExpr)]
+data Plan = Plan [T.Binder] [Clause] [([SPat],[SGuard],SExpr)]
 data Clause = Clause [T.Pattern] [GuardPlan] EPlan
 data GuardPlan = Boolean EPlan | Matching T.Pattern EPlan
 data EPlan = EP E.ExprFact PNode
 data PNode = Ref T.Reference | LitInt Integer | LitString String | LitAtom String
   | Application EPlan EPlan | Lambda [T.Binder] EPlan
+  | HiddenReference T.Reference [T.Expr] | VectorConstructor VectorBuilder T.Expr
   | Binding T.Binder [T.Binder] EPlan EPlan | PatternBinding T.Pattern EPlan EPlan
   | RecursiveBinding T.Binder [T.Binder] EPlan EPlan
   | Pipe EPlan EPlan | Sequencing EPlan EPlan | Call2 String EPlan EPlan
@@ -69,9 +71,27 @@ prepareChecked result = do
       roots=M.fromListWith (flip (++)) [(owner,[e]) | uid<-E.evidenceRoots evidence,Just e<-[M.lookup uid facts],Just owner<-[E.expressionOwner e]]
       groups=M.fromListWith (flip (++)) [(n,[(ps,gs,b)]) | TBind n ps gs b<-Struct.erasePSig (inferenceTops result)]
       site key=maybe (corrupt ("missing checked pattern at "++show key)) Right (M.lookup key (inferencePatterns result))
+      layoutContracts=inferenceLayoutContracts result
+      namespace=case E.evidenceNamespace evidence of Namespace ns->ns
+      hiddenFor name=case M.lookup name layoutContracts of
+        Nothing->[]
+        Just contract->[T.Binder (BinderId (Namespace (namespace++"/layout-parameters/"++name)) index)
+          (layoutParameterName (LayoutSlot name index)) (Forall [] [] (TLayout ty)) LU
+          | (index,ty)<-zip [0..] (layoutBodyRequirements contract)]
+      hiddenBinders=M.fromList [(LayoutSlot name index,b) | name<-M.keys layoutContracts,(index,b)<-zip [0..] (hiddenFor name)]
+      layoutArgument proof=case proof of
+        StaticLayout ty spec->pure (T.Expr (TLayout ty) LU T.Generated Nothing (T.LayoutLiteral spec))
+        ForwardLayout ty slot->do
+          b<-maybe (corrupt "missing layout parameter identity") pure (M.lookup slot hiddenBinders)
+          unless (sameType (T.binderType b) (TLayout ty)) (corrupt "forwarded layout parameter type mismatch")
+          pure (T.Expr (TLayout ty) LU T.Generated Nothing (T.Var (T.Local (T.binderId b))))
       binder uid=case M.lookup uid binders of
         Nothing->corrupt "missing checked binder"
-        Just b->Right (T.Binder uid (M.findWithDefault (E.binderSpelling b) uid (inferenceBinderNames result)) (E.binderScheme b) (E.binderTypeShape b))
+        Just b->let name=M.findWithDefault (E.binderSpelling b) uid (inferenceBinderNames result)
+                    sc=case M.lookup name layoutContracts of
+                      Just c | layoutContractOwner c==LocalLayout uid->layoutCallingScheme c
+                      _->E.binderScheme b
+                in Right (T.Binder uid name sc (E.binderTypeShape b))
       scoped scope name=maybe (corrupt ("absent checked binder "++name)) binder (M.lookup name scope)
       patternOf info=do
         node<-case matchedSource info of
@@ -102,12 +122,30 @@ prepareChecked result = do
       plan e=do
         let make n=Right (EP e n)
         case E.expressionSource e of
-          SVar _->case (E.expressionReference e,applySites globals targets (E.expressionRewritten e)) of
-            (Just (E.LocalReference _ uid),SVar n)->do
-              b<-binder uid
-              if n==T.binderName b then make (Ref (T.Local uid)) else defer "local layout reference not yet migrated"
-            (Just (E.GlobalReference _ sc),SVar n)->make (Ref (T.Global n sc))
-            _->defer "generated reference wrapper not yet migrated"
+          SVar _->case [elaborationTarget x | x<-M.findWithDefault [] (E.expressionIdentity e) at] of
+            [OpDictionary name proofs]->do
+              ref<-case E.expressionReference e of
+                Just (E.LocalReference _ uid)->do
+                  b<-binder uid
+                  unless (name==T.binderName b) (corrupt "layout reference identity/target mismatch")
+                  pure (T.Local uid)
+                Just (E.GlobalReference original sc)->do
+                  unless (name==original) (corrupt "global layout reference target mismatch")
+                  case M.lookup name layoutContracts of
+                    Just c->do
+                      unless (layoutContractOwner c==GlobalLayout name) (corrupt "global layout reference owner mismatch")
+                      pure (T.Global name (layoutCallingScheme c))
+                    Nothing->pure (T.Global name sc)
+                _->corrupt "layout reference lacks checked callee"
+              args<-mapM layoutArgument proofs
+              if null args then make (Ref ref) else make (HiddenReference ref args)
+            [OpVector builder proof] | not (plainBuilder builder proof)->layoutArgument proof >>= make . VectorConstructor builder
+            _->case (E.expressionReference e,applySites globals targets (E.expressionRewritten e)) of
+              (Just (E.LocalReference _ uid),SVar n)->do
+                b<-binder uid
+                if n==T.binderName b then make (Ref (T.Local uid)) else defer "local layout reference not yet migrated"
+              (Just (E.GlobalReference _ sc),SVar n)->make (Ref (T.Global n sc))
+              _->defer "generated reference wrapper not yet migrated"
           SInt n->make (LitInt n)
           SAtom n->make (LitAtom n)
           SStrI segs->do
@@ -124,6 +162,8 @@ prepareChecked result = do
             _<-global "strcat" (TFn (TC "String") (TFn (TC "String") (TC "String")))
             make (Interpolation ps)
           SMark _ _->children e >>= \case [a]->make (Note a); _->corrupt "source mark derivation"
+          SApp _ _ | [OpDeclaredVector proof]<-[elaborationTarget x | x<-M.findWithDefault [] (E.expressionIdentity e) at]->
+            layoutArgument proof >>= make . VectorConstructor BuildEmpty
           SApp _ _->children e >>= \case
             [f,a]->do
               r<-renderer e
@@ -144,10 +184,13 @@ prepareChecked result = do
                 block index (SBind n _ _:rest) (rhs:more)=do
                   info<-site (LocalOf (E.expressionIdentity e) index)
                   b<-scoped (matchedBindings info) n
-                  unless (null (M.findWithDefault [] (T.binderName b) (inferenceLayoutRequirements result))) (defer "local layout parameters not yet migrated")
-                  ps<-mapM (\p -> case matchedSource p of PVar v->scoped (matchedBindings p) v; _->corrupt "local parameter derivation") (matchedChildren info)
+                  ps0<-mapM (\p -> case matchedSource p of PVar v->scoped (matchedBindings p) v; _->corrupt "local parameter derivation") (matchedChildren info)
                   body<-block (index+1) rest more
-                  let recursive=uses (T.binderId b) rhs
+                  let localHidden=case M.lookup (T.binderName b) layoutContracts of
+                        Just c | layoutContractOwner c==LocalLayout (T.binderId b)->hiddenFor (T.binderName b)
+                        _->[]
+                      ps=localHidden++ps0
+                      recursive=uses (T.binderId b) rhs
                       isLambda (EP _ (Note x))=isLambda x
                       isLambda (EP _ (Lambda (_:_) _))=True
                       isLambda _=False
@@ -189,12 +232,17 @@ prepareChecked result = do
             base:xs | length xs==length fields->make (Update base (zip (map fst fields) xs))
             _->corrupt "record update derivation"
       entry name clauses=do
-        unless (null (M.findWithDefault [] name (inferenceLayoutRequirements result))) (defer "layout entry parameters not yet migrated")
-        let build _ [] []=Right []
+        case M.lookup name layoutContracts of
+          Just c->unless (layoutContractOwner c==GlobalLayout name) (corrupt "layout entry owner mismatch")
+          Nothing->pure ()
+        let hidden=hiddenFor name
+            build _ [] []=Right []
             build index ((ps,gs,_):rest) rootFacts=do
               let (here,more)=splitAt (length gs+1) rootFacts
               unless (length here==length gs+1) (corrupt "clause root derivation")
-              pats<-mapM (\i -> site (ParameterOf name index i) >>= patternOf) [0..length ps-1]
+              let prefix=map (\p->case p of PVar n->Just n; _->Nothing) (take (length hidden) ps)
+              unless (prefix==map (Just . T.binderName) hidden) (corrupt "layout entry parameter order")
+              pats<-mapM (\i -> site (ParameterOf name index i) >>= patternOf) [0..length ps-length hidden-1]
               guardPlans<-forM (zip3 [0..] gs (take (length gs) here)) $ \(i,g,expr)->case g of
                 GBool _->Boolean <$> plan expr
                 GPat _ _->do p<-site (GuardOf name index i) >>= patternOf; Matching p <$> plan expr
@@ -202,7 +250,7 @@ prepareChecked result = do
               (Clause pats guardPlans b:) <$> build (index+1) rest more
             build _ _ _=corrupt "clause count derivation"
         cls<-build 0 clauses (M.findWithDefault [] name roots)
-        pure (Plan cls clauses)
+        pure (Plan hidden cls clauses)
       answers=[(name,entry name cls) | (name,cls)<-M.toList groups]
       types=T.TypeContext [n | TType n True _ _<-inferenceTops result] (inferenceConstructors result)
   case [(name,why) | (name,Left (Corrupt why))<-answers] of
@@ -212,7 +260,7 @@ prepareChecked result = do
     defer=Left . Deferred
     corrupt=Left . Corrupt
     planType (EP e _)=E.expressionType e
-    uses uid (EP _ n)=case n of Ref (T.Local v)->v==uid; _->any (uses uid) (kids n)
+    uses uid (EP _ n)=case n of Ref (T.Local v)->v==uid; HiddenReference (T.Local v) _->v==uid; _->any (uses uid) (kids n)
     kids n=case n of
       Application a b->[a,b]; Lambda _ b->[b]; Binding _ _ a b->[a,b]; RecursiveBinding _ _ a b->[a,b]; PatternBinding _ a b->[a,b]
       Pipe a b->[a,b]; Sequencing a b->[a,b]; Call2 _ a b->[a,b]; OperatorCall f a b->[f,a,b]
@@ -286,7 +334,7 @@ lowerToUntyped ps ts=desugaredCore <$> compileTopChecked ps ts
 
 lowerCheckedGroup :: CheckedPlans -> (String,[([SPat],[SGuard],SExpr)]) -> D ((String,([String],Core)),Maybe (T.Function,ClosedFunction))
 lowerCheckedGroup (Plans (Namespace ns) types plans _) group@(name,clauses)=case M.lookup name plans of
-  Just (Plan cls expected) | encode clauses==encode expected->do
+  Just (Plan hidden cls expected) | encode clauses==encode expected->do
     args<-case cls of
       Clause ps _ _:_->forM (zip [1::Int ..] ps) $ \(i,p)->do
         st<-get; n<-fresh ("a"++show i)
@@ -294,7 +342,7 @@ lowerCheckedGroup (Plans (Namespace ns) types plans _) group@(name,clauses)=case
       _->error "typed Core: empty clause plan"
     let alts=[T.Alternative ps (map lowerGuard gs) (lower b) | Clause ps gs b<-cls]
         body=case cls of Clause _ _ b:_->gen (ty b) (T.Match (T.FunctionMatch name) (map ref args) alts); _->error "empty typed clauses"
-        fn=T.Function name args body
+        fn=T.Function name (hidden++args) body
     (out,closed)<-emitClosed (Namespace ns) types fn
     pure ((name,out),Just (fn,closed))
   _->(,Nothing) <$> compileGroup group
@@ -312,6 +360,21 @@ lowerCheckedGroup (Plans (Namespace ns) types plans _) group@(name,clauses)=case
       where
         node=case n of
           Ref r->T.Var r
+          HiddenReference r args->
+            let physical=foldr (TFn . T.exprType) (E.expressionType e) args
+                base=gen physical (T.Var r)
+                applied=foldl (\f arg->case T.exprType f of
+                  TFn _ rest->gen rest (T.Apply f arg)
+                  _->error "invalid checked layout application") base args
+            in T.exprNode applied
+          VectorConstructor builder layout->case builder of
+            BuildEmpty->case E.expressionType e of
+              TFn unit result->
+                let ExprId (Namespace sourceNs) index=E.expressionIdentity e
+                    b=T.Binder (BinderId (Namespace (sourceNs++"/vector-unit/"++show index)) 0) "$vectorUnit" (Forall [] [] unit) (shape unit)
+                in T.Lambda [b] (gen result (T.VectorBuild BuildEmpty layout))
+              _->T.VectorBuild BuildEmpty layout
+            _->T.VectorBuild builder layout
           LitInt v->T.IntValue v
           LitString s->T.StringValue s
           LitAtom s->T.AtomValue s

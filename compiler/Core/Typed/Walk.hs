@@ -29,6 +29,7 @@ mapChildrenM f e = (\node -> e {exprNode=node}) <$> case exprNode e of
   Match s xs as->Match s <$> traverse f xs <*> traverse alt as
   MatchTail s xs as k->MatchTail s <$> traverse f xs <*> traverse alt as <*> f k
   JoinCall label captures xs->JoinCall label captures <$> traverse f xs
+  VectorBuild b x->VectorBuild b <$> f x
   n->pure n
   where
     alt (Alternative ps gs b)=Alternative ps <$> traverse guard gs <*> f b

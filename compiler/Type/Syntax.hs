@@ -1,7 +1,8 @@
 {-# LANGUAGE LambdaCase, DeriveGeneric, DeriveAnyClass #-}
 -- Checked type vocabulary, independent of the inference engine and either AST.
--- Type-constructor names and row labels are textual; lexical term binders will
--- acquire their own identities in Core. Existing Show output is diagnostic ABI.
+-- Type-constructor names and row labels are textual; lexical term identities
+-- live in Core.Identity. TLayout is private to compiler evidence/calling
+-- contracts, with no source syntax. Existing Show output is diagnostic ABI.
 module Type.Syntax
   (Type(..), Row(..), Scheme(..), tcon, tInt, tStr, tBool, tUnit, tAtom,
    tF64, tF32, tI64, tI32, tList, tVector, tSString, mentionsFloat) where
@@ -16,6 +17,7 @@ data Type
   | TFn Type Type
   | TRec Row
   | TTupT [Type]
+  | TLayout Type -- compiler-private evidence for an element's native layout
   deriving (Eq, Show, Generic, NFData)
 
 data Row

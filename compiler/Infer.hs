@@ -43,6 +43,7 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import Exhaust (checkArms, checkClauses, siblingsOf)
 import Core.Syntax (Name)
+import Compiler.VectorLayout
 import Frontend.Syntax
 import Frontend.Traverse
 import Frontend.Linearity
@@ -99,6 +100,7 @@ zonk = \case
   TFn a b -> TFn <$> zonk a <*> zonk b
   TRec r -> TRec <$> zonkR r
   TTupT ts -> TTupT <$> mapM zonk ts
+  TLayout t -> TLayout <$> zonk t
   t -> pure t
 
 zonkR :: Row -> I Row
@@ -120,6 +122,7 @@ occursT v = \case
   TFn a b -> occursT v a || occursT v b
   TRec r -> occursTR v r
   TTupT ts -> any (occursT v) ts
+  TLayout t -> occursT v t
   _ -> False
 
 occursTR :: Int -> Row -> Bool
@@ -145,6 +148,7 @@ unify ctx a0 b0 = do
     (TFn x r, TFn y s) -> unify ctx x y >> unify ctx r s
     (TTupT xs, TTupT ys) | length xs == length ys -> zipWithM_ (unify ctx) xs ys
     (TRec r1, TRec r2) -> unifyRow ctx r1 r2
+    (TLayout a, TLayout b) -> unify ctx a b
     _ -> do
       pa <- prettyT a
       pb <- prettyT b
@@ -215,6 +219,7 @@ freshenScheme (Forall tvs rvs t) = do
         TFn a b -> TFn (goT a) (goT b)
         TRec r -> TRec (goR r)
         TTupT ts -> TTupT (map goT ts)
+        TLayout t -> TLayout (goT t)
         o -> o
       goR = \case
         RV v -> fromMaybe (RV v) (IM.lookup v rm)
@@ -261,6 +266,7 @@ skolemize (Forall tvs rvs t) = do
         TFn a b -> TFn (goT a) (goT b)
         TRec r -> TRec (goR r)
         TTupT ts -> TTupT (map goT ts)
+        TLayout t -> TLayout (goT t)
         o -> o
       goR = \case
         RV v -> fromMaybe (RV v) (IM.lookup v rm)
@@ -307,6 +313,7 @@ ftv = \case
   TAp a b -> ftv a <> ftv b
   TFn a b -> ftv a <> ftv b
   TTupT ts -> mconcat (map ftv ts)
+  TLayout t -> ftv t
   TRec r -> ftvR r
   _ -> mempty
   where
@@ -323,8 +330,11 @@ generalize env t0 = do
       (etv, erv) = envFtv
   pure (Forall (S.toList (tv S.\\ etv)) (S.toList (rv S.\\ erv)) t)
   where
-    schemeFtv (Forall qs rqs ty) = do
-      ty' <- zonk ty
+    -- A scheme's bound IDs are not solver metavariables. Alpha-rename them
+    -- in an isolated snapshot before applying the solver substitution;
+    -- otherwise builtin quantifier 0 can alias the first definition's 0.
+    schemeFtv sc = do
+      Forall qs rqs ty' <- snapshotScheme sc
       let (tv, rv) = ftv ty'
       pure (tv S.\\ S.fromList qs, rv S.\\ S.fromList rqs)
 
@@ -1157,6 +1167,8 @@ inferERaw ctx e0 = case e0 of
           endSite <- gets iNextSite
           tz <- zonk t
           modify (\st -> st {iDefTypes=M.insert key tz (iDefTypes st),
+            iLocalLayoutSchemes=M.insert key sc (iLocalLayoutSchemes st),
+            iLocalLayoutBindings=maybe (iLocalLayoutBindings st) (\uid->M.insert key uid (iLocalLayoutBindings st)) (M.lookup n (icLocalIds cRec0)),
             iVecOwners=IM.union (iVecOwners st) (IM.fromList [(i,key) | i <- [startSite..endSite-1]])})
         restCtx <- refineScoped n sc cRec
         rememberExprPattern (`LocalOf` index)
@@ -1433,15 +1445,15 @@ resolveSites prof sigs env = do
       if "vec-reference:" `Data.List.isPrefixOf` op
         then do
           requirements <- gets (IM.findWithDefault [] k . iVecRefs)
-          OpDictionary <$> mapM (evidence k) requirements
+          OpDictionary (drop (length "vec-reference:") op) <$> mapM (evidence k) requirements
       else if "vec-declared:" `Data.List.isPrefixOf` op
         then do
           let spec = drop (length "vec-declared:") op
               fields = case t of TTupT xs -> xs; _ -> [t]
           forM_ (zip spec fields) $ \(c, ft) ->
-            when (c == 'b' && (mentionsFloat ft || unresolved ft)) $
+            when (c == 'b' && (mentionsFloat ft || unresolvedLayoutType ft)) $
               report "Vec.newAs: boxed columns require a known non-float element type"
-          pure (OpPrim "")
+          pure (OpDeclaredVector (StaticLayout t spec))
       else if "vec-value:" `Data.List.isPrefixOf` op
         then case (drop (length "vec-value:") op, t) of
           ("Vec.new", TFn _ (TAp (TC "Vector") el)) -> siteLayout k "Vec.new" el
@@ -1541,67 +1553,34 @@ resolveSites prof sigs env = do
           p <- prettyT other
           OpPrim op <$ report ("(" ++ op ++ ") is not defined for " ++ p)
 
-    unresolved = \case
-      TV _ -> True
-      TAp a b -> unresolved a || unresolved b
-      TFn a b -> unresolved a || unresolved b
-      TTupT xs -> any unresolved xs
-      TRec r -> rowUnknown r
-      _ -> False
-    rowUnknown RNil = False
-    rowUnknown (RV _) = True
-    rowUnknown (RExt _ t r) = unresolved t || rowUnknown r
     paramFor k el = do
       owners <- gets iVecOwners
       plans <- gets iVecPlans
       pure $ do
         n <- IM.lookup k owners
         i <- lookup el (zip (M.findWithDefault [] n plans) [0..])
-        pure (layoutParam n i)
+        pure (LayoutSlot n i)
     evidence k el = do
       param <- paramFor k el
       case param of
-        Just n -> pure (SVar n)
-        Nothing -> layout "Vector layout evidence" el >>= \case
-          OpVecLayout _ spec -> pure (SStrI [SegStr spec])
-          _ -> pure (SStrI [SegStr ""])
+        Just slot -> pure (ForwardLayout el slot)
+        Nothing -> literalFor "Vector layout evidence" el >>= pure . maybe (StaticLayout el "") id
     siteLayout k name el = do
       param <- paramFor k el
       case param of
-        Just n -> pure (OpVecDynamic name (SVar n))
-        Nothing -> layout name el
-    layout name el
-      | unresolved el = OpPrim "" <$ report (name ++ ": the output element layout is polymorphic; give it a concrete type (use Vec.mapSame for a representation-preserving generic map)")
-      | not (mentionsFloat el) = pure (OpVecLayout name "")
-      | Just spec <- floatLayout el = pure (OpVecLayout name spec)
-      | otherwise = OpPrim "" <$ report (name ++ ": floats require a scalar or a finite tuple/closed record layout; this element layout is unsupported")
-    floatLayout (TC "F64") = Just "d"
-    floatLayout (TC "F32") = Just "s"
-    floatLayout (TTupT xs) | not (null xs) = productLayout xs
-    floatLayout t@(TRec _) | Just _ <- recFields t, not (null (recFieldTypes t)) = productLayout (recFieldTypes t)
-    floatLayout _ = Nothing
-    productLayout ts = do
-      fs <- mapM field ts
-      let flat = concat fs
-      pure (if length ts == 1 || any (elem '(') fs then "(" ++ flat ++ ")" else flat)
-    recFieldTypes (TRec r) = map snd (sortOn fst (goR r))
-      where
-        goR (RExt n ft rest) = (n, ft) : goR rest
-        goR _ = []
-    recFieldTypes _ = []
-    field (TC "Int") = Just "i"
-    field (TC "F64") = Just "d"
-    field (TC "F32") = Just "s"
-    field t@(TTupT _) | mentionsFloat t = nested t
-    field t@(TRec _) | mentionsFloat t = nested t
-    field t | not (mentionsFloat t) = Just "b"
-    field _ = Nothing
-    nested t = do
-      spec <- floatLayout t
-      pure (if take 1 spec == "(" then spec else "(" ++ spec ++ ")")
+        Just slot -> pure (OpVector (builder name) (ForwardLayout el slot))
+        Nothing -> literalFor name el >>= pure . maybe (OpPrim "") (OpVector (builder name))
+    builder "Vec.new"=BuildEmpty
+    builder "Vec.fromList"=BuildFromList
+    builder "Vec.map"=BuildMap
+    builder name=error ("unknown vector layout builder: "++name)
+    literalFor name el
+      | unresolvedLayoutType el = Nothing <$ report (name ++ ": the output element layout is polymorphic; give it a concrete type (use Vec.mapSame for a representation-preserving generic map)")
+      | Just spec <- canonicalLayout el = pure (Just (StaticLayout el spec))
+      | otherwise = Nothing <$ report (name ++ ": floats require a scalar or a finite tuple/closed record layout; this element layout is unsupported")
 
 layoutParam :: Name -> Int -> Name
-layoutParam n i = "$vectorLayout." ++ n ++ "." ++ show i
+layoutParam n i = layoutParameterName (LayoutSlot n i)
 
 layoutElement :: Name -> Type -> Maybe Type
 layoutElement "vec-value:Vec.new" (TFn _ (TAp (TC "Vector") a)) = Just a
@@ -1877,12 +1856,32 @@ inferTopsResult capture prof sigs structs tops =
           forM (IM.toList tgts) $ \(site,target) -> do
             let (op,ty) = checkedSites IM.! site
             solved <- zonk ty
-            pure (ElaborationFact site op solved target (maybe Nothing id (IM.lookup site marks))
+            target' <- case target of
+              OpVector b e -> OpVector b <$> mapLayoutEvidenceM zonk e
+              OpDeclaredVector e -> OpDeclaredVector <$> mapLayoutEvidenceM zonk e
+              OpDictionary name es -> OpDictionary name <$> mapM (mapLayoutEvidenceM zonk) es
+              other -> pure other
+            pure (ElaborationFact site op solved target' (maybe Nothing id (IM.lookup site marks))
                     (IM.lookup site origins))
       (schemes,layouts) <- case capture of
         Just _ | null errors && not namedHoles -> do
           schemes <- traverse snapshotScheme env
           layouts <- gets iVecPlans >>= traverse (mapM zonk)
+          contracts <- M.traverseWithKey (\name requirements -> do
+            locals <- gets iLocalLayoutSchemes
+            sc <- case M.lookup name locals of
+              Just local -> pure local
+              Nothing -> do
+                defs <- gets iDefTypes
+                case M.lookup name defs of
+                  Just fn -> generalize M.empty fn
+                  Nothing -> error ("missing checked layout definition: "++name)
+            let Forall vs rs fn=sc
+            calling <- snapshotScheme (Forall vs rs (foldr (TFn . TLayout) fn requirements))
+            localIds <- gets iLocalLayoutBindings
+            let owner=maybe (GlobalLayout name) LocalLayout (M.lookup name localIds)
+            pure (LayoutContract owner calling requirements)) layouts
+          modify (\st -> st {iLayoutContracts=contracts})
           pure (schemes,layouts)
         _ -> pure (M.empty,M.empty)
       case capture of
@@ -2091,6 +2090,7 @@ prettyT t0 = do t <- zonk t0; pure (go 0 t)
       TAp a b -> paren (p > 9) (go 9 a ++ " " ++ go 10 b)
       TFn a b -> paren (p > 0) (go 1 a ++ " -> " ++ go 0 b)
       TTupT ts -> "(" ++ intercalate ", " (map (go 0) ts) ++ ")"
+      TLayout t -> "<layout " ++ go 0 t ++ ">"
       TRec r -> "{" ++ rowStr r ++ "}"
     rowStr = \case
       RNil -> ""
@@ -2127,6 +2127,7 @@ canonicalTypeWith nameOf t = evalState (go t) (IM.empty, IM.empty)
       TAp a b -> binary "app" a b
       TFn a b -> binary "fn" a b
       TTupT xs -> do ys <- mapM go xs; pure ("tuple(" ++ intercalate "," ys ++ ")")
+      TLayout x -> (\s -> "layout("++s++")") <$> go x
       TRec r -> do
         let (fields, tailVar) = flatten r
         fs <- mapM (\(n, x) -> do y <- go x; pure (show n ++ ":" ++ y)) (sortOn fst fields)
@@ -2151,6 +2152,7 @@ prettyAsWritten t0 = do
         TAp a b -> TAp (sub a) (sub b)
         TFn a b -> TFn (sub a) (sub b)
         TTupT ts -> TTupT (map sub ts)
+        TLayout t -> TLayout (sub t)
         TRec r -> TRec (subR r)
         o -> o
       subR = \case
@@ -2163,6 +2165,7 @@ prettyAsWritten t0 = do
       TAp a b -> order a ++ order b
       TFn a b -> order a ++ order b
       TTupT ts -> concatMap order ts
+      TLayout t -> order t
       TRec r -> orderR r
       _ -> []
     orderR = \case
@@ -2176,6 +2179,7 @@ prettyAsWritten t0 = do
       TAp a b -> par (p > 9) (goP 9 a ++ " " ++ goP 10 b)
       TFn a b -> par (p > 0) (goP 1 a ++ " -> " ++ goP 0 b)
       TTupT ts -> "(" ++ intercalate ", " (map (goP 0) ts) ++ ")"
+      TLayout t -> "<layout " ++ goP 0 t ++ ">"
       TRec r -> "{" ++ rowS r ++ "}"
     rowS = \case
       RNil -> ""

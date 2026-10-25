@@ -16,6 +16,7 @@ linShapeT :: [Name] -> Type -> LShape
 linShapeT linNs = go
   where
     go t = case t of
+      TLayout _ -> LU -- immutable descriptor, not an owned element value
       TTupT ts -> LTupS (map go ts)
       TRec row -> let (fs, open) = fields row in LRecS fs open
       TC n | n `elem` linNs -> LL

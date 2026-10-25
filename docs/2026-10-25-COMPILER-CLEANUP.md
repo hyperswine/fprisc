@@ -15,7 +15,7 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins and direct recursive local functions implemented; layout/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins, direct recursive locals and vector-layout evidence implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
 | Checked pipeline products and lint | Structural pass result and initial typed desugaring product implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
@@ -245,3 +245,26 @@ x64/RV32/RV64 emission, a saved-compiler refusal reproduction, 128 fresh
 root/dependent-unit emission comparisons (cache-revision-only normalization),
 and Sol compatibility/bounded-tail checks passed. Hosted validation of the
 integrated head follows the push.
+
+## Typed vector layout evidence
+
+[Typed layout evidence](2026-10-25-TYPED-LAYOUT-EVIDENCE.md) carries hidden
+parameters, static/forwarded descriptors and calling schemas into selected
+typed entries. Layout evidence has its own element-indexed type, local contracts
+own binder identities, and vector builders have checked semantic constructors.
+Closure conversion retains the evidence; erasure emits the existing String
+arguments/runtime symbols.
+
+The migration fixes verified local/global name confusion and quantified-scheme
+scope failures, with saved-compiler wrong-answer/refusal reproductions. Cache
+revision 109 versions changed checking/code generation; runtime/context memory
+structures are unchanged. Generated forms, specialization/per-unit evidence,
+typed layout temporaries and downstream transformations remain required, along
+with the other outstanding table entries. The full goal remains active.
+
+Validation: all 136 Base jobs passed in 451.99 seconds on six workers without
+reused coverage. Typed layout/scheme invariants, one/four-hart native answers,
+saved-compiler control/wrong-answer/refusal comparisons, imported layout and
+optimization variants, repaired Rosetta/QEMU kernel oracles and Sol
+compatibility/bounded-tail checks passed. Hosted CI for `605df23` passed;
+integrated-head hosted validation follows this push.

@@ -10,6 +10,7 @@ import Control.Monad.Except
 import Control.Monad.State.Strict (lift)
 import Data.List (sort,sortOn,nub,intercalate)
 import qualified Data.Map.Strict as M
+import Compiler.VectorLayout (builderRuntimeName)
 
 -- Runtime layout authority and fresh/control-flow effects are supplied by the
 -- owning desugaring stage. Core typing is independent of content-addressed IDs.
@@ -52,6 +53,8 @@ eraseFunctionWith contracts types layout f = runExceptT $ do
         xs<-mapM (go env names) args
         pure (foldl CApp (CVar label) (caps++xs))
       Fail message -> pure (CErr message)
+      LayoutLiteral spec -> pure (CStr spec)
+      VectorBuild builder evidence -> CApp (CVar (builderRuntimeName builder)) <$> go env names evidence
       MatchTail style args alts fallback -> do
         xs<-mapM (go env names) args
         next<-go env names fallback

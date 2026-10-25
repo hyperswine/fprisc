@@ -11,9 +11,10 @@ import qualified Data.IntMap.Strict as IM
 import Data.List (stripPrefix)
 import Precond (checkedName)
 import Type.Syntax (Type)
+import Compiler.VectorLayout
 
-data OpTarget = OpPrim String | OpGlobal String | OpVecLayout String String
-              | OpVecDynamic String SExpr | OpDictionary [SExpr]
+data OpTarget = OpPrim String | OpGlobal String | OpVector VectorBuilder LayoutEvidence
+              | OpDeclaredVector LayoutEvidence | OpDictionary String [LayoutEvidence]
               | OpProj String String deriving (Show)
 data ElaborationFact = ElaborationFact
   { elaborationSite :: Int, elaborationOperation :: String,
@@ -45,21 +46,13 @@ applySites globals tgts = go
             case tgt of
               OpPrim "" -> go a
               OpPrim o -> call o (go a)
-              OpDictionary es -> foldl SApp (go a) es
-              OpVecDynamic name desc -> case name of
-                "Vec.new" -> SLam ["?vecUnit"] (call "Vec.newAs" desc)
-                "Vec.fromList" -> call "Vec.fromListAs" desc
-                "Vec.map" -> call "Vec.mapAs" desc
-                _ -> go a
-              OpVecLayout name spec ->
-                let desc = SStrI [SegStr spec]
-                 in case name of
-                      "Vec.new" | null spec -> go a
-                                | otherwise -> SLam ["?vecUnit"] (call "Vec.newAs" desc)
-                      "Vec.fromList" | null spec -> go a
-                                     | otherwise -> call "Vec.fromListAs" desc
-                      "Vec.map" -> call "Vec.mapAs" desc
-                      _ -> go a
+              OpDictionary _ es -> foldl SApp (go a) (map evidenceExpr es)
+              OpVector builder evidence
+                | plainBuilder builder evidence->go a
+                | otherwise->let desc=evidenceExpr evidence in case builder of
+                    BuildEmpty->SLam ["?vecUnit"] (call (builderRuntimeName builder) desc)
+                    _->call (builderRuntimeName builder) desc
+              OpDeclaredVector _ -> go a
               _ -> go a
       SBin op a b
         | Just rest <- stripPrefix markerPrefix op,
@@ -86,3 +79,5 @@ applySites globals tgts = go
     goS (SBindPat p e) = SBindPat p (go e)
     seg (SegExpr e) = SegExpr (go e)
     seg o = o
+    evidenceExpr (StaticLayout _ spec)=SStrI [SegStr spec]
+    evidenceExpr (ForwardLayout _ slot)=SVar (layoutParameterName slot)

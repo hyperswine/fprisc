@@ -29,6 +29,15 @@ source = unlines
   , "take token = token."
   ]
 main = do
+  let standalone= either (error.errorBundlePretty) id (parse program "standalone.fpr"
+        "first x = x. mixed = (first 1,first True).")
+      scoped=inferTopsChecked (Namespace "standalone") aotProf M.empty M.empty standalone
+  check "builtin scheme quantifiers cannot alias the first solver metavariable"
+    (null (inferenceErrors scoped))
+  check "the first standalone function remains polymorphic"
+    (case M.lookup "first" (inferenceSchemes scoped) of
+      Just (Forall [v] [] (TFn (TV a) (TV b)))->v==a && a==b
+      _->False)
   let tops = either (error.errorBundlePretty) id (parse program "evidence.fpr" source)
       sigs = sigTable tops; structs = structTable tops
       legacy = inferTopsInterfaces aotProf sigs structs tops

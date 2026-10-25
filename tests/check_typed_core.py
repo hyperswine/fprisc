@@ -18,6 +18,8 @@ subprocess.run(['make', 'fpr'], cwd=ROOT, env=env, check=True,
 ghc = ['cabal', 'exec', '--', 'runghc'] if shutil.which('cabal') else ['runghc']
 subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedCore.hs'], cwd=ROOT,
                env=env, check=True, timeout=180)
+subprocess.run([*ghc, '-w', '-icompiler', 'tests/TypedLayouts.hs'], cwd=ROOT,
+               env=env, check=True, timeout=180)
 
 # An independent native answer catches source/typed-IR agreement on a wrong
 # binding, and exercises the real native driver rather than only its helpers.
@@ -26,7 +28,8 @@ with tempfile.TemporaryDirectory(prefix='fpr-typed-core-') as directory:
     native.pop('FPR_FOREIGN', None)
     cases = [('contracts', 'typed-core 14 5 10 9 42 60 19\n'),
              ('closure_layout', 'closure-layout False False True 7 8 9\n'),
-             ('recursive_locals', 'recursive-locals 21 7 23 29 21 31 37 41 3 43 47 53\n')]
+             ('recursive_locals', 'recursive-locals 21 7 23 29 21 31 37 41 3 43 47 53\n'),
+             ('vector_layouts', 'typed-layouts 2.5 8 3.5 9 4.5 ok 5.5 6.5 0 7.5 11 9 8.5 1 8.5 True\n')]
     for case, expected in cases:
         for harts in (1, 4):
             output = Path(directory) / f'{case}-{harts}'
