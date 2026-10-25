@@ -81,7 +81,7 @@ data AllocConfig = AllocConfig
     acSlot :: Int -> VReg -> FrameObj, -- slot n for a value like v (size, alignment, managed status)
     acEarlyDef :: SInstr -> Bool, -- the expansion may write a definition before it has read every use
     acClassOf :: Phys -> Maybe RegClass,
-    acSelfLoop :: Maybe String -- the function's own symbol: a tail transfer to it becomes a loop
+    acSelfLoop :: Maybe CodeSymbol -- the function's own symbol: a tail transfer to it becomes a loop
   }
 
 data Stats = Stats
@@ -318,7 +318,7 @@ loopForm cfg here fn = case acSelfLoop cfg of
     cells = [(p,key) | i <- acArrival cfg params, siOpcode i `elem` map Opcode.Common [Opcode.LoadCell,Opcode.LoadSpill],
                        OV p _ <- siDefs i, key <- siUses i, cellKey key]
     nfixed = length params - length cells
-    isSelf self i = siOpcode i == Opcode.Common Opcode.TailJump && take 1 (siUses i) == [OS self] && length [() | OV _ (Fix _) <- siUses i] == nfixed
+    isSelf self i = siOpcode i == Opcode.Common Opcode.TailJump && take 1 (siUses i) == [OCode self] && length [() | OV _ (Fix _) <- siUses i] == nfixed
     selfCalls self = [i | I i <- sfBody fn, isSelf self i]
     isCellStore i sym = null (siDefs i) && null (siCalls i) && siControl i == Next && case siUses i of
       [OV _ _, key] -> key == sym && siOpcode i == Opcode.Common (case sym of OC _ -> Opcode.StoreCell; _ -> Opcode.StoreSpill)

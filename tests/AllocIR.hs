@@ -19,6 +19,8 @@
 import Codegen.Allocate
 import Codegen.Frame
 import Codegen.Liveness
+import qualified Codegen.Call as Call
+import qualified Codegen.Calling as Calling
 import Codegen.Selected
 import qualified Codegen.Opcode as Opcode
 import qualified Codegen.Annotation as Annotation
@@ -93,8 +95,8 @@ shiftTied d a b = plain "shl" [OV (v d) (Tied 0)] [gpr a, OV (v b) (Fix c1)]
 
 call :: String -> [Int] -> Int -> SInstr
 call f args d =
-  (plain "call" [OV (v d) (Fix a0)] (OS f : zipWith (\x p -> OV (v x) (Fix p)) args [a0, a1]))
-    {siClobbers = filter (/= a0) clobbered, siCalls = [Call f True False], siFlags = FlagsDef}
+  (plain "call" [OV (v d) (Fix a0)] (OCode (CodeSymbol f) : zipWith (\x p -> OV (v x) (Fix p)) args [a0, a1]))
+    {siClobbers = filter (/= a0) clobbered, siCalls = [Call (CodeSymbol f) (CalleeEntry Calling.TicksFuel)], siFlags = FlagsDef}
 
 ret :: Int -> SInstr
 ret x = (plain "ret" [] [OV (v x) (Fix a0)]) {siControl = Return}
@@ -104,10 +106,10 @@ jump l = (plain "jump" [] [OL (Label l)]) {siControl = JumpTo (Label l)}
 
 -- the entry sequence and a self tail transfer, as the targets shape them
 entry :: SInstr
-entry = (plain "entry.check.tick" [] []) {siAnnotation=EntryLabels (Label "allocator-entry"),siImplicitDefs = [t1], siClobbers = clobbered, siFlags = FlagsDef, siCalls = [Call "fpr_stack_grow" False True, Call "fpr_fuel_exhausted" True False]}
+entry = (plain "entry.check.tick" [] []) {siAnnotation=EntryLabels (Label "allocator-entry"),siImplicitDefs = [t1], siClobbers = clobbered, siFlags = FlagsDef, siCalls = [Call.runtimeEvent Call.GrowStackEntry, Call.runtimeEvent Call.FuelEntry]}
 
 tailSelf :: [Int] -> SInstr
-tailSelf args = (plain "tailjump" [] (OS "fpr_fn_probe" : zipWith (\x p -> OV (v x) (Fix p)) args [a0, a1])) {siClobbers = clobbered, siControl = Return, siCalls = [Call "fpr_fn_probe" True False]}
+tailSelf args = (plain "tailjump" [] (OCode (CodeSymbol "fpr_fn_probe") : zipWith (\x p -> OV (v x) (Fix p)) args [a0, a1])) {siClobbers = clobbered, siControl = Return, siCalls = [Call (CodeSymbol "fpr_fn_probe") (CalleeEntry Calling.TicksFuel)]}
 
 branchz :: Int -> String -> SInstr
 branchz x l = (plain "bz" [] [gpr x, OL (Label l)]) {siControl = CondTo [Label l]}
@@ -144,7 +146,7 @@ simulate original physical = step (M.fromList [(a0, "v0"), (a1, "v1")]) M.empty 
             forM_ (zip (siUses vi) (siUses p)) $ \(vo, po) -> case (vo, po) of
               (OV x _, OP q) -> unless (reg q == venv M.! x) (Left ("simulate: " ++ siOp p ++ " expected " ++ venv M.! x ++ " in " ++ show q ++ ", found " ++ reg q))
               _ -> pure ()
-            let value = siOp p ++ "(" ++ unwords [case o of OV x _ -> venv M.! x; OS s -> s; _ -> "?" | o <- siUses vi] ++ ")"
+            let value = siOp p ++ "(" ++ unwords [case o of OV x _ -> venv M.! x; OCode s -> codeName s; _ -> "?" | o <- siUses vi] ++ ")"
                 venv' = foldr (\o m -> case o of OV d _ -> M.insert d value m; _ -> m) venv (siDefs vi)
                 regs1 = foldr (\q m -> M.insert q "<junk>" m) regs (siClobbers p ++ siImplicitDefs p)
                 regs2 = foldr (\o m -> case o of OP q -> M.insert q value m; _ -> m) regs1 (siDefs p)
@@ -251,7 +253,7 @@ main = do
   -- classes remain separate, and the physical oracle checks preservation.
   let fpCfg = plainCfg {acCalleeSaved=f0:acCalleeSaved plainCfg}
       fpFn = fn [] [I (plain "fconst" [OV (v 0) (Any FPR)] []),
-                    I ((plain "call" [] [OS "g"]) {siClobbers=clobbered,siCalls=[Call "g" True False]}),
+                    I ((plain "call" [] [OCode (CodeSymbol "g")]) {siClobbers=clobbered,siCalls=[Call (CodeSymbol "g") (CalleeEntry Calling.TicksFuel)]}),
                     I (plain "bits" [gpr 1] [OV (v 0) (Any FPR)]), I (ret 1)]
   fpa <- either error pure (allocateFn fpCfg fpFn)
   check "FP values across calls use the supplied preserved bank" (M.lookup (v 0) (alLocs fpa)==Just (InReg f0))
@@ -260,16 +262,16 @@ main = do
   refused "a float operand" "float registers are not allocated" (allocateFn plainCfg (fn [v 0, v 1] [I (plain "fadd" [OV (v 2) (Any FPR)] [OV (v 0) (Any FPR)]), I (ret 2)]))
   refused "the oracle: a caller-saved register live across a call"
     "live across a call outside the preserved set"
-    (checkAllocation plainCfg "bad" [I (plain "params" [OP a0, OP a1] []), I (plain "mv" [OP c1] [OP a1]), I ((plain "call" [OP a0] [OS "g", OP a0]) {siClobbers = [c2, t1, t2, a1], siCalls = [Call "g" True False]}), I (plain "add" [OP a0] [OP a0, OP c1]), I ((plain "ret" [] [OP a0]) {siControl = Return})])
+    (checkAllocation plainCfg "bad" [I (plain "params" [OP a0, OP a1] []), I (plain "mv" [OP c1] [OP a1]), I ((plain "call" [OP a0] [OCode (CodeSymbol "g"), OP a0]) {siClobbers = [c2, t1, t2, a1], siCalls = [Call (CodeSymbol "g") (CalleeEntry Calling.TicksFuel)]}), I (plain "add" [OP a0] [OP a0, OP c1]), I ((plain "ret" [] [OP a0]) {siControl = Return})])
   refused "the oracle: a clobbered register read afterwards"
     "clobbered and live afterwards"
-    (checkAllocation plainCfg "bad2" [I (plain "params" [OP a0, OP a1] []), I ((plain "call" [OP a0] [OS "g", OP a0]) {siClobbers = filter (/= a0) clobbered, siCalls = [Call "g" True False]}), I (plain "add" [OP a0] [OP a0, OP a1]), I ((plain "ret" [] [OP a0]) {siControl = Return})])
+    (checkAllocation plainCfg "bad2" [I (plain "params" [OP a0, OP a1] []), I ((plain "call" [OP a0] [OCode (CodeSymbol "g"), OP a0]) {siClobbers = filter (/= a0) clobbered, siCalls = [Call (CodeSymbol "g") (CalleeEntry Calling.TicksFuel)]}), I (plain "add" [OP a0] [OP a0, OP a1]), I ((plain "ret" [] [OP a0]) {siControl = Return})])
   -- the loop form: a self tail call that swaps its two parameters becomes
   -- copies into the parameters' registers and a jump to the label between
   -- the stack check and the tick; both parameters live around the loop,
   -- so they take the budget; without the switch the transfer stays
   let swapLoop = fn [v 0, v 1] [ILabel (Label "b0"), I entry, I (branchz 0 "out"), I (add 2 0 1), I (tailSelf [1, 2]), ILabel (Label "out"), I (ret 1)]
-      loopCfg = plainCfg {acSelfLoop = Just "fpr_fn_probe"}
+      loopCfg = plainCfg {acSelfLoop = Just (CodeSymbol "fpr_fn_probe")}
   la <- either (error . ("FAIL: loop form: " ++)) pure (allocateFn loopCfg swapLoop)
   let ops = [siOp i | I i <- alBody la]
   check "the transfer became copies and a jump to the loop label" (stLoops (alStats la) == 1 && "jump.loop" `elem` ops && "tailjump" `notElem` ops && Label "m3loop" `elem` itemLabels (alBody la))

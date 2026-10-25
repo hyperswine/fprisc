@@ -57,10 +57,10 @@ nativeCall :: Policy -> CallConvention
 nativeCall policy=FprCall (if polFuel policy then TicksFuel else NoFuel)
 calleeCall :: Policy -> Callee -> CallConvention
 calleeCall policy c=case calleeConvention c of FprWords->nativeCall policy;CWords->RuntimeCall
-callEvent :: String -> CallConvention -> Call
+callEvent :: CodeSymbol -> CallConvention -> Call
 callEvent sym convention=case convention of
-  FprCall fuel->Call sym (fuel==TicksFuel) False
-  RuntimeCall->Call sym False True
+  FprCall fuel->Call sym (CalleeEntry fuel)
+  RuntimeCall->Call sym RuntimeC
 
 stagedArguments :: ABI -> CallConvention -> [VReg] -> Either String [(ArgumentPlace,VReg)]
 stagedArguments abi convention vs=do
@@ -69,14 +69,15 @@ stagedArguments abi convention vs=do
 arrivalArguments :: ABI -> [VReg] -> [(ArgumentPlace,VReg)]
 arrivalArguments abi=zip (nativePlaces abi)
 
-selectTransfer :: ABI -> CallConvention -> TransferResult -> String -> [VReg] -> Maybe VReg -> SInstr -> Either String SInstr
+selectTransfer :: ABI -> CallConvention -> TransferResult -> CodeSymbol -> [VReg] -> Maybe VReg -> SInstr -> Either String SInstr
 selectTransfer abi convention result sym vs value base=do
+  when (null (codeName sym)) (Left "call convention: empty code symbol")
   places<-argumentPlaces abi convention (length vs)
   unless ((result==WordResult)==(value/=Nothing)) (Left "call convention: inconsistent result")
   let resultReg=resultRegister abi
   pure base
     {siDefs=[OV v (Fix resultReg) | Just v<-[value]],
-     siUses=OS sym:[OV v (Fix p) | (ArgumentRegister p,v)<-zip places vs],
+     siUses=OCode sym:[OV v (Fix p) | (ArgumentRegister p,v)<-zip places vs],
      siClobbers=filter (\p->result/=WordResult || p/=resultReg) (callerClobbers abi),
      siControl=if result==TailTransfer then Return else Next,
      siCalls=[callEvent sym convention],
@@ -107,10 +108,11 @@ checkTransfers abi owner=go []
           let registers=[p | ArgumentRegister p<-places]
               cells=[OC c | NamedArgument c<-places]++[OI (toInteger n) | HartArgument n<-places]
               resultReg=resultRegister abi
-          require "argument register placement mismatch" (case siUses i of OS _:vs->length vs==length registers && and (zipWith fixed registers vs);_->False)
+          require "missing or empty code target" (case siUses i of OCode sym:_->not (null (codeName sym));_->False)
+          require "argument register placement mismatch" (case siUses i of OCode _:vs->length vs==length registers && and (zipWith fixed registers vs);_->False)
           require "result register placement mismatch" (case (result,siDefs i) of (WordResult,[v])->fixed resultReg v;(_,[])->result/=WordResult;_->False)
           require "caller clobber set mismatch" (sort (siClobbers i)==sort (filter (\p->result/=WordResult || p/=resultReg) (callerClobbers abi)))
-          require "call event mismatch" (case siUses i of OS sym:_->siCalls i==[callEvent sym convention];_->False)
+          require "call event mismatch" (case siUses i of OCode sym:_->siCalls i==[callEvent sym convention];_->False)
           require "tail/return contract mismatch" ((result==TailTransfer)==(siOpcode i==O.Common O.TailJump) && siControl i==(if result==TailTransfer then Return else Next))
           require "staged argument cells mismatch or crossed a call/control boundary" (sort pending==sort cells)
           pure []

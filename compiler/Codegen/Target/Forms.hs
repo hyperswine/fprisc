@@ -4,6 +4,7 @@
 module Codegen.Target.Forms
   (matches,register,immediate,index,symbol,label,frame,fixed,arguments,
    commonShape,CallForm(..),callMetadata) where
+import qualified Codegen.Protocol as Protocol
 import Codegen.Selected
 import qualified Codegen.Opcode as O
 
@@ -15,7 +16,7 @@ register rf cls operand=case operand of
   _->False
 immediate (OI _)=True;immediate _=False
 index lo hi (OI n)=n>=lo && n<=hi;index _ _ _=False
-symbol (OS _)=True;symbol _=False
+symbol (OAddr a)=not (null (addressName a));symbol _=False
 label (OL _)=True;label _=False
 frame (OF _ 0)=True;frame _=False
 fixed wanted (OV _ (Fix actual))=wanted==actual
@@ -29,7 +30,7 @@ commonShape rf bank static op ds us=case op of
   O.EntryTick->entry
   O.EntryStatic->static && null ds && null us
   O.TickN->null ds && matches [immediate] us
-  O.TailJump->null ds && case us of OS _:args->arguments bank args;_->False
+  O.TailJump->null ds && case us of OCode _:args->arguments bank args;_->False
   O.JumpLoop->null ds && matches [label] us
   O.LoadSpill->matches [register rf GPR] ds && matches [immediate] us
   O.StoreSpill->null ds && matches [register rf GPR,immediate] us
@@ -43,15 +44,9 @@ data CallForm=DirectCall | ApplyCall | PanicCall | NoCall deriving (Eq,Show)
 
 -- Ordinary ISA call/return constructors are interpreted by the caller. Shared
 -- protocol metadata is checked here, including the order of runtime events.
-callMetadata opcode form us cs=case opcode of
-  O.Common O.TailJump->target
-  O.Common O.EntryCheckTick->cs==[Call "fpr_stack_grow" False True,Call "fpr_fuel_exhausted" True False]
-  O.Common O.EntryCheck->cs==[Call "fpr_stack_grow" False True]
-  O.Common O.EntryTick->cs==[Call "fpr_fuel_exhausted" True False]
-  O.Common O.TickN->cs==[Call "fpr_fuel_exhausted" True False]
-  _ ->case form of
-    DirectCall->target
-    ApplyCall->cs==[Call "fpr_applyN" False True]
-    PanicCall->cs==[Call "fpr_panic" False True]
-    NoCall->null cs
-  where target=case (us,cs) of (OS name:_,[c])->callTarget c==name;_->False
+callMetadata opcode form us cs=case Protocol.embedded opcode of
+  Just protocol->cs==Protocol.protocolCalls protocol
+  Nothing->case opcode of
+    O.Common O.TailJump->target
+    _ ->case form of DirectCall->target;ApplyCall->False;PanicCall->False;NoCall->null cs
+  where target=case (us,cs) of (OCode name:_,[c])->callTarget c==name;_->False

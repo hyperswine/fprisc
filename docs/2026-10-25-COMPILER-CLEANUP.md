@@ -20,7 +20,7 @@ cache formats, or explicitly version and test any intentional changes.
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
 | Structured diagnostics/spans | Inference/safety/measure/linearity producers and native/Sol consumers migrated; other producers and full parser ranges pending | Own source positions and diagnostics as data through inference/safety/rendering; preserve CLI and editor locations |
-| Typed codegen contracts | Vector operations/float widths, symbol visibility/private imports, all native ISA selected operations, shared entry protocols, instruction annotations/accounting and direct word-call/staging contracts implemented; remaining kernel stages, C export/embedded call boundaries and general symbol roles pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
+| Typed codegen contracts | Vector operations/float widths, symbol visibility/private imports, native ISA operations, instruction annotations/accounting, word/C-export calls, selected code/address roles and shared checked entry/apply/panic contracts implemented; remaining kernel stages and other source/data/linker interfaces pending | Constructor-based operation/payload contracts and one renderer per target; verifier/emission/execution oracles |
 | Validation ownership | Existing suites retained; focused Core and frontend compatibility checks added | Maintain invariant, golden/cache and evaluator/native differential checks without multiplying redundant builds |
 | Obsolete architecture descriptions and names | Module identity and frontend-owner references corrected; backend references/names still pending | Re-anchor semantic references in current IR/evaluator/runtime; document supported switches and current owners |
 
@@ -713,4 +713,62 @@ configurations on eight targets. The final fixed-source, fresh-cache Base sweep
 passes all 136 jobs in 584.39 seconds on six workers, with no reused coverage or
 timeout changes. Sol compatibility and three-million-iteration self/mutual tail
 calls pass with an 85 MB peak. Revision 120 and physical/runtime ABIs remain
-unchanged. Hosted validation of this stage is required after push.
+unchanged. The `871845e` checkpoint passed hosted CI run 40231567763.
+
+## Checked C exports and retained ARC representations (2026-10-26)
+
+[C export/ARC contracts](2026-10-26-EXPORT-ARC-CONTRACTS.md) separate declaration
+admission, checked argument/conversion/schedule/frame plans and final RV64
+rendering from `Compile.hs`. Native argument placement is shared with the word
+calling contract. The supported soft/hard ABI limits are unchanged.
+
+The independent C probe reproduced an old ARC panic: an unconstrained erased
+`Addr` parameter defaulted to managed despite its checked interface, causing
+ARC to retain/release an interior address. Concrete representation evidence
+now flows from checked closed functions and compatibility declarations into
+ARC before inference/defaulting. Kinds and primitive signatures use
+constructors; field tags are serialized only for the runtime. All 3,200
+position-specific soft/hard C calls pass under QEMU with the real ARC runtime.
+The saved compiler reproduces the failure. ARC cache revision 6 versions the
+corrected ownership code; general codegen revision 120 and runtime ABIs remain.
+
+This is a retained interface boundary for the existing erased ARC solver and
+ownership rewrite. Full typed expression transformations, compatibility/layout
+forms, embedded call contracts, general symbol roles, remaining kernel stages
+and source ranges/diagnostic producers remain required. The whole compiler
+cleanup goal is active.
+
+Final fixed-source validation passes all 136 Base jobs in 582.59 seconds on six
+workers with a fresh cache and no reused configurations. The saved-compiler
+oracle preserves 168 complete outputs/cache identities plus 25 exact C adapter
+bodies across 88 configurations on eight targets. Independent real-runtime
+execution proves the intentionally corrected ARC bodies. Sol compatibility and
+three-million-iteration self/mutual tail calls pass with an 86 MB peak. The
+preceding `871845e` checkpoint passed hosted CI run 40231567763; the export/ARC
+checkpoint `ce77e9f` passed hosted CI run 40235445898.
+
+## Selected runtime protocols and symbol references (2026-10-26)
+
+[Selected runtime contracts](2026-10-26-SELECTED-RUNTIME-CONTRACTS.md) replace
+`OS String` with callable/address roles and Boolean call-event pairs with
+explicit callee-entry/runtime-C/fuel effects. Shared runtime identities own
+helper spellings. One protocol owner supplies and checks entry/tick/apply/
+panic/push events, registers, clobbers, result/preservation constraints, flags
+and control before and after allocation. Apply additionally checks its staged
+head/argument packet and refuses count or lifetime violations. Entry forwarding,
+loop splitting, shallow entries and allocator metadata retain the contracts.
+
+Selected/allocation invariants pass, and all 170 complete root/unit outputs
+and cache identities remain byte-identical across 88 configurations on eight
+targets. General codegen revision 120, ARC revision 6 and physical/runtime ABIs
+are unchanged. Target frame/TLS expansions retain their current owners; this
+does not claim their complete planning migration. Remaining source/data/linker
+interfaces, kernel stages, typed Core transformations, compatibility/layout
+forms and source-range/diagnostic producers stay in the full active goal.
+
+The final fixed-source, fresh-cache Base sweep passes all 136 jobs in 602.42
+seconds on six workers, without reused configurations or timeout changes. Sol
+compatibility and three-million-iteration self/mutual tail calls pass with an
+86 MB peak. The preceding export/ARC checkpoint `ce77e9f` passed hosted CI run
+40235445898; this selected-runtime stage needs its own hosted result after push.
+The complete compiler cleanup goal remains active.

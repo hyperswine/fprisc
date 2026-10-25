@@ -318,4 +318,6 @@ they began.
 - [A64/RISC-V operation contracts](2026-10-26-RISC-OPCODE-CONTRACTS.md) - per-ISA vocabularies, typed FP pooling/raw adapters and checked native register/effect forms.
 - [Typed instruction annotations](2026-10-26-INSTRUCTION-ANNOTATIONS.md) - semantic entry/save/restore payloads, independent allocation events and checked internal label/frame scopes.
 - [Explicit native calling conventions](2026-10-26-CALLING-CONVENTIONS.md) - shared argument/result/clobber contracts, retained transfer signatures and checked hart-cell staging.
+- [Checked C exports and ARC evidence](2026-10-26-EXPORT-ARC-CONTRACTS.md) - explicit adapter plans, typed representation signatures and a reproduced raw-address ownership correction.
+- [Selected runtime contracts](2026-10-26-SELECTED-RUNTIME-CONTRACTS.md) - typed code/address references, call effects and shared checked entry/apply/panic protocols.
 - [Native performance review](2026-10-25-PERFORMANCE-REVIEW.md): what structurally limits run time after the typed IR: allocation, fuel ticks and vector access as calls that clobber scratch registers; inlining and callback specialization stop at unit boundaries; no range analysis or invariant motion; whole-range spills; boxed I64; and an ordered, measured plan starting with a re-baseline.

@@ -74,4 +74,5 @@ clang lacks its RISC-V backend. No physical-board execution is claimed.
 Local records use `/private/tmp/fpr-call-conventions-*.log` and the complete
 timing JSON. The preceding annotation checkpoint `4dc7acd` passed
 [hosted CI run 40228013834](https://github.com/hyperswine/fprisc/actions/runs/40228013834).
-This calling-convention stage requires its own hosted result after push.
+This calling-convention stage passed [hosted CI run 40231567763](https://github.com/hyperswine/fprisc/actions/runs/40231567763)
+at commit `871845e`.

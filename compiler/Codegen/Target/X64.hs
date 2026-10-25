@@ -19,6 +19,8 @@ module Codegen.Target.X64
 
 import qualified Codegen.Calling as Calling
 import Codegen.Calling (CallConvention(FprCall), FuelEntry(..), TransferResult(..))
+import qualified Codegen.Call as Call
+import qualified Codegen.Protocol as Protocol
 import Codegen.Allocate
 import Codegen.Bounds (Flow (..), Report (..), Tok (..), analyse, reportLine)
 import Codegen.Frame
@@ -141,8 +143,8 @@ mov :: VReg -> VReg -> SInstr
 mov d s = plain (O.X64 O.Move) [any' d] [any' s]
 li :: VReg -> Integer -> SInstr
 li d n = plain (O.X64 O.Literal) [any' d] [OI n]
-la :: VReg -> String -> SInstr
-la d s = plain (O.X64 O.Address) [any' d] [OS s]
+la :: VReg -> AddressSymbol -> SInstr
+la d s = plain (O.X64 O.Address) [any' d] [OAddr s]
 
 -- A two-address result occupies the first source's register, after loading
 -- that source from its home. Its home is unchanged (no destructive IR use).
@@ -191,7 +193,7 @@ stageArgs convention args = do
   forM_ [(j,v) | (Calling.HartArgument j,v)<-staged] $ \(j,v) ->
     emitI ((plain (O.Common O.StoreSpill) [] [any' v,OI (toInteger j)]) {siImplicitDefs=[r "r10",r "r11"]})
 
-emitCall :: String -> CallConvention -> [VReg] -> Maybe VReg -> Se ()
+emitCall :: CodeSymbol -> CallConvention -> [VReg] -> Maybe VReg -> Se ()
 emitCall sym convention args res = do
   stageArgs convention args
   selected <- either refuse pure (Calling.selectTransfer Calling.X86_64 convention
@@ -202,40 +204,33 @@ emitCall sym convention args res = do
 ret :: VReg -> SInstr
 ret v = (plain (O.X64 O.Ret) [] [fix v (r "rax")])
   {siImplicitDefs = map r ["r11", "rbp", "rsp"], siControl = Return}
-emitTail :: String -> CallConvention -> [VReg] -> Se ()
+emitTail :: CodeSymbol -> CallConvention -> [VReg] -> Se ()
 emitTail sym convention args = do
   stageArgs convention args
   selected <- either refuse pure (Calling.selectTransfer Calling.X86_64 convention TailTransfer sym args Nothing
     ((plain (O.Common O.TailJump) [] []) {siImplicitDefs=map r ["r11","rbp","rsp"]}))
   emitI selected
 
-entrySeq :: Bool -> Bool -> Label -> SInstr
-entrySeq stack fuel (Label base) =
-  (plain (O.Common (case (stack, fuel) of (True, True) -> O.EntryCheckTick; (True, False) -> O.EntryCheck; _ -> O.EntryTick)) [] [])
-    {siImplicitDefs = map r ["r10", "r11", "rax", "rsp"], siClobbers = callerSaved,
-     siFlags = FlagsDef,
-     siCalls = [Call "fpr_stack_grow" False True | stack] ++ [Call "fpr_fuel_exhausted" True False | fuel],
-     siAnnotation = EntryLabels (Label base)}
+entrySeq :: Protocol.EntryChecks -> Label -> SInstr
+entrySeq checks base=Protocol.selectProtocol Calling.X86_64
+  ((plain (O.Common (Protocol.entryOpcode checks)) [] []) {siAnnotation=EntryLabels base})
 
 -- ---- selection ---------------------------------------------------------
 
 primSymbol :: ArithOp -> String
 primSymbol o = "fpr_prim_fn_" ++ mangleName (arithSymbol o)
 
-calleeSymbol :: Callee -> String
-calleeSymbol c = case calleeKind c of
-  Foreign sym -> sym
-  Generated sym -> sym
-  _ -> functionSymbol (calleeName c)
+calleeSymbol :: Callee -> CodeSymbol
+calleeSymbol = calleeCodeSymbol
 
-nullarySymbol :: Int -> Int -> Se String
+nullarySymbol :: Int -> Int -> Se AddressSymbol
 nullarySymbol t v = case (t, v) of
-  (0, 0) -> pure "fpr_unit"
-  (1, 0) -> pure "fpr_false"
-  (1, 1) -> pure "fpr_true"
+  (0, 0) -> pure (StaticObject "fpr_unit")
+  (1, 0) -> pure (StaticObject "fpr_false")
+  (1, 1) -> pure (StaticObject "fpr_true")
   _ -> do
     modify (\s -> s {selNullaries = S.insert (t, v) (selNullaries s)})
-    pure (".Lnul_" ++ show t ++ "_" ++ show v)
+    pure (StaticObject (".Lnul_" ++ show t ++ "_" ++ show v))
 
 select :: X64Config -> Fn -> Either String (SFn, S.Set VReg, S.Set (Int, Int), S.Set String)
 select cfg fn = do
@@ -269,19 +264,19 @@ selectBlock cfg fn tyMap b = do
     then do
       when (not stack && polStackCheck policy == StackCheckEveryEntry) (refuse "the entry block has no stack check under a policy that checks every entry")
       when (not fuel && polFuel policy) (refuse "the entry block has no fuel tick under a policy with fuel")
-      unless (null entryOps) $ freshL "entry" >>= emitI . entrySeq stack fuel
+      forM_ (Protocol.entryChecks stack fuel) $ \checks -> freshL "entry" >>= emitI . entrySeq checks
     else do
       when stack (refuse "a stack check outside the entry block")
       -- an inlined callee's tick ($fuel) at the start of a non-entry block
-      forM_ entryOps $ \_ -> freshL "tick" >>= emitI . entrySeq False True
+      forM_ entryOps $ \_ -> freshL "tick" >>= emitI . entrySeq Protocol.FuelOnly
   forM_ rest (selectInstr cfg tyMap)
   selectTerm cfg fn b
 
 selectInstr :: X64Config -> M.Map VId Ty -> Instr -> Se ()
 selectInstr cfg _ (Instr d op) = case op of
   OStackCheck -> refuse "internal: a stack check reached selection"
-  OSafepoint -> freshL "tick" >>= emitI . entrySeq False True -- an inlined callee's tick mid-block
-  OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq False True l) {siOpcode = O.Common O.TickN, siUses = [OI (fromIntegral n)]})
+  OSafepoint -> freshL "tick" >>= emitI . entrySeq Protocol.FuelOnly -- an inlined callee's tick mid-block
+  OSafepointN n -> freshL "tick" >>= \l -> emitI ((entrySeq Protocol.FuelOnly l) {siOpcode = O.Common O.TickN, siUses = [OI (fromIntegral n)]})
   OSimdPair int e caps a -> do
     when (simdRegisters e > 7) (refuse "an SSE2 pair exceeds seven scratch temporaries")
     simdPair int e (map vreg caps) (vreg a)
@@ -313,11 +308,11 @@ selectInstr cfg _ (Instr d op) = case op of
   ONullary t v -> def (\r -> nullarySymbol t v >>= emitI . la r)
   OString text -> def $ \rd -> do
     modify (\st -> st {selStrings = S.insert text (selStrings st)})
-    emitI (la rd (stringLabel text))
+    emitI (la rd (StaticObject (stringLabel text)))
   OMake tid variant fields -> def $ \rd -> do
     size <- freshV False
     emitI (li size (8 + 8 * fromIntegral (length fields)))
-    emitCall "fpr_alloc" Calling.RuntimeCall [size] (Just rd)
+    emitCall (CodeSymbol "fpr_alloc") Calling.RuntimeCall [size] (Just rd)
     forM_ [(0, tid), (4, variant)] $ \(offset, value) -> do
       header <- freshV False
       emitI (li header (fromIntegral value))
@@ -332,7 +327,7 @@ selectInstr cfg _ (Instr d op) = case op of
     emitI (plain (O.X64 O.LoadField) [any' rd] [any' (vreg obj), OI (8 + 8 * fromIntegral index)])
   OStrLen str -> def $ \rd -> do
     tagged <- freshV True
-    emitCall "fpr_g_strlen_call1" Calling.RuntimeCall [vreg str] (Just tagged)
+    emitCall (CodeSymbol "fpr_g_strlen_call1") Calling.RuntimeCall [vreg str] (Just tagged)
     emitI (rri O.ShiftRightArithmeticImmediate rd tagged 1)
   OCharAt str index -> def $ \rd -> do
     shifted <- freshV False
@@ -340,18 +335,16 @@ selectInstr cfg _ (Instr d op) = case op of
     taggedResult <- freshV True
     emitI (rri O.ShiftLeftImmediate shifted (vreg index) 1)
     emitI (rri O.OrImmediate taggedIndex shifted 1)
-    emitCall "fpr_g_charAt_call2" Calling.RuntimeCall [vreg str, taggedIndex] (Just taggedResult)
+    emitCall (CodeSymbol "fpr_g_charAt_call2") Calling.RuntimeCall [vreg str, taggedIndex] (Just taggedResult)
     emitI (rri O.ShiftRightArithmeticImmediate rd taggedResult 1)
-  OSymbol sym -> def (\r -> emitI (la r sym)) -- an immutable symbol address
-  OFunValue n -> def (\r -> emitI (la r ("fpr_obj_" ++ mangleName n)))
+  OSymbol sym -> def (\r -> emitI (la r (ExternalAddress sym))) -- an immutable symbol address
+  OFunValue n -> def (\r -> emitI (la r (StaticObject ("fpr_obj_" ++ mangleName n))))
   -- the generic application: the head then every argument pushed 16 bytes
   -- apart (the last at the stack pointer), fpr_applyN(head, n, &args) with
   -- the call-alignment adjustment, the pushes popped; slots are %rbp-relative
   OApply f as -> def $ \rd -> do
-    forM_ (f : as) $ \v -> emitI ((plain (O.X64 O.Push) [] [any' (vreg v)]) {siImplicitDefs = [r "rsp"]})
-    emitI ((plain (O.X64 O.ApplyN) [fix rd (r "rax")] [OI (fromIntegral (length as))])
-             { siImplicitDefs = map r ["rdi", "rsi", "rdx", "rsp"], siClobbers = filter (/= r "rax") callerSaved,
-               siFlags = FlagsDef, siCalls = [Call "fpr_applyN" False True] })
+    forM_ (f : as) $ \v -> emitI (Protocol.selectProtocol Calling.X86_64 (plain (O.X64 O.Push) [] [any' (vreg v)]))
+    emitI (Protocol.selectProtocol Calling.X86_64 (plain (O.X64 O.ApplyN) [fix rd (r "rax")] [OI (fromIntegral (length as))]))
   OTag v -> def $ \r -> do
     t <- freshV False
     emitI (rri O.ShiftLeftImmediate t (vreg v) 1)
@@ -360,8 +353,8 @@ selectInstr cfg _ (Instr d op) = case op of
   OBoolOf p -> def $ \r -> do
     f <- freshV True
     t <- freshV True
-    emitI (la f "fpr_false")
-    emitI (la t "fpr_true")
+    emitI (la f (StaticObject "fpr_false"))
+    emitI (la t (StaticObject "fpr_true"))
     emitI (cmpi (vreg p) 0)
     emitI (csel O.NotEqual r t f)
   OTruth v -> def (\r -> emitI (ldrsw r (vreg v) 4))
@@ -438,7 +431,7 @@ selectInstr cfg _ (Instr d op) = case op of
     emitI (jump done)
     emitL slow
     res <- freshV True
-    emitCall ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!=")) Calling.RuntimeCall [vreg a, vreg b] (Just res)
+    emitCall (CodeSymbol ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!="))) Calling.RuntimeCall [vreg a, vreg b] (Just res)
     emitI (ldrsw r res 4)
     emitL done
   OCall c as -> do
@@ -463,7 +456,7 @@ selectInstr cfg _ (Instr d op) = case op of
         fit t trap
       emitI (jump done)
       emitL trap
-      emitCall "fpr_int_overflow_kernel" Calling.RuntimeCall [] Nothing
+      emitCall (CodeSymbol "fpr_int_overflow_kernel") Calling.RuntimeCall [] Nothing
       emitL done
     simdGo caps e next = case e of
       SLane -> pure (8,next)
@@ -514,10 +507,10 @@ selectInstr cfg _ (Instr d op) = case op of
       if kernel then do
         zero <- freshL "kernelzero"
         when (o == Div) (emitI (cbz b zero))
-        emitCall "fpr_int_overflow_kernel" Calling.RuntimeCall [] Nothing
+        emitCall (CodeSymbol "fpr_int_overflow_kernel") Calling.RuntimeCall [] Nothing
         when (o == Div) $ do
           emitL zero
-          emitCall "fpr_div_zero_kernel" Calling.RuntimeCall [] Nothing
+          emitCall (CodeSymbol "fpr_div_zero_kernel") Calling.RuntimeCall [] Nothing
         -- Both entries are noreturn. Define the result on the impossible
         -- continuation as well so the allocation oracle needs no exception.
         emitI (li r 0)
@@ -531,7 +524,7 @@ selectInstr cfg _ (Instr d op) = case op of
         emitI (rri O.ShiftLeftImmediate tb b 1)
         emitI (rri O.OrImmediate tb' tb 1)
         res <- freshV True
-        emitCall (primSymbol o) Calling.RuntimeCall [ta', tb'] (Just res)
+        emitCall (CodeSymbol (primSymbol o)) Calling.RuntimeCall [ta', tb'] (Just res)
         emitI (rri O.ShiftRightArithmeticImmediate r res 1)
       emitL done
     -- the 63-bit fit check: sign-extend the low 63 bits and compare
@@ -564,7 +557,7 @@ selectInstr cfg _ (Instr d op) = case op of
       emitI (rri O.ShiftLeftImmediate tb b 1)
       emitI (rri O.OrImmediate tb' tb 1)
       res <- freshV True
-      emitCall ("fpr_g_" ++ mangleName (shiftName o) ++ "_call2") Calling.RuntimeCall [ta', tb'] (Just res)
+      emitCall (CodeSymbol ("fpr_g_" ++ mangleName (shiftName o) ++ "_call2")) Calling.RuntimeCall [ta', tb'] (Just res)
       emitI (rri O.ShiftRightArithmeticImmediate r res 1)
       emitL done
 
@@ -587,7 +580,7 @@ selectTerm cfg fn b = case bTerm b of
   TRet v -> emitI (ret (vreg v))
   TBr target as
     | target == fnEntry fn -> -- a self tail transfer re-enters through the function symbol
-        emitTail (functionSymbol (fnName fn)) (FprCall TicksFuel) (map vreg as)
+        emitTail (CodeSymbol (functionSymbol (fnName fn))) (FprCall TicksFuel) (map vreg as)
     | otherwise -> do
         parallelMoves (zip (paramsOf target) (map vreg as))
         emitI (jump (blockLabel target))
@@ -611,8 +604,7 @@ selectTerm cfg fn b = case bTerm b of
   -- return; the function's text ends here
   TUnreachable msg -> do
     modify (\s -> s {selStrings = S.insert msg (selStrings s)})
-    emitI ((plain (O.X64 O.Panic) [] [OS (stringLabel msg)])
-             {siImplicitDefs = map r ["rdi", "rsp"], siClobbers = callerSaved, siControl = Return, siCalls = [Call "fpr_panic" False True]})
+    emitI (Protocol.selectProtocol Calling.X86_64 (plain (O.X64 O.Panic) [] [OAddr (StaticObject (stringLabel msg))]))
   where
     paramsOf bid = [vreg v | blk <- fnBlocks fn, bId blk == bid, (v, _) <- bParams blk]
     nextBlock = case dropWhile ((/= bId b) . bId) (fnBlocks fn) of
@@ -630,7 +622,7 @@ placement managed = Placement
 -- the allocator's view of this target (M3): the first six parameters
 -- arrive in the SysV registers, seven and eight are read from the private
 -- cells before the entry sequence can destroy them
-allocConfig :: Maybe String -> S.Set VReg -> AllocConfig
+allocConfig :: Maybe CodeSymbol -> S.Set VReg -> AllocConfig
 allocConfig self managed = AllocConfig
   { acCalleeSaved = calleeBudget,
     acCallerSaved = callerPool,
@@ -663,7 +655,7 @@ emitFnX64WithSymbols symbols cfg fn = do
   let (sel, entrySlots) = forwardEntry (cfgForwardParams cfg) (tuneEntryArgs (cfgTune cfg)) argRegs fn sel0
   checkForms (fnName fn) (sfBody sel)
   either (Left . ("compiler error: " ++)) Right (checkFn x64RegisterFile sel)
-  let ac = allocConfig (if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing) managed
+  let ac = allocConfig (if cfgSelfLoops cfg then Just (CodeSymbol (functionSymbol (fnName fn))) else Nothing) managed
   alloc <- either (Left . ("compiler error: " ++)) Right (allocateFn ac sel)
   either (Left . ("compiler error: " ++)) Right (checkAllocation ac (fnName fn) (alBody alloc))
   let saves = savedObjs (alSaved alloc)
@@ -718,7 +710,7 @@ reserveFrame hart name bytes argc =
   ++ loadCellFor hart HartPointer "%r10"
   ++ concat [["movq " ++ show (8*(i-7)) ++ "(%r10), %r11", "movq %r11, " ++ slot i] | i <- [8..argc-1]]
   ++ ["leaq " ++ show stageBytes ++ "(%rsp), %rdi", "movabsq $" ++ show (bytes+8) ++ ", %rsi",
-      "call " ++ gsym hart "fpr_stack_reserve"]
+      "call " ++ gsym hart (Call.runtimeName Call.ReserveStackEntry)]
   ++ loadCellFor hart HartPointer "%r10"
   ++ concat [["movq " ++ slot i ++ ", %r11", "movq %r11, " ++ show (8*(i-7)) ++ "(%r10)"] | i <- [8..argc-1]]
   ++ concat [["movq " ++ slot i ++ ", %r11"] ++ storeCellFor hart cell "%r11" | (i,cell) <- named]
@@ -814,7 +806,7 @@ renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOpco
       (O.Common O.LoadSpill,[d],[OI j]) -> loadCell HartPointer (reg d) ++ ["movq " ++ show (8 * (1 + j)) ++ "(" ++ reg d ++ "), " ++ reg d]
       (O.X64 O.Move,[d],[s]) -> ["movq " ++ reg s ++ ", " ++ reg d]
       (O.X64 O.Literal,[d],[n]) -> ["movabsq $" ++ imm n ++ ", " ++ reg d]
-      (O.X64 O.Address,[d],[OS s]) -> ["leaq " ++ gsym hart s ++ "(%rip), " ++ reg d]
+      (O.X64 O.Address,[d],[OAddr s]) -> ["leaq " ++ gsym hart (addressName s) ++ "(%rip), " ++ reg d]
       (O.X64 O.LoadByte,[d],[base,n]) -> ["movzbq " ++ imm n ++ "(" ++ reg base ++ "), " ++ reg d]
       (O.X64 O.LoadField,[d],[base,n]) -> ["movq " ++ imm n ++ "(" ++ reg base ++ "), " ++ reg d]
       (O.X64 O.StoreField,[],[base,value,n]) -> ["movq " ++ reg value ++ ", " ++ imm n ++ "(" ++ reg base ++ ")"]
@@ -861,13 +853,13 @@ renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOpco
       (O.X64 O.BranchNonzero,[],[v,OL l]) -> ["testq " ++ reg v ++ ", " ++ reg v,"jnz " ++ lbl l]
       (O.X64 O.Jump,[],[OL l]) -> ["jmp " ++ lbl l]
       (O.Common O.JumpLoop,[],[OL l]) -> ["jmp " ++ lbl l]
-      (O.X64 O.Call,_,OS s:_) -> call s
+      (O.X64 O.Call,_,OCode s:_) -> call (codeName s)
       (O.X64 O.Push,[],[v]) -> ["subq $16, %rsp", "movq " ++ reg v ++ ", (%rsp)"]
       (O.X64 O.ApplyN,[_],[OI n]) -> ["movq %rsp, %rdx", "movq $" ++ show n ++ ", %rsi", "movq " ++ show (16 * n) ++ "(%rsp), %rdi"]
-        ++ call "fpr_applyN" ++ ["addq $" ++ show (16 * (n + 1)) ++ ", %rsp"]
-      (O.X64 O.Panic,[],[OS s]) -> ("leaq " ++ gsym hart s ++ "(%rip), %rdi") : call "fpr_panic"
+        ++ call (Call.runtimeName Call.ApplyEntry) ++ ["addq $" ++ show (16 * (n + 1)) ++ ", %rsp"]
+      (O.X64 O.Panic,[],[OAddr s]) -> ("leaq " ++ gsym hart (addressName s) ++ "(%rip), %rdi") : call (Call.runtimeName Call.PanicEntry)
       (O.X64 O.Ret,[],[_]) -> epilogue ++ ["ret"]
-      (O.Common O.TailJump,[],OS s:_) -> epilogue ++ ["jmp " ++ gsym hart s]
+      (O.Common O.TailJump,[],OCode s:_) -> epilogue ++ ["jmp " ++ gsym hart (codeName s)]
       (O.Common O.EntryCheckTick,_,_) -> hartRead ++ stackCheck ++ tick
       (O.Common O.EntryCheck,_,_) -> hartRead ++ stackCheck
       (O.Common O.EntryTick,_,_) -> hartRead ++ tick
@@ -902,9 +894,9 @@ renderItem hart ly large fname saveLines restores (I i) = map indent (go (siOpco
       | (n, o) <- zip [0..] (siDefs i), let ref = FrameRef (entrySlot n)]
     stackCheck =
       ["leaq 8(%rsp), %r11", "subq 456(%r10), %r11", "cmpq 464(%r10), %r11", "jb " ++ lbl (entryLabel i StackReady)]
-      ++ parkArgs True ++ call "fpr_stack_grow"
+      ++ parkArgs True ++ call (Call.runtimeName Call.GrowStackEntry)
       ++ ["testq %rax, %rax", "jz " ++ lbl (entryLabel i SameStack), "leaq -8(%rax), %rsp", lbl (entryLabel i SameStack) ++ ":"]
       ++ parkArgs False ++ hartRead ++ [lbl (entryLabel i StackReady) ++ ":"]
     tick = tickN 1
     tickN n = ["subq $" ++ show n ++ ", (%r10)", "cmpq $0, (%r10)", "jg " ++ lbl (entryLabel i FuelReady)]
-      ++ parkArgs True ++ call "fpr_fuel_exhausted" ++ parkArgs False ++ [lbl (entryLabel i FuelReady) ++ ":"]
+      ++ parkArgs True ++ call (Call.runtimeName Call.FuelEntry) ++ parkArgs False ++ [lbl (entryLabel i FuelReady) ++ ":"]

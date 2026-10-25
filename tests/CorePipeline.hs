@@ -1,3 +1,4 @@
+import ExportPlans (checkExports)
 import Core.Syntax
 import Core.Opt.Pipeline
 import Core.Opt.Vector (vecSpec, pipelinePlan)
@@ -20,6 +21,7 @@ failed _ = False
 none = OptimizationOptions False False False False False False
 
 main = do
+  checkExports
   -- Generated worker metadata must survive later passes and describe its ABI.
   let v=CVar
       sumBody=CIf (app "==" [v "n",CInt 0]) (v "a")

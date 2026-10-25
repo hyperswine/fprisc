@@ -7,6 +7,8 @@ module Codegen.Target.RV
 
 import qualified Codegen.Calling as Calling
 import Codegen.Calling (CallConvention(FprCall), FuelEntry(..), TransferResult(..))
+import qualified Codegen.Call as Call
+import qualified Codegen.Protocol as Protocol
 import Codegen.Allocate
 import Codegen.Bounds
 import Codegen.Frame
@@ -96,8 +98,8 @@ rr :: R.Opcode -> VReg -> VReg -> VReg -> S ()
 rr op d a b = emit (plain (O.RV op) [anyV d] [anyV a, anyV b])
 ri :: R.Opcode -> VReg -> VReg -> Integer -> S ()
 ri op d a n = emit (plain (O.RV op) [anyV d] [anyV a, OI n])
-address :: VReg -> String -> S ()
-address d sym = emit (plain (O.RV R.Address) [anyV d] [OS sym])
+address :: VReg -> AddressSymbol -> S ()
+address d sym = emit (plain (O.RV R.Address) [anyV d] [OAddr sym])
 branch :: VReg -> Label -> S ()
 branch v l = emit ((plain (O.RV R.BranchNonzero) [] [anyV v, OL l]) {siControl = CondTo [l]})
 jump :: Label -> S ()
@@ -112,7 +114,7 @@ stage convention vs = do
   staged <- lift (Calling.stagedArguments Calling.RiscV convention vs)
   forM_ [(n,v) | (Calling.HartArgument n,v)<-staged] $ \(n,v) ->
     emit ((plain (O.Common O.StoreSpill) [] [anyV v,OI (toInteger n)]) {siImplicitDefs=map p ["t3","t4"]})
-call :: String -> CallConvention -> [VReg] -> Maybe VReg -> Bool -> S ()
+call :: CodeSymbol -> CallConvention -> [VReg] -> Maybe VReg -> Bool -> S ()
 call sym convention vs result tailCall = do
   stage convention vs
   selected <- lift (Calling.selectTransfer Calling.RiscV convention
@@ -120,15 +122,13 @@ call sym convention vs result tailCall = do
     ((plain (if tailCall then O.Common O.TailJump else O.RV R.Call) [] [])
       {siImplicitDefs=if tailCall then map p ["sp","s0","ra","t3"] else []}))
   emit selected
-calleeSym :: Callee -> String
-calleeSym c = case calleeKind c of Foreign s -> s; Generated s -> s; _ -> functionSymbol (calleeName c)
-entry :: Bool -> Bool -> S ()
-entry stack fuel = do
-  Label l <- freshLabel
-  emit ((plain (O.Common (if stack then if fuel then O.EntryCheckTick else O.EntryCheck else O.EntryTick)) [] [])
-    {siImplicitDefs = map p ["t3","t4","t5","sp"], siImplicitUses = [p "tp"],
-     siClobbers = callers, siAnnotation = EntryLabels (Label l),
-     siCalls = [Call "fpr_stack_grow" False True | stack] ++ [Call "fpr_fuel_exhausted" True False | fuel]})
+calleeSym :: Callee -> CodeSymbol
+calleeSym = calleeCodeSymbol
+entry :: Protocol.EntryChecks -> S ()
+entry checks = do
+  l <- freshLabel
+  emit (Protocol.selectProtocol Calling.RiscV
+    ((plain (O.Common (Protocol.entryOpcode checks)) [] []) {siAnnotation=EntryLabels l}))
 boxed :: VReg -> S VReg
 boxed v = do t <- fresh; d <- fresh; ri R.ShiftLeftImmediate t v 1; ri R.OrImmediate d t 1; pure d
 parallel :: [(VReg,VReg)] -> S ()
@@ -163,22 +163,23 @@ select cfg fn = do
         let wantStack = polStackCheck (cfgPolicy cfg) /= StackStatic
             wantFuel = polFuel (cfgPolicy cfg)
         unless (stack == wantStack && fuel == wantFuel) (lift (Left "RISC-V entry disagrees with the profile stack/fuel obligations"))
-        if stack || fuel then entry stack fuel else emit (plain (O.Common O.EntryStatic) [] [])
+        case Protocol.entryChecks stack fuel of
+          Just checks->entry checks
+          Nothing->emit (plain (O.Common O.EntryStatic) [] [])
       else forM_ prefix $ \(Instr _ op) -> case op of
-        OSafepoint -> if polFuel (cfgPolicy cfg) then entry False True else lift (Left "a no-fuel profile contains a safepoint")
+        OSafepoint -> if polFuel (cfgPolicy cfg) then entry Protocol.FuelOnly else lift (Left "a no-fuel profile contains a safepoint")
         _ -> lift (Left "RV64: non-entry stack check")
       mapM_ instruction rest
       terminator b
     instruction (Instr result op) = case op of
       OStore _ a n v -> storeAt stWord (vreg a) (vreg v) (fromIntegral n)
       OStackCheck -> lift (Left "RV64: misplaced stack check")
-      OSafepoint -> if polFuel (cfgPolicy cfg) then entry False True else lift (Left "a no-fuel profile contains a safepoint")
+      OSafepoint -> if polFuel (cfgPolicy cfg) then entry Protocol.FuelOnly else lift (Left "a no-fuel profile contains a safepoint")
       OSafepointN n -> do
         unless (polFuel (cfgPolicy cfg)) (lift (Left "a no-fuel profile contains a counted safepoint"))
         Label l <- freshLabel
-        emit ((plain (O.Common O.TickN) [] [OI (fromIntegral n)])
-          {siImplicitDefs = map p ["t3","t4","t5","sp"], siImplicitUses = [p "tp"],
-           siClobbers = callers, siAnnotation = EntryLabels (Label l), siCalls = [Call "fpr_fuel_exhausted" True False]})
+        emit (Protocol.selectProtocol Calling.RiscV ((plain (O.Common O.TickN) [] [OI (fromIntegral n)])
+          {siAnnotation=EntryLabels (Label l)}))
       OSimdPair {} -> lift (Left "a NEON pair on RISC-V")
       _ -> case result of
         Nothing -> lift (Left "compiler error: RV64 instruction lacks result")
@@ -207,14 +208,14 @@ select cfg fn = do
         sym <- case (t,v) of
           (0,0) -> pure "fpr_unit"; (1,0) -> pure "fpr_false"; (1,1) -> pure "fpr_true"
           _ -> modify (\s -> s {nulls = S.insert (t,v) (nulls s)}) >> pure (".Lnul_" ++ show t ++ "_" ++ show v)
-        address d sym
-      OString s -> modify (\st -> st {strings = S.insert s (strings st)}) >> address d (stringLabel s)
+        address d (StaticObject sym)
+      OString s -> modify (\st -> st {strings = S.insert s (strings st)}) >> address d (StaticObject (stringLabel s))
       OBoxedFloat width bits -> do
         unless (cfgWidth cfg == W32) (lift (Left "boxed float constants require RV32"))
         modify (\st -> st {boxedFloats = S.insert (width,bits) (boxedFloats st)})
-        address d (boxedFloatLabel width bits)
-      OSymbol s -> address d s
-      OFunValue n -> address d ("fpr_obj_" ++ mangleName n)
+        address d (StaticObject (boxedFloatLabel width bits))
+      OSymbol s -> address d (ExternalAddress s)
+      OFunValue n -> address d (StaticObject ("fpr_obj_" ++ mangleName n))
       OTag v -> do t <- fresh; ri R.ShiftLeftImmediate t (vreg v) 1; ri R.OrImmediate d t 1
       OUntag v -> ri R.ShiftRightArithmeticImmediate d (vreg v) 1
       ONot v -> ri R.XorImmediate d (vreg v) 1
@@ -222,8 +223,8 @@ select cfg fn = do
       OTruth v -> loadAt R.Load32 d (vreg v) 4
       OBoolOf v -> do
         yes <- freshLabel; done <- freshLabel
-        branch (vreg v) yes; address d "fpr_false"; jump done
-        mark yes; address d "fpr_true"; mark done
+        branch (vreg v) yes; address d (StaticObject "fpr_false"); jump done
+        mark yes; address d (StaticObject "fpr_true"); mark done
       OTagTest t variant v -> do
         miss <- freshLabel; done <- freshLabel
         bit <- fresh; ri R.AndImmediate bit (vreg v) 1; branch bit miss
@@ -235,16 +236,16 @@ select cfg fn = do
         size <- fresh; li size (8 + w * fromIntegral (length fs))
         if polProfile (cfgPolicy cfg) == BuiltinArc then do
           fields <- fresh; li fields (fromIntegral (length fs))
-          call "fpr_builtin_alloc_adt" Calling.RuntimeCall [size,fields] (Just d) False
-        else call "fpr_alloc" Calling.RuntimeCall [size] (Just d) False
+          call (CodeSymbol "fpr_builtin_alloc_adt") Calling.RuntimeCall [size,fields] (Just d) False
+        else call (CodeSymbol "fpr_alloc") Calling.RuntimeCall [size] (Just d) False
         forM_ [(0,t),(4,variant)] $ \(off,n) -> do h <- fresh; li h (fromIntegral n); storeAt R.Store32 d h off
         forM_ (zip [0..] fs) $ \(n,v) -> storeAt stWord d (vreg v) (8+w*n)
       OReuse _ _ root fs -> do
         forM_ (zip [0..] fs) $ \(n,v) -> storeAt stWord (vreg root) (vreg v) (8+w*n)
         emit (plain (O.RV R.Move) [anyV d] [anyV (vreg root)])
       OField n v -> loadAt ld d (vreg v) (8+w*fromIntegral n)
-      OStrLen s -> do t <- fresh; call "fpr_g_strlen_call1" Calling.RuntimeCall [vreg s] (Just t) False; ri R.ShiftRightArithmeticImmediate d t 1
-      OCharAt s n -> do i <- boxed (vreg n); t <- fresh; call "fpr_g_charAt_call2" Calling.RuntimeCall [vreg s,i] (Just t) False; ri R.ShiftRightArithmeticImmediate d t 1
+      OStrLen s -> do t <- fresh; call (CodeSymbol "fpr_g_strlen_call1") Calling.RuntimeCall [vreg s] (Just t) False; ri R.ShiftRightArithmeticImmediate d t 1
+      OCharAt s n -> do i <- boxed (vreg n); t <- fresh; call (CodeSymbol "fpr_g_charAt_call2") Calling.RuntimeCall [vreg s,i] (Just t) False; ri R.ShiftRightArithmeticImmediate d t 1
       OKernelArith op a b -> do
         slow <- freshLabel; zero <- freshLabel; done <- freshLabel
         result <- fresh
@@ -267,13 +268,13 @@ select cfg fn = do
         ri R.ShiftLeftImmediate shifted result 1; ri R.ShiftRightArithmeticImmediate fit shifted 1
         failUnlessEqual fit result
         emit (plain (O.RV R.Move) [anyV d] [anyV result]); jump done
-        mark slow; call "fpr_int_overflow_kernel" Calling.RuntimeCall [] Nothing False
-        mark zero; call "fpr_div_zero_kernel" Calling.RuntimeCall [] Nothing False
+        mark slow; call (CodeSymbol "fpr_int_overflow_kernel") Calling.RuntimeCall [] Nothing False
+        mark zero; call (CodeSymbol "fpr_div_zero_kernel") Calling.RuntimeCall [] Nothing False
         li d 0 -- unreachable after a noreturn trap
         mark done
       OArith op a b -> do
         x <- boxed (vreg a); y <- boxed (vreg b); t <- fresh
-        call ("fpr_prim_fn_" ++ mangleName (arithSymbol op)) Calling.RuntimeCall [x,y] (Just t) False
+        call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (arithSymbol op))) Calling.RuntimeCall [x,y] (Just t) False
         ri R.ShiftRightArithmeticImmediate d t 1
       OBit op a b -> rr (case op of BAnd -> R.And; BOr -> R.Or; BXor -> R.Xor) d (vreg a) (vreg b)
       OFloatBin o a b -> rr (R.FloatBinary O.Float64 o) d (vreg a) (vreg b)
@@ -308,26 +309,25 @@ select cfg fn = do
       ORvvSumLoaded acc -> emit ((plain (O.RV R.VectorSum) [anyV d] [anyV (vreg acc)]) {siImplicitDefs = [p "t5"]})
       OShift op a b -> do
         x <- boxed (vreg a); y <- boxed (vreg b); t <- fresh
-        call (if op == Shl then "fpr_g_BITSHIFTL_call2" else "fpr_g_BITSHIFTR_call2") Calling.RuntimeCall [x,y] (Just t) False
+        call (CodeSymbol (if op == Shl then "fpr_g_BITSHIFTL_call2" else "fpr_g_BITSHIFTR_call2")) Calling.RuntimeCall [x,y] (Just t) False
         ri R.ShiftRightArithmeticImmediate d t 1
       OCmp op a b -> rr (R.Compare op) d (vreg a) (vreg b)
       OEqVal eq a b -> do
-        t <- fresh; call ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!=")) Calling.RuntimeCall [vreg a,vreg b] (Just t) False
+        t <- fresh; call (CodeSymbol ("fpr_prim_fn_" ++ mangleName (if eq then "==" else "!="))) Calling.RuntimeCall [vreg a,vreg b] (Just t) False
         loadAt R.Load32 d t 4
       OCall c vs -> do
         inlined <- rawAdapter c (map vreg vs) d
         unless inlined (call (calleeSym c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg vs) (Just d) False)
       OApply f vs -> do
-        forM_ (f:vs) $ \v -> emit ((plain (O.RV R.Push) [] [anyV (vreg v)]) {siImplicitDefs = [p "sp"]})
-        emit ((plain (O.RV R.ApplyN) [fixed d (p "a0")] [OI (fromIntegral (length vs))])
-          {siImplicitDefs = map p ["a1","a2","sp","t6"], siClobbers = filter (/= p "a0") callers,
-           siCalls = [Call "fpr_applyN" False True]})
+        forM_ (f:vs) $ \v -> emit (Protocol.selectProtocol Calling.RiscV (plain (O.RV R.Push) [] [anyV (vreg v)]))
+        emit (Protocol.selectProtocol Calling.RiscV
+          (plain (O.RV R.ApplyN) [fixed d (p "a0")] [OI (fromIntegral (length vs))]))
       op -> lift (Left ("compiler error: RV64 value " ++ show op))
     targetParams bid = [vreg v | b <- fnBlocks fn, bId b == bid, (v,_) <- bParams b]
     edge bid vs = parallel (zip (targetParams bid) (map vreg vs)) >> jump (label bid)
     terminator b = case bTerm b of
       TRet v -> emit ((plain (O.RV R.Ret) [] [fixed (vreg v) (p "a0")]) {siImplicitDefs = map p ["sp","s0","ra","t3"], siControl = Return})
-      TBr bid vs | bid == fnEntry fn -> call (functionSymbol (fnName fn)) (Calling.nativeCall (cfgPolicy cfg)) (map vreg vs) Nothing True
+      TBr bid vs | bid == fnEntry fn -> call (CodeSymbol (functionSymbol (fnName fn))) (Calling.nativeCall (cfgPolicy cfg)) (map vreg vs) Nothing True
                  | otherwise -> edge bid vs
       TCondBr v yes ys no ns -> do l <- freshLabel; branch (vreg v) l; edge no ns; mark l; edge yes ys
       TTailCall c vs -> do
@@ -337,7 +337,7 @@ select cfg fn = do
         else call (calleeSym c) (Calling.calleeCall (cfgPolicy cfg) c) (map vreg vs) Nothing True
       TUnreachable s -> do
         modify (\st -> st {strings = S.insert s (strings st)})
-        emit ((plain (O.RV R.Panic) [] [OS (stringLabel s)]) {siImplicitDefs = [p "a0"], siClobbers = callers, siControl = Return, siCalls = [Call "fpr_panic" False True]})
+        emit (Protocol.selectProtocol Calling.RiscV (plain (O.RV R.Panic) [] [OAddr (StaticObject (stringLabel s))]))
 
     -- The ARC representation pass has proved Word/Addr are raw bits and
     -- Ints tagged. These non-owning adapters can be selected directly.
@@ -350,7 +350,7 @@ select cfg fn = do
       | otherwise = case (calleeName c,vs) of
           (n,[a]) | n `elem` ["$arc.retain","$arc.release"] -> yes (guarded (\slow -> do
             bit <- fresh; ri R.AndImmediate bit a 1; bad <- fresh; ri R.XorImmediate bad bit 1; branch bad slow) $
-              if n=="$arc.retain" then emit (plain (O.RV R.Move) [anyV d] [anyV a]) else address d "fpr_unit")
+              if n=="$arc.retain" then emit (plain (O.RV R.Move) [anyV d] [anyV a]) else address d (StaticObject "fpr_unit"))
           (n,[a,b]) | Just op <- M.lookup n intBinary -> yes (do
             x <- fresh; y <- fresh; result <- fresh
             ri R.ShiftRightArithmeticImmediate x a 1; ri R.ShiftRightArithmeticImmediate y b 1
@@ -389,14 +389,14 @@ select cfg fn = do
             if small then do t <- fresh; loadAt op t a 0; tagged t d else loadAt op d a 0)
           (n,[a,b]) | Just (op,alignment,small) <- M.lookup n writes -> yes (memoryGuard a alignment $ do
             v <- if small then do t <- fresh; ri R.ShiftRightArithmeticImmediate t b 1; pure t else pure b
-            storeAt op a v 0; address d "fpr_unit")
-          ("$arc.memfence",[_]) -> yes (emit (plain (O.RV R.Fence) [] []) >> address d "fpr_unit")
+            storeAt op a v 0; address d (StaticObject "fpr_unit"))
+          ("$arc.memfence",[_]) -> yes (emit (plain (O.RV R.Fence) [] []) >> address d (StaticObject "fpr_unit"))
           _ -> pure False
       where
         yes action = action >> pure True
         tagged a result = do t <- fresh; ri R.ShiftLeftImmediate t a 1; ri R.OrImmediate result t 1
         bool t = do yesLabel <- freshLabel; done <- freshLabel; branch t yesLabel
-                    address d "fpr_false"; jump done; mark yesLabel; address d "fpr_true"; mark done
+                    address d (StaticObject "fpr_false"); jump done; mark yesLabel; address d (StaticObject "fpr_true"); mark done
         guarded check body = do slow <- freshLabel; done <- freshLabel
                                 check slow; body; jump done; mark slow
                                 call (calleeSym c) Calling.RuntimeCall vs (Just d) False; mark done
@@ -424,7 +424,7 @@ allocConfig cfg fn managed = AllocConfig
     acMove = \d s -> plain (O.RV R.Move) [OP d] [OP s],
     acSlot = \n v -> frameObj n (wordBytes cfg) (wordBytes cfg) (SpillSlot n) (S.member v managed),
     acEarlyDef = const False,
-    acSelfLoop = if cfgSelfLoops cfg then Just (functionSymbol (fnName fn)) else Nothing }
+    acSelfLoop = if cfgSelfLoops cfg then Just (CodeSymbol (functionSymbol (fnName fn))) else Nothing }
 
 emitFnRV :: RVConfig -> Fn -> Either String NativeFn
 emitFnRV cfg=emitFnRVWithSymbols (publicSymbols (cfgExports cfg)) cfg
@@ -501,7 +501,7 @@ reserveFrame cfg fn bytes argc foreignWindow =
   ++ hartRead cfg
   ++ concat [memory ld "t4" "t3" (fromIntegral (i-7)*w) ++ memory st "t4" "sp" (fromIntegral i*w) | i <- [8..argc-1]]
   ++ memory st "ra" "sp" (fromIntegral argc*w)
-  ++ adjust "a0" "sp" stageBytes ++ ["li a1, " ++ show bytes, "call fpr_stack_reserve", "mv t5, a0"]
+  ++ adjust "a0" "sp" stageBytes ++ ["li a1, " ++ show bytes, ("call " ++ Call.runtimeName Call.ReserveStackEntry), "mv t5, a0"]
   ++ hartRead cfg
   ++ concat [memory ld "t4" "sp" (fromIntegral i*w) ++ memory st "t4" "t3" (fromIntegral (i-7)*w) | i <- [8..argc-1]]
   ++ concat [memory ld reg "sp" (fromIntegral i*w) | (i,reg) <- zip [0..] (take argc (map (("a"++) . show) [0..7::Int]))]
@@ -543,9 +543,9 @@ render cfg fn ly large restores (I i) = map (\s -> if last s == ':' then s else 
     epilogue = restores ++ ["mv t3, s0"] ++ memory ld "ra" "s0" (-w) ++ memory ld "s0" "s0" (-2*w) ++ (if large then memory ld "sp" "t3" (-3*w) else ["mv sp, t3"])
     hart = hartRead cfg
     l point = local fn (entryLabel i point)
-    stack = [ld ++ " t5, " ++ show (57*w) ++ "(t3)", "sub t4, sp, t5", ld ++ " t5, " ++ show (58*w) ++ "(t3)", "bltu t4, t5, " ++ l StackReady, "call fpr_stack_grow", "beqz a0, " ++ l SameStack, "mv sp, a0", l SameStack ++ ":"] ++ hart ++ [l StackReady ++ ":"]
+    stack = [ld ++ " t5, " ++ show (57*w) ++ "(t3)", "sub t4, sp, t5", ld ++ " t5, " ++ show (58*w) ++ "(t3)", "bltu t4, t5, " ++ l StackReady, ("call " ++ Call.runtimeName Call.GrowStackEntry), "beqz a0, " ++ l SameStack, "mv sp, a0", l SameStack ++ ":"] ++ hart ++ [l StackReady ++ ":"]
     tick = tickN 1
-    tickN n = [ld ++ " t4, 0(t3)", "addi t4, t4, -" ++ show n, stWord ++ " t4, 0(t3)", "bgtz t4, " ++ l FuelReady, "call fpr_fuel_exhausted", l FuelReady ++ ":"]
+    tickN n = [ld ++ " t4, 0(t3)", "addi t4, t4, -" ++ show n, stWord ++ " t4, 0(t3)", "bgtz t4, " ++ l FuelReady, ("call " ++ Call.runtimeName Call.FuelEntry), l FuelReady ++ ":"]
     ew = if cfgWidth cfg == W32 then "32" else "64"
     go op ds us = case (op,ds,us) of
       (O.Common O.EntryStatic,[],[]) -> []
@@ -558,7 +558,7 @@ render cfg fn ly large restores (I i) = map (\s -> if last s == ':' then s else 
       -- a module's unit is assembled under .option pic: `la` of an external
       -- symbol goes through the GOT (interposable), a unit-local label stays
       -- PC-relative (`lla`), as the A64 module pass keeps local labels
-      (O.RV R.Address,[d],[OS sym]) -> [(if cfgHart cfg == HartTlsIe && ".L" `isPrefixOf` sym then "lla " else "la ") ++ r d ++ ", " ++ sym]
+      (O.RV R.Address,[d],[OAddr sym]) -> [(if cfgHart cfg == HartTlsIe && ".L" `isPrefixOf` addressName sym then "lla " else "la ") ++ r d ++ ", " ++ addressName sym]
       (O.RV R.Move,[d],[v]) -> ["mv " ++ r d ++ ", " ++ r v]
       (O.RV o,[d],[v,n]) | o `elem` [R.ShiftLeftImmediate,R.ShiftRightArithmeticImmediate,R.AndImmediate,R.OrImmediate,R.XorImmediate] -> [R.name o ++ " " ++ r d ++ ", " ++ r v ++ ", " ++ show (num n)]
       (O.RV o,[d],[a,b]) | o `elem` [R.Add,R.Subtract,R.Multiply,R.MultiplyHigh,R.Divide,R.And,R.Or,R.Xor,R.LessUnsigned,R.ShiftLeft,R.ShiftRight] -> [R.name o ++ " " ++ r d ++ ", " ++ r a ++ ", " ++ r b]
@@ -569,12 +569,12 @@ render cfg fn ly large restores (I i) = map (\s -> if last s == ':' then s else 
       (O.RV R.BranchNonzero,[],[v,OL l']) -> ["bnez " ++ r v ++ ", " ++ local fn l']
       (O.RV R.Jump,[],[OL l']) -> ["j " ++ local fn l']
       (O.Common O.JumpLoop,[],[OL l']) -> ["j " ++ local fn l']
-      (O.RV R.Call,_,OS sym:_) -> ["call " ++ sym]
-      (O.Common O.TailJump,[],OS sym:_) -> epilogue ++ ["tail " ++ sym]
+      (O.RV R.Call,_,OCode sym:_) -> ["call " ++ codeName sym]
+      (O.Common O.TailJump,[],OCode sym:_) -> epilogue ++ ["tail " ++ codeName sym]
       (O.RV R.Ret,[],[_]) -> epilogue ++ ["ret"]
       (O.RV R.Push,[],[v]) -> ["addi sp, sp, -16", stWord ++ " " ++ r v ++ ", 0(sp)"]
-      (O.RV R.ApplyN,[_],[n]) -> ["mv a2, sp", "li a1, " ++ show (num n)] ++ memory ld "a0" "sp" (16*num n) ++ ["call fpr_applyN"] ++ adjust "sp" "sp" (16*(num n+1))
-      (O.RV R.Panic,[],[OS sym]) -> ["la a0, " ++ sym, "call fpr_panic"]
+      (O.RV R.ApplyN,[_],[n]) -> ["mv a2, sp", "li a1, " ++ show (num n)] ++ memory ld "a0" "sp" (16*num n) ++ [("call " ++ Call.runtimeName Call.ApplyEntry)] ++ adjust "sp" "sp" (16*(num n+1))
+      (O.RV R.Panic,[],[OAddr sym]) -> ["la a0, " ++ addressName sym, ("call " ++ Call.runtimeName Call.PanicEntry)]
       (O.Common O.EntryCheckTick,[],[]) -> hart ++ stack ++ tick
       (O.Common O.EntryCheck,[],[]) -> hart ++ stack
       (O.Common O.EntryTick,[],[]) -> hart ++ tick
