@@ -91,4 +91,5 @@ including the saved-compiler negative control and full timing JSON.
 
 The preceding native-call checkpoint `871845e` passed
 [hosted CI run 40231567763](https://github.com/hyperswine/fprisc/actions/runs/40231567763).
-This export/representation stage requires its own hosted result after push.
+This export/representation stage passed [hosted CI run 40235445898](https://github.com/hyperswine/fprisc/actions/runs/40235445898)
+at commit `ce77e9f`.

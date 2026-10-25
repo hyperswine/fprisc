@@ -3,6 +3,8 @@
 module Codegen.Target.RV.Forms (checkForms) where
 import qualified Codegen.Calling as Calling
 import Codegen.Selected
+import Codegen.Protocol (checkProtocols)
+import qualified Codegen.Protocol as Protocol
 import Codegen.Annotation
 import Codegen.Target.Forms
 import qualified Codegen.Opcode as O
@@ -12,6 +14,7 @@ import Control.Monad (unless,forM_)
 checkForms rf owner items=do
   checkAnnotations AlwaysRestores owner items
   Calling.checkTransfers Calling.RiscV owner items
+  checkProtocols Calling.RiscV owner items
   forM_ [i | I i<-items] $ \i->do
     let bad why=Left ("selected RISC-V "++owner++" "++siOp i++": "++why)
         require why yes=unless yes (bad why)
@@ -35,7 +38,7 @@ checkForms rf owner items=do
             R.Store64->store;R.Store32->store;R.StoreHalf->store;R.StoreByte->store
             R.FrameLoad->one [frame];R.FrameStore->none [word,frame];R.Fence->none []
             R.BranchNonzero->none [word,label];R.Jump->none [label]
-            R.Call->length ds<=1 && all (fixed (Phys "a0")) ds && case us of OS _:vs->arguments args vs;_->False
+            R.Call->length ds<=1 && all (fixed (Phys "a0")) ds && case us of OCode _:vs->arguments args vs;_->False
             R.Ret->none [fixed (Phys "a0")];R.Push->none [word]
             R.ApplyN->matches [fixed (Phys "a0")] ds && matches [immediate] us
             R.Panic->none [symbol]
@@ -54,9 +57,12 @@ checkForms rf owner items=do
     require "opcode/call metadata mismatch" (callMetadata opcode form us (siCalls i))
   where
     args=map (Phys . ("a"++) . show) [0::Int ..7]
-    control op us=case (op,us) of
+    control op us=case Protocol.embedded op of
+      Just protocol->Protocol.protocolControl protocol
+      Nothing->ordinaryControl op us
+    ordinaryControl op us=case (op,us) of
       (O.Common O.TailJump,_)->Return;(O.Common O.JumpLoop,[OL l])->JumpTo l
-      (O.RV R.Ret,_)->Return;(O.RV R.Panic,_)->Return
+      (O.RV R.Ret,_)->Return;
       (O.RV R.Jump,[OL l])->JumpTo l
       (O.RV R.BranchNonzero,[_,OL l])->CondTo [l]
       _->Next

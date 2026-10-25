@@ -3,7 +3,10 @@
 -- before allocation and again after physical placement, before rendering.
 module Codegen.Target.X64.Forms (checkForms) where
 import qualified Codegen.Calling as Calling
+import Codegen.Target.Forms (callMetadata,CallForm(..))
 import Codegen.Selected
+import Codegen.Protocol (checkProtocols)
+import qualified Codegen.Protocol as Protocol
 import Codegen.Annotation
 import qualified Codegen.Opcode as O
 import Control.Monad (unless,forM_)
@@ -12,6 +15,7 @@ checkForms :: String -> [Item] -> Either String ()
 checkForms owner items=do
   checkAnnotations AlwaysRestores owner items
   Calling.checkTransfers Calling.X86_64 owner items
+  checkProtocols Calling.X86_64 owner items
   forM_ [i | I i<-items] $ \i->do
     let bad why=Left ("selected x64 "++owner++" "++siOp i++": "++why)
         require why yes=unless yes (bad why)
@@ -97,10 +101,10 @@ checkForms owner items=do
     immediate (OI _)=True;immediate _=False
     index lo hi (OI n)=n>=lo && n<=hi;index _ _ _=False
     argumentCell (OC _)=True;argumentCell _=False
-    symbol (OS _)=True;symbol _=False
+    symbol (OAddr a)=not (null (addressName a));symbol _=False
     label (OL _)=True;label _=False
     frame (OF _ 0)=True;frame _=False
-    transfer (OS _:args)=length args<=6 && all word args
+    transfer (OCode _:args)=length args<=6 && all word args
     transfer _=False
     entry ds us=length ds<=6 && all word ds && ds==us
     fixed name (OV _ (Fix (Phys p)))=p==name
@@ -121,36 +125,29 @@ checkForms owner items=do
       O.X64 x | x `elem` [O.Add,O.Subtract,O.Multiply,O.And,O.Or,O.Xor,O.ShiftLeftImmediate,
           O.ShiftRightArithmeticImmediate,O.OrImmediate,O.AndImmediate,O.XorImmediate,O.SignExtend63]->tied ds us
       _->True
-    calls op us cs=case op of
-      O.X64 O.Call->target us cs
-      O.Common O.TailJump->target us cs
-      O.X64 O.ApplyN->cs==[Call "fpr_applyN" False True]
-      O.X64 O.Panic->cs==[Call "fpr_panic" False True]
-      O.Common O.EntryCheckTick->cs==[Call "fpr_stack_grow" False True,Call "fpr_fuel_exhausted" True False]
-      O.Common O.EntryCheck->cs==[Call "fpr_stack_grow" False True]
-      O.Common O.EntryTick->cs==[Call "fpr_fuel_exhausted" True False]
-      O.Common O.TickN->cs==[Call "fpr_fuel_exhausted" True False]
-      _->null cs
-    target (OS name:_) [c]=callTarget c==name
-    target _ _=False
-    control op us=case (op,us) of
+    calls op us cs=callMetadata op (case op of O.X64 O.Call->DirectCall;_->NoCall) us cs
+    control op us=case Protocol.embedded op of
+      Just protocol->Protocol.protocolControl protocol
+      Nothing->ordinaryControl op us
+    ordinaryControl op us=case (op,us) of
       (O.Common O.TailJump,_)->Return
       (O.Common O.JumpLoop,[OL l])->JumpTo l
       (O.X64 O.Ret,_)->Return
-      (O.X64 O.Panic,_)->Return
       (O.X64 O.Jump,[OL l])->JumpTo l
       (O.X64 (O.Branch _),[OL l])->CondTo [l]
       (O.X64 O.BranchZero,[_,OL l])->CondTo [l]
       (O.X64 O.BranchNonzero,[_,OL l])->CondTo [l]
       _->Next
-    flags op=case op of
-      O.Common c | c `elem` [O.EntryCheckTick,O.EntryCheck,O.EntryTick,O.TickN]->FlagsDef
+    flags op=case Protocol.embedded op of
+      Just protocol->Protocol.protocolFlags Calling.X86_64 protocol
+      Nothing->ordinaryFlags op
+    ordinaryFlags op=case op of
       O.X64 x->case x of
         O.Set _->FlagsUse;O.Select _->FlagsUse;O.Branch _->FlagsUse
         O.FloatCompare _ _->FlagsDef;O.TreeCompare _ _->FlagsDef
         _ | x `elem` [O.Add,O.Subtract,O.Multiply,O.And,O.Or,O.Xor,O.ShiftLeftImmediate,
               O.ShiftRightArithmeticImmediate,O.OrImmediate,O.AndImmediate,O.XorImmediate,
               O.SignExtend63,O.ShiftLeft,O.ShiftRight,O.Divide,O.Compare,O.CompareImmediate,
-              O.BranchZero,O.BranchNonzero,O.Call,O.ApplyN]->FlagsDef
+              O.BranchZero,O.BranchNonzero,O.Call]->FlagsDef
         _->FlagsNone
       _->FlagsNone

@@ -9,6 +9,7 @@
 -- and the AArch64 pipeline runs end to end on a hand-written function.
 -- Run: cabal exec -- runghc -w -icompiler tests/SelectedIR.hs
 import qualified Codegen.Calling as Calling
+import qualified Codegen.Protocol as Protocol
 import Codegen.Bounds
 import Codegen.Frame
 import Codegen.IR
@@ -21,6 +22,7 @@ import qualified Codegen.Opcode.RV as ROp
 import qualified Codegen.Target.A64.Forms as AForms
 import qualified Codegen.Target.RV.Forms as RForms
 import Codegen.Target.X64.Forms (checkForms)
+import qualified Codegen.Call as Call
 import Codegen.Selected
 import qualified Codegen.Annotation as Annotation
 import qualified Codegen.Target.X64 as X64
@@ -81,8 +83,8 @@ shl = (plain "shlq" [OV (v 5) (Tied 0)] [gpr 0, OV (v 1) (Fix (r "rcx"))]) {siFl
 -- a generated call: first argument in rdi, result in rax, the SysV
 -- caller-saved set destroyed, the callee's entry ticks
 callF :: SInstr
-callF = (plain "call" [OV (v 6) (Fix (r "rax"))] [OS "fpr_fn_f", OV (v 0) (Fix (r "rdi")), OV (v 1) (Fix (r "rsi"))])
-  {siClobbers = sysvClobbers, siFlags = FlagsDef, siCalls = [Call "fpr_fn_f" True False]}
+callF = (plain "call" [OV (v 6) (Fix (r "rax"))] [OCode (CodeSymbol "fpr_fn_f"), OV (v 0) (Fix (r "rdi")), OV (v 1) (Fix (r "rsi"))])
+  {siClobbers = sysvClobbers, siFlags = FlagsDef, siCalls = [Call (CodeSymbol "fpr_fn_f") (CalleeEntry Calling.TicksFuel)]}
 
 -- the stack alignment around a call and the a6/a7 cells of a wide call
 align :: SInstr
@@ -93,10 +95,11 @@ storeA6 = plain "x64.store.cell" [] [gpr 0, OC Calling.Argument7]
 
 main :: IO ()
 main = do
+  nativeProtocols
   callingContracts
-  let nativeTick=(plainOpcode (Opcode.Common Opcode.EntryTick) [] [])
+  let nativeTick=Protocol.selectProtocol Calling.X86_64 ((plainOpcode (Opcode.Common Opcode.EntryTick) [] [])
         {siAnnotation=EntryLabels (Label "annotation-entry"),siFlags=FlagsDef,
-         siCalls=[Call "fpr_fuel_exhausted" True False]}
+         siCalls=[Call.runtimeEvent Call.FuelEntry]})
       annotations=Annotation.checkAnnotations Annotation.AlwaysRestores "annotation-test"
       save=(plainOpcode (Opcode.A64 AOp.Save) [] []) {siAnnotation=SaveGroup 0}
       move=(plainOpcode (Opcode.A64 AOp.Move) [OP (Phys "x19")] [OP (Phys "x0")])
@@ -143,7 +146,7 @@ main = do
     (aForms [I aFloat {siUses=[gpr 0,OV (v 1) (Any FPR)]}])
   refused "A64 branch metadata preserves its target" "control effect"
     (aForms [I aBranch {siControl=Next}])
-  refused "A64 entry metadata cannot lose its fuel event" "call metadata"
+  refused "A64 entry metadata cannot lose its fuel event" "runtime event"
     (aForms [I ((plainOpcode (Opcode.Common Opcode.EntryTick) [] []) {siAnnotation=EntryLabels (Label "a64-tick"),siFlags=FlagsDef})])
   refused "A64 cannot render synthetic text" "opcode/operand"
     (aForms [I (plain "mov" [gpr 2] [gpr 0])])
@@ -160,8 +163,8 @@ main = do
   refused "RV float tree nodes remain within scratch registers" "opcode/operand"
     (rvForms [I (rvOp (ROp.TreeNode Opcode.Float32 FAdd) [] [OI 7])])
   refused "RV call result must arrive in a0" "result register"
-    (rvForms [I ((rvOp ROp.Call [OV (v 2) (Fix (Phys "a1"))] [OS "callee"])
-      {siCalls=[Call "callee" False True],siTransfer=Just (Calling.Transfer Calling.RuntimeCall 0 Calling.WordResult)})])
+    (rvForms [I ((rvOp ROp.Call [OV (v 2) (Fix (Phys "a1"))] [OCode (CodeSymbol "callee")])
+      {siCalls=[Call (CodeSymbol "callee") RuntimeC],siTransfer=Just (Calling.Transfer Calling.RuntimeCall 0 Calling.WordResult)})])
   refused "x64 cannot render an A64 operation" "opcode/operand"
     (checkForms "forms" [I aFloat])
   let typedMove=plainOpcode (Opcode.X64 Opcode.Move) [gpr 2] [gpr 0]
@@ -194,23 +197,23 @@ main = do
   refused "x64 arithmetic cannot lose its two-address tie" "register constraint"
     (checkForms "typed" [I typedAdd {siDefs=[gpr 2]}])
   refused "x64 calls require a complete transfer contract" "missing transfer contract"
-    (checkForms "typed" [I ((plainOpcode (Opcode.X64 Opcode.Call) [] [OS "target"]) {siFlags=FlagsDef})])
-  let typedEntry=I ((plainOpcode (Opcode.Common Opcode.EntryCheckTick) [] [])
-        {siAnnotation=EntryLabels (Label "typed-entry"),siFlags=FlagsDef,siCalls=[Call "fpr_stack_grow" False True,Call "fpr_fuel_exhausted" True False]})
+    (checkForms "typed" [I ((plainOpcode (Opcode.X64 Opcode.Call) [] [OCode (CodeSymbol "target")]) {siFlags=FlagsDef})])
+  let typedEntry=I (Protocol.selectProtocol Calling.X86_64 ((plainOpcode (Opcode.Common Opcode.EntryCheckTick) [] [])
+        {siAnnotation=EntryLabels (Label "typed-entry"),siFlags=FlagsDef,siCalls=[Call.runtimeEvent Call.GrowStackEntry,Call.runtimeEvent Call.FuelEntry]}))
   check "shared shallow-entry rewriting retains the typed opcode"
     (case shallowEntry StackCheckLegacyShallow 32 [typedEntry] of
       (True,[I i])->siOpcode i==Opcode.Common Opcode.EntryTick && checkForms "typed" [I i]==Right ()
       _->False)
-  let entry = I ((plain "entry.check.tick" [] []) {siCalls = [Call "fpr_stack_grow" False True, Call "fpr_fuel_exhausted" True False]})
+  let entry = I ((plain "entry.check.tick" [] []) {siCalls = [Call.runtimeEvent Call.GrowStackEntry, Call.runtimeEvent Call.FuelEntry]})
       callItem = I callF
       tailItem = I callF {siControl = Return}
       shallow = shallowEntry StackCheckLegacyShallow
   check "shallow keeps the fuel event" (case shallow 1024 [entry] of
-    (True, [I i]) -> siOp i == "entry.tick" && map callTarget (siCalls i) == ["fpr_fuel_exhausted"]
+    (True, [I i]) -> siOp i == "entry.tick" && map callTarget (siCalls i) == [Call.runtimeSymbol Call.FuelEntry]
     _ -> False)
   check "shallow rejects a large frame" (shallow 1040 [entry] == (False, [entry]))
   check "shallow keeps generated and generic call checks" (shallow 32 [entry, callItem] == (False, [entry, callItem]))
-  let apply = I callF {siCalls = [Call "fpr_applyN" False True]}
+  let apply = I callF {siCalls = [Call.runtimeEvent Call.ApplyEntry]}
   check "generic apply without a bound reset still keeps its check" (shallow 32 [entry, apply] == (False, [entry, apply]))
   check "shallow admits a tail exit" (fst (shallow 32 [entry, tailItem]))
   check "every-entry policy stays exact" (shallowEntry StackCheckEveryEntry 32 [entry] == (False, [entry]))
@@ -251,7 +254,7 @@ main = do
   let [shlq] = [i | i <- instrs, siOp i == "shlq"]
   check "the shift count is loaded into rcx" (siUses shlq !! 1 == OP (r "rcx") && siDefs shlq == [head (siUses shlq)])
   let [callq] = [i | i <- instrs, siOp i == "call"]
-  check "the call's arguments are in rdi and rsi, its result in rax" (siUses callq == [OS "fpr_fn_f", OP (r "rdi"), OP (r "rsi")] && siDefs callq == [OP (r "rax")])
+  check "the call's arguments are in rdi and rsi, its result in rax" (siUses callq == [OCode (CodeSymbol "fpr_fn_f"), OP (r "rdi"), OP (r "rsi")] && siDefs callq == [OP (r "rax")])
   refused "placement runs out of scratch" "no scratch register" (placeInSlots pl {plScratch = const []} (fn [I tiedAdd]))
   refused "flag-clobbering slot loads" "slot transfer changes flags"
     (placeInSlots pl {plLoad = \p ref -> (plain "badload" [OP p] [OF ref 0]) {siFlags = FlagsDef}} (fn [I tiedAdd]))
@@ -377,7 +380,7 @@ main = do
       ret' = (plain "ret" [] [OP (Phys "x0")]) {siControl = Return}
       br l = (plain "bz" [] [OP (Phys "x0"), OL (Label l)]) {siControl = CondTo [Label l]}
       jmp l = (plain "jump" [] [OL (Label l)]) {siControl = JumpTo (Label l)}
-      callS = (op "call" [] []) {siCalls = [Call "f" True False]}
+      callS = (op "call" [] []) {siCalls = [Call (CodeSymbol "f") (CalleeEntry Calling.TicksFuel)]}
       notes xs = [(siOp i, siAnnotation i) | I i <- xs]
       -- entry branches: the leaf returns at once, the other arm uses s1 around a call
       arms = [ I (op "entry" [] []), I (br "leaf"),
@@ -411,7 +414,7 @@ callingContracts = do
       abiBank Calling.AArch64=map (Phys . ("x"++) . show) [0::Int ..7]
       abiBank Calling.RiscV=map (Phys . ("a"++) . show) [0::Int ..7]
       transfers abi=Calling.checkTransfers abi "calling-test"
-      select abi convention result n= either error id (Calling.selectTransfer abi convention result "callee"
+      select abi convention result n= either error id (Calling.selectTransfer abi convention result (CodeSymbol "callee")
         (map VReg [0..n-1]) (if result==Calling.WordResult then Just (VReg n) else Nothing)
         (plainOpcode (if result==Calling.TailTransfer then Opcode.Common Opcode.TailJump else case abi of
           Calling.X86_64->Opcode.X64 Opcode.Call
@@ -455,15 +458,15 @@ callingContracts = do
     refused "staged arguments cannot cross a call" "staged argument cells"
       (transfers abi (staged++[I c,I wide]))
     refused "staged arguments cannot cross an entry safepoint" "staged argument cells"
-      (transfers abi (staged++[I ((plain "tick" [] []) {siCalls=[Call "tick" True False]}),I wide]))
+      (transfers abi (staged++[I ((plain "tick" [] []) {siCalls=[Call (CodeSymbol "tick") (CalleeEntry Calling.TicksFuel)]}),I wide]))
     refused "staged arguments cannot cross a branch label" "staged argument cells"
       (transfers abi (staged++[ILabel (Label "elsewhere"),I wide]))
     refused "fixed argument bank is authoritative" "argument register"
-      (transfers abi [I small {siUses=[OS "callee",gpr 0]}])
+      (transfers abi [I small {siUses=[OCode (CodeSymbol "callee"),gpr 0]}])
     refused "clobbers cannot lose a volatile register" "clobber set"
       (transfers abi [I small {siClobbers=drop 1 (siClobbers small)}])
     refused "runtime accounting cannot replace a generated fuel event" "call event"
-      (transfers abi [I small {siCalls=[Call "callee" False True]}])
+      (transfers abi [I small {siCalls=[Call (CodeSymbol "callee") RuntimeC]}])
     refused "transfer result mode agrees with control flow" "tail/return"
       (transfers abi [I small {siControl=Return}])
     refused "call contract cannot annotate arithmetic" "non-transfer"
@@ -471,8 +474,63 @@ callingContracts = do
     refused "a direct call cannot lose its convention" "missing transfer"
       (transfers abi [I small {siTransfer=Nothing}])
   refused "linker symbols cannot masquerade as x64 argument cells" "opcode/operand"
-    (checkForms "cells" [I (plainOpcode (Opcode.Common Opcode.LoadCell) [gpr 0] [OS "fpr_x64_a6"])])
+    (checkForms "cells" [I (plainOpcode (Opcode.Common Opcode.LoadCell) [gpr 0] [OAddr (ExternalAddress "fpr_x64_a6")])])
   check "borrowed x64 cells keep the runtime TLS block offsets"
     (map Calling.cellOffset [Calling.Argument7,Calling.Argument8]==[8,16])
   refused "returning result is not silently discarded" "inconsistent result"
-    (Calling.selectTransfer Calling.X86_64 native Calling.TailTransfer "callee" [] (Just (VReg 0)) (plain "call" [] []))
+    (Calling.selectTransfer Calling.X86_64 native Calling.TailTransfer (CodeSymbol "callee") [] (Just (VReg 0)) (plain "call" [] []))
+
+-- Embedded runtime boundaries are checked on virtual and physical streams.
+-- The packet checks are independent of the emitter's own staging loop.
+nativeProtocols :: IO ()
+nativeProtocols=do
+  forM_ [Calling.AArch64,Calling.X86_64,Calling.RiscV] $ \abi->do
+    let opcode apply panic push=case abi of Calling.AArch64->Opcode.A64 apply;Calling.X86_64->Opcode.X64 panic;Calling.RiscV->Opcode.RV push
+        applyOp=opcode AOp.ApplyN Opcode.ApplyN ROp.ApplyN
+        pushOp=opcode AOp.Push Opcode.Push ROp.Push
+        panicOp=opcode AOp.Panic Opcode.Panic ROp.Panic
+        make op ds us=Protocol.selectProtocol abi (plainOpcode op ds us)
+        tick=Protocol.selectProtocol abi ((plainOpcode (Opcode.Common Opcode.EntryTick) [] []) {siAnnotation=EntryLabels (Label "proto-tick")})
+        headArg=make pushOp [] [gpr 0]
+        arg=make pushOp [] [gpr 1]
+        apply=make applyOp [OV (v 2) (Fix (Calling.resultRegister abi))] [OI 1]
+        panic=make panicOp [] [OAddr (StaticObject "message")]
+        checkProto=Protocol.checkProtocols abi "protocol-test"
+        contract=Protocol.selectProtocol abi
+        forwarded=contract ((plainOpcode (Opcode.Common Opcode.EntryCheckTick)
+          [OV (v n) (Fix p) | (n,p)<-zip [0..1] (Calling.argumentRegisters abi)]
+          [OV (v n) (Fix p) | (n,p)<-zip [0..1] (Calling.argumentRegisters abi)]) {siAnnotation=EntryLabels (Label "forwarded")})
+        physical i=i {siDefs=map placed (siDefs i),siUses=map placed (siUses i)}
+        placed (OV _ (Fix p))=OP p
+        placed other=other
+    check "embedded calls, entry preservation and physical result placement satisfy their contract"
+      (checkProto [I tick,I forwarded,I headArg,I arg,I apply,I panic]==Right ()
+       && checkProto (map (I . physical) [tick,forwarded,headArg,arg,apply,panic])==Right ())
+    check "entry preservation excludes its parameter registers from clobbers"
+      (all (`notElem` siClobbers forwarded) (take 2 (Calling.argumentRegisters abi)))
+    check "fuel and runtime calls have disjoint explicit accounting roles"
+      (map callSafepoint (siCalls tick)==[True] && not (any callRuntime (siCalls tick))
+       && map callRuntime (siCalls apply)==[True] && not (any callSafepoint (siCalls apply)))
+    refused "embedded calls declare every volatile register" "caller clobber" (checkProto [I tick {siClobbers=drop 1 (siClobbers tick)}])
+    refused "entry scratch registers cannot disappear" "implicit register" (checkProto [I tick {siImplicitDefs=[]}])
+    refused "runtime event cannot stand in for the fuel boundary" "runtime event" (checkProto [I tick {siCalls=[Call.runtimeEvent Call.ApplyEntry]}])
+    refused "apply cannot lose its staged head" "argument packet" (checkProto [I arg,I apply])
+    refused "apply cannot inherit extra staged arguments" "argument packet" (checkProto [I headArg,I arg,I arg,I apply])
+    refused "apply staging cannot cross a safepoint" "argument packet" (checkProto [I headArg,I tick,I arg,I apply])
+    refused "apply staging cannot cross a label" "argument packet" (checkProto [I headArg,ILabel (Label "branch"),I arg,I apply])
+    refused "orphaned staged arguments are refused" "argument packet" (checkProto [I headArg])
+    refused "panic takes a message object, not a callable entry" "operand/target" (checkProto [I panic {siUses=[OCode (CodeSymbol "message")]}])
+    refused "panic cannot treat a code address as a string object" "operand/target" (checkProto [I panic {siUses=[OAddr (CodeAddress (CodeSymbol "message"))]}])
+    let entryOp=plainOpcode (Opcode.Common Opcode.EntryStatic) [] []
+    if abi==Calling.RiscV then check "only RISC-V supports the static entry contract" (checkProto [I entryOp]==Right ())
+      else refused "hosted entries cannot become static" "operand/target" (checkProto [I entryOp])
+  let code=CodeSymbol "same-spelling"
+      addr=StaticObject "same-spelling"
+      direct=right (Calling.selectTransfer Calling.X86_64 (Calling.FprCall Calling.TicksFuel) Calling.DiscardResult code [] Nothing
+        ((plainOpcode (Opcode.X64 Opcode.Call) [] []) {siFlags=FlagsDef}))
+      right=either error id
+  refused "data references cannot be direct call targets" "code target"
+    (Calling.checkTransfers Calling.X86_64 "roles" [I direct {siUses=[OAddr addr]}])
+  check "code addresses preserve spelling without becoming direct-call operands" (addressName (CodeAddress code)==codeName code)
+  refused "empty direct symbols are refused before rendering" "empty code symbol"
+    (Calling.selectTransfer Calling.X86_64 (Calling.FprCall Calling.NoFuel) Calling.DiscardResult (CodeSymbol "") [] Nothing (plain "call" [] []))

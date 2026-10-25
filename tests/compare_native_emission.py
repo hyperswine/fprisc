@@ -22,6 +22,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--against', type=Path, required=True)
     parser.add_argument('--compiler', type=Path, default=ROOT / 'fpr')
+    parser.add_argument('--allow-arc-body-fix', action='store_true',
+                        help='compare only C wrappers for the two fixtures that reproduce the pre-ARC6 ownership bug')
     args = parser.parse_args()
     compilers = [('before', args.against.resolve()), ('after', args.compiler.resolve())]
     env = {k: v for k, v in os.environ.items() if not k.startswith('FPR_')}
@@ -97,7 +99,7 @@ def main():
                 assert before.keys() == after.keys(), (target, name, 'unit/cache identity changed',
                                                        before.keys() ^ after.keys())
                 for key in before:
-                    if name in ('soft-export-adapters', 'hard-export-adapters') and key == 'root':
+                    if args.allow_arc_body_fix and name in ('soft-export-adapters', 'hard-export-adapters') and key == 'root':
                         old_adapters, new_adapters = adapter_bodies(before[key]), adapter_bodies(after[key])
                         assert old_adapters == new_adapters, (target, name, 'C adapter emission changed')
                         adapters_compared += len(old_adapters)
@@ -108,7 +110,8 @@ def main():
                                                            fromfile='before/' + key, tofile='after/' + key))
                         raise AssertionError((target, name, diff[:10000]))
             print(f'{target}: {len(target_cases)} root configurations and dependent units checked', flush=True)
-        print(f'Native emission comparison: {compared} complete root/unit outputs and cache identities unchanged; {adapters_compared} C adapter bodies byte-identical', flush=True)
+        print(f'Native emission comparison: {compared} complete root/unit outputs and cache identities unchanged'
+              + (f'; {adapters_compared} C adapter bodies byte-identical' if adapters_compared else ''), flush=True)
 
 
 if __name__ == '__main__':

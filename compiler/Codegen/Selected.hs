@@ -35,11 +35,14 @@
 -- frame slot) or allocation (M3).
 module Codegen.Selected
   ( VReg (..), RegClass (..), Phys (..), Constraint (..), Operand (..),
-    Flags (..), Control (..), Call (..), Annotation(..), AllocationEvent(..),
+    Flags (..), Control (..), Call (..), CallEffect(..),callSafepoint,callRuntime,
+    CodeSymbol(..),AddressSymbol(..),addressName, Annotation(..), AllocationEvent(..),
     SInstr (..), Item (..), Label (..), SFn (..),
     RegisterFile (..), plain, plainOpcode, siOp, checkFn, itemLabels, instrVRegs, operandVReg,
   ) where
 
+import Codegen.Symbol
+import Codegen.Call
 import Codegen.Calling.Types (Transfer, ArgumentCell)
 import Codegen.Frame (FrameRef)
 import qualified Codegen.Opcode as Op
@@ -67,7 +70,8 @@ data Operand
   = OV VReg Constraint -- a virtual register
   | OP Phys -- a named physical register (sp, the frame pointer, the hart register)
   | OI Integer -- an immediate
-  | OS String -- a symbol: a function, a runtime entry, a data object, a TLS cell
+  | OCode CodeSymbol -- a direct callable linker entry
+  | OAddr AddressSymbol -- a static object, code address or opaque external address
   | OC ArgumentCell -- a private x64 argument cell, not an arbitrary linker symbol
   | OL Label -- a function-local label
   | OF FrameRef Int -- a frame object plus a byte offset, symbolic until layout
@@ -82,15 +86,6 @@ data Control
   | CondTo [Label] -- may go to any of these, else falls through
   | JumpTo Label -- always goes there
   | Return -- leaves the function: a return or a tail transfer
-  deriving (Eq, Ord, Show)
-
--- a call inside the instruction (a direct `bl`/`call`, or one buried in a
--- pseudo such as the fuel tick or the stack check)
-data Call = Call
-  { callTarget :: String, -- the symbol, as the IR names it (the printer adds the platform prefix)
-    callSafepoint :: Bool, -- the callee ticks the fuel counter on entry, or is the tick: a bound reset
-    callRuntime :: Bool -- a C call counted by the bound's runtime-call accounting
-  }
   deriving (Eq, Ord, Show)
 
 newtype Label = Label String deriving (Eq, Ord, Show)

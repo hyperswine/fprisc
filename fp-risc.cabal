@@ -71,6 +71,9 @@ executable fpr
       Codegen.Split
       Codegen.Policy
       Codegen.Selected
+      Codegen.Symbol
+      Codegen.Call
+      Codegen.Protocol
       Codegen.Annotation
       Codegen.Calling
       Codegen.Calling.Types

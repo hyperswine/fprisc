@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 -- Shared native output and symbol identity, independent of instruction set.
 module Codegen.Target.Common
-  ( ObjectFormat (..), NativeFn (..), mangleName, functionSymbol,
+  ( ObjectFormat (..), NativeFn (..), mangleName, functionSymbol, calleeCodeSymbol,
     stringLabel, stringObject, stringObjectWidth, rodataDirective, shallowEntry,
     forwardEntry, entrySlot, utf8Bytes, shrinkWrap, Tune (..), noTune, dataSyntax,
     boxedFloatLabel, boxedFloatObject,
@@ -13,6 +13,8 @@ import qualified Codegen.IR as IR
 import Codegen.Frame
 import Codegen.Policy (StackPolicy (..))
 import qualified Codegen.Opcode as Opcode
+import Codegen.Call (RuntimeEntry(..),runtimeSymbol)
+import Codegen.Protocol (protocolCalls,Embedded(..))
 import Codegen.Selected
 import Data.Bits (shiftR, xor, (.&.))
 import Data.Char (isAlphaNum, isAscii, isDigit, ord)
@@ -74,11 +76,11 @@ shallowEntry policy bytes items
   where
     entry i = siOpcode i `elem` map Opcode.Common [Opcode.EntryCheck, Opcode.EntryCheckTick, Opcode.EntryTick]
     deepens (I i) = not (entry i) && siControl i /= Return
-      && any (\c -> callSafepoint c || callTarget c == "fpr_applyN") (siCalls i)
+      && any (\c -> callSafepoint c || callTarget c == runtimeSymbol ApplyEntry) (siCalls i)
     deepens _ = False
     strip (I i) | siOpcode i == Opcode.Common Opcode.EntryCheck = []
     strip (I i) | siOpcode i == Opcode.Common Opcode.EntryCheckTick =
-      [I i {siOpcode = Opcode.Common Opcode.EntryTick, siCalls = filter ((/= "fpr_stack_grow") . callTarget) (siCalls i)}]
+      [I i {siOpcode = Opcode.Common Opcode.EntryTick, siCalls = protocolCalls Tick}]
     strip i = [i]
 
 data ObjectFormat = MachO | ELF deriving (Eq, Ord, Show)
@@ -131,6 +133,13 @@ mangleName = concatMap enc
       | isAscii c && isAlphaNum c = [c]
       | otherwise = "_x" ++ pad (showHex (ord c) "")
     pad s = if length s < 2 then '0' : s else s
+
+calleeCodeSymbol :: IR.Callee -> CodeSymbol
+calleeCodeSymbol callee=CodeSymbol $ case IR.calleeKind callee of
+  IR.Local->functionSymbol (IR.calleeName callee)
+  IR.Imported->functionSymbol (IR.calleeName callee)
+  IR.Foreign name->name
+  IR.Generated name->name
 
 functionSymbol :: Name -> String
 functionSymbol n | Just sym <- stripPrefix "$vkernel:" n = sym

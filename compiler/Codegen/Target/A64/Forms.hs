@@ -3,6 +3,8 @@
 module Codegen.Target.A64.Forms (checkForms) where
 import qualified Codegen.Calling as Calling
 import Codegen.Selected
+import Codegen.Protocol (checkProtocols)
+import qualified Codegen.Protocol as Protocol
 import Codegen.Annotation
 import Codegen.Target.Forms
 import qualified Codegen.Opcode as O
@@ -12,6 +14,7 @@ import Control.Monad (unless,forM_)
 checkForms rf owner items=do
   checkAnnotations ConditionalRestores owner items
   Calling.checkTransfers Calling.AArch64 owner items
+  checkProtocols Calling.AArch64 owner items
   forM_ [i | I i<-items] $ \i->do
     let bad why=Left ("selected a64 "++owner++" "++siOp i++": "++why)
         require why yes=unless yes (bad why)
@@ -40,7 +43,7 @@ checkForms rf owner items=do
             A.Compare->none [word,word];A.CompareImmediate->none [word,immediate]
             A.Set _->one [];A.Select _->binary;A.Branch _->none [label]
             A.BranchZero->none [word,label];A.BranchNonzero->none [word,label];A.Jump->none [label]
-            A.Call->length ds<=1 && all (fixed (Phys "x0")) ds && case us of OS _:vs->arguments args vs;_->False
+            A.Call->length ds<=1 && all (fixed (Phys "x0")) ds && case us of OCode _:vs->arguments args vs;_->False
             A.Push->none [word];A.ApplyN->matches [fixed (Phys "x0")] ds && matches [immediate] us
             A.Panic->none [symbol];A.Ret->none [fixed (Phys "x0")]
             A.Enter->none [];A.Save->none []
@@ -64,20 +67,25 @@ checkForms rf owner items=do
     require "opcode/call metadata mismatch" (callMetadata opcode form us (siCalls i))
   where
     args=map (Phys . ("x"++) . show) [0::Int ..7]
-    control op us=case (op,us) of
+    control op us=case Protocol.embedded op of
+      Just protocol->Protocol.protocolControl protocol
+      Nothing->ordinaryControl op us
+    ordinaryControl op us=case (op,us) of
       (O.Common O.TailJump,_)->Return
       (O.Common O.JumpLoop,[OL l])->JumpTo l
-      (O.A64 A.Ret,_)->Return;(O.A64 A.Panic,_)->Return
+      (O.A64 A.Ret,_)->Return;
       (O.A64 A.Jump,[OL l])->JumpTo l
       (O.A64 (A.Branch _),[OL l])->CondTo [l]
       (O.A64 A.BranchZero,[_,OL l])->CondTo [l]
       (O.A64 A.BranchNonzero,[_,OL l])->CondTo [l]
       _->Next
-    flags op=case op of
-      O.Common c | c `elem` [O.EntryCheckTick,O.EntryCheck,O.EntryTick,O.TickN]->FlagsDef
+    flags op=case Protocol.embedded op of
+      Just protocol->Protocol.protocolFlags Calling.AArch64 protocol
+      Nothing->ordinaryFlags op
+    ordinaryFlags op=case op of
       O.A64 x->case x of
         A.Set _->FlagsUse;A.Select _->FlagsUse;A.Branch _->FlagsUse
         A.FloatCompare _ _ _->FlagsDef;A.TreeCompare _ _->FlagsDef
-        _ | x `elem` [A.Compare,A.CompareImmediate,A.Call,A.ApplyN]->FlagsDef
+        _ | x `elem` [A.Compare,A.CompareImmediate,A.Call]->FlagsDef
         _->FlagsNone
       _->FlagsNone
