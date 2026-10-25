@@ -1,0 +1,43 @@
+unsafe base.
+mark label value = _ = print label; value.
+localPoly n = apply f x = f x; ident x = x; (apply ident n,apply ident True).
+localCaptured n = ident x = x; apply f x = (ident (f x),ident True,n); apply (fn x -> x + 1) n.
+localIdentity n =
+  apply = (fn f x -> _ = f x; f);
+  add a b = a + b;
+  first = add n;
+  alias = first;
+  second = add n;
+  returned = apply alias 2;
+  (returned == first,returned == second,returned 3).
+localNested n =
+  apply = (fn f x -> _ = f x; fn y -> y);
+  a = apply (fn x -> x + 1) n;
+  b = apply (fn x -> x + 2) n;
+  (a == b,a 13,b 17).
+localPartial n =
+  apply f x = f x;
+  add a b = mark "partial-body" (a + b);
+  saved = add (mark "prefix" n);
+  alias = saved;
+  _ = print "ready";
+  a = apply alias (mark "first" 2);
+  b = apply (add (mark "capture" n)) (mark "second" 3);
+  a + b.
+localNullary u = invoke f = f 23; invoke (fn x -> x).
+localRecursive n = loop f i = if i <= 0 then 0 else f i + loop f (i - 1); loop (fn x -> x + 1) n.
+localChanging n = loop f i = if i <= 0 then f 1 else loop (fn x -> f (x + 1)) (i - 1); loop (fn x -> x) n.
+localPanic u = apply f x = f x; add a b = a + b; apply (add (error "capture panic")) (mark "WRONG" 2).
+suite u =
+  (a,b) = localPoly 7;
+  (c,d,e) = localCaptured 8;
+  (same,different,f) = localIdentity 9;
+  (nested,g,h) = localNested 10;
+  i = localPartial 11;
+  j = localRecursive 4;
+  k = localChanging 3;
+  l = localNullary Unit;
+  print "callbacks {a} {b} {c} {d} {e} {same} {different} {f} {nested} {g} {h} {i} {j} {k} {l}".
+main = case Sys.args Unit of
+  "panic" :: _ -> print (localPanic Unit)
+| _ -> suite Unit.

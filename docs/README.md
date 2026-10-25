@@ -307,3 +307,4 @@ they began.
 - [Typed structure specialization](2026-10-25-TYPED-STRUCTURE-SPECIALIZATION.md): checked clone instantiation and identities, polymorphic schemas, layout-capturing members and shared lexical-scope regressions.
 - [Typed polymorphic code calls](2026-10-25-TYPED-CODE-CALLS.md): quantified capture/argument/result contracts, checked closed transformations and lexical closure-call resolution before erasure.
 - [Typed native call staging](2026-10-25-TYPED-CALL-STAGING.md): checked saturation/operand boundaries before closure conversion, captured arity evidence and optimizer-independent native effects.
+- [Typed local callbacks](2026-10-25-TYPED-CALLBACKS.md): checked generic clones, identity-preserving callback fields, explicit ownership evidence, nullary computation entries and bounded arity restoration.

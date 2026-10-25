@@ -4,6 +4,7 @@ import Data.List (sortBy)
 import Data.Maybe (fromMaybe,isJust)
 import System.IO (hClose, hPutStr, hPutStrLn, openTempFile, stderr)
 import Arc (lowerArc, lowerRaw, arcExterns, arcRev)
+import Core.Typed.Callback (CallbackMode(..))
 import Mono (specializeFunctions, qualifyAux)
 import Inline (inlineSmall, inlineWith, vecPeek)
 import ReceiveTurns (receiveTurns)
@@ -44,7 +45,7 @@ import Ownership.Shape
 import Core.Opt.Normalize (normArc)
 import Type.Syntax (Scheme(..), Type(..))
 import Infer.Result
-import Frontend.Desugar.Checked (prepareChecked, selectCheckedUnit, lowerCheckedUnit, checkedCallArities, specializeCheckedSource, specializedTops, lowerSpecialized)
+import Frontend.Desugar.Checked (prepareChecked, selectCheckedUnit, lowerCheckedUnitWith, checkedCallArities, specializeCheckedSource, specializedTops, lowerSpecialized, lowerSpecializedWith)
 import Infer (inferTopsChecked, aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTopsInterfaces)
 import Safety (measureCheck, checkSafety, safetyDiagnostics, safetySuggestions, trustedLibraryPaths)
 import qualified Cost
@@ -583,7 +584,9 @@ compileWithInterface accepted = do
           compileLowered lower = let (p, st) = runState (lower >>= liftFix) (DEnv 0 consAll shapes [] [])
                                  in (M.map (fmap eraseCast) p, S.fromList (dJoins st))
           compileRaw uts = compileLowered (lowerSpecialized specialized (bindNames uts))
-          compileOwnedRaw unit = compileLowered (lowerCheckedUnit unit)
+          callbackMode=if Options.cgSpecialize codegen && not (oArc opts) then SpecializeCallbacks else PreserveCallbacks
+          compileActual uts=compileLowered (lowerSpecializedWith callbackMode specialized (bindNames uts))
+          compileOwnedRaw unit = compileLowered (lowerCheckedUnitWith callbackMode unit)
           turnContext = fst (compileRaw finalTops)
           -- regions (the compiler-placed loop and call kinds) change no work
           -- and no allocation: the cost report sees the program without them
@@ -593,7 +596,7 @@ compileWithInterface accepted = do
           turnPassWith regions (p, joins) = if oBuiltin opts || oArc opts || (not (Options.cgReceiveTurns codegen)) then (p, [])
                        else receiveTurns (regions && (Options.cgLoopRegions codegen)) (regions && (Options.cgCallRegions codegen)) contextEqs (M.fromList interfaces) finalTops turnContext joins p
           turnPass = turnPassWith True
-          compileUnit = fst . turnPass . compileRaw
+          compileUnit = fst . turnPass . compileActual
           compileOwned = fst . turnPass . compileOwnedRaw
           -- tid collision check (fnv32 is probabilistic; fail LOUDLY)
           tidDecls =

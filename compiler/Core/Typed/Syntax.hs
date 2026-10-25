@@ -80,7 +80,9 @@ data Function = Function
 -- Capture schemes are separate from the ordinary argument/result arrow.
 -- Capturing a let-polymorphic value must not pretend it is a monomorphic arg.
 newtype CodeId = CodeId String deriving (Eq,Ord,Show)
-data CodeKind = ClosureCode | JoinCode deriving (Eq,Show)
+-- EntryCode is invoked explicitly and never denotes a first-class function
+-- value. Removing all callback parameters can leave a nullary computation.
+data CodeKind = ClosureCode | JoinCode | EntryCode deriving (Eq,Show)
 data CodeFunction = CodeFunction
   { codeId :: CodeId, codeKind :: CodeKind, codeCaptures :: [Binder],
     codeParameters :: [Binder], codeBody :: Expr } deriving (Show)

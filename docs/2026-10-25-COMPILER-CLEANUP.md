@@ -15,7 +15,7 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization and checked lexical closure calls implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical closure calls and local callback cloning implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
 | Checked pipeline products and lint | Structural pass results, typed desugaring/closed products and checked unit ownership implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
@@ -397,3 +397,40 @@ passed; this integrated checkpoint requires its own hosted validation after push
 Typed callback cloning and replacement of `Mono` remain required, as do callable
 ownership/multiplicity evidence, downstream typed transformations and the other
 outstanding table entries. The full cleanup goal remains active.
+
+
+## Typed local callback specialization
+
+[Typed local callbacks](2026-10-25-TYPED-CALLBACKS.md) now clone owned local code
+before erasure, retaining type/row solutions, capture-local foralls and fresh
+binder identities. Invocation-only callback fields disappear through checked
+liveness; returned/compared/captured callback objects and shared nested code keep
+their original identities. Partial operands are snapshotted once, pattern aliases
+with unsaved prefixes retain their original path, and temporary removal requires
+explicit evidence of unrestricted captures. Unknown callable environments remain
+on the existing path.
+
+An explicit computation-entry kind permits private nullary calls without
+pretending they are immutable callable values. Joins keep their continuation
+role. Arity budgeting runs after provisional callback fields are trimmed; an
+overflow restores the original call graph. The legacy specializer now preserves
+stored PAP aliases and refuses escaping callback substitution. Saved revision-114
+native code reproduces the identity discrepancy; the integrated compiler returns
+the independently expected result. Cache revision 115 versions these changes;
+physical ABIs and runtime/context memory structures remain unchanged.
+
+Validation: all 136 Base jobs passed in 503.92 seconds on six workers with a fresh
+native cache, no reused coverage and fixed compiler/test sources. Typed graph,
+independent evaluator, ownership, nullary/join, schema, identity and 64-field
+boundary checks pass, alongside native one/four-hart optimizer modes, imported
+units, all four native emission targets and existing specialization allocation
+checks. Sol argument/shared-language and 3,000,000-iteration self/mutual tail-call
+checks pass (peak 85 MB). Hosted CI for `18b3c26` passed; integrated-head hosted
+validation follows this push.
+
+The next specialization boundary is a checked program owner spanning roots and
+imported units, including calling schemas and receive-region provenance. That is
+required before global/imported callback specialization can move and `Mono` can
+retire. Callable ownership/multiplicity evidence, later typed transformations,
+remaining diagnostics and machine/call contracts also remain required. This
+checkpoint does not complete the full cleanup goal.

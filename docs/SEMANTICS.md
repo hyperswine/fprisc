@@ -122,7 +122,10 @@ file suffixes; a clause applies to both unless it says which.
   constructors by structure and content, variant AND payload.  `!=` is
   its negation everywhere.  Identity-only types (Vector, actor
   handles, PAPs, devices, registers, bit fields) compare by identity.
-  (today, since v1.1.0 -- it was header-only before)  `[test: tests/eq.fpr]`
+  Stored function aliases and callbacks returned from specialized calls retain
+  the same object. Private specialization keeps shared nested code identities.
+  (today, since v1.1.0 -- it was header-only before)
+  `[test: tests/eq.fpr, tests/check_typed_callbacks.py]`
 - Depth: today gives up at 64 and answers "equal".  2.0: cycle
   detection, no depth number.  (decide)  `[test: ]`
 

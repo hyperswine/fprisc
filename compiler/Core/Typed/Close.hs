@@ -2,7 +2,7 @@
 -- Typed closure/join conversion. Captures are lexical identities with their
 -- checked schemes; generated code never re-infers an erased expression.
 module Core.Typed.Close
-  (ClosedFunction,closeFunction,closeFunctionWith,closedRoot,closedCode,closedContracts,mapClosed,verifyClosed) where
+  (ClosedFunction,closeFunction,closeFunctionWith,closedRoot,closedCode,closedGlobals,closedContracts,mapClosed,rewriteClosed,verifyClosed) where
 import Core.Typed.Syntax
 import Core.Typed.Verify
 import Core.Typed.Walk
@@ -23,6 +23,8 @@ closedRoot :: ClosedFunction -> Function
 closedRoot (ClosedFunction f _ _)=f
 closedCode :: ClosedFunction -> M.Map CodeId CodeFunction
 closedCode (ClosedFunction _ codes _)=codes
+closedGlobals :: ClosedFunction -> M.Map String Scheme
+closedGlobals (ClosedFunction _ _ globals)=globals
 closedContracts :: ClosedFunction -> M.Map CodeId CodeContract
 closedContracts (ClosedFunction _ codes globals)=codeContracts globals codes
 -- Transform an owned closed product and check the complete code graph before
@@ -31,6 +33,14 @@ mapClosed :: TypeContext -> (Function -> Either String Function) -> (CodeFunctio
 mapClosed types rootPass codePass (ClosedFunction root codes globals)=do
   root'<-rootPass root
   codes'<-traverse codePass codes
+  let result=ClosedFunction root' codes' globals
+  verifyClosed types result
+  pure result
+-- Code-generating passes publish the whole changed graph atomically. Existing
+-- code/capture identities remain checked alongside newly introduced entries.
+rewriteClosed :: TypeContext -> (Function -> M.Map CodeId CodeFunction -> Either String (Function,M.Map CodeId CodeFunction)) -> ClosedFunction -> Either String ClosedFunction
+rewriteClosed types pass (ClosedFunction root codes globals)=do
+  (root',codes')<-pass root codes
   let result=ClosedFunction root' codes' globals
   verifyClosed types result
   pure result
@@ -204,6 +214,7 @@ verifyClosed types product@(ClosedFunction root codes _)=do
   unless (all (\code->codeKind code/=ClosureCode || not (null (codeParameters code))) (M.elems codes))
     (Left "typed closure: a callable code entry requires an ordinary parameter")
   unless (length identities==S.size (S.fromList identities)) (Left "typed closure: binder identity reused between functions")
+  unless (M.notMember (CodeId (functionName root)) codes) (Left "typed closure: root and code entry share a label")
   mapM_ (\(label,code)->unless (label==codeId code) (Left "typed closure: code identity/key mismatch")) (M.toList codes)
   mapM_ (verifyFunctionWith contracts types) functions
   mapM_ (closed . functionBody) functions

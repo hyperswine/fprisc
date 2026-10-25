@@ -5,14 +5,15 @@
 module Frontend.Desugar.Checked
   (CheckedPlans, prepareChecked, checkedNames, checkedDeclines, checkedCallArities,
    CheckedUnit, selectCheckedUnit, checkedUnitTops, checkedUnitNames,
-   desugarCheckedUnit, lowerCheckedUnit,
-   SpecializedSource, specializeCheckedSource, specializedTops, desugarSpecialized, lowerSpecialized,
+   desugarCheckedUnit, lowerCheckedUnit, desugarCheckedUnitWith, lowerCheckedUnitWith,
+   SpecializedSource, specializeCheckedSource, specializedTops, desugarSpecialized, lowerSpecialized, desugarSpecializedWith, lowerSpecializedWith,
    Desugared, desugaredCore, desugaredTyped, desugaredClosed, desugaredTypeContext,
    compileTopChecked, lowerToUntyped) where
 import Core.Identity
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Erase (Layout(..),eraseFunctionWith)
 import Core.Typed.Close
+import Core.Typed.Callback
 import Core.Typed.Resolve (resolveCalls)
 import Core.Typed.Stage (stageFunction,stagedFunction)
 import Core.Primitives (primArities)
@@ -81,9 +82,13 @@ callingArities :: CheckedPlans -> M.Map String Int
 -- Source definitions and canonical core entries supply physical evidence.
 callingArities plans=checkedCallArities plans `M.union` M.fromList primArities
 desugarCheckedUnit :: CheckedUnit -> D Desugared
-desugarCheckedUnit (CheckedUnit plans tops _)=compileTopChecked plans tops
+desugarCheckedUnit=desugarCheckedUnitWith PreserveCallbacks
+desugarCheckedUnitWith :: CallbackMode -> CheckedUnit -> D Desugared
+desugarCheckedUnitWith mode (CheckedUnit plans tops _)=compileTopCheckedWith mode plans tops
 lowerCheckedUnit :: CheckedUnit -> D Prog
-lowerCheckedUnit = fmap desugaredCore . desugarCheckedUnit
+lowerCheckedUnit=lowerCheckedUnitWith PreserveCallbacks
+lowerCheckedUnitWith :: CallbackMode -> CheckedUnit -> D Prog
+lowerCheckedUnitWith mode=fmap desugaredCore . desugarCheckedUnitWith mode
 data Plan = Plan [T.Binder] [Clause] [([SPat],[SGuard],SExpr)]
 data Clause = Clause [T.Pattern] [GuardPlan] EPlan
 data GuardPlan = Boolean EPlan | Matching T.Pattern EPlan
@@ -355,25 +360,29 @@ desugaredClosed (Desugared _ _ _ p)=p
 desugaredTypeContext :: Desugared -> T.TypeContext
 desugaredTypeContext (Desugared t _ _ _)=t
 compileTopChecked :: CheckedPlans -> [STop] -> D Desugared
-compileTopChecked plans tops=do
+compileTopChecked=compileTopCheckedWith PreserveCallbacks
+compileTopCheckedWith :: CallbackMode -> CheckedPlans -> [STop] -> D Desugared
+compileTopCheckedWith mode plans tops=do
   let ns=planNamespace plans;types=planTypes plans
   st<-get
   let entries=M.map (\(_,_,arity)->["x"++show i | i<-[1..arity]]) (dCons st)
-  constructors<-M.traverseWithKey (constructorFunction (Specialize.globalSchemes (planSpecialization plans)) (callingArities plans) ns types) entries
-  groups<-mapM (lowerCheckedGroup plans) (groupClauses tops)
+  constructors<-M.traverseWithKey (constructorFunction mode (Specialize.globalSchemes (planSpecialization plans)) (callingArities plans) ns types) entries
+  groups<-mapM (lowerCheckedGroup mode plans) (groupClauses tops)
   pure (Desugared types
     (M.union (M.fromList (map fst groups)) (M.map (\(p,_,_)->p) constructors))
     (M.union (M.fromList [(T.functionName f,f) | (_,Just (f,_))<-groups]) (M.map (\(_,f,_)->f) constructors))
     (M.union (M.fromList [(T.functionName f,c) | (_,Just (f,c))<-groups]) (M.map (\(_,_,c)->c) constructors)))
 
-emitClosed :: M.Map String Scheme -> M.Map String Int -> Namespace -> T.TypeContext -> T.Function -> D (([String],Core),ClosedFunction)
-emitClosed globals arities namespace types fn=do
+emitClosed :: CallbackMode -> M.Map String Scheme -> M.Map String Int -> Namespace -> T.TypeContext -> T.Function -> D (([String],Core),ClosedFunction)
+emitClosed mode globals arities namespace types fn=do
   initial<-get
   planned<-either error pure (planFunction namespace (dShapes initial) types fn)
   let known=arities `M.union` M.map (\(_,_,arity)->arity) (dCons initial)
   staged<-either error pure (stageFunction namespace types known (plannedFunction planned))
   result<-closeFunctionWith globals namespace fresh types (stagedFunction staged)
-  closed<-either error pure (result >>= resolveCalls types)
+  resolved<-either error pure (result >>= resolveCalls types)
+  callbacks<-either error pure (specializeCallbacks mode namespace types known resolved)
+  let closed=callbackClosed callbacks
   st<-get
   let contracts=closedContracts closed
       erase=eraseFunctionWith contracts types (layoutOf st)
@@ -386,8 +395,8 @@ emitClosed globals arities namespace types fn=do
   pure (root,closed)
 -- Constructor entry points are generated too. Keep their schemas and
 -- identities in the same stage product, including nullary/builtin entries.
-constructorFunction :: M.Map String Scheme -> M.Map String Int -> Namespace -> T.TypeContext -> String -> [String] -> D (([String],Core),T.Function,ClosedFunction)
-constructorFunction globals arities (Namespace ns) types@(T.TypeContext linears schemas) name names = do
+constructorFunction :: CallbackMode -> M.Map String Scheme -> M.Map String Int -> Namespace -> T.TypeContext -> String -> [String] -> D (([String],Core),T.Function,ClosedFunction)
+constructorFunction mode globals arities (Namespace ns) types@(T.TypeContext linears schemas) name names = do
   let Forall _ _ signature=case M.lookup name schemas of
         Just sc->sc
         Nothing->error ("typed Core: missing constructor schema "++name)
@@ -400,7 +409,7 @@ constructorFunction globals arities (Namespace ns) types@(T.TypeContext linears 
       body=T.Expr result (linShapeT linears result) T.Generated Nothing (T.Construct name (map value ps))
       fn=T.Function name ps body
   unless (length names==length fields) (error ("typed Core: constructor schema/layout arity "++name))
-  (body,closed)<-emitClosed globals arities (Namespace ns) types fn
+  (body,closed)<-emitClosed mode globals arities (Namespace ns) types fn
   pure (body,fn,closed)
 
 layoutOf :: DEnv -> Layout D
@@ -414,7 +423,9 @@ lowerToUntyped ps ts=desugaredCore <$> compileTopChecked ps ts
 -- arbitrary rewritten body with old annotations. Compatibility-only clones
 -- are kept only when an actual compatibility entry references them.
 desugarSpecialized :: SpecializedSource -> S.Set String -> D Desugared
-desugarSpecialized (SpecializedSource checked legacy specialized) selected=do
+desugarSpecialized=desugarSpecializedWith PreserveCallbacks
+desugarSpecializedWith :: CallbackMode -> SpecializedSource -> S.Set String -> D Desugared
+desugarSpecializedWith mode (SpecializedSource checked legacy specialized) selected=do
   let ns=planNamespace checked;types=planTypes checked
       original=S.fromList [n | TBind n _ _ _<-planSource checked]
       legacyGroups=M.fromList (groupClauses legacy)
@@ -440,11 +451,11 @@ desugarSpecialized (SpecializedSource checked legacy specialized) selected=do
         in if next==names then names else reach next
       fallbackNames=fallbackSource `S.union` reach (roots `S.intersection` legacyOnly)
   st<-get
-  constructors<-M.traverseWithKey (constructorFunction (Specialize.globalSchemes (planSpecialization checked)) arities ns types)
+  constructors<-M.traverseWithKey (constructorFunction mode (Specialize.globalSchemes (planSpecialization checked)) arities ns types)
     (M.map (\(_,_,arity)->["x"++show i | i<-[1..arity]]) (dCons st))
   fallback<-mapM compileGroup (M.toAscList (M.restrictKeys legacyGroups fallbackNames))
   converted<-forM (M.toAscList wantedTyped) $ \(name,fn)->do
-    (out,closed)<-emitClosed (Specialize.globalSchemes (planSpecialization checked)) arities ns types fn
+    (out,closed)<-emitClosed mode (Specialize.globalSchemes (planSpecialization checked)) arities ns types fn
     pure (name,(out,fn,closed))
   let emitted=M.fromList converted
   pure (Desugared types
@@ -453,13 +464,15 @@ desugarSpecialized (SpecializedSource checked legacy specialized) selected=do
     (M.union (M.map (\(_,_,c)->c) emitted) (M.map (\(_,_,c)->c) constructors)))
 
 lowerSpecialized :: SpecializedSource -> S.Set String -> D Prog
-lowerSpecialized source names=desugaredCore <$> desugarSpecialized source names
+lowerSpecialized=lowerSpecializedWith PreserveCallbacks
+lowerSpecializedWith :: CallbackMode -> SpecializedSource -> S.Set String -> D Prog
+lowerSpecializedWith mode source names=desugaredCore <$> desugarSpecializedWith mode source names
 
-lowerCheckedGroup :: CheckedPlans -> (String,[([SPat],[SGuard],SExpr)]) -> D ((String,([String],Core)),Maybe (T.Function,ClosedFunction))
-lowerCheckedGroup checked group@(name,clauses)=do
+lowerCheckedGroup :: CallbackMode -> CheckedPlans -> (String,[([SPat],[SGuard],SExpr)]) -> D ((String,([String],Core)),Maybe (T.Function,ClosedFunction))
+lowerCheckedGroup mode checked group@(name,clauses)=do
   case typedFunction checked group of
     Just f->do
-      (out,closed)<-emitClosed (Specialize.globalSchemes (planSpecialization checked)) (callingArities checked) (planNamespace checked) (planTypes checked) f
+      (out,closed)<-emitClosed mode (Specialize.globalSchemes (planSpecialization checked)) (callingArities checked) (planNamespace checked) (planTypes checked) f
       pure ((name,out),Just (f,closed))
     Nothing->(,Nothing) <$> compileGroup group
 

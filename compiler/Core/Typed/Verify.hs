@@ -145,8 +145,10 @@ verifyFunctionWith contracts (TypeContext linearTypes constructors) f = do
         codeInstance env label captures ClosureCode (exprType e)
         pure used
       CodeCall label captures args -> do
-        require "nullary code is not a callable closure" (not (null args))
-        saturated env label captures ClosureCode args (exprType e)
+        contract<-maybe (bad "unknown code identity") Right (M.lookup label contracts)
+        require "a join requires an explicit continuation call" (contractKind contract/=JoinCode)
+        require "nullary code is not a callable closure" (contractKind contract==EntryCode || not (null args))
+        saturated env label captures (contractKind contract) args (exprType e)
         foldM (check env) used args
       JoinCall label captures args -> do
         require "nullary join is not a callable continuation" (not (null captures && null args))

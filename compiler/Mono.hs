@@ -38,6 +38,7 @@ specializeFunctions namespace arities external input = includeAux result
     universe = M.union localInput external
     ars = M.union (M.map (length . fst) universe) arities
     demand = callbackParameters universe
+    callableOnly = callableParameters universe
     groups = M.fromList [(n,S.fromList ns) | component <- stronglyConnComp
       [(n,n,S.toList (references ps b `S.intersection` M.keysSet universe)) | (n,(ps,b)) <- M.toList universe],
       let ns = case component of AcyclicSCC n -> [n]; CyclicSCC names -> names, n <- ns]
@@ -75,7 +76,10 @@ specializeFunctions namespace arities external input = includeAux result
             saved <- mapM (const (fresh "capture")) cs
             let target = (h, map CVar saved)
             b' <- walk depth (M.insert n (Just target) scope) b
-            let body = if n `elem` freeVars b' then CLet n (app h (snd target)) b' else b'
+            -- An alias keeps the same PAP object. Rebuilding its code and
+            -- supplied arguments would change observable function identity.
+            let initializer = case a' of CVar local | M.member local scope -> a'; _ -> app h (snd target)
+                body = if n `elem` freeVars b' then CLet n initializer b' else b'
             pure (lets (zip saved cs) body)
           Nothing -> CLet n a' <$> walk depth (M.insert n Nothing scope) b
       e@(CApp _ _) -> do
@@ -91,7 +95,8 @@ specializeFunctions namespace arities external input = includeAux result
           CVar g | M.notMember g scope, Just (ps,_) <- M.lookup g universe, length ps == length allArgs -> do
             let choices = [(i,h,cs) | (i,a) <- zip [0..] allArgs,
                             Just (h,cs) <- [known scope a],
-                            i `S.member` M.findWithDefault S.empty g demand, stable g i]
+                            i `S.member` M.findWithDefault S.empty g demand,
+                            i `S.member` M.findWithDefault S.empty g callableOnly, stable g i]
             if null choices then pure (app g allArgs) else do
               clone <- getClone depth g choices
               case clone of
@@ -196,6 +201,43 @@ callbackParameters p = fix (M.map (const S.empty) p)
                     any (\j -> j < length args && args !! j == CVar param)
                       (S.toList (M.findWithDefault S.empty h old))
               in if new == old then new else fix new
+
+-- Substitution may replace invocation-only parameters by code plus captures.
+-- Returned, compared, stored or otherwise escaping callback values need their
+-- original object. Until this legacy pass is retired, decline those roles.
+-- Start with every role and remove escapes to a greatest fixpoint: a recursive
+-- forwarding cycle remains eligible only if no member observes the object.
+callableParameters :: Prog -> M.Map Name (S.Set Int)
+callableParameters program = fix initial
+  where
+    initial = M.map (\(ps,_) -> S.fromList [0 .. length ps - 1]) program
+    fix old = let next = M.map (\(ps,b) -> S.fromList
+                       [i | (i,p) <- zip [0..] ps, safe old (token p) (M.fromList [(q,CVar (token q)) | q<-ps]) b]) program
+              in if next == old then old else fix next
+    safe roles wanted scope e = case e of
+      CVar n -> M.findWithDefault (CVar n) n scope /= CVar wanted
+      CApp _ _ ->
+        let (h,args) = spine e
+            head' = substitute scope h
+            forwarded i a = case substitute scope a of
+              CVar n | n == wanted -> case head' of
+                CVar target | Just (ps,_) <- M.lookup target program,
+                  length ps == length args -> i `S.member` M.findWithDefault S.empty target roles
+                _ -> False
+              _ -> safe roles wanted scope a
+        in (head' == CVar wanted || safe roles wanted scope h)
+           && and [forwarded i a | (i,a)<-zip [0..] args]
+      CLet n a b ->
+        let rhs = substitute scope a
+            alias = case rhs of CVar _ -> rhs; _ -> CVar ("$analysis.local." ++ n)
+        in (rhs == CVar wanted || safe roles wanted scope a)
+           && safe roles wanted (M.insert n alias scope) b
+      CLam ps b -> safe roles wanted (M.union (M.fromList [(n,CVar ("$analysis.local." ++ n)) | n<-ps]) scope) b
+      CIf c t f -> all (safe roles wanted scope) [c,t,f]
+      CMk _ _ xs -> all (safe roles wanted scope) xs
+      CTagEq _ _ x -> safe roles wanted scope x
+      CProj _ x -> safe roles wanted scope x
+      _ -> True
 
 stableCallback :: Prog -> M.Map Name (S.Set Int) -> S.Set Name -> Name -> Int -> Bool
 stableCallback p demand group g i = visit S.empty [(g,i)]

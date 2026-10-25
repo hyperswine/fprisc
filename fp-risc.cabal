@@ -119,6 +119,10 @@ executable fpr
       Core.Typed.Contract
       Core.Typed.Resolve
       Core.Typed.Stage
+      Core.Typed.Callback
+      Core.Typed.Callback.Model
+      Core.Typed.Callback.Analysis
+      Core.Typed.Callback.Trim
       Core.Typed.Layout
       Core.Typed.Verify
       Core.Typed.Erase

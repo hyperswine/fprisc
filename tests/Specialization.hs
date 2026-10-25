@@ -56,4 +56,17 @@ main = do
               ("cb",(["a","b","x"],CVar "x")),
               ("main",([],app "wide" (app "cb" [CInt 1,CInt 2] : replicate 63 (CInt 1))))]
   check "ABI-oversized clones must stay dynamic" (M.size (specializeFunctions "wide" M.empty M.empty wide) == M.size wide)
+  let escaping = M.fromList
+        [("cb",(["prefix","x"],CVar "x")),
+         ("returner",(["f","n"],CLet "used" (app "f" [CVar "n"]) (CVar "f"))),
+         ("forward",(["f","n"],app "returner" [CVar "f",CVar "n"])),
+         ("main",([],CLet "saved" (app "cb" [CInt 1])
+           (CLet "alias" (CVar "saved") (app "forward" [CVar "alias",CInt 2]))))]
+      escaped = specializeFunctions "identity" M.empty M.empty escaping
+      aliases = \case
+        CLet _ (CVar _) _ -> True
+        CLet _ a b -> aliases a || aliases b
+        _ -> False
+  check "escaping callback roles propagate through forwarding functions" (M.size escaped == M.size escaping)
+  check "a stored partial alias keeps the original object" (aliases (snd (escaped M.! "main")))
   putStrLn "Specialization Core: recursive groups, shadowing, dynamic callbacks, imported lifts, bounded growth: PASS"
