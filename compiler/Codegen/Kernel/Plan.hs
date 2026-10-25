@@ -3,7 +3,8 @@
 -- evidence or index a malformed capture/accumulator slot.
 module Codegen.Kernel.Plan
   (Stage(..), Kernel(..), ElementOp(..), CheckedKernel, checkKernel, kernelInput,
-   stageFallback) where
+   stageFallback, RecordOp(..), RecordKernel(..), CheckedRecord, checkRecordKernel, recordInput,
+   MapAsKernel(..), CheckedMapAs, checkMapAsKernel, mapAsInput) where
 import Compiler.VectorOperation
 import Codegen.IR
 import Codegen.Policy
@@ -50,13 +51,6 @@ checkKernel policy callbacks k = do
     require ("capture slot outside entry arguments at " ++ name) (all valid slots)
     let arity = length slots + if op == Fold then 2 else 1
     require ("callback arity exceeds native ceiling at " ++ name) (arity <= arityCeiling)
-    -- Absent callbacks deliberately use generated calls (the pipeline inline
-    -- opt-out). Available bodies must match the boxed callback interface.
-    forM_ (M.lookup name callbacks) $ \fn ->
-      require ("callback interface disagrees at " ++ name)
-        (fnResult fn == TVal && case [bParams b | b <- fnBlocks fn, bId b == fnEntry fn] of
-          [ps] -> map snd ps == replicate arity TVal
-          _ -> False)
   forM_ (kernelSimd k) $ \(expr,ticks) -> do
     unless (ops == [Map] && all (== kernelElement k) captures && kernelElement k `elem` [KI,KD] && policyWidth policy == W64)
       (Left "a SIMD pair body needs a single map over Int or F64 with matching captures on a 64-bit word")
@@ -68,9 +62,7 @@ checkKernel policy callbacks k = do
     unless (ops == [Fold] && captures == [KI] && kernelElement k == KI
       && kernelAccumulator k == Just (0,KI) && all (\(Stage _ _ slots) -> null slots) stages)
       (Left "an RVV sum strip needs a capture-free Int fold")
-  -- Validate before cloning callback blocks: the copier uses total maps only
-  -- after this proves every operand, edge and block identity is present.
-  either (Left . ("compiler error: " ++)) Right (verifyProgramWidth (policyWidth policy) callbacks)
+  checkCallbacks policy callbacks [(name,length slots + if op == Fold then 2 else 1) | Stage op name slots <- stages]
   pure (CheckedKernel policy callbacks k)
   where
     captures = kernelCaptures k
@@ -86,3 +78,98 @@ stageFallback op = case op of
   Filter -> entry "Vec.filter" "fpr_vec_filter" 2
   Fold -> entry "Vec.fold" "fpr_vec_fold" 3
   where entry source symbol arity = Callee source (Foreign symbol) (replicate arity TVal) TVal
+
+-- A record plan describes the dualized callbacks, never architecture details.
+-- Columns are (index, kind); map outputs cover the complete record. The map
+-- entry retains the planner's capture slot even for a capture-free callback.
+data RecordOp
+  = RecordFold Name Kind
+  | RecordFilter Name
+  | RecordMap [(Name, [Int], [Int])]
+  deriving Show
+data RecordKernel = RecordKernel
+  { recordSymbol :: String, recordOriginal :: Name,
+    recordCaptures :: [Kind], recordHasCapture :: Bool,
+    recordShape :: (Int,Int), recordColumns :: [(Int,Kind)],
+    recordOperation :: RecordOp,
+    recordGpuPairSum :: Bool -- a capture-free Int fold of acc + column 0 + column 1: offered to the GPU hook first (vec.c fpr_gpu_vec_fold_pair_sum)
+  } deriving Show
+
+data CheckedRecord = CheckedRecord Policy Program RecordKernel
+recordInput :: CheckedRecord -> (Policy, Program, RecordKernel)
+recordInput (CheckedRecord p fs k) = (p,fs,k)
+
+checkRecordKernel :: Policy -> Program -> RecordKernel -> Either String CheckedRecord
+checkRecordKernel policy callbacks k = do
+  validatePolicy policy
+  unless (not (null columns) && all ((>=0) . fst) columns)
+    (Left "invalid typed record column plan")
+  case operation of
+    RecordMap fields -> unless
+      (map fst columns == [0..length fields-1] && all (\(_,ps,cs) -> all (>=0) ps && all (`elem` map fst columns) cs) fields)
+      (Left "invalid typed record map field plan")
+    _ -> pure ()
+  unless (all (`elem` [KI,KD,KS]) (map snd columns ++ accumulatorKinds) &&
+          all (`elem` [KI,KD,KS,KB]) (recordCaptures k))
+    (Left "typed record kernels currently support Int/F64/F32 columns and Int/F64/F32/Bool captures")
+  when (recordGpuPairSum k) $
+    unless (null (recordCaptures k) && map fst columns == [0,1] && accumulatorKinds == [KI] && all ((== KI) . snd) columns)
+      (Left "the GPU pair sum needs a capture-free Int fold over columns 0 and 1")
+  unless (policyWidth policy == W64 || all (`notElem` [KD,KS]) (map snd columns ++ accumulatorKinds ++ recordCaptures k))
+    (Left "RV32 float record columns use boxed values")
+  require "empty kernel/original symbol" (not (null (recordSymbol k)) && not (null (recordOriginal k)))
+  require "duplicate record column" (M.size (M.fromList columns) == length columns)
+  require "column count exceeds target Int range" (all (\(n,_) -> toInteger n < snd (intBounds (policyWidth policy))) columns)
+  let argc = case operation of RecordMap _ -> 2; _ -> length (recordCaptures k) + length accumulatorKinds + 1
+  require "entry arity exceeds native ceiling" (argc <= arityCeiling)
+  calls <- case operation of
+    RecordFold name _ -> do
+      require "capture tuple flag on a fold" (not (recordHasCapture k))
+      pure [(name,length (recordCaptures k) + 1 + length columns)]
+    RecordFilter name -> do
+      require "record filter must be capture-free" (null (recordCaptures k) && not (recordHasCapture k))
+      pure [(name,length columns)]
+    RecordMap fields -> do
+      require "record map uses a tuple capture, not scalar entry captures" (null (recordCaptures k))
+      require "record map reads absent capture tuple" (recordHasCapture k || all (\(_,ps,_) -> null ps) fields)
+      require "record map capture projection exceeds native displacement" (all (\(_,ps,_) -> all (<=268435454) ps) fields)
+      pure [(name,length ps + length cs) | (name,ps,cs) <- fields]
+  checkCallbacks policy callbacks calls
+  pure (CheckedRecord policy callbacks k)
+  where
+    columns = recordColumns k
+    operation = recordOperation k
+    accumulatorKinds = case operation of RecordFold _ ty -> [ty]; _ -> []
+    require why ok = unless ok (Left ("compiler error: typed record kernel: " ++ why))
+
+data MapAsKernel = MapAsKernel
+  { mapAsSymbol :: String, mapAsOriginal :: Name, mapAsCaptures :: Int, mapAsLayout :: String }
+  deriving Show
+
+data CheckedMapAs = CheckedMapAs Policy MapAsKernel
+mapAsInput :: CheckedMapAs -> (Policy, MapAsKernel)
+mapAsInput (CheckedMapAs p k) = (p,k)
+
+checkMapAsKernel :: Policy -> MapAsKernel -> Either String CheckedMapAs
+checkMapAsKernel policy k = do
+  validatePolicy policy
+  unless (mapAsCaptures k >= 0 && mapAsCaptures k <= 7) (Left "typed mapAs kernels take at most seven captures")
+  unless (not (null (mapAsSymbol k)) && not (null (mapAsOriginal k)))
+    (Left "compiler error: typed mapAs kernel: empty kernel/original symbol")
+  pure (CheckedMapAs policy k)
+
+-- Absent bodies deliberately use generated calls (the pipeline inline
+-- opt-out). Available bodies must match their boxed callback interfaces.
+-- Verify before cloning: every operand/edge must exist in the copier's maps.
+checkCallbacks :: Policy -> Program -> [(Name,Int)] -> Either String ()
+checkCallbacks policy callbacks calls = do
+  forM_ calls $ \(name,arity) -> do
+    require "empty callback symbol" (not (null name))
+    require ("callback arity exceeds native ceiling at " ++ name) (arity >= 0 && arity <= arityCeiling)
+    forM_ (M.lookup name callbacks) $ \fn ->
+      require ("callback interface disagrees at " ++ name)
+        (fnResult fn == TVal && case [bParams b | b <- fnBlocks fn, bId b == fnEntry fn] of
+          [ps] -> map snd ps == replicate arity TVal
+          _ -> False)
+  either (Left . ("compiler error: " ++)) Right (verifyProgramWidth (policyWidth policy) callbacks)
+  where require why ok = unless ok (Left ("compiler error: typed kernel: " ++ why))

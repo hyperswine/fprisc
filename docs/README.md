@@ -322,3 +322,4 @@ they began.
 - [Selected runtime contracts](2026-10-26-SELECTED-RUNTIME-CONTRACTS.md) - typed code/address references, call effects and shared checked entry/apply/panic protocols.
 
 - [Checked column-kernel plans](2026-10-26-KERNEL-PLAN-CONTRACTS.md): semantic operation constructors, owned admission evidence, callback CFG checking and unchanged native/cache output.
+- [Checked record/layout kernel plans](2026-10-26-RECORD-PLAN-CONTRACTS.md): owned admission products for all native kernel builders, boxed callback interfaces and descriptor/capture boundaries.

@@ -57,6 +57,7 @@ main = do
   refused (K.lowerMapAsKernel m2Policy (K.MapAsKernel "as" "f" 8 "d"))
   putStrLn "Typed kernel builders: a mixed-capture or invalid-op SIMD pair, a captured RVV sum, a GPU pair sum off columns 0 and 1, and an eight-capture mapAs are refused PASS"
   checkColumnPlans
+  checkRecordPlans
 
 -- Refuse malformed plans before a partial list index or CFG construction.
 -- These are caller-contract failures rather than manufactured ISA failures.
@@ -120,3 +121,53 @@ checkColumnPlans = do
     unless (I.calleeName c==name && I.calleeKind c==I.Foreign symbol && I.calleeParams c==replicate arity I.TVal
       && I.calleeResult c==I.TVal) (error "column fallback ABI changed")
   putStrLn "Checked column plans: stage order, captures, accumulators, callback interfaces, fuel and runtime ABI PASS"
+
+checkRecordPlans :: IO ()
+checkRecordPlans = do
+  let callback name count = I.Fn name [] I.TVal (I.BId 0)
+        [I.Block (I.BId 0) [(I.VId n,I.TVal) | n <- [0..count-1]] [] (I.TRet (I.VId 0))]
+      filtering = K.RecordKernel "filter" "original" [] False (-1,-1) [(0,KI),(2,KD)] (K.RecordFilter "predicate") False
+      folding = filtering {K.recordSymbol="fold",K.recordCaptures=[KB],K.recordOperation=K.RecordFold "sum" KI}
+      mapping = K.RecordKernel "map" "original" [] True (-1,-1) [(0,KI),(1,KD)]
+        (K.RecordMap [("left",[0],[1,0]),("right",[1],[1])]) False
+      bodies = M.fromList [("predicate",callback "predicate" 2),("sum",callback "sum" 4),
+                           ("left",callback "left" 3),("right",callback "right" 2)]
+      accept label result = case result of Right _ -> pure (); Left msg -> error (label ++ ": " ++ msg)
+      reject label detail callbacks draft = case K.lowerRecordKernel m2Policy callbacks draft of
+        Left msg | detail `isInfixOf` msg -> pure ()
+        other -> error (label ++ ": expected " ++ detail ++ ", got " ++ show other)
+  forM_ [filtering,folding,mapping] $ \draft -> do
+    accept "checked record callback interface" (K.lowerRecordKernel m2Policy bodies draft)
+    accept "generated record callback calls" (K.lowerRecordKernel m2Policy M.empty draft)
+  let constant = I.Fn "constant" [] I.TVal (I.BId 0)
+        [I.Block (I.BId 0) [] [I.Instr (Just (I.VId 0,I.TInt)) (I.OConstInt 7),
+          I.Instr (Just (I.VId 1,I.TVal)) (I.OTag (I.VId 0))] (I.TRet (I.VId 1))]
+  accept "nullary record field callback" (K.lowerRecordKernel m2Policy (M.singleton "constant" constant)
+    mapping {K.recordHasCapture=False,K.recordColumns=[(0,KI)],K.recordOperation=K.RecordMap [("constant",[],[])]})
+  reject "no columns" "invalid typed record column plan" M.empty filtering {K.recordColumns=[]}
+  reject "negative column" "invalid typed record column plan" M.empty filtering {K.recordColumns=[(-1,KI)]}
+  reject "duplicate column kinds" "duplicate record column" M.empty filtering {K.recordColumns=[(0,KI),(0,KD)]}
+  reject "column count arithmetic overflow" "column count exceeds" M.empty filtering {K.recordColumns=[(maxBound,KI)]}
+  reject "scalar record filter captures" "record filter must be capture-free" M.empty filtering {K.recordCaptures=[KI]}
+  reject "tuple flag on a fold" "capture tuple flag" M.empty folding {K.recordHasCapture=True}
+  reject "tuple flag on a filter" "record filter must be capture-free" M.empty filtering {K.recordHasCapture=True}
+  reject "map reads missing tuple" "absent capture tuple" M.empty mapping {K.recordHasCapture=False}
+  reject "map scalar entry captures" "not scalar entry captures" M.empty mapping {K.recordCaptures=[KI]}
+  reject "map unknown input column" "record map field plan" M.empty mapping {K.recordOperation=K.RecordMap [("left",[],[9]),("right",[],[1])]}
+  reject "map projection displacement" "projection exceeds" M.empty mapping {K.recordOperation=K.RecordMap [("left",[268435455],[0]),("right",[],[1])]}
+  reject "map output coverage" "record map field plan" M.empty mapping {K.recordColumns=[(0,KI),(2,KD)]}
+  reject "record entry limit" "entry arity" M.empty folding {K.recordCaptures=replicate 63 KI}
+  reject "record callback limit" "callback arity" M.empty filtering {K.recordColumns=[(n,KI) | n <- [0..64]]}
+  reject "record callback interface" "callback interface" (M.singleton "predicate" (callback "predicate" 1)) filtering
+  reject "undefined record callback operand" "is never defined" (M.singleton "predicate"
+    ((callback "predicate" 2) {I.fnBlocks=[I.Block (I.BId 0) [(I.VId 0,I.TVal),(I.VId 1,I.TVal)] [] (I.TRet (I.VId 99))]})) filtering
+  let as = K.MapAsKernel "as" "original" 7 "i,d"
+      rejectAs detail draft = case K.lowerMapAsKernel m2Policy draft of
+        Left msg | detail `isInfixOf` msg -> pure ()
+        other -> error ("mapAs: expected " ++ detail ++ ", got " ++ show other)
+  accept "seven-capture mapAs boundary" (K.lowerMapAsKernel m2Policy as)
+  rejectAs "at most seven captures" as {K.mapAsCaptures= -1}
+  rejectAs "at most seven captures" as {K.mapAsCaptures=8}
+  rejectAs "empty kernel/original symbol" as {K.mapAsSymbol=""}
+  rejectAs "empty kernel/original symbol" as {K.mapAsOriginal=""}
+  putStrLn "Checked record/layout plans: callback interfaces, columns, tuple captures, entry limits and mapAs boundaries PASS"

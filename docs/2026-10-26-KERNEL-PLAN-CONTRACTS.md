@@ -58,6 +58,6 @@ x64 runtime execution and the POSIX RV64 artifact check when clang lacks its
 RISC-V backend. No physical-board execution is claimed. Local records use
 `/private/tmp/fpr-kernel-plans-*`, including the complete timing JSON.
 
-The preceding runtime checkpoint `127c8fd` is awaiting its hosted result at
-[run 40239373934](https://github.com/hyperswine/fprisc/actions/runs/40239373934).
+The preceding runtime checkpoint `127c8fd` passed
+[hosted CI run 40239373934](https://github.com/hyperswine/fprisc/actions/runs/40239373934).
 This stage also requires hosted validation on the synced main revision.

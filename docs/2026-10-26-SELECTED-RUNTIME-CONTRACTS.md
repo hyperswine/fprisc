@@ -83,4 +83,5 @@ use `/private/tmp/fpr-protocol-symbols-*` and the complete timing JSON.
 
 The preceding export/ARC checkpoint `ce77e9f` passed
 [hosted CI run 40235445898](https://github.com/hyperswine/fprisc/actions/runs/40235445898).
-This selected-runtime stage requires its own hosted result after push.
+This selected-runtime checkpoint `127c8fd` also passed
+[hosted CI run 40239373934](https://github.com/hyperswine/fprisc/actions/runs/40239373934).

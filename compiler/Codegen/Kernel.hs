@@ -267,40 +267,11 @@ lowerCheckedKernel plan = do
       pure (fst iOut, fst accOut)
 
 
--- A record plan describes the dualized callbacks, never architecture details.
--- Columns are (index, kind); map outputs cover the complete record. The map
--- entry retains the planner's capture slot even for a capture-free callback.
-data RecordOp
-  = RecordFold Name Kind
-  | RecordFilter Name
-  | RecordMap [(Name, [Int], [Int])]
-  deriving Show
-data RecordKernel = RecordKernel
-  { recordSymbol :: String, recordOriginal :: Name,
-    recordCaptures :: [Kind], recordHasCapture :: Bool,
-    recordShape :: (Int,Int), recordColumns :: [(Int,Kind)],
-    recordOperation :: RecordOp,
-    recordGpuPairSum :: Bool -- a capture-free Int fold of acc + column 0 + column 1: offered to the GPU hook first (vec.c fpr_gpu_vec_fold_pair_sum)
-  } deriving Show
-
 lowerRecordKernel :: Policy -> Program -> RecordKernel -> Either String Fn
-lowerRecordKernel policy callbacks k = do
-  validatePolicy policy
-  unless (not (null columns) && all ((>=0) . fst) columns)
-    (Left "invalid typed record column plan")
-  case operation of
-    RecordMap fields -> unless
-      (map fst columns == [0..length fields-1] && all (\(_,ps,cs) -> all (>=0) ps && all (`elem` map fst columns) cs) fields)
-      (Left "invalid typed record map field plan")
-    _ -> pure ()
-  unless (all (`elem` [KI,KD,KS]) (map snd columns ++ accumulatorKinds) &&
-          all (`elem` [KI,KD,KS,KB]) (recordCaptures k))
-    (Left "typed record kernels currently support Int/F64/F32 columns and Int/F64/F32/Bool captures")
-  when (recordGpuPairSum k) $
-    unless (null (recordCaptures k) && map fst columns == [0,1] && accumulatorKinds == [KI] && all ((== KI) . snd) columns)
-      (Left "the GPU pair sum needs a capture-free Int fold over columns 0 and 1")
-  unless (policyWidth policy == W64 || all (`notElem` [KD,KS]) (map snd columns ++ accumulatorKinds ++ recordCaptures k))
-    (Left "RV32 float record columns use boxed values")
+lowerRecordKernel policy callbacks k = checkRecordKernel policy callbacks k >>= lowerCheckedRecord
+
+lowerCheckedRecord :: CheckedRecord -> Either String Fn
+lowerCheckedRecord plan = do
   let argc = case operation of RecordMap _ -> 2; _ -> length (recordCaptures k) + length accumulatorKinds + 1
       ps = [(VId i,TVal) | i <- [0..argc-1]]
       Build _ _ _ _ _ blocks = execState (build (map fst ps)) (Build argc 1 (BId 0) ps [] [])
@@ -310,6 +281,7 @@ lowerRecordKernel policy callbacks k = do
   checked (verifyProgramWidth (policyWidth policy) (M.insert (fnName fn) simplified callbacks))
   pure simplified
   where
+    (policy,callbacks,k) = recordInput plan
     checked = either (Left . ("compiler error: " ++)) Right
     columns = recordColumns k
     operation = recordOperation k
@@ -475,14 +447,11 @@ lowerRecordKernel policy callbacks k = do
 -- fuel tick), and the input is freed at the end: the legacy
 -- `Vec.mapAs direct scalar kernel`. Int, boxed and float inputs are read as
 -- one word; an Int word is tagged on the way in. No callback is cloned.
-data MapAsKernel = MapAsKernel
-  { mapAsSymbol :: String, mapAsOriginal :: Name, mapAsCaptures :: Int, mapAsLayout :: String }
-  deriving Show
-
 lowerMapAsKernel :: Policy -> MapAsKernel -> Either String Fn
-lowerMapAsKernel policy k = do
-  validatePolicy policy
-  unless (mapAsCaptures k >= 0 && mapAsCaptures k <= 7) (Left "typed mapAs kernels take at most seven captures")
+lowerMapAsKernel policy k = checkMapAsKernel policy k >>= lowerCheckedMapAs
+
+lowerCheckedMapAs :: CheckedMapAs -> Either String Fn
+lowerCheckedMapAs plan = do
   let argc = mapAsCaptures k + 1
       ps = [(VId i,TVal) | i <- [0..argc-1]]
       Build _ _ _ _ _ blocks = execState (build (map fst ps)) (Build argc 1 (BId 0) ps [] [])
@@ -492,6 +461,7 @@ lowerMapAsKernel policy k = do
   checked (verifyProgramWidth (policyWidth policy) (M.singleton (fnName fn) simplified))
   pure simplified
   where
+    (policy,k) = mapAsInput plan
     checked = either (Left . ("compiler error: " ++)) Right
     w = if policyWidth policy == W32 then 4 else 8
     hal name arity = Callee name (Foreign ("fpr_g_" ++ mangleName name ++ "_call" ++ show arity)) (replicate arity TVal) TVal
