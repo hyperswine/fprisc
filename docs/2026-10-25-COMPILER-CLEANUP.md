@@ -15,7 +15,7 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Initial native expression consumer implemented; full lowering and transformation migration pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Typed, uniquely named Core | Native expressions, aggregates, patterns and constructor entries implemented; dictionary/wrapper/specialization and transformation migration pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
 | Checked pipeline products and lint | Structural pass result and initial typed desugaring product implemented; full pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, desugaring and linearity with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Pending beyond local OptimizationOptions | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
@@ -120,3 +120,31 @@ Validation: all 134 Base jobs passed in 420.73 seconds on six workers with no
 reused CI coverage; 128 fresh emission/unit-key comparisons, parser/cache
 compatibility and Sol compatibility/tail-call checks passed. The goal remains
 active across the erasure boundary and all other pending table entries.
+
+## Typed aggregate and pattern stage
+
+[Typed aggregates and patterns](2026-10-25-TYPED-CORE-PATTERNS.md) extends the
+native typed product to semantic aggregate/record operations, nested patterns,
+multiple clauses and guards, result pipes, interpolation, nonrecursive local
+functions and constructor entries. Inference retains exact pattern types and
+binding identities. Shared type relations and Core lint check these contracts
+before explicit layout/erasure.
+
+The stricter consumer exposed unconstrained dictionary member calls and late
+written-signature promises. Source inference now constrains members before
+generalization, retains lexical dictionary witnesses and rechecks final
+promises. The MVU callback signature states its existing environment
+relationship explicitly. This intentional dispatch correction advances the
+codegen cache revision to 106; physical native ABIs remain unchanged.
+
+Generated layout joins, closure lifting and subsequent passes still cross the
+untyped boundary. Vector dictionaries, generated wrappers, recursive locals,
+specialization evidence, options, diagnostics and codegen contracts remain
+required work. This stage does not complete the goal.
+
+Validation: all 134 Base jobs passed in 440.75 seconds on six workers without
+reused CI coverage. The expanded invariant and one/four-hart native fixtures,
+MVU suite, 128 fresh emission comparisons with explicit revision-only
+normalization, and Sol compatibility/tail-call checks passed. Hosted CI for
+the preceding `b983812` stage passed; each subsequent checkpoint still needs
+its own hosted result.

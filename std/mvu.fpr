@@ -337,7 +337,7 @@ applyOne me env app r e mq =
 # between updates; deliver the result event with the corresponding env.
 noReload : Int -> Reload -> env -> Result env String .
 noReload me info env = Err "this runner has no reload adapter".
-applyLiveEvs : unsafe Int -> _ -> env -> MApp -> List Ev -> (model, Int) -> Int -> (env, model, Int, Int) .
+applyLiveEvs : unsafe Int -> (Int -> Reload -> env -> Result env String) -> env -> MApp -> List Ev -> (model, Int) -> Int -> (env, model, Int, Int) .
 applyLiveEvs me reload env app evs mq changed = case evs of
     Nil -> liveResult env mq changed
   | e :: r -> liveEvent me reload env app r e mq changed.

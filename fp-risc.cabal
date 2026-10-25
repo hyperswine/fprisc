@@ -103,6 +103,7 @@ executable fpr
       Infer.Trace
       Infer.Evidence
       Infer.Result
+      Infer.Pattern
       Infer.Elaboration
       Core.Identity
       Core.Typed.Syntax
@@ -110,6 +111,7 @@ executable fpr
       Core.Typed.Erase
       Frontend.Desugar.Checked
       Type.Syntax
+      Type.Relation
       Inline
       ReceiveTurns
       Mono

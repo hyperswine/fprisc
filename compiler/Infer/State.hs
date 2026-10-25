@@ -5,11 +5,15 @@ import Core.Identity (BinderId, ExprId, Namespace)
 import Type.Syntax (Type, Row, Scheme)
 import Ownership.Shape (LShape)
 import Struct (Sigs)
+import Infer.Pattern (PatternSite, PatternInfo)
 import qualified Infer.Evidence as Evidence
 import qualified Data.Map.Strict as M
 import qualified Data.IntMap.Strict as IM
 import qualified Data.Set as S
 import Control.Monad.State.Strict (State)
+
+data Carrier = Carrier {carrierParameter :: Name, carrierSignature :: Name, carrierRecord :: !Type}
+data OperatorScope = OperatorScope (Maybe Name) (M.Map Name Type)
 
 type TEnv = M.Map Name Scheme
 
@@ -19,6 +23,7 @@ data IEnv = IEnv
     iRSub :: IM.IntMap Row, -- rowvar solutions
     iErrs :: [String],
     iNotes :: [(Name, String)], -- pretty-printed inferred schemes
+    iDeferredDeclarations :: [(Name,Scheme,Type)],
     iHoles :: [(String, Type)], -- typed holes: ?name / ?? with site type
     iHolesP :: [(String, String)], -- same, pretty (zonked at end)
     iHoledCons :: S.Set (Name, Int), -- constructors with ?? fields: calls trap
@@ -26,7 +31,9 @@ data IEnv = IEnv
     iSites :: IM.IntMap (Name, Type), -- operator/layout sites awaiting resolution
     iSiteExpressions :: IM.IntMap ExprId,
     iSiteMarks :: IM.IntMap (Maybe Int), -- retain their diagnostic anchors
-    iCarriers :: IM.IntMap (Name, Name), -- carrier var -> (param, sig)
+    iCarriers :: IM.IntMap Carrier, -- carrier var -> (param, sig)
+    iOperatorScopes :: IM.IntMap OperatorScope,
+    iCarrierChoices :: IM.IntMap Carrier,
     iHere :: Maybe Int, -- spans step 3: the innermost enclosing SMark's
                         -- source offset while inference walks under it;
                         -- report stamps it into diagnostics as "@OFF~ "
@@ -40,6 +47,9 @@ data IEnv = IEnv
     iDefTypes :: M.Map Name Type,
     iInterfaces :: [(Name, Type)], -- zonked checked types for interface identity
     iEvidenceBuilder :: Maybe Evidence.Builder,
+    iPatterns :: M.Map PatternSite PatternInfo,
+    iBinderTargets :: M.Map BinderId Name,
+    iConstructorSchemes :: M.Map Name Scheme,
     iLinSigs :: [(Name, ([LShape], LShape))] -- INFERRED linearity shapes
       -- per user bind (zonked types -> LShape): the linearity checker
       -- consumes these for functions WITHOUT an explicit sig, closing
@@ -82,5 +92,6 @@ initialIEnv capture = IEnv
     iSites=IM.empty, iSiteExpressions=IM.empty, iSiteMarks=IM.empty, iCarriers=IM.empty,
     iHere=Nothing, iPairs=IM.empty, iVecPlans=M.empty,
     iVecRefs=IM.empty, iVecOwners=IM.empty, iDefTypes=M.empty,
+    iOperatorScopes=IM.empty, iCarrierChoices=IM.empty,
     iInterfaces=[], iEvidenceBuilder=Evidence.emptyBuilder <$> capture,
-    iLinSigs=[] }
+    iDeferredDeclarations=[], iLinSigs=[], iPatterns=M.empty, iBinderTargets=M.empty, iConstructorSchemes=M.empty }

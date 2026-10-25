@@ -1,0 +1,22 @@
+# Dictionary evidence must remain lexical across a recursive group. The local
+# dict alias keeps these as dynamic calls rather than struct-specialized clones.
+unsafe base.
+ProbeArith = Sig { ofInt : Int -> t, (+) }.
+Ops = Struct ProbeArith { ofInt = fn n -> n + 7, (+) = fn x y -> x + y }.
+left (s : ProbeArith) n = case n > 0 of
+    True -> right s (n - 1)
+  | False -> x = s.ofInt n; x + x.
+right (ops : ProbeArith) n = case n > 0 of
+    True -> left ops (n - 1)
+  | False -> x = ops.ofInt n; x + x.
+Choice a = Type (No | Yes a).
+# The failed second subpattern must use the outer value, even after the first
+# subpattern bound the same spelling. This exercises the lifted continuation.
+nested outer pair = case pair of
+    (Yes outer,Yes y) -> outer + y
+  | _ -> outer.
+main =
+  dict = Ops;
+  r = {x = 3,y = 4};
+  updated = {r | x = r.x + 2};
+  print "typed-core {left dict 4} {nested 10 (Yes 2,Yes 3)} {nested 10 (Yes 2,No)} {updated.x + updated.y}".

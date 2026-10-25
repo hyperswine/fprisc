@@ -97,3 +97,11 @@ tail-call checks passed (peak 86 MB). Local records:
 `/private/tmp/fpr-typed-core-base.json` and
 `/private/tmp/fpr-typed-core-sol-{args,both,tail}.log`.
 No physical-board execution is claimed.
+
+## Subsequent stage
+
+[Typed aggregates and patterns](2026-10-25-TYPED-CORE-PATTERNS.md) records the
+next implemented source forms, typed constructor emission and the dictionary
+inference repair with codegen revision 106. Coverage and unchanged-revision
+statements above describe this first stage at `b983812`; the newer record
+states the current boundary and intentional cache identity change.

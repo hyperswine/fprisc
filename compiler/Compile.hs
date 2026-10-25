@@ -43,7 +43,7 @@ import Ownership.Shape
 import Core.Opt.Normalize (normArc)
 import Type.Syntax (Scheme(..), Type(..))
 import Infer.Result
-import Frontend.Desugar.Checked (prepareChecked, lowerToLegacy)
+import Frontend.Desugar.Checked (prepareChecked, lowerToUntyped)
 import Infer (inferTopsChecked, aotProf, builtinEnv, builtinLinShapes, canonicalTypeWith, inferTops, inferTopsInterfaces)
 import Safety (measureCheck, safetyCheck, trustedLibraryPaths)
 import qualified Cost
@@ -769,7 +769,7 @@ compileWithInterface accepted = do
           consUnits = [(h, collectCons h uts) | (h, uts) <- units]
           consAll = M.unions (consPrelude : consRoot : map snd consUnits)
           shapes = collectShapes finalTops -- structural fnv ids: globally consistent
-          compileRaw uts = let (p, st) = runState (lowerToLegacy checkedLowering uts >>= liftFix) (DEnv 0 consAll shapes [] [])
+          compileRaw uts = let (p, st) = runState (lowerToUntyped checkedLowering uts >>= liftFix) (DEnv 0 consAll shapes [] [])
                             in (M.map (fmap eraseCast) p, S.fromList (dJoins st))
           turnContext = fst (compileRaw finalTops)
           -- regions (the compiler-placed loop and call kinds) change no work

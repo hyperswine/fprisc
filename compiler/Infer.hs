@@ -49,12 +49,14 @@ import Frontend.Linearity
 import Ownership.Shape
 import Ownership.TypeShape
 import Type.Syntax
+import Type.Relation (sameType, fieldType)
 import Infer.State
+import Infer.Pattern
 import Infer.Result
 import Infer.Elaboration
 import Infer.Trace
 import qualified Infer.Evidence as Evidence
-import Core.Identity (Namespace)
+import Core.Identity (Namespace, ExprId)
 import Precond (checkedName)
 import Struct (Sigs, Structs)
 
@@ -829,33 +831,45 @@ sigAnnEnv aliases tops = M.fromList <$> mapM one [(n, ps, r) | TSig n (ps, r) _ 
 -- ---- pattern inference ------------------------------------------------------
 
 inferPat :: TEnv -> SPat -> I (Type, TEnv)
-inferPat cons = \case
-  PWild -> (,M.empty) <$> freshT
-  PInt _ -> pure (tInt, M.empty)
-  PStr _ -> pure (tStr, M.empty)
-  PVar n -> do a <- freshT; pure (a, M.singleton n (mono a))
-  PSig n sg -> do
-    -- reaches here only if a PSig survives outside a top-level param
-    a <- freshT
-    _ <- pure sg
-    pure (a, M.singleton n (mono a))
-  PTup ps -> do
-    (ts, envs) <- unzip <$> mapM (inferPat cons) ps
-    pure (TTupT ts, M.unions envs)
-  PRec ns -> do
-    fields <- mapM (\n -> (,) n <$> freshT) ns
-    tail' <- freshR
-    let row = foldr (\(n, t) r -> RExt n t r) tail' fields
-    pure (TRec row, M.fromList [(n, mono t) | (n, t) <- fields])
-  PCon c ps -> do
-    (ts, envs) <- unzip <$> mapM (inferPat cons) ps
-    res <- freshT
-    case M.lookup c cons of
-      Nothing -> report ("pattern: unknown constructor " ++ c) >> pure (res, M.unions envs)
-      Just sc -> do
-        ct <- instantiate sc
-        unify ("pattern " ++ c) ct (foldr TFn res ts)
-        pure (res, M.unions envs)
+inferPat cons p = do
+  (t,env,_) <- inferPattern cons p
+  pure (t,env)
+
+inferPattern :: TEnv -> SPat -> I (Type,TEnv,PatternInfo)
+inferPattern cons p = do
+  (t,env,children) <- case p of
+    PWild -> do a<-freshT; pure (a,M.empty,[])
+    PInt _ -> pure (tInt,M.empty,[])
+    PStr _ -> pure (tStr,M.empty,[])
+    PVar n -> do a<-freshT; pure (a,M.singleton n (mono a),[])
+    PSig n _ -> do a<-freshT; pure (a,M.singleton n (mono a),[])
+    PTup ps -> do
+      (ts,envs,cs)<-unzip3 <$> mapM (inferPattern cons) ps
+      pure (TTupT ts,M.unions envs,cs)
+    PRec ns -> do
+      fs<-mapM (\n -> (,) n <$> freshT) ns
+      tail'<-freshR
+      pure (TRec (foldr (\(n,t) r -> RExt n t r) tail' fs),M.fromList [(n,mono t) | (n,t)<-fs],[])
+    PCon c ps -> do
+      (ts,envs,cs)<-unzip3 <$> mapM (inferPattern cons) ps
+      res<-freshT
+      case M.lookup c cons of
+        Nothing -> report ("pattern: unknown constructor "++c)
+        Just sc -> do ct<-instantiate sc; unify ("pattern "++c) ct (foldr TFn res ts)
+      pure (res,M.unions envs,cs)
+  pure (t,env,PatternInfo p t children M.empty)
+
+rememberPattern :: PatternSite -> PatternInfo -> I ()
+rememberPattern site pat = do
+  capture<-gets iEvidenceBuilder
+  case capture of
+    Nothing -> pure ()
+    Just _ -> modify (\st -> st {iPatterns=M.insert site pat (iPatterns st)})
+
+rememberExprPattern :: (ExprId -> PatternSite) -> PatternInfo -> I ()
+rememberExprPattern site pat = do
+  uid<-gets (\st -> iEvidenceBuilder st >>= Evidence.currentExpression)
+  forM_ uid (\i -> rememberPattern (site i) pat)
 
 -- constructor -> (its type's name, arity), read off the constructor
 -- schemes: the result type after the argument arrows names the type
@@ -905,13 +919,69 @@ newSite op t = do
           iSiteMarks = IM.insert n (iHere st) (iSiteMarks st), iSiteExpressions=origins}
   pure n
 
+-- Keep only the local dictionary types that are in scope at an operator.
+-- This preserves lexical evidence without retaining the whole inference context.
+newOperatorSite :: ICtx -> Name -> Type -> I Int
+newOperatorSite ctx op t = do
+  k<-newSite op t
+  carriers<-gets iCarriers
+  let names=S.fromList (map carrierParameter (IM.elems carriers)) `S.intersection` icBound ctx
+      scope=M.mapMaybe (\case Forall [] [] ty->Just ty; _->Nothing) (M.restrictKeys (icEnv ctx) names)
+  modify (\st -> st {iOperatorScopes=IM.insert k (OperatorScope (icOwner ctx) scope) (iOperatorScopes st)})
+  pure k
+
+-- Dictionary member types must be constrained BEFORE generalization. Otherwise
+-- an unannotated (+) field is generalized independently of its operands even
+-- though resolution later emits a two-argument call through that field.
+constrainCarrierSites :: Sigs -> Int -> I ()
+constrainCarrierSites sigs first = stabilize
+  where
+    stabilize = do
+      before<-gets (IM.size . iCarrierChoices)
+      sites<-gets iSites
+      forM_ [(k,op,t) | (k,(op,t))<-IM.toList sites,k>=first,op `elem` ["+","-","*","/","%","^","<","<=",">",">="]] $ \(k,op,t0)->do
+        chosen<-gets (IM.member k . iCarrierChoices)
+        unless chosen $ do
+          t<-zonk t0
+          case t of
+            TV _ -> do
+              scope<-gets (IM.lookup k . iOperatorScopes)
+              candidates<-gets (IM.toList . iCarriers)
+              found<-fmap concat $ forM candidates $ \(v,c)->do
+                rep<-zonk (TV v)
+                case scope of
+                  Just (OperatorScope _ locals) | sameType rep t,Just actual<-M.lookup (carrierParameter c) locals -> do
+                    a<-zonk actual; r<-zonk (carrierRecord c)
+                    pure [c | sameType a r,op `elem` maybe [] (map fst) (M.lookup (carrierSignature c) sigs)]
+                  _->pure []
+              case reverse found of
+                c:_ -> do
+                  record<-zonk (carrierRecord c)
+                  old<-gets iHere
+                  marks<-gets iSiteMarks
+                  modify (\st -> st {iHere=IM.findWithDefault Nothing k marks})
+                  nerrors<-gets (length . iErrs)
+                  case fieldType record [op] of
+                    Just member->unify ("("++op++") member of sig "++carrierSignature c) member
+                      (TFn t (TFn t (if op `elem` ["<","<=",">",">="] then tBool else t)))
+                    Nothing->report ("("++op++") missing from its checked signature record")
+                  modify (\st ->
+                    let (previous,new)=splitAt nerrors (iErrs st)
+                        owner=case scope of Just (OperatorScope n _)->n; _->Nothing
+                        prefixed=case owner of Just n->["in "++n++": "++e | e<-new]; _->new
+                    in st {iHere=old,iErrs=previous++prefixed,iCarrierChoices=IM.insert k c (iCarrierChoices st)})
+                _->pure ()
+            _->pure ()
+      after<-gets (IM.size . iCarrierChoices)
+      when (after>before) stabilize
+
 -- carrier var of an in-scope `(s : Sig)` param: var id -> (param, sig)
-addCarrier :: Int -> (Name, Name) -> I ()
+addCarrier :: Int -> Carrier -> I ()
 addCarrier v sn = modify (\st -> st {iCarriers = IM.insert v sn (iCarriers st)})
 
 -- unification may have rebound a carrier var to another var (which then
 -- became the representative) — the check must be against zonked reps
-carrierReps :: I (IM.IntMap (Name, Name))
+carrierReps :: I (IM.IntMap Carrier)
 carrierReps = do
   cs <- gets iCarriers
   fmap IM.fromList . forM (IM.toList cs) $ \(v, pn) ->
@@ -1046,11 +1116,11 @@ inferERaw ctx e0 = case e0 of
     (tb, b') <- inferE bodyCtx b
     pure (foldr TFn tb pvs, SLam ps b')
   SBlock stmts fin -> do
-    (stmts', fin', t) <- goBlock ctx stmts
+    (stmts', fin', t) <- goBlock ctx 0 stmts
     pure (t, SBlock stmts' fin')
     where
-      goBlock c [] = do (t, fin') <- inferE c fin; pure ([], fin', t)
-      goBlock c (SBind n ps rhs : rest) = do
+      goBlock c _ [] = do (t, fin') <- inferE c fin; pure ([], fin', t)
+      goBlock c index (SBind n ps rhs : rest) = do
         a <- freshT
         startSite <- gets iNextSite
         let generic = ipVectorLayouts (icProf c) && (not (null ps) || isLamE rhs)
@@ -1074,24 +1144,30 @@ inferERaw ctx e0 = case e0 of
           modify (\st -> st {iDefTypes=M.insert key tz (iDefTypes st),
             iVecOwners=IM.union (iVecOwners st) (IM.fromList [(i,key) | i <- [startSite..endSite-1]])})
         restCtx <- refineScoped n sc cRec
-        (rest', fin', tr) <- goBlock (localCtx restCtx) rest
+        rememberExprPattern (`LocalOf` index)
+          (PatternInfo (PVar n) t [PatternInfo (PVar v) ty [] (icLocalIds rhsCtx) | (v,ty)<-zip ps pvs] (icLocalIds cRec0))
+        forM_ (M.lookup n (icLocalIds cRec0)) $ \uid ->
+          modify (\st -> st {iBinderTargets=M.insert uid key (iBinderTargets st)})
+        (rest', fin', tr) <- goBlock (localCtx restCtx) (index+1) rest
         pure (SBind key ps rhs' : rest', fin', tr)
-      goBlock c (SBindPat p rhs : rest) = do
+      goBlock c index (SBindPat p rhs : rest) = do
         (tr, rhs') <- inferE c rhs
-        (tp, benv) <- inferPat (icCons c) p
+        (tp, benv, pat) <- inferPattern (icCons c) p
         unify "let pattern" tp tr
         restCtx <- extendScoped Evidence.PatternBinding benv c
-        (rest', fin', tfin) <- goBlock restCtx rest
+        rememberExprPattern (`BindingOf` index) (bindPattern (icLocalIds restCtx) pat)
+        (rest', fin', tfin) <- goBlock restCtx (index+1) rest
         pure (SBindPat p rhs' : rest', fin', tfin)
       isLamE SLam {} = True
       isLamE _ = False
   SCase scrut arms -> do
     (ts, scrut') <- inferE ctx scrut
     res <- freshT
-    arms' <- forM arms $ \(p, e) -> do
-      (tp, benv) <- inferPat (icCons ctx) p
+    arms' <- forM (zip [0..] arms) $ \(index,(p,e)) -> do
+      (tp, benv, pat) <- inferPattern (icCons ctx) p
       unify "case scrutinee" tp ts
       armCtx <- extendScoped Evidence.PatternBinding benv ctx
+      rememberExprPattern (`ArmOf` index) (bindPattern (icLocalIds armCtx) pat)
       (te, e') <- inferE armCtx e
       unify "case arm" te res
       pure (p, e')
@@ -1211,7 +1287,7 @@ inferBin ctx op a b = case op of
             let builtinTy c = c `elem` ["Int", "I32", "I64", "F64", "F32", "String", "List", "Bool", "Unit"]
                 userTy ty = maybe False (not . builtinTy) (headCon ty)
                 concreteTy ty = headCon ty /= Nothing
-            site <- newSite op t
+            site <- newOperatorSite ctx op t
             if concreteTy za && concreteTy zb && (userTy za || userTy zb)
               then modify (\st -> st {iPairs = IM.insert site (ta, tb) (iPairs st)})
               else do
@@ -1226,7 +1302,7 @@ inferBin ctx op a b = case op of
         t <- freshT
         unify ("(" ++ op ++ ")") ta t
         unify ("(" ++ op ++ ")") tb t
-        site <- newSite op t
+        site <- newOperatorSite ctx op t
         pure (tBool, SBin (markerPrefix ++ show site ++ "#" ++ op) a' b')
     | op `elem` ["==", "!="] -> do
         (ta, a') <- inferE ctx a
@@ -1234,7 +1310,7 @@ inferBin ctx op a b = case op of
         unify ("(" ++ op ++ ")") ta tb
         -- floats rewrite to IEEE compare prims (NaN /= NaN); everything
         -- else keeps the generic shallow veq, exactly as before
-        site <- newSite op ta
+        site <- newOperatorSite ctx op ta
         pure (tBool, SBin (markerPrefix ++ show site ++ "#" ++ op) a' b')
     | otherwise -> do
         -- user-defined operator: an ordinary binding applied infix
@@ -1328,6 +1404,11 @@ resolveSites prof sigs env = do
               unify ("(" ++ op ++ ")") tb t0
               one' k op t0
     one' k op t0 = do
+      witness<-gets (IM.lookup k . iCarrierChoices)
+      case witness of
+        Just c->pure (OpProj (carrierParameter c) op)
+        Nothing->ordinary k op t0
+    ordinary k op t0 = do
       t <- zonk t0
       when (t == tI32 && M.notMember "I32.ofInt" (ipBuiltins prof)) $
         report "I32 requires a native Base or Builtin target; this profile has no I32 runtime"
@@ -1417,7 +1498,7 @@ resolveSites prof sigs env = do
         TV v -> do
           carriers <- carrierReps
           case IM.lookup v carriers of
-            Just (pn, sg)
+            Just (Carrier pn sg _)
               | op `elem` maybe [] (map fst) (M.lookup sg sigs) -> pure (OpProj pn op)
               | otherwise ->
                   OpPrim op <$ report ("(" ++ op ++ ") used at carrier of sig " ++ sg ++ ", which lacks it")
@@ -1712,6 +1793,22 @@ inferTopsResult capture prof sigs structs tops =
       -- resolve operator sites against the final substitution, then
       -- rebuild the top list with markers rewritten, in original order
       tgts <- resolveSites prof sigs env
+      -- Operator/member resolution can add constraints after an early written
+      -- signature check. Revalidate successful programs against the final
+      -- solution in an isolated state; keep existing error ordering and the
+      -- inference fresh supply unchanged.
+      validBeforeFinalCheck<-gets (null . iErrs)
+      when validBeforeFinalCheck $ do
+        st<-get
+        let checks=reverse (iDeferredDeclarations st)
+            verify=forM_ checks $ \(n,sc,t)->do
+              before<-gets (length . iErrs)
+              checkDeclared n sc t
+              modify (\s -> let (old,new)=splitAt before (iErrs s)
+                             in s {iErrs=old++["in "++n++": "++e | e<-new]})
+            final=execState verify st
+        modify (\s -> s {iErrs=iErrs final})
+      modify (\s -> s {iDeferredDeclarations=[]})
       layoutPlans <- gets iVecPlans
       let hidden n = [PVar (layoutParam n i) | i <- [0 .. length (M.findWithDefault [] n layoutPlans) - 1]]
       modify (\st -> st { iLinSigs = [(n, (replicate (length (hidden n)) LU ++ ps, r)) | (n,(ps,r)) <- iLinSigs st] })
@@ -1770,6 +1867,12 @@ inferTopsResult capture prof sigs structs tops =
           layouts <- gets iVecPlans >>= traverse (mapM zonk)
           pure (schemes,layouts)
         _ -> pure (M.empty,M.empty)
+      case capture of
+        Just _ | null errors && not namedHoles -> do
+          matches<-gets iPatterns >>= traverse (mapPatternTypesM (\t -> do z<-zonk t; force z `seq` pure z))
+          constructors<-traverse snapshotScheme cons
+          modify (\st -> st {iPatterns=matches,iConstructorSchemes=constructors})
+        _ -> pure ()
       pure (tops',proof,sites,schemes,layouts)
     flat (AcyclicSCC n) = [n]
     flat (CyclicSCC ns) = ns
@@ -1780,6 +1883,7 @@ inferTopsResult capture prof sigs structs tops =
     -- to a type nobody wrote would report a signature that does not exist.
     inferSCC :: TEnv -> S.Set Name -> TEnv -> [Name] -> I (TEnv, [(Name, [SPat], [SGuard], SExpr)])
     inferSCC cons written env ns = do
+      firstSite<-gets iNextSite
       -- monomorphic recursion within the SCC
       mvs <- mapM (const freshT) ns
       let recEnv = M.union (M.fromList (zip ns (map mono mvs))) env
@@ -1792,30 +1896,32 @@ inferTopsResult capture prof sigs structs tops =
                 (siblingsOf (conTable cons))
                 n
                 [(ps, not (null g)) | (ps, g, _) <- clauses n]
-        res <- forM (clauses n) $ \(ps, g, b) -> do
+        res <- forM (zip [0..] (clauses n)) $ \(clauseIndex,(ps,g,b)) -> do
           nerrs0 <- gets (length . iErrs)
           -- params: PSig gets its sig's record type; others infer
-          (ptys, penvs) <- unzip <$> mapM (inferParam cons) ps
+          (ptys, penvs, patterns) <- unzip3 <$> mapM (inferParam cons) ps
           let baseCtx = ICtx recEnv cons sigs prof S.empty M.empty (Just n) M.empty
           ctx <- extendScoped Evidence.ClauseParameter (M.unions penvs) baseCtx
+          forM_ (zip [0..] patterns) $ \(i,pat) -> rememberPattern (ParameterOf n clauseIndex i) (bindPattern (icLocalIds ctx) pat)
           -- guards run left to right; a pattern guard's binds are in
           -- scope for the guards to its right and for the body
           (ctx2, g') <-
             foldM
-              ( \(cx, acc) gd -> case gd of
+              ( \(cx, acc) (guardIndex,gd) -> case gd of
                   GBool ge -> do
                     (tg, ge') <- inferE cx ge
                     unify ("guard of " ++ n) tg tBool
                     pure (cx, acc ++ [GBool ge'])
                   GPat p ge -> do
                     (tg, ge') <- inferE cx ge
-                    (tp, benv) <- inferPat cons p
+                    (tp, benv, pat) <- inferPattern cons p
                     unify ("pattern guard of " ++ n) tg tp
                     nextCtx <- extendScoped Evidence.GuardBinding benv cx
+                    rememberPattern (GuardOf n clauseIndex guardIndex) (bindPattern (icLocalIds nextCtx) pat)
                     pure (nextCtx, acc ++ [GPat p ge'])
               )
               (ctx, [])
-              g
+              (zip [0..] g)
           (tb, b') <- inferE ctx2 b
           declaredOrRec n mv (foldr TFn tb ptys)
           -- prefix errors this clause produced with the bind name
@@ -1832,6 +1938,7 @@ inferTopsResult capture prof sigs structs tops =
           mapM_ (report . (("in " ++ n ++ ": ") ++)) cov
           modify (\s -> s {iHere = old})
         pure res
+      constrainCarrierSites sigs firstSite
       -- numeric defaulting BEFORE generalization: an ARITH/ORDERED-CMP
       -- site still at an unbound non-carrier var here must pin to Int
       -- now — otherwise the scheme generalizes while the site compiles
@@ -1880,21 +1987,23 @@ inferTopsResult capture prof sigs structs tops =
                 Nothing -> modify (\st -> st {iDefTypes=M.insert n t (iDefTypes st)})
             -- ... and only now, with the clause fully constrained, ask
             -- whether a WRITTEN signature was actually earned
-            when (n `S.member` written) (checkDeclared n declared t)
+            when (n `S.member` written) $ do
+              checkDeclared n declared t
+              modify (\s -> s {iDeferredDeclarations=(n,declared,t):iDeferredDeclarations s})
           Nothing -> unify ("definition of " ++ n) mv t
 
-    inferParam :: TEnv -> SPat -> I (Type, TEnv)
+    inferParam :: TEnv -> SPat -> I (Type, TEnv, PatternInfo)
     inferParam cons p = case p of
       PSig n sg ->
         sigRecType sg >>= \case
           Nothing -> do
             report ("(" ++ n ++ " : " ++ sg ++ "): unknown sig")
             a <- freshT
-            pure (a, M.singleton n (mono a))
+            pure (a, M.singleton n (mono a), PatternInfo p a [] M.empty)
           Just (t, mcarrier) -> do
-            forM_ mcarrier $ \cv -> addCarrier cv (n, sg)
-            pure (t, M.singleton n (mono t))
-      _ -> inferPat cons p
+            forM_ mcarrier $ \cv -> addCarrier cv (Carrier n sg t)
+            pure (t, M.singleton n (mono t), PatternInfo p t [] M.empty)
+      _ -> inferPattern cons p
 
     sigRecType :: Name -> I (Maybe (Type, Maybe Int))
     sigRecType sg = case M.lookup sg sigs of

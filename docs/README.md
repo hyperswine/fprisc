@@ -296,3 +296,4 @@ they began.
 - [Region classifier CI gate](2026-10-25-CI-REGION-GATE.md): replace retired collector-sample assumptions with exact iteration, peak-budget and region-reclamation checks; fresh RV32 QEMU evidence and negative cases.
 - [Checked inference handoff](2026-10-25-INFERENCE-EVIDENCE.md): retained types, lexical identities, schemes and elaboration decisions, with explicit limits before typed-Core lowering.
 - [First native typed-Core lowering](2026-10-25-TYPED-CORE-LOWERING.md): checked expression construction used by native desugaring, scope/type/ownership-shape lint and the remaining erasure boundary.
+- [Typed Core aggregates and patterns](2026-10-25-TYPED-CORE-PATTERNS.md): aggregate/pattern lowering and constructor emission, lexical dictionary constraints and the remaining typed transformation work.
