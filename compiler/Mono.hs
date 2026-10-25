@@ -2,7 +2,7 @@
 {-# LANGUAGE TupleSections #-}
 -- Function-argument specialization on lifted Core. Unknown/escaping functions
 -- retain the open-world callable ABI. Budgets always fall back to original calls.
-module Mono (specializeFunctions,specializeFunctionsWithImports, qualifyAux, references) where
+module Mono (specializeFunctions,specializeFunctionsWithImports,specializeCompatibility, qualifyAux, references) where
 
 import Core.Syntax (Core(..), Name, Prog, freeVars)
 import Core.Analysis.Scope (qualifyPrivate)
@@ -27,7 +27,12 @@ specializeFunctions :: String -> M.Map Name Int -> Prog -> Prog -> Prog
 specializeFunctions=specializeFunctionsWithImports S.empty
 
 specializeFunctionsWithImports :: S.Set Name -> String -> M.Map Name Int -> Prog -> Prog -> Prog
-specializeFunctionsWithImports importedCode namespace arities external input = includeAux result
+specializeFunctionsWithImports=specializeCompatibility S.empty
+
+-- Checked source/private bodies have already been specialized before region
+-- placement. The erased fallback may only clone compatibility/helper targets.
+specializeCompatibility :: S.Set Name -> S.Set Name -> String -> M.Map Name Int -> Prog -> Prog -> Prog
+specializeCompatibility checked importedCode namespace arities external input = includeAux result
   where
     -- Global callback identities must stay global even if the caller later
     -- shadows their spelling after binding an alias to the function value.
@@ -102,7 +107,7 @@ specializeFunctionsWithImports importedCode namespace arities external input = i
         let (head1, leading) = spine hd'
             allArgs = leading ++ args
         case head1 of
-          CVar g | M.notMember g scope, Just (ps,_) <- M.lookup g universe, length ps == length allArgs -> do
+          CVar g | g `S.notMember` checked,M.notMember g scope, Just (ps,_) <- M.lookup g universe, length ps == length allArgs -> do
             let choices = [(i,h,cs) | (i,a) <- zip [0..] allArgs,
                             Just (h,cs) <- [known scope a],
                             i `S.member` M.findWithDefault S.empty g demand,

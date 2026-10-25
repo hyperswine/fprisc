@@ -3,12 +3,14 @@
 -- one artifact emits each symbol. Private code keeps its source owner/contract.
 module Compiler.Native.Linked
   (ArtifactId(..),NativeArtifact,artifact,artifactId,artifactCore,artifactExports,artifactElided,
-   LinkedProgram,linkArtifacts,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
+   LinkedProgram,linkArtifacts,specializeLinked,linkedArtifacts,linkedSymbols,SymbolKey(..),SymbolOwner(..),Definition(..)) where
 import Compiler.Native.Core
 import Compiler.DataLayout
 import Core.Typed.Program
 import Core.Typed.Pipeline
 import Core.Typed.Close
+import Core.Typed.Contract (sameContract)
+import Core.Typed.Callback (CallbackMode(..))
 import Core.Typed.Syntax
 import Core.Typed.Verify (instanceOf)
 import Core.Typed.Walk (allBinders,mapChildrenM)
@@ -72,7 +74,12 @@ linkArtifacts inputs=do
   unless (length identities==S.size (S.fromList identities)) (bad "binder identity shared by artifacts")
   -- An elided constructor must actually have an owner in this image.
   unless (elisions `S.isSubsetOf` S.fromList [name | ExportedSymbol name<-M.keys symbols]) (bad "elided definition has no emitting owner")
-  forM_ inputs checkReferences
+  forM_ inputs $ \a->do
+    checkReferences a
+    forM_ (owned a) $ \(_,f)->forM_ (M.toList (closedImports f)) $ \(key@(CodeId name),contract)->
+      case [c | (_,SymbolOwner _ (PrivateDefinition _ k c))<-M.toList symbols,k==key] of
+        [published] | sameContract contract published->pure ()
+        _->bad ("imported private contract disagrees with its home at "++name)
   pure (LinkedProgram artifacts symbols)
   where
     bad why=Left ("native link: "++why)
@@ -89,7 +96,7 @@ linkArtifacts inputs=do
     entries a=
       let p=source a
           typed=M.fromList ([(name,SourceDefinition name (programSchemas p M.! name) (length (functionParameters (closedRoot f)))) | (name,f)<-owned a]
-            ++[(name,PrivateDefinition owner k c) | (owner,f)<-owned a,(k@(CodeId name),c)<-M.toList (closedContracts f)])
+            ++[(name,PrivateDefinition owner k c) | (owner,f)<-owned a,(k@(CodeId name),c)<-M.toList (closedOwnedContracts f)])
       in [(key name,SymbolOwner (artifactId a) (M.findWithDefault (CompatibilityDefinition (length ps)) name typed))
           | (name,(ps,_))<-M.toList (emitted a)]
       where key name=if name `S.member` artifactExports a then ExportedSymbol name else ArtifactSymbol (artifactId a) name
@@ -122,3 +129,15 @@ linkArtifacts inputs=do
         Just _->pure ()
         Nothing->unless (name `S.notMember` privateNames)
           (bad ("cross-artifact reference to private symbol "++name))
+
+-- Re-link after cloning so every new entry receives its emitting owner and
+-- every imported original code reference is checked against its actual home.
+specializeLinked :: CallbackMode -> LinkedProgram -> Either String LinkedProgram
+specializeLinked PreserveCallbacks p=pure p
+specializeLinked mode p=do
+  let as=M.elems (linkedArtifacts p)
+      providers=map artifactCore as
+  changed<-mapM (\a->do
+    core<-specializeNativeWith mode providers (artifactCore a)
+    artifact (artifactId a) (artifactExports a) (artifactElided a) core) as
+  linkArtifacts changed

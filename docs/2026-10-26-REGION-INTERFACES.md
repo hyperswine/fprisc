@@ -103,5 +103,6 @@ Local integrated validation passed on the fixed revision-118 sources:
 
 The private-import baseline `38673d2` passed
 [hosted CI run 40198814856](https://github.com/hyperswine/fprisc/actions/runs/40198814856).
-That hosted result precedes this stage; the new commit requires its own hosted
-run. No physical-board execution is claimed by these checks.
+That result precedes this stage. The integrated region-interface commit
+`bd2830b` also passed [hosted CI run 40205756522](https://github.com/hyperswine/fprisc/actions/runs/40205756522).
+No physical-board execution is claimed by these checks.

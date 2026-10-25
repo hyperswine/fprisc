@@ -15,7 +15,7 @@ cache formats, or explicitly version and test any intentional changes.
 |---|---|---|
 | Separate Core/backend responsibilities | First slice implemented: Core.Syntax, Core.Opt passes and vector plans; Codegen driver 567 lines | Preserve emission and runtime behavior; keep new passes in their owners |
 | Independent type vocabulary | Type.Syntax and Ownership.Shape implemented as independent vocabularies | Infer compatibility exports, native/Base and Sol checks; no parser/inference dependency from Type.Syntax |
-| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical closure calls and local callback cloning implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
+| Typed, uniquely named Core | Native expressions/aggregates/patterns, constructors, closure lifting, generated joins/traps, direct recursive locals, vector-layout evidence, structure specialization, checked lexical calls and local/global/imported callback cloning implemented; layout temporaries/remaining forms and later transformations pending | Carry checked types and binder identity from inference; avoid reconstructing types after rewriting; checked handling of generated workers, joins and region helpers |
 | Checked pipeline products and lint | Owned semantic/native and linked artifact products, region input/cost views, generated helper ABI provenance, complete graph and imported interface contracts implemented; downstream pipeline type/scope lint pending | Each stage preserves or explicitly transforms its evidence; malformed scopes/types/worker contracts fail by name; differential evaluation |
 | Frontend ownership | Implemented; grammar, normalization, lowering, paths/layouts, diagnostics and linearity have separate owners | Separate surface syntax, lexer/parser, semantic desugaring and linearity from native layout/closing/erasure, with lexical/diagnostic/cache compatibility |
 | Typed compiler options | Shared environment/driver/diagnostic products and CLI owner implemented; tested compatibility controls retained | Parse inputs once, pass explicit options, share canonical cache identity, remove only obsolete rollout paths with equivalent checks |
@@ -562,10 +562,34 @@ physical ABIs are unchanged. Fresh-cache integrated Base validation passed all
 136 jobs in 509 seconds on six workers, with no reused results. Focused region,
 typed-Core and Sol checks passed; the stage page records host/toolchain skips.
 Baseline `38673d2` passed hosted CI run 40198814856; that result precedes this
-stage and does not substitute for its new hosted run.
+stage. The integrated region-interface commit `bd2830b` passed hosted CI run
+40205756522.
 
 This is checked provenance and a structural contract for the existing erased
 region rewrite. Typed helper bodies and global callback clone/source provenance
 remain required before `Mono` retirement. The later typed transformations,
 remaining compatibility forms, diagnostics and machine/call vocabulary remain
 part of the full active cleanup goal.
+
+## Typed global callback cloning (2026-10-26)
+
+[Checked global cloning](2026-10-26-TYPED-GLOBAL-CLONING.md) moves global and
+imported callback specialization before region placement and erasure. A checked
+catalog owns template bodies, schemas, code contracts and shared role analysis.
+Clones instantiate checked annotations with fresh binder identities, retain
+source/template/physical-parameter provenance and preserve escaping callback
+objects. Imported private code remains a home-owned declaration; the linked
+verifier checks it against its actual emitting contract. Ambient rigid variables
+propagate through those imports. Region interfaces retain clone provenance.
+
+Revision 119 versions specialization/emission/cache changes without changing
+runtime structures or physical ABIs. The erased specializer is restricted to
+compatibility definitions and remaining generated region helpers. Typed region
+helper bodies are still required before `Mono` can be removed; later typed
+optimizations, compatibility forms, diagnostics and machine/call contracts
+remain part of the full active goal. Final validation passed all 136 Base jobs
+in 540.74 seconds on six workers, with an empty cache, no reused results and
+unchanged timeouts. Sol arguments/shared fixture and three million tail-call
+iterations pass too; the stage page records platform skips and the compile-time
+regression correction. Baseline `bd2830b` is green in hosted CI run 40205756522;
+this stage's hosted validation follows its push.

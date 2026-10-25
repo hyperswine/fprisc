@@ -56,7 +56,7 @@ def main():
                      **({'FPR_TYPED_IR_BACKEND':'mixed'} if target=='a64' else {})})
             assert 'known-partial=0' in p.stderr, p.stderr
             asm = out.read_text()
-            assert '.mono' in asm or '_2emono' in asm, target
+            assert '$typed.mono.' in asm or '_24typed_2emono_2e' in asm, target
         print('Specialization: native/Sol differential + warm mode caches, effects/panics, '
               '64,000 -> 0 callback bytes, RV64/RV32/A64/x64 emission: PASS')
 

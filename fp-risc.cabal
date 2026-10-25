@@ -134,6 +134,7 @@ executable fpr
       Core.Typed.Stage
       Core.Typed.Callback
       Core.Typed.Callback.Model
+      Core.Typed.Callback.Catalog
       Core.Typed.Callback.Analysis
       Core.Typed.Callback.Trim
       Core.Typed.Layout

@@ -18,6 +18,7 @@ import qualified Core.Typed.Specialize as Specialize
 import Compiler.VectorLayout
 import Compiler.Trap
 import Type.Syntax (Type(..),Scheme(..))
+import qualified Type.Substitution as Type
 import Ownership.Shape (LShape(..))
 import Ownership.TypeShape (linShapeT)
 import Frontend.Syntax
@@ -456,7 +457,18 @@ typedFunction checked group@(name,clauses)=case M.lookup name (planEntries check
     gen t n=T.Expr t (shape t) T.Generated Nothing n
     ty (EP e _)=E.expressionType e
     ref b=gen (T.binderType b) (T.Var (T.Local (T.binderId b)))
-    call n t=T.Var (T.Global n (Forall [] [] t))
+    -- Generated operators have no lexical environment. Preserve a declared
+    -- source/constructor scheme when available; otherwise quantify the checked
+    -- intrinsic instance rather than inventing ambient rigid variables from
+    -- its occurrence. Unknown/user calls retain their monomorphic evidence.
+    call n t=T.Var (T.Global n scheme)
+      where
+        declared=M.lookup n (Specialize.globalSchemes (planSpecialization checked))
+        (ts,rs)=Type.variables t
+        scheme=case declared of
+          Just sc | instanceOf sc t->sc
+          _ | n `elem` map fst primArities->Forall (S.toAscList ts) (S.toAscList rs) t
+            | otherwise->Forall [] [] t
     apply2 f a b result=T.Apply (gen (TFn (T.exprType b) result) (T.Apply f a)) b
     lowerGuard (Boolean e)=T.BoolGuard (lower e)
     lowerGuard (Matching p e)=T.PatternGuard p (lower e)

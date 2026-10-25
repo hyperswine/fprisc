@@ -2,11 +2,13 @@
 -- Typed closure/join conversion. Captures are lexical identities with their
 -- checked schemes; generated code never re-infers an erased expression.
 module Core.Typed.Close
-  (ClosedFunction,closeFunction,closeFunctionWith,closedRoot,closedCode,closedGlobals,closedContracts,mapClosed,rewriteClosed,verifyClosed) where
+  (ClosedFunction,closeFunction,closeFunctionWith,closedRoot,closedCode,closedGlobals,closedContracts,
+   closedOwnedContracts,closedImports,CodeLibrary,codeLibrary,libraryContracts,importClosedLibrary,importClosedCode,CloneOrigin(..),closedOrigins,
+   mapClosed,rewriteClosed,rewriteClosedWithOrigins,verifyClosed) where
 import Core.Typed.Syntax
 import Core.Typed.Verify
 import Core.Typed.Walk
-import Core.Typed.Contract (codeContracts)
+import Core.Typed.Contract (codeContractsWith)
 import Core.Identity
 import Type.Syntax
 import Ownership.TypeShape (linShapeT)
@@ -15,33 +17,77 @@ import Control.Monad.Except
 import Control.Monad (unless,when)
 import Data.List (intercalate)
 import Data.Functor.Identity (runIdentity)
+import Data.Functor.Const (Const(..))
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
-data ClosedFunction=ClosedFunction Function (M.Map CodeId CodeFunction) (M.Map String Scheme)
+data CloneOrigin=CloneOrigin
+  { cloneSource :: String,cloneTemplate :: CodeId,
+    cloneBindings :: [(BinderId,Maybe BinderId)] } deriving Show
+data ClosedFunction=ClosedFunction Function (M.Map CodeId CodeFunction) (M.Map String Scheme) (M.Map CodeId CodeContract) (M.Map CodeId CloneOrigin)
 closedRoot :: ClosedFunction -> Function
-closedRoot (ClosedFunction f _ _)=f
+closedRoot (ClosedFunction f _ _ _ _)=f
 closedCode :: ClosedFunction -> M.Map CodeId CodeFunction
-closedCode (ClosedFunction _ codes _)=codes
+closedCode (ClosedFunction _ codes _ _ _)=codes
 closedGlobals :: ClosedFunction -> M.Map String Scheme
-closedGlobals (ClosedFunction _ _ globals)=globals
+closedGlobals (ClosedFunction _ _ globals _ _)=globals
+closedImports :: ClosedFunction -> M.Map CodeId CodeContract
+closedImports (ClosedFunction _ _ _ imports _)=imports
+closedOrigins :: ClosedFunction -> M.Map CodeId CloneOrigin
+closedOrigins (ClosedFunction _ _ _ _ origins)=origins
+closedOwnedContracts :: ClosedFunction -> M.Map CodeId CodeContract
+closedOwnedContracts (ClosedFunction _ codes globals imports _)=codeContractsWith imports globals codes
 closedContracts :: ClosedFunction -> M.Map CodeId CodeContract
-closedContracts (ClosedFunction _ codes globals)=codeContracts globals codes
+closedContracts p=closedOwnedContracts p `M.union` closedImports p
+
+-- Derive a declaration library once from verified owners. Attaching this
+-- snapshot to another caller does not recheck/re-generalize every provider.
+newtype CodeLibrary=CodeLibrary (M.Map CodeId CodeContract)
+libraryContracts :: CodeLibrary -> M.Map CodeId CodeContract
+libraryContracts (CodeLibrary contracts)=contracts
+codeLibrary :: [ClosedFunction] -> Either String CodeLibrary
+codeLibrary providers=do
+  -- ClosedFunction is opaque; every producer verifies its changed graph.
+  -- A library adds declaration ownership, not a new body transformation.
+  let entries=concatMap (M.toList . closedOwnedContracts) providers
+      contracts=M.fromList entries
+  unless (length entries==M.size contracts) (Left "typed closure: duplicate code library identity")
+  pure (CodeLibrary contracts)
+
+-- Import declarations only from verified owners. Bodies remain at home;
+-- cloning a source body must never copy the PAP of its nested lambda.
+importClosedCode :: TypeContext -> [ClosedFunction] -> ClosedFunction -> Either String ClosedFunction
+importClosedCode types providers input=codeLibrary providers >>= \library->importClosedLibrary types library input
+
+importClosedLibrary :: TypeContext -> CodeLibrary -> ClosedFunction -> Either String ClosedFunction
+importClosedLibrary types (CodeLibrary available) (ClosedFunction root codes globals imports origins)=do
+  let result=ClosedFunction root codes globals (M.withoutKeys (imports `M.union` available) (M.keysSet codes)) origins
+  verifyClosed types result
+  pure result
 -- Transform an owned closed product and check the complete code graph before
 -- exposing it to another pass. Clients cannot construct an unchecked product.
 mapClosed :: TypeContext -> (Function -> Either String Function) -> (CodeFunction -> Either String CodeFunction) -> ClosedFunction -> Either String ClosedFunction
-mapClosed types rootPass codePass (ClosedFunction root codes globals)=do
+mapClosed types rootPass codePass (ClosedFunction root codes globals imports origins)=do
   root'<-rootPass root
   codes'<-traverse codePass codes
-  let result=ClosedFunction root' codes' globals
+  let result=ClosedFunction root' codes' globals imports origins
   verifyClosed types result
   pure result
 -- Code-generating passes publish the whole changed graph atomically. Existing
 -- code/capture identities remain checked alongside newly introduced entries.
 rewriteClosed :: TypeContext -> (Function -> M.Map CodeId CodeFunction -> Either String (Function,M.Map CodeId CodeFunction)) -> ClosedFunction -> Either String ClosedFunction
-rewriteClosed types pass (ClosedFunction root codes globals)=do
+rewriteClosed types pass input=rewriteClosedWithOrigins types (\root codes origins->do
   (root',codes')<-pass root codes
-  let result=ClosedFunction root' codes' globals
+  pure (root',codes',origins)) input
+
+rewriteClosedWithOrigins :: TypeContext -> (Function -> M.Map CodeId CodeFunction -> M.Map CodeId CloneOrigin
+  -> Either String (Function,M.Map CodeId CodeFunction,M.Map CodeId CloneOrigin)) -> ClosedFunction -> Either String ClosedFunction
+rewriteClosedWithOrigins types pass (ClosedFunction root codes globals imports origins)=do
+  (root',codes',origins')<-pass root codes origins
+  let references e=(case exprNode e of ClosureValue k _->S.singleton k;CodeCall k _ _->S.singleton k;JoinCall k _ _->S.singleton k;_->S.empty)
+        <>getConst (mapChildrenM (Const . references) e)
+      wanted=S.unions (map (references . functionBody) (root':map codeAsFunction (M.elems codes')))
+      result=ClosedFunction root' codes' globals (M.restrictKeys imports wanted) origins'
   verifyClosed types result
   pure result
 data Closing=Closing Int (M.Map CodeId CodeFunction)
@@ -53,7 +99,7 @@ closeFunctionWith :: Monad m => M.Map String Scheme -> Namespace -> (String -> m
 closeFunctionWith globals (Namespace sourceNamespace) names types@(TypeContext linears _) input = runExceptT $ do
   either throwError pure (verifyFunction types input)
   (root,Closing _ codes)<-runStateT run (Closing 0 M.empty)
-  let result=ClosedFunction root codes globals
+  let result=ClosedFunction root codes globals M.empty M.empty
   either throwError pure (verifyClosed types result)
   pure result
   where
@@ -203,7 +249,7 @@ closeFunctionWith globals (Namespace sourceNamespace) names types@(TypeContext l
         tails xs@(_:rest)=xs:tails rest
 
 verifyClosed :: TypeContext -> ClosedFunction -> Either String ()
-verifyClosed types product@(ClosedFunction root codes _)=do
+verifyClosed types product@(ClosedFunction root codes _ imports origins)=do
   let contracts=closedContracts product
       functions=root:map codeAsFunction (M.elems codes)
       binders=concat [functionParameters f++allBinders (functionBody f) | f<-functions]
@@ -215,6 +261,15 @@ verifyClosed types product@(ClosedFunction root codes _)=do
     (Left "typed closure: a callable code entry requires an ordinary parameter")
   unless (length identities==S.size (S.fromList identities)) (Left "typed closure: binder identity reused between functions")
   unless (M.notMember (CodeId (functionName root)) codes) (Left "typed closure: root and code entry share a label")
+  unless (S.null (M.keysSet codes `S.intersection` M.keysSet imports)) (Left "typed closure: code is both owned and imported")
+  mapM_ (\(label,origin)->case M.lookup label codes of
+    Nothing->Left "typed closure: clone origin has no owned code"
+    Just code->do
+      let ps=S.fromList (map binderId (codeCaptures code++codeParameters code))
+          targets=[uid | (_,Just uid)<-cloneBindings origin]
+          sources=map fst (cloneBindings origin)
+      unless (length sources==S.size (S.fromList sources) && length targets==S.size (S.fromList targets)
+        && S.fromList targets `S.isSubsetOf` ps) (Left "typed closure: clone parameter provenance disagrees")) (M.toList origins)
   mapM_ (\(label,code)->unless (label==codeId code) (Left "typed closure: code identity/key mismatch")) (M.toList codes)
   mapM_ (verifyFunctionWith contracts types) functions
   mapM_ (closed . functionBody) functions

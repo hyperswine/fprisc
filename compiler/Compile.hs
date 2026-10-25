@@ -9,9 +9,10 @@ import qualified Compiler.Native.Core as NativeCore
 import qualified Compiler.Native.Linked as Linked
 import qualified Compiler.Native.Imports as NativeImports
 import Compiler.DataLayout (Layouts(..))
-import Mono (specializeFunctionsWithImports, qualifyAux)
+import Mono (specializeCompatibility, qualifyAux)
 import Inline (inlineSmall, inlineWithImports, vecPeek)
 import qualified Compiler.Native.Regions as Regions
+import qualified Core.Typed.Syntax as TCore
 import qualified Codegen.Target.RV as RV
 import Codegen.Target.Common (Tune (..), dataSyntax)
 import Codegen (Target, codegenRev, emitProgramWithImports, Emission (..), NativeMode (..), NativeBackend (..), Granularity (..), Strict (..), externals, tgtName, tgtFuel, tgtArc, tgtWeak, tgtHal, tgtFloatInline, tgtSimd, tgtFusion, tgtScalarFast, tgtIndexedMemory, tgtScalarWorkers, tgtFieldWorkers, tgtPipelineInline, tgtReuse, tgtTypedIr, tgtPolicy, tgtNative)
@@ -590,7 +591,7 @@ compileWithInterface accepted = do
           selectRoot uts=selectSpecialized (M.keysSet consAll) specialized (bindNames uts)
           compileRaw uts=prepareRegions (compileSelected PreserveCallbacks (selectRoot uts))
           callbackMode=if Options.cgSpecialize codegen && not (oArc opts) then SpecializeCallbacks else PreserveCallbacks
-          nativeUnit unit=compileSelected callbackMode (selectUnit (M.keysSet consAll) unit)
+          nativeUnit unit=compileSelected PreserveCallbacks (selectUnit (M.keysSet consAll) unit)
           regionContext=Regions.context (fst (measureCheck tops)) (compileRaw finalTops)
           runTurnsWith regions input=if oBuiltin opts || oArc opts || not (Options.cgReceiveTurns codegen)
             then Regions.bypass input
@@ -917,7 +918,9 @@ compileWithInterface accepted = do
                        pure inl
           pureOutside g = maybe False (> 0) (M.lookup g extFor) || maybe False (> 0) (M.lookup g halAr) || g `elem` corePrimNames
           corePrimNames = ["+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "strcat", "str", "String.len"]
-          mono ns ext p = if (not (Options.cgSpecialize codegen)) || oArc opts then p else specializeFunctionsWithImports importedPrivateNames ns halAr ext p
+          mono ns ext p = if (not (Options.cgSpecialize codegen)) || oArc opts then p else specializeCompatibility checkedCallbackTargets importedPrivateNames ns halAr ext p
+          checkedCallbackTargets=S.fromList [name | (_,Linked.SymbolOwner _ definition)<-M.toList (Linked.linkedSymbols linked),
+            name<-case definition of Linked.SourceDefinition n _ _->[n];Linked.PrivateDefinition _ (TCore.CodeId n) _->[n];_->[]]
           -- constructor stub ownership.  Every unit's Core holds a stub per
           -- constructor of the program (compileTop's conGlobals: the inliner
           -- and `known` need them); the SYMBOL is defined once, by the owner,
@@ -944,7 +947,7 @@ compileWithInterface accepted = do
                   S.member n rootLoweredNames
                     || (not (S.member n unitNames) && not (S.member n preludeNames))
             ]
-          rootNative=compileSelected callbackMode (selectRoot (if oArc opts then finalTops else rootProgTops))
+          rootNative=compileSelected PreserveCallbacks (selectRoot (if oArc opts then finalTops else rootProgTops))
           artifactResults=
             Linked.artifact Linked.RootArtifact
               (if oArc opts then M.keysSet (NativeCore.nativeProgram rootNative) else bindNames root'' `S.union` rootCons)
@@ -953,7 +956,7 @@ compileWithInterface accepted = do
                 preludeElided (nativeUnit preludeChecked) | preludeEmitted]
             ++ [Linked.artifact (Linked.DependencyArtifact h) (bindNames uts `S.union` unitConsOf h)
                 (unitElided h) (nativeUnit unit) | (h,uts,unit)<-checkedUnits,unitsEmitted]
-          linkedResult=sequence artifactResults >>= Linked.linkArtifacts
+          linkedResult=sequence artifactResults >>= Linked.linkArtifacts >>= Linked.specializeLinked callbackMode
           linked=either error id linkedResult
           declarationsResult=linkedResult >>= NativeImports.codeDeclarations
           declarations=either error id declarationsResult

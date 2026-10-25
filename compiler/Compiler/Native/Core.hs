@@ -2,12 +2,12 @@
 -- The native compatibility boundary. Checked semantic programs remain owned
 -- through layout/closing; only this adapter publishes erased Core downstream.
 module Compiler.Native.Core
-  (NativeCore,compileSelection,compileSelectionAt,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh) where
+  (NativeCore,compileSelection,compileSelectionAt,specializeNativeWith,nativeProgram,nativeJoins,nativeClosed,nativeCompatibility,nativeDeclarations,nativeConstructors,nativeFresh) where
 import qualified Core.Typed.Syntax as T
 import Core.Typed.Program
 import Core.Typed.Pipeline
 import Core.Typed.Close
-import Core.Typed.Callback (CallbackMode)
+import Core.Typed.Callback (CallbackMode(..))
 import Core.Typed.Erase
 import Core.Typed.Walk (allBinders,mapChildrenM)
 import Core.Syntax
@@ -57,9 +57,25 @@ compileSelectionAt first mode layouts selected=do
   unless (all (noLambda . snd) (M.elems output)) (Left "native Core: implicit lambda remains at erasure boundary")
   pure (NativeCore closed output joins (M.map compatibilityReason compatibility) declarations (selectionConstructors selected) (Legacy.dFresh state))
 
+specializeNativeWith :: CallbackMode -> [NativeCore] -> NativeCore -> Either String NativeCore
+specializeNativeWith PreserveCallbacks _ input=pure input
+specializeNativeWith mode providers (NativeCore closed p js compatibility declarations constructors serial)=do
+  specialized<-specializeProgramWith mode (map nativeClosed providers) closed
+  let checkedNames=M.keysSet (closedDefinitions closed)<>
+        S.fromList [name | f<-M.elems (closedDefinitions closed),T.CodeId name<-M.keys (closedCode f)]
+  checkedAfter<-eraseClosed specialized
+  let legacy=M.withoutKeys p checkedNames
+      joins=S.fromList [name | f<-M.elems (closedDefinitions specialized),c<-M.elems (closedCode f),
+        T.codeKind c==T.JoinCode,let T.CodeId name=T.codeId c]
+        <> (js S.\\ checkedNames)
+  unless (S.null (M.keysSet legacy `S.intersection` M.keysSet checkedAfter))
+    (Left "native Core: callback clone collides with compatibility definition")
+  pure (NativeCore specialized (checkedAfter `M.union` legacy) joins compatibility declarations constructors serial)
+
 eraseClosed :: ClosedProgram -> Either String Prog
 eraseClosed closed=do
-  verifyClosedProgram closed
+  -- ClosedProgram's producers already verify every changed graph. Erasure
+  -- checks each expression/interface through eraseFunctionWith below.
   outputs<-mapM one functions
   pure (M.fromList outputs)
   where

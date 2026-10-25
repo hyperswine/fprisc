@@ -10,6 +10,8 @@ import Core.Syntax
 import qualified Compiler.Native.Core as Native
 import qualified Compiler.Native.Linked as Linked
 import qualified Compiler.Native.Imports as Imports
+import qualified Compiler.Native.Regions as Regions
+import Core.Region.Interface (interfaceCloneOrigin)
 import Codegen.Target.Common (visibilityFor,Visibility(..))
 import Compiler.DataLayout
 import Frontend.Desugar.Typed
@@ -132,6 +134,55 @@ main=do
   check "independent machine evaluation links checked artifact projections"
     (answer linkedProjection "client" [Eval.RInt 10]==Right (Eval.RInt 12)
       && answer linkedProjection "call" [Eval.RInt 41]==Right (Eval.RInt 42))
+  let globalSource="apply f x = f x. inc x = x + 1. produce f x = _ = f x; fn y -> y. home n = produce inc n. caller n = produce inc n. useApply n = apply inc n."
+      (_,globalConsumer)=compile "global-clones" globalSource (S.fromList ["caller","useApply"])
+      (_,globalProvider)=compile "global-clones" globalSource (S.fromList ["apply","inc","produce","home"])
+      ga=right (Linked.artifact Linked.RootArtifact (S.fromList ["caller","useApply"]<>Native.nativeConstructors globalConsumer) S.empty globalConsumer)
+      gb=right (Linked.artifact providerId (S.fromList ["apply","inc","produce","home"]) (Native.nativeConstructors globalProvider) globalProvider)
+      generic=right (Linked.linkArtifacts [ga,gb])
+      specialized=right (Linked.specializeLinked SpecializeCallbacks generic)
+      rootCore=Linked.artifactCore (Linked.linkedArtifacts specialized M.! Linked.RootArtifact)
+      rootClosed=Native.nativeClosed rootCore
+      cloned=M.unions (map closedOrigins (M.elems (closedDefinitions rootClosed)))
+      imports=M.unions (map closedImports (M.elems (closedDefinitions rootClosed)))
+      projection=M.unions [M.withoutKeys (Native.nativeProgram (Linked.artifactCore a)) (Linked.artifactElided a)
+        | a<-M.elems (Linked.linkedArtifacts specialized)]
+      faces=Regions.programInterfaces (right (Regions.prepare rootCore))
+  check "linked checked globals are cloned before erasure with source and parameter provenance"
+    (not (M.null cloned) && any ((=="produce") . cloneSource) (M.elems cloned)
+      && any (any ((==Nothing) . snd) . cloneBindings) (M.elems cloned)
+      && all (\(T.CodeId n)->maybe False (maybe False (const True) . interfaceCloneOrigin) (M.lookup n faces)) (M.keys cloned))
+  check "a global clone imports the original provider closure instead of copying its PAP/code"
+    (not (M.null imports) && all (\(T.CodeId n)->n `M.notMember` Native.nativeProgram rootCore) (M.keys imports)
+      && verifyClosedProgram rootClosed==Right ())
+  check "typed global clones agree with independent machine evaluation across artifacts"
+    (answer projection "useApply" [Eval.RInt 41]==Right (Eval.RInt 42)
+      && answer projection "caller" [Eval.RInt 7]==answer projection "home" [Eval.RInt 7])
+  let badGlobalSource="apply f x = f x. inc x = x + 1. produce f x = _ = f x; fn y -> x. home n = produce inc n. caller n = produce inc n. useApply n = apply inc n."
+      (_,changedProvider)=compile "global-clones" badGlobalSource (S.fromList ["apply","inc","produce","home"])
+      changedHome=right (Linked.artifact providerId (S.fromList ["apply","inc","produce","home"]) (Native.nativeConstructors changedProvider) changedProvider)
+      clonedRoot=Linked.linkedArtifacts specialized M.! Linked.RootArtifact
+  check "an imported clone declaration cannot borrow a changed home's private contract"
+    (rejects "imported private contract disagrees with its home" (Linked.linkArtifacts [clonedRoot,changedHome]))
+  let cloneOwner=head [f | f<-M.elems (closedDefinitions rootClosed),not (M.null (closedOrigins f))]
+      wrongOrigin origin=origin {cloneBindings=[(old,Just old) | (old,_)<-cloneBindings origin]}
+  check "clone provenance cannot point to template binders as if they were cloned physical parameters"
+    (failed (rewriteClosedWithOrigins (P.programTypes (closedInput rootClosed))
+      (\root codes origins->Right (root,codes,M.map wrongOrigin origins)) cloneOwner))
+  let unmodified=right (Linked.specializeLinked PreserveCallbacks generic)
+  check "disabled linked specialization retains exact native programs"
+    (all (\a->Native.nativeProgram (Linked.artifactCore a)==Native.nativeProgram
+      (Linked.artifactCore (Linked.linkedArtifacts unmodified M.! Linked.artifactId a))) (M.elems (Linked.linkedArtifacts generic)))
+  let equalitySource="same f x y = if x == y then f x else f y. outer f x y = same f x y. ident x = x. entry x y = outer ident x y."
+      (_,equalityInput)=compile "generic-intrinsics" equalitySource (S.fromList ["same","outer","ident","entry"])
+      equalityOutput=right (Native.specializeNativeWith SpecializeCallbacks [] equalityInput)
+      equalityDefinitions=M.elems (closedDefinitions (Native.nativeClosed equalityOutput))
+      equalityClones=[contract | f<-equalityDefinitions,(key,origin)<-M.toList (closedOrigins f),cloneSource origin=="same",
+        Just contract<-[M.lookup key (closedOwnedContracts f)]]
+  check "generated intrinsic instances do not pin a forwarded clone's generic operand type"
+    (not (null equalityClones) && all ((/=([],[])) . T.contractQuantifiers) equalityClones
+      && answer (Native.nativeProgram equalityOutput) "entry" [Eval.RInt 7,Eval.RInt 9]==Right (Eval.RInt 9)
+      && answer (Native.nativeProgram equalityOutput) "entry" [Eval.RObj 1 1 [],Eval.RObj 1 0 []]==Right (Eval.RObj 1 0 []))
   check "duplicate artifacts cannot be silently unioned"
     (rejects "duplicate artifact identity" (Linked.linkArtifacts [rootArtifact,rootArtifact]))
   check "elided constructor stubs require an emitted home"

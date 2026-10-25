@@ -2,13 +2,13 @@
 -- Callback specialization on checked closed Core. Code identities survive
 -- cloning; callback object arguments survive wherever their identity escapes.
 module Core.Typed.Callback
-  (CallbackMode(..),Callbacks,specializeCallbacks,callbackClosed,callbackClones) where
+  (CallbackMode(..),Callbacks,specializeCallbacks,specializeCallbacksWith,specializeFromCatalog,callbackClosed,callbackClones) where
 import Core.Typed.Syntax
 import Core.Typed.Callback.Model
+import Core.Typed.Callback.Catalog
 import Core.Typed.Callback.Analysis
 import Core.Typed.Callback.Trim (trimCallbacks)
 import Core.Typed.Close
-import Core.Typed.Contract (codeContracts)
 import Core.Typed.Instantiate
 import Core.Typed.Walk
 import Core.Typed.Verify (instanceOf,sameType)
@@ -33,51 +33,57 @@ type Key=(Target,[(Slot,Target,Int)])
 data Scope=Scope (M.Map BinderId Binder) (M.Map BinderId Known) (S.Set BinderId)
 data Work=Work
   { code :: M.Map CodeId CodeFunction, keys :: M.Map Key CodeId,
-    plans :: M.Map CodeId ClonePlan, nextType :: Int,nextTerm :: Int,nextCode :: Int,weight :: Int, removable :: S.Set BinderId }
+    plans :: M.Map CodeId ClonePlan, origins :: M.Map CodeId CloneOrigin,
+    nextType :: Int,nextTerm :: Int,nextCode :: Int,weight :: Int, removable :: S.Set BinderId }
 
 specializeCallbacks :: CallbackMode -> Namespace -> TypeContext -> M.Map String Int -> ClosedFunction -> Either String Callbacks
-specializeCallbacks mode (Namespace ns) types@(TypeContext linears _) arities input=do
+specializeCallbacks mode namespace types arities=specializeCallbacksWith mode namespace types arities []
+
+-- Provider bodies are checked closed products. Imported code is declared, not
+-- copied: a cloned source body still constructs its original home closure.
+specializeCallbacksWith :: CallbackMode -> Namespace -> TypeContext -> M.Map String Int -> [ClosedFunction] -> ClosedFunction -> Either String Callbacks
+specializeCallbacksWith PreserveCallbacks _ types arities _ input=do
   verifyClosed types input
   unless (all (>=0) arities) (Left "typed callbacks: negative physical arity")
-  if mode==PreserveCallbacks || M.null (closedCode input) then pure (Callbacks input S.empty) else do
-    (rootBody,work)<-runStateT (do
-      body<-walk 0 (scope (functionParameters root)) (functionBody root)
-      mapM_ convert (M.elems original)
-      pure body) initial
-    let root'=root {functionBody=rootBody}
-    (finished,codes,retained)<-trimCallbacks types arities schemas templates (plans work) (removable work) root' (code work)
-    output<-rewriteClosed types (\_ _->Right (finished,codes)) input
-    pure (Callbacks output retained)
+  pure (Callbacks input S.empty)
+specializeCallbacksWith _ namespace types arities providers input=do
+  snapshot<-catalog types (M.insert (functionName (closedRoot input)) input
+    (M.fromList [(functionName (closedRoot p),p) | p<-providers]))
+  specializeFromCatalog namespace types arities snapshot (functionName (closedRoot input))
+
+specializeFromCatalog :: Namespace -> TypeContext -> M.Map String Int -> Catalog -> String -> Either String Callbacks
+specializeFromCatalog namespace types arities snapshot name=do
+  original<-maybe (Left ("typed callbacks: absent catalog owner "++name)) Right (M.lookup name (catalogOwners snapshot))
+  prepared<-importClosedLibrary types (catalogLibrary snapshot) original
+  runCallbacks namespace types arities snapshot prepared
+
+runCallbacks (Namespace ns) types@(TypeContext linears _) arities catalogView input=do
+  verifyClosed types input
+  unless (all (>=0) arities) (Left "typed callbacks: negative physical arity")
+  (rootBody,work)<-runStateT (do
+    body<-walk 0 (scope (functionParameters root)) (functionBody root)
+    mapM_ convert (M.elems original)
+    pure body) initial
+  let root'=root {functionBody=rootBody}
+  (finished,codes,retained)<-trimCallbacks types arities schemas templates (plans work) (removable work) root' (code work)
+  let retain label origin=let present=S.fromList (map binderId (codeCaptures (codes M.! label)++codeParameters (codes M.! label)))
+                         in origin {cloneBindings=[(old,uid >>= \u->if u `S.member` present then Just u else Nothing) | (old,uid)<-cloneBindings origin]}
+      cloneOrigins=M.mapWithKey retain (M.restrictKeys (origins work) retained)
+  output<-rewriteClosedWithOrigins types (\_ _ previous->Right (finished,codes,cloneOrigins `M.union` previous)) input
+  pure (Callbacks output retained)
   where
     root=closedRoot input
     original=closedCode input
-    globals=closedGlobals input
-    schemas=globals `M.union` M.unions (map (embedded . functionBody) allFunctions)
-    embedded e=(case exprNode e of Var (Global n sc)->M.singleton n sc;_->M.empty)
-      `M.union` getConst (mapChildrenM (Const . embedded) e)
-    baseContracts=closedContracts input
-    rootCode=CodeFunction (CodeId (functionName root)) EntryCode [] (functionParameters root) (functionBody root)
-    rootContracts=codeContracts globals (M.insert (codeId rootCode) rootCode original)
-    rootContract0=rootContracts M.! codeId rootCode
-    rigid=maybe mempty U.schemeVariables (M.lookup (functionName root) schemas)
-    rootContract=rootContract0 {contractQuantifiers=
-      (filter (`S.notMember` fst rigid) (fst (contractQuantifiers rootContract0)),
-       filter (`S.notMember` snd rigid) (snd (contractQuantifiers rootContract0)))}
-    templates=M.insert (RootTarget (functionName root))
-      (Template [] (functionParameters root) (functionBody root) rootContract EntryCode)
-      (M.mapKeys CodeTarget (M.map (\f->Template (codeCaptures f) (codeParameters f) (codeBody f) (baseContracts M.! codeId f) (codeKind f)) original))
-    analysis=analyzeCallbacks templates
+    sourceOwners=catalogHomes catalogView
+    schemas=catalogSchemas catalogView
+    baseContracts=catalogContracts catalogView
+    templates=catalogTemplates catalogView
+    analysis=catalogAnalysis catalogView
     demands=callbackDemands analysis
     stable=stableCallback analysis
-    allFunctions=root:map codeAsFunction (M.elems original)
-    allVars=mconcat (map functionVariables allFunctions)
-      <>mconcat [U.variables ty<>(S.fromList qs,S.fromList rs) | Forall qs rs ty<-M.elems schemas]
-    firstType=1+maximum (0:S.toList (fst allVars)++S.toList (snd allVars))
-    initial=Work original M.empty M.empty firstType 0 0 0 S.empty
-    occupied=S.fromList [binderId b | f<-allFunctions,b<-functionParameters f++allBinders (functionBody f)]
-    spellings=S.fromList [binderName b | f<-allFunctions,b<-functionParameters f++allBinders (functionBody f)]
-      `S.union` S.fromList (map functionName allFunctions)
-      `S.union` S.unions (map (globalNames . functionBody) allFunctions)
+    initial=Work original M.empty M.empty M.empty (catalogFirstType catalogView) 0 0 0 S.empty
+    occupied=catalogBinderIds catalogView
+    spellings=catalogNames catalogView
     tempNamespace=Namespace (ns++"/callbacks/"++functionName root++"/temps")
     scope bs=Scope (M.fromList [(binderId b,b) | b<-bs]) M.empty S.empty
     extend bs (Scope env known safe)=Scope (M.union (M.fromList [(binderId b,b) | b<-bs]) env) known safe
@@ -98,19 +104,19 @@ specializeCallbacks mode (Namespace ns) types@(TypeContext linears _) arities in
       modify (\w->w {nextCode=n+1})
       let label=CodeId ("$typed.mono."++functionName root++"."++show n)
       exists<-gets (M.member label . code)
-      let namespaceUsed=any (\(BinderId namespace _)->namespace==cloneNamespace label) (S.toList occupied)
+      let namespaceUsed=cloneNamespace label `S.member` catalogNamespaces catalogView
           CodeId spelling=label
       if exists || namespaceUsed || spelling `S.member` spellings then freshCode else pure label
     template t=maybe (bad "missing template") pure (M.lookup t templates)
     count t=case t of
       RootTarget n | n==functionName root->Just (length (functionParameters root))
       RootTarget n->M.lookup n arities
-      CodeTarget label->length . codeParameters <$> M.lookup label original
+      CodeTarget label->length . contractParameters <$> M.lookup label baseContracts
     known s@(Scope _ values _) e=case exprNode (unNote e) of
       Var (Local uid)->M.lookup uid values
       Var (Global n _) | Just nArgs<-M.lookup n arities,nArgs>0,
         Just signature<-M.lookup n schemas,instanceOf signature (exprType e)->Just (Known (RootTarget n) [] [])
-      ClosureValue label caps | Just f<-M.lookup label original,codeKind f==ClosureCode->Just (Known (CodeTarget label) caps [])
+      ClosureValue label caps | Just c<-M.lookup label baseContracts,contractKind c==ClosureCode->Just (Known (CodeTarget label) caps [])
       Apply {}->let (head',args)=spine e [] in do
         Known t caps leading<-known s head'
         n<-count t
@@ -204,12 +210,12 @@ specializeCallbacks mode (Namespace ns) types@(TypeContext linears _) arities in
             x'<-walk depth scope' x;(rest',b)<-go (patternScope scope' p x') rest;pure (PatternGuard p x':rest',b)
       (guards',body')<-go start guards
       pure (Alternative ps guards' body')
-    -- Local code belongs to this checked graph. Global/imported cloning waits
-    -- for a checked program owner that also carries receive-region provenance.
+    -- Clone only checked templates. The root is an explicit target too; its
+    -- private references retain their imported or locally owned identities.
     invoke depth s old k@(Known target caps leading) args=do
       let ordinary=leading++args
       case M.lookup target templates of
-        Just (Template captures parameters _ _ _) | length ordinary==length parameters, CodeTarget _<-target->do
+        Just (Template captures parameters _ _ _) | length ordinary==length parameters->do
           capExprs<-mapM (fmap ref . binderAt s) caps
           let actuals=M.fromList (zip (map CaptureSlot [0..]) capExprs++zip (map ArgumentSlot [0..]) ordinary)
               picks=[(slot,cb) | slot<-S.toAscList (M.findWithDefault S.empty target demands),
@@ -247,9 +253,9 @@ specializeCallbacks mode (Namespace ns) types@(TypeContext linears _) arities in
         pure result {exprOrigin=exprOrigin old,exprOffset=exprOffset old}
       CodeTarget label->do
         let ordinary=leading++args
-        case M.lookup label original of
-          Just f | length ordinary==length (codeParameters f)->pure old {exprNode=
-            if codeKind f==JoinCode then JoinCall label caps ordinary else CodeCall label caps ordinary}
+        case M.lookup label baseContracts of
+          Just c | length ordinary==length (contractParameters c)->pure old {exprNode=
+            if contractKind c==JoinCode then JoinCall label caps ordinary else CodeCall label caps ordinary}
           _->do head'<-value s (foldr (TFn . exprType) (exprType old) args) k
                 result<-apply head' args
                 pure result {exprOrigin=exprOrigin old,exprOffset=exprOffset old}
@@ -269,9 +275,9 @@ specializeCallbacks mode (Namespace ns) types@(TypeContext linears _) arities in
               built<-prepareClone target picks
               case built of
                 Nothing->put state>>pure Nothing
-                Just (label,clone,scope',candidates)->do
+                Just (label,clone,scope',candidates,origin)->do
                   modify (\w->w {keys=M.insert key label (keys w),code=M.insert label clone (code w),
-                    plans=M.insert label (ClonePlan target candidates) (plans w),weight=weight w+nodes body})
+                    plans=M.insert label (ClonePlan target candidates) (plans w),origins=M.insert label origin (origins w),weight=weight w+nodes body})
                   body'<-walk (depth+1) scope' (codeBody clone)
                   modify (\w->w {code=M.insert label (clone {codeBody=body'}) (code w)})
                   pure (Just label)
@@ -312,7 +318,9 @@ specializeCallbacks mode (Namespace ns) types@(TypeContext linears _) arities in
                   assumed=S.fromList [binderId b | (_,_,cs,ls)<-added,b<-cs++ls]
                   scope'=case scope (allCaps++allPs) of Scope env _ _->Scope env knowns assumed
                   clone=CodeFunction label (if kind==JoinCode then JoinCode else EntryCode) allCaps allPs (functionBody instantiated)
-              pure (Just (label,clone,scope',S.fromList (map (binderId . selected' . fst) picks)))
+                  (source,templateId)=case target of RootTarget n->(n,CodeId n);CodeTarget k->(sourceOwners M.! k,k)
+                  origin=CloneOrigin source templateId (zip (map binderId (caps++ps)) (map (Just . binderId) (baseCaps++basePs)))
+              pure (Just (label,clone,scope',S.fromList (map (binderId . selected' . fst) picks),origin))
     freshCallback (Known target _ leading)=do
       first<-gets nextType
       (captureSchemes,parameters,result,flex,next)<-case target of
